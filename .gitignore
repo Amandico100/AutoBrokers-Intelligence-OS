@@ -1,0 +1,96 @@
+# See https://help.github.com/articles/ignoring-files/
+
+# dependencies
+/node_modules
+/.pnp
+.pnp.js
+
+# testing
+/coverage
+
+# next.js
+/.next/
+/out/
+
+# production
+/build
+
+# misc
+.DS_Store
+*.pem
+*.docx
+~$*
+*.tmp
+
+# debug
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+
+# local env files and secrets
+.env
+.env.*
+!.env*.example
+!.env.example
+!.env.local.example
+!.env.template
+.env*.local
+
+# vercel
+.vercel
+
+# typescript
+*.tsbuildinfo
+next-env.d.ts
+
+# Backend
+backend/.env
+backend/.env.*
+!backend/.env*.example
+backend/venv/
+backend/.venv/
+**/__pycache__/
+
+# Python venv in root
+venv/
+.venv/
+
+# Docling service
+docling-service/.env
+docling-service/.env.*
+!docling-service/.env*.example
+docling-service/venv/
+docling-service/.venv/
+
+# Python caches
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+*.pyc
+*.pyo
+
+# Local service data
+minio_data/
+qdrant_data/
+redis_data/
+/data/
+
+# Logs and local cache
+logs/
+*.log
+.cache/
+.turbo/
+
+# Misc
+nul
+CONTEXTO_*.md
+
+# Stress test
+backend/scripts/stress_test.py
+backend/scripts/.env
+
+# Claude Code local settings
+.claude/settings.local.json
+
+# Supabase CLI temp files
+supabase/.temp/
