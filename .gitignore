@@ -94,7 +94,17 @@ backend/scripts/stress_test.py
 backend/scripts/.env
 
 # Claude Code local settings
-.claude/settings.local.json
+.claude/
+.codex-artifacts/
+.worktrees/
+ResultVision/
+ResultVision_block2a_clean/
+QUARENTENA_LEGADO*/
+AUTOBROKERS_AGENT_OS_WORKSPACE/
+AUTOBROKERS_RESULTA_INTAKE/
+settings.local.json
+settings.json
+*.local.json
 
 # Supabase CLI temp files
 supabase/.temp/

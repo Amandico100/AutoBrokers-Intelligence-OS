@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
+import { BackendUrlError, getBackendUrl } from '@/lib/backend-url';
 
 // Força a rota a ser dinâmica para suportar streaming
 export const dynamic = 'force-dynamic';
@@ -9,7 +10,21 @@ export async function POST(req: NextRequest) {
     const body = await req.json();
 
     // 2. Define a URL do Backend (ajuste a porta se necessário, padrão 8000)
-    const backendUrl = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000';
+    let backendUrl: string;
+    try {
+      backendUrl = getBackendUrl(req);
+    } catch (error) {
+      if (error instanceof BackendUrlError) {
+        return NextResponse.json(
+          {
+            error: error.code,
+            message: 'Configure NEXT_PUBLIC_API_URL or NEXT_PUBLIC_BACKEND_URL with the public API URL.',
+          },
+          { status: 500 },
+        );
+      }
+      throw error;
+    }
 
     console.log(`🔌 [PROXY] Conectando ao backend: ${backendUrl}/chat/stream`);
 
@@ -26,8 +41,12 @@ export async function POST(req: NextRequest) {
 
     if (!response.ok) {
       console.error(`❌ [PROXY] Erro no backend: ${response.status} ${response.statusText}`);
+      const errorData = await response.json().catch(() => ({}));
       return NextResponse.json(
-        { error: `Backend error: ${response.statusText}` },
+        {
+          error: errorData.detail || errorData.error || `Backend error: ${response.statusText}`,
+          status: response.status,
+        },
         { status: response.status },
       );
     }
@@ -48,6 +67,12 @@ export async function POST(req: NextRequest) {
     });
   } catch (error) {
     console.error('❌ [PROXY] Erro fatal:', error);
-    return NextResponse.json({ error: 'Internal Server Error' }, { status: 500 });
+    return NextResponse.json(
+      {
+        error: 'CHAT_STREAM_PROXY_FAILED',
+        message: 'Falha ao conectar o Web ao backend de IA.',
+      },
+      { status: 500 },
+    );
   }
 }

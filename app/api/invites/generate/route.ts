@@ -33,6 +33,20 @@ export async function POST(request: NextRequest) {
     const cookieStore = await cookies();
     const body = await request.json();
     const { role: inviteRole, companyId: requestedCompanyId, email, name, isOwner } = body;
+    let inviteLinkBaseUrl: string;
+
+    try {
+      inviteLinkBaseUrl = getPublicAppUrl(request);
+    } catch {
+      console.error('[INVITE GENERATE] Public app URL is not configured');
+      return NextResponse.json(
+        {
+          error: 'PUBLIC_APP_URL_NOT_CONFIGURED',
+          message: 'Configure NEXT_PUBLIC_APP_URL or FRONTEND_URL with the public Web URL.',
+        },
+        { status: 500 },
+      );
+    }
 
     // Validate role
     if (inviteRole && !['admin_company', 'member'].includes(inviteRole)) {
@@ -253,14 +267,19 @@ export async function POST(request: NextRequest) {
 
     if (inviteError || !invite) {
       console.error('[INVITE GENERATE] Error:', inviteError);
-      return NextResponse.json({ error: 'Failed to generate invite' }, { status: 500 });
+      return NextResponse.json(
+        {
+          error: 'INVITE_INSERT_FAILED',
+          message: 'Falha ao salvar convite. Verifique schema da tabela invites no Supabase sandbox.',
+        },
+        { status: 500 },
+      );
     }
 
     console.log('[INVITE GENERATE] ✅ Invite saved with is_owner_invite:', invite.is_owner_invite);
 
     // Build invite link. Sandbox/production must use the public web origin.
-    const baseUrl = getPublicAppUrl(request);
-    const inviteLink = `${baseUrl}/register?token=${token}`;
+    const inviteLink = `${inviteLinkBaseUrl}/register?token=${token}`;
 
     // Send email
     let emailWarning = null;
@@ -292,6 +311,12 @@ export async function POST(request: NextRequest) {
     });
   } catch (error: any) {
     console.error('[INVITE GENERATE] Error:', error);
-    return NextResponse.json({ error: 'Internal server error' }, { status: 500 });
+    return NextResponse.json(
+      {
+        error: 'INVITE_GENERATION_FAILED',
+        message: 'Falha ao gerar convite. Verifique logs do Web e variaveis publicas de URL.',
+      },
+      { status: 500 },
+    );
   }
 }

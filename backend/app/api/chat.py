@@ -348,6 +348,8 @@ async def chat_stream(
         logger.info(f"[STREAM] 💰 Insufficient balance for company {chat_request.companyId}")
 
         async def no_balance_response():
+            data = json.dumps({"token": "Creditos insuficientes para responder. Configure plano/creditos da empresa no Admin."})
+            yield f"data: {data}\n\n"
             yield "data: [DONE]\n\n"
 
         return StreamingResponse(

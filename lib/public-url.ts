@@ -16,7 +16,7 @@ export function getPublicAppUrl(request?: NextRequest): string {
     normalizeOrigin(process.env.APP_URL) ||
     normalizeOrigin(process.env.FRONTEND_URL);
 
-  if (explicitUrl) return explicitUrl;
+  if (explicitUrl && !LOCALHOST_PATTERN.test(explicitUrl)) return explicitUrl;
 
   const requestOrigin = normalizeOrigin(request?.nextUrl?.origin);
   if (requestOrigin && !LOCALHOST_PATTERN.test(requestOrigin)) {
@@ -25,7 +25,7 @@ export function getPublicAppUrl(request?: NextRequest): string {
 
   if (process.env.NODE_ENV === 'production') {
     throw new Error(
-      'Public app URL is not configured. Set NEXT_PUBLIC_APP_URL or FRONTEND_URL.',
+      'PUBLIC_APP_URL_NOT_CONFIGURED: Set NEXT_PUBLIC_APP_URL or FRONTEND_URL to the public web URL.',
     );
   }
 

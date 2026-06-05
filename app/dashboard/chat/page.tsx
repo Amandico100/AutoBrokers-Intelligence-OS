@@ -312,6 +312,15 @@ export default function ChatPage() {
         }),
       });
 
+      if (!response.ok) {
+        const errorData = await response.json().catch(() => ({}));
+        throw new Error(
+          errorData.message ||
+          errorData.error ||
+          `Falha no backend de IA (${response.status})`,
+        );
+      }
+
       if (!response.body) {
         console.error('❌ [FRONT] Response sem body!');
         throw new Error('No response body');
@@ -347,6 +356,18 @@ export default function ChatPage() {
 
           try {
             const data = JSON.parse(dataStr);
+            if (data.error) {
+              accumulatedResponse = `Erro no agente: ${data.error}`;
+              setMessages((prev) =>
+                prev.map((msg) => {
+                  if (msg.id === assistantMsgId) {
+                    return { ...msg, content: accumulatedResponse };
+                  }
+                  return msg;
+                }),
+              );
+              continue;
+            }
             if (data.token) {
               accumulatedResponse += data.token;
 
@@ -409,6 +430,21 @@ export default function ChatPage() {
             console.warn('⚠️ [FRONT] Erro parse JSON:', e);
           }
         }
+      }
+
+      if (!accumulatedResponse.trim()) {
+        setMessages((prev) =>
+          prev.map((msg) => {
+            if (msg.id === assistantMsgId) {
+              return {
+                ...msg,
+                content:
+                  'Nao recebi resposta do agente. Verifique se a empresa tem creditos, se existe um agente ativo e se a chave/modelo de LLM estao configurados.',
+              };
+            }
+            return msg;
+          }),
+        );
       }
 
       // Atualiza título da conversa no final

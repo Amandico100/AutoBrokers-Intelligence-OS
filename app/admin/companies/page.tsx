@@ -185,7 +185,7 @@ export default function AdminCompaniesPage() {
       const data = await response.json();
 
       if (!response.ok) {
-        throw new Error(data.error || 'Falha ao gerar convite');
+        throw new Error(data.message || data.error || 'Falha ao gerar convite');
       }
 
       setInviteLink(data.inviteLink);
