@@ -3,7 +3,7 @@ Core System Prompts - Hybrid Prompt Architecture
 ==============================================
 
 Este módulo contém os prompts base do sistema que definem comportamentos
-imutáveis e regras de governança para o agente AutoBroker.
+imutáveis e regras de governança para o agente AutoBrokers.
 
 Arquitetura Multi-Tenant:
 - SYSTEM_BASE_PROMPT: Regras técnicas e de segurança (controladas pelo dev)

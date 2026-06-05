@@ -141,7 +141,7 @@ async def get_or_create_conversation(
             "user_name": payload.senderName or "Usuário WhatsApp",
             "user_phone": payload.phone,
             "channel": channel,
-            "agent_name": "AutoBroker",
+            "agent_name": "AutoBrokers",
             "status": "open",
             "status_color": "green",
             "unread_count": 1,

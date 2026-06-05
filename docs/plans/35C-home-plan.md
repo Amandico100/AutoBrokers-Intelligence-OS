@@ -1,10 +1,10 @@
-# BATCH 35C - AutoBroker Tenant Home Plan
+# BATCH 35C - AutoBrokers Tenant Home Plan
 
 > **Para o executor do 35D:** implemente este plano por etapas pequenas, validando a cada troca visual. Nao mexa em RAG, Worker, Docling, WhatsApp real, InfoCap, n8n, corredores, Supabase ou migrations.
 
-**Goal:** planejar a primeira Home AutoBroker do dashboard da corretora, chat-first e com operacao de seguros visivel.
+**Goal:** planejar a primeira Home AutoBrokers do dashboard da corretora, chat-first e com operacao de seguros visivel.
 
-**Architecture:** a Home deve reaproveitar o runtime de chat atual do Smith/AutoBrokers como nucleo, sem criar motor paralelo. O 35D deve aproximar `/dashboard` e `/dashboard/chat`: a primeira tela passa a ser a experiencia AutoBroker, com chat central, atalhos e cards estaticos/dados leves, enquanto modulos reais de Atendimento, Auxiliares, RAG, Canais e Gestao entram em fases posteriores.
+**Architecture:** a Home deve reaproveitar o runtime de chat atual do Smith como motor tecnico, mas expor a experiencia AutoBrokers como produto, sem criar motor paralelo. O 35D deve aproximar `/dashboard` e `/dashboard/chat`: a primeira tela passa a ser a experiencia AutoBrokers, com chat central, atalhos e cards estaticos/dados leves, enquanto modulos reais de Atendimento, Auxiliares, RAG, Canais e Gestao entram em fases posteriores.
 
 **Tech Stack:** Next.js App Router, React client components, Tailwind, componentes existentes `UnifiedSidebar`, `InputArea`, `MessageBubble`, APIs `/api/auth/me`, `/api/user/company-data`, `/api/agents`, `/api/conversations`, `/api/messages`, `/api/chat/stream`.
 
@@ -12,21 +12,21 @@
 
 ## 1. Resumo executivo
 
-A Home atual da corretora (`/dashboard`) ainda e uma tela simples de boas-vindas com botao "Ir para o Chat". Ela deve ser substituida pela primeira versao da **AutoBroker Home**.
+A Home atual da corretora (`/dashboard`) ainda e uma tela simples de boas-vindas com botao "Ir para o Chat". Ela deve ser substituida pela primeira versao da **AutoBrokers Home**.
 
 A experiencia correta, conforme ADR-001, e:
 
 ```txt
-AutoBroker no centro
+AutoBrokers no centro
 chat-first
 atalhos operacionais
 cards vivos da operacao
-modulos orbitando o AutoBroker
+modulos orbitando o AutoBrokers
 ```
 
 O 35D nao deve construir todo o dashboard final. Ele deve entregar um primeiro shell de produto confiavel:
 
-- AutoBroker como ponto de entrada.
+- AutoBrokers como ponto de entrada.
 - Chat central reaproveitando a logica funcional de `/dashboard/chat`.
 - Atalhos rapidos que podem apontar para rotas existentes ou placeholders seguros.
 - Cards operacionais basicos com dados leves ou estado vazio honesto.
@@ -41,9 +41,9 @@ O objetivo e trocar a sensacao de "chat isolado" por "sistema operacional inteli
 
 | Rota | Funcao atual | Manter | Substituir | Fundir | Observacoes |
 | --- | --- | --- | --- | --- | --- |
-| `/dashboard` | Tela de boas-vindas simples, lista recursos e CTA para chat | Nao como esta | Sim | Sim, com chat | Deve virar AutoBroker Home. Conteudo atual pode ser descartado. |
-| `/dashboard/chat` | Chat funcional com agente, stream, imagem, audio, web search opcional, historico e seletor de agente | Sim | Nao | Sim, com Home | E a base tecnica do AutoBroker. Pode continuar como rota dedicada ou virar componente reutilizavel. |
-| `/dashboard/historico` | Lista conversas e abre conversa no chat | Sim | Nao | Parcial | Deve continuar como Historico do AutoBroker; corrigir depois query param/conversation se necessario. |
+| `/dashboard` | Tela de boas-vindas simples, lista recursos e CTA para chat | Nao como esta | Sim | Sim, com chat | Deve virar AutoBrokers Home. Conteudo atual pode ser descartado. |
+| `/dashboard/chat` | Chat funcional com agente, stream, imagem, audio, web search opcional, historico e seletor de agente | Sim | Nao | Sim, com Home | E a base tecnica do AutoBrokers. Pode continuar como rota dedicada ou virar componente reutilizavel. |
+| `/dashboard/historico` | Lista conversas e abre conversa no chat | Sim | Nao | Parcial | Deve continuar como Historico do AutoBrokers; corrigir depois query param/conversation se necessario. |
 | `/dashboard/configuracoes` | Perfil, avatar, telefone e senha do usuario | Sim | Nao | Nao | Mantem como configuracoes pessoais; configuracoes da corretora entram depois. |
 | `/embed/[agentId]` | Widget externo embeddable | Sim, mas fora do fluxo | Nao | Nao | Fase posterior para canais/widget. Nao entra na Home P0. |
 
@@ -51,12 +51,12 @@ O objetivo e trocar a sensacao de "chat isolado" por "sistema operacional inteli
 
 | Componente | Uso atual | Reuso no 35D |
 | --- | --- | --- |
-| `components/UnifiedSidebar.tsx` | Sidebar tenant com AutoBroker, conversas recentes, Chat/Historico/Configuracoes | Reaproveitar e preparar menu em fases. |
+| `components/UnifiedSidebar.tsx` | Sidebar tenant com AutoBrokers, conversas recentes, Chat/Historico/Configuracoes | Reaproveitar e preparar menu em fases. |
 | `app/dashboard/chat/page.tsx` | Implementa chat completo | Extrair ou reutilizar blocos para Home. Evitar duplicar logica. |
 | `components/InputArea/index.tsx` | Input multimodal com imagem, audio, web search e seletor de agente | Reaproveitar. |
 | `components/ui/animated-ai-chat.tsx` | Textarea animado, botoes e seletor de agente | Reaproveitar. |
 | `components/MessageBubble.tsx` | Renderiza mensagens, Markdown, audio, imagem e UCP | Reaproveitar. |
-| `components/EmptyState.tsx` | Estado vazio atual do chat | Substituir ou adaptar para Hero AutoBroker. |
+| `components/EmptyState.tsx` | Estado vazio atual do chat | Substituir ou adaptar para Hero AutoBrokers. |
 | `components/TypingIndicator.tsx` | Indicador de resposta | Reaproveitar. |
 | `hooks/useUserId.ts` | Usuario autenticado | Reaproveitar. |
 
@@ -67,7 +67,7 @@ O objetivo e trocar a sensacao de "chat isolado" por "sistema operacional inteli
 | `/api/auth/me` | Usuario e termos | Sim. |
 | `/api/user/profile` | Perfil no sidebar/configuracoes | Sim. |
 | `/api/user/company-data` | Company id e web search | Sim. |
-| `/api/agents` | Agentes ativos da empresa | Sim; AutoBroker deve ser o default. |
+| `/api/agents` | Agentes ativos da empresa | Sim; AutoBrokers deve ser o default. |
 | `/api/conversations` | Criar/listar conversa | Sim. |
 | `/api/messages` | Persistir mensagens | Sim. |
 | `/api/chat/stream` | Resposta streaming do agente | Sim. |
@@ -77,17 +77,17 @@ O objetivo e trocar a sensacao de "chat isolado" por "sistema operacional inteli
 Decisao central:
 
 ```txt
-/dashboard deve virar AutoBroker Home.
-/dashboard/chat deve continuar existindo como modo chat focado, mas a Home deve conter o AutoBroker como experiencia primaria.
+/dashboard deve virar AutoBrokers Home.
+/dashboard/chat deve continuar existindo como modo chat focado, mas a Home deve conter o AutoBrokers como experiencia primaria.
 ```
 
 Principios:
 
-1. **Chat-first, nao dashboard puro.** O usuario deve entender que conversa com o AutoBroker para operar a corretora.
+1. **Chat-first, nao dashboard puro.** O usuario deve entender que conversa com o AutoBrokers para operar a corretora.
 2. **Operacao visivel.** Cards e alertas devem mostrar que ha uma corretora viva por tras do chat.
 3. **Sem pagina Estudos.** Conhecimento entra como "Base de conhecimento", "Documentos" ou "Memorias da corretora".
-4. **Sem Conversa ao vivo antiga.** Conversas externas ficam em Atendimento, nao como substituto do AutoBroker.
-5. **Sem personalizar o nome AutoBroker.** O nome pode aparecer fixo em UI, header, empty state e atalhos.
+4. **Sem Conversa ao vivo antiga.** Conversas externas ficam em Atendimento, nao como substituto do AutoBrokers.
+5. **Sem personalizar o nome AutoBrokers.** O nome pode aparecer fixo em UI, header, empty state e atalhos.
 6. **Dados reais so quando ja existem.** Onde ainda nao houver modulo, usar placeholder discreto e honesto.
 
 ## 4. Menu lateral proposto
@@ -98,7 +98,7 @@ Menu final desejado para a corretora, com classificacao de fase:
 
 | Item | Rota sugerida | Prioridade | Acao no 35D |
 | --- | --- | --- | --- |
-| AutoBroker | `/dashboard` | P0 agora | Implementar como Home principal. |
+| AutoBrokers | `/dashboard` | P0 agora | Implementar como Home principal. |
 
 ### OPERACAO
 
@@ -167,7 +167,7 @@ No 35D, a sidebar deve continuar simples para nao criar rotas falsas demais:
 
 ```txt
 INICIO
-  AutoBroker
+  AutoBrokers
 
 CONVERSAS
   Historico
@@ -178,32 +178,32 @@ SETUP
 
 Opcional no 35D: exibir secoes futuras desabilitadas apenas se ficar claro visualmente que estao em breve. A recomendacao e ocultar por enquanto.
 
-## 5. Home AutoBroker proposta
+## 5. Home AutoBrokers proposta
 
 Estrutura ideal:
 
 ```txt
 [Sidebar]
-  AutoBroker
+  AutoBrokers
   Historico
   Configuracoes
 
 [Topbar]
   Nome da corretora
-  Status do AutoBroker
+  Status do AutoBrokers
   Creditos IA / Plano
   Usuario
 
 [Main]
-  [Hero AutoBroker]
-    AutoBroker
+  [Hero AutoBrokers]
+    AutoBrokers
     "Como posso ajudar sua corretora hoje?"
     subtitulo: "Seu copiloto operacional para seguros"
 
   [Chat central]
     mensagens recentes ou empty state
     input multimodal existente
-    seletor de agente oculto ou travado no AutoBroker em P0, se possivel
+    seletor de agente oculto ou travado no AutoBrokers em P0, se possivel
 
   [Atalhos rapidos]
     Ver atendimentos criticos
@@ -236,13 +236,13 @@ Estrutura ideal:
 ```txt
 ┌──────────────────────────────────────────────────────────────┐
 │ Sidebar                                                      │
-│  AutoBroker                                                  │
+│  AutoBrokers                                                  │
 │  Historico                                                   │
 │  Configuracoes                                               │
 ├──────────────────────────────────────────────────────────────┤
-│ Topbar: RAFAEL SEGUROS | AutoBroker ativo | Creditos IA      │
+│ Topbar: RAFAEL SEGUROS | AutoBrokers ativo | Creditos IA      │
 ├──────────────────────────────────────────────────────────────┤
-│ AutoBroker                                                   │
+│ AutoBrokers                                                   │
 │ Como posso ajudar sua corretora hoje?                        │
 │ Seu copiloto operacional para seguros.                       │
 │                                                              │
@@ -267,7 +267,7 @@ Estrutura ideal:
 
 | Atalho | Acao no 35D | Dados necessarios |
 | --- | --- | --- |
-| Nova conversa com AutoBroker | Focar input ou iniciar nova conversa | Estado local do chat |
+| Nova conversa com AutoBrokers | Focar input ou iniciar nova conversa | Estado local do chat |
 | Ver historico | Link para `/dashboard/historico` | Existente |
 | Preparar mensagem para cliente | Preencher prompt sugerido no input | Local |
 | Ver creditos IA | Link para plano/custos se autorizado ou card local | `company-data`/billing se disponivel |
@@ -280,7 +280,7 @@ Estrutura ideal:
 | --- | --- | --- | --- |
 | Conversas recentes | Total/lista curta das ultimas conversas | `/api/conversations?limit=8` ja usado na sidebar | "Nenhuma conversa recente" |
 | Creditos IA | Saldo/status simples se exposto; senao "ativo no Admin" | Futuro billing endpoint tenant | "Consulte o Admin" |
-| AutoBroker ativo | Nome do agente atual e status | `/api/agents` | "Nenhum agente ativo" |
+| AutoBrokers ativo | Nome do agente atual e status | `/api/agents` | "Nenhum agente ativo" |
 | Setup da corretora | Checklist simples | local/com base em dados carregados | "Conexoes e RAG ainda pendentes" |
 
 ### Cards P1
@@ -296,13 +296,13 @@ Estrutura ideal:
 
 | Origem Smith atual | Decisao |
 | --- | --- |
-| `/dashboard/chat` | Reaproveitar como nucleo do AutoBroker. |
+| `/dashboard/chat` | Reaproveitar como nucleo do AutoBrokers. |
 | `InputArea` / `AnimatedAIChat` | Reaproveitar como caixa de mensagem P0. |
 | `MessageBubble` | Reaproveitar para mensagens. |
 | `UnifiedSidebar` | Reaproveitar, mas reorganizar menu gradualmente. |
-| `Historico` | Manter como historico do AutoBroker. |
+| `Historico` | Manter como historico do AutoBrokers. |
 | `Configuracoes` | Manter como configuracoes pessoais. |
-| Seletor de agente | Manter tecnicamente, mas considerar ocultar/travar no AutoBroker para usuario comum. |
+| Seletor de agente | Manter tecnicamente, mas considerar ocultar/travar no AutoBrokers para usuario comum. |
 | Web search toggle | Manter se empresa permitir, mas nao destacar no P0. |
 | Imagem/audio | Manter, pois ja existe. Nao expandir escopo. |
 | Widget/embed | Manter fora da Home P0. |
@@ -312,7 +312,7 @@ O que descartar da home atual:
 - Texto "Sua conta esta ativa e pronta para usar".
 - Lista "Chat com IA ilimitado", "Mensagens de texto e voz", etc.
 - Botao isolado "Ir para o Chat".
-- Layout de boas-vindas separado do AutoBroker.
+- Layout de boas-vindas separado do AutoBrokers.
 
 ## 8. O que entra do AutoBrokers antigo
 
@@ -323,7 +323,7 @@ Sem copiar codigo, os conceitos uteis entram assim:
 | Cards de atendimento | Cards operacionais da Home e modulo Atendimento | P1 |
 | Fila | Menu Operacao > Fila de atendimentos | P1 |
 | Casos | Menu Operacao > Casos | P1 |
-| Conversas externas | Menu Operacao > Conversas, separado do AutoBroker | P1 |
+| Conversas externas | Menu Operacao > Conversas, separado do AutoBrokers | P1 |
 | Ligacoes | Menu Operacao > Ligacoes | P2 |
 | Segurados | Menu Operacao > Segurados | P1 |
 | Seguradoras | Menu Canais > Seguradoras | P1 |
@@ -363,7 +363,7 @@ BATCH_35D_AUTOBROKER_HOME_PATCH
 
 Objetivo:
 
-Implementar a primeira Home AutoBroker em `/dashboard`, reutilizando a logica de chat atual sem quebrar `/dashboard/chat`.
+Implementar a primeira Home AutoBrokers em `/dashboard`, reutilizando a logica de chat atual sem quebrar `/dashboard/chat`.
 
 ### Escopo permitido no 35D
 
@@ -371,7 +371,7 @@ Arquivos provaveis:
 
 - Modificar: `app/dashboard/page.tsx`
 - Modificar: `components/UnifiedSidebar.tsx`
-- Opcional criar: `components/dashboard/AutoBrokerHomeShell.tsx`
+- Opcional criar: `components/dashboard/AutoBrokersHomeShell.tsx`
 - Opcional criar: `components/dashboard/OperationalCard.tsx`
 - Opcional criar: `components/dashboard/QuickActionButton.tsx`
 
@@ -384,13 +384,13 @@ O 35D deve evitar mexer no backend, Supabase, migrations e integrações.
 **Files:**
 
 - Modify: `app/dashboard/page.tsx`
-- Optional create: `components/dashboard/AutoBrokerHomeShell.tsx`
+- Optional create: `components/dashboard/AutoBrokersHomeShell.tsx`
 
 **Steps:**
 
 1. Substituir a tela de boas-vindas atual por shell com sidebar e area principal.
 2. Carregar `userId`, `userName` e dados basicos da corretora via APIs ja usadas.
-3. Mostrar titulo `AutoBroker`.
+3. Mostrar titulo `AutoBrokers`.
 4. Mostrar subtitulo `Como posso ajudar sua corretora hoje?`.
 5. Nao integrar dados novos ainda.
 
@@ -450,7 +450,7 @@ Manual: clicar atalhos e confirmar que nao ha 404.
 
 1. Criar 4 cards:
    - Conversas recentes.
-   - AutoBroker ativo.
+   - AutoBrokers ativo.
    - Creditos IA.
    - Setup da corretora.
 2. Usar dados ja disponiveis quando simples.
@@ -468,10 +468,10 @@ Manual: `/dashboard` renderiza com dados/estados vazios sem tela branca.
 
 **Steps:**
 
-1. Trocar item `Chat` por `AutoBroker` apontando para `/dashboard`.
+1. Trocar item `Chat` por `AutoBrokers` apontando para `/dashboard`.
 2. Manter `Historico`.
 3. Manter `Configuracoes`.
-4. Garantir que nova conversa ainda funciona e leva ao contexto AutoBroker.
+4. Garantir que nova conversa ainda funciona e leva ao contexto AutoBrokers.
 
 **Validation:**
 
@@ -493,16 +493,16 @@ Se build local exigir env, usar apenas env dummy no processo e registrar.
 
 ```bash
 git add app/dashboard components/UnifiedSidebar.tsx components/dashboard
-git commit -m "feat(product): introduce AutoBroker tenant home"
+git commit -m "feat(product): introduce AutoBrokers tenant home"
 git push origin main
 ```
 
 ### Criterios de sucesso do 35D
 
-- `/dashboard` abre como AutoBroker Home.
+- `/dashboard` abre como AutoBrokers Home.
 - `/dashboard/chat` continua funcionando.
 - Chat responde.
-- Sidebar mostra AutoBroker, Historico e Configuracoes.
+- Sidebar mostra AutoBrokers, Historico e Configuracoes.
 - Nao existe "Estudos".
 - Nao existe "Conversa ao vivo".
 - Nenhum modulo futuro abre 404 por link P0.

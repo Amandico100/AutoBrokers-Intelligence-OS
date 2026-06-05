@@ -238,7 +238,7 @@ export const HeroSection: React.FC = () => {
           </motion.h2>
 
           <motion.p variants={itemVariants} className="text-muted-foreground mb-9 max-w-2xl">
-            Converse com o AutoBroker, seu copiloto operacional para seguros.
+            Converse com o AutoBrokers, seu copiloto operacional para seguros.
           </motion.p>
 
           <motion.button

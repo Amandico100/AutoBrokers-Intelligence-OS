@@ -158,7 +158,7 @@ export function UnifiedSidebar({
                 <div className="w-full h-full rounded-full bg-black flex items-center justify-center overflow-hidden">
                   <img
                     src="/smith-logo.png"
-                    alt="AutoBroker"
+                    alt="AutoBrokers"
                     className="w-full h-full object-cover"
                   />
                 </div>
@@ -166,7 +166,7 @@ export function UnifiedSidebar({
 
               <div className="flex flex-col min-w-0">
                 <span className="font-bold text-lg tracking-wide text-foreground leading-none">
-                  AutoBroker
+                  AutoBrokers
                 </span>
                 <span className="text-sm font-semibold text-blue-400 truncate">
                   {userProfile.companyName}

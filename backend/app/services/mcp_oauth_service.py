@@ -1,7 +1,7 @@
 """
 MCP OAuth Service - Credenciais da PLATAFORMA.
 
-As credenciais OAuth (Client ID + Secret) são da plataforma Agent Smith.
+As credenciais OAuth (Client ID + Secret) são da plataforma AutoBrokers.
 Cada agente só armazena os TOKENS de acesso após autorização.
 """
 

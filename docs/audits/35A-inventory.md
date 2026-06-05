@@ -9,15 +9,15 @@ ADR base: `docs/adr/ADR-001-runtime.md`
 
 O runtime Smith V6.2 ja contem uma base operacional forte para o AutoBrokers Intelligence OS: Next.js, FastAPI, Supabase, Qdrant, MinIO, Redis, chat streaming, agents, subagents, delegations, HTTP tools, MCP, RAG, documentos, logs, custos, billing, widget e admin multi-tenant.
 
-A conclusao tecnica deste inventario e que o Smith deve continuar como motor runtime principal, mas ainda precisa virar produto AutoBrokers por camadas controladas. O principal trabalho agora nao e importar legado: e renomear a identidade visivel, estabilizar a home AutoBroker, organizar o modelo de Auxiliares sobre agents/subagents/delegations, validar RAG minimo e mapear atendimento/canais com cuidado.
+A conclusao tecnica deste inventario e que o Smith deve continuar como motor runtime principal, mas ainda precisa virar produto AutoBrokers por camadas controladas. O principal trabalho agora nao e importar legado: e renomear a identidade visivel, estabilizar a home AutoBrokers, organizar o modelo de Auxiliares sobre agents/subagents/delegations, validar RAG minimo e mapear atendimento/canais com cuidado.
 
 Prontidao estimada por area:
 
 | Area | Prontidao | Leitura |
 | --- | ---: | --- |
 | Admin Global como base | 68/100 | Ja existe gestao SaaS, empresas, usuarios, FinOps, logs e configs. Precisa virar Admin Global AutoBrokers. |
-| Tenant dashboard como base | 55/100 | Existe chat, historico e configuracoes. Falta home operacional AutoBroker e paginas de produto. |
-| AutoBroker/chat central | 72/100 | Chat ja funciona com agente, credito e stream. Falta prompt/identidade AutoBrokers e cards operacionais. |
+| Tenant dashboard como base | 55/100 | Existe chat, historico e configuracoes. Falta home operacional AutoBrokers e paginas de produto. |
+| AutoBrokers/chat central | 72/100 | Chat ja funciona com agente, credito e stream. Falta prompt/identidade AutoBrokers e cards operacionais. |
 | Agents/subagents/delegations | 74/100 | Base tecnica forte. Falta produto "Auxiliares", galeria, ativacao por corretora e historico de execucao. |
 | RAG/documentos | 70/100 | Upload, Qdrant, MinIO, ingestion e documentos existem. Falta smoke controlado e curadoria AutoBrokers. |
 | Logs/custos | 72/100 | Logs, token usage, creditos e planos existem. Falta consolidar worker/billing e dashboards finais. |
@@ -34,14 +34,14 @@ Decisoes obrigatorias extraidas de `ADR-001-runtime.md` e aplicadas neste invent
 | --- | --- |
 | Runtime principal sera Smith V6.2 | O inventario parte do que ja existe no Smith e evita sugerir outro motor runtime. |
 | Produto final se chama AutoBrokers.ai | Todo uso visivel de Smith deve virar branding tecnico temporario ou ser removido. |
-| Agente central se chama AutoBroker | `/dashboard/chat` deve evoluir para experiencia AutoBroker, nao JARVYS e nao Smith. |
-| AutoBroker nao e personalizavel | Nome fixo no produto; prompt/modelo podem ser configurados, identidade nao. |
-| Nao usar JARVYS no produto final | O bootstrap atual com "JARVYS Sandbox" e temporario e deve ser renomeado. |
+| Agente central se chama AutoBrokers | `/dashboard/chat` deve evoluir para experiencia AutoBrokers, sem nome legado e sem Smith visivel. |
+| AutoBrokers nao e personalizavel | Nome fixo no produto; prompt/modelo podem ser configurados, identidade nao. |
+| Nao usar nomes legados no produto final | O bootstrap atual com "AutoBrokers Sandbox" e temporario; "Sandbox" sai antes de producao. |
 | Nao existe pagina Estudos | Qualquer rota futura de conhecimento deve ser "Conhecimento", "Base de Conhecimento" ou curadoria, nao Estudos. |
 | "Rotinas" viram "Auxiliares" | O produto deve falar em Auxiliares. Scheduler/execucoes sao detalhes tecnicos. |
 | Auxiliares usam agents/subagents/delegations/tools/RAG/logs/custos | O menor caminho tecnico e reaproveitar o motor Smith, nao criar sistema paralelo. |
-| Galeria/Marketplace primeiro | Criacao conversacional pelo AutoBroker fica para fase posterior. |
-| Conexoes por corretora, reutilizaveis | Precisa vault/connection registry por tenant para AutoBroker, Atendimento, Auxiliares e corredores. |
+| Galeria/Marketplace primeiro | Criacao conversacional pelo AutoBrokers fica para fase posterior. |
+| Conexoes por corretora, reutilizaveis | Precisa vault/connection registry por tenant para AutoBrokers, Atendimento, Auxiliares e corredores. |
 | Agent OS V2 e cerebro/politica, nao runtime ativo | Conteudo V2 deve virar pacotes curados, nao copia de pastas. |
 | LionClaw e referencia | Usar como inspiracao de UX, harness, permission guard e scheduler, nao como runtime. |
 
@@ -111,7 +111,7 @@ Observacoes:
 | `/admin/all-users` | `app/admin/all-users/page.tsx` | Todos os usuarios | Usuarios globais | Manter | P1 |
 | `/admin/team` | `app/admin/team/page.tsx` | Equipe da empresa | Equipe da corretora | Manter para admin da corretora | P1 |
 | `/admin/conversations` | `app/admin/conversations/page.tsx` | Conversas/admin handoff | Supervisao de atendimentos/conversas | Reposicionar em Atendimento | P1 |
-| `/admin/agent` | `app/admin/agent/page.tsx` | Configurar agente | Configurar AutoBroker/agentes | Manter, mas renomear e limitar identidade do AutoBroker | P0 |
+| `/admin/agent` | `app/admin/agent/page.tsx` | Configurar agente | Configurar AutoBrokers/agentes | Manter, mas renomear e limitar identidade do AutoBrokers | P0 |
 | `/admin/documents` | `app/admin/documents/page.tsx` | Base de conhecimento | Conhecimento/curadoria | Manter | P1 |
 | `/admin/knowledge-base/sanitize` | `app/admin/knowledge-base/sanitize/page.tsx` | Sanitizacao de documentos | Curadoria tecnica/documentos limpos | Manter como P2/P3 | P2 |
 | `/admin/billing` | `app/admin/billing/page.tsx` | Plano da empresa | Plano/custos da corretora | Manter | P1 |
@@ -135,21 +135,21 @@ Principais gaps do Admin:
 - Branding visivel ainda usa Smith em varios pontos.
 - Precisa diferenciar Admin Global AutoBrokers de Admin da corretora.
 - Precisa criar conceito de Auxiliares no Admin: templates globais, instalacoes por corretora e execucoes.
-- Precisa uma tela de Conexoes/Vault por corretora, reutilizavel por AutoBroker, Atendimento, Auxiliares e corredores.
+- Precisa uma tela de Conexoes/Vault por corretora, reutilizavel por AutoBrokers, Atendimento, Auxiliares e corredores.
 
 ## 5. Inventario Tenant
 
 | Rota | Arquivo principal | Objetivo atual | Futuro AutoBrokers | Acao | Prioridade |
 | --- | --- | --- | --- | --- | --- |
-| `/dashboard` | `app/dashboard/page.tsx` | Boas-vindas simples com CTA para chat | Home operacional chat-first | Substituir por AutoBroker Home | P0 |
-| `/dashboard/chat` | `app/dashboard/chat/page.tsx` | Chat tenant com agente | AutoBroker central da corretora | Manter como base e renomear | P0 |
-| `/dashboard/historico` | `app/dashboard/historico/page.tsx` | Historico de conversas | Historico do AutoBroker/conversas | Manter, conectar a atendimento depois | P1 |
+| `/dashboard` | `app/dashboard/page.tsx` | Boas-vindas simples com CTA para chat | Home operacional chat-first | Substituir por AutoBrokers Home | P0 |
+| `/dashboard/chat` | `app/dashboard/chat/page.tsx` | Chat tenant com agente | AutoBrokers central da corretora | Manter como base e renomear | P0 |
+| `/dashboard/historico` | `app/dashboard/historico/page.tsx` | Historico de conversas | Historico do AutoBrokers/conversas | Manter, conectar a atendimento depois | P1 |
 | `/dashboard/configuracoes` | `app/dashboard/configuracoes/page.tsx` | Configuracoes do usuario | Perfil/configuracoes da corretora/usuario | Expandir depois | P2 |
 | `/embed/[agentId]` | `app/embed/[agentId]/page.tsx` | Widget/chat externo | Widget/canal externo futuro | Manter como base, nao ativar cedo | P2 |
 
 O tenant atual e enxuto demais para o produto final. Ele serve como base para:
 
-- AutoBroker central.
+- AutoBrokers central.
 - Historico inicial.
 - Configuracoes basicas.
 - Futuro widget/canal externo.
@@ -168,13 +168,13 @@ Nao existe ainda:
 
 Direcao recomendada:
 
-1. Transformar `/dashboard/chat` em AutoBroker.
-2. Transformar `/dashboard` em AutoBroker Home com chat central, atalhos e cards.
+1. Transformar `/dashboard/chat` em AutoBrokers.
+2. Transformar `/dashboard` em AutoBrokers Home com chat central, atalhos e cards.
 3. Criar novas areas de produto depois: Atendimento, Auxiliares, Conhecimento, Canais, Gestao.
 4. Nao criar pagina "Estudos".
 5. Nao recriar "Conversa ao vivo" antiga; atendimento externo deve ser modulo separado.
 
-## 6. Inventario Chat/AutoBroker
+## 6. Inventario Chat/AutoBrokers
 
 Fluxo atual do chat tenant:
 
@@ -225,11 +225,11 @@ O que ainda esta generico/temporario:
 - Nao ha alertas de integracoes, atendimentos ou Auxiliares.
 - RAG ainda precisa smoke controlado com documento pequeno.
 
-Recomendacao para AutoBroker Home:
+Recomendacao para AutoBrokers Home:
 
 ```txt
-AutoBroker Home
-  Chat central do AutoBroker
+AutoBrokers Home
+  Chat central do AutoBrokers
   Atalhos:
     - Ver atendimentos pendentes
     - Criar/ativar Auxiliar
@@ -254,9 +254,9 @@ Tabelas e campos principais:
 
 | Entidade | Tabela/arquivo | Papel atual | Reuso AutoBrokers |
 | --- | --- | --- | --- |
-| Agents | `agents` | Agentes por company, provider/model/prompt/tools/RAG/widget/memory | AutoBroker, agentes de atendimento, Auxiliares tecnicos |
+| Agents | `agents` | Agentes por company, provider/model/prompt/tools/RAG/widget/memory | AutoBrokers, agentes de atendimento, Auxiliares tecnicos |
 | Subagents | `agents.is_subagent`, `allow_direct_chat` | Especialistas delegaveis | Motor base dos Auxiliares |
-| Delegations | `agent_delegations` | Permite agente principal chamar subagente | Relacao AutoBroker -> Auxiliares/especialistas |
+| Delegations | `agent_delegations` | Permite agente principal chamar subagente | Relacao AutoBrokers -> Auxiliares/especialistas |
 | HTTP tools | `agent_http_tools` | Ferramentas HTTP por agente | Integracoes InfoCap, portais, APIs internas |
 | MCP connections | `agent_mcp_connections` | Conexoes MCP por agente | Ferramentas externas e conectores |
 | MCP tools | `agent_mcp_tools` | Habilitacao de ferramentas MCP | Permissoes e escopo por agente/Auxiliar |
@@ -315,7 +315,7 @@ Nota de prontidao:
 
 | Uso | Nota | Motivo |
 | --- | ---: | --- |
-| Agente central AutoBroker | 72/100 | Base pronta, falta identidade/prompt/cards/dominio. |
+| Agente central AutoBrokers | 72/100 | Base pronta, falta identidade/prompt/cards/dominio. |
 | Subagents tecnicos | 74/100 | Motor existe, precisa produto/UX/permissoes. |
 | Auxiliares MVP | 58/100 | Pode reaproveitar motor, mas faltam templates, instalacoes e execucoes. |
 
@@ -338,7 +338,7 @@ Gaps para produto:
 - Registry de conexoes por corretora.
 - Vault/credenciais por corretora com escopo e auditoria.
 - Permission guard por ferramenta/acao.
-- Catalogo de ferramentas aprovadas para AutoBroker, Atendimento e Auxiliares.
+- Catalogo de ferramentas aprovadas para AutoBrokers, Atendimento e Auxiliares.
 - Modo dry-run/aprovacao humana por tool action.
 - Adaptadores AutoBrokers: Evolution, InfoCap, portais seguradoras, Quiver/outros.
 
@@ -382,7 +382,7 @@ Modos e estrategias:
 
 RAG minimo recomendado agora:
 
-1. Criar ou selecionar agente AutoBroker sandbox.
+1. Criar ou selecionar agente AutoBrokers sandbox.
 2. Subir um documento pequeno `.md` ou `.txt`.
 3. Processar via ingestion semantic simples.
 4. Confirmar chunks no Admin.
@@ -457,8 +457,8 @@ Execucao do Auxiliar
 
 | Tabela | Reuso |
 | --- | --- |
-| `agents` | Representar AutoBroker, agentes de atendimento e subagents/Auxiliares tecnicos |
-| `agent_delegations` | Delegar tarefas do AutoBroker para Auxiliares/subagents |
+| `agents` | Representar AutoBrokers, agentes de atendimento e subagents/Auxiliares tecnicos |
+| `agent_delegations` | Delegar tarefas do AutoBrokers para Auxiliares/subagents |
 | `agent_http_tools` | Ferramentas HTTP dos Auxiliares |
 | `agent_mcp_connections` | Conexoes MCP por agente/Auxiliar |
 | `agent_mcp_tools` | Ferramentas MCP habilitadas |
@@ -525,7 +525,7 @@ Corretora:
 Pode ser feito sem worker:
 
 - Execucao manual de Auxiliar.
-- Delegation chamada a partir do AutoBroker.
+- Delegation chamada a partir do AutoBrokers.
 - Testes de tools em modo dry-run.
 - Historico simples.
 
@@ -549,7 +549,7 @@ Exige aprovacao humana:
 
 Fase 2:
 
-- Criacao conversacional de Auxiliares pelo AutoBroker.
+- Criacao conversacional de Auxiliares pelo AutoBrokers.
 - Marketplace sofisticado.
 - Autonomia multi-step com permissao graduada.
 - Scheduler visual completo.
@@ -558,9 +558,9 @@ Fase 2:
 
 | Gap | Severidade | Motivo | Proximo passo |
 | --- | --- | --- | --- |
-| Branding Smith/JARVYS visivel | P0 | Produto final nao pode exibir Smith/JARVYS | Branding base controlado |
-| AutoBroker Home ausente | P0 | Tenant atual e chat simples, nao home operacional | Criar home chat-first |
-| Prompt/identidade AutoBroker ausente | P0 | Agente ainda generico/sandbox | Definir config/prompt AutoBroker |
+| Branding Smith/nome legado visivel | P0 | Produto final nao pode exibir Smith nem nomes legados | Branding base controlado |
+| AutoBrokers Home ausente | P0 | Tenant atual e chat simples, nao home operacional | Criar home chat-first |
+| Prompt/identidade AutoBrokers ausente | P0 | Agente ainda generico/sandbox | Definir config/prompt AutoBrokers |
 | Auxiliares como produto ausentes | P1 | Motor existe, mas nao ha galeria/instalacao/execucoes | Planejar data model |
 | RAG nao validado com documento AutoBrokers | P1 | Base existe, mas falta smoke de produto | RAG minimo |
 | Connection Vault por corretora | P1 | Conexoes precisam ser reutilizadas e seguras | Modelar conexoes/permissoes |
@@ -575,7 +575,7 @@ Fase 2:
 
 | Risco | Severidade | Observacao | Mitigacao |
 | --- | --- | --- | --- |
-| Branding antigo ficar no produto | P0 | Smith/JARVYS ainda aparecem em UI, assets e prompts | Patch de branding base antes de expandir produto |
+| Branding antigo ficar no produto | P0 | Smith ou nomes legados ainda aparecem em UI, assets e prompts | Patch de branding base antes de expandir produto |
 | Service role exposto por engano | P0 se ocorrer | Nao foi confirmada exposicao no inventario, mas Web tem server routes sensiveis | Auditar imports client/server antes de public launch |
 | Copia bruta de legado | P0 | Contraria ADR e causa contaminacao | Manter fronteira do repo e importar apenas pacotes curados |
 | Chat depender de credito sem UX clara | P1 | Ja houve bloqueio por credito | Manter mensagens claras e painel de credito |
@@ -590,9 +590,9 @@ Fase 2:
 
 | Batch | Objetivo | Arquivos provaveis | Risco | Duracao estimada | Prioridade | Criterio de sucesso |
 | --- | --- | --- | --- | --- | --- | --- |
-| `BATCH_35B_BRANDING_BASE` | Remover Smith/JARVYS visivel e fixar AutoBrokers/AutoBroker | `app/*`, `components/*`, `public/*`, prompts default | Medio | 1-2 turnos | P0 | UI nao mostra Smith/JARVYS; chat ainda funciona |
-| `BATCH_35C_AUTOBROKER_HOME_PLAN` | Planejar home AutoBroker chat-first antes de patch | `app/dashboard/*`, `components/dashboard/*` | Baixo | 1 turno | P0 | Layout/escopo aprovado |
-| `BATCH_35D_AUTOBROKER_HOME_PATCH` | Criar primeira home AutoBroker com chat, atalhos e cards basicos | `app/dashboard/page.tsx`, `app/dashboard/chat`, componentes | Medio | 2-3 turnos | P0 | Usuario entra no dashboard e entende AutoBroker |
+| `BATCH_35B_BRANDING_BASE` | Remover Smith/nome legado visivel e fixar AutoBrokers | `app/*`, `components/*`, `public/*`, prompts default | Medio | 1-2 turnos | P0 | UI nao mostra Smith/nome legado; chat ainda funciona |
+| `BATCH_35C_AUTOBROKER_HOME_PLAN` | Planejar home AutoBrokers chat-first antes de patch | `app/dashboard/*`, `components/dashboard/*` | Baixo | 1 turno | P0 | Layout/escopo aprovado |
+| `BATCH_35D_AUTOBROKER_HOME_PATCH` | Criar primeira home AutoBrokers com chat, atalhos e cards basicos | `app/dashboard/page.tsx`, `app/dashboard/chat`, componentes | Medio | 2-3 turnos | P0 | Usuario entra no dashboard e entende AutoBrokers |
 | `BATCH_35E_RAG_MINIMAL_SMOKE` | Testar upload de documento pequeno e resposta com base | Admin documents, backend docs, Qdrant | Medio | 1-2 turnos | P1 | Documento indexado e chat responde sobre ele |
 | `BATCH_35F_AUXILIAR_MODEL_PLAN` | Definir data model e UX minima de Auxiliares | docs/plan, schema plan | Baixo | 1 turno | P1 | Modelo aprovado sem migration |
 | `BATCH_35G_AUXILIAR_GALLERY_MVP` | Criar Galeria/ativacao manual usando agents/subagents | admin/tenant UI, endpoints | Alto | 3-5 turnos | P1 | Corretora ativa Auxiliar manualmente |
@@ -619,16 +619,16 @@ BATCH_35B_BRANDING_BASE
 
 Objetivo:
 
-- Remover branding visivel Smith/JARVYS do produto final.
-- Fixar nomes AutoBrokers e AutoBroker.
+- Remover branding visivel Smith/nome legado do produto final.
+- Fixar o nome AutoBrokers para o agente central.
 - Manter runtime e estrutura Smith por baixo, sem refactor profundo.
 - Nao mexer em RAG, Worker, Docling, WhatsApp, InfoCap, n8n, corredores ou Agent OS V2.
 
 Criterios de sucesso:
 
 - Admin login/dashboard e tenant chat funcionam apos patch.
-- UI nao exibe Smith/JARVYS em rotas principais.
-- AutoBroker aparece como agente central.
+- UI nao exibe Smith/nome legado em rotas principais.
+- AutoBrokers aparece como agente central.
 - Documentacao tecnica pode mencionar Smith apenas em ADR/docs internos.
 
 Pontos que ficaram fora deste batch por decisao:

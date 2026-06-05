@@ -32,21 +32,21 @@ O LionClaw será usado apenas como referência de inteligência, UX e padrões a
 O agente central de cada corretora se chama:
 
 ```txt
-AutoBroker
+AutoBrokers
 ```
 
 Regras:
 
-* Toda corretora terá seu AutoBroker.
-* O nome AutoBroker é fixo.
-* O nome não pode ser personalizado para João, Maria, Jarvys ou outro nome.
-* AutoBroker é o agente central interno da corretora.
-* AutoBroker não é o agente de atendimento externo ao segurado.
-* AutoBroker é o copiloto operacional, analítico e estratégico da corretora.
+* Toda corretora terá seu AutoBrokers.
+* O nome AutoBrokers é fixo.
+* O nome não pode ser personalizado para João, Maria ou outro nome.
+* AutoBrokers é o agente central interno da corretora.
+* AutoBrokers não é o agente de atendimento externo ao segurado.
+* AutoBrokers é o copiloto operacional, analítico e estratégico da corretora.
 
 Termos proibidos no produto final:
 
-* JARVYS como nome do agente da corretora.
+* Qualquer nome legado ou persona personalizada como nome do agente da corretora.
 * Smith como nome visível ao cliente.
 * LionClaw como nome visível ao cliente.
 * Página “Estudos”.
@@ -62,10 +62,10 @@ Ele deve parecer um sistema operacional inteligente para corretoras de seguros.
 Portanto, a experiência principal da corretora deve ser:
 
 ```txt
-Chat-first com AutoBroker + atalhos operacionais + cards vivos da operação
+Chat-first com AutoBrokers + atalhos operacionais + cards vivos da operação
 ```
 
-A página inicial da corretora deve ser o AutoBroker, não um dashboard tradicional puro.
+A página inicial da corretora deve ser o AutoBrokers, não um dashboard tradicional puro.
 
 ---
 
@@ -85,7 +85,7 @@ Desvantagens:
 
 * Reduz a percepção de IA.
 * Faz o produto parecer um CRM ou central de atendimento comum.
-* Esconde o AutoBroker em uma aba secundária.
+* Esconde o AutoBrokers em uma aba secundária.
 * Não acomoda bem Auxiliares, automações e inteligência transversal.
 
 Decisão: rejeitada como homepage principal.
@@ -114,13 +114,13 @@ Decisão: boa base, mas insuficiente sozinha.
 
 ---
 
-### Opção C — AutoBroker chat-first + atalhos + cards operacionais
+### Opção C — AutoBrokers chat-first + atalhos + cards operacionais
 
 Nota: 96/100
 
 Vantagens:
 
-* Coloca AutoBroker como centro do sistema.
+* Coloca AutoBrokers como centro do sistema.
 * Mantém visibilidade da operação.
 * Permite atalhos rápidos para atendimento, Auxiliares, seguradoras e relatórios.
 * Combina experiência moderna com utilidade operacional.
@@ -135,7 +135,7 @@ Decisão: escolhida.
 
 ---
 
-### Opção D — Dashboard antigo quase igual com AutoBroker em uma aba
+### Opção D — Dashboard antigo quase igual com AutoBrokers em uma aba
 
 Nota: 70/100
 
@@ -147,7 +147,7 @@ Vantagens:
 Desvantagens:
 
 * Perde a nova tese do produto.
-* AutoBroker vira “mais uma página”.
+* AutoBrokers vira “mais uma página”.
 * Mantém o sistema com cara de SaaS tradicional.
 
 Decisão: rejeitada.
@@ -159,7 +159,7 @@ Decisão: rejeitada.
 O produto terá quatro grandes camadas funcionais:
 
 ```txt
-1. AutoBroker
+1. AutoBrokers
 2. Atendimento
 3. Auxiliares
 4. Conhecimento, Canais e Gestão
@@ -167,11 +167,11 @@ O produto terá quatro grandes camadas funcionais:
 
 ---
 
-## 6. AutoBroker
+## 6. AutoBrokers
 
 ### 6.1 Definição
 
-AutoBroker é o agente central interno da corretora.
+AutoBrokers é o agente central interno da corretora.
 
 Ele conversa com o corretor, gestor ou operador e pode:
 
@@ -188,9 +188,9 @@ Ele conversa com o corretor, gestor ou operador e pode:
 * criar tarefas assistidas;
 * consultar seguradoras, canais e integrações quando permitido.
 
-### 6.2 O que AutoBroker não é
+### 6.2 O que AutoBrokers não é
 
-AutoBroker não é:
+AutoBrokers não é:
 
 * o atendente externo do segurado;
 * um nome personalizável;
@@ -203,7 +203,7 @@ AutoBroker não é:
 A home da corretora será:
 
 ```txt
-AutoBroker Home
+AutoBrokers Home
 ```
 
 Componentes:
@@ -221,7 +221,7 @@ Componentes:
 Exemplo de abertura:
 
 ```txt
-AutoBroker
+AutoBrokers
 Como posso ajudar sua corretora hoje?
 ```
 
@@ -259,7 +259,7 @@ Módulos:
 
 ### 7.2 Agentes de atendimento
 
-Agentes de atendimento são diferentes do AutoBroker.
+Agentes de atendimento são diferentes do AutoBrokers.
 
 Eles podem ser personalizados por corretora.
 
@@ -404,7 +404,7 @@ Auxiliar agendado
 Auxiliar manual
 Auxiliar acionado por evento
 Auxiliar acionado por API
-Auxiliar acionado pelo AutoBroker
+Auxiliar acionado pelo AutoBrokers
 ```
 
 ---
@@ -512,7 +512,7 @@ Isso é mais seguro do que permitir criação livre por conversa no MVP.
 
 ### 8.8 Criação conversacional de Auxiliares
 
-A criação de Auxiliares por conversa com o AutoBroker será fase 2.
+A criação de Auxiliares por conversa com o AutoBrokers será fase 2.
 
 Nota atual: 82/100 para MVP
 Nota futura: 97/100
@@ -520,14 +520,14 @@ Nota futura: 97/100
 Fluxo futuro:
 
 ```txt
-Usuário: AutoBroker, crie um Auxiliar para me enviar o faturamento todo dia às 17h.
-AutoBroker: confirma dados necessários.
+Usuário: AutoBrokers, crie um Auxiliar para me enviar o faturamento todo dia às 17h.
+AutoBrokers: confirma dados necessários.
 Sistema: abre tela/formulário de revisão.
 Usuário: aprova.
 Auxiliar: criado e ativado.
 ```
 
-No MVP, o AutoBroker pode ajudar a preencher o formulário, mas não deve criar automações livres sem revisão humana.
+No MVP, o AutoBrokers pode ajudar a preencher o formulário, mas não deve criar automações livres sem revisão humana.
 
 ---
 
@@ -535,7 +535,7 @@ No MVP, o AutoBroker pode ajudar a preencher o formulário, mas não deve criar 
 
 ### 9.1 Decisão
 
-Credenciais e conexões devem ser criadas uma vez por corretora e reutilizadas por AutoBroker, agentes de atendimento, Auxiliares e corredores.
+Credenciais e conexões devem ser criadas uma vez por corretora e reutilizadas por AutoBrokers, agentes de atendimento, Auxiliares e corredores.
 
 Exemplo:
 
@@ -550,7 +550,7 @@ Pode ser usado por:
 * renovação;
 * cobrança;
 * consulta de apólice;
-* AutoBroker;
+* AutoBrokers;
 * Auxiliar;
 * corredor especializado.
 
@@ -578,7 +578,7 @@ Cada conexão deve declarar:
 * exige aprovação humana?
 * pode rodar agendado?
 * pode ser usado por Auxiliares?
-* pode ser usado pelo AutoBroker?
+* pode ser usado pelo AutoBrokers?
 * pode ser usado por agentes externos?
 
 ---
@@ -592,7 +592,7 @@ O sistema terá bases separadas:
 ```txt
 Base Global AutoBrokers
 Base da Corretora
-Base do AutoBroker
+Base do AutoBrokers
 Base dos Agentes
 Base dos Auxiliares
 Base dos Corredores
@@ -666,7 +666,7 @@ A corretora acessa o Tenant Dashboard.
 
 ```txt
 INÍCIO
-- AutoBroker
+- AutoBrokers
 
 OPERAÇÃO
 - Painel
@@ -716,16 +716,16 @@ Remover:
 ```txt
 Estudos
 Conversa ao vivo antiga
-JARVYS como nome
+Nome legado/persona personalizada como nome
 Smith como nome visível
 ```
 
 ### 12.3 Substituições
 
 ```txt
-Conversa ao vivo antiga → AutoBroker
+Conversa ao vivo antiga → AutoBrokers
 Rotinas → Auxiliares
-Agentes genéricos → Agentes de atendimento / Auxiliares / AutoBroker
+Agentes genéricos → Agentes de atendimento / Auxiliares / AutoBrokers
 ```
 
 ---
@@ -858,15 +858,15 @@ Entregas:
 * Mapa de equivalência Smith → AutoBrokers.
 * Mapa de páginas final.
 
-### Fase 2 — AutoBroker Home
+### Fase 2 — AutoBrokers Home
 
 Objetivo: transformar o chat atual em página principal do tenant.
 
 Entregas:
 
 * remover naming Smith;
-* renomear JARVYS Sandbox para AutoBroker Sandbox;
-* criar home AutoBroker;
+* renomear registros sandbox legados para AutoBrokers Sandbox;
+* criar home AutoBrokers;
 * incluir atalhos rápidos;
 * incluir cards operacionais compactos;
 * manter menu lateral.
@@ -901,7 +901,7 @@ Entregas:
 
 ### Fase 5 — RAG e Conhecimento
 
-Objetivo: fazer documentos alimentarem AutoBroker e Auxiliares.
+Objetivo: fazer documentos alimentarem AutoBrokers e Auxiliares.
 
 Entregas:
 
@@ -946,8 +946,8 @@ Entregas:
 
 ## 18. Decisões finais deste ADR
 
-1. O nome do agente central é AutoBroker.
-2. AutoBroker é a página inicial da corretora.
+1. O nome do agente central é AutoBrokers.
+2. AutoBrokers é a página inicial da corretora.
 3. Página Estudos será removida.
 4. Conversa ao vivo antiga será substituída.
 5. Smith será motor runtime.
@@ -958,7 +958,7 @@ Entregas:
 10. Auxiliares usarão o motor de agentes/subagentes/tools do Smith.
 11. Galeria de Auxiliares vem antes da criação conversacional livre.
 12. Conexões serão compartilhadas por vault.
-13. Atendimento externo é separado do AutoBroker.
+13. Atendimento externo é separado do AutoBrokers.
 14. Admin Global governa templates.
 15. Corretora ativa e personaliza instâncias.
 
@@ -974,7 +974,7 @@ Objetivo:
 
 Mapear exatamente o que o Smith já tem para suportar:
 
-* AutoBroker;
+* AutoBrokers;
 * agentes;
 * subagentes;
 * tools;
@@ -995,8 +995,8 @@ Não implementar ainda.
 Esta arquitetura estará correta se permitir:
 
 ```txt
-1. corretora entrar e falar com o AutoBroker;
-2. AutoBroker entender dados da corretora;
+1. corretora entrar e falar com o AutoBrokers;
+2. AutoBrokers entender dados da corretora;
 3. corretora ativar Auxiliares prontos;
 4. Auxiliares usarem conexões já cadastradas;
 5. atendimento externo continuar separado;

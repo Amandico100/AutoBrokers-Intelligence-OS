@@ -1,4 +1,4 @@
-# BATCH 35B - Branding base AutoBrokers/AutoBroker
+# BATCH 35B - Branding base AutoBrokers
 
 Data: 2026-06-05  
 Escopo: patch controlado de textos visiveis, labels, prompts default e branding base.  
@@ -6,12 +6,12 @@ Repositorio: `C:\Users\amand\Projetos\AUTOBROKERS RESULTA\AutoBrokers-Intelligen
 
 ## 1. Resumo do que foi alterado
 
-Este batch removeu branding visivel Smith/JARVYS das rotas principais e fixou a nomenclatura de produto:
+Este batch removeu branding visivel Smith/nome legado das rotas principais e fixou a nomenclatura de produto:
 
 - Produto/sistema: `AutoBrokers Intelligence OS`
 - Produto publico: `AutoBrokers.ai`
-- Agente central: `AutoBroker`
-- Agente sandbox: `AutoBroker Sandbox`
+- Agente central: `AutoBrokers`
+- Agente sandbox: `AutoBrokers Sandbox`
 
 Nao houve redesign, criacao de paginas, alteracao de infraestrutura, migrations, Supabase, EasyPanel, RAG, Worker, Docling, WhatsApp, InfoCap, n8n, corredores, Agent OS V2 ou Auxiliares.
 
@@ -53,15 +53,15 @@ Nao houve redesign, criacao de paginas, alteracao de infraestrutura, migrations,
 
 | Antes | Depois | Motivo |
 | --- | --- | --- |
-| `Smith` em UI de chat/empty state | `AutoBroker` | Agente central fixo da corretora |
-| `Smith AI` | `AutoBroker` ou `AutoBrokers.ai` | Remover marca Smith da UI final |
-| `Sistema Smith v6.2` | `AutoBrokers Intelligence OS` | Nome visivel do sistema |
-| `Agent Smith v6.2` | `AutoBrokers Intelligence OS` | Login/landing/Admin |
-| `Bem-vindo ao Smith` | `Bem-vindo ao AutoBroker` | Experiencia tenant |
+| `Smith` em UI de chat/empty state | `AutoBrokers` | Agente central fixo da corretora |
+| Nome legado do agente | `AutoBrokers` ou `AutoBrokers.ai` | Remover marca/persona antiga da UI final |
+| `AutoBrokers Intelligence OS` | `AutoBrokers Intelligence OS` | Nome visivel do sistema |
+| `AutoBrokers v6.2` | `AutoBrokers Intelligence OS` | Login/landing/Admin |
+| `Bem-vindo ao Smith` | `Bem-vindo ao AutoBrokers` | Experiencia tenant |
 | `Seu assistente pessoal com IA` | `Seu copiloto operacional para seguros` | Posicionamento AutoBrokers |
-| `JARVYS Sandbox` | `AutoBroker Sandbox` | Remover nome proibido |
-| `jarvys-sandbox` | `autobroker-sandbox` | Slug do agente sandbox futuro |
-| `Smith Agent` fallback | `AutoBroker` fallback | Nome default visivel |
+| Nome sandbox legado | `AutoBrokers Sandbox` | Manter sufixo sandbox apenas no ambiente de teste |
+| `autobrokers-sandbox` | `autobrokers-sandbox` | Slug do agente sandbox futuro |
+| `Smith Agent` fallback | `AutoBrokers` fallback | Nome default visivel |
 | `Equipe Smith` | `Equipe AutoBrokers` | E-mails |
 
 ## 4. Ocorrencias mantidas por serem tecnicas
@@ -74,7 +74,7 @@ Nao houve redesign, criacao de paginas, alteracao de infraestrutura, migrations,
 | `LangSmith` | Produto externo de observabilidade da LangChain, nao branding Smith do produto. |
 | `User-Agent: Smith-*` em UCP/Shopify/storefront | Header tecnico de integracao; deixar para fase de cleanup tecnico. |
 | `backend/app/core/constants.py` e docstrings internas | Comentarios tecnicos internos; nao aparecem na UI principal. |
-| `X-Title: Agent Smith` em chamadas LLM/OpenRouter | Header tecnico; pode ser revisado depois sem bloquear branding visual. |
+| `X-Title: AutoBrokers` em chamadas LLM/OpenRouter | Header tecnico; pode ser revisado depois sem bloquear branding visual. |
 | `schema_completo.sql` default `Smith Agent` | Schema historico; nao rodar/editar migration neste batch. |
 
 ## 5. Checks executados
@@ -82,7 +82,7 @@ Nao houve redesign, criacao de paginas, alteracao de infraestrutura, migrations,
 Comandos executados:
 
 ```txt
-rg -n "Smith|JARVYS|Jarvys|jarvys|Sistema Smith|Smith AI" app components lib public backend --glob '!node_modules' --glob '!.next'
+rg -n "Smith|AutoBrokers|nome-legado|Sistema Smith" app components lib public backend --glob '!node_modules' --glob '!.next'
 npm run typecheck
 npm run build
 git diff --check
@@ -105,9 +105,9 @@ Resultados:
 | --- | --- | --- |
 | Branding tecnico Smith ainda em simbolos internos | P2 | Mantido para evitar refactor amplo. |
 | Widget global ainda se chama `SmithWidget` | P2 | Requer plano de compatibilidade/alias. |
-| Migrations historicas citam Agent Smith | P3 | Nao afeta UI; nao editar migrations antigas agora. |
+| Migrations historicas citam AutoBrokers | P3 | Nao afeta UI; nao editar migrations antigas agora. |
 | Assets ainda usam arquivo `smith-logo.png` | P2 | Conteudo/arquivo do logo deve ser tratado em branding visual posterior. |
-| Slug antigo `jarvys-sandbox` pode existir em dados ja criados | P2 | Novo bootstrap usa `autobroker-sandbox`; dados antigos podem precisar ajuste manual depois. |
+| Slug antigo `autobrokers-sandbox` pode existir em dados ja criados | P2 | Novo bootstrap usa `autobrokers-sandbox`; dados antigos podem precisar ajuste manual depois. |
 
 ## 7. Proximo batch recomendado
 
@@ -119,6 +119,6 @@ BATCH_35C_AUTOBROKER_HOME_PLAN
 
 Objetivo:
 
-- Definir a Home AutoBroker sem implementar pesado.
+- Definir a Home AutoBrokers sem implementar pesado.
 - Decidir cards, atalhos, menu lateral final e o que fica para fase 2.
 - Manter RAG, Auxiliares, Docling, Worker, WhatsApp, InfoCap, n8n e Agent OS V2 fora do escopo.

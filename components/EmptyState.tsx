@@ -10,19 +10,19 @@ export default function EmptyState() {
           <div className="rounded-2xl w-20 h-20 flex items-center justify-center overflow-hidden">
             <Image
               src="/smith-logo.png"
-              alt="AutoBroker Logo"
+              alt="AutoBrokers Logo"
               width={80}
               height={80}
               className="w-full h-full object-cover"
             />
           </div>
           <h1 className="text-4xl font-bold bg-gradient-to-r from-zinc-900 to-zinc-500 dark:from-white dark:to-gray-400 bg-clip-text text-transparent">
-            AutoBroker
+            AutoBrokers
           </h1>
         </div>
 
         <div className="text-center space-y-2">
-          <h2 className="text-2xl font-semibold text-foreground">Bem-vindo ao AutoBroker</h2>
+          <h2 className="text-2xl font-semibold text-foreground">Bem-vindo ao AutoBrokers</h2>
           <p className="text-lg text-muted-foreground">Seu copiloto operacional para seguros</p>
         </div>
       </div>

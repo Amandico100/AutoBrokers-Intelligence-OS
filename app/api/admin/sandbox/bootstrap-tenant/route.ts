@@ -4,10 +4,10 @@ import { createClient } from '@supabase/supabase-js';
 
 export const dynamic = 'force-dynamic';
 
-const SANDBOX_AGENT_SLUG = 'autobroker-sandbox';
+const SANDBOX_AGENT_SLUG = 'autobrokers-sandbox';
 const SANDBOX_MIN_BALANCE_BRL = 25;
 const SANDBOX_AGENT_PROMPT =
-  'Você é o AutoBroker Sandbox, copiloto operacional interno da corretora. Responda de forma curta, clara e diga que ainda está em modo sandbox.';
+  'Você é o AutoBrokers Sandbox, copiloto operacional interno da corretora. Responda de forma curta, clara e diga que ainda está em modo sandbox.';
 
 const supabaseAdmin = createClient(
   process.env.NEXT_PUBLIC_SUPABASE_URL || process.env.SUPABASE_URL || '',
@@ -24,7 +24,7 @@ function toNumber(value: unknown): number {
  * POST /api/admin/sandbox/bootstrap-tenant
  *
  * Idempotently prepares a sandbox tenant for the first chat smoke test:
- * - active direct-chat agent: AutoBroker Sandbox
+ * - active direct-chat agent: AutoBrokers Sandbox
  * - minimum low-value sandbox credit balance
  */
 export async function POST(request: NextRequest) {
@@ -70,7 +70,7 @@ export async function POST(request: NextRequest) {
 
     const agentPayload = {
       company_id: companyId,
-      name: 'AutoBroker Sandbox',
+      name: 'AutoBrokers Sandbox',
       slug: SANDBOX_AGENT_SLUG,
       is_active: true,
       llm_provider: 'openai',
