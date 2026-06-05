@@ -72,7 +72,7 @@ export const HeroSection: React.FC = () => {
             <div className="text-2xl font-bold flex items-center justify-center w-10 h-10">
               <Image
                 src="/smith-logo.png"
-                alt="Smith Logo"
+                alt="AutoBrokers Logo"
                 width={40}
                 height={40}
                 className="w-10 h-10"
@@ -208,7 +208,7 @@ export const HeroSection: React.FC = () => {
             whileTap={{ scale: 0.95 }}
             className="flex items-center space-x-2 px-4 py-2 bg-accent/20 hover:bg-accent/30 backdrop-blur-sm rounded-full text-sm mb-6 transition-all duration-300 group border border-border/10"
           >
-            <span>Agent Smith v6.2</span>
+            <span>AutoBrokers Intelligence OS</span>
             <svg
               width="16"
               height="16"
@@ -227,18 +227,18 @@ export const HeroSection: React.FC = () => {
           </motion.button>
 
           <motion.h1 variants={itemVariants} className="text-5xl md:text-7xl font-light mb-2">
-            Smith AI
+            AutoBrokers.ai
           </motion.h1>
 
           <motion.h2
             variants={itemVariants}
             className="text-3xl md:text-5xl pb-3 font-light bg-gradient-to-r from-foreground via-foreground/80 to-foreground/50 bg-clip-text text-transparent"
           >
-            Seu Assistente Inteligente
+            Intelig??ncia operacional para corretoras
           </motion.h2>
 
           <motion.p variants={itemVariants} className="text-muted-foreground mb-9 max-w-2xl">
-            Converse com Smith, seu assistente pessoal com inteligência artificial avançada.
+            Converse com o AutoBroker, seu copiloto operacional para seguros.
           </motion.p>
 
           <motion.button

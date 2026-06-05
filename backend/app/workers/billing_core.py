@@ -409,7 +409,7 @@ class BillingCore:
           </td></tr></table>
         </td></tr>
         <tr><td style="background-color: #141414; padding: 25px; text-align: center; border-top: 1px solid #2D2D2D;">
-          <p style="color: #4B5563; font-size: 11px; margin: 0;">© {datetime.now().year} Smith AI</p>
+          <p style="color: #4B5563; font-size: 11px; margin: 0;">© {datetime.now().year} AutoBrokers.ai</p>
         </td></tr>
       </table>
     </td></tr>
@@ -451,7 +451,7 @@ class BillingCore:
           </td></tr></table>
         </td></tr>
         <tr><td style="background-color: #141414; padding: 25px; text-align: center; border-top: 1px solid #2D2D2D;">
-          <p style="color: #4B5563; font-size: 11px; margin: 0;">© {datetime.now().year} Smith AI</p>
+          <p style="color: #4B5563; font-size: 11px; margin: 0;">© {datetime.now().year} AutoBrokers.ai</p>
         </td></tr>
       </table>
     </td></tr>

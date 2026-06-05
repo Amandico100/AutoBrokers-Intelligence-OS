@@ -76,7 +76,7 @@ export default function ForgotPasswordPage() {
             >
               <Image
                 src="/smith-logo.png"
-                alt="Smith Logo"
+                alt="AutoBrokers Logo"
                 width={48}
                 height={48}
                 className="mb-2"

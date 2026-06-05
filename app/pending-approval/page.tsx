@@ -16,7 +16,7 @@ export default function PendingApprovalPage() {
           <CardHeader className="flex flex-col items-center space-y-4 pt-8 pb-6">
             <Image
               src="/smith-logo.png"
-              alt="Smith Logo"
+              alt="AutoBrokers Logo"
               width={64}
               height={64}
               className="w-16 h-16"

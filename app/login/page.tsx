@@ -81,7 +81,7 @@ export default function LoginPage() {
             >
               <Image
                 src="/smith-logo.png"
-                alt="Smith Logo"
+                alt="AutoBrokers Logo"
                 width={48}
                 height={48}
                 className="w-12 h-12"

@@ -158,7 +158,7 @@ export function UnifiedSidebar({
                 <div className="w-full h-full rounded-full bg-black flex items-center justify-center overflow-hidden">
                   <img
                     src="/smith-logo.png"
-                    alt="Smith AI"
+                    alt="AutoBroker"
                     className="w-full h-full object-cover"
                   />
                 </div>
@@ -166,7 +166,7 @@ export function UnifiedSidebar({
 
               <div className="flex flex-col min-w-0">
                 <span className="font-bold text-lg tracking-wide text-foreground leading-none">
-                  SMITH AI
+                  AutoBroker
                 </span>
                 <span className="text-sm font-semibold text-blue-400 truncate">
                   {userProfile.companyName}
@@ -265,7 +265,7 @@ export function UnifiedSidebar({
           <div className="p-4 border-t border-border">
             <div className="flex justify-center mb-4">
               <span className="text-[10px] text-muted-foreground">
-                Sistema Smith v6.2
+                AutoBrokers Intelligence OS
               </span>
             </div>
 

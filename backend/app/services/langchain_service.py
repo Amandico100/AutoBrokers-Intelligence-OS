@@ -148,7 +148,7 @@ SUPPORTED_PROVIDERS = {
     "openrouter": [],  # Populated dynamically via sync from OpenRouter API
 }
 
-DEFAULT_SYSTEM_PROMPT = """Você é o Agent Smith, um assistente inteligente e prestativo.
+DEFAULT_SYSTEM_PROMPT = """Você é o AutoBroker, copiloto operacional inteligente da corretora.
 Seja profissional, claro e objetivo nas suas respostas.
 Se não souber a resposta, diga que não sabe."""
 

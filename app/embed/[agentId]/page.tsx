@@ -749,7 +749,7 @@ export default function EmbedChat() {
             rel="noopener noreferrer"
             className="text-[10px] text-gray-400 hover:text-gray-600 transition-colors"
           >
-            Powered by Agent Smith
+            Powered by AutoBrokers.ai
           </a>
         </div>
       )}

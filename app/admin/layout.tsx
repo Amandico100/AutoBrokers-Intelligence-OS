@@ -259,11 +259,11 @@ export default function AdminLayout({ children }: { children: React.ReactNode })
         <div className="p-6 border-b border-border">
           <div className="flex items-center gap-3">
             <div className="w-10 h-10 rounded-full bg-blue-600 flex items-center justify-center overflow-hidden">
-              <img src="/smith-logo.png" alt="Smith Logo" className="w-full h-full object-cover" />
+              <img src="/smith-logo.png" alt="AutoBrokers Logo" className="w-full h-full object-cover" />
             </div>
             <div>
               <h1 className="text-foreground font-bold text-lg">
-                Painel Admin
+                Admin AutoBrokers
               </h1>
               <div className="flex flex-col mt-0.5">
                 <p className="text-[10px] text-black dark:text-muted-foreground font-medium truncate max-w-[140px]">
@@ -529,7 +529,7 @@ export default function AdminLayout({ children }: { children: React.ReactNode })
           {/* Version Info moved to bottom */}
           <div className="mt-auto pt-4 text-center">
             <p className="text-[10px] text-muted-foreground">
-              Sistema Smith v6.2
+              AutoBrokers Intelligence OS
             </p>
           </div>
         </nav>

@@ -251,7 +251,7 @@ export default function AdminCompaniesPage() {
         minimumFractionDigits: 2,
         maximumFractionDigits: 2,
       });
-      alert(`Sandbox preparado. Agente: ${data.agent?.name || 'JARVYS Sandbox'} | Saldo IA: R$ ${balance}`);
+      alert(`Sandbox preparado. Agente: ${data.agent?.name || 'AutoBroker Sandbox'} | Saldo IA: R$ ${balance}`);
     } catch (error: any) {
       console.error('Error bootstrapping sandbox tenant:', error);
       await logSystemAction({

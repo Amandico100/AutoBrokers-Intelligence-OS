@@ -215,7 +215,7 @@ export function WidgetConfigTab({ agent, onChange }: Props) {
             </div>
             {config.showFooter !== false && (
               <div className="text-center py-2 bg-gray-50 border-t">
-                <span className="text-[10px] text-gray-400">Powered by Agent Smith</span>
+                <span className="text-[10px] text-gray-400">Powered by AutoBrokers.ai</span>
               </div>
             )}
           </div>
