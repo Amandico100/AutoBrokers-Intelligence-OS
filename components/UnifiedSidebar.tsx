@@ -24,9 +24,9 @@ interface NavItem {
 
 const navItems: NavItem[] = [
   {
-    label: 'Chat',
-    href: '/dashboard/chat',
-    icon: <MessageSquare size={18} />,
+    label: 'AutoBrokers',
+    href: '/dashboard',
+    icon: <Home size={18} />,
   },
   {
     label: 'Histórico',
@@ -37,6 +37,21 @@ const navItems: NavItem[] = [
     label: 'Configurações',
     href: '/dashboard/configuracoes',
     icon: <Settings size={18} />,
+  },
+];
+
+const navGroups = [
+  {
+    title: 'InÃ­cio',
+    items: navItems.filter((item) => item.href === '/dashboard'),
+  },
+  {
+    title: 'Conversas',
+    items: navItems.filter((item) => item.href === '/dashboard/historico'),
+  },
+  {
+    title: 'Setup',
+    items: navItems.filter((item) => item.href === '/dashboard/configuracoes'),
   },
 ];
 
@@ -241,24 +256,30 @@ export function UnifiedSidebar({
               </div>
             )}
 
-            <nav className="p-4">
-              <h3 className="text-xs uppercase text-muted-foreground mb-2 font-semibold">Menu</h3>
-              <div className="space-y-1">
-                {navItems.map((item) => (
-                  <Link
-                    key={item.href}
-                    href={item.href}
-                    onClick={() => setIsOpen(false)}
-                    className={`flex items-center gap-3 px-3 py-2.5 rounded-lg transition-all ${isActive(item.href)
-                      ? 'bg-blue-600 text-white shadow-lg shadow-blue-600/20'
-                      : 'text-muted-foreground hover:bg-accent hover:text-foreground'
-                      }`}
-                  >
-                    {item.icon}
-                    <span className="font-medium text-sm">{item.label}</span>
-                  </Link>
-                ))}
-              </div>
+            <nav className="p-4 space-y-5">
+              {navGroups.map((group) => (
+                <div key={group.title}>
+                  <h3 className="text-xs uppercase text-muted-foreground mb-2 font-semibold">
+                    {group.title}
+                  </h3>
+                  <div className="space-y-1">
+                    {group.items.map((item) => (
+                      <Link
+                        key={item.href}
+                        href={item.href}
+                        onClick={() => setIsOpen(false)}
+                        className={`flex items-center gap-3 px-3 py-2.5 rounded-lg transition-all ${isActive(item.href)
+                          ? 'bg-blue-600 text-white shadow-lg shadow-blue-600/20'
+                          : 'text-muted-foreground hover:bg-accent hover:text-foreground'
+                          }`}
+                      >
+                        {item.icon}
+                        <span className="font-medium text-sm">{item.label}</span>
+                      </Link>
+                    ))}
+                  </div>
+                </div>
+              ))}
             </nav>
           </div>
 

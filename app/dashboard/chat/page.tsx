@@ -38,6 +38,7 @@ export default function ChatPage() {
   const [isWebSearchAllowed, setIsWebSearchAllowed] = useState(false);
   const [companyId, setCompanyId] = useState<string | null>(null);
   const messagesEndRef = useRef<HTMLDivElement>(null);
+  const pendingHomePromptHandledRef = useRef(false);
 
   // 1. Busca Company e Permissões
   useEffect(() => {
@@ -566,6 +567,26 @@ export default function ChatPage() {
     setMessages([]);
     // 🔥 NÃO toca no selectedAgentId aqui - o loadConversation vai sincronizar
   }, []);
+
+  useEffect(() => {
+    if (
+      pendingHomePromptHandledRef.current ||
+      isLoading ||
+      !userId ||
+      !companyId ||
+      !agentsLoaded ||
+      !selectedAgentId
+    ) {
+      return;
+    }
+
+    const pendingPrompt = window.sessionStorage.getItem('autobrokers.homePrompt')?.trim();
+    if (!pendingPrompt) return;
+
+    pendingHomePromptHandledRef.current = true;
+    window.sessionStorage.removeItem('autobrokers.homePrompt');
+    void handleSendMessage(pendingPrompt);
+  }, [userId, companyId, agentsLoaded, selectedAgentId, isLoading]);
 
   if (isLoadingUser) {
     return (

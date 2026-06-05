@@ -40,8 +40,8 @@ export default function HistoricoPage() {
     }
   };
 
-  const handleOpenConversation = (conversationId: string) => {
-    router.push(`/dashboard/chat?conversation=${conversationId}`);
+  const handleOpenConversation = (_conversationId: string) => {
+    router.push('/dashboard/chat');
   };
 
   if (loading) {
