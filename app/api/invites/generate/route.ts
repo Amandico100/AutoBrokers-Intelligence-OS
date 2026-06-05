@@ -4,6 +4,7 @@ import { getIronSession } from 'iron-session';
 import { createClient } from '@supabase/supabase-js';
 import { randomBytes } from 'crypto';
 import { sendInviteEmail } from '@/lib/email';
+import { getPublicAppUrl } from '@/lib/public-url';
 import {
   sessionOptions,
   adminSessionOptions,
@@ -257,8 +258,8 @@ export async function POST(request: NextRequest) {
 
     console.log('[INVITE GENERATE] ✅ Invite saved with is_owner_invite:', invite.is_owner_invite);
 
-    // Build invite link
-    const baseUrl = process.env.NEXT_PUBLIC_BASE_URL || 'http://localhost:3000';
+    // Build invite link. Sandbox/production must use the public web origin.
+    const baseUrl = getPublicAppUrl(request);
     const inviteLink = `${baseUrl}/register?token=${token}`;
 
     // Send email

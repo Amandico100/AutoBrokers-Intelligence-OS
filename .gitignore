@@ -78,6 +78,10 @@ redis_data/
 # Logs and local cache
 logs/
 *.log
+!app/admin/logs/
+!app/admin/logs/**
+!app/api/admin/logs/
+!app/api/admin/logs/**
 .cache/
 .turbo/
 
