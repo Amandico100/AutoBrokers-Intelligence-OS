@@ -32,6 +32,7 @@ import {
   UserPlus,
   Copy,
   Bot,
+  Sparkles,
 } from 'lucide-react';
 import { logSystemAction } from '@/lib/logger';
 import type { Company } from '@/lib/types';
@@ -52,6 +53,7 @@ export default function AdminCompaniesPage() {
   const [adminInviteEmail, setAdminInviteEmail] = useState('');
   const [adminInviteName, setAdminInviteName] = useState('');
   const [adminType, setAdminType] = useState<'owner' | 'regular'>('regular');
+  const [bootstrappingCompanyId, setBootstrappingCompanyId] = useState<string | null>(null);
   const [fetchingCep, setFetchingCep] = useState(false);
   const [formData, setFormData] = useState({
     company_name: '',
@@ -212,6 +214,59 @@ export default function AdminCompaniesPage() {
   const copyInviteToClipboard = () => {
     navigator.clipboard.writeText(inviteLink);
     alert('Link copiado para área de transferência!');
+  };
+
+  const bootstrapSandboxTenant = async (company: Company) => {
+    setBootstrappingCompanyId(company.id);
+    try {
+      const response = await fetch('/api/admin/sandbox/bootstrap-tenant', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        credentials: 'include',
+        body: JSON.stringify({ companyId: company.id }),
+      });
+
+      const data = await response.json().catch(() => ({}));
+      if (!response.ok) {
+        throw new Error(data.error || data.message || 'Falha ao preparar sandbox');
+      }
+
+      await logSystemAction({
+        companyId: company.id,
+        actionType: 'COMPANY_UPDATED',
+        resourceType: 'company',
+        resourceId: company.id,
+        details: {
+          event: 'SANDBOX_TENANT_BOOTSTRAPPED',
+          agentName: data.agent?.name,
+          balanceBrl: data.credits?.balanceBrl,
+          actions: data.actions,
+        },
+        status: 'success',
+      });
+
+      await loadCompanies();
+
+      const balance = Number(data.credits?.balanceBrl || 0).toLocaleString('pt-BR', {
+        minimumFractionDigits: 2,
+        maximumFractionDigits: 2,
+      });
+      alert(`Sandbox preparado. Agente: ${data.agent?.name || 'JARVYS Sandbox'} | Saldo IA: R$ ${balance}`);
+    } catch (error: any) {
+      console.error('Error bootstrapping sandbox tenant:', error);
+      await logSystemAction({
+        companyId: company.id,
+        actionType: 'COMPANY_UPDATED',
+        resourceType: 'company',
+        resourceId: company.id,
+        details: { event: 'SANDBOX_TENANT_BOOTSTRAPPED', error: String(error) },
+        status: 'error',
+        errorMessage: 'Erro ao preparar sandbox da empresa',
+      });
+      alert(error.message || 'Erro ao preparar sandbox da empresa');
+    } finally {
+      setBootstrappingCompanyId(null);
+    }
   };
 
   const closeDialog = () => {
@@ -718,6 +773,13 @@ export default function AdminCompaniesPage() {
                             )}
                           </>
                         )}
+                        <Badge className="bg-cyan-500/10 text-cyan-300 border-cyan-500/30">
+                          Saldo IA: R${' '}
+                          {Number((company as any).balance_brl || 0).toLocaleString('pt-BR', {
+                            minimumFractionDigits: 2,
+                            maximumFractionDigits: 2,
+                          })}
+                        </Badge>
                       </div>
                       <p className="text-sm text-muted-foreground mt-1">
                         CNPJ: {company.cnpj || 'Não informado'}
@@ -769,6 +831,15 @@ export default function AdminCompaniesPage() {
                   >
                     <UserPlus className="w-4 h-4 mr-2" />
                     Convidar Admin
+                  </Button>
+                  <Button
+                    onClick={() => bootstrapSandboxTenant(company)}
+                    disabled={bootstrappingCompanyId === company.id}
+                    variant="outline"
+                    className="bg-cyan-600/10 border-cyan-500/40 text-cyan-300 hover:text-white hover:bg-cyan-600/20"
+                  >
+                    <Sparkles className="w-4 h-4 mr-2" />
+                    {bootstrappingCompanyId === company.id ? 'Preparando...' : 'Preparar Sandbox'}
                   </Button>
                   {company.status === 'suspended' ? (
                     <Button

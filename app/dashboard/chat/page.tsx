@@ -262,6 +262,16 @@ export default function ChatPage() {
       return;
     }
 
+    if (!agentsLoaded) {
+      toast.error('Aguarde o carregamento dos agentes antes de enviar a mensagem.');
+      return;
+    }
+
+    if (!selectedAgentId || agents.length === 0) {
+      toast.error('Nenhum agente ativo encontrado. Peça ao Admin para preparar o sandbox da empresa.');
+      return;
+    }
+
     setIsLoading(true);
 
     try {
