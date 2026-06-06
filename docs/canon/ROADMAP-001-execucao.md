@@ -1,153 +1,118 @@
-# ROADMAP-001 — Execução do AutoBrokers Intelligence OS
+# ROADMAP-001 - Execucao
 
-Status: canônico ativo
-Owner: AutoBrokers.ai Architect
-Última atualização: 2026-06-06
+Status: canonical initial roadmap
+Product: AutoBrokers.ai
+Last updated: 2026-06-06
 
----
+## 1. Phase 0 - Stabilization and Canon
 
-## 1. Regra principal
+Goal: remove ambiguity before more implementation.
 
-Nada deve ser implementado por intuição. O fluxo correto é:
+Deliverables:
 
-```txt
-Documento canônico → revisão estratégica → design aprovado → batch técnico pequeno → testes → deploy
-```
+- create `docs/canon`;
+- update project README;
+- archive obsolete docs;
+- document runtime boundaries;
+- document Vault and raw intake restrictions;
+- document Auxiliares and Atendimento initial decisions.
 
----
+## 2. Phase 1 - Claude Design / UX Architecture
 
-## 2. Fase atual
+Goal: define the actual product experience before another major UI pass.
 
-Estamos na fase de consolidação estratégica e UX. A instalação técnica do Smith sandbox já funcionou. O chat do tenant já respondeu. Agora o foco é transformar o runtime em produto AutoBrokers.ai sem bagunçar o código.
+Deliverables:
 
----
+- tenant chat-first UX;
+- navigation architecture;
+- visual direction;
+- empty state;
+- Auxiliares gallery/detail/permissions flow;
+- mobile-first behavior;
+- Admin Global refinement direction.
 
-## 3. Ordem de trabalho
+## 3. Phase 2 - Tenant Chat-First UX
 
-### Fase 0 — Limpeza e documentação
+Goal: evolve the current working chat into the final tenant first surface.
 
-- Consolidar docs canônicos em `docs/canon/`.
-- Parar de usar docs antigos como fonte de decisão.
-- Limpar nomes visíveis antigos: Smith, Agent Smith, JARVYS.
-- Manter runtime funcional.
+Deliverables:
 
-### Fase 1 — UX base tenant
+- polished `/dashboard`;
+- central AutoBrokers experience;
+- minimal shortcuts;
+- responsive sidebar behavior;
+- no card-heavy home.
 
-- Definir sidebar enxuta.
-- Garantir `/dashboard` como chat-first.
-- Criar tela inicial limpa do AutoBrokers.
-- Manter apenas dois atalhos iniciais: Ver atendimentos e Novo auxiliar.
-- Não criar home de cards.
+## 4. Phase 3 - Auxiliares MVP
 
-### Fase 2 — Design system
+Goal: create the first product layer over the Smith agents/subagents engine.
 
-- Criar tokens visuais.
-- Definir componentes base.
-- Definir padrões de galeria, detalhe e modal de permissão.
-- Planejar mobile-first.
+Deliverables:
 
-### Fase 3 — Auxiliares MVP
+- Auxiliares gallery;
+- activation;
+- minimal configuration;
+- manual execution;
+- basic run history/logs;
+- permission placeholders.
 
-- Desenhar galeria de Auxiliares.
-- Definir template global no Admin.
-- Permitir ativação por corretora.
-- Criar execução manual.
-- Criar histórico simples.
-- Exigir aprovação humana para ações externas.
+## 5. Phase 4 - Curated Knowledge/RAG
 
-### Fase 4 — Atendimento MVP
+Goal: make knowledge useful without leaking sensitive data.
 
-- Reaproveitar conceitos do ResultVision.
-- Criar página Atendimentos limpa.
-- Listar fila/casos/conversas em sandbox.
-- Separar operação de configuração.
-- Não portar runtime antigo bruto.
+Deliverables:
 
-### Fase 5 — Knowledge/RAG mínimo
+- curated knowledge package structure;
+- source classification;
+- Vault-aware ingestion plan;
+- RAG tests;
+- provenance and retrieval checks.
 
-- Testar upload simples.
-- Testar consulta via AutoBrokers.
-- Só depois ativar Docling completo.
+## 6. Phase 5 - Atendimento Pilot
 
-### Fase 6 — Vault e conectores
+Goal: rebuild service intelligence through curated packages.
 
-- Documentar modelo.
-- Criar UI de conectores.
-- Começar com conexão simples.
-- Evoluir para seguradoras/portais.
+Deliverables:
 
----
+- controlled pilot scope;
+- likely Allianz Residencial package;
+- corridors and templates;
+- handoff rules;
+- evals;
+- no raw copy from ResultVision or Agent OS.
 
-## 4. Quem faz o quê
+## 7. Phase 6 - Advanced Connectors/Vault
 
-### ChatGPT Architect
+Goal: allow safe reuse of connections across modules.
 
-- decisões estratégicas;
-- PRD;
-- ADRs;
-- UX specs;
-- roadmap;
-- prompts para Claude/Claude Code/Codex.
+Deliverables:
 
-### Claude estratégico/design
+- Vault model;
+- permission guard;
+- connection gallery;
+- approval gates;
+- audit logs;
+- connector lifecycle.
 
-- revisar docs;
-- propor arquitetura visual;
-- criar design system;
-- criticar navegação;
-- desenhar fluxos.
+## 8. Phase 7 - Admin Global Refinement
 
-### Claude Code
+Goal: turn Admin Global into the internal factory and governance layer.
 
-- executar tarefas fechadas;
-- editar código;
-- rodar testes;
-- fazer commits.
+Deliverables:
 
-### Codex
+- templates;
+- companies and users;
+- billing and FinOps;
+- logs;
+- knowledge governance;
+- auxiliary templates;
+- release gates.
 
-- patches mecânicos;
-- auditorias;
-- limpeza;
-- ajustes pequenos.
+## 9. Execution Rules
 
----
-
-## 5. Critério para liberar Claude Code
-
-Claude Code só deve executar quando existir:
-
-- documento canônico;
-- escopo fechado;
-- arquivos prováveis;
-- fora de escopo explícito;
-- critérios de sucesso;
-- rollback claro.
-
----
-
-## 6. Próximos batches recomendados
-
-1. `36A_CANON_DOCS_SYNC`
-2. `36B_LEGACY_DOCS_ARCHIVE`
-3. `36C_BRANDING_RESIDUAL_CLEANUP`
-4. `36D_CLAUDE_DESIGN_BRIEF`
-5. `36E_CHAT_FIRST_UI_SPEC`
-6. `36F_AUXILIARES_UX_SPEC`
-7. `36G_CONNECTION_VAULT_PLAN`
-8. `36H_ATTENDANCE_MVP_PLAN`
-
----
-
-## 7. Proibições atuais
-
-Não implementar agora:
-
-- nova home de cards;
-- sidebar gigante;
-- scheduler de Auxiliares;
-- portal real de seguradora;
-- automação externa sem aprovação;
-- reescrita do Admin Global;
-- cópia bruta do ResultVision;
-- cópia bruta do Agent OS V2.
+- No large code batch before canon docs and design direction.
+- Claude Design defines layout and visual system.
+- Claude Code executes closed frontend/product implementation tasks when approved.
+- Codex audits, performs mechanical patches, documentation syncs and checks.
+- No Supabase/EasyPanel/deploy changes inside documentation-only batches.
+- No raw intake RAG before Vault approval.

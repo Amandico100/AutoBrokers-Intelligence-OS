@@ -1,224 +1,122 @@
-# ADR-001 — Arquitetura de Produto e Runtime
+# ADR-001 - Runtime Architecture
 
-Status: canônico ativo  
-Owner: AutoBrokers.ai Architect  
-Última atualização: 2026-06-06
+Status: accepted initial canon
+Product: AutoBrokers.ai
+System: AutoBrokers Intelligence OS
+Last updated: 2026-06-06
 
----
+## 1. Decision
 
-## 1. Decisão
-
-O AutoBrokers.ai será construído sobre a seguinte composição:
+AutoBrokers.ai will be built as:
 
 ```txt
 AutoBrokers.ai = Product Layer + Smith Runtime Engine + AutoBrokers Domain Brain
 ```
 
-Onde:
+This decision preserves the working technical runtime while separating product identity and domain intelligence from legacy naming and raw historical material.
 
-- **Product Layer**: experiência visual, navegação, UX, linguagem, módulos e regras de produto do AutoBrokers.ai.
-- **Smith Runtime Engine**: infraestrutura técnica herdada do Smith V6.2.
-- **AutoBrokers Domain Brain**: conhecimento, políticas, corredores, skills, templates e lógica de seguros curados a partir do Agent OS V2/ResultVision.
+## 2. Product Layer
 
----
+The Product Layer owns:
 
-## 2. O que o Smith representa
+- visible product identity;
+- tenant dashboard UX;
+- admin global UX;
+- navigation;
+- module language;
+- broker-facing rules;
+- product workflows for AutoBrokers, Atendimento, Auxiliares, Knowledge, Connectors and Settings.
 
-Smith é o motor técnico atual.
+The visible product is AutoBrokers.ai. The broker-facing principal agent is AutoBrokers.
 
-Componentes aproveitados:
+## 3. Smith Runtime Engine
 
-- Next.js App Router;
-- FastAPI;
-- LangGraph;
-- agents;
-- subagents;
+Smith is the technical runtime engine inherited from Agent Smith V6.2. It is kept because it already provides:
+
+- Next.js frontend;
+- FastAPI backend;
+- LangGraph agent runtime;
+- chat streaming;
+- agents and subagents;
 - delegations;
-- tools HTTP;
+- tools;
 - MCP;
 - RAG;
 - Qdrant;
 - MinIO;
 - Redis;
-- Celery/worker;
-- Docling;
-- billing/custos;
+- Supabase;
+- billing/costs;
 - logs;
-- admin multi-tenant;
-- chat streaming;
-- widget.
+- document processing and sanitization paths;
+- multi-tenant admin foundations.
 
-Smith não deve ser visível para o cliente final. Strings, README, UI, e-mails, prompts e nomes públicos devem virar AutoBrokers.ai quando apropriado.
+Smith must remain invisible as product branding.
 
----
+## 4. AutoBrokers Domain Brain
 
-## 3. O que o ResultVision representa
+The Domain Brain is the curated insurance intelligence layer. It will come from:
 
-ResultVision/AutoBrokers antigo é referência de domínio e UX operacional de seguros.
+- ResultVision as domain and atendimento reference;
+- Agent OS / AutoBrokers Intelligence OS V2 as architecture and brain reference;
+- future curated packages for corridors, skills, templates, guardrails, knowledge and evals.
 
-Elementos úteis:
+The Domain Brain must be transformed into safe runtime artifacts. It must not be copied as raw folders into the official runtime.
 
-- atendimento;
-- filas;
-- casos;
-- conversas;
-- segurados;
-- ligações;
-- seguradoras;
-- corredores;
-- canais;
-- portais;
-- configuração da corretora;
-- padrões operacionais de seguro;
-- lógica do Agent OS V2.
+## 5. ResultVision Boundary
 
-Não copiar código bruto. Não importar pastas inteiras. Não usar como runtime paralelo sem decisão formal.
+ResultVision is useful for:
 
----
+- atendimento concepts;
+- WhatsApp/service workflows;
+- insurer protocol packs;
+- operational queues;
+- review engine ideas;
+- broker channel and portal research;
+- policy and claim domain examples.
 
-## 4. O que o Agent OS V2 representa
+ResultVision is not runtime. Do not copy its code, UI, names, routes or data into AutoBrokers Intelligence OS without a specific approved batch.
 
-Agent OS V2 é o cérebro canônico curado.
+## 6. Agent OS Boundary
 
-Ele deve ser transformado em pacotes funcionais e documentos versionados:
+Agent OS / AutoBrokers Intelligence OS V2 is reference brain and architecture. It is not active runtime.
 
-- policies;
-- skills;
-- prompts;
-- guardrails;
-- corredores;
-- templates de atendimento;
-- regras de decisão;
-- padrões de handoff;
-- regras LGPD/PII;
-- dossiês e memórias.
+Known risk: the local workspace currently has naming confusion between `AUTOBROKERS_INTELLIGENCE_OS_V2` and `AUTOBROKERS_INTELLIGENCE_V2`. This must be resolved in a future dedicated batch before using it as a canonical runtime source.
 
-Ele não deve ser copiado inteiro para dentro do runtime.
+## 7. Auxiliares Decision
 
----
+Auxiliares will use the Smith runtime foundation:
 
-## 5. O que o LionClaw/OpenClaw representa
-
-LionClaw/OpenClaw são referências de UX e inteligência agentic.
-
-Uso permitido:
-
-- inspiração para Auxiliares;
-- inspiração para execução de tarefas;
-- inspiração para experiência estilo copiloto;
-- comparação de padrões.
-
-Uso proibido agora:
-
-- virar runtime principal;
-- substituir Smith;
-- gerar outra base paralela.
-
----
-
-## 6. Decisão sobre Auxiliares
-
-Auxiliares serão implementados sobre o motor do Smith.
-
-Base técnica provável:
-
-- agents;
+- `agents`;
 - subagents;
-- agent_delegations;
-- tools HTTP;
-- MCP;
+- `agent_delegations`;
+- HTTP tools;
+- MCP tools;
 - RAG;
-- logs;
-- usage/costs;
-- workers no futuro.
+- documents;
+- logging and costs.
 
-A camada de produto ainda precisa ser criada:
+LionClaw, OpenClaw and Claude Routines are inspiration for UX, intelligence patterns and operational behavior. They are not the primary runtime.
 
-- templates globais;
-- galeria;
-- instalação por corretora;
-- configuração por tenant;
-- execuções;
-- histórico;
-- permissões;
-- aprovação humana;
-- scheduler.
+## 8. Tenant Dashboard Decision
 
----
+`/dashboard` must be chat-first.
 
-## 7. Decisão sobre Atendimento
+Do not recreate the rejected card-heavy brokerage home. The initial tenant screen should be clean, similar in spirit to ChatGPT or Claude: AutoBrokers centered, primary input, and at most two shortcuts when UX is defined.
 
-Atendimento será reconstruído gradualmente sobre Smith.
+The old Estudos page and old Conversa ao vivo concept must not return.
 
-Não será feita uma cópia bruta do ResultVision.
+## 9. Security Decisions
 
-Estratégia:
+- Do not ingest raw intake material before Vault, classification, redaction and curation.
+- Do not run migrations without explicit operational batch approval.
+- Do not connect live services from documentation batches.
+- Do not print secrets.
+- Keep EasyPanel and Supabase changes outside documentation batches.
+- Keep historical migrations intact unless a future ADR explicitly approves a migration cleanup.
 
-1. mapear conceitos vivos do ResultVision;
-2. identificar quais são mockups, quais são código funcional e quais são documentos;
-3. criar modelo de dados compatível com Smith;
-4. portar uma fatia mínima;
-5. só depois trazer corredores, skills e portais.
+## 10. Consequences
 
----
+This architecture lets the project move quickly without creating a second runtime.
 
-## 8. Decisão sobre n8n
-
-n8n permanece como camada de automação e integração, não como cérebro principal.
-
-Uso previsto:
-
-- webhooks;
-- workflows externos;
-- integrações com WhatsApp/Evolution;
-- integrações com InfoCap/Quiver;
-- notificações;
-- processos assíncronos.
-
-O cérebro principal e a orquestração de produto devem ficar no Smith/FastAPI/LangGraph.
-
----
-
-## 9. Decisão sobre dados e conexões
-
-Conexões devem ser reutilizáveis entre módulos.
-
-Exemplo:
-
-```txt
-Portal Bradesco conectado uma vez → usado por Atendimento, Auxiliares e AutoBrokers
-```
-
-Isso exige um futuro Connection Vault documentado em `ADR-002-vault.md`.
-
----
-
-## 10. Consequências
-
-### Benefícios
-
-- aproveita infraestrutura pronta;
-- reduz risco técnico inicial;
-- evita reconstruir RAG, chat, admin e billing do zero;
-- mantém domínio de seguros do projeto antigo;
-- cria caminho modular para evolução.
-
-### Riscos
-
-- portar Agent OS V2 para LangGraph exige cuidado;
-- branding Smith pode vazar;
-- documentos antigos podem contradizer decisões novas;
-- copiar legado bruto pode recriar bagunça;
-- menus e telas podem inflar se não houver governança de UX.
-
----
-
-## 11. Regra de implementação
-
-Toda implementação deve obedecer:
-
-```txt
-Documento canônico → plano técnico → batch pequeno → teste → deploy
-```
-
-Claude Code/Codex não devem decidir arquitetura aberta. Eles executam tarefas fechadas.
+It also creates a responsibility: every future product feature must distinguish between technical engine, product language, and curated domain brain.

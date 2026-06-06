@@ -1,299 +1,93 @@
-# ADR-002 — Connection Vault
+# ADR-002 - Vault, Credentials and Sensitive Data
 
-Status: canônico ativo  
-Owner: AutoBrokers.ai Architect  
-Última atualização: 2026-06-06
+Status: accepted initial canon
+Product: AutoBrokers.ai
+Last updated: 2026-06-06
 
----
+## 1. Decision
 
-## 1. Decisão
+AutoBrokers.ai needs a Vault layer for connections, credentials, permissions and sensitive data boundaries.
 
-O AutoBrokers.ai precisa de uma camada central de conexões reutilizáveis por corretora, chamada neste documento de **Connection Vault**.
+Vault is not only a place to store secrets. It is the governance layer that decides who can use which connection, for what action, under which approval rule.
 
-O Vault guarda conexões, credenciais, permissões e vínculos com serviços externos.
+## 2. Scope
 
-A conexão deve ser feita uma vez e reutilizada por diferentes módulos.
+Vault must eventually govern:
 
-Exemplo:
+- insurer portal credentials;
+- API keys;
+- WhatsApp/channel credentials;
+- InfoCap and Quiver access;
+- MCP/OAuth connections;
+- tenant-specific tools;
+- sensitive documents;
+- permissioned actions;
+- audit events.
 
-```txt
-Portal Bradesco conectado uma vez → usado por Atendimento, Auxiliares e AutoBrokers
-```
+## 3. Reuse Rule
 
----
+A connection should be configured once and reused safely by:
 
-## 2. Por que isso é necessário
+- AutoBrokers;
+- Atendimento;
+- Auxiliares;
+- future corridor packages;
+- approved tools.
 
-Sem Vault, cada módulo pediria credenciais próprias:
+Do not duplicate credentials across modules.
 
-- Atendimento pediria acesso ao portal;
-- Auxiliar pediria o mesmo acesso;
-- AutoBrokers pediria o mesmo acesso;
-- integrações repetiriam configurações;
-- usuário ficaria confuso;
-- segurança ficaria fraca.
+## 4. Intake Boundary
 
-Com Vault:
+Raw intake material must not be ingested into RAG before curation.
 
-- corretora conecta uma vez;
-- permissões são controladas;
-- módulos reutilizam a conexão;
-- ações são auditáveis;
-- fica mais fácil aplicar aprovação humana.
+This includes `AUTOBROKERS_RESULTA_INTAKE` and any similar folders containing:
 
----
+- policies;
+- claims;
+- WhatsApp exports;
+- client conversations;
+- screenshots;
+- audio;
+- video;
+- PDFs;
+- spreadsheets;
+- credentials;
+- portal access notes.
 
-## 3. Tipos de conexão
+## 5. Minimum Safety Requirements
 
-### 3.1 Ferramentas SaaS
+Before raw intake can be used:
 
-Exemplos:
+1. classify files by sensitivity;
+2. detect PII and credentials;
+3. separate public, tenant, client and secret data;
+4. redact or tokenize sensitive values where needed;
+5. define source authority;
+6. create curated knowledge packages;
+7. keep provenance;
+8. test retrieval leakage;
+9. define retention and deletion rules;
+10. approve ingestion explicitly.
 
-- Google Drive;
-- Google Calendar;
-- Gmail;
-- Slack;
-- Notion;
-- GitHub;
-- Supabase;
-- Airtable;
-- outros MCPs.
+## 6. No Vault, No Raw RAG
 
-### 3.2 Canais de comunicação
-
-Exemplos:
-
-- WhatsApp/Evolution;
-- Z-API, se mantida como provider alternativo;
-- e-mail;
-- telefonia;
-- SMS.
-
-### 3.3 Sistemas de gestão de corretora
-
-Exemplos:
-
-- InfoCap/CORP;
-- Quiver;
-- Segfy;
-- Capta;
-- sistemas internos de concessionárias.
-
-### 3.4 Portais de seguradora
-
-Exemplos:
-
-- Allianz;
-- Bradesco;
-- HDI;
-- Porto;
-- Tokio;
-- Yelum;
-- AXA.
-
----
-
-## 4. Relação com Seguradoras e Corredores
-
-Seguradoras e corredores usam conexões do Vault.
-
-Exemplo:
+Until Vault, classification, redaction and curation rules are in place:
 
 ```txt
-Seguradora: Allianz
-Canal: Portal Allianz
-Corredor: Residencial / Assistência
-Credencial: conexão Allianz Portal no Vault
-Módulos autorizados: Atendimento, Auxiliares
+No raw intake folder can become runtime RAG.
 ```
 
-O Vault não substitui a tela de Seguradoras. Ele é a camada técnica e de permissão por trás dela.
+Manual reading for architecture and domain understanding is allowed when secrets are not printed and data is not copied into runtime.
 
----
+## 7. Future Decisions
 
-## 5. Relação com Auxiliares
+Future ADRs or implementation specs must define:
 
-Cada Auxiliar declara conexões necessárias.
-
-Exemplo:
-
-```txt
-Auxiliar: Cobrança de documentos pendentes
-Precisa: WhatsApp, base de segurados, documentos pendentes
-Pode: preparar mensagem
-Não pode: enviar sem aprovação humana no MVP
-```
-
----
-
-## 6. Relação com AutoBrokers
-
-AutoBrokers pode consultar o Vault para saber:
-
-- quais conexões existem;
-- quais estão ativas;
-- quais estão quebradas;
-- quais módulos podem usar cada conexão;
-- quais aprovações são necessárias.
-
-AutoBrokers não deve expor credenciais.
-
----
-
-## 7. Permissões
-
-Cada conexão deve ter escopos claros.
-
-Exemplos:
-
-```txt
-read_documents
-write_documents
-send_message
-read_policy
-open_claim
-download_file
-view_customer
-update_customer
-```
-
-No MVP, usar nomes amigáveis na UI:
-
-```txt
-Pode ler documentos
-Pode preparar mensagens
-Pode enviar mensagens com aprovação
-Pode consultar portal
-```
-
----
-
-## 8. Aprovação humana
-
-Qualquer ação externa sensível deve exigir aprovação humana no MVP.
-
-A conexão pode existir, mas a permissão de execução real deve ser controlada.
-
-Exemplo:
-
-```txt
-Auxiliar prepara mensagem → humano revisa → humano envia/aprova envio
-```
-
----
-
-## 9. UI recomendada
-
-Padrão visual inspirado em ChatGPT Apps/Connectors:
-
-```txt
-Personalizar → Conectores
-```
-
-Tela:
-
-- busca;
-- categorias;
-- cards de conexão;
-- status;
-- página de detalhe;
-- modal de permissão;
-- botão conectar/desconectar.
-
-Categorias possíveis:
-
-```txt
-Seguradoras
-Comunicação
-Documentos
-Calendário
-Sistemas da corretora
-Produtividade
-```
-
----
-
-## 10. Estados da conexão
-
-Estados mínimos:
-
-```txt
-available
-connected
-needs_attention
-expired
-blocked
-disabled
-```
-
-Linguagem visível:
-
-```txt
-Disponível
-Conectado
-Precisa de atenção
-Expirado
-Bloqueado
-Desativado
-```
-
----
-
-## 11. Segurança
-
-Regras:
-
-- credenciais nunca aparecem no client;
-- service role não pode ir para bundle público;
-- secrets ficam criptografados;
-- logs não devem imprimir segredo;
-- rotacionar credenciais expostas em sandbox antes de produção;
-- toda ação externa deve ser auditável.
-
----
-
-## 12. Implementação por fases
-
-### P0 — documento e UI fake segura
-
-- documentar Vault;
-- mostrar conectores em UI limpa;
-- não conectar serviços reais sem backend seguro;
-- não executar ação externa real.
-
-### P1 — conexões internas reais
-
-- WhatsApp/Evolution sandbox;
-- Google Drive ou Supabase como primeira conexão simples;
-- status e logs;
-- autorização por tenant.
-
-### P2 — seguradoras e portais
-
-- credenciais de portal;
-- status de sessão;
-- portal bloqueado/expirado;
-- workflows de revalidação;
-- integração com corredores.
-
-### P3 — execução avançada
-
-- browser automation;
-- n8n workflows;
-- ações multi-etapas;
-- approvals avançados;
-- auditoria completa.
-
----
-
-## 13. Critérios de sucesso
-
-O Vault estará correto quando:
-
-1. uma conexão puder ser reutilizada por vários módulos;
-2. usuário entender o que está conectando;
-3. permissões forem claras;
-4. credenciais ficarem seguras;
-5. ações sensíveis exigirem aprovação;
-6. Seguradoras, Auxiliares e AutoBrokers dependerem da mesma fonte de conexão;
-7. UI for simples como ChatGPT Apps/Connectors.
+- credential storage provider;
+- encryption model;
+- per-tenant permission model;
+- audit log schema;
+- approval gates;
+- connector lifecycle;
+- secret rotation;
+- break-glass/admin access policy.

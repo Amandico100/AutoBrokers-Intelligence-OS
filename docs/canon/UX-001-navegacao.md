@@ -1,289 +1,105 @@
-# UX-001 — Arquitetura de Navegação
+# UX-001 - Navegacao
 
-Status: canônico ativo  
-Owner: AutoBrokers.ai Architect  
-Última atualização: 2026-06-06
+Status: canonical initial direction
+Product: AutoBrokers.ai
+Last updated: 2026-06-06
 
----
+## 1. Principle
 
-## 1. Decisão principal
+The tenant experience starts with AutoBrokers.
 
-A experiência da corretora no AutoBrokers.ai será **chat-first, mobile-first e modular em camadas**.
+Navigation must support a chat-first product, not a traditional card-heavy dashboard. The product should feel calm, fast, focused and operational.
 
-A primeira tela do usuário da corretora é o chat do **AutoBrokers**.
+## 2. Tenant Dashboard
 
-Não deve existir uma home tradicional cheia de cards, métricas ou blocos operacionais como primeira impressão.
+The tenant dashboard is for brokerages.
 
----
-
-## 2. Página inicial do dashboard da corretora
-
-Rota principal:
+Current canonical rule:
 
 ```txt
-/dashboard
+/dashboard = AutoBrokers chat-first
 ```
 
-Comportamento esperado:
+`/dashboard/chat` may continue to work for compatibility, but `/dashboard` must open the main AutoBrokers experience.
 
-- renderiza a experiência de chat principal;
-- é equivalente ao novo chat do AutoBrokers;
-- deve ser limpa, parecida com ChatGPT/Claude;
-- deve ter a saudação central;
-- deve ter input principal;
-- deve ter no máximo dois atalhos abaixo do input.
+## 3. Initial Tenant Surface
 
-Atalhos P0:
+The future initial screen should be close in spirit to ChatGPT and Claude:
 
-```txt
-Ver atendimentos
-Novo auxiliar
-```
+- AutoBrokers as the main signal;
+- centered primary input;
+- minimal chrome;
+- no dense home of cards;
+- at most two shortcuts in the first screen;
+- mobile-first behavior.
 
-Regras:
+The currently approved shortcut concepts are:
 
-- não criar cards grandes;
-- não criar dashboard operacional como primeira tela;
-- não mostrar métricas complexas na home;
-- não inventar módulos futuros como se estivessem prontos;
-- não usar Home da corretora como conceito separado.
+- Ver atendimentos;
+- Novo auxiliar.
 
----
+Final placement and styling must be defined by Claude Design.
 
-## 3. Sidebar tenant — visão P0
+## 4. Sidebar Direction
 
-A sidebar inicial deve ser enxuta.
+The sidebar should remain lean. It should not become a full CRM tree before the product surfaces are ready.
 
-```txt
-INÍCIO
-- AutoBrokers
-
-OPERAÇÃO
-- Atendimentos
-
-AUTOMAÇÃO
-- Auxiliares
-
-PERSONALIZAÇÃO
-- Personalizar
-```
-
-Pode haver subitens dentro das páginas, mas não todos expostos no primeiro nível.
-
----
-
-## 4. Sidebar tenant — visão por fases
-
-### Fase 1 — limpa e vendável
-
-```txt
-INÍCIO
-- AutoBrokers
-
-OPERAÇÃO
-- Atendimentos
-
-AUTOMAÇÃO
-- Auxiliares
-
-PERSONALIZAÇÃO
-- Personalizar
-```
-
-### Fase 2 — expansão controlada
-
-Dentro de Atendimentos:
-
-```txt
-- Painel
-- Fila de atendimentos
-- Casos
-- Conversas
-- Ligações
-- Segurados
-```
-
-Dentro de Auxiliares:
-
-```txt
-- Meus Auxiliares
-- Galeria
-- Execuções
-```
-
-Dentro de Personalizar:
-
-```txt
-- Corretora
-- Equipe
-- Agentes de atendimento
-- Seguradoras e canais
-- Conectores
-- Conhecimento
-- Custos IA
-```
-
-### Fase 3 — navegação avançada
-
-Apenas depois de validação real:
-
-```txt
-- Relatórios
-- Logs
-- Auditoria
-- Billing
-- Vault avançado
-- Catálogo global customizado
-```
-
----
-
-## 5. Regra de ouro da navegação
-
-Não colocar tudo na sidebar.
-
-O padrão correto é:
-
-```txt
-Sidebar enxuta → página índice limpa → detalhe em camadas → modal de permissão/ação
-```
-
-Referências de comportamento:
-
-- ChatGPT Apps: lista/galeria → detalhe → conectar;
-- Claude Routines: lista/criar → configuração → gatilho/conectores/permissões;
-- ResultVision: seguradora → abas → corredores/canais/portal.
-
----
-
-## 6. Padrão de navegação em camadas
-
-O usuário deve avançar progressivamente:
-
-```txt
-Módulo → item → detalhe → configuração/ação
-```
-
-Exemplo em Seguradoras:
-
-```txt
-Personalizar → Seguradoras → Allianz → Canais → Corredor Residencial → Configurar
-```
-
-Exemplo em Auxiliares:
-
-```txt
-Auxiliares → Galeria → Cobrança de documentos → Personalizar → Ativar
-```
-
-Exemplo em Conectores:
-
-```txt
-Personalizar → Conectores → Google Drive → Permissões → Conectar
-```
-
----
-
-## 7. Mobile-first
-
-No mobile, a experiência deve parecer que o usuário avança para uma nova camada.
-
-Comportamento desejado:
-
-- sidebar vira menu compacto;
-- páginas de detalhe ocupam a tela;
-- transição lateral rápida ao entrar em detalhe;
-- breadcrumb simples ou botão voltar;
-- nada de tabelas largas como interface principal;
-- cards e listas substituem tabelas sempre que possível.
-
----
-
-## 8. Separação entre operação e configuração
-
-### Operação
-
-Onde o usuário trabalha no dia a dia.
-
-Inclui:
+Initial/future groups may include:
 
 - AutoBrokers;
-- Atendimentos;
+- Atendimento;
 - Auxiliares;
-- Execuções;
-- conversas;
-- casos;
-- pendências.
+- Conhecimento;
+- Conectores/Canais;
+- Configuracoes.
 
-### Configuração/Personalização
+The Admin Global navigation is separate and internal to the AutoBrokers team.
 
-Onde o usuário prepara o sistema.
+## 5. Admin Global
 
-Inclui:
+Admin Global is for internal AutoBrokers operation and governance:
 
-- corretora;
-- usuários;
-- agentes;
-- seguradoras;
-- corredores;
-- conectores;
-- conhecimento;
-- permissões;
-- custos.
-
-Regra:
-
-> Se é algo que o usuário faz todo dia, fica em Operação. Se é algo que ele ajusta para o sistema funcionar, fica em Personalizar.
-
----
-
-## 9. Admin Global
-
-O Admin Global é separado do dashboard da corretora.
-
-Apenas equipe interna AutoBrokers.ai acessa.
-
-Responsabilidades:
-
-- corretoras/tenants;
-- planos;
-- créditos;
-- usuários globais;
-- modelos LLM;
-- tabela de custos;
-- templates globais;
-- Auxiliares globais;
-- catálogo global;
-- conectores globais;
+- companies;
+- users and approvals;
+- agents/templates;
+- billing and FinOps;
 - logs;
-- auditoria;
-- governança.
+- documents/knowledge;
+- legal documents;
+- settings.
 
-Não misturar Admin Global com experiência do tenant.
+Do not design Admin Global as the brokerage's daily product home.
 
----
+## 6. Navigation by Layers
 
-## 10. Itens removidos/reprovados
+For richer modules, prefer layered navigation:
 
-Não usar:
+```txt
+gallery -> detail -> configuration -> permissions -> run/history
+```
 
-- página Estudos;
-- Conversa ao vivo antiga;
-- Home da corretora criada no batch 35D;
-- dashboard operacional como primeira tela;
-- sidebar com 30 itens expostos;
-- cards operacionais na página inicial;
-- nomes JARVYS/Smith visíveis.
+This applies especially to Auxiliares, connectors, knowledge packages and future Atendimento packages.
 
----
+## 7. Forbidden Patterns
 
-## 11. Critérios de sucesso
+Do not bring back:
 
-A arquitetura de navegação está correta quando:
+- a big brokerage home filled with cards;
+- the old Estudos page;
+- the old Conversa ao vivo concept;
+- visible Smith or Agent Smith product naming;
+- ResultVision visual structure as a direct copy.
 
-1. usuário entra e vê AutoBrokers como primeira experiência;
-2. consegue acessar Atendimento e Auxiliares sem confusão;
-3. configuração fica agrupada em Personalizar;
-4. mobile não parece uma versão espremida do desktop;
-5. não há links mortos;
-6. módulos futuros aparecem apenas quando houver base real.
+## 8. Design References
+
+References for future UX:
+
+- ChatGPT and Claude for calm chat-first surfaces;
+- Claude Routines for automation setup concepts;
+- Apps/Connectors patterns for connection galleries and permission screens.
+
+These are references, not implementations to copy.
+
+## 9. Boundary
+
+This document defines navigation direction. It does not define final visual layout, final component system or final responsive specifications. Claude Design should produce the detailed UX and visual design before major UI implementation.
