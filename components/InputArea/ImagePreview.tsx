@@ -15,7 +15,7 @@ export function ImagePreview({ imageUrl, uploading, onRemove }: ImagePreviewProp
         <img
           src={imageUrl}
           alt="Preview"
-          className="max-h-32 rounded-lg border-2 border-blue-500/50 shadow-lg"
+          className="max-h-32 rounded-lg border-2 border-primary/50 shadow-lg"
         />
         <button
           onClick={onRemove}

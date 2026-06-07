@@ -36,7 +36,7 @@ function UCPLoadingState({ type }: { type: string }) {
 
   return (
     <div className="flex items-center gap-3 bg-zinc-900/50 border border-zinc-800 rounded-xl p-4">
-      <Loader2 className="h-5 w-5 animate-spin text-blue-500" />
+      <Loader2 className="h-5 w-5 animate-spin text-primary" />
       <span className="text-sm text-zinc-400">{messages[type] || messages.default}</span>
     </div>
   );
@@ -178,7 +178,7 @@ export function MessageBubble({
           displayContent !== '[Mensagem de voz]' && (
             <div
               className={`${isUser
-                ? 'bg-blue-600 text-white rounded-2xl rounded-br-sm px-4 py-3 shadow-sm'
+                ? 'bg-primary text-primary-foreground rounded-2xl rounded-br-sm px-4 py-3 shadow-sm'
                 : isHumanMessage
                   ? 'bg-muted text-foreground rounded-2xl rounded-bl-sm px-4 py-3 border border-border'
                   : 'text-foreground px-1 py-1' // Agent: No background, just text

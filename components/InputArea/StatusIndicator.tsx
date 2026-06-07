@@ -13,7 +13,7 @@ export function StatusIndicator({
 }: StatusIndicatorProps) {
   if (isRecording) {
     return (
-      <p className="text-center text-sm text-blue-400 mt-2 animate-pulse">
+      <p className="text-center text-sm text-primary mt-2 animate-pulse">
         🎙️ Gravando... Clique no botão novamente para parar
       </p>
     );

@@ -92,7 +92,7 @@ const Textarea = React.forwardRef<HTMLTextAreaElement, TextareaProps>(
 
         {showRing && isFocused && (
           <motion.span
-            className="absolute inset-0 rounded-md pointer-events-none ring-2 ring-offset-0 ring-blue-500/30"
+            className="absolute inset-0 rounded-md pointer-events-none ring-2 ring-offset-0 ring-primary/30"
             initial={{ opacity: 0 }}
             animate={{ opacity: 1 }}
             exit={{ opacity: 0 }}
@@ -102,7 +102,7 @@ const Textarea = React.forwardRef<HTMLTextAreaElement, TextareaProps>(
 
         {props.onChange && (
           <div
-            className="absolute bottom-2 right-2 opacity-0 w-2 h-2 bg-blue-500 rounded-full"
+            className="absolute bottom-2 right-2 opacity-0 w-2 h-2 bg-primary rounded-full"
             style={{
               animation: 'none',
             }}
@@ -213,7 +213,7 @@ export function AnimatedAIChat({
   return (
     <div className="w-full relative">
       <motion.div
-        className="relative backdrop-blur-2xl bg-white dark:bg-white/[0.02] rounded-2xl border border-border/50 shadow-2xl"
+        className="relative backdrop-blur-2xl bg-surface rounded-2xl border border-border shadow-lg"
         initial={{ scale: 0.98 }}
         animate={{ scale: 1 }}
         transition={{ delay: 0.1 }}
@@ -256,7 +256,7 @@ export function AnimatedAIChat({
             whileHover={{ scale: 1.05 }}
             whileTap={{ scale: 0.95 }}
             onClick={onFileSelect}
-            className="p-2 rounded-full text-muted-foreground hover:text-blue-500 hover:bg-blue-500/10 transition-colors"
+            className="p-2 rounded-full text-muted-foreground hover:text-primary hover:bg-primary/10 transition-colors"
             disabled={disabled || isRecording}
             title="Anexar imagem"
           >
@@ -270,7 +270,7 @@ export function AnimatedAIChat({
             onClick={onVoiceRecord}
             className={`p-2 rounded-full transition-colors ${isRecording
               ? 'text-red-500 bg-red-500/10 hover:bg-red-500/20'
-              : 'text-slate-400 hover:text-blue-400 hover:bg-blue-500/10'
+              : 'text-muted-foreground hover:text-primary hover:bg-primary/10'
               }`}
             disabled={disabled}
           >
@@ -291,7 +291,7 @@ export function AnimatedAIChat({
               className={cn(
                 'p-2 rounded-lg transition-all relative group',
                 allowWebSearch
-                  ? 'text-blue-500 bg-blue-500/10 ring-2 ring-blue-500/20'
+                  ? 'text-primary bg-primary/10 ring-2 ring-primary/20'
                   : 'text-muted-foreground hover:text-foreground hover:bg-accent',
               )}
               title={allowWebSearch ? 'Web search ativada' : 'Ativar busca na web'}
@@ -299,7 +299,7 @@ export function AnimatedAIChat({
               <Globe className="w-4 h-4" />
               {allowWebSearch && (
                 <motion.span
-                  className="absolute -top-1 -right-1 w-2 h-2 bg-blue-500 rounded-full"
+                  className="absolute -top-1 -right-1 w-2 h-2 bg-primary rounded-full"
                   animate={{
                     scale: [1, 1.2, 1],
                     opacity: [1, 0.7, 1],
@@ -349,13 +349,13 @@ export function AnimatedAIChat({
                       document.getElementById('agent-dropdown')?.classList.add('hidden');
                     }}
                     className={`w-full text-left px-4 py-2 text-sm transition-colors ${agent.id === selectedAgentId
-                        ? 'text-blue-500 bg-blue-500/10'
+                        ? 'text-primary bg-primary/10'
                         : 'text-foreground/80 hover:text-foreground hover:bg-accent'
                       }`}
                   >
                     {agent.name}
                     {agent.id === selectedAgentId && (
-                      <span className="float-right text-blue-500">✓</span>
+                      <span className="float-right text-primary">✓</span>
                     )}
                   </button>
                 ))}
@@ -373,7 +373,7 @@ export function AnimatedAIChat({
               'px-4 py-2 rounded-lg text-sm font-medium transition-all',
               'flex items-center gap-2',
               value.trim() && !disabled && !isRecording
-                ? 'bg-blue-600 text-white shadow-lg shadow-blue-600/20'
+                ? 'bg-primary text-primary-foreground shadow-sm'
                 : 'bg-accent text-muted-foreground',
             )}
           >
@@ -389,7 +389,7 @@ export function AnimatedAIChat({
 
       {inputFocused && (
         <motion.div
-          className="fixed w-[50rem] h-[50rem] rounded-full pointer-events-none z-0 opacity-[0.02] bg-gradient-to-r from-blue-500 via-blue-600 to-cyan-500 blur-[96px]"
+          className="fixed w-[50rem] h-[50rem] rounded-full pointer-events-none z-0 opacity-[0.02] bg-gradient-to-r from-primary via-primary to-primary blur-[96px]"
           animate={{
             x: mousePosition.x - 400,
             y: mousePosition.y - 400,

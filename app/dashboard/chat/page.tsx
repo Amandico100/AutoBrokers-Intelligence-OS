@@ -1,8 +1,8 @@
 'use client';
 
 import { useState, useEffect, useRef, useCallback } from 'react';
-import { Bot, PlusCircle } from 'lucide-react';
-import EmptyState from '@/components/EmptyState';
+import { ChatWelcome } from '@/components/chat/ChatWelcome';
+import { ChatShortcutCards } from '@/components/chat/ChatShortcutCards';
 import InputArea from '@/components/InputArea';
 import { MessageBubble } from '@/components/MessageBubble';
 import { TypingIndicator } from '@/components/TypingIndicator';
@@ -10,16 +10,7 @@ import { sendTextToN8N, sendVoiceToN8N } from '@/lib/n8nClient';
 import { supabase } from '@/lib/supabase'; // KEPT: Only for Realtime subscriptions
 import { Message } from '@/lib/types';
 import { useUserId } from '@/hooks/useUserId';
-import { Badge } from '@/components/ui/badge';
 import { toast } from 'sonner';
-
-import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from '@/components/ui/select';
 
 export default function ChatPage() {
   const { userId, userAvatar, userName, isLoading: isLoadingUser } = useUserId();
@@ -574,53 +565,37 @@ export default function ChatPage() {
     );
   }
 
-  // Nome do agente atual para exibição
-  const currentAgentName = agents.find((a) => a.id === selectedAgentId)?.name || 'Agente';
+  const composer = (
+    <InputArea
+      onSendMessage={handleSendMessage}
+      onSendVoice={handleSendVoice}
+      disabled={isLoading}
+      showWebSearch={isWebSearchAllowed}
+      allowWebSearch={webSearchEnabled}
+      onToggleWebSearch={() => setWebSearchEnabled(!webSearchEnabled)}
+      companyId={companyId || undefined}
+      agents={agents}
+      selectedAgentId={selectedAgentId}
+      onAgentChange={handleAgentChange}
+    />
+  );
 
   return (
-    <div className="flex h-full flex-col relative bg-background">
-        {/* HEADER DO CHAT */}
-        <div className="h-16 border-b border-border bg-background/95 backdrop-blur supports-[backdrop-filter]:bg-background/60 flex items-center px-6 justify-between shrink-0 z-20">
-          <div className="flex items-center gap-4">
-            <div className="flex items-center gap-3">
-              <div className="w-10 h-10 rounded-xl bg-blue-600/10 flex items-center justify-center border border-blue-600/20 shadow-lg shadow-blue-600/5">
-                <Bot className="w-5 h-5 text-blue-600" />
-              </div>
-
-              <div className="flex flex-col">
-                {/* Header simplificado - só mostra o agente ativo */}
-                <div className="flex items-center gap-2">
-                  <span className="text-sm font-medium text-foreground">Conversando com</span>
-                  <Badge
-                    variant="outline"
-                    className="bg-blue-600/10 text-blue-400 border-blue-600/20 text-xs py-0.5 px-2 h-5"
-                  >
-                    {currentAgentName}
-                  </Badge>
-                </div>
-              </div>
-            </div>
-          </div>
-
-          <div className="flex items-center gap-2">
-            <button
-              onClick={handleNewConversation}
-              className="p-2 text-muted-foreground hover:text-foreground hover:bg-accent rounded-lg transition-colors"
-              title="Novo Chat"
-            >
-              <PlusCircle className="w-5 h-5" />
-            </button>
+    <div className="flex h-full flex-col bg-background">
+      {messages.length === 0 ? (
+        /* CHAT-FIRST · estado inicial (sem mensagens) */
+        <div className="flex-1 overflow-y-auto">
+          <div className="mx-auto flex min-h-full w-full max-w-3xl flex-col items-center justify-center px-4 py-10">
+            <ChatWelcome />
+            <div className="mt-8 w-full">{composer}</div>
+            <ChatShortcutCards />
           </div>
         </div>
-
-        {/* ÁREA DE MENSAGENS */}
-        <div className="flex-1 overflow-y-auto p-6 scroll-smooth">
-          {messages.length === 0 ? (
-            <div className="h-full flex flex-col">
-              <EmptyState />
-            </div>
-          ) : (
-            <div className="max-w-3xl mx-auto w-full pb-4">
+      ) : (
+        /* Conversa ativa */
+        <>
+          <div className="flex-1 overflow-y-auto px-4 py-6 scroll-smooth">
+            <div className="mx-auto w-full max-w-3xl pb-4">
               {messages.map((msg) => (
                 <MessageBubble
                   key={msg.id}
@@ -630,33 +605,19 @@ export default function ChatPage() {
                   onSendMessage={(text) => handleSendMessage(text)}
                 />
               ))}
-              {/* Mostra typing indicator apenas quando loading E (não tem mensagens OU última não é assistant OU está vazia) */}
               {isLoading &&
                 (messages.length === 0 ||
                   messages[messages.length - 1].role !== 'assistant' ||
                   !messages[messages.length - 1].content) && <TypingIndicator />}
               <div ref={messagesEndRef} className="h-4" />
             </div>
-          )}
-        </div>
-
-        {/* ÁREA DE INPUT */}
-        <div className="flex-shrink-0 bg-gradient-to-t from-background via-background to-transparent pt-6 pb-6 px-4 z-10 w-full">
-          <div className="max-w-3xl mx-auto">
-            <InputArea
-              onSendMessage={handleSendMessage}
-              onSendVoice={handleSendVoice}
-              disabled={isLoading}
-              showWebSearch={isWebSearchAllowed}
-              allowWebSearch={webSearchEnabled}
-              onToggleWebSearch={() => setWebSearchEnabled(!webSearchEnabled)}
-              companyId={companyId || undefined}
-              agents={agents}
-              selectedAgentId={selectedAgentId}
-              onAgentChange={handleAgentChange}
-            />
           </div>
-        </div>
-      </div>
+
+          <div className="shrink-0 bg-gradient-to-t from-background via-background to-transparent pt-3">
+            {composer}
+          </div>
+        </>
+      )}
+    </div>
   );
 }
