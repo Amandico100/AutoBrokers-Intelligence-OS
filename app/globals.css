@@ -1,78 +1,111 @@
-@import url('https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700&display=swap');
-
 @tailwind base;
 @tailwind components;
 @tailwind utilities;
 
+/* =============================================================
+   AutoBrokers · paleta Névoa (HANDOFF-001 §1) convertida para HSL
+   Mantém as variáveis ShadCN existentes — não cria sistema paralelo.
+   Dark é o tema padrão (ThemeProvider defaultTheme="dark").
+   ============================================================= */
+
 @layer base {
   :root {
-    /* Light Mode - Clean & Accessible */
+    /* Light — neutro sóbrio com accent Névoa (light não é prioridade no MVP) */
     --background: 0 0% 100%;
-    --foreground: 222.2 84% 4.9%;
+    --foreground: 220 13% 12%;
 
     --card: 0 0% 100%;
-    --card-foreground: 222.2 84% 4.9%;
+    --card-foreground: 220 13% 12%;
 
     --popover: 0 0% 100%;
-    --popover-foreground: 222.2 84% 4.9%;
+    --popover-foreground: 220 13% 12%;
 
-    --primary: 262 80% 50%;
-    /* Using Purple as primary to match brand ID */
-    --primary-foreground: 210 40% 98%;
+    --primary: 203 45% 45%;
+    --primary-foreground: 0 0% 100%;
 
-    --secondary: 210 40% 96.1%;
-    --secondary-foreground: 222.2 47.4% 11.2%;
+    --secondary: 210 16% 95%;
+    --secondary-foreground: 220 13% 18%;
 
-    --muted: 210 40% 96.1%;
-    --muted-foreground: 215.4 16.3% 46.9%;
+    --muted: 210 16% 95%;
+    --muted-foreground: 212 8% 42%;
 
-    --accent: 210 40% 96.1%;
-    --accent-foreground: 222.2 47.4% 11.2%;
+    --accent: 210 16% 95%;
+    --accent-foreground: 220 13% 18%;
 
-    --destructive: 0 84.2% 60.2%;
-    --destructive-foreground: 210 40% 98%;
+    --destructive: 0 60% 50%;
+    --destructive-foreground: 0 0% 100%;
 
-    --border: 214.3 31.8% 91.4%;
-    --input: 214.3 31.8% 91.4%;
-    --ring: 221.2 83.2% 53.3%;
+    --border: 214 15% 88%;
+    --input: 214 15% 88%;
+    --ring: 203 45% 45%;
 
     --radius: 0.5rem;
+
+    /* Névoa extras (light) */
+    --surface: 210 16% 97%;
+    --surface-2: 210 16% 94%;
+    --surface-3: 210 16% 91%;
+    --border-soft: 214 15% 92%;
+    --foreground-2: 220 10% 30%;
+    --faint: 212 8% 55%;
+    --success: 153 30% 38%;
+    --success-foreground: 0 0% 100%;
+    --warning: 37 55% 40%;
+    --warning-foreground: 0 0% 100%;
+    --danger: 0 50% 50%;
+    --danger-foreground: 0 0% 100%;
+    --brand-accent: 203 45% 45%;
+    --brand-accent-soft: rgba(111, 166, 201, 0.14);
   }
 
   .dark {
-    /* Dark Mode - Preserving Original Identity */
-    --background: 247 100% 4%;
-    /* #030014 -> hsl(247, 100%, 4%) */
-    --foreground: 0 0% 100%;
-    /* Pure White */
+    /* Névoa — dark default (valores oficiais do HANDOFF-001 §1) */
+    --background: 220 13% 5%; /* #0a0b0d */
+    --foreground: 210 17% 95%; /* #f1f3f5 */
 
-    --card: 247 100% 4%;
-    --card-foreground: 0 0% 100%;
+    --card: 220 13% 9%; /* surface #14161a */
+    --card-foreground: 210 17% 95%;
 
-    --popover: 247 100% 4%;
-    --popover-foreground: 0 0% 100%;
+    --popover: 220 13% 9%; /* surface */
+    --popover-foreground: 210 17% 95%;
 
-    --primary: 262 80% 50%;
-    --primary-foreground: 210 40% 98%;
+    --primary: 203 45% 61%; /* accent #6fa6c9 */
+    --primary-foreground: 210 22% 5%; /* accent-fg #07090b */
 
-    --secondary: 217.2 32.6% 17.5%;
-    --secondary-foreground: 210 40% 98%;
+    --secondary: 218 13% 13%; /* surface-2 #1c1f24 */
+    --secondary-foreground: 210 17% 95%;
 
-    --muted: 217.2 32.6% 17.5%;
-    --muted-foreground: 250 8% 60%;
+    --muted: 218 13% 13%; /* surface-2 */
+    --muted-foreground: 212 8% 54%; /* muted #828a93 */
 
-    --accent: 217.2 32.6% 17.5%;
-    --accent-foreground: 210 40% 98%;
+    --accent: 218 13% 13%; /* surface-2 (hover/ativo dos componentes) */
+    --accent-foreground: 210 17% 95%;
 
-    --destructive: 0 62.8% 30.6%;
-    --destructive-foreground: 210 40% 98%;
+    --destructive: 0 39% 65%; /* danger #c98585 */
+    --destructive-foreground: 210 17% 95%;
 
-    --border: 217.2 32.6% 17.5%;
-    --input: 217.2 32.6% 17.5%;
-    --ring: 221.2 83.2% 53.3%;
+    --border: 216 11% 17%; /* #272b31 */
+    --input: 216 11% 17%;
+    --ring: 203 45% 61%; /* accent */
 
+    /* Névoa extras (dark) — disponíveis via Tailwind (bg-surface, text-success, ...) */
+    --surface: 220 13% 9%; /* #14161a */
+    --surface-2: 218 13% 13%; /* #1c1f24 */
+    --surface-3: 218 14% 16%;
+    --border-soft: 220 15% 12%; /* #1a1d23 */
+    --foreground-2: 214 13% 80%; /* #c4cad2 */
+    --faint: 212 8% 37%; /* #565d65 */
+    --success: 153 22% 52%; /* #6ba088 */
+    --success-foreground: 210 22% 6%;
+    --warning: 37 46% 59%; /* #c6a065 */
+    --warning-foreground: 210 22% 6%;
+    --danger: 0 39% 65%; /* #c98585 */
+    --danger-foreground: 210 22% 6%;
+    --brand-accent: 203 45% 61%; /* #6fa6c9 */
+    --brand-accent-soft: rgba(111, 166, 201, 0.14);
+
+    /* Legacy — preservado para gradientes da landing/HeroSection */
     --color-dark: #030014;
-    /* Keep legacy var for gradients */
     --color-dark-2: #495270;
     --color-dark-3: #918ea0;
     --color-purple: #8646f4;
@@ -89,10 +122,13 @@
   }
 
   body {
-    font-family: 'Plus Jakarta Sans', sans-serif;
+    font-family: var(--font-geist-sans), ui-sans-serif, system-ui, -apple-system,
+      BlinkMacSystemFont, 'Segoe UI', sans-serif;
     background-color: hsl(var(--background));
     color: hsl(var(--foreground));
     min-height: 100vh;
+    -webkit-font-smoothing: antialiased;
+    text-rendering: optimizeLegibility;
   }
 
   h1,
