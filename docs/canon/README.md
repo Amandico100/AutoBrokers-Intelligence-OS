@@ -1,3 +1,15 @@
+---
+> **Status:** canonical  
+> **Versão:** 1.1 — Refoundation & Design Readiness  
+> **Última atualização:** 2026-06-06  
+> **Produto:** AutoBrokers.ai  
+> **Sistema:** AutoBrokers Intelligence OS  
+> **Função:** índice da documentação canônica ativa  
+>
+> Esta pasta contém a documentação viva que orienta estratégia, UX, runtime, segurança, design e execução.  
+> Documentos históricos em `docs/_archive/` não devem orientar decisões atuais, salvo quando forem explicitamente citados por um documento canônico.
+
+
 # AutoBrokers Intelligence OS Canon
 
 This folder is the active documentation source of truth for AutoBrokers.ai and the AutoBrokers Intelligence OS.
