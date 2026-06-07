@@ -4,7 +4,6 @@ import { useState, useEffect } from 'react';
 import { useRouter } from 'next/navigation';
 import { formatDistanceToNow } from 'date-fns';
 import { ptBR } from 'date-fns/locale';
-import { UnifiedSidebar } from '@/components/UnifiedSidebar';
 import { useUserId } from '@/hooks/useUserId';
 
 interface Conversation {
@@ -46,22 +45,15 @@ export default function HistoricoPage() {
 
   if (loading) {
     return (
-      <div className="flex min-h-screen bg-background text-foreground">
-        {currentUserId && <UnifiedSidebar userId={currentUserId} />}
-        <div className="flex-1 lg:ml-64 flex items-center justify-center">
-          <div className="text-muted-foreground">Carregando histórico...</div>
-        </div>
+      <div className="flex h-full items-center justify-center bg-background text-foreground">
+        <div className="text-muted-foreground">Carregando histórico...</div>
       </div>
     );
   }
 
   return (
-    <div className="flex min-h-screen bg-background text-foreground">
-      {/* Sidebar - FIXED: Added hidden on mobile to prevent double sidebar */}
-      {currentUserId && <UnifiedSidebar userId={currentUserId} />}
-
-      <div className="flex-1 lg:ml-64 bg-background">
-        <div className="p-8">
+    <div className="h-full overflow-y-auto bg-background text-foreground">
+      <div className="p-8">
           <div className="max-w-4xl mx-auto">
             <h1 className="text-3xl font-bold mb-8 text-foreground">Histórico de Conversas</h1>
 
@@ -112,6 +104,5 @@ export default function HistoricoPage() {
           </div>
         </div>
       </div>
-    </div>
   );
 }

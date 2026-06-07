@@ -2,6 +2,7 @@
 
 import { useState, useEffect } from 'react';
 import { TermsAcceptanceModal } from '@/components/TermsAcceptanceModal';
+import { TenantAppShell } from '@/components/layout/TenantAppShell';
 
 interface ActiveTerms {
   id: string;
@@ -33,14 +34,14 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
   }, []);
 
   return (
-    <div className="min-h-screen bg-[#2f2f2f]">
-      {children}
+    <>
+      <TenantAppShell>{children}</TenantAppShell>
       {termsOutdated && activeTerms && (
         <TermsAcceptanceModal
           activeTerms={activeTerms}
           onAccepted={() => setTermsOutdated(false)}
         />
       )}
-    </div>
+    </>
   );
 }

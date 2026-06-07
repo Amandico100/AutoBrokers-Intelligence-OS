@@ -3,6 +3,9 @@ import {
   Headphones,
   Workflow,
   Settings,
+  SlidersHorizontal,
+  History,
+  LogOut,
   Plug,
   Shield,
   Library,
@@ -35,13 +38,18 @@ export const icons = {
   autobrokers: MessageCircle,
   atendimentos: Headphones,
   auxiliares: Workflow,
-  personalizacao: Settings,
+  personalizacao: SlidersHorizontal,
 
   // Áreas internas
   conectores: Plug,
   seguradoras: Shield,
   conhecimento: Library,
   equipe: Users,
+
+  // Navegação secundária
+  historico: History,
+  configuracoes: Settings,
+  sair: LogOut,
 
   // Ações de chat / navegação
   novaConversa: Plus,

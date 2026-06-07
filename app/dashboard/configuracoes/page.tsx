@@ -10,7 +10,6 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/com
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { toast } from 'sonner';
 import { Loader2, Lock, User, Save } from 'lucide-react';
-import { UnifiedSidebar } from '@/components/UnifiedSidebar';
 import { AvatarUpload } from '@/components/AvatarUpload';
 
 export default function SettingsPage() {
@@ -145,16 +144,7 @@ export default function SettingsPage() {
   }
 
   return (
-    <div className="flex min-h-screen bg-background text-foreground">
-      {userId && (
-        <UnifiedSidebar
-          userId={userId}
-          currentSessionId=""
-          onSelectConversation={() => router.push('/dashboard/chat')}
-          onNewConversation={() => router.push('/dashboard/chat')}
-        />
-      )}
-      <div className="flex-1 lg:ml-64 p-8 overflow-y-auto h-screen bg-background">
+    <div className="h-full overflow-y-auto p-8 bg-background text-foreground">
         <div className="max-w-4xl mx-auto space-y-8">
           <div>
             <h1 className="text-3xl font-bold text-foreground">Configurações</h1>
@@ -329,6 +319,5 @@ export default function SettingsPage() {
           </Tabs>
         </div>
       </div>
-    </div>
   );
 }

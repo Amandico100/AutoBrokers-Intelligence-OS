@@ -6,7 +6,6 @@ import EmptyState from '@/components/EmptyState';
 import InputArea from '@/components/InputArea';
 import { MessageBubble } from '@/components/MessageBubble';
 import { TypingIndicator } from '@/components/TypingIndicator';
-import { UnifiedSidebar } from '@/components/UnifiedSidebar';
 import { sendTextToN8N, sendVoiceToN8N } from '@/lib/n8nClient';
 import { supabase } from '@/lib/supabase'; // KEPT: Only for Realtime subscriptions
 import { Message } from '@/lib/types';
@@ -579,17 +578,7 @@ export default function ChatPage() {
   const currentAgentName = agents.find((a) => a.id === selectedAgentId)?.name || 'Agente';
 
   return (
-    <div className="flex h-screen overflow-hidden bg-background">
-      {userId && (
-        <UnifiedSidebar
-          userId={userId}
-          currentSessionId={sessionId}
-          onSelectConversation={handleSelectConversation}
-          onNewConversation={handleNewConversation}
-        />
-      )}
-
-      <div className="flex-1 flex flex-col h-full lg:ml-64 relative">
+    <div className="flex h-full flex-col relative bg-background">
         {/* HEADER DO CHAT */}
         <div className="h-16 border-b border-border bg-background/95 backdrop-blur supports-[backdrop-filter]:bg-background/60 flex items-center px-6 justify-between shrink-0 z-20">
           <div className="flex items-center gap-4">
@@ -669,6 +658,5 @@ export default function ChatPage() {
           </div>
         </div>
       </div>
-    </div>
   );
 }
