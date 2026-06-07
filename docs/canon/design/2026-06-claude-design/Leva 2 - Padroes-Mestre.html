@@ -1,0 +1,725 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>AutoBrokers.ai — Leva 2 · Padrões-Mestre</title>
+<link rel="preconnect" href="https://fonts.googleapis.com" />
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+<link href="https://fonts.googleapis.com/css2?family=Geist:wght@400;500;600;700&family=Geist+Mono:wght@400;500&display=swap" rel="stylesheet" />
+<style>
+:root{
+  --bg:#0a0b0d;--panel:#111317;--panel2:#171a1f;--line:#23272e;--line-soft:#1a1d23;
+  --tx:#f1f3f5;--tx2:#c4cad2;--muted:#828a93;--faint:#596169;
+  --accent:#6fa6c9;--accent-soft:rgba(111,166,201,0.13);
+  --success:#6ba088;--warning:#c6a065;--danger:#c98585;
+  --radius:14px;--maxw:1120px;
+  --sans:"Geist","Geist Fallback",-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif;
+  --mono:"Geist Mono",ui-monospace,SFMono-Regular,Menlo,monospace;
+}
+*{box-sizing:border-box;margin:0;padding:0}
+html{scroll-behavior:smooth}
+body{background:var(--bg);color:var(--tx);font-family:var(--sans);font-size:16px;line-height:1.6;-webkit-font-smoothing:antialiased;text-rendering:optimizeLegibility}
+.wrap{max-width:var(--maxw);margin:0 auto;padding:0 28px}
+::selection{background:var(--accent-soft);color:#fff}
+
+/* skin (Névoa, aprovada) */
+.skin{
+  --m-bg:#0a0b0d;--m-surface:#14161a;--m-surface2:#1c1f24;--m-border:#272b31;
+  --m-text:#f1f3f5;--m-muted:#828a93;--m-faint:#565d65;
+  --m-accent:#6fa6c9;--m-accent-fg:#07090b;--m-accent-soft:rgba(111,166,201,0.14);
+  --m-success:#6ba088;--m-warning:#c6a065;--m-danger:#c98585;
+}
+
+/* ribbon */
+.ribbon{border-bottom:1px solid var(--line-soft);background:rgba(10,11,13,0.72);backdrop-filter:blur(12px);position:sticky;top:0;z-index:60}
+.ribbon-in{display:flex;align-items:center;justify-content:space-between;height:58px}
+.ribbon-brand{display:flex;align-items:center;gap:11px;font-weight:600;font-size:14.5px;letter-spacing:-0.01em}
+.ribbon-tag{font-family:var(--mono);font-size:11px;color:var(--muted);border:1px solid var(--line);border-radius:999px;padding:4px 11px;letter-spacing:0.04em}
+.ribbon-nav{display:flex;gap:4px}
+.ribbon-nav a{color:var(--muted);text-decoration:none;font-size:13px;padding:7px 12px;border-radius:8px;transition:.15s}
+.ribbon-nav a:hover{color:var(--tx);background:var(--panel)}
+@media(max-width:820px){.ribbon-nav{display:none}}
+.mark{display:inline-grid;place-items:center;flex:none}
+.mark svg{display:block}
+
+/* hero */
+.hero{padding:104px 0 70px;border-bottom:1px solid var(--line-soft)}
+.kick{font-family:var(--mono);font-size:12px;letter-spacing:0.16em;text-transform:uppercase;color:var(--accent);margin-bottom:24px}
+.hero h1{font-size:clamp(34px,5.4vw,60px);line-height:1.04;letter-spacing:-0.035em;font-weight:600;max-width:18ch}
+.hero p.lead{margin-top:28px;max-width:64ch;font-size:18px;color:var(--tx2);line-height:1.65}
+.hero-meta{margin-top:36px;display:flex;flex-wrap:wrap;gap:10px}
+.chip{font-family:var(--mono);font-size:11.5px;color:var(--tx2);background:var(--panel);border:1px solid var(--line);border-radius:999px;padding:7px 14px;letter-spacing:0.02em}
+.chip b{color:var(--tx);font-weight:500}
+
+/* sections */
+section.block{padding:88px 0;border-bottom:1px solid var(--line-soft)}
+.sec-head{display:flex;align-items:baseline;gap:18px;margin-bottom:12px;flex-wrap:wrap}
+.sec-num{font-family:var(--mono);font-size:13px;color:var(--accent)}
+.sec-tag{font-family:var(--mono);font-size:11px;color:var(--muted);border:1px solid var(--line);border-radius:6px;padding:3px 9px;letter-spacing:0.05em}
+.sec-head h2{font-size:29px;letter-spacing:-0.025em;font-weight:600}
+.sec-lead{max-width:66ch;color:var(--tx2);font-size:16.5px;margin-bottom:42px}
+.sec-lead b{color:var(--tx)}
+.mock-cap{font-family:var(--mono);font-size:12px;color:var(--muted);margin-bottom:14px;letter-spacing:0.03em}
+
+/* browser frame */
+.browser{border:1px solid var(--m-border);border-radius:16px;overflow:hidden;background:var(--m-bg);box-shadow:0 50px 120px -50px rgba(0,0,0,0.9)}
+.bw-bar{display:flex;align-items:center;gap:14px;padding:13px 18px;background:var(--m-surface);border-bottom:1px solid var(--m-border)}
+.bw-dots{display:flex;gap:7px}
+.bw-dots i{width:11px;height:11px;border-radius:50%;background:var(--m-border)}
+.bw-url{flex:1;max-width:380px;margin:0 auto;background:var(--m-bg);border:1px solid var(--m-border);border-radius:7px;padding:5px 12px;font-family:var(--mono);font-size:11.5px;color:var(--m-muted);text-align:center}
+.bw-body{position:relative}
+
+/* generic app shell (mini sidebar + content) */
+.app{display:flex;min-height:560px}
+.mini-sb{width:212px;flex:none;background:var(--m-surface);border-right:1px solid var(--m-border);padding:14px 12px;display:flex;flex-direction:column;gap:2px}
+.mini-brand{display:flex;align-items:center;gap:9px;color:var(--m-text);font-weight:600;font-size:14px;padding:6px 8px 14px}
+.mini-item{display:flex;align-items:center;gap:11px;padding:8px 11px;border-radius:9px;color:var(--m-muted);font-size:13px;cursor:pointer;position:relative}
+.mini-item svg{opacity:.85}
+.mini-item:hover{background:var(--m-surface2);color:var(--m-text)}
+.mini-item.on{background:var(--m-surface2);color:var(--m-text);font-weight:500}
+.mini-item.on::before{content:"";position:absolute;left:-12px;top:50%;transform:translateY(-50%);width:3px;height:16px;border-radius:0 3px 3px 0;background:var(--m-accent)}
+.mini-sub{font-family:var(--mono);font-size:10px;letter-spacing:0.1em;text-transform:uppercase;color:var(--m-faint);padding:12px 11px 6px}
+.content{flex:1;min-width:0;background:var(--m-bg);display:flex;flex-direction:column}
+
+/* breadcrumb + page head */
+.crumb{display:flex;align-items:center;gap:8px;padding:16px 24px 0;font-size:12.5px;color:var(--m-muted);font-family:var(--mono)}
+.crumb span.sep{opacity:.5}
+.crumb b{color:var(--m-text);font-weight:500}
+.page-head{padding:14px 24px 18px;display:flex;align-items:flex-start;justify-content:space-between;gap:20px}
+.page-head .h-l{min-width:0}
+.page-head h3{font-size:21px;font-weight:600;letter-spacing:-0.02em;color:var(--m-text)}
+.page-head p{font-size:13.5px;color:var(--m-muted);margin-top:4px;max-width:54ch}
+
+/* gallery toolbar */
+.gtb{display:flex;align-items:center;gap:12px;padding:0 24px 16px}
+.search{flex:1;max-width:300px;display:flex;align-items:center;gap:9px;background:var(--m-surface);border:1px solid var(--m-border);border-radius:10px;padding:9px 12px;color:var(--m-muted);font-size:13px}
+.cats{display:flex;gap:7px;padding:0 24px 18px;flex-wrap:wrap}
+.cat{font-size:12.5px;color:var(--m-muted);border:1px solid var(--m-border);background:var(--m-surface);border-radius:999px;padding:6px 13px;cursor:pointer;white-space:nowrap}
+.cat.on{color:var(--m-accent-fg);background:var(--m-accent);border-color:var(--m-accent);font-weight:500}
+
+/* gallery grid */
+.gal{display:grid;grid-template-columns:repeat(3,1fr);gap:12px;padding:0 24px 26px}
+@media(max-width:760px){.gal{grid-template-columns:1fr 1fr}}
+.gcard{background:var(--m-surface);border:1px solid var(--m-border);border-radius:12px;padding:16px;cursor:pointer;transition:.16s;display:flex;flex-direction:column;gap:11px;min-height:128px}
+.gcard:hover{border-color:#33383f;background:var(--m-surface2)}
+.gc-top{display:flex;align-items:flex-start;justify-content:space-between;gap:10px}
+.tile{width:38px;height:38px;border-radius:10px;display:grid;place-items:center;font-weight:600;font-size:15px;color:var(--m-text);background:var(--m-surface2);border:1px solid var(--m-border);flex:none}
+.gc-body h4{font-size:14px;font-weight:600;color:var(--m-text);letter-spacing:-0.01em}
+.gc-body p{font-size:12.5px;color:var(--m-muted);line-height:1.5;margin-top:4px}
+
+/* status badge system */
+.badge{display:inline-flex;align-items:center;gap:6px;font-family:var(--mono);font-size:10.5px;letter-spacing:0.02em;padding:3px 9px 3px 8px;border-radius:999px;border:1px solid;white-space:nowrap;line-height:1.4}
+.badge .d{width:6px;height:6px;border-radius:50%;flex:none}
+.t-neutral{color:var(--m-muted);border-color:var(--m-border)}.t-neutral .d{background:var(--m-muted)}
+.t-info{color:var(--m-accent);border-color:color-mix(in srgb,var(--m-accent) 42%,transparent);background:var(--m-accent-soft)}.t-info .d{background:var(--m-accent)}
+.t-success{color:var(--m-success);border-color:color-mix(in srgb,var(--m-success) 42%,transparent)}.t-success .d{background:var(--m-success)}
+.t-warning{color:var(--m-warning);border-color:color-mix(in srgb,var(--m-warning) 42%,transparent)}.t-warning .d{background:var(--m-warning)}
+.t-danger{color:var(--m-danger);border-color:color-mix(in srgb,var(--m-danger) 42%,transparent)}.t-danger .d{background:var(--m-danger)}
+.t-approval{color:var(--m-accent);border-style:dashed;border-color:color-mix(in srgb,var(--m-accent) 55%,transparent);background:var(--m-accent-soft)}.t-approval .d{background:var(--m-accent);animation:pulse 1.8s infinite}
+@keyframes pulse{0%,100%{opacity:1}50%{opacity:.35}}
+
+/* btns */
+.btn{display:inline-flex;align-items:center;gap:8px;font-family:inherit;font-size:13px;font-weight:500;padding:9px 15px;border-radius:10px;cursor:pointer;border:1px solid transparent;transition:.15s}
+.btn-primary{background:var(--m-accent);color:var(--m-accent-fg)}
+.btn-primary:hover{filter:brightness(1.07)}
+.btn-ghost{background:transparent;border-color:var(--m-border);color:var(--m-text)}
+.btn-ghost:hover{background:var(--m-surface2)}
+
+/* detail tabs */
+.tabs{display:flex;gap:4px;padding:0 24px;border-bottom:1px solid var(--m-border)}
+.tab{font-size:13.5px;color:var(--m-muted);padding:12px 13px;cursor:pointer;border-bottom:2px solid transparent;margin-bottom:-1px}
+.tab.on{color:var(--m-text);border-bottom-color:var(--m-accent);font-weight:500}
+.detail-head{display:flex;align-items:flex-start;gap:16px;padding:18px 24px 16px}
+.detail-head .tile{width:48px;height:48px;border-radius:12px;font-size:18px}
+.dh-meta{flex:1;min-width:0}
+.dh-meta .nm{display:flex;align-items:center;gap:10px;flex-wrap:wrap}
+.dh-meta h3{font-size:20px;font-weight:600;letter-spacing:-0.02em;color:var(--m-text)}
+.dh-meta .sub{font-size:13px;color:var(--m-muted);margin-top:4px}
+.dbody{padding:22px 24px 28px;display:grid;grid-template-columns:1.5fr 1fr;gap:26px}
+@media(max-width:760px){.dbody{grid-template-columns:1fr}}
+.dsec-t{font-family:var(--mono);font-size:10.5px;letter-spacing:0.09em;text-transform:uppercase;color:var(--m-faint);margin-bottom:12px}
+.dbody p.lead2{font-size:14px;color:var(--m-text);line-height:1.6;margin-bottom:22px}
+.flist{display:flex;flex-direction:column;gap:11px}
+.frow{display:flex;gap:11px;font-size:13.5px;color:var(--m-text)}
+.frow svg{flex:none;margin-top:2px;color:var(--m-accent)}
+.frow .x{color:var(--m-faint)}
+.side-card{background:var(--m-surface);border:1px solid var(--m-border);border-radius:12px;padding:16px}
+.kv{display:flex;align-items:center;justify-content:space-between;padding:9px 0;border-bottom:1px solid var(--m-border);font-size:13px}
+.kv:last-child{border-bottom:none}
+.kv .k{color:var(--m-muted)}.kv .v{color:var(--m-text);font-weight:500;display:flex;align-items:center;gap:7px}
+.mods{display:flex;gap:6px;flex-wrap:wrap;margin-top:12px}
+.modchip{font-size:11px;color:var(--m-text);background:var(--m-surface2);border:1px solid var(--m-border);border-radius:7px;padding:4px 9px;display:flex;align-items:center;gap:6px}
+.reuse{margin:0 24px 24px;padding:12px 15px;border:1px solid var(--m-border);border-radius:10px;background:var(--m-surface);display:flex;gap:11px;align-items:flex-start;font-size:12.5px;color:var(--m-muted);line-height:1.5}
+.reuse svg{flex:none;margin-top:1px;color:var(--m-accent)}
+
+/* permission modal */
+.modal-stage{position:relative;background:var(--m-bg)}
+.modal-dim{position:absolute;inset:0;background:rgba(0,0,0,0.55);backdrop-filter:blur(2px);z-index:1}
+.modal{position:relative;z-index:2;width:430px;max-width:calc(100% - 36px);margin:46px auto;background:var(--m-surface);border:1px solid var(--m-border);border-radius:18px;box-shadow:0 40px 100px -30px rgba(0,0,0,0.9);overflow:hidden}
+.mod-hd{display:flex;flex-direction:column;align-items:center;text-align:center;padding:26px 26px 18px;border-bottom:1px solid var(--m-border)}
+.mod-icons{display:flex;align-items:center;gap:12px;margin-bottom:16px}
+.mod-icons .dots{color:var(--m-faint);letter-spacing:2px}
+.mod-tile{width:42px;height:42px;border-radius:11px;display:grid;place-items:center;border:1px solid var(--m-border);background:var(--m-surface2);color:var(--m-text);font-weight:600;font-size:16px}
+.mod-hd h3{font-size:17px;font-weight:600;letter-spacing:-0.01em;color:var(--m-text)}
+.mod-hd p{font-size:13px;color:var(--m-muted);margin-top:7px;line-height:1.5;max-width:34ch}
+.mod-body{padding:18px 22px}
+.perm-grp+.perm-grp{margin-top:16px}
+.perm-lbl{font-family:var(--mono);font-size:10.5px;letter-spacing:0.06em;text-transform:uppercase;color:var(--m-faint);margin-bottom:9px}
+.perm-row{display:flex;gap:10px;align-items:center;font-size:13px;color:var(--m-text);padding:3px 0}
+.perm-row svg{flex:none}
+.perm-row.no{color:var(--m-muted)}
+.ic-ok{color:var(--m-success)}.ic-no{color:var(--m-faint)}
+.risk-bar{display:flex;align-items:center;justify-content:space-between;margin-top:18px;padding:12px 14px;border-radius:11px;border:1px solid var(--m-border);background:var(--m-surface2)}
+.risk-bar .rl{font-size:12.5px;color:var(--m-muted)}
+.hitl{margin-top:12px;display:flex;gap:10px;padding:12px 14px;border-radius:11px;border:1px dashed color-mix(in srgb,var(--m-accent) 50%,transparent);background:var(--m-accent-soft);font-size:12.5px;color:var(--m-text);line-height:1.5}
+.hitl svg{flex:none;margin-top:1px;color:var(--m-accent)}
+.mod-ft{display:flex;gap:10px;padding:16px 22px 20px;border-top:1px solid var(--m-border)}
+.mod-ft .btn{flex:1;justify-content:center;padding:11px}
+
+/* annotations */
+.annot{display:grid;grid-template-columns:repeat(4,1fr);gap:14px;margin-top:24px}
+@media(max-width:860px){.annot{grid-template-columns:repeat(2,1fr)}}
+@media(max-width:520px){.annot{grid-template-columns:1fr}}
+.an{border:1px solid var(--line);border-radius:11px;padding:16px 17px;background:var(--panel)}
+.an .n{font-family:var(--mono);font-size:11px;color:var(--accent);margin-bottom:7px}
+.an h4{font-size:13.5px;font-weight:600;margin-bottom:5px}
+.an p{font-size:12.5px;color:var(--muted);line-height:1.5}
+
+/* status legend */
+.legend{border:1px solid var(--m-border);border-radius:var(--radius);overflow:hidden;background:var(--m-bg)}
+.legend-row{display:grid;grid-template-columns:160px 1fr;gap:0;border-top:1px solid var(--m-border)}
+.legend-row:first-child{border-top:none}
+.legend-row .lh{padding:16px 20px;font-family:var(--mono);font-size:11px;letter-spacing:0.06em;text-transform:uppercase;color:var(--m-faint);background:var(--m-surface);border-right:1px solid var(--m-border);display:flex;align-items:center}
+.legend-row .lb{padding:16px 20px;display:flex;gap:9px;flex-wrap:wrap;align-items:center}
+@media(max-width:640px){.legend-row{grid-template-columns:1fr}.legend-row .lh{border-right:none;border-bottom:1px solid var(--m-border)}}
+
+/* state cards */
+.states{display:grid;grid-template-columns:repeat(2,1fr);gap:16px;margin-top:18px}
+@media(max-width:760px){.states{grid-template-columns:1fr}}
+.state{border:1px solid var(--m-border);border-radius:14px;background:var(--m-bg);overflow:hidden;display:flex;flex-direction:column}
+.state-hd{padding:11px 16px;border-bottom:1px solid var(--m-border);display:flex;align-items:center;justify-content:space-between;background:var(--m-surface)}
+.state-hd .t{font-family:var(--mono);font-size:11px;letter-spacing:0.05em;text-transform:uppercase;color:var(--m-muted)}
+.state-canvas{padding:34px 24px;min-height:182px;display:flex;flex-direction:column;align-items:center;justify-content:center;text-align:center;gap:6px}
+.state-ic{width:42px;height:42px;border-radius:12px;border:1px solid var(--m-border);background:var(--m-surface);display:grid;place-items:center;color:var(--m-muted);margin-bottom:8px}
+.state-canvas h4{font-size:15px;font-weight:600;color:var(--m-text)}
+.state-canvas p{font-size:13px;color:var(--m-muted);line-height:1.5;max-width:34ch}
+.state-canvas .btn{margin-top:8px}
+/* skeleton */
+.sk{width:100%;display:flex;flex-direction:column;gap:12px}
+.sk-row{display:flex;align-items:center;gap:12px}
+.sk-box{border-radius:7px;background:linear-gradient(90deg,var(--m-surface) 0%,var(--m-surface2) 50%,var(--m-surface) 100%);background-size:200% 100%;animation:shimmer 1.5s infinite}
+@keyframes shimmer{0%{background-position:200% 0}100%{background-position:-200% 0}}
+.approval-card{width:100%;border:1px dashed color-mix(in srgb,var(--m-accent) 50%,transparent);background:var(--m-accent-soft);border-radius:12px;padding:16px;text-align:left;display:flex;flex-direction:column;gap:12px}
+.approval-card .ac-top{display:flex;align-items:center;gap:10px}
+.approval-card .ac-msg{font-size:13px;color:var(--m-text);line-height:1.55;background:var(--m-bg);border:1px solid var(--m-border);border-radius:9px;padding:11px 13px}
+.approval-card .ac-actions{display:flex;gap:9px}
+
+/* mobile phones row */
+.phones{display:flex;gap:30px;flex-wrap:wrap;justify-content:center;align-items:flex-start}
+.phone-col{display:flex;flex-direction:column;align-items:center;gap:14px}
+.phone{width:288px;height:600px;border-radius:40px;border:1px solid var(--m-border);background:#000;padding:8px;box-shadow:0 50px 110px -50px rgba(0,0,0,1);position:relative}
+.ph-screen{width:100%;height:100%;border-radius:33px;overflow:hidden;background:var(--m-bg);display:flex;flex-direction:column;position:relative}
+.notch{position:absolute;top:10px;left:50%;transform:translateX(-50%);width:90px;height:22px;background:#000;border-radius:0 0 13px 13px;z-index:5}
+.ph-status{display:flex;align-items:center;justify-content:space-between;padding:12px 20px 4px;font-size:11.5px;font-weight:600;color:var(--m-text)}
+.ph-head{display:flex;align-items:center;justify-content:space-between;padding:8px 16px 10px;gap:10px;border-bottom:1px solid var(--m-border)}
+.ph-back{display:flex;align-items:center;gap:5px;color:var(--m-text);font-size:13.5px;font-weight:500}
+.ph-h-title{font-size:14px;font-weight:600;color:var(--m-text)}
+.ph-ic{width:30px;height:30px;border-radius:8px;display:grid;place-items:center;color:var(--m-text)}
+.ph-scroll{flex:1;overflow:hidden;padding:14px}
+.seg{display:flex;gap:3px;background:var(--m-surface2);border:1px solid var(--m-border);border-radius:10px;padding:3px;margin-bottom:14px}
+.seg span{flex:1;text-align:center;font-size:11.5px;padding:6px;border-radius:7px;color:var(--m-muted)}
+.seg span.on{background:var(--m-surface);color:var(--m-text);font-weight:500}
+.mcard{background:var(--m-surface);border:1px solid var(--m-border);border-radius:11px;padding:13px;margin-bottom:9px;display:flex;gap:11px;align-items:flex-start}
+.mcard .tile{width:34px;height:34px;border-radius:9px;font-size:13px}
+.mcard h5{font-size:13px;font-weight:600;color:var(--m-text)}
+.mcard p{font-size:11.5px;color:var(--m-muted);margin-top:2px;line-height:1.45}
+/* bottom sheet */
+.sheet-dim{position:absolute;inset:0;background:rgba(0,0,0,0.5);z-index:4}
+.sheet{position:absolute;left:0;right:0;bottom:0;z-index:5;background:var(--m-surface);border-top:1px solid var(--m-border);border-radius:22px 22px 33px 33px;padding:10px 18px 24px}
+.sheet .grab{width:38px;height:4px;border-radius:3px;background:var(--m-border);margin:4px auto 14px}
+.sheet .s-icons{display:flex;justify-content:center;align-items:center;gap:10px;margin-bottom:12px}
+.sheet h4{font-size:15px;font-weight:600;text-align:center;color:var(--m-text)}
+.sheet .s-sub{font-size:12px;color:var(--m-muted);text-align:center;margin:6px 0 14px}
+.sheet .perm-row{font-size:12.5px}
+.sheet .btn{width:100%;justify-content:center;margin-top:8px;padding:11px}
+.phone-cap{font-size:12.5px;color:var(--muted);text-align:center;max-width:250px;line-height:1.5}
+.phone-cap b{color:var(--tx2);font-weight:500}
+.flow-arrow{align-self:center;color:var(--faint);display:flex;align-items:center}
+@media(max-width:980px){.flow-arrow{transform:rotate(90deg)}}
+
+/* reuse map */
+.reusemap{display:grid;grid-template-columns:repeat(3,1fr);gap:16px}
+@media(max-width:860px){.reusemap{grid-template-columns:1fr}}
+.rm{border:1px solid var(--line);border-radius:var(--radius);background:var(--panel);padding:22px}
+.rm h4{font-size:15px;font-weight:600;display:flex;align-items:center;gap:9px;margin-bottom:14px}
+.rm .pat{font-family:var(--mono);font-size:10px;color:var(--accent);border:1px solid var(--accent);border-radius:5px;padding:2px 6px}
+.rm ul{list-style:none;display:flex;flex-direction:column;gap:9px}
+.rm li{font-size:13px;color:var(--tx2);display:flex;gap:9px;align-items:flex-start}
+.rm li svg{flex:none;margin-top:3px;color:var(--muted)}
+
+/* footer */
+.foot{padding:60px 0 88px;color:var(--muted);font-size:13.5px}
+.foot .nx{font-family:var(--mono);font-size:11px;letter-spacing:0.1em;text-transform:uppercase;color:var(--accent);margin-bottom:14px}
+.foot p{max-width:64ch;line-height:1.7}
+</style>
+</head>
+<body>
+
+<div class="ribbon">
+  <div class="wrap ribbon-in">
+    <div class="ribbon-brand">
+      <span class="mark"><svg width="22" height="22" viewBox="0 0 22 22" fill="none"><rect x="1.2" y="1.2" width="19.6" height="19.6" rx="6" stroke="currentColor" stroke-width="1.4"/><rect x="7.2" y="7.2" width="7.6" height="7.6" rx="2" transform="rotate(45 11 11)" stroke="currentColor" stroke-width="1.4"/></svg></span>
+      AutoBrokers<span style="color:var(--muted);font-weight:400">.ai</span>
+    </div>
+    <nav class="ribbon-nav">
+      <a href="#galeria">Galeria</a>
+      <a href="#detalhe">Detalhe</a>
+      <a href="#permissao">Permissão</a>
+      <a href="#estados">Estados</a>
+      <a href="#mobile">Mobile</a>
+      <a href="#reuso">Reuso</a>
+    </nav>
+    <span class="ribbon-tag">LEVA 2 · PADRÕES-MESTRE</span>
+  </div>
+</div>
+
+<header class="hero">
+  <div class="wrap">
+    <div class="kick">Leva 2 · Os três padrões reutilizáveis</div>
+    <h1>Três padrões. Todo o produto.</h1>
+    <p class="lead">Sobre a fundação aprovada, desenho aqui as três peças que se repetem em cada módulo — Galeria, Página de Detalhe e Modal de Permissão — mais o sistema de estados que percorre tudo. Construídos uma vez, muito bem, e reutilizados em <b style="color:var(--tx2)">Auxiliares, Conectores, Seguradoras e Atendimentos</b>. É o que faz o produto inteiro parecer coeso.</p>
+    <div class="hero-meta">
+      <span class="chip"><b>A</b> · Galeria</span>
+      <span class="chip"><b>B</b> · Página de Detalhe</span>
+      <span class="chip"><b>C</b> · Modal de Permissão</span>
+      <span class="chip">Estados transversais</span>
+      <span class="chip">Paleta <b>Névoa</b> · Geist</span>
+    </div>
+  </div>
+</header>
+
+<!-- ============ A · GALERIA ============ -->
+<section class="block" id="galeria">
+  <div class="wrap">
+    <div class="sec-head"><span class="sec-num">01</span><h2>Padrão-Mestre A · Galeria</h2><span class="sec-tag">inspiração: ChatGPT Apps / Connectors</span></div>
+    <p class="sec-lead">Grade de <b>cards discretos</b> — ícone, nome, descrição curta e estado. Busca leve, categorias quando fizer sentido. Clicar num card leva ao Detalhe (B). Aqui demonstrada em <b>Conectores</b>; o mesmo padrão serve a Galeria de Auxiliares e à lista de Seguradoras.</p>
+    <div class="mock-cap">app.autobrokers.ai/personalizacao/conectores · desktop</div>
+    <div class="skin">
+      <div class="browser">
+        <div class="bw-bar"><div class="bw-dots"><i></i><i></i><i></i></div><div class="bw-url">app.autobrokers.ai/personalizacao/conectores</div><div style="width:54px"></div></div>
+        <div class="bw-body"><div class="app">
+          <aside class="mini-sb">
+            <div class="mini-brand"><span class="mark" style="color:var(--m-text)"><svg width="18" height="18" viewBox="0 0 22 22" fill="none"><rect x="1.2" y="1.2" width="19.6" height="19.6" rx="6" stroke="currentColor" stroke-width="1.4"/><rect x="7.2" y="7.2" width="7.6" height="7.6" rx="2" transform="rotate(45 11 11)" stroke="currentColor" stroke-width="1.4"/></svg></span>AutoBrokers</div>
+            <div class="mini-item"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/></svg>AutoBrokers</div>
+            <div class="mini-item"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6"><path d="M22 12h-6l-2 3h-4l-2-3H2"/><path d="M5.5 6h13l2.5 6v6a1 1 0 0 1-1 1H4a1 1 0 0 1-1-1v-6z"/></svg>Atendimentos</div>
+            <div class="mini-item"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6"><path d="M13 2 3 14h7l-1 8 10-12h-7z"/></svg>Auxiliares</div>
+            <div class="mini-item on"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6"><path d="M4 6h16M4 12h16M4 18h16"/></svg>Personalização</div>
+            <div class="mini-sub">Personalização</div>
+            <div class="mini-item" style="font-size:12.5px">Corretora</div>
+            <div class="mini-item" style="font-size:12.5px">Equipe</div>
+            <div class="mini-item on" style="font-size:12.5px">Conectores</div>
+            <div class="mini-item" style="font-size:12.5px">Seguradoras</div>
+            <div class="mini-item" style="font-size:12.5px">Conhecimento</div>
+          </aside>
+          <div class="content">
+            <div class="crumb">Personalização <span class="sep">/</span> <b>Conectores</b></div>
+            <div class="page-head"><div class="h-l"><h3>Conectores</h3><p>Conecte suas ferramentas uma vez. AutoBrokers, Atendimentos e Auxiliares reutilizam, com permissão.</p></div></div>
+            <div class="gtb">
+              <div class="search"><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7"><circle cx="11" cy="11" r="7"/><path d="m20 20-3-3"/></svg>Buscar conectores</div>
+            </div>
+            <div class="cats">
+              <div class="cat on">Todos</div>
+              <div class="cat">Google</div>
+              <div class="cat">Comunicação</div>
+              <div class="cat">Sistemas de gestão</div>
+              <div class="cat">Documentos</div>
+              <div class="cat">Ferramentas</div>
+            </div>
+            <div class="gal">
+              <div class="gcard"><div class="gc-top"><div class="tile">W</div><span class="badge t-success"><span class="d"></span>Conectado</span></div><div class="gc-body"><h4>WhatsApp</h4><p>Canal de mensagens com clientes e segurados.</p></div></div>
+              <div class="gcard"><div class="gc-top"><div class="tile">D</div><span class="badge t-neutral"><span class="d"></span>Disponível</span></div><div class="gc-body"><h4>Google Drive</h4><p>Consultar arquivos e pastas como conhecimento.</p></div></div>
+              <div class="gcard"><div class="gc-top"><div class="tile">M</div><span class="badge t-neutral"><span class="d"></span>Disponível</span></div><div class="gc-body"><h4>Gmail</h4><p>Ler e preparar e-mails para a corretora.</p></div></div>
+              <div class="gcard"><div class="gc-top"><div class="tile">I</div><span class="badge t-warning"><span class="d"></span>Precisa configurar</span></div><div class="gc-body"><h4>InfoCap</h4><p>Sistema de gestão da carteira de clientes.</p></div></div>
+              <div class="gcard"><div class="gc-top"><div class="tile">S</div><span class="badge t-info"><span class="d"></span>Em teste</span></div><div class="gc-body"><h4>Segfy</h4><p>Gestão e cotação de apólices.</p></div></div>
+              <div class="gcard"><div class="gc-top"><div class="tile">C</div><span class="badge t-neutral"><span class="d"></span>Disponível</span></div><div class="gc-body"><h4>Google Calendar</h4><p>Agenda de renovações e compromissos.</p></div></div>
+            </div>
+          </div>
+        </div></div>
+      </div>
+    </div>
+    <div class="annot">
+      <div class="an"><div class="n">A1</div><h4>Cards discretos</h4><p>Ícone monograma, nome, uma linha de descrição e um estado. Nunca cards gigantes — densidade baixa e legível.</p></div>
+      <div class="an"><div class="n">A2</div><h4>Categorias como filtro</h4><p>Google, Comunicação, Gestão… resolvem a separação sem inflar a sidebar com mais itens de 1º nível.</p></div>
+      <div class="an"><div class="n">A3</div><h4>Estado em cada card</h4><p>Conectado, Disponível, Precisa configurar, Em teste — cor <i>e</i> texto, nunca só cor.</p></div>
+      <div class="an"><div class="n">A4</div><h4>Conectar uma vez</h4><p>Mesma conexão reutilizada por todos os módulos. É o Vault por baixo, sem expor tela técnica.</p></div>
+    </div>
+  </div>
+</section>
+
+<!-- ============ B · DETALHE ============ -->
+<section class="block" id="detalhe">
+  <div class="wrap">
+    <div class="sec-head"><span class="sec-num">02</span><h2>Padrão-Mestre B · Página de Detalhe</h2><span class="sec-tag">progressive disclosure</span></div>
+    <p class="sec-lead">Cabeçalho com ícone, nome, status e <b>ação primária</b>. Corpo em abas que revelam a complexidade aos poucos: <b>Visão geral → Permissões → Conexões → Histórico</b>. Sempre com caminho de volta. Aqui um conector; a mesma anatomia serve a Auxiliar, Seguradora e Caso.</p>
+    <div class="mock-cap">app.autobrokers.ai/personalizacao/conectores/google-drive · desktop</div>
+    <div class="skin">
+      <div class="browser">
+        <div class="bw-bar"><div class="bw-dots"><i></i><i></i><i></i></div><div class="bw-url">…/conectores/google-drive</div><div style="width:54px"></div></div>
+        <div class="bw-body"><div class="content" style="background:var(--m-bg)">
+          <div class="crumb" style="padding-top:18px">Personalização <span class="sep">/</span> Conectores <span class="sep">/</span> <b>Google Drive</b></div>
+          <div class="detail-head">
+            <div class="tile">D</div>
+            <div class="dh-meta">
+              <div class="nm"><h3>Google Drive</h3><span class="badge t-neutral"><span class="d"></span>Disponível</span></div>
+              <div class="sub">Documentos · Leitura de arquivos e pastas</div>
+            </div>
+            <button class="btn btn-primary"><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9"><path d="M12 5v14M5 12h14"/></svg>Conectar</button>
+          </div>
+          <div class="tabs">
+            <div class="tab on">Visão geral</div>
+            <div class="tab">Permissões</div>
+            <div class="tab">Conexões</div>
+            <div class="tab">Histórico</div>
+          </div>
+          <div class="dbody">
+            <div>
+              <p class="lead2">Conecte o Google Drive para o AutoBrokers consultar apólices, propostas e documentos da corretora como fonte de conhecimento — sem precisar enviar arquivo por arquivo.</p>
+              <div class="dsec-t">Como funciona</div>
+              <div class="flist" style="margin-bottom:24px">
+                <div class="frow"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M20 6 9 17l-5-5"/></svg>Você autoriza o acesso uma única vez.</div>
+                <div class="frow"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M20 6 9 17l-5-5"/></svg>Escolhe quais pastas o AutoBrokers pode ler.</div>
+                <div class="frow"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M20 6 9 17l-5-5"/></svg>Auxiliares e Conhecimento passam a usar a mesma conexão.</div>
+              </div>
+              <div class="dsec-t">O que será acessado</div>
+              <div class="flist">
+                <div class="frow"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M20 6 9 17l-5-5"/></svg>Leitura de arquivos e pastas selecionadas.</div>
+                <div class="frow x"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M18 6 6 18M6 6l12 12"/></svg>Não edita, move ou exclui nada.</div>
+              </div>
+            </div>
+            <div>
+              <div class="side-card" style="margin-bottom:14px">
+                <div class="kv"><span class="k">Categoria</span><span class="v">Documentos</span></div>
+                <div class="kv"><span class="k">Nível de acesso</span><span class="v"><span class="badge t-success" style="border:none;padding:0;background:none"><span class="d"></span></span>Somente leitura</span></div>
+                <div class="kv"><span class="k">Risco</span><span class="v">Baixo</span></div>
+                <div class="kv"><span class="k">Configuração</span><span class="v">~2 min</span></div>
+              </div>
+              <div class="side-card">
+                <div class="dsec-t" style="margin-bottom:10px">Quem poderá usar</div>
+                <div class="mods">
+                  <span class="modchip"><svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/></svg>AutoBrokers</span>
+                  <span class="modchip"><svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7"><path d="M13 2 3 14h7l-1 8 10-12h-7z"/></svg>Auxiliares</span>
+                  <span class="modchip"><svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7"><path d="M4 19.5A2.5 2.5 0 0 1 6.5 17H20"/><path d="M6.5 2H20v20H6.5A2.5 2.5 0 0 1 4 19.5v-15A2.5 2.5 0 0 1 6.5 2z"/></svg>Conhecimento</span>
+                </div>
+              </div>
+            </div>
+          </div>
+          <div class="reuse"><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7"><path d="M17 1l4 4-4 4"/><path d="M3 11V9a4 4 0 0 1 4-4h14M7 23l-4-4 4-4"/><path d="M21 13v2a4 4 0 0 1-4 4H3"/></svg><span>Mesma anatomia em <b style="color:var(--m-text)">Auxiliar</b> (Visão geral · Configuração · Conectores · Permissões · Execuções), <b style="color:var(--m-text)">Seguradora</b> (Visão geral · Canais · Portal · Corredores) e <b style="color:var(--m-text)">Caso</b> (Timeline · Conversa · Documentos · Ações).</span></div>
+        </div></div>
+      </div>
+    </div>
+    <div class="annot">
+      <div class="an"><div class="n">B1</div><h4>Cabeçalho fixo</h4><p>Ícone, nome, status e UMA ação primária. Ações secundárias ficam discretas dentro das abas.</p></div>
+      <div class="an"><div class="n">B2</div><h4>Abas = camadas</h4><p>Cada aba revela só o necessário. Nada de uma página única e gigante com tudo aberto.</p></div>
+      <div class="an"><div class="n">B3</div><h4>Linguagem humana</h4><p>“Vai poder ler seus arquivos”, não “OAuth scope”. O painel lateral resume risco e quem usa.</p></div>
+      <div class="an"><div class="n">B4</div><h4>Retorno sempre claro</h4><p>Breadcrumb no desktop, voltar contextual no mobile. O usuário nunca se perde nas camadas.</p></div>
+    </div>
+  </div>
+</section>
+
+<!-- ============ C · PERMISSÃO ============ -->
+<section class="block" id="permissao">
+  <div class="wrap">
+    <div class="sec-head"><span class="sec-num">03</span><h2>Padrão-Mestre C · Modal de Permissão</h2><span class="sec-tag">consentimento · HITL</span></div>
+    <p class="sec-lead">Aparece ao conectar algo ou autorizar uma ação. Mostra com clareza <b>o que será acessado, para quê, qual o risco e quem poderá usar</b> — em linguagem de corretora. Para ações sensíveis, comunica que haverá <b>aprovação humana</b> antes de qualquer execução externa.</p>
+    <div class="mock-cap">Conectar Google Drive · sobreposto à página de Detalhe</div>
+    <div class="skin">
+      <div class="browser">
+        <div class="bw-bar"><div class="bw-dots"><i></i><i></i><i></i></div><div class="bw-url">…/conectores/google-drive</div><div style="width:54px"></div></div>
+        <div class="bw-body modal-stage">
+          <div class="modal-dim"></div>
+          <!-- dimmed page behind -->
+          <div class="content" style="opacity:.5">
+            <div class="crumb" style="padding-top:18px">Personalização <span class="sep">/</span> Conectores <span class="sep">/</span> <b>Google Drive</b></div>
+            <div class="detail-head"><div class="tile">D</div><div class="dh-meta"><div class="nm"><h3>Google Drive</h3></div><div class="sub">Documentos · Leitura de arquivos e pastas</div></div></div>
+          </div>
+          <!-- modal -->
+          <div class="modal">
+            <div class="mod-hd">
+              <div class="mod-icons">
+                <div class="mod-tile"><span class="mark" style="color:var(--m-text)"><svg width="20" height="20" viewBox="0 0 22 22" fill="none"><rect x="1.2" y="1.2" width="19.6" height="19.6" rx="6" stroke="currentColor" stroke-width="1.4"/><rect x="7.2" y="7.2" width="7.6" height="7.6" rx="2" transform="rotate(45 11 11)" stroke="currentColor" stroke-width="1.4"/></svg></span></div>
+                <span class="dots">· · ·</span>
+                <div class="mod-tile">D</div>
+              </div>
+              <h3>Conectar Google Drive ao AutoBrokers</h3>
+              <p>Autorize o acesso para o AutoBrokers consultar seus documentos como conhecimento.</p>
+            </div>
+            <div class="mod-body">
+              <div class="perm-grp">
+                <div class="perm-lbl">O AutoBrokers vai poder</div>
+                <div class="perm-row"><svg class="ic-ok" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M20 6 9 17l-5-5"/></svg>Ler arquivos e pastas que você escolher</div>
+                <div class="perm-row"><svg class="ic-ok" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M20 6 9 17l-5-5"/></svg>Buscar documentos quando você pedir</div>
+                <div class="perm-row"><svg class="ic-ok" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M20 6 9 17l-5-5"/></svg>Usar como fonte de conhecimento da corretora</div>
+              </div>
+              <div class="perm-grp">
+                <div class="perm-lbl">Não vai poder</div>
+                <div class="perm-row no"><svg class="ic-no" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M18 6 6 18M6 6l12 12"/></svg>Editar, mover ou excluir arquivos</div>
+                <div class="perm-row no"><svg class="ic-no" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M18 6 6 18M6 6l12 12"/></svg>Compartilhar com terceiros</div>
+              </div>
+              <div class="risk-bar">
+                <span class="rl">Nível de risco</span>
+                <span class="badge t-success"><span class="d"></span>Baixo · somente leitura</span>
+              </div>
+              <div class="hitl"><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7"><path d="M12 2l8 4v6c0 5-3.5 8-8 10-4.5-2-8-5-8-10V6z"/><path d="M9 12l2 2 4-4"/></svg><span>Qualquer ação externa (enviar, alterar dados) sempre passa por <b style="color:var(--m-text)">sua aprovação</b> antes de acontecer.</span></div>
+            </div>
+            <div class="mod-ft">
+              <button class="btn btn-ghost">Cancelar</button>
+              <button class="btn btn-primary">Autorizar acesso</button>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+    <div class="annot">
+      <div class="an"><div class="n">C1</div><h4>Pode / não pode</h4><p>Duas listas curtas com check e x. O usuário entende o escopo em segundos, sem jargão.</p></div>
+      <div class="an"><div class="n">C2</div><h4>Risco explícito</h4><p>Baixo · Médio · Alto · Crítico — sempre visível. Define a postura de aprovação.</p></div>
+      <div class="an"><div class="n">C3</div><h4>Aviso de aprovação humana</h4><p>Faixa tracejada de acento comunica o HITL. Ações sensíveis nunca acontecem sem você.</p></div>
+      <div class="an"><div class="n">C4</div><h4>Modal só para o curto</h4><p>Conectar, confirmar, aprovar. Configuração longa vira página (B), nunca modal gigante.</p></div>
+    </div>
+  </div>
+</section>
+
+<!-- ============ ESTADOS ============ -->
+<section class="block" id="estados">
+  <div class="wrap">
+    <div class="sec-head"><span class="sec-num">04</span><h2>Estados transversais</h2><span class="sec-tag">um sistema, não 16 telas</span></div>
+    <p class="sec-lead">Um sistema de status flexível cobre todos os módulos — de conector a caso de sinistro. <b>Cor sempre acompanhada de texto e ícone</b>, nunca cor sozinha. E os quatro estados que toda tela precisa resolver bem: vazio, carregando, erro e aguardando aprovação.</p>
+
+    <div class="skin">
+      <div class="legend">
+        <div class="legend-row">
+          <div class="lh">Neutro · em curso</div>
+          <div class="lb">
+            <span class="badge t-neutral"><span class="d"></span>Disponível</span>
+            <span class="badge t-neutral"><span class="d"></span>Rascunho</span>
+            <span class="badge t-neutral"><span class="d"></span>Em triagem</span>
+            <span class="badge t-neutral"><span class="d"></span>Pausado</span>
+            <span class="badge t-neutral"><span class="d"></span>Encerrado</span>
+          </div>
+        </div>
+        <div class="legend-row">
+          <div class="lh">Informação · ativo</div>
+          <div class="lb">
+            <span class="badge t-info"><span class="d"></span>Em andamento</span>
+            <span class="badge t-info"><span class="d"></span>Em teste</span>
+            <span class="badge t-info"><span class="d"></span>Em análise</span>
+            <span class="badge t-info"><span class="d"></span>Aguardando cliente</span>
+          </div>
+        </div>
+        <div class="legend-row">
+          <div class="lh">Sucesso</div>
+          <div class="lb">
+            <span class="badge t-success"><span class="d"></span>Conectado</span>
+            <span class="badge t-success"><span class="d"></span>Ativo</span>
+            <span class="badge t-success"><span class="d"></span>Pronto para acionamento</span>
+            <span class="badge t-success"><span class="d"></span>Resolvido</span>
+          </div>
+        </div>
+        <div class="legend-row">
+          <div class="lh">Atenção</div>
+          <div class="lb">
+            <span class="badge t-warning"><span class="d"></span>Precisa configurar</span>
+            <span class="badge t-warning"><span class="d"></span>Aguardando documento</span>
+            <span class="badge t-warning"><span class="d"></span>Aguardando seguradora</span>
+          </div>
+        </div>
+        <div class="legend-row">
+          <div class="lh">Crítico</div>
+          <div class="lb">
+            <span class="badge t-danger"><span class="d"></span>Com erro</span>
+            <span class="badge t-danger"><span class="d"></span>Bloqueado</span>
+            <span class="badge t-danger"><span class="d"></span>Cancelado</span>
+          </div>
+        </div>
+        <div class="legend-row">
+          <div class="lh">Aprovação · HITL</div>
+          <div class="lb">
+            <span class="badge t-approval"><span class="d"></span>Aguardando aprovação</span>
+            <span class="badge t-approval"><span class="d"></span>Handoff humano</span>
+            <span style="font-size:12px;color:var(--m-muted)">— tratamento próprio: borda tracejada + ponto pulsante</span>
+          </div>
+        </div>
+      </div>
+
+      <div class="states">
+        <!-- empty -->
+        <div class="state">
+          <div class="state-hd"><span class="t">Estado vazio</span><span class="badge t-neutral"><span class="d"></span>empty</span></div>
+          <div class="state-canvas">
+            <div class="state-ic"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6"><path d="M13 2 3 14h7l-1 8 10-12h-7z"/></svg></div>
+            <h4>Você ainda não ativou nenhum Auxiliar</h4>
+            <p>Escolha um modelo pronto na Galeria e coloque o AutoBrokers para trabalhar por você.</p>
+            <button class="btn btn-primary">Ver Galeria</button>
+          </div>
+        </div>
+        <!-- loading -->
+        <div class="state">
+          <div class="state-hd"><span class="t">Carregando</span><span class="badge t-info"><span class="d"></span>loading</span></div>
+          <div class="state-canvas" style="align-items:stretch;justify-content:flex-start">
+            <div class="sk">
+              <div class="sk-row"><div class="sk-box" style="width:38px;height:38px;border-radius:10px"></div><div style="flex:1"><div class="sk-box" style="height:11px;width:55%;margin-bottom:8px"></div><div class="sk-box" style="height:9px;width:80%"></div></div></div>
+              <div class="sk-row"><div class="sk-box" style="width:38px;height:38px;border-radius:10px"></div><div style="flex:1"><div class="sk-box" style="height:11px;width:48%;margin-bottom:8px"></div><div class="sk-box" style="height:9px;width:72%"></div></div></div>
+              <div class="sk-row"><div class="sk-box" style="width:38px;height:38px;border-radius:10px"></div><div style="flex:1"><div class="sk-box" style="height:11px;width:60%;margin-bottom:8px"></div><div class="sk-box" style="height:9px;width:66%"></div></div></div>
+            </div>
+          </div>
+        </div>
+        <!-- error -->
+        <div class="state">
+          <div class="state-hd"><span class="t">Erro</span><span class="badge t-danger"><span class="d"></span>error</span></div>
+          <div class="state-canvas">
+            <div class="state-ic" style="color:var(--m-danger);border-color:color-mix(in srgb,var(--m-danger) 40%,transparent)"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7"><path d="M12 9v4M12 17h.01"/><path d="M10.3 3.9 1.8 18a2 2 0 0 0 1.7 3h17a2 2 0 0 0 1.7-3L13.7 3.9a2 2 0 0 0-3.4 0z"/></svg></div>
+            <h4>Não conseguimos carregar seus Auxiliares</h4>
+            <p>Revise as configurações ou tente novamente em alguns instantes.</p>
+            <button class="btn btn-ghost">Tentar novamente</button>
+          </div>
+        </div>
+        <!-- aguardando aprovação -->
+        <div class="state">
+          <div class="state-hd"><span class="t">Aguardando aprovação · HITL</span><span class="badge t-approval"><span class="d"></span>approval</span></div>
+          <div class="state-canvas" style="justify-content:flex-start">
+            <div class="approval-card">
+              <div class="ac-top"><span class="badge t-approval"><span class="d"></span>Aguardando aprovação</span><span style="font-size:11px;color:var(--m-muted);font-family:var(--mono)">Auxiliar de Cobrança</span></div>
+              <div class="ac-msg">“Olá, Marcia! Notamos que a parcela de fevereiro segue em aberto. Posso te ajudar a regularizar?” <span style="color:var(--m-muted)">— rascunho para 1 de 8 clientes</span></div>
+              <div class="ac-actions"><button class="btn btn-ghost" style="flex:1;justify-content:center">Revisar</button><button class="btn btn-primary" style="flex:1;justify-content:center">Aprovar envio</button></div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ============ MOBILE ============ -->
+<section class="block" id="mobile">
+  <div class="wrap">
+    <div class="sec-head"><span class="sec-num">05</span><h2>Mobile · o mesmo padrão em camadas</h2></div>
+    <p class="sec-lead">No celular, A → B → C viram <b>camadas que deslizam</b>, com retorno sempre visível. A Galeria é uma coluna; o Detalhe usa segmented control no lugar das abas; a Permissão vira <b>bottom-sheet</b> curto. Nunca um modal gigante.</p>
+    <div class="skin">
+      <div class="phones">
+        <div class="phone-col">
+          <div class="phone">
+            <div class="notch"></div>
+            <div class="ph-screen">
+              <div class="ph-status"><span>9:41</span><span style="opacity:.75">●●● ⌁</span></div>
+              <div class="ph-head"><div class="ph-back"><svg width="19" height="19" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M15 18l-6-6 6-6"/></svg></div><div class="ph-h-title">Conectores</div><div class="ph-ic"><svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7"><circle cx="11" cy="11" r="7"/><path d="m20 20-3-3"/></svg></div></div>
+              <div class="ph-scroll">
+                <div class="cats" style="padding:0 0 12px"><div class="cat on">Todos</div><div class="cat">Google</div><div class="cat">Comunicação</div></div>
+                <div class="mcard"><div class="tile">W</div><div style="flex:1"><div style="display:flex;justify-content:space-between;align-items:center"><h5>WhatsApp</h5><span class="badge t-success"><span class="d"></span>Conectado</span></div><p>Canal de mensagens com clientes.</p></div></div>
+                <div class="mcard"><div class="tile">D</div><div style="flex:1"><div style="display:flex;justify-content:space-between;align-items:center"><h5>Google Drive</h5><span class="badge t-neutral"><span class="d"></span>Disponível</span></div><p>Arquivos como conhecimento.</p></div></div>
+                <div class="mcard"><div class="tile">I</div><div style="flex:1"><div style="display:flex;justify-content:space-between;align-items:center"><h5>InfoCap</h5><span class="badge t-warning"><span class="d"></span>Config.</span></div><p>Gestão da carteira.</p></div></div>
+                <div class="mcard"><div class="tile">C</div><div style="flex:1"><div style="display:flex;justify-content:space-between;align-items:center"><h5>Calendar</h5><span class="badge t-neutral"><span class="d"></span>Disponível</span></div><p>Agenda de renovações.</p></div></div>
+              </div>
+            </div>
+          </div>
+          <div class="phone-cap"><b>A · Galeria</b><br>coluna única, busca no header.</div>
+        </div>
+
+        <div class="flow-arrow"><svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6"><path d="M5 12h14M13 6l6 6-6 6"/></svg></div>
+
+        <div class="phone-col">
+          <div class="phone">
+            <div class="notch"></div>
+            <div class="ph-screen">
+              <div class="ph-status"><span>9:41</span><span style="opacity:.75">●●● ⌁</span></div>
+              <div class="ph-head"><div class="ph-back"><svg width="19" height="19" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M15 18l-6-6 6-6"/></svg>Conectores</div></div>
+              <div class="ph-scroll">
+                <div style="display:flex;gap:13px;align-items:flex-start;margin-bottom:16px">
+                  <div class="tile" style="width:46px;height:46px;border-radius:12px;font-size:18px">D</div>
+                  <div><h5 style="font-size:17px;color:var(--m-text);font-weight:600">Google Drive</h5><div style="font-size:12px;color:var(--m-muted);margin:3px 0 7px">Documentos · somente leitura</div><span class="badge t-neutral"><span class="d"></span>Disponível</span></div>
+                </div>
+                <div class="seg"><span class="on">Visão geral</span><span>Permissões</span><span>Histórico</span></div>
+                <p style="font-size:13px;color:var(--m-text);line-height:1.55;margin-bottom:16px">Consulte apólices e documentos da corretora como conhecimento, sem enviar arquivo por arquivo.</p>
+                <div class="dsec-t">Quem poderá usar</div>
+                <div class="mods"><span class="modchip">AutoBrokers</span><span class="modchip">Auxiliares</span><span class="modchip">Conhecimento</span></div>
+              </div>
+              <div style="padding:12px 14px;border-top:1px solid var(--m-border)"><button class="btn btn-primary" style="width:100%;justify-content:center;padding:12px">Conectar</button></div>
+            </div>
+          </div>
+          <div class="phone-cap"><b>B · Detalhe</b><br>abas viram segmented control.</div>
+        </div>
+
+        <div class="flow-arrow"><svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6"><path d="M5 12h14M13 6l6 6-6 6"/></svg></div>
+
+        <div class="phone-col">
+          <div class="phone">
+            <div class="notch"></div>
+            <div class="ph-screen">
+              <div class="ph-status"><span>9:41</span><span style="opacity:.75">●●● ⌁</span></div>
+              <div class="ph-head"><div class="ph-back"><svg width="19" height="19" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M15 18l-6-6 6-6"/></svg>Google Drive</div></div>
+              <div class="ph-scroll" style="opacity:.4"><div class="seg"><span class="on">Visão geral</span><span>Permissões</span><span>Histórico</span></div><p style="font-size:13px;color:var(--m-text);line-height:1.55">Consulte apólices e documentos…</p></div>
+              <div class="sheet-dim"></div>
+              <div class="sheet">
+                <div class="grab"></div>
+                <div class="s-icons"><div class="mod-tile" style="width:34px;height:34px"><span class="mark" style="color:var(--m-text)"><svg width="16" height="16" viewBox="0 0 22 22" fill="none"><rect x="1.2" y="1.2" width="19.6" height="19.6" rx="6" stroke="currentColor" stroke-width="1.4"/><rect x="7.2" y="7.2" width="7.6" height="7.6" rx="2" transform="rotate(45 11 11)" stroke="currentColor" stroke-width="1.4"/></svg></span></div><span style="color:var(--m-faint)">· · ·</span><div class="mod-tile" style="width:34px;height:34px;font-size:13px">D</div></div>
+                <h4>Conectar Google Drive</h4>
+                <div class="s-sub">Autorize o acesso de leitura</div>
+                <div class="perm-row"><svg class="ic-ok" width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M20 6 9 17l-5-5"/></svg>Ler arquivos que você escolher</div>
+                <div class="perm-row"><svg class="ic-ok" width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M20 6 9 17l-5-5"/></svg>Buscar documentos quando pedir</div>
+                <div class="perm-row no"><svg class="ic-no" width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M18 6 6 18M6 6l12 12"/></svg>Não edita nem exclui nada</div>
+                <div class="risk-bar" style="margin-top:13px"><span class="rl">Risco</span><span class="badge t-success"><span class="d"></span>Baixo</span></div>
+                <button class="btn btn-primary">Autorizar acesso</button>
+              </div>
+            </div>
+          </div>
+          <div class="phone-cap"><b>C · Permissão</b><br>bottom-sheet curto, não modal cheio.</div>
+        </div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ============ REUSO ============ -->
+<section class="block" id="reuso">
+  <div class="wrap">
+    <div class="sec-head"><span class="sec-num">06</span><h2>Onde cada padrão se repete</h2></div>
+    <p class="sec-lead">A promessa da Leva 2: desenhados uma vez, aplicados em todo lugar na Leva 3. Esta é a matriz de reuso que entrego para o Claude Code implementar como componentes.</p>
+    <div class="reusemap">
+      <div class="rm">
+        <h4><span class="pat">A</span> Galeria</h4>
+        <ul>
+          <li><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M9 18l6-6-6-6"/></svg>Galeria de Auxiliares (modelos prontos)</li>
+          <li><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M9 18l6-6-6-6"/></svg>Galeria de Conectores</li>
+          <li><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M9 18l6-6-6-6"/></svg>Lista de Seguradoras</li>
+        </ul>
+      </div>
+      <div class="rm">
+        <h4><span class="pat">B</span> Página de Detalhe</h4>
+        <ul>
+          <li><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M9 18l6-6-6-6"/></svg>Detalhe de Auxiliar + ativação</li>
+          <li><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M9 18l6-6-6-6"/></svg>Detalhe de Conector</li>
+          <li><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M9 18l6-6-6-6"/></svg>Página de Seguradora (abas)</li>
+          <li><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M9 18l6-6-6-6"/></svg>Detalhe de Caso (Atendimentos)</li>
+        </ul>
+      </div>
+      <div class="rm">
+        <h4><span class="pat">C</span> Modal de Permissão</h4>
+        <ul>
+          <li><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M9 18l6-6-6-6"/></svg>Conectar um conector</li>
+          <li><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M9 18l6-6-6-6"/></svg>Autorizar um Auxiliar</li>
+          <li><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M9 18l6-6-6-6"/></svg>Aprovar ação de atendimento (HITL)</li>
+        </ul>
+      </div>
+    </div>
+  </div>
+</section>
+
+<footer class="foot">
+  <div class="wrap">
+    <div class="nx">Próximos passos · aguardando sua aprovação</div>
+    <p style="color:var(--tx2);font-size:16px">Aprovados os padrões-mestre e os estados, sigo para a <b style="color:var(--tx)">Leva 3 — Módulos</b>: Auxiliares (com o Auxiliar de Resumo de Atendimentos), Personalização → Conectores, Personalização → Seguradoras e o shell de Atendimentos — todos aplicando A, B, C e o sistema de status definidos aqui.</p>
+    <p style="margin-top:22px;font-family:var(--mono);font-size:12px;color:var(--faint)">AutoBrokers.ai · Leva 2 · Padrões-Mestre · paleta Névoa · Geist · Tailwind + Radix</p>
+  </div>
+</footer>
+
+</body>
+</html>

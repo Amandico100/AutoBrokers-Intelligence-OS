@@ -1,0 +1,696 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>AutoBrokers.ai — Leva 1 · Fundação Visual</title>
+<link rel="preconnect" href="https://fonts.googleapis.com" />
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+<link href="https://fonts.googleapis.com/css2?family=Geist:wght@400;500;600;700&family=Geist+Mono:wght@400;500&display=swap" rel="stylesheet" />
+<style>
+:root{
+  --bg:#0a0b0d;
+  --panel:#111317;
+  --panel2:#171a1f;
+  --line:#23272e;
+  --line-soft:#1a1d23;
+  --tx:#f1f3f5;
+  --tx2:#c4cad2;
+  --muted:#828a93;
+  --faint:#596169;
+  --accent:#6fa6c9;
+  --accent-soft:rgba(111,166,201,0.13);
+  --radius:14px;
+  --maxw:1120px;
+  --sans:"Geist","Geist Fallback",-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif;
+  --mono:"Geist Mono",ui-monospace,SFMono-Regular,Menlo,monospace;
+}
+*{box-sizing:border-box;margin:0;padding:0}
+html{scroll-behavior:smooth}
+body{
+  background:var(--bg);
+  color:var(--tx);
+  font-family:var(--sans);
+  font-size:16px;
+  line-height:1.6;
+  -webkit-font-smoothing:antialiased;
+  text-rendering:optimizeLegibility;
+}
+.wrap{max-width:var(--maxw);margin:0 auto;padding:0 28px}
+::selection{background:var(--accent-soft);color:#fff}
+
+/* ---------- top ribbon ---------- */
+.ribbon{
+  border-bottom:1px solid var(--line-soft);
+  background:rgba(10,11,13,0.7);
+  backdrop-filter:blur(12px);
+  position:sticky;top:0;z-index:40;
+}
+.ribbon-in{display:flex;align-items:center;justify-content:space-between;height:58px}
+.ribbon-brand{display:flex;align-items:center;gap:11px;font-weight:600;font-size:14.5px;letter-spacing:-0.01em}
+.ribbon-tag{font-family:var(--mono);font-size:11px;color:var(--muted);border:1px solid var(--line);border-radius:999px;padding:4px 11px;letter-spacing:0.04em}
+.ribbon-nav{display:flex;gap:4px}
+.ribbon-nav a{color:var(--muted);text-decoration:none;font-size:13px;padding:7px 12px;border-radius:8px;transition:.15s}
+.ribbon-nav a:hover{color:var(--tx);background:var(--panel)}
+@media(max-width:760px){.ribbon-nav{display:none}}
+
+/* brand mark */
+.mark{display:inline-grid;place-items:center;flex:none}
+.mark svg{display:block}
+
+/* ---------- hero ---------- */
+.hero{padding:108px 0 76px;border-bottom:1px solid var(--line-soft)}
+.kick{font-family:var(--mono);font-size:12px;letter-spacing:0.16em;text-transform:uppercase;color:var(--accent);margin-bottom:26px}
+.hero h1{font-size:clamp(38px,6vw,68px);line-height:1.03;letter-spacing:-0.035em;font-weight:600;max-width:16ch}
+.hero h1 em{font-style:normal;color:var(--muted)}
+.hero p.lead{margin-top:30px;max-width:62ch;font-size:18px;color:var(--tx2);line-height:1.65}
+.hero-meta{margin-top:40px;display:flex;flex-wrap:wrap;gap:10px}
+.chip{font-family:var(--mono);font-size:11.5px;color:var(--tx2);background:var(--panel);border:1px solid var(--line);border-radius:999px;padding:7px 14px;letter-spacing:0.02em}
+.chip b{color:var(--tx);font-weight:500}
+
+/* ---------- section scaffolding ---------- */
+section.block{padding:92px 0;border-bottom:1px solid var(--line-soft)}
+.sec-head{display:flex;align-items:baseline;gap:18px;margin-bottom:14px}
+.sec-num{font-family:var(--mono);font-size:13px;color:var(--accent)}
+.sec-head h2{font-size:30px;letter-spacing:-0.025em;font-weight:600}
+.sec-lead{max-width:64ch;color:var(--tx2);font-size:16.5px;margin-bottom:48px}
+
+/* ---------- principles ---------- */
+.principles{display:grid;grid-template-columns:repeat(3,1fr);gap:1px;background:var(--line-soft);border:1px solid var(--line-soft);border-radius:var(--radius);overflow:hidden}
+.pr{background:var(--bg);padding:30px 28px}
+.pr .ico{width:34px;height:34px;border-radius:9px;border:1px solid var(--line);display:grid;place-items:center;color:var(--accent);margin-bottom:18px}
+.pr h3{font-size:16px;font-weight:600;letter-spacing:-0.01em;margin-bottom:8px}
+.pr p{font-size:14px;color:var(--muted);line-height:1.6}
+@media(max-width:860px){.principles{grid-template-columns:1fr}}
+
+/* ---------- palette switch ---------- */
+.skins{--m-bg:#0a0b0d;--m-surface:#14161a;--m-surface2:#1c1f24;--m-border:#272b31;--m-text:#f1f3f5;--m-muted:#828a93;--m-faint:#565d65;--m-accent:#6fa6c9;--m-accent-fg:#07090b;--m-success:#6ba088;--m-warning:#c6a065;--m-danger:#c98585}
+
+.pal-grid{display:grid;grid-template-columns:repeat(3,1fr);gap:16px;margin-bottom:14px}
+@media(max-width:860px){.pal-grid{grid-template-columns:1fr}}
+.pal{position:relative;text-align:left;background:var(--panel);border:1px solid var(--line);border-radius:var(--radius);padding:20px;cursor:pointer;transition:.18s;font-family:inherit;color:inherit;display:block;width:100%}
+.pal:hover{border-color:#33383f;transform:translateY(-2px)}
+.pal.active{border-color:var(--accent);box-shadow:0 0 0 1px var(--accent),0 14px 40px -18px rgba(111,166,201,0.5)}
+.pal-rec{position:absolute;top:14px;right:14px;font-family:var(--mono);font-size:10px;letter-spacing:0.08em;text-transform:uppercase;color:var(--accent);border:1px solid var(--accent);border-radius:999px;padding:3px 9px}
+.pal-name{font-size:17px;font-weight:600;letter-spacing:-0.01em;display:flex;align-items:center;gap:9px}
+.pal-name .dot{width:9px;height:9px;border-radius:50%}
+.pal-sub{font-family:var(--mono);font-size:11px;color:var(--muted);margin:5px 0 16px;letter-spacing:0.02em}
+.pal-swatches{display:flex;border-radius:9px;overflow:hidden;border:1px solid var(--line);height:46px}
+.pal-swatches span{flex:1}
+.pal-desc{font-size:13px;color:var(--muted);margin-top:15px;line-height:1.55}
+.pal-hint{font-size:13px;color:var(--faint);margin-top:8px;font-family:var(--mono)}
+
+/* ---------- tokens ---------- */
+.tok-wrap{margin-top:46px;border:1px solid var(--m-border);border-radius:var(--radius);overflow:hidden;background:var(--m-bg);transition:.3s}
+.tok-bar{display:flex;align-items:center;justify-content:space-between;padding:16px 22px;border-bottom:1px solid var(--m-border)}
+.tok-bar .lbl{font-family:var(--mono);font-size:12px;color:var(--m-muted);letter-spacing:0.04em}
+.tok-bar .nm{font-size:14px;font-weight:600;color:var(--m-text)}
+.tok-grid{display:grid;grid-template-columns:repeat(3,1fr)}
+@media(max-width:760px){.tok-grid{grid-template-columns:1fr}}
+.tok{display:flex;align-items:center;gap:14px;padding:16px 22px;border-top:1px solid var(--m-border);border-right:1px solid var(--m-border)}
+.tok .sw{width:34px;height:34px;border-radius:8px;border:1px solid rgba(255,255,255,0.09);flex:none}
+.tok .meta{min-width:0}
+.tok .role{font-size:13.5px;font-weight:500;color:var(--m-text);text-transform:capitalize}
+.tok .hex{font-family:var(--mono);font-size:11.5px;color:var(--m-muted)}
+
+/* ---------- type specimen ---------- */
+.type-grid{display:grid;grid-template-columns:1.1fr 0.9fr;gap:28px}
+@media(max-width:860px){.type-grid{grid-template-columns:1fr}}
+.type-card{border:1px solid var(--line);border-radius:var(--radius);background:var(--panel);padding:30px}
+.type-card .face{font-size:13px;color:var(--muted);font-family:var(--mono);margin-bottom:22px;letter-spacing:0.03em}
+.spec-row{padding:16px 0;border-top:1px solid var(--line-soft);display:flex;align-items:baseline;justify-content:space-between;gap:20px}
+.spec-row:first-of-type{border-top:none}
+.spec-row .ex{letter-spacing:-0.02em;line-height:1.1}
+.spec-row .tag{font-family:var(--mono);font-size:11px;color:var(--faint);white-space:nowrap}
+.scale-list{display:flex;flex-direction:column;gap:3px}
+.scale-list .sr{display:flex;justify-content:space-between;align-items:center;padding:11px 0;border-bottom:1px solid var(--line-soft);font-size:14px}
+.scale-list .sr:last-child{border-bottom:none}
+.scale-list .sr .k{color:var(--tx2)}
+.scale-list .sr .v{font-family:var(--mono);font-size:12px;color:var(--muted)}
+.mono-demo{font-family:var(--mono);font-size:13px;color:var(--accent);background:var(--bg);border:1px solid var(--line);border-radius:9px;padding:13px 15px;margin-top:18px;line-height:1.7}
+
+/* ---------- mock: desktop browser ---------- */
+.mock-cap{font-family:var(--mono);font-size:12px;color:var(--muted);margin-bottom:14px;letter-spacing:0.03em}
+.browser{border:1px solid var(--m-border);border-radius:16px;overflow:hidden;background:var(--m-bg);box-shadow:0 50px 120px -50px rgba(0,0,0,0.9);transition:.3s}
+.bw-bar{display:flex;align-items:center;gap:14px;padding:13px 18px;background:var(--m-surface);border-bottom:1px solid var(--m-border)}
+.bw-dots{display:flex;gap:7px}
+.bw-dots i{width:11px;height:11px;border-radius:50%;background:var(--m-border)}
+.bw-url{flex:1;max-width:340px;margin:0 auto;background:var(--m-bg);border:1px solid var(--m-border);border-radius:7px;padding:5px 12px;font-family:var(--mono);font-size:11.5px;color:var(--m-muted);text-align:center}
+.bw-body{display:flex;height:600px}
+
+/* sidebar */
+.sb{width:256px;flex:none;background:var(--m-surface);border-right:1px solid var(--m-border);display:flex;flex-direction:column;padding:14px 12px}
+.sb-brand{display:flex;align-items:center;gap:10px;padding:6px 8px 16px;color:var(--m-text);font-weight:600;font-size:15px;letter-spacing:-0.01em}
+.sb-btn{display:flex;align-items:center;gap:10px;width:100%;padding:9px 11px;border-radius:9px;font-size:13.5px;color:var(--m-text);background:transparent;border:1px solid var(--m-border);cursor:pointer;font-family:inherit;transition:.15s}
+.sb-btn:hover{background:var(--m-surface2)}
+.sb-search{display:flex;align-items:center;gap:9px;padding:9px 11px;margin-top:8px;color:var(--m-muted);font-size:13px;border-radius:9px}
+.sb-search:hover{background:var(--m-surface2)}
+.sb-nav{margin-top:10px;display:flex;flex-direction:column;gap:2px}
+.sb-item{display:flex;align-items:center;gap:11px;padding:9px 11px;border-radius:9px;color:var(--m-muted);font-size:13.5px;cursor:pointer;transition:.15s;position:relative}
+.sb-item:hover{background:var(--m-surface2);color:var(--m-text)}
+.sb-item.on{background:var(--m-surface2);color:var(--m-text);font-weight:500}
+.sb-item.on::before{content:"";position:absolute;left:-12px;top:50%;transform:translateY(-50%);width:3px;height:17px;border-radius:0 3px 3px 0;background:var(--m-accent)}
+.sb-item svg{color:currentColor;opacity:.85}
+.sb-sec{font-family:var(--mono);font-size:10.5px;letter-spacing:0.1em;text-transform:uppercase;color:var(--m-faint);padding:10px 11px 7px;margin-top:14px}
+.sb-recent{padding:8px 11px;border-radius:8px;color:var(--m-muted);font-size:13px;cursor:pointer;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.sb-recent:hover{background:var(--m-surface2);color:var(--m-text)}
+.sb-user{margin-top:auto;display:flex;align-items:center;gap:10px;padding:9px 8px;border-top:1px solid var(--m-border);margin-top:auto}
+.sb-ava{width:28px;height:28px;border-radius:50%;background:linear-gradient(135deg,var(--m-surface2),var(--m-border));display:grid;place-items:center;font-size:11px;font-weight:600;color:var(--m-text);flex:none}
+.sb-user .un{font-size:13px;color:var(--m-text);font-weight:500;line-height:1.2}
+.sb-user .up{font-size:11px;color:var(--m-muted)}
+
+/* chat area */
+.chat{flex:1;display:flex;flex-direction:column;min-width:0}
+.chat-top{display:flex;align-items:center;justify-content:flex-end;padding:14px 20px}
+.chat-top .ava{width:28px;height:28px;border-radius:50%;background:linear-gradient(135deg,var(--m-surface2),var(--m-border));border:1px solid var(--m-border)}
+.chat-center{flex:1;display:flex;flex-direction:column;align-items:center;justify-content:center;padding:0 24px;text-align:center;margin-top:-30px}
+.ab-mark{width:52px;height:52px;border-radius:15px;border:1px solid var(--m-border);background:var(--m-surface);display:grid;place-items:center;margin-bottom:24px}
+.chat-hello{font-size:25px;letter-spacing:-0.025em;font-weight:500;color:var(--m-text)}
+.composer{margin-top:26px;width:100%;max-width:560px;background:var(--m-surface);border:1px solid var(--m-border);border-radius:16px;padding:14px 14px 12px;display:flex;flex-direction:column;gap:11px;box-shadow:0 16px 40px -28px rgba(0,0,0,.7)}
+.composer .ph{text-align:left;color:var(--m-muted);font-size:14.5px;padding:2px}
+.composer .row{display:flex;align-items:center;justify-content:space-between}
+.composer .lft{display:flex;align-items:center;gap:6px;color:var(--m-muted)}
+.cbtn{width:30px;height:30px;border-radius:8px;display:grid;place-items:center;color:var(--m-muted);border:1px solid transparent}
+.cbtn.bd{border-color:var(--m-border)}
+.send{width:32px;height:32px;border-radius:9px;background:var(--m-accent);color:var(--m-accent-fg);display:grid;place-items:center}
+.shortcuts{margin-top:18px;display:flex;gap:10px;justify-content:center;flex-wrap:wrap}
+.sc{display:flex;align-items:center;gap:8px;padding:9px 15px;border-radius:999px;border:1px solid var(--m-border);background:var(--m-surface);color:var(--m-text);font-size:13.5px;cursor:pointer;transition:.15s}
+.sc:hover{background:var(--m-surface2)}
+.sc svg{color:var(--m-muted)}
+
+/* annotations */
+.annot{display:grid;grid-template-columns:repeat(4,1fr);gap:14px;margin-top:26px}
+@media(max-width:860px){.annot{grid-template-columns:repeat(2,1fr)}}
+@media(max-width:520px){.annot{grid-template-columns:1fr}}
+.an{border:1px solid var(--line);border-radius:11px;padding:16px 17px;background:var(--panel)}
+.an .n{font-family:var(--mono);font-size:11px;color:var(--accent);margin-bottom:7px}
+.an h4{font-size:13.5px;font-weight:600;margin-bottom:5px}
+.an p{font-size:12.5px;color:var(--muted);line-height:1.5}
+
+/* ---------- mobile phones ---------- */
+.phones{display:flex;gap:36px;flex-wrap:wrap;justify-content:center;align-items:flex-start}
+.phone-col{display:flex;flex-direction:column;align-items:center;gap:16px}
+.phone{width:300px;height:632px;border-radius:42px;border:1px solid var(--m-border);background:#000;padding:9px;box-shadow:0 50px 110px -50px rgba(0,0,0,1);position:relative;transition:.3s}
+.ph-screen{width:100%;height:100%;border-radius:34px;overflow:hidden;background:var(--m-bg);display:flex;flex-direction:column;position:relative}
+.notch{position:absolute;top:11px;left:50%;transform:translateX(-50%);width:96px;height:24px;background:#000;border-radius:0 0 14px 14px;z-index:5}
+.ph-status{display:flex;align-items:center;justify-content:space-between;padding:13px 22px 6px;font-size:12px;font-weight:600;color:var(--m-text)}
+.ph-status .rgt{display:flex;gap:5px;align-items:center;opacity:.85}
+.ph-status .rgt i{display:block;width:15px;height:10px;border:1.4px solid var(--m-text);border-radius:2px;opacity:.7}
+.ph-head{display:flex;align-items:center;justify-content:space-between;padding:10px 18px 12px}
+.ph-ic{width:32px;height:32px;border-radius:9px;display:grid;place-items:center;color:var(--m-text)}
+.ph-title{font-size:15px;font-weight:600;color:var(--m-text);display:flex;align-items:center;gap:7px}
+.ph-back{display:flex;align-items:center;gap:5px;color:var(--m-text);font-size:14px;font-weight:500}
+
+/* phone chat home */
+.ph-center{flex:1;display:flex;flex-direction:column;align-items:center;justify-content:center;padding:0 26px;text-align:center;margin-top:-24px}
+.ab-mark.sm{width:46px;height:46px;border-radius:13px;margin-bottom:18px}
+.ph-hello{font-size:19px;font-weight:500;letter-spacing:-0.02em;color:var(--m-text);line-height:1.25}
+.ph-scs{margin-top:20px;display:flex;flex-direction:column;gap:9px;width:100%}
+.ph-sc{display:flex;align-items:center;justify-content:center;gap:8px;padding:11px;border-radius:12px;border:1px solid var(--m-border);background:var(--m-surface);color:var(--m-text);font-size:13.5px}
+.ph-sc svg{color:var(--m-muted)}
+.ph-composer{padding:10px 14px;}
+.ph-inp{display:flex;align-items:center;gap:10px;background:var(--m-surface);border:1px solid var(--m-border);border-radius:16px;padding:11px 12px}
+.ph-inp .ph-t{flex:1;text-align:left;color:var(--m-muted);font-size:13.5px}
+.ph-inp .mini{width:26px;height:26px;border-radius:7px;display:grid;place-items:center;color:var(--m-muted)}
+.ph-inp .send{width:28px;height:28px;border-radius:8px}
+
+/* bottom nav */
+.ph-nav{display:flex;border-top:1px solid var(--m-border);background:var(--m-surface);padding:8px 6px 16px}
+.nav-i{flex:1;display:flex;flex-direction:column;align-items:center;gap:4px;color:var(--m-faint);font-size:10px;letter-spacing:0.01em}
+.nav-i.on{color:var(--m-accent)}
+.nav-i svg{opacity:.95}
+
+/* phone list shell */
+.ph-list{flex:1;overflow:hidden;padding:4px 14px}
+.lst-row{display:flex;align-items:center;gap:12px;padding:13px 4px;border-bottom:1px solid var(--m-border)}
+.lst-row .av{width:34px;height:34px;border-radius:10px;background:var(--m-surface2);flex:none;display:grid;place-items:center;color:var(--m-muted)}
+.lst-row .ln{flex:1;min-width:0}
+.lst-row .l1{height:9px;width:62%;border-radius:5px;background:var(--m-surface2);margin-bottom:7px}
+.lst-row .l2{height:8px;width:88%;border-radius:5px;background:var(--m-surface2);opacity:.6}
+.lst-badge{font-family:var(--mono);font-size:9px;padding:3px 7px;border-radius:999px;border:1px solid;letter-spacing:0.03em}
+.b-wait{color:var(--m-warning);border-color:color-mix(in srgb,var(--m-warning) 45%,transparent)}
+.b-ok{color:var(--m-success);border-color:color-mix(in srgb,var(--m-success) 45%,transparent)}
+.shell-note{text-align:center;font-family:var(--mono);font-size:10px;color:var(--m-faint);padding:14px 10px 4px}
+.phone-cap{font-size:13px;color:var(--muted);text-align:center;max-width:260px;line-height:1.5}
+.phone-cap b{color:var(--tx2);font-weight:500}
+
+/* ---------- decision rows / frase ---------- */
+.opts{display:grid;grid-template-columns:repeat(3,1fr);gap:14px}
+@media(max-width:860px){.opts{grid-template-columns:1fr}}
+.opt{border:1px solid var(--line);border-radius:12px;background:var(--panel);padding:22px}
+.opt.pick{border-color:var(--accent);box-shadow:0 0 0 1px var(--accent)}
+.opt .q{font-size:18px;font-weight:500;letter-spacing:-0.015em;line-height:1.3;color:var(--tx)}
+.opt .lab{font-family:var(--mono);font-size:10.5px;letter-spacing:0.08em;text-transform:uppercase;color:var(--muted);margin-top:14px;display:flex;align-items:center;gap:7px}
+.opt.pick .lab{color:var(--accent)}
+
+/* ---------- justification ---------- */
+.why{display:grid;grid-template-columns:1.15fr 0.85fr;gap:40px;align-items:start}
+@media(max-width:860px){.why{grid-template-columns:1fr}}
+.why p{color:var(--tx2);font-size:16.5px;margin-bottom:18px;line-height:1.7;max-width:60ch}
+.why p strong{color:var(--tx);font-weight:600}
+.why-side{border:1px solid var(--line);border-radius:var(--radius);background:var(--panel);padding:8px 24px}
+.wl{display:flex;gap:14px;padding:17px 0;border-bottom:1px solid var(--line-soft)}
+.wl:last-child{border-bottom:none}
+.wl .k{width:7px;height:7px;border-radius:50%;background:var(--accent);margin-top:8px;flex:none}
+.wl h4{font-size:14.5px;font-weight:600;margin-bottom:3px}
+.wl p{font-size:13.5px;color:var(--muted);margin:0;max-width:none;line-height:1.55}
+
+/* footer */
+.foot{padding:64px 0 90px;color:var(--muted);font-size:13.5px}
+.foot .nx{font-family:var(--mono);font-size:11px;letter-spacing:0.1em;text-transform:uppercase;color:var(--accent);margin-bottom:14px}
+.foot a{color:var(--tx2);text-decoration:none;border-bottom:1px solid var(--line)}
+
+.divider-note{font-family:var(--mono);font-size:12px;color:var(--faint);margin-top:18px}
+</style>
+</head>
+<body>
+
+<!-- ribbon -->
+<div class="ribbon">
+  <div class="wrap ribbon-in">
+    <div class="ribbon-brand">
+      <span class="mark" aria-hidden="true">
+        <svg width="22" height="22" viewBox="0 0 22 22" fill="none"><rect x="1.2" y="1.2" width="19.6" height="19.6" rx="6" stroke="currentColor" stroke-width="1.4"/><rect x="7.2" y="7.2" width="7.6" height="7.6" rx="2" transform="rotate(45 11 11)" stroke="currentColor" stroke-width="1.4"/></svg>
+      </span>
+      AutoBrokers<span style="color:var(--muted);font-weight:400">.ai</span>
+    </div>
+    <nav class="ribbon-nav">
+      <a href="#direcao">Direção</a>
+      <a href="#paletas">Paletas</a>
+      <a href="#tipografia">Tipografia</a>
+      <a href="#desktop">Desktop</a>
+      <a href="#mobile">Mobile</a>
+      <a href="#porque">Por quê</a>
+    </nav>
+    <span class="ribbon-tag">LEVA 1 · FUNDAÇÃO</span>
+  </div>
+</div>
+
+<!-- hero -->
+<header class="hero">
+  <div class="wrap">
+    <div class="kick">Fundação Visual · Dashboard da Corretora</div>
+    <h1>Simples por fora.<br /><em>Poderoso por dentro.</em></h1>
+    <p class="lead">Esta é a primeira leva: a linguagem visual da qual todo o produto deriva. A estética vem do ChatGPT e do Claude — calma, foco, baixa densidade. O domínio de seguros existe, mas aparece em camadas, nunca na primeira tela. Aqui você aprova a direção, a paleta, a tipografia, os tokens e as três peças-âncora: <b style="color:var(--tx2)">tela chat-first, sidebar desktop e navegação mobile.</b></p>
+    <div class="hero-meta">
+      <span class="chip"><b>Dark</b> por padrão</span>
+      <span class="chip"><b>Mobile-first</b></span>
+      <span class="chip"><b>4 pilares</b> no 1º nível</span>
+      <span class="chip"><b>Geist</b> · sans + mono</span>
+      <span class="chip">Tailwind + Radix · estilo ShadCN</span>
+    </div>
+  </div>
+</header>
+
+<!-- 01 direção -->
+<section class="block" id="direcao">
+  <div class="wrap">
+    <div class="sec-head"><span class="sec-num">01</span><h2>Direção visual geral</h2></div>
+    <p class="sec-lead">Seis princípios sustentam todas as decisões abaixo. Eles traduzem o brief numa atitude visual: nada compete por atenção, tudo respira, a inteligência aparece antes da máquina.</p>
+    <div class="principles">
+      <div class="pr">
+        <div class="ico"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/></svg></div>
+        <h3>Chat-first</h3>
+        <p>A porta de entrada é uma conversa com o AutoBrokers — não um painel de cards. O momento zero do produto é um convite, não um relatório.</p>
+      </div>
+      <div class="pr">
+        <div class="ico"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6"><circle cx="12" cy="12" r="9"/><path d="M12 7v5l3 2"/></svg></div>
+        <h3>Calma e baixa densidade</h3>
+        <p>Muito espaço, hairlines, sombras sutis, poucos acentos. O olho descansa. Sofisticação vem do que removemos, não do que adicionamos.</p>
+      </div>
+      <div class="pr">
+        <div class="ico"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6"><rect x="6" y="3" width="12" height="18" rx="3"/><path d="M11 18h2"/></svg></div>
+        <h3>Mobile-first de verdade</h3>
+        <p>Nenhuma experiência importante depende de tela grande. O desktop é uma expansão do celular — bottom-nav e camadas guiam o avanço.</p>
+      </div>
+      <div class="pr">
+        <div class="ico"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6"><path d="M4 6h16M4 12h10M4 18h6"/></svg></div>
+        <h3>Hierarquia em camadas</h3>
+        <p>Lista → detalhe → configuração → permissões → histórico. A complexidade do seguro é revelada progressivamente, no momento certo.</p>
+      </div>
+      <div class="pr">
+        <div class="ico"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6"><path d="M7 8h10M7 12h6"/><rect x="3" y="4" width="18" height="14" rx="3"/><path d="M8 18l-2 3"/></svg></div>
+        <h3>Linguagem humana</h3>
+        <p>“Conectar Google Drive”, não “provider MCP”. Nenhum jargão técnico — nem JARVYS, nem Smith. O corretor é gestor, não engenheiro.</p>
+      </div>
+      <div class="pr">
+        <div class="ico"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6"><path d="M12 2l8 4v6c0 5-3.5 8-8 10-4.5-2-8-5-8-10V6z"/></svg></div>
+        <h3>Premium e seguro</h3>
+        <p>Confiança é visual. Neutros profundos, tipografia precisa, estados claros. Ações sensíveis sempre pedem aprovação humana, com sinalização própria.</p>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- 02 paletas + tokens -->
+<section class="block" id="paletas">
+  <div class="wrap">
+    <div class="sec-head"><span class="sec-num">02</span><h2>Três caminhos de paleta</h2></div>
+    <p class="sec-lead">Todas partem do mesmo lugar: preto, branco e cinzas de baixa saturação. A diferença está no acento. <b style="color:var(--tx2)">Clique numa paleta</b> — os mockups e os tokens abaixo reagem ao vivo. A recomendada é a <b style="color:var(--tx2)">Névoa</b>.</p>
+
+    <div class="skins" id="skins">
+      <div class="pal-grid" id="palGrid">
+        <button class="pal" data-pal="a">
+          <div class="pal-name"><span class="dot" style="background:#fafafa"></span>Carbono</div>
+          <div class="pal-sub">monocromático · ChatGPT / Claude</div>
+          <div class="pal-swatches"><span style="background:#0b0b0c"></span><span style="background:#161617"></span><span style="background:#2a2a2c"></span><span style="background:#8b8b8f"></span><span style="background:#fafafa"></span></div>
+          <div class="pal-desc">Zero cor de marca. As ações são brancas, como o botão de enviar do ChatGPT. Máxima neutralidade e atemporalidade.</div>
+          <div class="pal-hint">risco: status difícil de ler só por cor</div>
+        </button>
+        <button class="pal" data-pal="b">
+          <div class="pal-name"><span class="dot" style="background:#8089b3"></span>Grafite</div>
+          <div class="pal-sub">dessaturado frio · Linear</div>
+          <div class="pal-swatches"><span style="background:#0b0c0f"></span><span style="background:#15171c"></span><span style="background:#2a2e37"></span><span style="background:#868d9b"></span><span style="background:#8089b3"></span></div>
+          <div class="pal-desc">Neutros levemente frios com um acento índigo-ardósia muito contido. Sensação técnica, precisa, de ferramenta de engenharia.</div>
+          <div class="pal-hint">tom: mais “dev tool”, menos acolhedor</div>
+        </button>
+        <button class="pal active" data-pal="c">
+          <span class="pal-rec">Recomendada</span>
+          <div class="pal-name"><span class="dot" style="background:#6fa6c9"></span>Névoa</div>
+          <div class="pal-sub">neutro + azul moderado</div>
+          <div class="pal-swatches"><span style="background:#0a0b0d"></span><span style="background:#14161a"></span><span style="background:#272b31"></span><span style="background:#828a93"></span><span style="background:#6fa6c9"></span></div>
+          <div class="pal-desc">Base monocromática fiel ao ChatGPT, com um azul dessaturado reservado só para foco, ativo, links e status. Calma + clareza funcional.</div>
+          <div class="pal-hint">cor de marca aparece em &lt; 5% da tela</div>
+        </button>
+      </div>
+
+      <!-- tokens -->
+      <div class="tok-wrap">
+        <div class="tok-bar">
+          <span class="lbl">TOKENS INICIAIS · dark</span>
+          <span class="nm" id="tokName">Névoa</span>
+        </div>
+        <div class="tok-grid" id="tokGrid"></div>
+      </div>
+      <div class="divider-note">Naming compatível com Tailwind/Radix (ex.: <span style="color:var(--accent)">bg-surface</span>, <span style="color:var(--accent)">border-border</span>, <span style="color:var(--accent)">text-muted</span>, <span style="color:var(--accent)">ring-accent</span>). Sucesso, aviso e perigo entram dessaturados — sinalizam sem gritar.</div>
+    </div>
+  </div>
+</section>
+
+<!-- 03 tipografia -->
+<section class="block" id="tipografia">
+  <div class="wrap">
+    <div class="sec-head"><span class="sec-num">03</span><h2>Tipografia</h2></div>
+    <p class="sec-lead"><b style="color:var(--tx2)">Geist</b> para tudo — uma sans-serif moderna, neutra e altíssima legibilidade em mobile e desktop. <b style="color:var(--tx2)">Geist Mono</b> para metadados, status, tokens e rótulos técnicos. Duas famílias, uma voz: precisa sem ser fria.</p>
+    <div class="type-grid">
+      <div class="type-card">
+        <div class="face">Geist · interface &amp; títulos</div>
+        <div class="spec-row"><span class="ex" style="font-size:42px;font-weight:600">Como posso ajudar sua corretora hoje?</span></div>
+        <div class="spec-row"><span class="ex" style="font-size:24px;font-weight:500">Auxiliar de Resumo de Atendimentos</span><span class="tag">500 · title</span></div>
+        <div class="spec-row"><span class="ex" style="font-size:16px;font-weight:400;color:var(--tx2)">Revise antes de enviar. Esta ação aguarda aprovação humana antes de qualquer envio externo.</span><span class="tag">400 · body</span></div>
+        <div class="spec-row"><span class="ex" style="font-size:13px;font-weight:500;color:var(--muted)">VER ATENDIMENTOS</span><span class="tag">500 · label</span></div>
+        <div class="mono-demo">aria-label · status: aguardando&nbsp;aprovação<br />Geist Mono — 11 / 13px · uppercase tracking</div>
+      </div>
+      <div class="type-card">
+        <div class="face">Escala tipográfica</div>
+        <div class="scale-list">
+          <div class="sr"><span class="k" style="font-size:30px;font-weight:600">Display</span><span class="v">36–68 / 600</span></div>
+          <div class="sr"><span class="k" style="font-size:22px;font-weight:600">Título</span><span class="v">24–30 / 600</span></div>
+          <div class="sr"><span class="k" style="font-size:17px;font-weight:600">Subtítulo</span><span class="v">18–20 / 500</span></div>
+          <div class="sr"><span class="k" style="font-size:15px">Corpo</span><span class="v">15–16 / 400</span></div>
+          <div class="sr"><span class="k" style="font-size:13px;color:var(--tx2)">Apoio</span><span class="v">13–14 / 400</span></div>
+          <div class="sr"><span class="k" style="font-size:11.5px;font-family:var(--mono);color:var(--muted)">META / MONO</span><span class="v">11–12 / 500</span></div>
+        </div>
+        <div class="mono-demo" style="color:var(--tx2)">tracking títulos&nbsp;&nbsp;−0.025em<br />line-height corpo&nbsp;&nbsp;1.6<br />text-wrap&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;balance / pretty</div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- 04 desktop -->
+<section class="block" id="desktop">
+  <div class="wrap">
+    <div class="sec-head"><span class="sec-num">04</span><h2>Tela inicial chat-first + sidebar</h2></div>
+    <p class="sec-lead">A peça-âncora nº 1. O corretor abre e encontra o AutoBrokers no centro: uma frase, um input convidativo e <b style="color:var(--tx2)">exatamente dois atalhos</b>. A sidebar tem só os 4 pilares, mais histórico e nova conversa. Nenhum KPI, nenhum card de métrica, nenhuma máquina à mostra.</p>
+    <div class="mock-cap" id="capDesktop">app.autobrokers.ai/dashboard · paleta Névoa</div>
+    <div class="skins-mirror"></div>
+    <div class="browser" id="mockDesktop">
+      <div class="bw-bar">
+        <div class="bw-dots"><i></i><i></i><i></i></div>
+        <div class="bw-url">app.autobrokers.ai/dashboard</div>
+        <div style="width:54px"></div>
+      </div>
+      <div class="bw-body">
+        <!-- sidebar -->
+        <aside class="sb">
+          <div class="sb-brand">
+            <span class="mark" style="color:var(--m-text)"><svg width="20" height="20" viewBox="0 0 22 22" fill="none"><rect x="1.2" y="1.2" width="19.6" height="19.6" rx="6" stroke="currentColor" stroke-width="1.4"/><rect x="7.2" y="7.2" width="7.6" height="7.6" rx="2" transform="rotate(45 11 11)" stroke="currentColor" stroke-width="1.4"/></svg></span>
+            AutoBrokers
+          </div>
+          <button class="sb-btn">
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7"><path d="M12 5v14M5 12h14"/></svg>
+            Nova conversa
+          </button>
+          <div class="sb-search">
+            <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7"><circle cx="11" cy="11" r="7"/><path d="m20 20-3-3"/></svg>
+            Buscar
+          </div>
+          <nav class="sb-nav">
+            <div class="sb-item on"><svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/></svg>AutoBrokers</div>
+            <div class="sb-item"><svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6"><path d="M22 12h-6l-2 3h-4l-2-3H2"/><path d="M5.5 6h13l2.5 6v6a1 1 0 0 1-1 1H4a1 1 0 0 1-1-1v-6z"/></svg>Atendimentos</div>
+            <div class="sb-item"><svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6"><path d="M13 2 3 14h7l-1 8 10-12h-7z"/></svg>Auxiliares</div>
+            <div class="sb-item"><svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6"><path d="M4 6h16M4 12h16M4 18h16"/><circle cx="9" cy="6" r="2" fill="var(--m-surface)"/><circle cx="15" cy="12" r="2" fill="var(--m-surface)"/><circle cx="8" cy="18" r="2" fill="var(--m-surface)"/></svg>Personalização</div>
+          </nav>
+          <div class="sb-sec">Recentes</div>
+          <div class="sb-recent">Renovação apólice — Cliente Marcia</div>
+          <div class="sb-recent">Sinistro residencial Allianz</div>
+          <div class="sb-recent">Cobrança pendente — lote 12</div>
+          <div class="sb-recent">Dúvida cobertura condomínio</div>
+          <div class="sb-user">
+            <div class="sb-ava">RS</div>
+            <div><div class="un">Resulta Seguros</div><div class="up">Administrador</div></div>
+          </div>
+        </aside>
+        <!-- chat -->
+        <main class="chat">
+          <div class="chat-top"><div class="ava"></div></div>
+          <div class="chat-center">
+            <div class="ab-mark"><span class="mark" style="color:var(--m-text)"><svg width="26" height="26" viewBox="0 0 22 22" fill="none"><rect x="1.2" y="1.2" width="19.6" height="19.6" rx="6" stroke="currentColor" stroke-width="1.4"/><rect x="7.2" y="7.2" width="7.6" height="7.6" rx="2" transform="rotate(45 11 11)" stroke="currentColor" stroke-width="1.4"/></svg></span></div>
+            <div class="chat-hello">Como posso ajudar sua corretora hoje?</div>
+            <div class="composer">
+              <div class="ph">Pergunte ao AutoBrokers</div>
+              <div class="row">
+                <div class="lft">
+                  <span class="cbtn bd"><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7"><path d="M12 5v14M5 12h14"/></svg></span>
+                  <span class="cbtn"><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6"><path d="m21 15-5-5L5 21"/><rect x="3" y="3" width="18" height="18" rx="3"/></svg></span>
+                </div>
+                <span class="send"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 19V5M5 12l7-7 7 7"/></svg></span>
+              </div>
+            </div>
+            <div class="shortcuts">
+              <div class="sc"><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6"><path d="M22 12h-6l-2 3h-4l-2-3H2"/><path d="M5.5 6h13l2.5 6v6a1 1 0 0 1-1 1H4a1 1 0 0 1-1-1v-6z"/></svg>Ver atendimentos</div>
+              <div class="sc"><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6"><path d="M13 2 3 14h7l-1 8 10-12h-7z"/></svg>Novo auxiliar</div>
+            </div>
+          </div>
+        </main>
+      </div>
+    </div>
+
+    <div class="annot">
+      <div class="an"><div class="n">A</div><h4>Sidebar enxuta</h4><p>4 pilares no 1º nível + nova conversa, busca e usuário. Nunca trinta itens. Item ativo marcado por barra de acento e fundo elevado.</p></div>
+      <div class="an"><div class="n">B</div><h4>Histórico de conversas</h4><p>Vive sob “Recentes”, abaixo dos pilares — perto da nova conversa, longe da configuração. É onde o corretor reencontra o que conversou.</p></div>
+      <div class="an"><div class="n">C</div><h4>Empty state convidativo</h4><p>Marca + frase + input grande. Dois atalhos fixos: <i>Ver atendimentos</i> e <i>Novo auxiliar</i>. Nada além disso compete por atenção.</p></div>
+      <div class="an"><div class="n">D</div><h4>Acento moderado</h4><p>O azul aparece só na barra do item ativo e no botão de enviar — menos de 5% da tela. O resto é neutro puro.</p></div>
+    </div>
+  </div>
+</section>
+
+<!-- 05 mobile -->
+<section class="block" id="mobile">
+  <div class="wrap">
+    <div class="sec-head"><span class="sec-num">05</span><h2>Navegação mobile · bottom-nav</h2></div>
+    <p class="sec-lead">A peça-âncora nº 3. Os 4 pilares vivem numa <b style="color:var(--tx2)">bottom-nav persistente</b>. Na aba AutoBrokers, o input fica logo acima dela. Ir mais fundo empurra uma nova camada (slide lateral) com retorno sempre visível — a bottom-nav permanece, ancorando o usuário.</p>
+    <div class="phones">
+      <div class="phone-col">
+        <div class="phone" id="phone1">
+          <div class="notch"></div>
+          <div class="ph-screen">
+            <div class="ph-status"><span>9:41</span><span class="rgt"><svg width="16" height="11" viewBox="0 0 18 12" fill="currentColor" style="color:var(--m-text);opacity:.8"><rect x="0" y="7" width="3" height="5" rx="1"/><rect x="5" y="4" width="3" height="8" rx="1"/><rect x="10" y="1" width="3" height="11" rx="1"/></svg><i></i></span></div>
+            <div class="ph-head">
+              <div class="ph-ic"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7"><path d="M4 6h16M4 12h16M4 18h16"/></svg></div>
+              <div class="ph-title"><span class="mark" style="color:var(--m-text)"><svg width="17" height="17" viewBox="0 0 22 22" fill="none"><rect x="1.2" y="1.2" width="19.6" height="19.6" rx="6" stroke="currentColor" stroke-width="1.4"/><rect x="7.2" y="7.2" width="7.6" height="7.6" rx="2" transform="rotate(45 11 11)" stroke="currentColor" stroke-width="1.4"/></svg></span>AutoBrokers</div>
+              <div class="ph-ic"><svg width="19" height="19" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7"><path d="M12 5v14M5 12h14"/></svg></div>
+            </div>
+            <div class="ph-center">
+              <div class="ab-mark sm"><span class="mark" style="color:var(--m-text)"><svg width="24" height="24" viewBox="0 0 22 22" fill="none"><rect x="1.2" y="1.2" width="19.6" height="19.6" rx="6" stroke="currentColor" stroke-width="1.4"/><rect x="7.2" y="7.2" width="7.6" height="7.6" rx="2" transform="rotate(45 11 11)" stroke="currentColor" stroke-width="1.4"/></svg></span></div>
+              <div class="ph-hello">Como posso ajudar sua corretora hoje?</div>
+              <div class="ph-scs">
+                <div class="ph-sc"><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6"><path d="M22 12h-6l-2 3h-4l-2-3H2"/><path d="M5.5 6h13l2.5 6v6a1 1 0 0 1-1 1H4a1 1 0 0 1-1-1v-6z"/></svg>Ver atendimentos</div>
+                <div class="ph-sc"><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6"><path d="M13 2 3 14h7l-1 8 10-12h-7z"/></svg>Novo auxiliar</div>
+              </div>
+            </div>
+            <div class="ph-composer">
+              <div class="ph-inp">
+                <span class="mini"><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7"><path d="M12 5v14M5 12h14"/></svg></span>
+                <span class="ph-t">Pergunte ao AutoBrokers</span>
+                <span class="send"><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 19V5M5 12l7-7 7 7"/></svg></span>
+              </div>
+            </div>
+            <div class="ph-nav">
+              <div class="nav-i on"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/></svg>AutoBrokers</div>
+              <div class="nav-i"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6"><path d="M22 12h-6l-2 3h-4l-2-3H2"/><path d="M5.5 6h13l2.5 6v6a1 1 0 0 1-1 1H4a1 1 0 0 1-1-1v-6z"/></svg>Atendimentos</div>
+              <div class="nav-i"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6"><path d="M13 2 3 14h7l-1 8 10-12h-7z"/></svg>Auxiliares</div>
+              <div class="nav-i"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6"><path d="M4 6h16M4 12h16M4 18h16"/></svg>Config.</div>
+            </div>
+          </div>
+        </div>
+        <div class="phone-cap"><b>AutoBrokers</b> · chat-first. Input acima da bottom-nav, mesmo empty state do desktop.</div>
+      </div>
+
+      <div class="phone-col">
+        <div class="phone" id="phone2">
+          <div class="notch"></div>
+          <div class="ph-screen">
+            <div class="ph-status"><span>9:41</span><span class="rgt"><svg width="16" height="11" viewBox="0 0 18 12" fill="currentColor" style="color:var(--m-text);opacity:.8"><rect x="0" y="7" width="3" height="5" rx="1"/><rect x="5" y="4" width="3" height="8" rx="1"/><rect x="10" y="1" width="3" height="11" rx="1"/></svg><i></i></span></div>
+            <div class="ph-head">
+              <div class="ph-back"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M15 18l-6-6 6-6"/></svg></div>
+              <div class="ph-title">Atendimentos</div>
+              <div class="ph-ic"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7"><path d="M3 6h18M7 12h10M11 18h2"/></svg></div>
+            </div>
+            <div class="ph-list">
+              <div class="lst-row"><div class="av"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6"><circle cx="12" cy="8" r="4"/><path d="M4 21a8 8 0 0 1 16 0"/></svg></div><div class="ln"><div class="l1"></div><div class="l2"></div></div><span class="lst-badge b-wait">aprovação</span></div>
+              <div class="lst-row"><div class="av"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6"><circle cx="12" cy="8" r="4"/><path d="M4 21a8 8 0 0 1 16 0"/></svg></div><div class="ln"><div class="l1"></div><div class="l2"></div></div><span class="lst-badge b-ok">em dia</span></div>
+              <div class="lst-row"><div class="av"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6"><circle cx="12" cy="8" r="4"/><path d="M4 21a8 8 0 0 1 16 0"/></svg></div><div class="ln"><div class="l1"></div><div class="l2"></div></div></div>
+              <div class="lst-row"><div class="av"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6"><circle cx="12" cy="8" r="4"/><path d="M4 21a8 8 0 0 1 16 0"/></svg></div><div class="ln"><div class="l1"></div><div class="l2"></div></div></div>
+              <div class="shell-note">demonstração da navegação · o módulo vem na Leva 3</div>
+            </div>
+            <div class="ph-nav">
+              <div class="nav-i"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/></svg>AutoBrokers</div>
+              <div class="nav-i on"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6"><path d="M22 12h-6l-2 3h-4l-2-3H2"/><path d="M5.5 6h13l2.5 6v6a1 1 0 0 1-1 1H4a1 1 0 0 1-1-1v-6z"/></svg>Atendimentos</div>
+              <div class="nav-i"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6"><path d="M13 2 3 14h7l-1 8 10-12h-7z"/></svg>Auxiliares</div>
+              <div class="nav-i"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6"><path d="M4 6h16M4 12h16M4 18h16"/></svg>Config.</div>
+            </div>
+          </div>
+        </div>
+        <div class="phone-cap"><b>Bottom-nav + camadas</b> · troca de pilar e header com retorno. Status sinaliza por cor <i>e</i> texto.</div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- decisões abertas -->
+<section class="block">
+  <div class="wrap">
+    <div class="sec-head"><span class="sec-num">06</span><h2>Decisões visuais para você fechar</h2></div>
+    <p class="sec-lead">O brief deixou alguns pontos visuais em aberto. Aqui estão minhas propostas — a opção destacada é minha recomendação.</p>
+
+    <div style="font-size:13px;color:var(--muted);font-family:var(--mono);margin-bottom:14px;letter-spacing:0.04em">FRASE PRINCIPAL DA HOME</div>
+    <div class="opts" style="margin-bottom:34px">
+      <div class="opt pick"><div class="q">“Como posso ajudar sua corretora hoje?”</div><div class="lab"><svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M20 6 9 17l-5-5"/></svg>Recomendada · acolhedora e específica</div></div>
+      <div class="opt"><div class="q">“Por onde começamos?”</div><div class="lab">curta · mais neutra</div></div>
+      <div class="opt"><div class="q">“Bom te ver. O que vamos resolver?”</div><div class="lab">calorosa · menos formal</div></div>
+    </div>
+
+    <div style="font-size:13px;color:var(--muted);font-family:var(--mono);margin-bottom:14px;letter-spacing:0.04em">ONDE VIVE O HISTÓRICO DE CONVERSAS</div>
+    <div class="opts">
+      <div class="opt pick"><div class="q">Desktop: “Recentes” na sidebar · Mobile: drawer do menu ☰</div><div class="lab"><svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M20 6 9 17l-5-5"/></svg>Recomendada · fiel ao ChatGPT</div></div>
+      <div class="opt"><div class="q">Mobile: página própria dentro da aba AutoBrokers</div><div class="lab">mais passos · histórico mais “sério”</div></div>
+      <div class="opt"><div class="q">Mobile: bottom-sheet puxável por cima do input</div><div class="lab">rápido · pode competir com o teclado</div></div>
+    </div>
+  </div>
+</section>
+
+<!-- 07 por quê -->
+<section class="block" id="porque">
+  <div class="wrap">
+    <div class="sec-head"><span class="sec-num">07</span><h2>Por que esta é a melhor direção</h2></div>
+    <div class="why">
+      <div>
+        <p>O AutoBrokers vende <strong>confiança e controle</strong> para quem opera dinheiro e risco alheios. Em seguros, a interface é parte do produto: se parecer pesada, técnica ou barulhenta, ela contradiz a promessa de “simples por fora, poderoso por dentro”. Por isso a fundação é deliberadamente <strong>quieta</strong>.</p>
+        <p>A estética ChatGPT/Claude resolve o problema central do brief — fugir do dashboard SaaS denso que já foi tentado e rejeitado. Um <strong>chat no centro</strong>, com dois atalhos e nada mais, comunica em um segundo: “você conversa com uma inteligência especializada; o resto aparece quando precisar”. A complexidade do seguro não some — ela é adiada para camadas, exatamente onde o corretor a procura.</p>
+        <p>Entre os três caminhos, a <strong>Névoa</strong> vence porque equilibra duas forças em tensão. O monocromático puro (Carbono) é lindo, mas um produto operacional precisa de status legíveis — e cor é a forma mais rápida de ler “aguardando aprovação” vs. “em dia”. O frio do Grafite soa “dev tool”, distante de um corretor. A Névoa mantém a tela <strong>95% neutra</strong> e reserva um azul dessaturado para os 5% que importam: foco, ativo, links e estados. Moderno sem ser neon, calmo sem ser apagado.</p>
+        <p>E porque é uma <strong>fundação, não decoração</strong>: os mesmos tokens, a mesma Geist, o mesmo padrão de camadas e a mesma bottom-nav vão sustentar Auxiliares, Conectores, Seguradoras e Atendimentos sem retrabalho. Aprovar isto aqui é aprovar a coerência do produto inteiro.</p>
+      </div>
+      <div class="why-side">
+        <div class="wl"><span class="k"></span><div><h4>Confiança</h4><p>Neutros profundos e tipografia precisa transmitem segurança a quem opera risco.</p></div></div>
+        <div class="wl"><span class="k"></span><div><h4>Clareza</h4><p>Uma decisão por tela. A pergunta “o que faço aqui?” se responde em segundos.</p></div></div>
+        <div class="wl"><span class="k"></span><div><h4>Calma</h4><p>Baixa densidade e acento contido reduzem carga cognitiva no dia a dia operacional.</p></div></div>
+        <div class="wl"><span class="k"></span><div><h4>Coerência</h4><p>Um sistema de tokens e padrões que escala para todos os módulos das próximas levas.</p></div></div>
+        <div class="wl"><span class="k"></span><div><h4>Distinção</h4><p>Inspirado em ChatGPT/Claude, mas com marca, mark e acento próprios — não uma cópia.</p></div></div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- footer -->
+<footer class="foot">
+  <div class="wrap">
+    <div class="nx">Próximos passos · aguardando sua aprovação</div>
+    <p style="max-width:64ch;color:var(--tx2);font-size:16px;line-height:1.7">Aprovada a fundação, sigo para a <b style="color:var(--tx)">Leva 2 — Padrões-mestre</b>: Galeria (A), Página de Detalhe (B), Modal de Permissão (C) e os estados transversais (status, vazio, loading, erro, aguardando aprovação). Sem desenhar ainda Auxiliares, Conectores, Seguradoras ou Atendimentos.</p>
+    <p style="margin-top:22px;font-family:var(--mono);font-size:12px;color:var(--faint)">AutoBrokers.ai · Leva 1 · Fundação Visual · dark-default · Geist · Tailwind + Radix</p>
+  </div>
+</footer>
+
+<script>
+const palettes = {
+  a:{ name:"Carbono",
+    bg:"#0b0b0c", surface:"#161617", surface2:"#202022", border:"#2a2a2c",
+    text:"#f4f4f5", muted:"#8b8b8f", faint:"#56565a",
+    accent:"#fafafa", accentFg:"#0b0b0c", success:"#6fa288", warning:"#c4a263", danger:"#c98585" },
+  b:{ name:"Grafite",
+    bg:"#0b0c0f", surface:"#15171c", surface2:"#1e2128", border:"#2a2e37",
+    text:"#eef0f4", muted:"#868d9b", faint:"#565d6a",
+    accent:"#8089b3", accentFg:"#0b0c0f", success:"#6c9f86", warning:"#c2a164", danger:"#c58484" },
+  c:{ name:"Névoa",
+    bg:"#0a0b0d", surface:"#14161a", surface2:"#1c1f24", border:"#272b31",
+    text:"#f1f3f5", muted:"#828a93", faint:"#565d65",
+    accent:"#6fa6c9", accentFg:"#07090b", success:"#6ba088", warning:"#c6a065", danger:"#c98585" }
+};
+
+const roles = [
+  ["background","bg"],["surface","surface"],["surface-2","surface2"],
+  ["border","border"],["text","text"],["muted","muted"],
+  ["accent","accent"],["success","success"],["warning","warning"],["danger","danger"]
+];
+
+const skins   = document.getElementById('skins');
+const mockD   = document.getElementById('mockDesktop');
+const phone1  = document.getElementById('phone1');
+const phone2  = document.getElementById('phone2');
+const tokGrid = document.getElementById('tokGrid');
+const tokName = document.getElementById('tokName');
+const capD    = document.getElementById('capDesktop');
+
+function applyVars(el, p){
+  el.style.setProperty('--m-bg',p.bg);
+  el.style.setProperty('--m-surface',p.surface);
+  el.style.setProperty('--m-surface2',p.surface2);
+  el.style.setProperty('--m-border',p.border);
+  el.style.setProperty('--m-text',p.text);
+  el.style.setProperty('--m-muted',p.muted);
+  el.style.setProperty('--m-faint',p.faint);
+  el.style.setProperty('--m-accent',p.accent);
+  el.style.setProperty('--m-accent-fg',p.accentFg);
+  el.style.setProperty('--m-success',p.success);
+  el.style.setProperty('--m-warning',p.warning);
+  el.style.setProperty('--m-danger',p.danger);
+}
+
+function renderTokens(p){
+  tokGrid.innerHTML = roles.map(([label,key])=>`
+    <div class="tok">
+      <span class="sw" style="background:${p[key]}"></span>
+      <div class="meta">
+        <div class="role">${label}</div>
+        <div class="hex">${p[key].toUpperCase()}</div>
+      </div>
+    </div>`).join('');
+}
+
+function select(id){
+  const p = palettes[id];
+  [skins, mockD, phone1, phone2].forEach(el=>applyVars(el,p));
+  renderTokens(p);
+  tokName.textContent = p.name;
+  capD.textContent = `app.autobrokers.ai/dashboard · paleta ${p.name}`;
+  document.querySelectorAll('.pal').forEach(b=>b.classList.toggle('active', b.dataset.pal===id));
+}
+
+document.querySelectorAll('.pal').forEach(b=>{
+  b.addEventListener('click', ()=>select(b.dataset.pal));
+});
+
+select('c');
+</script>
+</body>
+</html>

@@ -1,0 +1,568 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>AutoBrokers.ai — HANDOFF-001 · Engenharia</title>
+<link rel="preconnect" href="https://fonts.googleapis.com" />
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+<link href="https://fonts.googleapis.com/css2?family=Geist:wght@400;500;600;700&family=Geist+Mono:wght@400;500&display=swap" rel="stylesheet" />
+<style>
+:root{
+  --background:#0a0b0d;--surface:#14161a;--surface-2:#1c1f24;--border:#272b31;--border-soft:#1a1d23;
+  --foreground:#f1f3f5;--foreground-2:#c4cad2;--muted:#828a93;--faint:#565d65;
+  --accent:#6fa6c9;--accent-soft:rgba(111,166,201,0.14);--accent-fg:#07090b;
+  --success:#6ba088;--warning:#c6a065;--danger:#c98585;
+  --maxw:1080px;
+  --sans:"Geist","Geist Fallback",-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif;
+  --mono:"Geist Mono",ui-monospace,SFMono-Regular,Menlo,monospace;
+}
+*{box-sizing:border-box;margin:0;padding:0}
+html{scroll-behavior:smooth}
+body{background:var(--background);color:var(--foreground);font-family:var(--sans);font-size:16px;line-height:1.6;-webkit-font-smoothing:antialiased;text-rendering:optimizeLegibility}
+.wrap{max-width:var(--maxw);margin:0 auto;padding:0 28px}
+::selection{background:var(--accent-soft);color:#fff}
+a{color:var(--accent);text-decoration:none}
+
+.ribbon{border-bottom:1px solid var(--border-soft);background:rgba(10,11,13,0.72);backdrop-filter:blur(12px);position:sticky;top:0;z-index:60}
+.ribbon-in{display:flex;align-items:center;justify-content:space-between;height:58px}
+.ribbon-brand{display:flex;align-items:center;gap:11px;font-weight:600;font-size:14.5px;letter-spacing:-0.01em}
+.ribbon-tag{font-family:var(--mono);font-size:11px;color:var(--muted);border:1px solid var(--border);border-radius:999px;padding:4px 11px;letter-spacing:0.04em}
+.ribbon-nav{display:flex;gap:2px}
+.ribbon-nav a{color:var(--muted);font-size:12.5px;padding:7px 10px;border-radius:8px;transition:.15s}
+.ribbon-nav a:hover{color:var(--foreground);background:var(--surface)}
+@media(max-width:880px){.ribbon-nav{display:none}}
+.mark{display:inline-grid;place-items:center;flex:none}.mark svg{display:block}
+
+.hero{padding:92px 0 60px;border-bottom:1px solid var(--border-soft)}
+.kick{font-family:var(--mono);font-size:12px;letter-spacing:0.16em;text-transform:uppercase;color:var(--accent);margin-bottom:22px}
+.hero h1{font-size:clamp(32px,5vw,54px);line-height:1.05;letter-spacing:-0.035em;font-weight:600;max-width:18ch}
+.hero p.lead{margin-top:24px;max-width:66ch;font-size:17.5px;color:var(--foreground-2);line-height:1.65}
+.hero p.lead b{color:var(--foreground)}
+.hero-meta{margin-top:32px;display:flex;flex-wrap:wrap;gap:10px}
+.chip{font-family:var(--mono);font-size:11.5px;color:var(--foreground-2);background:var(--surface);border:1px solid var(--border);border-radius:999px;padding:7px 14px}
+.chip b{color:var(--foreground);font-weight:500}
+
+section.block{padding:74px 0;border-bottom:1px solid var(--border-soft)}
+.sec-head{display:flex;align-items:baseline;gap:16px;margin-bottom:10px;flex-wrap:wrap}
+.sec-num{font-family:var(--mono);font-size:13px;color:var(--accent)}
+.sec-tag{font-family:var(--mono);font-size:11px;color:var(--muted);border:1px solid var(--border);border-radius:6px;padding:3px 9px}
+.sec-head h2{font-size:27px;letter-spacing:-0.025em;font-weight:600}
+.sec-lead{max-width:68ch;color:var(--foreground-2);font-size:16px;margin-bottom:34px}
+.sec-lead b{color:var(--foreground)}
+h3.sub{font-size:15px;font-weight:600;color:var(--foreground);margin:30px 0 12px;display:flex;align-items:center;gap:10px}
+h3.sub .pill{font-family:var(--mono);font-size:10px;color:var(--muted);border:1px solid var(--border);border-radius:5px;padding:2px 7px;font-weight:400}
+
+/* code blocks */
+.code{background:#0c0e11;border:1px solid var(--border);border-radius:12px;overflow:hidden;margin:14px 0}
+.code-bar{display:flex;align-items:center;justify-content:space-between;padding:9px 14px;border-bottom:1px solid var(--border);background:var(--surface)}
+.code-bar .fn{font-family:var(--mono);font-size:11.5px;color:var(--foreground-2)}
+.code-bar .cp{font-family:var(--mono);font-size:10.5px;color:var(--muted);border:1px solid var(--border);border-radius:6px;padding:3px 8px;cursor:pointer;transition:.15s}
+.code-bar .cp:hover{color:var(--foreground);border-color:var(--accent)}
+pre{padding:16px 18px;overflow-x:auto;font-family:var(--mono);font-size:12.5px;line-height:1.75;color:var(--foreground-2);tab-size:2}
+pre .c{color:var(--faint)}
+pre .p{color:var(--accent)}
+pre .v{color:var(--foreground)}
+pre .s{color:var(--success)}
+
+/* tables */
+.tbl-wrap{border:1px solid var(--border);border-radius:12px;overflow:hidden;overflow-x:auto;margin:10px 0}
+table{width:100%;border-collapse:collapse;min-width:640px}
+th,td{text-align:left;padding:12px 15px;border-bottom:1px solid var(--border-soft);vertical-align:top;font-size:13px}
+th{font-family:var(--mono);font-size:10.5px;letter-spacing:0.05em;text-transform:uppercase;color:var(--faint);background:var(--surface);border-bottom:1px solid var(--border);position:sticky;top:0}
+tr:last-child td{border-bottom:none}
+td.nm{color:var(--foreground);font-weight:500;font-family:var(--mono);font-size:12px}
+td .mut{color:var(--muted)}
+code.inl{font-family:var(--mono);font-size:11.5px;background:var(--surface);border:1px solid var(--border);border-radius:5px;padding:1px 6px;color:var(--accent)}
+
+/* badges (for status table) */
+.badge{display:inline-flex;align-items:center;gap:6px;font-family:var(--mono);font-size:10.5px;padding:3px 9px 3px 8px;border-radius:999px;border:1px solid;white-space:nowrap;line-height:1.4}
+.badge .d{width:6px;height:6px;border-radius:50%;flex:none}
+.t-neutral{color:var(--muted);border-color:var(--border)}.t-neutral .d{background:var(--muted)}
+.t-info{color:var(--accent);border-color:color-mix(in srgb,var(--accent) 42%,transparent);background:var(--accent-soft)}.t-info .d{background:var(--accent)}
+.t-success{color:var(--success);border-color:color-mix(in srgb,var(--success) 42%,transparent)}.t-success .d{background:var(--success)}
+.t-warning{color:var(--warning);border-color:color-mix(in srgb,var(--warning) 42%,transparent)}.t-warning .d{background:var(--warning)}
+.t-danger{color:var(--danger);border-color:color-mix(in srgb,var(--danger) 42%,transparent)}.t-danger .d{background:var(--danger)}
+.t-approval{color:var(--accent);border-style:dashed;border-color:color-mix(in srgb,var(--accent) 55%,transparent);background:var(--accent-soft)}.t-approval .d{background:var(--accent);animation:pulse 1.8s infinite}
+@keyframes pulse{0%,100%{opacity:1}50%{opacity:.35}}
+
+/* token swatches */
+.swrow{display:flex;align-items:center;gap:10px}
+.sw{width:26px;height:26px;border-radius:7px;border:1px solid rgba(255,255,255,0.1);flex:none}
+
+/* spec cards */
+.spec{border:1px solid var(--border);border-radius:14px;background:var(--surface);overflow:hidden;margin-bottom:16px}
+.spec-hd{display:flex;align-items:center;justify-content:space-between;gap:14px;padding:15px 20px;border-bottom:1px solid var(--border);flex-wrap:wrap}
+.spec-hd .l{display:flex;align-items:center;gap:12px;flex-wrap:wrap}
+.spec-hd .rt{font-family:var(--mono);font-size:12px;color:var(--accent);background:var(--accent-soft);border:1px solid color-mix(in srgb,var(--accent) 30%,transparent);border-radius:7px;padding:4px 10px}
+.spec-hd h4{font-size:15.5px;font-weight:600;color:var(--foreground)}
+.spec-hd .ph{font-family:var(--mono);font-size:10px;color:var(--muted);border:1px solid var(--border);border-radius:999px;padding:3px 9px}
+.spec-body{padding:6px 20px 16px}
+.sf{display:grid;grid-template-columns:128px 1fr;gap:0;border-bottom:1px solid var(--border-soft);padding:12px 0}
+.sf:last-child{border-bottom:none}
+.sf .k{font-family:var(--mono);font-size:10.5px;letter-spacing:0.04em;text-transform:uppercase;color:var(--faint);padding-top:2px}
+.sf .v{font-size:13.5px;color:var(--foreground-2);line-height:1.55}
+.sf .v b{color:var(--foreground);font-weight:500}
+.sf .v code{font-family:var(--mono);font-size:11.5px;color:var(--accent)}
+.tagm{display:inline-block;font-family:var(--mono);font-size:10.5px;color:var(--foreground-2);background:var(--surface-2);border:1px solid var(--border);border-radius:6px;padding:2px 8px;margin:2px 4px 2px 0}
+.hitl-tag{color:var(--accent);border-color:color-mix(in srgb,var(--accent) 40%,transparent);border-style:dashed}
+.oos{color:var(--muted)}
+
+/* batches */
+.batch{display:flex;gap:16px;padding:18px 0;border-bottom:1px solid var(--border-soft)}
+.batch:last-child{border-bottom:none}
+.batch .id{font-family:var(--mono);font-size:12px;color:var(--accent-fg);background:var(--accent);border-radius:8px;padding:5px 10px;height:fit-content;font-weight:500;white-space:nowrap}
+.batch .bd h4{font-size:15px;font-weight:600;color:var(--foreground);margin-bottom:5px}
+.batch .bd p{font-size:13.5px;color:var(--muted);line-height:1.55;margin-bottom:7px}
+.batch .bd .test{font-size:12.5px;color:var(--foreground-2)}
+.batch .bd .test b{color:var(--success);font-weight:500;font-family:var(--mono);font-size:11px}
+
+/* steps (final instructions) */
+.steps{counter-reset:st;display:flex;flex-direction:column;gap:14px;margin-top:8px}
+.stp{display:flex;gap:16px;border:1px solid var(--border);border-radius:12px;background:var(--surface);padding:18px 20px}
+.stp::before{counter-increment:st;content:counter(st);font-family:var(--mono);font-size:14px;color:var(--accent);border:1px solid var(--accent);border-radius:9px;width:34px;height:34px;display:grid;place-items:center;flex:none;font-weight:500}
+.stp h4{font-size:15px;font-weight:600;color:var(--foreground);margin-bottom:5px}
+.stp p{font-size:13.5px;color:var(--foreground-2);line-height:1.6}
+.stp p b{color:var(--foreground)}
+.callout{border:1px dashed color-mix(in srgb,var(--accent) 45%,transparent);background:var(--accent-soft);border-radius:12px;padding:18px 20px;margin-top:24px;display:flex;gap:14px}
+.callout svg{flex:none;margin-top:2px;color:var(--accent)}
+.callout p{font-size:14px;color:var(--foreground-2);line-height:1.6}
+.callout p b{color:var(--foreground)}
+
+.note{font-size:13px;color:var(--muted);margin-top:10px;line-height:1.6}
+.two{display:grid;grid-template-columns:1fr 1fr;gap:16px}
+@media(max-width:760px){.two{grid-template-columns:1fr}.sf{grid-template-columns:1fr;gap:4px}}
+
+.foot{padding:54px 0 84px;color:var(--muted);font-size:13px}
+.foot .nx{font-family:var(--mono);font-size:11px;letter-spacing:0.1em;text-transform:uppercase;color:var(--accent);margin-bottom:12px}
+</style>
+</head>
+<body>
+
+<div class="ribbon">
+  <div class="wrap ribbon-in">
+    <div class="ribbon-brand"><span class="mark"><svg width="22" height="22" viewBox="0 0 22 22" fill="none"><rect x="1.2" y="1.2" width="19.6" height="19.6" rx="6" stroke="currentColor" stroke-width="1.4"/><rect x="7.2" y="7.2" width="7.6" height="7.6" rx="2" transform="rotate(45 11 11)" stroke="currentColor" stroke-width="1.4"/></svg></span>AutoBrokers<span style="color:var(--muted);font-weight:400">.ai</span></div>
+    <nav class="ribbon-nav">
+      <a href="#tokens">1 · Tokens</a>
+      <a href="#componentes">2 · Componentes</a>
+      <a href="#status">3 · Status</a>
+      <a href="#specs">4 · Specs</a>
+      <a href="#ordem">5 · Ordem</a>
+      <a href="#processo">Processo</a>
+    </nav>
+    <span class="ribbon-tag">HANDOFF-001</span>
+  </div>
+</div>
+
+<header class="hero">
+  <div class="wrap">
+    <div class="kick">Leva 4 · Handoff para Engenharia</div>
+    <h1>Do design aprovado ao código — sem reinterpretar.</h1>
+    <p class="lead">Este é o contrato entre o design e o Claude Code. Não há telas novas aqui: é a <b>ponte</b> que transforma as Levas 1–3 em artefatos implementáveis em Next.js + Tailwind + Radix/ShadCN. Tokens como fonte única de verdade, catálogo de componentes, sistema de status, specs fechadas por tela e a ordem de batches. A paleta <b>Névoa</b> é a oficial; a tipografia é <b>Geist</b>.</p>
+    <div class="hero-meta">
+      <span class="chip"><b>1</b> Design Tokens</span>
+      <span class="chip"><b>2</b> Catálogo de Componentes</span>
+      <span class="chip"><b>3</b> Sistema de Status</span>
+      <span class="chip"><b>4</b> Specs por Tela</span>
+      <span class="chip"><b>5</b> Ordem de Implementação</span>
+    </div>
+  </div>
+</header>
+
+<!-- ============ 1 · TOKENS ============ -->
+<section class="block" id="tokens">
+  <div class="wrap">
+    <div class="sec-head"><span class="sec-num">01</span><h2>Design Tokens · fonte única de verdade</h2><span class="sec-tag">paleta Névoa</span></div>
+    <p class="sec-lead">Os valores abaixo são extraídos <b>exatamente</b> dos mockups aprovados. O bloco <code class="inl">:root</code> é a fonte de verdade; o <code class="inl">tailwind.config.js</code> referencia as mesmas variáveis para nunca divergir. Nenhum valor novo foi inventado.</p>
+
+    <h3 class="sub">Paleta <span class="pill">dark · padrão</span></h3>
+    <div class="tbl-wrap">
+      <table>
+        <thead><tr><th>Token</th><th>Hex / valor</th><th>Uso</th><th></th></tr></thead>
+        <tbody>
+          <tr><td class="nm">background</td><td><code class="inl">#0a0b0d</code></td><td class="mut">Fundo principal do app</td><td><div class="sw" style="background:#0a0b0d"></div></td></tr>
+          <tr><td class="nm">surface</td><td><code class="inl">#14161a</code></td><td class="mut">Sidebar, cards, inputs, barras</td><td><div class="sw" style="background:#14161a"></div></td></tr>
+          <tr><td class="nm">surface-2</td><td><code class="inl">#1c1f24</code></td><td class="mut">Hover, item ativo, elevação</td><td><div class="sw" style="background:#1c1f24"></div></td></tr>
+          <tr><td class="nm">border</td><td><code class="inl">#272b31</code></td><td class="mut">Bordas de componentes</td><td><div class="sw" style="background:#272b31"></div></td></tr>
+          <tr><td class="nm">border-soft</td><td><code class="inl">#1a1d23</code></td><td class="mut">Divisores sutis entre seções</td><td><div class="sw" style="background:#1a1d23"></div></td></tr>
+          <tr><td class="nm">foreground</td><td><code class="inl">#f1f3f5</code></td><td class="mut">Texto primário (branco suave)</td><td><div class="sw" style="background:#f1f3f5"></div></td></tr>
+          <tr><td class="nm">foreground-2</td><td><code class="inl">#c4cad2</code></td><td class="mut">Texto secundário / leads</td><td><div class="sw" style="background:#c4cad2"></div></td></tr>
+          <tr><td class="nm">muted</td><td><code class="inl">#828a93</code></td><td class="mut">Texto de apoio, descrições</td><td><div class="sw" style="background:#828a93"></div></td></tr>
+          <tr><td class="nm">faint</td><td><code class="inl">#565d65</code></td><td class="mut">Labels mono, metadados, ícones discretos</td><td><div class="sw" style="background:#565d65"></div></td></tr>
+          <tr><td class="nm">accent</td><td><code class="inl">#6fa6c9</code></td><td class="mut">Foco, ativo, links, ação primária, send</td><td><div class="sw" style="background:#6fa6c9"></div></td></tr>
+          <tr><td class="nm">accent-soft</td><td><code class="inl">rgba(111,166,201,.14)</code></td><td class="mut">Fundo de badges info / faixas HITL</td><td><div class="sw" style="background:rgba(111,166,201,.14)"></div></td></tr>
+          <tr><td class="nm">accent-fg</td><td><code class="inl">#07090b</code></td><td class="mut">Texto sobre o accent (botão primário)</td><td><div class="sw" style="background:#07090b"></div></td></tr>
+          <tr><td class="nm">success</td><td><code class="inl">#6ba088</code></td><td class="mut">Conectado, Ativo, Resolvido</td><td><div class="sw" style="background:#6ba088"></div></td></tr>
+          <tr><td class="nm">warning</td><td><code class="inl">#c6a065</code></td><td class="mut">Precisa configurar, Aguardando documento</td><td><div class="sw" style="background:#c6a065"></div></td></tr>
+          <tr><td class="nm">danger</td><td><code class="inl">#c98585</code></td><td class="mut">Com erro, Bloqueado, Cancelado</td><td><div class="sw" style="background:#c98585"></div></td></tr>
+        </tbody>
+      </table>
+    </div>
+
+    <h3 class="sub">Bloco CSS · <span class="pill">app/globals.css</span></h3>
+    <div class="code">
+      <div class="code-bar"><span class="fn">globals.css — :root (fonte de verdade)</span><span class="cp" data-code="root">copiar</span></div>
+<pre id="code-root"><span class="c">/* AutoBrokers · paleta Névoa · dark default */</span>
+<span class="p">:root</span> {
+  <span class="p">--background</span>: <span class="v">#0a0b0d</span>;
+  <span class="p">--surface</span>: <span class="v">#14161a</span>;
+  <span class="p">--surface-2</span>: <span class="v">#1c1f24</span>;
+  <span class="p">--border</span>: <span class="v">#272b31</span>;
+  <span class="p">--border-soft</span>: <span class="v">#1a1d23</span>;
+  <span class="p">--foreground</span>: <span class="v">#f1f3f5</span>;
+  <span class="p">--foreground-2</span>: <span class="v">#c4cad2</span>;
+  <span class="p">--muted</span>: <span class="v">#828a93</span>;
+  <span class="p">--faint</span>: <span class="v">#565d65</span>;
+  <span class="p">--accent</span>: <span class="v">#6fa6c9</span>;
+  <span class="p">--accent-soft</span>: <span class="v">rgba(111,166,201,.14)</span>;
+  <span class="p">--accent-fg</span>: <span class="v">#07090b</span>;
+  <span class="p">--success</span>: <span class="v">#6ba088</span>;
+  <span class="p">--warning</span>: <span class="v">#c6a065</span>;
+  <span class="p">--danger</span>: <span class="v">#c98585</span>;
+
+  <span class="c">/* radius */</span>
+  <span class="p">--radius-sm</span>: <span class="v">8px</span>;  <span class="p">--radius-md</span>: <span class="v">10px</span>;
+  <span class="p">--radius-lg</span>: <span class="v">12px</span>; <span class="p">--radius-xl</span>: <span class="v">14px</span>;
+  <span class="p">--radius-2xl</span>: <span class="v">18px</span>;
+}</pre>
+    </div>
+
+    <h3 class="sub">Tailwind · <span class="pill">tailwind.config.js → theme.extend</span></h3>
+    <div class="code">
+      <div class="code-bar"><span class="fn">tailwind.config.js</span><span class="cp" data-code="tw">copiar</span></div>
+<pre id="code-tw"><span class="c">// referencia as CSS vars acima — single source of truth</span>
+<span class="p">theme</span>: {
+  <span class="p">extend</span>: {
+    <span class="p">colors</span>: {
+      <span class="p">background</span>: <span class="s">'var(--background)'</span>,
+      <span class="p">surface</span>: { <span class="p">DEFAULT</span>: <span class="s">'var(--surface)'</span>, <span class="p">2</span>: <span class="s">'var(--surface-2)'</span> },
+      <span class="p">border</span>: { <span class="p">DEFAULT</span>: <span class="s">'var(--border)'</span>, <span class="p">soft</span>: <span class="s">'var(--border-soft)'</span> },
+      <span class="p">foreground</span>: { <span class="p">DEFAULT</span>: <span class="s">'var(--foreground)'</span>, <span class="p">2</span>: <span class="s">'var(--foreground-2)'</span> },
+      <span class="p">muted</span>: <span class="s">'var(--muted)'</span>,
+      <span class="p">faint</span>: <span class="s">'var(--faint)'</span>,
+      <span class="p">accent</span>: {
+        <span class="p">DEFAULT</span>: <span class="s">'var(--accent)'</span>,
+        <span class="p">soft</span>: <span class="s">'var(--accent-soft)'</span>,
+        <span class="p">fg</span>: <span class="s">'var(--accent-fg)'</span>,
+      },
+      <span class="p">success</span>: <span class="s">'var(--success)'</span>,
+      <span class="p">warning</span>: <span class="s">'var(--warning)'</span>,
+      <span class="p">danger</span>: <span class="s">'var(--danger)'</span>,
+    },
+    <span class="p">fontFamily</span>: {
+      <span class="p">sans</span>: [<span class="s">'Geist'</span>, <span class="s">'ui-sans-serif'</span>, <span class="s">'system-ui'</span>],
+      <span class="p">mono</span>: [<span class="s">'Geist Mono'</span>, <span class="s">'ui-monospace'</span>],
+    },
+    <span class="p">borderRadius</span>: {
+      <span class="p">sm</span>: <span class="s">'8px'</span>, <span class="p">md</span>: <span class="s">'10px'</span>, <span class="p">lg</span>: <span class="s">'12px'</span>,
+      <span class="p">xl</span>: <span class="s">'14px'</span>, <span class="p">'2xl'</span>: <span class="s">'18px'</span>,
+    },
+    <span class="p">boxShadow</span>: {
+      <span class="p">card</span>: <span class="s">'0 16px 40px -28px rgba(0,0,0,.7)'</span>,
+      <span class="p">modal</span>: <span class="s">'0 40px 100px -30px rgba(0,0,0,.9)'</span>,
+      <span class="p">frame</span>: <span class="s">'0 50px 120px -50px rgba(0,0,0,.9)'</span>,
+    },
+  },
+}
+<span class="c">// uso: bg-background, bg-surface, bg-surface-2, border-border,</span>
+<span class="c">// border-border-soft, text-foreground, text-muted, text-faint,</span>
+<span class="c">// bg-accent, text-accent-fg, ring-accent, text-success ...</span></pre>
+    </div>
+
+    <div class="two">
+      <div>
+        <h3 class="sub">Tipografia</h3>
+        <div class="tbl-wrap"><table>
+          <thead><tr><th>Papel</th><th>Tamanho / peso</th></tr></thead>
+          <tbody>
+            <tr><td class="nm">Display</td><td>36–68px · 600 · tracking −0.035em</td></tr>
+            <tr><td class="nm">Título</td><td>24–30px · 600 · −0.025em</td></tr>
+            <tr><td class="nm">Subtítulo</td><td>18–20px · 500</td></tr>
+            <tr><td class="nm">Corpo</td><td>15–16px · 400 · line-height 1.6</td></tr>
+            <tr><td class="nm">Apoio</td><td>13–14px · 400</td></tr>
+            <tr><td class="nm">Meta / mono</td><td>11–12px · 500 · Geist Mono · uppercase</td></tr>
+          </tbody>
+        </table></div>
+        <p class="note">Mínimo absoluto na UI: 11px (apenas mono/labels). Texto de leitura nunca abaixo de 13px.</p>
+      </div>
+      <div>
+        <h3 class="sub">Radius · Spacing · Sombras</h3>
+        <div class="tbl-wrap"><table>
+          <thead><tr><th>Grupo</th><th>Valores</th></tr></thead>
+          <tbody>
+            <tr><td class="nm">Radius</td><td>badge/pill 999px · botão 10px · card 12px · painel 14px · modal 18px · tile 10px</td></tr>
+            <tr><td class="nm">Spacing</td><td>base 4px · padding card 16px · seção 24px · gaps 8/10/12/16</td></tr>
+            <tr><td class="nm">shadow-card</td><td>0 16px 40px −28px rgba(0,0,0,.7)</td></tr>
+            <tr><td class="nm">shadow-modal</td><td>0 40px 100px −30px rgba(0,0,0,.9)</td></tr>
+            <tr><td class="nm">shadow-frame</td><td>0 50px 120px −50px rgba(0,0,0,.9)</td></tr>
+          </tbody>
+        </table></div>
+        <p class="note">Fonte Geist via <code class="inl">next/font/google</code> ou <code class="inl">geist</code> package. Pesos: 400/500/600/700 (sans), 400/500 (mono).</p>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ============ 2 · COMPONENTES ============ -->
+<section class="block" id="componentes">
+  <div class="wrap">
+    <div class="sec-head"><span class="sec-num">02</span><h2>Catálogo de componentes</h2><span class="sec-tag">React · Radix/ShadCN base</span></div>
+    <p class="sec-lead">Todos os componentes reutilizáveis das três levas. <b>A</b> = Galeria · <b>B</b> = Detalhe · <b>C</b> = Permissão · <b>T</b> = transversal · <b>L</b> = layout. Props com <code class="inl">?</code> são opcionais. Construir sobre primitivos Radix/ShadCN quando existirem (Tabs, Dialog, Switch, Tooltip).</p>
+
+    <h3 class="sub">Layout &amp; navegação <span class="pill">L</span></h3>
+    <div class="tbl-wrap"><table>
+      <thead><tr><th>Componente</th><th>Props principais</th><th>Estados / variantes</th><th>Reuso</th></tr></thead>
+      <tbody>
+        <tr><td class="nm">AppSidebar</td><td><span class="mut">items: PillarItem[], active, recents?: Conversation[], user</span></td><td><span class="mut">item: default/hover/active(barra accent), colapsável</span></td><td><span class="mut">Todas as telas desktop</span></td></tr>
+        <tr><td class="nm">BottomNav</td><td><span class="mut">items: PillarItem[] (4), active</span></td><td><span class="mut">item: default/active(accent)</span></td><td><span class="mut">Todas as telas mobile</span></td></tr>
+        <tr><td class="nm">Breadcrumb</td><td><span class="mut">segments: {label, href?}[]</span></td><td><span class="mut">último = bold; desktop</span></td><td><span class="mut">B · todas as páginas de detalhe</span></td></tr>
+        <tr><td class="nm">BackLink</td><td><span class="mut">label, href</span></td><td><span class="mut">mobile / topo de camada</span></td><td><span class="mut">B · camadas mobile</span></td></tr>
+        <tr><td class="nm">PageHeader</td><td><span class="mut">title, subtitle?, action?</span></td><td><span class="mut">—</span></td><td><span class="mut">Todas as listas</span></td></tr>
+      </tbody>
+    </table></div>
+
+    <h3 class="sub">Chat-first (Leva 1) <span class="pill">L</span></h3>
+    <div class="tbl-wrap"><table>
+      <thead><tr><th>Componente</th><th>Props principais</th><th>Estados / variantes</th><th>Reuso</th></tr></thead>
+      <tbody>
+        <tr><td class="nm">ChatComposer</td><td><span class="mut">placeholder, onSend, onAttach?, disabled?</span></td><td><span class="mut">empty/focus/typing/disabled</span></td><td><span class="mut">/dashboard</span></td></tr>
+        <tr><td class="nm">ChatEmptyState</td><td><span class="mut">greeting, shortcuts: Shortcut[2]</span></td><td><span class="mut">—</span></td><td><span class="mut">/dashboard</span></td></tr>
+        <tr><td class="nm">ShortcutChip</td><td><span class="mut">icon, label, href</span></td><td><span class="mut">default/hover</span></td><td><span class="mut">/dashboard (2 fixos)</span></td></tr>
+        <tr><td class="nm">BrandMark</td><td><span class="mut">size?</span></td><td><span class="mut">—</span></td><td><span class="mut">Sidebar, chat, modais</span></td></tr>
+      </tbody>
+    </table></div>
+
+    <h3 class="sub">Padrões-mestre <span class="pill">A · B · C</span></h3>
+    <div class="tbl-wrap"><table>
+      <thead><tr><th>Componente</th><th>Padrão</th><th>Props principais</th><th>Estados / variantes</th><th>Reuso</th></tr></thead>
+      <tbody>
+        <tr><td class="nm">GalleryGrid</td><td>A</td><td><span class="mut">items, columns?</span></td><td><span class="mut">+ EmptyState/Skeleton</span></td><td><span class="mut">Conectores, Auxiliares, Seguradoras</span></td></tr>
+        <tr><td class="nm">GalleryCard</td><td>A</td><td><span class="mut">icon, title, description, status: StatusTone, tags?, onClick</span></td><td><span class="mut">default/hover/disabled(“em breve”)</span></td><td><span class="mut">Galerias</span></td></tr>
+        <tr><td class="nm">CategoryFilter</td><td>A</td><td><span class="mut">categories, active, onChange</span></td><td><span class="mut">chip: default/active(accent)</span></td><td><span class="mut">Galerias</span></td></tr>
+        <tr><td class="nm">SearchField</td><td>A</td><td><span class="mut">placeholder, value, onChange</span></td><td><span class="mut">empty/focus</span></td><td><span class="mut">Galerias, listas, casos</span></td></tr>
+        <tr><td class="nm">DetailHeader</td><td>B</td><td><span class="mut">icon, title, status, subtitle, primaryAction</span></td><td><span class="mut">—</span></td><td><span class="mut">Conector, Auxiliar, Seguradora, Caso</span></td></tr>
+        <tr><td class="nm">Tabs</td><td>B</td><td><span class="mut">tabs: {label,count?}[], active, onChange</span></td><td><span class="mut">tab: default/active(underline accent)</span></td><td><span class="mut">Detalhes, listas com filtro</span></td></tr>
+        <tr><td class="nm">SegmentedControl</td><td>B</td><td><span class="mut">options, active, onChange</span></td><td><span class="mut">segment: default/active</span></td><td><span class="mut">Detalhe mobile (no lugar de Tabs)</span></td></tr>
+        <tr><td class="nm">SideCard</td><td>B</td><td><span class="mut">title?, children</span></td><td><span class="mut">—</span></td><td><span class="mut">Painel lateral dos detalhes</span></td></tr>
+        <tr><td class="nm">KeyValueList</td><td>B</td><td><span class="mut">rows: {k, v}[]</span></td><td><span class="mut">—</span></td><td><span class="mut">SideCard, execução</span></td></tr>
+        <tr><td class="nm">PermissionModal</td><td>C</td><td><span class="mut">connectorIcon, title, can: string[], cannot: string[], risk: RiskLevel, modules: Pillar[], onAuthorize, onCancel</span></td><td><span class="mut">Radix Dialog; mobile → BottomSheet</span></td><td><span class="mut">Conectar, autorizar Auxiliar, aprovar ação</span></td></tr>
+        <tr><td class="nm">PermissionRow</td><td>C</td><td><span class="mut">label, allowed: boolean</span></td><td><span class="mut">ok(check)/no(x)</span></td><td><span class="mut">PermissionModal</span></td></tr>
+        <tr><td class="nm">RiskBar</td><td>C</td><td><span class="mut">level: RiskLevel</span></td><td><span class="mut">Baixo/Médio/Alto/Crítico</span></td><td><span class="mut">PermissionModal, detalhe</span></td></tr>
+        <tr><td class="nm">BottomSheet</td><td>C</td><td><span class="mut">open, onClose, children</span></td><td><span class="mut">Radix Dialog mobile</span></td><td><span class="mut">Permissão e ações curtas no mobile</span></td></tr>
+      </tbody>
+    </table></div>
+
+    <h3 class="sub">Transversais <span class="pill">T</span></h3>
+    <div class="tbl-wrap"><table>
+      <thead><tr><th>Componente</th><th>Props principais</th><th>Estados / variantes</th><th>Reuso</th></tr></thead>
+      <tbody>
+        <tr><td class="nm">StatusBadge</td><td><span class="mut">tone: StatusTone, label</span></td><td><span class="mut">neutral/info/success/warning/danger/approval(tracejado+pulso)</span></td><td><span class="mut">Tudo (ver §3)</span></td></tr>
+        <tr><td class="nm">Button</td><td><span class="mut">variant: primary|ghost, size?: sm|md, icon?, disabled?</span></td><td><span class="mut">default/hover/focus/disabled</span></td><td><span class="mut">Tudo</span></td></tr>
+        <tr><td class="nm">Tile</td><td><span class="mut">icon | letter, size?</span></td><td><span class="mut">monograma neutro (sem logos de marca)</span></td><td><span class="mut">Cards, headers, modais</span></td></tr>
+        <tr><td class="nm">EmptyState</td><td><span class="mut">icon, title, description, action?</span></td><td><span class="mut">—</span></td><td><span class="mut">Listas e galerias vazias</span></td></tr>
+        <tr><td class="nm">Skeleton</td><td><span class="mut">rows?, variant?: list|card</span></td><td><span class="mut">shimmer</span></td><td><span class="mut">Loading de listas/galerias</span></td></tr>
+        <tr><td class="nm">ErrorState</td><td><span class="mut">title, description, onRetry</span></td><td><span class="mut">—</span></td><td><span class="mut">Falha de carregamento</span></td></tr>
+        <tr><td class="nm">HitlBanner</td><td><span class="mut">title, message, onReview, onApprove</span></td><td><span class="mut">faixa tracejada accent + badge approval</span></td><td><span class="mut">Caso, Auxiliar (aguardando aprovação)</span></td></tr>
+        <tr><td class="nm">ListRow</td><td><span class="mut">icon, title, status?, subtitle, meta?, onClick</span></td><td><span class="mut">default/hover; chevron</span></td><td><span class="mut">Meus Auxiliares, Casos</span></td></tr>
+        <tr><td class="nm">Stepper</td><td><span class="mut">steps: string[], current</span></td><td><span class="mut">done/active/idle</span></td><td><span class="mut">Ativação de Auxiliar</span></td></tr>
+        <tr><td class="nm">ToggleRow</td><td><span class="mut">label, hint?, checked, onChange, disabled?</span></td><td><span class="mut">on/off/disabled — Radix Switch</span></td><td><span class="mut">Permissões de ativação</span></td></tr>
+        <tr><td class="nm">TextField / TextArea</td><td><span class="mut">label, hint?, value, onChange</span></td><td><span class="mut">default/focus</span></td><td><span class="mut">Configuração de Auxiliar</span></td></tr>
+        <tr><td class="nm">Timeline / TimelineItem</td><td><span class="mut">items: {when, title, body, tag?, accent?}[]</span></td><td><span class="mut">node default/accent</span></td><td><span class="mut">Detalhe de Caso</span></td></tr>
+        <tr><td class="nm">InsurerCard</td><td><span class="mut">logo, name, lines, status, footer</span></td><td><span class="mut">default/hover; “adicionar” tracejado</span></td><td><span class="mut">Lista de Seguradoras</span></td></tr>
+        <tr><td class="nm">StatCard</td><td><span class="mut">value, label</span></td><td><span class="mut">—</span></td><td><span class="mut">Página de Seguradora</span></td></tr>
+        <tr><td class="nm">ChannelRow</td><td><span class="mut">icon, label, status, primary?</span></td><td><span class="mut">—</span></td><td><span class="mut">Seguradora · Canais</span></td></tr>
+        <tr><td class="nm">ChipTag</td><td><span class="mut">label</span></td><td><span class="mut">—</span></td><td><span class="mut">Corredores, módulos, tags</span></td></tr>
+        <tr><td class="nm">ExecutionCard</td><td><span class="mut">summary, pendencias, nextAction, meta: KeyValue[]</span></td><td><span class="mut">concluído/erro</span></td><td><span class="mut">Execução do Auxiliar</span></td></tr>
+      </tbody>
+    </table></div>
+    <p class="note">Tipos auxiliares: <code class="inl">StatusTone = 'neutral'|'info'|'success'|'warning'|'danger'|'approval'</code> · <code class="inl">RiskLevel = 'baixo'|'medio'|'alto'|'critico'</code> · <code class="inl">Pillar = 'autobrokers'|'atendimentos'|'auxiliares'|'personalizacao'</code>.</p>
+  </div>
+</section>
+
+<!-- ============ 3 · STATUS ============ -->
+<section class="block" id="status">
+  <div class="wrap">
+    <div class="sec-head"><span class="sec-num">03</span><h2>Sistema de status</h2><span class="sec-tag">um StatusBadge, seis tons</span></div>
+    <p class="sec-lead">Tabela definitiva. <b>Cor sempre acompanhada de texto e ponto</b>, nunca cor sozinha. O componente é único (<code class="inl">StatusBadge</code>); o que muda é o <code class="inl">tone</code>. A “aprovação” tem tratamento próprio — borda tracejada e ponto pulsante — para se destacar como ação humana pendente.</p>
+    <div class="tbl-wrap"><table>
+      <thead><tr><th>Tom</th><th>Token de cor</th><th>Exemplo</th><th>Estados que cobre</th></tr></thead>
+      <tbody>
+        <tr><td class="nm">neutral</td><td><code class="inl">muted</code> / borda border</td><td><span class="badge t-neutral"><span class="d"></span>Disponível</span></td><td class="mut">Disponível · Rascunho · Em triagem · Pausado · Encerrado · Não configurado</td></tr>
+        <tr><td class="nm">info</td><td><code class="inl">accent</code> + accent-soft</td><td><span class="badge t-info"><span class="d"></span>Em andamento</span></td><td class="mut">Em andamento · Em teste · Em análise · Aguardando cliente · Acionamento em andamento</td></tr>
+        <tr><td class="nm">success</td><td><code class="inl">success</code></td><td><span class="badge t-success"><span class="d"></span>Conectado</span></td><td class="mut">Conectado · Ativo · Pronto para acionamento · Resolvido</td></tr>
+        <tr><td class="nm">warning</td><td><code class="inl">warning</code></td><td><span class="badge t-warning"><span class="d"></span>Precisa configurar</span></td><td class="mut">Precisa configurar · Aguardando documento · Aguardando seguradora · Aguardando prestador · Atrasado</td></tr>
+        <tr><td class="nm">danger</td><td><code class="inl">danger</code></td><td><span class="badge t-danger"><span class="d"></span>Com erro</span></td><td class="mut">Com erro · Bloqueado · Cancelado · Handoff humano</td></tr>
+        <tr><td class="nm">approval</td><td><code class="inl">accent</code> · borda <b style="color:var(--foreground)">tracejada</b> + <b style="color:var(--foreground)">pulso</b></td><td><span class="badge t-approval"><span class="d"></span>Aguardando aprovação</span></td><td class="mut">Aguardando aprovação (HITL) — sempre que uma ação externa espera decisão humana</td></tr>
+      </tbody>
+    </table></div>
+    <div class="two" style="margin-top:18px">
+      <div class="code">
+        <div class="code-bar"><span class="fn">StatusBadge — assinatura</span></div>
+<pre><span class="p">type</span> <span class="v">StatusTone</span> =
+  <span class="s">'neutral'</span>|<span class="s">'info'</span>|<span class="s">'success'</span>|
+  <span class="s">'warning'</span>|<span class="s">'danger'</span>|<span class="s">'approval'</span>;
+
+<span class="p">&lt;StatusBadge</span> tone=<span class="s">"approval"</span>
+  label=<span class="s">"Aguardando aprovação"</span> <span class="p">/&gt;</span></pre>
+      </div>
+      <div class="code">
+        <div class="code-bar"><span class="fn">regras de uso</span></div>
+<pre><span class="c">// 1. nunca só cor — sempre ponto + texto</span>
+<span class="c">// 2. approval = borda dashed + dot pulsante</span>
+<span class="c">// 3. mapear status do ADR-003 → tone</span>
+<span class="c">//    via util statusToTone(status)</span>
+<span class="c">// 4. handoff_humano = danger (atenção máxima)</span>
+<span class="c">// 5. aguardando_aprovacao = approval</span></pre>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ============ 4 · SPECS ============ -->
+<section class="block" id="specs">
+  <div class="wrap">
+    <div class="sec-head"><span class="sec-num">04</span><h2>Specs por tela</h2><span class="sec-tag">fichas fechadas · levas 1–3</span></div>
+    <p class="sec-lead">Cada ficha é um contrato de implementação. Os componentes referenciam o catálogo (§2). <b>Shell visual</b> = sem backend novo. <b>Dado real</b> = conecta ao runtime existente. <span class="tagm hitl-tag">HITL</span> = ação que exige estado “aguardando aprovação” na UI antes de executar.</p>
+
+    <!-- /dashboard -->
+    <div class="spec">
+      <div class="spec-hd"><div class="l"><span class="rt">/dashboard</span><h4>AutoBrokers · chat-first (Home)</h4></div><span class="ph">Leva 1</span></div>
+      <div class="spec-body">
+        <div class="sf"><div class="k">Layout</div><div class="v"><b>Desktop:</b> AppSidebar + área de chat centrada. <b>Mobile:</b> header (menu/título/nova conversa) + ChatEmptyState + ChatComposer acima da BottomNav.</div></div>
+        <div class="sf"><div class="k">Componentes</div><div class="v"><span class="tagm">AppSidebar</span><span class="tagm">BottomNav</span><span class="tagm">ChatEmptyState</span><span class="tagm">ChatComposer</span><span class="tagm">ShortcutChip ×2</span><span class="tagm">BrandMark</span></div></div>
+        <div class="sf"><div class="k">Estados</div><div class="v">empty (padrão) · enviando/streaming · erro amigável de envio</div></div>
+        <div class="sf"><div class="k">Shell × Dado</div><div class="v"><b>Shell:</b> empty state, atalhos, sidebar. <b>Dado real:</b> envio/stream e histórico de conversas (já existe no runtime).</div></div>
+        <div class="sf"><div class="k">Fora de escopo</div><div class="v oos">Cards de KPI, métricas, “LLM conectado”, seletor de agentes, qualquer dashboard.</div></div>
+        <div class="sf"><div class="k">HITL</div><div class="v">—</div></div>
+      </div>
+    </div>
+
+    <!-- /auxiliares -->
+    <div class="spec">
+      <div class="spec-hd"><div class="l"><span class="rt">/dashboard/auxiliares</span><h4>Auxiliares · página principal</h4></div><span class="ph">Leva 3</span></div>
+      <div class="spec-body">
+        <div class="sf"><div class="k">Layout</div><div class="v">PageHeader + Tabs (Meus / Galeria / Execuções). Meus = lista de ListRow; Galeria = GalleryGrid.</div></div>
+        <div class="sf"><div class="k">Componentes</div><div class="v"><span class="tagm">Tabs</span><span class="tagm">ListRow</span><span class="tagm">GalleryGrid</span><span class="tagm">GalleryCard</span><span class="tagm">CategoryFilter</span><span class="tagm">StatusBadge</span><span class="tagm">EmptyState</span></div></div>
+        <div class="sf"><div class="k">Estados</div><div class="v">vazio (“nenhum Auxiliar ativado”) · carregando (Skeleton) · erro · item aguardando aprovação</div></div>
+        <div class="sf"><div class="k">Shell × Dado</div><div class="v"><b>Shell:</b> Galeria mockada (templates). <b>Dado real:</b> Meus Auxiliares + contagem de execuções (mapear <code>agents</code>).</div></div>
+        <div class="sf"><div class="k">Fora de escopo</div><div class="v oos">Criação por prompt, scheduler, marketplace.</div></div>
+        <div class="sf"><div class="k">HITL</div><div class="v"><span class="tagm hitl-tag">Cobrança</span> exibe badge approval quando há rascunhos a revisar.</div></div>
+      </div>
+    </div>
+
+    <!-- auxiliar detail + ativação + execução -->
+    <div class="spec">
+      <div class="spec-hd"><div class="l"><span class="rt">/auxiliares/[id] · /ativar · /execucoes/[runId]</span><h4>Auxiliar de Resumo de Atendimentos</h4></div><span class="ph">Leva 3 · flagship</span></div>
+      <div class="spec-body">
+        <div class="sf"><div class="k">Layout</div><div class="v"><b>Detalhe:</b> Breadcrumb + DetailHeader + Tabs (Visão geral/Configuração/Conectores/Permissões/Execuções) + SideCard. <b>Ativar:</b> Stepper de 4 (Personalizar→Permissões→Testar→Ativar). <b>Execução:</b> ExecutionCard.</div></div>
+        <div class="sf"><div class="k">Componentes</div><div class="v"><span class="tagm">DetailHeader</span><span class="tagm">Tabs</span><span class="tagm">SideCard</span><span class="tagm">Stepper</span><span class="tagm">ToggleRow</span><span class="tagm">TextField</span><span class="tagm">ExecutionCard</span><span class="tagm">KeyValueList</span></div></div>
+        <div class="sf"><div class="k">Estados</div><div class="v">disponível/ativo · cada etapa do stepper · execução: concluído/erro</div></div>
+        <div class="sf"><div class="k">Shell × Dado</div><div class="v"><b>Dado real:</b> execução manual sobre conversa selecionada → gera resumo, salva run com custo e histórico, <b>sem envio externo</b>.</div></div>
+        <div class="sf"><div class="k">Fora de escopo</div><div class="v oos">Envio de mensagem ao cliente (toggle desabilitado), disparo automático, scheduler.</div></div>
+        <div class="sf"><div class="k">HITL</div><div class="v"><span class="tagm hitl-tag">Envio externo</span> permanece desativado por design no MVP — “próxima ação” é sempre sugestão.</div></div>
+      </div>
+    </div>
+
+    <!-- conectores -->
+    <div class="spec">
+      <div class="spec-hd"><div class="l"><span class="rt">/personalizacao/conectores · /[id]</span><h4>Conectores · galeria + detalhe + permissão</h4></div><span class="ph">Leva 2</span></div>
+      <div class="spec-body">
+        <div class="sf"><div class="k">Layout</div><div class="v">Galeria (Padrão A) com SearchField + CategoryFilter → Detalhe (Padrão B) → PermissionModal (Padrão C) ao conectar.</div></div>
+        <div class="sf"><div class="k">Componentes</div><div class="v"><span class="tagm">GalleryGrid</span><span class="tagm">GalleryCard</span><span class="tagm">CategoryFilter</span><span class="tagm">DetailHeader</span><span class="tagm">Tabs</span><span class="tagm">PermissionModal</span><span class="tagm">RiskBar</span><span class="tagm">StatusBadge</span></div></div>
+        <div class="sf"><div class="k">Estados</div><div class="v">disponível/conectado/precisa configurar/em teste/erro · modal: autorizar/cancelar</div></div>
+        <div class="sf"><div class="k">Shell × Dado</div><div class="v"><b>Shell:</b> galeria e modal. <b>Dado real:</b> status de conexão e fluxo OAuth (Vault) — conectar uma vez, reutilizar.</div></div>
+        <div class="sf"><div class="k">Fora de escopo</div><div class="v oos">Tela técnica de Vault, escopos OAuth crus na UI.</div></div>
+        <div class="sf"><div class="k">HITL</div><div class="v">Modal comunica que ações externas exigirão aprovação humana.</div></div>
+      </div>
+    </div>
+
+    <!-- seguradoras -->
+    <div class="spec">
+      <div class="spec-hd"><div class="l"><span class="rt">/personalizacao/seguradoras · /[id]</span><h4>Seguradoras · lista + página em camadas</h4></div><span class="ph">Leva 3</span></div>
+      <div class="spec-body">
+        <div class="sf"><div class="k">Layout</div><div class="v">Lista de InsurerCard (Padrão A) → Página (Padrão B) com Tabs (Visão geral/Canais/Portal/Corredores) + StatCard + ChannelRow + ChipTag.</div></div>
+        <div class="sf"><div class="k">Componentes</div><div class="v"><span class="tagm">InsurerCard</span><span class="tagm">DetailHeader</span><span class="tagm">Tabs</span><span class="tagm">StatCard</span><span class="tagm">ChannelRow</span><span class="tagm">ChipTag</span><span class="tagm">StatusBadge</span></div></div>
+        <div class="sf"><div class="k">Estados</div><div class="v">pronta/configurar/bloqueado · canal conectado/não configurado</div></div>
+        <div class="sf"><div class="k">Shell × Dado</div><div class="v"><b>Shell visual</b> nesta leva (sem lógica de corredor). Canais reutilizam conexões de Conectores.</div></div>
+        <div class="sf"><div class="k">Fora de escopo</div><div class="v oos">Setup de credenciais real, automação de portal, lógica de acionamento.</div></div>
+        <div class="sf"><div class="k">HITL</div><div class="v">Conectar canal/portal usa PermissionModal.</div></div>
+      </div>
+    </div>
+
+    <!-- atendimentos -->
+    <div class="spec">
+      <div class="spec-hd"><div class="l"><span class="rt">/atendimentos/casos · /[id]</span><h4>Atendimentos · shell (lista + caso)</h4></div><span class="ph">Leva 3</span></div>
+      <div class="spec-body">
+        <div class="sf"><div class="k">Layout</div><div class="v">Lista: PageHeader + Tabs (Precisam de você/Em andamento/Aguardando/Resolvidos) + ListRow. Caso: DetailHeader + HitlBanner + Tabs (Timeline/Conversa/Documentos/Ações) + Timeline.</div></div>
+        <div class="sf"><div class="k">Componentes</div><div class="v"><span class="tagm">PageHeader</span><span class="tagm">Tabs</span><span class="tagm">ListRow</span><span class="tagm">StatusBadge</span><span class="tagm">DetailHeader</span><span class="tagm">HitlBanner</span><span class="tagm">Timeline</span></div></div>
+        <div class="sf"><div class="k">Estados</div><div class="v">vazio (“nenhum atendimento em aberto”) · carregando · ciclo de status do ADR-003 · aguardando aprovação</div></div>
+        <div class="sf"><div class="k">Shell × Dado</div><div class="v"><b>Shell visual</b> nesta leva: lista + detalhe + sistema de status. Sem lógica de corredor/seguradora.</div></div>
+        <div class="sf"><div class="k">Fora de escopo</div><div class="v oos">Fluxo de corredor, acionamento real de seguradora, configuração de canais.</div></div>
+        <div class="sf"><div class="k">HITL</div><div class="v"><span class="tagm hitl-tag">Acionar prestador / seguradora</span> via HitlBanner — só executa após “Aprovar”.</div></div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ============ 5 · ORDEM ============ -->
+<section class="block" id="ordem">
+  <div class="wrap">
+    <div class="sec-head"><span class="sec-num">05</span><h2>Ordem de implementação</h2><span class="sec-tag">batches pequenos · fechados · testáveis</span></div>
+    <p class="sec-lead">Sequência alinhada ao ROADMAP. Cada batch é fechado e tem um critério de pronto. Não pular ordem: a fundação (tokens + shell) sustenta tudo. Cada tarefa entregue ao Claude Code deve referenciar a ficha §4 correspondente.</p>
+    <div>
+      <div class="batch"><span class="id">B0</span><div class="bd"><h4>Fundação visual</h4><p>Instalar Geist, aplicar <code class="inl">globals.css</code> (:root) e <code class="inl">tailwind.config.js</code> do §1. Criar primitivos: Button, Tile, StatusBadge, EmptyState, Skeleton, ErrorState.</p><div class="test"><b>PRONTO:</b> Storybook/rota de sandbox mostra tokens e primitivos com os hex corretos. <code class="inl">typecheck</code> + <code class="inl">build</code> verdes.</div></div></div>
+      <div class="batch"><span class="id">B1</span><div class="bd"><h4>Shell de navegação</h4><p>AppSidebar (4 pilares + recents + user), BottomNav mobile, Breadcrumb/BackLink, PageHeader. Layout responsivo.</p><div class="test"><b>PRONTO:</b> navega entre os 4 pilares; ativo/hover corretos; mobile mostra bottom-nav.</div></div></div>
+      <div class="batch"><span class="id">B2</span><div class="bd"><h4>Chat-first em /dashboard</h4><p>ChatEmptyState + ChatComposer + 2 ShortcutChip. Ligar ao chat/stream existente do runtime, sem alterar backend.</p><div class="test"><b>PRONTO:</b> empty state aprovado renderiza; envio funciona; histórico aparece em “Recentes”.</div></div></div>
+      <div class="batch"><span class="id">B3</span><div class="bd"><h4>Padrões-mestre como componentes</h4><p>GalleryGrid/Card, CategoryFilter, SearchField, DetailHeader, Tabs/SegmentedControl, SideCard, PermissionModal/BottomSheet, RiskBar. Tudo mockado em sandbox.</p><div class="test"><b>PRONTO:</b> os três padrões A/B/C renderizam isolados, desktop e mobile.</div></div></div>
+      <div class="batch"><span class="id">B4</span><div class="bd"><h4>Shells dos módulos (sem backend novo)</h4><p>Auxiliares (lista/galeria), Conectores (galeria+detalhe+modal), Seguradoras (lista+página), Atendimentos (lista+caso). Dados mockados.</p><div class="test"><b>PRONTO:</b> todas as rotas do §4 abrem com layout aprovado e estados vazio/loading/erro.</div></div></div>
+      <div class="batch"><span class="id">B5</span><div class="bd"><h4>Auxiliar de Resumo funcional</h4><p>Detalhe + Stepper de ativação + execução manual real sobre conversa selecionada → resumo + run salvo (custo, histórico). Sem envio externo.</p><div class="test"><b>PRONTO:</b> rodar o Auxiliar gera resumo real e grava execução visível em Execuções.</div></div></div>
+      <div class="batch"><span class="id">B6</span><div class="bd"><h4>Atendimento base + HITL</h4><p>Conectar lista/detalhe de Caso a dados reais; sistema de status do ADR-003; HitlBanner com estado “aguardando aprovação” antes de qualquer ação externa.</p><div class="test"><b>PRONTO:</b> caso real exibe status correto; ação externa fica bloqueada até “Aprovar”.</div></div></div>
+    </div>
+    <p class="note">Regra de ouro do batch: <b style="color:var(--foreground-2)">um PR = uma ficha §4 ou um grupo de componentes §2</b>. Nunca “melhore o módulo X”. Sempre escopo fechado + critério de pronto + fora de escopo explícito.</p>
+  </div>
+</section>
+
+<!-- ============ PROCESSO ============ -->
+<section class="block" id="processo">
+  <div class="wrap">
+    <div class="sec-head"><span class="sec-num">→</span><h2>Como transformar isto no material perfeito para o Claude Code</h2></div>
+    <p class="sec-lead">Sem atropelar. Passo a passo, até termos tudo pronto para entregar. Este handoff é o documento-mãe; cada passo abaixo gera os artefatos finais que o Claude Code recebe.</p>
+    <div class="steps">
+      <div class="stp"><div><h4>Aprovar este handoff como canônico</h4><p>Você revisa §1–§5. Aprovado, ele vira <b>HANDOFF-001</b> em <code class="inl">docs/canon/</code> — a referência única. Qualquer dúvida de implementação volta aqui, não ao “achismo”.</p></div></div>
+      <div class="stp"><div><h4>Congelar os tokens no repositório primeiro</h4><p>O Batch <b>B0</b> entra sozinho: <code class="inl">globals.css</code> + <code class="inl">tailwind.config.js</code> + primitivos. Nada mais avança antes dos tokens estarem no código. É a base que impede divergência visual.</p></div></div>
+      <div class="stp"><div><h4>Gerar um card de tarefa por ficha §4</h4><p>Cada tela do §4 vira uma tarefa fechada para o Claude Code, copiando os campos: rota, layout, componentes, estados, shell×dado, fora de escopo, HITL. Eu posso escrever esses cards prontos quando você pedir.</p></div></div>
+      <div class="stp"><div><h4>Seguir a ordem dos batches, um PR por vez</h4><p>B0 → B1 → … → B6. Cada PR referencia a ficha e o critério de PRONTO. O Claude Code executa dentro do escopo; <b>não decide produto</b>. Roda <code class="inl">typecheck</code> + <code class="inl">build</code> antes de fechar.</p></div></div>
+      <div class="stp"><div><h4>Validar cada batch contra o mockup</h4><p>Ao fim de cada PR, comparar a tela renderizada com a Leva correspondente (1, 2 ou 3). Diferença visual = bug, não “interpretação”. Ajustar antes de seguir.</p></div></div>
+      <div class="stp"><div><h4>Só então ligar dados reais</h4><p>Shells (B4) antes de dados (B5/B6). Primeiro a UX aprovada com mock; depois o runtime. Ações externas só entram com o estado HITL implementado e visível.</p></div></div>
+    </div>
+    <div class="callout">
+      <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7"><path d="M12 2l8 4v6c0 5-3.5 8-8 10-4.5-2-8-5-8-10V6z"/><path d="M9 12l2 2 4-4"/></svg>
+      <p><b>O que eu (Design) posso entregar a seguir, quando você aprovar este handoff:</b> (1) os cards de tarefa prontos, um por ficha §4, no formato que o Claude Code executa; (2) os ícones do produto como set SVG consistente; (3) a planilha de mapeamento status do ADR-003 → <code class="inl">StatusTone</code>. É só dizer qual começar — seguimos passo a passo, sem pular etapa.</p>
+    </div>
+  </div>
+</section>
+
+<footer class="foot">
+  <div class="wrap">
+    <div class="nx">HANDOFF-001 · pronto para revisão</div>
+    <p style="color:var(--foreground-2);font-size:15px;max-width:64ch;line-height:1.7">Este documento fecha a ponte design → engenharia. Aprovado, vira canônico e destrava o Batch B0. A partir daí, cada tela aprovada nas Levas 1–3 tem tokens, componentes, status, spec e ordem — tudo que o Claude Code precisa para implementar sem reinterpretar uma única decisão visual.</p>
+    <p style="margin-top:22px;font-family:var(--mono);font-size:12px;color:var(--faint)">AutoBrokers.ai · HANDOFF-001 · Engenharia · paleta Névoa · Geist · Next.js + Tailwind + Radix/ShadCN · PT-BR</p>
+  </div>
+</footer>
+
+<script>
+document.querySelectorAll('.cp').forEach(b=>{
+  b.addEventListener('click',()=>{
+    const id='code-'+b.dataset.code;
+    const el=document.getElementById(id);
+    if(!el)return;
+    const txt=el.innerText;
+    navigator.clipboard?.writeText(txt).then(()=>{
+      const o=b.textContent;b.textContent='copiado ✓';
+      setTimeout(()=>b.textContent=o,1400);
+    }).catch(()=>{});
+  });
+});
+</script>
+</body>
+</html>

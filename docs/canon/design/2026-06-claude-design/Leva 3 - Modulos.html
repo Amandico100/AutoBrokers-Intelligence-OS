@@ -1,0 +1,615 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>AutoBrokers.ai — Leva 3 · Módulos</title>
+<link rel="preconnect" href="https://fonts.googleapis.com" />
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+<link href="https://fonts.googleapis.com/css2?family=Geist:wght@400;500;600;700&family=Geist+Mono:wght@400;500&display=swap" rel="stylesheet" />
+<style>
+:root{
+  --bg:#0a0b0d;--panel:#111317;--panel2:#171a1f;--line:#23272e;--line-soft:#1a1d23;
+  --tx:#f1f3f5;--tx2:#c4cad2;--muted:#828a93;--faint:#596169;
+  --accent:#6fa6c9;--accent-soft:rgba(111,166,201,0.13);
+  --radius:14px;--maxw:1120px;
+  --sans:"Geist","Geist Fallback",-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif;
+  --mono:"Geist Mono",ui-monospace,SFMono-Regular,Menlo,monospace;
+}
+*{box-sizing:border-box;margin:0;padding:0}
+html{scroll-behavior:smooth}
+body{background:var(--bg);color:var(--tx);font-family:var(--sans);font-size:16px;line-height:1.6;-webkit-font-smoothing:antialiased;text-rendering:optimizeLegibility}
+.wrap{max-width:var(--maxw);margin:0 auto;padding:0 28px}
+::selection{background:var(--accent-soft);color:#fff}
+.skin{--m-bg:#0a0b0d;--m-surface:#14161a;--m-surface2:#1c1f24;--m-border:#272b31;--m-text:#f1f3f5;--m-muted:#828a93;--m-faint:#565d65;--m-accent:#6fa6c9;--m-accent-fg:#07090b;--m-accent-soft:rgba(111,166,201,0.14);--m-success:#6ba088;--m-warning:#c6a065;--m-danger:#c98585}
+
+.ribbon{border-bottom:1px solid var(--line-soft);background:rgba(10,11,13,0.72);backdrop-filter:blur(12px);position:sticky;top:0;z-index:60}
+.ribbon-in{display:flex;align-items:center;justify-content:space-between;height:58px}
+.ribbon-brand{display:flex;align-items:center;gap:11px;font-weight:600;font-size:14.5px;letter-spacing:-0.01em}
+.ribbon-tag{font-family:var(--mono);font-size:11px;color:var(--muted);border:1px solid var(--line);border-radius:999px;padding:4px 11px;letter-spacing:0.04em}
+.ribbon-nav{display:flex;gap:4px}
+.ribbon-nav a{color:var(--muted);text-decoration:none;font-size:13px;padding:7px 12px;border-radius:8px;transition:.15s}
+.ribbon-nav a:hover{color:var(--tx);background:var(--panel)}
+@media(max-width:820px){.ribbon-nav{display:none}}
+.mark{display:inline-grid;place-items:center;flex:none}.mark svg{display:block}
+
+.hero{padding:104px 0 70px;border-bottom:1px solid var(--line-soft)}
+.kick{font-family:var(--mono);font-size:12px;letter-spacing:0.16em;text-transform:uppercase;color:var(--accent);margin-bottom:24px}
+.hero h1{font-size:clamp(34px,5.4vw,60px);line-height:1.04;letter-spacing:-0.035em;font-weight:600;max-width:18ch}
+.hero p.lead{margin-top:28px;max-width:64ch;font-size:18px;color:var(--tx2);line-height:1.65}
+.hero-meta{margin-top:36px;display:flex;flex-wrap:wrap;gap:10px}
+.chip{font-family:var(--mono);font-size:11.5px;color:var(--tx2);background:var(--panel);border:1px solid var(--line);border-radius:999px;padding:7px 14px;letter-spacing:0.02em}
+.chip b{color:var(--tx);font-weight:500}
+
+section.block{padding:88px 0;border-bottom:1px solid var(--line-soft)}
+.sec-head{display:flex;align-items:baseline;gap:18px;margin-bottom:12px;flex-wrap:wrap}
+.sec-num{font-family:var(--mono);font-size:13px;color:var(--accent)}
+.sec-tag{font-family:var(--mono);font-size:11px;color:var(--muted);border:1px solid var(--line);border-radius:6px;padding:3px 9px;letter-spacing:0.05em}
+.sec-head h2{font-size:29px;letter-spacing:-0.025em;font-weight:600}
+.sec-lead{max-width:66ch;color:var(--tx2);font-size:16.5px;margin-bottom:38px}
+.sec-lead b{color:var(--tx)}
+.mock-cap{font-family:var(--mono);font-size:12px;color:var(--muted);margin:30px 0 14px;letter-spacing:0.03em}
+.mock-cap:first-of-type{margin-top:0}
+
+.browser{border:1px solid var(--m-border);border-radius:16px;overflow:hidden;background:var(--m-bg);box-shadow:0 50px 120px -50px rgba(0,0,0,0.9)}
+.bw-bar{display:flex;align-items:center;gap:14px;padding:13px 18px;background:var(--m-surface);border-bottom:1px solid var(--m-border)}
+.bw-dots{display:flex;gap:7px}.bw-dots i{width:11px;height:11px;border-radius:50%;background:var(--m-border)}
+.bw-url{flex:1;max-width:400px;margin:0 auto;background:var(--m-bg);border:1px solid var(--m-border);border-radius:7px;padding:5px 12px;font-family:var(--mono);font-size:11.5px;color:var(--m-muted);text-align:center}
+.bw-body{position:relative}
+
+.app{display:flex;min-height:540px}
+.mini-sb{width:208px;flex:none;background:var(--m-surface);border-right:1px solid var(--m-border);padding:14px 12px;display:flex;flex-direction:column;gap:2px}
+.mini-brand{display:flex;align-items:center;gap:9px;color:var(--m-text);font-weight:600;font-size:14px;padding:6px 8px 14px}
+.mini-item{display:flex;align-items:center;gap:11px;padding:8px 11px;border-radius:9px;color:var(--m-muted);font-size:13px;cursor:pointer;position:relative}
+.mini-item svg{opacity:.85}
+.mini-item:hover{background:var(--m-surface2);color:var(--m-text)}
+.mini-item.on{background:var(--m-surface2);color:var(--m-text);font-weight:500}
+.mini-item.on::before{content:"";position:absolute;left:-12px;top:50%;transform:translateY(-50%);width:3px;height:16px;border-radius:0 3px 3px 0;background:var(--m-accent)}
+.mini-sub{font-family:var(--mono);font-size:10px;letter-spacing:0.1em;text-transform:uppercase;color:var(--m-faint);padding:12px 11px 6px}
+.content{flex:1;min-width:0;background:var(--m-bg);display:flex;flex-direction:column}
+.crumb{display:flex;align-items:center;gap:8px;padding:16px 24px 0;font-size:12.5px;color:var(--m-muted);font-family:var(--mono)}
+.crumb span.sep{opacity:.5}.crumb b{color:var(--m-text);font-weight:500}
+.crumb .bk{display:flex;align-items:center;gap:6px;color:var(--m-text)}
+.page-head{padding:14px 24px 8px;display:flex;align-items:flex-start;justify-content:space-between;gap:20px}
+.page-head h3{font-size:21px;font-weight:600;letter-spacing:-0.02em;color:var(--m-text)}
+.page-head p{font-size:13.5px;color:var(--m-muted);margin-top:4px;max-width:56ch}
+
+.tabs{display:flex;gap:4px;padding:8px 24px 0;border-bottom:1px solid var(--m-border)}
+.tab{font-size:13.5px;color:var(--m-muted);padding:11px 13px;cursor:pointer;border-bottom:2px solid transparent;margin-bottom:-1px}
+.tab.on{color:var(--m-text);border-bottom-color:var(--m-accent);font-weight:500}
+.tab .cnt{font-family:var(--mono);font-size:11px;opacity:.7;margin-left:5px}
+
+.badge{display:inline-flex;align-items:center;gap:6px;font-family:var(--mono);font-size:10.5px;letter-spacing:0.02em;padding:3px 9px 3px 8px;border-radius:999px;border:1px solid;white-space:nowrap;line-height:1.4}
+.badge .d{width:6px;height:6px;border-radius:50%;flex:none}
+.t-neutral{color:var(--m-muted);border-color:var(--m-border)}.t-neutral .d{background:var(--m-muted)}
+.t-info{color:var(--m-accent);border-color:color-mix(in srgb,var(--m-accent) 42%,transparent);background:var(--m-accent-soft)}.t-info .d{background:var(--m-accent)}
+.t-success{color:var(--m-success);border-color:color-mix(in srgb,var(--m-success) 42%,transparent)}.t-success .d{background:var(--m-success)}
+.t-warning{color:var(--m-warning);border-color:color-mix(in srgb,var(--m-warning) 42%,transparent)}.t-warning .d{background:var(--m-warning)}
+.t-danger{color:var(--m-danger);border-color:color-mix(in srgb,var(--m-danger) 42%,transparent)}.t-danger .d{background:var(--m-danger)}
+.t-approval{color:var(--m-accent);border-style:dashed;border-color:color-mix(in srgb,var(--m-accent) 55%,transparent);background:var(--m-accent-soft)}.t-approval .d{background:var(--m-accent);animation:pulse 1.8s infinite}
+@keyframes pulse{0%,100%{opacity:1}50%{opacity:.35}}
+
+.btn{display:inline-flex;align-items:center;gap:8px;font-family:inherit;font-size:13px;font-weight:500;padding:9px 15px;border-radius:10px;cursor:pointer;border:1px solid transparent;transition:.15s;white-space:nowrap}
+.btn-primary{background:var(--m-accent);color:var(--m-accent-fg)}.btn-primary:hover{filter:brightness(1.07)}
+.btn-ghost{background:transparent;border-color:var(--m-border);color:var(--m-text)}.btn-ghost:hover{background:var(--m-surface2)}
+.btn-sm{padding:7px 12px;font-size:12.5px}
+
+.tile{width:38px;height:38px;border-radius:10px;display:grid;place-items:center;font-weight:600;font-size:15px;color:var(--m-text);background:var(--m-surface2);border:1px solid var(--m-border);flex:none}
+
+/* card lists */
+.mlist{padding:18px 24px 26px;display:flex;flex-direction:column;gap:10px}
+.mrow{background:var(--m-surface);border:1px solid var(--m-border);border-radius:12px;padding:14px 16px;display:flex;align-items:center;gap:14px;cursor:pointer;transition:.15s}
+.mrow:hover{border-color:#33383f;background:var(--m-surface2)}
+.mrow .body{flex:1;min-width:0}
+.mrow .body h4{font-size:14.5px;font-weight:600;color:var(--m-text);display:flex;align-items:center;gap:9px}
+.mrow .body p{font-size:12.5px;color:var(--m-muted);margin-top:3px}
+.mrow .meta{text-align:right;font-size:11.5px;color:var(--m-muted);font-family:var(--mono);display:flex;flex-direction:column;gap:5px;align-items:flex-end}
+.mrow .chev{color:var(--m-faint)}
+
+/* gallery */
+.gal{display:grid;grid-template-columns:repeat(3,1fr);gap:12px;padding:6px 24px 26px}
+@media(max-width:760px){.gal{grid-template-columns:1fr 1fr}}
+.gcard{background:var(--m-surface);border:1px solid var(--m-border);border-radius:12px;padding:16px;cursor:pointer;transition:.16s;display:flex;flex-direction:column;gap:10px;min-height:120px}
+.gcard:hover{border-color:#33383f;background:var(--m-surface2)}
+.gc-top{display:flex;align-items:flex-start;justify-content:space-between;gap:10px}
+.gc-body h4{font-size:14px;font-weight:600;color:var(--m-text)}
+.gc-body p{font-size:12.5px;color:var(--m-muted);line-height:1.5;margin-top:4px}
+.gc-foot{display:flex;gap:6px;flex-wrap:wrap;margin-top:auto}
+.tagm{font-family:var(--mono);font-size:10px;color:var(--m-muted);border:1px solid var(--m-border);border-radius:5px;padding:2px 7px}
+
+/* detail */
+.detail-head{display:flex;align-items:flex-start;gap:16px;padding:16px 24px 14px}
+.detail-head .tile{width:48px;height:48px;border-radius:12px;font-size:18px}
+.dh-meta{flex:1;min-width:0}.dh-meta .nm{display:flex;align-items:center;gap:10px;flex-wrap:wrap}
+.dh-meta h3{font-size:20px;font-weight:600;letter-spacing:-0.02em;color:var(--m-text)}
+.dh-meta .sub{font-size:13px;color:var(--m-muted);margin-top:4px}
+.dbody{padding:22px 24px 28px;display:grid;grid-template-columns:1.5fr 1fr;gap:26px}
+@media(max-width:760px){.dbody{grid-template-columns:1fr}}
+.dsec-t{font-family:var(--mono);font-size:10.5px;letter-spacing:0.09em;text-transform:uppercase;color:var(--m-faint);margin-bottom:12px}
+.dbody p.lead2{font-size:14px;color:var(--m-text);line-height:1.6;margin-bottom:22px}
+.flist{display:flex;flex-direction:column;gap:11px}
+.frow{display:flex;gap:11px;font-size:13.5px;color:var(--m-text)}
+.frow svg{flex:none;margin-top:2px;color:var(--m-accent)}
+.side-card{background:var(--m-surface);border:1px solid var(--m-border);border-radius:12px;padding:16px}
+.kv{display:flex;align-items:center;justify-content:space-between;padding:9px 0;border-bottom:1px solid var(--m-border);font-size:13px}
+.kv:last-child{border-bottom:none}.kv .k{color:var(--m-muted)}.kv .v{color:var(--m-text);font-weight:500;display:flex;align-items:center;gap:7px}
+.mods{display:flex;gap:6px;flex-wrap:wrap;margin-top:12px}
+.modchip{font-size:11px;color:var(--m-text);background:var(--m-surface2);border:1px solid var(--m-border);border-radius:7px;padding:4px 9px;display:flex;align-items:center;gap:6px}
+
+/* stepper (ativação em camadas) */
+.stepper{display:flex;align-items:center;gap:0;padding:16px 24px;border-bottom:1px solid var(--m-border);overflow:hidden}
+.step{display:flex;align-items:center;gap:9px;flex:none}
+.step .dot{width:22px;height:22px;border-radius:50%;display:grid;place-items:center;font-family:var(--mono);font-size:11px;border:1px solid var(--m-border);color:var(--m-muted);background:var(--m-surface)}
+.step.done .dot{background:var(--m-accent);color:var(--m-accent-fg);border-color:var(--m-accent)}
+.step.on .dot{border-color:var(--m-accent);color:var(--m-accent)}
+.step .lbl{font-size:12.5px;color:var(--m-muted)}
+.step.on .lbl{color:var(--m-text);font-weight:500}
+.step.done .lbl{color:var(--m-text)}
+.step-line{flex:1;min-width:18px;height:1px;background:var(--m-border);margin:0 12px}
+.step-line.fill{background:var(--m-accent)}
+.form-body{padding:22px 24px 26px}
+.field{margin-bottom:18px;max-width:520px}
+.field label{display:block;font-size:12.5px;color:var(--m-text);font-weight:500;margin-bottom:7px}
+.field .hint{font-size:11.5px;color:var(--m-muted);margin-top:6px}
+.inp{width:100%;background:var(--m-surface);border:1px solid var(--m-border);border-radius:10px;padding:10px 12px;font-size:13.5px;color:var(--m-text);font-family:inherit}
+.inp.area{min-height:74px}
+.toggles{display:flex;flex-direction:column;gap:10px;max-width:520px}
+.toggle-row{display:flex;align-items:center;justify-content:space-between;gap:14px;padding:13px 15px;border:1px solid var(--m-border);border-radius:11px;background:var(--m-surface)}
+.toggle-row .tl{font-size:13px;color:var(--m-text)}
+.toggle-row .tl small{display:block;color:var(--m-muted);font-size:11.5px;margin-top:2px}
+.sw{width:38px;height:22px;border-radius:999px;background:var(--m-surface2);border:1px solid var(--m-border);position:relative;flex:none}
+.sw::after{content:"";position:absolute;width:16px;height:16px;border-radius:50%;background:var(--m-muted);top:2px;left:2px;transition:.2s}
+.sw.on{background:var(--m-accent);border-color:var(--m-accent)}.sw.on::after{background:var(--m-accent-fg);left:18px}
+.form-foot{display:flex;justify-content:space-between;align-items:center;padding:16px 24px;border-top:1px solid var(--m-border)}
+
+/* execution / summary output */
+.exec{padding:22px 24px 26px}
+.exec-card{border:1px solid var(--m-border);border-radius:13px;background:var(--m-surface);overflow:hidden}
+.exec-hd{padding:14px 17px;border-bottom:1px solid var(--m-border);display:flex;align-items:center;justify-content:space-between;gap:12px}
+.exec-hd .l{display:flex;align-items:center;gap:11px}
+.exec-hd .l .tile{width:30px;height:30px;border-radius:8px;font-size:12px}
+.exec-hd h4{font-size:14px;font-weight:600;color:var(--m-text)}
+.exec-hd .sb{font-size:11px;color:var(--m-muted);font-family:var(--mono)}
+.exec-out{padding:18px 18px;display:grid;grid-template-columns:1.6fr 1fr;gap:18px}
+@media(max-width:680px){.exec-out{grid-template-columns:1fr}}
+.summary h5{font-size:13px;color:var(--m-text);font-weight:600;margin-bottom:8px}
+.summary p{font-size:13px;color:var(--m-text);line-height:1.6;margin-bottom:14px}
+.summary ul{list-style:none;display:flex;flex-direction:column;gap:8px;margin-bottom:14px}
+.summary li{font-size:12.5px;color:var(--m-text);display:flex;gap:9px;line-height:1.5}
+.summary li svg{flex:none;margin-top:3px;color:var(--m-accent)}
+.next{border:1px dashed color-mix(in srgb,var(--m-accent) 45%,transparent);background:var(--m-accent-soft);border-radius:10px;padding:12px 14px;font-size:12.5px;color:var(--m-text);line-height:1.5}
+.exec-side .kv{font-size:12px}
+
+/* seguradora */
+.ins-grid{display:grid;grid-template-columns:repeat(4,1fr);gap:12px;padding:6px 24px 24px}
+@media(max-width:860px){.ins-grid{grid-template-columns:1fr 1fr}}
+.ins-card{background:var(--m-surface);border:1px solid var(--m-border);border-radius:12px;padding:15px;cursor:pointer;transition:.15s;display:flex;flex-direction:column;gap:9px}
+.ins-card:hover{border-color:#33383f;background:var(--m-surface2)}
+.ins-logo{width:36px;height:36px;border-radius:9px;display:grid;place-items:center;font-weight:700;font-size:15px;color:#fff}
+.ins-card h4{font-size:14px;font-weight:600;color:var(--m-text)}
+.ins-card p{font-size:11.5px;color:var(--m-muted)}
+.ins-foot{font-size:11px;color:var(--m-faint);font-family:var(--mono);margin-top:auto;padding-top:6px}
+.stat-row{display:grid;grid-template-columns:repeat(4,1fr);gap:12px;padding:18px 24px 6px}
+.stat{border:1px solid var(--m-border);border-radius:11px;padding:14px 16px;background:var(--m-surface)}
+.stat .n{font-size:22px;font-weight:600;color:var(--m-text);letter-spacing:-0.02em}
+.stat .l{font-size:11.5px;color:var(--m-muted);margin-top:2px}
+.corredores{display:flex;flex-wrap:wrap;gap:7px;margin-top:4px}
+.cor{font-size:11.5px;color:var(--m-text);background:var(--m-surface2);border:1px solid var(--m-border);border-radius:7px;padding:5px 10px}
+.chan-row{display:flex;align-items:center;justify-content:space-between;padding:13px 0;border-bottom:1px solid var(--m-border)}
+.chan-row:last-child{border-bottom:none}
+.chan-l{display:flex;align-items:center;gap:11px;font-size:13.5px;color:var(--m-text)}
+.chan-ic{width:30px;height:30px;border-radius:8px;display:grid;place-items:center;color:var(--m-muted);border:1px solid var(--m-border);background:var(--m-surface)}
+
+/* timeline (atendimentos) */
+.tl-wrap{padding:20px 24px 26px}
+.tline{position:relative;padding-left:26px}
+.tline::before{content:"";position:absolute;left:7px;top:6px;bottom:6px;width:1px;background:var(--m-border)}
+.tl-item{position:relative;padding-bottom:20px}
+.tl-item:last-child{padding-bottom:0}
+.tl-item .node{position:absolute;left:-22px;top:3px;width:14px;height:14px;border-radius:50%;background:var(--m-surface);border:2px solid var(--m-border)}
+.tl-item.acc .node{border-color:var(--m-accent);background:var(--m-accent)}
+.tl-item .when{font-family:var(--mono);font-size:10.5px;color:var(--m-faint)}
+.tl-item h5{font-size:13.5px;color:var(--m-text);font-weight:600;margin:2px 0 3px;display:flex;align-items:center;gap:9px}
+.tl-item p{font-size:12.5px;color:var(--m-muted);line-height:1.5}
+.case-head{display:flex;align-items:flex-start;gap:14px;padding:16px 24px 14px}
+.case-head .av{width:42px;height:42px;border-radius:11px;background:var(--m-surface2);border:1px solid var(--m-border);display:grid;place-items:center;color:var(--m-muted);flex:none}
+.action-bar{margin:0 24px 22px;border:1px dashed color-mix(in srgb,var(--m-accent) 50%,transparent);background:var(--m-accent-soft);border-radius:12px;padding:15px 17px}
+.action-bar .ab-t{display:flex;align-items:center;gap:10px;margin-bottom:10px}
+.action-bar .ab-t h5{font-size:13.5px;color:var(--m-text);font-weight:600}
+.action-bar .ab-msg{font-size:13px;color:var(--m-text);background:var(--m-bg);border:1px solid var(--m-border);border-radius:9px;padding:11px 13px;line-height:1.5;margin-bottom:12px}
+.action-bar .ab-actions{display:flex;gap:9px}
+
+.annot{display:grid;grid-template-columns:repeat(4,1fr);gap:14px;margin-top:24px}
+@media(max-width:860px){.annot{grid-template-columns:repeat(2,1fr)}}
+@media(max-width:520px){.annot{grid-template-columns:1fr}}
+.an{border:1px solid var(--line);border-radius:11px;padding:16px 17px;background:var(--panel)}
+.an .n{font-family:var(--mono);font-size:11px;color:var(--accent);margin-bottom:7px}
+.an h4{font-size:13.5px;font-weight:600;margin-bottom:5px}
+.an p{font-size:12.5px;color:var(--muted);line-height:1.5}
+
+.foot{padding:60px 0 88px;color:var(--muted);font-size:13.5px}
+.foot .nx{font-family:var(--mono);font-size:11px;letter-spacing:0.1em;text-transform:uppercase;color:var(--accent);margin-bottom:14px}
+.foot p{max-width:66ch;line-height:1.7}
+.handoff{border:1px solid var(--line);border-radius:var(--radius);background:var(--panel);padding:8px 22px;margin-top:24px;max-width:760px}
+.hf{display:flex;gap:13px;padding:15px 0;border-bottom:1px solid var(--line-soft)}
+.hf:last-child{border-bottom:none}
+.hf .k{font-family:var(--mono);font-size:11px;color:var(--accent);width:90px;flex:none;padding-top:2px}
+.hf p{font-size:13px;color:var(--tx2);margin:0}
+</style>
+</head>
+<body>
+
+<div class="ribbon">
+  <div class="wrap ribbon-in">
+    <div class="ribbon-brand"><span class="mark"><svg width="22" height="22" viewBox="0 0 22 22" fill="none"><rect x="1.2" y="1.2" width="19.6" height="19.6" rx="6" stroke="currentColor" stroke-width="1.4"/><rect x="7.2" y="7.2" width="7.6" height="7.6" rx="2" transform="rotate(45 11 11)" stroke="currentColor" stroke-width="1.4"/></svg></span>AutoBrokers<span style="color:var(--muted);font-weight:400">.ai</span></div>
+    <nav class="ribbon-nav">
+      <a href="#auxiliares">Auxiliares</a>
+      <a href="#resumo">Auxiliar de Resumo</a>
+      <a href="#seguradoras">Seguradoras</a>
+      <a href="#atendimentos">Atendimentos</a>
+    </nav>
+    <span class="ribbon-tag">LEVA 3 · MÓDULOS</span>
+  </div>
+</div>
+
+<header class="hero">
+  <div class="wrap">
+    <div class="kick">Leva 3 · Os padrões aplicados aos módulos</div>
+    <h1>Os padrões viram produto.</h1>
+    <p class="lead">Galeria, Detalhe e Modal de Permissão agora se materializam nos módulos reais. Aqui está o <b style="color:var(--tx2)">Auxiliar de Resumo de Atendimentos</b> ponta a ponta, a página de uma Seguradora em camadas e o shell de Atendimentos com o sistema de status completo. Mesma calma, mesma linguagem — só que operando.</p>
+    <div class="hero-meta">
+      <span class="chip"><b>01</b> Auxiliares</span>
+      <span class="chip"><b>02</b> Auxiliar de Resumo</span>
+      <span class="chip"><b>03</b> Seguradoras</span>
+      <span class="chip"><b>04</b> Atendimentos · shell</span>
+      <span class="chip">Conectores = realizado na Leva 2</span>
+    </div>
+  </div>
+</header>
+
+<!-- ============ 01 AUXILIARES ============ -->
+<section class="block" id="auxiliares">
+  <div class="wrap">
+    <div class="sec-head"><span class="sec-num">01</span><h2>Auxiliares · página principal</h2><span class="sec-tag">Meus · Galeria · Execuções</span></div>
+    <p class="sec-lead">A força de trabalho de IA da corretora. Três abas no topo. <b>Meus Auxiliares</b> mostra o que está ativo, com status e última execução; a <b>Galeria</b> (Padrão A) traz modelos prontos por categoria. Densidade média-baixa, ação clara, nada técnico.</p>
+
+    <div class="mock-cap">app.autobrokers.ai/auxiliares · Meus Auxiliares</div>
+    <div class="skin">
+      <div class="browser">
+        <div class="bw-bar"><div class="bw-dots"><i></i><i></i><i></i></div><div class="bw-url">app.autobrokers.ai/auxiliares</div><div style="width:54px"></div></div>
+        <div class="bw-body"><div class="app">
+          <aside class="mini-sb">
+            <div class="mini-brand"><span class="mark" style="color:var(--m-text)"><svg width="18" height="18" viewBox="0 0 22 22" fill="none"><rect x="1.2" y="1.2" width="19.6" height="19.6" rx="6" stroke="currentColor" stroke-width="1.4"/><rect x="7.2" y="7.2" width="7.6" height="7.6" rx="2" transform="rotate(45 11 11)" stroke="currentColor" stroke-width="1.4"/></svg></span>AutoBrokers</div>
+            <div class="mini-item"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/></svg>AutoBrokers</div>
+            <div class="mini-item"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6"><path d="M22 12h-6l-2 3h-4l-2-3H2"/><path d="M5.5 6h13l2.5 6v6a1 1 0 0 1-1 1H4a1 1 0 0 1-1-1v-6z"/></svg>Atendimentos</div>
+            <div class="mini-item on"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6"><path d="M13 2 3 14h7l-1 8 10-12h-7z"/></svg>Auxiliares</div>
+            <div class="mini-item"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6"><path d="M4 6h16M4 12h16M4 18h16"/></svg>Personalização</div>
+          </aside>
+          <div class="content">
+            <div class="page-head"><div><h3>Auxiliares</h3><p>Ative Auxiliares para automatizar tarefas repetitivas da sua corretora.</p></div><button class="btn btn-ghost"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9"><circle cx="11" cy="11" r="7"/><path d="m20 20-3-3"/></svg>Buscar</button></div>
+            <div class="tabs"><div class="tab on">Meus Auxiliares <span class="cnt">3</span></div><div class="tab">Galeria</div><div class="tab">Execuções <span class="cnt">18</span></div></div>
+            <div class="mlist">
+              <div class="mrow">
+                <div class="tile"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><path d="M14 2v6h6M9 13h6M9 17h4"/></svg></div>
+                <div class="body"><h4>Auxiliar de Resumo de Atendimentos <span class="badge t-success"><span class="d"></span>Ativo</span></h4><p>Resume conversas e destaca pendências e próxima ação.</p></div>
+                <div class="meta"><span>Última: hoje 09:12</span><span style="color:var(--m-faint)">42 execuções</span></div>
+                <svg class="chev" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6"><path d="M9 18l6-6-6-6"/></svg>
+              </div>
+              <div class="mrow">
+                <div class="tile"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6"><path d="M2 8h20M6 12h6M6 16h10"/><rect x="2" y="4" width="20" height="16" rx="2"/></svg></div>
+                <div class="body"><h4>Auxiliar de Cobrança <span class="badge t-approval"><span class="d"></span>Aguardando aprovação</span></h4><p>Prepara lembretes para clientes com parcelas pendentes.</p></div>
+                <div class="meta"><span>8 rascunhos prontos</span><span style="color:var(--m-faint)">revisar e enviar</span></div>
+                <svg class="chev" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6"><path d="M9 18l6-6-6-6"/></svg>
+              </div>
+              <div class="mrow">
+                <div class="tile"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6"><path d="M21 12a9 9 0 1 1-6.2-8.5"/><path d="M21 3v6h-6"/></svg></div>
+                <div class="body"><h4>Auxiliar de Renovação <span class="badge t-warning"><span class="d"></span>Precisa configurar</span></h4><p>Encontra clientes próximos da renovação e prepara contatos.</p></div>
+                <div class="meta"><span>Falta: carteira de clientes</span><span style="color:var(--m-faint)">conectar fonte</span></div>
+                <svg class="chev" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6"><path d="M9 18l6-6-6-6"/></svg>
+              </div>
+            </div>
+          </div>
+        </div></div>
+      </div>
+    </div>
+
+    <div class="mock-cap">aba Galeria · modelos prontos (Padrão-Mestre A)</div>
+    <div class="skin">
+      <div class="browser">
+        <div class="bw-bar"><div class="bw-dots"><i></i><i></i><i></i></div><div class="bw-url">app.autobrokers.ai/auxiliares/galeria</div><div style="width:54px"></div></div>
+        <div class="bw-body"><div class="content">
+          <div class="tabs" style="padding-top:16px"><div class="tab">Meus Auxiliares <span class="cnt">3</span></div><div class="tab on">Galeria</div><div class="tab">Execuções <span class="cnt">18</span></div></div>
+          <div class="gal">
+            <div class="gcard"><div class="gc-top"><div class="tile"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><path d="M14 2v6h6"/></svg></div><span class="badge t-success"><span class="d"></span>Ativo</span></div><div class="gc-body"><h4>Resumo de Atendimentos</h4><p>Resume conversas e destaca pendências.</p></div><div class="gc-foot"><span class="tagm">Atendimento</span><span class="tagm">risco baixo</span></div></div>
+            <div class="gcard"><div class="gc-top"><div class="tile"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6"><rect x="2" y="4" width="20" height="16" rx="2"/><path d="M2 8h20"/></svg></div><span class="badge t-neutral"><span class="d"></span>Disponível</span></div><div class="gc-body"><h4>Cobrança</h4><p>Lembretes de parcelas pendentes, com aprovação.</p></div><div class="gc-foot"><span class="tagm">Financeiro</span><span class="tagm">requer WhatsApp</span></div></div>
+            <div class="gcard"><div class="gc-top"><div class="tile"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6"><path d="M21 12a9 9 0 1 1-6.2-8.5"/><path d="M21 3v6h-6"/></svg></div><span class="badge t-neutral"><span class="d"></span>Disponível</span></div><div class="gc-body"><h4>Renovação</h4><p>Clientes próximos da renovação e abordagem.</p></div><div class="gc-foot"><span class="tagm">Comercial</span><span class="tagm">requer carteira</span></div></div>
+            <div class="gcard"><div class="gc-top"><div class="tile"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6"><path d="M9 11l3 3L22 4"/><path d="M21 12v7a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11"/></svg></div><span class="badge t-neutral"><span class="d"></span>Disponível</span></div><div class="gc-body"><h4>Conferência de Documentos</h4><p>Verifica documentos faltantes e gera checklist.</p></div><div class="gc-foot"><span class="tagm">Documentos</span><span class="tagm">risco baixo</span></div></div>
+            <div class="gcard"><div class="gc-top"><div class="tile"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6"><path d="M3 3v18h18"/><path d="M7 14l4-4 3 3 5-6"/></svg></div><span class="badge t-neutral"><span class="d"></span>Disponível</span></div><div class="gc-body"><h4>Relatório Diário</h4><p>Resumo diário da operação para o gestor.</p></div><div class="gc-foot"><span class="tagm">Gestão</span><span class="tagm">risco baixo</span></div></div>
+            <div class="gcard" style="opacity:.6"><div class="gc-top"><div class="tile"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6"><path d="M12 2l2.4 7.4H22l-6 4.3 2.3 7.3-6.3-4.6L5.7 21l2.3-7.3-6-4.3h7.6z"/></svg></div><span class="badge t-neutral"><span class="d"></span>Em breve</span></div><div class="gc-body"><h4>Reputação Google</h4><p>Monitora avaliações e sugere respostas.</p></div><div class="gc-foot"><span class="tagm">Reputação</span></div></div>
+          </div>
+        </div></div>
+      </div>
+    </div>
+
+    <div class="annot">
+      <div class="an"><div class="n">01·1</div><h4>Status onde importa</h4><p>Cada Auxiliar carrega seu estado: Ativo, Aguardando aprovação, Precisa configurar — direto na lista.</p></div>
+      <div class="an"><div class="n">01·2</div><h4>Aprovação visível</h4><p>Cobrança com 8 rascunhos prontos sinaliza HITL na própria linha. O gestor sabe que há algo para revisar.</p></div>
+      <div class="an"><div class="n">01·3</div><h4>Galeria = Padrão A</h4><p>Mesmos cards discretos da Leva 2, agora com modelos de Auxiliar e categorias de negócio.</p></div>
+      <div class="an"><div class="n">01·4</div><h4>“Em breve” comunica visão</h4><p>Modelos futuros aparecem desabilitados — mostram para onde o produto vai sem prometer demais.</p></div>
+    </div>
+  </div>
+</section>
+
+<!-- ============ 02 AUXILIAR DE RESUMO ============ -->
+<section class="block" id="resumo">
+  <div class="wrap">
+    <div class="sec-head"><span class="sec-num">02</span><h2>Auxiliar de Resumo de Atendimentos</h2><span class="sec-tag">flagship · ponta a ponta</span></div>
+    <p class="sec-lead">O primeiro Auxiliar funcional — baixo risco, sem envio externo. Aqui o fluxo completo: <b>detalhe → ativação em camadas (Personalizar → Permissões → Testar) → execução</b>. É a vitrine de inteligência do produto.</p>
+
+    <div class="mock-cap">detalhe do Auxiliar (Padrão-Mestre B)</div>
+    <div class="skin">
+      <div class="browser">
+        <div class="bw-bar"><div class="bw-dots"><i></i><i></i><i></i></div><div class="bw-url">…/auxiliares/resumo-de-atendimentos</div><div style="width:54px"></div></div>
+        <div class="bw-body"><div class="content">
+          <div class="crumb" style="padding-top:18px"><span class="bk"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M15 18l-6-6 6-6"/></svg>Auxiliares</span> <span class="sep">/</span> Galeria <span class="sep">/</span> <b>Resumo de Atendimentos</b></div>
+          <div class="detail-head">
+            <div class="tile"><svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><path d="M14 2v6h6M9 13h6M9 17h4"/></svg></div>
+            <div class="dh-meta"><div class="nm"><h3>Resumo de Atendimentos</h3><span class="badge t-neutral"><span class="d"></span>Disponível</span></div><div class="sub">Atendimento · Lê conversas e gera um resumo — sem envio externo</div></div>
+            <button class="btn btn-primary"><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M5 12l5 5L20 7"/></svg>Ativar</button>
+          </div>
+          <div class="tabs"><div class="tab on">Visão geral</div><div class="tab">Configuração</div><div class="tab">Conectores</div><div class="tab">Permissões</div><div class="tab">Execuções</div></div>
+          <div class="dbody">
+            <div>
+              <p class="lead2">Recebe uma conversa ou caso e devolve um resumo claro: o que aconteceu, quais pendências existem e qual a próxima ação sugerida. Ideal para o corretor entender um atendimento em segundos, sem reler tudo.</p>
+              <div class="dsec-t">O que ele faz</div>
+              <div class="flist" style="margin-bottom:22px">
+                <div class="frow"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M20 6 9 17l-5-5"/></svg>Lê a conversa selecionada (sandbox no início).</div>
+                <div class="frow"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M20 6 9 17l-5-5"/></svg>Gera resumo, pendências e próxima ação.</div>
+                <div class="frow"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M20 6 9 17l-5-5"/></svg>Salva a execução com custo e histórico.</div>
+              </div>
+              <div class="dsec-t">Como começa</div>
+              <p style="font-size:13px;color:var(--m-muted);line-height:1.6">Execução manual sobre uma conversa que você escolher. Sem disparo automático, sem mensagem ao cliente. Quando ganhar confiança, evolui para rodar sozinho — sempre dentro das permissões.</p>
+            </div>
+            <div>
+              <div class="side-card" style="margin-bottom:14px">
+                <div class="kv"><span class="k">Categoria</span><span class="v">Atendimento</span></div>
+                <div class="kv"><span class="k">Nível de risco</span><span class="v"><span class="badge t-success" style="border:none;padding:0;background:none"><span class="d"></span></span>Baixo</span></div>
+                <div class="kv"><span class="k">Envio externo</span><span class="v">Não</span></div>
+                <div class="kv"><span class="k">Configuração</span><span class="v">~1 min</span></div>
+              </div>
+              <div class="side-card">
+                <div class="dsec-t" style="margin-bottom:10px">Conectores necessários</div>
+                <div class="mods"><span class="modchip"><svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/></svg>Atendimentos (interno)</span></div>
+                <p style="font-size:11.5px;color:var(--m-muted);margin-top:10px;line-height:1.5">Usa apenas dados internos. Nenhuma conexão externa exigida para começar.</p>
+              </div>
+            </div>
+          </div>
+        </div></div>
+      </div>
+    </div>
+
+    <div class="mock-cap">ativação em camadas · etapa 2 de 4 — Permissões</div>
+    <div class="skin">
+      <div class="browser">
+        <div class="bw-bar"><div class="bw-dots"><i></i><i></i><i></i></div><div class="bw-url">…/auxiliares/resumo-de-atendimentos/ativar</div><div style="width:54px"></div></div>
+        <div class="bw-body"><div class="content">
+          <div class="crumb" style="padding-top:18px"><span class="bk"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M15 18l-6-6 6-6"/></svg>Resumo de Atendimentos</span> <span class="sep">/</span> <b>Ativar</b></div>
+          <div class="stepper">
+            <div class="step done"><span class="dot"><svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3"><path d="M20 6 9 17l-5-5"/></svg></span><span class="lbl">Personalizar</span></div>
+            <div class="step-line fill"></div>
+            <div class="step on"><span class="dot">2</span><span class="lbl">Permissões</span></div>
+            <div class="step-line"></div>
+            <div class="step"><span class="dot">3</span><span class="lbl">Testar</span></div>
+            <div class="step-line"></div>
+            <div class="step"><span class="dot">4</span><span class="lbl">Ativar</span></div>
+          </div>
+          <div class="form-body">
+            <div class="dsec-t">O que o Auxiliar pode fazer</div>
+            <div class="toggles">
+              <div class="toggle-row"><div class="tl">Ler conversas e casos selecionados<small>Necessário para gerar o resumo</small></div><div class="sw on"></div></div>
+              <div class="toggle-row"><div class="tl">Salvar o resumo na execução<small>Fica no histórico, visível para a equipe</small></div><div class="sw on"></div></div>
+              <div class="toggle-row"><div class="tl">Sugerir próxima ação<small>Apenas sugestão — nunca executa sozinho</small></div><div class="sw on"></div></div>
+              <div class="toggle-row" style="opacity:.7"><div class="tl">Enviar mensagem ao cliente<small>Indisponível neste Auxiliar · exige aprovação humana</small></div><div class="sw"></div></div>
+            </div>
+          </div>
+          <div class="form-foot"><button class="btn btn-ghost">Voltar</button><button class="btn btn-primary">Continuar para o teste</button></div>
+        </div></div>
+      </div>
+    </div>
+
+    <div class="mock-cap">execução · resultado do resumo (etapa 3 — Testar / Execuções)</div>
+    <div class="skin">
+      <div class="browser">
+        <div class="bw-bar"><div class="bw-dots"><i></i><i></i><i></i></div><div class="bw-url">…/auxiliares/resumo-de-atendimentos/execucoes/8842</div><div style="width:54px"></div></div>
+        <div class="bw-body"><div class="content">
+          <div class="exec">
+            <div class="exec-card">
+              <div class="exec-hd">
+                <div class="l"><div class="tile"><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><path d="M14 2v6h6"/></svg></div><div><h4>Resumo gerado</h4><div class="sb">Caso #2207 · Marcia Lopes · hoje 09:12</div></div></div>
+                <span class="badge t-success"><span class="d"></span>Concluído</span>
+              </div>
+              <div class="exec-out">
+                <div class="summary">
+                  <h5>Resumo do atendimento</h5>
+                  <p>Cliente abriu uma assistência residencial por vazamento na cozinha. Dados coletados e cobertura confirmada na apólice. Aguardava agendamento de prestador quando a conversa parou.</p>
+                  <div class="dsec-t">Pendências</div>
+                  <ul>
+                    <li><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="9"/><path d="M12 8v4"/></svg>Confirmar janela de horário com a cliente.</li>
+                    <li><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="9"/><path d="M12 8v4"/></svg>Anexar foto do vazamento ao caso.</li>
+                  </ul>
+                  <div class="dsec-t">Próxima ação sugerida</div>
+                  <div class="next">Retomar contato com a cliente para confirmar o horário e acionar o prestador via Allianz. <b style="color:var(--m-text)">Sugestão</b> — nenhuma mensagem foi enviada.</div>
+                </div>
+                <div class="exec-side">
+                  <div class="side-card">
+                    <div class="kv"><span class="k">Entrada</span><span class="v">Conversa #2207</span></div>
+                    <div class="kv"><span class="k">Modelo</span><span class="v">Resumo v1</span></div>
+                    <div class="kv"><span class="k">Custo de IA</span><span class="v">~R$ 0,04</span></div>
+                    <div class="kv"><span class="k">Duração</span><span class="v">3,2 s</span></div>
+                    <div class="kv"><span class="k">Envio externo</span><span class="v">Nenhum</span></div>
+                  </div>
+                  <button class="btn btn-ghost btn-sm" style="margin-top:12px;width:100%;justify-content:center">Abrir o caso #2207</button>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div></div>
+      </div>
+    </div>
+
+    <div class="annot">
+      <div class="an"><div class="n">02·1</div><h4>Ativação guiada</h4><p>Stepper de 4 etapas em camadas, não um formulário gigante. Cada passo revela só o necessário.</p></div>
+      <div class="an"><div class="n">02·2</div><h4>Permissão por ação</h4><p>Toggles claros. “Enviar mensagem” fica desabilitado e marcado como HITL — postura conservadora do MVP.</p></div>
+      <div class="an"><div class="n">02·3</div><h4>Resultado confiável</h4><p>A execução mostra resumo, pendências e próxima ação — sempre rotulada como sugestão, nunca execução.</p></div>
+      <div class="an"><div class="n">02·4</div><h4>Rastreável</h4><p>Custo, entrada, duração e “nenhum envio externo”. Transparência cria confiança para automatizar mais depois.</p></div>
+    </div>
+  </div>
+</section>
+
+<!-- ============ 03 SEGURADORAS ============ -->
+<section class="block" id="seguradoras">
+  <div class="wrap">
+    <div class="sec-head"><span class="sec-num">03</span><h2>Personalização · Seguradoras</h2><span class="sec-tag">entidade de domínio · usa conectores</span></div>
+    <p class="sec-lead">Seguradora é entidade própria — tem canais, portal, credenciais e corredores. A lista usa o Padrão A; a página de uma seguradora usa o Padrão B com abas <b>Visão geral · Canais · Portal · Corredores</b>. Organização do ResultVision, mas limpa e em camadas.</p>
+
+    <div class="mock-cap">lista de seguradoras configuradas</div>
+    <div class="skin">
+      <div class="browser">
+        <div class="bw-bar"><div class="bw-dots"><i></i><i></i><i></i></div><div class="bw-url">…/personalizacao/seguradoras</div><div style="width:54px"></div></div>
+        <div class="bw-body"><div class="content">
+          <div class="crumb" style="padding-top:18px">Personalização <span class="sep">/</span> <b>Seguradoras</b></div>
+          <div class="page-head"><div><h3>Seguradoras</h3><p>Canais, portais e corredores configurados para cada seguradora.</p></div></div>
+          <div class="ins-grid">
+            <div class="ins-card"><div style="display:flex;justify-content:space-between;align-items:flex-start"><div class="ins-logo" style="background:#1b56c4">A</div><span class="badge t-success"><span class="d"></span>Pronta</span></div><div><h4>Allianz</h4><p>Residencial</p></div><div class="ins-foot">11 corredores · 1 habilitado</div></div>
+            <div class="ins-card"><div style="display:flex;justify-content:space-between;align-items:flex-start"><div class="ins-logo" style="background:#3a3f47">AX</div><span class="badge t-success"><span class="d"></span>Pronta</span></div><div><h4>AXA</h4><p>Residencial</p></div><div class="ins-foot">1 habilitado</div></div>
+            <div class="ins-card"><div style="display:flex;justify-content:space-between;align-items:flex-start"><div class="ins-logo" style="background:#a31515">B</div><span class="badge t-warning"><span class="d"></span>Configurar</span></div><div><h4>Bradesco</h4><p>Condomínio</p></div><div class="ins-foot">falta WhatsApp</div></div>
+            <div class="ins-card"><div style="display:flex;justify-content:space-between;align-items:flex-start"><div class="ins-logo" style="background:#0a7d3c">H</div><span class="badge t-danger"><span class="d"></span>Bloqueado</span></div><div><h4>HDI</h4><p>Condomínio · Residencial</p></div><div class="ins-foot">portal bloqueado</div></div>
+            <div class="ins-card"><div style="display:flex;justify-content:space-between;align-items:flex-start"><div class="ins-logo" style="background:#3a3f47">P</div><span class="badge t-danger"><span class="d"></span>Bloqueado</span></div><div><h4>Porto</h4><p>Empresarial · Residencial</p></div><div class="ins-foot">destravar portal</div></div>
+            <div class="ins-card"><div style="display:flex;justify-content:space-between;align-items:flex-start"><div class="ins-logo" style="background:#b5491f">T</div><span class="badge t-success"><span class="d"></span>Pronta</span></div><div><h4>Tokio</h4><p>Condomínio · Residencial</p></div><div class="ins-foot">2 habilitados</div></div>
+            <div class="ins-card"><div style="display:flex;justify-content:space-between;align-items:flex-start"><div class="ins-logo" style="background:#6b4ea0">Y</div><span class="badge t-success"><span class="d"></span>Pronta</span></div><div><h4>Yelum</h4><p>Condomínio · Residencial</p></div><div class="ins-foot">2 habilitados</div></div>
+            <div class="ins-card" style="border-style:dashed;align-items:center;justify-content:center;text-align:center;color:var(--m-muted)"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6"><path d="M12 5v14M5 12h14"/></svg><p style="font-size:12.5px">Adicionar do diretório</p></div>
+          </div>
+        </div></div>
+      </div>
+    </div>
+
+    <div class="mock-cap">página da seguradora · Allianz (Padrão-Mestre B)</div>
+    <div class="skin">
+      <div class="browser">
+        <div class="bw-bar"><div class="bw-dots"><i></i><i></i><i></i></div><div class="bw-url">…/personalizacao/seguradoras/allianz</div><div style="width:54px"></div></div>
+        <div class="bw-body"><div class="content">
+          <div class="crumb" style="padding-top:18px"><span class="bk"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M15 18l-6-6 6-6"/></svg>Seguradoras</span> <span class="sep">/</span> <b>Allianz</b></div>
+          <div class="detail-head">
+            <div class="ins-logo" style="background:#1b56c4;width:48px;height:48px;border-radius:12px;font-size:19px">A</div>
+            <div class="dh-meta"><div class="nm"><h3>Allianz</h3><span class="badge t-success"><span class="d"></span>Pronta</span></div><div class="sub">Residencial · 11 corredores · 1 habilitado</div></div>
+            <button class="btn btn-ghost">Pausar seguradora</button>
+          </div>
+          <div class="tabs"><div class="tab on">Visão geral</div><div class="tab">Canais <span class="cnt">1</span></div><div class="tab">Portal</div><div class="tab">Corredores <span class="cnt">11</span></div></div>
+          <div class="stat-row">
+            <div class="stat"><div class="n">11</div><div class="l">Corredores</div></div>
+            <div class="stat"><div class="n">1</div><div class="l">Habilitados</div></div>
+            <div class="stat"><div class="n">0</div><div class="l">Bloqueios</div></div>
+            <div class="stat"><div class="n">WhatsApp</div><div class="l">Canal primário</div></div>
+          </div>
+          <div class="dbody" style="grid-template-columns:1fr;padding-top:20px">
+            <div>
+              <div class="dsec-t">Canais ativos</div>
+              <div style="margin-bottom:22px">
+                <div class="chan-row"><div class="chan-l"><span class="chan-ic"><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7"><path d="M21 11.5a8.4 8.4 0 0 1-12 7.5L3 21l2-6a8.4 8.4 0 1 1 16-3.5z"/></svg></span>WhatsApp <span style="color:var(--m-muted);font-size:12px">· primário</span></div><span class="badge t-success"><span class="d"></span>Conectado</span></div>
+                <div class="chan-row"><div class="chan-l"><span class="chan-ic"><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7"><rect x="2" y="4" width="20" height="16" rx="2"/><path d="m2 7 10 6 10-6"/></svg></span>E-mail</div><span class="badge t-neutral"><span class="d"></span>Não configurado</span></div>
+                <div class="chan-row"><div class="chan-l"><span class="chan-ic"><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7"><path d="M22 16.9v3a2 2 0 0 1-2.2 2 19.8 19.8 0 0 1-8.6-3 19.5 19.5 0 0 1-6-6 19.8 19.8 0 0 1-3-8.6A2 2 0 0 1 4.1 2h3a2 2 0 0 1 2 1.7c.1.9.4 1.8.7 2.7a2 2 0 0 1-.5 2.1L8.1 9.9a16 16 0 0 0 6 6l1.4-1.2a2 2 0 0 1 2.1-.5c.9.3 1.8.6 2.7.7a2 2 0 0 1 1.7 2z"/></svg></span>0800</div><span class="badge t-neutral"><span class="d"></span>Não configurado</span></div>
+              </div>
+              <div class="dsec-t">Corredores · Residencial</div>
+              <div class="corredores">
+                <span class="cor">Assistência elétrica</span><span class="cor">Assistência hidráulica</span><span class="cor">Chaveiro</span><span class="cor">Desentupimento</span><span class="cor">Eletrodomésticos</span><span class="cor">Sinistro vazamento</span><span class="cor">Sinistro elétrico</span><span class="cor">Sinistro vendaval</span><span class="cor">Sinistro incêndio</span><span class="cor" style="color:var(--m-muted)">+2</span>
+              </div>
+            </div>
+          </div>
+        </div></div>
+      </div>
+    </div>
+
+    <div class="annot">
+      <div class="an"><div class="n">03·1</div><h4>Lista = Padrão A</h4><p>Cards com logo, ramo e estado (Pronta / Configurar / Bloqueado). Cor + texto, sempre.</p></div>
+      <div class="an"><div class="n">03·2</div><h4>Página em camadas</h4><p>Abas Visão geral · Canais · Portal · Corredores. A complexidade do domínio aparece só quando você entra nela.</p></div>
+      <div class="an"><div class="n">03·3</div><h4>Usa conectores</h4><p>Canais (WhatsApp, e-mail, 0800) reutilizam as conexões do módulo Conectores. Seguradora não duplica credencial.</p></div>
+      <div class="an"><div class="n">03·4</div><h4>Corredores como chips</h4><p>Lista densa do ResultVision vira chips legíveis e contáveis, sem tabela poluída.</p></div>
+    </div>
+  </div>
+</section>
+
+<!-- ============ 04 ATENDIMENTOS ============ -->
+<section class="block" id="atendimentos">
+  <div class="wrap">
+    <div class="sec-head"><span class="sec-num">04</span><h2>Atendimentos · shell operacional</h2><span class="sec-tag">lista + detalhe + status · sem lógica de corredor</span></div>
+    <p class="sec-lead">O módulo operacional, na primeira leva apenas como <b>shell</b>: lista de casos com o sistema de status completo e o detalhe do caso (Timeline · Conversa · Documentos · Ações). Mais denso que o chat, mas ainda calmo. A ação externa real espera <b>aprovação humana</b>.</p>
+
+    <div class="mock-cap">lista de casos · fila</div>
+    <div class="skin">
+      <div class="browser">
+        <div class="bw-bar"><div class="bw-dots"><i></i><i></i><i></i></div><div class="bw-url">app.autobrokers.ai/atendimentos/casos</div><div style="width:54px"></div></div>
+        <div class="bw-body"><div class="content">
+          <div class="page-head" style="padding-top:18px"><div><h3>Casos</h3><p>Atendimentos em aberto, por status. O que precisa de você aparece primeiro.</p></div><button class="btn btn-ghost"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7"><path d="M3 6h18M7 12h10M11 18h2"/></svg>Filtros</button></div>
+          <div class="tabs"><div class="tab on">Precisam de você <span class="cnt">3</span></div><div class="tab">Em andamento <span class="cnt">12</span></div><div class="tab">Aguardando <span class="cnt">7</span></div><div class="tab">Resolvidos</div></div>
+          <div class="mlist">
+            <div class="mrow"><div class="case-av av" style="width:38px;height:38px;border-radius:10px;background:var(--m-surface2);border:1px solid var(--m-border);display:grid;place-items:center;color:var(--m-muted)"><svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6"><circle cx="12" cy="8" r="4"/><path d="M4 21a8 8 0 0 1 16 0"/></svg></div><div class="body"><h4>Marcia Lopes · Vazamento residencial <span class="badge t-approval"><span class="d"></span>Aguardando aprovação</span></h4><p>Allianz · Assistência hidráulica · rascunho pronto para acionar prestador</p></div><div class="meta"><span>#2207</span><span style="color:var(--m-faint)">há 6 min</span></div><svg class="chev" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6"><path d="M9 18l6-6-6-6"/></svg></div>
+            <div class="mrow"><div class="av" style="width:38px;height:38px;border-radius:10px;background:var(--m-surface2);border:1px solid var(--m-border);display:grid;place-items:center;color:var(--m-muted)"><svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6"><circle cx="12" cy="8" r="4"/><path d="M4 21a8 8 0 0 1 16 0"/></svg></div><div class="body"><h4>João Beltrão · Sinistro elétrico <span class="badge t-warning"><span class="d"></span>Aguardando documento</span></h4><p>HDI · falta nota fiscal do equipamento danificado</p></div><div class="meta"><span>#2204</span><span style="color:var(--m-faint)">há 1 h</span></div><svg class="chev" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6"><path d="M9 18l6-6-6-6"/></svg></div>
+            <div class="mrow"><div class="av" style="width:38px;height:38px;border-radius:10px;background:var(--m-surface2);border:1px solid var(--m-border);display:grid;place-items:center;color:var(--m-muted)"><svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6"><circle cx="12" cy="8" r="4"/><path d="M4 21a8 8 0 0 1 16 0"/></svg></div><div class="body"><h4>Carla Nunes · Dúvida de cobertura <span class="badge t-danger"><span class="d"></span>Handoff humano</span></h4><p>Tokio · cliente pediu para falar com atendente</p></div><div class="meta"><span>#2199</span><span style="color:var(--m-faint)">há 2 h</span></div><svg class="chev" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6"><path d="M9 18l6-6-6-6"/></svg></div>
+          </div>
+        </div></div>
+      </div>
+    </div>
+
+    <div class="mock-cap">detalhe do caso · #2207 (Padrão-Mestre B + ação HITL)</div>
+    <div class="skin">
+      <div class="browser">
+        <div class="bw-bar"><div class="bw-dots"><i></i><i></i><i></i></div><div class="bw-url">…/atendimentos/casos/2207</div><div style="width:54px"></div></div>
+        <div class="bw-body"><div class="content">
+          <div class="crumb" style="padding-top:18px"><span class="bk"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M15 18l-6-6 6-6"/></svg>Casos</span> <span class="sep">/</span> <b>#2207</b></div>
+          <div class="case-head">
+            <div class="av"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6"><circle cx="12" cy="8" r="4"/><path d="M4 21a8 8 0 0 1 16 0"/></svg></div>
+            <div class="dh-meta"><div class="nm"><h3>Marcia Lopes</h3><span class="badge t-approval"><span class="d"></span>Aguardando aprovação</span></div><div class="sub">Vazamento residencial · Allianz · Assistência hidráulica · aberto há 2 dias</div></div>
+          </div>
+          <div class="tabs"><div class="tab on">Timeline</div><div class="tab">Conversa</div><div class="tab">Documentos <span class="cnt">2</span></div><div class="tab">Ações</div></div>
+          <div class="action-bar">
+            <div class="ab-t"><span class="badge t-approval"><span class="d"></span>Ação aguardando você</span><h5>Acionar prestador via Allianz</h5></div>
+            <div class="ab-msg">O AutoBrokers preparou o acionamento do prestador hidráulico para <b>amanhã, 9h–12h</b>, conforme a janela confirmada. Nada será enviado à seguradora sem sua aprovação.</div>
+            <div class="ab-actions"><button class="btn btn-ghost btn-sm">Revisar dados</button><button class="btn btn-primary btn-sm">Aprovar acionamento</button></div>
+          </div>
+          <div class="tl-wrap" style="padding-top:0">
+            <div class="tline">
+              <div class="tl-item acc"><div class="node"></div><div class="when">hoje · 09:12</div><h5>Resumo gerado <span class="badge t-info"><span class="d"></span>Auxiliar</span></h5><p>O Auxiliar de Resumo destacou 2 pendências e sugeriu acionar o prestador.</p></div>
+              <div class="tl-item"><div class="node"></div><div class="when">ontem · 18:40</div><h5>Cobertura confirmada</h5><p>Apólice consultada — assistência hidráulica coberta, sem carência.</p></div>
+              <div class="tl-item"><div class="node"></div><div class="when">ontem · 18:32</div><h5>Janela de horário confirmada</h5><p>Cliente confirmou disponibilidade para a manhã.</p></div>
+              <div class="tl-item"><div class="node"></div><div class="when">há 2 dias · 14:05</div><h5>Caso aberto · WhatsApp</h5><p>Cliente relatou vazamento na cozinha. Dados iniciais coletados.</p></div>
+            </div>
+          </div>
+        </div></div>
+      </div>
+    </div>
+
+    <div class="annot">
+      <div class="an"><div class="n">04·1</div><h4>“Precisam de você” primeiro</h4><p>A fila prioriza o que exige ação humana. Aguardando aprovação e handoff sobem ao topo.</p></div>
+      <div class="an"><div class="n">04·2</div><h4>Status do ADR-003</h4><p>Aguardando documento, handoff humano, aguardando aprovação… o sistema de status comporta o ciclo inteiro.</p></div>
+      <div class="an"><div class="n">04·3</div><h4>Ação HITL no caso</h4><p>A faixa tracejada de acento mostra a ação preparada. Nada vai à seguradora sem “Aprovar”.</p></div>
+      <div class="an"><div class="n">04·4</div><h4>Auxiliar na timeline</h4><p>O resumo gerado aparece como evento marcado “Auxiliar” — operação e automação convivem no mesmo caso.</p></div>
+    </div>
+  </div>
+</section>
+
+<footer class="foot">
+  <div class="wrap">
+    <div class="nx">Fechamento das levas · pronto para handoff</div>
+    <p style="color:var(--tx2);font-size:16px">Com as três levas aprovadas, o Dashboard da Corretora tem fundação, padrões e módulos definidos. O próximo passo é o <b style="color:var(--tx)">handoff para o Claude Code</b> — specs fechadas por tela, marcando o que é shell visual e o que conecta a dados reais.</p>
+    <div class="handoff">
+      <div class="hf"><span class="k">SHELL VISUAL</span><p>Auxiliares (lista/galeria/detalhe), página de Seguradora, lista e detalhe de Caso — sem backend novo, sem lógica de corredor.</p></div>
+      <div class="hf"><span class="k">DADOS REAIS</span><p>Auxiliar de Resumo de Atendimentos: execução manual sobre conversa selecionada, salva histórico e custo, sem envio externo.</p></div>
+      <div class="hf"><span class="k">HITL</span><p>Toda ação externa (acionar seguradora, enviar mensagem) exige estado “Aguardando aprovação” na UI antes de executar.</p></div>
+      <div class="hf"><span class="k">ORDEM</span><p>chat-first → sidebar → shells → Auxiliar de Resumo → base de Atendimento, alinhado ao ROADMAP.</p></div>
+    </div>
+    <p style="margin-top:24px;font-family:var(--mono);font-size:12px;color:var(--faint)">AutoBrokers.ai · Leva 3 · Módulos · paleta Névoa · Geist · Tailwind + Radix</p>
+  </div>
+</footer>
+
+</body>
+</html>
