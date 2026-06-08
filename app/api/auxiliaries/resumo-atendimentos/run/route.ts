@@ -16,6 +16,16 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ success: false, error: 'Não autorizado' }, { status: 401 });
   }
 
+  // Chave interna Next↔Backend (server-only; nunca exposta ao client).
+  const internalKey = process.env.BACKEND_INTERNAL_API_KEY || process.env.ADMIN_API_KEY;
+  if (!internalKey) {
+    console.error('[AUXILIARIES resumo run] internal key not configured');
+    return NextResponse.json(
+      { success: false, error: 'Chave interna do backend não configurada.' },
+      { status: 500 },
+    );
+  }
+
   let body: { conversation_id?: unknown } = {};
   try {
     body = await req.json();
@@ -43,7 +53,10 @@ export async function POST(req: NextRequest) {
   try {
     const response = await fetch(`${backendUrl}/api/auxiliaries/resumo-atendimentos/run`, {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
+      headers: {
+        'Content-Type': 'application/json',
+        'X-AutoBrokers-Internal-Key': internalKey,
+      },
       body: JSON.stringify({
         // company_id derivado da sessão no servidor — NUNCA do client
         company_id: ctx.companyId,

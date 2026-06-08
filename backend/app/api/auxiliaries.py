@@ -11,12 +11,14 @@ Tabelas usadas (criadas manualmente no Supabase — 38A1):
 - public.conversations / public.messages (fonte, somente leitura)
 """
 
+import hmac
 import json
 import logging
+import os
 from datetime import datetime, timezone
 from typing import Any, Dict, List, Optional, Tuple
 
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Depends, Header, HTTPException
 from pydantic import BaseModel
 
 from app.core.database import AsyncSupabaseClient, get_async_db
@@ -70,12 +72,29 @@ def _empty_output() -> Dict[str, Any]:
     }
 
 
+def _require_internal_key(provided: Optional[str]) -> None:
+    """Exige a chave interna Next↔Backend. Bloqueia chamadas diretas externas ao endpoint."""
+    expected = os.getenv("BACKEND_INTERNAL_API_KEY") or os.getenv("ADMIN_API_KEY")
+    if not expected:
+        logger.error(
+            "[AUX] Internal API key not configured (BACKEND_INTERNAL_API_KEY/ADMIN_API_KEY)"
+        )
+        raise HTTPException(status_code=500, detail="Internal API key not configured")
+    if not provided or not hmac.compare_digest(str(provided), str(expected)):
+        raise HTTPException(status_code=401, detail="Unauthorized internal request")
+
+
 @router.post("/resumo-atendimentos/run")
 async def run_resumo_atendimentos(
     payload: ResumoRunRequest,
+    x_autobrokers_internal_key: Optional[str] = Header(
+        default=None, alias="X-AutoBrokers-Internal-Key"
+    ),
     db: AsyncSupabaseClient = Depends(get_async_db),
 ):
     """Executa o Auxiliar de Resumo de Atendimentos para a empresa autenticada (read-only)."""
+    _require_internal_key(x_autobrokers_internal_key)
+
     company_id = (payload.company_id or "").strip()
     if not company_id:
         raise HTTPException(status_code=400, detail="company_id is required")
@@ -84,7 +103,7 @@ async def run_resumo_atendimentos(
     try:
         ta_resp = (
             await db.client.table("tenant_auxiliaries")
-            .select("id, company_id, slug, status")
+            .select("id, template_id, company_id, slug, status")
             .eq("company_id", company_id)
             .eq("slug", RESUMO_SLUG)
             .eq("status", "active")
@@ -100,7 +119,9 @@ async def run_resumo_atendimentos(
             status_code=404,
             detail="O Auxiliar 'Resumo de Atendimentos' não está ativo para esta empresa.",
         )
-    tenant_auxiliary_id = ta_resp.data[0]["id"]
+    tenant_auxiliary = ta_resp.data[0]
+    tenant_auxiliary_id = tenant_auxiliary["id"]
+    template_id = tenant_auxiliary.get("template_id")
 
     # 2. Selecionar conversa (sempre validada por company_id — anti-IDOR)
     conversation_id = (payload.conversation_id or "").strip() or None
@@ -129,7 +150,15 @@ async def run_resumo_atendimentos(
         "source": "manual",
         "max_messages": DEFAULT_MAX_MESSAGES,
     }
-    run_id = await _create_run(db, company_id, tenant_auxiliary_id, run_input, payload.user_id)
+    run_id = await _create_run(
+        db,
+        company_id=company_id,
+        tenant_auxiliary_id=tenant_auxiliary_id,
+        template_id=template_id,
+        conversation_id=conversation_id,
+        run_input=run_input,
+        user_id=payload.user_id,
+    )
     if not run_id:
         raise HTTPException(status_code=500, detail="Falha ao registrar a execução.")
 
@@ -203,24 +232,66 @@ async def run_resumo_atendimentos(
 # ─────────────────────────────────────────────────────────────────────────────
 
 
+async def _list_recent_conversations(
+    db: AsyncSupabaseClient, company_id: str
+) -> List[Dict[str, Any]]:
+    """
+    Lista conversas recentes da empresa de forma robusta a diferenças de schema.
+    Tenta ordenar por updated_at; cai para created_at; e, por fim, sem ordenação.
+    NÃO depende de last_message_at.
+    """
+    # Tier 1: updated_at
+    try:
+        r = (
+            await db.client.table("conversations")
+            .select("id, updated_at, created_at")
+            .eq("company_id", company_id)
+            .order("updated_at", desc=True)
+            .limit(RECENT_CONVERSATIONS_SCAN)
+            .execute()
+        )
+        return r.data or []
+    except Exception as e:  # noqa: BLE001
+        logger.warning(
+            f"[AUX] order-by updated_at unavailable ({type(e).__name__}); trying created_at"
+        )
+
+    # Tier 2: created_at
+    try:
+        r = (
+            await db.client.table("conversations")
+            .select("id, created_at")
+            .eq("company_id", company_id)
+            .order("created_at", desc=True)
+            .limit(RECENT_CONVERSATIONS_SCAN)
+            .execute()
+        )
+        return r.data or []
+    except Exception as e:  # noqa: BLE001
+        logger.warning(
+            f"[AUX] order-by created_at unavailable ({type(e).__name__}); trying unordered"
+        )
+
+    # Tier 3: sem ordenação
+    try:
+        r = (
+            await db.client.table("conversations")
+            .select("id")
+            .eq("company_id", company_id)
+            .limit(RECENT_CONVERSATIONS_SCAN)
+            .execute()
+        )
+        return r.data or []
+    except Exception as e:  # noqa: BLE001
+        logger.error(f"[AUX] conversations fetch failed entirely ({type(e).__name__})")
+        return []
+
+
 async def _pick_recent_conversation_with_messages(
     db: AsyncSupabaseClient, company_id: str
 ) -> Optional[str]:
     """Conversa mais recente da empresa que tenha ao menos uma mensagem."""
-    try:
-        convs = (
-            await db.client.table("conversations")
-            .select("id, last_message_at")
-            .eq("company_id", company_id)
-            .order("last_message_at", desc=True)
-            .limit(RECENT_CONVERSATIONS_SCAN)
-            .execute()
-        )
-    except Exception as e:  # noqa: BLE001
-        logger.error(f"[AUX] conversations scan failed: {e}")
-        return None
-
-    for conv in convs.data or []:
+    for conv in await _list_recent_conversations(db, company_id):
         conv_id = conv.get("id")
         if not conv_id:
             continue
@@ -240,12 +311,17 @@ async def _create_run(
     db: AsyncSupabaseClient,
     company_id: str,
     tenant_auxiliary_id: str,
+    template_id: Optional[str],
+    conversation_id: Optional[str],
     run_input: Dict[str, Any],
     user_id: Optional[str],
 ) -> Optional[str]:
     row = {
         "company_id": company_id,
         "tenant_auxiliary_id": tenant_auxiliary_id,
+        "template_id": template_id,
+        "conversation_id": conversation_id,
+        "user_id": user_id,
         "run_type": "manual",
         "status": "running",
         "input": run_input,

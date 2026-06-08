@@ -22,6 +22,10 @@ export interface AuxiliaryRun {
   status: AuxiliaryRunStatus | string;
   output?: AuxiliaryRunOutput | null;
   run_type?: string | null;
+  template_id?: string | null;
+  tenant_auxiliary_id?: string | null;
+  conversation_id?: string | null;
+  user_id?: string | null;
   error_message?: string | null;
   cost_usd?: number | null;
   created_at?: string | null;
