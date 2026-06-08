@@ -2,6 +2,7 @@ import { Button } from '@/components/ui/button';
 import { Card } from '@/components/ui/card';
 import { Icon } from '@/components/ui/Icon';
 import { icons } from '@/lib/icons';
+import { PatternsShowcase } from './PatternsShowcase';
 
 /* =========================================================================
    /sandbox — Showcase técnico da fundação visual (B0).
@@ -218,8 +219,16 @@ export default function SandboxPage() {
           </div>
         </Section>
 
+        {/* ===== 37B3 · Padrões-mestre ===== */}
+        <div className="space-y-8 border-t border-border-soft pt-12">
+          <p className="font-mono text-[11px] uppercase tracking-[0.12em] text-primary">
+            37B3 · Padrões-mestre (Galeria · Detalhe · Modal de Permissão)
+          </p>
+          <PatternsShowcase />
+        </div>
+
         <footer className="border-t border-border-soft pt-8 font-mono text-[11px] text-faint">
-          AutoBrokers.ai · /sandbox · fundação Névoa · Geist · B0 — rota interna de inspeção
+          AutoBrokers.ai · /sandbox · fundação Névoa · Geist · B0–B3 — rota interna de inspeção
         </footer>
       </div>
     </div>

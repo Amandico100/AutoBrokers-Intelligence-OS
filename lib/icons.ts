@@ -25,6 +25,12 @@ import {
   FileText,
   RefreshCw,
   Filter,
+  Check,
+  X,
+  Lock,
+  Database,
+  HardDrive,
+  Receipt,
 } from 'lucide-react';
 import type { LucideIcon } from 'lucide-react';
 
@@ -72,6 +78,14 @@ export const icons = {
   documento: FileText,
   renovacao: RefreshCw,
   filtros: Filter,
+
+  // Padrões / permissões
+  check: Check,
+  negado: X,
+  cadeado: Lock,
+  banco: Database,
+  drive: HardDrive,
+  cobranca: Receipt,
 } satisfies Record<string, LucideIcon>;
 
 export type IconName = keyof typeof icons;
