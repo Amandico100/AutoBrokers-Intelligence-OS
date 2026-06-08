@@ -28,10 +28,21 @@ export interface AuxiliaryRun {
   user_id?: string | null;
   error_message?: string | null;
   cost_usd?: number | null;
+  token_usage?: { input_tokens?: number; output_tokens?: number; total_tokens?: number } | null;
   created_at?: string | null;
+  started_at?: string | null;
   finished_at?: string | null;
   // demais colunas do banco ficam acessíveis sem quebrar tipagem
   [key: string]: unknown;
+}
+
+export interface ResumoConversation {
+  id: string;
+  title: string;
+  last_message_preview?: string;
+  created_at?: string;
+  updated_at?: string;
+  message_count?: number;
 }
 
 export interface AuxiliaryTemplate {

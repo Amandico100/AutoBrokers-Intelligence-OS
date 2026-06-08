@@ -1,12 +1,42 @@
+'use client';
+
+import { useEffect, useState } from 'react';
+
 import { Icon } from '@/components/ui/Icon';
 import { icons } from '@/lib/icons';
 import { GalleryGrid, GalleryCard } from '@/components/patterns';
 import { auxiliaresAreas, auxiliaresGaleria } from '@/lib/mock/tenant-modules';
-
-export const metadata = { title: 'Auxiliares · AutoBrokers' };
+import { fetchInstalled, fetchTemplates, fetchRuns } from '@/lib/auxiliaries/api';
 
 export default function AuxiliaresPage() {
   const resumo = auxiliaresGaleria[0];
+  const [counts, setCounts] = useState<{ installed?: number; templates?: number; runs?: number }>({});
+
+  useEffect(() => {
+    let active = true;
+    Promise.allSettled([fetchInstalled(), fetchTemplates(), fetchRuns()]).then((rs) => {
+      if (!active) return;
+      const [inst, tpl, run] = rs;
+      setCounts({
+        installed: inst.status === 'fulfilled' ? inst.value.installed?.length : undefined,
+        templates: tpl.status === 'fulfilled' ? tpl.value.templates?.length : undefined,
+        runs: run.status === 'fulfilled' ? run.value.runs?.length : undefined,
+      });
+    });
+    return () => {
+      active = false;
+    };
+  }, []);
+
+  const tagsFor = (key: string): string[] | undefined => {
+    if (key === 'meus' && typeof counts.installed === 'number')
+      return [`${counts.installed} ativo${counts.installed === 1 ? '' : 's'}`];
+    if (key === 'galeria' && typeof counts.templates === 'number')
+      return [`${counts.templates} modelo${counts.templates === 1 ? '' : 's'}`];
+    if (key === 'execucoes' && typeof counts.runs === 'number')
+      return [`${counts.runs} execuç${counts.runs === 1 ? 'ão' : 'ões'}`];
+    return undefined;
+  };
 
   return (
     <div className="h-full overflow-y-auto">
@@ -25,7 +55,15 @@ export default function AuxiliaresPage() {
 
         <GalleryGrid>
           {auxiliaresAreas.map((a) => (
-            <GalleryCard key={a.key} icon={a.icon} title={a.title} description={a.description} href={a.href} cta="Abrir" />
+            <GalleryCard
+              key={a.key}
+              icon={a.icon}
+              title={a.title}
+              description={a.description}
+              href={a.href}
+              cta="Abrir"
+              tags={tagsFor(a.key)}
+            />
           ))}
         </GalleryGrid>
 

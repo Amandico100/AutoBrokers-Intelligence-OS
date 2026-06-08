@@ -4,6 +4,7 @@ import type {
   AuxiliaryTemplate,
   TenantAuxiliary,
   RunResumoResponse,
+  ResumoConversation,
 } from './types';
 
 async function getJson<T>(url: string): Promise<T> {
@@ -26,6 +27,10 @@ export async function fetchRuns(): Promise<{ runs: AuxiliaryRun[] }> {
 
 export async function fetchRun(runId: string): Promise<{ run: AuxiliaryRun }> {
   return getJson(`/api/auxiliaries/runs/${runId}`);
+}
+
+export async function fetchResumoConversations(): Promise<{ conversations: ResumoConversation[] }> {
+  return getJson('/api/auxiliaries/resumo-atendimentos/conversations');
 }
 
 export async function runResumoAtendimentos(conversationId?: string): Promise<RunResumoResponse> {

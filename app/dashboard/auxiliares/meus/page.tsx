@@ -37,6 +37,12 @@ function getStr(obj: Record<string, unknown>, key: string): string | undefined {
   return typeof v === 'string' ? v : undefined;
 }
 
+function fmtDateShort(s?: string): string | undefined {
+  if (!s) return undefined;
+  const d = new Date(s);
+  return Number.isNaN(d.getTime()) ? undefined : d.toLocaleDateString('pt-BR');
+}
+
 export default function MeusAuxiliaresPage() {
   const [items, setItems] = useState<TenantAuxiliary[] | null>(null);
   const [error, setError] = useState(false);
@@ -101,6 +107,11 @@ export default function MeusAuxiliaresPage() {
             {items.map((it) => {
               const slug = it.slug;
               const title = getStr(it, 'display_name') || TITLES[slug] || slug || 'Auxiliar';
+              const created = fmtDateShort(getStr(it, 'created_at'));
+              const tags = [slug, created ? `criado ${created}` : undefined].filter(
+                (t): t is string => Boolean(t),
+              );
+              const href = HREFS[slug];
               return (
                 <GalleryCard
                   key={it.id}
@@ -108,8 +119,10 @@ export default function MeusAuxiliaresPage() {
                   title={title}
                   description={DESCS[slug] || 'Auxiliar ativado pela corretora.'}
                   status={installedStatus(it.status)}
-                  cta={HREFS[slug] ? 'Abrir' : undefined}
-                  href={HREFS[slug]}
+                  tags={tags}
+                  cta={href ? 'Abrir' : 'Em breve'}
+                  href={href}
+                  disabled={!href}
                 />
               );
             })}
