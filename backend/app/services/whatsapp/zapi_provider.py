@@ -31,7 +31,12 @@ class ZApiProvider(WhatsAppProvider):
     provider_name = "z-api"
 
     def _post(
-        self, endpoint: str, to_number: str, payload: Dict[str, Any], integration: Dict[str, Any]
+        self,
+        endpoint: str,
+        to_number: str,
+        payload: Dict[str, Any],
+        integration: Dict[str, Any],
+        force_dry_run: bool = False,
     ) -> SendResult:
         base_url = integration.get("base_url") or DEFAULT_BASE_URL
         instance_id = integration.get("instance_id")
@@ -48,8 +53,8 @@ class ZApiProvider(WhatsAppProvider):
         if integration.get("client_token"):
             headers["Client-Token"] = integration["client_token"]
 
-        # 🧪 DRY_RUN: simula envio sem chamar a Z-API.
-        if settings.DRY_RUN:
+        # 🧪 DRY_RUN (global OU forçado pela rota): simula envio sem chamar a Z-API.
+        if settings.DRY_RUN or force_dry_run:
             logger.info(f"[WHATSAPP][z-api] 🧪 DRY_RUN: simulating {endpoint} to {safe}")
             return SendResult(success=True, provider=self.provider_name, dry_run=True)
 
@@ -78,20 +83,34 @@ class ZApiProvider(WhatsAppProvider):
             logger.error(f"[WHATSAPP][z-api] request error on {endpoint} to {safe}: {type(e).__name__}")
             return SendResult(success=False, provider=self.provider_name, error="request_error")
 
-    def send_text(self, to_number: str, text: str, integration: Dict[str, Any]) -> SendResult:
-        return self._post("send-text", to_number, {"phone": to_number, "message": text}, integration)
+    def send_text(
+        self, to_number: str, text: str, integration: Dict[str, Any], force_dry_run: bool = False
+    ) -> SendResult:
+        return self._post(
+            "send-text", to_number, {"phone": to_number, "message": text}, integration, force_dry_run
+        )
 
-    def send_audio(self, to_number: str, audio_url: str, integration: Dict[str, Any]) -> SendResult:
-        return self._post("send-audio", to_number, {"phone": to_number, "audio": audio_url}, integration)
+    def send_audio(
+        self, to_number: str, audio_url: str, integration: Dict[str, Any], force_dry_run: bool = False
+    ) -> SendResult:
+        return self._post(
+            "send-audio", to_number, {"phone": to_number, "audio": audio_url}, integration, force_dry_run
+        )
 
     def send_image(
-        self, to_number: str, image_url: str, caption: str, integration: Dict[str, Any]
+        self,
+        to_number: str,
+        image_url: str,
+        caption: str,
+        integration: Dict[str, Any],
+        force_dry_run: bool = False,
     ) -> SendResult:
         return self._post(
             "send-image",
             to_number,
             {"phone": to_number, "image": image_url, "caption": caption or ""},
             integration,
+            force_dry_run,
         )
 
 

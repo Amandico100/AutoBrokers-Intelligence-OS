@@ -99,3 +99,13 @@ export function configureWhatsAppConnection(connectionId: string, input: Configu
 export function testWhatsAppConnection(connectionId: string) {
   return postJson<WhatsAppTestResult>(`/api/vault/connections/${connectionId}/whatsapp/test`, {});
 }
+
+export function executeApproval(approvalId: string) {
+  return postJson<{
+    success?: boolean;
+    dry_run?: boolean;
+    approval?: ApprovalRequest;
+    message?: string;
+    error?: string;
+  }>(`/api/vault/approvals/${approvalId}/execute`, {});
+}

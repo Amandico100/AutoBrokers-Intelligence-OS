@@ -240,3 +240,71 @@ async def health(
         "service": "whatsapp-integrations",
         "encryption_configured": encryption_configured,
     }
+
+
+class SendDryRunPayload(BaseModel):
+    company_id: str
+    integration_id: str
+    to_number: str
+    message: str
+
+
+@router.post("/send-dry-run")
+async def send_dry_run(
+    payload: SendDryRunPayload,
+    x_autobrokers_internal_key: Optional[str] = Header(default=None, alias="X-AutoBrokers-Internal-Key"),
+    db: AsyncSupabaseClient = Depends(get_async_db),
+):
+    """
+    Execução de envio em DRY-RUN FORÇADO. NUNCA chama a Z-API real (force_dry_run=True),
+    independente do env global. Valida que a integração existe e descriptografa em memória.
+    """
+    _require_internal_key(x_autobrokers_internal_key)
+
+    company_id = (payload.company_id or "").strip()
+    integration_id = (payload.integration_id or "").strip()
+    to_number = (payload.to_number or "").strip()
+    message = (payload.message or "").strip()
+
+    if not company_id or not integration_id:
+        raise HTTPException(status_code=400, detail="company_id and integration_id are required")
+    if not to_number or not message:
+        raise HTTPException(status_code=400, detail="to_number and message are required")
+
+    try:
+        resp = (
+            await db.client.table("integrations")
+            .select("*")
+            .eq("company_id", company_id)
+            .eq("id", integration_id)
+            .eq("is_active", True)
+            .limit(1)
+            .execute()
+        )
+    except Exception as e:  # noqa: BLE001
+        logger.error(f"[WA INTEGRATIONS] dry-run lookup failed: {type(e).__name__}")
+        raise HTTPException(status_code=500, detail="Failed to load integration")
+
+    if not resp.data:
+        raise HTTPException(status_code=404, detail="integration not found")
+
+    runtime = prepare_integration_for_runtime(resp.data[0]) or {}
+    if not (runtime.get("instance_id") and runtime.get("token") and runtime.get("identifier")):
+        raise HTTPException(status_code=400, detail="integration not fully configured")
+
+    # FORÇA dry-run no provider — não chama a Z-API real, não toca a internet.
+    from app.services.whatsapp.zapi_provider import get_zapi_provider
+
+    result = get_zapi_provider().send_text(to_number, message, runtime, force_dry_run=True)
+    if not result.success:
+        raise HTTPException(status_code=502, detail=f"dry-run failed ({result.error or 'unknown'})")
+
+    logger.info(
+        f"[WA INTEGRATIONS] 🧪 dry-run OK for company {company_id} | to ...{to_number[-4:]} | provider {result.provider}"
+    )
+    return {
+        "success": True,
+        "provider": result.provider,
+        "dry_run": True,
+        "message": "Simulação executada. Nenhuma mensagem foi enviada.",
+    }
