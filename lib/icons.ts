@@ -31,6 +31,11 @@ import {
   Database,
   HardDrive,
   Receipt,
+  Inbox,
+  Briefcase,
+  MessageSquare,
+  Building2,
+  LayoutGrid,
 } from 'lucide-react';
 import type { LucideIcon } from 'lucide-react';
 
@@ -86,6 +91,13 @@ export const icons = {
   banco: Database,
   drive: HardDrive,
   cobranca: Receipt,
+
+  // Módulos
+  fila: Inbox,
+  casos: Briefcase,
+  conversas: MessageSquare,
+  corretora: Building2,
+  galeria: LayoutGrid,
 } satisfies Record<string, LucideIcon>;
 
 export type IconName = keyof typeof icons;
