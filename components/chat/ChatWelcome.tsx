@@ -3,9 +3,9 @@ import { BrandMark } from '@/components/BrandMark';
 /** Saudação do estado inicial do chat-first (sem mensagens). */
 export function ChatWelcome() {
   return (
-    <div className="flex flex-col items-center text-center">
+    <div className="flex flex-col items-center px-2 text-center">
       <BrandMark size={40} />
-      <h1 className="mt-6 text-2xl font-semibold tracking-tight text-foreground sm:text-3xl">
+      <h1 className="mt-6 max-w-[20rem] text-2xl font-semibold leading-tight tracking-tight text-foreground sm:max-w-none sm:text-3xl">
         Como posso ajudar sua corretora hoje?
       </h1>
       <p className="mt-3 max-w-md text-sm text-muted-foreground">

@@ -10,7 +10,7 @@ import { TenantBottomNav } from '@/components/layout/TenantBottomNav';
  */
 export function TenantAppShell({ children }: { children: React.ReactNode }) {
   return (
-    <div className="flex h-screen overflow-hidden bg-background text-foreground">
+    <div className="flex h-[100dvh] overflow-hidden bg-background text-foreground">
       <TenantSidebar />
       <div className="flex min-w-0 flex-1 flex-col">
         <TenantTopBar />

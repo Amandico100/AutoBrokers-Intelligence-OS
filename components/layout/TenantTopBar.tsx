@@ -2,6 +2,7 @@
 
 import { useState } from 'react';
 import Link from 'next/link';
+import { usePathname, useRouter } from 'next/navigation';
 import { Menu } from 'lucide-react';
 
 import { Sheet, SheetContent, SheetTitle, SheetTrigger } from '@/components/ui/sheet';
@@ -13,6 +14,16 @@ import { TenantNav } from '@/components/layout/TenantNav';
 /** Top bar mobile (lg-): marca + menu (drawer com a navegação completa) + nova conversa. */
 export function TenantTopBar() {
   const [open, setOpen] = useState(false);
+  const pathname = usePathname();
+  const router = useRouter();
+
+  const handleNewConversation = () => {
+    if (pathname === '/dashboard' || pathname === '/dashboard/chat') {
+      window.dispatchEvent(new CustomEvent('autobrokers:new-conversation'));
+    } else {
+      router.push('/dashboard');
+    }
+  };
 
   return (
     <header className="flex shrink-0 items-center justify-between border-b border-border bg-surface px-4 py-3 lg:hidden">
@@ -33,13 +44,14 @@ export function TenantTopBar() {
         <BrandMark size={22} withWordmark />
       </Link>
 
-      <Link
-        href="/dashboard"
+      <button
+        type="button"
+        onClick={handleNewConversation}
         aria-label="Nova conversa"
         className="flex h-9 w-9 items-center justify-center rounded-lg text-muted-foreground transition-colors hover:bg-surface-2 hover:text-foreground"
       >
         <Icon icon={icons.novaConversa} size={20} />
-      </Link>
+      </button>
     </header>
   );
 }

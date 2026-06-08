@@ -48,6 +48,15 @@ export function TenantNav({ onNavigate }: { onNavigate?: () => void }) {
     router.push('/login');
   };
 
+  const handleNewConversation = () => {
+    onNavigate?.();
+    if (pathname === '/dashboard' || pathname === '/dashboard/chat') {
+      window.dispatchEvent(new CustomEvent('autobrokers:new-conversation'));
+    } else {
+      router.push('/dashboard');
+    }
+  };
+
   const renderItem = (item: NavItem) => {
     const active = isActiveRoute(pathname, item.href);
     return (
@@ -82,14 +91,14 @@ export function TenantNav({ onNavigate }: { onNavigate?: () => void }) {
 
       {/* Nova conversa */}
       <div className="px-3 pb-3">
-        <Link
-          href="/dashboard"
-          onClick={onNavigate}
-          className="flex items-center justify-center gap-2 rounded-lg border border-border bg-surface-2 px-3 py-2.5 text-sm font-medium text-foreground transition-colors hover:border-primary/40 hover:bg-surface-3"
+        <button
+          type="button"
+          onClick={handleNewConversation}
+          className="flex w-full items-center justify-center gap-2 rounded-lg border border-border bg-surface-2 px-3 py-2.5 text-sm font-medium text-foreground transition-colors hover:border-primary/40 hover:bg-surface-3"
         >
           <Icon icon={icons.novaConversa} size={16} className="text-primary" />
           Nova conversa
-        </Link>
+        </button>
       </div>
 
       {/* Pilares */}

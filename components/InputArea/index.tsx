@@ -19,6 +19,7 @@ interface InputAreaProps {
   agents?: { id: string; name: string }[];
   selectedAgentId?: string;
   onAgentChange?: (agentId: string) => void;
+  showAgentSelector?: boolean;
 }
 
 export default function InputArea({
@@ -32,6 +33,7 @@ export default function InputArea({
   agents = [],
   selectedAgentId = '',
   onAgentChange,
+  showAgentSelector = true,
 }: InputAreaProps) {
   const [message, setMessage] = useState('');
 
@@ -116,6 +118,7 @@ export default function InputArea({
           agents={agents}
           selectedAgentId={selectedAgentId}
           onAgentChange={onAgentChange}
+          showAgentSelector={showAgentSelector}
         />
       )}
 

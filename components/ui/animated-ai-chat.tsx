@@ -134,6 +134,7 @@ interface AnimatedAIChatProps {
   selectedAgentId?: string; // Agente selecionado
   onAgentChange?: (agentId: string) => void; // Callback de mudança
   isLoadingAgents?: boolean; // Se está carregando agentes
+  showAgentSelector?: boolean; // Mostra o seletor de agente (oculto na experiência tenant)
 }
 
 export function AnimatedAIChat({
@@ -155,6 +156,7 @@ export function AnimatedAIChat({
   selectedAgentId = '',
   onAgentChange,
   isLoadingAgents = false,
+  showAgentSelector = true,
 }: AnimatedAIChatProps) {
   const [inputFocused, setInputFocused] = useState(false);
   const [mousePosition, setMousePosition] = useState({ x: 0, y: 0 });
@@ -250,7 +252,7 @@ export function AnimatedAIChat({
           />
         </div>
 
-        <div className="p-4 border-t border-border/50 flex items-center justify-between gap-4">
+        <div className="p-4 border-t border-border/50 flex flex-wrap items-center justify-between gap-2 sm:gap-4">
           {/* VISION: Attach Button */}
           <motion.button
             whileHover={{ scale: 1.05 }}
@@ -319,7 +321,7 @@ export function AnimatedAIChat({
           )}
 
           {/* Agent Selector - Estilo Claude */}
-          {agents.length > 0 && onAgentChange && (
+          {showAgentSelector && agents.length > 0 && onAgentChange && (
             <div className="relative">
               <button
                 type="button"
@@ -382,7 +384,7 @@ export function AnimatedAIChat({
             ) : (
               <SendIcon className="w-4 h-4" />
             )}
-            <span>Enviar</span>
+            <span className="hidden sm:inline">Enviar</span>
           </motion.button>
         </div>
       </motion.div>

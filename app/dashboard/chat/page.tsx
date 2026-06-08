@@ -557,6 +557,13 @@ export default function ChatPage() {
     // 🔥 NÃO toca no selectedAgentId aqui - o loadConversation vai sincronizar
   }, []);
 
+  // Reset determinístico de conversa via evento global (sidebar/topbar "Nova conversa")
+  useEffect(() => {
+    const handler = () => handleNewConversation();
+    window.addEventListener('autobrokers:new-conversation', handler);
+    return () => window.removeEventListener('autobrokers:new-conversation', handler);
+  }, [handleNewConversation]);
+
   if (isLoadingUser) {
     return (
       <div className="min-h-screen flex items-center justify-center text-slate-400">
@@ -577,6 +584,7 @@ export default function ChatPage() {
       agents={agents}
       selectedAgentId={selectedAgentId}
       onAgentChange={handleAgentChange}
+      showAgentSelector={false}
     />
   );
 
