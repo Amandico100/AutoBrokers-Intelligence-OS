@@ -20,6 +20,8 @@ from tenacity import (
 from app.core.config import settings
 from supabase import Client
 
+from app.services.whatsapp.integration_secrets import prepare_integration_for_runtime
+
 logger = logging.getLogger(__name__)
 
 # Retry decorator for DB operations that may fail under load
@@ -116,7 +118,8 @@ class IntegrationService:
                 f"[INTEGRATION] Found integration for company {integration.get('company_id')}"
             )
 
-            return integration
+            # 39A4.1: descriptografa token/client_token em memória (nunca loga valores).
+            return prepare_integration_for_runtime(integration)
 
         except Exception as e:
             logger.error(f"[INTEGRATION] Error fetching integration: {str(e)}")
@@ -194,9 +197,10 @@ class IntegrationService:
             # 3. Resultado Final
             if matching_integration:
                 logger.info(
-                    f"[BUSCA INTEGRAÇÃO] ✅ SUCESSO. ID: {matching_integration['identifier']} | Agent: {matching_integration['agent_id']}"
+                    f"[BUSCA INTEGRAÇÃO] ✅ SUCESSO. ID: ...{str(matching_integration.get('identifier'))[-4:]} | Agent: {matching_integration['agent_id']}"
                 )
-                return matching_integration
+                # 39A4.1: descriptografa token/client_token em memória (nunca loga valores).
+                return prepare_integration_for_runtime(matching_integration)
 
             # Se chegou aqui, é ERRO. Nada de tentar "o que tiver".
             logger.error(

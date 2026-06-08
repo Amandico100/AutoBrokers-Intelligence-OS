@@ -181,6 +181,21 @@ export async function POST(request: NextRequest) {
       buffer_max_wait_seconds,
     } = body;
 
+    // 🔒 P0 (39A4.1): bloqueia gravação de credenciais em texto puro por esta rota.
+    // Token/client_token de WhatsApp serão configurados pelo fluxo seguro (Vault + backend cifrado).
+    if (
+      (typeof token === 'string' && token.trim()) ||
+      (typeof client_token === 'string' && client_token.trim())
+    ) {
+      return NextResponse.json(
+        {
+          error:
+            'Credenciais de WhatsApp devem ser configuradas pelo fluxo seguro de conexão. Esta rota não aceita token/client_token.',
+        },
+        { status: 400 },
+      );
+    }
+
     if (!agent_id) {
       return NextResponse.json({ error: 'agent_id is required' }, { status: 400 });
     }
