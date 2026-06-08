@@ -157,6 +157,11 @@ from app.api.sanitization import router as sanitization_router
 
 app.include_router(sanitization_router, prefix="/api/sanitization", tags=["Sanitization"])
 
+# === Auxiliares (Product layer over Smith runtime) ===
+from app.api.auxiliaries import router as auxiliaries_router
+
+app.include_router(auxiliaries_router, prefix="/api/auxiliaries", tags=["Auxiliaries"])
+
 
 @app.get("/")
 async def root():
