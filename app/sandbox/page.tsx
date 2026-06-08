@@ -67,7 +67,31 @@ const pillars = [
   { key: 'personalizacao' as const, label: 'Personalização', active: false },
 ];
 
-export default function SandboxPage() {
+export default async function SandboxPage({
+  searchParams,
+}: {
+  searchParams?: Promise<{ internal?: string }>;
+}) {
+  const params = await searchParams;
+  if (params?.internal !== '1') {
+    return (
+      <div className="flex min-h-screen items-center justify-center bg-background px-6 text-center text-foreground">
+        <div className="max-w-md space-y-3">
+          <p className="font-mono text-[11px] uppercase tracking-[0.12em] text-faint">Sandbox interno</p>
+          <h1 className="text-xl font-semibold tracking-tight">Sandbox visual interno</h1>
+          <p className="text-sm text-muted-foreground">
+            Esta página é uma ferramenta interna de inspeção visual e não faz parte do produto final do AutoBrokers.
+          </p>
+          <a
+            href="/sandbox?internal=1"
+            className="inline-block rounded-lg border border-border bg-surface-2 px-4 py-2 text-sm font-medium text-foreground transition-colors hover:border-primary/40"
+          >
+            Abrir mesmo assim
+          </a>
+        </div>
+      </div>
+    );
+  }
   return (
     <div className="min-h-screen bg-background text-foreground">
       <div className="mx-auto w-full max-w-5xl px-6 py-12 space-y-14">

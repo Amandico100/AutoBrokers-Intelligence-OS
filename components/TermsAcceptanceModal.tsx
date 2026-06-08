@@ -58,7 +58,7 @@ export function TermsAcceptanceModal({ activeTerms, onAccepted }: TermsAcceptanc
             >
                 <DialogHeader className="flex-shrink-0">
                     <DialogTitle className="text-xl flex items-center gap-2">
-                        <FileText className="w-5 h-5 text-blue-500" />
+                        <FileText className="w-5 h-5 text-primary" />
                         Termos de Uso Atualizados
                     </DialogTitle>
                     <DialogDescription className="text-gray-400">
@@ -77,7 +77,7 @@ export function TermsAcceptanceModal({ activeTerms, onAccepted }: TermsAcceptanc
                     <Button
                         onClick={handleAccept}
                         disabled={accepting}
-                        className="w-full bg-blue-600 hover:bg-blue-700 text-white py-3 text-base"
+                        className="w-full py-3 text-base"
                     >
                         {accepting ? (
                             <>

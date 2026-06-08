@@ -9,8 +9,9 @@ import { Label } from '@/components/ui/label';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { toast } from 'sonner';
-import { Loader2, Lock, User, Save } from 'lucide-react';
+import { Loader2, Lock, User, Save, SlidersHorizontal } from 'lucide-react';
 import { AvatarUpload } from '@/components/AvatarUpload';
+import { ThemeToggle } from '@/components/ThemeToggle';
 
 export default function SettingsPage() {
   const { userId } = useUserId();
@@ -137,7 +138,7 @@ export default function SettingsPage() {
 
   if (isLoading) {
     return (
-      <div className="flex h-screen items-center justify-center bg-background text-muted-foreground">
+      <div className="flex h-full items-center justify-center bg-background text-muted-foreground">
         <Loader2 className="h-8 w-8 animate-spin mr-2" /> Carregando...
       </div>
     );
@@ -152,7 +153,7 @@ export default function SettingsPage() {
           </div>
 
           <Tabs defaultValue="profile" className="w-full">
-            <TabsList className="grid w-full grid-cols-2 bg-muted border border-border">
+            <TabsList className="grid w-full grid-cols-3 bg-muted border border-border">
               <TabsTrigger
                 value="profile"
                 className="data-[state=active]:bg-background data-[state=active]:text-foreground data-[state=active]:shadow-sm"
@@ -164,6 +165,12 @@ export default function SettingsPage() {
                 className="data-[state=active]:bg-background data-[state=active]:text-foreground data-[state=active]:shadow-sm"
               >
                 <Lock className="h-4 w-4 mr-2" /> Senha e Segurança
+              </TabsTrigger>
+              <TabsTrigger
+                value="appearance"
+                className="data-[state=active]:bg-background data-[state=active]:text-foreground data-[state=active]:shadow-sm"
+              >
+                <SlidersHorizontal className="h-4 w-4 mr-2" /> Aparência
               </TabsTrigger>
             </TabsList>
 
@@ -251,7 +258,6 @@ export default function SettingsPage() {
                     <Button
                       onClick={handleUpdateProfile}
                       disabled={isSaving}
-                      className="bg-blue-600 hover:bg-blue-700 text-white"
                     >
                       {isSaving ? (
                         <Loader2 className="h-4 w-4 animate-spin mr-2" />
@@ -303,7 +309,7 @@ export default function SettingsPage() {
                     <Button
                       onClick={handleChangePassword}
                       disabled={isSaving}
-                      className="w-full bg-blue-600 hover:bg-blue-700 text-white"
+                      className="w-full"
                     >
                       {isSaving ? (
                         <Loader2 className="h-4 w-4 animate-spin mr-2" />
@@ -312,6 +318,41 @@ export default function SettingsPage() {
                       )}{' '}
                       Atualizar Senha
                     </Button>
+                  </div>
+                </CardContent>
+              </Card>
+            </TabsContent>
+
+            <TabsContent value="appearance" className="mt-6 space-y-6">
+              <Card className="bg-card border-border">
+                <CardHeader>
+                  <CardTitle className="text-foreground">Tema</CardTitle>
+                  <CardDescription className="text-muted-foreground">Escolha a aparência do AutoBrokers.</CardDescription>
+                </CardHeader>
+                <CardContent>
+                  <div className="flex items-center justify-between rounded-lg border border-border bg-background px-4 py-3">
+                    <div>
+                      <p className="text-sm font-medium text-foreground">Modo de cor</p>
+                      <p className="text-xs text-muted-foreground">Alterna entre claro e escuro.</p>
+                    </div>
+                    <ThemeToggle />
+                  </div>
+                </CardContent>
+              </Card>
+
+              <Card className="bg-card border-border">
+                <CardHeader>
+                  <CardTitle className="text-foreground">Preferências e integrações</CardTitle>
+                  <CardDescription className="text-muted-foreground">Preferências do AutoBrokers e integrações da corretora.</CardDescription>
+                </CardHeader>
+                <CardContent className="space-y-2">
+                  <div className="flex items-center justify-between rounded-lg border border-border-soft px-4 py-3">
+                    <span className="text-sm text-foreground-2">Preferências do AutoBrokers</span>
+                    <span className="rounded-full border border-border-soft px-2 py-0.5 font-mono text-[10px] text-faint">em breve</span>
+                  </div>
+                  <div className="flex items-center justify-between rounded-lg border border-border-soft px-4 py-3">
+                    <span className="text-sm text-foreground-2">Integrações futuras</span>
+                    <span className="rounded-full border border-border-soft px-2 py-0.5 font-mono text-[10px] text-faint">em breve</span>
                   </div>
                 </CardContent>
               </Card>

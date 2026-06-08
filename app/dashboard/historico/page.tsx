@@ -4,7 +4,10 @@ import { useState, useEffect } from 'react';
 import { useRouter } from 'next/navigation';
 import { formatDistanceToNow } from 'date-fns';
 import { ptBR } from 'date-fns/locale';
-import { useUserId } from '@/hooks/useUserId';
+
+import { Icon } from '@/components/ui/Icon';
+import { icons } from '@/lib/icons';
+import { Button } from '@/components/ui/button';
 
 interface Conversation {
   id: string;
@@ -16,7 +19,6 @@ interface Conversation {
 
 export default function HistoricoPage() {
   const router = useRouter();
-  const { userId: currentUserId } = useUserId();
   const [conversations, setConversations] = useState<Conversation[]>([]);
   const [loading, setLoading] = useState(true);
 
@@ -45,64 +47,67 @@ export default function HistoricoPage() {
 
   if (loading) {
     return (
-      <div className="flex h-full items-center justify-center bg-background text-foreground">
-        <div className="text-muted-foreground">Carregando histórico...</div>
+      <div className="flex h-full items-center justify-center bg-background text-muted-foreground">
+        Carregando histórico…
       </div>
     );
   }
 
   return (
-    <div className="h-full overflow-y-auto bg-background text-foreground">
-      <div className="p-8">
-          <div className="max-w-4xl mx-auto">
-            <h1 className="text-3xl font-bold mb-8 text-foreground">Histórico de Conversas</h1>
-
-            {conversations.length === 0 ? (
-              <div className="bg-card border border-border rounded-xl p-12 text-center shadow-sm">
-                <p className="text-muted-foreground mb-4">Você ainda não tem conversas</p>
-                <button
-                  onClick={() => router.push('/dashboard/chat')}
-                  className="px-6 py-3 bg-blue-600 hover:bg-blue-700 text-white rounded-lg transition-colors font-medium"
-                >
-                  Iniciar primeira conversa
-                </button>
-              </div>
-            ) : (
-              <div className="space-y-4">
-                {conversations.map((conv) => (
-                  <div
-                    key={conv.id}
-                    onClick={() => handleOpenConversation(conv.id)}
-                    className="group bg-card border border-border rounded-xl p-6 cursor-pointer hover:border-blue-500 hover:shadow-md transition-all duration-200"
-                  >
-                    <div className="flex items-start justify-between gap-4">
-                      <div className="flex-1">
-                        <h3 className="text-lg font-semibold mb-2 text-card-foreground group-hover:text-blue-600 transition-colors">
-                          {conv.title || 'Conversa sem título'}
-                        </h3>
-                        <div className="flex items-center gap-3 text-sm text-muted-foreground">
-                          <span className="bg-secondary/50 px-2 py-0.5 rounded text-xs">
-                            {conv.message_count} msgs
-                          </span>
-                          <span>•</span>
-                          <span>
-                            {formatDistanceToNow(new Date(conv.updated_at), {
-                              addSuffix: true,
-                              locale: ptBR,
-                            })}
-                          </span>
-                        </div>
-                      </div>
-                      <button className="px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded-lg text-sm transition-colors font-medium shrink-0">
-                        Abrir
-                      </button>
-                    </div>
-                  </div>
-                ))}
-              </div>
-            )}
+    <div className="h-full overflow-y-auto">
+      <div className="mx-auto w-full max-w-4xl px-4 py-10 sm:px-6">
+        <div className="flex items-center gap-3">
+          <span className="flex h-11 w-11 items-center justify-center rounded-xl border border-border bg-surface-2 text-primary">
+            <Icon icon={icons.historico} size={22} />
+          </span>
+          <div>
+            <h1 className="text-2xl font-semibold tracking-tight text-foreground">Histórico</h1>
+            <p className="text-sm text-muted-foreground">Conversas recentes e registros do AutoBrokers.</p>
           </div>
         </div>
+
+        <div className="mt-8">
+          {conversations.length === 0 ? (
+            <div className="rounded-xl border border-border bg-surface p-12 text-center">
+              <p className="mb-4 text-sm text-muted-foreground">Você ainda não tem conversas.</p>
+              <Button onClick={() => router.push('/dashboard/chat')}>
+                <Icon icon={icons.novaConversa} size={16} className="mr-2" />
+                Iniciar primeira conversa
+              </Button>
+            </div>
+          ) : (
+            <div className="space-y-3">
+              {conversations.map((conv) => (
+                <button
+                  key={conv.id}
+                  onClick={() => handleOpenConversation(conv.id)}
+                  className="group flex w-full items-start justify-between gap-4 rounded-xl border border-border bg-surface p-5 text-left transition-colors hover:border-primary/40 hover:bg-surface-2"
+                >
+                  <div className="min-w-0 flex-1">
+                    <h3 className="truncate text-sm font-semibold text-foreground">
+                      {conv.title || 'Conversa sem título'}
+                    </h3>
+                    <div className="mt-1.5 flex items-center gap-2 text-xs text-muted-foreground">
+                      {typeof conv.message_count === 'number' && (
+                        <span className="rounded-full border border-border-soft px-2 py-0.5 font-mono text-[10px] text-faint">
+                          {conv.message_count} msgs
+                        </span>
+                      )}
+                      <span>
+                        {formatDistanceToNow(new Date(conv.updated_at), { addSuffix: true, locale: ptBR })}
+                      </span>
+                    </div>
+                  </div>
+                  <span className="flex shrink-0 items-center gap-1 text-xs font-medium text-primary">
+                    Abrir
+                    <Icon icon={icons.avancar} size={14} />
+                  </span>
+                </button>
+              ))}
+            </div>
+          )}
+        </div>
       </div>
+    </div>
   );
 }

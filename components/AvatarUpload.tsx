@@ -99,13 +99,13 @@ export function AvatarUpload({
         type="button"
         onClick={handleClick}
         disabled={isUploading}
-        className="relative group focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-2 focus:ring-offset-[#09090b] rounded-full"
+        className="relative group focus:outline-none focus:ring-2 focus:ring-primary focus:ring-offset-2 focus:ring-offset-background rounded-full"
       >
         <Avatar
-          className={`${size} border-2 border-[#27272a] group-hover:border-blue-500 transition-colors`}
+          className={`${size} border-2 border-border group-hover:border-primary transition-colors`}
         >
           <AvatarImage src={displayUrl} alt="Avatar" className="object-cover" />
-          <AvatarFallback className="bg-[#27272a] text-gray-400 text-lg">
+          <AvatarFallback className="bg-surface-2 text-muted-foreground text-lg">
             {fallback ? initials : <User className="h-8 w-8" />}
           </AvatarFallback>
         </Avatar>
@@ -132,8 +132,8 @@ export function AvatarUpload({
       />
 
       {/* Small edit badge */}
-      <div className="absolute -bottom-1 -right-1 bg-blue-600 rounded-full p-1.5 border-2 border-[#09090b]">
-        <Camera className="h-3 w-3 text-white" />
+      <div className="absolute -bottom-1 -right-1 bg-primary rounded-full p-1.5 border-2 border-background">
+        <Camera className="h-3 w-3 text-primary-foreground" />
       </div>
     </div>
   );
