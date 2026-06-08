@@ -66,6 +66,23 @@ export async function POST(req: NextRequest) {
     });
 
     const data = await response.json().catch(() => ({}));
+
+    // Saldo insuficiente: propaga 402 com erro identificável + mensagem amigável.
+    if (
+      response.status === 402 ||
+      data?.detail === 'insufficient_credits' ||
+      data?.error === 'insufficient_credits'
+    ) {
+      return NextResponse.json(
+        {
+          success: false,
+          error: 'insufficient_credits',
+          message: 'Sua corretora não possui créditos suficientes para executar este auxiliar.',
+        },
+        { status: 402 },
+      );
+    }
+
     if (!response.ok) {
       return NextResponse.json(
         { success: false, error: data?.detail || data?.error || 'Falha na execução do Auxiliar.' },

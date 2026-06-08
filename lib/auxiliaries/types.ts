@@ -63,4 +63,5 @@ export interface RunResumoResponse {
   success: boolean;
   run?: { id: string; status: string; output: AuxiliaryRunOutput };
   error?: string;
+  message?: string;
 }

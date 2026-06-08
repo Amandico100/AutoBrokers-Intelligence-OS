@@ -100,6 +100,7 @@ export default function ResumoAtendimentosDetailPage() {
   const [state, setState] = useState<RunState>('idle');
   const [output, setOutput] = useState<AuxiliaryRunOutput | null>(null);
   const [errorMsg, setErrorMsg] = useState('');
+  const [errorKind, setErrorKind] = useState<'generic' | 'credits'>('generic');
   const [fullRun, setFullRun] = useState<AuxiliaryRun | null>(null);
 
   useEffect(() => {
@@ -119,6 +120,7 @@ export default function ResumoAtendimentosDetailPage() {
   const execute = async () => {
     setState('loading');
     setErrorMsg('');
+    setErrorKind('generic');
     setOutput(null);
     setFullRun(null);
     try {
@@ -134,6 +136,12 @@ export default function ResumoAtendimentosDetailPage() {
         }
       } else if (res.success) {
         setErrorMsg('Resumo gerado, mas o formato retornado foi inesperado.');
+        setState('error');
+      } else if (res.error === 'insufficient_credits') {
+        setErrorKind('credits');
+        setErrorMsg(
+          res.message || 'Sua corretora não possui créditos suficientes para executar este auxiliar.',
+        );
         setState('error');
       } else {
         setErrorMsg(friendlyError(res.error));
@@ -216,12 +224,41 @@ export default function ResumoAtendimentosDetailPage() {
 
       {state === 'error' && (
         <DetailSection>
-          <div className="py-6 text-center">
-            <p className="mx-auto max-w-md text-sm font-medium text-foreground">{errorMsg}</p>
-            <Button variant="outline" className="mt-4" onClick={execute}>
-              Tentar novamente
-            </Button>
-          </div>
+          {errorKind === 'credits' ? (
+            <div className="flex flex-col items-center gap-3 py-6 text-center">
+              <span className="flex h-10 w-10 items-center justify-center rounded-lg border border-warning/40 bg-surface-2 text-warning">
+                <Icon icon={icons.alerta} size={18} />
+              </span>
+              <p className="text-sm font-medium text-foreground">
+                Sem créditos suficientes para executar este Auxiliar.
+              </p>
+              <p className="max-w-sm text-xs text-muted-foreground">
+                Recarregue os créditos da corretora ou ajuste o plano antes de executar novas rotinas de IA.
+              </p>
+              <div className="mt-1 flex flex-wrap items-center justify-center gap-3">
+                <Link
+                  href="/dashboard/configuracoes"
+                  className="inline-flex items-center gap-2 rounded-lg border border-border bg-surface-2 px-4 py-2 text-sm font-medium text-foreground transition-colors hover:border-primary/40"
+                >
+                  <Icon icon={icons.configuracoes} size={16} />
+                  Ver configurações
+                </Link>
+                <Link
+                  href="/dashboard/auxiliares/execucoes"
+                  className="text-xs font-medium text-primary hover:underline"
+                >
+                  Ver execuções →
+                </Link>
+              </div>
+            </div>
+          ) : (
+            <div className="py-6 text-center">
+              <p className="mx-auto max-w-md text-sm font-medium text-foreground">{errorMsg}</p>
+              <Button variant="outline" className="mt-4" onClick={execute}>
+                Tentar novamente
+              </Button>
+            </div>
+          )}
         </DetailSection>
       )}
 

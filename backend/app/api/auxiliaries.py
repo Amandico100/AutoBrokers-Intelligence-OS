@@ -84,6 +84,19 @@ def _require_internal_key(provided: Optional[str]) -> None:
         raise HTTPException(status_code=401, detail="Unauthorized internal request")
 
 
+def _require_sufficient_balance(company_id: str) -> None:
+    """
+    Gate de saldo (reuso do billing herdado): bloqueia execução sem créditos (HTTP 402).
+
+    Mesmo padrão de api/documents.py (benchmark) e api/webhook.py (chat).
+    NÃO debita nada — o débito continua assíncrono (token_usage_logs -> worker Celery).
+    """
+    from app.services.billing_service import get_billing_service
+
+    if not get_billing_service().has_sufficient_balance(company_id):
+        raise HTTPException(status_code=402, detail="insufficient_credits")
+
+
 @router.post("/resumo-atendimentos/run")
 async def run_resumo_atendimentos(
     payload: ResumoRunRequest,
@@ -98,6 +111,9 @@ async def run_resumo_atendimentos(
     company_id = (payload.company_id or "").strip()
     if not company_id:
         raise HTTPException(status_code=400, detail="company_id is required")
+
+    # 0. Gate de saldo — bloqueia ANTES de tocar no banco/LLM (não cobra; débito é assíncrono).
+    _require_sufficient_balance(company_id)
 
     # 1. Localizar tenant auxiliary ATIVO (escopo: company + slug + active)
     try:
