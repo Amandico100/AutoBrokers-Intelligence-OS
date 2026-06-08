@@ -115,11 +115,27 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ con
         base_url: baseUrl,
       }),
     });
-    const data = await res.json().catch(() => ({}));
-    if (!res.ok || !data?.integration) {
+    const raw = await res.text();
+    let data: Record<string, unknown> = {};
+    try {
+      data = raw ? (JSON.parse(raw) as Record<string, unknown>) : {};
+    } catch {
+      data = {};
+    }
+    if (!res.ok || !data.integration) {
+      const detail =
+        typeof data.detail === 'string'
+          ? data.detail
+          : typeof data.error === 'string'
+            ? data.error
+            : undefined;
+      const snippet = !detail && raw ? ` — resposta do backend: ${raw.slice(0, 160)}` : '';
       return NextResponse.json(
-        { success: false, error: data?.detail || data?.error || 'Falha ao configurar a conexão.' },
-        { status: res.status || 500 },
+        {
+          success: false,
+          error: detail || `Backend retornou ${res.status} em /api/whatsapp-integrations/configure${snippet}`,
+        },
+        { status: res.ok ? 502 : res.status },
       );
     }
 
@@ -160,6 +176,7 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ con
     return NextResponse.json({ success: true, connection: updated });
   } catch (error) {
     console.error('[VAULT whatsapp configure] proxy error', error);
-    return NextResponse.json({ success: false, error: 'Falha ao conectar ao backend.' }, { status: 500 });
+    const msg = error instanceof Error ? error.message : 'erro desconhecido';
+    return NextResponse.json({ success: false, error: `Falha ao conectar ao backend: ${msg}` }, { status: 502 });
   }
 }

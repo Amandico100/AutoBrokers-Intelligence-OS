@@ -52,7 +52,13 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ con
       headers: { 'Content-Type': 'application/json', 'X-AutoBrokers-Internal-Key': internalKey },
       body: JSON.stringify({ company_id: ctx.companyId, integration_id: conn.technical_ref_id }),
     });
-    const data = await res.json().catch(() => ({}));
+    const raw = await res.text();
+    let data: Record<string, unknown> = {};
+    try {
+      data = raw ? (JSON.parse(raw) as Record<string, unknown>) : {};
+    } catch {
+      data = {};
+    }
 
     await writeAudit(supabase, {
       company_id: ctx.companyId,
@@ -60,20 +66,31 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ con
       actor_user_id: ctx.userId,
       event_type: 'whatsapp_tested',
       action: 'test_config',
-      status: data?.success ? 'success' : 'failed',
+      status: data.success ? 'success' : 'failed',
       risk_level: 'medium',
       metadata: { dry_run: true },
     });
 
-    if (!res.ok) {
+    if (!res.ok || typeof data.success === 'undefined') {
+      const detail =
+        typeof data.detail === 'string'
+          ? data.detail
+          : typeof data.error === 'string'
+            ? data.error
+            : undefined;
+      const snippet = !detail && raw ? ` — resposta do backend: ${raw.slice(0, 160)}` : '';
       return NextResponse.json(
-        { success: false, error: data?.detail || data?.error || 'Falha ao testar a configuração.' },
-        { status: res.status || 500 },
+        {
+          success: false,
+          error: detail || `Backend retornou ${res.status} em /api/whatsapp-integrations/test${snippet}`,
+        },
+        { status: res.ok ? 502 : res.status },
       );
     }
     return NextResponse.json(data);
   } catch (error) {
     console.error('[VAULT whatsapp test] proxy error', error);
-    return NextResponse.json({ success: false, error: 'Falha ao conectar ao backend.' }, { status: 500 });
+    const msg = error instanceof Error ? error.message : 'erro desconhecido';
+    return NextResponse.json({ success: false, error: `Falha ao conectar ao backend: ${msg}` }, { status: 502 });
   }
 }

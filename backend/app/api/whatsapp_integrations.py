@@ -121,35 +121,49 @@ async def configure(
     if not ag.data:
         raise HTTPException(status_code=404, detail="agent not found for this company")
 
-    # Cifra token/client_token (39A4.1) ANTES de gravar.
-    to_store = prepare_integration_for_storage(
-        {
-            "company_id": company_id,
-            "agent_id": agent_id,
-            "provider": provider,
-            "identifier": identifier,
-            "instance_id": instance_id,
-            "token": token,
-            "client_token": client_token,
-            "base_url": base_url,
-            "is_active": True,
-            "buffer_enabled": bool(payload.buffer_enabled) if payload.buffer_enabled is not None else True,
-            "buffer_debounce_seconds": payload.buffer_debounce_seconds or 3,
-            "buffer_max_wait_seconds": payload.buffer_max_wait_seconds or 10,
-            "updated_at": _now(),
-        }
-    )
-
+    # Cifra token/client_token (39A4.1) ANTES de gravar — erro de cripto isolado (nunca loga valor).
     try:
-        resp = (
+        secrets_enc = prepare_integration_for_storage({"token": token, "client_token": client_token})
+    except Exception as e:  # noqa: BLE001
+        logger.error(f"[WA INTEGRATIONS] encryption failed: {type(e).__name__}")
+        raise HTTPException(status_code=500, detail=f"Encryption unavailable ({type(e).__name__})")
+
+    record = {
+        "company_id": company_id,
+        "agent_id": agent_id,
+        "provider": provider,
+        "identifier": identifier,
+        "instance_id": instance_id,
+        "token": secrets_enc.get("token"),
+        "client_token": secrets_enc.get("client_token"),
+        "base_url": base_url,
+        "is_active": True,
+        "buffer_enabled": bool(payload.buffer_enabled) if payload.buffer_enabled is not None else True,
+        "buffer_debounce_seconds": payload.buffer_debounce_seconds or 3,
+        "buffer_max_wait_seconds": payload.buffer_max_wait_seconds or 10,
+        "updated_at": _now(),
+    }
+
+    # Upsert manual (evita on_conflict no client async): procura por (provider, identifier).
+    try:
+        existing = (
             await db.client.table("integrations")
-            .upsert(to_store, on_conflict="provider,identifier")
+            .select("id")
+            .eq("provider", provider)
+            .eq("identifier", identifier)
+            .limit(1)
             .execute()
         )
-        row = resp.data[0] if resp.data else None
+        if existing.data:
+            row_id = existing.data[0]["id"]
+            upd = await db.client.table("integrations").update(record).eq("id", row_id).execute()
+            row = upd.data[0] if upd.data else {"id": row_id, **record}
+        else:
+            ins = await db.client.table("integrations").insert(record).execute()
+            row = ins.data[0] if ins.data else None
     except Exception as e:  # noqa: BLE001
-        logger.error(f"[WA INTEGRATIONS] upsert failed: {type(e).__name__}")
-        raise HTTPException(status_code=500, detail="Failed to store integration")
+        logger.error(f"[WA INTEGRATIONS] store failed: {type(e).__name__}")
+        raise HTTPException(status_code=500, detail=f"Failed to store integration ({type(e).__name__})")
 
     if not row:
         raise HTTPException(status_code=500, detail="Integration not stored")
@@ -204,4 +218,25 @@ async def test_configuration(
             if ok
             else "Configuração incompleta. Revise os campos."
         ),
+    }
+
+
+@router.get("/health")
+async def health(
+    x_autobrokers_internal_key: Optional[str] = Header(default=None, alias="X-AutoBrokers-Internal-Key"),
+):
+    """Diagnóstico Web→Backend (sem segredo): confirma rota viva e cripto disponível."""
+    _require_internal_key(x_autobrokers_internal_key)
+    encryption_configured = False
+    try:
+        from app.services.whatsapp.integration_secrets import encrypt_integration_secret
+
+        probe = encrypt_integration_secret("healthcheck")
+        encryption_configured = bool(probe) and probe != "healthcheck"
+    except Exception:  # noqa: BLE001
+        encryption_configured = False
+    return {
+        "success": True,
+        "service": "whatsapp-integrations",
+        "encryption_configured": encryption_configured,
     }
