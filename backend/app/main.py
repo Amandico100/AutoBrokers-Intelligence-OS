@@ -162,6 +162,13 @@ from app.api.auxiliaries import router as auxiliaries_router
 
 app.include_router(auxiliaries_router, prefix="/api/auxiliaries", tags=["Auxiliaries"])
 
+# === WhatsApp Integrations (Vault secret flow) ===
+from app.api.whatsapp_integrations import router as whatsapp_integrations_router
+
+app.include_router(
+    whatsapp_integrations_router, prefix="/api/whatsapp-integrations", tags=["WhatsApp Integrations"]
+)
+
 
 @app.get("/")
 async def root():

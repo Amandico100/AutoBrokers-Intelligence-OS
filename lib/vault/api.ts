@@ -8,6 +8,8 @@ import type {
   CreateTenantConnectionInput,
   CreatePermissionGrantInput,
   CreateApprovalRequestInput,
+  ConfigureWhatsAppInput,
+  WhatsAppTestResult,
 } from './types';
 
 async function getJson<T>(url: string): Promise<T> {
@@ -85,4 +87,15 @@ export function rejectRequest(approvalId: string, reason?: string) {
 
 export function fetchAuditLog() {
   return getJson<{ events: VaultAuditLog[] }>('/api/vault/audit');
+}
+
+export function configureWhatsAppConnection(connectionId: string, input: ConfigureWhatsAppInput) {
+  return postJson<{ success?: boolean; connection?: TenantConnection; error?: string }>(
+    `/api/vault/connections/${connectionId}/whatsapp/configure`,
+    input,
+  );
+}
+
+export function testWhatsAppConnection(connectionId: string) {
+  return postJson<WhatsAppTestResult>(`/api/vault/connections/${connectionId}/whatsapp/test`, {});
 }

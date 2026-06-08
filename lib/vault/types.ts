@@ -116,3 +116,20 @@ export interface CreateApprovalRequestInput {
   preview?: Record<string, unknown>;
   request_payload?: Record<string, unknown>;
 }
+
+/** Credenciais de WhatsApp enviadas ao Secret Flow (server-side cifra; nunca retornadas). */
+export interface ConfigureWhatsAppInput {
+  identifier: string;
+  instance_id: string;
+  token: string;
+  client_token?: string;
+  base_url?: string;
+  agent_id?: string;
+}
+
+export interface WhatsAppTestResult {
+  success?: boolean;
+  dry_run?: boolean;
+  message?: string;
+  error?: string;
+}

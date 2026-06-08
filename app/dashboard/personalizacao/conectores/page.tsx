@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import Link from 'next/link';
 
 import { cn } from '@/lib/utils';
@@ -12,9 +12,11 @@ import {
   fetchConnectorTemplates,
   fetchTenantConnections,
   createApprovalRequest,
+  testWhatsAppConnection,
 } from '@/lib/vault/api';
 import type { ConnectorTemplate, TenantConnection } from '@/lib/vault/types';
 import { CreateConnectionModal } from '@/components/vault/CreateConnectionModal';
+import { ConfigureWhatsAppModal } from '@/components/vault/ConfigureWhatsAppModal';
 import { PermissionGrantPanel } from '@/components/vault/PermissionGrantPanel';
 import { riskPill, connectionStatusPill, slugIcon, fmtDateTime } from '@/components/vault/labels';
 
@@ -39,6 +41,8 @@ export default function ConectoresPage() {
   const [modalOpen, setModalOpen] = useState(false);
   const [openConnId, setOpenConnId] = useState<string | null>(null);
   const [notice, setNotice] = useState('');
+  const [configureConnId, setConfigureConnId] = useState<string | null>(null);
+  const [configureOpen, setConfigureOpen] = useState(false);
 
   const loadConnections = () =>
     fetchTenantConnections()
@@ -79,6 +83,33 @@ export default function ConectoresPage() {
       setNotice(res.approval ? 'Aprovação de teste criada. Veja em Aprovações.' : res.error || 'Não foi possível criar a aprovação.');
     } catch {
       setNotice('Erro ao criar aprovação de teste.');
+    }
+  };
+
+  const slugByTemplate = useMemo(() => {
+    const map: Record<string, string> = {};
+    (templates || []).forEach((t) => {
+      map[t.id] = t.slug;
+    });
+    return map;
+  }, [templates]);
+
+  const openConfigure = (id: string) => {
+    setConfigureConnId(id);
+    setConfigureOpen(true);
+  };
+
+  const onWhatsAppConfigured = () => {
+    setNotice('WhatsApp configurado com segurança.');
+    loadConnections();
+  };
+
+  const handleTestWhatsApp = async (id: string) => {
+    try {
+      const res = await testWhatsAppConnection(id);
+      setNotice(res.message || res.error || 'Teste concluído.');
+    } catch {
+      setNotice('Erro ao testar a configuração.');
     }
   };
 
@@ -185,6 +216,9 @@ export default function ConectoresPage() {
               {connections.map((c) => {
                 const open = openConnId === c.id;
                 const sp = connectionStatusPill(c.status);
+                const slug = slugByTemplate[c.connector_template_id];
+                const isWhatsApp = slug === 'whatsapp_zapi';
+                const isConfigured = c.status === 'connected' || Boolean(c.technical_ref_id);
                 return (
                   <div key={c.id} className="rounded-xl border border-border bg-surface">
                     <div className="flex items-start justify-between gap-3 p-4">
@@ -198,9 +232,22 @@ export default function ConectoresPage() {
                           {c.health_status ? ` · saúde: ${c.health_status}` : ''}
                         </p>
                       </div>
-                      <Button size="sm" variant="outline" onClick={() => setOpenConnId(open ? null : c.id)}>
-                        {open ? 'Fechar' : 'Permissões'}
-                      </Button>
+                      <div className="flex shrink-0 flex-wrap items-center justify-end gap-2">
+                        {isWhatsApp && (
+                          <Button size="sm" onClick={() => openConfigure(c.id)}>
+                            <Icon icon={icons.cadeado} size={14} className="mr-2" />
+                            {isConfigured ? 'Reconfigurar' : 'Configurar com segurança'}
+                          </Button>
+                        )}
+                        {isWhatsApp && isConfigured && (
+                          <Button size="sm" variant="outline" onClick={() => handleTestWhatsApp(c.id)}>
+                            Testar
+                          </Button>
+                        )}
+                        <Button size="sm" variant="outline" onClick={() => setOpenConnId(open ? null : c.id)}>
+                          {open ? 'Fechar' : 'Permissões'}
+                        </Button>
+                      </div>
                     </div>
                     {open && (
                       <div className="space-y-4 border-t border-border p-4">
@@ -225,6 +272,13 @@ export default function ConectoresPage() {
         onOpenChange={setModalOpen}
         template={modalTemplate}
         onCreated={onCreated}
+      />
+
+      <ConfigureWhatsAppModal
+        open={configureOpen}
+        onOpenChange={setConfigureOpen}
+        connectionId={configureConnId}
+        onConfigured={onWhatsAppConfigured}
       />
     </div>
   );
