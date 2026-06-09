@@ -461,3 +461,175 @@ async def _summarize(messages: List[Dict[str, Any]]) -> Tuple[Dict[str, Any], Di
     )
     raw = resp.content if isinstance(resp.content, str) else str(resp.content)
     return _parse_output(raw), _extract_usage(resp), model_name
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+# 38B — Auxiliar de Follow-up WhatsApp (gera rascunho; NÃO envia; HITL aprova depois)
+# ─────────────────────────────────────────────────────────────────────────────
+
+FOLLOWUP_SLUG = "follow-up-whatsapp"
+
+FOLLOWUP_SYSTEM_PROMPT = (
+    "Você é o AutoBrokers, assistente operacional de uma corretora de seguros. "
+    "Com base no histórico do atendimento (se houver) e no objetivo informado, escreva UMA mensagem "
+    "curta de follow-up para WhatsApp. A mensagem deve ser humana, clara, cordial e profissional, com "
+    "tom de corretora. Regras: não invente dados; não prometa aprovação, cobertura, indenização, "
+    "desconto, preço ou prazo que não esteja no histórico; não pressione de forma agressiva; se faltar "
+    "informação, peça confirmação com naturalidade; não use linguagem robótica; não diga que é uma IA; "
+    "no máximo ~500 caracteres; português do Brasil. Escreva SOMENTE o texto final da mensagem, sem "
+    "aspas e sem rótulos."
+)
+
+
+class FollowUpDraftRequest(BaseModel):
+    company_id: str
+    user_id: Optional[str] = None
+    conversation_id: Optional[str] = None
+    objective: Optional[str] = None
+
+
+async def _draft_followup(
+    messages: List[Dict[str, Any]], objective: str
+) -> Tuple[str, Dict[str, Any], str]:
+    """Gera UMA mensagem de follow-up (texto puro) com o LLM. Retorna (message, usage, model)."""
+    from langchain_core.messages import HumanMessage, SystemMessage
+    from langchain_openai import ChatOpenAI
+
+    model_name = DEFAULT_MODEL
+    api_key = get_api_key_for_provider("openai", model_name)
+
+    parts: List[str] = []
+    if messages:
+        parts.append(_format_transcript(messages))
+    obj = (objective or "").strip()
+    parts.append(f"Objetivo do follow-up: {obj}" if obj else "Objetivo do follow-up: retomar o contato de forma cordial.")
+    parts.append("Escreva APENAS a mensagem final de WhatsApp (sem aspas, sem rótulos).")
+    human = "\n\n".join(parts)
+
+    llm = ChatOpenAI(model=model_name, api_key=api_key, temperature=0.4, max_tokens=400)
+    resp = await llm.ainvoke(
+        [SystemMessage(content=FOLLOWUP_SYSTEM_PROMPT), HumanMessage(content=human)]
+    )
+    raw = resp.content if isinstance(resp.content, str) else str(resp.content)
+    message = raw.strip().strip('"').strip()
+    if len(message) > 700:
+        message = message[:700].rstrip() + "…"
+    return message, _extract_usage(resp), model_name
+
+
+@router.post("/follow-up-whatsapp/draft")
+async def draft_follow_up_whatsapp(
+    payload: FollowUpDraftRequest,
+    x_autobrokers_internal_key: Optional[str] = Header(
+        default=None, alias="X-AutoBrokers-Internal-Key"
+    ),
+    db: AsyncSupabaseClient = Depends(get_async_db),
+):
+    """
+    Gera um RASCUNHO de follow-up WhatsApp (não envia nada). A aprovação/execução dry-run
+    acontece depois pelo fluxo do Vault/HITL (39A4.3).
+    """
+    _require_internal_key(x_autobrokers_internal_key)
+
+    company_id = (payload.company_id or "").strip()
+    if not company_id:
+        raise HTTPException(status_code=400, detail="company_id is required")
+
+    # Gate de saldo (não debita; débito é assíncrono).
+    _require_sufficient_balance(company_id)
+
+    objective = (payload.objective or "").strip()
+
+    # tenant_auxiliary é OPCIONAL: se instalado, registramos o run; se não, ainda geramos o rascunho.
+    tenant_auxiliary_id: Optional[str] = None
+    template_id: Optional[str] = None
+    try:
+        ta = (
+            await db.client.table("tenant_auxiliaries")
+            .select("id, template_id")
+            .eq("company_id", company_id)
+            .eq("slug", FOLLOWUP_SLUG)
+            .eq("status", "active")
+            .limit(1)
+            .execute()
+        )
+        if ta.data:
+            tenant_auxiliary_id = ta.data[0]["id"]
+            template_id = ta.data[0].get("template_id")
+    except Exception as e:  # noqa: BLE001
+        logger.warning(f"[AUX] follow-up tenant lookup failed (non-fatal): {type(e).__name__}")
+
+    # Conversa é OPCIONAL (contexto). Sempre validada por company_id.
+    conversation_id = (payload.conversation_id or "").strip() or None
+    messages: List[Dict[str, Any]] = []
+    if conversation_id:
+        conv = (
+            await db.client.table("conversations")
+            .select("id")
+            .eq("id", conversation_id)
+            .eq("company_id", company_id)
+            .limit(1)
+            .execute()
+        )
+        if not conv.data:
+            raise HTTPException(status_code=404, detail="Conversa não encontrada para esta empresa.")
+        try:
+            msgs = (
+                await db.client.table("messages")
+                .select("role, content, created_at")
+                .eq("conversation_id", conversation_id)
+                .order("created_at", desc=False)
+                .limit(DEFAULT_MAX_MESSAGES)
+                .execute()
+            )
+            messages = msgs.data or []
+        except Exception as e:  # noqa: BLE001
+            logger.warning(f"[AUX] follow-up messages read failed (non-fatal): {type(e).__name__}")
+            messages = []
+
+    run_id: Optional[str] = None
+    if tenant_auxiliary_id:
+        run_id = await _create_run(
+            db,
+            company_id=company_id,
+            tenant_auxiliary_id=tenant_auxiliary_id,
+            template_id=template_id,
+            conversation_id=conversation_id,
+            run_input={"objective": objective, "source": "manual", "type": "follow_up_whatsapp"},
+            user_id=payload.user_id,
+        )
+
+    try:
+        message, usage, model_name = await _draft_followup(messages, objective)
+    except Exception as e:  # noqa: BLE001
+        logger.error(f"[AUX] follow-up draft LLM failed: {type(e).__name__}")
+        if run_id:
+            await _fail_run(db, run_id, "Falha ao gerar o rascunho com a IA.")
+        raise HTTPException(status_code=502, detail="Falha ao gerar o rascunho com a IA.")
+
+    # Custo (best-effort).
+    cost_usd = 0.0
+    try:
+        from app.services.usage_service import get_usage_service
+
+        svc = get_usage_service()
+        in_tok = int(usage.get("input_tokens") or 0)
+        out_tok = int(usage.get("output_tokens") or 0)
+        cost_usd = float(svc.calculate_cost(model_name, in_tok, out_tok))
+        svc.track_cost_sync(
+            service_type="auxiliary_run",
+            model=model_name,
+            input_tokens=in_tok,
+            output_tokens=out_tok,
+            company_id=company_id,
+            details={"auxiliary": FOLLOWUP_SLUG, "run_id": run_id},
+        )
+    except Exception as e:  # noqa: BLE001
+        logger.warning(f"[AUX] follow-up usage logging failed (non-fatal): {e}")
+
+    if run_id:
+        await _succeed_run(
+            db, run_id, {"message": message, "objective": objective}, usage, cost_usd, model_name, conversation_id or ""
+        )
+
+    return {"success": True, "draft": {"message": message}, "run_id": run_id, "model": model_name}

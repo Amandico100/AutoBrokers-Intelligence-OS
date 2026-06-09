@@ -5,6 +5,7 @@ import type {
   TenantAuxiliary,
   RunResumoResponse,
   ResumoConversation,
+  FollowUpDraftResponse,
 } from './types';
 
 async function getJson<T>(url: string): Promise<T> {
@@ -40,4 +41,19 @@ export async function runResumoAtendimentos(conversationId?: string): Promise<Ru
     body: JSON.stringify(conversationId ? { conversation_id: conversationId } : {}),
   });
   return res.json() as Promise<RunResumoResponse>;
+}
+
+export async function draftFollowUpWhatsapp(input: {
+  conversationId?: string;
+  objective?: string;
+}): Promise<FollowUpDraftResponse> {
+  const res = await fetch('/api/auxiliaries/follow-up-whatsapp/draft', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({
+      conversation_id: input.conversationId || undefined,
+      objective: input.objective || undefined,
+    }),
+  });
+  return res.json() as Promise<FollowUpDraftResponse>;
 }

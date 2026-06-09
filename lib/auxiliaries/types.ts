@@ -65,3 +65,12 @@ export interface RunResumoResponse {
   error?: string;
   message?: string;
 }
+
+export interface FollowUpDraftResponse {
+  success: boolean;
+  draft?: { message: string };
+  run_id?: string | null;
+  model?: string;
+  error?: string;
+  message?: string;
+}

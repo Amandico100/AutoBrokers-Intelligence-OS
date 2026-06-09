@@ -10,21 +10,30 @@ import type { AuxiliaryTemplate } from '@/lib/auxiliaries/types';
 
 const SLUG_HREF: Record<string, string> = {
   'resumo-atendimentos': '/dashboard/auxiliares/galeria/resumo-atendimentos',
+  'follow-up-whatsapp': '/dashboard/auxiliares/galeria/follow-up-whatsapp',
 };
 const SLUG_ICON: Record<string, typeof icons.auxiliares> = {
   'resumo-atendimentos': icons.auxiliares,
+  'follow-up-whatsapp': icons.whatsapp,
 };
 
 const FUTURE = [
   { key: 'cobranca', icon: icons.cobranca, title: 'Cobrança Inteligente', description: 'Prepara lembretes de pagamento e boletos pendentes.', category: 'Financeiro' },
-  { key: 'followup', icon: icons.enviar, title: 'Follow-up de Propostas', description: 'Identifica propostas paradas e sugere a próxima mensagem.', category: 'Comercial' },
   { key: 'docs', icon: icons.documento, title: 'Conferência de Documentos', description: 'Verifica documentos faltantes em assistências e sinistros.', category: 'Documentos' },
 ];
 
-// Fallback estático garante que o card do Resumo exista mesmo se a API falhar.
-const FALLBACK_TEMPLATES: AuxiliaryTemplate[] = [
-  { id: 'resumo-atendimentos', slug: 'resumo-atendimentos', name: 'Resumo de Atendimentos' },
+// Auxiliares locais garantidos no catálogo (aparecem mesmo que o template ainda não exista no banco).
+const LOCAL_TEMPLATES: AuxiliaryTemplate[] = [
+  { id: 'resumo-atendimentos', slug: 'resumo-atendimentos', name: 'Resumo de Atendimentos', description: 'Resume conversas, destaca pendências e sugere próximos passos.', category: 'Análise' },
+  { id: 'follow-up-whatsapp', slug: 'follow-up-whatsapp', name: 'Follow-up WhatsApp', description: 'Gera rascunhos de retorno e envia para aprovação humana (dry-run).', category: 'Comunicação' },
 ];
+
+function mergeTemplates(db: AuxiliaryTemplate[]): AuxiliaryTemplate[] {
+  const bySlug = new Map<string, AuxiliaryTemplate>();
+  for (const t of db) if (t.slug) bySlug.set(t.slug, t);
+  for (const l of LOCAL_TEMPLATES) if (!bySlug.has(l.slug)) bySlug.set(l.slug, l);
+  return Array.from(bySlug.values());
+}
 
 function getStr(obj: Record<string, unknown>, key: string): string | undefined {
   const v = obj[key];
@@ -38,10 +47,10 @@ export default function GaleriaAuxiliaresPage() {
     let active = true;
     fetchTemplates()
       .then((d) => {
-        if (active) setTemplates(d.templates?.length ? d.templates : FALLBACK_TEMPLATES);
+        if (active) setTemplates(mergeTemplates(d.templates || []));
       })
       .catch(() => {
-        if (active) setTemplates(FALLBACK_TEMPLATES);
+        if (active) setTemplates(LOCAL_TEMPLATES);
       });
     return () => {
       active = false;
