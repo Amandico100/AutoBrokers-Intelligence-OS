@@ -74,7 +74,10 @@ export default function ExecucoesPage() {
 
   const titleFor = (run: AuxiliaryRun): string => {
     const tid = typeof run.template_id === 'string' ? run.template_id : '';
-    return names[tid] || 'Auxiliar de Resumo de Atendimentos';
+    if (names[tid]) return names[tid];
+    const out = (run.output ?? null) as Record<string, unknown> | null;
+    if (out && typeof out.message === 'string') return 'Follow-up WhatsApp';
+    return 'Auxiliar de Resumo de Atendimentos';
   };
 
   const visible = (runs || []).filter((r) => filter === 'all' || r.status === filter);
@@ -136,7 +139,11 @@ export default function ExecucoesPage() {
             {visible.map((run) => {
               const pill = runPill(typeof run.status === 'string' ? run.status : undefined);
               const open = openId === run.id;
-              const summary = run.output?.summary?.trim();
+              const out = (run.output ?? null) as Record<string, unknown> | null;
+              const summary = typeof out?.summary === 'string' ? out.summary.trim() : '';
+              const followupMsg = typeof out?.message === 'string' ? out.message.trim() : '';
+              const preview = summary || followupMsg;
+              const isResumo = Boolean(summary) || Array.isArray(out?.topics);
               const usage = run.token_usage as { total_tokens?: number } | null | undefined;
               const totalTokens =
                 usage && typeof usage.total_tokens === 'number' ? usage.total_tokens : undefined;
@@ -158,7 +165,7 @@ export default function ExecucoesPage() {
                         <span>{fmtDate(run.created_at)}</span>
                         {hasConversation && <span className="text-faint">· Conversa vinculada</span>}
                       </div>
-                      {summary && <p className="mt-1.5 line-clamp-2 text-xs text-foreground-2">{summary}</p>}
+                      {preview && <p className="mt-1.5 line-clamp-2 text-xs text-foreground-2">{preview}</p>}
                       {run.status === 'failed' && run.error_message && (
                         <p className="mt-1.5 text-xs text-danger">{String(run.error_message)}</p>
                       )}
@@ -179,8 +186,15 @@ export default function ExecucoesPage() {
                   </button>
                   {open && (
                     <div className="border-t border-border p-4">
-                      {run.output ? (
+                      {isResumo && run.output ? (
                         <ResumoResult output={run.output} />
+                      ) : followupMsg ? (
+                        <div className="space-y-1">
+                          <p className="font-mono text-[10px] uppercase tracking-[0.06em] text-faint">Rascunho gerado</p>
+                          <p className="whitespace-pre-wrap rounded-lg border border-border-soft bg-surface-2 p-3 text-sm text-foreground-2">
+                            {followupMsg}
+                          </p>
+                        </div>
                       ) : (
                         <p className="text-sm text-muted-foreground">
                           Sem resultado estruturado para esta execução.

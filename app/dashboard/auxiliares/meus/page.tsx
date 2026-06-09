@@ -9,12 +9,17 @@ import { icons } from '@/lib/icons';
 import { fetchInstalled } from '@/lib/auxiliaries/api';
 import type { TenantAuxiliary } from '@/lib/auxiliaries/types';
 
-const TITLES: Record<string, string> = { 'resumo-atendimentos': 'Resumo de Atendimentos' };
+const TITLES: Record<string, string> = {
+  'resumo-atendimentos': 'Resumo de Atendimentos',
+  'follow-up-whatsapp': 'Follow-up WhatsApp',
+};
 const DESCS: Record<string, string> = {
   'resumo-atendimentos': 'Resume conversas, destaca pendências e sugere próximos passos.',
+  'follow-up-whatsapp': 'Gera rascunhos de retorno e envia para aprovação humana (dry-run).',
 };
 const HREFS: Record<string, string> = {
   'resumo-atendimentos': '/dashboard/auxiliares/galeria/resumo-atendimentos',
+  'follow-up-whatsapp': '/dashboard/auxiliares/galeria/follow-up-whatsapp',
 };
 
 function installedStatus(s?: string): { tone: StatusTone; label: string } {

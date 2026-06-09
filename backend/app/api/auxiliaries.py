@@ -481,15 +481,24 @@ FOLLOWUP_SYSTEM_PROMPT = (
 )
 
 
+FOLLOWUP_TONE_GUIDE = {
+    "profissional": "Use um tom profissional e objetivo.",
+    "consultivo": "Use um tom consultivo, orientando o cliente com cuidado.",
+    "direto": "Use um tom direto e breve, indo ao ponto com cordialidade.",
+    "acolhedor": "Use um tom acolhedor e empático, próximo e humano.",
+}
+
+
 class FollowUpDraftRequest(BaseModel):
     company_id: str
     user_id: Optional[str] = None
     conversation_id: Optional[str] = None
     objective: Optional[str] = None
+    tone: Optional[str] = None
 
 
 async def _draft_followup(
-    messages: List[Dict[str, Any]], objective: str
+    messages: List[Dict[str, Any]], objective: str, tone: str = ""
 ) -> Tuple[str, Dict[str, Any], str]:
     """Gera UMA mensagem de follow-up (texto puro) com o LLM. Retorna (message, usage, model)."""
     from langchain_core.messages import HumanMessage, SystemMessage
@@ -503,6 +512,9 @@ async def _draft_followup(
         parts.append(_format_transcript(messages))
     obj = (objective or "").strip()
     parts.append(f"Objetivo do follow-up: {obj}" if obj else "Objetivo do follow-up: retomar o contato de forma cordial.")
+    tone_guide = FOLLOWUP_TONE_GUIDE.get((tone or "").strip().lower())
+    if tone_guide:
+        parts.append(tone_guide)
     parts.append("Escreva APENAS a mensagem final de WhatsApp (sem aspas, sem rótulos).")
     human = "\n\n".join(parts)
 
@@ -539,6 +551,9 @@ async def draft_follow_up_whatsapp(
     _require_sufficient_balance(company_id)
 
     objective = (payload.objective or "").strip()
+    tone = (payload.tone or "").strip().lower()
+    if tone and tone not in FOLLOWUP_TONE_GUIDE:
+        tone = ""
 
     # tenant_auxiliary é OPCIONAL: se instalado, registramos o run; se não, ainda geramos o rascunho.
     tenant_auxiliary_id: Optional[str] = None
@@ -600,7 +615,7 @@ async def draft_follow_up_whatsapp(
         )
 
     try:
-        message, usage, model_name = await _draft_followup(messages, objective)
+        message, usage, model_name = await _draft_followup(messages, objective, tone)
     except Exception as e:  # noqa: BLE001
         logger.error(f"[AUX] follow-up draft LLM failed: {type(e).__name__}")
         if run_id:
@@ -628,8 +643,25 @@ async def draft_follow_up_whatsapp(
         logger.warning(f"[AUX] follow-up usage logging failed (non-fatal): {e}")
 
     if run_id:
-        await _succeed_run(
-            db, run_id, {"message": message, "objective": objective}, usage, cost_usd, model_name, conversation_id or ""
-        )
+        try:
+            await db.client.table("auxiliary_runs").update(
+                {
+                    "status": "succeeded",
+                    "output": {"message": message, "objective": objective, "tone": tone or "profissional"},
+                    "token_usage": usage,
+                    "cost_usd": cost_usd,
+                    "finished_at": _now(),
+                    "metadata": {
+                        "provider": "openai",
+                        "model": model_name,
+                        "source": "follow_up_whatsapp",
+                        "dry_run": True,
+                        "conversation_id": conversation_id,
+                        "tone": tone or "profissional",
+                    },
+                }
+            ).eq("id", run_id).execute()
+        except Exception as e:  # noqa: BLE001
+            logger.error(f"[AUX] follow-up succeed update error: {type(e).__name__}")
 
     return {"success": True, "draft": {"message": message}, "run_id": run_id, "model": model_name}

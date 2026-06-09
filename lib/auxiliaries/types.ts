@@ -40,6 +40,7 @@ export interface ResumoConversation {
   id: string;
   title: string;
   last_message_preview?: string;
+  session_id?: string;
   created_at?: string;
   updated_at?: string;
   message_count?: number;

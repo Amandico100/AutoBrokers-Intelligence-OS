@@ -46,7 +46,16 @@ export default function ConectoresPage() {
 
   const loadConnections = () =>
     fetchTenantConnections()
-      .then((d) => setConnections(d.connections || []))
+      .then((d) => {
+        // Ordena: conectadas/configuradas primeiro, depois mais recentes.
+        const list = [...(d.connections || [])].sort((a, b) => {
+          const ar = a.status === 'connected' || a.technical_ref_id ? 0 : 1;
+          const br = b.status === 'connected' || b.technical_ref_id ? 0 : 1;
+          if (ar !== br) return ar - br;
+          return new Date(b.created_at || 0).getTime() - new Date(a.created_at || 0).getTime();
+        });
+        setConnections(list);
+      })
       .catch(() => setError(true));
 
   useEffect(() => {

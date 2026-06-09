@@ -46,6 +46,7 @@ export async function runResumoAtendimentos(conversationId?: string): Promise<Ru
 export async function draftFollowUpWhatsapp(input: {
   conversationId?: string;
   objective?: string;
+  tone?: string;
 }): Promise<FollowUpDraftResponse> {
   const res = await fetch('/api/auxiliaries/follow-up-whatsapp/draft', {
     method: 'POST',
@@ -53,6 +54,7 @@ export async function draftFollowUpWhatsapp(input: {
     body: JSON.stringify({
       conversation_id: input.conversationId || undefined,
       objective: input.objective || undefined,
+      tone: input.tone || undefined,
     }),
   });
   return res.json() as Promise<FollowUpDraftResponse>;

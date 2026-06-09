@@ -13,14 +13,30 @@ import { icons } from '@/lib/icons';
 import { DetailShell, DetailSection } from '@/components/patterns';
 import { fetchResumoConversations, draftFollowUpWhatsapp } from '@/lib/auxiliaries/api';
 import type { ResumoConversation } from '@/lib/auxiliaries/types';
-import { createApprovalRequest, fetchConnectorTemplates, fetchTenantConnections } from '@/lib/vault/api';
+import { createApprovalRequest, fetchConnectorTemplates, fetchTenantConnections, fetchPermissions } from '@/lib/vault/api';
 
 type DraftState = 'idle' | 'loading' | 'error';
+
+const TONES: { value: string; label: string }[] = [
+  { value: 'profissional', label: 'Profissional' },
+  { value: 'consultivo', label: 'Consultivo' },
+  { value: 'direto', label: 'Direto' },
+  { value: 'acolhedor', label: 'Acolhedor' },
+];
 
 function fmtDateShort(s?: string | null): string {
   if (!s) return '';
   const d = new Date(s);
   return Number.isNaN(d.getTime()) ? '' : d.toLocaleDateString('pt-BR');
+}
+
+/** Extrai o telefone de um session_id de WhatsApp: `whatsapp:{phone}:{company}:{agent}`. */
+function waPhone(sessionId?: string): string | undefined {
+  if (sessionId && sessionId.startsWith('whatsapp:')) {
+    const p = sessionId.split(':')[1];
+    if (p && /^\d{8,15}$/.test(p)) return p;
+  }
+  return undefined;
 }
 
 function SelectorRow({
@@ -57,14 +73,16 @@ export default function FollowUpWhatsappPage() {
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [phone, setPhone] = useState('');
   const [objective, setObjective] = useState('');
+  const [tone, setTone] = useState('profissional');
   const [draftState, setDraftState] = useState<DraftState>('idle');
   const [errorKind, setErrorKind] = useState<'generic' | 'credits'>('generic');
   const [errorMsg, setErrorMsg] = useState('');
   const [message, setMessage] = useState('');
   const [generated, setGenerated] = useState(false);
   const [waConn, setWaConn] = useState<{ id: string; name: string } | null>(null);
+  const [permWarning, setPermWarning] = useState(false);
   const [creating, setCreating] = useState(false);
-  const [approvalDone, setApprovalDone] = useState(false);
+  const [createdApproval, setCreatedApproval] = useState<{ id: string; status: string } | null>(null);
   const [notice, setNotice] = useState('');
 
   useEffect(() => {
@@ -78,19 +96,40 @@ export default function FollowUpWhatsappPage() {
         const conn = (c.connections || []).find(
           (x) => x.connector_template_id === wa.id && (x.status === 'connected' || Boolean(x.technical_ref_id)),
         );
-        if (conn) setWaConn({ id: conn.id, name: conn.name });
+        if (!conn) return;
+        setWaConn({ id: conn.id, name: conn.name });
+        // Verificação de permissão (não bloqueia o MVP).
+        fetchPermissions(conn.id)
+          .then((p) => {
+            const ok = (p.permissions || []).some((g) => {
+              const actions = Array.isArray(g.allowed_actions) ? (g.allowed_actions as string[]) : [];
+              return (
+                g.status === 'active' &&
+                ['tenant_auxiliary', 'autobrokers'].includes(g.subject_type) &&
+                (actions.includes('draft_message') || actions.includes('send_message'))
+              );
+            });
+            setPermWarning(!ok);
+          })
+          .catch(() => setPermWarning(true));
       })
       .catch(() => undefined);
   }, []);
+
+  const selectConversation = (c: ResumoConversation | null) => {
+    setSelectedId(c?.id ?? null);
+    const extracted = waPhone(c?.session_id);
+    if (extracted) setPhone(extracted);
+  };
 
   const generate = async () => {
     setDraftState('loading');
     setErrorMsg('');
     setErrorKind('generic');
-    setApprovalDone(false);
+    setCreatedApproval(null);
     setNotice('');
     try {
-      const res = await draftFollowUpWhatsapp({ conversationId: selectedId ?? undefined, objective });
+      const res = await draftFollowUpWhatsapp({ conversationId: selectedId ?? undefined, objective, tone });
       if (res.success && res.draft?.message) {
         setMessage(res.draft.message);
         setGenerated(true);
@@ -136,8 +175,7 @@ export default function FollowUpWhatsappPage() {
         request_payload: { to_number: to, message: msg, dry_run: true, source: 'auxiliary_follow_up_whatsapp' },
       });
       if (res.approval) {
-        setApprovalDone(true);
-        setNotice('Aprovação criada. Aprove e execute a simulação em Aprovações.');
+        setCreatedApproval({ id: res.approval.id, status: res.approval.status });
       } else {
         setNotice(res.error || 'Não foi possível criar a aprovação.');
       }
@@ -146,6 +184,13 @@ export default function FollowUpWhatsappPage() {
     } finally {
       setCreating(false);
     }
+  };
+
+  const newDraft = () => {
+    setCreatedApproval(null);
+    setGenerated(false);
+    setMessage('');
+    setNotice('');
   };
 
   const draftTab = (
@@ -168,13 +213,13 @@ export default function FollowUpWhatsappPage() {
             <Icon icon={icons.renovacao} size={14} className="animate-spin" /> Carregando conversas…
           </div>
         ) : (
-          <div className="max-h-48 space-y-1.5 overflow-y-auto pr-1">
-            <SelectorRow active={selectedId === null} onClick={() => setSelectedId(null)} title="Sem atendimento específico" subtitle="Gera com base apenas no objetivo" />
+          <div className="max-h-44 space-y-1.5 overflow-y-auto pr-1">
+            <SelectorRow active={selectedId === null} onClick={() => selectConversation(null)} title="Sem atendimento específico" subtitle="Gera com base apenas no objetivo" />
             {convs.map((c) => (
               <SelectorRow
                 key={c.id}
                 active={selectedId === c.id}
-                onClick={() => setSelectedId(c.id)}
+                onClick={() => selectConversation(c)}
                 title={c.title}
                 subtitle={[typeof c.message_count === 'number' ? `${c.message_count} msgs` : '', fmtDateShort(c.updated_at || c.created_at)].filter(Boolean).join(' · ')}
               />
@@ -187,10 +232,30 @@ export default function FollowUpWhatsappPage() {
         <div className="space-y-1.5">
           <Label htmlFor="fu-phone" className="text-foreground">Telefone de destino</Label>
           <Input id="fu-phone" value={phone} onChange={(e) => setPhone(e.target.value)} placeholder="5547999999999" className="bg-background" />
+          <p className="text-[11px] text-muted-foreground">Use DDI+DDD+número. Ex.: 5547999999999.</p>
         </div>
         <div className="space-y-1.5">
           <Label htmlFor="fu-objective" className="text-foreground">Objetivo do follow-up</Label>
           <Input id="fu-objective" value={objective} onChange={(e) => setObjective(e.target.value)} placeholder="retomar contato sobre a cotação de seguro auto" className="bg-background" />
+        </div>
+      </div>
+
+      <div className="space-y-1.5">
+        <p className="font-mono text-[10px] uppercase tracking-[0.06em] text-faint">Tom da mensagem</p>
+        <div className="flex flex-wrap gap-1.5">
+          {TONES.map((t) => (
+            <button
+              key={t.value}
+              type="button"
+              onClick={() => setTone(t.value)}
+              className={cn(
+                'rounded-full border px-3 py-1 text-xs transition-colors',
+                tone === t.value ? 'border-primary/40 bg-brand-soft text-primary' : 'border-border text-muted-foreground hover:text-foreground',
+              )}
+            >
+              {t.label}
+            </button>
+          ))}
         </div>
       </div>
 
@@ -244,19 +309,42 @@ export default function FollowUpWhatsappPage() {
               <Link href="/dashboard/personalizacao/conectores" className="underline">Conectores</Link>.
             </p>
           )}
+          {waConn && permWarning && (
+            <p className="mt-3 text-xs text-warning">
+              Permissão específica ainda não configurada; usando aprovação humana obrigatória.
+            </p>
+          )}
 
-          <div className="mt-3 flex flex-wrap items-center gap-2">
-            <Button onClick={createApproval} disabled={creating || approvalDone}>
-              <Icon icon={icons.aprovacao} size={14} className="mr-2" />
-              {approvalDone ? 'Aprovação criada' : creating ? 'Criando…' : 'Criar aprovação'}
-            </Button>
-            <Link
-              href="/dashboard/personalizacao/conectores/aprovacoes"
-              className="text-xs font-medium text-primary hover:underline"
-            >
-              Ir para Aprovações →
-            </Link>
-          </div>
+          {createdApproval ? (
+            <div className="mt-3 rounded-lg border border-success/40 bg-surface-2 p-3">
+              <p className="flex items-center gap-2 text-sm font-medium text-foreground">
+                <Icon icon={icons.success} size={16} className="text-success" /> Aprovação criada
+              </p>
+              <p className="mt-1 font-mono text-[11px] text-faint">id: {createdApproval.id} · status: {createdApproval.status}</p>
+              <div className="mt-3 flex flex-wrap items-center gap-2">
+                <Link
+                  href="/dashboard/personalizacao/conectores/aprovacoes"
+                  className="inline-flex items-center gap-2 rounded-lg border border-border bg-surface px-3 py-1.5 text-xs font-medium text-foreground transition-colors hover:border-primary/40"
+                >
+                  <Icon icon={icons.aprovacao} size={14} /> Ver em Aprovações
+                </Link>
+                <Button size="sm" variant="outline" onClick={newDraft}>Criar novo rascunho</Button>
+              </div>
+            </div>
+          ) : (
+            <div className="mt-3 flex flex-wrap items-center gap-2">
+              <Button onClick={createApproval} disabled={creating}>
+                <Icon icon={icons.aprovacao} size={14} className="mr-2" />
+                {creating ? 'Criando…' : 'Criar aprovação'}
+              </Button>
+              <Link
+                href="/dashboard/personalizacao/conectores/aprovacoes"
+                className="text-xs font-medium text-primary hover:underline"
+              >
+                Ir para Aprovações →
+              </Link>
+            </div>
+          )}
 
           {notice && <p className="mt-2 text-xs text-foreground-2">{notice}</p>}
         </DetailSection>
@@ -289,7 +377,7 @@ export default function FollowUpWhatsappPage() {
               content: (
                 <DetailSection
                   title="Como funciona"
-                  description="Escolha um atendimento (ou só informe o objetivo), gere um rascunho humano de follow-up, edite se quiser e crie um pedido de aprovação. A execução acontece em modo seguro (dry-run) após aprovação humana — nenhuma mensagem real é enviada."
+                  description="Escolha um atendimento (ou só informe o objetivo), escolha o tom, gere um rascunho humano de follow-up, edite se quiser e crie um pedido de aprovação. A execução acontece em modo seguro (dry-run) após aprovação humana — nenhuma mensagem real é enviada."
                 />
               ),
             },
