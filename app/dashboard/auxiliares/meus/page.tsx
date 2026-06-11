@@ -48,6 +48,17 @@ function fmtDateShort(s?: string): string | undefined {
   return Number.isNaN(d.getTime()) ? undefined : d.toLocaleDateString('pt-BR');
 }
 
+const KNOWN_EXECUTORS = ['resumo-atendimentos', 'follow-up-whatsapp'];
+
+/** Badge discreto de runtime para a corretora (sem jargão técnico). */
+function tenantRuntimeLabel(it: TenantAuxiliary): string {
+  const cfg = it.config && typeof it.config === 'object' ? (it.config as Record<string, unknown>) : {};
+  const rt = cfg.runtime && typeof cfg.runtime === 'object' ? (cfg.runtime as Record<string, unknown>) : {};
+  if (typeof rt.agent_id === 'string' && rt.agent_id) return 'Motor inteligente vinculado';
+  if (rt.kind === 'specific_executor' || KNOWN_EXECUTORS.includes(it.slug)) return 'Executor dedicado';
+  return 'Em preparação';
+}
+
 export default function MeusAuxiliaresPage() {
   const [items, setItems] = useState<TenantAuxiliary[] | null>(null);
   const [error, setError] = useState(false);
@@ -113,7 +124,7 @@ export default function MeusAuxiliaresPage() {
               const slug = it.slug;
               const title = getStr(it, 'display_name') || TITLES[slug] || slug || 'Auxiliar';
               const created = fmtDateShort(getStr(it, 'created_at'));
-              const tags = [slug, created ? `criado ${created}` : undefined].filter(
+              const tags = [tenantRuntimeLabel(it), slug, created ? `criado ${created}` : undefined].filter(
                 (t): t is string => Boolean(t),
               );
               const href = HREFS[slug];

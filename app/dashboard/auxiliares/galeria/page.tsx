@@ -7,6 +7,7 @@ import { Icon } from '@/components/ui/Icon';
 import { icons } from '@/lib/icons';
 import { fetchTemplates } from '@/lib/auxiliaries/api';
 import type { AuxiliaryTemplate } from '@/lib/auxiliaries/types';
+import { parseRuntimeConfig } from '@/lib/admin/auxiliary-runtime';
 
 const SLUG_HREF: Record<string, string> = {
   'resumo-atendimentos': '/dashboard/auxiliares/galeria/resumo-atendimentos',
@@ -77,6 +78,15 @@ export default function GaleriaAuxiliaresPage() {
           <GalleryGrid>
             {templates.map((t) => {
               const href = SLUG_HREF[t.slug];
+              const rtKind = parseRuntimeConfig(t.default_config, t.slug).kind;
+              const rtLabel =
+                rtKind === 'smith_agent_blueprint'
+                  ? 'Motor inteligente'
+                  : rtKind === 'specific_executor'
+                    ? 'Executor dedicado'
+                    : rtKind === 'workflow'
+                      ? 'Workflow'
+                      : undefined;
               return (
                 <GalleryCard
                   key={t.id || t.slug}
@@ -84,6 +94,7 @@ export default function GaleriaAuxiliaresPage() {
                   title={t.name || t.slug}
                   description={getStr(t, 'description') || 'Resume conversas, destaca pendências e sugere próximos passos.'}
                   category={getStr(t, 'category')}
+                  tags={rtLabel ? [rtLabel] : undefined}
                   status={{ tone: 'success', label: 'Pronto para ativar' }}
                   cta="Ver detalhes"
                   href={href}

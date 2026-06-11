@@ -221,6 +221,12 @@ export function IntegrationModal({ companyId, companyName }: IntegrationModalPro
           </p>
         </DialogHeader>
 
+        <div className="rounded-lg border border-dashed border-amber-500/40 bg-amber-500/5 px-3 py-2 text-xs text-muted-foreground">
+          <span className="font-medium text-foreground">Configuração legada.</span> O WhatsApp agora é configurado com
+          segurança em <span className="font-medium text-foreground">Personalização → Conectores</span> (Vault), com token
+          criptografado, permissões e aprovação humana. Esta tela é legado técnico.
+        </div>
+
         {loading ? (
           <div className="flex items-center justify-center py-12">
             <Loader2 className="w-8 h-8 animate-spin text-green-500" />

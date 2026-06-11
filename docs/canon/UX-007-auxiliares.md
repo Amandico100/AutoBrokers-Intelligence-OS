@@ -1,6 +1,8 @@
 ---
 # UX-007 — Auxiliares do AutoBrokers.ai
 
+> **Decisão canônica: Auxiliares usam Smith Agents/Subagents como runtime** (ver [SPEC-002](SPEC-002-auxiliares-runtime-smith.md)). Auxiliares = produto/catálogo/UX/governança; o runtime técnico é um **Agent/Subagent Smith**, um executor específico ou um workflow. Templates globais guardam **blueprint** (não um agent compartilhado); o agent real é criado **por corretora** ao instalar. Ações externas via **Vault + HITL**. **Não criar motor paralelo.**
+
 Status: canonical  
 Produto: AutoBrokers.ai  
 Sistema: AutoBrokers Intelligence OS  

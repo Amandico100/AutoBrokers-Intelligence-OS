@@ -1,9 +1,10 @@
 'use client';
 
 import { useEffect, useState } from 'react';
-import { Plus, Edit2, X, Power, Download, Building2, Check } from 'lucide-react';
+import { Plus, Edit2, X, Power, Download, Building2, Check, Cpu } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
+import { parseRuntimeConfig, runtimeBadgeLabel } from '@/lib/admin/auxiliary-runtime';
 
 type Template = {
   id: string;
@@ -65,6 +66,21 @@ export default function AdminAuxiliaresPage() {
 
   const [installationsFor, setInstallationsFor] = useState<Template | null>(null);
   const [installations, setInstallations] = useState<Installation[] | null>(null);
+
+  const [runtimeFor, setRuntimeFor] = useState<Template | null>(null);
+  const [rt, setRt] = useState({
+    kind: 'none',
+    executor: '',
+    name: '',
+    slug: '',
+    is_subagent: true,
+    allow_direct_chat: false,
+    llm_provider: 'openai',
+    llm_model: 'gpt-4o-mini',
+    agent_system_prompt: '',
+  });
+  const [rtSaving, setRtSaving] = useState(false);
+  const [rtError, setRtError] = useState('');
 
   const load = () => {
     setError('');
@@ -203,6 +219,72 @@ export default function AdminAuxiliaresPage() {
       .catch(() => setInstallations([]));
   };
 
+  const openRuntime = (t: Template) => {
+    const r = parseRuntimeConfig(t.default_config, t.slug);
+    const bp = (r.agent_blueprint || {}) as Record<string, unknown>;
+    const sb = (k: string, d = '') => (typeof bp[k] === 'string' ? (bp[k] as string) : d);
+    setRuntimeFor(t);
+    setRt({
+      kind: r.kind,
+      executor: r.executor || '',
+      name: sb('name', t.name),
+      slug: sb('slug', t.slug),
+      is_subagent: typeof bp.is_subagent === 'boolean' ? (bp.is_subagent as boolean) : true,
+      allow_direct_chat: typeof bp.allow_direct_chat === 'boolean' ? (bp.allow_direct_chat as boolean) : false,
+      llm_provider: sb('llm_provider', 'openai'),
+      llm_model: sb('llm_model', 'gpt-4o-mini'),
+      agent_system_prompt: sb('agent_system_prompt'),
+    });
+    setRtError('');
+  };
+
+  const saveRuntime = async () => {
+    if (!runtimeFor) return;
+    setRtSaving(true);
+    setRtError('');
+    let runtime: Record<string, unknown>;
+    if (rt.kind === 'specific_executor') runtime = { kind: 'specific_executor', executor: rt.executor.trim() };
+    else if (rt.kind === 'smith_agent_blueprint')
+      runtime = {
+        kind: 'smith_agent_blueprint',
+        agent_blueprint: {
+          name: rt.name.trim() || runtimeFor.name,
+          slug: rt.slug.trim() || runtimeFor.slug,
+          is_subagent: rt.is_subagent,
+          allow_direct_chat: rt.allow_direct_chat,
+          llm_provider: rt.llm_provider,
+          llm_model: rt.llm_model,
+          agent_system_prompt: rt.agent_system_prompt.trim(),
+        },
+      };
+    else if (rt.kind === 'workflow') runtime = { kind: 'workflow' };
+    else runtime = { kind: 'none' };
+
+    const baseConfig =
+      runtimeFor.default_config && typeof runtimeFor.default_config === 'object'
+        ? (runtimeFor.default_config as Record<string, unknown>)
+        : {};
+    const default_config = { ...baseConfig, runtime };
+
+    try {
+      const res = await fetch(`/api/admin/auxiliaries/templates/${runtimeFor.id}`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ default_config: JSON.stringify(default_config) }),
+      });
+      const data = await res.json().catch(() => ({}));
+      if (res.ok) {
+        setRuntimeFor(null);
+        setNotice('Runtime atualizado.');
+        load();
+      } else setRtError(data.error || 'Não foi possível salvar o runtime.');
+    } catch {
+      setRtError('Erro ao salvar o runtime.');
+    } finally {
+      setRtSaving(false);
+    }
+  };
+
   const setF = (patch: Partial<FormData>) => setForm((f) => ({ ...f, ...patch }));
 
   return (
@@ -213,7 +295,12 @@ export default function AdminAuxiliaresPage() {
           <Plus className="w-4 h-4 mr-2" /> Novo template
         </Button>
       </div>
-      <p className="text-sm text-muted-foreground mb-6">Crie e publique Auxiliares disponíveis para as corretoras.</p>
+      <p className="text-sm text-muted-foreground mb-3">Crie e publique Auxiliares disponíveis para as corretoras.</p>
+
+      <div className="mb-6 rounded-lg border border-dashed border-primary/40 bg-primary/5 px-3 py-2 text-xs text-muted-foreground">
+        Auxiliares são a <span className="font-medium text-foreground">camada de produto</span>. O runtime técnico deve ser um
+        Agent/Subagent Smith, um executor específico ou um corredor/workflow — <span className="font-medium text-foreground">não crie motores paralelos</span> (SPEC-002).
+      </div>
 
       {notice && (
         <div className="mb-4 flex items-center justify-between gap-2 rounded-lg border border-border bg-card px-3 py-2 text-sm text-foreground">
@@ -238,6 +325,7 @@ export default function AdminAuxiliaresPage() {
                 <th className="px-4 py-3 text-left font-medium">Slug</th>
                 <th className="px-4 py-3 text-left font-medium">Categoria</th>
                 <th className="px-4 py-3 text-left font-medium">Status</th>
+                <th className="px-4 py-3 text-left font-medium">Runtime</th>
                 <th className="px-4 py-3 text-right font-medium">Ações</th>
               </tr>
             </thead>
@@ -255,9 +343,17 @@ export default function AdminAuxiliaresPage() {
                     </span>
                   </td>
                   <td className="px-4 py-3">
+                    <span className="rounded-full border border-border px-2 py-0.5 text-xs text-muted-foreground">
+                      {runtimeBadgeLabel(parseRuntimeConfig(t.default_config, t.slug).kind)}
+                    </span>
+                  </td>
+                  <td className="px-4 py-3">
                     <div className="flex flex-wrap items-center justify-end gap-1.5">
                       <Button size="sm" variant="outline" onClick={() => openEdit(t)} title="Editar">
                         <Edit2 className="w-3.5 h-3.5" />
+                      </Button>
+                      <Button size="sm" variant="outline" onClick={() => openRuntime(t)} title="Configurar runtime">
+                        <Cpu className="w-3.5 h-3.5" />
                       </Button>
                       <Button size="sm" variant="outline" onClick={() => toggleActive(t)} title={isActive(t) ? 'Desativar' : 'Ativar'}>
                         <Power className="w-3.5 h-3.5" />
@@ -397,6 +493,57 @@ export default function AdminAuxiliaresPage() {
             <div className="mt-5 flex justify-end gap-2">
               <Button variant="outline" onClick={() => setInstallFor(null)} disabled={installing}>Cancelar</Button>
               <Button onClick={submitInstall} disabled={installing}>{installing ? 'Instalando…' : 'Instalar'}</Button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Modal runtime */}
+      {runtimeFor && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4" onClick={() => !rtSaving && setRuntimeFor(null)}>
+          <div className="max-h-[90vh] w-full max-w-lg overflow-y-auto rounded-xl border border-border bg-card p-6" onClick={(e) => e.stopPropagation()}>
+            <div className="mb-4 flex items-center justify-between">
+              <h2 className="text-lg font-semibold text-foreground">Configurar runtime · {runtimeFor.name}</h2>
+              <button onClick={() => setRuntimeFor(null)} className="text-muted-foreground hover:text-foreground"><X className="w-5 h-5" /></button>
+            </div>
+            <p className="mb-4 text-xs text-muted-foreground">
+              O runtime técnico é um Agent/Subagent Smith, executor específico ou workflow. O agent real é criado por corretora ao instalar. Não copie segredos.
+            </p>
+
+            <label className="space-y-1 text-sm">
+              <span className="text-foreground">Tipo de runtime</span>
+              <select className="w-full rounded-md border border-border bg-background p-2 text-sm" value={rt.kind} onChange={(e) => setRt({ ...rt, kind: e.target.value })}>
+                <option value="none">Não configurado</option>
+                <option value="specific_executor">Executor específico</option>
+                <option value="smith_agent_blueprint">Smith Agent Blueprint</option>
+                <option value="workflow">Workflow/Corredor</option>
+              </select>
+            </label>
+
+            {rt.kind === 'specific_executor' && (
+              <label className="mt-3 block space-y-1 text-sm">
+                <span className="text-foreground">Executor key</span>
+                <Input value={rt.executor} onChange={(e) => setRt({ ...rt, executor: e.target.value })} placeholder="resumo-atendimentos" />
+              </label>
+            )}
+
+            {rt.kind === 'smith_agent_blueprint' && (
+              <div className="mt-3 grid gap-3 sm:grid-cols-2">
+                <label className="space-y-1 text-sm"><span className="text-foreground">Nome base do agent</span><Input value={rt.name} onChange={(e) => setRt({ ...rt, name: e.target.value })} /></label>
+                <label className="space-y-1 text-sm"><span className="text-foreground">Slug base</span><Input value={rt.slug} onChange={(e) => setRt({ ...rt, slug: e.target.value })} /></label>
+                <label className="flex items-center gap-2 text-sm"><input type="checkbox" checked={rt.is_subagent} onChange={(e) => setRt({ ...rt, is_subagent: e.target.checked })} className="h-4 w-4 accent-[hsl(var(--primary))]" /><span className="text-foreground">Criar como subagent</span></label>
+                <label className="flex items-center gap-2 text-sm"><input type="checkbox" checked={rt.allow_direct_chat} onChange={(e) => setRt({ ...rt, allow_direct_chat: e.target.checked })} className="h-4 w-4 accent-[hsl(var(--primary))]" /><span className="text-foreground">Permitir chat direto</span></label>
+                <label className="space-y-1 text-sm"><span className="text-foreground">Provider</span><Input value={rt.llm_provider} onChange={(e) => setRt({ ...rt, llm_provider: e.target.value })} /></label>
+                <label className="space-y-1 text-sm"><span className="text-foreground">Modelo</span><Input value={rt.llm_model} onChange={(e) => setRt({ ...rt, llm_model: e.target.value })} /></label>
+                <label className="space-y-1 text-sm sm:col-span-2"><span className="text-foreground">System prompt</span><textarea className="w-full rounded-md border border-border bg-background p-2 text-sm" rows={3} value={rt.agent_system_prompt} onChange={(e) => setRt({ ...rt, agent_system_prompt: e.target.value })} /></label>
+                <p className="text-xs text-muted-foreground sm:col-span-2">Ao instalar numa corretora, um Agent/Subagent Smith é criado/vinculado a partir deste blueprint (sem segredos).</p>
+              </div>
+            )}
+
+            {rtError && <p className="mt-3 text-sm text-destructive">{rtError}</p>}
+            <div className="mt-5 flex justify-end gap-2">
+              <Button variant="outline" onClick={() => setRuntimeFor(null)} disabled={rtSaving}>Cancelar</Button>
+              <Button onClick={saveRuntime} disabled={rtSaving}>{rtSaving ? 'Salvando…' : 'Salvar runtime'}</Button>
             </div>
           </div>
         </div>

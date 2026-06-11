@@ -5,6 +5,7 @@
 > **Produto:** AutoBrokers.ai  
 > **Sistema:** AutoBrokers Intelligence OS  
 > **Função:** índice da documentação canônica ativa  
+> **Lei nova:** [SPEC-002](SPEC-002-auxiliares-runtime-smith.md) — Auxiliares usam **Smith Agents/Subagents como runtime** (produto por cima, motor Smith por baixo, Vault governando). Não criar motor paralelo.
 >
 > Esta pasta contém a documentação viva que orienta estratégia, UX, runtime, segurança, design e execução.  
 > Documentos históricos em `docs/_archive/` não devem orientar decisões atuais, salvo quando forem explicitamente citados por um documento canônico.

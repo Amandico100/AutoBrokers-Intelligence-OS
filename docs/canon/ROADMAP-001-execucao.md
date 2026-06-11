@@ -1,6 +1,8 @@
 ---
 # ROADMAP-001 — Plano de Execução do AutoBrokers Intelligence OS
 
+> **Decisão canônica: Auxiliares usam Smith Agents/Subagents como runtime** (ver [SPEC-002](SPEC-002-auxiliares-runtime-smith.md)). Produto AutoBrokers por cima, runtime Smith por baixo, Vault governando. Não criar motor paralelo de execução.
+
 Status: canonical  
 Produto: AutoBrokers.ai  
 Sistema: AutoBrokers Intelligence OS  
