@@ -131,6 +131,7 @@ class SearchService:
             query_embedding=dense_vector,
             sparse_embedding=sparse_vector,
             agent_id=agent_id,
+            include_tenant_wide=True,  # vê docs do agente + tenant-wide (nunca de outro agente)
             top_k=20,
             score_threshold=0.0,
         )

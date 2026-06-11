@@ -518,9 +518,13 @@ class LangChainService:
         company_id: str,
         top_k: int = 3,
         metrics: Optional[ConversationMetrics] = None,
+        agent_id: Optional[str] = None,
+        include_tenant_wide: bool = True,
     ):
         try:
-            results = self.search_documents(query, company_id, top_k)
+            results = self.search_documents(
+                query, company_id, top_k, agent_id=agent_id, include_tenant_wide=include_tenant_wide
+            )
             if not results:
                 return None, []
 
@@ -538,7 +542,13 @@ class LangChainService:
             return None, []
 
     def search_documents(
-        self, query: str, company_id: str, top_k: int = 3, score_threshold: float = 0.4
+        self,
+        query: str,
+        company_id: str,
+        top_k: int = 3,
+        score_threshold: float = 0.4,
+        agent_id: Optional[str] = None,
+        include_tenant_wide: bool = True,
     ) -> List[Dict[str, Any]]:
         try:
             query_embedding = self.embeddings.embed_query(query)
@@ -546,6 +556,8 @@ class LangChainService:
                 company_id=company_id,
                 query_embedding=query_embedding,
                 top_k=top_k,
+                agent_id=agent_id,
+                include_tenant_wide=include_tenant_wide,
                 score_threshold=score_threshold,
             )
         except Exception as e:

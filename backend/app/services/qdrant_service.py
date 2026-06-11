@@ -24,6 +24,16 @@ from qdrant_client.models import (
     VectorParams,
 )
 
+# Tenant-wide (agent_id ausente) é opcional e degrada com segurança se o client não tiver IsEmptyCondition.
+try:
+    from qdrant_client.models import IsEmptyCondition, PayloadField
+
+    _HAS_IS_EMPTY = True
+except Exception:  # pragma: no cover
+    IsEmptyCondition = None  # type: ignore
+    PayloadField = None  # type: ignore
+    _HAS_IS_EMPTY = False
+
 logger = logging.getLogger(__name__)
 
 
@@ -250,7 +260,8 @@ class QdrantService:
         query_embedding: List[float],
         top_k: int = 5,
         document_id: Optional[str] = None,
-        agent_id: Optional[str] = None,  # 🔥 NOVO: Filtro por agente
+        agent_id: Optional[str] = None,  # 🔥 Filtro por agente (isolamento multi-agent)
+        include_tenant_wide: bool = False,  # também inclui docs sem agent_id (tenant-wide)
         score_threshold: float = 0.0,
         sparse_embedding: Optional[Any] = None,
         collection_name: Optional[str] = None,
@@ -284,28 +295,34 @@ class QdrantService:
                 f"[Qdrant] Collection '{collection_name}' exists, proceeding with search"
             )
 
-            # 🔥 NOVO: Construir filtro com agent_id
-            filter_conditions = []
-
-            if agent_id:
-                filter_conditions.append(
-                    FieldCondition(
-                        key="agent_id",  # Filtro no nível raiz do payload
-                        match=MatchValue(
-                            value=str(agent_id) if agent_id else None
-                        ),  # 🔥 Convert UUID to string
-                    )
-                )
-                logger.debug(f"[Qdrant] Filtering by agent_id: {agent_id}")
+            # Filtro de isolamento: agente específico (+ opcional tenant-wide agent_id ausente).
+            must_conditions = []
+            should_conditions = None
 
             if document_id:
-                filter_conditions.append(
-                    FieldCondition(
-                        key="document_id", match=MatchValue(value=document_id)
-                    )
+                must_conditions.append(
+                    FieldCondition(key="document_id", match=MatchValue(value=document_id))
                 )
 
-            query_filter = Filter(must=filter_conditions) if filter_conditions else None
+            if agent_id:
+                if include_tenant_wide and _HAS_IS_EMPTY:
+                    # Documentos DESTE agente OU tenant-wide (agent_id ausente) — nunca de outro agente.
+                    should_conditions = [
+                        FieldCondition(key="agent_id", match=MatchValue(value=str(agent_id))),
+                        IsEmptyCondition(is_empty=PayloadField(key="agent_id")),
+                    ]
+                else:
+                    must_conditions.append(
+                        FieldCondition(key="agent_id", match=MatchValue(value=str(agent_id)))
+                    )
+                logger.debug(
+                    f"[Qdrant] agent_id filter (tenant_wide={include_tenant_wide and _HAS_IS_EMPTY})"
+                )
+
+            if must_conditions or should_conditions:
+                query_filter = Filter(must=must_conditions or None, should=should_conditions)
+            else:
+                query_filter = None
 
             # Log do filtro aplicado
             logger.debug(
