@@ -127,7 +127,7 @@ export default function MeusAuxiliaresPage() {
               const tags = [tenantRuntimeLabel(it), slug, created ? `criado ${created}` : undefined].filter(
                 (t): t is string => Boolean(t),
               );
-              const href = HREFS[slug];
+              const href = HREFS[slug] || `/dashboard/auxiliares/galeria/${slug}`;
               return (
                 <GalleryCard
                   key={it.id}

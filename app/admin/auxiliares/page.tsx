@@ -82,6 +82,23 @@ export default function AdminAuxiliaresPage() {
   const [rtSaving, setRtSaving] = useState(false);
   const [rtError, setRtError] = useState('');
 
+  const [publishOpen, setPublishOpen] = useState(false);
+  const [pubAgents, setPubAgents] = useState<{ id: string; name?: string; slug?: string; is_subagent?: boolean }[]>([]);
+  const [pub, setPub] = useState({
+    companyId: '',
+    agentId: '',
+    name: '',
+    slug: '',
+    category: '',
+    short_description: '',
+    description: '',
+    visibility: 'global',
+    status: 'active',
+    installOriginal: false,
+  });
+  const [pubSaving, setPubSaving] = useState(false);
+  const [pubError, setPubError] = useState('');
+
   const load = () => {
     setError('');
     fetch('/api/admin/auxiliaries/templates')
@@ -285,21 +302,101 @@ export default function AdminAuxiliaresPage() {
     }
   };
 
+  const ensureCompanies = () => {
+    if (companies.length === 0) {
+      fetch('/api/admin/companies')
+        .then((r) => r.json())
+        .then((d) => setCompanies(d.companies || []))
+        .catch(() => undefined);
+    }
+  };
+
+  const openPublish = () => {
+    setPub({
+      companyId: '',
+      agentId: '',
+      name: '',
+      slug: '',
+      category: '',
+      short_description: '',
+      description: '',
+      visibility: 'global',
+      status: 'active',
+      installOriginal: false,
+    });
+    setPubAgents([]);
+    setPubError('');
+    setPublishOpen(true);
+    ensureCompanies();
+  };
+
+  const loadPubAgents = (companyId: string) => {
+    setPub((p) => ({ ...p, companyId, agentId: '' }));
+    setPubAgents([]);
+    if (!companyId) return;
+    fetch(`/api/admin/agents/company/${companyId}`)
+      .then((r) => r.json())
+      .then((d) => setPubAgents(Array.isArray(d) ? d : d.agents || []))
+      .catch(() => setPubError('Não foi possível carregar os agents.'));
+  };
+
+  const selectPubAgent = (agentId: string) => {
+    const a = pubAgents.find((x) => x.id === agentId);
+    setPub((p) => ({ ...p, agentId, name: p.name || a?.name || '', slug: p.slug || a?.slug || '' }));
+  };
+
+  const submitPublish = async () => {
+    if (!pub.companyId || !pub.agentId) {
+      setPubError('Selecione empresa e agent.');
+      return;
+    }
+    if (!pub.name.trim() || !pub.slug.trim()) {
+      setPubError('Informe nome e slug.');
+      return;
+    }
+    setPubSaving(true);
+    setPubError('');
+    try {
+      const res = await fetch('/api/admin/auxiliaries/templates/from-agent', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(pub),
+      });
+      const data = await res.json().catch(() => ({}));
+      if (res.ok && data.template) {
+        setPublishOpen(false);
+        setNotice(data.installed ? 'Auxiliar publicado e instalado (agent original vinculado).' : 'Auxiliar publicado a partir do Agent.');
+        load();
+      } else setPubError(data.error || 'Não foi possível publicar.');
+    } catch {
+      setPubError('Erro ao publicar.');
+    } finally {
+      setPubSaving(false);
+    }
+  };
+
   const setF = (patch: Partial<FormData>) => setForm((f) => ({ ...f, ...patch }));
 
   return (
     <div className="p-6 max-w-6xl mx-auto">
       <div className="flex flex-wrap items-center justify-between gap-3 mb-1">
         <h1 className="text-2xl font-bold text-foreground">Auxiliares Globais</h1>
-        <Button onClick={openCreate}>
-          <Plus className="w-4 h-4 mr-2" /> Novo template
-        </Button>
+        <div className="flex flex-wrap items-center gap-2">
+          <Button variant="outline" onClick={openPublish}>
+            <Cpu className="w-4 h-4 mr-2" /> Publicar Agent existente
+          </Button>
+          <Button onClick={openCreate}>
+            <Plus className="w-4 h-4 mr-2" /> Novo template
+          </Button>
+        </div>
       </div>
       <p className="text-sm text-muted-foreground mb-3">Crie e publique Auxiliares disponíveis para as corretoras.</p>
 
       <div className="mb-6 rounded-lg border border-dashed border-primary/40 bg-primary/5 px-3 py-2 text-xs text-muted-foreground">
         Auxiliares são a <span className="font-medium text-foreground">camada de produto</span>. O runtime técnico deve ser um
         Agent/Subagent Smith, um executor específico ou um corredor/workflow — <span className="font-medium text-foreground">não crie motores paralelos</span> (SPEC-002).
+        <br />
+        Fluxo recomendado: crie/teste um Agent em <span className="font-medium text-foreground">Empresas</span> → <span className="font-medium text-foreground">publique como Auxiliar</span> → instale nas corretoras.
       </div>
 
       {notice && (
@@ -544,6 +641,67 @@ export default function AdminAuxiliaresPage() {
             <div className="mt-5 flex justify-end gap-2">
               <Button variant="outline" onClick={() => setRuntimeFor(null)} disabled={rtSaving}>Cancelar</Button>
               <Button onClick={saveRuntime} disabled={rtSaving}>{rtSaving ? 'Salvando…' : 'Salvar runtime'}</Button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Modal publicar Agent existente */}
+      {publishOpen && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4" onClick={() => !pubSaving && setPublishOpen(false)}>
+          <div className="max-h-[90vh] w-full max-w-2xl overflow-y-auto rounded-xl border border-border bg-card p-6" onClick={(e) => e.stopPropagation()}>
+            <div className="mb-4 flex items-center justify-between">
+              <h2 className="text-lg font-semibold text-foreground">Publicar Agent existente</h2>
+              <button onClick={() => setPublishOpen(false)} className="text-muted-foreground hover:text-foreground"><X className="w-5 h-5" /></button>
+            </div>
+            <p className="mb-4 text-xs text-muted-foreground">
+              Cria um template de Auxiliar a partir de um Agent/Subagent. O blueprint é copiado <span className="font-medium text-foreground">sem segredos</span>. O agent real é criado/vinculado por corretora.
+            </p>
+
+            <div className="grid gap-4 sm:grid-cols-2">
+              <label className="space-y-1 text-sm">
+                <span className="text-foreground">Empresa (origem do Agent)</span>
+                <select className="w-full rounded-md border border-border bg-background p-2 text-sm" value={pub.companyId} onChange={(e) => loadPubAgents(e.target.value)}>
+                  <option value="">Selecione…</option>
+                  {companies.map((c) => (<option key={c.id} value={c.id}>{c.company_name || c.id}</option>))}
+                </select>
+              </label>
+              <label className="space-y-1 text-sm">
+                <span className="text-foreground">Agent/Subagent</span>
+                <select className="w-full rounded-md border border-border bg-background p-2 text-sm" value={pub.agentId} disabled={!pub.companyId} onChange={(e) => selectPubAgent(e.target.value)}>
+                  <option value="">{pub.companyId ? 'Selecione…' : 'Escolha a empresa primeiro'}</option>
+                  {pubAgents.map((a) => (<option key={a.id} value={a.id}>{a.name || a.slug || a.id}{a.is_subagent ? ' (subagent)' : ''}</option>))}
+                </select>
+              </label>
+              <label className="space-y-1 text-sm"><span className="text-foreground">Nome do template</span><Input value={pub.name} onChange={(e) => setPub({ ...pub, name: e.target.value })} /></label>
+              <label className="space-y-1 text-sm"><span className="text-foreground">Slug do template</span><Input value={pub.slug} onChange={(e) => setPub({ ...pub, slug: e.target.value })} placeholder="meu-auxiliar" /></label>
+              <label className="space-y-1 text-sm"><span className="text-foreground">Categoria</span><Input value={pub.category} onChange={(e) => setPub({ ...pub, category: e.target.value })} /></label>
+              <label className="space-y-1 text-sm"><span className="text-foreground">Descrição curta</span><Input value={pub.short_description} onChange={(e) => setPub({ ...pub, short_description: e.target.value })} /></label>
+              <label className="space-y-1 text-sm sm:col-span-2"><span className="text-foreground">Descrição</span><textarea className="w-full rounded-md border border-border bg-background p-2 text-sm" rows={2} value={pub.description} onChange={(e) => setPub({ ...pub, description: e.target.value })} /></label>
+              <label className="space-y-1 text-sm">
+                <span className="text-foreground">Visibilidade</span>
+                <select className="w-full rounded-md border border-border bg-background p-2 text-sm" value={pub.visibility} onChange={(e) => setPub({ ...pub, visibility: e.target.value })}>
+                  <option value="global">Global</option>
+                  <option value="exclusive">Exclusivo da empresa</option>
+                </select>
+              </label>
+              <label className="space-y-1 text-sm">
+                <span className="text-foreground">Status</span>
+                <select className="w-full rounded-md border border-border bg-background p-2 text-sm" value={pub.status} onChange={(e) => setPub({ ...pub, status: e.target.value })}>
+                  <option value="active">active</option>
+                  <option value="draft">draft</option>
+                </select>
+              </label>
+              <label className="flex items-center gap-2 text-sm sm:col-span-2">
+                <input type="checkbox" checked={pub.installOriginal} onChange={(e) => setPub({ ...pub, installOriginal: e.target.checked })} className="h-4 w-4 accent-[hsl(var(--primary))]" />
+                <span className="text-foreground">Instalar automaticamente na empresa (vincula o Agent original, sem duplicar)</span>
+              </label>
+            </div>
+
+            {pubError && <p className="mt-3 text-sm text-destructive">{pubError}</p>}
+            <div className="mt-5 flex justify-end gap-2">
+              <Button variant="outline" onClick={() => setPublishOpen(false)} disabled={pubSaving}>Cancelar</Button>
+              <Button onClick={submitPublish} disabled={pubSaving}>{pubSaving ? 'Publicando…' : 'Publicar'}</Button>
             </div>
           </div>
         </div>

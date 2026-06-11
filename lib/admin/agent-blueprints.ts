@@ -74,3 +74,59 @@ export async function createAgentViaBackend(
     return { error: e instanceof Error ? e.message : 'erro de conexão' };
   }
 }
+
+/** Busca um agent por id via backend canônico (sanitizado pelo backend: has_api_key, sem chaves cruas). */
+export async function fetchAgentViaBackend(
+  backendUrl: string,
+  adminApiKey: string,
+  agentId: string,
+): Promise<{ agent?: Record<string, unknown>; error?: string }> {
+  try {
+    const res = await fetch(`${backendUrl}/api/agents/${agentId}`, {
+      headers: { 'X-Admin-API-Key': adminApiKey },
+    });
+    const raw = await res.text();
+    let data: Record<string, unknown> = {};
+    try {
+      data = raw ? (JSON.parse(raw) as Record<string, unknown>) : {};
+    } catch {
+      data = {};
+    }
+    if (!res.ok) return { error: typeof data.detail === 'string' ? data.detail : `backend ${res.status}` };
+    return { agent: data };
+  } catch (e) {
+    return { error: e instanceof Error ? e.message : 'erro de conexão' };
+  }
+}
+
+// Campos NÃO sensíveis que podem viajar no blueprint (a inteligência global do Auxiliar).
+const BLUEPRINT_ALLOWED_KEYS = [
+  'name',
+  'slug',
+  'is_subagent',
+  'allow_direct_chat',
+  'llm_provider',
+  'llm_model',
+  'agent_system_prompt',
+  'llm_temperature',
+  'llm_max_tokens',
+  'allow_web_search',
+  'allow_vision',
+  'is_hyde_enabled',
+  'tools_config',
+  'security_settings',
+  'widget_config',
+  'retrieval_mode',
+  'personality',
+  'reasoning_effort',
+  'verbosity',
+];
+
+/** Extrai um blueprint SEGURO de um agent existente (whitelist + sanitização profunda). */
+export function extractBlueprintFromAgent(agent: Record<string, unknown>): Record<string, unknown> {
+  const picked: Record<string, unknown> = {};
+  for (const k of BLUEPRINT_ALLOWED_KEYS) {
+    if (agent[k] !== undefined && agent[k] !== null) picked[k] = agent[k];
+  }
+  return sanitizeBlueprint(picked) as Record<string, unknown>;
+}

@@ -76,3 +76,49 @@ Qualquer blueprint extraído de um agent existente DEVE passar por **sanitizaç�
 - [ ] Conectores/segredos no **Vault**, não no modal antigo?
 - [ ] Sem motor paralelo? Sem SQL/schema sem aprovação?
 - [ ] Execuções aparecem em `auxiliary_runs`?
+
+---
+
+# Apêndice A — Guia detalhado (41A.2)
+
+## A1. Fluxo completo de criação
+1. **Agent técnico (experimental/sandbox)** — crie/teste um Agent/Subagent em **Admin → Empresas → Agents** (prompt, modelo, tools, memória, segurança).
+2. **Publicar como template** — **Admin → Auxiliares Globais → "Publicar Agent existente"**: extrai um **blueprint sanitizado** (sem segredos) e cria `auxiliary_templates` com `runtime.kind='smith_agent_blueprint'`.
+3. **Instalar por corretora** — instala `tenant_auxiliaries`; se blueprint, cria/vincula um Agent **da corretora**.
+4. **Personalizar localmente** — a corretora evolui o agent dela (documentos, tom, horários, integrações) em Admin → Empresa → Agents.
+5. **Executar / Auditar** — execução via runtime; histórico em `auxiliary_runs`; ações externas via Vault + HITL + `vault_audit_log`.
+
+## A2. Inteligência global × personalização local
+- **Global (viaja no blueprint):** prompts base, regras, playbooks, raciocínio operacional, estrutura de atendimento, guardrails. Curada e versionada.
+- **Local (fica na instância da corretora):** documentos, dados da corretora, tom local, horários, integrações, permissões, carteiras, seguradoras atendidas, contatos.
+- **Conhecimento sensível/local NÃO é global por padrão.** Nunca empacotar dado de uma corretora no template global.
+
+## A3. Tipos de Auxiliar (visibilidade)
+- **global** — disponível a todas as corretoras na Galeria.
+- **exclusivo de uma corretora** — `default_config.visibility = { type:'private', company_id }` (filtragem futura na Galeria; por ora pode ser instalado só na empresa).
+- **experimental/sandbox** — `status='draft'` / `is_active=false`.
+- **em preparação** — `runtime.kind='none'` (sem executor/agent ainda).
+
+## A4. Relação com RAG
+- O blueprint pode **declarar** que exige conhecimento, mas **documentos globais ≠ documentos locais**.
+- O **agent local da corretora** recebe os **documentos locais** dela.
+- **Conhecimento global** deve ser **curado e versionado** (fase 41C). Não misturar conhecimento de corretoras.
+
+## A5. Relação com corredores/workflows
+- Corredores/workflows usam **agents/subagents como executores de fases** — `runtime.kind='workflow'`.
+- Corredor **não é** um Auxiliar simples; é orquestração de fases (fase 42A).
+
+## A6. Regras para novas IAs (decisão de runtime)
+- Tarefa fixa simples → **`specific_executor`**.
+- Precisa de tools/MCP/RAG/memória/persona → **`smith_agent_blueprint`** (Smith Agent/Subagent).
+- Processo com fases → **`workflow`** (corredor).
+- Sempre **declarar runtime** antes de criar; nunca motor paralelo.
+
+## A7. Como evitar duplicidade
+- Instalação é **idempotente** por `(company_id, slug)`.
+- Publicar um agent existente **da mesma empresa** com "instalar na origem" → **vincula o agent original** (`linked_original:true`), **não cria cópia**.
+- Instalar o mesmo template em **outra empresa** → cria um novo agent a partir do blueprint.
+
+## A8. Segredos (reforço)
+- `FORBIDDEN_SECRET_KEYS` removidos por `sanitizeBlueprint` (profundo) em qualquer publicação.
+- **GET legado** de `/api/admin/integrations` **não retorna** token/client_token — apenas flags (`has_token`, `token_configured`). Caminho oficial de credenciais = **Vault**.

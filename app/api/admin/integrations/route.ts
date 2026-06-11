@@ -139,7 +139,27 @@ export async function GET(request: NextRequest) {
       return NextResponse.json({ error: error.message }, { status: 500 });
     }
 
-    const integration = data && data.length > 0 ? data[0] : null;
+    const row = data && data.length > 0 ? data[0] : null;
+    // 🔒 Legado: NUNCA retornar token/client_token ao frontend. Apenas flags + campos não sensíveis (Vault é o caminho oficial).
+    const integration = row
+      ? {
+          id: row.id,
+          agent_id: row.agent_id,
+          company_id: row.company_id,
+          provider: row.provider,
+          identifier: row.identifier,
+          instance_id: row.instance_id,
+          base_url: row.base_url,
+          is_active: row.is_active,
+          buffer_enabled: row.buffer_enabled,
+          buffer_debounce_seconds: row.buffer_debounce_seconds,
+          buffer_max_wait_seconds: row.buffer_max_wait_seconds,
+          has_token: Boolean(row.token),
+          token_configured: Boolean(row.token),
+          has_client_token: Boolean(row.client_token),
+          client_token_configured: Boolean(row.client_token),
+        }
+      : null;
     return NextResponse.json({ integration });
   } catch (error: any) {
     console.error('[INTEGRATIONS API] Error:', error);
