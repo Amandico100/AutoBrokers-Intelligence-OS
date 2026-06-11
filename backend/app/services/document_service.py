@@ -110,6 +110,11 @@ class DocumentService:
             # Nome da collection do Qdrant
             qdrant_collection = f"company_{company_id.replace('-', '_')}"
 
+            # Escopo de conhecimento (SPEC-003); default seguro tenant/agent.
+            from .knowledge_scope import normalize_document_scope
+
+            _doc_scope = normalize_document_scope(agent_id)
+
             # Criar registro no Banco
             result = (
                 self.supabase.table("documents")
@@ -118,6 +123,7 @@ class DocumentService:
                         "id": document_id,
                         "company_id": company_id,
                         "agent_id": agent_id,  # 🔥 Salva agent_id
+                        "scope": _doc_scope,
                         "file_name": filename,
                         "file_type": file_type,
                         "file_size": file_size,
@@ -136,8 +142,9 @@ class DocumentService:
             return None
 
         except Exception as e:
+            # Propaga o erro real para a rota (que retorna 500 com detail) — não engolir silenciosamente.
             logger.error(f"Erro ao fazer upload do documento: {e}", exc_info=True)
-            return None
+            raise
 
     def extract_text_internal(
         self, file_data: BytesIO, file_type: str

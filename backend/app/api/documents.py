@@ -141,6 +141,28 @@ def process_document_task(
 # ===== ENDPOINTS =====
 
 
+@router.get("/rag-health")
+async def rag_health(_: bool = Depends(require_master_admin)):
+    """Probe raso do pipeline de RAG (sem segredo): MinIO e Qdrant acessíveis."""
+    minio_ok = False
+    qdrant_ok = False
+    try:
+        from ..services.minio_service import get_minio_service
+
+        get_minio_service().client.bucket_exists("documents")
+        minio_ok = True
+    except Exception as e:  # noqa: BLE001
+        logger.warning(f"[RAG health] minio indisponível: {type(e).__name__}")
+    try:
+        from ..services.qdrant_service import get_qdrant_service
+
+        get_qdrant_service().client.get_collections()
+        qdrant_ok = True
+    except Exception as e:  # noqa: BLE001
+        logger.warning(f"[RAG health] qdrant indisponível: {type(e).__name__}")
+    return {"documents_route": True, "minio": minio_ok, "qdrant": qdrant_ok}
+
+
 @router.post("/upload", response_model=UploadResponse)
 @limiter.limit("30/minute")
 async def upload_document(
