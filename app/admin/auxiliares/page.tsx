@@ -47,6 +47,15 @@ function isActive(t: Template): boolean {
   return t.is_active !== false;
 }
 
+function visibilityOf(t: Template): string | null {
+  const dc = t.default_config && typeof t.default_config === 'object' ? (t.default_config as Record<string, unknown>) : {};
+  const vis = dc.visibility && typeof dc.visibility === 'object' ? (dc.visibility as Record<string, unknown>) : null;
+  if (!vis) return null;
+  if (vis.type === 'private') return 'Exclusivo';
+  if (vis.type === 'global') return 'Global';
+  return null;
+}
+
 export default function AdminAuxiliaresPage() {
   const [templates, setTemplates] = useState<Template[] | null>(null);
   const [error, setError] = useState('');
@@ -83,7 +92,19 @@ export default function AdminAuxiliaresPage() {
   const [rtError, setRtError] = useState('');
 
   const [publishOpen, setPublishOpen] = useState(false);
-  const [pubAgents, setPubAgents] = useState<{ id: string; name?: string; slug?: string; is_subagent?: boolean }[]>([]);
+  const [pubAgents, setPubAgents] = useState<
+    {
+      id: string;
+      name?: string;
+      slug?: string;
+      is_subagent?: boolean;
+      allow_direct_chat?: boolean;
+      llm_provider?: string;
+      llm_model?: string;
+      agent_system_prompt?: string;
+      tools_config?: unknown;
+    }[]
+  >([]);
   const [pub, setPub] = useState({
     companyId: '',
     agentId: '',
@@ -440,9 +461,16 @@ export default function AdminAuxiliaresPage() {
                     </span>
                   </td>
                   <td className="px-4 py-3">
-                    <span className="rounded-full border border-border px-2 py-0.5 text-xs text-muted-foreground">
-                      {runtimeBadgeLabel(parseRuntimeConfig(t.default_config, t.slug).kind)}
-                    </span>
+                    <div className="flex flex-wrap items-center gap-1">
+                      <span className="rounded-full border border-border px-2 py-0.5 text-xs text-muted-foreground">
+                        {runtimeBadgeLabel(parseRuntimeConfig(t.default_config, t.slug).kind)}
+                      </span>
+                      {visibilityOf(t) && (
+                        <span className="rounded-full border border-border px-2 py-0.5 text-[10px] text-muted-foreground">
+                          {visibilityOf(t)}
+                        </span>
+                      )}
+                    </div>
                   </td>
                   <td className="px-4 py-3">
                     <div className="flex flex-wrap items-center justify-end gap-1.5">
@@ -673,6 +701,28 @@ export default function AdminAuxiliaresPage() {
                   {pubAgents.map((a) => (<option key={a.id} value={a.id}>{a.name || a.slug || a.id}{a.is_subagent ? ' (subagent)' : ''}</option>))}
                 </select>
               </label>
+              {pub.agentId &&
+                (() => {
+                  const a = pubAgents.find((x) => x.id === pub.agentId);
+                  if (!a) return null;
+                  const tools =
+                    a.tools_config && typeof a.tools_config === 'object'
+                      ? Object.keys(a.tools_config as Record<string, unknown>).length
+                      : 0;
+                  return (
+                    <div className="rounded-lg border border-border bg-background p-3 text-xs text-muted-foreground sm:col-span-2">
+                      <p className="mb-1 font-medium text-foreground">Preview do blueprint (segredos removidos)</p>
+                      <p>
+                        Modelo: {a.llm_provider || 'openai'} / {a.llm_model || 'gpt-4o-mini'} ·{' '}
+                        {a.is_subagent ? 'Subagent' : 'Agent'} · Chat direto: {a.allow_direct_chat ? 'sim' : 'não'}
+                      </p>
+                      <p>
+                        System prompt: {a.agent_system_prompt ? 'presente' : 'ausente'} · Ferramentas: {tools} · Sem
+                        token/api_key/segredos.
+                      </p>
+                    </div>
+                  );
+                })()}
               <label className="space-y-1 text-sm"><span className="text-foreground">Nome do template</span><Input value={pub.name} onChange={(e) => setPub({ ...pub, name: e.target.value })} /></label>
               <label className="space-y-1 text-sm"><span className="text-foreground">Slug do template</span><Input value={pub.slug} onChange={(e) => setPub({ ...pub, slug: e.target.value })} placeholder="meu-auxiliar" /></label>
               <label className="space-y-1 text-sm"><span className="text-foreground">Categoria</span><Input value={pub.category} onChange={(e) => setPub({ ...pub, category: e.target.value })} /></label>
@@ -684,6 +734,7 @@ export default function AdminAuxiliaresPage() {
                   <option value="global">Global</option>
                   <option value="exclusive">Exclusivo da empresa</option>
                 </select>
+                <span className="text-[11px] text-muted-foreground">Global: todas as corretoras. Exclusivo: só a empresa selecionada.</span>
               </label>
               <label className="space-y-1 text-sm">
                 <span className="text-foreground">Status</span>

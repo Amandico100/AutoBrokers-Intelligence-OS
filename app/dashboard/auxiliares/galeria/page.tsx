@@ -77,7 +77,7 @@ export default function GaleriaAuxiliaresPage() {
         ) : (
           <GalleryGrid>
             {templates.map((t) => {
-              const href = SLUG_HREF[t.slug];
+              const href = SLUG_HREF[t.slug] || `/dashboard/auxiliares/galeria/${t.slug}`;
               const rtKind = parseRuntimeConfig(t.default_config, t.slug).kind;
               const rtLabel =
                 rtKind === 'smith_agent_blueprint'

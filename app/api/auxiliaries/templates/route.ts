@@ -19,5 +19,12 @@ export async function GET() {
     console.error('[AUXILIARIES templates]', error.message);
     return NextResponse.json({ error: 'Erro ao buscar templates' }, { status: 500 });
   }
-  return NextResponse.json({ templates: data || [] });
+  // Visibilidade (SPEC-002 A3): oculta templates 'private' que não sejam da empresa da sessão.
+  const templates = (data || []).filter((t) => {
+    const dc = t.default_config && typeof t.default_config === 'object' ? (t.default_config as Record<string, unknown>) : {};
+    const vis = dc.visibility && typeof dc.visibility === 'object' ? (dc.visibility as Record<string, unknown>) : null;
+    if (!vis || vis.type !== 'private') return true;
+    return vis.company_id === ctx.companyId;
+  });
+  return NextResponse.json({ templates });
 }

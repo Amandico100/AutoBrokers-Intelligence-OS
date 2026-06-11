@@ -1138,22 +1138,19 @@ export function AgentConfigModal({ companyId, agentId, open, onOpenChange }: Pro
                 >
                   Personalidade
                 </TabsTrigger>
-                {!isSubagent && (
-                  <TabsTrigger
-                    value="memory"
-                    className="flex-1 min-w-[80px] text-muted-foreground data-[state=active]:bg-blue-600 data-[state=active]:text-white text-xs py-2"
-                  >
-                    Memória
-                  </TabsTrigger>
-                )}
-                {!isSubagent && (
-                  <TabsTrigger
-                    value="security"
-                    className="flex-1 min-w-[80px] text-muted-foreground data-[state=active]:bg-blue-600 data-[state=active]:text-white text-xs py-2 flex items-center justify-center gap-1"
-                  >
-                    <Shield className="w-3 h-3" /> Segurança
-                  </TabsTrigger>
-                )}
+                {/* Especialistas (subagents) PODEM ter Memória/RAG e Segurança (mesmas colunas de agents) — SPEC-002. */}
+                <TabsTrigger
+                  value="memory"
+                  className="flex-1 min-w-[80px] text-muted-foreground data-[state=active]:bg-blue-600 data-[state=active]:text-white text-xs py-2"
+                >
+                  Memória
+                </TabsTrigger>
+                <TabsTrigger
+                  value="security"
+                  className="flex-1 min-w-[80px] text-muted-foreground data-[state=active]:bg-blue-600 data-[state=active]:text-white text-xs py-2 flex items-center justify-center gap-1"
+                >
+                  <Shield className="w-3 h-3" /> Segurança
+                </TabsTrigger>
 
                 <TabsTrigger
                   value="tools"
@@ -1256,7 +1253,7 @@ export function AgentConfigModal({ companyId, agentId, open, onOpenChange }: Pro
                     <div className="space-y-0.5">
                       <Label className="text-foreground">Marcar como Especialista (SubAgent)</Label>
                       <p className="text-xs text-muted-foreground">
-                        Especialistas são acionados por orquestradores. Oculta Widget e WhatsApp.
+                        Especialistas são acionados por orquestradores. Podem usar Memória/RAG e Segurança, mas não têm canais públicos próprios (Widget/WhatsApp/Especialistas ficam ocultos).
                       </p>
                     </div>
                     <Switch checked={isSubagent} onCheckedChange={setIsSubagent} />
@@ -2225,6 +2222,12 @@ export function AgentConfigModal({ companyId, agentId, open, onOpenChange }: Pro
 
             {/* TAB 7: WhatsApp */}
             <TabsContent value="whatsapp" className="space-y-6 mt-6">
+              {/* Legado: caminho oficial de WhatsApp é o Vault (Personalização → Conectores) */}
+              <div className="rounded-lg border border-dashed border-amber-500/40 bg-amber-500/10 px-3 py-2 text-xs text-muted-foreground">
+                <span className="font-medium text-foreground">Configuração legada.</span> O WhatsApp oficial fica em{' '}
+                <span className="font-medium text-foreground">Personalização → Conectores (Vault)</span>, com token
+                criptografado, permissões e aprovação humana. Esta aba não grava token (a API bloqueia a escrita).
+              </div>
               {/* Aviso se for modo criação */}
               {isCreateMode && (
                 <Card className="bg-blue-900/20 border-blue-600/50">
