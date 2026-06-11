@@ -15,6 +15,7 @@ from qdrant_client.models import (
     Filter,
     Fusion,
     FusionQuery,
+    MatchAny,
     MatchValue,
     PayloadSchemaType,
     PointStruct,
@@ -173,6 +174,7 @@ class QdrantService:
         agent_id: Optional[
             str
         ] = None,  # 🔥 NOVO: agent_id obrigatório para multi-agent
+        knowledge_extras: Optional[Dict[str, Any]] = None,  # scope/knowledge_class/... (SPEC-003)
     ) -> bool:
         """
         Insere embeddings no Qdrant (batch insert)
@@ -215,6 +217,11 @@ class QdrantService:
                     "content": chunk_text,
                     "metadata": chunk_metadata,
                 }
+                # Campos de conhecimento (scope/knowledge_class/...) — SPEC-003. Sem segredo/PII.
+                if knowledge_extras:
+                    for _k, _v in knowledge_extras.items():
+                        if _k not in payload and _v not in (None, ""):
+                            payload[_k] = _v
 
                 # ID único: hash do document_id + chunk_index
                 point_id_str = f"{document_id}_{idx}"
@@ -262,6 +269,8 @@ class QdrantService:
         document_id: Optional[str] = None,
         agent_id: Optional[str] = None,  # 🔥 Filtro por agente (isolamento multi-agent)
         include_tenant_wide: bool = False,  # também inclui docs sem agent_id (tenant-wide)
+        scope_match: Optional[List[str]] = None,  # filtra por scope (ex.: global) — SPEC-003
+        curation_published_only: bool = False,  # só conhecimento curado/publicado (global)
         score_threshold: float = 0.0,
         sparse_embedding: Optional[Any] = None,
         collection_name: Optional[str] = None,
@@ -317,6 +326,21 @@ class QdrantService:
                     )
                 logger.debug(
                     f"[Qdrant] agent_id filter (tenant_wide={include_tenant_wide and _HAS_IS_EMPTY})"
+                )
+
+            # Filtros de conhecimento (scope/curadoria) — SPEC-003 (global é opt-in).
+            if scope_match:
+                if len(scope_match) == 1:
+                    must_conditions.append(
+                        FieldCondition(key="scope", match=MatchValue(value=scope_match[0]))
+                    )
+                else:
+                    must_conditions.append(
+                        FieldCondition(key="scope", match=MatchAny(any=list(scope_match)))
+                    )
+            if curation_published_only:
+                must_conditions.append(
+                    FieldCondition(key="curation_status", match=MatchValue(value="published"))
                 )
 
             if must_conditions or should_conditions:

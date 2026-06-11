@@ -119,7 +119,12 @@ class IngestionService:
 
             final_metas = [{**base_meta, **m} for m in metadatas]
 
-            # 🔥 INSERIR com agent_id explícito
+            # Escopo de conhecimento (scope/...) — SPEC-003. Sem segredo/PII.
+            from .knowledge_scope import extract_payload_extras
+
+            knowledge_extras = extract_payload_extras(base_meta, agent_id)
+
+            # 🔥 INSERIR com agent_id explícito + escopo de conhecimento
             self.qdrant.insert_embeddings(
                 company_id=company_id,
                 document_id=document_id,
@@ -128,6 +133,7 @@ class IngestionService:
                 metadata=final_metas,
                 sparse_embeddings=sparse_vectors,
                 agent_id=agent_id,  # 🔥 NOVO: Passa explicitamente
+                knowledge_extras=knowledge_extras,
             )
 
             # Atualizar banco

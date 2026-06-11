@@ -300,13 +300,17 @@ async def _handle_filesystem_upload(
     # 4. Criar registro direto no Supabase
     #    NÃO usa document_service.upload_document() — evita extração + qdrant obrigatório
     import uuid
+    from ..services.knowledge_scope import normalize_document_scope
+
     document_id = str(uuid.uuid4())
+    _doc_scope = normalize_document_scope(agent_id)  # tenant/agent (SPEC-003); default seguro
 
     await asyncio.to_thread(
         lambda: supabase.client.table("documents").insert({
             "id": document_id,
             "company_id": company_id,
             "agent_id": agent_id,
+            "scope": _doc_scope,
             "file_name": file.filename,
             "file_type": "md",
             "file_size": file_size,

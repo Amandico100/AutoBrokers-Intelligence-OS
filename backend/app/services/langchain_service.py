@@ -520,10 +520,16 @@ class LangChainService:
         metrics: Optional[ConversationMetrics] = None,
         agent_id: Optional[str] = None,
         include_tenant_wide: bool = True,
+        include_global: bool = False,
     ):
         try:
             results = self.search_documents(
-                query, company_id, top_k, agent_id=agent_id, include_tenant_wide=include_tenant_wide
+                query,
+                company_id,
+                top_k,
+                agent_id=agent_id,
+                include_tenant_wide=include_tenant_wide,
+                include_global=include_global,
             )
             if not results:
                 return None, []
@@ -549,10 +555,11 @@ class LangChainService:
         score_threshold: float = 0.4,
         agent_id: Optional[str] = None,
         include_tenant_wide: bool = True,
+        include_global: bool = False,
     ) -> List[Dict[str, Any]]:
         try:
             query_embedding = self.embeddings.embed_query(query)
-            return self.qdrant.search_similar(
+            results = self.qdrant.search_similar(
                 company_id=company_id,
                 query_embedding=query_embedding,
                 top_k=top_k,
@@ -560,6 +567,18 @@ class LangChainService:
                 include_tenant_wide=include_tenant_wide,
                 score_threshold=score_threshold,
             )
+            if include_global:
+                from .knowledge_scope import build_global_search_kwargs, merge_rag_results
+
+                global_results = self.qdrant.search_similar(
+                    company_id=company_id,
+                    query_embedding=query_embedding,
+                    top_k=top_k,
+                    score_threshold=score_threshold,
+                    **build_global_search_kwargs(),
+                )
+                results = merge_rag_results(results, global_results)
+            return results
         except Exception as e:
             logger.error(f"[RAG] Error: {e}")
             return []

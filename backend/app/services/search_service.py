@@ -103,6 +103,7 @@ class SearchService:
         search_text: str,
         original_query: str,
         agent_id: Optional[str] = None,
+        include_global: bool = False,
     ) -> List[Dict]:
         """
         Executa Busca HÍBRIDA (Dense + Sparse) + Rerank Preciso (Top 5).
@@ -136,6 +137,23 @@ class SearchService:
             score_threshold=0.0,
         )
 
+        # Conhecimento GLOBAL (opt-in, SPEC-003): coleção dedicada, só curadoria publicada.
+        if include_global:
+            try:
+                from .knowledge_scope import build_global_search_kwargs, merge_rag_results
+
+                global_results = self.qdrant.search_similar(
+                    company_id=company_id,
+                    query_embedding=dense_vector,
+                    sparse_embedding=sparse_vector,
+                    top_k=20,
+                    score_threshold=0.0,
+                    **build_global_search_kwargs(),
+                )
+                initial_results = merge_rag_results(initial_results, global_results)
+            except Exception as e:  # noqa: BLE001
+                logger.warning(f"[Search] global retrieval ignorado: {type(e).__name__}")
+
         if not initial_results:
             logger.info(
                 f"[Search] Nenhum resultado encontrado para agent_id={agent_id}"
@@ -151,7 +169,12 @@ class SearchService:
         return reranked
 
     def smart_search(
-        self, company_id: str, query: str, agent_id: Optional[str] = None, is_hyde_enabled: bool = True
+        self,
+        company_id: str,
+        query: str,
+        agent_id: Optional[str] = None,
+        is_hyde_enabled: bool = True,
+        include_global: bool = False,
     ) -> Dict[str, Any]:
         """
         Executa a estratégia de busca em cascata com Híbrido como padrão.
@@ -178,7 +201,7 @@ class SearchService:
 
         # --- TENTATIVA 1: Hybrid Search ---
         logger.info(f"[Search] Tentativa 1: Híbrida para '{query}'")
-        results_std = self._execute_search(company_id, query, query, agent_id=agent_id)
+        results_std = self._execute_search(company_id, query, query, agent_id=agent_id, include_global=include_global)
 
         best_score_std = results_std[0].get("rerank_score", 0) if results_std else 0
 
@@ -223,7 +246,7 @@ class SearchService:
         hyde_doc = self._generate_hyde_doc(query, company_id, agent_id)
 
         results_hyde = self._execute_search(
-            company_id, hyde_doc, query, agent_id=agent_id
+            company_id, hyde_doc, query, agent_id=agent_id, include_global=include_global
         )
 
         best_score_hyde = results_hyde[0].get("rerank_score", 0) if results_hyde else 0
