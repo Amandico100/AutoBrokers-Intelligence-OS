@@ -50,6 +50,13 @@ class AgentBase(BaseModel):
     is_subagent: bool = False              # Esconde widget/WhatsApp/canais no front
     allow_direct_chat: bool = False        # SubAgent aparece no chat test para treino
 
+    # Context Package (SPEC-004 / 42A6) — camada declarativa de papel.
+    # Todos opcionais e backward-compatible: se ausentes/None, o runtime segue como antes.
+    agent_role: Optional[str] = None
+    agent_audience: Optional[str] = None
+    blueprint_version: Optional[str] = None
+    context_package: Optional[Dict[str, Any]] = None
+
 
 class AgentCreate(AgentBase):
     company_id: UUID  # Required to associate agent with a company

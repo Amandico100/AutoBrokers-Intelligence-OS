@@ -500,6 +500,35 @@ async def _build_initial_state(
         or "Seja um assistente útil."
     )
 
+    # === CONTEXT PACKAGE (42A6) ===
+    # Bloco declarativo de papel (role/audience/policies), antes das instruções base.
+    # Complementa — não substitui — o agent_system_prompt. Se o agente não tiver
+    # campos declarativos, nada muda (backward-compatible). Entra no static_prompt
+    # (cacheável) por ser estável por agente.
+    try:
+        from .context_package import (
+            get_agent_field,
+            render_context_package_block,
+            should_render_context_package,
+        )
+
+        if real_agent_data and should_render_context_package(real_agent_data):
+            cp_block = render_context_package_block(real_agent_data)
+            if cp_block:
+                base_instructions = f"{cp_block}\n\n{base_instructions}"
+                logger.info(
+                    "[ContextPackage] present=true "
+                    f"role={get_agent_field(real_agent_data, 'agent_role')} "
+                    f"audience={get_agent_field(real_agent_data, 'agent_audience')} "
+                    f"blueprint_version={get_agent_field(real_agent_data, 'blueprint_version')}"
+                )
+            else:
+                logger.info("[ContextPackage] present=false")
+        else:
+            logger.info("[ContextPackage] present=false")
+    except Exception as e:  # noqa: BLE001 — nunca pode quebrar o chat
+        logger.warning(f"[ContextPackage] erro ignorado: {type(e).__name__}")
+
     # === HTTP TOOLS ===
     allowed_http_tools = []
     if agent_id and supabase_client:
