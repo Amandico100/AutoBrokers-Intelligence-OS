@@ -168,7 +168,27 @@ async def rag_health(_: bool = Depends(require_master_admin)):
         qdrant_ok = True
     except Exception as e:  # noqa: BLE001
         logger.warning(f"[RAG health] qdrant indisponível: {type(e).__name__}")
-    return {"documents_route": True, "minio": minio_ok, "qdrant": qdrant_ok}
+
+    # Reranker (sem expor chave; safe_to_run=True por causa do fallback de score + rescue).
+    reranker_health = {
+        "configured": False,
+        "provider": "none",
+        "status": "error",
+        "safe_to_run": True,
+    }
+    try:
+        from ..services.rerank_service import get_rerank_service
+
+        reranker_health = get_rerank_service().health()
+    except Exception as e:  # noqa: BLE001
+        logger.warning(f"[RAG health] reranker indisponível: {type(e).__name__}")
+
+    return {
+        "documents_route": True,
+        "minio": minio_ok,
+        "qdrant": qdrant_ok,
+        "reranker": reranker_health,
+    }
 
 
 @router.post("/rag-debug")
@@ -196,6 +216,7 @@ async def rag_debug(request: RagDebugRequest, _: bool = Depends(require_master_a
     chunks_summary = [
         {
             "score": c.get("score"),
+            "score_source": c.get("score_source"),
             "used_in_context": c.get("used_in_context", False),
             "rescue_used": c.get("rescue_used", False),
             "filtered_reason": c.get("filtered_reason"),
@@ -204,11 +225,24 @@ async def rag_debug(request: RagDebugRequest, _: bool = Depends(require_master_a
         for c in chunks
     ]
 
+    # Resumo do reranker (sem expor chave).
+    reranker_summary = None
+    try:
+        from ..services.rerank_service import get_rerank_service
+
+        reranker_summary = get_rerank_service().health()
+    except Exception as e:  # noqa: BLE001
+        logger.warning(f"[RAG debug] reranker health indisponível: {type(e).__name__}")
+
     return {
         "found": result.get("found", False),
         "rescue_used": result.get("rescue_used", False),
-        "max_score": result.get("max_score"),
         "strategy": result.get("strategy"),
+        "max_score": result.get("max_score"),
+        "effective_score": result.get("effective_score"),
+        "score_source": result.get("score_source"),
+        "reranker_available": result.get("reranker_available"),
+        "reranker": reranker_summary,
         "chunks_count": len(chunks),
         "used_in_context_count": sum(1 for c in chunks if c.get("used_in_context")),
         "search_time_ms": result.get("search_time_ms"),

@@ -34,6 +34,37 @@ class RerankService:
                 "⚠️ COHERE_API_KEY não configurada. Reranking será ignorado (Bypass)."
             )
 
+    def is_available(self) -> bool:
+        """True se o cliente Cohere está pronto (sem chamada pesada)."""
+        return self.client is not None
+
+    def health(self) -> Dict[str, Any]:
+        """
+        Status leve do reranker (sem expor chave, sem chamada à API).
+        safe_to_run é sempre True: o SearchService tem fallback de score do
+        Qdrant + lexical rescue, então a ausência do reranker não quebra o RAG.
+        """
+        if not self.api_key:
+            return {
+                "configured": False,
+                "provider": "none",
+                "status": "missing_key",
+                "safe_to_run": True,
+            }
+        if self.client is None:
+            return {
+                "configured": True,
+                "provider": "fallback",
+                "status": "error",
+                "safe_to_run": True,
+            }
+        return {
+            "configured": True,
+            "provider": "cohere",
+            "status": "ok",
+            "safe_to_run": True,
+        }
+
     def rerank(
         self, query: str, docs: List[Dict[str, Any]], top_k: int = 3
     ) -> List[Dict[str, Any]]:

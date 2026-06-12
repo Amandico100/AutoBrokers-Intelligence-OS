@@ -57,6 +57,39 @@ def _rescue_tokenize(text: str) -> List[str]:
     return [t for t in raw if len(t) >= 3 and t not in _RESCUE_STOPWORDS]
 
 
+# === SCORE FALLBACK (41C.1.4) ===
+# Quando o reranker (Cohere) está ausente/bypass, os resultados não trazem
+# 'rerank_score'. Antes isso virava 0 e descartava bons resultados. Aqui usamos
+# o score bruto do Qdrant como fallback observável (não inventa relevância).
+_SCORE_KEYS = ("rerank_score", "score", "similarity", "qdrant_score")
+
+
+def _get_effective_score(result: Dict) -> float:
+    """Primeiro score numérico disponível (rerank > qdrant > 0). Puro."""
+    if not result:
+        return 0.0
+    for key in _SCORE_KEYS:
+        val = result.get(key)
+        if val is not None:
+            try:
+                return float(val)
+            except (TypeError, ValueError):
+                continue
+    return 0.0
+
+
+def _get_score_source(result: Dict) -> str:
+    """Origem do score efetivo: 'rerank' | 'qdrant' | 'fallback_zero'."""
+    if not result:
+        return "fallback_zero"
+    if result.get("rerank_score") is not None:
+        return "rerank"
+    for key in ("score", "similarity", "qdrant_score"):
+        if result.get(key) is not None:
+            return "qdrant"
+    return "fallback_zero"
+
+
 def _lexical_rescue_match(query: str, results: List[Dict]) -> bool:
     """
     True quando há correspondência lexical forte entre a pergunta e o conteúdo
@@ -281,6 +314,16 @@ class SearchService:
             f"[Search] smart_search iniciado | company={company_id} | agent={agent_id} | hyde={is_hyde_enabled} | query='{query[:50]}...'"
         )
 
+        # Status do reranker (sem expor chave) — habilita fallback observável.
+        reranker_available = self.reranker.is_available()
+        _rr_health = self.reranker.health()
+        logger.info(
+            f"[Search] Reranker status: configured={_rr_health['configured']} "
+            f"provider={_rr_health['provider']} status={_rr_health['status']}"
+        )
+        if not reranker_available:
+            logger.info("[Search] Reranker bypass detected; using Qdrant score fallback")
+
         # Configuração de Thresholds
         THRESH_HYDE = 0.50  # Novo threshold para ativar HyDE (era 0.80)
         THRESH_MIN = 0.40   # Threshold mínimo para considerar resultado válido
@@ -289,7 +332,12 @@ class SearchService:
         logger.info(f"[Search] Tentativa 1: Híbrida para '{query}'")
         results_std = self._execute_search(company_id, query, query, agent_id=agent_id, include_global=include_global)
 
-        best_score_std = results_std[0].get("rerank_score", 0) if results_std else 0
+        best_score_std = _get_effective_score(results_std[0]) if results_std else 0
+        if results_std:
+            logger.info(
+                f"[Search] Effective score source={_get_score_source(results_std[0])} "
+                f"score={best_score_std:.3f}"
+            )
 
         # Se score já é bom OU HyDE está desativado, retorna direto
         if best_score_std >= THRESH_HYDE or not is_hyde_enabled:
@@ -320,16 +368,24 @@ class SearchService:
                         best_score_std,
                         agent_id,
                         rescue_used=True,
+                        reranker_available=reranker_available,
                     )
                 logger.info(f"[Search] Lexical rescue not activated | score={best_score_std:.3f}")
                 return {
                     "content": "Não encontrei informações suficientes nos documentos internos para responder sua pergunta com segurança.",
-                    "chunks": self._build_chunks_metadata(results_std, filtered_reason="below_threshold"),
+                    "chunks": self._build_chunks_metadata(
+                        results_std,
+                        filtered_reason="below_threshold",
+                        reranker_available=reranker_available,
+                    ),
                     "found": False,
                     "search_time_ms": int((time.time() - start_time) * 1000),
                     "agent_id": agent_id,
                     "strategy": "hybrid_only",
                     "max_score": best_score_std,
+                    "effective_score": best_score_std,
+                    "score_source": _get_score_source(results_std[0]) if results_std else "fallback_zero",
+                    "reranker_available": reranker_available,
                 }
 
             return self._format_response(
@@ -338,6 +394,7 @@ class SearchService:
                 "hybrid_direct",
                 best_score_std,
                 agent_id,
+                reranker_available=reranker_available,
             )
 
         # --- TENTATIVA 2: HyDE (apenas se habilitado e score baixo) ---
@@ -350,7 +407,7 @@ class SearchService:
             company_id, hyde_doc, query, agent_id=agent_id, include_global=include_global
         )
 
-        best_score_hyde = results_hyde[0].get("rerank_score", 0) if results_hyde else 0
+        best_score_hyde = _get_effective_score(results_hyde[0]) if results_hyde else 0
 
         # Comparação: Quem ganhou?
         final_results = (
@@ -386,16 +443,24 @@ class SearchService:
                     final_score,
                     agent_id,
                     rescue_used=True,
+                    reranker_available=reranker_available,
                 )
             logger.info(f"[Search] Lexical rescue not activated | score={final_score:.3f}")
             return {
                 "content": "Não encontrei informações suficientes nos documentos internos para responder sua pergunta com segurança.",
-                "chunks": self._build_chunks_metadata(final_results, filtered_reason="below_threshold"),
+                "chunks": self._build_chunks_metadata(
+                    final_results,
+                    filtered_reason="below_threshold",
+                    reranker_available=reranker_available,
+                ),
                 "found": False,
                 "search_time_ms": int((time.time() - start_time) * 1000),
                 "agent_id": agent_id,
                 "strategy": final_strategy,
                 "max_score": final_score,
+                "effective_score": final_score,
+                "score_source": _get_score_source(final_results[0]) if final_results else "fallback_zero",
+                "reranker_available": reranker_available,
             }
 
         return self._format_response(
@@ -404,10 +469,14 @@ class SearchService:
             final_strategy,
             final_score,
             agent_id,
+            reranker_available=reranker_available,
         )
 
     def _build_chunks_metadata(
-        self, results: List[Dict], filtered_reason: str = None
+        self,
+        results: List[Dict],
+        filtered_reason: str = None,
+        reranker_available: bool = True,
     ) -> List[Dict]:
         """
         Constrói metadados dos chunks para logging/debug.
@@ -416,11 +485,13 @@ class SearchService:
         """
         chunks = []
         for res in results:
-            score = res.get("rerank_score", res.get("score", 0))
+            score = _get_effective_score(res)
             chunks.append({
                 "chunk_id": res.get("document_id"),
                 "agent_id": res.get("agent_id"),
                 "score": round(score, 3),
+                "score_source": _get_score_source(res),
+                "reranker_available": reranker_available,
                 "content_preview": res.get("content", "")[:200] + "...",
                 "metadata": res.get("metadata", {}),
                 "used_in_context": False,
@@ -436,25 +507,28 @@ class SearchService:
         top_score: float,
         agent_id: Optional[str] = None,
         rescue_used: bool = False,
+        reranker_available: bool = True,
     ) -> Dict:
         """
         Formata a resposta aplicando Filtro Dinâmico Rigoroso.
 
         rescue_used: quando True (lexical rescue, 41C.1.3), força a inclusão do
         top result no contexto mesmo com score abaixo do mínimo, e marca o chunk.
+        reranker_available / score_source: observabilidade do fallback (41C.1.4).
         """
         chunks_metadata = []
         content_parts = []
 
         MIN_RELEVANCE = 0.30
 
-        results.sort(
-            key=lambda x: x.get("rerank_score", x.get("score", 0)), reverse=True
-        )
+        results.sort(key=_get_effective_score, reverse=True)
+
+        top_score_source = _get_score_source(results[0]) if results else "fallback_zero"
 
         valid_chunks_count = 0
         for i, res in enumerate(results):
-            score = res.get("rerank_score", res.get("score", 0))
+            score = _get_effective_score(res)
+            score_source = _get_score_source(res)
             doc_name = res.get("metadata", {}).get("document_name", "Doc")
             content = res.get("content", "")
 
@@ -483,6 +557,8 @@ class SearchService:
                 "chunk_id": res.get("document_id"),
                 "agent_id": res.get("agent_id"),
                 "score": round(score, 3),
+                "score_source": score_source,
+                "reranker_available": reranker_available,
                 "content_preview": content[:100] + "...",
                 "metadata": res.get("metadata", {}),
                 "used_in_context": include_in_context,
@@ -507,6 +583,9 @@ class SearchService:
             "search_time_ms": int(duration * 1000),
             "strategy": strategy,
             "max_score": top_score,
+            "effective_score": top_score,
+            "score_source": top_score_source,
+            "reranker_available": reranker_available,
             "valid_chunks_count": valid_chunks_count,
             "agent_id": agent_id,
         }
