@@ -1,12 +1,13 @@
 ---
 > **Status:** canonical  
-> **Versão:** 1.1 — Refoundation & Design Readiness  
-> **Última atualização:** 2026-06-11
+> **Versão:** 1.2 — Refoundation, Design & Intelligence Readiness  
+> **Última atualização:** 2026-06-12
 > **Produto:** AutoBrokers.ai  
 > **Sistema:** AutoBrokers Intelligence OS  
 > **Função:** índice da documentação canônica ativa  
 > **Lei nova:** [SPEC-002](SPEC-002-auxiliares-runtime-smith.md) — Auxiliares usam **Smith Agents/Subagents como runtime** (produto por cima, motor Smith por baixo, Vault governando). Não criar motor paralelo.
 > **Lei nova:** [SPEC-003](SPEC-003-knowledge-rag-memory.md) — arquitetura canônica de **Conhecimento/RAG/Memória** em 8 camadas (global / seguradora / tenant / agent / workflow / case / audit / connector). Reusar o RAG do Smith; **não criar motor de RAG paralelo**.
+> **Lei nova:** [SPEC-004](SPEC-004-agent-intelligence-context-architecture.md) — arquitetura canônica de **Inteligência dos Agentes, papéis, Context Assembly e fronteiras**. AutoBrokers Core, Atendimento, Auxiliares, Corredores, SubAgents, RAG, memória e tools devem permanecer separados e integrados ao runtime Smith.
 >
 > Esta pasta contém a documentação viva que orienta estratégia, UX, runtime, segurança, design e execução.  
 > Documentos históricos em `docs/_archive/` não devem orientar decisões atuais, salvo quando forem explicitamente citados por um documento canônico.
@@ -40,6 +41,7 @@ Documents in `docs/audits`, `docs/plans`, `docs/adr`, and `docs/sql` are histori
 | `ROADMAP-001-execucao.md` | Execution sequence and responsibility boundaries. |
 | `SPEC-002-auxiliares-runtime-smith.md` | Canonical law: Auxiliares = product; Smith Agents/SubAgents = runtime; Vault = governance. |
 | `SPEC-003-knowledge-rag-memory.md` | Canonical Knowledge/RAG/Memory architecture (8 layers, scope/curadoria/versioning, legacy migration). |
+| `SPEC-004-agent-intelligence-context-architecture.md` | Canonical Agent Intelligence, Context Assembly and Role Architecture. Separates AutoBrokers Core, Atendimento, Auxiliares, Corredores, SubAgents, RAG, memory and tools while preserving Smith. |
 
 ## Operating Rule
 
