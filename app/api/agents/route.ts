@@ -6,10 +6,29 @@ import { sessionOptions, SessionData } from '@/lib/iron-session';
 
 export const dynamic = 'force-dynamic';
 
+// Papéis que NÃO pertencem ao chat principal (Core interno da corretora).
+// Attendance/corridor/connector/system são voltados a outros runtimes (SPEC-004/005).
+const NON_CORE_CHAT_ROLES = new Set(['attendance', 'corridor', 'connector', 'system']);
+
+/**
+ * Decide se um agente pertence ao chat principal (AutoBrokers Core).
+ * Inclui agentes legados (sem agent_role) e agentes com agent_role='core'.
+ * Exclui explicitamente papéis não-Core. Backward-compatible.
+ */
+function isCoreChatAgent(role: unknown): boolean {
+  if (role === null || role === undefined) return true; // legado: sem papel declarado
+  if (typeof role !== 'string') return true;            // tipo inesperado: trata como legado
+  const r = role.trim().toLowerCase();
+  if (r === '' || r === 'core') return true;
+  if (NON_CORE_CHAT_ROLES.has(r)) return false;
+  return false; // qualquer outro papel declarado não entra no chat Core
+}
+
 /**
  * GET /api/agents
  *
- * Lists active agents for the logged-in user's company.
+ * Lists active CORE-chat agents for the logged-in user's company.
+ * Excludes Attendance/corridor/connector/system agents (SPEC-005 boundary).
  * Requires: smith_user_session cookie
  */
 export async function GET(request: NextRequest) {
@@ -51,22 +70,46 @@ export async function GET(request: NextRequest) {
     // =============================================
     // FETCH ACTIVE AGENTS
     // =============================================
-    const { data: agents, error: agentsError } = await supabaseAdmin
+    const SELECT_WITH_ROLE = 'id, name, is_subagent, allow_direct_chat, agent_role, agent_audience, blueprint_version';
+    const SELECT_LEGACY = 'id, name, is_subagent, allow_direct_chat';
+
+    let agents: any[] | null = null;
+    let agentsError: any = null;
+
+    ({ data: agents, error: agentsError } = await supabaseAdmin
       .from('agents')
-      .select('id, name, is_subagent, allow_direct_chat')
+      .select(SELECT_WITH_ROLE)
       .eq('company_id', userData.company_id)
       .eq('is_active', true)
-      .order('created_at', { ascending: true });
+      .order('created_at', { ascending: true }));
+
+    // Resiliência a schema: se as colunas de papel não existirem em algum ambiente,
+    // cai para a seleção legada (todos tratados como Core) — chat nunca quebra.
+    if (agentsError) {
+      console.warn('[AGENTS API] role columns unavailable, using legacy select');
+      ({ data: agents, error: agentsError } = await supabaseAdmin
+        .from('agents')
+        .select(SELECT_LEGACY)
+        .eq('company_id', userData.company_id)
+        .eq('is_active', true)
+        .order('created_at', { ascending: true }));
+    }
 
     if (agentsError) {
       console.error('[AGENTS API] Error:', agentsError);
       return NextResponse.json({ error: 'Erro ao buscar agentes' }, { status: 500 });
     }
 
-    // Filter out subagents that don't have allow_direct_chat enabled
-    const chatAgents = (agents || []).filter(
-      (a: any) => !a.is_subagent || a.allow_direct_chat
-    );
+    const allAgents = agents || [];
+
+    // 1) Esconde subagents sem allow_direct_chat (comportamento legado preservado).
+    // 2) Mantém apenas agentes de papel Core/legado no chat principal (boundary SPEC-005).
+    const chatAgents = allAgents
+      .filter((a: any) => !a.is_subagent || a.allow_direct_chat)
+      .filter((a: any) => isCoreChatAgent(a.agent_role));
+
+    // Observabilidade segura: apenas contagens (sem prompt/config/token/PII).
+    console.log(`[AGENTS API] core-chat agents: ${chatAgents.length}/${allAgents.length}`);
 
     return NextResponse.json({ agents: chatAgents });
   } catch (error: any) {
