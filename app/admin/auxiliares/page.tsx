@@ -5,6 +5,7 @@ import { Plus, Edit2, X, Power, Download, Building2, Check, Cpu } from 'lucide-r
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { parseRuntimeConfig, runtimeBadgeLabel } from '@/lib/admin/auxiliary-runtime';
+import { normalizeAuxiliaryContract, auxiliaryContractBadges } from '@/lib/auxiliaries/contract';
 
 type Template = {
   id: string;
@@ -34,8 +35,48 @@ const emptyForm = {
   permissions: '',
   input_schema: '',
   output_schema: '',
+  // Contrato (42A5) — campos auxiliares (não são colunas; viram default_config.contract).
+  c_auxiliary_type: '',
+  c_risk_level: '',
+  c_side_effects: '',
+  c_when_to_use: '',
+  c_when_not_to_use: '',
 };
 type FormData = typeof emptyForm;
+
+const AUX_TYPE_OPTIONS = ['read_only', 'draft_only', 'approval_required', 'external_action', 'workflow', 'agent_based'];
+const SIDE_EFFECT_OPTIONS = ['none', 'draft_only', 'approval_required', 'external_action'];
+const RISK_OPTIONS = ['low', 'medium', 'high', 'critical'];
+
+/** Monta um "source" (formato template) a partir do form, para inferir/normalizar o contrato. */
+function buildContractSource(form: FormData): Record<string, unknown> {
+  let dcObj: Record<string, unknown> = {};
+  if (form.default_config.trim()) {
+    try {
+      const p = JSON.parse(form.default_config);
+      if (p && typeof p === 'object' && !Array.isArray(p)) dcObj = p as Record<string, unknown>;
+    } catch {
+      /* ignore — preview usa {} */
+    }
+  }
+  const explicit: Record<string, unknown> = {};
+  if (form.c_auxiliary_type) explicit.auxiliary_type = form.c_auxiliary_type;
+  if (form.c_risk_level) explicit.risk_level = form.c_risk_level;
+  if (form.c_side_effects) explicit.side_effects = form.c_side_effects;
+  const wtu = form.c_when_to_use.split('\n').map((x) => x.trim()).filter(Boolean);
+  const wntu = form.c_when_not_to_use.split('\n').map((x) => x.trim()).filter(Boolean);
+  if (wtu.length) explicit.when_to_use = wtu;
+  if (wntu.length) explicit.when_not_to_use = wntu;
+  return {
+    slug: form.slug,
+    name: form.name,
+    short_description: form.short_description,
+    description: form.description,
+    requires_human_approval: form.requires_human_approval,
+    uses_external_actions: form.uses_external_actions,
+    default_config: { ...dcObj, contract: explicit },
+  };
+}
 
 function str(v: unknown): string {
   return typeof v === 'string' ? v : '';
@@ -138,6 +179,7 @@ export default function AdminAuxiliaresPage() {
 
   const openEdit = (t: Template) => {
     setEditing(t);
+    const c = normalizeAuxiliaryContract(t);
     setForm({
       name: t.name,
       slug: t.slug,
@@ -156,6 +198,11 @@ export default function AdminAuxiliaresPage() {
       permissions: jsonStr(t.permissions),
       input_schema: jsonStr(t.input_schema),
       output_schema: jsonStr(t.output_schema),
+      c_auxiliary_type: c.auxiliary_type,
+      c_risk_level: c.risk_level,
+      c_side_effects: c.side_effects,
+      c_when_to_use: c.when_to_use.join('\n'),
+      c_when_not_to_use: c.when_not_to_use.join('\n'),
     });
     setFormError('');
     setShowForm(true);
@@ -170,7 +217,31 @@ export default function AdminAuxiliaresPage() {
         : '/api/admin/auxiliaries/templates';
       const method = editing ? 'PATCH' : 'POST';
       const payload: Record<string, unknown> = { ...form };
+      // Campos auxiliares de contrato não são colunas — removê-los do payload.
+      delete payload.c_auxiliary_type;
+      delete payload.c_risk_level;
+      delete payload.c_side_effects;
+      delete payload.c_when_to_use;
+      delete payload.c_when_not_to_use;
       if (editing) delete payload.slug;
+
+      // Mescla o contrato normalizado em default_config.contract (se o JSON for válido).
+      let dcValid = true;
+      if (form.default_config.trim()) {
+        try {
+          JSON.parse(form.default_config);
+        } catch {
+          dcValid = false;
+        }
+      }
+      if (dcValid) {
+        const source = buildContractSource(form);
+        const contract = normalizeAuxiliaryContract(source);
+        const baseDc = { ...(source.default_config as Record<string, unknown>) };
+        delete baseDc.contract;
+        payload.default_config = JSON.stringify({ ...baseDc, contract });
+      }
+
       const res = await fetch(url, {
         method,
         headers: { 'Content-Type': 'application/json' },
@@ -470,6 +541,9 @@ export default function AdminAuxiliaresPage() {
                           {visibilityOf(t)}
                         </span>
                       )}
+                      <span className="rounded-full border border-border px-2 py-0.5 text-[10px] text-muted-foreground">
+                        {auxiliaryContractBadges(t)[0]}
+                      </span>
                     </div>
                   </td>
                   <td className="px-4 py-3">
@@ -562,6 +636,54 @@ export default function AdminAuxiliaresPage() {
                 <input type="checkbox" checked={form.is_active} onChange={(e) => setF({ is_active: e.target.checked })} className="h-4 w-4 accent-[hsl(var(--primary))]" />
                 <span className="text-foreground">Ativo (visível na Galeria)</span>
               </label>
+
+              {/* Contrato do Auxiliar (42A5) — o AutoBrokers Core usa para sugerir/coordenar */}
+              <div className="space-y-3 rounded-lg border border-border bg-background/50 p-3 sm:col-span-2">
+                <p className="text-xs font-medium text-foreground">
+                  Contrato do Auxiliar <span className="text-muted-foreground">(o Core usa para sugerir e coordenar)</span>
+                </p>
+                <div className="grid gap-3 sm:grid-cols-3">
+                  <label className="space-y-1 text-sm">
+                    <span className="text-foreground">Tipo</span>
+                    <select className="w-full rounded-md border border-border bg-background p-2 text-sm" value={form.c_auxiliary_type} onChange={(e) => setF({ c_auxiliary_type: e.target.value })}>
+                      <option value="">(inferir)</option>
+                      {AUX_TYPE_OPTIONS.map((o) => <option key={o} value={o}>{o}</option>)}
+                    </select>
+                  </label>
+                  <label className="space-y-1 text-sm">
+                    <span className="text-foreground">Efeito externo</span>
+                    <select className="w-full rounded-md border border-border bg-background p-2 text-sm" value={form.c_side_effects} onChange={(e) => setF({ c_side_effects: e.target.value })}>
+                      <option value="">(inferir)</option>
+                      {SIDE_EFFECT_OPTIONS.map((o) => <option key={o} value={o}>{o}</option>)}
+                    </select>
+                  </label>
+                  <label className="space-y-1 text-sm">
+                    <span className="text-foreground">Risco</span>
+                    <select className="w-full rounded-md border border-border bg-background p-2 text-sm" value={form.c_risk_level} onChange={(e) => setF({ c_risk_level: e.target.value })}>
+                      <option value="">(inferir)</option>
+                      {RISK_OPTIONS.map((o) => <option key={o} value={o}>{o}</option>)}
+                    </select>
+                  </label>
+                </div>
+                <div className="grid gap-3 sm:grid-cols-2">
+                  <label className="space-y-1 text-sm">
+                    <span className="text-foreground">Quando usar (uma por linha)</span>
+                    <textarea className="w-full rounded-md border border-border bg-background p-2 text-sm" rows={2} value={form.c_when_to_use} onChange={(e) => setF({ c_when_to_use: e.target.value })} />
+                  </label>
+                  <label className="space-y-1 text-sm">
+                    <span className="text-foreground">Quando NÃO usar (uma por linha)</span>
+                    <textarea className="w-full rounded-md border border-border bg-background p-2 text-sm" rows={2} value={form.c_when_not_to_use} onChange={(e) => setF({ c_when_not_to_use: e.target.value })} />
+                  </label>
+                </div>
+                <div className="flex flex-wrap gap-1.5">
+                  {auxiliaryContractBadges(buildContractSource(form)).map((b) => (
+                    <span key={b} className="rounded-full border border-border px-2 py-0.5 text-[11px] text-muted-foreground">{b}</span>
+                  ))}
+                </div>
+                <p className="text-[11px] text-muted-foreground">
+                  Deixe em branco para inferir de aprovação / ação externa / runtime. Aprovação e ação externa vêm dos checkboxes acima. Segredos nunca são salvos no contrato.
+                </p>
+              </div>
 
               <label className="space-y-1 text-sm sm:col-span-2">
                 <span className="text-foreground">System prompt</span>

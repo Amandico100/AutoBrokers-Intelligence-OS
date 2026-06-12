@@ -9,6 +9,7 @@ import {
   TENANT_FALLBACK_COLS,
 } from '@/lib/admin/factory';
 import { parseRuntimeConfig, type RuntimeConfig } from '@/lib/admin/auxiliary-runtime';
+import { normalizeAuxiliaryContract } from '@/lib/auxiliaries/contract';
 import { buildAgentCreatePayload, createAgentViaBackend } from '@/lib/admin/agent-blueprints';
 import { BackendUrlError, getBackendUrl } from '@/lib/backend-url';
 
@@ -118,6 +119,8 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ tem
     default_config: template.default_config,
   };
   const runtime = parseRuntimeConfig(template.default_config, template.slug);
+  // Contrato normalizado (42A5): inferido + override explícito, já sanitizado (sem segredos).
+  const contract = normalizeAuxiliaryContract(template);
 
   const cols = await getTableColumns(supabase, 'tenant_auxiliaries', TENANT_FALLBACK_COLS);
   const hasConfigCol = cols.has('config');
@@ -139,7 +142,7 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ tem
     // Vincula agent só se faltar e o template tiver blueprint.
     if (hasConfigCol && runtime.kind === 'smith_agent_blueprint' && !existingRuntime?.agent_id) {
       const { configRuntime, note } = await resolveRuntimeBinding(runtime, tRow, companyId, req);
-      const nextConfig = { ...((row.config as Record<string, unknown>) || {}), runtime: configRuntime };
+      const nextConfig = { ...((row.config as Record<string, unknown>) || {}), runtime: configRuntime, contract };
       await supabase.from('tenant_auxiliaries').update({ config: nextConfig }).eq('id', row.id);
       return NextResponse.json({ installed: { ...row, config: nextConfig }, already: true, bound: true, note });
     }
@@ -159,7 +162,7 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ tem
     name: displayName,
     display_name: displayName,
     status: typeof body.status === 'string' && body.status.trim() ? body.status.trim() : 'active',
-    config: hasConfigCol ? { ...baseConfig, runtime: configRuntime } : baseConfig,
+    config: hasConfigCol ? { ...baseConfig, runtime: configRuntime, contract } : baseConfig,
     permissions: perms.value ?? {},
   };
 

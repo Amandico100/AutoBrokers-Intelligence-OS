@@ -8,6 +8,7 @@ import { icons } from '@/lib/icons';
 import { fetchTemplates } from '@/lib/auxiliaries/api';
 import type { AuxiliaryTemplate } from '@/lib/auxiliaries/types';
 import { parseRuntimeConfig } from '@/lib/admin/auxiliary-runtime';
+import { auxiliaryContractBadges } from '@/lib/auxiliaries/contract';
 
 const SLUG_HREF: Record<string, string> = {
   'resumo-atendimentos': '/dashboard/auxiliares/galeria/resumo-atendimentos',
@@ -87,6 +88,9 @@ export default function GaleriaAuxiliaresPage() {
                     : rtKind === 'workflow'
                       ? 'Workflow'
                       : undefined;
+              const cardTags = Array.from(
+                new Set([...auxiliaryContractBadges(t).slice(0, 3), ...(rtLabel ? [rtLabel] : [])]),
+              );
               return (
                 <GalleryCard
                   key={t.id || t.slug}
@@ -94,7 +98,7 @@ export default function GaleriaAuxiliaresPage() {
                   title={t.name || t.slug}
                   description={getStr(t, 'description') || 'Resume conversas, destaca pendências e sugere próximos passos.'}
                   category={getStr(t, 'category')}
-                  tags={rtLabel ? [rtLabel] : undefined}
+                  tags={cardTags.length ? cardTags : undefined}
                   status={{ tone: 'success', label: 'Pronto para ativar' }}
                   cta="Ver detalhes"
                   href={href}

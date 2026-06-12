@@ -8,6 +8,7 @@ import { Icon } from '@/components/ui/Icon';
 import { icons } from '@/lib/icons';
 import { fetchInstalled } from '@/lib/auxiliaries/api';
 import type { TenantAuxiliary } from '@/lib/auxiliaries/types';
+import { auxiliaryContractBadges } from '@/lib/auxiliaries/contract';
 
 const TITLES: Record<string, string> = {
   'resumo-atendimentos': 'Resumo de Atendimentos',
@@ -124,8 +125,14 @@ export default function MeusAuxiliaresPage() {
               const slug = it.slug;
               const title = getStr(it, 'display_name') || TITLES[slug] || slug || 'Auxiliar';
               const created = fmtDateShort(getStr(it, 'created_at'));
-              const tags = [tenantRuntimeLabel(it), slug, created ? `criado ${created}` : undefined].filter(
-                (t): t is string => Boolean(t),
+              const tags = Array.from(
+                new Set(
+                  [
+                    ...auxiliaryContractBadges(it).slice(0, 3),
+                    tenantRuntimeLabel(it),
+                    created ? `criado ${created}` : undefined,
+                  ].filter((t): t is string => Boolean(t)),
+                ),
               );
               const href = HREFS[slug] || `/dashboard/auxiliares/galeria/${slug}`;
               return (
