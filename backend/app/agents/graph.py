@@ -735,6 +735,33 @@ Se você descrever em texto, o usuário VÊ UMA LISTA FEIA EM VEZ DO CARROSSEL B
             "base/documento/procedimento interno."
         )
 
+    # === AUXILIARY AWARENESS (42A7) ===
+    # Só para o Core e quando a mensagem indica intenção sobre auxiliares/automação.
+    # Bloco compacto e seguro (sem config/segredo) — entra no dynamic_context.
+    try:
+        from .auxiliary_context import (
+            load_tenant_auxiliaries_for_context,
+            render_auxiliary_context_block,
+            should_load_auxiliary_context,
+        )
+
+        if supabase_client and should_load_auxiliary_context(real_agent_data, user_message):
+            aux_client = supabase_client.client if hasattr(supabase_client, "client") else supabase_client
+            aux_rows = load_tenant_auxiliaries_for_context(aux_client, company_id)
+            if aux_rows:
+                aux_block = render_auxiliary_context_block(aux_rows)
+                if aux_block:
+                    dynamic_context += f"\n\n{aux_block}"
+                    logger.info(f"[AuxContext] loaded count={len(aux_rows)} company={company_id}")
+                else:
+                    logger.info("[AuxContext] skipped reason=empty_block")
+            else:
+                logger.info("[AuxContext] skipped reason=no_active_auxiliaries")
+        else:
+            logger.info("[AuxContext] skipped reason=not_core_or_no_trigger")
+    except Exception as e:  # noqa: BLE001 — awareness nunca pode quebrar o chat
+        logger.warning(f"[AuxContext] error ignored type={type(e).__name__}")
+
     # Prompt completo para uso geral
     composite_prompt = static_prompt + dynamic_context
 
