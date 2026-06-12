@@ -403,6 +403,40 @@ async def create_agent_graph(
     return graph
 
 
+# === RAG PREFETCH (41C.1.2) ===
+# Mensagens triviais (saudações/curtas) não justificam consultar a base.
+_RAG_TRIVIAL_MESSAGES = {
+    "oi", "olá", "ola", "bom dia", "boa tarde", "boa noite",
+    "ok", "okay", "obrigado", "obrigada", "valeu", "tchau",
+    "blz", "beleza", "e aí", "e ai",
+}
+
+# Sinais de intenção de conhecimento (pergunta sobre base/documento/seguro).
+_RAG_INTENT_KEYWORDS = (
+    "qual", "como", "onde", "quando", "documento", "base", "rag",
+    "palavra-chave", "palavra chave", "política", "politica",
+    "procedimento", "seguradora", "apólice", "apolice", "cobertura",
+    "sinistro", "assistência", "assistencia", "cotação", "cotacao",
+)
+
+
+def should_prefetch_rag(user_message: str) -> bool:
+    """
+    Decide deterministicamente se vale a pena pré-buscar a base de conhecimento
+    antes do LLM (recall safety — o LLM pode não emitir o tool_call sozinho).
+    Pura, sem I/O. Não loga conteúdo.
+    """
+    msg = (user_message or "").strip().lower()
+    if not msg:
+        return False
+    if msg in _RAG_TRIVIAL_MESSAGES:
+        return False
+    if any(kw in msg for kw in _RAG_INTENT_KEYWORDS):
+        return True
+    # Perguntas mais longas tendem a precisar de contexto recuperado.
+    return len(msg) > 25
+
+
 async def _build_initial_state(
     user_message: str,
     company_id: str,
@@ -613,6 +647,65 @@ Se você descrever em texto, o usuário VÊ UMA LISTA FEIA EM VEZ DO CARROSSEL B
     elif options.get("web_search"):
         dynamic_context += "\n\n🌐 MODO WEB ATIVO: Use a tool 'web_search'."
 
+    # === RAG PREFETCH DETERMINÍSTICO (41C.1.2) ===
+    # Recall safety: a base é apenas uma tool e o LLM pode responder sem chamá-la.
+    # Aqui pré-buscamos o conhecimento do agente e injetamos no contexto dinâmico.
+    # Não substitui a tool 'knowledge_base_search' (que segue ativa) — é aditivo.
+    rag_prefetch_content = ""
+    rag_prefetch_chunks = []
+    rag_prefetch_time_ms = 0
+    rag_prefetch_strategy = None
+    rag_prefetch_score = None
+    try:
+        if should_prefetch_rag(user_message):
+            is_hyde = True
+            if real_agent_data is not None:
+                is_hyde = bool(real_agent_data.get("is_hyde_enabled", True))
+            logger.info(
+                f"[RAG Prefetch] searching company={company_id} agent={agent_id}"
+            )
+            from ..services.search_service import get_search_service
+
+            _search_service = get_search_service()
+            rag_result = await asyncio.to_thread(
+                _search_service.smart_search,
+                company_id,
+                user_message,
+                str(agent_id) if agent_id else None,
+                is_hyde,
+                False,  # include_global: global continua desativado (41C.2B/SPEC-003)
+            )
+            if rag_result and rag_result.get("found") and rag_result.get("content"):
+                rag_prefetch_content = rag_result.get("content") or ""
+                rag_prefetch_chunks = rag_result.get("chunks") or []
+                rag_prefetch_time_ms = int(rag_result.get("search_time_ms") or 0)
+                rag_prefetch_strategy = rag_result.get("strategy")
+                rag_prefetch_score = rag_result.get("max_score")
+                logger.info(
+                    "[RAG Prefetch] found=true "
+                    f"chunks={len(rag_prefetch_chunks)} "
+                    f"score={rag_prefetch_score} strategy={rag_prefetch_strategy}"
+                )
+            else:
+                logger.info("[RAG Prefetch] no result")
+        else:
+            logger.info("[RAG Prefetch] skipped: greeting/short")
+    except Exception as e:  # noqa: BLE001 — prefetch nunca pode quebrar o chat
+        logger.warning(f"[RAG Prefetch] erro ignorado: {type(e).__name__}")
+
+    if rag_prefetch_content:
+        dynamic_context += (
+            "\n\n=== 📚 CONTEXTO RECUPERADO DA BASE DE CONHECIMENTO ===\n"
+            f"{rag_prefetch_content}\n"
+            "=== FIM DO CONTEXTO RECUPERADO ===\n\n"
+            "INSTRUÇÕES SOBRE O CONTEXTO RECUPERADO:\n"
+            "- Se a resposta estiver no contexto recuperado, responda com base nele.\n"
+            "- Não diga que não encontrou se o contexto recuperado contém a resposta.\n"
+            "- Use a informação recuperada com precisão.\n"
+            "- Não invente informações fora do contexto quando a pergunta for sobre "
+            "base/documento/procedimento interno."
+        )
+
     # Prompt completo para uso geral
     composite_prompt = static_prompt + dynamic_context
 
@@ -628,8 +721,11 @@ Se você descrever em texto, o usuário VÊ UMA LISTA FEIA EM VEZ DO CARROSSEL B
         "system_prompt": composite_prompt,
         "static_prompt": static_prompt,      # 🔥 NEW: Parte cacheável
         "dynamic_context": dynamic_context,  # 🔥 NEW: Parte dinâmica
-        "rag_context": "",
-        "rag_chunks": [],
+        "rag_context": rag_prefetch_content,
+        "rag_chunks": rag_prefetch_chunks,
+        "rag_search_time_ms": rag_prefetch_time_ms,
+        "search_strategy": rag_prefetch_strategy,
+        "retrieval_score": rag_prefetch_score,
         "tools_used": [],
         "llm_response_time_ms": 0,
         "tokens_input": 0,

@@ -573,6 +573,15 @@ def log_node(state: AgentState, supabase_client) -> dict:
                 except Exception:
                     continue
 
+        # Fallback (41C.1.2): sem tool_call, usa as métricas do RAG prefetch.
+        if search_strategy is None:
+            search_strategy = state.get("search_strategy")
+        if retrieval_score is None and state.get("retrieval_score") is not None:
+            try:
+                retrieval_score = float(state.get("retrieval_score"))
+            except (TypeError, ValueError):
+                pass
+
         agent_data = state.get("agent_data") or {}
         agent_id = agent_data.get("id") if agent_data else None
         company_config = state.get("company_config") or {}

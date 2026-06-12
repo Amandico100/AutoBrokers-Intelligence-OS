@@ -88,6 +88,14 @@ class ReprocessRequest(BaseModel):
     strategy: str
 
 
+class RagDebugRequest(BaseModel):
+    """Request model for the master-only RAG retrieval diagnostic."""
+
+    company_id: str
+    agent_id: Optional[str] = None
+    query: str
+
+
 class BenchmarkRequest(BaseModel):
     """Request model for running chunking strategy benchmark"""
 
@@ -161,6 +169,42 @@ async def rag_health(_: bool = Depends(require_master_admin)):
     except Exception as e:  # noqa: BLE001
         logger.warning(f"[RAG health] qdrant indisponível: {type(e).__name__}")
     return {"documents_route": True, "minio": minio_ok, "qdrant": qdrant_ok}
+
+
+@router.post("/rag-debug")
+async def rag_debug(request: RagDebugRequest, _: bool = Depends(require_master_admin)):
+    """
+    Diagnóstico master-only do caminho de retrieval do RAG (41C.1.2).
+    Executa o MESMO smart_search do chat e devolve metadados (sem segredo,
+    sem documento integral): apenas previews curtos (<=160 chars) por chunk.
+    """
+    from ..services.search_service import get_search_service
+
+    search_service = get_search_service()
+    result = await asyncio.to_thread(
+        search_service.smart_search,
+        request.company_id,
+        request.query,
+        request.agent_id,
+        True,   # is_hyde_enabled
+        False,  # include_global continua desativado
+    )
+
+    chunks = result.get("chunks") or []
+    document_ids = sorted({c.get("chunk_id") for c in chunks if c.get("chunk_id")})
+    agent_ids = sorted({c.get("agent_id") for c in chunks if c.get("agent_id")})
+    content_preview = [(c.get("content_preview") or "")[:160] for c in chunks]
+
+    return {
+        "found": result.get("found", False),
+        "max_score": result.get("max_score"),
+        "strategy": result.get("strategy"),
+        "chunks_count": len(chunks),
+        "search_time_ms": result.get("search_time_ms"),
+        "document_ids": document_ids,
+        "agent_ids": agent_ids,
+        "content_preview": content_preview,
+    }
 
 
 @router.post("/upload", response_model=UploadResponse)
