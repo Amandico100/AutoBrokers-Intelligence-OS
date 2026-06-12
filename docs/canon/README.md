@@ -8,6 +8,8 @@
 > **Lei nova:** [SPEC-002](SPEC-002-auxiliares-runtime-smith.md) — Auxiliares usam **Smith Agents/Subagents como runtime** (produto por cima, motor Smith por baixo, Vault governando). Não criar motor paralelo.
 > **Lei nova:** [SPEC-003](SPEC-003-knowledge-rag-memory.md) — arquitetura canônica de **Conhecimento/RAG/Memória** em 8 camadas (global / seguradora / tenant / agent / workflow / case / audit / connector). Reusar o RAG do Smith; **não criar motor de RAG paralelo**.
 > **Lei nova:** [SPEC-004](SPEC-004-agent-intelligence-context-architecture.md) — arquitetura canônica de **Inteligência dos Agentes, papéis, Context Assembly e fronteiras**. AutoBrokers Core, Atendimento, Auxiliares, Corredores, SubAgents, RAG, memória e tools devem permanecer separados e integrados ao runtime Smith.
+> **Lei nova:** [SPEC-005](SPEC-005-atendimento-runtime-architecture.md) — **Atendimento é estado + workflow estruturado** (caso, conversa, corredor, dispatch packet, HITL), executado dentro do Smith. Atendimento **não** é apenas WhatsApp, **não** é RAG e **não** é prompt solto.
+> **Lei nova:** [SPEC-006](SPEC-006-allianz-residencial-corredor-eletricista-mvp.md) — **Allianz Residencial nasce como família de corredor**, com **Eletricista** como primeiro slice MVP (dry-run/HITL), preparada para Encanador, Chaveiro, Desentupimento e Eletrodomésticos sem reescrever o runtime.
 >
 > Esta pasta contém a documentação viva que orienta estratégia, UX, runtime, segurança, design e execução.  
 > Documentos históricos em `docs/_archive/` não devem orientar decisões atuais, salvo quando forem explicitamente citados por um documento canônico.
@@ -42,6 +44,8 @@ Documents in `docs/audits`, `docs/plans`, `docs/adr`, and `docs/sql` are histori
 | `SPEC-002-auxiliares-runtime-smith.md` | Canonical law: Auxiliares = product; Smith Agents/SubAgents = runtime; Vault = governance. |
 | `SPEC-003-knowledge-rag-memory.md` | Canonical Knowledge/RAG/Memory architecture (8 layers, scope/curadoria/versioning, legacy migration). |
 | `SPEC-004-agent-intelligence-context-architecture.md` | Canonical Agent Intelligence, Context Assembly and Role Architecture. Separates AutoBrokers Core, Atendimento, Auxiliares, Corredores, SubAgents, RAG, memory and tools while preserving Smith. |
+| `SPEC-005-atendimento-runtime-architecture.md` | Canonical Atendimento runtime architecture and Attendance Agent boundary. Defines case, conversation, corridor, dispatch packet, HITL, policy evidence, channel abstraction and MVP/post-MVP boundaries. |
+| `SPEC-006-allianz-residencial-corredor-eletricista-mvp.md` | Canonical Allianz Residential Assistance corridor family and Electrician MVP. Defines subcorridors, phases, slots, guardrails, dispatch packet, readiness and golden tests. |
 
 ## Operating Rule
 
