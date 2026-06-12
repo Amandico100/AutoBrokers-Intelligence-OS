@@ -188,6 +188,10 @@ async def rag_health(_: bool = Depends(require_master_admin)):
         "minio": minio_ok,
         "qdrant": qdrant_ok,
         "reranker": reranker_health,
+        # Sinais estáticos de aceitação (41C.1.5) — NÃO alteram retrieval.
+        "include_global_default": False,  # global continua OFF (SPEC-003 / 41C.2B)
+        "minio_bucket": "documents",
+        "qdrant_collection_pattern": "company_{company_id}",
     }
 
 
