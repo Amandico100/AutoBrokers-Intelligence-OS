@@ -83,18 +83,53 @@ def should_load_auxiliary_context(agent_data: Any, user_message: str) -> bool:
     return False
 
 
+# Colunas seguras dos templates (sem renderizar default_config inteiro no prompt).
+_TEMPLATE_COLS = (
+    "id, slug, name, short_description, description, default_config, "
+    "requires_human_approval, uses_external_actions, execution_mode, trigger_type"
+)
+
+
+def _attach_templates(client: Any, rows: List[Dict[str, Any]]) -> None:
+    """Anexa o template relacionado (por template_id) em row['_template'] — fallback de contrato."""
+    ids = list({r.get("template_id") for r in rows if r.get("template_id")})
+    if not ids:
+        return
+    try:
+        resp = client.table("auxiliary_templates").select(_TEMPLATE_COLS).in_("id", ids).execute()
+        tmap = {t.get("id"): t for t in (resp.data or [])}
+    except Exception as e:  # noqa: BLE001
+        logger.warning(f"[AuxContext] template load ignored type={type(e).__name__}")
+        return
+    for r in rows:
+        tid = r.get("template_id")
+        if tid and tid in tmap:
+            r["_template"] = tmap[tid]
+
+
 def load_tenant_auxiliaries_for_context(client: Any, company_id: str, limit: int = _MAX_AUX) -> List[Dict[str, Any]]:
     """Lê tenant_auxiliaries ativos da corretora (campos seguros). [] em erro/vazio."""
     if not client or not company_id:
         return []
     try:
-        resp = (
-            client.table("tenant_auxiliaries")
-            .select("id, slug, status, name, display_name, config")
-            .eq("company_id", str(company_id))
-            .limit(20)
-            .execute()
-        )
+        try:
+            # NÃO seleciona display_name (não existe na tabela) — causa do bug 42A7.
+            resp = (
+                client.table("tenant_auxiliaries")
+                .select("id, template_id, slug, status, name, config")
+                .eq("company_id", str(company_id))
+                .limit(20)
+                .execute()
+            )
+        except Exception:
+            # Fallback resiliente a schema: traz tudo e filtra em memória.
+            resp = (
+                client.table("tenant_auxiliaries")
+                .select("*")
+                .eq("company_id", str(company_id))
+                .limit(20)
+                .execute()
+            )
         rows = resp.data or []
     except Exception as e:  # noqa: BLE001
         logger.warning(f"[AuxContext] error ignored type={type(e).__name__}")
@@ -102,7 +137,9 @@ def load_tenant_auxiliaries_for_context(client: Any, company_id: str, limit: int
 
     inactive = ("archived", "deleted", "disabled", "removed", "inactive")
     active = [r for r in rows if str(r.get("status") or "active").lower() not in inactive and r.get("slug")]
-    return active[:limit]
+    active = active[:limit]
+    _attach_templates(client, active)
+    return active
 
 
 def _summarize_tools(value: Any) -> str:
@@ -129,36 +166,88 @@ def _summarize_knowledge(value: Any) -> str:
     return "/".join(dict.fromkeys(out))
 
 
-def _infer_minimal(slug: str, config: Dict[str, Any]) -> Dict[str, Any]:
-    """Inferência mínima quando não há contrato explícito (genérica, sem hardcode de empresa)."""
-    runtime = config.get("runtime") if isinstance(config.get("runtime"), dict) else {}
+def _read_contract(row: Dict[str, Any]) -> Dict[str, Any]:
+    """Contrato explícito: tenant config.contract → template default_config.contract → {}."""
+    config = row.get("config") if isinstance(row.get("config"), dict) else {}
+    c = config.get("contract") if isinstance(config.get("contract"), dict) else None
+    if c:
+        return c
+    tpl = row.get("_template") if isinstance(row.get("_template"), dict) else {}
+    dc = tpl.get("default_config") if isinstance(tpl.get("default_config"), dict) else {}
+    tc = dc.get("contract") if isinstance(dc.get("contract"), dict) else None
+    return tc or {}
+
+
+def _infer_minimal(slug: str, config: Dict[str, Any], template: Dict[str, Any]) -> Dict[str, Any]:
+    """
+    Inferência mínima quando não há contrato explícito (genérica, sem hardcode de empresa).
+    Usa flags do template (requires_human_approval / uses_external_actions) + runtime, espelhando
+    semanticamente lib/auxiliaries/contract.ts.
+    """
+    template = template or {}
+    runtime: Dict[str, Any] = {}
+    if isinstance(config.get("runtime"), dict):
+        runtime = config["runtime"]
+    elif isinstance(template.get("default_config"), dict) and isinstance(template["default_config"].get("runtime"), dict):
+        runtime = template["default_config"]["runtime"]
     kind = _safe_str(runtime.get("kind"))
+    if isinstance(runtime.get("agent_id"), str) and runtime.get("agent_id"):
+        kind = "smith_agent"
+
+    uses_external = template.get("uses_external_actions") is True
+    rha = template.get("requires_human_approval")
+    requires_approval = rha if isinstance(rha, bool) else uses_external
+
     if "whatsapp" in slug:
         return {
-            "auxiliary_type": "approval_required", "side_effects": "approval_required",
-            "risk_level": "medium", "approval_required": True, "tools": "whatsapp", "knowledge": "",
+            "auxiliary_type": "approval_required" if requires_approval else "external_action",
+            "side_effects": "approval_required" if requires_approval else "external_action",
+            "risk_level": "medium" if requires_approval else "high",
+            "approval_required": True, "tools": "whatsapp", "knowledge": "",
         }
-    aux_type = "agent_based" if kind in ("smith_agent_blueprint", "smith_agent") else "read_only"
+
+    if uses_external and requires_approval:
+        side = "approval_required"
+    elif uses_external:
+        side = "external_action"
+    elif requires_approval:
+        side = "draft_only"
+    else:
+        side = "none"
+    risk = "high" if side == "external_action" else "medium" if side == "approval_required" else "low"
+    if kind == "workflow":
+        atype = "workflow"
+    elif kind in ("smith_agent_blueprint", "smith_agent"):
+        atype = "agent_based"
+    else:
+        atype = {
+            "external_action": "external_action",
+            "approval_required": "approval_required",
+            "draft_only": "draft_only",
+            "none": "read_only",
+        }[side]
     return {
-        "auxiliary_type": aux_type, "side_effects": "none",
-        "risk_level": "low", "approval_required": False, "tools": "", "knowledge": "",
+        "auxiliary_type": atype, "side_effects": side, "risk_level": risk,
+        "approval_required": requires_approval or side in ("approval_required", "external_action"),
+        "tools": "connector" if uses_external else "", "knowledge": "",
     }
 
 
 def normalize_auxiliary_contract_for_context(row: Dict[str, Any]) -> Dict[str, Any]:
-    """Extrai apenas os campos seguros do contrato (ou infere mínimo)."""
+    """Extrai apenas os campos seguros do contrato (tenant → template → inferido)."""
     row = row or {}
     slug = _safe_str(row.get("slug"))
+    template = row.get("_template") if isinstance(row.get("_template"), dict) else {}
     name = (
-        _safe_str(row.get("display_name"))
-        or _safe_str(row.get("name"))
+        _safe_str(row.get("name"))
         or _title_from_slug(slug)
+        or _safe_str(template.get("name"))
         or slug
         or "Auxiliar"
     )
     status = _safe_str(row.get("status"), "active")
     config = row.get("config") if isinstance(row.get("config"), dict) else {}
-    contract = config.get("contract") if isinstance(config.get("contract"), dict) else None
+    contract = _read_contract(row)
 
     if contract:
         approval_obj = contract.get("approval_policy") if isinstance(contract.get("approval_policy"), dict) else {}
@@ -171,11 +260,11 @@ def normalize_auxiliary_contract_for_context(row: Dict[str, Any]) -> Dict[str, A
             "knowledge": _summarize_knowledge(contract.get("requires_knowledge")),
         }
         when = contract.get("when_to_use") if isinstance(contract.get("when_to_use"), list) else []
-        goal = _trunc(_safe_str(contract.get("goal")), _MAX_GOAL)
+        goal = _trunc(_safe_str(contract.get("goal")) or _safe_str(template.get("short_description")), _MAX_GOAL)
         when_short = _trunc("; ".join(str(w) for w in when[:2] if w), _MAX_WHEN)
     else:
-        base = _infer_minimal(slug, config)
-        goal = ""
+        base = _infer_minimal(slug, config, template)
+        goal = _trunc(_safe_str(template.get("short_description")) or _safe_str(template.get("description")), _MAX_GOAL)
         when_short = ""
 
     base.update({"name": name, "slug": slug, "status": status, "goal": goal, "when_to_use": when_short})
@@ -209,6 +298,10 @@ def render_auxiliary_context_block(rows: List[Dict[str, Any]], limit: int = _MAX
     lines += [
         "",
         "Instructions:",
+        "- When the user asks which auxiliaries are installed/available, list ONLY the auxiliaries in this block.",
+        "- Do not invent installed auxiliaries.",
+        "- If an auxiliary is not listed here, say it is not currently shown as installed.",
+        "- You may suggest future auxiliary ideas only if clearly labeled as future suggestions, not installed.",
         "- You may suggest these auxiliaries when relevant to the user's request.",
         "- Do not claim an auxiliary was executed unless a run/tool confirms it.",
         "- External actions require human approval (HITL).",
