@@ -193,17 +193,28 @@ async def rag_debug(request: RagDebugRequest, _: bool = Depends(require_master_a
     chunks = result.get("chunks") or []
     document_ids = sorted({c.get("chunk_id") for c in chunks if c.get("chunk_id")})
     agent_ids = sorted({c.get("agent_id") for c in chunks if c.get("agent_id")})
-    content_preview = [(c.get("content_preview") or "")[:160] for c in chunks]
+    chunks_summary = [
+        {
+            "score": c.get("score"),
+            "used_in_context": c.get("used_in_context", False),
+            "rescue_used": c.get("rescue_used", False),
+            "filtered_reason": c.get("filtered_reason"),
+            "content_preview": (c.get("content_preview") or "")[:160],
+        }
+        for c in chunks
+    ]
 
     return {
         "found": result.get("found", False),
+        "rescue_used": result.get("rescue_used", False),
         "max_score": result.get("max_score"),
         "strategy": result.get("strategy"),
         "chunks_count": len(chunks),
+        "used_in_context_count": sum(1 for c in chunks if c.get("used_in_context")),
         "search_time_ms": result.get("search_time_ms"),
         "document_ids": document_ids,
         "agent_ids": agent_ids,
-        "content_preview": content_preview,
+        "chunks": chunks_summary,
     }
 
 

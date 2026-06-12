@@ -4,7 +4,9 @@ VERSÃO CORRIGIDA: Suporte a filtro por agent_id (Multi-Agent)
 """
 
 import logging
+import re
 import time
+import unicodedata
 from typing import Any, Dict, List, Optional
 
 from fastembed import SparseTextEmbedding
@@ -16,6 +18,90 @@ from .qdrant_service import get_qdrant_service
 from .rerank_service import get_rerank_service
 
 logger = logging.getLogger(__name__)
+
+
+# === LEXICAL RESCUE (41C.1.3) ===
+# Resgata chunks claramente relevantes que o reranker descartou (ex.: Cohere em
+# bypass/erro → sem rerank_score → score=0 → abaixo do THRESH_MIN). Puro, sem I/O,
+# sem hardcode de documento/empresa/agente.
+
+# Termos de intenção de base/validação/seguro (sinal forte quando presentes
+# tanto na pergunta quanto no conteúdo recuperado).
+_RESCUE_INTENT_TERMS = (
+    "palavra-chave", "palavra chave", "validacao", "rag", "base",
+    "documento", "procedimento", "politica", "apolice", "cobertura",
+    "sinistro", "assistencia", "seguradora",
+)
+
+# Stopwords PT-BR comuns (descartadas na tokenização do rescue).
+_RESCUE_STOPWORDS = {
+    "a", "o", "os", "as", "de", "da", "do", "das", "dos", "e", "em",
+    "um", "uma", "uns", "umas", "que", "qual", "quais", "com", "para",
+    "por", "no", "na", "nos", "nas", "ao", "aos", "se", "sua", "seu",
+    "suas", "seus", "meu", "minha", "como", "onde", "quando", "sobre",
+    "ser", "tem", "ha", "essa", "esse", "isso", "ja", "the", "of",
+    "local", "qual_e",
+}
+
+
+def _rescue_strip_accents(text: str) -> str:
+    """Normaliza para minúsculas sem acentos (tolerante)."""
+    norm = unicodedata.normalize("NFKD", (text or "").lower())
+    return "".join(ch for ch in norm if not unicodedata.combining(ch))
+
+
+def _rescue_tokenize(text: str) -> List[str]:
+    """Tokens >=3 chars, sem stopwords, normalizados (mantém hífen/dígitos)."""
+    norm = _rescue_strip_accents(text)
+    raw = re.findall(r"[a-z0-9][a-z0-9\-]*", norm)
+    return [t for t in raw if len(t) >= 3 and t not in _RESCUE_STOPWORDS]
+
+
+def _lexical_rescue_match(query: str, results: List[Dict]) -> bool:
+    """
+    True quando há correspondência lexical forte entre a pergunta e o conteúdo
+    recuperado — usado APENAS quando já existem resultados brutos/rerankeados
+    e o score caiu abaixo do threshold. Nunca transforma resultado vazio em match.
+    """
+    if not results:
+        return False
+
+    combined = " ".join(_rescue_strip_accents(r.get("content") or "") for r in results)
+    if not combined.strip():
+        return False
+
+    q_norm = _rescue_strip_accents(query)
+    intent_terms_norm = [_rescue_strip_accents(t) for t in _RESCUE_INTENT_TERMS]
+
+    # 1) Pergunta sobre "palavra-chave de validação" e o chunk contém a mesma expressão.
+    if "palavra-chave de validacao" in q_norm and "palavra-chave de validacao" in combined:
+        return True
+
+    q_tokens = _rescue_tokenize(query)
+    if not q_tokens:
+        return False
+
+    matched = [t for t in set(q_tokens) if t in combined]
+
+    # 2) Pelo menos 2 tokens relevantes da pergunta aparecem no conteúdo.
+    if len(matched) >= 2:
+        return True
+
+    # 3) Termo de intenção presente na pergunta E no conteúdo + ao menos 1 token compartilhado.
+    intent_in_query = any(t in q_norm for t in intent_terms_norm)
+    intent_in_chunk = any(t in combined for t in intent_terms_norm)
+    if intent_in_query and intent_in_chunk and len(matched) >= 1:
+        return True
+
+    # 4) Token de código/protocolo/palavra-chave (com dígito, hífen ou longo) presente em ambos.
+    code_tokens = [
+        t for t in q_tokens
+        if any(ch.isdigit() for ch in t) or "-" in t or len(t) >= 8
+    ]
+    if any(t in combined for t in code_tokens):
+        return True
+
+    return False
 
 
 class SearchService:
@@ -221,6 +307,21 @@ class SearchService:
                 logger.warning(
                     f"[Search] ⚠️ Score ({best_score_std:.3f}) abaixo do mínimo ({THRESH_MIN})."
                 )
+                # Lexical rescue: chunk claramente relevante descartado por score baixo.
+                if _lexical_rescue_match(query, results_std):
+                    logger.info(
+                        f"[Search] Lexical rescue activated | strategy=hybrid_lexical_rescue | "
+                        f"results={len(results_std)} | score={best_score_std:.3f}"
+                    )
+                    return self._format_response(
+                        results_std,
+                        time.time() - start_time,
+                        "hybrid_lexical_rescue",
+                        best_score_std,
+                        agent_id,
+                        rescue_used=True,
+                    )
+                logger.info(f"[Search] Lexical rescue not activated | score={best_score_std:.3f}")
                 return {
                     "content": "Não encontrei informações suficientes nos documentos internos para responder sua pergunta com segurança.",
                     "chunks": self._build_chunks_metadata(results_std, filtered_reason="below_threshold"),
@@ -269,6 +370,24 @@ class SearchService:
             logger.warning(
                 f"[Search] ⚠️ Falha total. Melhor score ({final_score:.3f}) abaixo do mínimo ({THRESH_MIN})."
             )
+            # Lexical rescue: chunk claramente relevante descartado por score baixo.
+            if _lexical_rescue_match(query, final_results):
+                rescue_strategy = (
+                    "hyde_lexical_rescue" if "hyde" in final_strategy else "hybrid_lexical_rescue"
+                )
+                logger.info(
+                    f"[Search] Lexical rescue activated | strategy={rescue_strategy} | "
+                    f"results={len(final_results)} | score={final_score:.3f}"
+                )
+                return self._format_response(
+                    final_results,
+                    time.time() - start_time,
+                    rescue_strategy,
+                    final_score,
+                    agent_id,
+                    rescue_used=True,
+                )
+            logger.info(f"[Search] Lexical rescue not activated | score={final_score:.3f}")
             return {
                 "content": "Não encontrei informações suficientes nos documentos internos para responder sua pergunta com segurança.",
                 "chunks": self._build_chunks_metadata(final_results, filtered_reason="below_threshold"),
@@ -316,9 +435,13 @@ class SearchService:
         strategy: str,
         top_score: float,
         agent_id: Optional[str] = None,
+        rescue_used: bool = False,
     ) -> Dict:
         """
         Formata a resposta aplicando Filtro Dinâmico Rigoroso.
+
+        rescue_used: quando True (lexical rescue, 41C.1.3), força a inclusão do
+        top result no contexto mesmo com score abaixo do mínimo, e marca o chunk.
         """
         chunks_metadata = []
         content_parts = []
@@ -337,8 +460,9 @@ class SearchService:
 
             is_relevant = score >= MIN_RELEVANCE
             is_fallback = i == 0 and top_score < MIN_RELEVANCE
+            force_rescue = rescue_used and i == 0  # garante o top result no contexto
 
-            include_in_context = is_relevant or is_fallback
+            include_in_context = is_relevant or is_fallback or force_rescue
 
             if include_in_context:
                 quality_tag = (
@@ -355,16 +479,18 @@ class SearchService:
                 if is_relevant:
                     valid_chunks_count += 1
 
-            chunks_metadata.append(
-                {
-                    "chunk_id": res.get("document_id"),
-                    "agent_id": res.get("agent_id"),
-                    "score": round(score, 3),
-                    "content_preview": content[:100] + "...",
-                    "metadata": res.get("metadata", {}),
-                    "used_in_context": include_in_context,
-                }
-            )
+            chunk_meta = {
+                "chunk_id": res.get("document_id"),
+                "agent_id": res.get("agent_id"),
+                "score": round(score, 3),
+                "content_preview": content[:100] + "...",
+                "metadata": res.get("metadata", {}),
+                "used_in_context": include_in_context,
+            }
+            if force_rescue:
+                chunk_meta["rescue_used"] = True
+                chunk_meta["rescue_reason"] = "lexical_match_below_threshold"
+            chunks_metadata.append(chunk_meta)
 
         final_content = "\n\n---\n\n".join(content_parts)
 
@@ -374,7 +500,7 @@ class SearchService:
                 + final_content
             )
 
-        return {
+        response = {
             "content": final_content,
             "chunks": chunks_metadata,
             "found": True,
@@ -384,6 +510,9 @@ class SearchService:
             "valid_chunks_count": valid_chunks_count,
             "agent_id": agent_id,
         }
+        if rescue_used:
+            response["rescue_used"] = True
+        return response
 
 
 # Singleton
