@@ -12,6 +12,7 @@ import {
   RUNTIME_ENGINE,
 } from '@/lib/attendance/corridor-runtime';
 import { resolveRuntimeConfig } from '@/lib/attendance/runtime-config-resolver';
+import { evaluateRuntimeSafetyDecision } from '@/lib/attendance/runtime-safety-policy';
 
 export const dynamic = 'force-dynamic';
 
@@ -176,45 +177,62 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
     }
     const newSlots = { filled: newFilled, missing: newMissing, conflicts: newConflicts };
 
-    // Risco elétrico alto detectado (apenas no slot de risco)
     const safetyNotes: string[] = [];
     const caseUpdate: Record<string, unknown> = {};
-    if (targetSlot === 'risk_indicators' && extraction.riskHigh) {
-      caseUpdate.risk_level = 'high';
-      caseUpdate.priority = 'high';
-      safetyNotes.push('Risco elétrico alto detectado; orientar segurança e considerar handoff humano.');
-    }
-
-    // 10. Próxima pergunta
-    const caseForCompute = { ...caseRow, ...caseUpdate };
-    const runForCompute = { ...(run || {}), slots: newSlots };
-    const step = computeRuntimeStep({
-      caseRow: caseForCompute,
-      run: runForCompute,
-      slotPriority: runtimeConfig.slot_priority,
-    });
-    safetyNotes.push(...step.safetyNotes.filter((n) => !safetyNotes.includes(n)));
 
     let nextSlot: string | null;
     let nextQuestion: string | null;
     let nextStatus: string;
     let nextStepText: string;
     let nextPhase: string | null;
+    let lastAgentAction: string;
+    let safetyTriggered = false;
 
-    if (extraction.ambiguous) {
-      // Re-perguntar o mesmo slot com clarificação.
-      nextSlot = targetSlot;
-      nextQuestion = clarificationForSlot(targetSlot);
-      nextStatus = 'needs_clarification';
-      nextStepText = nextQuestion;
-      nextPhase = null;
+    // Camada de segurança: risco elétrico alto interrompe a coleta normal (42B5E).
+    const safety = evaluateRuntimeSafetyDecision({ caseRow, targetSlot, extraction, filledSlots: newFilled });
+
+    if (safety.triggered) {
+      safetyTriggered = true;
+      caseUpdate.risk_level = safety.risk_level;
+      caseUpdate.priority = safety.priority;
+      caseUpdate.handoff_required = safety.handoff_required;
+      caseUpdate.handoff_reason = safety.handoff_reason;
+      caseUpdate.status = 'handoff';
+      safetyNotes.push(safety.safety_note, 'Ação externa bloqueada neste MVP (dry-run/HITL).');
+      nextSlot = null;
+      nextQuestion = safety.assistant_message;
+      nextStatus = 'safety_handoff';
+      nextStepText = safety.next_step;
+      nextPhase = 'handoff';
+      lastAgentAction = safety.last_agent_action;
     } else {
-      nextSlot = step.selectedSlot;
-      nextQuestion = step.question;
-      nextStatus = step.stepStatus;
-      nextStepText = step.nextStep;
-      nextPhase = step.runPhaseUpdate;
-      if (step.caseStatusUpdate) caseUpdate.status = step.caseStatusUpdate;
+      // 10. Próxima pergunta (fluxo normal / clarificação)
+      const caseForCompute = { ...caseRow };
+      const runForCompute = { ...(run || {}), slots: newSlots };
+      const step = computeRuntimeStep({
+        caseRow: caseForCompute,
+        run: runForCompute,
+        slotPriority: runtimeConfig.slot_priority,
+      });
+      safetyNotes.push(...step.safetyNotes);
+
+      if (extraction.ambiguous) {
+        // Re-perguntar o mesmo slot com clarificação.
+        nextSlot = targetSlot;
+        nextQuestion = clarificationForSlot(targetSlot);
+        nextStatus = 'needs_clarification';
+        nextStepText = nextQuestion;
+        nextPhase = null;
+        lastAgentAction = `clarify:${targetSlot}`;
+      } else {
+        nextSlot = step.selectedSlot;
+        nextQuestion = step.question;
+        nextStatus = step.stepStatus;
+        nextStepText = step.nextStep;
+        nextPhase = step.runPhaseUpdate;
+        if (step.caseStatusUpdate) caseUpdate.status = step.caseStatusUpdate;
+        lastAgentAction = nextQuestion ? `ask:${nextSlot}` : 'slots_complete';
+      }
     }
 
     // 11. Inserir assistant message (com dedupe)
@@ -257,6 +275,9 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
           channel: source,
           engine: RUNTIME_ENGINE,
           slot_priority_source: runtimeConfig.slot_priority_source,
+          safety_decision: safetyTriggered
+            ? { triggered: true, reason: 'high_risk_electrical' }
+            : { triggered: false },
           safety_notes: safetyNotes,
         },
       };
@@ -264,11 +285,7 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
         slots: newSlots,
         diagnostics: newDiagnostics,
         next_step: nextStepText,
-        last_agent_action: extraction.ambiguous
-          ? `clarify:${targetSlot}`
-          : nextQuestion
-            ? `ask:${nextSlot}`
-            : 'slots_complete',
+        last_agent_action: lastAgentAction,
       };
       if (nextPhase) runUpdate.phase = nextPhase;
       const { data: runAfter, error: runErr } = await supabaseAdmin

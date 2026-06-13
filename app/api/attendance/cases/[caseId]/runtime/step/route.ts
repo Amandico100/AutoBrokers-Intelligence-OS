@@ -5,6 +5,8 @@ import { getAdminClient, getCompanyId } from '@/lib/attendance/support-destinati
 import { sessionOptions, SessionData } from '@/lib/iron-session';
 import { computeRuntimeStep, RUNTIME_ENGINE } from '@/lib/attendance/corridor-runtime';
 import { resolveRuntimeConfig } from '@/lib/attendance/runtime-config-resolver';
+import { normalizeSlots } from '@/lib/attendance/handoff-dossier';
+import { evaluateRuntimeSafetyDecision } from '@/lib/attendance/runtime-safety-policy';
 
 export const dynamic = 'force-dynamic';
 
@@ -103,6 +105,96 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
         .limit(10);
       const lastAssistant = (msgs || []).find((m: any) => m.role === 'assistant');
       lastAssistantContent = lastAssistant && typeof lastAssistant.content === 'string' ? lastAssistant.content : null;
+    }
+
+    // Camada de segurança: risco elétrico alto interrompe a coleta normal (42B5E).
+    const filledSlots = normalizeSlots(run?.slots).filled;
+    const safety = evaluateRuntimeSafetyDecision({ caseRow, filledSlots });
+    if (safety.triggered) {
+      let safetyMessageId: string | null = null;
+      const shouldInsertSafety =
+        Boolean(caseRow.conversation_id) && (force || lastAssistantContent !== safety.assistant_message);
+      if (shouldInsertSafety) {
+        const { data: inserted, error: msgErr } = await supabaseAdmin
+          .from('messages')
+          .insert({ conversation_id: caseRow.conversation_id, role: 'assistant', content: safety.assistant_message, type: 'text' })
+          .select('id')
+          .maybeSingle();
+        if (msgErr) console.error('[CORRIDOR RUNTIME] safety message error:', msgErr.message);
+        else safetyMessageId = inserted?.id ?? null;
+      }
+
+      let updatedRunSafety: any = run || null;
+      if (run) {
+        const prevDiag =
+          run.diagnostics && typeof run.diagnostics === 'object' && !Array.isArray(run.diagnostics)
+            ? (run.diagnostics as Record<string, any>)
+            : {};
+        const prevRuntime =
+          prevDiag.runtime && typeof prevDiag.runtime === 'object' && !Array.isArray(prevDiag.runtime)
+            ? prevDiag.runtime
+            : {};
+        const newDiagnostics = {
+          ...prevDiag,
+          mvp_mode: prevDiag.mvp_mode || 'dry_run_hitl',
+          hitl_required: true,
+          external_action_allowed: false,
+          runtime: {
+            ...prevRuntime,
+            last_step_at: new Date().toISOString(),
+            selected_slot: null,
+            question_generated: shouldInsertSafety,
+            external_action_allowed: false,
+            channel: source,
+            engine: RUNTIME_ENGINE,
+            slot_priority_source: runtimeConfig.slot_priority_source,
+            safety_decision: { triggered: true, reason: safety.reason },
+            safety_notes: [safety.safety_note, 'Ação externa bloqueada neste MVP (dry-run/HITL).'],
+          },
+        };
+        const { data: runAfter } = await supabaseAdmin
+          .from('corridor_runs')
+          .update({ diagnostics: newDiagnostics, next_step: safety.next_step, last_agent_action: safety.last_agent_action, phase: 'handoff' })
+          .eq('id', run.id)
+          .eq('company_id', companyId)
+          .select('*')
+          .maybeSingle();
+        if (runAfter) updatedRunSafety = runAfter;
+      }
+
+      const { data: caseAfterSafety } = await supabaseAdmin
+        .from('attendance_cases')
+        .update({
+          status: 'handoff',
+          priority: safety.priority,
+          risk_level: safety.risk_level,
+          handoff_required: safety.handoff_required,
+          handoff_reason: safety.handoff_reason,
+          next_step: safety.next_step,
+        })
+        .eq('id', caseRow.id)
+        .eq('company_id', companyId)
+        .select('*')
+        .maybeSingle();
+
+      console.log(
+        `[CORRIDOR RUNTIME] case=${caseId} safety_handoff=true reason=${safety.reason} message_id=${safetyMessageId}`,
+      );
+
+      return NextResponse.json({
+        ok: true,
+        case: caseAfterSafety || caseRow,
+        corridor_run: updatedRunSafety,
+        step: {
+          selected_slot: null,
+          question: safety.assistant_message,
+          status: 'safety_handoff',
+          external_action_allowed: false,
+          message_id: safetyMessageId,
+          next_step: safety.next_step,
+          safety_notes: [safety.safety_note],
+        },
+      });
     }
 
     // 5-7. Calcular passo (puro), usando a prioridade de slots resolvida
