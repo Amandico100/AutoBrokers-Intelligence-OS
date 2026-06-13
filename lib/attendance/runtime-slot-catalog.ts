@@ -166,6 +166,10 @@ function extractPolicyEvidenceStatus(message: string): SlotExtraction {
   return { filled: false, ambiguous: true, value: null, confidence: 'low' };
 }
 
+/** Núcleo da pergunta de segurança de `risk_indicators` (reutilizado pela política de intake). */
+export const RISK_SAFETY_QUESTION_CORE =
+  'Antes de seguir, preciso só confirmar uma coisa para sua segurança: tem cheiro de queimado, faísca, fumaça ou algum risco imediato aí?';
+
 /** Extrator genérico (slot sem definição dedicada): grava texto limpo, confiança baixa. */
 export function genericExtractor(message: string): SlotExtraction {
   const clean = (message || '').trim();
@@ -193,7 +197,7 @@ export const SLOT_CATALOG: Record<string, SlotDefinition> = {
       const desc = typeof filled.problem_description === 'string' ? filled.problem_description : '';
       const electrical = ELECTRICAL_HINT_RE.test(desc);
       const opener = electrical ? 'Entendi' : 'Obrigada por explicar';
-      return `${opener}. Antes de seguir, preciso só confirmar uma coisa para sua segurança: tem cheiro de queimado, faísca, fumaça ou algum risco imediato aí?`;
+      return `${opener}. ${RISK_SAFETY_QUESTION_CORE}`;
     },
     clarification: () => GENERIC_CLARIFICATION,
     extractor: extractRiskIndicators,

@@ -13,6 +13,7 @@ import {
 } from '@/lib/attendance/corridor-runtime';
 import { resolveRuntimeConfig } from '@/lib/attendance/runtime-config-resolver';
 import { evaluateRuntimeSafetyDecision } from '@/lib/attendance/runtime-safety-policy';
+import { evaluateFirstResponseIntake } from '@/lib/attendance/runtime-intake-policy';
 
 export const dynamic = 'force-dynamic';
 
@@ -134,6 +135,164 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
     const runtimeConfig = resolveRuntimeConfig({ corridorTemplate: template, corridorRun: run || null, caseRow });
 
     const slots = normalizeSlots(run?.slots);
+
+    // First-response intake (42B5F): se NÃO há pergunta ativa do agente e o caso é
+    // editável, a política de baixa fricção decide a primeira resposta.
+    const diagSelected = run?.diagnostics?.runtime?.selected_slot;
+    const lastAction = typeof run?.last_agent_action === 'string' ? run.last_agent_action : '';
+    const hasActiveQuestion =
+      (typeof diagSelected === 'string' && diagSelected.length > 0) || lastAction.startsWith('ask:');
+
+    if (!hasActiveQuestion) {
+      const intake = evaluateFirstResponseIntake({ message: rawMessage, filledSlots: slots.filled });
+      if (intake.applies) {
+        const newFilled = { ...slots.filled };
+        const newMissing = [...slots.missing];
+        const caseUpdate: Record<string, unknown> = {};
+        const safetyNotes: string[] = [];
+        let assistantMessage = intake.assistant_message;
+        let lastAgentAction = intake.last_agent_action;
+        let selectedForDiag: string | null = intake.prime_slot;
+        let runPhase: string | null = null;
+        let safetyTriggered = false;
+
+        if (intake.kind === 'high_risk_described') {
+          const riskExtraction = extractSlotValue('risk_indicators', rawMessage);
+          const safety = evaluateRuntimeSafetyDecision({
+            caseRow,
+            targetSlot: 'risk_indicators',
+            extraction: riskExtraction,
+            filledSlots: slots.filled,
+          });
+          if (safety.triggered) {
+            safetyTriggered = true;
+            newFilled.risk_indicators = riskExtraction.value;
+            const idx = newMissing.indexOf('risk_indicators');
+            if (idx >= 0) newMissing.splice(idx, 1);
+            caseUpdate.status = 'handoff';
+            caseUpdate.priority = safety.priority;
+            caseUpdate.risk_level = safety.risk_level;
+            caseUpdate.handoff_required = safety.handoff_required;
+            caseUpdate.handoff_reason = safety.handoff_reason;
+            assistantMessage = safety.assistant_message;
+            lastAgentAction = 'safety_handoff:first_response';
+            selectedForDiag = null;
+            runPhase = 'handoff';
+            safetyNotes.push(safety.safety_note, 'Ação externa bloqueada neste MVP (dry-run/HITL).');
+          }
+        } else if (intake.kind === 'problem_already_described') {
+          if (caseRow.status === 'new' || caseRow.status === 'triage') caseUpdate.status = 'collecting_slots';
+        }
+
+        if (intake.should_update_problem_description && intake.problem_description) {
+          newFilled.problem_description = intake.problem_description;
+        }
+        caseUpdate.next_step = intake.next_step;
+        if (!safetyTriggered) {
+          safetyNotes.push(
+            'Ação externa bloqueada neste MVP (dry-run/HITL).',
+            'Não confirmar cobertura sem evidência de apólice.',
+          );
+        }
+
+        // Inserir UMA mensagem assistant (com dedupe)
+        let assistantMessageId: string | null = null;
+        const shouldInsertAssistant =
+          Boolean(caseRow.conversation_id) && Boolean(assistantMessage) && (force || lastAssistantContent !== assistantMessage);
+        if (shouldInsertAssistant && assistantMessage) {
+          const { data: inserted, error: aErr } = await supabaseAdmin
+            .from('messages')
+            .insert({ conversation_id: caseRow.conversation_id, role: 'assistant', content: assistantMessage, type: 'text' })
+            .select('id')
+            .maybeSingle();
+          if (aErr) console.error('[CORRIDOR REPLY] intake assistant message error:', aErr.message);
+          else assistantMessageId = inserted?.id ?? null;
+        }
+
+        // Persistir no corridor_run (slots + diagnostics + next_step + last_agent_action)
+        let updatedRun: any = run || null;
+        if (run) {
+          const prevDiag =
+            run.diagnostics && typeof run.diagnostics === 'object' && !Array.isArray(run.diagnostics)
+              ? (run.diagnostics as Record<string, any>)
+              : {};
+          const prevRuntime =
+            prevDiag.runtime && typeof prevDiag.runtime === 'object' && !Array.isArray(prevDiag.runtime)
+              ? prevDiag.runtime
+              : {};
+          const newDiagnostics = {
+            ...prevDiag,
+            mvp_mode: prevDiag.mvp_mode || 'dry_run_hitl',
+            hitl_required: true,
+            external_action_allowed: false,
+            runtime: {
+              ...prevRuntime,
+              last_step_at: new Date().toISOString(),
+              selected_slot: selectedForDiag,
+              question_generated: Boolean(assistantMessage),
+              external_action_allowed: false,
+              channel: source,
+              engine: RUNTIME_ENGINE,
+              slot_priority_source: runtimeConfig.slot_priority_source,
+              intake_policy: { applied: true, kind: intake.kind },
+              safety_decision: safetyTriggered ? { triggered: true, reason: 'high_risk_electrical' } : { triggered: false },
+              safety_notes: safetyNotes,
+            },
+          };
+          const runUpdate: Record<string, unknown> = {
+            slots: { filled: newFilled, missing: newMissing, conflicts: slots.conflicts },
+            diagnostics: newDiagnostics,
+            next_step: intake.next_step,
+            last_agent_action: lastAgentAction,
+          };
+          if (runPhase) runUpdate.phase = runPhase;
+          const { data: runAfter } = await supabaseAdmin
+            .from('corridor_runs')
+            .update(runUpdate)
+            .eq('id', run.id)
+            .eq('company_id', companyId)
+            .select('*')
+            .maybeSingle();
+          if (runAfter) updatedRun = runAfter;
+        }
+
+        const { data: caseAfter } = await supabaseAdmin
+          .from('attendance_cases')
+          .update(caseUpdate)
+          .eq('id', caseRow.id)
+          .eq('company_id', companyId)
+          .select('*')
+          .maybeSingle();
+
+        console.log(
+          `[CORRIDOR REPLY] case=${caseId} intake_kind=${intake.kind} safety=${safetyTriggered} user_msg=${userMessageId} assistant_msg=${assistantMessageId}`,
+        );
+
+        return NextResponse.json({
+          ok: true,
+          case: caseAfter || { ...caseRow, ...caseUpdate },
+          corridor_run: updatedRun,
+          intake: {
+            target_slot: null,
+            kind: intake.kind,
+            filled: false,
+            status: intake.kind,
+            extracted_value: null,
+            confidence: 'low',
+            conflicts: [],
+          },
+          next_step: {
+            selected_slot: selectedForDiag,
+            question: assistantMessage,
+            status: intake.kind,
+            message_id: assistantMessageId,
+          },
+          messages: { user_message_id: userMessageId, assistant_message_id: assistantMessageId },
+          external_action_allowed: false,
+        });
+      }
+    }
+
     const targetSlot = resolveTargetSlot(run, slots.filled, runtimeConfig.slot_priority);
 
     // Sem slot alvo: nada pendente. Computa estado e retorna.
