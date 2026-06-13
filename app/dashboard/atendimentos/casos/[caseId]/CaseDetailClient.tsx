@@ -14,6 +14,7 @@ import {
   subcorridorLabel,
   verificationPill,
 } from '@/lib/attendance/labels';
+import HandoffDossierPanel from './HandoffDossierPanel';
 
 type Detail = {
   case?: any;
@@ -294,20 +295,10 @@ export default function CaseDetailClient({ caseId }: { caseId: string }) {
             </Section>
 
             {/* Dossiê / Handoff humano */}
-            <Section title="Dossiê / Handoff humano">
-              <Field label="Handoff necessário" value={c.handoff_required ? 'sim' : 'não'} />
-              {c.handoff_reason && <Field label="Motivo" value={c.handoff_reason} />}
-              <div className="mt-2 rounded-lg border border-border bg-surface-2 p-3 text-xs text-muted-foreground">
-                <p className="mb-1 font-medium text-foreground">Resumo para o humano</p>
-                <p>{c.summary || '—'}</p>
-                <p className="mt-2"><span className="font-medium text-foreground">Coletados:</span> {filledKeys.length} · <span className="font-medium text-foreground">Faltantes:</span> {missing.length}</p>
-                <p className="mt-1"><span className="font-medium text-foreground">Próximo passo:</span> {c.next_step || '—'}</p>
-              </div>
-              <p className="mt-2 text-[11px] text-muted-foreground">
-                Destino humano: <span className="text-foreground">ainda não conectado neste MVP</span>. Quando o agente
-                não conseguir resolver, ele deve montar este dossiê e transferir para o humano configurado.
-              </p>
-            </Section>
+            <HandoffDossierPanel
+              caseId={caseId}
+              autoLoad={Boolean(c.handoff_required) || c.status === 'handoff'}
+            />
           </div>
 
           {/* ===== Coluna lateral ===== */}
