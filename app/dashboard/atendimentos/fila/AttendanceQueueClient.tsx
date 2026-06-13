@@ -1,6 +1,7 @@
 'use client';
 
 import { useEffect, useState } from 'react';
+import Link from 'next/link';
 
 import { DetailHeader, StatusPill, type StatusTone } from '@/components/patterns';
 import { Icon } from '@/components/ui/Icon';
@@ -320,11 +321,21 @@ export default function AttendanceQueueClient() {
             className="h-full w-full max-w-md overflow-y-auto border-l border-border bg-card p-5"
             onClick={(e) => e.stopPropagation()}
           >
-            <div className="mb-4 flex items-center justify-between">
+            <div className="mb-4 flex items-center justify-between gap-2">
               <h2 className="text-sm font-semibold text-foreground">Detalhe do caso</h2>
-              <button onClick={() => setDetailOpen(false)} className="text-muted-foreground hover:text-foreground">
-                <Icon icon={icons.negado} size={16} />
-              </button>
+              <div className="flex items-center gap-2">
+                {detail?.case?.id && (
+                  <Link
+                    href={`/dashboard/atendimentos/casos/${detail.case.id}`}
+                    className="inline-flex items-center gap-1 rounded-lg border border-border bg-surface-2 px-2.5 py-1 text-xs font-medium text-foreground hover:bg-surface-2/70"
+                  >
+                    Abrir caso <Icon icon={icons.avancar} size={14} />
+                  </Link>
+                )}
+                <button onClick={() => setDetailOpen(false)} className="text-muted-foreground hover:text-foreground">
+                  <Icon icon={icons.negado} size={16} />
+                </button>
+              </div>
             </div>
 
             {detailLoading ? (
