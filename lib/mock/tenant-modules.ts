@@ -23,7 +23,7 @@ export type GalleryItem = {
 // ---------- Atendimentos ----------
 export const atendimentoAreas: ModuleArea[] = [
   { key: 'fila', icon: icons.fila, title: 'Fila', description: 'Casos aguardando atendimento.', href: '/dashboard/atendimentos/fila', status: { tone: 'info', label: 'MVP ativo' } },
-  { key: 'casos', icon: icons.casos, title: 'Casos', description: 'Detalhe, timeline e ações.', href: '/dashboard/atendimentos/casos', status: { tone: 'neutral', label: 'Em breve' } },
+  { key: 'casos', icon: icons.casos, title: 'Casos', description: 'Detalhe, timeline e ações.', href: '/dashboard/atendimentos/casos', status: { tone: 'info', label: 'MVP ativo' } },
   { key: 'conversas', icon: icons.conversas, title: 'Conversas', description: 'Histórico por canal.', href: '/dashboard/atendimentos/conversas', status: { tone: 'neutral', label: 'Em breve' } },
   { key: 'segurados', icon: icons.equipe, title: 'Segurados', description: 'Clientes e apólices.', href: '/dashboard/atendimentos/segurados', status: { tone: 'neutral', label: 'Em breve' } },
 ];
