@@ -169,3 +169,162 @@ export function computeRuntimeStep(input: { caseRow: any; run: any }): RuntimeSt
     safetyNotes,
   };
 }
+
+// ----------------------------------------------------------------------------
+// Extração de slot a partir da resposta do cliente (42B5C).
+// Heurística leve, segura e que NÃO inventa: na dúvida marca como ambíguo e
+// pede clarificação. Nunca valida apólice, nunca consulta InfoCap.
+// ----------------------------------------------------------------------------
+
+export type SlotConfidence = 'low' | 'medium' | 'high';
+
+export interface SlotExtraction {
+  /** Conseguiu um valor utilizável para gravar em filled[slot]. */
+  filled: boolean;
+  /** Resposta ambígua/impossível: manter slot em missing e pedir clarificação. */
+  ambiguous: boolean;
+  value: unknown;
+  confidence: SlotConfidence;
+  /** risk_indicators: indica risco elétrico alto detectado. */
+  riskHigh?: boolean;
+  /** Motivo de conflito (não-ambíguo) a registrar, ex.: address_not_confirmed. */
+  conflictReason?: string;
+}
+
+// Sinais de risco elétrico imediato.
+const RISK_SIGNAL_PATTERNS: Array<{ re: RegExp; signal: string }> = [
+  { re: /fuma[çc]a/i, signal: 'smoke' },
+  { re: /fa[ií]sca/i, signal: 'spark' },
+  { re: /queimad|cheiro de queim/i, signal: 'burning' },
+  { re: /choque/i, signal: 'shock' },
+  { re: /fogo|inc[eê]ndio/i, signal: 'fire' },
+  { re: /derretend|derretid/i, signal: 'melting' },
+  { re: /curto(-| )?circuito|curto/i, signal: 'short_circuit' },
+];
+
+// Negação/segurança: "não", "sem", "nenhum", "tudo normal", etc.
+const RISK_NEGATION_RE = /^\s*n[ãa]o\b|\bsem\b|nenhum|\bnada\b|tranquil|tudo (normal|certo|ok)|sem risco/i;
+
+const TRUNCATE_RAW = 500;
+
+function truncate(s: string, n = TRUNCATE_RAW): string {
+  return s.length > n ? s.slice(0, n) : s;
+}
+
+function extractRiskIndicators(message: string): SlotExtraction {
+  const signals: string[] = [];
+  for (const { re, signal } of RISK_SIGNAL_PATTERNS) {
+    if (re.test(message) && !signals.includes(signal)) signals.push(signal);
+  }
+  const negated = RISK_NEGATION_RE.test(message);
+  const hasImmediateRisk = signals.length > 0 && !negated;
+  return {
+    filled: true,
+    ambiguous: false,
+    confidence: signals.length > 0 ? 'medium' : 'low',
+    riskHigh: hasImmediateRisk,
+    value: {
+      raw: truncate(message),
+      has_immediate_risk: hasImmediateRisk,
+      risk_level: hasImmediateRisk ? 'high' : 'low',
+      signals: hasImmediateRisk ? signals : [],
+    },
+  };
+}
+
+function extractAffectedArea(message: string): SlotExtraction {
+  const clean = message.trim();
+  if (clean.length < 2) {
+    return { filled: false, ambiguous: true, value: null, confidence: 'low' };
+  }
+  return { filled: true, ambiguous: false, value: truncate(clean), confidence: 'medium' };
+}
+
+function extractElectricalIssueType(message: string): SlotExtraction {
+  const m = message.toLowerCase();
+  let normalized: string;
+  if (/disjuntor|desarm|caiu a chave|cai a chave|disjunta/.test(m)) normalized = 'breaker_tripping';
+  else if (/sem luz|sem energia|sem for[çc]a|apagou|falta de energia|sem eletricidade/.test(m)) normalized = 'no_power';
+  else if (/tomada/.test(m)) normalized = 'outlet_issue';
+  else if (/chuveiro/.test(m)) normalized = 'shower_issue';
+  else if (/fia[çc][ãa]o|\bfio\b|\bfios\b/.test(m)) normalized = 'wiring_issue';
+  else normalized = 'other';
+  return {
+    filled: true,
+    ambiguous: false,
+    confidence: normalized === 'other' ? 'low' : 'medium',
+    value: { raw: truncate(message), normalized },
+  };
+}
+
+function extractAddressConfirmed(message: string): SlotExtraction {
+  const m = message.toLowerCase();
+  // unknown primeiro ("não sei" contém "não").
+  if (/n[ãa]o sei|preciso verificar|talvez|acho que|n[ãa]o tenho certeza/.test(m)) {
+    return { filled: false, ambiguous: true, value: null, confidence: 'low' };
+  }
+  if (/n[ãa]o\b|mudou|outro endere|n[ãa]o é|nao e|trocou|mudei|diferente/.test(m)) {
+    return {
+      filled: true,
+      ambiguous: false,
+      confidence: 'medium',
+      conflictReason: 'address_not_confirmed',
+      value: { raw: truncate(message), confirmed: false },
+    };
+  }
+  if (/\bsim\b|isso|confere|certo|exato|é esse|e esse|mesmo|correto|cadastrad|igual/.test(m)) {
+    return { filled: true, ambiguous: false, confidence: 'medium', value: { raw: truncate(message), confirmed: true } };
+  }
+  return { filled: false, ambiguous: true, value: null, confidence: 'low' };
+}
+
+function extractPolicyEvidenceStatus(message: string): SlotExtraction {
+  const m = message.toLowerCase();
+  if (/n[ãa]o tenho|n[ãa]o sei|n[ãa]o acho|perdi|sem ap[óo]lice|n[ãa]o possuo/.test(m)) {
+    return { filled: true, ambiguous: false, confidence: 'medium', value: { raw: truncate(message), status: 'not_available' } };
+  }
+  if (/vou mandar|depois|mais tarde|te mando|te envio|envio depois|procurar|vou achar|vou ver/.test(m)) {
+    return { filled: true, ambiguous: false, confidence: 'medium', value: { raw: truncate(message), status: 'pending' } };
+  }
+  if (/\d{4,}/.test(m) || /tenho|enviei|mandei|segue|foto|documento|ap[óo]lice|n[úu]mero/.test(m)) {
+    return { filled: true, ambiguous: false, confidence: 'medium', value: { raw: truncate(message), status: 'provided' } };
+  }
+  return { filled: false, ambiguous: true, value: null, confidence: 'low' };
+}
+
+/** Extrai valor seguro para o slot a partir da resposta do cliente. */
+export function extractSlotValue(slot: string, rawMessage: string): SlotExtraction {
+  const message = (rawMessage || '').trim();
+  if (!message) return { filled: false, ambiguous: true, value: null, confidence: 'low' };
+  switch (slot) {
+    case 'risk_indicators':
+      return extractRiskIndicators(message);
+    case 'affected_area':
+      return extractAffectedArea(message);
+    case 'electrical_issue_type':
+      return extractElectricalIssueType(message);
+    case 'property_address_confirmed':
+      return extractAddressConfirmed(message);
+    case 'policy_evidence_status':
+      return extractPolicyEvidenceStatus(message);
+    default:
+      // Slot genérico: grava texto limpo, confiança baixa.
+      return { filled: true, ambiguous: false, value: truncate(message), confidence: 'low' };
+  }
+}
+
+/** Pergunta curta de clarificação quando a resposta foi ambígua. */
+export function clarificationForSlot(slot: string): string {
+  switch (slot) {
+    case 'affected_area':
+      return 'Só para confirmar: em qual cômodo ou parte da casa está o problema? Por exemplo cozinha, sala ou área externa.';
+    case 'property_address_confirmed':
+      return 'Sem problema. Você consegue confirmar se o endereço do imóvel com o problema é o mesmo da apólice? Pode responder só sim ou não.';
+    case 'policy_evidence_status':
+      return 'Só para eu entender: você tem em mãos o número da apólice ou um documento/foto dela, ou prefere enviar depois?';
+    case 'electrical_issue_type':
+      return 'Pode me dizer com outras palavras o que está acontecendo com a parte elétrica? Por exemplo: sem energia, disjuntor desarmando ou uma tomada parada.';
+    default:
+      return 'Pode me explicar um pouco melhor, por favor? Quero registrar certinho para te ajudar.';
+  }
+}
