@@ -11,6 +11,7 @@ import {
   selectNextSlot,
   RUNTIME_ENGINE,
 } from '@/lib/attendance/corridor-runtime';
+import { resolveRuntimeConfig } from '@/lib/attendance/runtime-config-resolver';
 
 export const dynamic = 'force-dynamic';
 
@@ -18,7 +19,11 @@ const NON_RUNTIME_STATUSES = new Set(['closed', 'cancelled', 'handoff']);
 const MAX_MESSAGE_LENGTH = 2000;
 
 /** Slot alvo: diagnostics.runtime.selected_slot → last_agent_action ask:<slot> → próximo faltante. */
-function resolveTargetSlot(run: any, filled: Record<string, unknown>): string | null {
+function resolveTargetSlot(
+  run: any,
+  filled: Record<string, unknown>,
+  slotPriority: readonly string[],
+): string | null {
   const diagSlot = run?.diagnostics?.runtime?.selected_slot;
   if (typeof diagSlot === 'string' && diagSlot) return diagSlot;
   const action = typeof run?.last_agent_action === 'string' ? run.last_agent_action : '';
@@ -26,7 +31,7 @@ function resolveTargetSlot(run: any, filled: Record<string, unknown>): string | 
     const slot = action.slice('ask:'.length).trim();
     if (slot) return slot;
   }
-  return selectNextSlot(filled);
+  return selectNextSlot(filled, slotPriority);
 }
 
 /**
@@ -115,12 +120,24 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
       else userMessageId = inserted?.id ?? null;
     }
 
+    // corridor_template (best-effort) → Runtime Config Resolver (slot_priority sem hardcode)
+    let template: any = null;
+    if (run?.corridor_template_id) {
+      const { data: tpl } = await supabaseAdmin
+        .from('corridor_templates')
+        .select('id, corridor_key, subcorridor_key, required_slots, metadata')
+        .eq('id', run.corridor_template_id)
+        .maybeSingle();
+      template = tpl || null;
+    }
+    const runtimeConfig = resolveRuntimeConfig({ corridorTemplate: template, corridorRun: run || null, caseRow });
+
     const slots = normalizeSlots(run?.slots);
-    const targetSlot = resolveTargetSlot(run, slots.filled);
+    const targetSlot = resolveTargetSlot(run, slots.filled, runtimeConfig.slot_priority);
 
     // Sem slot alvo: nada pendente. Computa estado e retorna.
     if (!targetSlot) {
-      const step = computeRuntimeStep({ caseRow, run: run || null });
+      const step = computeRuntimeStep({ caseRow, run: run || null, slotPriority: runtimeConfig.slot_priority });
       await supabaseAdmin
         .from('attendance_cases')
         .update({ next_step: step.nextStep, ...(step.caseStatusUpdate ? { status: step.caseStatusUpdate } : {}) })
@@ -171,7 +188,11 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
     // 10. Próxima pergunta
     const caseForCompute = { ...caseRow, ...caseUpdate };
     const runForCompute = { ...(run || {}), slots: newSlots };
-    const step = computeRuntimeStep({ caseRow: caseForCompute, run: runForCompute });
+    const step = computeRuntimeStep({
+      caseRow: caseForCompute,
+      run: runForCompute,
+      slotPriority: runtimeConfig.slot_priority,
+    });
     safetyNotes.push(...step.safetyNotes.filter((n) => !safetyNotes.includes(n)));
 
     let nextSlot: string | null;
@@ -235,6 +256,7 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
           external_action_allowed: false,
           channel: source,
           engine: RUNTIME_ENGINE,
+          slot_priority_source: runtimeConfig.slot_priority_source,
           safety_notes: safetyNotes,
         },
       };

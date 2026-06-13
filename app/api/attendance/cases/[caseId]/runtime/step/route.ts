@@ -4,6 +4,7 @@ import { getIronSession } from 'iron-session';
 import { getAdminClient, getCompanyId } from '@/lib/attendance/support-destinations';
 import { sessionOptions, SessionData } from '@/lib/iron-session';
 import { computeRuntimeStep, RUNTIME_ENGINE } from '@/lib/attendance/corridor-runtime';
+import { resolveRuntimeConfig } from '@/lib/attendance/runtime-config-resolver';
 
 export const dynamic = 'force-dynamic';
 
@@ -79,6 +80,18 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
       .limit(1)
       .maybeSingle();
 
+    // 3. corridor_template (best-effort; resolve slot_priority sem hardcode)
+    let template: any = null;
+    if (run?.corridor_template_id) {
+      const { data: tpl } = await supabaseAdmin
+        .from('corridor_templates')
+        .select('id, corridor_key, subcorridor_key, required_slots, metadata')
+        .eq('id', run.corridor_template_id)
+        .maybeSingle();
+      template = tpl || null;
+    }
+    const runtimeConfig = resolveRuntimeConfig({ corridorTemplate: template, corridorRun: run || null, caseRow });
+
     // 4. Mensagens (para evitar repetir a mesma pergunta)
     let lastAssistantContent: string | null = null;
     if (caseRow.conversation_id) {
@@ -92,8 +105,8 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
       lastAssistantContent = lastAssistant && typeof lastAssistant.content === 'string' ? lastAssistant.content : null;
     }
 
-    // 5-7. Calcular passo (puro)
-    const step = computeRuntimeStep({ caseRow, run: run || null });
+    // 5-7. Calcular passo (puro), usando a prioridade de slots resolvida
+    const step = computeRuntimeStep({ caseRow, run: run || null, slotPriority: runtimeConfig.slot_priority });
 
     // 8. Gravar pergunta como message role='assistant' (sem duplicar pergunta recente)
     let messageId: string | null = null;
@@ -143,6 +156,7 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
           external_action_allowed: false,
           channel: source,
           engine: RUNTIME_ENGINE,
+          slot_priority_source: runtimeConfig.slot_priority_source,
           safety_notes: step.safetyNotes,
         },
       };
