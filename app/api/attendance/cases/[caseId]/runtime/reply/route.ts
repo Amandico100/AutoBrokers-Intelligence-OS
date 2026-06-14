@@ -14,6 +14,24 @@ import {
 import { resolveRuntimeConfig } from '@/lib/attendance/runtime-config-resolver';
 import { evaluateRuntimeSafetyDecision } from '@/lib/attendance/runtime-safety-policy';
 import { evaluateFirstResponseIntake } from '@/lib/attendance/runtime-intake-policy';
+import { macroGateOverride, MACRO_STATES } from '@/lib/attendance/attendance-macro-state';
+import {
+  extractDocument,
+  maskDocument,
+  IDENTITY_CLARIFY,
+  IDENTITY_NEXT_STEP,
+  POLICY_LOOKUP_MESSAGE,
+  POLICY_NEXT_STEP,
+} from '@/lib/attendance/runtime-identity-policy';
+
+/** Merge raso e seguro de attendance_cases.metadata (jsonb). */
+function mergeCaseMetadata(caseRow: any, patch: Record<string, unknown>): Record<string, unknown> {
+  const prev =
+    caseRow?.metadata && typeof caseRow.metadata === 'object' && !Array.isArray(caseRow.metadata)
+      ? (caseRow.metadata as Record<string, unknown>)
+      : {};
+  return { ...prev, ...patch };
+}
 
 export const dynamic = 'force-dynamic';
 
@@ -136,12 +154,152 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
 
     const slots = normalizeSlots(run?.slots);
 
-    // First-response intake (42B5F): se NÃO há pergunta ativa do agente e o caso é
-    // editável, a política de baixa fricção decide a primeira resposta.
+    // Pergunta ativa do agente (slot ou gate).
     const diagSelected = run?.diagnostics?.runtime?.selected_slot;
     const lastAction = typeof run?.last_agent_action === 'string' ? run.last_agent_action : '';
     const hasActiveQuestion =
       (typeof diagSelected === 'string' && diagSelected.length > 0) || lastAction.startsWith('ask:');
+    const activeAsk = lastAction.startsWith('ask:')
+      ? lastAction.slice('ask:'.length)
+      : typeof diagSelected === 'string'
+        ? diagSelected
+        : '';
+
+    // ---- Gate de IDENTIDADE (42B5G): resposta a uma pergunta de CPF/CNPJ ----
+    if (activeAsk === 'identity_document') {
+      const doc = extractDocument(rawMessage);
+      const baseRuntimeDiag = (() => {
+        const prevDiag =
+          run?.diagnostics && typeof run.diagnostics === 'object' && !Array.isArray(run.diagnostics)
+            ? (run.diagnostics as Record<string, any>)
+            : {};
+        const prevRuntime =
+          prevDiag.runtime && typeof prevDiag.runtime === 'object' && !Array.isArray(prevDiag.runtime)
+            ? prevDiag.runtime
+            : {};
+        return { prevDiag, prevRuntime };
+      })();
+
+      if (!doc.valid || !doc.ref) {
+        // Documento não reconhecido → reesclarecer (sem virar loop ruidoso).
+        let assistantMessageId: string | null = null;
+        if (caseRow.conversation_id && (force || lastAssistantContent !== IDENTITY_CLARIFY)) {
+          const { data: ins } = await supabaseAdmin
+            .from('messages')
+            .insert({ conversation_id: caseRow.conversation_id, role: 'assistant', content: IDENTITY_CLARIFY, type: 'text' })
+            .select('id')
+            .maybeSingle();
+          assistantMessageId = ins?.id ?? null;
+        }
+        if (run) {
+          await supabaseAdmin
+            .from('corridor_runs')
+            .update({
+              next_step: IDENTITY_NEXT_STEP,
+              last_agent_action: 'ask:identity_document',
+              diagnostics: {
+                ...baseRuntimeDiag.prevDiag,
+                runtime: {
+                  ...baseRuntimeDiag.prevRuntime,
+                  last_step_at: new Date().toISOString(),
+                  selected_slot: 'identity_document',
+                  macro_state: MACRO_STATES.IDENTITY_REQUIRED,
+                  external_action_allowed: false,
+                  channel: source,
+                  engine: RUNTIME_ENGINE,
+                },
+              },
+            })
+            .eq('id', run.id)
+            .eq('company_id', companyId);
+        }
+        await supabaseAdmin
+          .from('attendance_cases')
+          .update({ next_step: IDENTITY_NEXT_STEP, metadata: mergeCaseMetadata(caseRow, { attendance_macro_state: MACRO_STATES.IDENTITY_REQUIRED }) })
+          .eq('id', caseRow.id)
+          .eq('company_id', companyId);
+
+        console.log(`[CORRIDOR REPLY] case=${caseId} identity=invalid user_msg=${userMessageId}`);
+        return NextResponse.json({
+          ok: true,
+          case: caseRow,
+          corridor_run: run || null,
+          intake: { target_slot: 'identity_document', kind: 'identity_clarify', filled: false, status: 'identity_required', extracted_value: null, confidence: 'low', conflicts: [] },
+          next_step: { selected_slot: 'identity_document', question: IDENTITY_CLARIFY, status: 'identity_required', message_id: assistantMessageId },
+          messages: { user_message_id: userMessageId, assistant_message_id: assistantMessageId },
+          external_action_allowed: false,
+        });
+      }
+
+      // Documento válido → grava insured_document_ref + tipo; avança para policy_lookup_required.
+      let assistantMessageId: string | null = null;
+      if (caseRow.conversation_id && (force || lastAssistantContent !== POLICY_LOOKUP_MESSAGE)) {
+        const { data: ins } = await supabaseAdmin
+          .from('messages')
+          .insert({ conversation_id: caseRow.conversation_id, role: 'assistant', content: POLICY_LOOKUP_MESSAGE, type: 'text' })
+          .select('id')
+          .maybeSingle();
+        assistantMessageId = ins?.id ?? null;
+      }
+
+      let updatedRunId: any = run || null;
+      if (run) {
+        const { data: runAfter } = await supabaseAdmin
+          .from('corridor_runs')
+          .update({
+            next_step: POLICY_NEXT_STEP,
+            last_agent_action: 'policy_lookup:pending',
+            diagnostics: {
+              ...baseRuntimeDiag.prevDiag,
+              external_action_allowed: false,
+              hitl_required: true,
+              runtime: {
+                ...baseRuntimeDiag.prevRuntime,
+                last_step_at: new Date().toISOString(),
+                selected_slot: null,
+                macro_state: MACRO_STATES.POLICY_LOOKUP_REQUIRED,
+                identity_captured: true,
+                external_action_allowed: false,
+                channel: source,
+                engine: RUNTIME_ENGINE,
+                safety_notes: ['Apólice ainda NÃO verificada. Dispatch real bloqueado até verificação por fonte confiável.'],
+              },
+            },
+          })
+          .eq('id', run.id)
+          .eq('company_id', companyId)
+          .select('*')
+          .maybeSingle();
+        if (runAfter) updatedRunId = runAfter;
+      }
+
+      const { data: caseAfter } = await supabaseAdmin
+        .from('attendance_cases')
+        .update({
+          insured_document_ref: doc.ref,
+          status: 'policy_check',
+          next_step: POLICY_NEXT_STEP,
+          metadata: mergeCaseMetadata(caseRow, {
+            attendance_macro_state: MACRO_STATES.POLICY_LOOKUP_REQUIRED,
+            identity: { document_type: doc.type, captured_at: new Date().toISOString() },
+          }),
+        })
+        .eq('id', caseRow.id)
+        .eq('company_id', companyId)
+        .select('*')
+        .maybeSingle();
+
+      console.log(`[CORRIDOR REPLY] case=${caseId} identity=${maskDocument(doc.ref)} macro=policy_lookup_required user_msg=${userMessageId}`);
+      return NextResponse.json({
+        ok: true,
+        case: caseAfter || caseRow,
+        corridor_run: updatedRunId,
+        intake: { target_slot: 'identity_document', kind: 'identity_captured', filled: true, status: 'policy_lookup_required', extracted_value: { document_type: doc.type }, confidence: 'high', conflicts: [] },
+        next_step: { selected_slot: null, question: POLICY_LOOKUP_MESSAGE, status: 'policy_lookup_required', message_id: assistantMessageId },
+        messages: { user_message_id: userMessageId, assistant_message_id: assistantMessageId },
+        external_action_allowed: false,
+      });
+    }
 
     if (!hasActiveQuestion) {
       const intake = evaluateFirstResponseIntake({ message: rawMessage, filledSlots: slots.filled });
@@ -346,12 +504,14 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
     let nextPhase: string | null;
     let lastAgentAction: string;
     let safetyTriggered = false;
+    let macroState: string = MACRO_STATES.CORRIDOR_COLLECTING_SLOTS;
 
     // Camada de segurança: risco elétrico alto interrompe a coleta normal (42B5E).
     const safety = evaluateRuntimeSafetyDecision({ caseRow, targetSlot, extraction, filledSlots: newFilled });
 
     if (safety.triggered) {
       safetyTriggered = true;
+      macroState = MACRO_STATES.HANDOFF;
       caseUpdate.risk_level = safety.risk_level;
       caseUpdate.priority = safety.priority;
       caseUpdate.handoff_required = safety.handoff_required;
@@ -391,6 +551,20 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
         nextPhase = step.runPhaseUpdate;
         if (step.caseStatusUpdate) caseUpdate.status = step.caseStatusUpdate;
         lastAgentAction = nextQuestion ? `ask:${nextSlot}` : 'slots_complete';
+
+        // Macro gate (42B5G): identidade/apólice antes de continuar o corredor.
+        // Tem precedência sobre a coleta normal de slots (mas não sobre safety).
+        const gate = macroGateOverride({ caseRow: { ...caseRow, ...caseUpdate }, filledSlots: newFilled });
+        if (gate) {
+          nextSlot = gate.selected_slot;
+          nextQuestion = gate.question;
+          nextStatus = gate.status;
+          nextStepText = gate.next_step;
+          nextPhase = null;
+          lastAgentAction = gate.last_agent_action;
+          macroState = gate.macro_state;
+          if (gate.case_status) caseUpdate.status = gate.case_status;
+        }
       }
     }
 
@@ -434,6 +608,7 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
           channel: source,
           engine: RUNTIME_ENGINE,
           slot_priority_source: runtimeConfig.slot_priority_source,
+          macro_state: macroState,
           safety_decision: safetyTriggered
             ? { triggered: true, reason: 'high_risk_electrical' }
             : { triggered: false },
@@ -460,6 +635,7 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
 
     // 9. Atualizar caso
     caseUpdate.next_step = nextStepText;
+    caseUpdate.metadata = mergeCaseMetadata(caseRow, { attendance_macro_state: macroState });
     const { data: caseAfter, error: caseUpdErr } = await supabaseAdmin
       .from('attendance_cases')
       .update(caseUpdate)
@@ -489,6 +665,7 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
         selected_slot: nextSlot,
         question: nextQuestion,
         status: nextStatus,
+        macro_state: macroState,
         message_id: assistantMessageId,
       },
       messages: { user_message_id: userMessageId, assistant_message_id: assistantMessageId },

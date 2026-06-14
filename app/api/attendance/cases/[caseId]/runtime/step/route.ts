@@ -7,6 +7,7 @@ import { computeRuntimeStep, RUNTIME_ENGINE } from '@/lib/attendance/corridor-ru
 import { resolveRuntimeConfig } from '@/lib/attendance/runtime-config-resolver';
 import { normalizeSlots } from '@/lib/attendance/handoff-dossier';
 import { evaluateRuntimeSafetyDecision } from '@/lib/attendance/runtime-safety-policy';
+import { macroGateOverride } from '@/lib/attendance/attendance-macro-state';
 
 export const dynamic = 'force-dynamic';
 
@@ -193,6 +194,83 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
           message_id: safetyMessageId,
           next_step: safety.next_step,
           safety_notes: [safety.safety_note],
+        },
+      });
+    }
+
+    // Macro gate (42B5G): identidade/apólice antes de continuar o corredor.
+    const gate = macroGateOverride({ caseRow, filledSlots });
+    if (gate) {
+      let gateMessageId: string | null = null;
+      if (caseRow.conversation_id && (force || lastAssistantContent !== gate.question)) {
+        const { data: ins } = await supabaseAdmin
+          .from('messages')
+          .insert({ conversation_id: caseRow.conversation_id, role: 'assistant', content: gate.question, type: 'text' })
+          .select('id')
+          .maybeSingle();
+        gateMessageId = ins?.id ?? null;
+      }
+      let updatedRunGate: any = run || null;
+      if (run) {
+        const prevDiag =
+          run.diagnostics && typeof run.diagnostics === 'object' && !Array.isArray(run.diagnostics)
+            ? (run.diagnostics as Record<string, any>)
+            : {};
+        const prevRuntime =
+          prevDiag.runtime && typeof prevDiag.runtime === 'object' && !Array.isArray(prevDiag.runtime)
+            ? prevDiag.runtime
+            : {};
+        const { data: runAfter } = await supabaseAdmin
+          .from('corridor_runs')
+          .update({
+            next_step: gate.next_step,
+            last_agent_action: gate.last_agent_action,
+            diagnostics: {
+              ...prevDiag,
+              external_action_allowed: false,
+              hitl_required: true,
+              runtime: {
+                ...prevRuntime,
+                last_step_at: new Date().toISOString(),
+                selected_slot: gate.selected_slot,
+                macro_state: gate.macro_state,
+                external_action_allowed: false,
+                channel: source,
+                engine: RUNTIME_ENGINE,
+                slot_priority_source: runtimeConfig.slot_priority_source,
+              },
+            },
+          })
+          .eq('id', run.id)
+          .eq('company_id', companyId)
+          .select('*')
+          .maybeSingle();
+        if (runAfter) updatedRunGate = runAfter;
+      }
+      const { data: caseAfterGate } = await supabaseAdmin
+        .from('attendance_cases')
+        .update({
+          next_step: gate.next_step,
+          ...(gate.case_status ? { status: gate.case_status } : {}),
+        })
+        .eq('id', caseRow.id)
+        .eq('company_id', companyId)
+        .select('*')
+        .maybeSingle();
+
+      console.log(`[CORRIDOR RUNTIME] case=${caseId} macro_gate=${gate.macro_state} message_id=${gateMessageId}`);
+      return NextResponse.json({
+        ok: true,
+        case: caseAfterGate || caseRow,
+        corridor_run: updatedRunGate,
+        step: {
+          selected_slot: gate.selected_slot,
+          question: gate.question,
+          status: gate.status,
+          macro_state: gate.macro_state,
+          external_action_allowed: false,
+          message_id: gateMessageId,
+          next_step: gate.next_step,
         },
       });
     }
