@@ -115,7 +115,18 @@ export function computeRuntimeStep(input: {
   const { caseRow, run } = input;
   const slotPriority = input.slotPriority && input.slotPriority.length > 0 ? input.slotPriority : ELECTRICIAN_SLOT_PRIORITY;
   const slots = normalizeSlots(run?.slots);
-  const filled = slots.filled;
+  const filled = { ...slots.filled };
+
+  // 42B5K: se a evidência de apólice já está pronta, o slot policy_evidence_status
+  // é considerado satisfeito — não perguntar número/documento ao cliente de novo.
+  const trustedVerification = ['verified_by_human', 'verified_by_connector', 'verified_by_document'];
+  const ev = caseRow?.coverage_evidence;
+  const evidenceReady =
+    ev && typeof ev === 'object' && !Array.isArray(ev) && Object.keys(ev).length > 0 &&
+    typeof caseRow?.verification_status === 'string' && trustedVerification.includes(caseRow.verification_status);
+  if (evidenceReady && !isSlotFilled(filled.policy_evidence_status)) {
+    filled.policy_evidence_status = { status: 'provided', source: 'coverage_evidence' };
+  }
 
   const safetyNotes: string[] = [];
   if (detectHighRisk(filled.risk_indicators)) {

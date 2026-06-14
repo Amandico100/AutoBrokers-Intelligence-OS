@@ -14,6 +14,15 @@ import {
 import { resolveRuntimeConfig } from '@/lib/attendance/runtime-config-resolver';
 import { evaluateRuntimeSafetyDecision } from '@/lib/attendance/runtime-safety-policy';
 import { evaluateFirstResponseIntake } from '@/lib/attendance/runtime-intake-policy';
+import { classifyMessageRoute } from '@/lib/attendance/runtime-message-router';
+import { buildRecoveryResponse } from '@/lib/attendance/runtime-conversation-recovery';
+
+/** Remove campos sensíveis do caso antes de devolver ao cliente. */
+function safeReplyCase(row: any): any {
+  if (!row || typeof row !== 'object') return row;
+  const { insured_document_ref: _omit, ...rest } = row;
+  return rest;
+}
 import { macroGateOverride, MACRO_STATES } from '@/lib/attendance/attendance-macro-state';
 import {
   extractDocument,
@@ -165,8 +174,162 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
         ? diagSelected
         : '';
 
+    // ---- 42B5K/42B5E: risco alto tem PRECEDÊNCIA em qualquer pergunta ativa ----
+    // (a primeira mensagem sem pergunta ativa continua tratada pela intake policy)
+    const globalRisk = extractSlotValue('risk_indicators', rawMessage);
+    if (hasActiveQuestion && globalRisk.riskHigh) {
+      const safety = evaluateRuntimeSafetyDecision({
+        caseRow,
+        targetSlot: 'risk_indicators',
+        extraction: globalRisk,
+        filledSlots: slots.filled,
+      });
+      if (safety.triggered) {
+        const rFilled = { ...slots.filled, risk_indicators: globalRisk.value };
+        const rMissing = slots.missing.filter((k) => k !== 'risk_indicators');
+        let aId: string | null = null;
+        if (caseRow.conversation_id && (force || lastAssistantContent !== safety.assistant_message)) {
+          const { data: ins } = await supabaseAdmin
+            .from('messages')
+            .insert({ conversation_id: caseRow.conversation_id, role: 'assistant', content: safety.assistant_message, type: 'text' })
+            .select('id')
+            .maybeSingle();
+          aId = ins?.id ?? null;
+        }
+        let rRun: any = run || null;
+        if (run) {
+          const prevDiag = run.diagnostics && typeof run.diagnostics === 'object' && !Array.isArray(run.diagnostics) ? (run.diagnostics as Record<string, any>) : {};
+          const prevRuntime = prevDiag.runtime && typeof prevDiag.runtime === 'object' && !Array.isArray(prevDiag.runtime) ? prevDiag.runtime : {};
+          const { data: runAfter } = await supabaseAdmin
+            .from('corridor_runs')
+            .update({
+              slots: { filled: rFilled, missing: rMissing, conflicts: slots.conflicts },
+              phase: 'handoff',
+              next_step: safety.next_step,
+              last_agent_action: safety.last_agent_action,
+              diagnostics: {
+                ...prevDiag,
+                external_action_allowed: false,
+                hitl_required: true,
+                runtime: {
+                  ...prevRuntime,
+                  last_step_at: new Date().toISOString(),
+                  selected_slot: null,
+                  macro_state: MACRO_STATES.HANDOFF,
+                  external_action_allowed: false,
+                  channel: source,
+                  engine: RUNTIME_ENGINE,
+                  safety_decision: { triggered: true, reason: 'high_risk_electrical' },
+                  safety_notes: [safety.safety_note, 'Ação externa bloqueada neste MVP (dry-run/HITL).'],
+                },
+              },
+            })
+            .eq('id', run.id)
+            .eq('company_id', companyId)
+            .select('*')
+            .maybeSingle();
+          if (runAfter) rRun = runAfter;
+        }
+        const { data: rCase } = await supabaseAdmin
+          .from('attendance_cases')
+          .update({
+            status: 'handoff',
+            priority: safety.priority,
+            risk_level: safety.risk_level,
+            handoff_required: safety.handoff_required,
+            handoff_reason: safety.handoff_reason,
+            next_step: safety.next_step,
+            metadata: mergeCaseMetadata(caseRow, { attendance_macro_state: MACRO_STATES.HANDOFF }),
+          })
+          .eq('id', caseRow.id)
+          .eq('company_id', companyId)
+          .select('*')
+          .maybeSingle();
+        console.log(`[CORRIDOR REPLY] case=${caseId} mid_flow_safety_handoff=true user_msg=${userMessageId}`);
+        return NextResponse.json({
+          ok: true,
+          case: safeReplyCase(rCase || caseRow),
+          corridor_run: rRun,
+          intake: { target_slot: 'risk_indicators', kind: 'high_risk_described', filled: true, status: 'safety_handoff', extracted_value: null, confidence: 'high', conflicts: [] },
+          next_step: { selected_slot: null, question: safety.assistant_message, status: 'safety_handoff', message_id: aId },
+          messages: { user_message_id: userMessageId, assistant_message_id: aId },
+          external_action_allowed: false,
+        });
+      }
+    }
+
     // ---- Gate de IDENTIDADE (42B5G): resposta a uma pergunta de CPF/CNPJ ----
     if (activeAsk === 'identity_document') {
+      // 42B5K: recuperação conversacional no gate de identidade (dado indisponível, etc.)
+      const idRoute = classifyMessageRoute({
+        message: rawMessage,
+        activeSlot: 'identity_document',
+        lastAgentAction: lastAction,
+        macroState: typeof caseRow.metadata?.attendance_macro_state === 'string' ? caseRow.metadata.attendance_macro_state : null,
+        filled: slots.filled,
+        missing: slots.missing,
+      });
+      const idRecovery = buildRecoveryResponse(idRoute, {
+        activeSlot: 'identity_document',
+        filled: slots.filled,
+        missing: slots.missing,
+        message: rawMessage,
+        caseRow,
+      });
+      if (idRecovery.handled) {
+        let aId: string | null = null;
+        if (caseRow.conversation_id && (force || lastAssistantContent !== idRecovery.assistant_message)) {
+          const { data: ins } = await supabaseAdmin
+            .from('messages')
+            .insert({ conversation_id: caseRow.conversation_id, role: 'assistant', content: idRecovery.assistant_message, type: 'text' })
+            .select('id')
+            .maybeSingle();
+          aId = ins?.id ?? null;
+        }
+        if (run) {
+          const prevDiag = run.diagnostics && typeof run.diagnostics === 'object' && !Array.isArray(run.diagnostics) ? (run.diagnostics as Record<string, any>) : {};
+          const prevRuntime = prevDiag.runtime && typeof prevDiag.runtime === 'object' && !Array.isArray(prevDiag.runtime) ? prevDiag.runtime : {};
+          await supabaseAdmin
+            .from('corridor_runs')
+            .update({
+              next_step: IDENTITY_NEXT_STEP,
+              last_agent_action: 'ask:identity_document',
+              diagnostics: {
+                ...prevDiag,
+                runtime: {
+                  ...prevRuntime,
+                  last_step_at: new Date().toISOString(),
+                  selected_slot: 'identity_document',
+                  macro_state: MACRO_STATES.IDENTITY_REQUIRED,
+                  conversation_recovery: { kind: idRoute.kind },
+                  external_action_allowed: false,
+                  channel: source,
+                  engine: RUNTIME_ENGINE,
+                },
+              },
+            })
+            .eq('id', run.id)
+            .eq('company_id', companyId);
+        }
+        const { data: idCase } = await supabaseAdmin
+          .from('attendance_cases')
+          .update({ next_step: IDENTITY_NEXT_STEP, metadata: mergeCaseMetadata(caseRow, { attendance_macro_state: MACRO_STATES.IDENTITY_REQUIRED }) })
+          .eq('id', caseRow.id)
+          .eq('company_id', companyId)
+          .select('*')
+          .maybeSingle();
+        console.log(`[CORRIDOR REPLY] case=${caseId} identity_recovery=${idRoute.kind} user_msg=${userMessageId}`);
+        return NextResponse.json({
+          ok: true,
+          case: safeReplyCase(idCase || caseRow),
+          corridor_run: run || null,
+          intake: { target_slot: 'identity_document', kind: idRoute.kind, filled: false, status: 'conversation_recovery', extracted_value: null, confidence: 'low', conflicts: [] },
+          next_step: { selected_slot: 'identity_document', question: idRecovery.assistant_message, status: 'conversation_recovery', message_id: aId },
+          messages: { user_message_id: userMessageId, assistant_message_id: aId },
+          external_action_allowed: false,
+        });
+      }
+
       const doc = extractDocument(rawMessage);
       const baseRuntimeDiag = (() => {
         const prevDiag =
@@ -470,6 +633,108 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
         messages: { user_message_id: userMessageId, assistant_message_id: null },
         external_action_allowed: false,
       });
+    }
+
+    // ---- 42B5K: recuperação conversacional antes de tratar como resposta de slot ----
+    {
+      const route = classifyMessageRoute({
+        message: rawMessage,
+        activeSlot: targetSlot,
+        lastAgentAction: lastAction,
+        macroState: typeof caseRow.metadata?.attendance_macro_state === 'string' ? caseRow.metadata.attendance_macro_state : null,
+        filled: slots.filled,
+        missing: slots.missing,
+      });
+      const recovery = buildRecoveryResponse(route, {
+        activeSlot: targetSlot,
+        filled: slots.filled,
+        missing: slots.missing,
+        message: rawMessage,
+        caseRow,
+      });
+      if (recovery.handled) {
+        const recFilled = { ...slots.filled, ...recovery.fill };
+        const recMissing = slots.missing.filter((k) => !(k in recovery.fill));
+        let recMessage = recovery.assistant_message;
+        let recSelected: string | null = targetSlot;
+        let recLastAction = recovery.keep_last_agent_action ? (lastAction || `ask:${targetSlot}`) : `conversation_recovery:${route.kind}`;
+
+        if (recovery.advance) {
+          const step = computeRuntimeStep({
+            caseRow,
+            run: { ...(run || {}), slots: { filled: recFilled, missing: recMissing, conflicts: slots.conflicts } },
+            slotPriority: runtimeConfig.slot_priority,
+          });
+          if (step.question) {
+            recMessage = `${recovery.assistant_message} ${step.question}`.trim();
+            recSelected = step.selectedSlot;
+            recLastAction = `ask:${step.selectedSlot}`;
+          } else {
+            recSelected = null;
+            recLastAction = 'slots_complete';
+          }
+        }
+
+        let recAssistantId: string | null = null;
+        if (caseRow.conversation_id && recMessage && (force || lastAssistantContent !== recMessage)) {
+          const { data: ins } = await supabaseAdmin
+            .from('messages')
+            .insert({ conversation_id: caseRow.conversation_id, role: 'assistant', content: recMessage, type: 'text' })
+            .select('id')
+            .maybeSingle();
+          recAssistantId = ins?.id ?? null;
+        }
+
+        let recRun: any = run || null;
+        if (run) {
+          const prevDiag = run.diagnostics && typeof run.diagnostics === 'object' && !Array.isArray(run.diagnostics) ? (run.diagnostics as Record<string, any>) : {};
+          const prevRuntime = prevDiag.runtime && typeof prevDiag.runtime === 'object' && !Array.isArray(prevDiag.runtime) ? prevDiag.runtime : {};
+          const { data: runAfter } = await supabaseAdmin
+            .from('corridor_runs')
+            .update({
+              slots: { filled: recFilled, missing: recMissing, conflicts: slots.conflicts },
+              next_step: recMessage,
+              last_agent_action: recLastAction,
+              diagnostics: {
+                ...prevDiag,
+                external_action_allowed: false,
+                runtime: {
+                  ...prevRuntime,
+                  last_step_at: new Date().toISOString(),
+                  selected_slot: recSelected,
+                  conversation_recovery: { kind: route.kind, advanced: recovery.advance },
+                  external_action_allowed: false,
+                  channel: source,
+                  engine: RUNTIME_ENGINE,
+                },
+              },
+            })
+            .eq('id', run.id)
+            .eq('company_id', companyId)
+            .select('*')
+            .maybeSingle();
+          if (runAfter) recRun = runAfter;
+        }
+
+        const { data: recCase } = await supabaseAdmin
+          .from('attendance_cases')
+          .update({ next_step: recMessage })
+          .eq('id', caseRow.id)
+          .eq('company_id', companyId)
+          .select('*')
+          .maybeSingle();
+
+        console.log(`[CORRIDOR REPLY] case=${caseId} recovery=${route.kind} advanced=${recovery.advance} user_msg=${userMessageId} assistant_msg=${recAssistantId}`);
+        return NextResponse.json({
+          ok: true,
+          case: safeReplyCase(recCase || caseRow),
+          corridor_run: recRun,
+          intake: { target_slot: targetSlot, kind: route.kind, filled: Object.keys(recovery.fill).length > 0, status: 'conversation_recovery', extracted_value: null, confidence: 'low', conflicts: [] },
+          next_step: { selected_slot: recSelected, question: recMessage, status: 'conversation_recovery', message_id: recAssistantId },
+          messages: { user_message_id: userMessageId, assistant_message_id: recAssistantId },
+          external_action_allowed: false,
+        });
+      }
     }
 
     // 4. Extração segura
