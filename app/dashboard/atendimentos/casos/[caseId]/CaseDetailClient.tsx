@@ -15,6 +15,7 @@ import {
   verificationPill,
 } from '@/lib/attendance/labels';
 import HandoffDossierPanel from './HandoffDossierPanel';
+import AttendanceConversationSimulator from './AttendanceConversationSimulator';
 
 type Detail = {
   case?: any;
@@ -195,6 +196,9 @@ export default function CaseDetailClient({ caseId }: { caseId: string }) {
         <div className="grid gap-4 lg:grid-cols-3">
           {/* ===== Coluna principal ===== */}
           <div className="space-y-4 lg:col-span-2">
+            {/* Simulador de conversa (42B5J) */}
+            <AttendanceConversationSimulator caseId={caseId} onChanged={load} />
+
             {/* Resumo */}
             <Section title="Resumo do caso">
               {c.summary && <p className="mb-2 text-sm text-foreground">{c.summary}</p>}
