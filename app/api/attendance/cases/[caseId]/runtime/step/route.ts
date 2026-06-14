@@ -7,7 +7,12 @@ import { computeRuntimeStep, RUNTIME_ENGINE } from '@/lib/attendance/corridor-ru
 import { resolveRuntimeConfig } from '@/lib/attendance/runtime-config-resolver';
 import { normalizeSlots } from '@/lib/attendance/handoff-dossier';
 import { evaluateRuntimeSafetyDecision } from '@/lib/attendance/runtime-safety-policy';
-import { macroGateOverride } from '@/lib/attendance/attendance-macro-state';
+import {
+  macroGateOverride,
+  isPolicyEvidenceReady,
+  RESUME_AFTER_POLICY_PREFIX,
+  MACRO_STATES,
+} from '@/lib/attendance/attendance-macro-state';
 
 export const dynamic = 'force-dynamic';
 
@@ -194,6 +199,107 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
           message_id: safetyMessageId,
           next_step: safety.next_step,
           safety_notes: [safety.safety_note],
+        },
+      });
+    }
+
+    // Retomada do corredor após policy lookup (42B5H): evidência de apólice pronta
+    // → resolver o gate de apólice e voltar a coletar slots do corredor.
+    if (isPolicyEvidenceReady(caseRow)) {
+      const resumeStep = computeRuntimeStep({ caseRow, run: run || null, slotPriority: runtimeConfig.slot_priority });
+      const resumeQuestion = resumeStep.question ? `${RESUME_AFTER_POLICY_PREFIX}${resumeStep.question}` : null;
+      const resumeNextStep = resumeStep.question ? resumeQuestion! : resumeStep.nextStep;
+
+      let resumeMessageId: string | null = null;
+      const shouldInsertResume =
+        Boolean(caseRow.conversation_id) && Boolean(resumeQuestion) && (force || lastAssistantContent !== resumeQuestion);
+      if (shouldInsertResume && resumeQuestion) {
+        const { data: inserted, error: msgErr } = await supabaseAdmin
+          .from('messages')
+          .insert({ conversation_id: caseRow.conversation_id, role: 'assistant', content: resumeQuestion, type: 'text' })
+          .select('id')
+          .maybeSingle();
+        if (msgErr) console.error('[CORRIDOR RUNTIME] resume message error:', msgErr.message);
+        else resumeMessageId = inserted?.id ?? null;
+      }
+
+      let updatedRunResume: any = run || null;
+      if (run) {
+        const prevDiag =
+          run.diagnostics && typeof run.diagnostics === 'object' && !Array.isArray(run.diagnostics)
+            ? (run.diagnostics as Record<string, any>)
+            : {};
+        const prevRuntime =
+          prevDiag.runtime && typeof prevDiag.runtime === 'object' && !Array.isArray(prevDiag.runtime)
+            ? prevDiag.runtime
+            : {};
+        const newDiagnostics = {
+          ...prevDiag,
+          mvp_mode: prevDiag.mvp_mode || 'dry_run_hitl',
+          hitl_required: true,
+          external_action_allowed: false,
+          runtime: {
+            ...prevRuntime,
+            last_step_at: new Date().toISOString(),
+            macro_state: MACRO_STATES.CORRIDOR_COLLECTING_SLOTS,
+            resumed_after_policy_lookup: true,
+            coverage_evidence_ready: true,
+            selected_slot: resumeStep.selectedSlot,
+            question_generated: Boolean(resumeQuestion),
+            external_action_allowed: false,
+            channel: source,
+            engine: RUNTIME_ENGINE,
+            slot_priority_source: runtimeConfig.slot_priority_source,
+          },
+        };
+        const { data: runAfter } = await supabaseAdmin
+          .from('corridor_runs')
+          .update({
+            diagnostics: newDiagnostics,
+            phase: 'collect_slots',
+            next_step: resumeNextStep,
+            last_agent_action: resumeStep.question ? `ask:${resumeStep.selectedSlot}` : 'resume_after_policy_lookup',
+          })
+          .eq('id', run.id)
+          .eq('company_id', companyId)
+          .select('*')
+          .maybeSingle();
+        if (runAfter) updatedRunResume = runAfter;
+      }
+
+      const prevMeta =
+        caseRow.metadata && typeof caseRow.metadata === 'object' && !Array.isArray(caseRow.metadata)
+          ? (caseRow.metadata as Record<string, unknown>)
+          : {};
+      const { data: caseAfterResume } = await supabaseAdmin
+        .from('attendance_cases')
+        .update({
+          status: 'collecting_slots',
+          next_step: resumeNextStep,
+          metadata: { ...prevMeta, attendance_macro_state: MACRO_STATES.CORRIDOR_COLLECTING_SLOTS },
+        })
+        .eq('id', caseRow.id)
+        .eq('company_id', companyId)
+        .select('*')
+        .maybeSingle();
+
+      console.log(
+        `[CORRIDOR RUNTIME] case=${caseId} resumed_after_policy_lookup=true selected_slot=${resumeStep.selectedSlot} message_id=${resumeMessageId}`,
+      );
+
+      return NextResponse.json({
+        ok: true,
+        case: caseAfterResume || caseRow,
+        corridor_run: updatedRunResume,
+        step: {
+          selected_slot: resumeStep.selectedSlot,
+          question: resumeQuestion,
+          status: resumeStep.question ? 'resumed_collecting_slots' : 'no_missing_slots',
+          macro_state: MACRO_STATES.CORRIDOR_COLLECTING_SLOTS,
+          external_action_allowed: false,
+          message_id: resumeMessageId,
+          next_step: resumeNextStep,
+          resumed_after_policy_lookup: true,
         },
       });
     }

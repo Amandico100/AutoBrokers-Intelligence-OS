@@ -59,6 +59,26 @@ export function hasValidIdentity(caseRow: any): boolean {
   return digits.length === 11 || digits.length === 14;
 }
 
+// verification_status considerados confiáveis para destravar o corredor.
+const TRUSTED_VERIFICATION = new Set(['verified_by_human', 'verified_by_connector', 'verified_by_document']);
+
+/**
+ * Evidência de apólice pronta para retomar o corredor (42B5H): macro state em
+ * `policy_evidence_ready`, `coverage_evidence` preenchido e `verification_status`
+ * confiável. NÃO afirma cobertura por conta própria — só reconhece a evidência.
+ */
+export function isPolicyEvidenceReady(caseRow: any): boolean {
+  const macro = caseRow?.metadata?.attendance_macro_state;
+  const ev = caseRow?.coverage_evidence;
+  const hasEvidence = ev && typeof ev === 'object' && !Array.isArray(ev) && Object.keys(ev).length > 0;
+  const verified = typeof caseRow?.verification_status === 'string' && TRUSTED_VERIFICATION.has(caseRow.verification_status);
+  return macro === 'policy_evidence_ready' && Boolean(hasEvidence) && verified;
+}
+
+/** Abertura curta e humana ao retomar o atendimento após a apólice/evidência. */
+export const RESUME_AFTER_POLICY_PREFIX =
+  'Apólice localizada e evidência registrada. Agora vou seguir com os dados do atendimento. ';
+
 function blocked(macro_state: MacroState): MacroStateDecision {
   return {
     macro_state,
