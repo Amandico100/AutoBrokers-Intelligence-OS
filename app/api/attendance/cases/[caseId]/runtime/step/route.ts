@@ -3,7 +3,12 @@ import { cookies } from 'next/headers';
 import { getIronSession } from 'iron-session';
 import { getAdminClient, getCompanyId } from '@/lib/attendance/support-destinations';
 import { sessionOptions, SessionData } from '@/lib/iron-session';
-import { computeRuntimeStep, RUNTIME_ENGINE } from '@/lib/attendance/corridor-runtime';
+import {
+  computeRuntimeStep,
+  RUNTIME_ENGINE,
+  isCoverageEvidenceReady,
+  POLICY_EVIDENCE_SATISFIED,
+} from '@/lib/attendance/corridor-runtime';
 import { resolveRuntimeConfig } from '@/lib/attendance/runtime-config-resolver';
 import { normalizeSlots } from '@/lib/attendance/handoff-dossier';
 import { evaluateRuntimeSafetyDecision } from '@/lib/attendance/runtime-safety-policy';
@@ -18,6 +23,13 @@ export const dynamic = 'force-dynamic';
 
 // Casos que NÃO podem ser editados pelo runtime (não reabrir/forçar automaticamente).
 const NON_RUNTIME_STATUSES = new Set(['closed', 'cancelled', 'handoff']);
+
+/** Remove campos sensíveis do caso antes de devolver ao cliente. */
+function safeCase(row: any): any {
+  if (!row || typeof row !== 'object') return row;
+  const { insured_document_ref: _omit, ...rest } = row;
+  return rest;
+}
 
 /**
  * POST /api/attendance/cases/[caseId]/runtime/step
@@ -189,7 +201,7 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
 
       return NextResponse.json({
         ok: true,
-        case: caseAfterSafety || caseRow,
+        case: safeCase(caseAfterSafety || caseRow),
         corridor_run: updatedRunSafety,
         step: {
           selected_slot: null,
@@ -221,6 +233,15 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
           .maybeSingle();
         if (msgErr) console.error('[CORRIDOR RUNTIME] resume message error:', msgErr.message);
         else resumeMessageId = inserted?.id ?? null;
+      }
+
+      // 42B5K.1: persistir policy_evidence_status satisfeito (evidência pronta).
+      const resumeSlots = normalizeSlots(run?.slots);
+      const resumeFilled = { ...resumeSlots.filled };
+      let resumeMissing = [...resumeSlots.missing];
+      if (isCoverageEvidenceReady(caseRow) && !resumeFilled.policy_evidence_status) {
+        resumeFilled.policy_evidence_status = { ...POLICY_EVIDENCE_SATISFIED };
+        resumeMissing = resumeMissing.filter((k) => k !== 'policy_evidence_status');
       }
 
       let updatedRunResume: any = run || null;
@@ -255,6 +276,7 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
         const { data: runAfter } = await supabaseAdmin
           .from('corridor_runs')
           .update({
+            slots: { filled: resumeFilled, missing: resumeMissing, conflicts: resumeSlots.conflicts },
             diagnostics: newDiagnostics,
             phase: 'collect_slots',
             next_step: resumeNextStep,
@@ -289,7 +311,7 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
 
       return NextResponse.json({
         ok: true,
-        case: caseAfterResume || caseRow,
+        case: safeCase(caseAfterResume || caseRow),
         corridor_run: updatedRunResume,
         step: {
           selected_slot: resumeStep.selectedSlot,
@@ -367,7 +389,7 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
       console.log(`[CORRIDOR RUNTIME] case=${caseId} macro_gate=${gate.macro_state} message_id=${gateMessageId}`);
       return NextResponse.json({
         ok: true,
-        case: caseAfterGate || caseRow,
+        case: safeCase(caseAfterGate || caseRow),
         corridor_run: updatedRunGate,
         step: {
           selected_slot: gate.selected_slot,
@@ -433,6 +455,7 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
           channel: source,
           engine: RUNTIME_ENGINE,
           slot_priority_source: runtimeConfig.slot_priority_source,
+          coverage_evidence_ready: isCoverageEvidenceReady(caseRow),
           safety_notes: step.safetyNotes,
         },
       };
@@ -481,7 +504,7 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
     // 12. Resposta
     return NextResponse.json({
       ok: true,
-      case: caseAfter || caseRow,
+      case: safeCase(caseAfter || caseRow),
       corridor_run: updatedRun,
       step: {
         selected_slot: step.selectedSlot,

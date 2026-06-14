@@ -10,6 +10,8 @@ import {
   clarificationForSlot,
   selectNextSlot,
   RUNTIME_ENGINE,
+  isCoverageEvidenceReady,
+  POLICY_EVIDENCE_SATISFIED,
 } from '@/lib/attendance/corridor-runtime';
 import { resolveRuntimeConfig } from '@/lib/attendance/runtime-config-resolver';
 import { evaluateRuntimeSafetyDecision } from '@/lib/attendance/runtime-safety-policy';
@@ -455,7 +457,7 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
       console.log(`[CORRIDOR REPLY] case=${caseId} identity=${maskDocument(doc.ref)} macro=policy_lookup_required user_msg=${userMessageId}`);
       return NextResponse.json({
         ok: true,
-        case: caseAfter || caseRow,
+        case: safeReplyCase(caseAfter || caseRow),
         corridor_run: updatedRunId,
         intake: { target_slot: 'identity_document', kind: 'identity_captured', filled: true, status: 'policy_lookup_required', extracted_value: { document_type: doc.type }, confidence: 'high', conflicts: [] },
         next_step: { selected_slot: null, question: POLICY_LOOKUP_MESSAGE, status: 'policy_lookup_required', message_id: assistantMessageId },
@@ -591,7 +593,7 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
 
         return NextResponse.json({
           ok: true,
-          case: caseAfter || { ...caseRow, ...caseUpdate },
+          case: safeReplyCase(caseAfter || { ...caseRow, ...caseUpdate }),
           corridor_run: updatedRun,
           intake: {
             target_slot: null,
@@ -626,7 +628,7 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
         .eq('company_id', companyId);
       return NextResponse.json({
         ok: true,
-        case: caseRow,
+        case: safeReplyCase(caseRow),
         corridor_run: run || null,
         intake: { target_slot: null, filled: false, status: 'no_slot_pending', extracted_value: null, confidence: 'low', conflicts: [] },
         next_step: { selected_slot: step.selectedSlot, question: step.question, status: step.stepStatus, message_id: null },
@@ -757,6 +759,12 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
         newConflicts.push({ slot: targetSlot, reason: extraction.conflictReason, raw: rawMessage.slice(0, 200) });
       }
     }
+    // 42B5K.1: evidência de apólice pronta satisfaz policy_evidence_status de forma persistida.
+    const coverageReady = isCoverageEvidenceReady(caseRow);
+    if (coverageReady && !(newFilled.policy_evidence_status)) {
+      newFilled.policy_evidence_status = { ...POLICY_EVIDENCE_SATISFIED };
+      newMissing = newMissing.filter((k) => k !== 'policy_evidence_status');
+    }
     const newSlots = { filled: newFilled, missing: newMissing, conflicts: newConflicts };
 
     const safetyNotes: string[] = [];
@@ -874,6 +882,7 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
           engine: RUNTIME_ENGINE,
           slot_priority_source: runtimeConfig.slot_priority_source,
           macro_state: macroState,
+          coverage_evidence_ready: coverageReady,
           safety_decision: safetyTriggered
             ? { triggered: true, reason: 'high_risk_electrical' }
             : { triggered: false },
@@ -917,7 +926,7 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
 
     return NextResponse.json({
       ok: true,
-      case: caseAfter || { ...caseRow, ...caseUpdate },
+      case: safeReplyCase(caseAfter || { ...caseRow, ...caseUpdate }),
       corridor_run: updatedRun,
       intake: {
         target_slot: targetSlot,

@@ -42,9 +42,30 @@ export interface RuntimeStepResult {
   safetyNotes: string[];
 }
 
-// Mensagem de conclusão quando não há mais slot a coletar.
-const COMPLETE_NEXT_STEP =
+// Mensagens de conclusão quando não há mais slot a coletar.
+const COMPLETE_NEXT_STEP_NO_EVIDENCE =
   'Dados mínimos coletados. Próximo passo: validar apólice/evidência antes de preparar acionamento.';
+const COMPLETE_NEXT_STEP_WITH_EVIDENCE =
+  'Dados mínimos coletados e apólice/evidência já registrada. Próximo passo: preparar validação final/readiness e pacote de acionamento em modo dry-run/HITL.';
+
+// verification_status considerados confiáveis para a evidência de apólice (42B5K.1).
+const TRUSTED_VERIFICATION = ['verified_by_human', 'verified_by_connector', 'verified_by_document'];
+
+/** Valor estruturado seguro que satisfaz policy_evidence_status a partir da evidência. */
+export const POLICY_EVIDENCE_SATISFIED = { status: 'provided', source: 'coverage_evidence' } as const;
+
+/** Evidência de cobertura pronta + verificação confiável (não pedir apólice de novo). */
+export function isCoverageEvidenceReady(caseRow: any): boolean {
+  const ev = caseRow?.coverage_evidence;
+  return Boolean(
+    ev &&
+      typeof ev === 'object' &&
+      !Array.isArray(ev) &&
+      Object.keys(ev).length > 0 &&
+      typeof caseRow?.verification_status === 'string' &&
+      TRUSTED_VERIFICATION.includes(caseRow.verification_status),
+  );
+}
 
 /** Considera um valor de slot como "preenchido". `false` é válido; vazio/objeto vazio não. */
 export function isSlotFilled(value: unknown): boolean {
@@ -117,15 +138,11 @@ export function computeRuntimeStep(input: {
   const slots = normalizeSlots(run?.slots);
   const filled = { ...slots.filled };
 
-  // 42B5K: se a evidência de apólice já está pronta, o slot policy_evidence_status
-  // é considerado satisfeito — não perguntar número/documento ao cliente de novo.
-  const trustedVerification = ['verified_by_human', 'verified_by_connector', 'verified_by_document'];
-  const ev = caseRow?.coverage_evidence;
-  const evidenceReady =
-    ev && typeof ev === 'object' && !Array.isArray(ev) && Object.keys(ev).length > 0 &&
-    typeof caseRow?.verification_status === 'string' && trustedVerification.includes(caseRow.verification_status);
+  // 42B5K/42B5K.1: se a evidência de apólice já está pronta, o slot
+  // policy_evidence_status é considerado satisfeito — não perguntar de novo.
+  const evidenceReady = isCoverageEvidenceReady(caseRow);
   if (evidenceReady && !isSlotFilled(filled.policy_evidence_status)) {
-    filled.policy_evidence_status = { status: 'provided', source: 'coverage_evidence' };
+    filled.policy_evidence_status = { ...POLICY_EVIDENCE_SATISFIED };
   }
 
   const safetyNotes: string[] = [];
@@ -152,7 +169,7 @@ export function computeRuntimeStep(input: {
       question: null,
       stepStatus: 'no_missing_slots',
       externalActionAllowed: false,
-      nextStep: COMPLETE_NEXT_STEP,
+      nextStep: evidenceReady ? COMPLETE_NEXT_STEP_WITH_EVIDENCE : COMPLETE_NEXT_STEP_NO_EVIDENCE,
       caseStatusUpdate,
       runPhaseUpdate,
       safetyNotes,
