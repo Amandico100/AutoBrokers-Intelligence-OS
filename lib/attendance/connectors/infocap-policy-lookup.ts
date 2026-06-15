@@ -62,16 +62,30 @@ export interface InfocapPolicyLookupInput {
   caseId: string;
   documentRef?: string;
   customerPhone?: string;
+  customerName?: string;
   policyNumber?: string;
 }
 
 const INFOCAP_SLUG = 'infocap';
 const CONNECTED_STATUSES = new Set(['connected']);
 
+function backendUrl(): string {
+  return (
+    process.env.ATTENDANCE_BACKEND_URL ||
+    process.env.NEXT_PUBLIC_BACKEND_URL ||
+    process.env.BACKEND_URL ||
+    'http://localhost:8000'
+  );
+}
+
 /** Resolve a conexão InfoCap da corretora (sem expor segredo). */
-async function resolveInfocapConnection(
-  companyId: string,
-): Promise<{ connected: boolean; status: string | null; baseUrlConfigured: boolean; hasSecretRef: boolean }> {
+async function resolveInfocapConnection(companyId: string): Promise<{
+  connected: boolean;
+  status: string | null;
+  baseUrlConfigured: boolean;
+  hasSecretRef: boolean;
+  connectionId: string | null;
+}> {
   const supabaseAdmin = getAdminClient();
 
   // 1. Template global do conector InfoCap
@@ -82,13 +96,13 @@ async function resolveInfocapConnection(
     .eq('is_active', true)
     .maybeSingle();
   if (!tpl?.id) {
-    return { connected: false, status: null, baseUrlConfigured: false, hasSecretRef: false };
+    return { connected: false, status: null, baseUrlConfigured: false, hasSecretRef: false, connectionId: null };
   }
 
   // 2. Conexão da corretora para esse template
   const { data: conn } = await supabaseAdmin
     .from('tenant_connections')
-    .select('status, connection_config, encrypted_secret_ref')
+    .select('id, status, connection_config, encrypted_secret_ref')
     .eq('company_id', companyId)
     .eq('connector_template_id', tpl.id)
     .order('created_at', { ascending: false })
@@ -96,7 +110,7 @@ async function resolveInfocapConnection(
     .maybeSingle();
 
   if (!conn) {
-    return { connected: false, status: null, baseUrlConfigured: false, hasSecretRef: false };
+    return { connected: false, status: null, baseUrlConfigured: false, hasSecretRef: false, connectionId: null };
   }
 
   const config = conn.connection_config && typeof conn.connection_config === 'object' ? conn.connection_config : {};
@@ -109,6 +123,7 @@ async function resolveInfocapConnection(
     status: conn.status ?? null,
     baseUrlConfigured,
     hasSecretRef,
+    connectionId: conn.id ?? null,
   };
 }
 
@@ -219,20 +234,71 @@ export async function lookupInfocapPolicy(input: InfocapPolicyLookupInput): Prom
         notes: ['Conexão InfoCap presente, mas sem credenciais (encrypted_secret_ref) no Vault.'],
       };
     }
+    if (!conn.baseUrlConfigured || !conn.connectionId) {
+      return {
+        ok: false,
+        status: 'blocked_not_configured',
+        source: 'infocap',
+        verification_status: 'unverified',
+        blockers: ['infocap_missing_base_url'],
+        requires_human: false,
+        notes: ['Conexão InfoCap sem base_url configurada.'],
+      };
+    }
 
-    // Conexão + credenciais presentes, porém a chamada read-only real ainda não
-    // foi implementada (aguarda spec oficial do endpoint). Não confirma cobertura.
-    return {
-      ok: false,
-      status: 'unsupported',
-      source: 'infocap',
-      verification_status: 'unverified',
-      blockers: ['infocap_realtime_lookup_not_implemented'],
-      requires_human: false,
-      notes: [
-        'Conexão InfoCap configurada. Lookup read-only real será implementado no próximo batch a partir da documentação oficial (endpoints/auth/response).',
-      ],
-    };
+    // Chamada read-only REAL: delega ao backend (que decifra as credenciais e
+    // chama a InfoCap/CorpAPI). O segredo nunca trafega pelo Web.
+    const internalKey = process.env.BACKEND_INTERNAL_API_KEY || process.env.ADMIN_API_KEY;
+    if (!internalKey) {
+      return {
+        ok: false,
+        status: 'provider_error',
+        source: 'infocap',
+        verification_status: 'unverified',
+        blockers: ['internal_key_missing'],
+        requires_human: false,
+        notes: ['Chave interna Next↔Backend não configurada.'],
+      };
+    }
+
+    try {
+      const controller = new AbortController();
+      const timeout = setTimeout(() => controller.abort(), 15_000);
+      const res = await fetch(`${backendUrl()}/attendance/connectors/infocap/lookup`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', 'X-AutoBrokers-Internal-Key': internalKey },
+        body: JSON.stringify({
+          company_id: input.companyId,
+          tenant_connection_id: conn.connectionId,
+          document: input.documentRef || undefined,
+          name: input.customerName || undefined,
+        }),
+        signal: controller.signal,
+      });
+      clearTimeout(timeout);
+      if (!res.ok) {
+        return {
+          ok: false,
+          status: 'provider_error',
+          source: 'infocap',
+          verification_status: 'unverified',
+          blockers: [`backend_http_${res.status}`],
+          requires_human: false,
+        };
+      }
+      const data = (await res.json()) as InfocapPolicyLookupResult;
+      // Confia no shape sanitizado retornado pelo backend (sem segredo/CPF).
+      return { ...data, source: 'infocap' };
+    } catch (e: any) {
+      return {
+        ok: false,
+        status: 'provider_error',
+        source: 'infocap',
+        verification_status: 'unverified',
+        blockers: [e?.name === 'AbortError' ? 'backend_timeout' : 'backend_fetch_error'],
+        requires_human: false,
+      };
+    }
   } catch {
     return {
       ok: false,

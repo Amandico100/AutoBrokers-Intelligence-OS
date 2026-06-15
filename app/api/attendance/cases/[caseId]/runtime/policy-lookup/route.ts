@@ -168,7 +168,12 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
 
     // ── 42I2: InfoCap read-only via Vault ──────────────────────────────────
     if (isInfocap) {
-      const infocap = await lookupInfocapPolicy({ companyId, caseId: caseRow.id });
+      const infocap = await lookupInfocapPolicy({
+        companyId,
+        caseId: caseRow.id,
+        documentRef: typeof caseRow.insured_document_ref === 'string' ? caseRow.insured_document_ref : undefined,
+        customerName: typeof caseRow.customer_name === 'string' ? caseRow.customer_name : undefined,
+      });
       console.log(
         `[POLICY LOOKUP] case=${caseId} company=${companyId} provider=infocap status=${infocap.status}`,
       );
