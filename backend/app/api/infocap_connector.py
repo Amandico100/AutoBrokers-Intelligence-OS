@@ -207,10 +207,72 @@ def _extract_array(data: Any) -> List[Dict[str, Any]]:
             v = data.get(k)
             if isinstance(v, list):
                 return [r for r in v if isinstance(r, dict)]
+        # qualquer valor que seja lista de objetos (shape desconhecido)
+        for v in data.values():
+            if isinstance(v, list) and any(isinstance(r, dict) for r in v):
+                return [r for r in v if isinstance(r, dict)]
         # registro único
         if any(isinstance(val, (str, int, float)) for val in data.values()):
             return [data]
     return []
+
+
+def _format_doc(digits: str) -> Optional[str]:
+    """CPF ddd.ddd.ddd-dd / CNPJ dd.ddd.ddd/dddd-dd, ou None."""
+    if len(digits) == 11:
+        return f"{digits[0:3]}.{digits[3:6]}.{digits[6:9]}-{digits[9:11]}"
+    if len(digits) == 14:
+        return f"{digits[0:2]}.{digits[2:5]}.{digits[5:8]}/{digits[8:12]}-{digits[12:14]}"
+    return None
+
+
+def _shape(data: Any) -> Dict[str, Any]:
+    """Diagnóstico de SHAPE (apenas NOMES de chaves/contagem; NUNCA valores)."""
+    if isinstance(data, list):
+        first = next((r for r in data if isinstance(r, dict)), None)
+        return {
+            "raw_type": "array",
+            "result_count": len(data),
+            "top_level_keys": [],
+            "array_key_detected": None,
+            "sample_keys": list(first.keys())[:30] if first else [],
+        }
+    if isinstance(data, dict):
+        top_keys = list(data.keys())[:30]
+        # procurar a chave cujo valor é lista de objetos
+        array_key = None
+        arr: List[Dict[str, Any]] = []
+        for k in ARRAY_KEYS:
+            v = data.get(k)
+            if isinstance(v, list):
+                array_key, arr = k, [r for r in v if isinstance(r, dict)]
+                break
+        if array_key is None:
+            for k, v in data.items():
+                if isinstance(v, list) and any(isinstance(r, dict) for r in v):
+                    array_key, arr = k, [r for r in v if isinstance(r, dict)]
+                    break
+        if array_key is not None:
+            first = arr[0] if arr else None
+            return {
+                "raw_type": "object",
+                "result_count": len(arr),
+                "top_level_keys": top_keys,
+                "array_key_detected": array_key,
+                "sample_keys": list(first.keys())[:30] if first else [],
+            }
+        # registro único
+        scalar = any(isinstance(v, (str, int, float, bool)) for v in data.values())
+        return {
+            "raw_type": "object",
+            "result_count": 1 if scalar else 0,
+            "top_level_keys": top_keys,
+            "array_key_detected": None,
+            "sample_keys": top_keys if scalar else [],
+        }
+    if isinstance(data, str):
+        return {"raw_type": "string", "result_count": 0, "top_level_keys": [], "array_key_detected": None, "sample_keys": []}
+    return {"raw_type": "empty", "result_count": 0, "top_level_keys": [], "array_key_detected": None, "sample_keys": []}
 
 
 def _sanitize_match(record: Dict[str, Any]) -> Dict[str, Any]:
@@ -405,3 +467,185 @@ async def infocap_lookup(
         "requires_human": False,
         "notes": ["Resultado real read-only via InfoCap (CorpAPI)."],
     })
+
+
+# ---------------------------------------------------------------------------
+# Probe read-only (42I2.1B) — descobre endpoint/param/shape reais sem expor
+# valores. Apenas diagnostico (nomes de chaves/contagens/status), nunca valores.
+# ---------------------------------------------------------------------------
+
+PROBE_TIMEOUT_S = 10.0
+
+
+class InfocapProbePayload(BaseModel):
+    company_id: str
+    tenant_connection_id: str
+    query_type: str = "cpf"  # cpf|name
+    query: str
+    codfil: Optional[int] = 1
+
+
+def _status_hint(http_status: int) -> str:
+    if http_status in (401, 403):
+        return "auth_error"
+    if http_status == 404:
+        return "not_found"
+    if http_status >= 400:
+        return "provider_error"
+    return "ok"
+
+
+async def _probe_one(
+    client: httpx.AsyncClient,
+    path: str,
+    params: Dict[str, Any],
+    headers: Dict[str, str],
+    masked_label: str,
+) -> Dict[str, Any]:
+    """Executa 1 GET read-only e devolve so diagnostico de shape (sem valores)."""
+    try:
+        res = await client.get(path, params=params, headers=headers)
+    except (httpx.TimeoutException, httpx.HTTPError) as e:  # noqa: BLE001
+        return {
+            "endpoint": masked_label, "method": "GET", "http_status": None, "ok": False,
+            "result_count": 0, "raw_type": "empty", "top_level_keys": [], "array_key_detected": None,
+            "sample_keys": [], "status_hint": "provider_error", "error_hint": type(e).__name__,
+        }
+    hint = _status_hint(res.status_code)
+    if res.status_code >= 400:
+        return {
+            "endpoint": masked_label, "method": "GET", "http_status": res.status_code, "ok": False,
+            "result_count": 0, "raw_type": "empty", "top_level_keys": [], "array_key_detected": None,
+            "sample_keys": [], "status_hint": hint, "error_hint": None,
+        }
+    try:
+        shape = _shape(res.json())
+    except Exception:  # noqa: BLE001
+        return {
+            "endpoint": masked_label, "method": "GET", "http_status": res.status_code, "ok": True,
+            "result_count": 0, "raw_type": "string", "top_level_keys": [], "array_key_detected": None,
+            "sample_keys": [], "status_hint": hint, "error_hint": "non_json_response",
+        }
+    return {
+        "endpoint": masked_label, "method": "GET", "http_status": res.status_code, "ok": True,
+        "status_hint": hint, "error_hint": None, **shape,
+    }
+
+
+@router.post("/attendance/connectors/infocap/probe")
+async def infocap_probe(
+    payload: InfocapProbePayload,
+    x_autobrokers_internal_key: Optional[str] = Header(default=None, alias="X-AutoBrokers-Internal-Key"),
+    db: AsyncSupabaseClient = Depends(get_async_db),
+) -> Dict[str, Any]:
+    _require_internal_key(x_autobrokers_internal_key)
+    started = time.monotonic()
+    company_id = (payload.company_id or "").strip()
+    connection_id = (payload.tenant_connection_id or "").strip()
+    if not company_id or not connection_id:
+        raise HTTPException(status_code=400, detail="company_id and tenant_connection_id are required")
+
+    conn_res = (
+        await db.client.table("tenant_connections")
+        .select("id, company_id, connector_template_id, connection_config, encrypted_secret_ref")
+        .eq("id", connection_id).eq("company_id", company_id).limit(1).execute()
+    )
+    conn = conn_res.data[0] if conn_res and conn_res.data else None
+    if not conn:
+        return {"ok": False, "status": "blocked_not_configured", "blockers": ["connection_not_found"], "probes": []}
+    tpl_res = (
+        await db.client.table("connector_templates").select("slug").eq("id", conn.get("connector_template_id")).limit(1).execute()
+    )
+    tpl = tpl_res.data[0] if tpl_res and tpl_res.data else None
+    if not tpl or tpl.get("slug") != INFOCAP_SLUG:
+        return {"ok": False, "status": "blocked_not_configured", "blockers": ["not_infocap_connector"], "probes": []}
+
+    config = conn.get("connection_config") if isinstance(conn.get("connection_config"), dict) else {}
+    base_url = (config.get("base_url") or "").rstrip("/")
+    cipher = conn.get("encrypted_secret_ref")
+    if not base_url:
+        return {"ok": False, "status": "blocked_not_configured", "blockers": ["missing_base_url"], "probes": []}
+    if not cipher:
+        return {"ok": False, "status": "blocked_missing_credentials", "blockers": ["missing_credentials"], "probes": []}
+    try:
+        creds = json.loads(get_encryption_service().decrypt(cipher))
+        email = creds.get("username") or creds.get("email")
+        senha = creds.get("password") or creds.get("senha")
+    except Exception as e:  # noqa: BLE001
+        logger.error(f"[INFOCAP PROBE] decrypt error: {e}")
+        return {"ok": False, "status": "provider_error", "blockers": ["decrypt_error"], "probes": []}
+
+    auth_path = config.get("infocap_auth_path") or "/login"
+    codfil = payload.codfil if payload.codfil is not None else 1
+    qtype = (payload.query_type or "cpf").lower()
+    raw_query = (payload.query or "").strip()
+    digits = _digits(raw_query)
+    formatted = _format_doc(digits) if digits else None
+
+    probes: List[Dict[str, Any]] = []
+    auth_status: Optional[int] = None
+    try:
+        async with httpx.AsyncClient(timeout=PROBE_TIMEOUT_S, base_url=base_url) as client:
+            auth_res = await client.post(auth_path, json={"email": email, "senha": senha, "aplicacao": 0})
+            auth_status = auth_res.status_code
+            if auth_res.status_code >= 400:
+                return {
+                    "ok": False,
+                    "status": "auth_error" if auth_res.status_code in (401, 403) else "provider_error",
+                    "auth_http_status": auth_res.status_code, "probes": [],
+                }
+            try:
+                token = _extract_token(auth_res.json())
+            except Exception:  # noqa: BLE001
+                token = (auth_res.text or "").strip() or None
+            if not token:
+                return {
+                    "ok": False, "status": "auth_error", "auth_http_status": auth_res.status_code,
+                    "blockers": ["no_token_in_login_response"], "probes": [],
+                }
+            headers = {"Authorization": token, "Content-Type": "application/json"}
+
+            targets: List[Dict[str, Any]] = []
+            if qtype == "cpf" and digits:
+                targets += [
+                    {"path": "/busca_cpf", "params": {"cpf_cnpj": digits}, "label": "/busca_cpf?cpf_cnpj=***"},
+                    {"path": "/cliente_cpf", "params": {"codfil": codfil, "cpf_cnpj": digits}, "label": "/cliente_cpf?codfil=N&cpf_cnpj=***"},
+                    {"path": "/producao", "params": {"texto": digits}, "label": "/producao?texto=***(cpf)"},
+                ]
+                if formatted:
+                    targets += [
+                        {"path": "/busca_cpf", "params": {"cpf_cnpj": formatted}, "label": "/busca_cpf?cpf_cnpj=***(fmt)"},
+                        {"path": "/cliente_cpf", "params": {"codfil": codfil, "cpf_cnpj": formatted}, "label": "/cliente_cpf?codfil=N&cpf_cnpj=***(fmt)"},
+                    ]
+            else:
+                name = raw_query
+                targets += [
+                    {"path": "/lista_clientes", "params": {"texto": name}, "label": "/lista_clientes?texto=***(nome)"},
+                    {"path": "/producao", "params": {"texto": name}, "label": "/producao?texto=***(nome)"},
+                ]
+
+            for t in targets:
+                probes.append(await _probe_one(client, t["path"], t["params"], headers, t["label"]))
+    except (httpx.TimeoutException, httpx.HTTPError) as e:
+        logger.error(f"[INFOCAP PROBE] http error: {type(e).__name__}")
+        return {"ok": False, "status": "provider_error", "blockers": ["network_error"], "probes": probes}
+
+    winner = next((p for p in probes if p.get("ok") and (p.get("result_count") or 0) > 0), None)
+    dur = int((time.monotonic() - started) * 1000)
+    for p in probes:
+        logger.info(
+            f"[INFOCAP PROBE] company={company_id} connection={connection_id} endpoint={p.get('endpoint')} "
+            f"http={p.get('http_status')} count={p.get('result_count')}"
+        )
+    logger.info(f"[INFOCAP PROBE] company={company_id} auth_http={auth_status} winner={bool(winner)} duration_ms={dur}")
+
+    return {
+        "ok": True,
+        "provider": "infocap",
+        "auth_http_status": auth_status,
+        "query_type": qtype,
+        "winner_endpoint": winner.get("endpoint") if winner else None,
+        "winner_array_key": winner.get("array_key_detected") if winner else None,
+        "winner_sample_keys": winner.get("sample_keys") if winner else [],
+        "probes": probes,
+    }
