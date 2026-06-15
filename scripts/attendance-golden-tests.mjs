@@ -110,6 +110,11 @@ const policyLookup = (id) =>
     method: 'POST',
     body: { source: 'mock', mode: 'mock', fixture: 'allianz_residential_electrician_covered' },
   });
+const policyLookupInfocap = (id) =>
+  api(`/api/attendance/cases/${id}/runtime/policy-lookup`, {
+    method: 'POST',
+    body: { source: 'infocap', mode: 'connector' },
+  });
 
 function runtimeDiag(resp) {
   return resp?.corridor_run?.diagnostics?.runtime || {};
@@ -272,6 +277,23 @@ async function main() {
       const st = await step(id);
       assert('risco: step pós-handoff retorna 409', st.status === 409, `status=${st.status}`);
       noCpfExposed('risco', r.json);
+    }
+  }
+
+  // === Cenário 8: InfoCap connector sem configuração (42I2) ===
+  console.log('\n[8] InfoCap connector (read-only) — sem conexão configurada não confirma cobertura');
+  {
+    const id = await caseAtCpfGate('infocap');
+    if (id) {
+      await reply(id, FAKE_CPF); // → policy_lookup_required
+      const r = await policyLookupInfocap(id);
+      const st = r.json?.policy_lookup_result?.status;
+      assert('infocap: não quebra a rota', r.status === 200, `status=${r.status}`);
+      assert('infocap: não confirma cobertura (status seguro)', ['blocked_not_configured', 'blocked_missing_credentials', 'unsupported', 'not_found', 'provider_error'].includes(st), `plr.status=${st}`);
+      // não deve ter virado verified por connector sem evidência
+      const det = await getDetail(id);
+      assert('infocap: verification_status não vira verified sem evidência', !String(det.json?.case?.verification_status || '').startsWith('verified'), `vs=${det.json?.case?.verification_status}`);
+      noCpfExposed('infocap', r.json);
     }
   }
 
