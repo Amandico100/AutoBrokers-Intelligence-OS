@@ -169,6 +169,11 @@ app.include_router(
     whatsapp_integrations_router, prefix="/api/whatsapp-integrations", tags=["WhatsApp Integrations"]
 )
 
+# === Attendance Agent Reply (stateless, guardrailed LLM fallback — 42B5L-BE) ===
+from app.api.attendance_agent_reply import router as attendance_agent_reply_router
+
+app.include_router(attendance_agent_reply_router, tags=["Attendance Agent Reply"])
+
 
 @app.get("/")
 async def root():
