@@ -174,6 +174,11 @@ from app.api.attendance_agent_reply import router as attendance_agent_reply_rout
 
 app.include_router(attendance_agent_reply_router, tags=["Attendance Agent Reply"])
 
+# === InfoCap Connector Secret Storage (secret flow — 42I2.0C) ===
+from app.api.infocap_connector import router as infocap_connector_router
+
+app.include_router(infocap_connector_router, tags=["InfoCap Connector"])
+
 
 @app.get("/")
 async def root():
