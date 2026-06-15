@@ -112,6 +112,80 @@ async function resolveInfocapConnection(
   };
 }
 
+export interface InfocapDiagnostics {
+  provider: 'infocap';
+  template_found: boolean;
+  tenant_connection_found: boolean;
+  status: string | null;
+  base_url_configured: boolean;
+  secret_ref_present: boolean;
+  ready_for_real_lookup: boolean;
+  blockers: string[];
+}
+
+/**
+ * Diagnóstico SEGURO da conexão InfoCap da corretora (sem expor segredo/login/token).
+ * Apenas booleanos/status para confirmar se o cadastro no Vault está pronto.
+ */
+export async function diagnoseInfocapConnection(companyId: string): Promise<InfocapDiagnostics> {
+  const blockers: string[] = [];
+  const supabaseAdmin = getAdminClient();
+
+  // 1. Template global
+  const { data: tpl } = await supabaseAdmin
+    .from('connector_templates')
+    .select('id')
+    .eq('slug', INFOCAP_SLUG)
+    .eq('is_active', true)
+    .maybeSingle();
+  const templateFound = Boolean(tpl?.id);
+  if (!templateFound) blockers.push('infocap_template_not_found');
+
+  // 2. Conexão da corretora
+  let connectionFound = false;
+  let status: string | null = null;
+  let baseUrlConfigured = false;
+  let secretRefPresent = false;
+
+  if (templateFound) {
+    const { data: conn } = await supabaseAdmin
+      .from('tenant_connections')
+      .select('status, connection_config, encrypted_secret_ref')
+      .eq('company_id', companyId)
+      .eq('connector_template_id', tpl!.id)
+      .order('created_at', { ascending: false })
+      .limit(1)
+      .maybeSingle();
+    if (conn) {
+      connectionFound = true;
+      status = conn.status ?? null;
+      const config = conn.connection_config && typeof conn.connection_config === 'object' ? conn.connection_config : {};
+      baseUrlConfigured = typeof (config as any).base_url === 'string' && (config as any).base_url.length > 0;
+      secretRefPresent = typeof conn.encrypted_secret_ref === 'string' && conn.encrypted_secret_ref.length > 0;
+    } else {
+      blockers.push('tenant_connection_not_found');
+    }
+  }
+
+  if (connectionFound && status !== 'connected') blockers.push('connection_not_connected');
+  if (connectionFound && !secretRefPresent) blockers.push('missing_credentials');
+  if (connectionFound && !baseUrlConfigured) blockers.push('missing_base_url');
+
+  const readyForRealLookup =
+    templateFound && connectionFound && status === 'connected' && secretRefPresent && baseUrlConfigured;
+
+  return {
+    provider: 'infocap',
+    template_found: templateFound,
+    tenant_connection_found: connectionFound,
+    status,
+    base_url_configured: baseUrlConfigured,
+    secret_ref_present: secretRefPresent,
+    ready_for_real_lookup: readyForRealLookup,
+    blockers,
+  };
+}
+
 /**
  * Lookup read-only de apólice via InfoCap. Não faz chamada HTTP real ainda
  * (sem spec verificada do endpoint). Nunca fabrica evidência de cobertura.
