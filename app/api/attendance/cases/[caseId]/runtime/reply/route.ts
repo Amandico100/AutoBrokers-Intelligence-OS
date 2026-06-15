@@ -9,6 +9,7 @@ import {
   extractSlotValue,
   clarificationForSlot,
   selectNextSlot,
+  questionForSlot,
   RUNTIME_ENGINE,
   isCoverageEvidenceReady,
   POLICY_EVIDENCE_SATISFIED,
@@ -18,6 +19,11 @@ import { evaluateRuntimeSafetyDecision } from '@/lib/attendance/runtime-safety-p
 import { evaluateFirstResponseIntake } from '@/lib/attendance/runtime-intake-policy';
 import { classifyMessageRoute } from '@/lib/attendance/runtime-message-router';
 import { buildRecoveryResponse } from '@/lib/attendance/runtime-conversation-recovery';
+import {
+  attemptAttendanceLlmFallback,
+  isAttendanceFallbackEnabled,
+  isFallbackKind,
+} from '@/lib/attendance/runtime-llm-fallback';
 
 /** Remove campos sensíveis do caso antes de devolver ao cliente. */
 function safeReplyCase(row: any): any {
@@ -25,10 +31,29 @@ function safeReplyCase(row: any): any {
   const { insured_document_ref: _omit, ...rest } = row;
   return rest;
 }
+
+/** Resolve o agente de Atendimento (insured_external) do caso; nunca o Core. */
+async function resolveAttendanceAgentId(supabaseAdmin: any, companyId: string, caseRow: any): Promise<string | null> {
+  if (caseRow?.assigned_agent_id) return caseRow.assigned_agent_id as string;
+  try {
+    const { data } = await supabaseAdmin
+      .from('agents')
+      .select('id')
+      .eq('company_id', companyId)
+      .eq('agent_role', 'attendance')
+      .eq('agent_audience', 'insured_external')
+      .eq('is_active', true)
+      .limit(1);
+    return data?.[0]?.id ?? null;
+  } catch {
+    return null;
+  }
+}
 import { macroGateOverride, MACRO_STATES } from '@/lib/attendance/attendance-macro-state';
 import {
   extractDocument,
   maskDocument,
+  IDENTITY_QUESTION,
   IDENTITY_CLARIFY,
   IDENTITY_NEXT_STEP,
   POLICY_LOOKUP_MESSAGE,
@@ -128,6 +153,7 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
 
     // Última pergunta do agente (para dedupe) ANTES de inserir a nova user message.
     let lastAssistantContent: string | null = null;
+    let recentMessages: any[] = [];
     if (caseRow.conversation_id) {
       const { data: msgs } = await supabaseAdmin
         .from('messages')
@@ -135,7 +161,8 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
         .eq('conversation_id', caseRow.conversation_id)
         .order('created_at', { ascending: false })
         .limit(10);
-      const lastAssistant = (msgs || []).find((m: any) => m.role === 'assistant');
+      recentMessages = msgs || [];
+      const lastAssistant = recentMessages.find((m: any) => m.role === 'assistant');
       lastAssistantContent = lastAssistant && typeof lastAssistant.content === 'string' ? lastAssistant.content : null;
     }
 
@@ -279,11 +306,30 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
         caseRow,
       });
       if (idRecovery.handled) {
+        // 42B5L-FE: para off-topic/clarificação, tentar resposta LLM (segura, não muda estado).
+        let idMessage = idRecovery.assistant_message;
+        let idLlmDiag: Record<string, unknown> = { attempted: false, used: false, safe: true };
+        if (isAttendanceFallbackEnabled() && isFallbackKind(idRoute.kind)) {
+          const agentId = await resolveAttendanceAgentId(supabaseAdmin, companyId, caseRow);
+          const outcome = await attemptAttendanceLlmFallback({
+            route: idRoute,
+            message: rawMessage,
+            companyId,
+            agentId,
+            caseRow,
+            corridorRun: run,
+            recentMessages,
+            currentQuestion: IDENTITY_QUESTION,
+          });
+          idLlmDiag = outcome.diag;
+          if (outcome.used && outcome.reply) idMessage = outcome.reply;
+        }
+
         let aId: string | null = null;
-        if (caseRow.conversation_id && (force || lastAssistantContent !== idRecovery.assistant_message)) {
+        if (caseRow.conversation_id && (force || lastAssistantContent !== idMessage)) {
           const { data: ins } = await supabaseAdmin
             .from('messages')
-            .insert({ conversation_id: caseRow.conversation_id, role: 'assistant', content: idRecovery.assistant_message, type: 'text' })
+            .insert({ conversation_id: caseRow.conversation_id, role: 'assistant', content: idMessage, type: 'text' })
             .select('id')
             .maybeSingle();
           aId = ins?.id ?? null;
@@ -304,6 +350,7 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
                   selected_slot: 'identity_document',
                   macro_state: MACRO_STATES.IDENTITY_REQUIRED,
                   conversation_recovery: { kind: idRoute.kind },
+                  llm_fallback: idLlmDiag,
                   external_action_allowed: false,
                   channel: source,
                   engine: RUNTIME_ENGINE,
@@ -326,7 +373,7 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
           case: safeReplyCase(idCase || caseRow),
           corridor_run: run || null,
           intake: { target_slot: 'identity_document', kind: idRoute.kind, filled: false, status: 'conversation_recovery', extracted_value: null, confidence: 'low', conflicts: [] },
-          next_step: { selected_slot: 'identity_document', question: idRecovery.assistant_message, status: 'conversation_recovery', message_id: aId },
+          next_step: { selected_slot: 'identity_document', question: idMessage, status: 'conversation_recovery', message_id: aId },
           messages: { user_message_id: userMessageId, assistant_message_id: aId },
           external_action_allowed: false,
         });
@@ -661,6 +708,24 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
         let recSelected: string | null = targetSlot;
         let recLastAction = recovery.keep_last_agent_action ? (lastAction || `ask:${targetSlot}`) : `conversation_recovery:${route.kind}`;
 
+        // 42B5L-FE: off-topic/clarificação → tentar resposta LLM (segura, sem mudar estado).
+        let recLlmDiag: Record<string, unknown> = { attempted: false, used: false, safe: true };
+        if (!recovery.advance && isAttendanceFallbackEnabled() && isFallbackKind(route.kind)) {
+          const agentId = await resolveAttendanceAgentId(supabaseAdmin, companyId, caseRow);
+          const outcome = await attemptAttendanceLlmFallback({
+            route,
+            message: rawMessage,
+            companyId,
+            agentId,
+            caseRow,
+            corridorRun: run,
+            recentMessages,
+            currentQuestion: questionForSlot(targetSlot, slots.filled),
+          });
+          recLlmDiag = outcome.diag;
+          if (outcome.used && outcome.reply) recMessage = outcome.reply;
+        }
+
         if (recovery.advance) {
           const step = computeRuntimeStep({
             caseRow,
@@ -705,6 +770,7 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
                   last_step_at: new Date().toISOString(),
                   selected_slot: recSelected,
                   conversation_recovery: { kind: route.kind, advanced: recovery.advance },
+                  llm_fallback: recLlmDiag,
                   external_action_allowed: false,
                   channel: source,
                   engine: RUNTIME_ENGINE,
