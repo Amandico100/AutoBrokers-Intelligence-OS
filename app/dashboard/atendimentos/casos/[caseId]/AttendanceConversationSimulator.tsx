@@ -147,7 +147,7 @@ export default function AttendanceConversationSimulator({
     !isLocked &&
     (macroState === 'policy_lookup_required' ||
       lastAgentAction === 'policy_lookup:pending' ||
-      (c.verification_status === 'unverified' && Boolean(c.insured_document_ref)));
+      (c.verification_status === 'unverified' && Boolean(c.has_insured_document_ref)));
 
   const vp = verificationPill(c.verification_status);
   const pri = priorityPill(c.priority);

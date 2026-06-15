@@ -27,6 +27,36 @@ async function getCompanyId(supabaseAdmin: ReturnType<typeof getAdminClient>, us
 // Campos que o PATCH mínimo permite atualizar (whitelist; DB valida CHECKs).
 const PATCHABLE_FIELDS = ['status', 'priority', 'summary', 'next_step', 'handoff_required', 'handoff_reason'] as const;
 
+// ── 42B7.1: sanitização de PII no payload do dashboard (banco NÃO é alterado) ──
+const LONG_DIGITS_RE = /\d[\d.\-/\s]{9,}\d/g;
+
+/** Máscara segura de documento (CPF/CNPJ): mantém só os 2 últimos dígitos. */
+function maskDocumentRef(ref: unknown): string | null {
+  const digits = typeof ref === 'string' ? ref.replace(/\D/g, '') : '';
+  if (digits.length < 4) return null;
+  return `***${digits.slice(-2)} (len=${digits.length})`;
+}
+
+/** Remove insured_document_ref cru do case e expõe apenas flag + máscara. */
+function safeCaseDetail(caseRow: any): any {
+  if (!caseRow || typeof caseRow !== 'object') return caseRow;
+  const { insured_document_ref, ...rest } = caseRow;
+  const hasDoc =
+    typeof insured_document_ref === 'string' && insured_document_ref.replace(/\D/g, '').length >= 11;
+  return {
+    ...rest,
+    has_insured_document_ref: hasDoc,
+    insured_document_masked: hasDoc ? maskDocumentRef(insured_document_ref) : null,
+  };
+}
+
+/** Mascara CPF/CNPJ/sequências longas de dígitos no conteúdo da mensagem (só na resposta). */
+function sanitizeMessageForDetail(message: any): any {
+  if (!message || typeof message !== 'object') return message;
+  const content = typeof message.content === 'string' ? message.content.replace(LONG_DIGITS_RE, '[documento omitido]') : message.content;
+  return { ...message, content };
+}
+
 /**
  * GET /api/attendance/cases/[caseId]
  * Retorna caso + conversation + messages + corridor_run + corridor_template + dispatch_packets.
@@ -111,9 +141,9 @@ export async function GET(request: NextRequest, { params }: { params: Promise<{ 
       .order('created_at', { ascending: false });
 
     return NextResponse.json({
-      case: caseRow,
+      case: safeCaseDetail(caseRow),
       conversation,
-      messages,
+      messages: (messages || []).map(sanitizeMessageForDetail),
       corridor_run: corridorRun || null,
       corridor_template: corridorTemplate,
       dispatch_packets: dispatchPackets || [],
@@ -175,7 +205,7 @@ export async function PATCH(request: NextRequest, { params }: { params: Promise<
       return NextResponse.json({ error: 'Caso não encontrado' }, { status: 404 });
     }
 
-    return NextResponse.json({ case: updated });
+    return NextResponse.json({ case: safeCaseDetail(updated) });
   } catch (error: any) {
     console.error('[ATTENDANCE CASE] PATCH error:', error?.message);
     return NextResponse.json({ error: 'Erro interno' }, { status: 500 });

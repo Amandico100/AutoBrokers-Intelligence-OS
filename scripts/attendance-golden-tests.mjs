@@ -73,11 +73,14 @@ async function api(path, { method = 'GET', body } = {}) {
   return { status: res.status, json };
 }
 
+function containsCpf(raw) {
+  return raw.includes(FAKE_CPF_DIGITS) || raw.includes(FAKE_CPF);
+}
 function noCpfExposed(label, resp) {
   const raw = JSON.stringify(resp ?? {});
   const caseHasDoc = resp?.case && Object.prototype.hasOwnProperty.call(resp.case, 'insured_document_ref');
   assert(`${label}: resposta não contém insured_document_ref`, !caseHasDoc, 'campo presente no case');
-  assert(`${label}: resposta não vaza dígitos do CPF`, !raw.includes(FAKE_CPF_DIGITS), 'CPF cru no JSON');
+  assert(`${label}: resposta não vaza CPF`, !containsCpf(raw), 'CPF cru no JSON');
 }
 
 async function createCase(label) {
@@ -98,6 +101,7 @@ async function createCase(label) {
   return json.case.id;
 }
 
+const getDetail = (id) => api(`/api/attendance/cases/${id}`);
 const reply = (id, message) =>
   api(`/api/attendance/cases/${id}/runtime/reply`, { method: 'POST', body: { message, source: 'dashboard' } });
 const step = (id) => api(`/api/attendance/cases/${id}/runtime/step`, { method: 'POST', body: { source: 'dashboard' } });
@@ -159,6 +163,14 @@ async function main() {
       assert('fluxo: CPF capturado → policy_lookup_required', r3.json?.next_step?.status === 'policy_lookup_required' || r3.json?.intake?.status === 'policy_lookup_required', JSON.stringify(r3.json?.next_step));
       assert('fluxo: status do caso = policy_check', r3.json?.case?.status === 'policy_check', `status=${r3.json?.case?.status}`);
       noCpfExposed('fluxo r3 (pós-CPF)', r3.json);
+
+      // 42B7.1: GET detail sanitizado (PII)
+      const det = await getDetail(id);
+      const detRaw = JSON.stringify(det.json ?? {});
+      assert('detail: case sem insured_document_ref', det.json?.case && !Object.prototype.hasOwnProperty.call(det.json.case, 'insured_document_ref'), 'campo presente');
+      assert('detail: has_insured_document_ref === true', det.json?.case?.has_insured_document_ref === true, `val=${det.json?.case?.has_insured_document_ref}`);
+      assert('detail: não vaza CPF (formatado ou dígitos)', !containsCpf(detRaw), 'CPF cru no detail');
+      assert('detail: messages não expõem CPF cru', !(det.json?.messages || []).some((m) => containsCpf(String(m?.content || ''))), 'CPF em messages');
 
       const pl = await policyLookup(id);
       assert('fluxo: policy lookup mock ok', pl.status === 200 && pl.json?.ok === true, `status=${pl.status}`);
