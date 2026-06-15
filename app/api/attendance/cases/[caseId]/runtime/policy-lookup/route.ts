@@ -33,6 +33,21 @@ function safeCase(row: any): any {
   return rest;
 }
 
+/** next_step seguro quando o lookup InfoCap não confirma cobertura (42I2.1A). */
+function infocapNextStep(status: string): string {
+  switch (status) {
+    case 'auth_error':
+      return 'Conexão InfoCap retornou erro de autenticação. Validar as credenciais da corretora no Vault.';
+    case 'multiple_matches':
+      return 'InfoCap retornou múltiplos resultados. Solicitar um dado adicional ou encaminhar para validação humana.';
+    case 'blocked_not_configured':
+    case 'blocked_missing_credentials':
+      return 'Conexão InfoCap não está pronta. Configure a conexão (base_url + credenciais) no Vault antes de consultar.';
+    default:
+      return 'Não foi possível validar automaticamente no InfoCap. Tente outro dado de busca ou encaminhe para validação manual antes de confirmar cobertura.';
+  }
+}
+
 /** Persiste um policy_lookup_result nos campos existentes (run + case). Reusado por mock/manual/connector. */
 async function persistPolicyLookupResult(
   supabaseAdmin: ReturnType<typeof getAdminClient>,
@@ -220,8 +235,60 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
         });
       }
 
-      // Não encontrado / não configurado / não suportado → NÃO confirma cobertura,
-      // NÃO altera verification_status; mantém o caso aguardando validação.
+      // Não encontrado / não configurado / erro → NÃO confirma cobertura,
+      // NÃO altera verification_status/policy_source/coverage; mantém o caso
+      // aguardando validação, mas atualiza next_step (corrige texto obsoleto).
+      const safeNextStep = infocapNextStep(infocap.status);
+      const safeSummary = {
+        provider: 'infocap',
+        status: infocap.status,
+        query_strategy: infocap.query_strategy ?? null,
+        search_path: infocap.search_path ?? null,
+        result_count: infocap.result_count ?? null,
+        requires_human: Boolean(infocap.requires_human),
+        at: new Date().toISOString(),
+      };
+      const newMeta = mergeObject(caseRow.metadata, {
+        attendance_macro_state: 'policy_lookup_required',
+        policy_lookup: safeSummary,
+      });
+      await supabaseAdmin
+        .from('attendance_cases')
+        .update({ next_step: safeNextStep, metadata: newMeta })
+        .eq('id', caseRow.id)
+        .eq('company_id', companyId);
+
+      // Atualiza diagnostics.runtime do último run (sem PII/segredo).
+      const { data: lastRun } = await supabaseAdmin
+        .from('corridor_runs')
+        .select('id, diagnostics')
+        .eq('case_id', caseRow.id)
+        .order('started_at', { ascending: false })
+        .limit(1)
+        .maybeSingle();
+      if (lastRun?.id) {
+        const prevDiag =
+          lastRun.diagnostics && typeof lastRun.diagnostics === 'object' && !Array.isArray(lastRun.diagnostics)
+            ? (lastRun.diagnostics as Record<string, any>)
+            : {};
+        const prevRuntime =
+          prevDiag.runtime && typeof prevDiag.runtime === 'object' && !Array.isArray(prevDiag.runtime)
+            ? prevDiag.runtime
+            : {};
+        await supabaseAdmin
+          .from('corridor_runs')
+          .update({
+            next_step: safeNextStep,
+            diagnostics: {
+              ...prevDiag,
+              external_action_allowed: false,
+              runtime: { ...prevRuntime, last_step_at: new Date().toISOString(), policy_lookup: safeSummary },
+            },
+          })
+          .eq('id', lastRun.id)
+          .eq('company_id', companyId);
+      }
+
       return NextResponse.json({
         ok: false,
         provider: 'infocap',
@@ -229,10 +296,17 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
           status: infocap.status,
           source: 'infocap',
           verification_status: 'unverified',
+          query_strategy: infocap.query_strategy ?? null,
+          search_path: infocap.search_path ?? null,
+          search_param: infocap.search_param ?? null,
+          http_status: infocap.http_status ?? null,
+          result_count: infocap.result_count ?? null,
+          matches: infocap.matches ?? [],
           blockers: infocap.blockers || [],
           requires_human: Boolean(infocap.requires_human),
           notes: infocap.notes || [],
         },
+        next_step: safeNextStep,
         external_action: { sent: false, allowed: false },
       });
     }

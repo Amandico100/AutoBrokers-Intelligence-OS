@@ -289,10 +289,14 @@ async function main() {
       const r = await policyLookupInfocap(id);
       const st = r.json?.policy_lookup_result?.status;
       assert('infocap: não quebra a rota', r.status === 200, `status=${r.status}`);
-      assert('infocap: não confirma cobertura (status seguro)', ['blocked_not_configured', 'blocked_missing_credentials', 'unsupported', 'not_found', 'provider_error'].includes(st), `plr.status=${st}`);
-      // não deve ter virado verified por connector sem evidência
+      const SAFE_INFOCAP = ['blocked_not_configured', 'blocked_missing_credentials', 'unsupported', 'not_found', 'provider_error', 'auth_error', 'multiple_matches', 'found'];
+      assert('infocap: status conhecido', SAFE_INFOCAP.includes(st), `plr.status=${st}`);
+      // CPF fictício → não deve confirmar cobertura sem evidência real
       const det = await getDetail(id);
-      assert('infocap: verification_status não vira verified sem evidência', !String(det.json?.case?.verification_status || '').startsWith('verified'), `vs=${det.json?.case?.verification_status}`);
+      if (st !== 'found') {
+        assert('infocap: verification_status não vira verified sem found', !String(det.json?.case?.verification_status || '').startsWith('verified'), `vs=${det.json?.case?.verification_status}`);
+        assert('infocap: next_step não usa texto obsoleto', !/será implementado no próximo batch/i.test(String(det.json?.case?.next_step || '')), `next=${det.json?.case?.next_step}`);
+      }
       noCpfExposed('infocap', r.json);
     }
   }

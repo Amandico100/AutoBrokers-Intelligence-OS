@@ -214,14 +214,20 @@ def _extract_array(data: Any) -> List[Dict[str, Any]]:
 
 
 def _sanitize_match(record: Dict[str, Any]) -> Dict[str, Any]:
+    cancelado = record.get("cancelado")
+    status = _first_str(record, ["sit_acompanhamento_txt", "status", "situacao", "renovacao_situacao"])
+    if not status and cancelado is not None:
+        status = "cancelado" if cancelado in (True, 1, "1", "S", "s") else "ativo"
     return {
-        "policy_ref": _first_str(record, ["codigo", "codcli", "id", "nosnum"]) or "infocap-match",
-        "insurer_key": _first_str(record, ["cia", "codcia", "seguradora"]),
-        "product": _first_str(record, ["ramo", "codram", "produto", "descricao"]),
+        "policy_ref": _first_str(record, ["codcli", "codigo", "id", "nosnum"]) or "infocap-match",
+        "insurer_key": _first_str(record, ["seguradora_abrev", "cia", "codcia", "seguradora"]),
+        "product": _first_str(record, ["ramo_abrev", "ramo", "codram", "produto", "descricao"]),
         "line_kind": None,
-        "policy_status": _first_str(record, ["status", "situacao"]),
-        "masked_policy_number": _mask_tail(_first_str(record, ["apolice", "nosnum", "numero", "num_apolice"])),
-        "holder_name_masked": _mask_name(_first_str(record, ["nome", "name", "razao_social", "cliente"])),
+        "policy_status": status,
+        "masked_policy_number": _mask_tail(
+            _first_str(record, ["numapo", "apolice", "nosnum", "numero", "num_apolice"])
+        ),
+        "holder_name_masked": _mask_name(_first_str(record, ["cliente", "nome", "name", "razao_social"])),
     }
 
 
@@ -279,45 +285,76 @@ async def infocap_lookup(
         return {"ok": False, "status": "blocked_missing_credentials", "source": "infocap", "blockers": ["incomplete_credentials"]}
 
     auth_path = config.get("infocap_auth_path") or "/login"
-    search_path = config.get("infocap_search_path") or "/lista_clientes"
-    search_param = config.get("infocap_search_param") or "texto"
-    query = (_digits(payload.document) or (payload.name or "").strip())
-    if not query:
-        return {"ok": False, "status": "not_found", "source": "infocap", "blockers": ["no_search_term"]}
+    # CorpAPI: busca por CPF/CNPJ é endpoint próprio (/busca_cpf?cpf_cnpj=); por nome é /lista_clientes?texto=
+    cpf_search_path = config.get("infocap_cpf_search_path") or "/busca_cpf"
+    cpf_search_param = config.get("infocap_cpf_search_param") or "cpf_cnpj"
+    name_search_path = config.get("infocap_search_path") or "/lista_clientes"
+    name_search_param = config.get("infocap_search_param") or "texto"
+    extra_params_raw = config.get("infocap_search_extra_params")
+    extra_params = extra_params_raw if isinstance(extra_params_raw, dict) else {}
+
+    doc_digits = _digits(payload.document)
+    name = (payload.name or "").strip()
+    if doc_digits:
+        query_strategy = "document_cpf"
+        search_path = cpf_search_path
+        search_param = cpf_search_param
+        search_value: str = doc_digits
+    elif name:
+        query_strategy = "customer_name"
+        search_path = name_search_path
+        search_param = name_search_param
+        search_value = name
+    else:
+        return {
+            "ok": False, "status": "not_found", "source": "infocap", "provider": "infocap",
+            "query_strategy": "fallback", "blockers": ["no_search_term"], "verification_status": "unverified",
+        }
+
+    diag = {
+        "provider": "infocap",
+        "query_strategy": query_strategy,
+        "search_path": search_path,
+        "search_param": search_param,
+    }
 
     def _done(result: Dict[str, Any]) -> Dict[str, Any]:
+        merged = {**diag, **result}
         dur = int((time.monotonic() - started) * 1000)
         logger.info(
             f"[INFOCAP LOOKUP] company={company_id} connection={connection_id} provider=infocap "
-            f"status={result.get('status')} duration_ms={dur}"
+            f"status={merged.get('status')} strategy={query_strategy} search_path={search_path} "
+            f"result_count={merged.get('result_count')} duration_ms={dur}"
         )
-        return result
+        return merged
 
     try:
         async with httpx.AsyncClient(timeout=LOOKUP_TIMEOUT_S, base_url=base_url) as client:
             # 1. Auth
             auth_res = await client.post(auth_path, json={"email": email, "senha": senha, "aplicacao": 0})
             if auth_res.status_code in (401, 403):
-                return _done({"ok": False, "status": "auth_error", "source": "infocap", "blockers": ["auth_rejected"]})
+                return _done({"ok": False, "status": "auth_error", "verification_status": "unverified", "http_status": auth_res.status_code, "blockers": ["auth_rejected"]})
             if auth_res.status_code >= 400:
-                return _done({"ok": False, "status": "provider_error", "source": "infocap", "blockers": [f"auth_http_{auth_res.status_code}"]})
+                return _done({"ok": False, "status": "provider_error", "verification_status": "unverified", "http_status": auth_res.status_code, "blockers": ["auth_http_error"]})
             token = None
             try:
                 token = _extract_token(auth_res.json())
             except Exception:  # noqa: BLE001
                 token = (auth_res.text or "").strip() or None
             if not token:
-                return _done({"ok": False, "status": "auth_error", "source": "infocap", "blockers": ["no_token"]})
+                return _done({"ok": False, "status": "auth_error", "verification_status": "unverified", "blockers": ["no_token_in_login_response"]})
 
             # 2. Search (read-only)
             headers = {"Authorization": token, "Content-Type": "application/json"}
-            search_res = await client.get(search_path, params={search_param: query}, headers=headers)
-            if search_res.status_code == 404:
-                return _done({"ok": False, "status": "not_found", "source": "infocap", "verification_status": "unverified", "blockers": []})
-            if search_res.status_code in (401, 403):
-                return _done({"ok": False, "status": "auth_error", "source": "infocap", "blockers": ["search_unauthorized"]})
-            if search_res.status_code >= 400:
-                return _done({"ok": False, "status": "provider_error", "source": "infocap", "blockers": [f"search_http_{search_res.status_code}"]})
+            params = {search_param: search_value, **extra_params}
+            search_res = await client.get(search_path, params=params, headers=headers)
+            http_status = search_res.status_code
+            if http_status == 404:
+                return _done({"ok": False, "status": "not_found", "verification_status": "unverified", "http_status": 404, "result_count": 0, "blockers": []})
+            if http_status in (401, 403):
+                return _done({"ok": False, "status": "auth_error", "verification_status": "unverified", "http_status": http_status, "blockers": ["search_unauthorized"]})
+            if http_status >= 400:
+                return _done({"ok": False, "status": "provider_error", "verification_status": "unverified", "http_status": http_status, "blockers": ["search_http_error"]})
 
             try:
                 arr = _extract_array(search_res.json())
@@ -325,16 +362,17 @@ async def infocap_lookup(
                 arr = []
     except (httpx.TimeoutException, httpx.HTTPError) as e:
         logger.error(f"[INFOCAP LOOKUP] http error: {type(e).__name__}")
-        return _done({"ok": False, "status": "provider_error", "source": "infocap", "blockers": ["network_error"]})
+        return _done({"ok": False, "status": "provider_error", "verification_status": "unverified", "blockers": ["network_error"]})
 
     if len(arr) == 0:
-        return _done({"ok": False, "status": "not_found", "source": "infocap", "verification_status": "unverified", "blockers": []})
+        return _done({"ok": False, "status": "not_found", "verification_status": "unverified", "http_status": http_status, "result_count": 0, "blockers": [], "notes": ["Nenhum resultado para o termo de busca."]})
     if len(arr) > 1:
         return _done({
             "ok": False,
             "status": "multiple_matches",
-            "source": "infocap",
             "verification_status": "unverified",
+            "http_status": http_status,
+            "result_count": len(arr),
             "matches": [_sanitize_match(r) for r in arr[:5]],
             "requires_human": True,
             "blockers": ["multiple_matches"],
@@ -342,17 +380,19 @@ async def infocap_lookup(
 
     selected = _sanitize_match(arr[0])
     now = datetime.now(timezone.utc).isoformat()
+    source_ref = f"infocap:{search_path.lstrip('/')}"
     return _done({
         "ok": True,
         "status": "found",
-        "source": "infocap",
-        "source_ref": "infocap:lista_clientes",
+        "source_ref": source_ref,
+        "http_status": http_status,
+        "result_count": 1,
         "selected": selected,
         "matches": [selected],
         "verification_status": "verified_by_connector",
         "coverage_evidence": {
             "source": "infocap",
-            "source_ref": "infocap:lista_clientes",
+            "source_ref": source_ref,
             "verified_at": now,
             "verified_by": "connector",
             "confidence": "medium",

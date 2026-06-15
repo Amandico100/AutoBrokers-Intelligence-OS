@@ -55,6 +55,13 @@ export interface InfocapPolicyLookupResult {
   blockers?: string[];
   requires_human?: boolean;
   notes?: string[];
+  // Diagnóstico seguro (sem PII/segredo) — 42I2.1A
+  provider?: 'infocap';
+  query_strategy?: 'document_cpf' | 'customer_name' | 'fallback';
+  search_path?: string;
+  search_param?: string;
+  http_status?: number;
+  result_count?: number;
 }
 
 export interface InfocapPolicyLookupInput {
