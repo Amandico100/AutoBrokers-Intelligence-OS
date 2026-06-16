@@ -250,11 +250,14 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
         result_count: infocap.result_count ?? null,
         requires_human: Boolean(infocap.requires_human),
         infocap_client_found: Boolean(infocap.infocap_client_found),
+        client_ref_available: Boolean(infocap.client_ref_available),
         matched_by: infocap.matched_by ?? null,
         documents_count: infocap.documents_count ?? null,
         client_ref: infocap.client_ref ?? null,
         client_ref_fields: infocap.client_ref_fields ?? null,
         next_possible_endpoints: infocap.next_possible_endpoints ?? null,
+        // 42I3A: matches mascarados persistidos p/ o painel de seleção de apólice.
+        matches: Array.isArray(infocap.matches) ? infocap.matches.slice(0, 5) : [],
         at: new Date().toISOString(),
       };
       const newMeta = mergeObject(caseRow.metadata, {

@@ -33,6 +33,13 @@ export interface InfocapPolicyMatch {
   policy_status: string | null;
   masked_policy_number: string | null;
   holder_name_masked: string | null;
+  // Enriquecimento 42I3A (todos seguros/sanitizados)
+  valid_from?: string | null;
+  valid_to?: string | null;
+  active_now?: boolean | null;
+  expired?: boolean | null;
+  coverages_count?: number | null;
+  cancelled?: boolean | null;
 }
 
 export interface InfocapCoverageEvidence {
@@ -83,6 +90,58 @@ export interface InfocapPolicyLookupInput {
   customerPhone?: string;
   customerName?: string;
   policyNumber?: string;
+  preferInsurer?: string;
+  preferProduct?: string;
+}
+
+/** Pacote de evidência estruturado retornado pelo backend (sanitizado). */
+export interface InfocapEvidencePack {
+  source: 'infocap';
+  verified_by: 'connector';
+  policy_found: boolean;
+  policy_selected: boolean;
+  policy_ref: string | null;
+  masked_policy_number: string | null;
+  insurer_detected: string | null;
+  product_detected: string | null;
+  line_kind_detected: string | null;
+  policy_status: string | null;
+  active_now: boolean | null;
+  expired: boolean | null;
+  valid_from: string | null;
+  valid_to: string | null;
+  holder_name_masked: string | null;
+  risk_address_summary_masked: string | null;
+  object_summary: string | null;
+  coverage_sections: Array<{ label: string; amount: string | null }>;
+  coverages_count: number | null;
+  cancelled: boolean;
+  assistance_signals: {
+    residential: boolean | null;
+    electrician: boolean | null;
+    emergency_assistance: boolean | null;
+  };
+  confidence: 'low' | 'medium' | 'high';
+  human_required: boolean;
+  limitations: string[];
+}
+
+export interface InfocapPolicyDetailResult {
+  ok: boolean;
+  status: 'found' | 'not_found' | 'auth_error' | 'provider_error' | 'blocked_not_configured' | 'blocked_missing_credentials';
+  source: 'infocap';
+  source_ref?: string;
+  http_status?: number;
+  policy?: InfocapPolicyMatch | null;
+  policy_evidence_pack?: InfocapEvidencePack | null;
+  verified_at?: string;
+  blockers?: string[];
+}
+
+export interface InfocapPolicyDetailInput {
+  companyId: string;
+  policyRef: string;
+  codfil?: number | string | null;
 }
 
 const INFOCAP_SLUG = 'infocap';
@@ -291,6 +350,8 @@ export async function lookupInfocapPolicy(input: InfocapPolicyLookupInput): Prom
           tenant_connection_id: conn.connectionId,
           document: input.documentRef || undefined,
           name: input.customerName || undefined,
+          prefer_insurer: input.preferInsurer || undefined,
+          prefer_product: input.preferProduct || undefined,
         }),
         signal: controller.signal,
       });
@@ -328,5 +389,70 @@ export async function lookupInfocapPolicy(input: InfocapPolicyLookupInput): Prom
       requires_human: false,
       notes: ['Falha ao resolver a conexão InfoCap.'],
     };
+  }
+}
+
+/**
+ * Carrega o DETALHE de uma apólice por policy_ref (nosnum) via backend
+ * (/documento) e devolve o Policy Evidence Pack sanitizado. O segredo nunca
+ * trafega pelo Web. NUNCA afirma cobertura sem itens/coberturas no documento.
+ */
+export async function loadInfocapPolicyDetail(
+  input: InfocapPolicyDetailInput,
+): Promise<InfocapPolicyDetailResult> {
+  try {
+    const conn = await resolveInfocapConnection(input.companyId);
+    if (!conn.connected || !conn.connectionId) {
+      return { ok: false, status: 'blocked_not_configured', source: 'infocap', blockers: ['infocap_connection_not_configured'] };
+    }
+    if (!conn.hasSecretRef) {
+      return { ok: false, status: 'blocked_missing_credentials', source: 'infocap', blockers: ['infocap_missing_credentials'] };
+    }
+    if (!conn.baseUrlConfigured) {
+      return { ok: false, status: 'blocked_not_configured', source: 'infocap', blockers: ['infocap_missing_base_url'] };
+    }
+    const internalKey = process.env.BACKEND_INTERNAL_API_KEY || process.env.ADMIN_API_KEY;
+    if (!internalKey) {
+      return { ok: false, status: 'provider_error', source: 'infocap', blockers: ['internal_key_missing'] };
+    }
+
+    const codfil =
+      input.codfil == null
+        ? undefined
+        : typeof input.codfil === 'number'
+          ? input.codfil
+          : Number.parseInt(String(input.codfil), 10) || undefined;
+
+    const controller = new AbortController();
+    const timeout = setTimeout(() => controller.abort(), 30_000);
+    try {
+      const res = await fetch(`${backendUrl()}/attendance/connectors/infocap/policy-detail`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', 'X-AutoBrokers-Internal-Key': internalKey },
+        body: JSON.stringify({
+          company_id: input.companyId,
+          tenant_connection_id: conn.connectionId,
+          codfil,
+          policy_ref: input.policyRef,
+        }),
+        signal: controller.signal,
+      });
+      clearTimeout(timeout);
+      if (!res.ok) {
+        return { ok: false, status: 'provider_error', source: 'infocap', blockers: [`backend_http_${res.status}`] };
+      }
+      const data = (await res.json()) as InfocapPolicyDetailResult;
+      return { ...data, source: 'infocap' };
+    } catch (e: any) {
+      clearTimeout(timeout);
+      return {
+        ok: false,
+        status: 'provider_error',
+        source: 'infocap',
+        blockers: [e?.name === 'AbortError' ? 'backend_timeout' : 'backend_fetch_error'],
+      };
+    }
+  } catch {
+    return { ok: false, status: 'provider_error', source: 'infocap', blockers: ['infocap_resolve_error'] };
   }
 }

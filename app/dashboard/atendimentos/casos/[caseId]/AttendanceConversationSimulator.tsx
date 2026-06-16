@@ -9,7 +9,7 @@ import { fmtDate, statusTone, priorityPill, riskTone, verificationPill } from '@
 
 const MOCK_FIXTURE = 'allianz_residential_electrician_covered';
 
-type Busy = 'reply' | 'step' | 'lookup' | 'reload' | null;
+type Busy = 'reply' | 'step' | 'lookup' | 'infocap' | 'select' | 'reload' | null;
 
 /**
  * Simulador de conversa do atendimento (42B5J).
@@ -131,6 +131,57 @@ export default function AttendanceConversationSimulator({
     }
   };
 
+  const runInfocapLookup = async () => {
+    if (busy) return;
+    setBusy('infocap');
+    setError('');
+    setNotice('');
+    try {
+      const res = await fetch(`/api/attendance/cases/${caseId}/runtime/policy-lookup`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ source: 'infocap', mode: 'connector' }),
+      });
+      const json = await res.json().catch(() => ({}));
+      const st = json?.policy_lookup_result?.status;
+      if (st === 'found') setNotice('InfoCap: apólice localizada e evidência registrada.');
+      else if (st === 'multiple_matches') setNotice('InfoCap: múltiplas apólices. Selecione uma abaixo.');
+      else if (st === 'client_found') setNotice('InfoCap: cliente localizado, sem apólice vinculada retornada.');
+      else setNotice(`InfoCap: ${st || 'sem resultado'}. Cobertura não confirmada.`);
+      await after();
+    } catch {
+      setError('Falha ao consultar a InfoCap.');
+    } finally {
+      setBusy(null);
+    }
+  };
+
+  const selectPolicy = async (policyRef: string) => {
+    if (busy || !policyRef) return;
+    setBusy('select');
+    setError('');
+    setNotice('');
+    try {
+      const res = await fetch(`/api/attendance/cases/${caseId}/runtime/policy-select`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ source: 'infocap', policy_ref: policyRef }),
+      });
+      const json = await res.json().catch(() => ({}));
+      if (res.ok && json?.ok) {
+        const conf = json?.policy_select_result?.confidence;
+        setNotice(`Apólice selecionada e registrada (confiança: ${conf || '—'}). Use “Rodar próximo passo” para continuar.`);
+      } else {
+        setNotice(`Não foi possível registrar a apólice: ${json?.policy_select_result?.status || json?.error || 'erro'}.`);
+      }
+      await after();
+    } catch {
+      setError('Falha ao selecionar a apólice na InfoCap.');
+    } finally {
+      setBusy(null);
+    }
+  };
+
   const c = data?.case || {};
   const run = data?.corridor_run || null;
   const messages = Array.isArray(data?.messages) ? data!.messages! : [];
@@ -148,6 +199,12 @@ export default function AttendanceConversationSimulator({
     (macroState === 'policy_lookup_required' ||
       lastAgentAction === 'policy_lookup:pending' ||
       (c.verification_status === 'unverified' && Boolean(c.has_insured_document_ref)));
+  // Apólices retornadas pela InfoCap (mascaradas) p/ seleção (42I3A).
+  const infocapMatches: any[] = Array.isArray(c.metadata?.policy_lookup?.matches)
+    ? c.metadata.policy_lookup.matches
+    : [];
+  const showPolicyOptions =
+    !isLocked && macroState !== 'policy_evidence_ready' && infocapMatches.length > 0;
 
   const vp = verificationPill(c.verification_status);
   const pri = priorityPill(c.priority);
@@ -301,7 +358,58 @@ export default function AttendanceConversationSimulator({
             Simular consulta de apólice (mock)
           </button>
         )}
+        {showLookup && (
+          <button
+            onClick={runInfocapLookup}
+            disabled={Boolean(busy)}
+            className="inline-flex items-center gap-1.5 rounded-lg border border-border bg-surface-2 px-3 py-1.5 text-xs font-medium text-foreground hover:bg-surface-2/70 disabled:opacity-60"
+          >
+            {busy === 'infocap' ? <Icon icon={icons.renovacao} size={14} className="animate-spin" /> : <Icon icon={icons.buscar} size={14} />}
+            Consultar InfoCap (real)
+          </button>
+        )}
       </div>
+
+      {/* Seleção de apólice (InfoCap multiple_matches) — MVP funcional */}
+      {showPolicyOptions && (
+        <div className="mt-3 rounded-lg border border-primary/30 bg-primary/5 p-3">
+          <p className="mb-2 text-[11px] font-medium uppercase tracking-wide text-primary">
+            Apólices encontradas na InfoCap — selecione uma
+          </p>
+          <div className="space-y-2">
+            {infocapMatches.map((m: any, i: number) => (
+              <div
+                key={`${m.policy_ref}-${i}`}
+                className="flex flex-wrap items-center justify-between gap-2 rounded-lg border border-border bg-card px-3 py-2"
+              >
+                <div className="min-w-0 text-xs text-foreground">
+                  <span className="font-medium">{m.insurer_key || 'Seguradora ?'}</span>
+                  {m.product ? ` · ${m.product}` : ''}
+                  {m.masked_policy_number ? ` · nº ${m.masked_policy_number}` : ''}
+                  <div className="text-[10px] text-muted-foreground">
+                    {m.policy_status || 'status ?'}
+                    {m.valid_to ? ` · vence ${m.valid_to}` : ''}
+                    {m.active_now === true ? ' · vigente' : m.active_now === false ? ' · não vigente' : ''}
+                    {m.cancelled ? ' · cancelada' : ''}
+                    {typeof m.coverages_count === 'number' ? ` · ${m.coverages_count} cobertura(s)` : ''}
+                  </div>
+                </div>
+                <button
+                  onClick={() => selectPolicy(String(m.policy_ref))}
+                  disabled={Boolean(busy) || !m.policy_ref}
+                  className="inline-flex shrink-0 items-center gap-1.5 rounded-lg bg-primary px-3 py-1.5 text-xs font-medium text-primary-foreground hover:bg-primary/90 disabled:opacity-60"
+                >
+                  {busy === 'select' ? <Icon icon={icons.renovacao} size={13} className="animate-spin" /> : <Icon icon={icons.check} size={13} />}
+                  Selecionar
+                </button>
+              </div>
+            ))}
+          </div>
+          <p className="mt-2 text-[10px] text-faint">
+            Selecionar carrega o detalhe da apólice (read-only) e registra a evidência. Nenhuma seguradora/prestador é acionada.
+          </p>
+        </div>
+      )}
 
       <p className="mt-3 text-[10px] text-faint">
         Simulador MVP: nenhuma mensagem é enviada por WhatsApp. Nenhuma ação externa é executada automaticamente. A

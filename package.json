@@ -8,7 +8,8 @@
     "start": "next start",
     "lint": "next lint",
     "typecheck": "tsc --noEmit",
-    "test:attendance-goldens": "node scripts/attendance-golden-tests.mjs"
+    "test:attendance-goldens": "node scripts/attendance-golden-tests.mjs",
+    "test:infocap-evidence": "node scripts/infocap-evidence-pack.test.mjs"
   },
   "dependencies": {
     "@hookform/resolvers": "^3.9.0",
