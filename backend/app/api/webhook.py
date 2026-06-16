@@ -4,7 +4,9 @@ Corrigido: Datas ISO e Sanitização de Logs
 """
 
 import asyncio
+import hmac
 import logging
+import os
 from datetime import date, datetime, timezone  # Importado datetime e timezone
 from typing import Optional
 from uuid import uuid4
@@ -17,6 +19,7 @@ from app.core.auth import require_master_admin
 from app.core.config import settings
 from app.core.database import get_supabase_client
 from app.core.rate_limit import limiter
+from app.core.redis import get_async_redis_client
 from app.services.audio_service import AudioService
 
 # Services
@@ -237,6 +240,82 @@ async def process_audio_for_storage(
 
 
 # ==============================================================================
+# 42W0 — Attendance Runtime bridge (flag-gated; default OFF)
+# ==============================================================================
+async def _is_attendance_agent(agent_id: Optional[str]) -> bool:
+    """True se o agente conectado é um Attendance Agent (insured_external)."""
+    if not agent_id:
+        return False
+    try:
+        res = await asyncio.to_thread(
+            lambda: supabase.client.table("agents").select("agent_role").eq("id", agent_id).limit(1).execute()
+        )
+        return bool(res.data) and res.data[0].get("agent_role") == "attendance"
+    except Exception as e:  # noqa: BLE001
+        logger.warning(f"[WEBHOOK] attendance agent check failed: {type(e).__name__}")
+        return False
+
+
+async def _forward_to_attendance_bridge(
+    *,
+    company_id: str,
+    agent_id: Optional[str],
+    user_id: str,
+    conversation_id: str,
+    phone: str,
+    connected_phone: str,
+    sender_name: Optional[str],
+    message_id: Optional[str],
+    text: str,
+    media_kind: str = "text",
+) -> None:
+    """
+    Encaminha o inbound ao Attendance Runtime (Next bridge). O bridge faz case
+    routing + reply (mesmo cérebro do dashboard) e devolve um outbound dry-run.
+    NÃO envia para seguradora/prestador. Envio real só se a política liberar.
+    """
+    url = settings.ATTENDANCE_BRIDGE_URL
+    key = settings.BACKEND_INTERNAL_API_KEY or os.getenv("BACKEND_INTERNAL_API_KEY") or os.getenv("ADMIN_API_KEY")
+    safe = f"...{str(phone)[-4:]}"
+    if not url or not key:
+        logger.warning("[WEBHOOK] attendance bridge not configured (URL/key) — skipping attendance routing")
+        return
+    body = {
+        "company_id": company_id,
+        "agent_id": agent_id,
+        "user_id": user_id,
+        "conversation_id": conversation_id,
+        "phone": phone,
+        "connected_phone": connected_phone,
+        "sender_name": sender_name,
+        "message_id": message_id,
+        "text": text,
+        "media_kind": media_kind,
+    }
+    try:
+        async with httpx.AsyncClient(timeout=30.0) as client:
+            resp = await client.post(url, json=body, headers={"X-AutoBrokers-Internal-Key": key})
+        data = resp.json() if resp.status_code < 400 else {}
+    except Exception as e:  # noqa: BLE001
+        logger.error(f"[WEBHOOK] attendance bridge call failed for {safe}: {type(e).__name__}")
+        return
+
+    auto_reply = data.get("auto_reply")
+    outbound = data.get("outbound") or {}
+    # Envio real SOMENTE se a política do bridge liberar (default: dry-run → não envia).
+    if auto_reply and outbound.get("external_send_allowed") is True and outbound.get("dry_run") is False:
+        integration = integration_service.get_whatsapp_integration(company_id, agent_id)
+        if integration:
+            try:
+                whatsapp_service.send_message(phone, auto_reply, integration)
+                logger.info(f"[WEBHOOK] attendance outbound sent to {safe}")
+            except Exception as e:  # noqa: BLE001
+                logger.error(f"[WEBHOOK] attendance outbound send failed for {safe}: {type(e).__name__}")
+    else:
+        logger.info(f"[WEBHOOK] attendance outbound DRY-RUN for {safe} (no external send)")
+
+
+# ==============================================================================
 # MAIN BACKGROUND TASK
 # ==============================================================================
 async def process_whatsapp_message_background(
@@ -344,6 +423,29 @@ async def process_whatsapp_message_background(
             channel="whatsapp",
             agent_id=agent_id,
         )
+
+        # 4b. 42W0 — Atendimento externo vai para o Attendance Runtime (não o Core),
+        # quando habilitado e o agente é um Attendance Agent. O bridge cuida de
+        # persistir mensagens + reply; aqui só encaminhamos e (talvez) enviamos.
+        if (
+            not is_human_mode
+            and settings.ATTENDANCE_WHATSAPP_ENABLED
+            and await _is_attendance_agent(agent_id)
+        ):
+            logger.info("[WEBHOOK] Routing inbound to Attendance Runtime bridge")
+            await _forward_to_attendance_bridge(
+                company_id=company_id,
+                agent_id=agent_id,
+                user_id=user_id,
+                conversation_id=conversation_id,
+                phone=payload.phone,
+                connected_phone=payload.connectedPhone,
+                sender_name=payload.senderName,
+                message_id=payload.messageId,
+                text=message_text,
+                media_kind="audio" if final_audio_url else ("image" if final_image_url else "text"),
+            )
+            return
 
         # 5. Salvar Msg Usuário
         try:
@@ -458,8 +560,24 @@ async def process_whatsapp_message_background(
 async def z_api_webhook(request: Request, background_tasks: BackgroundTasks):
     """Webhook Z-API (Non-blocking)"""
     try:
+        # 42W0 — Guard de autenticação do webhook (não quebra dev; protege prod).
+        auth_mode = (settings.WHATSAPP_WEBHOOK_AUTH_MODE or "disabled").lower()
+        if auth_mode == "shared_secret":
+            expected = settings.WHATSAPP_WEBHOOK_SECRET
+            provided = request.headers.get("x-webhook-secret") or request.query_params.get("secret")
+            if not expected or not provided or not hmac.compare_digest(str(provided), str(expected)):
+                logger.warning("[WEBHOOK] webhook_auth_failed mode=shared_secret")
+                raise HTTPException(status_code=401, detail="webhook_auth_failed")
+        elif auth_mode == "provider_signature":
+            # Z-API ainda não envia assinatura; guard pronto para quando enviar.
+            if not request.headers.get("x-zapi-signature"):
+                logger.warning("[WEBHOOK] webhook_auth_failed mode=provider_signature")
+                raise HTTPException(status_code=401, detail="webhook_auth_failed")
+        else:
+            logger.warning("[WEBHOOK] auth disabled (dev only) — set WHATSAPP_WEBHOOK_AUTH_MODE for production")
+
         payload_dict = await request.json()
-        logger.info(f"[WEBHOOK] Received from {payload_dict.get('connectedPhone')}")
+        logger.info(f"[WEBHOOK] Received from ...{str(payload_dict.get('connectedPhone'))[-4:]}")
 
         try:
             payload = ZAPIWebhookPayload(**payload_dict)
@@ -471,6 +589,19 @@ async def z_api_webhook(request: Request, background_tasks: BackgroundTasks):
 
         if not payload.text and not payload.audio and not payload.image:
             return {"status": "ignored", "reason": "no_content"}
+
+        # 42W0 — Dedupe por messageId (Redis SET NX + TTL). Evita resposta dupla.
+        if payload.messageId:
+            try:
+                redis = await get_async_redis_client()
+                was_set = await redis.set(
+                    f"wa_dedupe:{payload.messageId}", "1", ex=settings.WHATSAPP_DEDUPE_TTL_SECONDS, nx=True
+                )
+                if not was_set:
+                    logger.info("[WEBHOOK] inbound_deduped (duplicate messageId)")
+                    return {"status": "ignored", "reason": "duplicate"}
+            except Exception as e:  # noqa: BLE001
+                logger.warning(f"[WEBHOOK] dedupe skipped: {type(e).__name__}")
 
         # Buffer Logic
         if payload.text and payload.text.message:
@@ -494,6 +625,8 @@ async def z_api_webhook(request: Request, background_tasks: BackgroundTasks):
 
         return {"status": "ignored"}
 
+    except HTTPException:
+        raise  # 42W0: preserva 401 do guard de auth (não vira 500)
     except Exception as e:
         logger.error(f"[WEBHOOK] Error: {e}", exc_info=True)
         raise HTTPException(status_code=500, detail="Server error") from e

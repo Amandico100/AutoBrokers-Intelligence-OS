@@ -78,6 +78,19 @@ class Settings(BaseSettings):
     BUFFER_MAX_WAIT_SECONDS: int = 10  # Max 10s since first message
     BUFFER_TTL_SECONDS: int = 60  # Redis TTL safety net
 
+    # WhatsApp webhook security (42W0)
+    # AUTH_MODE: disabled | shared_secret | provider_signature.
+    # Produção deve usar shared_secret/provider_signature; dev pode disabled (com warning).
+    WHATSAPP_WEBHOOK_AUTH_MODE: str = "disabled"
+    WHATSAPP_WEBHOOK_SECRET: Optional[str] = None
+    WHATSAPP_DEDUPE_TTL_SECONDS: int = 120  # dedupe de messageId (Redis)
+
+    # Attendance Runtime sobre WhatsApp (42W0) — bridge para o runtime Next.
+    # DEFAULT OFF: não altera o fluxo atual (Core/LangChain) até ser habilitado.
+    ATTENDANCE_WHATSAPP_ENABLED: bool = False
+    ATTENDANCE_BRIDGE_URL: Optional[str] = None  # ex.: https://app.exemplo/api/attendance/whatsapp/inbound
+    BACKEND_INTERNAL_API_KEY: Optional[str] = None
+
     # Sanitization (Document Sanitizer)
     SANITIZATION_MAX_FILE_SIZE_MB: int = 50
     SANITIZATION_MAX_PAGES: int = 200

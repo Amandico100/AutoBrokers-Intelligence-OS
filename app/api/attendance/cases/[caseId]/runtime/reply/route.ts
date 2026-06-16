@@ -103,13 +103,6 @@ function resolveTargetSlot(
 export async function POST(request: NextRequest, { params }: { params: Promise<{ caseId: string }> }) {
   try {
     const { caseId } = await params;
-    const cookieStore = await cookies();
-    const session = await getIronSession<SessionData>(cookieStore, sessionOptions);
-    if (!session.userId) return NextResponse.json({ ok: false, error: 'Não autorizado' }, { status: 401 });
-
-    const supabaseAdmin = getAdminClient();
-    const companyId = await getCompanyId(supabaseAdmin, session.userId);
-    if (!companyId) return NextResponse.json({ ok: false, error: 'Empresa não encontrada' }, { status: 404 });
 
     let body: Record<string, any> = {};
     try {
@@ -117,6 +110,26 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
     } catch {
       body = {};
     }
+
+    // Auth: sessão (dashboard) OU chave interna Next↔Backend (bridge WhatsApp 42W0).
+    // O caminho de sessão permanece idêntico; o branch interno é aditivo e exige
+    // company_id explícito no body + X-AutoBrokers-Internal-Key válida.
+    const cookieStore = await cookies();
+    const session = await getIronSession<SessionData>(cookieStore, sessionOptions);
+    const supabaseAdmin = getAdminClient();
+    let companyId: string | null = null;
+    if (session.userId) {
+      companyId = await getCompanyId(supabaseAdmin, session.userId);
+    } else {
+      const internalKey = process.env.BACKEND_INTERNAL_API_KEY || process.env.ADMIN_API_KEY;
+      const providedKey = request.headers.get('x-autobrokers-internal-key');
+      if (internalKey && providedKey && providedKey === internalKey && typeof body.company_id === 'string' && body.company_id) {
+        companyId = body.company_id;
+      } else {
+        return NextResponse.json({ ok: false, error: 'Não autorizado' }, { status: 401 });
+      }
+    }
+    if (!companyId) return NextResponse.json({ ok: false, error: 'Empresa não encontrada' }, { status: 404 });
     const rawMessage = typeof body.message === 'string' ? body.message.trim() : '';
     if (!rawMessage) return NextResponse.json({ ok: false, error: 'Mensagem obrigatória' }, { status: 400 });
     if (rawMessage.length > MAX_MESSAGE_LENGTH) {
