@@ -96,6 +96,48 @@ export default function CaseDetailClient({ caseId }: { caseId: string }) {
     }
   };
 
+  const runDispatchDryRun = async () => {
+    setActing(true);
+    setNotice('');
+    try {
+      const res = await fetch(`/api/attendance/cases/${caseId}/runtime/dispatch-dry-run`, { method: 'POST' });
+      const json = await res.json().catch(() => ({}));
+      if (res.ok && json?.ok) {
+        setNotice(`Pacote de acionamento (dry-run) preparado: ${json.dispatch_packet?.status || 'rascunho'}. Nenhuma ação externa foi executada.`);
+      } else {
+        setNotice(`Não foi possível preparar o pacote: ${json?.error || 'erro'}.`);
+      }
+      await load();
+    } catch {
+      setNotice('Falha ao preparar o pacote de acionamento.');
+    } finally {
+      setActing(false);
+    }
+  };
+
+  const coverageDecision = async (decision: 'approved' | 'rejected' | 'needs_more_info') => {
+    setActing(true);
+    setNotice('');
+    try {
+      const res = await fetch(`/api/attendance/cases/${caseId}/runtime/coverage-validation`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ decision, source: 'human' }),
+      });
+      const json = await res.json().catch(() => ({}));
+      if (res.ok && json?.ok) {
+        setNotice(`Decisão de cobertura registrada: ${json.coverage_validation?.state || decision}. Sem ação externa.`);
+      } else {
+        setNotice(`Não foi possível registrar a decisão: ${json?.error || 'erro'}.`);
+      }
+      await load();
+    } catch {
+      setNotice('Falha ao registrar a decisão de cobertura.');
+    } finally {
+      setActing(false);
+    }
+  };
+
   // ---- Estados ----
   if (loading && !data) {
     return (
@@ -140,6 +182,22 @@ export default function CaseDetailClient({ caseId }: { caseId: string }) {
   const pri = priorityPill(c.priority);
   const hasCoverageEvidence = c.coverage_evidence && typeof c.coverage_evidence === 'object' && Object.keys(c.coverage_evidence).length > 0;
   const externalAllowed = diag.external_action_allowed === true;
+  // 42B6: dispatch readiness + coverage readiness (do metadata).
+  const coverageReadiness: any = c.metadata?.coverage_readiness || null;
+  const dispatchReadiness: any = c.metadata?.dispatch_readiness || null;
+  const dispatchStateLabel: Record<string, string> = {
+    incomplete: 'Incompleto — coletar dados',
+    blocked: 'Bloqueado — revisão humana',
+    hitl_required: 'Validação humana necessária',
+    ready_for_human_approval: 'Pronto para aprovação humana',
+  };
+  const dispatchStateTone: Record<string, StatusTone> = {
+    incomplete: 'warning',
+    blocked: 'danger',
+    hitl_required: 'warning',
+    ready_for_human_approval: 'success',
+  };
+  const canValidateCoverage = Boolean(coverageReadiness) && !['handoff', 'closed', 'cancelled'].includes(c.status);
 
   return (
     <div className="h-full overflow-y-auto">
@@ -296,6 +354,90 @@ export default function CaseDetailClient({ caseId }: { caseId: string }) {
                 </ul>
               )}
               <p className="mt-2 text-[10px] text-faint">Nenhuma ação externa foi executada neste caso.</p>
+            </Section>
+
+            {/* Readiness de acionamento (42B6) */}
+            <Section title="Readiness de acionamento (dry-run / HITL)">
+              <div className="mb-3 flex flex-wrap items-center gap-2">
+                <button
+                  onClick={runDispatchDryRun}
+                  disabled={acting}
+                  className="inline-flex items-center gap-1.5 rounded-lg border border-primary/40 bg-primary/5 px-3 py-1.5 text-xs font-medium text-primary hover:bg-primary/10 disabled:opacity-60"
+                >
+                  <Icon icon={icons.avancar} size={14} /> Preparar dispatch dry-run
+                </button>
+                {dispatchReadiness?.packet_state && (
+                  <StatusPill
+                    tone={dispatchStateTone[dispatchReadiness.packet_state] || 'neutral'}
+                    label={dispatchStateLabel[dispatchReadiness.packet_state] || dispatchReadiness.packet_state}
+                  />
+                )}
+              </div>
+
+              {dispatchReadiness ? (
+                <>
+                  <Field label="Dispatch liberado" value={dispatchReadiness.dispatch_allowed ? 'sim (ainda HITL)' : 'não'} />
+                  <Field label="Validação humana" value={dispatchReadiness.hitl_required ? 'necessária' : 'não'} />
+                  {Array.isArray(dispatchReadiness.blockers) && dispatchReadiness.blockers.length > 0 && (
+                    <div className="mt-2">
+                      <p className="mb-1 text-[11px] text-danger">Bloqueios</p>
+                      <div className="flex flex-wrap gap-1.5">
+                        {dispatchReadiness.blockers.map((b: string) => (
+                          <span key={b} className="rounded-full border border-danger/40 px-2 py-0.5 text-[10px] text-danger">{b}</span>
+                        ))}
+                      </div>
+                    </div>
+                  )}
+                  {Array.isArray(dispatchReadiness.warnings) && dispatchReadiness.warnings.length > 0 && (
+                    <div className="mt-2">
+                      <p className="mb-1 text-[11px] text-warning">Avisos</p>
+                      <div className="flex flex-wrap gap-1.5">
+                        {dispatchReadiness.warnings.map((w: string) => (
+                          <span key={w} className="rounded-full border border-warning/40 px-2 py-0.5 text-[10px] text-warning">{w}</span>
+                        ))}
+                      </div>
+                    </div>
+                  )}
+                </>
+              ) : (
+                <p className="text-xs text-muted-foreground">Nenhum pacote dry-run preparado ainda.</p>
+              )}
+
+              {/* HITL de cobertura */}
+              {canValidateCoverage && (
+                <div className="mt-3 rounded-lg border border-border bg-surface-2 p-3">
+                  <p className="mb-1.5 text-[11px] font-medium uppercase tracking-wide text-faint">Validação humana de cobertura</p>
+                  {coverageReadiness?.message && (
+                    <p className="mb-2 text-[11px] text-muted-foreground">{coverageReadiness.message}</p>
+                  )}
+                  <div className="flex flex-wrap gap-2">
+                    <button
+                      onClick={() => coverageDecision('approved')}
+                      disabled={acting}
+                      className="rounded-lg border border-success/40 bg-success/5 px-3 py-1.5 text-xs font-medium text-success hover:bg-success/10 disabled:opacity-60"
+                    >
+                      Aprovar cobertura
+                    </button>
+                    <button
+                      onClick={() => coverageDecision('rejected')}
+                      disabled={acting}
+                      className="rounded-lg border border-danger/40 bg-danger/5 px-3 py-1.5 text-xs font-medium text-danger hover:bg-danger/10 disabled:opacity-60"
+                    >
+                      Reprovar
+                    </button>
+                    <button
+                      onClick={() => coverageDecision('needs_more_info')}
+                      disabled={acting}
+                      className="rounded-lg border border-border bg-card px-3 py-1.5 text-xs font-medium text-foreground hover:bg-surface-2/70 disabled:opacity-60"
+                    >
+                      Solicitar mais informação
+                    </button>
+                  </div>
+                </div>
+              )}
+              <p className="mt-3 text-[10px] text-faint">
+                Modo dry-run/HITL: nenhum envio para seguradora/prestador. Acionamento real exige homologação futura.
+              </p>
             </Section>
 
             {/* Dossiê / Handoff humano */}

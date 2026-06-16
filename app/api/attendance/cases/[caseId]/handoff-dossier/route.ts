@@ -31,7 +31,7 @@ export async function GET(request: NextRequest, { params }: { params: Promise<{ 
     const { data: caseRow, error: caseErr } = await supabaseAdmin
       .from('attendance_cases')
       .select(
-        'id, case_number, status, priority, channel, customer_name, customer_phone, intent, insurer_key, line_kind, macro_service, selected_corridor_key, selected_subcorridor_key, policy_source, policy_number, verification_status, coverage_evidence, risk_level, handoff_required, handoff_reason, summary, next_step, conversation_id, created_at, updated_at',
+        'id, case_number, status, priority, channel, customer_name, customer_phone, intent, insurer_key, line_kind, macro_service, selected_corridor_key, selected_subcorridor_key, policy_source, policy_number, policy_snapshot, verification_status, coverage_evidence, risk_level, handoff_required, handoff_reason, summary, next_step, conversation_id, metadata, created_at, updated_at',
       )
       .eq('id', caseId)
       .eq('company_id', companyId)
@@ -73,12 +73,16 @@ export async function GET(request: NextRequest, { params }: { params: Promise<{ 
       template = tpl || null;
     }
 
-    // Dispatch packets do caso
+    // Dispatch packets do caso (inclui payload do rascunho dry-run mais recente)
     const { data: dispatchPackets } = await supabaseAdmin
       .from('dispatch_packets')
-      .select('id, status')
+      .select('id, status, payload, idempotency_key, updated_at')
       .eq('case_id', caseRow.id)
       .order('created_at', { ascending: false });
+    const dryRunPacket = (dispatchPackets || []).find(
+      (p: any) => typeof p.idempotency_key === 'string' && p.idempotency_key.startsWith('dispatch_dry_run:'),
+    );
+    const dispatchPacketDraft = dryRunPacket?.payload || null;
 
     // Destinos humanos ATIVOS da corretora (sem destination_ref cru)
     const { data: destinations } = await supabaseAdmin
@@ -97,6 +101,7 @@ export async function GET(request: NextRequest, { params }: { params: Promise<{ 
       dispatchPackets: dispatchPackets || [],
       destinations: destinations || [],
       generatedAt: new Date().toISOString(),
+      dispatchPacketDraft,
     });
     dossier.markdown = formatHandoffMarkdown(dossier);
 

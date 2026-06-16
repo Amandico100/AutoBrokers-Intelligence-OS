@@ -77,8 +77,9 @@ export function buildHandoffDossier(input: {
   dispatchPackets: any[];
   destinations: any[];
   generatedAt: string;
+  dispatchPacketDraft?: any;
 }) {
-  const { caseRow: c, messages, run, template: tpl, dispatchPackets, destinations, generatedAt } = input;
+  const { caseRow: c, messages, run, template: tpl, dispatchPackets, destinations, generatedAt, dispatchPacketDraft } = input;
   const slots = normalizeSlots(run?.slots);
 
   const msgs = Array.isArray(messages) ? messages : [];
@@ -125,6 +126,39 @@ export function buildHandoffDossier(input: {
       number: c.policy_number || null,
       verification_status: c.verification_status || null,
       coverage_evidence_status: coverage,
+      snapshot: c.policy_snapshot && typeof c.policy_snapshot === 'object' ? c.policy_snapshot : null,
+    },
+    coverage_readiness:
+      c.metadata?.coverage_readiness && typeof c.metadata.coverage_readiness === 'object'
+        ? {
+            state: c.metadata.coverage_readiness.state ?? null,
+            dispatch_allowed: c.metadata.coverage_readiness.dispatch_allowed === true,
+            human_required: c.metadata.coverage_readiness.human_required === true,
+            message: typeof c.metadata.coverage_readiness.message === 'string' ? c.metadata.coverage_readiness.message : null,
+          }
+        : null,
+    dispatch: {
+      readiness:
+        c.metadata?.dispatch_readiness && typeof c.metadata.dispatch_readiness === 'object'
+          ? c.metadata.dispatch_readiness
+          : null,
+      packet_draft: dispatchPacketDraft && typeof dispatchPacketDraft === 'object' ? dispatchPacketDraft : null,
+      hitl_reason:
+        c.metadata?.dispatch_readiness?.packet_state === 'hitl_required'
+          ? 'coverage_not_confirmed'
+          : c.metadata?.dispatch_readiness?.packet_state === 'blocked'
+            ? 'blocked_policy_or_risk'
+            : null,
+      human_next_steps:
+        c.metadata?.dispatch_readiness?.packet_state === 'ready_for_human_approval'
+          ? ['Revisar pacote', 'Aprovar envio (futuro)']
+          : c.metadata?.dispatch_readiness?.packet_state === 'hitl_required'
+            ? ['Validar cobertura manualmente', 'Aprovar/Reprovar cobertura']
+            : c.metadata?.dispatch_readiness?.packet_state === 'incomplete'
+              ? ['Coletar dados faltantes']
+              : c.metadata?.dispatch_readiness?.packet_state === 'blocked'
+                ? ['Revisão humana do caso', 'Tratar apólice/risco']
+                : [],
     },
     slots: { filled: slots.filled, missing: slots.missing, conflicts: slots.conflicts },
     messages: { last_customer_message: lastCustomerMessage, message_count: msgs.length },
@@ -173,7 +207,32 @@ export function formatHandoffMarkdown(d: any): string {
   L.push('', '## Apólice');
   L.push(`Status: ${verificationLabel(d.policy?.verification_status)}`);
   L.push(`Origem: ${d.policy?.source || '—'}`);
+  if (d.policy?.snapshot) {
+    const s = d.policy.snapshot;
+    L.push(`Seguradora/Produto: ${s.insurer_key || '—'} / ${s.product || '—'}`);
+    if (s.masked_policy_number) L.push(`Nº (mascarado): ${s.masked_policy_number}`);
+  }
   L.push('Atenção: não confirmar cobertura sem fonte.');
+
+  if (d.coverage_readiness) {
+    L.push('', '## Cobertura (readiness)');
+    L.push(`Estado: ${d.coverage_readiness.state || '—'}`);
+    L.push(`Validação humana necessária: ${d.coverage_readiness.human_required ? 'sim' : 'não'}`);
+    if (d.coverage_readiness.message) L.push(`Resumo: ${d.coverage_readiness.message}`);
+  }
+
+  if (d.dispatch?.readiness) {
+    const r = d.dispatch.readiness;
+    L.push('', '## Acionamento (dispatch dry-run)');
+    L.push(`Estado do pacote: ${r.packet_state || '—'}`);
+    L.push(`Dispatch liberado: ${r.dispatch_allowed ? 'sim' : 'não'} (sempre dry-run/HITL neste MVP)`);
+    if (Array.isArray(r.blockers) && r.blockers.length) L.push(`Bloqueios: ${r.blockers.join(', ')}`);
+    if (Array.isArray(r.warnings) && r.warnings.length) L.push(`Avisos: ${r.warnings.join(', ')}`);
+    if (d.dispatch.hitl_reason) L.push(`Motivo HITL: ${d.dispatch.hitl_reason}`);
+    const hns: string[] = Array.isArray(d.dispatch.human_next_steps) ? d.dispatch.human_next_steps : [];
+    if (hns.length) L.push(`Próximos passos humanos: ${hns.join('; ')}`);
+    L.push('Nenhuma ação externa foi executada (external_action_sent=false).');
+  }
 
   L.push('', '## Dados coletados');
   const filledKeys = Object.keys(d.slots?.filled || {});
