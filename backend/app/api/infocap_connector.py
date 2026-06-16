@@ -143,7 +143,9 @@ async def store_infocap_secret(
 
 LOOKUP_TIMEOUT_S = 12.0
 TOKEN_FIELDS = ["token", "access_token", "jwt", "auth_token", "Authorization", "token_auth"]
-ARRAY_KEYS = ["data", "clientes", "result", "results", "items", "registros", "rows", "lista"]
+ARRAY_KEYS = ["cliente", "clientes", "data", "result", "results", "items", "registros", "rows", "lista", "documentos"]
+POLICY_NUMBER_KEYS = ["numapo", "nosnum", "apolice", "num_apolice", "numero_apolice"]
+CLIENT_REF_KEYS = ["codfil", "codigo", "codcli"]
 
 
 class InfocapLookupPayload(BaseModel):
@@ -347,13 +349,14 @@ async def infocap_lookup(
         return {"ok": False, "status": "blocked_missing_credentials", "source": "infocap", "blockers": ["incomplete_credentials"]}
 
     auth_path = config.get("infocap_auth_path") or "/login"
-    # CorpAPI: busca por CPF/CNPJ é endpoint próprio (/busca_cpf?cpf_cnpj=); por nome é /lista_clientes?texto=
-    cpf_search_path = config.get("infocap_cpf_search_path") or "/busca_cpf"
+    # CorpAPI (42I2.1C): CPF/CNPJ via /cliente_cpf?codfil=1&cpf_cnpj=<digits> (array_key "cliente");
+    # nome via /lista_clientes?texto= (array_key "clientes").
+    cpf_search_path = config.get("infocap_cpf_search_path") or "/cliente_cpf"
     cpf_search_param = config.get("infocap_cpf_search_param") or "cpf_cnpj"
     name_search_path = config.get("infocap_search_path") or "/lista_clientes"
     name_search_param = config.get("infocap_search_param") or "texto"
     extra_params_raw = config.get("infocap_search_extra_params")
-    extra_params = extra_params_raw if isinstance(extra_params_raw, dict) else {}
+    codfil_default = config.get("infocap_codfil", 1)
 
     doc_digits = _digits(payload.document)
     name = (payload.name or "").strip()
@@ -362,11 +365,13 @@ async def infocap_lookup(
         search_path = cpf_search_path
         search_param = cpf_search_param
         search_value: str = doc_digits
+        extra_params = extra_params_raw if isinstance(extra_params_raw, dict) else {"codfil": codfil_default}
     elif name:
         query_strategy = "customer_name"
         search_path = name_search_path
         search_param = name_search_param
         search_value = name
+        extra_params = extra_params_raw if isinstance(extra_params_raw, dict) else {}
     else:
         return {
             "ok": False, "status": "not_found", "source": "infocap", "provider": "infocap",
@@ -440,9 +445,44 @@ async def infocap_lookup(
             "blockers": ["multiple_matches"],
         })
 
-    selected = _sanitize_match(arr[0])
-    now = datetime.now(timezone.utc).isoformat()
+    record = arr[0]
     source_ref = f"infocap:{search_path.lstrip('/')}"
+    has_policy = bool(_first_str(record, POLICY_NUMBER_KEYS)) and query_strategy != "customer_name"
+
+    if not has_policy:
+        # CLIENTE localizado, mas SEM apólice/cobertura no payload (ex.: /cliente_cpf).
+        # NÃO confirma cobertura. Expõe apenas refs sanitizadas para o próximo passo.
+        client_ref: Dict[str, Any] = {}
+        for k in CLIENT_REF_KEYS:
+            v = record.get(k)
+            if isinstance(v, (str, int)) and str(v).strip():
+                client_ref[k] = v
+        for k in ("ativo", "vigente"):
+            if record.get(k) is not None:
+                client_ref[k] = bool(record.get(k)) if isinstance(record.get(k), (bool, int)) else record.get(k)
+        for k in ("cidade", "estado"):
+            v = _first_str(record, [k])
+            if v:
+                client_ref[k] = v
+        return _done({
+            "ok": False,
+            "status": "client_found",
+            "verification_status": "unverified",
+            "http_status": http_status,
+            "result_count": 1,
+            "infocap_client_found": True,
+            "client_ref_available": bool(client_ref),
+            "client_ref_fields": [k for k in CLIENT_REF_KEYS if k in client_ref],
+            "client_ref": client_ref,
+            "next_possible_endpoints": ["/cliente", "/documento", "/producao"],
+            "requires_human": False,
+            "blockers": [],
+            "notes": ["Cliente localizado na InfoCap; apólice/cobertura ainda não consultada."],
+        })
+
+    # Apólice presente no payload → evidência por conector.
+    selected = _sanitize_match(record)
+    now = datetime.now(timezone.utc).isoformat()
     return _done({
         "ok": True,
         "status": "found",
@@ -458,7 +498,7 @@ async def infocap_lookup(
             "verified_at": now,
             "verified_by": "connector",
             "confidence": "medium",
-            "coverage_summary": "Segurado/apólice localizado(a) na InfoCap (consulta read-only).",
+            "coverage_summary": "Apólice localizada na InfoCap (consulta read-only).",
             "limitations": [
                 "Confirmação read-only via conector; cobertura específica do serviço requer leitura detalhada da apólice.",
             ],

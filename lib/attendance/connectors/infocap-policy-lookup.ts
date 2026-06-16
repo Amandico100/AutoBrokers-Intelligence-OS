@@ -15,11 +15,14 @@ import { getAdminClient } from '@/lib/attendance/support-destinations';
 
 export type InfocapLookupStatus =
   | 'found'
+  | 'client_found'
+  | 'policy_lookup_pending'
   | 'not_found'
   | 'multiple_matches'
   | 'blocked_missing_credentials'
   | 'blocked_not_configured'
   | 'provider_error'
+  | 'auth_error'
   | 'unsupported';
 
 export interface InfocapPolicyMatch {
@@ -62,6 +65,12 @@ export interface InfocapPolicyLookupResult {
   search_param?: string;
   http_status?: number;
   result_count?: number;
+  // Cliente localizado sem apólice — 42I2.1C (refs sanitizadas, sem PII crua)
+  infocap_client_found?: boolean;
+  client_ref_available?: boolean;
+  client_ref_fields?: string[];
+  client_ref?: Record<string, unknown>;
+  next_possible_endpoints?: string[];
 }
 
 export interface InfocapPolicyLookupInput {

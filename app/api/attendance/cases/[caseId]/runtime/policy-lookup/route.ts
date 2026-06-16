@@ -33,9 +33,12 @@ function safeCase(row: any): any {
   return rest;
 }
 
-/** next_step seguro quando o lookup InfoCap não confirma cobertura (42I2.1A). */
+/** next_step seguro quando o lookup InfoCap não confirma cobertura (42I2.1A/1C). */
 function infocapNextStep(status: string): string {
   switch (status) {
+    case 'client_found':
+    case 'policy_lookup_pending':
+      return 'Cliente localizado na InfoCap. Próximo passo: buscar apólices/documentos vinculados antes de confirmar cobertura ou acionar assistência.';
     case 'auth_error':
       return 'Conexão InfoCap retornou erro de autenticação. Validar as credenciais da corretora no Vault.';
     case 'multiple_matches':
@@ -246,6 +249,10 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
         search_path: infocap.search_path ?? null,
         result_count: infocap.result_count ?? null,
         requires_human: Boolean(infocap.requires_human),
+        infocap_client_found: Boolean(infocap.infocap_client_found),
+        client_ref: infocap.client_ref ?? null,
+        client_ref_fields: infocap.client_ref_fields ?? null,
+        next_possible_endpoints: infocap.next_possible_endpoints ?? null,
         at: new Date().toISOString(),
       };
       const newMeta = mergeObject(caseRow.metadata, {
@@ -302,6 +309,11 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
           http_status: infocap.http_status ?? null,
           result_count: infocap.result_count ?? null,
           matches: infocap.matches ?? [],
+          infocap_client_found: Boolean(infocap.infocap_client_found),
+          client_ref_available: Boolean(infocap.client_ref_available),
+          client_ref_fields: infocap.client_ref_fields ?? [],
+          client_ref: infocap.client_ref ?? null,
+          next_possible_endpoints: infocap.next_possible_endpoints ?? [],
           blockers: infocap.blockers || [],
           requires_human: Boolean(infocap.requires_human),
           notes: infocap.notes || [],
