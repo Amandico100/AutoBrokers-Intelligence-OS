@@ -10,6 +10,7 @@ import {
   dbStatusForPacketState,
   type DispatchPacketState,
 } from '@/lib/attendance/dispatch-readiness';
+import { resolveInternalCompanyId } from '@/lib/attendance/runtime-internal-auth';
 
 export const dynamic = 'force-dynamic';
 
@@ -46,12 +47,25 @@ const NEXT_STEP: Record<DispatchPacketState, string> = {
 export async function POST(request: NextRequest, { params }: { params: Promise<{ caseId: string }> }) {
   try {
     const { caseId } = await params;
+
+    let body: Record<string, any> = {};
+    try {
+      body = await request.json();
+    } catch {
+      body = {};
+    }
+
+    // Auth: sessão (dashboard) OU chave interna (bridge WhatsApp 42W1). Aditivo.
     const cookieStore = await cookies();
     const session = await getIronSession<SessionData>(cookieStore, sessionOptions);
-    if (!session.userId) return NextResponse.json({ ok: false, error: 'Não autorizado' }, { status: 401 });
-
     const supabaseAdmin = getAdminClient();
-    const companyId = await getCompanyId(supabaseAdmin, session.userId);
+    let companyId: string | null = null;
+    if (session.userId) {
+      companyId = await getCompanyId(supabaseAdmin, session.userId);
+    } else {
+      companyId = resolveInternalCompanyId(request, body);
+      if (!companyId) return NextResponse.json({ ok: false, error: 'Não autorizado' }, { status: 401 });
+    }
     if (!companyId) return NextResponse.json({ ok: false, error: 'Empresa não encontrada' }, { status: 404 });
 
     const { data: caseRow, error: caseErr } = await supabaseAdmin

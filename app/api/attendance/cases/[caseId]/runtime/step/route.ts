@@ -18,6 +18,7 @@ import {
   RESUME_AFTER_POLICY_PREFIX,
   MACRO_STATES,
 } from '@/lib/attendance/attendance-macro-state';
+import { resolveInternalCompanyId } from '@/lib/attendance/runtime-internal-auth';
 
 export const dynamic = 'force-dynamic';
 
@@ -44,13 +45,6 @@ function safeCase(row: any): any {
 export async function POST(request: NextRequest, { params }: { params: Promise<{ caseId: string }> }) {
   try {
     const { caseId } = await params;
-    const cookieStore = await cookies();
-    const session = await getIronSession<SessionData>(cookieStore, sessionOptions);
-    if (!session.userId) return NextResponse.json({ ok: false, error: 'Não autorizado' }, { status: 401 });
-
-    const supabaseAdmin = getAdminClient();
-    const companyId = await getCompanyId(supabaseAdmin, session.userId);
-    if (!companyId) return NextResponse.json({ ok: false, error: 'Empresa não encontrada' }, { status: 404 });
 
     let body: Record<string, any> = {};
     try {
@@ -58,6 +52,19 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
     } catch {
       body = {};
     }
+
+    // Auth: sessão (dashboard) OU chave interna (bridge WhatsApp 42W1). Aditivo.
+    const cookieStore = await cookies();
+    const session = await getIronSession<SessionData>(cookieStore, sessionOptions);
+    const supabaseAdmin = getAdminClient();
+    let companyId: string | null = null;
+    if (session.userId) {
+      companyId = await getCompanyId(supabaseAdmin, session.userId);
+    } else {
+      companyId = resolveInternalCompanyId(request, body);
+      if (!companyId) return NextResponse.json({ ok: false, error: 'Não autorizado' }, { status: 401 });
+    }
+    if (!companyId) return NextResponse.json({ ok: false, error: 'Empresa não encontrada' }, { status: 404 });
     const source = typeof body.source === 'string' && body.source.trim() ? body.source.trim() : 'dashboard';
     const force = body.force === true;
 

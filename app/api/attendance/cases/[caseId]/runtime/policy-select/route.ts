@@ -12,6 +12,7 @@ import {
   safeEvidencePackSummary,
   evaluateCoverageReadiness,
 } from '@/lib/attendance/policy-evidence-pack';
+import { resolveInternalCompanyId } from '@/lib/attendance/runtime-internal-auth';
 
 export const dynamic = 'force-dynamic';
 
@@ -54,20 +55,26 @@ function pickCodfil(...sources: any[]): number | undefined {
 export async function POST(request: NextRequest, { params }: { params: Promise<{ caseId: string }> }) {
   try {
     const { caseId } = await params;
-    const cookieStore = await cookies();
-    const session = await getIronSession<SessionData>(cookieStore, sessionOptions);
-    if (!session.userId) return NextResponse.json({ ok: false, error: 'Não autorizado' }, { status: 401 });
 
-    const supabaseAdmin = getAdminClient();
-    const companyId = await getCompanyId(supabaseAdmin, session.userId);
-    if (!companyId) return NextResponse.json({ ok: false, error: 'Empresa não encontrada' }, { status: 404 });
-
-    let body: { source?: string; policy_ref?: string } = {};
+    let body: { source?: string; policy_ref?: string; company_id?: string } = {};
     try {
-      body = (await request.json()) as { source?: string; policy_ref?: string };
+      body = (await request.json()) as { source?: string; policy_ref?: string; company_id?: string };
     } catch {
       body = {};
     }
+
+    // Auth: sessão (dashboard) OU chave interna (bridge WhatsApp 42W1). Aditivo.
+    const cookieStore = await cookies();
+    const session = await getIronSession<SessionData>(cookieStore, sessionOptions);
+    const supabaseAdmin = getAdminClient();
+    let companyId: string | null = null;
+    if (session.userId) {
+      companyId = await getCompanyId(supabaseAdmin, session.userId);
+    } else {
+      companyId = resolveInternalCompanyId(request, body);
+      if (!companyId) return NextResponse.json({ ok: false, error: 'Não autorizado' }, { status: 401 });
+    }
+    if (!companyId) return NextResponse.json({ ok: false, error: 'Empresa não encontrada' }, { status: 404 });
     const source = (body.source || 'infocap').toLowerCase();
     if (source !== 'infocap' && source !== 'connector') {
       return NextResponse.json({ ok: false, error: 'source deve ser infocap/connector' }, { status: 400 });

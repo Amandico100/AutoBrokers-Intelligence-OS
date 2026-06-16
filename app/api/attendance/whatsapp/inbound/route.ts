@@ -5,6 +5,12 @@ import {
   inferSubcorridorFromText,
 } from '@/lib/attendance/whatsapp-case-routing';
 import { resolveOutboundPolicy, mediaAckMessage, type WhatsAppMediaKind } from '@/lib/attendance/whatsapp-inbound';
+import {
+  resolvePolicySelectionFromCustomerReply,
+  buildPolicyOptionsMessage,
+  buildPolicySelectedMessage,
+} from '@/lib/attendance/whatsapp-policy-selection';
+import { maybePrepareDispatchDraft, callRuntimeInternal } from '@/lib/attendance/whatsapp-orchestration';
 
 export const dynamic = 'force-dynamic';
 
@@ -58,17 +64,19 @@ export async function POST(request: NextRequest) {
     const supabaseAdmin = getAdminClient();
     const events: string[] = ['inbound_received'];
 
-    // Política de outbound (dry-run conservador).
+    // Política de outbound (dry-run conservador). Envio real exige a flag explícita
+    // WHATSAPP_ATTENDANCE_OUTBOUND_REAL_ENABLED=true (default false) — evita envio acidental.
+    const outboundRealEnabled = process.env.WHATSAPP_ATTENDANCE_OUTBOUND_REAL_ENABLED === 'true';
     const outbound = resolveOutboundPolicy({
       globalDryRun: process.env.ATTENDANCE_WHATSAPP_DRY_RUN !== 'false',
       environment: typeof body.environment === 'string' ? body.environment : null,
-      externalSendAuthorized: body.external_send_authorized === true,
+      externalSendAuthorized: outboundRealEnabled && body.external_send_authorized === true,
     });
 
     // Último attendance_case da conversation (company-scoped).
     const { data: existingCase } = await supabaseAdmin
       .from('attendance_cases')
-      .select('id, status')
+      .select('id, status, verification_status, metadata')
       .eq('company_id', companyId)
       .eq('conversation_id', conversationId)
       .order('created_at', { ascending: false })
@@ -114,6 +122,75 @@ export async function POST(request: NextRequest) {
         auto_reply: ack,
         outbound: { ...outbound, sent: false, text: ack },
         diagnostics: diag(events, { media_kind: mediaKind }),
+      });
+    }
+
+    const origin = request.nextUrl.origin;
+
+    // Seleção conversacional de apólice: case aberto em multiple_matches + resposta do cliente.
+    const pendingLookup = existingCase?.metadata?.policy_lookup;
+    if (
+      routing.action === 'reply_existing' &&
+      pendingLookup?.status === 'multiple_matches' &&
+      Array.isArray(pendingLookup.matches) &&
+      pendingLookup.matches.length > 0 &&
+      text
+    ) {
+      const matches = pendingLookup.matches;
+      // Registra a mensagem do cliente (não vamos pelo reply neste branch).
+      await supabaseAdmin.from('messages').insert({ conversation_id: conversationId, role: 'user', content: text, type: 'text' });
+      const sel = resolvePolicySelectionFromCustomerReply(text, matches);
+      if (sel.resolved && sel.policy_ref) {
+        const picked = matches.find((mm: any) => String(mm.policy_ref) === String(sel.policy_ref));
+        const selRes = await callRuntimeInternal(
+          origin,
+          `/api/attendance/cases/${existingCase!.id}/runtime/policy-select`,
+          internalKey,
+          { company_id: companyId, source: 'infocap', policy_ref: sel.policy_ref },
+        );
+        const ok = selRes.ok && selRes.json?.ok;
+        let reply = ok
+          ? buildPolicySelectedMessage(picked)
+          : 'Tive um problema para registrar essa apólice agora. Pode tentar novamente em instantes?';
+        let draftState: string | null = null;
+        if (ok) {
+          const draft = await maybePrepareDispatchDraft({
+            origin,
+            internalKey,
+            companyId,
+            caseId: existingCase!.id,
+            verificationStatus: selRes.json?.case?.verification_status ?? 'verified_by_connector',
+          });
+          draftState = draft.packet_state;
+          if (draft.message) reply = `${reply} ${draft.message}`;
+        }
+        await supabaseAdmin.from('messages').insert({ conversation_id: conversationId, role: 'assistant', content: reply, type: 'text' });
+        events.push(ok ? 'policy_selection_resolved' : 'policy_selection_failed');
+        if (draftState) events.push('dispatch_draft_auto_prepared');
+        events.push('outbound_dry_run');
+        return NextResponse.json({
+          ok: true,
+          action: 'policy_selected',
+          case_id: existingCase!.id,
+          selected_policy_ref: ok ? sel.policy_ref : null,
+          dispatch_packet_state: draftState,
+          auto_reply: reply,
+          outbound: { ...outbound, sent: false, text: reply },
+          diagnostics: diag(events, { selection_strategy: sel.strategy }),
+        });
+      }
+      // Ambíguo → pede seleção com lista curta mascarada.
+      const optionsMsg = buildPolicyOptionsMessage(matches);
+      await supabaseAdmin.from('messages').insert({ conversation_id: conversationId, role: 'assistant', content: optionsMsg, type: 'text' });
+      events.push('policy_selection_ambiguous');
+      events.push('outbound_dry_run');
+      return NextResponse.json({
+        ok: true,
+        action: 'policy_selection_pending',
+        case_id: existingCase!.id,
+        auto_reply: optionsMsg,
+        outbound: { ...outbound, sent: false, text: optionsMsg },
+        diagnostics: diag(events, { selection_strategy: sel.strategy }),
       });
     }
 
@@ -184,23 +261,57 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ ok: false, error: 'case_unresolved' }, { status: 500 });
     }
 
-    // Delega ao MESMO runtime do dashboard (reply) via chave interna. Salva user+assistant.
+    // 1) Delega ao MESMO runtime do dashboard (reply) via chave interna. Salva user+assistant.
     events.push('runtime_reply_called');
-    const replyUrl = new URL(`/api/attendance/cases/${caseId}/runtime/reply`, request.nextUrl.origin);
-    let assistantText: string | null = null;
-    let runtimeStatus: string | null = null;
-    try {
-      const res = await fetch(replyUrl.toString(), {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json', 'X-AutoBrokers-Internal-Key': internalKey },
-        body: JSON.stringify({ company_id: companyId, message: text, source: 'whatsapp' }),
-      });
-      const j = await res.json().catch(() => ({}));
-      assistantText = j?.next_step?.question ?? null;
-      runtimeStatus = j?.next_step?.status ?? null;
-    } catch (e: any) {
-      console.error('[WA INBOUND] runtime reply error:', e?.message);
+    const replyRes = await callRuntimeInternal(origin, `/api/attendance/cases/${caseId}/runtime/reply`, internalKey, {
+      company_id: companyId,
+      message: text,
+      source: 'whatsapp',
+    });
+    if (!replyRes.ok) {
       return NextResponse.json({ ok: false, error: 'runtime_reply_failed', case_id: caseId }, { status: 502 });
+    }
+    let assistantText: string | null = replyRes.json?.next_step?.question ?? null;
+    let runtimeStatus: string | null = replyRes.json?.next_step?.status ?? null;
+    let macroState: string | null = replyRes.json?.case?.metadata?.attendance_macro_state ?? null;
+    let verification: string | null = replyRes.json?.case?.verification_status ?? null;
+    let dispatchState: string | null = null;
+
+    // 2) Avanço autônomo: se chegou ao gate de apólice, dispara o lookup InfoCap.
+    if (macroState === 'policy_lookup_required') {
+      events.push('policy_lookup_auto');
+      const lk = await callRuntimeInternal(origin, `/api/attendance/cases/${caseId}/runtime/policy-lookup`, internalKey, {
+        company_id: companyId,
+        source: 'infocap',
+        mode: 'connector',
+      });
+      const plr = lk.json?.policy_lookup_result;
+      const st = plr?.status;
+      if (st === 'multiple_matches' && Array.isArray(plr.matches) && plr.matches.length > 0) {
+        assistantText = buildPolicyOptionsMessage(plr.matches);
+        await supabaseAdmin.from('messages').insert({ conversation_id: conversationId, role: 'assistant', content: assistantText, type: 'text' });
+        events.push('policy_lookup_multiple_matches');
+      } else if (st === 'found') {
+        // Evidência pronta → step para mensagem inteligente + dispatch draft.
+        const stp = await callRuntimeInternal(origin, `/api/attendance/cases/${caseId}/runtime/step`, internalKey, { company_id: companyId, source: 'whatsapp' });
+        assistantText = stp.json?.step?.question ?? assistantText;
+        verification = stp.json?.case?.verification_status ?? verification;
+        events.push('policy_lookup_found');
+      } else {
+        assistantText = lk.json?.next_step ?? assistantText;
+        events.push(`policy_lookup_${st || 'unresolved'}`);
+      }
+    }
+
+    // 3) Hook idempotente de dispatch draft (quando evidência pronta + slots ok).
+    const draft = await maybePrepareDispatchDraft({ origin, internalKey, companyId, caseId, verificationStatus: verification });
+    if (draft.prepared) {
+      dispatchState = draft.packet_state;
+      events.push('dispatch_draft_auto_prepared');
+      if (draft.message) {
+        assistantText = assistantText ? `${assistantText} ${draft.message}` : draft.message;
+        await supabaseAdmin.from('messages').insert({ conversation_id: conversationId, role: 'assistant', content: draft.message, type: 'text' });
+      }
     }
 
     events.push(outbound.dry_run ? 'outbound_dry_run' : 'outbound_sent');
@@ -209,6 +320,8 @@ export async function POST(request: NextRequest) {
       action: routing.action,
       case_id: caseId,
       runtime_status: runtimeStatus,
+      macro_state: macroState,
+      dispatch_packet_state: dispatchState,
       auto_reply: assistantText,
       outbound: { ...outbound, sent: false, text: assistantText },
       diagnostics: diag(events),
