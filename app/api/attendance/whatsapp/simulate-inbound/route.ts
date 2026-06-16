@@ -3,8 +3,9 @@ import { cookies } from 'next/headers';
 import { getIronSession } from 'iron-session';
 import { getAdminClient, getCompanyId } from '@/lib/attendance/support-destinations';
 import { sessionOptions, SessionData } from '@/lib/iron-session';
-import { callRuntimeInternal } from '@/lib/attendance/whatsapp-orchestration';
+import { invokeRuntimeHandler } from '@/lib/attendance/runtime-invoke';
 import { classifyInboundEvent } from '@/lib/attendance/whatsapp-inbound';
+import { POST as bridgeHandler } from '@/app/api/attendance/whatsapp/inbound/route';
 
 export const dynamic = 'force-dynamic';
 
@@ -92,18 +93,21 @@ export async function POST(request: NextRequest) {
 
     const mediaKind = text ? 'text' : classifyInboundEvent(body);
 
-    // Delega ao MESMO bridge (sem duplicar fluxo).
-    const bridge = await callRuntimeInternal(request.nextUrl.origin, '/api/attendance/whatsapp/inbound', internalKey, {
-      company_id: companyId,
-      agent_id: agentId,
-      user_id: session.userId,
-      conversation_id: conversationId,
-      phone: fromPhone,
-      connected_phone: connectedPhone,
-      sender_name: fromName,
-      message_id: typeof body.message_id === 'string' ? body.message_id : `sim-${Date.now()}`,
-      text,
-      media_kind: mediaKind,
+    // Delega ao MESMO bridge IN-PROCESS (sem self-fetch; ver runtime-invoke).
+    const bridge = await invokeRuntimeHandler(bridgeHandler, {
+      internalKey,
+      body: {
+        company_id: companyId,
+        agent_id: agentId,
+        user_id: session.userId,
+        conversation_id: conversationId,
+        phone: fromPhone,
+        connected_phone: connectedPhone,
+        sender_name: fromName,
+        message_id: typeof body.message_id === 'string' ? body.message_id : `sim-${Date.now()}`,
+        text,
+        media_kind: mediaKind,
+      },
     });
 
     return NextResponse.json({

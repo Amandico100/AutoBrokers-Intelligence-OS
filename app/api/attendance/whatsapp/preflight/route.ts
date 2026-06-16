@@ -79,7 +79,27 @@ export async function GET(_request: NextRequest) {
       warnings.push('infocap_diag_failed');
     }
 
-    // 6. Envs do backend (não visíveis aqui) — checar no backend.
+    // 6. Corredores ativos (global + tenant) — WhatsApp é canal global (42W1.1).
+    const { data: templates } = await supabaseAdmin
+      .from('corridor_templates')
+      .select('corridor_key, subcorridor_key, scope, company_id')
+      .eq('is_active', true)
+      .or(`company_id.is.null,company_id.eq.${companyId}`);
+    const activeCorridors = (templates || []).length;
+    checks.push({ name: 'active_corridor_templates', ok: activeCorridors > 0, level: activeCorridors > 0 ? 'info' : 'warning', detail: `${activeCorridors} corredor(es) ativo(s)` });
+    if (activeCorridors === 0) warnings.push('no_active_corridor_templates');
+
+    // 7. Default MVP por env (opcional). Sem default → desconhecidos vão para triagem.
+    const defaultCorridor = process.env.ATTENDANCE_DEFAULT_CORRIDOR_KEY || null;
+    checks.push({
+      name: 'default_corridor_fallback',
+      ok: true,
+      level: 'info',
+      detail: defaultCorridor ? `fallback MVP: ${defaultCorridor}` : 'sem default — intenção desconhecida vai para triagem (canal global)',
+    });
+    checks.push({ name: 'whatsapp_routing_mode', ok: true, level: 'info', detail: defaultCorridor ? 'global + fallback MVP' : 'global/triage' });
+
+    // 8. Envs do backend (não visíveis aqui) — checar no backend.
     checks.push({ name: 'backend_envs', ok: true, level: 'info', detail: 'ATTENDANCE_WHATSAPP_ENABLED / WHATSAPP_WEBHOOK_AUTH_MODE / ATTENDANCE_BRIDGE_URL: verificar no backend' });
 
     const readiness = blockers.length > 0 ? 'blocked' : warnings.length > 0 ? 'warning' : 'ready';

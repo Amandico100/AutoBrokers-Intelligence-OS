@@ -13,7 +13,8 @@
     "test:infocap-readiness": "node scripts/infocap-coverage-readiness.test.mjs",
     "test:dispatch-readiness": "node scripts/dispatch-readiness.test.mjs",
     "test:whatsapp-inbound": "node scripts/whatsapp-inbound.test.mjs",
-    "test:whatsapp-policy-selection": "node scripts/whatsapp-policy-selection.test.mjs"
+    "test:whatsapp-policy-selection": "node scripts/whatsapp-policy-selection.test.mjs",
+    "test:intent-resolver": "node scripts/attendance-intent-resolver.test.mjs"
   },
   "dependencies": {
     "@hookform/resolvers": "^3.9.0",
