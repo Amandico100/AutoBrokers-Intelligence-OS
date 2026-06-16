@@ -205,6 +205,21 @@ export default function AttendanceConversationSimulator({
     : [];
   const showPolicyOptions =
     !isLocked && macroState !== 'policy_evidence_ready' && infocapMatches.length > 0;
+  // Evidence pack + coverage readiness (42I3B).
+  const evidencePack: any = c.metadata?.policy_evidence_pack || null;
+  const coverageReadiness: any = c.metadata?.coverage_readiness || null;
+  const readinessLabel: Record<string, string> = {
+    coverage_confirmed: 'Cobertura confirmada',
+    policy_located_only: 'Apólice localizada',
+    human_validation_required: 'Validação humana necessária',
+    blocked: 'Bloqueado (cancelada/vencida)',
+  };
+  const readinessTone =
+    coverageReadiness?.state === 'coverage_confirmed'
+      ? 'success'
+      : coverageReadiness?.state === 'blocked'
+        ? 'danger'
+        : 'warning';
 
   const vp = verificationPill(c.verification_status);
   const pri = priorityPill(c.priority);
@@ -270,6 +285,34 @@ export default function AttendanceConversationSimulator({
           </p>
         )}
       </div>
+
+      {/* Evidence pack + Coverage readiness (42I3B) */}
+      {(evidencePack || coverageReadiness) && (
+        <div className="mb-3 rounded-lg border border-border bg-surface-2 p-3">
+          <div className="mb-2 flex flex-wrap items-center gap-2">
+            <p className="text-[11px] font-medium uppercase tracking-wide text-faint">Evidência da apólice (InfoCap)</p>
+            {coverageReadiness?.state && (
+              <StatusPill tone={readinessTone as any} label={readinessLabel[coverageReadiness.state] || coverageReadiness.state} />
+            )}
+          </div>
+          {evidencePack && (
+            <div className="grid grid-cols-2 gap-1.5 text-[11px] text-muted-foreground sm:grid-cols-3">
+              <span>Seguradora: <span className="text-foreground">{evidencePack.insurer_detected || '—'}</span></span>
+              <span>Produto: <span className="text-foreground">{evidencePack.product_detected || '—'}</span></span>
+              <span>Nº: <span className="text-foreground">{evidencePack.masked_policy_number || '—'}</span></span>
+              <span>Status: <span className="text-foreground">{evidencePack.policy_status || '—'}</span></span>
+              <span>Vigente: <span className="text-foreground">{evidencePack.active_now === true ? 'sim' : evidencePack.active_now === false ? 'não' : '—'}</span></span>
+              <span>Coberturas: <span className="text-foreground">{evidencePack.coverages_count ?? '—'}</span></span>
+              <span>Confiança: <span className="text-foreground">{evidencePack.confidence || '—'}</span></span>
+              <span>Validação humana: <span className="text-foreground">{evidencePack.human_required ? 'sim' : 'não'}</span></span>
+              <span>Dispatch liberado: <span className="text-foreground">{coverageReadiness?.dispatch_allowed ? 'sim' : 'não'}</span></span>
+            </div>
+          )}
+          {coverageReadiness?.message && (
+            <p className="mt-2 rounded-lg border border-border bg-card px-3 py-2 text-[11px] text-foreground">{coverageReadiness.message}</p>
+          )}
+        </div>
+      )}
 
       {/* Lista de mensagens */}
       <div

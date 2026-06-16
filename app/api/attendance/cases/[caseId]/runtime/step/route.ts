@@ -219,8 +219,20 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
     // → resolver o gate de apólice e voltar a coletar slots do corredor.
     if (isPolicyEvidenceReady(caseRow)) {
       const resumeStep = computeRuntimeStep({ caseRow, run: run || null, slotPriority: runtimeConfig.slot_priority });
-      const resumeQuestion = resumeStep.question ? `${RESUME_AFTER_POLICY_PREFIX}${resumeStep.question}` : null;
-      const resumeNextStep = resumeStep.question ? resumeQuestion! : resumeStep.nextStep;
+      // 42I3B: usar a resposta inteligente do coverage_readiness (mensagem determinística
+      // derivada do policy_interpretation_context), em vez do prefixo genérico.
+      const coverageReadiness =
+        caseRow?.metadata?.coverage_readiness && typeof caseRow.metadata.coverage_readiness === 'object'
+          ? (caseRow.metadata.coverage_readiness as Record<string, any>)
+          : null;
+      const reasoningMessage =
+        typeof coverageReadiness?.message === 'string' && coverageReadiness.message.trim()
+          ? coverageReadiness.message.trim()
+          : RESUME_AFTER_POLICY_PREFIX.trim();
+      const resumeQuestion = resumeStep.question
+        ? `${reasoningMessage} ${resumeStep.question}`.trim()
+        : reasoningMessage;
+      const resumeNextStep = resumeStep.question ? resumeQuestion : reasoningMessage || resumeStep.nextStep;
 
       let resumeMessageId: string | null = null;
       const shouldInsertResume =
@@ -254,17 +266,23 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
           prevDiag.runtime && typeof prevDiag.runtime === 'object' && !Array.isArray(prevDiag.runtime)
             ? prevDiag.runtime
             : {};
+        const dispatchAllowed = coverageReadiness?.dispatch_allowed === true;
         const newDiagnostics = {
           ...prevDiag,
           mvp_mode: prevDiag.mvp_mode || 'dry_run_hitl',
           hitl_required: true,
           external_action_allowed: false,
+          dispatch_allowed: dispatchAllowed,
+          coverage_readiness: coverageReadiness
+            ? { state: coverageReadiness.state, dispatch_allowed: dispatchAllowed, reasons: coverageReadiness.reasons }
+            : null,
           runtime: {
             ...prevRuntime,
             last_step_at: new Date().toISOString(),
             macro_state: MACRO_STATES.CORRIDOR_COLLECTING_SLOTS,
             resumed_after_policy_lookup: true,
             coverage_evidence_ready: true,
+            coverage_readiness: coverageReadiness?.state ?? null,
             selected_slot: resumeStep.selectedSlot,
             question_generated: Boolean(resumeQuestion),
             external_action_allowed: false,

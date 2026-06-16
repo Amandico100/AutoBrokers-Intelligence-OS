@@ -9,7 +9,8 @@
     "lint": "next lint",
     "typecheck": "tsc --noEmit",
     "test:attendance-goldens": "node scripts/attendance-golden-tests.mjs",
-    "test:infocap-evidence": "node scripts/infocap-evidence-pack.test.mjs"
+    "test:infocap-evidence": "node scripts/infocap-evidence-pack.test.mjs",
+    "test:infocap-readiness": "node scripts/infocap-coverage-readiness.test.mjs"
   },
   "dependencies": {
     "@hookform/resolvers": "^3.9.0",

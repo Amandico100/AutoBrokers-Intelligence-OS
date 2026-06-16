@@ -10,6 +10,7 @@ import {
   evidencePackToCoverageEvidence,
   buildPolicyInterpretationContext,
   safeEvidencePackSummary,
+  evaluateCoverageReadiness,
 } from '@/lib/attendance/policy-evidence-pack';
 
 export const dynamic = 'force-dynamic';
@@ -173,6 +174,18 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
     const coverageEvidence = evidencePackToCoverageEvidence(pack, detail.source_ref || 'infocap:documento', verifiedAt);
     const interpretation = buildPolicyInterpretationContext({ pack });
     const packSummary = safeEvidencePackSummary(pack);
+    // Coverage Readiness Gate (42I3B): decide se pode seguir p/ acionamento.
+    const readiness = evaluateCoverageReadiness({
+      coverage_confirmed: interpretation.coverage_confirmed,
+      human_required: pack.human_required,
+      confidence: pack.confidence,
+      cancelled: pack.cancelled,
+      expired: pack.expired,
+      active_now: pack.active_now,
+      coverages_count: pack.coverages_count,
+      insurer: pack.insurer_detected,
+      product: pack.product_detected,
+    });
 
     const policySnapshot = {
       ...sanitizePolicySnapshot({
@@ -200,11 +213,14 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
       attendance_macro_state: 'policy_evidence_ready',
       policy_evidence_pack: packSummary,
       policy_interpretation_context: interpretation,
+      coverage_readiness: readiness,
       policy_select: {
         provider: 'infocap',
         status: 'selected',
         selected_policy_ref: policyRef,
         confidence: pack.confidence,
+        readiness_state: readiness.state,
+        dispatch_allowed: readiness.dispatch_allowed,
         at: verifiedAt,
       },
     });
@@ -250,12 +266,15 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
           diagnostics: {
             ...prevDiag,
             external_action_allowed: false,
-            hitl_required: pack.human_required,
+            hitl_required: readiness.human_required,
+            dispatch_allowed: readiness.dispatch_allowed,
+            coverage_readiness: { state: readiness.state, dispatch_allowed: readiness.dispatch_allowed, reasons: readiness.reasons },
             runtime: {
               ...prevRuntime,
               last_step_at: new Date().toISOString(),
               macro_state: 'policy_evidence_ready',
               coverage_evidence_ready: true,
+              coverage_readiness: readiness.state,
               policy_evidence_pack: packSummary,
             },
           },
@@ -279,6 +298,8 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
         confidence: pack.confidence,
         coverage_confirmed: interpretation.coverage_confirmed,
         requires_human: pack.human_required,
+        coverage_readiness: readiness,
+        assistant_message: readiness.message,
         policy_evidence_pack: pack,
         policy_interpretation_context: interpretation,
       },

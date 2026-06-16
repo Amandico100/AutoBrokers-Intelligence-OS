@@ -100,9 +100,16 @@ export function maskName(name?: string | null): string | null {
   );
 }
 
+// Nota do snapshot por origem: connector/infocap é consulta real (sem payload bruto).
+const CONNECTOR_SNAPSHOT_NOTE =
+  'Snapshot sanitizado de apólice localizada via InfoCap/connector. Não contém payload bruto.';
+const MOCK_SNAPSHOT_NOTE = 'Snapshot mínimo (mock/manual). Não é consulta real à seguradora.';
+
 /** Snapshot mínimo e sanitizado (sem segredo, sem excesso de PII). */
 export function sanitizePolicySnapshot(input: unknown): Record<string, unknown> {
   const o = input && typeof input === 'object' && !Array.isArray(input) ? (input as Record<string, unknown>) : {};
+  const source = str(o.source);
+  const isConnector = source === 'connector' || source === 'infocap';
   return {
     insurer_key: str(o.insurer_key),
     product: str(o.product),
@@ -111,9 +118,9 @@ export function sanitizePolicySnapshot(input: unknown): Record<string, unknown> 
     masked_policy_number: str(o.masked_policy_number),
     valid_from: str(o.valid_from),
     valid_to: str(o.valid_to),
-    source: str(o.source),
+    source,
     captured_at: new Date().toISOString(),
-    note: 'Snapshot mínimo (mock/manual). Não é consulta real à seguradora.',
+    note: isConnector ? CONNECTOR_SNAPSHOT_NOTE : MOCK_SNAPSHOT_NOTE,
   };
 }
 

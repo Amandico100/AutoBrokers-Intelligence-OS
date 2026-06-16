@@ -409,6 +409,166 @@ export function buildPolicyInterpretationContext(input: {
   };
 }
 
+// ---------------------------------------------------------------------------
+// Coverage Readiness Gate (42I3B) — decide se o atendimento pode seguir para
+// acionamento/dispatch ou se exige validação humana. PURO, sem I/O, sem LLM.
+// ---------------------------------------------------------------------------
+
+export type CoverageReadinessState =
+  | 'policy_located_only' // apólice localizada, cobertura específica não confirmada
+  | 'coverage_confirmed' // cobertura específica encontrada com confiança suficiente
+  | 'human_validation_required' // confiança baixa / sem itens / múltiplas / ambígua
+  | 'blocked'; // cancelada/vencida/sem evidência → não seguir p/ acionamento
+
+export interface CoverageReadiness {
+  state: CoverageReadinessState;
+  coverage_confirmed: boolean;
+  human_required: boolean;
+  /** Pode liberar preparação de dispatch (ainda HITL no MVP)? Só se coverage_confirmed. */
+  dispatch_allowed: boolean;
+  reasons: string[];
+  message: string;
+}
+
+export interface CoverageReadinessInput {
+  coverage_confirmed?: boolean | null;
+  human_required?: boolean | null;
+  confidence?: string | null;
+  cancelled?: boolean | null;
+  expired?: boolean | null;
+  active_now?: boolean | null;
+  coverages_count?: number | null;
+  multiple_matches?: boolean | null;
+  insurer?: string | null;
+  product?: string | null;
+}
+
+// Rótulos amigáveis (abreviações comuns da InfoCap → nome humano).
+const INSURER_LABELS: Record<string, string> = {
+  ALLI: 'Allianz',
+  PORTO: 'Porto Seguro',
+  AZUL: 'Azul Seguros',
+  HDI: 'HDI',
+  TOKIO: 'Tokio Marine',
+  BRAD: 'Bradesco Seguros',
+  SUHAI: 'Suhai',
+  MAPFRE: 'Mapfre',
+};
+const PRODUCT_LABELS: Record<string, string> = {
+  RESI: 'Residencial',
+  AUTO: 'Automóvel',
+  VIDA: 'Vida',
+  EMPR: 'Empresarial',
+  COND: 'Condomínio',
+};
+
+function titleCase(v: string): string {
+  return v
+    .toLowerCase()
+    .split(/\s+/)
+    .map((w) => (w ? w[0].toUpperCase() + w.slice(1) : w))
+    .join(' ');
+}
+
+export function humanizeInsurer(key?: string | null): string | null {
+  const k = (key || '').trim();
+  if (!k) return null;
+  return INSURER_LABELS[k.toUpperCase()] || titleCase(k);
+}
+
+export function humanizeProduct(key?: string | null): string | null {
+  const k = (key || '').trim();
+  if (!k) return null;
+  return PRODUCT_LABELS[k.toUpperCase()] || titleCase(k);
+}
+
+/** Frase "Allianz Residencial" / "apólice" defensiva. */
+function policyLabel(insurer?: string | null, product?: string | null): string {
+  const ins = humanizeInsurer(insurer);
+  const prod = humanizeProduct(product);
+  const parts = [ins, prod].filter(Boolean);
+  return parts.length ? `apólice ${parts.join(' ')}` : 'apólice';
+}
+
+/** Mensagem humana que diferencia apólice localizada de cobertura confirmada. */
+export function buildCoverageReasoningMessage(
+  readiness: Pick<CoverageReadiness, 'state' | 'human_required'>,
+  ctx: { insurer?: string | null; product?: string | null; active_now?: boolean | null },
+): string {
+  const label = policyLabel(ctx.insurer, ctx.product);
+  const vig = ctx.active_now === true ? ' vigente' : '';
+  switch (readiness.state) {
+    case 'coverage_confirmed':
+      return `Localizei uma ${label}${vig} e encontrei evidência de assistência elétrica/residencial nos detalhes. Vou seguir com os dados do atendimento para preparar o acionamento.`;
+    case 'blocked':
+      return `Localizei uma ${label}, mas ela não está apta para acionamento automático (cancelada ou fora de vigência). Vou registrar e encaminhar para validação humana antes de qualquer providência.`;
+    case 'human_validation_required':
+    case 'policy_located_only':
+    default:
+      return `Localizei uma ${label}${vig} na InfoCap. O documento confirma a existência da apólice, mas não trouxe os itens de cobertura detalhados para eu afirmar automaticamente a assistência elétrica. Vou continuar coletando os dados do atendimento, mas antes de acionar será necessária validação humana da cobertura.`;
+  }
+}
+
+/** Avalia a prontidão de cobertura (gate de acionamento). PURO. */
+export function evaluateCoverageReadiness(input: CoverageReadinessInput): CoverageReadiness {
+  const reasons: string[] = [];
+  const cancelled = input.cancelled === true;
+  const expired = input.expired === true;
+  const humanRequiredFlag = input.human_required === true;
+  const confidence = (input.confidence || '').toLowerCase();
+  const coveragesCount = typeof input.coverages_count === 'number' ? input.coverages_count : 0;
+  const multiple = input.multiple_matches === true;
+  const coverageConfirmed = input.coverage_confirmed === true;
+
+  let state: CoverageReadinessState;
+  if (cancelled || expired) {
+    if (cancelled) reasons.push('policy_cancelled');
+    if (expired) reasons.push('policy_expired');
+    state = 'blocked';
+  } else if (coverageConfirmed && !humanRequiredFlag && (confidence === 'high' || confidence === 'medium')) {
+    reasons.push('coverage_confirmed');
+    state = 'coverage_confirmed';
+  } else if (humanRequiredFlag || confidence === 'low' || coveragesCount === 0 || multiple || !coverageConfirmed) {
+    if (humanRequiredFlag) reasons.push('human_required_flag');
+    if (confidence === 'low') reasons.push('low_confidence');
+    if (coveragesCount === 0) reasons.push('no_coverage_items');
+    if (multiple) reasons.push('multiple_policies');
+    if (!coverageConfirmed) reasons.push('coverage_not_confirmed');
+    state = 'human_validation_required';
+  } else {
+    reasons.push('policy_located');
+    state = 'policy_located_only';
+  }
+
+  const dispatch_allowed = state === 'coverage_confirmed';
+  const human_required = humanRequiredFlag || state === 'human_validation_required' || state === 'blocked';
+  const message = buildCoverageReasoningMessage(
+    { state, human_required },
+    { insurer: input.insurer, product: input.product, active_now: input.active_now },
+  );
+  return { state, coverage_confirmed: coverageConfirmed, human_required, dispatch_allowed, reasons, message };
+}
+
+/** Conveniência: readiness diretamente a partir de um evidence pack. */
+export function coverageReadinessFromPack(
+  pack: PolicyEvidencePack,
+  opts: { multiple_matches?: boolean } = {},
+): CoverageReadiness {
+  const ctx = buildPolicyInterpretationContext({ pack });
+  return evaluateCoverageReadiness({
+    coverage_confirmed: ctx.coverage_confirmed,
+    human_required: pack.human_required,
+    confidence: pack.confidence,
+    cancelled: pack.cancelled,
+    expired: pack.expired,
+    active_now: pack.active_now,
+    coverages_count: pack.coverages_count,
+    multiple_matches: opts.multiple_matches,
+    insurer: pack.insurer_detected,
+    product: pack.product_detected,
+  });
+}
+
 /** Resumo seguro do pack para metadata/diagnostics (sem PII crua). */
 export function safeEvidencePackSummary(pack: PolicyEvidencePack): Record<string, unknown> {
   return {
