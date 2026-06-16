@@ -141,7 +141,7 @@ async def store_infocap_secret(
 # Doc: login(email/senha/aplicacao) -> token; GET /lista_clientes?texto=...
 # ---------------------------------------------------------------------------
 
-LOOKUP_TIMEOUT_S = 12.0
+LOOKUP_TIMEOUT_S = 8.0
 TOKEN_FIELDS = ["token", "access_token", "jwt", "auth_token", "Authorization", "token_auth"]
 ARRAY_KEYS = ["cliente", "clientes", "data", "result", "results", "items", "registros", "rows", "lista", "documentos"]
 POLICY_NUMBER_KEYS = ["numapo", "nosnum", "apolice", "num_apolice", "numero_apolice"]
@@ -295,6 +295,74 @@ def _sanitize_match(record: Dict[str, Any]) -> Dict[str, Any]:
     }
 
 
+def _extract_documents(data: Any) -> List[Dict[str, Any]]:
+    """Extrai a lista de documentos/apólices (shape /cliente_ligacoes e /documento[s])."""
+    if isinstance(data, dict):
+        d = data.get("documentos")
+        if isinstance(d, list):
+            return [r for r in d if isinstance(r, dict)]
+        if isinstance(d, dict):
+            for k in ("documentos", "documento", "data", "lista", "rows"):
+                v = d.get(k)
+                if isinstance(v, list):
+                    return [r for r in v if isinstance(r, dict)]
+        dd = data.get("documento")
+        if isinstance(dd, list):
+            return [r for r in dd if isinstance(r, dict)]
+        if isinstance(dd, dict):
+            return [dd]
+    return _extract_array(data)
+
+
+_CANCEL_TRUTHY = {True, 1, "1", "t", "T", "true", "True", "s", "S", "sim", "Sim", "SIM"}
+
+
+def _sanitize_policy(doc: Dict[str, Any]) -> Dict[str, Any]:
+    """Normaliza uma apólice/documento (sanitizado; sem PII crua, número mascarado)."""
+    is_cancel = doc.get("cancelado") in _CANCEL_TRUTHY
+    status = "cancelado" if is_cancel else (
+        _first_str(doc, ["sit_acompanhamento_txt", "sit_renovacao_txt", "tipdoc_txt", "situacao", "status"]) or "ativo"
+    )
+    coverages = doc.get("itens") if isinstance(doc.get("itens"), list) else (
+        doc.get("coberturas") if isinstance(doc.get("coberturas"), list) else []
+    )
+    return {
+        "policy_ref": _first_str(doc, ["nosnum", "codigo", "codcli"]) or "infocap-doc",
+        "insurer_key": _first_str(doc, ["seguradora_abrev", "seguradora", "cia", "codcia"]),
+        "product": _first_str(doc, ["ramo_abrev", "ramo", "codram", "produto", "descricao"]),
+        "line_kind": None,
+        "policy_status": status,
+        "masked_policy_number": _mask_tail(_first_str(doc, ["numapo", "apolice", "nosnum", "numero", "num_apolice"])),
+        "holder_name_masked": _mask_name(_first_str(doc, ["cliente", "nome", "name", "razao_social"])),
+        "valid_from": _first_str(doc, ["inivig", "datini", "inicio_vigencia"]),
+        "valid_to": _first_str(doc, ["fimvig", "datfim", "fim_vigencia"]),
+        "coverages_count": len(coverages),
+        "cancelled": is_cancel,
+    }
+
+
+_COVERAGE_KEYWORDS = re.compile(r"assist|residencial|eletric|el[eé]tric", re.IGNORECASE)
+
+
+def _coverage_keyword_hit(doc: Dict[str, Any]) -> bool:
+    """Scan leve apenas em descrições de cobertura/ramo (sem PII)."""
+    parts: List[str] = []
+    for key in ("ramo", "ramo_abrev", "produto", "descricao"):
+        v = doc.get(key)
+        if isinstance(v, str):
+            parts.append(v)
+    for listkey in ("itens", "coberturas"):
+        items = doc.get(listkey)
+        if isinstance(items, list):
+            for it in items[:20]:
+                if isinstance(it, dict):
+                    for dk in ("descricao", "cobertura", "nome", "item"):
+                        dv = it.get(dk)
+                        if isinstance(dv, str):
+                            parts.append(dv)
+    return bool(_COVERAGE_KEYWORDS.search(" ".join(parts)))
+
+
 @router.post("/attendance/connectors/infocap/lookup")
 async def infocap_lookup(
     payload: InfocapLookupPayload,
@@ -357,6 +425,9 @@ async def infocap_lookup(
     name_search_param = config.get("infocap_search_param") or "texto"
     extra_params_raw = config.get("infocap_search_extra_params")
     codfil_default = config.get("infocap_codfil", 1)
+    ligacoes_path = config.get("infocap_ligacoes_path") or "/cliente_ligacoes"
+    documentos_path = config.get("infocap_documentos_path") or "/documentos"
+    documento_path = config.get("infocap_documento_path") or "/documento"
 
     doc_digits = _digits(payload.document)
     name = (payload.name or "").strip()
@@ -411,7 +482,7 @@ async def infocap_lookup(
             if not token:
                 return _done({"ok": False, "status": "auth_error", "verification_status": "unverified", "blockers": ["no_token_in_login_response"]})
 
-            # 2. Search (read-only)
+            # 2. Search (read-only) — localizar CLIENTE
             headers = {"Authorization": token, "Content-Type": "application/json"}
             params = {search_param: search_value, **extra_params}
             search_res = await client.get(search_path, params=params, headers=headers)
@@ -422,91 +493,147 @@ async def infocap_lookup(
                 return _done({"ok": False, "status": "auth_error", "verification_status": "unverified", "http_status": http_status, "blockers": ["search_unauthorized"]})
             if http_status >= 400:
                 return _done({"ok": False, "status": "provider_error", "verification_status": "unverified", "http_status": http_status, "blockers": ["search_http_error"]})
-
             try:
                 arr = _extract_array(search_res.json())
             except Exception:  # noqa: BLE001
                 arr = []
+
+            if len(arr) == 0:
+                return _done({"ok": False, "status": "not_found", "verification_status": "unverified", "http_status": http_status, "result_count": 0, "blockers": [], "notes": ["Nenhum resultado para o termo de busca."]})
+            # Busca por NOME com vários clientes → desambiguação humana (nível cliente)
+            if query_strategy == "customer_name" and len(arr) > 1:
+                return _done({"ok": False, "status": "multiple_matches", "verification_status": "unverified", "http_status": http_status, "result_count": len(arr), "matches": [_sanitize_match(r) for r in arr[:5]], "requires_human": True, "blockers": ["multiple_client_matches"]})
+
+            record = arr[0]
+            codfil_val = record.get("codfil") or codfil_default
+            codigo_val = _first_str(record, ["codigo", "codcli"])
+            matched_by = "cpf" if query_strategy == "document_cpf" else "name"
+
+            client_ref: Dict[str, Any] = {}
+            for k in CLIENT_REF_KEYS:
+                v = record.get(k)
+                if isinstance(v, (str, int)) and str(v).strip():
+                    client_ref[k] = v
+            for k in ("ativo", "vigente"):
+                if record.get(k) is not None:
+                    rv = record.get(k)
+                    client_ref[k] = bool(rv) if isinstance(rv, (bool, int)) else rv
+            for k in ("cidade", "estado"):
+                v = _first_str(record, [k])
+                if v:
+                    client_ref[k] = v
+
+            # 3. Discovery read-only de apólices/documentos do cliente
+            documents: List[Dict[str, Any]] = []
+            if codigo_val:
+                try:
+                    lig = await client.get(ligacoes_path, params={"codigo": codigo_val}, headers=headers)
+                    if lig.status_code < 400:
+                        documents = _extract_documents(lig.json())
+                except (httpx.TimeoutException, httpx.HTTPError):
+                    pass
+            if not documents and name:
+                try:
+                    ds = await client.get(documentos_path, params={"codfil": codfil_val, "texto": name}, headers=headers)
+                    if ds.status_code < 400:
+                        documents = _extract_documents(ds.json())
+                except (httpx.TimeoutException, httpx.HTTPError):
+                    pass
+
+            # 4. Detalhe de até 3 documentos com nosnum (falhas parciais toleradas)
+            detailed: List[Dict[str, Any]] = []
+            for d in documents[:3]:
+                nosnum = _first_str(d, ["nosnum"])
+                if not nosnum:
+                    detailed.append(d)
+                    continue
+                try:
+                    det = await client.get(documento_path, params={"codfil": codfil_val, "nosnum": nosnum}, headers=headers)
+                    if det.status_code < 400:
+                        darr = _extract_documents(det.json())
+                        detailed.append(darr[0] if darr else d)
+                    else:
+                        detailed.append(d)
+                except (httpx.TimeoutException, httpx.HTTPError):
+                    detailed.append(d)
+
+            source_docs = detailed or documents
+            policies = [_sanitize_policy(p) for p in source_docs]
+            documents_count = len(policies)
+            now = datetime.now(timezone.utc).isoformat()
+
+            # Cliente sem documentos → client_found
+            if documents_count == 0:
+                return _done({
+                    "ok": False,
+                    "status": "client_found",
+                    "verification_status": "unverified",
+                    "http_status": http_status,
+                    "result_count": 1,
+                    "infocap_client_found": True,
+                    "client_ref_available": bool(client_ref),
+                    "client_ref_fields": [k for k in CLIENT_REF_KEYS if k in client_ref],
+                    "client_ref": client_ref,
+                    "documents_count": 0,
+                    "matched_by": matched_by,
+                    "next_possible_endpoints": ["/cliente_ligacoes", "/documentos", "/documento"],
+                    "requires_human": False,
+                    "blockers": [],
+                    "notes": ["Cliente localizado na InfoCap, mas nenhum documento/apólice vinculado foi retornado."],
+                })
+
+            paired = list(zip(policies, source_docs))
+            active = [(p, raw) for p, raw in paired if not p.get("cancelled")]
+            candidates = active if active else paired
+
+            if len(candidates) > 1:
+                return _done({
+                    "ok": False,
+                    "status": "multiple_matches",
+                    "verification_status": "unverified",
+                    "http_status": http_status,
+                    "result_count": documents_count,
+                    "documents_count": documents_count,
+                    "matched_by": matched_by,
+                    "client_ref": client_ref,
+                    "matches": [p for p, _ in candidates[:5]],
+                    "requires_human": True,
+                    "blockers": ["multiple_policies"],
+                    "notes": ["Cliente possui múltiplas apólices; selecionar manualmente."],
+                })
+
+            selected_policy, selected_raw = candidates[0]
+            confidence = "high" if _coverage_keyword_hit(selected_raw) else "medium"
+            return _done({
+                "ok": True,
+                "status": "found",
+                "source_ref": "infocap:documento",
+                "http_status": http_status,
+                "result_count": 1,
+                "documents_count": documents_count,
+                "matched_by": matched_by,
+                "client_ref": client_ref,
+                "selected": selected_policy,
+                "matches": [selected_policy],
+                "verification_status": "verified_by_connector",
+                "coverage_evidence": {
+                    "source": "infocap",
+                    "source_ref": "infocap:documento",
+                    "verified_at": now,
+                    "verified_by": "connector",
+                    "confidence": confidence,
+                    "coverage_summary": "Apólice localizada na InfoCap; cobertura específica ainda depende da leitura dos detalhes/itens.",
+                    "limitations": [
+                        "Leitura read-only de metadados da apólice; coberturas/itens detalhados podem exigir leitura do documento (PDF).",
+                    ],
+                    "human_required": False,
+                },
+                "requires_human": False,
+                "notes": ["Apólice localizada via InfoCap (cliente -> documentos -> detalhe)."],
+            })
     except (httpx.TimeoutException, httpx.HTTPError) as e:
         logger.error(f"[INFOCAP LOOKUP] http error: {type(e).__name__}")
         return _done({"ok": False, "status": "provider_error", "verification_status": "unverified", "blockers": ["network_error"]})
-
-    if len(arr) == 0:
-        return _done({"ok": False, "status": "not_found", "verification_status": "unverified", "http_status": http_status, "result_count": 0, "blockers": [], "notes": ["Nenhum resultado para o termo de busca."]})
-    if len(arr) > 1:
-        return _done({
-            "ok": False,
-            "status": "multiple_matches",
-            "verification_status": "unverified",
-            "http_status": http_status,
-            "result_count": len(arr),
-            "matches": [_sanitize_match(r) for r in arr[:5]],
-            "requires_human": True,
-            "blockers": ["multiple_matches"],
-        })
-
-    record = arr[0]
-    source_ref = f"infocap:{search_path.lstrip('/')}"
-    has_policy = bool(_first_str(record, POLICY_NUMBER_KEYS)) and query_strategy != "customer_name"
-
-    if not has_policy:
-        # CLIENTE localizado, mas SEM apólice/cobertura no payload (ex.: /cliente_cpf).
-        # NÃO confirma cobertura. Expõe apenas refs sanitizadas para o próximo passo.
-        client_ref: Dict[str, Any] = {}
-        for k in CLIENT_REF_KEYS:
-            v = record.get(k)
-            if isinstance(v, (str, int)) and str(v).strip():
-                client_ref[k] = v
-        for k in ("ativo", "vigente"):
-            if record.get(k) is not None:
-                client_ref[k] = bool(record.get(k)) if isinstance(record.get(k), (bool, int)) else record.get(k)
-        for k in ("cidade", "estado"):
-            v = _first_str(record, [k])
-            if v:
-                client_ref[k] = v
-        return _done({
-            "ok": False,
-            "status": "client_found",
-            "verification_status": "unverified",
-            "http_status": http_status,
-            "result_count": 1,
-            "infocap_client_found": True,
-            "client_ref_available": bool(client_ref),
-            "client_ref_fields": [k for k in CLIENT_REF_KEYS if k in client_ref],
-            "client_ref": client_ref,
-            "next_possible_endpoints": ["/cliente", "/documento", "/producao"],
-            "requires_human": False,
-            "blockers": [],
-            "notes": ["Cliente localizado na InfoCap; apólice/cobertura ainda não consultada."],
-        })
-
-    # Apólice presente no payload → evidência por conector.
-    selected = _sanitize_match(record)
-    now = datetime.now(timezone.utc).isoformat()
-    return _done({
-        "ok": True,
-        "status": "found",
-        "source_ref": source_ref,
-        "http_status": http_status,
-        "result_count": 1,
-        "selected": selected,
-        "matches": [selected],
-        "verification_status": "verified_by_connector",
-        "coverage_evidence": {
-            "source": "infocap",
-            "source_ref": source_ref,
-            "verified_at": now,
-            "verified_by": "connector",
-            "confidence": "medium",
-            "coverage_summary": "Apólice localizada na InfoCap (consulta read-only).",
-            "limitations": [
-                "Confirmação read-only via conector; cobertura específica do serviço requer leitura detalhada da apólice.",
-            ],
-            "human_required": False,
-        },
-        "requires_human": False,
-        "notes": ["Resultado real read-only via InfoCap (CorpAPI)."],
-    })
 
 
 # ---------------------------------------------------------------------------

@@ -250,6 +250,8 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
         result_count: infocap.result_count ?? null,
         requires_human: Boolean(infocap.requires_human),
         infocap_client_found: Boolean(infocap.infocap_client_found),
+        matched_by: infocap.matched_by ?? null,
+        documents_count: infocap.documents_count ?? null,
         client_ref: infocap.client_ref ?? null,
         client_ref_fields: infocap.client_ref_fields ?? null,
         next_possible_endpoints: infocap.next_possible_endpoints ?? null,

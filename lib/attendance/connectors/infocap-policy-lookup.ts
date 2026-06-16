@@ -71,6 +71,9 @@ export interface InfocapPolicyLookupResult {
   client_ref_fields?: string[];
   client_ref?: Record<string, unknown>;
   next_possible_endpoints?: string[];
+  // Descoberta de apólices — 42I2.1D
+  documents_count?: number;
+  matched_by?: 'cpf' | 'name';
 }
 
 export interface InfocapPolicyLookupInput {
@@ -279,7 +282,7 @@ export async function lookupInfocapPolicy(input: InfocapPolicyLookupInput): Prom
 
     try {
       const controller = new AbortController();
-      const timeout = setTimeout(() => controller.abort(), 15_000);
+      const timeout = setTimeout(() => controller.abort(), 30_000);
       const res = await fetch(`${backendUrl()}/attendance/connectors/infocap/lookup`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json', 'X-AutoBrokers-Internal-Key': internalKey },
