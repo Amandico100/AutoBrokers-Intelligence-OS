@@ -14,7 +14,8 @@
     "test:dispatch-readiness": "node scripts/dispatch-readiness.test.mjs",
     "test:whatsapp-inbound": "node scripts/whatsapp-inbound.test.mjs",
     "test:whatsapp-policy-selection": "node scripts/whatsapp-policy-selection.test.mjs",
-    "test:intent-resolver": "node scripts/attendance-intent-resolver.test.mjs"
+    "test:intent-resolver": "node scripts/attendance-intent-resolver.test.mjs",
+    "test:whatsapp-e2e-state": "node scripts/whatsapp-attendance-e2e-state.test.mjs"
   },
   "dependencies": {
     "@hookform/resolvers": "^3.9.0",

@@ -158,6 +158,28 @@ export function buildPolicyOptionsMessage(matches: PolicyMatchLite[]): string {
   return `Encontrei mais de uma apólice. Qual delas devo usar?\n${lines.join('\n')}`;
 }
 
+/**
+ * A apólice já foi selecionada/verificada? (42W1.2 — evita re-pedir seleção).
+ * Robusto: cobre vários sinais persistidos por policy-select.
+ */
+export function isPolicySelectionAlreadyResolved(caseRow: any): boolean {
+  if (!caseRow || typeof caseRow !== 'object') return false;
+  if (caseRow.policy_source === 'connector') return true;
+  const vs = typeof caseRow.verification_status === 'string' ? caseRow.verification_status : '';
+  if (vs === 'verified_by_connector' || vs === 'verified_by_human') return true;
+  const snap = caseRow.policy_snapshot;
+  if (snap && typeof snap === 'object' && !Array.isArray(snap) && snap.policy_ref) return true;
+  const ce = caseRow.coverage_evidence;
+  if (ce && typeof ce === 'object' && !Array.isArray(ce) && (ce.source === 'connector' || ce.verified_by === 'connector')) return true;
+  const md = caseRow.metadata;
+  if (md && typeof md === 'object' && !Array.isArray(md)) {
+    if (md.policy_selection_status === 'resolved') return true;
+    if (md.selected_policy_ref) return true;
+    if (md.policy_select && typeof md.policy_select === 'object' && (md.policy_select as any).selected_policy_ref) return true;
+  }
+  return false;
+}
+
 /** Resposta humana após selecionar (sem expor número cru). */
 export function buildPolicySelectedMessage(match: PolicyMatchLite | undefined): string {
   if (!match) return 'Perfeito, registrei a apólice. Vou seguir com os dados do atendimento.';

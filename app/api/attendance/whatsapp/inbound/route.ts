@@ -6,6 +6,7 @@ import {
   resolvePolicySelectionFromCustomerReply,
   buildPolicyOptionsMessage,
   buildPolicySelectedMessage,
+  isPolicySelectionAlreadyResolved,
 } from '@/lib/attendance/whatsapp-policy-selection';
 import { maybePrepareDispatchDraft } from '@/lib/attendance/whatsapp-orchestration';
 import { invokeRuntimeHandler } from '@/lib/attendance/runtime-invoke';
@@ -118,7 +119,7 @@ export async function POST(request: NextRequest) {
 
     const { data: existingCase } = await supabaseAdmin
       .from('attendance_cases')
-      .select('id, status, verification_status, selected_corridor_key, metadata')
+      .select('id, status, verification_status, selected_corridor_key, policy_source, policy_snapshot, coverage_evidence, metadata')
       .eq('company_id', companyId)
       .eq('conversation_id', conversationId)
       .order('created_at', { ascending: false })
@@ -156,15 +157,16 @@ export async function POST(request: NextRequest) {
     const defaultCorridorKey = process.env.ATTENDANCE_DEFAULT_CORRIDOR_KEY || null;
     const defaultSubcorridorKey = process.env.ATTENDANCE_DEFAULT_SUBCORRIDOR_KEY || null;
 
-    // Seleção conversacional de apólice (case aberto em multiple_matches).
+    // Seleção conversacional de apólice — SÓ se ainda não resolvida (42W1.2 P0).
     const pendingLookup = existingCase?.metadata?.policy_lookup;
-    if (
+    const selectionPending =
       routing.action === 'reply_existing' &&
       pendingLookup?.status === 'multiple_matches' &&
       Array.isArray(pendingLookup.matches) &&
       pendingLookup.matches.length > 0 &&
-      text
-    ) {
+      Boolean(text) &&
+      !isPolicySelectionAlreadyResolved(existingCase);
+    if (selectionPending) {
       const matches = pendingLookup.matches;
       await insertUser(text);
       const sel = resolvePolicySelectionFromCustomerReply(text, matches);
@@ -172,21 +174,33 @@ export async function POST(request: NextRequest) {
         const picked = matches.find((mm: any) => String(mm.policy_ref) === String(sel.policy_ref));
         const selRes = await invokeRuntimeHandler(selectHandler, { caseId: existingCase!.id, internalKey, body: { company_id: companyId, source: 'infocap', policy_ref: sel.policy_ref } });
         const ok = selRes.ok && selRes.json?.ok;
-        let reply = ok ? buildPolicySelectedMessage(picked) : 'Tive um problema para registrar essa apólice agora. Pode tentar novamente em instantes?';
-        let draftState: string | null = null;
-        if (ok) {
-          const draft = await maybePrepareDispatchDraft({
-            verificationStatus: selRes.json?.case?.verification_status ?? 'verified_by_connector',
-            runDispatch: () => invokeRuntimeHandler(dispatchHandler, { caseId: existingCase!.id, internalKey, body: { company_id: companyId } }),
-          });
-          draftState = draft.packet_state;
-          if (draft.message) reply = `${reply} ${draft.message}`;
+        if (!ok) {
+          const failMsg = 'Tive um problema para registrar essa apólice agora. Pode tentar novamente em instantes?';
+          await insertAssistant(failMsg);
+          events.push('policy_selection_failed', 'outbound_dry_run');
+          return NextResponse.json({ ok: true, action: 'policy_selected', case_id: existingCase!.id, selected_policy_ref: null, auto_reply: failMsg, outbound: { ...outbound, sent: false, text: failMsg }, diagnostics: diag(events, { selection_strategy: sel.strategy }) });
         }
-        await insertAssistant(reply);
-        events.push(ok ? 'policy_selection_resolved' : 'policy_selection_failed');
-        if (draftState) events.push('dispatch_draft_auto_prepared');
+        // Marcador explícito de seleção resolvida (42W1.2 P0/req2).
+        const md = (selRes.json?.case?.metadata && typeof selRes.json.case.metadata === 'object') ? selRes.json.case.metadata : {};
+        await supabaseAdmin.from('attendance_cases').update({
+          metadata: { ...md, policy_selection_status: 'resolved', selected_policy_ref: sel.policy_ref, selected_policy_at: new Date().toISOString(), selected_policy_by: 'customer_reply', selected_policy_strategy: sel.strategy },
+        }).eq('id', existingCase!.id).eq('company_id', companyId);
+
+        // Confirmação + continuar runtime (step pergunta o próximo slot) — req3.
+        const confirm = buildPolicySelectedMessage(picked);
+        await insertAssistant(confirm);
+        const stp = await invokeRuntimeHandler(stepHandler, { caseId: existingCase!.id, internalKey, body: { company_id: companyId, source: 'whatsapp' } });
+        const stepQ = stp.json?.step?.question ?? null;
+        const verification = stp.json?.case?.verification_status ?? 'verified_by_connector';
+        const draft = await maybePrepareDispatchDraft({
+          verificationStatus: verification,
+          runDispatch: () => invokeRuntimeHandler(dispatchHandler, { caseId: existingCase!.id, internalKey, body: { company_id: companyId } }),
+        });
+        const reply = [confirm, stepQ, draft.message].filter(Boolean).join(' ');
+        events.push('policy_selection_resolved');
+        if (draft.packet_state) events.push('dispatch_draft_auto_prepared');
         events.push('outbound_dry_run');
-        return NextResponse.json({ ok: true, action: 'policy_selected', case_id: existingCase!.id, selected_policy_ref: ok ? sel.policy_ref : null, dispatch_packet_state: draftState, auto_reply: reply, outbound: { ...outbound, sent: false, text: reply }, diagnostics: diag(events, { selection_strategy: sel.strategy }) });
+        return NextResponse.json({ ok: true, action: 'policy_selected', case_id: existingCase!.id, selected_policy_ref: sel.policy_ref, dispatch_packet_state: draft.packet_state, auto_reply: reply, outbound: { ...outbound, sent: false, text: reply }, diagnostics: diag(events, { selection_strategy: sel.strategy }) });
       }
       const optionsMsg = buildPolicyOptionsMessage(matches);
       await insertAssistant(optionsMsg);

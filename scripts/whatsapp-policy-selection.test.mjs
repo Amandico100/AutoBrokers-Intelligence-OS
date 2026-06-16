@@ -11,6 +11,7 @@ import {
   resolvePolicySelectionFromCustomerReply,
   buildPolicyOptionsMessage,
   buildPolicySelectedMessage,
+  isPolicySelectionAlreadyResolved,
 } from '../lib/attendance/whatsapp-policy-selection.ts';
 
 let pass = 0, fail = 0;
@@ -92,6 +93,20 @@ console.log('\n[7] mensagens humanas');
   assert('selecionado menciona final mascarado', /final \*\*\*\*99/.test(sel), sel);
   assert('selecionado menciona vigente', /vigente/i.test(sel), sel);
   assert('selecionado não vaza ref', !/97652/.test(sel), 'ref cru');
+}
+
+// [8] 42W1.2 P0: gate de seleção já resolvida.
+console.log('\n[8] isPolicySelectionAlreadyResolved');
+{
+  assert('case novo → false', isPolicySelectionAlreadyResolved({ verification_status: 'unverified' }) === false);
+  assert('policy_source connector → true', isPolicySelectionAlreadyResolved({ policy_source: 'connector' }) === true);
+  assert('verified_by_connector → true', isPolicySelectionAlreadyResolved({ verification_status: 'verified_by_connector' }) === true);
+  assert('verified_by_human → true', isPolicySelectionAlreadyResolved({ verification_status: 'verified_by_human' }) === true);
+  assert('policy_snapshot.policy_ref → true', isPolicySelectionAlreadyResolved({ policy_snapshot: { policy_ref: '97652' } }) === true);
+  assert('coverage_evidence connector → true', isPolicySelectionAlreadyResolved({ coverage_evidence: { source: 'connector' } }) === true);
+  assert('metadata.policy_selection_status → true', isPolicySelectionAlreadyResolved({ metadata: { policy_selection_status: 'resolved' } }) === true);
+  assert('metadata.policy_select.selected_policy_ref → true', isPolicySelectionAlreadyResolved({ metadata: { policy_select: { selected_policy_ref: '97652' } } }) === true);
+  assert('null → false', isPolicySelectionAlreadyResolved(null) === false);
 }
 
 console.log(`\n== Resumo: ${pass} passaram, ${fail} falharam ==`);

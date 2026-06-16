@@ -134,6 +134,23 @@ console.log('\n[8] case fields builder');
   assert('triagem → sem insurer hardcoded', tf.insurer_key === null);
 }
 
+// [9] 42W1.2 P1: família (subcorridor null) + eletricista → escolhe eletricista.
+console.log('\n[9] prefere subcorredor operacional (não família null)');
+{
+  const withFamily = [
+    { corridor_key: 'allianz_residential_assistance', subcorridor_key: null, insurer_key: 'allianz', line_kind: 'residential', macro_service: 'residential_assistance', service_type: null, scope: 'global' },
+    { corridor_key: 'allianz_residential_assistance', subcorridor_key: 'electrician', insurer_key: 'allianz', line_kind: 'residential', macro_service: 'residential_assistance', service_type: 'electrician', scope: 'global' },
+  ];
+  const r = resolveAttendanceIntentAndCorridor({ text: 'estou sem luz só na cozinha', availableCorridors: withFamily });
+  assert('escolhe subcorridor electrician (não null)', r.selected_subcorridor_key === 'electrician', String(r.selected_subcorridor_key));
+  assert('corridor key correto', r.selected_corridor_key === 'allianz_residential_assistance');
+  const f = buildAttendanceCaseFieldsFromResolvedIntent(r, { channel: 'whatsapp' });
+  assert('case fields subcorridor electrician', f.selected_subcorridor_key === 'electrician');
+  // ordem invertida no array não muda o resultado
+  const r2 = resolveAttendanceIntentAndCorridor({ text: 'disjuntor caiu', availableCorridors: [withFamily[1], withFamily[0]] });
+  assert('ordem do array não afeta (electrician)', r2.selected_subcorridor_key === 'electrician', String(r2.selected_subcorridor_key));
+}
+
 console.log(`\n== Resumo: ${pass} passaram, ${fail} falharam ==`);
 if (fail > 0) { for (const f of failures) console.log(`  - ${f.name}${f.detail ? `: ${f.detail}` : ''}`); process.exit(1); }
 process.exit(0);

@@ -406,12 +406,20 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
       })();
 
       if (!doc.valid || !doc.ref) {
+        // 42W1.2 P1b: tolerância a mensagem fora de ordem — uma resposta tardia de
+        // risco ("não tem cheiro de queimado") no gate de CPF NÃO deve virar "CPF
+        // inválido" cego. Reconhece e re-pede o CPF de forma humana.
+        const LATE_RISK_RE = /\b(cheiro de queim|queimad|fa[íi]sca|fa[íi]sca|sem risco|sem cheiro|sem fuma|fuma[çc]a|sem perigo|n[ãa]o (tem|h[áa]).*(cheiro|fogo|fa[íi]sca|risco|fuma))\b/i;
+        const isLateRisk = LATE_RISK_RE.test(rawMessage);
+        const clarifyMsg = isLateRisk
+          ? 'Perfeito, obrigado por confirmar que não há sinal de risco. Agora, para localizar a apólice, pode me enviar só os números do CPF do segurado?'
+          : IDENTITY_CLARIFY;
         // Documento não reconhecido → reesclarecer (sem virar loop ruidoso).
         let assistantMessageId: string | null = null;
-        if (caseRow.conversation_id && (force || lastAssistantContent !== IDENTITY_CLARIFY)) {
+        if (caseRow.conversation_id && (force || lastAssistantContent !== clarifyMsg)) {
           const { data: ins } = await supabaseAdmin
             .from('messages')
-            .insert({ conversation_id: caseRow.conversation_id, role: 'assistant', content: IDENTITY_CLARIFY, type: 'text' })
+            .insert({ conversation_id: caseRow.conversation_id, role: 'assistant', content: clarifyMsg, type: 'text' })
             .select('id')
             .maybeSingle();
           assistantMessageId = ins?.id ?? null;
@@ -449,8 +457,8 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
           ok: true,
           case: caseRow,
           corridor_run: run || null,
-          intake: { target_slot: 'identity_document', kind: 'identity_clarify', filled: false, status: 'identity_required', extracted_value: null, confidence: 'low', conflicts: [] },
-          next_step: { selected_slot: 'identity_document', question: IDENTITY_CLARIFY, status: 'identity_required', message_id: assistantMessageId },
+          intake: { target_slot: 'identity_document', kind: isLateRisk ? 'late_risk_ack' : 'identity_clarify', filled: false, status: 'identity_required', extracted_value: null, confidence: 'low', conflicts: [] },
+          next_step: { selected_slot: 'identity_document', question: clarifyMsg, status: 'identity_required', message_id: assistantMessageId },
           messages: { user_message_id: userMessageId, assistant_message_id: assistantMessageId },
           external_action_allowed: false,
         });

@@ -81,30 +81,67 @@ const CLARIFICATION: Record<AttendanceIntentBucket, string> = {
   unknown: 'Pode me explicar rapidamente o que você precisa? É uma assistência (ex.: eletricista, encanador), um sinistro, ou uma dúvida sobre a apólice?',
 };
 
-/** Encontra um corredor disponível para o bucket (prioriza tenant sobre global). */
-function matchCorridor(bucket: AttendanceIntentBucket, corridors: AvailableCorridor[]): AvailableCorridor | null {
-  const byPref = [...corridors].sort((a, b) => (a.scope === 'tenant' ? -1 : 0) - (b.scope === 'tenant' ? -1 : 0));
+// Sub-intenção dentro de assistência residencial (define o subcorredor operacional).
+const SUB_HINT = {
+  electrician: /\b(luz|energia|el[ée]tric|eletric|disjuntor|tomada|l[âa]mpada|curto|fia[çc])\b/i,
+  plumber: /\b(vazamento|cano|torneira|chuveiro|[áa]gua|encanad|esgoto|infiltra|goteira)\b/i,
+  residential_locksmith: /\b(fechadura|chave|tranca|trancad|n[ãa]o consigo abrir)\b/i,
+};
+
+function detectResidentialSubHint(text: string): string | null {
+  const t = norm(text);
+  if (SUB_HINT.electrician.test(t)) return 'electrician';
+  if (SUB_HINT.plumber.test(t)) return 'plumber';
+  if (SUB_HINT.residential_locksmith.test(t)) return 'residential_locksmith';
+  return null;
+}
+
+/**
+ * Encontra um corredor disponível para o bucket. Prioriza: tenant > subcorredor
+ * que casa a sub-intenção > subcorredor não-nulo (operacional) > nível-família.
+ * Corrige o bug do 42W1.1 (selecionava o template família com subcorridor null).
+ */
+function matchCorridor(
+  bucket: AttendanceIntentBucket,
+  corridors: AvailableCorridor[],
+  subHint: string | null,
+): AvailableCorridor | null {
   const macro = (c: AvailableCorridor) => norm(c.macro_service);
   const line = (c: AvailableCorridor) => norm(c.line_kind);
-  const test = (pred: (c: AvailableCorridor) => boolean) => byPref.find(pred) || null;
 
+  let pool: AvailableCorridor[] = [];
   switch (bucket) {
     case 'residential_assistance':
-      return test((c) => line(c) === 'residential' && /assist/.test(macro(c)))
-        || test((c) => line(c) === 'residential');
+      pool = corridors.filter((c) => line(c) === 'residential');
+      break;
     case 'auto_assistance':
-      return test((c) => line(c) === 'auto' && /assist/.test(macro(c)))
-        || test((c) => line(c) === 'auto' && !/claim|sinistro/.test(macro(c)));
+      pool = corridors.filter((c) => line(c) === 'auto' && !/claim|sinistro/.test(macro(c)));
+      break;
     case 'claim':
-      return test((c) => /claim|sinistro/.test(macro(c)));
+      pool = corridors.filter((c) => /claim|sinistro/.test(macro(c)));
+      break;
     case 'policy_question':
     case 'policy_consultation':
-      return test((c) => /policy|ap[óo]lice|consult/.test(macro(c)));
+      pool = corridors.filter((c) => /policy|ap[óo]lice|consult/.test(macro(c)));
+      break;
     case 'billing_document':
-      return test((c) => /billing|document|cobran/.test(macro(c)));
+      pool = corridors.filter((c) => /billing|document|cobran/.test(macro(c)));
+      break;
     default:
       return null;
   }
+  if (pool.length === 0) return null;
+
+  const score = (c: AvailableCorridor): number => {
+    let s = 0;
+    if (c.scope === 'tenant') s += 100;
+    const sub = norm(c.subcorridor_key);
+    const svc = norm(c.service_type);
+    if (subHint && (sub === norm(subHint) || svc === norm(subHint))) s += 40; // casa a sub-intenção
+    if (c.subcorridor_key) s += 10; // operacional (não nível-família)
+    return s;
+  };
+  return [...pool].sort((a, b) => score(b) - score(a))[0] || null;
 }
 
 export interface ResolveInput {
@@ -132,7 +169,8 @@ export function resolveAttendanceIntentAndCorridor(input: ResolveInput): Resolve
     };
   }
 
-  let matched = matchCorridor(bucket, corridors);
+  const subHint = bucket === 'residential_assistance' ? detectResidentialSubHint(input.text) : null;
+  let matched = matchCorridor(bucket, corridors, subHint);
 
   // Fallback por env: só se configurado E presente entre os disponíveis.
   if (!matched && input.defaultCorridorKey) {
