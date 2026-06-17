@@ -564,6 +564,10 @@ export default function CaseDetailClient({ caseId }: { caseId: string }) {
                 <>
                   <Field label="Status" value={actionPlan.status} />
                   <Field label="Canal recomendado" value={actionPlan.selected_channel} />
+                  {actionPlan.selected_provider_key && (
+                    <Field label="Provider (config)" value={`${actionPlan.selected_provider_label || actionPlan.selected_provider_key} · ${actionPlan.selected_destination_ref_masked || '—'} · ${actionPlan.selected_homologation_status || '—'}`} />
+                  )}
+                  <Field label="Origem do canal" value={actionPlan.channel_config_source || 'none'} />
                   <Field label="Validação humana" value={actionPlan.human_review_required ? 'necessária' : 'não'} />
                   <Field label="Envio externo" value="bloqueado (dry-run, sent=false)" />
                   {Array.isArray(actionPlan.missing_data) && actionPlan.missing_data.length > 0 && (
@@ -698,6 +702,9 @@ export default function CaseDetailClient({ caseId }: { caseId: string }) {
                       )}
                       {Array.isArray(outbox.permission?.blockers) && outbox.permission.blockers.length > 0 && (
                         <p className="mt-1 text-[10px] text-muted-foreground">Gates pendentes: {outbox.permission.blockers.join(', ')}</p>
+                      )}
+                      {Array.isArray(outbox.warnings) && outbox.warnings.includes('channel_plan_outbox_mismatch') && (
+                        <p className="mt-1 text-[10px] font-medium text-warning">⚠ Divergência plano↔outbox de canal (channel_plan_outbox_mismatch)</p>
                       )}
                       {Array.isArray(outbox.audit_events) && outbox.audit_events.length > 0 && (
                         <div className="mt-2">

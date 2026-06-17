@@ -76,39 +76,64 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
     const pmd = packet?.metadata && typeof packet.metadata === 'object' ? (packet.metadata as Record<string, any>) : {};
     const execution = pmd.external_action_execution ?? null;
 
-    // 42X3 — resolve a config de canal mais específica (provider-agnostic).
-    // Sem config ativa → cai em manual/human_broker_manual (comportamento atual).
-    let activeConfig = null;
-    try {
-      const configs = await listChannelConfigs(supabaseAdmin, companyId);
-      activeConfig = resolveActiveInsurerChannelConfig(configs, {
-        insurer_key: plan?.insurer_key ?? caseRow.metadata?.action_readiness?.insurer_key ?? null,
-        corridor_key: plan?.corridor_key ?? null,
-        subcorridor_key: plan?.subcorridor_key ?? null,
-      });
-    } catch { /* vault ausente → segue sem config (manual) */ }
+    // 42X3.1 — REUSA a config já resolvida no ExternalActionPlan (alinhamento
+    // plan→execution→outbox). Só re-resolve no registry se o plano não trouxer.
+    const warnings: string[] = [];
+    let outboxChannel: 'insurer_whatsapp' | 'human_broker_manual' | null = null;
+    let outboxProvider: string | null = null;
+    let outboxDestinationMasked: string | null = null;
+    let outboxConfigId: string | null = null;
+    let providerPayload: Record<string, unknown> | null = null;
 
-    const configProvider = activeConfig ? getInsurerMessagingProvider(activeConfig.provider_key) : null;
-    const providerPayload = activeConfig
-      ? buildProviderPayload(activeConfig.provider_key, {
-          destination_ref_masked: activeConfig.destination_ref_masked,
+    if (plan?.selected_config_id && plan?.selected_provider_key) {
+      // Caminho preferido: tudo vem do plano (mesma config/canal/provider).
+      outboxChannel = plan.selected_channel === 'insurer_whatsapp' ? 'insurer_whatsapp' : 'human_broker_manual';
+      outboxProvider = plan.selected_provider_key;
+      outboxDestinationMasked = plan.selected_destination_ref_masked ?? null;
+      outboxConfigId = plan.selected_config_id;
+      providerPayload = plan.selected_provider_payload
+        ?? buildProviderPayload(plan.selected_provider_key, {
+          destination_ref_masked: plan.selected_destination_ref_masked,
           message_text: execution?.prepared_message ?? plan?.message_drafts?.[0]?.text ?? null,
-        })
-      : null;
-
-    // Mapeia o canal do registry para o ActionChannel do engine ('manual' → 'human_broker_manual').
-    const mappedChannel = configProvider?.channel === 'insurer_whatsapp' ? 'insurer_whatsapp' : configProvider?.channel === 'manual' ? 'human_broker_manual' : null;
+        });
+    } else {
+      // Fallback: resolve no registry (compat com planos antigos sem config).
+      let activeConfig = null;
+      try {
+        const configs = await listChannelConfigs(supabaseAdmin, companyId);
+        activeConfig = resolveActiveInsurerChannelConfig(configs, {
+          insurer_key: plan?.insurer_key ?? caseRow.metadata?.action_readiness?.insurer_key ?? null,
+          corridor_key: plan?.corridor_key ?? null,
+          subcorridor_key: plan?.subcorridor_key ?? null,
+        });
+      } catch { /* vault ausente → segue sem config (manual) */ }
+      const configProvider = activeConfig ? getInsurerMessagingProvider(activeConfig.provider_key) : null;
+      outboxChannel = configProvider?.channel === 'insurer_whatsapp' ? 'insurer_whatsapp' : configProvider?.channel === 'manual' ? 'human_broker_manual' : null;
+      outboxProvider = activeConfig?.provider_key ?? null;
+      outboxDestinationMasked = activeConfig?.destination_ref_masked ?? null;
+      outboxConfigId = activeConfig?.config_id ?? null;
+      providerPayload = activeConfig
+        ? buildProviderPayload(activeConfig.provider_key, {
+            destination_ref_masked: activeConfig.destination_ref_masked,
+            message_text: execution?.prepared_message ?? plan?.message_drafts?.[0]?.text ?? null,
+          })
+        : null;
+      // Se o plano apontou um canal e o outbox resolveu outro, registra divergência.
+      if (plan?.selected_channel && outboxChannel && plan.selected_channel !== outboxChannel) {
+        warnings.push('channel_plan_outbox_mismatch');
+      }
+    }
 
     const entry = buildOutboxEntry({
       case_id: caseId,
       dispatch_packet_id: packet?.id ?? null,
       execution,
       plan,
-      channel: mappedChannel,
-      provider: activeConfig?.provider_key ?? null,
-      destination_ref_masked: activeConfig?.destination_ref_masked ?? null,
+      channel: outboxChannel,
+      provider: outboxProvider,
+      destination_ref_masked: outboxDestinationMasked,
       provider_payload: providerPayload,
-      config_id: activeConfig?.config_id ?? null,
+      config_id: outboxConfigId,
     });
 
     // tenant_connection: consulta defensiva (tabela pode não existir/ter linhas).
@@ -157,6 +182,7 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
     audit.push(buildAuditEvent('approval_requested', entry.outbox_id));
     audit.push(buildAuditEvent('permission_evaluated', entry.outbox_id, { blockers: permission.blockers }));
     if (!adapter.canSendReal) audit.push(buildAuditEvent('adapter_not_real_enabled', entry.outbox_id, { note: adapter.adapter_id }));
+    if (warnings.includes('channel_plan_outbox_mismatch')) audit.push(buildAuditEvent('outbox_prepared', entry.outbox_id, { note: 'channel_plan_outbox_mismatch' }));
 
     const outbox = [...existingOutbox, entry];
     if (packet?.id) {
@@ -177,6 +203,7 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
       ok: true,
       outbox_entry: entry,
       permission,
+      warnings,
       audit_events: audit.slice(-8),
       external_action: { allowed: false, send_allowed: false, sent: false, reason: 'real_send_disabled_42x2' },
     });

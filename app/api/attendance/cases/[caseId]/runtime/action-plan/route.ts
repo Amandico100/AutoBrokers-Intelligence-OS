@@ -10,7 +10,14 @@ import {
   buildExternalActionPlan,
   safeActionPlanSummary,
   type ChannelAvailability,
+  type PlanChannelConfig,
 } from '@/lib/attendance/action-engine';
+import {
+  resolveActiveInsurerChannelConfig,
+  getInsurerMessagingProvider,
+  buildProviderPayload,
+} from '@/lib/attendance/insurer-channel-registry';
+import { listChannelConfigs } from '@/lib/attendance/insurer-channel-store';
 
 export const dynamic = 'force-dynamic';
 
@@ -88,14 +95,46 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
     const { caseRow, run, packet } = await loadContext(supabaseAdmin, companyId, caseId);
     if (!caseRow) return NextResponse.json({ ok: false, error: 'Caso não encontrado' }, { status: 404 });
 
+    // 42X3.1 — resolve config de canal do registry (mais específica) por insurer/corridor/subcorridor.
+    let activeChannelConfig: PlanChannelConfig | null = null;
+    try {
+      const configs = await listChannelConfigs(supabaseAdmin, companyId);
+      const active = resolveActiveInsurerChannelConfig(configs, {
+        insurer_key: caseRow?.insurer_key ?? caseRow?.policy_snapshot?.insurer_key ?? null,
+        corridor_key: caseRow?.selected_corridor_key ?? null,
+        subcorridor_key: caseRow?.selected_subcorridor_key ?? null,
+      });
+      if (active) {
+        activeChannelConfig = {
+          config_id: active.config_id,
+          provider_key: active.provider_key,
+          provider_label: getInsurerMessagingProvider(active.provider_key)?.label ?? active.provider_key,
+          channel: active.channel,
+          destination_ref_masked: active.destination_ref_masked,
+          homologation_status: active.homologation_status,
+          provider_payload: null,
+        };
+      }
+    } catch { /* vault ausente → sem config (fallback manual) */ }
+
     const avail = await channelAvailability(supabaseAdmin, companyId);
+    if (activeChannelConfig?.channel === 'insurer_whatsapp') avail.insurer_whatsapp = true;
     const channels = evaluateChannelCandidates(avail);
     const plan = buildExternalActionPlan({
       caseRow,
       dispatchPacket: packet || { id: null, metadata: {} },
       filledSlots: normalizeSlots(run?.slots).filled,
       channels,
+      activeChannelConfig,
     });
+
+    // Payload provider-specific (sandbox) a partir do draft do plano.
+    if (activeChannelConfig && plan.selected_provider_key && plan.message_drafts[0]) {
+      plan.selected_provider_payload = buildProviderPayload(plan.selected_provider_key, {
+        destination_ref_masked: plan.selected_destination_ref_masked,
+        message_text: plan.message_drafts[0].text,
+      });
+    }
 
     // Persistência (sem schema novo): plano no dispatch_packet (se houver) + case.metadata.
     const summary = safeActionPlanSummary(plan);

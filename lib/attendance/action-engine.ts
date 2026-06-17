@@ -138,6 +138,25 @@ export interface ChannelCandidate {
   requires: string;
   risk: 'low' | 'medium' | 'high';
   current_mode: 'dry_run' | 'not_configured' | 'future';
+  // 42X3.1 — enriquecido quando há config de canal resolvida no registry:
+  provider_key?: string | null;
+  config_id?: string | null;
+  destination_ref_masked?: string | null;
+  homologation_status?: string | null;
+}
+
+/**
+ * Config de canal resolvida (forma "lite", sem acoplar o engine ao registry —
+ * a rota a constrói a partir do InsurerActionChannelConfig). 42X3.1.
+ */
+export interface PlanChannelConfig {
+  config_id: string;
+  provider_key: string;
+  provider_label?: string | null;
+  channel: 'insurer_whatsapp' | 'manual';
+  destination_ref_masked: string | null;
+  homologation_status: string;
+  provider_payload?: Record<string, unknown> | null;
 }
 
 export interface ExternalActionPlan {
@@ -165,6 +184,14 @@ export interface ExternalActionPlan {
   playbook_id: string;
   dry_run: true;
   external_action_sent: false;
+  // 42X3.1 — config de canal/provider resolvida (alinha plan→execution→outbox):
+  selected_config_id: string | null;
+  selected_provider_key: string | null;
+  selected_provider_label: string | null;
+  selected_destination_ref_masked: string | null;
+  selected_homologation_status: string | null;
+  selected_provider_payload: Record<string, unknown> | null;
+  channel_config_source: 'registry' | 'fallback_manual' | 'none';
 }
 
 export interface ChannelAvailability {
@@ -250,6 +277,12 @@ export interface BuildPlanInput {
   dispatchPacket: any; // payload/metadata do dispatch_packet
   filledSlots?: Record<string, unknown>;
   channels: ChannelCandidate[];
+  activeChannelConfig?: PlanChannelConfig | null; // 42X3.1 — config resolvida do registry
+}
+
+/** Mapeia o canal do registry ('manual') para o ActionChannel do engine. */
+function mapConfigChannel(ch: 'insurer_whatsapp' | 'manual'): ActionChannel {
+  return ch === 'insurer_whatsapp' ? 'insurer_whatsapp' : 'human_broker_manual';
 }
 
 /** Monta o ExternalActionPlan a partir do dispatch_packet + gates. PURO. dry-run sempre. */
@@ -305,11 +338,34 @@ export function buildExternalActionPlan(input: BuildPlanInput): ExternalActionPl
     humanReview = true;
   }
 
-  // Canal recomendado: o de maior prioridade com modo dry_run; senão fallback manual.
-  const preferred = channels.find((ch) => ch.current_mode === 'dry_run' && ch.channel !== 'human_broker_manual')
-    || channels.find((ch) => ch.channel === 'human_broker_manual')
-    || null;
-  const selected = preferred ? preferred.channel : null;
+  // 42X3.1 — config de canal/provider resolvida (registry). Quando presente,
+  // ela dita o canal selecionado e enriquece o candidate correspondente.
+  const cfg = input.activeChannelConfig ?? null;
+  const cfgChannel: ActionChannel | null = cfg ? mapConfigChannel(cfg.channel) : null;
+  const enrichedChannels: ChannelCandidate[] = channels.map((ch) =>
+    cfg && ch.channel === cfgChannel
+      ? {
+          ...ch,
+          current_mode: 'dry_run',
+          provider_key: cfg.provider_key,
+          config_id: cfg.config_id,
+          destination_ref_masked: cfg.destination_ref_masked,
+          homologation_status: cfg.homologation_status,
+          reason: `config ${cfg.provider_key} (${cfg.homologation_status}) — sandbox/dry-run`,
+        }
+      : ch,
+  );
+
+  // Canal recomendado: config resolvida vence; senão maior prioridade dry_run; senão manual.
+  let selected: ActionChannel | null;
+  if (cfg && cfgChannel) {
+    selected = cfgChannel;
+  } else {
+    const preferred = enrichedChannels.find((ch) => ch.current_mode === 'dry_run' && ch.channel !== 'human_broker_manual')
+      || enrichedChannels.find((ch) => ch.channel === 'human_broker_manual')
+      || null;
+    selected = preferred ? preferred.channel : null;
+  }
 
   // Drafts só quando pronto p/ aprovação humana (dry-run).
   const drafts: Array<{ channel: ActionChannel; text: string }> = [];
@@ -338,7 +394,7 @@ export function buildExternalActionPlan(input: BuildPlanInput): ExternalActionPl
     corridor_key: c?.selected_corridor_key ?? null,
     subcorridor_key: c?.selected_subcorridor_key ?? null,
     insurer_key: c?.insurer_key ?? snap.insurer_key ?? null,
-    channel_candidates: channels,
+    channel_candidates: enrichedChannels,
     selected_channel: selected,
     action_goal: playbook.objective,
     required_data: playbook.required_payload_fields,
@@ -357,6 +413,13 @@ export function buildExternalActionPlan(input: BuildPlanInput): ExternalActionPl
     playbook_id: playbook.playbook_id,
     dry_run: true,
     external_action_sent: false,
+    selected_config_id: cfg?.config_id ?? null,
+    selected_provider_key: cfg && selected === cfgChannel ? cfg.provider_key : null,
+    selected_provider_label: cfg && selected === cfgChannel ? (cfg.provider_label ?? cfg.provider_key) : null,
+    selected_destination_ref_masked: cfg && selected === cfgChannel ? cfg.destination_ref_masked : null,
+    selected_homologation_status: cfg && selected === cfgChannel ? cfg.homologation_status : null,
+    selected_provider_payload: cfg?.provider_payload ?? null,
+    channel_config_source: cfg ? 'registry' : selected === 'human_broker_manual' ? 'fallback_manual' : 'none',
   };
 }
 
@@ -513,12 +576,23 @@ function execId(): string {
   return `exec-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 8)}`;
 }
 
+/** 42X3.1 — adapter sandbox por provider (alinha execução ao provider do plano). */
+function providerSandboxAdapterId(providerKey: string | null, channel: ActionChannel | null): string {
+  switch (providerKey) {
+    case 'zapi': return 'zapi_sandbox';
+    case 'evolution_go': return 'evolution_go_sandbox';
+    case 'meta_cloud': return 'meta_cloud_sandbox';
+    case 'manual': return 'human_manual_sandbox';
+    default: return getChannelAdapter(channel).adapter_id;
+  }
+}
+
 /** Inicia uma sessão de execução sandbox a partir de um ExternalActionPlan pronto. */
 export function startExecutionSession(plan: ExternalActionPlan): ExternalActionExecutionSession | { error: string } {
   if (plan.status !== 'ready_for_human_approval') {
     return { error: `plan_not_ready:${plan.status}` };
   }
-  const adapter = getChannelAdapter(plan.selected_channel);
+  const adapterId = providerSandboxAdapterId(plan.selected_provider_key ?? null, plan.selected_channel);
   const now = new Date().toISOString();
   const prepared = plan.message_drafts[0]?.text ?? null;
   return {
@@ -528,12 +602,12 @@ export function startExecutionSession(plan: ExternalActionPlan): ExternalActionE
     status: 'waiting_insurer',
     mode: 'sandbox',
     channel: plan.selected_channel,
-    adapter: adapter.adapter_id,
+    adapter: adapterId,
     current_step: 'sent_initial_message_sandbox',
     last_event_at: now,
     events: [
       { at: now, type: 'session_started', note: 'sandbox' },
-      { at: now, type: 'message_prepared', note: adapter.adapter_id },
+      { at: now, type: 'message_prepared', note: adapterId },
       { at: now, type: 'simulated_send', note: 'dry-run — nada foi enviado (canSendReal=false)' },
     ],
     insurer_thread_ref: null,
@@ -989,5 +1063,10 @@ export function safeActionPlanSummary(plan: ExternalActionPlan): Record<string, 
     packet_state: plan.readiness.packet_state,
     external_action_sent: false,
     dry_run: true,
+    selected_config_id: plan.selected_config_id ?? null,
+    selected_provider_key: plan.selected_provider_key ?? null,
+    selected_destination_ref_masked: plan.selected_destination_ref_masked ?? null,
+    selected_homologation_status: plan.selected_homologation_status ?? null,
+    channel_config_source: plan.channel_config_source ?? 'none',
   };
 }
