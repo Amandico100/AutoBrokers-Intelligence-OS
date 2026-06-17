@@ -16,7 +16,8 @@
     "test:whatsapp-policy-selection": "node scripts/whatsapp-policy-selection.test.mjs",
     "test:intent-resolver": "node scripts/attendance-intent-resolver.test.mjs",
     "test:whatsapp-e2e-state": "node scripts/whatsapp-attendance-e2e-state.test.mjs",
-    "test:attendance-final-e2e": "node scripts/attendance-final-e2e-goldens.mjs"
+    "test:attendance-final-e2e": "node scripts/attendance-final-e2e-goldens.mjs",
+    "test:policy-qa": "node scripts/policy-qa.test.mjs"
   },
   "dependencies": {
     "@hookform/resolvers": "^3.9.0",

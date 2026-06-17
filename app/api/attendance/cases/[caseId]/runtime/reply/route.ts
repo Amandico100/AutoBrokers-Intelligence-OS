@@ -51,6 +51,13 @@ async function resolveAttendanceAgentId(supabaseAdmin: any, companyId: string, c
 }
 import { macroGateOverride, MACRO_STATES } from '@/lib/attendance/attendance-macro-state';
 import {
+  classifyAttendanceQuestion,
+  isAnswerableQuestion,
+  buildPolicyQAContext,
+  answerPolicyQuestionDeterministic,
+  safePolicyQaSummary,
+} from '@/lib/attendance/policy-qa';
+import {
   extractDocument,
   maskDocument,
   IDENTITY_QUESTION,
@@ -703,6 +710,109 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
         messages: { user_message_id: userMessageId, assistant_message_id: null },
         external_action_allowed: false,
       });
+    }
+
+    // ---- 42Q0: Policy Q&A — pergunta livre (cobertura/apólice/andamento) ----
+    // Responde com inteligência + LIMITES e RETOMA o slot. Não muda o estado do
+    // corredor (não consome o slot). Conservador: só intercepta pergunta clara.
+    {
+      const qa = classifyAttendanceQuestion(rawMessage, caseRow);
+      const humanReq = qa.signals.includes('human_request');
+      if (isAnswerableQuestion(qa.category) || humanReq) {
+        const pendingQuestion = questionForSlot(targetSlot, slots.filled);
+        const qaCtx = buildPolicyQAContext(caseRow, { pendingQuestion });
+        const det = answerPolicyQuestionDeterministic(humanReq ? 'customer_frustration' : qa.category, qaCtx);
+        let answer = det.answer;
+        let llmUsed = false;
+        // LLM opcional (rephrase/enriquecer) — NUNCA para cobertura/dispatch (alto risco).
+        const REPHRASEABLE = new Set([
+          'policy_status_question',
+          'process_status_question',
+          'assistance_question',
+          'clarification_question',
+        ]);
+        if (!humanReq && isAttendanceFallbackEnabled() && REPHRASEABLE.has(qa.category)) {
+          const agentId = await resolveAttendanceAgentId(supabaseAdmin, companyId, caseRow);
+          const outcome = await attemptAttendanceLlmFallback({
+            route: { kind: 'clarification_question', signals: qa.signals },
+            message: rawMessage,
+            companyId,
+            agentId,
+            caseRow,
+            corridorRun: run,
+            recentMessages,
+            currentQuestion: pendingQuestion,
+          });
+          if (outcome.used && outcome.reply) {
+            answer = outcome.reply;
+            llmUsed = true;
+          }
+        }
+
+        let handoff = false;
+        if (humanReq) {
+          answer =
+            'Claro, vou te encaminhar para um atendente humano para te ajudar melhor. Já deixei seu atendimento registrado para a equipe dar sequência.';
+          handoff = true;
+        }
+        const reask = !handoff && pendingQuestion ? ` Para eu continuar: ${pendingQuestion}` : '';
+        const full = `${answer}${reask}`.trim();
+
+        let qaMsgId: string | null = null;
+        if (caseRow.conversation_id && (force || lastAssistantContent !== full)) {
+          const { data: ins } = await supabaseAdmin
+            .from('messages')
+            .insert({ conversation_id: caseRow.conversation_id, role: 'assistant', content: full, type: 'text' })
+            .select('id')
+            .maybeSingle();
+          qaMsgId = ins?.id ?? null;
+        }
+
+        const qaSummary = safePolicyQaSummary(humanReq ? 'customer_frustration' : qa.category, qaCtx, llmUsed);
+        if (run) {
+          const prevDiag = run.diagnostics && typeof run.diagnostics === 'object' && !Array.isArray(run.diagnostics) ? (run.diagnostics as Record<string, any>) : {};
+          const prevRuntime = prevDiag.runtime && typeof prevDiag.runtime === 'object' && !Array.isArray(prevDiag.runtime) ? prevDiag.runtime : {};
+          await supabaseAdmin
+            .from('corridor_runs')
+            .update({
+              ...(handoff ? { phase: 'handoff' } : {}),
+              diagnostics: {
+                ...prevDiag,
+                external_action_allowed: false,
+                runtime: { ...prevRuntime, last_step_at: new Date().toISOString(), policy_qa: qaSummary, selected_slot: handoff ? null : targetSlot, channel: source, engine: RUNTIME_ENGINE },
+              },
+            })
+            .eq('id', run.id)
+            .eq('company_id', companyId);
+        }
+        const caseQaUpdate: Record<string, unknown> = {
+          next_step: full,
+          metadata: mergeCaseMetadata(caseRow, { policy_qa: qaSummary, ...(handoff ? { attendance_macro_state: MACRO_STATES.HANDOFF } : {}) }),
+        };
+        if (handoff) {
+          caseQaUpdate.status = 'handoff';
+          caseQaUpdate.handoff_required = true;
+          caseQaUpdate.handoff_reason = 'customer_requested_human';
+        }
+        const { data: qaCase } = await supabaseAdmin
+          .from('attendance_cases')
+          .update(caseQaUpdate)
+          .eq('id', caseRow.id)
+          .eq('company_id', companyId)
+          .select('*')
+          .maybeSingle();
+
+        console.log(`[CORRIDOR REPLY] case=${caseId} policy_qa=${qa.category} llm=${llmUsed} handoff=${handoff} user_msg=${userMessageId}`);
+        return NextResponse.json({
+          ok: true,
+          case: safeReplyCase(qaCase || caseRow),
+          corridor_run: run || null,
+          intake: { target_slot: targetSlot, kind: 'policy_qa', filled: false, status: handoff ? 'handoff' : 'policy_qa', extracted_value: null, confidence: 'low', conflicts: [] },
+          next_step: { selected_slot: handoff ? null : targetSlot, question: full, status: handoff ? 'handoff' : 'policy_qa', message_id: qaMsgId },
+          messages: { user_message_id: userMessageId, assistant_message_id: qaMsgId },
+          external_action_allowed: false,
+        });
+      }
     }
 
     // ---- 42B5K: recuperação conversacional antes de tratar como resposta de slot ----
