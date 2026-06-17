@@ -7,6 +7,10 @@ import {
   processAttendanceMedia,
   buildMediaEvidenceRecord,
   transcribeAttendanceAudio,
+  analyzeAttendanceImage,
+  extractAttendanceDocument,
+  deriveVisualEvidence,
+  buildVisionCustomerReply,
 } from '@/lib/attendance/attendance-media';
 import {
   resolvePolicySelectionFromCustomerReply,
@@ -190,10 +194,38 @@ export async function POST(request: NextRequest) {
       } else if (!text) {
         // imagem/documento/localização/desconhecido sem texto → evidência + ack seguro.
         const result = processAttendanceMedia(normalized, { location: location as any });
+        // 42M1: visão/documento reais (reuso Smith), gated por flag; senão ack seguro.
+        if (normalized.media_kind === 'image') {
+          const v = await analyzeAttendanceImage({ companyId, agentId, caseId: existingCase?.id, imageUrl: mediaUrl, imageBase64: mediaBase64, mimeType });
+          if (v.ok && v.visual_summary) {
+            const ev = deriveVisualEvidence(v.visual_summary);
+            result.status = 'processed';
+            result.visual_summary = v.visual_summary;
+            result.possible_slots = ev.possible_slots;
+            result.confidence = (v.confidence as any) || 'medium';
+            if (ev.risk_hint) { result.evidence_notes.push('risco_visual'); result.confidence = 'medium'; }
+            result.safe_customer_reply = buildVisionCustomerReply(ev);
+            events.push('media_image_vision');
+          } else {
+            events.push(`media_image_${v.status || 'ack'}`);
+          }
+        } else if (normalized.media_kind === 'document') {
+          const d = await extractAttendanceDocument({ companyId, agentId, caseId: existingCase?.id, documentUrl: mediaUrl, documentBase64: mediaBase64, mimeType });
+          if (d.ok && d.summary) {
+            result.status = 'processed';
+            result.document_summary = d.summary;
+            result.evidence_notes.push('documento_resumido');
+            events.push('media_document_extracted');
+          } else {
+            events.push(`media_document_${d.status || 'ack'}`);
+          }
+        } else {
+          events.push(`media_${normalized.media_kind}`);
+        }
         if (existingCase?.id) await appendMediaEvidence(existingCase.id, buildMediaEvidenceRecord(normalized, result));
         await insertUser(`[${normalized.media_kind}]`, 'text');
         await insertAssistant(result.safe_customer_reply);
-        events.push(`media_${normalized.media_kind}`, 'outbound_dry_run');
+        events.push('outbound_dry_run');
         return NextResponse.json({ ok: true, action: 'media_ack', case_id: existingCase?.id ?? null, media_kind: normalized.media_kind, auto_reply: result.safe_customer_reply, outbound: { ...outbound, sent: false, text: result.safe_customer_reply }, diagnostics: diag(events) });
       } else if (existingCase?.id) {
         // mídia (não-áudio) + texto → registra evidência e o texto segue o fluxo.

@@ -29,7 +29,10 @@ const PROCESS_RE = /\b(e agora|pr[óo]ximo passo|o que falta|o que (preciso|falt
 const WHY_RE = /\b(por que|por qu[eê]|porque|pra que|para que|por qual motivo|como assim)\b/i;
 const ASSISTANCE_RE = /\b(assist[êe]ncia|voc[êe]s mandam|enviam algu[ée]m|mandam (eletricista|t[ée]cnico|profissional)|como funciona a assist)\b/i;
 const HUMAN_REQ_RE = /\b(falar com (um |uma )?(humano|atendente|pessoa|algu[ée]m)|atendente humano|pessoa de verdade|quero (um )?humano|me transfere|transferir para)\b/i;
-const MEDIA_OFFER_RE = /\b(posso (te )?(mandar|enviar)|pode (mandar|enviar)|quero (mandar|enviar)|vou (mandar|enviar))\b.*\b(foto|imagem|[áa]udio|v[íi]deo|documento|pdf|print|comprovante|localiza[çc][ãa]o)\b/i;
+const MEDIA_OFFER_RE = /\b(posso (te )?(mandar|enviar)|pode (mandar|enviar)|quero (mandar|enviar)|vou (mandar|enviar))\b.*?(foto|imagem|[áa]udio|v[íi]deo|documento|pdf|print|comprovante|localiza[çc][ãa]o)/i;
+// "a foto ajuda?" / "o documento serve?" / "enviei a foto/apólice"
+const MEDIA_HELP_RE = /\b(enviei|mandei)\b.*?(foto|imagem|[áa]udio|documento|pdf|ap[óo]lice|comprovante)/i;
+const MEDIA_HELP_Q_RE = /\b(a |o )?(foto|imagem|[áa]udio|documento|pdf|comprovante)\b.*?\b(ajuda|serve|vale|funciona|adianta)\b/i;
 const FRUSTRATION_RE = /(j[aá] (disse|falei|informei|expliquei)|de novo|outra vez|quantas vezes|que saco|\baff+\b|pelo amor|t[oô] cansad|cansei|absurdo|ridiculo|rid[íi]culo)/i;
 const NEW_ISSUE_RE = /\b(na verdade.*(outro|tamb[ée]m)|tamb[ée]m tem|outro problema|al[ée]m disso|esqueci de (falar|dizer))\b/i;
 const DOMAIN_RE = /(luz|energia|el[eé]tric|tomada|disjuntor|chuveiro|fia[çc]|vazament|encan|cano|ap[oó]lice|cobertura|seguro|assist|prestador|seguradora|eletricista|sinistro)/i;
@@ -51,7 +54,9 @@ export function classifyAttendanceQuestion(
   const lower = m.toLowerCase();
 
   if (HUMAN_REQ_RE.test(lower)) return { category: 'customer_frustration', signals: ['human_request'] };
-  if (MEDIA_OFFER_RE.test(lower)) return { category: 'media_offer_question', signals: ['media_offer'] };
+  if (MEDIA_OFFER_RE.test(lower) || MEDIA_HELP_RE.test(lower) || MEDIA_HELP_Q_RE.test(lower)) {
+    return { category: 'media_offer_question', signals: ['media_offer'] };
+  }
   if (FRUSTRATION_RE.test(lower)) return { category: 'customer_frustration', signals: ['frustration'] };
   if (NEW_ISSUE_RE.test(lower)) return { category: 'new_issue_or_intent_shift', signals: ['new_issue'] };
 

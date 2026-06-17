@@ -186,6 +186,61 @@ export function buildMediaEvidenceRecord(normalized: NormalizedAttendanceMedia, 
   };
 }
 
+// --- Visão/Documento (42M1) -------------------------------------------------
+
+const VIS_ELECTRICIAN = /\b(disjuntor|quadro|tomada|fio|fia[çc]|l[âa]mpada|el[ée]tric|curto|energia)\b/i;
+const VIS_PLUMBER = /\b(vazament|cano|torneira|chuveiro|[áa]gua|encanad|esgoto|infiltra|goteira)\b/i;
+const VIS_LOCKSMITH = /\b(fechadura|chave|tranca|porta|cadeado)\b/i;
+const VIS_DOCUMENT = /\b(documento|ap[óo]lice|comprovante|nota|contrato|cnh|rg)\b/i;
+const VIS_RISK = /\b(fogo|fuma[çc]a|fa[íi]sca|queimad|derret|incend|chama|brasa)\b/i;
+const VIS_AREA = /\b(cozinha|sala|quarto|banheiro|garagem|varanda|quintal|[áa]rea externa|telhado)\b/i;
+
+export interface VisualEvidence {
+  possible_issue_type: string | null; // electrician|plumber|locksmith|document|null
+  possible_slots: Record<string, unknown>;
+  risk_hint: boolean;
+  detected: string[];
+}
+
+/** Deriva evidência estruturada do resumo visual (PURO). Sugestões, NUNCA cobertura. */
+export function deriveVisualEvidence(visualSummary: string): VisualEvidence {
+  const s = (visualSummary || '').toLowerCase();
+  const detected: string[] = [];
+  let issue: string | null = null;
+  if (VIS_ELECTRICIAN.test(s)) { issue = 'electrician'; detected.push('electrical'); }
+  else if (VIS_PLUMBER.test(s)) { issue = 'plumber'; detected.push('plumbing'); }
+  else if (VIS_LOCKSMITH.test(s)) { issue = 'locksmith'; detected.push('lock'); }
+  else if (VIS_DOCUMENT.test(s)) { issue = 'document'; detected.push('document'); }
+  const risk_hint = VIS_RISK.test(s);
+  if (risk_hint) detected.push('risk');
+  const areaMatch = s.match(VIS_AREA);
+  // Sugestões (não auto-preenchem slots sensíveis nem cobertura).
+  const possible_slots: Record<string, unknown> = {};
+  if (issue && issue !== 'document') possible_slots.suggested_issue_type = issue;
+  if (areaMatch) possible_slots.suggested_affected_area = areaMatch[0];
+  return { possible_issue_type: issue, possible_slots, risk_hint, detected };
+}
+
+/** Resposta humana CONTROLADA para imagem (não ecoa o resumo cru do LLM). */
+export function buildVisionCustomerReply(ev: VisualEvidence, pendingHint?: string | null): string {
+  const typeLabel: Record<string, string> = {
+    electrician: 'um problema elétrico',
+    plumber: 'um problema hidráulico',
+    locksmith: 'algo relacionado a fechadura/porta',
+    document: 'um documento',
+  };
+  let reply = 'Recebi e analisei a imagem.';
+  if (ev.possible_issue_type && typeLabel[ev.possible_issue_type]) {
+    reply += ` Ela parece mostrar ${typeLabel[ev.possible_issue_type]}.`;
+  }
+  if (ev.risk_hint) {
+    reply += ' ⚠️ Se houver fumaça, faísca ou cheiro de queimado, desligue o disjuntor e aguarde orientação da nossa equipe.';
+  }
+  reply += ' Isso ajuda como evidência, mas a cobertura ainda depende da apólice e da validação.';
+  if (pendingHint) reply += ` Para eu continuar: ${pendingHint}`;
+  return reply;
+}
+
 function backendUrl(): string {
   return (
     process.env.ATTENDANCE_BACKEND_URL ||
@@ -231,4 +286,77 @@ export async function transcribeAttendanceAudio(input: {
   } catch (e: any) {
     return { ok: false, reason: e?.name === 'AbortError' ? 'timeout' : 'fetch_error' };
   }
+}
+
+async function callMediaBackend(path: string, body: Record<string, unknown>, timeoutMs = 35_000): Promise<any> {
+  const internalKey = process.env.BACKEND_INTERNAL_API_KEY || process.env.ADMIN_API_KEY;
+  if (!internalKey) return { ok: false, status: 'failed', reason: 'internal_key_missing' };
+  const controller = new AbortController();
+  const timeout = setTimeout(() => controller.abort(), timeoutMs);
+  try {
+    const res = await fetch(`${backendUrl()}${path}`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', 'X-AutoBrokers-Internal-Key': internalKey },
+      body: JSON.stringify(body),
+      signal: controller.signal,
+    });
+    clearTimeout(timeout);
+    if (!res.ok) return { ok: false, status: 'failed', reason: `backend_${res.status}` };
+    return await res.json();
+  } catch (e: any) {
+    clearTimeout(timeout);
+    return { ok: false, status: 'failed', reason: e?.name === 'AbortError' ? 'timeout' : 'fetch_error' };
+  }
+}
+
+/** Analisa imagem (reuso da visão do Smith). Gated por ATTENDANCE_VISION_ENABLED. */
+export async function analyzeAttendanceImage(input: {
+  companyId: string;
+  agentId?: string | null;
+  caseId?: string | null;
+  imageUrl?: string | null;
+  imageBase64?: string | null;
+  mimeType?: string | null;
+}): Promise<{ ok: boolean; status?: string; visual_summary?: string; confidence?: string; reason?: string }> {
+  if (process.env.ATTENDANCE_VISION_ENABLED !== 'true') return { ok: false, status: 'unsupported', reason: 'vision_disabled' };
+  if (!input.imageUrl && !input.imageBase64) return { ok: false, status: 'unsupported', reason: 'no_image' };
+  const data = await callMediaBackend('/attendance/media/vision-analyze', {
+    company_id: input.companyId,
+    agent_id: input.agentId || undefined,
+    case_id: input.caseId || undefined,
+    image_url: input.imageUrl || undefined,
+    image_base64: input.imageBase64 || undefined,
+    mime_type: input.mimeType || undefined,
+    purpose: 'attendance_evidence',
+  });
+  if (data?.ok && typeof data.visual_summary === 'string' && data.visual_summary.trim()) {
+    return { ok: true, status: 'processed', visual_summary: data.visual_summary.trim(), confidence: data.confidence || 'medium' };
+  }
+  return { ok: false, status: data?.status || 'unsupported', reason: data?.error || data?.reason || 'no_summary' };
+}
+
+/** Extrai/registra documento. Gated por ATTENDANCE_DOCUMENT_EXTRACTION_ENABLED. */
+export async function extractAttendanceDocument(input: {
+  companyId: string;
+  agentId?: string | null;
+  caseId?: string | null;
+  documentUrl?: string | null;
+  documentBase64?: string | null;
+  mimeType?: string | null;
+}): Promise<{ ok: boolean; status?: string; summary?: string; document_type?: string | null; reason?: string }> {
+  if (process.env.ATTENDANCE_DOCUMENT_EXTRACTION_ENABLED !== 'true') return { ok: false, status: 'unsupported', reason: 'document_extraction_disabled' };
+  if (!input.documentUrl && !input.documentBase64) return { ok: false, status: 'unsupported', reason: 'no_document' };
+  const data = await callMediaBackend('/attendance/media/document-extract', {
+    company_id: input.companyId,
+    agent_id: input.agentId || undefined,
+    case_id: input.caseId || undefined,
+    document_url: input.documentUrl || undefined,
+    document_base64: input.documentBase64 || undefined,
+    mime_type: input.mimeType || undefined,
+    purpose: 'attendance_evidence',
+  });
+  if (data?.ok && typeof data.extracted_text_summary === 'string' && data.extracted_text_summary.trim()) {
+    return { ok: true, status: 'processed', summary: data.extracted_text_summary.trim(), document_type: data.document_type || null };
+  }
+  return { ok: false, status: data?.status || 'unsupported', reason: data?.error || data?.reason || 'no_summary' };
 }
