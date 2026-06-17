@@ -666,6 +666,308 @@ export function safeExecutionSessionSummary(s: ExternalActionExecutionSession): 
   };
 }
 
+// =============================================================================
+// 42X2 — External Action Outbox, Permission Gates & Real Adapter Skeleton
+// PURO. NENHUM envio real. send_allowed é SEMPRE false neste estágio porque
+// nenhum adapter tem canSendReal=true e as flags vêm desligadas por padrão.
+// =============================================================================
+
+export type OutboxStatus =
+  | 'draft'
+  | 'awaiting_approval'
+  | 'approved_not_sent'
+  | 'blocked'
+  | 'cancelled'
+  | 'sent_future';
+
+export interface ExternalActionOutboxEntry {
+  outbox_id: string;
+  case_id: string | null;
+  dispatch_packet_id: string | null;
+  execution_id: string | null;
+  channel: ActionChannel | null;
+  provider: string | null;
+  destination_ref_masked: string | null; // NUNCA o destino cru
+  message_text: string | null; // mascarado
+  payload_sanitized: Record<string, unknown>;
+  status: OutboxStatus;
+  approval_required: boolean;
+  approved_by: string | null;
+  approved_at: string | null;
+  send_allowed: false; // SEMPRE false no 42X2
+  sent: false; // SEMPRE false no 42X2
+  blockers: string[];
+  created_at: string;
+  updated_at: string;
+}
+
+function maskDestination(ref: string | null | undefined): string | null {
+  if (!ref) return null;
+  const s = String(ref);
+  if (s.length <= 4) return '****';
+  return `****${s.slice(-4)}`;
+}
+
+export interface BuildOutboxInput {
+  case_id: string | null;
+  dispatch_packet_id: string | null;
+  execution?: ExternalActionExecutionSession | null;
+  plan?: ExternalActionPlan | null;
+  destination_ref?: string | null;
+  provider?: string | null;
+}
+
+/**
+ * Cria uma entrada de outbox a partir do plano/sessão. Exige que a execução
+ * esteja "pronta" (plano ready_for_human_approval). Caso contrário → blocked.
+ */
+export function buildOutboxEntry(input: BuildOutboxInput): ExternalActionOutboxEntry {
+  const now = new Date().toISOString();
+  const channel = input.execution?.channel ?? input.plan?.selected_channel ?? null;
+  const adapter = getChannelAdapter(channel);
+  const planReady = input.plan?.status === 'ready_for_human_approval';
+  const execOk =
+    !input.execution ||
+    ['waiting_insurer', 'waiting_insured', 'waiting_human', 'running_sandbox', 'approved_for_sandbox', 'completed_sandbox'].includes(
+      input.execution.status,
+    );
+  const blockers: string[] = [];
+  if (!planReady) blockers.push('plan_not_ready');
+  if (!execOk) blockers.push('execution_not_ready');
+  // Mesmo "pronto", nunca pode enviar: registra o motivo real.
+  blockers.push('real_send_disabled_42x2');
+
+  const status: OutboxStatus = planReady && execOk ? 'awaiting_approval' : 'blocked';
+  const messageText = input.execution?.prepared_message ?? input.plan?.message_drafts?.[0]?.text ?? null;
+
+  return {
+    outbox_id: `obx-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 8)}`,
+    case_id: input.case_id,
+    dispatch_packet_id: input.dispatch_packet_id,
+    execution_id: input.execution?.execution_id ?? null,
+    channel,
+    provider: input.provider ?? (channel === 'insurer_whatsapp' ? 'zapi' : null),
+    destination_ref_masked: maskDestination(input.destination_ref),
+    message_text: messageText ? maskExec(messageText) : null,
+    payload_sanitized: {
+      channel,
+      adapter_id: adapter.adapter_id,
+      can_send_real: adapter.canSendReal, // false
+      playbook_id: input.plan?.playbook_id ?? null,
+    },
+    status,
+    approval_required: true,
+    approved_by: null,
+    approved_at: null,
+    send_allowed: false,
+    sent: false,
+    blockers,
+    created_at: now,
+    updated_at: now,
+  };
+}
+
+/** Aprova (HITL) a entrada → approved_not_sent. NUNCA habilita envio real. */
+export function approveOutboxEntry(entry: ExternalActionOutboxEntry, approver: string): ExternalActionOutboxEntry {
+  const now = new Date().toISOString();
+  if (entry.status === 'cancelled' || entry.status === 'sent_future') return entry;
+  if (entry.status === 'blocked') {
+    // Aprovação não desbloqueia um item bloqueado por gate de segurança.
+    return { ...entry, updated_at: now };
+  }
+  return {
+    ...entry,
+    status: 'approved_not_sent',
+    approved_by: approver,
+    approved_at: now,
+    send_allowed: false, // continua false: aprovação ≠ envio
+    sent: false,
+    updated_at: now,
+  };
+}
+
+/** Cancela a entrada. */
+export function cancelOutboxEntry(entry: ExternalActionOutboxEntry): ExternalActionOutboxEntry {
+  const now = new Date().toISOString();
+  return { ...entry, status: 'cancelled', send_allowed: false, sent: false, updated_at: now };
+}
+
+// --- Permission gates -------------------------------------------------------
+
+export interface ExternalSendPermissionContext {
+  realEnabled: boolean; // EXTERNAL_ACTION_REAL_ENABLED
+  insurerWhatsappRealSend: boolean; // INSURER_WHATSAPP_REAL_SEND_ENABLED
+  killSwitchActive: boolean; // EXTERNAL_ACTION_KILL_SWITCH (true = bloqueia)
+  adapterCanSendReal: boolean; // adapter.canSendReal
+  tenantConnectionStatus: string | null; // 'connected' libera
+  credentialRefPresent: boolean; // encrypted_secret_ref presente
+  actionPlanStatus: ActionPlanStatus | string | null;
+  executionStatus: ExecutionStatus | string | null;
+  coverageState: string | null; // 'human_approved'
+  packetState: string | null; // 'ready_for_human_approval'
+  approvalStatus: string | null; // 'approved'
+  rateLimit: { used: number; limit: number };
+  channelHomologated: boolean;
+  piiViolation: boolean;
+}
+
+export interface ExternalSendPermissionResult {
+  send_allowed: false; // SEMPRE false no 42X2
+  gates: Record<string, boolean>;
+  blockers: string[];
+  reason: string;
+}
+
+/**
+ * Avalia TODOS os gates de envio externo. No 42X2 o resultado é sempre
+ * send_allowed=false (adapter.canSendReal=false e/ou flags off), mas a função
+ * já modela cada gate para o futuro (42X3+).
+ */
+export function evaluateExternalSendPermission(ctx: ExternalSendPermissionContext): ExternalSendPermissionResult {
+  const gates: Record<string, boolean> = {
+    real_flag_enabled: ctx.realEnabled === true,
+    insurer_whatsapp_real_send_enabled: ctx.insurerWhatsappRealSend === true,
+    kill_switch_off: ctx.killSwitchActive !== true,
+    adapter_can_send_real: ctx.adapterCanSendReal === true,
+    tenant_connection_active: ctx.tenantConnectionStatus === 'connected',
+    credential_present: ctx.credentialRefPresent === true,
+    action_plan_ready: ctx.actionPlanStatus === 'ready_for_human_approval',
+    execution_ready: ['waiting_insurer', 'waiting_insured', 'waiting_human', 'running_sandbox', 'approved_for_sandbox'].includes(
+      String(ctx.executionStatus),
+    ),
+    coverage_human_approved: ctx.coverageState === 'human_approved',
+    dispatch_ready: ctx.packetState === 'ready_for_human_approval',
+    approval_exists: ctx.approvalStatus === 'approved',
+    rate_limit_ok: ctx.rateLimit.used < ctx.rateLimit.limit,
+    channel_homologated: ctx.channelHomologated === true,
+    no_pii_violation: ctx.piiViolation !== true,
+  };
+  const blockers = Object.entries(gates)
+    .filter(([, ok]) => !ok)
+    .map(([k]) => k);
+  // SEGURANÇA: no 42X2 nunca liberamos envio real, mesmo que algum dia todos os
+  // gates passem — o tipo força send_allowed=false e a constante trava aqui.
+  const send_allowed = false as const;
+  const reason = blockers.length > 0 ? `blocked_by:${blockers.join(',')}` : 'real_send_disabled_42x2';
+  return { send_allowed, gates, blockers, reason };
+}
+
+// --- Insurer WhatsApp Real Adapter Skeleton ---------------------------------
+
+export interface RealSendInput {
+  destination_ref: string | null;
+  provider: string | null;
+  message_text: string | null;
+  tenant_connection: { status?: string; encrypted_secret_ref?: string | null } | null;
+}
+
+export interface RealSendResult {
+  sent: false; // SEMPRE false
+  status: 'blocked_real_send_disabled' | 'invalid_destination' | 'invalid_provider' | 'no_tenant_connection';
+  reason: string;
+  prepared_payload?: Record<string, unknown> | null;
+}
+
+export interface RealAdapterSkeleton {
+  channel: ActionChannel;
+  adapter_id: string;
+  provider: string;
+  canSendReal: false;
+  validateDestination: (ref: string | null) => boolean;
+  validateProvider: (provider: string | null) => boolean;
+  buildPayload: (input: RealSendInput) => Record<string, unknown>;
+  send: (input: RealSendInput) => RealSendResult;
+}
+
+/**
+ * Skeleton do adapter real de WhatsApp da seguradora. Monta payload e valida
+ * pré-condições, mas canSendReal=false: send() SEMPRE retorna bloqueado e
+ * NUNCA chama provider (Z-API/Meta) real.
+ */
+export function getInsurerWhatsAppRealAdapterSkeleton(): RealAdapterSkeleton {
+  const validateDestination = (ref: string | null) => typeof ref === 'string' && /^\d{8,15}$/.test(ref.replace(/\D/g, ''));
+  const validateProvider = (provider: string | null) => provider === 'zapi' || provider === 'meta_cloud' || provider === 'evolution';
+  return {
+    channel: 'insurer_whatsapp',
+    adapter_id: 'insurer_whatsapp_real_skeleton',
+    provider: 'zapi',
+    canSendReal: false,
+    validateDestination,
+    validateProvider,
+    buildPayload: (input) => ({
+      provider: input.provider,
+      to_masked: maskDestination(input.destination_ref),
+      body: input.message_text ? maskExec(input.message_text) : null,
+      dry_run: true,
+    }),
+    send: (input) => {
+      // Ordem de validação só para diagnóstico — nada é enviado em nenhuma hipótese.
+      if (!input.tenant_connection || input.tenant_connection.status !== 'connected') {
+        return { sent: false, status: 'no_tenant_connection', reason: 'tenant_connection ausente/inativa' };
+      }
+      if (!validateProvider(input.provider)) {
+        return { sent: false, status: 'invalid_provider', reason: 'provider não homologado' };
+      }
+      if (!validateDestination(input.destination_ref)) {
+        return { sent: false, status: 'invalid_destination', reason: 'destino inválido' };
+      }
+      return {
+        sent: false,
+        status: 'blocked_real_send_disabled',
+        reason: 'canSendReal=false — envio real desabilitado no 42X2',
+        prepared_payload: {
+          provider: input.provider,
+          to_masked: maskDestination(input.destination_ref),
+          body: input.message_text ? maskExec(input.message_text) : null,
+        },
+      };
+    },
+  };
+}
+
+// --- Audit trail (sanitizado) ----------------------------------------------
+
+export type OutboxAuditType =
+  | 'outbox_prepared'
+  | 'approval_requested'
+  | 'approved_not_sent'
+  | 'send_blocked_by_gate'
+  | 'cancelled'
+  | 'permission_evaluated'
+  | 'adapter_not_real_enabled';
+
+export interface OutboxAuditEvent {
+  at: string;
+  type: OutboxAuditType;
+  outbox_id: string | null;
+  note?: string | null;
+  blockers?: string[];
+}
+
+export function buildAuditEvent(type: OutboxAuditType, outbox_id: string | null, extra: { note?: string; blockers?: string[] } = {}): OutboxAuditEvent {
+  return {
+    at: new Date().toISOString(),
+    type,
+    outbox_id,
+    note: extra.note ? maskExec(extra.note) : null,
+    blockers: extra.blockers,
+  };
+}
+
+/** Resumo seguro do outbox (sem PII/destino cru). */
+export function safeOutboxSummary(entries: ExternalActionOutboxEntry[]): Record<string, unknown> {
+  const last = entries[entries.length - 1] ?? null;
+  return {
+    count: entries.length,
+    last_status: last?.status ?? null,
+    last_channel: last?.channel ?? null,
+    last_outbox_id: last?.outbox_id ?? null,
+    any_send_allowed: false,
+    any_sent: false,
+    updated_at: last?.updated_at ?? null,
+  };
+}
+
 /** Resumo seguro do plano para diagnostics/persistência (sem PII/draft sensível). */
 export function safeActionPlanSummary(plan: ExternalActionPlan): Record<string, unknown> {
   return {

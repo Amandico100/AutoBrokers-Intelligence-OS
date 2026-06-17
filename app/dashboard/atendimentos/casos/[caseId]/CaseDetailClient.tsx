@@ -54,6 +54,7 @@ export default function CaseDetailClient({ caseId }: { caseId: string }) {
   const [insurerReply, setInsurerReply] = useState('');
   const [actionInterp, setActionInterp] = useState<any>(null);
   const [execSession, setExecSession] = useState<any>(null);
+  const [outbox, setOutbox] = useState<any>(null);
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -207,6 +208,41 @@ export default function CaseDetailClient({ caseId }: { caseId: string }) {
       else setNotice(`Não foi possível processar o evento: ${json?.error || 'erro'}.`);
     } catch {
       setNotice('Falha ao processar o evento de execução.');
+    } finally {
+      setActing(false);
+    }
+  };
+
+  const prepareOutbox = async () => {
+    setActing(true);
+    setNotice('');
+    try {
+      const res = await fetch(`/api/attendance/cases/${caseId}/runtime/action-outbox/prepare`, { method: 'POST' });
+      const json = await res.json().catch(() => ({}));
+      if (res.ok && json?.ok) { setOutbox(json); setNotice('Outbox preparado. Envio real bloqueado (sem flag/aprovação/canal homologado).'); }
+      else setNotice(`Não foi possível preparar o outbox: ${json?.error || 'erro'}.`);
+    } catch {
+      setNotice('Falha ao preparar o outbox.');
+    } finally {
+      setActing(false);
+    }
+  };
+
+  const approveOutbox = async () => {
+    if (!outbox?.outbox_entry?.outbox_id) return;
+    setActing(true);
+    setNotice('');
+    try {
+      const res = await fetch(`/api/attendance/cases/${caseId}/runtime/action-outbox/approve`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ outbox_id: outbox.outbox_entry.outbox_id }),
+      });
+      const json = await res.json().catch(() => ({}));
+      if (res.ok && json?.ok) { setOutbox((p: any) => ({ ...p, outbox_entry: json.outbox_entry, audit_events: json.audit_events })); setNotice('Aprovado (dry-run). Continua sem envio real.'); }
+      else setNotice(`Não foi possível aprovar: ${json?.error || 'erro'}.`);
+    } catch {
+      setNotice('Falha ao aprovar o outbox.');
     } finally {
       setActing(false);
     }
@@ -631,7 +667,55 @@ export default function CaseDetailClient({ caseId }: { caseId: string }) {
                   )}
                 </div>
               )}
-              <p className="mt-3 text-[10px] text-faint">Modo dry-run/HITL/sandbox: nada é enviado à seguradora/prestador. Acionamento real exige homologação futura (42X2).</p>
+              {/* Outbox & gates de permissão (42X2) */}
+              {actionPlan?.status === 'ready_for_human_approval' && (
+                <div className="mt-3 rounded-lg border border-border bg-surface-2 p-3">
+                  <div className="mb-2 flex flex-wrap items-center gap-2">
+                    <p className="text-[11px] font-medium uppercase tracking-wide text-faint">Outbox & permissão (envio real bloqueado)</p>
+                    <button
+                      onClick={prepareOutbox}
+                      disabled={acting}
+                      className="rounded-lg border border-primary/40 bg-primary/5 px-2.5 py-1 text-[11px] font-medium text-primary hover:bg-primary/10 disabled:opacity-60"
+                    >
+                      Preparar outbox
+                    </button>
+                    <button
+                      onClick={approveOutbox}
+                      disabled={acting || !outbox?.outbox_entry || outbox?.outbox_entry?.status !== 'awaiting_approval'}
+                      className="rounded-lg border border-border bg-card px-2.5 py-1 text-[11px] font-medium text-foreground hover:bg-surface-2/70 disabled:opacity-60"
+                    >
+                      Aprovar (dry-run)
+                    </button>
+                    {outbox?.outbox_entry?.status && <StatusPill tone="warning" label={outbox.outbox_entry.status} />}
+                  </div>
+                  {outbox?.outbox_entry ? (
+                    <>
+                      <p className="text-[11px] text-muted-foreground">
+                        Canal: <span className="text-foreground">{outbox.outbox_entry.channel}</span> · provider: {outbox.outbox_entry.provider ?? '—'} · destino: {outbox.outbox_entry.destination_ref_masked ?? '—'} · envio real: <span className="font-medium text-amber-600">bloqueado</span>
+                      </p>
+                      {Array.isArray(outbox.outbox_entry.blockers) && outbox.outbox_entry.blockers.length > 0 && (
+                        <p className="mt-1 text-[10px] text-muted-foreground">Blockers: {outbox.outbox_entry.blockers.join(', ')}</p>
+                      )}
+                      {Array.isArray(outbox.permission?.blockers) && outbox.permission.blockers.length > 0 && (
+                        <p className="mt-1 text-[10px] text-muted-foreground">Gates pendentes: {outbox.permission.blockers.join(', ')}</p>
+                      )}
+                      {Array.isArray(outbox.audit_events) && outbox.audit_events.length > 0 && (
+                        <div className="mt-2">
+                          <p className="mb-1 text-[10px] uppercase tracking-wide text-faint">Auditoria</p>
+                          <ul className="space-y-1">
+                            {outbox.audit_events.slice(-6).map((ev: any, i: number) => (
+                              <li key={i} className="text-[10px] text-muted-foreground">{ev.type}{ev.note ? ` — ${ev.note}` : ''}</li>
+                            ))}
+                          </ul>
+                        </div>
+                      )}
+                    </>
+                  ) : (
+                    <p className="text-[11px] text-muted-foreground">Outbox não preparado.</p>
+                  )}
+                </div>
+              )}
+              <p className="mt-3 text-[10px] text-faint">Modo dry-run/HITL/sandbox/outbox: nada é enviado à seguradora/prestador. O envio real exige flag global, tenant_connection homologada, aprovação humana e adapter homologado (42X3+).</p>
             </Section>
 
             {/* Dossiê / Handoff humano */}
