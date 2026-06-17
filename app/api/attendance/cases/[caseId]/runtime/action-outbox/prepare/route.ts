@@ -19,6 +19,7 @@ import {
   getInsurerMessagingProvider,
 } from '@/lib/attendance/insurer-channel-registry';
 import { listChannelConfigs } from '@/lib/attendance/insurer-channel-store';
+import { summarizeProviderHarness } from '@/lib/attendance/provider-adapters';
 
 export const dynamic = 'force-dynamic';
 
@@ -124,6 +125,14 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
       }
     }
 
+    // 42X4 — valida o provider via harness de homologação (sandbox; sem rede).
+    const providerValidation = outboxProvider
+      ? summarizeProviderHarness(outboxProvider, {
+          destination_ref_masked: outboxDestinationMasked,
+          message_text: execution?.prepared_message ?? plan?.message_drafts?.[0]?.text ?? null,
+        })
+      : null;
+
     const entry = buildOutboxEntry({
       case_id: caseId,
       dispatch_packet_id: packet?.id ?? null,
@@ -134,6 +143,7 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
       destination_ref_masked: outboxDestinationMasked,
       provider_payload: providerPayload,
       config_id: outboxConfigId,
+      provider_validation: providerValidation ? { ...providerValidation } : null,
     });
 
     // tenant_connection: consulta defensiva (tabela pode não existir/ter linhas).

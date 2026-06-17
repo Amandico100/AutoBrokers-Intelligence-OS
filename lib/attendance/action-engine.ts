@@ -794,6 +794,8 @@ export interface BuildOutboxInput {
   destination_ref_masked?: string | null;
   provider_payload?: Record<string, unknown> | null;
   config_id?: string | null;
+  // 42X4 — resumo do harness de homologação do provider (sanitizado):
+  provider_validation?: Record<string, unknown> | null;
 }
 
 /**
@@ -835,6 +837,7 @@ export function buildOutboxEntry(input: BuildOutboxInput): ExternalActionOutboxE
       playbook_id: input.plan?.playbook_id ?? null,
       config_id: input.config_id ?? null,
       provider_payload: input.provider_payload ?? null,
+      provider_validation: input.provider_validation ?? null,
     },
     status,
     approval_required: true,

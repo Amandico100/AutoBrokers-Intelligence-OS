@@ -26,7 +26,8 @@
     "test:action-execution": "node scripts/attendance-action-execution.test.mjs",
     "test:action-outbox": "node scripts/attendance-action-outbox.test.mjs",
     "test:insurer-channel-registry": "node scripts/attendance-insurer-channel-registry.test.mjs",
-    "test:action-plan-alignment": "node scripts/attendance-action-plan-registry-alignment.test.mjs"
+    "test:action-plan-alignment": "node scripts/attendance-action-plan-registry-alignment.test.mjs",
+    "test:provider-adapters": "node scripts/attendance-provider-adapters-homologation.test.mjs"
   },
   "dependencies": {
     "@hookform/resolvers": "^3.9.0",
