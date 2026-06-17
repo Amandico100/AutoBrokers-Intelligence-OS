@@ -13,6 +13,12 @@ import {
   type ExternalActionOutboxEntry,
   type OutboxAuditEvent,
 } from '@/lib/attendance/action-engine';
+import {
+  resolveActiveInsurerChannelConfig,
+  buildProviderPayload,
+  getInsurerMessagingProvider,
+} from '@/lib/attendance/insurer-channel-registry';
+import { listChannelConfigs } from '@/lib/attendance/insurer-channel-store';
 
 export const dynamic = 'force-dynamic';
 
@@ -70,11 +76,39 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
     const pmd = packet?.metadata && typeof packet.metadata === 'object' ? (packet.metadata as Record<string, any>) : {};
     const execution = pmd.external_action_execution ?? null;
 
+    // 42X3 — resolve a config de canal mais específica (provider-agnostic).
+    // Sem config ativa → cai em manual/human_broker_manual (comportamento atual).
+    let activeConfig = null;
+    try {
+      const configs = await listChannelConfigs(supabaseAdmin, companyId);
+      activeConfig = resolveActiveInsurerChannelConfig(configs, {
+        insurer_key: plan?.insurer_key ?? caseRow.metadata?.action_readiness?.insurer_key ?? null,
+        corridor_key: plan?.corridor_key ?? null,
+        subcorridor_key: plan?.subcorridor_key ?? null,
+      });
+    } catch { /* vault ausente → segue sem config (manual) */ }
+
+    const configProvider = activeConfig ? getInsurerMessagingProvider(activeConfig.provider_key) : null;
+    const providerPayload = activeConfig
+      ? buildProviderPayload(activeConfig.provider_key, {
+          destination_ref_masked: activeConfig.destination_ref_masked,
+          message_text: execution?.prepared_message ?? plan?.message_drafts?.[0]?.text ?? null,
+        })
+      : null;
+
+    // Mapeia o canal do registry para o ActionChannel do engine ('manual' → 'human_broker_manual').
+    const mappedChannel = configProvider?.channel === 'insurer_whatsapp' ? 'insurer_whatsapp' : configProvider?.channel === 'manual' ? 'human_broker_manual' : null;
+
     const entry = buildOutboxEntry({
       case_id: caseId,
       dispatch_packet_id: packet?.id ?? null,
       execution,
       plan,
+      channel: mappedChannel,
+      provider: activeConfig?.provider_key ?? null,
+      destination_ref_masked: activeConfig?.destination_ref_masked ?? null,
+      provider_payload: providerPayload,
+      config_id: activeConfig?.config_id ?? null,
     });
 
     // tenant_connection: consulta defensiva (tabela pode não existir/ter linhas).

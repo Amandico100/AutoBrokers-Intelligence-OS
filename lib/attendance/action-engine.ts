@@ -715,6 +715,11 @@ export interface BuildOutboxInput {
   plan?: ExternalActionPlan | null;
   destination_ref?: string | null;
   provider?: string | null;
+  // 42X3 — vindos da config de canal resolvida (provider-agnostic):
+  channel?: ActionChannel | null;
+  destination_ref_masked?: string | null;
+  provider_payload?: Record<string, unknown> | null;
+  config_id?: string | null;
 }
 
 /**
@@ -723,7 +728,7 @@ export interface BuildOutboxInput {
  */
 export function buildOutboxEntry(input: BuildOutboxInput): ExternalActionOutboxEntry {
   const now = new Date().toISOString();
-  const channel = input.execution?.channel ?? input.plan?.selected_channel ?? null;
+  const channel = input.channel ?? input.execution?.channel ?? input.plan?.selected_channel ?? null;
   const adapter = getChannelAdapter(channel);
   const planReady = input.plan?.status === 'ready_for_human_approval';
   const execOk =
@@ -747,13 +752,15 @@ export function buildOutboxEntry(input: BuildOutboxInput): ExternalActionOutboxE
     execution_id: input.execution?.execution_id ?? null,
     channel,
     provider: input.provider ?? (channel === 'insurer_whatsapp' ? 'zapi' : null),
-    destination_ref_masked: maskDestination(input.destination_ref),
+    destination_ref_masked: input.destination_ref_masked ?? maskDestination(input.destination_ref),
     message_text: messageText ? maskExec(messageText) : null,
     payload_sanitized: {
       channel,
       adapter_id: adapter.adapter_id,
       can_send_real: adapter.canSendReal, // false
       playbook_id: input.plan?.playbook_id ?? null,
+      config_id: input.config_id ?? null,
+      provider_payload: input.provider_payload ?? null,
     },
     status,
     approval_required: true,
