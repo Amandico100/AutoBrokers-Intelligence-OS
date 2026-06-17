@@ -3,6 +3,12 @@ import { getAdminClient } from '@/lib/attendance/support-destinations';
 import { resolveAttendanceCaseForWhatsAppInbound } from '@/lib/attendance/whatsapp-case-routing';
 import { resolveOutboundPolicy, mediaAckMessage, type WhatsAppMediaKind } from '@/lib/attendance/whatsapp-inbound';
 import {
+  normalizeAttendanceMedia,
+  processAttendanceMedia,
+  buildMediaEvidenceRecord,
+  transcribeAttendanceAudio,
+} from '@/lib/attendance/attendance-media';
+import {
   resolvePolicySelectionFromCustomerReply,
   buildPolicyOptionsMessage,
   buildPolicySelectedMessage,
@@ -101,8 +107,12 @@ export async function POST(request: NextRequest) {
     const agentId = typeof body.agent_id === 'string' ? body.agent_id : null;
     const userId = typeof body.user_id === 'string' ? body.user_id : null;
     const phone = typeof body.phone === 'string' ? body.phone : '';
-    const text = typeof body.text === 'string' ? body.text.trim() : '';
+    let text = typeof body.text === 'string' ? body.text.trim() : '';
     const mediaKind = (typeof body.media_kind === 'string' ? body.media_kind : 'text') as WhatsAppMediaKind;
+    const mediaUrl = typeof body.media_url === 'string' ? body.media_url : null;
+    const mediaBase64 = typeof body.media_base64 === 'string' ? body.media_base64 : null;
+    const mimeType = typeof body.mime_type === 'string' ? body.mime_type : null;
+    const location = body.location && typeof body.location === 'object' ? body.location : null;
     if (!companyId || !conversationId || !phone) {
       return NextResponse.json({ ok: false, error: 'missing_minimal_identifiers' }, { status: 400 });
     }
@@ -137,6 +147,14 @@ export async function POST(request: NextRequest) {
       supabaseAdmin.from('messages').insert({ conversation_id: conversationId, role: 'user', content, type: kind === 'audio' ? 'voice' : 'text' });
     const insertAssistant = (content: string) =>
       supabaseAdmin.from('messages').insert({ conversation_id: conversationId, role: 'assistant', content, type: 'text' });
+    // 42M0: anexa evidência de mídia (sanitizada) ao metadata do caso. Sem payload bruto.
+    const appendMediaEvidence = async (cid: string, record: Record<string, unknown>) => {
+      const { data } = await supabaseAdmin.from('attendance_cases').select('metadata').eq('id', cid).eq('company_id', companyId).maybeSingle();
+      const md = data?.metadata && typeof data.metadata === 'object' && !Array.isArray(data.metadata) ? (data.metadata as Record<string, any>) : {};
+      const arr = Array.isArray(md.media_evidence) ? md.media_evidence : [];
+      arr.push(record);
+      await supabaseAdmin.from('attendance_cases').update({ metadata: { ...md, media_evidence: arr.slice(-10) } }).eq('id', cid).eq('company_id', companyId);
+    };
 
     // Handoff humano → registra inbound, NÃO responde automaticamente.
     if (routing.action === 'handoff_block') {
@@ -145,13 +163,44 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ ok: true, action: 'handoff_block', case_id: routing.case_id, auto_reply: null, outbound: { ...outbound, sent: false }, diagnostics: diag(events) });
     }
 
-    // Mídia sem texto → ack humano seguro (não trava, não vaza URL). 42M0 fará a mídia completa.
-    if (!text && mediaKind !== 'text') {
-      await insertUser(`[${mediaKind}]`, mediaKind);
-      const ack = mediaAckMessage(mediaKind);
-      await insertAssistant(ack);
-      events.push('media_ack');
-      return NextResponse.json({ ok: true, action: 'media_ack', case_id: existingCase?.id ?? null, auto_reply: ack, outbound: { ...outbound, sent: false, text: ack }, diagnostics: diag(events, { media_kind: mediaKind }) });
+    // 42M0: Media Evidence Pipeline (áudio reusa AudioService; demais viram evidência).
+    const hasMediaPayload = Boolean(mediaUrl || mediaBase64 || location) || (mediaKind !== 'text' && !text);
+    if (hasMediaPayload) {
+      const normalized = normalizeAttendanceMedia({
+        media_kind: mediaKind,
+        media_url: mediaUrl,
+        media_base64: mediaBase64,
+        mime_type: mimeType,
+        source_channel: 'whatsapp',
+        location: location as any,
+      });
+      if (normalized.media_kind === 'audio') {
+        const tr = await transcribeAttendanceAudio({ companyId, agentId, audioUrl: mediaUrl, audioBase64: mediaBase64 });
+        if (tr.ok && tr.text) {
+          text = tr.text; // áudio vira mensagem normal → segue o runtime
+          events.push('audio_transcribed');
+        } else {
+          const result = processAttendanceMedia(normalized);
+          if (existingCase?.id) await appendMediaEvidence(existingCase.id, buildMediaEvidenceRecord(normalized, result));
+          await insertUser('[áudio]', 'audio');
+          await insertAssistant(result.safe_customer_reply);
+          events.push('media_audio_unavailable', 'outbound_dry_run');
+          return NextResponse.json({ ok: true, action: 'media_ack', case_id: existingCase?.id ?? null, media_kind: 'audio', auto_reply: result.safe_customer_reply, outbound: { ...outbound, sent: false, text: result.safe_customer_reply }, diagnostics: diag(events) });
+        }
+      } else if (!text) {
+        // imagem/documento/localização/desconhecido sem texto → evidência + ack seguro.
+        const result = processAttendanceMedia(normalized, { location: location as any });
+        if (existingCase?.id) await appendMediaEvidence(existingCase.id, buildMediaEvidenceRecord(normalized, result));
+        await insertUser(`[${normalized.media_kind}]`, 'text');
+        await insertAssistant(result.safe_customer_reply);
+        events.push(`media_${normalized.media_kind}`, 'outbound_dry_run');
+        return NextResponse.json({ ok: true, action: 'media_ack', case_id: existingCase?.id ?? null, media_kind: normalized.media_kind, auto_reply: result.safe_customer_reply, outbound: { ...outbound, sent: false, text: result.safe_customer_reply }, diagnostics: diag(events) });
+      } else if (existingCase?.id) {
+        // mídia (não-áudio) + texto → registra evidência e o texto segue o fluxo.
+        const result = processAttendanceMedia(normalized, { location: location as any });
+        await appendMediaEvidence(existingCase.id, buildMediaEvidenceRecord(normalized, result));
+        events.push(`media_${normalized.media_kind}_with_text`);
+      }
     }
 
     const defaultCorridorKey = process.env.ATTENDANCE_DEFAULT_CORRIDOR_KEY || null;

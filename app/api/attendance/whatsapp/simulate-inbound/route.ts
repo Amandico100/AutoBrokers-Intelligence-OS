@@ -91,7 +91,13 @@ export async function POST(request: NextRequest) {
       conversationId = conv.id;
     }
 
-    const mediaKind = text ? 'text' : classifyInboundEvent(body);
+    // 42M0: aceita mídia (audio/image/document/location) via url/base64/location.
+    const mediaUrl = typeof body.media_url === 'string' ? body.media_url : null;
+    const mediaBase64 = typeof body.media_base64 === 'string' ? body.media_base64 : null;
+    const mimeType = typeof body.mime_type === 'string' ? body.mime_type : null;
+    const location = body.location && typeof body.location === 'object' ? body.location : null;
+    const declaredMediaKind = typeof body.media_kind === 'string' ? body.media_kind : null;
+    const mediaKind = declaredMediaKind || (text ? 'text' : classifyInboundEvent(body));
 
     // Delega ao MESMO bridge IN-PROCESS (sem self-fetch; ver runtime-invoke).
     const bridge = await invokeRuntimeHandler(bridgeHandler, {
@@ -107,6 +113,10 @@ export async function POST(request: NextRequest) {
         message_id: typeof body.message_id === 'string' ? body.message_id : `sim-${Date.now()}`,
         text,
         media_kind: mediaKind,
+        media_url: mediaUrl,
+        media_base64: mediaBase64,
+        mime_type: mimeType,
+        location,
       },
     });
 

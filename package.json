@@ -18,7 +18,8 @@
     "test:whatsapp-e2e-state": "node scripts/whatsapp-attendance-e2e-state.test.mjs",
     "test:attendance-final-e2e": "node scripts/attendance-final-e2e-goldens.mjs",
     "test:policy-qa": "node scripts/policy-qa.test.mjs",
-    "test:knowledge": "node scripts/attendance-knowledge.test.mjs"
+    "test:knowledge": "node scripts/attendance-knowledge.test.mjs",
+    "test:media": "node scripts/attendance-media.test.mjs"
   },
   "dependencies": {
     "@hookform/resolvers": "^3.9.0",

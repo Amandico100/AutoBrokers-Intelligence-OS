@@ -779,8 +779,10 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
             'Claro, vou te encaminhar para um atendente humano para te ajudar melhor. Já deixei seu atendimento registrado para a equipe dar sequência.';
           handoff = true;
         }
-        // Retomada do slot — evita pergunta DUPLICADA quando o LLM já perguntou (42R0).
-        const alreadyAsks = llmUsed && (/\?\s*$/.test(answer.trim()) || (pendingQuestion ? answer.includes(pendingQuestion) : false));
+        // Retomada do slot — evita pergunta DUPLICADA quando o LLM já perguntou (42R0/42M0).
+        // Se o LLM foi usado e a resposta já contém QUALQUER pergunta ('?'), ele já
+        // conduziu de volta ao próximo passo — não anexar "Para eu continuar".
+        const alreadyAsks = llmUsed && answer.includes('?');
         const reask = !handoff && pendingQuestion && !alreadyAsks ? ` Para eu continuar: ${pendingQuestion}` : '';
         const full = `${answer}${reask}`.trim();
 

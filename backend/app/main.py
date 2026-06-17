@@ -179,6 +179,11 @@ from app.api.infocap_connector import router as infocap_connector_router
 
 app.include_router(infocap_connector_router, tags=["InfoCap Connector"])
 
+# === Attendance Media (audio transcription — 42M0) ===
+from app.api.attendance_media import router as attendance_media_router
+
+app.include_router(attendance_media_router, tags=["Attendance Media"])
+
 
 @app.get("/")
 async def root():
