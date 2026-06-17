@@ -21,7 +21,8 @@
     "test:knowledge": "node scripts/attendance-knowledge.test.mjs",
     "test:media": "node scripts/attendance-media.test.mjs",
     "test:media-vision": "node scripts/attendance-media-vision-document.test.mjs",
-    "test:media-document": "node scripts/attendance-document-extraction.test.mjs"
+    "test:media-document": "node scripts/attendance-document-extraction.test.mjs",
+    "test:action-engine": "node scripts/attendance-action-engine.test.mjs"
   },
   "dependencies": {
     "@hookform/resolvers": "^3.9.0",

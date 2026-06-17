@@ -51,6 +51,8 @@ export default function CaseDetailClient({ caseId }: { caseId: string }) {
   const [notFound, setNotFound] = useState(false);
   const [acting, setActing] = useState(false);
   const [notice, setNotice] = useState('');
+  const [insurerReply, setInsurerReply] = useState('');
+  const [actionInterp, setActionInterp] = useState<any>(null);
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -138,6 +140,42 @@ export default function CaseDetailClient({ caseId }: { caseId: string }) {
     }
   };
 
+  const generateActionPlan = async () => {
+    setActing(true);
+    setNotice('');
+    try {
+      const res = await fetch(`/api/attendance/cases/${caseId}/runtime/action-plan`, { method: 'POST' });
+      const json = await res.json().catch(() => ({}));
+      if (res.ok && json?.ok) setNotice(`Plano de acionamento (dry-run): ${json.action_plan?.status || '—'}. Nada foi enviado.`);
+      else setNotice(`Não foi possível gerar o plano: ${json?.error || 'erro'}.`);
+      await load();
+    } catch {
+      setNotice('Falha ao gerar o plano de acionamento.');
+    } finally {
+      setActing(false);
+    }
+  };
+
+  const simulateInsurerReply = async () => {
+    if (!insurerReply.trim()) return;
+    setActing(true);
+    setNotice('');
+    try {
+      const res = await fetch(`/api/attendance/cases/${caseId}/runtime/action-simulate`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ simulated_insurer_reply: insurerReply }),
+      });
+      const json = await res.json().catch(() => ({}));
+      if (res.ok && json?.ok) setActionInterp(json.interpretation);
+      else setNotice(`Não foi possível interpretar: ${json?.error || 'erro'}.`);
+    } catch {
+      setNotice('Falha ao interpretar a resposta simulada.');
+    } finally {
+      setActing(false);
+    }
+  };
+
   // ---- Estados ----
   if (loading && !data) {
     return (
@@ -185,6 +223,7 @@ export default function CaseDetailClient({ caseId }: { caseId: string }) {
   // 42B6: dispatch readiness + coverage readiness (do metadata).
   const coverageReadiness: any = c.metadata?.coverage_readiness || null;
   const dispatchReadiness: any = c.metadata?.dispatch_readiness || null;
+  const actionPlan: any = c.metadata?.external_action_plan || null;
   const dispatchStateLabel: Record<string, string> = {
     incomplete: 'Incompleto — coletar dados',
     blocked: 'Bloqueado — revisão humana',
@@ -438,6 +477,68 @@ export default function CaseDetailClient({ caseId }: { caseId: string }) {
               <p className="mt-3 text-[10px] text-faint">
                 Modo dry-run/HITL: nenhum envio para seguradora/prestador. Acionamento real exige homologação futura.
               </p>
+            </Section>
+
+            {/* Action Engine — plano de acionamento externo (dry-run, 42X0) */}
+            <Section title="Plano de acionamento externo (dry-run)">
+              <button
+                onClick={generateActionPlan}
+                disabled={acting}
+                className="mb-3 inline-flex items-center gap-1.5 rounded-lg border border-primary/40 bg-primary/5 px-3 py-1.5 text-xs font-medium text-primary hover:bg-primary/10 disabled:opacity-60"
+              >
+                <Icon icon={icons.avancar} size={14} /> Gerar plano de acionamento
+              </button>
+              {actionPlan ? (
+                <>
+                  <Field label="Status" value={actionPlan.status} />
+                  <Field label="Canal recomendado" value={actionPlan.selected_channel} />
+                  <Field label="Validação humana" value={actionPlan.human_review_required ? 'necessária' : 'não'} />
+                  <Field label="Envio externo" value="bloqueado (dry-run, sent=false)" />
+                  {Array.isArray(actionPlan.missing_data) && actionPlan.missing_data.length > 0 && (
+                    <div className="mt-2">
+                      <p className="mb-1 text-[11px] text-warning">Dados faltantes</p>
+                      <div className="flex flex-wrap gap-1.5">
+                        {actionPlan.missing_data.map((m: string) => (
+                          <span key={m} className="rounded-full border border-warning/40 px-2 py-0.5 text-[10px] text-warning">{m}</span>
+                        ))}
+                      </div>
+                    </div>
+                  )}
+                  {Array.isArray(actionPlan.message_drafts) && actionPlan.message_drafts.length > 0 && (
+                    <div className="mt-2">
+                      <p className="mb-1 text-[11px] text-muted-foreground">Mensagem (draft) para a seguradora — não enviada</p>
+                      <p className="rounded-lg border border-border bg-surface-2 px-3 py-2 text-[11px] text-foreground">{actionPlan.message_drafts[0].text}</p>
+                    </div>
+                  )}
+                  <div className="mt-3">
+                    <p className="mb-1 text-[11px] font-medium uppercase tracking-wide text-faint">Simular resposta da seguradora</p>
+                    <textarea
+                      value={insurerReply}
+                      onChange={(e) => setInsurerReply(e.target.value)}
+                      rows={2}
+                      placeholder="Cole aqui uma resposta simulada da seguradora…"
+                      className="min-h-[40px] w-full resize-y rounded-lg border border-border bg-background px-3 py-2 text-xs text-foreground placeholder:text-faint focus:outline-none focus:ring-1 focus:ring-primary"
+                    />
+                    <button
+                      onClick={simulateInsurerReply}
+                      disabled={acting || !insurerReply.trim()}
+                      className="mt-1.5 inline-flex items-center gap-1.5 rounded-lg border border-border bg-surface-2 px-3 py-1.5 text-xs font-medium text-foreground hover:bg-surface-2/70 disabled:opacity-60"
+                    >
+                      Interpretar resposta (dry-run)
+                    </button>
+                    {actionInterp && (
+                      <div className="mt-2 rounded-lg border border-border bg-surface-2 px-3 py-2 text-[11px]">
+                        <p className="text-foreground"><span className="text-muted-foreground">Classificação:</span> {actionInterp.classification}</p>
+                        <p className="text-foreground"><span className="text-muted-foreground">Próximo passo:</span> {actionInterp.next_step}</p>
+                        {actionInterp.customer_message && <p className="mt-1 text-muted-foreground">{actionInterp.customer_message}</p>}
+                      </div>
+                    )}
+                  </div>
+                </>
+              ) : (
+                <p className="text-xs text-muted-foreground">Nenhum plano gerado ainda.</p>
+              )}
+              <p className="mt-3 text-[10px] text-faint">Modo dry-run/HITL: nada é enviado à seguradora/prestador. Acionamento real exige homologação futura (42X1).</p>
             </Section>
 
             {/* Dossiê / Handoff humano */}
