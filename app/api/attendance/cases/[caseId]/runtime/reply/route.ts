@@ -58,6 +58,13 @@ import {
   safePolicyQaSummary,
 } from '@/lib/attendance/policy-qa';
 import {
+  buildAttendanceKnowledgeQuery,
+  retrieveAttendanceKnowledge,
+  knowledgeLeadForCategory,
+  knowledgeForLlm,
+  safeKnowledgeSummary,
+} from '@/lib/attendance/attendance-knowledge';
+import {
   extractDocument,
   maskDocument,
   IDENTITY_QUESTION,
@@ -720,9 +727,25 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
       const humanReq = qa.signals.includes('human_request');
       if (isAnswerableQuestion(qa.category) || humanReq) {
         const pendingQuestion = questionForSlot(targetSlot, slots.filled);
-        const qaCtx = buildPolicyQAContext(caseRow, { pendingQuestion });
+        // 42R0: conhecimento geral seguro (curadoria/RAG future-ready) — nunca confirma cobertura.
+        const knowledge = retrieveAttendanceKnowledge(
+          buildAttendanceKnowledgeQuery(
+            {
+              corridor: caseRow.selected_corridor_key,
+              subcorridor: caseRow.selected_subcorridor_key,
+              insurer: caseRow.insurer_key,
+              product: caseRow.policy_snapshot?.product ?? null,
+              macro_service: caseRow.macro_service,
+            },
+            qa.category,
+          ),
+        );
+        const knowledgeForCtx = knowledge.snippets.map((s) => ({ title: s.title, summary: s.summary, provenance: s.provenance, scope: s.scope }));
+        const qaCtx = buildPolicyQAContext(caseRow, { pendingQuestion, knowledge: knowledgeForCtx });
         const det = answerPolicyQuestionDeterministic(humanReq ? 'customer_frustration' : qa.category, qaCtx);
-        let answer = det.answer;
+        // Lidera com conceito geral (knowledge) em perguntas conceituais/cobertura.
+        const lead = humanReq ? null : knowledgeLeadForCategory(knowledge.snippets, qa.category);
+        let answer = lead ? `${lead} ${det.answer}` : det.answer;
         let llmUsed = false;
         // LLM opcional (rephrase/enriquecer) — NUNCA para cobertura/dispatch (alto risco).
         const REPHRASEABLE = new Set([
@@ -742,6 +765,7 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
             corridorRun: run,
             recentMessages,
             currentQuestion: pendingQuestion,
+            knowledge: knowledgeForLlm(knowledge.snippets),
           });
           if (outcome.used && outcome.reply) {
             answer = outcome.reply;
@@ -755,7 +779,9 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
             'Claro, vou te encaminhar para um atendente humano para te ajudar melhor. Já deixei seu atendimento registrado para a equipe dar sequência.';
           handoff = true;
         }
-        const reask = !handoff && pendingQuestion ? ` Para eu continuar: ${pendingQuestion}` : '';
+        // Retomada do slot — evita pergunta DUPLICADA quando o LLM já perguntou (42R0).
+        const alreadyAsks = llmUsed && (/\?\s*$/.test(answer.trim()) || (pendingQuestion ? answer.includes(pendingQuestion) : false));
+        const reask = !handoff && pendingQuestion && !alreadyAsks ? ` Para eu continuar: ${pendingQuestion}` : '';
         const full = `${answer}${reask}`.trim();
 
         let qaMsgId: string | null = null;
@@ -768,7 +794,7 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
           qaMsgId = ins?.id ?? null;
         }
 
-        const qaSummary = safePolicyQaSummary(humanReq ? 'customer_frustration' : qa.category, qaCtx, llmUsed);
+        const qaSummary = { ...safePolicyQaSummary(humanReq ? 'customer_frustration' : qa.category, qaCtx, llmUsed), knowledge: safeKnowledgeSummary(knowledge) };
         if (run) {
           const prevDiag = run.diagnostics && typeof run.diagnostics === 'object' && !Array.isArray(run.diagnostics) ? (run.diagnostics as Record<string, any>) : {};
           const prevRuntime = prevDiag.runtime && typeof prevDiag.runtime === 'object' && !Array.isArray(prevDiag.runtime) ? prevDiag.runtime : {};

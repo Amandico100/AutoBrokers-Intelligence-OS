@@ -182,8 +182,9 @@ export function isPolicySelectionAlreadyResolved(caseRow: any): boolean {
 
 /** Resposta humana após selecionar (sem expor número cru). */
 export function buildPolicySelectedMessage(match: PolicyMatchLite | undefined): string {
-  if (!match) return 'Perfeito, registrei a apólice. Vou seguir com os dados do atendimento.';
+  // Curto: a continuação (cobertura + próximo slot) vem do step/runtime — evita repetição.
+  if (!match) return 'Perfeito, registrei a apólice.';
   const fin = match.masked_policy_number ? ` com final ${match.masked_policy_number}` : '';
   const vig = match.active_now === true ? ' Ela está vigente.' : '';
-  return `Perfeito, selecionei a apólice${fin}.${vig} Vou seguir com os dados do atendimento.`;
+  return `Perfeito, selecionei a apólice${fin}.${vig}`.trim();
 }

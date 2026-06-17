@@ -79,6 +79,7 @@ export function buildAttendanceFallbackContext(
   _corridorRun: any,
   recentMessages: any[],
   currentQuestion: string | null,
+  knowledge?: string[],
 ) {
   const turns = (Array.isArray(recentMessages) ? recentMessages : [])
     .slice(0, 6)
@@ -106,6 +107,10 @@ export function buildAttendanceFallbackContext(
       typeof caseRow?.verification_status === 'string' && TRUSTED_VERIFICATION.has(caseRow.verification_status),
     coverage_summary: coverageSummary,
     recent_turns: turns,
+    // 42R0: conhecimento geral (conceitos), já sanitizado. NUNCA confirma cobertura.
+    knowledge: Array.isArray(knowledge)
+      ? knowledge.map((k) => sanitizeAttendanceFallbackText(k)).filter(Boolean).slice(0, 3)
+      : undefined,
   };
 }
 
@@ -164,6 +169,7 @@ export async function attemptAttendanceLlmFallback(input: {
   corridorRun: any;
   recentMessages: any[];
   currentQuestion: string | null;
+  knowledge?: string[];
 }): Promise<LlmFallbackOutcome> {
   const at = new Date().toISOString();
   if (!shouldUseLlmFallback(input.route, { message: input.message, caseStatus: input.caseRow?.status, agentId: input.agentId })) {
@@ -172,7 +178,7 @@ export async function attemptAttendanceLlmFallback(input: {
       diag: { attempted: false, used: false, reason: isAttendanceFallbackEnabled() ? 'ineligible' : 'disabled', safe: true, at },
     };
   }
-  const context = buildAttendanceFallbackContext(input.caseRow, input.corridorRun, input.recentMessages, input.currentQuestion);
+  const context = buildAttendanceFallbackContext(input.caseRow, input.corridorRun, input.recentMessages, input.currentQuestion, input.knowledge);
   const guardrails = buildAttendanceFallbackGuardrails();
   const result = await requestAttendanceFallback({
     company_id: input.companyId,

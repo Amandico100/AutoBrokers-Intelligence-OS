@@ -51,6 +51,7 @@ class AgentReplyContext(BaseModel):
     policy_verified: Optional[bool] = None
     coverage_summary: Optional[str] = None
     recent_turns: Optional[List[Dict[str, Any]]] = None
+    knowledge: Optional[List[str]] = None  # 42R0: conceitos gerais (não confirma cobertura)
 
 
 class AgentReplyGuardrails(BaseModel):
@@ -118,6 +119,10 @@ def _build_system_prompt(ctx: Optional[AgentReplyContext], guardrails: Optional[
             lines.append(f"- Apólice verificada: {'sim' if ctx.policy_verified else 'ainda não'}")
         if ctx.coverage_summary:
             lines.append(f"- Cobertura (resumo): {_mask_pii(_clip(ctx.coverage_summary, 300))}")
+        if ctx.knowledge:
+            lines.append("- Conhecimento de apoio (conceitos GERAIS; NÃO confirma cobertura específica):")
+            for k in ctx.knowledge[:3]:
+                lines.append(f"  • {_mask_pii(_clip(str(k), 240))}")
         if ctx.active_question:
             lines.append("")
             lines.append('Sempre conduza o segurado de volta à "Pergunta atual do atendimento" acima.')

@@ -96,6 +96,8 @@ export interface PolicyQAContext {
   gaps: string[];
   pending_question: string | null;
   has_policy: boolean;
+  /** Conhecimento geral sanitizado (42R0) — explica conceitos, NUNCA confirma cobertura. */
+  knowledge: Array<{ title: string; summary: string; provenance: string; scope: string }>;
   allowed: string[];
   forbidden: string[];
 }
@@ -110,7 +112,7 @@ function triBool(v: unknown): boolean | null {
 /** Contexto SANITIZADO para Q&A (sem CPF/telefone/nome/endereço/token/payload). */
 export function buildPolicyQAContext(
   caseRow: any,
-  opts: { pendingQuestion?: string | null } = {},
+  opts: { pendingQuestion?: string | null; knowledge?: Array<{ title: string; summary: string; provenance: string; scope: string }> } = {},
 ): PolicyQAContext {
   const md = caseRow?.metadata && typeof caseRow.metadata === 'object' ? caseRow.metadata : {};
   const snap = caseRow?.policy_snapshot && typeof caseRow.policy_snapshot === 'object' ? caseRow.policy_snapshot : {};
@@ -152,6 +154,7 @@ export function buildPolicyQAContext(
     gaps,
     pending_question: safeStr(opts.pendingQuestion),
     has_policy: hasPolicy,
+    knowledge: Array.isArray(opts.knowledge) ? opts.knowledge.slice(0, 3) : [],
     allowed: [
       'explicar e resumir o que já consta nas evidências',
       'diferenciar apólice localizada de cobertura confirmada',
