@@ -10,7 +10,7 @@
  */
 const BASE_URL = (process.env.BASE_URL || 'http://localhost:3000').replace(/\/$/, '');
 const COOKIE = process.env.SESSION_COOKIE || '';
-const CPF = process.env.E2E_CPF || '04760897941';
+const CPF = process.env.E2E_CPF || ''; // nunca hardcodar CPF no repo; Founder define via env
 
 let pass = 0, fail = 0;
 const failures = [];
@@ -35,7 +35,15 @@ async function main() {
     process.exit(0);
   }
 
-  // Fluxo residencial — telefone único por execução.
+  // Fluxo residencial — telefone único por execução (requer E2E_CPF + InfoCap).
+  if (!CPF) {
+    console.log('[SKIP residencial] E2E_CPF ausente — rodando só o cenário de sinistro/triage.');
+    const claimPhone0 = `5544${Math.floor(100000 + Math.random() * 899999)}`;
+    const claim0 = await sim(claimPhone0, 'bati o carro e preciso de ajuda');
+    assert('sinistro → triage', claim0.action === 'triage', JSON.stringify({ a: claim0.action }));
+    console.log(`\n== Resumo: ${pass} passaram, ${fail} falharam ==`);
+    process.exit(fail > 0 ? 1 : 0);
+  }
   const PHONE = `5544${Math.floor(100000 + Math.random() * 899999)}`;
   await sim(PHONE, 'Oi');
   await sim(PHONE, 'estou sem luz');
