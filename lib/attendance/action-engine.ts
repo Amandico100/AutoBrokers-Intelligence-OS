@@ -116,8 +116,11 @@ export function buildInsurerMessageDraft(
 ): string {
   const insurer = humanInsurer(data.insurer);
   const masked = (data.masked_policy_number || '****').replace(/[^\d*]/g, '') || '****';
-  const area = data.affected_area || 'no imóvel';
-  const problem = data.problem || 'um problema na residência';
+  // Normaliza a área (slot pode vir com filler: "é na cozinha" → "cozinha").
+  const rawArea = (data.affected_area || '').toString().trim();
+  const cleanArea = rawArea.replace(/^(é\s+|s[óo]\s+|na\s+|no\s+|em\s+|aqui\s+(na|no)\s+)+/i, '').trim();
+  const area = cleanArea || 'no imóvel';
+  const problem = (data.problem && data.problem.trim()) || 'um problema na residência';
   return playbook.opening_message_template
     .replace('{insurer}', insurer)
     .replace('{masked_policy}', masked)
@@ -430,6 +433,237 @@ export function interpretInsurerReply(reply: string, ctx: { hasPolicyNumber?: bo
     return { classification: 'accepted', next_step: 'wait', missing_data_request: null, suggested_channel: null, customer_message: 'A seguradora sinalizou que recebeu as informações. Vou acompanhar os próximos passos.', reasoning: 'accepted' };
   }
   return { classification: 'unknown', next_step: 'ask_human', missing_data_request: null, suggested_channel: null, customer_message: 'Recebi uma resposta da seguradora que preciso revisar com a nossa equipe antes de seguir.', reasoning: 'ambiguous' };
+}
+
+// ===========================================================================
+// External Action EXECUTION (42X1) — máquina de estado sandbox/dry-run.
+// NUNCA envia real: canSendReal=false; external_action_sent=false sempre.
+// ===========================================================================
+
+export type ExecutionStatus =
+  | 'draft'
+  | 'approved_for_sandbox'
+  | 'running_sandbox'
+  | 'waiting_insurer'
+  | 'waiting_insured'
+  | 'waiting_human'
+  | 'completed_sandbox'
+  | 'failed_sandbox'
+  | 'cancelled';
+
+export type ExecutionMode = 'sandbox' | 'dry_run' | 'real_future';
+
+export interface ExecutionEvent {
+  at: string;
+  type: string;
+  classification?: string | null;
+  next_step?: string | null;
+  note?: string | null;
+  excerpt?: string | null; // mascarado/truncado
+}
+
+export interface ExternalActionExecutionSession {
+  execution_id: string;
+  case_id: string | null;
+  dispatch_packet_id: string | null;
+  status: ExecutionStatus;
+  mode: ExecutionMode;
+  channel: ActionChannel | null;
+  adapter: string;
+  current_step: string;
+  last_event_at: string;
+  events: ExecutionEvent[];
+  insurer_thread_ref: string | null;
+  next_required_input: string | null;
+  customer_update: string | null;
+  human_review_required: boolean;
+  suggested_channel: ActionChannel | null;
+  prepared_message: string | null; // mascarado
+  external_action_sent: false;
+}
+
+export interface ChannelAdapter {
+  channel: ActionChannel;
+  adapter_id: string;
+  mode: ExecutionMode;
+  canSendReal: false;
+}
+
+/** Adapters por canal (sandbox/future). NENHUM envia real neste estágio. */
+export function getChannelAdapter(channel: ActionChannel | null): ChannelAdapter {
+  switch (channel) {
+    case 'insurer_whatsapp':
+      return { channel, adapter_id: 'insurer_whatsapp_sandbox', mode: 'sandbox', canSendReal: false };
+    case 'human_broker_manual':
+      return { channel, adapter_id: 'human_manual_sandbox', mode: 'sandbox', canSendReal: false };
+    case 'insurer_portal':
+      return { channel, adapter_id: 'portal_future', mode: 'real_future', canSendReal: false };
+    case 'insurer_phone_0800':
+      return { channel, adapter_id: 'phone_0800_future', mode: 'real_future', canSendReal: false };
+    case 'insurer_email':
+      return { channel, adapter_id: 'email_future', mode: 'real_future', canSendReal: false };
+    case 'insurer_api':
+      return { channel, adapter_id: 'api_future', mode: 'real_future', canSendReal: false };
+    default:
+      return { channel: 'human_broker_manual', adapter_id: 'human_manual_sandbox', mode: 'sandbox', canSendReal: false };
+  }
+}
+
+function execId(): string {
+  return `exec-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 8)}`;
+}
+
+/** Inicia uma sessão de execução sandbox a partir de um ExternalActionPlan pronto. */
+export function startExecutionSession(plan: ExternalActionPlan): ExternalActionExecutionSession | { error: string } {
+  if (plan.status !== 'ready_for_human_approval') {
+    return { error: `plan_not_ready:${plan.status}` };
+  }
+  const adapter = getChannelAdapter(plan.selected_channel);
+  const now = new Date().toISOString();
+  const prepared = plan.message_drafts[0]?.text ?? null;
+  return {
+    execution_id: execId(),
+    case_id: plan.case_id,
+    dispatch_packet_id: plan.dispatch_packet_id,
+    status: 'waiting_insurer',
+    mode: 'sandbox',
+    channel: plan.selected_channel,
+    adapter: adapter.adapter_id,
+    current_step: 'sent_initial_message_sandbox',
+    last_event_at: now,
+    events: [
+      { at: now, type: 'session_started', note: 'sandbox' },
+      { at: now, type: 'message_prepared', note: adapter.adapter_id },
+      { at: now, type: 'simulated_send', note: 'dry-run — nada foi enviado (canSendReal=false)' },
+    ],
+    insurer_thread_ref: null,
+    next_required_input: 'simulated_insurer_reply',
+    customer_update: 'Preparei o acionamento em modo simulado e estou aguardando o retorno da seguradora.',
+    human_review_required: false,
+    suggested_channel: null,
+    prepared_message: prepared,
+    external_action_sent: false,
+  };
+}
+
+const SENSITIVE_REQUESTS = new Set(['cpf']);
+
+/** Recuperação inteligente: dado interpretação da resposta, decide o próximo estado. PURO. */
+export function recoverExternalExecutionStep(
+  interp: InsurerReplyInterpretation,
+  ctx: { hasPolicyNumber?: boolean } = {},
+): { next_status: ExecutionStatus; next_required_input: string | null; human_review_required: boolean; suggested_channel: ActionChannel | null; customer_update: string | null } {
+  const cm = interp.customer_message;
+  switch (interp.classification) {
+    case 'accepted':
+      return { next_status: 'completed_sandbox', next_required_input: null, human_review_required: false, suggested_channel: null, customer_update: cm };
+    case 'asks_for_missing_data': {
+      const req = interp.missing_data_request || '';
+      if (SENSITIVE_REQUESTS.has(req)) {
+        return { next_status: 'waiting_human', next_required_input: 'human_provides_sensitive_data', human_review_required: true, suggested_channel: null, customer_update: cm };
+      }
+      if (req === 'policy_number') {
+        if (ctx.hasPolicyNumber) {
+          // Dado disponível e não-sensível: prepara follow-up sandbox e volta a aguardar a seguradora.
+          return { next_status: 'waiting_insurer', next_required_input: 'simulated_insurer_reply', human_review_required: false, suggested_channel: null, customer_update: 'A seguradora pediu o número da apólice; já tenho essa informação e segui o atendimento.' };
+        }
+        // Não temos a apólice localizada → humano providencia (não é dado que o segurado digita).
+        return { next_status: 'waiting_human', next_required_input: 'human_provides_policy', human_review_required: true, suggested_channel: null, customer_update: cm };
+      }
+      // endereço/telefone → pedir ao segurado.
+      return { next_status: 'waiting_insured', next_required_input: req || 'insured_answer', human_review_required: false, suggested_channel: null, customer_update: cm };
+    }
+    case 'requests_document':
+      return { next_status: 'waiting_insured', next_required_input: 'documento', human_review_required: false, suggested_channel: null, customer_update: cm };
+    case 'redirects_channel':
+      return { next_status: 'waiting_human', next_required_input: 'human_setup_channel', human_review_required: true, suggested_channel: interp.suggested_channel, customer_update: cm };
+    case 'coverage_question':
+      return { next_status: 'waiting_human', next_required_input: 'human_validates_coverage', human_review_required: true, suggested_channel: null, customer_update: cm };
+    case 'unavailable':
+      return { next_status: 'waiting_human', next_required_input: 'human_manual_handoff', human_review_required: true, suggested_channel: 'human_broker_manual', customer_update: cm };
+    default:
+      return { next_status: 'waiting_human', next_required_input: 'human_review', human_review_required: true, suggested_channel: null, customer_update: cm };
+  }
+}
+
+const _EXEC_LONG_DIGITS = /\d[\d.\-/\s]{9,}\d/g;
+function maskExec(s: string): string {
+  return (s || '').replace(_EXEC_LONG_DIGITS, '[omitido]').slice(0, 240);
+}
+
+export interface ExecutionEventInput {
+  event_type: 'simulated_insurer_reply' | 'simulated_send_ack' | 'cancel' | 'human_note' | 'insured_answer';
+  text?: string;
+}
+
+/** Aplica um evento à sessão (PURO). NUNCA envia real. */
+export function applyExecutionEvent(
+  session: ExternalActionExecutionSession,
+  event: ExecutionEventInput,
+  ctx: { hasPolicyNumber?: boolean } = {},
+): ExternalActionExecutionSession {
+  const now = new Date().toISOString();
+  const s: ExternalActionExecutionSession = { ...session, events: [...session.events], last_event_at: now, external_action_sent: false };
+  if (s.status === 'completed_sandbox' || s.status === 'cancelled' || s.status === 'failed_sandbox') {
+    s.events.push({ at: now, type: 'event_ignored_terminal', note: event.event_type });
+    return s;
+  }
+
+  if (event.event_type === 'cancel') {
+    s.status = 'cancelled';
+    s.current_step = 'cancelled';
+    s.next_required_input = null;
+    s.customer_update = 'O acionamento simulado foi cancelado.';
+    s.events.push({ at: now, type: 'cancelled' });
+    return s;
+  }
+  if (event.event_type === 'human_note') {
+    s.events.push({ at: now, type: 'human_note', excerpt: maskExec(event.text || '') });
+    return s;
+  }
+  if (event.event_type === 'simulated_send_ack') {
+    s.events.push({ at: now, type: 'simulated_send_ack', note: 'dry-run' });
+    return s;
+  }
+  if (event.event_type === 'insured_answer') {
+    // Segurado respondeu → prepara follow-up sandbox e volta a aguardar a seguradora.
+    s.status = 'waiting_insurer';
+    s.current_step = 'insured_answer_received';
+    s.next_required_input = 'simulated_insurer_reply';
+    s.customer_update = 'Obrigado! Já segui com a informação no atendimento.';
+    s.events.push({ at: now, type: 'insured_answer', excerpt: maskExec(event.text || '') });
+    return s;
+  }
+
+  // simulated_insurer_reply
+  const interp = interpretInsurerReply(event.text || '', { hasPolicyNumber: ctx.hasPolicyNumber });
+  const rec = recoverExternalExecutionStep(interp, ctx);
+  s.status = rec.next_status;
+  s.current_step = `insurer_${interp.classification}`;
+  s.next_required_input = rec.next_required_input;
+  s.human_review_required = rec.human_review_required;
+  s.suggested_channel = rec.suggested_channel;
+  s.customer_update = rec.customer_update;
+  s.events.push({ at: now, type: 'insurer_reply', classification: interp.classification, next_step: interp.next_step, excerpt: maskExec(event.text || '') });
+  return s;
+}
+
+/** Resumo seguro da sessão (sem PII). */
+export function safeExecutionSessionSummary(s: ExternalActionExecutionSession): Record<string, unknown> {
+  return {
+    execution_id: s.execution_id,
+    status: s.status,
+    channel: s.channel,
+    adapter: s.adapter,
+    current_step: s.current_step,
+    human_review_required: s.human_review_required,
+    suggested_channel: s.suggested_channel,
+    next_required_input: s.next_required_input,
+    event_count: s.events.length,
+    external_action_sent: false,
+    mode: s.mode,
+    last_event_at: s.last_event_at,
+  };
 }
 
 /** Resumo seguro do plano para diagnostics/persistência (sem PII/draft sensível). */

@@ -53,6 +53,7 @@ export default function CaseDetailClient({ caseId }: { caseId: string }) {
   const [notice, setNotice] = useState('');
   const [insurerReply, setInsurerReply] = useState('');
   const [actionInterp, setActionInterp] = useState<any>(null);
+  const [execSession, setExecSession] = useState<any>(null);
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -171,6 +172,41 @@ export default function CaseDetailClient({ caseId }: { caseId: string }) {
       else setNotice(`Não foi possível interpretar: ${json?.error || 'erro'}.`);
     } catch {
       setNotice('Falha ao interpretar a resposta simulada.');
+    } finally {
+      setActing(false);
+    }
+  };
+
+  const startExecution = async () => {
+    setActing(true);
+    setNotice('');
+    try {
+      const res = await fetch(`/api/attendance/cases/${caseId}/runtime/action-execution/start`, { method: 'POST' });
+      const json = await res.json().catch(() => ({}));
+      if (res.ok && json?.ok) { setExecSession(json.execution); setNotice('Execução sandbox iniciada. Nada foi enviado.'); }
+      else setNotice(`Não foi possível iniciar a execução: ${json?.error || 'erro'}.`);
+    } catch {
+      setNotice('Falha ao iniciar a execução sandbox.');
+    } finally {
+      setActing(false);
+    }
+  };
+
+  const sendExecutionReply = async () => {
+    if (!insurerReply.trim()) return;
+    setActing(true);
+    setNotice('');
+    try {
+      const res = await fetch(`/api/attendance/cases/${caseId}/runtime/action-execution/event`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ event_type: 'simulated_insurer_reply', text: insurerReply }),
+      });
+      const json = await res.json().catch(() => ({}));
+      if (res.ok && json?.ok) setExecSession(json.execution);
+      else setNotice(`Não foi possível processar o evento: ${json?.error || 'erro'}.`);
+    } catch {
+      setNotice('Falha ao processar o evento de execução.');
     } finally {
       setActing(false);
     }
@@ -538,7 +574,64 @@ export default function CaseDetailClient({ caseId }: { caseId: string }) {
               ) : (
                 <p className="text-xs text-muted-foreground">Nenhum plano gerado ainda.</p>
               )}
-              <p className="mt-3 text-[10px] text-faint">Modo dry-run/HITL: nada é enviado à seguradora/prestador. Acionamento real exige homologação futura (42X1).</p>
+              {/* Execução sandbox (42X1) */}
+              {actionPlan?.status === 'ready_for_human_approval' && (
+                <div className="mt-3 rounded-lg border border-border bg-surface-2 p-3">
+                  <div className="mb-2 flex flex-wrap items-center gap-2">
+                    <p className="text-[11px] font-medium uppercase tracking-wide text-faint">Execução (sandbox)</p>
+                    <button
+                      onClick={startExecution}
+                      disabled={acting}
+                      className="rounded-lg border border-primary/40 bg-primary/5 px-2.5 py-1 text-[11px] font-medium text-primary hover:bg-primary/10 disabled:opacity-60"
+                    >
+                      Iniciar execução sandbox
+                    </button>
+                    {execSession?.status && <StatusPill tone="info" label={execSession.status} />}
+                  </div>
+                  {execSession ? (
+                    <>
+                      <p className="text-[11px] text-muted-foreground">Canal: <span className="text-foreground">{execSession.channel}</span> · adapter: {execSession.adapter} · envio: <span className="text-foreground">bloqueado (sandbox)</span></p>
+                      {execSession.prepared_message && (
+                        <p className="mt-1 rounded-lg border border-border bg-card px-3 py-2 text-[11px] text-foreground">{execSession.prepared_message}</p>
+                      )}
+                      {execSession.customer_update && (
+                        <p className="mt-1 text-[11px] text-muted-foreground">Cliente: {execSession.customer_update}</p>
+                      )}
+                      <div className="mt-2 flex items-end gap-2">
+                        <textarea
+                          value={insurerReply}
+                          onChange={(e) => setInsurerReply(e.target.value)}
+                          rows={2}
+                          placeholder="Resposta simulada da seguradora (alimenta a execução)…"
+                          className="min-h-[36px] flex-1 resize-y rounded-lg border border-border bg-background px-3 py-2 text-xs text-foreground placeholder:text-faint focus:outline-none focus:ring-1 focus:ring-primary"
+                        />
+                        <button
+                          onClick={sendExecutionReply}
+                          disabled={acting || !insurerReply.trim() || ['completed_sandbox', 'cancelled', 'failed_sandbox'].includes(execSession.status)}
+                          className="shrink-0 rounded-lg border border-border bg-card px-3 py-1.5 text-xs font-medium text-foreground hover:bg-surface-2/70 disabled:opacity-60"
+                        >
+                          Enviar à execução
+                        </button>
+                      </div>
+                      {Array.isArray(execSession.events) && execSession.events.length > 0 && (
+                        <div className="mt-2">
+                          <p className="mb-1 text-[10px] uppercase tracking-wide text-faint">Timeline</p>
+                          <ul className="space-y-1">
+                            {execSession.events.slice(-8).map((ev: any, i: number) => (
+                              <li key={i} className="text-[10px] text-muted-foreground">
+                                {ev.type}{ev.classification ? ` · ${ev.classification}` : ''}{ev.note ? ` — ${ev.note}` : ''}
+                              </li>
+                            ))}
+                          </ul>
+                        </div>
+                      )}
+                    </>
+                  ) : (
+                    <p className="text-[11px] text-muted-foreground">Sessão de execução não iniciada.</p>
+                  )}
+                </div>
+              )}
+              <p className="mt-3 text-[10px] text-faint">Modo dry-run/HITL/sandbox: nada é enviado à seguradora/prestador. Acionamento real exige homologação futura (42X2).</p>
             </Section>
 
             {/* Dossiê / Handoff humano */}
