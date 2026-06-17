@@ -335,7 +335,25 @@ export async function analyzeAttendanceImage(input: {
   return { ok: false, status: data?.status || 'unsupported', reason: data?.error || data?.reason || 'no_summary' };
 }
 
-/** Extrai/registra documento. Gated por ATTENDANCE_DOCUMENT_EXTRACTION_ENABLED. */
+export interface DocumentPolicyInfo {
+  insurer?: string | null;
+  product?: string | null;
+  valid_dates?: string[] | null;
+  masked_policy_number?: string | null;
+  document_mentions_assistance_electrician?: boolean;
+}
+
+export interface DocumentExtractResult {
+  ok: boolean;
+  status?: string;
+  summary?: string;
+  document_type?: string | null;
+  key_facts?: string[];
+  possible_policy_info?: DocumentPolicyInfo | null;
+  reason?: string;
+}
+
+/** Extrai/registra documento (reuso DocumentService do Smith). Gated por flag. */
 export async function extractAttendanceDocument(input: {
   companyId: string;
   agentId?: string | null;
@@ -343,7 +361,8 @@ export async function extractAttendanceDocument(input: {
   documentUrl?: string | null;
   documentBase64?: string | null;
   mimeType?: string | null;
-}): Promise<{ ok: boolean; status?: string; summary?: string; document_type?: string | null; reason?: string }> {
+  filename?: string | null;
+}): Promise<DocumentExtractResult> {
   if (process.env.ATTENDANCE_DOCUMENT_EXTRACTION_ENABLED !== 'true') return { ok: false, status: 'unsupported', reason: 'document_extraction_disabled' };
   if (!input.documentUrl && !input.documentBase64) return { ok: false, status: 'unsupported', reason: 'no_document' };
   const data = await callMediaBackend('/attendance/media/document-extract', {
@@ -353,10 +372,52 @@ export async function extractAttendanceDocument(input: {
     document_url: input.documentUrl || undefined,
     document_base64: input.documentBase64 || undefined,
     mime_type: input.mimeType || undefined,
+    filename: input.filename || undefined,
     purpose: 'attendance_evidence',
   });
   if (data?.ok && typeof data.extracted_text_summary === 'string' && data.extracted_text_summary.trim()) {
-    return { ok: true, status: 'processed', summary: data.extracted_text_summary.trim(), document_type: data.document_type || null };
+    return {
+      ok: true,
+      status: 'processed',
+      summary: data.extracted_text_summary.trim(),
+      document_type: data.document_type || null,
+      key_facts: Array.isArray(data.key_facts) ? data.key_facts.filter((k: unknown): k is string => typeof k === 'string').slice(0, 8) : [],
+      possible_policy_info: data.possible_policy_info && typeof data.possible_policy_info === 'object' ? data.possible_policy_info : null,
+    };
   }
   return { ok: false, status: data?.status || 'unsupported', reason: data?.error || data?.reason || 'no_summary' };
+}
+
+function norm(s?: string | null): string {
+  return (s || '').toString().trim().toLowerCase();
+}
+
+/**
+ * Detecta CONFLITO entre o documento enviado pelo cliente e a apólice oficial
+ * (InfoCap/policy_snapshot). PURO/conservador: só sinaliza divergência forte.
+ */
+export function detectDocumentInfocapConflict(
+  docInfo: DocumentPolicyInfo | null | undefined,
+  snapshot: { insurer_key?: string | null; product?: string | null; masked_policy_number?: string | null } | null | undefined,
+): { conflict: boolean; reasons: string[] } {
+  const reasons: string[] = [];
+  if (!docInfo || !snapshot) return { conflict: false, reasons };
+  const di = norm(docInfo.insurer);
+  const si = norm(snapshot.insurer_key);
+  if (di && si && di !== si && !di.includes(si) && !si.includes(di)) reasons.push('insurer_mismatch');
+  const dn = (docInfo.masked_policy_number || '').replace(/\D/g, '');
+  const sn = (snapshot.masked_policy_number || '').replace(/\D/g, '');
+  if (dn && sn && dn !== sn) reasons.push('policy_number_mismatch');
+  return { conflict: reasons.length > 0, reasons };
+}
+
+/** Resposta humana controlada para documento (não confirma cobertura). */
+export function buildDocumentCustomerReply(result: DocumentExtractResult, conflict: boolean): string {
+  if (conflict) {
+    return 'Recebi e li um resumo do documento, mas alguns dados parecem divergir da apólice que localizei. Vou pedir validação da nossa equipe antes de seguir — a cobertura continua dependendo dessa validação.';
+  }
+  if (result.possible_policy_info?.document_mentions_assistance_electrician) {
+    return 'Recebi e li o documento. Ele menciona assistência elétrica em termos gerais, mas preciso validar se essa condição se aplica à sua apólice específica antes de qualquer acionamento.';
+  }
+  return 'Recebi e consegui ler um resumo do documento. Ele será usado como evidência auxiliar, mas a cobertura continua dependendo da validação da apólice.';
 }

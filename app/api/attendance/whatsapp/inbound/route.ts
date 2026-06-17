@@ -11,6 +11,8 @@ import {
   extractAttendanceDocument,
   deriveVisualEvidence,
   buildVisionCustomerReply,
+  detectDocumentInfocapConflict,
+  buildDocumentCustomerReply,
 } from '@/lib/attendance/attendance-media';
 import {
   resolvePolicySelectionFromCustomerReply,
@@ -194,7 +196,8 @@ export async function POST(request: NextRequest) {
       } else if (!text) {
         // imagem/documento/localização/desconhecido sem texto → evidência + ack seguro.
         const result = processAttendanceMedia(normalized, { location: location as any });
-        // 42M1: visão/documento reais (reuso Smith), gated por flag; senão ack seguro.
+        let mediaExtra: Record<string, unknown> = {};
+        // 42M1/42M2: visão/documento reais (reuso Smith), gated por flag; senão ack seguro.
         if (normalized.media_kind === 'image') {
           const v = await analyzeAttendanceImage({ companyId, agentId, caseId: existingCase?.id, imageUrl: mediaUrl, imageBase64: mediaBase64, mimeType });
           if (v.ok && v.visual_summary) {
@@ -212,17 +215,31 @@ export async function POST(request: NextRequest) {
         } else if (normalized.media_kind === 'document') {
           const d = await extractAttendanceDocument({ companyId, agentId, caseId: existingCase?.id, documentUrl: mediaUrl, documentBase64: mediaBase64, mimeType });
           if (d.ok && d.summary) {
+            const conflict = detectDocumentInfocapConflict(d.possible_policy_info, existingCase?.policy_snapshot);
             result.status = 'processed';
             result.document_summary = d.summary;
             result.evidence_notes.push('documento_resumido');
-            events.push('media_document_extracted');
+            if (conflict.conflict) result.evidence_notes.push('document_infocap_conflict');
+            result.safe_customer_reply = buildDocumentCustomerReply(d, conflict.conflict);
+            // Documento NUNCA confirma cobertura; conflito → registra para validação humana.
+            mediaExtra = {
+              document_type: d.document_type,
+              key_facts: d.key_facts,
+              possible_policy_info: d.possible_policy_info,
+              conflicts: conflict.conflict ? conflict.reasons : [],
+            };
+            if (existingCase?.id && conflict.conflict) {
+              const md = existingCase.metadata && typeof existingCase.metadata === 'object' ? existingCase.metadata : {};
+              await supabaseAdmin.from('attendance_cases').update({ metadata: { ...md, document_infocap_conflict: { reasons: conflict.reasons, at: new Date().toISOString() } } }).eq('id', existingCase.id).eq('company_id', companyId);
+            }
+            events.push(conflict.conflict ? 'media_document_conflict' : 'media_document_extracted');
           } else {
             events.push(`media_document_${d.status || 'ack'}`);
           }
         } else {
           events.push(`media_${normalized.media_kind}`);
         }
-        if (existingCase?.id) await appendMediaEvidence(existingCase.id, buildMediaEvidenceRecord(normalized, result));
+        if (existingCase?.id) await appendMediaEvidence(existingCase.id, { ...buildMediaEvidenceRecord(normalized, result), ...mediaExtra });
         await insertUser(`[${normalized.media_kind}]`, 'text');
         await insertAssistant(result.safe_customer_reply);
         events.push('outbound_dry_run');

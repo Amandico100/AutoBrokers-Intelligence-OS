@@ -8,12 +8,15 @@ nada, não chama LLM/RAG, não aciona externo. Auth por chave interna Next↔Bac
 NUNCA loga URL/base64/conteúdo; só ids e tamanhos. NÃO confirma cobertura.
 """
 import asyncio
+import base64
 import hmac
+import io
 import logging
 import os
 import re
-from typing import Any, Dict, Optional
+from typing import Any, Dict, List, Optional
 
+import httpx
 from fastapi import APIRouter, Depends, Header, HTTPException
 from pydantic import BaseModel
 
@@ -210,7 +213,70 @@ class DocumentPayload(BaseModel):
     document_url: Optional[str] = None
     document_base64: Optional[str] = None
     mime_type: Optional[str] = None
+    filename: Optional[str] = None
     purpose: str = "attendance_evidence"
+
+
+_FILE_TYPE_BY_MIME = {
+    "application/pdf": "pdf",
+    "application/vnd.openxmlformats-officedocument.wordprocessingml.document": "docx",
+    "application/msword": "docx",
+    "text/plain": "txt",
+    "text/markdown": "md",
+    "text/csv": "csv",
+}
+_DOC_INSURERS = {"allianz": "Allianz", "porto": "Porto Seguro", "azul": "Azul", "hdi": "HDI", "tokio": "Tokio Marine", "bradesco": "Bradesco", "mapfre": "Mapfre", "suhai": "Suhai"}
+_DATE_RE = re.compile(r"\b(\d{2}/\d{2}/\d{4})\b")
+_POLICY_NUM_RE = re.compile(r"\b(?:ap[óo]lice|n[ºo°]\.?)\s*[:#]?\s*(\d{4,})\b", re.IGNORECASE)
+
+
+def _file_type(mime: Optional[str], filename: Optional[str]) -> Optional[str]:
+    if mime and mime.lower() in _FILE_TYPE_BY_MIME:
+        return _FILE_TYPE_BY_MIME[mime.lower()]
+    if filename and "." in filename:
+        ext = filename.lower().rsplit(".", 1)[-1]
+        return {"pdf": "pdf", "docx": "docx", "doc": "docx", "txt": "txt", "md": "md", "csv": "csv"}.get(ext)
+    return None
+
+
+def _detect_document_type(text: str) -> str:
+    t = text.lower()
+    if re.search(r"ap[óo]lice|seguradora|vig[êe]ncia|condi[çc][õo]es gerais|ramo\b", t):
+        return "policy_document"
+    if re.search(r"nota fiscal|recibo|comprovante|fatura|boleto|valor pago", t):
+        return "invoice_or_receipt"
+    if re.search(r"sinistro|laudo|boletim de ocorr[êe]ncia|aviso de sinistro", t):
+        return "claim_report"
+    if re.search(r"\bcnh\b|carteira de identidade|registro geral|\brg\b", t):
+        return "identity_document"
+    if re.search(r"matr[íi]cula do im[óo]vel|escritura|iptu|im[óo]vel", t):
+        return "property_document"
+    return "general_attachment"
+
+
+def _extract_policy_info(text: str) -> Dict[str, Any]:
+    t = text.lower()
+    insurer = next((label for key, label in _DOC_INSURERS.items() if key in t), None)
+    product = None
+    if re.search(r"residencial|resid[êe]ncia", t):
+        product = "Residencial"
+    elif re.search(r"autom[óo]vel|\bauto\b|ve[íi]culo", t):
+        product = "Automóvel"
+    dates = _DATE_RE.findall(text)[:2]
+    pol = _POLICY_NUM_RE.search(text)
+    policy_masked = None
+    if pol:
+        d = re.sub(r"\D", "", pol.group(1))
+        if len(d) >= 2:
+            policy_masked = f"****{d[-2:]}"
+    mentions_electrician = bool(re.search(r"assist[êe]ncia.*el[ée]tric|eletricista|el[ée]tric", t))
+    return {
+        "insurer": insurer,
+        "product": product,
+        "valid_dates": dates or None,
+        "masked_policy_number": policy_masked,
+        "document_mentions_assistance_electrician": mentions_electrician,
+    }
 
 
 @router.post("/attendance/media/document-extract")
@@ -223,17 +289,71 @@ async def attendance_media_document(
         raise HTTPException(status_code=400, detail="company_id is required")
     if not payload.document_url and not payload.document_base64:
         return {"ok": False, "status": "unsupported", "error": "no_document"}
-    # Sem extrator inline maduro: registra como pendente p/ análise (42M2 fará a extração real).
-    logger.info(f"[ATTENDANCE DOC] company={payload.company_id} mime={payload.mime_type or 'unknown'} pending_extraction")
+
+    file_type = _file_type(payload.mime_type, getattr(payload, "filename", None))
+    if not file_type:
+        return {"ok": False, "status": "unsupported", "error": "unsupported_mime",
+                "limitations": ["Tipo de documento não suportado para extração inline (PDF/DOCX/TXT/MD/CSV)."],
+                "provenance": "attendance_document"}
+
+    max_bytes = max(1, settings.ATTENDANCE_MEDIA_MAX_SIZE_MB) * 1024 * 1024
+    # Obter bytes (base64 ou URL), com limite de tamanho.
+    try:
+        if payload.document_base64:
+            raw = payload.document_base64.split(",", 1)[-1]
+            data = base64.b64decode(raw)
+        else:
+            async with httpx.AsyncClient(timeout=30.0) as client:
+                resp = await client.get(payload.document_url)  # type: ignore[arg-type]
+                resp.raise_for_status()
+                data = resp.content
+        if len(data) > max_bytes:
+            return {"ok": False, "status": "unsupported", "error": "document_too_large",
+                    "limitations": [f"Documento acima de {settings.ATTENDANCE_MEDIA_MAX_SIZE_MB}MB."], "provenance": "attendance_document"}
+    except Exception as e:  # noqa: BLE001
+        logger.error(f"[ATTENDANCE DOC] fetch error: {type(e).__name__}")
+        return {"ok": False, "status": "failed", "error": "document_fetch_failed", "provenance": "attendance_document"}
+
+    # Reuso do DocumentService do Smith (extração SÍNCRONA, sem Qdrant/ingestion).
+    try:
+        from app.services.document_service import get_document_service
+
+        text, _pages = get_document_service().extract_text_internal(io.BytesIO(data), file_type)
+    except Exception as e:  # noqa: BLE001
+        logger.error(f"[ATTENDANCE DOC] extract error: {type(e).__name__}")
+        return {"ok": False, "status": "failed", "error": "extraction_failed", "provenance": "attendance_document"}
+
+    text = (text or "").strip()
+    if not text:
+        return {"ok": False, "status": "failed", "error": "empty_text",
+                "limitations": ["Não consegui extrair texto legível do documento."], "provenance": "attendance_document"}
+
+    doc_type = _detect_document_type(text)
+    policy_info = _extract_policy_info(text)
+    summary = _mask_pii(text)[:MAX_SUMMARY_LEN].strip()
+    key_facts: List[str] = []
+    if policy_info.get("insurer"):
+        key_facts.append(f"Seguradora citada: {policy_info['insurer']}")
+    if policy_info.get("product"):
+        key_facts.append(f"Produto/ramo citado: {policy_info['product']}")
+    if policy_info.get("valid_dates"):
+        key_facts.append(f"Datas de vigência citadas: {', '.join(policy_info['valid_dates'])}")
+    if policy_info.get("document_mentions_assistance_electrician"):
+        key_facts.append("Menciona assistência elétrica (em termos gerais)")
+
+    logger.info(f"[ATTENDANCE DOC] company={payload.company_id} type={doc_type} text_len={len(text)} extracted")
     return {
         "ok": True,
-        "status": "unsupported",
-        "extracted_text_summary": None,
-        "document_type": None,
-        "possible_policy_info": None,
+        "status": "processed",
+        "document_type": doc_type,
+        "extracted_text_summary": summary,
+        "key_facts": key_facts,
+        "possible_policy_info": policy_info,
         "limitations": [
-            "Extração automática de documento ainda não disponível neste fluxo (42M2).",
+            "Resumo auxiliar do documento; NÃO confirma cobertura.",
             "Documento enviado pelo cliente NÃO substitui a validação oficial via InfoCap.",
         ],
-        "provenance": "attendance_document_pending",
+        "confidence": "medium",
+        "provenance": f"document_service:{file_type}",
+        "redaction": ["texto_bruto_omitido", "url_omitida", "base64_omitido"],
     }

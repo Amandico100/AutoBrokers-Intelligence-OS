@@ -91,6 +91,9 @@ class Settings(BaseSettings):
     ATTENDANCE_BRIDGE_URL: Optional[str] = None  # ex.: https://app.exemplo/api/attendance/whatsapp/inbound
     BACKEND_INTERNAL_API_KEY: Optional[str] = None
 
+    # Attendance media (42M0/42M1/42M2) — limite de tamanho para extração inline.
+    ATTENDANCE_MEDIA_MAX_SIZE_MB: int = 10
+
     # Sanitization (Document Sanitizer)
     SANITIZATION_MAX_FILE_SIZE_MB: int = 50
     SANITIZATION_MAX_PAGES: int = 200
