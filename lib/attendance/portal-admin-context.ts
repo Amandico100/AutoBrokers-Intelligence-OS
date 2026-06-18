@@ -190,3 +190,25 @@ export async function removePortalAccount(supabase: SupabaseClient, companyId: s
   await writeArrays(supabase, conn, companyId, { portal_accounts: accs });
   return accs;
 }
+
+// --- Relay sessions (43P2) — sandbox, mantém as últimas N ----------------------
+const RELAY_KEEP = 25;
+
+export async function getRelaySession(supabase: SupabaseClient, companyId: string, relayId: string): Promise<any | null> {
+  const { data, error } = await supabase
+    .from('tenant_connections').select('connection_config')
+    .eq('company_id', companyId).eq('name', CONN_NAME).maybeSingle();
+  if (error) throw new Error('vault_not_available');
+  if (!data) return null;
+  const arr = readArr<any>({ id: '', connection_config: data.connection_config }, 'relay_sessions');
+  return arr.find((r) => r?.relay_id === relayId) ?? null;
+}
+
+export async function saveRelaySession(supabase: SupabaseClient, companyId: string, session: any): Promise<void> {
+  const conn = await getOrCreateConn(supabase, companyId);
+  const arr = readArr<any>(conn, 'relay_sessions');
+  const idx = arr.findIndex((r) => r?.relay_id === session.relay_id);
+  if (idx >= 0) arr[idx] = session; else arr.push(session);
+  const trimmed = arr.slice(-RELAY_KEEP);
+  await writeArrays(supabase, conn, companyId, { relay_sessions: trimmed });
+}

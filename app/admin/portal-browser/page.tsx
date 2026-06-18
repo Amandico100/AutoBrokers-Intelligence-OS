@@ -110,6 +110,26 @@ export default function PortalBrowserAdminPage() {
     if (j?.ok) await load(); else setNotice(`Falha health-check: ${j?.error || ''}`);
   };
 
+  const [relay, setRelay] = useState<any>(null);
+  const [relayForm, setRelayForm] = useState({ owner_key: '', journey: 'login', provider: 'browserbase' });
+  const startRelay = async () => {
+    const res = await fetch('/api/admin/portal-browser/relay/start', {
+      method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ owner_key: relayForm.owner_key.trim() || null, journey: relayForm.journey, provider: relayForm.provider }),
+    });
+    const j = await res.json().catch(() => ({}));
+    if (j?.ok) { setRelay(j.relay); setNotice('Relay sandbox iniciado. Nenhum browser real aberto.'); } else setNotice(`Falha relay: ${j?.error || ''}`);
+  };
+  const relayStep = async (type: string, extra: any = {}) => {
+    if (!relay?.relay_id) return;
+    const res = await fetch('/api/admin/portal-browser/relay/step', {
+      method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ relay_id: relay.relay_id, type, ...extra }),
+    });
+    const j = await res.json().catch(() => ({}));
+    if (j?.ok) setRelay(j.relay); else setNotice(`Falha step: ${j?.error || ''}`);
+  };
+
   return (
     <div className="p-8">
       <div className="mb-6">
@@ -243,6 +263,42 @@ export default function PortalBrowserAdminPage() {
               ))}
           </tbody>
         </table>
+      </div>
+
+      {/* Relay Sandbox (mock) — 43P2 */}
+      <div className="mt-6 rounded-lg border border-border bg-card p-4">
+        <div className="mb-2 flex flex-wrap items-center gap-2">
+          <p className="text-sm font-medium text-foreground">Relay Sandbox (mock)</p>
+          <span className="text-[11px] text-amber-600">Nenhum browser real é aberto nesta fase.</span>
+        </div>
+        <div className="mb-2 flex flex-wrap gap-2">
+          <input value={relayForm.owner_key} onChange={(e) => setRelayForm({ ...relayForm, owner_key: e.target.value })} placeholder="owner_key (ex: allianz)" className="rounded-lg border border-border bg-background px-3 py-1.5 text-xs" />
+          <input value={relayForm.journey} onChange={(e) => setRelayForm({ ...relayForm, journey: e.target.value })} placeholder="journey (ex: login)" className="rounded-lg border border-border bg-background px-3 py-1.5 text-xs" />
+          <select value={relayForm.provider} onChange={(e) => setRelayForm({ ...relayForm, provider: e.target.value })} className="rounded-lg border border-border bg-background px-3 py-1.5 text-xs">
+            {['browserbase', 'local_playwright', 'stagehand', 'skyvern_lab', 'mock'].map((p) => <option key={p} value={p}>{p}</option>)}
+          </select>
+          <button onClick={startRelay} className="rounded-lg border border-primary/40 bg-primary/5 px-3 py-1.5 text-xs font-medium text-primary hover:bg-primary/10">Iniciar Relay Sandbox</button>
+        </div>
+        {relay && (
+          <div className="rounded-lg border border-border bg-surface-2 p-3 text-[11px]">
+            <p className="text-muted-foreground">status: <span className="text-foreground">{relay.status}</span> · provider: {relay.provider} · next: {relay.next_step} · real_action_allowed: false</p>
+            <div className="mt-2 flex flex-wrap gap-1.5">
+              <button onClick={() => relayStep('observe', { instruction: 'observar tela' })} className="rounded border border-border px-2 py-0.5 text-[10px] hover:bg-surface-2">observe</button>
+              <button onClick={() => relayStep('act', { instruction: 'preencher/clicar' })} className="rounded border border-border px-2 py-0.5 text-[10px] hover:bg-surface-2">act</button>
+              <button onClick={() => relayStep('extract', { query: 'status' })} className="rounded border border-border px-2 py-0.5 text-[10px] hover:bg-surface-2">extract</button>
+              <button onClick={() => relayStep('challenge', { challenge_signal: 'recaptcha' })} className="rounded border border-border px-2 py-0.5 text-[10px] hover:bg-surface-2">simular challenge</button>
+              <button onClick={() => relayStep('complete')} className="rounded border border-border px-2 py-0.5 text-[10px] hover:bg-surface-2">complete</button>
+              <button onClick={() => relayStep('cancel')} className="rounded border border-border px-2 py-0.5 text-[10px] hover:bg-surface-2">cancel</button>
+            </div>
+            {Array.isArray(relay.events) && (
+              <ul className="mt-2 space-y-0.5">
+                {relay.events.slice(-8).map((e: any, i: number) => (
+                  <li key={i} className="text-[10px] text-muted-foreground">{e.type}{e.note ? ` — ${e.note}` : ''}</li>
+                ))}
+              </ul>
+            )}
+          </div>
+        )}
       </div>
     </div>
   );
