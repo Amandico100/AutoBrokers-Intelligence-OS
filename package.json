@@ -29,7 +29,8 @@
     "test:action-plan-alignment": "node scripts/attendance-action-plan-registry-alignment.test.mjs",
     "test:provider-adapters": "node scripts/attendance-provider-adapters-homologation.test.mjs",
     "test:portal-browser-contracts": "node scripts/attendance-portal-browser-contracts.test.mjs",
-    "test:portal-admin-registry": "node scripts/attendance-portal-admin-registry.test.mjs"
+    "test:portal-admin-registry": "node scripts/attendance-portal-admin-registry.test.mjs",
+    "test:portal-canonical-store": "node scripts/attendance-portal-canonical-store.test.mjs"
   },
   "dependencies": {
     "@hookform/resolvers": "^3.9.0",

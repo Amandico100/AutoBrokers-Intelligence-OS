@@ -33,7 +33,8 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
     accounts[idx] = updated;
     try { await savePortalAccount(supabase, companyId, updated); }
     catch (e: any) { return NextResponse.json({ ok: false, error: e?.message || 'vault_not_available' }, { status: 200 }); }
-    return NextResponse.json({ ok: true, account: sanitizePortalAccountRecord(updated), real_action_allowed: false });
+    const sanitized = sanitizePortalAccountRecord(updated);
+    return NextResponse.json({ ok: true, credential_ref: (sanitized as any).credential_ref, account: sanitized, real_action_allowed: false });
   } catch (error: any) {
     console.error('[PORTAL CREDENTIAL-REF POST]', error?.message);
     return NextResponse.json({ ok: false, error: 'Erro interno' }, { status: 500 });

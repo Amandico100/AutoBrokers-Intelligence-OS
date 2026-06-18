@@ -41,7 +41,7 @@ console.log('\n[1] portal definition');
   assert('segredo no input → erro', validatePortalDefinitionInput({ label: 'x', owner_key: 'y', base_url: 'https://x.com', password: 'p' }).errors.includes('forbidden_secret_field_present'));
   const rec = buildPortalDefinitionRecord({ label: 'Allianz', owner_key: 'allianz', base_url: 'https://portal.allianz.com.br', auth_methods: ['password', 'mfa', 'captcha'], supported_journeys: ['residential_assistance'] });
   assert('challenge_profile requires_hitl', rec.challenge_profile.requires_hitl === true);
-  assert('browser_strategy default browserbase', rec.browser_strategy === 'browserbase');
+  assert('browser_strategy normalizado (primary browserbase)', rec.browser_strategy.primary === 'browserbase');
   assert('status default draft', rec.status === 'draft');
 }
 

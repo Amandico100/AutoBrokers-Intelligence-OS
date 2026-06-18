@@ -9,8 +9,57 @@ import { getIronSession } from 'iron-session';
 import { createClient, type SupabaseClient } from '@supabase/supabase-js';
 import { sessionOptions, adminSessionOptions, SessionData, AdminSessionData } from '@/lib/iron-session';
 import type { PortalDefinitionRecord, PortalAccountRecord } from '@/lib/attendance/portal-admin-sanitizers';
+import { PORTAL_BROWSER_CONNECTOR_SLUG } from '@/lib/attendance/portal-admin-sanitizers';
 
 const CONN_NAME = 'autobrokers_portal_browser';
+
+/**
+ * 43P1.1 — garante um connector_template próprio `portal_browser`. Cria se
+ * faltar (best-effort). NUNCA reaproveita whatsapp_zapi silenciosamente:
+ * retorna { id, fallback, warning } e o chamador registra o fallback explícito.
+ */
+export async function ensurePortalBrowserConnectorTemplate(
+  supabase: SupabaseClient,
+): Promise<{ id: string | null; slug: string; fallback: boolean; warning?: string }> {
+  try {
+    const { data: tpl } = await supabase
+      .from('connector_templates')
+      .select('id')
+      .eq('slug', PORTAL_BROWSER_CONNECTOR_SLUG)
+      .maybeSingle();
+    if (tpl?.id) return { id: tpl.id, slug: PORTAL_BROWSER_CONNECTOR_SLUG, fallback: false };
+
+    // Tenta criar o template canônico.
+    const { data: created } = await supabase
+      .from('connector_templates')
+      .insert({
+        slug: PORTAL_BROWSER_CONNECTOR_SLUG,
+        name: 'Portal Browser',
+        description: 'Automação de portais (browser relay) — cadastro global + contas tenant-private. Sem envio/ação real por padrão.',
+        category: 'browser_automation',
+        provider: 'autobrokers',
+        connector_kind: 'portal_browser',
+        auth_type: 'session_ref',
+        risk_level: 'high',
+        requires_approval_default: true,
+        capabilities: ['navigate', 'extract', 'dry_run'],
+      })
+      .select('id')
+      .single();
+    if (created?.id) return { id: created.id, slug: PORTAL_BROWSER_CONNECTOR_SLUG, fallback: false };
+  } catch { /* segue para fallback explícito */ }
+
+  // Fallback EXPLÍCITO (não silencioso): usa whatsapp_zapi só para satisfazer FK,
+  // marcando warning para o admin/relatório.
+  try {
+    const { data: legacy } = await supabase.from('connector_templates').select('id').eq('slug', 'whatsapp_zapi').maybeSingle();
+    if (legacy?.id) {
+      console.warn('[PORTAL TEMPLATE] portal_browser ausente — usando fallback whatsapp_zapi (warning explícito).');
+      return { id: legacy.id, slug: 'whatsapp_zapi', fallback: true, warning: 'portal_browser_template_missing' };
+    }
+  } catch { /* ignore */ }
+  return { id: null, slug: PORTAL_BROWSER_CONNECTOR_SLUG, fallback: true, warning: 'portal_browser_template_missing' };
+}
 
 export function getPortalSupabaseAdmin(): SupabaseClient {
   return createClient(
@@ -42,21 +91,32 @@ interface ConnRow { id: string; connection_config: Record<string, any> | null; }
 async function getOrCreateConn(supabase: SupabaseClient, companyId: string): Promise<ConnRow> {
   const { data: existing, error } = await supabase
     .from('tenant_connections')
-    .select('id, connection_config')
+    .select('id, connection_config, connector_template_id')
     .eq('company_id', companyId)
     .eq('name', CONN_NAME)
     .maybeSingle();
   if (error) throw new Error('vault_not_available');
-  if (existing) return existing as ConnRow;
 
-  const { data: tpl } = await supabase.from('connector_templates').select('id').eq('slug', 'whatsapp_zapi').maybeSingle();
-  if (!tpl?.id) throw new Error('connector_template_missing');
+  const tpl = await ensurePortalBrowserConnectorTemplate(supabase);
+
+  if (existing) {
+    // 43P1.1 — migração: se a connection do 43P1 aponta para outro template e
+    // agora existe o portal_browser canônico, re-aponta (preserva os dados).
+    if (tpl.id && !tpl.fallback && (existing as any).connector_template_id && (existing as any).connector_template_id !== tpl.id) {
+      try {
+        await supabase.from('tenant_connections').update({ connector_template_id: tpl.id }).eq('id', (existing as any).id).eq('company_id', companyId);
+      } catch { /* migração best-effort; dados preservados de qualquer forma */ }
+    }
+    return existing as ConnRow;
+  }
+
+  if (!tpl.id) throw new Error('connector_template_missing');
   const { data: created, error: insErr } = await supabase
     .from('tenant_connections')
     .insert({
       company_id: companyId, connector_template_id: tpl.id, name: CONN_NAME, status: 'draft',
       connection_config: { portal_definitions: [], portal_accounts: [] },
-      metadata: { purpose: 'portal_browser_registry_43p1' },
+      metadata: { purpose: 'portal_browser_registry_43p1', connector_slug: tpl.slug, template_fallback: tpl.fallback, ...(tpl.warning ? { warning: tpl.warning } : {}) },
     })
     .select('id, connection_config')
     .single();

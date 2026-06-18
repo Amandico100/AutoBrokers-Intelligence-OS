@@ -100,8 +100,9 @@ export default function PortalBrowserAdminPage() {
   return (
     <div className="p-8">
       <div className="mb-6">
+        <p className="mb-1 text-xs uppercase tracking-wide text-faint">Conectores → Portais</p>
         <h1 className="mb-2 flex items-center gap-3 text-3xl font-bold text-foreground"><Globe className="h-7 w-7" /> Portal Browser — Registry & Contas</h1>
-        <p className="text-sm text-muted-foreground">Cadastro global de portais e contas por corretora. CredentialRef/SessionRef são referências opacas (sem segredo).</p>
+        <p className="text-sm text-muted-foreground">Cadastro global de portais + contas privadas da corretora. CredentialRef/SessionRef são referências opacas (sem segredo). Conector próprio <code>portal_browser</code>.</p>
       </div>
 
       <div className="mb-6 flex items-center gap-2 rounded-lg border border-amber-500/40 bg-amber-500/5 px-4 py-2 text-sm text-amber-600">

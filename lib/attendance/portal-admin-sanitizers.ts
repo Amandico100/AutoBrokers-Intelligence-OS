@@ -9,7 +9,16 @@
 export type PortalOwnerKind = 'insurer' | 'provider' | 'regulator' | 'broker' | 'other';
 export type PortalDefinitionStatus = 'draft' | 'sandbox_ready' | 'needs_review' | 'inactive';
 export type PortalAuthMethod = 'password' | 'mfa' | 'captcha' | 'sso' | 'certificate' | 'otp';
-export type BrowserStrategy = 'browserbase' | 'local_playwright' | 'skyvern_lab' | 'unknown';
+export type BrowserStrategyKind = 'browserbase_playwright_stagehand' | 'browserbase' | 'local_playwright' | 'skyvern_lab' | 'unknown';
+
+/** 43P1.1 — estratégia de browser canônica (primary + fallback). */
+export interface BrowserStrategySpec {
+  primary: BrowserStrategyKind;
+  fallback: BrowserStrategyKind | null;
+}
+
+/** Connector template canônico do Portal Browser (NUNCA reaproveitar whatsapp_zapi). */
+export const PORTAL_BROWSER_CONNECTOR_SLUG = 'portal_browser' as const;
 
 export interface ChallengeProfile {
   captcha: boolean;
@@ -17,6 +26,20 @@ export interface ChallengeProfile {
   certificate: boolean;
   otp: boolean;
   requires_hitl: boolean; // SEMPRE true quando há qualquer challenge
+}
+
+/** Normaliza browser_strategy: aceita string OU {primary,fallback} → canônico. */
+export function normalizeBrowserStrategy(input: unknown): BrowserStrategySpec {
+  const valid = (v: unknown): BrowserStrategyKind => {
+    const allowed = ['browserbase_playwright_stagehand', 'browserbase', 'local_playwright', 'skyvern_lab', 'unknown'];
+    return (typeof v === 'string' && allowed.includes(v)) ? (v as BrowserStrategyKind) : 'unknown';
+  };
+  if (input && typeof input === 'object') {
+    const o = input as Record<string, unknown>;
+    return { primary: valid(o.primary ?? 'browserbase'), fallback: o.fallback != null ? valid(o.fallback) : null };
+  }
+  if (typeof input === 'string') return { primary: valid(input), fallback: null };
+  return { primary: 'browserbase', fallback: 'skyvern_lab' };
 }
 
 export interface PortalDefinitionRecord {
@@ -29,8 +52,9 @@ export interface PortalDefinitionRecord {
   supported_journeys: string[];
   auth_methods: PortalAuthMethod[];
   challenge_profile: ChallengeProfile;
-  browser_strategy: BrowserStrategy;
+  browser_strategy: BrowserStrategySpec;
   status: PortalDefinitionStatus;
+  scope?: 'global' | 'tenant_draft' | 'tenant_override';
   notes?: string | null;
   created_at: string;
   updated_at: string;
@@ -148,8 +172,10 @@ export interface BuildPortalDefinitionInput {
   login_url?: string | null;
   supported_journeys?: string[];
   auth_methods?: PortalAuthMethod[];
-  browser_strategy?: BrowserStrategy;
+  browser_strategy?: unknown; // string | {primary,fallback} → normalizado
+  challenge_profile?: Partial<ChallengeProfile> | null; // override explícito opcional
   status?: PortalDefinitionStatus;
+  scope?: 'global' | 'tenant_draft' | 'tenant_override';
   notes?: string | null;
   created_at?: string;
 }
@@ -157,6 +183,20 @@ export interface BuildPortalDefinitionInput {
 export function buildPortalDefinitionRecord(input: BuildPortalDefinitionInput): PortalDefinitionRecord {
   const now = nowIso();
   const authMethods = input.auth_methods ?? [];
+  // 43P1.1 — deriva o challenge_profile dos auth_methods, mas aceita override
+  // explícito; requires_hitl é sempre forçado quando há qualquer challenge.
+  const derived = buildChallengeProfile(authMethods);
+  const ov = input.challenge_profile ?? null;
+  const challenge_profile: ChallengeProfile = ov
+    ? {
+        captcha: ov.captcha ?? derived.captcha,
+        mfa: ov.mfa ?? derived.mfa,
+        certificate: ov.certificate ?? derived.certificate,
+        otp: ov.otp ?? derived.otp,
+        requires_hitl: true, // recomputado abaixo
+      }
+    : derived;
+  if (ov) challenge_profile.requires_hitl = challenge_profile.captcha || challenge_profile.mfa || challenge_profile.certificate || challenge_profile.otp;
   return {
     portal_id: input.portal_id ?? genId('portal'),
     label: input.label,
@@ -166,9 +206,10 @@ export function buildPortalDefinitionRecord(input: BuildPortalDefinitionInput): 
     login_url: input.login_url ?? null,
     supported_journeys: input.supported_journeys ?? [],
     auth_methods: authMethods,
-    challenge_profile: buildChallengeProfile(authMethods),
-    browser_strategy: input.browser_strategy ?? 'browserbase',
+    challenge_profile,
+    browser_strategy: normalizeBrowserStrategy(input.browser_strategy),
     status: input.status ?? 'draft',
+    scope: input.scope ?? 'tenant_draft',
     notes: input.notes ?? null,
     created_at: input.created_at ?? now,
     updated_at: now,
@@ -375,6 +416,77 @@ export function resolvePortalForJourney(
     challenge_required: def.challenge_profile.requires_hitl || health.status === 'challenge_required',
     next_step: health.usable ? 'ready_for_dry_run_43p3' : `resolve_${health.reason}`,
     real_action_allowed: false,
+  };
+}
+
+// --- 43P1.1 — Global Portal Catalog + canonical resolve ---------------------
+
+/**
+ * Catálogo GLOBAL de portais (canônico, sem credencial). Vazio até o intake real
+ * ser sincronizado (ver 43P1.1 intake sync manifest). NUNCA inventar URL real.
+ */
+export const GLOBAL_PORTAL_DEFINITIONS: PortalDefinitionRecord[] = [];
+
+export function getGlobalPortalCatalog(): PortalDefinitionRecord[] {
+  return GLOBAL_PORTAL_DEFINITIONS.map((d) => ({ ...d, scope: 'global' as const }));
+}
+
+export type PortalSource = 'global' | 'tenant_override' | 'tenant_draft' | 'none';
+
+export interface CanonicalPortalResolution extends PortalResolution {
+  portal_source: PortalSource;
+  account_source: 'tenant' | null;
+  connector_template: typeof PORTAL_BROWSER_CONNECTOR_SLUG;
+}
+
+/**
+ * Resolve canônico (43P1.1): catálogo global → override/draft do tenant → conta
+ * tenant saudável. Sempre real_action_allowed=false e connector_template
+ * portal_browser (nunca whatsapp_zapi). PURO.
+ */
+export function resolvePortalCanonical(
+  globalDefs: PortalDefinitionRecord[],
+  tenantDefs: PortalDefinitionRecord[],
+  accounts: PortalAccountRecord[],
+  ctx: ResolvePortalContext,
+): CanonicalPortalResolution {
+  const matches = (d: PortalDefinitionRecord): boolean => {
+    if (ctx.portal_id) return d.portal_id === ctx.portal_id;
+    if (ctx.owner_key) return d.owner_key === ctx.owner_key && (!ctx.journey || d.supported_journeys.includes(ctx.journey));
+    return false;
+  };
+  // Tenant override/draft tem prioridade sobre o global (corretora pode ajustar).
+  const tenantDef = tenantDefs.find(matches) || tenantDefs.find((d) => ctx.owner_key ? d.owner_key === ctx.owner_key : false);
+  const globalDef = globalDefs.find(matches) || globalDefs.find((d) => ctx.owner_key ? d.owner_key === ctx.owner_key : false);
+  const def = tenantDef ?? globalDef;
+  const portal_source: PortalSource = tenantDef
+    ? (tenantDef.scope === 'tenant_override' ? 'tenant_override' : 'tenant_draft')
+    : (globalDef ? 'global' : 'none');
+
+  const base = {
+    portal_account_status: null, credential_status: null, session_status: null,
+    challenge_required: false, real_action_allowed: false as const,
+    account_source: null, connector_template: PORTAL_BROWSER_CONNECTOR_SLUG,
+  };
+  if (!def) return { ...base, portal_available: false, portal_id: null, next_step: 'no_portal_definition', portal_source: 'none' };
+
+  const acct = accounts.find((a) => a.portal_id === def.portal_id && a.company_id === ctx.company_id);
+  if (!acct) {
+    return { ...base, portal_available: true, portal_id: def.portal_id, challenge_required: def.challenge_profile.requires_hitl, next_step: 'create_portal_account', portal_source };
+  }
+  const health = mockHealthCheck(acct);
+  return {
+    portal_available: true,
+    portal_id: def.portal_id,
+    portal_account_status: health.status,
+    credential_status: acct.credential_ref?.status ?? null,
+    session_status: acct.session_ref?.status ?? null,
+    challenge_required: def.challenge_profile.requires_hitl || health.status === 'challenge_required',
+    next_step: health.usable ? 'ready_for_dry_run_43p3' : `resolve_${health.reason}`,
+    real_action_allowed: false,
+    portal_source,
+    account_source: 'tenant',
+    connector_template: PORTAL_BROWSER_CONNECTOR_SLUG,
   };
 }
 
