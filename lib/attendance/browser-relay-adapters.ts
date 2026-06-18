@@ -126,3 +126,26 @@ export function getBrowserRelayAdapterRegistry(): BrowserRelayProviderAdapter[] 
 export function isKnownRelayProvider(key: string | null | undefined): boolean {
   return Boolean(key && (key as RelayProviderKey) in ADAPTERS);
 }
+
+export interface RelayEligibility {
+  eligible: boolean;
+  effective_mode: 'sandbox'; // SEMPRE sandbox neste estágio
+  provider: RelayProviderKey;
+  blockers: string[];
+  real_action_allowed: false;
+}
+
+/**
+ * 43P3 — gate de elegibilidade NOMEADO do relay. Recusa explicitamente
+ * qualquer modo real/real_future (rebaixa para sandbox) e providers
+ * desconhecidos. Prepara o caminho do 43P4 sem permitir real aqui.
+ */
+export function evaluateRelayEligibility(provider: string | null | undefined, requestedMode?: string | null): RelayEligibility {
+  const known = isKnownRelayProvider(provider);
+  const adapter = getBrowserRelayAdapter(provider);
+  const blockers: string[] = [];
+  if (!known) blockers.push('unknown_provider_downgraded_to_mock');
+  if (requestedMode && requestedMode !== 'sandbox') blockers.push('real_mode_not_allowed_43p3');
+  if (adapter.canOpenRealBrowser !== false) blockers.push('adapter_cannot_open_real_in_43p3'); // nunca ocorre
+  return { eligible: true, effective_mode: 'sandbox', provider: adapter.provider_key, blockers, real_action_allowed: false };
+}

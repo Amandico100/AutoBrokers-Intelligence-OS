@@ -130,6 +130,18 @@ export default function PortalBrowserAdminPage() {
     if (j?.ok) setRelay(j.relay); else setNotice(`Falha step: ${j?.error || ''}`);
   };
 
+  const [skills, setSkills] = useState<any[]>([]);
+  const [skillRun, setSkillRun] = useState<any>(null);
+  useEffect(() => { fetch('/api/admin/portal-browser/skills').then((r) => r.json()).then((j) => { if (j?.ok) setSkills(j.skills || []); }).catch(() => {}); }, []);
+  const runSkillDryRun = async (sk: any) => {
+    const res = await fetch('/api/admin/portal-browser/skills/dry-run', {
+      method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ portal_id: sk.portal_id, skill_key: sk.skill_key, provider: 'browserbase' }),
+    });
+    const j = await res.json().catch(() => ({}));
+    if (j?.ok) { setSkillRun(j.run); setNotice('Skill dry-run executada. Nenhum portal real acessado.'); } else setNotice(`Falha skill dry-run: ${j?.error || ''}`);
+  };
+
   return (
     <div className="p-8">
       <div className="mb-6">
@@ -297,6 +309,31 @@ export default function PortalBrowserAdminPage() {
                 ))}
               </ul>
             )}
+          </div>
+        )}
+      </div>
+
+      {/* Portal Skills (dry-run) — 43P3 */}
+      <div className="mt-6 rounded-lg border border-border bg-card p-4">
+        <div className="mb-2 flex flex-wrap items-center gap-2">
+          <p className="text-sm font-medium text-foreground">Portal Skills (dry-run)</p>
+          <span className="text-[11px] text-amber-600">Skill não acessa portal real nesta fase.</span>
+        </div>
+        {skills.length === 0 ? <p className="text-[11px] text-muted-foreground">Nenhuma skill disponível.</p> : (
+          <div className="flex flex-wrap gap-2">
+            {skills.map((sk) => (
+              <div key={sk.portal_skill_id} className="rounded-lg border border-border bg-surface-2 p-2 text-[11px]">
+                <p className="text-foreground">{sk.skill_key} · {sk.journey}</p>
+                <p className="text-muted-foreground">{sk.portal_id}</p>
+                <button onClick={() => runSkillDryRun(sk)} className="mt-1 rounded border border-primary/40 bg-primary/5 px-2 py-0.5 text-[10px] font-medium text-primary hover:bg-primary/10">Rodar dry-run {sk.skill_key}</button>
+              </div>
+            ))}
+          </div>
+        )}
+        {skillRun && (
+          <div className="mt-2 rounded-lg border border-border bg-surface-2 p-3 text-[11px]">
+            <p className="text-muted-foreground">status: <span className="text-foreground">{skillRun.status}</span> · next: {skillRun.next_step} · outputs: {(skillRun.outputs || []).join(', ') || '—'}</p>
+            {skillRun.eval && <p className="mt-1 text-muted-foreground">eval: passed={String(skillRun.eval.passed)} · score={skillRun.eval.score} · promote={String(skillRun.eval.safe_to_promote_to_sandbox_validated)} · real_action_allowed=false</p>}
           </div>
         )}
       </div>

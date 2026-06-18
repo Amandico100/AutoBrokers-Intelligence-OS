@@ -32,7 +32,8 @@
     "test:portal-admin-registry": "node scripts/attendance-portal-admin-registry.test.mjs",
     "test:portal-canonical-store": "node scripts/attendance-portal-canonical-store.test.mjs",
     "test:portal-intake-importer": "node scripts/attendance-portal-intake-importer.test.mjs",
-    "test:browser-relay-sandbox": "node scripts/attendance-browser-relay-sandbox.test.mjs"
+    "test:browser-relay-sandbox": "node scripts/attendance-browser-relay-sandbox.test.mjs",
+    "test:portal-skill-dryrun": "node scripts/attendance-portal-skill-dryrun.test.mjs"
   },
   "dependencies": {
     "@hookform/resolvers": "^3.9.0",

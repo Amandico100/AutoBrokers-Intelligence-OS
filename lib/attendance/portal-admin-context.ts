@@ -212,3 +212,22 @@ export async function saveRelaySession(supabase: SupabaseClient, companyId: stri
   const trimmed = arr.slice(-RELAY_KEEP);
   await writeArrays(supabase, conn, companyId, { relay_sessions: trimmed });
 }
+
+// --- Skill runs (43P3) — dry-run, mantém os últimos N ----------------------
+export async function getSkillRun(supabase: SupabaseClient, companyId: string, runId: string): Promise<any | null> {
+  const { data, error } = await supabase
+    .from('tenant_connections').select('connection_config')
+    .eq('company_id', companyId).eq('name', CONN_NAME).maybeSingle();
+  if (error) throw new Error('vault_not_available');
+  if (!data) return null;
+  const arr = readArr<any>({ id: '', connection_config: data.connection_config }, 'skill_runs');
+  return arr.find((r) => r?.run_id === runId) ?? null;
+}
+
+export async function saveSkillRun(supabase: SupabaseClient, companyId: string, run: any): Promise<void> {
+  const conn = await getOrCreateConn(supabase, companyId);
+  const arr = readArr<any>(conn, 'skill_runs');
+  const idx = arr.findIndex((r) => r?.run_id === run.run_id);
+  if (idx >= 0) arr[idx] = run; else arr.push(run);
+  await writeArrays(supabase, conn, companyId, { skill_runs: arr.slice(-RELAY_KEEP) });
+}

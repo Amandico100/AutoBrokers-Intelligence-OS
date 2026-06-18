@@ -113,7 +113,7 @@ const CHALLENGE_MAP: Record<string, PortalChallengeKind> = {
  * O hint é mascarado (sem OTP/token cru). PURO.
  */
 export function classifyChallenge(signal: string): PortalChallenge {
-  const s = (signal || '').toLowerCase();
+  const s = (signal || '').toLowerCase().normalize('NFD').replace(/[̀-ͯ]/g, '');
   let kind: PortalChallengeKind = 'unknown';
   for (const [needle, k] of Object.entries(CHALLENGE_MAP)) {
     if (s.includes(needle)) { kind = k; break; }

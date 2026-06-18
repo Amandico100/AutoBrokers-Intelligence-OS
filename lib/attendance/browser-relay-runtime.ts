@@ -67,7 +67,8 @@ const CHALLENGE_MAP: Record<string, RelayChallengeKind> = {
   expired: 'session_expired', expirada: 'session_expired', expirou: 'session_expired',
 };
 function classifyRelayChallenge(signal: string): RelayChallengeKind {
-  const s = (signal || '').toLowerCase();
+  // Insensível a acento (ex.: "código" → "codigo").
+  const s = (signal || '').toLowerCase().normalize('NFD').replace(/[̀-ͯ]/g, '');
   for (const [needle, kind] of Object.entries(CHALLENGE_MAP)) if (s.includes(needle)) return kind;
   return 'unknown';
 }

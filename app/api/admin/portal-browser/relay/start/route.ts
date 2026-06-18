@@ -3,7 +3,7 @@ import { getPortalSupabaseAdmin, getPortalAdminContext, listPortalDefinitions, l
 import { resolvePortalCanonical } from '@/lib/attendance/portal-admin-sanitizers';
 import { getGlobalPortalCatalogSeed } from '@/lib/attendance/portal-global-catalog';
 import { findRequestSecrets } from '@/lib/attendance/portal-admin-sanitizers';
-import { getBrowserRelayAdapter, isKnownRelayProvider } from '@/lib/attendance/browser-relay-adapters';
+import { getBrowserRelayAdapter, isKnownRelayProvider, evaluateRelayEligibility } from '@/lib/attendance/browser-relay-adapters';
 import { startBrowserRelaySandbox } from '@/lib/attendance/browser-relay-runtime';
 
 export const dynamic = 'force-dynamic';
@@ -22,6 +22,8 @@ export async function POST(request: NextRequest) {
 
     const provider = isKnownRelayProvider(body.provider) ? body.provider : 'mock';
     const adapter = getBrowserRelayAdapter(provider);
+    // 43P3 — gate de elegibilidade nomeado: nunca permite modo real aqui.
+    const eligibility = evaluateRelayEligibility(provider, body.mode);
 
     let definitions; let accounts;
     try { definitions = await listPortalDefinitions(supabase, companyId); accounts = await listPortalAccounts(supabase, companyId); }
@@ -48,7 +50,7 @@ export async function POST(request: NextRequest) {
     try { await saveRelaySession(supabase, companyId, session); } catch { /* persist best-effort */ }
 
     console.log(`[PORTAL RELAY START] company=${companyId} portal=${resolution.portal_id} provider=${provider} status=${session.status} real_action_allowed=false`);
-    return NextResponse.json({ ok: true, relay: session, resolution, adapter: { provider_key: adapter.provider_key, canOpenRealBrowser: adapter.canOpenRealBrowser }, real_action_allowed: false });
+    return NextResponse.json({ ok: true, relay: session, resolution, eligibility, adapter: { provider_key: adapter.provider_key, canOpenRealBrowser: adapter.canOpenRealBrowser }, real_action_allowed: false });
   } catch (error: any) {
     console.error('[PORTAL RELAY START]', error?.message);
     return NextResponse.json({ ok: false, error: 'Erro interno' }, { status: 500 });
