@@ -142,6 +142,17 @@ export default function PortalBrowserAdminPage() {
     if (j?.ok) { setSkillRun(j.run); setNotice('Skill dry-run executada. Nenhum portal real acessado.'); } else setNotice(`Falha skill dry-run: ${j?.error || ''}`);
   };
 
+  const [candidates, setCandidates] = useState<any[]>([]);
+  const [candFilter, setCandFilter] = useState({ exclude: true });
+  const loadCandidates = useCallback(async () => {
+    const qs = new URLSearchParams({ audience: 'corretor', status: 'sandbox_ready', confidence: 'confirmed', limit: '40' });
+    if (candFilter.exclude) qs.set('exclude_mfa_captcha', 'true');
+    const res = await fetch(`/api/admin/portal-browser/skill-factory/candidates?${qs.toString()}`);
+    const j = await res.json().catch(() => ({}));
+    if (j?.ok) setCandidates(j.candidates || []);
+  }, [candFilter]);
+  useEffect(() => { loadCandidates(); }, [loadCandidates]);
+
   return (
     <div className="p-8">
       <div className="mb-6">
@@ -336,6 +347,39 @@ export default function PortalBrowserAdminPage() {
             {skillRun.eval && <p className="mt-1 text-muted-foreground">eval: passed={String(skillRun.eval.passed)} · score={skillRun.eval.score} · promote={String(skillRun.eval.safe_to_promote_to_sandbox_validated)} · real_action_allowed=false</p>}
           </div>
         )}
+      </div>
+
+      {/* Skill Factory — 43P3.1 */}
+      <div className="mt-6 rounded-lg border border-border bg-card p-4">
+        <div className="mb-2 flex flex-wrap items-center gap-2">
+          <p className="text-sm font-medium text-foreground">Skill Factory — candidatos do catálogo</p>
+          <span className="text-[11px] text-amber-600">Skills são candidatas; nenhuma ação real.</span>
+          <label className="ml-auto flex items-center gap-1 text-[11px] text-muted-foreground">
+            <input type="checkbox" checked={candFilter.exclude} onChange={(e) => setCandFilter({ exclude: e.target.checked })} /> excluir MFA/captcha
+          </label>
+        </div>
+        <div className="max-h-72 overflow-auto rounded-lg border border-border">
+          <table className="w-full text-xs">
+            <thead className="sticky top-0 bg-surface-2 text-left uppercase tracking-wide text-faint">
+              <tr><th className="px-2 py-1.5">Owner</th><th className="px-2 py-1.5">Portal</th><th className="px-2 py-1.5">Jornada</th><th className="px-2 py-1.5">Blueprint</th><th className="px-2 py-1.5">Risco</th><th className="px-2 py-1.5">Evid.</th><th className="px-2 py-1.5">Próximo passo</th></tr>
+            </thead>
+            <tbody>
+              {candidates.length === 0 ? <tr><td className="px-2 py-1.5 text-muted-foreground" colSpan={7}>Sem candidatos.</td></tr> :
+                candidates.map((c, i) => (
+                  <tr key={`${c.portal_id}-${c.journey}-${i}`} className="border-t border-border">
+                    <td className="px-2 py-1.5 text-foreground">{c.owner_key}</td>
+                    <td className="px-2 py-1.5 text-muted-foreground">{c.portal_id}</td>
+                    <td className="px-2 py-1.5 text-muted-foreground">{c.journey}</td>
+                    <td className="px-2 py-1.5 text-muted-foreground">{c.blueprint_key}</td>
+                    <td className="px-2 py-1.5 text-muted-foreground">{c.risk_level}</td>
+                    <td className="px-2 py-1.5 text-muted-foreground">{c.evidence_score}</td>
+                    <td className="px-2 py-1.5 text-muted-foreground">{c.suggested_next_step}</td>
+                  </tr>
+                ))}
+            </tbody>
+          </table>
+        </div>
+        <p className="mt-2 text-[10px] text-faint">Cada candidato deriva de evidência do catálogo oficial. Promoção máxima nesta fase: sandbox_validated.</p>
       </div>
     </div>
   );
