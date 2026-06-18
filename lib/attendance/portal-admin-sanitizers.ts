@@ -56,6 +56,7 @@ export interface PortalDefinitionRecord {
   status: PortalDefinitionStatus;
   scope?: 'global' | 'tenant_draft' | 'tenant_override';
   notes?: string | null;
+  metadata?: Record<string, unknown>; // 43P1.2 — evidência/fonte/confidence (sem credencial/PII)
   created_at: string;
   updated_at: string;
 }

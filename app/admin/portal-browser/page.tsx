@@ -35,6 +35,19 @@ export default function PortalBrowserAdminPage() {
   const [loading, setLoading] = useState(true);
   const [portalForm, setPortalForm] = useState({ label: '', owner_key: '', base_url: 'https://', journeys: '', auth: [] as string[] });
   const [acctForm, setAcctForm] = useState({ portal_id: '', label: '' });
+  const [globalCatalog, setGlobalCatalog] = useState<any[]>([]);
+  const [globalStats, setGlobalStats] = useState<any>(null);
+  const [catalogFilter, setCatalogFilter] = useState({ owner_key: '', status: '' });
+
+  const loadGlobalCatalog = useCallback(async () => {
+    const qs = new URLSearchParams();
+    if (catalogFilter.owner_key) qs.set('owner_key', catalogFilter.owner_key);
+    if (catalogFilter.status) qs.set('status', catalogFilter.status);
+    const res = await fetch(`/api/admin/portal-browser/global-catalog?${qs.toString()}`);
+    const j = await res.json().catch(() => ({}));
+    if (j?.ok) { setGlobalCatalog(j.catalog || []); setGlobalStats(j.stats || null); }
+  }, [catalogFilter]);
+  useEffect(() => { loadGlobalCatalog(); }, [loadGlobalCatalog]);
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -110,9 +123,47 @@ export default function PortalBrowserAdminPage() {
       </div>
       {notice && <p className="mb-4 text-sm text-muted-foreground">{notice}</p>}
 
+      {/* Catálogo Global (intake oficial) */}
+      <div className="mb-6 rounded-lg border border-border bg-card p-4">
+        <div className="mb-3 flex flex-wrap items-center gap-2">
+          <p className="text-sm font-medium text-foreground">Catálogo Global de Portais</p>
+          {globalStats && <span className="text-[11px] text-muted-foreground">{globalStats.deduped} portais · {globalStats.insurers?.length} seguradoras · {globalStats.seed_active} sandbox_ready · {globalStats.needs_review} needs_review</span>}
+        </div>
+        <div className="mb-2 flex flex-wrap gap-2">
+          <input value={catalogFilter.owner_key} onChange={(e) => setCatalogFilter({ ...catalogFilter, owner_key: e.target.value })} placeholder="filtrar owner_key (ex: allianz)" className="rounded-lg border border-border bg-background px-3 py-1.5 text-xs" />
+          <select value={catalogFilter.status} onChange={(e) => setCatalogFilter({ ...catalogFilter, status: e.target.value })} className="rounded-lg border border-border bg-background px-3 py-1.5 text-xs">
+            <option value="">todos status</option>
+            <option value="sandbox_ready">sandbox_ready</option>
+            <option value="needs_review">needs_review</option>
+          </select>
+        </div>
+        <div className="max-h-72 overflow-auto rounded-lg border border-border">
+          <table className="w-full text-xs">
+            <thead className="sticky top-0 bg-surface-2 text-left uppercase tracking-wide text-faint">
+              <tr><th className="px-2 py-1.5">Portal</th><th className="px-2 py-1.5">Owner</th><th className="px-2 py-1.5">Jornada</th><th className="px-2 py-1.5">Audiência</th><th className="px-2 py-1.5">Challenge</th><th className="px-2 py-1.5">Status</th><th className="px-2 py-1.5">Confiança</th></tr>
+            </thead>
+            <tbody>
+              {globalCatalog.length === 0 ? <tr><td className="px-2 py-1.5 text-muted-foreground" colSpan={7}>Catálogo vazio (verifique o intake).</td></tr> :
+                globalCatalog.slice(0, 200).map((c) => (
+                  <tr key={c.portal_id} className="border-t border-border">
+                    <td className="px-2 py-1.5 text-foreground">{c.label}</td>
+                    <td className="px-2 py-1.5 text-muted-foreground">{c.owner_key}</td>
+                    <td className="px-2 py-1.5 text-muted-foreground">{(c.supported_journeys || []).join(', ')}</td>
+                    <td className="px-2 py-1.5 text-muted-foreground">{c.metadata?.audience ?? '—'}</td>
+                    <td className="px-2 py-1.5 text-muted-foreground">{c.challenge_profile?.requires_hitl ? 'HITL' : '—'}</td>
+                    <td className="px-2 py-1.5 text-muted-foreground">{c.status}</td>
+                    <td className="px-2 py-1.5 text-muted-foreground">{c.metadata?.confidence ?? '—'}</td>
+                  </tr>
+                ))}
+            </tbody>
+          </table>
+        </div>
+        <p className="mt-2 text-[10px] text-faint">Fonte: intake oficial pesquisado. Sem credenciais. Contas da corretora são criadas separadamente abaixo.</p>
+      </div>
+
       {/* Criar portal */}
       <div className="mb-6 rounded-lg border border-border bg-card p-4">
-        <p className="mb-3 text-sm font-medium text-foreground">Criar portal</p>
+        <p className="mb-3 text-sm font-medium text-foreground">Portais da Corretora (tenant) — criar</p>
         <div className="grid grid-cols-1 gap-2 md:grid-cols-4">
           <input value={portalForm.label} onChange={(e) => setPortalForm({ ...portalForm, label: e.target.value })} placeholder="label (ex: Allianz Portal)" className="rounded-lg border border-border bg-background px-3 py-2 text-sm" />
           <input value={portalForm.owner_key} onChange={(e) => setPortalForm({ ...portalForm, owner_key: e.target.value })} placeholder="owner_key (ex: allianz)" className="rounded-lg border border-border bg-background px-3 py-2 text-sm" />

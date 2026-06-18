@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { getPortalSupabaseAdmin, getPortalAdminContext, listPortalDefinitions, listPortalAccounts } from '@/lib/attendance/portal-admin-context';
-import { resolvePortalCanonical, getGlobalPortalCatalog } from '@/lib/attendance/portal-admin-sanitizers';
+import { resolvePortalCanonical } from '@/lib/attendance/portal-admin-sanitizers';
+import { getGlobalPortalCatalogSeed } from '@/lib/attendance/portal-global-catalog';
 
 export const dynamic = 'force-dynamic';
 
@@ -22,7 +23,7 @@ export async function GET(request: NextRequest) {
       accounts = await listPortalAccounts(supabase, companyId);
     } catch (e: any) { return NextResponse.json({ ok: false, error: e?.message || 'vault_not_available', resolution: null }, { status: 200 }); }
 
-    const resolution = resolvePortalCanonical(getGlobalPortalCatalog(), definitions, accounts, {
+    const resolution = resolvePortalCanonical(getGlobalPortalCatalogSeed(), definitions, accounts, {
       company_id: companyId,
       owner_key: searchParams.get('owner_key'),
       portal_id: searchParams.get('portal_id'),
