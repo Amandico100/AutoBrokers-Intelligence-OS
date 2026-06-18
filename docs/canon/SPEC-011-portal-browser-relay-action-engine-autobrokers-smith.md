@@ -403,6 +403,27 @@ Critério de pronto:
 
 ---
 
+## 8.1 Status de implementação — 43P0 (fundação)
+
+> Executado em 2026-06-17 (Claude Opus 4.8). Contratos **puros**, sem browser/login/portal real.
+
+Contratos TS criados (todos `dry_run`/`real_action_allowed=false`, sem segredo/PII):
+- `lib/attendance/portal-browser-registry.ts` — `PortalDefinition`, `PortalPage`, `PortalJourney`, `PortalChallengeRule`, `PortalMap`, `PortalSkill`, `PortalActionCandidate` + `validatePortalDefinition`/`validatePortalMap`/`validatePortalSkill`, `sanitizePortalDefinition`, `buildPortalActionCandidate`, `findForbiddenKeys`.
+- `lib/attendance/portal-session-contracts.ts` — `CredentialRef`, `SessionRef` + `buildCredentialRef`/`buildSessionRef` (lançam se receberem segredo cru), `sanitizeCredentialRef`/`sanitizeSessionRef` (mascaram refs), `evaluateSessionHealth` (só metadados), `findSessionForbiddenKeys`.
+- `lib/attendance/browser-relay-contracts.ts` — `BrowserRelaySession`, `BrowserRelayEvent`, `PortalChallenge`, `PortalTraceSummary` + `createBrowserRelaySession` (rebaixa `real_future`→`sandbox`), `applyRelayEvent` (guard de estado terminal, mascarado), `classifyChallenge` (CAPTCHA/2FA → HITL, nunca bypass), `buildTraceSummary`, `evaluatePortalPromotionGate` (12 gates; `real_action_allowed` literal `false`).
+
+Testes: `scripts/attendance-portal-browser-contracts.test.mjs` (56/56). `tsc` EXIT=0, build verde, regressão da stack de ação verde.
+
+Garantias travadas no 43P0:
+- `dry_run=true`, `real_send_allowed=false`, `external_action_sent=false`, `real_action_allowed=false` (tipos literais).
+- CredentialRef/SessionRef nunca carregam senha/token/cookie/storageState/OTP; sanitização mascara `vault_ref`/`storage_ref`.
+- CAPTCHA/OTP/MFA/certificado/conta bloqueada → `requires_human:true, bypass_allowed:false`; OTP mascarado.
+- Promotion Gate sempre bloqueia ação real (faltam credencial real, sessão saudável, flag `PORTAL_REAL_ACTION_ENABLED`, approval, kill switch, eval).
+
+Relatório completo: `docs/canon/design/2026-06-claude-design/43P0-portal-browser-relay-audit-foundation-report.md`.
+
+---
+
 ## 9. Critérios de sucesso de longo prazo
 
 A estrutura será considerada forte quando:
