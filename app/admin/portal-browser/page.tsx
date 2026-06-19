@@ -142,6 +142,17 @@ export default function PortalBrowserAdminPage() {
     if (j?.ok) { setSkillRun(j.run); setNotice('Skill dry-run executada. Nenhum portal real acessado.'); } else setNotice(`Falha skill dry-run: ${j?.error || ''}`);
   };
 
+  const [loginSetup, setLoginSetup] = useState<any>(null);
+  const startLoginAssisted = async (portalId: string, accountId: string) => {
+    const res = await fetch('/api/admin/portal-browser/login-setup/start', {
+      method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ portal_id: portalId, portal_account_id: accountId, provider: 'browserbase' }),
+    });
+    const j = await res.json().catch(() => ({}));
+    if (j?.ok) { setLoginSetup({ ...j.login_setup, production_gate: j.production_gate }); setNotice('Login assistido iniciado (gated). Nenhum browser real aberto.'); }
+    else setNotice(`Falha login assistido: ${j?.error || ''}`);
+  };
+
   const [candidates, setCandidates] = useState<any[]>([]);
   const [candFilter, setCandFilter] = useState({ exclude: true });
   const loadCandidates = useCallback(async () => {
@@ -280,6 +291,7 @@ export default function PortalBrowserAdminPage() {
                       <button onClick={() => addCredentialRef(a.portal_account_id)} className="rounded border border-border px-2 py-0.5 text-[10px] hover:bg-surface-2">+ CredentialRef</button>
                       <button onClick={() => addSessionRef(a.portal_account_id)} className="rounded border border-border px-2 py-0.5 text-[10px] hover:bg-surface-2">+ SessionRef</button>
                       <button onClick={() => healthCheck(a.portal_account_id)} className="rounded border border-border px-2 py-0.5 text-[10px] hover:bg-surface-2">Health check</button>
+                      <button onClick={() => startLoginAssisted(a.portal_id, a.portal_account_id)} className="rounded border border-amber-500/40 bg-amber-500/5 px-2 py-0.5 text-[10px] text-amber-600 hover:bg-amber-500/10">Iniciar login assistido</button>
                     </div>
                   </td>
                 </tr>
@@ -381,6 +393,23 @@ export default function PortalBrowserAdminPage() {
         </div>
         <p className="mt-2 text-[10px] text-faint">Cada candidato deriva de evidência do catálogo oficial. Promoção máxima nesta fase: sandbox_validated.</p>
       </div>
+
+      {/* Login assistido (43P4) */}
+      {loginSetup && (
+        <div className="mt-6 rounded-lg border border-border bg-card p-4">
+          <div className="mb-2 flex flex-wrap items-center gap-2">
+            <p className="text-sm font-medium text-foreground">Login assistido (gated)</p>
+            <span className="text-[11px] text-amber-600">Nenhum browser/login real é aberto nesta fase. Exige flags + aprovação + kill switch off.</span>
+          </div>
+          <p className="text-[11px] text-muted-foreground">setup: {loginSetup.setup_id} · status: <span className="text-foreground">{loginSetup.status}</span> · próximo: {loginSetup.next_step} · real_browser_opened: false</p>
+          {Array.isArray(loginSetup.blockers) && loginSetup.blockers.length > 0 && (
+            <p className="mt-1 text-[10px] text-muted-foreground">Bloqueios: {loginSetup.blockers.join(', ')}</p>
+          )}
+          {loginSetup.production_gate && (
+            <p className="mt-1 text-[10px] text-muted-foreground">Gate de produção: allowed={String(loginSetup.production_gate.allowed)} · {(loginSetup.production_gate.blockers || []).join(', ')}</p>
+          )}
+        </div>
+      )}
     </div>
   );
 }

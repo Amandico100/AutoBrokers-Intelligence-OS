@@ -256,3 +256,22 @@ export async function saveSkillRun(supabase: SupabaseClient, companyId: string, 
   if (idx >= 0) arr[idx] = run; else arr.push(run);
   await writeArrays(supabase, conn, companyId, { skill_runs: arr.slice(-RELAY_KEEP) });
 }
+
+// --- Login setups (43P4) — assistido, mantém os últimos N ------------------
+export async function getLoginSetup(supabase: SupabaseClient, companyId: string, setupId: string): Promise<any | null> {
+  const { data, error } = await supabase
+    .from('tenant_connections').select('connection_config')
+    .eq('company_id', companyId).eq('name', CONN_NAME).maybeSingle();
+  if (error) throw new Error('vault_not_available');
+  if (!data) return null;
+  const arr = readArr<any>({ id: '', connection_config: data.connection_config }, 'login_setups');
+  return arr.find((r) => r?.setup_id === setupId) ?? null;
+}
+
+export async function saveLoginSetup(supabase: SupabaseClient, companyId: string, setup: any): Promise<void> {
+  const conn = await getOrCreateConn(supabase, companyId);
+  const arr = readArr<any>(conn, 'login_setups');
+  const idx = arr.findIndex((r) => r?.setup_id === setup.setup_id);
+  if (idx >= 0) arr[idx] = setup; else arr.push(setup);
+  await writeArrays(supabase, conn, companyId, { login_setups: arr.slice(-RELAY_KEEP) });
+}
