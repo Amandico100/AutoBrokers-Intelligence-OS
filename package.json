@@ -36,7 +36,8 @@
     "test:portal-skill-dryrun": "node scripts/attendance-portal-skill-dryrun.test.mjs",
     "test:portal-skill-factory": "node scripts/attendance-portal-skill-factory.test.mjs",
     "test:security-gates": "node scripts/security-production-gates.test.mjs",
-    "test:portal-login-setup": "node scripts/attendance-portal-login-setup.test.mjs"
+    "test:portal-login-setup": "node scripts/attendance-portal-login-setup.test.mjs",
+    "test:browserbase-real-adapter": "node scripts/attendance-browserbase-real-adapter.test.mjs"
   },
   "dependencies": {
     "@hookform/resolvers": "^3.9.0",

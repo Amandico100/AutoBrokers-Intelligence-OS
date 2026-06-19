@@ -143,6 +143,8 @@ export default function PortalBrowserAdminPage() {
   };
 
   const [loginSetup, setLoginSetup] = useState<any>(null);
+  const [bbReadiness, setBbReadiness] = useState<any>(null);
+  useEffect(() => { fetch('/api/admin/portal-browser/login-setup/browserbase/readiness').then((r) => r.json()).then((j) => { if (j?.ok) setBbReadiness(j.readiness); }).catch(() => {}); }, []);
   const startLoginAssisted = async (portalId: string, accountId: string) => {
     const res = await fetch('/api/admin/portal-browser/login-setup/start', {
       method: 'POST', headers: { 'Content-Type': 'application/json' },
@@ -393,6 +395,27 @@ export default function PortalBrowserAdminPage() {
         </div>
         <p className="mt-2 text-[10px] text-faint">Cada candidato deriva de evidência do catálogo oficial. Promoção máxima nesta fase: sandbox_validated.</p>
       </div>
+
+      {/* Browserbase readiness (43P4.1) */}
+      {bbReadiness && (
+        <div className="mt-6 rounded-lg border border-border bg-card p-4">
+          <div className="mb-2 flex flex-wrap items-center gap-2">
+            <p className="text-sm font-medium text-foreground">Browserbase — readiness (canary real)</p>
+            <span className="text-[11px] text-amber-600">Custo/segurança: abre browser real só com flags + aprovação + kill switch off.</span>
+          </div>
+          <p className="text-[11px] text-muted-foreground">
+            can_open_real_browser: <span className="font-medium text-foreground">{String(bbReadiness.can_open_real_browser)}</span>
+            {' '}· env: api_key={String(bbReadiness.env_present?.api_key_present)} / project_id={String(bbReadiness.env_present?.project_id_present)}
+          </p>
+          {Array.isArray(bbReadiness.blockers) && bbReadiness.blockers.length > 0 && (
+            <p className="mt-1 text-[10px] text-muted-foreground">Bloqueios: {bbReadiness.blockers.join(', ')}</p>
+          )}
+          <button disabled={!bbReadiness.can_open_real_browser} className="mt-2 rounded-lg border border-border px-3 py-1 text-[11px] text-muted-foreground disabled:opacity-50">
+            Iniciar canary real {bbReadiness.can_open_real_browser ? '' : '(bloqueado)'}
+          </button>
+          <p className="mt-1 text-[10px] text-faint">Nenhum segredo é exposto. Docs: docs.browserbase.com</p>
+        </div>
+      )}
 
       {/* Login assistido (43P4) */}
       {loginSetup && (

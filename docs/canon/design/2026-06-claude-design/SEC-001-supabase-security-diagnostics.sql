@@ -1,11 +1,11 @@
 -- SEC-001 — Supabase Security Diagnostics (READ-ONLY, RESULTADO ÚNICO).
 -- Não altera nada. Cole TUDO no SQL Editor e clique Run uma vez: retorna UMA
--- tabela com todas as checagens (o editor mostra só o último result set, por isso
--- consolidamos em um único SELECT via UNION ALL). Colunas: check / object / status / detail.
+-- tabela (UNION ALL) com todas as checagens. Colunas: check_name / object / status / detail.
+-- (Obs.: "check" é palavra reservada no Postgres — por isso usamos check_name.)
 
-with checks as (
+with diag as (
   -- 1) RLS + nº de policies (memória, tenant_connections, documents, messages)
-  select 'rls_policies' as check, c.relname as object,
+  select 'rls_policies' as check_name, c.relname as object,
          case when c.relrowsecurity then 'rls_on' else 'RLS_OFF' end as status,
          'policies=' || (select count(*) from pg_policies p where p.schemaname='public' and p.tablename=c.relname)::text as detail
   from pg_class c join pg_namespace n on n.oid = c.relnamespace
@@ -13,7 +13,7 @@ with checks as (
     and c.relname in ('memory_settings','user_memories','session_summaries','memory_processing_locks','tenant_connections','documents','messages')
 
   union all
-  -- 2) Colunas de escopo nas tabelas de memória (explica se a migration pôde criar policy)
+  -- 2) Colunas de escopo nas tabelas de memória
   select 'memory_columns', t.table_name, 'columns',
          coalesce(string_agg(t.column_name, ',' order by t.column_name), '(nenhuma de company_id/user_id/agent_id)')
   from information_schema.columns t
@@ -58,6 +58,6 @@ with checks as (
   where table_schema='public' and table_name='documents'
     and column_name in ('audience','sensitivity','status','company_id')
 )
-select check, object, status, detail
-from checks
-order by check, object;
+select check_name, object, status, detail
+from diag
+order by check_name, object;

@@ -4,6 +4,7 @@ import { findRequestSecrets, resolvePortalCanonical } from '@/lib/attendance/por
 import { getGlobalPortalCatalogSeed } from '@/lib/attendance/portal-global-catalog';
 import { startLoginSetup, sanitizeLoginSetup } from '@/lib/attendance/portal-login-setup';
 import { getProductionFlags, evaluatePortalRealActionGate } from '@/lib/security/production-gates';
+import { evaluateBrowserbaseReadiness } from '@/lib/attendance/browserbase-real-adapter';
 
 export const dynamic = 'force-dynamic';
 
@@ -52,8 +53,19 @@ export async function POST(request: NextRequest) {
 
     try { await saveLoginSetup(supabase, companyId, session); } catch { /* best-effort */ }
     const production_gate = evaluatePortalRealActionGate({ flags, session_capture: true, portal_status: resolution.portal_source });
-    console.log(`[LOGIN SETUP START] company=${companyId} portal=${session.portal_id} status=${session.status} real_browser_opened=false`);
-    return NextResponse.json({ ok: true, login_setup: sanitizeLoginSetup(session), production_gate, real_action_allowed: false });
+    // 43P4.1 — readiness do Browserbase real (gated; sem rede). Útil quando mode=real_canary.
+    const browserbase_readiness = evaluateBrowserbaseReadiness({
+      flags: {
+        global_kill_switch: flags.global_kill_switch,
+        portal_real_action_enabled: flags.portal_real_action_enabled,
+        portal_login_real_enabled: flags.portal_login_real_enabled,
+        portal_session_capture_enabled: flags.portal_session_capture_enabled,
+        browserbase_real_browser_enabled: flags.browserbase_real_browser_enabled,
+      },
+      approval_exists: body.approval_exists === true,
+    });
+    console.log(`[LOGIN SETUP START] company=${companyId} portal=${session.portal_id} status=${session.status} mode=${body.mode ?? 'sandbox'} real_browser_opened=false`);
+    return NextResponse.json({ ok: true, login_setup: sanitizeLoginSetup(session), production_gate, browserbase_readiness, real_action_allowed: false });
   } catch (error: any) {
     console.error('[LOGIN SETUP START]', error?.message);
     return NextResponse.json({ ok: false, error: 'Erro interno' }, { status: 500 });

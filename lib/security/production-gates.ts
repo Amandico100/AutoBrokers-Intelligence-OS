@@ -8,6 +8,7 @@ export interface ProductionFlags {
   portal_real_action_enabled: boolean;
   portal_login_real_enabled: boolean;
   portal_session_capture_enabled: boolean;
+  browserbase_real_browser_enabled: boolean;
   external_action_real_enabled: boolean;
   insurer_whatsapp_real_send_enabled: boolean;
   rag_publish_to_attendance_enabled: boolean;
@@ -27,6 +28,7 @@ export function getProductionFlags(env: EnvLike = (typeof process !== 'undefined
     portal_real_action_enabled: on('PORTAL_REAL_ACTION_ENABLED'),
     portal_login_real_enabled: on('PORTAL_LOGIN_REAL_ENABLED'),
     portal_session_capture_enabled: on('PORTAL_SESSION_CAPTURE_ENABLED'),
+    browserbase_real_browser_enabled: on('BROWSERBASE_REAL_BROWSER_ENABLED'),
     external_action_real_enabled: on('EXTERNAL_ACTION_REAL_ENABLED'),
     insurer_whatsapp_real_send_enabled: on('INSURER_WHATSAPP_REAL_SEND_ENABLED'),
     rag_publish_to_attendance_enabled: on('RAG_PUBLISH_TO_ATTENDANCE_ENABLED'),
