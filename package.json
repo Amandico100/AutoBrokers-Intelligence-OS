@@ -34,7 +34,8 @@
     "test:portal-intake-importer": "node scripts/attendance-portal-intake-importer.test.mjs",
     "test:browser-relay-sandbox": "node scripts/attendance-browser-relay-sandbox.test.mjs",
     "test:portal-skill-dryrun": "node scripts/attendance-portal-skill-dryrun.test.mjs",
-    "test:portal-skill-factory": "node scripts/attendance-portal-skill-factory.test.mjs"
+    "test:portal-skill-factory": "node scripts/attendance-portal-skill-factory.test.mjs",
+    "test:security-gates": "node scripts/security-production-gates.test.mjs"
   },
   "dependencies": {
     "@hookform/resolvers": "^3.9.0",

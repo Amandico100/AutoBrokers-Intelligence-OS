@@ -11,6 +11,7 @@ import {
   type ExternalActionOutboxEntry,
   type OutboxAuditEvent,
 } from '@/lib/attendance/action-engine';
+import { evaluateExternalActionRealSendGate } from '@/lib/security/production-gates';
 
 export const dynamic = 'force-dynamic';
 
@@ -82,10 +83,13 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
       .eq('company_id', companyId);
 
     console.log(`[ACTION OUTBOX APPROVE] case=${caseId} company=${companyId} outbox=${approved.outbox_id} status=${approved.status} sent=false`);
+    // SEC-001 — snapshot do gate de envio real (sempre allowed=false neste estágio).
+    const production_gate = evaluateExternalActionRealSendGate({ channel: approved.channel, adapter_can_send_real: false, approval_exists: true });
     return NextResponse.json({
       ok: true,
       outbox_entry: approved,
       audit_events: audit.slice(-8),
+      production_gate,
       external_action: { allowed: false, send_allowed: false, sent: false, reason: 'approved_but_real_send_disabled_42x2' },
     });
   } catch (error: any) {

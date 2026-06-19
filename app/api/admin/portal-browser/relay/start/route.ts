@@ -5,6 +5,7 @@ import { getGlobalPortalCatalogSeed } from '@/lib/attendance/portal-global-catal
 import { findRequestSecrets } from '@/lib/attendance/portal-admin-sanitizers';
 import { getBrowserRelayAdapter, isKnownRelayProvider, evaluateRelayEligibility } from '@/lib/attendance/browser-relay-adapters';
 import { startBrowserRelaySandbox } from '@/lib/attendance/browser-relay-runtime';
+import { evaluatePortalRealActionGate } from '@/lib/security/production-gates';
 
 export const dynamic = 'force-dynamic';
 
@@ -50,7 +51,9 @@ export async function POST(request: NextRequest) {
     try { await saveRelaySession(supabase, companyId, session); } catch { /* persist best-effort */ }
 
     console.log(`[PORTAL RELAY START] company=${companyId} portal=${resolution.portal_id} provider=${provider} status=${session.status} real_action_allowed=false`);
-    return NextResponse.json({ ok: true, relay: session, resolution, eligibility, adapter: { provider_key: adapter.provider_key, canOpenRealBrowser: adapter.canOpenRealBrowser }, real_action_allowed: false });
+    // SEC-001 — snapshot do gate de produção (sempre allowed=false neste estágio).
+    const production_gate = evaluatePortalRealActionGate({ portal_status: resolution.portal_source });
+    return NextResponse.json({ ok: true, relay: session, resolution, eligibility, production_gate, adapter: { provider_key: adapter.provider_key, canOpenRealBrowser: adapter.canOpenRealBrowser }, real_action_allowed: false });
   } catch (error: any) {
     console.error('[PORTAL RELAY START]', error?.message);
     return NextResponse.json({ ok: false, error: 'Erro interno' }, { status: 500 });
