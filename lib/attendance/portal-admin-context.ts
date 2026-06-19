@@ -69,21 +69,46 @@ export function getPortalSupabaseAdmin(): SupabaseClient {
   );
 }
 
+/**
+ * Resolve company quando o admin/usuário não tem company vinculada na sessão
+ * (ex.: master admin). Estratégia segura: users_v2.company_id; senão, se houver
+ * EXATAMENTE UMA company (piloto single-tenant), usa-a. Múltiplas → null (força
+ * escopo explícito; não adivinha).
+ */
+async function resolveCompanyFallback(supabase: SupabaseClient, userId: string | null): Promise<string | null> {
+  if (userId) {
+    try {
+      const { data: u } = await supabase.from('users_v2').select('company_id').eq('id', userId).maybeSingle();
+      if (u?.company_id) return u.company_id;
+    } catch { /* segue */ }
+  }
+  try {
+    const { data: companies } = await supabase.from('companies').select('id').order('created_at', { ascending: true }).limit(2);
+    if (Array.isArray(companies) && companies.length === 1) return companies[0].id;
+  } catch { /* segue */ }
+  return null;
+}
+
 export async function getPortalAdminContext(supabase: SupabaseClient): Promise<{ companyId: string | null; userId: string | null }> {
   const cookieStore = await cookies();
+  let userId: string | null = null;
+  let companyId: string | null = null;
+
   const adminSession = await getIronSession<AdminSessionData>(cookieStore, adminSessionOptions);
   if (adminSession.adminId) {
-    if (adminSession.companyId) return { companyId: adminSession.companyId, userId: adminSession.adminId };
-    const { data: u } = await supabase.from('users_v2').select('company_id').eq('id', adminSession.adminId).single();
-    return { companyId: u?.company_id ?? null, userId: adminSession.adminId };
+    userId = adminSession.adminId;
+    companyId = adminSession.companyId ?? null;
+  } else {
+    const userSession = await getIronSession<SessionData>(cookieStore, sessionOptions);
+    if (userSession.userId) {
+      userId = userSession.userId;
+      companyId = userSession.companyId ?? null;
+    }
   }
-  const userSession = await getIronSession<SessionData>(cookieStore, sessionOptions);
-  if (userSession.userId && userSession.companyId) return { companyId: userSession.companyId, userId: userSession.userId };
-  if (userSession.userId) {
-    const { data: u } = await supabase.from('users_v2').select('company_id').eq('id', userSession.userId).single();
-    return { companyId: u?.company_id ?? null, userId: userSession.userId };
-  }
-  return { companyId: null, userId: null };
+
+  if (!userId) return { companyId: null, userId: null };
+  if (!companyId) companyId = await resolveCompanyFallback(supabase, userId);
+  return { companyId, userId };
 }
 
 interface ConnRow { id: string; connection_config: Record<string, any> | null; }
