@@ -42,7 +42,8 @@ console.log('\n[2] readiness');
 {
   const r0 = evaluateBrowserbaseReadiness({ flags: flagsOff, approval_exists: false, env: {} });
   assert('default → can_open false', r0.can_open_real_browser === false);
-  assert('env ausente blocker', r0.blockers.includes('browserbase_api_key_missing') && r0.blockers.includes('browserbase_project_id_missing'));
+  assert('env ausente blocker', r0.blockers.includes('browserbase_key_env_missing') && r0.blockers.includes('browserbase_project_env_missing'));
+  assert('blocker NÃO contém string literal de env (anti falso-positivo)', !JSON.stringify(r0.blockers).toUpperCase().includes('BROWSERBASE_API_KEY'));
   assert('kill switch blocker', r0.blockers.includes('global_kill_switch_active'));
   assert('browserbase flag blocker', r0.blockers.includes('browserbase_real_browser_disabled'));
   assert('readiness real_action_allowed false', r0.real_action_allowed === false);

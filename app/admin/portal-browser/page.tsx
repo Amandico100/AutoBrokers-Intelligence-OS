@@ -145,6 +145,19 @@ export default function PortalBrowserAdminPage() {
   const [loginSetup, setLoginSetup] = useState<any>(null);
   const [bbReadiness, setBbReadiness] = useState<any>(null);
   useEffect(() => { fetch('/api/admin/portal-browser/login-setup/browserbase/readiness').then((r) => r.json()).then((j) => { if (j?.ok) setBbReadiness(j.readiness); }).catch(() => {}); }, []);
+
+  // 43P4.2A — escopo de corretora (multi-tenant). O master admin escolhe a company;
+  // gravamos um cookie aj_company que vai em toda chamada às rotas de portal.
+  const [companyScope, setCompanyScope] = useState<{ is_master?: boolean; current_company_id?: string | null; company_scope_required?: boolean; companies?: any[] }>({});
+  const loadCompanies = useCallback(async () => {
+    const j = await fetch('/api/admin/portal-browser/companies').then((r) => r.json()).catch(() => ({}));
+    if (j?.ok) setCompanyScope({ is_master: j.is_master, current_company_id: j.current_company_id, company_scope_required: j.company_scope_required, companies: j.companies || [] });
+  }, []);
+  useEffect(() => { loadCompanies(); }, [loadCompanies]);
+  const selectCompany = (id: string) => {
+    document.cookie = `aj_company=${encodeURIComponent(id)}; path=/; SameSite=Lax`;
+    window.location.reload();
+  };
   const startLoginAssisted = async (portalId: string, accountId: string) => {
     const res = await fetch('/api/admin/portal-browser/login-setup/start', {
       method: 'POST', headers: { 'Content-Type': 'application/json' },
@@ -173,6 +186,31 @@ export default function PortalBrowserAdminPage() {
         <h1 className="mb-2 flex items-center gap-3 text-3xl font-bold text-foreground"><Globe className="h-7 w-7" /> Portal Browser — Registry & Contas</h1>
         <p className="text-sm text-muted-foreground">Cadastro global de portais + contas privadas da corretora. CredentialRef/SessionRef são referências opacas (sem segredo). Conector próprio <code>portal_browser</code>.</p>
       </div>
+
+      {/* 43P4.2A — Seletor de corretora (escopo multi-tenant para master admin) */}
+      {(companyScope.is_master || (companyScope.companies && companyScope.companies.length > 1)) && (
+        <div className="mb-6 rounded-lg border border-border bg-card p-4">
+          <div className="flex flex-wrap items-center gap-3">
+            <span className="text-sm font-medium text-foreground">Corretora (tenant)</span>
+            <select
+              value={companyScope.current_company_id || ''}
+              onChange={(e) => e.target.value && selectCompany(e.target.value)}
+              className="rounded-lg border border-border bg-background px-3 py-1.5 text-sm text-foreground"
+            >
+              <option value="">— selecione a corretora —</option>
+              {(companyScope.companies || []).map((c: any) => (
+                <option key={c.id} value={c.id}>{c.name || c.id}{c.status ? ` (${c.status})` : ''}</option>
+              ))}
+            </select>
+            {companyScope.current_company_id
+              ? <span className="text-[11px] text-emerald-600">Operando: {companyScope.current_company_id}</span>
+              : <span className="text-[11px] text-amber-600">Selecione uma corretora para operar os portais.</span>}
+          </div>
+          {companyScope.company_scope_required && !companyScope.current_company_id && (
+            <p className="mt-1 text-[11px] text-amber-600">Há mais de uma corretora; escolha qual você vai operar (escopo obrigatório).</p>
+          )}
+        </div>
+      )}
 
       <div className="mb-6 flex items-center gap-2 rounded-lg border border-amber-500/40 bg-amber-500/5 px-4 py-2 text-sm text-amber-600">
         <ShieldAlert className="h-4 w-4" /> Nenhum portal real é acessado nesta fase (43P1). Tudo mock/dry-run; CAPTCHA/2FA = HITL.

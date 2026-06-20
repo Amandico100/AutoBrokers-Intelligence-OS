@@ -4,7 +4,7 @@
 //   - connection_config.portal_definitions[]  (registry — tenant-scoped no MVP; TODO: promover a global)
 //   - connection_config.portal_accounts[]      (contas/refs por corretora)
 // Defensivo: se o Vault não estiver migrado, lança 'vault_not_available'.
-import { cookies } from 'next/headers';
+import { cookies, headers } from 'next/headers';
 import { getIronSession } from 'iron-session';
 import { createClient, type SupabaseClient } from '@supabase/supabase-js';
 import { sessionOptions, adminSessionOptions, SessionData, AdminSessionData } from '@/lib/iron-session';
@@ -69,46 +69,59 @@ export function getPortalSupabaseAdmin(): SupabaseClient {
   );
 }
 
-/**
- * Resolve company quando o admin/usuário não tem company vinculada na sessão
- * (ex.: master admin). Estratégia segura: users_v2.company_id; senão, se houver
- * EXATAMENTE UMA company (piloto single-tenant), usa-a. Múltiplas → null (força
- * escopo explícito; não adivinha).
- */
-async function resolveCompanyFallback(supabase: SupabaseClient, userId: string | null): Promise<string | null> {
-  if (userId) {
-    try {
-      const { data: u } = await supabase.from('users_v2').select('company_id').eq('id', userId).maybeSingle();
-      if (u?.company_id) return u.company_id;
-    } catch { /* segue */ }
-  }
-  try {
-    const { data: companies } = await supabase.from('companies').select('id').order('created_at', { ascending: true }).limit(2);
-    if (Array.isArray(companies) && companies.length === 1) return companies[0].id;
-  } catch { /* segue */ }
-  return null;
-}
+// 43P4.2A — escopo de company (multi-tenant). Lógica PURA em portal-company-scope.
+import { resolvePortalCompanyScope } from '@/lib/attendance/portal-company-scope';
+export { resolvePortalCompanyScope } from '@/lib/attendance/portal-company-scope';
 
-export async function getPortalAdminContext(supabase: SupabaseClient): Promise<{ companyId: string | null; userId: string | null }> {
+export async function getPortalAdminContext(
+  supabase: SupabaseClient,
+): Promise<{ companyId: string | null; userId: string | null; isMaster: boolean; company_scope_required: boolean }> {
   const cookieStore = await cookies();
   let userId: string | null = null;
-  let companyId: string | null = null;
+  let sessionCompany: string | null = null;
+  let isAdmin = false;
 
   const adminSession = await getIronSession<AdminSessionData>(cookieStore, adminSessionOptions);
   if (adminSession.adminId) {
-    userId = adminSession.adminId;
-    companyId = adminSession.companyId ?? null;
+    userId = adminSession.adminId; isAdmin = true; sessionCompany = adminSession.companyId ?? null;
   } else {
     const userSession = await getIronSession<SessionData>(cookieStore, sessionOptions);
-    if (userSession.userId) {
-      userId = userSession.userId;
-      companyId = userSession.companyId ?? null;
-    }
+    if (userSession.userId) { userId = userSession.userId; sessionCompany = userSession.companyId ?? null; }
+  }
+  if (!userId) return { companyId: null, userId: null, isMaster: false, company_scope_required: false };
+
+  // Escopo solicitado: header X-AutoBrokers-Company OU cookie aj_company
+  // (master admin escolhe a corretora no dashboard; cookie vai em toda chamada).
+  let requested: string | null = null;
+  try { requested = (await headers()).get('x-autobrokers-company'); } catch { requested = null; }
+  if (!requested) { try { requested = cookieStore.get('aj_company')?.value ?? null; } catch { requested = null; } }
+
+  let usersV2Company: string | null = null;
+  if (!sessionCompany) {
+    try { const { data: u } = await supabase.from('users_v2').select('company_id').eq('id', userId).maybeSingle(); usersV2Company = u?.company_id ?? null; } catch { /* segue */ }
+  }
+  let requestedExists = false;
+  if (!sessionCompany && isAdmin && requested) {
+    try { const { data: c } = await supabase.from('companies').select('id').eq('id', requested).maybeSingle(); requestedExists = Boolean(c?.id); } catch { /* segue */ }
+  }
+  let singleCompanyId: string | null = null;
+  if (!sessionCompany && !usersV2Company && !(requested && requestedExists)) {
+    try { const { data: companies } = await supabase.from('companies').select('id').order('created_at', { ascending: true }).limit(2); if (Array.isArray(companies) && companies.length === 1) singleCompanyId = companies[0].id; } catch { /* segue */ }
   }
 
-  if (!userId) return { companyId: null, userId: null };
-  if (!companyId) companyId = await resolveCompanyFallback(supabase, userId);
-  return { companyId, userId };
+  const scope = resolvePortalCompanyScope({
+    is_admin: isAdmin, session_company: sessionCompany, users_v2_company: usersV2Company,
+    requested_company: requested, requested_company_exists: requestedExists, single_company_id: singleCompanyId,
+  });
+  return { companyId: scope.companyId, userId, isMaster: scope.isMaster, company_scope_required: scope.company_scope_required };
+}
+
+/** Lista companies (id/nome/status) para o seletor do master admin. Sem dados sensíveis. */
+export async function listCompaniesForAdmin(supabase: SupabaseClient): Promise<Array<{ id: string; name: string | null; status: string | null }>> {
+  try {
+    const { data } = await supabase.from('companies').select('id, name, status').order('created_at', { ascending: true }).limit(200);
+    return Array.isArray(data) ? data.map((c: any) => ({ id: c.id, name: c.name ?? null, status: c.status ?? null })) : [];
+  } catch { return []; }
 }
 
 interface ConnRow { id: string; connection_config: Record<string, any> | null; }
