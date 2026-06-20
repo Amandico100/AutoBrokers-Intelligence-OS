@@ -2,7 +2,8 @@
 // CDP obtém storageState SÓ em memória e grava direto no Vault (Supabase Vault);
 // só a referência opaca (storage_ref) é persistida. Challenge → não captura.
 import { NextRequest, NextResponse } from 'next/server';
-import { getPortalSupabaseAdmin, getPortalAdminContext, getCanary, saveCanary } from '@/lib/attendance/portal-admin-context';
+import { getPortalSupabaseAdmin, getPortalAdminContext, getCanary, saveCanary, listPortalAccounts, savePortalAccount } from '@/lib/attendance/portal-admin-context';
+import { buildSessionRefRecord } from '@/lib/attendance/portal-admin-sanitizers';
 import { guardCanary, DEFAULT_CHALLENGE_SELECTORS } from '@/lib/attendance/portal-canary-guard';
 import { withBrowserbaseConnectUrl } from '@/lib/attendance/browserbase-session-server';
 import { captureStorageStateViaCdp } from '@/lib/attendance/portal-cdp-transport';
@@ -48,8 +49,21 @@ export async function POST(request: NextRequest) {
     }
     const r = cdp.result as { challenge: string | null; storage_ref: string | null; reason: string };
     if (r.challenge) canary = markChallenge(canary, r.challenge);
-    else if (r.storage_ref) canary = recordCanaryCapture(canary, r.storage_ref, 'healthy');
-    else canary = { ...canary }; // permanece; razão volta no payload
+    else if (r.storage_ref) {
+      canary = recordCanaryCapture(canary, r.storage_ref, 'healthy');
+      // 43P-FINAL-2A: VINCULAR a SessionRef à Portal Account (reuso futuro por agentes).
+      try {
+        const accounts = await listPortalAccounts(supabase, ctx.companyId);
+        const acc = accounts.find((a: any) => a.portal_account_id === canary.portal_account_id);
+        if (acc) {
+          acc.session_ref = buildSessionRefRecord({
+            company_id: ctx.companyId, portal_id: canary.portal_id, storage_ref: r.storage_ref,
+            provider: 'browserbase', status: 'healthy', expires_at: canary.expires_at ?? null,
+          });
+          await savePortalAccount(supabase, ctx.companyId, acc);
+        }
+      } catch (e: any) { console.error('[CANARY CAPTURE bind]', e?.message); }
+    } else canary = { ...canary }; // permanece; razão volta no payload
 
     await saveCanary(supabase, ctx.companyId, canary);
     const safe = sanitizeCanary(canary);

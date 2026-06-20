@@ -20,6 +20,7 @@ import {
   buildSessionRefRecord,
   deriveAccountStatus,
   findRequestSecrets,
+  sanitizePortalAccountRecord,
 } from '../lib/attendance/portal-admin-sanitizers.ts';
 
 let pass = 0, fail = 0;
@@ -105,6 +106,23 @@ console.log('\n[6] segurança');
   let threw = false;
   try { buildSessionRefRecord({ company_id: 'co', portal_id: 'p', storage_ref: 's', storageState: { cookies: [] } }); } catch { threw = true; }
   assert('session com storageState → lança', threw);
+}
+
+// [43P-FINAL-2A] SessionRef reuse-ref: persiste ref completa server-side, mas
+// o sanitizer só expõe a versão MASCARADA (nunca a ref completa) + reusable.
+console.log('\n[43P-FINAL-2A] SessionRef reuse-ref');
+{
+  const sref = buildSessionRefRecord({ company_id: 'C1', portal_id: 'P1', storage_ref: 'vault-uuid-1234567890', provider: 'browserbase', status: 'healthy' });
+  assert('record guarda storage_ref completo (server-side)', sref.storage_ref === 'vault-uuid-1234567890');
+  assert('record guarda versão mascarada', sref.storage_ref_masked && sref.storage_ref_masked !== 'vault-uuid-1234567890');
+  assert('healthy → last_verified_at preenchido', Boolean(sref.last_verified_at));
+  const acc = buildPortalAccountRecord({ company_id: 'C1', portal_id: 'P1', label: 'Resulta — AllianzNet' });
+  acc.session_ref = sref;
+  const safe = sanitizePortalAccountRecord(acc);
+  const raw = JSON.stringify(safe);
+  assert('sanitizer NÃO expõe storage_ref completo', !raw.includes('vault-uuid-1234567890'));
+  assert('sanitizer expõe storage_ref_masked', Boolean(safe.session_ref?.storage_ref_masked));
+  assert('sanitizer expõe reusable=true (healthy + ref)', safe.session_ref?.reusable === true);
 }
 
 console.log(`\n== Resumo: ${pass} passaram, ${fail} falharam ==`);

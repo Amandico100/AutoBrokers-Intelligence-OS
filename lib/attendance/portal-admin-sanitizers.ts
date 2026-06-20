@@ -66,7 +66,7 @@ export type PortalAccountStatus =
   | 'healthy' | 'expired' | 'challenge_required' | 'revoked' | 'error';
 
 export type CredentialRefRecordStatus = 'pending' | 'available' | 'revoked' | 'expired' | 'unknown';
-export type SessionRefRecordStatus = 'healthy' | 'expired' | 'challenge_required' | 'revoked' | 'unknown';
+export type SessionRefRecordStatus = 'healthy' | 'expired' | 'challenge_required' | 'reauth_required' | 'revoked' | 'unknown';
 export type SessionProvider = 'browserbase' | 'local_playwright' | 'skyvern_lab' | 'unknown';
 
 export interface CredentialRefRecord {
@@ -84,10 +84,14 @@ export interface SessionRefRecord {
   company_id: string;
   portal_id: string;
   storage_ref_masked: string; // NUNCA cookie/storageState
+  // 43P-FINAL-2A: referência opaca COMPLETA (uuid do secret no Vault), SÓ server-side
+  // (necessária para reuso/restore). NUNCA exposta no frontend (sanitizers só usam masked).
+  storage_ref?: string | null;
   provider: SessionProvider;
   status: SessionRefRecordStatus;
   expires_at?: string | null;
   last_checked_at?: string | null;
+  last_verified_at?: string | null;
   created_at: string;
   updated_at: string;
 }
@@ -290,10 +294,12 @@ export function buildSessionRefRecord(input: BuildSessionRefInput): SessionRefRe
     company_id: input.company_id,
     portal_id: input.portal_id,
     storage_ref_masked: maskRef(input.storage_ref),
+    storage_ref: input.storage_ref, // completo, server-side (reuso); nunca sanitizado p/ frontend
     provider: input.provider ?? 'browserbase',
     status: input.status ?? 'unknown',
     expires_at: input.expires_at ?? null,
     last_checked_at: null,
+    last_verified_at: input.status === 'healthy' ? now : null,
     created_at: now,
     updated_at: now,
   };
@@ -355,7 +361,7 @@ export function sanitizePortalAccountRecord(acc: PortalAccountRecord): Record<st
       ? { credential_ref_id: acc.credential_ref.credential_ref_id, vault_ref_masked: acc.credential_ref.vault_ref_masked, status: acc.credential_ref.status }
       : null,
     session_ref: acc.session_ref
-      ? { session_ref_id: acc.session_ref.session_ref_id, storage_ref_masked: acc.session_ref.storage_ref_masked, provider: acc.session_ref.provider, status: acc.session_ref.status, expires_at: acc.session_ref.expires_at ?? null }
+      ? { session_ref_id: acc.session_ref.session_ref_id, storage_ref_masked: acc.session_ref.storage_ref_masked, provider: acc.session_ref.provider, status: acc.session_ref.status, expires_at: acc.session_ref.expires_at ?? null, last_verified_at: acc.session_ref.last_verified_at ?? null, reusable: acc.session_ref.status === 'healthy' && Boolean(acc.session_ref.storage_ref) }
       : null,
     last_health_check_at: acc.last_health_check_at ?? null,
     notes: acc.notes ?? null,

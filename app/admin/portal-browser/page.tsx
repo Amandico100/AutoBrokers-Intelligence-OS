@@ -89,6 +89,23 @@ export default function PortalBrowserAdminPage() {
     if (j?.ok) { setAcctForm({ portal_id: '', label: '' }); await load(); } else setNotice(`Falha ao criar conta: ${j?.error || ''}`);
   };
 
+  // 43P-FINAL-2A — ativar um portal do catálogo para a corretora atual (sem campos técnicos).
+  const activateFromCatalog = async (c: any) => {
+    const company = (companyScope.companies || []).find((x: any) => x.id === companyScope.current_company_id);
+    if (!company) { setNotice('Selecione uma corretora primeiro.'); return; }
+    const exists = accounts.some((a) => a.portal_id === c.portal_id);
+    if (exists) { setNotice(`${c.label} já está conectado a esta corretora.`); return; }
+    const label = `${company.name || 'Corretora'} — ${c.label || c.portal_id}`;
+    const res = await fetch('/api/admin/portal-browser/accounts', {
+      method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ portal_id: c.portal_id, label }),
+    });
+    const j = await res.json().catch(() => ({}));
+    if (j?.ok) { setNotice(`Conta criada: ${label}`); await load(); } else setNotice(`Falha ao ativar: ${j?.error || ''}`);
+  };
+  // Heurística para identificar registros de teste/fixture (não usar em produção).
+  const isFixture = (s: string | undefined | null) => /sandbox|mock|fixture|canonical|test|teste|demo/i.test(String(s || ''));
+
   const addCredentialRef = async (id: string) => {
     const res = await fetch(`/api/admin/portal-browser/accounts/${id}/credential-ref`, {
       method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ vault_ref: `vault://mock-${Date.now()}` }),
@@ -185,6 +202,28 @@ export default function PortalBrowserAdminPage() {
     else window.open('https://www.browserbase.com/sessions', '_blank', 'noopener');
   };
 
+  // 43P-FINAL-2A — gestão/reuso de SessionRef da Portal Account.
+  const sessionRefAction = async (portalAccountId: string, action: string) => {
+    setCanaryBusy(`${action}:${portalAccountId}`);
+    try {
+      const r = await fetch('/api/admin/portal-browser/real-execution/session-ref', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ portal_account_id: portalAccountId, action }) });
+      const j = await r.json().catch(() => ({}));
+      setNotice(`SessionRef ${action}: ${j?.account?.session_ref?.status ?? j?.error ?? r.status}`);
+      await load();
+    } catch (e: any) { setNotice(`SessionRef ${action}: erro`); }
+    finally { setCanaryBusy(''); }
+  };
+  const reuseSkill = async (portalAccountId: string) => {
+    setCanaryBusy(`reuse:${portalAccountId}`);
+    try {
+      const r = await fetch('/api/admin/portal-browser/real-execution/reuse-skill', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ portal_account_id: portalAccountId }) });
+      const j = await r.json().catch(() => ({}));
+      const blk = j?.reuse?.blockers?.length ? ` (${j.reuse.blockers.join(', ')})` : '';
+      setNotice(`Reuso: ${j?.reuse?.reason ?? j?.error ?? r.status}${blk}`);
+    } catch (e: any) { setNotice('Reuso: erro'); }
+    finally { setCanaryBusy(''); }
+  };
+
   // 43P4.2A — escopo de corretora (multi-tenant). O master admin escolhe a company;
   // gravamos um cookie aj_company que vai em toda chamada às rotas de portal.
   const [companyScope, setCompanyScope] = useState<{ is_master?: boolean; current_company_id?: string | null; company_scope_required?: boolean; companies?: any[] }>({});
@@ -229,6 +268,12 @@ export default function PortalBrowserAdminPage() {
         <p className="text-sm text-muted-foreground">Cadastro global de portais + contas privadas da corretora. CredentialRef/SessionRef são referências opacas (sem segredo). Conector próprio <code>portal_browser</code>.</p>
       </div>
 
+      {/* 43P-FINAL-2A — Portal Lab: área técnica interna (master_admin) */}
+      <div className="mb-6 rounded-lg border border-sky-500/30 bg-sky-500/5 px-4 py-2 text-[11px] text-sky-700 dark:text-sky-300">
+        <strong>Portal Lab — área interna de homologação técnica.</strong> Use para conectar portais, validar/reusar sessão, homologar Skills e executar canaries.
+        Corretoras não usam Relay Sandbox, Skill Factory ou parâmetros técnicos — isso é só para engenharia/master admin.
+      </div>
+
       {/* 43P4.2A.1 — Seletor de corretora: SÓ master admin enumera/troca tenant. */}
       {companyScope.is_master === true && (
         <div className="mb-6 rounded-lg border border-border bg-card p-4">
@@ -241,7 +286,7 @@ export default function PortalBrowserAdminPage() {
             >
               <option value="">— selecione a corretora —</option>
               {(companyScope.companies || []).map((c: any) => (
-                <option key={c.id} value={c.id}>{c.name || c.id}{c.status ? ` (${c.status})` : ''}</option>
+                <option key={c.id} value={c.id}>{c.name || c.id}{c.status ? ` (${c.status})` : ''}{isFixture(c.name) ? ' · teste/fixture' : ''}</option>
               ))}
             </select>
             {companyScope.current_company_id
@@ -281,25 +326,31 @@ export default function PortalBrowserAdminPage() {
         <div className="max-h-72 overflow-auto rounded-lg border border-border">
           <table className="w-full text-xs">
             <thead className="sticky top-0 bg-surface-2 text-left uppercase tracking-wide text-faint">
-              <tr><th className="px-2 py-1.5">Portal</th><th className="px-2 py-1.5">Owner</th><th className="px-2 py-1.5">Jornada</th><th className="px-2 py-1.5">Audiência</th><th className="px-2 py-1.5">Challenge</th><th className="px-2 py-1.5">Status</th><th className="px-2 py-1.5">Confiança</th></tr>
+              <tr><th className="px-2 py-1.5">Portal</th><th className="px-2 py-1.5">Owner</th><th className="px-2 py-1.5">Jornada</th><th className="px-2 py-1.5">Challenge</th><th className="px-2 py-1.5">Status</th><th className="px-2 py-1.5">Ação</th></tr>
             </thead>
             <tbody>
-              {globalCatalog.length === 0 ? <tr><td className="px-2 py-1.5 text-muted-foreground" colSpan={7}>Catálogo vazio (verifique o intake).</td></tr> :
-                globalCatalog.slice(0, 200).map((c) => (
+              {globalCatalog.length === 0 ? <tr><td className="px-2 py-1.5 text-muted-foreground" colSpan={6}>Catálogo vazio (verifique o intake).</td></tr> :
+                globalCatalog.slice(0, 200).map((c) => {
+                  const connected = accounts.some((a) => a.portal_id === c.portal_id);
+                  return (
                   <tr key={c.portal_id} className="border-t border-border">
-                    <td className="px-2 py-1.5 text-foreground">{c.label}</td>
+                    <td className="px-2 py-1.5 text-foreground">{c.label}{isFixture(c.label) && <span className="ml-1 rounded bg-amber-500/15 px-1 text-[9px] text-amber-600">fixture</span>}</td>
                     <td className="px-2 py-1.5 text-muted-foreground">{c.owner_key}</td>
                     <td className="px-2 py-1.5 text-muted-foreground">{(c.supported_journeys || []).join(', ')}</td>
-                    <td className="px-2 py-1.5 text-muted-foreground">{c.metadata?.audience ?? '—'}</td>
                     <td className="px-2 py-1.5 text-muted-foreground">{c.challenge_profile?.requires_hitl ? 'HITL' : '—'}</td>
                     <td className="px-2 py-1.5 text-muted-foreground">{c.status}</td>
-                    <td className="px-2 py-1.5 text-muted-foreground">{c.metadata?.confidence ?? '—'}</td>
+                    <td className="px-2 py-1.5">
+                      {connected
+                        ? <span className="text-[10px] text-emerald-600">conectado</span>
+                        : <button onClick={() => activateFromCatalog(c)} disabled={!companyScope.current_company_id} className="rounded border border-primary/40 bg-primary/5 px-2 py-0.5 text-[10px] font-medium text-primary hover:bg-primary/10 disabled:opacity-40">Conectar à corretora</button>}
+                    </td>
                   </tr>
-                ))}
+                  );
+                })}
             </tbody>
           </table>
         </div>
-        <p className="mt-2 text-[10px] text-faint">Fonte: intake oficial pesquisado. Sem credenciais. Contas da corretora são criadas separadamente abaixo.</p>
+        <p className="mt-2 text-[10px] text-faint">Selecione a corretora no topo e clique em “Conectar à corretora” para ativar um portal — sem preencher campos técnicos. Sem credenciais aqui.</p>
       </div>
 
       {/* Criar portal */}
@@ -385,6 +436,12 @@ export default function PortalBrowserAdminPage() {
               ))}
           </tbody>
         </table>
+      </div>
+
+      {/* 43P-FINAL-2A — separador: daqui pra baixo é engenharia/homologação interna */}
+      <div className="mb-3 mt-10 border-t border-border pt-4">
+        <p className="text-[11px] font-medium uppercase tracking-wide text-faint">Avançado / Engenharia — uso interno</p>
+        <p className="text-[11px] text-muted-foreground">Relay Sandbox, Portal Skills e Skill Factory são ferramentas de homologação técnica. Corretoras não usam esta seção.</p>
       </div>
 
       {/* Relay Sandbox (mock) — 43P2 */}
@@ -501,6 +558,35 @@ export default function PortalBrowserAdminPage() {
           <p className="mt-1 text-[10px] text-faint">Nenhum segredo é exposto. Docs: docs.browserbase.com</p>
         </div>
       )}
+
+      {/* 43P-FINAL-2A — Sessões e Saúde (SessionRef por conta, reuso) */}
+      <div className="mt-6 rounded-lg border border-border bg-card p-4">
+        <p className="mb-2 text-sm font-medium text-foreground">Sessões e Saúde (SessionRef por corretora)</p>
+        {accounts.length === 0 && <p className="text-[11px] text-muted-foreground">Nenhuma conta de portal nesta corretora.</p>}
+        <div className="space-y-2">
+          {accounts.map((a) => {
+            const sr: any = (a as any).session_ref;
+            const busyFor = (act: string) => canaryBusy === `${act}:${a.portal_account_id}`;
+            return (
+              <div key={a.portal_account_id} className="rounded-md border border-border px-3 py-2">
+                <div className="flex flex-wrap items-center gap-2 text-[11px]">
+                  <span className="font-medium text-foreground">{a.label || a.portal_id}</span>
+                  <span className="text-muted-foreground">sessão: <span className={sr?.status === 'healthy' ? 'text-emerald-600' : 'text-amber-600'}>{sr?.status ?? 'session_pending'}</span></span>
+                  {sr?.reusable && <span className="text-emerald-600">reutilizável</span>}
+                  {sr?.last_verified_at && <span className="text-faint">verificada: {new Date(sr.last_verified_at).toLocaleString()}</span>}
+                  {sr?.expires_at && <span className="text-faint">expira: {new Date(sr.expires_at).toLocaleString()}</span>}
+                </div>
+                <div className="mt-1 flex flex-wrap gap-2">
+                  <button disabled={!sr || Boolean(canaryBusy)} onClick={() => sessionRefAction(a.portal_account_id, 'verify')} className="rounded border border-border px-2 py-0.5 text-[10px] disabled:opacity-40">{busyFor('verify') ? '…' : 'Verificar SessionRef'}</button>
+                  <button disabled={!sr?.reusable || Boolean(canaryBusy)} onClick={() => reuseSkill(a.portal_account_id)} className="rounded border border-border px-2 py-0.5 text-[10px] disabled:opacity-40">{busyFor('reuse') ? '…' : 'Reutilizar p/ login_verify'}</button>
+                  <button disabled={!sr || Boolean(canaryBusy)} onClick={() => sessionRefAction(a.portal_account_id, 'request_relogin')} className="rounded border border-border px-2 py-0.5 text-[10px] disabled:opacity-40">Solicitar re-login</button>
+                  <button disabled={!sr || Boolean(canaryBusy)} onClick={() => sessionRefAction(a.portal_account_id, 'revoke')} className="rounded border border-border px-2 py-0.5 text-[10px] text-rose-600 disabled:opacity-40">Revogar</button>
+                </div>
+              </div>
+            );
+          })}
+        </div>
+      </div>
 
       {/* 43P-FINAL-2 — Canary real de login (operacional, gated) */}
       {bbReadiness && (() => {

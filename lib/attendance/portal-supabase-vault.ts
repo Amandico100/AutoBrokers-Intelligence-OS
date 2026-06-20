@@ -42,5 +42,23 @@ export function createSupabaseVaultAdapter(supabase: SupabaseClient): PortalSess
         return { ok: false, storage_ref: null, reason: 'vault_exception' };
       }
     },
+    read: async (input) => {
+      try {
+        const { data, error } = await supabase.rpc('portal_vault_read_session', {
+          p_company_id: input.company_id,
+          p_portal_account_id: input.portal_account_id,
+          p_storage_ref: input.storage_ref,
+        });
+        if (error) return { ok: false, secret_payload: null, reason: `vault_rpc_error:${error.code ?? 'unknown'}` };
+        if (data === null || data === undefined) return { ok: false, secret_payload: null, reason: 'vault_not_found' };
+        // data é o texto do secret (storageState JSON). Parse em memória; nunca logar.
+        let payload: unknown = null;
+        try { payload = JSON.parse(String(data)); } catch { payload = null; }
+        if (payload === null) return { ok: false, secret_payload: null, reason: 'vault_payload_unparseable' };
+        return { ok: true, secret_payload: payload, reason: 'read' };
+      } catch {
+        return { ok: false, secret_payload: null, reason: 'vault_exception' };
+      }
+    },
   };
 }

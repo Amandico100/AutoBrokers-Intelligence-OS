@@ -18,6 +18,7 @@ import {
   Settings,
   CreditCard,
   Lock,
+  Globe,
 } from 'lucide-react';
 import { getAdminSession, clearAdminSession } from '@/lib/adminSession';
 import { Button } from '@/components/ui/button';
@@ -160,6 +161,7 @@ export default function AdminLayout({ children }: { children: React.ReactNode })
       '/admin/all-users',
       '/admin/pending-users',
       '/admin/auxiliares',
+      '/admin/portal-browser',
       '/admin/logs',
       '/admin/conversation-logs',
       '/admin/legal-documents',
@@ -227,6 +229,7 @@ export default function AdminLayout({ children }: { children: React.ReactNode })
       ],
     },
     { href: '/admin/auxiliares', icon: Bot, label: 'Auxiliares Globais' },
+    { href: '/admin/portal-browser', icon: Globe, label: 'Portal Lab' },
     { href: '/admin/logs', icon: FileText, label: 'Logs do Sistema' },
     { href: '/admin/conversation-logs', icon: MessageSquare, label: 'Logs de Conversação' },
     { href: '/admin/legal-documents', icon: FileText, label: 'Termos e Políticas' },

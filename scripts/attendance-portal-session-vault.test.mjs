@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 /** 43P-FINAL-1 — Vault adapter de SessionRef (offline, falha fechada). */
-import { persistSessionRefViaVault, failClosedVaultAdapter, findVaultRefSecrets } from '../lib/attendance/portal-session-vault.ts';
+import { persistSessionRefViaVault, readSessionRefViaVault, failClosedVaultAdapter, findVaultRefSecrets } from '../lib/attendance/portal-session-vault.ts';
 
 let pass = 0, fail = 0; const failures = [];
 function assert(n, c) { if (c) { pass++; console.log(`  ✓ ${n}`); } else { fail++; failures.push(n); console.log(`  ✗ ${n}`); } }
@@ -35,6 +35,19 @@ const input = { company_id: 'C1', portal_account_id: 'A1', provider: 'browserbas
   assert('findVaultRefSecrets detecta storageState aninhado', findVaultRefSecrets({ a: { storageState: {} } }).length > 0);
   const r = await persistSessionRefViaVault(input, vault);
   assert('vault disponível grava', r.ok === true);
+}
+
+// [4] Vault READ.
+{
+  const rNo = await readSessionRefViaVault({ company_id: 'C1', portal_account_id: 'A1', storage_ref: 'vault://ref/1' }, failClosedVaultAdapter);
+  assert('read sem vault → vault_unavailable', rNo.ok === false && rNo.reason === 'vault_unavailable' && rNo.secret_payload === null);
+
+  const vault = { available: async () => true, write: async () => ({ ok: true, storage_ref: 'r', reason: 'stored' }), read: async () => ({ ok: true, secret_payload: { cookies: [{ name: 'x', value: 'SECRET' }] }, reason: 'read' }) };
+  const rOk = await readSessionRefViaVault({ company_id: 'C1', portal_account_id: 'A1', storage_ref: 'vault://ref/1' }, vault);
+  assert('read com vault → ok + payload em memória', rOk.ok === true && rOk.secret_payload !== null);
+
+  const rMissing = await readSessionRefViaVault({ company_id: 'C1', portal_account_id: 'A1', storage_ref: '' }, vault);
+  assert('read sem storage_ref → missing_storage_ref', rMissing.ok === false && rMissing.reason === 'missing_storage_ref');
 }
 
 console.log(`\n== Resumo: ${pass} passaram, ${fail} falharam ==`);

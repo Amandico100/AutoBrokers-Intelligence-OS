@@ -45,6 +45,39 @@ $$;
 revoke all on function public.portal_vault_store_session(uuid, text, text, text, text) from public, anon, authenticated;
 grant execute on function public.portal_vault_store_session(uuid, text, text, text, text) to service_role;
 
+-- Read (43P-FINAL-2A): lê o storageState cifrado por uuid, com guarda cross-tenant
+-- (o name do secret precisa pertencer à mesma company+account). Só service_role.
+create or replace function public.portal_vault_read_session(
+  p_company_id uuid,
+  p_portal_account_id text,
+  p_storage_ref text
+)
+returns text
+language plpgsql
+security definer
+set search_path = ''
+as $$
+declare
+  v_secret text;
+  v_name text;
+begin
+  select decrypted_secret, name into v_secret, v_name
+    from vault.decrypted_secrets
+   where id = p_storage_ref::uuid;
+  if v_secret is null then
+    return null;
+  end if;
+  -- Guarda cross-tenant: o secret tem de ter sido criado para esta company+account.
+  if v_name is null or v_name not like ('portal_session__' || p_company_id::text || '__' || p_portal_account_id || '__%') then
+    return null;
+  end if;
+  return v_secret;
+end;
+$$;
+
+revoke all on function public.portal_vault_read_session(uuid, text, text) from public, anon, authenticated;
+grant execute on function public.portal_vault_read_session(uuid, text, text) to service_role;
+
 -- ============ VERIFY ============
 -- 1) Funções existem e são SECURITY DEFINER com search_path vazio:
 -- select proname, prosecdef, proconfig
@@ -62,5 +95,6 @@ grant execute on function public.portal_vault_store_session(uuid, text, text, te
 -- select public.portal_vault_store_session(gen_random_uuid(),'acc_test','browserbase','{"k":"v"}','t_test'); -- uuid
 
 -- ============ ROLLBACK ============
+-- drop function if exists public.portal_vault_read_session(uuid, text, text);
 -- drop function if exists public.portal_vault_store_session(uuid, text, text, text, text);
 -- drop function if exists public.portal_vault_probe();

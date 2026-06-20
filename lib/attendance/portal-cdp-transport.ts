@@ -99,3 +99,41 @@ export async function captureStorageStateViaCdp(connectUrl: string, opts: CdpOpt
     try { if (browser) await browser.close(); } catch { /* best-effort */ }
   }
 }
+
+export interface CdpRestoreResult {
+  ok: boolean;
+  host: string | null;
+  page_title: string | null;
+  auth_marker_present: boolean;
+  challenge_detected: string | null;
+  reason: string;
+}
+
+/**
+ * Restaura um estado autenticado (storageState do Vault) numa NOVA sessão e
+ * observa (read-only). O storageState entra SÓ aqui em memória; nada é retornado
+ * além de metadados sanitizados.
+ * NOTA: o caminho produção-grade do Browserbase para reuso persistente é
+ * "Contexts" (browserSettings.context). Aqui usamos newContext({storageState})
+ * via CDP como mecanismo testável; validar no primeiro canary real.
+ */
+export async function restoreStorageStateViaCdp(connectUrl: string, storagePayload: unknown, opts: CdpOptions & { verify_url?: string } = {}): Promise<CdpRestoreResult> {
+  const base: CdpRestoreResult = { ok: false, host: null, page_title: null, auth_marker_present: false, challenge_detected: null, reason: 'unknown' };
+  if (!connectUrl) return { ...base, reason: 'connect_url_missing' };
+  if (!storagePayload) return { ...base, reason: 'storage_payload_missing' };
+  const pw = await loadPlaywright();
+  if (!pw) return { ...base, reason: 'playwright_not_available' };
+  let browser: any = null;
+  try {
+    browser = await pw.chromium.connectOverCDP(connectUrl, { timeout: opts.timeout_ms ?? 20000 });
+    const ctx = await browser.newContext({ storageState: storagePayload as any });
+    const page = await ctx.newPage();
+    if (opts.verify_url) { try { await page.goto(opts.verify_url, { waitUntil: 'domcontentloaded', timeout: opts.timeout_ms ?? 20000 }); } catch { /* segue p/ observar */ } }
+    const d = await detect(page, opts);
+    return { ok: true, host: d.host, page_title: d.title, auth_marker_present: d.authMarker, challenge_detected: d.challenge, reason: 'restored' };
+  } catch (e: any) {
+    return { ...base, reason: `cdp_error:${String(e?.message || 'unknown').slice(0, 60)}` };
+  } finally {
+    try { if (browser) await browser.close(); } catch { /* best-effort */ }
+  }
+}

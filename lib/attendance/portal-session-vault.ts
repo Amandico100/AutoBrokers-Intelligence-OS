@@ -19,9 +19,21 @@ export interface PortalSessionVaultWriteResult {
   reason: string;
 }
 
+export interface PortalSessionVaultReadInput {
+  company_id: string;
+  portal_account_id: string;
+  storage_ref: string; // referência opaca (uuid do secret no Vault)
+}
+export interface PortalSessionVaultReadResult {
+  ok: boolean;
+  secret_payload: unknown | null; // SÓ server-side, em memória; nunca exposto/logado
+  reason: string;
+}
+
 export interface PortalSessionVaultAdapter {
   available: () => Promise<boolean>;
   write: (input: PortalSessionVaultWriteInput) => Promise<PortalSessionVaultWriteResult>;
+  read: (input: PortalSessionVaultReadInput) => Promise<PortalSessionVaultReadResult>;
 }
 
 // Detecta vazamento de segredo num objeto de referência que será exposto.
@@ -40,7 +52,23 @@ export function findVaultRefSecrets(obj: unknown, path = ''): string[] {
 export const failClosedVaultAdapter: PortalSessionVaultAdapter = {
   available: async () => false,
   write: async () => ({ ok: false, storage_ref: null, reason: 'vault_unavailable' }),
+  read: async () => ({ ok: false, secret_payload: null, reason: 'vault_unavailable' }),
 };
+
+/**
+ * Lê o storageState cifrado via Vault (server-side). FALHA FECHADA sem Vault.
+ * O payload retornado é SÓ para uso em memória no closure de restore — nunca
+ * deve ser logado/persistido/retornado ao frontend.
+ */
+export async function readSessionRefViaVault(
+  input: PortalSessionVaultReadInput,
+  adapter: PortalSessionVaultAdapter = failClosedVaultAdapter,
+): Promise<PortalSessionVaultReadResult> {
+  if (!input.storage_ref) return { ok: false, secret_payload: null, reason: 'missing_storage_ref' };
+  const ok = await adapter.available();
+  if (!ok) return { ok: false, secret_payload: null, reason: 'vault_unavailable' };
+  return adapter.read(input);
+}
 
 /**
  * Persiste a SessionRef via Vault. Se o Vault não estiver disponível, FALHA

@@ -43,7 +43,8 @@
     "test:portal-session-vault": "node scripts/attendance-portal-session-vault.test.mjs",
     "test:portal-read-only-skill": "node scripts/attendance-portal-read-only-skill.test.mjs",
     "test:portal-real-execution-controller": "node scripts/attendance-portal-real-execution-controller.test.mjs",
-    "test:browserbase-session-server": "node scripts/attendance-browserbase-session-server.test.mjs"
+    "test:browserbase-session-server": "node scripts/attendance-browserbase-session-server.test.mjs",
+    "test:portal-session-reuse": "node scripts/attendance-portal-session-reuse.test.mjs"
   },
   "dependencies": {
     "@hookform/resolvers": "^3.9.0",
