@@ -3,7 +3,7 @@
 import {
   initCanary, markAwaitingApproval, applyAuthorization, openCanaryBrowser, markChallenge,
   resolveChallenge, captureCanarySession, verifyCanarySession, attachReadOnlySkillResult,
-  abortCanary, sanitizeCanary, findCanarySecrets,
+  abortCanary, sanitizeCanary, findCanarySecrets, recordCanaryCapture, setCanaryObservation,
 } from '../lib/attendance/portal-real-execution-controller.ts';
 import { runSessionLoginVerify, getSessionLoginVerifyContract } from '../lib/attendance/portal-read-only-skill.ts';
 
@@ -95,6 +95,30 @@ console.log('== 43P-FINAL-1 — Real Execution Controller ==\n');
   s = await abortCanary(s, async () => { closed++; return { closed: true }; });
   assert('abort → aborted', s.state === 'aborted');
   assert('abort fechou sessão', closed === 1);
+}
+
+// [8] recordCanaryCapture (storage_ref opaca, sem segredo) + observação CDP.
+{
+  const transport = { open: async () => ({ ok: true, session_id: 'sx', session_status: 'RUNNING', region: 'us', expires_at: new Date(Date.now() + 3600_000).toISOString(), blockers: [], reason: 'ok' }), close: async () => ({ closed: true }) };
+  let s = applyAuthorization(markAwaitingApproval(initCanary(initInput)), true, []);
+  s = await openCanaryBrowser(s, true, transport);
+  s = recordCanaryCapture(s, 'vault://ref/opaque-123', 'healthy');
+  assert('recordCanaryCapture → session_captured', s.state === 'session_captured');
+  assert('storage_ref opaca registrada', s.storage_ref === 'vault://ref/opaque-123');
+  assert('session_ref_masked não vaza ref completa', s.session_ref_masked !== 'vault://ref/opaque-123');
+  s = setCanaryObservation(s, { host: 'portal.x', safe_page_label: 'Painel', auth_marker_present: true, challenge_detected: null });
+  assert('observação anexada', s.observation && s.observation.host === 'portal.x');
+  s = verifyCanarySession(s);
+  assert('verify após record → session_verified', s.state === 'session_verified');
+}
+
+// [9] recordCanaryCapture rejeita storage_ref que parece segredo.
+{
+  const transport = { open: async () => ({ ok: true, session_id: 'sx', session_status: 'RUNNING', region: 'us', expires_at: null, blockers: [], reason: 'ok' }), close: async () => ({ closed: true }) };
+  let s = applyAuthorization(markAwaitingApproval(initCanary(initInput)), true, []);
+  s = await openCanaryBrowser(s, true, transport);
+  s = recordCanaryCapture(s, 'cookie=abc; storageState', 'healthy');
+  assert('storage_ref suspeita → failed', s.state === 'failed' && s.blockers.includes('vault_ref_unsafe'));
 }
 
 console.log(`\n== Resumo: ${pass} passaram, ${fail} falharam ==`);

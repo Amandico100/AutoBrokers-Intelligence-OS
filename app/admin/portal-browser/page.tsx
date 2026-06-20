@@ -146,13 +146,44 @@ export default function PortalBrowserAdminPage() {
   const [bbReadiness, setBbReadiness] = useState<any>(null);
   useEffect(() => { fetch('/api/admin/portal-browser/login-setup/browserbase/readiness').then((r) => r.json()).then((j) => { if (j?.ok) setBbReadiness(j.readiness); }).catch(() => {}); }, []);
 
-  // 43P-FINAL-1 — status de canaries (read-only, gated).
+  // 43P-FINAL-1/2 — status + operação de canaries (read-only, gated).
   const [canaryStatus, setCanaryStatus] = useState<any>(null);
+  const [canaryAccount, setCanaryAccount] = useState('');
+  const [activeCanaryId, setActiveCanaryId] = useState('');
+  const [canaryBusy, setCanaryBusy] = useState('');
   const loadCanaryStatus = useCallback(async () => {
     const j = await fetch('/api/admin/portal-browser/real-execution/status').then((r) => r.json()).catch(() => ({}));
     if (j?.ok) setCanaryStatus(j);
   }, []);
   useEffect(() => { loadCanaryStatus(); }, [loadCanaryStatus]);
+
+  const canaryPost = async (label: string, path: string, payload: any) => {
+    setCanaryBusy(label);
+    try {
+      const r = await fetch(path, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(payload) });
+      const j = await r.json().catch(() => ({}));
+      if (!r.ok || j?.ok === false) { setNotice(`${label}: ${j?.error || r.status}`); }
+      else {
+        if (j?.canary?.canary_id) setActiveCanaryId(j.canary.canary_id);
+        const blk = j?.authorization?.blockers?.length ? ` (bloqueios: ${j.authorization.blockers.join(', ')})` : '';
+        setNotice(`${label}: ${j?.canary?.state ?? 'ok'}${blk}`);
+      }
+      await loadCanaryStatus();
+    } catch (e: any) { setNotice(`${label}: erro ${e?.message || ''}`); }
+    finally { setCanaryBusy(''); }
+  };
+  const doApprove = () => canaryAccount ? canaryPost('Aprovar canary', '/api/admin/portal-browser/real-execution/approve', { portal_account_id: canaryAccount }) : setNotice('Selecione a conta de portal.');
+  const doRevoke = async () => { if (!canaryAccount) return; setCanaryBusy('Revogar'); await fetch(`/api/admin/portal-browser/real-execution/approve?portal_account_id=${encodeURIComponent(canaryAccount)}`, { method: 'DELETE' }).catch(() => {}); setCanaryBusy(''); await loadCanaryStatus(); };
+  const doStart = () => canaryAccount ? canaryPost('Iniciar canary', '/api/admin/portal-browser/real-execution/start', { portal_account_id: canaryAccount }) : setNotice('Selecione a conta de portal.');
+  const doVerify = () => activeCanaryId ? canaryPost('Verificar sessão', '/api/admin/portal-browser/real-execution/verify', { canary_id: activeCanaryId }) : setNotice('Inicie um canary primeiro.');
+  const doCapture = () => activeCanaryId ? canaryPost('Capturar SessionRef', '/api/admin/portal-browser/real-execution/capture', { canary_id: activeCanaryId }) : setNotice('Inicie um canary primeiro.');
+  const doRunSkill = () => activeCanaryId ? canaryPost('Rodar session_login_verify', '/api/admin/portal-browser/real-execution/run-read-only-skill', { canary_id: activeCanaryId }) : setNotice('Inicie um canary primeiro.');
+  const doAbort = () => activeCanaryId ? canaryPost('Abortar canary', '/api/admin/portal-browser/real-execution/abort', { canary_id: activeCanaryId }) : setNotice('Nenhum canary ativo.');
+  const openConsole = () => {
+    const c = (canaryStatus?.canaries || []).find((x: any) => x.canary_id === activeCanaryId);
+    if (c?.session_id) window.open(`https://www.browserbase.com/sessions/${c.session_id}`, '_blank', 'noopener');
+    else window.open('https://www.browserbase.com/sessions', '_blank', 'noopener');
+  };
 
   // 43P4.2A — escopo de corretora (multi-tenant). O master admin escolhe a company;
   // gravamos um cookie aj_company que vai em toda chamada às rotas de portal.
@@ -471,41 +502,57 @@ export default function PortalBrowserAdminPage() {
         </div>
       )}
 
-      {/* 43P-FINAL-1 — Canary real: checklist go/no-go (read-only) */}
+      {/* 43P-FINAL-2 — Canary real de login (operacional, gated) */}
       {bbReadiness && (() => {
-        const accountsForTenant = accounts.length;
         const approvals = canaryStatus?.approvals || [];
-        const hasApproval = approvals.some((a: any) => !a.revoked && a.expires_at && Date.parse(a.expires_at) > Date.now());
+        const hasApproval = approvals.some((a: any) => a.portal_account_id === canaryAccount && !a.revoked && a.expires_at && Date.parse(a.expires_at) > Date.now());
+        const active = (canaryStatus?.canaries || []).find((c: any) => c.canary_id === activeCanaryId) || null;
+        const st = active?.state as string | undefined;
+        const envOk = bbReadiness.env_present?.api_key_present && bbReadiness.env_present?.project_id_present;
         const item = (ok: boolean, label: string) => (
           <li className="flex items-center gap-2 text-[11px]"><span className={ok ? 'text-emerald-600' : 'text-muted-foreground'}>{ok ? '✓' : '○'}</span><span className={ok ? 'text-foreground' : 'text-muted-foreground'}>{label}</span></li>
         );
-        const canStart = Boolean(companyScope.current_company_id) && accountsForTenant > 0 && hasApproval && bbReadiness.can_open_real_browser;
+        const btn = (label: string, onClick: () => void, enabled: boolean) => (
+          <button onClick={onClick} disabled={!enabled || Boolean(canaryBusy)} className="rounded-lg border border-border px-3 py-1 text-[11px] text-foreground disabled:opacity-40">{canaryBusy === label ? '…' : label}</button>
+        );
         return (
           <div className="mt-6 rounded-lg border border-border bg-card p-4">
-            <p className="mb-2 text-sm font-medium text-foreground">Canary real de login — checklist (go/no-go)</p>
+            <p className="mb-2 text-sm font-medium text-foreground">Canary real de login (gated, read-only)</p>
+            <div className="mb-3 flex flex-wrap items-center gap-2">
+              <span className="text-[11px] text-muted-foreground">Conta de portal:</span>
+              <select value={canaryAccount} onChange={(e) => setCanaryAccount(e.target.value)} className="rounded-lg border border-border bg-background px-2 py-1 text-[11px]">
+                <option value="">— selecione —</option>
+                {accounts.map((a) => (<option key={a.portal_account_id} value={a.portal_account_id}>{a.label || a.portal_id}</option>))}
+              </select>
+              {active && <span className="text-[11px] text-emerald-600">canary {active.canary_id.slice(0, 12)}… = {st}</span>}
+            </div>
             <ul className="grid grid-cols-1 gap-1 md:grid-cols-2">
               {item(Boolean(companyScope.current_company_id), 'Corretora (tenant) selecionada')}
-              {item(accountsForTenant > 0, 'Conta de portal criada para a corretora')}
+              {item(Boolean(canaryAccount), 'Conta de portal selecionada')}
               {item(hasApproval, 'Approval de canary válida (não expirada)')}
-              {item(bbReadiness.env_present?.api_key_present && bbReadiness.env_present?.project_id_present, 'Browserbase configurado (envs)')}
-              {item(bbReadiness.can_open_real_browser, 'Gates habilitados + kill switch off')}
-              {item(false, 'Live view disponível (operador abre no console Browserbase — Batch 2)')}
-              {item(false, 'Login humano (Batch 2)')}
-              {item(false, 'SessionRef capturada (Batch 2)')}
-              {item(false, 'SessionRef verificada (Batch 2)')}
-              {item(true, 'Skill read-only session_login_verify pronta')}
+              {item(Boolean(envOk), 'Browserbase configurado (envs)')}
+              {item(Boolean(bbReadiness.can_open_real_browser), 'Gates habilitados + kill switch off')}
+              {item(st === 'browser_opened' || st === 'waiting_human_login' || st === 'session_captured' || st === 'session_verified', 'Browser aberto / aguardando login humano')}
+              {item(st === 'session_captured' || st === 'session_verified', 'SessionRef capturada')}
+              {item(st === 'session_verified', 'SessionRef verificada')}
+              {item(Boolean(active?.skill_result?.authenticated), 'session_login_verify executada (autenticado)')}
             </ul>
             <div className="mt-3 flex flex-wrap items-center gap-2">
-              <button disabled={!canStart} className="rounded-lg border border-border px-3 py-1 text-[11px] text-muted-foreground disabled:opacity-50">
-                Iniciar canary {canStart ? '' : '(bloqueado)'}
-              </button>
-              <button onClick={loadCanaryStatus} className="rounded-lg border border-border px-3 py-1 text-[11px] text-muted-foreground">Atualizar status</button>
+              {btn('Aprovar canary', doApprove, Boolean(canaryAccount))}
+              {btn('Revogar', doRevoke, Boolean(canaryAccount))}
+              {btn('Iniciar canary', doStart, Boolean(canaryAccount) && hasApproval && Boolean(bbReadiness.can_open_real_browser))}
+              {btn('Abrir Browserbase Console', openConsole, Boolean(active?.session_id))}
+              {btn('Verificar sessão', doVerify, Boolean(activeCanaryId))}
+              {btn('Capturar SessionRef', doCapture, Boolean(activeCanaryId))}
+              {btn('Rodar session_login_verify', doRunSkill, Boolean(activeCanaryId))}
+              {btn('Abortar canary', doAbort, Boolean(activeCanaryId))}
+              {btn('Atualizar status', loadCanaryStatus, true)}
             </div>
             <div className="mt-2 rounded-md border border-amber-500/30 bg-amber-500/5 px-3 py-2 text-[10px] text-amber-600">
-              O humano digita as credenciais e resolve CAPTCHA/2FA. O sistema não envia, não submete e não executa ação de negócio. connectUrl/signingKey/cookies/storageState nunca chegam ao frontend. Kill switch encerra tudo.
+              O humano digita as credenciais e resolve CAPTCHA/2FA no Browserbase Console. O sistema não envia, não submete e não executa ação de negócio. connectUrl/signingKey/cookies/storageState nunca chegam ao frontend. Kill switch encerra tudo.
             </div>
-            {canaryStatus?.canaries?.length > 0 && (
-              <p className="mt-2 text-[10px] text-muted-foreground">Canaries: {canaryStatus.canaries.map((c: any) => `${c.canary_id.slice(0, 10)}…=${c.state}`).join(' · ')}</p>
+            {active?.skill_result && (
+              <p className="mt-2 text-[10px] text-muted-foreground">Skill: authenticated={String(active.skill_result.authenticated)} · label={active.skill_result.safe_page_label || '—'} · state={active.skill_result.session_state}</p>
             )}
           </div>
         );

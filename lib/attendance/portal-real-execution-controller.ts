@@ -34,6 +34,7 @@ export interface CanarySession {
   session_ref_masked: string | null;
   session_health: 'healthy' | 'expired' | 'challenge_required' | 'unknown' | null;
   challenge_kind: string | null;
+  observation: { host: string | null; safe_page_label: string | null; auth_marker_present: boolean; challenge_detected: string | null } | null;
   skill_result: CanarySkillResultLike | null;
   events: CanaryEvent[];
   blockers: string[];
@@ -68,7 +69,7 @@ export function initCanary(input: InitCanaryInput): CanarySession {
     portal_account_id: input.portal_account_id, journey: input.journey ?? 'login', mode: 'read_only_canary',
     provider: input.provider ?? 'browserbase', state: 'draft', session_id: null, session_status: null,
     region: null, expires_at: null, storage_ref: null, session_ref_masked: null, session_health: null,
-    challenge_kind: null, skill_result: null, events: [{ at: t, state: 'draft', note: 'canary_initialized' }],
+    challenge_kind: null, observation: null, skill_result: null, events: [{ at: t, state: 'draft', note: 'canary_initialized' }],
     blockers: [], real_action_allowed: false, created_at: t, updated_at: t,
   };
 }
@@ -133,6 +134,23 @@ export async function captureCanarySession(s: CanarySession, input: CanaryCaptur
   return evt({ ...pending, storage_ref: w.storage_ref, session_ref_masked: maskRef(w.storage_ref), session_health: input.status ?? 'healthy' }, 'session_captured', 'session_captured');
 }
 
+/**
+ * Registra a captura quando o storageState JÁ foi gravado no Vault server-side
+ * (rota CDP+Vault) e só temos a referência opaca. NÃO recebe segredo.
+ */
+export function recordCanaryCapture(s: CanarySession, storageRef: string | null, status: 'healthy' | 'expired' | 'challenge_required' | 'unknown' = 'healthy'): CanarySession {
+  if (s.state !== 'waiting_human_login') return fail(s, 'invalid_transition_record_capture', 'invalid_transition');
+  if (!storageRef) return fail(evt(s, 'session_capture_pending', 'capturing_session'), 'capture_failed:no_storage_ref', 'no_storage_ref');
+  if (/cookie|storagestate|connecturl|signingkey|token|authorization/i.test(storageRef)) return fail(s, 'capture_failed:vault_ref_unsafe', 'vault_ref_unsafe');
+  const pending = evt(s, 'session_capture_pending', 'capturing_session');
+  return evt({ ...pending, storage_ref: storageRef, session_ref_masked: maskRef(storageRef), session_health: status }, 'session_captured', 'session_captured');
+}
+
+/** Anexa a observação CDP sanitizada (sem segredo/DOM bruto). */
+export function setCanaryObservation(s: CanarySession, obs: { host: string | null; safe_page_label: string | null; auth_marker_present: boolean; challenge_detected: string | null }): CanarySession {
+  return { ...s, observation: obs, updated_at: now() };
+}
+
 /** Verifica a SessionRef por metadados (sem ler conteúdo). */
 export function verifyCanarySession(s: CanarySession, nowMs: number = Date.now()): CanarySession {
   if (s.state !== 'session_captured') return fail(s, 'invalid_transition_verify', 'invalid_transition');
@@ -174,7 +192,7 @@ export function sanitizeCanary(s: CanarySession): Record<string, unknown> {
     journey: s.journey, mode: s.mode, provider: s.provider, state: s.state, session_id: s.session_id,
     session_status: s.session_status, region: s.region, expires_at: s.expires_at,
     session_ref_masked: s.session_ref_masked, session_health: s.session_health, challenge_kind: s.challenge_kind,
-    skill_result: s.skill_result, events: s.events, blockers: s.blockers, real_action_allowed: false,
+    observation: s.observation, skill_result: s.skill_result, events: s.events, blockers: s.blockers, real_action_allowed: false,
     created_at: s.created_at, updated_at: s.updated_at,
   };
 }

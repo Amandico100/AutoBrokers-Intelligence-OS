@@ -42,7 +42,8 @@
     "test:portal-tenant-canary-authorization": "node scripts/attendance-portal-tenant-canary-authorization.test.mjs",
     "test:portal-session-vault": "node scripts/attendance-portal-session-vault.test.mjs",
     "test:portal-read-only-skill": "node scripts/attendance-portal-read-only-skill.test.mjs",
-    "test:portal-real-execution-controller": "node scripts/attendance-portal-real-execution-controller.test.mjs"
+    "test:portal-real-execution-controller": "node scripts/attendance-portal-real-execution-controller.test.mjs",
+    "test:browserbase-session-server": "node scripts/attendance-browserbase-session-server.test.mjs"
   },
   "dependencies": {
     "@hookform/resolvers": "^3.9.0",
@@ -100,6 +101,7 @@
     "lucide-react": "^0.446.0",
     "next": "^15.5.9",
     "next-themes": "^0.3.0",
+    "playwright-core": "^1.61.0",
     "postcss": "^8.5.6",
     "react": "^18.3.1",
     "react-day-picker": "^8.10.1",
