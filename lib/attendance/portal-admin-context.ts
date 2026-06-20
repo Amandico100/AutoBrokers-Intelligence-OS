@@ -296,3 +296,37 @@ export async function saveLoginSetup(supabase: SupabaseClient, companyId: string
   if (idx >= 0) arr[idx] = setup; else arr.push(setup);
   await writeArrays(supabase, conn, companyId, { login_setups: arr.slice(-RELAY_KEEP) });
 }
+
+// 43P-FINAL-1 — approvals de canary (tenant-scoped) e canaries.
+export async function listCanaryApprovals(supabase: SupabaseClient, companyId: string): Promise<any[]> {
+  const { data, error } = await supabase.from('tenant_connections').select('connection_config').eq('company_id', companyId).eq('name', CONN_NAME).maybeSingle();
+  if (error) throw new Error('vault_not_available');
+  if (!data) return [];
+  return readArr<any>({ id: '', connection_config: data.connection_config }, 'canary_approvals');
+}
+export async function saveCanaryApproval(supabase: SupabaseClient, companyId: string, approval: any): Promise<void> {
+  const conn = await getOrCreateConn(supabase, companyId);
+  const arr = readArr<any>(conn, 'canary_approvals');
+  const idx = arr.findIndex((r) => r?.portal_account_id === approval.portal_account_id && r?.journey === approval.journey);
+  if (idx >= 0) arr[idx] = approval; else arr.push(approval);
+  await writeArrays(supabase, conn, companyId, { canary_approvals: arr.slice(-RELAY_KEEP) });
+}
+export async function getCanary(supabase: SupabaseClient, companyId: string, canaryId: string): Promise<any | null> {
+  const { data, error } = await supabase.from('tenant_connections').select('connection_config').eq('company_id', companyId).eq('name', CONN_NAME).maybeSingle();
+  if (error) throw new Error('vault_not_available');
+  if (!data) return null;
+  return readArr<any>({ id: '', connection_config: data.connection_config }, 'canaries').find((r) => r?.canary_id === canaryId) ?? null;
+}
+export async function listCanaries(supabase: SupabaseClient, companyId: string): Promise<any[]> {
+  const { data, error } = await supabase.from('tenant_connections').select('connection_config').eq('company_id', companyId).eq('name', CONN_NAME).maybeSingle();
+  if (error) throw new Error('vault_not_available');
+  if (!data) return [];
+  return readArr<any>({ id: '', connection_config: data.connection_config }, 'canaries');
+}
+export async function saveCanary(supabase: SupabaseClient, companyId: string, canary: any): Promise<void> {
+  const conn = await getOrCreateConn(supabase, companyId);
+  const arr = readArr<any>(conn, 'canaries');
+  const idx = arr.findIndex((r) => r?.canary_id === canary.canary_id);
+  if (idx >= 0) arr[idx] = canary; else arr.push(canary);
+  await writeArrays(supabase, conn, companyId, { canaries: arr.slice(-RELAY_KEEP) });
+}

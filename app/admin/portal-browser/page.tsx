@@ -146,6 +146,14 @@ export default function PortalBrowserAdminPage() {
   const [bbReadiness, setBbReadiness] = useState<any>(null);
   useEffect(() => { fetch('/api/admin/portal-browser/login-setup/browserbase/readiness').then((r) => r.json()).then((j) => { if (j?.ok) setBbReadiness(j.readiness); }).catch(() => {}); }, []);
 
+  // 43P-FINAL-1 — status de canaries (read-only, gated).
+  const [canaryStatus, setCanaryStatus] = useState<any>(null);
+  const loadCanaryStatus = useCallback(async () => {
+    const j = await fetch('/api/admin/portal-browser/real-execution/status').then((r) => r.json()).catch(() => ({}));
+    if (j?.ok) setCanaryStatus(j);
+  }, []);
+  useEffect(() => { loadCanaryStatus(); }, [loadCanaryStatus]);
+
   // 43P4.2A — escopo de corretora (multi-tenant). O master admin escolhe a company;
   // gravamos um cookie aj_company que vai em toda chamada às rotas de portal.
   const [companyScope, setCompanyScope] = useState<{ is_master?: boolean; current_company_id?: string | null; company_scope_required?: boolean; companies?: any[] }>({});
@@ -154,8 +162,11 @@ export default function PortalBrowserAdminPage() {
     if (j?.ok) setCompanyScope({ is_master: j.is_master, current_company_id: j.current_company_id, company_scope_required: j.company_scope_required, companies: j.companies || [] });
   }, []);
   useEffect(() => { loadCompanies(); }, [loadCompanies]);
-  const selectCompany = (id: string) => {
-    document.cookie = `aj_company=${encodeURIComponent(id)}; path=/; SameSite=Lax`;
+  const selectCompany = async (id: string) => {
+    // Seleção server-side (cookie HttpOnly): mais robusto que document.cookie.
+    await fetch('/api/admin/portal-browser/select-company', {
+      method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ company_id: id }),
+    }).catch(() => {});
     window.location.reload();
   };
   const startLoginAssisted = async (portalId: string, accountId: string) => {
@@ -459,6 +470,46 @@ export default function PortalBrowserAdminPage() {
           <p className="mt-1 text-[10px] text-faint">Nenhum segredo é exposto. Docs: docs.browserbase.com</p>
         </div>
       )}
+
+      {/* 43P-FINAL-1 — Canary real: checklist go/no-go (read-only) */}
+      {bbReadiness && (() => {
+        const accountsForTenant = accounts.length;
+        const approvals = canaryStatus?.approvals || [];
+        const hasApproval = approvals.some((a: any) => !a.revoked && a.expires_at && Date.parse(a.expires_at) > Date.now());
+        const item = (ok: boolean, label: string) => (
+          <li className="flex items-center gap-2 text-[11px]"><span className={ok ? 'text-emerald-600' : 'text-muted-foreground'}>{ok ? '✓' : '○'}</span><span className={ok ? 'text-foreground' : 'text-muted-foreground'}>{label}</span></li>
+        );
+        const canStart = Boolean(companyScope.current_company_id) && accountsForTenant > 0 && hasApproval && bbReadiness.can_open_real_browser;
+        return (
+          <div className="mt-6 rounded-lg border border-border bg-card p-4">
+            <p className="mb-2 text-sm font-medium text-foreground">Canary real de login — checklist (go/no-go)</p>
+            <ul className="grid grid-cols-1 gap-1 md:grid-cols-2">
+              {item(Boolean(companyScope.current_company_id), 'Corretora (tenant) selecionada')}
+              {item(accountsForTenant > 0, 'Conta de portal criada para a corretora')}
+              {item(hasApproval, 'Approval de canary válida (não expirada)')}
+              {item(bbReadiness.env_present?.api_key_present && bbReadiness.env_present?.project_id_present, 'Browserbase configurado (envs)')}
+              {item(bbReadiness.can_open_real_browser, 'Gates habilitados + kill switch off')}
+              {item(false, 'Live view disponível (operador abre no console Browserbase — Batch 2)')}
+              {item(false, 'Login humano (Batch 2)')}
+              {item(false, 'SessionRef capturada (Batch 2)')}
+              {item(false, 'SessionRef verificada (Batch 2)')}
+              {item(true, 'Skill read-only session_login_verify pronta')}
+            </ul>
+            <div className="mt-3 flex flex-wrap items-center gap-2">
+              <button disabled={!canStart} className="rounded-lg border border-border px-3 py-1 text-[11px] text-muted-foreground disabled:opacity-50">
+                Iniciar canary {canStart ? '' : '(bloqueado)'}
+              </button>
+              <button onClick={loadCanaryStatus} className="rounded-lg border border-border px-3 py-1 text-[11px] text-muted-foreground">Atualizar status</button>
+            </div>
+            <div className="mt-2 rounded-md border border-amber-500/30 bg-amber-500/5 px-3 py-2 text-[10px] text-amber-600">
+              O humano digita as credenciais e resolve CAPTCHA/2FA. O sistema não envia, não submete e não executa ação de negócio. connectUrl/signingKey/cookies/storageState nunca chegam ao frontend. Kill switch encerra tudo.
+            </div>
+            {canaryStatus?.canaries?.length > 0 && (
+              <p className="mt-2 text-[10px] text-muted-foreground">Canaries: {canaryStatus.canaries.map((c: any) => `${c.canary_id.slice(0, 10)}…=${c.state}`).join(' · ')}</p>
+            )}
+          </div>
+        );
+      })()}
 
       {/* Login assistido (43P4) */}
       {loginSetup && (

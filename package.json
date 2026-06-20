@@ -38,7 +38,11 @@
     "test:security-gates": "node scripts/security-production-gates.test.mjs",
     "test:portal-login-setup": "node scripts/attendance-portal-login-setup.test.mjs",
     "test:browserbase-real-adapter": "node scripts/attendance-browserbase-real-adapter.test.mjs",
-    "test:portal-company-scope": "node scripts/attendance-portal-company-scope.test.mjs"
+    "test:portal-company-scope": "node scripts/attendance-portal-company-scope.test.mjs",
+    "test:portal-tenant-canary-authorization": "node scripts/attendance-portal-tenant-canary-authorization.test.mjs",
+    "test:portal-session-vault": "node scripts/attendance-portal-session-vault.test.mjs",
+    "test:portal-read-only-skill": "node scripts/attendance-portal-read-only-skill.test.mjs",
+    "test:portal-real-execution-controller": "node scripts/attendance-portal-real-execution-controller.test.mjs"
   },
   "dependencies": {
     "@hookform/resolvers": "^3.9.0",
