@@ -187,8 +187,8 @@ export default function PortalBrowserAdminPage() {
         <p className="text-sm text-muted-foreground">Cadastro global de portais + contas privadas da corretora. CredentialRef/SessionRef são referências opacas (sem segredo). Conector próprio <code>portal_browser</code>.</p>
       </div>
 
-      {/* 43P4.2A — Seletor de corretora (escopo multi-tenant para master admin) */}
-      {(companyScope.is_master || (companyScope.companies && companyScope.companies.length > 1)) && (
+      {/* 43P4.2A.1 — Seletor de corretora: SÓ master admin enumera/troca tenant. */}
+      {companyScope.is_master === true && (
         <div className="mb-6 rounded-lg border border-border bg-card p-4">
           <div className="flex flex-wrap items-center gap-3">
             <span className="text-sm font-medium text-foreground">Corretora (tenant)</span>
@@ -207,8 +207,13 @@ export default function PortalBrowserAdminPage() {
               : <span className="text-[11px] text-amber-600">Selecione uma corretora para operar os portais.</span>}
           </div>
           {companyScope.company_scope_required && !companyScope.current_company_id && (
-            <p className="mt-1 text-[11px] text-amber-600">Há mais de uma corretora; escolha qual você vai operar (escopo obrigatório).</p>
+            <p className="mt-1 text-[11px] text-amber-600">Escolha qual corretora você vai operar (escopo obrigatório para master admin).</p>
           )}
+        </div>
+      )}
+      {companyScope.is_master === false && companyScope.current_company_id && (
+        <div className="mb-6 rounded-lg border border-border bg-card px-4 py-2 text-[11px] text-muted-foreground">
+          Corretora: <span className="text-foreground">{companyScope.current_company_id}</span>
         </div>
       )}
 

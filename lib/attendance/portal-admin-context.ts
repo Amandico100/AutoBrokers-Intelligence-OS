@@ -69,9 +69,9 @@ export function getPortalSupabaseAdmin(): SupabaseClient {
   );
 }
 
-// 43P4.2A — escopo de company (multi-tenant). Lógica PURA em portal-company-scope.
-import { resolvePortalCompanyScope } from '@/lib/attendance/portal-company-scope';
-export { resolvePortalCompanyScope } from '@/lib/attendance/portal-company-scope';
+// 43P4.2A / 43P4.2A.1 — escopo de company (multi-tenant). Lógica PURA em portal-company-scope.
+import { resolvePortalCompanyScope, resolveCompanyListingMode } from '@/lib/attendance/portal-company-scope';
+export { resolvePortalCompanyScope, resolveCompanyListingMode } from '@/lib/attendance/portal-company-scope';
 
 export async function getPortalAdminContext(
   supabase: SupabaseClient,
@@ -79,11 +79,14 @@ export async function getPortalAdminContext(
   const cookieStore = await cookies();
   let userId: string | null = null;
   let sessionCompany: string | null = null;
-  let isAdmin = false;
+  let isMaster = false; // só master_admin enumera/troca de tenant
 
   const adminSession = await getIronSession<AdminSessionData>(cookieStore, adminSessionOptions);
   if (adminSession.adminId) {
-    userId = adminSession.adminId; isAdmin = true; sessionCompany = adminSession.companyId ?? null;
+    userId = adminSession.adminId;
+    sessionCompany = adminSession.companyId ?? null;
+    // master_admin = admin de plataforma; company_admin fica travado na própria company.
+    isMaster = adminSession.role === 'master_admin' && !sessionCompany;
   } else {
     const userSession = await getIronSession<SessionData>(cookieStore, sessionOptions);
     if (userSession.userId) { userId = userSession.userId; sessionCompany = userSession.companyId ?? null; }
@@ -91,7 +94,7 @@ export async function getPortalAdminContext(
   if (!userId) return { companyId: null, userId: null, isMaster: false, company_scope_required: false };
 
   // Escopo solicitado: header X-AutoBrokers-Company OU cookie aj_company
-  // (master admin escolhe a corretora no dashboard; cookie vai em toda chamada).
+  // (apenas master escolhe a corretora no dashboard; cookie vai em toda chamada).
   let requested: string | null = null;
   try { requested = (await headers()).get('x-autobrokers-company'); } catch { requested = null; }
   if (!requested) { try { requested = cookieStore.get('aj_company')?.value ?? null; } catch { requested = null; } }
@@ -101,7 +104,7 @@ export async function getPortalAdminContext(
     try { const { data: u } = await supabase.from('users_v2').select('company_id').eq('id', userId).maybeSingle(); usersV2Company = u?.company_id ?? null; } catch { /* segue */ }
   }
   let requestedExists = false;
-  if (!sessionCompany && isAdmin && requested) {
+  if (!sessionCompany && isMaster && requested) {
     try { const { data: c } = await supabase.from('companies').select('id').eq('id', requested).maybeSingle(); requestedExists = Boolean(c?.id); } catch { /* segue */ }
   }
   let singleCompanyId: string | null = null;
@@ -110,17 +113,22 @@ export async function getPortalAdminContext(
   }
 
   const scope = resolvePortalCompanyScope({
-    is_admin: isAdmin, session_company: sessionCompany, users_v2_company: usersV2Company,
+    is_master: isMaster, session_company: sessionCompany, users_v2_company: usersV2Company,
     requested_company: requested, requested_company_exists: requestedExists, single_company_id: singleCompanyId,
   });
   return { companyId: scope.companyId, userId, isMaster: scope.isMaster, company_scope_required: scope.company_scope_required };
 }
 
-/** Lista companies (id/nome/status) para o seletor do master admin. Sem dados sensíveis. */
-export async function listCompaniesForAdmin(supabase: SupabaseClient): Promise<Array<{ id: string; name: string | null; status: string | null }>> {
+/**
+ * Lista companies (id/nome/status) para o seletor. Coluna real = company_name.
+ * `onlyId` restringe a UMA company (tenant admin vê só a própria). Sem dados sensíveis.
+ */
+export async function listCompaniesForAdmin(supabase: SupabaseClient, onlyId?: string): Promise<Array<{ id: string; name: string | null; status: string | null }>> {
   try {
-    const { data } = await supabase.from('companies').select('id, name, status').order('created_at', { ascending: true }).limit(200);
-    return Array.isArray(data) ? data.map((c: any) => ({ id: c.id, name: c.name ?? null, status: c.status ?? null })) : [];
+    let q = supabase.from('companies').select('id, company_name, status').order('created_at', { ascending: true }).limit(200);
+    if (onlyId) q = supabase.from('companies').select('id, company_name, status').eq('id', onlyId).limit(1);
+    const { data } = await q;
+    return Array.isArray(data) ? data.map((c: any) => ({ id: c.id, name: c.company_name ?? null, status: c.status ?? null })) : [];
   } catch { return []; }
 }
 
