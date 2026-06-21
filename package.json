@@ -49,7 +49,8 @@
     "test:whatsapp-consent": "node scripts/attendance-whatsapp-consent.test.mjs",
     "test:insurer-contacts": "node scripts/attendance-insurer-contacts.test.mjs",
     "test:agent-blueprints-canonical": "node scripts/admin-agent-blueprints-canonical.test.mjs",
-    "test:tenant-corridor-activation": "node scripts/attendance-tenant-corridor-activation.test.mjs"
+    "test:tenant-corridor-activation": "node scripts/attendance-tenant-corridor-activation.test.mjs",
+    "test:finops-usage-context": "node scripts/admin-finops-usage-context.test.mjs"
   },
   "dependencies": {
     "@hookform/resolvers": "^3.9.0",

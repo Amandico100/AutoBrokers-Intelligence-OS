@@ -145,7 +145,11 @@ export interface EffectiveConfig {
   system_prompt: string;
   llm_provider: string;
   llm_model: string;
+  llm_temperature: number | null; // materializado (override seguro) ou null = default
+  avatar_url: string | null;      // materializado
+  voice: string | null;           // materializado
   applied_overrides: string[];
+  overrides_applied: Record<string, unknown>; // valores REALMENTE aplicados (whitelist)
   rejected_overrides: string[]; // tentativas fora da whitelist (bloqueadas)
   variables_used: Record<string, string>;
   immutable_guardrails: string[];
@@ -170,17 +174,28 @@ export function resolveEffectiveConfig(input: EffectiveConfigInput): EffectiveCo
   values.company_name = input.company_name; // sistema impõe
   values.broker_brand = bp.brand_locked_name ?? values.attendant_name ?? '';
 
-  // 2) overrides seguros (whitelist).
+  // 2) overrides seguros (whitelist) — MATERIALIZADOS (valores realmente aplicados).
   const applied: string[] = [];
   const rejected: string[] = [];
-  let llm_provider = bp.default_llm_provider;
-  let llm_model = bp.default_llm_model;
+  const overrides_applied: Record<string, unknown> = {};
+  const llm_provider = bp.default_llm_provider;
+  const llm_model = bp.default_llm_model; // modelo NUNCA é override do tenant (anti custo premium)
+  let llm_temperature: number | null = null;
   if (input.tenant_overrides) {
-    for (const [k] of Object.entries(input.tenant_overrides)) {
-      if (bp.safe_override_fields.includes(k)) applied.push(k);
-      else rejected.push(k); // nunca aplica fora da whitelist (ex.: agent_system_prompt, role, audience, llm_model premium)
+    for (const [k, v] of Object.entries(input.tenant_overrides)) {
+      if (bp.safe_override_fields.includes(k)) {
+        applied.push(k);
+        overrides_applied[k] = v;
+        if (k === 'llm_temperature' && typeof v === 'number') llm_temperature = v;
+        // overrides que também são variáveis (ex.: tone) refletem no prompt:
+        if (typeof v === 'string' && bp.variables.some((bv) => bv.key === k && bv.editable_by_tenant)) values[k] = v;
+      } else {
+        rejected.push(k); // nunca aplica fora da whitelist (agent_system_prompt, role, audience, llm_model premium...)
+      }
     }
   }
+  const avatar_url = typeof overrides_applied.avatar_url === 'string' ? (overrides_applied.avatar_url as string) : null;
+  const voice = typeof overrides_applied.voice === 'string' ? (overrides_applied.voice as string) : null;
 
   // 3) nome de exibição: marca travada para core.
   const display_name = bp.brand_locked_name
@@ -198,7 +213,11 @@ export function resolveEffectiveConfig(input: EffectiveConfigInput): EffectiveCo
     system_prompt: renderTemplate(bp.system_prompt_template, values),
     llm_provider,
     llm_model,
+    llm_temperature,
+    avatar_url,
+    voice,
     applied_overrides: applied,
+    overrides_applied,
     rejected_overrides: rejected,
     variables_used: values,
     immutable_guardrails: bp.immutable_guardrails,

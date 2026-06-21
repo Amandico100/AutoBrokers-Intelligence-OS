@@ -43,8 +43,14 @@ assert('renderTemplate var ausente vira vazio', renderTemplate('a{{y}}b', {}) ==
 {
   const eff = resolveEffectiveConfig({ blueprint: EVEN_ATTENDANCE_BLUEPRINT, company_name: 'X', tenant_overrides: { avatar_url: 'http://a', agent_system_prompt: 'HACK', role: 'core', llm_model: 'gpt-premium' } });
   assert('override seguro aplicado (avatar_url)', eff.applied_overrides.includes('avatar_url'));
+  assert('override MATERIALIZADO (avatar_url no objeto)', eff.avatar_url === 'http://a' && eff.overrides_applied.avatar_url === 'http://a');
   assert('override perigoso rejeitado (agent_system_prompt/role/llm_model)', eff.rejected_overrides.includes('agent_system_prompt') && eff.rejected_overrides.includes('role') && eff.rejected_overrides.includes('llm_model'));
   assert('llm_model não vira premium silenciosamente', eff.llm_model === EVEN_ATTENDANCE_BLUEPRINT.default_llm_model);
+  // voz materializada + llm_temperature só no core (whitelist)
+  const effVoice = resolveEffectiveConfig({ blueprint: EVEN_ATTENDANCE_BLUEPRINT, company_name: 'X', tenant_overrides: { voice: 'feminina-br-1' } });
+  assert('voz materializada', effVoice.voice === 'feminina-br-1');
+  const effTemp = resolveEffectiveConfig({ blueprint: AUTOBROKERS_CORE_BLUEPRINT, company_name: 'X', tenant_overrides: { llm_temperature: 0.2 } });
+  assert('llm_temperature materializado no core', effTemp.llm_temperature === 0.2);
 }
 
 assert('blueprint_version presente', getCanonicalBlueprint('autobrokers-core-v1')?.blueprint_version === 'v1');

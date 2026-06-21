@@ -40,20 +40,25 @@ export function resolveOperableCorridors(
   return templates.filter((t) => isCorridorOperable(t, companyId, activations));
 }
 
+export type CorridorTableStatus = 'ok' | 'table_missing' | 'error';
+
 /**
- * Modo de degradação seguro: se a tabela tenant_corridors AINDA não existe
- * (migration não aplicada), o runtime não pode quebrar. `legacyFallback=true`
- * mantém o comportamento antigo (global ativo disponível) até a migration.
+ * Resolução com degradação SEGURA distinguindo 3 casos:
+ *  - 'ok'            → usa as ativações (regra normal).
+ *  - 'table_missing' → tabela ainda não criada (PRÉ-migration): fallback legado
+ *                      (globais ativos) para não quebrar produção.
+ *  - 'error'         → erro operacional/RLS/banco APÓS a migration: FAIL-CLOSED —
+ *                      libera apenas corredores tenant-scoped da própria empresa
+ *                      (NUNCA reabre os globais por causa de um erro).
  */
 export function resolveCorridorsWithFallback(
   templates: CorridorTemplateLite[],
   companyId: string,
-  activations: TenantCorridorActivation[] | null, // null = tabela indisponível
-  legacyFallback: boolean,
-): { corridors: CorridorTemplateLite[]; mode: 'activated' | 'legacy_fallback' } {
-  if (activations === null) {
-    if (legacyFallback) return { corridors: templates.filter((t) => t.is_active), mode: 'legacy_fallback' };
-    return { corridors: templates.filter((t) => t.is_active && t.company_id === companyId), mode: 'legacy_fallback' };
-  }
-  return { corridors: resolveOperableCorridors(templates, companyId, activations), mode: 'activated' };
+  activations: TenantCorridorActivation[],
+  status: CorridorTableStatus,
+): { corridors: CorridorTemplateLite[]; mode: 'activated' | 'legacy_fallback' | 'fail_closed' } {
+  if (status === 'ok') return { corridors: resolveOperableCorridors(templates, companyId, activations), mode: 'activated' };
+  if (status === 'table_missing') return { corridors: templates.filter((t) => t.is_active), mode: 'legacy_fallback' };
+  // 'error' → fail-closed: só tenant-scoped da própria empresa; nenhum global.
+  return { corridors: templates.filter((t) => t.is_active && t.company_id === companyId), mode: 'fail_closed' };
 }

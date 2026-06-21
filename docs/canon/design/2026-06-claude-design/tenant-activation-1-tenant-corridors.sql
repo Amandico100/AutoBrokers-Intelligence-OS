@@ -1,9 +1,11 @@
--- Tenant Activation 1 — tabela tenant_corridors (ativação de corredor por corretora).
--- NÃO aplicada automaticamente. Aplicar no SQL editor do Supabase.
--- Espelha o padrão tenant_auxiliaries: corridor_templates (global) → tenant_corridors (instalado/ativado).
--- Regra: corredor GLOBAL só opera para a corretora se houver linha aqui com status='active'.
+-- Tenant Activation 1 — tabela tenant_corridors (HARDENED, Batch 2 Parte 0).
+-- NÃO aplicada automaticamente. Aplicar ANTES da migração da Resulta.
+-- Espelha tenant_auxiliaries: corridor_templates (global) → tenant_corridors (ativado).
+-- Regra: corredor GLOBAL só opera se houver linha aqui com status='active'.
 
 -- ============ APPLY ============
+begin;
+
 create table if not exists public.tenant_corridors (
   id uuid primary key default gen_random_uuid(),
   company_id uuid not null references public.companies(id) on delete cascade,
@@ -20,21 +22,32 @@ create table if not exists public.tenant_corridors (
 create index if not exists idx_tenant_corridors_company on public.tenant_corridors (company_id);
 create index if not exists idx_tenant_corridors_active on public.tenant_corridors (company_id, status);
 
-alter table public.tenant_corridors enable row level security;
+-- updated_at automático em toda mutação.
+create or replace function public.tg_tenant_corridors_set_updated_at()
+returns trigger language plpgsql as $$
+begin new.updated_at := now(); return new; end $$;
 
--- service_role (backend) faz tudo; o app acessa via service role como já faz nas demais tabelas.
+drop trigger if exists trg_tenant_corridors_updated_at on public.tenant_corridors;
+create trigger trg_tenant_corridors_updated_at
+  before update on public.tenant_corridors
+  for each row execute function public.tg_tenant_corridors_set_updated_at();
+
+-- RLS: o app acessa via service_role (que bypassa RLS). anon/authenticated NÃO leem direto.
+alter table public.tenant_corridors enable row level security;
+revoke all on public.tenant_corridors from anon, authenticated;
+
 drop policy if exists tenant_corridors_service_all on public.tenant_corridors;
 create policy tenant_corridors_service_all on public.tenant_corridors
   for all to service_role using (true) with check (true);
 
--- (Opcional p/ acesso direto autenticado por tenant — mantém isolamento; o app usa service role)
--- create policy tenant_corridors_tenant_read on public.tenant_corridors
---   for select to authenticated using (company_id = (auth.jwt() ->> 'company_id')::uuid);
+commit;
 
 -- ============ VERIFY ============
--- select table_name from information_schema.tables where table_schema='public' and table_name='tenant_corridors';
+-- select to_regclass('public.tenant_corridors');                 -- não-nulo
+-- select polname, polcmd, roles from pg_policies where tablename='tenant_corridors';
+-- select tgname from pg_trigger where tgrelid='public.tenant_corridors'::regclass and not tgisinternal;
 -- select count(*) from public.tenant_corridors;
--- select polname, polcmd from pg_policies where tablename='tenant_corridors';
 
 -- ============ ROLLBACK ============
 -- drop table if exists public.tenant_corridors cascade;
+-- drop function if exists public.tg_tenant_corridors_set_updated_at();

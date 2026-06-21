@@ -5,7 +5,7 @@ import { mediaAckMessage, type WhatsAppMediaKind } from '@/lib/attendance/whatsa
 import { evaluateWhatsAppOutboundGate } from '@/lib/attendance/whatsapp-outbound-gate';
 import { evaluateConsent } from '@/lib/attendance/whatsapp-consent';
 import { getProductionFlags } from '@/lib/security/production-gates';
-import { resolveCorridorsWithFallback, type CorridorTemplateLite, type TenantCorridorActivation } from '@/lib/attendance/tenant-corridor-activation';
+import { resolveCorridorsWithFallback, type CorridorTemplateLite, type TenantCorridorActivation, type CorridorTableStatus } from '@/lib/attendance/tenant-corridor-activation';
 import {
   normalizeAttendanceMedia,
   processAttendanceMedia,
@@ -63,22 +63,27 @@ async function loadAvailableCorridors(supabaseAdmin: any, companyId: string): Pr
     .or(`company_id.is.null,company_id.eq.${companyId}`);
   const templates = Array.isArray(data) ? data : [];
 
-  let activations: TenantCorridorActivation[] | null = null;
+  let activations: TenantCorridorActivation[] = [];
+  let status: CorridorTableStatus = 'ok';
+  const isTableMissing = (msg?: string | null, code?: string | null) =>
+    code === '42P01' || /relation .* does not exist|could not find the table|does not exist/i.test(String(msg || ''));
   try {
     const { data: acts, error } = await supabaseAdmin
       .from('tenant_corridors')
       .select('company_id, corridor_template_id, status')
       .eq('company_id', companyId);
-    activations = error ? null : (Array.isArray(acts) ? acts : []);
-  } catch {
-    activations = null; // tabela ausente → fallback legado
+    if (error) status = isTableMissing(error.message, (error as any).code) ? 'table_missing' : 'error';
+    else activations = Array.isArray(acts) ? acts : [];
+  } catch (e: any) {
+    status = isTableMissing(e?.message, e?.code) ? 'table_missing' : 'error';
   }
 
   const lite: CorridorTemplateLite[] = templates.map((t: any) => ({
     id: t.id, corridor_key: t.corridor_key, subcorridor_key: t.subcorridor_key ?? null,
     scope: t.scope ?? (t.company_id ? 'tenant' : 'global'), company_id: t.company_id ?? null, is_active: true,
   }));
-  const { corridors } = resolveCorridorsWithFallback(lite, companyId, activations, true);
+  const { corridors, mode } = resolveCorridorsWithFallback(lite, companyId, activations, status);
+  if (mode === 'fail_closed') console.warn(`[WA INBOUND] tenant_corridors read error → fail-closed (company=${companyId})`);
   const allowed = new Set(corridors.map((c) => c.id));
   return templates.filter((t: any) => allowed.has(t.id));
 }

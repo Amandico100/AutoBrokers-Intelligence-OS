@@ -36,12 +36,18 @@ assert('tenant-scoped NÃO vaza p/ outra', isCorridorOperable(tPriv, 'C_OUTRA', 
   assert('outra empresa não opera nada (sem ativação)', opOutra.length === 0);
 }
 
-// fallback seguro quando tabela não existe
+// degradação segura: table_missing (pré-migration) vs error (fail-closed) vs ok
 {
-  const fb = resolveCorridorsWithFallback(templates, 'C_OUTRA', null, true);
-  assert('tabela ausente + legacy → globais ativos disponíveis', fb.mode === 'legacy_fallback' && fb.corridors.some((c) => c.id === 'g1'));
-  const act = resolveCorridorsWithFallback(templates, 'C_RESULTA', activations, true);
-  assert('com ativações → modo activated', act.mode === 'activated' && act.corridors.length === 3);
+  const pre = resolveCorridorsWithFallback(templates, 'C_OUTRA', [], 'table_missing');
+  assert('table_missing → legacy (globais ativos)', pre.mode === 'legacy_fallback' && pre.corridors.some((c) => c.id === 'g1'));
+  const ok = resolveCorridorsWithFallback(templates, 'C_RESULTA', activations, 'ok');
+  assert('status ok → activated', ok.mode === 'activated' && ok.corridors.length === 3);
+  // FAIL-CLOSED: erro operacional NÃO reabre globais; só tenant-scoped da própria empresa.
+  const err = resolveCorridorsWithFallback(templates, 'C_RESULTA', [], 'error');
+  assert('error → fail_closed (sem globais)', err.mode === 'fail_closed' && !err.corridors.some((c) => c.scope === 'global'));
+  assert('error → mantém tenant-scoped próprio', err.corridors.some((c) => c.id === 't1'));
+  const errOutra = resolveCorridorsWithFallback(templates, 'C_OUTRA', [], 'error');
+  assert('error p/ empresa sem tenant-scoped → nada', errOutra.corridors.length === 0);
 }
 
 console.log(`\n== Resumo: ${pass} passaram, ${fail} falharam ==`);
