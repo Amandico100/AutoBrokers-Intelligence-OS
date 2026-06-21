@@ -110,7 +110,7 @@ export const EVEN_ATTENDANCE_BLUEPRINT: CanonicalBlueprint = {
     { key: 'closing_message', label: 'Mensagem de encerramento', default: 'Posso ajudar em algo mais?', editable_by_tenant: true },
   ],
   immutable_guardrails: ATTENDANCE_GUARDRAILS,
-  safe_override_fields: ['avatar_url', 'attendant_name', 'attendant_gender', 'attendant_pronoun', 'tone', 'business_hours', 'handoff_target', 'opening_message', 'closing_message', 'voice'],
+  safe_override_fields: ['avatar_url', 'attendant_name', 'attendant_gender', 'attendant_pronoun', 'tone', 'business_hours', 'handoff_target', 'opening_message', 'closing_message', 'voice', 'llm_temperature'],
   default_active: false, // Even nasce provisionada e INATIVA
 };
 
@@ -221,5 +221,95 @@ export function resolveEffectiveConfig(input: EffectiveConfigInput): EffectiveCo
     rejected_overrides: rejected,
     variables_used: values,
     immutable_guardrails: bp.immutable_guardrails,
+  };
+}
+
+// --- TA2-A: persistência canônica da configuração do agente por tenant ---------
+// A config editável vive em agents.context_package.tenant_agent_config (preserva
+// o resto do context_package). O prompt efetivo é RE-RENDERIZADO e gravado em
+// agents.agent_system_prompt → o runtime (que lê agent_system_prompt + colunas)
+// passa a usar a configuração SEM precisar mudar o runtime. NUNCA expõe prompt
+// protegido como editável; modelo/role/audience/guardrails nunca mudam.
+
+export const TENANT_AGENT_CONFIG_NS = 'tenant_agent_config';
+
+export interface TenantAgentConfigInput {
+  variables?: Record<string, string>;
+  overrides?: Record<string, unknown>;
+}
+export interface AgentConfigUpdate {
+  columns: Record<string, unknown>;        // colunas de `agents` a atualizar
+  context_package: Record<string, unknown>; // context_package mesclado (preserva existente)
+  effective: EffectiveConfig;
+  rejected: string[];
+}
+
+/** Campos que o tenant pode editar para um blueprint (variáveis + overrides seguros). */
+export function editableForBlueprint(bp: CanonicalBlueprint): { variables: BlueprintVariable[]; override_fields: string[] } {
+  return { variables: bp.variables.filter((v) => v.editable_by_tenant), override_fields: bp.safe_override_fields };
+}
+
+/** Calcula a atualização canônica (colunas + context_package) a partir da edição do tenant. */
+export function computeAgentConfigUpdate(
+  bp: CanonicalBlueprint,
+  companyName: string,
+  currentContextPackage: unknown,
+  input: TenantAgentConfigInput,
+): AgentConfigUpdate {
+  const eff = resolveEffectiveConfig({ blueprint: bp, company_name: companyName, tenant_variables: input.variables, tenant_overrides: input.overrides });
+
+  const columns: Record<string, unknown> = { agent_system_prompt: eff.system_prompt };
+  // Marca travada: Core mantém name 'AutoBrokers'. Even usa o nome escolhido.
+  if (!bp.brand_locked_name) columns.name = eff.display_name;
+  if (eff.avatar_url !== null) columns.avatar_url = eff.avatar_url;
+  if (eff.llm_temperature !== null) columns.llm_temperature = eff.llm_temperature;
+
+  const cp: Record<string, unknown> = (currentContextPackage && typeof currentContextPackage === 'object' && !Array.isArray(currentContextPackage))
+    ? { ...(currentContextPackage as Record<string, unknown>) } : {};
+  const editableVarKeys = bp.variables.filter((v) => v.editable_by_tenant).map((v) => v.key);
+  const savedVars: Record<string, string> = {};
+  for (const k of editableVarKeys) savedVars[k] = eff.variables_used[k];
+  cp[TENANT_AGENT_CONFIG_NS] = {
+    blueprint_key: bp.blueprint_key,
+    blueprint_version: bp.blueprint_version,
+    variables: savedVars,
+    overrides: eff.overrides_applied,
+    updated_at: new Date().toISOString(),
+  };
+
+  return { columns, context_package: cp, effective: eff, rejected: eff.rejected_overrides };
+}
+
+/** Reset: limpa os overrides do tenant e volta ao padrão do blueprint. */
+export function resetAgentConfigUpdate(bp: CanonicalBlueprint, companyName: string, currentContextPackage: unknown): AgentConfigUpdate {
+  const update = computeAgentConfigUpdate(bp, companyName, currentContextPackage, {});
+  // remove o namespace (volta 100% ao padrão), preservando o resto do context_package.
+  const cp = { ...(update.context_package as Record<string, unknown>) };
+  delete cp[TENANT_AGENT_CONFIG_NS];
+  return { ...update, context_package: cp };
+}
+
+/** Visão sanitizada para o Dashboard/Portal Admin: valores editáveis atuais, SEM prompt protegido. */
+export function sanitizeAgentConfigForDashboard(
+  bp: CanonicalBlueprint,
+  companyName: string,
+  currentContextPackage: unknown,
+): {
+  blueprint_key: string; blueprint_version: string; role: AgentRole; audience: AgentAudience;
+  brand_locked_name: string | null; display_name: string;
+  editable_variables: Array<{ key: string; label: string; value: string }>;
+  editable_override_fields: string[];
+  current_overrides: Record<string, unknown>;
+} {
+  const saved = (currentContextPackage && typeof currentContextPackage === 'object' && !Array.isArray(currentContextPackage))
+    ? ((currentContextPackage as Record<string, unknown>)[TENANT_AGENT_CONFIG_NS] as any) : null;
+  const savedVars: Record<string, string> = (saved && typeof saved.variables === 'object') ? saved.variables : {};
+  const eff = resolveEffectiveConfig({ blueprint: bp, company_name: companyName, tenant_variables: savedVars, tenant_overrides: (saved && typeof saved.overrides === 'object') ? saved.overrides : {} });
+  return {
+    blueprint_key: bp.blueprint_key, blueprint_version: bp.blueprint_version, role: bp.role, audience: bp.audience,
+    brand_locked_name: bp.brand_locked_name, display_name: eff.display_name,
+    editable_variables: bp.variables.filter((v) => v.editable_by_tenant).map((v) => ({ key: v.key, label: v.label, value: eff.variables_used[v.key] ?? v.default })),
+    editable_override_fields: bp.safe_override_fields,
+    current_overrides: (saved && typeof saved.overrides === 'object') ? saved.overrides : {},
   };
 }

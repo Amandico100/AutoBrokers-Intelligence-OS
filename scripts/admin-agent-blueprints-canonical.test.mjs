@@ -3,6 +3,7 @@
 import {
   CANONICAL_BLUEPRINTS, getCanonicalBlueprint, getBlueprintByRole,
   renderTemplate, resolveEffectiveConfig, AUTOBROKERS_CORE_BLUEPRINT, EVEN_ATTENDANCE_BLUEPRINT,
+  computeAgentConfigUpdate, resetAgentConfigUpdate, sanitizeAgentConfigForDashboard, TENANT_AGENT_CONFIG_NS,
 } from '../lib/admin/agent-blueprints-canonical.ts';
 
 let pass = 0, fail = 0; const failures = [];
@@ -54,6 +55,38 @@ assert('renderTemplate var ausente vira vazio', renderTemplate('a{{y}}b', {}) ==
 }
 
 assert('blueprint_version presente', getCanonicalBlueprint('autobrokers-core-v1')?.blueprint_version === 'v1');
+
+// [TA2-A] persistência / sanitização da config por tenant
+console.log('\n[TA2-A] persistência de config');
+{
+  // Even: muda nome → coluna name + prompt re-renderizado; preserva context_package existente.
+  const existingCp = { some_other_key: { keep: true }, memory: [1, 2] };
+  const upd = computeAgentConfigUpdate(EVEN_ATTENDANCE_BLUEPRINT, 'Autofleet', existingCp, { variables: { attendant_name: 'Joana' }, overrides: { avatar_url: 'http://a', llm_temperature: 0.3 } });
+  assert('Even: coluna name = Joana', upd.columns.name === 'Joana');
+  assert('Even: agent_system_prompt re-renderizado cita Joana', String(upd.columns.agent_system_prompt).includes('Joana'));
+  assert('avatar_url vira coluna', upd.columns.avatar_url === 'http://a');
+  assert('llm_temperature vira coluna', upd.columns.llm_temperature === 0.3);
+  assert('context_package preserva chaves existentes', upd.context_package.some_other_key && Array.isArray(upd.context_package.memory));
+  assert('context_package grava namespace tenant', Boolean(upd.context_package[TENANT_AGENT_CONFIG_NS]));
+  assert('namespace guarda variável escolhida', upd.context_package[TENANT_AGENT_CONFIG_NS].variables.attendant_name === 'Joana');
+
+  // Core: name NÃO vira coluna (marca travada).
+  const updCore = computeAgentConfigUpdate(AUTOBROKERS_CORE_BLUEPRINT, 'Resulta Seguros', {}, { variables: { tone: 'objetivo' } });
+  assert('Core: name NÃO é alterado (marca travada)', !('name' in updCore.columns));
+  assert('Core: prompt cita a empresa', String(updCore.columns.agent_system_prompt).includes('Resulta Seguros'));
+
+  // sanitize: nunca expõe agent_system_prompt como campo editável
+  const sani = sanitizeAgentConfigForDashboard(EVEN_ATTENDANCE_BLUEPRINT, 'Autofleet', upd.context_package);
+  assert('sanitize: display_name = Joana', sani.display_name === 'Joana');
+  assert('sanitize: NÃO expõe prompt', !JSON.stringify(sani).includes('atendente de assistencia e sinistro'));
+  assert('sanitize: lista variáveis editáveis', sani.editable_variables.some((v) => v.key === 'attendant_name' && v.value === 'Joana'));
+
+  // reset: remove o namespace, volta ao padrão
+  const rst = resetAgentConfigUpdate(EVEN_ATTENDANCE_BLUEPRINT, 'Autofleet', upd.context_package);
+  assert('reset: remove namespace tenant', !(TENANT_AGENT_CONFIG_NS in rst.context_package));
+  assert('reset: preserva outras chaves', rst.context_package.some_other_key && Array.isArray(rst.context_package.memory));
+  assert('reset: name volta a Even', rst.columns.name === 'Even');
+}
 
 console.log(`\n== Resumo: ${pass} passaram, ${fail} falharam ==`);
 if (fail > 0) { for (const f of failures) console.log(`  - ${f}`); process.exit(1); }
