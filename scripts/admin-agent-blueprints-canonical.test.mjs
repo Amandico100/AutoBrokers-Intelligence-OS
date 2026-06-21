@@ -1,0 +1,54 @@
+#!/usr/bin/env node
+/** Tenant Activation 1 — blueprints canônicos + effective config (offline, puro). */
+import {
+  CANONICAL_BLUEPRINTS, getCanonicalBlueprint, getBlueprintByRole,
+  renderTemplate, resolveEffectiveConfig, AUTOBROKERS_CORE_BLUEPRINT, EVEN_ATTENDANCE_BLUEPRINT,
+} from '../lib/admin/agent-blueprints-canonical.ts';
+
+let pass = 0, fail = 0; const failures = [];
+function assert(n, c) { if (c) { pass++; console.log(`  ✓ ${n}`); } else { fail++; failures.push(n); console.log(`  ✗ ${n}`); } }
+
+console.log('== Tenant Activation 1 — Canonical Blueprints ==\n');
+
+assert('2 blueprints canônicos', CANONICAL_BLUEPRINTS.length === 2);
+assert('core por role', getBlueprintByRole('core')?.blueprint_key === 'autobrokers-core-v1');
+assert('attendance por role', getBlueprintByRole('attendance')?.blueprint_key === 'even-attendance-v1');
+assert('core: marca travada AutoBrokers', AUTOBROKERS_CORE_BLUEPRINT.brand_locked_name === 'AutoBrokers');
+assert('core: allow_direct_chat + role core', AUTOBROKERS_CORE_BLUEPRINT.allow_direct_chat === true && AUTOBROKERS_CORE_BLUEPRINT.role === 'core' && AUTOBROKERS_CORE_BLUEPRINT.audience === 'broker_internal');
+assert('even: padrão feminino + inativa', EVEN_ATTENDANCE_BLUEPRINT.default_display_name === 'Even' && EVEN_ATTENDANCE_BLUEPRINT.default_active === false && EVEN_ATTENDANCE_BLUEPRINT.audience === 'insured_external');
+
+// render
+assert('renderTemplate substitui var', renderTemplate('Olá {{x}}!', { x: 'mundo' }) === 'Olá mundo!');
+assert('renderTemplate var ausente vira vazio', renderTemplate('a{{y}}b', {}) === 'ab');
+
+// Effective config — CORE
+{
+  const eff = resolveEffectiveConfig({ blueprint: AUTOBROKERS_CORE_BLUEPRINT, company_name: 'Resulta Seguros', tenant_variables: { tone: 'objetivo', company_name: 'HACK' } });
+  assert('core display = AutoBrokers da {empresa}', eff.display_name === 'AutoBrokers da Resulta Seguros');
+  assert('core prompt cita a empresa', eff.system_prompt.includes('Resulta Seguros'));
+  assert('company_name NÃO é editável pelo tenant (HACK ignorado)', eff.variables_used.company_name === 'Resulta Seguros');
+  assert('core role/audience preservados', eff.role === 'core' && eff.audience === 'broker_internal');
+}
+
+// Effective config — EVEN com personalização (Even → Joana, masculino)
+{
+  const eff = resolveEffectiveConfig({ blueprint: EVEN_ATTENDANCE_BLUEPRINT, company_name: 'Autofleet', tenant_variables: { attendant_name: 'Joana', attendant_gender: 'feminino', tone: 'acolhedor' } });
+  assert('even display = nome escolhido', eff.display_name === 'Joana');
+  assert('even prompt usa nome/empresa', eff.system_prompt.includes('Joana') && eff.system_prompt.includes('Autofleet'));
+  const eff2 = resolveEffectiveConfig({ blueprint: EVEN_ATTENDANCE_BLUEPRINT, company_name: 'ABC', tenant_variables: { attendant_name: 'João', attendant_gender: 'masculino', attendant_pronoun: 'ele' } });
+  assert('even masculino aplicado', eff2.display_name === 'João' && eff2.system_prompt.includes('masculino') && eff2.variables_used.attendant_pronoun === 'ele');
+}
+
+// Overrides: whitelist aplicada, fora da whitelist rejeitado
+{
+  const eff = resolveEffectiveConfig({ blueprint: EVEN_ATTENDANCE_BLUEPRINT, company_name: 'X', tenant_overrides: { avatar_url: 'http://a', agent_system_prompt: 'HACK', role: 'core', llm_model: 'gpt-premium' } });
+  assert('override seguro aplicado (avatar_url)', eff.applied_overrides.includes('avatar_url'));
+  assert('override perigoso rejeitado (agent_system_prompt/role/llm_model)', eff.rejected_overrides.includes('agent_system_prompt') && eff.rejected_overrides.includes('role') && eff.rejected_overrides.includes('llm_model'));
+  assert('llm_model não vira premium silenciosamente', eff.llm_model === EVEN_ATTENDANCE_BLUEPRINT.default_llm_model);
+}
+
+assert('blueprint_version presente', getCanonicalBlueprint('autobrokers-core-v1')?.blueprint_version === 'v1');
+
+console.log(`\n== Resumo: ${pass} passaram, ${fail} falharam ==`);
+if (fail > 0) { for (const f of failures) console.log(`  - ${f}`); process.exit(1); }
+process.exit(0);

@@ -47,7 +47,9 @@
     "test:portal-session-reuse": "node scripts/attendance-portal-session-reuse.test.mjs",
     "test:whatsapp-outbound-gate": "node scripts/attendance-whatsapp-outbound-gate.test.mjs",
     "test:whatsapp-consent": "node scripts/attendance-whatsapp-consent.test.mjs",
-    "test:insurer-contacts": "node scripts/attendance-insurer-contacts.test.mjs"
+    "test:insurer-contacts": "node scripts/attendance-insurer-contacts.test.mjs",
+    "test:agent-blueprints-canonical": "node scripts/admin-agent-blueprints-canonical.test.mjs",
+    "test:tenant-corridor-activation": "node scripts/attendance-tenant-corridor-activation.test.mjs"
   },
   "dependencies": {
     "@hookform/resolvers": "^3.9.0",

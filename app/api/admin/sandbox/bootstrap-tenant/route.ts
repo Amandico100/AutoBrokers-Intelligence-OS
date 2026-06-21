@@ -56,9 +56,30 @@ export async function POST(request: NextRequest) {
 
     const actions: string[] = [];
 
+    // Tenant Activation 1: NÃO-DESTRUTIVO. Se já existe um Core canônico
+    // (agent_role='core'), NUNCA sobrescrever com o agente Sandbox.
+    const { data: existingCore } = await supabaseAdmin
+      .from('agents')
+      .select('id, name')
+      .eq('company_id', companyId)
+      .eq('agent_role', 'core')
+      .limit(1)
+      .maybeSingle();
+
+    if (existingCore?.id) {
+      actions.push('core_exists_skip_sandbox');
+      return NextResponse.json({
+        success: true,
+        company: { id: company.id, name: company.company_name, status: company.status },
+        agent: existingCore,
+        note: 'Core canônico já existe; bootstrap sandbox não sobrescreve. Use /api/admin/provision-tenant.',
+        actions,
+      });
+    }
+
     const { data: existingAgent, error: agentLookupError } = await supabaseAdmin
       .from('agents')
-      .select('id, name, slug, is_active, llm_provider, llm_model')
+      .select('id, name, slug, is_active, llm_provider, llm_model, agent_role')
       .eq('company_id', companyId)
       .eq('slug', SANDBOX_AGENT_SLUG)
       .maybeSingle();
@@ -102,7 +123,7 @@ export async function POST(request: NextRequest) {
         .from('agents')
         .update(agentPayload)
         .eq('id', existingAgent.id)
-        .select('id, name, slug, is_active, llm_provider, llm_model')
+        .select('id, name, slug, is_active, llm_provider, llm_model, agent_role')
         .single();
 
       if (error) {
@@ -116,7 +137,7 @@ export async function POST(request: NextRequest) {
       const { data, error } = await supabaseAdmin
         .from('agents')
         .insert(agentPayload)
-        .select('id, name, slug, is_active, llm_provider, llm_model')
+        .select('id, name, slug, is_active, llm_provider, llm_model, agent_role')
         .single();
 
       if (error) {

@@ -5,6 +5,7 @@ import { mediaAckMessage, type WhatsAppMediaKind } from '@/lib/attendance/whatsa
 import { evaluateWhatsAppOutboundGate } from '@/lib/attendance/whatsapp-outbound-gate';
 import { evaluateConsent } from '@/lib/attendance/whatsapp-consent';
 import { getProductionFlags } from '@/lib/security/production-gates';
+import { resolveCorridorsWithFallback, type CorridorTemplateLite, type TenantCorridorActivation } from '@/lib/attendance/tenant-corridor-activation';
 import {
   normalizeAttendanceMedia,
   processAttendanceMedia,
@@ -47,14 +48,39 @@ function diag(events: string[], extra: Record<string, unknown> = {}) {
   return { provider: 'z-api', events, ...extra };
 }
 
-/** Carrega corredores ativos (global + tenant) como fonte do resolver. */
+/**
+ * Carrega corredores OPERÁVEIS pela corretora (Tenant Activation 1).
+ * Regra SPEC-012: corredor GLOBAL só opera se houver ativação em tenant_corridors
+ * (status active); tenant-scoped continua disponível. DEFENSIVO: se a tabela
+ * tenant_corridors ainda não existir (migration não aplicada), mantém o
+ * comportamento legado (global ativo) — não quebra o runtime.
+ */
 async function loadAvailableCorridors(supabaseAdmin: any, companyId: string): Promise<any[]> {
   const { data } = await supabaseAdmin
     .from('corridor_templates')
     .select('id, corridor_key, subcorridor_key, insurer_key, line_kind, macro_service, service_type, display_name, scope, company_id, required_slots')
     .eq('is_active', true)
     .or(`company_id.is.null,company_id.eq.${companyId}`);
-  return Array.isArray(data) ? data : [];
+  const templates = Array.isArray(data) ? data : [];
+
+  let activations: TenantCorridorActivation[] | null = null;
+  try {
+    const { data: acts, error } = await supabaseAdmin
+      .from('tenant_corridors')
+      .select('company_id, corridor_template_id, status')
+      .eq('company_id', companyId);
+    activations = error ? null : (Array.isArray(acts) ? acts : []);
+  } catch {
+    activations = null; // tabela ausente → fallback legado
+  }
+
+  const lite: CorridorTemplateLite[] = templates.map((t: any) => ({
+    id: t.id, corridor_key: t.corridor_key, subcorridor_key: t.subcorridor_key ?? null,
+    scope: t.scope ?? (t.company_id ? 'tenant' : 'global'), company_id: t.company_id ?? null, is_active: true,
+  }));
+  const { corridors } = resolveCorridorsWithFallback(lite, companyId, activations, true);
+  const allowed = new Set(corridors.map((c) => c.id));
+  return templates.filter((t: any) => allowed.has(t.id));
 }
 
 function toAvailable(rows: any[]): AvailableCorridor[] {

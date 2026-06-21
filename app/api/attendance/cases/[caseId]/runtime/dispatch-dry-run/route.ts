@@ -11,6 +11,7 @@ import {
   type DispatchPacketState,
 } from '@/lib/attendance/dispatch-readiness';
 import { resolveInternalCompanyId } from '@/lib/attendance/runtime-internal-auth';
+import { resolveInsurerDispatchTarget } from '@/lib/attendance/insurer-contacts-global-seed';
 
 export const dynamic = 'force-dynamic';
 
@@ -125,6 +126,21 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
       readiness,
       generatedAt,
     });
+
+    // Tenant Activation 1: anexa o DESTINO GLOBAL sugerido (contatos das seguradoras).
+    // Dry-run/informativo — NÃO envia. Override por tenant pode entrar no futuro.
+    try {
+      const corridorKey: string = String(template?.corridor_key ?? caseRow?.selected_corridor_key ?? '');
+      const insurerKey = corridorKey.split('_')[0] || null;
+      const serviceType = (template?.subcorridor_key === 'electrician' || /residential|residencial/i.test(corridorKey))
+        ? 'residential_assistance'
+        : (/auto/i.test(corridorKey) ? 'auto_assistance' : 'residential_assistance');
+      const tgt = resolveInsurerDispatchTarget(insurerKey, serviceType as any);
+      (packet as any).suggested_dispatch_target = {
+        ok: tgt.ok, insurer_key: tgt.insurer_key, channel: tgt.channel, kind: tgt.kind,
+        primary_digits: tgt.primary_digits, source: tgt.source, reason: tgt.reason, real_action_allowed: false,
+      };
+    } catch { /* nunca bloqueia o dry-run */ }
     const dbStatus = dbStatusForPacketState(readiness.packet_state);
     const nextStep = NEXT_STEP[readiness.packet_state];
 
