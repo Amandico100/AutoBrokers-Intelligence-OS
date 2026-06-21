@@ -168,11 +168,18 @@ export default function PortalBrowserAdminPage() {
   const [canaryAccount, setCanaryAccount] = useState('');
   const [activeCanaryId, setActiveCanaryId] = useState('');
   const [canaryBusy, setCanaryBusy] = useState('');
+  const [canaryReadiness, setCanaryReadiness] = useState<any>(null); // readiness por conta (account-aware)
   const loadCanaryStatus = useCallback(async () => {
     const j = await fetch('/api/admin/portal-browser/real-execution/status').then((r) => r.json()).catch(() => ({}));
     if (j?.ok) setCanaryStatus(j);
   }, []);
   useEffect(() => { loadCanaryStatus(); }, [loadCanaryStatus]);
+  const loadCanaryReadiness = useCallback(async (accountId: string) => {
+    if (!accountId) { setCanaryReadiness(null); return; }
+    const j = await fetch(`/api/admin/portal-browser/real-execution/readiness?portal_account_id=${encodeURIComponent(accountId)}`).then((r) => r.json()).catch(() => ({}));
+    setCanaryReadiness(j?.ok ? j : null);
+  }, []);
+  useEffect(() => { loadCanaryReadiness(canaryAccount); }, [canaryAccount, loadCanaryReadiness]);
 
   const canaryPost = async (label: string, path: string, payload: any) => {
     setCanaryBusy(label);
@@ -186,11 +193,12 @@ export default function PortalBrowserAdminPage() {
         setNotice(`${label}: ${j?.canary?.state ?? 'ok'}${blk}`);
       }
       await loadCanaryStatus();
+      await loadCanaryReadiness(canaryAccount);
     } catch (e: any) { setNotice(`${label}: erro ${e?.message || ''}`); }
     finally { setCanaryBusy(''); }
   };
   const doApprove = () => canaryAccount ? canaryPost('Aprovar canary', '/api/admin/portal-browser/real-execution/approve', { portal_account_id: canaryAccount }) : setNotice('Selecione a conta de portal.');
-  const doRevoke = async () => { if (!canaryAccount) return; setCanaryBusy('Revogar'); await fetch(`/api/admin/portal-browser/real-execution/approve?portal_account_id=${encodeURIComponent(canaryAccount)}`, { method: 'DELETE' }).catch(() => {}); setCanaryBusy(''); await loadCanaryStatus(); };
+  const doRevoke = async () => { if (!canaryAccount) return; setCanaryBusy('Revogar'); await fetch(`/api/admin/portal-browser/real-execution/approve?portal_account_id=${encodeURIComponent(canaryAccount)}`, { method: 'DELETE' }).catch(() => {}); setCanaryBusy(''); await loadCanaryStatus(); await loadCanaryReadiness(canaryAccount); };
   const doStart = () => canaryAccount ? canaryPost('Iniciar canary', '/api/admin/portal-browser/real-execution/start', { portal_account_id: canaryAccount }) : setNotice('Selecione a conta de portal.');
   const doVerify = () => activeCanaryId ? canaryPost('Verificar sessão', '/api/admin/portal-browser/real-execution/verify', { canary_id: activeCanaryId }) : setNotice('Inicie um canary primeiro.');
   const doCapture = () => activeCanaryId ? canaryPost('Capturar SessionRef', '/api/admin/portal-browser/real-execution/capture', { canary_id: activeCanaryId }) : setNotice('Inicie um canary primeiro.');
@@ -542,20 +550,17 @@ export default function PortalBrowserAdminPage() {
       {bbReadiness && (
         <div className="mt-6 rounded-lg border border-border bg-card p-4">
           <div className="mb-2 flex flex-wrap items-center gap-2">
-            <p className="text-sm font-medium text-foreground">Browserbase — readiness (canary real)</p>
-            <span className="text-[11px] text-amber-600">Custo/segurança: abre browser real só com flags + aprovação + kill switch off.</span>
+            <p className="text-sm font-medium text-foreground">Browserbase — readiness global de infraestrutura</p>
+            <span className="text-[11px] text-amber-600">Envs + flags + kill switch (não considera approval por conta). A prontidão do canary selecionado fica no painel “Canary real de login”.</span>
           </div>
           <p className="text-[11px] text-muted-foreground">
-            can_open_real_browser: <span className="font-medium text-foreground">{String(bbReadiness.can_open_real_browser)}</span>
+            infraestrutura pronta: <span className="font-medium text-foreground">{String(bbReadiness.can_open_real_browser)}</span>
             {' '}· env: api_key={String(bbReadiness.env_present?.api_key_present)} / project_id={String(bbReadiness.env_present?.project_id_present)}
           </p>
           {Array.isArray(bbReadiness.blockers) && bbReadiness.blockers.length > 0 && (
-            <p className="mt-1 text-[10px] text-muted-foreground">Bloqueios: {bbReadiness.blockers.join(', ')}</p>
+            <p className="mt-1 text-[10px] text-muted-foreground">Bloqueios de infra: {bbReadiness.blockers.join(', ')}</p>
           )}
-          <button disabled={!bbReadiness.can_open_real_browser} className="mt-2 rounded-lg border border-border px-3 py-1 text-[11px] text-muted-foreground disabled:opacity-50">
-            Iniciar canary real {bbReadiness.can_open_real_browser ? '' : '(bloqueado)'}
-          </button>
-          <p className="mt-1 text-[10px] text-faint">Nenhum segredo é exposto. Docs: docs.browserbase.com</p>
+          <p className="mt-1 text-[10px] text-faint">A iniciação do canary fica no painel “Canary real de login” (precisa da approval da conta). Nenhum segredo é exposto. Docs: docs.browserbase.com</p>
         </div>
       )}
 
@@ -590,11 +595,14 @@ export default function PortalBrowserAdminPage() {
 
       {/* 43P-FINAL-2 — Canary real de login (operacional, gated) */}
       {bbReadiness && (() => {
-        const approvals = canaryStatus?.approvals || [];
-        const hasApproval = approvals.some((a: any) => a.portal_account_id === canaryAccount && !a.revoked && a.expires_at && Date.parse(a.expires_at) > Date.now());
         const active = (canaryStatus?.canaries || []).find((c: any) => c.canary_id === activeCanaryId) || null;
         const st = active?.state as string | undefined;
-        const envOk = bbReadiness.env_present?.api_key_present && bbReadiness.env_present?.project_id_present;
+        // 43P-FINAL-2A patch: readiness ESPECÍFICA da conta (considera a approval real).
+        const cr = canaryReadiness; // { env_ok, flags_ok, kill_switch_off, approval_valid, start_allowed, blockers }
+        const envOk = cr ? cr.env_ok : (bbReadiness.env_present?.api_key_present && bbReadiness.env_present?.project_id_present);
+        const approvalValid = Boolean(cr?.approval_valid);
+        const gatesOk = Boolean(cr?.flags_ok && cr?.kill_switch_off);
+        const startAllowed = Boolean(canaryAccount && cr?.start_allowed);
         const item = (ok: boolean, label: string) => (
           <li className="flex items-center gap-2 text-[11px]"><span className={ok ? 'text-emerald-600' : 'text-muted-foreground'}>{ok ? '✓' : '○'}</span><span className={ok ? 'text-foreground' : 'text-muted-foreground'}>{label}</span></li>
         );
@@ -615,9 +623,9 @@ export default function PortalBrowserAdminPage() {
             <ul className="grid grid-cols-1 gap-1 md:grid-cols-2">
               {item(Boolean(companyScope.current_company_id), 'Corretora (tenant) selecionada')}
               {item(Boolean(canaryAccount), 'Conta de portal selecionada')}
-              {item(hasApproval, 'Approval de canary válida (não expirada)')}
+              {item(approvalValid, 'Approval de canary válida (não expirada)')}
               {item(Boolean(envOk), 'Browserbase configurado (envs)')}
-              {item(Boolean(bbReadiness.can_open_real_browser), 'Gates habilitados + kill switch off')}
+              {item(gatesOk, 'Gates habilitados + kill switch off')}
               {item(st === 'browser_opened' || st === 'waiting_human_login' || st === 'session_captured' || st === 'session_verified', 'Browser aberto / aguardando login humano')}
               {item(st === 'session_captured' || st === 'session_verified', 'SessionRef capturada')}
               {item(st === 'session_verified', 'SessionRef verificada')}
@@ -626,14 +634,20 @@ export default function PortalBrowserAdminPage() {
             <div className="mt-3 flex flex-wrap items-center gap-2">
               {btn('Aprovar canary', doApprove, Boolean(canaryAccount))}
               {btn('Revogar', doRevoke, Boolean(canaryAccount))}
-              {btn('Iniciar canary', doStart, Boolean(canaryAccount) && hasApproval && Boolean(bbReadiness.can_open_real_browser))}
+              {btn('Iniciar canary', doStart, startAllowed)}
               {btn('Abrir Browserbase Console', openConsole, Boolean(active?.session_id))}
               {btn('Verificar sessão', doVerify, Boolean(activeCanaryId))}
               {btn('Capturar SessionRef', doCapture, Boolean(activeCanaryId))}
               {btn('Rodar session_login_verify', doRunSkill, Boolean(activeCanaryId))}
               {btn('Abortar canary', doAbort, Boolean(activeCanaryId))}
-              {btn('Atualizar status', loadCanaryStatus, true)}
+              {btn('Atualizar status', () => { loadCanaryStatus(); loadCanaryReadiness(canaryAccount); }, true)}
             </div>
+            {canaryAccount && (
+              <p className="mt-2 text-[11px]">
+                Canary pronto para iniciar: <span className={startAllowed ? 'font-medium text-emerald-600' : 'text-amber-600'}>{startAllowed ? 'SIM' : 'NÃO'}</span>
+                {!startAllowed && cr?.blockers?.length ? <span className="text-muted-foreground"> — bloqueios: {cr.blockers.join(', ')}</span> : null}
+              </p>
+            )}
             <div className="mt-2 rounded-md border border-amber-500/30 bg-amber-500/5 px-3 py-2 text-[10px] text-amber-600">
               O humano digita as credenciais e resolve CAPTCHA/2FA no Browserbase Console. O sistema não envia, não submete e não executa ação de negócio. connectUrl/signingKey/cookies/storageState nunca chegam ao frontend. Kill switch encerra tudo.
             </div>

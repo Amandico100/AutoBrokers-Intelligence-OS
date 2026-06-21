@@ -21,7 +21,10 @@ export async function GET() {
         portal_session_capture_enabled: flags.portal_session_capture_enabled,
         browserbase_real_browser_enabled: flags.browserbase_real_browser_enabled,
       },
-      approval_exists: false,
+      // Readiness GLOBAL de infraestrutura (env+flags+kill switch). A approval é
+      // por Portal Account e é avaliada em real-execution/readiness — por isso aqui
+      // não bloqueamos por approval (evita falso "no_human_approval" no card global).
+      approval_exists: true,
     });
     return NextResponse.json({ ok: true, readiness, real_action_allowed: false });
   } catch (error: any) {

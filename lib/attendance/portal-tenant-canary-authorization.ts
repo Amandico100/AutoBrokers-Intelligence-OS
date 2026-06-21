@@ -42,6 +42,23 @@ export interface CanaryAuthorizationResult {
   real_action_allowed: false;
 }
 
+// 43P-FINAL-2A patch — deriva booleanos granulares de readiness a partir dos
+// blockers da autorização (para a UI account-aware). PURO/testável.
+export interface CanaryReadinessFlags {
+  kill_switch_off: boolean;
+  flags_ok: boolean;
+  approval_valid: boolean;
+  browserbase_ready: boolean;
+}
+export function deriveCanaryReadinessFlags(blockers: string[]): CanaryReadinessFlags {
+  return {
+    kill_switch_off: !blockers.includes('global_kill_switch_active'),
+    flags_ok: !blockers.includes('global_flag_disabled'),
+    browserbase_ready: !blockers.includes('browserbase_not_ready'),
+    approval_valid: !blockers.some((b) => b.startsWith('approval')),
+  };
+}
+
 export function evaluateTenantCanaryAuthorization(ctx: CanaryAuthorizationContext): CanaryAuthorizationResult {
   const now = ctx.now ?? Date.now();
   const blockers: string[] = [];
