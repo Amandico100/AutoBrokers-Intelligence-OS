@@ -1,19 +1,19 @@
-// TA2-A — espelho (read-only) da Effective Configuration de uma empresa para o
-// Portal Admin (master). MESMA fonte canônica do Dashboard (sem duplicar dados).
+// TA2-A/B — espelho (read-only) da Effective Configuration de uma empresa para o
+// Portal Admin. MESMA fonte canônica do Dashboard (sem duplicar dados). Autorização
+// real: master de plataforma OU company_admin da própria empresa (nunca só cookie).
 import { NextRequest, NextResponse } from 'next/server';
-import { cookies } from 'next/headers';
-import { createClient } from '@supabase/supabase-js';
+import { requireAdminForCompany, supabaseService } from '@/lib/admin/admin-auth';
 import { getTenantAgentConfig } from '@/lib/admin/tenant-agent-store';
 
 export const dynamic = 'force-dynamic';
 
 export async function GET(_req: NextRequest, { params }: { params: Promise<{ companyId: string }> }) {
-  const cookieStore = await cookies();
-  if (!cookieStore.get('smith_admin_session')) return NextResponse.json({ ok: false, error: 'Unauthorized' }, { status: 401 });
   const { companyId } = await params;
   if (!companyId) return NextResponse.json({ ok: false, error: 'companyId_required' }, { status: 400 });
+  const auth = await requireAdminForCompany(companyId);
+  if (!auth.ok) return NextResponse.json({ ok: false, error: auth.error }, { status: auth.status });
 
-  const supabase = createClient(process.env.NEXT_PUBLIC_SUPABASE_URL!, process.env.SUPABASE_SERVICE_ROLE_KEY!, { auth: { persistSession: false } });
+  const supabase = supabaseService();
   const core = await getTenantAgentConfig(supabase, companyId, 'core');
   const attendance = await getTenantAgentConfig(supabase, companyId, 'attendance');
   return NextResponse.json({ ok: true, company_id: companyId, core, attendance, real_action_allowed: false });

@@ -4,6 +4,7 @@ import {
   CANONICAL_BLUEPRINTS, getCanonicalBlueprint, getBlueprintByRole,
   renderTemplate, resolveEffectiveConfig, AUTOBROKERS_CORE_BLUEPRINT, EVEN_ATTENDANCE_BLUEPRINT,
   computeAgentConfigUpdate, resetAgentConfigUpdate, sanitizeAgentConfigForDashboard, TENANT_AGENT_CONFIG_NS,
+  validateTenantAgentInput, isSafeAvatarUrl, composeSystemPromptWithGuardrails,
 } from '../lib/admin/agent-blueprints-canonical.ts';
 
 let pass = 0, fail = 0; const failures = [];
@@ -86,6 +87,69 @@ console.log('\n[TA2-A] persistência de config');
   assert('reset: remove namespace tenant', !(TENANT_AGENT_CONFIG_NS in rst.context_package));
   assert('reset: preserva outras chaves', rst.context_package.some_other_key && Array.isArray(rst.context_package.memory));
   assert('reset: name volta a Even', rst.columns.name === 'Even');
+}
+
+// [TA2-B] dropdowns, validação e guardrails-after-variables
+console.log('\n[TA2-B] validação + dropdowns + guardrails');
+{
+  // dropdowns: gênero, pronome e tom da Even têm options
+  const gender = EVEN_ATTENDANCE_BLUEPRINT.variables.find((v) => v.key === 'attendant_gender');
+  assert('gênero é select com 3 opções', gender.input_kind === 'select' && gender.options.length === 3);
+  assert('gênero inclui masculino/feminino/neutro', ['feminino', 'masculino', 'neutro'].every((g) => gender.options.some((o) => o.value === g)));
+  const pron = EVEN_ATTENDANCE_BLUEPRINT.variables.find((v) => v.key === 'attendant_pronoun');
+  assert('pronome é select', pron.input_kind === 'select' && pron.options.some((o) => o.value === 'ele'));
+  const coreTone = AUTOBROKERS_CORE_BLUEPRINT.variables.find((v) => v.key === 'tone');
+  assert('tom do core é select', coreTone.input_kind === 'select' && coreTone.options.length >= 3);
+
+  // sanitize expõe metadados de UI (input_kind/options) p/ dropdown
+  const sani = sanitizeAgentConfigForDashboard(EVEN_ATTENDANCE_BLUEPRINT, 'Resulta', null);
+  const sg = sani.editable_variables.find((v) => v.key === 'attendant_gender');
+  assert('sanitize entrega options de gênero', sg.input_kind === 'select' && sg.options.length === 3);
+  assert('sanitize entrega override-fields com metadados', sani.editable_override_fields.some((f) => f.key === 'voice' && f.input_kind === 'select'));
+  assert('voice tem opções de dropdown', sani.editable_override_fields.find((f) => f.key === 'voice').options.length > 0);
+
+  // validação: opção inválida de enum é bloqueada
+  const bad = validateTenantAgentInput(EVEN_ATTENDANCE_BLUEPRINT, { variables: { attendant_gender: 'alienígena' } });
+  assert('gênero fora da lista é bloqueado', bad.ok === false && bad.errors.some((e) => e.startsWith('attendant_gender')));
+
+  // validação: texto longo bloqueado
+  const longText = 'x'.repeat(400);
+  const tooLong = validateTenantAgentInput(EVEN_ATTENDANCE_BLUEPRINT, { variables: { opening_message: longText } });
+  assert('texto longo é bloqueado', tooLong.ok === false && tooLong.errors.some((e) => e.includes('tamanho_maximo')));
+
+  // validação: template injection bloqueado
+  const inj = validateTenantAgentInput(EVEN_ATTENDANCE_BLUEPRINT, { variables: { attendant_name: 'Joana {{company_name}}' } });
+  assert('template injection bloqueado', inj.ok === false && inj.errors.some((e) => e.includes('template_injection')));
+
+  // validação: temperatura fora do intervalo
+  const temp = validateTenantAgentInput(EVEN_ATTENDANCE_BLUEPRINT, { overrides: { llm_temperature: 5 } });
+  assert('temperatura > 1 bloqueada', temp.ok === false && temp.errors.some((e) => e.includes('llm_temperature')));
+  const tempOk = validateTenantAgentInput(EVEN_ATTENDANCE_BLUEPRINT, { overrides: { llm_temperature: 0.5 } });
+  assert('temperatura 0.5 aceita', tempOk.ok === true && tempOk.clean.overrides.llm_temperature === 0.5);
+
+  // validação: override perigoso (prompt/role) rejeitado
+  const danger = validateTenantAgentInput(EVEN_ATTENDANCE_BLUEPRINT, { overrides: { agent_system_prompt: 'HACK', role: 'core' } });
+  assert('prompt/role rejeitados na validação', danger.ok === false && danger.errors.some((e) => e.includes('override_nao_permitido')));
+
+  // URL de avatar
+  assert('https público é seguro', isSafeAvatarUrl('https://cdn.exemplo.com/a.png') === true);
+  assert('http é inseguro', isSafeAvatarUrl('http://cdn.exemplo.com/a.png') === false);
+  assert('javascript: é inseguro', isSafeAvatarUrl('javascript:alert(1)') === false);
+  assert('localhost é inseguro', isSafeAvatarUrl('https://localhost/a.png') === false);
+  assert('IP privado é inseguro', isSafeAvatarUrl('https://192.168.0.1/a.png') === false);
+  const badUrl = validateTenantAgentInput(EVEN_ATTENDANCE_BLUEPRINT, { overrides: { avatar_url: 'http://x/a.png' } });
+  assert('avatar inseguro bloqueado na validação', badUrl.ok === false && badUrl.errors.some((e) => e.includes('avatar_url')));
+
+  // entrada válida com dropdown passa e limpa
+  const good = validateTenantAgentInput(EVEN_ATTENDANCE_BLUEPRINT, { variables: { attendant_name: 'Joana', attendant_gender: 'masculino' }, overrides: { voice: 'masculina-br-natural' } });
+  assert('entrada válida passa', good.ok === true && good.clean.variables.attendant_gender === 'masculino' && good.clean.overrides.voice === 'masculina-br-natural');
+
+  // guardrails SEMPRE depois da personalização
+  const composed = composeSystemPromptWithGuardrails('TEXTO PERSONALIZADO DA CORRETORA', EVEN_ATTENDANCE_BLUEPRINT.immutable_guardrails);
+  assert('guardrails vêm após a personalização', composed.indexOf('TEXTO PERSONALIZADO') < composed.indexOf('REGRAS IMUTAVEIS'));
+  assert('prompt efetivo termina com regras prevalecendo', composed.includes('estas regras prevalecem'));
+  const effEven = resolveEffectiveConfig({ blueprint: EVEN_ATTENDANCE_BLUEPRINT, company_name: 'Resulta', tenant_variables: { opening_message: 'oi' } });
+  assert('system_prompt efetivo tem bloco de regras imutáveis', effEven.system_prompt.includes('REGRAS IMUTAVEIS'));
 }
 
 console.log(`\n== Resumo: ${pass} passaram, ${fail} falharam ==`);

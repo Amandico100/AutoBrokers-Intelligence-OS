@@ -64,6 +64,8 @@ export const resumoPermissions: PermissionGroup[] = [
 // ---------- Personalização ----------
 export const personalizacaoAreas: ModuleArea[] = [
   { key: 'agentes', icon: icons.auxiliares, title: 'Agentes', description: 'AutoBrokers (chat) e Even (atendimento).', href: '/dashboard/personalizacao/agentes', status: { tone: 'success', label: 'Configurável' } },
+  { key: 'prontidao', icon: icons.casos, title: 'Prontidão', description: 'O que falta para o piloto entrar no ar.', href: '/dashboard/personalizacao/prontidao', status: { tone: 'info', label: 'Checklist' } },
+  { key: 'corredores', icon: icons.seguradoras, title: 'Corredores', description: 'Ative os fluxos por seguradora e ramo.', href: '/dashboard/personalizacao/corredores', status: { tone: 'success', label: 'Ativável' } },
   { key: 'conectores', icon: icons.conectores, title: 'Conectores', description: 'Integrações reutilizáveis.', href: '/dashboard/personalizacao/conectores' },
   { key: 'seguradoras', icon: icons.seguradoras, title: 'Seguradoras', description: 'Canais, portais e corredores.', href: '/dashboard/personalizacao/seguradoras' },
   { key: 'conhecimento', icon: icons.conhecimento, title: 'Conhecimento', description: 'Documentos e fontes da corretora.', href: '/dashboard/personalizacao/conhecimento' },

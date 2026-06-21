@@ -5,6 +5,7 @@
 import type { SupabaseClient } from '@supabase/supabase-js';
 import {
   getBlueprintByRole, computeAgentConfigUpdate, resetAgentConfigUpdate, sanitizeAgentConfigForDashboard,
+  validateTenantAgentInput,
   type AgentRole, type TenantAgentConfigInput,
 } from '@/lib/admin/agent-blueprints-canonical';
 
@@ -44,7 +45,11 @@ export async function patchTenantAgentConfig(supabase: SupabaseClient, companyId
   const { data: agent } = await supabase.from('agents').select('id, context_package').eq('company_id', companyId).eq('agent_role', role).maybeSingle();
   if (!agent?.id) return { ok: false as const, error: 'agent_not_provisioned' };
 
-  const upd = computeAgentConfigUpdate(bp, name, agent.context_package, input);
+  // TA2-B — valida/sanitiza server-side ANTES de materializar (rejeita perigoso).
+  const v = validateTenantAgentInput(bp, input);
+  if (!v.ok) return { ok: false as const, error: 'validation_failed', errors: v.errors };
+
+  const upd = computeAgentConfigUpdate(bp, name, agent.context_package, v.clean);
   const { error } = await supabase.from('agents')
     .update({ ...upd.columns, context_package: upd.context_package, updated_at: new Date().toISOString() })
     .eq('id', agent.id).eq('company_id', companyId);

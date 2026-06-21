@@ -1,6 +1,6 @@
-import { DetailHeader, GalleryGrid, GalleryCard } from '@/components/patterns';
+import { DetailHeader } from '@/components/patterns';
 import { icons } from '@/lib/icons';
-import { seguradoras } from '@/lib/mock/tenant-modules';
+import { InsurersClient } from './InsurersClient';
 
 export const metadata = { title: 'Seguradoras · AutoBrokers' };
 
@@ -11,20 +11,10 @@ export default function SeguradorasPage() {
         <DetailHeader
           icon={icons.seguradoras}
           title="Seguradoras"
-          subtitle="Canais, portais e corredores por seguradora. Reutilizam os conectores da corretora."
+          subtitle="Contatos globais (leitura) e o estado dos corredores da sua corretora por seguradora."
           breadcrumb={[{ label: 'Personalização', href: '/dashboard/personalizacao' }, { label: 'Seguradoras' }]}
         />
-        <GalleryGrid>
-          {seguradoras.map((s) => (
-            <GalleryCard
-              key={s.key}
-              icon={s.icon}
-              title={s.title}
-              description={s.description}
-              status={s.status}
-            />
-          ))}
-        </GalleryGrid>
+        <InsurersClient />
       </div>
     </div>
   );

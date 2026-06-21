@@ -1,15 +1,16 @@
 // Tenant Activation 1 — provisiona Core (AutoBrokers) + Even para uma empresa.
 // Idempotente. Master admin. Não instala corredores/auxiliares; não liga canal.
 import { NextRequest, NextResponse } from 'next/server';
-import { cookies } from 'next/headers';
 import { createClient } from '@supabase/supabase-js';
 import { provisionTenant } from '@/lib/admin/provision-tenant';
+import { requireMasterAdmin } from '@/lib/admin/admin-auth';
 
 export const dynamic = 'force-dynamic';
 
 export async function POST(request: NextRequest) {
-  const cookieStore = await cookies();
-  if (!cookieStore.get('smith_admin_session')) return NextResponse.json({ ok: false, error: 'Unauthorized' }, { status: 401 });
+  // TA2-B — apenas master de plataforma provisiona (valida papel, não só o cookie).
+  const auth = await requireMasterAdmin();
+  if (!auth.ok) return NextResponse.json({ ok: false, error: auth.error }, { status: auth.status });
 
   const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL || process.env.SUPABASE_URL;
   const serviceKey = process.env.SUPABASE_SERVICE_ROLE_KEY;
