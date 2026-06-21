@@ -1,7 +1,10 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { getAdminClient } from '@/lib/attendance/support-destinations';
 import { resolveAttendanceCaseForWhatsAppInbound } from '@/lib/attendance/whatsapp-case-routing';
-import { resolveOutboundPolicy, mediaAckMessage, type WhatsAppMediaKind } from '@/lib/attendance/whatsapp-inbound';
+import { mediaAckMessage, type WhatsAppMediaKind } from '@/lib/attendance/whatsapp-inbound';
+import { evaluateWhatsAppOutboundGate } from '@/lib/attendance/whatsapp-outbound-gate';
+import { evaluateConsent } from '@/lib/attendance/whatsapp-consent';
+import { getProductionFlags } from '@/lib/security/production-gates';
 import {
   normalizeAttendanceMedia,
   processAttendanceMedia,
@@ -126,13 +129,6 @@ export async function POST(request: NextRequest) {
     const supabaseAdmin = getAdminClient();
     const events: string[] = ['inbound_received'];
 
-    const outboundRealEnabled = process.env.WHATSAPP_ATTENDANCE_OUTBOUND_REAL_ENABLED === 'true';
-    const outbound = resolveOutboundPolicy({
-      globalDryRun: process.env.ATTENDANCE_WHATSAPP_DRY_RUN !== 'false',
-      environment: typeof body.environment === 'string' ? body.environment : null,
-      externalSendAuthorized: outboundRealEnabled && body.external_send_authorized === true,
-    });
-
     const { data: existingCase } = await supabaseAdmin
       .from('attendance_cases')
       .select('id, status, verification_status, selected_corridor_key, policy_source, policy_snapshot, coverage_evidence, metadata')
@@ -141,6 +137,29 @@ export async function POST(request: NextRequest) {
       .order('created_at', { ascending: false })
       .limit(1)
       .maybeSingle();
+
+    // 42X5B — política CANÔNICA de envio (kill switch + production gates + consent).
+    // O webhook backend OBEDECE a este `external_send_allowed`/`dry_run`. Resposta a
+    // inbound = não-proativa (consentimento de sessão); opt_out bloqueia.
+    const flags = getProductionFlags();
+    const outboundRealEnabled = process.env.WHATSAPP_ATTENDANCE_OUTBOUND_REAL_ENABLED === 'true';
+    const consent = evaluateConsent({
+      record: (existingCase?.metadata && typeof existingCase.metadata === 'object' ? (existingCase.metadata as any).consent : null) ?? null,
+      is_proactive: false,
+      last_inbound_at: new Date().toISOString(),
+    });
+    const outbound = evaluateWhatsAppOutboundGate({
+      global_kill_switch: flags.global_kill_switch,
+      attendance_dry_run: process.env.ATTENDANCE_WHATSAPP_DRY_RUN !== 'false',
+      outbound_real_enabled: outboundRealEnabled,
+      external_action_real_enabled: flags.external_action_real_enabled,
+      external_send_authorized: outboundRealEnabled && body.external_send_authorized === true,
+      consent_ok: consent.consent_ok,
+      approval_ok: false,
+      is_proactive: false,
+      channel: 'customer_whatsapp',
+      environment: typeof body.environment === 'string' ? body.environment : null,
+    });
 
     const routing = resolveAttendanceCaseForWhatsAppInbound({
       existingCase: existingCase ? { id: existingCase.id, status: existingCase.status } : null,

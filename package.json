@@ -44,7 +44,9 @@
     "test:portal-read-only-skill": "node scripts/attendance-portal-read-only-skill.test.mjs",
     "test:portal-real-execution-controller": "node scripts/attendance-portal-real-execution-controller.test.mjs",
     "test:browserbase-session-server": "node scripts/attendance-browserbase-session-server.test.mjs",
-    "test:portal-session-reuse": "node scripts/attendance-portal-session-reuse.test.mjs"
+    "test:portal-session-reuse": "node scripts/attendance-portal-session-reuse.test.mjs",
+    "test:whatsapp-outbound-gate": "node scripts/attendance-whatsapp-outbound-gate.test.mjs",
+    "test:whatsapp-consent": "node scripts/attendance-whatsapp-consent.test.mjs"
   },
   "dependencies": {
     "@hookform/resolvers": "^3.9.0",
