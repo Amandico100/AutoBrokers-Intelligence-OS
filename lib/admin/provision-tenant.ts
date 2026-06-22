@@ -5,6 +5,8 @@
 // NÃO cria estrutura paralela. Não sobrescreve agente existente do mesmo role.
 import type { SupabaseClient } from '@supabase/supabase-js';
 import { AUTOBROKERS_CORE_BLUEPRINT, EVEN_ATTENDANCE_BLUEPRINT, resolveEffectiveConfig, type CanonicalBlueprint } from '@/lib/admin/agent-blueprints-canonical';
+import { getCompanyKind } from '@/lib/admin/company-kind-store';
+import { isPlatformCompany } from '@/lib/admin/company-kind';
 
 export interface ProvisionResult {
   ok: boolean;
@@ -58,6 +60,16 @@ async function ensureAgentByRole(
 
 /** Garante Core + Even para a empresa. Idempotente. Não instala corredores/auxiliares. */
 export async function provisionTenant(supabase: SupabaseClient, companyId: string): Promise<ProvisionResult> {
+  // SPEC-013 — empresas-plataforma (Studio/Knowledge) NÃO recebem provisionamento
+  // comercial. Seus Source Agents são autorados no Blueprint Center, não aqui.
+  const kind = await getCompanyKind(supabase, companyId);
+  if (isPlatformCompany(kind)) {
+    return {
+      ok: true, company_id: companyId,
+      core: { id: null, action: 'exists', reason: 'platform_company_skipped' },
+      attendance: { id: null, action: 'exists', reason: 'platform_company_skipped' },
+    };
+  }
   const { data: company } = await supabase.from('companies').select('id, company_name').eq('id', companyId).maybeSingle();
   const companyName = company?.company_name ?? 'Corretora';
   const core = await ensureAgentByRole(supabase, companyId, companyName, AUTOBROKERS_CORE_BLUEPRINT, 'autobrokers');
