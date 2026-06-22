@@ -4,7 +4,9 @@ import { CANONICAL_BLUEPRINTS, AUTOBROKERS_CORE_BLUEPRINT } from '../lib/admin/a
 import {
   buildArtifactFromCanonical, scanForSecrets, assertReleasePublishable, hashArtifact,
   canEditRelease, canTransitionRelease, seedReleasesFromCanonical, ARTIFACT_SCHEMA_VERSION,
+  buildArtifactFromSourceAgent, bumpSemanticVersion,
 } from '../lib/admin/blueprint-release.ts';
+import { EVEN_ATTENDANCE_BLUEPRINT } from '../lib/admin/agent-blueprints-canonical.ts';
 
 let pass = 0, fail = 0; const failures = [];
 function assert(n, c) { if (c) { pass++; console.log(`  ✓ ${n}`); } else { fail++; failures.push(n); console.log(`  ✗ ${n}`); } }
@@ -48,6 +50,31 @@ assert('seed gera 2 releases', seeds.length === 2);
 assert('seed v1.0.0 published', seeds.every((s) => s.semantic_version === '1.0.0' && s.status === 'published'));
 assert('seed com hash sha256 e sem segredo', seeds.every((s) => /^sha256_[0-9a-f]{64}$/.test(s.artifact_hash) && assertReleasePublishable(s.artifact).ok));
 assert('seed cobre core e even', seeds.some((s) => s.blueprint_key === 'autobrokers-core-v1') && seeds.some((s) => s.blueprint_key === 'even-attendance-v1'));
+
+// [P3] release derivada do Source Agent + version bump
+console.log('\n[P3] release derivada do Source Agent');
+{
+  // prompt EDITADO no Studio entra no artefato; role/audience/guardrails ficam TRAVADOS pelo blueprint
+  const edited = buildArtifactFromSourceAgent(AUTOBROKERS_CORE_BLUEPRINT, { agent_system_prompt: 'PROMPT EDITADO NO STUDIO', llm_model: 'gpt-4o-mini' });
+  assert('source: prompt editado entra no artefato', edited.system_prompt_template === 'PROMPT EDITADO NO STUDIO');
+  assert('source: role/audience travados pelo blueprint', edited.role === AUTOBROKERS_CORE_BLUEPRINT.role && edited.audience === AUTOBROKERS_CORE_BLUEPRINT.audience);
+  assert('source: guardrails travados (não enfraquecem)', JSON.stringify(edited.immutable_guardrails) === JSON.stringify(AUTOBROKERS_CORE_BLUEPRINT.immutable_guardrails));
+  assert('source: artefato derivado é publicável', assertReleasePublishable(edited).ok === true);
+
+  // prompt vazio → cai no template do blueprint
+  const fallback = buildArtifactFromSourceAgent(EVEN_ATTENDANCE_BLUEPRINT, { agent_system_prompt: '   ' });
+  assert('source: prompt vazio usa template do blueprint', fallback.system_prompt_template === EVEN_ATTENDANCE_BLUEPRINT.system_prompt_template);
+
+  // segredo no prompt editado é bloqueado
+  const leaked = buildArtifactFromSourceAgent(AUTOBROKERS_CORE_BLUEPRINT, { agent_system_prompt: 'use a chave sk-ABCDEFGH12345678 agora' });
+  assert('source: segredo no prompt bloqueia publicação', assertReleasePublishable(leaked).ok === false);
+
+  // version bump
+  assert('bump minor', bumpSemanticVersion('1.0.0') === '1.1.0');
+  assert('bump patch', bumpSemanticVersion('1.1.0', 'patch') === '1.1.1');
+  assert('bump major', bumpSemanticVersion('1.4.2', 'major') === '2.0.0');
+  assert('bump de versão inválida → 0.1.0', bumpSemanticVersion('lixo') === '0.1.0');
+}
 
 console.log(`\n== Resumo: ${pass} passaram, ${fail} falharam ==`);
 if (fail > 0) { for (const f of failures) console.log(`  - ${f}`); process.exit(1); }

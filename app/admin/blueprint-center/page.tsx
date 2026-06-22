@@ -7,8 +7,13 @@ import { Card, CardContent } from '@/components/ui/card';
 import { Loader2, Bot, Headphones, PackageCheck, ShieldCheck } from 'lucide-react';
 
 type SourceAgent = { id: string; name: string; role: string; audience: string; is_active: boolean; blueprint_key: string };
-type Release = { blueprint_key: string; version: string; status: string; hash: string; risk: string; published_at: string | null };
-type Status = { ok: boolean; studio_present: boolean; studio_company_id?: string; source_agents: SourceAgent[]; releases: Release[] };
+type Release = { id: string; blueprint_key: string; version: string; status: string; hash: string; risk: string; published_at: string | null };
+type Status = { ok: boolean; studio_present: boolean; studio_company_id?: string; source_agents: SourceAgent[]; releases: Release[]; core_published?: boolean; even_published?: boolean; has_draft?: boolean };
+
+const GLOBAL_BLUEPRINTS = [
+  { key: 'autobrokers-core-v1', label: 'AutoBrokers Global' },
+  { key: 'even-attendance-v1', label: 'Even Global' },
+];
 
 export default function BlueprintCenterPage() {
   const [status, setStatus] = useState<Status | null>(null);
@@ -22,12 +27,14 @@ export default function BlueprintCenterPage() {
   }, []);
   useEffect(() => { load(); }, [load]);
 
-  const run = async (path: string, label: string) => {
+  const run = async (path: string, label: string, body?: Record<string, unknown>) => {
     setBusy(label); setNotice(''); setErr('');
-    const r = await fetch(`/api/admin/blueprint-center/${path}`, { method: 'POST', headers: { 'Content-Type': 'application/json' } });
+    const r = await fetch(`/api/admin/blueprint-center/${path}`, {
+      method: 'POST', headers: { 'Content-Type': 'application/json' }, body: body ? JSON.stringify(body) : undefined,
+    });
     const j = await r.json().catch(() => ({}));
     if (j?.ok) { setNotice(`${label}: concluído.`); await load(); }
-    else setErr(`${label}: ${j?.error || r.status}`);
+    else setErr(`${label}: ${j?.error || r.status}${Array.isArray(j?.details) ? ' — ' + j.details.join(', ') : ''}`);
     setBusy('');
   };
 
@@ -88,6 +95,35 @@ export default function BlueprintCenterPage() {
           ))}
         </div>
       </CardContent></Card>
+
+      {/* Passo 3 — Evolução (editar Source Agent no Studio → nova versão) */}
+      {releasesReady && (
+        <Card><CardContent className="p-4">
+          <p className="flex items-center gap-2 font-medium"><PackageCheck className="h-4 w-4" /> 3. Evolução do padrão global</p>
+          <p className="mt-1 text-sm text-muted-foreground">Edite o Source Agent no Studio (abas do Smith) e gere uma nova versão a partir dele. A nova versão nasce como rascunho; publicar a torna imutável. Releases já publicadas nunca mudam.</p>
+          {GLOBAL_BLUEPRINTS.map((g) => {
+            const versions = status.releases.filter((r) => r.blueprint_key === g.key);
+            return (
+              <div key={g.key} className="mt-3 rounded-md border border-border bg-background p-3">
+                <div className="flex items-center justify-between">
+                  <p className="text-sm font-medium text-foreground">{g.label} <span className="text-faint">({g.key})</span></p>
+                  <button onClick={() => run('create-draft', `Nova versão ${g.label}`, { blueprint_key: g.key, bump: 'minor' })} disabled={!!busy} className="rounded-lg border border-border px-3 py-1 text-[12px] text-muted-foreground hover:bg-surface-2 disabled:opacity-50">Criar nova versão (draft)</button>
+                </div>
+                <div className="mt-2 divide-y divide-border">
+                  {versions.map((r) => (
+                    <div key={r.id} className="flex items-center justify-between py-1.5 text-[12px]">
+                      <span>v{r.version} · <span className={r.status === 'published' ? 'text-emerald-600' : r.status === 'draft' ? 'text-amber-600' : 'text-faint'}>{r.status}</span></span>
+                      {r.status === 'draft' && (
+                        <button onClick={() => run('publish-draft', `Publicar v${r.version}`, { release_id: r.id })} disabled={!!busy} className="rounded-lg border border-primary/40 bg-primary/5 px-3 py-0.5 text-[12px] font-medium text-primary hover:bg-primary/10 disabled:opacity-50">Publicar</button>
+                      )}
+                    </div>
+                  ))}
+                </div>
+              </div>
+            );
+          })}
+        </CardContent></Card>
+      )}
 
       {notice && <p className="text-[12px] text-emerald-600">{notice}</p>}
       {err && <p className="text-[12px] text-red-600">{err}</p>}

@@ -124,6 +124,52 @@ export function assertReleasePublishable(artifact: BlueprintArtifact): PublishCh
   return { ok: errors.length === 0, errors };
 }
 
+// --- SPEC-013 Fase B P3: artefato derivado do SOURCE AGENT editado no Studio ----
+// Estrutura travada (role/audience/marca/variáveis/guardrails) vem do blueprint;
+// o conteúdo editável (prompt-base, modelo, capability_keys) vem do Source Agent.
+export interface SourceAgentInput {
+  agent_system_prompt?: string | null;   // prompt-base EDITADO no Studio
+  llm_provider?: string | null;
+  llm_model?: string | null;
+  declared_capability_keys?: string[];    // capacidades homologadas (Fase C liga providers)
+}
+
+export function buildArtifactFromSourceAgent(bp: CanonicalBlueprint, src: SourceAgentInput): BlueprintArtifact {
+  const editedPrompt = (typeof src.agent_system_prompt === 'string' && src.agent_system_prompt.trim())
+    ? src.agent_system_prompt : bp.system_prompt_template;
+  const caps = Array.isArray(src.declared_capability_keys)
+    ? src.declared_capability_keys.filter((k) => typeof k === 'string' && k.trim()) : [];
+  return {
+    schema_version: ARTIFACT_SCHEMA_VERSION,
+    blueprint_key: bp.blueprint_key,
+    role: bp.role,            // TRAVADO (não muda por edição)
+    audience: bp.audience,    // TRAVADO
+    brand_locked_name: bp.brand_locked_name,
+    default_display_name: bp.default_display_name,
+    display_name_template: bp.display_name_template,
+    allow_direct_chat: bp.allow_direct_chat,
+    is_subagent: bp.is_subagent,
+    llm_provider: (src.llm_provider && src.llm_provider.trim()) ? src.llm_provider.trim() : bp.default_llm_provider,
+    llm_model: (src.llm_model && src.llm_model.trim()) ? src.llm_model.trim() : bp.default_llm_model,
+    system_prompt_template: editedPrompt, // EDITÁVEL no Studio
+    variables: bp.variables,              // governado pelo blueprint
+    immutable_guardrails: bp.immutable_guardrails, // TRAVADO (não enfraquece)
+    safe_override_fields: bp.safe_override_fields,
+    default_active: bp.default_active,
+    declared_capability_keys: caps,
+  };
+}
+
+/** Próxima versão semântica (default minor). */
+export function bumpSemanticVersion(prev: string, kind: 'major' | 'minor' | 'patch' = 'minor'): string {
+  const m = /^(\d+)\.(\d+)\.(\d+)$/.exec((prev || '0.0.0').trim());
+  let [maj, min, pat] = m ? [Number(m[1]), Number(m[2]), Number(m[3])] : [0, 0, 0];
+  if (kind === 'major') { maj += 1; min = 0; pat = 0; }
+  else if (kind === 'patch') { pat += 1; }
+  else { min += 1; pat = 0; }
+  return `${maj}.${min}.${pat}`;
+}
+
 /** Hash criptográfico determinístico do artefato (SHA-256) — base de imutabilidade. */
 export function hashArtifact(artifact: unknown): string {
   return 'sha256_' + createHash('sha256').update(stableStringify(artifact)).digest('hex');
