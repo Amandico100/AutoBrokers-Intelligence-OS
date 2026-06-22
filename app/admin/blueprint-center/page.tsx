@@ -20,10 +20,20 @@ export default function BlueprintCenterPage() {
   const [busy, setBusy] = useState('');
   const [notice, setNotice] = useState('');
   const [err, setErr] = useState('');
+  const [companies, setCompanies] = useState<Array<{ id: string; company_name: string; company_kind?: string }>>([]);
+  const [rollouts, setRollouts] = useState<Array<{ id: string; blueprint_key: string; company_id: string; status: string }>>([]);
+  const [selRelease, setSelRelease] = useState('');
+  const [selCompany, setSelCompany] = useState('');
 
   const load = useCallback(async () => {
     const j = await fetch('/api/admin/blueprint-center').then((r) => r.json()).catch(() => ({}));
-    if (j?.ok) setStatus(j); else setErr(j?.error || 'Falha ao carregar');
+    if (j?.ok) setStatus(j); else { setErr(j?.error || 'Falha ao carregar'); return; }
+    const [cj, rj] = await Promise.all([
+      fetch('/api/admin/companies').then((r) => r.json()).catch(() => ({})),
+      fetch('/api/admin/blueprint-center/rollouts').then((r) => r.json()).catch(() => ({})),
+    ]);
+    if (Array.isArray(cj?.companies)) setCompanies(cj.companies.filter((c: any) => !String(c.company_kind ?? 'client').startsWith('platform_')));
+    if (Array.isArray(rj?.rollouts)) setRollouts(rj.rollouts);
   }, []);
   useEffect(() => { load(); }, [load]);
 
@@ -122,6 +132,39 @@ export default function BlueprintCenterPage() {
               </div>
             );
           })}
+        </CardContent></Card>
+      )}
+
+      {/* Passo 4 — Rollout por corretora (canário) */}
+      {releasesReady && (
+        <Card><CardContent className="p-4">
+          <p className="flex items-center gap-2 font-medium"><ShieldCheck className="h-4 w-4" /> 4. Rollout por corretora (manual)</p>
+          <p className="mt-1 text-sm text-muted-foreground">Aplique uma release publicada a uma corretora (ex.: Resulta como canário). A personalização local da corretora é preservada. Nenhum rollout é automático.</p>
+          <div className="mt-3 grid grid-cols-1 gap-2 sm:grid-cols-3">
+            <select value={selRelease} onChange={(e) => setSelRelease(e.target.value)} className="rounded-lg border border-border bg-background px-3 py-2 text-[12px]">
+              <option value="">Release publicada…</option>
+              {status.releases.filter((r) => r.status === 'published').map((r) => <option key={r.id} value={r.id}>{r.blueprint_key} v{r.version}</option>)}
+            </select>
+            <select value={selCompany} onChange={(e) => setSelCompany(e.target.value)} className="rounded-lg border border-border bg-background px-3 py-2 text-[12px]">
+              <option value="">Corretora…</option>
+              {companies.map((c) => <option key={c.id} value={c.id}>{c.company_name}</option>)}
+            </select>
+            <button onClick={() => run('rollout', 'Aplicar rollout', { release_id: selRelease, company_id: selCompany })} disabled={!!busy || !selRelease || !selCompany} className="rounded-lg border border-primary/40 bg-primary/5 px-4 py-2 text-[12px] font-medium text-primary hover:bg-primary/10 disabled:opacity-50">Aplicar à corretora</button>
+          </div>
+          <div className="mt-3 divide-y divide-border">
+            {rollouts.length === 0 && <p className="py-2 text-[12px] text-muted-foreground">Nenhum rollout aplicado ainda.</p>}
+            {rollouts.map((r) => {
+              const comp = companies.find((c) => c.id === r.company_id);
+              return (
+                <div key={r.id} className="flex items-center justify-between py-1.5 text-[12px]">
+                  <span>{comp?.company_name ?? r.company_id} · {r.blueprint_key} · <span className={r.status === 'active' ? 'text-emerald-600' : r.status === 'rolled_back' ? 'text-faint' : 'text-amber-600'}>{r.status}</span></span>
+                  {r.status === 'active' && (
+                    <button onClick={() => run('rollback', `Rollback ${r.blueprint_key}`, { company_id: r.company_id, blueprint_key: r.blueprint_key })} disabled={!!busy} className="rounded-lg border border-border px-3 py-0.5 text-[12px] text-muted-foreground hover:bg-surface-2 disabled:opacity-50">Rollback</button>
+                  )}
+                </div>
+              );
+            })}
+          </div>
         </CardContent></Card>
       )}
 

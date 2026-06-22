@@ -24,6 +24,7 @@ export default function AdminCompanyAgentsPage() {
   const [selectedAgentId, setSelectedAgentId] = useState<string | undefined>(undefined);
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [companyName, setCompanyName] = useState<string>('');
+  const [companyKind, setCompanyKind] = useState<string>('client'); // SPEC-013: Studio/Knowledge ≠ cliente
 
   const BACKEND_URL = process.env.NEXT_PUBLIC_BACKEND_URL || 'http://localhost:8000';
 
@@ -55,6 +56,11 @@ export default function AdminCompanyAgentsPage() {
     } catch (error) {
       console.error('Error loading company info:', error);
     }
+    // SPEC-013: detecta empresa-plataforma (Studio/Knowledge) para não exibir o editor de cliente.
+    try {
+      const kr = await fetch(`/api/admin/companies/${companyId}/kind`).then((r) => r.json());
+      if (kr?.ok && typeof kr.company_kind === 'string') setCompanyKind(kr.company_kind);
+    } catch { /* default client */ }
   };
 
   const loadAgents = async () => {
@@ -136,6 +142,34 @@ export default function AdminCompanyAgentsPage() {
         <div className="text-red-400">
           Acesso negado. Apenas Super Admin pode acessar esta página.
         </div>
+      </div>
+    );
+  }
+
+  // SPEC-013: empresa-plataforma (Blueprint Studio / Global Knowledge) não usa o editor
+  // de agentes de cliente. A autoria global acontece no Blueprint Center.
+  if (companyKind && companyKind.startsWith('platform_')) {
+    return (
+      <div className="p-8">
+        <button onClick={() => router.push('/admin/companies')} className="mb-4 flex items-center gap-1 text-sm text-muted-foreground hover:text-foreground">
+          <ArrowLeft className="h-4 w-4" /> Voltar para Empresas
+        </button>
+        <Card>
+          <CardContent className="p-6">
+            <div className="flex items-center gap-3">
+              <LockIcon className="h-5 w-5 text-amber-500" />
+              <h1 className="text-lg font-semibold text-foreground">{companyName} — empresa técnica da plataforma</h1>
+            </div>
+            <p className="mt-2 text-sm text-muted-foreground">
+              {companyKind === 'platform_blueprint_studio'
+                ? 'Esta é a empresa de autoria global (Blueprint Studio). Os Source Agents globais (AutoBrokers e Even) são criados e versionados no Blueprint Center, e ficam inativos por serem de autoria — não atendem clientes. Não use o editor de agentes de cliente aqui.'
+                : 'Esta é a empresa de conhecimento global (RAG/Seed Packs). Não gerencie agentes de cliente aqui.'}
+            </p>
+            {companyKind === 'platform_blueprint_studio' && (
+              <Button className="mt-4" onClick={() => router.push('/admin/blueprint-center')}>Abrir Blueprint Center</Button>
+            )}
+          </CardContent>
+        </Card>
       </div>
     );
   }
