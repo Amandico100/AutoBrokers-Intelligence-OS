@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 /** TA2-B — políticas de autorização puras (offline). */
-import { canWriteTenantConfig, isPlatformMaster, canAdminReadCompany, canProvisionTenant } from '../lib/admin/admin-auth-policy.ts';
+import { canWriteTenantConfig, isPlatformMaster, canAdminReadCompany, canProvisionTenant, sameOriginOk, tenantCompanyConsistent } from '../lib/admin/admin-auth-policy.ts';
 
 let pass = 0, fail = 0; const failures = [];
 function assert(n, c) { if (c) { pass++; console.log(`  ✓ ${n}`); } else { fail++; failures.push(n); console.log(`  ✗ ${n}`); } }
@@ -27,6 +27,17 @@ assert('sessão sem papel NÃO lê', canAdminReadCompany({ role: null, sessionCo
 // provisionamento só master
 assert('só master provisiona', canProvisionTenant({ role: 'master_admin', companyId: null }) === true);
 assert('company_admin NÃO provisiona', canProvisionTenant({ role: 'company_admin', companyId: 'c1' }) === false);
+
+// [TA2-C] same-origin + consistência sessão×banco
+console.log('\n[TA2-C] same-origin + consistência');
+assert('sameOrigin: sem origin permite (defesa em profundidade)', sameOriginOk({ origin: null, host: 'app.com' }) === true);
+assert('sameOrigin: host igual permite', sameOriginOk({ origin: 'https://app.com', host: 'app.com' }) === true);
+assert('sameOrigin: host diferente bloqueia', sameOriginOk({ origin: 'https://evil.com', host: 'app.com' }) === false);
+assert('sameOrigin: origin inválido bloqueia', sameOriginOk({ origin: 'not-a-url', host: 'app.com' }) === false);
+assert('consistência: banco sem empresa bloqueia', tenantCompanyConsistent({ sessionCompanyId: 'c1', dbCompanyId: null }) === false);
+assert('consistência: sessão sem empresa usa o banco', tenantCompanyConsistent({ sessionCompanyId: null, dbCompanyId: 'c1' }) === true);
+assert('consistência: divergência bloqueia', tenantCompanyConsistent({ sessionCompanyId: 'c2', dbCompanyId: 'c1' }) === false);
+assert('consistência: iguais ok', tenantCompanyConsistent({ sessionCompanyId: 'c1', dbCompanyId: 'c1' }) === true);
 
 console.log(`\n== Resumo: ${pass} passaram, ${fail} falharam ==`);
 if (fail > 0) { for (const f of failures) console.log(`  - ${f}`); process.exit(1); }

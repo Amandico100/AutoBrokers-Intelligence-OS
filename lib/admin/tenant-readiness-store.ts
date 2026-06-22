@@ -41,5 +41,9 @@ export async function gatherReadiness(supabase: SupabaseClient, companyId: strin
     });
   } catch { /* pendente */ }
 
+  // TA2-C — aprovadores/handoff reais (human_support_destinations) e conhecimento (documents).
+  try { const { count } = await supabase.from('human_support_destinations').select('id', { count: 'exact', head: true }).eq('company_id', companyId).eq('is_active', true); input.approvers_defined = (count ?? 0) >= 1; } catch { /* pendente */ }
+  try { const { count } = await supabase.from('documents').select('id', { count: 'exact', head: true }).eq('company_id', companyId); input.knowledge_configured = (count ?? 0) >= 1; } catch { /* pendente */ }
+
   return buildReadiness(input);
 }

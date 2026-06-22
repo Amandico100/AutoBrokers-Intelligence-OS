@@ -15,6 +15,14 @@ export default function CorretoraPage() {
         />
         <GalleryGrid>
           <GalleryCard
+            icon={icons.corretora}
+            title="Dados da corretora"
+            description="Nome, razão social, CNPJ, contato e endereço da corretora."
+            status={{ tone: 'success', label: 'Editável' }}
+            cta="Editar"
+            href="/dashboard/personalizacao/corretora/dados"
+          />
+          <GalleryCard
             icon={icons.atendimentos}
             title="Suporte humano"
             description="Destino para dossiês e transferências quando o agente precisar escalar um atendimento."

@@ -71,6 +71,7 @@ export const personalizacaoAreas: ModuleArea[] = [
   { key: 'conhecimento', icon: icons.conhecimento, title: 'Conhecimento', description: 'Documentos e fontes da corretora.', href: '/dashboard/personalizacao/conhecimento' },
   { key: 'corretora', icon: icons.corretora, title: 'Corretora', description: 'Dados e identidade.', href: '/dashboard/personalizacao/corretora' },
   { key: 'equipe', icon: icons.equipe, title: 'Equipe', description: 'Usuários e permissões.', href: '/dashboard/personalizacao/equipe' },
+  { key: 'custos', icon: icons.cobranca, title: 'Custos e Uso', description: 'Saldo e consumo por agente.', href: '/dashboard/personalizacao/custos', status: { tone: 'info', label: 'Dados reais' } },
 ];
 
 export const conectores: GalleryItem[] = [

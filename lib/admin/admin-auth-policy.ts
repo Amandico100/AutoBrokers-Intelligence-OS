@@ -25,3 +25,24 @@ export function canAdminReadCompany(p: { role: string | null; sessionCompanyId: 
 export function canProvisionTenant(p: { role: string | null; companyId: string | null }): boolean {
   return isPlatformMaster(p);
 }
+
+/**
+ * Same-origin para mutações (defesa em profundidade junto do cookie sameSite=lax).
+ * Sem Origin → não bloqueia (alguns clientes legítimos não enviam). Com Origin →
+ * o host precisa bater com o Host do servidor.
+ */
+export function sameOriginOk(p: { origin: string | null; host: string | null }): boolean {
+  if (!p.origin) return true;
+  if (!p.host) return false;
+  try { return new URL(p.origin).host === p.host; } catch { return false; }
+}
+
+/**
+ * Consistência sessão × banco para usuário tenant. O banco é a fonte de verdade:
+ * se a sessão declara uma empresa diferente da de `users_v2`, bloquear.
+ */
+export function tenantCompanyConsistent(p: { sessionCompanyId: string | null; dbCompanyId: string | null }): boolean {
+  if (!p.dbCompanyId) return false; // sem empresa no banco = sem acesso
+  if (!p.sessionCompanyId) return true; // sessão sem empresa: usa a do banco
+  return p.sessionCompanyId === p.dbCompanyId;
+}

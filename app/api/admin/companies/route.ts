@@ -1,6 +1,8 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { cookies } from 'next/headers';
 import { createClient } from '@supabase/supabase-js';
+import { provisionTenant } from '@/lib/admin/provision-tenant';
+import { requireMasterAdmin, assertSameOrigin } from '@/lib/admin/admin-auth';
 
 // Service Role Client
 const supabaseAdmin = createClient(
@@ -114,12 +116,11 @@ export async function GET(request: NextRequest) {
  */
 export async function POST(request: NextRequest) {
   try {
-    const cookieStore = await cookies();
-    const adminCookie = cookieStore.get('smith_admin_session');
-
-    if (!adminCookie) {
-      return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
-    }
+    // TA2-C — master validado no banco + same-origin (não só cookie).
+    const xo = assertSameOrigin(request);
+    if (xo) return NextResponse.json({ error: xo.error }, { status: xo.status });
+    const auth = await requireMasterAdmin();
+    if (!auth.ok) return NextResponse.json({ error: auth.error }, { status: auth.status });
 
     const body = await request.json();
 
@@ -130,7 +131,19 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: error.message }, { status: 500 });
     }
 
-    return NextResponse.json({ company: data }, { status: 201 });
+    // TA2-C Parte 10 — provisionamento automático: toda empresa nasce com
+    // AutoBrokers Core + Even (idempotente). Não instala corredor/auxiliar, não
+    // liga canal. Falha NÃO é ocultada: a empresa fica "aguardando provisionamento".
+    let provisioning: { ok: boolean; error?: string } = { ok: true };
+    try {
+      const result: any = await provisionTenant(supabaseAdmin, data.id);
+      provisioning = result?.ok === false ? { ok: false, error: result?.error ?? 'provision_failed' } : { ok: true };
+    } catch (e: any) {
+      console.error('[ADMIN COMPANIES] Auto-provision error:', e?.message ?? e);
+      provisioning = { ok: false, error: 'provision_exception' };
+    }
+
+    return NextResponse.json({ company: data, provisioning }, { status: 201 });
   } catch (error: any) {
     console.error('[ADMIN COMPANIES] Error:', error);
     return NextResponse.json({ error: 'Internal server error' }, { status: 500 });
