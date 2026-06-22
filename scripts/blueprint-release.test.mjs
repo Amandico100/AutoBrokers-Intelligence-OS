@@ -4,7 +4,7 @@ import { CANONICAL_BLUEPRINTS, AUTOBROKERS_CORE_BLUEPRINT } from '../lib/admin/a
 import {
   buildArtifactFromCanonical, scanForSecrets, assertReleasePublishable, hashArtifact,
   canEditRelease, canTransitionRelease, seedReleasesFromCanonical, ARTIFACT_SCHEMA_VERSION,
-  buildArtifactFromSourceAgent, bumpSemanticVersion,
+  buildArtifactFromSourceAgent, bumpSemanticVersion, buildAuxiliaryArtifact, auxiliaryBlueprintKey,
 } from '../lib/admin/blueprint-release.ts';
 import { EVEN_ATTENDANCE_BLUEPRINT } from '../lib/admin/agent-blueprints-canonical.ts';
 
@@ -74,6 +74,19 @@ console.log('\n[P3] release derivada do Source Agent');
   assert('bump patch', bumpSemanticVersion('1.1.0', 'patch') === '1.1.1');
   assert('bump major', bumpSemanticVersion('1.4.2', 'major') === '2.0.0');
   assert('bump de versão inválida → 0.1.0', bumpSemanticVersion('lixo') === '0.1.0');
+}
+
+// [B1.1] artefato de Auxiliar (sem blueprint de código)
+console.log('\n[B1.1] auxiliary artifact');
+{
+  assert('auxiliaryBlueprintKey = aux-<slug>', auxiliaryBlueprintKey('pesquisa-empresas') === 'aux-pesquisa-empresas');
+  const aux = buildAuxiliaryArtifact({ name: 'Pesquisa de Empresas', slug: 'pesquisa-empresas', agent_system_prompt: 'Voce pesquisa empresas.', llm_model: 'gpt-4o-mini' });
+  assert('aux artefato publicável', assertReleasePublishable(aux).ok === true);
+  assert('aux is_subagent + audience internal', aux.is_subagent === true && aux.audience === 'internal');
+  assert('aux blueprint_key', aux.blueprint_key === 'aux-pesquisa-empresas');
+  assert('aux guardrails imutáveis presentes', aux.immutable_guardrails.includes('nunca_executa_acao_externa_sem_autorizacao'));
+  const leakedAux = buildAuxiliaryArtifact({ name: 'X', slug: 'x', agent_system_prompt: 'use sk-ABCDEFGH12345678' });
+  assert('aux com segredo no prompt bloqueia', assertReleasePublishable(leakedAux).ok === false);
 }
 
 console.log(`\n== Resumo: ${pass} passaram, ${fail} falharam ==`);

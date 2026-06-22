@@ -7,7 +7,9 @@ import {
 } from '@/lib/admin/agent-blueprints-canonical';
 import {
   buildArtifactFromCanonical, buildArtifactFromSourceAgent, assertReleasePublishable, hashArtifact, bumpSemanticVersion,
+  buildAuxiliaryArtifact, auxiliaryBlueprintKey,
 } from '@/lib/admin/blueprint-release';
+import { getTableColumns, pickColumns } from '@/lib/admin/factory';
 
 const STUDIO_KIND = 'platform_blueprint_studio';
 const SOURCE_SLUG: Record<string, string> = {
@@ -151,9 +153,83 @@ export async function createSourceAuxiliary(supabase: SupabaseClient, input: { n
 
 export async function listStudioAuxiliarySources(supabase: SupabaseClient) {
   const studioId = await getStudioCompanyId(supabase);
-  if (!studioId) return { ok: true as const, sources: [] };
+  if (!studioId) return { ok: true as const, sources: [], studio_company_id: '' };
   const { data } = await supabase.from('agents').select('id, name, slug, studio_source_kind').eq('company_id', studioId).eq('studio_source_kind', 'global_auxiliary').order('name');
-  return { ok: true as const, sources: data ?? [], studio_company_id: studioId };
+  const sources = data ?? [];
+  // enriquece: release publicada? está na Galeria?
+  const enriched = await Promise.all(sources.map(async (s: any) => {
+    const bpk = auxiliaryBlueprintKey(s.slug);
+    const { data: rel } = await supabase.from('agent_blueprint_releases').select('semantic_version, status').eq('blueprint_key', bpk).eq('status', 'published').order('created_at', { ascending: false }).limit(1).maybeSingle();
+    const { data: tpl } = await supabase.from('auxiliary_templates').select('id').eq('slug', s.slug).maybeSingle();
+    return { id: s.id, name: s.name, slug: s.slug, release_version: rel?.semantic_version ?? null, published_in_gallery: Boolean(tpl?.id) };
+  }));
+  return { ok: true as const, sources: enriched, studio_company_id: studioId };
+}
+
+/**
+ * SPEC-013 B1.1 — publica um Source Auxiliary como release IMUTÁVEL e vincula o
+ * Auxiliary Template à release. Idempotente. Core/Even/subagent nunca entram aqui.
+ */
+export async function publishSourceAuxiliary(supabase: SupabaseClient, sourceAgentId: string) {
+  const studioId = await getStudioCompanyId(supabase);
+  if (!studioId) return { ok: false as const, error: 'studio_company_missing' };
+
+  const { data: ag } = await supabase.from('agents')
+    .select('id, name, slug, studio_source_kind, agent_system_prompt, llm_provider, llm_model, agent_role, company_id')
+    .eq('id', sourceAgentId).maybeSingle();
+  if (!ag?.id) return { ok: false as const, error: 'source_inexistente' };
+  if (ag.company_id !== studioId || ag.studio_source_kind !== 'global_auxiliary') return { ok: false as const, error: 'fonte_precisa_ser_global_auxiliary' };
+
+  const bpk = auxiliaryBlueprintKey(ag.slug);
+  const version = '1.0.0';
+  const artifact = buildAuxiliaryArtifact({
+    name: ag.name, slug: ag.slug, agent_system_prompt: ag.agent_system_prompt,
+    llm_provider: ag.llm_provider, llm_model: ag.llm_model, agent_role: ag.agent_role,
+  });
+  const check = assertReleasePublishable(artifact);
+  if (!check.ok) return { ok: false as const, error: 'release_bloqueada', details: check.errors };
+
+  // release imutável (idempotente por blueprint_key+version)
+  let releaseId: string | null = null;
+  const { data: exr } = await supabase.from('agent_blueprint_releases').select('id').eq('blueprint_key', bpk).eq('semantic_version', version).maybeSingle();
+  if (exr?.id) releaseId = exr.id;
+  else {
+    const { data: created, error } = await supabase.from('agent_blueprint_releases').insert({
+      blueprint_key: bpk, semantic_version: version, status: 'published',
+      source_company_id: studioId, source_agent_id: ag.id, artifact, artifact_hash: hashArtifact(artifact),
+      schema_version: artifact.schema_version, changelog: `Auxiliar ${ag.name} v${version} (SPEC-013 B1.1).`,
+      risk_level: 'low', declared_capability_keys: [], published_at: new Date().toISOString(),
+    }).select('id').single();
+    if (error || !created) return { ok: false as const, error: 'release_insert_failed', details: [error?.message ?? ''] };
+    releaseId = created.id;
+  }
+
+  // template da Galeria vinculado à release (sem segredo; runtime smith_agent_blueprint)
+  const agentBlueprint = {
+    name: artifact.default_display_name, slug: ag.slug, is_subagent: true, allow_direct_chat: false,
+    llm_provider: artifact.llm_provider, llm_model: artifact.llm_model, agent_system_prompt: artifact.system_prompt_template,
+  };
+  const defaultConfig = {
+    runtime: { kind: 'smith_agent_blueprint', agent_blueprint: agentBlueprint },
+    visibility: { type: 'global' },
+    source: { company_id: studioId, agent_id: ag.id, origin: 'blueprint_studio' },
+  };
+  const candidate: Record<string, unknown> = {
+    slug: ag.slug, name: ag.name, status: 'active', is_active: true, default_config: defaultConfig, version: 1,
+    source_release_id: releaseId, source_blueprint_key: bpk, source_semantic_version: version, source_company_id: studioId, runtime_policy: {},
+  };
+  const cols = await getTableColumns(supabase, 'auxiliary_templates', ['slug', 'name', 'status', 'is_active', 'default_config', 'version']);
+  const record = pickColumns(candidate, cols);
+
+  const { data: existingTpl } = await supabase.from('auxiliary_templates').select('id').eq('slug', ag.slug).maybeSingle();
+  if (existingTpl?.id) {
+    const { error } = await supabase.from('auxiliary_templates').update(record).eq('id', existingTpl.id);
+    if (error) return { ok: false as const, error: 'template_update_failed' };
+    return { ok: true as const, release_id: releaseId, template_id: existingTpl.id, updated: true };
+  }
+  const { data: tpl, error: tplErr } = await supabase.from('auxiliary_templates').insert([record]).select('id').single();
+  if (tplErr || !tpl) return { ok: false as const, error: 'template_insert_failed', details: [tplErr?.message ?? ''] };
+  return { ok: true as const, release_id: releaseId, template_id: tpl.id };
 }
 
 /** P3 — cria uma DRAFT de nova versão a partir do Source Agent EDITADO no Studio. */

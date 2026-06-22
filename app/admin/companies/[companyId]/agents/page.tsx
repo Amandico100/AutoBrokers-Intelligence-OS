@@ -25,6 +25,7 @@ export default function AdminCompanyAgentsPage() {
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [companyName, setCompanyName] = useState<string>('');
   const [companyKind, setCompanyKind] = useState<string>('client'); // SPEC-013: Studio/Knowledge ≠ cliente
+  const [canonical, setCanonical] = useState<any>(null); // SPEC-013 B2: Core/Even protegidos (Even sempre visível)
 
   const BACKEND_URL = process.env.NEXT_PUBLIC_BACKEND_URL || 'http://localhost:8000';
 
@@ -40,6 +41,8 @@ export default function AdminCompanyAgentsPage() {
     if (companyId) {
       loadCompanyInfo();
       loadAgents();
+      // SPEC-013 B2: Core/Even canônicos (Supabase, Even sempre visível mesmo inativa)
+      fetch(`/api/admin/companies/${companyId}/core-even`).then((r) => r.json()).then((j) => { if (j?.ok) setCanonical(j); }).catch(() => {});
     }
   }, [companyId]);
 
@@ -210,6 +213,33 @@ export default function AdminCompanyAgentsPage() {
           </Button>
         </div>
       </div>
+
+      {/* SPEC-013 B2 — Agentes canônicos protegidos (Core + Even). Even aparece mesmo inativa.
+          Edição global vai pelo Blueprint Center; personalização local pelo Dashboard tenant. */}
+      {canonical && (
+        <div className="mb-8 grid grid-cols-1 gap-3 sm:grid-cols-2">
+          {[canonical.core, canonical.even].map((a: any) => (
+            <Card key={a.blueprint_key} className="bg-card border-border">
+              <CardContent className="p-4">
+                <div className="flex items-center justify-between gap-2">
+                  <div className="flex items-center gap-2">
+                    {a.type === 'Atendimento' ? <Bot className="w-4 h-4 text-cyan-500" /> : <Bot className="w-4 h-4 text-blue-500" />}
+                    <p className="font-semibold text-foreground">{a.label}</p>
+                  </div>
+                  <span className={`rounded-full border px-2 py-0.5 text-[10px] font-medium ${a.is_active ? 'border-emerald-500/30 bg-emerald-500/10 text-emerald-600' : 'border-amber-500/30 bg-amber-500/10 text-amber-600'}`}>
+                    {a.provisioned ? (a.is_active ? 'Ativo' : 'Inativo') : 'Aguardando provisionamento'}
+                  </span>
+                </div>
+                <p className="mt-1 text-xs text-muted-foreground">{a.type} · blueprint {a.blueprint_key}{a.applied_release?.version ? ` · release v${a.applied_release.version}` : ' · sem rollout'}</p>
+                <p className="mt-2 text-[11px] text-muted-foreground">A edição técnica global (prompt-base, guardrails, Tools/MCP) é feita no Blueprint Center. A personalização local, no Dashboard da corretora.</p>
+                <div className="mt-3 flex gap-2">
+                  <Button variant="outline" className="h-7 text-xs" onClick={() => router.push('/admin/blueprint-center')}>Blueprint Center</Button>
+                </div>
+              </CardContent>
+            </Card>
+          ))}
+        </div>
+      )}
 
       {/* Agents Flow View */}
       {loadingAgents ? (

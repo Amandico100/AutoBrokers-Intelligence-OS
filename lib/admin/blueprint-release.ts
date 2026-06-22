@@ -160,6 +160,36 @@ export function buildArtifactFromSourceAgent(bp: CanonicalBlueprint, src: Source
   };
 }
 
+// SPEC-013 B1.1 — artefato de release para AUXILIAR (não tem blueprint de código).
+// Construído a partir do Source Agent global_auxiliary do Studio. Sanitizado/imutável.
+export function auxiliaryBlueprintKey(slug: string): string { return `aux-${slug}`; }
+
+export function buildAuxiliaryArtifact(src: {
+  name: string; slug: string; agent_system_prompt?: string | null;
+  llm_provider?: string | null; llm_model?: string | null; agent_role?: string | null;
+  declared_capability_keys?: string[];
+}): BlueprintArtifact {
+  return {
+    schema_version: ARTIFACT_SCHEMA_VERSION,
+    blueprint_key: auxiliaryBlueprintKey(src.slug),
+    role: src.agent_role || 'subagent',
+    audience: 'internal',
+    brand_locked_name: null,
+    default_display_name: src.name,
+    display_name_template: src.name,
+    allow_direct_chat: false,
+    is_subagent: true,
+    llm_provider: (src.llm_provider && src.llm_provider.trim()) ? src.llm_provider.trim() : 'openai',
+    llm_model: (src.llm_model && src.llm_model.trim()) ? src.llm_model.trim() : 'gpt-4o-mini',
+    system_prompt_template: (src.agent_system_prompt && src.agent_system_prompt.trim()) ? src.agent_system_prompt : `Voce e o auxiliar ${src.name}.`,
+    variables: [],
+    immutable_guardrails: ['sem_acesso_a_segredos', 'respeita_approval_e_gates', 'nunca_executa_acao_externa_sem_autorizacao'],
+    safe_override_fields: [],
+    default_active: false,
+    declared_capability_keys: Array.isArray(src.declared_capability_keys) ? src.declared_capability_keys.filter((k) => typeof k === 'string' && k.trim()) : [],
+  };
+}
+
 /** Próxima versão semântica (default minor). */
 export function bumpSemanticVersion(prev: string, kind: 'major' | 'minor' | 'patch' = 'minor'): string {
   const m = /^(\d+)\.(\d+)\.(\d+)$/.exec((prev || '0.0.0').trim());

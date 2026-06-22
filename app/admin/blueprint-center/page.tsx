@@ -24,8 +24,7 @@ export default function BlueprintCenterPage() {
   const [rollouts, setRollouts] = useState<Array<{ id: string; blueprint_key: string; company_id: string; status: string }>>([]);
   const [selRelease, setSelRelease] = useState('');
   const [selCompany, setSelCompany] = useState('');
-  const [auxSources, setAuxSources] = useState<Array<{ id: string; name: string; slug: string }>>([]);
-  const [studioCompanyId, setStudioCompanyId] = useState('');
+  const [auxSources, setAuxSources] = useState<Array<{ id: string; name: string; slug: string; release_version?: string | null; published_in_gallery?: boolean }>>([]);
   const [auxName, setAuxName] = useState('');
   const [auxSlug, setAuxSlug] = useState('');
 
@@ -39,7 +38,7 @@ export default function BlueprintCenterPage() {
     if (Array.isArray(cj?.companies)) setCompanies(cj.companies.filter((c: any) => !String(c.company_kind ?? 'client').startsWith('platform_')));
     if (Array.isArray(rj?.rollouts)) setRollouts(rj.rollouts);
     const sj = await fetch('/api/admin/blueprint-center/source-auxiliary').then((r) => r.json()).catch(() => ({}));
-    if (sj?.ok) { setAuxSources(sj.sources ?? []); setStudioCompanyId(sj.studio_company_id ?? ''); }
+    if (sj?.ok) setAuxSources(sj.sources ?? []);
   }, []);
   useEffect(() => { load(); }, [load]);
 
@@ -190,14 +189,12 @@ export default function BlueprintCenterPage() {
             {auxSources.length === 0 && <p className="py-2 text-[12px] text-muted-foreground">Nenhum Source Auxiliar criado ainda.</p>}
             {auxSources.map((s) => (
               <div key={s.id} className="flex items-center justify-between py-1.5 text-[12px]">
-                <span className="text-foreground">{s.name} <span className="text-faint">({s.slug})</span></span>
-                <button onClick={async () => {
-                  setBusy(s.id); setNotice(''); setErr('');
-                  const r = await fetch('/api/admin/auxiliaries/templates/from-agent', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ companyId: studioCompanyId, agentId: s.id, name: s.name, slug: s.slug, visibility: 'global', status: 'active' }) });
-                  const j = await r.json().catch(() => ({}));
-                  if (j?.template) setNotice(`Auxiliar "${s.name}" publicado na Galeria.`); else setErr(`Publicar ${s.name}: ${j?.error || r.status}`);
-                  setBusy(''); await load();
-                }} disabled={!!busy} className="rounded-lg border border-border px-3 py-0.5 text-[12px] text-muted-foreground hover:bg-surface-2 disabled:opacity-50">Publicar como Auxiliar Global</button>
+                <span className="text-foreground">{s.name} <span className="text-faint">({s.slug})</span>
+                  {s.published_in_gallery
+                    ? <span className="ml-2 text-emerald-600">na Galeria{s.release_version ? ` · v${s.release_version}` : ''}</span>
+                    : <span className="ml-2 text-faint">não publicado</span>}
+                </span>
+                <button onClick={() => run('publish-auxiliary', `Publicar ${s.name}`, { source_agent_id: s.id })} disabled={!!busy} className="rounded-lg border border-border px-3 py-0.5 text-[12px] text-muted-foreground hover:bg-surface-2 disabled:opacity-50">{s.published_in_gallery ? 'Republicar' : 'Publicar como Auxiliar Global'}</button>
               </div>
             ))}
           </div>
