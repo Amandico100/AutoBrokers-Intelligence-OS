@@ -72,7 +72,12 @@ export default function AdminCompanyAgentsPage() {
       const response = await fetch(`/api/admin/agents/company/${companyId}/with-delegations`);
       if (response.ok) {
         const data = await response.json();
-        setAgents(data);
+        // SPEC-013 P0: Core/Even são geridos pela seção canônica (acima) e pelo Blueprint Center.
+        // Não duplicar no canvas legado nem permitir editor técnico errado por aqui.
+        const filtered = Array.isArray(data)
+          ? data.filter((a: any) => a?.agent_role !== 'core' && a?.agent_role !== 'attendance')
+          : data;
+        setAgents(filtered);
       } else {
         throw new Error('Failed to load agents');
       }

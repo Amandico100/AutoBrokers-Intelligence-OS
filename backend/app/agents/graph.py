@@ -656,8 +656,10 @@ Se você descrever em texto, o usuário VÊ UMA LISTA FEIA EM VEZ DO CARROSSEL B
         except Exception as e:
             logger.error(f"[Graph] Error checking UCP instructions: {e}")
 
-    # Prompt ESTÁTICO (instruções + tools) - será cacheado
-    static_prompt = build_composite_prompt(base_instructions)
+    # Prompt ESTÁTICO (instruções + tools) - será cacheado.
+    # SPEC-013 P0: base por PAPEL — Core = copiloto inteligente; attendance = evidence-first.
+    _agent_role_for_prompt = (real_agent_data or {}).get("agent_role") if real_agent_data else None
+    static_prompt = build_composite_prompt(base_instructions, agent_role=_agent_role_for_prompt)
 
     # Prompt DINÂMICO (memória) - NÃO será cacheado
     dynamic_context = ""
@@ -696,13 +698,17 @@ Se você descrever em texto, o usuário VÊ UMA LISTA FEIA EM VEZ DO CARROSSEL B
             from ..services.search_service import get_search_service
 
             _search_service = get_search_service()
+            # SPEC-013 P0: o Chat Principal (Core/legado) PODE usar o conhecimento global
+            # curado do AutoBrokers. Attendance/auxiliar permanecem só com o privado.
+            _role_for_rag = (real_agent_data or {}).get("agent_role") if real_agent_data else None
+            _rag_include_global = str(_role_for_rag or "").strip().lower() in ("", "core")
             rag_result = await asyncio.to_thread(
                 _search_service.smart_search,
                 company_id,
                 user_message,
                 str(agent_id) if agent_id else None,
                 is_hyde,
-                False,  # include_global: global continua desativado (41C.2B/SPEC-003)
+                _rag_include_global,  # global ON p/ Core (SPEC-013), OFF p/ attendance/auxiliar
             )
             if rag_result and rag_result.get("found") and rag_result.get("content"):
                 rag_prefetch_content = rag_result.get("content") or ""

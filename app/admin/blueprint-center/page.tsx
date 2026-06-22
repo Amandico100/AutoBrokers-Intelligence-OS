@@ -5,6 +5,7 @@
 import { useCallback, useEffect, useState } from 'react';
 import { Card, CardContent } from '@/components/ui/card';
 import { Loader2, Bot, Headphones, PackageCheck, ShieldCheck } from 'lucide-react';
+import { AgentConfigModal } from '@/components/admin/AgentConfigModal';
 
 type SourceAgent = { id: string; name: string; role: string; audience: string; is_active: boolean; blueprint_key: string };
 type Release = { id: string; blueprint_key: string; version: string; status: string; hash: string; risk: string; published_at: string | null };
@@ -27,6 +28,7 @@ export default function BlueprintCenterPage() {
   const [auxSources, setAuxSources] = useState<Array<{ id: string; name: string; slug: string; release_version?: string | null; published_in_gallery?: boolean }>>([]);
   const [auxName, setAuxName] = useState('');
   const [auxSlug, setAuxSlug] = useState('');
+  const [editAgentId, setEditAgentId] = useState<string | null>(null); // P0: editor global do Source Agent
 
   const load = useCallback(async () => {
     const j = await fetch('/api/admin/blueprint-center').then((r) => r.json()).catch(() => ({}));
@@ -80,9 +82,20 @@ export default function BlueprintCenterPage() {
             : <button onClick={() => run('initialize', 'Inicializar Studio')} disabled={!!busy} className="rounded-lg border border-primary/40 bg-primary/5 px-4 py-1.5 text-sm font-medium text-primary hover:bg-primary/10 disabled:opacity-50">{busy === 'Inicializar Studio' ? 'Criando…' : 'Inicializar'}</button>}
         </div>
         <div className="mt-3 grid grid-cols-1 gap-2 sm:grid-cols-2">
-          <div className="rounded-md border border-border bg-background px-3 py-2 text-[12px]"><Bot className="mr-1 inline h-3.5 w-3.5" /> AutoBrokers Global Core — {hasCore ? 'criado' : 'pendente'}</div>
-          <div className="rounded-md border border-border bg-background px-3 py-2 text-[12px]"><Headphones className="mr-1 inline h-3.5 w-3.5" /> Even Global Attendance — {hasEven ? 'criado' : 'pendente'}</div>
+          {[{ role: 'core', icon: <Bot className="mr-1 inline h-3.5 w-3.5" />, label: 'AutoBrokers Global Core', has: hasCore },
+            { role: 'attendance', icon: <Headphones className="mr-1 inline h-3.5 w-3.5" />, label: 'Even Global Attendance', has: hasEven }].map((g) => {
+            const src = status.source_agents.find((a) => a.role === g.role);
+            return (
+              <div key={g.role} className="flex items-center justify-between rounded-md border border-border bg-background px-3 py-2 text-[12px]">
+                <span>{g.icon} {g.label} — {g.has ? 'criado' : 'pendente'}</span>
+                {g.has && src && (
+                  <button onClick={() => setEditAgentId(src.id)} className="rounded-lg border border-primary/40 bg-primary/5 px-2 py-0.5 text-[11px] font-medium text-primary hover:bg-primary/10">Editar padrão global</button>
+                )}
+              </div>
+            );
+          })}
         </div>
+        <p className="mt-2 text-[10px] text-faint">“Editar padrão global” abre o construtor completo do Smith (Identidade, Modelo, Personalidade/Prompt, Memória/RAG, Segurança, HTTP Tools, MCP, Especialistas) no Source Agent. Salvar altera só o padrão; publique uma versão e faça rollout para distribuir às corretoras.</p>
       </CardContent></Card>
 
       {/* Passo 2 — Publicar releases */}
@@ -194,7 +207,10 @@ export default function BlueprintCenterPage() {
                     ? <span className="ml-2 text-emerald-600">na Galeria{s.release_version ? ` · v${s.release_version}` : ''}</span>
                     : <span className="ml-2 text-faint">não publicado</span>}
                 </span>
-                <button onClick={() => run('publish-auxiliary', `Publicar ${s.name}`, { source_agent_id: s.id })} disabled={!!busy} className="rounded-lg border border-border px-3 py-0.5 text-[12px] text-muted-foreground hover:bg-surface-2 disabled:opacity-50">{s.published_in_gallery ? 'Republicar' : 'Publicar como Auxiliar Global'}</button>
+                <span className="flex gap-2">
+                  <button onClick={() => setEditAgentId(s.id)} className="rounded-lg border border-primary/40 bg-primary/5 px-3 py-0.5 text-[12px] font-medium text-primary hover:bg-primary/10">Editar</button>
+                  <button onClick={() => run('publish-auxiliary', `Publicar ${s.name}`, { source_agent_id: s.id })} disabled={!!busy} className="rounded-lg border border-border px-3 py-0.5 text-[12px] text-muted-foreground hover:bg-surface-2 disabled:opacity-50">{s.published_in_gallery ? 'Republicar' : 'Publicar como Auxiliar Global'}</button>
+                </span>
               </div>
             ))}
           </div>
@@ -203,6 +219,16 @@ export default function BlueprintCenterPage() {
 
       {notice && <p className="text-[12px] text-emerald-600">{notice}</p>}
       {err && <p className="text-[12px] text-red-600">{err}</p>}
+
+      {/* P0 — Editor global real do Smith para o Source Agent (Core/Even/Auxiliar) */}
+      {editAgentId && status.studio_company_id && (
+        <AgentConfigModal
+          companyId={status.studio_company_id}
+          agentId={editAgentId}
+          open={!!editAgentId}
+          onOpenChange={(o) => { if (!o) { setEditAgentId(null); load(); } }}
+        />
+      )}
       <p className="text-[10px] text-muted-foreground">O Studio é uma empresa técnica da plataforma (não-cliente). Releases publicadas são imutáveis. Nada aqui liga WhatsApp, portal ou provider externo.</p>
     </div>
   );
