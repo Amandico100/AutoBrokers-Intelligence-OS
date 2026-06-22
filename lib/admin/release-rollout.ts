@@ -63,6 +63,32 @@ export function captureAgentSnapshot(agent: Record<string, unknown>): AgentSnaps
   };
 }
 
+/**
+ * SPEC-013 P6 — decisão de rollback em cadeia (espelha a RPC rollback_release_rollout).
+ * Sempre restaura o snapshot pré-rollout (estado anterior). Se havia um rollout anterior
+ * pausado, ele é REATIVADO (cadeia coerente); no 1º rollout não há anterior → fica sem ativo.
+ */
+export function decideRollbackAction(p: { hasPreviousPausedRollout: boolean }): {
+  restore_snapshot: true; reactivate_previous: boolean; active_after: 'previous' | 'none';
+} {
+  return {
+    restore_snapshot: true,
+    reactivate_previous: p.hasPreviousPausedRollout,
+    active_after: p.hasPreviousPausedRollout ? 'previous' : 'none',
+  };
+}
+
+/** Compatibilidade release×instância (espelha a validação da RPC apply_release_rollout). */
+export function isRolloutCompatible(p: {
+  releaseBlueprintKey: string; requestedBlueprintKey: string;
+  releaseRole: string; agentRole: string;
+  releaseAudience: string; agentAudience: string;
+}): boolean {
+  return p.releaseBlueprintKey === p.requestedBlueprintKey
+    && p.releaseRole === p.agentRole
+    && p.releaseAudience === p.agentAudience;
+}
+
 /** Extrai a personalização local salva (para reaplicar sobre a nova release). */
 export function extractSavedTenantInput(currentContextPackage: unknown): TenantAgentConfigInput {
   const cp = (currentContextPackage && typeof currentContextPackage === 'object' && !Array.isArray(currentContextPackage))

@@ -2,7 +2,7 @@
 /** SPEC-013 P4 — rollout: materialização preserva personalização local (puro, offline). */
 import { EVEN_ATTENDANCE_BLUEPRINT, computeAgentConfigUpdate } from '../lib/admin/agent-blueprints-canonical.ts';
 import { buildArtifactFromSourceAgent, scanForSecrets } from '../lib/admin/blueprint-release.ts';
-import { artifactToBlueprint, extractSavedTenantInput, canRolloutTransition, ROLLOUT_STATES, captureAgentSnapshot } from '../lib/admin/release-rollout.ts';
+import { artifactToBlueprint, extractSavedTenantInput, canRolloutTransition, ROLLOUT_STATES, captureAgentSnapshot, decideRollbackAction, isRolloutCompatible } from '../lib/admin/release-rollout.ts';
 
 let pass = 0, fail = 0; const failures = [];
 function assert(n, c) { if (c) { pass++; console.log(`  ✓ ${n}`); } else { fail++; failures.push(n); console.log(`  ✗ ${n}`); } }
@@ -46,6 +46,17 @@ assert('snapshot preserva context_package', snap.context_package.tenant_agent_co
 assert('snapshot ignora campos extras', !('extra' in snap));
 assert('snapshot limpo passa no secret scan', scanForSecrets(snap).length === 0);
 assert('snapshot com segredo é detectado', scanForSecrets(captureAgentSnapshot({ context_package: { access_token: 'zzz' } })).some((s) => s.includes('forbidden_secret_field')));
+
+// [P6] rollback em cadeia + compatibilidade (espelha a RPC)
+const rb1 = decideRollbackAction({ hasPreviousPausedRollout: false });
+assert('1º rollback: restaura e fica sem ativo', rb1.restore_snapshot && !rb1.reactivate_previous && rb1.active_after === 'none');
+const rb2 = decideRollbackAction({ hasPreviousPausedRollout: true });
+assert('2º rollback: reativa anterior', rb2.restore_snapshot && rb2.reactivate_previous && rb2.active_after === 'previous');
+
+assert('compat ok', isRolloutCompatible({ releaseBlueprintKey: 'even-attendance-v1', requestedBlueprintKey: 'even-attendance-v1', releaseRole: 'attendance', agentRole: 'attendance', releaseAudience: 'insured_external', agentAudience: 'insured_external' }) === true);
+assert('blueprint incompatível bloqueia', isRolloutCompatible({ releaseBlueprintKey: 'autobrokers-core-v1', requestedBlueprintKey: 'even-attendance-v1', releaseRole: 'core', agentRole: 'attendance', releaseAudience: 'broker_internal', agentAudience: 'insured_external' }) === false);
+assert('role incompatível bloqueia', isRolloutCompatible({ releaseBlueprintKey: 'x', requestedBlueprintKey: 'x', releaseRole: 'core', agentRole: 'attendance', releaseAudience: 'a', agentAudience: 'a' }) === false);
+assert('audience incompatível bloqueia', isRolloutCompatible({ releaseBlueprintKey: 'x', requestedBlueprintKey: 'x', releaseRole: 'core', agentRole: 'core', releaseAudience: 'broker_internal', agentAudience: 'insured_external' }) === false);
 
 console.log(`\n== Resumo: ${pass} passaram, ${fail} falharam ==`);
 if (fail > 0) { for (const f of failures) console.log(`  - ${f}`); process.exit(1); }
