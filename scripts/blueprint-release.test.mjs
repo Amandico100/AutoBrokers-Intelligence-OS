@@ -34,9 +34,10 @@ assert('tool/MCP livre é bloqueado', assertReleasePublishable(withRawTool).erro
 const badCaps = { ...art, declared_capability_keys: [123] };
 assert('capability_keys inválidas bloqueiam', assertReleasePublishable(badCaps).ok === false);
 
-// hash determinístico + imutabilidade
+// hash criptográfico (SHA-256) determinístico + imutabilidade
 assert('hash determinístico', hashArtifact(art) === hashArtifact(buildArtifactFromCanonical(AUTOBROKERS_CORE_BLUEPRINT)));
 assert('hash muda com o conteúdo', hashArtifact(art) !== hashArtifact({ ...art, role: 'mudou' }));
+assert('hash é sha256 (64 hex)', /^sha256_[0-9a-f]{64}$/.test(hashArtifact(art)));
 assert('só draft é editável', canEditRelease('draft') === true && canEditRelease('published') === false && canEditRelease('retired') === false);
 assert('transições válidas', canTransitionRelease('draft', 'published') && canTransitionRelease('published', 'retired'));
 assert('transições inválidas bloqueadas', !canTransitionRelease('published', 'draft') && !canTransitionRelease('retired', 'published'));
@@ -45,7 +46,7 @@ assert('transições inválidas bloqueadas', !canTransitionRelease('published', 
 const seeds = seedReleasesFromCanonical(CANONICAL_BLUEPRINTS);
 assert('seed gera 2 releases', seeds.length === 2);
 assert('seed v1.0.0 published', seeds.every((s) => s.semantic_version === '1.0.0' && s.status === 'published'));
-assert('seed com hash e sem segredo', seeds.every((s) => s.artifact_hash.startsWith('djb2_') && assertReleasePublishable(s.artifact).ok));
+assert('seed com hash sha256 e sem segredo', seeds.every((s) => /^sha256_[0-9a-f]{64}$/.test(s.artifact_hash) && assertReleasePublishable(s.artifact).ok));
 assert('seed cobre core e even', seeds.some((s) => s.blueprint_key === 'autobrokers-core-v1') && seeds.some((s) => s.blueprint_key === 'even-attendance-v1'));
 
 console.log(`\n== Resumo: ${pass} passaram, ${fail} falharam ==`);

@@ -2,6 +2,7 @@
 // Uma release é um ARTEFATO SANITIZADO e IMUTÁVEL publicado a partir de um Source
 // Agent do Studio (ou seed do blueprint de código). Nunca contém segredo. As
 // instâncias das corretoras referenciam blueprint_key + versão. DI para testes .mjs.
+import { createHash } from 'node:crypto';
 import type { CanonicalBlueprint } from '@/lib/admin/agent-blueprints-canonical';
 
 export type ReleaseStatus = 'draft' | 'published' | 'retired';
@@ -123,12 +124,9 @@ export function assertReleasePublishable(artifact: BlueprintArtifact): PublishCh
   return { ok: errors.length === 0, errors };
 }
 
-/** Hash determinístico do artefato (djb2 em hex) — base de imutabilidade. */
+/** Hash criptográfico determinístico do artefato (SHA-256) — base de imutabilidade. */
 export function hashArtifact(artifact: unknown): string {
-  const canonical = stableStringify(artifact);
-  let h = 5381;
-  for (let i = 0; i < canonical.length; i++) h = ((h << 5) + h + canonical.charCodeAt(i)) >>> 0;
-  return 'djb2_' + h.toString(16).padStart(8, '0');
+  return 'sha256_' + createHash('sha256').update(stableStringify(artifact)).digest('hex');
 }
 function stableStringify(v: unknown): string {
   if (v === null || typeof v !== 'object') return JSON.stringify(v);
