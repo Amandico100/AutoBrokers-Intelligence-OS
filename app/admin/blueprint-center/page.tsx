@@ -24,6 +24,10 @@ export default function BlueprintCenterPage() {
   const [rollouts, setRollouts] = useState<Array<{ id: string; blueprint_key: string; company_id: string; status: string }>>([]);
   const [selRelease, setSelRelease] = useState('');
   const [selCompany, setSelCompany] = useState('');
+  const [auxSources, setAuxSources] = useState<Array<{ id: string; name: string; slug: string }>>([]);
+  const [studioCompanyId, setStudioCompanyId] = useState('');
+  const [auxName, setAuxName] = useState('');
+  const [auxSlug, setAuxSlug] = useState('');
 
   const load = useCallback(async () => {
     const j = await fetch('/api/admin/blueprint-center').then((r) => r.json()).catch(() => ({}));
@@ -34,6 +38,8 @@ export default function BlueprintCenterPage() {
     ]);
     if (Array.isArray(cj?.companies)) setCompanies(cj.companies.filter((c: any) => !String(c.company_kind ?? 'client').startsWith('platform_')));
     if (Array.isArray(rj?.rollouts)) setRollouts(rj.rollouts);
+    const sj = await fetch('/api/admin/blueprint-center/source-auxiliary').then((r) => r.json()).catch(() => ({}));
+    if (sj?.ok) { setAuxSources(sj.sources ?? []); setStudioCompanyId(sj.studio_company_id ?? ''); }
   }, []);
   useEffect(() => { load(); }, [load]);
 
@@ -164,6 +170,36 @@ export default function BlueprintCenterPage() {
                 </div>
               );
             })}
+          </div>
+        </CardContent></Card>
+      )}
+
+      {/* Passo 5 — Auxiliares Globais (autoria no Studio → publicar na Galeria) */}
+      {studioReady && (
+        <Card><CardContent className="p-4">
+          <p className="flex items-center gap-2 font-medium"><Bot className="h-4 w-4" /> 5. Auxiliares Globais</p>
+          <p className="mt-1 text-sm text-muted-foreground">Crie um Source Agent de Auxiliar no Studio (motor Smith) e publique-o na Galeria. Core e Even nunca podem virar Auxiliar. Instalar numa corretora cria um motor isolado dela.</p>
+          <div className="mt-3 flex flex-wrap items-end gap-2">
+            <label className="text-[12px]"><span className="text-muted-foreground">Nome</span>
+              <input value={auxName} onChange={(e) => setAuxName(e.target.value)} className="mt-1 block w-48 rounded-lg border border-border bg-background px-3 py-1.5 text-sm text-foreground" /></label>
+            <label className="text-[12px]"><span className="text-muted-foreground">Slug</span>
+              <input value={auxSlug} onChange={(e) => setAuxSlug(e.target.value.toLowerCase())} placeholder="pesquisa-empresas" className="mt-1 block w-48 rounded-lg border border-border bg-background px-3 py-1.5 text-sm text-foreground" /></label>
+            <button onClick={() => run('source-auxiliary', 'Criar auxiliar', { name: auxName, slug: auxSlug })} disabled={!!busy || !auxName || !auxSlug} className="rounded-lg border border-primary/40 bg-primary/5 px-4 py-1.5 text-sm font-medium text-primary hover:bg-primary/10 disabled:opacity-50">Criar Source Auxiliar</button>
+          </div>
+          <div className="mt-3 divide-y divide-border">
+            {auxSources.length === 0 && <p className="py-2 text-[12px] text-muted-foreground">Nenhum Source Auxiliar criado ainda.</p>}
+            {auxSources.map((s) => (
+              <div key={s.id} className="flex items-center justify-between py-1.5 text-[12px]">
+                <span className="text-foreground">{s.name} <span className="text-faint">({s.slug})</span></span>
+                <button onClick={async () => {
+                  setBusy(s.id); setNotice(''); setErr('');
+                  const r = await fetch('/api/admin/auxiliaries/templates/from-agent', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ companyId: studioCompanyId, agentId: s.id, name: s.name, slug: s.slug, visibility: 'global', status: 'active' }) });
+                  const j = await r.json().catch(() => ({}));
+                  if (j?.template) setNotice(`Auxiliar "${s.name}" publicado na Galeria.`); else setErr(`Publicar ${s.name}: ${j?.error || r.status}`);
+                  setBusy(''); await load();
+                }} disabled={!!busy} className="rounded-lg border border-border px-3 py-0.5 text-[12px] text-muted-foreground hover:bg-surface-2 disabled:opacity-50">Publicar como Auxiliar Global</button>
+              </div>
+            ))}
           </div>
         </CardContent></Card>
       )}

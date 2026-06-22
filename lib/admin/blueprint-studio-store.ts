@@ -115,6 +115,47 @@ async function latestVersion(supabase: SupabaseClient, blueprintKey: string): Pr
   return sorted[0] ?? null;
 }
 
+// SPEC-013 B1 — cria um Source Agent de Auxiliar dentro do Studio (motor Smith).
+// É de AUTORIA (inativo, sem chat/canal). Depois é publicado como Auxiliar Global.
+const SLUG_RE_AUX = /^[a-z0-9]+(?:-[a-z0-9]+)*$/;
+export async function createSourceAuxiliary(supabase: SupabaseClient, input: { name: string; slug: string; description?: string }) {
+  const name = (input.name || '').trim();
+  const slug = (input.slug || '').trim().toLowerCase();
+  if (!name) return { ok: false as const, error: 'nome_obrigatorio' };
+  if (!slug || !SLUG_RE_AUX.test(slug)) return { ok: false as const, error: 'slug_invalido' };
+
+  const studioId = await getStudioCompanyId(supabase);
+  if (!studioId) return { ok: false as const, error: 'studio_company_missing' };
+
+  // slug único dentro do Studio
+  const { data: dup } = await supabase.from('agents').select('id').eq('company_id', studioId).eq('slug', slug).maybeSingle();
+  if (dup?.id) return { ok: false as const, error: 'slug_em_uso' };
+
+  const { data: created, error } = await supabase.from('agents').insert({
+    company_id: studioId,
+    name,
+    slug,
+    is_active: false,            // autoria, não operacional
+    agent_enabled: true,
+    agent_role: 'subagent',
+    is_subagent: true,
+    allow_direct_chat: false,
+    studio_source_kind: 'global_auxiliary',
+    blueprint_version: `aux-${slug}`,
+    agent_system_prompt: input.description?.trim() || `Voce e o auxiliar ${name}.`,
+    security_settings: { enabled: false },
+  }).select('id, name, slug, studio_source_kind').single();
+  if (error || !created?.id) return { ok: false as const, error: 'insert_failed', details: [error?.message ?? ''] };
+  return { ok: true as const, source_agent: created };
+}
+
+export async function listStudioAuxiliarySources(supabase: SupabaseClient) {
+  const studioId = await getStudioCompanyId(supabase);
+  if (!studioId) return { ok: true as const, sources: [] };
+  const { data } = await supabase.from('agents').select('id, name, slug, studio_source_kind').eq('company_id', studioId).eq('studio_source_kind', 'global_auxiliary').order('name');
+  return { ok: true as const, sources: data ?? [], studio_company_id: studioId };
+}
+
 /** P3 — cria uma DRAFT de nova versão a partir do Source Agent EDITADO no Studio. */
 export async function createReleaseDraftFromSourceAgent(supabase: SupabaseClient, blueprintKey: string, bumpKind: 'major' | 'minor' | 'patch' = 'minor') {
   const bp = getCanonicalBlueprint(blueprintKey);

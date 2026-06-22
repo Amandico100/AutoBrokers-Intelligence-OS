@@ -11,6 +11,7 @@ import {
 } from '@/lib/admin/factory';
 import { fetchAgentViaBackend, extractBlueprintFromAgent } from '@/lib/admin/agent-blueprints';
 import { BackendUrlError, getBackendUrl } from '@/lib/backend-url';
+import { publishBlockReason } from '@/lib/admin/auxiliary-publish';
 
 export const dynamic = 'force-dynamic';
 
@@ -59,13 +60,23 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: 'O Agent não pertence à corretora selecionada.' }, { status: 400 });
   }
 
+  const supabase = getAdminSupabase();
+
+  // SPEC-013 B1 — Auxiliar GLOBAL só pode nascer de um Source Agent do Blueprint Studio
+  // marcado como global_auxiliary. Core/Even e agentes de cliente nunca viram Auxiliar global.
+  if (visibility === 'global') {
+    const { data: agRow } = await supabase.from('agents').select('studio_source_kind').eq('id', agentId).maybeSingle();
+    const { data: coRow } = await supabase.from('companies').select('company_kind').eq('id', companyId).maybeSingle();
+    const reason = publishBlockReason({ companyKind: (coRow as any)?.company_kind ?? null, studioSourceKind: (agRow as any)?.studio_source_kind ?? null });
+    if (reason) return NextResponse.json({ error: `Fonte inválida para Auxiliar Global (${reason}). Use um Source Agent do Studio do tipo global_auxiliary.` }, { status: 400 });
+  }
+
   const blueprint = extractBlueprintFromAgent(agent);
   const defaultConfig = {
     runtime: { kind: 'smith_agent_blueprint', agent_blueprint: blueprint },
     visibility: visibility === 'exclusive' ? { type: 'private', company_id: companyId } : { type: 'global' },
+    source: { company_id: companyId, agent_id: agentId, origin: 'blueprint_studio' },
   };
-
-  const supabase = getAdminSupabase();
 
   const { data: existing } = await supabase.from('auxiliary_templates').select('id').eq('slug', slug).limit(1);
   if (existing && existing.length > 0) {
