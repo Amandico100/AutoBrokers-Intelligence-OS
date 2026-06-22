@@ -42,6 +42,27 @@ export function artifactToBlueprint(artifact: BlueprintArtifact, blueprintVersio
   };
 }
 
+// SPEC-013 P4-hardening — snapshot do estado do agente ANTES do rollout, para um
+// rollback seguro inclusive no PRIMEIRO rollout (volta ao estado original).
+export interface AgentSnapshot {
+  name: string | null;
+  avatar_url: string | null;
+  llm_temperature: number | null;
+  agent_system_prompt: string | null;
+  context_package: unknown;
+  blueprint_version: string | null;
+}
+export function captureAgentSnapshot(agent: Record<string, unknown>): AgentSnapshot {
+  return {
+    name: (agent.name as string) ?? null,
+    avatar_url: (agent.avatar_url as string) ?? null,
+    llm_temperature: agent.llm_temperature != null ? Number(agent.llm_temperature) : null,
+    agent_system_prompt: (agent.agent_system_prompt as string) ?? null,
+    context_package: agent.context_package ?? null,
+    blueprint_version: (agent.blueprint_version as string) ?? null,
+  };
+}
+
 /** Extrai a personalização local salva (para reaplicar sobre a nova release). */
 export function extractSavedTenantInput(currentContextPackage: unknown): TenantAgentConfigInput {
   const cp = (currentContextPackage && typeof currentContextPackage === 'object' && !Array.isArray(currentContextPackage))
