@@ -29,9 +29,10 @@ export const atendimentoAreas: ModuleArea[] = [
 ];
 
 // ---------- Auxiliares ----------
+// SPEC-013 — caminho ÚNICO de Auxiliares: "Auxiliares" (catálogo + instalar + gerenciar)
+// + "Execuções". A antiga "Galeria" virou a mesma página (sem duplicar telas).
 export const auxiliaresAreas: ModuleArea[] = [
-  { key: 'meus', icon: icons.auxiliares, title: 'Meus Auxiliares', description: 'Auxiliares ativados pela corretora.', href: '/dashboard/auxiliares/meus' },
-  { key: 'galeria', icon: icons.galeria, title: 'Galeria', description: 'Modelos prontos para ativar.', href: '/dashboard/auxiliares/galeria' },
+  { key: 'meus', icon: icons.auxiliares, title: 'Auxiliares', description: 'Veja, instale, pause e gerencie os auxiliares da sua corretora.', href: '/dashboard/auxiliares/meus' },
   { key: 'execucoes', icon: icons.historico, title: 'Execuções', description: 'Histórico do que foi feito.', href: '/dashboard/auxiliares/execucoes' },
 ];
 

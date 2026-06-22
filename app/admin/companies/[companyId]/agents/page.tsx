@@ -214,7 +214,7 @@ export default function AdminCompanyAgentsPage() {
             className="bg-blue-600 hover:bg-blue-700 text-white gap-2"
           >
             <Plus className="w-4 h-4" />
-            Novo Agente
+            Novo Agente Personalizado
           </Button>
         </div>
       </div>
@@ -246,6 +246,9 @@ export default function AdminCompanyAgentsPage() {
         </div>
       )}
 
+      {/* SPEC-013 P0 — Seção 2: agentes personalizados (Core/Even ficam na seção canônica acima). */}
+      <p className="mb-3 text-sm font-medium text-muted-foreground">Agentes personalizados da corretora</p>
+
       {/* Agents Flow View */}
       {loadingAgents ? (
         <div className="flex items-center justify-center py-12">
@@ -255,14 +258,18 @@ export default function AdminCompanyAgentsPage() {
         <Card className="bg-card border-border">
           <CardContent className="py-12 text-center">
             <Bot className="w-16 h-16 text-muted-foreground mx-auto mb-4" />
-            <h3 className="text-xl font-semibold text-foreground mb-2">Nenhum agente criado ainda</h3>
-            <p className="text-muted-foreground mb-6">Crie o primeiro agente para esta empresa</p>
+            <h3 className="text-xl font-semibold text-foreground mb-2">Nenhum agente personalizado adicional</h3>
+            <p className="text-muted-foreground mb-6">
+              O AutoBrokers e a Even desta corretora aparecem acima, em “Agentes canônicos”.
+              O padrão global deles é editado no Blueprint Center. Aqui ficam apenas agentes
+              extras/subagentes específicos desta corretora.
+            </p>
             <Button
               onClick={handleCreateAgent}
               className="bg-blue-600 hover:bg-blue-700 text-white gap-2"
             >
               <Plus className="w-4 h-4" />
-              Criar Primeiro Agente
+              Novo Agente Personalizado
             </Button>
           </CardContent>
         </Card>
