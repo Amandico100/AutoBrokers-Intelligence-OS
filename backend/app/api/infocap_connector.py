@@ -19,6 +19,7 @@ import httpx
 from fastapi import APIRouter, Depends, Header, HTTPException
 from pydantic import BaseModel
 
+from app.core.config import settings
 from app.core.database import AsyncSupabaseClient, get_async_db
 from app.services.encryption_service import get_encryption_service
 
@@ -457,7 +458,7 @@ async def infocap_lookup(
         return {"ok": False, "status": "blocked_not_configured", "source": "infocap", "blockers": ["not_infocap_connector"]}
 
     config = conn.get("connection_config") if isinstance(conn.get("connection_config"), dict) else {}
-    base_url = (config.get("base_url") or "").rstrip("/")
+    base_url = (config.get("base_url") or settings.INFOCAP_BASE_URL or "").rstrip("/")
     cipher = conn.get("encrypted_secret_ref")
     if not base_url:
         return {"ok": False, "status": "blocked_not_configured", "source": "infocap", "blockers": ["missing_base_url"]}
@@ -796,7 +797,7 @@ async def infocap_probe(
         return {"ok": False, "status": "blocked_not_configured", "blockers": ["not_infocap_connector"], "probes": []}
 
     config = conn.get("connection_config") if isinstance(conn.get("connection_config"), dict) else {}
-    base_url = (config.get("base_url") or "").rstrip("/")
+    base_url = (config.get("base_url") or settings.INFOCAP_BASE_URL or "").rstrip("/")
     cipher = conn.get("encrypted_secret_ref")
     if not base_url:
         return {"ok": False, "status": "blocked_not_configured", "blockers": ["missing_base_url"], "probes": []}
@@ -1043,7 +1044,7 @@ async def infocap_policy_detail(
         return {"ok": False, "status": "blocked_not_configured", "source": "infocap", "blockers": ["not_infocap_connector"]}
 
     config = conn.get("connection_config") if isinstance(conn.get("connection_config"), dict) else {}
-    base_url = (config.get("base_url") or "").rstrip("/")
+    base_url = (config.get("base_url") or settings.INFOCAP_BASE_URL or "").rstrip("/")
     cipher = conn.get("encrypted_secret_ref")
     if not base_url:
         return {"ok": False, "status": "blocked_not_configured", "source": "infocap", "blockers": ["missing_base_url"]}

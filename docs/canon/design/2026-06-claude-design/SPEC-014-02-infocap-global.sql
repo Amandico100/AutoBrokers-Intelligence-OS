@@ -1,0 +1,39 @@
+-- SPEC-014 C1 slice 3 — InfoCap: base_url GLOBAL + conexão por corretora (credencial isolada).
+-- Arquitetura (decisão do Founder): base_url é a MESMA para todas as corretoras (env INFOCAP_BASE_URL),
+-- mas LOGIN/SENHA são POR corretora (cada uma só vê a própria). Segredo NUNCA aqui — entra pelo fluxo
+-- seguro de secret (cifra Fernet no backend). Este runbook só cria a CONEXÃO (sem segredo).
+--
+-- ENV (EasyPanel, backend): INFOCAP_BASE_URL=https://api.corpnuvem.com  (já é o default no código)
+--
+-- A conexão da RESULTA já foi criada (id dfbfdea5-... via MCP nesta sessão). Este script é o
+-- modelo idempotente para criar a conexão de QUALQUER corretora nova.
+-- ============================================================================
+-- APPLY (trocar o company_id pela corretora alvo)
+-- ============================================================================
+-- begin;
+-- insert into public.tenant_connections (company_id, connector_template_id, name, status, connection_config, metadata)
+-- select '<COMPANY_ID>',
+--        (select id from public.connector_templates where slug='infocap'),
+--        'InfoCap — <NOME>', 'configuring',
+--        '{"base_url":"https://api.corpnuvem.com"}'::jsonb,
+--        '{"created_via":"spec-014-02"}'::jsonb
+-- where not exists (
+--   select 1 from public.tenant_connections tc
+--   join public.connector_templates ct on ct.id = tc.connector_template_id
+--   where ct.slug='infocap' and tc.company_id='<COMPANY_ID>'
+-- );
+-- commit;
+--
+-- PASSO SEGURO DE CREDENCIAL (NÃO via SQL):
+--   No Dashboard da corretora → Conectores → InfoCap → informar login + senha.
+--   Isso chama o fluxo seguro (/attendance/connectors/infocap/secret) que cifra (Fernet) e grava
+--   encrypted_secret_ref, movendo status para 'connected'. base_url já vem do global.
+--
+-- ============================================================================
+-- VERIFY
+-- ============================================================================
+-- select c.company_name, tc.status, (tc.encrypted_secret_ref is not null) as has_secret, tc.connection_config
+--   from public.tenant_connections tc
+--   join public.connector_templates ct on ct.id=tc.connector_template_id
+--   join public.companies c on c.id=tc.company_id
+--   where ct.slug='infocap';

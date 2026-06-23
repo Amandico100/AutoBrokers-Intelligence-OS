@@ -106,6 +106,10 @@ class Settings(BaseSettings):
     DOCLING_POLL_INTERVAL: int = 5  # Seconds between polling
     DOCLING_MAX_WAIT: int = 600  # Max wait time (10 min)
 
+    # InfoCap (SPEC-014 C1 slice 3) — base_url GLOBAL (todas as corretoras).
+    # Credenciais (login/senha) NUNCA aqui: ficam cifradas por corretora no Vault.
+    INFOCAP_BASE_URL: str = "https://api.corpnuvem.com"
+
     # OpenRouter Configuration (Multi-provider Gateway)
     OPENROUTER_API_KEY: Optional[str] = None
     OPENROUTER_BASE_URL: str = "https://openrouter.ai/api/v1"

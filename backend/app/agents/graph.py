@@ -363,6 +363,20 @@ async def create_agent_graph(
             # Tabela pode não existir ainda (pré-migration)
             logger.warning(f"[Graph] ⚠️ SubAgent delegation ERRO: {e}")
 
+    # === CAPABILITY-GOVERNED TOOLS (SPEC-014 C1) ===
+    # O Core ganha consciência da corretora (control_plane.read) + InfoCap governado
+    # (operational.infocap.policy_lookup.read). Aditivo e fail-safe: nunca quebra o chat.
+    try:
+        _agent_role = str((agent_data or {}).get("agent_role") or "").strip().lower()
+        if _agent_role in ("", "core") and company_id:
+            from .tools.control_plane_tool import ControlPlaneReadTool
+            tools.append(ControlPlaneReadTool(company_id=str(company_id), supabase_client=supabase_client))
+            from .tools.infocap_tool import InfocapPolicyLookupTool
+            tools.append(InfocapPolicyLookupTool(company_id=str(company_id)))
+            logger.info(f"[Graph] 🧭 Capabilities do Core anexadas (control_plane + infocap) para {company_id}")
+    except Exception as e:  # noqa: BLE001
+        logger.warning(f"[Graph] ⚠️ Capability tools (SPEC-014) não anexadas: {e}")
+
     # Bind final (Standard + Dinâmicas)
     llm_with_tools = llm.bind_tools(tools)
 
