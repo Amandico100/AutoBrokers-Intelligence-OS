@@ -27,6 +27,7 @@ export default function AdminCompanyAgentsPage() {
   const [companyKind, setCompanyKind] = useState<string>('client'); // SPEC-013: Studio/Knowledge ≠ cliente
   const [canonical, setCanonical] = useState<any>(null); // SPEC-013 B2: Core/Even protegidos (Even sempre visível)
   const [health, setHealth] = useState<any>(null); // SPEC-013 FB-2: diagnóstico + manutenção (folded)
+  const [caps, setCaps] = useState<any>(null); // SPEC-014 C1: cockpit de capabilities (folded)
 
   const BACKEND_URL = process.env.NEXT_PUBLIC_BACKEND_URL || 'http://localhost:8000';
 
@@ -45,11 +46,27 @@ export default function AdminCompanyAgentsPage() {
       // SPEC-013 B2: Core/Even canônicos (Supabase, Even sempre visível mesmo inativa)
       fetch(`/api/admin/companies/${companyId}/core-even`).then((r) => r.json()).then((j) => { if (j?.ok) setCanonical(j); }).catch(() => {});
       loadHealth();
+      loadCaps();
     }
   }, [companyId]);
 
   const loadHealth = async () => {
     try { const j = await fetch(`/api/admin/companies/${companyId}/agent-health`).then((r) => r.json()); if (j?.ok) setHealth(j); } catch { /* silencioso */ }
+  };
+
+  const loadCaps = async () => {
+    try { const j = await fetch(`/api/admin/companies/${companyId}/capabilities`).then((r) => r.json()); if (j?.ok) setCaps(j); } catch { /* silencioso */ }
+  };
+
+  const syncCaps = async () => {
+    try {
+      const r = await fetch(`/api/admin/companies/${companyId}/capabilities`, {
+        method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ action: 'sync_runtime_flags' }),
+      });
+      const j = await r.json().catch(() => ({}));
+      if (j?.ok) { toast({ title: 'Acessos sincronizados', description: `Core web: ${j.cores_web_on} · Even web off: ${j.even_web_off}` }); loadCaps(); }
+      else toast({ title: 'Falha', description: j?.error || 'erro', variant: 'destructive' });
+    } catch { /* ignore */ }
   };
 
   const runMaintenance = async (action: string, agentId: string) => {
@@ -290,6 +307,41 @@ export default function AdminCompanyAgentsPage() {
               </div>
             ) : <p className="text-[12px] text-muted-foreground">Nenhuma pendência. Core e Even canônicos OK.</p>}
             <p className="text-[10px] text-faint">Modelo do Core é promovido por política (temporário). Edição global no Blueprint Center; personalização local no Dashboard. Sem segredos aqui.</p>
+          </CardContent></Card>
+        </details>
+      )}
+
+      {/* SPEC-014 C1 — Capacidades (Capability Registry), folded. Quem usa o quê + sincronizar runtime. */}
+      {caps && (
+        <details className="mb-8">
+          <summary className="cursor-pointer list-none select-none">
+            <span className="text-sm font-medium text-foreground">▸ Capacidades (Capability Registry)</span>
+            <span className={`ml-2 rounded-full border px-2 py-0.5 text-[10px] ${caps.runtime?.core_web_search ? 'border-emerald-500/30 bg-emerald-500/10 text-emerald-600' : 'border-amber-500/30 bg-amber-500/10 text-amber-600'}`}>
+              busca web {caps.runtime?.core_web_search ? 'ligada' : 'desligada'}
+            </span>
+          </summary>
+          <Card className="mt-3 bg-card border-border"><CardContent className="p-4 space-y-3">
+            <div className="flex flex-wrap items-center justify-between gap-2">
+              <p className="text-[12px] text-muted-foreground">Core, Even e Auxiliares usam capacidades governadas — sem flag solta. Internas nascem ligadas; externas pedem conexão/aprovação.</p>
+              <button onClick={syncCaps} className="rounded-lg border border-primary/40 bg-primary/5 px-3 py-1 text-[12px] font-medium text-primary hover:bg-primary/10">Sincronizar acessos do runtime</button>
+            </div>
+            {!caps.entitlements_table && (
+              <div className="rounded-md border border-amber-500/30 bg-amber-500/5 px-3 py-2 text-[11px] text-amber-600">Aplique o runbook SPEC-014-01 para ativar a governança completa por corretora (entitlements).</div>
+            )}
+            {(['core', 'attendance', 'auxiliary'] as const).map((role) => (
+              <div key={role}>
+                <p className="mb-1 text-[12px] font-medium text-foreground">{role === 'core' ? 'AutoBrokers (Core)' : role === 'attendance' ? 'Even (Atendimento)' : 'Auxiliares (teto permitido)'}</p>
+                <div className="flex flex-wrap gap-1.5">
+                  {(caps[role] ?? []).filter((c: any) => c.status !== 'not_allowed_for_role').map((c: any) => (
+                    <span key={c.key} title={`${c.key} — ${c.reason}`}
+                      className={`rounded-md border px-2 py-0.5 text-[11px] ${c.status === 'active' ? 'border-emerald-500/30 bg-emerald-500/10 text-emerald-600' : c.status === 'needs_connection' ? 'border-sky-500/30 bg-sky-500/10 text-sky-600' : 'border-border bg-background text-muted-foreground'}`}>
+                      {c.capability?.name ?? c.key}{c.status === 'needs_connection' ? ' · conectar' : c.status === 'disabled' ? ' · off' : ''}
+                    </span>
+                  ))}
+                </div>
+              </div>
+            ))}
+            <p className="text-[10px] text-faint">Busca web usa Tavily (chave da plataforma via env TAVILY_API_KEY). InfoCap/portais/WhatsApp pedem conexão no Dashboard. Governança em SPEC-014.</p>
           </CardContent></Card>
         </details>
       )}
