@@ -102,18 +102,25 @@ async def store_infocap_secret(
         logger.error(f"[INFOCAP SECRET] encryption error: {e}")
         raise HTTPException(status_code=500, detail="encryption_failed") from e
 
-    # 4. Atualizar conexão: ref cifrada + base_url (não-secreto) + status connected
+    # 4. Atualizar conexão: ref cifrada + base_url (com fallback GLOBAL) + TESTE de auth real.
     prev_config = conn.get("connection_config") if isinstance(conn.get("connection_config"), dict) else {}
     new_config = dict(prev_config)
-    if base_url:
-        new_config["base_url"] = base_url
-    base_url_ok = isinstance(new_config.get("base_url"), str) and len(new_config.get("base_url")) > 0
+    effective_base = base_url or new_config.get("base_url") or settings.INFOCAP_BASE_URL or ""
+    if effective_base:
+        new_config["base_url"] = effective_base
+    base_url_ok = bool(effective_base)
+
+    # Teste de autenticação REAL (sem afirmar "conectado" sem prova).
+    status, health = "configuring", "unknown"
+    if base_url_ok:
+        status, health, _ = await _infocap_auth_test(effective_base.rstrip("/"), username, password)
 
     update_fields: Dict[str, Any] = {
         "encrypted_secret_ref": ciphertext,
         "connection_config": new_config,
-        "status": "connected" if base_url_ok else "configuring",
-        "health_status": "unknown",
+        "status": status,
+        "health_status": health,
+        "last_checked_at": datetime.now(timezone.utc).isoformat(),
         "metadata": {"configured_via": "infocap_secret_flow", "safe_secret_flow": True},
         "updated_at": datetime.now(timezone.utc).isoformat(),
     }
@@ -121,19 +128,19 @@ async def store_infocap_secret(
         "company_id", company_id
     ).execute()
 
-    # Log sanitizado: só ids/flags, NUNCA login/senha/ciphertext
     logger.info(
         f"[INFOCAP SECRET] stored company={company_id} connection={connection_id} "
-        f"base_url_set={base_url_ok} status={update_fields['status']}"
+        f"base_url_set={base_url_ok} status={status} health={health}"
     )
 
     return {
         "ok": True,
         "provider": "infocap",
-        "status": update_fields["status"],
+        "status": status,
+        "health_status": health,
         "base_url_configured": base_url_ok,
         "secret_ref_present": True,
-        "ready_for_real_lookup": bool(base_url_ok),
+        "connected": status == "connected",
     }
 
 
@@ -1143,3 +1150,81 @@ async def providers_health(
         "docling_configured": bool(getattr(settings, "DOCLING_SERVICE_URL", None)),
         "infocap_base_url_set": bool(getattr(settings, "INFOCAP_BASE_URL", None)),
     }
+
+
+# ---------------------------------------------------------------------------
+# Auth test real (C-FIX-2) — prova de conexão sem afirmar "connected" sem teste.
+# Retorna (status, health, http_status). status ∈ connected|error|configuring.
+# ---------------------------------------------------------------------------
+AUTH_TEST_TIMEOUT_S = 8.0
+
+
+async def _infocap_auth_test(base_url: str, email: str, senha: str, auth_path: str = "/login"):
+    if not base_url or not email or not senha:
+        return "configuring", "incomplete", None
+    try:
+        async with httpx.AsyncClient(timeout=AUTH_TEST_TIMEOUT_S, base_url=base_url) as client:
+            res = await client.post(auth_path, json={"email": email, "senha": senha, "aplicacao": 0})
+            if res.status_code in (401, 403):
+                return "error", "invalid_credentials", res.status_code
+            if res.status_code >= 400:
+                return "configuring", "unavailable", res.status_code
+            token = None
+            try:
+                token = _extract_token(res.json())
+            except Exception:  # noqa: BLE001
+                token = (res.text or "").strip() or None
+            if not token:
+                return "error", "invalid_credentials", res.status_code
+            return "connected", "healthy", res.status_code
+    except (httpx.TimeoutException, httpx.HTTPError):
+        return "configuring", "unavailable", None
+
+
+class InfocapTestPayload(BaseModel):
+    company_id: str
+    tenant_connection_id: str
+
+
+@router.post("/attendance/connectors/infocap/test")
+async def infocap_test(
+    payload: InfocapTestPayload,
+    x_autobrokers_internal_key: Optional[str] = Header(default=None, alias="X-AutoBrokers-Internal-Key"),
+    db: AsyncSupabaseClient = Depends(get_async_db),
+) -> Dict[str, Any]:
+    """Testa a conexão InfoCap usando o segredo JÁ salvo (não re-digita login/senha)."""
+    _require_internal_key(x_autobrokers_internal_key)
+    company_id = (payload.company_id or "").strip()
+    connection_id = (payload.tenant_connection_id or "").strip()
+    if not company_id or not connection_id:
+        raise HTTPException(status_code=400, detail="company_id and tenant_connection_id are required")
+
+    conn_res = (
+        await db.client.table("tenant_connections")
+        .select("id, company_id, connection_config, encrypted_secret_ref")
+        .eq("id", connection_id).eq("company_id", company_id).limit(1).execute()
+    )
+    conn = conn_res.data[0] if conn_res and conn_res.data else None
+    if not conn:
+        return {"ok": False, "status": "error", "health": "not_found"}
+    config = conn.get("connection_config") if isinstance(conn.get("connection_config"), dict) else {}
+    base_url = (config.get("base_url") or settings.INFOCAP_BASE_URL or "").rstrip("/")
+    cipher = conn.get("encrypted_secret_ref")
+    if not cipher:
+        await db.client.table("tenant_connections").update(
+            {"status": "configuring", "health_status": "missing_credentials", "last_checked_at": datetime.now(timezone.utc).isoformat()}
+        ).eq("id", connection_id).eq("company_id", company_id).execute()
+        return {"ok": False, "status": "configuring", "health": "missing_credentials"}
+    try:
+        creds = json.loads(get_encryption_service().decrypt(cipher))
+        email = creds.get("username") or creds.get("email")
+        senha = creds.get("password") or creds.get("senha")
+    except Exception:  # noqa: BLE001
+        return {"ok": False, "status": "error", "health": "decrypt_error"}
+
+    status, health, http_status = await _infocap_auth_test(base_url, email, senha)
+    await db.client.table("tenant_connections").update(
+        {"status": status, "health_status": health, "last_checked_at": datetime.now(timezone.utc).isoformat()}
+    ).eq("id", connection_id).eq("company_id", company_id).execute()
+    logger.info(f"[INFOCAP TEST] company={company_id} connection={connection_id} status={status} health={health}")
+    return {"ok": status == "connected", "status": status, "health": health, "http_status": http_status}

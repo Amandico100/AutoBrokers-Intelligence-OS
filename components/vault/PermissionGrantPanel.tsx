@@ -74,10 +74,24 @@ export function PermissionGrantPanel({ connectionId }: { connectionId: string })
     }
   };
 
-  const revoke = async (grantId: string) => {
-    const r = await deletePermission(connectionId, grantId);
-    if (r.ok) load();
+  // C-FIX-2: revoga todas as grants de um ator de uma vez (limpa a poluição).
+  const revokeMany = async (ids: string[]) => {
+    await Promise.all(ids.map((id) => deletePermission(connectionId, id)));
+    load();
   };
+
+  // Agrega por ator: uma linha por Chat Principal / Atendimento / Auxiliares (sem 7 linhas técnicas).
+  const grouped = (() => {
+    const map = new Map<string, { actions: Set<string>; ids: string[]; approval: boolean }>();
+    for (const p of items ?? []) {
+      const g = map.get(p.subject_type) ?? { actions: new Set<string>(), ids: [], approval: false };
+      asActions(p.allowed_actions).forEach((a) => g.actions.add(a));
+      g.ids.push(p.id);
+      if (p.requires_approval) g.approval = true;
+      map.set(p.subject_type, g);
+    }
+    return Array.from(map.entries());
+  })();
 
   return (
     <div className="space-y-3">
@@ -91,20 +105,20 @@ export function PermissionGrantPanel({ connectionId }: { connectionId: string })
         <p className="flex items-center gap-2 text-xs text-muted-foreground">
           <Icon icon={icons.renovacao} size={14} className="animate-spin" /> Carregando…
         </p>
-      ) : items.length === 0 ? (
+      ) : grouped.length === 0 ? (
         <p className="text-xs text-muted-foreground">Ninguém liberado ainda.</p>
       ) : (
         <ul className="space-y-1.5">
-          {items.map((p) => (
-            <li key={p.id} className="flex flex-wrap items-center gap-2 rounded-lg border border-border-soft px-3 py-2 text-xs">
-              <span className="font-medium text-foreground-2">{subjectLabel(p.subject_type)}</span>
-              {asActions(p.allowed_actions).map((a) => (
+          {grouped.map(([subj, g]) => (
+            <li key={subj} className="flex flex-wrap items-center gap-2 rounded-lg border border-border-soft px-3 py-2 text-xs">
+              <span className="font-medium text-foreground-2">{subjectLabel(subj)}</span>
+              {Array.from(g.actions).map((a) => (
                 <span key={a} title={actionHelp(a)} className="rounded-full border border-border-soft px-2 py-0.5 text-[11px] text-muted-foreground">
                   {actionLabel(a)}
                 </span>
               ))}
-              {p.requires_approval && <StatusPill tone="approval" label="confirma antes de agir" />}
-              <button onClick={() => revoke(p.id)} className="ml-auto rounded-md border border-border px-2 py-0.5 text-[11px] text-muted-foreground hover:border-danger/40 hover:text-danger">
+              {g.approval && <StatusPill tone="approval" label="confirma antes de agir" />}
+              <button onClick={() => revokeMany(g.ids)} className="ml-auto rounded-md border border-border px-2 py-0.5 text-[11px] text-muted-foreground hover:border-danger/40 hover:text-danger">
                 Remover acesso
               </button>
             </li>

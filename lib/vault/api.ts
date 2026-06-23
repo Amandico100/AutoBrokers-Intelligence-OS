@@ -73,6 +73,26 @@ export async function deletePermission(connectionId: string, grantId: string) {
   return res.json() as Promise<{ ok?: boolean; error?: string }>;
 }
 
+// C-FIX-2: gerenciar conexão (arquivar / desconectar / excluir rascunho vazio).
+export async function manageConnection(connectionId: string, mode: 'archive' | 'disconnect' | 'delete') {
+  const res = await fetch(`/api/vault/connections/${connectionId}`, {
+    method: 'DELETE',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ mode }),
+  });
+  return res.json() as Promise<{ ok?: boolean; status?: string; deleted?: boolean; error?: string }>;
+}
+
+// C-FIX-2: testar a conexão InfoCap usando o segredo já salvo (atualiza status real).
+export async function testInfocapConnection(connectionId: string) {
+  const res = await fetch('/api/attendance/connectors/infocap/test', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ tenant_connection_id: connectionId }),
+  });
+  return res.json() as Promise<{ ok?: boolean; status?: string; health?: string; error?: string }>;
+}
+
 export function fetchApprovalRequests() {
   return getJson<{ approvals: ApprovalRequest[] }>('/api/vault/approvals');
 }

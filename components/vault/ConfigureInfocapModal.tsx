@@ -17,11 +17,12 @@ import { icons } from '@/lib/icons';
  * Conectar NÃO exige aprovação humana — o próprio corretor está autorizando.
  */
 export function ConfigureInfocapModal({
-  open, onOpenChange, onConfigured,
+  open, onOpenChange, onConfigured, connectionId,
 }: {
   open: boolean;
   onOpenChange: (o: boolean) => void;
   onConfigured?: () => void;
+  connectionId?: string | null;
 }) {
   const [username, setUsername] = useState('');
   const [password, setPassword] = useState('');
@@ -42,14 +43,16 @@ export function ConfigureInfocapModal({
       const res = await fetch('/api/attendance/connectors/infocap/secret', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ username: username.trim(), password }),
+        body: JSON.stringify({ username: username.trim(), password, tenant_connection_id: connectionId || undefined }),
       });
       const data = await res.json().catch(() => ({}));
       if (res.ok && data.ok) {
         setPassword('');
-        setOkMsg('InfoCap conectada com segurança.');
-        onConfigured?.();
-        setTimeout(() => onOpenChange(false), 700);
+        const connected = data.connected || data.status === 'connected';
+        const invalid = data.status === 'error' || data.health_status === 'invalid_credentials';
+        setOkMsg(connected ? 'InfoCap conectada e testada com sucesso ✓' : invalid ? '' : 'Credenciais salvas. Verificando…');
+        if (invalid) { setError('Login ou senha inválidos na InfoCap. Confira e tente de novo.'); }
+        else { onConfigured?.(); setTimeout(() => onOpenChange(false), 800); }
       } else {
         setError(data.error || 'Não foi possível conectar a InfoCap.');
       }

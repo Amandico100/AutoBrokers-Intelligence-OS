@@ -109,3 +109,61 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ co
 
   return NextResponse.json({ connection: data });
 }
+
+/**
+ * DELETE /api/vault/connections/[connectionId]  (C-FIX-2)
+ * mode: 'archive' (preserva histórico, some da lista ativa) |
+ *       'disconnect' (remove segredo, status disconnected) |
+ *       'delete' (hard-delete SOMENTE rascunho vazio: sem segredo, sem permissões, sem aprovações).
+ */
+export async function DELETE(req: NextRequest, { params }: { params: Promise<{ connectionId: string }> }) {
+  const ctx = await resolveSessionCompany();
+  if (!ctx) return NextResponse.json({ error: 'Não autorizado' }, { status: 401 });
+  const { connectionId } = await params;
+  let body: Record<string, unknown> = {};
+  try { body = await req.json(); } catch { body = {}; }
+  const mode = typeof body.mode === 'string' ? body.mode : 'archive';
+
+  const supabase = getSupabaseAdmin();
+  const { data: conn } = await supabase
+    .from('tenant_connections')
+    .select('id, status, encrypted_secret_ref, metadata')
+    .eq('id', connectionId).eq('company_id', ctx.companyId).maybeSingle();
+  if (!conn) return NextResponse.json({ error: 'Conexão não encontrada' }, { status: 404 });
+
+  const nowIso = new Date().toISOString();
+
+  if (mode === 'disconnect') {
+    const { error } = await supabase.from('tenant_connections')
+      .update({ encrypted_secret_ref: null, status: 'disconnected', health_status: 'unknown', updated_at: nowIso })
+      .eq('id', connectionId).eq('company_id', ctx.companyId);
+    if (error) return NextResponse.json({ error: 'Erro ao desconectar.' }, { status: 500 });
+    await writeAudit(supabase, { company_id: ctx.companyId, tenant_connection_id: connectionId, actor_user_id: ctx.userId, event_type: 'connection_revoked', action: 'disconnect', status: 'disconnected' });
+    return NextResponse.json({ ok: true, status: 'disconnected' });
+  }
+
+  if (mode === 'delete') {
+    // Só permite hard-delete de rascunho vazio: sem segredo, sem permissões, sem aprovações.
+    if (conn.encrypted_secret_ref) {
+      return NextResponse.json({ error: 'Esta conexão tem credencial salva. Use Desconectar ou Arquivar.' }, { status: 409 });
+    }
+    const { count: grants } = await supabase.from('permission_grants').select('id', { count: 'exact', head: true }).eq('tenant_connection_id', connectionId);
+    const { count: approvals } = await supabase.from('approval_requests').select('id', { count: 'exact', head: true }).eq('tenant_connection_id', connectionId);
+    if ((grants ?? 0) > 0 || (approvals ?? 0) > 0) {
+      return NextResponse.json({ error: 'Esta conexão tem histórico/permissões. Arquive em vez de excluir.' }, { status: 409 });
+    }
+    const { error } = await supabase.from('tenant_connections').delete().eq('id', connectionId).eq('company_id', ctx.companyId);
+    if (error) return NextResponse.json({ error: 'Erro ao excluir rascunho.' }, { status: 500 });
+    return NextResponse.json({ ok: true, deleted: true });
+  }
+
+  // default: archive (preserva histórico)
+  const meta = (conn.metadata && typeof conn.metadata === 'object' && !Array.isArray(conn.metadata)) ? { ...(conn.metadata as Record<string, unknown>) } : {};
+  meta.archived = { at: nowIso, by: ctx.userId };
+  const { error } = await supabase.from('tenant_connections')
+    .update({ status: 'archived', metadata: meta, updated_at: nowIso })
+    .eq('id', connectionId).eq('company_id', ctx.companyId);
+  if (error) return NextResponse.json({ error: 'Erro ao arquivar.' }, { status: 500 });
+  await writeAudit(supabase, { company_id: ctx.companyId, tenant_connection_id: connectionId, actor_user_id: ctx.userId, event_type: 'connection_updated', action: 'archive', status: 'archived' });
+  return NextResponse.json({ ok: true, status: 'archived' });
+}

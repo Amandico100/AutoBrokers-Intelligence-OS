@@ -35,6 +35,7 @@ export async function POST(req: NextRequest) {
   const username = typeof body.username === 'string' ? body.username.trim() : '';
   const password = typeof body.password === 'string' ? body.password : '';
   const baseUrl = typeof body.base_url === 'string' ? body.base_url.trim() : '';
+  const requestedConnId = typeof body.tenant_connection_id === 'string' ? body.tenant_connection_id.trim() : '';
 
   if (!username || !password) {
     return NextResponse.json({ ok: false, error: 'username e password são obrigatórios.' }, { status: 400 });
@@ -55,14 +56,30 @@ export async function POST(req: NextRequest) {
   if (!tpl?.id) {
     return NextResponse.json({ ok: false, error: 'Template InfoCap não encontrado/ativo.' }, { status: 404 });
   }
-  const { data: conn } = await supabase
-    .from('tenant_connections')
-    .select('id')
-    .eq('company_id', ctx.companyId)
-    .eq('connector_template_id', tpl.id)
-    .order('created_at', { ascending: false })
-    .limit(1)
-    .maybeSingle();
+  // C-FIX-2: usa a conexão EXPLÍCITA quando informada; nunca "a mais recente" (causava segredo na conexão errada).
+  let conn: { id: string } | null = null;
+  if (requestedConnId) {
+    const { data } = await supabase
+      .from('tenant_connections')
+      .select('id')
+      .eq('id', requestedConnId)
+      .eq('company_id', ctx.companyId)
+      .eq('connector_template_id', tpl.id)
+      .maybeSingle();
+    conn = data ?? null;
+  } else {
+    // fallback: única conexão InfoCap NÃO arquivada da corretora
+    const { data } = await supabase
+      .from('tenant_connections')
+      .select('id')
+      .eq('company_id', ctx.companyId)
+      .eq('connector_template_id', tpl.id)
+      .neq('status', 'archived')
+      .order('created_at', { ascending: true })
+      .limit(1)
+      .maybeSingle();
+    conn = data ?? null;
+  }
   if (!conn?.id) {
     return NextResponse.json(
       { ok: false, error: 'Conexão InfoCap não encontrada. Crie a conexão no Vault antes.' },

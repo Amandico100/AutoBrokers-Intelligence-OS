@@ -13,7 +13,10 @@ import {
   fetchTenantConnections,
   createApprovalRequest,
   testWhatsAppConnection,
+  manageConnection,
+  testInfocapConnection,
 } from '@/lib/vault/api';
+import { DropdownMenu, DropdownMenuTrigger, DropdownMenuContent, DropdownMenuItem } from '@/components/ui/dropdown-menu';
 import type { ConnectorTemplate, TenantConnection } from '@/lib/vault/types';
 import { CreateConnectionModal } from '@/components/vault/CreateConnectionModal';
 import { ConfigureWhatsAppModal } from '@/components/vault/ConfigureWhatsAppModal';
@@ -45,6 +48,7 @@ export default function ConectoresPage() {
   const [configureConnId, setConfigureConnId] = useState<string | null>(null);
   const [configureOpen, setConfigureOpen] = useState(false);
   const [infocapOpen, setInfocapOpen] = useState(false); // SPEC-014 C-FIX-1 (F)
+  const [infocapConnId, setInfocapConnId] = useState<string | null>(null); // C-FIX-2
 
   const loadConnections = () =>
     fetchTenantConnections()
@@ -105,6 +109,18 @@ export default function ConectoresPage() {
     return map;
   }, [templates]);
 
+  // C-FIX-2: catálogo e minhas conexões mostram a MESMA verdade (conectado/configurando).
+  const statusByTemplate = useMemo(() => {
+    const map: Record<string, string> = {};
+    (connections || []).forEach((c) => {
+      if (c.status === 'archived') return;
+      const cur = map[c.connector_template_id];
+      // prioridade: connected > configuring/outros > draft
+      if (c.status === 'connected' || !cur) map[c.connector_template_id] = c.status;
+    });
+    return map;
+  }, [connections]);
+
   const openConfigure = (id: string) => {
     setConfigureConnId(id);
     setConfigureOpen(true);
@@ -122,6 +138,26 @@ export default function ConectoresPage() {
     } catch {
       setNotice('Erro ao testar a configuração.');
     }
+  };
+
+  // C-FIX-2: abrir modal InfoCap apontando para a conexão certa.
+  const openInfocap = (id: string) => { setInfocapConnId(id); setInfocapOpen(true); };
+
+  const doTestInfocap = async (id: string) => {
+    setNotice('Testando conexão InfoCap…');
+    try {
+      const r = await testInfocapConnection(id);
+      setNotice(r.status === 'connected' ? 'InfoCap conectada ✓' : r.health === 'invalid_credentials' ? 'InfoCap: credencial inválida.' : r.health === 'unavailable' ? 'InfoCap indisponível no momento.' : (r.error || 'InfoCap ainda não está pronta.'));
+      loadConnections();
+    } catch { setNotice('Erro ao testar a InfoCap.'); }
+  };
+
+  const doManage = async (id: string, mode: 'archive' | 'disconnect' | 'delete', label: string) => {
+    try {
+      const r = await manageConnection(id, mode);
+      setNotice(r.ok ? `${label} concluído.` : (r.error || 'Não foi possível concluir.'));
+      if (r.ok) { if (openConnId === id) setOpenConnId(null); loadConnections(); }
+    } catch { setNotice('Erro na ação da conexão.'); }
   };
 
   const tabButton = (value: Tab, label: string) => (
@@ -191,19 +227,24 @@ export default function ConectoresPage() {
             <Loading />
           ) : (
             <GalleryGrid>
-              {templates.map((t) => (
-                <GalleryCard
-                  key={t.id}
-                  icon={slugIcon(t.slug)}
-                  title={t.name}
-                  description={typeof t.description === 'string' ? t.description : undefined}
-                  category={t.category}
-                  status={riskPill(t.risk_level)}
-                  tags={[t.auth_type]}
-                  cta="Preparar conexão"
-                  onClick={() => openCreate(t)}
-                />
-              ))}
+              {templates.map((t) => {
+                const connStatus = statusByTemplate[t.id];
+                const cardStatus = connStatus ? connectionStatusPill(connStatus) : riskPill(t.risk_level);
+                const connected = connStatus === 'connected';
+                return (
+                  <GalleryCard
+                    key={t.id}
+                    icon={slugIcon(t.slug)}
+                    title={t.name}
+                    description={typeof t.description === 'string' ? t.description : undefined}
+                    category={t.category}
+                    status={cardStatus}
+                    tags={[t.auth_type]}
+                    cta={connected ? 'Gerenciar conexão' : 'Preparar conexão'}
+                    onClick={() => (connected ? setTab('connections') : openCreate(t))}
+                  />
+                );
+              })}
             </GalleryGrid>
           ))}
 
@@ -224,13 +265,14 @@ export default function ConectoresPage() {
             </DetailSection>
           ) : (
             <div className="space-y-3">
-              {connections.map((c) => {
+              {connections.filter((c) => c.status !== 'archived').map((c) => {
                 const open = openConnId === c.id;
                 const sp = connectionStatusPill(c.status);
                 const slug = slugByTemplate[c.connector_template_id];
                 const isWhatsApp = slug === 'whatsapp_zapi';
                 const isInfocap = slug === 'infocap';
                 const isConfigured = c.status === 'connected' || Boolean(c.technical_ref_id);
+                const isDraft = c.status === 'draft';
                 return (
                   <div key={c.id} className="rounded-xl border border-border bg-surface">
                     <div className="flex items-start justify-between gap-3 p-4">
@@ -244,27 +286,37 @@ export default function ConectoresPage() {
                           {c.health_status ? ` · saúde: ${c.health_status}` : ''}
                         </p>
                       </div>
-                      <div className="flex shrink-0 flex-wrap items-center justify-end gap-2">
+                      <div className="flex shrink-0 items-center justify-end gap-2">
+                        {isInfocap && (
+                          <Button size="sm" onClick={() => openInfocap(c.id)}>
+                            <Icon icon={icons.cadeado} size={14} className="mr-2" />
+                            {isConfigured ? 'Reconectar' : 'Conectar'}
+                          </Button>
+                        )}
                         {isWhatsApp && (
                           <Button size="sm" onClick={() => openConfigure(c.id)}>
                             <Icon icon={icons.cadeado} size={14} className="mr-2" />
-                            {isConfigured ? 'Reconfigurar' : 'Configurar com segurança'}
+                            {isConfigured ? 'Reconfigurar' : 'Conectar'}
                           </Button>
                         )}
-                        {isInfocap && (
-                          <Button size="sm" onClick={() => setInfocapOpen(true)}>
-                            <Icon icon={icons.cadeado} size={14} className="mr-2" />
-                            {isConfigured ? 'Reconectar' : 'Conectar (login e senha)'}
-                          </Button>
-                        )}
-                        {isWhatsApp && isConfigured && (
-                          <Button size="sm" variant="outline" onClick={() => handleTestWhatsApp(c.id)}>
-                            Testar
-                          </Button>
-                        )}
-                        <Button size="sm" variant="outline" onClick={() => setOpenConnId(open ? null : c.id)}>
-                          {open ? 'Fechar' : 'Permissões'}
-                        </Button>
+                        <DropdownMenu>
+                          <DropdownMenuTrigger asChild>
+                            <Button size="sm" variant="outline" aria-label="Mais ações" className="px-2 text-base leading-none">⋯</Button>
+                          </DropdownMenuTrigger>
+                          <DropdownMenuContent align="end" className="min-w-[180px]">
+                            <DropdownMenuItem onClick={() => setOpenConnId(open ? null : c.id)}>
+                              {open ? 'Fechar acesso' : 'Gerenciar acesso'}
+                            </DropdownMenuItem>
+                            {isInfocap && <DropdownMenuItem onClick={() => doTestInfocap(c.id)}>Testar conexão</DropdownMenuItem>}
+                            {isWhatsApp && isConfigured && <DropdownMenuItem onClick={() => handleTestWhatsApp(c.id)}>Testar conexão</DropdownMenuItem>}
+                            {isConfigured && <DropdownMenuItem onClick={() => doManage(c.id, 'disconnect', 'Desconectar')}>Desconectar</DropdownMenuItem>}
+                            {isDraft ? (
+                              <DropdownMenuItem onClick={() => doManage(c.id, 'delete', 'Excluir rascunho')} className="text-danger focus:text-danger">Excluir rascunho</DropdownMenuItem>
+                            ) : (
+                              <DropdownMenuItem onClick={() => doManage(c.id, 'archive', 'Arquivar')} className="text-danger focus:text-danger">Arquivar conexão</DropdownMenuItem>
+                            )}
+                          </DropdownMenuContent>
+                        </DropdownMenu>
                       </div>
                     </div>
                     {open && (
@@ -304,6 +356,7 @@ export default function ConectoresPage() {
       <ConfigureInfocapModal
         open={infocapOpen}
         onOpenChange={setInfocapOpen}
+        connectionId={infocapConnId}
         onConfigured={() => { setNotice('InfoCap conectada com segurança.'); loadConnections(); }}
       />
     </div>
