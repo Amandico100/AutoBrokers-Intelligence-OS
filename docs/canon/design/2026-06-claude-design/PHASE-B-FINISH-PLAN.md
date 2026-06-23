@@ -14,18 +14,19 @@
 
 ## 🎯 O QUE FALTA — exatamente 2 execuções (sem novos blocos depois)
 
-### Execução FB-1 — "Chat que conhece a corretora" + Conhecimento (o que te faz sentir o agente extraordinário)
-1. **Seed Pack Global v1** (conhecimento curado do AutoBrokers: o que é Core/Even/Auxiliares, capacidades, releases/rollout, regras) — ingestão **master-only, idempotente, manual** (botão). *Sem dado sensível, sem cobertura.*
-2. **Knowledge Readiness** (Global + Privado da corretora: nº docs/chunks/última indexação) — diagnóstico honesto, sem vazar tenant.
-3. **Política de modelo** do Core: subir de `gpt-4o-mini` para um perfil "inteligência avançada" (com aviso de custo) — para o raciocínio sênior que você quer.
-4. *(reuso)* A consciência de auxiliares no chat **já existe** (42A7); FB-1 amplia para "estado da corretora" (prontidão/agentes) **reusando** o mesmo mecanismo — sem tool paralela.
+### Execução FB-1 — inteligência do Chat Principal ✅ FEITO (commit 6c5cb8a)
+1. ✅ **Modelo mais forte para o Core** (`gpt-4o`, temporário, configurável via `CORE_CHAT_MODEL`; Even/Auxiliares mantêm o seu). Não engessa — só sobe o teto.
+2. ✅ **Knowledge Readiness** já existe (TA2-C: `/api/dashboard/knowledge` + tela Conhecimento) — sem página nova.
+3. ✅ **Consciência de auxiliares no chat** já existe (42A7) — não duplicar.
+4. ↪️ **Seed Pack Global / RAG robusto: adiado de propósito** (decisão do Founder) para a fase de evolução de cada agente — é conteúdo/poder, não infra.
 
-### Execução FB-2 — Operação, governança e higiene (deixar o Portal Admin "para humano")
-5. **Provisionamento canônico + reconciliação** (DRY-RUN master): toda nova corretora nasce com Core+Even canônicos; empresas existentes (Resulta/Rafael) reconciliadas com snapshot/rollback (sem apagar).
-6. **Higiene de dados de teste** (os "TESTE Runtime Smith Agent" da Rafael): lista master "Dados legados", arquivar com confirmação (nunca apagar/auto).
-7. **Diagnóstico de Runtime** (master, por Core/Even): provider, modelo, saldo, LLM, RAG, memória, último erro — sem segredo. (Para de adivinhar.)
+### Execução FB-2 — SIMPLIFICAR o Portal Admin + operação/governança (estilo Smith, "para humano")
+0. **SIMPLIFICAÇÃO DA NAVEGAÇÃO (prioridade do Founder):** menos camadas e "página que leva a página"; organizar no **sidebar** como o Smith era; menos termos de dev. Auditar e **enxugar**, não acrescentar.
+5. **Reconciliação canônica** (DRY-RUN master): nova corretora nasce com Core+Even; Resulta/Rafael reconciliadas com snapshot/rollback (inclui normalizar **"SERGIO" → "Even"** mantendo role=attendance; sem apagar).
+6. **Higiene de dados de teste** (os "TESTE Runtime Smith Agent" da Rafael): lista master "Dados legados", arquivar com confirmação.
+7. **Diagnóstico de Runtime** (master, por Core/Even): provider, modelo, saldo, LLM, RAG, memória, último erro — sem segredo.
 8. **FinOps real** por agente (uso real ou "indisponível" honesto; sem repasse ainda).
-9. **Aprovadores** (tabela canônica `company_approvers` + RLS) — base de governança (sem ligar ação externa).
+9. **Aprovadores** (`company_approvers` + RLS) — base de governança (sem ligar ação externa).
 
 ## 🚫 NÃO entra na Fase B (é Fase C / trilhas externas)
 Capability Registry, Composio/Nango, Firecrawl/Notion/Drive/InfoCap/Quiver, Browserbase/Portais reais, Z-API/WhatsApp real. **Só depois** da Fase B encerrada.
