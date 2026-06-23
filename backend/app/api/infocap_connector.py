@@ -1126,3 +1126,20 @@ async def infocap_policy_detail(
         logger.error(f"[INFOCAP DETAIL] http error: {type(e).__name__}")
         _log("provider_error")
         return {"ok": False, "status": "provider_error", "source": "infocap", "blockers": ["network_error"]}
+
+
+# ---------------------------------------------------------------------------
+# Providers health (SPEC-014 C-FIX-1 G) — master/internal. Sem segredo: só presença
+# de configuração para o Cockpit refletir a VERDADE (ex.: busca web operacional?).
+# ---------------------------------------------------------------------------
+@router.get("/health/providers")
+async def providers_health(
+    x_autobrokers_internal_key: Optional[str] = Header(default=None, alias="X-AutoBrokers-Internal-Key"),
+) -> Dict[str, Any]:
+    _require_internal_key(x_autobrokers_internal_key)
+    return {
+        "ok": True,
+        "tavily_configured": bool(getattr(settings, "TAVILY_API_KEY", None)),
+        "docling_configured": bool(getattr(settings, "DOCLING_SERVICE_URL", None)),
+        "infocap_base_url_set": bool(getattr(settings, "INFOCAP_BASE_URL", None)),
+    }

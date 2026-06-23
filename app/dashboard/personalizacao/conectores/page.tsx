@@ -17,6 +17,7 @@ import {
 import type { ConnectorTemplate, TenantConnection } from '@/lib/vault/types';
 import { CreateConnectionModal } from '@/components/vault/CreateConnectionModal';
 import { ConfigureWhatsAppModal } from '@/components/vault/ConfigureWhatsAppModal';
+import { ConfigureInfocapModal } from '@/components/vault/ConfigureInfocapModal';
 import { PermissionGrantPanel } from '@/components/vault/PermissionGrantPanel';
 import { riskPill, connectionStatusPill, slugIcon, fmtDateTime } from '@/components/vault/labels';
 
@@ -43,6 +44,7 @@ export default function ConectoresPage() {
   const [notice, setNotice] = useState('');
   const [configureConnId, setConfigureConnId] = useState<string | null>(null);
   const [configureOpen, setConfigureOpen] = useState(false);
+  const [infocapOpen, setInfocapOpen] = useState(false); // SPEC-014 C-FIX-1 (F)
 
   const loadConnections = () =>
     fetchTenantConnections()
@@ -227,6 +229,7 @@ export default function ConectoresPage() {
                 const sp = connectionStatusPill(c.status);
                 const slug = slugByTemplate[c.connector_template_id];
                 const isWhatsApp = slug === 'whatsapp_zapi';
+                const isInfocap = slug === 'infocap';
                 const isConfigured = c.status === 'connected' || Boolean(c.technical_ref_id);
                 return (
                   <div key={c.id} className="rounded-xl border border-border bg-surface">
@@ -248,6 +251,12 @@ export default function ConectoresPage() {
                             {isConfigured ? 'Reconfigurar' : 'Configurar com segurança'}
                           </Button>
                         )}
+                        {isInfocap && (
+                          <Button size="sm" onClick={() => setInfocapOpen(true)}>
+                            <Icon icon={icons.cadeado} size={14} className="mr-2" />
+                            {isConfigured ? 'Reconectar' : 'Conectar (login e senha)'}
+                          </Button>
+                        )}
                         {isWhatsApp && isConfigured && (
                           <Button size="sm" variant="outline" onClick={() => handleTestWhatsApp(c.id)}>
                             Testar
@@ -261,12 +270,14 @@ export default function ConectoresPage() {
                     {open && (
                       <div className="space-y-4 border-t border-border p-4">
                         <PermissionGrantPanel connectionId={c.id} />
-                        <div className="flex flex-wrap items-center gap-2 border-t border-border-soft pt-3">
-                          <Button size="sm" variant="outline" onClick={() => createTestApproval(c)}>
-                            <Icon icon={icons.aprovacao} size={14} className="mr-2" />
-                            Criar aprovação de teste
-                          </Button>
-                        </div>
+                        {isWhatsApp && (
+                          <div className="flex flex-wrap items-center gap-2 border-t border-border-soft pt-3">
+                            <Button size="sm" variant="outline" onClick={() => createTestApproval(c)}>
+                              <Icon icon={icons.aprovacao} size={14} className="mr-2" />
+                              Criar aprovação de teste
+                            </Button>
+                          </div>
+                        )}
                       </div>
                     )}
                   </div>
@@ -288,6 +299,12 @@ export default function ConectoresPage() {
         onOpenChange={setConfigureOpen}
         connectionId={configureConnId}
         onConfigured={onWhatsAppConfigured}
+      />
+
+      <ConfigureInfocapModal
+        open={infocapOpen}
+        onOpenChange={setInfocapOpen}
+        onConfigured={() => { setNotice('InfoCap conectada com segurança.'); loadConnections(); }}
       />
     </div>
   );

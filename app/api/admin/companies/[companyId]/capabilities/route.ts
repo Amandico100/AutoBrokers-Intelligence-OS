@@ -3,11 +3,24 @@
 // acessos do runtime à matriz. Read-only no diagnóstico; POST faz ações seguras (same-origin+master).
 import { NextRequest, NextResponse } from 'next/server';
 import { requireAdminForCompany, supabaseService, assertSameOrigin } from '@/lib/admin/admin-auth';
+import { getBackendUrl } from '@/lib/backend-url';
 import {
   CAPABILITY_CATALOG, resolveAgentCapabilities, type TenantEntitlement, type AgentRole,
 } from '@/lib/capabilities/registry';
 
 export const dynamic = 'force-dynamic';
+
+// SPEC-014 C-FIX-1 (G): saúde REAL dos providers (backend), p/ o cockpit não mentir.
+async function fetchProvidersHealth(req: NextRequest): Promise<Record<string, unknown> | null> {
+  const key = process.env.BACKEND_INTERNAL_API_KEY || process.env.ADMIN_API_KEY;
+  if (!key) return null;
+  try {
+    const backend = getBackendUrl(req);
+    const r = await fetch(`${backend}/health/providers`, { headers: { 'X-AutoBrokers-Internal-Key': key } });
+    if (!r.ok) return null;
+    return (await r.json()) as Record<string, unknown>;
+  } catch { return null; }
+}
 
 // provider da capability → slug(s) de connector_template do Vault
 const PROVIDER_SLUGS: Record<string, string[]> = {
@@ -29,12 +42,13 @@ function buildEntitlements(connectedSlugs: Set<string>, entRows: Record<string, 
   });
 }
 
-export async function GET(_req: NextRequest, { params }: { params: Promise<{ companyId: string }> }) {
+export async function GET(req: NextRequest, { params }: { params: Promise<{ companyId: string }> }) {
   const { companyId } = await params;
   if (!companyId) return NextResponse.json({ ok: false, error: 'companyId_required' }, { status: 400 });
   const auth = await requireAdminForCompany(companyId);
   if (!auth.ok) return NextResponse.json({ ok: false, error: auth.error }, { status: auth.status });
   const supabase = supabaseService();
+  const providers = await fetchProvidersHealth(req);
 
   // runtime flags reais
   const { data: agentsRaw } = await supabase.from('agents')
@@ -78,6 +92,9 @@ export async function GET(_req: NextRequest, { params }: { params: Promise<{ com
       even_web_search_any: evens.some((e) => e.allow_web_search === true),
       even_count: evens.length,
     },
+    // SPEC-014 C-FIX-1 (G): saúde real do backend — web search só é "operacional" com TAVILY no backend.
+    providers: providers,
+    web_search_operational: providers ? Boolean((providers as any).tavily_configured) : null,
     connected_slugs: Array.from(connectedSlugs),
     core: resolve('core'),
     attendance: resolve('attendance'),

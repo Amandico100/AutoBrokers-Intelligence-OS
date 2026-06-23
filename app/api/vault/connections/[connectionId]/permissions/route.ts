@@ -116,3 +116,47 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ con
 
   return NextResponse.json({ permission: data }, { status: 201 });
 }
+
+/** DELETE — revoga (status='revoked', preserva histórico) uma permissão da conexão. SPEC-014 C-FIX-1 (E). */
+export async function DELETE(req: NextRequest, { params }: { params: Promise<{ connectionId: string }> }) {
+  const ctx = await resolveSessionCompany();
+  if (!ctx) return NextResponse.json({ error: 'Não autorizado' }, { status: 401 });
+
+  const { connectionId } = await params;
+  let body: Record<string, unknown> = {};
+  try { body = await req.json(); } catch { body = {}; }
+  const grantId = typeof body.grant_id === 'string' ? body.grant_id : '';
+  if (!grantId) return NextResponse.json({ error: 'grant_id é obrigatório.' }, { status: 400 });
+
+  const supabase = getSupabaseAdmin();
+  if (!(await ownsConnection(supabase, ctx.companyId, connectionId))) {
+    return NextResponse.json({ error: 'Conexão não encontrada' }, { status: 404 });
+  }
+
+  // Revoga (não apaga): preserva auditoria e histórico.
+  const { data, error } = await supabase
+    .from('permission_grants')
+    .update({ status: 'revoked', updated_at: new Date().toISOString() })
+    .eq('id', grantId)
+    .eq('tenant_connection_id', connectionId)
+    .eq('company_id', ctx.companyId)
+    .select('id, subject_type, allowed_actions')
+    .maybeSingle();
+
+  if (error) {
+    console.error('[VAULT permissions revoke]', error.message);
+    return NextResponse.json({ error: 'Erro ao remover acesso.' }, { status: 500 });
+  }
+  if (!data) return NextResponse.json({ error: 'Permissão não encontrada.' }, { status: 404 });
+
+  await writeAudit(supabase, {
+    company_id: ctx.companyId,
+    tenant_connection_id: connectionId,
+    actor_user_id: ctx.userId,
+    event_type: 'permission_revoked',
+    action: `${data.subject_type}:revoked`,
+    risk_level: 'medium',
+  });
+
+  return NextResponse.json({ ok: true, revoked: grantId });
+}

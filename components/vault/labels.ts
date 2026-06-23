@@ -80,3 +80,31 @@ export function fmtDateTime(s?: string | null): string {
   const d = new Date(s);
   return Number.isNaN(d.getTime()) ? '' : d.toLocaleString('pt-BR');
 }
+
+// SPEC-014 C-FIX-1 (E): linguagem humana para AÇÕES e ATORES (corretor não vê termo técnico).
+const ACTION_LABELS: Record<string, { label: string; help: string; sensitive: boolean }> = {
+  read: { label: 'Consultar informações', help: 'Apenas ler dados (ex.: consultar apólice). Não altera nada.', sensitive: false },
+  draft_message: { label: 'Preparar mensagem para revisão', help: 'Monta um rascunho para um humano revisar. Não envia sozinho.', sensitive: false },
+  test_connection: { label: 'Testar conexão', help: 'Verifica se a conexão está funcionando.', sensitive: false },
+  send_message: { label: 'Enviar mensagem', help: 'Envia de verdade (ex.: WhatsApp). Pede confirmação.', sensitive: true },
+  write: { label: 'Criar ou alterar', help: 'Grava/edita dados no app (ex.: escrever no Notion). Pede confirmação.', sensitive: true },
+  create_event: { label: 'Criar compromisso', help: 'Cria evento no calendário. Pede confirmação.', sensitive: true },
+};
+export function actionLabel(action: string): string {
+  return ACTION_LABELS[action]?.label ?? action;
+}
+export function actionHelp(action: string): string {
+  return ACTION_LABELS[action]?.help ?? '';
+}
+export function actionIsSensitive(action: string): boolean {
+  return ACTION_LABELS[action]?.sensitive ?? false;
+}
+
+const SUBJECT_LABELS: Record<string, string> = {
+  autobrokers: 'Chat Principal',
+  atendimento: 'Atendimento (Even)',
+  tenant_auxiliary: 'Auxiliares',
+};
+export function subjectLabel(subject: string): string {
+  return SUBJECT_LABELS[subject] ?? subject;
+}

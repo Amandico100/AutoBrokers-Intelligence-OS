@@ -316,8 +316,8 @@ export default function AdminCompanyAgentsPage() {
         <details className="mb-8">
           <summary className="cursor-pointer list-none select-none">
             <span className="text-sm font-medium text-foreground">▸ Capacidades (Capability Registry)</span>
-            <span className={`ml-2 rounded-full border px-2 py-0.5 text-[10px] ${caps.runtime?.core_web_search ? 'border-emerald-500/30 bg-emerald-500/10 text-emerald-600' : 'border-amber-500/30 bg-amber-500/10 text-amber-600'}`}>
-              busca web {caps.runtime?.core_web_search ? 'ligada' : 'desligada'}
+            <span className={`ml-2 rounded-full border px-2 py-0.5 text-[10px] ${caps.web_search_operational === true ? 'border-emerald-500/30 bg-emerald-500/10 text-emerald-600' : caps.web_search_operational === false ? 'border-amber-500/30 bg-amber-500/10 text-amber-600' : 'border-border bg-background text-muted-foreground'}`}>
+              busca web {caps.web_search_operational === true ? 'operacional' : caps.web_search_operational === false ? 'sem TAVILY no backend' : 'verificar'}
             </span>
           </summary>
           <Card className="mt-3 bg-card border-border"><CardContent className="p-4 space-y-3">

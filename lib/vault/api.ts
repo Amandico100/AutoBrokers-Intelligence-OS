@@ -63,6 +63,16 @@ export function createPermission(connectionId: string, input: CreatePermissionGr
   );
 }
 
+// SPEC-014 C-FIX-1 (E): revoga (não apaga) uma permissão.
+export async function deletePermission(connectionId: string, grantId: string) {
+  const res = await fetch(`/api/vault/connections/${connectionId}/permissions`, {
+    method: 'DELETE',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ grant_id: grantId }),
+  });
+  return res.json() as Promise<{ ok?: boolean; error?: string }>;
+}
+
 export function fetchApprovalRequests() {
   return getJson<{ approvals: ApprovalRequest[] }>('/api/vault/approvals');
 }
