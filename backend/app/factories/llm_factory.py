@@ -10,6 +10,7 @@ from langchain_openai import ChatOpenAI
 
 from app.core.callbacks.cost_callback import CostCallbackHandler
 from app.core.config import settings
+from app.factories.model_policy import resolve_chat_model
 
 logger = logging.getLogger(__name__)
 
@@ -36,6 +37,10 @@ class LLMFactory:
             "llm_provider", "openai"
         )
         model = (source.get("llm_model") or company_config.get("llm_model")) or "gpt-4o"
+
+        # SPEC-013 FB-1: promove o Chat Principal (Core) a um modelo mais forte (temporário,
+        # CORE_CHAT_MODEL). Não engessa; Even/Auxiliares mantêm o modelo configurado.
+        model = resolve_chat_model((agent_data or {}).get("agent_role"), model)
 
         temp_val = source.get("llm_temperature")
         if temp_val is None:
