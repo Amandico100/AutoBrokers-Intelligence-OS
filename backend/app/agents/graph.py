@@ -24,6 +24,7 @@ from app.factories.llm_factory import LLMFactory
 from app.services.agent_service import AgentService
 from app.services.memory_service import MemoryService
 
+from .capability_resolver import active_keys, resolve_active_capabilities
 from .nodes import agent_node, log_node, should_continue, tool_node
 from .state import AgentState
 from .tools import HumanHandoffTool, KnowledgeBaseTool, MCPToolFactory, WebSearchTool
@@ -205,14 +206,16 @@ async def create_agent_graph(
         company_id=company_id, agent_id=agent_id, collection_name=collection_name
     )
 
-    # Web Search Tool (Tavily) - Controlado por flag do agente ou da empresa
-    allow_web_search = False
-    if agent_data:
-        allow_web_search = agent_data.get("allow_web_search", False)
-    else:
-        allow_web_search = company_config.get("allow_web_search", False)
+    # === SPEC-014 C-FIX-1: capabilities resolvidas pelo Registry (fonte ÚNICA de verdade) ===
+    # Lê capabilities/bindings/entitlements + conexão + saúde do provider. Papel vazio NÃO recebe nada.
+    _agent_role = (agent_data or {}).get("agent_role")
+    active_caps = resolve_active_capabilities(supabase_client, str(company_id), _agent_role) if company_id else {}
+    _active = active_keys(active_caps)
+    logger.info(f"[Graph] 🧭 Capabilities ativas (role={_agent_role}): {sorted(_active)}")
 
-    web_search_tool = WebSearchTool() if allow_web_search else None
+    # Web Search (Tavily) — só quando a capability platform.web.search está ATIVA
+    # (binding do papel + entitlement não desligado + TAVILY_API_KEY presente no backend).
+    web_search_tool = WebSearchTool() if "platform.web.search" in _active else None
 
     # Human Handoff Tool - Controlado por tools_config do agente
     tools_config = agent_data.get("tools_config", {}) if agent_data else {}
@@ -363,17 +366,16 @@ async def create_agent_graph(
             # Tabela pode não existir ainda (pré-migration)
             logger.warning(f"[Graph] ⚠️ SubAgent delegation ERRO: {e}")
 
-    # === CAPABILITY-GOVERNED TOOLS (SPEC-014 C1) ===
-    # O Core ganha consciência da corretora (control_plane.read) + InfoCap governado
-    # (operational.infocap.policy_lookup.read). Aditivo e fail-safe: nunca quebra o chat.
+    # === CAPABILITY-GOVERNED TOOLS (SPEC-014 C-FIX-1) — anexa SÓ o que está ATIVO no Registry ===
+    # Governado pelo resolver (papel + entitlement + conexão). Papel vazio não recebe nada.
     try:
-        _agent_role = str((agent_data or {}).get("agent_role") or "").strip().lower()
-        if _agent_role in ("", "core") and company_id:
-            from .tools.control_plane_tool import ControlPlaneReadTool
-            tools.append(ControlPlaneReadTool(company_id=str(company_id), supabase_client=supabase_client))
-            from .tools.infocap_tool import InfocapPolicyLookupTool
-            tools.append(InfocapPolicyLookupTool(company_id=str(company_id)))
-            logger.info(f"[Graph] 🧭 Capabilities do Core anexadas (control_plane + infocap) para {company_id}")
+        if company_id and _active:
+            if "control_plane.read" in _active:
+                from .tools.control_plane_tool import ControlPlaneReadTool
+                tools.append(ControlPlaneReadTool(company_id=str(company_id), supabase_client=supabase_client))
+            if "operational.infocap.policy_lookup.read" in _active:
+                from .tools.infocap_tool import InfocapPolicyLookupTool
+                tools.append(InfocapPolicyLookupTool(company_id=str(company_id)))
     except Exception as e:  # noqa: BLE001
         logger.warning(f"[Graph] ⚠️ Capability tools (SPEC-014) não anexadas: {e}")
 

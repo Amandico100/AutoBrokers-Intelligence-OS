@@ -450,9 +450,9 @@ async def tool_node(state: AgentState, tools: list) -> dict:
 
 
                     # Executa a tool
-                    if tool_name == "delegate_to_subagent" and hasattr(tool, '_arun'):
-                        # SubAgent roda async para evitar bug de event loop
-                        # (ThreadPoolExecutor + new_event_loop mistura loops sob carga)
+                    # Tools async-only (caminho assíncrono real). InfoCap (SPEC-014 C-FIX-1)
+                    # precisa do _arun: o _run é apenas um stub que sinaliza uso async.
+                    if tool_name in ("delegate_to_subagent", "infocap_policy_lookup") and hasattr(tool, "_arun"):
                         result = await tool._arun(**tool_args)
                     else:
                         # Execução via executor para não bloquear o event loop do FastAPI
