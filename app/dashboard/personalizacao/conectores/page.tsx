@@ -310,11 +310,8 @@ export default function ConectoresPage() {
                             {isInfocap && <DropdownMenuItem onClick={() => doTestInfocap(c.id)}>Testar conexão</DropdownMenuItem>}
                             {isWhatsApp && isConfigured && <DropdownMenuItem onClick={() => handleTestWhatsApp(c.id)}>Testar conexão</DropdownMenuItem>}
                             {isConfigured && <DropdownMenuItem onClick={() => doManage(c.id, 'disconnect', 'Desconectar')}>Desconectar</DropdownMenuItem>}
-                            {isDraft ? (
-                              <DropdownMenuItem onClick={() => doManage(c.id, 'delete', 'Excluir rascunho')} className="text-danger focus:text-danger">Excluir rascunho</DropdownMenuItem>
-                            ) : (
-                              <DropdownMenuItem onClick={() => doManage(c.id, 'archive', 'Arquivar')} className="text-danger focus:text-danger">Arquivar conexão</DropdownMenuItem>
-                            )}
+                            {isDraft && <DropdownMenuItem onClick={() => doManage(c.id, 'delete', 'Excluir rascunho vazio')}>Excluir rascunho vazio</DropdownMenuItem>}
+                            <DropdownMenuItem onClick={() => doManage(c.id, 'archive', 'Arquivar')} className="text-danger focus:text-danger">Arquivar conexão</DropdownMenuItem>
                           </DropdownMenuContent>
                         </DropdownMenu>
                       </div>
