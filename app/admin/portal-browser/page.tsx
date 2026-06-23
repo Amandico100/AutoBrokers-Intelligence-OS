@@ -446,11 +446,15 @@ export default function PortalBrowserAdminPage() {
         </table>
       </div>
 
-      {/* 43P-FINAL-2A — separador: daqui pra baixo é engenharia/homologação interna */}
-      <div className="mb-3 mt-10 border-t border-border pt-4">
-        <p className="text-[11px] font-medium uppercase tracking-wide text-faint">Avançado / Engenharia — uso interno</p>
-        <p className="text-[11px] text-muted-foreground">Relay Sandbox, Portal Skills e Skill Factory são ferramentas de homologação técnica. Corretoras não usam esta seção.</p>
-      </div>
+      {/* SPEC-013 FB-2: bloco de engenharia COLAPSADO por padrão — tela limpa para o operador.
+          Corretoras não usam isto; é homologação técnica de master/engenharia. */}
+      <details className="mt-10 border-t border-border pt-4">
+        <summary className="cursor-pointer list-none select-none">
+          <span className="text-[12px] font-medium text-foreground">▸ Avançado / Engenharia — uso interno (clique para expandir)</span>
+          <p className="mt-1 text-[11px] text-muted-foreground">Relay Sandbox, Portal Skills, Skill Factory, Browserbase, sessões e canary. Ferramentas técnicas — corretoras não usam. Oculto por padrão para manter a tela limpa.</p>
+        </summary>
+        <div className="mt-4 space-y-6">
+          <div className="rounded-md border border-amber-500/20 bg-amber-500/5 px-3 py-2 text-[11px] text-amber-600">Seção técnica (engenharia/master). Nada aqui executa ação real; tudo é mock/dry-run/gated.</div>
 
       {/* Relay Sandbox (mock) — 43P2 */}
       <div className="mt-6 rounded-lg border border-border bg-card p-4">
@@ -674,6 +678,8 @@ export default function PortalBrowserAdminPage() {
           )}
         </div>
       )}
+        </div>
+      </details>
     </div>
   );
 }

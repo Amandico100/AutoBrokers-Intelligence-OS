@@ -26,6 +26,7 @@ export default function AdminCompanyAgentsPage() {
   const [companyName, setCompanyName] = useState<string>('');
   const [companyKind, setCompanyKind] = useState<string>('client'); // SPEC-013: Studio/Knowledge ≠ cliente
   const [canonical, setCanonical] = useState<any>(null); // SPEC-013 B2: Core/Even protegidos (Even sempre visível)
+  const [health, setHealth] = useState<any>(null); // SPEC-013 FB-2: diagnóstico + manutenção (folded)
 
   const BACKEND_URL = process.env.NEXT_PUBLIC_BACKEND_URL || 'http://localhost:8000';
 
@@ -43,8 +44,23 @@ export default function AdminCompanyAgentsPage() {
       loadAgents();
       // SPEC-013 B2: Core/Even canônicos (Supabase, Even sempre visível mesmo inativa)
       fetch(`/api/admin/companies/${companyId}/core-even`).then((r) => r.json()).then((j) => { if (j?.ok) setCanonical(j); }).catch(() => {});
+      loadHealth();
     }
   }, [companyId]);
+
+  const loadHealth = async () => {
+    try { const j = await fetch(`/api/admin/companies/${companyId}/agent-health`).then((r) => r.json()); if (j?.ok) setHealth(j); } catch { /* silencioso */ }
+  };
+
+  const runMaintenance = async (action: string, agentId: string) => {
+    try {
+      const r = await fetch(`/api/admin/companies/${companyId}/agent-actions`, {
+        method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ action, agent_id: agentId }),
+      });
+      const j = await r.json().catch(() => ({}));
+      if (j?.ok) { await loadHealth(); loadAgents(); } else { toast({ title: 'Falha', description: j?.error || 'erro', variant: 'destructive' }); }
+    } catch { /* ignore */ }
+  };
 
   const loadCompanyInfo = async () => {
     try {
@@ -244,6 +260,38 @@ export default function AdminCompanyAgentsPage() {
             </Card>
           ))}
         </div>
+      )}
+
+      {/* SPEC-013 FB-2 — Diagnóstico & manutenção (folded; sem página nova). Colapsável. */}
+      {health && (
+        <details className="mb-8">
+          <summary className="cursor-pointer list-none select-none">
+            <span className="text-sm font-medium text-foreground">▸ Diagnóstico & manutenção</span>
+            <span className={`ml-2 rounded-full border px-2 py-0.5 text-[10px] ${health.healthy ? 'border-emerald-500/30 bg-emerald-500/10 text-emerald-600' : 'border-amber-500/30 bg-amber-500/10 text-amber-600'}`}>{health.healthy ? 'saudável' : 'requer atenção'}</span>
+          </summary>
+          <Card className="mt-3 bg-card border-border"><CardContent className="p-4 space-y-3">
+            <div className="grid grid-cols-1 gap-2 sm:grid-cols-3 text-[12px]">
+              <div className="rounded-md border border-border bg-background px-3 py-2">AutoBrokers · modelo <span className="text-foreground">{health.core?.model_effective ?? '—'}</span></div>
+              <div className="rounded-md border border-border bg-background px-3 py-2">Even · {health.even?.present ? (health.even?.is_active ? 'ativa' : 'inativa') : 'ausente'}</div>
+              <div className="rounded-md border border-border bg-background px-3 py-2">Saldo R$ {Number(health.balance_brl ?? 0).toFixed(2)} · Conhecimento {health.knowledge?.private_docs ?? 0} doc(s)</div>
+            </div>
+            {Array.isArray(health.divergences) && health.divergences.length > 0 ? (
+              <div className="divide-y divide-border">
+                {health.divergences.map((d: any, i: number) => (
+                  <div key={i} className="flex items-center justify-between py-1.5 text-[12px]">
+                    <span className="text-muted-foreground">{d.label}</span>
+                    {d.action && d.agent_id && (
+                      <button onClick={() => runMaintenance(d.action, d.agent_id)} className="rounded-lg border border-primary/40 bg-primary/5 px-3 py-0.5 text-[12px] font-medium text-primary hover:bg-primary/10">
+                        {d.action === 'rename_attendance_even' ? 'Renomear para Even' : 'Arquivar'}
+                      </button>
+                    )}
+                  </div>
+                ))}
+              </div>
+            ) : <p className="text-[12px] text-muted-foreground">Nenhuma pendência. Core e Even canônicos OK.</p>}
+            <p className="text-[10px] text-faint">Modelo do Core é promovido por política (temporário). Edição global no Blueprint Center; personalização local no Dashboard. Sem segredos aqui.</p>
+          </CardContent></Card>
+        </details>
       )}
 
       {/* SPEC-013 P0 — Seção 2: agentes personalizados (Core/Even ficam na seção canônica acima). */}
