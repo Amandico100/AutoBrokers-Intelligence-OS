@@ -36,6 +36,13 @@ export default function AdminCompanyAgentsPage() {
 
   const BACKEND_URL = process.env.NEXT_PUBLIC_BACKEND_URL || 'http://localhost:8000';
 
+  const connectionSelectionLabel = (status?: string) => {
+    if (status === 'connection_usable') return 'conexao utilizavel';
+    if (status === 'manual_connection_cleanup_required') return 'limpeza necessaria';
+    if (status === 'reconnect_required') return 'reconexao necessaria';
+    return 'aguardando diagnostico';
+  };
+
   // Verificar permissão Super Admin
   useEffect(() => {
     if (!roleLoading && role !== 'master') {
@@ -392,9 +399,22 @@ export default function AdminCompanyAgentsPage() {
                   </Button>
                 </div>
                 {contractResult && (
-                  <pre className="max-h-96 overflow-auto rounded-md border border-border bg-card p-3 text-[11px] leading-relaxed text-muted-foreground">
-                    {JSON.stringify(contractResult, null, 2)}
-                  </pre>
+                  <div className="space-y-2">
+                    {contractResult.connection_resolution && (
+                      <div className="rounded-md border border-border bg-card px-3 py-2 text-[11px] text-muted-foreground">
+                        <p className="font-medium text-foreground">Status da conexao para diagnostico</p>
+                        <div className="mt-1 grid grid-cols-1 gap-1 md:grid-cols-4">
+                          <span>Conexoes InfoCap encontradas: {contractResult.connection_resolution.total_infocap_connections ?? 0}</span>
+                          <span>Conexoes elegiveis: {contractResult.connection_resolution.eligible_connection_count ?? 0}</span>
+                          <span>Vault configurado: {contractResult.connection_resolution.vault_configured ? 'sim' : 'nao'}</span>
+                          <span>Selecao: {connectionSelectionLabel(contractResult.connection_resolution.selection_status)}</span>
+                        </div>
+                      </div>
+                    )}
+                    <pre className="max-h-96 overflow-auto rounded-md border border-border bg-card p-3 text-[11px] leading-relaxed text-muted-foreground">
+                      {JSON.stringify(contractResult, null, 2)}
+                    </pre>
+                  </div>
                 )}
               </div>
             </details>

@@ -146,7 +146,39 @@ KnowledgeBaseTool
 - Nenhum dado operacional muda.
 - Nenhuma estrutura paralela e criada.
 
-## 6. Fase 0 / R1 - Canonical InfoCap Policy Read Adapter
+## 6. R1A.1 - Connection Resolution Gate
+
+### Escopo
+
+- Corrigir somente a selecao de `tenant_connections` usada pelo Contract Capture Gate.
+- Tratar a Resulta Seguros apenas como tenant piloto de validacao real, sem hard-code de empresa, CPF, apolice, `codfil`, seguradora, produto ou fluxo.
+- Selecionar conexao InfoCap globalmente por criterio seguro e reutilizavel para qualquer corretora:
+  - pertence a empresa consultada;
+  - usa template InfoCap;
+  - nao esta arquivada/inativa;
+  - possui `encrypted_secret_ref` presente;
+  - possui base URL efetiva por `connection_config.base_url` ou configuracao global do provider;
+  - possui status compativel com uso operacional/teste seguro.
+- Expor somente resumo seguro de resolucao: contagens, status de selecao e necessidade de reconexao/limpeza.
+
+### Proibido
+
+- iniciar R1B;
+- alterar parser de CPF/apolice;
+- alterar `_DOC_KEYS`, `_sanitize_policy`, `_coverage_sections`;
+- alterar Chat Principal, `graph.py`, prompts, Capability Registry, Even, WhatsApp, Docling, Qdrant, MinIO, Drive, Notion ou Portal Browser;
+- criar endpoint, pagina, tabela, migration, conector, Vault, RAG ou parser paralelo;
+- retornar/logar ID da conexao, `encrypted_secret_ref`, base URL, credencial, token, CPF, nome, apolice, `nosnum`, `codigo`, `codfil` ou payload bruto.
+
+### Criterio de aceite
+
+- Zero conexoes elegiveis retorna `blocked_missing_credentials` com `selection_status = reconnect_required`.
+- Uma conexao elegivel e usada internamente para o probe, sem expor ID.
+- Mais de uma conexao elegivel retorna `ambiguous_connection` com `selection_status = manual_connection_cleanup_required` e nao chama provider.
+- O Founder visualiza somente contagens e status de selecao.
+- R1B permanece bloqueada ate captura estrutural real bem-sucedida.
+
+## 7. Fase 0 / R1 - Canonical InfoCap Policy Read Adapter
 
 ### Escopo
 
@@ -197,7 +229,7 @@ Ver `GOLDEN-TEST-MATRIX-INFOCAP.md`.
 
 Criar "InfoCap v2" como outro servico. O correto e corrigir o adapter dentro do caminho existente.
 
-## 7. Fase 1 / R2 - Smith Runtime and Admin Unification
+## 8. Fase 1 / R2 - Smith Runtime and Admin Unification
 
 ### Escopo
 
@@ -243,7 +275,7 @@ Criar "InfoCap v2" como outro servico. O correto e corrigir o adapter dentro do 
 
 Criar "admin novo" ou "editor novo" para contornar o Smith. O correto e diagnosticar e governar o Smith existente.
 
-## 8. Fase 2 / R3 - Document Evidence and Knowledge Intake
+## 9. Fase 2 / R3 - Document Evidence and Knowledge Intake
 
 ### Escopo
 
@@ -289,7 +321,7 @@ Criar "admin novo" ou "editor novo" para contornar o Smith. O correto e diagnost
 
 Criar "Policy RAG" separado. O correto e completar o pipeline documental existente.
 
-## 9. Congelamentos imediatos
+## 10. Congelamentos imediatos
 
 Enquanto R1 nao for aprovado:
 
@@ -303,7 +335,7 @@ Enquanto R1 nao for aprovado:
 - nao adicionar Gmail, Outlook, Meta, Instagram ou novos conectores;
 - nao alterar Docling, Qdrant, MinIO, Drive/Notion ou EasyPanel.
 
-## 10. N8N legacy
+## 11. N8N legacy
 
 Classificacao canonica:
 
@@ -323,7 +355,7 @@ Regras:
 - auditar chamadas antes de migracao/remocao;
 - voz pode permanecer dependente ate frente propria.
 
-## 11. Ordem de execucao aprovada
+## 12. Ordem de execucao aprovada
 
 ```text
 R0 - documentacao canonica

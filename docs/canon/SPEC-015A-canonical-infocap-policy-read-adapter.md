@@ -91,6 +91,29 @@ O gate deve retornar somente metadados estruturais: endpoint logico, HTTP status
 
 R1B permanece bloqueada ate o Founder rodar o diagnostico seguro em uma apolice de teste e trazer de volta somente chaves, tipos, hashes e contagens.
 
+### 6.1 R1A.1 - Connection Resolution Gate
+
+Antes de chamar a cadeia contratual, o diagnostico deve resolver a conexao InfoCap correta por `tenant_connections` + Vault, de forma global para qualquer corretora. A Resulta Seguros e apenas tenant piloto de validacao real; nao pode haver hard-code de empresa, CPF, apolice, `codfil`, seguradora, produto ou fluxo.
+
+Uma conexao e elegivel para o Contract Capture Gate somente quando:
+
+- pertence a empresa consultada;
+- usa o template InfoCap;
+- nao esta arquivada/inativa;
+- possui `encrypted_secret_ref` presente;
+- possui base URL efetiva por `connection_config.base_url` ou configuracao global do provider;
+- possui status compativel com uso operacional/teste seguro.
+
+Resultados de selecao:
+
+```text
+0 conexoes elegiveis -> blocked_missing_credentials + selection_status=reconnect_required
+1 conexao elegivel   -> usar internamente no probe, sem expor ID
+2+ elegiveis         -> ambiguous_connection + selection_status=manual_connection_cleanup_required
+```
+
+O diagnostico pode exibir somente contagens agregadas: total de conexoes InfoCap, inativas/arquivadas, status operacional, Vault presente, base URL configurada, elegiveis e estrategia de selecao. E proibido retornar ID da conexao, `encrypted_secret_ref`, base URL, credenciais, token, CPF, nome, numero de apolice, `nosnum`, `codigo`, `codfil` ou payload bruto.
+
 ## 7. Contrato de entrada
 
 O adapter canonico deve aceitar uma requisicao normalizada:

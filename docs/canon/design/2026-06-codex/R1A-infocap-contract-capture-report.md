@@ -17,6 +17,17 @@
 - `docs/canon/SMITH-RUNTIME-TOOL-AUTHORITY-MAP.md`
 - `docs/canon/design/2026-06-codex/infocap-forensic-v2-evidence-report.md`
 
+### R1A.1
+
+- `lib/attendance/connectors/infocap-connection-resolution.ts`
+- `scripts/infocap-connection-resolution.test.mjs`
+- `app/api/attendance/connectors/infocap/probe/route.ts`
+- `app/admin/companies/[companyId]/agents/page.tsx`
+- `docs/canon/SPEC-015A-canonical-infocap-policy-read-adapter.md`
+- `docs/canon/PROGRAM-RECOVERY-F0-F2.md`
+- `docs/canon/design/2026-06-codex/R1A-infocap-contract-capture-report.md`
+- `package.json`
+
 ## 2. Componentes reutilizados
 
 - endpoint existente `POST /attendance/connectors/infocap/probe`;
@@ -27,6 +38,7 @@
 - conexao InfoCap existente;
 - auth master/admin existente;
 - diagnostico existente em Empresa -> Agentes -> Diagnostico & manutencao.
+- resolucao segura de conexao InfoCap por `tenant_connections`, `connector_templates`, status, Vault e base URL efetiva.
 
 ## 3. Nenhuma estrutura paralela criada
 
@@ -42,6 +54,43 @@ Nao foi criado:
 - tabela nova;
 - pagina nova;
 - novo sistema de tools.
+
+## 3.1 R1A.1 - Connection Resolution Gate
+
+R1A.1 corrige somente a selecao da conexao usada pelo `policy_chain_contract`.
+
+A Resulta Seguros e tratada apenas como tenant piloto de validacao real. A solucao e global para qualquer corretora que conecte InfoCap; nao ha hard-code de empresa, CPF, apolice, `codfil`, seguradora, produto ou fluxo.
+
+### Criterio de elegibilidade
+
+Uma conexao InfoCap e elegivel para o probe quando:
+
+- pertence a empresa consultada;
+- usa connector template InfoCap;
+- nao esta arquivada/inativa;
+- possui `encrypted_secret_ref`;
+- possui base URL efetiva por `connection_config.base_url` ou configuracao global do provider;
+- possui status compativel com uso operacional/teste seguro.
+
+### Resultados possiveis de selecao
+
+```text
+probe pronto:
+  status do backend/probe segue o fluxo normal do policy_chain_contract
+  connection_resolution.selection_status = connection_usable
+
+reconnect_required:
+  status = blocked_missing_credentials
+  connection_resolution.selection_status = reconnect_required
+  nenhuma chamada ao provider e feita
+
+ambiguous_connection:
+  status = ambiguous_connection
+  connection_resolution.selection_status = manual_connection_cleanup_required
+  nenhuma chamada ao provider e feita
+```
+
+O resultado publico contem somente contagens e status de selecao. Nunca retorna ID da conexao, `encrypted_secret_ref`, base URL, token, senha, CPF, nome, apolice, `nosnum`, `codigo`, `codfil` ou payload bruto.
 
 ## 4. Endpoints cobertos pelo probe
 
@@ -167,6 +216,8 @@ R1B nao deve iniciar ate que o resultado real do R0.5 confirme:
 - se `/documento` traz `itens` e/ou `coberturas` no topo do envelope ou dentro de `documento`;
 - onde aparecem premio, franquia, LMI/importancia segurada, clausulas, parcelas, historico, acompanhamento e assistencias;
 - se ha shape desconhecido que exige tratamento especifico.
+- que a selecao de conexao retornou `connection_usable`;
+- que o build/typecheck estejam deterministicos no ambiente de execucao aprovado.
 
 ## 9. Campos a confirmar no resultado real
 
@@ -188,3 +239,19 @@ R1B nao deve iniciar ate que o resultado real do R0.5 confirme:
 - `sample_keys` de cada lista
 - `shape_hash` por endpoint
 
+## 10. Build local - evidencia R1A.1
+
+`npm run typecheck` passou localmente.
+
+`npm run build` e `npx next build --debug` foram executados sem chamar provider externo e ficaram presos sem stderr util. A captura isolada mostrou:
+
+```text
+Next.js 15.5.12
+Creating an optimized production build ...
+.next/diagnostics/build-diagnostics.json -> buildStage = compile
+trace -> spans em add-entry/minify-js
+```
+
+Tambem foi testado `npx next build --experimental-build-mode compile --debug`, que travou no mesmo estagio. Isso indica pendencia local na fase `compile/minify-js`, anterior a prerender/generate, e nao um erro de TypeScript do R1A.1.
+
+R1B permanece bloqueada ate o build ter resultado deterministico no ambiente aprovado ou ate esta limitacao local ser diagnosticada como externa ao codigo de produto.
