@@ -66,22 +66,58 @@ def verify_service_key(x_service_key: Optional[str] = Header(None)):
 # HEALTH CHECK
 # =========================================================================
 
+def _check_workers() -> int:
+    try:
+        active = celery_app.control.inspect().ping()
+        return len(active) if active else 0
+    except Exception:
+        return 0
+
+
+def _check_redis() -> bool:
+    try:
+        from redis import Redis
+        Redis.from_url(settings.REDIS_URL, socket_connect_timeout=2).ping()
+        return True
+    except Exception:
+        return False
+
+
+def _check_minio() -> bool:
+    try:
+        from minio import Minio
+        client = Minio(
+            settings.MINIO_ENDPOINT,
+            access_key=settings.MINIO_ACCESS_KEY,
+            secret_key=settings.MINIO_SECRET_KEY,
+            secure=settings.MINIO_SECURE,
+        )
+        client.bucket_exists(settings.MINIO_BUCKET)
+        return True
+    except Exception:
+        return False
+
+
 @app.get("/health")
 async def health():
-    """Health check — also verifies Celery/Redis connectivity."""
-    try:
-        # Check Celery/Redis connectivity
-        inspect = celery_app.control.inspect()
-        active_workers = inspect.ping()
-        worker_count = len(active_workers) if active_workers else 0
-    except Exception:
-        worker_count = 0
-
+    """Health honesto: 'ok' só com pelo menos 1 worker; senão 'degraded'."""
+    workers = _check_workers()
     return {
-        "status": "ok",
+        "status": "ok" if workers > 0 else "degraded",
         "service": "docling",
-        "workers": worker_count,
+        "workers": workers,
     }
+
+
+@app.get("/readyz")
+async def readyz():
+    """Pronto SÓ quando Redis + >=1 Worker + MinIO estão realmente acessíveis."""
+    redis_ok = _check_redis()
+    workers = _check_workers()
+    minio_ok = _check_minio()
+    ready = redis_ok and workers > 0 and minio_ok
+    body = {"ready": ready, "redis": redis_ok, "workers": workers, "minio": minio_ok}
+    return JSONResponse(status_code=200 if ready else 503, content=body)
 
 
 # =========================================================================
