@@ -17,6 +17,7 @@ import {
   testInfocapConnection,
 } from '@/lib/vault/api';
 import { DropdownMenu, DropdownMenuTrigger, DropdownMenuContent, DropdownMenuItem } from '@/components/ui/dropdown-menu';
+import { SLUG_TO_OAUTH_PROVIDER } from '@/lib/connectors/oauth-providers';
 import type { ConnectorTemplate, TenantConnection } from '@/lib/vault/types';
 import { CreateConnectionModal } from '@/components/vault/CreateConnectionModal';
 import { ConfigureWhatsAppModal } from '@/components/vault/ConfigureWhatsAppModal';
@@ -69,6 +70,32 @@ export default function ConectoresPage() {
       .then((d) => setTemplates(d.templates || []))
       .catch(() => setError(true));
     loadConnections();
+  }, []);
+
+  // C2-P2 frente 2: aviso de retorno do OAuth (Google Drive / Notion).
+  useEffect(() => {
+    const sp = new URLSearchParams(window.location.search);
+    const connected = sp.get('connected');
+    const err = sp.get('connector_error');
+    if (connected) {
+      setNotice(`Conectado com sucesso: ${connected === 'google_drive' ? 'Google Drive' : connected === 'notion' ? 'Notion' : connected} ✓`);
+      setTab('connections');
+      loadConnections();
+    } else if (err) {
+      const msg: Record<string, string> = {
+        not_enabled: 'Este aplicativo ainda não está habilitado pela plataforma (faltam as credenciais OAuth).',
+        cancelled: 'Conexão cancelada.',
+        state: 'Sessão de conexão expirada. Tente conectar novamente.',
+        token: 'Não foi possível concluir a autorização com o provedor.',
+        store: 'Autorização ok, mas falhou ao salvar a conexão. Tente novamente.',
+        backend: 'Backend indisponível para concluir a conexão.',
+        unknown: 'Conector desconhecido.',
+      };
+      setNotice(msg[err] || 'Não foi possível conectar.');
+    }
+    if (connected || err) {
+      window.history.replaceState({}, '', '/dashboard/personalizacao/conectores');
+    }
   }, []);
 
   const openCreate = (t: ConnectorTemplate) => {
@@ -231,6 +258,7 @@ export default function ConectoresPage() {
                 const connStatus = statusByTemplate[t.id];
                 const cardStatus = connStatus ? connectionStatusPill(connStatus) : riskPill(t.risk_level);
                 const connected = connStatus === 'connected';
+                const oauthKey = SLUG_TO_OAUTH_PROVIDER[t.slug]; // google_drive/notion → fluxo OAuth oficial
                 return (
                   <GalleryCard
                     key={t.id}
@@ -240,8 +268,12 @@ export default function ConectoresPage() {
                     category={t.category}
                     status={cardStatus}
                     tags={[t.auth_type]}
-                    cta={connected ? 'Gerenciar conexão' : 'Preparar conexão'}
-                    onClick={() => (connected ? setTab('connections') : openCreate(t))}
+                    cta={connected ? 'Gerenciar conexão' : oauthKey ? 'Conectar' : 'Preparar conexão'}
+                    onClick={() => {
+                      if (connected) { setTab('connections'); return; }
+                      if (oauthKey) { window.location.href = `/api/connectors/${oauthKey}/authorize`; return; }
+                      openCreate(t);
+                    }}
                   />
                 );
               })}

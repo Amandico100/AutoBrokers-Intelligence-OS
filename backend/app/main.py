@@ -176,8 +176,10 @@ app.include_router(attendance_agent_reply_router, tags=["Attendance Agent Reply"
 
 # === InfoCap Connector Secret Storage (secret flow — 42I2.0C) ===
 from app.api.infocap_connector import router as infocap_connector_router
+from app.api.oauth_connectors import router as oauth_connectors_router
 
 app.include_router(infocap_connector_router, tags=["InfoCap Connector"])
+app.include_router(oauth_connectors_router, tags=["OAuth Connectors"])
 
 # === Attendance Media (audio transcription — 42M0) ===
 from app.api.attendance_media import router as attendance_media_router
