@@ -2,7 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { randomUUID } from 'crypto';
 
 import { resolveSessionCompany } from '@/lib/vault/server';
-import { providerCfg, providerConfigured } from '@/lib/connectors/oauth-providers';
+import { providerCfg, providerConfigured, publicBaseUrl } from '@/lib/connectors/oauth-providers';
 
 export const dynamic = 'force-dynamic';
 
@@ -13,7 +13,8 @@ export const dynamic = 'force-dynamic';
  */
 export async function GET(req: NextRequest, { params }: { params: Promise<{ provider: string }> }) {
   const { provider } = await params;
-  const dash = new URL('/dashboard/personalizacao/conectores', req.url);
+  const base = publicBaseUrl(req);
+  const dash = new URL('/dashboard/personalizacao/conectores', base);
   const cfg = providerCfg(provider);
   if (!cfg) {
     dash.searchParams.set('connector_error', 'unknown');
@@ -29,7 +30,7 @@ export async function GET(req: NextRequest, { params }: { params: Promise<{ prov
   }
 
   const clientId = process.env[cfg.clientIdEnv]!;
-  const redirect = process.env[cfg.redirectEnv] || new URL(`/api/connectors/${provider}/callback`, req.url).toString();
+  const redirect = process.env[cfg.redirectEnv] || `${base}/api/connectors/${provider}/callback`;
   const nonce = randomUUID();
 
   const authUrl = new URL(cfg.authUrl);

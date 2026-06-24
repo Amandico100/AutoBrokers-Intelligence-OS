@@ -55,3 +55,17 @@ export function providerConfigured(key: string): boolean {
   const c = OAUTH_PROVIDERS[key];
   return Boolean(c && process.env[c.clientIdEnv] && process.env[c.clientSecretEnv]);
 }
+
+/**
+ * URL pública real do app (atrás do proxy do EasyPanel, req.url é localhost interno).
+ * Prioriza APP_BASE_URL/NEXT_PUBLIC_APP_URL; senão deriva de x-forwarded-host/proto; por fim req.url.
+ */
+export function publicBaseUrl(req: Request): string {
+  const envBase = process.env.APP_BASE_URL || process.env.NEXT_PUBLIC_APP_URL;
+  if (envBase) return envBase.replace(/\/$/, '');
+  const h = req.headers;
+  const host = h.get('x-forwarded-host') || h.get('host');
+  const proto = h.get('x-forwarded-proto') || 'https';
+  if (host) return `${proto}://${host}`;
+  try { return new URL(req.url).origin; } catch { return ''; }
+}
