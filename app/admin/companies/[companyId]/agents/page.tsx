@@ -4,7 +4,7 @@ import { useEffect, useState } from 'react';
 import { useRouter, useParams } from 'next/navigation';
 import { Card, CardContent } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
-import { Bot, Plus, Loader2, ArrowLeft, Building2, Lock as LockIcon } from 'lucide-react';
+import { Bot, Plus, Loader2, ArrowLeft, Building2, Lock as LockIcon, SearchCheck } from 'lucide-react';
 import { useAdminRole } from '@/hooks/useAdminRole';
 import { AgentConfigModal } from '@/components/admin/AgentConfigModal';
 import { AgentFlowView } from '@/components/agents/AgentFlowView';
@@ -28,6 +28,11 @@ export default function AdminCompanyAgentsPage() {
   const [canonical, setCanonical] = useState<any>(null); // SPEC-013 B2: Core/Even protegidos (Even sempre visível)
   const [health, setHealth] = useState<any>(null); // SPEC-013 FB-2: diagnóstico + manutenção (folded)
   const [caps, setCaps] = useState<any>(null); // SPEC-014 C1: cockpit de capabilities (folded)
+  const [contractQueryType, setContractQueryType] = useState<'cpf' | 'name'>('cpf');
+  const [contractQuery, setContractQuery] = useState('');
+  const [contractPolicyRef, setContractPolicyRef] = useState('');
+  const [contractRunning, setContractRunning] = useState(false);
+  const [contractResult, setContractResult] = useState<any>(null);
 
   const BACKEND_URL = process.env.NEXT_PUBLIC_BACKEND_URL || 'http://localhost:8000';
 
@@ -67,6 +72,37 @@ export default function AdminCompanyAgentsPage() {
       if (j?.ok) { toast({ title: 'Acessos sincronizados', description: `Core web: ${j.cores_web_on} · Even web off: ${j.even_web_off}` }); loadCaps(); }
       else toast({ title: 'Falha', description: j?.error || 'erro', variant: 'destructive' });
     } catch { /* ignore */ }
+  };
+
+  const runInfocapContractProbe = async () => {
+    if (!contractQuery.trim()) {
+      toast({ title: 'Informe um termo de teste', description: 'Use CPF ou nome de um segurado de teste.', variant: 'destructive' });
+      return;
+    }
+    setContractRunning(true);
+    setContractResult(null);
+    try {
+      const r = await fetch('/api/attendance/connectors/infocap/probe', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          mode: 'policy_chain_contract',
+          company_id: companyId,
+          query_type: contractQueryType,
+          query: contractQuery,
+          policy_ref: contractPolicyRef.trim() || undefined,
+        }),
+      });
+      const j = await r.json().catch(() => ({}));
+      setContractResult(j);
+      if (!r.ok || j?.ok === false) {
+        toast({ title: 'Diagnóstico não concluído', description: j?.error || j?.status || 'erro', variant: 'destructive' });
+      }
+    } catch (error) {
+      toast({ title: 'Falha no diagnóstico', description: error instanceof Error ? error.message : 'erro', variant: 'destructive' });
+    } finally {
+      setContractRunning(false);
+    }
   };
 
   const runMaintenance = async (action: string, agentId: string) => {
@@ -307,6 +343,61 @@ export default function AdminCompanyAgentsPage() {
               </div>
             ) : <p className="text-[12px] text-muted-foreground">Nenhuma pendência. Core e Even canônicos OK.</p>}
             <p className="text-[10px] text-faint">Modelo do Core é promovido por política (temporário). Edição global no Blueprint Center; personalização local no Dashboard. Sem segredos aqui.</p>
+            <details className="rounded-md border border-border bg-background px-3 py-2">
+              <summary className="flex cursor-pointer list-none items-center gap-2 text-[12px] font-medium text-foreground">
+                <SearchCheck className="h-4 w-4 text-primary" />
+                Diagnosticar contrato InfoCap
+                <span className="text-[10px] font-normal text-muted-foreground">Somente leitura · não altera dados · não exibe segurados</span>
+              </summary>
+              <div className="mt-3 space-y-3">
+                <div className="grid grid-cols-1 gap-2 md:grid-cols-[140px_1fr_1fr_auto]">
+                  <label className="text-[11px] text-muted-foreground">
+                    Metodo
+                    <select
+                      value={contractQueryType}
+                      onChange={(e) => setContractQueryType(e.target.value === 'name' ? 'name' : 'cpf')}
+                      className="mt-1 h-9 w-full rounded-md border border-border bg-card px-2 text-[12px] text-foreground"
+                    >
+                      <option value="cpf">CPF</option>
+                      <option value="name">Nome</option>
+                    </select>
+                  </label>
+                  <label className="text-[11px] text-muted-foreground">
+                    Termo de teste
+                    <input
+                      value={contractQuery}
+                      onChange={(e) => setContractQuery(e.target.value)}
+                      placeholder={contractQueryType === 'cpf' ? 'CPF de teste' : 'Nome de teste'}
+                      className="mt-1 h-9 w-full rounded-md border border-border bg-card px-2 text-[12px] text-foreground"
+                    />
+                  </label>
+                  <label className="text-[11px] text-muted-foreground">
+                    Referencia da apolice
+                    <input
+                      value={contractPolicyRef}
+                      onChange={(e) => setContractPolicyRef(e.target.value)}
+                      placeholder="Opcional"
+                      className="mt-1 h-9 w-full rounded-md border border-border bg-card px-2 text-[12px] text-foreground"
+                    />
+                  </label>
+                  <Button
+                    type="button"
+                    variant="outline"
+                    className="mt-5 h-9 gap-2 text-[12px]"
+                    onClick={runInfocapContractProbe}
+                    disabled={contractRunning}
+                  >
+                    {contractRunning ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <SearchCheck className="h-3.5 w-3.5" />}
+                    Executar
+                  </Button>
+                </div>
+                {contractResult && (
+                  <pre className="max-h-96 overflow-auto rounded-md border border-border bg-card p-3 text-[11px] leading-relaxed text-muted-foreground">
+                    {JSON.stringify(contractResult, null, 2)}
+                  </pre>
+                )}
+              </div>
+            </details>
           </CardContent></Card>
         </details>
       )}

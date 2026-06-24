@@ -89,26 +89,37 @@ Plano:
 - nao remover nesta fase;
 - nao usar para InfoCap, tools, RAG ou Prompt Efetivo.
 
-## 5. Matriz de autoridade de tools
+## 5. Convencao R2 de capabilities
+
+Na R2, capability deve representar **dominio/funcao**, nao propriedade. Ownership, risco, escopo, conexao e disponibilidade pertencem a entitlement, tenant connection, company scope, approval e metadata.
+
+Regra de nomenclatura alvo:
+
+- evitar prefixos como `tenant.*`, `platform.*` e `operational.*` para significar ownership;
+- preferir nomes funcionais como `web.search`, `document.extract`, `knowledge.search`, `policy.infocap.read`, `policy.evidence.read`, `google_drive.read`, `notion.read_write`, `portal.policy.read`;
+- durante migracao, manter os nomes atuais como aliases/compatibilidade ate rollout seguro;
+- nenhuma tool produtiva pode ser liberada so por URL, token, HTTP Tool ou MCP sem capability funcional ativa.
+
+## 6. Matriz de autoridade de tools
 
 | Ferramenta | Tela Portal Admin/Dashboard | Persistencia atual | Rota de salvamento | Runtime que le | Capability correspondente | Status atual | Duplicidade/risco | Plano R2 |
 | --- | --- | --- | --- | --- | --- | --- | --- | --- |
-| Busca Web | Agent config / Capabilities | `agents.allow_web_search`, entitlements | `/api/admin/companies/[companyId]/capabilities` e rotas de agents | `graph.py` via `resolve_active_capabilities` | `platform.web.search` | Parcial funcional | legado `allow_web_search` pode divergir de capability | Registry manda; legado vira materializacao/diagnostico |
+| Busca Web | Agent config / Capabilities | `agents.allow_web_search`, entitlements | `/api/admin/companies/[companyId]/capabilities` e rotas de agents | `graph.py` via `resolve_active_capabilities` | atual `platform.web.search`; alvo `web.search` | Parcial funcional | legado `allow_web_search` pode divergir de capability | Registry manda; legado vira materializacao/diagnostico |
 | Solicitar Humano | AgentConfigModal | `agents.tools_config.human_handoff` | rotas de agents | `graph.py` le `tools_config` | A definir/homologar | Funcional fora do Registry | autorizacao concorrente | migrar para capability/gate, manter config visual |
-| CSV | AgentConfigModal | `agents.tools_config.csv_analytics` | rotas de agents | `graph.py` le `tools_config` | A definir/homologar | Funcional fora do Registry | autorizacao concorrente | declarar capability ou congelar se legado |
-| Visao Computacional | Chat/anexos/config de agente | campos de agente e payload de chat | rotas de chat/agents | `chat.py` / LangChain vision | `platform.document.extract` ou capability especifica futura | Parcial | pode ser confundida com leitura de apolice | nao usar para InfoCap; governar por capability |
-| RAG / Knowledge | Knowledge UI | `documents`, MinIO, Qdrant | `backend/app/api/documents.py` | `KnowledgeBaseTool` / `SearchService` | `knowledge.tenant.search`, `knowledge.global.search` | Funcional parcial | tool pode existir mesmo sem diagnostico claro | exibir no Prompt Efetivo e governar por capability |
-| InfoCap | Capabilities / Conectores | `tenant_connections`, Vault, entitlements | rotas de connector/capability | `InfocapPolicyLookupTool` | `operational.infocap.policy_lookup.read` | Funcional com adapter falho | parser/id/envelope incorretos | R1 corrige adapter; R2 mostra autoridade |
-| Documentos | Dashboard/Knowledge/Admin | `documents`, MinIO, Qdrant | `backend/app/api/documents.py` | KnowledgeBaseTool | `platform.document.extract`, `knowledge.*` | Pronto em partes | Docling nao entra automaticamente na ingestao | R3 vincula evidencia documental por `policy_ref` |
+| CSV | AgentConfigModal | `agents.tools_config.csv_analytics` | rotas de agents | `graph.py` le `tools_config` | alvo `data.csv.analyze` se mantido | Funcional fora do Registry | autorizacao concorrente | declarar capability ou congelar se legado |
+| Visao Computacional | Chat/anexos/config de agente | campos de agente e payload de chat | rotas de chat/agents | `chat.py` / LangChain vision | atual `platform.document.extract`; alvo `document.extract`/`vision.analyze` | Parcial | pode ser confundida com leitura de apolice | nao usar para InfoCap; governar por capability |
+| RAG / Knowledge | Knowledge UI | `documents`, MinIO, Qdrant | `backend/app/api/documents.py` | `KnowledgeBaseTool` / `SearchService` | atual `knowledge.tenant.search`/`knowledge.global.search`; alvo `knowledge.search` + scope | Funcional parcial | tool pode existir mesmo sem diagnostico claro | exibir no Prompt Efetivo e governar por capability |
+| InfoCap | Capabilities / Conectores | `tenant_connections`, Vault, entitlements | rotas de connector/capability | `InfocapPolicyLookupTool` | atual `operational.infocap.policy_lookup.read`; alvo `policy.infocap.read` | Funcional com adapter falho | parser/id/envelope incorretos | R1 corrige adapter; R2 mostra autoridade |
+| Documentos | Dashboard/Knowledge/Admin | `documents`, MinIO, Qdrant | `backend/app/api/documents.py` | KnowledgeBaseTool | atual `platform.document.extract`, `knowledge.*`; alvo `document.extract`, `knowledge.search` | Pronto em partes | Docling nao entra automaticamente na ingestao | R3 vincula evidencia documental por `policy_ref` |
 | HTTP Tools | AgentConfigModal | `agent_http_tools` | `app/api/agents/tools/route.ts` | `HttpToolRouter` em `graph.py` | Deve ser capability homologada | Parcial | pode virar conector paralelo | Registry autoriza; HTTP executa |
 | MCP | MCP config/admin | tabelas MCP por agente | backend MCP routes | MCP gateway em `graph.py` | capability por provider | Parcial funcional | pode ser tratado como login/config livre | OAuth/Vault conecta; Registry autoriza; MCP executa |
-| Google Drive | Conectores/MCP futuro | tenant connection/OAuth/MCP | rotas de conectores/MCP | nao comprovado como Core produtivo | `tenant.google_drive.read` | Nao produtivo no Core | fonte documental fora do evidence contract | manter conectado, nao usar produtivo ate R2/R3 |
-| Notion | Conectores/MCP futuro | tenant connection/OAuth/API/MCP | rotas de conectores/MCP | nao comprovado como Core produtivo | `tenant.notion.read_write` | Nao produtivo no Core | knowledge paralelo informal | manter conectado, nao usar produtivo ate R2/R3 |
+| Google Drive | Conectores/MCP futuro | tenant connection/OAuth/MCP | rotas de conectores/MCP | nao comprovado como Core produtivo | atual `tenant.google_drive.read`; alvo `google_drive.read` | Nao produtivo no Core | fonte documental fora do evidence contract | manter conectado, nao usar produtivo ate R2/R3 |
+| Notion | Conectores/MCP futuro | tenant connection/OAuth/API/MCP | rotas de conectores/MCP | nao comprovado como Core produtivo | atual `tenant.notion.read_write`; alvo `notion.read_write` | Nao produtivo no Core | knowledge paralelo informal | manter conectado, nao usar produtivo ate R2/R3 |
 | Voz | Chat page | mensagens/audio/storage | `sendVoiceToN8N` -> `/api/n8n` | N8N legacy/LangChain/webhook | futura capability de voz/canal | Legacy | passa fora do caminho textual | auditar antes de migrar |
 | N8N legacy | Nenhuma como runtime novo | `companies.use_langchain`, `webhook_url` | company/admin | `/api/n8n` route | nenhuma | Legacy congelado | bifurcacao transport | nao receber features novas |
-| Portal Browser | Admin Portal Browser | registry/session refs/portal maps | rotas Portal Browser | Attendance/portal engine | `operational.portal.*` | Fundacao existente | risco alto se virar browser paralelo | usar somente capabilities + HITL |
+| Portal Browser | Admin Portal Browser | registry/session refs/portal maps | rotas Portal Browser | Attendance/portal engine | atual `operational.portal.*`; alvo `portal.*` funcional | Fundacao existente | risco alto se virar browser paralelo | usar somente capabilities + HITL |
 
-## 6. Camadas atuais de prompt
+## 7. Camadas atuais de prompt
 
 | Camada | Local | Tipo | Risco |
 | --- | --- | --- | --- |
@@ -118,7 +129,7 @@ Plano:
 | Descricoes de tools | tool classes, HTTP, MCP | prompt operacional | pode virar prompt oculto |
 | N8N/webhook legacy | `/api/n8n` quando usado | runtime/transport concorrente | nao deve governar Chat Principal |
 
-## 7. Plano de migracao R2
+## 8. Plano de migracao R2
 
 1. Inventariar toda tool que entra em `graph.py`.
 2. Associar cada tool a uma capability ou marcar como legado/congelado.
@@ -128,11 +139,11 @@ Plano:
 6. Exibir divergencias: "switch ligado, runtime nao le", "conexao existe, capability desligada", "capability ativa, conexao ausente".
 7. Congelar N8N como transport legacy.
 
-## 8. Criterios de aceite R2
+## 9. Criterios de aceite R2
 
 - Nenhuma tool produtiva e autorizada por `tools_config` isolado.
 - HTTP Tools e MCP nao substituem Vault/OAuth.
-- InfoCap so entra por `operational.infocap.policy_lookup.read`.
+- InfoCap so entra pela capability atual `operational.infocap.policy_lookup.read`, migrando para alias funcional `policy.infocap.read` na R2.
 - Prompt Efetivo mostra tools realmente vinculadas.
 - Portal Admin mostra diagnostico de divergencia.
 - Chat textual continua em `/api/chat/stream`.

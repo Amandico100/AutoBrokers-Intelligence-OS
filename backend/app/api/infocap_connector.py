@@ -7,13 +7,14 @@ APENAS server-side (chave interna Next↔Backend), cifra com EncryptionService
 NUNCA retorna/loga login/senha/ciphertext. NÃO faz chamada real ao InfoCap.
 """
 import hmac
+import hashlib
 import json
 import logging
 import os
 import re
 import time
 from datetime import datetime, timezone
-from typing import Any, Dict, List, Optional
+from typing import Any, Dict, List, Optional, Tuple
 
 import httpx
 from fastapi import APIRouter, Depends, Header, HTTPException
@@ -749,6 +750,240 @@ class InfocapProbePayload(BaseModel):
     query_type: str = "cpf"  # cpf|name
     query: str
     codfil: Optional[int] = 1
+    mode: Optional[str] = None
+    policy_ref: Optional[str] = None
+
+
+CONTRACT_STATUSES = {
+    "found",
+    "ambiguous_customer",
+    "ambiguous_policy",
+    "source_limited",
+    "provider_auth_error",
+    "provider_timeout",
+    "unknown_shape",
+    "document_evidence_required",
+    "conflict_requires_human",
+}
+
+_CONTRACT_FORBIDDEN_KEYS = {
+    "cpf_cnpj", "cpf", "cnpj", "documento", "doc", "cpfcnpj", "cgccpf", "ni",
+    "cliente", "nome", "name", "razao_social", "segurado", "nome_cliente",
+    "email", "emails", "telefone", "telefones", "celular", "endereco", "endereço",
+    "logradouro", "bairro", "cep", "numapo", "apolice", "numero_apolice",
+    "num_apolice", "nosnum", "codigo", "codcli", "codfil", "valor", "premio",
+    "premio_liquido", "is", "lmi", "importancia_segurada", "limite",
+    "token", "access_token", "auth_token", "authorization", "senha", "password",
+    "secret", "payload", "raw", "raw_payload",
+}
+
+_ITEM_KEYS = {"itens", "items", "item", "bens"}
+_COVERAGE_KEYS = {"coberturas", "coverages", "garantias", "verbas", "capitais"}
+_PREMIUM_KEYS = {"premio", "premios", "premio_liquido", "premio_total"}
+_DEDUCTIBLE_KEYS = {"franquia", "franquias", "deductibles", "dedutivel"}
+_CLAUSE_KEYS = {"clausula", "clausulas", "condicoes", "condições", "conditions"}
+_INSTALLMENT_KEYS = {"parcelas", "prestacoes", "prestações", "installments"}
+_HISTORY_KEYS = {"historico", "histórico", "acompanhamento", "andamentos"}
+_ASSISTANCE_KEYS = {"assistencia", "assistências", "assistencias", "assistance", "assistances"}
+
+
+def _keynorm(key: Any) -> str:
+    return str(key or "").strip().lower()
+
+
+def _type_name(value: Any) -> str:
+    if isinstance(value, dict):
+        return "object"
+    if isinstance(value, list):
+        return "array"
+    if isinstance(value, bool):
+        return "boolean"
+    if isinstance(value, int) and not isinstance(value, bool):
+        return "integer"
+    if isinstance(value, float):
+        return "number"
+    if isinstance(value, str):
+        return "string"
+    if value is None:
+        return "null"
+    return type(value).__name__
+
+
+def _first_dict(value: Any) -> Optional[Dict[str, Any]]:
+    if isinstance(value, dict):
+        return value
+    if isinstance(value, list):
+        return next((item for item in value if isinstance(item, dict)), None)
+    return None
+
+
+def _safe_contract_shape(data: Any, *, max_depth: int = 3) -> Dict[str, Any]:
+    """Retorna somente metadados estruturais do payload, nunca valores."""
+    top_level_keys = list(data.keys())[:50] if isinstance(data, dict) else []
+    nested_key_paths: set[str] = set()
+    types_by_key: Dict[str, str] = {}
+    list_keys: set[str] = set()
+    counts: Dict[str, int] = {}
+    sample_keys: Dict[str, List[str]] = {}
+    all_keys: set[str] = set()
+    array_key_detected: Optional[str] = None
+
+    def visit(value: Any, path: str, depth: int) -> None:
+        nonlocal array_key_detected
+        if depth > max_depth:
+            return
+        if isinstance(value, dict):
+            if path:
+                nested_key_paths.add(path)
+                types_by_key[path] = "object"
+            for key, child in value.items():
+                key_s = str(key)
+                all_keys.add(key_s)
+                child_path = f"{path}.{key_s}" if path else key_s
+                nested_key_paths.add(child_path)
+                types_by_key[child_path] = _type_name(child)
+                visit(child, child_path, depth + 1)
+            return
+        if isinstance(value, list):
+            if path:
+                list_keys.add(path)
+                counts[path] = len(value)
+                types_by_key[path] = "array"
+                if array_key_detected is None and any(isinstance(item, dict) for item in value):
+                    array_key_detected = path
+                first = _first_dict(value)
+                if first:
+                    sample_keys[path] = list(first.keys())[:50]
+                    all_keys.update(str(k) for k in first.keys())
+            if depth < max_depth:
+                first = _first_dict(value)
+                if first is not None:
+                    visit(first, f"{path}[]" if path else "[]", depth + 1)
+
+    visit(data, "", 0)
+    structural = {
+        "raw_type": "array" if isinstance(data, list) else "object" if isinstance(data, dict) else _type_name(data),
+        "top_level_keys": sorted(top_level_keys),
+        "nested_key_paths": sorted(nested_key_paths),
+        "types_by_key": dict(sorted(types_by_key.items())),
+        "list_keys": sorted(list_keys),
+        "counts": dict(sorted(counts.items())),
+        "sample_keys": {k: sorted(v) for k, v in sorted(sample_keys.items())},
+        "array_key_detected": array_key_detected,
+    }
+    keyset = {_keynorm(k) for k in all_keys}
+    list_keyset = {_keynorm(k.split(".")[-1].replace("[]", "")) for k in list_keys}
+    detected = {
+        "codigo_present": "codigo" in keyset,
+        "codfil_present": "codfil" in keyset,
+        "cpf_cnpj_present": "cpf_cnpj" in keyset,
+        "nosnum_present": "nosnum" in keyset,
+        "numapo_present": "numapo" in keyset,
+        "items_present": bool(keyset & _ITEM_KEYS or list_keyset & _ITEM_KEYS),
+        "coverages_present": bool(keyset & _COVERAGE_KEYS or list_keyset & _COVERAGE_KEYS),
+        "premiums_present": bool(keyset & _PREMIUM_KEYS or list_keyset & _PREMIUM_KEYS),
+        "deductibles_present": bool(keyset & _DEDUCTIBLE_KEYS or list_keyset & _DEDUCTIBLE_KEYS),
+        "clauses_present": bool(keyset & _CLAUSE_KEYS or list_keyset & _CLAUSE_KEYS),
+        "installments_present": bool(keyset & _INSTALLMENT_KEYS or list_keyset & _INSTALLMENT_KEYS),
+        "history_present": bool(keyset & _HISTORY_KEYS or list_keyset & _HISTORY_KEYS),
+        "assistance_present": bool(keyset & _ASSISTANCE_KEYS or list_keyset & _ASSISTANCE_KEYS),
+    }
+    hash_src = json.dumps(structural, sort_keys=True, ensure_ascii=True)
+    return {
+        **structural,
+        "result_count": len(data) if isinstance(data, list) else len(_extract_array(data)),
+        "detected_policy_fields": detected,
+        "shape_hash": hashlib.sha256(hash_src.encode("utf-8")).hexdigest()[:16],
+        "parse_status": "ok" if isinstance(data, (dict, list)) else "unknown_shape",
+    }
+
+
+def _select_unique_contract_candidate(candidates: List[Dict[str, Any]]) -> Tuple[Optional[Dict[str, Any]], str]:
+    if len(candidates) == 1:
+        candidate = candidates[0]
+        if _first_str(candidate, ["codigo", "codcli"]):
+            return candidate, "found"
+        return None, "source_limited"
+    if len(candidates) > 1:
+        return None, "ambiguous_customer"
+    return None, "source_limited"
+
+
+def _select_policy_locator(
+    docs: List[Dict[str, Any]],
+    *,
+    codfil: Any,
+    requested_policy_ref: Optional[str] = None,
+) -> Tuple[Optional[Dict[str, str]], str]:
+    requested = str(requested_policy_ref or "").strip()
+    docs_with_nosnum = [doc for doc in docs if _first_str(doc, ["nosnum"])]
+    if requested:
+        matches = [doc for doc in docs_with_nosnum if _first_str(doc, ["nosnum"]) == requested]
+        if len(matches) != 1:
+            return None, "source_limited" if not matches else "ambiguous_policy"
+        selected = matches[0]
+    else:
+        if len(docs_with_nosnum) == 0:
+            return None, "source_limited"
+        if len(docs_with_nosnum) > 1:
+            return None, "ambiguous_policy"
+        selected = docs_with_nosnum[0]
+    nosnum = _first_str(selected, ["nosnum"])
+    if not nosnum:
+        return None, "source_limited"
+    codfil_val = _first_str(selected, ["codfil"]) or str(codfil or "")
+    return {"provider": "infocap", "codfil": str(codfil_val), "nosnum": str(nosnum)}, "found"
+
+
+_CONTRACT_STRUCTURAL_KEYS = {
+    "top_level_keys",
+    "nested_key_paths",
+    "types_by_key",
+    "list_keys",
+    "counts",
+    "sample_keys",
+    "detected_policy_fields",
+}
+
+
+def _sanitize_contract_output(value: Any, *, structural_context: bool = False) -> Any:
+    """Defesa final: remove valores sensiveis de qualquer saida do contract probe."""
+    if isinstance(value, list):
+        return [_sanitize_contract_output(item, structural_context=structural_context) for item in value]
+    if isinstance(value, dict):
+        if isinstance(value.get("policy_locator"), dict):
+            value = dict(value)
+            value["policy_locator"] = {"provider": value["policy_locator"].get("provider", "infocap")}
+        out: Dict[str, Any] = {}
+        for key, child in value.items():
+            key_norm = _keynorm(key)
+            child_structural = structural_context or key_norm in _CONTRACT_STRUCTURAL_KEYS
+            if not child_structural and key_norm in _CONTRACT_FORBIDDEN_KEYS:
+                continue
+            if key_norm == "policy_locator" and isinstance(child, dict):
+                out[key] = {"provider": child.get("provider", "infocap")}
+                continue
+            out[key] = _sanitize_contract_output(child, structural_context=child_structural)
+        return out
+    return value
+
+
+def _shape_probe_endpoint(
+    logical_endpoint: str,
+    http_status: Optional[int],
+    data: Any = None,
+    *,
+    error_hint: Optional[str] = None,
+) -> Dict[str, Any]:
+    shape = _safe_contract_shape(data) if data is not None else _safe_contract_shape(None)
+    return {
+        "logical_endpoint": logical_endpoint,
+        "method": "GET",
+        "http_status": http_status,
+        "ok": bool(http_status and http_status < 400 and not error_hint),
+        "error_hint": error_hint,
+        **shape,
+    }
 
 
 def _status_hint(http_status: int) -> str:
@@ -798,6 +1033,232 @@ async def _probe_one(
     }
 
 
+async def _contract_get(
+    client: httpx.AsyncClient,
+    path: str,
+    params: Dict[str, Any],
+    headers: Dict[str, str],
+    logical_endpoint: str,
+) -> Tuple[Dict[str, Any], Optional[Any], str]:
+    try:
+        res = await client.get(path, params=params, headers=headers)
+    except httpx.TimeoutException:
+        return _shape_probe_endpoint(logical_endpoint, None, None, error_hint="provider_timeout"), None, "provider_timeout"
+    except httpx.HTTPError:
+        return _shape_probe_endpoint(logical_endpoint, None, None, error_hint="network_error"), None, "provider_timeout"
+
+    if res.status_code in (401, 403):
+        return _shape_probe_endpoint(logical_endpoint, res.status_code, None, error_hint="auth_error"), None, "provider_auth_error"
+    if res.status_code >= 400:
+        return _shape_probe_endpoint(logical_endpoint, res.status_code, None, error_hint="provider_http_error"), None, "source_limited"
+
+    try:
+        data = res.json()
+    except Exception:  # noqa: BLE001
+        return _shape_probe_endpoint(logical_endpoint, res.status_code, None, error_hint="non_json_response"), None, "unknown_shape"
+    return _shape_probe_endpoint(logical_endpoint, res.status_code, data), data, "found"
+
+
+def _merge_detected_policy_fields(endpoints: List[Dict[str, Any]]) -> Dict[str, bool]:
+    merged = {
+        "codigo_present": False,
+        "codfil_present": False,
+        "cpf_cnpj_present": False,
+        "nosnum_present": False,
+        "numapo_present": False,
+        "items_present": False,
+        "coverages_present": False,
+        "premiums_present": False,
+        "deductibles_present": False,
+        "clauses_present": False,
+        "installments_present": False,
+        "history_present": False,
+        "assistance_present": False,
+    }
+    for endpoint in endpoints:
+        fields = endpoint.get("detected_policy_fields")
+        if not isinstance(fields, dict):
+            continue
+        for key in merged:
+            merged[key] = merged[key] or fields.get(key) is True
+    return merged
+
+
+def _short_hash(value: str) -> str:
+    return hashlib.sha256(str(value or "").encode("utf-8")).hexdigest()[:12]
+
+
+async def _run_policy_chain_contract_probe(
+    *,
+    client: httpx.AsyncClient,
+    headers: Dict[str, str],
+    config: Dict[str, Any],
+    company_id: str,
+    qtype: str,
+    raw_query: str,
+    digits: str,
+    codfil: Any,
+    requested_policy_ref: Optional[str],
+    auth_status: Optional[int],
+) -> Dict[str, Any]:
+    cpf_search_path = config.get("infocap_cpf_search_path") or "/cliente_cpf"
+    name_search_path = config.get("infocap_search_path") or "/lista_clientes"
+    cliente_path = config.get("infocap_cliente_path") or "/cliente"
+    ligacoes_path = config.get("infocap_ligacoes_path") or "/cliente_ligacoes"
+    documento_path = config.get("infocap_documento_path") or "/documento"
+    endpoints: List[Dict[str, Any]] = []
+    candidate_count = 0
+    document_count = 0
+    policy_locator: Optional[Dict[str, str]] = None
+
+    if qtype == "cpf":
+        search_params = {"codfil": codfil, "cpf_cnpj": digits}
+        search_endpoint = "initial_search.cliente_cpf"
+        search_path = cpf_search_path
+    else:
+        search_params = {"texto": raw_query}
+        search_endpoint = "initial_search.lista_clientes"
+        search_path = name_search_path
+
+    search_shape, search_data, status = await _contract_get(
+        client, search_path, search_params, headers, search_endpoint
+    )
+    endpoints.append(search_shape)
+    if status != "found":
+        return _sanitize_contract_output({
+            "ok": False,
+            "provider": "infocap",
+            "mode": "policy_chain_contract",
+            "status": status,
+            "auth_http_status": auth_status,
+            "candidate_count": 0,
+            "document_count": 0,
+            "detected_policy_fields": _merge_detected_policy_fields(endpoints),
+            "endpoints": endpoints,
+        })
+
+    candidates = _extract_array(search_data)
+    candidate_count = len(candidates)
+    candidate, status = _select_unique_contract_candidate(candidates)
+    if status != "found" or not candidate:
+        return _sanitize_contract_output({
+            "ok": False,
+            "provider": "infocap",
+            "mode": "policy_chain_contract",
+            "status": status,
+            "auth_http_status": auth_status,
+            "candidate_count": candidate_count,
+            "document_count": 0,
+            "detected_policy_fields": _merge_detected_policy_fields(endpoints),
+            "endpoints": endpoints,
+        })
+
+    codigo_val = _first_str(candidate, ["codigo", "codcli"])
+    codfil_val = _first_str(candidate, ["codfil"]) or str(codfil or "1")
+    if not codigo_val:
+        status = "source_limited"
+        return _sanitize_contract_output({
+            "ok": False,
+            "provider": "infocap",
+            "mode": "policy_chain_contract",
+            "status": status,
+            "auth_http_status": auth_status,
+            "candidate_count": candidate_count,
+            "document_count": 0,
+            "detected_policy_fields": _merge_detected_policy_fields(endpoints),
+            "endpoints": endpoints,
+        })
+
+    cliente_shape, _, status = await _contract_get(
+        client,
+        cliente_path,
+        {"codfil": codfil_val, "codigo": codigo_val},
+        headers,
+        "customer_detail.cliente",
+    )
+    endpoints.append(cliente_shape)
+    if status != "found":
+        return _sanitize_contract_output({
+            "ok": False,
+            "provider": "infocap",
+            "mode": "policy_chain_contract",
+            "status": status,
+            "auth_http_status": auth_status,
+            "candidate_count": candidate_count,
+            "document_count": 0,
+            "detected_policy_fields": _merge_detected_policy_fields(endpoints),
+            "endpoints": endpoints,
+        })
+
+    catalog_shape, catalog_data, status = await _contract_get(
+        client,
+        ligacoes_path,
+        {"codigo": codigo_val},
+        headers,
+        "policy_catalog.cliente_ligacoes",
+    )
+    endpoints.append(catalog_shape)
+    if status != "found":
+        return _sanitize_contract_output({
+            "ok": False,
+            "provider": "infocap",
+            "mode": "policy_chain_contract",
+            "status": status,
+            "auth_http_status": auth_status,
+            "candidate_count": candidate_count,
+            "document_count": 0,
+            "detected_policy_fields": _merge_detected_policy_fields(endpoints),
+            "endpoints": endpoints,
+        })
+
+    docs = _extract_documents(catalog_data)
+    document_count = len(docs)
+    policy_locator, status = _select_policy_locator(
+        docs,
+        codfil=codfil_val,
+        requested_policy_ref=requested_policy_ref,
+    )
+    if status != "found" or not policy_locator:
+        return _sanitize_contract_output({
+            "ok": False,
+            "provider": "infocap",
+            "mode": "policy_chain_contract",
+            "status": status,
+            "auth_http_status": auth_status,
+            "candidate_count": candidate_count,
+            "document_count": document_count,
+            "detected_policy_fields": _merge_detected_policy_fields(endpoints),
+            "policy_locator": policy_locator,
+            "endpoints": endpoints,
+        })
+
+    detail_shape, _, detail_status = await _contract_get(
+        client,
+        documento_path,
+        {"codfil": policy_locator["codfil"], "nosnum": policy_locator["nosnum"]},
+        headers,
+        "policy_detail.documento",
+    )
+    endpoints.append(detail_shape)
+    status = detail_status
+    logger.info(
+        f"[INFOCAP CONTRACT PROBE] company_hash={_short_hash(company_id)} "
+        f"status={status} endpoints={len(endpoints)} candidates={candidate_count} docs={document_count}"
+    )
+    return _sanitize_contract_output({
+        "ok": status == "found",
+        "provider": "infocap",
+        "mode": "policy_chain_contract",
+        "status": status,
+        "auth_http_status": auth_status,
+        "candidate_count": candidate_count,
+        "document_count": document_count,
+        "detected_policy_fields": _merge_detected_policy_fields(endpoints),
+        "policy_locator": policy_locator,
+        "endpoints": endpoints,
+    })
+
+
 @router.post("/attendance/connectors/infocap/probe")
 async def infocap_probe(
     payload: InfocapProbePayload,
@@ -845,6 +1306,7 @@ async def infocap_probe(
     codfil = payload.codfil if payload.codfil is not None else 1
     qtype = (payload.query_type or "cpf").lower()
     raw_query = (payload.query or "").strip()
+    mode = (payload.mode or "").strip().lower()
     digits = _digits(raw_query)
     formatted = _format_doc(digits) if digits else None
 
@@ -870,6 +1332,24 @@ async def infocap_probe(
                     "blockers": ["no_token_in_login_response"], "probes": [],
                 }
             headers = {"Authorization": token, "Content-Type": "application/json"}
+
+            if mode == "policy_chain_contract":
+                if qtype == "cpf" and not digits:
+                    raise HTTPException(status_code=400, detail="cpf query requires digits")
+                if qtype != "cpf" and not raw_query:
+                    raise HTTPException(status_code=400, detail="name query is required")
+                return await _run_policy_chain_contract_probe(
+                    client=client,
+                    headers=headers,
+                    config=config,
+                    company_id=company_id,
+                    qtype="cpf" if qtype == "cpf" else "name",
+                    raw_query=raw_query,
+                    digits=digits,
+                    codfil=codfil,
+                    requested_policy_ref=payload.policy_ref,
+                    auth_status=auth_status,
+                )
 
             targets: List[Dict[str, Any]] = []
             if qtype == "cpf" and digits:

@@ -1,0 +1,39 @@
+{
+  "documento": [
+    {
+      "cpf_cnpj": "00000000000",
+      "cliente": "Pessoa Sintetica",
+      "codigo": "CLIENTE-SINTETICO",
+      "codfil": "1",
+      "nosnum": "NOSNUM-SINTETICO",
+      "numapo": "APOLICE-SINTETICA"
+    }
+  ],
+  "itens": [
+    {
+      "descricao": "Cobertura Sintetica",
+      "valor": "1000"
+    }
+  ],
+  "coberturas": [
+    {
+      "descricao": "Outra Cobertura Sintetica",
+      "lmi": "2000"
+    }
+  ],
+  "parcelas": [
+    {
+      "valor": "100"
+    }
+  ],
+  "historico": [
+    {
+      "evento": "Evento Sintetico"
+    }
+  ],
+  "acompanhamento": [
+    {
+      "status": "Status Sintetico"
+    }
+  ]
+}

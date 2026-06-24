@@ -24,7 +24,7 @@ A Auditoria Forense V2 encerrou a investigacao ampla. A causa principal da leitu
 2. `tenant_connections` + Vault sao a unica fonte de conexoes e segredos.
 3. Capability Registry sera a unica autoridade de disponibilidade/autorizacao de ferramentas.
 4. `tools_config` podera existir somente como configuracao de comportamento visual/local, nunca como autorizacao concorrente.
-5. Core interno autorizado pode ler dados completos da propria corretora.
+5. Core interno autorizado pode ler dados completos da propria corretora somente apos sessao autenticada, usuario vinculado a empresa, papel permitido, `company_id` resolvido server-side, capability ativa e conexao InfoCap saudavel da propria empresa.
 6. Even externa nunca confirma cobertura; recebe apenas evidencia minima vinculada a caso, identidade e apolice.
 7. Auxiliares so recebem dados e tools declarados na capability do proprio auxiliar.
 8. Nao criar InfoCap paralela, RAG paralelo, parser paralelo, storage paralelo, Vault paralelo ou runtime paralelo.
@@ -107,13 +107,53 @@ KnowledgeBaseTool
 - Nenhum provider chamado.
 - Um commit documental unico autorizado.
 
-## 5. Fase 0 / R1 - Canonical InfoCap Policy Read Adapter
+## 5. R0.5 - Contract Capture Gate
+
+### Escopo
+
+- Estender o probe existente da InfoCap com o modo `policy_chain_contract`.
+- Reutilizar `tenant_connections`, Vault, conexao InfoCap existente e o endpoint `POST /attendance/connectors/infocap/probe`.
+- Executar somente diagnostico seguro de shape da cadeia:
+  - `/cliente_cpf` ou `/lista_clientes`;
+  - `/cliente`;
+  - `/cliente_ligacoes`;
+  - `/documento`.
+- Retornar somente chaves, tipos, listas, contagens, `shape_hash`, status e campos canonicos detectados.
+- Preparar harness de Golden tests com fixtures sinteticas.
+
+### Proibido
+
+- mudar comportamento produtivo do Chat Principal;
+- alterar `graph.py`;
+- alterar prompts;
+- alterar Capability Registry;
+- chamar provider real durante desenvolvimento local;
+- criar migration;
+- criar endpoint paralelo;
+- criar servico ou pagina nova;
+- retornar/logar CPF, nome, apolice, `nosnum`, `codigo`, `codfil`, token, senha, valor de premio/cobertura ou payload bruto.
+
+### Dependencias
+
+- R0 documental.
+- Master admin autenticado para executar o diagnostico no Portal Admin.
+- Conexao InfoCap existente da corretora.
+
+### Criterio de aceite
+
+- R1B continua bloqueada ate captura real de shape.
+- O Founder recebe somente resultado estrutural.
+- Nenhum dado operacional muda.
+- Nenhuma estrutura paralela e criada.
+
+## 6. Fase 0 / R1 - Canonical InfoCap Policy Read Adapter
 
 ### Escopo
 
 - Corrigir o adapter canonico de leitura InfoCap.
-- Garantir fluxo nome -> cliente -> `/cliente?codigo` -> CPF canonico.
-- Separar `codigo`, `codfil`, `cpf_cnpj`, `nosnum`, `numapo` e `policy_ref`.
+- Garantir fluxo nome/CPF -> cliente -> `/cliente?codigo` -> CPF canonico.
+- Separar `codigo`, `codfil`, `cpf_cnpj`, `nosnum`, `numapo`, `policy_ref` e `PolicyLocator`.
+- Usar `PolicyLocator(provider=infocap, codfil, nosnum)` em toda leitura de detalhe.
 - Preservar envelope restrito, hash, shape, proveniencia e contagens.
 - Construir DTO interno para Core, DTO minimo para Even e DTO limitado para Auxiliares.
 - Implementar trace seguro.
@@ -134,6 +174,7 @@ KnowledgeBaseTool
 ### Dependencias
 
 - SPEC-015A aprovada pelo CEO.
+- R0.5 executado em apolice de teste e resultado estrutural revisado.
 - Matriz Golden aprovada.
 - Fixtures sinteticas e, quando disponiveis, reais anonimizadas.
 - Acesso apenas a estruturas existentes de Vault/tenant connection.
@@ -143,6 +184,7 @@ KnowledgeBaseTool
 - Todos os Golden tests de InfoCap passam.
 - Logs sem PII.
 - `policy_ref` nunca deriva de `codigo`/`codcli`.
+- detalhe sempre usa `codfil + nosnum`.
 - `P` nao vira cobertura.
 - Ausencia de cobertura e reportada honestamente.
 - Core/Even/Auxiliar recebem exposicoes diferentes.
@@ -155,7 +197,7 @@ Ver `GOLDEN-TEST-MATRIX-INFOCAP.md`.
 
 Criar "InfoCap v2" como outro servico. O correto e corrigir o adapter dentro do caminho existente.
 
-## 6. Fase 1 / R2 - Smith Runtime and Admin Unification
+## 7. Fase 1 / R2 - Smith Runtime and Admin Unification
 
 ### Escopo
 
@@ -201,7 +243,7 @@ Criar "InfoCap v2" como outro servico. O correto e corrigir o adapter dentro do 
 
 Criar "admin novo" ou "editor novo" para contornar o Smith. O correto e diagnosticar e governar o Smith existente.
 
-## 7. Fase 2 / R3 - Document Evidence and Knowledge Intake
+## 8. Fase 2 / R3 - Document Evidence and Knowledge Intake
 
 ### Escopo
 
@@ -247,7 +289,7 @@ Criar "admin novo" ou "editor novo" para contornar o Smith. O correto e diagnost
 
 Criar "Policy RAG" separado. O correto e completar o pipeline documental existente.
 
-## 8. Congelamentos imediatos
+## 9. Congelamentos imediatos
 
 Enquanto R1 nao for aprovado:
 
@@ -261,7 +303,7 @@ Enquanto R1 nao for aprovado:
 - nao adicionar Gmail, Outlook, Meta, Instagram ou novos conectores;
 - nao alterar Docling, Qdrant, MinIO, Drive/Notion ou EasyPanel.
 
-## 9. N8N legacy
+## 10. N8N legacy
 
 Classificacao canonica:
 
@@ -281,10 +323,11 @@ Regras:
 - auditar chamadas antes de migracao/remocao;
 - voz pode permanecer dependente ate frente propria.
 
-## 10. Ordem de execucao aprovada
+## 11. Ordem de execucao aprovada
 
 ```text
 R0 - documentacao canonica
+R0.5 - Contract Capture Gate seguro da InfoCap
 R1 - Canonical InfoCap Policy Read Adapter + Golden tests
 R2 - Prompt Efetivo + Capability Registry unico + diagnostico Portal Admin
 R3 - Document Evidence por policy_ref usando pipeline existente

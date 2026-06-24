@@ -27,7 +27,7 @@ O ResultVision antigo, usado apenas como referencia historica, seguia uma sequen
 2. `tenant_connections` + Vault sao a unica fonte de conexoes e segredos.
 3. Capability Registry sera a unica autoridade de disponibilidade/autorizacao de ferramentas.
 4. `tools_config` pode existir somente como configuracao de comportamento visual/local, nunca como autorizacao concorrente.
-5. Core interno autorizado pode ler dados completos da propria corretora.
+5. Core interno autorizado pode ler dados completos da propria corretora somente apos validar sessao autenticada, vinculo do usuario a empresa, papel permitido, `company_id` resolvido server-side, capability ativa e conexao InfoCap saudavel da propria empresa.
 6. Even externa nunca confirma cobertura; recebe apenas evidencia minima vinculada a caso, identidade e apolice.
 7. Auxiliares so recebem dados e tools declarados na capability do proprio auxiliar.
 8. Nao criar InfoCap paralela, RAG paralelo, parser paralelo, storage paralelo, Vault paralelo ou runtime paralelo.
@@ -76,7 +76,22 @@ O ResultVision antigo, usado apenas como referencia historica, seguia uma sequen
 - runtime novo de agente;
 - prompt que tente compensar parser ruim.
 
-## 6. Contrato de entrada
+## 6. R0.5 - Contract Capture Gate
+
+Antes da R1B, e obrigatorio executar a captura contratual segura da InfoCap. Essa etapa descobre o shape real dos endpoints sem alterar o comportamento produtivo do Chat Principal:
+
+```text
+/cliente_cpf ou /lista_clientes
+-> /cliente
+-> /cliente_ligacoes
+-> /documento
+```
+
+O gate deve retornar somente metadados estruturais: endpoint logico, HTTP status, tipo bruto, chaves, caminhos de chaves ate profundidade segura, tipos, listas, contagens, `shape_hash`, `parse_status` e campos canonicos detectaveis. Ele nao pode retornar CPF/CNPJ, nome, email, telefone, endereco, numero de apolice, `nosnum`, `codigo`, `codfil`, valores de premio/cobertura, token, senha, payload bruto ou preview de payload.
+
+R1B permanece bloqueada ate o Founder rodar o diagnostico seguro em uma apolice de teste e trazer de volta somente chaves, tipos, hashes e contagens.
+
+## 7. Contrato de entrada
 
 O adapter canonico deve aceitar uma requisicao normalizada:
 
@@ -105,16 +120,32 @@ Regras:
 - busca por `policy_number` deve resolver para `nosnum` antes de chamar detalhe;
 - Even deve sempre incluir contexto de caso quando receber evidencia de apolice.
 
-## 7. Semantica obrigatoria dos campos InfoCap
+## 8. Semantica obrigatoria dos campos InfoCap
 
 | Campo | Semantica canonica | Regra |
 | --- | --- | --- |
 | `codigo` | codigo canonico do cliente na InfoCap | Pode identificar cliente. Nunca pode virar `policy_ref`. |
 | `codfil` | filial/contexto da API | Deve acompanhar chamadas de cliente e documento quando exigido pelo provider. |
-| `cpf_cnpj` | documento canonico do cliente | Deve vir do detalhe canonico do cliente, preferencialmente `/cliente?codigo`. |
-| `nosnum` | identificador de detalhe/documento da apolice | E a base de `policy_ref`. |
+| `cpf_cnpj` | documento canonico do cliente | Deve vir do detalhe canonico do cliente via `/cliente?codigo`, salvo prova contratual documentada e Golden especifico de equivalencia. |
+| `nosnum` | identificador de detalhe/documento da apolice | E parte obrigatoria do `PolicyLocator`. |
 | `numapo` | numero exibivel/buscavel da apolice | Pode buscar ou mostrar, mas deve resolver para `nosnum` antes do detalhe. |
-| `policy_ref` | referencia interna da apolice | Deve ser derivada exclusivamente de `nosnum`, com `codfil` como contexto quando necessario. |
+| `policy_ref` | referencia externa/operacional exibivel | Pode continuar simples, mas internamente sempre resolve para `PolicyLocator`. |
+
+### 8.1 PolicyLocator interno
+
+```text
+PolicyLocator:
+  provider = infocap
+  codfil
+  nosnum
+```
+
+Regras:
+
+- `policy_ref` nunca nasce de `codigo` ou `codcli`;
+- `numapo` e somente numero exibivel/buscavel e deve resolver para `nosnum`;
+- detalhe sempre usa `codfil + nosnum`;
+- `policy_ref` exibido ao operador pode continuar simples, mas a operacao interna deve carregar o locator completo para evitar colisao ou consulta na filial errada.
 
 Proibido:
 
@@ -123,9 +154,25 @@ Proibido:
 - CPF canonico derivado de campo generico quando o detalhe do cliente esta disponivel;
 - tratar `numapo` como se fosse sempre o identificador de detalhe.
 
-## 8. Fluxo canonico obrigatorio
+## 9. Status canonicos
 
-### 8.1 Busca por nome
+O adapter deve usar somente estes status estaveis na fronteira canônica:
+
+```text
+found
+ambiguous_customer
+ambiguous_policy
+source_limited
+provider_auth_error
+provider_timeout
+unknown_shape
+document_evidence_required
+conflict_requires_human
+```
+
+## 10. Fluxo canonico obrigatorio
+
+### 10.1 Busca por nome
 
 ```text
 customer_name
@@ -140,19 +187,22 @@ customer_name
 -> evidence pack
 ```
 
-### 8.2 Busca por CPF/CNPJ
+### 10.2 Busca por CPF/CNPJ
 
 ```text
 cpf_cnpj
 -> /cliente_cpf?codfil=<codfil>&cpf_cnpj=<digits>
--> obter/confirmar codigo e cpf_cnpj
--> se necessario, /cliente?codigo para detalhe canonico
+-> obter codigo/codfil candidato
+-> /cliente?codfil=<codfil>&codigo=<codigo>
+-> extrair cpf_cnpj canonico
 -> /cliente_ligacoes?codigo=<codigo>
--> /documento por nosnum
+-> /documento por PolicyLocator(codfil, nosnum)
 -> evidence pack
 ```
 
-### 8.3 Busca por numero de apolice
+Excecao: se houver prova contratual documentada de que `/cliente_cpf` retorna exatamente o mesmo detalhe canonico de `/cliente`, essa equivalencia deve ser coberta por Golden antes de qualquer otimizacao. Sem esse Golden, `/cliente?codigo` e obrigatorio.
+
+### 10.3 Busca por numero de apolice
 
 ```text
 policy_number/numapo
@@ -163,17 +213,17 @@ policy_number/numapo
 -> evidence pack
 ```
 
-### 8.4 Detalhe por policy_ref
+### 10.4 Detalhe por policy_ref
 
 ```text
 policy_ref
--> validar que policy_ref deriva de nosnum retornado anteriormente ou de lookup canonico
--> /documento?codfil=<codfil>&nosnum=<policy_ref>
+-> resolver para PolicyLocator(provider=infocap, codfil, nosnum)
+-> /documento?codfil=<codfil>&nosnum=<nosnum>
 -> preservar envelope restrito
 -> evidence pack
 ```
 
-## 9. Preservacao restrita do envelope
+## 11. Preservacao restrita do envelope
 
 O adapter deve preservar internamente um envelope restrito, nunca em logs:
 
@@ -207,9 +257,9 @@ Regras:
 - se schema for necessario para armazenar envelope restrito, a mudanca deve ser minima e aprovada antes da R1;
 - payload bruto, quando indispensavel, deve ter retencao curta, acesso restrito e referencia opaca.
 
-## 10. DTO interno e DTOs externos
+## 12. DTO interno e DTOs externos
 
-### 10.1 DTO interno do adapter
+### 12.1 DTO interno do adapter
 
 ```text
 PolicyReadResult
@@ -234,6 +284,7 @@ PolicyReadResult
     cancelled
   selected_policy?
     policy_ref
+    policy_locator
     nosnum
     numapo
     detail_source
@@ -249,13 +300,22 @@ PolicyReadResult
   safe_trace
 ```
 
-### 10.2 DTO para Core
+### 12.2 DTO para Core
 
 Core autorizado pode receber dados completos da propria corretora, incluindo CPF/CNPJ, nome, numero de apolice, vigencias, premio, franquia, LMI, clausulas e assistencias, desde que venham de fonte rastreada.
 
+Obrigatorio antes de expor dados completos ao Core:
+
+- sessao autenticada;
+- usuario vinculado a empresa;
+- papel permitido;
+- `company_id` resolvido server-side;
+- capability ativa;
+- conexao InfoCap saudavel da propria empresa.
+
 O Core nao recebe token, segredo, senha, payload bruto irrestrito nem dados de outro tenant.
 
-### 10.3 DTO para Even
+### 12.3 DTO para Even
 
 Even recebe somente:
 
@@ -266,18 +326,18 @@ Even recebe somente:
 - cobertura apenas como evidencia, nunca como promessa;
 - campos mascarados quando nao forem estritamente necessarios.
 
-### 10.4 DTO para Auxiliares
+### 12.4 DTO para Auxiliares
 
 Auxiliares recebem apenas o subconjunto declarado pela capability do auxiliar. Um auxiliar sem `operational.infocap.policy_lookup.read` nao consulta InfoCap.
 
-## 11. Regras de cobertura
+## 13. Regras de cobertura
 
 - Cobertura operacional vem de InfoCap estruturada, policy snapshot, documento oficial da apolice, evidencia vinculada, `policy_ref` e validacao humana quando necessaria.
 - RAG pode explicar termos e recuperar documento, mas nao confirma cobertura sozinho.
 - A ausencia de `itens`, `coberturas`, clausulas, franquias ou premio deve ser retornada como ausencia honesta.
 - O texto final deve dizer: "a fonte registra X", nao "o sinistro esta coberto", salvo decisao humana/corredor que autorize o estado operacional.
 
-## 12. Codigos curtos como cobertura
+## 14. Codigos curtos como cobertura
 
 Campos com valores como `P`, `A`, `C`, `S`, `N`, numeros isolados ou abreviacoes sem dicionario comprovado:
 
@@ -286,7 +346,7 @@ Campos com valores como `P`, `A`, `C`, `S`, `N`, numeros isolados ou abreviacoes
 - so podem ganhar label humano se houver dicionario documentado por provider;
 - devem reduzir confianca do parser quando forem o unico sinal de cobertura.
 
-## 13. Ambiguidade
+## 15. Ambiguidade
 
 O adapter deve exigir selecao quando:
 
@@ -298,7 +358,7 @@ O adapter deve exigir selecao quando:
 
 Nao selecionar automaticamente por aproximacao fraca.
 
-## 14. Prompt e LLM
+## 16. Prompt e LLM
 
 A R1 nao altera prompts como solucao principal. O prompt pode continuar instruindo o Core a nao inventar, mas a garantia deve vir do adapter:
 
@@ -308,7 +368,7 @@ A R1 nao altera prompts como solucao principal. O prompt pode continuar instruin
 - tool nao entrega `policy_ref` errado;
 - resposta final deve poder ser auditada contra o evidence pack.
 
-## 15. Trace seguro
+## 17. Trace seguro
 
 Campos permitidos:
 
@@ -346,7 +406,7 @@ conteudo integral de apolice
 PII real em fixture
 ```
 
-## 16. Feature flag e rollback
+## 18. Feature flag e rollback
 
 Permitido:
 
@@ -360,7 +420,7 @@ Proibido:
 - HTTP Tool/MCP para substituir o adapter;
 - schema grande ou armazenamento novo antes de prova de necessidade.
 
-## 17. Golden tests obrigatorios
+## 19. Golden tests obrigatorios
 
 A matriz completa esta em `GOLDEN-TEST-MATRIX-INFOCAP.md`. A R1 nao passa sem:
 
@@ -370,11 +430,12 @@ A matriz completa esta em `GOLDEN-TEST-MATRIX-INFOCAP.md`. A R1 nao passa sem:
 - nenhuma PII real;
 - cobertura de nome, CPF, homonimo, `numapo`, `nosnum`, envelope `/documento`, item `P`, ausencia de cobertura, Core/Even/Auxiliar e logs sem PII.
 
-## 18. Criterios de aceite da R1
+## 20. Criterios de aceite da R1
 
 - Busca por nome sempre confirma cliente canonico via `/cliente?codigo` antes de usar CPF.
+- Busca por CPF tambem chama `/cliente?codigo`, salvo equivalencia provada por Golden.
 - CPF canonico vem de `cpf_cnpj` do detalhe do cliente.
-- `policy_ref` deriva exclusivamente de `nosnum`.
+- Toda leitura de detalhe usa `PolicyLocator(provider=infocap, codfil, nosnum)`.
 - `numapo` e apenas exibivel/buscavel.
 - Envelope de `/documento` nao e descartado antes da extracao de `itens`, `coberturas`, `parcelas`, `historico` e `acompanhamento`.
 - Codigo curto como `P` nao vira cobertura.
@@ -383,7 +444,7 @@ A matriz completa esta em `GOLDEN-TEST-MATRIX-INFOCAP.md`. A R1 nao passa sem:
 - Trace nao contem PII, token, senha ou payload bruto.
 - Nenhum endpoint paralelo, runtime paralelo, RAG paralelo ou Vault paralelo foi criado.
 
-## 19. APPLY -> VERIFY -> ROLLBACK
+## 21. APPLY -> VERIFY -> ROLLBACK
 
 ### APPLY
 
@@ -408,7 +469,7 @@ A matriz completa esta em `GOLDEN-TEST-MATRIX-INFOCAP.md`. A R1 nao passa sem:
 - Registrar falha por fixture/trace seguro.
 - Corrigir e repetir Golden tests antes de novo rollout.
 
-## 20. Fora de escopo da SPEC-015A
+## 22. Fora de escopo da SPEC-015A
 
 - Prompt Efetivo no Portal Admin.
 - Migracao completa de `tools_config`.

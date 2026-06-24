@@ -258,3 +258,60 @@ Canonical InfoCap Policy Read Adapter
 ```
 
 Nao iniciar Prompt Efetivo, RAG documental, Drive/Notion, Auxiliares ou WhatsApp antes da base de leitura de apolice estar correta.
+
+## 10. Atualizacao R1A - Contract Capture Gate
+
+Antes da R1B, existe agora uma etapa obrigatoria chamada **R0.5 - Contract Capture Gate**.
+
+O gate estende o probe existente `POST /attendance/connectors/infocap/probe` com `mode = policy_chain_contract` e cobre, somente em leitura:
+
+```text
+/cliente_cpf ou /lista_clientes
+-> /cliente
+-> /cliente_ligacoes
+-> /documento
+```
+
+O modo e master-only no Portal Admin e retorna apenas:
+
+- endpoint logico;
+- HTTP status;
+- tipo bruto;
+- top-level keys;
+- nested key paths ate profundidade segura;
+- tipos por chave;
+- listas e contagens;
+- sample keys sem valores;
+- `array_key_detected`;
+- `shape_hash`;
+- `parse_status`;
+- `candidate_count`;
+- `document_count`;
+- campos canonicos detectados.
+
+Proibido retornar/logar:
+
+- CPF/CNPJ;
+- nome;
+- email;
+- telefone;
+- endereco;
+- numero de apolice;
+- `codigo`;
+- `codfil`;
+- `nosnum`;
+- valores de premio/cobertura;
+- token;
+- senha;
+- payload bruto.
+
+O gate tambem formaliza o locator interno:
+
+```text
+PolicyLocator:
+  provider = infocap
+  codfil
+  nosnum
+```
+
+O `policy_ref` exibivel nunca pode nascer de `codigo` ou `codcli`; a leitura de detalhe sempre deve resolver para `codfil + nosnum`.
