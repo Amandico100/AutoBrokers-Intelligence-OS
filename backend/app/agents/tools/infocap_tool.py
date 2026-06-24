@@ -77,6 +77,7 @@ class InfocapPolicyLookupTool(BaseTool):
                 from app.api.infocap_connector import infocap_policy_detail, InfocapPolicyDetailPayload
                 dpayload = InfocapPolicyDetailPayload(
                     company_id=self.company_id, tenant_connection_id=str(conn_id), policy_ref=str(policy_ref),
+                    unmasked=True,  # Core/corretor interno: dados completos
                 )
                 det = await infocap_policy_detail(payload=dpayload, x_autobrokers_internal_key=key, db=db)
                 return {"content": self._summarize_detail(det), "data": det, "found": bool(det.get("ok"))}
@@ -86,6 +87,7 @@ class InfocapPolicyLookupTool(BaseTool):
             payload = InfocapLookupPayload(
                 company_id=self.company_id, tenant_connection_id=str(conn_id),
                 document=document or None, name=name or None,
+                unmasked=True,  # Core/corretor interno: dados completos (CPF/nome/nº)
             )
             result = await infocap_lookup(payload=payload, x_autobrokers_internal_key=key, db=db)
             return {"content": self._summarize(result), "data": result, "found": bool(result.get("ok"))}
@@ -106,11 +108,13 @@ class InfocapPolicyLookupTool(BaseTool):
             return "Não consegui obter os detalhes dessa apólice na InfoCap agora."
         pack = d.get("policy_evidence_pack") or {}
         secs = pack.get("coverage_sections") or []
+        num = pack.get("policy_number") or pack.get("masked_policy_number") or "—"
+        titular = pack.get("holder_name") or pack.get("holder_name_masked") or "—"
         lines = [
             "Detalhes da apólice (InfoCap):",
             f"- Seguradora: {pack.get('insurer_detected') or '—'} · Produto: {pack.get('product_detected') or '—'}",
-            f"- Nº (mascarado): {pack.get('masked_policy_number') or '—'} · Situação: {pack.get('policy_status') or '—'}",
-            f"- Vigência: {pack.get('valid_from') or '—'} a {pack.get('valid_to') or '—'}",
+            f"- Nº apólice: {num} · Titular: {titular}" + (f" · CPF/CNPJ: {pack.get('document')}" if pack.get('document') else ""),
+            f"- Situação: {pack.get('policy_status') or '—'} · Vigência: {pack.get('valid_from') or '—'} a {pack.get('valid_to') or '—'}",
         ]
         if secs:
             lines.append("- Coberturas:")
@@ -125,19 +129,26 @@ class InfocapPolicyLookupTool(BaseTool):
     @staticmethod
     def _summarize(r: Dict[str, Any]) -> str:
         status = r.get("status")
+        # Cliente/CPF (modo interno do Core): disponível em vários desfechos.
+        cli = ""
+        if r.get("client_document") or r.get("client_name"):
+            cli = f"\n- Cliente: {r.get('client_name') or '—'} · CPF/CNPJ: {r.get('client_document') or '—'}"
         if r.get("ok") and status == "found":
             sel = r.get("selected") or {}
+            num = sel.get("policy_number") or sel.get("masked_policy_number") or "—"
+            titular = sel.get("holder_name") or sel.get("holder_name_masked") or "—"
+            doc = sel.get("document") or r.get("client_document")
             return (
                 "Apólice localizada na InfoCap:\n"
                 f"- Seguradora: {sel.get('insurer_key') or '—'} · Produto: {sel.get('product') or '—'}\n"
-                f"- Nº (mascarado): {sel.get('masked_policy_number') or '—'} · Titular: {sel.get('holder_name_masked') or '—'}\n"
+                f"- Nº apólice: {num} · Titular: {titular}" + (f" · CPF/CNPJ: {doc}" if doc else "") + "\n"
                 f"- Situação: {sel.get('policy_status') or '—'} · Vigência: {sel.get('valid_from') or '—'} a {sel.get('valid_to') or '—'}\n"
-                "Observação: cobertura específica depende da leitura dos itens da apólice."
+                f"- policy_ref: {sel.get('policy_ref') or '—'} (use para detalhar as coberturas).{cli}"
             )
         if status == "multiple_matches":
-            return "Encontrei mais de uma apólice/cliente para esse termo. Confirme com mais dados (CPF/CNPJ) para selecionar a correta."
+            return "Encontrei mais de uma apólice/cliente para esse termo. Liste as opções (seguradora, produto, vigência, policy_ref) e peça para o corretor escolher; ou refine com o CPF/CNPJ." + cli
         if status in ("not_found", "client_found"):
-            return "Não localizei apólice ativa para esse cliente na InfoCap."
+            return ("Cliente localizado, mas sem apólice/documento vinculado retornado." + cli) if status == "client_found" else "Não localizei cliente/apólice para esse termo na InfoCap."
         if status in ("blocked_not_configured", "blocked_missing_credentials"):
             return "A InfoCap não está totalmente configurada para a sua corretora (credencial/base ausente)."
         return "Não foi possível concluir a consulta na InfoCap agora."

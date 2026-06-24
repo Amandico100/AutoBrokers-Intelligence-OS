@@ -163,6 +163,7 @@ class InfocapLookupPayload(BaseModel):
     name: Optional[str] = None
     prefer_insurer: Optional[str] = None
     prefer_product: Optional[str] = None
+    unmasked: bool = False  # Core/corretor interno: dados completos (CPF/nome/nº)
 
 
 def _digits(s: Optional[str]) -> str:
@@ -287,22 +288,33 @@ def _shape(data: Any) -> Dict[str, Any]:
     return {"raw_type": "empty", "result_count": 0, "top_level_keys": [], "array_key_detected": None, "sample_keys": []}
 
 
-def _sanitize_match(record: Dict[str, Any]) -> Dict[str, Any]:
+# Campos crus de documento/CPF e nome (usados no modo interno/desmascarado do Core).
+_DOC_KEYS = ["cpf_cnpj", "cpf", "cnpj", "documento", "doc", "cpfcnpj", "cgccpf", "ni"]
+_NAME_KEYS = ["cliente", "nome", "name", "razao_social", "segurado", "nome_cliente"]
+_POLNUM_KEYS = ["numapo", "apolice", "nosnum", "numero", "num_apolice"]
+
+
+def _sanitize_match(record: Dict[str, Any], unmasked: bool = False) -> Dict[str, Any]:
     cancelado = record.get("cancelado")
     status = _first_str(record, ["sit_acompanhamento_txt", "status", "situacao", "renovacao_situacao"])
     if not status and cancelado is not None:
         status = "cancelado" if cancelado in (True, 1, "1", "S", "s") else "ativo"
-    return {
+    policy_number = _first_str(record, _POLNUM_KEYS)
+    name = _first_str(record, _NAME_KEYS)
+    out = {
         "policy_ref": _first_str(record, ["codcli", "codigo", "id", "nosnum"]) or "infocap-match",
         "insurer_key": _first_str(record, ["seguradora_abrev", "cia", "codcia", "seguradora"]),
         "product": _first_str(record, ["ramo_abrev", "ramo", "codram", "produto", "descricao"]),
         "line_kind": None,
         "policy_status": status,
-        "masked_policy_number": _mask_tail(
-            _first_str(record, ["numapo", "apolice", "nosnum", "numero", "num_apolice"])
-        ),
-        "holder_name_masked": _mask_name(_first_str(record, ["cliente", "nome", "name", "razao_social"])),
+        "masked_policy_number": _mask_tail(policy_number),
+        "holder_name_masked": _mask_name(name),
     }
+    if unmasked:  # Core/corretor interno: dados completos (dono da informação)
+        out["policy_number"] = policy_number
+        out["holder_name"] = name
+        out["document"] = _first_str(record, _DOC_KEYS)
+    return out
 
 
 def _extract_documents(data: Any) -> List[Dict[str, Any]]:
@@ -359,8 +371,8 @@ def _active_expired(
     return {"active_now": active, "expired": expired}
 
 
-def _sanitize_policy(doc: Dict[str, Any]) -> Dict[str, Any]:
-    """Normaliza uma apólice/documento (sanitizado; sem PII crua, número mascarado)."""
+def _sanitize_policy(doc: Dict[str, Any], unmasked: bool = False) -> Dict[str, Any]:
+    """Normaliza uma apólice/documento. unmasked=True (Core/corretor) → dados completos."""
     is_cancel = doc.get("cancelado") in _CANCEL_TRUTHY
     status = "cancelado" if is_cancel else (
         _first_str(doc, ["sit_acompanhamento_txt", "sit_renovacao_txt", "tipdoc_txt", "situacao", "status"]) or "ativo"
@@ -371,14 +383,16 @@ def _sanitize_policy(doc: Dict[str, Any]) -> Dict[str, Any]:
     valid_from = _first_str(doc, ["inivig", "datini", "inicio_vigencia"])
     valid_to = _first_str(doc, ["fimvig", "datfim", "fim_vigencia"])
     ae = _active_expired(valid_from, valid_to, is_cancel)
-    return {
+    policy_number = _first_str(doc, _POLNUM_KEYS)
+    name = _first_str(doc, _NAME_KEYS)
+    out = {
         "policy_ref": _first_str(doc, ["nosnum", "codigo", "codcli"]) or "infocap-doc",
         "insurer_key": _first_str(doc, ["seguradora_abrev", "seguradora", "cia", "codcia"]),
         "product": _first_str(doc, ["ramo_abrev", "ramo", "codram", "produto", "descricao"]),
         "line_kind": None,
         "policy_status": status,
-        "masked_policy_number": _mask_tail(_first_str(doc, ["numapo", "apolice", "nosnum", "numero", "num_apolice"])),
-        "holder_name_masked": _mask_name(_first_str(doc, ["cliente", "nome", "name", "razao_social"])),
+        "masked_policy_number": _mask_tail(policy_number),
+        "holder_name_masked": _mask_name(name),
         "valid_from": valid_from,
         "valid_to": valid_to,
         "active_now": ae["active_now"],
@@ -386,6 +400,11 @@ def _sanitize_policy(doc: Dict[str, Any]) -> Dict[str, Any]:
         "coverages_count": len(coverages),
         "cancelled": is_cancel,
     }
+    if unmasked:
+        out["policy_number"] = policy_number
+        out["holder_name"] = name
+        out["document"] = _first_str(doc, _DOC_KEYS)
+    return out
 
 
 def _policy_sort_key(policy: Dict[str, Any], prefer_insurer: Optional[str], prefer_product: Optional[str]):
@@ -441,6 +460,7 @@ async def infocap_lookup(
 
     company_id = (payload.company_id or "").strip()
     connection_id = (payload.tenant_connection_id or "").strip()
+    unmasked = bool(getattr(payload, "unmasked", False))
     if not company_id or not connection_id:
         raise HTTPException(status_code=400, detail="company_id and tenant_connection_id are required")
 
@@ -569,7 +589,7 @@ async def infocap_lookup(
                 return _done({"ok": False, "status": "not_found", "verification_status": "unverified", "http_status": http_status, "result_count": 0, "blockers": [], "notes": ["Nenhum resultado para o termo de busca."]})
             # Busca por NOME com vários clientes → desambiguação humana (nível cliente)
             if query_strategy == "customer_name" and len(arr) > 1:
-                return _done({"ok": False, "status": "multiple_matches", "verification_status": "unverified", "http_status": http_status, "result_count": len(arr), "matches": [_sanitize_match(r) for r in arr[:5]], "requires_human": True, "blockers": ["multiple_client_matches"]})
+                return _done({"ok": False, "status": "multiple_matches", "verification_status": "unverified", "http_status": http_status, "result_count": len(arr), "matches": [_sanitize_match(r, unmasked) for r in arr[:5]], "requires_human": True, "blockers": ["multiple_client_matches"]})
 
             record = arr[0]
             codfil_val = record.get("codfil") or codfil_default
@@ -625,7 +645,7 @@ async def infocap_lookup(
                     detailed.append(d)
 
             source_docs = detailed or documents
-            policies = [_sanitize_policy(p) for p in source_docs]
+            policies = [_sanitize_policy(p, unmasked) for p in source_docs]
             documents_count = len(policies)
             now = datetime.now(timezone.utc).isoformat()
             # Flags de cliente reutilizadas em todos os desfechos (42I3A).
@@ -635,6 +655,9 @@ async def infocap_lookup(
                 "client_ref_fields": [k for k in CLIENT_REF_KEYS if k in client_ref],
                 "client_ref": client_ref,
             }
+            if unmasked:  # Core/corretor: nome e CPF/CNPJ completos do cliente
+                client_flags["client_name"] = _first_str(record, _NAME_KEYS)
+                client_flags["client_document"] = _first_str(record, _DOC_KEYS)
 
             # Cliente sem documentos → client_found
             if documents_count == 0:
@@ -910,6 +933,34 @@ class InfocapPolicyDetailPayload(BaseModel):
     tenant_connection_id: str
     codfil: Optional[int] = None
     policy_ref: str
+    unmasked: bool = False  # Core/corretor interno: dados completos
+
+
+# Chaves candidatas de listas de cobertura/itens e de rótulos/valores (amplas — InfoCap varia o shape).
+_COVERAGE_LIST_KEYS = (
+    "itens", "coberturas", "garantias", "verbas", "capitais", "importancias", "bens",
+    "ramos", "detalhes", "objetos", "clausulas", "componentes", "produtos_itens",
+)
+_COVERAGE_LABEL_KEYS = ("descricao", "cobertura", "garantia", "nome", "item", "ramo", "tipo", "bem", "clausula", "objeto", "titulo")
+_COVERAGE_AMOUNT_KEYS = ("valor", "is", "importancia_segurada", "importancia", "limite", "limite_maximo_indenizacao", "lmi", "capital", "valor_is", "valor_segurado", "premio", "premio_liquido")
+
+
+def _coverage_item_lists(doc: Dict[str, Any]) -> List[List[Dict[str, Any]]]:
+    """Coleta listas de itens/coberturas: chaves conhecidas + qualquer lista de dicts com rótulo."""
+    lists: List[List[Dict[str, Any]]] = []
+    seen = set()
+    for k in _COVERAGE_LIST_KEYS:
+        v = doc.get(k)
+        if isinstance(v, list) and any(isinstance(x, dict) for x in v):
+            lists.append([x for x in v if isinstance(x, dict)]); seen.add(k)
+    # fallback: qualquer lista de dicts (no topo) que tenha um campo de rótulo plausível
+    for k, v in doc.items():
+        if k in seen or not isinstance(v, list):
+            continue
+        dicts = [x for x in v if isinstance(x, dict)]
+        if dicts and any(_first_str(d, list(_COVERAGE_LABEL_KEYS)) for d in dicts[:5]):
+            lists.append(dicts)
+    return lists
 
 
 def _coverage_texts(doc: Dict[str, Any]) -> List[str]:
@@ -919,32 +970,25 @@ def _coverage_texts(doc: Dict[str, Any]) -> List[str]:
         v = doc.get(key)
         if isinstance(v, str):
             parts.append(v)
-    for listkey in ("itens", "coberturas"):
-        items = doc.get(listkey)
-        if isinstance(items, list):
-            for it in items[:40]:
-                if isinstance(it, dict):
-                    for dk in ("descricao", "cobertura", "nome", "item", "ramo", "tipo"):
-                        dv = it.get(dk)
-                        if isinstance(dv, str):
-                            parts.append(dv)
+    for items in _coverage_item_lists(doc):
+        for it in items[:60]:
+            for dk in _COVERAGE_LABEL_KEYS:
+                dv = it.get(dk)
+                if isinstance(dv, str):
+                    parts.append(dv)
     return [p for p in parts if p]
 
 
 def _coverage_sections(doc: Dict[str, Any]) -> List[Dict[str, Any]]:
-    """Seções de cobertura sanitizadas (descrição + valor de cobertura, sem PII)."""
+    """Seções de cobertura (descrição + valor). Amplo: varre todas as listas de itens plausíveis."""
     out: List[Dict[str, Any]] = []
-    for listkey in ("itens", "coberturas"):
-        items = doc.get(listkey)
-        if isinstance(items, list):
-            for it in items[:40]:
-                if not isinstance(it, dict):
-                    continue
-                label = _first_str(it, ["descricao", "cobertura", "nome", "item", "ramo", "tipo"])
-                amount = _first_str(it, ["valor", "is", "importancia_segurada", "limite", "capital"])
-                if label:
-                    out.append({"label": label, "amount": amount})
-    return out[:40]
+    for items in _coverage_item_lists(doc):
+        for it in items[:60]:
+            label = _first_str(it, list(_COVERAGE_LABEL_KEYS))
+            amount = _first_str(it, list(_COVERAGE_AMOUNT_KEYS))
+            if label:
+                out.append({"label": label, "amount": amount})
+    return out[:60]
 
 
 def _signal(texts_joined: str, has_any_text: bool, pattern: "re.Pattern[str]") -> Optional[bool]:
@@ -955,10 +999,10 @@ def _signal(texts_joined: str, has_any_text: bool, pattern: "re.Pattern[str]") -
 
 
 def _build_evidence_pack(
-    doc: Dict[str, Any], prefer_insurer: Optional[str], prefer_product: Optional[str]
+    doc: Dict[str, Any], prefer_insurer: Optional[str], prefer_product: Optional[str], unmasked: bool = False
 ) -> Dict[str, Any]:
-    """Monta o policy_evidence_pack sanitizado a partir de um documento de detalhe."""
-    base = _sanitize_policy(doc)
+    """Monta o policy_evidence_pack a partir de um documento de detalhe. unmasked=True → dados completos (Core)."""
+    base = _sanitize_policy(doc, unmasked)
     texts = _coverage_texts(doc)
     joined = " ".join(texts)
     has_text = bool(texts)
@@ -1018,6 +1062,11 @@ def _build_evidence_pack(
         "confidence": confidence,
         "human_required": human_required,
         "limitations": limitations,
+        **({
+            "policy_number": base.get("policy_number"),
+            "holder_name": base.get("holder_name"),
+            "document": base.get("document"),
+        } if unmasked else {}),
     }
 
 
@@ -1032,6 +1081,7 @@ async def infocap_policy_detail(
     company_id = (payload.company_id or "").strip()
     connection_id = (payload.tenant_connection_id or "").strip()
     policy_ref = (payload.policy_ref or "").strip()
+    unmasked = bool(getattr(payload, "unmasked", False))
     if not company_id or not connection_id or not policy_ref:
         raise HTTPException(status_code=400, detail="company_id, tenant_connection_id and policy_ref are required")
 
@@ -1117,7 +1167,7 @@ async def infocap_policy_detail(
                 return {"ok": False, "status": "not_found", "source": "infocap", "http_status": det.status_code, "blockers": ["empty_detail"]}
 
             doc = docs[0]
-            pack = _build_evidence_pack(doc, prefer_insurer, prefer_product)
+            pack = _build_evidence_pack(doc, prefer_insurer, prefer_product, unmasked)
             _log("found", extra=f" confidence={pack.get('confidence')}")
             return {
                 "ok": True,
@@ -1125,7 +1175,7 @@ async def infocap_policy_detail(
                 "source": "infocap",
                 "source_ref": "infocap:documento",
                 "http_status": det.status_code,
-                "policy": _sanitize_policy(doc),
+                "policy": _sanitize_policy(doc, unmasked),
                 "policy_evidence_pack": pack,
                 "verified_at": datetime.now(timezone.utc).isoformat(),
             }
