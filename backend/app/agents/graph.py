@@ -25,7 +25,7 @@ from app.services.agent_service import AgentService
 from app.services.memory_service import MemoryService
 
 from .capability_resolver import active_keys, resolve_active_capabilities
-from .nodes import agent_node, log_node, should_continue, tool_node
+from .nodes import agent_node, log_node, should_continue, should_continue_after_tools, tool_node
 from .state import AgentState
 from .tools import HumanHandoffTool, KnowledgeBaseTool, MCPToolFactory, WebSearchTool
 
@@ -405,7 +405,11 @@ async def create_agent_graph(
         {"tools": "tools", "end": "log" if enable_logging else END},
     )
 
-    workflow.add_edge("tools", "agent")
+    workflow.add_conditional_edges(
+        "tools",
+        should_continue_after_tools,
+        {"agent": "agent", "end": "log" if enable_logging else END},
+    )
 
     if enable_logging:
         workflow.add_edge("log", END)
@@ -805,6 +809,7 @@ Se você descrever em texto, o usuário VÊ UMA LISTA FEIA EM VEZ DO CARROSSEL B
         "search_strategy": rag_prefetch_strategy,
         "retrieval_score": rag_prefetch_score,
         "tools_used": [],
+        "policy_response_contract": None,
         "llm_response_time_ms": 0,
         "tokens_input": 0,
         "tokens_output": 0,
@@ -1111,6 +1116,15 @@ async def stream_agent(
                                 has_streamed = True
 
                 # Stream completado com sucesso
+                if not has_streamed:
+                    try:
+                        final_state = await graph.aget_state(config)
+                        final_text = final_state.values.get("final_response", "")
+                        if final_text:
+                            yield str(final_text)
+                            has_streamed = True
+                    except Exception as final_error:  # noqa: BLE001
+                        logger.warning(f"[Stream] final_response fallback indisponivel: {type(final_error).__name__}")
                 break
 
             except (PsycopgOperationalError, Exception) as retry_error:
@@ -1178,4 +1192,3 @@ async def stream_agent(
     except Exception as e:
         logger.error(f"[Stream] Error during streaming: {e}", exc_info=True)
         yield "\n\n[Erro interno no servidor durante a geração da resposta.]"
-

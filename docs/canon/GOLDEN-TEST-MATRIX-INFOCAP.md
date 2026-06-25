@@ -66,7 +66,13 @@ infocap_policy_detail_item_code_p.json
 | G35 | Conexao ambigua | Duas conexoes InfoCap elegiveis | qualquer consulta | 2+ elegiveis | `ambiguous_connection` e nenhuma chamada silenciosa | Escolher mais recente |
 | G36 | Locator obrigatorio no detalhe | `policy_ref` simples sem `codfil` validado | detalhe | `nosnum`/`numapo` cru | Retorna limite de fonte ou exige locator resolvido | Chamar `/documento` com `codfil` padrao |
 | G37 | Produto nao e cobertura | Produto/ramo residencial ou auto | detalhe sem itens | somente `produto`, `ramo`, `descricao` | `structured_coverage_absent`, `assistance_signals` vazio/unknown | Gerar assistencia/eletricista por produto |
-| G38 | Opcoes deterministicas | Multiplas apolices | busca sem ref | catalogo 2+ docs | Texto inclui ate 10 opcoes com seguradora, produto, vigencia, status, numero e `policy_locator_ref` | LLM escolher sozinho |
+| G38 | Opcoes deterministicas | Multiplas apolices | busca sem ref | catalogo 2+ docs | Texto inclui ate 10 opcoes com seguradora, produto, vigencia, status e numero humano quando valido | LLM escolher sozinho ou exigir locator tecnico |
+| G39 | Tool aceita numero humano | Schema da tool | `policy_number` | numero humano da apolice | Tool aceita argumento proprio | Forcar numero humano em `policy_ref` |
+| G40 | Numero humano resolve locator | `/documentos` com `numapo` e `nosnum` | `policy_number` | match exato por `numapo` | Resolve `PolicyLocator(codfil,nosnum)` antes do detalhe | Chamar `/documento` com `numapo` direto |
+| G41 | Numero humano ambiguo | `/documentos` com 2 matches exatos | `policy_number` | 2+ docs | `ambiguous_policy` com opcoes | Escolher primeiro |
+| G42 | Numero invalido | `numapo=0` ou placeholder | listagem/detalhe | numero invalido | Exibe "numero nao retornado pela InfoCap" | Mostrar "Numero: 0" |
+| G43 | Output guard InfoCap | Tool retorna contrato operacional | resposta final LLM | LLM omite opcoes ou diz erro tecnico | Smith substitui/completa pela resposta deterministica | Perder opcoes ou inventar erro tecnico |
+| G44 | Ausencia de cobertura no chat | `/documento` sem cobertura | pergunta de cobertura | `structured_coverage_absent=true` | Resposta declara ausencia de itens estruturados | Afirmar eletricista/assistencia/incendio/franquia |
 
 ## 4. Goldens de fluxo
 
@@ -191,4 +197,19 @@ O teste `backend/tests/test_infocap_contract_capture.py` tambem cobre:
 - `ramo`/`produto` residencial sem assistencia positiva;
 - produto auto/eletrico sem sinal de eletricista;
 - opcoes deterministicas em ambiguidade;
+- nenhuma chamada a provider real.
+
+## 9. Cobertura R1B.2 implementada no harness offline
+
+Os testes `backend/tests/test_infocap_contract_capture.py` e `backend/tests/test_infocap_policy_output_guard.py` cobrem:
+
+- schema/runtime da tool aceitando `policy_number`;
+- `numapo` resolvendo para `PolicyLocator`;
+- multiplos matches exatos retornando `ambiguous_policy`;
+- numero `0` nao sendo exibido como numero valido;
+- opcoes de ambiguidade usando numero humano, sem exigir locator tecnico por padrao;
+- helper de debug podendo expor locator interno quando necessario;
+- output guard impedindo que a LLM apague opcoes;
+- output guard impedindo conversao de cobertura ausente em "erro tecnico";
+- roteamento do Smith encerrando a resposta operacional de InfoCap sem reescrita livre pela LLM;
 - nenhuma chamada a provider real.

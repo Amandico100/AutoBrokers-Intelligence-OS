@@ -13,7 +13,7 @@ import asyncio
 import json
 import logging
 import time
-from typing import Literal
+from typing import Any, Dict, Literal, Optional
 
 from langchain_core.messages import AIMessage, HumanMessage, SystemMessage, ToolMessage
 
@@ -24,6 +24,55 @@ from .context import build_task_context
 logger = logging.getLogger(__name__)
 
 from app.core.constants import AGENT_CONTEXT_WINDOW_SIZE
+
+
+_INFOCAP_GENERIC_ERROR_MARKERS = (
+    "erro tecnico",
+    "erro técnico",
+    "nao consegui obter",
+    "não consegui obter",
+    "tente novamente mais tarde",
+    "suporte tecnico",
+    "suporte técnico",
+    "envie o pdf",
+    "enviar pdf",
+)
+
+
+def _guard_infocap_policy_final_response(candidate_text: str, contract: Optional[Dict[str, Any]]) -> str:
+    """R1B.2: InfoCap policy answers are operational contracts, not free-form summaries."""
+    if not isinstance(contract, dict) or contract.get("provider") != "infocap":
+        return candidate_text or ""
+    rendered = str(contract.get("rendered_safe_answer") or "").strip()
+    if not rendered:
+        return candidate_text or ""
+    candidate = str(candidate_text or "").strip()
+    lower = candidate.lower()
+    required = set(contract.get("required_facts") or [])
+    result_kind = contract.get("result_kind")
+
+    if not candidate:
+        return rendered
+    if any(marker in lower for marker in _INFOCAP_GENERIC_ERROR_MARKERS):
+        return rendered
+    if result_kind == "ambiguous_policy" and ("policy_options" in required):
+        if "seguradora" not in lower or "numero" not in lower:
+            return rendered
+    if "coverage_absent" in required and "nao retornou itens estruturados" not in lower and "não retornou itens estruturados" not in lower:
+        return rendered
+    if "source_limited" in required and "erro" in lower:
+        return rendered
+    return candidate
+
+
+def should_continue_after_tools(state: AgentState) -> Literal["agent", "end"]:
+    """Route InfoCap policy contracts directly to the final answer inside the existing Smith graph."""
+    contract = state.get("policy_response_contract")
+    final_response = state.get("final_response")
+    if isinstance(contract, dict) and contract.get("provider") == "infocap" and final_response:
+        logger.info("[Router] InfoCap policy contract finalized without LLM rewrite")
+        return "end"
+    return "agent"
 
 
 def sanitize_history(messages: list) -> list:
@@ -373,6 +422,8 @@ async def tool_node(state: AgentState, tools: list) -> dict:
     tools_used = state.get("tools_used", [])
     rag_chunks = state.get("rag_chunks", [])
     rag_search_time = state.get("rag_search_time_ms", 0)
+    policy_response_contract = None
+    policy_final_response = None
 
     # Extrair agent_id do state
     agent_data = state.get("agent_data")
@@ -488,6 +539,17 @@ async def tool_node(state: AgentState, tools: list) -> dict:
                         except (json.JSONDecodeError, AttributeError, TypeError) as parse_err:
                             logger.warning(f"[Tool Node] SubAgent JSON parse error: {parse_err}")
                             content = str(result)
+                    elif tool_name == "infocap_policy_lookup":
+                        if isinstance(result, dict):
+                            policy_response_contract = result.get("policy_response_contract")
+                            if isinstance(policy_response_contract, dict):
+                                policy_final_response = _guard_infocap_policy_final_response(
+                                    str(result.get("content") or ""),
+                                    policy_response_contract,
+                                )
+                            content = json.dumps(result, ensure_ascii=False, default=str)
+                        else:
+                            content = str(result)
                     else:
                         content = str(result)
 
@@ -525,6 +587,10 @@ async def tool_node(state: AgentState, tools: list) -> dict:
     # Persist internal_steps se houve delegação
     if internal_steps:
         return_dict["internal_steps"] = internal_steps
+
+    if policy_response_contract and policy_final_response:
+        return_dict["policy_response_contract"] = policy_response_contract
+        return_dict["final_response"] = policy_final_response
 
     return return_dict
 

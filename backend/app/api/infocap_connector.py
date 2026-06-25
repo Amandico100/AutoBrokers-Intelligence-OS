@@ -179,6 +179,45 @@ def _mask_tail(value: Optional[str], keep: int = 2) -> Optional[str]:
     return f"****{d[-keep:]}"
 
 
+_INVALID_POLICY_NUMBER_VALUES = {"", "0", "00", "000", "0000", "null", "none", "n/a", "na", "-"}
+
+
+def _normalize_policy_identifier(value: Optional[str]) -> str:
+    return re.sub(r"[^0-9A-Za-z]", "", str(value or "")).upper()
+
+
+def _is_valid_policy_number(value: Optional[str]) -> bool:
+    raw = str(value or "").strip()
+    if raw.lower() in _INVALID_POLICY_NUMBER_VALUES:
+        return False
+    normalized = _normalize_policy_identifier(raw)
+    if not normalized:
+        return False
+    if normalized.isdigit() and set(normalized) == {"0"}:
+        return False
+    return True
+
+
+def _first_valid_policy_number(record: Dict[str, Any], keys: List[str]) -> Optional[str]:
+    value = _first_str(record, keys)
+    return value if _is_valid_policy_number(value) else None
+
+
+def _policy_doc_matches_identifier(doc: Dict[str, Any], requested: Optional[str]) -> bool:
+    requested_norm = _normalize_policy_identifier(requested)
+    if not requested_norm:
+        return False
+    return any(
+        _normalize_policy_identifier(_first_str(doc, [key])) == requested_norm
+        for key in ("numapo", "nosnum")
+    )
+
+
+def _display_policy_number(record: Dict[str, Any]) -> str:
+    value = record.get("policy_number") or record.get("numapo") or record.get("masked_policy_number")
+    return str(value).strip() if _is_valid_policy_number(str(value or "")) else "numero nao retornado pela InfoCap"
+
+
 def _mask_name(name: Optional[str]) -> Optional[str]:
     if not name or not isinstance(name, str):
         return None
@@ -549,20 +588,23 @@ def _connection_block_response(
     return out
 
 
-def _format_policy_options_for_summary(matches: List[Dict[str, Any]]) -> str:
+def _format_policy_options_for_summary(matches: List[Dict[str, Any]], *, include_internal_ref: bool = False) -> str:
     lines = ["Opcoes de apolice encontradas:"]
     for index, match in enumerate((matches or [])[:10], start=1):
         ref = match.get("policy_locator_ref") or match.get("policy_ref") or "-"
-        num = match.get("policy_number") or match.get("masked_policy_number") or "-"
+        num = _display_policy_number(match)
         insurer = match.get("insurer_key") or "-"
         product = match.get("product") or "-"
         valid_from = match.get("valid_from") or "-"
         valid_to = match.get("valid_to") or "-"
         status = match.get("policy_status") or "-"
-        lines.append(
+        line = (
             f"{index}. Seguradora: {insurer}; Produto/ramo: {product}; Vigencia: {valid_from} a {valid_to}; "
-            f"Status: {status}; Numero: {num}; policy_ref: {ref}"
+            f"Status: {status}; Numero: {num}"
         )
+        if include_internal_ref:
+            line += f"; policy_ref interno: {ref}"
+        lines.append(line)
     return "\n".join(lines)
 
 
@@ -571,7 +613,7 @@ def _sanitize_match(record: Dict[str, Any], unmasked: bool = False) -> Dict[str,
     status = _first_str(record, ["sit_acompanhamento_txt", "status", "situacao", "renovacao_situacao"])
     if not status and cancelado is not None:
         status = "cancelado" if cancelado in (True, 1, "1", "S", "s") else "ativo"
-    policy_number = _first_str(record, _POLNUM_KEYS)
+    policy_number = _first_valid_policy_number(record, _POLNUM_KEYS)
     name = _first_str(record, _NAME_KEYS)
     locator = _policy_locator_from_doc(record, codfil=record.get("codfil"))
     out = {
@@ -673,7 +715,7 @@ def _sanitize_policy(doc: Dict[str, Any], unmasked: bool = False) -> Dict[str, A
     valid_from = _first_str(doc, ["inivig", "datini", "inicio_vigencia"])
     valid_to = _first_str(doc, ["fimvig", "datfim", "fim_vigencia"])
     ae = _active_expired(valid_from, valid_to, is_cancel)
-    policy_number = _first_str(doc, _POLNUM_KEYS)
+    policy_number = _first_valid_policy_number(doc, _POLNUM_KEYS)
     name = _first_str(doc, _NAME_KEYS)
     locator = _policy_locator_from_doc(doc, codfil=doc.get("codfil"))
     out = {
@@ -756,9 +798,12 @@ async def infocap_lookup(
     cliente_path = config.get("infocap_cliente_path") or "/cliente"
     ligacoes_path = config.get("infocap_ligacoes_path") or "/cliente_ligacoes"
     documento_path = config.get("infocap_documento_path") or "/documento"
+    documentos_path = config.get("infocap_documentos_path") or config.get("infocap_policy_search_path") or "/documentos"
+    documentos_search_param = config.get("infocap_documentos_search_param") or config.get("infocap_policy_search_param") or "texto"
 
     doc_digits = _digits(payload.document)
     name = (payload.name or "").strip()
+    policy_number = (payload.policy_number or "").strip()
     if doc_digits:
         query_strategy = "document_cpf"
         search_path = cpf_search_path
@@ -771,6 +816,12 @@ async def infocap_lookup(
         search_param = name_search_param
         search_value = name
         extra_params = extra_params_raw if isinstance(extra_params_raw, dict) else {}
+    elif policy_number:
+        query_strategy = "policy_number"
+        search_path = documentos_path
+        search_param = documentos_search_param
+        search_value = policy_number
+        extra_params = extra_params_raw if isinstance(extra_params_raw, dict) else {"codfil": codfil_default}
     else:
         return {
             "ok": False, "status": "not_found", "source": "infocap", "provider": "infocap",
@@ -823,9 +874,114 @@ async def infocap_lookup(
             if http_status >= 400:
                 return _done({"ok": False, "status": "provider_error", "verification_status": "unverified", "http_status": http_status, "blockers": ["search_http_error"]})
             try:
-                arr = _extract_array(search_res.json())
+                search_payload = search_res.json()
+                arr = _extract_array(search_payload)
             except Exception:  # noqa: BLE001
+                search_payload = {}
                 arr = []
+
+            if query_strategy == "policy_number":
+                docs = _extract_documents(search_payload)
+                if not docs:
+                    docs = arr
+                matches_raw = [doc for doc in docs if _policy_doc_matches_identifier(doc, policy_number)]
+                policies = [_sanitize_policy(p, unmasked) for p in matches_raw]
+                if not matches_raw:
+                    return _done({
+                        "ok": False,
+                        "status": "not_found",
+                        "verification_status": "unverified",
+                        "http_status": http_status,
+                        "result_count": 0,
+                        "documents_count": len(docs),
+                        "matched_by": "policy_number",
+                        "blockers": [],
+                        "notes": ["Nenhuma apolice com match exato de numapo/nosnum foi encontrada para o numero informado."],
+                    })
+                if len(matches_raw) > 1:
+                    return _done({
+                        "ok": False,
+                        "status": "ambiguous_policy",
+                        "verification_status": "unverified",
+                        "http_status": http_status,
+                        "result_count": len(matches_raw),
+                        "documents_count": len(docs),
+                        "matched_by": "policy_number",
+                        "matches": [p for p in policies[:10]],
+                        "requires_human": True,
+                        "blockers": ["multiple_policy_number_matches"],
+                        "notes": ["Numero de apolice encontrou mais de um documento; escolha pela seguradora, ramo, vigencia ou numero."],
+                    })
+
+                policy_locator, locator_status = _select_policy_locator(matches_raw, codfil=codfil_default, requested_policy_ref=policy_number)
+                if locator_status != "found" or not policy_locator:
+                    return _done({
+                        "ok": False,
+                        "status": locator_status,
+                        "verification_status": "unverified",
+                        "http_status": http_status,
+                        "result_count": len(matches_raw),
+                        "documents_count": len(docs),
+                        "matched_by": "policy_number",
+                        "matches": policies,
+                        "requires_human": locator_status == "ambiguous_policy",
+                        "blockers": ["policy_locator_unavailable"],
+                    })
+
+                det = await client.get(documento_path, params={"codfil": policy_locator["codfil"], "nosnum": policy_locator["nosnum"]}, headers=headers)
+                if det.status_code in (401, 403):
+                    return _done({"ok": False, "status": "auth_error", "verification_status": "unverified", "http_status": det.status_code, "blockers": ["detail_unauthorized"]})
+                if det.status_code == 404:
+                    return _done({"ok": False, "status": "not_found", "verification_status": "unverified", "http_status": 404, "blockers": ["policy_not_found"]})
+                if det.status_code >= 400:
+                    return _done({"ok": False, "status": "provider_error", "verification_status": "unverified", "http_status": det.status_code, "blockers": ["detail_http_error"]})
+                detail_envelope = det.json()
+                detail_docs = _extract_documents(detail_envelope)
+                if not detail_docs:
+                    return _done({"ok": False, "status": "source_limited", "verification_status": "unverified", "http_status": det.status_code, "blockers": ["empty_detail"]})
+
+                selected_raw = detail_docs[0]
+                pack = _build_evidence_pack(selected_raw, payload.prefer_insurer, payload.prefer_product, unmasked, envelope=detail_envelope)
+                selected_policy = _sanitize_policy(selected_raw, unmasked)
+                client_flags: Dict[str, Any] = {}
+                if unmasked:
+                    if selected_policy.get("holder_name"):
+                        client_flags["client_name"] = selected_policy.get("holder_name")
+                    if selected_policy.get("document"):
+                        client_flags["client_document"] = selected_policy.get("document")
+                now = datetime.now(timezone.utc).isoformat()
+                return _done({
+                    "ok": True,
+                    "status": "found",
+                    "source_ref": "infocap:documento",
+                    "http_status": det.status_code,
+                    "result_count": 1,
+                    "documents_count": len(docs),
+                    "matched_by": "policy_number",
+                    **client_flags,
+                    "selected": selected_policy,
+                    "matches": [selected_policy],
+                    "policy_evidence_pack": pack,
+                    "verification_status": "verified_by_connector",
+                    "coverage_evidence": {
+                        "source": "infocap",
+                        "source_ref": "infocap:documento",
+                        "verified_at": now,
+                        "verified_by": "connector",
+                        "confidence": pack.get("confidence"),
+                        "coverage_summary": (
+                            "A InfoCap confirmou a apolice e seus dados operacionais, mas nao retornou itens estruturados de cobertura nesta consulta."
+                            if pack.get("structured_coverage_absent") else
+                            "A InfoCap retornou itens estruturados de cobertura nesta consulta."
+                        ),
+                        "limitations": pack.get("limitations") or [],
+                        "human_required": pack.get("human_required"),
+                        "official_document_source_available": pack.get("official_document_source_available"),
+                        "document_evidence_required": pack.get("document_evidence_required"),
+                    },
+                    "requires_human": False,
+                    "notes": ["Apolice localizada por numero humano via /documentos e detalhada por PolicyLocator."],
+                })
 
             if len(arr) == 0:
                 return _done({"ok": False, "status": "not_found", "verification_status": "unverified", "http_status": http_status, "result_count": 0, "blockers": [], "notes": ["Nenhum resultado para o termo de busca."]})
@@ -1187,6 +1343,7 @@ def _select_policy_locator(
 ) -> Tuple[Optional[Dict[str, str]], str]:
     requested_codfil, requested = _parse_policy_ref_input(requested_policy_ref)
     requested = str(requested or "").strip()
+    requested_norm = _normalize_policy_identifier(requested)
     docs_with_nosnum = [doc for doc in docs if _first_str(doc, ["nosnum"])]
     if requested:
         matches = []
@@ -1194,7 +1351,9 @@ def _select_policy_locator(
             doc_codfil = _first_str(doc, ["codfil"]) or str(codfil or "")
             if requested_codfil and str(doc_codfil) != str(requested_codfil):
                 continue
-            if _first_str(doc, ["nosnum"]) == requested or _first_str(doc, ["numapo"]) == requested:
+            nosnum_norm = _normalize_policy_identifier(_first_str(doc, ["nosnum"]))
+            numapo_norm = _normalize_policy_identifier(_first_str(doc, ["numapo"]))
+            if requested_norm and (nosnum_norm == requested_norm or numapo_norm == requested_norm):
                 matches.append(doc)
         if len(matches) != 1:
             return None, "source_limited" if not matches else "ambiguous_policy"

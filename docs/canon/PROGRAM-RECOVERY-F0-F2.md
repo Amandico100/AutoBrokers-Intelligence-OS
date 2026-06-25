@@ -293,7 +293,35 @@ Criar "InfoCap v2" como outro servico. O correto e corrigir o adapter dentro do 
 - `coverage_sections` e `assistance_signals` so podem ser positivos com item/cobertura/clausula/assistencia estruturada comprovada.
 - R1C permanece bloqueada ate aceite do R1B.1 no Chat Principal.
 
-## 7.3 R1C - Official Policy Document Source and Cached Evidence
+## 7.3 R1B.2 - Policy Query Contract and Smith Output Guard
+
+### Escopo aplicado
+
+- Permitir consulta pelo numero humano da apolice em `InfocapPolicyLookupTool`.
+- Resolver `policy_number` por `/documentos?codfil&texto=<numero>` antes de chamar `/documento`.
+- Fazer match exato normalizado por `numapo` ou `nosnum`.
+- Detalhar somente apos montar `PolicyLocator(provider=infocap, codfil, nosnum)`.
+- Impedir exibicao de numero `0`, vazio, nulo ou placeholder como numero de apolice.
+- Manter `policy_locator_ref` como referencia interna/debug, nao requisito operacional do corretor.
+- Adicionar Policy Response Contract e output guard dentro do Smith/LangGraph existente.
+- Finalizar respostas operacionais de InfoCap com compositor deterministico quando houver contrato de apolice.
+
+### Proibido preservado
+
+- R1C nao foi iniciada.
+- Nenhum PDF/documento oficial foi baixado, validado, acessado ou processado.
+- Nenhum runtime, endpoint, conector, RAG, parser, storage, tabela, migration, agente ou ferramenta paralela foi criado.
+- Nenhuma alteracao em Docling, MinIO, Qdrant, SearchService, KnowledgeBaseTool, Drive, Notion, WhatsApp, Portal Browser, Capability Registry ou Prompt Efetivo.
+
+### Criterio de aceite
+
+- O corretor pode pedir "detalhe a apolice <numero humano>" sem conhecer `codfil`, `nosnum` ou locator tecnico.
+- Ambiguidade de apolice retorna ate 10 opcoes com seguradora, produto/ramo, vigencia, status e numero humano quando valido.
+- A LLM nao pode apagar opcoes obrigatorias nem converter ausencia estruturada em "erro tecnico".
+- Cobertura ausente deve ser explicada como ausencia de itens estruturados da InfoCap, sem inventar cobertura.
+- R1C permanece bloqueada ate teste real do R1B.2 no Chat Principal.
+
+## 7.4 R1C - Official Policy Document Source and Cached Evidence
 
 ### Escopo futuro
 

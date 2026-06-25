@@ -132,6 +132,25 @@ Regras obrigatorias:
 - `tabela_itens` permanece desconhecido/classificavel ate existir contrato semantico validado;
 - `ambiguous_policy` deve devolver opcoes deterministicas para o Core pedir escolha, sem selecao silenciosa pelo LLM.
 
+### 6.3 R1B.2 - contrato de consulta e output guard do Smith
+
+O corretor nao deve precisar conhecer `policy_locator_ref`, `nosnum` ou `codfil` para usar o Chat Principal. A tool deve aceitar numero humano da apolice e resolver o locator internamente.
+
+Regras obrigatorias:
+
+- `InfocapPolicyLookupTool` aceita `document`, `name`, `policy_number` e `policy_ref`;
+- `policy_number` executa `/documentos?codfil&texto=<numero>` e filtra match exato normalizado por `numapo` ou `nosnum`;
+- zero matches retorna `not_found`;
+- multiplos matches retornam `ambiguous_policy` com opcoes deterministicas;
+- um match monta `PolicyLocator(provider=infocap, codfil, nosnum)` e so entao chama `/documento`;
+- numero humano nunca pode ser enviado diretamente como `nosnum` para `/documento`;
+- numero `0`, vazio, nulo ou placeholder deve ser exibido como "numero nao retornado pela InfoCap";
+- `policy_locator_ref` pode existir no DTO interno/debug, mas a resposta operacional deve orientar escolha pelo numero humano, seguradora, ramo e vigencia;
+- resultados InfoCap devem produzir um Policy Response Contract dentro do Smith/LangGraph existente;
+- o output guard deve impedir que a LLM apague opcoes, transforme `source_limited` em erro tecnico ou invente cobertura;
+- se `structured_coverage_absent=true`, a resposta deve declarar ausencia estruturada da InfoCap;
+- se `document_evidence_required=true`, a resposta pode mencionar a futura fonte documental oficial, mas nao pode afirmar que PDF foi lido.
+
 ## 7. Contrato de entrada
 
 O adapter canonico deve aceitar uma requisicao normalizada:

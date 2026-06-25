@@ -126,6 +126,20 @@ def run():
     check("single _summarize definition", class_method_count(tool_ast, "InfocapPolicyLookupTool", "_summarize") == 1)
     check("single _summarize_detail definition", class_method_count(tool_ast, "InfocapPolicyLookupTool", "_summarize_detail") == 1)
     check("tool does not keep local connection selector", class_method_count(tool_ast, "InfocapPolicyLookupTool", "_find_conn_id") == 0)
+    input_class = next((node for node in tool_ast.body if isinstance(node, ast.ClassDef) and node.name == "InfocapLookupInput"), None)
+    input_fields = {
+        node.target.id
+        for node in (input_class.body if input_class else [])
+        if isinstance(node, ast.AnnAssign) and isinstance(node.target, ast.Name)
+    }
+    arun_args = set()
+    for node in tool_ast.body:
+        if isinstance(node, ast.ClassDef) and node.name == "InfocapPolicyLookupTool":
+            for child in node.body:
+                if isinstance(child, ast.AsyncFunctionDef) and child.name == "_arun":
+                    arun_args = {arg.arg for arg in child.args.args}
+    check("tool schema accepts policy_number", "policy_number" in input_fields, input_fields)
+    check("tool runtime accepts policy_number", "policy_number" in arun_args, arun_args)
     check("probe route delegates connection resolution to backend", "infocap-connection-resolution" not in route_source)
 
     payload = {
@@ -237,6 +251,18 @@ def run():
     )
     check("numapo resolves to nosnum locator", locator == {"provider": "infocap", "codfil": "2", "nosnum": "N2"}, locator)
     check("numapo resolution status found", status == "found", status)
+    locator, status = mod._select_policy_locator(
+        [{"nosnum": "N1", "numapo": "AP-22", "codfil": "1"}, {"nosnum": "N2", "numapo": "AP-22", "codfil": "2"}],
+        codfil="1",
+        requested_policy_ref="AP-22",
+    )
+    check("policy_number with multiple exact matches is ambiguous", locator is None and status == "ambiguous_policy", (locator, status))
+    policy = mod._sanitize_policy({"nosnum": "N0", "codfil": "1", "numapo": "0"}, True)
+    check("policy number zero is not exposed as valid", not policy.get("policy_number") and not policy.get("masked_policy_number"), policy)
+    display_number = getattr(mod, "_display_policy_number", None)
+    check("display helper for invalid policy number exists", callable(display_number))
+    if callable(display_number):
+        check("display helper does not show zero", display_number({"policy_number": "0"}) == "numero nao retornado pela InfoCap")
     raw_codfil, raw_ref = mod._parse_policy_ref_input("N2")
     locator_codfil, locator_ref = mod._parse_policy_ref_input("infocap:2:N2")
     check("raw nosnum has no codfil", raw_codfil is None and raw_ref == "N2", (raw_codfil, raw_ref))
@@ -364,7 +390,20 @@ def run():
             }
         ])
         check("ambiguous option lists insurer/product", "SEG-A" in options_text and "Residencial" in options_text, options_text)
-        check("ambiguous option lists locator ref", "infocap:1:N1" in options_text, options_text)
+        check("ambiguous option uses human policy number", "AP-1" in options_text, options_text)
+        check("ambiguous option does not require technical locator by default", "infocap:1:N1" not in options_text, options_text)
+        debug_options_text = option_formatter([
+            {
+                "insurer_key": "SEG-A",
+                "product": "Residencial",
+                "valid_from": "01/01/2026",
+                "valid_to": "01/01/2027",
+                "policy_status": "ativo",
+                "policy_number": "AP-1",
+                "policy_locator_ref": "infocap:1:N1",
+            }
+        ], include_internal_ref=True)
+        check("ambiguous option can include locator for debug", "infocap:1:N1" in debug_options_text, debug_options_text)
 
 
 if __name__ == "__main__":
