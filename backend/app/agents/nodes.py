@@ -12,6 +12,7 @@ Cada função representa um nó que processa o estado.
 import asyncio
 import json
 import logging
+import re
 import time
 from typing import Any, Dict, Literal, Optional
 
@@ -60,6 +61,14 @@ def _guard_infocap_policy_final_response(candidate_text: str, contract: Optional
             return rendered
     if "coverage_absent" in required and "nao retornou itens estruturados" not in lower and "não retornou itens estruturados" not in lower:
         return rendered
+    if "document_evidence" in required:
+        candidate_norm = lower.replace("página", "pagina")
+        rendered_norm = rendered.lower().replace("página", "pagina")
+        required_pages = set(re.findall(r"pagina\s+\d+", rendered_norm))
+        if required_pages and not required_pages.issubset(set(re.findall(r"pagina\s+\d+", candidate_norm))):
+            return rendered
+        if not required_pages and "pagina" not in candidate_norm:
+            return rendered
     if "source_limited" in required and "erro" in lower:
         return rendered
     return candidate
@@ -432,6 +441,11 @@ async def tool_node(state: AgentState, tools: list) -> dict:
 
     # 🔥 Extrair is_hyde_enabled (default True para retrocompatibilidade)
     is_hyde_enabled = agent_data.get("is_hyde_enabled", True) if agent_data else True
+    current_user_query = ""
+    for msg in reversed(messages):
+        if isinstance(msg, HumanMessage) or (hasattr(msg, "type") and msg.type == "human"):
+            current_user_query = extract_text_from_content(getattr(msg, "content", ""))
+            break
 
     tool_map = {tool.name: tool for tool in tools}
 
@@ -479,6 +493,8 @@ async def tool_node(state: AgentState, tools: list) -> dict:
                     elif tool_name == "http_api":
                         allowed_http_tools = state.get("allowed_http_tools", [])
                         tool_args = {**tool_args, "allowed_tools": allowed_http_tools}
+                    elif tool_name == "infocap_policy_lookup":
+                        tool_args = {**tool_args, "user_query": current_user_query}
                     elif tool_name.startswith("shopify_") or tool_name.startswith("ucp_"):
                         # UCP tools: agent_id já está embutido na tool, mas garantimos aqui
                         tool_args = {**tool_args, "agent_id": agent_id}

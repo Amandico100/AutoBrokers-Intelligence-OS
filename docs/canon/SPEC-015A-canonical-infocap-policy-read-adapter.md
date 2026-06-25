@@ -1,8 +1,8 @@
 # SPEC-015A - Canonical InfoCap Policy Read Adapter
 
-> Status: **RASCUNHO CANONICO PARA REVISAO DO CEO**
-> Data: 2026-06-24
-> Escopo: Fase R1, apos aprovacao documental do R0.
+> Status: **CANONICO EM RECUPERACAO - R1C.1**
+> Data: 2026-06-25
+> Escopo: Fase R1 ate pipeline documental oficial cacheado.
 > Regra maior: **nao criar runtime, conector, RAG, Vault, parser, storage ou sistema de agentes paralelo**.
 
 ## 1. Problema comprovado
@@ -184,7 +184,52 @@ Antes de qualquer deploy do R1C.0, o modo `official_document_source_audit` deve 
 - arquivo temporario apagado em `finally`, quando usado;
 - proibicao de enviar conteudo para Docling, MinIO, Supabase, Qdrant ou DocumentService nesta etapa.
 
-R1C produtivo so pode ser iniciado depois de captura real bem-sucedida e revisao do JSON estrutural seguro.
+R1C.0.1 foi validado em producao controlada: duas apolices retornaram PDF oficial recuperavel por `signed_url_fetch`, com camada de texto presente, e uma apolice nao retornou fonte documental automatica. R1C.1 fica autorizado para leitura documental cacheada.
+
+### 6.6 R1C.1 - pipeline de evidencia documental oficial
+
+Quando a InfoCap estruturada nao trouxer cobertura/franquia/assistencia/clausula/LMI e houver fonte oficial disponivel, o adapter canonico pode acionar o pipeline documental oficial sob demanda.
+
+Regras obrigatorias:
+
+- fetch apenas quando a pergunta exigir evidencia documental sensivel ou quando `document_evidence_requested=true`;
+- nunca baixar todas as apolices de um segurado;
+- nunca baixar PDF em toda consulta;
+- `signed_url_fetch` sem credenciais deve ser tentado antes de modos autenticados;
+- Authorization/cookie so podem ir ao origin InfoCap validado; redirect/cross-origin deve remover credenciais;
+- a signed URL nunca e persistida, logada ou enviada ao LLM/frontend;
+- o PDF oficial e armazenado de forma privada pelo `DocumentService`/MinIO existentes;
+- a extracao direta por pagina vem antes do Docling;
+- Docling/OCR e fallback da mesma pipeline, nunca parser paralelo;
+- a ingestao usa `IngestionService`, Qdrant e `SearchService` existentes;
+- documentos `official_policy_document` nao entram em busca ampla de conhecimento sem filtro por apolice;
+- evidencia enviada ao Core deve ser curta, por pagina/trecho, com `document_id`, `policy_locator_hash`, `content_hash`, `evidence_type`, `confidence` e `source_document=official_policy_document`;
+- `codfil`, `nosnum`, URL, token, cookie, Authorization, payload bruto e texto integral do PDF nao podem aparecer em logs, chat ou resposta.
+
+Estados documentais:
+
+```text
+source_available
+fetching
+fetched
+direct_extracting
+docling_pending
+parsed
+evidence_ready
+source_unavailable
+source_fetch_failed
+document_not_policy_evidence
+low_confidence
+conflict_requires_human
+```
+
+Cache canonico:
+
+```text
+company_id + provider=infocap + policy_locator_hash + content_hash
+```
+
+Se o cache estiver valido, a mesma apolice nao deve ser baixada novamente. Se a fonte nao existir, a resposta deve dizer que a InfoCap confirmou a apolice, mas nao disponibilizou fonte documental oficial automatica.
 
 ## 7. Contrato de entrada
 

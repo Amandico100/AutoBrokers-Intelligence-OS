@@ -58,11 +58,7 @@ class IngestionService:
             agent_id: ID do agente dono do documento (OBRIGATÓRIO)
         """
         try:
-            # 🔥 VALIDAÇÃO: agent_id é obrigatório
-            if not agent_id:
-                raise ValueError(
-                    "agent_id é obrigatório para processamento de documentos (multi-agent)"
-                )
+            # Validate agent scope after reading raw metadata.
 
             logger.info(
                 f"🚀 Processing {document_id} with {strategy} for agent {agent_id}"
@@ -78,6 +74,16 @@ class IngestionService:
                 raw_path = f"companies/{company_id}/raw/{document_id}.json"
                 file_data = self.minio.download_file(raw_path)
                 raw_data = json.load(file_data)
+
+            raw_meta = raw_data.get("metadata", {}) if isinstance(raw_data, dict) else {}
+            is_official_policy_document = (
+                raw_meta.get("document_type") == "official_policy_document"
+                and raw_meta.get("provider") == "infocap"
+            )
+            if not agent_id and not is_official_policy_document:
+                raise ValueError(
+                    "agent_id Ã© obrigatÃ³rio para processamento de documentos (multi-agent)"
+                )
 
             text_content = raw_data.get("text_content", "")
             if not text_content:

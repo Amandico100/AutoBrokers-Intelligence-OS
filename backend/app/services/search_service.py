@@ -252,6 +252,7 @@ class SearchService:
             sparse_embedding=sparse_vector,
             agent_id=agent_id,
             include_tenant_wide=True,  # vê docs do agente + tenant-wide (nunca de outro agente)
+            exclude_metadata_document_types=["official_policy_document"],
             top_k=20,
             score_threshold=0.0,
         )

@@ -1,8 +1,8 @@
 # PROGRAM-RECOVERY-F0-F2 - Recuperacao Arquitetural AutoBrokers Intelligence OS
 
-> Status: **R0 DOCUMENTAL**
-> Data: 2026-06-24
-> Objetivo: formalizar a recuperacao segura sem iniciar implementacao.
+> Status: **R1C.1 - PIPELINE DOCUMENTAL OFICIAL CACHEADO**
+> Data: 2026-06-25
+> Objetivo: formalizar e acompanhar a recuperacao segura ate leitura documental oficial de apolices.
 > Regra: **nao criar sistemas paralelos**.
 
 ## 1. Contexto
@@ -373,27 +373,59 @@ Criar "InfoCap v2" como outro servico. O correto e corrigir o adapter dentro do 
 - O Founder executa a auditoria pelo Portal Admin sem DevTools/Console.
 - O JSON retornado contem somente `source_audit` e metadados seguros.
 - Nenhum campo sensivel aparece no output.
-- R1C produtivo permanece bloqueado ate a captura real ser revisada.
+- Status apos validacao controlada: **VALIDADO EM PRODUCAO CONTROLADA**.
+- Resultado real informado pelo Founder:
+  - duas apolices com PDF oficial recuperavel por `signed_url_fetch`;
+  - PDF real, pequeno, nao criptografado, com camada de texto presente;
+  - nenhuma autenticacao adicional necessaria no fetch;
+  - uma apolice sem `url_apolice`/fonte documental automatica.
+- R1C.1 autorizado para pipeline documental oficial cacheado.
 
-## 7.5 R1C - Official Policy Document Source and Cached Evidence
+## 7.5 R1C.1 - Official Policy Evidence Pipeline
 
-### Escopo futuro
+### Escopo aplicado
 
-- Validar acesso a fonte oficial da apolice quando `official_document_source_available=true`.
-- Fazer fetch somente quando a InfoCap estruturada nao trouxer cobertura suficiente ou quando a apolice oficial for explicitamente necessaria.
-- Cachear por `company_id + PolicyLocator + hash/ETag/versionamento`.
-- Usar `DocumentService` e MinIO existentes antes de qualquer processamento.
-- Usar Docling/OCR apenas quando o documento exigir.
-- Gerar evidencia por pagina/trecho, sem RAG paralelo.
-- Reutilizar evidencia em consultas futuras sem baixar/processar repetidamente o mesmo documento.
+- Acionar o fetch oficial somente sob demanda, quando a pergunta pedir cobertura, assistencia, franquia, LMI, clausula, exclusao ou condicao e a InfoCap estruturada nao trouxer esses dados.
+- Usar a fonte oficial de `/documento` (`acompanhamento.emissao.url_apolice`) somente no backend, sem persistir URL assinada.
+- Tentar `signed_url_fetch` sem credenciais antes de qualquer modo autenticado; Authorization/cookie so podem ir ao origin InfoCap validado.
+- Armazenar o PDF oficial privado via `DocumentService` e MinIO existentes.
+- Extrair texto por pagina pelo caminho direto existente; Docling fica como fallback quando texto/tabela estiver insuficiente.
+- Ingerir chunks pela `IngestionService`, Qdrant e `SearchService` existentes, com isolamento de documento oficial por metadata.
+- Filtrar documentos `official_policy_document` para que nao aparecam em busca ampla de conhecimento/RAG generico.
+- Gerar evidencia curta por pagina/trecho, com `document_id`, `policy_locator_hash`, `content_hash`, `evidence_type`, `confidence` e `source_document=official_policy_document`.
+- Responder no Chat Principal com fonte documental, pagina e trecho quando houver evidencia.
+- Reutilizar cache em consultas repetidas da mesma apolice/documento, sem novo fetch.
 
-### Proibido futuro
+### Proibido
 
 - Baixar PDF em toda consulta de apolice.
 - Criar parser PDF paralelo.
 - Criar storage paralelo.
 - Criar RAG paralelo.
 - Pedir upload manual quando a fonte oficial da propria apolice estiver disponivel e acessivel.
+- Persistir signed URL, token, cookie, Authorization, PDF bruto em log, texto integral do documento ou `codfil/nosnum` expostos.
+- Fazer prefetch em massa de todas as apolices de um segurado.
+
+### Cache e invalidacao
+
+Chave logica:
+
+```text
+company_id
++ provider=infocap
++ PolicyLocator(codfil,nosnum) convertido para policy_locator_hash
++ content_hash do PDF
+```
+
+O cache e reutilizado quando o `policy_locator_hash` e o `content_hash` continuam validos. O fetch/processamento roda de novo somente se nao houver cache, se o hash mudar, se houver refresh explicito ou se o documento anterior estiver incompleto/baixo sinal.
+
+### Criterio de aceite
+
+- Perguntas de cobertura acionam evidencia documental apenas quando a InfoCap estruturada e insuficiente.
+- Cache hit nao baixa a mesma apolice novamente.
+- A resposta traz cobertura/franquia/assistencia/limite somente com pagina e trecho.
+- Ausencia de evidencia apos processamento retorna `document_not_policy_evidence`/`low_confidence` e nao inventa cobertura.
+- Even e Auxiliares continuam usando contrato limitado por papel/capability; R1C.1 nao migra runtime deles.
 
 ## 8. Fase 1 / R2 - Smith Runtime and Admin Unification
 

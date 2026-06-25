@@ -565,6 +565,7 @@ class LangChainService:
                 top_k=top_k,
                 agent_id=agent_id,
                 include_tenant_wide=include_tenant_wide,
+                exclude_metadata_document_types=["official_policy_document"],
                 score_threshold=score_threshold,
             )
             if include_global:

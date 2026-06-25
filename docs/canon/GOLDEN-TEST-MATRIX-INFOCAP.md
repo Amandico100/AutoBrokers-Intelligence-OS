@@ -1,7 +1,7 @@
 # GOLDEN-TEST-MATRIX-INFOCAP
 
-> Status: **R0 DOCUMENTAL**
-> Data: 2026-06-24
+> Status: **R1C.1 - GOLDENS DOCUMENTAIS**
+> Data: 2026-06-25
 > Uso: matriz obrigatoria para a Fase R1 / SPEC-015A.
 > Dados: somente fixtures sinteticas ou reais anonimizadas; nunca PII real.
 
@@ -92,6 +92,22 @@ infocap_policy_detail_item_code_p.json
 | G61 | UX sem company_id manual | Card Portal Admin | UI | seletor no card existente | usa `companyId` da rota e nao pede ID manual | Founder copiar ID pelo Console |
 | G62 | Output sem dados sensiveis | Resultado de auditoria | audit mode | URL, token, CPF, nome, numero e locators sinteticos | output nao contem dados sensiveis | Expor PII, host integral, URL, token, cookie, `codfil`, `nosnum` ou payload |
 | G63 | Classificacao documental combinada | PDF real, PDF sem texto, HTML/login, criptografado, nao PDF | audit mode | respostas sinteticas | status/magic/text_layer/transport corretos | Tratar HTML/ZIP/imagem como apolice lida |
+| G64 | R1C.1 signed URL | PDF oficial recuperavel sem Authorization | pergunta de cobertura | `url_apolice`, PDF textual | `signed_url_fetch` sem credenciais, URL nao persistida | Enviar Authorization/cookie sem necessidade ou persistir URL |
+| G65 | Extracao direta primeiro | PDF com camada de texto | pipeline documental | paginas extraidas pelo `DocumentService` | evidencia por pagina antes do Docling | Chamar Docling por padrao |
+| G66 | Fallback Docling | Extracao direta insuficiente | pipeline documental | texto vazio/tabela complexa | estado `docling_pending`/fallback existente | Criar OCR/parser paralelo |
+| G67 | Cache hit | Segunda pergunta da mesma apolice | pipeline documental | `policy_locator_hash + content_hash` ja armazenado | nao faz novo fetch; reutiliza evidencia | Baixar PDF novamente |
+| G68 | Hash mudou | PDF alterado/endosso | pipeline documental | mesmo locator, novo hash | invalida cache e reprocessa | Usar evidencia antiga sem verificar |
+| G69 | Sem URL oficial | `/documento` sem `url_apolice` | pergunta de cobertura | fonte ausente | `source_unavailable` e mensagem honesta | Procurar URL generica em campos soltos |
+| G70 | Evidencia rastreavel | PDF com cobertura/franquia | pipeline documental | paginas com trechos | evidencia tem pagina, trecho curto, hash e locator hash | Mandar PDF/texto integral ao LLM |
+| G71 | Resposta so com trecho | Pergunta de cobertura especifica | Chat Principal | evidencia filtrada por apolice | responde com cobertura + fonte/pagina | Confirmar cobertura sem pagina/trecho |
+| G72 | Produto nao substitui evidencia | Ramo/produto residencial | pergunta de assistencia | documento sem trecho | nao conclui assistencia | Usar ramo/produto como cobertura |
+| G73 | DTO por papel | Core/Even/Auxiliar | role view | evidencia pronta | Core completo permitido; Even minimo por case | Expor evidencia ampla para Even sem caso |
+| G74 | Isolamento documental | Duas empresas/apolices | storage/Qdrant/Search | filtros por company/document_type/locator | nunca cruza tenant/apolice | Buscar documento oficial em RAG amplo |
+| G75 | Segredos nao persistem | Fetch oficial | pipeline documental | URL assinada/token/cookie sinteticos | output e metadata sem segredos | Persistir signed URL/header/cookie |
+| G76 | Documento sem cobertura textual | PDF sem trecho util | pergunta de cobertura | pagina sem evidencia | `document_not_policy_evidence` ou `low_confidence` | Inventar cobertura |
+| G77 | Conflito de fonte | InfoCap estruturada diverge de documento | pipeline documental | dados contraditorios | `conflict_requires_human` | Escolher uma fonte automaticamente |
+| G78 | Cleanup | Remocao de documento/tenant | storage/Qdrant | documentos/chunks existentes | chunks e acesso removidos | Manter evidencia acessivel apos exclusao |
+| G79 | Consulta repetida | Mesma apolice e pergunta | Chat Principal | cache pronto | resposta usa evidencia cacheada e nao refaz fetch | Baixar/processar a cada conversa |
 
 ## 4. Goldens de fluxo
 

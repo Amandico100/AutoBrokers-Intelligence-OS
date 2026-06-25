@@ -136,6 +136,10 @@ def run():
     check("admin card has audit mode selector", "Auditar fonte oficial da apolice" in admin_page_source)
     check("admin card does not render manual company_id input", 'name="company_id"' not in admin_page_source and "company_id_da_url" not in admin_page_source)
     check("document fetch uses Range header", '"Range": f"bytes=0-' in connector_source)
+    pipeline_start = connector_source.find("async def _fetch_official_document_candidate_for_policy_pipeline")
+    pipeline_window = connector_source[pipeline_start:pipeline_start + 600] if pipeline_start >= 0 else ""
+    check("R1C.1 signed_url_fetch is attempted before auth modes", '("none", {}, None)' in pipeline_window, pipeline_window[:220])
+    check("R1C.1 credential origin guard exists", "credential_origin_url" in connector_source and "_should_send_document_credentials(credential_origin_url, current_url)" in connector_source)
 
     for header_value, expected in ((None, False), ("false", False), ("company_admin", False), ("true", True)):
         try:
@@ -307,11 +311,11 @@ def run():
         "url": "https://docs.example.invalid/policy.pdf?token=segredo",
         "Authorization": "Bearer segredo",
         "cookie": "session=segredo",
-        "cpf_cnpj": "03074327936",
-        "nome": "RAFAEL LACAU DA SILVEIRA",
-        "numapo": "202623140269972",
+        "cpf_cnpj": "11122233344",
+        "nome": "CLIENTE TESTE SINTETICO",
+        "numapo": "POL-2026-0001",
         "codfil": "1",
-        "nosnum": "99599",
+        "nosnum": "DOC-SINTETICO-001",
         "payload": "%PDF conteudo bruto",
         "safe": "ok",
     }
@@ -320,10 +324,10 @@ def run():
     for bad in (
         "docs.example.invalid",
         "segredo",
-        "03074327936",
-        "RAFAEL",
-        "202623140269972",
-        "99599",
+        "11122233344",
+        "CLIENTE TESTE",
+        "POL-2026-0001",
+        "DOC-SINTETICO-001",
         "%PDF",
     ):
         check(f"saida segura nao vaza {bad}", bad not in safe_raw, safe_raw)

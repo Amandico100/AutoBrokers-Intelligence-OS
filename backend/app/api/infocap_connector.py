@@ -183,6 +183,9 @@ class InfocapLookupPayload(BaseModel):
     policy_number: Optional[str] = None
     prefer_insurer: Optional[str] = None
     prefer_product: Optional[str] = None
+    user_query: Optional[str] = None
+    document_evidence_requested: bool = False
+    force_document_evidence_refresh: bool = False
     unmasked: bool = False  # Core/corretor interno: dados completos (CPF/nome/nº)
 
 
@@ -960,6 +963,15 @@ async def infocap_lookup(
 
                 selected_raw = detail_docs[0]
                 pack = _build_evidence_pack(selected_raw, payload.prefer_insurer, payload.prefer_product, unmasked, envelope=detail_envelope)
+                pack = await _maybe_attach_official_policy_document_evidence(
+                    pack=pack,
+                    detail_envelope=detail_envelope,
+                    payload=payload,
+                    company_id=company_id,
+                    token=token,
+                    auth_cookies=auth_res.cookies,
+                    credential_origin_url=base_url,
+                )
                 selected_policy = _sanitize_policy(selected_raw, unmasked)
                 client_flags: Dict[str, Any] = {}
                 if unmasked:
@@ -987,15 +999,12 @@ async def infocap_lookup(
                         "verified_at": now,
                         "verified_by": "connector",
                         "confidence": pack.get("confidence"),
-                        "coverage_summary": (
-                            "A InfoCap confirmou a apolice e seus dados operacionais, mas nao retornou itens estruturados de cobertura nesta consulta."
-                            if pack.get("structured_coverage_absent") else
-                            "A InfoCap retornou itens estruturados de cobertura nesta consulta."
-                        ),
+                        "coverage_summary": _coverage_summary_from_pack(pack),
                         "limitations": pack.get("limitations") or [],
                         "human_required": pack.get("human_required"),
                         "official_document_source_available": pack.get("official_document_source_available"),
                         "document_evidence_required": pack.get("document_evidence_required"),
+                        "document_evidence_ready": pack.get("document_evidence_ready"),
                     },
                     "requires_human": False,
                     "notes": ["Apolice localizada por numero humano via /documentos e detalhada por PolicyLocator."],
@@ -1135,6 +1144,15 @@ async def infocap_lookup(
 
             selected_raw = detail_docs[0]
             pack = _build_evidence_pack(selected_raw, payload.prefer_insurer, payload.prefer_product, unmasked, envelope=detail_envelope)
+            pack = await _maybe_attach_official_policy_document_evidence(
+                pack=pack,
+                detail_envelope=detail_envelope,
+                payload=payload,
+                company_id=company_id,
+                token=token,
+                auth_cookies=auth_res.cookies,
+                credential_origin_url=base_url,
+            )
             selected_policy = _sanitize_policy(selected_raw, unmasked)
             return _done({
                 "ok": True,
@@ -1155,15 +1173,12 @@ async def infocap_lookup(
                     "verified_at": now,
                     "verified_by": "connector",
                     "confidence": pack.get("confidence"),
-                    "coverage_summary": (
-                        "A InfoCap confirmou a apolice e seus dados operacionais, mas nao retornou itens estruturados de cobertura nesta consulta."
-                        if pack.get("structured_coverage_absent") else
-                        "A InfoCap retornou itens estruturados de cobertura nesta consulta."
-                    ),
+                    "coverage_summary": _coverage_summary_from_pack(pack),
                     "limitations": pack.get("limitations") or [],
                     "human_required": pack.get("human_required"),
                     "official_document_source_available": pack.get("official_document_source_available"),
                     "document_evidence_required": pack.get("document_evidence_required"),
+                    "document_evidence_ready": pack.get("document_evidence_ready"),
                 },
                 "requires_human": False,
                 "notes": ["Apolice localizada via cadeia canonica InfoCap: cliente -> cliente_ligacoes -> documento."],
@@ -1792,6 +1807,231 @@ async def _fetch_official_document_candidate_for_audit(
         if status in {"not_found", "unsupported"}:
             break
     return best or _blocked_official_document_result(source_kind=source_kind, blocker="unavailable", status="unknown")
+
+
+async def _fetch_url_limited_for_policy_pipeline(
+    *,
+    source_kind: str,
+    source_url: str,
+    headers: Dict[str, str],
+    cookies: Any,
+    successful_auth_mode: str,
+    credential_origin_url: Optional[str] = None,
+) -> Dict[str, Any]:
+    """Fetch one official policy document for R1C.1 without persisting URL/body."""
+    ok, reason = _is_safe_official_document_url(source_url)
+    if not ok:
+        return {"ok": False, "status": "source_fetch_failed", "blockers": [reason]}
+
+    current_url = source_url
+    redirect_count = 0
+    try:
+        async with httpx.AsyncClient(timeout=OFFICIAL_DOCUMENT_AUDIT_TIMEOUT_S, follow_redirects=False) as doc_client:
+            while True:
+                ok, reason = _is_safe_official_document_url(current_url)
+                if not ok:
+                    return {"ok": False, "status": "source_fetch_failed", "blockers": ["unsafe_redirect" if reason == "unsafe_scheme" else reason]}
+                if credential_origin_url and not _should_send_document_credentials(credential_origin_url, current_url):
+                    request_headers, request_cookies = {}, None
+                else:
+                    request_headers, request_cookies = _credential_scope(
+                        original_url=source_url,
+                        current_url=current_url,
+                        headers=headers,
+                        cookies=cookies,
+                    )
+                request_headers = {**request_headers, "Range": f"bytes=0-{OFFICIAL_DOCUMENT_AUDIT_MAX_BYTES}"}
+                request_auth_mode = successful_auth_mode
+                has_auth_header = bool(request_headers.get("Authorization"))
+                has_cookie = bool(request_cookies)
+                if has_auth_header and has_cookie:
+                    request_auth_mode = "both"
+                elif has_auth_header:
+                    request_auth_mode = "authorization_header"
+                elif has_cookie:
+                    request_auth_mode = "session_cookie"
+                else:
+                    request_auth_mode = "none"
+
+                async with doc_client.stream("GET", current_url, headers=request_headers, cookies=request_cookies) as res:
+                    if res.status_code in (301, 302, 303, 307, 308):
+                        location = res.headers.get("location")
+                        if not location:
+                            return {"ok": False, "status": "source_fetch_failed", "blockers": ["redirect_without_location"]}
+                        redirect_ok, redirect_reason, next_url = _validate_official_document_redirect(str(res.url), location)
+                        if not redirect_ok or not next_url:
+                            return {"ok": False, "status": "source_fetch_failed", "blockers": [redirect_reason]}
+                        redirect_count += 1
+                        if redirect_count > OFFICIAL_DOCUMENT_AUDIT_MAX_REDIRECTS:
+                            return {"ok": False, "status": "source_fetch_failed", "blockers": ["too_many_redirects"]}
+                        current_url = next_url
+                        continue
+
+                    content_length = _safe_int(res.headers.get("content-length"))
+                    if content_length is not None and content_length > OFFICIAL_DOCUMENT_AUDIT_MAX_BYTES:
+                        return {"ok": False, "status": "source_fetch_failed", "blockers": ["document_too_large"]}
+
+                    body = b""
+                    async for chunk in res.aiter_bytes():
+                        body += chunk
+                        if len(body) > OFFICIAL_DOCUMENT_AUDIT_MAX_BYTES:
+                            return {"ok": False, "status": "source_fetch_failed", "blockers": ["document_too_large"]}
+
+                    classified = _classify_official_document_response(
+                        source_kind=source_kind,
+                        status_code=res.status_code,
+                        headers=dict(res.headers),
+                        body=body,
+                        redirect_count=redirect_count,
+                        source_url=source_url,
+                        final_url=str(res.url),
+                        successful_auth_mode=request_auth_mode,
+                    )
+                    if classified.get("retrieval_status") != "retrieved" or classified.get("file_magic") != "pdf":
+                        return {
+                            "ok": False,
+                            "status": classified.get("retrieval_status") or "source_fetch_failed",
+                            "blockers": classified.get("source_fetch_blocker") or ["document_not_retrieved"],
+                        }
+                    if classified.get("pdf_encrypted") is True:
+                        return {"ok": False, "status": "source_fetch_failed", "blockers": ["pdf_encrypted"]}
+                    return {
+                        "ok": True,
+                        "status": "retrieved",
+                        "body": body,
+                        "content_type": classified.get("content_type") or "application/pdf",
+                        "source_kind": source_kind,
+                        "source_transport": classified.get("recommended_r1c_transport") or "signed_url_fetch",
+                        "page_count": classified.get("pdf_page_count"),
+                        "content_length_bucket": classified.get("content_length_bucket"),
+                        "text_layer_status": classified.get("text_layer_status"),
+                    }
+    except httpx.TimeoutException:
+        return {"ok": False, "status": "source_fetch_failed", "blockers": ["provider_timeout"]}
+    except httpx.HTTPError:
+        return {"ok": False, "status": "source_fetch_failed", "blockers": ["network_error"]}
+
+
+async def _fetch_official_document_candidate_for_policy_pipeline(
+    *,
+    candidate: Dict[str, str],
+    token: str,
+    auth_cookies: Any,
+    credential_origin_url: Optional[str] = None,
+) -> Dict[str, Any]:
+    url = candidate.get("url") or ""
+    source_kind = candidate.get("source_kind") or "unknown"
+    attempts: List[Tuple[str, Dict[str, str], Any]] = [
+        ("none", {}, None),
+        ("authorization_header", {"Authorization": token}, None),
+        ("session_cookie", {}, auth_cookies),
+        ("both", {"Authorization": token}, auth_cookies),
+    ]
+    best: Optional[Dict[str, Any]] = None
+    for mode, headers, cookies in attempts:
+        if mode in {"authorization_header", "both"} and not token:
+            continue
+        if mode in {"session_cookie", "both"} and not cookies:
+            continue
+        result = await _fetch_url_limited_for_policy_pipeline(
+            source_kind=source_kind,
+            source_url=url,
+            headers=headers,
+            cookies=cookies,
+            successful_auth_mode=mode,
+            credential_origin_url=credential_origin_url,
+        )
+        if result.get("ok"):
+            return result
+        best = result
+        if result.get("status") in {"not_found", "unsupported"}:
+            break
+    return best or {"ok": False, "status": "source_fetch_failed", "blockers": ["unavailable"]}
+
+
+async def _maybe_attach_official_policy_document_evidence(
+    *,
+    pack: Dict[str, Any],
+    detail_envelope: Dict[str, Any],
+    payload: Any,
+    company_id: str,
+    token: str,
+    auth_cookies: Any,
+    credential_origin_url: Optional[str] = None,
+    agent_id: Optional[str] = None,
+) -> Dict[str, Any]:
+    """Attach R1C.1 evidence when requested and safe, without leaking source URL."""
+    if not isinstance(pack, dict):
+        return pack
+    try:
+        from app.services.policy_document_evidence_service import (
+            get_policy_document_evidence_service,
+            policy_document_evidence_requested,
+            policy_document_evidence_role_view,
+        )
+    except Exception as exc:  # noqa: BLE001
+        logger.warning(f"[INFOCAP POLICY DOC] evidence service unavailable: {type(exc).__name__}")
+        return pack
+
+    requested = policy_document_evidence_requested(
+        getattr(payload, "user_query", None),
+        bool(getattr(payload, "document_evidence_requested", False)),
+    )
+    if not requested:
+        return pack
+    if not pack.get("document_evidence_required") or not pack.get("official_document_source_available"):
+        return pack
+
+    candidates = _extract_official_document_candidates(detail_envelope if isinstance(detail_envelope, dict) else {})
+    selected_candidate = next((item for item in candidates if item.get("source_kind") == "policy_pdf"), candidates[0] if candidates else None)
+    if not selected_candidate:
+        updated = dict(pack)
+        updated["official_policy_document_evidence"] = {
+            "ok": False,
+            "document_status": "source_unavailable",
+            "source_fetch_blocker": ["official_document_url_absent"],
+        }
+        return updated
+
+    async def _fetcher(candidate: Dict[str, Any]) -> Dict[str, Any]:
+        return await _fetch_official_document_candidate_for_policy_pipeline(
+            candidate=candidate,
+            token=token,
+            auth_cookies=auth_cookies,
+            credential_origin_url=credential_origin_url,
+        )
+
+    try:
+        service = get_policy_document_evidence_service()
+        evidence = await service.ensure_official_policy_evidence(
+            company_id=company_id,
+            policy_locator=pack.get("policy_locator") or {},
+            official_document_candidate=selected_candidate,
+            question=str(getattr(payload, "user_query", "") or ""),
+            fetcher=_fetcher,
+            agent_id=agent_id,
+            force_refresh=bool(getattr(payload, "force_document_evidence_refresh", False)),
+        )
+    except Exception as exc:  # noqa: BLE001
+        logger.warning(f"[INFOCAP POLICY DOC] evidence pipeline failed: {type(exc).__name__}")
+        evidence = {
+            "ok": False,
+            "document_status": "source_fetch_failed",
+            "source_fetch_blocker": ["policy_document_evidence_pipeline_failed"],
+        }
+
+    role_view = policy_document_evidence_role_view(evidence, role="core")
+    updated = dict(pack)
+    updated["official_policy_document_evidence"] = role_view
+    updated["document_evidence_ready"] = bool(role_view.get("ok"))
+    if role_view.get("document_status") == "evidence_ready":
+        updated["coverage_evidence_status"] = "official_document_evidence_available"
+        updated["confidence"] = role_view.get("extraction_confidence") or updated.get("confidence")
+        updated["limitations"] = [
+            item for item in (updated.get("limitations") or [])
+            if "nao retornou itens estruturados" not in str(item).lower()
+        ]
+    return updated
 
 
 async def _resolve_policy_detail_for_document_source_audit(
@@ -2439,6 +2679,9 @@ class InfocapPolicyDetailPayload(BaseModel):
     tenant_connection_id: Optional[str] = None
     codfil: Optional[int] = None
     policy_ref: str
+    user_query: Optional[str] = None
+    document_evidence_requested: bool = False
+    force_document_evidence_refresh: bool = False
     unmasked: bool = False  # Core/corretor interno: dados completos
 
 
@@ -2960,6 +3203,16 @@ def _infocap_financial_fields(doc: Dict[str, Any]) -> List[Dict[str, Any]]:
     return fields
 
 
+def _coverage_summary_from_pack(pack: Dict[str, Any]) -> str:
+    if pack.get("document_evidence_ready"):
+        ev = pack.get("official_policy_document_evidence") or {}
+        count = ev.get("evidence_count") or len(ev.get("evidence_items") or [])
+        return f"A apolice oficial foi processada e retornou {count} trecho(s) de evidencia documental por pagina."
+    if pack.get("structured_coverage_absent"):
+        return "A InfoCap confirmou a apolice e seus dados operacionais, mas nao retornou itens estruturados de cobertura nesta consulta."
+    return "A InfoCap retornou itens estruturados de cobertura nesta consulta."
+
+
 def _build_evidence_pack(
     doc: Dict[str, Any],
     prefer_insurer: Optional[str],
@@ -3168,6 +3421,15 @@ async def infocap_policy_detail(
 
             doc = docs[0]
             pack = _build_evidence_pack(doc, prefer_insurer, prefer_product, unmasked, envelope=detail_envelope)
+            pack = await _maybe_attach_official_policy_document_evidence(
+                pack=pack,
+                detail_envelope=detail_envelope,
+                payload=payload,
+                company_id=company_id,
+                token=token,
+                auth_cookies=auth_res.cookies,
+                credential_origin_url=base_url,
+            )
             _log("found", extra=f" confidence={pack.get('confidence')}")
             return {
                 "ok": True,

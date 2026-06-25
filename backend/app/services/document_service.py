@@ -3,10 +3,11 @@ Document Service - Processamento de documentos (extração de texto)
 VERSÃO CORRIGIDA: Suporte a filtro por agent_id
 """
 
+import hashlib
 import json
 import logging
 import uuid
-from datetime import datetime
+from datetime import datetime, timezone
 from io import BytesIO
 from typing import Any, BinaryIO, Dict, List, Optional, Tuple
 
@@ -144,6 +145,150 @@ class DocumentService:
         except Exception as e:
             # Propaga o erro real para a rota (que retorna 500 com detail) — não engolir silenciosamente.
             logger.error(f"Erro ao fazer upload do documento: {e}", exc_info=True)
+            raise
+
+    def find_official_policy_document(
+        self,
+        company_id: str,
+        policy_locator_hash: str,
+        content_hash: Optional[str] = None,
+    ) -> Optional[dict]:
+        """
+        Locate a cached official policy PDF without exposing PolicyLocator values.
+
+        Uses the existing documents table and a safe generated filename:
+        infocap-policy-{policy_locator_hash}-{content_hash_prefix}.pdf
+        """
+        try:
+            prefix = f"infocap-policy-{policy_locator_hash}-"
+            query = (
+                self.supabase.table("documents")
+                .select("*")
+                .eq("company_id", company_id)
+                .eq("file_type", "pdf")
+                .like("file_name", f"{prefix}%")
+                .order("created_at", desc=True)
+            )
+            result = query.limit(10).execute()
+            rows = result.data if result and result.data else []
+            if content_hash:
+                rows = [
+                    row for row in rows
+                    if str(row.get("file_name") or "").startswith(
+                        f"{prefix}{str(content_hash)[:16]}"
+                    )
+                ]
+            if not rows:
+                return None
+            row = rows[0]
+            row["policy_locator_hash"] = policy_locator_hash
+            marker = str(row.get("file_name") or "").removeprefix(prefix)
+            row["content_hash"] = marker.split(".", 1)[0]
+            return row
+        except Exception as e:
+            logger.warning(f"[DocumentService] policy document cache lookup failed: {type(e).__name__}")
+            return None
+
+    def load_raw_pages(self, document_id: str, company_id: str) -> List[Dict[str, Any]]:
+        """Load extracted pages from the existing raw JSON object in MinIO."""
+        try:
+            raw_path = f"{company_id}/raw/{document_id}.json"
+            data = self.minio.download_file(raw_path)
+            raw_data = json.load(data)
+            pages = raw_data.get("pages")
+            return pages if isinstance(pages, list) else []
+        except Exception as e:
+            logger.warning(f"[DocumentService] policy raw pages unavailable: {type(e).__name__}")
+            return []
+
+    def store_official_policy_document(
+        self,
+        *,
+        file_data: bytes,
+        filename: str,
+        company_id: str,
+        file_size: int,
+        content_type: str,
+        policy_metadata: Dict[str, Any],
+        agent_id: Optional[str] = None,
+    ) -> Tuple[str, List[Dict[str, Any]]]:
+        """
+        Store an official InfoCap policy PDF using the existing private document path.
+
+        This intentionally does not persist the signed source URL. Policy identity
+        travels only as hashes/metadata in the raw JSON and Qdrant payload.
+        """
+        try:
+            document_id = str(uuid.uuid4())
+            file_type = self._get_file_type(filename)
+            if file_type != "pdf":
+                raise ValueError("official policy documents must be PDF")
+
+            minio_path = self.minio.upload_file(
+                file_data=BytesIO(file_data),
+                company_id=company_id,
+                document_id=document_id,
+                filename=filename,
+                content_type=content_type or "application/pdf",
+            )
+
+            text_content, pages = self.extract_text_internal(BytesIO(file_data), file_type)
+            from .knowledge_scope import SCOPE_CONNECTOR
+
+            raw_data = {
+                "text_content": text_content,
+                "pages": pages,
+                "metadata": {
+                    "filename": filename,
+                    "file_type": file_type,
+                    "file_size": file_size,
+                    "agent_id": agent_id,
+                    "scope": SCOPE_CONNECTOR,
+                    "uploaded_at": datetime.now(timezone.utc).isoformat(),
+                    **(policy_metadata or {}),
+                },
+            }
+            raw_bytes = BytesIO(json.dumps(raw_data, ensure_ascii=False).encode("utf-8"))
+            raw_object_name = f"{company_id}/raw/{document_id}.json"
+            self.minio.client.put_object(
+                "documents",
+                raw_object_name,
+                raw_bytes,
+                length=raw_bytes.getbuffer().nbytes,
+                content_type="application/json",
+            )
+
+            qdrant_collection = f"company_{company_id.replace('-', '_')}"
+            result = (
+                self.supabase.table("documents")
+                .insert(
+                    {
+                        "id": document_id,
+                        "company_id": company_id,
+                        "agent_id": agent_id,
+                        "scope": SCOPE_CONNECTOR,
+                        "file_name": filename,
+                        "file_type": file_type,
+                        "file_size": file_size,
+                        "minio_path": minio_path,
+                        "qdrant_collection": qdrant_collection,
+                        "ingestion_strategy": "page",
+                        "ingestion_mode": "semantic",
+                        "status": "pending",
+                    }
+                )
+                .execute()
+            )
+            if not result.data:
+                raise RuntimeError("documents insert returned no data")
+            logger.info(
+                "[DocumentService] official policy document stored company_hash=%s locator_hash=%s",
+                hashlib.sha256(str(company_id).encode("utf-8")).hexdigest()[:12],
+                (policy_metadata or {}).get("policy_locator_hash"),
+            )
+            return document_id, pages
+        except Exception as e:
+            logger.error(f"[DocumentService] failed to store official policy document: {e}", exc_info=True)
             raise
 
     def extract_text_internal(

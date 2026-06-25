@@ -271,6 +271,7 @@ class QdrantService:
         include_tenant_wide: bool = False,  # também inclui docs sem agent_id (tenant-wide)
         scope_match: Optional[List[str]] = None,  # filtra por scope (ex.: global) — SPEC-003
         curation_published_only: bool = False,  # só conhecimento curado/publicado (global)
+        exclude_metadata_document_types: Optional[List[str]] = None,
         score_threshold: float = 0.0,
         sparse_embedding: Optional[Any] = None,
         collection_name: Optional[str] = None,
@@ -306,6 +307,7 @@ class QdrantService:
 
             # Filtro de isolamento: agente específico (+ opcional tenant-wide agent_id ausente).
             must_conditions = []
+            must_not_conditions = []
             should_conditions = None
 
             if document_id:
@@ -342,9 +344,20 @@ class QdrantService:
                 must_conditions.append(
                     FieldCondition(key="curation_status", match=MatchValue(value="published"))
                 )
+            if exclude_metadata_document_types:
+                must_not_conditions.append(
+                    FieldCondition(
+                        key="metadata.document_type",
+                        match=MatchAny(any=list(exclude_metadata_document_types)),
+                    )
+                )
 
-            if must_conditions or should_conditions:
-                query_filter = Filter(must=must_conditions or None, should=should_conditions)
+            if must_conditions or should_conditions or must_not_conditions:
+                query_filter = Filter(
+                    must=must_conditions or None,
+                    should=should_conditions,
+                    must_not=must_not_conditions or None,
+                )
             else:
                 query_filter = None
 

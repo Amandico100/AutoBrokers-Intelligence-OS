@@ -24,6 +24,10 @@ class InfocapLookupInput(BaseModel):
         default=None,
         description="Referencia tecnica interna da apolice, quando disponivel, no formato infocap:<codfil>:<nosnum>.",
     )
+    document_evidence_requested: Optional[bool] = Field(
+        default=None,
+        description="Use true quando a pergunta pedir cobertura, franquia, LMI, clausula, exclusao ou assistencia.",
+    )
 
 
 def _internal_key() -> Optional[str]:
@@ -54,6 +58,9 @@ class InfocapPolicyLookupTool(BaseTool):
         name: Optional[str] = None,
         policy_number: Optional[str] = None,
         policy_ref: Optional[str] = None,
+        document_evidence_requested: Optional[bool] = None,
+        user_query: Optional[str] = None,
+        force_document_evidence_refresh: bool = False,
     ) -> Dict[str, Any]:
         if not document and not name and not policy_number and not policy_ref:
             return {"content": "Informe CPF/CNPJ, nome do cliente, numero da apolice, ou um policy_ref para detalhar a apolice.", "found": False}
@@ -79,6 +86,9 @@ class InfocapPolicyLookupTool(BaseTool):
                 dpayload = InfocapPolicyDetailPayload(
                     company_id=self.company_id,
                     policy_ref=str(policy_ref),
+                    user_query=user_query,
+                    document_evidence_requested=bool(document_evidence_requested),
+                    force_document_evidence_refresh=bool(force_document_evidence_refresh),
                     unmasked=True,
                 )
                 det = await infocap_policy_detail(payload=dpayload, x_autobrokers_internal_key=key, db=db)
@@ -93,6 +103,9 @@ class InfocapPolicyLookupTool(BaseTool):
                 document=document or None,
                 name=name or None,
                 policy_number=policy_number or None,
+                user_query=user_query,
+                document_evidence_requested=bool(document_evidence_requested),
+                force_document_evidence_refresh=bool(force_document_evidence_refresh),
                 unmasked=True,
             )
             result = await infocap_lookup(payload=payload, x_autobrokers_internal_key=key, db=db)
@@ -109,6 +122,9 @@ class InfocapPolicyLookupTool(BaseTool):
         name: Optional[str] = None,
         policy_number: Optional[str] = None,
         policy_ref: Optional[str] = None,
+        document_evidence_requested: Optional[bool] = None,
+        user_query: Optional[str] = None,
+        force_document_evidence_refresh: bool = False,
     ) -> Dict[str, Any]:
         return {"content": "Consulta InfoCap deve ser executada de forma assincrona.", "found": False}
 
@@ -121,6 +137,8 @@ class InfocapPolicyLookupTool(BaseTool):
             required_facts.append("policy_options")
         if pack.get("structured_coverage_absent"):
             required_facts.append("coverage_absent")
+        if pack.get("document_evidence_ready"):
+            required_facts.append("document_evidence")
         if status == "source_limited":
             required_facts.append("source_limited")
         return {
@@ -134,7 +152,9 @@ class InfocapPolicyLookupTool(BaseTool):
                 "choose_policy"
                 if status == "ambiguous_policy"
                 else "use_official_document_evidence_later"
-                if pack.get("document_evidence_required")
+                if pack.get("document_evidence_required") and not pack.get("document_evidence_ready")
+                else "answer_from_document_evidence"
+                if pack.get("document_evidence_ready")
                 else "answer_from_structured_data"
                 if status == "found"
                 else "retry_or_refine"
@@ -142,6 +162,23 @@ class InfocapPolicyLookupTool(BaseTool):
             "rendered_safe_answer": rendered,
             "required_facts": required_facts,
         }
+
+    @staticmethod
+    def _document_evidence_lines(pack: Dict[str, Any]) -> list[str]:
+        evidence = (pack.get("official_policy_document_evidence") or {}) if isinstance(pack, dict) else {}
+        items = evidence.get("evidence_items") or []
+        if not items:
+            return []
+        lines = [
+            "- Evidencia documental da apolice oficial processada:",
+        ]
+        for item in items[:10]:
+            page = item.get("page_number") or "-"
+            etype = item.get("evidence_type") or "other"
+            text = str(item.get("evidence_text") or "").strip()
+            if text:
+                lines.append(f"   - Pagina {page} [{etype}]: {text}")
+        return lines
 
     @staticmethod
     def _summarize_detail(d: Dict[str, Any]) -> str:
@@ -172,10 +209,12 @@ class InfocapPolicyLookupTool(BaseTool):
             lines.append("- Coberturas estruturadas:")
             for section in secs[:20]:
                 lines.append(f"   - {section.get('label')}" + (f" - {section.get('amount')}" if section.get("amount") else ""))
+        elif pack.get("document_evidence_ready"):
+            lines.extend(InfocapPolicyLookupTool._document_evidence_lines(pack))
         else:
             lines.append("- A InfoCap confirmou a apolice e os dados operacionais, mas nao retornou itens estruturados de cobertura nesta consulta.")
             if pack.get("official_document_source_available"):
-                lines.append("- Ha fonte documental oficial disponivel para a proxima etapa de evidencia documental; ela nao foi baixada nem analisada nesta consulta.")
+                lines.append("- Ha fonte documental oficial disponivel, mas ela ainda nao foi processada nesta consulta.")
         if pack.get("limitations"):
             lines.append("- Observacoes: " + "; ".join(pack.get("limitations")[:3]))
         return "\n".join(lines)
@@ -209,9 +248,12 @@ class InfocapPolicyLookupTool(BaseTool):
                 f"- Situacao: {sel.get('policy_status') or '-'} ({active_text}) - Vigencia: {sel.get('valid_from') or '-'} a {sel.get('valid_to') or '-'}",
             ]
             if pack.get("structured_coverage_absent"):
-                lines.append("- A InfoCap confirmou a apolice e seus dados operacionais, mas nao retornou itens estruturados de cobertura, franquia ou assistencia nesta consulta. Nao vou concluir cobertura sem essa evidencia.")
-                if pack.get("official_document_source_available"):
-                    lines.append("- Existe uma fonte documental oficial que podera ser usada na etapa R1C, mas ela ainda nao foi baixada nem processada nesta consulta.")
+                if pack.get("document_evidence_ready"):
+                    lines.extend(InfocapPolicyLookupTool._document_evidence_lines(pack))
+                else:
+                    lines.append("- A InfoCap confirmou a apolice e seus dados operacionais, mas nao retornou itens estruturados de cobertura, franquia ou assistencia nesta consulta. Nao vou concluir cobertura sem essa evidencia.")
+                    if pack.get("official_document_source_available"):
+                        lines.append("- Existe uma fonte documental oficial disponivel; ela ainda nao foi processada nesta consulta.")
             return "\n".join(lines) + cli
         if status in ("multiple_matches", "ambiguous_customer", "ambiguous_policy"):
             from app.api.infocap_connector import _format_policy_options_for_summary
