@@ -8,6 +8,7 @@ credenciais, Supabase, Vault, rede, payload real ou PII real.
 """
 
 import importlib.util
+import ast
 import json
 import sys
 import types
@@ -104,6 +105,28 @@ def check(name, cond, detail=None):
 
 def run():
     print("== R1A - InfoCap contract capture helpers ==\n")
+
+    connector_source = (ROOT / "app" / "api" / "infocap_connector.py").read_text(encoding="utf-8")
+    tool_source = (ROOT / "app" / "agents" / "tools" / "infocap_tool.py").read_text(encoding="utf-8")
+    route_source = (ROOT.parent / "app" / "api" / "attendance" / "connectors" / "infocap" / "probe" / "route.ts").read_text(encoding="utf-8")
+    connector_ast = ast.parse(connector_source)
+    tool_ast = ast.parse(tool_source)
+
+    def top_level_count(tree, name):
+        return sum(isinstance(node, ast.FunctionDef) and node.name == name for node in tree.body)
+
+    def class_method_count(tree, class_name, method_name):
+        for node in tree.body:
+            if isinstance(node, ast.ClassDef) and node.name == class_name:
+                return sum(isinstance(child, ast.FunctionDef) and child.name == method_name for child in node.body)
+        return 0
+
+    check("single _build_evidence_pack definition", top_level_count(connector_ast, "_build_evidence_pack") == 1)
+    check("single _coverage_sections definition", top_level_count(connector_ast, "_coverage_sections") == 1)
+    check("single _summarize definition", class_method_count(tool_ast, "InfocapPolicyLookupTool", "_summarize") == 1)
+    check("single _summarize_detail definition", class_method_count(tool_ast, "InfocapPolicyLookupTool", "_summarize_detail") == 1)
+    check("tool does not keep local connection selector", class_method_count(tool_ast, "InfocapPolicyLookupTool", "_find_conn_id") == 0)
+    check("probe route delegates connection resolution to backend", "infocap-connection-resolution" not in route_source)
 
     payload = {
         "documento": [
@@ -214,6 +237,10 @@ def run():
     )
     check("numapo resolves to nosnum locator", locator == {"provider": "infocap", "codfil": "2", "nosnum": "N2"}, locator)
     check("numapo resolution status found", status == "found", status)
+    raw_codfil, raw_ref = mod._parse_policy_ref_input("N2")
+    locator_codfil, locator_ref = mod._parse_policy_ref_input("infocap:2:N2")
+    check("raw nosnum has no codfil", raw_codfil is None and raw_ref == "N2", (raw_codfil, raw_ref))
+    check("policy locator ref carries codfil", locator_codfil == "2" and locator_ref == "N2", (locator_codfil, locator_ref))
 
     code_only_sections = mod._coverage_sections({"itens": [{"item": "P", "tipo": "A"}]})
     check("short codes do not become coverage labels", code_only_sections == [], code_only_sections)
@@ -271,6 +298,73 @@ def run():
     safe_endpoint = mod._sanitize_contract_output({"endpoint": endpoint})
     check("sanitizer preserves structural documento count", safe_endpoint["endpoint"]["counts"]["documento"] == 1)
     check("sanitizer preserves structural documento sample keys", "documento" in safe_endpoint["endpoint"]["sample_keys"])
+
+    resolver = getattr(mod, "_resolve_infocap_connection_candidates", None)
+    check("canonical backend connection resolver exists", callable(resolver))
+    if callable(resolver):
+        def conn(**overrides):
+            row = {
+                "id": "conn-valid",
+                "company_id": "company-1",
+                "status": "connected",
+                "health_status": "healthy",
+                "encrypted_secret_ref": "vault-ref",
+                "connection_config": {"base_url": "https://infocap.example.test"},
+                "connector_templates": {"slug": "infocap"},
+            }
+            row.update(overrides)
+            return row
+
+        decision = resolver([
+            conn(id="new-missing-secret", encrypted_secret_ref=""),
+            conn(id="older-valid"),
+        ], company_id="company-1", requested_connection_id=None, provider_default_base_url="")
+        check("resolver chooses only eligible connection", (decision.get("selected_connection") or {}).get("id") == "older-valid", decision)
+        check("resolver summary omits connection id", "older-valid" not in str(decision.get("summary")), decision.get("summary"))
+
+        decision = resolver([conn(id="a"), conn(id="b")], company_id="company-1", requested_connection_id=None, provider_default_base_url="")
+        check("two eligible connections become ambiguous", decision.get("status") == "ambiguous_connection", decision)
+        check("ambiguous resolver chooses no connection", decision.get("selected_connection") is None, decision)
+
+        decision = resolver([conn(id="archived", status="archived"), conn(id="missing-secret", encrypted_secret_ref="")], company_id="company-1", requested_connection_id=None, provider_default_base_url="")
+        check("zero eligible connections request reconnect", decision.get("status") == "blocked_missing_credentials", decision)
+        check("zero eligible selection status reconnect", (decision.get("summary") or {}).get("selection_status") == "reconnect_required", decision)
+
+    ramo_pack = mod._build_evidence_pack(
+        {"nosnum": "N1", "codfil": "1", "numapo": "AP-1", "ramo": "Residencial", "produto": "Residencial Completo"},
+        None,
+        None,
+        True,
+        envelope={"documento": [{"nosnum": "N1", "codfil": "1"}]},
+    )
+    check("ramo/produto residencial does not create assistance signal", not any(v is True for v in (ramo_pack.get("assistance_signals") or {}).values()), ramo_pack.get("assistance_signals"))
+    check("ramo/produto residencial keeps coverage absent", ramo_pack.get("coverage_sections") == [] and ramo_pack.get("structured_coverage_absent") is True, ramo_pack)
+
+    auto_pack = mod._build_evidence_pack(
+        {"nosnum": "N2", "codfil": "1", "numapo": "AP-2", "ramo": "Auto", "produto": "Auto eletrico"},
+        None,
+        None,
+        True,
+        envelope={"documento": [{"nosnum": "N2", "codfil": "1"}]},
+    )
+    check("produto auto/eletrico does not create electrician signal", (auto_pack.get("assistance_signals") or {}).get("electrician") is not True, auto_pack.get("assistance_signals"))
+
+    option_formatter = getattr(mod, "_format_policy_options_for_summary", None)
+    check("deterministic policy option formatter exists", callable(option_formatter))
+    if callable(option_formatter):
+        options_text = option_formatter([
+            {
+                "insurer_key": "SEG-A",
+                "product": "Residencial",
+                "valid_from": "01/01/2026",
+                "valid_to": "01/01/2027",
+                "policy_status": "ativo",
+                "policy_number": "AP-1",
+                "policy_locator_ref": "infocap:1:N1",
+            }
+        ])
+        check("ambiguous option lists insurer/product", "SEG-A" in options_text and "Residencial" in options_text, options_text)
+        check("ambiguous option lists locator ref", "infocap:1:N1" in options_text, options_text)
 
 
 if __name__ == "__main__":

@@ -114,6 +114,24 @@ Resultados de selecao:
 
 O diagnostico pode exibir somente contagens agregadas: total de conexoes InfoCap, inativas/arquivadas, status operacional, Vault presente, base URL configurada, elegiveis e estrategia de selecao. E proibido retornar ID da conexao, `encrypted_secret_ref`, base URL, credenciais, token, CPF, nome, numero de apolice, `nosnum`, `codigo`, `codfil` ou payload bruto.
 
+### 6.2 R1B.1 - endurecimento canonico antes do aceite
+
+O R1B nao pode ser aceito como producao final enquanto houver duplicacao de implementacao, resolucao concorrente de conexao ou sinal falso de cobertura.
+
+Regras obrigatorias:
+
+- deve existir uma unica definicao canonica de `_build_evidence_pack`, `_coverage_sections`, `_summarize` e `_summarize_detail`;
+- a resolucao de conexao InfoCap deve morar no backend Python existente e ser reutilizada por `infocap_lookup`, `infocap_policy_detail`, `infocap_probe` e `InfocapPolicyLookupTool`;
+- a rota Next do diagnostico pode autenticar e encaminhar a requisicao, mas nao pode manter algoritmo proprio de selecao de `tenant_connections`;
+- `tenant_connection_id` pode restringir a escolha, mas a conexao continua precisando passar por empresa, template InfoCap, status operacional, nao arquivada/inativa, Vault presente, base URL efetiva e saude operacional;
+- zero conexoes elegiveis retorna `blocked_missing_credentials`; mais de uma retorna `ambiguous_connection`;
+- detalhe de apolice deve usar preferencialmente `policy_locator_ref = infocap:<codfil>:<nosnum>`;
+- `nosnum` ou `numapo` simples nunca autorizam chamada direta a `/documento` com `codfil` padrao; precisam ter sido resolvidos no catalogo ou vir em um locator completo;
+- `ramo`, `produto`, `ramo_abrev`, descricao geral e tipo de documento sao classificacao da apolice, nao evidencia de cobertura;
+- `assistance_signals` so podem ser positivos quando vierem de item, cobertura, clausula ou assistencia estruturada com label humano comprovado;
+- `tabela_itens` permanece desconhecido/classificavel ate existir contrato semantico validado;
+- `ambiguous_policy` deve devolver opcoes deterministicas para o Core pedir escolha, sem selecao silenciosa pelo LLM.
+
 ## 7. Contrato de entrada
 
 O adapter canonico deve aceitar uma requisicao normalizada:

@@ -62,6 +62,11 @@ infocap_policy_detail_item_code_p.json
 | G31 | Fonte oficial sem URL exposta | `/documento` com `acompanhamento.emissao.url_apolice` | `policy_ref` | URL presente no envelope | `official_document_source_available=true` sem retornar URL | Expor URL ao chat/log/LLM |
 | G32 | Parcelas com origem | `/documento` com `parcelas[]` | `policy_ref` | `datvenc`, `datquit`, `vlvenc`, `vlquit`, `forma_pagamento` | Parcelas normalizadas com `source_fields` | Misturar parcela com cobertura |
 | G33 | Financeiros sem semantica inventada | `/documento` com `preliq`, `pretot`, etc. | `policy_ref` | campos financeiros do provider | Retorna `provider_field` e `semantic_status=provider_field_unclassified` | Chamar campo desconhecido de premio total/LMI/franquia |
+| G34 | Resolver unico de conexao | Multiplas `tenant_connections` | Chat, detail e probe | uma valida, arquivadas, sem Vault e duplicadas | Todos usam a mesma regra backend | Tool escolher primeira conexao por conta propria |
+| G35 | Conexao ambigua | Duas conexoes InfoCap elegiveis | qualquer consulta | 2+ elegiveis | `ambiguous_connection` e nenhuma chamada silenciosa | Escolher mais recente |
+| G36 | Locator obrigatorio no detalhe | `policy_ref` simples sem `codfil` validado | detalhe | `nosnum`/`numapo` cru | Retorna limite de fonte ou exige locator resolvido | Chamar `/documento` com `codfil` padrao |
+| G37 | Produto nao e cobertura | Produto/ramo residencial ou auto | detalhe sem itens | somente `produto`, `ramo`, `descricao` | `structured_coverage_absent`, `assistance_signals` vazio/unknown | Gerar assistencia/eletricista por produto |
+| G38 | Opcoes deterministicas | Multiplas apolices | busca sem ref | catalogo 2+ docs | Texto inclui ate 10 opcoes com seguradora, produto, vigencia, status, numero e `policy_locator_ref` | LLM escolher sozinho |
 
 ## 4. Goldens de fluxo
 
@@ -172,3 +177,18 @@ O teste `backend/tests/test_infocap_contract_capture.py` agora cobre:
 - `structured_coverage_absent`;
 - `official_document_source_available` sem URL;
 - `document_evidence_required` sem fetch/processamento do documento.
+
+## 8. Cobertura R1B.1 implementada no harness offline
+
+O teste `backend/tests/test_infocap_contract_capture.py` tambem cobre:
+
+- uma unica definicao de `_build_evidence_pack`, `_coverage_sections`, `_summarize` e `_summarize_detail`;
+- ausencia de `_find_conn_id` local na tool;
+- rota Next do probe delegando selecao de conexao ao backend;
+- resolver backend escolhendo uma conexao elegivel e recusando zero/duas elegiveis;
+- conexao arquivada/inativa e conexao sem Vault ignoradas;
+- `policy_locator_ref` no formato `infocap:<codfil>:<nosnum>`;
+- `ramo`/`produto` residencial sem assistencia positiva;
+- produto auto/eletrico sem sinal de eletricista;
+- opcoes deterministicas em ambiguidade;
+- nenhuma chamada a provider real.

@@ -11,7 +11,6 @@
     "test:attendance-goldens": "node scripts/attendance-golden-tests.mjs",
     "test:infocap-evidence": "node scripts/infocap-evidence-pack.test.mjs",
     "test:infocap-contract-capture": "python backend/tests/test_infocap_contract_capture.py",
-    "test:infocap-connection-resolution": "node scripts/infocap-connection-resolution.test.mjs",
     "test:infocap-readiness": "node scripts/infocap-coverage-readiness.test.mjs",
     "test:dispatch-readiness": "node scripts/dispatch-readiness.test.mjs",
     "test:whatsapp-inbound": "node scripts/whatsapp-inbound.test.mjs",

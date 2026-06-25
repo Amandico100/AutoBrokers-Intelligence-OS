@@ -159,7 +159,7 @@ CLIENT_REF_KEYS = ["codfil", "codigo", "codcli"]
 
 class InfocapLookupPayload(BaseModel):
     company_id: str
-    tenant_connection_id: str
+    tenant_connection_id: Optional[str] = None
     document: Optional[str] = None
     name: Optional[str] = None
     policy_number: Optional[str] = None
@@ -395,6 +395,177 @@ def _human_label(value: Optional[str]) -> Optional[str]:
     return cleaned
 
 
+_INFOCAP_OPERATIONAL_STATUSES = {"connected", "active", "healthy"}
+_INFOCAP_INACTIVE_STATUSES = {"archived", "inactive", "revoked", "disconnected", "blocked"}
+
+
+def _norm_status(value: Any) -> str:
+    return str(value or "").strip().lower()
+
+
+def _has_secret_ref(conn: Dict[str, Any]) -> bool:
+    return isinstance(conn.get("encrypted_secret_ref"), str) and bool(str(conn.get("encrypted_secret_ref")).strip())
+
+
+def _connection_config(conn: Dict[str, Any]) -> Dict[str, Any]:
+    return conn.get("connection_config") if isinstance(conn.get("connection_config"), dict) else {}
+
+
+def _effective_base_url(conn: Dict[str, Any], provider_default_base_url: Optional[str]) -> str:
+    config = _connection_config(conn)
+    return str(config.get("base_url") or provider_default_base_url or "").strip().rstrip("/")
+
+
+def _is_infocap_template(conn: Dict[str, Any]) -> bool:
+    tpl = conn.get("connector_templates")
+    if isinstance(tpl, dict):
+        return tpl.get("slug") == INFOCAP_SLUG
+    return True
+
+
+def _is_inactive_connection(conn: Dict[str, Any]) -> bool:
+    status = _norm_status(conn.get("status"))
+    metadata = conn.get("metadata") if isinstance(conn.get("metadata"), dict) else {}
+    archived = metadata.get("archived") is True or metadata.get("is_archived") is True
+    return archived or status in _INFOCAP_INACTIVE_STATUSES
+
+
+def _has_operational_status(conn: Dict[str, Any]) -> bool:
+    status = _norm_status(conn.get("status"))
+    health = _norm_status(conn.get("health_status"))
+    if health in {"failed", "error", "invalid_credentials", "missing_credentials"}:
+        return False
+    return status in _INFOCAP_OPERATIONAL_STATUSES or health == "healthy"
+
+
+def _resolve_infocap_connection_candidates(
+    candidates: List[Dict[str, Any]],
+    *,
+    company_id: str,
+    requested_connection_id: Optional[str],
+    provider_default_base_url: Optional[str],
+) -> Dict[str, Any]:
+    requested = str(requested_connection_id or "").strip()
+    scoped = [
+        conn for conn in candidates
+        if str(conn.get("company_id") or "") == str(company_id or "")
+        and (not requested or str(conn.get("id") or "") == requested)
+        and _is_infocap_template(conn)
+    ]
+    inactive = [conn for conn in scoped if _is_inactive_connection(conn)]
+    operational = [conn for conn in scoped if not _is_inactive_connection(conn) and _has_operational_status(conn)]
+    with_secret = [conn for conn in scoped if not _is_inactive_connection(conn) and _has_secret_ref(conn)]
+    with_base = [conn for conn in scoped if not _is_inactive_connection(conn) and bool(_effective_base_url(conn, provider_default_base_url))]
+    eligible = [
+        conn for conn in scoped
+        if not _is_inactive_connection(conn)
+        and _has_operational_status(conn)
+        and _has_secret_ref(conn)
+        and bool(_effective_base_url(conn, provider_default_base_url))
+    ]
+
+    selected = eligible[0] if len(eligible) == 1 else None
+    if selected:
+        status = "probe_ready"
+        selection_status = "connection_usable"
+    elif len(eligible) > 1:
+        status = "ambiguous_connection"
+        selection_status = "manual_connection_cleanup_required"
+    else:
+        status = "blocked_missing_credentials"
+        selection_status = "reconnect_required"
+
+    return {
+        "selected_connection": selected,
+        "status": status,
+        "selection_status": selection_status,
+        "summary": {
+            "total_infocap_connections": len(scoped),
+            "inactive_connection_count": len(inactive),
+            "operational_status_count": len(operational),
+            "vault_secret_present_count": len(with_secret),
+            "base_url_configured_count": len(with_base),
+            "eligible_connection_count": len(eligible),
+            "vault_configured": len(with_secret) > 0,
+            "selection_status": selection_status,
+            "selection_strategy": "backend_scope_status_vault_base_url_single",
+        },
+    }
+
+
+async def _resolve_infocap_connection(
+    db: AsyncSupabaseClient,
+    *,
+    company_id: str,
+    requested_connection_id: Optional[str] = None,
+) -> Dict[str, Any]:
+    tpl_res = await db.client.table("connector_templates").select("id").eq("slug", INFOCAP_SLUG).limit(1).execute()
+    tpl_id = None
+    if tpl_res and isinstance(tpl_res.data, list) and tpl_res.data:
+        tpl_id = tpl_res.data[0].get("id")
+    if not tpl_id:
+        return _resolve_infocap_connection_candidates(
+            [],
+            company_id=company_id,
+            requested_connection_id=requested_connection_id,
+            provider_default_base_url=settings.INFOCAP_BASE_URL or "",
+        )
+    query = (
+        db.client.table("tenant_connections")
+        .select("id, company_id, connector_template_id, connection_config, encrypted_secret_ref, status, health_status, metadata, connector_templates(slug)")
+        .eq("company_id", company_id)
+        .eq("connector_template_id", tpl_id)
+    )
+    if requested_connection_id:
+        query = query.eq("id", requested_connection_id)
+    res = await query.execute()
+    candidates = res.data if res and isinstance(res.data, list) else []
+    return _resolve_infocap_connection_candidates(
+        candidates,
+        company_id=company_id,
+        requested_connection_id=requested_connection_id,
+        provider_default_base_url=settings.INFOCAP_BASE_URL or "",
+    )
+
+
+def _connection_block_response(
+    decision: Dict[str, Any],
+    *,
+    source: Optional[str] = "infocap",
+    include_probes: bool = False,
+) -> Dict[str, Any]:
+    status = decision.get("status") or "blocked_missing_credentials"
+    blockers = ["ambiguous_infocap_connections"] if status == "ambiguous_connection" else ["missing_credentials"]
+    out: Dict[str, Any] = {
+        "ok": False,
+        "status": status,
+        "blockers": blockers,
+        "connection_resolution": decision.get("summary") or {},
+    }
+    if source:
+        out["source"] = source
+    if include_probes:
+        out["probes"] = []
+    return out
+
+
+def _format_policy_options_for_summary(matches: List[Dict[str, Any]]) -> str:
+    lines = ["Opcoes de apolice encontradas:"]
+    for index, match in enumerate((matches or [])[:10], start=1):
+        ref = match.get("policy_locator_ref") or match.get("policy_ref") or "-"
+        num = match.get("policy_number") or match.get("masked_policy_number") or "-"
+        insurer = match.get("insurer_key") or "-"
+        product = match.get("product") or "-"
+        valid_from = match.get("valid_from") or "-"
+        valid_to = match.get("valid_to") or "-"
+        status = match.get("policy_status") or "-"
+        lines.append(
+            f"{index}. Seguradora: {insurer}; Produto/ramo: {product}; Vigencia: {valid_from} a {valid_to}; "
+            f"Status: {status}; Numero: {num}; policy_ref: {ref}"
+        )
+    return "\n".join(lines)
+
+
 def _sanitize_match(record: Dict[str, Any], unmasked: bool = False) -> Dict[str, Any]:
     cancelado = record.get("cancelado")
     status = _first_str(record, ["sit_acompanhamento_txt", "status", "situacao", "renovacao_situacao"])
@@ -529,48 +700,6 @@ def _sanitize_policy(doc: Dict[str, Any], unmasked: bool = False) -> Dict[str, A
     return out
 
 
-def _policy_sort_key(policy: Dict[str, Any], prefer_insurer: Optional[str], prefer_product: Optional[str]):
-    """Ordena: ativas/vigentes > não canceladas > fim mais futuro > match seguradora/produto."""
-    active = policy.get("active_now")
-    not_cancelled = not policy.get("cancelled")
-    dt_to = _parse_date(policy.get("valid_to"))
-    end_ord = dt_to.timestamp() if dt_to else 0.0
-    insurer = (policy.get("insurer_key") or "").lower()
-    product = (policy.get("product") or "").lower()
-    insurer_match = bool(prefer_insurer and prefer_insurer.lower() in insurer)
-    product_match = bool(prefer_product and prefer_product.lower() in product)
-    # Maior tupla = melhor (reverse=True na ordenação).
-    return (
-        1 if active is True else 0,
-        1 if not_cancelled else 0,
-        end_ord,
-        1 if insurer_match else 0,
-        1 if product_match else 0,
-    )
-
-
-_COVERAGE_KEYWORDS = re.compile(r"assist|residencial|eletric|el[eé]tric", re.IGNORECASE)
-
-
-def _coverage_keyword_hit(doc: Dict[str, Any]) -> bool:
-    """Scan leve apenas em descrições de cobertura/ramo (sem PII)."""
-    parts: List[str] = []
-    for key in ("ramo", "ramo_abrev", "produto", "descricao"):
-        v = doc.get(key)
-        if isinstance(v, str):
-            parts.append(v)
-    for listkey in ("itens", "coberturas"):
-        items = doc.get(listkey)
-        if isinstance(items, list):
-            for it in items[:20]:
-                if isinstance(it, dict):
-                    for dk in ("descricao", "cobertura", "nome", "item"):
-                        dv = it.get(dk)
-                        if isinstance(dv, str):
-                            parts.append(dv)
-    return bool(_COVERAGE_KEYWORDS.search(" ".join(parts)))
-
-
 @router.post("/attendance/connectors/infocap/lookup")
 async def infocap_lookup(
     payload: InfocapLookupPayload,
@@ -583,28 +712,18 @@ async def infocap_lookup(
     company_id = (payload.company_id or "").strip()
     connection_id = (payload.tenant_connection_id or "").strip()
     unmasked = bool(getattr(payload, "unmasked", False))
-    if not company_id or not connection_id:
-        raise HTTPException(status_code=400, detail="company_id and tenant_connection_id are required")
+    if not company_id:
+        raise HTTPException(status_code=400, detail="company_id is required")
 
-    # Conexão + template
-    conn_res = (
-        await db.client.table("tenant_connections")
-        .select("id, company_id, connector_template_id, connection_config, encrypted_secret_ref, status")
-        .eq("id", connection_id)
-        .eq("company_id", company_id)
-        .limit(1)
-        .execute()
+    connection_decision = await _resolve_infocap_connection(
+        db,
+        company_id=company_id,
+        requested_connection_id=connection_id or None,
     )
-    conn = conn_res.data[0] if conn_res and conn_res.data else None
+    conn = connection_decision.get("selected_connection")
     if not conn:
-        return {"ok": False, "status": "blocked_not_configured", "source": "infocap", "blockers": ["connection_not_found"]}
-
-    tpl_res = (
-        await db.client.table("connector_templates").select("slug").eq("id", conn.get("connector_template_id")).limit(1).execute()
-    )
-    tpl = tpl_res.data[0] if tpl_res and tpl_res.data else None
-    if not tpl or tpl.get("slug") != INFOCAP_SLUG:
-        return {"ok": False, "status": "blocked_not_configured", "source": "infocap", "blockers": ["not_infocap_connector"]}
+        return _connection_block_response(connection_decision, source="infocap")
+    connection_id = str(conn.get("id") or "")
 
     config = conn.get("connection_config") if isinstance(conn.get("connection_config"), dict) else {}
     base_url = (config.get("base_url") or settings.INFOCAP_BASE_URL or "").rstrip("/")
@@ -891,7 +1010,7 @@ PROBE_TIMEOUT_S = 10.0
 
 class InfocapProbePayload(BaseModel):
     company_id: str
-    tenant_connection_id: str
+    tenant_connection_id: Optional[str] = None
     query_type: str = "cpf"  # cpf|name
     query: str
     codfil: Optional[int] = 1
@@ -1427,23 +1546,18 @@ async def infocap_probe(
     started = time.monotonic()
     company_id = (payload.company_id or "").strip()
     connection_id = (payload.tenant_connection_id or "").strip()
-    if not company_id or not connection_id:
-        raise HTTPException(status_code=400, detail="company_id and tenant_connection_id are required")
+    if not company_id:
+        raise HTTPException(status_code=400, detail="company_id is required")
 
-    conn_res = (
-        await db.client.table("tenant_connections")
-        .select("id, company_id, connector_template_id, connection_config, encrypted_secret_ref")
-        .eq("id", connection_id).eq("company_id", company_id).limit(1).execute()
+    connection_decision = await _resolve_infocap_connection(
+        db,
+        company_id=company_id,
+        requested_connection_id=connection_id or None,
     )
-    conn = conn_res.data[0] if conn_res and conn_res.data else None
+    conn = connection_decision.get("selected_connection")
     if not conn:
-        return {"ok": False, "status": "blocked_not_configured", "blockers": ["connection_not_found"], "probes": []}
-    tpl_res = (
-        await db.client.table("connector_templates").select("slug").eq("id", conn.get("connector_template_id")).limit(1).execute()
-    )
-    tpl = tpl_res.data[0] if tpl_res and tpl_res.data else None
-    if not tpl or tpl.get("slug") != INFOCAP_SLUG:
-        return {"ok": False, "status": "blocked_not_configured", "blockers": ["not_infocap_connector"], "probes": []}
+        return _connection_block_response(connection_decision, source=None, include_probes=True)
+    connection_id = str(conn.get("id") or "")
 
     config = conn.get("connection_config") if isinstance(conn.get("connection_config"), dict) else {}
     base_url = (config.get("base_url") or settings.INFOCAP_BASE_URL or "").rstrip("/")
@@ -1568,7 +1682,7 @@ _SIG_EMERGENCY = re.compile(r"assist|emerg[êe]nc|24h|24\s*horas|socorro|chaveir
 
 class InfocapPolicyDetailPayload(BaseModel):
     company_id: str
-    tenant_connection_id: str
+    tenant_connection_id: Optional[str] = None
     codfil: Optional[int] = None
     policy_ref: str
     unmasked: bool = False  # Core/corretor interno: dados completos
@@ -1585,51 +1699,6 @@ _COVERAGE_AMOUNT_KEYS = (
     "limite_maximo_indenizacao", "lmi", "capital", "valor_is", "valor_segurado",
 )
 
-
-def _coverage_item_lists(doc: Dict[str, Any]) -> List[List[Dict[str, Any]]]:
-    """Coleta listas de itens/coberturas: chaves conhecidas + qualquer lista de dicts com rótulo."""
-    lists: List[List[Dict[str, Any]]] = []
-    seen = set()
-    for k in _COVERAGE_LIST_KEYS:
-        v = doc.get(k)
-        if isinstance(v, list) and any(isinstance(x, dict) for x in v):
-            lists.append([x for x in v if isinstance(x, dict)]); seen.add(k)
-    # fallback: qualquer lista de dicts (no topo) que tenha um campo de rótulo plausível
-    for k, v in doc.items():
-        if k in seen or not isinstance(v, list):
-            continue
-        dicts = [x for x in v if isinstance(x, dict)]
-        if dicts and any(_first_str(d, list(_COVERAGE_LABEL_KEYS)) for d in dicts[:5]):
-            lists.append(dicts)
-    return lists
-
-
-def _coverage_texts(doc: Dict[str, Any]) -> List[str]:
-    """Coleta textos de descrição de ramo/itens/coberturas (sem PII)."""
-    parts: List[str] = []
-    for key in ("ramo", "ramo_abrev", "produto", "descricao", "tipo_seguro"):
-        v = doc.get(key)
-        if isinstance(v, str):
-            parts.append(v)
-    for items in _coverage_item_lists(doc):
-        for it in items[:60]:
-            for dk in _COVERAGE_LABEL_KEYS:
-                dv = it.get(dk)
-                if isinstance(dv, str):
-                    parts.append(dv)
-    return [p for p in parts if p]
-
-
-def _coverage_sections(doc: Dict[str, Any]) -> List[Dict[str, Any]]:
-    """Seções de cobertura (descrição + valor). Amplo: varre todas as listas de itens plausíveis."""
-    out: List[Dict[str, Any]] = []
-    for items in _coverage_item_lists(doc):
-        for it in items[:60]:
-            label = _first_str(it, list(_COVERAGE_LABEL_KEYS))
-            amount = _first_str(it, list(_COVERAGE_AMOUNT_KEYS))
-            if label:
-                out.append({"label": label, "amount": amount})
-    return out[:60]
 
 
 def _coverage_item_lists(doc: Dict[str, Any]) -> List[List[Dict[str, Any]]]:
@@ -1678,77 +1747,6 @@ def _signal(texts_joined: str, has_any_text: bool, pattern: "re.Pattern[str]") -
         return None
     return bool(pattern.search(texts_joined))
 
-
-def _build_evidence_pack(
-    doc: Dict[str, Any], prefer_insurer: Optional[str], prefer_product: Optional[str], unmasked: bool = False
-) -> Dict[str, Any]:
-    """Monta o policy_evidence_pack a partir de um documento de detalhe. unmasked=True → dados completos (Core)."""
-    base = _sanitize_policy(doc, unmasked)
-    texts = _coverage_texts(doc)
-    joined = " ".join(texts)
-    has_text = bool(texts)
-    sections = _coverage_sections(doc)
-
-    signals = {
-        "residential": _signal(joined, has_text, _SIG_RESIDENTIAL),
-        "electrician": _signal(joined, has_text, _SIG_ELECTRICIAN),
-        "emergency_assistance": _signal(joined, has_text, _SIG_EMERGENCY),
-    }
-    any_signal = any(v is True for v in signals.values())
-    cancelled = bool(base.get("cancelled"))
-
-    # Confiança: high só com sinais positivos + apólice não cancelada + vigente.
-    if cancelled or base.get("active_now") is False:
-        confidence = "low"
-    elif any_signal and (sections or base.get("coverages_count")):
-        confidence = "high"
-    elif sections or base.get("coverages_count"):
-        confidence = "medium"
-    else:
-        confidence = "low"
-
-    limitations: List[str] = []
-    if not sections and not base.get("coverages_count"):
-        limitations.append(
-            "Documento não trouxe itens/coberturas detalhados; existência da apólice confirmada, cobertura específica não."
-        )
-    if cancelled:
-        limitations.append("Apólice consta como cancelada.")
-    if base.get("active_now") is False and not cancelled:
-        limitations.append("Apólice fora do período de vigência atual.")
-    human_required = cancelled or confidence == "low"
-
-    return {
-        "source": "infocap",
-        "verified_by": "connector",
-        "policy_found": True,
-        "policy_selected": True,
-        "policy_ref": base.get("policy_ref"),
-        "masked_policy_number": base.get("masked_policy_number"),
-        "insurer_detected": base.get("insurer_key"),
-        "product_detected": base.get("product"),
-        "line_kind_detected": base.get("line_kind"),
-        "policy_status": base.get("policy_status"),
-        "active_now": base.get("active_now"),
-        "expired": base.get("expired"),
-        "valid_from": base.get("valid_from"),
-        "valid_to": base.get("valid_to"),
-        "holder_name_masked": base.get("holder_name_masked"),
-        "risk_address_summary_masked": _first_str(doc, ["cidade", "municipio", "estado", "uf"]),
-        "object_summary": _first_str(doc, ["objeto", "bem", "descricao_objeto", "local_risco"]),
-        "coverage_sections": sections,
-        "coverages_count": base.get("coverages_count"),
-        "cancelled": cancelled,
-        "assistance_signals": signals,
-        "confidence": confidence,
-        "human_required": human_required,
-        "limitations": limitations,
-        **({
-            "policy_number": base.get("policy_number"),
-            "holder_name": base.get("holder_name"),
-            "document": base.get("document"),
-        } if unmasked else {}),
-    }
 
 
 def _merge_envelope_coverage(doc: Dict[str, Any], envelope: Optional[Dict[str, Any]]) -> Dict[str, Any]:
@@ -1963,24 +1961,18 @@ async def infocap_policy_detail(
     policy_ref = (payload.policy_ref or "").strip()
     ref_codfil, ref_value = _parse_policy_ref_input(policy_ref)
     unmasked = bool(getattr(payload, "unmasked", False))
-    if not company_id or not connection_id or not ref_value:
-        raise HTTPException(status_code=400, detail="company_id, tenant_connection_id and policy_ref are required")
+    if not company_id or not ref_value:
+        raise HTTPException(status_code=400, detail="company_id and policy_ref are required")
 
-    conn_res = (
-        await db.client.table("tenant_connections")
-        .select("id, company_id, connector_template_id, connection_config, encrypted_secret_ref")
-        .eq("id", connection_id).eq("company_id", company_id).limit(1).execute()
+    connection_decision = await _resolve_infocap_connection(
+        db,
+        company_id=company_id,
+        requested_connection_id=connection_id or None,
     )
-    conn = conn_res.data[0] if conn_res and conn_res.data else None
+    conn = connection_decision.get("selected_connection")
     if not conn:
-        return {"ok": False, "status": "blocked_not_configured", "source": "infocap", "blockers": ["connection_not_found"]}
-    tpl_res = (
-        await db.client.table("connector_templates").select("slug").eq("id", conn.get("connector_template_id")).limit(1).execute()
-    )
-    tpl = tpl_res.data[0] if tpl_res and tpl_res.data else None
-    if not tpl or tpl.get("slug") != INFOCAP_SLUG:
-        return {"ok": False, "status": "blocked_not_configured", "source": "infocap", "blockers": ["not_infocap_connector"]}
-
+        return _connection_block_response(connection_decision, source="infocap")
+    connection_id = str(conn.get("id") or "")
     config = conn.get("connection_config") if isinstance(conn.get("connection_config"), dict) else {}
     base_url = (config.get("base_url") or settings.INFOCAP_BASE_URL or "").rstrip("/")
     cipher = conn.get("encrypted_secret_ref")
@@ -2000,7 +1992,15 @@ async def infocap_policy_detail(
 
     auth_path = config.get("infocap_auth_path") or "/login"
     documento_path = config.get("infocap_documento_path") or "/documento"
-    codfil = ref_codfil or (payload.codfil if payload.codfil is not None else config.get("infocap_codfil", 1))
+    if not ref_codfil and payload.codfil is None:
+        return {
+            "ok": False,
+            "status": "source_limited",
+            "source": "infocap",
+            "blockers": ["policy_locator_required"],
+            "message": "Use a referencia tecnica policy_locator_ref no formato infocap:<codfil>:<nosnum> retornada pela listagem antes de detalhar a apolice.",
+        }
+    codfil = ref_codfil or payload.codfil
     nosnum = ref_value
     prefer_insurer = (config.get("infocap_prefer_insurer") or "").strip() or None
     prefer_product = (config.get("infocap_prefer_product") or "").strip() or None

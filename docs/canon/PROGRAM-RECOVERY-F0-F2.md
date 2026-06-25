@@ -264,7 +264,36 @@ Criar "InfoCap v2" como outro servico. O correto e corrigir o adapter dentro do 
 - `official_document_source_available` nao expoe URL.
 - Chat Principal passa a receber o DTO canonico pela tool existente.
 
-## 7.2 R1C - Official Policy Document Source and Cached Evidence
+## 7.2 R1B.1 - Canonical Runtime Hardening and Evidence Safety
+
+### Escopo aplicado
+
+- Consolidar duplicacoes internas do adapter/tool antes do aceite produtivo.
+- Centralizar a resolucao de conexao InfoCap no backend Python existente.
+- Fazer Chat Principal, detail e Contract Probe consumirem a mesma regra de `tenant_connections` + Vault.
+- Remover a logica concorrente TypeScript de selecao de conexao do probe.
+- Exigir `policy_locator_ref` preferencial no formato `infocap:<codfil>:<nosnum>` para detalhe.
+- Impedir que `ramo`, `produto`, `ramo_abrev`, descricao geral ou tipo de documento gerem cobertura/assistencia.
+- Retornar opcoes deterministicas em `ambiguous_policy`, sem o LLM escolher sozinho.
+
+### Proibido preservado
+
+- R1C nao foi iniciada.
+- Nenhum documento oficial foi baixado, validado, acessado ou processado.
+- Nenhum runtime, conector, endpoint, RAG, parser, storage, Vault, tabela, migration, agente ou ferramenta paralela foi criado.
+- A Resulta continua sendo apenas tenant piloto, nunca excecao de codigo.
+
+### Criterio de aceite
+
+- R1B so sera aceita apos teste real no Chat Principal.
+- `infocap_lookup`, `infocap_policy_detail`, `infocap_probe` e `InfocapPolicyLookupTool` usam a mesma resolucao canonica de conexao.
+- Zero conexoes elegiveis retorna reconexao necessaria; mais de uma retorna limpeza manual necessaria.
+- `codigo`, `codcli` e `numapo` nao sao usados diretamente como detalhe de apolice.
+- Sinais de classificacao nao sao evidencia de cobertura.
+- `coverage_sections` e `assistance_signals` so podem ser positivos com item/cobertura/clausula/assistencia estruturada comprovada.
+- R1C permanece bloqueada ate aceite do R1B.1 no Chat Principal.
+
+## 7.3 R1C - Official Policy Document Source and Cached Evidence
 
 ### Escopo futuro
 
