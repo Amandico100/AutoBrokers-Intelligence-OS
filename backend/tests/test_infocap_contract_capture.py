@@ -183,6 +183,77 @@ def run():
     check("fixture detects sibling installments", fixture_shape["detected_policy_fields"]["installments_present"] is True)
     check("fixture does not leak synthetic policy", "APOLICE-SINTETICA" not in fixture_raw)
 
+    catalog_shape = mod._safe_contract_shape({"documentos": {"documentos": [{"nosnum": "N1"}, {"nosnum": "N2"}]}})
+    check("nested documentos.documentos result_count", catalog_shape["result_count"] == 2, catalog_shape)
+
+    identity_fn = getattr(mod, "_canonical_customer_identity", None)
+    check("canonical customer identity helper exists", callable(identity_fn))
+    if callable(identity_fn):
+        ident = identity_fn(
+            {"cpf": "99999999999", "cliente": "Busca Sintetica", "codigo": "C1", "codfil": "1"},
+            {"cpf_cnpj": "11122233344", "cliente": "Detalhe Canonico", "codigo": "C1", "codfil": "1"},
+            unmasked=True,
+        )
+        check("canonical identity uses cpf_cnpj from /cliente", ident.get("client_document") == "11122233344", ident)
+        check("canonical identity uses name from /cliente", ident.get("client_name") == "Detalhe Canonico", ident)
+
+    policy = mod._sanitize_policy({"codigo": "CLIENTE-1", "codcli": "CLIENTE-2", "numapo": "AP-1"}, True)
+    check("codigo/codcli never become policy_ref", not policy.get("policy_ref"), policy)
+    policy = mod._sanitize_policy({"nosnum": "N1", "codfil": "2", "numapo": "AP-1"}, True)
+    check("policy_ref derives from nosnum", policy.get("policy_ref") == "N1", policy)
+    check(
+        "policy locator carries codfil+nosnum",
+        policy.get("policy_locator") == {"provider": "infocap", "codfil": "2", "nosnum": "N1"},
+        policy,
+    )
+
+    locator, status = mod._select_policy_locator(
+        [{"nosnum": "N1", "numapo": "AP-11", "codfil": "1"}, {"nosnum": "N2", "numapo": "AP-22", "codfil": "2"}],
+        codfil="1",
+        requested_policy_ref="AP-22",
+    )
+    check("numapo resolves to nosnum locator", locator == {"provider": "infocap", "codfil": "2", "nosnum": "N2"}, locator)
+    check("numapo resolution status found", status == "found", status)
+
+    code_only_sections = mod._coverage_sections({"itens": [{"item": "P", "tipo": "A"}]})
+    check("short codes do not become coverage labels", code_only_sections == [], code_only_sections)
+
+    envelope = {
+        "documento": [{
+            "nosnum": "N1",
+            "codfil": "1",
+            "numapo": "AP-1",
+            "cpf_cnpj": "11122233344",
+            "cliente": "Pessoa Sintetica",
+            "tabela_itens": "P",
+            "preliq": "100.00",
+            "pretot": "110.00",
+            "parcelas": [{
+                "parc": "1",
+                "datvenc": "10/01/2026",
+                "datquit": "11/01/2026",
+                "vlvenc": "110.00",
+                "vlquit": "110.00",
+                "forma_pagamento": "boleto",
+            }],
+            "prod_docs": [{"tipo": "apolice"}],
+        }],
+        "historico": [{"evento": "emitida"}],
+        "acompanhamento": {"emissao": {"url_apolice": "https://docs.example.test/apolice.pdf"}},
+    }
+    try:
+        pack = mod._build_evidence_pack(envelope["documento"][0], None, None, True, envelope=envelope)
+    except TypeError as exc:
+        pack = {"error": str(exc)}
+    raw_pack = str(pack)
+    check("evidence pack preserves envelope keys structurally", {"documento", "historico", "acompanhamento"}.issubset(set((pack.get("evidence_envelope") or {}).keys())), pack)
+    check("installments normalized with source fields", (pack.get("installments") or [{}])[0].get("source_fields", {}).get("due_date") == "datvenc", pack.get("installments"))
+    check("unknown financial fields keep provider_field", any(f.get("provider_field") == "preliq" for f in pack.get("infocap_financial_fields") or []), pack.get("infocap_financial_fields"))
+    check("tabela_itens is unknown table field", pack.get("unknown_table_field_present") is True, pack)
+    check("coverage absent is explicit", pack.get("coverage_evidence_status") == "structured_coverage_absent", pack)
+    check("official document source is flag only", pack.get("official_document_source_available") is True and "docs.example.test" not in raw_pack, pack)
+    check("document evidence required when structured coverage absent and source exists", pack.get("document_evidence_required") is True, pack)
+
     expected_statuses = {
         "found",
         "ambiguous_customer",

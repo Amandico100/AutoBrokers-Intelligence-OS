@@ -16,6 +16,7 @@ from pydantic import BaseModel, Field
 logger = logging.getLogger(__name__)
 
 
+
 class InfocapLookupInput(BaseModel):
     document: Optional[str] = Field(default=None, description="CPF ou CNPJ do cliente (só números ou formatado).")
     name: Optional[str] = Field(default=None, description="Nome do cliente (use se não tiver CPF/CNPJ).")
@@ -152,3 +153,65 @@ class InfocapPolicyLookupTool(BaseTool):
         if status in ("blocked_not_configured", "blocked_missing_credentials"):
             return "A InfoCap não está totalmente configurada para a sua corretora (credencial/base ausente)."
         return "Não foi possível concluir a consulta na InfoCap agora."
+
+    @staticmethod
+    def _summarize_detail(d: Dict[str, Any]) -> str:
+        if not d.get("ok"):
+            st = d.get("status")
+            if st in ("blocked_not_configured", "blocked_missing_credentials"):
+                return "A InfoCap nao esta totalmente configurada para a sua corretora."
+            return "Nao consegui obter os detalhes dessa apolice na InfoCap agora."
+        pack = d.get("policy_evidence_pack") or {}
+        secs = pack.get("coverage_sections") or []
+        num = pack.get("policy_number") or pack.get("masked_policy_number") or "-"
+        titular = pack.get("holder_name") or pack.get("holder_name_masked") or "-"
+        lines = [
+            "Detalhes da apolice (InfoCap):",
+            f"- Seguradora: {pack.get('insurer_detected') or '-'} - Produto: {pack.get('product_detected') or '-'}",
+            f"- Numero da apolice: {num} - Titular: {titular}" + (f" - CPF/CNPJ: {pack.get('document')}" if pack.get("document") else ""),
+            f"- Situacao: {pack.get('policy_status') or '-'} - Vigencia: {pack.get('valid_from') or '-'} a {pack.get('valid_to') or '-'}",
+        ]
+        if pack.get("installments"):
+            lines.append(f"- Parcelas retornadas: {len(pack.get('installments') or [])}")
+        if secs:
+            lines.append("- Coberturas estruturadas:")
+            for section in secs[:20]:
+                lines.append(f"   - {section.get('label')}" + (f" - {section.get('amount')}" if section.get("amount") else ""))
+        else:
+            lines.append("- A InfoCap confirmou a apolice e os dados operacionais, mas nao retornou itens estruturados de cobertura nesta consulta.")
+            if pack.get("official_document_source_available"):
+                lines.append("- Ha fonte documental oficial disponivel para a proxima etapa de evidencia documental; ela nao foi baixada nem analisada nesta consulta.")
+        if pack.get("limitations"):
+            lines.append("- Observacoes: " + "; ".join(pack.get("limitations")[:3]))
+        return "\n".join(lines)
+
+    @staticmethod
+    def _summarize(r: Dict[str, Any]) -> str:
+        status = r.get("status")
+        cli = ""
+        if r.get("client_document") or r.get("client_name"):
+            cli = f"\n- Cliente: {r.get('client_name') or '-'} - CPF/CNPJ: {r.get('client_document') or '-'}"
+        if r.get("ok") and status == "found":
+            sel = r.get("selected") or {}
+            pack = r.get("policy_evidence_pack") or {}
+            num = sel.get("policy_number") or sel.get("masked_policy_number") or "-"
+            titular = sel.get("holder_name") or sel.get("holder_name_masked") or "-"
+            doc = sel.get("document") or r.get("client_document")
+            detail_ref = sel.get("policy_locator_ref") or sel.get("policy_ref") or "-"
+            lines = [
+                "Apolice localizada na InfoCap:",
+                f"- Seguradora: {sel.get('insurer_key') or '-'} - Produto: {sel.get('product') or '-'}",
+                f"- Numero da apolice: {num} - Titular: {titular}" + (f" - CPF/CNPJ: {doc}" if doc else ""),
+                f"- Situacao: {sel.get('policy_status') or '-'} - Vigencia: {sel.get('valid_from') or '-'} a {sel.get('valid_to') or '-'}",
+                f"- policy_ref: {detail_ref} (use para detalhar os dados desta apolice).",
+            ]
+            if pack.get("structured_coverage_absent"):
+                lines.append("- Cobertura: ausencia estruturada na resposta InfoCap; nao inventar cobertura.")
+            return "\n".join(lines) + cli
+        if status in ("multiple_matches", "ambiguous_customer", "ambiguous_policy"):
+            return "Encontrei mais de uma apolice/cliente para esse termo. Liste as opcoes (seguradora, produto, vigencia, policy_ref) e peca para o corretor escolher; ou refine com o CPF/CNPJ." + cli
+        if status in ("not_found", "client_found"):
+            return ("Cliente localizado, mas sem apolice/documento vinculado retornado." + cli) if status == "client_found" else "Nao localizei cliente/apolice para esse termo na InfoCap."
+        if status in ("blocked_not_configured", "blocked_missing_credentials"):
+            return "A InfoCap nao esta totalmente configurada para a sua corretora (credencial/base ausente)."
+        return "Nao foi possivel concluir a consulta na InfoCap agora."

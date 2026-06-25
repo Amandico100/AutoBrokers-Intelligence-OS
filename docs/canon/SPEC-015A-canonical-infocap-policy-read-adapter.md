@@ -492,7 +492,32 @@ A matriz completa esta em `GOLDEN-TEST-MATRIX-INFOCAP.md`. A R1 nao passa sem:
 - Registrar falha por fixture/trace seguro.
 - Corrigir e repetir Golden tests antes de novo rollout.
 
-## 22. Fora de escopo da SPEC-015A
+## 22. R1B - Implementacao canonica aplicada
+
+R1B implementa o caminho canonico dentro de `backend/app/api/infocap_connector.py` e da tool existente `backend/app/agents/tools/infocap_tool.py`.
+
+Implementado:
+
+- busca por CPF e nome passa a confirmar o cliente em `/cliente?codfil&codigo` antes de usar `cpf_cnpj` e catalogo;
+- `cpf_cnpj` do detalhe canonico do cliente e a fonte do documento do cliente no DTO interno;
+- `PolicyLocator(provider=infocap, codfil, nosnum)` e montado para cada apolice com `nosnum`;
+- `numapo` pode resolver para `nosnum`, mas nao chama `/documento` diretamente;
+- `policy_ref` nunca nasce de `codigo` ou `codcli`;
+- detalhe usa `codfil + nosnum`;
+- envelope de `/documento` preserva metadados estruturais de `documento`, `historico`, `acompanhamento`, `parcelas` e `prod_docs`;
+- `tabela_itens` fica marcado como campo desconhecido/classificavel;
+- codigos curtos como `P`, `A` ou `C` nao viram cobertura;
+- ausencia de cobertura estruturada retorna `structured_coverage_absent`;
+- presenca de `url_apolice` vira somente `official_document_source_available=true`, sem expor URL;
+- feature flag temporaria: `INFOCAP_CANONICAL_POLICY_READ`.
+
+Nao implementado em R1B:
+
+- download, fetch, OCR, Docling ou cache do documento oficial;
+- alteracao de `graph.py`, prompts, Capability Registry, RAG, MinIO, Qdrant, Drive, Notion, WhatsApp ou Portal Browser;
+- runtime, endpoint, tool ou conector paralelo.
+
+## 23. Fora de escopo da SPEC-015A
 
 - Prompt Efetivo no Portal Admin.
 - Migracao completa de `tools_config`.

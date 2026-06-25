@@ -162,6 +162,7 @@ class InfocapLookupPayload(BaseModel):
     tenant_connection_id: str
     document: Optional[str] = None
     name: Optional[str] = None
+    policy_number: Optional[str] = None
     prefer_insurer: Optional[str] = None
     prefer_product: Optional[str] = None
     unmasked: bool = False  # Core/corretor interno: dados completos (CPF/nome/nº)
@@ -291,8 +292,107 @@ def _shape(data: Any) -> Dict[str, Any]:
 
 # Campos crus de documento/CPF e nome (usados no modo interno/desmascarado do Core).
 _DOC_KEYS = ["cpf_cnpj", "cpf", "cnpj", "documento", "doc", "cpfcnpj", "cgccpf", "ni"]
+_CANONICAL_DOC_KEYS = ["cpf_cnpj"]
 _NAME_KEYS = ["cliente", "nome", "name", "razao_social", "segurado", "nome_cliente"]
-_POLNUM_KEYS = ["numapo", "apolice", "nosnum", "numero", "num_apolice"]
+_POLNUM_KEYS = ["numapo", "apolice", "numero", "num_apolice"]
+_FINANCIAL_FIELD_KEYS = (
+    "preliq", "preiof", "pretot", "prepri", "preadi", "predes", "premio", "premio_liquido",
+    "premio_total", "vlpremio", "valor_premio",
+)
+
+
+def _canonical_adapter_enabled(config: Optional[Dict[str, Any]] = None) -> bool:
+    """Feature flag temporaria de rollback dentro do adapter existente."""
+    if isinstance(config, dict) and isinstance(config.get("infocap_canonical_policy_read"), bool):
+        return bool(config.get("infocap_canonical_policy_read"))
+    raw = os.getenv("INFOCAP_CANONICAL_POLICY_READ", "true").strip().lower()
+    return raw not in {"0", "false", "off", "no", "legacy"}
+
+
+def _adapter_mode(config: Optional[Dict[str, Any]] = None) -> str:
+    return "canonical" if _canonical_adapter_enabled(config) else "legacy_rollback"
+
+
+def _canonical_customer_identity(
+    search_record: Dict[str, Any],
+    detail_record: Dict[str, Any],
+    *,
+    unmasked: bool = False,
+) -> Dict[str, Any]:
+    """Identidade canonica: a verdade vem do detalhe /cliente."""
+    detail = detail_record if isinstance(detail_record, dict) else {}
+    search = search_record if isinstance(search_record, dict) else {}
+    name = _first_str(detail, _NAME_KEYS) or _first_str(search, _NAME_KEYS)
+    doc = _first_str(detail, _CANONICAL_DOC_KEYS)
+    codigo = _first_str(detail, ["codigo"]) or _first_str(search, ["codigo", "codcli"])
+    codfil = _first_str(detail, ["codfil"]) or _first_str(search, ["codfil"])
+    client_ref: Dict[str, Any] = {}
+    if codigo:
+        client_ref["codigo"] = codigo
+    if codfil:
+        client_ref["codfil"] = codfil
+    out: Dict[str, Any] = {
+        "infocap_client_found": bool(codigo or name or doc),
+        "client_ref_available": bool(client_ref),
+        "client_ref_fields": list(client_ref.keys()),
+        "client_ref": client_ref,
+        "canonical_customer_source": "infocap:/cliente",
+    }
+    if unmasked:
+        out["client_name"] = name
+        out["client_document"] = doc
+    else:
+        out["client_name_masked"] = _mask_name(name)
+        out["client_document_masked"] = _mask_tail(doc)
+    return out
+
+
+def _parse_policy_ref_input(value: Optional[str]) -> Tuple[Optional[str], Optional[str]]:
+    """Aceita nosnum simples, numapo simples ou locator ref infocap:<codfil>:<nosnum>."""
+    raw = str(value or "").strip()
+    if not raw:
+        return None, None
+    lowered = raw.lower()
+    if lowered.startswith("infocap:"):
+        parts = raw.split(":")
+        if len(parts) >= 3:
+            return parts[-2].strip() or None, parts[-1].strip() or None
+    if ":" in raw:
+        left, right = raw.rsplit(":", 1)
+        if left.strip() and right.strip():
+            return left.strip(), right.strip()
+    return None, raw
+
+
+def _policy_locator_from_doc(doc: Dict[str, Any], *, codfil: Any = None) -> Optional[Dict[str, str]]:
+    nosnum = _first_str(doc, ["nosnum"])
+    if not nosnum:
+        return None
+    codfil_val = _first_str(doc, ["codfil"]) or (str(codfil) if codfil is not None and str(codfil).strip() else None)
+    if not codfil_val:
+        return None
+    return {"provider": "infocap", "codfil": str(codfil_val), "nosnum": str(nosnum)}
+
+
+def _policy_locator_ref(locator: Optional[Dict[str, str]]) -> Optional[str]:
+    if not locator:
+        return None
+    codfil = locator.get("codfil")
+    nosnum = locator.get("nosnum")
+    if not codfil or not nosnum:
+        return None
+    return f"infocap:{codfil}:{nosnum}"
+
+
+def _human_label(value: Optional[str]) -> Optional[str]:
+    if not value or not isinstance(value, str):
+        return None
+    cleaned = value.strip()
+    if len(cleaned) <= 2 and re.fullmatch(r"[A-Za-z0-9]+", cleaned):
+        return None
+    if not re.search(r"[A-Za-zÀ-ÿ]", cleaned):
+        return None
+    return cleaned
 
 
 def _sanitize_match(record: Dict[str, Any], unmasked: bool = False) -> Dict[str, Any]:
@@ -302,8 +402,11 @@ def _sanitize_match(record: Dict[str, Any], unmasked: bool = False) -> Dict[str,
         status = "cancelado" if cancelado in (True, 1, "1", "S", "s") else "ativo"
     policy_number = _first_str(record, _POLNUM_KEYS)
     name = _first_str(record, _NAME_KEYS)
+    locator = _policy_locator_from_doc(record, codfil=record.get("codfil"))
     out = {
-        "policy_ref": _first_str(record, ["codcli", "codigo", "id", "nosnum"]) or "infocap-match",
+        "policy_ref": locator.get("nosnum") if locator else None,
+        "policy_locator": locator,
+        "policy_locator_ref": _policy_locator_ref(locator),
         "insurer_key": _first_str(record, ["seguradora_abrev", "cia", "codcia", "seguradora"]),
         "product": _first_str(record, ["ramo_abrev", "ramo", "codram", "produto", "descricao"]),
         "line_kind": None,
@@ -314,7 +417,7 @@ def _sanitize_match(record: Dict[str, Any], unmasked: bool = False) -> Dict[str,
     if unmasked:  # Core/corretor interno: dados completos (dono da informação)
         out["policy_number"] = policy_number
         out["holder_name"] = name
-        out["document"] = _first_str(record, _DOC_KEYS)
+        out["document"] = _first_str(record, _CANONICAL_DOC_KEYS)
     return out
 
 
@@ -378,16 +481,34 @@ def _sanitize_policy(doc: Dict[str, Any], unmasked: bool = False) -> Dict[str, A
     status = "cancelado" if is_cancel else (
         _first_str(doc, ["sit_acompanhamento_txt", "sit_renovacao_txt", "tipdoc_txt", "situacao", "status"]) or "ativo"
     )
-    coverages = doc.get("itens") if isinstance(doc.get("itens"), list) else (
-        doc.get("coberturas") if isinstance(doc.get("coberturas"), list) else []
-    )
+    coverages: List[Dict[str, Any]] = []
+    for coverage_key in ("itens", "coberturas", "garantias", "clausulas", "assistencias"):
+        items = doc.get(coverage_key)
+        if not isinstance(items, list):
+            continue
+        for item in items:
+            if not isinstance(item, dict):
+                continue
+            label = next(
+                (
+                    _human_label(_first_str(item, [label_key]))
+                    for label_key in ("descricao", "cobertura", "garantia", "nome", "clausula", "titulo", "assistencia")
+                    if _human_label(_first_str(item, [label_key]))
+                ),
+                None,
+            )
+            if label:
+                coverages.append(item)
     valid_from = _first_str(doc, ["inivig", "datini", "inicio_vigencia"])
     valid_to = _first_str(doc, ["fimvig", "datfim", "fim_vigencia"])
     ae = _active_expired(valid_from, valid_to, is_cancel)
     policy_number = _first_str(doc, _POLNUM_KEYS)
     name = _first_str(doc, _NAME_KEYS)
+    locator = _policy_locator_from_doc(doc, codfil=doc.get("codfil"))
     out = {
-        "policy_ref": _first_str(doc, ["nosnum", "codigo", "codcli"]) or "infocap-doc",
+        "policy_ref": locator.get("nosnum") if locator else None,
+        "policy_locator": locator,
+        "policy_locator_ref": _policy_locator_ref(locator),
         "insurer_key": _first_str(doc, ["seguradora_abrev", "seguradora", "cia", "codcia"]),
         "product": _first_str(doc, ["ramo_abrev", "ramo", "codram", "produto", "descricao"]),
         "line_kind": None,
@@ -404,7 +525,7 @@ def _sanitize_policy(doc: Dict[str, Any], unmasked: bool = False) -> Dict[str, A
     if unmasked:
         out["policy_number"] = policy_number
         out["holder_name"] = name
-        out["document"] = _first_str(doc, _DOC_KEYS)
+        out["document"] = _first_str(doc, _CANONICAL_DOC_KEYS)
     return out
 
 
@@ -513,8 +634,8 @@ async def infocap_lookup(
     name_search_param = config.get("infocap_search_param") or "texto"
     extra_params_raw = config.get("infocap_search_extra_params")
     codfil_default = config.get("infocap_codfil", 1)
+    cliente_path = config.get("infocap_cliente_path") or "/cliente"
     ligacoes_path = config.get("infocap_ligacoes_path") or "/cliente_ligacoes"
-    documentos_path = config.get("infocap_documentos_path") or "/documentos"
     documento_path = config.get("infocap_documento_path") or "/documento"
 
     doc_digits = _digits(payload.document)
@@ -539,6 +660,7 @@ async def infocap_lookup(
 
     diag = {
         "provider": "infocap",
+        "adapter_mode": _adapter_mode(config),
         "query_strategy": query_strategy,
         "search_path": search_path,
         "search_param": search_param,
@@ -548,7 +670,7 @@ async def infocap_lookup(
         merged = {**diag, **result}
         dur = int((time.monotonic() - started) * 1000)
         logger.info(
-            f"[INFOCAP LOOKUP] company={company_id} connection={connection_id} provider=infocap "
+            f"[INFOCAP LOOKUP] company_hash={_short_hash(company_id)} connection_hash={_short_hash(connection_id)} provider=infocap "
             f"status={merged.get('status')} strategy={query_strategy} search_path={search_path} "
             f"result_count={merged.get('result_count')} duration_ms={dur}"
         )
@@ -590,12 +712,42 @@ async def infocap_lookup(
                 return _done({"ok": False, "status": "not_found", "verification_status": "unverified", "http_status": http_status, "result_count": 0, "blockers": [], "notes": ["Nenhum resultado para o termo de busca."]})
             # Busca por NOME com vários clientes → desambiguação humana (nível cliente)
             if query_strategy == "customer_name" and len(arr) > 1:
-                return _done({"ok": False, "status": "multiple_matches", "verification_status": "unverified", "http_status": http_status, "result_count": len(arr), "matches": [_sanitize_match(r, unmasked) for r in arr[:5]], "requires_human": True, "blockers": ["multiple_client_matches"]})
+                return _done({"ok": False, "status": "ambiguous_customer", "verification_status": "unverified", "http_status": http_status, "result_count": len(arr), "matches": [_sanitize_match(r, unmasked) for r in arr[:5]], "requires_human": True, "blockers": ["multiple_client_matches"]})
 
             record = arr[0]
             codfil_val = record.get("codfil") or codfil_default
             codigo_val = _first_str(record, ["codigo", "codcli"])
             matched_by = "cpf" if query_strategy == "document_cpf" else "name"
+            if not codigo_val:
+                return _done({
+                    "ok": False,
+                    "status": "source_limited",
+                    "verification_status": "unverified",
+                    "http_status": http_status,
+                    "result_count": len(arr),
+                    "blockers": ["missing_customer_codigo"],
+                    "notes": ["Busca retornou cliente sem codigo canonico para /cliente."],
+                })
+
+            cliente_res = await client.get(cliente_path, params={"codfil": codfil_val, "codigo": codigo_val}, headers=headers)
+            if cliente_res.status_code in (401, 403):
+                return _done({"ok": False, "status": "auth_error", "verification_status": "unverified", "http_status": cliente_res.status_code, "blockers": ["customer_detail_unauthorized"]})
+            if cliente_res.status_code >= 400:
+                return _done({"ok": False, "status": "provider_error", "verification_status": "unverified", "http_status": cliente_res.status_code, "blockers": ["customer_detail_http_error"]})
+            canonical_candidates = _extract_array(cliente_res.json())
+            if len(canonical_candidates) != 1:
+                return _done({
+                    "ok": False,
+                    "status": "ambiguous_customer" if len(canonical_candidates) > 1 else "source_limited",
+                    "verification_status": "unverified",
+                    "http_status": cliente_res.status_code,
+                    "result_count": len(canonical_candidates),
+                    "requires_human": len(canonical_candidates) > 1,
+                    "blockers": ["customer_detail_not_unique"],
+                })
+            canonical_customer = canonical_candidates[0]
+            codfil_val = _first_str(canonical_customer, ["codfil"]) or str(codfil_val or codfil_default)
+            codigo_val = _first_str(canonical_customer, ["codigo"]) or codigo_val
 
             client_ref: Dict[str, Any] = {}
             for k in CLIENT_REF_KEYS:
@@ -620,47 +772,15 @@ async def infocap_lookup(
                         documents = _extract_documents(lig.json())
                 except (httpx.TimeoutException, httpx.HTTPError):
                     pass
-            if not documents and name:
-                try:
-                    ds = await client.get(documentos_path, params={"codfil": codfil_val, "texto": name}, headers=headers)
-                    if ds.status_code < 400:
-                        documents = _extract_documents(ds.json())
-                except (httpx.TimeoutException, httpx.HTTPError):
-                    pass
 
             # 4. Detalhe de até 3 documentos com nosnum (falhas parciais toleradas)
-            detailed: List[Dict[str, Any]] = []
-            for d in documents[:3]:
-                nosnum = _first_str(d, ["nosnum"])
-                if not nosnum:
-                    detailed.append(d)
-                    continue
-                try:
-                    det = await client.get(documento_path, params={"codfil": codfil_val, "nosnum": nosnum}, headers=headers)
-                    if det.status_code < 400:
-                        darr = _extract_documents(det.json())
-                        detailed.append(darr[0] if darr else d)
-                    else:
-                        detailed.append(d)
-                except (httpx.TimeoutException, httpx.HTTPError):
-                    detailed.append(d)
-
-            source_docs = detailed or documents
+            source_docs = documents
             policies = [_sanitize_policy(p, unmasked) for p in source_docs]
             documents_count = len(policies)
             now = datetime.now(timezone.utc).isoformat()
-            # Flags de cliente reutilizadas em todos os desfechos (42I3A).
-            client_flags = {
-                "infocap_client_found": True,
-                "client_ref_available": bool(client_ref),
-                "client_ref_fields": [k for k in CLIENT_REF_KEYS if k in client_ref],
-                "client_ref": client_ref,
-            }
-            if unmasked:  # Core/corretor: nome e CPF/CNPJ completos do cliente
-                client_flags["client_name"] = _first_str(record, _NAME_KEYS)
-                client_flags["client_document"] = _first_str(record, _DOC_KEYS)
+            client_flags = _canonical_customer_identity(record, canonical_customer, unmasked=unmasked)
+            requested_policy_number = (payload.policy_number or "").strip() or None
 
-            # Cliente sem documentos → client_found
             if documents_count == 0:
                 return _done({
                     "ok": False,
@@ -671,39 +791,58 @@ async def infocap_lookup(
                     **client_flags,
                     "documents_count": 0,
                     "matched_by": matched_by,
-                    "next_possible_endpoints": ["/cliente_ligacoes", "/documentos", "/documento"],
+                    "next_possible_endpoints": ["/cliente_ligacoes", "/documento"],
                     "requires_human": False,
                     "blockers": [],
-                    "notes": ["Cliente localizado na InfoCap, mas nenhum documento/apólice vinculado foi retornado."],
+                    "notes": ["Cliente canonico localizado na InfoCap, mas nenhum documento/apolice vinculado foi retornado."],
                 })
 
-            prefer_insurer = (payload.prefer_insurer or "").strip() or None
-            prefer_product = (payload.prefer_product or "").strip() or None
-            paired = list(zip(policies, source_docs))
-            # Ordena por relevância (ativas/vigentes > não canceladas > fim futuro > preferência).
-            paired.sort(key=lambda pr: _policy_sort_key(pr[0], prefer_insurer, prefer_product), reverse=True)
-            active = [(p, raw) for p, raw in paired if not p.get("cancelled")]
-            candidates = active if active else paired
-
-            # Não auto-selecionar quando houver mais de uma apólice ATIVA.
-            if len(candidates) > 1:
+            if documents_count > 1 and not requested_policy_number:
                 return _done({
                     "ok": False,
-                    "status": "multiple_matches",
+                    "status": "ambiguous_policy",
                     "verification_status": "unverified",
                     "http_status": http_status,
                     "result_count": documents_count,
                     "documents_count": documents_count,
                     "matched_by": matched_by,
                     **client_flags,
-                    "matches": [p for p, _ in paired[:5]],
+                    "matches": [p for p in policies[:10]],
                     "requires_human": True,
                     "blockers": ["multiple_policies"],
-                    "notes": ["Cliente possui múltiplas apólices; selecionar manualmente."],
+                    "notes": ["Cliente possui multiplas apolices; e necessario escolher por seguradora, ramo, vigencia, numero ou policy_ref."],
                 })
 
-            selected_policy, selected_raw = candidates[0]
-            confidence = "high" if _coverage_keyword_hit(selected_raw) else "medium"
+            policy_locator, locator_status = _select_policy_locator(source_docs, codfil=codfil_val, requested_policy_ref=requested_policy_number)
+            if locator_status != "found" or not policy_locator:
+                return _done({
+                    "ok": False,
+                    "status": locator_status,
+                    "verification_status": "unverified",
+                    "http_status": http_status,
+                    "result_count": documents_count,
+                    "documents_count": documents_count,
+                    **client_flags,
+                    "matches": policies,
+                    "requires_human": locator_status == "ambiguous_policy",
+                    "blockers": ["policy_locator_unavailable"],
+                })
+
+            det = await client.get(documento_path, params={"codfil": policy_locator["codfil"], "nosnum": policy_locator["nosnum"]}, headers=headers)
+            if det.status_code in (401, 403):
+                return _done({"ok": False, "status": "auth_error", "verification_status": "unverified", "http_status": det.status_code, "blockers": ["detail_unauthorized"]})
+            if det.status_code == 404:
+                return _done({"ok": False, "status": "not_found", "verification_status": "unverified", "http_status": 404, "blockers": ["policy_not_found"]})
+            if det.status_code >= 400:
+                return _done({"ok": False, "status": "provider_error", "verification_status": "unverified", "http_status": det.status_code, "blockers": ["detail_http_error"]})
+            detail_envelope = det.json()
+            detail_docs = _extract_documents(detail_envelope)
+            if not detail_docs:
+                return _done({"ok": False, "status": "source_limited", "verification_status": "unverified", "http_status": det.status_code, "blockers": ["empty_detail"]})
+
+            selected_raw = detail_docs[0]
+            pack = _build_evidence_pack(selected_raw, payload.prefer_insurer, payload.prefer_product, unmasked, envelope=detail_envelope)
+            selected_policy = _sanitize_policy(selected_raw, unmasked)
             return _done({
                 "ok": True,
                 "status": "found",
@@ -715,22 +854,28 @@ async def infocap_lookup(
                 **client_flags,
                 "selected": selected_policy,
                 "matches": [selected_policy],
+                "policy_evidence_pack": pack,
                 "verification_status": "verified_by_connector",
                 "coverage_evidence": {
                     "source": "infocap",
                     "source_ref": "infocap:documento",
                     "verified_at": now,
                     "verified_by": "connector",
-                    "confidence": confidence,
-                    "coverage_summary": "Apólice localizada na InfoCap; cobertura específica ainda depende da leitura dos detalhes/itens.",
-                    "limitations": [
-                        "Leitura read-only de metadados da apólice; coberturas/itens detalhados podem exigir leitura do documento (PDF).",
-                    ],
-                    "human_required": False,
+                    "confidence": pack.get("confidence"),
+                    "coverage_summary": (
+                        "A InfoCap confirmou a apolice e seus dados operacionais, mas nao retornou itens estruturados de cobertura nesta consulta."
+                        if pack.get("structured_coverage_absent") else
+                        "A InfoCap retornou itens estruturados de cobertura nesta consulta."
+                    ),
+                    "limitations": pack.get("limitations") or [],
+                    "human_required": pack.get("human_required"),
+                    "official_document_source_available": pack.get("official_document_source_available"),
+                    "document_evidence_required": pack.get("document_evidence_required"),
                 },
                 "requires_human": False,
-                "notes": ["Apólice localizada via InfoCap (cliente -> documentos -> detalhe)."],
+                "notes": ["Apolice localizada via cadeia canonica InfoCap: cliente -> cliente_ligacoes -> documento."],
             })
+
     except (httpx.TimeoutException, httpx.HTTPError) as e:
         logger.error(f"[INFOCAP LOOKUP] http error: {type(e).__name__}")
         return _done({"ok": False, "status": "provider_error", "verification_status": "unverified", "blockers": ["network_error"]})
@@ -889,9 +1034,15 @@ def _safe_contract_shape(data: Any, *, max_depth: int = 3) -> Dict[str, Any]:
         "assistance_present": bool(keyset & _ASSISTANCE_KEYS or list_keyset & _ASSISTANCE_KEYS),
     }
     hash_src = json.dumps(structural, sort_keys=True, ensure_ascii=True)
+    if isinstance(data, list):
+        result_count = len(data)
+    elif array_key_detected and array_key_detected in counts:
+        result_count = counts[array_key_detected]
+    else:
+        result_count = len(_extract_array(data))
     return {
         **structural,
-        "result_count": len(data) if isinstance(data, list) else len(_extract_array(data)),
+        "result_count": result_count,
         "detected_policy_fields": detected,
         "shape_hash": hashlib.sha256(hash_src.encode("utf-8")).hexdigest()[:16],
         "parse_status": "ok" if isinstance(data, (dict, list)) else "unknown_shape",
@@ -915,10 +1066,17 @@ def _select_policy_locator(
     codfil: Any,
     requested_policy_ref: Optional[str] = None,
 ) -> Tuple[Optional[Dict[str, str]], str]:
-    requested = str(requested_policy_ref or "").strip()
+    requested_codfil, requested = _parse_policy_ref_input(requested_policy_ref)
+    requested = str(requested or "").strip()
     docs_with_nosnum = [doc for doc in docs if _first_str(doc, ["nosnum"])]
     if requested:
-        matches = [doc for doc in docs_with_nosnum if _first_str(doc, ["nosnum"]) == requested]
+        matches = []
+        for doc in docs_with_nosnum:
+            doc_codfil = _first_str(doc, ["codfil"]) or str(codfil or "")
+            if requested_codfil and str(doc_codfil) != str(requested_codfil):
+                continue
+            if _first_str(doc, ["nosnum"]) == requested or _first_str(doc, ["numapo"]) == requested:
+                matches.append(doc)
         if len(matches) != 1:
             return None, "source_limited" if not matches else "ambiguous_policy"
         selected = matches[0]
@@ -1418,11 +1576,14 @@ class InfocapPolicyDetailPayload(BaseModel):
 
 # Chaves candidatas de listas de cobertura/itens e de rótulos/valores (amplas — InfoCap varia o shape).
 _COVERAGE_LIST_KEYS = (
-    "itens", "coberturas", "garantias", "verbas", "capitais", "importancias", "bens",
-    "ramos", "detalhes", "objetos", "clausulas", "componentes", "produtos_itens",
+    "itens", "coberturas", "garantias", "verbas", "capitais", "importancias",
+    "clausulas", "assistencias",
 )
-_COVERAGE_LABEL_KEYS = ("descricao", "cobertura", "garantia", "nome", "item", "ramo", "tipo", "bem", "clausula", "objeto", "titulo")
-_COVERAGE_AMOUNT_KEYS = ("valor", "is", "importancia_segurada", "importancia", "limite", "limite_maximo_indenizacao", "lmi", "capital", "valor_is", "valor_segurado", "premio", "premio_liquido")
+_COVERAGE_LABEL_KEYS = ("descricao", "cobertura", "garantia", "nome", "clausula", "titulo", "assistencia")
+_COVERAGE_AMOUNT_KEYS = (
+    "valor", "is", "importancia_segurada", "importancia", "limite",
+    "limite_maximo_indenizacao", "lmi", "capital", "valor_is", "valor_segurado",
+)
 
 
 def _coverage_item_lists(doc: Dict[str, Any]) -> List[List[Dict[str, Any]]]:
@@ -1468,6 +1629,46 @@ def _coverage_sections(doc: Dict[str, Any]) -> List[Dict[str, Any]]:
             amount = _first_str(it, list(_COVERAGE_AMOUNT_KEYS))
             if label:
                 out.append({"label": label, "amount": amount})
+    return out[:60]
+
+
+def _coverage_item_lists(doc: Dict[str, Any]) -> List[List[Dict[str, Any]]]:
+    """R1B: somente listas estruturadas de cobertura; sem fallback generico."""
+    lists: List[List[Dict[str, Any]]] = []
+    for key in _COVERAGE_LIST_KEYS:
+        value = doc.get(key)
+        if isinstance(value, list) and any(isinstance(item, dict) for item in value):
+            lists.append([item for item in value if isinstance(item, dict)])
+    return lists
+
+
+def _coverage_texts(doc: Dict[str, Any]) -> List[str]:
+    """R1B: textos usados para sinais vêm apenas de cobertura estruturada."""
+    parts: List[str] = []
+    for items in _coverage_item_lists(doc):
+        for item in items[:60]:
+            for key in _COVERAGE_LABEL_KEYS:
+                label = _human_label(item.get(key))
+                if label:
+                    parts.append(label)
+    return parts
+
+
+def _coverage_sections(doc: Dict[str, Any]) -> List[Dict[str, Any]]:
+    """R1B: cobertura exige label humano; codigos curtos como P/A/C nao contam."""
+    out: List[Dict[str, Any]] = []
+    for items in _coverage_item_lists(doc):
+        for item in items[:60]:
+            label_key = next((key for key in _COVERAGE_LABEL_KEYS if _human_label(_first_str(item, [key]))), None)
+            if not label_key:
+                continue
+            amount = _first_str(item, list(_COVERAGE_AMOUNT_KEYS))
+            out.append({
+                "label": _human_label(_first_str(item, [label_key])),
+                "amount": amount,
+                "source_field": label_key,
+                "amount_source_field": next((key for key in _COVERAGE_AMOUNT_KEYS if _first_str(item, [key]) == amount), None) if amount else None,
+            })
     return out[:60]
 
 
@@ -1550,6 +1751,205 @@ def _build_evidence_pack(
     }
 
 
+def _merge_envelope_coverage(doc: Dict[str, Any], envelope: Optional[Dict[str, Any]]) -> Dict[str, Any]:
+    merged = dict(doc or {})
+    if isinstance(envelope, dict):
+        for key in _COVERAGE_LIST_KEYS:
+            if key not in merged and isinstance(envelope.get(key), list):
+                merged[key] = envelope.get(key)
+    return merged
+
+
+def _safe_envelope_summary(envelope: Optional[Dict[str, Any]]) -> Dict[str, Any]:
+    if not isinstance(envelope, dict):
+        return {}
+    summary: Dict[str, Any] = {}
+    for key in ("documento", "historico", "acompanhamento", "parcelas", "prod_docs"):
+        value = envelope.get(key)
+        if value is None:
+            continue
+        if isinstance(value, list):
+            first = _first_dict(value)
+            summary[key] = {
+                "type": "array",
+                "count": len(value),
+                "sample_keys": sorted(list(first.keys()))[:50] if first else [],
+            }
+        elif isinstance(value, dict):
+            summary[key] = {
+                "type": "object",
+                "count": 1,
+                "sample_keys": sorted(list(value.keys()))[:50],
+            }
+        else:
+            summary[key] = {"type": _type_name(value), "count": 1, "sample_keys": []}
+    return summary
+
+
+def _find_key_recursive(value: Any, target_key: str, *, depth: int = 0, max_depth: int = 4) -> bool:
+    if depth > max_depth:
+        return False
+    if isinstance(value, dict):
+        for key, child in value.items():
+            if _keynorm(key) == target_key:
+                return True
+            if _find_key_recursive(child, target_key, depth=depth + 1, max_depth=max_depth):
+                return True
+    elif isinstance(value, list):
+        for item in value[:20]:
+            if _find_key_recursive(item, target_key, depth=depth + 1, max_depth=max_depth):
+                return True
+    return False
+
+
+def _official_document_source_available(envelope: Optional[Dict[str, Any]]) -> bool:
+    return _find_key_recursive(envelope, "url_apolice") if isinstance(envelope, dict) else False
+
+
+def _normalize_installments(doc: Dict[str, Any]) -> List[Dict[str, Any]]:
+    items = doc.get("parcelas")
+    if not isinstance(items, list):
+        return []
+    out: List[Dict[str, Any]] = []
+    source_fields = {
+        "installment_number": ["parc", "parcela", "numero"],
+        "due_date": ["datvenc", "vencimento", "data_vencimento"],
+        "paid_at": ["datquit", "quitacao", "data_quitacao"],
+        "due_amount": ["vlvenc", "valor_vencimento"],
+        "paid_amount": ["vlquit", "valor_pago"],
+        "payment_method": ["forma_pagamento", "formapgto", "pagamento"],
+    }
+    for item in items[:80]:
+        if not isinstance(item, dict):
+            continue
+        normalized: Dict[str, Any] = {"source": "infocap:/documento.parcelas", "source_fields": {}}
+        for field, candidates in source_fields.items():
+            used = next((key for key in candidates if item.get(key) not in (None, "")), None)
+            if used:
+                normalized[field] = item.get(used)
+                normalized["source_fields"][field] = used
+        out.append(normalized)
+    return out
+
+
+def _infocap_financial_fields(doc: Dict[str, Any]) -> List[Dict[str, Any]]:
+    fields: List[Dict[str, Any]] = []
+    for key in _FINANCIAL_FIELD_KEYS:
+        if key in doc and doc.get(key) not in (None, ""):
+            fields.append({
+                "provider_field": key,
+                "value": doc.get(key),
+                "source": "infocap:/documento",
+                "semantic_status": "provider_field_unclassified",
+            })
+    return fields
+
+
+def _build_evidence_pack(
+    doc: Dict[str, Any],
+    prefer_insurer: Optional[str],
+    prefer_product: Optional[str],
+    unmasked: bool = False,
+    *,
+    envelope: Optional[Dict[str, Any]] = None,
+) -> Dict[str, Any]:
+    """R1B canonical evidence pack: no raw envelope, no URL, no invented coverage."""
+    coverage_doc = _merge_envelope_coverage(doc, envelope)
+    base = _sanitize_policy(coverage_doc, unmasked)
+    texts = _coverage_texts(coverage_doc)
+    joined = " ".join(texts)
+    has_text = bool(texts)
+    sections = _coverage_sections(coverage_doc)
+
+    signals = {
+        "residential": _signal(joined, has_text, _SIG_RESIDENTIAL),
+        "electrician": _signal(joined, has_text, _SIG_ELECTRICIAN),
+        "emergency_assistance": _signal(joined, has_text, _SIG_EMERGENCY),
+    }
+    any_signal = any(v is True for v in signals.values())
+    cancelled = bool(base.get("cancelled"))
+    structured_available = bool(sections or base.get("coverages_count"))
+    official_doc_available = _official_document_source_available(envelope)
+    unknown_table = bool(_first_str(doc, ["tabela_itens"]))
+
+    if cancelled or base.get("active_now") is False:
+        confidence = "low"
+    elif any_signal and structured_available:
+        confidence = "high"
+    elif structured_available:
+        confidence = "medium"
+    else:
+        confidence = "low"
+
+    limitations: List[str] = []
+    if not structured_available:
+        limitations.append(
+            "A InfoCap confirmou a apolice e seus dados operacionais, mas nao retornou itens estruturados de cobertura nesta consulta."
+        )
+    if official_doc_available and not structured_available:
+        limitations.append("Existe fonte documental oficial da apolice disponivel para evidencia documental futura.")
+    if unknown_table:
+        limitations.append("Campo tabela_itens presente, mas sem semantica comprovada para cobertura.")
+    if cancelled:
+        limitations.append("Apolice consta como cancelada.")
+    if base.get("active_now") is False and not cancelled:
+        limitations.append("Apolice fora do periodo de vigencia atual.")
+
+    coverage_status = "structured_coverage_available" if structured_available else "structured_coverage_absent"
+    document_evidence_required = (not structured_available) and (official_doc_available or unknown_table)
+    human_required = cancelled or confidence == "low"
+    if document_evidence_required:
+        human_required = False
+
+    return {
+        "source": "infocap",
+        "adapter_mode": "canonical",
+        "verified_by": "connector",
+        "policy_found": True,
+        "policy_selected": True,
+        "policy_ref": base.get("policy_ref"),
+        "policy_locator": base.get("policy_locator"),
+        "policy_locator_ref": base.get("policy_locator_ref"),
+        "masked_policy_number": base.get("masked_policy_number"),
+        "insurer_detected": base.get("insurer_key"),
+        "product_detected": base.get("product"),
+        "line_kind_detected": base.get("line_kind"),
+        "policy_status": base.get("policy_status"),
+        "active_now": base.get("active_now"),
+        "expired": base.get("expired"),
+        "valid_from": base.get("valid_from"),
+        "valid_to": base.get("valid_to"),
+        "holder_name_masked": base.get("holder_name_masked"),
+        "risk_address_summary_masked": _first_str(doc, ["cidade", "municipio", "estado", "uf"]),
+        "object_summary": _first_str(doc, ["objeto", "bem", "descricao_objeto", "local_risco"]),
+        "coverage_sections": sections,
+        "coverages_count": base.get("coverages_count"),
+        "coverage_evidence_status": coverage_status,
+        "structured_coverage_available": structured_available,
+        "structured_coverage_absent": not structured_available,
+        "unknown_table_field_present": unknown_table,
+        "official_document_source_available": official_doc_available,
+        "document_evidence_required": document_evidence_required,
+        "installments": _normalize_installments(doc),
+        "infocap_financial_fields": _infocap_financial_fields(doc),
+        "evidence_envelope": _safe_envelope_summary({
+            **(envelope if isinstance(envelope, dict) else {}),
+            "parcelas": doc.get("parcelas"),
+            "prod_docs": doc.get("prod_docs"),
+        }),
+        "cancelled": cancelled,
+        "assistance_signals": signals,
+        "confidence": confidence,
+        "human_required": human_required,
+        "limitations": limitations,
+        **({
+            "policy_number": base.get("policy_number"),
+            "holder_name": base.get("holder_name"),
+            "document": base.get("document"),
+        } if unmasked else {}),
+    }
+
+
 @router.post("/attendance/connectors/infocap/policy-detail")
 async def infocap_policy_detail(
     payload: InfocapPolicyDetailPayload,
@@ -1561,8 +1961,9 @@ async def infocap_policy_detail(
     company_id = (payload.company_id or "").strip()
     connection_id = (payload.tenant_connection_id or "").strip()
     policy_ref = (payload.policy_ref or "").strip()
+    ref_codfil, ref_value = _parse_policy_ref_input(policy_ref)
     unmasked = bool(getattr(payload, "unmasked", False))
-    if not company_id or not connection_id or not policy_ref:
+    if not company_id or not connection_id or not ref_value:
         raise HTTPException(status_code=400, detail="company_id, tenant_connection_id and policy_ref are required")
 
     conn_res = (
@@ -1599,15 +2000,16 @@ async def infocap_policy_detail(
 
     auth_path = config.get("infocap_auth_path") or "/login"
     documento_path = config.get("infocap_documento_path") or "/documento"
-    codfil = payload.codfil if payload.codfil is not None else config.get("infocap_codfil", 1)
+    codfil = ref_codfil or (payload.codfil if payload.codfil is not None else config.get("infocap_codfil", 1))
+    nosnum = ref_value
     prefer_insurer = (config.get("infocap_prefer_insurer") or "").strip() or None
     prefer_product = (config.get("infocap_prefer_product") or "").strip() or None
 
     def _log(status: str, extra: str = "") -> None:
         dur = int((time.monotonic() - started) * 1000)
         logger.info(
-            f"[INFOCAP DETAIL] company={company_id} connection={connection_id} endpoint={documento_path} "
-            f"status={status} selected_policy_ref={policy_ref} duration_ms={dur}{extra}"
+            f"[INFOCAP DETAIL] company_hash={_short_hash(company_id)} connection_hash={_short_hash(connection_id)} endpoint={documento_path} "
+            f"status={status} duration_ms={dur}{extra}"
         )
 
     try:
@@ -1628,7 +2030,7 @@ async def infocap_policy_detail(
                 return {"ok": False, "status": "auth_error", "source": "infocap", "blockers": ["no_token_in_login_response"]}
 
             headers = {"Authorization": token, "Content-Type": "application/json"}
-            det = await client.get(documento_path, params={"codfil": codfil, "nosnum": policy_ref}, headers=headers)
+            det = await client.get(documento_path, params={"codfil": codfil, "nosnum": nosnum}, headers=headers)
             if det.status_code == 404:
                 _log("not_found")
                 return {"ok": False, "status": "not_found", "source": "infocap", "http_status": 404, "blockers": ["policy_not_found"]}
@@ -1639,7 +2041,8 @@ async def infocap_policy_detail(
                 _log("provider_error")
                 return {"ok": False, "status": "provider_error", "source": "infocap", "http_status": det.status_code, "blockers": ["detail_http_error"]}
             try:
-                docs = _extract_documents(det.json())
+                detail_envelope = det.json()
+                docs = _extract_documents(detail_envelope)
             except Exception:  # noqa: BLE001
                 docs = []
             if not docs:
@@ -1647,12 +2050,13 @@ async def infocap_policy_detail(
                 return {"ok": False, "status": "not_found", "source": "infocap", "http_status": det.status_code, "blockers": ["empty_detail"]}
 
             doc = docs[0]
-            pack = _build_evidence_pack(doc, prefer_insurer, prefer_product, unmasked)
+            pack = _build_evidence_pack(doc, prefer_insurer, prefer_product, unmasked, envelope=detail_envelope)
             _log("found", extra=f" confidence={pack.get('confidence')}")
             return {
                 "ok": True,
                 "status": "found",
                 "source": "infocap",
+                "adapter_mode": _adapter_mode(config),
                 "source_ref": "infocap:documento",
                 "http_status": det.status_code,
                 "policy": _sanitize_policy(doc, unmasked),

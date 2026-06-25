@@ -229,6 +229,61 @@ Ver `GOLDEN-TEST-MATRIX-INFOCAP.md`.
 
 Criar "InfoCap v2" como outro servico. O correto e corrigir o adapter dentro do caminho existente.
 
+## 7.1 R1B - Canonical InfoCap Policy Read Adapter
+
+### Escopo aplicado
+
+- Corrigir o caminho produtivo existente de `infocap_lookup` e `infocap_policy_detail`.
+- Manter o Chat Principal no Smith/LangGraph e na tool `InfocapPolicyLookupTool`.
+- Confirmar cliente canonico via `/cliente?codfil&codigo` em buscas por CPF e nome.
+- Usar `cpf_cnpj` do detalhe canonico do cliente.
+- Resolver apolice por `PolicyLocator(provider=infocap, codfil, nosnum)`.
+- Tratar `numapo` como numero exibivel/buscavel que resolve para `nosnum`.
+- Retornar `ambiguous_policy` quando houver multiplas apolices sem referencia explicita.
+- Preservar envelope estrutural de `/documento` sem payload bruto.
+- Normalizar parcelas e campos financeiros com `provider_field`.
+- Declarar ausencia honesta de cobertura quando a InfoCap nao retorna listas estruturadas.
+- Marcar fonte oficial de documento apenas como flag segura.
+
+### Proibido preservado
+
+- Nenhum runtime, conector, endpoint, HTTP Tool, MCP, RAG, parser, storage, tabela ou migration paralelo.
+- Nenhuma alteracao de `graph.py`, prompts, Capability Registry, Docling, Qdrant, MinIO, Drive, Notion, WhatsApp, Portal Browser ou Auxiliares.
+- Nenhuma chamada a provider real durante desenvolvimento.
+
+### Feature flag
+
+`INFOCAP_CANONICAL_POLICY_READ` controla rollout/rollback temporario dentro do adapter existente. A flag nao cria segundo conector, segunda rota ou segunda tool.
+
+### Criterio de aceite
+
+- Golden tests R1A/R1B passam.
+- `py_compile` passa para conector e tool.
+- `policy_ref` nao deriva de `codigo/codcli`.
+- `P` nao vira cobertura.
+- `official_document_source_available` nao expoe URL.
+- Chat Principal passa a receber o DTO canonico pela tool existente.
+
+## 7.2 R1C - Official Policy Document Source and Cached Evidence
+
+### Escopo futuro
+
+- Validar acesso a fonte oficial da apolice quando `official_document_source_available=true`.
+- Fazer fetch somente quando a InfoCap estruturada nao trouxer cobertura suficiente ou quando a apolice oficial for explicitamente necessaria.
+- Cachear por `company_id + PolicyLocator + hash/ETag/versionamento`.
+- Usar `DocumentService` e MinIO existentes antes de qualquer processamento.
+- Usar Docling/OCR apenas quando o documento exigir.
+- Gerar evidencia por pagina/trecho, sem RAG paralelo.
+- Reutilizar evidencia em consultas futuras sem baixar/processar repetidamente o mesmo documento.
+
+### Proibido futuro
+
+- Baixar PDF em toda consulta de apolice.
+- Criar parser PDF paralelo.
+- Criar storage paralelo.
+- Criar RAG paralelo.
+- Pedir upload manual quando a fonte oficial da propria apolice estiver disponivel e acessivel.
+
 ## 8. Fase 1 / R2 - Smith Runtime and Admin Unification
 
 ### Escopo

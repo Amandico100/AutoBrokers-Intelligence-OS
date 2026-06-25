@@ -30,7 +30,7 @@ infocap_policy_detail_item_code_p.json
 | ID | Fixture | Objetivo | Entrada | Shape minimo | Resultado esperado | Nao pode acontecer |
 | --- | --- | --- | --- | --- | --- | --- |
 | G01 | Nome unico | Busca por nome com cliente correto | `customer_name` | `/lista_clientes` com 1 candidato + `/cliente` | Adapter chama detalhe do cliente e usa `cpf_cnpj` canonico | Usar CPF da linha de busca como fonte final |
-| G02 | Homonimo | Nome retorna mais de um cliente plausivel | `customer_name` | `/lista_clientes` com 2+ candidatos | `multiple_matches` / exige selecao | Selecionar primeiro automaticamente |
+| G02 | Homonimo | Nome retorna mais de um cliente plausivel | `customer_name` | `/lista_clientes` com 2+ candidatos | `ambiguous_customer` / exige selecao | Selecionar primeiro automaticamente |
 | G03 | CPF direto | Busca por CPF/CNPJ | `cpf_cnpj` | `/cliente_cpf` com cliente | `codigo` e `cpf_cnpj` canonicos resolvidos | Aceitar `documento/doc/ni` como canonico se `cpf_cnpj` existe |
 | G04 | Detalhe cliente | Cliente detalhado com `cpf_cnpj` | `codigo` | `/cliente?codigo` | CPF vem exclusivamente de `cpf_cnpj` e o fluxo CPF tambem chama `/cliente` | CPF herdado de apolice/documento |
 | G05 | `numapo` -> `nosnum` | Numero exibivel resolve detalhe | `policy_number` | `/documentos` com `numapo` e `nosnum` | Seleciona por match e cria `PolicyLocator(codfil,nosnum)` | Chamar `/documento` usando `numapo` sem resolver |
@@ -39,7 +39,7 @@ infocap_policy_detail_item_code_p.json
 | G08 | Vigente | Apolice vigente | `policy_ref` | vigencia/status ativo | `active_now=true` quando datas/status permitirem | Confirmar cobertura sem itens |
 | G09 | Itens no topo | `/documento` com `itens` no topo do envelope | `policy_ref` | `{documento:[...], itens:[...]}` | Extrai `itens` sem perder envelope | Reduzir para `documento[0]` e perder itens |
 | G10 | Coberturas no topo | `/documento` com `coberturas` no topo | `policy_ref` | `{documento:[...], coberturas:[...]}` | Extrai coberturas | Retornar cobertura ausente por descarte |
-| G11 | Sem cobertura | `/documento` sem itens/coberturas/clausulas | `policy_ref` | documento sem listas de cobertura | Retorna ausencia honesta e `human_required` quando necessario | Inventar cobertura |
+| G11 | Sem cobertura | `/documento` sem itens/coberturas/clausulas | `policy_ref` | documento sem listas de cobertura | Retorna `structured_coverage_absent` e ausencia honesta | Inventar cobertura |
 | G12 | `item = P` | Codigo curto em campo de item/tipo | `policy_ref` | `itens:[{item:"P"}]` ou equivalente | Preserva como codigo bruto, nao label | Responder "Cobertura: P" |
 | G13 | Franquia | Franquia explicita | `policy_ref` | chave de franquia em cobertura/detalhe | DTO traz franquia com fonte | Colocar franquia em cobertura sem label |
 | G14 | LMI | Limite maximo/Importancia segurada | `policy_ref` | `lmi`, `limite`, `importancia_segurada` | DTO normaliza valor e origem | Confundir premio com LMI |
@@ -59,6 +59,9 @@ infocap_policy_detail_item_code_p.json
 | G28 | Busca por policy_ref invalido | `policy_ref` fora dos matches | `policy_ref` | lista anterior nao contem ref | Rejeita e exige relookup/selecao | Consultar detalhe sem validar origem |
 | G29 | Contract Capture Gate | Probe seguro da cadeia completa | CPF ou nome de teste | `/cliente_cpf|/lista_clientes` -> `/cliente` -> `/cliente_ligacoes` -> `/documento` | Retorna apenas chaves, tipos, hashes e contagens | Retornar CPF, nome, numero, `codigo`, `codfil`, `nosnum` ou payload bruto |
 | G30 | Status canonico | Ambiguidade e limites de fonte | shapes sinteticos | multiplos clientes/apolices, timeout, auth, unknown shape | Usa enum estavel: `found`, `ambiguous_customer`, `ambiguous_policy`, `source_limited`, `provider_auth_error`, `provider_timeout`, `unknown_shape`, `document_evidence_required`, `conflict_requires_human` | Status livre/ad hoc |
+| G31 | Fonte oficial sem URL exposta | `/documento` com `acompanhamento.emissao.url_apolice` | `policy_ref` | URL presente no envelope | `official_document_source_available=true` sem retornar URL | Expor URL ao chat/log/LLM |
+| G32 | Parcelas com origem | `/documento` com `parcelas[]` | `policy_ref` | `datvenc`, `datquit`, `vlvenc`, `vlquit`, `forma_pagamento` | Parcelas normalizadas com `source_fields` | Misturar parcela com cobertura |
+| G33 | Financeiros sem semantica inventada | `/documento` com `preliq`, `pretot`, etc. | `policy_ref` | campos financeiros do provider | Retorna `provider_field` e `semantic_status=provider_field_unclassified` | Chamar campo desconhecido de premio total/LMI/franquia |
 
 ## 4. Goldens de fluxo
 
@@ -151,3 +154,21 @@ Estes ficam para R2/R3:
 - Drive/Notion produtivos.
 - WhatsApp real.
 - Portal Browser real.
+
+## 7. Cobertura R1B implementada no harness offline
+
+O teste `backend/tests/test_infocap_contract_capture.py` agora cobre:
+
+- `result_count` de `documentos.documentos`;
+- identidade canonica por `/cliente` e `cpf_cnpj`;
+- `codigo/codcli` nunca virando `policy_ref`;
+- `PolicyLocator(provider=infocap, codfil, nosnum)`;
+- `numapo` resolvendo para `nosnum`;
+- codigo curto `P` nao virando cobertura;
+- preservacao estrutural de envelope;
+- parcelas com `source_fields`;
+- financeiros com `provider_field`;
+- `tabela_itens` como campo desconhecido;
+- `structured_coverage_absent`;
+- `official_document_source_available` sem URL;
+- `document_evidence_required` sem fetch/processamento do documento.
