@@ -151,6 +151,41 @@ Regras obrigatorias:
 - se `structured_coverage_absent=true`, a resposta deve declarar ausencia estruturada da InfoCap;
 - se `document_evidence_required=true`, a resposta pode mencionar a futura fonte documental oficial, mas nao pode afirmar que PDF foi lido.
 
+### 6.4 R1C.0 - auditoria viva da fonte oficial da apolice
+
+Quando `/documento` nao trouxer `itens`, `coberturas`, `franquias`, `clausulas` ou `assistencias`, mas trouxer `acompanhamento.emissao.url_apolice`, o sistema deve tratar a URL como ponte para evidencia documental futura, nao como cobertura confirmada.
+
+O modo `official_document_source_audit` do endpoint existente `POST /attendance/connectors/infocap/probe` deve:
+
+- ser master-only;
+- reutilizar `tenant_connections + Vault`, login InfoCap e resolucao canonica de apolice;
+- chamar `/documento` apenas por `PolicyLocator(provider=infocap, codfil, nosnum)`;
+- localizar internamente `acompanhamento.emissao.url_apolice` e `acompanhamento.proposta.url_proposta`, sem heuristica generica de URL;
+- priorizar `url_apolice`;
+- tentar recuperacao read-only com Authorization, cookies de sessao e redirecionamentos HTTPS limitados;
+- retornar somente metadados seguros de recuperacao e classificacao documental;
+- nunca persistir PDF, texto, URL, payload bruto, token, cookie ou PII.
+
+O retorno seguro deve conter, no maximo, campos como `retrieval_status`, `auth_mode_required`, `final_origin_class`, `content_type`, `content_length_bucket`, `file_magic`, `pdf_encrypted`, `pdf_page_count`, `text_layer_status`, `document_anchor_detection`, `source_fetch_safe_for_r1c`, `source_fetch_blocker` e `recommended_r1c_transport`.
+
+### 6.5 R1C.0.1 - hardening de seguranca e UX do diagnostico
+
+Antes de qualquer deploy do R1C.0, o modo `official_document_source_audit` deve cumprir:
+
+- autorizacao master-only tambem no backend Python, antes de resolver `tenant_connections` ou chamar provider;
+- rota Next com `assertSameOrigin` e `requireMasterAdmin`;
+- UI no card existente "Diagnosticar contrato InfoCap", sem pagina nova e sem input manual de `company_id`;
+- aceite somente de URL HTTPS sem usuario/senha embutidos;
+- bloqueio de localhost, loopback, `0.0.0.0`, `::1`, redes privadas, link-local, endpoints de metadata e DNS que resolva para IP interno;
+- redirecionamento manual, maximo 3, nunca para HTTP;
+- Authorization e cookies somente para o origin original validado;
+- redirect externo HTTPS sem Authorization/cookie;
+- Range request e limite de tamanho por header e streaming;
+- arquivo temporario apagado em `finally`, quando usado;
+- proibicao de enviar conteudo para Docling, MinIO, Supabase, Qdrant ou DocumentService nesta etapa.
+
+R1C produtivo so pode ser iniciado depois de captura real bem-sucedida e revisao do JSON estrutural seguro.
+
 ## 7. Contrato de entrada
 
 O adapter canonico deve aceitar uma requisicao normalizada:

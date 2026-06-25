@@ -28,6 +28,7 @@ export default function AdminCompanyAgentsPage() {
   const [canonical, setCanonical] = useState<any>(null); // SPEC-013 B2: Core/Even protegidos (Even sempre visível)
   const [health, setHealth] = useState<any>(null); // SPEC-013 FB-2: diagnóstico + manutenção (folded)
   const [caps, setCaps] = useState<any>(null); // SPEC-014 C1: cockpit de capabilities (folded)
+  const [contractProbeMode, setContractProbeMode] = useState<'policy_chain_contract' | 'official_document_source_audit'>('policy_chain_contract');
   const [contractQueryType, setContractQueryType] = useState<'cpf' | 'name'>('cpf');
   const [contractQuery, setContractQuery] = useState('');
   const [contractPolicyRef, setContractPolicyRef] = useState('');
@@ -86,6 +87,10 @@ export default function AdminCompanyAgentsPage() {
       toast({ title: 'Informe um termo de teste', description: 'Use CPF ou nome de um segurado de teste.', variant: 'destructive' });
       return;
     }
+    if (contractProbeMode === 'official_document_source_audit' && !contractPolicyRef.trim()) {
+      toast({ title: 'Informe a referencia da apolice', description: 'A auditoria da fonte oficial precisa de uma apolice de teste.', variant: 'destructive' });
+      return;
+    }
     setContractRunning(true);
     setContractResult(null);
     try {
@@ -93,7 +98,7 @@ export default function AdminCompanyAgentsPage() {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
-          mode: 'policy_chain_contract',
+          mode: contractProbeMode,
           company_id: companyId,
           query_type: contractQueryType,
           query: contractQuery,
@@ -357,7 +362,18 @@ export default function AdminCompanyAgentsPage() {
                 <span className="text-[10px] font-normal text-muted-foreground">Somente leitura · não altera dados · não exibe segurados</span>
               </summary>
               <div className="mt-3 space-y-3">
-                <div className="grid grid-cols-1 gap-2 md:grid-cols-[140px_1fr_1fr_auto]">
+                <div className="grid grid-cols-1 gap-2 md:grid-cols-[220px_140px_1fr_1fr_auto]">
+                  <label className="text-[11px] text-muted-foreground">
+                    Modo
+                    <select
+                      value={contractProbeMode}
+                      onChange={(e) => setContractProbeMode(e.target.value === 'official_document_source_audit' ? 'official_document_source_audit' : 'policy_chain_contract')}
+                      className="mt-1 h-9 w-full rounded-md border border-border bg-card px-2 text-[12px] text-foreground"
+                    >
+                      <option value="policy_chain_contract">Diagnosticar contrato InfoCap</option>
+                      <option value="official_document_source_audit">Auditar fonte oficial da apolice</option>
+                    </select>
+                  </label>
                   <label className="text-[11px] text-muted-foreground">
                     Metodo
                     <select
@@ -398,6 +414,11 @@ export default function AdminCompanyAgentsPage() {
                     Executar
                   </Button>
                 </div>
+                {contractProbeMode === 'official_document_source_audit' && (
+                  <p className="rounded-md border border-border bg-card px-3 py-2 text-[11px] text-muted-foreground">
+                    Esta auditoria nao baixa documentos no Chat, nao processa PDF e nao altera dados. Ela apenas verifica se a fonte oficial da apolice pode ser acessada com seguranca.
+                  </p>
+                )}
                 {contractResult && (
                   <div className="space-y-2">
                     {contractResult.connection_resolution && (

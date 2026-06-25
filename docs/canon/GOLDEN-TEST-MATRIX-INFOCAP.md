@@ -73,6 +73,25 @@ infocap_policy_detail_item_code_p.json
 | G42 | Numero invalido | `numapo=0` ou placeholder | listagem/detalhe | numero invalido | Exibe "numero nao retornado pela InfoCap" | Mostrar "Numero: 0" |
 | G43 | Output guard InfoCap | Tool retorna contrato operacional | resposta final LLM | LLM omite opcoes ou diz erro tecnico | Smith substitui/completa pela resposta deterministica | Perder opcoes ou inventar erro tecnico |
 | G44 | Ausencia de cobertura no chat | `/documento` sem cobertura | pergunta de cobertura | `structured_coverage_absent=true` | Resposta declara ausencia de itens estruturados | Afirmar eletricista/assistencia/incendio/franquia |
+| G45 | R1C.0 sem URL oficial | `/documento` sem `url_apolice` | audit mode | detalhe da apolice sem fonte documental | `official_document_url_present=false` e blocker seguro | Inventar fonte documental |
+| G46 | R1C.0 PDF valido | `url_apolice` retorna PDF | audit mode | content-type PDF e magic `%PDF` | `retrieval_status=retrieved`, paginas e anchors seguros | Retornar URL, texto do PDF ou payload |
+| G47 | R1C.0 HTML/login | `url_apolice` retorna HTML de login | audit mode | HTML com login/senha | `retrieval_status=html_login`, `recommended_r1c_transport=portal_required` | Tratar HTML como PDF |
+| G48 | R1C.0 auth mode | PDF requer Authorization/cookie | audit mode | tentativas com token/cookie | `auth_mode_required` controlado | Expor token, cookie ou header |
+| G49 | R1C.0 redirect HTTPS | URL redireciona para HTTPS externo | audit mode | redirect seguro limitado | `final_origin_class=external_https` e transporte recomendado | Seguir HTTP inseguro ou expor host completo |
+| G50 | R1C.0 oversized | Documento maior que limite | audit mode | content-length acima do maximo | `retrieval_status=unsupported` e blocker `document_too_large` | Baixar arquivo grande inteiro |
+| G51 | R1C.0 PDF criptografado | PDF contem `/Encrypt` | audit mode | PDF protegido | `pdf_encrypted=true`, `source_fetch_safe_for_r1c=false` | Enviar para Docling mesmo assim |
+| G52 | R1C.0 PDF sem texto | PDF nativo/escaneado sem camada textual | audit mode | PDF sem anchors/texto | `text_layer_status=absent`, candidato a Docling/OCR futuro | Concluir cobertura sem OCR/evidencia |
+| G53 | R1C.0 sem vazamento | Qualquer resultado de auditoria | audit mode | URLs, cookies, token e PII sinteticos | Saida contem so classes, booleanos, contagens e buckets | Logar/exibir URL, CPF, nome, numero, `codfil`, `nosnum`, token, cookie ou payload |
+| G54 | Backend master-only | Audit mode sem marcador master | `official_document_source_audit` | chamada interna sem header master | bloqueio antes de resolver conexao/provider | Executar auditoria por usuario nao master |
+| G55 | SSRF bloqueado | URL oficial maliciosa | audit mode | localhost, loopback, private IP, link-local, metadata | `source_fetch_blocker` seguro | Fazer request para rede interna |
+| G56 | Redirect cross-origin sem credenciais | PDF redireciona para host externo HTTPS | audit mode | 302 externo | Authorization/cookie removidos no destino externo | Vazar credenciais para outro origin |
+| G57 | Redirect HTTP bloqueado | URL HTTPS redireciona para HTTP | audit mode | 302 para HTTP | `unsafe_redirect` | Seguir HTTP |
+| G58 | Tamanho bloqueado | Content-Length ou streaming grande | audit mode | arquivo acima do limite | `document_too_large` | Ler arquivo inteiro em memoria |
+| G59 | Tempfile cleanup | Arquivo temporario usado pela auditoria | audit mode | sucesso, erro ou timeout | arquivo removido em `finally` | Deixar PDF temporario no disco |
+| G60 | Sem escrita em storage | Auditoria documental | audit mode | qualquer resultado | nenhuma chamada a Docling/MinIO/Qdrant/Supabase/DocumentService | Persistir conteudo nesta etapa |
+| G61 | UX sem company_id manual | Card Portal Admin | UI | seletor no card existente | usa `companyId` da rota e nao pede ID manual | Founder copiar ID pelo Console |
+| G62 | Output sem dados sensiveis | Resultado de auditoria | audit mode | URL, token, CPF, nome, numero e locators sinteticos | output nao contem dados sensiveis | Expor PII, host integral, URL, token, cookie, `codfil`, `nosnum` ou payload |
+| G63 | Classificacao documental combinada | PDF real, PDF sem texto, HTML/login, criptografado, nao PDF | audit mode | respostas sinteticas | status/magic/text_layer/transport corretos | Tratar HTML/ZIP/imagem como apolice lida |
 
 ## 4. Goldens de fluxo
 

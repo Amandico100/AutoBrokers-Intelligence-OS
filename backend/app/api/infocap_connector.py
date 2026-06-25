@@ -8,13 +8,19 @@ NUNCA retorna/loga login/senha/ciphertext. NÃO faz chamada real ao InfoCap.
 """
 import hmac
 import hashlib
+import ipaddress
 import json
 import logging
 import os
 import re
+import socket
+import tempfile
 import time
+import unicodedata
+from contextlib import contextmanager
 from datetime import datetime, timezone
 from typing import Any, Dict, List, Optional, Tuple
+from urllib.parse import urljoin, urlparse
 
 import httpx
 from fastapi import APIRouter, Depends, Header, HTTPException
@@ -28,6 +34,18 @@ logger = logging.getLogger(__name__)
 router = APIRouter()
 
 INFOCAP_SLUG = "infocap"
+
+
+def _probe_mode_requires_master(mode: Optional[str]) -> bool:
+    return str(mode or "").strip().lower() in {"policy_chain_contract", "official_document_source_audit"}
+
+
+def _require_probe_master_authorization(mode: Optional[str], marker: Optional[str]) -> None:
+    """Defesa no backend para modos de diagnostico globais acionados pelo Portal Admin."""
+    if not _probe_mode_requires_master(mode):
+        return
+    if str(marker or "").strip().lower() != "true":
+        raise HTTPException(status_code=403, detail="master_required")
 
 
 def _require_internal_key(provided: Optional[str]) -> None:
@@ -1162,6 +1180,9 @@ async def infocap_lookup(
 # ---------------------------------------------------------------------------
 
 PROBE_TIMEOUT_S = 10.0
+OFFICIAL_DOCUMENT_AUDIT_TIMEOUT_S = 15.0
+OFFICIAL_DOCUMENT_AUDIT_MAX_BYTES = 10 * 1024 * 1024
+OFFICIAL_DOCUMENT_AUDIT_MAX_REDIRECTS = 3
 
 
 class InfocapProbePayload(BaseModel):
@@ -1524,6 +1545,561 @@ def _short_hash(value: str) -> str:
     return hashlib.sha256(str(value or "").encode("utf-8")).hexdigest()[:12]
 
 
+def _blocked_official_document_result(
+    *,
+    source_kind: str,
+    blocker: str,
+    status: str = "unsupported",
+    redirect_count: int = 0,
+) -> Dict[str, Any]:
+    result = _official_document_audit_url_absent_result()
+    result.update({
+        "official_document_url_present": True,
+        "official_document_source_kind": source_kind if source_kind in {"policy_pdf", "proposal"} else "unknown",
+        "retrieval_status": status,
+        "redirect_count": redirect_count,
+        "source_fetch_blocker": [blocker],
+        "recommended_r1c_transport": "unavailable",
+    })
+    return _safe_official_document_audit_output(result)
+
+
+def _host_is_blocked(host: str) -> Tuple[bool, str]:
+    clean_host = (host or "").strip().strip("[]").lower().rstrip(".")
+    if not clean_host:
+        return True, "missing_host"
+    if clean_host in {"localhost", "metadata.google.internal"}:
+        return True, "private_network"
+    try:
+        ip = ipaddress.ip_address(clean_host)
+        if ip.is_loopback or ip.is_private or ip.is_link_local or ip.is_multicast or ip.is_unspecified or ip.is_reserved:
+            return True, "private_network"
+        return False, "ok"
+    except ValueError:
+        pass
+
+    try:
+        infos = socket.getaddrinfo(clean_host, None)
+    except OSError:
+        return False, "dns_unresolved"
+    for info in infos:
+        sockaddr = info[4] if len(info) > 4 else None
+        resolved = sockaddr[0] if sockaddr else None
+        if not resolved:
+            continue
+        try:
+            ip = ipaddress.ip_address(str(resolved))
+        except ValueError:
+            continue
+        if ip.is_loopback or ip.is_private or ip.is_link_local or ip.is_multicast or ip.is_unspecified or ip.is_reserved:
+            return True, "private_network"
+    return False, "ok"
+
+
+def _is_safe_official_document_url(url: str) -> Tuple[bool, str]:
+    try:
+        parsed = urlparse(url or "")
+    except Exception:  # noqa: BLE001
+        return False, "invalid_url"
+    if parsed.scheme.lower() != "https":
+        return False, "unsafe_scheme"
+    if not parsed.netloc or not parsed.hostname:
+        return False, "missing_host"
+    if parsed.username or parsed.password:
+        return False, "embedded_credentials"
+    blocked, reason = _host_is_blocked(parsed.hostname)
+    if blocked:
+        return False, reason
+    return True, "ok"
+
+
+def _same_origin(left: str, right: str) -> bool:
+    try:
+        a = urlparse(left or "")
+        b = urlparse(right or "")
+    except Exception:  # noqa: BLE001
+        return False
+    return a.scheme.lower() == b.scheme.lower() and a.hostname == b.hostname and (a.port or 443) == (b.port or 443)
+
+
+def _should_send_document_credentials(original_url: str, target_url: str) -> bool:
+    return _same_origin(original_url, target_url)
+
+
+def _validate_official_document_redirect(current_url: str, location: str) -> Tuple[bool, str, Optional[str]]:
+    next_url = urljoin(current_url or "", location or "")
+    ok, reason = _is_safe_official_document_url(next_url)
+    if not ok:
+        return False, "unsafe_redirect" if reason in {"unsafe_scheme", "private_network", "embedded_credentials"} else reason, None
+    return True, "ok", next_url
+
+
+def _credential_scope(
+    *,
+    original_url: str,
+    current_url: str,
+    headers: Dict[str, str],
+    cookies: Any,
+) -> Tuple[Dict[str, str], Any]:
+    if not _should_send_document_credentials(original_url, current_url):
+        return {}, None
+    return headers, cookies
+
+
+async def _fetch_url_limited_for_audit(
+    *,
+    source_kind: str,
+    source_url: str,
+    headers: Dict[str, str],
+    cookies: Any,
+    successful_auth_mode: str,
+) -> Dict[str, Any]:
+    ok, reason = _is_safe_official_document_url(source_url)
+    if not ok:
+        return _blocked_official_document_result(source_kind=source_kind, blocker=reason)
+
+    current_url = source_url
+    redirect_count = 0
+    try:
+        async with httpx.AsyncClient(timeout=OFFICIAL_DOCUMENT_AUDIT_TIMEOUT_S, follow_redirects=False) as doc_client:
+            while True:
+                ok, reason = _is_safe_official_document_url(current_url)
+                if not ok:
+                    return _blocked_official_document_result(
+                        source_kind=source_kind,
+                        blocker="unsafe_redirect" if reason == "unsafe_scheme" else reason,
+                        redirect_count=redirect_count,
+                    )
+                request_headers, request_cookies = _credential_scope(
+                    original_url=source_url,
+                    current_url=current_url,
+                    headers=headers,
+                    cookies=cookies,
+                )
+                request_headers = {**request_headers, "Range": f"bytes=0-{OFFICIAL_DOCUMENT_AUDIT_MAX_BYTES}"}
+                request_auth_mode = successful_auth_mode
+                has_auth_header = bool(request_headers.get("Authorization"))
+                has_cookie = bool(request_cookies)
+                if has_auth_header and has_cookie:
+                    request_auth_mode = "both"
+                elif has_auth_header:
+                    request_auth_mode = "authorization_header"
+                elif has_cookie:
+                    request_auth_mode = "session_cookie"
+                else:
+                    request_auth_mode = "none"
+                async with doc_client.stream("GET", current_url, headers=request_headers, cookies=request_cookies) as res:
+                    if res.status_code in (301, 302, 303, 307, 308):
+                        location = res.headers.get("location")
+                        if not location:
+                            return _blocked_official_document_result(
+                                source_kind=source_kind,
+                                blocker="redirect_without_location",
+                                redirect_count=redirect_count,
+                            )
+                        redirect_ok, redirect_reason, next_url = _validate_official_document_redirect(str(res.url), location)
+                        if not redirect_ok or not next_url:
+                            return _blocked_official_document_result(
+                                source_kind=source_kind,
+                                blocker=redirect_reason,
+                                redirect_count=redirect_count,
+                            )
+                        redirect_count += 1
+                        if redirect_count > OFFICIAL_DOCUMENT_AUDIT_MAX_REDIRECTS:
+                            return _blocked_official_document_result(
+                                source_kind=source_kind,
+                                blocker="too_many_redirects",
+                                redirect_count=redirect_count,
+                            )
+                        current_url = next_url
+                        continue
+
+                    content_length = _safe_int(res.headers.get("content-length"))
+                    if content_length is not None and content_length > OFFICIAL_DOCUMENT_AUDIT_MAX_BYTES:
+                        return _classify_official_document_response(
+                            source_kind=source_kind,
+                            status_code=res.status_code,
+                            headers=dict(res.headers),
+                            body=b"",
+                            redirect_count=redirect_count,
+                            source_url=source_url,
+                            final_url=str(res.url),
+                            successful_auth_mode=request_auth_mode,
+                        )
+
+                    body = b""
+                    async for chunk in res.aiter_bytes():
+                        body += chunk
+                        if len(body) > OFFICIAL_DOCUMENT_AUDIT_MAX_BYTES:
+                            return _classify_official_document_response(
+                                source_kind=source_kind,
+                                status_code=res.status_code,
+                                headers={**dict(res.headers), "content-length": str(len(body))},
+                                body=b"",
+                                redirect_count=redirect_count,
+                                source_url=source_url,
+                                final_url=str(res.url),
+                                successful_auth_mode=request_auth_mode,
+                            )
+                    return _classify_official_document_response(
+                        source_kind=source_kind,
+                        status_code=res.status_code,
+                        headers=dict(res.headers),
+                        body=body,
+                        redirect_count=redirect_count,
+                        source_url=source_url,
+                        final_url=str(res.url),
+                        successful_auth_mode=request_auth_mode,
+                    )
+    except httpx.TimeoutException:
+        return _blocked_official_document_result(source_kind=source_kind, blocker="provider_timeout", status="network_error")
+    except httpx.HTTPError:
+        return _blocked_official_document_result(source_kind=source_kind, blocker="network_error", status="network_error")
+
+
+async def _fetch_official_document_candidate_for_audit(
+    *,
+    candidate: Dict[str, str],
+    token: str,
+    auth_cookies: Any,
+) -> Dict[str, Any]:
+    url = candidate.get("url") or ""
+    source_kind = candidate.get("source_kind") or "unknown"
+    attempts: List[Tuple[str, Dict[str, str], Any]] = [
+        ("authorization_header", {"Authorization": token}, None),
+        ("session_cookie", {}, auth_cookies),
+        ("both", {"Authorization": token}, auth_cookies),
+        ("none", {}, None),
+    ]
+    best: Optional[Dict[str, Any]] = None
+    for mode, headers, cookies in attempts:
+        if mode in {"authorization_header", "both"} and not token:
+            continue
+        if mode in {"session_cookie", "both"} and not cookies:
+            continue
+        result = await _fetch_url_limited_for_audit(
+            source_kind=source_kind,
+            source_url=url,
+            headers=headers,
+            cookies=cookies,
+            successful_auth_mode=mode,
+        )
+        status = result.get("retrieval_status")
+        if status == "retrieved":
+            return result
+        if best is None or status in {"html_login", "unauthorized", "forbidden"}:
+            best = result
+        if status in {"not_found", "unsupported"}:
+            break
+    return best or _blocked_official_document_result(source_kind=source_kind, blocker="unavailable", status="unknown")
+
+
+async def _resolve_policy_detail_for_document_source_audit(
+    *,
+    client: httpx.AsyncClient,
+    headers: Dict[str, str],
+    config: Dict[str, Any],
+    qtype: str,
+    raw_query: str,
+    digits: str,
+    codfil: Any,
+    requested_policy_ref: Optional[str],
+) -> Dict[str, Any]:
+    cpf_search_path = config.get("infocap_cpf_search_path") or "/cliente_cpf"
+    name_search_path = config.get("infocap_search_path") or "/lista_clientes"
+    cliente_path = config.get("infocap_cliente_path") or "/cliente"
+    ligacoes_path = config.get("infocap_ligacoes_path") or "/cliente_ligacoes"
+    documento_path = config.get("infocap_documento_path") or "/documento"
+    documentos_path = config.get("infocap_documentos_path") or config.get("infocap_policy_search_path") or "/documentos"
+    documentos_search_param = config.get("infocap_documentos_search_param") or config.get("infocap_policy_search_param") or "texto"
+    endpoints: List[Dict[str, Any]] = []
+    candidate_count = 0
+    document_count = 0
+    policy_locator: Optional[Dict[str, str]] = None
+    ref_codfil, ref_value = _parse_policy_ref_input(requested_policy_ref)
+
+    async def detail_from_locator(locator: Dict[str, str]) -> Dict[str, Any]:
+        detail_shape, detail_data, detail_status = await _contract_get(
+            client,
+            documento_path,
+            {"codfil": locator["codfil"], "nosnum": locator["nosnum"]},
+            headers,
+            "policy_detail.documento",
+        )
+        endpoints.append(detail_shape)
+        return {
+            "status": detail_status,
+            "detail_envelope": detail_data,
+            "policy_locator": locator,
+        }
+
+    if ref_codfil and ref_value and not raw_query:
+        policy_locator = {"provider": "infocap", "codfil": str(ref_codfil), "nosnum": str(ref_value)}
+        detail = await detail_from_locator(policy_locator)
+        return {
+            "ok": detail["status"] == "found",
+            "status": detail["status"],
+            "candidate_count": 0,
+            "document_count": 1 if detail["status"] == "found" else 0,
+            "policy_locator": policy_locator,
+            "detail_envelope": detail.get("detail_envelope"),
+            "endpoints": endpoints,
+        }
+
+    if requested_policy_ref and not raw_query:
+        docs_shape, docs_data, status = await _contract_get(
+            client,
+            documentos_path,
+            {"codfil": codfil, documentos_search_param: ref_value or requested_policy_ref},
+            headers,
+            "policy_search.documentos",
+        )
+        endpoints.append(docs_shape)
+        if status != "found":
+            return {
+                "ok": False,
+                "status": status,
+                "candidate_count": 0,
+                "document_count": 0,
+                "policy_locator": None,
+                "detail_envelope": None,
+                "endpoints": endpoints,
+            }
+        docs = _extract_documents(docs_data)
+        if not docs:
+            docs = _extract_array(docs_data)
+        matches = [doc for doc in docs if _policy_doc_matches_identifier(doc, requested_policy_ref)]
+        document_count = len(docs)
+        policy_locator, locator_status = _select_policy_locator(
+            matches,
+            codfil=codfil,
+            requested_policy_ref=requested_policy_ref,
+        )
+        if locator_status != "found" or not policy_locator:
+            return {
+                "ok": False,
+                "status": "not_found" if locator_status == "source_limited" else locator_status,
+                "candidate_count": 0,
+                "document_count": document_count,
+                "policy_locator": None,
+                "detail_envelope": None,
+                "endpoints": endpoints,
+            }
+        detail = await detail_from_locator(policy_locator)
+        return {
+            "ok": detail["status"] == "found",
+            "status": detail["status"],
+            "candidate_count": 0,
+            "document_count": document_count,
+            "policy_locator": policy_locator,
+            "detail_envelope": detail.get("detail_envelope"),
+            "endpoints": endpoints,
+        }
+
+    if qtype == "cpf":
+        if not digits:
+            raise HTTPException(status_code=400, detail="cpf query requires digits")
+        search_params = {"codfil": codfil, "cpf_cnpj": digits}
+        search_endpoint = "initial_search.cliente_cpf"
+        search_path = cpf_search_path
+    else:
+        if not raw_query:
+            raise HTTPException(status_code=400, detail="name query is required")
+        search_params = {"texto": raw_query}
+        search_endpoint = "initial_search.lista_clientes"
+        search_path = name_search_path
+
+    search_shape, search_data, status = await _contract_get(
+        client, search_path, search_params, headers, search_endpoint
+    )
+    endpoints.append(search_shape)
+    if status != "found":
+        return {
+            "ok": False,
+            "status": status,
+            "candidate_count": 0,
+            "document_count": 0,
+            "policy_locator": None,
+            "detail_envelope": None,
+            "endpoints": endpoints,
+        }
+    candidates = _extract_array(search_data)
+    candidate_count = len(candidates)
+    candidate, status = _select_unique_contract_candidate(candidates)
+    if status != "found" or not candidate:
+        return {
+            "ok": False,
+            "status": status,
+            "candidate_count": candidate_count,
+            "document_count": 0,
+            "policy_locator": None,
+            "detail_envelope": None,
+            "endpoints": endpoints,
+        }
+
+    codigo_val = _first_str(candidate, ["codigo", "codcli"])
+    codfil_val = _first_str(candidate, ["codfil"]) or str(codfil or "1")
+    if not codigo_val:
+        return {
+            "ok": False,
+            "status": "source_limited",
+            "candidate_count": candidate_count,
+            "document_count": 0,
+            "policy_locator": None,
+            "detail_envelope": None,
+            "endpoints": endpoints,
+        }
+
+    cliente_shape, _, status = await _contract_get(
+        client,
+        cliente_path,
+        {"codfil": codfil_val, "codigo": codigo_val},
+        headers,
+        "customer_detail.cliente",
+    )
+    endpoints.append(cliente_shape)
+    if status != "found":
+        return {
+            "ok": False,
+            "status": status,
+            "candidate_count": candidate_count,
+            "document_count": 0,
+            "policy_locator": None,
+            "detail_envelope": None,
+            "endpoints": endpoints,
+        }
+
+    catalog_shape, catalog_data, status = await _contract_get(
+        client,
+        ligacoes_path,
+        {"codigo": codigo_val},
+        headers,
+        "policy_catalog.cliente_ligacoes",
+    )
+    endpoints.append(catalog_shape)
+    if status != "found":
+        return {
+            "ok": False,
+            "status": status,
+            "candidate_count": candidate_count,
+            "document_count": 0,
+            "policy_locator": None,
+            "detail_envelope": None,
+            "endpoints": endpoints,
+        }
+
+    docs = _extract_documents(catalog_data)
+    document_count = len(docs)
+    policy_locator, status = _select_policy_locator(
+        docs,
+        codfil=codfil_val,
+        requested_policy_ref=requested_policy_ref,
+    )
+    if status != "found" or not policy_locator:
+        return {
+            "ok": False,
+            "status": status,
+            "candidate_count": candidate_count,
+            "document_count": document_count,
+            "policy_locator": policy_locator,
+            "detail_envelope": None,
+            "endpoints": endpoints,
+        }
+
+    detail = await detail_from_locator(policy_locator)
+    return {
+        "ok": detail["status"] == "found",
+        "status": detail["status"],
+        "candidate_count": candidate_count,
+        "document_count": document_count,
+        "policy_locator": policy_locator,
+        "detail_envelope": detail.get("detail_envelope"),
+        "endpoints": endpoints,
+    }
+
+
+async def _run_official_document_source_audit(
+    *,
+    client: httpx.AsyncClient,
+    headers: Dict[str, str],
+    auth_cookies: Any,
+    config: Dict[str, Any],
+    company_id: str,
+    qtype: str,
+    raw_query: str,
+    digits: str,
+    codfil: Any,
+    requested_policy_ref: Optional[str],
+    auth_status: Optional[int],
+) -> Dict[str, Any]:
+    resolved = await _resolve_policy_detail_for_document_source_audit(
+        client=client,
+        headers=headers,
+        config=config,
+        qtype=qtype,
+        raw_query=raw_query,
+        digits=digits,
+        codfil=codfil,
+        requested_policy_ref=requested_policy_ref,
+    )
+    endpoints = resolved.get("endpoints") or []
+    status = resolved.get("status") or "unknown_shape"
+    if status != "found":
+        return _safe_official_document_audit_output({
+            "ok": False,
+            "provider": "infocap",
+            "mode": "official_document_source_audit",
+            "status": status,
+            "auth_http_status": auth_status,
+            "candidate_count": resolved.get("candidate_count", 0),
+            "document_count": resolved.get("document_count", 0),
+            "detected_policy_fields": _merge_detected_policy_fields(endpoints),
+            "source_audit": _official_document_audit_url_absent_result(),
+            "endpoints": endpoints,
+        })
+
+    detail_envelope = resolved.get("detail_envelope")
+    candidates = _extract_official_document_candidates(detail_envelope if isinstance(detail_envelope, dict) else {})
+    if not candidates:
+        return _safe_official_document_audit_output({
+            "ok": False,
+            "provider": "infocap",
+            "mode": "official_document_source_audit",
+            "status": "document_evidence_required",
+            "auth_http_status": auth_status,
+            "candidate_count": resolved.get("candidate_count", 0),
+            "document_count": resolved.get("document_count", 0),
+            "detected_policy_fields": _merge_detected_policy_fields(endpoints),
+            "source_audit": _official_document_audit_url_absent_result(),
+            "endpoints": endpoints,
+        })
+
+    selected_candidate = next((item for item in candidates if item.get("source_kind") == "policy_pdf"), candidates[0])
+    source_audit = await _fetch_official_document_candidate_for_audit(
+        candidate=selected_candidate,
+        token=str(headers.get("Authorization") or ""),
+        auth_cookies=auth_cookies,
+    )
+    audit_status = str(source_audit.get("retrieval_status") or "unknown")
+    logger.info(
+        f"[INFOCAP DOC AUDIT] company_hash={_short_hash(company_id)} "
+        f"status={audit_status} source_kind={source_audit.get('official_document_source_kind')} "
+        f"safe_for_r1c={source_audit.get('source_fetch_safe_for_r1c')}"
+    )
+    return _safe_official_document_audit_output({
+        "ok": audit_status == "retrieved",
+        "provider": "infocap",
+        "mode": "official_document_source_audit",
+        "status": "found" if audit_status == "retrieved" else audit_status,
+        "auth_http_status": auth_status,
+        "candidate_count": resolved.get("candidate_count", 0),
+        "document_count": resolved.get("document_count", 0),
+        "detected_policy_fields": _merge_detected_policy_fields(endpoints),
+        "source_audit": source_audit,
+        "endpoints": endpoints,
+    })
+
+
 async def _run_policy_chain_contract_probe(
     *,
     client: httpx.AsyncClient,
@@ -1699,6 +2275,7 @@ async def _run_policy_chain_contract_probe(
 async def infocap_probe(
     payload: InfocapProbePayload,
     x_autobrokers_internal_key: Optional[str] = Header(default=None, alias="X-AutoBrokers-Internal-Key"),
+    x_autobrokers_master_admin: Optional[str] = Header(default=None, alias="X-AutoBrokers-Master-Admin"),
     db: AsyncSupabaseClient = Depends(get_async_db),
 ) -> Dict[str, Any]:
     _require_internal_key(x_autobrokers_internal_key)
@@ -1707,6 +2284,8 @@ async def infocap_probe(
     connection_id = (payload.tenant_connection_id or "").strip()
     if not company_id:
         raise HTTPException(status_code=400, detail="company_id is required")
+    mode = (payload.mode or "").strip().lower()
+    _require_probe_master_authorization(mode, x_autobrokers_master_admin)
 
     connection_decision = await _resolve_infocap_connection(
         db,
@@ -1737,7 +2316,6 @@ async def infocap_probe(
     codfil = payload.codfil if payload.codfil is not None else 1
     qtype = (payload.query_type or "cpf").lower()
     raw_query = (payload.query or "").strip()
-    mode = (payload.mode or "").strip().lower()
     digits = _digits(raw_query)
     formatted = _format_doc(digits) if digits else None
 
@@ -1772,6 +2350,23 @@ async def infocap_probe(
                 return await _run_policy_chain_contract_probe(
                     client=client,
                     headers=headers,
+                    config=config,
+                    company_id=company_id,
+                    qtype="cpf" if qtype == "cpf" else "name",
+                    raw_query=raw_query,
+                    digits=digits,
+                    codfil=codfil,
+                    requested_policy_ref=payload.policy_ref,
+                    auth_status=auth_status,
+                )
+
+            if mode == "official_document_source_audit":
+                if not raw_query and not payload.policy_ref:
+                    raise HTTPException(status_code=400, detail="query or policy_ref is required")
+                return await _run_official_document_source_audit(
+                    client=client,
+                    headers=headers,
+                    auth_cookies=getattr(auth_res, "cookies", None),
                     config=config,
                     company_id=company_id,
                     qtype="cpf" if qtype == "cpf" else "name",
@@ -1961,6 +2556,369 @@ def _find_key_recursive(value: Any, target_key: str, *, depth: int = 0, max_dept
 
 def _official_document_source_available(envelope: Optional[Dict[str, Any]]) -> bool:
     return _find_key_recursive(envelope, "url_apolice") if isinstance(envelope, dict) else False
+
+
+_OFFICIAL_DOCUMENT_FORBIDDEN_KEYS = {
+    "url",
+    "source_url",
+    "final_url",
+    "location",
+    "host",
+    "hostname",
+    "query",
+    "authorization",
+    "cookie",
+    "set-cookie",
+    "token",
+    "access_token",
+    "auth_token",
+    "senha",
+    "password",
+    "secret",
+    "cpf_cnpj",
+    "cpf",
+    "cnpj",
+    "documento",
+    "doc",
+    "nome",
+    "name",
+    "cliente",
+    "segurado",
+    "endereco",
+    "telefone",
+    "numapo",
+    "apolice",
+    "numero_apolice",
+    "policy_ref",
+    "policy_locator",
+    "codfil",
+    "nosnum",
+    "codigo",
+    "codcli",
+    "payload",
+    "raw",
+    "body",
+    "pdf_text",
+    "text",
+}
+
+
+def _safe_official_document_audit_output(value: Any) -> Any:
+    """Remove campos/valores proibidos da auditoria documental."""
+    if isinstance(value, list):
+        return [_safe_official_document_audit_output(item) for item in value]
+    if isinstance(value, dict):
+        out: Dict[str, Any] = {}
+        for key, child in value.items():
+            key_norm = _keynorm(key)
+            if key_norm in _OFFICIAL_DOCUMENT_FORBIDDEN_KEYS:
+                continue
+            cleaned = _safe_official_document_audit_output(child)
+            if cleaned is not None:
+                out[key] = cleaned
+        return out
+    if isinstance(value, str):
+        if value in {
+            "authorization_header",
+            "session_cookie",
+            "both",
+            "none",
+            "unknown",
+            "direct_authenticated_fetch",
+            "session_cookie_fetch",
+            "signed_url_fetch",
+            "portal_required",
+            "unavailable",
+        }:
+            return value
+        lowered = value.lower()
+        if "http://" in lowered or "https://" in lowered:
+            return None
+        if "bearer " in lowered or "authorization" in lowered or "cookie" in lowered:
+            return None
+        if re.search(r"\b\d{11}\b", value):
+            return None
+        if value.startswith("%PDF"):
+            return None
+    return value
+
+
+def _as_dicts(value: Any) -> List[Dict[str, Any]]:
+    if isinstance(value, dict):
+        return [value]
+    if isinstance(value, list):
+        return [item for item in value if isinstance(item, dict)]
+    return []
+
+
+def _extract_official_document_candidates(envelope: Optional[Dict[str, Any]]) -> List[Dict[str, str]]:
+    """Extrai apenas campos documentais explicitamente conhecidos da InfoCap."""
+    if not isinstance(envelope, dict):
+        return []
+    candidates: List[Dict[str, str]] = []
+    for acompanhamento in _as_dicts(envelope.get("acompanhamento")):
+        emissao = acompanhamento.get("emissao") if isinstance(acompanhamento.get("emissao"), dict) else {}
+        url_apolice = emissao.get("url_apolice")
+        if isinstance(url_apolice, str) and url_apolice.strip():
+            candidates.append({
+                "source_kind": "policy_pdf",
+                "source_path": "acompanhamento.emissao.url_apolice",
+                "url": url_apolice.strip(),
+            })
+        proposta = acompanhamento.get("proposta") if isinstance(acompanhamento.get("proposta"), dict) else {}
+        url_proposta = proposta.get("url_proposta")
+        if isinstance(url_proposta, str) and url_proposta.strip():
+            candidates.append({
+                "source_kind": "proposal",
+                "source_path": "acompanhamento.proposta.url_proposta",
+                "url": url_proposta.strip(),
+            })
+    return candidates
+
+
+def _content_length_bucket(length: Optional[int]) -> str:
+    if length is None or length < 0:
+        return "unknown"
+    if length == 0:
+        return "empty"
+    if length < 1_000_000:
+        return "under_1mb"
+    if length <= 10_000_000:
+        return "1_to_10mb"
+    return "over_10mb"
+
+
+def _header_value(headers: Dict[str, Any], key: str) -> Optional[str]:
+    for k, v in (headers or {}).items():
+        if str(k).lower() == key.lower() and v is not None:
+            return str(v)
+    return None
+
+
+def _safe_int(value: Optional[str]) -> Optional[int]:
+    if value is None:
+        return None
+    try:
+        return int(str(value).strip())
+    except (TypeError, ValueError):
+        return None
+
+
+def _file_magic(body: bytes, content_type: str = "") -> str:
+    head = (body or b"")[:64].lstrip().lower()
+    ctype = (content_type or "").lower()
+    if head.startswith(b"%pdf") or "application/pdf" in ctype:
+        return "pdf"
+    if head.startswith(b"<html") or head.startswith(b"<!doctype html") or "text/html" in ctype:
+        return "html"
+    if head.startswith(b"\x89png") or head.startswith(b"\xff\xd8") or "image/" in ctype:
+        return "image"
+    if head.startswith(b"pk\x03\x04") or "application/zip" in ctype:
+        return "zip"
+    return "unknown"
+
+
+def _normalize_doc_text(value: str) -> str:
+    normalized = unicodedata.normalize("NFKD", value or "")
+    normalized = "".join(ch for ch in normalized if not unicodedata.combining(ch))
+    return normalized.lower()
+
+
+def _document_anchor_detection_from_text(text: str) -> Dict[str, bool]:
+    normalized = _normalize_doc_text(text)
+    return {
+        "coverage_anchor_present": any(term in normalized for term in ("cobertura", "coberturas", "garantia", "garantias")),
+        "assistance_anchor_present": any(term in normalized for term in ("assistencia", "assistencias", "servicos emergenciais")),
+        "deductible_anchor_present": "franquia" in normalized,
+        "premium_anchor_present": any(term in normalized for term in ("premio", "premios", "parcela", "parcelas")),
+        "lmi_anchor_present": any(term in normalized for term in (" lmi", "limite maximo", "importancia segurada")),
+        "policy_number_anchor_present": any(term in normalized for term in ("apolice", "numero da apolice", "num. apolice")),
+    }
+
+
+def _empty_document_anchor_detection() -> Dict[str, bool]:
+    return {
+        "coverage_anchor_present": False,
+        "assistance_anchor_present": False,
+        "deductible_anchor_present": False,
+        "premium_anchor_present": False,
+        "lmi_anchor_present": False,
+        "policy_number_anchor_present": False,
+    }
+
+
+def _inspect_pdf_bytes(body: bytes) -> Dict[str, Any]:
+    text = (body or b"").decode("latin-1", errors="ignore")
+    anchors = _document_anchor_detection_from_text(text)
+    page_count = len(re.findall(rb"/Type\s*/Page\b", body or b""))
+    printable = re.sub(r"[^A-Za-z0-9À-ÿ\s]", " ", text)
+    word_count = len([part for part in printable.split() if len(part) >= 3])
+    text_status = "present" if any(anchors.values()) or word_count >= 20 else "absent"
+    return {
+        "pdf_encrypted": b"/Encrypt" in (body or b""),
+        "pdf_page_count": page_count if page_count > 0 else "unknown",
+        "text_layer_status": text_status,
+        "document_anchor_detection": anchors,
+    }
+
+
+def _final_origin_class(source_url: str, final_url: str) -> str:
+    try:
+        source = urlparse(source_url or "")
+        final = urlparse(final_url or "")
+    except Exception:  # noqa: BLE001
+        return "unknown"
+    if final.scheme.lower() != "https":
+        return "unknown"
+    if source.netloc and final.netloc and source.netloc.lower() == final.netloc.lower():
+        return "infocap_same_origin"
+    return "external_https"
+
+
+def _recommended_r1c_transport(status: str, auth_mode: str, final_origin_class: str) -> str:
+    if status == "html_login":
+        return "portal_required"
+    if status != "retrieved":
+        return "unavailable"
+    if auth_mode == "session_cookie":
+        return "session_cookie_fetch"
+    if auth_mode in {"authorization_header", "both"}:
+        return "direct_authenticated_fetch"
+    if auth_mode == "none" and final_origin_class == "external_https":
+        return "signed_url_fetch"
+    if auth_mode == "none":
+        return "signed_url_fetch"
+    return "unavailable"
+
+
+def _classify_official_document_response(
+    *,
+    source_kind: str,
+    status_code: Optional[int],
+    headers: Dict[str, Any],
+    body: bytes,
+    redirect_count: int,
+    source_url: str,
+    final_url: str,
+    successful_auth_mode: Optional[str],
+) -> Dict[str, Any]:
+    content_type_full = _header_value(headers, "content-type") or "unknown"
+    content_type = content_type_full.split(";", 1)[0].strip().lower() or "unknown"
+    content_length = _safe_int(_header_value(headers, "content-length"))
+    body_len = len(body or b"")
+    effective_len = content_length if content_length is not None else body_len
+    magic = _file_magic(body or b"", content_type)
+    final_class = _final_origin_class(source_url, final_url)
+    auth_mode = successful_auth_mode if successful_auth_mode in {"authorization_header", "session_cookie", "both", "none"} else "unknown"
+    blockers: List[str] = []
+    retrieval_status = "unknown"
+
+    if status_code is None:
+        retrieval_status = "network_error"
+        blockers.append("network_error")
+    elif status_code == 401:
+        retrieval_status = "unauthorized"
+        blockers.append("unauthorized")
+        auth_mode = "unknown"
+    elif status_code == 403:
+        retrieval_status = "forbidden"
+        blockers.append("forbidden")
+        auth_mode = "unknown"
+    elif status_code == 404:
+        retrieval_status = "not_found"
+        blockers.append("not_found")
+    elif effective_len > OFFICIAL_DOCUMENT_AUDIT_MAX_BYTES:
+        retrieval_status = "unsupported"
+        blockers.append("document_too_large")
+    elif status_code >= 400:
+        retrieval_status = "html_error" if magic == "html" else "unknown"
+        blockers.append("http_error")
+    elif magic == "html":
+        html = _normalize_doc_text((body or b"").decode("latin-1", errors="ignore"))
+        if any(term in html for term in ("login", "senha", "password", "usuario", "entrar")):
+            retrieval_status = "html_login"
+            blockers.append("html_login")
+        else:
+            retrieval_status = "html_error"
+            blockers.append("html_response")
+    elif magic != "pdf":
+        retrieval_status = "unsupported"
+        blockers.append("unsupported_file_magic")
+    else:
+        retrieval_status = "retrieved"
+
+    pdf_meta = {
+        "pdf_encrypted": "unknown",
+        "pdf_page_count": "unknown",
+        "text_layer_status": "unknown",
+        "document_anchor_detection": _empty_document_anchor_detection(),
+    }
+    if magic == "pdf" and body:
+        pdf_meta = _inspect_pdf_bytes(body)
+        if pdf_meta.get("pdf_encrypted") is True:
+            blockers.append("pdf_encrypted")
+
+    safe_for_r1c = retrieval_status == "retrieved" and magic == "pdf" and pdf_meta.get("pdf_encrypted") is not True
+    transport = _recommended_r1c_transport(retrieval_status, auth_mode, final_class)
+    result = {
+        "official_document_url_present": True,
+        "official_document_source_kind": source_kind if source_kind in {"policy_pdf", "proposal"} else "unknown",
+        "retrieval_status": retrieval_status,
+        "auth_mode_required": auth_mode,
+        "redirect_count": max(0, int(redirect_count or 0)),
+        "final_origin_class": final_class,
+        "content_type": content_type,
+        "content_disposition_present": bool(_header_value(headers, "content-disposition")),
+        "content_length_bucket": _content_length_bucket(effective_len),
+        "file_magic": magic,
+        "pdf_encrypted": pdf_meta.get("pdf_encrypted"),
+        "pdf_page_count": pdf_meta.get("pdf_page_count"),
+        "text_layer_status": pdf_meta.get("text_layer_status"),
+        "document_anchor_detection": pdf_meta.get("document_anchor_detection") or _empty_document_anchor_detection(),
+        "content_hash_present": bool(body),
+        "source_fetch_safe_for_r1c": safe_for_r1c,
+        "source_fetch_blocker": sorted(set(blockers)),
+        "recommended_r1c_transport": transport,
+    }
+    return _safe_official_document_audit_output(result)
+
+
+def _official_document_audit_url_absent_result() -> Dict[str, Any]:
+    return {
+        "official_document_url_present": False,
+        "official_document_source_kind": "unknown",
+        "retrieval_status": "unknown",
+        "auth_mode_required": "unknown",
+        "redirect_count": 0,
+        "final_origin_class": "unknown",
+        "content_type": "unknown",
+        "content_disposition_present": False,
+        "content_length_bucket": "unknown",
+        "file_magic": "unknown",
+        "pdf_encrypted": "unknown",
+        "pdf_page_count": "unknown",
+        "text_layer_status": "unknown",
+        "document_anchor_detection": _empty_document_anchor_detection(),
+        "content_hash_present": False,
+        "source_fetch_safe_for_r1c": False,
+        "source_fetch_blocker": ["official_document_url_absent"],
+        "recommended_r1c_transport": "unavailable",
+    }
+
+
+@contextmanager
+def _temporary_official_document_audit_file(body: bytes):
+    fd, path = tempfile.mkstemp(prefix="infocap_doc_audit_", suffix=".bin")
+    try:
+        with os.fdopen(fd, "wb") as handle:
+            handle.write(body or b"")
+        yield path
+    finally:
+        try:
+            if os.path.exists(path):
+                os.remove(path)
+        except OSError:
+            logger.warning("[INFOCAP DOC AUDIT] temp file cleanup failed")
 
 
 def _normalize_installments(doc: Dict[str, Any]) -> List[Dict[str, Any]]:

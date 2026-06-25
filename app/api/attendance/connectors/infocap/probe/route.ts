@@ -10,8 +10,8 @@ export const dynamic = 'force-dynamic';
  * POST /api/attendance/connectors/infocap/probe
  *
  * Diagnostico read-only: delega ao backend, que decifra o segredo via Vault.
- * O modo policy_chain_contract e master-only e retorna apenas metadados de
- * shape, chaves, tipos, contagens e hashes. Nunca retorna valores/PII/segredo.
+ * Os modos policy_chain_contract e official_document_source_audit sao master-only
+ * e retornam apenas metadados seguros. Nunca retornam valores/PII/segredo.
  */
 export async function POST(req: NextRequest) {
   const internalKey = process.env.BACKEND_INTERNAL_API_KEY || process.env.ADMIN_API_KEY;
@@ -26,17 +26,20 @@ export async function POST(req: NextRequest) {
     body = {};
   }
 
-  const mode = body.mode === 'policy_chain_contract' ? 'policy_chain_contract' : undefined;
+  const mode =
+    body.mode === 'policy_chain_contract' || body.mode === 'official_document_source_audit'
+      ? body.mode
+      : undefined;
   const queryType = body.query_type === 'name' ? 'name' : 'cpf';
   const query = typeof body.query === 'string' ? body.query.trim() : '';
   const codfil = typeof body.codfil === 'number' ? body.codfil : 1;
   const policyRef = typeof body.policy_ref === 'string' ? body.policy_ref.trim() : '';
-  if (!query) {
+  if (!query && !(mode === 'official_document_source_audit' && policyRef)) {
     return NextResponse.json({ ok: false, error: 'query e obrigatoria (CPF ou nome).' }, { status: 400 });
   }
 
   let targetCompanyId: string;
-  if (mode === 'policy_chain_contract') {
+  if (mode === 'policy_chain_contract' || mode === 'official_document_source_audit') {
     const originFail = assertSameOrigin(req);
     if (originFail) return NextResponse.json({ ok: false, error: originFail.error }, { status: originFail.status });
     const auth = await requireMasterAdmin();
@@ -64,9 +67,16 @@ export async function POST(req: NextRequest) {
   }
 
   try {
+    const backendHeaders: Record<string, string> = {
+      'Content-Type': 'application/json',
+      'X-AutoBrokers-Internal-Key': internalKey,
+    };
+    if (mode === 'policy_chain_contract' || mode === 'official_document_source_audit') {
+      backendHeaders['X-AutoBrokers-Master-Admin'] = 'true';
+    }
     const res = await fetch(`${backendUrl}/attendance/connectors/infocap/probe`, {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json', 'X-AutoBrokers-Internal-Key': internalKey },
+      headers: backendHeaders,
       body: JSON.stringify({
         company_id: targetCompanyId,
         tenant_connection_id: requestedConnectionId || undefined,

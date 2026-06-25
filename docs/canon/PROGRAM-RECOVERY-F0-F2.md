@@ -321,7 +321,61 @@ Criar "InfoCap v2" como outro servico. O correto e corrigir o adapter dentro do 
 - Cobertura ausente deve ser explicada como ausencia de itens estruturados da InfoCap, sem inventar cobertura.
 - R1C permanece bloqueada ate teste real do R1B.2 no Chat Principal.
 
-## 7.4 R1C - Official Policy Document Source and Cached Evidence
+## 7.4 R1C.0 - Official Policy Document Source Audit
+
+### Escopo aplicado
+
+- Estender somente o endpoint existente `POST /attendance/connectors/infocap/probe`.
+- Adicionar modo master-only `official_document_source_audit`.
+- Resolver conexao InfoCap por `tenant_connections + Vault`.
+- Resolver apolice pela cadeia canonica ate `/documento`.
+- Localizar internamente campos documentais comprovados, priorizando `acompanhamento.emissao.url_apolice`.
+- Tentar recuperacao read-only do documento oficial usando a mesma sessao InfoCap.
+- Retornar apenas metadados seguros: tipo de conteudo, magic file, bucket de tamanho, redirecionamentos, modo de autenticacao requerido, paginas PDF, camada de texto e ancoras documentais.
+
+### Proibido
+
+- Baixar/processar documento no fluxo normal do Chat Principal.
+- Persistir PDF, texto extraido, URL, token, cookie, payload bruto ou PII.
+- Enviar documento para Docling, MinIO, Qdrant, Supabase, DocumentService ou servico externo.
+- Criar conector, runtime, endpoint, RAG, parser, storage, migration ou ferramenta paralela.
+- Expor URL oficial, `codfil`, `nosnum`, numero de apolice, CPF, nome ou conteudo do PDF no output.
+
+### Criterio de aceite
+
+- O Founder consegue rodar o diagnostico no Portal Admin para uma apolice real.
+- O retorno informa se a fonte oficial e PDF, HTML/login, erro, redirecionamento, bloqueio, arquivo grande, criptografado ou sem texto.
+- O retorno indica `recommended_r1c_transport` sem expor segredo ou URL.
+- R1C produtivo permanece bloqueado ate um JSON estrutural seguro real ser revisado.
+
+## 7.4.1 R1C.0.1 - Security Hardening and Admin UX
+
+### Escopo aplicado
+
+- O modo `official_document_source_audit` continua no endpoint existente, sem rota paralela.
+- O backend exige marcador master-only para modos globais de diagnostico antes de resolver conexao ou chamar provider.
+- A rota Next valida same-origin e `requireMasterAdmin` antes de encaminhar o marcador master ao backend.
+- O card existente "Diagnosticar contrato InfoCap" ganhou seletor de modo, sem pagina nova e sem pedir `company_id` manual.
+- O fetch da fonte oficial bloqueia SSRF: HTTP, credenciais embutidas, localhost, loopback, redes privadas, link-local, endpoints de metadata e DNS que resolva para IP interno.
+- Redirecionamentos sao manuais, limitados a 3 e nunca seguem HTTP.
+- Authorization/cookies nao sao encaminhados para origin externo; redirect externo HTTPS e tentado sem credenciais.
+- O fetch usa Range e limite de streaming/memoria.
+
+### Proibido
+
+- Iniciar leitura produtiva de documentos no Chat Principal.
+- Chamar Docling, MinIO, Qdrant, Supabase, DocumentService ou qualquer servico externo com o conteudo.
+- Persistir PDF, texto extraido, URL, token, cookie, header ou payload bruto.
+- Criar parser, storage, cache, migration, endpoint, conector, runtime, tool ou agente paralelo.
+
+### Criterio de aceite
+
+- O Founder executa a auditoria pelo Portal Admin sem DevTools/Console.
+- O JSON retornado contem somente `source_audit` e metadados seguros.
+- Nenhum campo sensivel aparece no output.
+- R1C produtivo permanece bloqueado ate a captura real ser revisada.
+
+## 7.5 R1C - Official Policy Document Source and Cached Evidence
 
 ### Escopo futuro
 
