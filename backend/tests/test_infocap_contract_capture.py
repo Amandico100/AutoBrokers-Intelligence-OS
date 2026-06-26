@@ -9,7 +9,10 @@ credenciais, Supabase, Vault, rede, payload real ou PII real.
 
 import importlib.util
 import ast
+import asyncio
+import inspect
 import json
+import os
 import sys
 import types
 from pathlib import Path
@@ -277,8 +280,95 @@ def run():
         check("display helper does not show zero", display_number({"policy_number": "0"}) == "numero nao retornado pela InfoCap")
     raw_codfil, raw_ref = mod._parse_policy_ref_input("N2")
     locator_codfil, locator_ref = mod._parse_policy_ref_input("infocap:2:N2")
+    loose_codfil, loose_ref = mod._parse_policy_ref_input("2:N2")
     check("raw nosnum has no codfil", raw_codfil is None and raw_ref == "N2", (raw_codfil, raw_ref))
     check("policy locator ref carries codfil", locator_codfil == "2" and locator_ref == "N2", (locator_codfil, locator_ref))
+    check("loose codfil:nosnum is not a valid technical locator", loose_codfil is None and loose_ref == "2:N2", (loose_codfil, loose_ref))
+
+    old_key = os.environ.get("BACKEND_INTERNAL_API_KEY")
+    old_resolver = getattr(mod, "_resolve_infocap_connection", None)
+    os.environ["BACKEND_INTERNAL_API_KEY"] = "p0-test-key"
+    try:
+        resolver_called = {"value": False}
+
+        async def fail_if_called(*args, **kwargs):
+            resolver_called["value"] = True
+            raise AssertionError("resolver should not be called for raw policy_ref + codfil")
+
+        mod._resolve_infocap_connection = fail_if_called
+        raw_payload = mod.InfocapPolicyDetailPayload(
+            company_id="company-1",
+            policy_ref="202623140269982",
+            codfil=1,
+        )
+        try:
+            raw_response = asyncio.run(
+                mod.infocap_policy_detail(
+                    payload=raw_payload,
+                    x_autobrokers_internal_key="p0-test-key",
+                    db=object(),
+                )
+            )
+        except AssertionError as exc:
+            raw_response = {"exception": str(exc)}
+        check("G117 raw policy-detail simple ref with codfil blocks before resolver", resolver_called["value"] is False, raw_response)
+        check(
+            "G117 raw policy-detail simple ref requires locator",
+            raw_response.get("status") == "source_limited" and raw_response.get("blockers") == ["policy_locator_required"],
+            raw_response,
+        )
+
+        resolver_called = {"value": False}
+
+        async def no_connection_resolver(*args, **kwargs):
+            resolver_called["value"] = True
+            return {
+                "status": "blocked_missing_credentials",
+                "selected_connection": None,
+                "summary": {"selection_status": "reconnect_required"},
+            }
+
+        mod._resolve_infocap_connection = no_connection_resolver
+        locator_payload = mod.InfocapPolicyDetailPayload(
+            company_id="company-1",
+            policy_ref="infocap:1:N2",
+        )
+        locator_response = asyncio.run(
+            mod.infocap_policy_detail(
+                payload=locator_payload,
+                x_autobrokers_internal_key="p0-test-key",
+                db=object(),
+            )
+        )
+        check("G118 technical locator is accepted by policy-detail gate", resolver_called["value"] is True, locator_response)
+        check(
+            "G118 technical locator is not rejected as raw policy_ref",
+            not (locator_response.get("status") == "source_limited" and locator_response.get("blockers") == ["policy_locator_required"]),
+            locator_response,
+        )
+    finally:
+        if old_resolver is not None:
+            mod._resolve_infocap_connection = old_resolver
+        if old_key is None:
+            os.environ.pop("BACKEND_INTERNAL_API_KEY", None)
+        else:
+            os.environ["BACKEND_INTERNAL_API_KEY"] = old_key
+
+    check(
+        "G119 tool converts simple policy_ref to policy_number before detail endpoint",
+        "policy_number = str(policy_ref)" in tool_source
+        and "policy_ref = None" in tool_source
+        and "if policy_ref:\n                from app.api.infocap_connector import InfocapPolicyDetailPayload" in tool_source,
+    )
+    try:
+        human_match_source = inspect.getsource(mod._policy_doc_matches_human_number)
+    except Exception as exc:  # noqa: BLE001
+        human_match_source = str(exc)
+    check(
+        "G120 human-number matcher never reads nosnum",
+        "nosnum" not in human_match_source and "numapo" in human_match_source,
+        human_match_source,
+    )
 
     human_match = getattr(mod, "_policy_doc_matches_human_number", None)
     select_human = getattr(mod, "_select_policy_locator_by_human_number", None)

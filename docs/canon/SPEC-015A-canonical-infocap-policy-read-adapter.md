@@ -139,7 +139,8 @@ O corretor nao deve precisar conhecer `policy_locator_ref`, `nosnum` ou `codfil`
 Regras obrigatorias:
 
 - `InfocapPolicyLookupTool` aceita `document`, `name`, `policy_number` e `policy_ref`;
-- `policy_number` executa `/documentos?codfil&texto=<numero>` e filtra match exato normalizado por `numapo` ou `nosnum`;
+- `policy_number` executa `/documentos?codfil&texto=<numero>` e filtra match exato normalizado somente por `numapo`;
+- `nosnum` nunca e interpretado como numero humano; so pode ser usado dentro de `PolicyLocator` tecnico completo `infocap:<codfil>:<nosnum>`;
 - zero matches retorna `not_found`;
 - multiplos matches retornam `ambiguous_policy` com opcoes deterministicas;
 - um match monta `PolicyLocator(provider=infocap, codfil, nosnum)` e so entao chama `/documento`;
@@ -270,6 +271,13 @@ Em `identity_mismatch`:
 - nao enviar dados ao LLM;
 - nao expor dados do documento incorreto.
 
+P0.1 fecha o bypass do endpoint cru:
+
+- `POST /attendance/connectors/infocap/policy-detail` aceita chamada direta a `/documento` somente quando `policy_ref` obedece estritamente `infocap:<codfil>:<nosnum>`;
+- `policy_ref` simples com `payload.codfil` preenchido retorna `source_limited` e `policy_locator_required`;
+- esse bloqueio ocorre antes de resolver conexao, autenticar, chamar provider, montar evidence pack, buscar PDF ou acessar cache;
+- a tool do Chat continua convertendo `policy_ref` simples para `policy_number`, que resolve por `numapo`.
+
 O Portal Admin pode executar a auditoria `policy_identity_integrity_audit`, master-only, retornando somente booleans, contagens, status e `reason_codes`.
 
 ## 7. Contrato de entrada
@@ -388,8 +396,8 @@ Excecao: se houver prova contratual documentada de que `/cliente_cpf` retorna ex
 ```text
 policy_number/numapo
 -> /documentos?codfil=<codfil>&texto=<policy_number>
--> match exato por numapo/nosnum normalizados
--> resolver nosnum
+-> match exato somente por numapo normalizado
+-> resolver nosnum a partir do item encontrado
 -> /documento?codfil=<codfil>&nosnum=<nosnum>
 -> evidence pack
 ```
@@ -397,12 +405,15 @@ policy_number/numapo
 ### 10.4 Detalhe por policy_ref
 
 ```text
-policy_ref
--> resolver para PolicyLocator(provider=infocap, codfil, nosnum)
+policy_ref tecnico completo infocap:<codfil>:<nosnum>
+-> validar formato estrito de PolicyLocator(provider=infocap, codfil, nosnum)
 -> /documento?codfil=<codfil>&nosnum=<nosnum>
 -> preservar envelope restrito
 -> evidence pack
 ```
+
+`policy_ref` simples, mesmo acompanhado de `payload.codfil`, nao autoriza chamada direta a `/documento`.
+Esse caso deve retornar `source_limited` com blocker `policy_locator_required` antes de resolver conexao, autenticar, chamar InfoCap, montar evidence pack ou acessar documento/cache.
 
 ## 11. Preservacao restrita do envelope
 

@@ -562,20 +562,29 @@ def _canonical_customer_identity(
 
 
 def _parse_policy_ref_input(value: Optional[str]) -> Tuple[Optional[str], Optional[str]]:
-    """Aceita nosnum simples, numapo simples ou locator ref infocap:<codfil>:<nosnum>."""
+    """Reconhece somente locator tecnico infocap:<codfil>:<nosnum>; demais valores sao numero humano."""
     raw = str(value or "").strip()
     if not raw:
         return None, None
-    lowered = raw.lower()
-    if lowered.startswith("infocap:"):
-        parts = raw.split(":")
-        if len(parts) >= 3:
-            return parts[-2].strip() or None, parts[-1].strip() or None
-    if ":" in raw:
-        left, right = raw.rsplit(":", 1)
-        if left.strip() and right.strip():
-            return left.strip(), right.strip()
+    ref_codfil, ref_value = _parse_policy_locator_ref_input(raw)
+    if ref_codfil and ref_value:
+        return ref_codfil, ref_value
     return None, raw
+
+
+def _parse_policy_locator_ref_input(value: Optional[str]) -> Tuple[Optional[str], Optional[str]]:
+    """Aceita somente locator tecnico completo infocap:<codfil>:<nosnum>."""
+    raw = str(value or "").strip()
+    if not raw:
+        return None, None
+    parts = raw.split(":")
+    if len(parts) != 3 or parts[0].strip().lower() != "infocap":
+        return None, None
+    codfil = parts[1].strip()
+    nosnum = parts[2].strip()
+    if not codfil or not nosnum:
+        return None, None
+    return codfil, nosnum
 
 
 def _policy_locator_from_doc(doc: Dict[str, Any], *, codfil: Any = None) -> Optional[Dict[str, str]]:
@@ -3800,10 +3809,18 @@ async def infocap_policy_detail(
     company_id = (payload.company_id or "").strip()
     connection_id = (payload.tenant_connection_id or "").strip()
     policy_ref = (payload.policy_ref or "").strip()
-    ref_codfil, ref_value = _parse_policy_ref_input(policy_ref)
+    ref_codfil, ref_value = _parse_policy_locator_ref_input(policy_ref)
     unmasked = bool(getattr(payload, "unmasked", False))
-    if not company_id or not ref_value:
+    if not company_id or not policy_ref:
         raise HTTPException(status_code=400, detail="company_id and policy_ref are required")
+    if not ref_codfil or not ref_value:
+        return {
+            "ok": False,
+            "status": "source_limited",
+            "source": "infocap",
+            "blockers": ["policy_locator_required"],
+            "message": "Use a referencia tecnica policy_locator_ref no formato infocap:<codfil>:<nosnum> retornada pela listagem antes de detalhar a apolice.",
+        }
 
     connection_decision = await _resolve_infocap_connection(
         db,
@@ -3833,15 +3850,7 @@ async def infocap_policy_detail(
 
     auth_path = config.get("infocap_auth_path") or "/login"
     documento_path = config.get("infocap_documento_path") or "/documento"
-    if not ref_codfil and payload.codfil is None:
-        return {
-            "ok": False,
-            "status": "source_limited",
-            "source": "infocap",
-            "blockers": ["policy_locator_required"],
-            "message": "Use a referencia tecnica policy_locator_ref no formato infocap:<codfil>:<nosnum> retornada pela listagem antes de detalhar a apolice.",
-        }
-    codfil = ref_codfil or payload.codfil
+    codfil = ref_codfil
     nosnum = ref_value
     prefer_insurer = (config.get("infocap_prefer_insurer") or "").strip() or None
     prefer_product = (config.get("infocap_prefer_product") or "").strip() or None

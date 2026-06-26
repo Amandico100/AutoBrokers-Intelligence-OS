@@ -64,7 +64,7 @@ infocap_policy_detail_item_code_p.json
 | G33 | Financeiros sem semantica inventada | `/documento` com `preliq`, `pretot`, etc. | `policy_ref` | campos financeiros do provider | Retorna `provider_field` e `semantic_status=provider_field_unclassified` | Chamar campo desconhecido de premio total/LMI/franquia |
 | G34 | Resolver unico de conexao | Multiplas `tenant_connections` | Chat, detail e probe | uma valida, arquivadas, sem Vault e duplicadas | Todos usam a mesma regra backend | Tool escolher primeira conexao por conta propria |
 | G35 | Conexao ambigua | Duas conexoes InfoCap elegiveis | qualquer consulta | 2+ elegiveis | `ambiguous_connection` e nenhuma chamada silenciosa | Escolher mais recente |
-| G36 | Locator obrigatorio no detalhe | `policy_ref` simples sem `codfil` validado | detalhe | `nosnum`/`numapo` cru | Retorna limite de fonte ou exige locator resolvido | Chamar `/documento` com `codfil` padrao |
+| G36 | Locator obrigatorio no detalhe | `policy_ref` simples, com ou sem `codfil` no payload | detalhe | `nosnum`/`numapo` cru | Retorna `source_limited` e exige locator tecnico completo | Chamar `/documento` com `codfil` padrao |
 | G37 | Produto nao e cobertura | Produto/ramo residencial ou auto | detalhe sem itens | somente `produto`, `ramo`, `descricao` | `structured_coverage_absent`, `assistance_signals` vazio/unknown | Gerar assistencia/eletricista por produto |
 | G38 | Opcoes deterministicas | Multiplas apolices | busca sem ref | catalogo 2+ docs | Texto inclui ate 10 opcoes com seguradora, produto, vigencia, status e numero humano quando valido | LLM escolher sozinho ou exigir locator tecnico |
 | G39 | Tool aceita numero humano | Schema da tool | `policy_number` | numero humano da apolice | Tool aceita argumento proprio | Forcar numero humano em `policy_ref` |
@@ -121,6 +121,10 @@ infocap_policy_detail_item_code_p.json
 | G114 | Numero simples igual a nosnum | `202623...` coincide com `nosnum` | policy_number | sem `numapo` igual | `policy_number_not_found` | Tratar como locator tecnico |
 | G115 | Isolamento de contexto | Contexto de empresa/conversa A | conversa B | company/session distintos | contexto nao reaproveitado | Usar catalogo de outro tenant |
 | G116 | Auditoria segura P0 | Master audit | CPF/nome + numero | cadeia cliente/catalogo/detalhe | booleans/status/reason_codes | Expor PII, locator ou numero |
+| G117 | Policy-detail cru bloqueado | `policy_ref` simples + `codfil` preenchido | policy-detail | numero humano cru | `source_limited`, `policy_locator_required`, sem resolver conexao/provider/PDF | Chamar `/documento` com numero como `nosnum` |
+| G118 | Policy-detail locator completo | `infocap:<codfil>:<nosnum>` | policy-detail | locator tecnico estrito | passa pelo gate e segue fluxo normal | Bloquear locator valido |
+| G119 | Tool normaliza policy_ref simples | LLM envia numero em `policy_ref` | tool | valor simples | converte para `policy_number` e nao chama policy-detail cru | Enviar numero simples ao endpoint detail |
+| G120 | Nenhum match humano por nosnum | Busca humana por numero | codigo | helpers de selecao | matcher humano le somente `numapo` | Usar `nosnum` como alias de numero humano |
 
 ## 4. Goldens de fluxo
 
@@ -277,3 +281,7 @@ Os testes `backend/tests/test_infocap_contract_capture.py` e `backend/tests/test
 - auditoria segura retornando apenas booleans/status/reason codes;
 - output guard impedindo a LLM de expor detalhe apos `identity_mismatch`;
 - contexto seguro de conversa com apenas numero humano + cliente, sem locator tecnico.
+- `policy-detail` rejeitando `policy_ref` simples mesmo com `codfil` no payload antes de resolver conexao;
+- `policy-detail` aceitando somente locator tecnico completo `infocap:<codfil>:<nosnum>`;
+- tool convertendo `policy_ref` simples para `policy_number`;
+- matcher humano de apolice lendo somente `numapo`.

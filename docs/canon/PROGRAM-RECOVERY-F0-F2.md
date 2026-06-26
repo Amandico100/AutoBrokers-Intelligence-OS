@@ -299,7 +299,7 @@ Criar "InfoCap v2" como outro servico. O correto e corrigir o adapter dentro do 
 
 - Permitir consulta pelo numero humano da apolice em `InfocapPolicyLookupTool`.
 - Resolver `policy_number` por `/documentos?codfil&texto=<numero>` antes de chamar `/documento`.
-- Fazer match exato normalizado por `numapo` ou `nosnum`.
+- Fazer match exato normalizado somente por `numapo`; `nosnum` nunca e match de numero humano.
 - Detalhar somente apos montar `PolicyLocator(provider=infocap, codfil, nosnum)`.
 - Impedir exibicao de numero `0`, vazio, nulo ou placeholder como numero de apolice.
 - Manter `policy_locator_ref` como referencia interna/debug, nao requisito operacional do corretor.
@@ -464,6 +464,28 @@ Testes reais do Chat Principal indicaram risco critico: um numero humano de apol
 - `identity_mismatch` nao retorna segurado, apolice, cobertura, parcelas, PDF, evidence pack ou dados do detalhe.
 - Auditoria retorna somente booleans, contagens, status e `reason_codes`.
 - R1C.2 so pode ser retomado em partes menores depois de teste real P0 aprovado.
+
+## 7.7 P0.1 - Close Raw Policy-Detail Bypass
+
+### Escopo aplicado
+
+- Fechar o endpoint interno `POST /attendance/connectors/infocap/policy-detail` contra `policy_ref` simples com `codfil` no payload.
+- Exigir locator tecnico completo e estrito no formato `infocap:<codfil>:<nosnum>` antes de qualquer resolucao de conexao ou chamada ao provider.
+- Preservar a tool `InfocapPolicyLookupTool`: quando a LLM envia `policy_ref` simples, a tool converte para `policy_number`, que resolve por `numapo`.
+
+### Regra canonica
+
+- `policy_number` humano -> match somente por `numapo`;
+- `nosnum` -> somente via `PolicyLocator` tecnico completo `infocap:<codfil>:<nosnum>`;
+- `payload.codfil` nao transforma `policy_ref` simples em locator valido;
+- `/documento` usa `codfil + nosnum` somente depois de locator valido.
+
+### Criterio de aceite
+
+- `policy-detail` com `policy_ref` simples e `codfil` preenchido retorna `source_limited` com blocker `policy_locator_required`.
+- O bloqueio ocorre antes de resolver conexao, autenticar, chamar InfoCap, montar evidence pack, buscar PDF ou cache.
+- `policy-detail` com locator completo continua seguindo para o fluxo normal.
+- Nenhum caminho trata numero humano como `nosnum`.
 
 ## 8. Fase 1 / R2 - Smith Runtime and Admin Unification
 
