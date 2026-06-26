@@ -108,6 +108,19 @@ infocap_policy_detail_item_code_p.json
 | G77 | Conflito de fonte | InfoCap estruturada diverge de documento | pipeline documental | dados contraditorios | `conflict_requires_human` | Escolher uma fonte automaticamente |
 | G78 | Cleanup | Remocao de documento/tenant | storage/Qdrant | documentos/chunks existentes | chunks e acesso removidos | Manter evidencia acessivel apos exclusao |
 | G79 | Consulta repetida | Mesma apolice e pergunta | Chat Principal | cache pronto | resposta usa evidencia cacheada e nao refaz fetch | Baixar/processar a cada conversa |
+| G104 | Catalogo cliente correto | Cliente A possui `numapo=202623140269982` | CPF/nome + numero humano | `/cliente_ligacoes` do cliente A | seleciona item do cliente A | Buscar global antes do catalogo |
+| G105 | Colisao numapo/nosnum | Cliente B possui `nosnum=202623140269982`, `numapo` diferente | numero humano | docs com colisao | ignora match por `nosnum` | Abrir apolice do cliente B |
+| G106 | Cliente conhecido + numero | CPF/nome + `policy_number` | cliente canonico | catalogo com match exato por `numapo` | resolve somente pelo catalogo do cliente | Usar `/documentos` global |
+| G107 | Numero sem cliente | Apenas numero humano | `/documentos?texto` | resultado com `numapo` e `nosnum` | match somente por `numapo` | Casar `nosnum` |
+| G108 | Detalhe divergente | Detalhe retorna `numapo` diferente | detalhe | catalogo certo, detalhe divergente | `identity_mismatch`, sem pack/PDF | Exibir dados do detalhe |
+| G109 | Locator fora do catalogo | Locator nao pertence ao item do cliente | detalhe | catalogo A, locator B | `identity_mismatch` | Baixar documento |
+| G110 | Cliente divergente no detalhe | CPF/nome do detalhe diverge | detalhe | cliente canonico A, detalhe B | `identity_mismatch` | Retornar segurado/apolice B |
+| G111 | Mismatch fail-closed | Qualquer divergencia | lookup/detail | status mismatch | sem selected, pack, PDF, cache, Qdrant, LLM | Vazar dados errados |
+| G112 | Listagem simples | CPF/nome sem detalhe | catalogo | varias apolices | lista/opcoes sem fetch PDF | Baixar documento para listar |
+| G113 | Locator tecnico valido | `infocap:<codfil>:<nosnum>` | detail | locator completo | permite `/documento` por `nosnum` | Exigir numero humano |
+| G114 | Numero simples igual a nosnum | `202623...` coincide com `nosnum` | policy_number | sem `numapo` igual | `policy_number_not_found` | Tratar como locator tecnico |
+| G115 | Isolamento de contexto | Contexto de empresa/conversa A | conversa B | company/session distintos | contexto nao reaproveitado | Usar catalogo de outro tenant |
+| G116 | Auditoria segura P0 | Master audit | CPF/nome + numero | cadeia cliente/catalogo/detalhe | booleans/status/reason_codes | Expor PII, locator ou numero |
 
 ## 4. Goldens de fluxo
 
@@ -248,3 +261,19 @@ Os testes `backend/tests/test_infocap_contract_capture.py` e `backend/tests/test
 - output guard impedindo conversao de cobertura ausente em "erro tecnico";
 - roteamento do Smith encerrando a resposta operacional de InfoCap sem reescrita livre pela LLM;
 - nenhuma chamada a provider real.
+
+## 10. Cobertura P0 implementada no harness offline
+
+Os testes `backend/tests/test_infocap_contract_capture.py` e `backend/tests/test_infocap_policy_output_guard.py` cobrem:
+
+- numero humano simples casando apenas `numapo`, nunca `nosnum`;
+- `PolicyLocator` tecnico `infocap:<codfil>:<nosnum>` continuando valido;
+- colisao `numapo` de um cliente versus `nosnum` de outro cliente;
+- `policy_number_not_found` quando ha somente match por `nosnum`;
+- `identity_mismatch` quando detalhe retorna `numapo` divergente;
+- `identity_mismatch` quando locator nao veio do catalogo do cliente;
+- `identity_mismatch` quando cliente do detalhe diverge do cliente canonico;
+- resposta segura de mismatch sem selected, evidence pack, segurado, apolice ou payload;
+- auditoria segura retornando apenas booleans/status/reason codes;
+- output guard impedindo a LLM de expor detalhe apos `identity_mismatch`;
+- contexto seguro de conversa com apenas numero humano + cliente, sem locator tecnico.

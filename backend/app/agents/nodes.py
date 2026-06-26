@@ -40,6 +40,81 @@ _INFOCAP_GENERIC_ERROR_MARKERS = (
 )
 
 
+_POLICY_DETAIL_TERMS = (
+    "apolice",
+    "apólice",
+    "detalhe",
+    "cobertura",
+    "coberturas",
+    "assistencia",
+    "assistência",
+    "franquia",
+    "limite",
+    "lmi",
+    "parcela",
+    "parcelas",
+    "premio",
+    "prêmio",
+    "exclusao",
+    "exclusão",
+)
+
+
+def _extract_context_policy_number(question: str, context: Optional[Dict[str, Any]]) -> Optional[str]:
+    if not isinstance(context, dict):
+        return None
+    text = str(question or "")
+    lowered = text.lower()
+    if not any(term in lowered for term in _POLICY_DETAIL_TERMS):
+        return None
+    candidates = [str(item or "").strip() for item in context.get("policy_numbers") or [] if str(item or "").strip()]
+    for number in sorted(candidates, key=len, reverse=True):
+        if number and number in text:
+            return number
+    match = re.search(r"\b[A-Za-z]?\d[A-Za-z0-9-]{4,}\b", text)
+    return match.group(0) if match else None
+
+
+def _policy_context_tool_args(question: str, context: Optional[Dict[str, Any]]) -> Optional[Dict[str, Any]]:
+    policy_number = _extract_context_policy_number(question, context)
+    if not policy_number or not isinstance(context, dict):
+        return None
+    args: Dict[str, Any] = {
+        "policy_number": policy_number,
+        "user_query": str(question or ""),
+    }
+    if context.get("document"):
+        args["document"] = context.get("document")
+    elif context.get("name"):
+        args["name"] = context.get("name")
+    else:
+        return None
+    return args
+
+
+def _safe_infocap_policy_context(data: Dict[str, Any]) -> Optional[Dict[str, Any]]:
+    if not isinstance(data, dict):
+        return None
+    matches = data.get("matches") or []
+    policy_numbers: list[str] = []
+    for match in matches:
+        if not isinstance(match, dict):
+            continue
+        number = str(match.get("policy_number") or match.get("numapo") or "").strip()
+        if number and number.lower() not in {"0", "none", "null", "-"}:
+            policy_numbers.append(number)
+    document = str(data.get("client_document") or "").strip()
+    name = str(data.get("client_name") or "").strip()
+    if not (document or name) or not policy_numbers:
+        return None
+    return {
+        "document": document or None,
+        "name": name or None,
+        "policy_numbers": sorted(set(policy_numbers)),
+        "source": "infocap_customer_catalog",
+    }
+
+
 def _guard_infocap_policy_final_response(candidate_text: str, contract: Optional[Dict[str, Any]]) -> str:
     """R1B.2: InfoCap policy answers are operational contracts, not free-form summaries."""
     if not isinstance(contract, dict) or contract.get("provider") != "infocap":
@@ -71,6 +146,10 @@ def _guard_infocap_policy_final_response(candidate_text: str, contract: Optional
             return rendered
     if "source_limited" in required and "erro" in lower:
         return rendered
+    if "identity_mismatch" in required:
+        forbidden = ("seguradora", "produto", "cobertura", "parcela", "pdf", "documento oficial")
+        if any(term in lower for term in forbidden) or "identidade da apolice" not in lower:
+            return rendered
     return candidate
 
 
@@ -267,6 +346,36 @@ async def agent_node(state: AgentState, config: RunnableConfig, llm_with_tools) 
     messages_to_process = sanitize_history(messages_to_process)
     logger.debug(f"[Agent Node] Após sanitização: {len(messages_to_process)} msgs")
 
+    current_user_query = ""
+    for msg in reversed(messages_to_process):
+        if isinstance(msg, HumanMessage) or (hasattr(msg, "type") and msg.type == "human"):
+            current_user_query = extract_text_from_content(getattr(msg, "content", ""))
+            break
+    context_tool_args = _policy_context_tool_args(current_user_query, state.get("infocap_policy_context"))
+    if context_tool_args:
+        tool_call_id = f"infocap_policy_context_{int(time.time() * 1000)}"
+        logger.info("[Agent Node] InfoCap policy context lock: resolving human number inside customer catalog")
+        return {
+            "messages": [
+                AIMessage(
+                    content="",
+                    tool_calls=[
+                        {
+                            "name": "infocap_policy_lookup",
+                            "args": context_tool_args,
+                            "id": tool_call_id,
+                        }
+                    ],
+                )
+            ],
+            "rag_chunks": state.get("rag_chunks", []),
+            "tools_used": state.get("tools_used", []),
+            "llm_response_time_ms": state.get("llm_response_time_ms", 0),
+            "tokens_input": state.get("tokens_input", 0),
+            "tokens_output": state.get("tokens_output", 0),
+            "tokens_total": state.get("tokens_total", 0),
+        }
+
     # === Preparação do System Prompt ===
     system_prompt = state.get("system_prompt")
     static_prompt = state.get("static_prompt")  # Parte cacheável
@@ -433,6 +542,7 @@ async def tool_node(state: AgentState, tools: list) -> dict:
     rag_search_time = state.get("rag_search_time_ms", 0)
     policy_response_contract = None
     policy_final_response = None
+    infocap_policy_context = None
 
     # Extrair agent_id do state
     agent_data = state.get("agent_data")
@@ -563,6 +673,8 @@ async def tool_node(state: AgentState, tools: list) -> dict:
                                     str(result.get("content") or ""),
                                     policy_response_contract,
                                 )
+                            data = result.get("data") if isinstance(result.get("data"), dict) else {}
+                            infocap_policy_context = _safe_infocap_policy_context(data)
                             content = json.dumps(result, ensure_ascii=False, default=str)
                         else:
                             content = str(result)
@@ -607,6 +719,8 @@ async def tool_node(state: AgentState, tools: list) -> dict:
     if policy_response_contract and policy_final_response:
         return_dict["policy_response_contract"] = policy_response_contract
         return_dict["final_response"] = policy_final_response
+    if infocap_policy_context:
+        return_dict["infocap_policy_context"] = infocap_policy_context
 
     return return_dict
 

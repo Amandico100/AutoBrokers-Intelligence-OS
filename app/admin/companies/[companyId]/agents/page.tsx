@@ -28,7 +28,7 @@ export default function AdminCompanyAgentsPage() {
   const [canonical, setCanonical] = useState<any>(null); // SPEC-013 B2: Core/Even protegidos (Even sempre visível)
   const [health, setHealth] = useState<any>(null); // SPEC-013 FB-2: diagnóstico + manutenção (folded)
   const [caps, setCaps] = useState<any>(null); // SPEC-014 C1: cockpit de capabilities (folded)
-  const [contractProbeMode, setContractProbeMode] = useState<'policy_chain_contract' | 'official_document_source_audit'>('policy_chain_contract');
+  const [contractProbeMode, setContractProbeMode] = useState<'policy_chain_contract' | 'official_document_source_audit' | 'policy_identity_integrity_audit'>('policy_chain_contract');
   const [contractQueryType, setContractQueryType] = useState<'cpf' | 'name'>('cpf');
   const [contractQuery, setContractQuery] = useState('');
   const [contractPolicyRef, setContractPolicyRef] = useState('');
@@ -87,8 +87,8 @@ export default function AdminCompanyAgentsPage() {
       toast({ title: 'Informe um termo de teste', description: 'Use CPF ou nome de um segurado de teste.', variant: 'destructive' });
       return;
     }
-    if (contractProbeMode === 'official_document_source_audit' && !contractPolicyRef.trim()) {
-      toast({ title: 'Informe a referencia da apolice', description: 'A auditoria da fonte oficial precisa de uma apolice de teste.', variant: 'destructive' });
+    if ((contractProbeMode === 'official_document_source_audit' || contractProbeMode === 'policy_identity_integrity_audit') && !contractPolicyRef.trim()) {
+      toast({ title: 'Informe a referencia da apolice', description: 'Esta auditoria precisa do numero humano da apolice de teste.', variant: 'destructive' });
       return;
     }
     setContractRunning(true);
@@ -367,11 +367,21 @@ export default function AdminCompanyAgentsPage() {
                     Modo
                     <select
                       value={contractProbeMode}
-                      onChange={(e) => setContractProbeMode(e.target.value === 'official_document_source_audit' ? 'official_document_source_audit' : 'policy_chain_contract')}
+                      onChange={(e) => {
+                        const value = e.target.value;
+                        setContractProbeMode(
+                          value === 'official_document_source_audit'
+                            ? 'official_document_source_audit'
+                            : value === 'policy_identity_integrity_audit'
+                              ? 'policy_identity_integrity_audit'
+                              : 'policy_chain_contract'
+                        );
+                      }}
                       className="mt-1 h-9 w-full rounded-md border border-border bg-card px-2 text-[12px] text-foreground"
                     >
                       <option value="policy_chain_contract">Diagnosticar contrato InfoCap</option>
                       <option value="official_document_source_audit">Auditar fonte oficial da apolice</option>
+                      <option value="policy_identity_integrity_audit">Auditar integridade de identidade da apolice</option>
                     </select>
                   </label>
                   <label className="text-[11px] text-muted-foreground">
@@ -417,6 +427,11 @@ export default function AdminCompanyAgentsPage() {
                 {contractProbeMode === 'official_document_source_audit' && (
                   <p className="rounded-md border border-border bg-card px-3 py-2 text-[11px] text-muted-foreground">
                     Esta auditoria nao baixa documentos no Chat, nao processa PDF e nao altera dados. Ela apenas verifica se a fonte oficial da apolice pode ser acessada com seguranca.
+                  </p>
+                )}
+                {contractProbeMode === 'policy_identity_integrity_audit' && (
+                  <p className="rounded-md border border-border bg-card px-3 py-2 text-[11px] text-muted-foreground">
+                    Esta auditoria nao baixa PDF, nao consulta evidencia documental e nao exibe dados de segurados. Ela verifica se o numero humano da apolice pertence ao cliente canonico antes de permitir detalhe.
                   </p>
                 )}
                 {contractResult && (

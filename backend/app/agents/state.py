@@ -45,6 +45,7 @@ class AgentState(TypedDict):
     should_continue: bool  # Se deve continuar o ciclo
     final_response: Optional[str]  # Resposta final para o usuário
     policy_response_contract: Optional[dict]  # Contrato deterministico de resposta operacional InfoCap
+    infocap_policy_context: Optional[dict]  # Contexto seguro cliente -> numeros humanos de apolice, sem locator tecnico
 
     # === HTTP Tools ===
     allowed_http_tools: Optional[

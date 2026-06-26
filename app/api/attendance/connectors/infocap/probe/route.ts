@@ -10,7 +10,8 @@ export const dynamic = 'force-dynamic';
  * POST /api/attendance/connectors/infocap/probe
  *
  * Diagnostico read-only: delega ao backend, que decifra o segredo via Vault.
- * Os modos policy_chain_contract e official_document_source_audit sao master-only
+ * Os modos policy_chain_contract, official_document_source_audit e
+ * policy_identity_integrity_audit sao master-only
  * e retornam apenas metadados seguros. Nunca retornam valores/PII/segredo.
  */
 export async function POST(req: NextRequest) {
@@ -27,7 +28,9 @@ export async function POST(req: NextRequest) {
   }
 
   const mode =
-    body.mode === 'policy_chain_contract' || body.mode === 'official_document_source_audit'
+    body.mode === 'policy_chain_contract' ||
+    body.mode === 'official_document_source_audit' ||
+    body.mode === 'policy_identity_integrity_audit'
       ? body.mode
       : undefined;
   const queryType = body.query_type === 'name' ? 'name' : 'cpf';
@@ -39,7 +42,7 @@ export async function POST(req: NextRequest) {
   }
 
   let targetCompanyId: string;
-  if (mode === 'policy_chain_contract' || mode === 'official_document_source_audit') {
+  if (mode === 'policy_chain_contract' || mode === 'official_document_source_audit' || mode === 'policy_identity_integrity_audit') {
     const originFail = assertSameOrigin(req);
     if (originFail) return NextResponse.json({ ok: false, error: originFail.error }, { status: originFail.status });
     const auth = await requireMasterAdmin();
@@ -71,7 +74,7 @@ export async function POST(req: NextRequest) {
       'Content-Type': 'application/json',
       'X-AutoBrokers-Internal-Key': internalKey,
     };
-    if (mode === 'policy_chain_contract' || mode === 'official_document_source_audit') {
+    if (mode === 'policy_chain_contract' || mode === 'official_document_source_audit' || mode === 'policy_identity_integrity_audit') {
       backendHeaders['X-AutoBrokers-Master-Admin'] = 'true';
     }
     const res = await fetch(`${backendUrl}/attendance/connectors/infocap/probe`, {

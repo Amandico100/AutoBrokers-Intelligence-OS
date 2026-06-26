@@ -37,7 +37,11 @@ INFOCAP_SLUG = "infocap"
 
 
 def _probe_mode_requires_master(mode: Optional[str]) -> bool:
-    return str(mode or "").strip().lower() in {"policy_chain_contract", "official_document_source_audit"}
+    return str(mode or "").strip().lower() in {
+        "policy_chain_contract",
+        "official_document_source_audit",
+        "policy_identity_integrity_audit",
+    }
 
 
 def _require_probe_master_authorization(mode: Optional[str], marker: Optional[str]) -> None:
@@ -225,13 +229,163 @@ def _first_valid_policy_number(record: Dict[str, Any], keys: List[str]) -> Optio
 
 
 def _policy_doc_matches_identifier(doc: Dict[str, Any], requested: Optional[str]) -> bool:
+    return _policy_doc_matches_human_number(doc, requested)
+
+
+def _policy_doc_matches_human_number(doc: Dict[str, Any], requested: Optional[str]) -> bool:
     requested_norm = _normalize_policy_identifier(requested)
     if not requested_norm:
         return False
-    return any(
-        _normalize_policy_identifier(_first_str(doc, [key])) == requested_norm
-        for key in ("numapo", "nosnum")
+    return _normalize_policy_identifier(_first_str(doc, ["numapo"])) == requested_norm
+
+
+def _locator_equals_doc(locator: Optional[Dict[str, Any]], doc: Optional[Dict[str, Any]], *, fallback_codfil: Any = None) -> bool:
+    if not locator or not isinstance(doc, dict):
+        return False
+    locator_codfil = str(locator.get("codfil") or "").strip()
+    locator_nosnum = str(locator.get("nosnum") or "").strip()
+    doc_codfil = _first_str(doc, ["codfil"]) or (str(fallback_codfil).strip() if fallback_codfil is not None else "")
+    doc_nosnum = _first_str(doc, ["nosnum"]) or ""
+    return bool(locator_codfil and locator_nosnum and str(doc_codfil) == locator_codfil and str(doc_nosnum) == locator_nosnum)
+
+
+def _select_policy_locator_by_human_number(
+    docs: List[Dict[str, Any]],
+    requested_policy_number: Optional[str],
+    *,
+    codfil: Any,
+) -> Tuple[Optional[Dict[str, str]], str, List[Dict[str, Any]]]:
+    requested_norm = _normalize_policy_identifier(requested_policy_number)
+    if not requested_norm:
+        return None, "policy_number_not_found", []
+    matches = [doc for doc in docs or [] if _policy_doc_matches_human_number(doc, requested_policy_number)]
+    if not matches:
+        return None, "policy_number_not_found", []
+    if len(matches) > 1:
+        return None, "policy_number_ambiguous", matches
+    locator = _policy_locator_from_doc(matches[0], codfil=codfil)
+    if not locator:
+        return None, "source_limited", matches
+    return locator, "found", matches
+
+
+def _normalize_doc_digits(value: Any) -> str:
+    return re.sub(r"\D", "", str(value or ""))
+
+
+def _doc_customer_matches(canonical_customer: Optional[Dict[str, Any]], detail_doc: Dict[str, Any]) -> Any:
+    if not isinstance(canonical_customer, dict):
+        return "not_available"
+    canonical_doc = _normalize_doc_digits(
+        canonical_customer.get("client_document")
+        or canonical_customer.get("cpf_cnpj")
+        or canonical_customer.get("document")
+        or canonical_customer.get("client_document_masked")
     )
+    detail_doc_value = _normalize_doc_digits(_first_str(detail_doc, _DOC_KEYS))
+    if canonical_doc and detail_doc_value:
+        return canonical_doc == detail_doc_value
+    canonical_name = _normalize_doc_text(
+        canonical_customer.get("client_name")
+        or canonical_customer.get("name")
+        or canonical_customer.get("cliente")
+    )
+    detail_name = _normalize_doc_text(_first_str(detail_doc, _NAME_KEYS))
+    if canonical_name and detail_name:
+        return canonical_name == detail_name
+    return "not_available"
+
+
+def _validate_policy_identity(
+    *,
+    requested_policy_number: Optional[str],
+    policy_locator: Optional[Dict[str, str]],
+    catalog_doc: Optional[Dict[str, Any]],
+    detail_doc: Dict[str, Any],
+    canonical_customer: Optional[Dict[str, Any]] = None,
+) -> Dict[str, Any]:
+    requested_norm = _normalize_policy_identifier(requested_policy_number)
+    catalog_numapo_norm = _normalize_policy_identifier(_first_str(catalog_doc or {}, ["numapo"]))
+    catalog_nosnum_norm = _normalize_policy_identifier(_first_str(catalog_doc or {}, ["nosnum"]))
+    detail_numapo_norm = _normalize_policy_identifier(_first_str(detail_doc or {}, ["numapo"]))
+    reason_codes: List[str] = []
+
+    requested_matches_catalog_numapo = True
+    requested_matched_only_as_nosnum = False
+    if requested_norm:
+        requested_matches_catalog_numapo = bool(catalog_numapo_norm and catalog_numapo_norm == requested_norm)
+        requested_matched_only_as_nosnum = bool(catalog_nosnum_norm == requested_norm and catalog_numapo_norm != requested_norm)
+        if catalog_doc is not None and not requested_matches_catalog_numapo:
+            reason_codes.append("catalog_numapo_mismatch")
+        if requested_matched_only_as_nosnum:
+            reason_codes.append("requested_number_matched_only_as_nosnum")
+        if not detail_numapo_norm or detail_numapo_norm != requested_norm:
+            reason_codes.append("detail_numapo_mismatch")
+
+    locator_matches_catalog = True
+    if catalog_doc is not None:
+        locator_matches_catalog = _locator_equals_doc(policy_locator, catalog_doc)
+        if not locator_matches_catalog:
+            reason_codes.append("locator_not_from_catalog")
+
+    detail_locator_matches = True
+    if policy_locator:
+        detail_locator_matches = _locator_equals_doc(policy_locator, detail_doc)
+        if not detail_locator_matches:
+            reason_codes.append("detail_locator_mismatch")
+
+    customer_matches = _doc_customer_matches(canonical_customer, detail_doc)
+    if customer_matches is False:
+        reason_codes.append("detail_customer_mismatch")
+
+    identity_status = "identity_verified" if not reason_codes else "identity_mismatch"
+    return {
+        "identity_status": identity_status,
+        "requested_number_matches_catalog_numapo": requested_matches_catalog_numapo,
+        "requested_number_matched_only_as_nosnum": requested_matched_only_as_nosnum,
+        "detail_numapo_matches_requested": bool(not requested_norm or detail_numapo_norm == requested_norm),
+        "detail_locator_matches_catalog_locator": bool(locator_matches_catalog and detail_locator_matches),
+        "detail_customer_matches_canonical_customer": customer_matches,
+        "document_pipeline_blocked": identity_status != "identity_verified",
+        "reason_codes": reason_codes,
+    }
+
+
+def _identity_mismatch_response(reason_codes: Optional[List[str]] = None, **extra: Any) -> Dict[str, Any]:
+    return {
+        "ok": False,
+        "status": "identity_mismatch",
+        "verification_status": "unverified",
+        "requires_human": True,
+        "document_pipeline_blocked": True,
+        "blockers": ["identity_mismatch"],
+        "reason_codes": list(reason_codes or []),
+        "message": "A identidade da apolice nao foi confirmada. Por seguranca, nenhum detalhe da apolice foi exibido.",
+        **{k: v for k, v in extra.items() if k not in {"selected", "policy", "policy_evidence_pack", "matches"}},
+    }
+
+
+def _identity_audit_summary(
+    validation: Dict[str, Any],
+    *,
+    global_search_used: bool,
+    selected_from_customer_catalog: bool,
+    catalog_match_count: int,
+) -> Dict[str, Any]:
+    return {
+        "identity_status": validation.get("identity_status"),
+        "canonical_customer_resolved": True,
+        "customer_catalog_exact_numapo_match_count": int(catalog_match_count or 0),
+        "global_search_used": bool(global_search_used),
+        "selected_from_customer_catalog": bool(selected_from_customer_catalog),
+        "requested_number_matches_catalog_numapo": bool(validation.get("requested_number_matches_catalog_numapo")),
+        "requested_number_matched_only_as_nosnum": bool(validation.get("requested_number_matched_only_as_nosnum")),
+        "detail_numapo_matches_requested": bool(validation.get("detail_numapo_matches_requested")),
+        "detail_locator_matches_catalog_locator": bool(validation.get("detail_locator_matches_catalog_locator")),
+        "detail_customer_matches_canonical_customer": validation.get("detail_customer_matches_canonical_customer", "not_available"),
+        "document_pipeline_blocked": bool(validation.get("document_pipeline_blocked")),
+        "reason_codes": list(validation.get("reason_codes") or []),
+    }
 
 
 def _display_policy_number(record: Dict[str, Any]) -> str:
@@ -905,24 +1059,24 @@ async def infocap_lookup(
                 docs = _extract_documents(search_payload)
                 if not docs:
                     docs = arr
-                matches_raw = [doc for doc in docs if _policy_doc_matches_identifier(doc, policy_number)]
+                matches_raw = [doc for doc in docs if _policy_doc_matches_human_number(doc, policy_number)]
                 policies = [_sanitize_policy(p, unmasked) for p in matches_raw]
                 if not matches_raw:
                     return _done({
                         "ok": False,
-                        "status": "not_found",
+                        "status": "policy_number_not_found",
                         "verification_status": "unverified",
                         "http_status": http_status,
                         "result_count": 0,
                         "documents_count": len(docs),
                         "matched_by": "policy_number",
                         "blockers": [],
-                        "notes": ["Nenhuma apolice com match exato de numapo/nosnum foi encontrada para o numero informado."],
+                        "notes": ["Nenhuma apolice com match exato de numapo foi encontrada para o numero humano informado."],
                     })
                 if len(matches_raw) > 1:
                     return _done({
                         "ok": False,
-                        "status": "ambiguous_policy",
+                        "status": "policy_number_ambiguous",
                         "verification_status": "unverified",
                         "http_status": http_status,
                         "result_count": len(matches_raw),
@@ -934,7 +1088,11 @@ async def infocap_lookup(
                         "notes": ["Numero de apolice encontrou mais de um documento; escolha pela seguradora, ramo, vigencia ou numero."],
                     })
 
-                policy_locator, locator_status = _select_policy_locator(matches_raw, codfil=codfil_default, requested_policy_ref=policy_number)
+                policy_locator, locator_status, locator_matches = _select_policy_locator_by_human_number(
+                    matches_raw,
+                    policy_number,
+                    codfil=codfil_default,
+                )
                 if locator_status != "found" or not policy_locator:
                     return _done({
                         "ok": False,
@@ -962,6 +1120,27 @@ async def infocap_lookup(
                     return _done({"ok": False, "status": "source_limited", "verification_status": "unverified", "http_status": det.status_code, "blockers": ["empty_detail"]})
 
                 selected_raw = detail_docs[0]
+                identity = _validate_policy_identity(
+                    requested_policy_number=policy_number,
+                    policy_locator=policy_locator,
+                    catalog_doc=(locator_matches[0] if locator_matches else matches_raw[0]),
+                    detail_doc=selected_raw,
+                    canonical_customer=None,
+                )
+                if identity.get("identity_status") != "identity_verified":
+                    return _done(_identity_mismatch_response(
+                        identity.get("reason_codes") or [],
+                        http_status=det.status_code,
+                        matched_by="policy_number",
+                        result_count=0,
+                        documents_count=len(docs),
+                        identity_verification=_identity_audit_summary(
+                            identity,
+                            global_search_used=True,
+                            selected_from_customer_catalog=False,
+                            catalog_match_count=len(matches_raw),
+                        ),
+                    ))
                 pack = _build_evidence_pack(selected_raw, payload.prefer_insurer, payload.prefer_product, unmasked, envelope=detail_envelope)
                 pack = await _maybe_attach_official_policy_document_evidence(
                     pack=pack,
@@ -992,6 +1171,13 @@ async def infocap_lookup(
                     "selected": selected_policy,
                     "matches": [selected_policy],
                     "policy_evidence_pack": pack,
+                    "identity_status": "identity_verified",
+                    "identity_verification": _identity_audit_summary(
+                        identity,
+                        global_search_used=True,
+                        selected_from_customer_catalog=False,
+                        catalog_match_count=len(matches_raw),
+                    ),
                     "verification_status": "verified_by_connector",
                     "coverage_evidence": {
                         "source": "infocap",
@@ -1081,6 +1267,7 @@ async def infocap_lookup(
             documents_count = len(policies)
             now = datetime.now(timezone.utc).isoformat()
             client_flags = _canonical_customer_identity(record, canonical_customer, unmasked=unmasked)
+            canonical_customer_for_validation = _canonical_customer_identity(record, canonical_customer, unmasked=True)
             requested_policy_number = (payload.policy_number or "").strip() or None
 
             if documents_count == 0:
@@ -1115,7 +1302,20 @@ async def infocap_lookup(
                     "notes": ["Cliente possui multiplas apolices; e necessario escolher por seguradora, ramo, vigencia, numero ou policy_ref."],
                 })
 
-            policy_locator, locator_status = _select_policy_locator(source_docs, codfil=codfil_val, requested_policy_ref=requested_policy_number)
+            locator_matches: List[Dict[str, Any]] = []
+            if requested_policy_number:
+                policy_locator, locator_status, locator_matches = _select_policy_locator_by_human_number(
+                    source_docs,
+                    requested_policy_number,
+                    codfil=codfil_val,
+                )
+            else:
+                policy_locator, locator_status = _select_policy_locator(source_docs, codfil=codfil_val, requested_policy_ref=None)
+                if policy_locator:
+                    locator_matches = [
+                        doc for doc in source_docs
+                        if _locator_equals_doc(policy_locator, doc, fallback_codfil=codfil_val)
+                    ]
             if locator_status != "found" or not policy_locator:
                 return _done({
                     "ok": False,
@@ -1143,6 +1343,27 @@ async def infocap_lookup(
                 return _done({"ok": False, "status": "source_limited", "verification_status": "unverified", "http_status": det.status_code, "blockers": ["empty_detail"]})
 
             selected_raw = detail_docs[0]
+            identity = _validate_policy_identity(
+                requested_policy_number=requested_policy_number,
+                policy_locator=policy_locator,
+                catalog_doc=(locator_matches[0] if locator_matches else None),
+                detail_doc=selected_raw,
+                canonical_customer=canonical_customer_for_validation,
+            )
+            if identity.get("identity_status") != "identity_verified":
+                return _done(_identity_mismatch_response(
+                    identity.get("reason_codes") or [],
+                    http_status=det.status_code,
+                    matched_by=matched_by,
+                    result_count=0,
+                    documents_count=documents_count,
+                    identity_verification=_identity_audit_summary(
+                        identity,
+                        global_search_used=False,
+                        selected_from_customer_catalog=bool(locator_matches),
+                        catalog_match_count=len(locator_matches),
+                    ),
+                ))
             pack = _build_evidence_pack(selected_raw, payload.prefer_insurer, payload.prefer_product, unmasked, envelope=detail_envelope)
             pack = await _maybe_attach_official_policy_document_evidence(
                 pack=pack,
@@ -1166,6 +1387,13 @@ async def infocap_lookup(
                 "selected": selected_policy,
                 "matches": [selected_policy],
                 "policy_evidence_pack": pack,
+                "identity_status": "identity_verified",
+                "identity_verification": _identity_audit_summary(
+                    identity,
+                    global_search_used=False,
+                    selected_from_customer_catalog=bool(locator_matches),
+                    catalog_match_count=len(locator_matches),
+                ),
                 "verification_status": "verified_by_connector",
                 "coverage_evidence": {
                     "source": "infocap",
@@ -1220,6 +1448,11 @@ CONTRACT_STATUSES = {
     "unknown_shape",
     "document_evidence_required",
     "conflict_requires_human",
+    "identity_verified",
+    "identity_mismatch",
+    "policy_number_not_found",
+    "policy_number_ambiguous",
+    "customer_policy_context_required",
 }
 
 _CONTRACT_FORBIDDEN_KEYS = {
@@ -1382,14 +1615,20 @@ def _select_policy_locator(
     requested_norm = _normalize_policy_identifier(requested)
     docs_with_nosnum = [doc for doc in docs if _first_str(doc, ["nosnum"])]
     if requested:
+        if not requested_codfil:
+            locator, status, _ = _select_policy_locator_by_human_number(
+                docs_with_nosnum,
+                requested,
+                codfil=codfil,
+            )
+            return locator, status
         matches = []
         for doc in docs_with_nosnum:
             doc_codfil = _first_str(doc, ["codfil"]) or str(codfil or "")
             if requested_codfil and str(doc_codfil) != str(requested_codfil):
                 continue
             nosnum_norm = _normalize_policy_identifier(_first_str(doc, ["nosnum"]))
-            numapo_norm = _normalize_policy_identifier(_first_str(doc, ["numapo"]))
-            if requested_norm and (nosnum_norm == requested_norm or numapo_norm == requested_norm):
+            if requested_norm and nosnum_norm == requested_norm:
                 matches.append(doc)
         if len(matches) != 1:
             return None, "source_limited" if not matches else "ambiguous_policy"
@@ -2511,6 +2750,218 @@ async def _run_policy_chain_contract_probe(
     })
 
 
+async def _run_policy_identity_integrity_audit(
+    *,
+    client: httpx.AsyncClient,
+    headers: Dict[str, str],
+    config: Dict[str, Any],
+    company_id: str,
+    qtype: str,
+    raw_query: str,
+    digits: str,
+    codfil: Any,
+    requested_policy_ref: Optional[str],
+    auth_status: Optional[int],
+) -> Dict[str, Any]:
+    cpf_search_path = config.get("infocap_cpf_search_path") or "/cliente_cpf"
+    name_search_path = config.get("infocap_search_path") or "/lista_clientes"
+    cliente_path = config.get("infocap_cliente_path") or "/cliente"
+    ligacoes_path = config.get("infocap_ligacoes_path") or "/cliente_ligacoes"
+    documento_path = config.get("infocap_documento_path") or "/documento"
+    requested_number = str(requested_policy_ref or "").strip()
+    endpoints: List[Dict[str, Any]] = []
+
+    if not requested_number:
+        validation = {
+            "identity_status": "customer_policy_context_required",
+            "requested_number_matches_catalog_numapo": False,
+            "requested_number_matched_only_as_nosnum": False,
+            "detail_numapo_matches_requested": False,
+            "detail_locator_matches_catalog_locator": False,
+            "detail_customer_matches_canonical_customer": "not_available",
+            "document_pipeline_blocked": True,
+            "reason_codes": ["policy_number_required"],
+        }
+        return _sanitize_contract_output({
+            "ok": False,
+            "provider": "infocap",
+            "mode": "policy_identity_integrity_audit",
+            "status": "customer_policy_context_required",
+            "auth_http_status": auth_status,
+            "identity_audit": _identity_audit_summary(
+                validation,
+                global_search_used=False,
+                selected_from_customer_catalog=False,
+                catalog_match_count=0,
+            ),
+            "endpoints": endpoints,
+        })
+
+    if qtype == "cpf":
+        search_params = {"codfil": codfil, "cpf_cnpj": digits}
+        search_endpoint = "initial_search.cliente_cpf"
+        search_path = cpf_search_path
+    else:
+        search_params = {"texto": raw_query}
+        search_endpoint = "initial_search.lista_clientes"
+        search_path = name_search_path
+
+    search_shape, search_data, status = await _contract_get(client, search_path, search_params, headers, search_endpoint)
+    endpoints.append(search_shape)
+    if status != "found":
+        validation = {
+            "identity_status": status,
+            "requested_number_matches_catalog_numapo": False,
+            "requested_number_matched_only_as_nosnum": False,
+            "detail_numapo_matches_requested": False,
+            "detail_locator_matches_catalog_locator": False,
+            "detail_customer_matches_canonical_customer": "not_available",
+            "document_pipeline_blocked": True,
+            "reason_codes": ["customer_not_resolved"],
+        }
+        return _sanitize_contract_output({
+            "ok": False,
+            "provider": "infocap",
+            "mode": "policy_identity_integrity_audit",
+            "status": status,
+            "auth_http_status": auth_status,
+            "identity_audit": _identity_audit_summary(validation, global_search_used=False, selected_from_customer_catalog=False, catalog_match_count=0),
+            "endpoints": endpoints,
+        })
+
+    candidates = _extract_array(search_data)
+    candidate, status = _select_unique_contract_candidate(candidates)
+    if status != "found" or not candidate:
+        validation = {
+            "identity_status": status,
+            "requested_number_matches_catalog_numapo": False,
+            "requested_number_matched_only_as_nosnum": False,
+            "detail_numapo_matches_requested": False,
+            "detail_locator_matches_catalog_locator": False,
+            "detail_customer_matches_canonical_customer": "not_available",
+            "document_pipeline_blocked": True,
+            "reason_codes": ["customer_not_unique"],
+        }
+        return _sanitize_contract_output({
+            "ok": False,
+            "provider": "infocap",
+            "mode": "policy_identity_integrity_audit",
+            "status": status,
+            "auth_http_status": auth_status,
+            "candidate_count": len(candidates),
+            "identity_audit": _identity_audit_summary(validation, global_search_used=False, selected_from_customer_catalog=False, catalog_match_count=0),
+            "endpoints": endpoints,
+        })
+
+    codigo_val = _first_str(candidate, ["codigo", "codcli"])
+    codfil_val = _first_str(candidate, ["codfil"]) or str(codfil or "1")
+    cliente_shape, cliente_data, status = await _contract_get(
+        client,
+        cliente_path,
+        {"codfil": codfil_val, "codigo": codigo_val},
+        headers,
+        "customer_detail.cliente",
+    )
+    endpoints.append(cliente_shape)
+    if status != "found":
+        validation = {
+            "identity_status": status,
+            "requested_number_matches_catalog_numapo": False,
+            "requested_number_matched_only_as_nosnum": False,
+            "detail_numapo_matches_requested": False,
+            "detail_locator_matches_catalog_locator": False,
+            "detail_customer_matches_canonical_customer": "not_available",
+            "document_pipeline_blocked": True,
+            "reason_codes": ["canonical_customer_detail_unavailable"],
+        }
+        return _sanitize_contract_output({
+            "ok": False,
+            "provider": "infocap",
+            "mode": "policy_identity_integrity_audit",
+            "status": status,
+            "auth_http_status": auth_status,
+            "identity_audit": _identity_audit_summary(validation, global_search_used=False, selected_from_customer_catalog=False, catalog_match_count=0),
+            "endpoints": endpoints,
+        })
+    canonical_detail = (_extract_array(cliente_data) or [candidate])[0]
+    canonical_customer = _canonical_customer_identity(candidate, canonical_detail, unmasked=True)
+
+    catalog_shape, catalog_data, status = await _contract_get(
+        client,
+        ligacoes_path,
+        {"codigo": codigo_val},
+        headers,
+        "policy_catalog.cliente_ligacoes",
+    )
+    endpoints.append(catalog_shape)
+    docs = _extract_documents(catalog_data) if status == "found" else []
+    policy_locator, locator_status, matches = _select_policy_locator_by_human_number(docs, requested_number, codfil=codfil_val)
+    if status != "found" or locator_status != "found" or not policy_locator:
+        audit_status = locator_status if status == "found" else status
+        validation = {
+            "identity_status": audit_status,
+            "requested_number_matches_catalog_numapo": False,
+            "requested_number_matched_only_as_nosnum": any(
+                _normalize_policy_identifier(_first_str(doc, ["nosnum"])) == _normalize_policy_identifier(requested_number)
+                and _normalize_policy_identifier(_first_str(doc, ["numapo"])) != _normalize_policy_identifier(requested_number)
+                for doc in docs
+            ),
+            "detail_numapo_matches_requested": False,
+            "detail_locator_matches_catalog_locator": False,
+            "detail_customer_matches_canonical_customer": "not_available",
+            "document_pipeline_blocked": True,
+            "reason_codes": [audit_status],
+        }
+        return _sanitize_contract_output({
+            "ok": False,
+            "provider": "infocap",
+            "mode": "policy_identity_integrity_audit",
+            "status": audit_status,
+            "auth_http_status": auth_status,
+            "document_count": len(docs),
+            "identity_audit": _identity_audit_summary(validation, global_search_used=False, selected_from_customer_catalog=False, catalog_match_count=len(matches)),
+            "endpoints": endpoints,
+        })
+
+    detail_shape, detail_data, detail_status = await _contract_get(
+        client,
+        documento_path,
+        {"codfil": policy_locator["codfil"], "nosnum": policy_locator["nosnum"]},
+        headers,
+        "policy_detail.documento",
+    )
+    endpoints.append(detail_shape)
+    detail_docs = _extract_documents(detail_data) if detail_status == "found" else []
+    detail_doc = detail_docs[0] if detail_docs else {}
+    validation = _validate_policy_identity(
+        requested_policy_number=requested_number,
+        policy_locator=policy_locator,
+        catalog_doc=matches[0] if matches else None,
+        detail_doc=detail_doc,
+        canonical_customer=canonical_customer,
+    )
+    audit = _identity_audit_summary(
+        validation,
+        global_search_used=False,
+        selected_from_customer_catalog=True,
+        catalog_match_count=len(matches),
+    )
+    logger.info(
+        f"[INFOCAP IDENTITY AUDIT] company_hash={_short_hash(company_id)} "
+        f"status={audit.get('identity_status')} docs={len(docs)}"
+    )
+    return _sanitize_contract_output({
+        "ok": audit.get("identity_status") == "identity_verified",
+        "provider": "infocap",
+        "mode": "policy_identity_integrity_audit",
+        "status": audit.get("identity_status"),
+        "auth_http_status": auth_status,
+        "document_count": len(docs),
+        "identity_audit": audit,
+        "endpoints": endpoints,
+    })
+
+
 @router.post("/attendance/connectors/infocap/probe")
 async def infocap_probe(
     payload: InfocapProbePayload,
@@ -2607,6 +3058,26 @@ async def infocap_probe(
                     client=client,
                     headers=headers,
                     auth_cookies=getattr(auth_res, "cookies", None),
+                    config=config,
+                    company_id=company_id,
+                    qtype="cpf" if qtype == "cpf" else "name",
+                    raw_query=raw_query,
+                    digits=digits,
+                    codfil=codfil,
+                    requested_policy_ref=payload.policy_ref,
+                    auth_status=auth_status,
+                )
+
+            if mode == "policy_identity_integrity_audit":
+                if qtype == "cpf" and not digits:
+                    raise HTTPException(status_code=400, detail="cpf query requires digits")
+                if qtype != "cpf" and not raw_query:
+                    raise HTTPException(status_code=400, detail="name query is required")
+                if not payload.policy_ref:
+                    raise HTTPException(status_code=400, detail="policy number is required")
+                return await _run_policy_identity_integrity_audit(
+                    client=client,
+                    headers=headers,
                     config=config,
                     company_id=company_id,
                     qtype="cpf" if qtype == "cpf" else "name",
@@ -3420,6 +3891,26 @@ async def infocap_policy_detail(
                 return {"ok": False, "status": "not_found", "source": "infocap", "http_status": det.status_code, "blockers": ["empty_detail"]}
 
             doc = docs[0]
+            identity = _validate_policy_identity(
+                requested_policy_number=None,
+                policy_locator={"provider": "infocap", "codfil": str(codfil), "nosnum": str(nosnum)},
+                catalog_doc=None,
+                detail_doc=doc,
+                canonical_customer=None,
+            )
+            if identity.get("identity_status") != "identity_verified":
+                _log("identity_mismatch")
+                return _identity_mismatch_response(
+                    identity.get("reason_codes") or [],
+                    source="infocap",
+                    http_status=det.status_code,
+                    identity_verification=_identity_audit_summary(
+                        identity,
+                        global_search_used=False,
+                        selected_from_customer_catalog=False,
+                        catalog_match_count=0,
+                    ),
+                )
             pack = _build_evidence_pack(doc, prefer_insurer, prefer_product, unmasked, envelope=detail_envelope)
             pack = await _maybe_attach_official_policy_document_evidence(
                 pack=pack,
@@ -3440,6 +3931,7 @@ async def infocap_policy_detail(
                 "http_status": det.status_code,
                 "policy": _sanitize_policy(doc, unmasked),
                 "policy_evidence_pack": pack,
+                "identity_status": "identity_verified",
                 "verified_at": datetime.now(timezone.utc).isoformat(),
             }
     except (httpx.TimeoutException, httpx.HTTPError) as e:

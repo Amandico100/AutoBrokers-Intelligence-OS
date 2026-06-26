@@ -182,10 +182,10 @@ def run():
     locator, status = mod._select_policy_locator(docs, codfil="1", requested_policy_ref=None)
     check("ambiguous policy has no locator", locator is None)
     check("ambiguous policy status", status == "ambiguous_policy", status)
-    locator, status = mod._select_policy_locator(docs, codfil="1", requested_policy_ref="N2")
-    check("explicit nosnum status found", status == "found", status)
+    locator, status = mod._select_policy_locator(docs, codfil="1", requested_policy_ref="infocap:1:N2")
+    check("technical locator nosnum status found", status == "found", status)
     check(
-        "explicit nosnum locator includes codfil+nosnum internally",
+        "technical locator includes codfil+nosnum internally",
         locator == {"provider": "infocap", "codfil": "1", "nosnum": "N2"},
         locator,
     )
@@ -252,11 +252,23 @@ def run():
     check("numapo resolves to nosnum locator", locator == {"provider": "infocap", "codfil": "2", "nosnum": "N2"}, locator)
     check("numapo resolution status found", status == "found", status)
     locator, status = mod._select_policy_locator(
+        [{"nosnum": "N1", "numapo": "AP-11", "codfil": "1"}, {"nosnum": "N2", "numapo": "AP-22", "codfil": "2"}],
+        codfil="1",
+        requested_policy_ref="N2",
+    )
+    check("simple human input never resolves by nosnum", locator is None and status != "found", (locator, status))
+    locator, status = mod._select_policy_locator(
+        [{"nosnum": "N1", "numapo": "AP-11", "codfil": "1"}, {"nosnum": "N2", "numapo": "AP-22", "codfil": "2"}],
+        codfil="1",
+        requested_policy_ref="infocap:2:N2",
+    )
+    check("technical PolicyLocator can resolve by nosnum", locator == {"provider": "infocap", "codfil": "2", "nosnum": "N2"} and status == "found", (locator, status))
+    locator, status = mod._select_policy_locator(
         [{"nosnum": "N1", "numapo": "AP-22", "codfil": "1"}, {"nosnum": "N2", "numapo": "AP-22", "codfil": "2"}],
         codfil="1",
         requested_policy_ref="AP-22",
     )
-    check("policy_number with multiple exact matches is ambiguous", locator is None and status == "ambiguous_policy", (locator, status))
+    check("policy_number with multiple exact matches is ambiguous", locator is None and status == "policy_number_ambiguous", (locator, status))
     policy = mod._sanitize_policy({"nosnum": "N0", "codfil": "1", "numapo": "0"}, True)
     check("policy number zero is not exposed as valid", not policy.get("policy_number") and not policy.get("masked_policy_number"), policy)
     display_number = getattr(mod, "_display_policy_number", None)
@@ -267,6 +279,80 @@ def run():
     locator_codfil, locator_ref = mod._parse_policy_ref_input("infocap:2:N2")
     check("raw nosnum has no codfil", raw_codfil is None and raw_ref == "N2", (raw_codfil, raw_ref))
     check("policy locator ref carries codfil", locator_codfil == "2" and locator_ref == "N2", (locator_codfil, locator_ref))
+
+    human_match = getattr(mod, "_policy_doc_matches_human_number", None)
+    select_human = getattr(mod, "_select_policy_locator_by_human_number", None)
+    validate_identity = getattr(mod, "_validate_policy_identity", None)
+    mismatch_response = getattr(mod, "_identity_mismatch_response", None)
+    audit_summary = getattr(mod, "_identity_audit_summary", None)
+    check("human policy number matcher exists", callable(human_match))
+    check("human policy number selector exists", callable(select_human))
+    check("identity validator exists", callable(validate_identity))
+    check("identity mismatch safe response exists", callable(mismatch_response))
+    check("identity audit summary helper exists", callable(audit_summary))
+    collision_docs = [
+        {"nosnum": "SAFE-NOS", "numapo": "202623140269982", "codfil": "1", "cpf_cnpj": "11122233344", "cliente": "Cliente Certo"},
+        {"nosnum": "202623140269982", "numapo": "OUTRA-APOLICE", "codfil": "9", "cpf_cnpj": "55566677788", "cliente": "Cliente Errado"},
+    ]
+    if callable(human_match):
+        check("human number matches numapo only", human_match(collision_docs[0], "202623140269982") is True)
+        check("human number ignores nosnum collision", human_match(collision_docs[1], "202623140269982") is False)
+    if callable(select_human):
+        locator, status, matches = select_human(collision_docs, "202623140269982", codfil="1")
+        check("numapo collision with other nosnum selects customer numapo", locator == {"provider": "infocap", "codfil": "1", "nosnum": "SAFE-NOS"} and status == "found" and len(matches) == 1, (locator, status, matches))
+        locator, status, matches = select_human([collision_docs[1]], "202623140269982", codfil="9")
+        check("nosnum-only collision is policy_number_not_found", locator is None and status == "policy_number_not_found" and not matches, (locator, status, matches))
+    if callable(validate_identity):
+        validation = validate_identity(
+            requested_policy_number="202623140269982",
+            policy_locator={"provider": "infocap", "codfil": "1", "nosnum": "SAFE-NOS"},
+            catalog_doc=collision_docs[0],
+            detail_doc={"nosnum": "SAFE-NOS", "numapo": "202623140269982", "codfil": "1", "cpf_cnpj": "11122233344", "cliente": "Cliente Certo"},
+            canonical_customer={"client_document": "11122233344", "client_name": "Cliente Certo"},
+        )
+        check("identity verified for matching catalog/detail/customer", validation.get("identity_status") == "identity_verified", validation)
+        validation = validate_identity(
+            requested_policy_number="202623140269982",
+            policy_locator={"provider": "infocap", "codfil": "1", "nosnum": "SAFE-NOS"},
+            catalog_doc=collision_docs[0],
+            detail_doc={"nosnum": "SAFE-NOS", "numapo": "OUTRA-APOLICE", "codfil": "1", "cpf_cnpj": "11122233344", "cliente": "Cliente Certo"},
+            canonical_customer={"client_document": "11122233344", "client_name": "Cliente Certo"},
+        )
+        check("detail numapo mismatch fails closed", validation.get("identity_status") == "identity_mismatch" and "detail_numapo_mismatch" in validation.get("reason_codes", []), validation)
+        validation = validate_identity(
+            requested_policy_number="202623140269982",
+            policy_locator={"provider": "infocap", "codfil": "9", "nosnum": "WRONG"},
+            catalog_doc=collision_docs[0],
+            detail_doc={"nosnum": "WRONG", "numapo": "202623140269982", "codfil": "9", "cpf_cnpj": "11122233344", "cliente": "Cliente Certo"},
+            canonical_customer={"client_document": "11122233344", "client_name": "Cliente Certo"},
+        )
+        check("locator outside customer catalog fails closed", validation.get("identity_status") == "identity_mismatch" and "locator_not_from_catalog" in validation.get("reason_codes", []), validation)
+        validation = validate_identity(
+            requested_policy_number="202623140269982",
+            policy_locator={"provider": "infocap", "codfil": "1", "nosnum": "SAFE-NOS"},
+            catalog_doc=collision_docs[0],
+            detail_doc={"nosnum": "SAFE-NOS", "numapo": "202623140269982", "codfil": "1", "cpf_cnpj": "99988877766", "cliente": "Cliente Divergente"},
+            canonical_customer={"client_document": "11122233344", "client_name": "Cliente Certo"},
+        )
+        check("detail customer mismatch fails closed", validation.get("identity_status") == "identity_mismatch" and "detail_customer_mismatch" in validation.get("reason_codes", []), validation)
+    if callable(mismatch_response):
+        response = mismatch_response(["detail_numapo_mismatch"])
+        raw_response = str(response)
+        check("identity_mismatch response has no policy payload", response.get("status") == "identity_mismatch" and not response.get("selected") and not response.get("policy_evidence_pack"), response)
+        check("identity_mismatch response blocks document pipeline", response.get("document_pipeline_blocked") is True, response)
+        check("identity_mismatch does not leak wrong policy values", "OUTRA-APOLICE" not in raw_response and "Cliente Errado" not in raw_response and "SAFE-NOS" not in raw_response, response)
+    if callable(audit_summary) and callable(validate_identity):
+        validation = validate_identity(
+            requested_policy_number="202623140269982",
+            policy_locator={"provider": "infocap", "codfil": "1", "nosnum": "SAFE-NOS"},
+            catalog_doc=collision_docs[0],
+            detail_doc={"nosnum": "SAFE-NOS", "numapo": "202623140269982", "codfil": "1", "cpf_cnpj": "11122233344"},
+            canonical_customer={"client_document": "11122233344"},
+        )
+        audit = audit_summary(validation, global_search_used=False, selected_from_customer_catalog=True, catalog_match_count=1)
+        audit_raw = str(audit)
+        check("identity audit reports safe booleans", audit.get("identity_status") == "identity_verified" and audit.get("selected_from_customer_catalog") is True, audit)
+        check("identity audit does not leak PII or locators", all(value not in audit_raw for value in ("202623140269982", "SAFE-NOS", "11122233344", "Cliente")), audit)
 
     code_only_sections = mod._coverage_sections({"itens": [{"item": "P", "tipo": "A"}]})
     check("short codes do not become coverage labels", code_only_sections == [], code_only_sections)
@@ -317,6 +403,11 @@ def run():
         "unknown_shape",
         "document_evidence_required",
         "conflict_requires_human",
+        "identity_verified",
+        "identity_mismatch",
+        "policy_number_not_found",
+        "policy_number_ambiguous",
+        "customer_policy_context_required",
     }
     check("contract status enum complete", expected_statuses.issubset(mod.CONTRACT_STATUSES))
     endpoint = mod._shape_probe_endpoint("policy_detail.documento", 200, fixture)

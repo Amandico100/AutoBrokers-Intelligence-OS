@@ -130,6 +130,36 @@ def run():
         guarded,
     )
 
+    mismatch_contract = {
+        "provider": "infocap",
+        "result_kind": "identity_mismatch",
+        "rendered_safe_answer": "A identidade da apolice nao foi confirmada. Por seguranca, nao vou exibir detalhes, cobertura, parcelas ou documento dessa consulta.",
+        "required_facts": ["identity_mismatch"],
+    }
+    guarded = guard("Seguradora: Alfa. Produto: Condominio. Cobertura...", mismatch_contract)
+    check("LLM cannot expose details after identity_mismatch", "identidade da apolice" in guarded.lower() and "Alfa" not in guarded, guarded)
+
+    context_builder = getattr(nodes, "_safe_infocap_policy_context", None)
+    context_args = getattr(nodes, "_policy_context_tool_args", None)
+    check("safe InfoCap policy context helper exists", callable(context_builder))
+    check("policy context tool args helper exists", callable(context_args))
+    if callable(context_builder) and callable(context_args):
+        context = context_builder({
+            "client_document": "11122233344",
+            "client_name": "Cliente Teste",
+            "matches": [
+                {"policy_number": "202623140269982", "policy_locator_ref": "infocap:1:N1"},
+                {"policy_number": "0", "policy_locator_ref": "infocap:1:N0"},
+            ],
+        })
+        raw_context = str(context)
+        check("safe context stores human number", context and "202623140269982" in context.get("policy_numbers", []), context)
+        check("safe context does not store locator", "infocap:" not in raw_context and "N1" not in raw_context, context)
+        args = context_args("Detalhe a apolice 202623140269982", context)
+        raw_args = str(args)
+        check("policy context routes follow-up with customer and number", args and args.get("policy_number") == "202623140269982" and args.get("document") == "11122233344", args)
+        check("policy context args do not expose locator", "infocap:" not in raw_args and "N1" not in raw_args, args)
+
     check("tool final response routes directly to end", route({"final_response": "ok", "policy_response_contract": source_contract}) == "end")
     check("non-policy tools still return to agent", route({"final_response": "", "policy_response_contract": None}) == "agent")
 

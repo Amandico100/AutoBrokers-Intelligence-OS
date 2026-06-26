@@ -1,6 +1,6 @@
 # PROGRAM-RECOVERY-F0-F2 - Recuperacao Arquitetural AutoBrokers Intelligence OS
 
-> Status: **R1C.1 - PIPELINE DOCUMENTAL OFICIAL CACHEADO**
+> Status: **P0 - POLICY IDENTITY INTEGRITY GATE**
 > Data: 2026-06-25
 > Objetivo: formalizar e acompanhar a recuperacao segura ate leitura documental oficial de apolices.
 > Regra: **nao criar sistemas paralelos**.
@@ -426,6 +426,44 @@ O cache e reutilizado quando o `policy_locator_hash` e o `content_hash` continua
 - A resposta traz cobertura/franquia/assistencia/limite somente com pagina e trecho.
 - Ausencia de evidencia apos processamento retorna `document_not_policy_evidence`/`low_confidence` e nao inventa cobertura.
 - Even e Auxiliares continuam usando contrato limitado por papel/capability; R1C.1 nao migra runtime deles.
+
+## 7.6 P0 - Policy Identity Integrity Gate
+
+### Motivo
+
+Testes reais do Chat Principal indicaram risco critico: um numero humano de apolice listado para um cliente podia abrir detalhe de outro cliente quando esse numero coincidia com `nosnum` de outro documento. Enquanto isso existir, nenhuma leitura de PDF, cobertura, assistencia, franquia ou cache documental e confiavel.
+
+### Escopo aplicado
+
+- Pausar R1C.2 e preservar o trabalho local em stash, sem commit/push/deploy.
+- Separar definitivamente numero humano (`numapo`) de identificador tecnico (`nosnum`).
+- Interpretar numero digitado pelo corretor somente como `numapo`.
+- Permitir `nosnum` somente dentro de `PolicyLocator` tecnico completo: `infocap:<codfil>:<nosnum>`.
+- Resolver CPF/nome + numero humano exclusivamente dentro do catalogo do cliente canonico (`/cliente_ligacoes`).
+- Em busca global por numero humano, considerar match somente por `numapo`, nunca por `nosnum`.
+- Validar antes de retornar detalhe:
+  - `numapo` do detalhe corresponde ao numero solicitado;
+  - locator veio do item de catalogo correto;
+  - detalhe retorna o mesmo locator;
+  - cliente do detalhe, quando disponivel, e compativel com cliente canonico.
+- Retornar `identity_mismatch` em qualquer divergencia.
+- Bloquear PDF/cache/evidencia/LLM em `identity_mismatch`.
+- Adicionar auditoria segura master-only no card existente: `Auditar integridade de identidade da apolice`.
+
+### Proibido preservado
+
+- Nao iniciar R1C.2.
+- Nao implementar perfil de assistencia, compositor humano, cache freshness, Docling, MinIO, Qdrant ou RAG.
+- Nao criar endpoint, conector, runtime, tabela, migration, storage, parser, agente ou ferramenta paralela.
+- Nao expor CPF, nome, numero de apolice, `codfil`, `nosnum`, locator, URL, token, payload ou dados de outra apolice em auditoria/mismatch.
+
+### Criterio de aceite
+
+- Numero humano simples nunca casa por `nosnum`.
+- Colisao `numapo` de um cliente versus `nosnum` de outro cliente nao abre a apolice errada.
+- `identity_mismatch` nao retorna segurado, apolice, cobertura, parcelas, PDF, evidence pack ou dados do detalhe.
+- Auditoria retorna somente booleans, contagens, status e `reason_codes`.
+- R1C.2 so pode ser retomado em partes menores depois de teste real P0 aprovado.
 
 ## 8. Fase 1 / R2 - Smith Runtime and Admin Unification
 

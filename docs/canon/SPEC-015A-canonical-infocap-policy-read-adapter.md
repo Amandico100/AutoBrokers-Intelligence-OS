@@ -1,6 +1,6 @@
 # SPEC-015A - Canonical InfoCap Policy Read Adapter
 
-> Status: **CANONICO EM RECUPERACAO - R1C.1**
+> Status: **CANONICO EM RECUPERACAO - P0 IDENTITY GATE**
 > Data: 2026-06-25
 > Escopo: Fase R1 ate pipeline documental oficial cacheado.
 > Regra maior: **nao criar runtime, conector, RAG, Vault, parser, storage ou sistema de agentes paralelo**.
@@ -230,6 +230,47 @@ company_id + provider=infocap + policy_locator_hash + content_hash
 ```
 
 Se o cache estiver valido, a mesma apolice nao deve ser baixada novamente. Se a fonte nao existir, a resposta deve dizer que a InfoCap confirmou a apolice, mas nao disponibilizou fonte documental oficial automatica.
+
+### 6.7 P0 - Policy Identity Integrity Gate
+
+Antes de qualquer leitura documental ou resposta de cobertura, a identidade da apolice precisa estar verificada.
+
+Regras novas:
+
+- numero humano digitado pelo corretor significa somente `numapo`;
+- `nosnum` nunca pode ser interpretado a partir de numero humano simples;
+- `nosnum` so pode ser usado quando vier em `PolicyLocator` tecnico completo: `infocap:<codfil>:<nosnum>`;
+- busca global por numero humano considera somente match exato de `numapo`;
+- quando ha cliente canonico na conversa ou na requisicao, a resolucao deve ocorrer primeiro no catalogo daquele cliente (`/cliente_ligacoes`);
+- detalhe so pode ser retornado apos pos-validacao:
+  - `numapo` do detalhe igual ao numero humano solicitado;
+  - locator usado igual ao locator do item de catalogo;
+  - detalhe compativel com cliente canonico quando CPF/CNPJ ou nome estiverem disponiveis.
+
+Estados adicionais:
+
+```text
+identity_verified
+identity_mismatch
+policy_number_not_found
+policy_number_ambiguous
+customer_policy_context_required
+```
+
+Em `identity_mismatch`:
+
+- nao retornar apolice;
+- nao retornar segurado;
+- nao retornar cobertura;
+- nao retornar parcelas;
+- nao baixar PDF;
+- nao usar cache documental;
+- nao gerar evidence pack;
+- nao chamar Docling;
+- nao enviar dados ao LLM;
+- nao expor dados do documento incorreto.
+
+O Portal Admin pode executar a auditoria `policy_identity_integrity_audit`, master-only, retornando somente booleans, contagens, status e `reason_codes`.
 
 ## 7. Contrato de entrada
 

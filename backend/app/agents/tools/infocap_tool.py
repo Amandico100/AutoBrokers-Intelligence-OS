@@ -133,8 +133,10 @@ class InfocapPolicyLookupTool(BaseTool):
         status = data.get("status") or "provider_error"
         pack = data.get("policy_evidence_pack") or {}
         required_facts = []
-        if status == "ambiguous_policy":
+        if status in ("ambiguous_policy", "policy_number_ambiguous"):
             required_facts.append("policy_options")
+        if status == "identity_mismatch":
+            required_facts.append("identity_mismatch")
         if pack.get("structured_coverage_absent"):
             required_facts.append("coverage_absent")
         if pack.get("document_evidence_ready"):
@@ -150,7 +152,9 @@ class InfocapPolicyLookupTool(BaseTool):
             "source_limitation": data.get("message") or "; ".join(data.get("blockers") or []),
             "next_allowed_action": (
                 "choose_policy"
-                if status == "ambiguous_policy"
+                if status in ("ambiguous_policy", "policy_number_ambiguous")
+                else "fail_closed"
+                if status == "identity_mismatch"
                 else "use_official_document_evidence_later"
                 if pack.get("document_evidence_required") and not pack.get("document_evidence_ready")
                 else "answer_from_document_evidence"
@@ -190,6 +194,12 @@ class InfocapPolicyLookupTool(BaseTool):
                 return "Ha mais de uma conexao InfoCap elegivel. E necessario limpar as conexoes duplicadas antes da consulta."
             if st == "source_limited":
                 return "A InfoCap localizou o pedido, mas ainda faltou resolver a apolice em uma opcao unica do catalogo. Informe CPF/nome do segurado ou o numero humano da apolice para eu resolver o detalhe com seguranca."
+            if st == "identity_mismatch":
+                return "A identidade da apolice nao foi confirmada. Por seguranca, nao vou exibir detalhes nem consultar documento desta apolice."
+            if st == "policy_number_not_found":
+                return "Nao localizei apolice com esse numero humano na InfoCap."
+            if st == "policy_number_ambiguous":
+                return "Esse numero humano apareceu em mais de uma apolice. Preciso de seguradora, ramo, vigencia ou cliente para escolher com seguranca."
             return "Nao consegui obter os detalhes dessa apolice na InfoCap agora."
         pack = d.get("policy_evidence_pack") or {}
         secs = pack.get("coverage_sections") or []
@@ -255,12 +265,16 @@ class InfocapPolicyLookupTool(BaseTool):
                     if pack.get("official_document_source_available"):
                         lines.append("- Existe uma fonte documental oficial disponivel; ela ainda nao foi processada nesta consulta.")
             return "\n".join(lines) + cli
-        if status in ("multiple_matches", "ambiguous_customer", "ambiguous_policy"):
+        if status in ("multiple_matches", "ambiguous_customer", "ambiguous_policy", "policy_number_ambiguous"):
             from app.api.infocap_connector import _format_policy_options_for_summary
 
             options = _format_policy_options_for_summary(r.get("matches") or [])
             base = "Encontrei mais de uma apolice/cliente para esse termo. Escolha pelo numero humano da apolice antes de detalhar."
             return (base + ("\n" + options if options else "") + cli).strip()
+        if status == "identity_mismatch":
+            return "A identidade da apolice nao foi confirmada. Por seguranca, nao vou exibir detalhes, cobertura, parcelas ou documento dessa consulta."
+        if status == "policy_number_not_found":
+            return "Nao localizei apolice com esse numero humano na InfoCap."
         if status in ("not_found", "client_found"):
             return ("Cliente localizado, mas sem apolice/documento vinculado retornado." + cli) if status == "client_found" else "Nao localizei cliente/apolice para esse termo na InfoCap."
         if status == "source_limited":
