@@ -73,14 +73,20 @@ export function WhatsAppChannelCard() {
       if (json.connected) {
         setQr(null);
         wantQrRef.current = false;
-      } else if (wantQrRef.current) {
+        setMessage('');
+      } else if (s === 'connecting' || s === 'close' || wantQrRef.current) {
+        // Instância existe e aguarda pareamento: busca o QR SEMPRE (sobrevive a
+        // refresh da página — o QR expira e é renovado a cada ciclo do poll).
         const qres = await fetch('/api/dashboard/whatsapp-channel?action=qr', { cache: 'no-store' });
         const qjson = await qres.json().catch(() => ({}));
         if (qres.ok && qjson.qr_base64) {
           const raw = String(qjson.qr_base64);
           // Só renderiza como imagem o que É imagem (data URI ou base64 puro).
           const looksBase64 = raw.startsWith('data:') || (raw.length > 200 && !raw.includes(' '));
-          if (looksBase64) setQr(raw.startsWith('data:') ? raw : `data:image/png;base64,${raw}`);
+          if (looksBase64) {
+            setQr(raw.startsWith('data:') ? raw : `data:image/png;base64,${raw}`);
+            setMessage('');
+          }
         } else if (qres.ok && qjson.qr_text) {
           setMessage('QR gerado em formato texto pelo servidor — clique em "Gerar novo QR" para tentar a imagem novamente.');
         }
