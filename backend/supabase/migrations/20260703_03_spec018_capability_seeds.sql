@@ -13,7 +13,9 @@
 insert into public.capabilities (capability_key, name, category, owner, risk_level, requires_connection, requires_approval, provider, is_active)
 values
   ('tenant.http_tools.execute', 'Ferramentas HTTP do agente', 'integrations', 'tenant', 'medium', false, false, null, true),
-  ('operational.insurer.dispatch', 'Acionamento de seguradora (WhatsApp)', 'insurance_ops', 'operational', 'high', true, true, 'zapi', true)
+  ('operational.insurer.dispatch', 'Acionamento de seguradora (WhatsApp)', 'insurance_ops', 'operational', 'high', true, true, 'zapi', true),
+  ('platform.human_handoff', 'Transbordo para humano', 'platform', 'platform', 'low', false, false, null, true),
+  ('platform.csv_analytics', 'Análise de planilhas CSV', 'platform', 'platform', 'low', false, false, null, true)
 on conflict (capability_key) do nothing;
 
 insert into public.capability_bindings (agent_role, capability_key, enabled)
@@ -21,5 +23,8 @@ values
   ('core', 'tenant.http_tools.execute', true),
   ('attendance', 'tenant.http_tools.execute', true),
   ('auxiliary', 'tenant.http_tools.execute', true),
-  ('attendance', 'operational.insurer.dispatch', true)
+  ('attendance', 'operational.insurer.dispatch', true),
+  ('core', 'platform.human_handoff', true),
+  ('attendance', 'platform.human_handoff', true),
+  ('core', 'platform.csv_analytics', true)
 on conflict do nothing;
