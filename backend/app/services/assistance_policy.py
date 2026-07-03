@@ -45,8 +45,15 @@ def _strip_accents(value: str) -> str:
 
 
 def _is_residential(pack: Dict[str, Any]) -> bool:
+    """Residencial confirmado pela fonte — inclusive abreviações do provider
+    (SPEC-016.1 D1: InfoCap retorna ramo_abrev "RESI")."""
     for key in ("line_kind_detected", "product_detected", "ramo", "line_kind"):
-        if "residencial" in _strip_accents(str(pack.get(key) or "")):
+        norm = _strip_accents(str(pack.get(key) or ""))
+        if not norm:
+            continue
+        if "resid" in norm:  # residencial, residência, residencia digital...
+            return True
+        if any(token == "resi" or token.startswith("resid") for token in norm.replace("/", " ").split()):
             return True
     return False
 

@@ -39,6 +39,37 @@ def _norm(value: str) -> str:
     return "".join(ch for ch in normalized if not unicodedata.combining(ch)).lower()
 
 
+# SPEC-016.1 D7 — abreviações comuns dos providers de gestão → nome humano.
+# Melhor esforço de exibição: quando não conhecido, mantém o valor da fonte.
+_INSURER_LABELS = {
+    "alli": "Allianz", "allianz": "Allianz",
+    "port": "Porto Seguro", "porto": "Porto Seguro",
+    "brad": "Bradesco", "bradesco": "Bradesco",
+    "zuri": "Zurich", "zurich": "Zurich",
+    "toki": "Tokio Marine", "tokm": "Tokio Marine",
+    "sula": "SulAmérica", "mapf": "Mapfre", "hdi": "HDI",
+    "itau": "Itaú", "azul": "Azul Seguros", "sanc": "Sancor",
+    "sompo": "Sompo", "libe": "Liberty",
+}
+_PRODUCT_LABELS = {
+    "resi": "Residencial", "residencial": "Residencial",
+    "auto": "Auto", "automovel": "Auto",
+    "vida": "Vida", "vind": "Vida Individual",
+    "cons": "Consórcio", "cond": "Condomínio",
+    "empr": "Empresarial", "viag": "Viagem", "saud": "Saúde",
+}
+
+
+def humanize_insurer(value: Any) -> str:
+    raw = str(value or "").strip()
+    return _INSURER_LABELS.get(_norm(raw), raw)
+
+
+def humanize_product(value: Any) -> str:
+    raw = str(value or "").strip()
+    return _PRODUCT_LABELS.get(_norm(raw), raw)
+
+
 def _display_number(record: Dict[str, Any]) -> str:
     number = str(record.get("policy_number") or record.get("numapo") or "").strip()
     if _norm(number) in _INVALID_NUMBERS:
@@ -47,8 +78,8 @@ def _display_number(record: Dict[str, Any]) -> str:
 
 
 def _policy_header(selected: Dict[str, Any]) -> str:
-    insurer = str(selected.get("insurer_key") or selected.get("insurer_detected") or "").strip()
-    product = str(selected.get("product") or selected.get("product_detected") or "").strip()
+    insurer = humanize_insurer(selected.get("insurer_key") or selected.get("insurer_detected"))
+    product = humanize_product(selected.get("product") or selected.get("product_detected"))
     parts = [p for p in (product, insurer and f"({insurer})") if p]
     return " ".join(parts) if parts else "a apólice consultada"
 
@@ -137,16 +168,23 @@ def _compose_coverage_answer(pack: Dict[str, Any], facts: List[Dict[str, Any]]) 
     lines: List[str] = []
     if structured:
         lines.append("As coberturas registradas na apólice são:")
+        lines.append("")
         for f in structured[:20]:
             amount = f.get("value")
-            lines.append(f"- {f.get('label')}" + (f" — {amount}" if amount else ""))
+            lines.append(f"- **{f.get('label')}**" + (f" — {amount}" if amount else ""))
     else:
         doc_facts = [f for f in coverage_facts if f.get("source") == "official_document"]
         if doc_facts:
-            lines.append("Encontrei estas coberturas no documento oficial da apólice:")
-            for f in doc_facts[:10]:
+            lines.append("Coberturas registradas no documento oficial da apólice:")
+            lines.append("")
+            for f in doc_facts[:20]:
                 detail = f.get("source_detail") or {}
-                lines.append(f'- página {detail.get("page")}: "{detail.get("snippet")}"')
+                amount = f.get("value")
+                participation = detail.get("participation")
+                entry = f"- **{f.get('label')}**" + (f" — {amount}" if amount else "")
+                if participation:
+                    entry += f" (participação: {participation})"
+                lines.append(entry)
         else:
             lines.append(
                 "A fonte confirmou a apólice, mas não retornou itens estruturados de cobertura nesta consulta — não vou listar cobertura sem essa evidência."
@@ -165,22 +203,65 @@ def _compose_operational_summary(result: Dict[str, Any], pack: Dict[str, Any]) -
     valid_to = selected.get("valid_to") or pack.get("valid_to") or "-"
     holder = str(selected.get("holder_name") or "").strip()
     lines = [
-        f"Encontrei a apólice {number} — {header}.",
-        f"Situação: {status} · Vigência: {valid_from} a {valid_to}." + (f" Titular: {holder}." if holder else ""),
+        f"Encontrei a apólice **{number}** — {header}.",
+        "",
+        f"- **Situação:** {status}",
+        f"- **Vigência:** {valid_from} a {valid_to}",
     ]
+    if holder:
+        lines.append(f"- **Titular:** {holder}")
+    return "\n".join(lines)
+
+
+def _is_installment_open(item: Dict[str, Any]) -> bool:
+    paid = item.get("paid_at")
+    return paid is None or not str(paid).strip()
+
+
+def _format_amount(value: Any) -> str:
+    text = str(value or "").strip()
+    if not text:
+        return ""
+    return text if text.upper().startswith("R$") else f"R$ {text}"
+
+
+def _compose_installments_answer(pack: Dict[str, Any], question_text: str) -> str:
+    installments = [i for i in (pack.get("installments") or []) if isinstance(i, dict)]
+    if not installments:
+        return "A fonte não retornou parcelas estruturadas para esta apólice nesta consulta."
+    open_items = [i for i in installments if _is_installment_open(i)]
+    paid_count = len(installments) - len(open_items)
+    lines = [
+        f"A apólice tem **{len(installments)}** parcela(s) registradas: **{len(open_items)} em aberto** e {paid_count} paga(s)."
+    ]
+    if open_items:
+        lines.append("")
+        lines.append("**Parcelas em aberto:**")
+        for item in open_items[:15]:
+            due = str(item.get("due_date") or "data não informada").strip()
+            amount = _format_amount(item.get("due_amount"))
+            number = item.get("installment_number")
+            prefix = f"Parcela {number} — " if number not in (None, "") else ""
+            lines.append(f"- {prefix}vencimento {due}" + (f" — {amount}" if amount else ""))
+    else:
+        lines.append("")
+        lines.append("Todas as parcelas registradas constam como pagas.")
     return "\n".join(lines)
 
 
 def _compose_options(matches: List[Dict[str, Any]]) -> str:
-    lines = ["Encontrei mais de uma apólice. Qual delas você quer? Responda com o número da apólice:"]
+    lines = [
+        "Encontrei mais de uma apólice. Qual delas você quer? Responda com o número da apólice:",
+        "",
+    ]
     for idx, match in enumerate(matches[:10], start=1):
         number = _display_number(match)
-        insurer = str(match.get("insurer_key") or "-").strip()
-        product = str(match.get("product") or "-").strip()
+        insurer = humanize_insurer(match.get("insurer_key")) or "-"
+        product = humanize_product(match.get("product")) or "-"
         valid_from = match.get("valid_from") or "-"
         valid_to = match.get("valid_to") or "-"
         status = str(match.get("policy_status") or "-").strip()
-        lines.append(f"{idx}. {number} — {insurer} · {product} · vigência {valid_from} a {valid_to} ({status})")
+        lines.append(f"{idx}. **{number}** — {insurer} · {product} · vigência {valid_from} a {valid_to} ({status})")
     return "\n".join(lines)
 
 
@@ -247,23 +328,19 @@ def compose_policy_answer_with_meta(*, question: str, result: Dict[str, Any]) ->
         else:
             body = "A fonte não retornou franquia estruturada nesta consulta — não vou estimar valor sem evidência."
     elif _INSTALLMENT_INTENT_RE.search(question_text):
-        installments = pack.get("installments") or []
-        body = (
-            f"A fonte retornou {len(installments)} parcela(s) para esta apólice."
-            if installments
-            else "A fonte não retornou parcelas estruturadas nesta consulta."
-        )
+        body = _compose_installments_answer(pack, question_text)
     else:
         body = ""
 
     summary = _compose_operational_summary(result, pack)
     client = _client_line(result)
     parts = [body, summary if not body else None, client]
-    # Pergunta específica: corpo primeiro + resumo curto no fim apenas se útil.
+    # Pergunta específica: corpo primeiro + linha curta de contexto no fim.
     if body:
         header_line = summary.splitlines()[0] if summary else ""
-        parts = [body, header_line, client]
+        parts = [body, f"_{header_line}_" if header_line else None, None]
     return {
-        "text": "\n".join(p for p in parts if p),
+        "text": "\n\n".join(p for p in parts if p),
         "assistance_policy": policy_result,
+        "facts": facts,
     }

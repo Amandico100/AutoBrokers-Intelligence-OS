@@ -145,15 +145,169 @@ def _split_page_fragments(text: str) -> List[str]:
     return fragments
 
 
+# ---------------------------------------------------------------------------
+# SPEC-016.1 D2/D3/D4 — extrator v2: tabela de coberturas + anti-boilerplate
+# ---------------------------------------------------------------------------
+
+# Frases institucionais/glossário/navegação NUNCA são evidência de apólice.
+_BOILERPLATE_RE = re.compile(
+    r"consulte|acesse|para saber|para conhecer|a tabela indica|clique aqui|"
+    r"www\.|\.com|\.br\b|obrigado por escolher|conte conosco|bem-vindo|"
+    r"entende-se|indeniza apenas|valor ou percentual|conjunto de|documento emitido|"
+    r"intervalo cont[ií]nuo|susep|ouvidoria|sac 24|linha direta|gloss[áa]rio",
+    re.IGNORECASE,
+)
+
+# Valor monetário (centavos opcionais: "R$ 10.000" também é valor real em PDFs).
+_AMOUNT_RE = re.compile(r"R\$\s*\d[\d.]*(?:,\d{2})?")
+
+# Linha da tabela de coberturas: "<nome> R$ <LMI> [R$ <prêmio>] [<participação>]"
+_COVERAGE_ROW_RE = re.compile(
+    r"^(?P<label>[A-Za-zÀ-ÿ][A-Za-zÀ-ÿ0-9 ./+()\-]{3,70}?)\s*"
+    r"R\$\s*(?P<lmi>[\d.]+,\d{2})"
+    r"(?:\s*R\$\s*(?P<premium>[\d.]+,\d{2}))?"
+    r"\s*(?P<part>\d{1,3}%.*)?$"
+)
+
+# Limite máximo de garantia da apólice (LMGA).
+_POLICY_LIMIT_RE = re.compile(
+    r"limite\s+m[aá]ximo\s+de\s+garantia\s+da\s+ap[oó]lice\s*:?\s*R\$\s*([\d.]+,\d{2})",
+    re.IGNORECASE,
+)
+
+# Cabeçalho do bloco de serviços de assistência ("ASSISTÊNCIA 24H PLANO ...").
+_ASSISTANCE_HEADER_RE = re.compile(r"assist[êe]ncia\s*24\s*h", re.IGNORECASE)
+_SERVICE_TERM_RE = re.compile(
+    r"chaveiro|eletricista|encanador|hidr[áa]ulic|vidraceiro|guincho|el[ée]trica|"
+    r"telhado|resist[êe]ncia|limpeza|hospedagem|vigil[âa]ncia|eletrodom[eé]stico|check-?up",
+    re.IGNORECASE,
+)
+
+
+def is_boilerplate_fragment(fragment: str) -> bool:
+    """Frase institucional/glossário/cabeçalho: nunca evidência (SPEC-016.1 D2)."""
+    text = str(fragment or "").strip()
+    if not text:
+        return True
+    if _BOILERPLATE_RE.search(text):
+        return True
+    # Cabeçalho de tabela colado/solto (ex.: "CoberturasLimite") — sem valor, curto.
+    normalized = _strip_accents(text).replace(" ", "")
+    if not _AMOUNT_RE.search(text) and len(text) <= 46:
+        header_tokens = (
+            "coberturaslimite", "coberturaparticipacao", "maximode",
+            "precopor", "limitemaximode",
+        )
+        if any(tok in normalized for tok in header_tokens):
+            return True
+        if normalized in ("servicos", "coberturas", "clausulas", "indenizacao"):
+            return True
+    return False
+
+
+def _parse_structured_page_items(page_number: int, content: str) -> List[Dict[str, Any]]:
+    """Itens ESTRUTURADOS de uma página: linhas da tabela, plano/serviços, LMGA."""
+    lines = [ln.strip() for ln in str(content or "").replace("\r", "\n").splitlines() if ln.strip()]
+    items: List[Dict[str, Any]] = []
+    in_assistance_block = False
+    for line in lines:
+        limit_match = _POLICY_LIMIT_RE.search(line)
+        if limit_match:
+            items.append({
+                "page_number": page_number,
+                "evidence_type": "lmi",
+                "evidence_text": _redact_short_text(line),
+                "structured": {"kind": "policy_limit", "amount": f"R$ {limit_match.group(1)}"},
+            })
+            continue
+
+        if (
+            _ASSISTANCE_HEADER_RE.search(line)
+            and not _AMOUNT_RE.search(line)
+            and not is_boilerplate_fragment(line)
+        ):
+            in_assistance_block = True
+            plan_text = re.sub(r"\s+", " ", line).strip()
+            items.append({
+                "page_number": page_number,
+                "evidence_type": "assistance",
+                "evidence_text": _redact_short_text(plan_text),
+                "structured": {"kind": "assistance_plan", "plan": plan_text},
+            })
+            continue
+
+        if in_assistance_block:
+            if is_boilerplate_fragment(line):
+                # Terminador do bloco ("Para conhecer... acesse...") encerra;
+                # cabeçalhos soltos ("Serviços") são apenas pulados.
+                if re.search(r"para conhecer|acesse|www\.|\.br\b|condi[çc][õo]es", line, re.IGNORECASE):
+                    in_assistance_block = False
+                continue
+            if _SERVICE_TERM_RE.search(line) and not _AMOUNT_RE.search(line):
+                items.append({
+                    "page_number": page_number,
+                    "evidence_type": "assistance",
+                    "evidence_text": _redact_short_text(line),
+                    "structured": {"kind": "assistance_services", "services": [re.sub(r"\s+", " ", line).strip()]},
+                })
+                continue
+
+        row = _COVERAGE_ROW_RE.match(line)
+        if row and not is_boilerplate_fragment(line):
+            label = re.sub(r"\s+", " ", row.group("label")).strip(" -:·*")
+            if len(label) < 4 or not any(ch.isalpha() for ch in label):
+                continue
+            if "assistencia" in _strip_accents(label):
+                # Linha da tabela "Assistência 24h <plano> R$ <preço do plano>"
+                items.append({
+                    "page_number": page_number,
+                    "evidence_type": "assistance",
+                    "evidence_text": _redact_short_text(line),
+                    "structured": {"kind": "assistance_plan", "plan": label, "premium": f"R$ {row.group('lmi')}"},
+                })
+            else:
+                items.append({
+                    "page_number": page_number,
+                    "evidence_type": "coverage",
+                    "evidence_text": _redact_short_text(line),
+                    "structured": {
+                        "kind": "coverage_row",
+                        "label": label,
+                        "lmi": f"R$ {row.group('lmi')}",
+                        "premium": f"R$ {row.group('premium')}" if row.group("premium") else None,
+                        "participation": (row.group("part") or "").strip() or None,
+                    },
+                })
+    return items
+
+
 def _classify_fragment(fragment: str) -> List[str]:
     normalized = _strip_accents(fragment)
     if re.search(r"\b(sem|nao|não)\s+(cobertura|coberturas|garantia|garantias|assistencia|franquia)\b", normalized):
+        return []
+    # SPEC-016.1 D2: boilerplate nunca classifica.
+    if is_boilerplate_fragment(fragment):
         return []
     found: List[str] = []
     for evidence_type, terms in _EVIDENCE_PATTERNS:
         if any(term in normalized for term in terms):
             found.append(evidence_type)
-    return found
+    if not found:
+        return []
+    # D2: keyword genérica só vira evidência com VALOR monetário no trecho,
+    # exceto cláusula/exclusão (texto normativo) e assistência com termo de
+    # serviço/plano real.
+    has_amount = bool(_AMOUNT_RE.search(fragment))
+    kept: List[str] = []
+    for evidence_type in found:
+        if evidence_type in ("clause", "exclusion"):
+            kept.append(evidence_type)
+        elif evidence_type == "assistance":
+            if has_amount or _SERVICE_TERM_RE.search(fragment) or _ASSISTANCE_HEADER_RE.search(fragment):
+                kept.append(evidence_type)
+        elif has_amount:
+            kept.append(evidence_type)
+    return kept
 
 
 def _confidence_for_evidence(items: List[Dict[str, Any]]) -> str:
@@ -179,12 +333,54 @@ def extract_policy_document_evidence(
     evidence: List[Dict[str, Any]] = []
     seen: set[Tuple[int, str, str]] = set()
 
+    def _base_item(page_number: int, evidence_type: str, snippet: str) -> Dict[str, Any]:
+        return {
+            "document_id": document_id,
+            "company_id": company_id,
+            "policy_locator_hash": locator_hash,
+            "page_number": page_number,
+            "chunk_id": f"{document_id}:p{page_number}:{len(evidence) + 1}",
+            "evidence_type": evidence_type,
+            "evidence_text": snippet,
+            "source_document": OFFICIAL_POLICY_DOCUMENT_SOURCE,
+            "extraction_method": extraction_method,
+            "confidence": "high" if evidence_type in {"coverage", "assistance", "deductible", "lmi"} else "medium",
+            "content_hash": content_hash,
+            "conflict_status": "none",
+        }
+
     for page in pages or []:
         try:
             page_number = int(page.get("page_number") or 0) or 1
         except (TypeError, ValueError):
             page_number = 1
         content = page.get("content") or page.get("text") or ""
+
+        # SPEC-016.1 D3: itens estruturados PRIMEIRO (tabela/plano/serviços/LMGA).
+        for structured_item in _parse_structured_page_items(page_number, content):
+            snippet = structured_item["evidence_text"]
+            evidence_type = structured_item["evidence_type"]
+            structured = structured_item.get("structured") or {}
+            if structured.get("kind") == "assistance_plan":
+                # Dedupe entre páginas: "Assistência 24h Completo" (tabela) e
+                # "ASSISTÊNCIA 24H PLANO COMPLETO" (cabeçalho) são o mesmo plano.
+                plan_key = _strip_accents(str(structured.get("plan") or ""))
+                for noise in ("assistencia", "plano", "24h", "24 h", " "):
+                    plan_key = plan_key.replace(noise, "")
+                dedupe_key = (0, "assistance_plan", plan_key or snippet)
+                if dedupe_key in seen:
+                    continue
+                seen.add(dedupe_key)
+            key = (page_number, evidence_type, snippet)
+            if key in seen:
+                continue
+            seen.add(key)
+            item = _base_item(page_number, evidence_type, snippet)
+            item["structured"] = structured_item.get("structured") or {}
+            evidence.append(item)
+            if len(evidence) >= 40:
+                return evidence
+
         for fragment in _split_page_fragments(content):
             types_found = _classify_fragment(fragment)
             if not types_found:
@@ -195,22 +391,7 @@ def extract_policy_document_evidence(
                 if key in seen:
                     continue
                 seen.add(key)
-                evidence.append(
-                    {
-                        "document_id": document_id,
-                        "company_id": company_id,
-                        "policy_locator_hash": locator_hash,
-                        "page_number": page_number,
-                        "chunk_id": f"{document_id}:p{page_number}:{len(evidence) + 1}",
-                        "evidence_type": evidence_type,
-                        "evidence_text": snippet,
-                        "source_document": OFFICIAL_POLICY_DOCUMENT_SOURCE,
-                        "extraction_method": extraction_method,
-                        "confidence": "high" if evidence_type in {"coverage", "assistance", "deductible", "lmi"} else "medium",
-                        "content_hash": content_hash,
-                        "conflict_status": "none",
-                    }
-                )
+                evidence.append(_base_item(page_number, evidence_type, snippet))
             if len(evidence) >= 40:
                 return evidence
     return evidence

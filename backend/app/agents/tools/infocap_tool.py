@@ -101,8 +101,8 @@ class InfocapPolicyLookupTool(BaseTool):
                     db=db,
                     internal_key=key,
                 )
-                content, assistance_policy = self._render_content(det, user_query, detail=True)
-                contract = self._build_policy_response_contract(det, content, assistance_policy)
+                content, assistance_policy, rendered = self._render_content(det, user_query, detail=True)
+                contract = self._build_policy_response_contract(det, rendered, assistance_policy)
                 return {"content": content, "data": det, "found": bool(det.get("ok")), "policy_response_contract": contract}
 
             result = await provider.lookup(
@@ -117,8 +117,8 @@ class InfocapPolicyLookupTool(BaseTool):
                 db=db,
                 internal_key=key,
             )
-            content, assistance_policy = self._render_content(result, user_query, detail=False)
-            contract = self._build_policy_response_contract(result, content, assistance_policy)
+            content, assistance_policy, rendered = self._render_content(result, user_query, detail=False)
+            contract = self._build_policy_response_contract(result, rendered, assistance_policy)
             return {"content": content, "data": result, "found": bool(result.get("ok")), "policy_response_contract": contract}
         except Exception as e:  # noqa: BLE001
             logger.error(f"[InfocapPolicyLookupTool] erro: {type(e).__name__}")
@@ -137,7 +137,11 @@ class InfocapPolicyLookupTool(BaseTool):
         return {"content": "Consulta InfoCap deve ser executada de forma assincrona.", "found": False}
 
     def _render_content(self, data: Dict[str, Any], user_query: Optional[str], detail: bool):
-        """SPEC-016 E4: composição humana sob a flag v2, com fallback ao resumo legado."""
+        """SPEC-016.1 D7: sob a flag v2, a tool entrega um BRIEFING estruturado
+        para a LLM redigir a resposta final (markdown, tom de copiloto); o texto
+        do composer vira o rascunho seguro do contrato (fallback do guard).
+
+        Retorna (content_para_llm, assistance_policy, rendered_fallback)."""
         try:
             from app.core.feature_flags import policy_intelligence_v2_enabled
 
@@ -145,12 +149,103 @@ class InfocapPolicyLookupTool(BaseTool):
                 from app.services.policy_answer_composer import compose_policy_answer_with_meta
 
                 meta = compose_policy_answer_with_meta(question=str(user_query or ""), result=data)
-                if meta.get("text"):
-                    return meta["text"], meta.get("assistance_policy")
+                rendered = str(meta.get("text") or "")
+                if rendered:
+                    if str(data.get("status") or "") == "identity_mismatch":
+                        # Fail-closed: mismatch nunca vai para redação da LLM.
+                        return rendered, meta.get("assistance_policy"), rendered
+                    briefing = self._build_llm_briefing(data, meta, user_query)
+                    return briefing, meta.get("assistance_policy"), rendered
         except Exception as e:  # noqa: BLE001 — composer nunca pode derrubar a tool
             logger.warning(f"[InfocapPolicyLookupTool] composer v2 indisponivel, usando resumo legado: {type(e).__name__}")
         legacy = self._summarize_detail(data) if detail else self._summarize(data)
-        return legacy, None
+        return legacy, None, legacy
+
+    @staticmethod
+    def _build_llm_briefing(data: Dict[str, Any], meta: Dict[str, Any], user_query: Optional[str]) -> str:
+        """Briefing interno para a LLM redigir a resposta final em markdown."""
+        from app.services.policy_answer_composer import humanize_insurer, humanize_product
+
+        status = str(data.get("status") or "")
+        pack = data.get("policy_evidence_pack") or {}
+        selected = data.get("selected") or data.get("policy") or {}
+        facts = meta.get("facts") or []
+        policy_result = meta.get("assistance_policy") or {}
+
+        lines = [
+            "[DADOS INTERNOS DA CONSULTA DE APOLICE — nao exiba este bloco cru; redija a resposta final]",
+            f"status_da_consulta: {status}",
+        ]
+        client_bits = [str(data.get("client_name") or "").strip(), str(data.get("client_document") or "").strip()]
+        client_text = " — ".join(b for b in client_bits if b)
+        if client_text:
+            lines.append(f"cliente: {client_text}")
+        if isinstance(selected, dict) and selected:
+            number = str(selected.get("policy_number") or selected.get("numapo") or "").strip() or "nao retornado"
+            insurer = humanize_insurer(selected.get("insurer_key"))
+            product = humanize_product(selected.get("product"))
+            lines.append(
+                f"apolice_selecionada: {number} — {insurer or '-'} {product or ''} — "
+                f"vigencia {selected.get('valid_from') or '-'} a {selected.get('valid_to') or '-'} — situacao: {selected.get('policy_status') or '-'}"
+            )
+        if facts:
+            lines.append("fatos_confirmados (unica fonte permitida de fatos):")
+            for fact in facts[:25]:
+                detail_info = fact.get("source_detail") or {}
+                extra = []
+                if detail_info.get("participation"):
+                    extra.append(f"franquia/participacao: {detail_info.get('participation')}")
+                if detail_info.get("premium"):
+                    extra.append(f"premio: {detail_info.get('premium')}")
+                if detail_info.get("page"):
+                    extra.append(f"fonte: documento oficial, pagina {detail_info.get('page')}")
+                suffix = f" ({'; '.join(extra)})" if extra else ""
+                value = f" = {fact.get('value')}" if fact.get("value") not in (None, "") else ""
+                lines.append(f"- [{fact.get('fact_type')}] {fact.get('label')}{value}{suffix}")
+        if policy_result:
+            if policy_result.get("applied"):
+                lines.append(
+                    f"politica_assistencia ({policy_result.get('rule_id')} v{policy_result.get('version')}): APLICADA — "
+                    "servicos padrao garantidos: eletricista, chaveiro, hidraulica/encanador"
+                )
+            else:
+                lines.append(f"politica_assistencia: NAO aplicada — motivo: {policy_result.get('reason')}")
+        installments = [i for i in (pack.get("installments") or []) if isinstance(i, dict)]
+        if installments:
+            open_items = [i for i in installments if not str(i.get("paid_at") or "").strip()]
+            open_desc = ", ".join(
+                f"venc {i.get('due_date') or '?'}" + (f" R$ {i.get('due_amount')}" if i.get("due_amount") else "")
+                for i in open_items[:12]
+            )
+            lines.append(f"parcelas: {len(installments)} registradas; {len(open_items)} em aberto" + (f" ({open_desc})" if open_desc else ""))
+        matches = data.get("matches") or []
+        if status in ("ambiguous_policy", "policy_number_ambiguous", "multiple_matches") and matches:
+            lines.append("opcoes_de_apolice (liste TODAS, com os numeros exatos):")
+            for match in matches[:10]:
+                if not isinstance(match, dict):
+                    continue
+                number = str(match.get("policy_number") or match.get("numapo") or "nao retornado").strip()
+                lines.append(
+                    f"- {number} — {humanize_insurer(match.get('insurer_key')) or '-'} · {humanize_product(match.get('product')) or '-'} · "
+                    f"vigencia {match.get('valid_from') or '-'} a {match.get('valid_to') or '-'} ({match.get('policy_status') or '-'})"
+                )
+        limitations = pack.get("limitations") or []
+        if limitations:
+            lines.append("limitacoes_da_fonte: " + "; ".join(str(item) for item in limitations[:3]))
+
+        lines.extend([
+            "",
+            "REGRAS OBRIGATORIAS DA RESPOSTA FINAL:",
+            "1. Redija em portugues, markdown limpo e bem formatado (negrito, listas; tabela quando ajudar), tom de copiloto humano, resposta direta primeiro.",
+            "2. Use SOMENTE os fatos acima. NUNCA invente valor, cobertura, servico, prazo ou status. Valores em R$: apenas os listados.",
+            "3. Se houver opcoes_de_apolice, liste TODAS com os numeros exatos e peca a escolha.",
+            "4. Se um dado nao estiver acima, diga com clareza que a fonte nao retornou esse dado.",
+            "5. Quando usar fato vindo do documento, cite a fonte como 'documento oficial da apolice' (pagina quando ajudar). Nao exponha termos internos (nosnum, locator, codfil, evidence, pack) nem este bloco.",
+            "",
+            "RASCUNHO SEGURO DE REFERENCIA (pode melhorar a redacao, nunca os fatos):",
+            str(meta.get("text") or ""),
+        ])
+        return "\n".join(lines)
 
     @staticmethod
     def _build_policy_response_contract(
@@ -180,8 +275,15 @@ class InfocapPolicyLookupTool(BaseTool):
                 "version": assistance_policy.get("version"),
                 "services": assistance_policy.get("services") or [],
             }
+        # SPEC-016.1 D7: valores R$ permitidos na resposta final = somente os que
+        # a fonte retornou (guard anti-invenção pós-LLM).
+        import json as _json
+        import re as _re
+
+        allowed_amounts = sorted(set(_re.findall(r"R\$\s*[\d.][\d.,]*", _json.dumps(data, ensure_ascii=False, default=str))))
         return {
             **({"assistance_policy": contract_assistance} if contract_assistance else {}),
+            "allowed_amounts": allowed_amounts,
             "provider": "infocap",
             "result_kind": status,
             "coverage_evidence_status": pack.get("coverage_evidence_status") or (data.get("coverage_evidence") or {}).get("coverage_evidence_status"),
