@@ -1,6 +1,6 @@
 # SPEC-016 — Policy Intelligence: Assistência Residencial End-to-End no Core
 
-> Status: **APROVAÇÃO PENDENTE DO FOUNDER — implementação bloqueada até autorização**
+> Status: **IMPLEMENTADA em `feat/spec-016-policy-intelligence` — aguardando teste real controlado + aceite para merge/deploy**
 > Onda: 1 (primeira vertical de produção)
 > Executor: Fable (esforço alto) · Baseline: `e7c5044`
 > Programa: `docs/canon/FABLE_RECOVERY_PROGRAM.md`
@@ -202,3 +202,39 @@ Flag única `POLICY_INTELLIGENCE_V2` (env): OFF ⇒ comportamento do baseline `e
 3. Deploy no ambiente EasyPanel com `POLICY_INTELLIGENCE_V2=false` → smoke → ligar flag só para a company da Resulta (gate por company se necessário: leitura da flag + allowlist de company_id em env).
 4. Teste real controlado (E7) → aceite → flag global ON.
 5. Rollback: flag OFF (segundos), revert do merge se necessário (documentado).
+
+---
+
+## 15. Registro de implementação (2026-07-03)
+
+Fatias entregues na branch, cada uma com TDD (RED antes de GREEN) e commit próprio:
+
+| Fatia | Commit | Conteúdo |
+|---|---|---|
+| E1 | 60c40ba | Context lock anafórico v2 em `nodes.py` (+ `feature_flags.py`) |
+| E2 | 082f16a | `services/policy_facts.py` — facts tipados sem invenção |
+| E3 | 8f9c17d | `services/assistance_policy.py` — residential_24h_standard_v1 |
+| E4 | 4dbd8dc | `services/policy_answer_composer.py` + integração tool/contrato/guard |
+| E5 | d3df42a | `providers/policy_data_provider.py` — porta multi-provider (Quiver-ready) |
+| E6 | c3e4e64 | Harness E2E com InfoCap stub HTTP local + guard de pergunta conceitual (G-A5) |
+
+Verificação: suíte completa 100% verde — 9 arquivos de teste, 376 checks
+(271 legadas + 84 SPEC unit/integração + 21 E2E; E2E rodado 10x sem flake).
+
+Desvios conscientes em relação ao texto original desta SPEC:
+
+1. **Sem migration nesta onda.** A política `residential_24h_standard_v1` está
+   versionada em código puro (`assistance_policy.py`). A tabela
+   `platform_policies` fica para quando existir o primeiro override por
+   seguradora/produto/corretora (Onda 2+). Motivo: gate de migration exige
+   aprovação e não há necessidade funcional agora — menos risco, mesmo efeito.
+2. **`state.py` não precisou mudar** — `infocap_policy_context` já era dict; o
+   campo `selected_policy_number` entra pelo mesmo canal seguro.
+3. **E2E cobre a cadeia conector→facts→política→compositor→guard com httpx real
+   e servidor stub local**, mais a conversa multi-turno no nível dos nós do
+   grafo. O streaming LangGraph completo com LLM real fica para o teste real
+   controlado (E7) — offline não há provedor LLM.
+4. **`httpx` instalado no Python local apenas para o harness E2E** (já é
+   dependência real do backend em produção; nada novo em requirements).
+5. **Guard adicional G-A5**: pergunta conceitual ("o que é franquia?") não é
+   convertida em consulta operacional forçada — achado da revisão adversarial.
