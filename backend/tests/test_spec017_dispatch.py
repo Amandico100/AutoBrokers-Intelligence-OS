@@ -213,6 +213,50 @@ def run():
 
     _aio.run(_router_flow())
 
+    print("\n== LIVE-PATH - start_live_dispatch (tool -> sessao real, gate aberto) ==\n")
+
+    async def _live_flow():
+        os.environ["INSURER_DISPATCH_LIVE"] = "true"
+        try:
+            sent = []
+            res = await router.start_live_dispatch(
+                company_id="co-L", case_id="cL1", playbook_ref=REF, subservice="eletricista",
+                slots=SLOTS, client_phone="+55 (48) 91111-2222", insurer_phone="55 11 4090-1444",
+                sender=sent.append,
+            )
+            check("LIVE: dispatch inicia e envia abertura", res["ok"] is True and sent == ["Olá"], (res, sent))
+            saved = await router.load_active_dispatch("co-L", "551140901444")
+            check(
+                "LIVE: sessao salva com telefones normalizados e estado ura",
+                saved and saved["state"] == "ura" and saved["client_phone"] == "5548911112222"
+                and saved["insurer_phone"] == "551140901444",
+                saved,
+            )
+
+            res2 = await router.start_live_dispatch(
+                company_id="co-L", case_id="cL2", playbook_ref=REF, subservice="chaveiro",
+                slots=SLOTS, client_phone="5548911112222", insurer_phone="551140901444",
+                sender=sent.append,
+            )
+            check("LIVE: sessao ativa bloqueia novo acionamento (sem duplo envio)", res2["ok"] is False and res2["error"] == "dispatch_already_active" and len(sent) == 1, res2)
+            await router.clear_active_dispatch("co-L", "551140901444")
+
+            res3 = await router.start_live_dispatch(
+                company_id="co-L", case_id="cL3", playbook_ref=REF, subservice="eletricista",
+                slots={"titular_cpf": "111"}, client_phone="5548911112222", insurer_phone="551140901444",
+                sender=sent.append,
+            )
+            check(
+                "LIVE: slots incompletos nao enviam nada nem salvam sessao",
+                res3["ok"] is False and len(sent) == 1
+                and await router.load_active_dispatch("co-L", "551140901444") is None,
+                res3,
+            )
+        finally:
+            os.environ.pop("INSURER_DISPATCH_LIVE", None)
+
+    _aio.run(_live_flow())
+
     print(f"\n== Resumo: {PASS} passaram, {FAIL} falharam ==")
     if FAILURES:
         sys.exit(1)

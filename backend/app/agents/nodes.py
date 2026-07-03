@@ -795,6 +795,10 @@ async def tool_node(state: AgentState, tools: list) -> dict:
                         tool_args = {**tool_args, "allowed_tools": allowed_http_tools}
                     elif tool_name == "infocap_policy_lookup":
                         tool_args = {**tool_args, "user_query": current_user_query}
+                    elif tool_name == "insurer_dispatch":
+                        # SPEC-017 live-path: telefone do cliente vem da sessão
+                        # WhatsApp (whatsapp:{phone}:...) — nunca da LLM.
+                        tool_args = {**tool_args, "session_id": str(state.get("session_id") or "")}
                     elif tool_name.startswith("shopify_") or tool_name.startswith("ucp_"):
                         # UCP tools: agent_id já está embutido na tool, mas garantimos aqui
                         tool_args = {**tool_args, "agent_id": agent_id}
@@ -819,7 +823,7 @@ async def tool_node(state: AgentState, tools: list) -> dict:
                     # Executa a tool
                     # Tools async-only (caminho assíncrono real). InfoCap (SPEC-014 C-FIX-1)
                     # precisa do _arun: o _run é apenas um stub que sinaliza uso async.
-                    if tool_name in ("delegate_to_subagent", "infocap_policy_lookup") and hasattr(tool, "_arun"):
+                    if tool_name in ("delegate_to_subagent", "infocap_policy_lookup", "insurer_dispatch") and hasattr(tool, "_arun"):
                         result = await tool._arun(**tool_args)
                     else:
                         # Execução via executor para não bloquear o event loop do FastAPI

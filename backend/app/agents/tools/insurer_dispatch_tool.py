@@ -30,6 +30,7 @@ class InsurerDispatchInput(BaseModel):
     risco_confirmado_sem_fumaca: Optional[str] = Field(default=None, description="Para elétrica: 'sim' confirmando que NÃO há fumaça/faísca/cheiro de queimado")
     aparelho_marca_modelo: Optional[str] = Field(default=None, description="Para eletrodomésticos: marca e modelo")
     aparelho_idade: Optional[str] = Field(default=None, description="Para eletrodomésticos: idade aproximada")
+    session_id: Optional[str] = Field(default=None, description="(injetado pelo runtime — NÃO preencher)")
 
 
 class InsurerDispatchTool(BaseTool):
@@ -52,12 +53,24 @@ class InsurerDispatchTool(BaseTool):
         self.company_id = str(company_id or "")
         self.case_id = str(case_id or "")
 
-    def _run(self, **kwargs) -> dict:
-        from app.services.insurer_dispatch_service import build_dry_run_plan, dispatch_live_enabled
+    _PLAYBOOK_REF = "allianz-residencial-whatsapp@v1"
 
+    @staticmethod
+    def _extract_slots(kwargs: dict) -> tuple:
         subservice = str(kwargs.get("subservice") or "").strip().lower()
-        slots = {k: v for k, v in kwargs.items() if k != "subservice" and v not in (None, "")}
-        plan = build_dry_run_plan("allianz-residencial-whatsapp@v1", subservice, slots)
+        slots = {
+            k: v for k, v in kwargs.items()
+            if k not in ("subservice", "session_id") and v not in (None, "")
+        }
+        return subservice, slots
+
+    def _run(self, **kwargs) -> dict:
+        """Valida e monta o plano. NUNCA envia nada — o envio real (gate aberto)
+        acontece só no _arun. Honestidade: sem envio, sem alegar acionamento."""
+        from app.services.insurer_dispatch_service import build_dry_run_plan
+
+        subservice, slots = self._extract_slots(kwargs)
+        plan = build_dry_run_plan(self._PLAYBOOK_REF, subservice, slots)
 
         if not plan.get("ok"):
             if plan.get("missing_slots"):
@@ -79,15 +92,106 @@ class InsurerDispatchTool(BaseTool):
                 }
             return {"status": "error", "content": f"Não foi possível preparar o acionamento ({plan.get('error')}). Acione um atendente humano."}
 
-        live = bool(plan.get("live")) and dispatch_live_enabled()
-        header = "ACIONAMENTO PRONTO" if live else "ACIONAMENTO PREPARADO EM SIMULAÇÃO (gate fechado — NADA foi enviado à seguradora)"
-        lines = [f"[{header}]", f"Subserviço: {plan['subservice']} · Playbook: {plan['playbook_ref']}", "Sequência que será enviada à seguradora:"]
+        lines = [
+            "[ACIONAMENTO PREPARADO EM SIMULAÇÃO (NADA foi enviado à seguradora)]",
+            f"Subserviço: {plan['subservice']} · Playbook: {plan['playbook_ref']}",
+            "Sequência que será enviada à seguradora:",
+        ]
         for step in plan["steps"]:
             lines.append(f"  {step['step']}: {step['reply']}")
         lines.append(plan["note"])
-        if not live:
-            lines.append(
-                "INSTRUÇÃO AO ATENDENTE: diga ao cliente que o pedido está registrado e será acionado em instantes; "
-                "NÃO afirme que a seguradora já foi acionada nem invente protocolo/prazo."
+        lines.append(
+            "INSTRUÇÃO AO ATENDENTE: diga ao cliente que o pedido está registrado e será acionado em instantes; "
+            "NÃO afirme que a seguradora já foi acionada nem invente protocolo/prazo."
+        )
+        return {"status": "ready_to_send", "content": "\n".join(lines), "plan": plan}
+
+    async def _arun(self, **kwargs) -> dict:
+        """Caminho LIVE (S17-6): com o gate aberto, cria a sessão real, envia a
+        abertura à seguradora pela integração da corretora e ativa o roteador.
+        Qualquer pré-condição faltando → resposta honesta SEM envio."""
+        import os
+
+        from app.services.insurer_dispatch_service import dispatch_live_enabled
+
+        base = self._run(**kwargs)
+        if base.get("status") != "ready_to_send" or not dispatch_live_enabled():
+            return base
+
+        digits = lambda s: "".join(ch for ch in str(s or "") if ch.isdigit())  # noqa: E731
+        insurer_phone = digits(os.getenv("INSURER_CONTACT_ALLIANZ_ASSISTENCIA_24H", ""))
+        if not insurer_phone:
+            base["content"] += (
+                "\nAVISO INTERNO: gate LIVE aberto mas o contato da seguradora não está configurado "
+                "(INSURER_CONTACT_ALLIANZ_ASSISTENCIA_24H) — NADA foi enviado. Não afirme acionamento."
             )
-        return {"status": "ready_to_send" if not live else "dispatched", "content": "\n".join(lines), "plan": plan}
+            return base
+
+        # Telefone do cliente vem da sessão WhatsApp (whatsapp:{phone}:{company}:{agent}).
+        session_ref = str(kwargs.get("session_id") or "")
+        parts = session_ref.split(":")
+        client_phone = digits(parts[1]) if len(parts) >= 3 and parts[0] == "whatsapp" else ""
+        if not client_phone:
+            base["content"] += (
+                "\nAVISO INTERNO: acionamento REAL só é iniciado na conversa de WhatsApp do cliente "
+                "(telefone da sessão indisponível) — NADA foi enviado. Não afirme acionamento."
+            )
+            return base
+
+        try:
+            from app.services.integration_service import get_integration_service
+            from app.services.whatsapp_service import get_whatsapp_service
+
+            integration = get_integration_service().get_whatsapp_integration(self.company_id)
+        except Exception as e:  # noqa: BLE001
+            logger.error(f"[InsurerDispatch] integração indisponível: {type(e).__name__}")
+            integration = None
+        if not integration:
+            base["content"] += (
+                "\nAVISO INTERNO: canal WhatsApp da corretora indisponível — NADA foi enviado. "
+                "Não afirme acionamento."
+            )
+            return base
+
+        wa = get_whatsapp_service()
+
+        def _sender(text: str) -> None:
+            wa.send_message(insurer_phone, text, integration)
+
+        from app.services.dispatch_router import start_live_dispatch
+
+        subservice, slots = self._extract_slots(kwargs)
+        result = await start_live_dispatch(
+            company_id=self.company_id,
+            case_id=self.case_id or f"wa-{client_phone}",
+            playbook_ref=self._PLAYBOOK_REF,
+            subservice=subservice,
+            slots=slots,
+            client_phone=client_phone,
+            insurer_phone=insurer_phone,
+            sender=_sender,
+        )
+        if not result.get("ok"):
+            if result.get("error") == "dispatch_already_active":
+                return {
+                    "status": "already_active",
+                    "content": (
+                        "Já existe um acionamento EM ANDAMENTO com a seguradora para esta corretora. "
+                        "NÃO abra outro. Informe ao cliente que o acionamento está em andamento e que "
+                        "você avisa assim que a seguradora confirmar."
+                    ),
+                }
+            base["content"] += "\nAVISO INTERNO: não foi possível iniciar o acionamento real — NADA foi enviado."
+            return base
+
+        return {
+            "status": "dispatched",
+            "content": (
+                "[ACIONAMENTO REAL INICIADO]\n"
+                "A conversa com a Allianz Assistência 24h foi aberta pelo WhatsApp da corretora. "
+                "A URA será respondida automaticamente com os dados coletados e o cliente será avisado "
+                "assim que o protocolo/agendamento sair.\n"
+                "INSTRUÇÃO AO ATENDENTE: diga ao cliente que o acionamento FOI iniciado e que você retorna "
+                "com o protocolo em instantes. NÃO invente protocolo/senha/prazo — eles chegam sozinhos."
+            ),
+        }
