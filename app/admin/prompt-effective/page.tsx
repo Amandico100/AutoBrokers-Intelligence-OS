@@ -9,13 +9,6 @@ import { useRouter } from 'next/navigation';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from '@/components/ui/select';
-import {
   Table,
   TableBody,
   TableCell,
@@ -116,12 +109,15 @@ export default function PromptEffectivePage() {
 
   if (roleLoading || role !== 'master') return null;
 
+  const selectClass =
+    'w-full rounded-md border border-border bg-background px-3 py-2 text-sm text-foreground focus:outline-none focus:ring-2 focus:ring-ring disabled:cursor-not-allowed disabled:opacity-50';
+
   return (
-    <div className="space-y-6">
-      <div className="flex items-center gap-3">
-        <Shield className="h-7 w-7 text-primary" />
+    <div className="p-8">
+      <div className="mb-8 flex items-center gap-3">
+        <Shield className="h-8 w-8 text-primary" />
         <div>
-          <h1 className="text-2xl font-bold">Prompt Efetivo</h1>
+          <h1 className="text-3xl font-bold text-foreground">Prompt Efetivo</h1>
           <p className="text-sm text-muted-foreground">
             O que o Smith realmente monta para cada agente: camadas, ferramentas e a fonte de cada
             autorização. Somente leitura — instruções do cliente nunca aparecem cruas.
@@ -129,38 +125,40 @@ export default function PromptEffectivePage() {
         </div>
       </div>
 
+      <div className="space-y-6">
       <Card>
         <CardContent className="flex flex-col gap-4 pt-6 sm:flex-row">
           <div className="flex-1">
             <label className="mb-1 block text-sm font-medium">Empresa</label>
-            <Select value={companyId} onValueChange={setCompanyId}>
-              <SelectTrigger>
-                <SelectValue placeholder="Selecione a corretora" />
-              </SelectTrigger>
-              <SelectContent>
-                {companies.map((c) => (
-                  <SelectItem key={c.id} value={c.id}>
-                    {c.name}
-                  </SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
+            <select
+              className={selectClass}
+              value={companyId}
+              onChange={(e) => setCompanyId(e.target.value)}
+            >
+              <option value="">Selecione a corretora</option>
+              {companies.map((c) => (
+                <option key={c.id} value={c.id}>
+                  {c.name}
+                </option>
+              ))}
+            </select>
           </div>
           <div className="flex-1">
             <label className="mb-1 block text-sm font-medium">Agente</label>
-            <Select value={agentId} onValueChange={setAgentId} disabled={!companyId}>
-              <SelectTrigger>
-                <SelectValue placeholder={companyId ? 'Selecione o agente' : 'Escolha a empresa antes'} />
-              </SelectTrigger>
-              <SelectContent>
-                {agents.map((a) => (
-                  <SelectItem key={a.id} value={a.id}>
-                    {a.name} · {a.agent_role || 'core'}
-                    {a.is_active ? '' : ' (inativo)'}
-                  </SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
+            <select
+              className={selectClass}
+              value={agentId}
+              onChange={(e) => setAgentId(e.target.value)}
+              disabled={!companyId}
+            >
+              <option value="">{companyId ? 'Selecione o agente' : 'Escolha a empresa antes'}</option>
+              {agents.map((a) => (
+                <option key={a.id} value={a.id}>
+                  {a.name} · {a.agent_role || 'core'}
+                  {a.is_active ? '' : ' (inativo)'}
+                </option>
+              ))}
+            </select>
           </div>
         </CardContent>
       </Card>
@@ -277,6 +275,7 @@ export default function PromptEffectivePage() {
           )}
         </>
       )}
+      </div>
     </div>
   );
 }
