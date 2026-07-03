@@ -109,8 +109,12 @@ export default function PromptEffectivePage() {
 
   if (roleLoading || role !== 'master') return null;
 
+  // <select> nativo: a lista aberta segue o color-scheme do navegador, não o
+  // tema da página — sem isso o Chrome pinta fundo claro com o texto branco
+  // herdado do tema escuro (opções invisíveis). Cores explícitas nas <option>.
   const selectClass =
-    'w-full rounded-md border border-border bg-background px-3 py-2 text-sm text-foreground focus:outline-none focus:ring-2 focus:ring-ring disabled:cursor-not-allowed disabled:opacity-50';
+    'w-full rounded-md border border-border bg-background px-3 py-2 text-sm text-foreground [color-scheme:dark] focus:outline-none focus:ring-2 focus:ring-ring disabled:cursor-not-allowed disabled:opacity-50';
+  const optionClass = 'bg-background text-foreground';
 
   return (
     <div className="p-8">
@@ -135,9 +139,9 @@ export default function PromptEffectivePage() {
               value={companyId}
               onChange={(e) => setCompanyId(e.target.value)}
             >
-              <option value="">Selecione a corretora</option>
+              <option value="" className={optionClass}>Selecione a corretora</option>
               {companies.map((c) => (
-                <option key={c.id} value={c.id}>
+                <option key={c.id} value={c.id} className={optionClass}>
                   {c.name}
                 </option>
               ))}
@@ -151,9 +155,9 @@ export default function PromptEffectivePage() {
               onChange={(e) => setAgentId(e.target.value)}
               disabled={!companyId}
             >
-              <option value="">{companyId ? 'Selecione o agente' : 'Escolha a empresa antes'}</option>
+              <option value="" className={optionClass}>{companyId ? 'Selecione o agente' : 'Escolha a empresa antes'}</option>
               {agents.map((a) => (
-                <option key={a.id} value={a.id}>
+                <option key={a.id} value={a.id} className={optionClass}>
                   {a.name} · {a.agent_role || 'core'}
                   {a.is_active ? '' : ' (inativo)'}
                 </option>
