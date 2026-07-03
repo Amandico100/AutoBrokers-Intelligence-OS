@@ -20,6 +20,7 @@ import { DropdownMenu, DropdownMenuTrigger, DropdownMenuContent, DropdownMenuIte
 import { SLUG_TO_OAUTH_PROVIDER } from '@/lib/connectors/oauth-providers';
 import type { ConnectorTemplate, TenantConnection } from '@/lib/vault/types';
 import { CreateConnectionModal } from '@/components/vault/CreateConnectionModal';
+import { WhatsAppChannelCard } from '@/components/vault/WhatsAppChannelCard';
 import { ConfigureWhatsAppModal } from '@/components/vault/ConfigureWhatsAppModal';
 import { ConfigureInfocapModal } from '@/components/vault/ConfigureInfocapModal';
 import { PermissionGrantPanel } from '@/components/vault/PermissionGrantPanel';
@@ -226,6 +227,9 @@ export default function ConectoresPage() {
             </div>
           }
         />
+
+        {/* SPEC-017 P1.3 — Canal WhatsApp da corretora (Evolution + QR) */}
+        <WhatsAppChannelCard />
 
         {notice && (
           <div className="flex items-center justify-between gap-2 rounded-lg border border-success/40 bg-surface-2 px-3 py-2 text-xs text-foreground-2">

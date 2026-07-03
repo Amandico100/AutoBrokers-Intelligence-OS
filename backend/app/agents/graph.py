@@ -375,7 +375,7 @@ async def create_agent_graph(
                 tools.append(ControlPlaneReadTool(company_id=str(company_id), supabase_client=supabase_client))
             if "operational.infocap.policy_lookup.read" in _active:
                 from .tools.infocap_tool import InfocapPolicyLookupTool
-                tools.append(InfocapPolicyLookupTool(company_id=str(company_id)))
+                tools.append(InfocapPolicyLookupTool(company_id=str(company_id), agent_role=str(_agent_role or "core")))
     except Exception as e:  # noqa: BLE001
         logger.warning(f"[Graph] ⚠️ Capability tools (SPEC-014) não anexadas: {e}")
 
@@ -718,10 +718,11 @@ Se você descrever em texto, o usuário VÊ UMA LISTA FEIA EM VEZ DO CARROSSEL B
             from ..services.search_service import get_search_service
 
             _search_service = get_search_service()
-            # SPEC-013 P0: o Chat Principal (Core/legado) PODE usar o conhecimento global
-            # curado do AutoBrokers. Attendance/auxiliar permanecem só com o privado.
+            # SPEC-013 P0 + SPEC-017 S17-7: Core E o atendente externo usam o
+            # conhecimento global curado além do privado da corretora (Founder:
+            # atendente nunca "burro"). Auxiliar segue só com o privado (Onda 4).
             _role_for_rag = (real_agent_data or {}).get("agent_role") if real_agent_data else None
-            _rag_include_global = str(_role_for_rag or "").strip().lower() in ("", "core")
+            _rag_include_global = str(_role_for_rag or "").strip().lower() in ("", "core", "attendance")
             rag_result = await asyncio.to_thread(
                 _search_service.smart_search,
                 company_id,

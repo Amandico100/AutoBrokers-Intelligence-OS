@@ -45,13 +45,21 @@ class InfocapPolicyLookupTool(BaseTool):
 
     company_id: str = ""
     provider_key: str = "infocap"  # SPEC-016 E5: provider de gestão da corretora (porta PolicyDataProvider)
+    # SPEC-017 P3 — exposição por papel: Core interno = dados completos;
+    # attendance (segurado)/auxiliar = mascarado (G20/S04/S05).
+    agent_role: str = "core"
 
     class Config:
         arbitrary_types_allowed = True
 
-    def __init__(self, company_id: str, **kwargs):
+    def __init__(self, company_id: str, agent_role: str = "core", **kwargs):
         super().__init__(**kwargs)
         self.company_id = str(company_id or "")
+        self.agent_role = str(agent_role or "core").strip().lower() or "core"
+
+    @property
+    def _unmasked(self) -> bool:
+        return self.agent_role in ("", "core")
 
     async def _arun(
         self,
@@ -97,7 +105,7 @@ class InfocapPolicyLookupTool(BaseTool):
                     user_query=user_query,
                     document_evidence_requested=bool(document_evidence_requested),
                     force_document_evidence_refresh=bool(force_document_evidence_refresh),
-                    unmasked=True,
+                    unmasked=self._unmasked,
                     db=db,
                     internal_key=key,
                 )
@@ -113,7 +121,7 @@ class InfocapPolicyLookupTool(BaseTool):
                 user_query=user_query,
                 document_evidence_requested=bool(document_evidence_requested),
                 force_document_evidence_refresh=bool(force_document_evidence_refresh),
-                unmasked=True,
+                unmasked=self._unmasked,
                 db=db,
                 internal_key=key,
             )
