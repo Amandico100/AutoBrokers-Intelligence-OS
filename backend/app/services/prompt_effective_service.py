@@ -71,7 +71,7 @@ def build_prompt_effective(
     })
     bound_tools.append({
         "tool": "mcp_tools",
-        "authority": "tabelas MCP do agente (SEM capability — S2 endurece)",
+        "authority": "tabelas MCP do agente (modo estrito exige capability tenant.mcp.<server>)",
         "active": bool(mcp_tools),
         "count": len(mcp_tools or []),
         "divergence": "anexada sem capability" if mcp_tools else None,

@@ -288,13 +288,24 @@ async def create_agent_graph(
         )
 
     # === MCP TOOLS (Dinâmicas) ===
-    if agent_id and supabase_client and not _strict_authority:
-        # SPEC-018 S2: em modo estrito, MCP exigirá capability por provider (S3).
+    if agent_id and supabase_client:
+        # SPEC-018 S3: em modo estrito, cada servidor MCP exige a capability
+        # tenant.mcp.<server> ativa no Registry; flag OFF = comportamento legado.
         try:
             from ..services.mcp_gateway_service import get_mcp_gateway
+            from ..services.tool_authority import filter_mcp_tools_by_capability
 
             gateway = get_mcp_gateway()
             mcp_tools_config = await gateway.get_agent_mcp_tools(str(agent_id))
+            _n_before = len(mcp_tools_config or [])
+            mcp_tools_config = filter_mcp_tools_by_capability(
+                mcp_tools_config, _active, strict=_strict_authority
+            )
+            if _strict_authority and _n_before and len(mcp_tools_config) < _n_before:
+                logger.info(
+                    f"[Graph] 🔒 AUTHORITY_STRICT_MODE: {_n_before - len(mcp_tools_config)} MCP tools "
+                    "bloqueadas (sem capability tenant.mcp.<server>)"
+                )
 
             if mcp_tools_config:
                 mcp_tools = MCPToolFactory.create_tools_for_agent(
