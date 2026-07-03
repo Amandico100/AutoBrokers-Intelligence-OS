@@ -19,6 +19,30 @@ LEGACY_TOOL_CAPABILITIES: Dict[str, str] = {
 }
 
 
+def mcp_capability_key(server_name: str) -> str:
+    """Capability formal de um servidor MCP: tenant.mcp.<server> (hífen vira _)."""
+    return f"tenant.mcp.{str(server_name or '').strip().lower().replace('-', '_')}"
+
+
+def filter_mcp_tools_by_capability(
+    mcp_tools_config: list,
+    active_capabilities: Iterable[str],
+    *,
+    strict: bool,
+) -> list:
+    """SPEC-018 S3: em modo estrito, só passam tools de servidores MCP cuja
+    capability tenant.mcp.<server> está ativa. Flag OFF = lista intacta."""
+    if not strict:
+        return list(mcp_tools_config or [])
+    active = set(active_capabilities or [])
+    allowed = []
+    for row in mcp_tools_config or []:
+        server = (row or {}).get("mcp_server_name")
+        if server and mcp_capability_key(server) in active:
+            allowed.append(row)
+    return allowed
+
+
 def legacy_tool_allowed(
     tool_key: str,
     tools_config: Dict[str, Any],

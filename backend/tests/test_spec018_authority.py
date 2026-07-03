@@ -110,6 +110,36 @@ def run():
         and ta.legacy_tool_allowed("csv_analytics", {"csv_analytics": None}, caps_with, strict=True, capability_key="platform.csv_analytics") is False,
     )
 
+    # S3-MCP — em modo estrito, MCP tools exigem capability por servidor.
+    mcp_rows = [
+        {"mcp_server_name": "google-drive", "tool_name": "drive_read"},
+        {"mcp_server_name": "google-drive", "tool_name": "drive_list"},
+        {"mcp_server_name": "slack", "tool_name": "send_message"},
+    ]
+    check(
+        "S3: chave de capability por servidor (hifen vira underscore)",
+        ta.mcp_capability_key("google-drive") == "tenant.mcp.google_drive"
+        and ta.mcp_capability_key("slack") == "tenant.mcp.slack",
+    )
+    check(
+        "S3: flag OFF nao filtra nada (legado intacto)",
+        ta.filter_mcp_tools_by_capability(mcp_rows, set(), strict=False) == mcp_rows,
+    )
+    filtered = ta.filter_mcp_tools_by_capability(mcp_rows, {"tenant.mcp.google_drive"}, strict=True)
+    check(
+        "S3: estrito mantem so servidores com capability ativa",
+        len(filtered) == 2 and all(r["mcp_server_name"] == "google-drive" for r in filtered),
+        filtered,
+    )
+    check(
+        "S3: estrito sem nenhuma capability bloqueia tudo",
+        ta.filter_mcp_tools_by_capability(mcp_rows, set(), strict=True) == [],
+    )
+    check(
+        "S3: row sem server_name nunca passa em estrito",
+        ta.filter_mcp_tools_by_capability([{"tool_name": "x"}], {"tenant.mcp.slack"}, strict=True) == [],
+    )
+
     print(f"\n== Resumo: {PASS} passaram, {FAIL} falharam ==")
     if FAILURES:
         sys.exit(1)
