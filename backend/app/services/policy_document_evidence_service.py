@@ -64,6 +64,17 @@ _INTENT_TERMS = (
     "condicoes",
     "riscos cobertos",
     "danos eletricos",
+    # SPEC-016.1 D9: pedido de detalhe completo também dispara o documento.
+    "detalhe",
+    "detalhar",
+    "detalhada",
+    "todas as informacoes",
+    "informacoes completas",
+    "informacoes dessa apolice",
+    "informacoes da apolice",
+    "baixe a apolice",
+    "baixar a apolice",
+    "tudo sobre a apolice",
 )
 
 _EVIDENCE_PATTERNS: Tuple[Tuple[str, Tuple[str, ...]], ...] = (

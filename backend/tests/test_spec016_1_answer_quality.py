@@ -358,6 +358,46 @@ def run_routing_and_context(nodes):
         os.environ.pop("POLICY_INTELLIGENCE_V2", None)
 
 
+def run_round2_fixes(nodes, evidence):
+    print("\n== Rodada 2 (feedback real): D8 CPF x número · D9 intent detalhe · D10 briefing puro ==\n")
+    os.environ["POLICY_INTELLIGENCE_V2"] = "true"
+    try:
+        ctx = {
+            "document": "12345678900",
+            "policy_numbers": ["1234567890"],
+            "selected_policy_number": "1234567890",
+            "source": "infocap_customer_catalog",
+        }
+        # D8: pergunta com CPF explícito NUNCA vira lock de apólice do contexto
+        # (o final do CPF não pode ser lido como número de apólice).
+        for q in (
+            "Busque as apólices do CPF 111.222.333-44",
+            "traga as apólices ativas do cpf 11122233344",
+            "detalhe as coberturas do CPF 111.222.333-44",
+        ):
+            args = nodes._policy_context_tool_args(q, ctx)
+            check(f"D8: CPF explícito não força lock ({q[:28]}...)", args is None, args)
+        # Regressão: sem CPF no texto, o lock continua funcionando.
+        args = nodes._policy_context_tool_args("ela tem assistência?", ctx)
+        check("D8: lock anafórico continua ok sem CPF no texto", args and args.get("policy_number") == "1234567890", args)
+    finally:
+        os.environ.pop("POLICY_INTELLIGENCE_V2", None)
+
+    # D9: pedido de detalhe completo dispara evidência documental.
+    for q in (
+        "DETALHE A APOLICE 202623140269972",
+        "QUERO QUE BAIXE A APOLICE E TRAGA TODAS AS INFORMAÇÕES",
+        "traga as informações completas dessa apólice",
+    ):
+        check(f"D9: intent documental p/ '{q[:30]}...'", evidence.policy_document_evidence_requested(q) is True)
+    check("D9: pergunta operacional simples continua sem fetch", evidence.policy_document_evidence_requested("qual a vigência dela?") is False)
+
+    # D10: sob v2, a ToolMessage do infocap entrega APENAS o briefing (sem JSON cru
+    # com abreviações da fonte).
+    nodes_src = (ROOT / "app" / "agents" / "nodes.py").read_text(encoding="utf-8")
+    check("D10: tool_node envia briefing puro sob v2", 'infocap_briefing_only' in nodes_src or ('_policy_intelligence_v2()' in nodes_src and 'result.get("content")' in nodes_src), None)
+
+
 def run_briefing(tool_src):
     print("\n== D7 - tool entrega briefing p/ LLM redigir ==\n")
     check("tool: monta briefing estruturado para a LLM", "_build_llm_briefing" in tool_src)
@@ -374,6 +414,7 @@ def run():
     run_composer(composer, facts_mod)
     nodes = _load_nodes()
     run_routing_and_context(nodes)
+    run_round2_fixes(nodes, evidence)
     tool_src = (ROOT / "app" / "agents" / "tools" / "infocap_tool.py").read_text(encoding="utf-8")
     run_briefing(tool_src)
 
