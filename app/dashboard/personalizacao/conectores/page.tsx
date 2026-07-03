@@ -20,7 +20,7 @@ import { DropdownMenu, DropdownMenuTrigger, DropdownMenuContent, DropdownMenuIte
 import { SLUG_TO_OAUTH_PROVIDER } from '@/lib/connectors/oauth-providers';
 import type { ConnectorTemplate, TenantConnection } from '@/lib/vault/types';
 import { CreateConnectionModal } from '@/components/vault/CreateConnectionModal';
-import { WhatsAppChannelCard } from '@/components/vault/WhatsAppChannelCard';
+import { WhatsAppChannelModal } from '@/components/vault/WhatsAppChannelModal';
 import { ConfigureWhatsAppModal } from '@/components/vault/ConfigureWhatsAppModal';
 import { ConfigureInfocapModal } from '@/components/vault/ConfigureInfocapModal';
 import { PermissionGrantPanel } from '@/components/vault/PermissionGrantPanel';
@@ -50,6 +50,7 @@ export default function ConectoresPage() {
   const [configureConnId, setConfigureConnId] = useState<string | null>(null);
   const [configureOpen, setConfigureOpen] = useState(false);
   const [infocapOpen, setInfocapOpen] = useState(false); // SPEC-014 C-FIX-1 (F)
+  const [whatsappModalOpen, setWhatsappModalOpen] = useState(false); // SPEC-017: modal do canal
   const [infocapConnId, setInfocapConnId] = useState<string | null>(null); // C-FIX-2
 
   const loadConnections = () =>
@@ -228,9 +229,6 @@ export default function ConectoresPage() {
           }
         />
 
-        {/* SPEC-017 P1.3 — Canal WhatsApp da corretora (Evolution + QR) */}
-        <WhatsAppChannelCard />
-
         {notice && (
           <div className="flex items-center justify-between gap-2 rounded-lg border border-success/40 bg-surface-2 px-3 py-2 text-xs text-foreground-2">
             <span>{notice}</span>
@@ -258,9 +256,9 @@ export default function ConectoresPage() {
             <Loading />
           ) : (
             <GalleryGrid>
-              {/* SPEC-017: o WhatsApp da corretora é o card dedicado no topo (Evolution+QR).
-                  O template legado Z-API sai da galeria; conexões antigas seguem em "Minhas conexões". */}
-              {templates.filter((t) => !['whatsapp', 'zapi'].includes(String(t.slug || '').toLowerCase())).map((t) => {
+              {/* SPEC-017 (UX Founder): o card WhatsApp da galeria abre o MODAL do
+                  canal (Evolution + QR). Slug real do template legado: whatsapp_zapi. */}
+              {templates.map((t) => {
                 const connStatus = statusByTemplate[t.id];
                 const cardStatus = connStatus ? connectionStatusPill(connStatus) : riskPill(t.risk_level);
                 const connected = connStatus === 'connected';
@@ -274,8 +272,13 @@ export default function ConectoresPage() {
                     category={t.category}
                     status={cardStatus}
                     tags={[t.auth_type]}
-                    cta={connected ? 'Gerenciar conexão' : oauthKey ? 'Conectar' : 'Preparar conexão'}
+                    cta={
+                      String(t.slug) === 'whatsapp_zapi'
+                        ? 'Conectar (QR code)'
+                        : connected ? 'Gerenciar conexão' : oauthKey ? 'Conectar' : 'Preparar conexão'
+                    }
                     onClick={() => {
+                      if (String(t.slug) === 'whatsapp_zapi') { setWhatsappModalOpen(true); return; }
                       if (connected) { setTab('connections'); return; }
                       if (oauthKey) { window.location.href = `/api/connectors/${oauthKey}/authorize`; return; }
                       openCreate(t);
@@ -380,6 +383,9 @@ export default function ConectoresPage() {
         template={modalTemplate}
         onCreated={onCreated}
       />
+
+      {/* SPEC-017: canal WhatsApp da corretora (Evolution + QR) */}
+      <WhatsAppChannelModal open={whatsappModalOpen} onOpenChange={setWhatsappModalOpen} />
 
       <ConfigureWhatsAppModal
         open={configureOpen}
