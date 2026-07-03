@@ -159,6 +159,14 @@ def run_e1(nodes):
         args = nodes._policy_context_tool_args("ela tem assistência?", {"policy_numbers": ["123"], "source": "x"})
         check("segurança: contexto sem document/name não força tool", args is None, args)
 
+        # G-A5: pergunta CONCEITUAL não vira consulta operacional forçada.
+        for conceptual in ("o que é franquia?", "como funciona a assistência 24h?", "explique o que é cobertura de danos elétricos"):
+            args = nodes._policy_context_tool_args(conceptual, _ctx(["1234567890"]))
+            check(f"G-A5: conceitual não força tool ({conceptual[:20]}...)", args is None, args)
+        # Mas a variante operacional com anáfora continua forçando.
+        args = nodes._policy_context_tool_args("e a franquia dela?", _ctx(["1234567890"]))
+        check("G-A5b: pergunta operacional com anáfora segue forçando", args and args.get("policy_number") == "1234567890", args)
+
     # G-A4/captura: _safe_infocap_policy_context captura selected_policy_number em found.
     data_found = {
         "status": "found",

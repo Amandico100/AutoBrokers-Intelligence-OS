@@ -78,6 +78,13 @@ _POLICY_ANAPHORA_RE = re.compile(
     r"\b(ela|nela|dela|essa|dessa|nessa|esta|desta|nesta|aquela|daquela)\b", re.IGNORECASE
 )
 
+# Pergunta CONCEITUAL (definição/explicação) não deve virar consulta operacional
+# forçada — o Core responde com conhecimento geral (SPEC-016 G-A5).
+_CONCEPTUAL_QUESTION_RE = re.compile(
+    r"^\s*(o\s*que\s*(é|e|significa)|oq\s|como\s+funciona|explique|explica|defin|qual\s+a\s+diferen)",
+    re.IGNORECASE,
+)
+
 
 def _policy_intelligence_v2() -> bool:
     from app.core.feature_flags import policy_intelligence_v2_enabled
@@ -107,8 +114,9 @@ def _extract_context_policy_number(question: str, context: Optional[Dict[str, An
     match = re.search(r"\b[A-Za-z]?\d[A-Za-z0-9-]{4,}\b", text)
     if match:
         return match.group(0)
-    if _policy_intelligence_v2():
+    if _policy_intelligence_v2() and not _CONCEPTUAL_QUESTION_RE.search(text):
         # E1: sem número no texto, o contexto resolve a anáfora de forma segura.
+        # Perguntas conceituais ("o que é franquia?") ficam com o LLM (G-A5).
         selected = str(context.get("selected_policy_number") or "").strip()
         if selected:
             return selected
@@ -142,6 +150,7 @@ def _policy_context_tool_args(question: str, context: Optional[Dict[str, Any]]) 
             len(candidates) > 1
             and _has_policy_detail_term(lowered)
             and _POLICY_ANAPHORA_RE.search(lowered)
+            and not _CONCEPTUAL_QUESTION_RE.search(lowered)
         ):
             return {"user_query": str(question or ""), **identity}
     return None
