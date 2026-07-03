@@ -25,7 +25,8 @@ export async function GET(req: NextRequest) {
   const key = internalKey();
   if (!key) return NextResponse.json({ ok: false, error: 'Chave interna não configurada.' }, { status: 500 });
 
-  const action = req.nextUrl.searchParams.get('action') === 'qr' ? 'qr' : 'status';
+  const requested = req.nextUrl.searchParams.get('action');
+  const action = requested === 'qr' ? 'qr' : requested === 'diagnostics' ? 'diagnostics' : 'status';
   try {
     const backend = getBackendUrl();
     const res = await fetch(

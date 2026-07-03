@@ -258,7 +258,9 @@ export default function ConectoresPage() {
             <Loading />
           ) : (
             <GalleryGrid>
-              {templates.map((t) => {
+              {/* SPEC-017: o WhatsApp da corretora é o card dedicado no topo (Evolution+QR).
+                  O template legado Z-API sai da galeria; conexões antigas seguem em "Minhas conexões". */}
+              {templates.filter((t) => !['whatsapp', 'zapi'].includes(String(t.slug || '').toLowerCase())).map((t) => {
                 const connStatus = statusByTemplate[t.id];
                 const cardStatus = connStatus ? connectionStatusPill(connStatus) : riskPill(t.risk_level);
                 const connected = connStatus === 'connected';
