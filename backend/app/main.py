@@ -186,6 +186,11 @@ from app.api.whatsapp_channel import router as whatsapp_channel_router
 
 app.include_router(whatsapp_channel_router, tags=["WhatsApp Channel"])
 
+# === Onda 3 / SPEC-018 — Autoridade & Prompt Efetivo (read-only) ===
+from app.api.authority import router as authority_router
+
+app.include_router(authority_router, tags=["Authority"])
+
 # === Attendance Media (audio transcription — 42M0) ===
 from app.api.attendance_media import router as attendance_media_router
 
