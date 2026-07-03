@@ -254,10 +254,20 @@ async def create_agent_graph(
     # === HTTP TOOL ROUTER ===
     from .tools.http_request import HttpToolRouter
 
+    # Onda 3 / SPEC-018 S2: modo ESTRITO de autoridade (default OFF = comportamento
+    # atual). Ligado, HTTP tools e MCP só entram com capability funcional ativa no
+    # Registry — fim da autorização por tabela/menção de prompt.
+    import os as _os
+    _strict_authority = str(_os.getenv("AUTHORITY_STRICT_MODE", "")).strip().lower() in ("1", "true", "yes", "on")
+    _http_allowed = (not _strict_authority) or ("tenant.http_tools.execute" in _active)
+    _mcp_allowed = (not _strict_authority) or any(k.startswith("tenant.") and _active for k in _active)
+
     raw_id = agent_data.get("id") if agent_data else None
     dynamic_agent_id = str(raw_id) if raw_id else None
 
-    if dynamic_agent_id and supabase_client:
+    if not _http_allowed:
+        logger.info("[Graph] 🔒 AUTHORITY_STRICT_MODE: HTTP tools bloqueadas (sem capability tenant.http_tools.execute)")
+    if dynamic_agent_id and supabase_client and _http_allowed:
         # Unwrap para pegar o client real (HttpToolRouter usa .table() diretamente)
         real_client = getattr(supabase_client, 'client', supabase_client)
         http_router = HttpToolRouter(
@@ -269,7 +279,8 @@ async def create_agent_graph(
         )
 
     # === MCP TOOLS (Dinâmicas) ===
-    if agent_id and supabase_client:
+    if agent_id and supabase_client and not _strict_authority:
+        # SPEC-018 S2: em modo estrito, MCP exigirá capability por provider (S3).
         try:
             from ..services.mcp_gateway_service import get_mcp_gateway
 
