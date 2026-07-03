@@ -356,6 +356,31 @@ async def process_whatsapp_message_background(
         company_id = integration["company_id"]
         agent_id = integration.get("agent_id")
 
+        # SPEC-017 P5/P6: se este inbound vem do NÚMERO DA SEGURADORA com um
+        # dispatch ATIVO, é a URA/especialista respondendo — roteia para o motor
+        # de acionamento e NÃO para o agente de atendimento.
+        try:
+            from app.services.dispatch_router import try_route_insurer_inbound
+
+            def _send_to_insurer(text_out: str) -> None:
+                whatsapp_service.send_message(payload.phone, text_out, integration)
+
+            def _send_to_client(client_phone: str, text_out: str) -> None:
+                whatsapp_service.send_message(client_phone, text_out, integration)
+
+            handled = await try_route_insurer_inbound(
+                company_id=str(company_id),
+                from_phone=str(payload.phone or ""),
+                text=str(payload.text.message if payload.text and payload.text.message else ""),
+                send_to_insurer=_send_to_insurer,
+                send_to_client=_send_to_client,
+            )
+            if handled:
+                logger.info("[WEBHOOK] inbound routed to dispatch engine (insurer conversation)")
+                return
+        except Exception as e:  # noqa: BLE001 — roteador nunca derruba o fluxo normal
+            logger.error(f"[WEBHOOK] dispatch router error: {type(e).__name__}")
+
         # 2. Resolver Usuário
         user_id = integration_service.get_or_create_user(
             phone=payload.phone, company_id=company_id, name=payload.senderName
