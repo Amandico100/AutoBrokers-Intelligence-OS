@@ -181,6 +181,11 @@ from app.api.oauth_connectors import router as oauth_connectors_router
 app.include_router(infocap_connector_router, tags=["InfoCap Connector"])
 app.include_router(oauth_connectors_router, tags=["OAuth Connectors"])
 
+# === SPEC-017 P1.2 — Canal WhatsApp da corretora (Evolution setup/QR/status) ===
+from app.api.whatsapp_channel import router as whatsapp_channel_router
+
+app.include_router(whatsapp_channel_router, tags=["WhatsApp Channel"])
+
 # === Attendance Media (audio transcription — 42M0) ===
 from app.api.attendance_media import router as attendance_media_router
 

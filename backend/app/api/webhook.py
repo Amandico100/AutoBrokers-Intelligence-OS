@@ -26,6 +26,16 @@ from app.services.audio_service import AudioService
 from app.services.integration_service import get_integration_service
 from app.services.langchain_service import LangChainService
 from app.services.message_buffer_service import get_message_buffer_service
+from app.services.whatsapp.channel_security import (
+    dedup_key,
+    provider_matches_integration,
+    validate_webhook_token_format,
+    webhook_token_matches,
+)
+from app.services.whatsapp.evolution_inbound import (
+    connection_state_from_payload,
+    normalize_evolution_inbound,
+)
 from app.services.whatsapp_service import get_whatsapp_service
 
 # Configuração de Logger
@@ -330,7 +340,15 @@ async def process_whatsapp_message_background(
         payload = ZAPIWebhookPayload(**payload_dict)
 
         # 1. Resolver Integração
-        integration = integration_service.get_integration_by_phone(payload.connectedPhone)
+        # SPEC-017 P1.2: rotas com token por integração já resolveram o tenant —
+        # o id viaja no payload (inclusive pelo buffer) e tem prioridade sobre a
+        # resolução legada por connectedPhone (forjável).
+        integration = None
+        pinned_integration_id = payload_dict.get("_integration_id")
+        if pinned_integration_id:
+            integration = integration_service.get_integration_by_id(str(pinned_integration_id))
+        if not integration:
+            integration = integration_service.get_integration_by_phone(payload.connectedPhone)
         if not integration:
             logger.error(f"[WEBHOOK] No integration found for {payload.connectedPhone}")
             return
@@ -641,6 +659,131 @@ async def webhook_health():
         "version": "1.0.0",
         "mode": "background_processing",
     }
+
+
+# ==============================================================================
+# SPEC-017 P1.2 — ROTAS COM TOKEN POR INTEGRAÇÃO (multi-tenant fail-closed)
+# Tenant resolvido pelo HASH do token do path (nunca pelo corpo forjável).
+# ==============================================================================
+
+async def _resolve_webhook_integration(provider: str, path_token: str) -> dict:
+    """Auth fail-closed da rota de webhook por token. 401 uniforme (anti-enum)."""
+    if not validate_webhook_token_format(path_token):
+        raise HTTPException(status_code=401, detail="webhook_auth_failed")
+    integration = await asyncio.to_thread(
+        integration_service.get_integration_by_webhook_token, path_token
+    )
+    if not integration:
+        raise HTTPException(status_code=401, detail="webhook_auth_failed")
+    if not webhook_token_matches(path_token, integration.get("webhook_token_hash")):
+        raise HTTPException(status_code=401, detail="webhook_auth_failed")
+    if not provider_matches_integration(provider, integration.get("provider")):
+        logger.warning("[WEBHOOK TOKEN] provider mismatch (rota %s)", provider)
+        raise HTTPException(status_code=401, detail="webhook_auth_failed")
+    return integration
+
+
+async def _is_duplicate_namespaced(provider: str, message_id: Optional[str]) -> bool:
+    key = dedup_key(provider, message_id)
+    if not key:
+        return False
+    try:
+        redis = await get_async_redis_client()
+        was_set = await redis.set(key, "1", ex=settings.WHATSAPP_DEDUPE_TTL_SECONDS, nx=True)
+        return not was_set
+    except Exception as e:  # noqa: BLE001
+        logger.warning(f"[WEBHOOK TOKEN] dedupe skipped: {type(e).__name__}")
+        return False
+
+
+async def _buffer_or_dispatch_text(payload_dict: dict, phone: str) -> dict:
+    """Humanização S17-9: texto entra no buffer com debounce (espera a rajada)."""
+    buffer_service = await get_message_buffer_service()
+    await buffer_service.add_message(
+        phone=phone,
+        message=((payload_dict.get("text") or {}).get("message") or ""),
+        company_id="pending",
+        user_id="pending",
+        integration={},
+        payload=payload_dict,
+    )
+    return {"status": "buffered", "phone": f"...{str(phone)[-4:]}"}
+
+
+def _notify_disconnect_background(integration: dict, state: str) -> None:
+    """S17-3: alerta de desconexão via instância-plataforma (nunca e-mail)."""
+    try:
+        from app.services.whatsapp.alerts import send_disconnect_alert
+
+        send_disconnect_alert(integration, state)
+    except Exception as e:  # noqa: BLE001
+        logger.error(f"[WEBHOOK ALERT] disconnect alert failed: {type(e).__name__}")
+
+
+@router.post("/api/v1/webhook/z-api/{token}")
+@limiter.limit("240/minute")
+async def z_api_webhook_token(token: str, request: Request, background_tasks: BackgroundTasks):
+    """Webhook Z-API com token por integração (substitui a resolução por telefone)."""
+    integration = await _resolve_webhook_integration("z-api", token)
+    payload_dict = await request.json()
+    try:
+        payload = ZAPIWebhookPayload(**payload_dict)
+    except Exception:
+        return {"status": "ignored", "reason": "invalid_payload"}
+    if payload.isGroup or payload.fromMe:
+        return {"status": "ignored"}
+    if not payload.text and not payload.audio and not payload.image:
+        return {"status": "ignored", "reason": "no_content"}
+    if await _is_duplicate_namespaced("z-api", payload.messageId):
+        return {"status": "ignored", "reason": "duplicate"}
+    payload_dict["_integration_id"] = integration.get("id")
+    if payload.text and payload.text.message:
+        return await _buffer_or_dispatch_text(payload_dict, payload.phone)
+    background_tasks.add_task(process_whatsapp_message_background, payload_dict)
+    return {"status": "received", "type": "media"}
+
+
+@router.post("/api/v1/webhook/evolution/{token}")
+@limiter.limit("240/minute")
+async def evolution_webhook_token(token: str, request: Request, background_tasks: BackgroundTasks):
+    """Webhook Evolution API v2 com token por integração (SPEC-017)."""
+    integration = await _resolve_webhook_integration("evolution", token)
+    body = await request.json()
+
+    event = str(body.get("event") or "").strip().lower().replace("_", ".")
+    if event == "connection.update":
+        state = connection_state_from_payload(body) or "unknown"
+        logger.info(f"[WEBHOOK EVOLUTION] connection.update state={state}")
+        try:
+            def _update_status():
+                supabase.client.table("integrations").update(
+                    {"channel_status": state, "last_seen_at": datetime.now(timezone.utc).isoformat()}
+                ).eq("id", integration.get("id")).execute()
+            await asyncio.to_thread(_update_status)
+        except Exception as e:  # noqa: BLE001
+            logger.warning(f"[WEBHOOK EVOLUTION] status update failed: {type(e).__name__}")
+        if state in ("close", "closed", "disconnected", "logout"):
+            background_tasks.add_task(_notify_disconnect_background, integration, state)
+        return {"status": "ok", "event": "connection.update", "state": state}
+
+    normalized = normalize_evolution_inbound(body)
+    if normalized["skip"]:
+        return {"status": "ignored", "reason": normalized["skip_reason"]}
+    if await _is_duplicate_namespaced("evolution", normalized["message_id"]):
+        return {"status": "ignored", "reason": "duplicate"}
+
+    payload_dict = {
+        "connectedPhone": str(integration.get("identifier") or normalized.get("connected_phone") or ""),
+        "phone": normalized["phone"],
+        "isGroup": False,
+        "fromMe": False,
+        "text": {"message": normalized["text"]},
+        "messageId": normalized["message_id"],
+        "senderName": normalized["sender_name"],
+        "momment": normalized.get("timestamp"),
+        "_integration_id": integration.get("id"),
+    }
+    return await _buffer_or_dispatch_text(payload_dict, normalized["phone"])
 
 
 @router.post("/api/webhook/send-message")

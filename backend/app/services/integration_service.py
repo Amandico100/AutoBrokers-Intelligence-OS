@@ -125,6 +125,54 @@ class IntegrationService:
             logger.error(f"[INTEGRATION] Error fetching integration: {str(e)}")
             return None
 
+    def get_integration_by_webhook_token(self, token: str) -> Optional[Dict]:
+        """SPEC-017 P1.2: resolve integração pelo HASH do token de webhook.
+
+        Fail-closed: erro de banco propaga (o webhook responde 401/500, nunca
+        processa sem tenant confirmado). Nunca loga o token cru.
+        """
+        from app.services.whatsapp.channel_security import webhook_token_hash
+
+        token_hash = webhook_token_hash(token)
+
+        @db_retry
+        def _fetch_by_hash():
+            return (
+                self.supabase.table("integrations")
+                .select("*")
+                .eq("webhook_token_hash", token_hash)
+                .eq("is_active", True)
+                .limit(1)
+                .execute()
+            )
+
+        response = _fetch_by_hash()
+        if not response.data:
+            return None
+        return prepare_integration_for_runtime(response.data[0])
+
+    def get_integration_by_id(self, integration_id: str) -> Optional[Dict]:
+        """SPEC-017 P1.2: resolve integração por id (rotas de token/buffer)."""
+        try:
+            @db_retry
+            def _fetch_by_id():
+                return (
+                    self.supabase.table("integrations")
+                    .select("*")
+                    .eq("id", str(integration_id))
+                    .eq("is_active", True)
+                    .limit(1)
+                    .execute()
+                )
+
+            response = _fetch_by_id()
+            if not response.data:
+                return None
+            return prepare_integration_for_runtime(response.data[0])
+        except Exception as e:  # noqa: BLE001
+            logger.error(f"[INTEGRATION] Error fetching by id: {type(e).__name__}")
+            return None
+
     def get_whatsapp_integration(
         self, company_id: str, agent_id: Optional[str] = None
     ) -> Optional[Dict]:
