@@ -92,8 +92,8 @@ class InfocapPolicyLookupTool(BaseTool):
                     unmasked=True,
                 )
                 det = await infocap_policy_detail(payload=dpayload, x_autobrokers_internal_key=key, db=db)
-                content = self._summarize_detail(det)
-                contract = self._build_policy_response_contract(det, content)
+                content, assistance_policy = self._render_content(det, user_query, detail=True)
+                contract = self._build_policy_response_contract(det, content, assistance_policy)
                 return {"content": content, "data": det, "found": bool(det.get("ok")), "policy_response_contract": contract}
 
             from app.api.infocap_connector import InfocapLookupPayload, infocap_lookup
@@ -109,8 +109,8 @@ class InfocapPolicyLookupTool(BaseTool):
                 unmasked=True,
             )
             result = await infocap_lookup(payload=payload, x_autobrokers_internal_key=key, db=db)
-            content = self._summarize(result)
-            contract = self._build_policy_response_contract(result, content)
+            content, assistance_policy = self._render_content(result, user_query, detail=False)
+            contract = self._build_policy_response_contract(result, content, assistance_policy)
             return {"content": content, "data": result, "found": bool(result.get("ok")), "policy_response_contract": contract}
         except Exception as e:  # noqa: BLE001
             logger.error(f"[InfocapPolicyLookupTool] erro: {type(e).__name__}")
@@ -128,8 +128,26 @@ class InfocapPolicyLookupTool(BaseTool):
     ) -> Dict[str, Any]:
         return {"content": "Consulta InfoCap deve ser executada de forma assincrona.", "found": False}
 
+    def _render_content(self, data: Dict[str, Any], user_query: Optional[str], detail: bool):
+        """SPEC-016 E4: composição humana sob a flag v2, com fallback ao resumo legado."""
+        try:
+            from app.core.feature_flags import policy_intelligence_v2_enabled
+
+            if policy_intelligence_v2_enabled():
+                from app.services.policy_answer_composer import compose_policy_answer_with_meta
+
+                meta = compose_policy_answer_with_meta(question=str(user_query or ""), result=data)
+                if meta.get("text"):
+                    return meta["text"], meta.get("assistance_policy")
+        except Exception as e:  # noqa: BLE001 — composer nunca pode derrubar a tool
+            logger.warning(f"[InfocapPolicyLookupTool] composer v2 indisponivel, usando resumo legado: {type(e).__name__}")
+        legacy = self._summarize_detail(data) if detail else self._summarize(data)
+        return legacy, None
+
     @staticmethod
-    def _build_policy_response_contract(data: Dict[str, Any], rendered: str) -> Dict[str, Any]:
+    def _build_policy_response_contract(
+        data: Dict[str, Any], rendered: str, assistance_policy: Optional[Dict[str, Any]] = None
+    ) -> Dict[str, Any]:
         status = data.get("status") or "provider_error"
         pack = data.get("policy_evidence_pack") or {}
         required_facts = []
@@ -143,7 +161,19 @@ class InfocapPolicyLookupTool(BaseTool):
             required_facts.append("document_evidence")
         if status == "source_limited":
             required_facts.append("source_limited")
+        contract_assistance = None
+        if isinstance(assistance_policy, dict) and assistance_policy.get("applied"):
+            # SPEC-016 E4b: política governada aplicada — o guard garante que a
+            # resposta final cite os serviços padrão.
+            required_facts.append("assistance_policy_applied")
+            contract_assistance = {
+                "applied": True,
+                "rule_id": assistance_policy.get("rule_id"),
+                "version": assistance_policy.get("version"),
+                "services": assistance_policy.get("services") or [],
+            }
         return {
+            **({"assistance_policy": contract_assistance} if contract_assistance else {}),
             "provider": "infocap",
             "result_kind": status,
             "coverage_evidence_status": pack.get("coverage_evidence_status") or (data.get("coverage_evidence") or {}).get("coverage_evidence_status"),

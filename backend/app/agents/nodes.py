@@ -210,6 +210,16 @@ def _guard_infocap_policy_final_response(candidate_text: str, contract: Optional
             return rendered
     if "source_limited" in required and "erro" in lower:
         return rendered
+    if "assistance_policy_applied" in required:
+        # SPEC-016 E4b: política de assistência aplicada → a resposta final não
+        # pode omitir os serviços padrão garantidos pela política governada.
+        services_present = (
+            "eletricista" in lower
+            and "chaveiro" in lower
+            and ("hidraulica" in lower or "hidráulica" in lower or "encanador" in lower)
+        )
+        if not services_present:
+            return rendered
     if "identity_mismatch" in required:
         forbidden = ("seguradora", "produto", "cobertura", "parcela", "pdf", "documento oficial")
         if any(term in lower for term in forbidden) or "identidade da apolice" not in lower:

@@ -389,6 +389,157 @@ def run_e3(policy_facts, assistance_policy):
     check("G-P6b: política não aplicada não gera facts", assistance_policy.policy_rule_facts(not_applied) == [], not_applied)
 
 
+_JARGON = ("nosnum", "locator", "evidence_pack", "policy_ref", "codfil", "pack", "dto")
+
+
+def _found_result(pack, question_client=True):
+    result = {
+        "ok": True,
+        "status": "found",
+        "selected": {
+            "insurer_key": pack.get("insurer_detected"),
+            "product": pack.get("product_detected"),
+            "policy_number": "1234567890",
+            "numapo": "1234567890",
+            "holder_name": "Cliente Sintetico",
+            "policy_status": pack.get("policy_status"),
+            "active_now": pack.get("active_now"),
+            "valid_from": pack.get("valid_from"),
+            "valid_to": pack.get("valid_to"),
+        },
+        "matches": [],
+        "policy_evidence_pack": pack,
+    }
+    if question_client:
+        result["client_name"] = "Cliente Sintetico"
+        result["client_document"] = "12345678900"
+    return result
+
+
+def run_e4(composer):
+    print("\n== E4 - compositor humano de resposta ==\n")
+
+    # G-C1: pergunta de assistência + política aplicada → resposta direta com os 3 serviços.
+    pack = _sample_pack(
+        coverage_sections=[_ASSIST_SECTION],
+        structured_coverage_available=True,
+        structured_coverage_absent=False,
+    )
+    text = composer.compose_policy_answer(question="ela tem assistência?", result=_found_result(pack))
+    low = text.lower()
+    check("G-C1: resposta direta afirmativa primeiro", low.strip().startswith("sim"), text)
+    check("G-C1: cita os 3 serviços padrão", all(s in low for s in ("eletricista", "chaveiro", "encanador")) or ("hidráulica" in low and "eletricista" in low and "chaveiro" in low), text)
+    check("G-C1: cita a fonte estruturada", "assistência residencial 24h" in low, text)
+    check("G-C1: sem jargão técnico", not any(j in low for j in _JARGON), text)
+
+    # G-C2: pergunta de assistência sem confirmação → ausência honesta, sem inventar.
+    pack = _sample_pack()  # residencial, nada estruturado
+    text = composer.compose_policy_answer(question="ela cobre eletricista?", result=_found_result(pack))
+    low = text.lower()
+    check("G-C2: não afirma assistência sem evidência", "sim" != low.strip()[:3], text)
+    check("G-C2: declara ausência de confirmação na fonte", ("não" in low and ("confirm" in low or "não retornou" in low or "nao retornou" in low)), text)
+    check("G-C2: não cita serviços como cobertos", "chaveiro" not in low, text)
+
+    # G-C3: evidência documental pronta → cita página.
+    pack = _sample_pack(
+        document_evidence_ready=True,
+        official_policy_document_evidence={
+            "ok": True,
+            "document_status": "evidence_ready",
+            "evidence_items": [
+                {
+                    "page_number": 5,
+                    "evidence_type": "assistance",
+                    "evidence_text": "Assistencia 24 horas inclui eletricista, chaveiro e encanador.",
+                    "confidence": "high",
+                    "source_document": "official_policy_document",
+                }
+            ],
+        },
+    )
+    text = composer.compose_policy_answer(question="ela tem assistência?", result=_found_result(pack))
+    low = text.lower()
+    check("G-C3: cita página do documento oficial", ("página 5" in low or "pagina 5" in low), text)
+    check("G-C3: resposta afirmativa com fonte documental", low.strip().startswith("sim"), text)
+
+    # G-C4: ambiguidade → opções numeradas com número humano, sem locator.
+    result = {
+        "ok": False,
+        "status": "ambiguous_policy",
+        "client_name": "Cliente Sintetico",
+        "matches": [
+            {"policy_number": "1234567890", "insurer_key": "allianz", "product": "Residencial", "valid_from": "2026-01-01", "valid_to": "2027-01-01", "policy_status": "ativa"},
+            {"policy_number": "9876543210", "insurer_key": "porto", "product": "Auto", "valid_from": "2025-05-01", "valid_to": "2026-05-01", "policy_status": "ativa"},
+        ],
+    }
+    text = composer.compose_policy_answer(question="ela tem assistência?", result=result)
+    low = text.lower()
+    check("G-C4: opções numeradas", "1." in text and "2." in text, text)
+    check("G-C4: mostra número humano e seguradora", "1234567890" in text and "allianz" in low, text)
+    check("G-C4: sem jargão técnico", not any(j in low for j in _JARGON), text)
+
+    # G-C5: identity_mismatch → fail-closed, nada de dados.
+    text = composer.compose_policy_answer(question="detalhe", result={"ok": False, "status": "identity_mismatch"})
+    low = text.lower()
+    check("G-C5: mismatch mantém fail-closed", "identidade" in low and "1234567890" not in text, text)
+
+    # G-C6: cobertura estruturada listada de forma humana.
+    pack = _sample_pack(
+        coverage_sections=[
+            {"label": "Incêndio", "amount": "R$ 200.000,00"},
+            {"label": "Danos Elétricos", "amount": "R$ 15.000,00"},
+        ],
+        structured_coverage_available=True,
+        structured_coverage_absent=False,
+    )
+    text = composer.compose_policy_answer(question="quais são as coberturas?", result=_found_result(pack))
+    low = text.lower()
+    check("G-C6: lista coberturas com valores", "incêndio" in low and "r$ 15.000,00" in low, text)
+    check("G-C6: sem jargão técnico", not any(j in low for j in _JARGON), text)
+
+    # G-C7: not_found claro.
+    text = composer.compose_policy_answer(question="apólice 111", result={"ok": False, "status": "policy_number_not_found"})
+    check("G-C7: not_found honesto", "não localizei" in text.lower() or "nao localizei" in text.lower(), text)
+
+    # G-C8: variante com metadados para o contrato da tool.
+    pack = _sample_pack(
+        coverage_sections=[_ASSIST_SECTION],
+        structured_coverage_available=True,
+        structured_coverage_absent=False,
+    )
+    meta = composer.compose_policy_answer_with_meta(question="ela tem assistência?", result=_found_result(pack))
+    check("G-C8: meta traz texto e política", isinstance(meta, dict) and meta.get("text") and (meta.get("assistance_policy") or {}).get("applied") is True, meta)
+    meta2 = composer.compose_policy_answer_with_meta(question="ela tem assistência?", result=_found_result(_sample_pack()))
+    check("G-C8b: política não aplicada no meta quando não confirmada", (meta2.get("assistance_policy") or {}).get("applied") is False, meta2)
+
+
+def run_e4_integration(nodes):
+    print("\n== E4b - integração tool + output guard ==\n")
+
+    # Guard: required assistance_policy_applied → LLM não pode omitir os serviços.
+    rendered = (
+        "Sim — esta apólice residencial tem assistência confirmada.\n"
+        "Pela política padrão de Assistência 24h residencial, os serviços incluídos são: eletricista, chaveiro, hidráulica/encanador."
+    )
+    contract = {
+        "provider": "infocap",
+        "result_kind": "found",
+        "rendered_safe_answer": rendered,
+        "required_facts": ["assistance_policy_applied"],
+    }
+    out = nodes._guard_infocap_policy_final_response("A apólice tem assistência sim!", contract)
+    check("guard: candidata sem os serviços é substituída", out == rendered, out)
+    good = "Sim! Ela tem assistência 24h: eletricista, chaveiro e hidráulica/encanador estão incluídos."
+    out = nodes._guard_infocap_policy_final_response(good, contract)
+    check("guard: candidata completa é mantida", out == good, out)
+
+    # Integração estrutural: tool usa o compositor sob a flag v2.
+    tool_src = (ROOT / "app" / "agents" / "tools" / "infocap_tool.py").read_text(encoding="utf-8")
+    check("tool: usa compose_policy_answer_with_meta", "compose_policy_answer_with_meta" in tool_src)
+    check("tool: gated pela flag POLICY_INTELLIGENCE_V2", "policy_intelligence_v2_enabled" in tool_src)
+    check("tool: contrato ganha assistance_policy_applied", "assistance_policy_applied" in tool_src)
+
+
 def run():
     print("== SPEC-016 - Policy Intelligence vertical ==")
     nodes = _load_nodes_module()
@@ -410,6 +561,16 @@ def run():
             check("E3: módulo app/services/assistance_policy.py existe", False, "arquivo ausente")
     if assistance_policy:
         run_e3(policy_facts, assistance_policy)
+
+    composer = None
+    if assistance_policy:
+        try:
+            composer = _load_file_module("app.services.policy_answer_composer", "app/services/policy_answer_composer.py")
+        except FileNotFoundError:
+            check("E4: módulo app/services/policy_answer_composer.py existe", False, "arquivo ausente")
+    if composer:
+        run_e4(composer)
+        run_e4_integration(nodes)
 
     print(f"\n== Resumo: {PASS} passaram, {FAIL} falharam ==")
     if FAILURES:
