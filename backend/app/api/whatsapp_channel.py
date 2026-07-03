@@ -149,7 +149,18 @@ async def whatsapp_channel_setup(
             create = await client.post(
                 "/instance/create",
                 headers=headers,
-                json={"instanceName": instance, "qrcode": True, "integration": "WHATSAPP-BAILEYS"},
+                json={
+                    "instanceName": instance,
+                    "qrcode": True,
+                    "integration": "WHATSAPP-BAILEYS",
+                    # Cinto e suspensório (v2.3.x): webhook já na criação.
+                    "webhook": {
+                        "url": webhook_url,
+                        "byEvents": False,
+                        "base64": False,
+                        "events": ["MESSAGES_UPSERT", "CONNECTION_UPDATE"],
+                    },
+                },
             )
             if create.status_code >= 400 and create.status_code not in (403, 409):
                 logger.error(f"[WA CHANNEL] instance create failed http={create.status_code} body={_safe_snippet(create)}")
@@ -273,8 +284,16 @@ async def whatsapp_channel_qr(
         if res.status_code >= 400:
             raise HTTPException(status_code=502, detail="evolution_qr_failed")
         data = res.json() if res.content else {}
-    qr = data.get("base64") or (data.get("qrcode") or {}).get("base64") or data.get("code")
-    return {"ok": bool(qr), "instance": instance, "qr_base64": qr, "raw_state": data.get("state")}
+    qr = data.get("base64") or (data.get("qrcode") or {}).get("base64")
+    qr_text = data.get("code") or (data.get("qrcode") or {}).get("code")
+    # v2.3.x: base64 é a imagem; 'code' é o TEXTO do QR (não renderizável como img).
+    return {
+        "ok": bool(qr or qr_text),
+        "instance": instance,
+        "qr_base64": qr,
+        "qr_text": qr_text if not qr else None,
+        "raw_state": data.get("state"),
+    }
 
 
 @router.get("/api/whatsapp-channel/status")
