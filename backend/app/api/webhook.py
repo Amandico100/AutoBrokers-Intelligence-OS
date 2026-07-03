@@ -445,12 +445,17 @@ async def process_whatsapp_message_background(
         # 4b. 42W0 — Atendimento externo vai para o Attendance Runtime (não o Core),
         # quando habilitado e o agente é um Attendance Agent. O bridge cuida de
         # persistir mensagens + reply; aqui só encaminhamos e (talvez) enviamos.
+        # SPEC-017 P2 (D1/D2 — cérebro ÚNICO): com ATTENDANT_SMITH_ENABLED (default
+        # ligado), o atendente externo roda DIRETO no Smith como qualquer agente —
+        # o bridge TS legado só é usado se a flag for explicitamente desligada.
+        _attendant_on_smith = str(os.getenv("ATTENDANT_SMITH_ENABLED", "true")).strip().lower() in ("1", "true", "yes", "on")
         if (
             not is_human_mode
+            and not _attendant_on_smith
             and settings.ATTENDANCE_WHATSAPP_ENABLED
             and await _is_attendance_agent(agent_id)
         ):
-            logger.info("[WEBHOOK] Routing inbound to Attendance Runtime bridge")
+            logger.info("[WEBHOOK] Routing inbound to Attendance Runtime bridge (legacy flag)")
             await _forward_to_attendance_bridge(
                 company_id=company_id,
                 agent_id=agent_id,
