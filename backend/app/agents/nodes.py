@@ -85,6 +85,12 @@ _CONCEPTUAL_QUESTION_RE = re.compile(
     re.IGNORECASE,
 )
 
+# CPF/CNPJ explícito na pergunta = novo lookup por documento; o lock de contexto
+# não pode disparar (o final do CPF não é número de apólice — SPEC-016.1 D8).
+_DOCUMENT_IN_TEXT_RE = re.compile(
+    r"\b\d{3}\.?\d{3}\.?\d{3}-?\d{2}\b|\b\d{2}\.?\d{3}\.?\d{3}/?\d{4}-?\d{2}\b|\b\d{11}\b|\b\d{14}\b"
+)
+
 
 def _policy_intelligence_v2() -> bool:
     try:
@@ -131,6 +137,10 @@ def _extract_context_policy_number(question: str, context: Optional[Dict[str, An
 
 def _policy_context_tool_args(question: str, context: Optional[Dict[str, Any]]) -> Optional[Dict[str, Any]]:
     if not isinstance(context, dict):
+        return None
+    if _DOCUMENT_IN_TEXT_RE.search(str(question or "")):
+        # D8: CPF/CNPJ na pergunta → a LLM chama a tool com o documento novo;
+        # o contexto antigo não pode sequestrar a consulta.
         return None
     identity: Dict[str, Any] = {}
     if context.get("document"):
@@ -855,7 +865,13 @@ async def tool_node(state: AgentState, tools: list) -> dict:
                                 )
                             data = result.get("data") if isinstance(result.get("data"), dict) else {}
                             infocap_policy_context = _safe_infocap_policy_context(data)
-                            content = json.dumps(result, ensure_ascii=False, default=str)
+                            if _policy_intelligence_v2() and str(result.get("content") or "").strip():
+                                # infocap_briefing_only (SPEC-016.1 D10): a LLM recebe
+                                # SÓ o briefing humanizado — nunca o JSON cru com
+                                # abreviações/termos internos da fonte.
+                                content = str(result.get("content"))
+                            else:
+                                content = json.dumps(result, ensure_ascii=False, default=str)
                         else:
                             content = str(result)
                     else:
