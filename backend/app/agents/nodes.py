@@ -60,36 +60,100 @@ _POLICY_DETAIL_TERMS = (
 )
 
 
+# SPEC-016 E1: termos extras de detalhe válidos apenas no contexto v2 (perguntas
+# de assistência do corretor como "ela cobre eletricista?").
+_POLICY_DETAIL_TERMS_V2 = (
+    "cobre",
+    "coberto",
+    "coberta",
+    "eletricista",
+    "chaveiro",
+    "encanador",
+    "hidraulica",
+    "hidráulica",
+)
+
+# Referência anafórica à apólice em contexto ("ela tem assistência?").
+_POLICY_ANAPHORA_RE = re.compile(
+    r"\b(ela|nela|dela|essa|dessa|nessa|esta|desta|nesta|aquela|daquela)\b", re.IGNORECASE
+)
+
+# Pergunta CONCEITUAL (definição/explicação) não deve virar consulta operacional
+# forçada — o Core responde com conhecimento geral (SPEC-016 G-A5).
+_CONCEPTUAL_QUESTION_RE = re.compile(
+    r"^\s*(o\s*que\s*(é|e|significa)|oq\s|como\s+funciona|explique|explica|defin|qual\s+a\s+diferen)",
+    re.IGNORECASE,
+)
+
+
+def _policy_intelligence_v2() -> bool:
+    from app.core.feature_flags import policy_intelligence_v2_enabled
+
+    return policy_intelligence_v2_enabled()
+
+
+def _has_policy_detail_term(lowered: str) -> bool:
+    if any(term in lowered for term in _POLICY_DETAIL_TERMS):
+        return True
+    if _policy_intelligence_v2() and any(term in lowered for term in _POLICY_DETAIL_TERMS_V2):
+        return True
+    return False
+
+
 def _extract_context_policy_number(question: str, context: Optional[Dict[str, Any]]) -> Optional[str]:
     if not isinstance(context, dict):
         return None
     text = str(question or "")
     lowered = text.lower()
-    if not any(term in lowered for term in _POLICY_DETAIL_TERMS):
+    if not _has_policy_detail_term(lowered):
         return None
     candidates = [str(item or "").strip() for item in context.get("policy_numbers") or [] if str(item or "").strip()]
     for number in sorted(candidates, key=len, reverse=True):
         if number and number in text:
             return number
     match = re.search(r"\b[A-Za-z]?\d[A-Za-z0-9-]{4,}\b", text)
-    return match.group(0) if match else None
+    if match:
+        return match.group(0)
+    if _policy_intelligence_v2() and not _CONCEPTUAL_QUESTION_RE.search(text):
+        # E1: sem número no texto, o contexto resolve a anáfora de forma segura.
+        # Perguntas conceituais ("o que é franquia?") ficam com o LLM (G-A5).
+        selected = str(context.get("selected_policy_number") or "").strip()
+        if selected:
+            return selected
+        if len(candidates) == 1:
+            return candidates[0]
+    return None
 
 
 def _policy_context_tool_args(question: str, context: Optional[Dict[str, Any]]) -> Optional[Dict[str, Any]]:
-    policy_number = _extract_context_policy_number(question, context)
-    if not policy_number or not isinstance(context, dict):
+    if not isinstance(context, dict):
         return None
-    args: Dict[str, Any] = {
-        "policy_number": policy_number,
-        "user_query": str(question or ""),
-    }
+    identity: Dict[str, Any] = {}
     if context.get("document"):
-        args["document"] = context.get("document")
+        identity["document"] = context.get("document")
     elif context.get("name"):
-        args["name"] = context.get("name")
+        identity["name"] = context.get("name")
     else:
         return None
-    return args
+
+    policy_number = _extract_context_policy_number(question, context)
+    if policy_number:
+        return {"policy_number": policy_number, "user_query": str(question or ""), **identity}
+
+    if _policy_intelligence_v2():
+        # E1 (G-A2): 2+ apólices no contexto + anáfora sem número → força a
+        # LISTAGEM canônica (o contrato ambiguous_policy pede a escolha ao
+        # corretor). Nunca escolhe silenciosamente.
+        lowered = str(question or "").lower()
+        candidates = [str(item or "").strip() for item in context.get("policy_numbers") or [] if str(item or "").strip()]
+        if (
+            len(candidates) > 1
+            and _has_policy_detail_term(lowered)
+            and _POLICY_ANAPHORA_RE.search(lowered)
+            and not _CONCEPTUAL_QUESTION_RE.search(lowered)
+        ):
+            return {"user_query": str(question or ""), **identity}
+    return None
 
 
 def _safe_infocap_policy_context(data: Dict[str, Any]) -> Optional[Dict[str, Any]]:
@@ -107,12 +171,21 @@ def _safe_infocap_policy_context(data: Dict[str, Any]) -> Optional[Dict[str, Any
     name = str(data.get("client_name") or "").strip()
     if not (document or name) or not policy_numbers:
         return None
-    return {
+    context: Dict[str, Any] = {
         "document": document or None,
         "name": name or None,
         "policy_numbers": sorted(set(policy_numbers)),
         "source": "infocap_customer_catalog",
     }
+    # SPEC-016 E1 (G-A3): detalhe confirmado fixa a apólice selecionada para as
+    # próximas anáforas ("ela"). Somente número humano; nunca locator técnico.
+    if str(data.get("status") or "") == "found":
+        selected = data.get("selected") or data.get("policy") or {}
+        if isinstance(selected, dict):
+            selected_number = str(selected.get("policy_number") or selected.get("numapo") or "").strip()
+            if selected_number and selected_number.lower() not in {"0", "none", "null", "-"}:
+                context["selected_policy_number"] = selected_number
+    return context
 
 
 def _guard_infocap_policy_final_response(candidate_text: str, contract: Optional[Dict[str, Any]]) -> str:
@@ -146,6 +219,16 @@ def _guard_infocap_policy_final_response(candidate_text: str, contract: Optional
             return rendered
     if "source_limited" in required and "erro" in lower:
         return rendered
+    if "assistance_policy_applied" in required:
+        # SPEC-016 E4b: política de assistência aplicada → a resposta final não
+        # pode omitir os serviços padrão garantidos pela política governada.
+        services_present = (
+            "eletricista" in lower
+            and "chaveiro" in lower
+            and ("hidraulica" in lower or "hidráulica" in lower or "encanador" in lower)
+        )
+        if not services_present:
+            return rendered
     if "identity_mismatch" in required:
         forbidden = ("seguradora", "produto", "cobertura", "parcela", "pdf", "documento oficial")
         if any(term in lower for term in forbidden) or "identidade da apolice" not in lower:

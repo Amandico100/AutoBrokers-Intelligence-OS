@@ -356,9 +356,13 @@ def run():
 
     check(
         "G119 tool converts simple policy_ref to policy_number before detail endpoint",
+        # SPEC-016 E5: o detail agora passa pela porta PolicyDataProvider, mas o
+        # invariante P0.1 continua: ref simples vira policy_number ANTES de
+        # qualquer chamada de detalhe; só locator técnico completo detalha.
         "policy_number = str(policy_ref)" in tool_source
         and "policy_ref = None" in tool_source
-        and "if policy_ref:\n                from app.api.infocap_connector import InfocapPolicyDetailPayload" in tool_source,
+        and "parse_policy_locator_ref(str(policy_ref))" in tool_source
+        and tool_source.index("policy_ref = None") < tool_source.index("provider.detail("),
     )
     try:
         human_match_source = inspect.getsource(mod._policy_doc_matches_human_number)
