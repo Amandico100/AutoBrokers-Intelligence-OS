@@ -540,6 +540,43 @@ def run_e4_integration(nodes):
     check("tool: contrato ganha assistance_policy_applied", "assistance_policy_applied" in tool_src)
 
 
+def run_e5(port):
+    print("\n== E5 - porta PolicyDataProvider (multi-provider) ==\n")
+
+    # Parse genérico de locator técnico: <provider>:<parte>:<parte>...
+    parsed = port.parse_policy_locator_ref("infocap:1:999001")
+    check("G-E5.1: locator infocap parseado", parsed == ("infocap", ("1", "999001")), parsed)
+    parsed = port.parse_policy_locator_ref("quiver:filial-a:abc123")
+    check("G-E5.2: locator de outro provider parseado", parsed == ("quiver", ("filial-a", "abc123")), parsed)
+    check("G-E5.3: número humano simples não é locator", port.parse_policy_locator_ref("202623140269982") is None)
+    check("G-E5.4: vazio/None não é locator", port.parse_policy_locator_ref(None) is None and port.parse_policy_locator_ref("") is None)
+    check("G-E5.5: locator incompleto não passa", port.parse_policy_locator_ref("infocap:1") is None)
+
+    # Registry de providers.
+    provider = port.get_policy_data_provider("infocap")
+    check("G-E5.6: registry resolve provider infocap", provider is not None and provider.provider_key == "infocap", provider)
+    check("G-E5.7: provider tem lookup e detail", callable(getattr(provider, "lookup", None)) and callable(getattr(provider, "detail", None)))
+
+    class _FakeProvider:
+        provider_key = "quiver"
+
+        async def lookup(self, **kwargs):
+            return {"ok": True}
+
+        async def detail(self, **kwargs):
+            return {"ok": True}
+
+    port.register_policy_data_provider(_FakeProvider())
+    check("G-E5.8: registry aceita provider futuro (quiver)", port.get_policy_data_provider("quiver").provider_key == "quiver")
+    check("G-E5.9: provider desconhecido retorna None", port.get_policy_data_provider("nao_existe") is None)
+
+    # Estrutural: a tool fala com a PORTA, não com o conector InfoCap direto.
+    tool_src = (ROOT / "app" / "agents" / "tools" / "infocap_tool.py").read_text(encoding="utf-8")
+    check("G-E5.10: tool usa get_policy_data_provider", "get_policy_data_provider" in tool_src)
+    check("G-E5.11: tool não importa endpoints do conector direto", "import InfocapLookupPayload" not in tool_src and "infocap_policy_detail" not in tool_src)
+    check("G-E5.12: tool usa parse genérico de locator", "parse_policy_locator_ref" in tool_src and "_parse_policy_ref_input" not in tool_src)
+
+
 def run():
     print("== SPEC-016 - Policy Intelligence vertical ==")
     nodes = _load_nodes_module()
@@ -571,6 +608,14 @@ def run():
     if composer:
         run_e4(composer)
         run_e4_integration(nodes)
+
+    try:
+        port = _load_file_module("app.providers.policy_data_provider", "app/providers/policy_data_provider.py")
+    except FileNotFoundError:
+        check("E5: módulo app/providers/policy_data_provider.py existe", False, "arquivo ausente")
+        port = None
+    if port:
+        run_e5(port)
 
     print(f"\n== Resumo: {PASS} passaram, {FAIL} falharam ==")
     if FAILURES:

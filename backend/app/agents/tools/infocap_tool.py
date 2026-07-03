@@ -44,6 +44,7 @@ class InfocapPolicyLookupTool(BaseTool):
     args_schema: Type[BaseModel] = InfocapLookupInput
 
     company_id: str = ""
+    provider_key: str = "infocap"  # SPEC-016 E5: provider de gestão da corretora (porta PolicyDataProvider)
 
     class Config:
         arbitrary_types_allowed = True
@@ -72,33 +73,39 @@ class InfocapPolicyLookupTool(BaseTool):
 
             db = await create_async_supabase_client()
 
+            # SPEC-016 E5: a tool fala com a PORTA PolicyDataProvider, nunca com o
+            # conector concreto. InfoCap é o provider piloto; Quiver futuro entra
+            # pela mesma porta.
+            from app.providers.policy_data_provider import (
+                get_policy_data_provider,
+                parse_policy_locator_ref,
+            )
+
+            provider = get_policy_data_provider(self.provider_key)
+            if provider is None:
+                return {"content": "Nenhum provider de apolices configurado para a corretora.", "found": False}
+
+            if policy_ref and not parse_policy_locator_ref(str(policy_ref)):
+                # P0.1: referência simples enviada pela LLM é número humano.
+                policy_number = str(policy_ref)
+                policy_ref = None
+
             if policy_ref:
-                from app.api.infocap_connector import _parse_policy_ref_input
-
-                ref_codfil, _ = _parse_policy_ref_input(str(policy_ref))
-                if not ref_codfil:
-                    policy_number = str(policy_ref)
-                    policy_ref = None
-
-            if policy_ref:
-                from app.api.infocap_connector import InfocapPolicyDetailPayload, infocap_policy_detail
-
-                dpayload = InfocapPolicyDetailPayload(
+                det = await provider.detail(
                     company_id=self.company_id,
                     policy_ref=str(policy_ref),
                     user_query=user_query,
                     document_evidence_requested=bool(document_evidence_requested),
                     force_document_evidence_refresh=bool(force_document_evidence_refresh),
                     unmasked=True,
+                    db=db,
+                    internal_key=key,
                 )
-                det = await infocap_policy_detail(payload=dpayload, x_autobrokers_internal_key=key, db=db)
                 content, assistance_policy = self._render_content(det, user_query, detail=True)
                 contract = self._build_policy_response_contract(det, content, assistance_policy)
                 return {"content": content, "data": det, "found": bool(det.get("ok")), "policy_response_contract": contract}
 
-            from app.api.infocap_connector import InfocapLookupPayload, infocap_lookup
-
-            payload = InfocapLookupPayload(
+            result = await provider.lookup(
                 company_id=self.company_id,
                 document=document or None,
                 name=name or None,
@@ -107,8 +114,9 @@ class InfocapPolicyLookupTool(BaseTool):
                 document_evidence_requested=bool(document_evidence_requested),
                 force_document_evidence_refresh=bool(force_document_evidence_refresh),
                 unmasked=True,
+                db=db,
+                internal_key=key,
             )
-            result = await infocap_lookup(payload=payload, x_autobrokers_internal_key=key, db=db)
             content, assistance_policy = self._render_content(result, user_query, detail=False)
             contract = self._build_policy_response_contract(result, content, assistance_policy)
             return {"content": content, "data": result, "found": bool(result.get("ok")), "policy_response_contract": contract}
