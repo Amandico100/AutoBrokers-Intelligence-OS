@@ -118,6 +118,39 @@ async def whatsapp_channel_setup(
     # 3) Upsert da integração (hash do token; plaintext NUNCA persiste).
     supabase = get_supabase_client()
 
+    def _resolve_attendant_agent_id() -> Optional[str]:
+        """SPEC-017 P2: sem agent_id explícito, vincula o ATENDENTE da corretora
+        (role attendance) — nunca o Core — para o canal do segurado."""
+        if payload.agent_id:
+            return payload.agent_id
+        try:
+            res = (
+                supabase.client.table("agents")
+                .select("id, is_active")
+                .eq("company_id", company_id)
+                .eq("agent_role", "attendance")
+                .eq("is_active", True)
+                .limit(1)
+                .execute()
+            )
+            if res.data:
+                return str(res.data[0]["id"])
+            # fallback: atendente existe mas está inativo — ainda assim é o correto
+            res2 = (
+                supabase.client.table("agents")
+                .select("id")
+                .eq("company_id", company_id)
+                .eq("agent_role", "attendance")
+                .limit(1)
+                .execute()
+            )
+            return str(res2.data[0]["id"]) if res2.data else None
+        except Exception as e:  # noqa: BLE001
+            logger.warning(f"[WA CHANNEL] attendant agent lookup failed: {type(e).__name__}")
+            return None
+
+    attendant_agent_id = _resolve_attendant_agent_id()
+
     def _upsert() -> None:
         record = {
             "company_id": company_id,
@@ -133,8 +166,8 @@ async def whatsapp_channel_setup(
             "is_active": True,
             "last_seen_at": datetime.now(timezone.utc).isoformat(),
         }
-        if payload.agent_id:
-            record["agent_id"] = payload.agent_id
+        if attendant_agent_id:
+            record["agent_id"] = attendant_agent_id
         existing = (
             supabase.client.table("integrations")
             .select("id")
