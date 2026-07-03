@@ -40,6 +40,17 @@ export function WhatsAppChannelCard() {
   const [alertNumber, setAlertNumber] = useState('');
   const [busy, setBusy] = useState(false);
   const [message, setMessage] = useState('');
+  const [diag, setDiag] = useState<Record<string, unknown> | null>(null);
+
+  const loadDiagnostics = useCallback(async () => {
+    try {
+      const res = await fetch('/api/dashboard/whatsapp-channel?action=diagnostics', { cache: 'no-store' });
+      const json = await res.json().catch(() => ({}));
+      setDiag(json && typeof json === 'object' ? json : null);
+    } catch {
+      setDiag(null);
+    }
+  }, []);
   const pollRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const wantQrRef = useRef(false);
 
@@ -77,11 +88,12 @@ export function WhatsAppChannelCard() {
 
   useEffect(() => {
     refreshStatus();
+    loadDiagnostics();
     pollRef.current = setInterval(refreshStatus, POLL_MS);
     return () => {
       if (pollRef.current) clearInterval(pollRef.current);
     };
-  }, [refreshStatus]);
+  }, [refreshStatus, loadDiagnostics]);
 
   const handleConnect = async () => {
     setBusy(true);
@@ -94,7 +106,8 @@ export function WhatsAppChannelCard() {
       });
       const json = await res.json().catch(() => ({}));
       if (!res.ok || json.ok === false) {
-        setMessage(json.error || json.detail || 'Não foi possível iniciar a conexão.');
+        setMessage(String(json.error || json.detail || 'Não foi possível iniciar a conexão.'));
+        await loadDiagnostics();
       } else {
         wantQrRef.current = true;
         setMessage('Instância pronta. Escaneie o QR code com o WhatsApp da corretora (Aparelhos conectados).');
@@ -134,21 +147,46 @@ export function WhatsAppChannelCard() {
         )}
 
         {!connected && state !== 'not_configured' && (
-          <div className="flex flex-col gap-3 sm:flex-row sm:items-end">
-            <div className="flex-1">
-              <label className="mb-1 block text-xs font-medium text-foreground-2">
-                Número/grupo de ALERTA de desconexão (não pode ser o número de atendimento)
-              </label>
-              <input
-                value={alertNumber}
-                onChange={(e) => setAlertNumber(e.target.value)}
-                placeholder="Ex.: 5548999998888"
-                className="w-full rounded-lg border border-border bg-surface-2 px-3 py-2 text-sm text-foreground outline-none focus:border-primary/60"
-              />
+          <div className="flex flex-col gap-3">
+            <p className="text-xs text-foreground-2">
+              <span className="font-semibold">É AQUI que você conecta o WhatsApp de atendimento da corretora.</span>{' '}
+              Clique em “Gerar QR code” e escaneie com o celular do número de atendimento.
+            </p>
+            <div className="flex flex-col gap-3 sm:flex-row sm:items-end">
+              <div className="flex-1">
+                <label className="mb-1 block text-xs font-medium text-foreground-2">
+                  Passo 1 (opcional) — número de ALERTA se a conexão cair (outro número, nunca o de atendimento)
+                </label>
+                <input
+                  value={alertNumber}
+                  onChange={(e) => setAlertNumber(e.target.value)}
+                  placeholder="Ex.: 5548999998888"
+                  className="w-full rounded-lg border border-border bg-surface-2 px-3 py-2 text-sm text-foreground outline-none focus:border-primary/60"
+                />
+              </div>
+              <Button onClick={handleConnect} disabled={busy}>
+                {busy ? 'Preparando…' : qr ? 'Gerar novo QR' : 'Passo 2 — Gerar QR code'}
+              </Button>
             </div>
-            <Button onClick={handleConnect} disabled={busy}>
-              {busy ? 'Preparando…' : qr ? 'Gerar novo QR' : 'Conectar (QR code)'}
-            </Button>
+          </div>
+        )}
+
+        {diag && !connected && (
+          <div className="rounded-lg border border-border bg-surface-2 px-3 py-2 text-xs text-foreground-2">
+            <p className="mb-1 font-semibold text-foreground">Diagnóstico do canal</p>
+            <ul className="space-y-0.5">
+              <li>{diag.evolution_base_url_set ? '✅' : '❌'} EVOLUTION_BASE_URL configurada</li>
+              <li>{diag.evolution_api_key_set ? '✅' : '❌'} EVOLUTION_API_KEY configurada</li>
+              <li>{diag.public_backend_url_set ? '✅' : '❌'} PUBLIC_BACKEND_URL configurada</li>
+              <li>
+                {diag.evolution_reachable ? '✅' : '❌'} Servidor Evolution alcançável
+                {diag.evolution_http_status ? ` (HTTP ${String(diag.evolution_http_status)})` : ''}
+                {diag.evolution_version ? ` · v${String(diag.evolution_version)}` : ''}
+              </li>
+              <li>ℹ️ Instância: {String(diag.instance || '-')} · estado: {String(diag.instance_state || '-')}</li>
+              {typeof diag.error === 'string' && diag.error ? <li>❗ {diag.error}</li> : null}
+            </ul>
+            <p className="mt-1 text-faint">Me envie um print deste diagnóstico se continuar falhando.</p>
           </div>
         )}
 
