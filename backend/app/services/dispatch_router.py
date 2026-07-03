@@ -23,6 +23,8 @@ from typing import Any, Callable, Dict, Optional
 from app.services.insurer_dispatch_service import (
     client_summary_from_capture,
     handle_insurer_message,
+    new_dispatch_session,
+    start_dispatch,
 )
 
 logger = logging.getLogger(__name__)
@@ -74,6 +76,47 @@ async def clear_active_dispatch(company_id: str, insurer_phone: str) -> None:
         await redis.delete(key)
     else:
         _memory_store.pop(key, None)
+
+
+def _digits(phone: str) -> str:
+    return "".join(ch for ch in str(phone or "") if ch.isdigit())
+
+
+async def start_live_dispatch(
+    *,
+    company_id: str,
+    case_id: str,
+    playbook_ref: str,
+    subservice: str,
+    slots: Dict[str, Any],
+    client_phone: str,
+    insurer_phone: str,
+    sender: Callable[[str], Any],
+) -> Dict[str, Any]:
+    """Inicia um acionamento REAL (gate já aberto pelo chamador): cria a sessão,
+    envia a abertura à seguradora via sender e ativa o roteamento do inbound.
+
+    Fail-safes: sessão ativa existente bloqueia (nunca duplo acionamento);
+    slots incompletos não enviam nada nem salvam sessão.
+    """
+    insurer = _digits(insurer_phone)
+    existing = await load_active_dispatch(company_id, insurer)
+    if existing:
+        return {"ok": False, "error": "dispatch_already_active", "session": existing}
+
+    session = new_dispatch_session(
+        case_id=case_id, company_id=company_id, playbook_ref=playbook_ref,
+        subservice=subservice, slots=slots,
+    )
+    if session.get("state") != "ready_to_send":
+        return {"ok": False, "error": session.get("reason") or "not_ready", "session": session}
+
+    session["client_phone"] = _digits(client_phone)
+    session["insurer_phone"] = insurer
+    session = start_dispatch(session, sender=sender)
+    await save_active_dispatch(company_id, insurer, session)
+    logger.info(f"[DISPATCH ROUTER] live dispatch started case={case_id} state={session.get('state')}")
+    return {"ok": True, "session": session}
 
 
 async def try_route_insurer_inbound(
