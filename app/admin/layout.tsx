@@ -229,6 +229,7 @@ export default function AdminLayout({ children }: { children: React.ReactNode })
       ],
     },
     { href: '/admin/auxiliares', icon: Bot, label: 'Auxiliares Globais' },
+    { href: '/admin/prompt-effective', icon: Shield, label: 'Prompt Efetivo' },
     { href: '/admin/portal-browser', icon: Globe, label: 'Portal Lab' },
     { href: '/admin/logs', icon: FileText, label: 'Logs do Sistema' },
     { href: '/admin/conversation-logs', icon: MessageSquare, label: 'Logs de Conversação' },
