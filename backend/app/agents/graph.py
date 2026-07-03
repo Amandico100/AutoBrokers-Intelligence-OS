@@ -217,9 +217,19 @@ async def create_agent_graph(
     # (binding do papel + entitlement não desligado + TAVILY_API_KEY presente no backend).
     web_search_tool = WebSearchTool() if "platform.web.search" in _active else None
 
-    # Human Handoff Tool - Controlado por tools_config do agente
+    # Onda 3 / SPEC-018 S2/S5: modo ESTRITO de autoridade (default OFF = comportamento
+    # atual). Ligado, a autoridade real é a capability do Registry; tools_config vira
+    # toggle visual por agente (human_handoff/csv_analytics).
+    import os as _os
+    from ..services.tool_authority import LEGACY_TOOL_CAPABILITIES, legacy_tool_allowed
+    _strict_authority = str(_os.getenv("AUTHORITY_STRICT_MODE", "")).strip().lower() in ("1", "true", "yes", "on")
+
+    # Human Handoff Tool - toggle no tools_config; capability manda em modo estrito (S5)
     tools_config = agent_data.get("tools_config", {}) if agent_data else {}
-    allow_human_handoff = tools_config.get("human_handoff", {}).get("enabled", False)
+    allow_human_handoff = legacy_tool_allowed(
+        "human_handoff", tools_config, _active,
+        strict=_strict_authority, capability_key=LEGACY_TOOL_CAPABILITIES["human_handoff"],
+    )
 
     # Unwrap para pegar o client real (tools usam .table() diretamente)
     real_supabase_client = getattr(supabase_client, 'client', supabase_client) if supabase_client else None
@@ -233,10 +243,13 @@ async def create_agent_graph(
     if allow_human_handoff:
         logger.info(f"[Graph] 🔔 HumanHandoffTool habilitada para agente {agent_id}")
 
-    # CSV Analytics Tool - Controlado por tools_config do agente
+    # CSV Analytics Tool - toggle no tools_config; capability manda em modo estrito (S5)
     from .tools.csv_analytics_tool import CSVAnalyticsTool
 
-    csv_analytics_enabled = tools_config.get("csv_analytics", {}).get("enabled", False)
+    csv_analytics_enabled = legacy_tool_allowed(
+        "csv_analytics", tools_config, _active,
+        strict=_strict_authority, capability_key=LEGACY_TOOL_CAPABILITIES["csv_analytics"],
+    )
     csv_analytics_tool = CSVAnalyticsTool(company_id=company_id, agent_id=agent_id) if csv_analytics_enabled else None
 
     if csv_analytics_enabled:
@@ -254,13 +267,9 @@ async def create_agent_graph(
     # === HTTP TOOL ROUTER ===
     from .tools.http_request import HttpToolRouter
 
-    # Onda 3 / SPEC-018 S2: modo ESTRITO de autoridade (default OFF = comportamento
-    # atual). Ligado, HTTP tools e MCP só entram com capability funcional ativa no
-    # Registry — fim da autorização por tabela/menção de prompt.
-    import os as _os
-    _strict_authority = str(_os.getenv("AUTHORITY_STRICT_MODE", "")).strip().lower() in ("1", "true", "yes", "on")
+    # SPEC-018 S2: em modo estrito, HTTP tools só entram com capability funcional
+    # ativa no Registry — fim da autorização por tabela/menção de prompt.
     _http_allowed = (not _strict_authority) or ("tenant.http_tools.execute" in _active)
-    _mcp_allowed = (not _strict_authority) or any(k.startswith("tenant.") and _active for k in _active)
 
     raw_id = agent_data.get("id") if agent_data else None
     dynamic_agent_id = str(raw_id) if raw_id else None

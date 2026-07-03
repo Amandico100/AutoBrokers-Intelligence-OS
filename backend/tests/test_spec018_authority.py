@@ -36,6 +36,12 @@ spec = importlib.util.spec_from_file_location(
 pe = importlib.util.module_from_spec(spec)
 spec.loader.exec_module(pe)
 
+spec2 = importlib.util.spec_from_file_location(
+    "app.services.tool_authority", ROOT / "app/services/tool_authority.py"
+)
+ta = importlib.util.module_from_spec(spec2)
+spec2.loader.exec_module(ta)
+
 
 def run():
     print("== SPEC-018 S1 - Prompt Efetivo ==\n")
@@ -76,6 +82,33 @@ def run():
     check("S1: attendance infocap mascarado", t2["infocap_policy_lookup"]["role_exposure"] == "mascarado")
     check("S1: attendance RAG privado+global", out2["rag_scope"] == "privado + global curado")
     check("S1: camada 1 = ATTENDANCE_BASE_PROMPT", "ATTENDANCE" in out2["prompt_layers"][0]["source"])
+
+    # S5 — tools_config vira toggle visual; em modo estrito a AUTORIDADE é a capability.
+    cfg_on = {"human_handoff": {"enabled": True}}
+    cfg_off = {"human_handoff": {"enabled": False}}
+    caps_with = {"platform.human_handoff"}
+    check(
+        "S5: flag OFF preserva comportamento legado (tools_config manda)",
+        ta.legacy_tool_allowed("human_handoff", cfg_on, set(), strict=False, capability_key="platform.human_handoff") is True,
+    )
+    check(
+        "S5: desabilitado no tools_config nunca anexa",
+        ta.legacy_tool_allowed("human_handoff", cfg_off, caps_with, strict=False, capability_key="platform.human_handoff") is False
+        and ta.legacy_tool_allowed("human_handoff", cfg_off, caps_with, strict=True, capability_key="platform.human_handoff") is False,
+    )
+    check(
+        "S5: estrito SEM capability bloqueia mesmo com tools_config ligado",
+        ta.legacy_tool_allowed("human_handoff", cfg_on, set(), strict=True, capability_key="platform.human_handoff") is False,
+    )
+    check(
+        "S5: estrito COM capability anexa",
+        ta.legacy_tool_allowed("human_handoff", cfg_on, caps_with, strict=True, capability_key="platform.human_handoff") is True,
+    )
+    check(
+        "S5: tools_config ausente/malformado nao quebra",
+        ta.legacy_tool_allowed("csv_analytics", {}, caps_with, strict=False, capability_key="platform.csv_analytics") is False
+        and ta.legacy_tool_allowed("csv_analytics", {"csv_analytics": None}, caps_with, strict=True, capability_key="platform.csv_analytics") is False,
+    )
 
     print(f"\n== Resumo: {PASS} passaram, {FAIL} falharam ==")
     if FAILURES:
