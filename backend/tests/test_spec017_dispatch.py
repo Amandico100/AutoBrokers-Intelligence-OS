@@ -163,6 +163,56 @@ def run():
     graph_src = (ROOT / "app" / "agents" / "graph.py").read_text(encoding="utf-8")
     check("P5: tool anexada SÓ para o papel attendance", "InsurerDispatchTool" in graph_src and '== "attendance"' in graph_src)
 
+    # ---- P5/P6: roteador de despacho (inbound da seguradora -> motor) ----
+    print("\n== P5/P6 - dispatch_router (seguradora responde -> motor -> cliente) ==\n")
+    import asyncio as _aio
+
+    router = _load("app.services.dispatch_router", "app/services/dispatch_router.py")
+
+    async def _router_flow():
+        os.environ["INSURER_DISPATCH_LIVE"] = "true"  # simula gate aberto p/ envio via sender
+        try:
+            session = dispatch.new_dispatch_session(case_id="cR", company_id="co-R", playbook_ref=REF, subservice="eletricista", slots=SLOTS)
+            session["client_phone"] = "5548911112222"
+            session = dispatch.start_dispatch(session, sender=lambda t: None)
+            await router.save_active_dispatch("co-R", "551140901444", session)
+
+            to_insurer, to_client = [], []
+            kw = dict(
+                company_id="co-R", from_phone="551140901444",
+                send_to_insurer=to_insurer.append,
+                send_to_client=lambda ph, tx: to_client.append((ph, tx)),
+            )
+            # Cliente comum NÃO é interceptado.
+            other = await router.try_route_insurer_inbound(company_id="co-R", from_phone="5548999990000", text="oi", send_to_insurer=to_insurer.append, send_to_client=lambda p, t: None)
+            check("P6: inbound de cliente comum não é interceptado", other is False)
+
+            # URA da seguradora -> respostas automáticas via sender.
+            for key in ("menu1", "menu2", "cpf", "endereco", "numero", "telefone", "celular", "anotei", "servico"):
+                handled = await router.try_route_insurer_inbound(text=URA[key], **kw)
+                assert handled
+            check("P6: URA respondida automaticamente (9 respostas)", to_insurer == ["2", "1", "11122233344", "1", "16783", "1", "48999998888", "1", "1"], to_insurer)
+
+            # Retorno com protocolo -> cliente é avisado e sessão encerra.
+            await router.try_route_insurer_inbound(text=URA["retorno"], **kw)
+            check("P6: cliente avisado com protocolo/senha/agendamento", len(to_client) == 1 and "46078656" in to_client[0][1] and to_client[0][0] == "5548911112222", to_client)
+            check("P6: sessão encerrada após captura", await router.load_active_dispatch("co-R", "551140901444") is None)
+
+            # needs_human: cliente recebe aviso humano e sessão pausa.
+            s2 = dispatch.new_dispatch_session(case_id="cH", company_id="co-R", playbook_ref=REF, subservice="chaveiro", slots=SLOTS)
+            s2["client_phone"] = "5548911112222"
+            s2 = dispatch.start_dispatch(s2, sender=lambda t: None)
+            await router.save_active_dispatch("co-R", "551140901444", s2)
+            to_client2 = []
+            await router.try_route_insurer_inbound(company_id="co-R", from_phone="551140901444", text="Este caso é sinistro.", send_to_insurer=lambda t: None, send_to_client=lambda ph, tx: to_client2.append(tx))
+            paused = await router.load_active_dispatch("co-R", "551140901444")
+            check("P6: sinistro -> pausa + aviso humanizado ao cliente", paused and paused["state"] == "needs_human" and to_client2 and "equipe" in to_client2[0], to_client2)
+            await router.clear_active_dispatch("co-R", "551140901444")
+        finally:
+            os.environ.pop("INSURER_DISPATCH_LIVE", None)
+
+    _aio.run(_router_flow())
+
     print(f"\n== Resumo: {PASS} passaram, {FAIL} falharam ==")
     if FAILURES:
         sys.exit(1)
