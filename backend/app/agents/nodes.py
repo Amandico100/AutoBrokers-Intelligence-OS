@@ -87,8 +87,12 @@ _CONCEPTUAL_QUESTION_RE = re.compile(
 
 
 def _policy_intelligence_v2() -> bool:
-    from app.core.feature_flags import policy_intelligence_v2_enabled
+    try:
+        from app.core.feature_flags import policy_intelligence_v2_enabled
+    except Exception:  # noqa: BLE001 — fallback direto ao ambiente
+        import os
 
+        return str(os.getenv("POLICY_INTELLIGENCE_V2", "")).strip().lower() in ("1", "true", "yes", "on")
     return policy_intelligence_v2_enabled()
 
 
@@ -188,6 +192,37 @@ def _safe_infocap_policy_context(data: Dict[str, Any]) -> Optional[Dict[str, Any
     return context
 
 
+def _merge_infocap_policy_context(
+    prev: Optional[Dict[str, Any]], new: Optional[Dict[str, Any]]
+) -> Optional[Dict[str, Any]]:
+    """SPEC-016.1 D6: uma consulta falha do MESMO cliente não pode apagar a
+    apólice selecionada na conversa. Cliente novo substitui o contexto inteiro."""
+    if not isinstance(new, dict):
+        return prev if isinstance(prev, dict) else None
+    if not isinstance(prev, dict):
+        return new
+    if new.get("selected_policy_number"):
+        return new
+    same_client = bool(
+        (new.get("document") and new.get("document") == prev.get("document"))
+        or (not new.get("document") and new.get("name") and new.get("name") == prev.get("name"))
+    )
+    prev_selected = str(prev.get("selected_policy_number") or "").strip()
+    if same_client and prev_selected and prev_selected in (new.get("policy_numbers") or []):
+        merged = dict(new)
+        merged["selected_policy_number"] = prev_selected
+        return merged
+    return new
+
+
+def _normalize_money_amount(value: Any) -> str:
+    """Normaliza 'R$ 45.000,00' / '45.000,00' / 'R$ 45.000' para comparação."""
+    text = re.sub(r"[^\d,]", "", str(value or "")).strip(",")
+    if text.endswith(",00"):
+        text = text[:-3]
+    return text.strip(",")
+
+
 def _guard_infocap_policy_final_response(candidate_text: str, contract: Optional[Dict[str, Any]]) -> str:
     """R1B.2: InfoCap policy answers are operational contracts, not free-form summaries."""
     if not isinstance(contract, dict) or contract.get("provider") != "infocap":
@@ -204,19 +239,48 @@ def _guard_infocap_policy_final_response(candidate_text: str, contract: Optional
         return rendered
     if any(marker in lower for marker in _INFOCAP_GENERIC_ERROR_MARKERS):
         return rendered
-    if result_kind == "ambiguous_policy" and ("policy_options" in required):
-        if "seguradora" not in lower or "numero" not in lower:
+    if "policy_options" in required:
+        # SPEC-016.1 D7: a LLM pode formatar como quiser, mas TODOS os números
+        # humanos das opções precisam aparecer na resposta (nunca omitir opção).
+        options = contract.get("policy_options") or []
+        for option in options[:10]:
+            if not isinstance(option, dict):
+                continue
+            number = str(option.get("policy_number") or option.get("numapo") or "").strip()
+            if number and number.lower() not in {"0", "none", "null", "-"} and number not in candidate:
+                return rendered
+        if not options and ("seguradora" not in lower or "numero" not in lower and "número" not in lower):
             return rendered
-    if "coverage_absent" in required and "nao retornou itens estruturados" not in lower and "não retornou itens estruturados" not in lower:
-        return rendered
+    if "coverage_absent" in required:
+        absence_markers = (
+            "nao retornou", "não retornou", "nao constam", "não constam",
+            "sem itens estruturados", "nao veio", "não veio", "nao encontrei",
+            "não encontrei", "nao ha itens", "não há itens", "documento oficial",
+        )
+        if not any(marker in lower for marker in absence_markers):
+            return rendered
+    allowed_amounts = contract.get("allowed_amounts")
+    if isinstance(allowed_amounts, list) and allowed_amounts:
+        # SPEC-016.1 D7: anti-invenção — todo valor R$ citado pela LLM precisa
+        # existir nos dados retornados pela fonte.
+        allowed_norm = {_normalize_money_amount(a) for a in allowed_amounts}
+        allowed_norm.discard("")
+        for match in re.findall(r"R\$\s*[\d.][\d.,]*", candidate):
+            if _normalize_money_amount(match) not in allowed_norm:
+                return rendered
     if "document_evidence" in required:
+        # SPEC-016.1: a LLM precisa CITAR a fonte documental (nome ou página
+        # válida) — mas não precisa repetir todas as páginas do rascunho.
         candidate_norm = lower.replace("página", "pagina")
         rendered_norm = rendered.lower().replace("página", "pagina")
         required_pages = set(re.findall(r"pagina\s+\d+", rendered_norm))
-        if required_pages and not required_pages.issubset(set(re.findall(r"pagina\s+\d+", candidate_norm))):
+        candidate_pages = set(re.findall(r"pagina\s+\d+", candidate_norm))
+        cites_valid_page = bool(candidate_pages & required_pages) if required_pages else bool(candidate_pages)
+        cites_document = "documento oficial" in candidate_norm or "apolice oficial" in candidate_norm or "apólice oficial" in lower
+        if not cites_valid_page and not cites_document:
             return rendered
-        if not required_pages and "pagina" not in candidate_norm:
-            return rendered
+        if required_pages and candidate_pages and not candidate_pages.issubset(required_pages):
+            return rendered  # página inventada
     if "source_limited" in required and "erro" in lower:
         return rendered
     if "assistance_policy_applied" in required:
@@ -237,13 +301,24 @@ def _guard_infocap_policy_final_response(candidate_text: str, contract: Optional
 
 
 def should_continue_after_tools(state: AgentState) -> Literal["agent", "end"]:
-    """Route InfoCap policy contracts directly to the final answer inside the existing Smith graph."""
+    """Roteia contratos de apólice dentro do grafo Smith existente.
+
+    SPEC-016.1 D7: com a flag v2 ligada, a LLM VOLTA a redigir a resposta final
+    (qualidade/formatação de copiloto) e o contrato vira fiscal via output
+    guard pós-LLM. Só identity_mismatch continua fail-closed sem LLM.
+    Flag desligada: comportamento legado (R1B.2) preservado.
+    """
     contract = state.get("policy_response_contract")
     final_response = state.get("final_response")
-    if isinstance(contract, dict) and contract.get("provider") == "infocap" and final_response:
-        logger.info("[Router] InfoCap policy contract finalized without LLM rewrite")
-        return "end"
-    return "agent"
+    if not (isinstance(contract, dict) and contract.get("provider") == "infocap" and final_response):
+        return "agent"
+    if _policy_intelligence_v2():
+        if contract.get("result_kind") == "identity_mismatch":
+            logger.info("[Router] InfoCap identity_mismatch fail-closed (sem LLM)")
+            return "end"
+        return "agent"
+    logger.info("[Router] InfoCap policy contract finalized without LLM rewrite")
+    return "end"
 
 
 def sanitize_history(messages: list) -> list:
@@ -596,7 +671,26 @@ async def agent_node(state: AgentState, config: RunnableConfig, llm_with_tools) 
     else:
         logger.warning("[Agent Node] ⚠️ Tokens ainda não encontrados (verifique stream_options).")
 
-    return {
+    # === SPEC-016.1 D7: guard pós-LLM do contrato de apólice ===
+    # A LLM redige a resposta final; o contrato fiscaliza (opções completas,
+    # sem valores inventados, ausência honesta). Violação → texto seguro.
+    guarded_final: Optional[str] = None
+    contract = state.get("policy_response_contract")
+    has_tool_calls = bool(getattr(response, "tool_calls", None))
+    if (
+        _policy_intelligence_v2()
+        and isinstance(contract, dict)
+        and contract.get("provider") == "infocap"
+        and not has_tool_calls
+    ):
+        candidate = extract_text_from_content(getattr(response, "content", "") or "")
+        guarded = _guard_infocap_policy_final_response(candidate, contract)
+        if guarded and guarded.strip() != (candidate or "").strip():
+            logger.info("[Agent Node] 🛡️ Output guard substituiu resposta de apólice fora do contrato")
+            response = AIMessage(content=guarded)
+        guarded_final = guarded or candidate
+
+    result_update = {
         "messages": [response],
         "rag_chunks": state.get("rag_chunks", []),
         "tools_used": state.get("tools_used", []),
@@ -607,6 +701,9 @@ async def agent_node(state: AgentState, config: RunnableConfig, llm_with_tools) 
         "tokens_output": state.get("tokens_output", 0) + output_tokens,
         "tokens_total": state.get("tokens_total", 0) + total_tokens
     }
+    if guarded_final:
+        result_update["final_response"] = guarded_final
+    return result_update
 
 
 async def tool_node(state: AgentState, tools: list) -> dict:
@@ -801,9 +898,13 @@ async def tool_node(state: AgentState, tools: list) -> dict:
 
     if policy_response_contract and policy_final_response:
         return_dict["policy_response_contract"] = policy_response_contract
-        return_dict["final_response"] = policy_final_response
-    if infocap_policy_context:
-        return_dict["infocap_policy_context"] = infocap_policy_context
+        # SPEC-016.1 D7: com v2, a LLM redige a resposta final (o guard pós-LLM
+        # fiscaliza). Só identity_mismatch encerra direto com o texto seguro.
+        if not _policy_intelligence_v2() or policy_response_contract.get("result_kind") == "identity_mismatch":
+            return_dict["final_response"] = policy_final_response
+    merged_context = _merge_infocap_policy_context(state.get("infocap_policy_context"), infocap_policy_context)
+    if merged_context:
+        return_dict["infocap_policy_context"] = merged_context
 
     return return_dict
 

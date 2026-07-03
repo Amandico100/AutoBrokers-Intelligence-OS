@@ -122,6 +122,11 @@ def _facts_from_document_evidence(pack: Dict[str, Any], locator_hash: Optional[s
     evidence = pack.get("official_policy_document_evidence")
     if not isinstance(evidence, dict):
         return []
+    try:
+        from app.services.policy_document_evidence_service import is_boilerplate_fragment
+    except Exception:  # noqa: BLE001 — defesa em profundidade opcional
+        is_boilerplate_fragment = lambda _t: False  # noqa: E731
+
     facts: List[Dict[str, Any]] = []
     for item in evidence.get("evidence_items") or []:
         if not isinstance(item, dict):
@@ -134,9 +139,83 @@ def _facts_from_document_evidence(pack: Dict[str, Any], locator_hash: Optional[s
         # Regra dura: fact documental exige página E trecho.
         if not isinstance(page, int) or page < 1 or not snippet:
             continue
+        # SPEC-016.1 D2: boilerplate nunca vira fact (mesmo vindo de cache legado).
+        if is_boilerplate_fragment(snippet):
+            continue
         confidence = str(item.get("confidence") or "medium").strip().lower()
         if confidence not in ("high", "medium", "low"):
             confidence = "medium"
+        detail_base = {"page": page, "snippet": snippet}
+
+        structured = item.get("structured") if isinstance(item.get("structured"), dict) else {}
+        kind = str(structured.get("kind") or "")
+        if kind == "coverage_row":
+            label = str(structured.get("label") or snippet[:80])
+            facts.append(
+                _fact(
+                    fact_type="coverage",
+                    label=label,
+                    value=structured.get("lmi"),
+                    source="official_document",
+                    source_detail={**detail_base, "premium": structured.get("premium"), "participation": structured.get("participation")},
+                    confidence="high",
+                    locator_hash=locator_hash,
+                )
+            )
+            if structured.get("participation"):
+                facts.append(
+                    _fact(
+                        fact_type="deductible",
+                        label=f"Franquia — {label}",
+                        value=structured.get("participation"),
+                        source="official_document",
+                        source_detail=detail_base,
+                        confidence="high",
+                        locator_hash=locator_hash,
+                    )
+                )
+            continue
+        if kind == "assistance_plan":
+            facts.append(
+                _fact(
+                    fact_type="assistance",
+                    label=str(structured.get("plan") or snippet[:80]),
+                    value=structured.get("premium"),
+                    source="official_document",
+                    source_detail=detail_base,
+                    confidence="high",
+                    locator_hash=locator_hash,
+                )
+            )
+            continue
+        if kind == "assistance_services":
+            services = structured.get("services") or []
+            facts.append(
+                _fact(
+                    fact_type="assistance",
+                    label="Serviços do plano de assistência",
+                    value="; ".join(str(s) for s in services),
+                    source="official_document",
+                    source_detail=detail_base,
+                    confidence="high",
+                    locator_hash=locator_hash,
+                )
+            )
+            continue
+        if kind == "policy_limit":
+            facts.append(
+                _fact(
+                    fact_type="limit",
+                    label="Limite máximo de garantia da apólice (LMGA)",
+                    value=structured.get("amount"),
+                    source="official_document",
+                    source_detail=detail_base,
+                    confidence="high",
+                    locator_hash=locator_hash,
+                )
+            )
+            continue
+
         label = snippet[:80]
         facts.append(
             _fact(
@@ -144,7 +223,7 @@ def _facts_from_document_evidence(pack: Dict[str, Any], locator_hash: Optional[s
                 label=label,
                 value=None,
                 source="official_document",
-                source_detail={"page": page, "snippet": snippet},
+                source_detail=detail_base,
                 confidence=confidence,
                 locator_hash=locator_hash,
             )
