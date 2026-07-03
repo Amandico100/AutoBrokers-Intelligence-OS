@@ -376,6 +376,12 @@ async def create_agent_graph(
             if "operational.infocap.policy_lookup.read" in _active:
                 from .tools.infocap_tool import InfocapPolicyLookupTool
                 tools.append(InfocapPolicyLookupTool(company_id=str(company_id), agent_role=str(_agent_role or "core")))
+            # SPEC-017 P5: acionamento de seguradora — SÓ o atendente externo.
+            # Dry-run enquanto INSURER_DISPATCH_LIVE estiver fechado (S17-6).
+            # Capability formal (operational.insurer.dispatch) entra na Onda 3.
+            if str(_agent_role or "").strip().lower() == "attendance":
+                from .tools.insurer_dispatch_tool import InsurerDispatchTool
+                tools.append(InsurerDispatchTool(company_id=str(company_id)))
     except Exception as e:  # noqa: BLE001
         logger.warning(f"[Graph] ⚠️ Capability tools (SPEC-014) não anexadas: {e}")
 

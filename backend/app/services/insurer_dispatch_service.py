@@ -89,6 +89,41 @@ def new_dispatch_session(
     return session
 
 
+def build_dry_run_plan(playbook_ref: str, subservice: str, slots: Dict[str, Any]) -> Dict[str, Any]:
+    """P5: plano completo do acionamento SEM enviar nada — o que SERIA respondido
+    em cada passo da URA com os dados do caso. Usado pela tool do atendente e
+    pela revisão humana antes do gate abrir."""
+    playbook = get_playbook(playbook_ref)
+    if not playbook:
+        return {"ok": False, "error": "playbook_not_found", "steps": [], "missing_slots": []}
+    session = new_dispatch_session(
+        case_id="dry-run", company_id="dry-run", playbook_ref=playbook_ref, subservice=subservice, slots=slots
+    )
+    if session.get("state") == "needs_human":
+        return {"ok": False, "error": session.get("reason"), "steps": [], "missing_slots": []}
+    if session.get("missing_slots"):
+        return {"ok": False, "error": "missing_slots", "steps": [], "missing_slots": session["missing_slots"]}
+    steps: List[Dict[str, str]] = [{"step": "abertura", "reply": "Olá"}]
+    for step in playbook.get("ura_steps") or []:
+        rendered = render_reply(step, session["slots"])
+        steps.append({
+            "step": str(step.get("step")),
+            "reply": rendered["reply"] if rendered["ok"] else f"[PENDENTE: {','.join(rendered['missing'])}]",
+        })
+    return {
+        "ok": True,
+        "playbook_ref": playbook_ref,
+        "subservice": session["subservice"],
+        "missing_slots": [],
+        "steps": steps,
+        "live": dispatch_live_enabled(),
+        "note": (
+            "Acionamento REAL liberado." if dispatch_live_enabled()
+            else "MODO SIMULAÇÃO: nada será enviado à seguradora até a liberação do Founder (INSURER_DISPATCH_LIVE)."
+        ),
+    }
+
+
 def start_dispatch(
     session: Dict[str, Any],
     *,

@@ -148,6 +148,21 @@ def run():
     finally:
         os.environ.pop("INSURER_DISPATCH_LIVE", None)
 
+    # ---- P5: plano dry-run para a tool do atendente ----
+    print("\n== P5 - build_dry_run_plan + tool do atendente ==\n")
+    plan = dispatch.build_dry_run_plan(REF, "eletricista", SLOTS)
+    check("P5: plano dry-run completo", plan["ok"] and len(plan["steps"]) == 10, plan.get("steps"))
+    check("P5: plano contém CPF e opção de serviço", any(s["reply"] == "11122233344" for s in plan["steps"]) and plan["steps"][-1]["reply"] == "1", plan["steps"])
+    check("P5: nota deixa claro o modo simulação", "SIMULA" in plan["note"].upper(), plan["note"])
+    plan_missing = dispatch.build_dry_run_plan(REF, "eletricista", {"titular_cpf": "111"})
+    check("P5: plano bloqueia com slots faltantes", plan_missing["ok"] is False and "periodo_preferido" in plan_missing["missing_slots"], plan_missing)
+
+    tool_src = (ROOT / "app" / "agents" / "tools" / "insurer_dispatch_tool.py").read_text(encoding="utf-8")
+    check("P5: tool existe e usa build_dry_run_plan", "build_dry_run_plan" in tool_src and "insurer_dispatch" in tool_src)
+    check("P5: tool proíbe afirmar acionamento em simulação", "NÃO afirme que a seguradora já foi acionada" in tool_src)
+    graph_src = (ROOT / "app" / "agents" / "graph.py").read_text(encoding="utf-8")
+    check("P5: tool anexada SÓ para o papel attendance", "InsurerDispatchTool" in graph_src and '== "attendance"' in graph_src)
+
     print(f"\n== Resumo: {PASS} passaram, {FAIL} falharam ==")
     if FAILURES:
         sys.exit(1)
