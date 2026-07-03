@@ -190,10 +190,145 @@ def run_e1(nodes):
     check("segurança: contexto não expõe locator técnico", "infocap:" not in str(ctx), ctx)
 
 
+def _sample_pack(**overrides):
+    pack = {
+        "source": "infocap",
+        "policy_locator": {"provider": "infocap", "codfil": "1", "nosnum": "999001"},
+        "policy_ref": "999001",
+        "insurer_detected": "allianz",
+        "product_detected": "Residencial Total",
+        "line_kind_detected": "residencial",
+        "policy_status": "ativa",
+        "active_now": True,
+        "valid_from": "2026-01-01",
+        "valid_to": "2027-01-01",
+        "coverage_sections": [],
+        "structured_coverage_available": False,
+        "structured_coverage_absent": True,
+        "infocap_financial_fields": [],
+        "installments": [],
+        "limitations": [],
+    }
+    pack.update(overrides)
+    return pack
+
+
+def run_e2(policy_facts):
+    print("\n== E2 - Policy Facts mínimos ==\n")
+
+    # Cobertura estruturada vira fact coverage com fonte infocap_structured.
+    pack = _sample_pack(
+        coverage_sections=[
+            {"label": "Incêndio", "amount": "R$ 200.000,00"},
+            {"label": "Danos Elétricos", "amount": "R$ 15.000,00"},
+        ],
+        structured_coverage_available=True,
+        structured_coverage_absent=False,
+    )
+    facts = policy_facts.extract_policy_facts(pack)
+    cov = [f for f in facts if f["fact_type"] == "coverage"]
+    check("G-F1: seções estruturadas viram facts coverage", len(cov) == 2, facts)
+    check("G-F1: fonte é infocap_structured", all(f["source"] == "infocap_structured" for f in cov), cov)
+    check("G-F1: valor preservado", any(f["value"] == "R$ 15.000,00" for f in cov), cov)
+
+    # Seção com label de assistência vira fact assistance.
+    pack = _sample_pack(
+        coverage_sections=[{"label": "Assistência Residencial 24h", "amount": None}],
+        structured_coverage_available=True,
+        structured_coverage_absent=False,
+    )
+    facts = policy_facts.extract_policy_facts(pack)
+    assist = [f for f in facts if f["fact_type"] == "assistance"]
+    check("G-F2: label de assistência vira fact assistance", len(assist) == 1, facts)
+    check("G-F2: confiança alta para estruturado", assist and assist[0]["confidence"] == "high", assist)
+
+    # Código curto nunca vira fact (guarda dupla além do connector).
+    pack = _sample_pack(
+        coverage_sections=[{"label": "P", "amount": None}, {"label": "A1", "amount": None}],
+        structured_coverage_available=True,
+        structured_coverage_absent=False,
+    )
+    facts = policy_facts.extract_policy_facts(pack)
+    check("G-F3: código curto não vira fact", not [f for f in facts if f["fact_type"] in ("coverage", "assistance")], facts)
+
+    # Campo financeiro sem semântica não vira fact.
+    pack = _sample_pack(
+        infocap_financial_fields=[{"provider_field": "preliq", "value": "123.45", "semantic_status": "provider_field_unclassified"}],
+    )
+    facts = policy_facts.extract_policy_facts(pack)
+    check("G-F4: financeiro sem semântica não vira fact", not [f for f in facts if f["fact_type"] == "premium"], facts)
+
+    # Evidência documental vira fact com página; sem página é descartada.
+    pack = _sample_pack(
+        official_policy_document_evidence={
+            "ok": True,
+            "document_status": "evidence_ready",
+            "evidence_items": [
+                {
+                    "page_number": 3,
+                    "evidence_type": "assistance",
+                    "evidence_text": "Assistencia 24 horas: eletricista, chaveiro e encanador inclusos.",
+                    "confidence": "high",
+                    "source_document": "official_policy_document",
+                },
+                {
+                    "page_number": None,
+                    "evidence_type": "coverage",
+                    "evidence_text": "trecho sem pagina",
+                    "confidence": "medium",
+                    "source_document": "official_policy_document",
+                },
+            ],
+        },
+    )
+    facts = policy_facts.extract_policy_facts(pack)
+    doc_facts = [f for f in facts if f["source"] == "official_document"]
+    check("G-F5: evidência documental vira fact", len(doc_facts) == 1, facts)
+    check("G-F5: fact documental exige página", doc_facts and doc_facts[0]["source_detail"].get("page") == 3, doc_facts)
+    check("G-F5: trecho preservado no source_detail", doc_facts and "eletricista" in doc_facts[0]["source_detail"].get("snippet", ""), doc_facts)
+
+    # Vigência vira fact validity.
+    facts = policy_facts.extract_policy_facts(_sample_pack())
+    validity = [f for f in facts if f["fact_type"] == "validity"]
+    check("G-F6: vigência vira fact validity", len(validity) == 1 and "2026-01-01" in str(validity[0]["value"]), validity)
+
+    # Pack vazio → sem facts inventados (além da vigência quando presente).
+    facts = policy_facts.extract_policy_facts(_sample_pack(valid_from=None, valid_to=None))
+    check("G-F7: pack sem dados não inventa facts", facts == [], facts)
+
+    # Nunca vazar PII no fact.
+    pack = _sample_pack(
+        holder_name="Cliente Sintetico",
+        document="12345678900",
+        coverage_sections=[{"label": "Incêndio", "amount": "R$ 1,00"}],
+    )
+    facts = policy_facts.extract_policy_facts(pack)
+    blob = str(facts)
+    check("G-F8: facts não carregam CPF/nome do titular", "12345678900" not in blob and "Cliente Sintetico" not in blob, facts)
+
+    # has_confirmed_assistance: helper usado pela política E3.
+    pack = _sample_pack(
+        coverage_sections=[{"label": "Assistência Residencial 24h", "amount": None}],
+        structured_coverage_available=True,
+        structured_coverage_absent=False,
+    )
+    facts = policy_facts.extract_policy_facts(pack)
+    check("G-F9: assistência confirmada detectada", policy_facts.has_confirmed_assistance(facts) is True, facts)
+    check("G-F9b: sem facts, assistência NÃO confirmada", policy_facts.has_confirmed_assistance([]) is False)
+
+
 def run():
     print("== SPEC-016 - Policy Intelligence vertical ==")
     nodes = _load_nodes_module()
     run_e1(nodes)
+
+    try:
+        policy_facts = _load_file_module("app.services.policy_facts", "app/services/policy_facts.py")
+    except FileNotFoundError:
+        check("E2: módulo app/services/policy_facts.py existe", False, "arquivo ausente")
+        policy_facts = None
+    if policy_facts:
+        run_e2(policy_facts)
 
     print(f"\n== Resumo: {PASS} passaram, {FAIL} falharam ==")
     if FAILURES:
