@@ -259,8 +259,13 @@ export default function ConectoresPage() {
               {/* SPEC-017 (UX Founder): o card WhatsApp da galeria abre o MODAL do
                   canal (Evolution + QR). Slug real do template legado: whatsapp_zapi. */}
               {templates.map((t) => {
+                const isWhatsappChannel = String(t.slug) === 'whatsapp_zapi';
                 const connStatus = statusByTemplate[t.id];
-                const cardStatus = connStatus ? connectionStatusPill(connStatus) : riskPill(t.risk_level);
+                // Canal WhatsApp: o estado real é o da instância Evolution (mostrado no
+                // modal); a conexão-rascunho legada não deve rotular o card.
+                const cardStatus = isWhatsappChannel
+                  ? { tone: 'info' as const, label: 'QR code' }
+                  : connStatus ? connectionStatusPill(connStatus) : riskPill(t.risk_level);
                 const connected = connStatus === 'connected';
                 const oauthKey = SLUG_TO_OAUTH_PROVIDER[t.slug]; // google_drive/notion → fluxo OAuth oficial
                 return (
@@ -273,12 +278,12 @@ export default function ConectoresPage() {
                     status={cardStatus}
                     tags={[t.auth_type]}
                     cta={
-                      String(t.slug) === 'whatsapp_zapi'
+                      isWhatsappChannel
                         ? 'Conectar (QR code)'
                         : connected ? 'Gerenciar conexão' : oauthKey ? 'Conectar' : 'Preparar conexão'
                     }
                     onClick={() => {
-                      if (String(t.slug) === 'whatsapp_zapi') { setWhatsappModalOpen(true); return; }
+                      if (isWhatsappChannel) { setWhatsappModalOpen(true); return; }
                       if (connected) { setTab('connections'); return; }
                       if (oauthKey) { window.location.href = `/api/connectors/${oauthKey}/authorize`; return; }
                       openCreate(t);
