@@ -78,7 +78,11 @@ export function WhatsAppChannelCard() {
         const qjson = await qres.json().catch(() => ({}));
         if (qres.ok && qjson.qr_base64) {
           const raw = String(qjson.qr_base64);
-          setQr(raw.startsWith('data:') ? raw : `data:image/png;base64,${raw}`);
+          // Só renderiza como imagem o que É imagem (data URI ou base64 puro).
+          const looksBase64 = raw.startsWith('data:') || (raw.length > 200 && !raw.includes(' '));
+          if (looksBase64) setQr(raw.startsWith('data:') ? raw : `data:image/png;base64,${raw}`);
+        } else if (qres.ok && qjson.qr_text) {
+          setMessage('QR gerado em formato texto pelo servidor — clique em "Gerar novo QR" para tentar a imagem novamente.');
         }
       }
     } catch {
