@@ -317,6 +317,78 @@ def run_e2(policy_facts):
     check("G-F9b: sem facts, assistência NÃO confirmada", policy_facts.has_confirmed_assistance([]) is False)
 
 
+_ASSIST_SECTION = {"label": "Assistência Residencial 24h", "amount": None}
+
+
+def run_e3(policy_facts, assistance_policy):
+    print("\n== E3 - política residential_24h_standard_v1 ==\n")
+
+    def _facts_for(pack):
+        return policy_facts.extract_policy_facts(pack)
+
+    # G-P1: residencial + assistência confirmada → política aplica os 3 serviços.
+    pack = _sample_pack(
+        coverage_sections=[_ASSIST_SECTION],
+        structured_coverage_available=True,
+        structured_coverage_absent=False,
+    )
+    result = assistance_policy.apply_residential_assistance_policy(pack, _facts_for(pack))
+    check("G-P1: política aplicada", result.get("applied") is True, result)
+    check(
+        "G-P1: serviços padrão = eletricista/chaveiro/hidráulica",
+        sorted(result.get("services") or []) == ["chaveiro", "eletricista", "hidraulica_encanador"],
+        result,
+    )
+    check("G-P1: rule_id/version corretos", result.get("rule_id") == "residential_24h_standard_v1" and result.get("version") == 1, result)
+    check("G-P1: statement humano presente", "eletricista" in str(result.get("statement") or "").lower(), result)
+
+    # G-P2 (G37/G72): só o ramo residencial NÃO dispara a política.
+    pack = _sample_pack()  # residencial, sem nenhuma seção/fact de assistência
+    result = assistance_policy.apply_residential_assistance_policy(pack, _facts_for(pack))
+    check("G-P2: ramo sozinho não dispara política", result.get("applied") is False, result)
+    check("G-P2: razão explica falta de confirmação", "assist" in str(result.get("reason") or "").lower(), result)
+
+    # G-P3: assistência confirmada mas ramo NÃO residencial → não aplica.
+    pack = _sample_pack(
+        line_kind_detected="auto",
+        product_detected="Auto Perfil",
+        coverage_sections=[{"label": "Assistência 24h Auto", "amount": None}],
+        structured_coverage_available=True,
+        structured_coverage_absent=False,
+    )
+    result = assistance_policy.apply_residential_assistance_policy(pack, _facts_for(pack))
+    check("G-P3: apólice não residencial não aplica política residencial", result.get("applied") is False, result)
+
+    # G-P4: apólice cancelada/não vigente → não aplica (fail-safe).
+    pack = _sample_pack(
+        cancelled=True,
+        active_now=False,
+        coverage_sections=[_ASSIST_SECTION],
+        structured_coverage_available=True,
+        structured_coverage_absent=False,
+    )
+    result = assistance_policy.apply_residential_assistance_policy(pack, _facts_for(pack))
+    check("G-P4: apólice cancelada não aplica política", result.get("applied") is False, result)
+
+    # G-P5: trace auditável com facts usados.
+    pack = _sample_pack(
+        coverage_sections=[_ASSIST_SECTION],
+        structured_coverage_available=True,
+        structured_coverage_absent=False,
+    )
+    result = assistance_policy.apply_residential_assistance_policy(pack, _facts_for(pack))
+    trace = result.get("trace") or {}
+    check("G-P5: trace tem rule_id e version", trace.get("rule_id") == "residential_24h_standard_v1" and trace.get("version") == 1, trace)
+    check("G-P5: trace lista facts usados", isinstance(trace.get("facts_used"), list) and len(trace["facts_used"]) >= 1, trace)
+    check("G-P5: trace sem PII", "12345678900" not in str(trace), trace)
+
+    # G-P6: resultado gera fact policy_rule para o compositor citar.
+    rule_facts = assistance_policy.policy_rule_facts(result)
+    check("G-P6: política aplicada gera facts policy_rule", len(rule_facts) == 3 and all(f["source"] == "policy_rule" for f in rule_facts), rule_facts)
+    not_applied = assistance_policy.apply_residential_assistance_policy(_sample_pack(), [])
+    check("G-P6b: política não aplicada não gera facts", assistance_policy.policy_rule_facts(not_applied) == [], not_applied)
+
+
 def run():
     print("== SPEC-016 - Policy Intelligence vertical ==")
     nodes = _load_nodes_module()
@@ -329,6 +401,15 @@ def run():
         policy_facts = None
     if policy_facts:
         run_e2(policy_facts)
+
+    assistance_policy = None
+    if policy_facts:
+        try:
+            assistance_policy = _load_file_module("app.services.assistance_policy", "app/services/assistance_policy.py")
+        except FileNotFoundError:
+            check("E3: módulo app/services/assistance_policy.py existe", False, "arquivo ausente")
+    if assistance_policy:
+        run_e3(policy_facts, assistance_policy)
 
     print(f"\n== Resumo: {PASS} passaram, {FAIL} falharam ==")
     if FAILURES:
