@@ -28,3 +28,9 @@ __all__ = [
     "prepare_integration_for_storage",
     "prepare_integration_for_runtime",
 ]
+
+
+# --- SPEC-017 P1: seam canônico multi-provider (transplante V7) ---
+# Convive com o legado acima até a paridade (P2); novo código importa daqui.
+from .exceptions import WhatsappError, UnknownProviderError, ProviderConfigError  # noqa: E402,F401
+from .registry import resolve_provider  # noqa: E402,F401
