@@ -5,13 +5,6 @@ import { useParams } from 'next/navigation';
 import { X, Send, MessageCircle } from 'lucide-react';
 import ReactMarkdown from 'react-markdown';
 import { LeadForm } from '@/components/embed/LeadForm';
-import {
-  extractUCPData,
-  ProductCarousel,
-  ProductCard,
-  CheckoutButton,
-  UCPData,
-} from '@/components/ucp';
 
 interface Message {
   id: string;
@@ -606,55 +599,7 @@ export default function EmbedChat() {
         {messages.map((msg) => {
           const isHumanAgent = msg.role === 'assistant' && !!msg.senderName;
 
-          // 🛒 UCP: Detectar e extrair conteúdo de comércio
-          let displayContent = msg.content;
-          let ucpData: UCPData | null = null;
-
-          if (msg.role === 'assistant' && msg.content) {
-            const extracted = extractUCPData(msg.content);
-            displayContent = extracted.text;
-            ucpData = extracted.data;
-
-            // If no UCP was fully parsed but content contains partial UCP JSON
-            // (streaming in progress), hide the partial JSON from display
-            if (!ucpData && displayContent) {
-              const partialUcpMatch = displayContent.match(/\{"type"\s*:\s*"ucp_/);
-              if (partialUcpMatch && partialUcpMatch.index !== undefined) {
-                displayContent = displayContent.substring(0, partialUcpMatch.index).trim();
-              }
-            }
-          }
-
-          // Função para renderizar UCP
-          const renderUCPContent = (data: UCPData) => {
-            switch (data.type) {
-              case 'ucp_product_list':
-                return (
-                  <ProductCarousel
-                    products={data.products}
-                    shopDomain={data.shop_domain}
-                    query={data.query}
-                    onSendMessage={(text) => {
-                      setInputText(text);
-                    }}
-                  />
-                );
-              case 'ucp_product_detail':
-                return (
-                  <ProductCard
-                    product={data.product}
-                    size="large"
-                    onSendMessage={(text) => {
-                      setInputText(text);
-                    }}
-                  />
-                );
-              case 'ucp_checkout':
-                return <CheckoutButton data={data} />;
-              default:
-                return null;
-            }
-          };
+          const displayContent = msg.content;
 
           return (
             <div
@@ -662,9 +607,6 @@ export default function EmbedChat() {
               className={`flex ${msg.role === 'user' ? 'justify-end' : 'justify-start'}`}
             >
               <div className="max-w-[95%] flex flex-col gap-2">
-                {/* 🛒 UCP Content - Carrossel, Cards, Checkout */}
-                {ucpData && <div className="w-full">{renderUCPContent(ucpData)}</div>}
-
                 {/* Mensagem de texto normal */}
                 {displayContent && displayContent.trim() && (
                   <div
