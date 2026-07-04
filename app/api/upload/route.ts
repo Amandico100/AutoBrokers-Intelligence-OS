@@ -10,7 +10,15 @@ const MAX_FILE_SIZE = 5 * 1024 * 1024; // 5MB (igual ao bucket chat-media)
 const ALLOWED_BUCKETS = ['chat-media', 'attachments', 'avatars', 'voice-messages'];
 
 const ALLOWED_MIME_TYPES: Record<string, string[]> = {
-  'chat-media': ['image/jpeg', 'image/png', 'image/gif', 'image/webp'],
+  'chat-media': [
+    'image/jpeg', 'image/png', 'image/gif', 'image/webp',
+    // F1: documentos anexados no chat (o backend extrai o texto via docling)
+    'application/pdf',
+    'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
+    'application/vnd.openxmlformats-officedocument.presentationml.presentation',
+    'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+    'text/plain', 'text/csv', 'text/markdown',
+  ],
   attachments: ['image/jpeg', 'image/png', 'image/gif', 'image/webp', 'application/pdf'],
   avatars: ['image/jpeg', 'image/png', 'image/webp'],
   'voice-messages': ['audio/webm', 'audio/ogg', 'audio/mp3', 'audio/mpeg', 'audio/wav'],

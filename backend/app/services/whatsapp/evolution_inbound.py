@@ -46,7 +46,7 @@ def normalize_evolution_inbound(payload: Dict[str, Any]) -> Dict[str, Any]:
     out: Dict[str, Any] = {
         "skip": False, "skip_reason": None, "message_id": None, "phone": None,
         "connected_phone": None, "sender_name": None, "text": None,
-        "is_group": False, "from_me": False, "timestamp": None,
+        "is_group": False, "from_me": False, "timestamp": None, "media": None,
     }
     if not isinstance(payload, dict):
         return {**out, "skip": True, "skip_reason": "invalid_payload"}
@@ -63,12 +63,26 @@ def normalize_evolution_inbound(payload: Dict[str, Any]) -> Dict[str, Any]:
     is_group = isinstance(remote_jid, str) and remote_jid.endswith("@g.us")
     message_id = key.get("id") or data.get("id") or data.get("messageId")
 
+    msg_dict = data.get("message") if isinstance(data.get("message"), dict) else {}
+    media = None
+    for media_key, kind in (("imageMessage", "image"), ("documentMessage", "document"), ("audioMessage", "audio")):
+        m = msg_dict.get(media_key)
+        if isinstance(m, dict):
+            media = {
+                "kind": kind,
+                "caption": (str(m.get("caption")).strip() or None) if m.get("caption") else None,
+                "mimetype": m.get("mimetype") or None,
+                "file_name": m.get("fileName") or m.get("title") or None,
+            }
+            break
+
     out.update({
         "message_id": str(message_id) if message_id else None,
         "phone": _phone_from_jid(remote_jid),
         "connected_phone": _phone_from_jid(payload.get("sender")) or str(payload.get("instance") or "") or None,
         "sender_name": data.get("pushName") or None,
-        "text": _text_from_message(data.get("message") or {}),
+        "text": _text_from_message(msg_dict),
+        "media": media,
         "is_group": is_group,
         "from_me": from_me,
         "timestamp": data.get("messageTimestamp"),
@@ -85,7 +99,7 @@ def normalize_evolution_inbound(payload: Dict[str, Any]) -> Dict[str, Any]:
         return {**out, "skip": True, "skip_reason": "non_individual"}
     if not out["phone"]:
         return {**out, "skip": True, "skip_reason": "no_phone"}
-    if not out["text"]:
+    if not out["text"] and not media:
         return {**out, "skip": True, "skip_reason": "no_text"}
     return out
 

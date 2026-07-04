@@ -83,9 +83,9 @@ export function MessageBubble({
           </div>
         )}
 
-        {/* Mensagem de texto (apenas se não for placeholder de mídia) */}
+        {/* Mensagem de texto (texto acompanha a imagem quando enviados juntos) */}
         {displayContent &&
-          !message.image_url &&
+          displayContent !== '[Imagem]' &&
           !(isVoice && message.audio_url) &&
           !displayContent.includes('Imagem enviada') &&
           !displayContent.includes('Áudio enviado') &&

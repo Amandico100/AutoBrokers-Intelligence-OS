@@ -30,6 +30,29 @@ def _is_list_block(block: str) -> bool:
     return listish >= max(1, len(lines) // 2)
 
 
+# Lista GIGANTE (ex.: 10 apólices) num balão só falha na entrega e vira textão.
+# Fatiamos por ITENS (nunca no meio de um item), em grupos de até este tamanho.
+LIST_GROUP_LEN = 700
+
+
+def _split_list_block(block: str) -> List[str]:
+    """Divide uma lista grande em grupos de linhas INTEIRAS (<= LIST_GROUP_LEN)."""
+    if len(block) <= LIST_GROUP_LEN:
+        return [block]
+    groups: List[str] = []
+    current = ""
+    for line in block.splitlines():
+        candidate = f"{current}\n{line}".strip("\n") if current else line
+        if len(candidate) <= LIST_GROUP_LEN or not current:
+            current = candidate
+        else:
+            groups.append(current)
+            current = line
+    if current.strip():
+        groups.append(current)
+    return groups
+
+
 def _split_long_text(text: str) -> List[str]:
     """Divide texto corrido por fim de frase respeitando TARGET_LEN."""
     sentences = _SENTENCE_END_RE.split(text.strip())
@@ -66,9 +89,10 @@ def split_whatsapp_balloons(text: str) -> List[str]:
 
     for block in blocks:
         if _is_list_block(block):
-            # Lista/checklist/tabela: balão próprio, nunca fatiada.
+            # Lista/checklist/tabela: balão próprio; itens nunca são quebrados
+            # no meio, mas lista gigante é dividida em grupos de itens.
             _flush()
-            balloons.append(block)
+            balloons.extend(_split_list_block(block))
             continue
         candidate = f"{current}\n\n{block}".strip() if current else block
         if len(candidate) <= TARGET_LEN:
@@ -85,4 +109,9 @@ def split_whatsapp_balloons(text: str) -> List[str]:
         head = balloons[: MAX_BALLOONS - 1]
         tail = "\n\n".join(balloons[MAX_BALLOONS - 1:])
         balloons = head + [tail]
-    return balloons
+    # Garantia final de ENTREGA: balão gigante falha no provedor — acima de
+    # 1200 chars divide por linhas inteiras (nunca no meio de um item).
+    safe: List[str] = []
+    for balloon in balloons:
+        safe.extend(_split_list_block(balloon) if len(balloon) > 1200 else [balloon])
+    return safe

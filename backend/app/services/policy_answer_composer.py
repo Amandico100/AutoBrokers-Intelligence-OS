@@ -73,7 +73,9 @@ def humanize_product(value: Any) -> str:
 def _display_number(record: Dict[str, Any]) -> str:
     number = str(record.get("policy_number") or record.get("numapo") or "").strip()
     if _norm(number) in _INVALID_NUMBERS:
-        return "número não retornado pela fonte"
+        # Nunca vazar placeholder técnico para o cliente: sem número na fonte,
+        # a escolha é pela POSIÇÃO da lista (1, 2, 3...).
+        return "sem número na fonte — responda pela posição da lista"
     return number
 
 

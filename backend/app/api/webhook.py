@@ -780,6 +780,54 @@ async def _is_duplicate_namespaced(provider: str, message_id: Optional[str]) -> 
         return False
 
 
+async def _download_evolution_media(integration: dict, message_id: str) -> Optional[tuple]:
+    """(bytes, mimetype) da mídia criptografada do WhatsApp via Evolution
+    getBase64FromMediaMessage. F1: sem isso, imagem/PDF do cliente nunca chega."""
+    base = str(integration.get("base_url") or "").rstrip("/")
+    apikey = str(integration.get("token") or "")
+    inst = str(integration.get("instance_id") or "")
+    if not (base and apikey and inst and message_id):
+        return None
+    try:
+        import base64 as b64mod
+
+        async with httpx.AsyncClient(timeout=45.0) as client:
+            res = await client.post(
+                f"{base}/chat/getBase64FromMediaMessage/{inst}",
+                headers={"apikey": apikey},
+                json={"message": {"key": {"id": message_id}}, "convertToMp4": False},
+            )
+            if res.status_code >= 400:
+                logger.error(f"[WEBHOOK EVOLUTION] media download http_{res.status_code}")
+                return None
+            j = res.json() if res.content else {}
+            b64 = str(j.get("base64") or "")
+            if b64.startswith("data:") and "," in b64[:100]:
+                b64 = b64.split(",", 1)[1]
+            if not b64:
+                return None
+            return b64mod.b64decode(b64), str(j.get("mimetype") or "")
+    except Exception as e:  # noqa: BLE001
+        logger.error(f"[WEBHOOK EVOLUTION] media download failed: {type(e).__name__}")
+        return None
+
+
+async def _upload_media_bytes(company_id: str, blob: bytes, mime: str, ext: str) -> Optional[str]:
+    """Sobe bytes de mídia no storage chat-media e devolve URL pública."""
+    try:
+        today = date.today().isoformat()
+        file_path = f"{company_id}/{today}/{uuid4()}{ext}"
+        await asyncio.to_thread(
+            lambda: supabase.client.storage.from_("chat-media").upload(
+                file_path, blob, {"content-type": mime or "application/octet-stream", "cache-control": "3600"}
+            )
+        )
+        return supabase.client.storage.from_("chat-media").get_public_url(file_path)
+    except Exception as e:  # noqa: BLE001
+        logger.error(f"[WEBHOOK EVOLUTION] media upload failed: {type(e).__name__}")
+        return None
+
+
 async def _buffer_or_dispatch_text(payload_dict: dict, phone: str) -> dict:
     """Humanização S17-9: texto entra no buffer com debounce (espera a rajada)."""
     buffer_service = await get_message_buffer_service()
@@ -856,17 +904,62 @@ async def evolution_webhook_token(token: str, request: Request, background_tasks
     if await _is_duplicate_namespaced("evolution", normalized["message_id"]):
         return {"status": "ignored", "reason": "duplicate"}
 
+    # F1 — mídia do cliente (imagem/PDF/áudio): baixa via Evolution, sobe no
+    # storage e entra no fluxo normal (visão p/ imagem; texto extraído p/ doc).
+    media = normalized.get("media")
+    text_message = normalized["text"]
+    image_payload = None
+    audio_payload = None
+    if media:
+        blob_mime = await _download_evolution_media(integration, normalized["message_id"])
+        if blob_mime:
+            blob, mime = blob_mime
+            mime = mime or str(media.get("mimetype") or "")
+            company_for_media = str(integration.get("company_id") or "")
+            if media["kind"] == "image":
+                ext = ".png" if "png" in mime else ".jpg"
+                url = await _upload_media_bytes(company_for_media, blob, mime or "image/jpeg", ext)
+                if url:
+                    image_payload = {"imageUrl": url, "caption": media.get("caption")}
+            elif media["kind"] == "document":
+                fname = str(media.get("file_name") or "documento.pdf")
+                ext = os.path.splitext(fname)[1].lower() or ".pdf"
+                url = await _upload_media_bytes(company_for_media, blob, mime or "application/pdf", ext)
+                doc_text = None
+                if url:
+                    from app.services.vision_service import extract_document_text
+
+                    doc_text = await extract_document_text(url, fname)
+                base_txt = media.get("caption") or f"[Cliente enviou o documento: {fname}]"
+                if doc_text:
+                    text_message = f"{base_txt}\n\n[CONTEÚDO DO DOCUMENTO {fname}]\n{doc_text}\n[FIM DO DOCUMENTO]"
+                else:
+                    text_message = f"{base_txt}\n(não foi possível ler o conteúdo do documento — peça para reenviar ou colar o texto)"
+            elif media["kind"] == "audio":
+                url = await _upload_media_bytes(company_for_media, blob, mime or "audio/ogg", ".ogg")
+                if url:
+                    audio_payload = {"audioUrl": url}
+        else:
+            logger.warning("[WEBHOOK EVOLUTION] mídia recebida mas download falhou")
+            if not text_message:
+                text_message = "[Cliente enviou uma mídia que não consegui baixar — peça para reenviar]"
+
     payload_dict = {
         "connectedPhone": str(integration.get("identifier") or normalized.get("connected_phone") or ""),
         "phone": normalized["phone"],
         "isGroup": False,
         "fromMe": False,
-        "text": {"message": normalized["text"]},
+        "text": {"message": text_message} if text_message else None,
+        "image": image_payload,
+        "audio": audio_payload,
         "messageId": normalized["message_id"],
         "senderName": normalized["sender_name"],
         "momment": normalized.get("timestamp"),
         "_integration_id": integration.get("id"),
     }
+    if image_payload or audio_payload:
+        background_tasks.add_task(process_whatsapp_message_background, payload_dict)
+        return {"status": "received", "type": "media"}
     return await _buffer_or_dispatch_text(payload_dict, normalized["phone"])
 
 

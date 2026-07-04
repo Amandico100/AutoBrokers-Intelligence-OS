@@ -70,8 +70,8 @@ class Settings(BaseSettings):
     DOLLAR_RATE: Decimal = Decimal("6.00")  # Default value, override via env var
 
     # Buffer Settings (WhatsApp Message Aggregation)
-    BUFFER_DEBOUNCE_SECONDS: int = 3  # Wait 3s after last message
-    BUFFER_MAX_WAIT_SECONDS: int = 10  # Max 10s since first message
+    BUFFER_DEBOUNCE_SECONDS: int = 8  # Espera a RAJADA do cliente (2-3 frases) antes de responder
+    BUFFER_MAX_WAIT_SECONDS: int = 25  # Teto desde a primeira mensagem da rajada
     BUFFER_TTL_SECONDS: int = 60  # Redis TTL safety net
 
     # WhatsApp webhook security (42W0)
