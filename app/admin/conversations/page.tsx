@@ -40,13 +40,6 @@ import { supabase } from '@/lib/supabase'; // KEPT: Only for Realtime subscripti
 import { useAdminRole } from '@/hooks/useAdminRole';
 import { toast } from 'sonner';
 import { Message } from '@/lib/types';
-import {
-  extractUCPData,
-  ProductCarousel,
-  ProductCard,
-  CheckoutButton,
-  UCPData,
-} from '@/components/ucp';
 
 // --- TIPOS ---
 interface Conversation {
@@ -977,23 +970,6 @@ export default function AdminConversationsPage() {
                     ? msg.content.replace(/^\[👤\s+.+?\]\n/, '')
                     : msg.content;
 
-                  // 🛒 UCP: Detectar e extrair conteúdo de comércio
-                  let ucpData: UCPData | null = null;
-                  if (!isUser && displayContent) {
-                    const extracted = extractUCPData(displayContent);
-                    displayContent = extracted.text;
-                    ucpData = extracted.data;
-
-                    // If no UCP was fully parsed but content contains partial UCP JSON
-                    // (streaming in progress), hide the partial JSON from display
-                    if (!ucpData && displayContent) {
-                      const partialUcpMatch = displayContent.match(/\{"type"\s*:\s*"ucp_/);
-                      if (partialUcpMatch && partialUcpMatch.index !== undefined) {
-                        displayContent = displayContent.substring(0, partialUcpMatch.index).trim();
-                      }
-                    }
-                  }
-
                   // Remove textos desnecessários de mídia
                   const isMediaOnly =
                     displayContent === '📷 Imagem enviada' ||
@@ -1009,7 +985,7 @@ export default function AdminConversationsPage() {
                     >
 
                       <div
-                        className={`${ucpData ? 'max-w-[95%]' : 'max-w-[75%]'} rounded-2xl px-4 py-3 text-sm leading-relaxed ${isUser
+                        className={`max-w-[75%] rounded-2xl px-4 py-3 text-sm leading-relaxed ${isUser
                           ? 'bg-secondary text-black dark:text-white border border-border rounded-tl-sm'
                           : 'bg-blue-600 text-white rounded-tr-sm'
                           }`}
@@ -1048,25 +1024,6 @@ export default function AdminConversationsPage() {
                               audioUrl={msg.audio_url!}
                               transcription={!isMediaOnly ? displayContent : undefined}
                             />
-                          </div>
-                        )}
-
-                        {/* 🛒 UCP Content - Renderização de carrossel/card/checkout */}
-                        {ucpData && (
-                          <div className="w-full mt-2">
-                            {ucpData.type === 'ucp_product_list' && (
-                              <ProductCarousel
-                                products={ucpData.products}
-                                shopDomain={ucpData.shop_domain}
-                                query={ucpData.query}
-                              />
-                            )}
-                            {ucpData.type === 'ucp_product_detail' && (
-                              <ProductCard product={ucpData.product} size="large" />
-                            )}
-                            {ucpData.type === 'ucp_checkout' && (
-                              <CheckoutButton data={ucpData} />
-                            )}
                           </div>
                         )}
 

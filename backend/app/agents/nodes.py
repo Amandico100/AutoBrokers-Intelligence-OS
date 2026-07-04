@@ -799,9 +799,6 @@ async def tool_node(state: AgentState, tools: list) -> dict:
                         # SPEC-017 live-path: telefone do cliente vem da sessão
                         # WhatsApp (whatsapp:{phone}:...) — nunca da LLM.
                         tool_args = {**tool_args, "session_id": str(state.get("session_id") or "")}
-                    elif tool_name.startswith("shopify_") or tool_name.startswith("ucp_"):
-                        # UCP tools: agent_id já está embutido na tool, mas garantimos aqui
-                        tool_args = {**tool_args, "agent_id": agent_id}
                     elif tool_name == "delegate_to_subagent":
                         # 🤖 SubAgent: injeta contexto do orquestrador
                         delegation_config = None

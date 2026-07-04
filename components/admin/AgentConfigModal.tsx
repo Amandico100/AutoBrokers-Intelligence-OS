@@ -47,7 +47,6 @@ import { HttpToolForm, HttpTool } from '@/components/admin/HttpToolForm';
 import { AvatarUpload } from '@/components/AvatarUpload';
 import { WidgetConfigTab } from '@/components/admin/WidgetConfigTab';
 import { MCPConfigTab } from '@/components/admin/MCPConfigTab';
-import { UCPConfigTab } from '@/components/admin/UCPConfigTab';
 import { SubAgentConfigTab } from '@/components/admin/SubAgentConfigTab';
 import { Agent, WidgetConfig, SecuritySettings } from '@/types/agent';
 import {
@@ -1166,14 +1165,6 @@ export function AgentConfigModal({ companyId, agentId, open, onOpenChange }: Pro
                 </TabsTrigger>
                 {!isSubagent && (
                   <TabsTrigger
-                    value="commerce"
-                    className="flex-1 min-w-[80px] text-muted-foreground data-[state=active]:bg-blue-600 data-[state=active]:text-white text-xs py-2"
-                  >
-                    Commerce
-                  </TabsTrigger>
-                )}
-                {!isSubagent && (
-                  <TabsTrigger
                     value="widget"
                     className="flex-1 min-w-[80px] text-muted-foreground data-[state=active]:bg-blue-600 data-[state=active]:text-white text-xs py-2"
                   >
@@ -2158,21 +2149,6 @@ export function AgentConfigModal({ companyId, agentId, open, onOpenChange }: Pro
                 </Card>
               ) : (
                 <MCPConfigTab agentId={agentId!} companyId={companyId} />
-              )}
-            </TabsContent>
-
-            {/* TAB 7: Commerce (UCP) */}
-            <TabsContent value="commerce" className="space-y-6 mt-6">
-              {isCreateMode ? (
-                <Card className="bg-blue-900/20 border-blue-600/50">
-                  <CardContent className="pt-4">
-                    <p className="text-blue-400 text-sm">
-                      ℹ️ Salve o agente primeiro antes de configurar integrações de comércio.
-                    </p>
-                  </CardContent>
-                </Card>
-              ) : (
-                <UCPConfigTab agentId={agentId!} companyId={companyId} />
               )}
             </TabsContent>
 

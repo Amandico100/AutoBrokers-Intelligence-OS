@@ -322,23 +322,6 @@ async def create_agent_graph(
         except Exception as e:
             logger.error(f"[Graph] Erro ao criar MCP tools: {e}")
 
-    # === UCP TOOLS (Commerce - Dinâmicas) ===
-    if agent_id and supabase_client:
-        try:
-            from .tools.ucp_factory import UCPToolFactory
-
-            # Factory agora carrega conexões internamente (async)
-            ucp_tools = await UCPToolFactory.create_tools_for_agent(str(agent_id))
-
-            if ucp_tools:
-                tools.extend(ucp_tools)
-                logger.info(
-                    f"[Graph] ✅ {len(ucp_tools)} UCP tools criadas: "
-                    f"{[t.name for t in ucp_tools]}"
-                )
-        except Exception as e:
-            logger.error(f"[Graph] Erro ao criar UCP tools: {e}")
-
     # === SUBAGENT DELEGATION TOOLS ===
     if agent_id and supabase_client:
         logger.info(f"[Graph] 🔍 Buscando delegações para orchestrator {agent_id}...")
@@ -665,53 +648,6 @@ async def _build_initial_state(
                     )
         except Exception as e:
             logger.warning(f"[Graph] ⚠️ SubAgent prompt expansion ERRO: {e}")
-
-    # === UCP INSTRUCTIONS ===
-    # Verifica se o agente tem UCP ativo e injeta as regras
-    if agent_id and supabase_client:
-        try:
-            real_client = supabase_client.client if hasattr(supabase_client, "client") else supabase_client
-            # Check for active UCP connections
-            response = (
-                real_client.table("ucp_connections")
-                .select("id")
-                .eq("agent_id", str(agent_id))
-                .eq("is_active", True)
-                .limit(1)
-                .execute()
-            )
-            if response.data:
-                 base_instructions += '''
-
-## 🛒 SISTEMA DE COMMERCE (UCP)
-
-Você tem ferramentas de e-commerce que retornam JSON estruturado (type: 'ucp_product_list' etc).
-
-### REGRAS OBRIGATÓRIAS PARA PRODUTOS:
-
-1. **NUNCA DESCREVA PRODUTOS EM TEXTO**
-   - ❌ ERRADO: "Encontrei uma camiseta por R$49,90..."
-   - ✅ CERTO: Copiar o JSON da ferramenta
-
-2. **COPIE O JSON EXATAMENTE** como recebido da ferramenta da mesmíssima forma.
-
-3. **NÃO USE** bullet points, numeração ou Markdown para listar produtos.
-
-4. **NÃO COLOQUE** o JSON em code blocks (```).
-
-### FORMATO CORRETO DA RESPOSTA:
-
-Encontrei alguns produtos:
-
-{"type": "ucp_product_list", "provider": "storefront_mcp", "products": [...]}
-
-### POR QUE ISSO É IMPORTANTE:
-
-O Frontend tem um Carrossel visual que renderiza o JSON automaticamente.
-Se você descrever em texto, o usuário VÊ UMA LISTA FEIA EM VEZ DO CARROSSEL BONITO.
-'''
-        except Exception as e:
-            logger.error(f"[Graph] Error checking UCP instructions: {e}")
 
     # Prompt ESTÁTICO (instruções + tools) - será cacheado.
     # SPEC-013 P0: base por PAPEL — Core = copiloto inteligente; attendance = evidence-first.
