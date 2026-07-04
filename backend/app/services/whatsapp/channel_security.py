@@ -36,16 +36,30 @@ def attendant_inbound_allowed(phone: str, allowlist: Optional[str] = "__env__") 
     import os
 
     raw = os.getenv("ATTENDANT_INBOUND_ALLOWLIST", "") if allowlist == "__env__" else (allowlist or "")
-    entries = [
-        "".join(ch for ch in item if ch.isdigit())
-        for item in str(raw).split(",")
-        if item.strip()
-    ]
-    entries = [e for e in entries if e]
+
+    def _variants(number: str) -> set:
+        """Formas equivalentes de um número BR: com e sem o nono dígito.
+        WhatsApp entrega 5547XXXXXXXX p/ contas antigas e 55479XXXXXXXX p/
+        novas — a allowlist tem que casar nas duas."""
+        d = "".join(ch for ch in str(number or "") if ch.isdigit())
+        if not d:
+            return set()
+        forms = {d}
+        if d.startswith("55"):
+            rest = d[2:]
+            if len(rest) == 11 and rest[2] == "9":  # DDD + 9 + 8 dígitos → sem o 9
+                forms.add("55" + rest[:2] + rest[3:])
+            elif len(rest) == 10:  # DDD + 8 dígitos → com o 9
+                forms.add("55" + rest[:2] + "9" + rest[2:])
+        return forms
+
+    entries: set = set()
+    for item in str(raw).split(","):
+        if item.strip():
+            entries |= _variants(item)
     if not entries:
         return True
-    digits = "".join(ch for ch in str(phone or "") if ch.isdigit())
-    return digits in entries
+    return bool(_variants(phone) & entries)
 
 
 def generate_webhook_token() -> str:
