@@ -409,6 +409,15 @@ async def process_whatsapp_message_background(
         except Exception as e:  # noqa: BLE001 — roteador nunca derruba o fluxo normal
             logger.error(f"[WEBHOOK] dispatch router error: {type(e).__name__}")
 
+        # S17 — Piloto em número pessoal: allowlist de teste (env
+        # ATTENDANT_INBOUND_ALLOWLIST). Fora da lista = ignorado em silêncio
+        # (não cria usuário/conversa, não responde). Vazia = produção normal.
+        from app.services.whatsapp.channel_security import attendant_inbound_allowed
+
+        if not attendant_inbound_allowed(str(payload.phone or "")):
+            logger.info("[WEBHOOK] inbound fora da ATTENDANT_INBOUND_ALLOWLIST — ignorado")
+            return
+
         # 2. Resolver Usuário
         user_id = integration_service.get_or_create_user(
             phone=payload.phone, company_id=company_id, name=payload.senderName
