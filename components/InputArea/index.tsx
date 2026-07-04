@@ -9,7 +9,7 @@ import { useImageUpload } from './hooks/useImageUpload';
 import { useAudioRecorder } from './hooks/useAudioRecorder';
 
 interface InputAreaProps {
-  onSendMessage?: (message: string, imageUrl?: string) => void;
+  onSendMessage?: (message: string, imageUrl?: string, fileUrl?: string, fileName?: string) => void;
   onSendVoice?: (audioBase64: string, audioBlob: Blob) => void;
   disabled?: boolean;
   allowWebSearch?: boolean;
@@ -39,11 +39,13 @@ export default function InputArea({
 
   const {
     pastedImage,
+    pastedFile,
     uploadingImage,
     fileInputRef,
     handlePaste,
     handleFileSelect,
     removePastedImage,
+    removePastedFile,
     uploadImageToSupabase,
   } = useImageUpload({ companyId });
 
@@ -62,14 +64,22 @@ export default function InputArea({
 
   const handleSend = async () => {
     let imageUrl: string | undefined = undefined;
+    let fileUrl: string | undefined = undefined;
+    let fileName: string | undefined = undefined;
 
     if (pastedImage) {
       imageUrl = (await uploadImageToSupabase(pastedImage.file)) || undefined;
       removePastedImage();
     }
+    if (pastedFile) {
+      // F1: mesmo upload (bucket chat-media); o backend extrai o texto.
+      fileUrl = (await uploadImageToSupabase(pastedFile.file)) || undefined;
+      fileName = pastedFile.name;
+      removePastedFile();
+    }
 
-    if ((message.trim() || imageUrl) && onSendMessage) {
-      onSendMessage(message.trim() || '[Imagem]', imageUrl);
+    if ((message.trim() || imageUrl || fileUrl) && onSendMessage) {
+      onSendMessage(message.trim() || (fileUrl ? `📄 ${fileName}` : '[Imagem]'), imageUrl, fileUrl, fileName);
       setMessage('');
     }
   };
@@ -88,6 +98,19 @@ export default function InputArea({
           uploading={uploadingImage}
           onRemove={removePastedImage}
         />
+      )}
+
+      {pastedFile && (
+        <div className="mb-2 flex items-center justify-between gap-2 rounded-lg border border-border bg-surface px-3 py-2">
+          <span className="truncate text-sm text-foreground">📄 {pastedFile.name}</span>
+          <button
+            onClick={removePastedFile}
+            className="shrink-0 text-xs text-muted-foreground transition-colors hover:text-foreground"
+            aria-label="Remover documento"
+          >
+            Remover
+          </button>
+        </div>
       )}
 
       {pendingAudio ? (
@@ -126,7 +149,7 @@ export default function InputArea({
         type="file"
         ref={fileInputRef}
         className="hidden"
-        accept="image/*"
+        accept="image/*,.pdf,.docx,.pptx,.xlsx,.txt,.csv,.md"
         onChange={handleFileSelect}
       />
 

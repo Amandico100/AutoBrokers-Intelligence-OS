@@ -263,7 +263,7 @@ export default function ChatPage() {
     toast.success(`Chat iniciado com ${agentName}`);
   };
 
-  const handleSendMessage = async (message: string, imageUrl?: string) => {
+  const handleSendMessage = async (message: string, imageUrl?: string, fileUrl?: string, fileName?: string) => {
     if (!userId) return;
 
     if (!companyId) {
@@ -323,6 +323,8 @@ export default function ChatPage() {
           chatInput: message,
           sessionId: sessionId,
           imageUrl: imageUrl,
+          fileUrl: fileUrl,
+          fileName: fileName,
           agentId: selectedAgentId || undefined,
           companyId: companyId,
           userId: userId,

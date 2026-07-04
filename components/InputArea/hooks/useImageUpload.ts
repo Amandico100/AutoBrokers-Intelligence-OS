@@ -8,16 +8,22 @@ interface UseImageUploadProps {
 
 interface UseImageUploadReturn {
   pastedImage: { url: string; file: File } | null;
+  pastedFile: { name: string; file: File } | null;
   uploadingImage: boolean;
   fileInputRef: React.RefObject<HTMLInputElement>;
   handlePaste: (event: React.ClipboardEvent) => void;
   handleFileSelect: (e: React.ChangeEvent<HTMLInputElement>) => void;
   removePastedImage: () => void;
+  removePastedFile: () => void;
   uploadImageToSupabase: (file: File) => Promise<string | null>;
 }
 
+// F1 — documentos que o backend sabe extrair (docling).
+const DOC_EXTENSIONS = ['.pdf', '.docx', '.pptx', '.xlsx', '.txt', '.csv', '.md'];
+
 export function useImageUpload({ companyId }: UseImageUploadProps): UseImageUploadReturn {
   const [pastedImage, setPastedImage] = useState<{ url: string; file: File } | null>(null);
+  const [pastedFile, setPastedFile] = useState<{ name: string; file: File } | null>(null);
   const [uploadingImage, setUploadingImage] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
@@ -46,12 +52,24 @@ export function useImageUpload({ companyId }: UseImageUploadProps): UseImageUplo
     }
   }, [pastedImage]);
 
+  const removePastedFile = useCallback(() => {
+    setPastedFile(null);
+    if (fileInputRef.current) {
+      fileInputRef.current.value = '';
+    }
+  }, []);
+
   const handleFileSelect = useCallback((e: React.ChangeEvent<HTMLInputElement>) => {
     if (e.target.files && e.target.files[0]) {
       const file = e.target.files[0];
       if (file.type.startsWith('image/')) {
         const previewUrl = URL.createObjectURL(file);
         setPastedImage({ url: previewUrl, file });
+        setPastedFile(null);
+      } else if (DOC_EXTENSIONS.some((ext) => file.name.toLowerCase().endsWith(ext))) {
+        // F1: documento (PDF etc.) — o backend extrai o texto via docling.
+        setPastedFile({ name: file.name, file });
+        setPastedImage(null);
       }
     }
   }, []);
@@ -95,11 +113,13 @@ export function useImageUpload({ companyId }: UseImageUploadProps): UseImageUplo
 
   return {
     pastedImage,
+    pastedFile,
     uploadingImage,
     fileInputRef,
     handlePaste,
     handleFileSelect,
     removePastedImage,
+    removePastedFile,
     uploadImageToSupabase,
   };
 }

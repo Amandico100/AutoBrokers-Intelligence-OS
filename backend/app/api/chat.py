@@ -56,6 +56,8 @@ class ChatRequest(BaseModel):
     chatInput: Optional[str] = Field(None, description="Mensagem do usuário")
     audioData: Optional[str] = Field(None, description="Áudio em base64")
     imageUrl: Optional[str] = Field(None, description="URL pública da imagem enviada")
+    fileUrl: Optional[str] = Field(None, description="URL pública de documento anexado (PDF/DOCX...)")
+    fileName: Optional[str] = Field(None, description="Nome original do documento anexado")
     sessionId: UUID4 = Field(..., description="ID da sessão")
     companyId: UUID4 = Field(..., description="ID da empresa")
     userId: Optional[UUID4] = Field(None, description="ID do usuário")
@@ -487,65 +489,36 @@ async def chat_stream(
 
     enriched_message = chat_request.chatInput
 
-    if chat_request.imageUrl and agent_data:
-        v_model = agent_data.get("vision_model")
+    # F1 — visão/documentos GLOBAIS: default de plataforma quando o agente não
+    # tem vision_model (nunca mais "não consigo visualizar"); PDF/DOCX viram
+    # texto via docling. Fail-safe: falhou → segue só com o texto do usuário.
+    if chat_request.imageUrl:
+        from app.services.vision_service import describe_image
 
-        # Seleção de chave baseada no modelo de Vision
-        v_key = None
-        if v_model:
-            if v_model == "gpt-4o" or v_model.startswith("gpt-"):
-                v_key = os.getenv("OPENAI_API_KEY")
-            elif v_model.startswith("claude"):
-                v_key = os.getenv("ANTHROPIC_API_KEY")
-            elif v_model.startswith("gemini"):
-                v_key = os.getenv("GOOGLE_API_KEY")
+        vision_text = await describe_image(
+            chat_request.imageUrl,
+            company_id=str(chat_request.companyId),
+            agent_id=str(chat_request.agentId) if chat_request.agentId else None,
+            agent_data=agent_data,
+        )
+        if vision_text:
+            enriched_message = f"{chat_request.chatInput}\n\n[CONTEXTO VISUAL — imagem enviada pelo usuário]:\n{vision_text}"
+            logger.info("[STREAM VISION] ✅ Imagem analisada (F1)")
 
-        if v_model and v_key:
-            try:
-                # Callback para registrar custos de Vision
-                from app.core.callbacks.cost_callback import CostCallbackHandler
-                vision_callbacks = [
-                    CostCallbackHandler(
-                        service_type="vision",
-                        company_id=str(chat_request.companyId),
-                        agent_id=str(chat_request.agentId) if chat_request.agentId else None,
-                        model_name=v_model
-                    )
-                ]
+    if chat_request.fileUrl:
+        from app.services.vision_service import extract_document_text
 
-                # Análise de imagem síncrona (antes do stream)
-                if v_model == "gpt-4o" or v_model.startswith("gpt-"):
-                    vision_llm = ChatOpenAI(
-                        model=v_model,
-                        api_key=v_key,
-                        temperature=0.3,
-                        callbacks=vision_callbacks
-                    )
-                elif v_model.startswith("claude"):
-                    vision_llm = ChatAnthropic(
-                        model=v_model,
-                        api_key=v_key,
-                        temperature=0.3,
-                        callbacks=vision_callbacks
-                    )
-                else:
-                    vision_llm = None
-
-                if vision_llm:
-                    vision_messages = [
-                        SystemMessage(content="Descreva tecnicamente a imagem para um Agente de Suporte. Seja breve."),
-                        HumanMessage(content=[
-                            {"type": "text", "text": "Descreva:"},
-                            {"type": "image_url", "image_url": {"url": chat_request.imageUrl}},
-                        ]),
-                    ]
-                    vision_response = await vision_llm.ainvoke(vision_messages)
-                    enriched_message = f"{chat_request.chatInput}\n\n[CONTEXTO VISUAL]:\n{vision_response.content}"
-                    logger.info(f"[STREAM VISION] ✅ Imagem analisada com {v_model}")
-            except Exception as e:
-                logger.error(f"[STREAM VISION] ❌ Erro: {e}")
-        elif chat_request.imageUrl and not v_model:
-            logger.warning("[STREAM VISION] ⚠️ vision_model não configurado no agente")
+        doc_text = await extract_document_text(chat_request.fileUrl, chat_request.fileName or "")
+        if doc_text:
+            enriched_message = (
+                f"{enriched_message}\n\n[DOCUMENTO ANEXADO: {chat_request.fileName or 'arquivo'}]\n{doc_text}\n[FIM DO DOCUMENTO]"
+            )
+            logger.info("[STREAM DOC] ✅ Documento anexado extraído (F1)")
+        else:
+            enriched_message = (
+                f"{enriched_message}\n\n[AVISO INTERNO: o usuário anexou o documento "
+                f"'{chat_request.fileName or 'arquivo'}' mas a extração falhou — diga isso com naturalidade e peça para reenviar ou colar o trecho.]"
+            )
 
     # ===========================================================================
     # 🛡️ GUARDRAILS SECURITY CHECK (BEFORE STREAMING)
