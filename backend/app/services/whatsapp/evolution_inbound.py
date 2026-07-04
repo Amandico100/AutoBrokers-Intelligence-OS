@@ -78,6 +78,11 @@ def normalize_evolution_inbound(payload: Dict[str, Any]) -> Dict[str, Any]:
         return {**out, "skip": True, "skip_reason": "from_me"}
     if is_group:
         return {**out, "skip": True, "skip_reason": "group"}
+    # Número pessoal do corretor conectado: Status (status@broadcast), canais
+    # (@newsletter) e listas de transmissão (@broadcast) NUNCA viram atendimento.
+    # Individuais legítimos (@s.whatsapp.net, @c.us, @lid) seguem passando.
+    if isinstance(remote_jid, str) and remote_jid.endswith(("@broadcast", "@newsletter", "@call")):
+        return {**out, "skip": True, "skip_reason": "non_individual"}
     if not out["phone"]:
         return {**out, "skip": True, "skip_reason": "no_phone"}
     if not out["text"]:

@@ -26,6 +26,28 @@ _TOKEN_RE = re.compile(r"^[A-Za-z0-9_-]+$")
 DEDUP_NAMESPACES = {"z-api": "", "uazapi": "uazapi:", "evolution": "evolution:"}
 
 
+def attendant_inbound_allowed(phone: str, allowlist: Optional[str] = "__env__") -> bool:
+    """Allowlist de teste do atendente (S17 — piloto em número pessoal).
+
+    Env `ATTENDANT_INBOUND_ALLOWLIST` (números separados por vírgula, qualquer
+    formatação). Vazia/ausente = responde a todos (produção). Configurada =
+    o agente SÓ responde aos números listados; o resto é ignorado em silêncio.
+    """
+    import os
+
+    raw = os.getenv("ATTENDANT_INBOUND_ALLOWLIST", "") if allowlist == "__env__" else (allowlist or "")
+    entries = [
+        "".join(ch for ch in item if ch.isdigit())
+        for item in str(raw).split(",")
+        if item.strip()
+    ]
+    entries = [e for e in entries if e]
+    if not entries:
+        return True
+    digits = "".join(ch for ch in str(phone or "") if ch.isdigit())
+    return digits in entries
+
+
 def generate_webhook_token() -> str:
     """Token novo (256 bits, urlsafe) para a URL de webhook da integração."""
     return secrets.token_urlsafe(32)

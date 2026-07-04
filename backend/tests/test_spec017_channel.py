@@ -149,6 +149,21 @@ def run():
     check("P1.2: grupo é ignorado", evo.normalize_evolution_inbound(grp)["skip_reason"] == "group")
     other = {**base, "event": "connection.update"}
     check("P1.2: evento não-mensagem é ignorado", evo.normalize_evolution_inbound(other)["skip"])
+    # Número pessoal do corretor: Status, canais e broadcast NUNCA chegam ao agente.
+    st = {**base, "data": {**base["data"], "key": {**base["data"]["key"], "remoteJid": "status@broadcast"}}}
+    check("P1.2: Status (status@broadcast) é ignorado", evo.normalize_evolution_inbound(st)["skip"])
+    nl = {**base, "data": {**base["data"], "key": {**base["data"]["key"], "remoteJid": "120363123456789@newsletter"}}}
+    check("P1.2: canal (@newsletter) é ignorado", evo.normalize_evolution_inbound(nl)["skip"])
+    bc = {**base, "data": {**base["data"], "key": {**base["data"]["key"], "remoteJid": "5547999990000@broadcast"}}}
+    check("P1.2: lista de transmissão (@broadcast) é ignorada", evo.normalize_evolution_inbound(bc)["skip"])
+    lid = {**base, "data": {**base["data"], "key": {**base["data"]["key"], "remoteJid": "98765432101@lid"}}}
+    check("P1.2: contato individual em @lid CONTINUA passando", not evo.normalize_evolution_inbound(lid)["skip"])
+
+    # Allowlist de teste (número pessoal): só responde quem estiver liberado.
+    check("ALLOW: sem allowlist configurada, todo mundo passa", sec.attendant_inbound_allowed("5547999990000", allowlist="") is True)
+    check("ALLOW: numero na lista passa (formatos com +55/espacos)", sec.attendant_inbound_allowed("5547988087463", allowlist="+55 47 98808-7463, 5511911112222") is True)
+    check("ALLOW: numero fora da lista e bloqueado", sec.attendant_inbound_allowed("5547900000001", allowlist="5547988087463") is False)
+    check("ALLOW: allowlist None = env ausente = passa", sec.attendant_inbound_allowed("qualquer", allowlist=None) is True)
     check("P1.2: connection.update extrai estado", evo.connection_state_from_payload({"event": "connection.update", "data": {"state": "close"}}) == "close")
 
     # ---------- P2 (S17-9): divisor de balões humanizado (puro) ----------
