@@ -484,6 +484,23 @@ async def process_whatsapp_message_background(
             )
             message_text = payload.image.caption or ("📷 [Imagem]" if is_human_mode else "🖼️ [Imagem enviada]")
             logger.info(f"[WEBHOOK] Image processed. URL: {final_image_url}")
+            # F1 — atendente VÊ a imagem do segurado (foto de dano, documento,
+            # boleto): contexto visual entra no texto; falhou → segue sem.
+            if final_image_url and not is_human_mode:
+                try:
+                    from app.services.vision_service import describe_image
+
+                    vision_text = await describe_image(
+                        final_image_url,
+                        company_id=str(company_id),
+                        agent_id=str(agent_id) if agent_id else None,
+                        purpose_hint="Atendente de corretora falando com o segurado",
+                    )
+                    if vision_text:
+                        message_text = f"{message_text}\n\n[CONTEXTO VISUAL — imagem enviada pelo cliente]:\n{vision_text}"
+                        logger.info("[WEBHOOK] ✅ Imagem do cliente analisada (F1)")
+                except Exception as e:  # noqa: BLE001
+                    logger.error(f"[WEBHOOK] vision falhou: {type(e).__name__}")
 
         else:
             logger.error("[WEBHOOK BACKGROUND] No valid message content found")
