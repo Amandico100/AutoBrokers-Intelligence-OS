@@ -3,14 +3,7 @@ import VoiceMessage from './VoiceMessage';
 import ReactMarkdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
 import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
-import { User, Loader2 } from 'lucide-react';
-import {
-  extractUCPData,
-  ProductCarousel,
-  ProductCard,
-  CheckoutButton,
-  UCPData,
-} from '@/components/ucp';
+import { User } from 'lucide-react';
 
 interface MessageBubbleProps {
   message: Message;
@@ -19,64 +12,10 @@ interface MessageBubbleProps {
   onSendMessage?: (message: string) => void;
 }
 
-// ... (omitindo UCPLoadingState e UCPRenderer para brevidade no diff, mas mantendo no arquivo) ...
-// Nota: O tool replace_file_content precisa de contexto exato.
-// Como imports estão no topo, e lógica no meio, melhor fazer em 2 chunks.
-
-// CHUNK 1: Imports
-
-// Componente para estados de loading UCP
-function UCPLoadingState({ type }: { type: string }) {
-  const messages: Record<string, string> = {
-    search: 'Buscando produtos...',
-    detail: 'Carregando detalhes...',
-    checkout: 'Gerando link de pagamento...',
-    default: 'Processando...',
-  };
-
-  return (
-    <div className="flex items-center gap-3 bg-zinc-900/50 border border-zinc-800 rounded-xl p-4">
-      <Loader2 className="h-5 w-5 animate-spin text-primary" />
-      <span className="text-sm text-zinc-400">{messages[type] || messages.default}</span>
-    </div>
-  );
-}
-
-// Componente para renderizar conteúdo UCP
-function UCPRenderer({
-  data,
-  onSendMessage,
-}: {
-  data: UCPData;
-  onSendMessage?: (message: string) => void;
-}) {
-  switch (data.type) {
-    case 'ucp_product_list':
-      return (
-        <ProductCarousel
-          products={data.products}
-          shopDomain={data.shop_domain}
-          query={data.query}
-          onSendMessage={onSendMessage}
-        />
-      );
-
-    case 'ucp_product_detail':
-      return <ProductCard product={data.product} size="large" onSendMessage={onSendMessage} />;
-
-    case 'ucp_checkout':
-      return <CheckoutButton data={data} />;
-
-    default:
-      return null;
-  }
-}
-
 export function MessageBubble({
   message,
   userAvatar,
   userName,
-  onSendMessage,
 }: MessageBubbleProps) {
   const isUser = message.role === 'user';
   const isVoice = message.type === 'voice';
@@ -97,24 +36,7 @@ export function MessageBubble({
   // Remove o prefixo do conteúdo para exibição (apenas legado)
   const rawContent = humanMatch ? message.content.replace(/^\[👤\s+.+?\]\n?/, '') : message.content;
 
-  // 🛒 UCP: Detectar e extrair conteúdo de comércio
   let displayContent = rawContent;
-  let ucpData: UCPData | null = null;
-
-  if (!isUser && rawContent) {
-    const extracted = extractUCPData(rawContent);
-    displayContent = extracted.text;
-    ucpData = extracted.data;
-
-    // If no UCP was fully parsed but content contains partial UCP JSON
-    // (streaming in progress), hide the partial JSON from display
-    if (!ucpData && displayContent) {
-      const partialUcpMatch = displayContent.match(/\{"type"\s*:\s*"ucp_/);
-      if (partialUcpMatch && partialUcpMatch.index !== undefined) {
-        displayContent = displayContent.substring(0, partialUcpMatch.index).trim();
-      }
-    }
-  }
 
   return (
     <div className={`flex w-full ${isUser ? 'justify-end' : 'justify-start'} mb-6`}>
@@ -161,16 +83,8 @@ export function MessageBubble({
           </div>
         )}
 
-        {/* 🛒 UCP Content - Renderização especial para comércio */}
-        {ucpData && (
-          <div className="w-full mt-2">
-            <UCPRenderer data={ucpData} onSendMessage={onSendMessage} />
-          </div>
-        )}
-
         {/* Mensagem de texto (apenas se não for placeholder de mídia) */}
         {displayContent &&
-          // !ucpData não é mais checado aqui, permitindo modo híbrido
           !message.image_url &&
           !(isVoice && message.audio_url) &&
           !displayContent.includes('Imagem enviada') &&
