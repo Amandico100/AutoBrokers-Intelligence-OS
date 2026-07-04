@@ -16,8 +16,27 @@ export default function ChatPage() {
   const { userId, userAvatar, userName, isLoading: isLoadingUser } = useUserId();
   const [messages, setMessages] = useState<Message[]>([]);
   const [isLoading, setIsLoading] = useState(false);
-  const [sessionId, setSessionId] = useState(() => crypto.randomUUID());
+  // Sessão vem da URL (?session=) quando existe — é o que permite abrir uma
+  // conversa do Histórico e sobreviver a refresh. Sem URL = conversa nova.
+  const [sessionId, setSessionId] = useState(() => {
+    if (typeof window !== 'undefined') {
+      const fromUrl = new URLSearchParams(window.location.search).get('session');
+      if (fromUrl && fromUrl.trim()) return fromUrl.trim();
+    }
+    return crypto.randomUUID();
+  });
   const [conversationId, setConversationId] = useState<string | null>(null);
+
+  // Mantém a URL espelhando a sessão atual: refresh volta na MESMA conversa e
+  // "Nova conversa" gera URL nova (histórico do navegador não empilha).
+  useEffect(() => {
+    if (typeof window === 'undefined') return;
+    const url = new URL(window.location.href);
+    if (url.searchParams.get('session') !== sessionId) {
+      url.searchParams.set('session', sessionId);
+      window.history.replaceState(null, '', url.toString());
+    }
+  }, [sessionId]);
 
   // States do Agente
   const [agents, setAgents] = useState<{ id: string; name: string }[]>([]);

@@ -11,6 +11,7 @@ import { Button } from '@/components/ui/button';
 
 interface Conversation {
   id: string;
+  session_id: string | null;
   title: string | null;
   created_at: string;
   updated_at: string;
@@ -41,8 +42,13 @@ export default function HistoricoPage() {
     }
   };
 
-  const handleOpenConversation = (_conversationId: string) => {
-    router.push('/dashboard/chat');
+  const handleOpenConversation = (conv: Conversation) => {
+    // Reabre a MESMA sessão no chat (o chat lê ?session= e restaura as mensagens).
+    if (conv.session_id) {
+      router.push(`/dashboard/chat?session=${encodeURIComponent(conv.session_id)}`);
+    } else {
+      router.push('/dashboard/chat');
+    }
   };
 
   if (loading) {
@@ -80,7 +86,7 @@ export default function HistoricoPage() {
               {conversations.map((conv) => (
                 <button
                   key={conv.id}
-                  onClick={() => handleOpenConversation(conv.id)}
+                  onClick={() => handleOpenConversation(conv)}
                   className="group flex w-full items-start justify-between gap-4 rounded-xl border border-border bg-surface p-5 text-left transition-colors hover:border-primary/40 hover:bg-surface-2"
                 >
                   <div className="min-w-0 flex-1">

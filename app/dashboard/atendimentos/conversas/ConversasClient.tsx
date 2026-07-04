@@ -389,16 +389,16 @@ export function ConversasClient() {
                       <div className={cn('flex', isClient ? 'justify-start' : 'justify-end')}>
                         <div
                           className={cn(
-                            'max-w-[78%] rounded-2xl px-3 py-2 text-sm leading-relaxed',
+                            'max-w-[78%] rounded-2xl px-3.5 py-2.5 text-sm leading-relaxed shadow-sm',
                             isClient
                               ? 'rounded-bl-sm border border-border bg-surface text-foreground'
                               : isHuman
-                                ? 'rounded-br-sm bg-primary text-primary-foreground'
-                                : 'rounded-br-sm border border-primary/30 bg-brand-soft text-foreground',
+                                ? 'rounded-br-sm border border-primary/50 bg-brand-soft text-foreground'
+                                : 'rounded-br-sm border border-primary/25 bg-brand-soft text-foreground',
                           )}
                         >
                           {!isClient && (
-                            <p className={cn('mb-0.5 flex items-center gap-1 text-[10px] font-medium', isHuman ? 'text-primary-foreground/80' : 'text-primary')}>
+                            <p className="mb-1 flex items-center gap-1 text-[10px] font-semibold uppercase tracking-wide text-primary">
                               {isHuman ? <UserRound className="h-3 w-3" /> : <Bot className="h-3 w-3" />}
                               {isHuman ? 'Atendimento humano' : 'Atendente IA'}
                             </p>
@@ -409,7 +409,7 @@ export function ConversasClient() {
                           )}
                           {m.audio_url && <audio controls src={m.audio_url} className="mb-1 max-w-full" />}
                           {m.content && <p className="whitespace-pre-wrap break-words">{m.content}</p>}
-                          <p className={cn('mt-1 text-right text-[10px]', isClient ? 'text-muted-foreground' : isHuman ? 'text-primary-foreground/70' : 'text-muted-foreground')}>
+                          <p className="mt-1 text-right text-[10px] text-muted-foreground">
                             {fmtTime(m.created_at)}
                           </p>
                         </div>
