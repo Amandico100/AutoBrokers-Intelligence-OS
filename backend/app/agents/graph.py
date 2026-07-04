@@ -396,6 +396,11 @@ async def create_agent_graph(
             if str(_agent_role or "").strip().lower() == "attendance":
                 from .tools.insurer_dispatch_tool import InsurerDispatchTool
                 tools.append(InsurerDispatchTool(company_id=str(company_id)))
+            # F2: Chat Principal cria/gerencia ROTINAS por conversa (Claude-Rotinas).
+            if str(_agent_role or "core").strip().lower() in ("core", "", "core(legado)"):
+                from .tools.routine_tools import CreateRoutineTool, ListRoutinesTool
+                tools.append(CreateRoutineTool(company_id=str(company_id), supabase_client=supabase_client))
+                tools.append(ListRoutinesTool(company_id=str(company_id), supabase_client=supabase_client))
     except Exception as e:  # noqa: BLE001
         logger.warning(f"[Graph] ⚠️ Capability tools (SPEC-014) não anexadas: {e}")
 

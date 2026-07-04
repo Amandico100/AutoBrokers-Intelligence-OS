@@ -376,7 +376,12 @@ class LangChainService:
             enriched_message = final_message
             if image_url:
                 import os
-                v_model = agent.get("vision_model")
+                # F1: default de plataforma — agente NUNCA fica cego por falta
+                # de vision_model configurado (mesma regra do vision_service).
+                v_model = agent.get("vision_model") or (
+                    "gpt-4o-mini" if os.getenv("OPENAI_API_KEY")
+                    else ("claude-3-5-sonnet-20241022" if os.getenv("ANTHROPIC_API_KEY") else None)
+                )
 
                 # === SELEÇÃO DE CHAVE VISION: USAR .env ===
                 v_key = None
