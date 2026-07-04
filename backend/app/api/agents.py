@@ -505,28 +505,6 @@ async def get_editor_context(
     except Exception as e:
         logger.error(f"[EditorContext] Erro ao buscar MCP tools: {e}")
 
-    # === UCP TOOLS: Busca tools da loja conectada (inclusive Storefront) ===
-    try:
-        from app.agents.tools.ucp_factory import get_all_ucp_tools_for_agent
-
-        ucp_tools = await get_all_ucp_tools_for_agent(str(agent_id))
-
-        for tool in ucp_tools:
-            # Definir ícone baseado no tipo (loja ou capability)
-            icon = "shopping-bag" if tool.get("type") == "storefront" else "shopping-cart"
-
-            context_vars.append({
-                "tag": f"{{{tool['name']}}}",
-                "label": f"🛍️ {tool['name']}",
-                "description": tool['description'],
-                "icon": icon,
-                "always": False,
-                "category": "ucp_tool"
-            })
-
-    except Exception as e:
-        logger.error(f"[EditorContext] Erro ao buscar UCP tools: {e}")
-
     return {"agent_id": str(agent_id), "variables": context_vars}
 
 

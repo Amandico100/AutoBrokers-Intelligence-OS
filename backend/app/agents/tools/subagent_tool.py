@@ -39,7 +39,6 @@ DEFAULT_TIMEOUT_SECONDS = 30
 EXCLUDED_TOOL_TYPES = {
     "request_human_agent",       # Só orquestrador pode escalar
     "store_product_search",      # Retorna JSON p/ carrossel (renderiza no front)
-    "ucp_checkout",              # Checkout direto (renderiza no front)
 }
 
 
@@ -714,7 +713,7 @@ class SubAgentTool(BaseTool):
         Instancia tools para o SubAgent.
         Reutiliza as mesmas classes/singletons do agente principal.
 
-        EXCLUI: UCP/Storefront (carrossel), HumanHandoff, vision tools.
+        EXCLUI: HumanHandoff, carrossel de produto e vision tools.
         """
         tools: List[BaseTool] = []
 

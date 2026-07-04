@@ -58,10 +58,6 @@ class Settings(BaseSettings):
     STRIPE_SECRET_KEY: Optional[str] = None
     STRIPE_WEBHOOK_SECRET: Optional[str] = None
 
-    # Shopify Agent API Credentials (for checkout MCP authentication)
-    SHOPIFY_AGENT_CLIENT_ID: Optional[str] = None
-    SHOPIFY_AGENT_CLIENT_SECRET: Optional[str] = None
-
     # LangSmith Configuration (Observability - Optional)
     # Get API key at: https://smith.langchain.com/settings
     LANGCHAIN_TRACING_V2: bool = False  # Disabled by default

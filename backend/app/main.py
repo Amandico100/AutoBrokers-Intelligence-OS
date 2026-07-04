@@ -147,11 +147,6 @@ app.include_router(stripe_webhooks_router, prefix="/api/webhooks", tags=["Stripe
 app.include_router(stripe_checkout_router, prefix="/api/billing", tags=["Stripe Checkout"])
 app.include_router(mcp_router, prefix="/api/mcp", tags=["MCP Integrations"])
 
-# === UCP (Universal Commerce Protocol) ===
-from app.api.ucp import router as ucp_router
-
-app.include_router(ucp_router, prefix="/api", tags=["UCP Commerce"])
-
 # === Sanitization (Document Sanitizer) ===
 from app.api.sanitization import router as sanitization_router
 
