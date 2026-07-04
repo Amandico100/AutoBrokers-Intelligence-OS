@@ -186,6 +186,11 @@ from app.api.authority import router as authority_router
 
 app.include_router(authority_router, tags=["Authority"])
 
+# === SPEC-017 — Espelho de acionamentos ativos (Conversas do dashboard) ===
+from app.api.dispatch_monitor import router as dispatch_monitor_router
+
+app.include_router(dispatch_monitor_router, tags=["Dispatch"])
+
 # === Attendance Media (audio transcription — 42M0) ===
 from app.api.attendance_media import router as attendance_media_router
 

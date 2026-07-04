@@ -327,6 +327,33 @@ def run():
 
     _aio.run(_human_phase_flow())
 
+    print("\n== ESPELHO - list_active_dispatches (Conversas do dashboard) ==\n")
+
+    async def _mirror_flow():
+        os.environ["INSURER_DISPATCH_LIVE"] = "true"
+        try:
+            res = await router.start_live_dispatch(
+                company_id="co-M", case_id="cM1", playbook_ref=REF, subservice="chaveiro",
+                slots=SLOTS, client_phone="5548911112222", insurer_phone="551140901444",
+                sender=lambda t: None,
+            )
+            assert res["ok"]
+            listed = await router.list_active_dispatches("co-M")
+            check(
+                "ESPELHO: dispatch ativo aparece listado com transcript e estado",
+                len(listed) == 1 and listed[0]["insurer_phone"] == "551140901444"
+                and listed[0]["state"] == "ura" and listed[0]["transcript"],
+                listed,
+            )
+            other = await router.list_active_dispatches("co-OUTRA")
+            check("ESPELHO: escopo por corretora (outra empresa nao ve)", other == [])
+            await router.clear_active_dispatch("co-M", "551140901444")
+            check("ESPELHO: sessao encerrada some da lista", await router.list_active_dispatches("co-M") == [])
+        finally:
+            os.environ.pop("INSURER_DISPATCH_LIVE", None)
+
+    _aio.run(_mirror_flow())
+
     print(f"\n== Resumo: {PASS} passaram, {FAIL} falharam ==")
     if FAILURES:
         sys.exit(1)

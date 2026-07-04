@@ -1,16 +1,20 @@
-import { ModulePlaceholder } from '@/components/modules/ModulePlaceholder';
+import { DetailHeader } from '@/components/patterns/DetailHeader';
 import { icons } from '@/lib/icons';
+
+import { ConversasClient } from './ConversasClient';
 
 export const metadata = { title: 'Conversas · Atendimentos' };
 
 export default function ConversasPage() {
   return (
-    <ModulePlaceholder
-      icon={icons.conversas}
-      title="Conversas"
-      subtitle="Histórico de conversas por canal."
-      breadcrumb={[{ label: 'Atendimentos', href: '/dashboard/atendimentos' }, { label: 'Conversas' }]}
-      description="As conversas de atendimento aparecerão aqui."
-    />
+    <div className="space-y-4">
+      <DetailHeader
+        icon={icons.conversas}
+        title="Conversas"
+        subtitle="Acompanhe o atendente IA em tempo real e assuma quando quiser."
+        breadcrumb={[{ label: 'Atendimentos', href: '/dashboard/atendimentos' }, { label: 'Conversas' }]}
+      />
+      <ConversasClient />
+    </div>
   );
 }
