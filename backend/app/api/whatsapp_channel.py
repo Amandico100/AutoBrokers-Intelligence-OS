@@ -115,6 +115,34 @@ async def whatsapp_channel_diagnostics(
                 out["instance_state"] = f"http_{state_res.status_code}"
     except httpx.HTTPError as e:
         out["error"] = f"evolution_unreachable:{type(e).__name__}"
+
+    # Sem linha em integrations o webhook NÃO roteia — o diagnóstico tem que
+    # gritar isso (foi o que escondeu o canal mudo por 2 dias).
+    try:
+        from app.core.database import get_supabase_client
+
+        supabase = get_supabase_client()
+
+        def _row():
+            return (
+                supabase.client.table("integrations")
+                .select("id, agent_id, is_active, webhook_token_prefix")
+                .eq("company_id", company_id)
+                .eq("provider", "evolution")
+                .eq("instance_id", out["instance"])
+                .limit(1)
+                .execute()
+            )
+
+        res = await asyncio.to_thread(_row)
+        row = res.data[0] if res.data else None
+        out["integration_row"] = bool(row)
+        out["integration_agent_bound"] = bool(row and row.get("agent_id"))
+        if not row:
+            out["error"] = out["error"] or "integracao_ausente_no_banco"
+    except Exception as e:  # noqa: BLE001
+        out["integration_row"] = None
+        logger.warning(f"[WA CHANNEL] diagnostics row check failed: {type(e).__name__}")
     return out
 
 
@@ -236,7 +264,9 @@ async def whatsapp_channel_setup(
     def _upsert() -> None:
         record = {
             "company_id": company_id,
-            "type": "whatsapp",
+            # NOT NULL no schema; telefone real só existe após parear — a
+            # instância identifica o canal até lá.
+            "identifier": instance,
             "purpose": str(payload.purpose or "attendance").strip().lower(),
             "provider": "evolution",
             "base_url": platform["base_url"],
@@ -265,7 +295,17 @@ async def whatsapp_channel_setup(
         else:
             supabase.client.table("integrations").insert(record).execute()
 
-    await asyncio.to_thread(_upsert)
+    # FAIL-LOUD: sem a linha em integrations o webhook não roteia NADA — se o
+    # banco recusar (coluna/constraint), o setup TEM que falhar visível, nunca
+    # deixar a instância de pé sem rota (bug que escondeu o canal por 2 dias).
+    try:
+        await asyncio.to_thread(_upsert)
+    except Exception as e:  # noqa: BLE001
+        logger.error(f"[WA CHANNEL] integração NÃO gravada: {type(e).__name__}: {e}")
+        raise HTTPException(
+            status_code=500,
+            detail=f"Instância criada, mas a integração não foi gravada no banco ({type(e).__name__}). O canal NÃO vai responder até corrigir.",
+        )
     logger.info(f"[WA CHANNEL] setup ok instance={instance} token_prefix={token_prefix}")
     return {"ok": True, "instance": instance, "webhook_token_prefix": token_prefix, "status": "connecting"}
 

@@ -164,6 +164,11 @@ def run():
     check("ALLOW: numero na lista passa (formatos com +55/espacos)", sec.attendant_inbound_allowed("5547988087463", allowlist="+55 47 98808-7463, 5511911112222") is True)
     check("ALLOW: numero fora da lista e bloqueado", sec.attendant_inbound_allowed("5547900000001", allowlist="5547988087463") is False)
     check("ALLOW: allowlist None = env ausente = passa", sec.attendant_inbound_allowed("qualquer", allowlist=None) is True)
+    # BR: WhatsApp entrega números SEM o nono dígito p/ muitas contas — a
+    # allowlist tem que casar nas duas formas (com e sem o 9).
+    check("ALLOW: inbound sem nono digito casa com lista com 9", sec.attendant_inbound_allowed("554788087463", allowlist="5547988087463") is True)
+    check("ALLOW: inbound com nono digito casa com lista sem 9", sec.attendant_inbound_allowed("5547988087463", allowlist="554788087463") is True)
+    check("ALLOW: numeros diferentes continuam bloqueados", sec.attendant_inbound_allowed("554791111111", allowlist="5547988087463") is False)
     check("P1.2: connection.update extrai estado", evo.connection_state_from_payload({"event": "connection.update", "data": {"state": "close"}}) == "close")
 
     # ---------- P2 (S17-9): divisor de balões humanizado (puro) ----------
