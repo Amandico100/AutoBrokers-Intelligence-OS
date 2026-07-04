@@ -22,8 +22,10 @@ from typing import Any, Callable, Dict, Optional
 
 from app.services.insurer_dispatch_service import (
     client_summary_from_capture,
+    guard_human_phase_reply,
     handle_insurer_message,
     new_dispatch_session,
+    reply_human_phase,
     start_dispatch,
 )
 
@@ -126,12 +128,16 @@ async def try_route_insurer_inbound(
     text: str,
     send_to_insurer: Callable[[str], Any],
     send_to_client: Callable[[str, str], Any],
+    human_reply_provider: Optional[Callable[..., Any]] = None,
 ) -> bool:
     """Se o inbound vier do número da seguradora com dispatch ativo, processa
     aqui e retorna True (o webhook NÃO deve seguir para o agente).
 
     send_to_insurer(texto) — responde a seguradora (mesma integração).
     send_to_client(telefone, texto) — avisa o segurado (protocolo/handoff).
+    human_reply_provider(session, texto) — async; redige a resposta na fase
+    humana da seguradora. TODA resposta passa pelo guard determinístico;
+    2 reprovações seguidas → needs_human (nunca responde às cegas).
     """
     session = await load_active_dispatch(company_id, from_phone)
     if not session:
@@ -139,6 +145,26 @@ async def try_route_insurer_inbound(
 
     session = handle_insurer_message(session, text, sender=send_to_insurer)
     state = session.get("state")
+
+    # Fase humana: LLM redige, guard fiscaliza, falha repetida pausa (fail-closed).
+    if state == "human_phase" and human_reply_provider is not None and session.get("pending_insurer_messages"):
+        draft = None
+        try:
+            draft = await human_reply_provider(session, text)
+        except Exception as e:  # noqa: BLE001 — provider nunca derruba o roteador
+            logger.error(f"[DISPATCH ROUTER] human reply provider error: {type(e).__name__}")
+        verdict = guard_human_phase_reply(str(draft or ""), session)
+        if verdict["ok"]:
+            session = reply_human_phase(session, verdict["reply"], sender=send_to_insurer)
+            session["human_phase_guard_fails"] = 0
+        else:
+            fails = int(session.get("human_phase_guard_fails") or 0) + 1
+            session["human_phase_guard_fails"] = fails
+            logger.warning(f"[DISPATCH ROUTER] human phase reply rejected ({verdict['reason']}) fails={fails}")
+            if fails >= 2:
+                session["state"] = "needs_human"
+                session["reason"] = f"human_phase_guard:{verdict['reason']}"
+                state = "needs_human"
 
     if state == "captured":
         summary = client_summary_from_capture(session)

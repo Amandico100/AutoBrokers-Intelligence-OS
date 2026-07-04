@@ -368,12 +368,40 @@ async def process_whatsapp_message_background(
             def _send_to_client(client_phone: str, text_out: str) -> None:
                 whatsapp_service.send_message(client_phone, text_out, integration)
 
+            async def _human_reply_provider(dispatch_session, insurer_text):
+                # Fase humana da seguradora: LLM plataforma redige; o guard do
+                # roteador fiscaliza. Qualquer falha aqui → None (acumula, nunca
+                # responde às cegas).
+                try:
+                    from langchain_core.messages import HumanMessage, SystemMessage
+
+                    from app.core.utils import get_api_key_for_provider
+                    from app.factories.llm_factory import LLMFactory
+                    from app.services.insurer_dispatch_service import build_human_phase_messages
+
+                    msgs = build_human_phase_messages(dispatch_session, insurer_text)
+                    llm = LLMFactory.create_llm(
+                        company_config={},
+                        agent_data=None,
+                        api_key=get_api_key_for_provider("openai"),
+                        company_id=str(company_id),
+                        agent_id=None,
+                    )
+                    result = await llm.ainvoke(
+                        [SystemMessage(content=msgs["system"]), HumanMessage(content=msgs["user"])]
+                    )
+                    return getattr(result, "content", None)
+                except Exception as e:  # noqa: BLE001
+                    logger.error(f"[WEBHOOK] human phase LLM failed: {type(e).__name__}")
+                    return None
+
             handled = await try_route_insurer_inbound(
                 company_id=str(company_id),
                 from_phone=str(payload.phone or ""),
                 text=str(payload.text.message if payload.text and payload.text.message else ""),
                 send_to_insurer=_send_to_insurer,
                 send_to_client=_send_to_client,
+                human_reply_provider=_human_reply_provider,
             )
             if handled:
                 logger.info("[WEBHOOK] inbound routed to dispatch engine (insurer conversation)")

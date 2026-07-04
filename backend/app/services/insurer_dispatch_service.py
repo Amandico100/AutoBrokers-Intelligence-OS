@@ -196,6 +196,84 @@ def handle_insurer_message(
     return session
 
 
+def build_human_phase_messages(session: Dict[str, Any], insurer_message: str) -> Dict[str, str]:
+    """Prompt da fase humana da seguradora (LLM redige, guard fiscaliza).
+
+    Regras duras no system: só dados do caso, 1-2 frases, sem números fora dos
+    slots, sem promessas; se não souber → literal NAO_SEI (guard pausa)."""
+    slots = session.get("slots") or {}
+    captured = session.get("captured") or {}
+    fatos = "\n".join(f"- {k}: {v}" for k, v in slots.items() if v not in (None, ""))
+    if captured:
+        fatos += "\n" + "\n".join(f"- capturado {k}: {v}" for k, v in captured.items())
+    pending = session.get("pending_insurer_messages") or []
+    contexto_pendente = (
+        "\nMensagens anteriores da seguradora ainda sem resposta:\n" + "\n".join(f"- {m}" for m in pending[-3:])
+    ) if pending else ""
+    system = (
+        "Você responde ao ATENDENTE HUMANO da seguradora em nome da corretora, num acionamento de "
+        "assistência residencial já em andamento.\n"
+        "REGRAS INEGOCIÁVEIS:\n"
+        "1. Responda APENAS o que foi perguntado, em 1-2 frases curtas, PT-BR cordial.\n"
+        "2. Use SOMENTE os dados do caso listados. NUNCA invente números, protocolos, prazos ou dados.\n"
+        "3. Não prometa nada em nome da seguradora; não confirme cobertura.\n"
+        "4. Se a pergunta pedir algo que NÃO está nos dados do caso, responda exatamente: NAO_SEI"
+    )
+    user = (
+        f"Dados do caso (únicos números permitidos):\n{fatos}{contexto_pendente}\n\n"
+        f"Mensagem da seguradora agora:\n{insurer_message}\n\nSua resposta:"
+    )
+    return {"system": system, "user": user}
+
+
+def _digit_runs(text: str, min_len: int = 5) -> List[str]:
+    runs, cur = [], ""
+    for ch in str(text or ""):
+        if ch.isdigit():
+            cur += ch
+        else:
+            if len(cur) >= min_len:
+                runs.append(cur)
+            cur = ""
+    if len(cur) >= min_len:
+        runs.append(cur)
+    return runs
+
+
+def guard_human_phase_reply(reply: str, session: Dict[str, Any]) -> Dict[str, Any]:
+    """Guard determinístico da resposta da LLM na fase humana (fail-closed)."""
+    text = str(reply or "").strip()
+    if not text:
+        return {"ok": False, "reason": "empty", "reply": ""}
+    normalized = text.upper().replace("ÃO", "AO").replace(" ", "_")
+    if "NAO_SEI" in normalized:
+        return {"ok": False, "reason": "model_declined", "reply": text}
+    if len(text) > 400:
+        return {"ok": False, "reason": "too_long", "reply": text}
+    captured = session.get("captured") or {}
+    if "protocolo" in text.lower() and not captured.get("protocol"):
+        return {"ok": False, "reason": "protocol_without_capture", "reply": text}
+    allowed_digits = " ".join(
+        str(v) for v in list((session.get("slots") or {}).values()) + list(captured.values())
+    )
+    for run in _digit_runs(text):
+        if run not in allowed_digits:
+            return {"ok": False, "reason": "invented_number", "reply": text}
+    return {"ok": True, "reason": "", "reply": text}
+
+
+def reply_human_phase(
+    session: Dict[str, Any],
+    reply: str,
+    *,
+    sender: Optional[Callable[[str], Any]] = None,
+) -> Dict[str, Any]:
+    """Emite a resposta GUARDADA na fase humana e limpa as pendências."""
+    session = _emit(session, reply, sender=sender, next_state="human_phase")
+    session["pending_insurer_messages"] = []
+    return session
+
+
 def client_summary_from_capture(session: Dict[str, Any]) -> Optional[str]:
     """Mensagem pronta para o CLIENTE quando protocolo+agendamento capturados."""
     captured = session.get("captured") or {}
