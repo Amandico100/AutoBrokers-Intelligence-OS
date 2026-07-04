@@ -257,6 +257,76 @@ def run():
 
     _aio.run(_live_flow())
 
+    print("\n== FASE HUMANA - LLM guardada respondendo a seguradora ==\n")
+
+    hp_session = dispatch.new_dispatch_session(case_id="cHP", company_id="co-HP", playbook_ref=REF, subservice="eletricista", slots=SLOTS)
+    g_ok = dispatch.guard_human_phase_reply("Confirmo: o CPF do titular é 11122233344 e o problema são tomadas sem energia.", hp_session)
+    check("HP: resposta com dados dos slots passa no guard", g_ok["ok"] is True, g_ok)
+    g_num = dispatch.guard_human_phase_reply("O protocolo do caso é 987654.", hp_session)
+    check("HP: numero inventado (nao esta nos slots) e barrado", g_num["ok"] is False, g_num)
+    g_ns = dispatch.guard_human_phase_reply("NAO_SEI", hp_session)
+    check("HP: modelo que nao sabe nao responde as cegas", g_ns["ok"] is False, g_ns)
+    g_len = dispatch.guard_human_phase_reply("x" * 500, hp_session)
+    check("HP: textao e barrado", g_len["ok"] is False, g_len)
+
+    async def _human_phase_flow():
+        os.environ["INSURER_DISPATCH_LIVE"] = "true"
+        try:
+            s = dispatch.new_dispatch_session(case_id="cHP2", company_id="co-HP", playbook_ref=REF, subservice="eletricista", slots=SLOTS)
+            s["client_phone"] = "5548911112222"
+            s["state"] = "human_phase"
+            await router.save_active_dispatch("co-HP", "551140901444", s)
+
+            to_insurer, to_client = [], []
+
+            async def good_provider(session, text):
+                return "Sim, confirmo o telefone 48999998888 para contato."
+
+            handled = await router.try_route_insurer_inbound(
+                company_id="co-HP", from_phone="551140901444",
+                text="Pode confirmar o telefone de contato?",
+                send_to_insurer=to_insurer.append,
+                send_to_client=lambda ph, tx: to_client.append(tx),
+                human_reply_provider=good_provider,
+            )
+            saved = await router.load_active_dispatch("co-HP", "551140901444")
+            check(
+                "HP: provider bom -> resposta enviada a seguradora e pendencias limpas",
+                handled and to_insurer == ["Sim, confirmo o telefone 48999998888 para contato."]
+                and saved and not saved.get("pending_insurer_messages"),
+                (to_insurer, saved and saved.get("pending_insurer_messages")),
+            )
+
+            async def bad_provider(session, text):
+                return "O protocolo é 111222333."
+
+            for _ in range(2):
+                await router.try_route_insurer_inbound(
+                    company_id="co-HP", from_phone="551140901444",
+                    text="Qual o protocolo?",
+                    send_to_insurer=to_insurer.append,
+                    send_to_client=lambda ph, tx: to_client.append(tx),
+                    human_reply_provider=bad_provider,
+                )
+            paused = await router.load_active_dispatch("co-HP", "551140901444")
+            check(
+                "HP: guard barra 2x -> needs_human + cliente avisado (nada enviado as cegas)",
+                paused and paused["state"] == "needs_human" and len(to_insurer) == 1 and to_client,
+                (paused and paused.get("reason"), len(to_insurer), to_client),
+            )
+            await router.clear_active_dispatch("co-HP", "551140901444")
+
+            msgs = dispatch.build_human_phase_messages(s, "Pode confirmar o endereco?")
+            check(
+                "HP: prompt tem regras duras e dados do caso (sem inventar)",
+                "NAO_SEI" in msgs["system"] and "16783" in msgs["user"] and "invente" in msgs["system"].lower(),
+                msgs["system"][:120],
+            )
+        finally:
+            os.environ.pop("INSURER_DISPATCH_LIVE", None)
+
+    _aio.run(_human_phase_flow())
+
     print(f"\n== Resumo: {PASS} passaram, {FAIL} falharam ==")
     if FAILURES:
         sys.exit(1)
