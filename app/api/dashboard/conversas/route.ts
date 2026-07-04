@@ -30,6 +30,9 @@ export async function GET(_req: NextRequest) {
       'id, session_id, channel, status, user_phone, user_name, unread_count, last_message_preview, last_message_at, claimed_by, claimed_by_name, claimed_at, created_at',
     )
     .eq('company_id', ctx.companyId)
+    // Central de ATENDIMENTO: só canais externos (WhatsApp). As conversas do
+    // Chat Principal (channel=web) vivem em Histórico — são outra coisa.
+    .eq('channel', 'whatsapp')
     .order('last_message_at', { ascending: false, nullsFirst: false })
     .limit(200);
 

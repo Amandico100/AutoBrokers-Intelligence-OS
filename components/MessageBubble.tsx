@@ -55,8 +55,8 @@ export function MessageBubble({
       <div className={`flex flex-col max-w-[80%] ${isUser ? 'items-end' : 'items-start'}`}>
         {/* Nome do remetente para mensagens humanas */}
         {isHumanMessage && humanSenderName && (
-          <div className="text-[10px] text-red-400 font-semibold mb-1 flex items-center gap-1">
-            👤 {humanSenderName}
+          <div className="mb-1 flex items-center gap-1 text-[10px] font-semibold uppercase tracking-wide text-primary">
+            {humanSenderName}
           </div>
         )}
 
@@ -92,9 +92,9 @@ export function MessageBubble({
           displayContent !== '[Mensagem de voz]' && (
             <div
               className={`${isUser
-                ? 'bg-primary text-primary-foreground rounded-2xl rounded-br-sm px-4 py-3 shadow-sm'
+                ? 'rounded-2xl rounded-br-sm border border-primary/40 bg-brand-soft px-4 py-3 text-foreground shadow-sm'
                 : isHumanMessage
-                  ? 'bg-muted text-foreground rounded-2xl rounded-bl-sm px-4 py-3 border border-border'
+                  ? 'rounded-2xl rounded-bl-sm border border-primary/50 bg-brand-soft px-4 py-3 text-foreground shadow-sm'
                   : 'text-foreground px-1 py-1' // Agent: No background, just text
                 }`}
             >
