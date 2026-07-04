@@ -652,7 +652,19 @@ async def _build_initial_state(
     # Prompt ESTÁTICO (instruções + tools) - será cacheado.
     # SPEC-013 P0: base por PAPEL — Core = copiloto inteligente; attendance = evidence-first.
     _agent_role_for_prompt = (real_agent_data or {}).get("agent_role") if real_agent_data else None
-    static_prompt = build_composite_prompt(base_instructions, agent_role=_agent_role_for_prompt)
+    # SPEC-017 identidade: nome configurado pela corretora (config.display_name
+    # tem prioridade sobre agents.name). Sem hard-code de plataforma.
+    _agent_cfg = (real_agent_data or {}).get("config") or {}
+    _agent_display_name = str(
+        (_agent_cfg.get("display_name") if isinstance(_agent_cfg, dict) else None)
+        or (real_agent_data or {}).get("name")
+        or ""
+    )
+    static_prompt = build_composite_prompt(
+        base_instructions,
+        agent_role=_agent_role_for_prompt,
+        agent_display_name=_agent_display_name,
+    )
 
     # Prompt DINÂMICO (memória) - NÃO será cacheado
     dynamic_context = ""
