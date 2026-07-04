@@ -84,6 +84,47 @@ def _digits(phone: str) -> str:
     return "".join(ch for ch in str(phone or "") if ch.isdigit())
 
 
+async def list_active_dispatches(company_id: str) -> list:
+    """Sessões de dispatch ATIVAS da corretora (espelho na página Conversas).
+
+    Retorna resumo por sessão: telefone da seguradora, estado, subserviço,
+    transcript e capturas — somente leitura, escopo por company."""
+    prefix = f"dispatch:active:{company_id}:"
+    raws: Dict[str, str] = {}
+    redis = await _redis()
+    if redis is not None:
+        try:
+            async for key in redis.scan_iter(match=prefix + "*"):
+                k = key.decode() if isinstance(key, (bytes, bytearray)) else str(key)
+                raw = await redis.get(k)
+                if raw:
+                    raws[k] = raw.decode() if isinstance(raw, (bytes, bytearray)) else str(raw)
+        except Exception as e:  # noqa: BLE001
+            logger.error(f"[DISPATCH ROUTER] list scan failed: {type(e).__name__}")
+    else:
+        raws = {k: v for k, v in _memory_store.items() if k.startswith(prefix)}
+
+    sessions = []
+    for key, raw in raws.items():
+        try:
+            s = json.loads(raw)
+        except Exception:  # noqa: BLE001
+            continue
+        sessions.append({
+            "insurer_phone": key[len(prefix):],
+            "case_id": s.get("case_id"),
+            "state": s.get("state"),
+            "subservice": s.get("subservice"),
+            "playbook_ref": s.get("playbook_ref"),
+            "client_phone": s.get("client_phone"),
+            "captured": s.get("captured") or {},
+            "transcript": s.get("transcript") or [],
+            "created_at": s.get("created_at"),
+        })
+    sessions.sort(key=lambda x: str(x.get("created_at") or ""), reverse=True)
+    return sessions
+
+
 async def start_live_dispatch(
     *,
     company_id: str,
