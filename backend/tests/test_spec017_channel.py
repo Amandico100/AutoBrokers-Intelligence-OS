@@ -159,6 +159,14 @@ def run():
     lid = {**base, "data": {**base["data"], "key": {**base["data"]["key"], "remoteJid": "98765432101@lid"}}}
     check("P1.2: contato individual em @lid CONTINUA passando", not evo.normalize_evolution_inbound(lid)["skip"])
 
+    # F1: mídia do cliente (imagem/documento) NÃO é descartada — vira media info.
+    img = {**base, "data": {**base["data"], "message": {"imageMessage": {"caption": "olha o estrago", "mimetype": "image/jpeg"}}}}
+    n_img = evo.normalize_evolution_inbound(img)
+    check("F1: imageMessage nao e skipada e traz media.kind=image", not n_img["skip"] and n_img["media"] and n_img["media"]["kind"] == "image" and n_img["media"]["caption"] == "olha o estrago", n_img.get("media"))
+    doc = {**base, "data": {**base["data"], "message": {"documentMessage": {"fileName": "apolice.pdf", "mimetype": "application/pdf"}}}}
+    n_doc = evo.normalize_evolution_inbound(doc)
+    check("F1: documentMessage vira media.kind=document com file_name", not n_doc["skip"] and n_doc["media"] and n_doc["media"]["kind"] == "document" and n_doc["media"]["file_name"] == "apolice.pdf", n_doc.get("media"))
+
     # Allowlist de teste (número pessoal): só responde quem estiver liberado.
     check("ALLOW: sem allowlist configurada, todo mundo passa", sec.attendant_inbound_allowed("5547999990000", allowlist="") is True)
     check("ALLOW: numero na lista passa (formatos com +55/espacos)", sec.attendant_inbound_allowed("5547988087463", allowlist="+55 47 98808-7463, 5511911112222") is True)
@@ -182,7 +190,21 @@ def run():
     parts = bal.split_whatsapp_balloons(lista + "\n\n" + long_prose)
     list_balloon = next((p for p in parts if "CPF do titular" in p), "")
     check("P2: lista NUNCA é fatiada", "Pode receber amanhã?" in list_balloon, parts)
-    check("P2: máximo 4 balões", len(bal.split_whatsapp_balloons(long_prose * 5)) <= 4)
+
+    # F1/entrega: lista GIGANTE (10+ apólices) não pode virar UM balão que o
+    # provedor rejeita — fatia em grupos de itens INTEIROS.
+    lista_gigante = "Encontrei estas apólices:\n\n" + "\n".join(
+        f"{i}. **Allianz** · Residencial · vigência 0{i % 9 + 1}/06/2026 a 0{i % 9 + 1}/06/2027 (ativo) — nº 2026231402699{i:02d}"
+        for i in range(1, 13)
+    )
+    parts_g = bal.split_whatsapp_balloons(lista_gigante)
+    check("ENTREGA: lista gigante fatiada em 2+ grupos <=1200", len(parts_g) >= 2 and all(len(p) <= 1200 for p in parts_g), [len(p) for p in parts_g])
+    joined = "\n".join(parts_g)
+    check("ENTREGA: nenhum item perdido/quebrado", all(f"2026231402699{i:02d}" in joined for i in range(1, 13)))
+    # Cap de 4 balões é o ALVO de humanização; a garantia de ENTREGA (nenhum
+    # balão >1200) vence quando o texto é gigante — sem perder conteúdo.
+    huge = bal.split_whatsapp_balloons(long_prose * 5)
+    check("P2: cap humanizado OU fatiamento seguro (nunca balão >1200)", all(len(p) <= 1200 for p in huge) and len(huge) >= 4, [len(p) for p in huge])
     check("P2: vazio = sem balões", bal.split_whatsapp_balloons("") == [])
 
     print(f"\n== Resumo: {PASS} passaram, {FAIL} falharam ==")

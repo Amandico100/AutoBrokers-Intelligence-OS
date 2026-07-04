@@ -810,9 +810,12 @@ def _sanitize_match(record: Dict[str, Any], unmasked: bool = False) -> Dict[str,
         "policy_status": status,
         "masked_policy_number": _mask_tail(policy_number),
         "holder_name_masked": _mask_name(name),
+        # P0: numapo é o número HUMANO da apólice — o titular (já identificado
+        # por CPF) usa esse número para escolher/consultar. SEMPRE visível;
+        # o que segue mascarado no atendimento é nome completo/documento.
+        "policy_number": policy_number,
     }
     if unmasked:  # Core/corretor interno: dados completos (dono da informação)
-        out["policy_number"] = policy_number
         out["holder_name"] = name
         out["document"] = _first_str(record, _CANONICAL_DOC_KEYS)
     return out
@@ -912,6 +915,8 @@ def _sanitize_policy(doc: Dict[str, Any], unmasked: bool = False) -> Dict[str, A
         "policy_status": status,
         "masked_policy_number": _mask_tail(policy_number),
         "holder_name_masked": _mask_name(name),
+        # P0: numapo (número humano) sempre visível — ver _sanitize_match.
+        "policy_number": policy_number,
         "valid_from": valid_from,
         "valid_to": valid_to,
         "active_now": ae["active_now"],
@@ -920,7 +925,6 @@ def _sanitize_policy(doc: Dict[str, Any], unmasked: bool = False) -> Dict[str, A
         "cancelled": is_cancel,
     }
     if unmasked:
-        out["policy_number"] = policy_number
         out["holder_name"] = name
         out["document"] = _first_str(doc, _CANONICAL_DOC_KEYS)
     return out

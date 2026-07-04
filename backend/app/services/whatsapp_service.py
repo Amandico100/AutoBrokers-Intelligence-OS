@@ -28,6 +28,8 @@ class WhatsappService:
         (Evolution/uazapi); z-api mantém o caminho legado.
         S17-9: resposta longa vira balões curtos (humanização).
         """
+        import time
+
         from app.services.whatsapp.balloons import split_whatsapp_balloons
 
         balloons = split_whatsapp_balloons(text) or [str(text or "")]
@@ -37,16 +39,34 @@ class WhatsappService:
             from app.services.whatsapp.registry import resolve_provider
 
             provider = resolve_provider(integration)
-            for balloon in balloons:
-                result = provider.send_text(to_number, balloon)
-                if not getattr(result, "success", False):
-                    raise Exception("Failed to send WhatsApp message")
-            return True
+            send = lambda t: provider.send_text(to_number, t)  # noqa: E731
+        else:
+            send = lambda t: get_zapi_provider().send_text(to_number, t, integration)  # noqa: E731
 
-        for balloon in balloons:
-            result = get_zapi_provider().send_text(to_number, balloon, integration)
-            if not result.success:
-                raise Exception("Failed to send WhatsApp message")
+        def _ok(result) -> bool:
+            return bool(getattr(result, "success", False))
+
+        for i, balloon in enumerate(balloons):
+            if i > 0:
+                time.sleep(0.7)  # cadência humana + evita throttle do provedor
+            result = send(balloon)
+            if _ok(result):
+                continue
+            # Falha: LOG COMPLETO (o bug do balão sumido era invisível) + retry.
+            detail = getattr(result, "error", None) or getattr(result, "status_code", None) or getattr(result, "raw", None)
+            logger.error(f"[WA SEND] balão {i + 1}/{len(balloons)} falhou (len={len(balloon)}): {str(detail)[:300]}")
+            time.sleep(1.2)
+            if _ok(send(balloon)):
+                continue
+            # Último recurso p/ balão grande: divide por linhas e envia pedaços.
+            if len(balloon) > 400:
+                lines = balloon.splitlines()
+                mid = max(1, len(lines) // 2)
+                pieces = ["\n".join(lines[:mid]).strip(), "\n".join(lines[mid:]).strip()]
+                if all(_ok(send(p)) for p in pieces if p):
+                    logger.warning(f"[WA SEND] balão {i + 1} entregue em 2 pedaços após falha")
+                    continue
+            raise Exception("Failed to send WhatsApp message")
         return True
 
     def send_audio(self, to_number: str, audio_url: str, integration: Dict[str, Any]) -> bool:
