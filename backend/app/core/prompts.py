@@ -84,12 +84,18 @@ def _select_base_prompt(agent_role: str = None) -> str:
     return CORE_BASE_PROMPT  # core, '' ou legado
 
 
-def build_composite_prompt(client_instructions: str = None, agent_role: str = None) -> str:
+def build_composite_prompt(
+    client_instructions: str = None,
+    agent_role: str = None,
+    agent_display_name: str = None,
+) -> str:
     """
     Constrói o prompt híbrido combinando regras do sistema com instruções do cliente.
 
     Args:
         client_instructions: Instruções personalizadas do cliente (tom, regras de negócio)
+        agent_display_name: nome configurado pela corretora para o ATENDENTE
+            (SPEC-017 identidade configurável — nunca hard-code de plataforma)
 
     Returns:
         Prompt completo fundido com separadores claros
@@ -103,10 +109,10 @@ def build_composite_prompt(client_instructions: str = None, agent_role: str = No
     """
     from datetime import datetime
 
-    import pytz
-
-    # Adicionar data/hora atual para o LLM
+    # Adicionar data/hora atual para o LLM (pytz ausente → horário local naive)
     try:
+        import pytz
+
         tz = pytz.timezone('America/Sao_Paulo')
         now = datetime.now(tz)
         current_datetime = now.strftime("%d/%m/%Y %H:%M")
@@ -120,6 +126,19 @@ def build_composite_prompt(client_instructions: str = None, agent_role: str = No
         client_instructions = "Seja um assistente útil e cordial."
 
     base_prompt = _select_base_prompt(agent_role)
+
+    # SPEC-017 — identidade configurável do atendente: o nome vem do cadastro da
+    # corretora (agents/config), nunca de hard-code. Sem nome = sem bloco (o
+    # atendente não inventa identidade).
+    role_norm = (agent_role or "").strip().lower()
+    display_name = (agent_display_name or "").strip()
+    if role_norm in ("attendance", "insured_external") and display_name:
+        base_prompt = base_prompt.strip() + f"""
+
+### 🪪 SUA IDENTIDADE
+- Seu nome é **{display_name}**, atendente da corretora.
+- Apresente-se por esse nome ao cumprimentar ou quando perguntarem quem você é.
+- NUNCA cite nomes internos da plataforma, de blueprints ou de sistemas ao cliente."""
 
     composite = f"""{base_prompt.strip()}
 

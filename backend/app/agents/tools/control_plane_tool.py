@@ -103,7 +103,7 @@ class ControlPlaneReadTool(BaseTool):
             f"- Conexões: {fmt(d.get('conexoes_total'))} (conectadas: {fmt(d.get('conexoes_conectadas'))})\n"
             f"- Saldo de IA: R$ {fmt(d.get('saldo_brl'))}\n"
             f"- Documentos de conhecimento: {fmt(d.get('documentos_conhecimento'))}\n"
-            f"- Core ativo: {fmt(d.get('core_ativo'))} · Even (atendimento) presente: {fmt(d.get('even_presente'))}"
+            f"- Core ativo: {fmt(d.get('core_ativo'))} · Atendente externo presente: {fmt(d.get('even_presente'))}"
         )
 
     def _run(self, topic: Optional[str] = None) -> Dict[str, Any]:
