@@ -75,7 +75,20 @@ async def lifespan(app: FastAPI):
     logger.info("[STARTUP] Starting WhatsApp Buffer Scheduler...")
     start_buffer_scheduler()
 
+    # 4. F2 — Motor de Rotinas (Claude-Rotinas): agendador em background.
+    import asyncio as _asyncio
+
+    from app.services.routine_engine import routine_scheduler_loop
+
+    app.state.routine_scheduler = _asyncio.create_task(routine_scheduler_loop())
+    logger.info("[STARTUP] ✅ Routine engine scheduler started")
+
     yield
+
+    # F2 — parar o agendador de rotinas
+    task = getattr(app.state, "routine_scheduler", None)
+    if task:
+        task.cancel()
 
     # === SHUTDOWN ===
     logger.info("[SHUTDOWN] Stopping WhatsApp Buffer Scheduler...")
