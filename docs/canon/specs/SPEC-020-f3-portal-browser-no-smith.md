@@ -1,6 +1,12 @@
 # SPEC-020 — F3: Portais (browser) DENTRO do Smith — robusto e persistente
 
 **Autor**: Fable · 2026-07-05 · **Status**: pronta para chat novo (janela dedicada, contexto limpo)
+> **EXECUTOR**: Opus 4.8 — leia ANTES `docs/canon/EXECUTION-GUIDE-OPUS.md` (obrigatório).
+> Detalhes de execução P1: Dockerfile próprio com `mcr.microsoft.com/playwright/python` base;
+> polling da tabela portal_jobs a cada 30s via loop asyncio (mesmo padrão do
+> routine_scheduler_loop); journey de teste roda contra HTML fixture local (file://) no
+> teste house; cifra Fernet (`cryptography` — verificar em requirements, adicionar se faltar);
+> tabela + envs no relatório final p/ o founder criar o serviço no EasyPanel.
 **Prioridade do founder**: portal de VIDROS/LANTERNAS primeiro; depois portais de seguradoras.
 Caso de ouro: **Auxiliar de Cobrança** (entrar nos portais, achar boletos atrasados, enviar no
 WhatsApp do cliente + relatório) — é o produto mais valioso da lista do founder.

@@ -1,6 +1,13 @@
 # SPEC-021 — F4 (aprendizado 3 camadas) + F5 (metering/conectores) + autoria de corredores
 
-**Autor**: Fable · 2026-07-05 · **Status**: pronta para chat novo. Ler memória RODADAS 13-16.
+**Autor**: Fable · 2026-07-05 · **Status**: pronta para chat novo. Ler memória RODADAS 13-18.
+> **EXECUTOR**: Opus 4.8 — leia ANTES `docs/canon/EXECUTION-GUIDE-OPUS.md` (obrigatório).
+> **Pesquisa prévia obrigatória (founder)**: antes de implementar F4, PESQUISE na web como
+> o OpenClaw/"Hermes" estrutura auto-aprendizado/self-improvement e "segundo cérebro"
+> (memória persistente em arquivos: diário, lições, MEMORY curado; heartbeat/cron; skills).
+> Traduza os padrões para NOSSO desenho (learning_notes 3 escopos + curadoria) — adote o
+> que for melhor, cite no PR o que veio de onde. O erro do próprio agente vira
+> error_lesson AUTOMÁTICA (needs_human do dispatch, guard-rejeição, rotina failed).
 
 ## F4 — Aprendizado em 3 camadas (visão Hermes: o sistema fica mais forte todo dia)
 Camadas: **global AutoBrokers** (todas as corretoras se beneficiam) · **corretora** ·
