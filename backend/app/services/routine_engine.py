@@ -106,6 +106,20 @@ def render_task_prompt(routine: Dict[str, Any]) -> str:
     )
 
 
+def describe_missing_dependency(channel: str, has_whatsapp: bool) -> Optional[str]:
+    """Mensagem INSTRUTIVA quando falta peça para a entrega (SPEC-019 A2).
+    None = tudo pronto. O chat repassa o passo a passo ao corretor."""
+    if str(channel or "").lower() == "whatsapp" and not has_whatsapp:
+        return (
+            "A corretora ainda NÃO tem um canal WhatsApp conectado — a rotina seria criada "
+            "mas nunca conseguiria entregar. Explique ao corretor o passo a passo: "
+            "1) Dashboard → Personalização → Conectores; 2) clicar no card WhatsApp; "
+            "3) escolher 'Conexão por QR code' e escanear com o número desejado; "
+            "4) depois pedir a criação da rotina de novo. NÃO crie a rotina agora."
+        )
+    return None
+
+
 def engine_enabled() -> bool:
     return str(os.getenv("ROUTINES_ENGINE_ENABLED", "true")).strip().lower() in ("1", "true", "yes", "on")
 
@@ -135,7 +149,10 @@ async def _deliver(routine: Dict[str, Any], output: str) -> Tuple[bool, str]:
                 .execute()
             )
             rows = res.data or []
-            rows.sort(key=lambda r: 0 if str(r.get("purpose") or "") == "attendance" else 1)
+            # S17-12: número dedicado a auxiliares tem PRIORIDADE p/ rotinas
+            # (isola o outreach do número de atendimento); senão, qualquer ativo.
+            _rank = {"auxiliary": 0, "attendance": 1}
+            rows.sort(key=lambda r: _rank.get(str(r.get("purpose") or ""), 2))
             return rows[0] if rows else None
 
         integration = await asyncio.to_thread(_find_integration)
