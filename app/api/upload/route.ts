@@ -7,7 +7,7 @@ import { createClient } from '@supabase/supabase-js';
 // =============================================
 const MAX_FILE_SIZE = 5 * 1024 * 1024; // 5MB (igual ao bucket chat-media)
 
-const ALLOWED_BUCKETS = ['chat-media', 'attachments', 'avatars', 'voice-messages'];
+const ALLOWED_BUCKETS = ['chat-media', 'chat-docs', 'attachments', 'avatars', 'voice-messages'];
 
 const ALLOWED_MIME_TYPES: Record<string, string[]> = {
   'chat-media': [
@@ -20,6 +20,14 @@ const ALLOWED_MIME_TYPES: Record<string, string[]> = {
     'text/plain', 'text/csv', 'text/markdown',
   ],
   attachments: ['image/jpeg', 'image/png', 'image/gif', 'image/webp', 'application/pdf'],
+  // F1: bucket real dos documentos do chat (chat-media só aceita imagem no Supabase)
+  'chat-docs': [
+    'application/pdf',
+    'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
+    'application/vnd.openxmlformats-officedocument.presentationml.presentation',
+    'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+    'text/plain', 'text/csv', 'text/markdown',
+  ],
   avatars: ['image/jpeg', 'image/png', 'image/webp'],
   'voice-messages': ['audio/webm', 'audio/ogg', 'audio/mp3', 'audio/mpeg', 'audio/wav'],
 };

@@ -812,17 +812,18 @@ async def _download_evolution_media(integration: dict, message_id: str) -> Optio
         return None
 
 
-async def _upload_media_bytes(company_id: str, blob: bytes, mime: str, ext: str) -> Optional[str]:
-    """Sobe bytes de mídia no storage chat-media e devolve URL pública."""
+async def _upload_media_bytes(company_id: str, blob: bytes, mime: str, ext: str, bucket: str = "chat-media") -> Optional[str]:
+    """Sobe bytes de mídia no storage e devolve URL pública.
+    Imagem → chat-media; documento/áudio → chat-docs (chat-media só aceita imagem)."""
     try:
         today = date.today().isoformat()
         file_path = f"{company_id}/{today}/{uuid4()}{ext}"
         await asyncio.to_thread(
-            lambda: supabase.client.storage.from_("chat-media").upload(
+            lambda: supabase.client.storage.from_(bucket).upload(
                 file_path, blob, {"content-type": mime or "application/octet-stream", "cache-control": "3600"}
             )
         )
-        return supabase.client.storage.from_("chat-media").get_public_url(file_path)
+        return supabase.client.storage.from_(bucket).get_public_url(file_path)
     except Exception as e:  # noqa: BLE001
         logger.error(f"[WEBHOOK EVOLUTION] media upload failed: {type(e).__name__}")
         return None
@@ -911,7 +912,25 @@ async def evolution_webhook_token(token: str, request: Request, background_tasks
     image_payload = None
     audio_payload = None
     if media:
-        blob_mime = await _download_evolution_media(integration, normalized["message_id"])
+        blob_mime = None
+        # Caminho preferido: webhookBase64=true entrega a mídia no próprio evento.
+        if media.get("base64"):
+            try:
+                import base64 as _b64
+
+                raw = str(media["base64"])
+                if raw.startswith("data:") and "," in raw[:100]:
+                    raw = raw.split(",", 1)[1]
+                blob_mime = (_b64.b64decode(raw), str(media.get("mimetype") or ""))
+            except Exception:  # noqa: BLE001
+                blob_mime = None
+        if blob_mime is None:
+            # Fallback: download via API (retry 1x — o store da Evolution pode
+            # persistir a mensagem DEPOIS do webhook disparar).
+            blob_mime = await _download_evolution_media(integration, normalized["message_id"])
+            if blob_mime is None:
+                await asyncio.sleep(2.5)
+                blob_mime = await _download_evolution_media(integration, normalized["message_id"])
         if blob_mime:
             blob, mime = blob_mime
             mime = mime or str(media.get("mimetype") or "")
@@ -924,7 +943,7 @@ async def evolution_webhook_token(token: str, request: Request, background_tasks
             elif media["kind"] == "document":
                 fname = str(media.get("file_name") or "documento.pdf")
                 ext = os.path.splitext(fname)[1].lower() or ".pdf"
-                url = await _upload_media_bytes(company_for_media, blob, mime or "application/pdf", ext)
+                url = await _upload_media_bytes(company_for_media, blob, mime or "application/pdf", ext, bucket="chat-docs")
                 doc_text = None
                 if url:
                     from app.services.vision_service import extract_document_text
@@ -936,7 +955,7 @@ async def evolution_webhook_token(token: str, request: Request, background_tasks
                 else:
                     text_message = f"{base_txt}\n(não foi possível ler o conteúdo do documento — peça para reenviar ou colar o texto)"
             elif media["kind"] == "audio":
-                url = await _upload_media_bytes(company_for_media, blob, mime or "audio/ogg", ".ogg")
+                url = await _upload_media_bytes(company_for_media, blob, mime or "audio/ogg", ".ogg", bucket="chat-docs")
                 if url:
                     audio_payload = {"audioUrl": url}
         else:

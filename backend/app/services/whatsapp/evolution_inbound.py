@@ -65,14 +65,19 @@ def normalize_evolution_inbound(payload: Dict[str, Any]) -> Dict[str, Any]:
 
     msg_dict = data.get("message") if isinstance(data.get("message"), dict) else {}
     media = None
-    for media_key, kind in (("imageMessage", "image"), ("documentMessage", "document"), ("audioMessage", "audio")):
+    for media_key, kind in (("imageMessage", "image"), ("documentMessage", "document"), ("documentWithCaptionMessage", "document"), ("audioMessage", "audio")):
         m = msg_dict.get(media_key)
+        if media_key == "documentWithCaptionMessage" and isinstance(m, dict):
+            m = ((m.get("message") or {}).get("documentMessage")) or m
         if isinstance(m, dict):
             media = {
                 "kind": kind,
                 "caption": (str(m.get("caption")).strip() or None) if m.get("caption") else None,
                 "mimetype": m.get("mimetype") or None,
                 "file_name": m.get("fileName") or m.get("title") or None,
+                # webhookBase64=true: a Evolution manda a mídia JÁ decodificada
+                # no próprio evento (campo base64 no message ou no data).
+                "base64": msg_dict.get("base64") or data.get("base64") or None,
             }
             break
 

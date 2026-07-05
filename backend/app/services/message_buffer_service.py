@@ -99,7 +99,9 @@ class MessageBufferService:
         seconds_since_last = (now - last_at).total_seconds()
         seconds_since_first = (now - first_at).total_seconds()
 
-        if seconds_since_last >= settings.BUFFER_DEBOUNCE_SECONDS:
+        # PISO de 8s: o env do servidor pode ter valores antigos (3s) que quebram
+        # a espera da rajada do cliente. Acima de 8s o env manda; abaixo, não.
+        if seconds_since_last >= max(settings.BUFFER_DEBOUNCE_SECONDS, 8):
             logger.info(
                 f"[BUFFER] Trigger DEBOUNCE for {phone} "
                 f"({seconds_since_last:.1f}s idle, "
@@ -107,7 +109,7 @@ class MessageBufferService:
             )
             return True
 
-        if seconds_since_first >= settings.BUFFER_MAX_WAIT_SECONDS:
+        if seconds_since_first >= max(settings.BUFFER_MAX_WAIT_SECONDS, 25):
             logger.info(
                 f"[BUFFER] Trigger MAX_WAIT for {phone} "
                 f"({seconds_since_first:.1f}s duration, "

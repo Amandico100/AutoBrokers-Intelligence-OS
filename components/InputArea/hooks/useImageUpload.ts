@@ -85,7 +85,8 @@ export function useImageUpload({ companyId }: UseImageUploadProps): UseImageUplo
         setUploadingImage(true);
         const formData = new FormData();
         formData.append('file', file);
-        formData.append('bucket', 'chat-media');
+        // F1: documentos vão para o chat-docs (o bucket chat-media só aceita imagem)
+        formData.append('bucket', file.type.startsWith('image/') ? 'chat-media' : 'chat-docs');
         formData.append('path', `${companyId}/${new Date().toISOString().split('T')[0]}`);
 
         const response = await fetch('/api/upload', {

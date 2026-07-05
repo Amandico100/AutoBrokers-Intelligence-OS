@@ -44,6 +44,11 @@ class WhatsappService:
             send = lambda t: get_zapi_provider().send_text(to_number, t, integration)  # noqa: E731
 
         def _ok(result) -> bool:
+            # SendResult do seam usa .ok; o provider z-api legado usa .success.
+            # (Checar só .success foi a CAUSA das duplicatas: envio bom parecia
+            # falha -> retry reenviava e a exceção matava os balões seguintes.)
+            if hasattr(result, "ok"):
+                return bool(result.ok)
             return bool(getattr(result, "success", False))
 
         for i, balloon in enumerate(balloons):
