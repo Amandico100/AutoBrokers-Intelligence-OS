@@ -120,12 +120,27 @@ async def _deliver(routine: Dict[str, Any], output: str) -> Tuple[bool, str]:
         number = "".join(ch for ch in str(delivery.get("number") or "") if ch.isdigit())
         if not number:
             return False, "delivery.number ausente"
-        from app.services.integration_service import get_integration_service
+        from app.core.database import get_supabase_client
         from app.services.whatsapp_service import get_whatsapp_service
 
-        integration = get_integration_service().get_whatsapp_integration(str(routine["company_id"]))
+        # Qualquer canal WhatsApp ATIVO da corretora serve para entregar rotina
+        # (a busca "estrita" por agente é regra do atendimento, não daqui).
+        def _find_integration():
+            supa = get_supabase_client()
+            res = (
+                supa.client.table("integrations")
+                .select("*")
+                .eq("company_id", str(routine["company_id"]))
+                .eq("is_active", True)
+                .execute()
+            )
+            rows = res.data or []
+            rows.sort(key=lambda r: 0 if str(r.get("purpose") or "") == "attendance" else 1)
+            return rows[0] if rows else None
+
+        integration = await asyncio.to_thread(_find_integration)
         if not integration:
-            return False, "corretora sem canal WhatsApp ativo"
+            return False, "corretora sem canal WhatsApp ativo — conecte em Personalização > Conectores > WhatsApp"
         ok = await asyncio.to_thread(get_whatsapp_service().send_message, number, output, integration)
         return bool(ok), "enviado no WhatsApp" if ok else "falha no envio WhatsApp"
     return False, f"canal de entrega desconhecido: {channel}"
