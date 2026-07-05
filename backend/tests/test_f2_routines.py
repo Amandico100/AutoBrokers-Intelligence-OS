@@ -76,6 +76,12 @@ def run():
     check("F2: prompt tem nome e instrucoes", "Noticias diarias" in p and "Buscar noticias" in p)
     check("F2: prompt proibe meta-comentarios", "sem meta-coment" in p.lower())
 
+    # SPEC-019 A2 — pré-checagem instrutiva
+    msg = eng.describe_missing_dependency("whatsapp", has_whatsapp=False)
+    check("A2: sem whatsapp -> instrucao passo a passo (nao cria)", msg is not None and "Conectores" in msg and "NAO crie" in msg.replace("ÃO", "AO"))
+    check("A2: com whatsapp -> None (pode criar)", eng.describe_missing_dependency("whatsapp", has_whatsapp=True) is None)
+    check("A2: canal none nunca bloqueia", eng.describe_missing_dependency("none", has_whatsapp=False) is None)
+
     print(f"\n== Resumo: {PASS} passaram, {FAIL} falharam ==")
     if FAILURES:
         sys.exit(1)

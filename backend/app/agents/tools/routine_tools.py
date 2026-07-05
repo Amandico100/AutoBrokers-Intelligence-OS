@@ -49,7 +49,20 @@ class CreateRoutineTool(BaseTool):
         self.supabase_client = supabase_client
 
     def _run(self, **kwargs) -> dict:
-        from app.services.routine_engine import compute_next_run, validate_schedule
+        from app.services.routine_engine import compute_next_run, describe_missing_dependency, validate_schedule
+
+        # SPEC-019 A2 — pré-checagem INSTRUTIVA: nunca criar rotina que não
+        # consegue entregar; explicar o passo a passo ao corretor.
+        channel_check = str(kwargs.get("delivery_channel") or "whatsapp").strip().lower()
+        if channel_check == "whatsapp":
+            try:
+                client = getattr(self.supabase_client, "client", self.supabase_client)
+                res = client.table("integrations").select("id").eq("company_id", self.company_id).eq("is_active", True).limit(1).execute()
+                missing = describe_missing_dependency("whatsapp", bool(res.data))
+                if missing:
+                    return {"content": missing}
+            except Exception:  # noqa: BLE001 — checagem nunca bloqueia por erro técnico
+                pass
 
         kind = str(kwargs.get("schedule_kind") or "").strip().lower()
         schedule = {"kind": kind}
@@ -157,3 +170,103 @@ class ListRoutinesTool(BaseTool):
 
     async def _arun(self, include_inactive: bool = False) -> dict:
         return self._run(include_inactive=include_inactive)
+
+
+class ManageRoutineInput(BaseModel):
+    routine_id: str = Field(description="Id da rotina (use list_routines para descobrir; prefixo de 8+ chars serve)")
+    action: str = Field(description="'pause' | 'activate' | 'delete' | 'update'")
+    name: Optional[str] = Field(default=None, description="update: novo nome")
+    instructions: Optional[str] = Field(default=None, description="update: novas instruções COMPLETAS (substituem as atuais)")
+    schedule_kind: Optional[str] = Field(default=None, description="update: 'daily' ou 'interval' (com os campos abaixo)")
+    time_of_day: Optional[str] = Field(default=None, description="update daily: HH:MM Brasília")
+    weekdays: Optional[str] = Field(default=None, description="update daily: dias 0-6 por vírgula (0=segunda)")
+    interval_minutes: Optional[int] = Field(default=None, description="update interval: minutos (mín 5)")
+    delivery_number: Optional[str] = Field(default=None, description="update: novo WhatsApp de destino com DDI")
+
+
+class ManageRoutineTool(BaseTool):
+    name: str = "manage_routine"
+    description: str = (
+        "Gerencia uma rotina existente: pausar, reativar, excluir ou ATUALIZAR (nome, instruções, "
+        "horário, destino). Sempre confirme com o corretor antes de excluir."
+    )
+    args_schema: Type[BaseModel] = ManageRoutineInput
+    company_id: str = ""
+    supabase_client: object = None
+
+    class Config:
+        arbitrary_types_allowed = True
+
+    def __init__(self, company_id: str, supabase_client=None, **kwargs):
+        super().__init__(**kwargs)
+        self.company_id = str(company_id or "")
+        self.supabase_client = supabase_client
+
+    def _find(self, client, routine_id: str):
+        res = client.table("routines").select("*").eq("company_id", self.company_id).execute()
+        rid = str(routine_id or "").strip()
+        for row in res.data or []:
+            if str(row["id"]).startswith(rid) or rid == str(row["id"]):
+                return row
+        return None
+
+    def _run(self, **kwargs) -> dict:
+        from app.services.routine_engine import compute_next_run, validate_schedule
+
+        client = getattr(self.supabase_client, "client", self.supabase_client)
+        action = str(kwargs.get("action") or "").strip().lower()
+        row = self._find(client, str(kwargs.get("routine_id") or ""))
+        if not row:
+            return {"content": "Rotina não encontrada. Use list_routines e confira o id."}
+
+        try:
+            if action == "delete":
+                client.table("routines").delete().eq("id", row["id"]).execute()
+                return {"content": f"Rotina '{row['name']}' excluída. Confirme ao corretor."}
+            if action in ("pause", "activate"):
+                patch = {"is_active": action == "activate"}
+                if action == "activate":
+                    patch["consecutive_failures"] = 0
+                    patch["next_run_at"] = compute_next_run(row.get("schedule") or {}, row.get("timezone") or "America/Sao_Paulo").isoformat()
+                client.table("routines").update(patch).eq("id", row["id"]).execute()
+                return {"content": f"Rotina '{row['name']}' {'reativada' if action == 'activate' else 'pausada'}."}
+            if action == "update":
+                patch: dict = {}
+                if kwargs.get("name"):
+                    patch["name"] = str(kwargs["name"])[:120]
+                if kwargs.get("instructions"):
+                    patch["instructions"] = str(kwargs["instructions"])
+                if kwargs.get("schedule_kind"):
+                    kind = str(kwargs["schedule_kind"]).strip().lower()
+                    schedule = {"kind": kind}
+                    if kind == "daily":
+                        schedule["time"] = str(kwargs.get("time_of_day") or "").strip()
+                        raw_days = str(kwargs.get("weekdays") or "").strip()
+                        if raw_days:
+                            schedule["weekdays"] = [int(d) for d in raw_days.split(",") if d.strip() != ""]
+                    elif kind == "interval":
+                        schedule["minutes"] = kwargs.get("interval_minutes")
+                    ok, reason = validate_schedule(schedule)
+                    if not ok:
+                        return {"content": f"Agenda inválida: {reason}."}
+                    patch["schedule"] = schedule
+                    patch["next_run_at"] = compute_next_run(schedule, row.get("timezone") or "America/Sao_Paulo").isoformat()
+                if kwargs.get("delivery_number"):
+                    number = "".join(ch for ch in str(kwargs["delivery_number"]) if ch.isdigit())
+                    if len(number) < 10:
+                        return {"content": "Número de destino inválido (use DDI+DDD+número)."}
+                    delivery = dict(row.get("delivery") or {})
+                    delivery["channel"] = "whatsapp"
+                    delivery["number"] = number
+                    patch["delivery"] = delivery
+                if not patch:
+                    return {"content": "Nada para atualizar — informe o que mudar (nome, instruções, horário ou destino)."}
+                client.table("routines").update(patch).eq("id", row["id"]).execute()
+                return {"content": f"Rotina '{row['name']}' atualizada ({', '.join(patch.keys())}). Confirme ao corretor."}
+        except Exception as e:  # noqa: BLE001
+            logger.error(f"[ManageRoutine] {action} falhou: {type(e).__name__}")
+            return {"content": f"Não consegui concluir ({type(e).__name__}). Tente de novo."}
+        return {"content": "Ação inválida: use pause, activate, delete ou update."}
+
+    async def _arun(self, **kwargs) -> dict:
+        return self._run(**kwargs)
