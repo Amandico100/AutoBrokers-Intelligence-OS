@@ -65,6 +65,14 @@ export default function AuxiliaresPage() {
               tags={tagsFor(a.key)}
             />
           ))}
+          {/* F2: rotinas agendadas — criadas pelo Chat Principal por conversa */}
+          <GalleryCard
+            icon={icons.historico}
+            title="Rotinas agendadas"
+            description="Tarefas que rodam sozinhas no horário marcado. Crie pelo chat: 'todo dia às 8h...'"
+            href="/dashboard/auxiliares/rotinas"
+            cta="Abrir"
+          />
         </GalleryGrid>
 
         <div className="space-y-3">

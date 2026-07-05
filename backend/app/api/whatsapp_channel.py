@@ -185,7 +185,7 @@ async def whatsapp_channel_setup(
                     "webhook": {
                         "url": webhook_url,
                         "byEvents": False,
-                        "base64": False,
+                        "base64": True,  # F1: midia decodificada no proprio webhook
                         "events": ["MESSAGES_UPSERT", "CONNECTION_UPDATE"],
                     },
                 },
@@ -204,7 +204,7 @@ async def whatsapp_channel_setup(
                     "url": webhook_url,
                     "events": ["MESSAGES_UPSERT", "CONNECTION_UPDATE"],
                     "byEvents": False,
-                    "base64": False,
+                    "base64": True,  # F1: midia decodificada no proprio webhook
                 }
             }
             wh = await client.post(f"/webhook/set/{instance}", headers=headers, json=webhook_body)
