@@ -137,12 +137,32 @@ async def extract_document_text(file_url: str, file_name: str = "") -> Optional[
 
         import asyncio
 
-        from app.services.sanitization_service import SanitizationService
-
         def _parse() -> str:
-            service = SanitizationService()
-            markdown, _meta = service._docling_parse(tmp_path, extract_images=False)  # noqa: SLF001 — parser único da casa
-            return markdown or ""
+            # Texto puro não precisa de parser.
+            if suffix in (".txt", ".csv", ".md"):
+                return data.decode("utf-8", errors="replace")
+            # 1º: docling (microserviço — melhor qualidade, se configurado).
+            try:
+                from app.services.sanitization_service import SanitizationService
+
+                markdown, _meta = SanitizationService()._docling_parse(tmp_path, extract_images=False)  # noqa: SLF001
+                if markdown and markdown.strip():
+                    return markdown
+            except Exception as e:  # noqa: BLE001
+                logger.warning(f"[VISION] docling indisponível ({type(e).__name__}) — fallback PyPDF2")
+            # 2º: fallback local p/ PDF (PyPDF2 já é dependência da casa).
+            if suffix == ".pdf":
+                from PyPDF2 import PdfReader
+
+                reader = PdfReader(tmp_path)
+                pages = []
+                for i, page in enumerate(reader.pages[:40]):
+                    try:
+                        pages.append(f"[página {i + 1}]\n{page.extract_text() or ''}")
+                    except Exception:  # noqa: BLE001
+                        continue
+                return "\n\n".join(pages)
+            return ""
 
         markdown = await asyncio.to_thread(_parse)
         text = truncate_document_text(markdown)
