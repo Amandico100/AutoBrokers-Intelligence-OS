@@ -27,4 +27,8 @@ def get_journey(portal_key: str, journey: str) -> Optional[Callable[..., Awaitab
         from portal_worker.journeys.vidros_lanternas import login_check
 
         return login_check
+    if key == "vidros_lanternas.abrir_atendimento":
+        from portal_worker.journeys.vidros_lanternas import abrir_atendimento
+
+        return abrir_atendimento
     return None
