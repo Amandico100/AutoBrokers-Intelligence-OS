@@ -31,6 +31,7 @@ def check(name, cond, detail=None):
 from portal_worker.journeys.vidros_lanternas import interpret_login, interpret_atendimento, match_option
 from portal_worker.worker import portal_real_enabled
 from portal_worker.journeys import get_journey
+from portal_worker.adaptive import parse_action, is_confirm_screen
 
 
 def run():
@@ -66,6 +67,13 @@ def run():
     check("match relacao corretor", match_option("Corretor", rel) == "Corretor")
     check("sem match -> None", match_option("teto solar", pecas) is None)
     check("lista vazia -> None", match_option("x", []) is None)
+
+    # Camada 2 (LLM-visao) — parse_action valida a decisao da LLM; is_confirm_screen para no 80%
+    check("parse fill valido", parse_action({"action": "fill", "target": "cpf", "value": "1"})["action"] == "fill")
+    check("parse acao invalida -> ask_human", parse_action({"action": "hack"})["action"] == "ask_human")
+    check("parse nao-dict -> ask_human", parse_action("x")["action"] == "ask_human")
+    check("confirm screen 80% detectada", is_confirm_screen({"heading": "Confirme a peca danificada", "text": ""}) is True)
+    check("tela normal nao e confirm", is_confirm_screen({"heading": "Nos conte o que aconteceu", "text": "placa"}) is False)
 
     # registry resolve as journeys de vidros
     check("get_journey login_check", callable(get_journey("vidros_lanternas", "login_check")))

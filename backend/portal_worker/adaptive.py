@@ -1,0 +1,241 @@
+"""SPEC-020 Camada 2 — Fallback LLM-visao (agente sem cabresto).
+
+Quando o caminho deterministico nao reconhece uma tela (a de pneus da Porto, uma
+pergunta nova, uma opcao que nao casa), o cerebro Smith ENXERGA a tela (estado
+serializado) e DECIDE a proxima acao; o worker EXECUTA e repete. Nunca trava:
+sempre pensa e age, ou pede o dado que falta (ask_human). Seguranca: para na tela
+de confirmacao (80%) sem enviar (a menos de confirm=True), teto de passos, e nunca
+inventa dado (usa os dados reais do segurado, SEM mascara — portal oficial).
+
+parse_action / is_confirm_screen sao PUROS e testaveis offline.
+"""
+from __future__ import annotations
+
+import json
+import os
+import unicodedata
+from typing import Any, Dict, List, Optional
+
+from portal_worker.journeys import JourneyResult
+
+VALID_ACTIONS = ("fill", "select", "click", "check", "done", "ask_human")
+MAX_STEPS = 22
+_PROTO = ("protocolo", "numero do atendimento", "n do atendimento", "solicitacao registrada", "atendimento n")
+
+
+def _norm(s: str) -> str:
+    s = unicodedata.normalize("NFKD", str(s or "")).encode("ascii", "ignore").decode().lower()
+    return " ".join(s.split())
+
+
+def parse_action(obj: Any) -> Dict[str, Any]:
+    """PURO: valida/normaliza a acao devolvida pela LLM. Acao invalida -> ask_human."""
+    if not isinstance(obj, dict):
+        return {"action": "ask_human", "value": "nao entendi a tela", "reason": "resposta invalida"}
+    a = str(obj.get("action") or "").strip().lower()
+    if a not in VALID_ACTIONS:
+        return {"action": "ask_human", "value": obj.get("value") or "nao sei o proximo passo", "reason": "acao desconhecida"}
+    return {
+        "action": a,
+        "target": str(obj.get("target") or "").strip(),
+        "value": str(obj.get("value") or "").strip(),
+        "reason": str(obj.get("reason") or "").strip()[:160],
+    }
+
+
+def is_confirm_screen(state: Dict[str, Any]) -> bool:
+    """PURO: True se a tela e a CONFIRMACAO da peca (80%) — parar antes de enviar."""
+    blob = _norm((state or {}).get("heading", "") + " " + (state or {}).get("text", "")[:400])
+    if "confirme a peca danificada" in blob:
+        return True
+    # perguntas especificas classicas do 80% (pelicula / trincado)
+    hints = ("pelicula de controle solar", "o trincado esta maior ou menor", "posicao do trincado")
+    return sum(h in blob for h in hints) >= 1
+
+
+def has_protocol(state: Dict[str, Any]) -> bool:
+    return any(s in _norm((state or {}).get("text", "")) for s in _PROTO)
+
+
+async def capture_state(page) -> Dict[str, Any]:
+    """Serializa a tela atual (raio-X) para o cerebro decidir."""
+    return await page.evaluate(
+        """() => {
+          const vis = el => !!(el.offsetParent || el.getClientRects().length);
+          const lbl = e => (e.labels && e.labels[0] && e.labels[0].textContent.trim())
+                || (e.getAttribute('aria-label')||'') || (e.placeholder||'');
+          const inputs = [...document.querySelectorAll('input,textarea')].filter(vis)
+            .map(e => ({id:e.id, name:e.name, type:e.type, placeholder:e.placeholder||'',
+                        value:e.value||'', label:lbl(e)}));
+          const selects = [...document.querySelectorAll('select')]
+            .map(s => ({name:s.name, label:lbl(s),
+                        value:(s.options[s.selectedIndex]||{}).textContent||'',
+                        options:[...s.options].map(o=>o.textContent.trim()).filter(Boolean)}));
+          const buttons = [...document.querySelectorAll('button')].filter(vis)
+            .map(b => ({text:b.textContent.trim(), disabled:!!b.disabled})).filter(b=>b.text);
+          const radios = [...document.querySelectorAll('input[type=radio],input[type=checkbox]')].filter(vis)
+            .map(r => ({name:r.name, checked:r.checked, label:lbl(r)}));
+          const h = document.querySelector('h1,h2,h3,.titulo,.title');
+          return {url:location.href, heading:(h?h.textContent:'').trim(),
+                  inputs, selects, buttons, radios, text:document.body.innerText.slice(0,1500)};
+        }"""
+    )
+
+
+_SYSTEM = (
+    "Voce e um agente que preenche PORTAIS OFICIAIS de seguradora para abrir atendimento de VIDROS/"
+    "lanternas de um segurado. Recebe o ESTADO da tela (campos, selects com opcoes, botoes, radios) e "
+    "os DADOS reais do segurado/corretora. Decida a UNICA proxima acao. Use os dados REAIS, SEM mascara "
+    "(portal oficial; humanos preenchem sem mascara). Responda SO com JSON: "
+    '{"action","target","value","reason"}. Acoes: '
+    "fill (target=id/label/placeholder do campo, value=texto), "
+    "select (target=label do campo, value=texto da opcao desejada), "
+    "click (target=texto do botao, ex Avancar), "
+    "check (target=texto da pergunta, value=texto da resposta/opcao do radio), "
+    "done (protocolo/atendimento gerado), ask_human (value=pergunta objetiva do que falta). "
+    "Os dados JA vem no payload: 'segurado' (nome, apolice, chassi, veiculo, cep) e no topo "
+    "(cpf_cnpj, placa, data_dano); 'solicitante' = a corretora (nome, email, telefone, cpf_cnpj). "
+    "USE esses dados diretamente para preencher os campos; so use ask_human se o dado REALMENTE nao "
+    "estiver no payload. "
+    "Escolha a peca/causa/local/respostas com INTELIGENCIA a partir do que o segurado relatou. "
+    "Para campos obrigatorios onde QUALQUER valor serve (ex.: tipo de telefone, tipo de contato), "
+    "escolha uma opcao sensata (ex.: Comercial ou Celular) SEM perguntar. So use ask_human quando "
+    "faltar um dado REAL do segurado/dano que voce nao tem e nao da pra deduzir. "
+    "NAO clique em botao que FINALIZE o pedido (confirmar/enviar) — pare que o sistema cuida disso. "
+    "Um passo por vez."
+)
+
+
+async def decide_next_action(state: Dict[str, Any], goal: str, collected: Dict[str, Any],
+                             history: List[Dict[str, Any]]) -> Dict[str, Any]:
+    """Chama o cerebro (LLM) para decidir a proxima acao. Fail-safe -> ask_human."""
+    key = os.getenv("OPENAI_API_KEY") or ""
+    model = os.getenv("PORTAL_VISION_MODEL", "gpt-4o-mini")
+    if not key:
+        return {"action": "ask_human", "value": "cerebro de visao indisponivel (sem OPENAI_API_KEY no worker)", "reason": "no key"}
+    user = json.dumps({"objetivo": goal, "dados_segurado_corretora": collected, "tela": state,
+                       "acoes_ja_feitas": history[-8:]}, ensure_ascii=False)
+    try:
+        import httpx
+
+        async with httpx.AsyncClient(timeout=45.0) as c:
+            r = await c.post(
+                "https://api.openai.com/v1/chat/completions",
+                headers={"Authorization": f"Bearer {key}"},
+                json={"model": model, "temperature": 0, "response_format": {"type": "json_object"},
+                      "messages": [{"role": "system", "content": _SYSTEM}, {"role": "user", "content": user}]},
+            )
+            data = r.json()
+            content = data["choices"][0]["message"]["content"]
+        return parse_action(json.loads(content))
+    except Exception as e:  # noqa: BLE001
+        return {"action": "ask_human", "value": f"nao consegui decidir ({type(e).__name__})", "reason": "llm error"}
+
+
+# ---- aplicar acao (imperativo Playwright) ----
+async def _click_button(page, text: str) -> bool:
+    t = _norm(text)
+    for b in await page.query_selector_all("button"):
+        try:
+            if await b.is_visible() and t and t in _norm(await b.inner_text()):
+                await b.click()
+                return True
+        except Exception:  # noqa: BLE001
+            continue
+    return False
+
+
+async def _find_input(page, target: str):
+    t = _norm(target)
+    for e in await page.query_selector_all("input,textarea"):
+        try:
+            if not await e.is_visible():
+                continue
+            idv = _norm(await e.get_attribute("id") or "")
+            ph = _norm(await e.get_attribute("placeholder") or "")
+            nm = _norm(await e.get_attribute("name") or "")
+            if t and (t == idv or t in ph or t in nm or (idv and idv in t)):
+                return e
+        except Exception:  # noqa: BLE001
+            continue
+    return None
+
+
+async def _apply_select(page, target: str, value: str) -> str:
+    for s in await page.query_selector_all("select"):
+        try:
+            opts = await s.evaluate("el => Array.from(el.options).map(o => (o.textContent||'').trim())")
+        except Exception:  # noqa: BLE001
+            continue
+        chosen = None
+        for o in opts:
+            if _norm(value) and (_norm(value) == _norm(o) or _norm(value) in _norm(o)):
+                chosen = o
+                break
+        if chosen:
+            try:
+                await s.select_option(label=chosen)
+                await s.evaluate("el => el.dispatchEvent(new Event('change',{bubbles:true}))")
+                return f"select={chosen}"
+            except Exception:  # noqa: BLE001
+                return "select_fail"
+    return "select_notfound"
+
+
+async def _apply_check(page, target: str, value: str) -> str:
+    want = _norm(value) or _norm(target)
+    for lab in await page.query_selector_all("label, .radio, .mat-radio-label"):
+        try:
+            if await lab.is_visible() and want and want in _norm(await lab.inner_text()):
+                await lab.click()
+                return "checked"
+        except Exception:  # noqa: BLE001
+            continue
+    return "check_notfound"
+
+
+async def apply_action(page, action: Dict[str, Any]) -> str:
+    a = action.get("action")
+    target = action.get("target") or ""
+    value = action.get("value") or ""
+    if a == "fill":
+        el = await _find_input(page, target)
+        if el:
+            await el.fill(str(value))
+            return "filled"
+        return "fill_notfound"
+    if a == "select":
+        return await _apply_select(page, target, value)
+    if a == "check":
+        return await _apply_check(page, target, value)
+    if a == "click":
+        return "clicked" if await _click_button(page, target) else "click_notfound"
+    return "noop"
+
+
+async def run_adaptive(page, goal: str, collected: Dict[str, Any], evidence: Dict[str, Any],
+                       max_steps: int = MAX_STEPS, confirm: bool = False) -> JourneyResult:
+    """Loop agentico: enxerga a tela -> cerebro decide -> executa. Nunca trava."""
+    history: List[Dict[str, Any]] = []
+    for _ in range(max_steps):
+        state = await capture_state(page)
+        if has_protocol(state):
+            evidence["final"] = state.get("text", "")[:600]
+            return JourneyResult(status="done", captured={"stage": "protocolo"}, message="protocolo capturado (adaptive)")
+        if is_confirm_screen(state) and not confirm:
+            evidence["stage_80"] = state.get("text", "")[:600]
+            return JourneyResult(status="needs_human", captured={"stage": "confirme_80"},
+                                 message="cheguei na confirmacao (80%) — aprove para enviar")
+        action = await decide_next_action(state, goal, collected, history)
+        history.append(action)
+        if action["action"] == "done":
+            return JourneyResult(status="done", message="concluido (adaptive)")
+        if action["action"] == "ask_human":
+            return JourneyResult(status="needs_human", captured={"pergunta": action.get("value")},
+                                 message=f"preciso de: {action.get('value')}")
+        applied = await apply_action(page, action)
+        evidence.setdefault("adaptive_steps", []).append(
+            {"a": action.get("action"), "t": action.get("target"), "v": action.get("value")[:30], "r": applied})
+        await page.wait_for_timeout(1500)
+    return JourneyResult(status="needs_human", captured={"steps": evidence.get("adaptive_steps")},
+                         message="muitos passos sem concluir (adaptive) — precisa de revisao")
