@@ -28,7 +28,7 @@ def check(name, cond, detail=None):
         print(f"  [X] {name}{': ' + str(detail) if detail else ''}")
 
 
-from portal_worker.journeys.vidros_lanternas import interpret_login, interpret_atendimento
+from portal_worker.journeys.vidros_lanternas import interpret_login, interpret_atendimento, match_option
 from portal_worker.worker import portal_real_enabled
 from portal_worker.journeys import get_journey
 
@@ -57,6 +57,15 @@ def run():
     check("nao encontrado -> failed", err.status == "failed")
     p1 = interpret_atendimento("https://x/#/allianz/passo1", "Informe o CPF e a placa")
     check("passo1 -> needs_human", p1.status == "needs_human" and p1.captured.get("stage") == "passo1")
+
+    # match_option (cerebro decide, journey casa a opcao do dropdown)
+    pecas = ["VIDRO PARABRISA", "VIDRO DE PORTA", "VIDRO DE JANELA", "VIDRO VIGIA (TRASEIRO)"]
+    check("match acento-insensivel", match_option("vidro de porta", pecas) == "VIDRO DE PORTA")
+    check("match por palavras (parabrisa)", match_option("parabrisa", pecas) == "VIDRO PARABRISA")
+    rel = ["O proprio", "Conjuge", "Filho", "Corretor", "Outros"]
+    check("match relacao corretor", match_option("Corretor", rel) == "Corretor")
+    check("sem match -> None", match_option("teto solar", pecas) is None)
+    check("lista vazia -> None", match_option("x", []) is None)
 
     # registry resolve as journeys de vidros
     check("get_journey login_check", callable(get_journey("vidros_lanternas", "login_check")))
