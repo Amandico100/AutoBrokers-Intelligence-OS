@@ -74,6 +74,27 @@ export default function RotinasPage() {
     setEditing(r);
   };
 
+  // SPEC-019 C — "Usar modelo": abre a Nova rotina já preenchida pelo template.
+  const openEditorFromTemplate = (t: {
+    name: string;
+    instructions: string;
+    schedule_default?: { kind?: string; time?: string; minutes?: number; weekdays?: number[] };
+    delivery_default?: { channel?: string };
+  }) => {
+    const s = t.schedule_default || {};
+    setForm({
+      name: t.name,
+      instructions: t.instructions,
+      kind: s.kind === 'interval' ? 'interval' : 'daily',
+      time: s.time || '08:00',
+      weekdays: (s.weekdays || []).join(','),
+      minutes: s.minutes || 60,
+      channel: t.delivery_default?.channel === 'none' ? 'none' : 'whatsapp',
+      number: '',
+    });
+    setEditing('new');
+  };
+
   const saveRoutine = async () => {
     setSaving(true);
     setNotice('');
@@ -127,6 +148,25 @@ export default function RotinasPage() {
     const t = setInterval(load, 15000);
     return () => clearInterval(t);
   }, [load]);
+
+  // SPEC-019 C — chegou de "Usar modelo" (?template=<id>): abre a Nova rotina
+  // pré-preenchida. Lê via window para não exigir Suspense do useSearchParams.
+  useEffect(() => {
+    const tid = new URLSearchParams(window.location.search).get('template');
+    if (!tid) return;
+    (async () => {
+      try {
+        const res = await fetch('/api/dashboard/routine-templates', { cache: 'no-store' });
+        const j = await res.json();
+        const t = (j.templates || []).find((x: { id: string }) => x.id === tid);
+        if (t) openEditorFromTemplate(t);
+      } catch {
+        /* ignora — o corretor pode criar do zero */
+      }
+      window.history.replaceState({}, '', '/dashboard/auxiliares/rotinas');
+    })();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   const act = async (id: string, action: 'pause' | 'activate' | 'delete') => {
     if (action === 'delete' && !confirm('Excluir esta rotina? O histórico de execuções também será removido.')) return;

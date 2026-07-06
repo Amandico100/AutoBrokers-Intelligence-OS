@@ -19,6 +19,7 @@ import {
   CreditCard,
   Lock,
   Globe,
+  CalendarClock,
 } from 'lucide-react';
 import { getAdminSession, clearAdminSession } from '@/lib/adminSession';
 import { Button } from '@/components/ui/button';
@@ -229,6 +230,7 @@ export default function AdminLayout({ children }: { children: React.ReactNode })
       ],
     },
     { href: '/admin/auxiliares', icon: Bot, label: 'Auxiliares Globais' },
+    { href: '/admin/routine-templates', icon: CalendarClock, label: 'Rotinas Prontas' },
     { href: '/admin/prompt-effective', icon: Shield, label: 'Prompt Efetivo' },
     { href: '/admin/portal-browser', icon: Globe, label: 'Portal Lab' },
     { href: '/admin/logs', icon: FileText, label: 'Logs do Sistema' },
