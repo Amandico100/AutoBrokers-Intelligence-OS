@@ -238,6 +238,23 @@ export default function ConectoresPage() {
           </div>
         )}
 
+        {/* SPEC-020 — atalho para os Portais das seguradoras (login/senha por corretora). */}
+        <Link
+          href="/dashboard/personalizacao/conectores/portais"
+          className="flex items-center justify-between gap-3 rounded-xl border border-primary/40 bg-brand-soft px-4 py-3 transition-colors hover:border-primary/60"
+        >
+          <div className="flex items-center gap-3">
+            <Icon icon={icons.seguradoras} size={20} className="text-primary" />
+            <div>
+              <p className="text-sm font-semibold text-foreground">Portais das seguradoras</p>
+              <p className="text-xs text-muted-foreground">
+                Coloque o login e a senha da sua corretora em cada portal (vidros, corretor…). Ficam só na sua conta, cifrados.
+              </p>
+            </div>
+          </div>
+          <span className="shrink-0 text-xs font-medium text-primary">Abrir →</span>
+        </Link>
+
         <div className="flex gap-1.5">
           {tabButton('catalog', 'Catálogo')}
           {tabButton('connections', 'Minhas conexões')}

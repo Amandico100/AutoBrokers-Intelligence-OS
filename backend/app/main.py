@@ -209,6 +209,11 @@ from app.api.attendance_media import router as attendance_media_router
 
 app.include_router(attendance_media_router, tags=["Attendance Media"])
 
+# === Portais (SPEC-020): registro global + credenciais por corretora (cifradas) ===
+from app.api.portal import router as portal_router
+
+app.include_router(portal_router, tags=["Portal"])
+
 
 @app.get("/")
 async def root():
