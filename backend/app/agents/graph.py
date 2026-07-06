@@ -402,6 +402,11 @@ async def create_agent_graph(
                 tools.append(CreateRoutineTool(company_id=str(company_id), supabase_client=supabase_client))
                 tools.append(ListRoutinesTool(company_id=str(company_id), supabase_client=supabase_client))
                 tools.append(ManageRoutineTool(company_id=str(company_id), supabase_client=supabase_client))
+            # SPEC-020 P3 — portal_action: acessar portais (capability tenant.portal.execute;
+            # core/auxiliary/attendance). Execucao real fica atras do gate PORTAL_REAL_ENABLED no worker.
+            if "tenant.portal.execute" in _active:
+                from .tools.portal_tool import PortalActionTool
+                tools.append(PortalActionTool(company_id=str(company_id), supabase_client=supabase_client))
     except Exception as e:  # noqa: BLE001
         logger.warning(f"[Graph] ⚠️ Capability tools (SPEC-014) não anexadas: {e}")
 
