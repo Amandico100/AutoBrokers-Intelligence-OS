@@ -67,12 +67,24 @@ class PortalActionTool(BaseTool):
 
     def _run(self, **flat) -> dict:
         client = self._client()
-        # Perfil de acionamento da corretora (solicitante) — multi-tenant.
+        # Solicitante = identidade da CORRETORA (multi-tenant). REUSA os "Dados da
+        # Corretora" existentes (primary_contact_*/cnpj); acionamento_profile e so
+        # override opcional. Nunca o segurado, nunca inventado.
         profile = {}
         try:
-            res = client.table("companies").select("acionamento_profile").eq("id", self.company_id).limit(1).execute()
+            res = client.table("companies").select(
+                "company_name, legal_name, primary_contact_name, primary_contact_email, "
+                "primary_contact_phone, cnpj, acionamento_profile"
+            ).eq("id", self.company_id).limit(1).execute()
             if res.data:
-                profile = res.data[0].get("acionamento_profile") or {}
+                row = res.data[0]
+                ov = row.get("acionamento_profile") or {}
+                profile = {
+                    "nome": ov.get("nome") or row.get("primary_contact_name") or row.get("legal_name") or row.get("company_name"),
+                    "email": ov.get("email") or row.get("primary_contact_email"),
+                    "telefone": ov.get("telefone") or row.get("primary_contact_phone"),
+                    "cpf_cnpj": ov.get("cpf_cnpj") or row.get("cnpj"),
+                }
         except Exception:  # noqa: BLE001
             pass
 
