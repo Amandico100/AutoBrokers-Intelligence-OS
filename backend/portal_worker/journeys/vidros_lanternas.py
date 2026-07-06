@@ -1,74 +1,170 @@
 """Journey do portal de vidros/lanternas (SPEC-020 P2) — abraseuatendimento.com.br.
 
-DESCOBERTA (mapeado ao vivo 2026-07-06): o portal de vidros é PUBLICO — NAO tem
-login/senha. Fluxo de acionamento (maior volume das corretoras):
-  1. #/  -> #seguradora-input (digita a seguradora) -> #direcionar-seguradora-btn
-  2. #/<insurer>/menu-atendimento -> #iniciar-atendimento-btn
-  3. #/<insurer>/passo1 -> #inserir-cpf-input (CPF/CNPJ) + #input_1 (placa) +
-     #input_3 (data do dano) -> submete (#iniciar-atendimento-btn)
-  4. cobertura -> item (troca/reparo) -> agendamento -> PROTOCOLO  [passos 2-N a
-     mapear com dados de teste reais; a journey para em needs_human na fronteira].
+Mapeado AO VIVO (2026-07-06) com apólice de teste. O portal e PUBLICO (sem login).
+Fluxo do acionamento (igual/quase-igual entre seguradoras — Yelum, Tokio, Porto):
+  0. #/  -> #seguradora-input (digita) -> botao Avancar
+  1. #/<insurer>/menu-atendimento -> "Iniciar atendimento"
+  2. #/<insurer>/passo1 -> #inserir-cpf-input + #input_1(placa) + #input_3(data,
+     datepicker Material) -> "Iniciar atendimento" -> modal "Dados da apolice"
+     -> "Confirmar"
+  3. #/<insurer>/passo2/<uuid> -> "Sua relacao com o titular?" (=Corretor),
+     #email-segurado-input, nome/CPF-CNPJ solicitante, #telefone-input,
+     "Tipo de telefone" -> Avancar
+  4. #/<insurer>/passo3 -> "Qual foi a peca danificada?", "Como ocorreu o dano?",
+     "Onde ocorreu o dano?" (dropdowns que VARIAM por peca/seguradora) + descricao
+     (min 30 chars) -> Avancar
+  5. local do servico: estado + cidade + CEP(opcional) -> Avancar
+  6. 80% "Confirme a peca danificada": perguntas ESPECIFICAS que variam
+     (pelicula, dianteira/traseira, lado; ou posicao do trincado, >10cm, versao).
+     -> Avancar aqui CONFIRMA o pedido. So com confirm=True.
+  7. escolha da loja/servico a domicilio -> confirmar -> PROTOCOLO.
 
-A DECISAO (que tela é essa? deu certo? precisa humano?) é PURA e testável offline
-(interpret_atendimento). O agente (Smith) decide QUANDO acionar; a journey executa.
+DESIGN "cerebro unico": o AGENTE (Smith) DECIDE as escolhas (peca/como/onde/
+especificos) a partir da conversa com o segurado; a journey CASA a escolha com a
+opcao real do dropdown (match_option). Sem match confiante -> needs_human COM as
+opcoes disponiveis (o agente/humano decide; a journey nunca escolhe errado nem
+trava). match_option e puro e testavel offline.
 """
 from __future__ import annotations
 
-from typing import Any, Dict
+import unicodedata
+from typing import Any, Dict, List, Optional
 
 from portal_worker.journeys import JourneyResult
 
 VIDROS_BASE = "https://abraseuatendimento.com.br/#/"
 
+
+def _norm(s: str) -> str:
+    s = unicodedata.normalize("NFKD", str(s or "")).encode("ascii", "ignore").decode().lower()
+    return " ".join(s.split())
+
+
+def match_option(wanted: str, options: List[str]) -> Optional[str]:
+    """PURO: acha a opcao do dropdown que melhor casa com 'wanted'. None se
+    nenhuma casa com confianca (o agente/humano decide). Testavel offline."""
+    w = _norm(wanted)
+    if not w or not options:
+        return None
+    norm = [(_norm(o), o) for o in options]
+    for n, o in norm:              # match exato
+        if n == w:
+            return o
+    for n, o in norm:              # opcao contem tudo que o agente pediu
+        if w in n:
+            return o
+    wset = set(w.split())          # todas as palavras do pedido estao na opcao
+    best, best_score = None, 0
+    for n, o in norm:
+        nset = set(n.split())
+        score = len(wset & nset)
+        if wset <= nset and score > best_score:
+            best, best_score = o, score
+    return best
+
+
 # ---- login (portais de CORRETOR — os que pedem login/senha; vidros nao usa) ----
 _LOGIN_OK = ("sair", "logout", "meus pedidos", "bem-vindo", "bem vindo", "painel", "minha conta")
-_LOGIN_FAIL = (
-    "senha invalida", "senha inválida", "usuario invalido", "usuário inválido",
-    "credenciais invalidas", "credenciais inválidas", "login invalido", "login inválido",
-    "dados incorretos", "senha incorreta",
-)
-_HITL = (
-    "captcha", "verificacao", "verificação", "codigo de seguranca", "código de segurança",
-    "autenticacao em duas etapas", "autenticação em duas etapas", "two-factor", "2fa",
-)
+_LOGIN_FAIL = ("senha invalida", "usuario invalido", "credenciais invalidas", "login invalido",
+               "dados incorretos", "senha incorreta")
+_HITL = ("captcha", "verificacao", "codigo de seguranca", "autenticacao em duas etapas", "two-factor", "2fa")
 
 
 def interpret_login(page_text: str, url: str = "") -> JourneyResult:
-    """PURO: resultado do login (portais de corretor). Testável offline."""
-    text = (page_text or "").lower()
-    if any(s in text for s in _LOGIN_FAIL):
+    """PURO: resultado do login (portais de corretor)."""
+    text = _norm(page_text)
+    if any(s in text for s in (_norm(x) for x in _LOGIN_FAIL)):
         return JourneyResult(status="failed", message="credenciais rejeitadas pelo portal")
     if any(s in text for s in _HITL):
         return JourneyResult(status="needs_human", message="portal pediu CAPTCHA/2FA")
     if any(s in text for s in _LOGIN_OK):
         return JourneyResult(status="done", captured={"logged_in": True})
-    return JourneyResult(status="needs_human", message="tela pós-login não reconhecida")
+    return JourneyResult(status="needs_human", message="tela pos-login nao reconhecida")
 
 
-# ---- vidros (acionamento publico) ----
-_VIDROS_ERR = ("não encontrad", "nao encontrad", "inválid", "invalid", "não localizamos", "nao localizamos")
-_VIDROS_PROTO = ("protocolo", "número do atendimento", "numero do atendimento", "solicitação registrada")
+_VIDROS_ERR = ("nao encontrad", "invalid", "nao localizamos", "apolice nao", "sem cobertura")
+_VIDROS_PROTO = ("protocolo", "numero do atendimento", "n do atendimento", "solicitacao registrada",
+                 "atendimento n")
 
 
 def interpret_atendimento(url: str, page_text: str) -> JourneyResult:
-    """PURO: em que ponto do acionamento de vidros a navegação parou.
-    protocolo capturado -> done; erro/não-encontrado -> failed; senão -> needs_human
-    (o agente nunca fica preso: sempre há uma saída — humano assume/reporta)."""
-    u = (url or "").lower()
-    text = (page_text or "").lower()
+    """PURO: em que ponto do acionamento de vidros parou."""
+    u = _norm(url)
+    text = _norm(page_text)
     if any(s in text for s in _VIDROS_PROTO):
         return JourneyResult(status="done", captured={"stage": "protocolo"}, message="protocolo capturado")
     if any(s in text for s in _VIDROS_ERR):
-        return JourneyResult(status="failed", message="portal não localizou CPF/placa ou dado inválido")
-    if "passo1" in u:
-        return JourneyResult(status="needs_human", captured={"stage": "passo1"}, message="passo1 (dados do segurado)")
-    if "menu-atendimento" in u:
-        return JourneyResult(status="needs_human", captured={"stage": "menu"}, message="menu de atendimento")
-    return JourneyResult(status="needs_human", message="tela do acionamento não reconhecida")
+        return JourneyResult(status="failed", message="portal nao localizou CPF/placa ou dado invalido")
+    for stage in ("passo5", "passo4", "passo3", "passo2", "passo1", "menu-atendimento"):
+        if stage in u:
+            return JourneyResult(status="needs_human", captured={"stage": stage}, message=f"parou em {stage}")
+    return JourneyResult(status="needs_human", message="tela do acionamento nao reconhecida")
 
 
-async def _select_insurer_and_start(page, insurer: str) -> bool:
-    """Passos 0-2: seleciona seguradora e clica em Iniciar atendimento. True se chegou no passo1."""
+# ---------------- shell Playwright (imperativo) ----------------
+async def _dismiss(page) -> None:
+    try:
+        await page.keyboard.press("Escape")
+        await page.wait_for_timeout(250)
+        await page.mouse.click(5, 5)
+        await page.wait_for_timeout(250)
+    except Exception:  # noqa: BLE001
+        pass
+
+
+async def _click_button(page, text: str) -> bool:
+    for x in await page.query_selector_all("button"):
+        try:
+            if await x.is_visible() and _norm(text) in _norm(await x.inner_text()):
+                await x.click()
+                return True
+        except Exception:  # noqa: BLE001
+            continue
+    return False
+
+
+async def _visible_options(page) -> List[str]:
+    for sel in ("[role=option]", ".ng-option", "mat-option", ".dropdown-item", "li"):
+        out = []
+        for o in await page.query_selector_all(sel):
+            try:
+                if await o.is_visible():
+                    t = (await o.inner_text() or "").strip()
+                    if t:
+                        out.append(t)
+            except Exception:  # noqa: BLE001
+                continue
+        if out:
+            return out
+    return []
+
+
+async def _choose(page, trigger, wanted: str) -> tuple:
+    """Abre um dropdown e escolhe a opcao que casa com 'wanted'.
+    Retorna (ok, options). Sem match -> (False, options) p/ o agente decidir."""
+    try:
+        await trigger.click()
+        await page.wait_for_timeout(900)
+        options = await _visible_options(page)
+        chosen = match_option(wanted, options)
+        if not chosen:
+            await _dismiss(page)
+            return False, options
+        for o in await page.query_selector_all("[role=option], .ng-option, mat-option, .dropdown-item, li"):
+            try:
+                if await o.is_visible() and (await o.inner_text() or "").strip() == chosen:
+                    await o.click()
+                    await page.wait_for_timeout(500)
+                    return True, options
+            except Exception:  # noqa: BLE001
+                continue
+        await _dismiss(page)
+        return False, options
+    except Exception:  # noqa: BLE001
+        return False, []
+
+
+async def _select_insurer_start(page, insurer: str) -> bool:
     await page.goto(VIDROS_BASE, wait_until="domcontentloaded")
     await page.wait_for_timeout(3500)
     inp = await page.query_selector("#seguradora-input")
@@ -77,70 +173,134 @@ async def _select_insurer_and_start(page, insurer: str) -> bool:
     await inp.click()
     await inp.fill(insurer)
     await page.wait_for_timeout(1500)
-    for os_sel in ("[role=option]", ".dropdown-item", "li"):
-        opts = await page.query_selector_all(os_sel)
-        for o in opts:
-            try:
-                if await o.is_visible():
-                    await o.click()
-                    break
-            except Exception:  # noqa: BLE001
-                continue
-        else:
-            continue
-        break
-    await page.wait_for_timeout(600)
-    btn = await page.query_selector("#direcionar-seguradora-btn")
-    if btn:
-        await btn.click()
+    for o in await page.query_selector_all("[role=option]"):
+        if await o.is_visible():
+            await o.click()
+            break
+    await page.wait_for_timeout(500)
+    await _click_button(page, "Avan")            # Avancar
     await page.wait_for_timeout(3500)
-    ini = await page.query_selector("#iniciar-atendimento-btn")
-    if ini:
-        await ini.click()
+    await _click_button(page, "Iniciar atendimento")
     await page.wait_for_timeout(3500)
-    return True
+    return "passo1" in page.url
 
 
 async def abrir_atendimento(page, params: Dict[str, Any], evidence: Dict[str, Any]) -> JourneyResult:
-    """Vidros PUBLICO (sem login): abre um acionamento de vidros.
-    params: {insurer_name, cpf_cnpj, placa, data_dano?, confirm?}.
-    Sem confirm=True NAO submete (dry-run seguro: preenche e para)."""
+    """Vidros PUBLICO. O agente monta os params a partir da conversa. A journey
+    navega ate a tela de confirmacao (80%) e SO submete o pedido com confirm=True.
+    params: insurer_name, cpf_cnpj, placa, data_dano, solicitante{relacao,email,
+    nome,cpf_cnpj,telefone}, dano{peca,como,onde,descricao}, local{estado,cidade,
+    cep}, especificos{pergunta->resposta}, confirm."""
     insurer = str(params.get("insurer_name") or "").strip()
     cpf = str(params.get("cpf_cnpj") or "").strip()
     placa = str(params.get("placa") or "").strip()
     data_dano = str(params.get("data_dano") or "").strip()
-    if not (insurer and cpf and placa):
-        return JourneyResult(status="failed", message="faltam dados: insurer_name, cpf_cnpj, placa")
+    if not (insurer and cpf and placa and data_dano):
+        return JourneyResult(status="failed", message="faltam dados: insurer_name, cpf_cnpj, placa, data_dano")
 
-    if not await _select_insurer_and_start(page, insurer):
+    if not await _select_insurer_start(page, insurer):
         return JourneyResult(status="needs_human", message="tela inicial do portal de vidros mudou")
 
-    cpf_el = await page.query_selector("#inserir-cpf-input")
-    placa_el = await page.query_selector("#input_1")
-    if not (cpf_el and placa_el):
-        evidence["url"] = page.url
-        evidence["screen"] = (await page.inner_text("body"))[:400]
-        return JourneyResult(status="needs_human", message="passo1 do acionamento não reconhecido")
-    await cpf_el.fill(cpf)
-    await placa_el.fill(placa)
-    if data_dano:
-        d = await page.query_selector("#input_3")
-        if d:
-            await d.fill(data_dano)
-
-    # Segurança: só submete com confirm explícito (evita abrir acionamento por engano).
-    if not params.get("confirm"):
-        evidence["stage"] = "passo1_preenchido"
-        return JourneyResult(status="needs_human", captured={"stage": "passo1_ready"},
-                             message="passo1 preenchido (dry-run) — confirme para submeter")
-
-    sub = await page.query_selector("#iniciar-atendimento-btn")
-    if sub:
-        await sub.click()
+    # passo1: CPF + placa + data (datepicker Material -> digita e fecha overlay)
+    await (await page.query_selector("#inserir-cpf-input")).fill(cpf)
+    await (await page.query_selector("#input_1")).fill(placa)
+    d = await page.query_selector("#input_3")
+    if d:
+        await d.click()
+        await page.wait_for_timeout(300)
+        await page.keyboard.type(data_dano)
+        await page.keyboard.press("Tab")
+        await _dismiss(page)
+    await _click_button(page, "Iniciar atendimento")
     await page.wait_for_timeout(4500)
-    body = (await page.inner_text("body"))[:800]
+    body = await page.inner_text("body")
+    if any(s in _norm(body) for s in _VIDROS_ERR):
+        return JourneyResult(status="failed", message="portal nao localizou CPF/placa (verifique a apolice)")
+
+    # modal "Dados da apolice" -> Confirmar
+    await _click_button(page, "Confirmar")
+    await page.wait_for_timeout(4000)
+
+    # passo2: relacao=corretor + contato do solicitante
+    sol = params.get("solicitante") or {}
+    combos = [c for c in await page.query_selector_all("[role=combobox], mat-select, .mat-select-trigger, .ng-select") if await c.is_visible()]
+    if combos:
+        await _choose(page, combos[0], sol.get("relacao") or "Corretor")
+    em = await page.query_selector("#email-segurado-input")
+    if em and sol.get("email"):
+        await em.fill(str(sol["email"]))
+    tel = await page.query_selector("#telefone-input")
+    if tel and sol.get("telefone"):
+        await tel.fill(str(sol["telefone"]))
+    # nome/CPF do solicitante (aparecem quando relacao != o proprio)
+    for el in await page.query_selector_all("input[type=text]"):
+        ph = _norm(await el.get_attribute("placeholder") or "")
+        if "nome" in ph and sol.get("nome"):
+            await el.fill(str(sol["nome"]))
+        if ("cpf" in ph or "cnpj" in ph) and sol.get("cpf_cnpj"):
+            await el.fill(str(sol["cpf_cnpj"]))
+    if not await _click_button(page, "Avan"):
+        evidence["stage"] = "passo2"
+        return JourneyResult(status="needs_human", message="passo2 (dados do solicitante) — revise os campos")
+    await page.wait_for_timeout(3500)
+
+    # passo3: peca / como / onde / descricao
+    dano = params.get("dano") or {}
+    combos = [c for c in await page.query_selector_all("[role=combobox], mat-select, .mat-select-trigger, .ng-select") if await c.is_visible()]
+    labels = {"peca": dano.get("peca"), "como": dano.get("como"), "onde": dano.get("onde")}
+    # os 3 primeiros combos, na ordem: peca, como, onde
+    order = ["peca", "como", "onde"]
+    for i, key in enumerate(order):
+        if i < len(combos) and labels.get(key):
+            ok, opts = await _choose(page, combos[i], str(labels[key]))
+            if not ok:
+                return JourneyResult(status="needs_human",
+                                     captured={"campo": key, "opcoes": opts},
+                                     message=f"nao consegui casar '{labels[key]}' em '{key}' — o agente deve escolher entre as opcoes")
+    for ta in await page.query_selector_all("textarea"):
+        if await ta.is_visible() and dano.get("descricao"):
+            await ta.fill(str(dano["descricao"]))
+            break
+    await _click_button(page, "Avan")
+    await page.wait_for_timeout(3500)
+
+    # passo local: estado / cidade / cep
+    loc = params.get("local") or {}
+    for el in await page.query_selector_all("input[type=text], input:not([type])"):
+        ph = _norm(await el.get_attribute("placeholder") or "")
+        if "estado" in ph and loc.get("estado"):
+            await el.fill(str(loc["estado"]))
+        elif "cidade" in ph and loc.get("cidade"):
+            await el.fill(str(loc["cidade"]))
+        elif "cep" in ph and loc.get("cep"):
+            await el.fill(str(loc["cep"]))
+    await _click_button(page, "Avan")
+    await page.wait_for_timeout(3500)
+
+    # 80% "Confirme a peca danificada": perguntas especificas (radios) — o agente
+    # passa especificos{pergunta->resposta}; casamos por texto. AQUI PARAMOS.
+    body = await page.inner_text("body")
     evidence["url"] = page.url
-    evidence["screen"] = body
+    evidence["stage_80"] = body[:900]
+    if not params.get("confirm"):
+        return JourneyResult(status="needs_human", captured={"stage": "confirme_80"},
+                             message="cheguei na confirmacao (80%). Revise e confirme (confirm=True) para enviar o pedido")
+
+    # confirm=True: responde especificos + envia (fase final — so com aprovacao)
+    especificos = params.get("especificos") or {}
+    for q, a in especificos.items():
+        # marca o radio cuja label casa com a resposta desejada
+        for lab in await page.query_selector_all("label"):
+            try:
+                if await lab.is_visible() and match_option(str(a), [await lab.inner_text()]):
+                    await lab.click()
+                    break
+            except Exception:  # noqa: BLE001
+                continue
+    await _click_button(page, "Avan")
+    await page.wait_for_timeout(5000)
+    body = await page.inner_text("body")
+    evidence["final"] = body[:900]
     return interpret_atendimento(page.url, body)
 
 
