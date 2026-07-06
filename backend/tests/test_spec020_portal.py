@@ -28,8 +28,9 @@ def check(name, cond, detail=None):
         print(f"  [X] {name}{': ' + str(detail) if detail else ''}")
 
 
-from portal_worker.journeys.vidros_lanternas import interpret_login
+from portal_worker.journeys.vidros_lanternas import interpret_login, interpret_atendimento
 from portal_worker.worker import portal_real_enabled
+from portal_worker.journeys import get_journey
 
 
 def run():
@@ -48,6 +49,19 @@ def run():
 
     unk = interpret_login("Alguma tela estranha sem sinais conhecidos")
     check("tela desconhecida -> needs_human", unk.status == "needs_human")
+
+    # interpret_atendimento (vidros publico): protocolo, erro, passo1, desconhecido
+    proto = interpret_atendimento("https://x/#/allianz/passo5", "Protocolo 123456 gerado com sucesso")
+    check("protocolo -> done", proto.status == "done")
+    err = interpret_atendimento("https://x/#/allianz/passo1", "CPF nao encontrado na base")
+    check("nao encontrado -> failed", err.status == "failed")
+    p1 = interpret_atendimento("https://x/#/allianz/passo1", "Informe o CPF e a placa")
+    check("passo1 -> needs_human", p1.status == "needs_human" and p1.captured.get("stage") == "passo1")
+
+    # registry resolve as journeys de vidros
+    check("get_journey login_check", callable(get_journey("vidros_lanternas", "login_check")))
+    check("get_journey abrir_atendimento", callable(get_journey("vidros_lanternas", "abrir_atendimento")))
+    check("get_journey desconhecida -> None", get_journey("x", "y") is None)
 
     # gate PORTAL_REAL_ENABLED: default OFF; liga so com valores truthy
     os.environ.pop("PORTAL_REAL_ENABLED", None)
