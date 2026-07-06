@@ -164,6 +164,49 @@ async def _choose(page, trigger, wanted: str) -> tuple:
         return False, []
 
 
+async def _choose_any_select(page, wanted: str) -> tuple:
+    """Acha o <select> nativo (mesmo visually-hidden do Material) que tem a opcao
+    desejada e a seleciona (dispara change/input p/ o Angular ligar). Robusto para
+    dropdowns escondidos. Retorna (ok, options)."""
+    if not wanted:
+        return True, []
+    for s in await page.query_selector_all("select"):
+        try:
+            opts = await s.evaluate(
+                "el => Array.from(el.options).map(o => (o.textContent||'').trim()).filter(Boolean)")
+        except Exception:  # noqa: BLE001
+            continue
+        chosen = match_option(wanted, opts)
+        if chosen:
+            try:
+                await s.select_option(label=chosen)
+                await s.evaluate(
+                    "el => { el.dispatchEvent(new Event('change',{bubbles:true}));"
+                    " el.dispatchEvent(new Event('input',{bubbles:true})); }")
+                await page.wait_for_timeout(500)
+                return True, opts
+            except Exception:  # noqa: BLE001
+                return False, opts
+    return False, []
+
+
+async def _select_first_real(page, sel_el) -> bool:
+    """Seleciona a 1a opcao real (nao 'Selecione...') de um <select> — para campos
+    obrigatorios onde qualquer valor serve para avancar (ex.: tipo de telefone)."""
+    try:
+        opts = await sel_el.evaluate(
+            "el => Array.from(el.options).map(o => ({v:o.value, t:(o.textContent||'').trim()}))")
+        for o in opts:
+            if o["v"] and "selecione" not in o["t"].lower():
+                await sel_el.select_option(value=o["v"])
+                await sel_el.evaluate("el => el.dispatchEvent(new Event('change',{bubbles:true}))")
+                await page.wait_for_timeout(400)
+                return True
+    except Exception:  # noqa: BLE001
+        pass
+    return False
+
+
 async def _select_insurer_start(page, insurer: str) -> bool:
     await page.goto(VIDROS_BASE, wait_until="domcontentloaded")
     await page.wait_for_timeout(3500)
@@ -223,22 +266,27 @@ async def abrir_atendimento(page, params: Dict[str, Any], evidence: Dict[str, An
 
     # passo2: relacao=corretor + contato do solicitante
     sol = params.get("solicitante") or {}
-    combos = [c for c in await page.query_selector_all("[role=combobox], mat-select, .mat-select-trigger, .ng-select") if await c.is_visible()]
-    if combos:
-        await _choose(page, combos[0], sol.get("relacao") or "Corretor")
+    await _choose_any_select(page, sol.get("relacao") or "Corretor")
     em = await page.query_selector("#email-segurado-input")
-    if em and sol.get("email"):
-        await em.fill(str(sol["email"]))
+    if em:
+        await em.fill(str(sol.get("email") or ""))
     tel = await page.query_selector("#telefone-input")
-    if tel and sol.get("telefone"):
-        await tel.fill(str(sol["telefone"]))
-    # nome/CPF do solicitante (aparecem quando relacao != o proprio)
+    if tel:
+        await tel.fill(str(sol.get("telefone") or ""))
+    # tipo de telefone (obrigatorio) — qualquer opcao real serve p/ avancar
+    tsel = await page.query_selector("select[name*='ipoTelefone']")
+    if tsel:
+        await _select_first_real(page, tsel)
+    await _click_button(page, "add")  # botao "+" confirma o telefone, se houver
+    await page.wait_for_timeout(400)
+    # nome/CPF do solicitante quando a relacao pede (ex.: Outros)
     for el in await page.query_selector_all("input[type=text]"):
         ph = _norm(await el.get_attribute("placeholder") or "")
         if "nome" in ph and sol.get("nome"):
             await el.fill(str(sol["nome"]))
         if ("cpf" in ph or "cnpj" in ph) and sol.get("cpf_cnpj"):
             await el.fill(str(sol["cpf_cnpj"]))
+    await page.wait_for_timeout(500)
     if not await _click_button(page, "Avan"):
         evidence["stage"] = "passo2"
         return JourneyResult(status="needs_human", message="passo2 (dados do solicitante) — revise os campos")
@@ -246,17 +294,12 @@ async def abrir_atendimento(page, params: Dict[str, Any], evidence: Dict[str, An
 
     # passo3: peca / como / onde / descricao
     dano = params.get("dano") or {}
-    combos = [c for c in await page.query_selector_all("[role=combobox], mat-select, .mat-select-trigger, .ng-select") if await c.is_visible()]
-    labels = {"peca": dano.get("peca"), "como": dano.get("como"), "onde": dano.get("onde")}
-    # os 3 primeiros combos, na ordem: peca, como, onde
-    order = ["peca", "como", "onde"]
-    for i, key in enumerate(order):
-        if i < len(combos) and labels.get(key):
-            ok, opts = await _choose(page, combos[i], str(labels[key]))
+    for key, wanted in (("peca", dano.get("peca")), ("como", dano.get("como")), ("onde", dano.get("onde"))):
+        if wanted:
+            ok, opts = await _choose_any_select(page, str(wanted))
             if not ok:
-                return JourneyResult(status="needs_human",
-                                     captured={"campo": key, "opcoes": opts},
-                                     message=f"nao consegui casar '{labels[key]}' em '{key}' — o agente deve escolher entre as opcoes")
+                return JourneyResult(status="needs_human", captured={"campo": key, "opcoes": opts},
+                                     message=f"nao consegui casar '{wanted}' em '{key}' — o agente escolhe entre as opcoes")
     for ta in await page.query_selector_all("textarea"):
         if await ta.is_visible() and dano.get("descricao"):
             await ta.fill(str(dano["descricao"]))
