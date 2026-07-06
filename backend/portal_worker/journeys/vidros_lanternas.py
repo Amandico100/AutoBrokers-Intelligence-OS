@@ -264,87 +264,21 @@ async def abrir_atendimento(page, params: Dict[str, Any], evidence: Dict[str, An
     await _click_button(page, "Confirmar")
     await page.wait_for_timeout(4000)
 
-    # passo2: relacao=corretor + contato do solicitante
-    sol = params.get("solicitante") or {}
-    await _choose_any_select(page, sol.get("relacao") or "Corretor")
-    em = await page.query_selector("#email-segurado-input")
-    if em:
-        await em.fill(str(sol.get("email") or ""))
-    tel = await page.query_selector("#telefone-input")
-    if tel:
-        await tel.fill(str(sol.get("telefone") or ""))
-    # tipo de telefone (obrigatorio) — qualquer opcao real serve p/ avancar
-    tsel = await page.query_selector("select[name*='ipoTelefone']")
-    if tsel:
-        await _select_first_real(page, tsel)
-    await _click_button(page, "add")  # botao "+" confirma o telefone, se houver
-    await page.wait_for_timeout(400)
-    # nome/CPF do solicitante quando a relacao pede (ex.: Outros)
-    for el in await page.query_selector_all("input[type=text]"):
-        ph = _norm(await el.get_attribute("placeholder") or "")
-        if "nome" in ph and sol.get("nome"):
-            await el.fill(str(sol["nome"]))
-        if ("cpf" in ph or "cnpj" in ph) and sol.get("cpf_cnpj"):
-            await el.fill(str(sol["cpf_cnpj"]))
-    await page.wait_for_timeout(500)
-    if not await _click_button(page, "Avan"):
-        evidence["stage"] = "passo2"
-        return JourneyResult(status="needs_human", message="passo2 (dados do solicitante) — revise os campos")
-    await page.wait_for_timeout(3500)
+    # Camada 2 (SPEC-020) — daqui pra frente o CEREBRO dirige a tela (passo2 -> 80%).
+    # Variacoes por seguradora/peca sao tratadas com inteligencia; nunca trava. Para
+    # na confirmacao (80%) sem enviar (a menos de confirm=True). Dados REAIS, sem mascara.
+    from portal_worker.adaptive import run_adaptive
 
-    # passo3: peca / como / onde / descricao
-    dano = params.get("dano") or {}
-    for key, wanted in (("peca", dano.get("peca")), ("como", dano.get("como")), ("onde", dano.get("onde"))):
-        if wanted:
-            ok, opts = await _choose_any_select(page, str(wanted))
-            if not ok:
-                return JourneyResult(status="needs_human", captured={"campo": key, "opcoes": opts},
-                                     message=f"nao consegui casar '{wanted}' em '{key}' — o agente escolhe entre as opcoes")
-    for ta in await page.query_selector_all("textarea"):
-        if await ta.is_visible() and dano.get("descricao"):
-            await ta.fill(str(dano["descricao"]))
-            break
-    await _click_button(page, "Avan")
-    await page.wait_for_timeout(3500)
-
-    # passo local: estado / cidade / cep
-    loc = params.get("local") or {}
-    for el in await page.query_selector_all("input[type=text], input:not([type])"):
-        ph = _norm(await el.get_attribute("placeholder") or "")
-        if "estado" in ph and loc.get("estado"):
-            await el.fill(str(loc["estado"]))
-        elif "cidade" in ph and loc.get("cidade"):
-            await el.fill(str(loc["cidade"]))
-        elif "cep" in ph and loc.get("cep"):
-            await el.fill(str(loc["cep"]))
-    await _click_button(page, "Avan")
-    await page.wait_for_timeout(3500)
-
-    # 80% "Confirme a peca danificada": perguntas especificas (radios) — o agente
-    # passa especificos{pergunta->resposta}; casamos por texto. AQUI PARAMOS.
-    body = await page.inner_text("body")
-    evidence["url"] = page.url
-    evidence["stage_80"] = body[:900]
-    if not params.get("confirm"):
-        return JourneyResult(status="needs_human", captured={"stage": "confirme_80"},
-                             message="cheguei na confirmacao (80%). Revise e confirme (confirm=True) para enviar o pedido")
-
-    # confirm=True: responde especificos + envia (fase final — so com aprovacao)
-    especificos = params.get("especificos") or {}
-    for q, a in especificos.items():
-        # marca o radio cuja label casa com a resposta desejada
-        for lab in await page.query_selector_all("label"):
-            try:
-                if await lab.is_visible() and match_option(str(a), [await lab.inner_text()]):
-                    await lab.click()
-                    break
-            except Exception:  # noqa: BLE001
-                continue
-    await _click_button(page, "Avan")
-    await page.wait_for_timeout(5000)
-    body = await page.inner_text("body")
-    evidence["final"] = body[:900]
-    return interpret_atendimento(page.url, body)
+    goal = f"Abrir atendimento de vidros na seguradora {insurer} para o segurado, ate a tela de confirmacao."
+    collected = {
+        "cpf_cnpj": cpf, "placa": placa, "data_dano": data_dano,
+        "segurado": params.get("segurado") or {},   # apolice/chassi/veiculo (InfoCap)
+        "solicitante": params.get("solicitante") or {},
+        "dano": params.get("dano") or {},
+        "local": params.get("local") or {},
+        "especificos": params.get("especificos") or {},
+    }
+    return await run_adaptive(page, goal, collected, evidence, confirm=bool(params.get("confirm")))
 
 
 async def login_check(page, params: Dict[str, Any], evidence: Dict[str, Any]) -> JourneyResult:
