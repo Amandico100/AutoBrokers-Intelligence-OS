@@ -36,6 +36,7 @@ from app.services.whatsapp.evolution_inbound import (
     connection_state_from_payload,
     normalize_evolution_inbound,
 )
+from app.services.whatsapp.inbound_routing import pick_inbound_branch
 from app.services.whatsapp_service import get_whatsapp_service
 
 # Configuração de Logger
@@ -448,10 +449,17 @@ async def process_whatsapp_message_background(
         final_audio_url = None
         final_image_url = None
 
-        if combined_message:
+        branch = pick_inbound_branch(
+            has_combined=bool(combined_message),
+            has_audio=bool(payload.audio and payload.audio.audioUrl),
+            has_image=bool(payload.image),
+            has_text=bool(payload.text and payload.text.message),
+        )
+
+        if branch == "combined":
             message_text = combined_message
 
-        elif payload.audio and payload.audio.audioUrl:
+        elif branch == "audio":
             if is_human_mode:
                 final_audio_url = await process_audio_for_storage(
                     payload.audio.audioUrl, company_id, supabase.client
@@ -473,16 +481,20 @@ async def process_whatsapp_message_background(
                     whatsapp_service.send_message(payload.phone, "Erro ao processar áudio.", integration)
                     return
 
-        elif payload.text and payload.text.message:
+        elif branch == "text":
             message_text = payload.text.message
             # LOG SANITIZADO
             logger.info(f"[WEBHOOK] Processing Text Message (len={len(message_text)})")
 
-        elif payload.image:
+        elif branch == "image":
+            # Imagem SEMPRE processada quando presente — a legenda NAO pode
+            # descartar a imagem (bug: atendente ficava cego a foto do segurado).
             final_image_url = await process_image_for_vision(
                 payload.image.imageUrl, company_id, supabase.client
             )
-            message_text = payload.image.caption or ("📷 [Imagem]" if is_human_mode else "🖼️ [Imagem enviada]")
+            # Legenda = fala do cliente ("o que tem nessa imagem?"); sem legenda, placeholder.
+            caption = payload.image.caption or (payload.text.message if payload.text else None)
+            message_text = caption or ("📷 [Imagem]" if is_human_mode else "🖼️ [Imagem enviada]")
             logger.info(f"[WEBHOOK] Image processed. URL: {final_image_url}")
             # F1 — atendente VÊ a imagem do segurado (foto de dano, documento,
             # boleto): contexto visual entra no texto; falhou → segue sem.
