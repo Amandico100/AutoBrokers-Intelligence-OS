@@ -25,6 +25,7 @@ class CreateRoutineInput(BaseModel):
     interval_minutes: Optional[int] = Field(default=None, description="Para interval: intervalo em minutos (mínimo 5)")
     delivery_channel: str = Field(default="whatsapp", description="'whatsapp' (enviar no número) ou 'none' (só registrar)")
     delivery_number: Optional[str] = Field(default=None, description="Número WhatsApp de destino com DDI (ex: 5547999998888) quando delivery_channel=whatsapp")
+    knowledge: Optional[str] = Field(default=None, description="Conhecimento da rotina (opcional): argumentos de venda, FAQ do produto, tom de voz — injetado no prompt de CADA execução")
 
 
 class CreateRoutineTool(BaseTool):
@@ -105,6 +106,9 @@ class CreateRoutineTool(BaseTool):
             "is_active": True,
             "next_run_at": next_run.isoformat(),
         }
+        knowledge = str(kwargs.get("knowledge") or "").strip()
+        if knowledge:
+            record["knowledge"] = knowledge
         try:
             client = getattr(self.supabase_client, "client", self.supabase_client)
             res = client.table("routines").insert(record).execute()
@@ -182,6 +186,7 @@ class ManageRoutineInput(BaseModel):
     weekdays: Optional[str] = Field(default=None, description="update daily: dias 0-6 por vírgula (0=segunda)")
     interval_minutes: Optional[int] = Field(default=None, description="update interval: minutos (mín 5)")
     delivery_number: Optional[str] = Field(default=None, description="update: novo WhatsApp de destino com DDI")
+    knowledge: Optional[str] = Field(default=None, description="update: novo conhecimento da rotina (argumentos, FAQ, tom de voz); vazio limpa")
 
 
 class ManageRoutineTool(BaseTool):
@@ -259,6 +264,8 @@ class ManageRoutineTool(BaseTool):
                     delivery["channel"] = "whatsapp"
                     delivery["number"] = number
                     patch["delivery"] = delivery
+                if kwargs.get("knowledge") is not None:
+                    patch["knowledge"] = str(kwargs["knowledge"]).strip()
                 if not patch:
                     return {"content": "Nada para atualizar — informe o que mudar (nome, instruções, horário ou destino)."}
                 client.table("routines").update(patch).eq("id", row["id"]).execute()
