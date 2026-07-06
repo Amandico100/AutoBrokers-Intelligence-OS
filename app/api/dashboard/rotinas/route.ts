@@ -17,7 +17,7 @@ export async function GET(_req: NextRequest) {
 
   const { data: routines, error } = await supabase
     .from('routines')
-    .select('id, name, instructions, schedule, delivery, is_active, last_run_at, next_run_at, consecutive_failures, created_at')
+    .select('id, name, instructions, schedule, delivery, knowledge, is_active, last_run_at, next_run_at, consecutive_failures, created_at')
     .eq('company_id', ctx.companyId)
     .order('created_at', { ascending: false });
   if (error) {
@@ -63,6 +63,9 @@ export async function POST(req: NextRequest) {
     // SPEC-019 B — criação/edição MANUAL (paridade Claude Rotinas).
     const name = String(body.name || '').trim().slice(0, 120);
     const instructions = String(body.instructions || '').trim();
+    // SPEC-019 E — conhecimento por rotina (só envia se não-vazio: não referencia
+    // a coluna antes da migration ser aplicada).
+    const knowledge = typeof body.knowledge === 'string' ? body.knowledge.trim() : '';
     const schedule = (body.schedule || {}) as { kind?: string; time?: string; minutes?: number; weekdays?: number[] };
     const delivery = (body.delivery || {}) as { channel?: string; number?: string };
 
@@ -108,6 +111,7 @@ export async function POST(req: NextRequest) {
         timezone: 'America/Sao_Paulo',
         is_active: true,
         next_run_at: nextRun.toISOString(),
+        ...(knowledge ? { knowledge } : {}),
       });
       if (error) return NextResponse.json({ error: 'Erro ao criar rotina' }, { status: 500 });
       return NextResponse.json({ ok: true });
@@ -116,6 +120,7 @@ export async function POST(req: NextRequest) {
     const patch: Record<string, unknown> = { schedule, delivery, next_run_at: nextRun.toISOString() };
     if (name) patch.name = name;
     if (instructions) patch.instructions = instructions;
+    if (knowledge) patch.knowledge = knowledge;
     const { error } = await supabase.from('routines').update(patch).eq('id', id).eq('company_id', ctx.companyId);
     if (error) return NextResponse.json({ error: 'Erro ao atualizar rotina' }, { status: 500 });
     return NextResponse.json({ ok: true });

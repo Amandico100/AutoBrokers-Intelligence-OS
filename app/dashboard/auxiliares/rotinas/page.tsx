@@ -14,6 +14,7 @@ interface Routine {
   id: string;
   name: string;
   instructions: string;
+  knowledge?: string | null;
   schedule: { kind?: string; time?: string; minutes?: number; weekdays?: number[] };
   delivery: { channel?: string; number?: string };
   is_active: boolean;
@@ -52,17 +53,18 @@ export default function RotinasPage() {
   const [editing, setEditing] = useState<Routine | 'new' | null>(null);
   const [saving, setSaving] = useState(false);
   const [form, setForm] = useState({
-    name: '', instructions: '', kind: 'daily', time: '08:00', weekdays: '' as string,
+    name: '', instructions: '', knowledge: '', kind: 'daily', time: '08:00', weekdays: '' as string,
     minutes: 60, channel: 'whatsapp', number: '',
   });
 
   const openEditor = (r: Routine | 'new') => {
     if (r === 'new') {
-      setForm({ name: '', instructions: '', kind: 'daily', time: '08:00', weekdays: '', minutes: 60, channel: 'whatsapp', number: '' });
+      setForm({ name: '', instructions: '', knowledge: '', kind: 'daily', time: '08:00', weekdays: '', minutes: 60, channel: 'whatsapp', number: '' });
     } else {
       setForm({
         name: r.name,
         instructions: r.instructions,
+        knowledge: r.knowledge || '',
         kind: r.schedule?.kind === 'interval' ? 'interval' : 'daily',
         time: r.schedule?.time || '08:00',
         weekdays: (r.schedule?.weekdays || []).join(','),
@@ -85,6 +87,7 @@ export default function RotinasPage() {
     setForm({
       name: t.name,
       instructions: t.instructions,
+      knowledge: '',
       kind: s.kind === 'interval' ? 'interval' : 'daily',
       time: s.time || '08:00',
       weekdays: (s.weekdays || []).join(','),
@@ -113,7 +116,7 @@ export default function RotinasPage() {
       body: JSON.stringify({
         action: editing === 'new' ? 'create' : 'update',
         id: editing !== 'new' && editing ? editing.id : undefined,
-        name: form.name, instructions: form.instructions, schedule, delivery,
+        name: form.name, instructions: form.instructions, knowledge: form.knowledge, schedule, delivery,
       }),
     });
     const j = await res.json().catch(() => ({}));
@@ -317,6 +320,16 @@ export default function RotinasPage() {
                     onChange={(e) => setForm({ ...form, instructions: e.target.value })}
                     rows={4}
                     placeholder="Descreva a tarefa completa, como se instruísse um assistente…"
+                    className="w-full resize-y rounded-md border border-border bg-surface-2 px-3 py-2 text-foreground outline-none focus:ring-2 focus:ring-ring"
+                  />
+                </div>
+                <div>
+                  <label className="mb-1 block text-xs font-medium text-muted-foreground">Conhecimento (opcional) — usado em toda execução (argumentos, FAQ, tom de voz)</label>
+                  <textarea
+                    value={form.knowledge}
+                    onChange={(e) => setForm({ ...form, knowledge: e.target.value })}
+                    rows={3}
+                    placeholder="Ex.: argumentos de venda, objeções comuns, FAQ do produto, tom de voz do outreach…"
                     className="w-full resize-y rounded-md border border-border bg-surface-2 px-3 py-2 text-foreground outline-none focus:ring-2 focus:ring-ring"
                   />
                 </div>

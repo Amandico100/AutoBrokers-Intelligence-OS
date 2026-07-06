@@ -30,6 +30,43 @@ MIN_INTERVAL_MINUTES = 5
 MAX_FAILURES = 5
 SCHEDULER_TICK_SECONDS = 60
 
+DEFAULT_ROUTINE_TIMEOUT = 180
+MIN_ROUTINE_TIMEOUT = 30
+MAX_ROUTINE_TIMEOUT = 600
+RUN_RETENTION_DAYS = 90
+RETENTION_INTERVAL_HOURS = 24
+
+
+def resolve_routine_timeout(env_value: Optional[str] = None) -> int:
+    """Segundos de timeout por execução (asyncio.wait_for). Default 180; piso 30;
+    teto 600 — protege o worker de uma rotina travada queimando tokens sem fim."""
+    raw = env_value if env_value is not None else os.getenv("ROUTINE_EXEC_TIMEOUT_SECONDS")
+    try:
+        v = int(raw)
+    except (TypeError, ValueError):
+        return DEFAULT_ROUTINE_TIMEOUT
+    return max(MIN_ROUTINE_TIMEOUT, min(MAX_ROUTINE_TIMEOUT, v))
+
+
+def retention_cutoff_iso(now_utc: Optional[datetime] = None, days: int = RUN_RETENTION_DAYS) -> str:
+    """ISO do limite de retenção: runs anteriores a (agora - days) podem ser apagados."""
+    now = now_utc or datetime.now(timezone.utc)
+    if now.tzinfo is None:
+        now = now.replace(tzinfo=timezone.utc)
+    return (now - timedelta(days=days)).isoformat()
+
+
+def should_run_retention(
+    last_run_utc: Optional[datetime],
+    now_utc: Optional[datetime] = None,
+    interval_hours: int = RETENTION_INTERVAL_HOURS,
+) -> bool:
+    """True se a limpeza de routine_runs deve rodar agora (nunca rodou ou passou o intervalo)."""
+    if last_run_utc is None:
+        return True
+    now = now_utc or datetime.now(timezone.utc)
+    return (now - last_run_utc) >= timedelta(hours=interval_hours)
+
 
 def _tz(tz_name: str):
     try:
@@ -95,13 +132,18 @@ def compute_next_run(schedule: Dict[str, Any], tz_name: str, now_utc: Optional[d
 
 
 def render_task_prompt(routine: Dict[str, Any]) -> str:
-    """Prompt de execução: o agente produz SÓ o conteúdo final da entrega."""
+    """Prompt de execução: o agente produz SÓ o conteúdo final da entrega.
+    SPEC-019 E — se a rotina tem CONHECIMENTO (argumentos de venda, FAQ do
+    produto, tom de voz do outreach), ele entra ANTES das instruções."""
+    knowledge = str(routine.get("knowledge") or "").strip()
+    knowledge_block = f"### CONHECIMENTO DA ROTINA\n{knowledge}\n\n" if knowledge else ""
     return (
         f"[ROTINA AGENDADA: {routine.get('name')}]\n"
         "Você está executando uma rotina automática desta corretora, sem ninguém "
         "esperando resposta interativa. Execute as instruções abaixo usando suas "
         "ferramentas quando necessário e produza APENAS o conteúdo final da entrega "
         "(sem meta-comentários, sem perguntas, sem 'aqui está').\n\n"
+        f"{knowledge_block}"
         f"INSTRUÇÕES DA ROTINA:\n{routine.get('instructions')}"
     )
 
@@ -181,14 +223,18 @@ async def _execute_routine(supabase, routine: Dict[str, Any]) -> None:
         from app.services.langchain_service import LangChainService
 
         service = LangChainService(settings.OPENAI_API_KEY, supabase)
-        output, _metrics = await service.process_message(
-            user_message=render_task_prompt(routine),
-            company_id=str(routine["company_id"]),
-            user_id=str(routine.get("created_by") or "routine-engine"),
-            session_id=f"routine:{routine_id}",
-            channel="routine",
-            agent_id=str(routine["agent_id"]) if routine.get("agent_id") else None,
-            collect_metrics=False,
+        # SPEC-019 D1 — timeout por execução: rotina travada não segura o worker.
+        output, _metrics = await asyncio.wait_for(
+            service.process_message(
+                user_message=render_task_prompt(routine),
+                company_id=str(routine["company_id"]),
+                user_id=str(routine.get("created_by") or "routine-engine"),
+                session_id=f"routine:{routine_id}",
+                channel="routine",
+                agent_id=str(routine["agent_id"]) if routine.get("agent_id") else None,
+                collect_metrics=False,
+            ),
+            timeout=resolve_routine_timeout(),
         )
         output = str(output or "").strip()
         if not output:
@@ -273,12 +319,25 @@ async def routine_scheduler_loop() -> None:
     logger.info("[ROUTINES] 🕰️ scheduler iniciado (tick %ss)", SCHEDULER_TICK_SECONDS)
     from app.core.database import get_supabase_client
 
+    last_retention: Optional[datetime] = None
     while True:
         try:
             supabase = get_supabase_client()
             ran = await run_due_routines(supabase)
             if ran:
                 logger.info(f"[ROUTINES] tick executou {ran} rotina(s)")
+            # SPEC-019 D3 — retenção: apaga routine_runs > 90 dias, no máx. 1x/dia.
+            if should_run_retention(last_retention):
+                now = datetime.now(timezone.utc)
+                cutoff = retention_cutoff_iso(now)
+                try:
+                    await asyncio.to_thread(
+                        lambda: supabase.client.table("routine_runs").delete().lt("started_at", cutoff).execute()
+                    )
+                    last_retention = now
+                    logger.info(f"[ROUTINES] retenção: runs anteriores a {cutoff[:10]} apagados")
+                except Exception as e:  # noqa: BLE001
+                    logger.error(f"[ROUTINES] retenção falhou: {type(e).__name__}")
         except Exception as e:  # noqa: BLE001
             logger.error(f"[ROUTINES] tick falhou: {type(e).__name__}: {str(e)[:200]}")
         await asyncio.sleep(SCHEDULER_TICK_SECONDS)
