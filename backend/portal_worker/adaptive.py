@@ -98,9 +98,10 @@ _SYSTEM = (
     "USE esses dados diretamente para preencher os campos; so use ask_human se o dado REALMENTE nao "
     "estiver no payload. "
     "Escolha a peca/causa/local/respostas com INTELIGENCIA a partir do que o segurado relatou. "
-    "Para campos obrigatorios onde QUALQUER valor serve (ex.: tipo de telefone, tipo de contato), "
-    "escolha uma opcao sensata (ex.: Comercial ou Celular) SEM perguntar. So use ask_human quando "
-    "faltar um dado REAL do segurado/dano que voce nao tem e nao da pra deduzir. "
+    "JAMAIS use ask_human para campos de FORMATO/preferencia onde qualquer valor serve (tipo de "
+    "telefone, tipo de contato, DDD, 'como prefere ser atendido') — escolha DIRETO (ex.: Comercial, "
+    "ou a 1a opcao valida do select). ask_human e SO para um dado REAL do segurado/dano que nao "
+    "esta no payload e nao da pra deduzir (ex.: o que exatamente aconteceu, se voce nao tiver). "
     "NAO clique em botao que FINALIZE o pedido (confirmar/enviar) — pare que o sistema cuida disso. "
     "Um passo por vez."
 )
@@ -161,24 +162,39 @@ async def _find_input(page, target: str):
     return None
 
 
+async def _set_select(page, s, label: str) -> str:
+    try:
+        await s.select_option(label=label)
+        await s.evaluate("el => el.dispatchEvent(new Event('change',{bubbles:true}))")
+        return label
+    except Exception:  # noqa: BLE001
+        return ""
+
+
 async def _apply_select(page, target: str, value: str) -> str:
+    """Casa o valor em algum <select>; se identificar o campo-alvo (por name/label)
+    mas o valor nao casar exato, pega a 1a opcao real (ex.: tipo de telefone, onde
+    qualquer valor serve). Assim nao trava por causa de um dropdown obrigatorio."""
+    t, v = _norm(target), _norm(value)
+    target_sel = None
     for s in await page.query_selector_all("select"):
         try:
+            name = _norm(await s.get_attribute("name") or "")
             opts = await s.evaluate("el => Array.from(el.options).map(o => (o.textContent||'').trim())")
         except Exception:  # noqa: BLE001
             continue
-        chosen = None
+        for o in opts:                       # 1) valor casa numa opcao deste select
+            if v and (v == _norm(o) or v in _norm(o) or _norm(o) in v):
+                done = await _set_select(page, s, o)
+                return f"select={done}" if done else "select_fail"
+        if t and (t == name or t in name or name in t):   # 2) e o campo-alvo?
+            target_sel = (s, opts)
+    if target_sel:                            # 3) campo certo, valor nao casou -> 1a real
+        s, opts = target_sel
         for o in opts:
-            if _norm(value) and (_norm(value) == _norm(o) or _norm(value) in _norm(o)):
-                chosen = o
-                break
-        if chosen:
-            try:
-                await s.select_option(label=chosen)
-                await s.evaluate("el => el.dispatchEvent(new Event('change',{bubbles:true}))")
-                return f"select={chosen}"
-            except Exception:  # noqa: BLE001
-                return "select_fail"
+            if o and "selecione" not in _norm(o):
+                done = await _set_select(page, s, o)
+                return f"select_default={done}" if done else "select_fail"
     return "select_notfound"
 
 
