@@ -174,10 +174,32 @@ async def _find_input(page, target: str):
 
 
 async def _set_select(page, s, label: str) -> str:
+    # 1) caminho normal do Playwright (funciona p/ select visivel ou 1px, ex.: 'segr').
     try:
         await s.select_option(label=label)
         await s.evaluate("el => el.dispatchEvent(new Event('change',{bubbles:true}))")
         return label
+    except Exception:  # noqa: BLE001
+        pass
+    # 2) fallback JS: muitos selects do Angular Material sao <select display:none>
+    #    (a UI visivel e o overlay do mat-select). O select_option recusa por
+    #    actionability -> aqui setamos o value da opcao certa e disparamos os MESMOS
+    #    eventos (input+change) que o Angular escuta. Funciona mesmo com display:none.
+    try:
+        ok = await s.evaluate(
+            """(el, want) => {
+                const n = t => (t||'').trim().toLowerCase();
+                const opt = [...el.options].find(o => n(o.textContent) === n(want))
+                        || [...el.options].find(o => n(o.textContent).includes(n(want)) && n(o.textContent));
+                if (!opt) return false;
+                el.value = opt.value;
+                el.dispatchEvent(new Event('input', {bubbles:true}));
+                el.dispatchEvent(new Event('change', {bubbles:true}));
+                return true;
+            }""",
+            label,
+        )
+        return label if ok else ""
     except Exception:  # noqa: BLE001
         return ""
 

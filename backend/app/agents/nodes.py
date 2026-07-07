@@ -799,6 +799,10 @@ async def tool_node(state: AgentState, tools: list) -> dict:
                         # SPEC-017 live-path: telefone do cliente vem da sessão
                         # WhatsApp (whatsapp:{phone}:...) — nunca da LLM.
                         tool_args = {**tool_args, "session_id": str(state.get("session_id") or "")}
+                    elif tool_name == "portal_action":
+                        # SPEC-020: telefone do segurado vem da sessão WhatsApp
+                        # (ack imediato "tô abrindo agora" antes do portal rodar).
+                        tool_args = {**tool_args, "session_id": str(state.get("session_id") or "")}
                     elif tool_name == "delegate_to_subagent":
                         # 🤖 SubAgent: injeta contexto do orquestrador
                         delegation_config = None

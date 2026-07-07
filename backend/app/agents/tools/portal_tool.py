@@ -40,6 +40,7 @@ class PortalActionInput(BaseModel):
     estado: Optional[str] = Field(default=None, description="UF para o servico (ex: 'SC')")
     cidade: Optional[str] = Field(default=None, description="Cidade para o servico")
     cep: Optional[str] = Field(default=None, description="CEP do segurado (acha a loja mais proxima)")
+    session_id: Optional[str] = Field(default=None, description="(injetado pelo runtime — NAO preencher)")
 
 
 class PortalActionTool(BaseTool):
@@ -65,7 +66,29 @@ class PortalActionTool(BaseTool):
     def _client(self):
         return getattr(self.supabase_client, "client", self.supabase_client)
 
+    def _notify(self, session_id: str, text: str) -> None:
+        """Manda uma mensagem AGORA pro segurado (via WhatsApp da corretora), pra ele
+        nunca ficar no silencio enquanto o portal roda (~1 min). Best-effort: se o
+        canal nao estiver disponivel, apenas ignora (o acionamento segue)."""
+        try:
+            parts = str(session_id or "").split(":")
+            if len(parts) < 3 or parts[0] != "whatsapp":
+                return  # so notifica em sessao real de WhatsApp
+            phone = "".join(ch for ch in parts[1] if ch.isdigit())
+            if not phone:
+                return
+            from app.services.integration_service import get_integration_service
+            from app.services.whatsapp_service import get_whatsapp_service
+
+            integration = get_integration_service().get_whatsapp_integration(self.company_id)
+            if not integration:
+                return
+            get_whatsapp_service().send_message(phone, text, integration)
+        except Exception:  # noqa: BLE001
+            pass
+
     def _run(self, **flat) -> dict:
+        session_id = str(flat.pop("session_id", "") or "")
         client = self._client()
         # Solicitante = identidade da CORRETORA (multi-tenant). REUSA os "Dados da
         # Corretora" existentes (primary_contact_*/cnpj); acionamento_profile e so
@@ -105,6 +128,14 @@ class PortalActionTool(BaseTool):
         except Exception as e:  # noqa: BLE001
             logger.error(f"[PortalAction] enfileirar falhou: {type(e).__name__}")
             return {"content": f"Nao consegui enfileirar o acionamento ({type(e).__name__})."}
+
+        # Ack IMEDIATO pro segurado: nunca deixa ele no silencio enquanto o portal
+        # roda (~1 min). O resultado real volta como retorno da tool logo abaixo.
+        self._notify(
+            session_id,
+            "🔧 Tô abrindo seu atendimento no portal agora — leva mais ou menos 1 minutinho. "
+            "Já te trago o número do protocolo, só um instante 🙂",
+        )
 
         # Aguarda o worker terminar (o segurado esta na conversa).
         deadline = time.time() + POLL_TIMEOUT_S

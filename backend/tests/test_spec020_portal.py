@@ -89,6 +89,31 @@ def run():
     check("gate OFF com '0'", portal_real_enabled() is False)
     os.environ.pop("PORTAL_REAL_ENABLED", None)
 
+    # _set_select: fallback JS quando o Playwright recusa o select_option
+    # (Angular Material <select display:none> — causa do loop no acionamento real).
+    import asyncio
+    from portal_worker.adaptive import _set_select
+
+    class _FakeSel:
+        def __init__(self, opt_raises, eval_ret):
+            self.opt_raises, self.eval_ret, self.eval_calls = opt_raises, eval_ret, 0
+
+        async def select_option(self, **kw):
+            if self.opt_raises:
+                raise Exception("element is not visible")
+
+        async def evaluate(self, js, *args):
+            self.eval_calls += 1
+            return self.eval_ret
+
+    s1 = _FakeSel(opt_raises=False, eval_ret=None)
+    check("_set_select caminho normal -> label", asyncio.run(_set_select(None, s1, "Comercial")) == "Comercial")
+    s2 = _FakeSel(opt_raises=True, eval_ret=True)
+    check("_set_select display:none -> fallback JS aplica", asyncio.run(_set_select(None, s2, "Comercial")) == "Comercial")
+    check("_set_select fallback foi usado", s2.eval_calls == 1)
+    s3 = _FakeSel(opt_raises=True, eval_ret=False)
+    check("_set_select sem opcao casavel -> vazio", asyncio.run(_set_select(None, s3, "Comercial")) == "")
+
     # vault round-trip (so se cryptography instalado localmente)
     try:
         from cryptography.fernet import Fernet
