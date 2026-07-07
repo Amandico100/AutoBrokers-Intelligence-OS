@@ -283,10 +283,18 @@ async def _apply_mdselect(page, target: str, value: str):
         await page.wait_for_timeout(150)
     except Exception:  # noqa: BLE001
         pass
-    try:
-        await m.scroll_into_view_if_needed(timeout=3000)
-        await m.click(timeout=4000)
-    except Exception:  # noqa: BLE001
+    # Abre o overlay com RETRY: logo apos uma troca de tela (ex.: Avancar) o md-select
+    # pode ainda estar animando/nao-pronto -> 1a tentativa falha. Tenta 2x com espera.
+    opened = False
+    for _attempt in range(2):
+        try:
+            await m.scroll_into_view_if_needed(timeout=2500)
+            await m.click(timeout=3500)
+            opened = True
+            break
+        except Exception:  # noqa: BLE001
+            await page.wait_for_timeout(600)
+    if not opened:
         return "mdselect_open_fail"
     await page.wait_for_timeout(650)
     try:
