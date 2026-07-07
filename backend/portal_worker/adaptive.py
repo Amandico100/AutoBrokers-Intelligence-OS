@@ -147,9 +147,12 @@ async def decide_next_action(state: Dict[str, Any], goal: str, collected: Dict[s
 # ---- aplicar acao (imperativo Playwright) ----
 async def _click_button(page, text: str) -> bool:
     t = _norm(text)
-    for b in await page.query_selector_all("button"):
+    for b in await page.query_selector_all("button, a[role=button], input[type=submit], input[type=button]"):
         try:
-            if await b.is_visible() and t and t in _norm(await b.inner_text()):
+            if not await b.is_visible() or await b.is_disabled():
+                continue  # botao disabled (ex.: Avancar aguardando campo obrigatorio) -> pula
+            label = _norm(await b.inner_text() or "") or _norm(await b.get_attribute("value") or "")
+            if t and t in label:
                 await b.click()
                 return True
         except Exception:  # noqa: BLE001
@@ -231,6 +234,75 @@ async def _apply_select(page, target: str, value: str) -> str:
     return "select_notfound"
 
 
+async def _find_mdselect(page, target: str, value: str):
+    """Acha o <md-select> (AngularJS Material) alvo: por name/id/aria-label (target)
+    ou, se o target vier vazio, pelo <select> nativo-espelho que tenha a opcao com o
+    valor pedido (ex.: 'segr' tem 'O proprio'/'Corretor')."""
+    t, v = _norm(target), _norm(value)
+    mds = await page.query_selector_all("md-select")
+    if not mds:
+        return None
+    if t:
+        for m in mds:
+            name = _norm(await m.get_attribute("name") or "")
+            idv = _norm(await m.get_attribute("id") or "")
+            al = _norm(await m.get_attribute("aria-label") or "")
+            if (name and (t == name or t in name or name in t)) or (idv and (t in idv or idv in t)) or (al and t in al):
+                return m
+    if v:  # target vazio -> casa pelo valor via select nativo espelho (mesmo name)
+        for s in await page.query_selector_all("select"):
+            try:
+                opts = await s.evaluate("el => Array.from(el.options).map(o => (o.textContent||'').trim())")
+            except Exception:  # noqa: BLE001
+                continue
+            if any(o and (v == _norm(o) or v in _norm(o) or _norm(o) in v) for o in opts):
+                nm = _norm(await s.get_attribute("name") or "")
+                for m in mds:
+                    if nm and _norm(await m.get_attribute("name") or "") == nm:
+                        return m
+    return None
+
+
+async def _apply_mdselect(page, target: str, value: str):
+    """Dirige um <md-select> do jeito CERTO (AngularJS so atualiza o ng-model assim):
+    clica p/ abrir o overlay e clica no <md-option> pelo texto. Retorna None se a tela
+    NAO tem md-select alvo (cai no _apply_select nativo). 1a opcao real se o valor nao casar."""
+    m = await _find_mdselect(page, target, value)
+    if m is None:
+        return None
+    try:
+        await m.scroll_into_view_if_needed()
+        await m.click()
+        await page.wait_for_timeout(450)
+    except Exception:  # noqa: BLE001
+        return None
+    v = _norm(value)
+    opts = await page.query_selector_all("md-option")
+    for o in opts:                                   # 1) opcao com o texto pedido
+        try:
+            if await o.is_visible():
+                txt = _norm(await o.inner_text())
+                if txt and v and (v == txt or v in txt or txt in v):
+                    await o.click()
+                    return f"mdselect={txt}"
+        except Exception:  # noqa: BLE001
+            continue
+    for o in opts:                                   # 2) 1a opcao real (nao 'Selecione')
+        try:
+            if await o.is_visible():
+                txt = _norm(await o.inner_text())
+                if txt and "selecione" not in txt:
+                    await o.click()
+                    return "mdselect_default"
+        except Exception:  # noqa: BLE001
+            continue
+    try:
+        await page.keyboard.press("Escape")
+    except Exception:  # noqa: BLE001
+        pass
+    return "mdselect_notfound"
+
+
 async def _apply_check(page, target: str, value: str) -> str:
     want = _norm(value) or _norm(target)
     for lab in await page.query_selector_all("label, .radio, .mat-radio-label"):
@@ -254,6 +326,11 @@ async def apply_action(page, action: Dict[str, Any]) -> str:
             return "filled"
         return "fill_notfound"
     if a == "select":
+        # AngularJS Material: <md-select> so aceita clique no overlay. Tenta primeiro;
+        # se a tela nao tiver md-select alvo, cai no <select> nativo.
+        md = await _apply_mdselect(page, target, value)
+        if md is not None:
+            return md
         return await _apply_select(page, target, value)
     if a == "check":
         return await _apply_check(page, target, value)

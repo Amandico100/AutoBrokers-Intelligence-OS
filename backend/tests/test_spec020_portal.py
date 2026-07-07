@@ -114,6 +114,66 @@ def run():
     s3 = _FakeSel(opt_raises=True, eval_ret=False)
     check("_set_select sem opcao casavel -> vazio", asyncio.run(_set_select(None, s3, "Comercial")) == "")
 
+    # md-select (AngularJS Material): apply_action deve clicar o <md-option> certo
+    # (setar o <select> nativo NAO atualiza o ng-model — causa real do loop).
+    from portal_worker.adaptive import _apply_mdselect
+
+    class _Opt:
+        clicked = None
+        def __init__(self, text, vis=True):
+            self._t, self._v = text, vis
+        async def is_visible(self):
+            return self._v
+        async def inner_text(self):
+            return self._t
+        async def click(self):
+            _Opt.clicked = self._t
+
+    class _Md:
+        def __init__(self, name):
+            self._name = name
+        async def get_attribute(self, k):
+            return self._name if k == "name" else ""
+        async def scroll_into_view_if_needed(self):
+            pass
+        async def click(self):
+            pass
+
+    class _Kbd:
+        async def press(self, k):
+            pass
+
+    class _Page:
+        def __init__(self, mds, opts):
+            self._mds, self._opts, self.keyboard = mds, opts, _Kbd()
+        async def query_selector_all(self, sel):
+            if "md-select" in sel:
+                return self._mds
+            if "md-option" in sel:
+                return self._opts
+            return []
+        async def wait_for_timeout(self, ms):
+            pass
+
+    _Opt.clicked = None
+    p1 = _Page([_Md("TipoTelefoneSolicitante0")],
+               [_Opt("Selecione uma opção"), _Opt("Comercial"), _Opt("Residencial")])
+    r = asyncio.run(_apply_mdselect(p1, "TipoTelefoneSolicitante0", "Comercial"))
+    check("md-select clica md-option por texto", r == "mdselect=comercial" and _Opt.clicked == "Comercial")
+
+    _Opt.clicked = None
+    p2 = _Page([_Md("segr")], [_Opt("Selecione uma opção"), _Opt("O próprio"), _Opt("Corretor")])
+    r2 = asyncio.run(_apply_mdselect(p2, "segr", "Corretor"))
+    check("md-select casa 'Corretor'", r2 == "mdselect=corretor" and _Opt.clicked == "Corretor")
+
+    _Opt.clicked = None
+    p3 = _Page([_Md("segr")], [_Opt("Selecione uma opção"), _Opt("O próprio")])
+    r3 = asyncio.run(_apply_mdselect(p3, "segr", "valor-que-nao-existe"))
+    check("md-select sem match -> 1a opcao real", r3 == "mdselect_default" and _Opt.clicked == "O próprio")
+
+    r4 = asyncio.run(_apply_mdselect(_Page([], []), "campo", "x"))
+    check("sem md-select -> None (cai no nativo)", r4 is None)
+
     # vault round-trip (so se cryptography instalado localmente)
     try:
         from cryptography.fernet import Fernet
