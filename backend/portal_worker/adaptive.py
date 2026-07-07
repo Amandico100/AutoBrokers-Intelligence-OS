@@ -113,7 +113,10 @@ _SYSTEM = (
     "e porque um campo OBRIGATORIO ainda esta VAZIO ou invalido: ache o campo vazio na tela "
     "(input/textarea/select sem valor) e preencha ANTES de tentar Avancar de novo — nao fique so "
     "clicando Avancar. Preencha os DROPDOWNS primeiro e o TEXTO LIVRE (descricao) por ULTIMO: mudar "
-    "um dropdown as vezes limpa a descricao. Um passo por vez."
+    "um dropdown as vezes limpa a descricao. Em campo de ESTADO/UF com autocomplete, digite "
+    "a SIGLA de 2 letras (ex.: 'SC', 'SP', 'RJ') — o nome por extenso ('Santa Catarina') nao "
+    "retorna resultado. Se um autocomplete disser 'nenhum resultado', voce usou o termo errado: "
+    "tente a sigla/forma curta. Um passo por vez."
 )
 
 
@@ -370,9 +373,13 @@ async def _pick_autocomplete(page, value: str) -> bool:
                   const n = t => (t||'').normalize('NFKD').replace(/[\\u0300-\\u036f]/g,'').trim().toLowerCase();
                   const w = n(want);
                   const vis = el => !!(el.offsetParent || el.getClientRects().length);
-                  const lis = [...document.querySelectorAll(
+                  const all = [...document.querySelectorAll(
                      '.md-autocomplete-suggestions li, md-autocomplete-suggestions li, li.md-autocomplete-suggestion, ul.md-autocomplete-suggestions li')].filter(vis);
-                  if (!lis.length) return {found:0};
+                  // ignora mensagem de "nenhum resultado" (nao e opcao clicavel de verdade)
+                  const bad = t => /nenhum|nao encontr|sem resultado|no results|nenhuma op/.test(n(t));
+                  const lis = all.filter(o => !bad(o.textContent));
+                  if (!all.length) return {found:0};
+                  if (!lis.length) return {found:all.length, ok:false, noresult:true};
                   // preferencia: exato -> comeca-com -> contem -> primeira sugestao
                   let hit = w && (lis.find(o => n(o.textContent) === w)
                               || lis.find(o => n(o.textContent).startsWith(w) || w.startsWith(n(o.textContent)))
