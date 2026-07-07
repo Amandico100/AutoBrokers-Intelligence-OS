@@ -438,6 +438,14 @@ async def run_adaptive(page, goal: str, collected: Dict[str, Any], evidence: Dic
         action = await decide_next_action(state, goal, collected, history)
         history.append(action)
         if action["action"] == "done":
+            # SEGURANCA: com confirm=False nunca finalizamos sozinhos. "done" = o cerebro
+            # terminou de preencher -> paramos p/ revisao/aprovacao humana (nada e enviado).
+            evidence["final_state"] = {"heading": state.get("heading", ""),
+                                       "text": (state.get("text") or "")[:800],
+                                       "buttons": state.get("buttons", [])}
+            if not confirm:
+                return JourneyResult(status="needs_human", captured={"stage": "fim_preenchimento"},
+                                     message="preenchimento completo — pare para revisao/aprovacao antes de enviar")
             return JourneyResult(status="done", message="concluido (adaptive)")
         if action["action"] == "ask_human":
             # Backstop anti-travamento: o cerebro tende a "pedir por educacao" em selects/radios.
