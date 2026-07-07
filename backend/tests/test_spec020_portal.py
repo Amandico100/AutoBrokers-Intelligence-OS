@@ -126,7 +126,7 @@ def run():
             return self._v
         async def inner_text(self):
             return self._t
-        async def click(self):
+        async def click(self, **kw):
             _Opt.clicked = self._t
 
     class _Md:
@@ -134,9 +134,9 @@ def run():
             self._name = name
         async def get_attribute(self, k):
             return self._name if k == "name" else ""
-        async def scroll_into_view_if_needed(self):
+        async def scroll_into_view_if_needed(self, **kw):
             pass
-        async def click(self):
+        async def click(self, **kw):
             pass
 
     class _Kbd:

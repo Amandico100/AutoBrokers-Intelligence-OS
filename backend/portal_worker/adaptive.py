@@ -270,20 +270,31 @@ async def _apply_mdselect(page, target: str, value: str):
     m = await _find_mdselect(page, target, value)
     if m is None:
         return None
+    # Fecha qualquer overlay aberto antes (backdrop de um md-select anterior intercepta
+    # o clique e faria o Playwright esperar o timeout inteiro). Timeouts CURTOS em tudo:
+    # nada pode travar 30s — se nao clicar em ~4s, devolve um codigo e o loop segue.
     try:
-        await m.scroll_into_view_if_needed()
-        await m.click()
-        await page.wait_for_timeout(450)
+        await page.keyboard.press("Escape")
+        await page.wait_for_timeout(150)
     except Exception:  # noqa: BLE001
-        return None
+        pass
+    try:
+        await m.scroll_into_view_if_needed(timeout=3000)
+        await m.click(timeout=4000)
+    except Exception:  # noqa: BLE001
+        return "mdselect_open_fail"
+    await page.wait_for_timeout(400)
     v = _norm(value)
-    opts = await page.query_selector_all("md-option")
+    try:
+        opts = await page.query_selector_all("md-option")
+    except Exception:  # noqa: BLE001
+        opts = []
     for o in opts:                                   # 1) opcao com o texto pedido
         try:
             if await o.is_visible():
                 txt = _norm(await o.inner_text())
                 if txt and v and (v == txt or v in txt or txt in v):
-                    await o.click()
+                    await o.click(timeout=4000)
                     return f"mdselect={txt}"
         except Exception:  # noqa: BLE001
             continue
@@ -292,7 +303,7 @@ async def _apply_mdselect(page, target: str, value: str):
             if await o.is_visible():
                 txt = _norm(await o.inner_text())
                 if txt and "selecione" not in txt:
-                    await o.click()
+                    await o.click(timeout=4000)
                     return "mdselect_default"
         except Exception:  # noqa: BLE001
             continue
@@ -368,9 +379,17 @@ async def run_adaptive(page, goal: str, collected: Dict[str, Any], evidence: Dic
                 return JourneyResult(status="needs_human", captured={"pergunta": action.get("value")},
                                      message=f"preciso de: {action.get('value')}")
         applied = await apply_action(page, action)
-        evidence.setdefault("adaptive_steps", []).append(
-            {"a": action.get("action"), "t": action.get("target"), "v": action.get("value")[:30], "r": applied})
-        await page.wait_for_timeout(1500)
+        sig = (action.get("action"), action.get("target"), action.get("value"), applied)
+        steps = evidence.setdefault("adaptive_steps", [])
+        steps.append({"a": sig[0], "t": sig[1], "v": (action.get("value") or "")[:30], "r": applied})
+        # Parada antecipada: 3 acoes identicas seguidas sem mudar nada = tela travada.
+        # Para com o DOM (diagnostico) em vez de arrastar ate MAX_STEPS.
+        sigs = [(s["a"], s["t"], s["v"], s["r"]) for s in steps[-3:]]
+        if len(sigs) == 3 and len(set(sigs)) == 1:
+            evidence["debug_dom"] = await _dump_dom(page)
+            return JourneyResult(status="needs_human", captured={"stage": "sem_progresso"},
+                                 message=f"tela travada: repetiu '{sig[0]} {sig[1]} {sig[2]}' -> {applied}")
+        await page.wait_for_timeout(1200)
     # DIAGNOSTICO: se travou, despeja o DOM real da tela pra achar a causa (nao chutar).
     evidence["debug_dom"] = await _dump_dom(page)
     return JourneyResult(status="needs_human", captured={"steps": evidence.get("adaptive_steps")},
