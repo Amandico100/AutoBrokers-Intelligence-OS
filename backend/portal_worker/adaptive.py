@@ -21,6 +21,7 @@ from portal_worker.journeys import JourneyResult
 VALID_ACTIONS = ("fill", "select", "click", "check", "done", "ask_human")
 MAX_STEPS = 22
 _PROTO = ("protocolo", "numero do atendimento", "n do atendimento", "solicitacao registrada", "atendimento n")
+LAST_MDSELECT_DEBUG = None  # ultimo overlay md-option nao-clicavel (diagnostico)
 
 
 def _norm(s: str) -> str:
@@ -283,7 +284,7 @@ async def _apply_mdselect(page, target: str, value: str):
         await m.click(timeout=4000)
     except Exception:  # noqa: BLE001
         return "mdselect_open_fail"
-    await page.wait_for_timeout(400)
+    await page.wait_for_timeout(650)
     v = _norm(value)
     try:
         opts = await page.query_selector_all("md-option")
@@ -298,15 +299,32 @@ async def _apply_mdselect(page, target: str, value: str):
                     return f"mdselect={txt}"
         except Exception:  # noqa: BLE001
             continue
-    for o in opts:                                   # 2) 1a opcao real (nao 'Selecione')
+    # 2) 1a opcao REAL (nao 'Selecione'). Aceita texto vazio: em alguns md-select
+    #    (ex.: tipo de telefone) o ng-repeat deixa o texto vazio no DOM, mas a opcao
+    #    e valida (tem value/Codigo) — qualquer uma serve p/ abrir o atendimento.
+    for o in opts:
         try:
-            if await o.is_visible():
-                txt = _norm(await o.inner_text())
-                if txt and "selecione" not in txt:
-                    await o.click(timeout=4000)
-                    return "mdselect_default"
+            if not await o.is_visible():
+                continue
+            txt = _norm(await o.inner_text())
+            if "selecione" in txt:
+                continue
+            await o.click(timeout=4000)
+            return f"mdselect_default={txt or '(sem texto)'}"
         except Exception:  # noqa: BLE001
             continue
+    # DIAGNOSTICO: nada clicavel — grava o overlay real p/ ver o que tem.
+    global LAST_MDSELECT_DEBUG
+    try:
+        LAST_MDSELECT_DEBUG = await page.evaluate(
+            """() => [...document.querySelectorAll('md-option')].map(o => ({
+                 text:(o.textContent||'').trim().slice(0,40),
+                 val:o.getAttribute('value')||o.getAttribute('ng-value')||'',
+                 vis:!!(o.offsetParent||o.getClientRects().length),
+                 html:o.outerHTML.slice(0,160)}))"""
+        )
+    except Exception:  # noqa: BLE001
+        LAST_MDSELECT_DEBUG = "eval_fail"
     try:
         await page.keyboard.press("Escape")
     except Exception:  # noqa: BLE001
@@ -387,11 +405,13 @@ async def run_adaptive(page, goal: str, collected: Dict[str, Any], evidence: Dic
         sigs = [(s["a"], s["t"], s["v"], s["r"]) for s in steps[-3:]]
         if len(sigs) == 3 and len(set(sigs)) == 1:
             evidence["debug_dom"] = await _dump_dom(page)
+            evidence["mdselect_overlay"] = LAST_MDSELECT_DEBUG
             return JourneyResult(status="needs_human", captured={"stage": "sem_progresso"},
                                  message=f"tela travada: repetiu '{sig[0]} {sig[1]} {sig[2]}' -> {applied}")
         await page.wait_for_timeout(1200)
     # DIAGNOSTICO: se travou, despeja o DOM real da tela pra achar a causa (nao chutar).
     evidence["debug_dom"] = await _dump_dom(page)
+    evidence["mdselect_overlay"] = LAST_MDSELECT_DEBUG
     return JourneyResult(status="needs_human", captured={"steps": evidence.get("adaptive_steps")},
                          message="muitos passos sem concluir (adaptive) — precisa de revisao")
 
