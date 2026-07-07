@@ -117,21 +117,26 @@ class PortalActionTool(BaseTool):
 
     async def _fetch_infocap(self, cpf: str, policy_number: Optional[str]) -> dict:
         """SPEC-025: fatos reais da apolice AUTO (placa/veiculo/endereco) via porta
-        PolicyDataProvider (InfoCap /itens + /cliente_cpf). Nunca inventa."""
-        import os
+        PolicyDataProvider (InfoCap /itens + /cliente_cpf). Nunca inventa; nunca
+        derruba o atendimento (fail-safe -> provider_unavailable)."""
+        try:
+            import os
 
-        from app.core.database import create_async_supabase_client
-        from app.providers.policy_data_provider import get_policy_data_provider
+            from app.core.database import create_async_supabase_client
+            from app.providers.policy_data_provider import get_policy_data_provider
 
-        key = os.getenv("BACKEND_INTERNAL_API_KEY") or os.getenv("ADMIN_API_KEY")
-        provider = get_policy_data_provider("infocap")
-        if provider is None or not hasattr(provider, "vehicle") or not key:
-            return {"ok": False, "status": "provider_unavailable"}
-        db = await create_async_supabase_client()
-        return await provider.vehicle(
-            company_id=self.company_id, document=cpf,
-            policy_number=policy_number, db=db, internal_key=key,
-        )
+            key = os.getenv("BACKEND_INTERNAL_API_KEY") or os.getenv("ADMIN_API_KEY")
+            provider = get_policy_data_provider("infocap")
+            if provider is None or not hasattr(provider, "vehicle") or not key:
+                return {"ok": False, "status": "provider_unavailable"}
+            db = await create_async_supabase_client()
+            return await provider.vehicle(
+                company_id=self.company_id, document=cpf,
+                policy_number=policy_number, db=db, internal_key=key,
+            )
+        except Exception as e:  # noqa: BLE001
+            logger.error(f"[PortalAction] InfoCap vehicle lookup falhou: {type(e).__name__}")
+            return {"ok": False, "status": "provider_error"}
 
     async def _arun(self, **flat) -> dict:
         session_id = str(flat.pop("session_id", "") or "")
