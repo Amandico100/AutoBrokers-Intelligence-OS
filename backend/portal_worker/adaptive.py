@@ -106,7 +106,11 @@ _SYSTEM = (
     "ou a 1a opcao valida do select). ask_human e SO para um dado REAL do segurado/dano que nao "
     "esta no payload e nao da pra deduzir (ex.: o que exatamente aconteceu, se voce nao tiver). "
     "NAO clique em botao que FINALIZE o pedido (confirmar/enviar) — pare que o sistema cuida disso. "
-    "Um passo por vez."
+    "Se o botao Avancar/Continuar aparecer DESABILITADO (disabled) ou o clique nao mudar a tela, "
+    "e porque um campo OBRIGATORIO ainda esta VAZIO ou invalido: ache o campo vazio na tela "
+    "(input/textarea/select sem valor) e preencha ANTES de tentar Avancar de novo — nao fique so "
+    "clicando Avancar. Preencha os DROPDOWNS primeiro e o TEXTO LIVRE (descricao) por ULTIMO: mudar "
+    "um dropdown as vezes limpa a descricao. Um passo por vez."
 )
 
 
@@ -350,6 +354,13 @@ async def apply_action(page, action: Dict[str, Any]) -> str:
         el = await _find_input(page, target)
         if el:
             await el.fill(str(value))
+            # AngularJS so valida no input/change e marca 'touched' no blur — dispara os 3
+            # pra o campo ficar valido na hora (senao o Avancar continua desabilitado).
+            try:
+                await el.evaluate(
+                    "e => ['input','change','blur'].forEach(t => e.dispatchEvent(new Event(t,{bubbles:true})))")
+            except Exception:  # noqa: BLE001
+                pass
             return "filled"
         return "fill_notfound"
     if a == "select":
