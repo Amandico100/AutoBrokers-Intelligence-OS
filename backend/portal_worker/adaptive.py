@@ -294,5 +294,35 @@ async def run_adaptive(page, goal: str, collected: Dict[str, Any], evidence: Dic
         evidence.setdefault("adaptive_steps", []).append(
             {"a": action.get("action"), "t": action.get("target"), "v": action.get("value")[:30], "r": applied})
         await page.wait_for_timeout(1500)
+    # DIAGNOSTICO: se travou, despeja o DOM real da tela pra achar a causa (nao chutar).
+    evidence["debug_dom"] = await _dump_dom(page)
     return JourneyResult(status="needs_human", captured={"steps": evidence.get("adaptive_steps")},
                          message="muitos passos sem concluir (adaptive) — precisa de revisao")
+
+
+async def _dump_dom(page) -> Dict[str, Any]:
+    """Raio-X cru da tela travada: selects (nativo?/display/disabled/opcoes/html),
+    mat-selects (Angular), e os botoes de avanco. So p/ diagnostico."""
+    try:
+        return await page.evaluate(
+            """() => {
+              const vis = el => !!(el.offsetParent || el.getClientRects().length);
+              const selects = [...document.querySelectorAll('select')].map(s => ({
+                name:s.name, id:s.id, disabled:s.disabled,
+                display:getComputedStyle(s).display, vis:vis(s),
+                opts:[...s.options].map(o=>o.textContent.trim()),
+                html:s.outerHTML.slice(0,200)
+              }));
+              const matselects = [...document.querySelectorAll('mat-select,[role=combobox],[role=listbox],.mat-select')].map(m => ({
+                tag:m.tagName, id:m.id, cls:m.className, text:(m.textContent||'').trim().slice(0,50),
+                html:m.outerHTML.slice(0,200)
+              }));
+              const advance = [...document.querySelectorAll('button,a,input,[role=button]')]
+                .filter(b => /avan|prox|contin|salv|enviar|confirm/i.test((b.textContent||'')+' '+(b.value||'')))
+                .map(b => ({tag:b.tagName, text:(b.textContent||'').trim().slice(0,30),
+                            value:b.value||'', disabled:!!b.disabled, vis:vis(b)}));
+              return {selects, matselects, advance, heading:(document.querySelector('h1,h2,h3')||{}).textContent||''};
+            }"""
+        )
+    except Exception as e:  # noqa: BLE001
+        return {"error": f"{type(e).__name__}: {e}"}
