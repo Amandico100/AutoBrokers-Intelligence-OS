@@ -172,18 +172,41 @@ async def _click_button(page, text: str) -> bool:
 
 
 async def _find_input(page, target: str):
+    """Acha o input/textarea alvo. O cerebro as vezes mira pelo ID (fl-input-65) e as
+    vezes pelo LABEL que ve na tela ('Selecione o estado...') — casa pelos DOIS: id,
+    name, placeholder, aria-label e o <label> associado (inclui md-autocomplete/
+    md-input-container). els e metas vem na MESMA ordem (document order)."""
     t = _norm(target)
-    for e in await page.query_selector_all("input,textarea"):
-        try:
-            if not await e.is_visible():
-                continue
-            idv = _norm(await e.get_attribute("id") or "")
-            ph = _norm(await e.get_attribute("placeholder") or "")
-            nm = _norm(await e.get_attribute("name") or "")
-            if t and (t == idv or t in ph or t in nm or (idv and idv in t)):
-                return e
-        except Exception:  # noqa: BLE001
+    if not t:
+        return None
+    els = await page.query_selector_all("input,textarea")
+    try:
+        metas = await page.evaluate(
+            """() => [...document.querySelectorAll('input,textarea')].map(e => {
+                 let lab = (e.labels && e.labels[0] && e.labels[0].textContent) || e.getAttribute('aria-label') || '';
+                 if (!lab) { const c = e.closest('md-autocomplete,md-input-container');
+                             if (c) { const l = c.querySelector('label'); if (l) lab = l.textContent; } }
+                 return {id:e.id||'', name:e.name||'', ph:e.placeholder||'',
+                         lab:(lab||'').trim(), vis:!!(e.offsetParent || e.getClientRects().length)};
+               })"""
+        )
+    except Exception:  # noqa: BLE001
+        metas = []
+    for i, e in enumerate(els):
+        m = metas[i] if i < len(metas) else {}
+        if metas and not m.get("vis"):
             continue
+        if not metas:
+            try:
+                if not await e.is_visible():
+                    continue
+            except Exception:  # noqa: BLE001
+                continue
+        idv, nm = _norm(m.get("id", "")), _norm(m.get("name", ""))
+        ph, lab = _norm(m.get("ph", "")), _norm(m.get("lab", ""))
+        if (t == idv or (idv and idv in t) or (ph and t in ph) or (nm and t in nm)
+                or (lab and (t in lab or lab in t))):
+            return e
     return None
 
 
