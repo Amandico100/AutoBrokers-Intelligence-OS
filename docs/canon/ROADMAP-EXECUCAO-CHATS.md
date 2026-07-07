@@ -13,7 +13,8 @@ Mapa mestre: o que existe, quem executa, em que chat, em que ordem. Atualizar co
 | 021 F4 | Camada 3 — memórias/aprendizado (learning_notes) | 📝 Prompt de chat novo pronto (`PROMPT-NOVO-CHAT-SPEC021-CAMADA3.md`) | **Chat novo** |
 | 021 F5 | Metering + Firecrawl + model picker | 📝 Na SPEC-021, depois da F4 | Chat novo (junto da F4) |
 | 022 | Reorg IA Seguradoras-cêntrica (UI) | 📝 Doc criado (`specs/SPEC-022-...md`) | Comigo aqui **ou** chat novo (menor risco) |
-| 023 | **Portais autenticados (login/CAPTCHA/2FA HITL) + Cobrança** | 📝 **Criada agora** (`specs/SPEC-023-...md` + `PROMPT-NOVO-CHAT-SPEC023-...md`) | **Chat novo** |
+| 024 | **Acionamento vidros PONTA A PONTA no WhatsApp** (a ponte atendente→portal manda dados inventados) | 📝 **Criada agora** (`specs/SPEC-024-...md`) — motor OK, ponte quebrada | **Chat novo de portais (1º trabalho)** |
+| 023 | **Portais autenticados (login/CAPTCHA/2FA HITL) + Cobrança** | 📝 Criada (`specs/SPEC-023-...md`) | **Mesmo chat de portais (2º trabalho)** |
 
 ## Ordem recomendada
 
@@ -33,8 +34,8 @@ Mapa mestre: o que existe, quem executa, em que chat, em que ordem. Atualizar co
 - **Aqui**: fechar o teste do vidros (SPEC-020).
 
 ## Prompts prontos para colar em chat novo
+- **Portais (SPEC-024 vidros → SPEC-023 cobrança): `docs/canon/PROMPT-NOVO-CHAT-PORTAIS.md`** ← use este p/ o chat de portais
 - Camada 3 / memórias: `docs/canon/PROMPT-NOVO-CHAT-SPEC021-CAMADA3.md`
-- Portais + cobrança: `docs/canon/PROMPT-NOVO-CHAT-SPEC023-PORTAIS-COBRANCA.md`
 - Reorg: `docs/canon/specs/SPEC-022-reorg-seguradoras-centrica.md` (se for chat novo, cole a SPEC + peça o plano antes)
 
 ## Quem executa
