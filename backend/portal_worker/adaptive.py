@@ -362,7 +362,7 @@ async def _pick_autocomplete(page, value: str) -> bool:
     md-selected-item nao seta e o Avancar fica desabilitado). Poll: as sugestoes
     carregam com debounce/busca. Clica em JS (imune a interceptacao). False se nao
     houver sugestao (input normal)."""
-    for _ in range(3):
+    for _ in range(4):
         await page.wait_for_timeout(450)
         try:
             res = await page.evaluate(
@@ -373,7 +373,10 @@ async def _pick_autocomplete(page, value: str) -> bool:
                   const lis = [...document.querySelectorAll(
                      '.md-autocomplete-suggestions li, md-autocomplete-suggestions li, li.md-autocomplete-suggestion, ul.md-autocomplete-suggestions li')].filter(vis);
                   if (!lis.length) return {found:0};
-                  let hit = w && lis.find(o => { const t = n(o.textContent); return t===w || t.includes(w) || w.includes(t); });
+                  // preferencia: exato -> comeca-com -> contem -> primeira sugestao
+                  let hit = w && (lis.find(o => n(o.textContent) === w)
+                              || lis.find(o => n(o.textContent).startsWith(w) || w.startsWith(n(o.textContent)))
+                              || lis.find(o => n(o.textContent).includes(w) || w.includes(n(o.textContent))));
                   if (!hit) hit = lis[0];
                   hit.click();
                   return {found:lis.length, ok:true, text:(hit.textContent||'').trim().slice(0,30)};
@@ -459,6 +462,7 @@ async def run_adaptive(page, goal: str, collected: Dict[str, Any], evidence: Dic
                 action = forced
                 history[-1] = action
             else:
+                evidence["debug_dom"] = await _dump_dom(page)
                 return JourneyResult(status="needs_human", captured={"pergunta": action.get("value")},
                                      message=f"preciso de: {action.get('value')}")
         applied = await apply_action(page, action)
