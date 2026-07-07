@@ -354,6 +354,36 @@ async def _apply_check(page, target: str, value: str) -> str:
     return "check_notfound"
 
 
+async def _pick_autocomplete(page, value: str) -> bool:
+    """AngularJS md-autocomplete: apos digitar, clica a sugestao que casa (senao o
+    md-selected-item nao seta e o Avancar fica desabilitado). Poll: as sugestoes
+    carregam com debounce/busca. Clica em JS (imune a interceptacao). False se nao
+    houver sugestao (input normal)."""
+    for _ in range(3):
+        await page.wait_for_timeout(450)
+        try:
+            res = await page.evaluate(
+                """(want) => {
+                  const n = t => (t||'').normalize('NFKD').replace(/[\\u0300-\\u036f]/g,'').trim().toLowerCase();
+                  const w = n(want);
+                  const vis = el => !!(el.offsetParent || el.getClientRects().length);
+                  const lis = [...document.querySelectorAll(
+                     '.md-autocomplete-suggestions li, md-autocomplete-suggestions li, li.md-autocomplete-suggestion, ul.md-autocomplete-suggestions li')].filter(vis);
+                  if (!lis.length) return {found:0};
+                  let hit = w && lis.find(o => { const t = n(o.textContent); return t===w || t.includes(w) || w.includes(t); });
+                  if (!hit) hit = lis[0];
+                  hit.click();
+                  return {found:lis.length, ok:true, text:(hit.textContent||'').trim().slice(0,30)};
+                }""",
+                value,
+            )
+        except Exception:  # noqa: BLE001
+            return False
+        if isinstance(res, dict) and res.get("found"):
+            return bool(res.get("ok"))
+    return False
+
+
 async def apply_action(page, action: Dict[str, Any]) -> str:
     a = action.get("action")
     target = action.get("target") or ""
@@ -362,14 +392,21 @@ async def apply_action(page, action: Dict[str, Any]) -> str:
         el = await _find_input(page, target)
         if el:
             await el.fill(str(value))
-            # AngularJS so valida no input/change e marca 'touched' no blur — dispara os 3
-            # pra o campo ficar valido na hora (senao o Avancar continua desabilitado).
             try:
-                await el.evaluate(
-                    "e => ['input','change','blur'].forEach(t => e.dispatchEvent(new Event(t,{bubbles:true})))")
+                await el.evaluate("e => e.dispatchEvent(new Event('input',{bubbles:true}))")
             except Exception:  # noqa: BLE001
                 pass
-            return "filled"
+            # md-autocomplete (estado/cidade): digitar NAO basta — o Avancar depende do
+            # ITEM selecionado. Se aparecerem sugestoes, clica a que casa. Se nao houver
+            # (input normal), dispara change+blur pra o AngularJS validar.
+            picked = await _pick_autocomplete(page, value)
+            if not picked:
+                try:
+                    await el.evaluate(
+                        "e => ['change','blur'].forEach(t => e.dispatchEvent(new Event(t,{bubbles:true})))")
+                except Exception:  # noqa: BLE001
+                    pass
+            return "filled_autocomplete" if picked else "filled"
         return "fill_notfound"
     if a == "select":
         # AngularJS Material: <md-select> so aceita clique no overlay. Tenta primeiro;
