@@ -395,7 +395,7 @@ async def create_agent_graph(
             # Capability formal (operational.insurer.dispatch) entra na Onda 3.
             if str(_agent_role or "").strip().lower() == "attendance":
                 from .tools.insurer_dispatch_tool import InsurerDispatchTool
-                tools.append(InsurerDispatchTool(company_id=str(company_id)))
+                tools.append(InsurerDispatchTool(company_id=str(company_id), supabase_client=supabase_client))
             # F2: Chat Principal cria/gerencia ROTINAS por conversa (Claude-Rotinas).
             if str(_agent_role or "core").strip().lower() in ("core", "", "core(legado)"):
                 from .tools.routine_tools import CreateRoutineTool, ListRoutinesTool, ManageRoutineTool

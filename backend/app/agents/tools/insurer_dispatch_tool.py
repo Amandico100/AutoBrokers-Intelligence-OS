@@ -44,16 +44,35 @@ class InsurerDispatchTool(BaseTool):
 
     company_id: str = ""
     case_id: str = ""
+    supabase_client: object = None
 
     class Config:
         arbitrary_types_allowed = True
 
-    def __init__(self, company_id: str, case_id: str = "", **kwargs):
+    def __init__(self, company_id: str, case_id: str = "", supabase_client=None, **kwargs):
         super().__init__(**kwargs)
         self.company_id = str(company_id or "")
         self.case_id = str(case_id or "")
+        self.supabase_client = supabase_client
 
     _PLAYBOOK_REF = "allianz-residencial-whatsapp@v1"
+
+    def _attendance_agent_id(self) -> Optional[str]:
+        """Resolve o agente ATENDENTE (role attendance) — a integracao WhatsApp e
+        vinculada a ele; sem o agent_id o lookup e ESTRITO e volta None (mesmo bug
+        do heads-up de vidros). Best-effort."""
+        client = getattr(self.supabase_client, "client", self.supabase_client)
+        if client is None:
+            return None
+        try:
+            res = client.table("agents").select("id").eq(
+                "company_id", self.company_id).eq("agent_role", "attendance").eq(
+                "is_active", True).limit(1).execute()
+            if res.data:
+                return str(res.data[0]["id"])
+        except Exception:  # noqa: BLE001
+            pass
+        return None
 
     @staticmethod
     def _extract_slots(kwargs: dict) -> tuple:
@@ -142,7 +161,10 @@ class InsurerDispatchTool(BaseTool):
             from app.services.integration_service import get_integration_service
             from app.services.whatsapp_service import get_whatsapp_service
 
-            integration = get_integration_service().get_whatsapp_integration(self.company_id)
+            svc = get_integration_service()
+            integration = svc.get_whatsapp_integration(self.company_id, self._attendance_agent_id())
+            if not integration:  # fallback: integracao ativa sem agente
+                integration = svc.get_whatsapp_integration(self.company_id)
         except Exception as e:  # noqa: BLE001
             logger.error(f"[InsurerDispatch] integração indisponível: {type(e).__name__}")
             integration = None
