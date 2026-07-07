@@ -285,34 +285,32 @@ async def _apply_mdselect(page, target: str, value: str):
     except Exception:  # noqa: BLE001
         return "mdselect_open_fail"
     await page.wait_for_timeout(650)
-    v = _norm(value)
     try:
-        opts = await page.query_selector_all("md-option")
+        # Casa E CLICA a md-option em JS: o ng-click do AngularJS dispara igual, mas
+        # e IMUNE a interceptacao de overlay/backdrop (o click do Playwright estourava
+        # 4s quando o container de um md-select anterior interceptava). Escopo nas
+        # md-option VISIVEIS (as do select ja fechado ficam no DOM com offsetParent nulo).
+        res = await page.evaluate(
+            """(want) => {
+              const n = t => (t||'').normalize('NFKD').replace(/[\\u0300-\\u036f]/g,'').trim().toLowerCase();
+              const w = n(want);
+              const vis = el => !!(el.offsetParent || el.getClientRects().length);
+              const opts = [...document.querySelectorAll('md-option')].filter(vis);
+              const isSel = o => n(o.textContent).includes('selecione');
+              let hit = w && opts.find(o => !isSel(o) &&
+                          (n(o.textContent) === w || n(o.textContent).includes(w) || w.includes(n(o.textContent))));
+              if (!hit) hit = opts.find(o => !isSel(o));   // 1a opcao real (mesmo sem texto)
+              if (!hit) return {ok:false, n:opts.length};
+              hit.click();
+              return {ok:true, text:(hit.textContent||'').trim().slice(0,30)};
+            }""",
+            value,
+        )
+        await page.wait_for_timeout(300)
+        if isinstance(res, dict) and res.get("ok"):
+            return f"mdselect={_norm(res.get('text') or '')}"
     except Exception:  # noqa: BLE001
-        opts = []
-    for o in opts:                                   # 1) opcao com o texto pedido
-        try:
-            if await o.is_visible():
-                txt = _norm(await o.inner_text())
-                if txt and v and (v == txt or v in txt or txt in v):
-                    await o.click(timeout=4000)
-                    return f"mdselect={txt}"
-        except Exception:  # noqa: BLE001
-            continue
-    # 2) 1a opcao REAL (nao 'Selecione'). Aceita texto vazio: em alguns md-select
-    #    (ex.: tipo de telefone) o ng-repeat deixa o texto vazio no DOM, mas a opcao
-    #    e valida (tem value/Codigo) — qualquer uma serve p/ abrir o atendimento.
-    for o in opts:
-        try:
-            if not await o.is_visible():
-                continue
-            txt = _norm(await o.inner_text())
-            if "selecione" in txt:
-                continue
-            await o.click(timeout=4000)
-            return f"mdselect_default={txt or '(sem texto)'}"
-        except Exception:  # noqa: BLE001
-            continue
+        pass
     # DIAGNOSTICO: nada clicavel — grava o overlay real p/ ver o que tem.
     global LAST_MDSELECT_DEBUG
     try:
