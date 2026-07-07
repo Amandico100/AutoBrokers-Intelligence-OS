@@ -104,6 +104,10 @@ _SYSTEM = (
     "USE esses dados diretamente para preencher os campos; so use ask_human se o dado REALMENTE nao "
     "estiver no payload. "
     "Escolha a peca/causa/local/respostas com INTELIGENCIA a partir do que o segurado relatou. "
+    "Em 'select', o value deve ser um texto de OPCAO REAL: se a tela mostrar as options do select, "
+    "COPIE exatamente a opcao mais coerente com o relato (nao parafraseie). Se uma acao sua voltar "
+    "com resultado 'mdselect_options=...' em acoes_ja_feitas, essas SAO as opcoes reais daquele "
+    "campo: refaca o select escolhendo UMA delas (texto exato). "
     "JAMAIS use ask_human para campos de FORMATO/preferencia onde qualquer valor serve (tipo de "
     "telefone, tipo de contato, DDD, 'como prefere ser atendido') — escolha DIRETO (ex.: Comercial, "
     "ou a 1a opcao valida do select). ask_human e SO para um dado REAL do segurado/dano que nao "
@@ -297,10 +301,33 @@ async def _find_mdselect(page, target: str, value: str):
     return None
 
 
+def _is_critical_select(target: str) -> bool:
+    """PURO: campos onde escolher a opcao ERRADA = acionamento ERRADO (item/peca
+    danificada, causa/como ocorreu). Nesses NUNCA cair na 1a opcao as cegas —
+    devolver as opcoes reais ao cerebro. Campos de formato (tipo de telefone etc.)
+    continuam tolerantes (qualquer opcao valida serve)."""
+    t = _norm(target)
+    return any(k in t for k in ("item", "peca", "danific", "ocorreu", "causa", "dano"))
+
+
+def score_option_tokens(want: str, option: str) -> int:
+    """PURO: similaridade por tokens (sem stopwords). 'vidro da porta' vs
+    'VIDRO DE PORTA' = 2; vs 'VIDRO PARABRISA - CARGA' = 1. Match exato = 999."""
+    stop = {"de", "da", "do", "das", "dos", "e", "o", "a", "os", "as", "um", "uma", "no", "na", "em", "para", "por", "com"}
+    nw, no = _norm(want), _norm(option)
+    if nw and nw == no:
+        return 999
+    tw = [t for t in nw.replace("-", " ").split() if t and t not in stop]
+    to = [t for t in no.replace("-", " ").split() if t and t not in stop]
+    return sum(1 for t in to if t in tw)
+
+
 async def _apply_mdselect(page, target: str, value: str):
     """Dirige um <md-select> do jeito CERTO (AngularJS so atualiza o ng-model assim):
     clica p/ abrir o overlay e clica no <md-option> pelo texto. Retorna None se a tela
-    NAO tem md-select alvo (cai no _apply_select nativo). 1a opcao real se o valor nao casar."""
+    NAO tem md-select alvo (cai no _apply_select nativo). Match por SIMILARIDADE de
+    tokens; em campo CRITICO sem match, devolve as opcoes reais ao cerebro (nunca
+    chuta a 1a opcao — foi assim que 'vidro da porta' virou 'VIDRO PARABRISA')."""
     m = await _find_mdselect(page, target, value)
     if m is None:
         return None
@@ -331,25 +358,50 @@ async def _apply_mdselect(page, target: str, value: str):
         # e IMUNE a interceptacao de overlay/backdrop (o click do Playwright estourava
         # 4s quando o container de um md-select anterior interceptava). Escopo nas
         # md-option VISIVEIS (as do select ja fechado ficam no DOM com offsetParent nulo).
+        # Match por SIMILARIDADE de tokens (espelho de score_option_tokens): mais
+        # palavras em comum vence; exato = prioridade. Campo CRITICO sem nenhum token
+        # em comum -> NAO clica: devolve as opcoes reais p/ o cerebro decidir.
         res = await page.evaluate(
-            """(want) => {
+            """(args) => {
+              const want = args.want, critical = args.critical;
               const n = t => (t||'').normalize('NFKD').replace(/[\\u0300-\\u036f]/g,'').trim().toLowerCase();
-              const w = n(want);
+              const stop = new Set(['de','da','do','das','dos','e','o','a','os','as','um','uma','no','na','em','para','por','com']);
+              const toks = s => n(s).replace(/-/g,' ').split(/\\s+/).filter(t => t && !stop.has(t));
+              const w = n(want); const wt = toks(want);
               const vis = el => !!(el.offsetParent || el.getClientRects().length);
               const opts = [...document.querySelectorAll('md-option')].filter(vis);
               const isSel = o => n(o.textContent).includes('selecione');
-              let hit = w && opts.find(o => !isSel(o) &&
-                          (n(o.textContent) === w || n(o.textContent).includes(w) || w.includes(n(o.textContent))));
-              if (!hit) hit = opts.find(o => !isSel(o));   // 1a opcao real (mesmo sem texto)
-              if (!hit) return {ok:false, n:opts.length};
-              hit.click();
-              return {ok:true, text:(hit.textContent||'').trim().slice(0,30)};
+              const real = opts.filter(o => !isSel(o));
+              if (!real.length) return {ok:false, n:opts.length};
+              let best = null, bestScore = -1;
+              for (const o of real) {
+                const ot = n(o.textContent);
+                let sc = (w && ot === w) ? 999 : toks(ot).filter(t => wt.includes(t)).length;
+                if (sc > bestScore) { best = o; bestScore = sc; }
+              }
+              if (bestScore <= 0) {
+                if (critical) return {ok:false, nomatch:true,
+                  options: real.map(o => (o.textContent||'').trim().slice(0,60)).slice(0,20)};
+                best = real[0];   // campo de formato: qualquer opcao valida serve
+              }
+              best.click();
+              return {ok:true, text:(best.textContent||'').trim().slice(0,40), score:bestScore};
             }""",
-            value,
+            {"want": value, "critical": _is_critical_select(target)},
         )
         await page.wait_for_timeout(300)
         if isinstance(res, dict) and res.get("ok"):
             return f"mdselect={_norm(res.get('text') or '')}"
+        if isinstance(res, dict) and res.get("nomatch"):
+            # Fecha o overlay e devolve as opcoes REAIS ao cerebro (proxima decisao
+            # ve a lista em acoes_ja_feitas e escolhe o texto exato). Inteligencia,
+            # nao chute.
+            try:
+                await page.keyboard.press("Escape")
+            except Exception:  # noqa: BLE001
+                pass
+            opts = [str(o) for o in (res.get("options") or [])]
+            return "mdselect_options=" + " | ".join(opts)
     except Exception:  # noqa: BLE001
         pass
     # DIAGNOSTICO: nada clicavel — grava o overlay real p/ ver o que tem.
@@ -496,9 +548,16 @@ async def run_adaptive(page, goal: str, collected: Dict[str, Any], evidence: Dic
                 return JourneyResult(status="needs_human", captured={"pergunta": action.get("value")},
                                      message=f"preciso de: {action.get('value')}")
         applied = await apply_action(page, action)
+        # O cerebro VE o resultado de cada acao (acoes_ja_feitas): um select que nao
+        # casou volta com as opcoes REAIS (mdselect_options=...) e a proxima decisao
+        # escolhe o texto exato da lista — inteligencia com a lista na mao, sem chute.
+        history[-1] = {**action, "resultado": applied[:220]}
+        if applied.startswith("mdselect_options="):
+            evidence["campo"] = action.get("target")
+            evidence["opcoes"] = [o.strip() for o in applied.split("=", 1)[1].split("|") if o.strip()]
         sig = (action.get("action"), action.get("target"), action.get("value"), applied)
         steps = evidence.setdefault("adaptive_steps", [])
-        steps.append({"a": sig[0], "t": sig[1], "v": (action.get("value") or "")[:30], "r": applied})
+        steps.append({"a": sig[0], "t": sig[1], "v": (action.get("value") or "")[:30], "r": applied[:80]})
         # Parada antecipada: 3 acoes identicas seguidas sem mudar nada = tela travada.
         # Para com o DOM (diagnostico) em vez de arrastar ate MAX_STEPS.
         sigs = [(s["a"], s["t"], s["v"], s["r"]) for s in steps[-3:]]

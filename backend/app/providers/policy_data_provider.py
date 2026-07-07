@@ -109,6 +109,27 @@ class InfocapPolicyDataProvider:
         )
         return await infocap_policy_detail(payload=payload, x_autobrokers_internal_key=internal_key, db=db)
 
+    async def vehicle(
+        self,
+        *,
+        company_id: str,
+        document: str,
+        policy_number: Optional[str] = None,
+        db: Any = None,
+        internal_key: Optional[str] = None,
+    ) -> Dict[str, Any]:
+        """SPEC-025: item do veiculo da apolice AUTO (placa/chassi/veiculo/fipe) +
+        cadastro do cliente (endereco/telefone) — fonte para a portal_action montar
+        o job com dados REAIS (o LLM nunca fornece placa/endereco)."""
+        from app.api.infocap_connector import InfocapVehiclePayload, infocap_vehicle_item
+
+        payload = InfocapVehiclePayload(
+            company_id=company_id,
+            document=document,
+            policy_number=policy_number or None,
+        )
+        return await infocap_vehicle_item(payload=payload, x_autobrokers_internal_key=internal_key, db=db)
+
 
 _REGISTRY: Dict[str, Any] = {}
 
