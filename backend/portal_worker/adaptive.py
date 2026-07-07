@@ -435,7 +435,17 @@ async def _dump_dom(page) -> Dict[str, Any]:
                 .filter(b => /avan|prox|contin|salv|enviar|confirm/i.test((b.textContent||'')+' '+(b.value||'')))
                 .map(b => ({tag:b.tagName, text:(b.textContent||'').trim().slice(0,30),
                             value:b.value||'', disabled:!!b.disabled, vis:vis(b)}));
-              return {selects, matselects, advance, heading:(document.querySelector('h1,h2,h3')||{}).textContent||''};
+              // Campos obrigatorios AINDA invalidos = o que bloqueia o Avancar.
+              const invalids = [...document.querySelectorAll('input,textarea,select,md-select,md-datepicker,md-checkbox,md-radio-group,md-input-container,md-autocomplete')]
+                .filter(e => /ng-invalid/.test(e.className) && (/ng-required|ng-invalid-required/.test(e.className) || e.required))
+                .map(e => ({tag:e.tagName, name:e.getAttribute('name')||'', id:e.id,
+                            cls:e.className.slice(0,80), ph:e.getAttribute('placeholder')||'',
+                            val:(e.value||'').slice(0,25), vis:vis(e)}));
+              const inputs = [...document.querySelectorAll('input,textarea')].filter(vis)
+                .map(e => ({name:e.name, id:e.id, type:e.type, req:!!e.required,
+                            val:(e.value||'').slice(0,30), cls:e.className.slice(0,60)}));
+              return {selects, matselects, advance, invalids, inputs,
+                      heading:(document.querySelector('h1,h2,h3')||{}).textContent||''};
             }"""
         )
     except Exception as e:  # noqa: BLE001
