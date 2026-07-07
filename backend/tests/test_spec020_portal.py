@@ -196,6 +196,13 @@ def run():
     r4 = asyncio.run(_apply_mdselect(_Page([], []), "campo", "x"))
     check("sem md-select -> None (cai no nativo)", r4 is None)
 
+    # freio dos 80%: NAO pode parar no banner permanente 'SELECAO de 1 ITEM' (todas as
+    # telas o tem); so na tela real 'Confirme a peca danificada'.
+    _banner = "O atendimento web permite apenas a SELECAO de 1 (um) ITEM para TROCA/REPARO."
+    check("80% NAO para na tela 20%", not is_confirm_screen({"heading": "", "text": "20% Confirme seus dados " + _banner + " Sua relacao com o titular?"}))
+    check("80% NAO para na tela de local", not is_confirm_screen({"heading": "", "text": _banner + " Estado Cidade CEP"}))
+    check("80% PARA em 'Confirme a peca danificada'", is_confirm_screen({"heading": "", "text": "80% Confirme a peca danificada " + _banner + " pelicula de controle solar"}))
+
     # vault round-trip (so se cryptography instalado localmente)
     try:
         from cryptography.fernet import Fernet

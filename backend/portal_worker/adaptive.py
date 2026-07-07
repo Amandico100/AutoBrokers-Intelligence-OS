@@ -47,12 +47,12 @@ def parse_action(obj: Any) -> Dict[str, Any]:
 def is_confirm_screen(state: Dict[str, Any]) -> bool:
     """PURO: True se a tela e a CONFIRMACAO da peca (80%) — parar antes de enviar."""
     blob = _norm((state or {}).get("heading", "") + " " + (state or {}).get("text", "")[:600])
-    # gatilhos fortes do 80% "Confirme a peca danificada" (parar ANTES de enviar)
-    strong = ("confirme a peca danificada", "confirme a peca", "avalie esta tela",
-              "selecao de 1 (um) item", "selecao de 1 item")
+    # Gatilhos ESPECIFICOS do 80% "Confirme a peca danificada". NAO usar o banner
+    # permanente "SELECAO de 1 ITEM" (aparece em TODAS as telas -> falso positivo).
+    strong = ("confirme a peca danificada", "confirme a peca a ser", "confirme a peca danif")
     if any(s in blob for s in strong):
         return True
-    # perguntas especificas classicas do 80% (pelicula / trincado)
+    # perguntas especificas classicas do 80% (pelicula / trincado) — so existem la
     hints = ("pelicula de controle solar", "o trincado esta maior ou menor", "posicao do trincado")
     return sum(h in blob for h in hints) >= 1
 
