@@ -62,26 +62,47 @@ def has_protocol(state: Dict[str, Any]) -> bool:
 
 
 async def capture_state(page) -> Dict[str, Any]:
-    """Serializa a tela atual (raio-X) para o cerebro decidir."""
+    """Serializa a tela atual (raio-X) para o cerebro decidir. Inclui md-select
+    (AngularJS Material) com o LABEL, valor atual e se esta VAZIO+OBRIGATORIO
+    (ng-invalid-required) — assim o cerebro ENXERGA exatamente qual campo trava o
+    Avancar e mira nele (era o buraco: so capturava <select> nativo, e o md-select
+    de 'tipo de telefone' ficava invisivel pro cerebro)."""
     return await page.evaluate(
         """() => {
           const vis = el => !!(el.offsetParent || el.getClientRects().length);
-          const lbl = e => (e.labels && e.labels[0] && e.labels[0].textContent.trim())
-                || (e.getAttribute('aria-label')||'') || (e.placeholder||'');
+          const clean = t => (t||'').replace(/\\s+/g,' ').trim();
+          const lbl = e => clean((e.labels && e.labels[0] && e.labels[0].textContent)
+                || e.getAttribute('aria-label') || e.placeholder || '');
+          const mdLabel = m => { const c = m.closest('md-input-container,.md-input-container,md-autocomplete');
+                let l = c && c.querySelector('label'); if (l) return clean(l.textContent);
+                return clean(m.getAttribute('aria-label') || m.getAttribute('name') || m.id); };
           const inputs = [...document.querySelectorAll('input,textarea')].filter(vis)
             .map(e => ({id:e.id, name:e.name, type:e.type, placeholder:e.placeholder||'',
-                        value:e.value||'', label:lbl(e)}));
-          const selects = [...document.querySelectorAll('select')]
+                        value:e.value||'', label:lbl(e),
+                        required: !!e.required || /ng-required/.test(e.className),
+                        empty_required: /ng-invalid-required/.test(e.className)}));
+          const selects = [...document.querySelectorAll('select')].filter(vis)
             .map(s => ({name:s.name, label:lbl(s),
                         value:(s.options[s.selectedIndex]||{}).textContent||'',
                         options:[...s.options].map(o=>o.textContent.trim()).filter(Boolean)}));
+          // md-select (Angular Material): o widget REAL das telas de vidros.
+          const mdselects = [...document.querySelectorAll('md-select')].filter(vis)
+            .map(m => ({id:m.id, name:m.getAttribute('name')||'', label:mdLabel(m),
+                        value:clean(m.textContent),
+                        empty_required: /ng-invalid-required|ng-empty/.test(m.className) && /ng-required|ng-invalid/.test(m.className)}));
           const buttons = [...document.querySelectorAll('button')].filter(vis)
-            .map(b => ({text:b.textContent.trim(), disabled:!!b.disabled})).filter(b=>b.text);
+            .map(b => ({text:clean(b.textContent), disabled:!!b.disabled})).filter(b=>b.text);
           const radios = [...document.querySelectorAll('input[type=radio],input[type=checkbox]')].filter(vis)
             .map(r => ({name:r.name, checked:r.checked, label:lbl(r)}));
+          // Resumo do que BLOQUEIA o Avancar: campos obrigatorios ainda vazios.
+          const pending_required = [
+            ...inputs.filter(e => e.empty_required).map(e => ({tipo:'input', label:e.label||e.id||e.name})),
+            ...mdselects.filter(m => m.empty_required).map(m => ({tipo:'select', label:m.label||m.name||m.id})),
+          ];
           const h = document.querySelector('h1,h2,h3,.titulo,.title');
-          return {url:location.href, heading:(h?h.textContent:'').trim(),
-                  inputs, selects, buttons, radios, text:document.body.innerText.slice(0,1500)};
+          return {url:location.href, heading:clean(h?h.textContent:''),
+                  inputs, selects, mdselects, buttons, radios, pending_required,
+                  text:document.body.innerText.slice(0,1500)};
         }"""
     )
 
@@ -114,9 +135,13 @@ _SYSTEM = (
     "esta no payload e nao da pra deduzir (ex.: o que exatamente aconteceu, se voce nao tiver). "
     "NAO clique em botao que FINALIZE o pedido (confirmar/enviar) — pare que o sistema cuida disso. "
     "Se o botao Avancar/Continuar aparecer DESABILITADO (disabled) ou o clique nao mudar a tela, "
-    "e porque um campo OBRIGATORIO ainda esta VAZIO ou invalido: ache o campo vazio na tela "
-    "(input/textarea/select sem valor) e preencha ANTES de tentar Avancar de novo — nao fique so "
-    "clicando Avancar. Preencha os DROPDOWNS primeiro e o TEXTO LIVRE (descricao) por ULTIMO: mudar "
+    "e porque um campo OBRIGATORIO ainda esta VAZIO: o payload traz 'pending_required' = a LISTA "
+    "EXATA dos campos que faltam (com o label). Preencha CADA UM deles antes de Avancar — um por "
+    "vez, comecando pelo primeiro de pending_required. Para um campo 'select', use action select com "
+    "target = o label/name do campo (ex.: 'tipo de telefone') e value = a opcao (ex.: 'Comercial'). "
+    "NUNCA repita a mesma acao que ja aplicou (ex.: reselecionar um campo que ja tem valor) — olhe "
+    "'pending_required' e mire no que AINDA falta. 'mdselects' lista os dropdowns Material com label/"
+    "valor atual/empty_required. Preencha os DROPDOWNS primeiro e o TEXTO LIVRE (descricao) por ULTIMO: mudar "
     "um dropdown as vezes limpa a descricao. Em campo de ESTADO/UF com autocomplete, digite "
     "a SIGLA de 2 letras (ex.: 'SC', 'SP', 'RJ') — o nome por extenso ('Santa Catarina') nao "
     "retorna resultado. Se um autocomplete disser 'nenhum resultado', voce usou o termo errado: "
@@ -273,19 +298,33 @@ async def _apply_select(page, target: str, value: str) -> str:
 
 
 async def _find_mdselect(page, target: str, value: str):
-    """Acha o <md-select> (AngularJS Material) alvo: por name/id/aria-label (target)
-    ou, se o target vier vazio, pelo <select> nativo-espelho que tenha a opcao com o
-    valor pedido (ex.: 'segr' tem 'O proprio'/'Corretor')."""
+    """Acha o <md-select> (AngularJS Material) alvo: por name/id/aria-label OU pelo
+    <label> do container (o cerebro as vezes mira pelo LABEL que ve, ex.: 'tipo de
+    telefone', cujo name real e 'TipoTelefoneSolicitante0'); ou, se o target vier
+    vazio, pelo <select> nativo-espelho que tenha a opcao com o valor pedido."""
     t, v = _norm(target), _norm(value)
     mds = await page.query_selector_all("md-select")
     if not mds:
         return None
     if t:
-        for m in mds:
+        # label do container md-input (mesma tecnica do _find_input); ordem = document order
+        try:
+            labels = await page.evaluate(
+                """() => [...document.querySelectorAll('md-select')].map(m => {
+                     const c = m.closest('md-input-container,.md-input-container,md-autocomplete');
+                     const l = c && c.querySelector('label');
+                     return (l ? l.textContent : '').replace(/\\s+/g,' ').trim();
+                   })"""
+            )
+        except Exception:  # noqa: BLE001
+            labels = []
+        for i, m in enumerate(mds):
             name = _norm(await m.get_attribute("name") or "")
             idv = _norm(await m.get_attribute("id") or "")
             al = _norm(await m.get_attribute("aria-label") or "")
-            if (name and (t == name or t in name or name in t)) or (idv and (t in idv or idv in t)) or (al and t in al):
+            lab = _norm(labels[i]) if i < len(labels) else ""
+            if ((name and (t == name or t in name or name in t)) or (idv and (t in idv or idv in t))
+                    or (al and t in al) or (lab and (t in lab or lab in t))):
                 return m
     if v:  # target vazio -> casa pelo valor via select nativo espelho (mesmo name)
         for s in await page.query_selector_all("select"):
