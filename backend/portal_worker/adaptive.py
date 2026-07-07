@@ -500,7 +500,11 @@ async def _dump_dom(page) -> Dict[str, Any]:
               const inputs = [...document.querySelectorAll('input,textarea')].filter(vis)
                 .map(e => ({name:e.name, id:e.id, type:e.type, req:!!e.required,
                             val:(e.value||'').slice(0,30), cls:e.className.slice(0,60)}));
-              return {selects, matselects, advance, invalids, inputs,
+              const buttons = [...document.querySelectorAll('button,a[role=button],md-button,[role=button]')].filter(vis)
+                .map(b => ({text:(b.textContent||'').trim().slice(0,30), disabled:!!b.disabled}))
+                .filter(b => b.text);
+              const text = (document.body.innerText||'').replace(/\\s+/g,' ').slice(0,600);
+              return {selects, matselects, advance, invalids, inputs, buttons, text,
                       heading:(document.querySelector('h1,h2,h3')||{}).textContent||''};
             }"""
         )
