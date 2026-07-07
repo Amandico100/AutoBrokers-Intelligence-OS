@@ -73,9 +73,27 @@ class PortalActionTool(BaseTool):
     def _client(self):
         return getattr(self.supabase_client, "client", self.supabase_client)
 
+    def _attendance_agent_id(self) -> Optional[str]:
+        """Resolve o agente ATENDENTE (role attendance) da corretora — MESMA regra do
+        caminho de resposta do WhatsApp (whatsapp_channel). A integracao e vinculada a
+        ESSE agente; sem o agent_id, o lookup e ESTRITO e volta None (era o bug do
+        heads-up sumido)."""
+        try:
+            res = self._client().table("agents").select("id").eq(
+                "company_id", self.company_id).eq("agent_role", "attendance").eq(
+                "is_active", True).limit(1).execute()
+            if res.data:
+                return str(res.data[0]["id"])
+            res2 = self._client().table("agents").select("id").eq(
+                "company_id", self.company_id).eq("agent_role", "attendance").limit(1).execute()
+            return str(res2.data[0]["id"]) if res2.data else None
+        except Exception:  # noqa: BLE001
+            return None
+
     def _notify(self, session_id: str, text: str) -> None:
         """Manda uma mensagem AGORA pro segurado (via WhatsApp da corretora), pra ele
-        nunca ficar no silencio enquanto o portal roda (~1 min). Best-effort."""
+        nunca ficar no silencio enquanto o portal roda (~1 min). Best-effort, mas
+        agora CONFIAVEL: resolve o agente atendente antes do lookup da integracao."""
         try:
             parts = str(session_id or "").split(":")
             if len(parts) < 3 or parts[0] != "whatsapp":
@@ -86,7 +104,11 @@ class PortalActionTool(BaseTool):
             from app.services.integration_service import get_integration_service
             from app.services.whatsapp_service import get_whatsapp_service
 
-            integration = get_integration_service().get_whatsapp_integration(self.company_id)
+            svc = get_integration_service()
+            agent_id = self._attendance_agent_id()
+            integration = svc.get_whatsapp_integration(self.company_id, agent_id)
+            if not integration:  # ultimo recurso: qualquer integracao ativa sem agente
+                integration = svc.get_whatsapp_integration(self.company_id)
             if not integration:
                 return
             get_whatsapp_service().send_message(phone, text, integration)
@@ -185,8 +207,9 @@ class PortalActionTool(BaseTool):
         veic = (params.get("segurado") or {}).get("veiculo") or "seu veiculo"
         self._notify(
             session_id,
-            f"🔧 To abrindo seu atendimento de vidros agora ({veic}, placa {params.get('placa')}) — "
-            "leva mais ou menos 1 minutinho. Ja te trago a confirmacao, so um instante 🙂",
+            f"Perfeito! 🙌 Ja vou acionar a seguradora pra abrir seu atendimento de vidros "
+            f"({veic}, placa {params.get('placa')}). Isso leva mais ou menos 1 minutinho — "
+            "ja volto aqui com a confirmacao, ta? 🙂",
         )
 
         # 4) Aguarda o worker terminar (o segurado esta na conversa). asyncio.sleep:
