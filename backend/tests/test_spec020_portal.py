@@ -143,6 +143,10 @@ def run():
         async def press(self, k):
             pass
 
+    def _n(t):
+        import unicodedata
+        return " ".join(unicodedata.normalize("NFKD", str(t or "")).encode("ascii", "ignore").decode().lower().split())
+
     class _Page:
         def __init__(self, mds, opts):
             self._mds, self._opts, self.keyboard = mds, opts, _Kbd()
@@ -154,6 +158,24 @@ def run():
             return []
         async def wait_for_timeout(self, ms):
             pass
+        async def evaluate(self, js, *args):
+            if "hit.click()" not in js:      # dump de diagnostico
+                return []
+            want = _n(args[0] if args else "")
+            vis = [o for o in self._opts if o._v]
+            real = [o for o in vis if "selecione" not in _n(o._t)]
+            hit = None
+            if want:
+                for o in real:
+                    t = _n(o._t)
+                    if t == want or want in t or t in want:
+                        hit = o; break
+            if hit is None and real:
+                hit = real[0]
+            if hit is None:
+                return {"ok": False, "n": len(vis)}
+            await hit.click()
+            return {"ok": True, "text": hit._t[:30]}
 
     _Opt.clicked = None
     p1 = _Page([_Md("TipoTelefoneSolicitante0")],
@@ -169,7 +191,7 @@ def run():
     _Opt.clicked = None
     p3 = _Page([_Md("segr")], [_Opt("Selecione uma opção"), _Opt("O próprio")])
     r3 = asyncio.run(_apply_mdselect(p3, "segr", "valor-que-nao-existe"))
-    check("md-select sem match -> 1a opcao real", str(r3).startswith("mdselect_default") and _Opt.clicked == "O próprio")
+    check("md-select sem match -> 1a opcao real", r3 == "mdselect=o proprio" and _Opt.clicked == "O próprio")
 
     r4 = asyncio.run(_apply_mdselect(_Page([], []), "campo", "x"))
     check("sem md-select -> None (cai no nativo)", r4 is None)
