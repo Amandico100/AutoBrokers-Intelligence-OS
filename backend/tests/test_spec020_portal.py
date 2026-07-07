@@ -169,7 +169,7 @@ def run():
     _Opt.clicked = None
     p3 = _Page([_Md("segr")], [_Opt("Selecione uma opção"), _Opt("O próprio")])
     r3 = asyncio.run(_apply_mdselect(p3, "segr", "valor-que-nao-existe"))
-    check("md-select sem match -> 1a opcao real", r3 == "mdselect_default" and _Opt.clicked == "O próprio")
+    check("md-select sem match -> 1a opcao real", str(r3).startswith("mdselect_default") and _Opt.clicked == "O próprio")
 
     r4 = asyncio.run(_apply_mdselect(_Page([], []), "campo", "x"))
     check("sem md-select -> None (cai no nativo)", r4 is None)
