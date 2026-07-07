@@ -159,23 +159,29 @@ def run():
         async def wait_for_timeout(self, ms):
             pass
         async def evaluate(self, js, *args):
-            if "hit.click()" not in js:      # dump de diagnostico
+            if "best.click()" not in js:      # dump de diagnostico
                 return []
-            want = _n(args[0] if args else "")
+            # Espelha o JS novo usando o scorer PURO (fake e real em sincronia).
+            from portal_worker.adaptive import score_option_tokens
+
+            arg = args[0] if args else {}
+            want = arg.get("want", "") if isinstance(arg, dict) else str(arg)
+            critical = bool(arg.get("critical")) if isinstance(arg, dict) else False
             vis = [o for o in self._opts if o._v]
             real = [o for o in vis if "selecione" not in _n(o._t)]
-            hit = None
-            if want:
-                for o in real:
-                    t = _n(o._t)
-                    if t == want or want in t or t in want:
-                        hit = o; break
-            if hit is None and real:
-                hit = real[0]
-            if hit is None:
+            if not real:
                 return {"ok": False, "n": len(vis)}
-            await hit.click()
-            return {"ok": True, "text": hit._t[:30]}
+            best, best_score = None, -1
+            for o in real:
+                sc = score_option_tokens(want, o._t)
+                if sc > best_score:
+                    best, best_score = o, sc
+            if best_score <= 0:
+                if critical:
+                    return {"ok": False, "nomatch": True, "options": [o._t[:60] for o in real][:20]}
+                best = real[0]
+            await best.click()
+            return {"ok": True, "text": best._t[:40], "score": best_score}
 
     _Opt.clicked = None
     p1 = _Page([_Md("TipoTelefoneSolicitante0")],
@@ -191,10 +197,34 @@ def run():
     _Opt.clicked = None
     p3 = _Page([_Md("segr")], [_Opt("Selecione uma opção"), _Opt("O próprio")])
     r3 = asyncio.run(_apply_mdselect(p3, "segr", "valor-que-nao-existe"))
-    check("md-select sem match -> 1a opcao real", r3 == "mdselect=o proprio" and _Opt.clicked == "O próprio")
+    check("md-select formato sem match -> 1a opcao real", r3 == "mdselect=o proprio" and _Opt.clicked == "O próprio")
 
     r4 = asyncio.run(_apply_mdselect(_Page([], []), "campo", "x"))
     check("sem md-select -> None (cai no nativo)", r4 is None)
+
+    # SPEC-025 C3 — similaridade por tokens + campo critico nunca chuta
+    from portal_worker.adaptive import _is_critical_select, score_option_tokens
+
+    check("score exato = 999", score_option_tokens("VIDRO DE PORTA", "vidro de porta") == 999)
+    check("score 'vidro da porta' x 'VIDRO DE PORTA' = 2", score_option_tokens("vidro da porta", "VIDRO DE PORTA") == 2)
+    check("score 'vidro da porta' x 'VIDRO PARABRISA - CARGA' = 1", score_option_tokens("vidro da porta", "VIDRO PARABRISA - CARGA") == 1)
+    check("critico: qualItemDanificado", _is_critical_select("qualItemDanificado") is True)
+    check("critico: comoOcorreuDano", _is_critical_select("comoOcorreuDano") is True)
+    check("nao-critico: TipoTelefone", _is_critical_select("TipoTelefoneSolicitante0") is False)
+
+    _Opt.clicked = None
+    p5 = _Page([_Md("qualItemDanificado")],
+               [_Opt("Selecione uma opção"), _Opt("VIDRO PARABRISA - CARGA"), _Opt("VIDRO DE PORTA"), _Opt("VIDRO VIGIA (TRASEIRO)")])
+    r5 = asyncio.run(_apply_mdselect(p5, "qualItemDanificado", "vidro da porta"))
+    check("C3: 'vidro da porta' escolhe VIDRO DE PORTA (nao parabrisa)",
+          r5 == "mdselect=vidro de porta" and _Opt.clicked == "VIDRO DE PORTA", r5)
+
+    _Opt.clicked = None
+    p6 = _Page([_Md("comoOcorreuDano")],
+               [_Opt("Selecione uma opção"), _Opt("CHOQUE TERMICO"), _Opt("ENCONTROU O VEICULO DANIFICADO")])
+    r6 = asyncio.run(_apply_mdselect(p6, "comoOcorreuDano", "deixei o carro estacionado"))
+    check("C3: critico sem match -> devolve opcoes (nao clica)",
+          r6.startswith("mdselect_options=") and "CHOQUE TERMICO" in r6 and _Opt.clicked is None, r6)
 
     # freio dos 80%: NAO pode parar no banner permanente 'SELECAO de 1 ITEM' (todas as
     # telas o tem); so na tela real 'Confirme a peca danificada'.

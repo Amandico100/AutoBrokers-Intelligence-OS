@@ -824,7 +824,7 @@ async def tool_node(state: AgentState, tools: list) -> dict:
                     # Executa a tool
                     # Tools async-only (caminho assíncrono real). InfoCap (SPEC-014 C-FIX-1)
                     # precisa do _arun: o _run é apenas um stub que sinaliza uso async.
-                    if tool_name in ("delegate_to_subagent", "infocap_policy_lookup", "insurer_dispatch") and hasattr(tool, "_arun"):
+                    if tool_name in ("delegate_to_subagent", "infocap_policy_lookup", "insurer_dispatch", "portal_action") and hasattr(tool, "_arun"):
                         result = await tool._arun(**tool_args)
                     else:
                         # Execução via executor para não bloquear o event loop do FastAPI

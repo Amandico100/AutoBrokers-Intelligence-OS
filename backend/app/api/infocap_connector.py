@@ -3954,6 +3954,205 @@ async def infocap_policy_detail(
 
 
 # ---------------------------------------------------------------------------
+# SPEC-025 — Item do veiculo (endpoint /itens do CorpAPI). E AQUI que vivem
+# placa/chassi/veiculo/fipe da apolice AUTO (o /documento so tem financeiro).
+# Usado pela portal_action para montar o job de vidros com dados REAIS —
+# server-side, o LLM nunca fornece placa/endereco. Read-only.
+# ---------------------------------------------------------------------------
+
+
+class InfocapVehiclePayload(BaseModel):
+    company_id: str
+    tenant_connection_id: Optional[str] = None
+    document: Optional[str] = None       # CPF/CNPJ do segurado
+    policy_number: Optional[str] = None  # numero humano p/ desambiguar (opcional)
+
+
+def _fmt_cep(v: Any) -> str:
+    d = _digits(str(v or ""))
+    if len(d) == 8:
+        return f"{d[:5]}-{d[5:]}"
+    return d
+
+
+def _client_phone(cli: Dict[str, Any]) -> str:
+    top = _digits(str(cli.get("telefone") or ""))
+    if top:
+        return top
+    for t in (cli.get("telefones") or []):
+        if isinstance(t, dict) and t.get("numero"):
+            return _digits(f"{t.get('ddd') or ''}{t.get('numero')}")
+    return ""
+
+
+def _client_address(cli: Dict[str, Any]) -> Dict[str, str]:
+    """Endereco padrao ('padrao'='T') do cadastro do cliente; fallback: 1o da lista."""
+    ends = [e for e in (cli.get("enderecos") or []) if isinstance(e, dict)]
+    end = next((e for e in ends if str(e.get("padrao") or "").upper() == "T"), ends[0] if ends else {})
+    return {
+        "logradouro": str(end.get("logradouro") or "").strip(),
+        "numero": str(end.get("numero") or "").strip(),
+        "complemento": str(end.get("complemento") or "").strip(),
+        "bairro": str(end.get("bairro") or "").strip(),
+        "cidade": str(end.get("cidade") or cli.get("cidade") or "").strip(),
+        "estado": str(end.get("estado") or cli.get("estado") or "").strip(),
+        "cep": _fmt_cep(end.get("cep")),
+    }
+
+
+def _parse_br_date(v: Any) -> Optional[datetime]:
+    try:
+        return datetime.strptime(str(v or "").strip(), "%d/%m/%Y")
+    except Exception:  # noqa: BLE001
+        return None
+
+
+async def infocap_vehicle_item(
+    payload: InfocapVehiclePayload,
+    x_autobrokers_internal_key: Optional[str] = None,
+    db: Any = None,
+) -> Dict[str, Any]:
+    """Busca a apolice AUTO ativa do CPF e o ITEM do veiculo (/itens): placa, chassi,
+    veiculo, fipe, ano + endereco/telefone do cadastro do cliente (/cliente_cpf).
+    Multiplas AUTO ativas sem policy_number -> devolve as opcoes (com placa) p/ o
+    agente perguntar ao cliente. Nunca inventa: o que nao vier, volta vazio."""
+    _require_internal_key(x_autobrokers_internal_key)
+    company_id = (payload.company_id or "").strip()
+    doc_digits = _digits(payload.document)
+    if not company_id or not doc_digits:
+        return {"ok": False, "status": "missing_params", "blockers": ["company_id/document required"]}
+
+    connection_decision = await _resolve_infocap_connection(db, company_id=company_id,
+                                                            requested_connection_id=payload.tenant_connection_id or None)
+    conn = connection_decision.get("selected_connection")
+    if not conn:
+        return _connection_block_response(connection_decision, source="infocap")
+    config = conn.get("connection_config") if isinstance(conn.get("connection_config"), dict) else {}
+    base_url = (config.get("base_url") or settings.INFOCAP_BASE_URL or "").rstrip("/")
+    cipher = conn.get("encrypted_secret_ref")
+    if not base_url or not cipher:
+        return {"ok": False, "status": "blocked_not_configured", "source": "infocap", "blockers": ["missing_base_url_or_credentials"]}
+    try:
+        creds = json.loads(get_encryption_service().decrypt(cipher))
+        email = creds.get("username") or creds.get("email")
+        senha = creds.get("password") or creds.get("senha")
+    except Exception:  # noqa: BLE001
+        return {"ok": False, "status": "provider_error", "source": "infocap", "blockers": ["decrypt_error"]}
+    if not email or not senha:
+        return {"ok": False, "status": "blocked_missing_credentials", "source": "infocap", "blockers": ["incomplete_credentials"]}
+
+    auth_path = config.get("infocap_auth_path") or "/login"
+    codfil_default = config.get("infocap_codfil", 1)
+    requested_norm = _normalize_policy_identifier(payload.policy_number) if payload.policy_number else ""
+
+    try:
+        async with httpx.AsyncClient(timeout=LOOKUP_TIMEOUT_S, base_url=base_url) as client:
+            auth_res = await client.post(auth_path, json={"email": email, "senha": senha, "aplicacao": 0})
+            if auth_res.status_code >= 400:
+                return {"ok": False, "status": "auth_error", "source": "infocap", "http_status": auth_res.status_code}
+            try:
+                token = _extract_token(auth_res.json())
+            except Exception:  # noqa: BLE001
+                token = (auth_res.text or "").strip() or None
+            if not token:
+                return {"ok": False, "status": "auth_error", "source": "infocap", "blockers": ["no_token"]}
+            headers = {"Authorization": token, "Content-Type": "application/json"}
+
+            # 1) cadastro do cliente (nome/telefone/endereco REAIS)
+            cli_res = await client.get(config.get("infocap_cpf_search_path") or "/cliente_cpf",
+                                       params={"codfil": codfil_default,
+                                               (config.get("infocap_cpf_search_param") or "cpf_cnpj"): doc_digits},
+                                       headers=headers)
+            cli_arr = _extract_array(cli_res.json()) if cli_res.status_code < 400 else []
+            cli = cli_arr[0] if cli_arr else {}
+            codfil = cli.get("codfil") or codfil_default
+
+            # 2) documentos do CPF -> candidatos AUTO
+            docs_res = await client.get(config.get("infocap_documentos_path") or "/documentos",
+                                        params={(config.get("infocap_documentos_search_param") or "texto"): doc_digits,
+                                                "codfil": codfil},
+                                        headers=headers)
+            docs = _extract_documents(docs_res.json()) if docs_res.status_code < 400 else []
+            autos = [d for d in docs if "AUTO" in str(d.get("ramo") or d.get("ramo_abrev") or "").upper()]
+            if requested_norm:
+                by_number = [d for d in autos
+                             if _normalize_policy_identifier(_first_str(d, POLICY_NUMBER_KEYS)) == requested_norm]
+                autos = by_number or autos
+            if not autos:
+                return {"ok": False, "status": "no_auto_policy", "source": "infocap",
+                        "message": "nenhuma apolice AUTO encontrada para este CPF na InfoCap"}
+
+            # 3) para cada candidato (max 4): /documento p/ vigencia + /itens p/ veiculo
+            today = datetime.now()
+            found: List[Dict[str, Any]] = []
+            for d in autos[:4]:
+                nosnum = _first_str(d, ["nosnum"])
+                cf = d.get("codfil") or codfil
+                if not nosnum:
+                    continue
+                det_res = await client.get(config.get("infocap_documento_path") or "/documento",
+                                           params={"codfil": cf, "nosnum": nosnum}, headers=headers)
+                det_docs = _extract_documents(det_res.json()) if det_res.status_code < 400 else []
+                det = det_docs[0] if det_docs else {}
+                cancelado = str(det.get("cancelado") or "F").upper() == "T"
+                ini, fim = _parse_br_date(det.get("inivig")), _parse_br_date(det.get("fimvig"))
+                active = (not cancelado) and (ini is None or ini <= today) and (fim is None or fim >= today)
+                itens_res = await client.get("/itens", params={"codfil": cf, "nosnum": nosnum}, headers=headers)
+                itens = []
+                if itens_res.status_code < 400:
+                    ij = itens_res.json()
+                    itens = ij.get("itens") if isinstance(ij, dict) and isinstance(ij.get("itens"), list) else _extract_array(ij)
+                item = itens[0] if itens else {}
+                found.append({
+                    "numapo": _first_str(det, POLICY_NUMBER_KEYS) or _first_str(d, POLICY_NUMBER_KEYS) or "",
+                    "codfil": str(cf), "nosnum": str(nosnum),
+                    "seguradora": str(det.get("seguradora") or d.get("seguradora") or "").strip(),
+                    "seguradora_abrev": str(det.get("seguradora_abrev") or "").strip(),
+                    "inivig": str(det.get("inivig") or ""), "fimvig": str(det.get("fimvig") or ""),
+                    "active": active,
+                    "placa": str(item.get("placa") or "").strip().upper(),
+                    "chassi": str(item.get("chassi") or "").strip(),
+                    "veiculo": str(item.get("veiculo") or "").strip(),
+                    "fipe": str(item.get("fipe") or "").strip(),
+                    "ano": str(item.get("anomod") or item.get("anofab") or "").strip(),
+                    "glass_notes": str(item.get("observacoes") or "").strip()[:600],
+                    "garantias": [str(g.get("garantia") or "").strip()
+                                  for g in (item.get("garantias") or []) if isinstance(g, dict)][:20],
+                })
+
+            actives = [f for f in found if f["active"]]
+            pool = actives or found
+            if not pool:
+                return {"ok": False, "status": "no_auto_policy", "source": "infocap",
+                        "message": "apolices AUTO encontradas mas sem detalhe utilizavel"}
+            if len(pool) > 1 and not requested_norm:
+                return {"ok": False, "status": "multiple_auto_policies", "source": "infocap",
+                        "options": [{"numapo": f["numapo"], "seguradora": f["seguradora"],
+                                     "placa": f["placa"], "veiculo": f["veiculo"],
+                                     "vigencia": f"{f['inivig']} a {f['fimvig']}"} for f in pool]}
+            sel = pool[0]
+            addr = _client_address(cli)
+            return {
+                "ok": True, "status": "found", "source": "infocap",
+                "policy": {"numapo": sel["numapo"], "codfil": sel["codfil"], "nosnum": sel["nosnum"],
+                           "seguradora": sel["seguradora"], "seguradora_abrev": sel["seguradora_abrev"],
+                           "inivig": sel["inivig"], "fimvig": sel["fimvig"], "active": sel["active"]},
+                "vehicle": {"placa": sel["placa"], "chassi": sel["chassi"], "veiculo": sel["veiculo"],
+                            "fipe": sel["fipe"], "ano": sel["ano"]},
+                "client": {"nome": str(cli.get("nome") or "").strip(),
+                           "cpf_cnpj": doc_digits,
+                           "email": str(cli.get("email") or "").strip(),
+                           "telefone": _client_phone(cli),
+                           **addr},
+                "glass_notes": sel["glass_notes"],
+                "garantias": sel["garantias"],
+            }
+    except (httpx.TimeoutException, httpx.HTTPError) as e:
+        logger.error(f"[INFOCAP VEHICLE] http error: {type(e).__name__}")
+        return {"ok": False, "status": "provider_error", "source": "infocap", "blockers": ["network_error"]}
+
+
+# ---------------------------------------------------------------------------
 # Providers health (SPEC-014 C-FIX-1 G) — master/internal. Sem segredo: só presença
 # de configuração para o Cockpit refletir a VERDADE (ex.: busca web operacional?).
 # ---------------------------------------------------------------------------
