@@ -109,13 +109,22 @@ _SYSTEM = (
 )
 
 
+_FORCE_CHOOSE = (
+    " OVERRIDE: proibido ask_human agora. Esta tela tem select/radio/campo que VOCE consegue "
+    "responder. Escolha a opcao mais coerente com o relato do dano; se nao houver relato claro, "
+    "escolha a 1a opcao valida (nao 'Selecione'). NUNCA pergunte tipo/causa/local/preferencia. "
+    "Devolva uma acao fill/select/check/click AGORA."
+)
+
+
 async def decide_next_action(state: Dict[str, Any], goal: str, collected: Dict[str, Any],
-                             history: List[Dict[str, Any]]) -> Dict[str, Any]:
+                             history: List[Dict[str, Any]], force: bool = False) -> Dict[str, Any]:
     """Chama o cerebro (LLM) para decidir a proxima acao. Fail-safe -> ask_human."""
     key = os.getenv("OPENAI_API_KEY") or ""
     model = os.getenv("PORTAL_VISION_MODEL", "gpt-4o-mini")
     if not key:
         return {"action": "ask_human", "value": "cerebro de visao indisponivel (sem OPENAI_API_KEY no worker)", "reason": "no key"}
+    system = _SYSTEM + (_FORCE_CHOOSE if force else "")
     user = json.dumps({"objetivo": goal, "dados_segurado_corretora": collected, "tela": state,
                        "acoes_ja_feitas": history[-8:]}, ensure_ascii=False)
     try:
@@ -126,7 +135,7 @@ async def decide_next_action(state: Dict[str, Any], goal: str, collected: Dict[s
                 "https://api.openai.com/v1/chat/completions",
                 headers={"Authorization": f"Bearer {key}"},
                 json={"model": model, "temperature": 0, "response_format": {"type": "json_object"},
-                      "messages": [{"role": "system", "content": _SYSTEM}, {"role": "user", "content": user}]},
+                      "messages": [{"role": "system", "content": system}, {"role": "user", "content": user}]},
             )
             data = r.json()
             content = data["choices"][0]["message"]["content"]
@@ -249,8 +258,16 @@ async def run_adaptive(page, goal: str, collected: Dict[str, Any], evidence: Dic
         if action["action"] == "done":
             return JourneyResult(status="done", message="concluido (adaptive)")
         if action["action"] == "ask_human":
-            return JourneyResult(status="needs_human", captured={"pergunta": action.get("value")},
-                                 message=f"preciso de: {action.get('value')}")
+            # Backstop anti-travamento: o cerebro tende a "pedir por educacao" em selects/radios.
+            # Forca UMA re-decisao imperativa antes de desistir. So devolve needs_human se, mesmo
+            # obrigado a escolher, ele ainda insistir em perguntar (dado de identidade real faltando).
+            forced = await decide_next_action(state, goal, collected, history, force=True)
+            if forced.get("action") in ("fill", "select", "check", "click"):
+                action = forced
+                history[-1] = action
+            else:
+                return JourneyResult(status="needs_human", captured={"pergunta": action.get("value")},
+                                     message=f"preciso de: {action.get('value')}")
         applied = await apply_action(page, action)
         evidence.setdefault("adaptive_steps", []).append(
             {"a": action.get("action"), "t": action.get("target"), "v": action.get("value")[:30], "r": applied})
