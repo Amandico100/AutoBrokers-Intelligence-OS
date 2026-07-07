@@ -197,10 +197,14 @@ def handle_insurer_message(
 
 
 def build_human_phase_messages(session: Dict[str, Any], insurer_message: str) -> Dict[str, str]:
-    """Prompt da fase humana da seguradora (LLM redige, guard fiscaliza).
+    """Prompt da fase humana/adaptativa da seguradora (LLM redige, guard fiscaliza).
 
-    Regras duras no system: só dados do caso, 1-2 frases, sem números fora dos
-    slots, sem promessas; se não souber → literal NAO_SEI (guard pausa)."""
+    INTELIGÊNCIA sem cabresto: além de responder o especialista humano, este cérebro
+    também dá conta de uma URA que MUDOU (a Allianz trocou uma palavra/ordem do menu
+    e nenhuma âncora determinística casou). Recebe a INTENÇÃO de cada passo do
+    playbook + os dados do caso, e decide sozinho — inclusive escolher a opção certa
+    de um menu numerado. Regras duras: só dados do caso, sem números inventados (o
+    guard fiscaliza), e se realmente não der pra deduzir → NAO_SEI (pausa p/ humano)."""
     slots = session.get("slots") or {}
     captured = session.get("captured") or {}
     fatos = "\n".join(f"- {k}: {v}" for k, v in slots.items() if v not in (None, ""))
@@ -210,17 +214,40 @@ def build_human_phase_messages(session: Dict[str, Any], insurer_message: str) ->
     contexto_pendente = (
         "\nMensagens anteriores da seguradora ainda sem resposta:\n" + "\n".join(f"- {m}" for m in pending[-3:])
     ) if pending else ""
+    # Intenção de cada passo do playbook — pra o cérebro reconhecer um menu que mudou
+    # de texto/ordem e ainda assim escolher certo (adaptativo, não engessado).
+    playbook = get_playbook(session.get("playbook_ref") or "") or {}
+    intents = []
+    for st in (playbook.get("ura_steps") or []):
+        nome, nota, resp = st.get("step"), st.get("notes"), st.get("reply")
+        try:
+            resp_render = str(resp or "").format(**{k: str(v) for k, v in slots.items()})
+        except Exception:  # noqa: BLE001 — slot faltante fica com o placeholder mesmo
+            resp_render = str(resp or "")
+        linha = f"- {nome}: responder '{resp_render}'" + (f" — {nota}" if nota else "")
+        intents.append(linha)
+    guia_ura = ("\nCONHECIMENTO DO FLUXO (passos típicos e a resposta certa de cada um; "
+                "use pra reconhecer um menu mesmo que a seguradora tenha trocado palavras/ordem):\n"
+                + "\n".join(intents)) if intents else ""
+    subservice = str(session.get("subservice") or "")
     system = (
-        "Você responde ao ATENDENTE HUMANO da seguradora em nome da corretora, num acionamento de "
-        "assistência residencial já em andamento.\n"
+        "Você conduz, EM NOME DA CORRETORA, um acionamento de assistência residencial no WhatsApp da "
+        "seguradora (Allianz Assistência 24h) que JÁ está em andamento. Pode ser a URA (menu numerado) "
+        "ou um atendente humano.\n"
+        f"Subserviço deste caso: {subservice or 'não informado'}.\n"
+        "COMO DECIDIR (seja inteligente, não robótico):\n"
+        "- Se a mensagem for um MENU NUMERADO, escolha a opção coerente com o subserviço/dados do caso e "
+        "responda SÓ com o número (ex.: '2'). Use o CONHECIMENTO DO FLUXO abaixo como guia, mesmo que o "
+        "texto do menu tenha mudado.\n"
+        "- Se pedir um dado do caso (CPF, número da residência, telefone), responda com o valor exato do caso.\n"
+        "- Se for um atendente humano perguntando algo, responda em 1-2 frases curtas, PT-BR cordial.\n"
         "REGRAS INEGOCIÁVEIS:\n"
-        "1. Responda APENAS o que foi perguntado, em 1-2 frases curtas, PT-BR cordial.\n"
-        "2. Use SOMENTE os dados do caso listados. NUNCA invente números, protocolos, prazos ou dados.\n"
-        "3. Não prometa nada em nome da seguradora; não confirme cobertura.\n"
-        "4. Se a pergunta pedir algo que NÃO está nos dados do caso, responda exatamente: NAO_SEI"
+        "1. Use SOMENTE os dados do caso. NUNCA invente números, protocolos, prazos, valores ou dados.\n"
+        "2. Não prometa nada em nome da seguradora; não confirme cobertura.\n"
+        "3. Se realmente NÃO der pra deduzir a resposta a partir do caso e do fluxo, responda exatamente: NAO_SEI"
     )
     user = (
-        f"Dados do caso (únicos números permitidos):\n{fatos}{contexto_pendente}\n\n"
+        f"Dados do caso (únicos números permitidos):\n{fatos}{guia_ura}{contexto_pendente}\n\n"
         f"Mensagem da seguradora agora:\n{insurer_message}\n\nSua resposta:"
     )
     return {"system": system, "user": user}

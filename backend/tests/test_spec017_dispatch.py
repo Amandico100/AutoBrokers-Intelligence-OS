@@ -132,6 +132,13 @@ def run():
     outs2 = [t for t in s2["transcript"] if t["direction"] == "out"]
     check("P4: fase humana usa resposta preparada (LLM guardada)", outs2[-1]["text"].startswith("O cliente está sem chave"), outs2[-1])
 
+    # SPEC-023 (don't cage): a fase adaptativa recebe a INTENCAO de cada passo do
+    # playbook + o subservico -> cerebro escolhe menu mesmo se a URA mudar o texto.
+    msgs = dispatch.build_human_phase_messages(s2, "1 - Casa  2 - Eletrodomesticos  3 - Outros. Digite a opcao:")
+    check("adaptativo: system cita o subservico do caso", "chaveiro" in msgs["system"].lower(), msgs["system"][:80])
+    check("adaptativo: guia traz a intencao dos passos (menu_tipo_servico)", "menu_tipo_servico" in msgs["user"], msgs["user"][:120])
+    check("adaptativo: instrui a responder menu por numero", "numero" in msgs["system"].lower() or "número" in msgs["system"].lower())
+
     # Fail-safe: gatilho de sinistro -> needs_human.
     s3 = dispatch.new_dispatch_session(case_id="c3", company_id="co", playbook_ref=REF, subservice="eletricista", slots=SLOTS)
     s3 = dispatch.start_dispatch(s3)
