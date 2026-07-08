@@ -346,6 +346,60 @@ def _summarize_policy_search_debug(inputs: List[Dict[str, Any]]) -> Dict[str, An
     return {"inputs": scored[:12]}
 
 
+def _score_policy_search_node(meta: Dict[str, Any]) -> int:
+    hay = _norm(" ".join([
+        str(meta.get("text") or ""),
+        str(meta.get("aria") or ""),
+        str(meta.get("title") or ""),
+        str(meta.get("id") or ""),
+        str(meta.get("cls") or ""),
+        str(meta.get("tag") or ""),
+        str(meta.get("html") or "")[:300],
+    ]))
+    score = 0
+    if re.search(r"search|pesquis|buscar|lupa|magnif", hay):
+        score += 200
+    if re.search(r"info|help|ajuda", hay):
+        score -= 120
+    if str(meta.get("tag") or "").lower() in ("button", "a"):
+        score += 40
+    if str(meta.get("role") or "").lower() == "button":
+        score += 40
+    try:
+        x = int(float(meta.get("x") or 0))
+        w = int(float(meta.get("w") or 0))
+        h = int(float(meta.get("h") or 0))
+    except Exception:  # noqa: BLE001
+        x, w, h = 0, 0, 0
+    if x >= 540:
+        score += 30
+    if 12 <= w <= 80 and 12 <= h <= 80:
+        score += 20
+    return score
+
+
+def _summarize_policy_search_component(nodes: List[Dict[str, Any]]) -> Dict[str, Any]:
+    scored: List[Dict[str, Any]] = []
+    for meta in nodes or []:
+        clean = {
+            "tag": str(meta.get("tag") or "")[:30],
+            "role": str(meta.get("role") or "")[:50],
+            "id": str(meta.get("id") or "")[:100],
+            "cls": str(meta.get("cls") or "")[:160],
+            "text": _clean_text(meta.get("text") or "")[:120],
+            "aria": str(meta.get("aria") or "")[:120],
+            "title": str(meta.get("title") or "")[:120],
+            "x": meta.get("x"),
+            "y": meta.get("y"),
+            "w": meta.get("w"),
+            "h": meta.get("h"),
+            "html": _clean_text(meta.get("html") or "")[:500],
+        }
+        scored.append({"score": _score_policy_search_node(meta), **clean})
+    scored.sort(key=lambda item: int(item.get("score") or 0), reverse=True)
+    return {"nodes": scored[:30]}
+
+
 def _merge_recibos_context(item: Dict[str, Any], page_text: str) -> Dict[str, Any]:
     """Completa dados exibidos no topo da LISTAGEM DE RECIBOS."""
     merged = dict(item or {})
@@ -799,6 +853,57 @@ async def _collect_visible_input_candidates(page) -> List[Dict[str, Any]]:
     return out
 
 
+async def _collect_policy_search_component_nodes(page) -> List[Dict[str, Any]]:
+    out: List[Dict[str, Any]] = []
+    for frame in getattr(page, "frames", [page]):
+        try:
+            rows = await frame.evaluate(
+                """() => {
+                  const clean = t => (t || '').replace(/\\s+/g, ' ').trim();
+                  const vis = el => !!(el && (el.offsetParent || el.getClientRects().length));
+                  const input = document.querySelector('input[name="target"], input[id^="nx-input-"]');
+                  if (!input) return [];
+                  const ib = input.getBoundingClientRect();
+                  const around = [...document.querySelectorAll('button,a,[role=button],[onclick],[tabindex],span,div,i,svg,nx-icon,path,use')]
+                    .filter(el => vis(el))
+                    .map(el => {
+                      const r = el.getBoundingClientRect();
+                      const cx = r.x + r.width / 2;
+                      const cy = r.y + r.height / 2;
+                      const near = cx >= ib.right - 80 && cx <= ib.right + 180 && cy >= ib.top - 80 && cy <= ib.bottom + 80;
+                      const ancestor = input.parentElement && input.parentElement.contains(el);
+                      return {el, r, near, ancestor};
+                    })
+                    .filter(x => x.near || x.ancestor)
+                    .map(x => {
+                      const el = x.el;
+                      const r = x.r;
+                      return {
+                        tag: (el.tagName || '').toLowerCase(),
+                        role: el.getAttribute('role') || '',
+                        id: el.id || '',
+                        cls: String(el.className || '').slice(0, 220),
+                        text: clean(el.innerText || el.textContent || ''),
+                        aria: el.getAttribute('aria-label') || '',
+                        title: el.title || '',
+                        onclick: el.getAttribute('onclick') || '',
+                        x: Math.round(r.x),
+                        y: Math.round(r.y),
+                        w: Math.round(r.width),
+                        h: Math.round(r.height),
+                        html: clean(el.outerHTML || '').slice(0, 700)
+                      };
+                    });
+                  return around.slice(0, 120);
+                }"""
+            )
+            if isinstance(rows, list):
+                out.extend([row for row in rows if isinstance(row, dict)])
+        except Exception:  # noqa: BLE001
+            continue
+    return out
+
+
 async def _record_download_debug(page, item: Dict[str, Any], evidence: Dict[str, Any], stage: str) -> None:
     try:
         page_text = await _all_body_text(page)
@@ -826,7 +931,9 @@ async def _record_download_debug(page, item: Dict[str, Any], evidence: Dict[str,
 async def _record_policy_search_debug(page, item: Dict[str, Any], evidence: Dict[str, Any], stage: str, term: str = "") -> None:
     try:
         inputs = await _collect_visible_input_candidates(page)
+        nodes = await _collect_policy_search_component_nodes(page)
         summary = _summarize_policy_search_debug(inputs)
+        summary.update(_summarize_policy_search_component(nodes))
         try:
             url = page.url
         except Exception:  # noqa: BLE001

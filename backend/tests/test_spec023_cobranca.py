@@ -42,6 +42,7 @@ def run():
         _merge_recibos_context,
         _policy_search_terms,
         _receipt_click_terms,
+        _summarize_policy_search_component,
         _summarize_policy_search_debug,
         _summarize_download_debug,
         build_boleto_storage_path,
@@ -178,6 +179,11 @@ def run():
         {"placeholder": "Pesquisar ...", "value": "", "x": 30, "y": 170, "w": 520, "h": 36, "near_text": "Pesquisar"},
     ])
     check("debug de busca prioriza campo pesquisar", search_debug.get("inputs", [{}])[0].get("placeholder") == "Pesquisar ...", search_debug)
+    component = _summarize_policy_search_component([
+        {"tag": "span", "cls": "nx-icon nx-icon--search", "x": 565, "y": 180, "w": 28, "h": 28, "html": "<span class='nx-icon nx-icon--search'></span>"},
+        {"tag": "span", "cls": "nx-icon nx-icon--info", "x": 602, "y": 180, "w": 28, "h": 28, "html": "<span class='nx-icon nx-icon--info'></span>"},
+    ])
+    check("debug do componente prioriza icone de busca", component.get("nodes", [{}])[0].get("cls") == "nx-icon nx-icon--search", component)
     merged = _merge_recibos_context(
         {"cliente_nome": "", "item_segurado": ""},
         "Apolice 137583747 Item 0 Apolice SUSEP 5177-2026-23-14-0186415 "
