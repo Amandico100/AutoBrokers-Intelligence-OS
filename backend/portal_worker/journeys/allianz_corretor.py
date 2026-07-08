@@ -468,9 +468,14 @@ async def _extract_visible_rows_from_context(context) -> List[Dict[str, Any]]:
                 const text = clean(r.innerText || r.textContent);
                 if (!cells.length && text) cells = text.split(/\\n| {2,}/).map(clean).filter(Boolean);
                 let detail = text;
-                const n = all[idx + 1];
-                const nt = n ? clean(n.innerText || n.textContent) : '';
-                if (nt && /Segurado\\s*:|CPF\\/?CNPJ\\s*:/i.test(nt)) detail = `${detail} ${nt}`;
+                for (let j = idx + 1; j < Math.min(all.length, idx + 6); j++) {
+                  const n = all[j];
+                  const nt = n ? clean(n.innerText || n.textContent) : '';
+                  if (nt && /Segurado\\s*:|CPF\\/?CNPJ\\s*:/i.test(nt)) {
+                    detail = `${detail} ${nt}`;
+                    break;
+                  }
+                }
                 return {cells, detail: detail.slice(0, 1200), text: text.slice(0, 1200)};
               }).filter(r => r.cells.length || r.text);
             }"""
