@@ -302,6 +302,50 @@ def _summarize_download_debug(page_text: str, actions: List[Dict[str, Any]]) -> 
     return {"text_snippet": snippet, "actions": scored[:20]}
 
 
+def _score_global_search_input(meta: Dict[str, Any]) -> int:
+    hay = _norm(" ".join([
+        str(meta.get("placeholder") or ""),
+        str(meta.get("aria") or ""),
+        str(meta.get("id") or ""),
+        str(meta.get("name") or ""),
+    ]))
+    near = _norm(str(meta.get("near_text") or ""))
+    score = 0
+    if re.search(r"busca|buscar|pesquis|search|cliente|cpf|apolice|recibo", hay):
+        score += 180
+    try:
+        y = int(float(meta.get("y") or 0))
+        w = int(float(meta.get("w") or 0))
+    except Exception:  # noqa: BLE001
+        y, w = 0, 0
+    if y < 260 and w > 220:
+        score += 90
+    if w > 320:
+        score += 30
+    if re.search(r"filtro\s+susep|codigo corretor|premio ramo|comissao ramo", near):
+        score -= 160
+    return score
+
+
+def _summarize_policy_search_debug(inputs: List[Dict[str, Any]]) -> Dict[str, Any]:
+    scored: List[Dict[str, Any]] = []
+    for meta in inputs or []:
+        clean = {
+            "placeholder": str(meta.get("placeholder") or "")[:80],
+            "id": str(meta.get("id") or "")[:80],
+            "name": str(meta.get("name") or "")[:80],
+            "value": str(meta.get("value") or "")[:120],
+            "x": meta.get("x"),
+            "y": meta.get("y"),
+            "w": meta.get("w"),
+            "h": meta.get("h"),
+            "near_text": _clean_text(meta.get("near_text") or "")[:180],
+        }
+        scored.append({"score": _score_global_search_input(meta), **clean})
+    scored.sort(key=lambda item: int(item.get("score") or 0), reverse=True)
+    return {"inputs": scored[:12]}
+
+
 def _merge_recibos_context(item: Dict[str, Any], page_text: str) -> Dict[str, Any]:
     """Completa dados exibidos no topo da LISTAGEM DE RECIBOS."""
     merged = dict(item or {})
@@ -718,6 +762,43 @@ async def _collect_visible_action_candidates(page) -> List[Dict[str, Any]]:
     return out
 
 
+async def _collect_visible_input_candidates(page) -> List[Dict[str, Any]]:
+    out: List[Dict[str, Any]] = []
+    for frame in getattr(page, "frames", [page]):
+        try:
+            rows = await frame.evaluate(
+                """() => {
+                  const clean = t => (t || '').replace(/\\s+/g, ' ').trim();
+                  const vis = el => !!(el && (el.offsetParent || el.getClientRects().length));
+                  return [...document.querySelectorAll('input')]
+                    .filter(el => vis(el) && (el.type || '').toLowerCase() !== 'password')
+                    .map(el => {
+                      const rect = el.getBoundingClientRect();
+                      const near = el.closest('form,section,div,table') || document.body;
+                      return {
+                        placeholder: el.placeholder || '',
+                        id: el.id || '',
+                        name: el.name || '',
+                        aria: el.getAttribute('aria-label') || '',
+                        type: el.type || '',
+                        value: el.value || '',
+                        x: Math.round(rect.x),
+                        y: Math.round(rect.y),
+                        w: Math.round(rect.width),
+                        h: Math.round(rect.height),
+                        near_text: clean(near.innerText || '').slice(0, 300)
+                      };
+                    })
+                    .slice(0, 80);
+                }"""
+            )
+            if isinstance(rows, list):
+                out.extend([row for row in rows if isinstance(row, dict)])
+        except Exception:  # noqa: BLE001
+            continue
+    return out
+
+
 async def _record_download_debug(page, item: Dict[str, Any], evidence: Dict[str, Any], stage: str) -> None:
     try:
         page_text = await _all_body_text(page)
@@ -740,6 +821,29 @@ async def _record_download_debug(page, item: Dict[str, Any], evidence: Dict[str,
         evidence.setdefault("download_debug", []).append(summary)
     except Exception as e:  # noqa: BLE001
         evidence.setdefault("download_notes", []).append(f"debug download falhou: {type(e).__name__}")
+
+
+async def _record_policy_search_debug(page, item: Dict[str, Any], evidence: Dict[str, Any], stage: str, term: str = "") -> None:
+    try:
+        inputs = await _collect_visible_input_candidates(page)
+        summary = _summarize_policy_search_debug(inputs)
+        try:
+            url = page.url
+        except Exception:  # noqa: BLE001
+            url = ""
+        summary.update({
+            "stage": stage,
+            "term": _clean_text(term)[:120],
+            "url": url,
+            "item": {
+                "recibo": item.get("recibo"),
+                "parcela": item.get("parcela"),
+                "apolice_susep": item.get("apolice_susep"),
+            },
+        })
+        evidence.setdefault("policy_search_debug", []).append(summary)
+    except Exception as e:  # noqa: BLE001
+        evidence.setdefault("download_notes", []).append(f"debug busca apolice falhou: {type(e).__name__}")
 
 
 async def _click_row_candidate(page, candidates: Iterable[str], *, timeout_ms: int = 1200) -> bool:
@@ -1262,6 +1366,7 @@ async def _open_policy_context_for_item(page, item: Dict[str, Any], evidence: Di
             if await _wait_until_policy_context(page, timeout_ms=8000):
                 evidence.setdefault("download_notes", []).append("contexto da apolice aberto por resultado de busca")
                 return True
+        await _record_policy_search_debug(page, item, evidence, "policy_context_not_opened_after_search", term)
     evidence.setdefault("download_notes", []).append("contexto da apolice nao abriu")
     return False
 

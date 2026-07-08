@@ -42,6 +42,7 @@ def run():
         _merge_recibos_context,
         _policy_search_terms,
         _receipt_click_terms,
+        _summarize_policy_search_debug,
         _summarize_download_debug,
         build_boleto_storage_path,
         extract_inadimplentes_from_rows,
@@ -172,6 +173,11 @@ def run():
     })
     check("termos de busca priorizam segurado", search_terms[0] == "MONICA BONELLI PAULO PRAZERES", search_terms)
     check("termos de busca incluem apolice", "5177202623140183705" in search_terms, search_terms)
+    search_debug = _summarize_policy_search_debug([
+        {"placeholder": "Susep", "value": "0711110", "x": 270, "y": 330, "w": 80, "h": 20, "near_text": "FILTRO Susep Codigo Corretor"},
+        {"placeholder": "Pesquisar ...", "value": "", "x": 30, "y": 170, "w": 520, "h": 36, "near_text": "Pesquisar"},
+    ])
+    check("debug de busca prioriza campo pesquisar", search_debug.get("inputs", [{}])[0].get("placeholder") == "Pesquisar ...", search_debug)
     merged = _merge_recibos_context(
         {"cliente_nome": "", "item_segurado": ""},
         "Apolice 137583747 Item 0 Apolice SUSEP 5177-2026-23-14-0186415 "
