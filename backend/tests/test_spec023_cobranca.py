@@ -34,6 +34,7 @@ def run():
 
     from portal_worker.journeys import get_journey
     from portal_worker.journeys.allianz_corretor import (
+        _looks_like_inadimplentes_result,
         build_boleto_storage_path,
         extract_inadimplentes_from_rows,
         extract_recibos_from_rows,
@@ -68,6 +69,14 @@ def run():
     check("mantem nome do segurado", first.get("cliente_nome") == "DEBORA LUZIA ROSA", first)
     check("extrai vencimento", first.get("vencimento") == "04/07/2026", first)
     check("extrai premio como numero", first.get("valor") == 1234.56, first)
+    check(
+        "menu da home nao e lista de inadimplentes",
+        _looks_like_inadimplentes_result("Inicio Parcelas Inadimplentes Documentacao Chat Allianz") is False,
+    )
+    check(
+        "resultado/tabela e lista de inadimplentes",
+        _looks_like_inadimplentes_result("Resultado por Parcela Apolice Susep Vcto. Premio Recibo") is True,
+    )
 
     recibos = extract_recibos_from_rows([
         {"cells": ["111", "1", "0", "111", "Seguro", "01/06/2026", "04/07/2026", "865,28", "Pendente", "04/07/2026"]},
