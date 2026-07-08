@@ -99,6 +99,7 @@ def run():
     is_billing_routine = billing_collection.is_billing_routine
     normalize_billing_config = billing_collection.normalize_billing_config
     selected_portal_keys = billing_collection.selected_portal_keys
+    test_send_number = billing_collection.test_send_number
 
     routine = {"config": {"kind": BILLING_KIND, "portal_keys": ["allianz_corretor"]}}
     check("detecta rotina de cobranca por config.kind", is_billing_routine(routine) is True)
@@ -108,6 +109,25 @@ def run():
     check("default seleciona Allianz", selected_portal_keys(cfg) == ["allianz_corretor"], cfg)
     check("default exige aprovacao", cfg.get("approval_required") is True, cfg)
     check("default e modo teste", cfg.get("send_mode") == "test", cfg)
+    check("default herda numero de teste da entrega se vazio", normalize_billing_config(
+        {"kind": BILLING_KIND, "send_mode": "test"},
+        {"channel": "whatsapp", "number": "(47) 98808-7463"},
+    ).get("test_number") == "47988087463")
+    check("modo teste usa apenas numero de teste", test_send_number({
+        "kind": BILLING_KIND,
+        "send_mode": "test",
+        "test_number": "55 (47) 98808-7463",
+    }) == "5547988087463")
+    check("modo aprovacao nao envia teste", test_send_number({
+        "kind": BILLING_KIND,
+        "send_mode": "approval",
+        "test_number": "5547988087463",
+    }) == "")
+    check("modo teste exige numero minimamente valido", test_send_number({
+        "kind": BILLING_KIND,
+        "send_mode": "test",
+        "test_number": "123",
+    }) == "")
 
     os.environ.pop("BILLING_CUSTOMER_SEND_ENABLED", None)
     check("sem env nao envia cliente", customer_send_allowed({"send_mode": "live"}, env={}) is False)

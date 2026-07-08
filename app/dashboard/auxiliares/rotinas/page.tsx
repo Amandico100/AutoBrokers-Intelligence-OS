@@ -110,6 +110,7 @@ export default function RotinasPage() {
   const billingSendMode = String(billingConfig?.send_mode || 'test');
   const billingApprovalRequired = billingConfig?.approval_required !== false;
   const billingMaxBoletos = Number(billingConfig?.max_boletos_por_execucao || 10);
+  const billingTestNumber = String(billingConfig?.test_number || '');
   const setBillingConfig = (patch: Record<string, unknown>) => {
     setForm({
       ...form,
@@ -133,13 +134,16 @@ export default function RotinasPage() {
             : {}),
         };
     const delivery = form.channel === 'whatsapp' ? { channel: 'whatsapp', number: form.number } : { channel: 'none' };
+    const outgoingConfig = billingConfig && billingSendMode === 'test' && !billingTestNumber.trim() && form.channel === 'whatsapp'
+      ? { ...(form.config || {}), test_number: form.number }
+      : form.config;
     const res = await fetch('/api/dashboard/rotinas', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
         action: editing === 'new' ? 'create' : 'update',
         id: editing !== 'new' && editing ? editing.id : undefined,
-        name: form.name, instructions: form.instructions, knowledge: form.knowledge, schedule, delivery, config: form.config,
+        name: form.name, instructions: form.instructions, knowledge: form.knowledge, schedule, delivery, config: outgoingConfig,
       }),
     });
     const j = await res.json().catch(() => ({}));
@@ -390,7 +394,7 @@ export default function RotinasPage() {
                           onChange={(e) => setBillingConfig({ send_mode: e.target.value })}
                           className="w-full rounded-md border border-border bg-surface px-3 py-2 text-foreground outline-none"
                         >
-                          <option value="test">Teste</option>
+                          <option value="test">Teste (numero de teste)</option>
                           <option value="approval">Aprovacao</option>
                           <option value="live">Ao cliente</option>
                           <option value="none">Somente relatorio</option>
@@ -409,16 +413,21 @@ export default function RotinasPage() {
                           className="w-full rounded-md border border-border bg-surface px-3 py-2 text-foreground outline-none"
                         />
                       </div>
-                      <div>
-                        <label className="mb-1 block text-xs font-medium text-muted-foreground">Numero de teste</label>
-                        <input
-                          value={String(billingConfig.test_number || '')}
-                          onChange={(e) => setBillingConfig({ test_number: e.target.value })}
-                          placeholder="5547999998888"
-                          className="w-full rounded-md border border-border bg-surface px-3 py-2 text-foreground outline-none"
-                        />
-                      </div>
+                      {billingSendMode === 'test' && (
+                        <div>
+                          <label className="mb-1 block text-xs font-medium text-muted-foreground">Numero que simula o cliente</label>
+                          <input
+                            value={billingTestNumber}
+                            onChange={(e) => setBillingConfig({ test_number: e.target.value })}
+                            placeholder="5547988087463"
+                            className="w-full rounded-md border border-border bg-surface px-3 py-2 text-foreground outline-none"
+                          />
+                        </div>
+                      )}
                     </div>
+                    <p className="text-[11px] leading-relaxed text-muted-foreground">
+                      Em Teste, o cliente real nunca recebe mensagem; a simulacao vai para o numero de teste. A entrega abaixo recebe o relatorio da rotina.
+                    </p>
                     <div>
                       <label className="mb-1 block text-xs font-medium text-muted-foreground">Mensagem ao cliente</label>
                       <textarea
@@ -476,7 +485,7 @@ export default function RotinasPage() {
                 )}
                 <div className="flex gap-3">
                   <div>
-                    <label className="mb-1 block text-xs font-medium text-muted-foreground">Entrega</label>
+                    <label className="mb-1 block text-xs font-medium text-muted-foreground">{billingConfig ? 'Relatorio da rotina' : 'Entrega'}</label>
                     <div className="flex gap-2">
                       {(['whatsapp', 'none'] as const).map((c) => (
                         <button
@@ -491,7 +500,7 @@ export default function RotinasPage() {
                   </div>
                   {form.channel === 'whatsapp' && (
                     <div className="flex-1">
-                      <label className="mb-1 block text-xs font-medium text-muted-foreground">Número (DDI+DDD+número)</label>
+                      <label className="mb-1 block text-xs font-medium text-muted-foreground">{billingConfig ? 'Numero que recebe o relatorio' : 'Numero (DDI+DDD+numero)'}</label>
                       <input
                         value={form.number}
                         onChange={(e) => setForm({ ...form, number: e.target.value })}

@@ -19,6 +19,7 @@ DEFAULT_MESSAGE_TEMPLATE = (
     "com vencimento em {vencimento}, no valor de R$ {valor}. Segue o boleto para regularizacao."
 )
 TERMINAL_JOB_STATUSES = {"done", "needs_human", "failed"}
+TEST_LINK_TTL_SECONDS = 7 * 24 * 60 * 60
 
 
 def _digits(value: Any) -> str:
@@ -84,6 +85,14 @@ def customer_send_allowed(config: Dict[str, Any], env: Optional[Dict[str, str]] 
     if cfg.get("approval_required"):
         return False
     return _truthy(env.get("BILLING_CUSTOMER_SEND_ENABLED"))
+
+
+def test_send_number(config: Dict[str, Any], delivery: Optional[Dict[str, Any]] = None) -> str:
+    cfg = normalize_billing_config(config, delivery)
+    number = str(cfg.get("test_number") or "")
+    if cfg.get("send_mode") != "test":
+        return ""
+    return number if len(number) >= 10 else ""
 
 
 def build_customer_message(item: Dict[str, Any], template: str) -> str:
@@ -268,6 +277,101 @@ def _create_approval_request(client, routine: Dict[str, Any], items: List[Dict[s
         return None
 
 
+def _find_whatsapp_integration(client, company_id: str) -> Optional[Dict[str, Any]]:
+    res = (
+        client.table("integrations")
+        .select("*")
+        .eq("company_id", company_id)
+        .eq("is_active", True)
+        .execute()
+    )
+    rows = [dict(r) for r in (res.data or [])]
+    rank = {"auxiliary": 0, "attendance": 1}
+    rows.sort(key=lambda r: rank.get(str(r.get("purpose") or ""), 2))
+    return rows[0] if rows else None
+
+
+def _signed_boleto_url(client, storage_path: Any) -> str:
+    path = str(storage_path or "").strip().lstrip("/")
+    if not path:
+        return ""
+    try:
+        res = client.storage.from_("portal-evidence").create_signed_url(path, TEST_LINK_TTL_SECONDS)
+        if isinstance(res, dict):
+            return str(res.get("signedURL") or res.get("signedUrl") or res.get("signed_url") or "")
+        data = getattr(res, "data", None)
+        if isinstance(data, dict):
+            return str(data.get("signedURL") or data.get("signedUrl") or data.get("signed_url") or "")
+    except Exception:  # noqa: BLE001
+        return ""
+    return ""
+
+
+def _boletos_by_recibo(boletos: Iterable[Dict[str, Any]]) -> Dict[str, Dict[str, Any]]:
+    out: Dict[str, Dict[str, Any]] = {}
+    for boleto in boletos:
+        recibo = str(boleto.get("recibo") or "").strip()
+        if recibo and recibo not in out:
+            out[recibo] = boleto
+    return out
+
+
+def _format_test_message(item: Dict[str, Any], cfg: Dict[str, Any], boleto: Optional[Dict[str, Any]], boleto_url: str) -> str:
+    lines = [
+        "[TESTE AutoBrokers - Auxiliar de Cobranca]",
+        build_customer_message(item, cfg["message_template"]),
+    ]
+    if boleto_url:
+        lines.append(f"Boleto (link temporario): {boleto_url}")
+    elif boleto:
+        lines.append(f"Boleto: nao anexado nesta simulacao ({boleto.get('reason') or 'sem link disponivel'}).")
+    else:
+        lines.append("Boleto: nao baixado nesta execucao de teste.")
+    lines.append("Esta mensagem foi enviada somente para o numero de teste configurado, nao para o cliente real.")
+    return "\n\n".join(lines)
+
+
+async def _send_test_messages(
+    client,
+    routine: Dict[str, Any],
+    items: List[Dict[str, Any]],
+    boletos: List[Dict[str, Any]],
+    cfg: Dict[str, Any],
+    blockers: List[str],
+) -> List[Dict[str, Any]]:
+    number = test_send_number(cfg, routine.get("delivery"))
+    if not number or not items:
+        return []
+    integration = await asyncio.to_thread(_find_whatsapp_integration, client, str(routine["company_id"]))
+    if not integration:
+        blockers.append("modo teste: corretora sem canal WhatsApp ativo para enviar a simulacao")
+        return []
+
+    from app.services.whatsapp_service import get_whatsapp_service
+
+    by_recibo = _boletos_by_recibo(boletos)
+    sent: List[Dict[str, Any]] = []
+    for item in items[: int(cfg["max_boletos_por_execucao"])]:
+        boleto = by_recibo.get(str(item.get("recibo") or "").strip())
+        boleto_url = await asyncio.to_thread(_signed_boleto_url, client, boleto.get("storage_path") if boleto else "")
+        text = _format_test_message(item, cfg, boleto, boleto_url)
+        entry = {
+            "cliente_nome": item.get("cliente_nome"),
+            "recibo": item.get("recibo"),
+            "to_last4": number[-4:],
+            "boleto_link": bool(boleto_url),
+            "ok": False,
+        }
+        try:
+            ok = await asyncio.to_thread(get_whatsapp_service().send_message, number, text, integration)
+            entry["ok"] = bool(ok)
+        except Exception as e:  # noqa: BLE001
+            entry["error"] = type(e).__name__
+            blockers.append(f"modo teste: falha ao enviar simulacao para ...{number[-4:]} ({type(e).__name__})")
+        sent.append(entry)
+    return sent
+
+
 def _format_report(
     *,
     routine: Dict[str, Any],
@@ -277,8 +381,10 @@ def _format_report(
     boletos: List[Dict[str, Any]],
     blockers: List[str],
     approval_id: Optional[str],
+    test_sends: List[Dict[str, Any]],
 ) -> str:
     ok_boletos = [b for b in boletos if b.get("ok")]
+    ok_test_sends = [s for s in test_sends if s.get("ok")]
     lines = [
         f"Auxiliar de Cobranca - {routine.get('name') or 'Cobranca de boletos'}",
         f"Portais varridos: {', '.join(cfg.get('portal_keys') or [])}",
@@ -287,7 +393,11 @@ def _format_report(
     if approval_id:
         lines.append(f"Aprovacao pendente criada: {approval_id}")
     if cfg.get("send_mode") == "test":
-        lines.append("Modo teste ativo: nenhuma mensagem foi enviada para cliente.")
+        if ok_test_sends:
+            last4 = str(ok_test_sends[0].get("to_last4") or "????")
+            lines.append(f"Modo teste ativo: {len(ok_test_sends)} simulacao(oes) enviada(s) para ...{last4}. Nenhum cliente real recebeu mensagem.")
+        else:
+            lines.append("Modo teste ativo: nenhum cliente real recebeu mensagem.")
     if blockers:
         lines.append("Bloqueios/avisos:")
         lines.extend([f"- {b}" for b in blockers[:10]])
@@ -346,12 +456,20 @@ async def execute_billing_collection_routine(supabase, routine: Dict[str, Any]) 
 
     items = await _attach_contacts(company_id, items, cfg) if items else []
     approval_id = None
-    if items and cfg.get("approval_required"):
+    wants_approval = cfg.get("send_mode") == "approval" or (cfg.get("send_mode") == "live" and cfg.get("approval_required"))
+    if items and wants_approval:
         approval_id = await asyncio.to_thread(_create_approval_request, client, routine, items, boletos, cfg)
         if not approval_id:
             blockers.append("nao consegui criar pedido de aprovacao")
-    if items and not customer_send_allowed(cfg):
+    test_sends = await _send_test_messages(client, routine, items, boletos, cfg, blockers) if items else []
+    if items and cfg.get("send_mode") == "approval":
+        blockers.append("modo aprovacao: mensagens aguardam aprovacao antes de qualquer envio ao cliente")
+    elif items and cfg.get("send_mode") == "none":
+        blockers.append("modo somente relatorio: nenhuma mensagem sera enviada ao cliente")
+    elif items and cfg.get("send_mode") == "live" and not customer_send_allowed(cfg):
         blockers.append("envio ao cliente bloqueado por configuracao/gate de seguranca")
+    elif items and cfg.get("send_mode") == "live":
+        blockers.append("envio direto ao cliente permanece desativado nesta fase de homologacao")
 
     return _format_report(
         routine=routine,
@@ -361,4 +479,5 @@ async def execute_billing_collection_routine(supabase, routine: Dict[str, Any]) 
         boletos=boletos,
         blockers=blockers,
         approval_id=approval_id,
+        test_sends=test_sends,
     )
