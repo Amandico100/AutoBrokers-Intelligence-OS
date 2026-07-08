@@ -35,7 +35,11 @@ def run():
     from portal_worker.journeys import get_journey
     from portal_worker.journeys.allianz_corretor import (
         _attach_expanded_details,
+        _looks_like_ficha_gestao,
         _looks_like_inadimplentes_result,
+        _looks_like_recibos_list,
+        _merge_recibos_context,
+        _receipt_click_terms,
         build_boleto_storage_path,
         extract_inadimplentes_from_rows,
         extract_recibos_from_rows,
@@ -113,6 +117,49 @@ def run():
         {"cells": ["222", "2", "0", "222", "Seguro", "01/05/2026", "04/06/2026", "865,28", "Cobrado", "04/06/2026"]},
     ])
     check("filtra apenas recibos pendentes", len(recibos) == 1 and recibos[0].get("recibo") == "111", recibos)
+    recibos_print = extract_recibos_from_rows([
+        {
+            "cells": [
+                "318946949",
+                "3/10",
+                "0",
+                "0",
+                "CART",
+                "15/04/2026",
+                "01/07/2026",
+                "58,24",
+                "Pendente",
+                "04/07/2026",
+                "711110",
+            ]
+        }
+    ])
+    recibo_print = recibos_print[0] if recibos_print else {}
+    check("lista recibos do print extrai parcela pendente", recibo_print.get("parcela") == "3/10", recibo_print)
+    check("lista recibos do print extrai vencimento", recibo_print.get("vencimento") == "01/07/2026", recibo_print)
+    check("lista recibos do print extrai valor", recibo_print.get("valor") == 58.24, recibo_print)
+    check(
+        "reconhece tela listagem de recibos",
+        _looks_like_recibos_list("LISTAGEM DE RECIBOS (AZR) Recibos Parcela Premio Status Recibo Pendente") is True,
+    )
+    check(
+        "home nao e listagem de recibos",
+        _looks_like_recibos_list("Inicio Parcelas Inadimplentes Nova Cotacao Fale com a gente agora") is False,
+    )
+    check(
+        "reconhece ficha gestao em nova janela",
+        _looks_like_ficha_gestao("EP - P- APOLICE - 13758374700000 - 16 registros Tipo Modelo Description Carta Inadimplencia - Aviso") is True,
+    )
+    terms = _receipt_click_terms({"recibo": "318946949", "parcela": "3/10", "vencimento": "01/07/2026"})
+    check("termos de clique priorizam recibo", terms[0] == "318946949", terms)
+    check("termos de clique incluem parcela", "3/10" in terms, terms)
+    merged = _merge_recibos_context(
+        {"cliente_nome": "", "item_segurado": ""},
+        "Apolice 137583747 Item 0 Apolice SUSEP 5177-2026-23-14-0186415 "
+        "Ramo 2013-Residencia Digital Nome DEBORA LUZIA ROSA Incluido Historico",
+    )
+    check("contexto da listagem preenche ramo como item segurado", merged.get("item_segurado") == "2013-Residencia Digital", merged)
+    check("contexto da listagem preenche nome", merged.get("cliente_nome") == "DEBORA LUZIA ROSA", merged)
 
     path = build_boleto_storage_path(
         company_id="company-123",
@@ -139,6 +186,7 @@ def run():
     normalize_billing_config = billing_collection.normalize_billing_config
     selected_portal_keys = billing_collection.selected_portal_keys
     test_send_number = billing_collection.test_send_number
+    build_customer_message = billing_collection.build_customer_message
 
     routine = {"config": {"kind": BILLING_KIND, "portal_keys": ["allianz_corretor"]}}
     check("detecta rotina de cobranca por config.kind", is_billing_routine(routine) is True)
@@ -184,6 +232,24 @@ def run():
             env={"BILLING_CUSTOMER_SEND_ENABLED": "true"},
         ) is False,
     )
+    cfg_msg = normalize_billing_config({
+        "kind": BILLING_KIND,
+        "attendant_name": "Even",
+        "brokerage_name": "Resulta Seguros",
+        "message_template": "",
+    })
+    msg = build_customer_message({
+        "cliente_nome": "Sra. Rita",
+        "seguradora": "ALLIANZ",
+        "parcela": "9/10",
+        "item_segurado": "BYD SONG",
+        "apolice_susep": "5177202523312376574",
+        "valor": 58.24,
+    }, cfg_msg["message_template"], cfg_msg)
+    check("mensagem nova usa nome da atendente", "Aqui e a Even, da Resulta Seguros" in msg, msg)
+    check("mensagem nova usa parcela em negrito", "parcela *9/10*" in msg, msg)
+    check("mensagem nova usa item segurado em negrito", "seguro do *BYD SONG*" in msg, msg)
+    check("mensagem nova usa apolice em negrito", "Apolice: *5177202523312376574*" in msg, msg)
 
     print(f"\nPASS={PASS} FAIL={FAIL}")
     if FAIL:

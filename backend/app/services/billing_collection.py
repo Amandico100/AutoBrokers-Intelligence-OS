@@ -15,8 +15,15 @@ from typing import Any, Dict, Iterable, List, Optional
 BILLING_KIND = "billing_collection"
 DEFAULT_PORTAL_KEYS = ["allianz_corretor"]
 DEFAULT_MESSAGE_TEMPLATE = (
-    "Ola, {cliente_nome}. Identificamos uma parcela pendente do seu seguro "
-    "com vencimento em {vencimento}, no valor de R$ {valor}. Segue o boleto para regularizacao."
+    "Ola {nome_segurado},\n"
+    "Aqui e a {nome_atendente}, da {nome_corretora}, tudo bem?\n\n"
+    "A Seguradora {nome_seguradora} informou que a parcela *{numero_parcela}* "
+    "do seguro do *{item_segurado}* ainda esta pendente.\n"
+    "Desta forma, a seguradora gerou um novo boleto para pagamento pra voce "
+    "nao ficar sem cobertura, ok!?\n\n"
+    "Qualquer duvida estou a disposicao.\n\n"
+    "Segue o boleto abaixo.\n"
+    "Apolice: *{numero_apolice}*"
 )
 TERMINAL_JOB_STATUSES = {"done", "needs_human", "failed"}
 TEST_LINK_TTL_SECONDS = 7 * 24 * 60 * 60
@@ -46,6 +53,14 @@ def _as_list(value: Any) -> List[str]:
     return []
 
 
+def _first_text(*values: Any, default: str = "") -> str:
+    for value in values:
+        text = str(value or "").strip()
+        if text:
+            return text
+    return default
+
+
 def normalize_billing_config(config: Optional[Dict[str, Any]], delivery: Optional[Dict[str, Any]] = None) -> Dict[str, Any]:
     raw = config if isinstance(config, dict) else {}
     delivery = delivery if isinstance(delivery, dict) else {}
@@ -62,6 +77,9 @@ def normalize_billing_config(config: Optional[Dict[str, Any]], delivery: Optiona
         "send_mode": send_mode,
         "test_number": test_number,
         "message_template": str(raw.get("message_template") or DEFAULT_MESSAGE_TEMPLATE).strip() or DEFAULT_MESSAGE_TEMPLATE,
+        "attendant_name": _first_text(raw.get("attendant_name"), raw.get("nome_atendente"), default="Even"),
+        "brokerage_name": _first_text(raw.get("brokerage_name"), raw.get("nome_corretora"), default="sua corretora"),
+        "insurer_name": _first_text(raw.get("insurer_name"), raw.get("nome_seguradora"), default="ALLIANZ"),
         "max_boletos_por_execucao": _int_clamped(raw.get("max_boletos_por_execucao") or raw.get("max_boletos"), 10, 1, 50),
         "poll_timeout_seconds": _int_clamped(raw.get("poll_timeout_seconds"), 360, 30, 1800),
         "management_provider": str(raw.get("management_provider") or "infocap").strip().lower() or "infocap",
@@ -95,21 +113,62 @@ def test_send_number(config: Dict[str, Any], delivery: Optional[Dict[str, Any]] 
     return number if len(number) >= 10 else ""
 
 
-def build_customer_message(item: Dict[str, Any], template: str) -> str:
+def _portal_insurer_name(item: Dict[str, Any], cfg: Dict[str, Any]) -> str:
+    explicit = _first_text(item.get("nome_seguradora"), item.get("seguradora"), item.get("insurer_name"))
+    if explicit:
+        return explicit
+    if str(item.get("portal") or "").strip().lower() == "allianz_corretor":
+        return "ALLIANZ"
+    return _first_text(cfg.get("insurer_name"), default="seguradora")
+
+
+def _insured_item_name(item: Dict[str, Any]) -> str:
+    vehicle = item.get("vehicle") if isinstance(item.get("vehicle"), dict) else {}
+    policy = item.get("policy") if isinstance(item.get("policy"), dict) else {}
+    return _first_text(
+        item.get("item_segurado"),
+        item.get("veiculo"),
+        vehicle.get("veiculo") if vehicle else "",
+        item.get("bem"),
+        item.get("risco"),
+        item.get("ramo"),
+        policy.get("ramo") if policy else "",
+        item.get("modalidade"),
+        default="seguro",
+    )
+
+
+class _MessageData(dict):
+    def __missing__(self, key: str) -> str:
+        return ""
+
+
+def build_customer_message(item: Dict[str, Any], template: str, config: Optional[Dict[str, Any]] = None) -> str:
+    cfg = normalize_billing_config(config or {})
     valor = item.get("valor")
     valor_txt = f"{float(valor):,.2f}".replace(",", "X").replace(".", ",").replace("X", ".") if isinstance(valor, (int, float)) else str(valor or "")
+    segurado = _first_text(item.get("nome_segurado"), item.get("cliente_nome"), item.get("client_name"), default="cliente")
+    apolice = _first_text(item.get("numero_apolice"), item.get("apolice_susep"), item.get("apolice"))
+    parcela = _first_text(item.get("numero_parcela"), item.get("parcela"))
     data = {
-        "cliente_nome": item.get("cliente_nome") or "cliente",
+        "cliente_nome": segurado,
+        "nome_segurado": segurado,
+        "nome_atendente": _first_text(cfg.get("attendant_name"), default="Even"),
+        "nome_corretora": _first_text(cfg.get("brokerage_name"), default="sua corretora"),
+        "nome_seguradora": _portal_insurer_name(item, cfg),
+        "numero_parcela": parcela,
+        "item_segurado": _insured_item_name(item),
+        "numero_apolice": apolice,
         "vencimento": item.get("vencimento") or "",
         "valor": valor_txt,
-        "apolice": item.get("apolice_susep") or item.get("apolice") or "",
+        "apolice": apolice,
         "recibo": item.get("recibo") or "",
         "portal": item.get("portal") or "",
     }
     try:
-        return template.format(**data)
+        return template.format_map(_MessageData(data))
     except Exception:  # noqa: BLE001
-        return DEFAULT_MESSAGE_TEMPLATE.format(**data)
+        return DEFAULT_MESSAGE_TEMPLATE.format_map(_MessageData(data))
 
 
 def _client(supabase):
@@ -128,6 +187,15 @@ def _portal_account(client, company_id: str, portal_key: str) -> Optional[Dict[s
     )
     rows = res.data or []
     return dict(rows[0]) if rows else None
+
+
+def _company_name(client, company_id: str) -> str:
+    try:
+        res = client.table("companies").select("company_name").eq("id", company_id).limit(1).execute()
+        rows = res.data or []
+        return str((rows[0] or {}).get("company_name") or "").strip() if rows else ""
+    except Exception:  # noqa: BLE001
+        return ""
 
 
 def _enqueue_job(client, routine: Dict[str, Any], portal_key: str, account: Dict[str, Any], cfg: Dict[str, Any]) -> Optional[str]:
@@ -192,7 +260,12 @@ def _extract_boletos(job: Dict[str, Any]) -> List[Dict[str, Any]]:
     return [b for b in boletos if isinstance(b, dict)]
 
 
-async def _resolve_customer_phone(company_id: str, cpf_cnpj: str, provider_key: str) -> Dict[str, Any]:
+async def _resolve_customer_phone(
+    company_id: str,
+    cpf_cnpj: str,
+    provider_key: str,
+    item: Optional[Dict[str, Any]] = None,
+) -> Dict[str, Any]:
     doc = _digits(cpf_cnpj)
     if len(doc) not in (11, 14):
         return {"phone": "", "status": "missing_document"}
@@ -212,8 +285,35 @@ async def _resolve_customer_phone(company_id: str, cpf_cnpj: str, provider_key: 
             internal_key=internal_key,
             unmasked=True,
         )
-        phone = _digits((result or {}).get("client_phone"))
-        return {"phone": phone, "status": (result or {}).get("status") or "unknown", "source": provider_key}
+        out = {"phone": _digits((result or {}).get("client_phone")), "status": (result or {}).get("status") or "unknown", "source": provider_key}
+        vehicle_lookup = getattr(provider, "vehicle", None)
+        policy_number = str((item or {}).get("apolice_susep") or (item or {}).get("apolice") or "").strip()
+        if callable(vehicle_lookup):
+            try:
+                vehicle_result = await vehicle_lookup(
+                    company_id=company_id,
+                    document=doc,
+                    policy_number=policy_number or None,
+                    db=db,
+                    internal_key=internal_key,
+                )
+                if isinstance(vehicle_result, dict) and vehicle_result.get("ok"):
+                    vehicle = vehicle_result.get("vehicle") if isinstance(vehicle_result.get("vehicle"), dict) else {}
+                    policy = vehicle_result.get("policy") if isinstance(vehicle_result.get("policy"), dict) else {}
+                    client = vehicle_result.get("client") if isinstance(vehicle_result.get("client"), dict) else {}
+                    if vehicle.get("veiculo"):
+                        out["item_segurado"] = str(vehicle.get("veiculo") or "").strip()
+                        out["vehicle"] = vehicle
+                    insurer = policy.get("seguradora_abrev") or policy.get("seguradora")
+                    if insurer:
+                        out["seguradora"] = str(insurer).strip()
+                    if client.get("telefone") and not out["phone"]:
+                        out["phone"] = _digits(client.get("telefone"))
+                    if client.get("nome"):
+                        out["cliente_nome"] = str(client.get("nome") or "").strip()
+            except Exception:  # noqa: BLE001
+                pass
+        return out
     except Exception as e:  # noqa: BLE001
         return {"phone": "", "status": f"provider_error:{type(e).__name__}"}
 
@@ -221,8 +321,12 @@ async def _resolve_customer_phone(company_id: str, cpf_cnpj: str, provider_key: 
 async def _attach_contacts(company_id: str, items: List[Dict[str, Any]], cfg: Dict[str, Any]) -> List[Dict[str, Any]]:
     enriched: List[Dict[str, Any]] = []
     for item in items:
-        contact = await _resolve_customer_phone(company_id, str(item.get("cpf_cnpj") or ""), cfg["management_provider"])
-        enriched.append({**item, "whatsapp": contact.get("phone") or "", "contact_status": contact.get("status")})
+        contact = await _resolve_customer_phone(company_id, str(item.get("cpf_cnpj") or ""), cfg["management_provider"], item)
+        merged = {**item, "whatsapp": contact.get("phone") or "", "contact_status": contact.get("status")}
+        for field in ("item_segurado", "vehicle", "seguradora", "cliente_nome"):
+            if contact.get(field) and not merged.get(field):
+                merged[field] = contact.get(field)
+        enriched.append(merged)
     return enriched
 
 
@@ -240,7 +344,9 @@ def _safe_items_for_payload(items: List[Dict[str, Any]], cfg: Dict[str, Any]) ->
             "recibo": item.get("recibo"),
             "vencimento": item.get("vencimento"),
             "valor": item.get("valor"),
-            "message": build_customer_message(item, cfg["message_template"]),
+            "parcela": item.get("parcela"),
+            "item_segurado": _insured_item_name(item),
+            "message": build_customer_message(item, cfg["message_template"], cfg),
         })
     return safe
 
@@ -319,7 +425,7 @@ def _boletos_by_recibo(boletos: Iterable[Dict[str, Any]]) -> Dict[str, Dict[str,
 def _format_test_message(item: Dict[str, Any], cfg: Dict[str, Any], boleto: Optional[Dict[str, Any]], boleto_url: str) -> str:
     lines = [
         "[TESTE AutoBrokers - Auxiliar de Cobranca]",
-        build_customer_message(item, cfg["message_template"]),
+        build_customer_message(item, cfg["message_template"], cfg),
     ]
     if boleto_url:
         lines.append(f"Boleto (link temporario): {boleto_url}")
@@ -420,6 +526,10 @@ async def execute_billing_collection_routine(supabase, routine: Dict[str, Any]) 
     client = _client(supabase)
     company_id = str(routine.get("company_id") or "")
     cfg = normalize_billing_config(routine.get("config"), routine.get("delivery"))
+    if cfg.get("brokerage_name") == "sua corretora" and company_id:
+        name = await asyncio.to_thread(_company_name, client, company_id)
+        if name:
+            cfg["brokerage_name"] = name
     blockers: List[str] = []
     job_ids: List[str] = []
 
