@@ -6,7 +6,7 @@
 // portais (ex.: cobrança de boletos) quando o founder ligar o gate.
 
 import { useCallback, useEffect, useState } from 'react';
-import { Loader2, ExternalLink, Trash2, Check, Lock } from 'lucide-react';
+import { Loader2, ExternalLink, Trash2, Check, Lock, AlertTriangle, RefreshCw } from 'lucide-react';
 
 import { DetailHeader } from '@/components/patterns/DetailHeader';
 import { icons } from '@/lib/icons';
@@ -17,6 +17,18 @@ type Portal = {
 type Cred = {
   portal_key: string; username: string | null; has_password: boolean; health: string; updated_at: string | null;
 };
+type PortalJob = {
+  id: string;
+  portal_key: string;
+  portal_name: string;
+  journey: string;
+  status: string;
+  message: string;
+  evidence: Record<string, any>;
+  screenshot: string | null;
+  attempts: number;
+  created_at: string | null;
+};
 
 const CAT_LABEL: Record<string, string> = { vidros: 'Vidros', corretor: 'Corretor', sinistro: 'Sinistro' };
 
@@ -24,8 +36,19 @@ export default function PortaisPage() {
   const [portals, setPortals] = useState<Portal[] | null>(null);
   const [creds, setCreds] = useState<Record<string, Cred>>({});
   const [forms, setForms] = useState<Record<string, { username: string; password: string }>>({});
+  const [hitlJobs, setHitlJobs] = useState<PortalJob[]>([]);
   const [busy, setBusy] = useState('');
   const [notice, setNotice] = useState('');
+
+  const loadHitlJobs = useCallback(async () => {
+    try {
+      const res = await fetch('/api/dashboard/portal-jobs?status=needs_human', { cache: 'no-store', credentials: 'same-origin' });
+      const j = await res.json().catch(() => ({}));
+      setHitlJobs(res.ok ? (j.jobs || []) : []);
+    } catch {
+      setHitlJobs([]);
+    }
+  }, []);
 
   const load = useCallback(async () => {
     try {
@@ -36,8 +59,9 @@ export default function PortaisPage() {
       const map: Record<string, Cred> = {};
       (j.credentials || []).forEach((c: Cred) => { map[c.portal_key] = c; });
       setCreds(map);
+      loadHitlJobs();
     } catch { setNotice('Falha de conexão.'); setPortals([]); }
-  }, []);
+  }, [loadHitlJobs]);
   useEffect(() => { load(); }, [load]);
 
   const patchForm = (k: string, patch: Partial<{ username: string; password: string }>) =>
@@ -72,6 +96,20 @@ export default function PortaisPage() {
     setBusy(''); load();
   };
 
+  const retryJob = async (job: PortalJob) => {
+    setBusy(job.id); setNotice('');
+    const res = await fetch('/api/dashboard/portal-jobs', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      credentials: 'same-origin',
+      body: JSON.stringify({ action: 'retry', job_id: job.id }),
+    });
+    const j = await res.json().catch(() => ({}));
+    setBusy('');
+    if (!res.ok) { setNotice(j.error || 'Nao consegui reenfileirar o portal.'); return; }
+    await loadHitlJobs();
+  };
+
   return (
     <div className="h-full overflow-y-auto">
       <div className="mx-auto w-full max-w-3xl space-y-6 px-4 py-10 sm:px-6">
@@ -87,6 +125,63 @@ export default function PortaisPage() {
         />
 
         {notice && <p className="text-sm text-danger">{notice}</p>}
+
+        {hitlJobs.length > 0 && (
+          <section className="space-y-3">
+            <div className="flex items-center gap-2 text-sm font-semibold text-foreground">
+              <AlertTriangle className="h-4 w-4 text-amber-500" />
+              Portais aguardando humano
+            </div>
+            {hitlJobs.map((job) => {
+              const portal = portals?.find((p) => p.key === job.portal_key);
+              const kind = String(job.evidence?.hitl?.kind || '');
+              return (
+                <div key={job.id} className="rounded-xl border border-amber-500/30 bg-amber-500/5 p-4">
+                  <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
+                    <div className="min-w-0 space-y-1">
+                      <p className="text-sm font-semibold text-foreground">{job.portal_name}</p>
+                      <p className="text-xs text-muted-foreground">
+                        {kind === 'captcha_2fa' ? 'CAPTCHA/2FA' : 'Revisao'} - {job.message || 'Aguardando revisao no portal'}
+                      </p>
+                      {job.created_at && (
+                        <p className="text-[11px] text-faint">
+                          Job {job.id.slice(0, 8)} - tentativa {job.attempts || 0} - {new Date(job.created_at).toLocaleString('pt-BR')}
+                        </p>
+                      )}
+                    </div>
+                    <div className="flex shrink-0 gap-2">
+                      {portal?.login_url && (
+                        <a
+                          href={portal.login_url}
+                          target="_blank"
+                          rel="noreferrer"
+                          className="inline-flex items-center justify-center gap-1 rounded-md border border-border bg-surface px-3 py-2 text-xs font-medium text-foreground hover:bg-surface-2"
+                        >
+                          <ExternalLink className="h-3.5 w-3.5" /> Abrir portal
+                        </a>
+                      )}
+                      <button
+                        onClick={() => retryJob(job)}
+                        disabled={busy === job.id}
+                        className="inline-flex items-center justify-center gap-1 rounded-md bg-primary px-3 py-2 text-xs font-medium text-primary-foreground hover:opacity-90 disabled:opacity-50"
+                      >
+                        {busy === job.id ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <RefreshCw className="h-3.5 w-3.5" />}
+                        Tentar novamente
+                      </button>
+                    </div>
+                  </div>
+                  {job.screenshot && (
+                    <img
+                      src={job.screenshot}
+                      alt={`Evidencia do portal ${job.portal_name}`}
+                      className="mt-3 max-h-80 w-full rounded-md border border-border object-contain"
+                    />
+                  )}
+                </div>
+              );
+            })}
+          </section>
+        )}
 
         {portals === null ? (
           <div className="flex items-center gap-2 py-8 text-sm text-muted-foreground">
