@@ -916,6 +916,14 @@ async def cobranca_sweep(page, params: Dict[str, Any], evidence: Dict[str, Any])
     evidence["inadimplentes_details_expanded"] = await _expand_inadimplente_details(page, max_items=max_expand)
 
     rows = await _extract_visible_rows(page)
+    segurado_rows = [
+        _clean_text((r.get("detail") or r.get("text") or ""))[:500]
+        for r in rows
+        if re.search(r"Segurado\s*:|CPF/?CNPJ\s*:", _clean_text((r.get("detail") or r.get("text") or "")), flags=re.IGNORECASE)
+    ]
+    evidence["inadimplentes_detail_rows_seen"] = len(segurado_rows)
+    if segurado_rows:
+        evidence["inadimplentes_detail_rows_sample"] = segurado_rows[:3]
     items = extract_inadimplentes_from_rows(rows)
     evidence["inadimplentes_rows_seen"] = len(rows)
     evidence["inadimplentes_count"] = len(items)
