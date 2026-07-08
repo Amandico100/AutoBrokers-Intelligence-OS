@@ -1062,7 +1062,13 @@ async def _fill_global_search(page, value: str) -> bool:
                 if await candidates.count() <= 0:
                     continue
                 loc = candidates.first
-                await loc.fill(query, timeout=1500)
+                await loc.click(timeout=1500)
+                try:
+                    await loc.press("Control+A", timeout=800)
+                    await loc.press("Backspace", timeout=800)
+                    await loc.type(query, delay=18, timeout=5000)
+                except Exception:  # noqa: BLE001
+                    await loc.fill(query, timeout=1500)
                 box = await loc.bounding_box(timeout=1500)
                 try:
                     await loc.press("Enter", timeout=1000)
