@@ -1056,6 +1056,23 @@ async def _fill_global_search(page, value: str) -> bool:
         if not filled:
             return False
         await page.wait_for_timeout(500)
+        for frame in getattr(page, "frames", [page]):
+            try:
+                candidates = frame.locator('input[name="target"], input[id^="nx-input-"]')
+                if await candidates.count() <= 0:
+                    continue
+                loc = candidates.first
+                await loc.fill(query, timeout=1500)
+                box = await loc.bounding_box(timeout=1500)
+                try:
+                    await loc.press("Enter", timeout=1000)
+                except Exception:  # noqa: BLE001
+                    pass
+                if box:
+                    await page.mouse.click(box["x"] + box["width"] + 24, box["y"] + (box["height"] / 2))
+                break
+            except Exception:  # noqa: BLE001
+                continue
         try:
             await page.keyboard.press("Enter")
         except Exception:  # noqa: BLE001
