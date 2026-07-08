@@ -69,6 +69,36 @@ def _looks_like_header(cells: List[str]) -> bool:
     return any(token in blob for token in ("apolice susep", "resultado por parcela", "status recibo", "data de vencimento"))
 
 
+def _normalize_inadimplente_cells(cells: List[str]) -> Dict[str, str]:
+    data = cells[1:] if cells and not _digits(cells[0]) and len(cells) >= 10 else cells[:]
+    has_parcela = len(data) > 1 and bool(re.match(r"^\d+\s*/\s*\d+$", data[1]))
+    if has_parcela:
+        return {
+            "recibo": data[0] if len(data) > 0 else "",
+            "parcela": data[1] if len(data) > 1 else "",
+            "apolice": data[2] if len(data) > 2 else "",
+            "adesao": data[3] if len(data) > 3 else "",
+            "endosso": data[4] if len(data) > 4 else "",
+            "fim": data[5] if len(data) > 5 else "",
+            "prev": data[6] if len(data) > 6 else "",
+            "vencimento": data[7] if len(data) > 7 else "",
+            "valor": data[8] if len(data) > 8 else "",
+            "comissao": data[9] if len(data) > 9 else "",
+        }
+    return {
+        "recibo": data[0] if len(data) > 0 else "",
+        "parcela": "",
+        "apolice": data[1] if len(data) > 1 else "",
+        "adesao": data[2] if len(data) > 2 else "",
+        "endosso": data[3] if len(data) > 3 else "",
+        "fim": data[4] if len(data) > 4 else "",
+        "prev": data[5] if len(data) > 5 else "",
+        "vencimento": data[6] if len(data) > 6 else "",
+        "valor": data[7] if len(data) > 7 else "",
+        "comissao": data[8] if len(data) > 8 else "",
+    }
+
+
 def _safe_path_token(value: Any, default: str = "item") -> str:
     text = _norm(str(value or ""))
     text = re.sub(r"[^a-z0-9_-]+", "-", text).strip("-")
@@ -102,16 +132,17 @@ def extract_inadimplentes_from_rows(rows: List[Dict[str, Any]]) -> List[Dict[str
         cells = [_clean_text(c) for c in (raw_cells or []) if _clean_text(c)]
         if len(cells) < 7 or _looks_like_header(cells):
             continue
+        data = _normalize_inadimplente_cells(cells)
         detail = _clean_text((row or {}).get("detail") or " ".join(cells))
         doc = _digits(_slice_between(detail, "CPF/CNPJ", ("Modalidade", "Filial", "Telefone", "E-mail")))
         if len(doc) not in (11, 14):
             mdoc = re.search(r"CPF/CNPJ\s*:?\s*([0-9.\-/ ]{11,24})", detail, flags=re.IGNORECASE)
             doc = _digits(mdoc.group(1)) if mdoc else ""
         name = _slice_between(detail, "Segurado", ("CPF/CNPJ", "Modalidade", "Filial"))
-        recibo = _digits(cells[0])
-        apolice = _digits(cells[1]) if len(cells) > 1 else ""
-        vencimento = _date_like(cells[6] if len(cells) > 6 else "")
-        valor = _parse_money_br(cells[7] if len(cells) > 7 else "")
+        recibo = _digits(data["recibo"])
+        apolice = _digits(data["apolice"])
+        vencimento = _date_like(data["vencimento"])
+        valor = _parse_money_br(data["valor"])
         if not (recibo or apolice or doc or name):
             continue
         key = (recibo, apolice, doc, vencimento)
@@ -120,15 +151,16 @@ def extract_inadimplentes_from_rows(rows: List[Dict[str, Any]]) -> List[Dict[str
         seen.add(key)
         out.append({
             "portal": "allianz_corretor",
-            "recibo": recibo or cells[0],
+            "recibo": recibo or data["recibo"],
+            "parcela": _clean_text(data["parcela"]),
             "apolice_susep": apolice,
-            "adesao": _clean_text(cells[2]) if len(cells) > 2 else "",
-            "endosso": _clean_text(cells[3]) if len(cells) > 3 else "",
-            "dt_fim_cobertura": _date_like(cells[4] if len(cells) > 4 else ""),
-            "dt_prev_cancelamento": _date_like(cells[5] if len(cells) > 5 else ""),
+            "adesao": _clean_text(data["adesao"]),
+            "endosso": _clean_text(data["endosso"]),
+            "dt_fim_cobertura": _date_like(data["fim"]),
+            "dt_prev_cancelamento": _date_like(data["prev"]),
             "vencimento": vencimento,
             "valor": valor,
-            "comissao": _parse_money_br(cells[8] if len(cells) > 8 else ""),
+            "comissao": _parse_money_br(data["comissao"]),
             "cliente_nome": name,
             "cpf_cnpj": doc,
             "modalidade": _slice_between(detail, "Modalidade", ("Filial", "Telefone", "E-mail")),
@@ -404,10 +436,24 @@ async def _body_text(page) -> str:
         return ""
 
 
-async def _extract_visible_rows(page) -> List[Dict[str, Any]]:
+async def _all_body_text(page) -> str:
+    texts = []
+    for frame in getattr(page, "frames", [page]):
+        try:
+            text = await frame.inner_text("body", timeout=2500)
+            if text:
+                texts.append(text)
+        except Exception:  # noqa: BLE001
+            continue
+    if texts:
+        return "\n".join(texts)
+    return await _body_text(page)
+
+
+async def _extract_visible_rows_from_context(context) -> List[Dict[str, Any]]:
     """DOM generico para tabelas Angular/Material/HTML comuns."""
     try:
-        rows = await page.evaluate(
+        rows = await context.evaluate(
             """() => {
               const clean = t => (t || '').replace(/\\s+/g, ' ').trim();
               const vis = el => !!(el && (el.offsetParent || el.getClientRects().length));
@@ -434,12 +480,20 @@ async def _extract_visible_rows(page) -> List[Dict[str, Any]]:
         return []
 
 
+async def _extract_visible_rows(page) -> List[Dict[str, Any]]:
+    rows: List[Dict[str, Any]] = []
+    for frame in getattr(page, "frames", [page]):
+        rows.extend(await _extract_visible_rows_from_context(frame))
+    return rows
+
+
 async def _click_text_candidate(page, candidates: Iterable[str], *, timeout_ms: int = 1200) -> bool:
     cand = [str(c or "") for c in candidates if str(c or "").strip()]
     if not cand:
         return False
-    try:
-        clicked = await page.evaluate(
+    for frame in getattr(page, "frames", [page]):
+        try:
+            clicked = await frame.evaluate(
             """(candidates) => {
               const norm = s => (s || '').normalize('NFKD').replace(/[\\u0300-\\u036f]/g, '')
                 .toLowerCase().replace(/\\s+/g, ' ').trim();
@@ -472,12 +526,12 @@ async def _click_text_candidate(page, candidates: Iterable[str], *, timeout_ms: 
               return true;
             }""",
             cand,
-        )
-        if clicked:
-            await page.wait_for_timeout(timeout_ms)
-            return True
-    except Exception:  # noqa: BLE001
-        return False
+            )
+            if clicked:
+                await page.wait_for_timeout(timeout_ms)
+                return True
+        except Exception:  # noqa: BLE001
+            continue
     return False
 
 
@@ -540,13 +594,93 @@ def _looks_like_inadimplentes_result(text: str) -> bool:
     return sum(1 for token in table_signals if token in body) >= 2
 
 
+def _looks_like_inadimplentes_totals(text: str) -> bool:
+    body = _norm(text)
+    if "resultado - totais" in body:
+        return True
+    return "qtd.apolices" in body and "qtd.pcs" in body and "premio" in body
+
+
 async def _wait_until_inadimplentes_result(page, timeout_ms: int = 12000) -> bool:
     deadline = timeout_ms // 600
     for _ in range(max(1, deadline)):
-        if _looks_like_inadimplentes_result(await _body_text(page)):
+        if _looks_like_inadimplentes_result(await _all_body_text(page)):
             return True
         await page.wait_for_timeout(600)
     return False
+
+
+async def _click_first_totals_row(page) -> bool:
+    for frame in getattr(page, "frames", [page]):
+        try:
+            clicked = await frame.evaluate(
+                """() => {
+                  const clean = t => (t || '').replace(/\\s+/g, ' ').trim();
+                  const vis = el => !!(el && (el.offsetParent || el.getClientRects().length));
+                  const rows = [...document.querySelectorAll('tr,[role=row]')].filter(vis);
+                  for (const row of rows) {
+                    const text = clean(row.innerText || row.textContent);
+                    if (!text || text.length > 260) continue;
+                    if (/^\\d+\\s+\\d{4}\\s+-\\s+/.test(text) && /\\d+,\\d{2}/.test(text)) {
+                      row.click();
+                      return true;
+                    }
+                  }
+                  return false;
+                }"""
+            )
+            if clicked:
+                await page.wait_for_timeout(2500)
+                return True
+        except Exception:  # noqa: BLE001
+            continue
+    return False
+
+
+async def _open_parcela_from_totals_if_needed(page, evidence: Dict[str, Any]) -> bool:
+    text = await _all_body_text(page)
+    if _looks_like_inadimplentes_result(text):
+        return True
+    if not _looks_like_inadimplentes_totals(text):
+        return False
+    if await _click_first_totals_row(page):
+        if await _wait_until_inadimplentes_result(page, timeout_ms=8000):
+            evidence["totals_row_opened"] = True
+            return True
+    evidence["totals_row_opened"] = False
+    return False
+
+
+async def _expand_inadimplente_details(page, max_items: int = 10) -> int:
+    expanded = 0
+    for frame in getattr(page, "frames", [page]):
+        try:
+            count = await frame.evaluate(
+                """async (maxItems) => {
+                  const sleep = ms => new Promise(r => setTimeout(r, ms));
+                  const vis = el => !!(el && (el.offsetParent || el.getClientRects().length));
+                  const els = [...document.querySelectorAll('[id*=ExtdInfo], img[alt*="extendida" i], img[title*="extendida" i]')]
+                    .filter(vis);
+                  let n = 0;
+                  for (const el of els) {
+                    if (n >= maxItems) break;
+                    const row = el.closest('tr');
+                    const next = row && row.nextElementSibling ? (row.nextElementSibling.innerText || row.nextElementSibling.textContent || '') : '';
+                    if (/Segurado\\s*:|CPF\\/?CNPJ\\s*:/i.test(next)) continue;
+                    el.click();
+                    n += 1;
+                    await sleep(250);
+                  }
+                  return n;
+                }""",
+                max_items,
+            )
+            expanded += int(count or 0)
+        except Exception:  # noqa: BLE001
+            continue
+    if expanded:
+        await page.wait_for_timeout(1200)
+    return expanded
 
 
 async def _semantic_navigation_review(page, goal: str, params: Dict[str, Any], evidence: Dict[str, Any]) -> JourneyResult:
@@ -571,8 +705,10 @@ async def _semantic_navigation_review(page, goal: str, params: Dict[str, Any], e
 
 
 async def _ensure_inadimplentes_page(page, params: Dict[str, Any], evidence: Dict[str, Any]) -> bool:
-    text = _norm(await _body_text(page))
+    text = _norm(await _all_body_text(page))
     if _looks_like_inadimplentes_result(text):
+        return True
+    if await _open_parcela_from_totals_if_needed(page, evidence):
         return True
 
     # Tenta caminho semantico pelo menu/atalho da home Allianz.
@@ -590,12 +726,16 @@ async def _ensure_inadimplentes_page(page, params: Dict[str, Any], evidence: Dic
         if await _click_text_candidate(page, [label]):
             if await _wait_until_inadimplentes_result(page, timeout_ms=6500):
                 return True
+            if await _open_parcela_from_totals_if_needed(page, evidence):
+                return True
 
     # Tenta busca global do proprio portal.
     for query in ("Parcelas Inadimplentes", "inadimplentes", "cobranca"):
         if await _fill_global_search(page, query):
             await _click_text_candidate(page, ("Parcelas Inadimplentes", "Recibo/Pagamento", "CobranÃ§a", "Cobranca"))
             if await _wait_until_inadimplentes_result(page, timeout_ms=7500):
+                return True
+            if await _open_parcela_from_totals_if_needed(page, evidence):
                 return True
 
     adaptive = await _semantic_navigation_review(
@@ -604,9 +744,9 @@ async def _ensure_inadimplentes_page(page, params: Dict[str, Any], evidence: Dic
         params,
         evidence,
     )
-    text = _norm(await _body_text(page))
+    text = _norm(await _all_body_text(page))
     evidence["cobranca_navigation"] = {"adaptive_status": adaptive.status, "message": adaptive.message}
-    return _looks_like_inadimplentes_result(text)
+    return _looks_like_inadimplentes_result(text) or await _open_parcela_from_totals_if_needed(page, evidence)
 
 
 async def _download_current_pdf(page, item: Dict[str, Any], params: Dict[str, Any]) -> Dict[str, Any]:
@@ -735,6 +875,12 @@ async def cobranca_sweep(page, params: Dict[str, Any], evidence: Dict[str, Any])
             captured={"logged_in": True, "stage": "inadimplentes_nao_localizado"},
             message="nao consegui localizar a area de parcelas inadimplentes Allianz",
         )
+
+    try:
+        max_expand = max(1, int(params.get("max_boletos") or params.get("max_boletos_por_execucao") or 10))
+    except Exception:  # noqa: BLE001
+        max_expand = 10
+    evidence["inadimplentes_details_expanded"] = await _expand_inadimplente_details(page, max_items=max_expand)
 
     rows = await _extract_visible_rows(page)
     items = extract_inadimplentes_from_rows(rows)

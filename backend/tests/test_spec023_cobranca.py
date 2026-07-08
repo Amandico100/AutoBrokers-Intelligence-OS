@@ -77,6 +77,29 @@ def run():
         "resultado/tabela e lista de inadimplentes",
         _looks_like_inadimplentes_result("Resultado por Parcela Apolice Susep Vcto. Premio Recibo") is True,
     )
+    parsed_shifted = extract_inadimplentes_from_rows([
+        {
+            "cells": [
+                "Recolher/Abrir informacao extendida",
+                "317418783",
+                "3/10",
+                "5177202623140183705",
+                "0",
+                "000000",
+                "20/08/2026",
+                "20/08/2026",
+                "01/07/2026",
+                "96,95",
+                "0,03",
+            ],
+            "detail": "Segurado: MONICA BONELLI PAULO PRAZERES CPF/CNPJ: 03184509923 Modalidade: Debito em Conta",
+        }
+    ])
+    shifted = parsed_shifted[0] if parsed_shifted else {}
+    check("formato real com expansor extrai recibo", shifted.get("recibo") == "317418783", shifted)
+    check("formato real com expansor extrai parcela", shifted.get("parcela") == "3/10", shifted)
+    check("formato real com expansor extrai CPF", shifted.get("cpf_cnpj") == "03184509923", shifted)
+    check("formato real com expansor extrai vcto", shifted.get("vencimento") == "01/07/2026", shifted)
 
     recibos = extract_recibos_from_rows([
         {"cells": ["111", "1", "0", "111", "Seguro", "01/06/2026", "04/07/2026", "865,28", "Pendente", "04/07/2026"]},
