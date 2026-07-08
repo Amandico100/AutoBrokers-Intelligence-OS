@@ -527,6 +527,25 @@ async def _wait_until_text(page, tokens: Iterable[str], timeout_ms: int = 12000)
     return False
 
 
+def _looks_like_inadimplentes_result(text: str) -> bool:
+    body = _norm(text)
+    if "resultado por parcela" in body:
+        return True
+    if "segurado:" in body and "cpf/cnpj" in body:
+        return True
+    table_signals = ("apolice susep", "vcto", "premio", "recibo")
+    return sum(1 for token in table_signals if token in body) >= 2
+
+
+async def _wait_until_inadimplentes_result(page, timeout_ms: int = 12000) -> bool:
+    deadline = timeout_ms // 600
+    for _ in range(max(1, deadline)):
+        if _looks_like_inadimplentes_result(await _body_text(page)):
+            return True
+        await page.wait_for_timeout(600)
+    return False
+
+
 async def _semantic_navigation_review(page, goal: str, params: Dict[str, Any], evidence: Dict[str, Any]) -> JourneyResult:
     """Usa o cerebro adaptativo existente quando os atalhos semanticos nao bastam."""
     try:
@@ -550,7 +569,7 @@ async def _semantic_navigation_review(page, goal: str, params: Dict[str, Any], e
 
 async def _ensure_inadimplentes_page(page, params: Dict[str, Any], evidence: Dict[str, Any]) -> bool:
     text = _norm(await _body_text(page))
-    if "parcelas inadimplentes" in text or "resultado por parcela" in text:
+    if _looks_like_inadimplentes_result(text):
         return True
 
     # Tenta caminho semantico pelo menu/atalho da home Allianz.
@@ -566,18 +585,14 @@ async def _ensure_inadimplentes_page(page, params: Dict[str, Any], evidence: Dic
     )
     for label in candidates:
         if await _click_text_candidate(page, [label]):
-            if await _wait_until_text(page, ("parcelas inadimplentes",), timeout_ms=4000):
-                return True
-            if await _wait_until_text(page, ("resultado", "parcela"), timeout_ms=2500):
+            if await _wait_until_inadimplentes_result(page, timeout_ms=6500):
                 return True
 
     # Tenta busca global do proprio portal.
     for query in ("Parcelas Inadimplentes", "inadimplentes", "cobranca"):
         if await _fill_global_search(page, query):
             await _click_text_candidate(page, ("Parcelas Inadimplentes", "Recibo/Pagamento", "CobranÃ§a", "Cobranca"))
-            if await _wait_until_text(page, ("parcelas inadimplentes",), timeout_ms=5000):
-                return True
-            if await _wait_until_text(page, ("resultado", "parcela"), timeout_ms=2500):
+            if await _wait_until_inadimplentes_result(page, timeout_ms=7500):
                 return True
 
     adaptive = await _semantic_navigation_review(
@@ -588,7 +603,7 @@ async def _ensure_inadimplentes_page(page, params: Dict[str, Any], evidence: Dic
     )
     text = _norm(await _body_text(page))
     evidence["cobranca_navigation"] = {"adaptive_status": adaptive.status, "message": adaptive.message}
-    return "parcelas inadimplentes" in text or ("resultado" in text and "parcela" in text)
+    return _looks_like_inadimplentes_result(text)
 
 
 async def _download_current_pdf(page, item: Dict[str, Any], params: Dict[str, Any]) -> Dict[str, Any]:
