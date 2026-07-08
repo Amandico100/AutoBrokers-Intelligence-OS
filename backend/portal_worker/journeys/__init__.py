@@ -23,6 +23,10 @@ class JourneyResult:
 def get_journey(portal_key: str, journey: str) -> Optional[Callable[..., Awaitable["JourneyResult"]]]:
     """Resolve a journey por 'portal_key.journey' (import tardio p/ não puxar Playwright à toa)."""
     key = f"{portal_key}.{journey}"
+    if key == "allianz_corretor.login_check":
+        from portal_worker.journeys.allianz_corretor import login_check
+
+        return login_check
     if key == "vidros_lanternas.login_check":
         from portal_worker.journeys.vidros_lanternas import login_check
 
