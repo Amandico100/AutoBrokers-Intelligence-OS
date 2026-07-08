@@ -448,7 +448,9 @@ async def _click_text_candidate(page, candidates: Iterable[str], *, timeout_ms: 
               const disabled = el => !!(el.disabled || el.getAttribute('aria-disabled') === 'true');
               const selectors = [
                 'button', 'a', '[role=button]', '[role=menuitem]', 'li', 'mat-option',
-                '.mat-menu-item', '.dropdown-item', '[onclick]', '[tabindex]'
+                '.mat-menu-item', '.dropdown-item', '[onclick]', '[tabindex]',
+                'span', 'div', 'nx-link', 'nx-action', 'nx-button', 'nx-menu-item',
+                '[class*=menu]', '[class*=nav]', '[class*=item]'
               ].join(',');
               const els = [...document.querySelectorAll(selectors)].filter(el => vis(el) && !disabled(el));
               let best = null, bestScore = 0;
@@ -465,7 +467,8 @@ async def _click_text_candidate(page, candidates: Iterable[str], *, timeout_ms: 
                 }
               }
               if (!best || bestScore <= 0) return false;
-              best.click();
+              const target = best.closest('button,a,[role=button],[role=menuitem],[onclick],[tabindex],li,nx-link,nx-action,nx-button,nx-menu-item,[class*=menu],[class*=nav],[class*=item]') || best;
+              target.click();
               return true;
             }""",
             cand,
