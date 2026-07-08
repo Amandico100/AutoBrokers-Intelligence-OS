@@ -229,6 +229,61 @@ def _receipt_click_terms(item: Dict[str, Any]) -> List[str]:
     return terms
 
 
+def _summarize_download_debug(page_text: str, actions: List[Dict[str, Any]]) -> Dict[str, Any]:
+    """Resumo curto da tela quando o fluxo de boleto nao acha o proximo controle."""
+    text = _clean_text(page_text)
+    low = _norm(text)
+    keywords = (
+        "lista recibos",
+        "lista de recibos",
+        "ficha gestao",
+        "ficha de gestao",
+        "historico da apolice",
+        "resultado por parcela",
+        "gestor cobranca",
+        "pendentes",
+        "operar",
+    )
+    first_hit = -1
+    for key in keywords:
+        pos = low.find(key)
+        if pos >= 0 and (first_hit < 0 or pos < first_hit):
+            first_hit = pos
+    start = max(0, first_hit - 500) if first_hit >= 0 else 0
+    snippet = text[start:start + 1800]
+
+    scored: List[Dict[str, Any]] = []
+    for action in actions or []:
+        label = _clean_text(action.get("text") or action.get("aria") or action.get("title") or "")
+        hay = _norm(" ".join([
+            label,
+            str(action.get("role") or ""),
+            str(action.get("tag") or ""),
+            str(action.get("cls") or ""),
+            str(action.get("id") or ""),
+        ]))
+        if not label or len(label) > 160:
+            continue
+        score = 0
+        for idx, key in enumerate(keywords):
+            if key in hay:
+                score += 100 - idx
+        if not score:
+            continue
+        clean = {
+            "text": label[:120],
+            "tag": str(action.get("tag") or "")[:30],
+            "role": str(action.get("role") or "")[:40],
+            "id": str(action.get("id") or "")[:80],
+            "cls": str(action.get("cls") or "")[:120],
+            "x": action.get("x"),
+            "y": action.get("y"),
+        }
+        scored.append({"score": score, **clean})
+    scored.sort(key=lambda item: int(item.get("score") or 0), reverse=True)
+    return {"text_snippet": snippet, "actions": scored[:20]}
+
+
 def _merge_recibos_context(item: Dict[str, Any], page_text: str) -> Dict[str, Any]:
     """Completa dados exibidos no topo da LISTAGEM DE RECIBOS."""
     merged = dict(item or {})
@@ -595,6 +650,78 @@ async def _click_text_candidate(page, candidates: Iterable[str], *, timeout_ms: 
         except Exception:  # noqa: BLE001
             continue
     return False
+
+
+async def _collect_visible_action_candidates(page) -> List[Dict[str, Any]]:
+    out: List[Dict[str, Any]] = []
+    for frame in getattr(page, "frames", [page]):
+        try:
+            rows = await frame.evaluate(
+                """() => {
+                  const clean = t => (t || '').replace(/\\s+/g, ' ').trim();
+                  const vis = el => !!(el && (el.offsetParent || el.getClientRects().length));
+                  const selectors = [
+                    'button', 'a', '[role=button]', '[role=menuitem]', '[onclick]', '[tabindex]',
+                    'li', 'td', 'span', 'div', 'nx-link', 'nx-action', 'nx-button', 'nx-menu-item',
+                    '[class*=menu]', '[class*=nav]', '[class*=item]', '[class*=button]', '[class*=btn]'
+                  ].join(',');
+                  return [...document.querySelectorAll(selectors)]
+                    .filter(el => vis(el))
+                    .map(el => {
+                      const rect = el.getBoundingClientRect();
+                      const style = getComputedStyle(el);
+                      const clickable = el.closest('button,a,[role=button],[role=menuitem],[onclick],[tabindex],li,nx-link,nx-action,nx-button,nx-menu-item,[class*=menu],[class*=nav],[class*=item],[class*=button],[class*=btn]');
+                      return {
+                        text: clean(el.innerText || el.textContent || el.getAttribute('aria-label') || el.title || el.value || ''),
+                        tag: (el.tagName || '').toLowerCase(),
+                        role: el.getAttribute('role') || '',
+                        id: el.id || '',
+                        cls: String(el.className || '').slice(0, 180),
+                        aria: el.getAttribute('aria-label') || '',
+                        title: el.title || '',
+                        href: el.href || '',
+                        x: Math.round(rect.x),
+                        y: Math.round(rect.y),
+                        w: Math.round(rect.width),
+                        h: Math.round(rect.height),
+                        cursor: style.cursor || '',
+                        clickable_tag: clickable ? (clickable.tagName || '').toLowerCase() : '',
+                        clickable_cls: clickable ? String(clickable.className || '').slice(0, 120) : ''
+                      };
+                    })
+                    .filter(a => a.text && a.text.length <= 180)
+                    .slice(0, 450);
+                }"""
+            )
+            if isinstance(rows, list):
+                out.extend([row for row in rows if isinstance(row, dict)])
+        except Exception:  # noqa: BLE001
+            continue
+    return out
+
+
+async def _record_download_debug(page, item: Dict[str, Any], evidence: Dict[str, Any], stage: str) -> None:
+    try:
+        page_text = await _all_body_text(page)
+        actions = await _collect_visible_action_candidates(page)
+        summary = _summarize_download_debug(page_text, actions)
+        try:
+            url = page.url
+        except Exception:  # noqa: BLE001
+            url = ""
+        summary.update({
+            "stage": stage,
+            "url": url,
+            "item": {
+                "recibo": item.get("recibo"),
+                "parcela": item.get("parcela"),
+                "apolice_susep": item.get("apolice_susep"),
+                "vencimento": item.get("vencimento"),
+            },
+        })
+        evidence.setdefault("download_debug", []).append(summary)
+    except Exception as e:  # noqa: BLE001
+        evidence.setdefault("download_notes", []).append(f"debug download falhou: {type(e).__name__}")
 
 
 async def _click_row_candidate(page, candidates: Iterable[str], *, timeout_ms: int = 1200) -> bool:
@@ -1039,6 +1166,7 @@ async def _open_receipts_for_item(page, item: Dict[str, Any], evidence: Dict[str
         await _click_text_candidate(page, ("Lista Recibos", "Lista de Recibos", "Recibos", "Pendentes"))
         if await _wait_until_recibos_list(page, timeout_ms=9000):
             return True
+    await _record_download_debug(page, item, evidence, "lista_recibos_not_opened")
     evidence.setdefault("download_notes", []).append("nao abriu listagem de recibos para item")
     return False
 
