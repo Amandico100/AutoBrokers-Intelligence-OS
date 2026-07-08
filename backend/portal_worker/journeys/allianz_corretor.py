@@ -485,11 +485,26 @@ async def _extract_visible_rows_from_context(context) -> List[Dict[str, Any]]:
         return []
 
 
+def _attach_expanded_details(rows: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
+    for idx, row in enumerate(rows):
+        text = _clean_text((row or {}).get("detail") or (row or {}).get("text") or "")
+        if not re.search(r"Segurado\s*:|CPF/?CNPJ\s*:", text, flags=re.IGNORECASE):
+            continue
+        for j in range(idx - 1, max(-1, idx - 12), -1):
+            prev = rows[j]
+            prev_cells = [_clean_text(c) for c in (prev.get("cells") or [])]
+            prev_blob = _clean_text(prev.get("detail") or " ".join(prev_cells))
+            if re.search(r"\b\d{8,10}\b", prev_blob) and not re.search(r"CPF/?CNPJ\s*:", prev_blob, flags=re.IGNORECASE):
+                prev["detail"] = _clean_text(f"{prev_blob} {text}")[:1200]
+                break
+    return rows
+
+
 async def _extract_visible_rows(page) -> List[Dict[str, Any]]:
     rows: List[Dict[str, Any]] = []
     for frame in getattr(page, "frames", [page]):
         rows.extend(await _extract_visible_rows_from_context(frame))
-    return rows
+    return _attach_expanded_details(rows)
 
 
 async def _click_text_candidate(page, candidates: Iterable[str], *, timeout_ms: int = 1200) -> bool:
