@@ -202,6 +202,48 @@ def extract_recibos_from_rows(rows: List[Dict[str, Any]]) -> List[Dict[str, Any]
     return pending
 
 
+def _looks_like_recibos_list(text: str) -> bool:
+    body = _norm(text)
+    if "listagem de recibos" in body:
+        return True
+    return "recibo" in body and "parcela" in body and "status" in body and "pendente" in body
+
+
+def _looks_like_ficha_gestao(text: str) -> bool:
+    body = _norm(text)
+    if "ficha de gestao" in body:
+        return True
+    if "carta inadimplencia" in body and ("tipo modelo" in body or "description" in body):
+        return True
+    return "ep - p- apolice" in body and "tipo modelo" in body and "description" in body
+
+
+def _receipt_click_terms(item: Dict[str, Any]) -> List[str]:
+    terms: List[str] = []
+    for value in (item.get("recibo"), item.get("parcela"), item.get("vencimento")):
+        text = _clean_text(value)
+        if text and text not in terms:
+            terms.append(text)
+    if "Pendente" not in terms:
+        terms.append("Pendente")
+    return terms
+
+
+def _merge_recibos_context(item: Dict[str, Any], page_text: str) -> Dict[str, Any]:
+    """Completa dados exibidos no topo da LISTAGEM DE RECIBOS."""
+    merged = dict(item or {})
+    ramo = _slice_between(page_text, "Ramo", ("Nome", "Incluido Historico", "Incluido", "Tomador", "RECIBOS"))
+    nome = _slice_between(page_text, "Nome", ("Incluido Historico", "Incluido", "Tomador", "RECIBOS"))
+    apolice = _digits(_slice_between(page_text, "Apolice SUSEP", ("Endosso", "Ramo", "Nome")))
+    if ramo and not _clean_text(merged.get("item_segurado")):
+        merged["item_segurado"] = ramo
+    if nome and not _clean_text(merged.get("cliente_nome")):
+        merged["cliente_nome"] = nome
+    if apolice and not _clean_text(merged.get("apolice_susep")):
+        merged["apolice_susep"] = apolice
+    return merged
+
+
 _FAIL = (
     "senha invalida",
     "usuario invalido",
@@ -555,6 +597,155 @@ async def _click_text_candidate(page, candidates: Iterable[str], *, timeout_ms: 
     return False
 
 
+async def _click_row_candidate(page, candidates: Iterable[str], *, timeout_ms: int = 1200) -> bool:
+    cand = [str(c or "") for c in candidates if str(c or "").strip()]
+    if not cand:
+        return False
+    for frame in getattr(page, "frames", [page]):
+        try:
+            clicked = await frame.evaluate(
+                """(candidates) => {
+                  const norm = s => (s || '').normalize('NFKD').replace(/[\\u0300-\\u036f]/g, '')
+                    .toLowerCase().replace(/\\s+/g, ' ').trim();
+                  const digits = s => String(s || '').replace(/\\D+/g, '');
+                  const vis = el => !!(el && (el.offsetParent || el.getClientRects().length));
+                  const rows = [...document.querySelectorAll('tr,[role=row],.datatable-body-row,.datatable-row-wrapper,li')]
+                    .filter(vis);
+                  let best = null, bestScore = 0;
+                  for (const row of rows) {
+                    const raw = row.innerText || row.textContent || '';
+                    const text = norm(raw);
+                    if (!text || text.length > 900) continue;
+                    if (/apolice susep|status recibo|tipo modelo|description/.test(text)) continue;
+                    let score = 0;
+                    for (const c of candidates) {
+                      const want = norm(c);
+                      const wantDigits = digits(c);
+                      if (!want) continue;
+                      if (wantDigits && wantDigits.length >= 6 && digits(raw).includes(wantDigits)) score += 1000;
+                      else if (text.includes(want)) score += Math.max(20, want.length);
+                    }
+                    if (score > bestScore) { best = row; bestScore = score; }
+                  }
+                  if (!best || bestScore <= 0) return false;
+                  const target = best.querySelector('button,a,[role=button],[onclick],[tabindex],img') || best;
+                  target.click();
+                  return true;
+                }""",
+                cand,
+            )
+            if clicked:
+                await page.wait_for_timeout(timeout_ms)
+                return True
+        except Exception:  # noqa: BLE001
+            continue
+    return False
+
+
+async def _wait_until_recibos_list(page, timeout_ms: int = 12000) -> bool:
+    deadline = timeout_ms // 600
+    for _ in range(max(1, deadline)):
+        if _looks_like_recibos_list(await _all_body_text(page)):
+            return True
+        await page.wait_for_timeout(600)
+    return False
+
+
+async def _wait_until_ficha_gestao(page, timeout_ms: int = 12000) -> bool:
+    deadline = timeout_ms // 600
+    for _ in range(max(1, deadline)):
+        if _looks_like_ficha_gestao(await _all_body_text(page)):
+            return True
+        await page.wait_for_timeout(600)
+    return False
+
+
+async def _click_text_maybe_popup(page, candidates: Iterable[str], *, timeout_ms: int = 8000):
+    clicked = False
+    try:
+        async with page.expect_popup(timeout=timeout_ms) as popup_info:
+            clicked = await _click_text_candidate(page, candidates, timeout_ms=800)
+        popup = await popup_info.value
+        try:
+            await popup.wait_for_load_state("domcontentloaded", timeout=timeout_ms)
+        except Exception:  # noqa: BLE001
+            pass
+        await popup.wait_for_timeout(1200)
+        return popup
+    except Exception:  # noqa: BLE001
+        if clicked:
+            await page.wait_for_timeout(1500)
+            return page
+    if await _click_text_candidate(page, candidates, timeout_ms=1500):
+        return page
+    return None
+
+
+async def _scroll_pdf_regions(page) -> None:
+    for frame in getattr(page, "frames", [page]):
+        try:
+            await frame.evaluate(
+                """() => {
+                  window.scrollTo(0, document.body.scrollHeight);
+                  const els = [...document.querySelectorAll('*')];
+                  for (const el of els) {
+                    const style = getComputedStyle(el);
+                    const scrollable = /(auto|scroll)/.test(style.overflowY || '') && el.scrollHeight > el.clientHeight + 20;
+                    if (scrollable) el.scrollTop = el.scrollHeight;
+                  }
+                }"""
+            )
+        except Exception:  # noqa: BLE001
+            continue
+    await page.wait_for_timeout(700)
+
+
+async def _click_pdf_icon_candidate(page) -> bool:
+    await _scroll_pdf_regions(page)
+    for frame in getattr(page, "frames", [page]):
+        try:
+            clicked = await frame.evaluate(
+                """() => {
+                  const vis = el => !!(el && (el.offsetParent || el.getClientRects().length));
+                  const hay = el => [
+                    el.innerText, el.textContent, el.getAttribute('aria-label'), el.title,
+                    el.alt, el.src, el.href, el.className, el.id
+                  ].join(' ');
+                  const selectors = [
+                    'a[download]', 'a[href*=".pdf" i]', 'a[href*="pdf" i]',
+                    'img[src*="pdf" i]', 'img[alt*="pdf" i]', 'img[title*="pdf" i]',
+                    'button', '[role=button]', '[onclick]', '[tabindex]',
+                    '[class*="pdf" i]', '[id*="pdf" i]'
+                  ].join(',');
+                  const els = [...document.querySelectorAll(selectors)].filter(vis);
+                  const scored = els.map(el => {
+                    const text = hay(el);
+                    const r = el.getBoundingClientRect();
+                    let score = 0;
+                    if (/\\.pdf|pdf|adobe|acrobat/i.test(text)) score += 100;
+                    if (/download|baixar|salvar|detalhe/i.test(text)) score += 30;
+                    if ((el.tagName || '').toLowerCase() === 'img') score += 20;
+                    if (r.left > window.innerWidth * 0.42) score += 80;
+                    if (r.top > window.innerHeight * 0.25) score += 25;
+                    if (r.width >= 20 && r.height >= 20) score += 10;
+                    return {el, score};
+                  }).filter(x => x.score > 0).sort((a, b) => b.score - a.score);
+                  if (!scored.length) return false;
+                  const best = scored[0].el;
+                  const target = best.closest('a,button,[role=button],[onclick],[tabindex]') || best;
+                  target.scrollIntoView({block: 'center', inline: 'center'});
+                  target.click();
+                  return true;
+                }"""
+            )
+            if clicked:
+                await page.wait_for_timeout(800)
+                return True
+        except Exception:  # noqa: BLE001
+            continue
+    return False
+
+
 async def _fill_global_search(page, value: str) -> bool:
     query = _clean_text(value)
     if not query:
@@ -791,7 +982,9 @@ async def _download_current_pdf(page, item: Dict[str, Any], params: Dict[str, An
     )
     try:
         async with page.expect_download(timeout=15000) as dl:
-            clicked = await _click_text_candidate(page, buttons, timeout_ms=800)
+            clicked = await _click_pdf_icon_candidate(page)
+            if not clicked:
+                clicked = await _click_text_candidate(page, buttons, timeout_ms=800)
             if not clicked:
                 clicked = await page.evaluate(
                     """() => {
@@ -821,7 +1014,16 @@ async def _download_current_pdf(page, item: Dict[str, Any], params: Dict[str, An
 
 
 async def _open_receipts_for_item(page, item: Dict[str, Any], evidence: Dict[str, Any]) -> bool:
-    """Best-effort do fluxo dos prints: busca cliente/recibo -> operar -> lista recibos."""
+    """Fluxo Allianz: linha do inadimplente -> Lista Recibos, com busca como fallback."""
+    if _looks_like_recibos_list(await _all_body_text(page)):
+        return True
+
+    await _click_row_candidate(page, _receipt_click_terms(item), timeout_ms=900)
+    if await _click_text_candidate(page, ("Lista Recibos", "Lista de Recibos"), timeout_ms=2200):
+        if await _wait_until_recibos_list(page, timeout_ms=9000):
+            evidence.setdefault("download_notes", []).append("lista recibos aberta a partir da linha do inadimplente")
+            return True
+
     queries = [
         item.get("cpf_cnpj"),
         item.get("cliente_nome"),
@@ -835,10 +1037,32 @@ async def _open_receipts_for_item(page, item: Dict[str, Any], evidence: Dict[str
         await page.wait_for_timeout(1500)
         await _click_text_candidate(page, ("Operar", "Lista Recibos", "Lista de Recibos", "HistÃ³rico da ApÃ³lice"))
         await _click_text_candidate(page, ("Lista Recibos", "Lista de Recibos", "Recibos", "Pendentes"))
-        text = _norm(await _body_text(page))
-        if "listagem de recibos" in text or ("recibos" in text and "pendente" in text):
+        if await _wait_until_recibos_list(page, timeout_ms=9000):
             return True
     evidence.setdefault("download_notes", []).append("nao abriu listagem de recibos para item")
+    return False
+
+
+async def _open_ficha_gestao_for_item(page, item: Dict[str, Any], evidence: Dict[str, Any]):
+    if _looks_like_ficha_gestao(await _all_body_text(page)):
+        return page
+    await _click_row_candidate(page, _receipt_click_terms(item), timeout_ms=900)
+    target = await _click_text_maybe_popup(page, ("Ficha Gestao", "Ficha de Gestao"), timeout_ms=9000)
+    if target and await _wait_until_ficha_gestao(target, timeout_ms=12000):
+        evidence.setdefault("download_notes", []).append("ficha gestao aberta")
+        return target
+    evidence.setdefault("download_notes", []).append("ficha gestao nao abriu")
+    return None
+
+
+async def _select_carta_inadimplencia(page, evidence: Dict[str, Any]) -> bool:
+    if await _click_row_candidate(page, ("Carta Inadimplencia - Aviso", "Carta Inadimplencia"), timeout_ms=1600):
+        evidence.setdefault("download_notes", []).append("carta inadimplencia selecionada por linha")
+        return True
+    if await _click_text_candidate(page, ("Carta Inadimplencia - Aviso", "Carta Inadimplencia"), timeout_ms=1600):
+        evidence.setdefault("download_notes", []).append("carta inadimplencia selecionada por texto")
+        return True
+    evidence.setdefault("download_notes", []).append("carta inadimplencia nao encontrada")
     return False
 
 
@@ -856,18 +1080,26 @@ async def _download_boletos(page, items: List[Dict[str, Any]], params: Dict[str,
                 await page.wait_for_timeout(1500)
             opened = await _open_receipts_for_item(page, item, evidence)
             if opened:
+                item = _merge_recibos_context(item, await _all_body_text(page))
                 rows = await _extract_visible_rows(page)
                 pendentes = extract_recibos_from_rows(rows)
                 result["recibos_pendentes"] = pendentes[:5]
-                wanted = str(item.get("recibo") or "")
-                if wanted:
-                    await _click_text_candidate(page, (wanted,))
+                await _click_row_candidate(page, _receipt_click_terms(item), timeout_ms=1000)
+                ficha = await _open_ficha_gestao_for_item(page, item, evidence)
+                if ficha:
+                    if await _select_carta_inadimplencia(ficha, evidence):
+                        await ficha.wait_for_timeout(1200)
+                    download = await _download_current_pdf(ficha, item, params)
+                    result.update(download)
+                    if ficha is not page:
+                        try:
+                            await ficha.close()
+                        except Exception:  # noqa: BLE001
+                            pass
                 else:
-                    await _click_text_candidate(page, ("Pendente",))
-                await _click_text_candidate(page, ("Gestor CobranÃ§a", "Gestor Cobranca", "Pendentes"))
-                await page.wait_for_timeout(2500)
-                download = await _download_current_pdf(page, item, params)
-                result.update(download)
+                    result["reason"] = "ficha gestao nao encontrada"
+                out.append(result)
+                continue
             else:
                 result["reason"] = "listagem de recibos nao encontrada"
         except Exception as e:  # noqa: BLE001
