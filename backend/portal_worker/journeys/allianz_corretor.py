@@ -709,7 +709,7 @@ async def _expand_inadimplente_details(page, max_items: int = 10) -> int:
         except Exception:  # noqa: BLE001
             continue
     if expanded:
-        await page.wait_for_timeout(1200)
+        await page.wait_for_timeout(3500)
     return expanded
 
 
