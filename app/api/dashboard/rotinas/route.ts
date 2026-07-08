@@ -4,6 +4,37 @@ import { resolveSessionCompany, getSupabaseAdmin } from '@/lib/vault/server';
 
 export const dynamic = 'force-dynamic';
 
+const BILLING_KIND = 'billing_collection';
+
+function asObject(value: unknown): Record<string, unknown> {
+  return value && typeof value === 'object' && !Array.isArray(value) ? (value as Record<string, unknown>) : {};
+}
+
+function normalizeRoutineConfig(value: unknown): Record<string, unknown> {
+  const cfg = asObject(value);
+  if (String(cfg.kind || '') !== BILLING_KIND) return cfg;
+  const portalKeys = Array.isArray(cfg.portal_keys)
+    ? cfg.portal_keys.map((v) => String(v || '').trim()).filter(Boolean)
+    : ['allianz_corretor'];
+  const sendMode = ['test', 'approval', 'live', 'none'].includes(String(cfg.send_mode || ''))
+    ? String(cfg.send_mode)
+    : 'test';
+  const maxBoletos = Number.isInteger(cfg.max_boletos_por_execucao)
+    ? Math.max(1, Math.min(50, Number(cfg.max_boletos_por_execucao)))
+    : 10;
+  return {
+    ...cfg,
+    kind: BILLING_KIND,
+    portal_keys: portalKeys.length ? portalKeys : ['allianz_corretor'],
+    approval_required: cfg.approval_required !== false,
+    send_mode: sendMode,
+    test_number: String(cfg.test_number || '').replace(/\D/g, ''),
+    max_boletos_por_execucao: maxBoletos,
+    management_provider: String(cfg.management_provider || 'infocap').trim() || 'infocap',
+    message_template: String(cfg.message_template || '').trim(),
+  };
+}
+
 /**
  * Rotinas agendadas (F2) — escopo da corretora logada.
  * GET  → { routines: [...], runs: [...] }  (últimas 30 execuções)
@@ -17,7 +48,7 @@ export async function GET(_req: NextRequest) {
 
   const { data: routines, error } = await supabase
     .from('routines')
-    .select('id, name, instructions, schedule, delivery, knowledge, is_active, last_run_at, next_run_at, consecutive_failures, created_at')
+    .select('id, name, instructions, schedule, delivery, knowledge, config, is_active, last_run_at, next_run_at, consecutive_failures, created_at')
     .eq('company_id', ctx.companyId)
     .order('created_at', { ascending: false });
   if (error) {
@@ -68,6 +99,7 @@ export async function POST(req: NextRequest) {
     const knowledge = typeof body.knowledge === 'string' ? body.knowledge.trim() : '';
     const schedule = (body.schedule || {}) as { kind?: string; time?: string; minutes?: number; weekdays?: number[] };
     const delivery = (body.delivery || {}) as { channel?: string; number?: string };
+    const config = normalizeRoutineConfig(body.config);
 
     const kind = String(schedule.kind || '').toLowerCase();
     if (kind === 'daily') {
@@ -85,6 +117,10 @@ export async function POST(req: NextRequest) {
       const digits = String(delivery.number || '').replace(/\D/g, '');
       if (digits.length < 10) return NextResponse.json({ error: 'Número WhatsApp inválido (DDI+DDD+número)' }, { status: 400 });
       delivery.number = digits;
+    }
+    if (config.kind === BILLING_KIND) {
+      const portals = Array.isArray(config.portal_keys) ? config.portal_keys : [];
+      if (!portals.length) return NextResponse.json({ error: 'Selecione ao menos um portal para a cobranca.' }, { status: 400 });
     }
 
     // Próxima execução: agora + intervalo, ou hoje/amanhã no horário (aprox.
@@ -107,7 +143,7 @@ export async function POST(req: NextRequest) {
       const { error } = await supabase.from('routines').insert({
         company_id: ctx.companyId,
         created_by: ctx.userId,
-        name, instructions, schedule, delivery,
+        name, instructions, schedule, delivery, config,
         timezone: 'America/Sao_Paulo',
         is_active: true,
         next_run_at: nextRun.toISOString(),
@@ -117,7 +153,7 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ ok: true });
     }
     // update
-    const patch: Record<string, unknown> = { schedule, delivery, next_run_at: nextRun.toISOString() };
+    const patch: Record<string, unknown> = { schedule, delivery, config, next_run_at: nextRun.toISOString() };
     if (name) patch.name = name;
     if (instructions) patch.instructions = instructions;
     if (knowledge) patch.knowledge = knowledge;
