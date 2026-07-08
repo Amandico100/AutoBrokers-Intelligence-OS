@@ -6,13 +6,13 @@
 // portais (ex.: cobrança de boletos) quando o founder ligar o gate.
 
 import { useCallback, useEffect, useState } from 'react';
-import { Loader2, ExternalLink, Trash2, Check, Lock, AlertTriangle, RefreshCw } from 'lucide-react';
+import { Archive, Loader2, ExternalLink, Trash2, Check, Lock, AlertTriangle, RefreshCw } from 'lucide-react';
 
 import { DetailHeader } from '@/components/patterns/DetailHeader';
 import { icons } from '@/lib/icons';
 
 type Portal = {
-  id: string; key: string; name: string; login_url: string; category: string; insurer_key: string | null;
+  id: string; key: string; name: string; login_url: string; category: string; insurer_key: string | null; cred_kind?: string | null;
 };
 type Cred = {
   portal_key: string; username: string | null; has_password: boolean; health: string; updated_at: string | null;
@@ -42,7 +42,7 @@ export default function PortaisPage() {
 
   const loadHitlJobs = useCallback(async () => {
     try {
-      const res = await fetch('/api/dashboard/portal-jobs?status=needs_human', { cache: 'no-store', credentials: 'same-origin' });
+      const res = await fetch('/api/dashboard/portal-jobs?status=needs_human&limit=8', { cache: 'no-store', credentials: 'same-origin' });
       const j = await res.json().catch(() => ({}));
       setHitlJobs(res.ok ? (j.jobs || []) : []);
     } catch {
@@ -110,6 +110,20 @@ export default function PortaisPage() {
     await loadHitlJobs();
   };
 
+  const archiveJob = async (job: PortalJob) => {
+    setBusy(job.id); setNotice('');
+    const res = await fetch('/api/dashboard/portal-jobs', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      credentials: 'same-origin',
+      body: JSON.stringify({ action: 'archive', job_id: job.id }),
+    });
+    const j = await res.json().catch(() => ({}));
+    setBusy('');
+    if (!res.ok) { setNotice(j.error || 'Nao consegui arquivar a pendencia.'); return; }
+    await loadHitlJobs();
+  };
+
   return (
     <div className="h-full overflow-y-auto">
       <div className="mx-auto w-full max-w-3xl space-y-6 px-4 py-10 sm:px-6">
@@ -150,6 +164,14 @@ export default function PortaisPage() {
                       )}
                     </div>
                     <div className="flex shrink-0 gap-2">
+                      <button
+                        onClick={() => archiveJob(job)}
+                        disabled={busy === job.id}
+                        className="inline-flex items-center justify-center gap-1 rounded-md border border-border bg-surface px-3 py-2 text-xs font-medium text-foreground hover:bg-surface-2 disabled:opacity-50"
+                      >
+                        {busy === job.id ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Archive className="h-3.5 w-3.5" />}
+                        Arquivar
+                      </button>
                       {portal?.login_url && (
                         <a
                           href={portal.login_url}
@@ -193,7 +215,8 @@ export default function PortaisPage() {
           <div className="space-y-3">
             {portals.map((p) => {
               const cred = creds[p.key];
-              const connected = !!cred?.has_password;
+              const isPublic = String(p.cred_kind || '') === 'public';
+              const connected = isPublic || !!cred?.has_password;
               const form = forms[p.key] || { username: '', password: '' };
               return (
                 <div key={p.key} className="rounded-xl border border-border bg-surface p-4">
@@ -204,7 +227,11 @@ export default function PortaisPage() {
                         <span className="rounded-full border border-border bg-surface-2 px-2 py-0.5 text-[10px] text-muted-foreground">
                           {CAT_LABEL[p.category] || p.category}
                         </span>
-                        {connected ? (
+                        {isPublic ? (
+                          <span className="inline-flex items-center gap-1 rounded-full border border-emerald-500/30 bg-emerald-500/10 px-2 py-0.5 text-[10px] font-medium text-emerald-600">
+                            <Check className="h-3 w-3" /> Disponivel
+                          </span>
+                        ) : connected ? (
                           <span className="inline-flex items-center gap-1 rounded-full border border-emerald-500/30 bg-emerald-500/10 px-2 py-0.5 text-[10px] font-medium text-emerald-600">
                             <Check className="h-3 w-3" /> Conectado
                           </span>
@@ -223,7 +250,7 @@ export default function PortaisPage() {
                         {p.login_url} <ExternalLink className="h-3 w-3" />
                       </a>
                     </div>
-                    {connected && (
+                    {connected && !isPublic && (
                       <button
                         onClick={() => remove(p)}
                         disabled={busy === p.key}
@@ -235,6 +262,11 @@ export default function PortaisPage() {
                     )}
                   </div>
 
+                  {isPublic ? (
+                    <div className="mt-3 rounded-md border border-border bg-surface-2 px-3 py-2 text-xs text-muted-foreground">
+                      Portal publico: nao precisa de login e senha. Os agentes podem usar este portal quando a rotina/atendimento precisar.
+                    </div>
+                  ) : (
                   <div className="mt-3 flex flex-col gap-2 sm:flex-row sm:items-end">
                     <div className="flex-1">
                       <label className="mb-1 block text-[11px] font-medium text-muted-foreground">Login</label>
@@ -266,6 +298,7 @@ export default function PortaisPage() {
                       {connected ? 'Atualizar' : 'Salvar'}
                     </button>
                   </div>
+                  )}
                 </div>
               );
             })}

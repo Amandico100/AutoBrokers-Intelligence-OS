@@ -58,8 +58,8 @@ export async function POST(req: NextRequest) {
   const body = await req.json().catch(() => ({}));
   const action = String(body.action || '');
   const jobId = String(body.job_id || '');
-  if (action !== 'retry' || !jobId) {
-    return NextResponse.json({ error: 'action=retry e job_id sao obrigatorios' }, { status: 400 });
+  if (!['retry', 'archive'].includes(action) || !jobId) {
+    return NextResponse.json({ error: 'action=retry|archive e job_id sao obrigatorios' }, { status: 400 });
   }
 
   const { data: row, error: readError } = await supabase
@@ -70,6 +70,30 @@ export async function POST(req: NextRequest) {
     .maybeSingle();
   if (readError) return NextResponse.json({ error: readError.message }, { status: 500 });
   if (!row) return NextResponse.json({ error: 'job_not_found' }, { status: 404 });
+
+  if (action === 'archive') {
+    if (row.status !== 'needs_human') {
+      return NextResponse.json({ error: 'job_not_archivable' }, { status: 409 });
+    }
+    const evidence = row.evidence && typeof row.evidence === 'object' && !Array.isArray(row.evidence) ? row.evidence : {};
+    const { error: archiveError } = await supabase
+      .from('portal_jobs')
+      .update({
+        status: 'archived',
+        finished_at: new Date().toISOString(),
+        evidence: {
+          ...evidence,
+          archived_by_dashboard: true,
+          archived_at: new Date().toISOString(),
+        },
+      })
+      .eq('id', jobId)
+      .eq('company_id', ctx.companyId)
+      .eq('status', 'needs_human');
+    if (archiveError) return NextResponse.json({ error: archiveError.message }, { status: 500 });
+    return NextResponse.json({ ok: true });
+  }
+
   if (!isRetryableHitlJob(row, ctx.companyId)) {
     return NextResponse.json({ error: 'job_not_retryable' }, { status: 409 });
   }
