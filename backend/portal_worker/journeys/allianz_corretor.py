@@ -685,27 +685,14 @@ async def _expand_inadimplente_details(page, max_items: int = 10) -> int:
     expanded = 0
     for frame in getattr(page, "frames", [page]):
         try:
-            count = await frame.evaluate(
-                """async (maxItems) => {
-                  const sleep = ms => new Promise(r => setTimeout(r, ms));
-                  const vis = el => !!(el && (el.offsetParent || el.getClientRects().length));
-                  const els = [...document.querySelectorAll('[id*=ExtdInfo], img[alt*="extendida" i], img[title*="extendida" i]')]
-                    .filter(vis);
-                  let n = 0;
-                  for (const el of els) {
-                    if (n >= maxItems) break;
-                    const row = el.closest('tr');
-                    const next = row && row.nextElementSibling ? (row.nextElementSibling.innerText || row.nextElementSibling.textContent || '') : '';
-                    if (/Segurado\\s*:|CPF\\/?CNPJ\\s*:/i.test(next)) continue;
-                    el.click();
-                    n += 1;
-                    await sleep(250);
-                  }
-                  return n;
-                }""",
-                max_items,
-            )
-            expanded += int(count or 0)
+            loc = frame.locator('img[id^="img_tdExtdInfo_"], img[alt*="extendida" i], img[title*="extendida" i]')
+            count = min(await loc.count(), max_items - expanded)
+            for i in range(max(0, count)):
+                await loc.nth(i).click(timeout=2500)
+                expanded += 1
+                await page.wait_for_timeout(300)
+            if expanded >= max_items:
+                break
         except Exception:  # noqa: BLE001
             continue
     if expanded:
