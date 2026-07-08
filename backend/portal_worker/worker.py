@@ -5,6 +5,7 @@ em standby o worker sobe e responde /health mas NÃO executa job nenhum."""
 from __future__ import annotations
 
 import asyncio
+import base64
 import json
 import logging
 import os
@@ -162,6 +163,45 @@ async def _restore_session_storage(context, session_storage: list) -> bool:
     return restored
 
 
+def _hitl_kind(result, evidence: Dict[str, Any]) -> str:
+    text = " ".join([
+        str(getattr(result, "message", "") or ""),
+        json.dumps(getattr(result, "captured", {}) or {}, ensure_ascii=True),
+        json.dumps(evidence or {}, ensure_ascii=True),
+    ]).lower()
+    if any(token in text for token in ("captcha", "2fa", "mfa", "otp", "codigo de verificacao", "duas etapas")):
+        return "captcha_2fa"
+    return "review"
+
+
+def _augment_hitl_evidence(result, evidence: Dict[str, Any]) -> Dict[str, Any]:
+    message = str(getattr(result, "message", "") or "").strip()
+    captured = getattr(result, "captured", {}) or {}
+    kind = _hitl_kind(result, evidence)
+    return {
+        **(evidence or {}),
+        **captured,
+        "message": message,
+        "hitl": {
+            "required": True,
+            "kind": kind,
+            "resume_mode": "requeue_after_human",
+            "reason": message or "portal pediu revisao humana",
+        },
+    }
+
+
+async def _capture_hitl_screenshot(page) -> str | None:
+    try:
+        raw = await page.screenshot(type="jpeg", quality=60, full_page=False)
+        if not raw:
+            return None
+        return "data:image/jpeg;base64," + base64.b64encode(raw).decode("ascii")
+    except Exception as e:  # noqa: BLE001
+        logger.warning("[PORTAL] falha ao capturar screenshot HITL: %s", type(e).__name__)
+        return None
+
+
 async def _run_job(supa, job: Dict[str, Any]) -> None:
     from portal_worker.journeys import get_journey
 
@@ -227,6 +267,12 @@ async def _run_job(supa, job: Dict[str, Any]) -> None:
                 evidence["session_saved"] = _save_session_state(
                     supa, job, account_row, state, session_storage=session_storage
                 )
+            screenshots = list(result.screenshots or [])
+            if result.status == "needs_human":
+                hitl_shot = await _capture_hitl_screenshot(page)
+                if hitl_shot:
+                    screenshots.insert(0, hitl_shot)
+                evidence = _augment_hitl_evidence(result, evidence)
             await browser.close()
     except Exception as e:  # noqa: BLE001
         supa.table("portal_jobs").update({
@@ -239,8 +285,8 @@ async def _run_job(supa, job: Dict[str, Any]) -> None:
 
     supa.table("portal_jobs").update({
         "status": result.status,
-        "evidence": {**evidence, **(result.captured or {}), "message": result.message},
-        "screenshots": result.screenshots or [],
+        "evidence": evidence if result.status == "needs_human" else {**evidence, **(result.captured or {}), "message": result.message},
+        "screenshots": screenshots,
         "finished_at": _now(),
     }).eq("id", job_id).execute()
     logger.info(f"[PORTAL] job {job_id} -> {result.status}")
