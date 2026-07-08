@@ -40,6 +40,7 @@ def run():
         _looks_like_recibos_list,
         _merge_recibos_context,
         _receipt_click_terms,
+        _summarize_download_debug,
         build_boleto_storage_path,
         extract_inadimplentes_from_rows,
         extract_recibos_from_rows,
@@ -160,6 +161,16 @@ def run():
     )
     check("contexto da listagem preenche ramo como item segurado", merged.get("item_segurado") == "2013-Residencia Digital", merged)
     check("contexto da listagem preenche nome", merged.get("cliente_nome") == "DEBORA LUZIA ROSA", merged)
+    debug = _summarize_download_debug(
+        "Resultado por Parcela ... Operar Lista Recibos Ficha Gestao Historico da Apolice ...",
+        [
+            {"text": "Nova Cotacao", "tag": "button", "x": 100, "y": 20},
+            {"text": "Lista Recibos", "tag": "span", "x": 800, "y": 690},
+            {"text": "Ficha Gestao", "tag": "span", "x": 700, "y": 690},
+        ],
+    )
+    check("debug de download preserva snippet relevante", "Lista Recibos" in debug.get("text_snippet", ""), debug)
+    check("debug de download prioriza acoes relevantes", debug.get("actions", [{}])[0].get("text") == "Lista Recibos", debug)
 
     path = build_boleto_storage_path(
         company_id="company-123",
