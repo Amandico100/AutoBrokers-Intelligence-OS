@@ -34,6 +34,7 @@ def run():
 
     from portal_worker.journeys import get_journey
     from portal_worker.journeys.allianz_corretor import (
+        _attach_expanded_details,
         _looks_like_inadimplentes_result,
         build_boleto_storage_path,
         extract_inadimplentes_from_rows,
@@ -100,6 +101,12 @@ def run():
     check("formato real com expansor extrai parcela", shifted.get("parcela") == "3/10", shifted)
     check("formato real com expansor extrai CPF", shifted.get("cpf_cnpj") == "03184509923", shifted)
     check("formato real com expansor extrai vcto", shifted.get("vencimento") == "01/07/2026", shifted)
+    attached_rows = _attach_expanded_details([
+        {"cells": ["317418783", "3/10", "5177202623140183705", "0", "000000", "20/08/2026", "20/08/2026", "01/07/2026", "96,95", "0,03"], "detail": "317418783 3/10 5177202623140183705"},
+        {"cells": ["Segurado: MONICA BONELLI PAULO PRAZERES", "CPF/CNPJ: 03184509923"], "detail": "Segurado: MONICA BONELLI PAULO PRAZERES CPF/CNPJ: 03184509923 Modalidade: Debito em Conta"},
+    ])
+    attached = extract_inadimplentes_from_rows(attached_rows)[0]
+    check("anexa detalhe expandido ao recibo anterior", attached.get("cpf_cnpj") == "03184509923", attached)
 
     recibos = extract_recibos_from_rows([
         {"cells": ["111", "1", "0", "111", "Seguro", "01/06/2026", "04/07/2026", "865,28", "Pendente", "04/07/2026"]},
