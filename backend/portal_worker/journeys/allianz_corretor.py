@@ -5,17 +5,169 @@ cobranca (`cobranca_sweep`) vem depois e deve reusar a sessao persistida aqui.
 """
 from __future__ import annotations
 
+import re
 import unicodedata
-from typing import Any, Dict
+from pathlib import Path
+from typing import Any, Dict, Iterable, List, Optional
 
 from portal_worker.journeys import JourneyResult
 
 ALLIANZ_LOGIN_URL = "https://www.allianznet.com.br/ngx-azb-epac/public/home"
+ALLIANZ_PRIVATE_HOME = "https://www.allianznet.com.br/ngx-azb-epac/private/home"
 
 
 def _norm(value: str) -> str:
     text = unicodedata.normalize("NFKD", str(value or "")).encode("ascii", "ignore").decode().lower()
     return " ".join(text.split())
+
+
+def _digits(value: Any) -> str:
+    return "".join(ch for ch in str(value or "") if ch.isdigit())
+
+
+def _clean_text(value: Any) -> str:
+    return " ".join(str(value or "").replace("\xa0", " ").split())
+
+
+def _parse_money_br(value: Any) -> Optional[float]:
+    text = re.sub(r"[^0-9,.-]", "", str(value or "").strip())
+    if not text:
+        return None
+    if "," in text:
+        text = text.replace(".", "").replace(",", ".")
+    try:
+        return round(float(text), 2)
+    except ValueError:
+        return None
+
+
+def _date_like(value: Any) -> str:
+    text = str(value or "")
+    m = re.search(r"\b\d{2}/\d{2}/\d{4}\b", text)
+    return m.group(0) if m else ""
+
+
+def _slice_between(text: str, start: str, stops: Iterable[str]) -> str:
+    blob = _clean_text(text)
+    start_re = re.escape(start).replace("\\ ", r"\s+")
+    m = re.search(start_re + r"\s*:?\s*", blob, flags=re.IGNORECASE)
+    if not m:
+        return ""
+    tail = blob[m.end():]
+    stop_positions = []
+    for stop in stops:
+        sm = re.search(re.escape(stop).replace("\\ ", r"\s+") + r"\s*:?", tail, flags=re.IGNORECASE)
+        if sm:
+            stop_positions.append(sm.start())
+    if stop_positions:
+        tail = tail[: min(stop_positions)]
+    return _clean_text(tail)
+
+
+def _looks_like_header(cells: List[str]) -> bool:
+    blob = _norm(" ".join(cells))
+    return any(token in blob for token in ("apolice susep", "resultado por parcela", "status recibo", "data de vencimento"))
+
+
+def _safe_path_token(value: Any, default: str = "item") -> str:
+    text = _norm(str(value or ""))
+    text = re.sub(r"[^a-z0-9_-]+", "-", text).strip("-")
+    return text[:80] or default
+
+
+def build_boleto_storage_path(
+    *,
+    company_id: str,
+    job_id: str,
+    portal_key: str,
+    recibo: str = "",
+    cpf_cnpj: str = "",
+    cliente_nome: str = "",
+) -> str:
+    """Caminho privado do boleto sem PII no nome do arquivo."""
+    _ = cpf_cnpj, cliente_nome  # contrato explicito: nunca entram no path.
+    company = _safe_path_token(company_id, "company")
+    job = _safe_path_token(job_id, "job")
+    portal = _safe_path_token(portal_key, "portal")
+    receipt = _safe_path_token(_digits(recibo) or recibo, "boleto")
+    return f"{company}/{portal}/{job}/boleto-{receipt}.pdf"
+
+
+def extract_inadimplentes_from_rows(rows: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
+    """Extrai a tela Allianz 'PARCELAS INADIMPLENTES' de linhas DOM genericas."""
+    out: List[Dict[str, Any]] = []
+    seen = set()
+    for row in rows or []:
+        raw_cells = row.get("cells") if isinstance(row, dict) else None
+        cells = [_clean_text(c) for c in (raw_cells or []) if _clean_text(c)]
+        if len(cells) < 7 or _looks_like_header(cells):
+            continue
+        detail = _clean_text((row or {}).get("detail") or " ".join(cells))
+        doc = _digits(_slice_between(detail, "CPF/CNPJ", ("Modalidade", "Filial", "Telefone", "E-mail")))
+        if len(doc) not in (11, 14):
+            mdoc = re.search(r"CPF/CNPJ\s*:?\s*([0-9.\-/ ]{11,24})", detail, flags=re.IGNORECASE)
+            doc = _digits(mdoc.group(1)) if mdoc else ""
+        name = _slice_between(detail, "Segurado", ("CPF/CNPJ", "Modalidade", "Filial"))
+        recibo = _digits(cells[0])
+        apolice = _digits(cells[1]) if len(cells) > 1 else ""
+        vencimento = _date_like(cells[6] if len(cells) > 6 else "")
+        valor = _parse_money_br(cells[7] if len(cells) > 7 else "")
+        if not (recibo or apolice or doc or name):
+            continue
+        key = (recibo, apolice, doc, vencimento)
+        if key in seen:
+            continue
+        seen.add(key)
+        out.append({
+            "portal": "allianz_corretor",
+            "recibo": recibo or cells[0],
+            "apolice_susep": apolice,
+            "adesao": _clean_text(cells[2]) if len(cells) > 2 else "",
+            "endosso": _clean_text(cells[3]) if len(cells) > 3 else "",
+            "dt_fim_cobertura": _date_like(cells[4] if len(cells) > 4 else ""),
+            "dt_prev_cancelamento": _date_like(cells[5] if len(cells) > 5 else ""),
+            "vencimento": vencimento,
+            "valor": valor,
+            "comissao": _parse_money_br(cells[8] if len(cells) > 8 else ""),
+            "cliente_nome": name,
+            "cpf_cnpj": doc,
+            "modalidade": _slice_between(detail, "Modalidade", ("Filial", "Telefone", "E-mail")),
+            "raw": {"cells": cells[:12], "detail": detail[:500]},
+        })
+    return out
+
+
+def extract_recibos_from_rows(rows: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
+    """Extrai recibos pendentes da tela Allianz 'LISTAGEM DE RECIBOS'."""
+    pending: List[Dict[str, Any]] = []
+    seen = set()
+    for row in rows or []:
+        raw_cells = row.get("cells") if isinstance(row, dict) else None
+        cells = [_clean_text(c) for c in (raw_cells or []) if _clean_text(c)]
+        if len(cells) < 8 or _looks_like_header(cells):
+            continue
+        blob = _norm(" ".join(cells))
+        if "pendente" not in blob:
+            continue
+        recibo = _digits(cells[0]) or (_digits(cells[3]) if len(cells) > 3 else "")
+        key = (recibo, cells[1] if len(cells) > 1 else "")
+        if key in seen:
+            continue
+        seen.add(key)
+        pending.append({
+            "portal": "allianz_corretor",
+            "recibo": recibo or cells[0],
+            "parcela": cells[1] if len(cells) > 1 else "",
+            "endosso": cells[2] if len(cells) > 2 else "",
+            "tipo_recibo": cells[4] if len(cells) > 4 else "",
+            "emissao": _date_like(cells[5] if len(cells) > 5 else ""),
+            "vencimento": _date_like(cells[6] if len(cells) > 6 else ""),
+            "valor": _parse_money_br(cells[7] if len(cells) > 7 else ""),
+            "status": "Pendente",
+            "data_status": _date_like(cells[9] if len(cells) > 9 else ""),
+            "raw": {"cells": cells[:12]},
+        })
+    return pending
 
 
 _FAIL = (
@@ -243,3 +395,385 @@ async def login_check(page, params: Dict[str, Any], evidence: Dict[str, Any]) ->
         body = ""
     evidence["url"] = getattr(page, "url", login_url)
     return interpret_login(body, evidence["url"])
+
+
+async def _body_text(page) -> str:
+    try:
+        return await page.inner_text("body", timeout=5000)
+    except Exception:  # noqa: BLE001
+        return ""
+
+
+async def _extract_visible_rows(page) -> List[Dict[str, Any]]:
+    """DOM generico para tabelas Angular/Material/HTML comuns."""
+    try:
+        rows = await page.evaluate(
+            """() => {
+              const clean = t => (t || '').replace(/\\s+/g, ' ').trim();
+              const vis = el => !!(el && (el.offsetParent || el.getClientRects().length));
+              const rowSel = [
+                'table tr', '[role=row]', 'mat-row', '.mat-row', '.cdk-row',
+                '.datatable-body-row', '.ngx-datatable .datatable-row-wrapper'
+              ].join(',');
+              const all = [...document.querySelectorAll(rowSel)].filter(vis);
+              return all.map((r, idx) => {
+                const cellEls = [...r.querySelectorAll('th,td,[role=cell],mat-cell,.mat-cell,.datatable-body-cell')].filter(vis);
+                let cells = cellEls.map(c => clean(c.innerText || c.textContent)).filter(Boolean);
+                const text = clean(r.innerText || r.textContent);
+                if (!cells.length && text) cells = text.split(/\\n| {2,}/).map(clean).filter(Boolean);
+                let detail = text;
+                const n = all[idx + 1];
+                const nt = n ? clean(n.innerText || n.textContent) : '';
+                if (nt && /Segurado\\s*:|CPF\\/?CNPJ\\s*:/i.test(nt)) detail = `${detail} ${nt}`;
+                return {cells, detail: detail.slice(0, 1200), text: text.slice(0, 1200)};
+              }).filter(r => r.cells.length || r.text);
+            }"""
+        )
+        return rows if isinstance(rows, list) else []
+    except Exception:  # noqa: BLE001
+        return []
+
+
+async def _click_text_candidate(page, candidates: Iterable[str], *, timeout_ms: int = 1200) -> bool:
+    cand = [str(c or "") for c in candidates if str(c or "").strip()]
+    if not cand:
+        return False
+    try:
+        clicked = await page.evaluate(
+            """(candidates) => {
+              const norm = s => (s || '').normalize('NFKD').replace(/[\\u0300-\\u036f]/g, '')
+                .toLowerCase().replace(/\\s+/g, ' ').trim();
+              const toks = s => norm(s).split(/\\s+/).filter(Boolean);
+              const vis = el => !!(el && (el.offsetParent || el.getClientRects().length));
+              const disabled = el => !!(el.disabled || el.getAttribute('aria-disabled') === 'true');
+              const selectors = [
+                'button', 'a', '[role=button]', '[role=menuitem]', 'li', 'mat-option',
+                '.mat-menu-item', '.dropdown-item', '[onclick]', '[tabindex]'
+              ].join(',');
+              const els = [...document.querySelectorAll(selectors)].filter(el => vis(el) && !disabled(el));
+              let best = null, bestScore = 0;
+              for (const el of els) {
+                const txt = norm(el.innerText || el.textContent || el.getAttribute('aria-label') || el.title || el.value);
+                if (!txt || txt.length > 180) continue;
+                for (const c of candidates) {
+                  const want = norm(c);
+                  if (!want) continue;
+                  let score = txt === want ? 1000 : (txt.includes(want) || want.includes(txt) ? 100 : 0);
+                  const ct = toks(want);
+                  if (!score && ct.length) score = ct.filter(t => txt.includes(t)).length;
+                  if (score > bestScore) { best = el; bestScore = score; }
+                }
+              }
+              if (!best || bestScore <= 0) return false;
+              best.click();
+              return true;
+            }""",
+            cand,
+        )
+        if clicked:
+            await page.wait_for_timeout(timeout_ms)
+            return True
+    except Exception:  # noqa: BLE001
+        return False
+    return False
+
+
+async def _fill_global_search(page, value: str) -> bool:
+    query = _clean_text(value)
+    if not query:
+        return False
+    try:
+        filled = await page.evaluate(
+            """(value) => {
+              const norm = s => (s || '').normalize('NFKD').replace(/[\\u0300-\\u036f]/g, '').toLowerCase();
+              const vis = el => !!(el && (el.offsetParent || el.getClientRects().length));
+              const inputs = [...document.querySelectorAll('input')].filter(i => vis(i) && (i.type || '').toLowerCase() !== 'password');
+              const best = inputs.find(i => {
+                const hay = norm([i.type, i.placeholder, i.getAttribute('aria-label'), i.id, i.name].join(' '));
+                return /busca|buscar|pesquis|search|cliente|cpf|apolice|recibo/.test(hay);
+              }) || inputs[0];
+              if (!best) return false;
+              best.focus();
+              best.value = value;
+              best.dispatchEvent(new Event('input', {bubbles: true}));
+              best.dispatchEvent(new Event('change', {bubbles: true}));
+              return true;
+            }""",
+            query,
+        )
+        if not filled:
+            return False
+        await page.wait_for_timeout(500)
+        try:
+            await page.keyboard.press("Enter")
+        except Exception:  # noqa: BLE001
+            pass
+        await page.wait_for_timeout(1500)
+        return True
+    except Exception:  # noqa: BLE001
+        return False
+
+
+async def _wait_until_text(page, tokens: Iterable[str], timeout_ms: int = 12000) -> bool:
+    wanted = [_norm(t) for t in tokens if _norm(t)]
+    if not wanted:
+        return False
+    deadline = timeout_ms // 600
+    for _ in range(max(1, deadline)):
+        text = _norm(await _body_text(page))
+        if all(t in text for t in wanted):
+            return True
+        await page.wait_for_timeout(600)
+    return False
+
+
+async def _semantic_navigation_review(page, goal: str, params: Dict[str, Any], evidence: Dict[str, Any]) -> JourneyResult:
+    """Usa o cerebro adaptativo existente quando os atalhos semanticos nao bastam."""
+    try:
+        from portal_worker.adaptive import run_adaptive
+
+        collected = {
+            "portal": "allianz_corretor",
+            "tarefa": "cobranca_sweep",
+            "orientacao": (
+                "Navegue no AllianzNet do corretor ate a tela de cobranca/inadimplencia/listagem "
+                "de recibos. Nao envie mensagens, nao finalize alteracoes no portal e pare quando "
+                "a tela exibir parcelas inadimplentes, resultado por parcela, recibos pendentes ou "
+                "gestor cobranca."
+            ),
+            "max_boletos": params.get("max_boletos"),
+        }
+        return await run_adaptive(page, goal, collected, evidence, max_steps=6, confirm=True)
+    except Exception as e:  # noqa: BLE001
+        return JourneyResult(status="needs_human", message=f"navegacao adaptativa falhou: {type(e).__name__}")
+
+
+async def _ensure_inadimplentes_page(page, params: Dict[str, Any], evidence: Dict[str, Any]) -> bool:
+    text = _norm(await _body_text(page))
+    if "parcelas inadimplentes" in text or "resultado por parcela" in text:
+        return True
+
+    # Tenta caminho semantico pelo menu/atalho da home Allianz.
+    candidates = (
+        "Parcelas Inadimplentes",
+        "Inadimplentes",
+        "CobranÃ§a",
+        "Cobranca",
+        "GestÃ£o",
+        "Gestao",
+        "Recibo/Pagamento",
+        "Pagamentos",
+    )
+    for label in candidates:
+        if await _click_text_candidate(page, [label]):
+            if await _wait_until_text(page, ("parcelas inadimplentes",), timeout_ms=4000):
+                return True
+            if await _wait_until_text(page, ("resultado", "parcela"), timeout_ms=2500):
+                return True
+
+    # Tenta busca global do proprio portal.
+    for query in ("Parcelas Inadimplentes", "inadimplentes", "cobranca"):
+        if await _fill_global_search(page, query):
+            await _click_text_candidate(page, ("Parcelas Inadimplentes", "Recibo/Pagamento", "CobranÃ§a", "Cobranca"))
+            if await _wait_until_text(page, ("parcelas inadimplentes",), timeout_ms=5000):
+                return True
+            if await _wait_until_text(page, ("resultado", "parcela"), timeout_ms=2500):
+                return True
+
+    adaptive = await _semantic_navigation_review(
+        page,
+        "Abra a area Allianz de parcelas inadimplentes/cobranca e pare na lista de atrasados.",
+        params,
+        evidence,
+    )
+    text = _norm(await _body_text(page))
+    evidence["cobranca_navigation"] = {"adaptive_status": adaptive.status, "message": adaptive.message}
+    return "parcelas inadimplentes" in text or ("resultado" in text and "parcela" in text)
+
+
+async def _download_current_pdf(page, item: Dict[str, Any], params: Dict[str, Any]) -> Dict[str, Any]:
+    """Tenta baixar o PDF que estiver acessivel na tela atual e subir para storage."""
+    upload = params.get("_upload_blob")
+    path = build_boleto_storage_path(
+        company_id=str(params.get("_company_id") or "company"),
+        job_id=str(params.get("_job_id") or "job"),
+        portal_key=str(params.get("_portal_key") or "allianz_corretor"),
+        recibo=str(item.get("recibo") or ""),
+        cpf_cnpj=str(item.get("cpf_cnpj") or ""),
+        cliente_nome=str(item.get("cliente_nome") or ""),
+    )
+    buttons = (
+        "Download",
+        "Baixar",
+        "Salvar",
+        "Carta InadimplÃªncia - Aviso",
+        "Carta Inadimplencia - Aviso",
+        "Acesso detalhe extendido",
+        "Boleto",
+    )
+    try:
+        async with page.expect_download(timeout=15000) as dl:
+            clicked = await _click_text_candidate(page, buttons, timeout_ms=800)
+            if not clicked:
+                clicked = await page.evaluate(
+                    """() => {
+                      const vis = el => !!(el && (el.offsetParent || el.getClientRects().length));
+                      const els = [...document.querySelectorAll('a[download], a[href*=".pdf"], button, [role=button]')].filter(vis);
+                      const hit = els.find(e => /download|baixar|pdf|boleto|carta/i.test(
+                        [e.innerText, e.textContent, e.getAttribute('aria-label'), e.title, e.href].join(' ')
+                      ));
+                      if (!hit) return false;
+                      hit.click();
+                      return true;
+                    }"""
+                )
+            if not clicked:
+                raise RuntimeError("nenhum controle de download encontrado")
+        download = await dl.value
+        tmp = await download.path()
+        data = Path(str(tmp)).read_bytes() if tmp else b""
+        if not data:
+            return {"ok": False, "reason": "download vazio", "storage_path": None}
+        if callable(upload):
+            saved = await upload(path, data, "application/pdf")
+            return {"ok": bool(saved), "storage_path": saved or path, "bytes": len(data)}
+        return {"ok": True, "storage_path": path, "bytes": len(data), "not_uploaded": True}
+    except Exception as e:  # noqa: BLE001
+        return {"ok": False, "reason": f"{type(e).__name__}: {str(e)[:160]}", "storage_path": None}
+
+
+async def _open_receipts_for_item(page, item: Dict[str, Any], evidence: Dict[str, Any]) -> bool:
+    """Best-effort do fluxo dos prints: busca cliente/recibo -> operar -> lista recibos."""
+    queries = [
+        item.get("cpf_cnpj"),
+        item.get("cliente_nome"),
+        item.get("apolice_susep"),
+        item.get("recibo"),
+    ]
+    for query in [q for q in queries if q]:
+        if not await _fill_global_search(page, str(query)):
+            continue
+        await _click_text_candidate(page, ("Clientes", "CPF/CNPJ", "Nome/RazÃ£o Social", "Recibo/Pagamento", "ApÃ³lices/Proposta"))
+        await page.wait_for_timeout(1500)
+        await _click_text_candidate(page, ("Operar", "Lista Recibos", "Lista de Recibos", "HistÃ³rico da ApÃ³lice"))
+        await _click_text_candidate(page, ("Lista Recibos", "Lista de Recibos", "Recibos", "Pendentes"))
+        text = _norm(await _body_text(page))
+        if "listagem de recibos" in text or ("recibos" in text and "pendente" in text):
+            return True
+    evidence.setdefault("download_notes", []).append("nao abriu listagem de recibos para item")
+    return False
+
+
+async def _download_boletos(page, items: List[Dict[str, Any]], params: Dict[str, Any], evidence: Dict[str, Any]) -> List[Dict[str, Any]]:
+    out: List[Dict[str, Any]] = []
+    try:
+        max_boletos = max(1, int(params.get("max_boletos") or params.get("max_boletos_por_execucao") or 10))
+    except Exception:  # noqa: BLE001
+        max_boletos = 10
+    for idx, item in enumerate(items[:max_boletos]):
+        result = {"recibo": item.get("recibo"), "cpf_cnpj": item.get("cpf_cnpj"), "ok": False}
+        try:
+            if idx > 0:
+                await page.goto(ALLIANZ_PRIVATE_HOME, wait_until="domcontentloaded")
+                await page.wait_for_timeout(1500)
+            opened = await _open_receipts_for_item(page, item, evidence)
+            if opened:
+                rows = await _extract_visible_rows(page)
+                pendentes = extract_recibos_from_rows(rows)
+                result["recibos_pendentes"] = pendentes[:5]
+                wanted = str(item.get("recibo") or "")
+                if wanted:
+                    await _click_text_candidate(page, (wanted,))
+                else:
+                    await _click_text_candidate(page, ("Pendente",))
+                await _click_text_candidate(page, ("Gestor CobranÃ§a", "Gestor Cobranca", "Pendentes"))
+                await page.wait_for_timeout(2500)
+                download = await _download_current_pdf(page, item, params)
+                result.update(download)
+            else:
+                result["reason"] = "listagem de recibos nao encontrada"
+        except Exception as e:  # noqa: BLE001
+            result["reason"] = f"{type(e).__name__}: {str(e)[:160]}"
+        out.append(result)
+    return out
+
+
+async def cobranca_sweep(page, params: Dict[str, Any], evidence: Dict[str, Any]) -> JourneyResult:
+    """SPEC-023 P3: varre cobranca Allianz, extrai atrasados e baixa boletos quando possivel."""
+    login = await login_check(page, params, evidence)
+    if login.status != "done":
+        return login
+
+    evidence["logged_in"] = True
+    if not await _ensure_inadimplentes_page(page, params, evidence):
+        try:
+            from portal_worker.adaptive import _dump_dom
+
+            evidence["debug_dom"] = await _dump_dom(page)
+        except Exception:  # noqa: BLE001
+            evidence["body_text"] = (await _body_text(page))[:1200]
+        return JourneyResult(
+            status="needs_human",
+            captured={"logged_in": True, "stage": "inadimplentes_nao_localizado"},
+            message="nao consegui localizar a area de parcelas inadimplentes Allianz",
+        )
+
+    rows = await _extract_visible_rows(page)
+    items = extract_inadimplentes_from_rows(rows)
+    evidence["inadimplentes_rows_seen"] = len(rows)
+    evidence["inadimplentes_count"] = len(items)
+    evidence["inadimplentes_sample"] = [
+        {
+            "recibo": i.get("recibo"),
+            "apolice_susep": i.get("apolice_susep"),
+            "vencimento": i.get("vencimento"),
+            "valor": i.get("valor"),
+            "cliente_nome": i.get("cliente_nome"),
+            "cpf_cnpj": i.get("cpf_cnpj"),
+        }
+        for i in items[:5]
+    ]
+
+    text = _norm(await _body_text(page))
+    if not items:
+        if any(token in text for token in ("nenhum registro", "nao ha", "sem registros", "0 registro")):
+            return JourneyResult(
+                status="done",
+                captured={"logged_in": True, "inadimplentes": [], "boletos": [], "portal": "allianz_corretor"},
+                message="nenhuma parcela inadimplente encontrada",
+            )
+        return JourneyResult(
+            status="needs_human",
+            captured={"logged_in": True, "stage": "sem_linhas_extraiveis"},
+            message="tela de inadimplentes encontrada, mas nao consegui extrair linhas",
+        )
+
+    download_boletos = bool(params.get("download_boletos", True))
+    boletos: List[Dict[str, Any]] = []
+    if download_boletos:
+        boletos = await _download_boletos(page, items, params, evidence)
+        ok_count = sum(1 for b in boletos if b.get("ok"))
+        evidence["boletos_download_ok"] = ok_count
+        evidence["boletos_download_attempts"] = len(boletos)
+        if params.get("require_downloads", True) and ok_count == 0:
+            return JourneyResult(
+                status="needs_human",
+                captured={
+                    "logged_in": True,
+                    "stage": "boletos_nao_baixados",
+                    "inadimplentes": items,
+                    "boletos": boletos,
+                },
+                message="inadimplentes extraidos, mas o download de boletos precisa de revisao humana",
+            )
+
+    return JourneyResult(
+        status="done",
+        captured={
+            "logged_in": True,
+            "portal": "allianz_corretor",
+            "inadimplentes": items,
+            "boletos": boletos,
+        },
+        message=f"cobranca Allianz concluida: {len(items)} inadimplente(s), {sum(1 for b in boletos if b.get('ok'))} boleto(s)",
+    )

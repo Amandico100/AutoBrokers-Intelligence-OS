@@ -27,6 +27,10 @@ def get_journey(portal_key: str, journey: str) -> Optional[Callable[..., Awaitab
         from portal_worker.journeys.allianz_corretor import login_check
 
         return login_check
+    if key == "allianz_corretor.cobranca_sweep":
+        from portal_worker.journeys.allianz_corretor import cobranca_sweep
+
+        return cobranca_sweep
     if key == "vidros_lanternas.login_check":
         from portal_worker.journeys.vidros_lanternas import login_check
 

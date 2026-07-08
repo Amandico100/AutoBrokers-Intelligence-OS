@@ -33,6 +33,25 @@ def _now() -> str:
     return datetime.now(timezone.utc).isoformat()
 
 
+async def _upload_portal_blob(supa, path: str, blob: bytes, content_type: str = "application/pdf") -> str | None:
+    """Upload privado de evidencias/boletos do portal. Retorna storage path."""
+    clean_path = str(path or "").strip().lstrip("/")
+    if not clean_path or not blob:
+        return None
+    try:
+        await asyncio.to_thread(
+            lambda: supa.storage.from_("portal-evidence").upload(
+                clean_path,
+                blob,
+                {"content-type": content_type or "application/octet-stream", "cache-control": "3600", "upsert": "true"},
+            )
+        )
+        return clean_path
+    except Exception as e:  # noqa: BLE001
+        logger.warning("[PORTAL] upload portal-evidence falhou: %s", type(e).__name__)
+        return None
+
+
 def _session_identity(job: Dict[str, Any], account: Dict[str, Any]) -> Dict[str, str] | None:
     company_id = str(job.get("company_id") or account.get("company_id") or "").strip()
     portal_key = str(job.get("portal_key") or account.get("portal_key") or "").strip()
@@ -259,6 +278,12 @@ async def _run_job(supa, job: Dict[str, Any]) -> None:
             if session_storage:
                 evidence["session_storage_restored"] = await _restore_session_storage(context, session_storage)
             page = await context.new_page()
+            params["_job_id"] = str(job_id)
+            params["_company_id"] = str(job.get("company_id") or "")
+            params["_portal_key"] = str(job.get("portal_key") or "")
+            params["_upload_blob"] = lambda path, blob, content_type="application/pdf": _upload_portal_blob(
+                supa, path, blob, content_type
+            )
             result = await journey_fn(page, params, evidence)
             if account_row and result.status == "done" and (result.captured or {}).get("logged_in"):
                 state = await context.storage_state()

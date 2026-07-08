@@ -20,6 +20,7 @@ type Template = {
   instructions: string;
   schedule_default: { kind?: string; time?: string; minutes?: number };
   delivery_default: { channel?: string };
+  config_default?: Record<string, unknown>;
   required: Record<string, boolean>;
   missing: Missing[];
 };

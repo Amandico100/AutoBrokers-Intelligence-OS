@@ -17,7 +17,7 @@ export async function GET(_req: NextRequest) {
 
   const { data: templates, error } = await supabase
     .from('routine_templates')
-    .select('id, name, description, category, instructions, schedule_default, delivery_default, required, is_active, sort_order')
+    .select('id, name, description, category, instructions, schedule_default, delivery_default, required, config_default, is_active, sort_order')
     .eq('is_active', true)
     .order('sort_order', { ascending: true });
   if (error) {
@@ -36,16 +36,55 @@ export async function GET(_req: NextRequest) {
     .eq('is_active', true)
     .limit(1);
   const hasWhatsapp = !!(integ && integ.length);
+  const { data: portalAccounts } = await supabase
+    .from('portal_accounts')
+    .select('portal_key, secret_encrypted, health')
+    .eq('company_id', ctx.companyId);
+  const connectedPortals = new Set(
+    (portalAccounts || [])
+      .filter((p) => !!p.secret_encrypted)
+      .map((p) => String(p.portal_key || '')),
+  );
+
+  let hasInfocap = false;
+  try {
+    const { data: tpl } = await supabase
+      .from('connector_templates')
+      .select('id')
+      .eq('slug', 'infocap')
+      .eq('is_active', true)
+      .maybeSingle();
+    if (tpl?.id) {
+      const { data: conns } = await supabase
+        .from('tenant_connections')
+        .select('id, status, encrypted_secret_ref')
+        .eq('company_id', ctx.companyId)
+        .eq('connector_template_id', tpl.id)
+        .in('status', ['connected', 'configuring'])
+        .limit(1);
+      hasInfocap = !!(conns && conns.length && conns[0].encrypted_secret_ref);
+    }
+  } catch {
+    hasInfocap = false;
+  }
 
   const items = (templates || []).map((t) => {
     const req = (t.required || {}) as Record<string, boolean>;
+    const cfg = (t.config_default || {}) as { portal_keys?: string[] };
     const missing: { key: string; label: string; href?: string }[] = [];
     if (req.whatsapp && !hasWhatsapp) {
       missing.push({ key: 'whatsapp', label: 'Conectar WhatsApp', href: '/dashboard/personalizacao/conectores' });
     }
-    // Portais ainda não estão disponíveis (SPEC-020) — informativo, não bloqueia.
+    // SPEC-023: portal requerido olha credenciais reais conectadas.
     if (req.portal) {
-      missing.push({ key: 'portal', label: 'Portais (em breve)' });
+      const needed = Array.isArray(cfg.portal_keys) && cfg.portal_keys.length ? cfg.portal_keys : ['allianz_corretor'];
+      const ok = needed.some((key) => connectedPortals.has(key));
+      if (!ok) {
+        missing.push({ key: 'portal', label: 'Conectar portal da seguradora', href: '/dashboard/personalizacao/conectores/portais' });
+      }
+    }
+    if (req.infocap && !hasInfocap) {
+      missing.push({ key: 'infocap', label: 'Conectar sistema de gestão', href: '/dashboard/personalizacao/conectores' });
     }
     return { ...t, missing };
   });

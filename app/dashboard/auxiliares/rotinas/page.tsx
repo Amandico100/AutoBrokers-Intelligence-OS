@@ -17,6 +17,7 @@ interface Routine {
   knowledge?: string | null;
   schedule: { kind?: string; time?: string; minutes?: number; weekdays?: number[] };
   delivery: { channel?: string; number?: string };
+  config?: Record<string, unknown> | null;
   is_active: boolean;
   last_run_at: string | null;
   next_run_at: string | null;
@@ -33,6 +34,7 @@ interface Run {
 }
 
 const DIAS = ['seg', 'ter', 'qua', 'qui', 'sex', 'sáb', 'dom'];
+const BILLING_KIND = 'billing_collection';
 
 function scheduleLabel(s: Routine['schedule']) {
   if (s?.kind === 'interval') return `a cada ${s.minutes} min`;
@@ -54,12 +56,12 @@ export default function RotinasPage() {
   const [saving, setSaving] = useState(false);
   const [form, setForm] = useState({
     name: '', instructions: '', knowledge: '', kind: 'daily', time: '08:00', weekdays: '' as string,
-    minutes: 60, channel: 'whatsapp', number: '',
+    minutes: 60, channel: 'whatsapp', number: '', config: {} as Record<string, unknown>,
   });
 
   const openEditor = (r: Routine | 'new') => {
     if (r === 'new') {
-      setForm({ name: '', instructions: '', knowledge: '', kind: 'daily', time: '08:00', weekdays: '', minutes: 60, channel: 'whatsapp', number: '' });
+      setForm({ name: '', instructions: '', knowledge: '', kind: 'daily', time: '08:00', weekdays: '', minutes: 60, channel: 'whatsapp', number: '', config: {} });
     } else {
       setForm({
         name: r.name,
@@ -71,6 +73,7 @@ export default function RotinasPage() {
         minutes: r.schedule?.minutes || 60,
         channel: r.delivery?.channel || 'whatsapp',
         number: r.delivery?.number || '',
+        config: (r.config || {}) as Record<string, unknown>,
       });
     }
     setEditing(r);
@@ -82,6 +85,7 @@ export default function RotinasPage() {
     instructions: string;
     schedule_default?: { kind?: string; time?: string; minutes?: number; weekdays?: number[] };
     delivery_default?: { channel?: string };
+    config_default?: Record<string, unknown>;
   }) => {
     const s = t.schedule_default || {};
     setForm({
@@ -94,8 +98,27 @@ export default function RotinasPage() {
       minutes: s.minutes || 60,
       channel: t.delivery_default?.channel === 'none' ? 'none' : 'whatsapp',
       number: '',
+      config: t.config_default || {},
     });
     setEditing('new');
+  };
+
+  const billingConfig = form.config?.kind === BILLING_KIND ? form.config : null;
+  const billingPortalKeys = billingConfig && Array.isArray(billingConfig.portal_keys)
+    ? billingConfig.portal_keys.map((v) => String(v))
+    : ['allianz_corretor'];
+  const billingSendMode = String(billingConfig?.send_mode || 'test');
+  const billingApprovalRequired = billingConfig?.approval_required !== false;
+  const billingMaxBoletos = Number(billingConfig?.max_boletos_por_execucao || 10);
+  const setBillingConfig = (patch: Record<string, unknown>) => {
+    setForm({
+      ...form,
+      config: {
+        ...(form.config || {}),
+        kind: BILLING_KIND,
+        ...patch,
+      },
+    });
   };
 
   const saveRoutine = async () => {
@@ -116,7 +139,7 @@ export default function RotinasPage() {
       body: JSON.stringify({
         action: editing === 'new' ? 'create' : 'update',
         id: editing !== 'new' && editing ? editing.id : undefined,
-        name: form.name, instructions: form.instructions, knowledge: form.knowledge, schedule, delivery,
+        name: form.name, instructions: form.instructions, knowledge: form.knowledge, schedule, delivery, config: form.config,
       }),
     });
     const j = await res.json().catch(() => ({}));
@@ -333,6 +356,80 @@ export default function RotinasPage() {
                     className="w-full resize-y rounded-md border border-border bg-surface-2 px-3 py-2 text-foreground outline-none focus:ring-2 focus:ring-ring"
                   />
                 </div>
+                {billingConfig && (
+                  <div className="space-y-3 rounded-lg border border-border bg-surface-2 p-3">
+                    <div>
+                      <label className="mb-1 block text-xs font-medium text-muted-foreground">Portais varridos</label>
+                      <label className="inline-flex items-center gap-2 text-xs text-foreground">
+                        <input
+                          type="checkbox"
+                          checked={billingPortalKeys.includes('allianz_corretor')}
+                          onChange={(e) =>
+                            setBillingConfig({ portal_keys: e.target.checked ? ['allianz_corretor'] : [] })
+                          }
+                        />
+                        Allianz
+                      </label>
+                    </div>
+                    <div className="grid gap-3 sm:grid-cols-2">
+                      <div>
+                        <label className="mb-1 block text-xs font-medium text-muted-foreground">Aprovacao</label>
+                        <select
+                          value={billingApprovalRequired ? 'yes' : 'no'}
+                          onChange={(e) => setBillingConfig({ approval_required: e.target.value === 'yes' })}
+                          className="w-full rounded-md border border-border bg-surface px-3 py-2 text-foreground outline-none"
+                        >
+                          <option value="yes">Pedir antes de enviar</option>
+                          <option value="no">Nao pedir</option>
+                        </select>
+                      </div>
+                      <div>
+                        <label className="mb-1 block text-xs font-medium text-muted-foreground">Modo de envio</label>
+                        <select
+                          value={billingSendMode}
+                          onChange={(e) => setBillingConfig({ send_mode: e.target.value })}
+                          className="w-full rounded-md border border-border bg-surface px-3 py-2 text-foreground outline-none"
+                        >
+                          <option value="test">Teste</option>
+                          <option value="approval">Aprovacao</option>
+                          <option value="live">Ao cliente</option>
+                          <option value="none">Somente relatorio</option>
+                        </select>
+                      </div>
+                    </div>
+                    <div className="grid gap-3 sm:grid-cols-2">
+                      <div>
+                        <label className="mb-1 block text-xs font-medium text-muted-foreground">Max. boletos</label>
+                        <input
+                          type="number"
+                          min={1}
+                          max={50}
+                          value={billingMaxBoletos}
+                          onChange={(e) => setBillingConfig({ max_boletos_por_execucao: parseInt(e.target.value || '10', 10) })}
+                          className="w-full rounded-md border border-border bg-surface px-3 py-2 text-foreground outline-none"
+                        />
+                      </div>
+                      <div>
+                        <label className="mb-1 block text-xs font-medium text-muted-foreground">Numero de teste</label>
+                        <input
+                          value={String(billingConfig.test_number || '')}
+                          onChange={(e) => setBillingConfig({ test_number: e.target.value })}
+                          placeholder="5547999998888"
+                          className="w-full rounded-md border border-border bg-surface px-3 py-2 text-foreground outline-none"
+                        />
+                      </div>
+                    </div>
+                    <div>
+                      <label className="mb-1 block text-xs font-medium text-muted-foreground">Mensagem ao cliente</label>
+                      <textarea
+                        value={String(billingConfig.message_template || '')}
+                        onChange={(e) => setBillingConfig({ message_template: e.target.value })}
+                        rows={3}
+                        className="w-full resize-y rounded-md border border-border bg-surface px-3 py-2 text-foreground outline-none"
+                      />
+                    </div>
+                  </div>
+                )}
                 <div className="flex gap-2">
                   {(['daily', 'interval'] as const).map((k) => (
                     <button

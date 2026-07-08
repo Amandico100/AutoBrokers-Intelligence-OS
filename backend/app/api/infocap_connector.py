@@ -555,6 +555,12 @@ def _canonical_customer_identity(
     if unmasked:
         out["client_name"] = name
         out["client_document"] = doc
+        phone = _client_phone(detail)
+        email = _first_str(detail, ["email", "e-mail", "mail"])
+        if phone:
+            out["client_phone"] = phone
+        if email:
+            out["client_email"] = email
     else:
         out["client_name_masked"] = _mask_name(name)
         out["client_document_masked"] = _mask_tail(doc)

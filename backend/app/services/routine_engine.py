@@ -219,23 +219,35 @@ async def _execute_routine(supabase, routine: Dict[str, Any]) -> None:
 
     status, output_preview, error = "ok", "", ""
     try:
-        from app.core.config import settings
-        from app.services.langchain_service import LangChainService
+        from app.services.billing_collection import execute_billing_collection_routine, is_billing_routine
 
-        service = LangChainService(settings.OPENAI_API_KEY, supabase)
+        if is_billing_routine(routine):
+            billing_timeout = max(
+                resolve_routine_timeout(),
+                int(os.getenv("BILLING_COLLECTION_TIMEOUT_SECONDS", "900")),
+            )
+            output = await asyncio.wait_for(
+                execute_billing_collection_routine(supabase, routine),
+                timeout=min(billing_timeout, 1800),
+            )
+        else:
+            from app.core.config import settings
+            from app.services.langchain_service import LangChainService
+
+            service = LangChainService(settings.OPENAI_API_KEY, supabase)
         # SPEC-019 D1 — timeout por execução: rotina travada não segura o worker.
-        output, _metrics = await asyncio.wait_for(
-            service.process_message(
-                user_message=render_task_prompt(routine),
-                company_id=str(routine["company_id"]),
-                user_id=str(routine.get("created_by") or "routine-engine"),
-                session_id=f"routine:{routine_id}",
-                channel="routine",
-                agent_id=str(routine["agent_id"]) if routine.get("agent_id") else None,
-                collect_metrics=False,
-            ),
-            timeout=resolve_routine_timeout(),
-        )
+            output, _metrics = await asyncio.wait_for(
+                service.process_message(
+                    user_message=render_task_prompt(routine),
+                    company_id=str(routine["company_id"]),
+                    user_id=str(routine.get("created_by") or "routine-engine"),
+                    session_id=f"routine:{routine_id}",
+                    channel="routine",
+                    agent_id=str(routine["agent_id"]) if routine.get("agent_id") else None,
+                    collect_metrics=False,
+                ),
+                timeout=resolve_routine_timeout(),
+            )
         output = str(output or "").strip()
         if not output:
             raise RuntimeError("agente devolveu resposta vazia")
