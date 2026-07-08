@@ -37,8 +37,10 @@ def run():
         _attach_expanded_details,
         _looks_like_ficha_gestao,
         _looks_like_inadimplentes_result,
+        _looks_like_policy_context,
         _looks_like_recibos_list,
         _merge_recibos_context,
+        _policy_search_terms,
         _receipt_click_terms,
         _summarize_download_debug,
         build_boleto_storage_path,
@@ -151,9 +153,25 @@ def run():
         "reconhece ficha gestao em nova janela",
         _looks_like_ficha_gestao("EP - P- APOLICE - 13758374700000 - 16 registros Tipo Modelo Description Carta Inadimplencia - Aviso") is True,
     )
+    check(
+        "reconhece contexto de apolice com botoes Allianz",
+        _looks_like_policy_context("Inicio DEBORA LUZIA ROSA Gerais Segurado Dados Risco Coberturas Clausulas SDD Resumo Lista Recibos Ficha Gestao") is True,
+    )
+    check(
+        "resultado por parcela nao e contexto de apolice",
+        _looks_like_policy_context("PARCELAS INADIMPLENTES RESULTADO - POR PARCELA Recibo Parc. Apolice Susep Gerar Planilha Voltar") is False,
+    )
     terms = _receipt_click_terms({"recibo": "318946949", "parcela": "3/10", "vencimento": "01/07/2026"})
     check("termos de clique priorizam recibo", terms[0] == "318946949", terms)
     check("termos de clique incluem parcela", "3/10" in terms, terms)
+    search_terms = _policy_search_terms({
+        "cliente_nome": "MONICA BONELLI PAULO PRAZERES",
+        "cpf_cnpj": "03184509923",
+        "apolice_susep": "5177202623140183705",
+        "recibo": "317418783",
+    })
+    check("termos de busca priorizam segurado", search_terms[0] == "MONICA BONELLI PAULO PRAZERES", search_terms)
+    check("termos de busca incluem apolice", "5177202623140183705" in search_terms, search_terms)
     merged = _merge_recibos_context(
         {"cliente_nome": "", "item_segurado": ""},
         "Apolice 137583747 Item 0 Apolice SUSEP 5177-2026-23-14-0186415 "

@@ -218,6 +218,15 @@ def _looks_like_ficha_gestao(text: str) -> bool:
     return "ep - p- apolice" in body and "tipo modelo" in body and "description" in body
 
 
+def _looks_like_policy_context(text: str) -> bool:
+    body = _norm(text)
+    if "resultado por parcela" in body or "parcelas inadimplentes" in body:
+        return False
+    tab_hits = sum(1 for token in ("gerais", "segurado", "dados risco", "coberturas", "clausulas", "resumo") if token in body)
+    action_hits = sum(1 for token in ("lista recibos", "ficha gestao", "lista sinistros", "historico da apolice") if token in body)
+    return tab_hits >= 3 or action_hits >= 2
+
+
 def _receipt_click_terms(item: Dict[str, Any]) -> List[str]:
     terms: List[str] = []
     for value in (item.get("recibo"), item.get("parcela"), item.get("vencimento")):
@@ -226,6 +235,15 @@ def _receipt_click_terms(item: Dict[str, Any]) -> List[str]:
             terms.append(text)
     if "Pendente" not in terms:
         terms.append("Pendente")
+    return terms
+
+
+def _policy_search_terms(item: Dict[str, Any]) -> List[str]:
+    terms: List[str] = []
+    for value in (item.get("cliente_nome"), item.get("cpf_cnpj"), item.get("apolice_susep"), item.get("recibo")):
+        text = _clean_text(value)
+        if text and text not in terms:
+            terms.append(text)
     return terms
 
 
@@ -882,6 +900,7 @@ async def _fill_global_search(page, value: str) -> bool:
             """(value) => {
               const norm = s => (s || '').normalize('NFKD').replace(/[\\u0300-\\u036f]/g, '').toLowerCase();
               const vis = el => !!(el && (el.offsetParent || el.getClientRects().length));
+              const overlapY = (a, b) => Math.max(0, Math.min(a.bottom, b.bottom) - Math.max(a.top, b.top));
               const inputs = [...document.querySelectorAll('input')].filter(i => vis(i) && (i.type || '').toLowerCase() !== 'password');
               const best = inputs.find(i => {
                 const hay = norm([i.type, i.placeholder, i.getAttribute('aria-label'), i.id, i.name].join(' '));
@@ -892,6 +911,27 @@ async def _fill_global_search(page, value: str) -> bool:
               best.value = value;
               best.dispatchEvent(new Event('input', {bubbles: true}));
               best.dispatchEvent(new Event('change', {bubbles: true}));
+              const inputRect = best.getBoundingClientRect();
+              const clickables = [...document.querySelectorAll('button,a,[role=button],[onclick],[tabindex],i,svg,span,div,nx-icon')]
+                .filter(el => vis(el) && el !== best)
+                .map(el => {
+                  const rect = el.getBoundingClientRect();
+                  const hay = norm([
+                    el.innerText, el.textContent, el.getAttribute('aria-label'), el.title,
+                    el.id, el.className, el.getAttribute('name')
+                  ].join(' '));
+                  let score = 0;
+                  if (/search|pesquis|buscar|lupa|magnif/.test(hay)) score += 80;
+                  if (rect.left >= inputRect.right - 16 && rect.left <= inputRect.right + 140 && overlapY(rect, inputRect) > Math.min(rect.height, inputRect.height) * 0.35) score += 90;
+                  if (rect.width <= 90 && rect.height <= 90) score += 15;
+                  return {el, score};
+                })
+                .filter(x => x.score >= 90)
+                .sort((a, b) => b.score - a.score);
+              if (clickables.length) {
+                const target = clickables[0].el.closest('button,a,[role=button],[onclick],[tabindex]') || clickables[0].el;
+                target.click();
+              }
               return true;
             }""",
             query,
@@ -907,6 +947,16 @@ async def _fill_global_search(page, value: str) -> bool:
         return True
     except Exception:  # noqa: BLE001
         return False
+
+
+async def _wait_until_policy_context(page, timeout_ms: int = 12000) -> bool:
+    deadline = timeout_ms // 600
+    for _ in range(max(1, deadline)):
+        text = await _all_body_text(page)
+        if _looks_like_policy_context(text) or _looks_like_recibos_list(text):
+            return True
+        await page.wait_for_timeout(600)
+    return False
 
 
 async def _wait_until_text(page, tokens: Iterable[str], timeout_ms: int = 12000) -> bool:
@@ -1151,6 +1201,15 @@ async def _open_receipts_for_item(page, item: Dict[str, Any], evidence: Dict[str
             evidence.setdefault("download_notes", []).append("lista recibos aberta a partir da linha do inadimplente")
             return True
 
+    if await _open_policy_context_for_item(page, item, evidence):
+        if _looks_like_recibos_list(await _all_body_text(page)):
+            return True
+        if await _click_text_candidate(page, ("Lista Recibos", "Lista de Recibos"), timeout_ms=2200):
+            if await _wait_until_recibos_list(page, timeout_ms=9000):
+                evidence.setdefault("download_notes", []).append("lista recibos aberta a partir do contexto da apolice")
+                return True
+        await _record_download_debug(page, item, evidence, "lista_recibos_not_found_in_policy_context")
+
     queries = [
         item.get("cpf_cnpj"),
         item.get("cliente_nome"),
@@ -1168,6 +1227,29 @@ async def _open_receipts_for_item(page, item: Dict[str, Any], evidence: Dict[str
             return True
     await _record_download_debug(page, item, evidence, "lista_recibos_not_opened")
     evidence.setdefault("download_notes", []).append("nao abriu listagem de recibos para item")
+    return False
+
+
+async def _open_policy_context_for_item(page, item: Dict[str, Any], evidence: Dict[str, Any]) -> bool:
+    text = await _all_body_text(page)
+    if _looks_like_policy_context(text) or _looks_like_recibos_list(text):
+        return True
+    click_terms = _policy_search_terms(item)
+    for term in click_terms:
+        if not await _fill_global_search(page, term):
+            continue
+        if await _wait_until_policy_context(page, timeout_ms=7000):
+            evidence.setdefault("download_notes", []).append("contexto da apolice aberto por busca")
+            return True
+        if await _click_row_candidate(page, click_terms, timeout_ms=1200):
+            if await _wait_until_policy_context(page, timeout_ms=8000):
+                evidence.setdefault("download_notes", []).append("contexto da apolice aberto por linha de busca")
+                return True
+        if await _click_text_candidate(page, click_terms, timeout_ms=1200):
+            if await _wait_until_policy_context(page, timeout_ms=8000):
+                evidence.setdefault("download_notes", []).append("contexto da apolice aberto por resultado de busca")
+                return True
+    evidence.setdefault("download_notes", []).append("contexto da apolice nao abriu")
     return False
 
 
