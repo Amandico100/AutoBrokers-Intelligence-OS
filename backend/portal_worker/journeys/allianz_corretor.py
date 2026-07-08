@@ -901,15 +901,28 @@ async def _fill_global_search(page, value: str) -> bool:
               const norm = s => (s || '').normalize('NFKD').replace(/[\\u0300-\\u036f]/g, '').toLowerCase();
               const vis = el => !!(el && (el.offsetParent || el.getClientRects().length));
               const overlapY = (a, b) => Math.max(0, Math.min(a.bottom, b.bottom) - Math.max(a.top, b.top));
-              const inputs = [...document.querySelectorAll('input')].filter(i => vis(i) && (i.type || '').toLowerCase() !== 'password');
-              const best = inputs.find(i => {
-                const hay = norm([i.type, i.placeholder, i.getAttribute('aria-label'), i.id, i.name].join(' '));
-                return /busca|buscar|pesquis|search|cliente|cpf|apolice|recibo/.test(hay);
-              }) || inputs[0];
+              const inputChoices = [...document.querySelectorAll('input')]
+                .filter(i => vis(i) && (i.type || '').toLowerCase() !== 'password')
+                .map(i => {
+                  const rect = i.getBoundingClientRect();
+                  const hay = norm([i.type, i.placeholder, i.getAttribute('aria-label'), i.id, i.name].join(' '));
+                  const nearText = norm((i.closest('form,section,div,table') || document.body).innerText || '');
+                  let score = 0;
+                  if (/busca|buscar|pesquis|search|cliente|cpf|apolice|recibo/.test(hay)) score += 180;
+                  if (rect.top < 260 && rect.width > 220) score += 90;
+                  if (rect.width > 320) score += 30;
+                  if (/filtro\\s+susep|codigo corretor|premio ramo|comissao ramo/.test(nearText)) score -= 160;
+                  return {el: i, rect, score};
+                })
+                .filter(x => x.score > 0)
+                .sort((a, b) => b.score - a.score);
+              const best = inputChoices.length ? inputChoices[0].el : null;
               if (!best) return false;
               best.focus();
-              best.value = value;
-              best.dispatchEvent(new Event('input', {bubbles: true}));
+              const setter = Object.getOwnPropertyDescriptor(window.HTMLInputElement.prototype, 'value')?.set;
+              if (setter) setter.call(best, value); else best.value = value;
+              best.dispatchEvent(new InputEvent('input', {bubbles: true, inputType: 'insertText', data: value}));
+              best.dispatchEvent(new KeyboardEvent('keyup', {bubbles: true, key: 'Enter', code: 'Enter'}));
               best.dispatchEvent(new Event('change', {bubbles: true}));
               const inputRect = best.getBoundingClientRect();
               const clickables = [...document.querySelectorAll('button,a,[role=button],[onclick],[tabindex],i,svg,span,div,nx-icon')]
