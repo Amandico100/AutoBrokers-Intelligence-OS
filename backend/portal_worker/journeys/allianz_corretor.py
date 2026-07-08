@@ -610,6 +610,16 @@ async def _wait_until_inadimplentes_result(page, timeout_ms: int = 12000) -> boo
     return False
 
 
+async def _wait_for_inadimplencias_entry(page, timeout_ms: int = 12000) -> bool:
+    deadline = timeout_ms // 600
+    for _ in range(max(1, deadline)):
+        text = _norm(await _all_body_text(page))
+        if "inadimplencias" in text or _looks_like_inadimplentes_totals(text) or _looks_like_inadimplentes_result(text):
+            return True
+        await page.wait_for_timeout(600)
+    return False
+
+
 async def _click_first_totals_row(page) -> bool:
     for frame in getattr(page, "frames", [page]):
         try:
@@ -705,6 +715,7 @@ async def _semantic_navigation_review(page, goal: str, params: Dict[str, Any], e
 
 
 async def _ensure_inadimplentes_page(page, params: Dict[str, Any], evidence: Dict[str, Any]) -> bool:
+    await _wait_for_inadimplencias_entry(page, timeout_ms=10000)
     text = _norm(await _all_body_text(page))
     if _looks_like_inadimplentes_result(text):
         return True
@@ -713,6 +724,8 @@ async def _ensure_inadimplentes_page(page, params: Dict[str, Any], evidence: Dic
 
     # Tenta caminho semantico pelo menu/atalho da home Allianz.
     candidates = (
+        "INADIMPLÊNCIAS",
+        "INADIMPLENCIAS",
         "Parcelas Inadimplentes",
         "Inadimplentes",
         "CobranÃ§a",
