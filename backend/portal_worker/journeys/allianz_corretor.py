@@ -1558,6 +1558,12 @@ def _looks_like_inadimplentes_result(text: str) -> bool:
     return sum(1 for token in table_signals if token in body) >= 2
 
 
+def _should_restart_policy_search_from_home(text: str) -> bool:
+    if _looks_like_policy_context(text) or _looks_like_recibos_list(text):
+        return False
+    return _looks_like_inadimplentes_result(text)
+
+
 def _looks_like_inadimplentes_totals(text: str) -> bool:
     body = _norm(text)
     if "resultado - totais" in body:
@@ -1819,6 +1825,20 @@ async def _open_policy_context_for_item(page, item: Dict[str, Any], evidence: Di
     text = await _all_body_text(page)
     if _looks_like_policy_context(text) or _looks_like_recibos_list(text):
         return True
+    if _should_restart_policy_search_from_home(text):
+        async def go_home():
+            await page.goto(ALLIANZ_PRIVATE_HOME, wait_until="domcontentloaded")
+            await page.wait_for_timeout(1800)
+            return True
+
+        _, home_trace = await _capture_page_activity(
+            page,
+            "goto_home_before_policy_search",
+            go_home,
+            wait_ms=500,
+        )
+        _remember_evidence_list(evidence, "interaction_traces", home_trace, limit=16)
+        evidence.setdefault("download_notes", []).append("busca de apolice reiniciada na home apos resultado legado")
     click_terms = _policy_search_terms(item)
     for term in click_terms:
         searched, search_trace = await _capture_page_activity(
