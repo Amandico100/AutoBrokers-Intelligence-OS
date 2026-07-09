@@ -1598,6 +1598,105 @@ async def _fill_global_search(page, value: str) -> bool:
         return False
 
 
+async def _click_search_category_for_term(page, term: str, item: Dict[str, Any]) -> bool:
+    """Depois de digitar na busca global Allianz, escolhe a categoria correta."""
+    term_digits = _digits(term)
+    cpf_digits = _digits((item or {}).get("cpf_cnpj"))
+    apolice_digits = _digits((item or {}).get("apolice_susep"))
+    recibo_digits = _digits((item or {}).get("recibo"))
+    if cpf_digits and term_digits == cpf_digits:
+        candidates = ("CPF/CNPJ", "Clientes CPF/CNPJ")
+    elif apolice_digits and term_digits == apolice_digits:
+        candidates = (
+            "Apolice Susep / Endosso",
+            "Apolice SUSEP",
+            "Apolices / Proposta",
+            "Apolices/Proposta",
+        )
+    elif recibo_digits and term_digits == recibo_digits:
+        candidates = ("Recibo / Pagamento", "Recibo/Pagamento")
+    else:
+        candidates = (
+            "Nome / Razao Social",
+            "Nome/Razao Social",
+            "Nome Razao Social",
+            "Clientes Nome",
+        )
+    clicked = await _click_text_candidate(page, candidates, timeout_ms=1800)
+    if clicked:
+        await page.wait_for_timeout(1600)
+    return clicked
+
+
+async def _click_operar_candidate(page, index: int = 0) -> bool:
+    for frame in getattr(page, "frames", [page]):
+        try:
+            clicked = await frame.evaluate(
+                """(index) => {
+                  const norm = s => (s || '').normalize('NFKD').replace(/[\\u0300-\\u036f]/g, '')
+                    .toLowerCase().replace(/\\s+/g, ' ').trim();
+                  const vis = el => !!(el && (el.offsetParent || el.getClientRects().length));
+                  const selectors = 'button,a,[role=button],[onclick],[tabindex],span,div,nx-button';
+                  const els = [...document.querySelectorAll(selectors)]
+                    .filter(el => vis(el) && norm(el.innerText || el.textContent || el.getAttribute('aria-label') || el.title) === 'operar')
+                    .map(el => {
+                      const target = el.closest('button,a,[role=button],[onclick],[tabindex],nx-button') || el;
+                      const rect = target.getBoundingClientRect();
+                      return {target, y: rect.y, x: rect.x};
+                    })
+                    .sort((a, b) => (a.y - b.y) || (a.x - b.x));
+                  if (!els[index]) return false;
+                  els[index].target.click();
+                  return true;
+                }""",
+                index,
+            )
+            if clicked:
+                await page.wait_for_timeout(1200)
+                return True
+        except Exception:  # noqa: BLE001
+            continue
+    return False
+
+
+async def _open_policy_detail_from_customer(page, item: Dict[str, Any], evidence: Dict[str, Any]) -> bool:
+    if _looks_like_policy_context(await _all_body_text(page)):
+        return _policy_context_matches_item(await _all_body_text(page), item)
+
+    detail_terms = (
+        "Detalhe de Apolice",
+        "Detalhes de Apolice",
+        "Detalhe da Apolice",
+        "Detalhes da Apolice",
+    )
+    for index in range(6):
+        if await _click_text_candidate(page, detail_terms, timeout_ms=1600):
+            if await _wait_until_policy_context(page, timeout_ms=10000):
+                text = await _all_body_text(page)
+                if _policy_context_matches_item(text, item):
+                    evidence.setdefault("download_notes", []).append("detalhe de apolice aberto")
+                    return True
+                evidence.setdefault("download_notes", []).append("detalhe abriu apolice diferente do item")
+        clicked_operar = await _click_operar_candidate(page, index=index)
+        if not clicked_operar:
+            if index == 0:
+                evidence.setdefault("download_notes", []).append("botao Operar nao encontrado na ficha do cliente")
+            break
+        if await _click_text_candidate(page, detail_terms, timeout_ms=1800):
+            if await _wait_until_policy_context(page, timeout_ms=10000):
+                text = await _all_body_text(page)
+                if _policy_context_matches_item(text, item):
+                    evidence.setdefault("download_notes", []).append("operar + detalhe de apolice aberto")
+                    return True
+                evidence.setdefault("download_notes", []).append("operar abriu apolice diferente do item")
+        if _looks_like_policy_context(await _all_body_text(page)):
+            text = await _all_body_text(page)
+            if _policy_context_matches_item(text, item):
+                evidence.setdefault("download_notes", []).append("operar abriu contexto de apolice direto")
+                return True
+    return False
+
+
 async def _wait_until_policy_context(page, timeout_ms: int = 12000) -> bool:
     deadline = timeout_ms // 600
     for _ in range(max(1, deadline)):
@@ -1606,6 +1705,13 @@ async def _wait_until_policy_context(page, timeout_ms: int = 12000) -> bool:
             return True
         await page.wait_for_timeout(600)
     return False
+
+
+def _policy_context_matches_item(page_text: str, item: Dict[str, Any]) -> bool:
+    apolice = _digits((item or {}).get("apolice_susep"))
+    if not apolice:
+        return True
+    return apolice in _digits(page_text)
 
 
 async def _wait_until_text(page, tokens: Iterable[str], timeout_ms: int = 12000) -> bool:
@@ -1634,7 +1740,8 @@ def _looks_like_inadimplentes_result(text: str) -> bool:
 def _should_restart_policy_search_from_home(text: str) -> bool:
     if _looks_like_policy_context(text) or _looks_like_recibos_list(text):
         return False
-    return _looks_like_inadimplentes_result(text)
+    _ = text
+    return False
 
 
 def _looks_like_inadimplentes_totals(text: str) -> bool:
@@ -1846,24 +1953,9 @@ async def _download_current_pdf(page, item: Dict[str, Any], params: Dict[str, An
 
 
 async def _open_receipts_for_item(page, item: Dict[str, Any], evidence: Dict[str, Any]) -> bool:
-    """Fluxo Allianz: linha do inadimplente -> Lista Recibos, com busca como fallback."""
+    """Fluxo Allianz: busca segurado -> Operar -> Detalhe de Apolice -> Lista Recibos."""
     if _looks_like_recibos_list(await _all_body_text(page)):
         return True
-
-    await _record_policy_result_trace(page, item, evidence, "before_inadimplente_row_click")
-    clicked_row, row_trace = await _capture_page_activity(
-        page,
-        "click_inadimplente_row",
-        lambda: _click_row_candidate(page, _receipt_click_terms(item), timeout_ms=900),
-        wait_ms=900,
-    )
-    row_trace["clicked"] = bool(clicked_row)
-    _remember_evidence_list(evidence, "interaction_traces", row_trace, limit=16)
-    await _record_policy_result_trace(page, item, evidence, "after_inadimplente_row_click")
-    if await _click_text_candidate(page, ("Lista Recibos", "Lista de Recibos"), timeout_ms=2200):
-        if await _wait_until_recibos_list(page, timeout_ms=9000):
-            evidence.setdefault("download_notes", []).append("lista recibos aberta a partir da linha do inadimplente")
-            return True
 
     if await _open_policy_context_for_item(page, item, evidence):
         if _looks_like_recibos_list(await _all_body_text(page)):
@@ -1874,29 +1966,13 @@ async def _open_receipts_for_item(page, item: Dict[str, Any], evidence: Dict[str
                 return True
         await _record_download_debug(page, item, evidence, "lista_recibos_not_found_in_policy_context")
 
-    queries = [
-        item.get("cpf_cnpj"),
-        item.get("cliente_nome"),
-        item.get("apolice_susep"),
-        item.get("recibo"),
-    ]
-    for query in [q for q in queries if q]:
-        if not await _fill_global_search(page, str(query)):
-            continue
-        await _click_text_candidate(page, ("Clientes", "CPF/CNPJ", "Nome/RazÃ£o Social", "Recibo/Pagamento", "ApÃ³lices/Proposta"))
-        await page.wait_for_timeout(1500)
-        await _click_text_candidate(page, ("Operar", "Lista Recibos", "Lista de Recibos", "HistÃ³rico da ApÃ³lice"))
-        await _click_text_candidate(page, ("Lista Recibos", "Lista de Recibos", "Recibos", "Pendentes"))
-        if await _wait_until_recibos_list(page, timeout_ms=9000):
-            return True
     await _record_download_debug(page, item, evidence, "lista_recibos_not_opened")
     evidence.setdefault("download_notes", []).append("nao abriu listagem de recibos para item")
     return False
 
-
 async def _open_policy_context_for_item(page, item: Dict[str, Any], evidence: Dict[str, Any]) -> bool:
     text = await _all_body_text(page)
-    if _looks_like_policy_context(text) or _looks_like_recibos_list(text):
+    if (_looks_like_policy_context(text) or _looks_like_recibos_list(text)) and _policy_context_matches_item(text, item):
         return True
     if _should_restart_policy_search_from_home(text):
         async def go_home():
@@ -1925,8 +2001,13 @@ async def _open_policy_context_for_item(page, item: Dict[str, Any], evidence: Di
         _remember_evidence_list(evidence, "interaction_traces", search_trace, limit=16)
         if not searched:
             continue
+        await _click_search_category_for_term(page, str(term), item)
         if await _wait_until_policy_context(page, timeout_ms=7000):
-            evidence.setdefault("download_notes", []).append("contexto da apolice aberto por busca")
+            text = await _all_body_text(page)
+            if _policy_context_matches_item(text, item):
+                evidence.setdefault("download_notes", []).append("contexto da apolice aberto por busca")
+                return True
+        if await _open_policy_detail_from_customer(page, item, evidence):
             return True
         clicked_search_row, search_row_trace = await _capture_page_activity(
             page,
@@ -1937,7 +2018,11 @@ async def _open_policy_context_for_item(page, item: Dict[str, Any], evidence: Di
         _remember_evidence_list(evidence, "interaction_traces", search_row_trace, limit=16)
         if clicked_search_row:
             if await _wait_until_policy_context(page, timeout_ms=8000):
-                evidence.setdefault("download_notes", []).append("contexto da apolice aberto por linha de busca")
+                text = await _all_body_text(page)
+                if _policy_context_matches_item(text, item):
+                    evidence.setdefault("download_notes", []).append("contexto da apolice aberto por linha de busca")
+                    return True
+            if await _open_policy_detail_from_customer(page, item, evidence):
                 return True
         clicked_search_text, search_text_trace = await _capture_page_activity(
             page,
@@ -1948,7 +2033,11 @@ async def _open_policy_context_for_item(page, item: Dict[str, Any], evidence: Di
         _remember_evidence_list(evidence, "interaction_traces", search_text_trace, limit=16)
         if clicked_search_text:
             if await _wait_until_policy_context(page, timeout_ms=8000):
-                evidence.setdefault("download_notes", []).append("contexto da apolice aberto por resultado de busca")
+                text = await _all_body_text(page)
+                if _policy_context_matches_item(text, item):
+                    evidence.setdefault("download_notes", []).append("contexto da apolice aberto por resultado de busca")
+                    return True
+            if await _open_policy_detail_from_customer(page, item, evidence):
                 return True
         await _record_policy_search_debug(page, item, evidence, "policy_context_not_opened_after_search", term)
     evidence.setdefault("download_notes", []).append("contexto da apolice nao abriu")
@@ -1958,7 +2047,7 @@ async def _open_policy_context_for_item(page, item: Dict[str, Any], evidence: Di
 async def _open_ficha_gestao_for_item(page, item: Dict[str, Any], evidence: Dict[str, Any]):
     if _looks_like_ficha_gestao(await _all_body_text(page)):
         return page
-    await _click_row_candidate(page, _receipt_click_terms(item), timeout_ms=900)
+    _ = item
     target = await _click_text_maybe_popup(page, ("Ficha Gestao", "Ficha de Gestao"), timeout_ms=9000)
     if target and await _wait_until_ficha_gestao(target, timeout_ms=12000):
         evidence.setdefault("download_notes", []).append("ficha gestao aberta")
@@ -1996,7 +2085,6 @@ async def _download_boletos(page, items: List[Dict[str, Any]], params: Dict[str,
                 rows = await _extract_visible_rows(page)
                 pendentes = extract_recibos_from_rows(rows)
                 result["recibos_pendentes"] = pendentes[:5]
-                await _click_row_candidate(page, _receipt_click_terms(item), timeout_ms=1000)
                 ficha = await _open_ficha_gestao_for_item(page, item, evidence)
                 if ficha:
                     if await _select_carta_inadimplencia(ficha, evidence):

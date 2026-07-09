@@ -32,6 +32,8 @@ def check(name, cond, detail=None):
 def run():
     print("== SPEC-023 P3/P4 - cobranca ==\n")
 
+    import asyncio
+    import portal_worker.journeys.allianz_corretor as allianz_corretor
     from portal_worker.journeys import get_journey
     from portal_worker.journeys.allianz_corretor import (
         _attach_expanded_details,
@@ -169,8 +171,8 @@ def run():
         _looks_like_policy_context("PARCELAS INADIMPLENTES RESULTADO - POR PARCELA Recibo Parc. Apolice Susep Gerar Planilha Voltar") is False,
     )
     check(
-        "busca de apolice deve sair do resultado legado",
-        _should_restart_policy_search_from_home("PARCELAS INADIMPLENTES RESULTADO - POR PARCELA Recibo Parc. Apolice Susep") is True,
+        "busca de apolice pode partir do resultado legado",
+        _should_restart_policy_search_from_home("PARCELAS INADIMPLENTES RESULTADO - POR PARCELA Recibo Parc. Apolice Susep") is False,
     )
     check(
         "busca de apolice nao reinicia quando ja esta no contexto",
@@ -248,6 +250,70 @@ def run():
     )
     check("debug de download preserva snippet relevante", "Lista Recibos" in debug.get("text_snippet", ""), debug)
     check("debug de download prioriza acoes relevantes", debug.get("actions", [{}])[0].get("text") == "Lista Recibos", debug)
+
+    async def _exercise_receipt_open_without_row_click():
+        calls = []
+
+        class _FakePage:
+            async def wait_for_timeout(self, _ms):
+                pass
+
+        async def fake_all_body_text(_page):
+            return "PARCELAS INADIMPLENTES RESULTADO - POR PARCELA Recibo Parc. Apolice Susep"
+
+        async def fake_record_trace(*_args, **_kwargs):
+            calls.append("record_trace")
+
+        async def forbidden_row_click(*_args, **_kwargs):
+            calls.append("row_click")
+            return False
+
+        async def fake_open_context(*_args, **_kwargs):
+            calls.append("open_policy_context")
+            return True
+
+        async def fake_click_text(_page, candidates, **_kwargs):
+            calls.append(("click_text", tuple(candidates)))
+            return "Lista Recibos" in tuple(candidates)
+
+        async def fake_wait_recibos(*_args, **_kwargs):
+            calls.append("wait_recibos")
+            return True
+
+        saved = {
+            "_all_body_text": allianz_corretor._all_body_text,
+            "_record_policy_result_trace": allianz_corretor._record_policy_result_trace,
+            "_click_row_candidate": allianz_corretor._click_row_candidate,
+            "_open_policy_context_for_item": allianz_corretor._open_policy_context_for_item,
+            "_click_text_candidate": allianz_corretor._click_text_candidate,
+            "_wait_until_recibos_list": allianz_corretor._wait_until_recibos_list,
+        }
+        try:
+            allianz_corretor._all_body_text = fake_all_body_text
+            allianz_corretor._record_policy_result_trace = fake_record_trace
+            allianz_corretor._click_row_candidate = forbidden_row_click
+            allianz_corretor._open_policy_context_for_item = fake_open_context
+            allianz_corretor._click_text_candidate = fake_click_text
+            allianz_corretor._wait_until_recibos_list = fake_wait_recibos
+            opened = await allianz_corretor._open_receipts_for_item(
+                _FakePage(),
+                {"recibo": "318946949", "parcela": "3/10", "cliente_nome": "DEBORA LUZIA ROSA"},
+                {},
+            )
+            return opened, calls
+        finally:
+            for name, value in saved.items():
+                setattr(allianz_corretor, name, value)
+
+    opened, receipt_calls = asyncio.run(_exercise_receipt_open_without_row_click())
+    check("abre recibos sem clicar em linha inadimplente", opened is True, receipt_calls)
+    check("fluxo nao clica em linha de recibo/inadimplente", "row_click" not in receipt_calls, receipt_calls)
+    ordered = (
+        "open_policy_context" in receipt_calls
+        and "wait_recibos" in receipt_calls
+        and receipt_calls.index("open_policy_context") < receipt_calls.index("wait_recibos")
+    )
+    check("fluxo abre contexto da apolice antes de Lista Recibos", ordered, receipt_calls)
 
     path = build_boleto_storage_path(
         company_id="company-123",
