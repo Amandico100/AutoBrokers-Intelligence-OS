@@ -35,6 +35,7 @@ def run():
     from portal_worker.journeys import get_journey
     from portal_worker.journeys.allianz_corretor import (
         _attach_expanded_details,
+        _extract_menu_candidates,
         _looks_like_ficha_gestao,
         _looks_like_inadimplentes_result,
         _looks_like_policy_context,
@@ -175,6 +176,20 @@ def run():
         "busca de apolice nao reinicia quando ja esta no contexto",
         _should_restart_policy_search_from_home("Gerais Segurado Dados Risco Coberturas Lista Recibos Ficha Gestao") is False,
     )
+    menu_candidates = _extract_menu_candidates({
+        "menus": [
+            {"label": "Vendas", "url": "/vendas"},
+            {
+                "label": "Consultas",
+                "children": [
+                    {"title": "Recibo/Pagamento", "path": "/drbl00/recibos/control.do"},
+                    {"title": "Apólices/Proposta", "url": "/drbl00/apolice/control.do"},
+                ],
+            },
+        ],
+    })
+    check("menu trace encontra recibo/pagamento", any("Recibo" in c.get("label", "") for c in menu_candidates), menu_candidates)
+    check("menu trace preserva url operacional", any("recibos" in c.get("url", "") for c in menu_candidates), menu_candidates)
     terms = _receipt_click_terms({"recibo": "318946949", "parcela": "3/10", "vencimento": "01/07/2026"})
     check("termos de clique priorizam recibo", terms[0] == "318946949", terms)
     check("termos de clique incluem parcela", "3/10" in terms, terms)

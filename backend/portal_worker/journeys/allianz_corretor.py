@@ -537,6 +537,50 @@ def _remember_evidence_list(evidence: Dict[str, Any], key: str, value: Dict[str,
             del bucket[:-limit]
 
 
+def _extract_menu_candidates(payload: Any) -> List[Dict[str, str]]:
+    keywords = (
+        "apolice",
+        "apolices",
+        "boleto",
+        "cobranca",
+        "consulta",
+        "ficha",
+        "gestao",
+        "historico",
+        "pagamento",
+        "proposta",
+        "recibo",
+        "sinistro",
+    )
+    label_keys = ("label", "title", "text", "name", "caption", "description", "nome", "descricao")
+    url_keys = ("url", "path", "href", "link", "route", "targetUrl", "serviceUrl", "applicationUrl")
+    out: List[Dict[str, str]] = []
+    seen = set()
+
+    def walk(node: Any, trail: List[str]) -> None:
+        if isinstance(node, dict):
+            labels = [_clean_text(node.get(key)) for key in label_keys if _clean_text(node.get(key))]
+            urls = [_clean_text(node.get(key)) for key in url_keys if _clean_text(node.get(key))]
+            label = " > ".join([*trail, *labels])[:240]
+            hay = _norm(" ".join([label, *urls]))
+            if any(key in hay for key in keywords):
+                url = urls[0] if urls else ""
+                ident = (label, url)
+                if ident not in seen:
+                    seen.add(ident)
+                    out.append({"label": label, "url": _sanitize_trace_url(url)})
+            next_trail = [*trail, *labels[:1]]
+            for value in node.values():
+                if isinstance(value, (dict, list)):
+                    walk(value, next_trail)
+        elif isinstance(node, list):
+            for value in node:
+                walk(value, trail)
+
+    walk(payload, [])
+    return out[:80]
+
+
 def _merge_recibos_context(item: Dict[str, Any], page_text: str) -> Dict[str, Any]:
     """Completa dados exibidos no topo da LISTAGEM DE RECIBOS."""
     merged = dict(item or {})
@@ -1210,6 +1254,35 @@ async def _capture_page_activity(page, label: str, action, *, wait_ms: int = 180
     return result, trace
 
 
+async def _record_session_menu_trace(page, evidence: Dict[str, Any], stage: str) -> None:
+    try:
+        payload = await page.evaluate(
+            """async () => {
+              const urls = performance.getEntriesByType('resource')
+                .map(e => e && e.name)
+                .filter(u => typeof u === 'string' && u.includes('/rws-bff-epac/api/private/session-menu'));
+              const url = urls.length ? urls[urls.length - 1] : '';
+              if (!url) return {ok: false, reason: 'session-menu url not found'};
+              const res = await fetch(url, {credentials: 'include'});
+              let body = null;
+              try { body = await res.json(); } catch (e) { body = await res.text(); }
+              return {ok: res.ok, status: res.status, url, body};
+            }"""
+        )
+        candidates = _extract_menu_candidates((payload or {}).get("body") if isinstance(payload, dict) else None)
+        summary = {
+            "stage": stage,
+            "ok": bool(isinstance(payload, dict) and payload.get("ok")),
+            "status": payload.get("status") if isinstance(payload, dict) else None,
+            "url": _sanitize_trace_url(payload.get("url") if isinstance(payload, dict) else ""),
+            "reason": str(payload.get("reason") or "")[:160] if isinstance(payload, dict) else "",
+            "candidates": candidates,
+        }
+        _remember_evidence_list(evidence, "session_menu_trace", summary, limit=6)
+    except Exception as e:  # noqa: BLE001
+        evidence.setdefault("download_notes", []).append(f"trace menu sessao falhou: {type(e).__name__}")
+
+
 async def _record_download_debug(page, item: Dict[str, Any], evidence: Dict[str, Any], stage: str) -> None:
     try:
         page_text = await _all_body_text(page)
@@ -1838,6 +1911,7 @@ async def _open_policy_context_for_item(page, item: Dict[str, Any], evidence: Di
             wait_ms=500,
         )
         _remember_evidence_list(evidence, "interaction_traces", home_trace, limit=16)
+        await _record_session_menu_trace(page, evidence, "after_home_before_policy_search")
         evidence.setdefault("download_notes", []).append("busca de apolice reiniciada na home apos resultado legado")
     click_terms = _policy_search_terms(item)
     for term in click_terms:
