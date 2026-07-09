@@ -6,10 +6,11 @@ cobranca (`cobranca_sweep`) vem depois e deve reusar a sessao persistida aqui.
 from __future__ import annotations
 
 import re
+import html
 import unicodedata
 from pathlib import Path
 from typing import Any, Dict, Iterable, List, Optional
-from urllib.parse import parse_qsl, urlencode, urlsplit, urlunsplit
+from urllib.parse import parse_qsl, urlencode, urljoin, urlsplit, urlunsplit
 
 from portal_worker.journeys import JourneyResult
 
@@ -201,6 +202,34 @@ def extract_recibos_from_rows(rows: List[Dict[str, Any]]) -> List[Dict[str, Any]
             "raw": {"cells": cells[:12]},
         })
     return pending
+
+
+def extract_totals_from_rows(rows: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
+    """Extrai os ramos da tela Allianz 'RESULTADO - TOTAIS'."""
+    out: List[Dict[str, Any]] = []
+    seen = set()
+    for row in rows or []:
+        raw_cells = row.get("cells") if isinstance(row, dict) else None
+        cells = [_clean_text(c) for c in (raw_cells or []) if _clean_text(c)]
+        if len(cells) < 6 or _looks_like_header(cells):
+            continue
+        if not _digits(cells[0]) or not re.match(r"^\d{4}\s+-\s+", cells[1]):
+            continue
+        key = (cells[0], cells[1])
+        if key in seen:
+            continue
+        seen.add(key)
+        out.append({
+            "codigo_corretor": _digits(cells[0]),
+            "ramo": cells[1],
+            "ramo_br": cells[2] if len(cells) > 2 else "",
+            "qtd_apolices": int(_digits(cells[3]) or 0) if len(cells) > 3 else 0,
+            "qtd_pcs": int(_digits(cells[4]) or 0) if len(cells) > 4 else 0,
+            "premio": _parse_money_br(cells[5] if len(cells) > 5 else ""),
+            "comissao": _parse_money_br(cells[6] if len(cells) > 6 else ""),
+            "raw": {"cells": cells[:8]},
+        })
+    return out
 
 
 def _looks_like_recibos_list(text: str) -> bool:
@@ -949,6 +978,153 @@ async def _click_text_candidate(page, candidates: Iterable[str], *, timeout_ms: 
     return False
 
 
+async def _click_section_button_candidate(page, candidates: Iterable[str], *, timeout_ms: int = 1600) -> bool:
+    cand = [str(c or "") for c in candidates if str(c or "").strip()]
+    if not cand:
+        return False
+    for frame in getattr(page, "frames", [page]):
+        try:
+            clicked = await frame.evaluate(
+                """(candidates) => {
+                  const norm = s => (s || '').normalize('NFKD').replace(/[\\u0300-\\u036f]/g, '')
+                    .toLowerCase().replace(/\\s+/g, ' ').trim();
+                  const vis = el => !!(el && (el.offsetParent || el.getClientRects().length));
+                  const wants = candidates.map(norm).filter(Boolean);
+                  const els = [...document.querySelectorAll('.sectionButton, div, td, span')]
+                    .filter(vis)
+                    .map(el => {
+                      const text = norm(el.innerText || el.textContent || el.getAttribute('aria-label') || el.title || '');
+                      let score = 0;
+                      for (const want of wants) {
+                        if (text === want) score = Math.max(score, 1000);
+                        else if (text.includes(want)) score = Math.max(score, 100);
+                      }
+                      const target = el.closest('.sectionButton') || el;
+                      const r = target.getBoundingClientRect();
+                      const cls = String(target.className || '');
+                      if (cls.includes('sectionButton')) score += 300;
+                      return {score, target, x: r.left + r.width / 2, y: r.top + r.height / 2, area: r.width * r.height};
+                    })
+                    .filter(x => x.score > 0 && x.area > 0)
+                    .sort((a, b) => (b.score - a.score) || (a.area - b.area));
+                  const hit = els[0];
+                  if (!hit) return false;
+                  hit.target.scrollIntoView({block: 'center', inline: 'center'});
+                  for (const type of ['mouseover', 'mousedown', 'mouseup', 'click']) {
+                    hit.target.dispatchEvent(new MouseEvent(type, {
+                      bubbles: true,
+                      cancelable: true,
+                      view: window,
+                      clientX: hit.x,
+                      clientY: hit.y
+                    }));
+                  }
+                  hit.target.click();
+                  return true;
+                }""",
+                cand,
+            )
+            if not clicked:
+                continue
+            await page.wait_for_timeout(timeout_ms)
+            return True
+        except Exception:  # noqa: BLE001
+            continue
+    return False
+
+
+async def _click_section_button_candidate_trusted(page, candidates: Iterable[str], *, timeout_ms: int = 1600) -> bool:
+    cand = [_norm(str(c or "")) for c in candidates if _norm(str(c or ""))]
+    if not cand:
+        return False
+    for frame in getattr(page, "frames", [page]):
+        try:
+            handles = await frame.query_selector_all(".sectionButton")
+        except Exception:  # noqa: BLE001
+            continue
+        scored = []
+        for handle in handles:
+            try:
+                text = _norm(await handle.inner_text())
+            except Exception:  # noqa: BLE001
+                continue
+            score = 0
+            for want in cand:
+                if text == want:
+                    score = max(score, 1000)
+                elif want in text:
+                    score = max(score, 100)
+            if score > 0:
+                scored.append((score, handle))
+        scored.sort(key=lambda row: row[0], reverse=True)
+        for _, handle in scored:
+            try:
+                await handle.scroll_into_view_if_needed(timeout=3000)
+            except Exception:  # noqa: BLE001
+                pass
+            try:
+                await handle.click(timeout=5000)
+                await page.wait_for_timeout(timeout_ms)
+                return True
+            except Exception:  # noqa: BLE001
+                continue
+    return False
+
+
+def _extract_new_window_url_from_onclick(onclick: Any, base_url: str = "") -> str:
+    text = html.unescape(str(onclick or ""))
+    if not text:
+        return ""
+    match = re.search(r"sendMenuVerticalEventNewWindow\s*\(\s*(['\"])(.*?)\1", text, flags=re.IGNORECASE | re.DOTALL)
+    if not match:
+        return ""
+    url = html.unescape(match.group(2).strip())
+    if not url:
+        return ""
+    return urljoin(base_url, url) if base_url else url
+
+
+async def _section_button_new_window_url(page, candidates: Iterable[str]) -> str:
+    cand = [str(c or "") for c in candidates if str(c or "").strip()]
+    if not cand:
+        return ""
+    for frame in getattr(page, "frames", [page]):
+        try:
+            onclick = await frame.evaluate(
+                """(candidates) => {
+                  const norm = s => (s || '').normalize('NFKD').replace(/[\\u0300-\\u036f]/g, '')
+                    .toLowerCase().replace(/\\s+/g, ' ').trim();
+                  const vis = el => !!(el && (el.offsetParent || el.getClientRects().length));
+                  const wants = candidates.map(norm).filter(Boolean);
+                  const nodes = [...document.querySelectorAll('.sectionButton, div, td, span')]
+                    .filter(vis)
+                    .map(el => {
+                      const target = el.closest('.sectionButton') || el;
+                      const text = norm(target.innerText || target.textContent || target.getAttribute('aria-label') || target.title || '');
+                      const onclick = target.getAttribute('onclick') || '';
+                      let score = 0;
+                      for (const want of wants) {
+                        if (text === want) score = Math.max(score, 1000);
+                        else if (text.includes(want)) score = Math.max(score, 100);
+                      }
+                      if (/sendMenuVerticalEventNewWindow/i.test(onclick)) score += 500;
+                      if (String(target.className || '').includes('sectionButton')) score += 250;
+                      return {score, onclick};
+                    })
+                    .filter(x => x.score > 0 && x.onclick)
+                    .sort((a, b) => b.score - a.score);
+                  return nodes[0]?.onclick || '';
+                }""",
+                cand,
+            )
+            url = _extract_new_window_url_from_onclick(onclick, getattr(page, "url", ""))
+            if url:
+                return url
+        except Exception:  # noqa: BLE001
+            continue
+    return ""
+
+
 async def _collect_visible_action_candidates(page) -> List[Dict[str, Any]]:
     out: List[Dict[str, Any]] = []
     for frame in getattr(page, "frames", [page]):
@@ -1598,6 +1774,75 @@ async def _fill_global_search(page, value: str) -> bool:
         return False
 
 
+async def _fill_global_search_for_category(page, value: str) -> bool:
+    """Preenche a busca Allianz e deixa o popover de categorias aberto."""
+    query = _clean_text(value)
+    if not query:
+        return False
+    for frame in getattr(page, "frames", [page]):
+        try:
+            candidates = frame.locator('input[name="target"], input[role="searchBar"], input[id^="nx-input-"]')
+            if await candidates.count() <= 0:
+                continue
+            loc = candidates.first
+            await loc.click(timeout=2500)
+            try:
+                await loc.press("Control+A", timeout=800)
+                await loc.press("Backspace", timeout=800)
+                await loc.type(query, delay=35, timeout=8000)
+            except Exception:  # noqa: BLE001
+                await loc.fill(query, timeout=2500)
+                await loc.dispatch_event("input")
+            await page.wait_for_timeout(1300)
+            return True
+        except Exception:  # noqa: BLE001
+            continue
+    return False
+
+
+async def _click_search_category_candidate(page, candidates: Iterable[str], *, timeout_ms: int = 1600) -> bool:
+    cand = [str(c or "") for c in candidates if str(c or "").strip()]
+    if not cand:
+        return False
+    try:
+        point = await page.evaluate(
+            """(candidates) => {
+              const norm = s => (s || '').normalize('NFKD').replace(/[\\u0300-\\u036f]/g, '')
+                .toLowerCase().replace(/\\s+/g, ' ').trim();
+              const vis = el => !!(el && (el.offsetParent || el.getClientRects().length));
+              const wants = candidates.map(norm).filter(Boolean);
+              const selectors = [
+                '.cdk-overlay-container a',
+                '.cdk-overlay-container nx-link',
+                '.cdk-overlay-container mat-tree-node',
+                '[role=dialog] a',
+                '[role=treeitem] a'
+              ].join(',');
+              const matches = [...document.querySelectorAll(selectors)].filter(vis).map(el => {
+                const text = norm(el.innerText || el.textContent || el.getAttribute('aria-label') || el.title || '');
+                let score = 0;
+                for (const want of wants) {
+                  if (text === want) score = Math.max(score, 1000);
+                  else if (text.includes(want) || want.includes(text)) score = Math.max(score, 100);
+                }
+                const target = el.querySelector('a') || el;
+                const r = target.getBoundingClientRect();
+                return {score, text, x: r.left + r.width / 2, y: r.top + r.height / 2, area: r.width * r.height};
+              }).filter(x => x.score > 0 && x.area > 0)
+                .sort((a, b) => (b.score - a.score) || (a.area - b.area) || (a.y - b.y));
+              return matches[0] || null;
+            }""",
+            cand,
+        )
+        if not point:
+            return False
+        await page.mouse.click(float(point["x"]), float(point["y"]))
+        await page.wait_for_timeout(timeout_ms)
+        return True
+    except Exception:  # noqa: BLE001
+        return False
+
+
 async def _click_search_category_for_term(page, term: str, item: Dict[str, Any]) -> bool:
     """Depois de digitar na busca global Allianz, escolhe a categoria correta."""
     term_digits = _digits(term)
@@ -1622,10 +1867,58 @@ async def _click_search_category_for_term(page, term: str, item: Dict[str, Any])
             "Nome Razao Social",
             "Clientes Nome",
         )
-    clicked = await _click_text_candidate(page, candidates, timeout_ms=1800)
+    clicked = await _click_search_category_candidate(page, candidates, timeout_ms=1800)
+    if not clicked:
+        clicked = await _click_text_candidate(page, candidates, timeout_ms=1800)
     if clicked:
         await page.wait_for_timeout(1600)
     return clicked
+
+
+async def _click_customer_search_result(page, item: Dict[str, Any], evidence: Dict[str, Any]) -> bool:
+    """Clica no cliente retornado pela busca; em duplicados Allianz, o ultimo costuma trazer a apolice."""
+    name = _clean_text((item or {}).get("cliente_nome"))
+    cpf = _digits((item or {}).get("cpf_cnpj"))
+    if not name and not cpf:
+        return False
+    try:
+        point = await page.evaluate(
+            """({name, cpf}) => {
+              const norm = s => (s || '').normalize('NFKD').replace(/[\\u0300-\\u036f]/g, '')
+                .toLowerCase().replace(/\\s+/g, ' ').trim();
+              const digits = s => String(s || '').replace(/\\D/g, '');
+              const vis = el => !!(el && (el.offsetParent || el.getClientRects().length));
+              const wantName = norm(name);
+              const wantCpf = digits(cpf);
+              const anchors = [...document.querySelectorAll('[role=dialog] a, .nx-modal__container a')]
+                .filter(vis)
+                .map(el => {
+                  const row = el.closest('tr') || el.closest('[role=row]') || el.closest('div');
+                  const text = norm(el.innerText || el.textContent || '');
+                  const rowText = norm(row ? (row.innerText || row.textContent || '') : text);
+                  const rowDigits = digits(rowText);
+                  const r = el.getBoundingClientRect();
+                  let score = 0;
+                  if (wantName && text === wantName) score += 500;
+                  if (wantName && rowText.includes(wantName)) score += 150;
+                  if (wantCpf && rowDigits.includes(wantCpf)) score += 120;
+                  if ((getComputedStyle(el).cursor || '').includes('pointer')) score += 20;
+                  return {score, text, rowText, x: r.left + r.width / 2, y: r.top + r.height / 2, area: r.width * r.height};
+                })
+                .filter(x => x.score >= 500 && x.area > 0)
+                .sort((a, b) => (b.score - a.score) || (b.y - a.y));
+              return anchors[0] || null;
+            }""",
+            {"name": name, "cpf": cpf},
+        )
+        if not point:
+            return False
+        await page.mouse.click(float(point["x"]), float(point["y"]))
+        await page.wait_for_timeout(4500)
+        evidence.setdefault("download_notes", []).append("resultado de cliente aberto pela busca")
+        return True
+    except Exception:  # noqa: BLE001
+        return False
 
 
 async def _click_operar_candidate(page, index: int = 0) -> bool:
@@ -1661,7 +1954,8 @@ async def _click_operar_candidate(page, index: int = 0) -> bool:
 
 async def _open_policy_detail_from_customer(page, item: Dict[str, Any], evidence: Dict[str, Any]) -> bool:
     if _looks_like_policy_context(await _all_body_text(page)):
-        return _policy_context_matches_item(await _all_body_text(page), item)
+        text = await _all_body_text(page)
+        return _policy_context_matches_item(text, item) or _policy_context_matches_customer(text, item)
 
     detail_terms = (
         "Detalhe de Apolice",
@@ -1673,7 +1967,7 @@ async def _open_policy_detail_from_customer(page, item: Dict[str, Any], evidence
         if await _click_text_candidate(page, detail_terms, timeout_ms=1600):
             if await _wait_until_policy_context(page, timeout_ms=10000):
                 text = await _all_body_text(page)
-                if _policy_context_matches_item(text, item):
+                if _policy_context_matches_item(text, item) or _policy_context_matches_customer(text, item):
                     evidence.setdefault("download_notes", []).append("detalhe de apolice aberto")
                     return True
                 evidence.setdefault("download_notes", []).append("detalhe abriu apolice diferente do item")
@@ -1685,15 +1979,25 @@ async def _open_policy_detail_from_customer(page, item: Dict[str, Any], evidence
         if await _click_text_candidate(page, detail_terms, timeout_ms=1800):
             if await _wait_until_policy_context(page, timeout_ms=10000):
                 text = await _all_body_text(page)
-                if _policy_context_matches_item(text, item):
+                if _policy_context_matches_item(text, item) or _policy_context_matches_customer(text, item):
                     evidence.setdefault("download_notes", []).append("operar + detalhe de apolice aberto")
                     return True
                 evidence.setdefault("download_notes", []).append("operar abriu apolice diferente do item")
         if _looks_like_policy_context(await _all_body_text(page)):
             text = await _all_body_text(page)
-            if _policy_context_matches_item(text, item):
+            if _policy_context_matches_item(text, item) or _policy_context_matches_customer(text, item):
                 evidence.setdefault("download_notes", []).append("operar abriu contexto de apolice direto")
                 return True
+    try:
+        await page.wait_for_timeout(2500)
+    except Exception:  # noqa: BLE001
+        pass
+    text = await _all_body_text(page)
+    if _looks_like_policy_context(text) and (
+        _policy_context_matches_item(text, item) or _policy_context_matches_customer(text, item)
+    ):
+        evidence.setdefault("download_notes", []).append("contexto de apolice confirmado apos carregamento")
+        return True
     return False
 
 
@@ -1714,13 +2018,19 @@ def _policy_context_matches_item(page_text: str, item: Dict[str, Any]) -> bool:
     return apolice in _digits(page_text)
 
 
+def _policy_context_matches_customer(page_text: str, item: Dict[str, Any]) -> bool:
+    name = _norm((item or {}).get("cliente_nome"))
+    body = _norm(page_text)
+    return bool(name and name in body)
+
+
 async def _wait_until_text(page, tokens: Iterable[str], timeout_ms: int = 12000) -> bool:
     wanted = [_norm(t) for t in tokens if _norm(t)]
     if not wanted:
         return False
     deadline = timeout_ms // 600
     for _ in range(max(1, deadline)):
-        text = _norm(await _body_text(page))
+        text = _norm(await _all_body_text(page))
         if all(t in text for t in wanted):
             return True
         await page.wait_for_timeout(600)
@@ -1751,6 +2061,59 @@ def _looks_like_inadimplentes_totals(text: str) -> bool:
     return "qtd.apolices" in body and "qtd.pcs" in body and "premio" in body
 
 
+def _safe_home_inadimplencias_text(text: str) -> bool:
+    body = _norm(text)
+    if "inadimplencias" not in body:
+        return False
+    blocked = ("chat", "fale com a gente", "nova cotacao", "login", "documentacao")
+    return not any(token in body for token in blocked)
+
+
+async def _click_home_inadimplencias_entry(page) -> bool:
+    """Clica no alerta da home Allianz, evitando atalhos de chat/cotacao."""
+    for frame in getattr(page, "frames", [page]):
+        try:
+            clicked = await frame.evaluate(
+                """() => {
+                  const norm = s => (s || '').normalize('NFKD').replace(/[\\u0300-\\u036f]/g, '')
+                    .toLowerCase().replace(/\\s+/g, ' ').trim();
+                  const vis = el => !!(el && (el.offsetParent || el.getClientRects().length));
+                  const blocked = text => /chat|fale com a gente|nova cotacao|login|documentacao/.test(text);
+                  const selectors = [
+                    'tr', '[role=row]', 'li', 'button', 'a', '[role=button]', '[onclick]', '[tabindex]',
+                    '.row', '.card', '.item', 'nx-link', 'nx-action', 'span', 'div'
+                  ].join(',');
+                  const els = [...document.querySelectorAll(selectors)].filter(vis);
+                  let best = null, bestScore = 0;
+                  for (const el of els) {
+                    const raw = (el.innerText || el.textContent || el.getAttribute('aria-label') || el.title || '');
+                    const text = norm(raw);
+                    if (!text || text.length > 220 || blocked(text)) continue;
+                    let score = 0;
+                    if (text === 'inadimplencias') score += 1000;
+                    if (/^inadimplencias\\b/.test(text)) score += 800;
+                    if (text.includes('inadimplencias')) score += 500;
+                    if (/\\b\\d+\\b/.test(text)) score += 50;
+                    const tag = (el.tagName || '').toLowerCase();
+                    if (tag === 'tr' || el.getAttribute('role') === 'row') score += 80;
+                    if (el.closest('button,a,[role=button],[onclick],[tabindex],tr,[role=row],li')) score += 40;
+                    if (score > bestScore) { best = el; bestScore = score; }
+                  }
+                  if (!best || bestScore < 500) return false;
+                  const target = best.closest('button,a,[role=button],[onclick],[tabindex],tr,[role=row],li') || best;
+                  target.scrollIntoView({block: 'center', inline: 'center'});
+                  target.click();
+                  return true;
+                }"""
+            )
+            if clicked:
+                await page.wait_for_timeout(2500)
+                return True
+        except Exception:  # noqa: BLE001
+            continue
+    return False
+
+
 async def _wait_until_inadimplentes_result(page, timeout_ms: int = 12000) -> bool:
     deadline = timeout_ms // 600
     for _ in range(max(1, deadline)):
@@ -1771,23 +2134,31 @@ async def _wait_for_inadimplencias_entry(page, timeout_ms: int = 12000) -> bool:
 
 
 async def _click_first_totals_row(page) -> bool:
+    return await _click_totals_row_by_index(page, 0)
+
+
+async def _click_totals_row_by_index(page, index: int) -> bool:
     for frame in getattr(page, "frames", [page]):
         try:
             clicked = await frame.evaluate(
-                """() => {
+                """(index) => {
                   const clean = t => (t || '').replace(/\\s+/g, ' ').trim();
                   const vis = el => !!(el && (el.offsetParent || el.getClientRects().length));
                   const rows = [...document.querySelectorAll('tr,[role=row]')].filter(vis);
+                  const matches = [];
                   for (const row of rows) {
                     const text = clean(row.innerText || row.textContent);
                     if (!text || text.length > 260) continue;
                     if (/^\\d+\\s+\\d{4}\\s+-\\s+/.test(text) && /\\d+,\\d{2}/.test(text)) {
-                      row.click();
-                      return true;
+                      matches.push(row);
                     }
                   }
-                  return false;
-                }"""
+                  if (!matches[index]) return false;
+                  matches[index].scrollIntoView({block: 'center', inline: 'center'});
+                  matches[index].click();
+                  return true;
+                }""",
+                int(index),
             )
             if clicked:
                 await page.wait_for_timeout(2500)
@@ -1854,10 +2225,14 @@ async def _semantic_navigation_review(page, goal: str, params: Dict[str, Any], e
 async def _ensure_inadimplentes_page(page, params: Dict[str, Any], evidence: Dict[str, Any]) -> bool:
     await _wait_for_inadimplencias_entry(page, timeout_ms=10000)
     text = _norm(await _all_body_text(page))
-    if _looks_like_inadimplentes_result(text):
+    if _looks_like_inadimplentes_result(text) or _looks_like_inadimplentes_totals(text):
         return True
-    if await _open_parcela_from_totals_if_needed(page, evidence):
-        return True
+
+    if await _click_home_inadimplencias_entry(page):
+        if await _wait_until_inadimplentes_result(page, timeout_ms=6500):
+            return True
+        if _looks_like_inadimplentes_totals(await _all_body_text(page)):
+            return True
 
     # Tenta caminho semantico pelo menu/atalho da home Allianz.
     candidates = (
@@ -1876,27 +2251,22 @@ async def _ensure_inadimplentes_page(page, params: Dict[str, Any], evidence: Dic
         if await _click_text_candidate(page, [label]):
             if await _wait_until_inadimplentes_result(page, timeout_ms=6500):
                 return True
-            if await _open_parcela_from_totals_if_needed(page, evidence):
-                return True
-
-    # Tenta busca global do proprio portal.
-    for query in ("Parcelas Inadimplentes", "inadimplentes", "cobranca"):
-        if await _fill_global_search(page, query):
-            await _click_text_candidate(page, ("Parcelas Inadimplentes", "Recibo/Pagamento", "CobranÃ§a", "Cobranca"))
-            if await _wait_until_inadimplentes_result(page, timeout_ms=7500):
-                return True
-            if await _open_parcela_from_totals_if_needed(page, evidence):
+            if _looks_like_inadimplentes_totals(await _all_body_text(page)):
                 return True
 
     adaptive = await _semantic_navigation_review(
         page,
-        "Abra a area Allianz de parcelas inadimplentes/cobranca e pare na lista de atrasados.",
+        (
+            "Abra o alerta/card INADIMPLENCIAS da home Allianz e pare na tela de Parcelas "
+            "Inadimplentes. Nao use a busca global, nao clique em Fale com a gente, Chat "
+            "Allianz, Chat Help Desk ou Nova Cotacao."
+        ),
         params,
         evidence,
     )
     text = _norm(await _all_body_text(page))
     evidence["cobranca_navigation"] = {"adaptive_status": adaptive.status, "message": adaptive.message}
-    return _looks_like_inadimplentes_result(text) or await _open_parcela_from_totals_if_needed(page, evidence)
+    return _looks_like_inadimplentes_result(text) or _looks_like_inadimplentes_totals(text)
 
 
 async def _download_current_pdf(page, item: Dict[str, Any], params: Dict[str, Any]) -> Dict[str, Any]:
@@ -1958,9 +2328,15 @@ async def _open_receipts_for_item(page, item: Dict[str, Any], evidence: Dict[str
         return True
 
     if await _open_policy_context_for_item(page, item, evidence):
+        await _wait_until_text(page, ("Lista Recibos",), timeout_ms=9000)
         if _looks_like_recibos_list(await _all_body_text(page)):
             return True
-        if await _click_text_candidate(page, ("Lista Recibos", "Lista de Recibos"), timeout_ms=2200):
+        clicked_recibos = await _click_section_button_candidate(
+            page, ("Lista Recibos", "Lista de Recibos"), timeout_ms=2200
+        )
+        if not clicked_recibos:
+            clicked_recibos = await _click_text_candidate(page, ("Lista Recibos", "Lista de Recibos"), timeout_ms=2200)
+        if clicked_recibos:
             if await _wait_until_recibos_list(page, timeout_ms=9000):
                 evidence.setdefault("download_notes", []).append("lista recibos aberta a partir do contexto da apolice")
                 return True
@@ -1994,7 +2370,7 @@ async def _open_policy_context_for_item(page, item: Dict[str, Any], evidence: Di
         searched, search_trace = await _capture_page_activity(
             page,
             f"global_search:{_clean_text(term)[:48]}",
-            lambda term=term: _fill_global_search(page, term),
+            lambda term=term: _fill_global_search_for_category(page, term),
             wait_ms=1000,
         )
         search_trace["term"] = _clean_text(term)[:120]
@@ -2002,6 +2378,9 @@ async def _open_policy_context_for_item(page, item: Dict[str, Any], evidence: Di
         if not searched:
             continue
         await _click_search_category_for_term(page, str(term), item)
+        await _click_customer_search_result(page, item, evidence)
+        if await _open_policy_detail_from_customer(page, item, evidence):
+            return True
         if await _wait_until_policy_context(page, timeout_ms=7000):
             text = await _all_body_text(page)
             if _policy_context_matches_item(text, item):
@@ -2048,7 +2427,65 @@ async def _open_ficha_gestao_for_item(page, item: Dict[str, Any], evidence: Dict
     if _looks_like_ficha_gestao(await _all_body_text(page)):
         return page
     _ = item
-    target = await _click_text_maybe_popup(page, ("Ficha Gestao", "Ficha de Gestao"), timeout_ms=9000)
+    target = None
+    clicked_trusted = False
+    try:
+        async with page.expect_popup(timeout=9000) as popup_info:
+            clicked_trusted = await _click_section_button_candidate_trusted(
+                page, ("Ficha Gestao", "Ficha de Gestao"), timeout_ms=800
+            )
+        if clicked_trusted:
+            target = await popup_info.value
+            try:
+                await target.wait_for_load_state("domcontentloaded", timeout=9000)
+            except Exception:  # noqa: BLE001
+                pass
+            await target.wait_for_timeout(1200)
+    except Exception:  # noqa: BLE001
+        if clicked_trusted:
+            target = page
+    if target and await _wait_until_ficha_gestao(target, timeout_ms=12000):
+        evidence.setdefault("download_notes", []).append("ficha gestao aberta por clique trusted")
+        return target
+
+    direct_url = await _section_button_new_window_url(page, ("Ficha Gestao", "Ficha de Gestao"))
+    if direct_url:
+        direct_target = None
+        try:
+            direct_target = await page.context.new_page()
+            await direct_target.goto(direct_url, wait_until="commit", timeout=15000)
+            await direct_target.wait_for_timeout(2500)
+            if await _wait_until_ficha_gestao(direct_target, timeout_ms=12000):
+                evidence.setdefault("download_notes", []).append("ficha gestao aberta por janela operacional Allianz")
+                return direct_target
+            evidence.setdefault("download_notes", []).append("ficha gestao abriu URL operacional mas nao carregou a lista")
+        except Exception as e:  # noqa: BLE001
+            evidence.setdefault("download_notes", []).append(f"ficha gestao por URL falhou: {type(e).__name__}")
+        if direct_target:
+            try:
+                await direct_target.close()
+            except Exception:  # noqa: BLE001
+                pass
+
+    target = None
+    clicked_section = False
+    try:
+        async with page.expect_popup(timeout=9000) as popup_info:
+            clicked_section = await _click_section_button_candidate(
+                page, ("Ficha Gestao", "Ficha de Gestao"), timeout_ms=800
+            )
+        if clicked_section:
+            target = await popup_info.value
+            try:
+                await target.wait_for_load_state("domcontentloaded", timeout=9000)
+            except Exception:  # noqa: BLE001
+                pass
+            await target.wait_for_timeout(1200)
+    except Exception:  # noqa: BLE001
+        if clicked_section:
+            target = page
+    if target is None:
+        target = await _click_text_maybe_popup(page, ("Ficha Gestao", "Ficha de Gestao"), timeout_ms=9000)
     if target and await _wait_until_ficha_gestao(target, timeout_ms=12000):
         evidence.setdefault("download_notes", []).append("ficha gestao aberta")
         return target
@@ -2108,6 +2545,76 @@ async def _download_boletos(page, items: List[Dict[str, Any]], params: Dict[str,
     return out
 
 
+async def _return_to_inadimplentes_totals(page) -> bool:
+    if _looks_like_inadimplentes_totals(await _all_body_text(page)):
+        return True
+    if await _click_text_candidate(page, ("Voltar",), timeout_ms=1800):
+        deadline = 10
+        for _ in range(deadline):
+            if _looks_like_inadimplentes_totals(await _all_body_text(page)):
+                return True
+            await page.wait_for_timeout(600)
+    try:
+        await page.go_back(wait_until="domcontentloaded", timeout=6000)
+        await page.wait_for_timeout(1200)
+    except Exception:  # noqa: BLE001
+        pass
+    return _looks_like_inadimplentes_totals(await _all_body_text(page))
+
+
+async def _extract_current_inadimplentes_result(page, max_items: int, evidence: Dict[str, Any]) -> List[Dict[str, Any]]:
+    expanded = await _expand_inadimplente_details(page, max_items=max_items)
+    evidence["inadimplentes_details_expanded"] = int(evidence.get("inadimplentes_details_expanded") or 0) + expanded
+    rows = await _extract_visible_rows(page)
+    evidence["inadimplentes_rows_seen"] = int(evidence.get("inadimplentes_rows_seen") or 0) + len(rows)
+    segurado_rows = [
+        _clean_text((r.get("detail") or r.get("text") or ""))[:500]
+        for r in rows
+        if re.search(r"Segurado\s*:|CPF/?CNPJ\s*:", _clean_text((r.get("detail") or r.get("text") or "")), flags=re.IGNORECASE)
+    ]
+    evidence["inadimplentes_detail_rows_seen"] = int(evidence.get("inadimplentes_detail_rows_seen") or 0) + len(segurado_rows)
+    return extract_inadimplentes_from_rows(rows)
+
+
+async def _collect_inadimplentes_items(page, max_items: int, evidence: Dict[str, Any]) -> List[Dict[str, Any]]:
+    if not _looks_like_inadimplentes_totals(await _all_body_text(page)):
+        return await _extract_current_inadimplentes_result(page, max_items, evidence)
+
+    totals_rows = await _extract_visible_rows(page)
+    totals = extract_totals_from_rows(totals_rows)
+    evidence["inadimplentes_totals"] = totals[:20]
+    items: List[Dict[str, Any]] = []
+    seen = set()
+    for idx, total in enumerate(totals):
+        if len(items) >= max_items:
+            break
+        if not await _click_totals_row_by_index(page, idx):
+            evidence.setdefault("download_notes", []).append(f"nao abriu ramo total {idx + 1}: {total.get('ramo')}")
+            continue
+        if not await _wait_until_inadimplentes_result(page, timeout_ms=9000):
+            evidence.setdefault("download_notes", []).append(f"ramo sem resultado por parcela: {total.get('ramo')}")
+            await _return_to_inadimplentes_totals(page)
+            continue
+        branch_items = await _extract_current_inadimplentes_result(page, max_items - len(items), evidence)
+        for item in branch_items:
+            key = (
+                str(item.get("recibo") or ""),
+                str(item.get("apolice_susep") or ""),
+                str(item.get("cpf_cnpj") or ""),
+            )
+            if key in seen:
+                continue
+            seen.add(key)
+            items.append({**item, "ramo_total": total.get("ramo")})
+            if len(items) >= max_items:
+                break
+        if idx < len(totals) - 1:
+            if not await _return_to_inadimplentes_totals(page):
+                evidence.setdefault("download_notes", []).append("nao consegui voltar para Resultado - Totais")
+                break
+    return items
+
+
 async def cobranca_sweep(page, params: Dict[str, Any], evidence: Dict[str, Any]) -> JourneyResult:
     """SPEC-023 P3: varre cobranca Allianz, extrai atrasados e baixa boletos quando possivel."""
     login = await login_check(page, params, evidence)
@@ -2132,17 +2639,10 @@ async def cobranca_sweep(page, params: Dict[str, Any], evidence: Dict[str, Any])
         max_expand = max(1, int(params.get("max_boletos") or params.get("max_boletos_por_execucao") or 10))
     except Exception:  # noqa: BLE001
         max_expand = 10
-    evidence["inadimplentes_details_expanded"] = await _expand_inadimplente_details(page, max_items=max_expand)
-
-    rows = await _extract_visible_rows(page)
-    segurado_rows = [
-        _clean_text((r.get("detail") or r.get("text") or ""))[:500]
-        for r in rows
-        if re.search(r"Segurado\s*:|CPF/?CNPJ\s*:", _clean_text((r.get("detail") or r.get("text") or "")), flags=re.IGNORECASE)
-    ]
-    evidence["inadimplentes_detail_rows_seen"] = len(segurado_rows)
-    items = extract_inadimplentes_from_rows(rows)
-    evidence["inadimplentes_rows_seen"] = len(rows)
+    evidence["inadimplentes_details_expanded"] = 0
+    evidence["inadimplentes_detail_rows_seen"] = 0
+    evidence["inadimplentes_rows_seen"] = 0
+    items = await _collect_inadimplentes_items(page, max_expand, evidence)
     evidence["inadimplentes_count"] = len(items)
     evidence["inadimplentes_sample"] = [
         {
@@ -2152,6 +2652,7 @@ async def cobranca_sweep(page, params: Dict[str, Any], evidence: Dict[str, Any])
             "valor": i.get("valor"),
             "cliente_nome": i.get("cliente_nome"),
             "cpf_cnpj": i.get("cpf_cnpj"),
+            "ramo_total": i.get("ramo_total"),
         }
         for i in items[:5]
     ]

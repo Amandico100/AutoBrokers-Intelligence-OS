@@ -41,10 +41,13 @@ def run():
         _looks_like_ficha_gestao,
         _looks_like_inadimplentes_result,
         _looks_like_policy_context,
+        _policy_context_matches_customer,
         _looks_like_recibos_list,
         _merge_recibos_context,
         _policy_search_terms,
         _receipt_click_terms,
+        _extract_new_window_url_from_onclick,
+        _safe_home_inadimplencias_text,
         _should_restart_policy_search_from_home,
         _summarize_policy_search_component,
         _summarize_policy_search_debug,
@@ -54,6 +57,7 @@ def run():
         build_boleto_storage_path,
         extract_inadimplentes_from_rows,
         extract_recibos_from_rows,
+        extract_totals_from_rows,
         _sanitize_trace_url,
     )
 
@@ -94,6 +98,14 @@ def run():
         "resultado/tabela e lista de inadimplentes",
         _looks_like_inadimplentes_result("Resultado por Parcela Apolice Susep Vcto. Premio Recibo") is True,
     )
+    totals = extract_totals_from_rows([
+        {"cells": ["711110", "2013 - Residencia Digital", "14", "2", "2", "477,58", "17,76"]},
+        {"cells": ["711110", "2024 - Empresa PME", "18", "2", "2", "2.916,32", "603,03"]},
+        {"cells": ["Cd.Corretor", "Ramo", "Qtd.Apolices", "Qtd.Pcs.", "Premio", "Comissao"]},
+    ])
+    check("extrai dois ramos do resultado totais", len(totals) == 2, totals)
+    check("totais preserva ramo residencial", totals[0].get("ramo") == "2013 - Residencia Digital", totals)
+    check("totais preserva qtd pcs empresa", totals[1].get("qtd_pcs") == 2, totals)
     parsed_shifted = extract_inadimplentes_from_rows([
         {
             "cells": [
@@ -171,6 +183,13 @@ def run():
         _looks_like_policy_context("PARCELAS INADIMPLENTES RESULTADO - POR PARCELA Recibo Parc. Apolice Susep Gerar Planilha Voltar") is False,
     )
     check(
+        "contexto operacional pode confirmar pelo nome do segurado",
+        _policy_context_matches_customer(
+            "DADOS GERAIS (AZR) Lista Recibos Ficha Gestao Nome MONICA BONELLI PAULO PRAZERES",
+            {"cliente_nome": "MONICA BONELLI PAULO PRAZERES"},
+        ) is True,
+    )
+    check(
         "busca de apolice pode partir do resultado legado",
         _should_restart_policy_search_from_home("PARCELAS INADIMPLENTES RESULTADO - POR PARCELA Recibo Parc. Apolice Susep") is False,
     )
@@ -203,6 +222,22 @@ def run():
     })
     check("termos de busca priorizam segurado", search_terms[0] == "MONICA BONELLI PAULO PRAZERES", search_terms)
     check("termos de busca incluem apolice", "5177202623140183705" in search_terms, search_terms)
+    check(
+        "busca de apolice tem preenchimento sem submeter para escolher categoria",
+        callable(getattr(allianz_corretor, "_fill_global_search_for_category", None)),
+    )
+    check(
+        "busca de cliente tem clique especifico no resultado do modal",
+        callable(getattr(allianz_corretor, "_click_customer_search_result", None)),
+    )
+    check(
+        "botoes cinza do rodape Allianz tem clique especifico",
+        callable(getattr(allianz_corretor, "_click_section_button_candidate", None)),
+    )
+    check(
+        "botoes que abrem janela usam clique trusted do Playwright",
+        callable(getattr(allianz_corretor, "_click_section_button_candidate_trusted", None)),
+    )
     search_debug = _summarize_policy_search_debug([
         {"placeholder": "Susep", "value": "0711110", "x": 270, "y": 330, "w": 80, "h": 20, "near_text": "FILTRO Susep Codigo Corretor"},
         {"placeholder": "Pesquisar ...", "value": "", "x": 30, "y": 170, "w": 520, "h": 36, "near_text": "Pesquisar"},
@@ -233,6 +268,14 @@ def run():
         "sanitizacao de URL preserva rota e remove senha",
         _sanitize_trace_url("https://x.test/path?senha=abc&uid=BA068610") == "https://x.test/path?uid=BA068610",
     )
+    ficha_onclick = (
+        "sendMenuVerticalEventNewWindow('https://www.allianznet.com.br:443/ngx-file-management/"
+        "fileManagement?uid=BA068610&token=abc123&codCia=4', 'menu.fichagestao');"
+    )
+    extracted_ficha_url = _extract_new_window_url_from_onclick(ficha_onclick)
+    check("extrai URL de janela nova da Ficha Gestao", "ngx-file-management/fileManagement" in extracted_ficha_url, extracted_ficha_url)
+    check("URL operacional extraida nao deve ir sanitizada para navegacao", "token=abc123" in extracted_ficha_url, extracted_ficha_url)
+    check("sanitizacao de URL da ficha remove token", "token=abc123" not in _sanitize_trace_url(extracted_ficha_url), _sanitize_trace_url(extracted_ficha_url))
     merged = _merge_recibos_context(
         {"cliente_nome": "", "item_segurado": ""},
         "Apolice 137583747 Item 0 Apolice SUSEP 5177-2026-23-14-0186415 "
@@ -250,6 +293,10 @@ def run():
     )
     check("debug de download preserva snippet relevante", "Lista Recibos" in debug.get("text_snippet", ""), debug)
     check("debug de download prioriza acoes relevantes", debug.get("actions", [{}])[0].get("text") == "Lista Recibos", debug)
+    check("home alerta reconhece inadimplencias", _safe_home_inadimplencias_text("INADIMPLÊNCIAS 4 ?") is True)
+    check("home alerta reconhece sem acento", _safe_home_inadimplencias_text("Inadimplencias 8") is True)
+    check("home alerta rejeita chat", _safe_home_inadimplencias_text("Precisa falar com a gente? CHAT ALLIANZ") is False)
+    check("home alerta rejeita cotacao", _safe_home_inadimplencias_text("NOVA COTACAO") is False)
 
     async def _exercise_receipt_open_without_row_click():
         calls = []
@@ -314,6 +361,110 @@ def run():
         and receipt_calls.index("open_policy_context") < receipt_calls.index("wait_recibos")
     )
     check("fluxo abre contexto da apolice antes de Lista Recibos", ordered, receipt_calls)
+
+    async def _exercise_inadimplencias_entry_before_search():
+        calls = []
+
+        class _FakePage:
+            async def wait_for_timeout(self, _ms):
+                pass
+
+        async def fake_wait_entry(*_args, **_kwargs):
+            calls.append("wait_entry")
+            return True
+
+        async def fake_body(_page):
+            calls.append("body")
+            return "Inicio Alertas de Negocio INADIMPLÊNCIAS 4 APOLICES A RENOVAR"
+
+        async def fake_open_totals(*_args, **_kwargs):
+            calls.append("open_totals")
+            return False
+
+        async def fake_click_home(*_args, **_kwargs):
+            calls.append("click_home_inadimplencias")
+            return True
+
+        async def fake_wait_result(*_args, **_kwargs):
+            calls.append("wait_result")
+            return True
+
+        async def forbidden_global_search(*_args, **_kwargs):
+            calls.append("global_search")
+            return False
+
+        async def forbidden_adaptive(*_args, **_kwargs):
+            calls.append("adaptive")
+            class _Result:
+                status = "needs_human"
+                message = "should not run"
+            return _Result()
+
+        saved = {
+            "_wait_for_inadimplencias_entry": allianz_corretor._wait_for_inadimplencias_entry,
+            "_all_body_text": allianz_corretor._all_body_text,
+            "_open_parcela_from_totals_if_needed": allianz_corretor._open_parcela_from_totals_if_needed,
+            "_click_home_inadimplencias_entry": allianz_corretor._click_home_inadimplencias_entry,
+            "_wait_until_inadimplentes_result": allianz_corretor._wait_until_inadimplentes_result,
+            "_fill_global_search": allianz_corretor._fill_global_search,
+            "_semantic_navigation_review": allianz_corretor._semantic_navigation_review,
+        }
+        try:
+            allianz_corretor._wait_for_inadimplencias_entry = fake_wait_entry
+            allianz_corretor._all_body_text = fake_body
+            allianz_corretor._open_parcela_from_totals_if_needed = fake_open_totals
+            allianz_corretor._click_home_inadimplencias_entry = fake_click_home
+            allianz_corretor._wait_until_inadimplentes_result = fake_wait_result
+            allianz_corretor._fill_global_search = forbidden_global_search
+            allianz_corretor._semantic_navigation_review = forbidden_adaptive
+            ok = await allianz_corretor._ensure_inadimplentes_page(_FakePage(), {}, {})
+            return ok, calls
+        finally:
+            for name, value in saved.items():
+                setattr(allianz_corretor, name, value)
+
+    entry_ok, entry_calls = asyncio.run(_exercise_inadimplencias_entry_before_search())
+    check("home inadimplencias abre antes da busca global", entry_ok is True, entry_calls)
+    check("entrada nao usa busca generica cobranca", "global_search" not in entry_calls, entry_calls)
+    check("entrada nao chama adaptativo quando alerta existe", "adaptive" not in entry_calls, entry_calls)
+
+    async def _exercise_totals_page_stays_on_totals():
+        calls = []
+
+        class _FakePage:
+            async def wait_for_timeout(self, _ms):
+                pass
+
+        async def fake_wait_entry(*_args, **_kwargs):
+            calls.append("wait_entry")
+            return True
+
+        async def fake_body(_page):
+            calls.append("body")
+            return "Parcelas Inadimplentes RESULTADO - TOTAIS Cd.Corretor Ramo Qtd.Apolices Qtd.Pcs Premio Comissao"
+
+        async def forbidden_open_totals(*_args, **_kwargs):
+            calls.append("open_first_total")
+            return True
+
+        saved = {
+            "_wait_for_inadimplencias_entry": allianz_corretor._wait_for_inadimplencias_entry,
+            "_all_body_text": allianz_corretor._all_body_text,
+            "_open_parcela_from_totals_if_needed": allianz_corretor._open_parcela_from_totals_if_needed,
+        }
+        try:
+            allianz_corretor._wait_for_inadimplencias_entry = fake_wait_entry
+            allianz_corretor._all_body_text = fake_body
+            allianz_corretor._open_parcela_from_totals_if_needed = forbidden_open_totals
+            ok = await allianz_corretor._ensure_inadimplentes_page(_FakePage(), {}, {})
+            return ok, calls
+        finally:
+            for name, value in saved.items():
+                setattr(allianz_corretor, name, value)
+
+    totals_ok, totals_calls = asyncio.run(_exercise_totals_page_stays_on_totals())
+    check("entrada aceita Resultado - Totais como area de inadimplentes", totals_ok is True, totals_calls)
+    check("entrada nao abre primeira linha dos totais", "open_first_total" not in totals_calls, totals_calls)
 
     path = build_boleto_storage_path(
         company_id="company-123",
