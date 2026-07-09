@@ -9,6 +9,7 @@ import re
 import unicodedata
 from pathlib import Path
 from typing import Any, Dict, Iterable, List, Optional
+from urllib.parse import parse_qsl, urlencode, urlsplit, urlunsplit
 
 from portal_worker.journeys import JourneyResult
 
@@ -398,6 +399,142 @@ def _summarize_policy_search_component(nodes: List[Dict[str, Any]]) -> Dict[str,
         scored.append({"score": _score_policy_search_node(meta), **clean})
     scored.sort(key=lambda item: int(item.get("score") or 0), reverse=True)
     return {"nodes": scored[:30]}
+
+
+def _sanitize_trace_url(url: Any) -> str:
+    text = str(url or "").strip()
+    if not text:
+        return ""
+    try:
+        parts = urlsplit(text)
+        blocked = {
+            "access_token",
+            "auth",
+            "authorization",
+            "cookie",
+            "jwt",
+            "password",
+            "pwd",
+            "refresh_token",
+            "senha",
+            "session",
+            "token",
+        }
+        query = [
+            (key, value)
+            for key, value in parse_qsl(parts.query, keep_blank_values=True)
+            if key.strip().lower() not in blocked
+        ]
+        return urlunsplit((parts.scheme, parts.netloc, parts.path, urlencode(query), parts.fragment))[:600]
+    except Exception:  # noqa: BLE001
+        redacted = re.sub(r"(?i)(token|senha|password|authorization|session)=([^&#]+)", r"\1=<redacted>", text)
+        return redacted[:600]
+
+
+def _score_network_event(event: Dict[str, Any]) -> int:
+    url = _norm(str(event.get("url") or ""))
+    score = 0
+    if "application/static" in url:
+        score += 320
+    if "filemanagement" in url or "ngx-file-management" in url:
+        score += 280
+    if re.search(r"apolice|recibo|cobranca|gestao|consulta|inadimpl|search|azr|policy", url):
+        score += 180
+    if str(event.get("kind") or "") == "response":
+        score += 10
+    if re.search(r"\.(png|jpg|jpeg|gif|svg|css|woff2?|ico)(\?|$)", url):
+        score -= 220
+    return score
+
+
+def _summarize_network_trace(events: List[Dict[str, Any]]) -> Dict[str, Any]:
+    cleaned: List[Dict[str, Any]] = []
+    for event in events or []:
+        url = _sanitize_trace_url(event.get("url"))
+        if not url:
+            continue
+        clean = {
+            "kind": str(event.get("kind") or "")[:20],
+            "method": str(event.get("method") or "")[:10],
+            "status": event.get("status"),
+            "url": url,
+        }
+        cleaned.append({"score": _score_network_event(clean), **clean})
+    cleaned.sort(key=lambda item: int(item.get("score") or 0), reverse=True)
+    return {"event_count": len(events or []), "events": cleaned[:30]}
+
+
+def _score_policy_result_node(meta: Dict[str, Any], item: Dict[str, Any]) -> int:
+    text = _clean_text(meta.get("text") or "")
+    hay = _norm(" ".join([
+        text,
+        str(meta.get("tag") or ""),
+        str(meta.get("role") or ""),
+        str(meta.get("id") or ""),
+        str(meta.get("cls") or ""),
+        str(meta.get("onclick") or ""),
+        str(meta.get("href") or ""),
+        str(meta.get("cursor") or ""),
+    ]))
+    digits = _digits(" ".join([text, str(meta.get("href") or ""), str(meta.get("onclick") or "")]))
+    apolice = _digits(item.get("apolice_susep"))
+    recibo = _digits(item.get("recibo"))
+    score = 0
+    if apolice and apolice in digits:
+        score += 300
+    if recibo and recibo in digits:
+        score += 220
+    if str(meta.get("cursor") or "").lower() == "pointer":
+        score += 60
+    if str(meta.get("onclick") or "").strip():
+        score += 80
+    if str(meta.get("href") or "").strip():
+        score += 80
+    if str(meta.get("tag") or "").lower() in ("a", "button", "img"):
+        score += 70
+    if str(meta.get("role") or "").lower() == "button":
+        score += 60
+    if str(meta.get("tabindex") or "").strip() and str(meta.get("tabindex")) != "-1":
+        score += 35
+    if re.search(r"gerar planilha|voltar|filtro|codigo corretor|premio ramo|comissao ramo", hay):
+        score -= 180
+    if len(text) > 500:
+        score -= 30
+    return score
+
+
+def _summarize_policy_result_trace(nodes: List[Dict[str, Any]], item: Dict[str, Any]) -> Dict[str, Any]:
+    scored: List[Dict[str, Any]] = []
+    for meta in nodes or []:
+        clean = {
+            "text": _clean_text(meta.get("text") or "")[:180],
+            "tag": str(meta.get("tag") or "")[:30],
+            "role": str(meta.get("role") or "")[:40],
+            "id": str(meta.get("id") or "")[:80],
+            "cls": str(meta.get("cls") or "")[:140],
+            "href": _sanitize_trace_url(meta.get("href")),
+            "onclick": str(meta.get("onclick") or "")[:160],
+            "cursor": str(meta.get("cursor") or "")[:30],
+            "cell_index": meta.get("cell_index"),
+            "x": meta.get("x"),
+            "y": meta.get("y"),
+            "w": meta.get("w"),
+            "h": meta.get("h"),
+            "clickable_tag": str(meta.get("clickable_tag") or "")[:30],
+            "clickable_cls": str(meta.get("clickable_cls") or "")[:120],
+            "html": _clean_text(meta.get("html") or "")[:500],
+        }
+        scored.append({"score": _score_policy_result_node(meta, item or {}), **clean})
+    scored.sort(key=lambda row: int(row.get("score") or 0), reverse=True)
+    return {"row_candidates": scored[:30]}
+
+
+def _remember_evidence_list(evidence: Dict[str, Any], key: str, value: Dict[str, Any], limit: int = 12) -> None:
+    bucket = evidence.setdefault(key, [])
+    if isinstance(bucket, list):
+        bucket.append(value)
+        if len(bucket) > limit:
+            del bucket[:-limit]
 
 
 def _merge_recibos_context(item: Dict[str, Any], page_text: str) -> Dict[str, Any]:
@@ -904,6 +1041,175 @@ async def _collect_policy_search_component_nodes(page) -> List[Dict[str, Any]]:
     return out
 
 
+async def _collect_policy_result_row_nodes(page, item: Dict[str, Any]) -> List[Dict[str, Any]]:
+    out: List[Dict[str, Any]] = []
+    terms = [
+        _clean_text(item.get("recibo")),
+        _clean_text(item.get("apolice_susep")),
+        _clean_text(item.get("cpf_cnpj")),
+        _clean_text(item.get("cliente_nome")),
+        _clean_text(item.get("parcela")),
+    ]
+    terms = [term for term in terms if term]
+    for frame in getattr(page, "frames", [page]):
+        try:
+            rows = await frame.evaluate(
+                """(terms) => {
+                  const clean = t => (t || '').replace(/\\s+/g, ' ').trim();
+                  const norm = s => clean(s).normalize('NFKD').replace(/[\\u0300-\\u036f]/g, '').toLowerCase();
+                  const digits = s => String(s || '').replace(/\\D+/g, '');
+                  const vis = el => !!(el && (el.offsetParent || el.getClientRects().length));
+                  const rowSel = 'tr,[role=row],.datatable-body-row,.datatable-row-wrapper,li';
+                  const rows = [...document.querySelectorAll(rowSel)].filter(vis);
+                  const scoredRows = rows.map((row, rowIndex) => {
+                    const raw = clean(row.innerText || row.textContent || '');
+                    const text = norm(raw);
+                    let score = 0;
+                    for (const term of terms || []) {
+                      const want = norm(term);
+                      const wantDigits = digits(term);
+                      if (!want) continue;
+                      if (wantDigits && wantDigits.length >= 6 && digits(raw).includes(wantDigits)) score += 1000;
+                      else if (text.includes(want)) score += Math.max(20, want.length);
+                    }
+                    if (/apolice susep|resultado - por parcela|status recibo|tipo modelo|description/.test(text)) score -= 500;
+                    return {row, rowIndex, score, raw};
+                  }).filter(x => x.score > 0).sort((a, b) => b.score - a.score).slice(0, 3);
+                  const result = [];
+                  for (const entry of scoredRows) {
+                    const row = entry.row;
+                    const cells = [...row.querySelectorAll('th,td,[role=cell],mat-cell,.mat-cell,.datatable-body-cell')].filter(vis);
+                    const inner = [
+                      row,
+                      ...cells,
+                      ...row.querySelectorAll('a,button,img,input,span,div,[role=button],[onclick],[tabindex]')
+                    ].filter(vis);
+                    const unique = [];
+                    for (const el of inner) {
+                      if (!unique.includes(el)) unique.push(el);
+                    }
+                    for (const el of unique.slice(0, 90)) {
+                      const rect = el.getBoundingClientRect();
+                      const style = getComputedStyle(el);
+                      const cell = el.closest('th,td,[role=cell],mat-cell,.mat-cell,.datatable-body-cell');
+                      const clickable = el.closest('a,button,[role=button],[onclick],[tabindex],img');
+                      const attrs = {};
+                      for (const attr of [...(el.attributes || [])]) {
+                        const name = attr.name || '';
+                        if (/^(data-|ng-|_ng|routerlink|href|target|onclick|tabindex|role|title|alt|src|id|class|name)$/i.test(name)) {
+                          attrs[name] = String(attr.value || '').slice(0, 180);
+                        }
+                      }
+                      result.push({
+                        row_index: entry.rowIndex,
+                        row_score: entry.score,
+                        row_text: entry.raw.slice(0, 500),
+                        cell_index: cell ? cells.indexOf(cell) : -1,
+                        text: clean(el.innerText || el.textContent || el.getAttribute('aria-label') || el.title || el.alt || el.value || ''),
+                        tag: (el.tagName || '').toLowerCase(),
+                        role: el.getAttribute('role') || '',
+                        id: el.id || '',
+                        cls: String(el.className || '').slice(0, 220),
+                        aria: el.getAttribute('aria-label') || '',
+                        title: el.title || '',
+                        alt: el.alt || '',
+                        href: el.href || '',
+                        src: el.src || '',
+                        onclick: el.getAttribute('onclick') || '',
+                        tabindex: el.getAttribute('tabindex') || '',
+                        cursor: style.cursor || '',
+                        x: Math.round(rect.x),
+                        y: Math.round(rect.y),
+                        w: Math.round(rect.width),
+                        h: Math.round(rect.height),
+                        clickable_tag: clickable ? (clickable.tagName || '').toLowerCase() : '',
+                        clickable_cls: clickable ? String(clickable.className || '').slice(0, 160) : '',
+                        attrs,
+                        html: clean(el.outerHTML || '').slice(0, 700)
+                      });
+                    }
+                  }
+                  return result.slice(0, 180);
+                }""",
+                terms,
+            )
+            if isinstance(rows, list):
+                out.extend([row for row in rows if isinstance(row, dict)])
+        except Exception:  # noqa: BLE001
+            continue
+    return out
+
+
+async def _capture_page_activity(page, label: str, action, *, wait_ms: int = 1800):
+    events: List[Dict[str, Any]] = []
+    popups: List[str] = []
+
+    def on_request(request):
+        if len(events) >= 140:
+            return
+        try:
+            events.append({"kind": "request", "method": request.method, "url": request.url})
+        except Exception:  # noqa: BLE001
+            return
+
+    def on_response(response):
+        if len(events) >= 180:
+            return
+        try:
+            events.append({"kind": "response", "status": response.status, "url": response.url})
+        except Exception:  # noqa: BLE001
+            return
+
+    def on_page(new_page):
+        try:
+            popups.append(_sanitize_trace_url(getattr(new_page, "url", "")))
+        except Exception:  # noqa: BLE001
+            return
+
+    try:
+        before_url = _sanitize_trace_url(page.url)
+    except Exception:  # noqa: BLE001
+        before_url = ""
+    try:
+        page.on("request", on_request)
+        page.on("response", on_response)
+        page.context.on("page", on_page)
+    except Exception:  # noqa: BLE001
+        pass
+    result = False
+    error = ""
+    try:
+        result = await action()
+        await page.wait_for_timeout(wait_ms)
+    except Exception as exc:  # noqa: BLE001
+        error = f"{type(exc).__name__}: {str(exc)[:160]}"
+    finally:
+        for event_name, handler in (("request", on_request), ("response", on_response)):
+            try:
+                page.remove_listener(event_name, handler)
+            except Exception:  # noqa: BLE001
+                pass
+        try:
+            page.context.remove_listener("page", on_page)
+        except Exception:  # noqa: BLE001
+            pass
+    try:
+        after_url = _sanitize_trace_url(page.url)
+    except Exception:  # noqa: BLE001
+        after_url = ""
+    trace = {
+        "label": label[:80],
+        "result": bool(result),
+        "error": error,
+        "before_url": before_url,
+        "after_url": after_url,
+        "url_changed": before_url != after_url,
+        "popups": [popup for popup in popups if popup][:8],
+    }
+    trace.update(_summarize_network_trace(events))
+    return result, trace
+
+
 async def _record_download_debug(page, item: Dict[str, Any], evidence: Dict[str, Any], stage: str) -> None:
     try:
         page_text = await _all_body_text(page)
@@ -948,9 +1254,32 @@ async def _record_policy_search_debug(page, item: Dict[str, Any], evidence: Dict
                 "apolice_susep": item.get("apolice_susep"),
             },
         })
-        evidence.setdefault("policy_search_debug", []).append(summary)
+        _remember_evidence_list(evidence, "policy_search_debug", summary, limit=12)
     except Exception as e:  # noqa: BLE001
         evidence.setdefault("download_notes", []).append(f"debug busca apolice falhou: {type(e).__name__}")
+
+
+async def _record_policy_result_trace(page, item: Dict[str, Any], evidence: Dict[str, Any], stage: str) -> None:
+    try:
+        nodes = await _collect_policy_result_row_nodes(page, item)
+        summary = _summarize_policy_result_trace(nodes, item)
+        try:
+            url = page.url
+        except Exception:  # noqa: BLE001
+            url = ""
+        summary.update({
+            "stage": stage,
+            "url": _sanitize_trace_url(url),
+            "item": {
+                "recibo": item.get("recibo"),
+                "parcela": item.get("parcela"),
+                "apolice_susep": item.get("apolice_susep"),
+                "cpf_cnpj": item.get("cpf_cnpj"),
+            },
+        })
+        _remember_evidence_list(evidence, "policy_result_trace", summary, limit=12)
+    except Exception as e:  # noqa: BLE001
+        evidence.setdefault("download_notes", []).append(f"trace resultado apolice falhou: {type(e).__name__}")
 
 
 async def _click_row_candidate(page, candidates: Iterable[str], *, timeout_ms: int = 1200) -> bool:
@@ -1442,7 +1771,16 @@ async def _open_receipts_for_item(page, item: Dict[str, Any], evidence: Dict[str
     if _looks_like_recibos_list(await _all_body_text(page)):
         return True
 
-    await _click_row_candidate(page, _receipt_click_terms(item), timeout_ms=900)
+    await _record_policy_result_trace(page, item, evidence, "before_inadimplente_row_click")
+    clicked_row, row_trace = await _capture_page_activity(
+        page,
+        "click_inadimplente_row",
+        lambda: _click_row_candidate(page, _receipt_click_terms(item), timeout_ms=900),
+        wait_ms=900,
+    )
+    row_trace["clicked"] = bool(clicked_row)
+    _remember_evidence_list(evidence, "interaction_traces", row_trace, limit=16)
+    await _record_policy_result_trace(page, item, evidence, "after_inadimplente_row_click")
     if await _click_text_candidate(page, ("Lista Recibos", "Lista de Recibos"), timeout_ms=2200):
         if await _wait_until_recibos_list(page, timeout_ms=9000):
             evidence.setdefault("download_notes", []).append("lista recibos aberta a partir da linha do inadimplente")
@@ -1483,16 +1821,38 @@ async def _open_policy_context_for_item(page, item: Dict[str, Any], evidence: Di
         return True
     click_terms = _policy_search_terms(item)
     for term in click_terms:
-        if not await _fill_global_search(page, term):
+        searched, search_trace = await _capture_page_activity(
+            page,
+            f"global_search:{_clean_text(term)[:48]}",
+            lambda term=term: _fill_global_search(page, term),
+            wait_ms=1000,
+        )
+        search_trace["term"] = _clean_text(term)[:120]
+        _remember_evidence_list(evidence, "interaction_traces", search_trace, limit=16)
+        if not searched:
             continue
         if await _wait_until_policy_context(page, timeout_ms=7000):
             evidence.setdefault("download_notes", []).append("contexto da apolice aberto por busca")
             return True
-        if await _click_row_candidate(page, click_terms, timeout_ms=1200):
+        clicked_search_row, search_row_trace = await _capture_page_activity(
+            page,
+            "click_search_result_row",
+            lambda: _click_row_candidate(page, click_terms, timeout_ms=1200),
+            wait_ms=900,
+        )
+        _remember_evidence_list(evidence, "interaction_traces", search_row_trace, limit=16)
+        if clicked_search_row:
             if await _wait_until_policy_context(page, timeout_ms=8000):
                 evidence.setdefault("download_notes", []).append("contexto da apolice aberto por linha de busca")
                 return True
-        if await _click_text_candidate(page, click_terms, timeout_ms=1200):
+        clicked_search_text, search_text_trace = await _capture_page_activity(
+            page,
+            "click_search_result_text",
+            lambda: _click_text_candidate(page, click_terms, timeout_ms=1200),
+            wait_ms=900,
+        )
+        _remember_evidence_list(evidence, "interaction_traces", search_text_trace, limit=16)
+        if clicked_search_text:
             if await _wait_until_policy_context(page, timeout_ms=8000):
                 evidence.setdefault("download_notes", []).append("contexto da apolice aberto por resultado de busca")
                 return True

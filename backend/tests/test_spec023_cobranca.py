@@ -45,9 +45,12 @@ def run():
         _summarize_policy_search_component,
         _summarize_policy_search_debug,
         _summarize_download_debug,
+        _summarize_network_trace,
+        _summarize_policy_result_trace,
         build_boleto_storage_path,
         extract_inadimplentes_from_rows,
         extract_recibos_from_rows,
+        _sanitize_trace_url,
     )
 
     check(
@@ -184,6 +187,26 @@ def run():
         {"tag": "span", "cls": "nx-icon nx-icon--info", "x": 602, "y": 180, "w": 28, "h": 28, "html": "<span class='nx-icon nx-icon--info'></span>"},
     ])
     check("debug do componente prioriza icone de busca", component.get("nodes", [{}])[0].get("cls") == "nx-icon nx-icon--search", component)
+    row_trace = _summarize_policy_result_trace(
+        [
+            {"text": "317418783", "tag": "td", "cursor": "default", "cell_index": 0},
+            {"text": "5177202623140183705", "tag": "td", "cursor": "pointer", "cell_index": 2, "onclick": "openPolicy()"},
+            {"text": "Gerar Planilha", "tag": "button", "cursor": "pointer", "cell_index": -1},
+        ],
+        {"recibo": "317418783", "apolice_susep": "5177202623140183705"},
+    )
+    check("trace da linha prioriza celula da apolice clicavel", row_trace.get("row_candidates", [{}])[0].get("text") == "5177202623140183705", row_trace)
+    network_trace = _summarize_network_trace([
+        {"kind": "request", "method": "GET", "url": "https://www.allianznet.com.br/assets/logo.png"},
+        {"kind": "request", "method": "GET", "url": "https://www.allianznet.com.br/ngx-azb-epac/private/application/static?token=abc&apolice=123"},
+        {"kind": "response", "status": 200, "url": "https://www.allianznet.com.br/ngx-file-management/fileManagement?uid=BA068610"},
+    ])
+    check("trace de rede remove token sensivel", "token=abc" not in str(network_trace), network_trace)
+    check("trace de rede prioriza rotas Allianz relevantes", network_trace.get("events", [{}])[0].get("url", "").find("application/static") >= 0, network_trace)
+    check(
+        "sanitizacao de URL preserva rota e remove senha",
+        _sanitize_trace_url("https://x.test/path?senha=abc&uid=BA068610") == "https://x.test/path?uid=BA068610",
+    )
     merged = _merge_recibos_context(
         {"cliente_nome": "", "item_segurado": ""},
         "Apolice 137583747 Item 0 Apolice SUSEP 5177-2026-23-14-0186415 "
