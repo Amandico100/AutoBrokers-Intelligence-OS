@@ -42,6 +42,7 @@ def run():
         _merge_recibos_context,
         _policy_search_terms,
         _receipt_click_terms,
+        _should_restart_policy_search_from_home,
         _summarize_policy_search_component,
         _summarize_policy_search_debug,
         _summarize_download_debug,
@@ -165,6 +166,14 @@ def run():
     check(
         "resultado por parcela nao e contexto de apolice",
         _looks_like_policy_context("PARCELAS INADIMPLENTES RESULTADO - POR PARCELA Recibo Parc. Apolice Susep Gerar Planilha Voltar") is False,
+    )
+    check(
+        "busca de apolice deve sair do resultado legado",
+        _should_restart_policy_search_from_home("PARCELAS INADIMPLENTES RESULTADO - POR PARCELA Recibo Parc. Apolice Susep") is True,
+    )
+    check(
+        "busca de apolice nao reinicia quando ja esta no contexto",
+        _should_restart_policy_search_from_home("Gerais Segurado Dados Risco Coberturas Lista Recibos Ficha Gestao") is False,
     )
     terms = _receipt_click_terms({"recibo": "318946949", "parcela": "3/10", "vencimento": "01/07/2026"})
     check("termos de clique priorizam recibo", terms[0] == "318946949", terms)
