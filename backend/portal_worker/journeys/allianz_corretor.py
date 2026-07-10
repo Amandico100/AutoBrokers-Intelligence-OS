@@ -787,6 +787,16 @@ async def _click_submit(page) -> bool:
         return False
 
 
+def _login_form_present(text: str) -> bool:
+    """Marcadores da tela de login AllianzNet (print p1): 'Iniciar Sessão',
+    'Esqueceu a senha?', 'Bem-vindo à Allianznet'."""
+    low = _norm(text)
+    return any(
+        tok in low
+        for tok in ("iniciar sessao", "esqueceu a senha", "bem-vindo(a) a allianznet", "bem-vindo a allianznet")
+    )
+
+
 async def login_check(page, params: Dict[str, Any], evidence: Dict[str, Any]) -> JourneyResult:
     """Login AllianzNet com usuario/senha de `portal_accounts`.
 
@@ -814,10 +824,21 @@ async def login_check(page, params: Dict[str, Any], evidence: Dict[str, Any]) ->
     except Exception:  # noqa: BLE001
         initial_text = ""
     initial = interpret_login(initial_text, getattr(page, "url", login_url))
-    if initial.status == "done":
+    # force_login: NÃO aceitar a sessão "já logada" — o token do micro-app da
+    # Ficha de Gestão (EPAC) não é renovado pelo reuso de storage e expira em
+    # horas (job 2769ca31: 'Access token expired'). Só um login por credencial
+    # reemite o token, como no Chrome do corretor. Se o form não aparecer,
+    # cai de volta no estado atual (não quebra).
+    if initial.status == "done" and not params.get("force_login"):
         evidence["url"] = getattr(page, "url", login_url)
         evidence["session_reused"] = True
         return initial
+    if params.get("force_login") and not _login_form_present(initial_text):
+        # Já logado e sem formulário (SSO) — nada a forçar, mantém a sessão.
+        evidence["url"] = getattr(page, "url", login_url)
+        evidence["session_reused"] = True
+        evidence["force_login_no_form"] = True
+        return interpret_login(initial_text, getattr(page, "url", login_url))
 
     user_ok = await _fill_first(
         page,
@@ -2449,13 +2470,49 @@ async def _relogin_fresh(page, params: Dict[str, Any], evidence: Dict[str, Any])
         pass
     fresh_params = dict(params or {})
     fresh_params["session_loaded"] = False
+    fresh_params["force_login"] = True
     result = await login_check(page, fresh_params, evidence)
     ok = getattr(result, "status", "") == "done"
+    # Boota o shell EPAC autenticado para reemitir o access_token do micro-app.
+    if ok:
+        try:
+            await page.goto(ALLIANZ_PRIVATE_HOME, wait_until="domcontentloaded")
+            await page.wait_for_timeout(2500)
+        except Exception:  # noqa: BLE001
+            pass
     evidence["fresh_login_after_empty_search"] = bool(ok)
     evidence.setdefault("download_notes", []).append(
         "relogin fresco apos busca vazia: " + ("ok" if ok else f"falhou ({_clean_text(getattr(result, 'message', ''))[:80]})")
     )
     return ok
+
+
+async def _epac_token_age(page) -> Dict[str, Any]:
+    """Idade do access_token do micro-app EPAC (Ficha de Gestão). Só metadados
+    (exp/now/minutos) — NUNCA o valor do token."""
+    try:
+        return await page.evaluate(
+            r"""() => {
+              const keys = ['access_token', 'STORAGE_NGX-AZB-EPAC::access_token'];
+              let tok = '';
+              for (const st of [sessionStorage, localStorage]) {
+                for (const k of keys) {
+                  const raw = st.getItem(k) || '';
+                  const m = String(raw).match(/eyJ[A-Za-z0-9_\-]+\.[A-Za-z0-9_\-]+\.[A-Za-z0-9_\-]+/);
+                  if (m) { tok = m[0]; break; }
+                }
+                if (tok) break;
+              }
+              if (!tok) return {has_token: false};
+              try {
+                const p = JSON.parse(atob((tok.split('.')[1] || '').replace(/-/g,'+').replace(/_/g,'/')));
+                const now = Math.floor(Date.now()/1000);
+                return {has_token: true, exp: p.exp, now, expired: p.exp < now, mins_to_exp: Math.round((p.exp-now)/60)};
+              } catch (e) { return {has_token: true, decode: 'fail'}; }
+            }"""
+        )
+    except Exception:  # noqa: BLE001
+        return {"has_token": False, "error": True}
 
 
 async def _open_policy_context_for_item(page, item: Dict[str, Any], params: Dict[str, Any], evidence: Dict[str, Any]) -> bool:
@@ -2958,6 +3015,20 @@ async def cobranca_sweep(page, params: Dict[str, Any], evidence: Dict[str, Any])
         return login
 
     evidence["logged_in"] = True
+    # Causa-raiz provada (job 2769ca31): a sessão restaurada tem ~horas/dias e o
+    # token do micro-app da Ficha de Gestão expira, matando a busca E o download.
+    # Se reusamos sessão OU o token EPAC está vencido, força login por credencial
+    # (reemite os tokens, como o corretor no Chrome). download_boletos=false pula.
+    evidence["epac_token_before"] = await _epac_token_age(page)
+    wants_download = bool(params.get("download_boletos", True))
+    tok_before = evidence["epac_token_before"] or {}
+    if wants_download and (evidence.get("session_reused") or tok_before.get("expired") or not tok_before.get("has_token")):
+        did = await _relogin_fresh(page, params, evidence)
+        evidence["epac_token_after"] = await _epac_token_age(page)
+        evidence.setdefault("download_notes", []).append(
+            f"login fresco no inicio (sessao velha/token vencido): {'ok' if did else 'falhou'}"
+        )
+
     if not await _ensure_inadimplentes_page(page, params, evidence):
         try:
             from portal_worker.adaptive import _dump_dom
