@@ -2630,23 +2630,35 @@ async def _open_ficha_gestao_for_item(page, item: Dict[str, Any], evidence: Dict
         return page
     _ = item
     # O popup herda uma CÓPIA do sessionStorage do opener; o app da ficha lê
-    # a chave PLANA 'access_token' (tokenGetter do bundle). Garante que ela
-    # exista antes do clique para o popup nascer autenticado.
+    # a chave PLANA 'access_token' (tokenGetter do bundle). Minta um token
+    # válido para o BFF via refresh público ANTES do clique, para o popup
+    # nascer autenticado (fluxo idêntico ao do corretor no Chrome).
     try:
-        await page.evaluate(
-            """() => {
-              if (!sessionStorage.getItem('access_token')) {
-                const raw = sessionStorage.getItem('STORAGE_NGX-AZB-EPAC::access_token') || '';
-                let tok = raw;
-                try {
-                  const p = JSON.parse(raw);
-                  if (typeof p === 'string') tok = p;
-                  else if (p && typeof p.value === 'string') tok = p.value;
-                } catch (e) {}
-                if (tok) sessionStorage.setItem('access_token', tok);
-              }
+        pre_mint = await page.evaluate(
+            """async () => {
+              if (sessionStorage.getItem('access_token')) return {minted: 'ja-existia'};
+              const rt = sessionStorage.getItem('refresh_token') || '';
+              if (!rt) return {error: 'sem refresh_token na sessao'};
+              try {
+                const r = await fetch('/rws-bff-file-management/api/public/oauth/refresh-token', {
+                  method: 'POST',
+                  headers: {'Content-Type': 'application/json', 'epac-company-id': 'BRA'},
+                  body: JSON.stringify({refreshToken: rt}),
+                  credentials: 'include'
+                });
+                let data = {};
+                try { data = await r.json(); } catch (e) {}
+                const access = data.accessToken || data.access_token || '';
+                const refresh = data.refreshToken || data.refresh_token || '';
+                if (access) {
+                  sessionStorage.setItem('access_token', access);
+                  if (refresh) sessionStorage.setItem('refresh_token', refresh);
+                }
+                return {status: r.status, minted: !!access};
+              } catch (e) { return {error: String(e).slice(0, 80)}; }
             }"""
         )
+        evidence["ficha_gestao_pre_mint"] = pre_mint
     except Exception:  # noqa: BLE001
         pass
     target = None
@@ -2727,53 +2739,60 @@ async def _open_ficha_gestao_for_item(page, item: Dict[str, Any], evidence: Dict
                 "html_head": await _page_html_head(direct_target),
                 "diag": direct_diag[:10],
             }
-            # Fix da causa-raiz do 401 (bundle chunk-PD6FDXSL do app): o
-            # tokenGetter é sessionStorage.getItem('access_token') — chave
-            # PLANA que a nossa sessão não tem (só a namespaced do shell EPAC
-            # e a plana refresh_token). Sem ela o interceptor JWT não anexa
-            # Authorization. Semeia a chave e recarrega para o app autenticar.
-            url_token = ""
-            for k, v in parse_qsl(urlsplit(direct_url).query):
-                if k.lower() == "accesstoken":
-                    url_token = v
-                    break
-            epac_token = ""
+            # Fix do 401 (engenharia do bundle + config pública do BFF):
+            # tokenGetter = sessionStorage['access_token'] (chave PLANA que a
+            # sessão automatizada não tem) e o BFF tem refresh PÚBLICO
+            # (/api/public/oauth/refresh-token, POST {refreshToken}). Minta um
+            # access_token válido com o refresh_token plano (existe na sessão),
+            # semeia e recarrega — o app autentica e monta a lista sozinho.
+            # NUNCA gravar valores de token na evidência (só status/booleans).
             try:
-                epac_token = await page.evaluate(
-                    """() => {
-                      const raw = sessionStorage.getItem('STORAGE_NGX-AZB-EPAC::access_token') || '';
+                minted = await direct_target.evaluate(
+                    """async () => {
+                      const rt = sessionStorage.getItem('refresh_token') || '';
+                      if (!rt) return {error: 'sem refresh_token na sessao'};
                       try {
-                        const p = JSON.parse(raw);
-                        if (typeof p === 'string') return p;
-                        if (p && typeof p.value === 'string') return p.value;
-                      } catch (e) {}
-                      return raw;
+                        const r = await fetch('/rws-bff-file-management/api/public/oauth/refresh-token', {
+                          method: 'POST',
+                          headers: {'Content-Type': 'application/json', 'epac-company-id': 'BRA'},
+                          body: JSON.stringify({refreshToken: rt}),
+                          credentials: 'include'
+                        });
+                        let data = {};
+                        try { data = await r.json(); } catch (e) {}
+                        const access = data.accessToken || data.access_token || '';
+                        const refresh = data.refreshToken || data.refresh_token || '';
+                        if (access) {
+                          sessionStorage.setItem('access_token', access);
+                          if (refresh) sessionStorage.setItem('refresh_token', refresh);
+                        }
+                        return {status: r.status, minted: !!access, rotated: !!refresh};
+                      } catch (e) { return {error: String(e).slice(0, 80)}; }
                     }"""
                 )
-            except Exception:  # noqa: BLE001
-                pass
-            seeded = False
-            for label, tok in (("url_token", url_token), ("epac_token", epac_token)):
-                if not tok:
-                    continue
-                try:
-                    await direct_target.evaluate("(t) => sessionStorage.setItem('access_token', t)", tok)
+                evidence["ficha_gestao_refresh_mint"] = minted
+                if minted.get("minted"):
+                    if minted.get("rotated"):
+                        # Mantém o shell coerente com o refresh_token rotacionado.
+                        try:
+                            new_rt = await direct_target.evaluate("() => sessionStorage.getItem('refresh_token') || ''")
+                            if new_rt:
+                                await page.evaluate("(t) => sessionStorage.setItem('refresh_token', t)", new_rt)
+                        except Exception:  # noqa: BLE001
+                            pass
                     await direct_target.reload(wait_until="commit", timeout=15000)
                     await direct_target.wait_for_timeout(2000)
-                except Exception:  # noqa: BLE001
-                    continue
-                if await _wait_until_ficha_gestao(direct_target, timeout_ms=20000):
+                    if await _wait_until_ficha_gestao(direct_target, timeout_ms=25000):
+                        evidence.setdefault("download_notes", []).append(
+                            "ficha gestao autenticada via refresh-token publico do BFF"
+                        )
+                        return direct_target
                     evidence.setdefault("download_notes", []).append(
-                        f"ficha gestao autenticada semeando sessionStorage.access_token ({label})"
+                        "token mintado mas lista nao montou: "
+                        f"'{_clean_text(await _all_body_text(direct_target))[:120]}'"
                     )
-                    seeded = True
-                    break
-                evidence.setdefault("download_notes", []).append(
-                    f"seed access_token ({label}) nao destravou a lista: "
-                    f"'{_clean_text(await _all_body_text(direct_target))[:120]}'"
-                )
-            if seeded:
-                return direct_target
+            except Exception as e:  # noqa: BLE001
+                evidence.setdefault("download_notes", []).append(f"refresh mint falhou: {type(e).__name__}")
         except Exception as e:  # noqa: BLE001
             evidence.setdefault("download_notes", []).append(f"ficha gestao por URL falhou: {type(e).__name__}")
             evidence["ficha_gestao_direct_debug"] = {"error": f"{type(e).__name__}: {str(e)[:120]}", "diag": direct_diag[:10]}
