@@ -2762,9 +2762,11 @@ async def _open_ficha_gestao_for_item(page, item: Dict[str, Any], evidence: Dict
         return page
     _ = item
     direct_url = await _section_button_new_window_url(page, ("Ficha Gestao", "Ficha de Gestao"))
-    # Token inicial para a injeção (o handler já está instalado em _download_boletos):
-    # accessToken embutido na URL do botão, senão o JWT do shell EPAC.
-    auth_holder["token"] = _access_token_from_url(direct_url) or await _shell_access_token(page) or auth_holder.get("token") or ""
+    # Token para a injeção: PREFERE o token VIVO do sessionStorage do shell —
+    # é o mesmo que o app usaria (tokenGetter) e está fresco (~24h). O token
+    # embutido na URL do botão pode estar VELHO (job 2769ca31: expirado há 21h,
+    # 'Access token expired') porque vem de cache do shell. URL só como fallback.
+    auth_holder["token"] = (await _shell_access_token(page)) or _access_token_from_url(direct_url) or auth_holder.get("token") or ""
     bff_log: List[Dict[str, Any]] = []
 
     # 1) Clique trusted -> popup: o shell monta a URL com um accessToken FRESCO.
@@ -2793,11 +2795,17 @@ async def _open_ficha_gestao_for_item(page, item: Dict[str, Any], evidence: Dict
         return None
 
     _attach_bff_status_log(target, bff_log)
-    # Token mais fresco possível: o da URL do próprio popup (minted no clique).
-    fresh = _access_token_from_url(getattr(target, "url", ""))
-    if fresh:
-        auth_holder["token"] = fresh
-    evidence["ficha_gestao_token_source"] = "popup_url" if fresh else ("botao/shell" if auth_holder.get("token") else "nenhum")
+    # Token mais fresco possível: o VIVO no sessionStorage do próprio popup
+    # (herdado do shell, é o que o app usaria). URL do popup só se não houver.
+    live = await _shell_access_token(target)
+    if live:
+        auth_holder["token"] = live
+        evidence["ficha_gestao_token_source"] = "popup_live_storage"
+    else:
+        url_tok = _access_token_from_url(getattr(target, "url", ""))
+        if url_tok:
+            auth_holder["token"] = url_tok
+        evidence["ficha_gestao_token_source"] = "popup_url" if url_tok else ("shell/botao" if auth_holder.get("token") else "nenhum")
     # Recarrega para as chamadas ao BFF saírem já com o header injetado.
     try:
         await target.reload(wait_until="commit", timeout=15000)
