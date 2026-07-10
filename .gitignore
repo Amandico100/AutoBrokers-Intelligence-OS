@@ -108,3 +108,7 @@ settings.json
 
 # Supabase CLI temp files
 supabase/.temp/
+
+# Material privado de corretoras (credenciais, apolices, prints com PII) — NUNCA versionar
+docs/intake/
+.codex_tmp/

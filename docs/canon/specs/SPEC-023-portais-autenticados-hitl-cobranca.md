@@ -66,7 +66,7 @@ sem travar** — com a mesma disciplina que resolveu o vidros (instrumentar o DO
 | Base técnica | Angular (`ngx-epac`) — o cérebro já domina | SPA/JS-heavy |
 | Risco de bloqueio | médio | alto |
 | Jornada de cobrança | sim | sim |
-| Credencial (Resulta) | `BA068610` / `Resulta2029@` | `00342430971` / `Bee1812!` |
+| Credencial (Resulta) | no vault (dashboard → Conectores → Portais) | no vault (dashboard → Conectores → Portais) |
 | Portal | `https://www.allianznet.com.br/ngx-epac/public/home` | `https://corretor.portoseguro.com.br/corretoronline/` |
 
 **Piloto = Allianz.** Login limpo destrava o fluxo inteiro sem depender do humano no loop. Porto entra na
@@ -186,7 +186,7 @@ journey + cérebro adaptativo. Cérebro ÚNICO (regra inviolável da SPEC-020).
 ## 11. O que o founder precisa fornecer (pré-requisitos)
 1. **Prints do fluxo de cobrança da Allianz** (login → área de inadimplência → onde baixa o boleto). São o
    mapa do P3. (O founder vai tirar após esta recomendação.)
-2. Confirmar as credenciais Allianz no vault (Resulta `BA068610` / AutoFleet `BA267182`).
+2. Confirmar as credenciais Allianz no vault (contas Resulta e AutoFleet — nunca escrever usuario/senha em docs).
 3. Qual corretora piloto de cobrança (Resulta tem os ramos com boleto; AutoFleet é auto).
 4. Ligar `PORTAL_REAL_ENABLED` quando for testar login real.
 
