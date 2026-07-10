@@ -3015,18 +3015,20 @@ async def cobranca_sweep(page, params: Dict[str, Any], evidence: Dict[str, Any])
         return login
 
     evidence["logged_in"] = True
-    # Causa-raiz provada (job 2769ca31): a sessão restaurada tem ~horas/dias e o
-    # token do micro-app da Ficha de Gestão expira, matando a busca E o download.
-    # Se reusamos sessão OU o token EPAC está vencido, força login por credencial
-    # (reemite os tokens, como o corretor no Chrome). download_boletos=false pula.
+    # O token do micro-app da Ficha de Gestão (EPAC) normalmente já vem válido
+    # (~24h) pelo login/reuso; a injeção de header no BFF cuida de anexá-lo.
+    # SÓ quando ele está REALMENTE vencido (job 2769ca31: 'Access token expired')
+    # tentamos um login por credencial — e sem destruir a navegação: medimos e
+    # registramos, mas não forçamos relogin em sessão saudável (isso quebrava o
+    # acesso a inadimplentes — job a9733bb5).
     evidence["epac_token_before"] = await _epac_token_age(page)
-    wants_download = bool(params.get("download_boletos", True))
     tok_before = evidence["epac_token_before"] or {}
-    if wants_download and (evidence.get("session_reused") or tok_before.get("expired") or not tok_before.get("has_token")):
+    wants_download = bool(params.get("download_boletos", True))
+    if wants_download and tok_before.get("expired") is True:
         did = await _relogin_fresh(page, params, evidence)
         evidence["epac_token_after"] = await _epac_token_age(page)
         evidence.setdefault("download_notes", []).append(
-            f"login fresco no inicio (sessao velha/token vencido): {'ok' if did else 'falhou'}"
+            f"login fresco (token EPAC vencido): {'ok' if did else 'falhou'}"
         )
 
     if not await _ensure_inadimplentes_page(page, params, evidence):
