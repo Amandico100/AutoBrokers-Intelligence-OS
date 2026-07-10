@@ -2474,10 +2474,17 @@ async def _relogin_fresh(page, params: Dict[str, Any], evidence: Dict[str, Any])
     result = await login_check(page, fresh_params, evidence)
     ok = getattr(result, "status", "") == "done"
     # Boota o shell EPAC autenticado para reemitir o access_token do micro-app.
+    # ASSENTAMENTO: logo após o login o Angular ainda monta a barra de busca; se
+    # digitarmos cedo o popover de categorias não abre ('popover nao abriu' —
+    # jobs f6b4e1a4/5106ff5f). Espera networkidle + folga antes de devolver.
     if ok:
         try:
             await page.goto(ALLIANZ_PRIVATE_HOME, wait_until="domcontentloaded")
-            await page.wait_for_timeout(2500)
+            try:
+                await page.wait_for_load_state("networkidle", timeout=12000)
+            except Exception:  # noqa: BLE001
+                pass
+            await page.wait_for_timeout(4000)
         except Exception:  # noqa: BLE001
             pass
     evidence["fresh_login_after_empty_search"] = bool(ok)
