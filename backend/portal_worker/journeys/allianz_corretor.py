@@ -2752,6 +2752,40 @@ async def _open_ficha_gestao_for_item(page, item: Dict[str, Any], evidence: Dict
         evidence.setdefault("download_notes", []).append("ficha gestao autenticada (header injetado no BFF)")
         return target
 
+    # Sonda DEFINITIVA (job 0853ae83: getListIni 401 mesmo com token do popup).
+    # Isola: injeção de rota (service worker?) x token rejeitado. NÃO grava
+    # valores de token — só status, exp/now e o corpo do erro.
+    try:
+        probe = await target.evaluate(
+            r"""async (tok) => {
+              const out = {};
+              try { const regs = await navigator.serviceWorker.getRegistrations(); out.sw = regs.length; }
+              catch (e) { out.sw = 'n/a'; }
+              try {
+                const p = JSON.parse(atob((tok.split('.')[1] || '').replace(/-/g,'+').replace(/_/g,'/')));
+                out.exp = p.exp; out.now = Math.floor(Date.now()/1000); out.scope = p.scope; out.aud = p.aud;
+              } catch (e) { out.exp = 'decode-fail'; }
+              out.ss_access = !!sessionStorage.getItem('access_token');
+              out.url_has_token = String(location.href).includes('accessToken=');
+              const base = {'Content-Type':'application/json','epac-company-id':'BRA','x-rws-rootapp':'spa-file-management'};
+              const hit = async (label, headers) => {
+                try {
+                  const r = await fetch('/rws-bff-file-management/api/fileManagement/getListIni',
+                    {method:'POST', headers, body:'{}', credentials:'include'});
+                  let t=''; try { t = (await r.text()).slice(0,160); } catch(e){}
+                  out[label] = {s:r.status, b:t};
+                } catch(e){ out[label] = 'ERR:'+String(e).slice(0,60); }
+              };
+              await hit('no_auth', base);
+              if (tok) await hit('bearer', Object.assign({Authorization:'Bearer '+tok}, base));
+              return out;
+            }""",
+            auth_holder.get("token") or "",
+        )
+        evidence["ficha_gestao_probe"] = probe
+    except Exception as e:  # noqa: BLE001
+        evidence["ficha_gestao_probe"] = {"error": f"{type(e).__name__}: {str(e)[:100]}"}
+
     snippet = _clean_text(await _all_body_text(target))[:160]
     evidence.setdefault("download_notes", []).append(f"ficha gestao ainda sem lista: '{snippet}'")
     if target is not page:
