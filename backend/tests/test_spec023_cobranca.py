@@ -295,6 +295,28 @@ def run():
         "download tenta o botao real 'Acesso a detalhes estendidos'",
         "Acesso a detalhes estendidos" in _insp_fg.getsource(allianz_corretor._download_current_pdf),
     )
+    check(
+        "detecta a tela de login pelos marcadores reais (Iniciar Sessao/Esqueceu a senha)",
+        allianz_corretor._login_form_present("Bem-vindo(a) à Allianznet Usuário Senha INICIAR SESSÃO ESQUECEU A SENHA?"),
+    )
+    check(
+        "tela logada (sem form) nao e login",
+        allianz_corretor._login_form_present("PARCELAS INADIMPLENTES Resultado por Parcela Gerar Planilha") is False,
+    )
+    check(
+        "existe medidor de idade do token EPAC (Ficha Gestao)",
+        callable(getattr(allianz_corretor, "_epac_token_age", None)),
+    )
+    _relogin_src = _insp_fg.getsource(allianz_corretor._relogin_fresh)
+    check(
+        "relogin fresco forca login por credencial (force_login) e boota o shell EPAC",
+        "force_login" in _relogin_src and "ALLIANZ_PRIVATE_HOME" in _relogin_src,
+    )
+    _sweep_src2 = _insp_fg.getsource(allianz_corretor.cobranca_sweep)
+    check(
+        "cobranca forca login fresco quando sessao reusada/token vencido",
+        "_epac_token_age" in _sweep_src2 and "_relogin_fresh" in _sweep_src2,
+    )
     import inspect as _insp_ctx
 
     _ctx_src = _insp_ctx.getsource(allianz_corretor._open_policy_context_for_item)
