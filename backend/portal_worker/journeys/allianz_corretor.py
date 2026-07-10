@@ -2629,6 +2629,26 @@ async def _open_ficha_gestao_for_item(page, item: Dict[str, Any], evidence: Dict
     if _looks_like_ficha_gestao(await _all_body_text(page)):
         return page
     _ = item
+    # O popup herda uma CÓPIA do sessionStorage do opener; o app da ficha lê
+    # a chave PLANA 'access_token' (tokenGetter do bundle). Garante que ela
+    # exista antes do clique para o popup nascer autenticado.
+    try:
+        await page.evaluate(
+            """() => {
+              if (!sessionStorage.getItem('access_token')) {
+                const raw = sessionStorage.getItem('STORAGE_NGX-AZB-EPAC::access_token') || '';
+                let tok = raw;
+                try {
+                  const p = JSON.parse(raw);
+                  if (typeof p === 'string') tok = p;
+                  else if (p && typeof p.value === 'string') tok = p.value;
+                } catch (e) {}
+                if (tok) sessionStorage.setItem('access_token', tok);
+              }
+            }"""
+        )
+    except Exception:  # noqa: BLE001
+        pass
     target = None
     clicked_trusted = False
     try:
@@ -2707,48 +2727,53 @@ async def _open_ficha_gestao_for_item(page, item: Dict[str, Any], evidence: Dict
                 "html_head": await _page_html_head(direct_target),
                 "diag": direct_diag[:10],
             }
-            # Sonda de auth (job 9c853e6f: BFF responde 401 e o app NAO envia
-            # Authorization). Descobrir qual esquema o BFF aceita e que material
-            # de auth existe em cada storage — decide o fix definitivo.
+            # Fix da causa-raiz do 401 (bundle chunk-PD6FDXSL do app): o
+            # tokenGetter é sessionStorage.getItem('access_token') — chave
+            # PLANA que a nossa sessão não tem (só a namespaced do shell EPAC
+            # e a plana refresh_token). Sem ela o interceptor JWT não anexa
+            # Authorization. Semeia a chave e recarrega para o app autenticar.
+            url_token = ""
+            for k, v in parse_qsl(urlsplit(direct_url).query):
+                if k.lower() == "accesstoken":
+                    url_token = v
+                    break
+            epac_token = ""
             try:
-                token = ""
-                for k, v in parse_qsl(urlsplit(direct_url).query):
-                    if k.lower() == "accesstoken":
-                        token = v
-                        break
-                probes = await direct_target.evaluate(
-                    """async (token) => {
-                      const out = {};
-                      const probe = async (label, headers) => {
-                        try {
-                          const r = await fetch('/rws-bff-file-management/api/fileManagement/conversationTypes',
-                                                {headers, credentials: 'include'});
-                          out[label] = r.status;
-                        } catch (e) { out[label] = 'ERR:' + String(e).slice(0, 60); }
-                      };
-                      await probe('sem_header', {});
-                      if (token) {
-                        await probe('bearer', {Authorization: 'Bearer ' + token});
-                        await probe('x_access_token', {'x-access-token': token});
-                        await probe('header_accesstoken', {accessToken: token});
-                      }
-                      out.token_len = (token || '').length;
-                      out.cookie_names = document.cookie.split(';').map(c => c.split('=')[0].trim()).filter(Boolean).slice(0, 15);
-                      out.ss_keys = Object.keys(sessionStorage).slice(0, 20);
-                      out.ls_keys = Object.keys(localStorage).slice(0, 25);
-                      return out;
-                    }""",
-                    token,
-                )
-                evidence["ficha_gestao_auth_probe"] = probes
-            except Exception as e:  # noqa: BLE001
-                evidence["ficha_gestao_auth_probe"] = {"error": f"{type(e).__name__}: {str(e)[:100]}"}
-            try:
-                evidence["main_page_storage_keys"] = await page.evaluate(
-                    "() => ({ss: Object.keys(sessionStorage).slice(0, 20), ls: Object.keys(localStorage).slice(0, 25)})"
+                epac_token = await page.evaluate(
+                    """() => {
+                      const raw = sessionStorage.getItem('STORAGE_NGX-AZB-EPAC::access_token') || '';
+                      try {
+                        const p = JSON.parse(raw);
+                        if (typeof p === 'string') return p;
+                        if (p && typeof p.value === 'string') return p.value;
+                      } catch (e) {}
+                      return raw;
+                    }"""
                 )
             except Exception:  # noqa: BLE001
                 pass
+            seeded = False
+            for label, tok in (("url_token", url_token), ("epac_token", epac_token)):
+                if not tok:
+                    continue
+                try:
+                    await direct_target.evaluate("(t) => sessionStorage.setItem('access_token', t)", tok)
+                    await direct_target.reload(wait_until="commit", timeout=15000)
+                    await direct_target.wait_for_timeout(2000)
+                except Exception:  # noqa: BLE001
+                    continue
+                if await _wait_until_ficha_gestao(direct_target, timeout_ms=20000):
+                    evidence.setdefault("download_notes", []).append(
+                        f"ficha gestao autenticada semeando sessionStorage.access_token ({label})"
+                    )
+                    seeded = True
+                    break
+                evidence.setdefault("download_notes", []).append(
+                    f"seed access_token ({label}) nao destravou a lista: "
+                    f"'{_clean_text(await _all_body_text(direct_target))[:120]}'"
+                )
+            if seeded:
+                return direct_target
         except Exception as e:  # noqa: BLE001
             evidence.setdefault("download_notes", []).append(f"ficha gestao por URL falhou: {type(e).__name__}")
             evidence["ficha_gestao_direct_debug"] = {"error": f"{type(e).__name__}: {str(e)[:120]}", "diag": direct_diag[:10]}
