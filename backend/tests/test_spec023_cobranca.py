@@ -295,6 +295,34 @@ def run():
         "download tenta o botao real 'Acesso a detalhes estendidos'",
         "Acesso a detalhes estendidos" in _insp_fg.getsource(allianz_corretor._download_current_pdf),
     )
+    # Download DETERMINÍSTICO via BFF (getListIni + getDetail) — contrato real 2026-07-10.
+    check(
+        "extrai poliza interna da Lista de Recibos (ignora Apolice SUSEP)",
+        allianz_corretor._extract_poliza_from_context(
+            "LISTAGEM DE RECIBOS Apólice 137583747 Item Apólice SUSEP 5177-2026-23-14-0186415 Ramo 2013"
+        ) == "137583747",
+    )
+    check(
+        "extrai poliza de 'Proposta'",
+        allianz_corretor._extract_poliza_from_context("Proposta 137973983 / 0 Susep 2013") == "137973983",
+    )
+    check(
+        "Apolice SUSEP sozinha nao vira poliza",
+        allianz_corretor._extract_poliza_from_context("Apólice SUSEP 5177202623140229760") == "",
+    )
+    check(
+        "existe download determinístico via BFF (getListIni+getDetail)",
+        callable(getattr(allianz_corretor, "_download_carta_bff", None)),
+    )
+    _bff_src = _insp_fg.getsource(allianz_corretor)
+    check(
+        "BFF usa getListIni, getDetail tipoDoc I e le o campo imagen",
+        "getListIni" in _bff_src and "getDetail" in _bff_src and "tipoDoc:'I'" in _bff_src and "imagen" in _bff_src,
+    )
+    check(
+        "BFF valida que o conteudo e PDF (%PDF)",
+        "%PDF" in _insp_fg.getsource(allianz_corretor._download_carta_bff),
+    )
     check(
         "detecta a tela de login pelos marcadores reais (Iniciar Sessao/Esqueceu a senha)",
         allianz_corretor._login_form_present("Bem-vindo(a) à Allianznet Usuário Senha INICIAR SESSÃO ESQUECEU A SENHA?"),

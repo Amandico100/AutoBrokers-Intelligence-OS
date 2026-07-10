@@ -7,6 +7,8 @@ from __future__ import annotations
 
 import re
 import html
+import base64
+import binascii
 import unicodedata
 from pathlib import Path
 from typing import Any, Dict, Iterable, List, Optional
@@ -2879,6 +2881,96 @@ async def _select_carta_inadimplencia(page, evidence: Dict[str, Any]) -> bool:
     return False
 
 
+def _extract_poliza_from_context(text: str) -> str:
+    """Número INTERNO da apólice (a 'poliza'/'Proposta' de 8-10 dígitos que o
+    BFF usa), distinto da Apólice SUSEP (19 díg). Na Lista de Recibos aparece
+    como 'Apólice 137583747' e 'Apólice SUSEP 5177...'."""
+    low = _norm(text)
+    m = re.search(r"(?:proposta|apolice)\s*:?\s*(\d{8,10})(?!\d)", low)
+    return m.group(1) if m else ""
+
+
+# Fluxo DETERMINÍSTICO (sem busca visual, sem UI da Ficha de Gestão):
+# getListIni -> acha 'Carta Inadimplência' -> getDetail(tipoDoc='I') ->
+# campo 'imagen' = PDF em base64. Contrato validado ao vivo 2026-07-10.
+_CARTA_BFF_JS = r"""
+async ({poliza, username, token}) => {
+  const H = {'Content-Type':'application/json','epac-company-id':'BRA','x-rws-rootapp':'spa-file-management'};
+  if (token) H['Authorization'] = 'Bearer ' + token;
+  let li;
+  try {
+    li = await fetch('/rws-bff-file-management/api/fileManagement/getListIni', {
+      method:'POST', credentials:'include', headers:H,
+      body: JSON.stringify({poliza:Number(poliza), aplica:0, tiporef:'P', usuarioenvio:username,
+        fejecucion:99999999, vista:'EP', origen:'EP', subVista:'P', busqueda:'IN', appOrigen:''})});
+  } catch (e) { return {step:'getListIni', err:String(e).slice(0,60)}; }
+  if (!li.ok) return {step:'getListIni', status: li.status};
+  const data = await li.json();
+  let carta = null;
+  for (const g of (data.fileManagement || [])) {
+    for (const f of (g.file || [])) {
+      if (String(f.descmodelo || '').toLowerCase().includes('nadimpl')) { carta = f; break; }
+    }
+    if (carta) break;
+  }
+  if (!carta) return {step:'find_carta', count:(data.fileManagement || []).length};
+  const req = {vista:'EP', codFicha:carta.codficha, modelo:carta.modelotc, tipoRef:'P',
+    tipoDoc:'I', gtl:carta.gtl, ut:carta.ut, itemId26:carta.itemid26, ref:String(poliza), marcarLeido:true};
+  let gd;
+  try {
+    gd = await fetch('/rws-bff-file-management/api/fileManagement/getDetail', {
+      method:'POST', credentials:'include', headers:H, body: JSON.stringify(req)});
+  } catch (e) { return {step:'getDetail', err:String(e).slice(0,60)}; }
+  if (!gd.ok) return {step:'getDetail', status: gd.status};
+  const det = await gd.json();
+  const img = det.imagen || '';
+  return {imagen: img, imagen_len: img.length, desc: carta.descmodelo, codficha: carta.codficha};
+}
+"""
+
+
+async def _download_carta_bff(ctx_page, item: Dict[str, Any], params: Dict[str, Any], evidence: Dict[str, Any]) -> Optional[Dict[str, Any]]:
+    username = str(params.get("username") or "").strip()
+    poliza = _extract_poliza_from_context(await _all_body_text(ctx_page))
+    evidence["cobranca_bff_poliza"] = poliza or None
+    if not poliza or not username:
+        return None
+    token = await _shell_access_token(ctx_page)
+    try:
+        res = await ctx_page.evaluate(_CARTA_BFF_JS, {"poliza": poliza, "username": username, "token": token or ""})
+    except Exception as e:  # noqa: BLE001
+        evidence.setdefault("download_notes", []).append(f"bff carta eval falhou: {type(e).__name__}")
+        return None
+    if isinstance(res, dict):
+        evidence["cobranca_bff"] = {k: res.get(k) for k in ("step", "status", "err", "count", "desc", "codficha", "imagen_len")}
+    if not isinstance(res, dict) or not res.get("imagen"):
+        return None
+    try:
+        data = base64.b64decode(res["imagen"])
+    except (binascii.Error, ValueError):
+        evidence.setdefault("download_notes", []).append("bff carta: base64 invalido")
+        return None
+    if not data.startswith(b"%PDF"):
+        evidence.setdefault("download_notes", []).append("bff carta: conteudo nao e PDF")
+        return None
+    path = build_boleto_storage_path(
+        company_id=str(params.get("_company_id") or "company"),
+        job_id=str(params.get("_job_id") or "job"),
+        portal_key=str(params.get("_portal_key") or "allianz_corretor"),
+        recibo=str(item.get("recibo") or ""),
+        cpf_cnpj=str(item.get("cpf_cnpj") or ""),
+        cliente_nome=str(item.get("cliente_nome") or ""),
+    )
+    upload = params.get("_upload_blob")
+    evidence.setdefault("download_notes", []).append(
+        f"carta baixada via BFF (getDetail) — {len(data)} bytes, poliza {poliza}"
+    )
+    if callable(upload):
+        saved = await upload(path, data, "application/pdf")
+        return {"ok": bool(saved), "storage_path": saved or path, "bytes": len(data), "via": "bff_getDetail"}
+    return {"ok": True, "storage_path": path, "bytes": len(data), "via": "bff_getDetail", "not_uploaded": True}
+
+
 async def _download_boletos(page, items: List[Dict[str, Any]], params: Dict[str, Any], evidence: Dict[str, Any]) -> List[Dict[str, Any]]:
     out: List[Dict[str, Any]] = []
     try:
@@ -2925,6 +3017,20 @@ async def _download_boletos_loop(page, items, params, evidence, auth_holder, out
                 rows = await _extract_visible_rows(ctx)
                 pendentes = extract_recibos_from_rows(rows)
                 result["recibos_pendentes"] = pendentes[:5]
+                # 1) Caminho DETERMINÍSTICO: baixa a carta via BFF (getListIni +
+                # getDetail), sem abrir a Ficha de Gestão. Contrato validado ao
+                # vivo 2026-07-10 (PDF base64 no campo 'imagen').
+                bff = await _download_carta_bff(ctx, item, params, evidence)
+                if bff and bff.get("ok"):
+                    result.update(bff)
+                    if ctx is not page:
+                        try:
+                            await ctx.close()
+                        except Exception:  # noqa: BLE001
+                            pass
+                    out.append(result)
+                    continue
+                # 2) Fallback: UI da Ficha de Gestão (clique + PDF na tela).
                 ficha = await _open_ficha_gestao_for_item(ctx, item, evidence, auth_holder)
                 if ficha:
                     if await _select_carta_inadimplencia(ficha, evidence):
