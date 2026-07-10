@@ -320,16 +320,66 @@ HDI_AUTO_WHATSAPP_V1["subservice_menu_map"] = {  # HDI decide o serviço na fase
     "guincho": "Guincho", "bateria": "Recarga de bateria", "pneu": "Troca de pneu", "chaveiro": "Chaveiro",
 }
 
-# --- Yelum (ex-Liberty) e Tokio: evidência mais fina → playbook enxuto, adaptativo
+# --- Yelum (ex-Liberty): v2 minerado da conversa REAL completa da AutoFleet
+# (2023→2026, dezenas de acionamentos). A URA identifica por PLACA/CPF, deriva
+# o serviço do "o que aconteceu" e ABRE automaticamente após os últimos dados —
+# por isso os freios ficam ANTES do trecho final.
 YELUM_AUTO_WHATSAPP_V1 = _auto_playbook(
     "yelum", "yelum_assistencia_24h",
     ura_steps=[
-        {"step": "pedir_cpf", "anchor": r"cpf\s*(?:ou\s*cnpj)?\s*do\(a\)? titular", "reply": "{titular_cpf}",
-         "requires": ["titular_cpf"]},
+        {"step": "menu_auto_ou_resid",
+         "anchor": r"assist[êe]ncia para (?:o )?(?:seu|sua) \*?(?:autom[óo]vel|casa)\*? ou \*?resid[êe]ncia\*?|sua \*?casa\*? ou \*?carro\*?",
+         "reply": "Automóvel", "notes": "variante antiga usa botões Casa/Carro"},
+        {"step": "identificacao_dado",
+         "anchor": r"informe \*?apenas um dos dados|informe somente o \*?cpf ou cnpj\*? do t[íi]tular",
+         "reply": "{titular_cpf}", "requires": ["titular_cpf"],
+         "notes": "URA 2026 pede CPF/CNPJ OU placa logo de cara"},
+        {"step": "continuar_com_placa", "anchor": r"identifiquei em seu cadastro a placa", "reply": "Automóvel",
+         "notes": "após CPF, a URA acha a placa e pergunta veículo ou residencial"},
+        {"step": "informar_nome", "anchor": r"informe o seu nome ou como gostaria de ser chamad", "reply": "Atendimento",
+         "notes": "nome de quem opera o canal (a corretora)"},
+        {"step": "informar_placa", "anchor": r"qual a placa do ve[íi]culo", "reply": "{veiculo_placa}",
+         "requires": ["veiculo_placa"]},
+        {"step": "perfil", "anchor": r"em qual dessas op[çc][õo]es voc[êe] se enquadra", "reply": "Sou corretor(a)",
+         "notes": "agimos em nome da corretora"},
+        {"step": "pessoa_no_local", "anchor": r"[ée] a pessoa que est[áa] (?:no )?local para acompanhar", "reply": "Não"},
+        {"step": "nome_pessoa_local", "anchor": r"qual [ée] o nome da pessoa que est[áa] no local", "reply": "{pessoa_no_local}",
+         "requires": ["pessoa_no_local"]},
+        {"step": "telefone_local", "anchor": r"n[úu]mero de (?:celular|telefone)\*? com ddd da pessoa que est[áa] no local",
+         "reply": "{telefone_contato}", "requires": ["telefone_contato"]},
+        {"step": "telefone_confirma", "anchor": r"o n[úu]mero de telefone \d+ est[áa] correto", "reply": "Sim"},
+        {"step": "cor_menu", "anchor": r"informar a cor do ve[íi]culo de placa", "reply": "Outros"},
+        {"step": "cor_texto", "anchor": r"qual a cor do ve[íi]culo de placa", "reply": "{veiculo_cor}",
+         "notes": "campo livre; default 'não sei' (padrão da operadora real)"},
+        {"step": "rodovia", "anchor": r"(?:o ve[íi]culo|saber se o ve[íi]culo) est[áa] em uma rodovia", "reply": "{rodovia}",
+         "notes": "Sim/Não conforme local_atual; default Não"},
+        {"step": "o_que_aconteceu", "anchor": r"pode me dizer o que aconteceu", "reply": "{servico_opcao}",
+         "requires": ["servico_opcao"],
+         "notes": "guincho→Pane ou Defeito · bateria→Recarga de bateria · pneu→Pneu Furado · chaveiro→Problema com a chave"},
+        {"step": "pane_detalhe", "anchor": r"selecione a op[çc][ãa]o que condiz com a pane", "reply": "Problemas no motor",
+         "notes": "guincho por pane: 'Problemas no motor' leva direto ao Guincho (fluxo real 02/07/2025)"},
+        {"step": "situacao_risco", "anchor": r"situa[çc][õo]es de risco abaixo", "reply": "Nenhuma das anteriores",
+         "notes": "se o caso indicar risco real, o cérebro adaptativo assume"},
+        {"step": "ocupantes", "anchor": r"ocupantes tem alguma das particularidades|algu[ée]m da lista abaixo no local",
+         "reply": "Nenhuma das anteriores"},
+        {"step": "aguarde_fila",
+         "anchor": r"ainda n[ãa]o identificamos a sua resposta|voc[êe] est[áa] na fila|alto volume de atendimentos|aguarde (?:um momento|s[óo] mais)|te transfiro para um|dicas (?:r[áa]pidas|sobre como funciona)|seja bem-?vindo ao atendimento",
+         "reply": "", "noop": True, "notes": "fila/aviso/boas-vindas — NÃO responder"},
+        {"step": "deseja_continuar", "anchor": r"deseja continuar (?:este|com o) atendimento", "reply": "Sim"},
     ],
-    finalize_anchors=[r"posso confirmar", r"deseja confirmar", r"confirmar? (?:o|a) (?:agendamento|abertura)"],
+    finalize_anchors=[
+        # A Yelum ABRE sozinha após os últimos dados → frear ANTES do trecho final:
+        r"solicitando o atendimento para agora ou prefere agendar",
+        r"quer o atendimento para agora ou prefere agendar",
+        r"para onde devemos levar o ve[íi]culo",
+        r"podemos confirmar",
+    ],
 )
-YELUM_AUTO_WHATSAPP_V1["subservice_menu_map"] = {"guincho": "Guincho", "bateria": "Bateria", "pneu": "Troca de pneu", "chaveiro": "Chaveiro"}
+YELUM_AUTO_WHATSAPP_V1["version"] = 2
+YELUM_AUTO_WHATSAPP_V1["subservice_menu_map"] = {
+    "guincho": "Pane ou Defeito", "bateria": "Recarga de bateria",
+    "pneu": "Pneu Furado", "chaveiro": "Problema com a chave",
+}
 
 TOKIO_AUTO_WHATSAPP_V1 = _auto_playbook(
     "tokio", "tokio_assistencia_24h",

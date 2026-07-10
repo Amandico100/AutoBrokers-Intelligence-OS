@@ -145,7 +145,25 @@ async def start_live_dispatch(
     insurer = _digits(insurer_phone)
     existing = await load_active_dispatch(company_id, insurer)
     if existing:
-        return {"ok": False, "error": "dispatch_already_active", "session": existing}
+        # Sessão MORTA não pode bloquear um novo acionamento (teste 2026-07-10:
+        # lock preso após a seguradora derrubar a conversa). Supersede quando:
+        # needs_human/captured, seguradora encerrou, ou sessão velha (>45min).
+        stale = str(existing.get("state") or "") in ("needs_human", "captured")
+        stale = stale or str(existing.get("reason") or "") == "insurer_closed"
+        try:
+            from datetime import datetime, timezone
+
+            created = datetime.fromisoformat(str(existing.get("created_at") or "").replace("Z", "+00:00"))
+            if created.tzinfo is None:
+                created = created.replace(tzinfo=timezone.utc)
+            age_s = (datetime.now(timezone.utc) - created).total_seconds()
+            stale = stale or age_s > 45 * 60
+        except Exception:  # noqa: BLE001
+            stale = True  # created_at ilegível = sessão suspeita, não bloqueia
+        if not stale:
+            return {"ok": False, "error": "dispatch_already_active", "session": existing}
+        await clear_active_dispatch(company_id, insurer)
+        logger.info(f"[DISPATCH ROUTER] stale session superseded (state={existing.get('state')})")
 
     session = new_dispatch_session(
         case_id=case_id, company_id=company_id, playbook_ref=playbook_ref,
@@ -231,7 +249,12 @@ async def try_route_insurer_inbound(
                 session["client_notified_handoff"] = True
             except Exception as e:  # noqa: BLE001
                 logger.error(f"[DISPATCH ROUTER] handoff notify failed: {type(e).__name__}")
-        await save_active_dispatch(company_id, from_phone, session)
+        if str(session.get("reason") or "") == "insurer_closed":
+            # Seguradora derrubou a conversa: liberar o lock imediatamente
+            # (um novo acionamento pode ser aberto na sequência).
+            await clear_active_dispatch(company_id, from_phone)
+        else:
+            await save_active_dispatch(company_id, from_phone, session)
         logger.warning(f"[DISPATCH ROUTER] needs_human case={session.get('case_id')} reason={session.get('reason')}")
         return True
 

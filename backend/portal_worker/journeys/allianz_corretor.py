@@ -2586,6 +2586,73 @@ async def _select_carta_inadimplencia(page, evidence: Dict[str, Any]) -> bool:
     return False
 
 
+async def _open_receipts_via_pendentes(page, item: Dict[str, Any], evidence: Dict[str, Any]):
+    """Caminho DIRETO da operadora (prints do founder 2026-07-10): na tela de
+    inadimplências, selecionar a linha do recibo e abrir 'Pendentes'/'Gestor
+    Cobrança' — chega no contexto da apólice SEM a busca global (que devolve
+    'sem resultados' em produção mesmo em horário comercial). Retorna a página
+    do contexto (pode ser popup) ou None."""
+    text = await _all_body_text(page)
+    if _looks_like_inadimplentes_totals(text):
+        totals = extract_totals_from_rows(await _extract_visible_rows(page))
+        idx = 0
+        ramo = _norm(str(item.get("ramo_total") or ""))
+        for i, t in enumerate(totals):
+            if ramo and ramo in _norm(str(t.get("ramo") or "")):
+                idx = i
+                break
+        if not await _click_totals_row_by_index(page, idx):
+            return None
+        if not await _wait_until_inadimplentes_result(page, timeout_ms=9000):
+            return None
+    elif not _looks_like_inadimplentes_result(text):
+        return None
+
+    recibo = _digits(item.get("recibo"))
+    if recibo:
+        await _click_row_candidate(page, (recibo,), timeout_ms=1500)
+        await page.wait_for_timeout(500)
+
+    for label in ("Pendentes", "Gestor Cobranca"):
+        target = None
+        clicked = False
+        try:
+            async with page.expect_popup(timeout=6000) as popup_info:
+                clicked = await _click_section_button_candidate_trusted(page, (label,), timeout_ms=900)
+                if not clicked:
+                    clicked = await _click_text_candidate(page, (label,), timeout_ms=900)
+            if clicked:
+                target = await popup_info.value
+                try:
+                    await target.wait_for_load_state("domcontentloaded", timeout=9000)
+                except Exception:  # noqa: BLE001
+                    pass
+        except Exception:  # noqa: BLE001
+            if clicked:
+                target = page
+        if not clicked:
+            continue
+        tgt = target or page
+        await tgt.wait_for_timeout(1600)
+        body = await _all_body_text(tgt)
+        context_ok = _looks_like_recibos_list(body) or _looks_like_policy_context(body) or "ficha gest" in _norm(body)
+        item_ok = (recibo and recibo in _digits(body)) or _policy_context_matches_item(body, item)
+        if context_ok and item_ok:
+            evidence.setdefault("download_notes", []).append(
+                f"contexto da apolice aberto DIRETO via '{label}' (sem busca global)"
+            )
+            return tgt
+        evidence.setdefault("download_notes", []).append(
+            f"'{label}' abriu, mas sem contexto do item (recibo {recibo or '?'})"
+        )
+        if tgt is not page:
+            try:
+                await tgt.close()
+            except Exception:  # noqa: BLE001
+                pass
+    return None
+
+
 async def _download_boletos(page, items: List[Dict[str, Any]], params: Dict[str, Any], evidence: Dict[str, Any]) -> List[Dict[str, Any]]:
     out: List[Dict[str, Any]] = []
     try:
@@ -2596,27 +2663,39 @@ async def _download_boletos(page, items: List[Dict[str, Any]], params: Dict[str,
         result = {"recibo": item.get("recibo"), "cpf_cnpj": item.get("cpf_cnpj"), "ok": False}
         try:
             if idx > 0:
+                # Volta para a área de inadimplências (o caminho direto parte dela).
                 await page.goto(ALLIANZ_PRIVATE_HOME, wait_until="domcontentloaded")
                 await page.wait_for_timeout(1500)
-            opened = await _open_receipts_for_item(page, item, evidence)
-            if opened:
-                item = _merge_recibos_context(item, await _all_body_text(page))
-                rows = await _extract_visible_rows(page)
+                await _ensure_inadimplentes_page(page, params, evidence)
+            # 1) Caminho direto (Pendentes/Gestor Cobrança) — fluxo real da operadora.
+            ctx = await _open_receipts_via_pendentes(page, item, evidence)
+            # 2) Fallback: busca global (flaky em produção, mantida como plano B).
+            if ctx is None:
+                opened = await _open_receipts_for_item(page, item, evidence)
+                ctx = page if opened else None
+            if ctx is not None:
+                item = _merge_recibos_context(item, await _all_body_text(ctx))
+                rows = await _extract_visible_rows(ctx)
                 pendentes = extract_recibos_from_rows(rows)
                 result["recibos_pendentes"] = pendentes[:5]
-                ficha = await _open_ficha_gestao_for_item(page, item, evidence)
+                ficha = await _open_ficha_gestao_for_item(ctx, item, evidence)
                 if ficha:
                     if await _select_carta_inadimplencia(ficha, evidence):
                         await ficha.wait_for_timeout(1200)
                     download = await _download_current_pdf(ficha, item, params)
                     result.update(download)
-                    if ficha is not page:
+                    if ficha is not ctx and ficha is not page:
                         try:
                             await ficha.close()
                         except Exception:  # noqa: BLE001
                             pass
                 else:
                     result["reason"] = "ficha gestao nao encontrada"
+                if ctx is not page:
+                    try:
+                        await ctx.close()
+                    except Exception:  # noqa: BLE001
+                        pass
                 out.append(result)
                 continue
             else:
