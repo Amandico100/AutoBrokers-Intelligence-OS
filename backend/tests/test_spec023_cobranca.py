@@ -243,6 +243,33 @@ def run():
         "existe relogin fresco para busca degradada por sessao restaurada",
         callable(getattr(allianz_corretor, "_relogin_fresh", None)),
     )
+    check(
+        "ficha gestao reconhecida pela tela REAL (Indexar/registros/Descripcion — print p13)",
+        allianz_corretor._looks_like_ficha_gestao(
+            "Allianz Nota Indexar EP - P- APÓLICE - 13758374700000 - 16 (16) registros "
+            "Fecha Tipo Modelo Descripcion Usuario Carta Inadimplência - Aviso DLGAFP"
+        ),
+    )
+    check(
+        "ficha gestao reconhecida so pelo header mesmo sem a carta na primeira dobra",
+        allianz_corretor._looks_like_ficha_gestao(
+            "Nota Indexar EP - P- APÓLICE - 13758374700000 - 16 (16) registros Fecha Tipo Modelo Descripcion Usuario"
+        ),
+    )
+    check(
+        "tela de login nao passa por ficha gestao",
+        allianz_corretor._looks_like_ficha_gestao("Bem-vindo(a) à Allianznet Iniciar Sessão Esqueceu a senha?") is False,
+    )
+    check(
+        "lista de recibos nao passa por ficha gestao",
+        allianz_corretor._looks_like_ficha_gestao(
+            "LISTAGEM DE RECIBOS (AZR) Recibo Parcelas Contador Endosso Tipo Recibo Pendente Gestor Cobrança Pendentes"
+        ) is False,
+    )
+    check(
+        "existe varredura de abas do contexto por fileManagement (popup fora do expect_popup)",
+        callable(getattr(allianz_corretor, "_find_ficha_gestao_page", None)),
+    )
     import inspect as _insp_ctx
 
     _ctx_src = _insp_ctx.getsource(allianz_corretor._open_policy_context_for_item)
