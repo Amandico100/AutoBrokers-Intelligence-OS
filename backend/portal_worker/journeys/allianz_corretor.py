@@ -240,12 +240,17 @@ def _looks_like_recibos_list(text: str) -> bool:
 
 
 def _looks_like_ficha_gestao(text: str) -> bool:
+    # Tela real (print p13): header 'Nota | Indexar', titulo 'EP - P- APÓLICE -
+    # <numero> - 16 (16) registros', colunas 'Fecha | Tipo Modelo | Descripcion
+    # | Usuario' (grafia espanhola — NAO 'description').
     body = _norm(text)
     if "ficha de gestao" in body:
         return True
-    if "carta inadimplencia" in body and ("tipo modelo" in body or "description" in body):
+    if "carta inadimplencia" in body and ("tipo modelo" in body or "descripcion" in body or "description" in body):
         return True
-    return "ep - p- apolice" in body and "tipo modelo" in body and "description" in body
+    if "indexar" in body and "registros" in body and ("tipo modelo" in body or "descripcion" in body):
+        return True
+    return "ep - p- apolice" in body and "tipo modelo" in body
 
 
 def _looks_like_policy_context(text: str) -> bool:
@@ -2555,6 +2560,23 @@ async def _open_policy_context_for_item(page, item: Dict[str, Any], params: Dict
     return False
 
 
+async def _find_ficha_gestao_page(page):
+    """O botão pode abrir a Ficha de Gestão numa aba que o expect_popup não
+    capturou (janela nomeada / popup antes do arm). Varre as abas do contexto."""
+    try:
+        pages = list(getattr(page.context, "pages", []) or [])
+    except Exception:  # noqa: BLE001
+        return None
+    for candidate in pages:
+        try:
+            url = str(getattr(candidate, "url", "")).lower().replace("-", "")
+            if "filemanagement" in url:
+                return candidate
+        except Exception:  # noqa: BLE001
+            continue
+    return None
+
+
 async def _open_ficha_gestao_for_item(page, item: Dict[str, Any], evidence: Dict[str, Any]):
     if _looks_like_ficha_gestao(await _all_body_text(page)):
         return page
@@ -2576,21 +2598,36 @@ async def _open_ficha_gestao_for_item(page, item: Dict[str, Any], evidence: Dict
     except Exception:  # noqa: BLE001
         if clicked_trusted:
             target = page
-    if target and await _wait_until_ficha_gestao(target, timeout_ms=12000):
+    if target is None and clicked_trusted:
+        target = await _find_ficha_gestao_page(page)
+    # App Angular (ngx-file-management) demora para montar a lista no VPS —
+    # espera longa aqui é barata comparada a perder o boleto.
+    if target and await _wait_until_ficha_gestao(target, timeout_ms=25000):
         evidence.setdefault("download_notes", []).append("ficha gestao aberta por clique trusted")
         return target
+    if target and target is not page:
+        snippet = _clean_text(await _all_body_text(target))[:280]
+        evidence.setdefault("download_notes", []).append(f"popup pos-clique sem lista: '{snippet[:160]}'")
+        try:
+            await target.close()
+        except Exception:  # noqa: BLE001
+            pass
 
     direct_url = await _section_button_new_window_url(page, ("Ficha Gestao", "Ficha de Gestao"))
     if direct_url:
         direct_target = None
         try:
+            evidence["ficha_gestao_url_params"] = sorted({k for k, _ in parse_qsl(urlsplit(direct_url).query)})
             direct_target = await page.context.new_page()
             await direct_target.goto(direct_url, wait_until="commit", timeout=15000)
             await direct_target.wait_for_timeout(2500)
-            if await _wait_until_ficha_gestao(direct_target, timeout_ms=12000):
+            if await _wait_until_ficha_gestao(direct_target, timeout_ms=25000):
                 evidence.setdefault("download_notes", []).append("ficha gestao aberta por janela operacional Allianz")
                 return direct_target
-            evidence.setdefault("download_notes", []).append("ficha gestao abriu URL operacional mas nao carregou a lista")
+            snippet = _clean_text(await _all_body_text(direct_target))[:280]
+            evidence.setdefault("download_notes", []).append(
+                f"ficha gestao abriu URL operacional mas nao carregou a lista: '{snippet[:160]}'"
+            )
         except Exception as e:  # noqa: BLE001
             evidence.setdefault("download_notes", []).append(f"ficha gestao por URL falhou: {type(e).__name__}")
         if direct_target:
