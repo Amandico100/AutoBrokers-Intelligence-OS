@@ -21,24 +21,41 @@ logger = logging.getLogger(__name__)
 
 
 class InsurerDispatchInput(BaseModel):
-    subservice: str = Field(description="Subserviço: eletricista | chaveiro | encanador | eletrodomesticos")
+    subservice: str = Field(description=(
+        "Subserviço. Residencial: eletricista | chaveiro | encanador | eletrodomesticos. "
+        "AUTO: guincho | bateria | pneu | chaveiro."))
+    insurer_key: Optional[str] = Field(default=None, description=(
+        "Seguradora da apólice (allianz | porto | hdi | yelum | tokio). Descubra pela InfoCap; "
+        "para assistência AUTO é OBRIGATÓRIO. Residencial sem isso assume Allianz."))
+    line_kind: Optional[str] = Field(default=None, description="Linha: auto | residencial. Para carro use 'auto'.")
     titular_cpf: Optional[str] = Field(default=None, description="CPF do titular da apólice (somente dígitos)")
-    endereco_numero: Optional[str] = Field(default=None, description="Número da residência do endereço da apólice")
+    # --- Residencial ---
+    endereco_numero: Optional[str] = Field(default=None, description="[residencial] Número da residência do endereço da apólice")
+    periodo_preferido: Optional[str] = Field(default=None, description="[residencial] Período: manha | tarde")
+    risco_confirmado_sem_fumaca: Optional[str] = Field(default=None, description="[residencial elétrica] 'sim' se NÃO há fumaça/faísca/cheiro de queimado")
+    aparelho_marca_modelo: Optional[str] = Field(default=None, description="[residencial eletrodomésticos] marca e modelo")
+    aparelho_idade: Optional[str] = Field(default=None, description="[residencial eletrodomésticos] idade aproximada")
+    # --- Auto ---
+    veiculo_placa: Optional[str] = Field(default=None, description="[auto] Placa (a InfoCap resolve; NÃO invente)")
+    local_atual: Optional[str] = Field(default=None, description="[auto] Onde o veículo está agora (endereço/CEP + referência)")
+    local_destino: Optional[str] = Field(default=None, description="[auto guincho] Para onde levar o veículo")
+    pessoa_no_local: Optional[str] = Field(default=None, description="[auto] Nome de quem está com o veículo no local")
+    quando: Optional[str] = Field(default=None, description="[auto] 'agora' (urgência) ou uma data para agendar")
+    ponto_referencia: Optional[str] = Field(default=None, description="[auto] Ponto de referência do local (ou 'não tem')")
+    # --- Comuns ---
     telefone_contato: Optional[str] = Field(default=None, description="Telefone de contato com DDD (somente dígitos)")
     problema_descricao: Optional[str] = Field(default=None, description="Descrição curta do problema relatado pelo cliente")
-    periodo_preferido: Optional[str] = Field(default=None, description="Período preferido: manha | tarde (a partir do próximo dia útil)")
-    risco_confirmado_sem_fumaca: Optional[str] = Field(default=None, description="Para elétrica: 'sim' confirmando que NÃO há fumaça/faísca/cheiro de queimado")
-    aparelho_marca_modelo: Optional[str] = Field(default=None, description="Para eletrodomésticos: marca e modelo")
-    aparelho_idade: Optional[str] = Field(default=None, description="Para eletrodomésticos: idade aproximada")
     session_id: Optional[str] = Field(default=None, description="(injetado pelo runtime — NÃO preencher)")
 
 
 class InsurerDispatchTool(BaseTool):
     name: str = "insurer_dispatch"
     description: str = (
-        "Prepara/aciona a assistência na seguradora (Allianz Residencial via WhatsApp) quando o levantamento "
-        "estiver completo E a apólice tiver assistência confirmada. Retorna o plano do acionamento ou os dados "
-        "que ainda faltam coletar. NUNCA diga ao cliente que acionou se o retorno indicar modo simulação."
+        "Prepara/aciona a assistência na seguradora pelo WhatsApp quando o levantamento estiver completo E a "
+        "apólice tiver assistência confirmada. Cobre AUTO (guincho/bateria/pneu/chaveiro) e residencial "
+        "(eletricista/chaveiro/encanador/eletrodomésticos). Para AUTO informe insurer_key (da InfoCap) e "
+        "line_kind='auto'. Retorna o plano do acionamento ou os dados que ainda faltam. NUNCA diga ao cliente "
+        "que acionou se o retorno indicar simulação; o passo final que despacha o prestador é sempre humano."
     )
     args_schema: Type[BaseModel] = InsurerDispatchInput
 
@@ -55,7 +72,26 @@ class InsurerDispatchTool(BaseTool):
         self.case_id = str(case_id or "")
         self.supabase_client = supabase_client
 
-    _PLAYBOOK_REF = "allianz-residencial-whatsapp@v1"
+    _PLAYBOOK_REF = "allianz-residencial-whatsapp@v1"  # default residencial (compat)
+
+    def _resolve_playbook_ref(self, kwargs: dict) -> tuple:
+        """Resolve (playbook_ref, insurer_key) por insurer_key + linha. AUTO exige
+        insurer_key; residencial sem insurer cai no default Allianz residencial."""
+        from app.services.corridor_playbooks import resolve_playbook_ref
+
+        insurer = str(kwargs.get("insurer_key") or "").strip()
+        line = str(kwargs.get("line_kind") or "").strip().lower()
+        subservice = str(kwargs.get("subservice") or "").strip().lower()
+        if not line:
+            line = "auto" if subservice in ("guincho", "bateria", "pneu") else ""
+        if line == "auto":
+            ref = resolve_playbook_ref(insurer, "auto") if insurer else None
+            return ref, insurer
+        if insurer:
+            ref = resolve_playbook_ref(insurer, "residencial")
+            if ref:
+                return ref, insurer
+        return self._PLAYBOOK_REF, "allianz"
 
     def _attendance_agent_id(self) -> Optional[str]:
         """Resolve o agente ATENDENTE (role attendance) — a integracao WhatsApp e
@@ -79,7 +115,7 @@ class InsurerDispatchTool(BaseTool):
         subservice = str(kwargs.get("subservice") or "").strip().lower()
         slots = {
             k: v for k, v in kwargs.items()
-            if k not in ("subservice", "session_id") and v not in (None, "")
+            if k not in ("subservice", "session_id", "insurer_key", "line_kind") and v not in (None, "")
         }
         return subservice, slots
 
@@ -89,7 +125,12 @@ class InsurerDispatchTool(BaseTool):
         from app.services.insurer_dispatch_service import build_dry_run_plan
 
         subservice, slots = self._extract_slots(kwargs)
-        plan = build_dry_run_plan(self._PLAYBOOK_REF, subservice, slots)
+        playbook_ref, insurer_key = self._resolve_playbook_ref(kwargs)
+        if not playbook_ref:
+            return {"status": "error", "content": (
+                f"Não tenho um corredor de assistência auto para a seguradora '{insurer_key or '?'}' ainda. "
+                "Colete os dados e acione um atendente humano para seguir com a seguradora.")}
+        plan = build_dry_run_plan(playbook_ref, subservice, slots)
 
         if not plan.get("ok"):
             if plan.get("missing_slots"):
@@ -102,6 +143,11 @@ class InsurerDispatchTool(BaseTool):
                     "risco_confirmado_sem_fumaca": "confirmação de que NÃO há fumaça/faísca/cheiro de queimado",
                     "aparelho_marca_modelo": "marca e modelo do aparelho",
                     "aparelho_idade": "idade aproximada do aparelho",
+                    "veiculo_placa": "placa do veículo (a InfoCap costuma ter — confirme)",
+                    "local_atual": "onde o veículo está agora (endereço com referência)",
+                    "local_destino": "para onde levar o veículo (destino do guincho)",
+                    "quando": "quando precisa (agora ou uma data para agendar)",
+                    "pessoa_no_local": "quem vai estar com o veículo no local",
                 }
                 faltam = [friendly.get(s, s) for s in plan["missing_slots"]]
                 return {
@@ -137,12 +183,16 @@ class InsurerDispatchTool(BaseTool):
         if base.get("status") != "ready_to_send" or not dispatch_live_enabled():
             return base
 
+        from app.services.corridor_playbooks import insurer_contact_env_var, resolve_insurer_contact
+
+        playbook_ref, insurer_key = self._resolve_playbook_ref(kwargs)
+        line = "auto" if str(kwargs.get("line_kind") or "").lower() == "auto" or str(kwargs.get("subservice") or "").lower() in ("guincho", "bateria", "pneu") else "residencial"
         digits = lambda s: "".join(ch for ch in str(s or "") if ch.isdigit())  # noqa: E731
-        insurer_phone = digits(os.getenv("INSURER_CONTACT_ALLIANZ_ASSISTENCIA_24H", ""))
+        insurer_phone = resolve_insurer_contact(insurer_key or "allianz", line_kind=line)
         if not insurer_phone:
             base["content"] += (
-                "\nAVISO INTERNO: gate LIVE aberto mas o contato da seguradora não está configurado "
-                "(INSURER_CONTACT_ALLIANZ_ASSISTENCIA_24H) — NADA foi enviado. Não afirme acionamento."
+                f"\nAVISO INTERNO: gate LIVE aberto mas o contato da seguradora não está configurado "
+                f"({insurer_contact_env_var(insurer_key or 'allianz', line)}) — NADA foi enviado. Não afirme acionamento."
             )
             return base
 
@@ -186,7 +236,7 @@ class InsurerDispatchTool(BaseTool):
         result = await start_live_dispatch(
             company_id=self.company_id,
             case_id=self.case_id or f"wa-{client_phone}",
-            playbook_ref=self._PLAYBOOK_REF,
+            playbook_ref=playbook_ref,
             subservice=subservice,
             slots=slots,
             client_phone=client_phone,
