@@ -220,8 +220,21 @@ def run():
         "apolice_susep": "5177202623140183705",
         "recibo": "317418783",
     })
-    check("termos de busca priorizam segurado", search_terms[0] == "MONICA BONELLI PAULO PRAZERES", search_terms)
+    check("termos de busca priorizam CPF (deterministico)", search_terms[0] == "03184509923", search_terms)
     check("termos de busca incluem apolice", "5177202623140183705" in search_terms, search_terms)
+    check("termos de busca mantem nome como fallback", "MONICA BONELLI PAULO PRAZERES" in search_terms, search_terms)
+    check(
+        "modal de busca vazia e detectado",
+        allianz_corretor.search_result_is_empty("Pesquisa de Cliente: FULANO Não foram encontrados resultados FECHAR"),
+    )
+    check(
+        "tela com resultados nao e tratada como vazia",
+        allianz_corretor.search_result_is_empty("Pesquisa de Cliente: FULANO 2 resultados encontrados") is False,
+    )
+    check(
+        "existe fechador de modal bloqueante",
+        callable(getattr(allianz_corretor, "_dismiss_blocking_modal", None)),
+    )
     check(
         "busca de apolice tem preenchimento sem submeter para escolher categoria",
         callable(getattr(allianz_corretor, "_fill_global_search_for_category", None)),
@@ -260,17 +273,17 @@ def run():
     network_trace = _summarize_network_trace([
         {"kind": "request", "method": "GET", "url": "https://www.allianznet.com.br/assets/logo.png"},
         {"kind": "request", "method": "GET", "url": "https://www.allianznet.com.br/ngx-azb-epac/private/application/static?token=abc&apolice=123"},
-        {"kind": "response", "status": 200, "url": "https://www.allianznet.com.br/ngx-file-management/fileManagement?uid=BA068610"},
+        {"kind": "response", "status": 200, "url": "https://www.allianznet.com.br/ngx-file-management/fileManagement?uid=UID000000"},
     ])
     check("trace de rede remove token sensivel", "token=abc" not in str(network_trace), network_trace)
     check("trace de rede prioriza rotas Allianz relevantes", network_trace.get("events", [{}])[0].get("url", "").find("application/static") >= 0, network_trace)
     check(
         "sanitizacao de URL preserva rota e remove senha",
-        _sanitize_trace_url("https://x.test/path?senha=abc&uid=BA068610") == "https://x.test/path?uid=BA068610",
+        _sanitize_trace_url("https://x.test/path?senha=abc&uid=UID000000") == "https://x.test/path?uid=UID000000",
     )
     ficha_onclick = (
         "sendMenuVerticalEventNewWindow('https://www.allianznet.com.br:443/ngx-file-management/"
-        "fileManagement?uid=BA068610&token=abc123&codCia=4', 'menu.fichagestao');"
+        "fileManagement?uid=UID000000&token=abc123&codCia=4', 'menu.fichagestao');"
     )
     extracted_ficha_url = _extract_new_window_url_from_onclick(ficha_onclick)
     check("extrai URL de janela nova da Ficha Gestao", "ngx-file-management/fileManagement" in extracted_ficha_url, extracted_ficha_url)

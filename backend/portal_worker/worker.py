@@ -15,10 +15,70 @@ from typing import Any, Dict
 logger = logging.getLogger("portal_worker")
 
 POLL_SECONDS = int(os.getenv("PORTAL_POLL_SECONDS", "30"))
+# Teto duro por journey: nenhum job pode segurar o worker além disso.
+JOB_TIMEOUT_SECONDS = int(os.getenv("PORTAL_JOB_TIMEOUT_SECONDS", "1200"))
+# Job 'running' mais velho que timeout+margem = órfão (worker morreu/reiniciou).
+STALE_MARGIN_SECONDS = 600
 
 
 def portal_real_enabled() -> bool:
     return str(os.getenv("PORTAL_REAL_ENABLED", "false")).strip().lower() in ("1", "true", "yes", "on")
+
+
+def _parse_ts(value: Any) -> datetime | None:
+    """ISO tolerante (Supabase devolve '2026-07-10 04:01:46.5+00')."""
+    text = str(value or "").strip().replace("Z", "+00:00")
+    if not text:
+        return None
+    if text.endswith("+00"):
+        text = text + ":00"
+    try:
+        parsed = datetime.fromisoformat(text)
+    except ValueError:
+        return None
+    return parsed if parsed.tzinfo else parsed.replace(tzinfo=timezone.utc)
+
+
+def stale_running_patch(job: Dict[str, Any], now: datetime | None = None) -> Dict[str, Any] | None:
+    """Patch de recuperação p/ job 'running' órfão; None = deixar em paz.
+    1ª ocorrência → volta pra fila (nova tentativa); reincidente → failed.
+    (Um job vidros ficou 3 dias preso em running após restart do worker.)"""
+    started = _parse_ts(job.get("started_at")) or _parse_ts(job.get("created_at"))
+    if started is None:
+        return None
+    now = now or datetime.now(timezone.utc)
+    age = (now - started).total_seconds()
+    if age < JOB_TIMEOUT_SECONDS + STALE_MARGIN_SECONDS:
+        return None
+    attempts = int(job.get("attempts") or 0)
+    if attempts < 2:
+        return {"status": "queued", "error": "requeue: worker reiniciou durante a execucao anterior"}
+    return {
+        "status": "failed",
+        "error": f"job orfao apos {attempts} tentativa(s): worker interrompido durante a execucao",
+        "finished_at": _now(),
+    }
+
+
+async def recover_stale_jobs(supa) -> int:
+    """Roda a cada tick: destrava jobs órfãos sem intervenção humana."""
+    try:
+        res = supa.table("portal_jobs").select("id, started_at, created_at, attempts").eq("status", "running").execute()
+    except Exception as e:  # noqa: BLE001
+        logger.warning("[PORTAL] recover_stale_jobs indisponivel: %s", type(e).__name__)
+        return 0
+    recovered = 0
+    for job in res.data or []:
+        patch = stale_running_patch(job)
+        if not patch:
+            continue
+        try:
+            supa.table("portal_jobs").update(patch).eq("id", job["id"]).eq("status", "running").execute()
+            recovered += 1
+            logger.warning("[PORTAL] job orfao %s -> %s", job.get("id"), patch.get("status"))
+        except Exception as e:  # noqa: BLE001
+            logger.warning("[PORTAL] falha ao recuperar job orfao: %s", type(e).__name__)
+    return recovered
 
 
 def _supabase():
@@ -284,7 +344,12 @@ async def _run_job(supa, job: Dict[str, Any]) -> None:
             params["_upload_blob"] = lambda path, blob, content_type="application/pdf": _upload_portal_blob(
                 supa, path, blob, content_type
             )
-            result = await journey_fn(page, params, evidence)
+            try:
+                result = await asyncio.wait_for(journey_fn(page, params, evidence), timeout=JOB_TIMEOUT_SECONDS)
+            except asyncio.TimeoutError:
+                raise RuntimeError(
+                    f"journey excedeu o teto de {JOB_TIMEOUT_SECONDS}s (PORTAL_JOB_TIMEOUT_SECONDS)"
+                ) from None
             if account_row and result.status == "done" and (result.captured or {}).get("logged_in"):
                 state = await context.storage_state()
                 session_storage = await _capture_session_storage(page)
@@ -312,6 +377,7 @@ async def _run_job(supa, job: Dict[str, Any]) -> None:
         "status": result.status,
         "evidence": evidence if result.status == "needs_human" else {**evidence, **(result.captured or {}), "message": result.message},
         "screenshots": screenshots,
+        "error": None,  # limpa nota de requeue de tentativa anterior
         "finished_at": _now(),
     }).eq("id", job_id).execute()
     logger.info(f"[PORTAL] job {job_id} -> {result.status}")
@@ -342,6 +408,7 @@ async def poll_loop() -> None:
     while True:
         try:
             supa = _supabase()
+            await recover_stale_jobs(supa)
             n = await run_once(supa)
             if n:
                 logger.info(f"[PORTAL] processou {n} job(s)")

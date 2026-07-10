@@ -321,6 +321,14 @@ class UazapiProvider:
                 "file": media.url,
                 "text": media.caption or "",
             }
+        elif media.kind == "document":
+            payload = {
+                "number": to,
+                "type": "document",
+                "file": media.url,
+                "docName": media.filename or "documento.pdf",
+                "text": media.caption or "",
+            }
         else:  # pragma: no cover - defensive; MediaKind is a closed vocabulary
             return SendResult(ok=False, error=f"Unsupported media kind: {media.kind}")
         return self._post(url, payload)

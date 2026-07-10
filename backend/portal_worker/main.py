@@ -5,6 +5,7 @@ from __future__ import annotations
 
 import asyncio
 import logging
+from pathlib import Path
 
 from fastapi import FastAPI
 
@@ -14,6 +15,19 @@ logging.basicConfig(level=logging.INFO)
 app = FastAPI(title="AutoBrokers Portal Worker")
 
 
+def build_info() -> dict:
+    """SHA/hora gravados no build (Dockerfile stage gitinfo) — prova qual versão
+    está no ar. Sem os arquivos (ex.: dev local) devolve 'unknown', nunca quebra."""
+    info = {}
+    here = Path(__file__).resolve().parent
+    for key, fname in (("build_sha", "build_sha.txt"), ("build_time", "build_time.txt")):
+        try:
+            info[key] = (here / fname).read_text(encoding="ascii").strip() or "unknown"
+        except Exception:  # noqa: BLE001
+            info[key] = "unknown"
+    return info
+
+
 @app.on_event("startup")
 async def _startup() -> None:
     asyncio.create_task(poll_loop())
@@ -21,4 +35,4 @@ async def _startup() -> None:
 
 @app.get("/health")
 async def health() -> dict:
-    return {"status": "healthy", "portal_real_enabled": portal_real_enabled()}
+    return {"status": "healthy", "portal_real_enabled": portal_real_enabled(), **build_info()}
