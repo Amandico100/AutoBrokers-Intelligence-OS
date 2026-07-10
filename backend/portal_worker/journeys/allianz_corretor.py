@@ -269,11 +269,14 @@ def _receipt_click_terms(item: Dict[str, Any]) -> List[str]:
 
 
 def _policy_search_terms(item: Dict[str, Any]) -> List[str]:
-    """CPF primeiro (determinístico na busca Allianz), depois apólice, nome e recibo.
-    Job real 2026-07-10: busca por NOME devolveu 'Não foram encontrados resultados'
-    para cliente que EXISTE — CPF é o caminho robusto; nome vira fallback."""
+    """NOME primeiro: é o fluxo que o corretor executa manualmente com sucesso
+    (prints 2026-07-10 — barra Pesquisar + categoria 'Nome / Razão Social').
+    CPF fica de fallback (categoria CPF/CNPJ devolveu 'Não foram encontrados
+    resultados' em produção) e recibo por último. A apólice SUSEP concatenada
+    (19 dígitos) NÃO entra: o portal responde 'Apólice inexistente' para esse
+    formato (job b693d9de)."""
     terms: List[str] = []
-    for value in (item.get("cpf_cnpj"), item.get("apolice_susep"), item.get("cliente_nome"), item.get("recibo")):
+    for value in (item.get("cliente_nome"), item.get("cpf_cnpj"), item.get("recibo")):
         text = _clean_text(value)
         if text and text not in terms:
             terms.append(text)
@@ -291,6 +294,8 @@ def search_result_is_empty(text: str) -> bool:
             "nenhum resultado encontrado",
             "nenhum registro encontrado",
             "nao encontramos resultados",
+            "apolice inexistente",
+            "cliente inexistente",
         )
     )
 
@@ -1840,7 +1845,12 @@ async def _fill_global_search_for_category(page, value: str, *, _retry: bool = T
         return False
     for frame in getattr(page, "frames", [page]):
         try:
-            candidates = frame.locator('input[name="target"], input[role="searchBar"], input[id^="nx-input-"]')
+            # A barra global tem placeholder 'Pesquisar ...'; os seletores
+            # genéricos (nx-input) também casam com campos de FILTRO da tela
+            # de inadimplências — por isso o placeholder vem primeiro.
+            candidates = frame.locator(
+                'input[placeholder*="esquisar"], input[name="target"], input[role="searchBar"], input[id^="nx-input-"]'
+            )
             if await candidates.count() <= 0:
                 continue
             loc = candidates.first
@@ -2390,12 +2400,14 @@ async def _download_current_pdf(page, item: Dict[str, Any], params: Dict[str, An
         return {"ok": False, "reason": f"{type(e).__name__}: {str(e)[:160]}", "storage_path": None}
 
 
-async def _open_receipts_for_item(page, item: Dict[str, Any], evidence: Dict[str, Any]) -> bool:
-    """Fluxo Allianz: busca segurado -> Operar -> Detalhe de Apolice -> Lista Recibos."""
+async def _open_receipts_for_item(page, item: Dict[str, Any], params: Dict[str, Any], evidence: Dict[str, Any]) -> bool:
+    """Fluxo REAL do corretor (prints 2026-07-10): busca por nome na barra
+    global -> 'Nome / Razão Social' -> página do cliente -> Operar ->
+    Detalhe de Apólice -> Lista Recibos."""
     if _looks_like_recibos_list(await _all_body_text(page)):
         return True
 
-    if await _open_policy_context_for_item(page, item, evidence):
+    if await _open_policy_context_for_item(page, item, params, evidence):
         await _wait_until_text(page, ("Lista Recibos",), timeout_ms=9000)
         if _looks_like_recibos_list(await _all_body_text(page)):
             return True
@@ -2414,7 +2426,32 @@ async def _open_receipts_for_item(page, item: Dict[str, Any], evidence: Dict[str
     evidence.setdefault("download_notes", []).append("nao abriu listagem de recibos para item")
     return False
 
-async def _open_policy_context_for_item(page, item: Dict[str, Any], evidence: Dict[str, Any]) -> bool:
+async def _relogin_fresh(page, params: Dict[str, Any], evidence: Dict[str, Any]) -> bool:
+    """Aprendizado 2026-07-10 (job b693d9de): TODAS as runs de cobrança rodaram
+    com sessão RESTAURADA e a busca global devolveu vazio até para cliente que
+    comprovadamente existe — enquanto o mesmo fluxo manual (login fresco do
+    corretor) funciona. A busca do AllianzNet degrada com storage antigo sem
+    derrubar o resto do portal. Limpa cookies/storage e refaz o login."""
+    try:
+        await page.context.clear_cookies()
+    except Exception:  # noqa: BLE001
+        pass
+    try:
+        await page.evaluate("() => { try { localStorage.clear(); sessionStorage.clear(); } catch (e) {} }")
+    except Exception:  # noqa: BLE001
+        pass
+    fresh_params = dict(params or {})
+    fresh_params["session_loaded"] = False
+    result = await login_check(page, fresh_params, evidence)
+    ok = getattr(result, "status", "") == "done"
+    evidence["fresh_login_after_empty_search"] = bool(ok)
+    evidence.setdefault("download_notes", []).append(
+        "relogin fresco apos busca vazia: " + ("ok" if ok else f"falhou ({_clean_text(getattr(result, 'message', ''))[:80]})")
+    )
+    return ok
+
+
+async def _open_policy_context_for_item(page, item: Dict[str, Any], params: Dict[str, Any], evidence: Dict[str, Any]) -> bool:
     text = await _all_body_text(page)
     if (_looks_like_policy_context(text) or _looks_like_recibos_list(text)) and _policy_context_matches_item(text, item):
         return True
@@ -2434,73 +2471,86 @@ async def _open_policy_context_for_item(page, item: Dict[str, Any], evidence: Di
         await _record_session_menu_trace(page, evidence, "after_home_before_policy_search")
         evidence.setdefault("download_notes", []).append("busca de apolice reiniciada na home apos resultado legado")
     click_terms = _policy_search_terms(item)
-    for term in click_terms:
-        searched, search_trace = await _capture_page_activity(
-            page,
-            f"global_search:{_clean_text(term)[:48]}",
-            lambda term=term: _fill_global_search_for_category(page, term),
-            wait_ms=1000,
-        )
-        search_trace["term"] = _clean_text(term)[:120]
-        _remember_evidence_list(evidence, "interaction_traces", search_trace, limit=16)
-        if not searched:
-            continue
-        await _click_search_category_for_term(page, str(term), item)
-        # Busca sem resultados abre modal BLOQUEANTE: registrar, fechar e ir
-        # direto ao próximo termo (clicar em "resultado" aqui só acha o texto
-        # do próprio modal — visto no job a9f4b375).
-        after_search_text = await _body_text(page)
-        if search_result_is_empty(after_search_text):
-            evidence.setdefault("download_notes", []).append(
-                f"busca sem resultados para termo '{_clean_text(term)[:60]}' — modal fechado"
+    for attempt in range(2):
+        for term in click_terms:
+            searched, search_trace = await _capture_page_activity(
+                page,
+                f"global_search:{_clean_text(term)[:48]}",
+                lambda term=term: _fill_global_search_for_category(page, term),
+                wait_ms=1000,
             )
-            evidence["empty_search_terms"] = int(evidence.get("empty_search_terms") or 0) + 1
+            search_trace["term"] = _clean_text(term)[:120]
+            _remember_evidence_list(evidence, "interaction_traces", search_trace, limit=16)
+            if not searched:
+                continue
+            # O popover 'Pesquisar este dado em...' precisa abrir para a
+            # categoria existir; se não abriu, o texto caiu no campo errado.
+            if "pesquisar este dado em" not in _norm(await _all_body_text(page)):
+                evidence.setdefault("download_notes", []).append(
+                    f"popover de categorias nao abriu apos digitar '{_clean_text(term)[:40]}'"
+                )
+            await _click_search_category_for_term(page, str(term), item)
+            # Busca sem resultados abre modal BLOQUEANTE: registrar, fechar e ir
+            # direto ao próximo termo (clicar em "resultado" aqui só acha o texto
+            # do próprio modal — visto no job a9f4b375).
+            after_search_text = await _body_text(page)
+            if search_result_is_empty(after_search_text):
+                evidence.setdefault("download_notes", []).append(
+                    f"busca sem resultados para termo '{_clean_text(term)[:60]}' — modal fechado"
+                )
+                evidence["empty_search_terms"] = int(evidence.get("empty_search_terms") or 0) + 1
+                await _dismiss_blocking_modal(page)
+                continue
+            await _click_customer_search_result(page, item, evidence)
+            if await _open_policy_detail_from_customer(page, item, evidence):
+                return True
+            if await _wait_until_policy_context(page, timeout_ms=7000):
+                text = await _all_body_text(page)
+                if _policy_context_matches_item(text, item):
+                    evidence.setdefault("download_notes", []).append("contexto da apolice aberto por busca")
+                    return True
+            if await _open_policy_detail_from_customer(page, item, evidence):
+                return True
+            clicked_search_row, search_row_trace = await _capture_page_activity(
+                page,
+                "click_search_result_row",
+                lambda: _click_row_candidate(page, click_terms, timeout_ms=1200),
+                wait_ms=900,
+            )
+            _remember_evidence_list(evidence, "interaction_traces", search_row_trace, limit=16)
+            if clicked_search_row:
+                if await _wait_until_policy_context(page, timeout_ms=8000):
+                    text = await _all_body_text(page)
+                    if _policy_context_matches_item(text, item):
+                        evidence.setdefault("download_notes", []).append("contexto da apolice aberto por linha de busca")
+                        return True
+                if await _open_policy_detail_from_customer(page, item, evidence):
+                    return True
+            clicked_search_text, search_text_trace = await _capture_page_activity(
+                page,
+                "click_search_result_text",
+                lambda: _click_text_candidate(page, click_terms, timeout_ms=1200),
+                wait_ms=900,
+            )
+            _remember_evidence_list(evidence, "interaction_traces", search_text_trace, limit=16)
+            if clicked_search_text:
+                if await _wait_until_policy_context(page, timeout_ms=8000):
+                    text = await _all_body_text(page)
+                    if _policy_context_matches_item(text, item):
+                        evidence.setdefault("download_notes", []).append("contexto da apolice aberto por resultado de busca")
+                        return True
+                if await _open_policy_detail_from_customer(page, item, evidence):
+                    return True
+            await _record_policy_search_debug(page, item, evidence, "policy_context_not_opened_after_search", term)
+            # Higiene entre termos: dialogo residual da tentativa anterior não pode
+            # contaminar a próxima busca.
             await _dismiss_blocking_modal(page)
+        # Todos os termos falharam nesta passada. Uma única vez: relogin fresco
+        # (sessão restaurada degrada a busca — ver _relogin_fresh) e repete.
+        if attempt == 0 and await _relogin_fresh(page, params, evidence):
+            evidence.setdefault("download_notes", []).append("repetindo busca apos relogin fresco")
             continue
-        await _click_customer_search_result(page, item, evidence)
-        if await _open_policy_detail_from_customer(page, item, evidence):
-            return True
-        if await _wait_until_policy_context(page, timeout_ms=7000):
-            text = await _all_body_text(page)
-            if _policy_context_matches_item(text, item):
-                evidence.setdefault("download_notes", []).append("contexto da apolice aberto por busca")
-                return True
-        if await _open_policy_detail_from_customer(page, item, evidence):
-            return True
-        clicked_search_row, search_row_trace = await _capture_page_activity(
-            page,
-            "click_search_result_row",
-            lambda: _click_row_candidate(page, click_terms, timeout_ms=1200),
-            wait_ms=900,
-        )
-        _remember_evidence_list(evidence, "interaction_traces", search_row_trace, limit=16)
-        if clicked_search_row:
-            if await _wait_until_policy_context(page, timeout_ms=8000):
-                text = await _all_body_text(page)
-                if _policy_context_matches_item(text, item):
-                    evidence.setdefault("download_notes", []).append("contexto da apolice aberto por linha de busca")
-                    return True
-            if await _open_policy_detail_from_customer(page, item, evidence):
-                return True
-        clicked_search_text, search_text_trace = await _capture_page_activity(
-            page,
-            "click_search_result_text",
-            lambda: _click_text_candidate(page, click_terms, timeout_ms=1200),
-            wait_ms=900,
-        )
-        _remember_evidence_list(evidence, "interaction_traces", search_text_trace, limit=16)
-        if clicked_search_text:
-            if await _wait_until_policy_context(page, timeout_ms=8000):
-                text = await _all_body_text(page)
-                if _policy_context_matches_item(text, item):
-                    evidence.setdefault("download_notes", []).append("contexto da apolice aberto por resultado de busca")
-                    return True
-            if await _open_policy_detail_from_customer(page, item, evidence):
-                return True
-        await _record_policy_search_debug(page, item, evidence, "policy_context_not_opened_after_search", term)
-        # Higiene entre termos: dialogo residual da tentativa anterior não pode
-        # contaminar a próxima busca.
-        await _dismiss_blocking_modal(page)
+        break
     evidence.setdefault("download_notes", []).append("contexto da apolice nao abriu")
     return False
 
@@ -2586,73 +2636,6 @@ async def _select_carta_inadimplencia(page, evidence: Dict[str, Any]) -> bool:
     return False
 
 
-async def _open_receipts_via_pendentes(page, item: Dict[str, Any], evidence: Dict[str, Any]):
-    """Caminho DIRETO da operadora (prints do founder 2026-07-10): na tela de
-    inadimplências, selecionar a linha do recibo e abrir 'Pendentes'/'Gestor
-    Cobrança' — chega no contexto da apólice SEM a busca global (que devolve
-    'sem resultados' em produção mesmo em horário comercial). Retorna a página
-    do contexto (pode ser popup) ou None."""
-    text = await _all_body_text(page)
-    if _looks_like_inadimplentes_totals(text):
-        totals = extract_totals_from_rows(await _extract_visible_rows(page))
-        idx = 0
-        ramo = _norm(str(item.get("ramo_total") or ""))
-        for i, t in enumerate(totals):
-            if ramo and ramo in _norm(str(t.get("ramo") or "")):
-                idx = i
-                break
-        if not await _click_totals_row_by_index(page, idx):
-            return None
-        if not await _wait_until_inadimplentes_result(page, timeout_ms=9000):
-            return None
-    elif not _looks_like_inadimplentes_result(text):
-        return None
-
-    recibo = _digits(item.get("recibo"))
-    if recibo:
-        await _click_row_candidate(page, (recibo,), timeout_ms=1500)
-        await page.wait_for_timeout(500)
-
-    for label in ("Pendentes", "Gestor Cobranca"):
-        target = None
-        clicked = False
-        try:
-            async with page.expect_popup(timeout=6000) as popup_info:
-                clicked = await _click_section_button_candidate_trusted(page, (label,), timeout_ms=900)
-                if not clicked:
-                    clicked = await _click_text_candidate(page, (label,), timeout_ms=900)
-            if clicked:
-                target = await popup_info.value
-                try:
-                    await target.wait_for_load_state("domcontentloaded", timeout=9000)
-                except Exception:  # noqa: BLE001
-                    pass
-        except Exception:  # noqa: BLE001
-            if clicked:
-                target = page
-        if not clicked:
-            continue
-        tgt = target or page
-        await tgt.wait_for_timeout(1600)
-        body = await _all_body_text(tgt)
-        context_ok = _looks_like_recibos_list(body) or _looks_like_policy_context(body) or "ficha gest" in _norm(body)
-        item_ok = (recibo and recibo in _digits(body)) or _policy_context_matches_item(body, item)
-        if context_ok and item_ok:
-            evidence.setdefault("download_notes", []).append(
-                f"contexto da apolice aberto DIRETO via '{label}' (sem busca global)"
-            )
-            return tgt
-        evidence.setdefault("download_notes", []).append(
-            f"'{label}' abriu, mas sem contexto do item (recibo {recibo or '?'})"
-        )
-        if tgt is not page:
-            try:
-                await tgt.close()
-            except Exception:  # noqa: BLE001
-                pass
-    return None
-
-
 async def _download_boletos(page, items: List[Dict[str, Any]], params: Dict[str, Any], evidence: Dict[str, Any]) -> List[Dict[str, Any]]:
     out: List[Dict[str, Any]] = []
     try:
@@ -2663,16 +2646,20 @@ async def _download_boletos(page, items: List[Dict[str, Any]], params: Dict[str,
         result = {"recibo": item.get("recibo"), "cpf_cnpj": item.get("cpf_cnpj"), "ok": False}
         try:
             if idx > 0:
-                # Volta para a área de inadimplências (o caminho direto parte dela).
+                # Home limpa entre itens: a busca global parte de qualquer página.
                 await page.goto(ALLIANZ_PRIVATE_HOME, wait_until="domcontentloaded")
                 await page.wait_for_timeout(1500)
-                await _ensure_inadimplentes_page(page, params, evidence)
-            # 1) Caminho direto (Pendentes/Gestor Cobrança) — fluxo real da operadora.
-            ctx = await _open_receipts_via_pendentes(page, item, evidence)
-            # 2) Fallback: busca global (flaky em produção, mantida como plano B).
+            # Fluxo real do corretor: busca por nome -> cliente -> Operar ->
+            # Detalhe de apólice -> Lista Recibos.
+            opened = await _open_receipts_for_item(page, item, params, evidence)
+            ctx = page if opened else None
             if ctx is None:
-                opened = await _open_receipts_for_item(page, item, evidence)
-                ctx = page if opened else None
+                # Fallback (print p8): a página do cliente tem botão 'FICHA
+                # GESTÃO' direto — a carta aparece lá mesmo sem a Lista Recibos.
+                body_raw = await _all_body_text(page)
+                if "ficha gest" in _norm(body_raw) and _policy_context_matches_customer(body_raw, item):
+                    evidence.setdefault("download_notes", []).append("fallback: ficha gestao direto da pagina do cliente")
+                    ctx = page
             if ctx is not None:
                 item = _merge_recibos_context(item, await _all_body_text(ctx))
                 rows = await _extract_visible_rows(ctx)
