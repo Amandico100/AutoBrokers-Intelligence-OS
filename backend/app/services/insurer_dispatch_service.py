@@ -190,12 +190,6 @@ def handle_insurer_message(
     if captured:
         session.setdefault("captured", {}).update(captured)
 
-    trigger = detect_handoff_trigger(playbook, insurer_message)
-    if trigger:
-        session["state"] = "needs_human"
-        session["reason"] = f"handoff_trigger:{trigger}"
-        return session
-
     if session.get("captured", {}).get("protocol") and session.get("captured", {}).get("schedule"):
         session["state"] = "captured"
         return session
@@ -210,6 +204,10 @@ def handle_insurer_message(
         session.setdefault("pending_insurer_messages", []).append(str(insurer_message)[:2000])
         return session
 
+    # Âncora de URA conhecida responde ANTES dos gatilhos de handoff: menus reais
+    # listam "Sinistro"/"Acidente" como OPÇÕES (Porto opção 6, Bradesco opção 2) e
+    # isso não significa que o caso é sinistro. Handoff só quando NENHUM passo
+    # conhecido casou (a mensagem é sobre o caso, não um menu mapeado).
     step = match_ura_step(playbook, insurer_message)
     if step:
         rendered = render_reply(step, session.get("slots") or {})
@@ -219,6 +217,12 @@ def handle_insurer_message(
             session["missing_slots"] = rendered["missing"]
             return session
         return _emit(session, rendered["reply"], sender=sender, next_state="ura", step=step.get("step"))
+
+    trigger = detect_handoff_trigger(playbook, insurer_message)
+    if trigger:
+        session["state"] = "needs_human"
+        session["reason"] = f"handoff_trigger:{trigger}"
+        return session
 
     # Sem âncora de URA: fase humana da seguradora.
     if session.get("state") == "ura":

@@ -194,8 +194,9 @@ _AUTO_HUMAN_PHASE_GUIDANCE = (
 )
 
 # Captura comum de protocolo/OS + link de acompanhamento (auto).
+# O grupo aceita dígitos com hífen: a Azul emite "protocolo ... 1-104106503215".
 _AUTO_CAPTURE_ANCHORS = {
-    "protocol": r"(?:protocolo(?:\s+de\s+atendimento)?|n[úu]mero\s+da\s+(?:ordem|os|solicita[çc][ãa]o)|o\.?s\.?)\s*(?:de\s+atendimento)?\s*:?\s*(\d{5,12})",
+    "protocol": r"(?:protocolo(?:\s+de\s+atendimento)?|n[úu]mero\s+da\s+(?:ordem|os|solicita[çc][ãa]o)|o\.?s\.?)[^\d]{0,24}(\d[\d-]{4,18}\d)",
     "schedule": r"agendad?[ao]?\s+para\s+(?:o\s+dia\s+)?(\d{1,2}/\d{1,2}/\d{2,4})(?:\s*(?:[àa]s|,)?\s*(\d{1,2}[:h]\d{0,2}))?",
     "tracking_link": r"(https?://\S+)",
 }
@@ -280,8 +281,12 @@ PORTO_AUTO_WHATSAPP_V1 = _auto_playbook(
          "notes": "referência do local; se não houver, 'não tem'"},
     ],
     finalize_anchors=[
-        r"posso continuar o agendamento", r"ser[áa] confirmad[ao] somente ap[óo]s",
-        r"qual per[íi]odo voc[êe] prefere", r"tenho urg[êe]ncia.*agendar", r"finaliza[çc][ãa]o do agendamento",
+        # CUIDADO: "sera confirmada somente apos a finalizacao" aparece dentro do
+        # passo de COLETA "para quando voce precisa" — NÃO é freio. O freio real
+        # da Porto é a revisão final ("gostaria de alterar alguma informacao" /
+        # "posso continuar o agendamento").
+        r"posso continuar o agendamento",
+        r"gostaria de alterar alguma informa[çc][ãa]o",
         r"confirmar o agendamento",
     ],
 )
@@ -336,6 +341,116 @@ TOKIO_AUTO_WHATSAPP_V1 = _auto_playbook(
 )
 TOKIO_AUTO_WHATSAPP_V1["subservice_menu_map"] = {"guincho": "Guincho", "bateria": "Bateria", "pneu": "Troca de pneu", "chaveiro": "Chaveiro"}
 
+# --- ALFA (URA gêmea da Allianz — mesmo fornecedor de bot) -----------------------
+ALFA_AUTO_WHATSAPP_V1 = _auto_playbook(
+    "alfa", "alfa_assistencia_24h",
+    ura_steps=[
+        {"step": "menu_tipo_seguro", "anchor": r"assist[êe]ncia 24h para qual seguro", "reply": "1",
+         "notes": "1-Automóvel/Moto 2-Residencial 3-Outros → Auto"},
+        {"step": "pedir_cpf", "anchor": r"digite o \*?cpf\*? ou \*?cnpj\*? do\(a\)? titular", "reply": "{titular_cpf}",
+         "requires": ["titular_cpf"]},
+        {"step": "menu_servico_auto", "anchor": r"o que voc[êe] precisa\??\s*\|?\s*\*?1\s*[–-]?\s*\*?profissional para \*?pane", "reply": "{servico_opcao}",
+         "requires": ["servico_opcao"],
+         "notes": "1-pane elétrica/bateria 3-guincho pane 6-borracheiro/pneu 7-chaveiro (igual Allianz)"},
+        {"step": "tipo_veiculo", "anchor": r"seu ve[íi]culo [ée]:\s*\|?\s*\*?1\s*-\s*automotor", "reply": "1",
+         "notes": "1-automotor/híbrido 2-elétrico; elétrico o cérebro adaptativo trata"},
+        {"step": "quando", "anchor": r"para quando precisa do \*?(?:reboque|guincho|servi[çc]o|profissional)", "reply": "1",
+         "notes": "1-Agora 2-Agendar; urgência é o default do corredor"},
+    ],
+    finalize_anchors=[
+        r"dados a seguir est[ãa]o corretos", r"posso confirmar", r"deseja confirmar",
+        r"confirm\w* (?:o|a) (?:agendamento|abertura|solicita)",
+    ],
+)
+ALFA_AUTO_WHATSAPP_V1["subservice_menu_map"] = {"guincho": "3", "bateria": "1", "pneu": "6", "chaveiro": "7"}
+
+# --- AZUL (grupo Porto, mas URA própria NUMERADA) --------------------------------
+AZUL_AUTO_WHATSAPP_V1 = _auto_playbook(
+    "azul", "azul_assistencia_24h",
+    ura_steps=[
+        {"step": "menu_inicial", "anchor": r"como eu posso te ajudar\?.*assist[êe]ncia 24h para o ve[íi]culo", "reply": "1",
+         "notes": "1-Assistência 24h para o veículo"},
+        {"step": "pedir_cpf", "anchor": r"informe o \*?cpf ou cnpj\*? do\(a\)? segurad", "reply": "{titular_cpf}",
+         "requires": ["titular_cpf"]},
+        {"step": "menu_atendimento", "anchor": r"de que atendimento voc[êe] precisa", "reply": "1",
+         "notes": "1-Novo serviço"},
+        {"step": "menu_servico", "anchor": r"o que voc[êe] precisa\?\s*\|?\s*\*?1\*?\s*-\s*guincho", "reply": "{servico_opcao}",
+         "requires": ["servico_opcao"],
+         "notes": "1-Guincho 2-Bateria 3-Troca de pneu 4-Chaveiro (numerado)"},
+        {"step": "quando", "anchor": r"para quando voc[êe] precisa que esse servi[çc]o", "reply": "1",
+         "notes": "1-Tenho urgência (a frase 'confirmada somente após a finalização' faz parte desta COLETA)"},
+        {"step": "ponto_referencia", "anchor": r"ponto de refer[êe]ncia", "reply": "{ponto_referencia}",
+         "notes": "se não houver, 'não tem'"},
+    ],
+    finalize_anchors=[
+        r"tudo est[áa] correto", r"posso confirmar", r"confirmar o agendamento",
+    ],
+)
+AZUL_AUTO_WHATSAPP_V1["subservice_menu_map"] = {"guincho": "1", "bateria": "2", "pneu": "3", "chaveiro": "4"}
+
+# --- BRADESCO (botões; começa pela PLACA; serviço derivado do problema) ----------
+BRADESCO_AUTO_WHATSAPP_V1 = _auto_playbook(
+    "bradesco", "bradesco_assistencia_24h",
+    ura_steps=[
+        {"step": "menu_inicial", "anchor": r"voc[êe] quer assist[êe]ncia para", "reply": "Veículo",
+         "notes": "Botão 1: Veículo / Botão 2: Residência (responder o rótulo)"},
+        {"step": "informar_placa", "anchor": r"informa a \*?placa do ve[íi]culo", "reply": "{veiculo_placa}",
+         "requires": ["veiculo_placa"]},
+        {"step": "cpf_fallback", "anchor": r"digite somente os n[úu]meros do \*?cpf\*? ou \*?cnpj\*?", "reply": "{titular_cpf}",
+         "requires": ["titular_cpf"],
+         "notes": "fallback quando a placa não é localizada"},
+        {"step": "problema", "anchor": r"qual o problema com o seu carro", "reply": "{servico_opcao}",
+         "requires": ["servico_opcao"],
+         "notes": "1-Pane(bateria/motor) 2-Acidente 3-Pneus 4-Chave 5-Combustível — o serviço deriva do problema"},
+    ],
+    finalize_anchors=[
+        r"quer que envie a assist[êe]ncia agora ou prefere agendar",
+        r"as informa[çc][õo]es est[ãa]o corretas",
+        r"posso confirmar", r"deseja confirmar",
+    ],
+)
+BRADESCO_AUTO_WHATSAPP_V1["subservice_menu_map"] = {"guincho": "1", "bateria": "1", "pneu": "3", "chaveiro": "4"}
+
+# --- MAPFRE (exige DATA DE NASCIMENTO do titular; transfere cedo p/ humano) ------
+MAPFRE_AUTO_WHATSAPP_V1 = _auto_playbook(
+    "mapfre", "mapfre_assistencia_24h",
+    ura_steps=[
+        {"step": "pedir_cpf", "anchor": r"informe o \*?cpf\*? ou \*?cnpj do titular", "reply": "{titular_cpf}",
+         "requires": ["titular_cpf"]},
+        {"step": "nascimento", "anchor": r"data de nascimento da pessoa titular", "reply": "{titular_nascimento}",
+         "requires": ["titular_nascimento"],
+         "notes": "Mapfre valida identidade com dt. nascimento — coletar ANTES de acionar"},
+        {"step": "menu_seguro", "anchor": r"sobre qual \*?seguro\*? voc[êe] quer falar", "reply": "Carro e moto"},
+        {"step": "informar_placa", "anchor": r"informe o n[úu]mero da \*?placa do seu ve[íi]culo", "reply": "{veiculo_placa}",
+         "requires": ["veiculo_placa"]},
+    ],
+    finalize_anchors=[r"podemos confirmar", r"posso confirmar", r"deseja confirmar"],
+)
+MAPFRE_AUTO_WHATSAPP_V1["subservice_menu_map"] = {"guincho": "Assistência 24H", "bateria": "Assistência 24H", "pneu": "Assistência 24H", "chaveiro": "Assistência 24H"}
+# Mapfre exige nascimento em TODOS os subserviços auto.
+MAPFRE_AUTO_WHATSAPP_V1["subservices"] = {
+    k: {"required_slots": list(v["required_slots"]) + ["titular_nascimento"]}
+    for k, v in _AUTO_SUBSERVICES.items()
+}
+
+# --- ZURICH (menus por rótulo + confirmação explícita no final) ------------------
+ZURICH_AUTO_WHATSAPP_V1 = _auto_playbook(
+    "zurich", "zurich_assistencia_24h",
+    ura_steps=[
+        {"step": "menu_assunto", "anchor": r"para qual dos assuntos voc[êe] precisa", "reply": "Carro e moto"},
+        {"step": "menu_servicos", "anchor": r"escolha um dos servi[çc]os para continuar", "reply": "Assistência 24h"},
+        {"step": "acionar_assistencia", "anchor": r"acionar a assist[êe]ncia 24h\*? ou \*?acionar o seguro", "reply": "Acionar assistência 24h",
+         "notes": "colisão/roubo é SINISTRO (handoff), não assistência"},
+        {"step": "pedir_cpf", "anchor": r"qual o seu \*?cpf/?cnpj", "reply": "{titular_cpf}", "requires": ["titular_cpf"]},
+        {"step": "tipo_assistencia", "anchor": r"qual o tipo de assist[êe]ncia voc[êe] gostaria", "reply": "1",
+         "notes": "1-Imediata 2-Agendada"},
+        {"step": "telefone", "anchor": r"confirmar? pra n[óo]s o seu \*?n[úu]mero de telefone", "reply": "{telefone_contato}",
+         "requires": ["telefone_contato"]},
+    ],
+    finalize_anchors=[r"podemos confirmar a solicita[çc][ãa]o", r"posso confirmar", r"deseja confirmar"],
+)
+ZURICH_AUTO_WHATSAPP_V1["subservice_menu_map"] = {"guincho": "Reboque", "bateria": "Socorro mecânico", "pneu": "Troca de pneu", "chaveiro": "Chaveiro"}
+
 
 _PLAYBOOKS: Dict[str, Dict[str, Any]] = {
     f"{p['playbook_id']}@v{p['version']}": p
@@ -346,6 +461,11 @@ _PLAYBOOKS: Dict[str, Dict[str, Any]] = {
         HDI_AUTO_WHATSAPP_V1,
         YELUM_AUTO_WHATSAPP_V1,
         TOKIO_AUTO_WHATSAPP_V1,
+        ALFA_AUTO_WHATSAPP_V1,
+        AZUL_AUTO_WHATSAPP_V1,
+        BRADESCO_AUTO_WHATSAPP_V1,
+        MAPFRE_AUTO_WHATSAPP_V1,
+        ZURICH_AUTO_WHATSAPP_V1,
     )
 }
 
@@ -363,12 +483,18 @@ def list_playbooks() -> List[str]:
 # ---------------------------------------------------------------------------
 
 # Sinônimos de seguradora → chave canônica (a InfoCap pode devolver variações).
+# Azul é do grupo Porto MAS tem WhatsApp e URA próprios → corredor próprio.
 _INSURER_ALIASES = {
     "allianz": "allianz", "allianz seguros": "allianz",
-    "porto": "porto", "porto seguro": "porto", "azul": "porto",  # Azul é do grupo Porto
+    "porto": "porto", "porto seguro": "porto", "itau": "porto", "itau seguros": "porto",
+    "azul": "azul", "azul seguros": "azul",
     "hdi": "hdi", "hdi seguros": "hdi",
     "yelum": "yelum", "liberty": "yelum", "liberty seguros": "yelum", "libe": "yelum",
     "tokio": "tokio", "tokio marine": "tokio", "tokyo": "tokio",
+    "alfa": "alfa", "alfa seguradora": "alfa", "alfa seguros": "alfa",
+    "bradesco": "bradesco", "bradesco seguros": "bradesco", "bradesco auto/re": "bradesco",
+    "mapfre": "mapfre", "mapfre seguros": "mapfre",
+    "zurich": "zurich", "zurich seguros": "zurich", "zurich santander": "zurich",
 }
 
 

@@ -105,7 +105,7 @@ def run():
     check("hdi/auto resolve playbook", pb.resolve_playbook_ref("HDI", "auto") == "hdi-auto-whatsapp@v1")
     check("allianz/auto resolve playbook", pb.resolve_playbook_ref("Allianz", "auto") == "allianz-auto-whatsapp@v1")
     check("Liberty normaliza para Yelum", pb.resolve_playbook_ref("Liberty Seguros", "auto") == "yelum-auto-whatsapp@v1")
-    check("Azul cai no grupo Porto", pb.normalize_insurer_key("Azul") == "porto")
+    check("Azul tem chave propria (nao Porto)", pb.normalize_insurer_key("Azul") == "azul")
     check("allianz residencial ainda resolve", pb.resolve_playbook_ref("allianz", "residencial") == "allianz-residencial-whatsapp@v1")
     check("seguradora desconhecida -> None", pb.resolve_playbook_ref("SeguradoraX", "auto") is None)
 
@@ -189,6 +189,73 @@ def run():
     # ---- gate fechado: tudo dry-run ----
     check("gate fechado por default", dispatch.dispatch_live_enabled() is False)
     check("porto walkthrough foi 100% dry-run", all(t.get("dry_run") for t in s["transcript"] if t["direction"] == "out"))
+
+    # ===================== FASE 2: Alfa/Azul/Bradesco/Mapfre/Zurich =====================
+    for ins, ref in (("Alfa", "alfa-auto-whatsapp@v1"), ("Azul", "azul-auto-whatsapp@v1"),
+                     ("Bradesco Seguros", "bradesco-auto-whatsapp@v1"), ("MAPFRE", "mapfre-auto-whatsapp@v1"),
+                     ("Zurich", "zurich-auto-whatsapp@v1")):
+        check(f"{ins}/auto resolve playbook", pb.resolve_playbook_ref(ins, "auto") == ref, pb.resolve_playbook_ref(ins, "auto"))
+    check("Azul NAO cai mais em Porto", pb.normalize_insurer_key("Azul") == "azul")
+    check("Itau usa infra Porto", pb.normalize_insurer_key("Itau") == "porto")
+
+    # AZUL: URA numerada + protocolo com hífen + freio 'tudo esta correto'
+    az = dispatch.new_dispatch_session(case_id="az1", company_id="co", playbook_ref="azul-auto-whatsapp@v1", subservice="pneu", slots=AUTO_SLOTS)
+    check("azul injeta opcao 3 p/ pneu", az["slots"].get("servico_opcao") == "3", az["slots"].get("servico_opcao"))
+    az = dispatch.start_dispatch(az)
+    az = dispatch.handle_insurer_message(az, "Como eu posso te ajudar? Digite o numero da opcao desejada *1 -* Assistencia 24h para o veiculo *2 -* Apolice")
+    check("azul menu inicial = 1", _outs(az)[-1] == "1", _outs(az))
+    az = dispatch.handle_insurer_message(az, "Por favor, informe o *CPF ou CNPJ* do(a) segurado(a).")
+    check("azul responde CPF", "11122233344" in _outs(az), _outs(az))
+    az = dispatch.handle_insurer_message(az, "O que voce precisa? *1* - Guincho (reboque) *2* - Bateria *3* - Troca de pneu *4* - Chaveiro para o veiculo")
+    check("azul escolhe pneu = 3", _outs(az)[-1] == "3", _outs(az))
+    az = dispatch.handle_insurer_message(az, "Para quando voce precisa que esse servico seja realizado? *Importante*: a solicitacao sera confirmada somente apos a finalizacao do agendamento. *1* - Tenho urgencia *2* - Quero agendar")
+    check("azul 'para quando' NAO freia (e coleta)", az["state"] != "needs_human" and _outs(az)[-1] == "1", (az.get("state"), _outs(az)[-1:]))
+    az = dispatch.handle_insurer_message(az, "Tudo esta correto? *1* - Sim *2* - Alterar localizacao *3* - Alterar quem esta no local? *4* - Sair e nao agendar")
+    check("FREIO azul: 'tudo esta correto' pausa", az["state"] == "needs_human" and str(az.get("reason", "")).startswith("finalize_gate"), az.get("reason"))
+    az2 = dispatch.handle_insurer_message(
+        dispatch.start_dispatch(dispatch.new_dispatch_session(case_id="az2", company_id="co", playbook_ref="azul-auto-whatsapp@v1", subservice="pneu", slots=AUTO_SLOTS)),
+        "Pronto! O seu servico foi agendado para *hoje*, em ate 60 minutos. Aqui esta seu protocolo de atendimento: 1-104106503215")
+    check("azul captura protocolo com hifen", az2.get("captured", {}).get("protocol") == "1-104106503215", az2.get("captured"))
+
+    # PORTO: a frase real 'sera confirmada somente apos...' dentro do passo QUANDO nao freia
+    pq = dispatch.new_dispatch_session(case_id="pq1", company_id="co", playbook_ref="porto-auto-whatsapp@v1", subservice="guincho", slots=AUTO_SLOTS)
+    pq = dispatch.start_dispatch(pq)
+    pq = dispatch.handle_insurer_message(pq, "Para quando voce precisa que esse servico seja realizado? *Importante*: a solicitacao sera confirmada somente apos a finalizacao do agendamento. Botao 1: Tenho urgencia Botao 2: Agendar data e hora")
+    check("porto 'para quando' real NAO freia", pq["state"] != "needs_human" and _outs(pq)[-1] == "1", (pq.get("state"), _outs(pq)[-1:]))
+    pq = dispatch.handle_insurer_message(pq, "Gostaria de alterar alguma informacao? *1* - Nao, esta tudo correto *2* - Veiculo *8* - Sair e nao agendar")
+    check("FREIO porto: revisao final pausa", pq["state"] == "needs_human" and str(pq.get("reason", "")).startswith("finalize_gate"), pq.get("reason"))
+
+    # BRADESCO: placa primeiro + problema deriva servico + freio 'enviar agora'
+    br = dispatch.new_dispatch_session(case_id="br1", company_id="co", playbook_ref="bradesco-auto-whatsapp@v1", subservice="guincho", slots=AUTO_SLOTS)
+    br = dispatch.start_dispatch(br)
+    br = dispatch.handle_insurer_message(br, "Eu sou a Assistente Virtual da Bradesco Seguros! Pra gente comecar, voce quer assistencia para: Botao 1: Veiculo Botao 2: Residencia")
+    check("bradesco escolhe Veiculo", "Veículo" in _outs(br), _outs(br))
+    br = dispatch.handle_insurer_message(br, "Ok, agora me informa a *placa do veiculo*, sem usar espaco ou traco entre as letras e numeros. Exemplo: *ABC1234* ou *ABC1D23*")
+    check("bradesco responde placa", "ABC1D23" in _outs(br), _outs(br))
+    br = dispatch.handle_insurer_message(br, "Entendi, mas pra eu te ajudar, preciso entender qual o problema com o seu carro: *1* - Pane *2* - Acidente *3* - Problemas com pneus *4* - Problema com chave")
+    check("bradesco guincho -> problema pane (1)", _outs(br)[-1] == "1", _outs(br))
+    br = dispatch.handle_insurer_message(br, "E como prefere fazer, quer que envie a assistencia agora ou prefere agendar? Botao 1: Enviar agora Botao 2: Agendar")
+    check("FREIO bradesco: 'enviar agora' pausa", br["state"] == "needs_human" and str(br.get("reason", "")).startswith("finalize_gate"), br.get("reason"))
+
+    # MAPFRE: exige data de nascimento
+    mp_missing = dispatch.new_dispatch_session(case_id="mp0", company_id="co", playbook_ref="mapfre-auto-whatsapp@v1", subservice="guincho", slots=AUTO_SLOTS)
+    check("mapfre sem nascimento bloqueia", mp_missing["state"] == "preparing" and "titular_nascimento" in mp_missing["missing_slots"], mp_missing["missing_slots"])
+    mp = dispatch.new_dispatch_session(case_id="mp1", company_id="co", playbook_ref="mapfre-auto-whatsapp@v1", subservice="guincho", slots={**AUTO_SLOTS, "titular_nascimento": "01/01/1990"})
+    check("mapfre com nascimento pronto", mp["state"] == "ready_to_send", mp.get("missing_slots"))
+    mp = dispatch.start_dispatch(mp)
+    mp = dispatch.handle_insurer_message(mp, "Para que eu possa atender voce melhor, por favor, me informe o *CPF* ou *CNPJ do titular do seguro*.")
+    mp = dispatch.handle_insurer_message(mp, "Otimo! Agora, por favor, digite a *data de nascimento da pessoa titular do seguro*. Exemplo: *11/11/1111*")
+    check("mapfre responde nascimento", "01/01/1990" in _outs(mp), _outs(mp))
+
+    # ZURICH: menus por rotulo + freio 'podemos confirmar a solicitacao'
+    zu = dispatch.new_dispatch_session(case_id="zu1", company_id="co", playbook_ref="zurich-auto-whatsapp@v1", subservice="guincho", slots=AUTO_SLOTS)
+    zu = dispatch.start_dispatch(zu)
+    zu = dispatch.handle_insurer_message(zu, "Vamos la! Para qual dos assuntos voce precisa de atendimento? Carro e moto | Informacoes sobre apolices Celular e eletronico | Seguro para roubo")
+    check("zurich escolhe Carro e moto", "Carro e moto" in _outs(zu), _outs(zu))
+    zu = dispatch.handle_insurer_message(zu, "Voce deseja *acionar a assistencia 24h* ou *acionar o seguro?* Acionar assistencia 24h Acionar seguro Voltar ao menu")
+    check("zurich aciona assistencia 24h", "Acionar assistência 24h" in _outs(zu), _outs(zu))
+    zu = dispatch.handle_insurer_message(zu, "Podemos confirmar a solicitacao? *1* - Sim *2* - Alterar endereco")
+    check("FREIO zurich: 'podemos confirmar' pausa", zu["state"] == "needs_human" and str(zu.get("reason", "")).startswith("finalize_gate"), zu.get("reason"))
 
     # ---- handoff: sinistro/colisão pausa ----
     ss = dispatch.new_dispatch_session(case_id="s1", company_id="co", playbook_ref="porto-auto-whatsapp@v1", subservice="guincho", slots=AUTO_SLOTS)

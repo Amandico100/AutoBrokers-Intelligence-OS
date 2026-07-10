@@ -25,8 +25,10 @@ class InsurerDispatchInput(BaseModel):
         "Subserviço. Residencial: eletricista | chaveiro | encanador | eletrodomesticos. "
         "AUTO: guincho | bateria | pneu | chaveiro."))
     insurer_key: Optional[str] = Field(default=None, description=(
-        "Seguradora da apólice (allianz | porto | hdi | yelum | tokio). Descubra pela InfoCap; "
-        "para assistência AUTO é OBRIGATÓRIO. Residencial sem isso assume Allianz."))
+        "Seguradora da apólice (allianz | porto | hdi | yelum | tokio | alfa | azul | bradesco | mapfre | zurich). "
+        "Descubra pela InfoCap; para assistência AUTO é OBRIGATÓRIO. Residencial sem isso assume Allianz."))
+    titular_nascimento: Optional[str] = Field(default=None, description=(
+        "[auto Mapfre] Data de nascimento do titular (dd/mm/aaaa) — a Mapfre valida identidade com ela"))
     line_kind: Optional[str] = Field(default=None, description="Linha: auto | residencial. Para carro use 'auto'.")
     titular_cpf: Optional[str] = Field(default=None, description="CPF do titular da apólice (somente dígitos)")
     # --- Residencial ---
@@ -144,6 +146,7 @@ class InsurerDispatchTool(BaseTool):
                     "aparelho_marca_modelo": "marca e modelo do aparelho",
                     "aparelho_idade": "idade aproximada do aparelho",
                     "veiculo_placa": "placa do veículo (a InfoCap costuma ter — confirme)",
+                    "titular_nascimento": "data de nascimento do titular (a Mapfre exige para validar)",
                     "local_atual": "onde o veículo está agora (endereço com referência)",
                     "local_destino": "para onde levar o veículo (destino do guincho)",
                     "quando": "quando precisa (agora ou uma data para agendar)",
