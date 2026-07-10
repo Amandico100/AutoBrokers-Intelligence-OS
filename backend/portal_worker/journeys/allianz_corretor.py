@@ -2560,6 +2560,44 @@ async def _open_policy_context_for_item(page, item: Dict[str, Any], params: Dict
     return False
 
 
+def _attach_page_diagnostics(target, sink: List[str]) -> None:
+    """Coleta erros de console/página/rede do popup da Ficha de Gestão: o corpo
+    veio VAZIO após 25s em produção (job efcebf9c) e sem isso não dá para saber
+    se o Angular não sobe, se a rede falha ou se o server nega."""
+    def _console(msg):
+        try:
+            if getattr(msg, "type", "") in ("error", "warning"):
+                sink.append(f"console.{msg.type}: {str(msg.text)[:140]}")
+        except Exception:  # noqa: BLE001
+            pass
+
+    def _pageerror(err):
+        try:
+            sink.append(f"pageerror: {str(err)[:140]}")
+        except Exception:  # noqa: BLE001
+            pass
+
+    def _requestfailed(req):
+        try:
+            sink.append(f"reqfail: {str(req.url)[:110]} {str(req.failure or '')[:60]}")
+        except Exception:  # noqa: BLE001
+            pass
+
+    try:
+        target.on("console", _console)
+        target.on("pageerror", _pageerror)
+        target.on("requestfailed", _requestfailed)
+    except Exception:  # noqa: BLE001
+        pass
+
+
+async def _page_html_head(target, limit: int = 400) -> str:
+    try:
+        return _clean_text(await target.content())[:limit]
+    except Exception as e:  # noqa: BLE001
+        return f"<content indisponivel: {type(e).__name__}>"
+
+
 async def _find_ficha_gestao_page(page):
     """O botão pode abrir a Ficha de Gestão numa aba que o expect_popup não
     capturou (janela nomeada / popup antes do arm). Varre as abas do contexto."""
@@ -2600,6 +2638,9 @@ async def _open_ficha_gestao_for_item(page, item: Dict[str, Any], evidence: Dict
             target = page
     if target is None and clicked_trusted:
         target = await _find_ficha_gestao_page(page)
+    diag: List[str] = []
+    if target is not None and target is not page:
+        _attach_page_diagnostics(target, diag)
     # App Angular (ngx-file-management) demora para montar a lista no VPS —
     # espera longa aqui é barata comparada a perder o boleto.
     if target and await _wait_until_ficha_gestao(target, timeout_ms=25000):
@@ -2608,6 +2649,11 @@ async def _open_ficha_gestao_for_item(page, item: Dict[str, Any], evidence: Dict
     if target and target is not page:
         snippet = _clean_text(await _all_body_text(target))[:280]
         evidence.setdefault("download_notes", []).append(f"popup pos-clique sem lista: '{snippet[:160]}'")
+        evidence["ficha_gestao_popup_debug"] = {
+            "url_path": urlsplit(str(getattr(target, "url", ""))).path,
+            "html_head": await _page_html_head(target),
+            "diag": diag[:10],
+        }
         try:
             await target.close()
         except Exception:  # noqa: BLE001
@@ -2616,10 +2662,16 @@ async def _open_ficha_gestao_for_item(page, item: Dict[str, Any], evidence: Dict
     direct_url = await _section_button_new_window_url(page, ("Ficha Gestao", "Ficha de Gestao"))
     if direct_url:
         direct_target = None
+        direct_diag: List[str] = []
         try:
             evidence["ficha_gestao_url_params"] = sorted({k for k, _ in parse_qsl(urlsplit(direct_url).query)})
             direct_target = await page.context.new_page()
-            await direct_target.goto(direct_url, wait_until="commit", timeout=15000)
+            _attach_page_diagnostics(direct_target, direct_diag)
+            resp = await direct_target.goto(direct_url, wait_until="commit", timeout=15000)
+            try:
+                await direct_target.wait_for_load_state("load", timeout=12000)
+            except Exception:  # noqa: BLE001
+                pass
             await direct_target.wait_for_timeout(2500)
             if await _wait_until_ficha_gestao(direct_target, timeout_ms=25000):
                 evidence.setdefault("download_notes", []).append("ficha gestao aberta por janela operacional Allianz")
@@ -2628,8 +2680,15 @@ async def _open_ficha_gestao_for_item(page, item: Dict[str, Any], evidence: Dict
             evidence.setdefault("download_notes", []).append(
                 f"ficha gestao abriu URL operacional mas nao carregou a lista: '{snippet[:160]}'"
             )
+            evidence["ficha_gestao_direct_debug"] = {
+                "status": getattr(resp, "status", None),
+                "final_url_path": urlsplit(str(getattr(direct_target, "url", ""))).path,
+                "html_head": await _page_html_head(direct_target),
+                "diag": direct_diag[:10],
+            }
         except Exception as e:  # noqa: BLE001
             evidence.setdefault("download_notes", []).append(f"ficha gestao por URL falhou: {type(e).__name__}")
+            evidence["ficha_gestao_direct_debug"] = {"error": f"{type(e).__name__}: {str(e)[:120]}", "diag": direct_diag[:10]}
         if direct_target:
             try:
                 await direct_target.close()
