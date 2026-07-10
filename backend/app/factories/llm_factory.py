@@ -125,20 +125,32 @@ class LLMFactory:
         return ChatOpenAI(**llm_params)
 
     @staticmethod
+    def _anthropic_supports_temperature(model: str) -> bool:
+        """A família Claude 5 (Sonnet/Opus/Haiku 5, Mythos, Fable) REJEITA o
+        parâmetro `temperature` (API 400: 'temperature is deprecated for this
+        model'). Modelos 3.x/4.x ainda aceitam."""
+        m = (model or "").lower()
+        blocked = ("claude-sonnet-5", "claude-opus-5", "claude-haiku-5", "claude-mythos", "claude-fable")
+        return not any(m.startswith(p) for p in blocked)
+
+    @staticmethod
     def _create_anthropic(model, api_key, max_tokens, temperature, callbacks):
-        return ChatAnthropic(
-            model=model,
-            temperature=temperature,
-            max_tokens=max_tokens,
-            anthropic_api_key=api_key,
-            callbacks=callbacks,
-            streaming=True,
-            model_kwargs={
+        params = {
+            "model": model,
+            "max_tokens": max_tokens,
+            "anthropic_api_key": api_key,
+            "callbacks": callbacks,
+            "streaming": True,
+            "model_kwargs": {
                 "extra_headers": {
                     "anthropic-beta": "prompt-caching-2024-07-31"
                 }
-            }
-        )
+            },
+        }
+        # Só envia temperature quando o modelo aceita (Claude 5 a rejeita → 400).
+        if LLMFactory._anthropic_supports_temperature(model):
+            params["temperature"] = temperature
+        return ChatAnthropic(**params)
 
     @staticmethod
     def _create_google(model, api_key, max_tokens, temperature, callbacks):
