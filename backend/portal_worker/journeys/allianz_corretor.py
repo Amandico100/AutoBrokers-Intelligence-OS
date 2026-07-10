@@ -269,12 +269,30 @@ def _receipt_click_terms(item: Dict[str, Any]) -> List[str]:
 
 
 def _policy_search_terms(item: Dict[str, Any]) -> List[str]:
+    """CPF primeiro (determinístico na busca Allianz), depois apólice, nome e recibo.
+    Job real 2026-07-10: busca por NOME devolveu 'Não foram encontrados resultados'
+    para cliente que EXISTE — CPF é o caminho robusto; nome vira fallback."""
     terms: List[str] = []
-    for value in (item.get("cliente_nome"), item.get("cpf_cnpj"), item.get("apolice_susep"), item.get("recibo")):
+    for value in (item.get("cpf_cnpj"), item.get("apolice_susep"), item.get("cliente_nome"), item.get("recibo")):
         text = _clean_text(value)
         if text and text not in terms:
             terms.append(text)
     return terms
+
+
+def search_result_is_empty(text: str) -> bool:
+    """Detecta o modal de busca sem resultados da Allianz (que BLOQUEIA a tela
+    até clicar FECHAR — causa raiz do job a9f4b375: buscas seguintes falhavam)."""
+    low = _norm(text)
+    return any(
+        token in low
+        for token in (
+            "nao foram encontrados resultados",
+            "nenhum resultado encontrado",
+            "nenhum registro encontrado",
+            "nao encontramos resultados",
+        )
+    )
 
 
 def _summarize_download_debug(page_text: str, actions: List[Dict[str, Any]]) -> Dict[str, Any]:
@@ -1774,7 +1792,48 @@ async def _fill_global_search(page, value: str) -> bool:
         return False
 
 
-async def _fill_global_search_for_category(page, value: str) -> bool:
+async def _dismiss_blocking_modal(page) -> bool:
+    """Fecha modal Allianz que intercepta a tela (ex.: 'Não foram encontrados
+    resultados' + FECHAR). Clique via JS (imune a interceptação) + Escape."""
+    closed = False
+    try:
+        closed = bool(
+            await page.evaluate(
+                """() => {
+                  const vis = el => !!(el && (el.offsetParent || el.getClientRects().length));
+                  const norm = s => (s || '').normalize('NFKD').replace(/[\\u0300-\\u036f]/g, '')
+                    .toLowerCase().replace(/\\s+/g, ' ').trim();
+                  const scopes = document.querySelectorAll(
+                    '[role=dialog], .nx-modal__container, .cdk-overlay-container, .modal, [class*="modal"]');
+                  for (const scope of scopes) {
+                    const controls = scope.querySelectorAll('button, a, [role=button], .nx-button');
+                    for (const el of controls) {
+                      const text = norm(el.innerText || el.textContent || el.getAttribute('aria-label') || '');
+                      if (vis(el) && (text === 'fechar' || text === 'close' || text === 'x' || text === 'ok')) {
+                        el.click();
+                        return true;
+                      }
+                    }
+                  }
+                  return false;
+                }"""
+            )
+        )
+    except Exception:  # noqa: BLE001
+        closed = False
+    if not closed:
+        try:
+            await page.keyboard.press("Escape")
+        except Exception:  # noqa: BLE001
+            pass
+    try:
+        await page.wait_for_timeout(700)
+    except Exception:  # noqa: BLE001
+        pass
+    return closed
+
+
+async def _fill_global_search_for_category(page, value: str, *, _retry: bool = True) -> bool:
     """Preenche a busca Allianz e deixa o popover de categorias aberto."""
     query = _clean_text(value)
     if not query:
@@ -1797,6 +1856,10 @@ async def _fill_global_search_for_category(page, value: str) -> bool:
             return True
         except Exception:  # noqa: BLE001
             continue
+    # Nenhum frame aceitou o clique: um modal pode estar interceptando a tela
+    # (causa raiz do job a9f4b375). Fecha e tenta UMA vez de novo.
+    if _retry and await _dismiss_blocking_modal(page):
+        return await _fill_global_search_for_category(page, value, _retry=False)
     return False
 
 
@@ -2378,6 +2441,16 @@ async def _open_policy_context_for_item(page, item: Dict[str, Any], evidence: Di
         if not searched:
             continue
         await _click_search_category_for_term(page, str(term), item)
+        # Busca sem resultados abre modal BLOQUEANTE: registrar, fechar e ir
+        # direto ao próximo termo (clicar em "resultado" aqui só acha o texto
+        # do próprio modal — visto no job a9f4b375).
+        after_search_text = await _body_text(page)
+        if search_result_is_empty(after_search_text):
+            evidence.setdefault("download_notes", []).append(
+                f"busca sem resultados para termo '{_clean_text(term)[:60]}' — modal fechado"
+            )
+            await _dismiss_blocking_modal(page)
+            continue
         await _click_customer_search_result(page, item, evidence)
         if await _open_policy_detail_from_customer(page, item, evidence):
             return True
@@ -2419,6 +2492,9 @@ async def _open_policy_context_for_item(page, item: Dict[str, Any], evidence: Di
             if await _open_policy_detail_from_customer(page, item, evidence):
                 return True
         await _record_policy_search_debug(page, item, evidence, "policy_context_not_opened_after_search", term)
+        # Higiene entre termos: dialogo residual da tentativa anterior não pode
+        # contaminar a próxima busca.
+        await _dismiss_blocking_modal(page)
     evidence.setdefault("download_notes", []).append("contexto da apolice nao abriu")
     return False
 
