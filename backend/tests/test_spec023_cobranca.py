@@ -235,6 +235,15 @@ def run():
         "existe fechador de modal bloqueante",
         callable(getattr(allianz_corretor, "_dismiss_blocking_modal", None)),
     )
+    import inspect as _inspect
+
+    _click_src = _inspect.getsource(allianz_corretor._click_customer_search_result)
+    check("resultado de busca aceita match por apolice susep", "wantApolice" in _click_src)
+    _sweep_src = _inspect.getsource(allianz_corretor.cobranca_sweep)
+    check(
+        "needs_human de download orienta sobre janela noturna da busca",
+        "empty_search_terms" in _sweep_src and "horario comercial" in _sweep_src,
+    )
     check(
         "busca de apolice tem preenchimento sem submeter para escolher categoria",
         callable(getattr(allianz_corretor, "_fill_global_search_for_category", None)),

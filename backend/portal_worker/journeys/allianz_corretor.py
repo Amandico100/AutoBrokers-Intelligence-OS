@@ -1939,20 +1939,24 @@ async def _click_search_category_for_term(page, term: str, item: Dict[str, Any])
 
 
 async def _click_customer_search_result(page, item: Dict[str, Any], evidence: Dict[str, Any]) -> bool:
-    """Clica no cliente retornado pela busca; em duplicados Allianz, o ultimo costuma trazer a apolice."""
+    """Clica no cliente retornado pela busca; em duplicados Allianz, o ultimo costuma trazer a apolice.
+    Tambem aceita o resultado da categoria 'Apolice Susep / Endosso': linha cujo
+    conjunto de digitos contem a apolice do item (o anchor ali nao e o nome)."""
     name = _clean_text((item or {}).get("cliente_nome"))
     cpf = _digits((item or {}).get("cpf_cnpj"))
-    if not name and not cpf:
+    apolice = _digits((item or {}).get("apolice_susep"))
+    if not name and not cpf and not apolice:
         return False
     try:
         point = await page.evaluate(
-            """({name, cpf}) => {
+            """({name, cpf, apolice}) => {
               const norm = s => (s || '').normalize('NFKD').replace(/[\\u0300-\\u036f]/g, '')
                 .toLowerCase().replace(/\\s+/g, ' ').trim();
               const digits = s => String(s || '').replace(/\\D/g, '');
               const vis = el => !!(el && (el.offsetParent || el.getClientRects().length));
               const wantName = norm(name);
               const wantCpf = digits(cpf);
+              const wantApolice = digits(apolice);
               const anchors = [...document.querySelectorAll('[role=dialog] a, .nx-modal__container a')]
                 .filter(vis)
                 .map(el => {
@@ -1963,6 +1967,7 @@ async def _click_customer_search_result(page, item: Dict[str, Any], evidence: Di
                   const r = el.getBoundingClientRect();
                   let score = 0;
                   if (wantName && text === wantName) score += 500;
+                  if (wantApolice && wantApolice.length >= 10 && rowDigits.includes(wantApolice)) score += 500;
                   if (wantName && rowText.includes(wantName)) score += 150;
                   if (wantCpf && rowDigits.includes(wantCpf)) score += 120;
                   if ((getComputedStyle(el).cursor || '').includes('pointer')) score += 20;
@@ -1972,7 +1977,7 @@ async def _click_customer_search_result(page, item: Dict[str, Any], evidence: Di
                 .sort((a, b) => (b.score - a.score) || (b.y - a.y));
               return anchors[0] || null;
             }""",
-            {"name": name, "cpf": cpf},
+            {"name": name, "cpf": cpf, "apolice": apolice},
         )
         if not point:
             return False
@@ -2449,6 +2454,7 @@ async def _open_policy_context_for_item(page, item: Dict[str, Any], evidence: Di
             evidence.setdefault("download_notes", []).append(
                 f"busca sem resultados para termo '{_clean_text(term)[:60]}' — modal fechado"
             )
+            evidence["empty_search_terms"] = int(evidence.get("empty_search_terms") or 0) + 1
             await _dismiss_blocking_modal(page)
             continue
         await _click_customer_search_result(page, item, evidence)
@@ -2755,6 +2761,16 @@ async def cobranca_sweep(page, params: Dict[str, Any], evidence: Dict[str, Any])
         evidence["boletos_download_ok"] = ok_count
         evidence["boletos_download_attempts"] = len(boletos)
         if params.get("require_downloads", True) and ok_count == 0:
+            message = "inadimplentes extraidos, mas o download de boletos precisa de revisao humana"
+            # Aprendizado 2026-07-10: a busca de clientes da Allianz devolve
+            # 'sem resultados' p/ clientes EXISTENTES fora do horario comercial
+            # (mesma cliente achada as 13h22, vazia as 01h-02h). Orientar o
+            # operador em vez de parecer bug do worker.
+            if int(evidence.get("empty_search_terms") or 0) >= 2:
+                message += (
+                    " (busca de clientes do portal devolveu vazio para varios termos —"
+                    " provavel indisponibilidade fora do horario comercial; reexecutar entre 9h-18h)"
+                )
             return JourneyResult(
                 status="needs_human",
                 captured={
@@ -2763,7 +2779,7 @@ async def cobranca_sweep(page, params: Dict[str, Any], evidence: Dict[str, Any])
                     "inadimplentes": items,
                     "boletos": boletos,
                 },
-                message="inadimplentes extraidos, mas o download de boletos precisa de revisao humana",
+                message=message,
             )
 
     return JourneyResult(
