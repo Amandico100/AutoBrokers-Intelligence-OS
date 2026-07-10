@@ -220,12 +220,40 @@ def run():
         "apolice_susep": "5177202623140183705",
         "recibo": "317418783",
     })
-    check("termos de busca priorizam CPF (deterministico)", search_terms[0] == "03184509923", search_terms)
-    check("termos de busca incluem apolice", "5177202623140183705" in search_terms, search_terms)
-    check("termos de busca mantem nome como fallback", "MONICA BONELLI PAULO PRAZERES" in search_terms, search_terms)
+    check(
+        "termos de busca priorizam NOME (fluxo real do corretor, prints 2026-07-10)",
+        search_terms[0] == "MONICA BONELLI PAULO PRAZERES",
+        search_terms,
+    )
+    check(
+        "apolice susep concatenada NAO e termo de busca (portal responde 'Apolice inexistente')",
+        "5177202623140183705" not in search_terms,
+        search_terms,
+    )
+    check("termos de busca mantem CPF como fallback", "03184509923" in search_terms, search_terms)
     check(
         "modal de busca vazia e detectado",
         allianz_corretor.search_result_is_empty("Pesquisa de Cliente: FULANO Não foram encontrados resultados FECHAR"),
+    )
+    check(
+        "modal 'Apolice inexistente' e tratado como busca vazia",
+        allianz_corretor.search_result_is_empty("Pesquisa de Apólice: 5177202623140183705 Apólice inexistente FECHAR"),
+    )
+    check(
+        "existe relogin fresco para busca degradada por sessao restaurada",
+        callable(getattr(allianz_corretor, "_relogin_fresh", None)),
+    )
+    import inspect as _insp_ctx
+
+    _ctx_src = _insp_ctx.getsource(allianz_corretor._open_policy_context_for_item)
+    check(
+        "busca tenta de novo apos relogin fresco (2 passadas)",
+        "_relogin_fresh" in _ctx_src and "range(2)" in _ctx_src,
+    )
+    _fill_src = _insp_ctx.getsource(allianz_corretor._fill_global_search_for_category)
+    check(
+        "barra global priorizada por placeholder Pesquisar (nao cai em campo de filtro)",
+        "esquisar" in _fill_src,
     )
     check(
         "tela com resultados nao e tratada como vazia",
@@ -367,6 +395,7 @@ def run():
             opened = await allianz_corretor._open_receipts_for_item(
                 _FakePage(),
                 {"recibo": "318946949", "parcela": "3/10", "cliente_nome": "DEBORA LUZIA ROSA"},
+                {},
                 {},
             )
             return opened, calls
