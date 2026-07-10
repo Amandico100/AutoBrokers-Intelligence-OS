@@ -245,6 +245,12 @@ class ZapiProvider:
         elif media.kind == "image":
             url = f"{self._base_url}/{self._instance_id}/token/{self._token}/send-image"
             payload = {"phone": to, "image": media_url, "caption": media.caption or ""}
+        elif media.kind == "document":
+            # Z-API espera a extensão na rota: .../send-document/{ext}.
+            name = media.filename or "documento.pdf"
+            ext = name.rsplit(".", 1)[-1].lower() if "." in name else "pdf"
+            url = f"{self._base_url}/{self._instance_id}/token/{self._token}/send-document/{ext}"
+            payload = {"phone": to, "document": media_url, "fileName": name}
         else:  # pragma: no cover - defensive; MediaKind is a closed vocabulary
             return SendResult(ok=False, error=f"Unsupported media kind: {media.kind}")
         return self._post(url, payload)

@@ -82,6 +82,42 @@ class WhatsappService:
     ) -> bool:
         return get_zapi_provider().send_image(to_number, image_url, caption, integration).success
 
+    def send_document(
+        self,
+        to_number: str,
+        doc_url: str,
+        filename: str,
+        integration: Dict[str, Any],
+        caption: str = "",
+    ) -> bool:
+        """Envia documento (ex.: boleto PDF) pelo seam multi-provider.
+
+        Retorna bool; nunca levanta (falha vira False + log) — quem chama decide
+        o fallback (ex.: mandar o link como texto). Contrato do seam usa `.ok`.
+        """
+        try:
+            from app.services.whatsapp.models import OutboundMedia
+            from app.services.whatsapp.registry import resolve_provider
+
+            name = str(filename or "documento.pdf").strip() or "documento.pdf"
+            mime = "application/pdf" if name.lower().endswith(".pdf") else None
+            provider = resolve_provider(integration)
+            result = provider.send_media(
+                to_number,
+                OutboundMedia(kind="document", url=doc_url, mime_type=mime, caption=caption or None, filename=name),
+            )
+            ok = bool(getattr(result, "ok", getattr(result, "success", False)))
+            if not ok:
+                logger.error(
+                    "[WA SEND] documento falhou (%s): %s",
+                    name,
+                    str(getattr(result, "error", "") or "sem detalhe")[:200],
+                )
+            return ok
+        except Exception as e:  # noqa: BLE001
+            logger.error(f"[WA SEND] documento levantou excecao: {type(e).__name__}")
+            return False
+
 
 # Singleton instance
 _whatsapp_service: Optional[WhatsappService] = None

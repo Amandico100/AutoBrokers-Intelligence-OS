@@ -422,13 +422,19 @@ def _boletos_by_recibo(boletos: Iterable[Dict[str, Any]]) -> Dict[str, Dict[str,
     return out
 
 
+def boleto_document_name(item: Dict[str, Any]) -> str:
+    """Nome do arquivo que o cliente vê no WhatsApp. SEM PII (nome/CPF)."""
+    recibo = _digits((item or {}).get("recibo"))
+    return f"boleto-{recibo}.pdf" if recibo else "boleto.pdf"
+
+
 def _format_test_message(item: Dict[str, Any], cfg: Dict[str, Any], boleto: Optional[Dict[str, Any]], boleto_url: str) -> str:
     lines = [
         "[TESTE AutoBrokers - Auxiliar de Cobranca]",
         build_customer_message(item, cfg["message_template"], cfg),
     ]
     if boleto_url:
-        lines.append(f"Boleto (link temporario): {boleto_url}")
+        lines.append("Boleto: enviado como documento PDF em seguida.")
     elif boleto:
         lines.append(f"Boleto: nao anexado nesta simulacao ({boleto.get('reason') or 'sem link disponivel'}).")
     else:
@@ -474,6 +480,29 @@ async def _send_test_messages(
         except Exception as e:  # noqa: BLE001
             entry["error"] = type(e).__name__
             blockers.append(f"modo teste: falha ao enviar simulacao para ...{number[-4:]} ({type(e).__name__})")
+        # Boleto como DOCUMENTO PDF (decisão de produto 2026-07-10): o cliente
+        # recebe o arquivo, não um link que expira. Link assinado é só fallback.
+        if entry["ok"] and boleto_url:
+            doc_ok = await asyncio.to_thread(
+                get_whatsapp_service().send_document,
+                number,
+                boleto_url,
+                boleto_document_name(item),
+                integration,
+            )
+            entry["document_sent"] = bool(doc_ok)
+            if not doc_ok:
+                try:
+                    link_ok = await asyncio.to_thread(
+                        get_whatsapp_service().send_message,
+                        number,
+                        f"(fallback de teste) Boleto por link temporario: {boleto_url}",
+                        integration,
+                    )
+                    entry["link_fallback"] = bool(link_ok)
+                except Exception:  # noqa: BLE001
+                    entry["link_fallback"] = False
+                blockers.append("modo teste: envio do PDF como documento falhou; usei link temporario como fallback")
         sent.append(entry)
     return sent
 
@@ -501,7 +530,10 @@ def _format_report(
     if cfg.get("send_mode") == "test":
         if ok_test_sends:
             last4 = str(ok_test_sends[0].get("to_last4") or "????")
+            docs_sent = sum(1 for s in test_sends if s.get("document_sent"))
             lines.append(f"Modo teste ativo: {len(ok_test_sends)} simulacao(oes) enviada(s) para ...{last4}. Nenhum cliente real recebeu mensagem.")
+            if docs_sent:
+                lines.append(f"Boletos anexados como PDF: {docs_sent}.")
         else:
             lines.append("Modo teste ativo: nenhum cliente real recebeu mensagem.")
     if blockers:

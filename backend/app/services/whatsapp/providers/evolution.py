@@ -343,6 +343,17 @@ class EvolutionProvider:
                 payload["caption"] = media.caption
             if media.mime_type:
                 payload["mimetype"] = media.mime_type
+        elif media.kind == "document":
+            # document: mesmo endpoint sendMedia, mediatype "document" +
+            # fileName (nome que o cliente vê no WhatsApp, ex.: boleto-123.pdf).
+            url = f"{self._base_url}/message/sendMedia/{self._instance_id}"
+            payload = {"number": to, "mediatype": "document", "media": media_url}
+            if media.filename:
+                payload["fileName"] = media.filename
+            if media.caption:
+                payload["caption"] = media.caption
+            if media.mime_type:
+                payload["mimetype"] = media.mime_type
         else:  # pragma: no cover - defensive; MediaKind is a closed vocabulary
             return SendResult(ok=False, error=f"Unsupported media kind: {media.kind}")
         return self._post(url, payload)

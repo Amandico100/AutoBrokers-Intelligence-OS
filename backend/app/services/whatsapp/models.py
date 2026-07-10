@@ -45,11 +45,12 @@ MessageType = Literal["text", "audio", "image", "unknown"]
   (kept so the dispatcher can persist the inbound without crashing).
 """
 
-MediaKind = Literal["audio", "image"]
+MediaKind = Literal["audio", "image", "document"]
 """Closed vocabulary for the kind of media referenced by a :class:`MediaRef`.
 
 Deliberately narrower than :data:`MessageType` because media refs are only
 attached to typed media payloads (text/unknown never carry a MediaRef).
+``document`` is outbound-oriented (e.g. boleto PDF sent as a WhatsApp file).
 """
 
 DeliveryStatusState = Literal[
@@ -208,6 +209,7 @@ class OutboundMedia:
     raw_ref: Optional[str] = None
     mime_type: Optional[str] = None
     caption: Optional[str] = None
+    filename: Optional[str] = None  # nome exibido no WhatsApp (kind=document)
 
 
 @dataclass(frozen=True)
