@@ -270,6 +270,31 @@ def run():
         "existe varredura de abas do contexto por fileManagement (popup fora do expect_popup)",
         callable(getattr(allianz_corretor, "_find_ficha_gestao_page", None)),
     )
+    check(
+        "accessToken extraido da URL do botao Ficha Gestao",
+        allianz_corretor._access_token_from_url(
+            "https://x/ngx-file-management/fileManagement?uid=BA068610&accessToken=eyJhbGc.payload.sig&checksum=Z"
+        ) == "eyJhbGc.payload.sig",
+    )
+    check(
+        "URL sem accessToken retorna vazio (nao inventa token)",
+        allianz_corretor._access_token_from_url("https://x/fileManagement?uid=BA068610") == "",
+    )
+    check(
+        "existe injecao de Authorization no BFF da Ficha Gestao (route interception)",
+        callable(getattr(allianz_corretor, "_install_bff_auth_route", None)),
+    )
+    import inspect as _insp_fg
+
+    _fg_src = _insp_fg.getsource(allianz_corretor._install_bff_auth_route)
+    check(
+        "injecao usa os headers reais do request que funciona (Bearer + epac-company-id + x-rws-rootapp)",
+        "authorization" in _fg_src and "epac-company-id" in _fg_src and "x-rws-rootapp" in _fg_src,
+    )
+    check(
+        "download tenta o botao real 'Acesso a detalhes estendidos'",
+        "Acesso a detalhes estendidos" in _insp_fg.getsource(allianz_corretor._download_current_pdf),
+    )
     import inspect as _insp_ctx
 
     _ctx_src = _insp_ctx.getsource(allianz_corretor._open_policy_context_for_item)
