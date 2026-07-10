@@ -18,6 +18,7 @@ dispatch fica no caso (metadata) — este módulo não fala com banco.
 from __future__ import annotations
 
 import os
+import re
 from datetime import datetime, timezone
 from typing import Any, Callable, Dict, List, Optional
 
@@ -83,6 +84,8 @@ def new_dispatch_session(
             merged_slots.setdefault("servico_texto", menu_value)
         merged_slots.setdefault("roda_travada", "não")
         merged_slots.setdefault("quando", "agora")
+        merged_slots.setdefault("veiculo_cor", "não sei")
+        merged_slots.setdefault("rodovia", "Não")
 
     missing = missing_slots_for_subservice(playbook, subservice, merged_slots)
     session = {
@@ -115,12 +118,9 @@ def build_dry_run_plan(playbook_ref: str, subservice: str, slots: Dict[str, Any]
         return {"ok": False, "error": session.get("reason"), "steps": [], "missing_slots": []}
     if session.get("missing_slots"):
         return {"ok": False, "error": "missing_slots", "steps": [], "missing_slots": session["missing_slots"]}
-    # AUTO: abertura = resumo estruturado do pedido (como a operadora real fazia).
-    if str(playbook.get("line_kind") or "") == "auto":
-        opening = render_opening_message(playbook, subservice, session["slots"])
-    else:
-        opening = "Olá"
-    steps: List[Dict[str, str]] = [{"step": "abertura", "reply": opening}]
+    # Abertura CURTA ("Olá") — é assim que a operadora real inicia; a URA não lê
+    # texto longo. O resumo estruturado vai ao ANALISTA humano (fase humana).
+    steps: List[Dict[str, str]] = [{"step": "abertura", "reply": "Olá"}]
     for step in playbook.get("ura_steps") or []:
         rendered = render_reply(step, session["slots"])
         steps.append({
@@ -150,15 +150,7 @@ def start_dispatch(
     """Inicia o acionamento (mensagem de abertura). Respeita o GATE."""
     if session.get("state") not in ("ready_to_send",):
         return session
-    if opening_message:
-        text = opening_message
-    else:
-        playbook = get_playbook(session.get("playbook_ref") or "") or {}
-        text = (
-            render_opening_message(playbook, session.get("subservice") or "", session.get("slots") or {})
-            if str(playbook.get("line_kind") or "") == "auto" else "Olá"
-        )
-    return _emit(session, text, sender=sender, next_state="ura")
+    return _emit(session, opening_message or "Olá", sender=sender, next_state="ura")
 
 
 def handle_insurer_message(
@@ -194,6 +186,18 @@ def handle_insurer_message(
         session["state"] = "captured"
         return session
 
+    # Seguradora ENCERROU a conversa (timeout/resposta inválida): parar de falar
+    # e liberar a corretora para reabrir (visto no teste Yelum 2026-07-10).
+    if re.search(
+        r"conversa ser[áa] encerrada|estamos encerrando (?:esta|a) conversa|"
+        r"tempo m[áa]ximo de espera.*excedid|encerrad[ao] por (?:inatividade|falta de intera)",
+        _norm_text(insurer_message),
+        re.IGNORECASE,
+    ):
+        session["state"] = "needs_human"
+        session["reason"] = "insurer_closed"
+        return session
+
     # FREIO DE FINALIZAÇÃO (SPEC-031): a seguradora vai CONFIRMAR/ABRIR o serviço.
     # NUNCA confirmar sozinho — o passo que despacha o prestador exige aprovação
     # da corretora. Só passa quem tiver finalize_approved=True (humano liberou).
@@ -210,11 +214,21 @@ def handle_insurer_message(
     # conhecido casou (a mensagem é sobre o caso, não um menu mapeado).
     step = match_ura_step(playbook, insurer_message)
     if step:
+        # Passo "noop": mensagem informativa (fila, aguarde, "ainda não
+        # identificamos") — reconhecer e NÃO responder nada.
+        if step.get("noop"):
+            return session
         rendered = render_reply(step, session.get("slots") or {})
         if not rendered["ok"]:
             session["state"] = "needs_human"
             session["reason"] = f"missing_slots:{','.join(rendered['missing'])}"
             session["missing_slots"] = rendered["missing"]
+            return session
+        # LOOP GUARD: nunca enviar a MESMA resposta 3x seguidas (teste Yelum
+        # 2026-07-10: CPF repetido 4x até a seguradora derrubar a conversa).
+        if _would_loop(session, rendered["reply"]):
+            session["state"] = "needs_human"
+            session["reason"] = "loop_guard"
             return session
         return _emit(session, rendered["reply"], sender=sender, next_state="ura", step=step.get("step"))
 
@@ -227,11 +241,46 @@ def handle_insurer_message(
     # Sem âncora de URA: fase humana da seguradora.
     if session.get("state") == "ura":
         session["state"] = "human_phase"
+    # ANALISTA humano assumiu ("me chamo X, como posso ajudar?"): apresentar o
+    # resumo estruturado do caso UMA vez, deterministicamente (é o que a
+    # operadora real faz — colar o pedido completo para o analista).
+    if (
+        session.get("state") == "human_phase"
+        and not session.get("summary_sent")
+        and str(playbook.get("line_kind") or "") == "auto"
+        and re.search(
+            r"me chamo |meu nome [ée] |como posso (?:te )?ajudar|darei? (?:continuidade|prosseguimento)|"
+            r"prosseguirei com o atendimento|irei realizar seu atendimento|vou te ajudar",
+            _norm_text(insurer_message),
+            re.IGNORECASE,
+        )
+    ):
+        summary = render_opening_message(playbook, session.get("subservice") or "", session.get("slots") or {})
+        session["summary_sent"] = True
+        return _emit(session, summary, sender=sender, next_state="human_phase", step="resumo_analista")
     if session.get("state") == "human_phase" and human_phase_reply:
+        if _would_loop(session, human_phase_reply):
+            session["state"] = "needs_human"
+            session["reason"] = "loop_guard"
+            return session
         return _emit(session, human_phase_reply, sender=sender, next_state="human_phase")
     # Fail-safe: sem resposta preparada, não responde às cegas.
     session.setdefault("pending_insurer_messages", []).append(str(insurer_message)[:2000])
     return session
+
+
+def _norm_text(text: str) -> str:
+    import unicodedata
+
+    normalized = unicodedata.normalize("NFKD", str(text or ""))
+    return "".join(ch for ch in normalized if not unicodedata.combining(ch)).lower()
+
+
+def _would_loop(session: Dict[str, Any], reply: str) -> bool:
+    """True se as DUAS últimas saídas já foram idênticas à resposta proposta —
+    a terceira repetição vira needs_human em vez de spam na seguradora."""
+    outs = [t.get("text") for t in (session.get("transcript") or []) if t.get("direction") == "out"]
+    return len(outs) >= 2 and outs[-1] == reply and outs[-2] == reply
 
 
 def build_human_phase_messages(session: Dict[str, Any], insurer_message: str) -> Dict[str, str]:

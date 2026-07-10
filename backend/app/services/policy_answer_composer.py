@@ -251,19 +251,69 @@ def _compose_installments_answer(pack: Dict[str, Any], question_text: str) -> st
     return "\n".join(lines)
 
 
+def _parse_br_date(value: Any):
+    from datetime import datetime
+
+    text = str(value or "").strip()
+    for fmt in ("%d/%m/%Y", "%d/%m/%y", "%Y-%m-%d"):
+        try:
+            return datetime.strptime(text, fmt).date()
+        except Exception:  # noqa: BLE001
+            continue
+    return None
+
+
+def _real_vigencia(match: Dict[str, Any]) -> str:
+    """Vigência REAL calculada pelas datas — a fonte marca 'ativo' até em
+    apólice vencida há anos (bug visto no teste do founder 2026-07-10)."""
+    from datetime import date
+
+    status = str(match.get("policy_status") or "").strip().lower()
+    if "cancel" in status:
+        return "cancelada"
+    end = _parse_br_date(match.get("valid_to"))
+    start = _parse_br_date(match.get("valid_from"))
+    today = date.today()
+    if end and end < today:
+        return "vencida"
+    if start and start > today:
+        return "futura"
+    return "vigente"
+
+
 def _compose_options(matches: List[Dict[str, Any]]) -> str:
+    # Vigência real primeiro; vencidas/canceladas NUNCA aparecem como opção
+    # quando existe apólice vigente (só confundem o cliente).
+    enriched = [(m, _real_vigencia(m)) for m in matches]
+    vigentes = [(m, v) for m, v in enriched if v in ("vigente", "futura")]
+    shown = vigentes if vigentes else enriched
+    hidden = len(enriched) - len(shown)
+
+    if len(shown) == 1:
+        m, vig = shown[0]
+        number = _display_number(m)
+        insurer = humanize_insurer(m.get("insurer_key")) or "-"
+        product = humanize_product(m.get("product")) or "-"
+        suffix = f" (há {hidden} apólice(s) antiga(s)/vencida(s) no histórico)" if hidden else ""
+        return (
+            f"Localizei a apólice vigente do cliente: **{number}** — {insurer} · {product} · "
+            f"vigência {m.get('valid_from') or '-'} a {m.get('valid_to') or '-'} ({vig}).{suffix}"
+        )
+
     lines = [
         "Encontrei mais de uma apólice. Qual delas você quer? Responda com o número da apólice:",
         "",
     ]
-    for idx, match in enumerate(matches[:10], start=1):
+    for idx, (match, vig) in enumerate(shown[:10], start=1):
         number = _display_number(match)
         insurer = humanize_insurer(match.get("insurer_key")) or "-"
         product = humanize_product(match.get("product")) or "-"
         valid_from = match.get("valid_from") or "-"
         valid_to = match.get("valid_to") or "-"
-        status = str(match.get("policy_status") or "-").strip()
-        lines.append(f"{idx}. **{number}** — {insurer} · {product} · vigência {valid_from} a {valid_to} ({status})")
+        lines.append(f"{idx}. **{number}** — {insurer} · {product} · vigência {valid_from} a {valid_to} ({vig})")
+    if hidden:
+        lines.append("")
+        lines.append(f"(Ocultei {hidden} apólice(s) vencida(s)/cancelada(s) do histórico.)")
     return "\n".join(lines)
 
 

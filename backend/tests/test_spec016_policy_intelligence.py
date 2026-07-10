@@ -477,7 +477,7 @@ def run_e4(composer):
         "client_name": "Cliente Sintetico",
         "matches": [
             {"policy_number": "1234567890", "insurer_key": "allianz", "product": "Residencial", "valid_from": "2026-01-01", "valid_to": "2027-01-01", "policy_status": "ativa"},
-            {"policy_number": "9876543210", "insurer_key": "porto", "product": "Auto", "valid_from": "2025-05-01", "valid_to": "2026-05-01", "policy_status": "ativa"},
+            {"policy_number": "9876543210", "insurer_key": "porto", "product": "Auto", "valid_from": "2026-05-01", "valid_to": "2027-05-01", "policy_status": "ativa"},
         ],
     }
     text = composer.compose_policy_answer(question="ela tem assistência?", result=result)
@@ -485,6 +485,23 @@ def run_e4(composer):
     check("G-C4: opções numeradas", "1." in text and "2." in text, text)
     check("G-C4: mostra número humano e seguradora", "1234567890" in text and "allianz" in low, text)
     check("G-C4: sem jargão técnico", not any(j in low for j in _JARGON), text)
+
+    # G-C4b (incidente 2026-07-10): apolice VENCIDA nao vira opcao — com uma
+    # unica vigente, a resposta identifica direto e cita o historico oculto.
+    result_venc = {
+        "ok": False,
+        "status": "ambiguous_policy",
+        "client_name": "Cliente Sintetico",
+        "matches": [
+            {"policy_number": "1234567890", "insurer_key": "allianz", "product": "Auto", "valid_from": "2026-01-01", "valid_to": "2027-01-01", "policy_status": "ativa"},
+            {"policy_number": "5550001110", "insurer_key": "hdi", "product": "Auto", "valid_from": "2024-05-04", "valid_to": "2025-05-04", "policy_status": "ativa"},
+            {"policy_number": "5550001111", "insurer_key": "yelum", "product": "Auto", "valid_from": "2016-09-21", "valid_to": "2017-09-21", "policy_status": "cancelado"},
+        ],
+    }
+    text_v = composer.compose_policy_answer(question="preciso de guincho", result=result_venc)
+    check("G-C4b: vencidas NAO aparecem como opcao", "5550001110" not in text_v and "5550001111" not in text_v, text_v)
+    check("G-C4b: unica vigente identificada direto", "1234567890" in text_v and "vigente" in text_v.lower(), text_v)
+    check("G-C4b: historico oculto citado", ("antiga" in text_v.lower() or "vencida" in text_v.lower()), text_v)
 
     # G-C5: identity_mismatch → fail-closed, nada de dados.
     text = composer.compose_policy_answer(question="detalhe", result={"ok": False, "status": "identity_mismatch"})

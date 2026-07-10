@@ -12,6 +12,7 @@ eletrodomésticos).
 """
 
 import logging
+import re
 from typing import Optional, Type
 
 from langchain_core.tools import BaseTool
@@ -47,6 +48,9 @@ class InsurerDispatchInput(BaseModel):
     # --- Comuns ---
     telefone_contato: Optional[str] = Field(default=None, description="Telefone de contato com DDD (somente dígitos)")
     problema_descricao: Optional[str] = Field(default=None, description="Descrição curta do problema relatado pelo cliente")
+    dados_confirmados: Optional[bool] = Field(default=None, description=(
+        "[auto] true SOMENTE depois de você MOSTRAR ao cliente na conversa a placa, o veículo, o local, o destino "
+        "e o telefone, e ele CONFIRMAR explicitamente. Sem essa confirmação o acionamento não sai."))
     session_id: Optional[str] = Field(default=None, description="(injetado pelo runtime — NÃO preencher)")
 
 
@@ -117,7 +121,8 @@ class InsurerDispatchTool(BaseTool):
         subservice = str(kwargs.get("subservice") or "").strip().lower()
         slots = {
             k: v for k, v in kwargs.items()
-            if k not in ("subservice", "session_id", "insurer_key", "line_kind") and v not in (None, "")
+            if k not in ("subservice", "session_id", "insurer_key", "line_kind", "dados_confirmados")
+            and v not in (None, "")
         }
         return subservice, slots
 
@@ -132,6 +137,23 @@ class InsurerDispatchTool(BaseTool):
             return {"status": "error", "content": (
                 f"Não tenho um corredor de assistência auto para a seguradora '{insurer_key or '?'}' ainda. "
                 "Colete os dados e acione um atendente humano para seguir com a seguradora.")}
+
+        # GUARDA ANTI-INVENÇÃO (incidente 2026-07-10: placa e telefone inventados
+        # foram parar na seguradora). Determinístico, fora do alcance do LLM:
+        is_auto = "auto" in str(playbook_ref)
+        digits_only = "".join(ch for ch in str(kwargs.get("telefone_contato") or "") if ch.isdigit())
+        if digits_only and re.search(r"(\d)\1{4,}", digits_only):
+            return {"status": "missing_data", "missing": ["telefone_contato"], "content": (
+                "O telefone informado parece placeholder (dígitos repetidos). Pergunte ao cliente o telefone "
+                "REAL de quem estará com o veículo — nunca preencha com número genérico.")}
+        if is_auto and not kwargs.get("dados_confirmados"):
+            placa = str(kwargs.get("veiculo_placa") or "—")
+            return {"status": "confirm_first", "content": (
+                "ANTES de acionar, CONFIRME com o cliente NA CONVERSA (mensagem única): "
+                f"placa {placa}, o que houve, local atual, destino e telefone de contato. "
+                "Se o cliente corrigir qualquer dado, use o valor corrigido. Depois chame de novo com "
+                "dados_confirmados=true. NÃO diga que já acionou.")}
+
         plan = build_dry_run_plan(playbook_ref, subservice, slots)
 
         if not plan.get("ok"):

@@ -63,6 +63,29 @@ const SUBSERVICE_LABEL: Record<string, string> = {
   chaveiro: 'Chaveiro',
   encanador: 'Hidráulica',
   eletrodomesticos: 'Eletrodomésticos',
+  guincho: 'Guincho',
+  bateria: 'Bateria',
+  pneu: 'Pneu',
+};
+
+const INSURER_LABEL: Record<string, string> = {
+  allianz: 'Allianz Assistência 24h',
+  porto: 'Porto Assistência 24h',
+  hdi: 'HDI Assistência 24h',
+  yelum: 'Yelum Assistência 24h',
+  tokio: 'Tokio Assistência 24h',
+  alfa: 'Alfa Assistência 24h',
+  azul: 'Azul Assistência 24h',
+  bradesco: 'Bradesco Assistência 24h',
+  mapfre: 'Mapfre Assistência 24h',
+  zurich: 'Zurich Assistência 24h',
+};
+
+// O nome da seguradora vem do playbook_ref ("yelum-auto-whatsapp@v2") — nunca
+// mostrar seguradora errada (incidente 2026-07-10: rótulo fixo "Allianz").
+const insurerLabelFromRef = (ref?: string | null): string => {
+  const key = String(ref || '').split('-')[0];
+  return INSURER_LABEL[key] || 'Seguradora · Assistência 24h';
 };
 
 const DISPATCH_STATE_LABEL: Record<string, { label: string; tone: StatusTone }> = {
@@ -246,7 +269,7 @@ export function ConversasClient() {
                     </span>
                     <span className="min-w-0 flex-1">
                       <span className="block truncate text-sm font-medium text-foreground">
-                        Allianz Assistência 24h · {SUBSERVICE_LABEL[d.subservice || ''] || d.subservice}
+                        {insurerLabelFromRef((d as { playbook_ref?: string }).playbook_ref)} · {SUBSERVICE_LABEL[d.subservice || ''] || d.subservice}
                       </span>
                       <StatusPill tone={st.tone} label={st.label} className="mt-0.5" />
                     </span>
@@ -477,7 +500,7 @@ function DispatchThread({ dispatch, onClose }: { dispatch: DispatchSession; onCl
           <ShieldCheck className="h-5 w-5 shrink-0 text-primary" />
           <div className="min-w-0">
             <p className="truncate text-sm font-semibold text-foreground">
-              Allianz Assistência 24h · {SUBSERVICE_LABEL[dispatch.subservice || ''] || dispatch.subservice}
+              {insurerLabelFromRef((dispatch as { playbook_ref?: string }).playbook_ref)} · {SUBSERVICE_LABEL[dispatch.subservice || ''] || dispatch.subservice}
             </p>
             <p className="truncate text-xs text-muted-foreground">
               Acionamento automático em andamento — somente leitura

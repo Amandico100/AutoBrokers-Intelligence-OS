@@ -381,10 +381,15 @@ async def process_whatsapp_message_background(
                     from app.services.insurer_dispatch_service import build_human_phase_messages
 
                     msgs = build_human_phase_messages(dispatch_session, insurer_text)
+                    # Cérebro da fase humana do dispatch: forte por padrão, com
+                    # override por env (DISPATCH_LLM_PROVIDER/DISPATCH_LLM_MODEL).
+                    import os as _os
+                    d_provider = _os.getenv("DISPATCH_LLM_PROVIDER") or "openai"
+                    d_model = _os.getenv("DISPATCH_LLM_MODEL") or "gpt-4o"
                     llm = LLMFactory.create_llm(
                         company_config={},
-                        agent_data=None,
-                        api_key=get_api_key_for_provider("openai"),
+                        agent_data={"llm_provider": d_provider, "llm_model": d_model},
+                        api_key=get_api_key_for_provider(d_provider, d_model),
                         company_id=str(company_id),
                         agent_id=None,
                     )
