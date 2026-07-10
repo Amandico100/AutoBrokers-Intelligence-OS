@@ -2364,16 +2364,18 @@ async def _download_current_pdf(page, item: Dict[str, Any], params: Dict[str, An
         cliente_nome=str(item.get("cliente_nome") or ""),
     )
     buttons = (
+        "Acesso a detalhes estendidos",
+        "Acesso a detalhe estendido",
+        "Acesso detalhe extendido",
         "Download",
         "Baixar",
         "Salvar",
         "Carta InadimplÃªncia - Aviso",
         "Carta Inadimplencia - Aviso",
-        "Acesso detalhe extendido",
         "Boleto",
     )
     try:
-        async with page.expect_download(timeout=15000) as dl:
+        async with page.expect_download(timeout=25000) as dl:
             clicked = await _click_pdf_icon_candidate(page)
             if not clicked:
                 clicked = await _click_text_candidate(page, buttons, timeout_ms=800)
@@ -2625,42 +2627,90 @@ async def _find_ficha_gestao_page(page):
     return None
 
 
-async def _open_ficha_gestao_for_item(page, item: Dict[str, Any], evidence: Dict[str, Any]):
+def _access_token_from_url(url: str) -> str:
+    try:
+        for k, v in parse_qsl(urlsplit(str(url or "")).query):
+            if k.lower() == "accesstoken" and str(v).startswith("eyJ"):
+                return v
+    except Exception:  # noqa: BLE001
+        pass
+    return ""
+
+
+async def _shell_access_token(page) -> str:
+    """JWT do shell EPAC (fallback quando a URL do botão não traz accessToken)."""
+    try:
+        return await page.evaluate(
+            r"""() => {
+              const keys = ['access_token', 'STORAGE_NGX-AZB-EPAC::access_token'];
+              for (const store of [sessionStorage, localStorage]) {
+                for (const k of keys) {
+                  const raw = store.getItem(k) || '';
+                  const m = String(raw).match(/eyJ[A-Za-z0-9_\-]+\.[A-Za-z0-9_\-]+\.[A-Za-z0-9_\-]+/);
+                  if (m) return m[0];
+                }
+              }
+              return '';
+            }"""
+        )
+    except Exception:  # noqa: BLE001
+        return ""
+
+
+async def _install_bff_auth_route(context, holder: Dict[str, Any]):
+    """Injeta o Authorization (e headers `epac-company-id`/`x-rws-rootapp`) em
+    TODA chamada ao BFF da Ficha de Gestão. Causa-raiz confirmada pelos headers
+    reais do Chrome do corretor (founder 2026-07-10): a chamada que FUNCIONA leva
+    `Authorization: Bearer <accessToken-da-URL>` + `epac-company-id: BRA` +
+    `x-rws-rootapp: spa-file-management`. No Chromium headless o app NÃO anexa
+    esse header (interceptor JWT não dispara) → 401. Aqui replico no nível de
+    rede, com o token FRESCO que o shell coloca na URL do popup."""
+    async def _handler(route):
+        try:
+            headers = dict(route.request.headers)
+            tok = holder.get("token") or ""
+            if tok:
+                headers["authorization"] = "Bearer " + tok
+            headers.setdefault("epac-company-id", "BRA")
+            headers["epac-company-id"] = "BRA"
+            headers["x-rws-rootapp"] = "spa-file-management"
+            await route.continue_(headers=headers)
+        except Exception:  # noqa: BLE001
+            try:
+                await route.continue_()
+            except Exception:  # noqa: BLE001
+                pass
+
+    await context.route("**/rws-bff-file-management/**", _handler)
+    return _handler
+
+
+def _attach_bff_status_log(target, sink: List[Dict[str, Any]]) -> None:
+    def _on_response(resp):
+        try:
+            url = str(getattr(resp, "url", ""))
+            if "/rws-bff-file-management/api/" in url:
+                sink.append({"u": url.split("/api/")[-1][:44], "s": int(getattr(resp, "status", 0) or 0)})
+        except Exception:  # noqa: BLE001
+            pass
+
+    try:
+        target.on("response", _on_response)
+    except Exception:  # noqa: BLE001
+        pass
+
+
+async def _open_ficha_gestao_for_item(page, item: Dict[str, Any], evidence: Dict[str, Any], auth_holder: Dict[str, Any]):
     if _looks_like_ficha_gestao(await _all_body_text(page)):
         return page
     _ = item
-    # O popup herda uma CÓPIA do sessionStorage do opener; o app da ficha lê
-    # a chave PLANA 'access_token' (tokenGetter do bundle). Minta um token
-    # válido para o BFF via refresh público ANTES do clique, para o popup
-    # nascer autenticado (fluxo idêntico ao do corretor no Chrome).
-    try:
-        pre_mint = await page.evaluate(
-            """async () => {
-              if (sessionStorage.getItem('access_token')) return {minted: 'ja-existia'};
-              const rt = sessionStorage.getItem('refresh_token') || '';
-              if (!rt) return {error: 'sem refresh_token na sessao'};
-              try {
-                const r = await fetch('/rws-bff-file-management/api/public/oauth/refresh-token', {
-                  method: 'POST',
-                  headers: {'Content-Type': 'application/json', 'epac-company-id': 'BRA'},
-                  body: JSON.stringify({refreshToken: rt}),
-                  credentials: 'include'
-                });
-                let data = {};
-                try { data = await r.json(); } catch (e) {}
-                const access = data.accessToken || data.access_token || '';
-                const refresh = data.refreshToken || data.refresh_token || '';
-                if (access) {
-                  sessionStorage.setItem('access_token', access);
-                  if (refresh) sessionStorage.setItem('refresh_token', refresh);
-                }
-                return {status: r.status, minted: !!access};
-              } catch (e) { return {error: String(e).slice(0, 80)}; }
-            }"""
-        )
-        evidence["ficha_gestao_pre_mint"] = pre_mint
-    except Exception:  # noqa: BLE001
-        pass
+    direct_url = await _section_button_new_window_url(page, ("Ficha Gestao", "Ficha de Gestao"))
+    # Token inicial para a injeção (o handler já está instalado em _download_boletos):
+    # accessToken embutido na URL do botão, senão o JWT do shell EPAC.
+    auth_holder["token"] = _access_token_from_url(direct_url) or await _shell_access_token(page) or auth_holder.get("token") or ""
+    bff_log: List[Dict[str, Any]] = []
+
+    # 1) Clique trusted -> popup: o shell monta a URL com um accessToken FRESCO.
     target = None
     clicked_trusted = False
     try:
@@ -2670,161 +2720,45 @@ async def _open_ficha_gestao_for_item(page, item: Dict[str, Any], evidence: Dict
             )
         if clicked_trusted:
             target = await popup_info.value
-            try:
-                await target.wait_for_load_state("domcontentloaded", timeout=9000)
-            except Exception:  # noqa: BLE001
-                pass
-            await target.wait_for_timeout(1200)
     except Exception:  # noqa: BLE001
-        if clicked_trusted:
-            target = page
+        target = None
     if target is None and clicked_trusted:
         target = await _find_ficha_gestao_page(page)
-    diag: List[str] = []
-    if target is not None and target is not page:
-        _attach_page_diagnostics(target, diag)
-    # App Angular (ngx-file-management) demora para montar a lista no VPS —
-    # espera longa aqui é barata comparada a perder o boleto.
-    if target and await _wait_until_ficha_gestao(target, timeout_ms=25000):
-        evidence.setdefault("download_notes", []).append("ficha gestao aberta por clique trusted")
+    if target is None and direct_url:
+        try:
+            target = await page.context.new_page()
+            await target.goto(direct_url, wait_until="commit", timeout=15000)
+        except Exception:  # noqa: BLE001
+            target = None
+
+    if target is None:
+        evidence.setdefault("download_notes", []).append("ficha gestao: nenhuma aba abriu")
+        return None
+
+    _attach_bff_status_log(target, bff_log)
+    # Token mais fresco possível: o da URL do próprio popup (minted no clique).
+    fresh = _access_token_from_url(getattr(target, "url", ""))
+    if fresh:
+        auth_holder["token"] = fresh
+    evidence["ficha_gestao_token_source"] = "popup_url" if fresh else ("botao/shell" if auth_holder.get("token") else "nenhum")
+    # Recarrega para as chamadas ao BFF saírem já com o header injetado.
+    try:
+        await target.reload(wait_until="commit", timeout=15000)
+    except Exception:  # noqa: BLE001
+        pass
+    ok = await _wait_until_ficha_gestao(target, timeout_ms=30000)
+    evidence["ficha_gestao_bff"] = bff_log[-12:]
+    if ok:
+        evidence.setdefault("download_notes", []).append("ficha gestao autenticada (header injetado no BFF)")
         return target
-    if target and target is not page:
-        snippet = _clean_text(await _all_body_text(target))[:280]
-        evidence.setdefault("download_notes", []).append(f"popup pos-clique sem lista: '{snippet[:160]}'")
-        evidence["ficha_gestao_popup_debug"] = {
-            "url_path": urlsplit(str(getattr(target, "url", ""))).path,
-            "html_head": await _page_html_head(target),
-            "diag": diag[:10],
-        }
+
+    snippet = _clean_text(await _all_body_text(target))[:160]
+    evidence.setdefault("download_notes", []).append(f"ficha gestao ainda sem lista: '{snippet}'")
+    if target is not page:
         try:
             await target.close()
         except Exception:  # noqa: BLE001
             pass
-
-    direct_url = await _section_button_new_window_url(page, ("Ficha Gestao", "Ficha de Gestao"))
-    if direct_url:
-        direct_target = None
-        direct_diag: List[str] = []
-        try:
-            evidence["ficha_gestao_url_params"] = sorted({k for k, _ in parse_qsl(urlsplit(direct_url).query)})
-            direct_target = await page.context.new_page()
-            _attach_page_diagnostics(direct_target, direct_diag)
-            # window.open real herda o sessionStorage do opener; new_page() não.
-            # O token de API do app pode viver lá — semeia antes do boot.
-            try:
-                session_dump = await page.evaluate("() => JSON.stringify(sessionStorage)")
-                if session_dump and session_dump != "{}":
-                    await direct_target.add_init_script(
-                        "try { const d = " + session_dump + "; "
-                        "for (const k in d) { try { sessionStorage.setItem(k, d[k]); } catch (e) {} } } catch (e) {}"
-                    )
-            except Exception:  # noqa: BLE001
-                pass
-            resp = await direct_target.goto(direct_url, wait_until="commit", timeout=15000)
-            try:
-                await direct_target.wait_for_load_state("load", timeout=12000)
-            except Exception:  # noqa: BLE001
-                pass
-            await direct_target.wait_for_timeout(2500)
-            if await _wait_until_ficha_gestao(direct_target, timeout_ms=25000):
-                evidence.setdefault("download_notes", []).append("ficha gestao aberta por janela operacional Allianz")
-                return direct_target
-            snippet = _clean_text(await _all_body_text(direct_target))[:280]
-            evidence.setdefault("download_notes", []).append(
-                f"ficha gestao abriu URL operacional mas nao carregou a lista: '{snippet[:160]}'"
-            )
-            evidence["ficha_gestao_direct_debug"] = {
-                "status": getattr(resp, "status", None),
-                "final_url_path": urlsplit(str(getattr(direct_target, "url", ""))).path,
-                "html_head": await _page_html_head(direct_target),
-                "diag": direct_diag[:10],
-            }
-            # Fix do 401 (engenharia do bundle + config pública do BFF):
-            # tokenGetter = sessionStorage['access_token'] (chave PLANA que a
-            # sessão automatizada não tem) e o BFF tem refresh PÚBLICO
-            # (/api/public/oauth/refresh-token, POST {refreshToken}). Minta um
-            # access_token válido com o refresh_token plano (existe na sessão),
-            # semeia e recarrega — o app autentica e monta a lista sozinho.
-            # NUNCA gravar valores de token na evidência (só status/booleans).
-            try:
-                minted = await direct_target.evaluate(
-                    """async () => {
-                      const rt = sessionStorage.getItem('refresh_token') || '';
-                      if (!rt) return {error: 'sem refresh_token na sessao'};
-                      try {
-                        const r = await fetch('/rws-bff-file-management/api/public/oauth/refresh-token', {
-                          method: 'POST',
-                          headers: {'Content-Type': 'application/json', 'epac-company-id': 'BRA'},
-                          body: JSON.stringify({refreshToken: rt}),
-                          credentials: 'include'
-                        });
-                        let data = {};
-                        try { data = await r.json(); } catch (e) {}
-                        const access = data.accessToken || data.access_token || '';
-                        const refresh = data.refreshToken || data.refresh_token || '';
-                        if (access) {
-                          sessionStorage.setItem('access_token', access);
-                          if (refresh) sessionStorage.setItem('refresh_token', refresh);
-                        }
-                        return {status: r.status, minted: !!access, rotated: !!refresh};
-                      } catch (e) { return {error: String(e).slice(0, 80)}; }
-                    }"""
-                )
-                evidence["ficha_gestao_refresh_mint"] = minted
-                if minted.get("minted"):
-                    if minted.get("rotated"):
-                        # Mantém o shell coerente com o refresh_token rotacionado.
-                        try:
-                            new_rt = await direct_target.evaluate("() => sessionStorage.getItem('refresh_token') || ''")
-                            if new_rt:
-                                await page.evaluate("(t) => sessionStorage.setItem('refresh_token', t)", new_rt)
-                        except Exception:  # noqa: BLE001
-                            pass
-                    await direct_target.reload(wait_until="commit", timeout=15000)
-                    await direct_target.wait_for_timeout(2000)
-                    if await _wait_until_ficha_gestao(direct_target, timeout_ms=25000):
-                        evidence.setdefault("download_notes", []).append(
-                            "ficha gestao autenticada via refresh-token publico do BFF"
-                        )
-                        return direct_target
-                    evidence.setdefault("download_notes", []).append(
-                        "token mintado mas lista nao montou: "
-                        f"'{_clean_text(await _all_body_text(direct_target))[:120]}'"
-                    )
-            except Exception as e:  # noqa: BLE001
-                evidence.setdefault("download_notes", []).append(f"refresh mint falhou: {type(e).__name__}")
-        except Exception as e:  # noqa: BLE001
-            evidence.setdefault("download_notes", []).append(f"ficha gestao por URL falhou: {type(e).__name__}")
-            evidence["ficha_gestao_direct_debug"] = {"error": f"{type(e).__name__}: {str(e)[:120]}", "diag": direct_diag[:10]}
-        if direct_target:
-            try:
-                await direct_target.close()
-            except Exception:  # noqa: BLE001
-                pass
-
-    target = None
-    clicked_section = False
-    try:
-        async with page.expect_popup(timeout=9000) as popup_info:
-            clicked_section = await _click_section_button_candidate(
-                page, ("Ficha Gestao", "Ficha de Gestao"), timeout_ms=800
-            )
-        if clicked_section:
-            target = await popup_info.value
-            try:
-                await target.wait_for_load_state("domcontentloaded", timeout=9000)
-            except Exception:  # noqa: BLE001
-                pass
-            await target.wait_for_timeout(1200)
-    except Exception:  # noqa: BLE001
-        if clicked_section:
-            target = page
-    if target is None:
-        target = await _click_text_maybe_popup(page, ("Ficha Gestao", "Ficha de Gestao"), timeout_ms=9000)
-    if target and await _wait_until_ficha_gestao(target, timeout_ms=12000):
-        evidence.setdefault("download_notes", []).append("ficha gestao aberta")
-        return target
-    evidence.setdefault("download_notes", []).append("ficha gestao nao abriu")
     return None
 
 
@@ -2845,7 +2779,24 @@ async def _download_boletos(page, items: List[Dict[str, Any]], params: Dict[str,
         max_boletos = max(1, int(params.get("max_boletos") or params.get("max_boletos_por_execucao") or 10))
     except Exception:  # noqa: BLE001
         max_boletos = 10
-    for idx, item in enumerate(items[:max_boletos]):
+    # Injeção de Authorization no BFF da Ficha de Gestão fica ativa durante TODO
+    # o loop — cobre tanto listar (getListIni) quanto baixar o PDF (getDetail).
+    auth_holder: Dict[str, Any] = {"token": ""}
+    try:
+        await _install_bff_auth_route(page.context, auth_holder)
+    except Exception:  # noqa: BLE001
+        pass
+    try:
+        return await _download_boletos_loop(page, items[:max_boletos], params, evidence, auth_holder, out)
+    finally:
+        try:
+            await page.context.unroute("**/rws-bff-file-management/**")
+        except Exception:  # noqa: BLE001
+            pass
+
+
+async def _download_boletos_loop(page, items, params, evidence, auth_holder, out):
+    for idx, item in enumerate(items):
         result = {"recibo": item.get("recibo"), "cpf_cnpj": item.get("cpf_cnpj"), "ok": False}
         try:
             if idx > 0:
@@ -2868,7 +2819,7 @@ async def _download_boletos(page, items: List[Dict[str, Any]], params: Dict[str,
                 rows = await _extract_visible_rows(ctx)
                 pendentes = extract_recibos_from_rows(rows)
                 result["recibos_pendentes"] = pendentes[:5]
-                ficha = await _open_ficha_gestao_for_item(ctx, item, evidence)
+                ficha = await _open_ficha_gestao_for_item(ctx, item, evidence, auth_holder)
                 if ficha:
                     if await _select_carta_inadimplencia(ficha, evidence):
                         await ficha.wait_for_timeout(1200)
