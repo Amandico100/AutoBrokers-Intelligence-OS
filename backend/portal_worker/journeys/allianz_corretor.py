@@ -2707,6 +2707,48 @@ async def _open_ficha_gestao_for_item(page, item: Dict[str, Any], evidence: Dict
                 "html_head": await _page_html_head(direct_target),
                 "diag": direct_diag[:10],
             }
+            # Sonda de auth (job 9c853e6f: BFF responde 401 e o app NAO envia
+            # Authorization). Descobrir qual esquema o BFF aceita e que material
+            # de auth existe em cada storage — decide o fix definitivo.
+            try:
+                token = ""
+                for k, v in parse_qsl(urlsplit(direct_url).query):
+                    if k.lower() == "accesstoken":
+                        token = v
+                        break
+                probes = await direct_target.evaluate(
+                    """async (token) => {
+                      const out = {};
+                      const probe = async (label, headers) => {
+                        try {
+                          const r = await fetch('/rws-bff-file-management/api/fileManagement/conversationTypes',
+                                                {headers, credentials: 'include'});
+                          out[label] = r.status;
+                        } catch (e) { out[label] = 'ERR:' + String(e).slice(0, 60); }
+                      };
+                      await probe('sem_header', {});
+                      if (token) {
+                        await probe('bearer', {Authorization: 'Bearer ' + token});
+                        await probe('x_access_token', {'x-access-token': token});
+                        await probe('header_accesstoken', {accessToken: token});
+                      }
+                      out.token_len = (token || '').length;
+                      out.cookie_names = document.cookie.split(';').map(c => c.split('=')[0].trim()).filter(Boolean).slice(0, 15);
+                      out.ss_keys = Object.keys(sessionStorage).slice(0, 20);
+                      out.ls_keys = Object.keys(localStorage).slice(0, 25);
+                      return out;
+                    }""",
+                    token,
+                )
+                evidence["ficha_gestao_auth_probe"] = probes
+            except Exception as e:  # noqa: BLE001
+                evidence["ficha_gestao_auth_probe"] = {"error": f"{type(e).__name__}: {str(e)[:100]}"}
+            try:
+                evidence["main_page_storage_keys"] = await page.evaluate(
+                    "() => ({ss: Object.keys(sessionStorage).slice(0, 20), ls: Object.keys(localStorage).slice(0, 25)})"
+                )
+            except Exception:  # noqa: BLE001
+                pass
         except Exception as e:  # noqa: BLE001
             evidence.setdefault("download_notes", []).append(f"ficha gestao por URL falhou: {type(e).__name__}")
             evidence["ficha_gestao_direct_debug"] = {"error": f"{type(e).__name__}: {str(e)[:120]}", "diag": direct_diag[:10]}
