@@ -2583,10 +2583,20 @@ def _attach_page_diagnostics(target, sink: List[str]) -> None:
         except Exception:  # noqa: BLE001
             pass
 
+    def _response(resp):
+        try:
+            if int(getattr(resp, "status", 0) or 0) >= 400:
+                headers = getattr(resp.request, "headers", {}) or {}
+                auth = "com-auth-header" if "authorization" in {k.lower() for k in headers} else "SEM-auth-header"
+                sink.append(f"http{resp.status}: {str(resp.url)[:110]} [{auth}]")
+        except Exception:  # noqa: BLE001
+            pass
+
     try:
         target.on("console", _console)
         target.on("pageerror", _pageerror)
         target.on("requestfailed", _requestfailed)
+        target.on("response", _response)
     except Exception:  # noqa: BLE001
         pass
 
@@ -2667,6 +2677,17 @@ async def _open_ficha_gestao_for_item(page, item: Dict[str, Any], evidence: Dict
             evidence["ficha_gestao_url_params"] = sorted({k for k, _ in parse_qsl(urlsplit(direct_url).query)})
             direct_target = await page.context.new_page()
             _attach_page_diagnostics(direct_target, direct_diag)
+            # window.open real herda o sessionStorage do opener; new_page() não.
+            # O token de API do app pode viver lá — semeia antes do boot.
+            try:
+                session_dump = await page.evaluate("() => JSON.stringify(sessionStorage)")
+                if session_dump and session_dump != "{}":
+                    await direct_target.add_init_script(
+                        "try { const d = " + session_dump + "; "
+                        "for (const k in d) { try { sessionStorage.setItem(k, d[k]); } catch (e) {} } } catch (e) {}"
+                    )
+            except Exception:  # noqa: BLE001
+                pass
             resp = await direct_target.goto(direct_url, wait_until="commit", timeout=15000)
             try:
                 await direct_target.wait_for_load_state("load", timeout=12000)
