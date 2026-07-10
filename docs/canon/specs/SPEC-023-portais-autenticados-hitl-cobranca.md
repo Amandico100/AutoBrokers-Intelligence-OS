@@ -23,6 +23,13 @@ que deve **entender tudo, perguntar e só então executar** — nunca executar d
   Cobrança** é uma rotina agendada que orquestra o motor.
 - **Vault** = `PORTAL_VAULT_KEY` (Fernet). Guarda login/senha dos portais por corretora, cifrados.
 
+> Atualizacao de continuidade (2026-07-09): antes de continuar a implementacao, leia tambem
+> `SPEC-023A-allianz-cobranca-runbook-operacional.md` e
+> `SPEC-023B-pendencias-portais-cobranca-atendimento.md`. Esses documentos registram o estado real apos
+> a correcao do fluxo Allianz: varredura real de 4 inadimplentes, download real de 1 PDF pelo worker,
+> evidencias locais, dificuldades encontradas e pendencias para fechar a rotina ponta a ponta. Nao use
+> credenciais coladas em docs como fonte de verdade; credenciais de portal devem vir do vault/dashboard.
+
 ## 1. Objetivo
 
 Hoje o motor dirige o portal **público** de vidros ponta a ponta (SPEC-025, funcionando). Falta habilitar os
