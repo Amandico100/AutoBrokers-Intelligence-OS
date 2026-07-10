@@ -22,11 +22,14 @@ from datetime import datetime, timezone
 from typing import Any, Callable, Dict, List, Optional
 
 from app.services.corridor_playbooks import (
+    auto_subservice_menu_value,
+    detect_finalize_anchor,
     detect_handoff_trigger,
     extract_capture_anchors,
     get_playbook,
     match_ura_step,
     missing_slots_for_subservice,
+    render_opening_message,
     render_reply,
 )
 
@@ -71,6 +74,15 @@ def new_dispatch_session(
     # Default seguro: sem telefone extra => usa o registrado (opção 2).
     if not str(merged_slots.get("telefone_adicionar_opcao") or "").strip():
         merged_slots["telefone_adicionar_opcao"] = "1" if merged_slots.get("telefone_contato") else "2"
+    # AUTO (SPEC-031): injeta a opção/rótulo do menu de serviço da seguradora
+    # (guincho => "3" na Allianz, "Guincho" na Porto) nos slots que os passos usam.
+    if str(playbook.get("line_kind") or "") == "auto":
+        menu_value = auto_subservice_menu_value(playbook, subservice)
+        if menu_value:
+            merged_slots.setdefault("servico_opcao", menu_value)
+            merged_slots.setdefault("servico_texto", menu_value)
+        merged_slots.setdefault("roda_travada", "não")
+        merged_slots.setdefault("quando", "agora")
 
     missing = missing_slots_for_subservice(playbook, subservice, merged_slots)
     session = {
@@ -103,7 +115,12 @@ def build_dry_run_plan(playbook_ref: str, subservice: str, slots: Dict[str, Any]
         return {"ok": False, "error": session.get("reason"), "steps": [], "missing_slots": []}
     if session.get("missing_slots"):
         return {"ok": False, "error": "missing_slots", "steps": [], "missing_slots": session["missing_slots"]}
-    steps: List[Dict[str, str]] = [{"step": "abertura", "reply": "Olá"}]
+    # AUTO: abertura = resumo estruturado do pedido (como a operadora real fazia).
+    if str(playbook.get("line_kind") or "") == "auto":
+        opening = render_opening_message(playbook, subservice, session["slots"])
+    else:
+        opening = "Olá"
+    steps: List[Dict[str, str]] = [{"step": "abertura", "reply": opening}]
     for step in playbook.get("ura_steps") or []:
         rendered = render_reply(step, session["slots"])
         steps.append({
@@ -133,7 +150,14 @@ def start_dispatch(
     """Inicia o acionamento (mensagem de abertura). Respeita o GATE."""
     if session.get("state") not in ("ready_to_send",):
         return session
-    text = opening_message or "Olá"
+    if opening_message:
+        text = opening_message
+    else:
+        playbook = get_playbook(session.get("playbook_ref") or "") or {}
+        text = (
+            render_opening_message(playbook, session.get("subservice") or "", session.get("slots") or {})
+            if str(playbook.get("line_kind") or "") == "auto" else "Olá"
+        )
     return _emit(session, text, sender=sender, next_state="ura")
 
 
@@ -174,6 +198,16 @@ def handle_insurer_message(
 
     if session.get("captured", {}).get("protocol") and session.get("captured", {}).get("schedule"):
         session["state"] = "captured"
+        return session
+
+    # FREIO DE FINALIZAÇÃO (SPEC-031): a seguradora vai CONFIRMAR/ABRIR o serviço.
+    # NUNCA confirmar sozinho — o passo que despacha o prestador exige aprovação
+    # da corretora. Só passa quem tiver finalize_approved=True (humano liberou).
+    finalize = detect_finalize_anchor(playbook, insurer_message)
+    if finalize and not session.get("finalize_approved"):
+        session["state"] = "needs_human"
+        session["reason"] = f"finalize_gate:{finalize}"
+        session.setdefault("pending_insurer_messages", []).append(str(insurer_message)[:2000])
         return session
 
     step = match_ura_step(playbook, insurer_message)
@@ -230,21 +264,31 @@ def build_human_phase_messages(session: Dict[str, Any], insurer_message: str) ->
                 "use pra reconhecer um menu mesmo que a seguradora tenha trocado palavras/ordem):\n"
                 + "\n".join(intents)) if intents else ""
     subservice = str(session.get("subservice") or "")
+    line_kind = str(playbook.get("line_kind") or "residencial")
+    insurer_key = str(playbook.get("insurer_key") or "seguradora")
+    linha_txt = "AUTO (guincho, bateria, pneu, chaveiro)" if line_kind == "auto" else "residencial"
+    finalize_rule = (
+        "3. FREIO: se a seguradora for CONFIRMAR/ABRIR o serviço de fato (agendar, 'posso continuar', "
+        "'confirmar', 'está correto?' antes de despachar), responda exatamente: NAO_SEI — o passo final "
+        "exige aprovação da corretora, você NUNCA confirma sozinho.\n"
+        if line_kind == "auto" else ""
+    )
     system = (
-        "Você conduz, EM NOME DA CORRETORA, um acionamento de assistência residencial no WhatsApp da "
-        "seguradora (Allianz Assistência 24h) que JÁ está em andamento. Pode ser a URA (menu numerado) "
+        f"Você conduz, EM NOME DA CORRETORA, um acionamento de assistência {linha_txt} no WhatsApp da "
+        f"seguradora ({insurer_key}) que JÁ está em andamento. Pode ser a URA (menu numerado/botões) "
         "ou um atendente humano.\n"
         f"Subserviço deste caso: {subservice or 'não informado'}.\n"
         "COMO DECIDIR (seja inteligente, não robótico):\n"
-        "- Se a mensagem for um MENU NUMERADO, escolha a opção coerente com o subserviço/dados do caso e "
-        "responda SÓ com o número (ex.: '2'). Use o CONHECIMENTO DO FLUXO abaixo como guia, mesmo que o "
-        "texto do menu tenha mudado.\n"
-        "- Se pedir um dado do caso (CPF, número da residência, telefone), responda com o valor exato do caso.\n"
+        "- Se a mensagem for um MENU, escolha a opção coerente com o subserviço/dados do caso e "
+        "responda com o número OU o rótulo do botão (ex.: '2' ou 'Guincho'). Use o CONHECIMENTO DO FLUXO "
+        "abaixo como guia, mesmo que o texto do menu tenha mudado.\n"
+        "- Se pedir um dado do caso (CPF, placa, endereço/local, número, telefone), responda com o valor exato do caso.\n"
         "- Se for um atendente humano perguntando algo, responda em 1-2 frases curtas, PT-BR cordial.\n"
         "REGRAS INEGOCIÁVEIS:\n"
         "1. Use SOMENTE os dados do caso. NUNCA invente números, protocolos, prazos, valores ou dados.\n"
         "2. Não prometa nada em nome da seguradora; não confirme cobertura.\n"
-        "3. Se realmente NÃO der pra deduzir a resposta a partir do caso e do fluxo, responda exatamente: NAO_SEI"
+        f"{finalize_rule}"
+        "4. Se realmente NÃO der pra deduzir a resposta a partir do caso e do fluxo, responda exatamente: NAO_SEI"
     )
     user = (
         f"Dados do caso (únicos números permitidos):\n{fatos}{guia_ura}{contexto_pendente}\n\n"
