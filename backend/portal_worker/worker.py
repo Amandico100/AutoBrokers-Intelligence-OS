@@ -324,7 +324,14 @@ async def _run_job(supa, job: Dict[str, Any]) -> None:
     try:
         async with async_playwright() as p:
             browser = await p.chromium.launch(headless=True)
-            context_kwargs: Dict[str, Any] = {"accept_downloads": True}
+            # Locale/fuso do corretor real: apps legados Allianz derivam nomes
+            # de atributos de strings localizadas e QUEBRAM no boot com en-US
+            # (InvalidCharacterError em setAttribute — job c17fc7db).
+            context_kwargs: Dict[str, Any] = {
+                "accept_downloads": True,
+                "locale": "pt-BR",
+                "timezone_id": "America/Sao_Paulo",
+            }
             session_storage: list = []
             if account_row:
                 session_bundle = _load_session_bundle(supa, job, account_row)
@@ -335,6 +342,19 @@ async def _run_job(supa, job: Dict[str, Any]) -> None:
                     params["session_loaded"] = True
                     evidence["session_reused"] = True
             context = await browser.new_context(**context_kwargs)
+            # A Ficha de Gestão (ngx-file-management) morre no boot com
+            # InvalidCharacterError ao chamar setAttribute('-') — fatal no
+            # Chromium headless, inofensivo no Chrome do corretor. O shim
+            # engole SÓ o atributo inválido; o app continua montando.
+            await context.add_init_script(
+                """(() => {
+                  const orig = Element.prototype.setAttribute;
+                  Element.prototype.setAttribute = function (name, value) {
+                    try { return orig.call(this, name, value); }
+                    catch (e) { /* atributo inválido de app legado — ignora */ }
+                  };
+                })();"""
+            )
             if session_storage:
                 evidence["session_storage_restored"] = await _restore_session_storage(context, session_storage)
             page = await context.new_page()
