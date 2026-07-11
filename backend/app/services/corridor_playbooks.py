@@ -248,7 +248,7 @@ _AUTO_HUMAN_PHASE_GUIDANCE = (
 # HDI emite "a solicitação de GUINCHO para a assistência *9257546* foi aberta".
 # Zurich agenda com "prevista para o dia X às Y"; Porto/Allianz dão ETA em minutos.
 _AUTO_CAPTURE_ANCHORS = {
-    "protocol": r"(?:protocolo(?:\s+de\s+atendimento)?|n[úu]mero\s+da\s+(?:ordem|os|solicita[çc][ãa]o)|para a assist[êe]ncia|sobre sua assist[êe]ncia|o\.?s\.?)[^\d]{0,24}(\d[\d-]{4,18}\d)",
+    "protocol": r"(?:protocolo(?:\s+de\s+atendimento)?|n[úu]mero\s+da\s+(?:sua\s+)?(?:ordem|os|solicita[çc][ãa]o|assist[êe]ncia)|para a assist[êe]ncia|sobre sua assist[êe]ncia|o\.?s\.?)[^\d]{0,24}(\d[\d-]{4,18}\d)",
     "schedule": r"(?:agendad?[ao]?|prevista?)\s+para\s+(?:o\s+dia\s+)?\*?(\d{1,2}/\d{1,2}/\d{2,4})\*?(?:\s*(?:[àa]s|,)?\s*\*?(\d{1,2}[:h]\d{0,2}))?",
     "eta": r"(?:previs[ãa]o(?:\s+de\s+chegada)?\s*:?|previsto para ser realizado[^\n]{0,20}?em|em at[ée])\s*(?:at[ée]\s+)?(\d{1,3})\s*min",
     "tracking_link": r"(https?://\S+)",
@@ -329,6 +329,15 @@ _ALLIANZ_FAMILY_AUTO_STEPS = [
      "notes": "default Não; se houver no caso, o adaptativo assume"},
     {"step": "referencia_local", "anchor": r"informe uma refer[êe]ncia do local", "reply": "{ponto_referencia}",
      "notes": "texto livre; default 'não tem'"},
+    {"step": "destino_menu", "anchor": r"preciso saber o endere[çc]o de destino", "reply": "1",
+     "notes": "1-Oficina mecânica ou outro endereço 2-Não sei (só estado/cidade)"},
+    {"step": "destino_uf", "anchor": r"informe a \*?uf\*? \(sigla do estado\) \*?do destino", "reply": "{destino_uf}",
+     "fallback_adaptive": True, "notes": "UF deduzida de local_destino pelo parser"},
+    {"step": "destino_cidade", "anchor": r"e qual a cidade", "reply": "{destino_cidade}", "fallback_adaptive": True},
+    {"step": "destino_logradouro", "anchor": r"informe apenas o nome do logradouro", "reply": "{destino_logradouro}",
+     "fallback_adaptive": True},
+    {"step": "destino_numero", "anchor": r"qual o n[úu]mero do endere[çc]o \(ou quil[ôo]metro", "reply": "{destino_numero}",
+     "fallback_adaptive": True, "notes": "só dígitos ('Km 205' é rejeitado — o parser extrai '205')"},
     {"step": "confirmar_atendimento", "anchor": r"podemos confirmar o atendimento", "reply": "1",
      "notes": "confirmação FINAL (RESUMO). Só alcançada em modo LIVE — no teste o freio cancela antes."},
 ]
@@ -344,7 +353,11 @@ ALLIANZ_AUTO_WHATSAPP_V1 = _auto_playbook(
     ura_steps=[
         {"step": "menu_tipo_seguro", "anchor": r"assist[êe]ncia 24h para qual seguro", "reply": "1",
          "notes": "1-Auto/Moto/Caminhão 2-Residência 3-Vida 4-Viagem 5-Outros → Auto"},
-    ] + [dict(s) for s in _ALLIANZ_FAMILY_AUTO_STEPS],
+    ] + [dict(s) for s in _ALLIANZ_FAMILY_AUTO_STEPS] + [
+        {"step": "endereco_origem_menu", "anchor": r"selecione o endere[çc]o onde est[áa] o ve[íi]culo", "reply": "3",
+         "notes": "Allianz 2026: 1-endereço da apólice 2-compartilhar localização 3-informar manual "
+                  "(Alfa NÃO tem a opção 3 — lá o adaptativo decide)"},
+    ],
     finalize_anchors=list(_ALLIANZ_FAMILY_FINALIZE),
 )
 ALLIANZ_AUTO_WHATSAPP_V1["subservice_menu_map"] = {
@@ -391,8 +404,14 @@ PORTO_AUTO_WHATSAPP_V1 = _auto_playbook(
          "notes": "quem está no local acompanha; dados de contato ajustáveis no menu de revisão"},
         {"step": "pode_ligar", "anchor": r"posso te ligar no n[úu]mero abaixo", "reply": "Sim",
          "notes": "autoriza contato telefônico do prestador"},
-        {"step": "aguarde", "anchor": r"aguarde um momento|que bom ter voc[êe] de volta|aguarde enquanto solicito",
-         "reply": "", "noop": True, "notes": "mensagens de espera/boas-vindas — não responder"},
+        {"step": "endereco_livre", "anchor": r"digite o endere[çc]o completo do local", "reply": "{local_atual}",
+         "reply_repeat": "{local_destino}", "requires": ["local_atual"], "fallback_adaptive": True,
+         "notes": "Porto aceita endereço em texto livre; 1ª vez = origem, 2ª = destino do guincho"},
+        {"step": "endereco_correto", "anchor": r"est[áa] correto\s*\?", "reply": "Sim",
+         "notes": "confirma o geocode do endereço QUE NÓS digitamos"},
+        {"step": "aguarde",
+         "anchor": r"aguarde um momento|que bom ter voc[êe] de volta|aguarde enquanto solicito|localizei o endere[çc]o|para informar o endere[çc]o, voc[êe] tem essas op[çc][õo]es|compartilhe a sua localiza[çc][ãa]o|preencha o formul[áa]rio abaixo|falta pouco para finalizarmos",
+         "reply": "", "noop": True, "notes": "mensagens de espera/instrução — não responder"},
         {"step": "confirmar_solicitacao", "anchor": r"como voc[êe] quer prosseguir|posso confirmar sua solicita[çc][ãa]o",
          "reply": "Confirmar solicitação",
          "notes": "confirmação FINAL. Só alcançada em modo LIVE — no teste o freio cancela antes."},
@@ -412,57 +431,96 @@ PORTO_AUTO_WHATSAPP_V1["subservice_menu_map"] = {
 }
 PORTO_AUTO_WHATSAPP_V1["finalize_abort_reply"] = "Sair e não agendar"
 
-# --- HDI (MESMO bot white-label da Yelum — fluxo REAL 28/01/2026; botões por
-# rótulo, timeout 12min, encerra após respostas não-identificadas) ----------------
+# --- Família YELUM/HDI (MESMO bot white-label "Assistência 24 horas"; Yelum =
+# ex-Liberty, grupo HDI desde 2024). Fluxo REAL COMPLETO 16/03/2026 (Yelum,
+# 100% bot até o protocolo) + 28/01/2026 (HDI). Botões por rótulo; timeout 12min.
+# PONTO DE NÃO-RETORNO: "quer o atendimento para agora ou prefere agendar?" —
+# responder Agora/Agendar ABRE o serviço na hora. O destino é seguro de informar.
+_YELUM_FAMILY_STEPS = [
+    {"step": "identificacao_dado",
+     "anchor": r"informe \*?apenas um dos dados|informe \*?um dos dados abaixo|informe somente o \*?cpf ou cnpj\*? do t[íi]tular",
+     "reply": "{titular_cpf}", "requires": ["titular_cpf"],
+     "notes": "entrada: CPF/CNPJ do segurado OU placa (frota usa CNPJ)"},
+    {"step": "continuar_com_placa", "anchor": r"identifiquei em seu cadastro a placa", "reply": "Automóvel",
+     "notes": "após CPF, a URA acha a placa e pergunta veículo ou residencial"},
+    {"step": "informar_nome", "anchor": r"informe o seu nome ou como gostaria de ser chamad", "reply": "Atendimento",
+     "notes": "nome de quem opera o canal (a corretora)"},
+    {"step": "informar_placa", "anchor": r"qual a placa do ve[íi]culo", "reply": "{veiculo_placa}",
+     "requires": ["veiculo_placa"]},
+    {"step": "perfil", "anchor": r"em qual dessas op[çc][õo]es voc[êe] se enquadra", "reply": "Sou corretor(a)",
+     "notes": "agimos em nome da corretora"},
+    {"step": "pessoa_no_local", "anchor": r"[ée] a pessoa que est[áa] (?:no )?local para acompanhar", "reply": "Não"},
+    {"step": "nome_pessoa_local", "anchor": r"qual [ée] o nome da pessoa que est[áa] no local",
+     "reply": "{pessoa_no_local}", "requires": ["pessoa_no_local"]},
+    {"step": "telefone_local", "anchor": r"n[úu]mero de (?:celular|telefone)\*? com ddd da pessoa que est[áa] no local",
+     "reply": "{telefone_contato}", "requires": ["telefone_contato"]},
+    {"step": "telefone_confirma", "anchor": r"o n[úu]mero de telefone \d+ est[áa] correto", "reply": "Sim"},
+    {"step": "cor_menu", "anchor": r"informar a cor do ve[íi]culo de placa", "reply": "Outros"},
+    {"step": "cor_texto", "anchor": r"qual a cor do ve[íi]culo de placa", "reply": "{veiculo_cor}",
+     "notes": "campo livre; default 'não sei'"},
+    {"step": "rodovia", "anchor": r"(?:o ve[íi]culo|saber se o ve[íi]culo) est[áa] em uma rodovia", "reply": "{rodovia}",
+     "notes": "Sim/Não conforme local_atual; default Não"},
+    {"step": "o_que_aconteceu", "anchor": r"pode me dizer o que aconteceu", "reply": "{servico_opcao}",
+     "requires": ["servico_opcao"],
+     "notes": "guincho→Pane ou Defeito · bateria→Recarga de bateria · pneu→Pneu Furado · chaveiro→Problema com a chave · colisão=SINISTRO (handoff antes)"},
+    {"step": "pane_detalhe", "anchor": r"selecione a op[çc][ãa]o que condiz com a pane", "reply": "Problemas no motor",
+     "notes": "guincho por pane: leva direto ao Guincho (fluxo real 16/03/2026)"},
+    {"step": "endereco_como", "anchor": r"op[çc][õo]es para informar o endere[çc]o onde o ve[íi]culo est[áa]",
+     "reply": "Digitar endereço", "notes": "Digitar endereço / Compartilhar / Informar o CEP / Não sei"},
+    {"step": "endereco_rua", "anchor": r"digite \*?somente a rua", "reply": "{local_rua}",
+     "fallback_adaptive": True, "notes": "rua deduzida de local_atual pelo parser; sem dedução → adaptativo"},
+    {"step": "endereco_numero", "anchor": r"qual (?:[ée] )?o \*?n[úu]mero\*?\s*\?", "reply": "{local_numero}",
+     "reply_repeat": "{destino_numero}", "fallback_adaptive": True,
+     "notes": "1ª vez = nº da origem; 2ª vez = nº do destino"},
+    {"step": "endereco_bairro", "anchor": r"qual (?:[ée] )?o \*?bairro", "reply": "{local_bairro}",
+     "reply_repeat": "{destino_bairro}", "fallback_adaptive": True},
+    {"step": "endereco_cidade", "anchor": r"qual (?:[ée] )?a \*?cidade", "reply": "{local_cidade}",
+     "reply_repeat": "{destino_cidade}", "fallback_adaptive": True},
+    {"step": "endereco_estado", "anchor": r"qual o \*?estado", "reply": "{local_uf}",
+     "reply_repeat": "{destino_uf}", "fallback_adaptive": True},
+    {"step": "confirma_endereco", "anchor": r"voc[êe] confirma o endere[çc]o", "reply": "Sim",
+     "notes": "resumo geocodificado do QUE NÓS digitamos (origem e destino) — confirmar"},
+    {"step": "complemento_ref", "anchor": r"quais s[ãa]o o complemento e/?ou refer[êe]ncia", "reply": "{ponto_referencia}",
+     "notes": "default 'não tem'"},
+    {"step": "garagem", "anchor": r"o ve[íi]culo est[áa] em uma garagem", "reply": "Não",
+     "notes": "default Não; subsolo real → adaptativo"},
+    {"step": "cambio_rodas", "anchor": r"c[âa]mbio\*? ou as \*?rodas\*? est[ãa]o travadas", "reply": "Não",
+     "notes": "default Não; travado de verdade → adaptativo"},
+    {"step": "eletrico_hibrido", "anchor": r"el[ée]trico ou h[íi]brido", "reply": "Não"},
+    {"step": "rebaixado", "anchor": r"o ve[íi]culo [ée] rebaixado", "reply": "Não"},
+    {"step": "situacao_risco", "anchor": r"situa[çc][õo]es de risco", "reply": "Nenhuma das anteriores",
+     "notes": "se o caso indicar risco real, o adaptativo assume"},
+    {"step": "ocupantes", "anchor": r"ocupantes tem alguma das particularidades|algu[ée]m da lista abaixo no local",
+     "reply": "Nenhuma das anteriores"},
+    {"step": "destino_como", "anchor": r"para onde devemos levar o ve[íi]culo", "reply": "Digitar endereço",
+     "notes": "guincho: informar o destino do caso (rua/nº/bairro/cidade/UF do parser)"},
+    {"step": "deseja_continuar", "anchor": r"deseja continuar (?:este|com o) atendimento", "reply": "Sim"},
+    {"step": "quando_agora", "anchor": r"atendimento para agora ou prefere agendar", "reply": "Agora",
+     "notes": "PONTO DE NÃO-RETORNO (abre na hora). Só alcançado em modo LIVE — no teste o freio cancela antes."},
+    {"step": "aguarde_fila",
+     "anchor": (r"ainda n[ãa]o identificamos a sua resposta|voc[êe] est[áa] na fila|alto volume de atendimentos|"
+                r"alta demanda de servi[çc]os|aguarde (?:um momento|s[óo] mais)|te transfiro para um|"
+                r"transferido para fila|dicas (?:r[áa]pidas|sobre como funciona)|seja bem-?vindo ao atendimento|"
+                r"estamos prontos para seguir com sua solicita|s[óo] preciso de mais algumas informa|"
+                r"enviaremos o servi[çc]o de|foi abert[ao] com sucesso|no final desta conversa|"
+                r"orienta[çc][õo]es importantes|problema na comunica[çc][ãa]o com o sistema|"
+                r"necess[áa]rio falar com um de nossos especialistas|identificamos que voc[êe] deseja falar"),
+     "reply": "", "noop": True, "notes": "fila/aviso/informativo — NÃO responder (o bot manda rajadas)"},
+]
+_YELUM_FAMILY_FINALIZE = [
+    # Único gate real: responder 'Agora'/'Agendar' ABRE o serviço imediatamente.
+    r"atendimento para agora ou prefere agendar",
+    r"podemos confirmar", r"deseja confirmar",
+]
+
 HDI_AUTO_WHATSAPP_V1 = _auto_playbook(
     "hdi", "hdi_assistencia_24h",
     ura_steps=[
         {"step": "menu_auto_ou_resid",
          "anchor": r"assist[êe]ncia para seu \*?autom[óo]vel\*? ou \*?resid[êe]ncia|para seu \*?autom[óo]vel\*? ou \*?resid[êe]ncia",
          "reply": "🚗 Automóvel", "notes": "botões com emoji: '🚗 Automóvel' / '🏠 Residência'"},
-        {"step": "identificacao_dado",
-         "anchor": r"informe \*?apenas um dos dados|informe \*?um dos dados abaixo",
-         "reply": "{titular_cpf}", "requires": ["titular_cpf"],
-         "notes": "entrada 2026: CPF/CNPJ do segurado OU placa; CPF identifica frota/CNPJ também"},
-        {"step": "informar_nome", "anchor": r"informe o seu nome ou como gostaria de ser chamado",
-         "reply": "Atendimento", "notes": "nome de quem opera o canal (a corretora)"},
-        {"step": "informar_placa", "anchor": r"qual a placa do ve[íi]culo", "reply": "{veiculo_placa}",
-         "requires": ["veiculo_placa"]},
-        {"step": "perfil", "anchor": r"em qual dessas op[çc][õo]es voc[êe] se enquadra", "reply": "Sou corretor(a)",
-         "notes": "agimos em nome da corretora"},
-        {"step": "pessoa_no_local", "anchor": r"[ée] a pessoa que est[áa] (?:no )?local para acompanhar", "reply": "Não"},
-        {"step": "nome_pessoa_local", "anchor": r"qual [ée] o nome da pessoa que est[áa] no local",
-         "reply": "{pessoa_no_local}", "requires": ["pessoa_no_local"]},
-        {"step": "telefone_local", "anchor": r"n[úu]mero de (?:celular|telefone)\*? com ddd da pessoa que est[áa] no local",
-         "reply": "{telefone_contato}", "requires": ["telefone_contato"]},
-        {"step": "telefone_confirma", "anchor": r"o n[úu]mero de telefone \d+ est[áa] correto", "reply": "Sim"},
-        {"step": "cor_menu", "anchor": r"informar a cor do ve[íi]culo de placa", "reply": "Outros"},
-        {"step": "cor_texto", "anchor": r"qual a cor do ve[íi]culo de placa", "reply": "{veiculo_cor}",
-         "notes": "campo livre; default 'não sei'"},
-        {"step": "rodovia", "anchor": r"(?:o ve[íi]culo|saber se o ve[íi]culo) est[áa] em uma rodovia", "reply": "{rodovia}",
-         "notes": "Sim/Não conforme local_atual; default Não"},
-        {"step": "o_que_aconteceu", "anchor": r"pode me dizer o que aconteceu", "reply": "{servico_opcao}",
-         "requires": ["servico_opcao"],
-         "notes": "guincho→Pane ou Defeito · bateria→Recarga de bateria · pneu→Pneu Furado · chaveiro→Problema com a chave · colisão=SINISTRO (handoff antes)"},
-        {"step": "pane_detalhe", "anchor": r"selecione a op[çc][ãa]o que condiz com a pane", "reply": "Problemas no motor",
-         "notes": "guincho por pane: leva direto ao Guincho"},
-        {"step": "endereco_como", "anchor": r"op[çc][õo]es para informar o endere[çc]o onde o ve[íi]culo est[áa]",
-         "reply": "Digitar endereço", "notes": "Digitar endereço / Compartilhar / CEP / Não sei"},
-        {"step": "aguarde_fila",
-         "anchor": r"ainda n[ãa]o identificamos a sua resposta|voc[êe] est[áa] na fila|alto volume de atendimentos|aguarde (?:um momento|s[óo] mais)|te transfiro para um|dicas (?:r[áa]pidas|sobre como funciona)|seja bem-?vindo ao atendimento",
-         "reply": "", "noop": True, "notes": "fila/aviso/boas-vindas — NÃO responder"},
-        {"step": "deseja_continuar", "anchor": r"deseja continuar (?:este|com o) atendimento", "reply": "Sim"},
-        {"step": "confirmar_endereco", "anchor": r"voc[êe] confirma o endere[çc]o", "reply": "Sim",
-         "notes": "último passo antes da URA abrir sozinha. Só alcançado em modo LIVE — no teste o freio cancela antes."},
-    ],
-    finalize_anchors=[
-        # A URA abre SOZINHA depois do endereço confirmado → o freio de teste fica
-        # na confirmação do endereço. ('está correto?' genérico era FALSO freio:
-        # disparava na confirmação de telefone no meio da coleta.)
-        r"voc[êe] confirma o endere[çc]o",
-        r"agendamento para .* realizado", r"deseja confirmar",
-        r"confirma\s+(?:a\s+)?(?:abertura|solicita|o agendamento)",
-    ],
+    ] + [dict(s) for s in _YELUM_FAMILY_STEPS],
+    finalize_anchors=list(_YELUM_FAMILY_FINALIZE),
 )
 HDI_AUTO_WHATSAPP_V1["subservice_menu_map"] = {
     "guincho": "Pane ou Defeito", "bateria": "Recarga de bateria",
@@ -470,76 +528,27 @@ HDI_AUTO_WHATSAPP_V1["subservice_menu_map"] = {
 }
 HDI_AUTO_WHATSAPP_V1["finalize_abort_reply"] = "Sair"  # 'Digite Sair para encerrar'
 
-# --- Yelum (ex-Liberty): v2 minerado da conversa REAL completa da AutoFleet
-# (2023→2026, dezenas de acionamentos). A URA identifica por PLACA/CPF, deriva
-# o serviço do "o que aconteceu" e ABRE automaticamente após os últimos dados —
-# por isso os freios ficam ANTES do trecho final.
+# --- Yelum (ex-Liberty, grupo HDI): v3 minerado do fluxo REAL COMPLETO de
+# 16/03/2026 (conversa "Liberty Fácil Assist" = Yelum rebatizada; 100% bot até o
+# protocolo 9415275). Mesmos passos da família HDI + variantes antigas próprias.
 YELUM_AUTO_WHATSAPP_V1 = _auto_playbook(
     "yelum", "yelum_assistencia_24h",
     ura_steps=[
         {"step": "menu_auto_ou_resid",
          "anchor": r"assist[êe]ncia para (?:o )?(?:seu|sua) \*?(?:autom[óo]vel|casa)\*? ou \*?resid[êe]ncia\*?|sua \*?casa\*? ou \*?carro\*?",
          "reply": "Automóvel", "notes": "variante antiga usa botões Casa/Carro"},
-        {"step": "identificacao_dado",
-         "anchor": r"informe \*?apenas um dos dados|informe somente o \*?cpf ou cnpj\*? do t[íi]tular",
-         "reply": "{titular_cpf}", "requires": ["titular_cpf"],
-         "notes": "URA 2026 pede CPF/CNPJ OU placa logo de cara"},
-        {"step": "continuar_com_placa", "anchor": r"identifiquei em seu cadastro a placa", "reply": "Automóvel",
-         "notes": "após CPF, a URA acha a placa e pergunta veículo ou residencial"},
-        {"step": "informar_nome", "anchor": r"informe o seu nome ou como gostaria de ser chamad", "reply": "Atendimento",
-         "notes": "nome de quem opera o canal (a corretora)"},
-        {"step": "informar_placa", "anchor": r"qual a placa do ve[íi]culo", "reply": "{veiculo_placa}",
-         "requires": ["veiculo_placa"]},
-        {"step": "perfil", "anchor": r"em qual dessas op[çc][õo]es voc[êe] se enquadra", "reply": "Sou corretor(a)",
-         "notes": "agimos em nome da corretora"},
-        {"step": "pessoa_no_local", "anchor": r"[ée] a pessoa que est[áa] (?:no )?local para acompanhar", "reply": "Não"},
-        {"step": "nome_pessoa_local", "anchor": r"qual [ée] o nome da pessoa que est[áa] no local", "reply": "{pessoa_no_local}",
-         "requires": ["pessoa_no_local"]},
-        {"step": "telefone_local", "anchor": r"n[úu]mero de (?:celular|telefone)\*? com ddd da pessoa que est[áa] no local",
-         "reply": "{telefone_contato}", "requires": ["telefone_contato"]},
-        {"step": "telefone_confirma", "anchor": r"o n[úu]mero de telefone \d+ est[áa] correto", "reply": "Sim"},
-        {"step": "cor_menu", "anchor": r"informar a cor do ve[íi]culo de placa", "reply": "Outros"},
-        {"step": "cor_texto", "anchor": r"qual a cor do ve[íi]culo de placa", "reply": "{veiculo_cor}",
-         "notes": "campo livre; default 'não sei' (padrão da operadora real)"},
-        {"step": "rodovia", "anchor": r"(?:o ve[íi]culo|saber se o ve[íi]culo) est[áa] em uma rodovia", "reply": "{rodovia}",
-         "notes": "Sim/Não conforme local_atual; default Não"},
-        {"step": "o_que_aconteceu", "anchor": r"pode me dizer o que aconteceu", "reply": "{servico_opcao}",
-         "requires": ["servico_opcao"],
-         "notes": "guincho→Pane ou Defeito · bateria→Recarga de bateria · pneu→Pneu Furado · chaveiro→Problema com a chave"},
-        {"step": "pane_detalhe", "anchor": r"selecione a op[çc][ãa]o que condiz com a pane", "reply": "Problemas no motor",
-         "notes": "guincho por pane: 'Problemas no motor' leva direto ao Guincho (fluxo real 02/07/2025)"},
-        {"step": "situacao_risco", "anchor": r"situa[çc][õo]es de risco abaixo", "reply": "Nenhuma das anteriores",
-         "notes": "se o caso indicar risco real, o cérebro adaptativo assume"},
-        {"step": "ocupantes", "anchor": r"ocupantes tem alguma das particularidades|algu[ée]m da lista abaixo no local",
-         "reply": "Nenhuma das anteriores"},
-        {"step": "aguarde_fila",
-         "anchor": r"ainda n[ãa]o identificamos a sua resposta|voc[êe] est[áa] na fila|alto volume de atendimentos|aguarde (?:um momento|s[óo] mais)|te transfiro para um|dicas (?:r[áa]pidas|sobre como funciona)|seja bem-?vindo ao atendimento",
-         "reply": "", "noop": True, "notes": "fila/aviso/boas-vindas — NÃO responder"},
-        {"step": "deseja_continuar", "anchor": r"deseja continuar (?:este|com o) atendimento", "reply": "Sim"},
+    ] + [dict(s) for s in _YELUM_FAMILY_STEPS] + [
+        {"step": "podemos_confirmar", "anchor": r"podemos confirmar", "reply": "Sim",
+         "notes": "confirmação final (modo LIVE)"},
     ],
-    finalize_anchors=[
-        # A Yelum ABRE sozinha após os últimos dados → frear ANTES do trecho final:
-        r"solicitando o atendimento para agora ou prefere agendar",
-        r"quer o atendimento para agora ou prefere agendar",
-        r"para onde devemos levar o ve[íi]culo",
-        r"podemos confirmar",
-    ],
+    finalize_anchors=list(_YELUM_FAMILY_FINALIZE),
 )
-YELUM_AUTO_WHATSAPP_V1["version"] = 2
+YELUM_AUTO_WHATSAPP_V1["version"] = 3
 YELUM_AUTO_WHATSAPP_V1["subservice_menu_map"] = {
     "guincho": "Pane ou Defeito", "bateria": "Recarga de bateria",
     "pneu": "Pneu Furado", "chaveiro": "Problema com a chave",
 }
 YELUM_AUTO_WHATSAPP_V1["finalize_abort_reply"] = "Sair"  # 'Digite Sair para encerrar'
-# Passos do trecho FINAL (só alcançados em modo LIVE — no teste o freio cancela antes):
-YELUM_AUTO_WHATSAPP_V1["ura_steps"].extend([
-    {"step": "quando_agora", "anchor": r"atendimento para agora ou prefere agendar", "reply": "Agora",
-     "notes": "urgência é o default do corredor"},
-    {"step": "destino_como", "anchor": r"para onde devemos levar o ve[íi]culo", "reply": "Digitar endereço",
-     "notes": "guincho: informar o destino do caso (adaptativo completa rua/número)"},
-    {"step": "podemos_confirmar", "anchor": r"podemos confirmar", "reply": "Sim",
-     "notes": "confirmação final (modo LIVE)"},
-])
 
 TOKIO_AUTO_WHATSAPP_V1 = _auto_playbook(
     "tokio", "tokio_assistencia_24h",
@@ -896,6 +905,79 @@ def match_ura_step(playbook: Dict[str, Any], insurer_message: str, subservice: O
         if re.search(step.get("anchor") or r"$^", text, re.IGNORECASE | re.DOTALL):
             return step
     return None
+
+
+_UFS = {
+    "AC", "AL", "AP", "AM", "BA", "CE", "DF", "ES", "GO", "MA", "MT", "MS", "MG",
+    "PA", "PB", "PR", "PE", "PI", "RJ", "RN", "RS", "RO", "RR", "SC", "SP", "SE", "TO",
+}
+_STREET_RE = re.compile(
+    r"\b(?:rua|r\.|av\.?|avenida|rod\.?|rodovia|estrada|travessa|tv\.?|alameda|al\.?|"
+    r"servid[ãa]o|br-?\s?\d+|sc-?\s?\d+|pra[çc]a|largo|beco|via|linha)\b", re.IGNORECASE)
+
+
+def parse_address_br(text: str) -> Dict[str, str]:
+    """Heurística de endereço BR em texto livre → componentes para URAs que pedem
+    rua/número/bairro/cidade/UF separados (Yelum/HDI/Allianz destino).
+
+    Aceita formatos reais das conversas: "Rua B, 50, Sao Jose SC",
+    "R. Abelardo Luz, 342 - Balneario, Florianópolis - SC, 88075-542",
+    "Av Santa Tecla 2400, Bagé, RS". Campo não deduzido fica FORA do dict
+    (o passo cai no cérebro adaptativo — nunca chuta)."""
+    out: Dict[str, str] = {}
+    raw = str(text or "").strip()
+    if not raw:
+        return out
+    m = re.search(r"\b(\d{5})-?(\d{3})\b", raw)
+    if m:
+        out["cep"] = f"{m.group(1)}-{m.group(2)}"
+        raw = raw.replace(m.group(0), " ")
+    parts = [p.strip(" .") for p in re.split(r"[,\-–]| - ", raw) if p.strip(" .-")]
+    if not parts:
+        return out
+    # UF: token final de 2 letras válido (pode vir grudado na cidade: "Sao Jose SC").
+    tail_tokens = parts[-1].split()
+    if tail_tokens and tail_tokens[-1].upper() in _UFS:
+        out["uf"] = tail_tokens[-1].upper()
+        rest = " ".join(tail_tokens[:-1]).strip()
+        if rest:
+            parts[-1] = rest
+        else:
+            parts = parts[:-1]
+    # Rua: primeiro segmento com cara de logradouro (ou o primeiro segmento).
+    street_idx = next((i for i, p in enumerate(parts) if _STREET_RE.search(p)), 0)
+    street = parts[street_idx]
+    # Número embutido no segmento da rua ("Av Santa Tecla 2400" / "km 205").
+    m = re.search(r"\s(?:n[ºo°.]?\s*)?(\d{1,5})$", street) or re.search(r"\bkm\s*(\d{1,4})\b", street, re.IGNORECASE)
+    if m:
+        out["numero"] = m.group(1)
+        street = street[: m.start()].strip(" ,")
+    out["rua"] = street
+    rest = parts[street_idx + 1:]
+    # Número como segmento próprio ("Rua B, 50, ...").
+    if "numero" not in out and rest and re.fullmatch(r"(?:n[ºo°.]?\s*)?\d{1,5}(?:\s*km)?", rest[0], re.IGNORECASE):
+        out["numero"] = re.sub(r"\D", "", rest[0])
+        rest = rest[1:]
+    rest = [p for p in rest if p]
+    if len(rest) >= 2:
+        out["bairro"] = rest[0]
+        out["cidade"] = rest[-1]
+    elif len(rest) == 1:
+        out["cidade"] = rest[0]
+    return out
+
+
+def inject_address_slots(slots: Dict[str, Any]) -> Dict[str, Any]:
+    """Deriva slots de endereço decompostos a partir de local_atual/local_destino.
+    Só preenche o que a heurística deduziu (faltante → adaptativo assume)."""
+    for src, prefix in (("local_atual", "local"), ("local_destino", "destino")):
+        parsed = parse_address_br(str(slots.get(src) or ""))
+        for key, val in parsed.items():
+            slots.setdefault(f"{prefix}_{key}", val)
+    # Aliases usados pelos passos da Allianz (logradouro = rua).
+    if slots.get("destino_rua"):
+        slots.setdefault("destino_logradouro", slots["destino_rua"])
+    return slots
 
 
 def _format_phone_br(value: str) -> str:

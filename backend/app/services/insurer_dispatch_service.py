@@ -114,6 +114,10 @@ def new_dispatch_session(
         merged_slots.setdefault("rodovia", "Não")
     # Referência do local é opcional em TODAS as linhas ('não tem' é o padrão real).
     merged_slots.setdefault("ponto_referencia", "não tem")
+    # Endereços decompostos (rua/nº/bairro/cidade/UF) p/ URAs que pedem separado.
+    from app.services.corridor_playbooks import inject_address_slots
+
+    inject_address_slots(merged_slots)
 
     missing = missing_slots_for_subservice(playbook, subservice, merged_slots)
     session = {
@@ -263,19 +267,25 @@ def handle_insurer_message(
         if step.get("reply_repeat") and int(step_counts.get(step_name) or 0) >= 1:
             effective["reply"] = step["reply_repeat"]
         rendered = render_reply(effective, session.get("slots") or {})
-        if not rendered["ok"]:
+        if not rendered["ok"] and step.get("fallback_adaptive"):
+            # Slot não deduzido (ex.: parser de endereço não achou o bairro) em
+            # passo marcado fallback_adaptive → o cérebro adaptativo assume este
+            # passo (ele tem o endereço completo do caso). Nunca chuta.
+            pass
+        elif not rendered["ok"]:
             session["state"] = "needs_human"
             session["reason"] = f"missing_slots:{','.join(rendered['missing'])}"
             session["missing_slots"] = rendered["missing"]
             return session
-        # LOOP GUARD: nunca enviar a MESMA resposta 3x seguidas (teste Yelum
-        # 2026-07-10: CPF repetido 4x até a seguradora derrubar a conversa).
-        if _would_loop(session, rendered["reply"]):
-            session["state"] = "needs_human"
-            session["reason"] = "loop_guard"
-            return session
-        step_counts[step_name] = int(step_counts.get(step_name) or 0) + 1
-        return _emit(session, rendered["reply"], sender=sender, next_state="ura", step=step_name)
+        else:
+            # LOOP GUARD: nunca enviar a MESMA resposta 3x seguidas (teste Yelum
+            # 2026-07-10: CPF repetido 4x até a seguradora derrubar a conversa).
+            if _would_loop(session, rendered["reply"]):
+                session["state"] = "needs_human"
+                session["reason"] = "loop_guard"
+                return session
+            step_counts[step_name] = int(step_counts.get(step_name) or 0) + 1
+            return _emit(session, rendered["reply"], sender=sender, next_state="ura", step=step_name)
 
     trigger = detect_handoff_trigger(playbook, insurer_message)
     if trigger:
