@@ -323,6 +323,43 @@ def run():
         "BFF valida que o conteudo e PDF (%PDF)",
         "%PDF" in _insp_fg.getsource(allianz_corretor._download_carta_bff),
     )
+    # Navegação resiliente da busca (prints 'OS 3 EXEMPLOS' 2026-07-10).
+    check(
+        "busca espera o popover de categorias abrir (Angular)",
+        callable(getattr(allianz_corretor, "_search_popover_open", None))
+        and "_search_popover_open" in _insp_fg.getsource(allianz_corretor._fill_global_search_for_category),
+    )
+    check(
+        "trata modal de cliente com multiplas contas (Monica)",
+        callable(getattr(allianz_corretor, "_search_modal_rows", None))
+        and callable(getattr(allianz_corretor, "_click_search_modal_row", None)),
+    )
+    check(
+        "resolve cliente->contexto tentando cada conta e ancorando na SUSEP",
+        callable(getattr(allianz_corretor, "_resolve_customer_to_context", None)),
+    )
+    _resolve_src = _insp_fg.getsource(allianz_corretor._resolve_customer_to_context)
+    check(
+        "multi-conta itera as contas e usa _open_policy_detail (checa a apolice)",
+        "_search_modal_rows" in _resolve_src and "_open_policy_detail_from_customer" in _resolve_src,
+    )
+    _ctx_src2 = _insp_fg.getsource(allianz_corretor._open_policy_context_for_item)
+    check(
+        "orquestrador da busca usa o resolvedor de cliente",
+        "_resolve_customer_to_context" in _ctx_src2,
+    )
+    # A âncora que distingue as contas iguais da Monica é a SUSEP da apolice.
+    check(
+        "contexto casa a apolice pela SUSEP (nao por nome/CPF que se repetem)",
+        allianz_corretor._policy_context_matches_item(
+            "DADOS GERAIS Apólice 137573160 Apólice SUSEP 5177-2026-23-14-0183705 Ramo 2013",
+            {"apolice_susep": "5177202623140183705"},
+        )
+        and not allianz_corretor._policy_context_matches_item(
+            "DADOS GERAIS Apólice 999 Apólice SUSEP 5177-2026-23-14-0999999",
+            {"apolice_susep": "5177202623140183705"},
+        ),
+    )
     check(
         "detecta a tela de login pelos marcadores reais (Iniciar Sessao/Esqueceu a senha)",
         allianz_corretor._login_form_present("Bem-vindo(a) à Allianznet Usuário Senha INICIAR SESSÃO ESQUECEU A SENHA?"),

@@ -1866,8 +1866,17 @@ async def _dismiss_blocking_modal(page) -> bool:
     return closed
 
 
+async def _search_popover_open(page) -> bool:
+    """O popover 'Pesquisar este dado em...' (com 'Nome / Razão Social') precisa
+    estar aberto para escolher a categoria. Sinal de que a digitação pegou."""
+    low = _norm(await _all_body_text(page))
+    return "pesquisar este dado em" in low or "nome / razao social" in low or "nome/razao social" in low
+
+
 async def _fill_global_search_for_category(page, value: str, *, _retry: bool = True) -> bool:
-    """Preenche a busca Allianz e deixa o popover de categorias aberto."""
+    """Digita o termo na barra global e ESPERA o popover de categorias abrir
+    (Angular: fill() não dispara o autocomplete — digitação tecla a tecla +
+    verificação + até 2 retentativas dão a robustez que faltava no headless)."""
     query = _clean_text(value)
     if not query:
         return False
@@ -1882,15 +1891,33 @@ async def _fill_global_search_for_category(page, value: str, *, _retry: bool = T
             if await candidates.count() <= 0:
                 continue
             loc = candidates.first
-            await loc.click(timeout=2500)
-            try:
-                await loc.press("Control+A", timeout=800)
-                await loc.press("Backspace", timeout=800)
-                await loc.type(query, delay=35, timeout=8000)
-            except Exception:  # noqa: BLE001
-                await loc.fill(query, timeout=2500)
-                await loc.dispatch_event("input")
-            await page.wait_for_timeout(1300)
+            for tentativa in range(3):
+                try:
+                    await loc.click(timeout=2500)
+                    await loc.press("Control+A", timeout=800)
+                    await loc.press("Backspace", timeout=800)
+                    await loc.type(query, delay=45, timeout=9000)
+                except Exception:  # noqa: BLE001
+                    try:
+                        await loc.fill(query, timeout=2500)
+                        await loc.dispatch_event("input")
+                    except Exception:  # noqa: BLE001
+                        pass
+                # Espera o popover montar (Angular monta devagar no VPS).
+                for _ in range(8):
+                    await page.wait_for_timeout(500)
+                    if await _search_popover_open(page):
+                        return True
+                # Não abriu: limpa e tenta de novo (foco pode ter escapado).
+                try:
+                    await loc.press("Control+A", timeout=600)
+                    await loc.press("Backspace", timeout=600)
+                except Exception:  # noqa: BLE001
+                    pass
+                await page.wait_for_timeout(500)
+            # Digitou mas o popover não montou — devolve True mesmo assim; o
+            # caller ainda tenta clicar a categoria (às vezes ela existe sem o
+            # texto do cabeçalho).
             return True
         except Exception:  # noqa: BLE001
             continue
@@ -2025,6 +2052,81 @@ async def _click_customer_search_result(page, item: Dict[str, Any], evidence: Di
         return True
     except Exception:  # noqa: BLE001
         return False
+
+
+async def _search_modal_rows(page) -> int:
+    """Nº de contas no modal 'Pesquisa de Cliente' (mesmo nome/CPF, ex.: Mônica
+    tem 2). 0 quando não há modal (cliente de conta única cai direto na página)."""
+    try:
+        return int(await page.evaluate(
+            r"""() => {
+              const norm = s => (s||'').normalize('NFKD').replace(/[̀-ͯ]/g,'').toLowerCase().replace(/\s+/g,' ').trim();
+              const scope = document.querySelector('[role=dialog], .nx-modal__container, .cdk-overlay-container, [class*="modal"]');
+              if (!scope) return 0;
+              if (!norm(scope.innerText||'').includes('pesquisa de cliente')) return 0;
+              const skip = ['anterior','proximo','próximo','fechar','close','x'];
+              const links = [...scope.querySelectorAll('a, [role=button], td a, tr a')]
+                .filter(a => (a.offsetParent || a.getClientRects().length) && norm(a.innerText||a.textContent).length > 3
+                             && !skip.includes(norm(a.innerText||a.textContent)));
+              return links.length;
+            }"""
+        ) or 0)
+    except Exception:  # noqa: BLE001
+        return 0
+
+
+async def _click_search_modal_row(page, index: int) -> bool:
+    """Clica na conta de índice `index` do modal 'Pesquisa de Cliente'."""
+    try:
+        return bool(await page.evaluate(
+            r"""(index) => {
+              const norm = s => (s||'').normalize('NFKD').replace(/[̀-ͯ]/g,'').toLowerCase().replace(/\s+/g,' ').trim();
+              const scope = document.querySelector('[role=dialog], .nx-modal__container, .cdk-overlay-container, [class*="modal"]');
+              if (!scope) return false;
+              const skip = ['anterior','proximo','próximo','fechar','close','x'];
+              const links = [...scope.querySelectorAll('a, [role=button], td a, tr a')]
+                .filter(a => (a.offsetParent || a.getClientRects().length) && norm(a.innerText||a.textContent).length > 3
+                             && !skip.includes(norm(a.innerText||a.textContent)));
+              if (!links[index]) return false;
+              links[index].click();
+              return true;
+            }""",
+            index,
+        ))
+    except Exception:  # noqa: BLE001
+        return False
+
+
+async def _resolve_customer_to_context(page, item: Dict[str, Any], params: Dict[str, Any], evidence: Dict[str, Any]) -> bool:
+    """Da busca ao contexto da apólice, de forma RESILIENTE (não determinística
+    e frágil): cliente de conta única cai direto; cliente com VÁRIAS contas
+    (modal, ex.: Mônica) — tenta cada conta e fica com a que casa a SUSEP da
+    inadimplência (âncora estável), pois nome/CPF são iguais nas duas. Se
+    nenhuma casar, devolve False para o caller escalar."""
+    rows = await _search_modal_rows(page)
+    if rows >= 1:
+        evidence.setdefault("download_notes", []).append(f"modal com {rows} conta(s) do cliente — buscando a da apólice em atraso")
+        name = _clean_text((item or {}).get("cliente_nome"))
+        for ri in range(min(rows, 6)):
+            if ri > 0:
+                # O modal fecha ao clicar numa conta; reabre a busca para a próxima.
+                if not (name and await _fill_global_search_for_category(page, name)):
+                    break
+                await _click_search_category_for_term(page, name, item)
+                await page.wait_for_timeout(1200)
+                if await _search_modal_rows(page) <= ri:
+                    break
+            if not await _click_search_modal_row(page, ri):
+                continue
+            await page.wait_for_timeout(3500)
+            if await _open_policy_detail_from_customer(page, item, evidence):
+                evidence.setdefault("download_notes", []).append(f"conta {ri + 1}/{rows} casa a apólice da inadimplência")
+                return True
+            evidence.setdefault("download_notes", []).append(f"conta {ri + 1}/{rows} sem a apólice em atraso — tentando a próxima")
+        return False
+    # Conta única: pode já estar na página do cliente OU ter um link a clicar.
+    await _click_customer_search_result(page, item, evidence)
+    return await _open_policy_detail_from_customer(page, item, evidence)
 
 
 async def _click_operar_candidate(page, index: int = 0) -> bool:
@@ -2574,46 +2676,18 @@ async def _open_policy_context_for_item(page, item: Dict[str, Any], params: Dict
                 evidence["empty_search_terms"] = int(evidence.get("empty_search_terms") or 0) + 1
                 await _dismiss_blocking_modal(page)
                 continue
-            await _click_customer_search_result(page, item, evidence)
-            if await _open_policy_detail_from_customer(page, item, evidence):
+            # Resolve cliente -> contexto da apólice. Trata conta única (cai
+            # direto) E multi-conta (modal, escolhe pela SUSEP da inadimplência).
+            if await _resolve_customer_to_context(page, item, params, evidence):
                 return True
-            if await _wait_until_policy_context(page, timeout_ms=7000):
+            # Fallbacks: às vezes a categoria abre a página sem passar pelo modal.
+            if await _wait_until_policy_context(page, timeout_ms=6000):
                 text = await _all_body_text(page)
                 if _policy_context_matches_item(text, item):
                     evidence.setdefault("download_notes", []).append("contexto da apolice aberto por busca")
                     return True
             if await _open_policy_detail_from_customer(page, item, evidence):
                 return True
-            clicked_search_row, search_row_trace = await _capture_page_activity(
-                page,
-                "click_search_result_row",
-                lambda: _click_row_candidate(page, click_terms, timeout_ms=1200),
-                wait_ms=900,
-            )
-            _remember_evidence_list(evidence, "interaction_traces", search_row_trace, limit=16)
-            if clicked_search_row:
-                if await _wait_until_policy_context(page, timeout_ms=8000):
-                    text = await _all_body_text(page)
-                    if _policy_context_matches_item(text, item):
-                        evidence.setdefault("download_notes", []).append("contexto da apolice aberto por linha de busca")
-                        return True
-                if await _open_policy_detail_from_customer(page, item, evidence):
-                    return True
-            clicked_search_text, search_text_trace = await _capture_page_activity(
-                page,
-                "click_search_result_text",
-                lambda: _click_text_candidate(page, click_terms, timeout_ms=1200),
-                wait_ms=900,
-            )
-            _remember_evidence_list(evidence, "interaction_traces", search_text_trace, limit=16)
-            if clicked_search_text:
-                if await _wait_until_policy_context(page, timeout_ms=8000):
-                    text = await _all_body_text(page)
-                    if _policy_context_matches_item(text, item):
-                        evidence.setdefault("download_notes", []).append("contexto da apolice aberto por resultado de busca")
-                        return True
-                if await _open_policy_detail_from_customer(page, item, evidence):
-                    return True
             await _record_policy_search_debug(page, item, evidence, "policy_context_not_opened_after_search", term)
             # Higiene entre termos: dialogo residual da tentativa anterior não pode
             # contaminar a próxima busca.
