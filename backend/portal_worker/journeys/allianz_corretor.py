@@ -2054,6 +2054,18 @@ async def _click_customer_search_result(page, item: Dict[str, Any], evidence: Di
         return False
 
 
+def _looks_like_customer_page(text: str) -> bool:
+    """Página do cliente após a busca (Carlos/Janjo caem direto aqui): tem
+    'Operações Diárias', 'Nova Apólice'+'Histórico', 'Consulta de Cliente' e o
+    card com 'Operar'."""
+    low = _norm(text)
+    return (
+        "operacoes diarias" in low
+        or "consulta de cliente" in low
+        or ("nova apolice" in low and "historico" in low)
+    )
+
+
 async def _search_modal_rows(page) -> int:
     """Nº de contas no modal 'Pesquisa de Cliente' (mesmo nome/CPF, ex.: Mônica
     tem 2). 0 quando não há modal (cliente de conta única cai direto na página)."""
@@ -2665,17 +2677,46 @@ async def _open_policy_context_for_item(page, item: Dict[str, Any], params: Dict
                     f"popover de categorias nao abriu apos digitar '{_clean_text(term)[:40]}'"
                 )
             await _click_search_category_for_term(page, str(term), item)
-            # Busca sem resultados abre modal BLOQUEANTE: registrar, fechar e ir
-            # direto ao próximo termo (clicar em "resultado" aqui só acha o texto
-            # do próprio modal — visto no job a9f4b375).
-            after_search_text = await _body_text(page)
-            if search_result_is_empty(after_search_text):
+            # ESPERA o resultado montar antes de decidir. Checar cedo (só o main
+            # frame) dava falso-'sem resultados' porque o modal 'Pesquisa de
+            # Cliente' (Mônica) e a página do cliente demoram a renderizar no VPS.
+            # Ordem de decisão: modal multi-conta > página do cliente > contexto
+            # de apólice > 'sem resultados' de verdade (com o texto capturado).
+            outcome = ""
+            for _ in range(14):
+                await page.wait_for_timeout(500)
+                full = await _all_body_text(page)
+                if await _search_modal_rows(page) >= 1:
+                    outcome = "modal"
+                    break
+                if _looks_like_customer_page(full):
+                    outcome = "cliente"
+                    break
+                if _looks_like_policy_context(full) or _looks_like_recibos_list(full):
+                    outcome = "contexto"
+                    break
+                if search_result_is_empty(full):
+                    outcome = "vazio"
+                    break
+            if outcome == "vazio":
                 evidence.setdefault("download_notes", []).append(
                     f"busca sem resultados para termo '{_clean_text(term)[:60]}' — modal fechado"
                 )
                 evidence["empty_search_terms"] = int(evidence.get("empty_search_terms") or 0) + 1
+                _remember_evidence_list(
+                    evidence, "cobranca_search_debug",
+                    {"term": _clean_text(term)[:40], "text": _clean_text(await _all_body_text(page))[:240]},
+                    limit=8,
+                )
                 await _dismiss_blocking_modal(page)
                 continue
+            if not outcome:
+                # Nada montou (nem vazio): registra o que a tela mostra p/ diagnóstico.
+                _remember_evidence_list(
+                    evidence, "cobranca_search_debug",
+                    {"term": _clean_text(term)[:40], "timeout": True, "text": _clean_text(await _all_body_text(page))[:240]},
+                    limit=8,
+                )
             # Resolve cliente -> contexto da apólice. Trata conta única (cai
             # direto) E multi-conta (modal, escolhe pela SUSEP da inadimplência).
             if await _resolve_customer_to_context(page, item, params, evidence):
