@@ -61,7 +61,8 @@ class InsurerDispatchTool(BaseTool):
         "apólice tiver assistência confirmada. Cobre AUTO (guincho/bateria/pneu/chaveiro) e residencial "
         "(eletricista/chaveiro/encanador/eletrodomésticos). Para AUTO informe insurer_key (da InfoCap) e "
         "line_kind='auto'. Retorna o plano do acionamento ou os dados que ainda faltam. NUNCA diga ao cliente "
-        "que acionou se o retorno indicar simulação; o passo final que despacha o prestador é sempre humano."
+        "que acionou se o retorno indicar simulação/teste. Em modo TESTE o fluxo é executado por completo e "
+        "CANCELADO na confirmação final (nada é aberto); corredor validado em modo LIVE completa ponta a ponta."
     )
     args_schema: Type[BaseModel] = InsurerDispatchInput
 
@@ -281,14 +282,25 @@ class InsurerDispatchTool(BaseTool):
             base["content"] += "\nAVISO INTERNO: não foi possível iniciar o acionamento real — NADA foi enviado."
             return base
 
-        return {
-            "status": "dispatched",
-            "content": (
+        from app.services.insurer_dispatch_service import finalize_live_for
+
+        insurer_label = (insurer_key or "a seguradora").upper()
+        if finalize_live_for(playbook_ref):
+            content = (
                 "[ACIONAMENTO REAL INICIADO]\n"
-                "A conversa com a Allianz Assistência 24h foi aberta pelo WhatsApp da corretora. "
+                f"A conversa com a assistência da {insurer_label} foi aberta pelo WhatsApp da corretora. "
                 "A URA será respondida automaticamente com os dados coletados e o cliente será avisado "
                 "assim que o protocolo/agendamento sair.\n"
                 "INSTRUÇÃO AO ATENDENTE: diga ao cliente que o acionamento FOI iniciado e que você retorna "
                 "com o protocolo em instantes. NÃO invente protocolo/senha/prazo — eles chegam sozinhos."
-            ),
-        }
+            )
+        else:
+            content = (
+                "[ACIONAMENTO EM MODO TESTE INICIADO]\n"
+                f"A conversa com a assistência da {insurer_label} foi aberta pelo WhatsApp da corretora. "
+                "O fluxo será executado até a confirmação final e CANCELADO antes de abrir o serviço "
+                "(nenhum prestador será acionado).\n"
+                "INSTRUÇÃO AO ATENDENTE: diga que o pedido está sendo processado. NÃO afirme que o serviço "
+                "foi aberto nem invente protocolo — este acionamento é um teste e será cancelado no final."
+            )
+        return {"status": "dispatched", "content": content}

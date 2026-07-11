@@ -40,6 +40,8 @@ DISPATCH_STATES = (
     "ura",
     "human_phase",
     "captured",
+    "monitoring",      # protocolo capturado; só repassa updates da seguradora ao cliente
+    "test_aborted",    # modo TESTE: fluxo completo executado e CANCELADO na confirmação final
     "needs_human",
     "blocked_gate",
 )
@@ -48,6 +50,30 @@ DISPATCH_STATES = (
 def dispatch_live_enabled() -> bool:
     """S17-6: envio real à seguradora SÓ com a flag ligada + corretora avisada."""
     return str(os.getenv("INSURER_DISPATCH_LIVE", "")).strip().lower() in ("1", "true", "yes", "on")
+
+
+def finalize_live_for(playbook_ref: str) -> bool:
+    """Decisão do founder (2026-07-11): o freio de finalização existe SÓ para os
+    TESTES (a IA executa o fluxo inteiro e CANCELA antes de abrir o serviço).
+    Corredor VALIDADO passa a completar ponta a ponta sem humano:
+    - DISPATCH_FINALIZE_MODE=live libera TODOS os corredores;
+    - DISPATCH_FINALIZE_LIVE_PLAYBOOKS=ref1,ref2 gradua corredor a corredor."""
+    mode = str(os.getenv("DISPATCH_FINALIZE_MODE", "test")).strip().lower()
+    if mode == "live":
+        return True
+    live_refs = [x.strip() for x in str(os.getenv("DISPATCH_FINALIZE_LIVE_PLAYBOOKS", "")).split(",") if x.strip()]
+    return str(playbook_ref or "") in live_refs
+
+
+def _finalize_allowed(session: Dict[str, Any]) -> bool:
+    return bool(session.get("finalize_approved")) or finalize_live_for(str(session.get("playbook_ref") or ""))
+
+
+# Mensagens de pós-atendimento da seguradora (pesquisa/avaliação): nunca responder.
+_SURVEY_NOOP_RE = (
+    r"pesquisa de (?:satisfa[çc][ãa]o|qualidade)|avalie (?:sua|a sua|nosso)|sua opini[ãa]o [ée] muito importante|"
+    r"o quanto voc[êe] recomendaria|grau de satisfa[çc][ãa]o|responda nossa pesquisa"
+)
 
 
 def _now() -> str:
@@ -86,6 +112,8 @@ def new_dispatch_session(
         merged_slots.setdefault("quando", "agora")
         merged_slots.setdefault("veiculo_cor", "não sei")
         merged_slots.setdefault("rodovia", "Não")
+    # Referência do local é opcional em TODAS as linhas ('não tem' é o padrão real).
+    merged_slots.setdefault("ponto_referencia", "não tem")
 
     missing = missing_slots_for_subservice(playbook, subservice, merged_slots)
     session = {
@@ -174,6 +202,10 @@ def handle_insurer_message(
         session["reason"] = "playbook_not_found"
         return session
 
+    # Inbound sem texto (mídia/sticker da seguradora): registra e não responde.
+    if not str(insurer_message or "").strip():
+        return session
+
     session.setdefault("transcript", []).append(
         {"direction": "in", "text": str(insurer_message)[:2000], "at": _now()}
     )
@@ -182,7 +214,8 @@ def handle_insurer_message(
     if captured:
         session.setdefault("captured", {}).update(captured)
 
-    if session.get("captured", {}).get("protocol") and session.get("captured", {}).get("schedule"):
+    got = session.get("captured", {})
+    if got.get("protocol") and (got.get("schedule") or got.get("eta_minutes") or got.get("tracking_link")):
         session["state"] = "captured"
         return session
 
@@ -198,27 +231,38 @@ def handle_insurer_message(
         session["reason"] = "insurer_closed"
         return session
 
-    # FREIO DE FINALIZAÇÃO (SPEC-031): a seguradora vai CONFIRMAR/ABRIR o serviço.
-    # NUNCA confirmar sozinho — o passo que despacha o prestador exige aprovação
-    # da corretora. Só passa quem tiver finalize_approved=True (humano liberou).
+    # FREIO DE FINALIZAÇÃO (founder 2026-07-11): existe SÓ para o modo TESTE.
+    # A seguradora vai CONFIRMAR/ABRIR o serviço de verdade → em teste, CANCELA
+    # educadamente (abort_reply do playbook; sem abort, silêncio e a URA encerra).
+    # Em modo LIVE (corredor validado) NÃO trava: o passo de confirmação é
+    # respondido pelos próprios ura_steps e o fluxo completa ponta a ponta.
     finalize = detect_finalize_anchor(playbook, insurer_message)
-    if finalize and not session.get("finalize_approved"):
-        session["state"] = "needs_human"
-        session["reason"] = f"finalize_gate:{finalize}"
-        session.setdefault("pending_insurer_messages", []).append(str(insurer_message)[:2000])
+    if finalize and not _finalize_allowed(session):
+        session["reason"] = f"finalize_test_abort:{finalize}"
+        abort = str(playbook.get("finalize_abort_reply") or "").strip()
+        if abort:
+            return _emit(session, abort, sender=sender, next_state="test_aborted", step="finalize_abort")
+        session["state"] = "test_aborted"
         return session
 
     # Âncora de URA conhecida responde ANTES dos gatilhos de handoff: menus reais
     # listam "Sinistro"/"Acidente" como OPÇÕES (Porto opção 6, Bradesco opção 2) e
     # isso não significa que o caso é sinistro. Handoff só quando NENHUM passo
     # conhecido casou (a mensagem é sobre o caso, não um menu mapeado).
-    step = match_ura_step(playbook, insurer_message)
+    step = match_ura_step(playbook, insurer_message, subservice=session.get("subservice"))
     if step:
         # Passo "noop": mensagem informativa (fila, aguarde, "ainda não
         # identificamos") — reconhecer e NÃO responder nada.
         if step.get("noop"):
             return session
-        rendered = render_reply(step, session.get("slots") or {})
+        # reply_repeat: na 2ª+ vez que o MESMO passo aparecer, responder diferente
+        # (ex.: menu raiz da Porto — 1ª vez re-identifica o cliente, 2ª segue).
+        step_counts = session.setdefault("step_counts", {})
+        step_name = str(step.get("step") or "")
+        effective = dict(step)
+        if step.get("reply_repeat") and int(step_counts.get(step_name) or 0) >= 1:
+            effective["reply"] = step["reply_repeat"]
+        rendered = render_reply(effective, session.get("slots") or {})
         if not rendered["ok"]:
             session["state"] = "needs_human"
             session["reason"] = f"missing_slots:{','.join(rendered['missing'])}"
@@ -230,12 +274,17 @@ def handle_insurer_message(
             session["state"] = "needs_human"
             session["reason"] = "loop_guard"
             return session
-        return _emit(session, rendered["reply"], sender=sender, next_state="ura", step=step.get("step"))
+        step_counts[step_name] = int(step_counts.get(step_name) or 0) + 1
+        return _emit(session, rendered["reply"], sender=sender, next_state="ura", step=step_name)
 
     trigger = detect_handoff_trigger(playbook, insurer_message)
     if trigger:
         session["state"] = "needs_human"
         session["reason"] = f"handoff_trigger:{trigger}"
+        return session
+
+    # Pesquisa de satisfação/avaliação pós-atendimento: ignorar sempre.
+    if re.search(_SURVEY_NOOP_RE, _norm_text(insurer_message), re.IGNORECASE):
         return session
 
     # Sem âncora de URA: fase humana da seguradora.
@@ -320,12 +369,20 @@ def build_human_phase_messages(session: Dict[str, Any], insurer_message: str) ->
     line_kind = str(playbook.get("line_kind") or "residencial")
     insurer_key = str(playbook.get("insurer_key") or "seguradora")
     linha_txt = "AUTO (guincho, bateria, pneu, chaveiro)" if line_kind == "auto" else "residencial"
-    finalize_rule = (
-        "3. FREIO: se a seguradora for CONFIRMAR/ABRIR o serviço de fato (agendar, 'posso continuar', "
-        "'confirmar', 'está correto?' antes de despachar), responda exatamente: NAO_SEI — o passo final "
-        "exige aprovação da corretora, você NUNCA confirma sozinho.\n"
-        if line_kind == "auto" else ""
-    )
+    # Freio de TESTE vale para TODAS as linhas (auto E residencial). Em modo LIVE
+    # (corredor validado) a instrução vira: confirmar quando o RESUMO confere.
+    if _finalize_allowed(session):
+        finalize_rule = (
+            "3. CONFIRMAÇÃO FINAL: quando a seguradora mostrar o RESUMO e pedir para confirmar, "
+            "confira os dados com o caso; se conferem, CONFIRME com a opção afirmativa (ex.: '1' ou 'Sim'). "
+            "Se algo divergir do caso, corrija com o dado certo ou responda NAO_SEI.\n"
+        )
+    else:
+        finalize_rule = (
+            "3. FREIO DE TESTE: se a seguradora for CONFIRMAR/ABRIR o serviço de fato (agendar, "
+            "'posso continuar', 'podemos confirmar', RESUMO final), responda exatamente: NAO_SEI — "
+            "este é um TESTE e o pedido NÃO pode ser aberto de verdade.\n"
+        )
     system = (
         f"Você conduz, EM NOME DA CORRETORA, um acionamento de assistência {linha_txt} no WhatsApp da "
         f"seguradora ({insurer_key}) que JÁ está em andamento. Pode ser a URA (menu numerado/botões) "
@@ -406,10 +463,15 @@ def client_summary_from_capture(session: Dict[str, Any]) -> Optional[str]:
     playbook = get_playbook(session.get("playbook_ref") or "") or {}
     lines: List[str] = []
     schedule = captured.get("schedule") or {}
-    if schedule:
+    if schedule and schedule.get("from"):
         lines.append(
             f"Prontinho! ✅ Sua assistência foi agendada para o dia {schedule.get('day')}, entre {schedule.get('from')} e {schedule.get('to')}."
         )
+    elif schedule and schedule.get("day"):
+        quando = f" às {schedule.get('at')}" if schedule.get("at") else ""
+        lines.append(f"Prontinho! ✅ Sua assistência foi agendada para o dia {schedule.get('day')}{quando}.")
+    elif captured.get("eta_minutes"):
+        lines.append(f"Prontinho! ✅ Sua assistência foi aberta — previsão de chegada em até {captured['eta_minutes']} minutos.")
     else:
         lines.append("Prontinho! ✅ Sua assistência foi aberta na seguradora.")
     lines.append(f"O número do atendimento é {captured['protocol']}.")

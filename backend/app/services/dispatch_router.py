@@ -18,6 +18,8 @@ from __future__ import annotations
 
 import json
 import logging
+import re
+import unicodedata
 from typing import Any, Callable, Dict, Optional
 
 from app.services.insurer_dispatch_service import (
@@ -32,7 +34,25 @@ from app.services.insurer_dispatch_service import (
 logger = logging.getLogger(__name__)
 
 _TTL_SECONDS = 6 * 3600
+_MONITOR_TTL_SECONDS = 24 * 3600  # updates da seguradora chegam por até ~1 dia
 _memory_store: Dict[str, str] = {}  # fallback p/ testes offline
+
+# Pós-protocolo: a seguradora manda updates espontâneos (HDI: "prestador a
+# caminho, faltam 30 min"; "agendada para 29/01 às 09:30"). Repassar AO CLIENTE
+# em tempo real = acompanhamento de verdade. Pesquisas/avaliações: ignorar.
+_MONITOR_FORWARD_RE = (
+    r"prestador(?:.{0,80})(?:a caminho|encontrad|realizar[áa]|chegada)|encontramos o prestador|"
+    r"agendad[ao] para|previs[ãa]o de chegada|faltam aproximadamente|procurando um prestador|"
+    r"foi aberta com sucesso|est[áa] a caminho"
+)
+_MONITOR_IGNORE_RE = (
+    r"pesquisa|avalie|sua opini[ãa]o|recomendaria|grau de satisfa[çc][ãa]o|nota"
+)
+
+
+def _norm(text: str) -> str:
+    normalized = unicodedata.normalize("NFKD", str(text or ""))
+    return "".join(ch for ch in normalized if not unicodedata.combining(ch)).lower()
 
 
 def _key(company_id: str, insurer_phone: str) -> str:
@@ -52,9 +72,10 @@ async def _redis():
 async def save_active_dispatch(company_id: str, insurer_phone: str, session: Dict[str, Any]) -> None:
     key = _key(company_id, insurer_phone)
     payload = json.dumps(session, ensure_ascii=False, default=str)
+    ttl = _MONITOR_TTL_SECONDS if str(session.get("state") or "") == "monitoring" else _TTL_SECONDS
     redis = await _redis()
     if redis is not None:
-        await redis.set(key, payload, ex=_TTL_SECONDS)
+        await redis.set(key, payload, ex=ttl)
     else:
         _memory_store[key] = payload
 
@@ -147,8 +168,9 @@ async def start_live_dispatch(
     if existing:
         # Sessão MORTA não pode bloquear um novo acionamento (teste 2026-07-10:
         # lock preso após a seguradora derrubar a conversa). Supersede quando:
-        # needs_human/captured, seguradora encerrou, ou sessão velha (>45min).
-        stale = str(existing.get("state") or "") in ("needs_human", "captured")
+        # needs_human/captured/test_aborted/monitoring, seguradora encerrou, ou
+        # sessão velha (>45min).
+        stale = str(existing.get("state") or "") in ("needs_human", "captured", "test_aborted", "monitoring")
         stale = stale or str(existing.get("reason") or "") == "insurer_closed"
         try:
             from datetime import datetime, timezone
@@ -202,6 +224,21 @@ async def try_route_insurer_inbound(
     if not session:
         return False
 
+    # MONITORING (pós-protocolo): nunca responde à seguradora; repassa os
+    # updates relevantes ao cliente e ignora pesquisas de satisfação.
+    if str(session.get("state") or "") == "monitoring":
+        norm = _norm(text)
+        session.setdefault("transcript", []).append({"direction": "in", "text": str(text)[:2000]})
+        if text.strip() and not re.search(_MONITOR_IGNORE_RE, norm) and re.search(_MONITOR_FORWARD_RE, norm):
+            client_phone = str(session.get("client_phone") or "").strip()
+            if client_phone:
+                try:
+                    send_to_client(client_phone, f"🔔 Atualização da sua assistência:\n{str(text).strip()[:600]}")
+                except Exception as e:  # noqa: BLE001
+                    logger.error(f"[DISPATCH ROUTER] monitor forward failed: {type(e).__name__}")
+        await save_active_dispatch(company_id, from_phone, session)
+        return True
+
     session = handle_insurer_message(session, text, sender=send_to_insurer)
     state = session.get("state")
 
@@ -225,6 +262,26 @@ async def try_route_insurer_inbound(
                 session["reason"] = f"human_phase_guard:{verdict['reason']}"
                 state = "needs_human"
 
+    if state == "test_aborted":
+        # Modo TESTE: fluxo executado até a confirmação final e CANCELADO — nada
+        # foi aberto na seguradora. Avisar quem está testando e manter a sessão
+        # no espelho para inspeção (supersede libera novo acionamento).
+        client_phone = str(session.get("client_phone") or "").strip()
+        if client_phone and not session.get("client_notified_test_abort"):
+            try:
+                send_to_client(
+                    client_phone,
+                    "🧪 Teste concluído: o acionamento na seguradora foi executado até a "
+                    "confirmação final e CANCELADO antes de abrir o serviço (modo teste). "
+                    "Nenhum prestador foi acionado.",
+                )
+                session["client_notified_test_abort"] = True
+            except Exception as e:  # noqa: BLE001
+                logger.error(f"[DISPATCH ROUTER] test abort notify failed: {type(e).__name__}")
+        await save_active_dispatch(company_id, from_phone, session)
+        logger.info(f"[DISPATCH ROUTER] test_aborted case={session.get('case_id')} reason={session.get('reason')}")
+        return True
+
     if state == "captured":
         summary = client_summary_from_capture(session)
         client_phone = str(session.get("client_phone") or "").strip()
@@ -234,8 +291,11 @@ async def try_route_insurer_inbound(
                 session["client_notified"] = True
             except Exception as e:  # noqa: BLE001
                 logger.error(f"[DISPATCH ROUTER] client notify failed: {type(e).__name__}")
-        await clear_active_dispatch(company_id, from_phone)
-        logger.info(f"[DISPATCH ROUTER] captured case={session.get('case_id')} protocol=***")
+        # Protocolo capturado → MONITORING: seguimos ouvindo a seguradora para
+        # repassar updates (prestador a caminho, agendamento) ao cliente.
+        session["state"] = "monitoring"
+        await save_active_dispatch(company_id, from_phone, session)
+        logger.info(f"[DISPATCH ROUTER] captured->monitoring case={session.get('case_id')} protocol=***")
         return True
 
     if state == "needs_human":

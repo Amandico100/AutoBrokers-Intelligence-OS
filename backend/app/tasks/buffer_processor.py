@@ -55,6 +55,7 @@ async def check_buffers():
                         await process_whatsapp_message_background(
                             payload_dict=buffer["payload"],
                             combined_message=combined_msg,
+                            buffered_messages=list(buffer.get("messages") or []),
                         )
 
                         logger.info(
