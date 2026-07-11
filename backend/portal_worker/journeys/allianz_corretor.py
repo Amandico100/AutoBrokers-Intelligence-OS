@@ -3341,6 +3341,58 @@ async def _download_carta_via_api_chain(page, item: Dict[str, Any], params: Dict
     return {"ok": True, "storage_path": path, "bytes": len(data), "via": "api_chain", "not_uploaded": True}
 
 
+async def _download_via_fresh_login(page, item: Dict[str, Any], params: Dict[str, Any], evidence: Dict[str, Any]) -> Optional[Dict[str, Any]]:
+    """A sessão restaurada tem os tokens JWT vencidos e o refresh também morreu
+    (job 2a53cbac). Como a SENHA está válida, um login LIMPO num contexto novo
+    mina tokens frescos. Abre contexto zerado -> login -> boota o ngx-azb-epac
+    (gera o token) -> roda a cadeia de API ali. Retorna o resultado ou None."""
+    username = str(params.get("username") or "").strip()
+    password = str(params.get("password") or "")
+    if not username or not password:
+        return None
+    browser = getattr(page.context, "browser", None)
+    if browser is None:
+        return None
+    ctx = None
+    try:
+        ctx = await browser.new_context(accept_downloads=True, locale="pt-BR", timezone_id="America/Sao_Paulo")
+        await ctx.add_init_script(
+            "(() => { const o = Element.prototype.setAttribute;"
+            " Element.prototype.setAttribute = function (n, v) { try { return o.call(this, n, v); } catch (e) {} }; })();"
+        )
+        p2 = await ctx.new_page()
+        fresh_params = dict(params)
+        fresh_params["session_loaded"] = False
+        fresh_params["force_login"] = True
+        login = await login_check(p2, fresh_params, evidence)
+        if getattr(login, "status", "") != "done":
+            evidence.setdefault("download_notes", []).append(
+                f"fresh-login falhou: {_clean_text(getattr(login, 'message', ''))[:70]}"
+            )
+            return None
+        # Boota o SPA autenticado para reemitir o access_token do micro-app.
+        try:
+            await p2.goto(ALLIANZ_PRIVATE_HOME, wait_until="domcontentloaded")
+            try:
+                await p2.wait_for_load_state("networkidle", timeout=12000)
+            except Exception:  # noqa: BLE001
+                pass
+            await p2.wait_for_timeout(3500)
+        except Exception:  # noqa: BLE001
+            pass
+        evidence["fresh_login_token"] = await _epac_token_age(p2)
+        return await _download_carta_via_api_chain(p2, item, params, evidence)
+    except Exception as e:  # noqa: BLE001
+        evidence.setdefault("download_notes", []).append(f"fresh-login excecao: {type(e).__name__}")
+        return None
+    finally:
+        if ctx is not None:
+            try:
+                await ctx.close()
+            except Exception:  # noqa: BLE001
+                pass
+
+
 async def _download_boletos(page, items: List[Dict[str, Any]], params: Dict[str, Any], evidence: Dict[str, Any]) -> List[Dict[str, Any]]:
     out: List[Dict[str, Any]] = []
     try:
@@ -3374,6 +3426,10 @@ async def _download_boletos_loop(page, items, params, evidence, auth_holder, out
             # CAMINHO PRIMÁRIO — cadeia de API (sem a busca visual quebrada):
             # busca por nome -> apólices (casa SUSEP) -> getListIni -> getDetail.
             api_res = await _download_carta_via_api_chain(page, item, params, evidence)
+            # Token da sessão restaurada costuma estar vencido: refaz num login
+            # limpo (contexto novo) que mina tokens frescos.
+            if not (api_res and api_res.get("ok")):
+                api_res = await _download_via_fresh_login(page, item, params, evidence)
             if api_res and api_res.get("ok"):
                 result.update(api_res)
                 out.append(result)
