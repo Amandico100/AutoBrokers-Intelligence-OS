@@ -8,6 +8,7 @@ from __future__ import annotations
 import re
 import html
 import base64
+import asyncio
 import binascii
 import unicodedata
 from pathlib import Path
@@ -3292,6 +3293,52 @@ async def _collect_inadimplentes_items(page, max_items: int, evidence: Dict[str,
     return items
 
 
+async def _grab_api_body(resp, url: str, sink: List[Dict[str, Any]]) -> None:
+    try:
+        if len(sink) >= 30:
+            return
+        body = await resp.text()
+        low = body.lower()
+        if not any(k in low for k in ("poliza", "apolice", "recibo", "inadimpl", "susep", "aplica")):
+            return
+        sink.append({
+            "url": url.split("allianznet.com.br", 1)[-1][:90],
+            "has_poliza": ("poliza" in low),
+            "snippet": body[:700],
+        })
+    except Exception:  # noqa: BLE001
+        pass
+
+
+def _install_api_capture(page, sink: List[Dict[str, Any]]) -> None:
+    """Captura respostas JSON da API do portal durante a navegação de
+    inadimplências — para descobrir se a `poliza` (nº interno) vem da API
+    mesmo sem aparecer na tabela renderizada (bypass da busca global quebrada)."""
+    def _on_response(resp):
+        try:
+            url = str(getattr(resp, "url", ""))
+            low = url.lower()
+            if "allianznet.com.br" not in low:
+                return
+            if any(x in low for x in (".js", ".css", ".png", ".jpg", ".gif", ".woff", ".svg", ".ico", "/assets/")):
+                return
+            ct = ""
+            try:
+                ct = (resp.headers or {}).get("content-type", "")
+            except Exception:  # noqa: BLE001
+                ct = ""
+            if "json" not in (ct or "").lower():
+                return
+            asyncio.ensure_future(_grab_api_body(resp, url, sink))
+        except Exception:  # noqa: BLE001
+            pass
+
+    try:
+        page.on("response", _on_response)
+    except Exception:  # noqa: BLE001
+        pass
+
+
 async def cobranca_sweep(page, params: Dict[str, Any], evidence: Dict[str, Any]) -> JourneyResult:
     """SPEC-023 P3: varre cobranca Allianz, extrai atrasados e baixa boletos quando possivel."""
     login = await login_check(page, params, evidence)
@@ -3315,6 +3362,10 @@ async def cobranca_sweep(page, params: Dict[str, Any], evidence: Dict[str, Any])
             f"login fresco (token EPAC vencido): {'ok' if did else 'falhou'}"
         )
 
+    # Captura a API de inadimplências (bypass da busca): procuramos a `poliza`.
+    api_capture: List[Dict[str, Any]] = []
+    _install_api_capture(page, api_capture)
+
     if not await _ensure_inadimplentes_page(page, params, evidence):
         try:
             from portal_worker.adaptive import _dump_dom
@@ -3336,6 +3387,8 @@ async def cobranca_sweep(page, params: Dict[str, Any], evidence: Dict[str, Any])
     evidence["inadimplentes_detail_rows_seen"] = 0
     evidence["inadimplentes_rows_seen"] = 0
     items = await _collect_inadimplentes_items(page, max_expand, evidence)
+    await page.wait_for_timeout(800)  # deixa os handlers de resposta assíncronos terminarem
+    evidence["api_capture"] = [c for c in api_capture if c.get("has_poliza")][:6] or api_capture[:6]
     evidence["inadimplentes_count"] = len(items)
     evidence["inadimplentes_sample"] = [
         {
