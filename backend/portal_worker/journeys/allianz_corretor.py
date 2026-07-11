@@ -2066,44 +2066,67 @@ def _looks_like_customer_page(text: str) -> bool:
     )
 
 
-async def _search_modal_rows(page) -> int:
+async def _search_modal_rows(page, name: str = "") -> int:
     """Nº de contas no modal 'Pesquisa de Cliente' (mesmo nome/CPF, ex.: Mônica
-    tem 2). 0 quando não há modal (cliente de conta única cai direto na página)."""
+    tem 2). Detecta pelo NOME do cliente em toda a página (o escopo por overlay
+    dava 0 mesmo com o modal aberto — job d848f1d9). 0 = sem modal."""
+    if not name:
+        return 0
     try:
         return int(await page.evaluate(
-            r"""() => {
+            r"""(name) => {
               const norm = s => (s||'').normalize('NFKD').replace(/[̀-ͯ]/g,'').toLowerCase().replace(/\s+/g,' ').trim();
-              const scope = document.querySelector('[role=dialog], .nx-modal__container, .cdk-overlay-container, [class*="modal"]');
-              if (!scope) return 0;
-              if (!norm(scope.innerText||'').includes('pesquisa de cliente')) return 0;
-              const skip = ['anterior','proximo','próximo','fechar','close','x'];
-              const links = [...scope.querySelectorAll('a, [role=button], td a, tr a')]
-                .filter(a => (a.offsetParent || a.getClientRects().length) && norm(a.innerText||a.textContent).length > 3
-                             && !skip.includes(norm(a.innerText||a.textContent)));
-              return links.length;
-            }"""
+              if (!norm(document.body.innerText||'').includes('pesquisa de cliente')) return 0;
+              const want = norm(name);
+              if (!want) return 0;
+              const vis = el => !!(el && (el.offsetParent || el.getClientRects().length));
+              const clickable = el => el.tagName === 'A' || el.getAttribute('role') === 'button'
+                || (getComputedStyle(el).cursor || '').includes('pointer') || !!el.closest('a');
+              const seen = new Set();
+              for (const el of document.querySelectorAll('a, [role=button], td, span, div')) {
+                if (!vis(el) || !clickable(el)) continue;
+                const t = norm(el.innerText || el.textContent || '');
+                if (t.includes(want) && t.length < want.length + 30) {
+                  seen.add(Math.round(el.getBoundingClientRect().top));
+                }
+              }
+              return seen.size;
+            }""",
+            name,
         ) or 0)
     except Exception:  # noqa: BLE001
         return 0
 
 
-async def _click_search_modal_row(page, index: int) -> bool:
-    """Clica na conta de índice `index` do modal 'Pesquisa de Cliente'."""
+async def _click_search_modal_row(page, name: str, index: int) -> bool:
+    """Clica na conta de índice `index` (de cima p/ baixo) do modal, casando
+    pelo NOME do cliente."""
+    if not name:
+        return False
     try:
         return bool(await page.evaluate(
-            r"""(index) => {
+            r"""({name, index}) => {
               const norm = s => (s||'').normalize('NFKD').replace(/[̀-ͯ]/g,'').toLowerCase().replace(/\s+/g,' ').trim();
-              const scope = document.querySelector('[role=dialog], .nx-modal__container, .cdk-overlay-container, [class*="modal"]');
-              if (!scope) return false;
-              const skip = ['anterior','proximo','próximo','fechar','close','x'];
-              const links = [...scope.querySelectorAll('a, [role=button], td a, tr a')]
-                .filter(a => (a.offsetParent || a.getClientRects().length) && norm(a.innerText||a.textContent).length > 3
-                             && !skip.includes(norm(a.innerText||a.textContent)));
-              if (!links[index]) return false;
-              links[index].click();
+              const want = norm(name);
+              const vis = el => !!(el && (el.offsetParent || el.getClientRects().length));
+              const clickable = el => el.tagName === 'A' || el.getAttribute('role') === 'button'
+                || (getComputedStyle(el).cursor || '').includes('pointer') || !!el.closest('a');
+              const byTop = new Map();
+              for (const el of document.querySelectorAll('a, [role=button], td, span, div')) {
+                if (!vis(el) || !clickable(el)) continue;
+                const t = norm(el.innerText || el.textContent || '');
+                if (t.includes(want) && t.length < want.length + 30) {
+                  const key = Math.round(el.getBoundingClientRect().top);
+                  if (!byTop.has(key)) byTop.set(key, el);
+                }
+              }
+              const sorted = [...byTop.entries()].sort((a,b)=>a[0]-b[0]).map(e=>e[1]);
+              const target = sorted[index];
+              if (!target) return false;
+              (target.querySelector('a') || target).click();
               return true;
             }""",
-            index,
+            {"name": name, "index": index},
         ))
     except Exception:  # noqa: BLE001
         return False
@@ -2115,10 +2138,10 @@ async def _resolve_customer_to_context(page, item: Dict[str, Any], params: Dict[
     (modal, ex.: Mônica) — tenta cada conta e fica com a que casa a SUSEP da
     inadimplência (âncora estável), pois nome/CPF são iguais nas duas. Se
     nenhuma casar, devolve False para o caller escalar."""
-    rows = await _search_modal_rows(page)
+    name = _clean_text((item or {}).get("cliente_nome"))
+    rows = await _search_modal_rows(page, name)
     if rows >= 1:
         evidence.setdefault("download_notes", []).append(f"modal com {rows} conta(s) do cliente — buscando a da apólice em atraso")
-        name = _clean_text((item or {}).get("cliente_nome"))
         for ri in range(min(rows, 6)):
             if ri > 0:
                 # O modal fecha ao clicar numa conta; reabre a busca para a próxima.
@@ -2126,9 +2149,9 @@ async def _resolve_customer_to_context(page, item: Dict[str, Any], params: Dict[
                     break
                 await _click_search_category_for_term(page, name, item)
                 await page.wait_for_timeout(1200)
-                if await _search_modal_rows(page) <= ri:
+                if await _search_modal_rows(page, name) <= ri:
                     break
-            if not await _click_search_modal_row(page, ri):
+            if not await _click_search_modal_row(page, name, ri):
                 continue
             await page.wait_for_timeout(3500)
             if await _open_policy_detail_from_customer(page, item, evidence):
@@ -2682,11 +2705,13 @@ async def _open_policy_context_for_item(page, item: Dict[str, Any], params: Dict
             # Cliente' (Mônica) e a página do cliente demoram a renderizar no VPS.
             # Ordem de decisão: modal multi-conta > página do cliente > contexto
             # de apólice > 'sem resultados' de verdade (com o texto capturado).
+            term_name = _clean_text((item or {}).get("cliente_nome"))
             outcome = ""
             for _ in range(14):
                 await page.wait_for_timeout(500)
                 full = await _all_body_text(page)
-                if await _search_modal_rows(page) >= 1:
+                # Modal multi-conta primeiro (casa pelo NOME em toda a página).
+                if await _search_modal_rows(page, term_name) >= 1:
                     outcome = "modal"
                     break
                 if _looks_like_customer_page(full):
@@ -2695,7 +2720,8 @@ async def _open_policy_context_for_item(page, item: Dict[str, Any], params: Dict
                 if _looks_like_policy_context(full) or _looks_like_recibos_list(full):
                     outcome = "contexto"
                     break
-                if search_result_is_empty(full):
+                # Só é 'vazio' se o portal disse que não achou E não há modal.
+                if search_result_is_empty(full) and await _search_modal_rows(page, term_name) == 0:
                     outcome = "vazio"
                     break
             if outcome == "vazio":
@@ -2733,11 +2759,21 @@ async def _open_policy_context_for_item(page, item: Dict[str, Any], params: Dict
             # Higiene entre termos: dialogo residual da tentativa anterior não pode
             # contaminar a próxima busca.
             await _dismiss_blocking_modal(page)
-        # Todos os termos falharam nesta passada. Uma única vez: relogin fresco
-        # (sessão restaurada degrada a busca — ver _relogin_fresh) e repete.
-        if attempt == 0 and await _relogin_fresh(page, params, evidence):
-            evidence.setdefault("download_notes", []).append("repetindo busca apos relogin fresco")
-            continue
+        # Todos os termos falharam nesta passada. Refresh SUAVE (volta à home
+        # SEM deslogar — o relogin com clear de cookies deixava o worker na tela
+        # de login pelo resto do job, job d848f1d9) e repete a busca uma vez.
+        if attempt == 0:
+            try:
+                await page.goto(ALLIANZ_PRIVATE_HOME, wait_until="domcontentloaded")
+                try:
+                    await page.wait_for_load_state("networkidle", timeout=10000)
+                except Exception:  # noqa: BLE001
+                    pass
+                await page.wait_for_timeout(3000)
+                evidence.setdefault("download_notes", []).append("repetindo busca apos refresh suave (home)")
+                continue
+            except Exception:  # noqa: BLE001
+                pass
         break
     evidence.setdefault("download_notes", []).append("contexto da apolice nao abriu")
     return False

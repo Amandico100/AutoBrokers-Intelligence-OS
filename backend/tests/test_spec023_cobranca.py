@@ -386,8 +386,12 @@ def run():
 
     _ctx_src = _insp_ctx.getsource(allianz_corretor._open_policy_context_for_item)
     check(
-        "busca tenta de novo apos relogin fresco (2 passadas)",
-        "_relogin_fresh" in _ctx_src and "range(2)" in _ctx_src,
+        "busca faz 2 passadas com refresh SUAVE (nao desloga o worker)",
+        "range(2)" in _ctx_src and "ALLIANZ_PRIVATE_HOME" in _ctx_src and "_relogin_fresh" not in _ctx_src,
+    )
+    check(
+        "busca so trata 'vazio' quando nao ha modal de cliente",
+        "_search_modal_rows" in _ctx_src and "search_result_is_empty" in _ctx_src,
     )
     _fill_src = _insp_ctx.getsource(allianz_corretor._fill_global_search_for_category)
     check(
