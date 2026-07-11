@@ -323,6 +323,32 @@ def run():
         "BFF valida que o conteudo e PDF (%PDF)",
         "%PDF" in _insp_fg.getsource(allianz_corretor._download_carta_bff),
     )
+    # Cadeia de API completa (headers reais do founder 2026-07-11) — caminho primário.
+    check(
+        "existe cadeia de API (busca->apolices->getListIni->getDetail)",
+        callable(getattr(allianz_corretor, "_download_carta_via_api_chain", None)),
+    )
+    _chain = getattr(allianz_corretor, "_API_CHAIN_JS", "")
+    check(
+        "cadeia usa getCustomersName (busca por nome via API)",
+        "searchEngine/getCustomersName" in _chain and "textSearch" in _chain,
+    )
+    check(
+        "cadeia pega apolices por clientId e casa pela policySusep",
+        "customerPositonPolicies/policies/" in _chain and "policySusep" in _chain,
+    )
+    check(
+        "cadeia usa o x-rws-rootapp certo p/ cada BFF (azb-epac x file-management)",
+        "ngx-azb-epac" in _chain and "spa-file-management" in _chain,
+    )
+    check(
+        "cadeia fecha com getDetail tipoDoc I -> imagen",
+        "getDetail" in _chain and "tipoDoc:'I'" in _chain and "imagen" in _chain,
+    )
+    check(
+        "loop de download tenta a cadeia de API ANTES da navegacao visual",
+        "_download_carta_via_api_chain" in _insp_fg.getsource(allianz_corretor._download_boletos_loop),
+    )
     # Navegação resiliente da busca (prints 'OS 3 EXEMPLOS' 2026-07-10).
     check(
         "busca espera o popover de categorias abrir (Angular)",
