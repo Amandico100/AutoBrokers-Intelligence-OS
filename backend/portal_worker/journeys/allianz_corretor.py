@@ -3156,14 +3156,19 @@ async ({name, susep, agentFallback, userFallback}) => {
     const m = String(raw).match(/eyJ[A-Za-z0-9_\-]+\.[A-Za-z0-9_\-]+\.[A-Za-z0-9_\-]+/);
     return m ? m[0] : '';
   };
+  const decodeExp = t => { try { return JSON.parse(atob((String(t).split('.')[1]||'').replace(/-/g,'+').replace(/_/g,'/'))).exp || 0; } catch(e){ return 0; } };
   const shellTok = readTok('STORAGE_NGX-AZB-EPAC::access_token');
   const plainTok = readTok('access_token');
-  const azbTok = shellTok || plainTok;
-  const fmTok = plainTok || shellTok;
+  // Usa o token MAIS FRESCO (maior exp) para TODAS as chamadas. O do shell
+  // costuma vir vencido na sessão restaurada (job eb2c2764: 'Access token
+  // expired'), enquanto o plano está válido (~24h). É o mesmo tipo de token.
+  const cands = [shellTok, plainTok].filter(Boolean).sort((a,b) => decodeExp(b) - decodeExp(a));
+  const bestTok = cands[0] || '';
+  const azbTok = bestTok, fmTok = bestTok;
   out.azb_tok_len = azbTok.length; out.fm_tok_len = fmTok.length;
   let epacBroker = '', uname = '';
   try {
-    const p = JSON.parse(atob((String(azbTok).split('.')[1] || '').replace(/-/g, '+').replace(/_/g, '/')));
+    const p = JSON.parse(atob((String(bestTok).split('.')[1] || '').replace(/-/g, '+').replace(/_/g, '/')));
     epacBroker = String(p['epac-broker'] || p['userid'] || '');
     uname = String(p['user_name'] || '');
     out.azb_exp = p.exp; out.now = Math.floor(Date.now()/1000);
