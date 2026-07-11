@@ -104,7 +104,7 @@ def run():
     check("porto/auto resolve playbook", pb.resolve_playbook_ref("Porto Seguro", "auto") == "porto-auto-whatsapp@v1")
     check("hdi/auto resolve playbook", pb.resolve_playbook_ref("HDI", "auto") == "hdi-auto-whatsapp@v1")
     check("allianz/auto resolve playbook", pb.resolve_playbook_ref("Allianz", "auto") == "allianz-auto-whatsapp@v1")
-    check("Liberty normaliza para Yelum", pb.resolve_playbook_ref("Liberty Seguros", "auto") == "yelum-auto-whatsapp@v2")
+    check("Liberty normaliza para Yelum", pb.resolve_playbook_ref("Liberty Seguros", "auto") == "yelum-auto-whatsapp@v3")
     check("Azul tem chave propria (nao Porto)", pb.normalize_insurer_key("Azul") == "azul")
     check("allianz residencial ainda resolve", pb.resolve_playbook_ref("allianz", "residencial") == "allianz-residencial-whatsapp@v1")
     check("seguradora desconhecida -> None", pb.resolve_playbook_ref("SeguradoraX", "auto") is None)
@@ -173,7 +173,9 @@ def run():
     sh = dispatch.handle_insurer_message(sh, "O numero de telefone 48999990000 esta correto? Botao 1: Sim Botao 2: Nao")
     check("hdi telefone 'esta correto' NAO e freio (era FALSO freio)", sh["state"] != "test_aborted" and _outs(sh)[-1] == "Sim", (sh.get("state"), _outs(sh)[-1:]))
     sh = dispatch.handle_insurer_message(sh, "Voce confirma o endereco? Botao 1: Sim Botao 2: Nao Botao 3: Voltar")
-    check("FREIO teste hdi: confirma endereco cancela (Sair)", sh["state"] == "test_aborted" and _outs(sh)[-1] == "Sair", (sh.get("state"), _outs(sh)[-1:]))
+    check("hdi confirma endereco e PASSO (fluxo real segue ate destino)", sh["state"] != "test_aborted" and _outs(sh)[-1] == "Sim", (sh.get("state"), _outs(sh)[-1:]))
+    sh = dispatch.handle_insurer_message(sh, "Voce quer o atendimento para agora ou prefere agendar para outro momento? Botao 1: Agora Botao 2: Agendar")
+    check("FREIO teste hdi: 'agora ou agendar' cancela (Sair) - ponto de nao-retorno", sh["state"] == "test_aborted" and _outs(sh)[-1] == "Sair", (sh.get("state"), _outs(sh)[-1:]))
     check("hdi captura protocolo", dispatch.handle_insurer_message(
         dispatch.start_dispatch(dispatch.new_dispatch_session(case_id="h2", company_id="co", playbook_ref="hdi-auto-whatsapp@v1", subservice="guincho", slots=AUTO_SLOTS)),
         HDI["retorno"]).get("captured", {}).get("protocol") == "7852514")
@@ -277,7 +279,7 @@ def run():
 
     # ===================== YELUM v2 (fluxo real minerado 2023→2026) =====================
     y_slots = {**AUTO_SLOTS}
-    sy = dispatch.new_dispatch_session(case_id="y1", company_id="co", playbook_ref="yelum-auto-whatsapp@v2", subservice="guincho", slots=y_slots)
+    sy = dispatch.new_dispatch_session(case_id="y1", company_id="co", playbook_ref="yelum-auto-whatsapp@v3", subservice="guincho", slots=y_slots)
     check("yelum guincho -> 'Pane ou Defeito'", sy["slots"].get("servico_opcao") == "Pane ou Defeito", sy["slots"].get("servico_opcao"))
     check("yelum injeta cor default 'nao sei'", sy["slots"].get("veiculo_cor") == "não sei")
     sy = dispatch.start_dispatch(sy)
@@ -317,17 +319,20 @@ def run():
     sy = dispatch.handle_insurer_message(sy, "Deseja continuar este atendimento? Botão 1: Sim Botão 2: Não")
     check("yelum deseja continuar -> Sim", _outs(sy)[-1] == "Sim", _outs(sy)[-1:])
     sy = dispatch.handle_insurer_message(sy, "Certo! Agora preciso que você informe para onde devemos levar o veículo. Qual dessas opções você prefere? Botão 1: Digitar endereço Botão 2: Informar o CEP")
-    check("FREIO teste yelum: destino do guincho cancela (abre sozinha depois)",
+    check("yelum destino agora e PASSO (fluxo real 16/03/2026: Digitar endereco)",
+          sy["state"] != "test_aborted" and _outs(sy)[-1] == "Digitar endereço", (sy.get("state"), _outs(sy)[-1:]))
+    sy = dispatch.handle_insurer_message(sy, "Você quer o atendimento para agora ou prefere agendar para outro momento? Botão 1: Agora Botão 2: Agendar Botão 3: Voltar")
+    check("FREIO teste yelum: 'agora ou agendar' cancela (ponto de nao-retorno real)",
           sy["state"] == "test_aborted" and _outs(sy)[-1] == "Sair", (sy.get("state"), _outs(sy)[-1:]))
 
     # Encerramento pela seguradora -> needs_human/insurer_closed (libera lock)
-    sc = dispatch.new_dispatch_session(case_id="y2", company_id="co", playbook_ref="yelum-auto-whatsapp@v2", subservice="guincho", slots=y_slots)
+    sc = dispatch.new_dispatch_session(case_id="y2", company_id="co", playbook_ref="yelum-auto-whatsapp@v3", subservice="guincho", slots=y_slots)
     sc = dispatch.start_dispatch(sc)
     sc = dispatch.handle_insurer_message(sc, "Sua resposta não corresponde a nossa pergunta. Por isso, esta conversa será encerrada. Seguimos à disposição.")
     check("seguradora encerrou -> insurer_closed", sc["state"] == "needs_human" and sc.get("reason") == "insurer_closed", sc.get("reason"))
 
     # LOOP GUARD: 3a repeticao identica vira needs_human (incidente CPF 4x)
-    sl = dispatch.new_dispatch_session(case_id="y3", company_id="co", playbook_ref="yelum-auto-whatsapp@v2", subservice="guincho", slots=y_slots)
+    sl = dispatch.new_dispatch_session(case_id="y3", company_id="co", playbook_ref="yelum-auto-whatsapp@v3", subservice="guincho", slots=y_slots)
     sl = dispatch.start_dispatch(sl)
     cpf_msg = "Para começar, me informe somente o CPF ou CNPJ do títular da apólice."
     sl = dispatch.handle_insurer_message(sl, cpf_msg)
