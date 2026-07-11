@@ -158,7 +158,8 @@ def run():
     # ---- P5: plano dry-run para a tool do atendente ----
     print("\n== P5 - build_dry_run_plan + tool do atendente ==\n")
     plan = dispatch.build_dry_run_plan(REF, "eletricista", SLOTS)
-    check("P5: plano dry-run completo", plan["ok"] and len(plan["steps"]) == 10, plan.get("steps"))
+    check("P5: plano dry-run completo (15 passos: URA 2026 + multi-cliente + confirmação)",
+          plan["ok"] and len(plan["steps"]) == 15, plan.get("steps"))
     check("P5: plano contém CPF e opção de serviço", any(s["reply"] == "11122233344" for s in plan["steps"]) and plan["steps"][-1]["reply"] == "1", plan["steps"])
     check("P5: nota deixa claro o modo simulação", "SIMULA" in plan["note"].upper(), plan["note"])
     plan_missing = dispatch.build_dry_run_plan(REF, "eletricista", {"titular_cpf": "111"})
@@ -203,7 +204,9 @@ def run():
             # Retorno com protocolo -> cliente é avisado e sessão encerra.
             await router.try_route_insurer_inbound(text=URA["retorno"], **kw)
             check("P6: cliente avisado com protocolo/senha/agendamento", len(to_client) == 1 and "46078656" in to_client[0][1] and to_client[0][0] == "5548911112222", to_client)
-            check("P6: sessão encerrada após captura", await router.load_active_dispatch("co-R", "551140901444") is None)
+            monitored = await router.load_active_dispatch("co-R", "551140901444")
+            check("P6: após captura a sessão vira MONITORING (repassa updates ao cliente)",
+                  monitored is not None and monitored.get("state") == "monitoring", monitored and monitored.get("state"))
 
             # needs_human: cliente recebe aviso humano e sessão pausa.
             s2 = dispatch.new_dispatch_session(case_id="cH", company_id="co-R", playbook_ref=REF, subservice="chaveiro", slots=SLOTS)

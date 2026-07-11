@@ -330,7 +330,8 @@ async def _forward_to_attendance_bridge(
 # MAIN BACKGROUND TASK
 # ==============================================================================
 async def process_whatsapp_message_background(
-    payload_dict: dict, combined_message: Optional[str] = None
+    payload_dict: dict, combined_message: Optional[str] = None,
+    buffered_messages: Optional[list] = None,
 ):
     """Processa mensagem WhatsApp em background (Evita bloqueio do Webhook)"""
     try:
@@ -401,14 +402,24 @@ async def process_whatsapp_message_background(
                     logger.error(f"[WEBHOOK] human phase LLM failed: {type(e).__name__}")
                     return None
 
-            handled = await try_route_insurer_inbound(
-                company_id=str(company_id),
-                from_phone=str(payload.phone or ""),
-                text=str(payload.text.message if payload.text and payload.text.message else ""),
-                send_to_insurer=_send_to_insurer,
-                send_to_client=_send_to_client,
-                human_reply_provider=_human_reply_provider,
-            )
+            # A URA manda RAJADAS (menu em 2-3 mensagens): o buffer junta, mas o
+            # motor precisa ver CADA mensagem em ordem — a última pode ser filler
+            # ("aguarde") e o menu real estar na primeira.
+            _dispatch_texts = [m for m in (buffered_messages or []) if str(m or "").strip()]
+            if not _dispatch_texts and payload.text and payload.text.message:
+                _dispatch_texts = [payload.text.message]
+            handled = False
+            for _msg in _dispatch_texts or [""]:
+                handled = await try_route_insurer_inbound(
+                    company_id=str(company_id),
+                    from_phone=str(payload.phone or ""),
+                    text=str(_msg or ""),
+                    send_to_insurer=_send_to_insurer,
+                    send_to_client=_send_to_client,
+                    human_reply_provider=_human_reply_provider,
+                ) or handled
+                if not handled:
+                    break  # sem sessão ativa para este número — segue fluxo normal
             if handled:
                 logger.info("[WEBHOOK] inbound routed to dispatch engine (insurer conversation)")
                 return

@@ -3,8 +3,17 @@
 Um playbook descreve como acionar a seguradora em um canal:
 - fase URA: âncoras de menu → respostas determinísticas (sem LLM);
 - dados mínimos por subserviço (slots);
-- âncoras de captura (protocolo, senha, agendamento);
+- âncoras de captura (protocolo, senha, agendamento, ETA);
 - gatilhos de handoff (fail-safe: passo desconhecido NUNCA responde às cegas).
+
+FREIO (decisão do founder 2026-07-11): `finalize_anchors` detecta o passo em que a
+seguradora vai CONFIRMAR/ABRIR o serviço de verdade. Ele existe SÓ para o modo
+TESTE (a IA executa o fluxo inteiro e CANCELA antes de abrir — nada de acionamento
+de mentira). Em modo LIVE (corredor validado) o freio não trava: o passo de
+confirmação é respondido pelos próprios ura_steps e o fluxo completa ponta a ponta
+sem humano. `finalize_abort_reply` = como cancelar educadamente no modo teste
+(vazio = silêncio; a URA encerra por inatividade). Humano só em sinistro,
+sem-corredor ou travamento real.
 
 Seed v1: Allianz Residencial WhatsApp — minerado da conversa real da corretora
 com a Allianz Assistência 24h (fluxo comprovado, valores sintéticos).
@@ -46,10 +55,31 @@ ALLIANZ_RESIDENCIAL_WHATSAPP_V1: Dict[str, Any] = {
             "notes": "1-Auto 2-Residência/Empresa/Condomínio 3-Vida 4-Viagem 5-Outros",
         },
         {
+            "step": "menu_solicitar_para",
+            "anchor": r"solicitar servi[çc]os de assist[êe]ncia para:",
+            "reply": "1",
+            "notes": "URA 2026: 1-Residência 2-Condomínio 3-Empresa",
+        },
+        {
             "step": "menu_qual_seguro",
             "anchor": r"qual o seguro que deseja utilizar",
             "reply": "1",
             "notes": "1-Residência/Condomínio/Empresa 2-Auto com serviços residenciais",
+        },
+        {
+            # A URA lembra o CPF do ÚLTIMO atendimento (o WhatsApp é da corretora,
+            # atende N clientes) — SEMPRE re-identificar para nunca acionar na
+            # apólice do cliente anterior.
+            "step": "cpf_anterior",
+            "anchor": r"em nossa [úu]ltima conversa,? utilizamos o cpf",
+            "reply": "2",
+            "notes": "1-Sim (continuar com o CPF anterior) 2-Não, inserir outro CPF/CNPJ",
+        },
+        {
+            "step": "atendimento_recente",
+            "anchor": r"atendimento realizado recentemente",
+            "reply": "2",
+            "notes": "1-Sim, mesmo atendimento 2-Não, abrir novo serviço",
         },
         {
             "step": "pedir_cpf",
@@ -94,6 +124,20 @@ ALLIANZ_RESIDENCIAL_WHATSAPP_V1: Dict[str, Any] = {
             "requires": ["tipo_servico_opcao"],
             "notes": "1=casa (encanador/eletricista/chaveiro) · 2=eletrodomésticos · 3=outros",
         },
+        {
+            "step": "complemento_referencia",
+            "anchor": r"informe o complemento do endere[çc]o",
+            "reply": "{ponto_referencia}",
+            "notes": "URA 2026 pede complemento/referência (texto livre); 'não' aceito",
+        },
+        {
+            # Confirmação FINAL (RESUMO → 'Podemos confirmar o atendimento?').
+            # Só é alcançada em modo LIVE — em modo teste o freio cancela antes.
+            "step": "confirmar_atendimento",
+            "anchor": r"podemos confirmar o atendimento",
+            "reply": "1",
+            "notes": "1-Sim 2-Não, reiniciar 3/0-Sair",
+        },
     ],
     # Subserviços -> slots mínimos (do caso) antes de iniciar o acionamento.
     "subservices": {
@@ -121,10 +165,16 @@ ALLIANZ_RESIDENCIAL_WHATSAPP_V1: Dict[str, Any] = {
         "responda agendamento com o período preferido do cliente (manhã 9-13 / tarde 13-18, a partir do próximo dia útil). "
         "Use SOMENTE dados do caso. Nunca invente. Se pedirem algo que não está no caso, registre pendência e pare."
     ),
-    # Âncoras de captura no retorno da seguradora.
+    # FREIO (modo teste): a URA residencial 2026 completa TUDO sozinha até o
+    # protocolo — sem estas âncoras a LLM confirmaria um serviço real no teste.
+    "finalize_anchors": [
+        r"podemos confirmar o atendimento", r"posso confirmar", r"deseja confirmar",
+    ],
+    "finalize_abort_reply": "SAIR",  # a URA aceita SAIR a qualquer momento
+    # Âncoras de captura no retorno da seguradora (formatos 2024 E 2026).
     "capture_anchors": {
-        "protocol": r"n[úu]mero da assist[êe]ncia [ée]\s*:?\s*(\d{5,12})",
-        "password": r"senha de acesso.*?(\d{4})",
+        "protocol": r"(?:n[úu]mero (?:da assist[êe]ncia|de protocolo) [ée]|protocolo)\s*:?\s*\*?(\d{5,12})",
+        "password": r"senha (?:de acesso|ser[áa]).*?(\d{4})",
         "schedule": r"agendad[ao] para o dia\s*(\d{1,2}(?:/\d{1,2}(?:/\d{2,4})?)?)\s*,?\s*entre\s*(\d{1,2}h)\s*e\s*(\d{1,2}h)",
     },
     # Regras fixas a repassar ao cliente junto do agendamento.
@@ -195,9 +245,12 @@ _AUTO_HUMAN_PHASE_GUIDANCE = (
 
 # Captura comum de protocolo/OS + link de acompanhamento (auto).
 # O grupo aceita dígitos com hífen: a Azul emite "protocolo ... 1-104106503215".
+# HDI emite "a solicitação de GUINCHO para a assistência *9257546* foi aberta".
+# Zurich agenda com "prevista para o dia X às Y"; Porto/Allianz dão ETA em minutos.
 _AUTO_CAPTURE_ANCHORS = {
-    "protocol": r"(?:protocolo(?:\s+de\s+atendimento)?|n[úu]mero\s+da\s+(?:ordem|os|solicita[çc][ãa]o)|o\.?s\.?)[^\d]{0,24}(\d[\d-]{4,18}\d)",
-    "schedule": r"agendad?[ao]?\s+para\s+(?:o\s+dia\s+)?(\d{1,2}/\d{1,2}/\d{2,4})(?:\s*(?:[àa]s|,)?\s*(\d{1,2}[:h]\d{0,2}))?",
+    "protocol": r"(?:protocolo(?:\s+de\s+atendimento)?|n[úu]mero\s+da\s+(?:ordem|os|solicita[çc][ãa]o)|para a assist[êe]ncia|sobre sua assist[êe]ncia|o\.?s\.?)[^\d]{0,24}(\d[\d-]{4,18}\d)",
+    "schedule": r"(?:agendad?[ao]?|prevista?)\s+para\s+(?:o\s+dia\s+)?\*?(\d{1,2}/\d{1,2}/\d{2,4})\*?(?:\s*(?:[àa]s|,)?\s*\*?(\d{1,2}[:h]\d{0,2}))?",
+    "eta": r"(?:previs[ãa]o(?:\s+de\s+chegada)?\s*:?|previsto para ser realizado[^\n]{0,20}?em|em at[ée])\s*(?:at[ée]\s+)?(\d{1,3})\s*min",
     "tracking_link": r"(https?://\S+)",
 }
 
@@ -241,84 +294,181 @@ def _auto_playbook(insurer_key: str, contact_ref: str, ura_steps, finalize_ancho
     }
 
 
-# --- Allianz auto (número 1140901444 já configurado p/ residencial; menu Auto) --
+# --- Allianz auto (fluxo REAL 05/03/2026 minerado por completo) --------------------
+_ALLIANZ_FAMILY_AUTO_STEPS = [
+    # Família Allianz/Alfa (mesmo fornecedor de bot): URA numerada.
+    {"step": "cpf_anterior", "anchor": r"em nossa [úu]ltima conversa,? utilizamos o cpf", "reply": "2",
+     "notes": "URA lembra o CPF do último atendimento — SEMPRE re-identificar (2=inserir outro)"},
+    {"step": "atendimento_recente", "anchor": r"atendimento realizado recentemente", "reply": "2",
+     "notes": "1-mesmo atendimento 2-abrir novo serviço"},
+    {"step": "pedir_cpf", "anchor": r"digite o \*?cpf\*? ou \*?cnpj\*? do\(a\)? titular", "reply": "{titular_cpf}",
+     "requires": ["titular_cpf"]},
+    {"step": "pedir_placa", "anchor": r"preciso da \*?placa\*? do ve[íi]culo", "reply": "{veiculo_placa}",
+     "requires": ["veiculo_placa"]},
+    {"step": "confirmar_veiculo", "anchor": r"confirme o ve[íi]culo para atendimento", "reply": "1",
+     "notes": "1 = veículo achado pela placa informada; 2-Outro veículo 0-Sair"},
+    {"step": "confirmar_telefone", "anchor": r"deseja adicionar outro n[úu]mero", "reply": "{telefone_adicionar_opcao}",
+     "requires": ["telefone_adicionar_opcao"], "notes": "1=Sim (informa telefone_contato) 2=Não (usa o registrado)"},
+    {"step": "informar_telefone", "anchor": r"informe \*?o n[úu]mero de celular completo\*? com ddd",
+     "reply": "{telefone_contato}", "requires": ["telefone_contato"]},
+    {"step": "telefone_anotado", "anchor": r"anotei seu n[úu]mero", "reply": "1"},
+    {"step": "tipo_veiculo", "anchor": r"seu ve[íi]culo [ée]:\s*\|?\s*\*?1\s*-\s*automotor", "reply": "1",
+     "notes": "1-automotor(combustão/híbrido) 2-elétrico. Default 1; caso elétrico, adaptativo"},
+    {"step": "menu_servico_auto", "anchor": r"o que voc[êe] precisa\??\s*\|?\s*\*?1", "reply": "{servico_opcao}",
+     "requires": ["servico_opcao"],
+     "notes": "1-pane elétrica/bateria 3-guincho pane mecânica 4-guincho sinistro 6-pneu 7-chaveiro"},
+    {"step": "quando", "anchor": r"para quando precisa do \*?(?:reboque|guincho|servi[çc]o|profissional)", "reply": "1",
+     "notes": "1-Agora 2-Agendar; urgência é o default do corredor"},
+    {"step": "oferta_mecanico", "anchor": r"continuar com a solicita[çc][ãa]o do guincho", "reply": "2",
+     "notes": "URA oferece mecânico no lugar do guincho — o serviço é o que o CLIENTE pediu (2=continuar guincho)"},
+    {"step": "rodas_travadas", "anchor": r"rodas? travadas?", "reply": "2",
+     "notes": "default Não (2); se o caso indicar roda travada, o adaptativo assume"},
+    {"step": "acesso_reboque", "anchor": r"local que o reboque consegue acessar", "reply": "1",
+     "notes": "1-Sim; se o caso indicar acesso difícil, o adaptativo assume"},
+    {"step": "pcd_criancas", "anchor": r"pessoa com defici[êe]ncia, crian[çc]a, gestante ou idoso", "reply": "2",
+     "notes": "default Não; se houver no caso, o adaptativo assume"},
+    {"step": "referencia_local", "anchor": r"informe uma refer[êe]ncia do local", "reply": "{ponto_referencia}",
+     "notes": "texto livre; default 'não tem'"},
+    {"step": "confirmar_atendimento", "anchor": r"podemos confirmar o atendimento", "reply": "1",
+     "notes": "confirmação FINAL (RESUMO). Só alcançada em modo LIVE — no teste o freio cancela antes."},
+]
+_ALLIANZ_FAMILY_FINALIZE = [
+    # Texto REAL 2026: RESUMO → "Podemos confirmar o atendimento?"
+    r"podemos confirmar o atendimento",
+    r"dados a seguir est[ãa]o corretos", r"posso confirmar", r"deseja confirmar",
+    r"confirm\w* (?:o|a) (?:agendamento|abertura|solicita)",
+]
+
 ALLIANZ_AUTO_WHATSAPP_V1 = _auto_playbook(
     "allianz", "allianz_assistencia_24h",
     ura_steps=[
         {"step": "menu_tipo_seguro", "anchor": r"assist[êe]ncia 24h para qual seguro", "reply": "1",
          "notes": "1-Auto/Moto/Caminhão 2-Residência 3-Vida 4-Viagem 5-Outros → Auto"},
-        {"step": "pedir_cpf", "anchor": r"digite o \*?cpf\*? ou \*?cnpj\*? do\(a\)? titular", "reply": "{titular_cpf}",
-         "requires": ["titular_cpf"]},
-        {"step": "menu_servico_auto", "anchor": r"o que voc[êe] precisa\??\s*\|?\s*\*?1", "reply": "{servico_opcao}",
-         "requires": ["servico_opcao"],
-         "notes": "1-pane elétrica/bateria 3-guincho pane mecânica 4-guincho sinistro 6-pneu 7-chaveiro"},
-        {"step": "tipo_veiculo", "anchor": r"seu ve[íi]culo [ée]:\s*\|?\s*\*?1\s*-\s*automotor", "reply": "1",
-         "notes": "1-automotor(combustão/híbrido) 2-elétrico. Default 1; caso elétrico, slot veiculo_eletrico=2"},
-    ],
-    finalize_anchors=[
-        r"dados a seguir est[ãa]o corretos", r"posso confirmar", r"deseja confirmar",
-        r"confirm\w* (?:o|a) (?:agendamento|abertura|solicita)",
-    ],
+    ] + [dict(s) for s in _ALLIANZ_FAMILY_AUTO_STEPS],
+    finalize_anchors=list(_ALLIANZ_FAMILY_FINALIZE),
 )
 ALLIANZ_AUTO_WHATSAPP_V1["subservice_menu_map"] = {
     "guincho": "3", "bateria": "1", "pneu": "6", "chaveiro": "7",
 }
+ALLIANZ_AUTO_WHATSAPP_V1["finalize_abort_reply"] = "SAIR"  # URA aceita SAIR a qualquer momento
 
-# --- Porto (URA numerada, muito forte no acervo) --------------------------------
+# --- Porto (fluxo REAL 25/03/2026: listas/botões — responder o RÓTULO; números
+# são REJEITADOS: "Não entendi sua resposta. Selecione o botão abaixo") ----------
 PORTO_AUTO_WHATSAPP_V1 = _auto_playbook(
     "porto", "porto_assistencia_24h",
     ura_steps=[
-        {"step": "pedir_cpf", "anchor": r"informe o \*?cpf ou cnpj\*? do\(a\)? titular", "reply": "{titular_cpf}",
-         "requires": ["titular_cpf"]},
+        # A URA lembra o último cliente e abre saudando ele pelo nome. 1ª vez que o
+        # menu raiz aparecer: re-identificar ("Informar outro CPF/CNPJ"); quando ele
+        # reaparecer (já com NOSSO cliente), seguir para "Seguro Auto" (reply_repeat).
+        {"step": "menu_raiz", "anchor": r"escolha a op[çc][ãa]o desejada",
+         "reply": "Informar outro CPF/CNPJ", "reply_repeat": "Seguro Auto",
+         "notes": "menu raiz por rótulo; nunca acionar no CPF lembrado do cliente anterior"},
+        {"step": "pedir_cpf", "anchor": r"(?:informe|digite) o (?:seu )?\*?cpf ou cnpj\*?", "reply": "{titular_cpf}",
+         "requires": ["titular_cpf"], "notes": "2026: 'digite o seu *CPF ou CNPJ*'"},
+        {"step": "menu_como_ajudar", "anchor": r"como eu posso te ajudar\?.*servi[çc]os para ve[íi]culo",
+         "reply": "Serviços para veículo", "notes": "lista: Serviços para veículo / residência / Sinistro / ..."},
+        {"step": "confirmar_veiculo", "anchor": r"quer atendimento para o ve[íi]culo", "reply": "Sim",
+         "notes": "URA mostra o veículo da apólice (botões Sim/Não/Voltar)"},
         {"step": "menu_seguro_auto", "anchor": r"localizei o seu \*?seguro auto", "reply": "1",
-         "notes": "1-Atendimento para veículo"},
-        {"step": "menu_atendimento", "anchor": r"de que atendimento voc[êe] precisa", "reply": "1",
-         "notes": "1-Novo atendimento/serviço"},
+         "notes": "variante antiga numerada — manter"},
+        {"step": "menu_atendimento", "anchor": r"de que atendimento voc[êe] precisa", "reply": "Novo serviço",
+         "notes": "lista: Novo serviço / Acompanhar / Cancelar / ..."},
         {"step": "menu_servico", "anchor": r"o que voc[êe] precisa\?.*guincho", "reply": "{servico_texto}",
          "requires": ["servico_texto"],
-         "notes": "responder o RÓTULO do serviço (Guincho / Bateria / Troca de pneu / Chaveiro)"},
+         "notes": "responder o RÓTULO completo (Guincho (reboque) / Bateria / Chaveiro para veículo / Técnico)"},
+        {"step": "necessidade_guincho", "anchor": r"op[çc][ãa]o que descreve melhor a sua necessidade",
+         "reply": "Remoção de veículo",
+         "notes": "Remoção de veículo (pane) · 'Envolvimento em acidente' = sinistro → handoff antes de chegar aqui"},
+        {"step": "menu_quando", "anchor": r"para quando voc[êe] precisa que esse servi[çc]o", "reply": "Tenho urgência",
+         "notes": "botões: Tenho urgência / Agendar. A frase 'confirmada somente após a finalização' é COLETA."},
+        {"step": "complemento", "anchor": r"digite ent[ãa]o um \*?complemento", "reply": "não tem",
+         "notes": "complemento do endereço; sem complemento = 'não tem'"},
         {"step": "ponto_referencia", "anchor": r"ponto de refer[êe]ncia", "reply": "{ponto_referencia}",
          "notes": "referência do local; se não houver, 'não tem'"},
+        {"step": "destino_sabe", "anchor": r"onde o guincho deve levar seu ve[íi]culo", "reply": "Sim",
+         "notes": "guincho: já sabemos o destino (local_destino do caso)"},
+        {"step": "no_local", "anchor": r"[ée] voc[êe] que est[áa] no local para (?:acompanhar|aguardar)", "reply": "Sim",
+         "notes": "quem está no local acompanha; dados de contato ajustáveis no menu de revisão"},
+        {"step": "pode_ligar", "anchor": r"posso te ligar no n[úu]mero abaixo", "reply": "Sim",
+         "notes": "autoriza contato telefônico do prestador"},
+        {"step": "aguarde", "anchor": r"aguarde um momento|que bom ter voc[êe] de volta|aguarde enquanto solicito",
+         "reply": "", "noop": True, "notes": "mensagens de espera/boas-vindas — não responder"},
+        {"step": "confirmar_solicitacao", "anchor": r"como voc[êe] quer prosseguir|posso confirmar sua solicita[çc][ãa]o",
+         "reply": "Confirmar solicitação",
+         "notes": "confirmação FINAL. Só alcançada em modo LIVE — no teste o freio cancela antes."},
     ],
     finalize_anchors=[
-        # CUIDADO: "sera confirmada somente apos a finalizacao" aparece dentro do
-        # passo de COLETA "para quando voce precisa" — NÃO é freio. O freio real
-        # da Porto é a revisão final ("gostaria de alterar alguma informacao" /
-        # "posso continuar o agendamento").
+        # Texto REAL 2026: "Como você quer prosseguir? Confirmar solicitação ..."
+        r"como voc[êe] quer prosseguir",
+        r"posso confirmar sua solicita[çc][ãa]o",
+        # URA antiga (manter por segurança):
         r"posso continuar o agendamento",
         r"gostaria de alterar alguma informa[çc][ãa]o",
         r"confirmar o agendamento",
     ],
 )
 PORTO_AUTO_WHATSAPP_V1["subservice_menu_map"] = {
-    "guincho": "Guincho", "bateria": "Bateria", "pneu": "Troca de pneu", "chaveiro": "Chaveiro para o veículo",
+    "guincho": "Guincho (reboque)", "bateria": "Bateria", "pneu": "Troca de pneu", "chaveiro": "Chaveiro para veículo",
 }
-PORTO_AUTO_WHATSAPP_V1["ura_steps"].insert(4, {
-    "step": "menu_quando", "anchor": r"para quando voc[êe] precisa que esse servi[çc]o", "reply": "1",
-    "notes": "1-Tenho urgência 2-Agendar. Default urgência (agora); agendamento é passo de finalização.",
-})
+PORTO_AUTO_WHATSAPP_V1["finalize_abort_reply"] = "Sair e não agendar"
 
-# --- HDI (URA por BOTÕES: responder o RÓTULO; transfere cedo p/ analista) --------
+# --- HDI (MESMO bot white-label da Yelum — fluxo REAL 28/01/2026; botões por
+# rótulo, timeout 12min, encerra após respostas não-identificadas) ----------------
 HDI_AUTO_WHATSAPP_V1 = _auto_playbook(
     "hdi", "hdi_assistencia_24h",
     ura_steps=[
-        {"step": "menu_auto_ou_resid", "anchor": r"assist[êe]ncia para seu \*?autom[óo]vel\*? ou \*?resid[êe]ncia",
-         "reply": "Automóvel"},
+        {"step": "menu_auto_ou_resid",
+         "anchor": r"assist[êe]ncia para seu \*?autom[óo]vel\*? ou \*?resid[êe]ncia|para seu \*?autom[óo]vel\*? ou \*?resid[êe]ncia",
+         "reply": "🚗 Automóvel", "notes": "botões com emoji: '🚗 Automóvel' / '🏠 Residência'"},
+        {"step": "identificacao_dado",
+         "anchor": r"informe \*?apenas um dos dados|informe \*?um dos dados abaixo",
+         "reply": "{titular_cpf}", "requires": ["titular_cpf"],
+         "notes": "entrada 2026: CPF/CNPJ do segurado OU placa; CPF identifica frota/CNPJ também"},
         {"step": "informar_nome", "anchor": r"informe o seu nome ou como gostaria de ser chamado",
-         "reply": "{titular_nome}", "requires": ["titular_nome"]},
+         "reply": "Atendimento", "notes": "nome de quem opera o canal (a corretora)"},
         {"step": "informar_placa", "anchor": r"qual a placa do ve[íi]culo", "reply": "{veiculo_placa}",
          "requires": ["veiculo_placa"]},
-        {"step": "roda_travada", "anchor": r"alguma roda travada", "reply": "{roda_travada}",
-         "notes": "sim/não conforme o caso; default 'não'"},
+        {"step": "perfil", "anchor": r"em qual dessas op[çc][õo]es voc[êe] se enquadra", "reply": "Sou corretor(a)",
+         "notes": "agimos em nome da corretora"},
+        {"step": "pessoa_no_local", "anchor": r"[ée] a pessoa que est[áa] (?:no )?local para acompanhar", "reply": "Não"},
+        {"step": "nome_pessoa_local", "anchor": r"qual [ée] o nome da pessoa que est[áa] no local",
+         "reply": "{pessoa_no_local}", "requires": ["pessoa_no_local"]},
+        {"step": "telefone_local", "anchor": r"n[úu]mero de (?:celular|telefone)\*? com ddd da pessoa que est[áa] no local",
+         "reply": "{telefone_contato}", "requires": ["telefone_contato"]},
+        {"step": "telefone_confirma", "anchor": r"o n[úu]mero de telefone \d+ est[áa] correto", "reply": "Sim"},
+        {"step": "cor_menu", "anchor": r"informar a cor do ve[íi]culo de placa", "reply": "Outros"},
+        {"step": "cor_texto", "anchor": r"qual a cor do ve[íi]culo de placa", "reply": "{veiculo_cor}",
+         "notes": "campo livre; default 'não sei'"},
+        {"step": "rodovia", "anchor": r"(?:o ve[íi]culo|saber se o ve[íi]culo) est[áa] em uma rodovia", "reply": "{rodovia}",
+         "notes": "Sim/Não conforme local_atual; default Não"},
+        {"step": "o_que_aconteceu", "anchor": r"pode me dizer o que aconteceu", "reply": "{servico_opcao}",
+         "requires": ["servico_opcao"],
+         "notes": "guincho→Pane ou Defeito · bateria→Recarga de bateria · pneu→Pneu Furado · chaveiro→Problema com a chave · colisão=SINISTRO (handoff antes)"},
+        {"step": "pane_detalhe", "anchor": r"selecione a op[çc][ãa]o que condiz com a pane", "reply": "Problemas no motor",
+         "notes": "guincho por pane: leva direto ao Guincho"},
+        {"step": "endereco_como", "anchor": r"op[çc][õo]es para informar o endere[çc]o onde o ve[íi]culo est[áa]",
+         "reply": "Digitar endereço", "notes": "Digitar endereço / Compartilhar / CEP / Não sei"},
+        {"step": "aguarde_fila",
+         "anchor": r"ainda n[ãa]o identificamos a sua resposta|voc[êe] est[áa] na fila|alto volume de atendimentos|aguarde (?:um momento|s[óo] mais)|te transfiro para um|dicas (?:r[áa]pidas|sobre como funciona)|seja bem-?vindo ao atendimento",
+         "reply": "", "noop": True, "notes": "fila/aviso/boas-vindas — NÃO responder"},
+        {"step": "deseja_continuar", "anchor": r"deseja continuar (?:este|com o) atendimento", "reply": "Sim"},
+        {"step": "confirmar_endereco", "anchor": r"voc[êe] confirma o endere[çc]o", "reply": "Sim",
+         "notes": "último passo antes da URA abrir sozinha. Só alcançado em modo LIVE — no teste o freio cancela antes."},
     ],
     finalize_anchors=[
-        r"est[áa] correto\s*\?", r"agendamento para .* realizado", r"deseja confirmar",
+        # A URA abre SOZINHA depois do endereço confirmado → o freio de teste fica
+        # na confirmação do endereço. ('está correto?' genérico era FALSO freio:
+        # disparava na confirmação de telefone no meio da coleta.)
+        r"voc[êe] confirma o endere[çc]o",
+        r"agendamento para .* realizado", r"deseja confirmar",
         r"confirma\s+(?:a\s+)?(?:abertura|solicita|o agendamento)",
     ],
 )
-HDI_AUTO_WHATSAPP_V1["subservice_menu_map"] = {  # HDI decide o serviço na fase humana
-    "guincho": "Guincho", "bateria": "Recarga de bateria", "pneu": "Troca de pneu", "chaveiro": "Chaveiro",
+HDI_AUTO_WHATSAPP_V1["subservice_menu_map"] = {
+    "guincho": "Pane ou Defeito", "bateria": "Recarga de bateria",
+    "pneu": "Pneu Furado", "chaveiro": "Problema com a chave",
 }
+HDI_AUTO_WHATSAPP_V1["finalize_abort_reply"] = "Sair"  # 'Digite Sair para encerrar'
 
 # --- Yelum (ex-Liberty): v2 minerado da conversa REAL completa da AutoFleet
 # (2023→2026, dezenas de acionamentos). A URA identifica por PLACA/CPF, deriva
@@ -380,6 +530,16 @@ YELUM_AUTO_WHATSAPP_V1["subservice_menu_map"] = {
     "guincho": "Pane ou Defeito", "bateria": "Recarga de bateria",
     "pneu": "Pneu Furado", "chaveiro": "Problema com a chave",
 }
+YELUM_AUTO_WHATSAPP_V1["finalize_abort_reply"] = "Sair"  # 'Digite Sair para encerrar'
+# Passos do trecho FINAL (só alcançados em modo LIVE — no teste o freio cancela antes):
+YELUM_AUTO_WHATSAPP_V1["ura_steps"].extend([
+    {"step": "quando_agora", "anchor": r"atendimento para agora ou prefere agendar", "reply": "Agora",
+     "notes": "urgência é o default do corredor"},
+    {"step": "destino_como", "anchor": r"para onde devemos levar o ve[íi]culo", "reply": "Digitar endereço",
+     "notes": "guincho: informar o destino do caso (adaptativo completa rua/número)"},
+    {"step": "podemos_confirmar", "anchor": r"podemos confirmar", "reply": "Sim",
+     "notes": "confirmação final (modo LIVE)"},
+])
 
 TOKIO_AUTO_WHATSAPP_V1 = _auto_playbook(
     "tokio", "tokio_assistencia_24h",
@@ -391,75 +551,127 @@ TOKIO_AUTO_WHATSAPP_V1 = _auto_playbook(
 )
 TOKIO_AUTO_WHATSAPP_V1["subservice_menu_map"] = {"guincho": "Guincho", "bateria": "Bateria", "pneu": "Troca de pneu", "chaveiro": "Chaveiro"}
 
-# --- ALFA (URA gêmea da Allianz — mesmo fornecedor de bot) -----------------------
+# --- ALFA (URA gêmea da Allianz — mesmo fornecedor; fluxo REAL 03/02/2026) --------
 ALFA_AUTO_WHATSAPP_V1 = _auto_playbook(
     "alfa", "alfa_assistencia_24h",
     ura_steps=[
         {"step": "menu_tipo_seguro", "anchor": r"assist[êe]ncia 24h para qual seguro", "reply": "1",
          "notes": "1-Automóvel/Moto 2-Residencial 3-Outros → Auto"},
-        {"step": "pedir_cpf", "anchor": r"digite o \*?cpf\*? ou \*?cnpj\*? do\(a\)? titular", "reply": "{titular_cpf}",
-         "requires": ["titular_cpf"]},
-        {"step": "menu_servico_auto", "anchor": r"o que voc[êe] precisa\??\s*\|?\s*\*?1\s*[–-]?\s*\*?profissional para \*?pane", "reply": "{servico_opcao}",
-         "requires": ["servico_opcao"],
-         "notes": "1-pane elétrica/bateria 3-guincho pane 6-borracheiro/pneu 7-chaveiro (igual Allianz)"},
-        {"step": "tipo_veiculo", "anchor": r"seu ve[íi]culo [ée]:\s*\|?\s*\*?1\s*-\s*automotor", "reply": "1",
-         "notes": "1-automotor/híbrido 2-elétrico; elétrico o cérebro adaptativo trata"},
-        {"step": "quando", "anchor": r"para quando precisa do \*?(?:reboque|guincho|servi[çc]o|profissional)", "reply": "1",
-         "notes": "1-Agora 2-Agendar; urgência é o default do corredor"},
-    ],
-    finalize_anchors=[
-        r"dados a seguir est[ãa]o corretos", r"posso confirmar", r"deseja confirmar",
-        r"confirm\w* (?:o|a) (?:agendamento|abertura|solicita)",
-    ],
+    ] + [dict(s) for s in _ALLIANZ_FAMILY_AUTO_STEPS],
+    finalize_anchors=list(_ALLIANZ_FAMILY_FINALIZE),
 )
 ALFA_AUTO_WHATSAPP_V1["subservice_menu_map"] = {"guincho": "3", "bateria": "1", "pneu": "6", "chaveiro": "7"}
+ALFA_AUTO_WHATSAPP_V1["finalize_abort_reply"] = "SAIR"
+# Alfa às vezes não abre guincho pelo WhatsApp ("no momento eu não consigo te
+# ajudar" → central 4003-2532): vira handoff com o telefone no dossiê.
+ALFA_AUTO_WHATSAPP_V1["handoff_triggers"] = ALFA_AUTO_WHATSAPP_V1["handoff_triggers"] + [
+    r"n[ãa]o consigo te ajudar",
+]
 
-# --- AZUL (grupo Porto, mas URA própria NUMERADA) --------------------------------
+# --- AZUL (grupo Porto, URA própria NUMERADA — fluxo REAL 26/12/2025) -------------
 AZUL_AUTO_WHATSAPP_V1 = _auto_playbook(
     "azul", "azul_assistencia_24h",
     ura_steps=[
-        {"step": "menu_inicial", "anchor": r"como eu posso te ajudar\?.*assist[êe]ncia 24h para o ve[íi]culo", "reply": "1",
-         "notes": "1-Assistência 24h para o veículo"},
+        {"step": "menu_inicial_num",
+         "anchor": r"como eu posso te ajudar\?.*\*?1\W{0,5}assist[êe]ncia 24h para o ve[íi]culo",
+         "reply": "1", "notes": "variante NUMERADA antiga: 1-Assistência 24h para o veículo"},
+        {"step": "menu_inicial",
+         "anchor": r"como eu posso te ajudar\?.*assist[êe]ncia (?:24h para o ve[íi]culo|emergencial)",
+         "reply": "Assistência emergencial",
+         "notes": "lista 2025/26: 'Assistência emergencial — Guincho, técnico e chaveiro' (responder rótulo)"},
         {"step": "pedir_cpf", "anchor": r"informe o \*?cpf ou cnpj\*? do\(a\)? segurad", "reply": "{titular_cpf}",
          "requires": ["titular_cpf"]},
+        {"step": "cor_menu", "anchor": r"informe a cor do ve[íi]culo", "reply": "Outra cor",
+         "notes": "lista de cores; 'Outra cor' abre texto livre"},
+        {"step": "cor_texto", "anchor": r"escreva qual a cor", "reply": "{veiculo_cor}",
+         "notes": "default 'não sei'"},
         {"step": "menu_atendimento", "anchor": r"de que atendimento voc[êe] precisa", "reply": "1",
          "notes": "1-Novo serviço"},
         {"step": "menu_servico", "anchor": r"o que voc[êe] precisa\?\s*\|?\s*\*?1\*?\s*-\s*guincho", "reply": "{servico_opcao}",
          "requires": ["servico_opcao"],
          "notes": "1-Guincho 2-Bateria 3-Troca de pneu 4-Chaveiro (numerado)"},
+        {"step": "bateria_submenu", "anchor": r"entendi\. o que voc[êe] precisa\?.*recarga de bateria",
+         "reply": "Recarga de bateria", "notes": "submenu da bateria: Recarga / Bateria nova / Na garantia"},
         {"step": "quando", "anchor": r"para quando voc[êe] precisa que esse servi[çc]o", "reply": "1",
          "notes": "1-Tenho urgência (a frase 'confirmada somente após a finalização' faz parte desta COLETA)"},
+        {"step": "no_local", "anchor": r"[ée] voc[êe] que estar[áa] no local para acompanhar", "reply": "2",
+         "notes": "1-Sim 2-Não (informamos quem estará)"},
+        {"step": "nome_no_local", "anchor": r"qual [ée] o nome de quem estar[áa] no local", "reply": "{pessoa_no_local}",
+         "requires": ["pessoa_no_local"]},
+        {"step": "telefone_contato", "anchor": r"informe um n[úu]mero de contato\. digite no formato",
+         "reply": "{telefone_contato}", "requires": ["telefone_contato"], "format": "phone_br",
+         "notes": "formato ESTRITO '(dd) 99999-9999' — o motor formata os dígitos"},
+        {"step": "telefone_correto", "anchor": r"o n[úu]mero est[áa] correto", "reply": "1"},
         {"step": "ponto_referencia", "anchor": r"ponto de refer[êe]ncia", "reply": "{ponto_referencia}",
          "notes": "se não houver, 'não tem'"},
+        {"step": "algo_mais", "anchor": r"posso te ajudar com algo mais", "reply": "Não",
+         "notes": "pós-protocolo: encerrar com educação"},
+        {"step": "confirmar_tudo", "anchor": r"tudo est[áa] correto", "reply": "1",
+         "notes": "confirmação FINAL (RESUMO). Só alcançada em modo LIVE — no teste o freio cancela antes."},
     ],
     finalize_anchors=[
         r"tudo est[áa] correto", r"posso confirmar", r"confirmar o agendamento",
     ],
 )
 AZUL_AUTO_WHATSAPP_V1["subservice_menu_map"] = {"guincho": "1", "bateria": "2", "pneu": "3", "chaveiro": "4"}
+AZUL_AUTO_WHATSAPP_V1["finalize_abort_reply"] = "4"  # '4 - Sair e não agendar' no RESUMO
 
-# --- BRADESCO (botões; começa pela PLACA; serviço derivado do problema) ----------
+# --- BRADESCO (bot Europ; PLACA primeiro; fluxo REAL 05/01/2026) ------------------
 BRADESCO_AUTO_WHATSAPP_V1 = _auto_playbook(
     "bradesco", "bradesco_assistencia_24h",
     ura_steps=[
         {"step": "menu_inicial", "anchor": r"voc[êe] quer assist[êe]ncia para", "reply": "Veículo",
          "notes": "Botão 1: Veículo / Botão 2: Residência (responder o rótulo)"},
         {"step": "informar_placa", "anchor": r"informa a \*?placa do ve[íi]culo", "reply": "{veiculo_placa}",
-         "requires": ["veiculo_placa"]},
+         "requires": ["veiculo_placa"], "notes": "sem espaço/traço (formato estrito)"},
         {"step": "cpf_fallback", "anchor": r"digite somente os n[úu]meros do \*?cpf\*? ou \*?cnpj\*?", "reply": "{titular_cpf}",
          "requires": ["titular_cpf"],
          "notes": "fallback quando a placa não é localizada"},
+        {"step": "confirmar_veiculo", "anchor": r"podemos seguir o atendimento para este ve[íi]culo", "reply": "Sim",
+         "notes": "URA mostra placa+modelo achados"},
         {"step": "problema", "anchor": r"qual o problema com o seu carro", "reply": "{servico_opcao}",
          "requires": ["servico_opcao"],
          "notes": "1-Pane(bateria/motor) 2-Acidente 3-Pneus 4-Chave 5-Combustível — o serviço deriva do problema"},
+        {"step": "pane_detalhe_guincho", "anchor": r"me conta o que aconteceu:", "reply": "2",
+         "only_subservices": ["guincho"],
+         "notes": "guincho: 2-andando e parou (leva ao reboque)"},
+        {"step": "pane_detalhe_bateria", "anchor": r"me conta o que aconteceu:", "reply": "1",
+         "only_subservices": ["bateria"],
+         "notes": "bateria: 1-estacionado e não liga (leva ao técnico/bateria)"},
+        {"step": "hibrido_eletrico", "anchor": r"h[íi]brido/?el[ée]trico", "reply": "Não",
+         "notes": "default Não; caso elétrico, adaptativo assume"},
+        {"step": "garagem_subsolo", "anchor": r"garagem subsolo", "reply": "Não",
+         "notes": "default Não; subsolo real → adaptativo"},
+        {"step": "necessidades_especiais", "anchor": r"necessidades especiais ou mobilidade reduzida", "reply": "Não",
+         "notes": "default Não; se houver no caso, adaptativo assume"},
+        {"step": "quando", "anchor": r"envie a assist[êe]ncia agora ou prefere agendar", "reply": "Enviar agora",
+         "notes": "passo de COLETA no MEIO do fluxo (era FALSO freio) — urgência é o default"},
+        {"step": "via_local_rodovia", "anchor": r"\*?via local\*? ou \*?rodovia", "reply": "Via local",
+         "notes": "default via local; rodovia real → adaptativo (orientação de concessionária)"},
+        {"step": "levar_oficina", "anchor": r"quer levar o ve[íi]culo at[ée] uma oficina", "reply": "Sim",
+         "notes": "guincho com destino conhecido"},
+        {"step": "oficinas_referenciadas", "anchor": r"op[çc][õo]es de oficinas referenciadas", "reply": "Não quero",
+         "notes": "v1: destino do caso; oferecer as referenciadas ao cliente é evolução da Faixa 6"},
+        {"step": "destino_rodovia", "anchor": r"pra onde voc[êe] quer levar seu ve[íi]culo, se encontra em uma \*?rodovia", "reply": "Nao",
+         "notes": "destino em rodovia? default não"},
+        {"step": "confirmar_abertura", "anchor": r"posso confirmar a abertura", "reply": "Sim",
+         "notes": "confirmação FINAL. Só alcançada em modo LIVE — no teste o freio cancela antes."},
     ],
     finalize_anchors=[
-        r"quer que envie a assist[êe]ncia agora ou prefere agendar",
+        # Freio REAL: revisão final "Origem/Destino ... Posso confirmar a abertura
+        # da assistência?" ('enviar agora ou prefere agendar' é COLETA, não freio!)
+        r"posso confirmar a abertura",
         r"as informa[çc][õo]es est[ãa]o corretas",
         r"posso confirmar", r"deseja confirmar",
     ],
 )
 BRADESCO_AUTO_WHATSAPP_V1["subservice_menu_map"] = {"guincho": "1", "bateria": "1", "pneu": "3", "chaveiro": "4"}
+BRADESCO_AUTO_WHATSAPP_V1["finalize_abort_reply"] = "Não"
+# Placa não localizada 2x → URA manda para a plataforma Europ (sem atendimento
+# neste canal): vira handoff com a orientação no dossiê.
+BRADESCO_AUTO_WHATSAPP_V1["handoff_triggers"] = BRADESCO_AUTO_WHATSAPP_V1["handoff_triggers"] + [
+    r"n[ãa]o podemos seguir com a sua solicita[çc][ãa]o",
+]
 
 # --- MAPFRE (exige DATA DE NASCIMENTO do titular; transfere cedo p/ humano) ------
 MAPFRE_AUTO_WHATSAPP_V1 = _auto_playbook(
@@ -483,7 +695,8 @@ MAPFRE_AUTO_WHATSAPP_V1["subservices"] = {
     for k, v in _AUTO_SUBSERVICES.items()
 }
 
-# --- ZURICH (menus por rótulo + confirmação explícita no final) ------------------
+# --- ZURICH (fluxo REAL 23/02/2026: listas por rótulo no topo, menus NUMERADOS
+# no miolo, árvore de diagnóstico de pane, confirmação explícita no final) --------
 ZURICH_AUTO_WHATSAPP_V1 = _auto_playbook(
     "zurich", "zurich_assistencia_24h",
     ura_steps=[
@@ -492,14 +705,46 @@ ZURICH_AUTO_WHATSAPP_V1 = _auto_playbook(
         {"step": "acionar_assistencia", "anchor": r"acionar a assist[êe]ncia 24h\*? ou \*?acionar o seguro", "reply": "Acionar assistência 24h",
          "notes": "colisão/roubo é SINISTRO (handoff), não assistência"},
         {"step": "pedir_cpf", "anchor": r"qual o seu \*?cpf/?cnpj", "reply": "{titular_cpf}", "requires": ["titular_cpf"]},
+        {"step": "pedir_placa", "anchor": r"qual a \*?placa do ve[íi]culo", "reply": "{veiculo_placa}",
+         "requires": ["veiculo_placa"]},
+        {"step": "confirmar_veiculo", "anchor": r"esse [ée] o ve[íi]culo que precisa de assist[êe]ncia", "reply": "1",
+         "notes": "1-Sim (veículo achado pela placa do caso)"},
+        {"step": "o_que_aconteceu", "anchor": r"me conte o que aconteceu", "reply": "{servico_opcao}",
+         "requires": ["servico_opcao"],
+         "notes": "menu numerado: 1-combustível 2-pneu 3-chave 4-panes 5-sinistro 6-terceiros; a árvore de diagnóstico ('o que houve?', câmbio etc.) fica com o adaptativo"},
+        {"step": "rodovia", "anchor": r"est[áa] em estrada/?rodovia", "reply": "2",
+         "notes": "1-Sim 2-Não; default Não, rodovia real → adaptativo"},
+        {"step": "garagem", "anchor": r"garagem subsolo ou elevada", "reply": "2",
+         "notes": "1-Sim 2-Não; default Não"},
+        {"step": "endereco_livre", "anchor": r"compartilhe sua localiza[çc][ãa]o fixa ou me diga o endere[çc]o",
+         "reply": "{local_atual}", "requires": ["local_atual"],
+         "notes": "aceita endereço em texto livre (Ex: Rua Sergipe, 1440 - Belo Horizonte)"},
+        {"step": "endereco_detalhado", "anchor": r"digitar os dados do endere[çc]o de forma mais detalhada", "reply": "1",
+         "notes": "fallback quando a localização/endereço não geocodifica; CEP/rua/nº pelo adaptativo"},
+        {"step": "ref_opcional", "anchor": r"algum ponto de refer[êe]ncia que gostaria de informar", "reply": "2",
+         "notes": "1-Sim 2-Não (menu NUMERADO — texto livre é rejeitado aqui)"},
+        {"step": "endereco_correto", "anchor": r"os dados est[ãa]o corretos", "reply": "1",
+         "notes": "confirma o resumo do ENDEREÇO (meio do fluxo — não é o freio)"},
         {"step": "tipo_assistencia", "anchor": r"qual o tipo de assist[êe]ncia voc[êe] gostaria", "reply": "1",
          "notes": "1-Imediata 2-Agendada"},
+        {"step": "destino_livre", "anchor": r"para onde devemos levar seu ve[íi]culo", "reply": "{local_destino}",
+         "notes": "guincho: destino em texto livre"},
+        {"step": "telefone_e_esse", "anchor": r"seu telefone de contato para a assist[êe]ncia [ée]", "reply": "2",
+         "notes": "2-Não → informamos o telefone do caso no passo seguinte (nunca herdar contato errado)"},
         {"step": "telefone", "anchor": r"confirmar? pra n[óo]s o seu \*?n[úu]mero de telefone", "reply": "{telefone_contato}",
          "requires": ["telefone_contato"]},
+        {"step": "confirmar_solicitacao", "anchor": r"podemos confirmar a solicita[çc][ãa]o", "reply": "1",
+         "notes": "confirmação FINAL. Só alcançada em modo LIVE — no teste o freio cancela antes."},
     ],
     finalize_anchors=[r"podemos confirmar a solicita[çc][ãa]o", r"posso confirmar", r"deseja confirmar"],
 )
-ZURICH_AUTO_WHATSAPP_V1["subservice_menu_map"] = {"guincho": "Reboque", "bateria": "Socorro mecânico", "pneu": "Troca de pneu", "chaveiro": "Chaveiro"}
+ZURICH_AUTO_WHATSAPP_V1["subservice_menu_map"] = {
+    # Menu 2026 'me conte o que aconteceu' é NUMERADO: 1-combustível 2-pneu
+    # 3-chave 4-panes 5-sinistro 6-reboque p/ terceiros. Bateria = pane (4) e o
+    # detalhe (Problema de Bateria) o adaptativo escolhe na árvore de diagnóstico.
+    "guincho": "4", "bateria": "4", "pneu": "2", "chaveiro": "3",
+}
+ZURICH_AUTO_WHATSAPP_V1["finalize_abort_reply"] = ""  # sem opção de sair no resumo: silêncio (URA encerra sozinha)
 
 
 _PLAYBOOKS: Dict[str, Dict[str, Any]] = {
@@ -638,13 +883,31 @@ def detect_finalize_anchor(playbook: Dict[str, Any], insurer_message: str) -> Op
 # Motor puro: match de URA, preenchimento de resposta, captura de âncoras
 # ---------------------------------------------------------------------------
 
-def match_ura_step(playbook: Dict[str, Any], insurer_message: str) -> Optional[Dict[str, Any]]:
-    """Primeiro passo de URA cuja âncora casa com a mensagem da seguradora."""
+def match_ura_step(playbook: Dict[str, Any], insurer_message: str, subservice: Optional[str] = None) -> Optional[Dict[str, Any]]:
+    """Primeiro passo de URA cuja âncora casa com a mensagem da seguradora.
+    `only_subservices` restringe o passo a certos subserviços (a MESMA pergunta
+    da URA pode exigir respostas diferentes por serviço)."""
     text = _norm(insurer_message)
+    sub = str(subservice or "").strip().lower()
     for step in playbook.get("ura_steps") or []:
+        only = step.get("only_subservices")
+        if only and sub not in [str(x).lower() for x in only]:
+            continue
         if re.search(step.get("anchor") or r"$^", text, re.IGNORECASE | re.DOTALL):
             return step
     return None
+
+
+def _format_phone_br(value: str) -> str:
+    """Formata dígitos no padrão estrito '(dd) 99999-9999' (a Azul REJEITA outro)."""
+    d = "".join(ch for ch in str(value or "") if ch.isdigit())
+    if d.startswith("55") and len(d) >= 12:
+        d = d[2:]
+    if len(d) == 11:
+        return f"({d[:2]}) {d[2:7]}-{d[7:]}"
+    if len(d) == 10:
+        return f"({d[:2]}) {d[2:6]}-{d[6:]}"
+    return str(value)
 
 
 def render_reply(step: Dict[str, Any], slots: Dict[str, Any]) -> Dict[str, Any]:
@@ -654,9 +917,12 @@ def render_reply(step: Dict[str, Any], slots: Dict[str, Any]) -> Dict[str, Any]:
     if missing:
         return {"ok": False, "missing": missing, "reply": None}
     try:
-        return {"ok": True, "missing": [], "reply": template.format(**{k: str(v) for k, v in slots.items()})}
+        reply = template.format(**{k: str(v) for k, v in slots.items()})
     except KeyError as exc:  # placeholder sem slot
         return {"ok": False, "missing": [str(exc).strip("'")], "reply": None}
+    if step.get("format") == "phone_br":
+        reply = _format_phone_br(reply)
+    return {"ok": True, "missing": [], "reply": reply}
 
 
 def detect_handoff_trigger(playbook: Dict[str, Any], insurer_message: str) -> Optional[str]:
@@ -678,6 +944,9 @@ def extract_capture_anchors(playbook: Dict[str, Any], insurer_message: str) -> D
     m = re.search(anchors.get("password") or r"$^", text, re.IGNORECASE | re.DOTALL)
     if m:
         out["password"] = m.group(1)
+    m = re.search(anchors.get("eta") or r"$^", text, re.IGNORECASE)
+    if m:
+        out["eta_minutes"] = m.group(1)
     sched = anchors.get("schedule")
     if sched:
         m = re.search(sched, text, re.IGNORECASE)
