@@ -3135,6 +3135,158 @@ async def _download_carta_bff(ctx_page, item: Dict[str, Any], params: Dict[str, 
     return {"ok": True, "storage_path": path, "bytes": len(data), "via": "bff_getDetail", "not_uploaded": True}
 
 
+# CADEIA DE API COMPLETA (headers reais capturados pelo founder 2026-07-11):
+# 1) POST rws-bff-azb-epac/api/searchEngine/getCustomersName/<agente>  (busca por NOME)
+#    -> data.customersList[] {clientId, name, documentId}
+# 2) GET  rws-bff-azb-epac/api/customerPositonPolicies/policies/<clientId>?agentId=...
+#    -> data.policies[] {policyNumber (=poliza interna), policySusep, ...}
+#    Casa a policySusep com a SUSEP da inadimplência (resolve conta múltipla da Mônica).
+# 3) POST rws-bff-file-management/.../getListIni  -> acha 'Carta Inadimplência'
+# 4) POST rws-bff-file-management/.../getDetail (tipoDoc 'I') -> campo 'imagen' = PDF base64
+# Tudo via fetch in-page (mesma origem, token vivo do shell). SEM a busca visual quebrada.
+_API_CHAIN_JS = r"""
+async ({name, susep, agentFallback, userFallback, token}) => {
+  const out = {steps: []};
+  const digits = s => String(s || '').replace(/\D/g, '');
+  const wantSusep = digits(susep);
+  let epacBroker = '', uname = '';
+  try {
+    const p = JSON.parse(atob((String(token).split('.')[1] || '').replace(/-/g, '+').replace(/_/g, '/')));
+    epacBroker = String(p['epac-broker'] || p['userid'] || '');
+    uname = String(p['user_name'] || '');
+  } catch (e) {}
+  const agentPath = epacBroker || agentFallback;           // ex.: 0711110
+  const agentId = (epacBroker || agentFallback).replace(/^0+/, '');  // ex.: 711110
+  const username = uname || userFallback;                  // ex.: BA068610
+  const azb = {'Content-Type':'application/json','epac-company-id':'BRA','x-rws-rootapp':'ngx-azb-epac'};
+  const fm = {'Content-Type':'application/json','epac-company-id':'BRA','x-rws-rootapp':'spa-file-management'};
+  if (token) { azb['Authorization'] = 'Bearer ' + token; fm['Authorization'] = 'Bearer ' + token; }
+
+  // 1) Busca por nome
+  let sr;
+  try {
+    sr = await fetch('/rws-bff-azb-epac/api/searchEngine/getCustomersName/' + agentPath, {
+      method:'POST', credentials:'include', headers:azb,
+      body: JSON.stringify({action:'', customersList:[], numPag:1, textSearch:name})});
+  } catch (e) { return {error:'search_err:' + String(e).slice(0,50)}; }
+  out.steps.push('search:' + sr.status);
+  if (!sr.ok) return {error:'search_status:' + sr.status};
+  const sd = await sr.json();
+  const clients = ((sd.data || {}).customersList) || [];
+  out.n_clients = clients.length;
+  if (!clients.length) return Object.assign(out, {error:'no_clients'});
+
+  // 2) Para cada conta -> apólices -> casa pela SUSEP
+  let poliza = '', fallbackPoliza = '';
+  for (const c of clients) {
+    let pr;
+    try {
+      pr = await fetch('/rws-bff-azb-epac/api/customerPositonPolicies/policies/' + c.clientId +
+        '?policeRef=0&applicationRef=0&agentId=' + agentId + '&collaborator=0&agentCol=0',
+        {method:'GET', credentials:'include', headers:azb});
+    } catch (e) { continue; }
+    if (!pr.ok) continue;
+    const pd = await pr.json();
+    const pols = ((pd.data || {}).policies) || [];
+    for (const p of pols) {
+      if (wantSusep && digits(p.policySusep) === wantSusep) { poliza = String(p.policyNumber || ''); break; }
+    }
+    if (poliza) break;
+    if (!fallbackPoliza && pols.length === 1 && pols[0].policyNumber) fallbackPoliza = String(pols[0].policyNumber);
+  }
+  poliza = poliza || fallbackPoliza;
+  out.poliza = poliza;
+  out.matched_susep = !!(poliza && poliza !== fallbackPoliza);
+  if (!poliza) return Object.assign(out, {error:'no_poliza'});
+
+  // 3) getListIni
+  let li;
+  try {
+    li = await fetch('/rws-bff-file-management/api/fileManagement/getListIni', {
+      method:'POST', credentials:'include', headers:fm,
+      body: JSON.stringify({poliza:Number(poliza), aplica:0, tiporef:'P', usuarioenvio:username,
+        fejecucion:99999999, vista:'EP', origen:'EP', subVista:'P', busqueda:'IN', appOrigen:''})});
+  } catch (e) { return Object.assign(out, {error:'getListIni_err:' + String(e).slice(0,50)}); }
+  out.steps.push('getListIni:' + li.status);
+  if (!li.ok) return Object.assign(out, {error:'getListIni_status:' + li.status});
+  const lid = await li.json();
+  let carta = null;
+  for (const g of (lid.fileManagement || [])) {
+    for (const f of (g.file || [])) {
+      if (String(f.descmodelo || '').toLowerCase().includes('nadimpl')) { carta = f; break; }
+    }
+    if (carta) break;
+  }
+  if (!carta) return Object.assign(out, {error:'no_carta', groups:(lid.fileManagement || []).length});
+
+  // 4) getDetail -> PDF base64
+  let gd;
+  try {
+    gd = await fetch('/rws-bff-file-management/api/fileManagement/getDetail', {
+      method:'POST', credentials:'include', headers:fm,
+      body: JSON.stringify({vista:'EP', codFicha:carta.codficha, modelo:carta.modelotc, tipoRef:'P',
+        tipoDoc:'I', gtl:carta.gtl, ut:carta.ut, itemId26:carta.itemid26, ref:String(poliza), marcarLeido:true})});
+  } catch (e) { return Object.assign(out, {error:'getDetail_err:' + String(e).slice(0,50)}); }
+  out.steps.push('getDetail:' + gd.status);
+  if (!gd.ok) return Object.assign(out, {error:'getDetail_status:' + gd.status});
+  const det = await gd.json();
+  const img = det.imagen || '';
+  out.imagen = img;
+  out.imagen_len = img.length;
+  return out;
+}
+"""
+
+
+async def _download_carta_via_api_chain(page, item: Dict[str, Any], params: Dict[str, Any], evidence: Dict[str, Any]) -> Optional[Dict[str, Any]]:
+    """Baixa a Carta de Inadimplência 100% por API (busca->apólices->getListIni
+    ->getDetail), sem a navegação visual. Casa a apólice pela SUSEP da
+    inadimplência (resolve conta múltipla). Retorna resultado ou None p/ fallback."""
+    name = _clean_text((item or {}).get("cliente_nome"))
+    susep = _digits((item or {}).get("apolice_susep"))
+    if not name:
+        return None
+    token = await _shell_access_token(page)
+    agent_fallback = _digits(params.get("codigo_corretor") or item.get("codigo_corretor") or "0711110") or "0711110"
+    user_fallback = str(params.get("username") or "").strip()
+    try:
+        res = await page.evaluate(
+            _API_CHAIN_JS,
+            {"name": name, "susep": susep, "agentFallback": agent_fallback, "userFallback": user_fallback, "token": token or ""},
+        )
+    except Exception as e:  # noqa: BLE001
+        evidence.setdefault("download_notes", []).append(f"api-chain eval falhou: {type(e).__name__}")
+        return None
+    if isinstance(res, dict):
+        evidence["cobranca_api_chain"] = {
+            k: res.get(k) for k in ("steps", "n_clients", "poliza", "matched_susep", "error", "groups", "imagen_len")
+        }
+    if not isinstance(res, dict) or not res.get("imagen"):
+        return None
+    try:
+        data = base64.b64decode(res["imagen"])
+    except (binascii.Error, ValueError):
+        return None
+    if not data.startswith(b"%PDF"):
+        return None
+    path = build_boleto_storage_path(
+        company_id=str(params.get("_company_id") or "company"),
+        job_id=str(params.get("_job_id") or "job"),
+        portal_key=str(params.get("_portal_key") or "allianz_corretor"),
+        recibo=str(item.get("recibo") or ""),
+        cpf_cnpj=str(item.get("cpf_cnpj") or ""),
+        cliente_nome=str(item.get("cliente_nome") or ""),
+    )
+    upload = params.get("_upload_blob")
+    evidence.setdefault("download_notes", []).append(
+        f"carta baixada via API-CHAIN — {len(data)} bytes, poliza {res.get('poliza')}, susep_match={res.get('matched_susep')}"
+    )
+    if callable(upload):
+        saved = await upload(path, data, "application/pdf")
+        return {"ok": bool(saved), "storage_path": saved or path, "bytes": len(data), "via": "api_chain"}
+    return {"ok": True, "storage_path": path, "bytes": len(data), "via": "api_chain", "not_uploaded": True}
+
+
 async def _download_boletos(page, items: List[Dict[str, Any]], params: Dict[str, Any], evidence: Dict[str, Any]) -> List[Dict[str, Any]]:
     out: List[Dict[str, Any]] = []
     try:
@@ -3165,8 +3317,15 @@ async def _download_boletos_loop(page, items, params, evidence, auth_holder, out
                 # Home limpa entre itens: a busca global parte de qualquer página.
                 await page.goto(ALLIANZ_PRIVATE_HOME, wait_until="domcontentloaded")
                 await page.wait_for_timeout(1500)
-            # Fluxo real do corretor: busca por nome -> cliente -> Operar ->
-            # Detalhe de apólice -> Lista Recibos.
+            # CAMINHO PRIMÁRIO — cadeia de API (sem a busca visual quebrada):
+            # busca por nome -> apólices (casa SUSEP) -> getListIni -> getDetail.
+            api_res = await _download_carta_via_api_chain(page, item, params, evidence)
+            if api_res and api_res.get("ok"):
+                result.update(api_res)
+                out.append(result)
+                continue
+            # FALLBACK — navegação visual (fluxo do corretor). Mantida para
+            # resiliência: se a API mudar, o agente ainda tenta pela tela.
             opened = await _open_receipts_for_item(page, item, params, evidence)
             ctx = page if opened else None
             if ctx is None:
