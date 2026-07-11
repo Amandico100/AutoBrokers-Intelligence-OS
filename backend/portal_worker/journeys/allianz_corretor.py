@@ -3162,8 +3162,37 @@ async ({name, susep, agentFallback, userFallback}) => {
   // Usa o token MAIS FRESCO (maior exp) para TODAS as chamadas. O do shell
   // costuma vir vencido na sessão restaurada (job eb2c2764: 'Access token
   // expired'), enquanto o plano está válido (~24h). É o mesmo tipo de token.
+  const rawTok = k => sessionStorage.getItem(k) || localStorage.getItem(k) || '';
   const cands = [shellTok, plainTok].filter(Boolean).sort((a,b) => decodeExp(b) - decodeExp(a));
-  const bestTok = cands[0] || '';
+  let bestTok = cands[0] || '';
+  const nowS = Math.floor(Date.now()/1000);
+  out.now = nowS; out.best_exp = decodeExp(bestTok);
+  // Sessão restaurada costuma ter TODOS os tokens vencidos (o navegador real
+  // renova pelo refresh_token; o worker não). Se vencido, tenta renovar.
+  if (decodeExp(bestTok) <= nowS + 30) {
+    const rt = rawTok('refresh_token');
+    out.has_rt = !!rt;
+    for (const ep of ['/rws-bff-azb-epac/api/public/oauth/refresh-token',
+                      '/rws-bff-file-management/api/public/oauth/refresh-token']) {
+      if (!rt) break;
+      try {
+        const rr = await fetch(ep, {method:'POST', credentials:'include',
+          headers:{'Content-Type':'application/json','epac-company-id':'BRA'},
+          body: JSON.stringify({refreshToken: rt})});
+        out.refresh = (out.refresh||'') + ep.split('/')[2] + ':' + rr.status + ';';
+        if (rr.ok) {
+          let rd = {}; try { rd = await rr.json(); } catch(e){}
+          const nt = rd.accessToken || rd.access_token || (rd.data && (rd.data.accessToken||rd.data.access_token)) || '';
+          if (nt) { bestTok = nt; out.refreshed = true;
+            try { sessionStorage.setItem('access_token', nt); } catch(e){}
+            const nrt = rd.refreshToken || rd.refresh_token || (rd.data && (rd.data.refreshToken||rd.data.refresh_token)) || '';
+            if (nrt) { try { sessionStorage.setItem('refresh_token', nrt); } catch(e){} }
+            break; }
+          out.refresh_body = JSON.stringify(rd).slice(0,150);
+        } else { out.refresh_body = (await rr.text()).slice(0,150); }
+      } catch(e){ out.refresh = (out.refresh||'') + 'err;'; }
+    }
+  }
   const azbTok = bestTok, fmTok = bestTok;
   out.azb_tok_len = azbTok.length; out.fm_tok_len = fmTok.length;
   let epacBroker = '', uname = '';
@@ -3171,7 +3200,7 @@ async ({name, susep, agentFallback, userFallback}) => {
     const p = JSON.parse(atob((String(bestTok).split('.')[1] || '').replace(/-/g, '+').replace(/_/g, '/')));
     epacBroker = String(p['epac-broker'] || p['userid'] || '');
     uname = String(p['user_name'] || '');
-    out.azb_exp = p.exp; out.now = Math.floor(Date.now()/1000);
+    out.azb_exp = p.exp;
   } catch (e) {}
   const agentPath = epacBroker || agentFallback;           // ex.: 0711110
   const agentId = (epacBroker || agentFallback).replace(/^0+/, '');  // ex.: 711110
@@ -3282,7 +3311,8 @@ async def _download_carta_via_api_chain(page, item: Dict[str, Any], params: Dict
         evidence["cobranca_api_chain"] = {
             k: res.get(k) for k in (
                 "steps", "n_clients", "poliza", "matched_susep", "error", "body", "groups",
-                "imagen_len", "azb_tok_len", "fm_tok_len", "azb_exp", "now",
+                "imagen_len", "azb_tok_len", "fm_tok_len", "azb_exp", "best_exp", "now",
+                "has_rt", "refresh", "refreshed", "refresh_body",
             )
         }
     if not isinstance(res, dict) or not res.get("imagen"):
