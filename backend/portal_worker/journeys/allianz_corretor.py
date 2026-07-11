@@ -3145,22 +3145,36 @@ async def _download_carta_bff(ctx_page, item: Dict[str, Any], params: Dict[str, 
 # 4) POST rws-bff-file-management/.../getDetail (tipoDoc 'I') -> campo 'imagen' = PDF base64
 # Tudo via fetch in-page (mesma origem, token vivo do shell). SEM a busca visual quebrada.
 _API_CHAIN_JS = r"""
-async ({name, susep, agentFallback, userFallback, token}) => {
+async ({name, susep, agentFallback, userFallback}) => {
   const out = {steps: []};
   const digits = s => String(s || '').replace(/\D/g, '');
   const wantSusep = digits(susep);
+  // Lê os tokens DENTRO da página. O app da busca (ngx-azb-epac) usa o token do
+  // SHELL; o file-management usa o 'access_token' plano. Podem ser diferentes.
+  const readTok = k => {
+    const raw = sessionStorage.getItem(k) || localStorage.getItem(k) || '';
+    const m = String(raw).match(/eyJ[A-Za-z0-9_\-]+\.[A-Za-z0-9_\-]+\.[A-Za-z0-9_\-]+/);
+    return m ? m[0] : '';
+  };
+  const shellTok = readTok('STORAGE_NGX-AZB-EPAC::access_token');
+  const plainTok = readTok('access_token');
+  const azbTok = shellTok || plainTok;
+  const fmTok = plainTok || shellTok;
+  out.azb_tok_len = azbTok.length; out.fm_tok_len = fmTok.length;
   let epacBroker = '', uname = '';
   try {
-    const p = JSON.parse(atob((String(token).split('.')[1] || '').replace(/-/g, '+').replace(/_/g, '/')));
+    const p = JSON.parse(atob((String(azbTok).split('.')[1] || '').replace(/-/g, '+').replace(/_/g, '/')));
     epacBroker = String(p['epac-broker'] || p['userid'] || '');
     uname = String(p['user_name'] || '');
+    out.azb_exp = p.exp; out.now = Math.floor(Date.now()/1000);
   } catch (e) {}
   const agentPath = epacBroker || agentFallback;           // ex.: 0711110
   const agentId = (epacBroker || agentFallback).replace(/^0+/, '');  // ex.: 711110
   const username = uname || userFallback;                  // ex.: BA068610
   const azb = {'Content-Type':'application/json','epac-company-id':'BRA','x-rws-rootapp':'ngx-azb-epac'};
   const fm = {'Content-Type':'application/json','epac-company-id':'BRA','x-rws-rootapp':'spa-file-management'};
-  if (token) { azb['Authorization'] = 'Bearer ' + token; fm['Authorization'] = 'Bearer ' + token; }
+  if (azbTok) azb['Authorization'] = 'Bearer ' + azbTok;
+  if (fmTok) fm['Authorization'] = 'Bearer ' + fmTok;
 
   // 1) Busca por nome
   let sr;
@@ -3168,9 +3182,12 @@ async ({name, susep, agentFallback, userFallback, token}) => {
     sr = await fetch('/rws-bff-azb-epac/api/searchEngine/getCustomersName/' + agentPath, {
       method:'POST', credentials:'include', headers:azb,
       body: JSON.stringify({action:'', customersList:[], numPag:1, textSearch:name})});
-  } catch (e) { return {error:'search_err:' + String(e).slice(0,50)}; }
+  } catch (e) { return Object.assign(out, {error:'search_err:' + String(e).slice(0,50)}); }
   out.steps.push('search:' + sr.status);
-  if (!sr.ok) return {error:'search_status:' + sr.status};
+  if (!sr.ok) {
+    let b = ''; try { b = (await sr.text()).slice(0, 200); } catch (e) {}
+    return Object.assign(out, {error:'search_status:' + sr.status, body:b});
+  }
   const sd = await sr.json();
   const clients = ((sd.data || {}).customersList) || [];
   out.n_clients = clients.length;
@@ -3246,20 +3263,22 @@ async def _download_carta_via_api_chain(page, item: Dict[str, Any], params: Dict
     susep = _digits((item or {}).get("apolice_susep"))
     if not name:
         return None
-    token = await _shell_access_token(page)
     agent_fallback = _digits(params.get("codigo_corretor") or item.get("codigo_corretor") or "0711110") or "0711110"
     user_fallback = str(params.get("username") or "").strip()
     try:
         res = await page.evaluate(
             _API_CHAIN_JS,
-            {"name": name, "susep": susep, "agentFallback": agent_fallback, "userFallback": user_fallback, "token": token or ""},
+            {"name": name, "susep": susep, "agentFallback": agent_fallback, "userFallback": user_fallback},
         )
     except Exception as e:  # noqa: BLE001
         evidence.setdefault("download_notes", []).append(f"api-chain eval falhou: {type(e).__name__}")
         return None
     if isinstance(res, dict):
         evidence["cobranca_api_chain"] = {
-            k: res.get(k) for k in ("steps", "n_clients", "poliza", "matched_susep", "error", "groups", "imagen_len")
+            k: res.get(k) for k in (
+                "steps", "n_clients", "poliza", "matched_susep", "error", "body", "groups",
+                "imagen_len", "azb_tok_len", "fm_tok_len", "azb_exp", "now",
+            )
         }
     if not isinstance(res, dict) or not res.get("imagen"):
         return None
