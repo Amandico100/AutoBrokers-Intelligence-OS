@@ -2054,6 +2054,18 @@ async def _click_customer_search_result(page, item: Dict[str, Any], evidence: Di
         return False
 
 
+def _search_debug_window(full: str) -> str:
+    """Recorta a região do modal 'Pesquisa de Cliente' (para VER se tem linhas
+    ou 'não foram encontrados' — o corte curto anterior não mostrava)."""
+    clean = _clean_text(full)
+    low = clean.lower()
+    for anchor in ("pesquisa de cliente", "pesquisa de recibo", "pesquisa de apolice", "pesquisa de"):
+        j = low.find(anchor)
+        if j >= 0:
+            return clean[j:j + 520]
+    return clean[:520]
+
+
 def _looks_like_customer_page(text: str) -> bool:
     """Página do cliente após a busca (Carlos/Janjo caem direto aqui): tem
     'Operações Diárias', 'Nova Apólice'+'Histórico', 'Consulta de Cliente' e o
@@ -2731,7 +2743,7 @@ async def _open_policy_context_for_item(page, item: Dict[str, Any], params: Dict
                 evidence["empty_search_terms"] = int(evidence.get("empty_search_terms") or 0) + 1
                 _remember_evidence_list(
                     evidence, "cobranca_search_debug",
-                    {"term": _clean_text(term)[:40], "text": _clean_text(await _all_body_text(page))[:240]},
+                    {"term": _clean_text(term)[:40], "modal_rows": await _search_modal_rows(page, term_name), "text": _search_debug_window(await _all_body_text(page))},
                     limit=8,
                 )
                 await _dismiss_blocking_modal(page)
