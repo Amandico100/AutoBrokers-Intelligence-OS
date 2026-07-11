@@ -14,16 +14,19 @@ from typing import Any, Dict, Iterable, List, Optional
 
 BILLING_KIND = "billing_collection"
 DEFAULT_PORTAL_KEYS = ["allianz_corretor"]
+# Mensagem PADRÃO TRAVADA (definida pelo founder 2026-07-11). Sem negrito/itálico,
+# com espaçamento entre as linhas. É a que aparece (read-only) no campo do
+# auxiliar no dashboard. Só o time pode editar até liberação.
 DEFAULT_MESSAGE_TEMPLATE = (
-    "Ola {nome_segurado},\n"
-    "Aqui e a {nome_atendente}, da {nome_corretora}, tudo bem?\n\n"
-    "A Seguradora {nome_seguradora} informou que a parcela *{numero_parcela}* "
-    "do seguro do *{item_segurado}* ainda esta pendente.\n"
-    "Desta forma, a seguradora gerou um novo boleto para pagamento pra voce "
-    "nao ficar sem cobertura, ok!?\n\n"
-    "Qualquer duvida estou a disposicao.\n\n"
+    "Olá {primeiro_nome},\n\n"
+    "Aqui é a {nome_atendente}, da {nome_corretora}, tudo bem?\n\n"
+    "A Seguradora {nome_seguradora} informou que a parcela {numero_parcela} "
+    "do seguro do {item_segurado} ainda está pendente.\n\n"
+    "Desta forma, a seguradora gerou um novo boleto para pagamento pra você "
+    "não ficar sem cobertura, ok!?\n\n"
+    "Qualquer dúvida estou à disposição.\n\n"
     "Segue o boleto abaixo.\n"
-    "Apolice: *{numero_apolice}*"
+    "Apólice: {numero_apolice}"
 )
 TERMINAL_JOB_STATUSES = {"done", "needs_human", "failed"}
 TEST_LINK_TTL_SECONDS = 7 * 24 * 60 * 60
@@ -59,6 +62,18 @@ def _first_text(*values: Any, default: str = "") -> str:
         if text:
             return text
     return default
+
+
+def _primeiro_nome(full_name: Any) -> str:
+    """Primeiro nome do segurado, capitalizado (MONICA BONELLI... -> Monica).
+    Pula prefixos de tratamento se vierem no cadastro (Sra., Sr., Dr.)."""
+    tokens = [t for t in str(full_name or "").replace(".", " ").split() if t]
+    skip = {"sr", "sra", "dr", "dra", "sto", "sta"}
+    for tok in tokens:
+        if tok.lower().strip(".") in skip:
+            continue
+        return tok.capitalize()
+    return "cliente"
 
 
 def normalize_billing_config(config: Optional[Dict[str, Any]], delivery: Optional[Dict[str, Any]] = None) -> Dict[str, Any]:
@@ -150,9 +165,11 @@ def build_customer_message(item: Dict[str, Any], template: str, config: Optional
     segurado = _first_text(item.get("nome_segurado"), item.get("cliente_nome"), item.get("client_name"), default="cliente")
     apolice = _first_text(item.get("numero_apolice"), item.get("apolice_susep"), item.get("apolice"))
     parcela = _first_text(item.get("numero_parcela"), item.get("parcela"))
+    primeiro_nome = _primeiro_nome(segurado)
     data = {
         "cliente_nome": segurado,
         "nome_segurado": segurado,
+        "primeiro_nome": primeiro_nome,
         "nome_atendente": _first_text(cfg.get("attendant_name"), default="Even"),
         "nome_corretora": _first_text(cfg.get("brokerage_name"), default="sua corretora"),
         "nome_seguradora": _portal_insurer_name(item, cfg),
@@ -443,6 +460,40 @@ def _format_test_message(item: Dict[str, Any], cfg: Dict[str, Any], boleto: Opti
     return "\n\n".join(lines)
 
 
+def _already_sent_recibos(client, company_id: str, send_mode: str) -> set:
+    """Recibos já enviados neste modo — para NÃO reenviar o mesmo boleto em dias
+    seguintes (regra do founder). Cada parcela em atraso (recibo) é enviada 1x."""
+    try:
+        res = (
+            client.table("billing_sent_log")
+            .select("recibo")
+            .eq("company_id", company_id)
+            .eq("send_mode", send_mode)
+            .execute()
+        )
+        return {str((r or {}).get("recibo") or "").strip() for r in (res.data or [])}
+    except Exception:  # noqa: BLE001
+        return set()
+
+
+def _record_sent(client, company_id: str, item: Dict[str, Any], send_mode: str, doc_sent: bool) -> None:
+    try:
+        client.table("billing_sent_log").upsert(
+            {
+                "company_id": company_id,
+                "recibo": str(item.get("recibo") or "").strip(),
+                "portal_key": str(item.get("portal") or ""),
+                "apolice_susep": str(item.get("apolice_susep") or ""),
+                "cliente_nome": str(item.get("cliente_nome") or ""),
+                "send_mode": send_mode,
+                "doc_sent": bool(doc_sent),
+            },
+            on_conflict="company_id,recibo,send_mode",
+        ).execute()
+    except Exception:  # noqa: BLE001
+        pass
+
+
 async def _send_test_messages(
     client,
     routine: Dict[str, Any],
@@ -461,10 +512,17 @@ async def _send_test_messages(
 
     from app.services.whatsapp_service import get_whatsapp_service
 
+    company_id = str(routine["company_id"])
+    already = await asyncio.to_thread(_already_sent_recibos, client, company_id, "test")
     by_recibo = _boletos_by_recibo(boletos)
     sent: List[Dict[str, Any]] = []
+    skipped = 0
     for item in items[: int(cfg["max_boletos_por_execucao"])]:
-        boleto = by_recibo.get(str(item.get("recibo") or "").strip())
+        recibo_key = str(item.get("recibo") or "").strip()
+        if recibo_key and recibo_key in already:
+            skipped += 1
+            continue
+        boleto = by_recibo.get(recibo_key)
         boleto_url = await asyncio.to_thread(_signed_boleto_url, client, boleto.get("storage_path") if boleto else "")
         text = _format_test_message(item, cfg, boleto, boleto_url)
         entry = {
@@ -503,7 +561,11 @@ async def _send_test_messages(
                 except Exception:  # noqa: BLE001
                     entry["link_fallback"] = False
                 blockers.append("modo teste: envio do PDF como documento falhou; usei link temporario como fallback")
+        if entry["ok"]:
+            await asyncio.to_thread(_record_sent, client, company_id, item, "test", bool(entry.get("document_sent")))
         sent.append(entry)
+    if skipped:
+        blockers.append(f"anti-duplicacao: {skipped} boleto(s) ja enviados anteriormente foram pulados (nao reenviamos o mesmo)")
     return sent
 
 

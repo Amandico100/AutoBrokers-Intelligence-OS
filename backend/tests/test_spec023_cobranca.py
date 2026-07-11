@@ -771,10 +771,13 @@ def run():
         "apolice_susep": "5177202523312376574",
         "valor": 58.24,
     }, cfg_msg["message_template"], cfg_msg)
-    check("mensagem nova usa nome da atendente", "Aqui e a Even, da Resulta Seguros" in msg, msg)
-    check("mensagem nova usa parcela em negrito", "parcela *9/10*" in msg, msg)
-    check("mensagem nova usa item segurado em negrito", "seguro do *BYD SONG*" in msg, msg)
-    check("mensagem nova usa apolice em negrito", "Apolice: *5177202523312376574*" in msg, msg)
+    # Mensagem PADRÃO TRAVADA (founder 2026-07-11): sem negrito, primeiro nome, espaçamento.
+    check("mensagem usa a atendente e a corretora", "Aqui é a Even, da Resulta Seguros" in msg, msg)
+    check("mensagem usa PRIMEIRO nome do segurado (nao o completo, pula Sra.)", "Olá Rita," in msg, msg)
+    check("mensagem SEM negrito na parcela", "parcela 9/10" in msg and "*9/10*" not in msg, msg)
+    check("mensagem SEM negrito no item segurado", "seguro do BYD SONG" in msg and "*BYD SONG*" not in msg, msg)
+    check("mensagem SEM negrito na apolice", "Apólice: 5177202523312376574" in msg and "*5177" not in msg, msg)
+    check("mensagem tem espacamento entre paragrafos", "\n\n" in msg, msg)
 
     print(f"\nPASS={PASS} FAIL={FAIL}")
     if FAIL:
