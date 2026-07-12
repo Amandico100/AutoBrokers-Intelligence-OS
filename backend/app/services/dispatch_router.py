@@ -202,6 +202,20 @@ async def start_live_dispatch(
     return {"ok": True, "session": session}
 
 
+async def note_manual_outbound(company_id: str, insurer_phone: str, text: str) -> bool:
+    """Registra no transcript uma mensagem MANUAL da corretora (humano clicou/
+    digitou direto na conversa com a seguradora — fromMe). Sem isso o espelho
+    fica incompleto quando um humano copilota a URA (teste 2026-07-12)."""
+    session = await load_active_dispatch(company_id, insurer_phone)
+    if not session or not str(text or "").strip():
+        return False
+    session.setdefault("transcript", []).append(
+        {"direction": "out", "text": str(text)[:2000], "manual": True}
+    )
+    await save_active_dispatch(company_id, insurer_phone, session)
+    return True
+
+
 async def try_route_insurer_inbound(
     *,
     company_id: str,

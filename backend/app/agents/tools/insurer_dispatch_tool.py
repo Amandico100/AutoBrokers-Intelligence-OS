@@ -27,7 +27,8 @@ class InsurerDispatchInput(BaseModel):
         "AUTO: guincho | bateria | pneu | chaveiro."))
     insurer_key: Optional[str] = Field(default=None, description=(
         "Seguradora da apólice (allianz | porto | hdi | yelum | tokio | alfa | azul | bradesco | mapfre | zurich). "
-        "Descubra pela InfoCap; para assistência AUTO é OBRIGATÓRIO. Residencial sem isso assume Allianz."))
+        "ATENÇÃO: apólice Liberty = use 'yelum' (a Liberty foi rebatizada para Yelum — MESMA seguradora, MESMO corredor). "
+        "Itaú = 'porto'. Descubra pela InfoCap; para assistência AUTO é OBRIGATÓRIO. Residencial sem isso assume Allianz."))
     titular_nascimento: Optional[str] = Field(default=None, description=(
         "[auto Mapfre] Data de nascimento do titular (dd/mm/aaaa) — a Mapfre valida identidade com ela"))
     line_kind: Optional[str] = Field(default=None, description="Linha: auto | residencial. Para carro use 'auto'.")

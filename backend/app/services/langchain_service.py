@@ -350,11 +350,16 @@ class LangChainService:
                     return "Erro temporário de segurança. Por favor, tente novamente.", metrics
                 # Se fail_close=False, continua com texto original
 
-            # 4. Histórico
+            # 4. Histórico — janela de 20 msgs fazia o ATENDENTE "esquecer" a
+            # conversa de 1h atrás (incidente 2026-07-12: re-pediu CPF/nome do
+            # mesmo cliente). 60 cobre horas de atendimento; env ajusta.
             if not conversation_history:
                 try:
+                    import os as _os
+
+                    _hist_limit = int(_os.getenv("CHAT_HISTORY_WINDOW", "60") or 60)
                     conversation_history = self.supabase.get_conversation_history(
-                        session_id=session_id, company_id=company_id, limit=20
+                        session_id=session_id, company_id=company_id, limit=_hist_limit
                     )
                 except Exception as e:
                     logger.error(f"[CHAT] Failed to fetch conversation history: {e}")
