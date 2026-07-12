@@ -408,6 +408,14 @@ async def try_route_insurer_inbound(
     if not session:
         return False
 
+    # TEST_ABORTED = sessão ENCERRADA: nunca mais responder à seguradora
+    # (teste Allianz 12/07: a URA mandou nova saudação após o cancelamento e a
+    # sessão "zumbi" respondeu '1' reabrindo o fluxo). Só registra no espelho.
+    if str(session.get("state") or "") == "test_aborted":
+        session.setdefault("transcript", []).append({"direction": "in", "text": str(text)[:2000]})
+        await save_active_dispatch(company_id, from_phone, session)
+        return True
+
     # MONITORING (pós-protocolo): nunca responde à seguradora; repassa os
     # updates relevantes ao cliente e ignora pesquisas de satisfação.
     if str(session.get("state") or "") == "monitoring":

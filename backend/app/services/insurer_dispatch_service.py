@@ -267,7 +267,19 @@ def handle_insurer_message(
         effective = dict(step)
         if step.get("reply_repeat") and int(step_counts.get(step_name) or 0) >= 1:
             effective["reply"] = step["reply_repeat"]
+        if step.get("dynamic") == "vehicle_by_plate":
+            # Menu de veículos: escolhe pela PLACA MASCARADA (teste Allianz 12/07:
+            # '1' fixo pegou o carro ERRADO numa apólice com 2 veículos).
+            from app.services.corridor_playbooks import pick_option_by_plate
+
+            picked = pick_option_by_plate(insurer_message, str((session.get("slots") or {}).get("veiculo_placa") or ""))
+            if picked:
+                effective["reply"] = picked
+            elif step.get("fallback_adaptive"):
+                effective["reply"] = ""  # sem match seguro → adaptativo decide
         rendered = render_reply(effective, session.get("slots") or {})
+        if step.get("dynamic") == "vehicle_by_plate" and not (rendered.get("reply") or "").strip():
+            rendered = {"ok": False, "missing": ["veiculo_opcao"], "reply": None}
         if not rendered["ok"] and step.get("fallback_adaptive"):
             # Slot não deduzido (ex.: parser de endereço não achou o bairro) em
             # passo marcado fallback_adaptive → o cérebro adaptativo assume este
@@ -279,9 +291,9 @@ def handle_insurer_message(
             session["missing_slots"] = rendered["missing"]
             return session
         else:
-            # LOOP GUARD: nunca enviar a MESMA resposta 3x seguidas (teste Yelum
-            # 2026-07-10: CPF repetido 4x até a seguradora derrubar a conversa).
-            if _would_loop(session, rendered["reply"]):
+            # LOOP GUARD: nunca enviar a MESMA resposta À MESMA PERGUNTA 3x
+            # (teste Yelum 2026-07-10: CPF repetido 4x até derrubar a conversa).
+            if _would_loop(session, rendered["reply"], step_name):
                 session["state"] = "needs_human"
                 session["reason"] = "loop_guard"
                 return session
@@ -319,7 +331,7 @@ def handle_insurer_message(
         session["summary_sent"] = True
         return _emit(session, summary, sender=sender, next_state="human_phase", step="resumo_analista")
     if session.get("state") == "human_phase" and human_phase_reply:
-        if _would_loop(session, human_phase_reply):
+        if _would_loop(session, human_phase_reply, None):
             session["state"] = "needs_human"
             session["reason"] = "loop_guard"
             return session
@@ -336,11 +348,18 @@ def _norm_text(text: str) -> str:
     return "".join(ch for ch in normalized if not unicodedata.combining(ch)).lower()
 
 
-def _would_loop(session: Dict[str, Any], reply: str) -> bool:
-    """True se as DUAS últimas saídas já foram idênticas à resposta proposta —
-    a terceira repetição vira needs_human em vez de spam na seguradora."""
-    outs = [t.get("text") for t in (session.get("transcript") or []) if t.get("direction") == "out"]
-    return len(outs) >= 2 and outs[-1] == reply and outs[-2] == reply
+def _would_loop(session: Dict[str, Any], reply: str, step: Optional[str] = None) -> bool:
+    """True se as DUAS últimas saídas já foram a MESMA resposta À MESMA PERGUNTA
+    (mesmo passo). Comparar só o texto dava FALSO POSITIVO (teste Allianz 12/07:
+    a URA exige '1' legitimamente em passos seguidos — telefone ok=1,
+    automotor=1, pane=1 — e o motor pausava achando que era loop)."""
+    outs = [
+        (t.get("text"), t.get("step"))
+        for t in (session.get("transcript") or [])
+        if t.get("direction") == "out"
+    ]
+    key = (reply, step)
+    return len(outs) >= 2 and outs[-1] == key and outs[-2] == key
 
 
 def build_human_phase_messages(session: Dict[str, Any], insurer_message: str) -> Dict[str, str]:
