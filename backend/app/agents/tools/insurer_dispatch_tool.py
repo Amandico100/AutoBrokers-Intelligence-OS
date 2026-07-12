@@ -315,6 +315,28 @@ class InsurerDispatchTool(BaseTool):
         )
         if not result.get("ok"):
             if result.get("error") == "dispatch_already_active":
+                # FILA multi-cliente: número da seguradora ocupado com OUTRO
+                # acionamento → entra na fila e inicia SOZINHO quando liberar.
+                try:
+                    from app.services.dispatch_router import enqueue_dispatch
+
+                    position = await enqueue_dispatch(self.company_id, insurer_phone, {
+                        "case_id": self.case_id or f"wa-{client_phone}",
+                        "playbook_ref": playbook_ref, "subservice": subservice,
+                        "slots": slots, "client_phone": client_phone,
+                    })
+                    return {
+                        "status": "queued",
+                        "content": (
+                            f"[NA FILA DA SEGURADORA — posição {position}] Há outro acionamento em andamento "
+                            "com esta seguradora agora. Este pedido entrou na FILA e inicia AUTOMATICAMENTE "
+                            "quando o canal liberar (o cliente será avisado na hora). "
+                            "INSTRUÇÃO AO ATENDENTE: diga que o pedido está registrado e que o acionamento "
+                            "começa em alguns minutos — NÃO diga que já foi acionado."
+                        ),
+                    }
+                except Exception as e:  # noqa: BLE001
+                    logger.error(f"[InsurerDispatch] enqueue falhou: {type(e).__name__}")
                 return {
                     "status": "already_active",
                     "content": (
