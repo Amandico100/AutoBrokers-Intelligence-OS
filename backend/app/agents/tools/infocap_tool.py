@@ -358,10 +358,12 @@ class InfocapPolicyLookupTool(BaseTool):
                 "COMO USAR (voce e o ATENDENTE falando com o CLIENTE no WhatsApp):",
                 "1. NAO despeje este bloco nem faca resumo de apolice: use os dados para SEGUIR o atendimento (frases curtas).",
                 "2. Monte sua FICHA do atendimento com: titular, CPF, apolice, seguradora, placa/veiculo. Dai em diante USE a ficha — NAO consulte de novo, NAO pergunte nada que ja esteja aqui ou na conversa.",
-                "3. Se houver mais de uma apolice vigente: escolha VOCE a coerente com o pedido (servico de CARRO -> apolice AUTO; celular/vida/residencia NUNCA atendem carro) e chame de novo com policy_number. So pergunte ao cliente se houver 2+ apolices do MESMO ramo.",
-                "4. Situacao interna da fonte ('recebido e nao entregue', apolices vencidas ocultadas) NAO interessa ao cliente — se a vigencia esta ok, siga direto para resolver o pedido.",
-                "5. NUNCA invente valor, cobertura, servico ou prazo. Valores em R$: apenas os listados acima.",
-                "6. Ao final da leitura, responda ao cliente APENAS o proximo passo natural da conversa (ex.: confirmar que a apolice esta ativa e perguntar o que falta para acionar).",
+                "3. As apolices/seguradoras REAIS deste cliente sao SOMENTE as listadas neste bloco — NUNCA invente seguradora, apolice ou opcao que nao esteja aqui. O NOME do cliente e o do titular acima (ou o que ELE disser) — NUNCA invente nome.",
+                "4. Se houver mais de uma apolice vigente: escolha VOCE a coerente com o pedido (servico de CARRO -> apolice AUTO; celular/vida/residencia NUNCA atendem carro) e chame de novo com policy_number. So pergunte ao cliente se houver 2+ apolices do MESMO ramo.",
+                "5. Liberty e Yelum sao a MESMA seguradora (Liberty foi rebatizada para Yelum): apolice Liberty = corredor/insurer_key 'yelum' no acionamento. Itau = grupo Porto.",
+                "6. Situacao interna da fonte ('recebido e nao entregue', apolices vencidas ocultadas) NAO interessa ao cliente — se a vigencia esta ok, siga direto para resolver o pedido.",
+                "7. NUNCA invente valor, cobertura, servico ou prazo. Valores em R$: apenas os listados acima.",
+                "8. Ao final da leitura, responda ao cliente APENAS o proximo passo natural da conversa (ex.: confirmar que a apolice esta ativa e perguntar o que falta para acionar).",
             ])
             return "\n".join(lines)
 

@@ -929,6 +929,17 @@ async def evolution_webhook_token(token: str, request: Request, background_tasks
 
     normalized = normalize_evolution_inbound(body)
     if normalized["skip"]:
+        # Mensagem MANUAL da própria corretora (fromMe) numa conversa com
+        # dispatch ATIVO: registra no espelho (humano copilotando a URA).
+        if normalized.get("skip_reason") == "from_me" and normalized.get("text") and normalized.get("phone"):
+            try:
+                from app.services.dispatch_router import note_manual_outbound
+
+                await note_manual_outbound(
+                    str(integration.get("company_id") or ""), str(normalized["phone"]), str(normalized["text"])
+                )
+            except Exception as e:  # noqa: BLE001
+                logger.warning(f"[WEBHOOK EVOLUTION] manual outbound note failed: {type(e).__name__}")
         return {"status": "ignored", "reason": normalized["skip_reason"]}
     if await _is_duplicate_namespaced("evolution", normalized["message_id"]):
         return {"status": "ignored", "reason": "duplicate"}

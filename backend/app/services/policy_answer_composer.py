@@ -49,7 +49,8 @@ _INSURER_LABELS = {
     "toki": "Tokio Marine", "tokm": "Tokio Marine",
     "sula": "SulAmérica", "mapf": "Mapfre", "hdi": "HDI",
     "itau": "Itaú", "azul": "Azul Seguros", "sanc": "Sancor",
-    "sompo": "Sompo", "libe": "Liberty",
+    "sompo": "Sompo", "libe": "Yelum (ex-Liberty)", "liberty": "Yelum (ex-Liberty)",
+    "yelum": "Yelum",
 }
 _PRODUCT_LABELS = {
     "resi": "Residencial", "residencial": "Residencial",

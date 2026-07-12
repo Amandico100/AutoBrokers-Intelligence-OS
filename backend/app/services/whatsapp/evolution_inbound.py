@@ -181,6 +181,26 @@ def _text_from_message(message: Dict[str, Any]) -> Optional[str]:
             caption = media.get("caption")
             if isinstance(caption, str) and caption.strip():
                 return caption.strip()
+    # RESPOSTAS interativas (clique em botão/lista — ex.: humano copilotando a
+    # URA com fromMe, ou cliente respondendo lista): extrair o rótulo escolhido.
+    btn_resp = message.get("buttonsResponseMessage")
+    if isinstance(btn_resp, dict):
+        picked = _clean(btn_resp.get("selectedDisplayText")) or _clean(btn_resp.get("selectedButtonId"))
+        if picked:
+            return picked
+    tpl_resp = message.get("templateButtonReplyMessage")
+    if isinstance(tpl_resp, dict) and _clean(tpl_resp.get("selectedDisplayText")):
+        return _clean(tpl_resp.get("selectedDisplayText"))
+    lst_resp = message.get("listResponseMessage")
+    if isinstance(lst_resp, dict):
+        picked = _clean(lst_resp.get("title")) or _clean((lst_resp.get("singleSelectReply") or {}).get("selectedRowId"))
+        if picked:
+            return picked
+    inter_resp = message.get("interactiveResponseMessage")
+    if isinstance(inter_resp, dict):
+        picked = _clean((inter_resp.get("body") or {}).get("text"))
+        if picked:
+            return picked
     return None
 
 

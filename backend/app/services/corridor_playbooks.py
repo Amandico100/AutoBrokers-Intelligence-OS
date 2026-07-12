@@ -502,6 +502,8 @@ _YELUM_FAMILY_STEPS = [
     {"step": "destino_como", "anchor": r"para onde devemos levar o ve[íi]culo", "reply": "Digitar endereço",
      "notes": "guincho: informar o destino do caso (rua/nº/bairro/cidade/UF do parser)"},
     {"step": "deseja_continuar", "anchor": r"deseja continuar (?:este|com o) atendimento", "reply": "Sim"},
+    {"step": "falar_analista", "anchor": r"gostaria de falar com um de nossos analistas", "reply": "Sim",
+     "notes": "72h/pós-atendimento (teste real 12/07): SIM → fila → analista humano recebe o resumo do caso e abre a nova solicitação"},
     {"step": "quando_agora", "anchor": r"atendimento para agora ou prefere agendar", "reply": "Agora",
      "notes": "PONTO DE NÃO-RETORNO (abre na hora). Só alcançado em modo LIVE — no teste o freio cancela antes."},
     {"step": "aguarde_fila",
@@ -511,7 +513,8 @@ _YELUM_FAMILY_STEPS = [
                 r"estamos prontos para seguir com sua solicita|s[óo] preciso de mais algumas informa|"
                 r"enviaremos o servi[çc]o de|foi abert[ao] com sucesso|no final desta conversa|"
                 r"orienta[çc][õo]es importantes|problema na comunica[çc][ãa]o com o sistema|"
-                r"necess[áa]rio falar com um de nossos especialistas|identificamos que voc[êe] deseja falar"),
+                r"necess[áa]rio falar com um de nossos especialistas|identificamos que voc[êe] deseja falar|"
+                r"foi aberta uma assist[êe]ncia para a placa|n[ãa]o h[áa] mais nenhuma solicita[çc][ãa]o em andamento"),
      "reply": "", "noop": True, "notes": "fila/aviso/informativo — NÃO responder (o bot manda rajadas)"},
 ]
 _YELUM_FAMILY_FINALIZE = [
