@@ -214,14 +214,19 @@ async def _support_contact(company_id: str) -> str:
         res = await db.table("companies").select("acionamento_profile").eq("id", company_id).limit(1).execute()
         if res.data:
             prof = res.data[0].get("acionamento_profile") or {}
-            target = _digits(str(prof.get("suporte_humano_whatsapp") or ""))
-            if target:
-                return target
+            raw = str(prof.get("suporte_humano_whatsapp") or "").strip()
+            # GRUPO do WhatsApp (…@g.us) é destino válido — não reduzir a dígitos.
+            if raw.endswith("@g.us"):
+                return raw
+            if _digits(raw):
+                return _digits(raw)
         res2 = await db.table("integrations").select("alert_target").eq("company_id", company_id).limit(3).execute()
         for row in res2.data or []:
-            target = _digits(str(row.get("alert_target") or ""))
-            if target:
-                return target
+            raw = str(row.get("alert_target") or "").strip()
+            if raw.endswith("@g.us"):
+                return raw
+            if _digits(raw):
+                return _digits(raw)
     except Exception as e:  # noqa: BLE001 — offline/teste: sem contato
         logger.warning(f"[DISPATCH ROUTER] support contact lookup failed: {type(e).__name__}")
     return ""
@@ -253,6 +258,61 @@ def _now_iso() -> str:
     from datetime import datetime, timezone
 
     return datetime.now(timezone.utc).isoformat()
+
+
+def _followup_schedule(captured: Dict[str, Any]) -> tuple:
+    """(followup_at, closing_at) INTELIGENTES (feedback founder 12/07):
+    - serviço AGENDADO (dia/hora capturados) → follow-up 45min APÓS o horário
+      marcado do prestador (não após o protocolo);
+    - ETA em minutos → 45min após a previsão de chegada;
+    - sem nada → 45min após agora.
+    Janela educada: nunca mandar mensagem entre 21h e 8h30 (America/Sao_Paulo)
+    — adia para as 9h da manhã seguinte."""
+    from datetime import datetime, timedelta, timezone as _tz
+
+    try:
+        from zoneinfo import ZoneInfo
+
+        tz = ZoneInfo("America/Sao_Paulo")
+    except Exception:  # noqa: BLE001
+        tz = _tz.utc
+    now = datetime.now(tz)
+    base = now
+    captured = captured or {}
+    sched = captured.get("schedule") or {}
+    if sched.get("day"):
+        try:
+            parts = [p for p in str(sched["day"]).split("/") if p]
+            d = int(parts[0])
+            m = int(parts[1]) if len(parts) > 1 else now.month
+            y = int(parts[2]) if len(parts) > 2 else now.year
+            if y < 100:
+                y += 2000
+            hh, mm = 9, 0
+            at = sched.get("at") or sched.get("from")
+            if at:
+                bits = str(at).replace(" ", "").replace("h", ":").strip(":").split(":")
+                hh = int(bits[0])
+                mm = int(bits[1]) if len(bits) > 1 and bits[1] else 0
+            base = datetime(y, m, d, hh, mm, tzinfo=tz)
+        except Exception:  # noqa: BLE001
+            base = now
+    elif captured.get("eta_minutes"):
+        try:
+            base = now + timedelta(minutes=int(captured["eta_minutes"]))
+        except Exception:  # noqa: BLE001
+            base = now
+
+    def _polite(dt):
+        if dt.hour >= 21:
+            return (dt + timedelta(days=1)).replace(hour=9, minute=0, second=0, microsecond=0)
+        if dt.hour < 8 or (dt.hour == 8 and dt.minute < 30):
+            return dt.replace(hour=9, minute=0, second=0, microsecond=0)
+        return dt
+
+    follow = _polite(max(base + timedelta(minutes=45), now + timedelta(minutes=20)))
+    closing = _polite(follow + timedelta(hours=2, minutes=30))
+    return follow.astimezone(_tz.utc).isoformat(), closing.astimezone(_tz.utc).isoformat()
 
 
 def _queue_key(company_id: str, insurer_phone: str) -> str:
@@ -419,11 +479,8 @@ async def try_route_insurer_inbound(
         # Protocolo capturado → MONITORING: seguimos ouvindo a seguradora para
         # repassar updates ao cliente + FOLLOW-UP proativo com timer ("o guincho
         # chegou?" ~45min; encerramento carinhoso ~3h) via check_dispatch_followups.
-        from datetime import datetime, timedelta, timezone
-
         session["state"] = "monitoring"
-        session["followup_at"] = (datetime.now(timezone.utc) + timedelta(minutes=45)).isoformat()
-        session["closing_at"] = (datetime.now(timezone.utc) + timedelta(hours=3)).isoformat()
+        session["followup_at"], session["closing_at"] = _followup_schedule(session.get("captured") or {})
         await save_active_dispatch(company_id, from_phone, session)
         logger.info(f"[DISPATCH ROUTER] captured->monitoring case={session.get('case_id')} protocol=***")
         await _start_next_in_queue(company_id, from_phone, send_to_insurer, send_to_client)
