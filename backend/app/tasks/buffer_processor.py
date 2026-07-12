@@ -80,6 +80,17 @@ def start_buffer_scheduler():
             id="whatsapp_buffer_check",
             max_instances=10,
         )
+        # Follow-up pós-acionamento (SPEC-031 Faixa 6): "o guincho chegou?" e
+        # encerramento carinhoso — varre sessões monitoring a cada 60s.
+        from app.tasks.dispatch_followup import check_dispatch_followups
+
+        scheduler.add_job(
+            check_dispatch_followups,
+            "interval",
+            seconds=60,
+            id="dispatch_followup_check",
+            max_instances=1,
+        )
         scheduler.start()
         logger.info("✅ [BUFFER SCHEDULER] Started (interval: 1s, max_instances: 10)")
     else:

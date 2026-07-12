@@ -227,7 +227,8 @@ def handle_insurer_message(
     # e liberar a corretora para reabrir (visto no teste Yelum 2026-07-10).
     if re.search(
         r"conversa ser[áa] encerrada|estamos encerrando (?:esta|a) conversa|"
-        r"tempo m[áa]ximo de espera.*excedid|encerrad[ao] por (?:inatividade|falta de intera)",
+        r"tempo m[áa]ximo de espera.*excedid|encerrad[ao] por (?:inatividade|falta de intera)|"
+        r"falta de intera[çc][ãa]o esta conversa foi encerrada|conversa foi encerrada",
         _norm_text(insurer_message),
         re.IGNORECASE,
     ):
@@ -306,7 +307,7 @@ def handle_insurer_message(
     if (
         session.get("state") == "human_phase"
         and not session.get("summary_sent")
-        and str(playbook.get("line_kind") or "") == "auto"
+        and playbook.get("opening_template")
         and re.search(
             r"me chamo |meu nome [ée] |como posso (?:te )?ajudar|darei? (?:continuidade|prosseguimento)|"
             r"prosseguirei com o atendimento|irei realizar seu atendimento|vou te ajudar",
@@ -463,6 +464,48 @@ def reply_human_phase(
     session = _emit(session, reply, sender=sender, next_state="human_phase")
     session["pending_insurer_messages"] = []
     return session
+
+
+def build_handoff_dossier(session: Dict[str, Any], reason: str = "") -> str:
+    """Dossiê MASTIGADO para o humano assumir sem perguntar nada ao cliente
+    (exigência do founder: 'entregar tudo mastigadinho'). Texto de WhatsApp."""
+    playbook = get_playbook(session.get("playbook_ref") or "") or {}
+    slots = session.get("slots") or {}
+    captured = session.get("captured") or {}
+    insurer = str(playbook.get("insurer_key") or "?").upper()
+    linhas = [
+        "🚨 *ATENDIMENTO PRECISA DE VOCÊ*",
+        f"Seguradora: {insurer} · Serviço: {session.get('subservice') or '?'}",
+        f"Motivo: {reason or session.get('reason') or 'handoff'}",
+        "",
+        "*Dados do caso:*",
+    ]
+    labels = {
+        "titular_cpf": "CPF", "titular_nome": "Titular", "veiculo_placa": "Placa",
+        "veiculo_descricao": "Veículo", "local_atual": "Local do veículo",
+        "local_destino": "Destino", "problema_descricao": "Problema",
+        "telefone_contato": "Telefone", "pessoa_no_local": "No local",
+    }
+    for key, label in labels.items():
+        val = str(slots.get(key) or "").strip()
+        if val:
+            linhas.append(f"- {label}: {val}")
+    if captured:
+        linhas.append("")
+        linhas.append("*Já capturado da seguradora:*")
+        for k, v in captured.items():
+            linhas.append(f"- {k}: {v}")
+    tail = [t for t in (session.get("transcript") or []) if t.get("text")][-6:]
+    if tail:
+        linhas.append("")
+        linhas.append("*Últimas mensagens com a seguradora:*")
+        for t in tail:
+            who = "corretora" if t.get("direction") == "out" else "seguradora"
+            linhas.append(f"[{who}] {str(t.get('text'))[:160]}")
+    linhas.append("")
+    linhas.append(f"Cliente no WhatsApp: {session.get('client_phone') or '?'} — ele JÁ foi avisado que a equipe vai assumir.")
+    linhas.append("Próxima ação sugerida: continuar a conversa com a seguradora do ponto acima (espelho completo na página Conversas).")
+    return "\n".join(linhas)
 
 
 def client_summary_from_capture(session: Dict[str, Any]) -> Optional[str]:

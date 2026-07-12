@@ -127,7 +127,9 @@ def run():
     s2 = dispatch.new_dispatch_session(case_id="c2", company_id="co", playbook_ref=REF, subservice="chaveiro", slots=SLOTS)
     s2 = dispatch.start_dispatch(s2)
     s2 = dispatch.handle_insurer_message(s2, "Boa tarde, meu nome é Laercio, sou da assistência 24 horas!")
-    check("P4: sem âncora -> human_phase (não responde às cegas)", s2["state"] == "human_phase" and s2.get("pending_insurer_messages"), s2["state"])
+    check("P4: analista humano -> resumo mastigado enviado 1x (fluxo real 01/04/2026)",
+          s2["state"] == "human_phase" and s2.get("summary_sent") is True
+          and any("chaveiro" in t["text"] for t in s2["transcript"] if t["direction"] == "out"), s2["state"])
     s2 = dispatch.handle_insurer_message(s2, "Qual o problema?", human_phase_reply="O cliente está sem chave de casa, fechadura simples.")
     outs2 = [t for t in s2["transcript"] if t["direction"] == "out"]
     check("P4: fase humana usa resposta preparada (LLM guardada)", outs2[-1]["text"].startswith("O cliente está sem chave"), outs2[-1])

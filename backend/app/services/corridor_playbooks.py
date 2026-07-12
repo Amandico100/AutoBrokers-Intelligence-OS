@@ -175,7 +175,21 @@ ALLIANZ_RESIDENCIAL_WHATSAPP_V1: Dict[str, Any] = {
     "capture_anchors": {
         "protocol": r"(?:n[úu]mero (?:da assist[êe]ncia|de protocolo) [ée]|protocolo)\s*:?\s*\*?(\d{5,12})",
         "password": r"senha (?:de acesso|ser[áa]).*?(\d{4})",
-        "schedule": r"agendad[ao] para o dia\s*(\d{1,2}(?:/\d{1,2}(?:/\d{2,4})?)?)\s*,?\s*entre\s*(\d{1,2}h)\s*e\s*(\d{1,2}h)",
+        "schedule": r"agendad[ao] para o dia\s*(\d{1,2}(?:/\d{1,2}(?:/\d{2,4})?)?)\s*,?\s*entre\s*(\d{1,2}\s?h)\s*e\s*(\d{1,2}\s?h)",
+    },
+    # Resumo estruturado ao ESPECIALISTA humano (fluxo real 01/04/2026: a URA
+    # transfere emergenciais ao analista — a operadora abre com o caso mastigado).
+    "opening_template": (
+        "Ola, aqui e a corretora. Preciso acionar {subservice_label} para a residencia do nosso segurado.\n"
+        "Titular: {titular_nome} (CPF {titular_cpf})\n"
+        "Endereco: o da apolice, numero {endereco_numero}\n"
+        "Problema: {problema_descricao}\n"
+        "Telefone de contato: {telefone_contato}\n"
+        "Periodo preferido: {periodo_preferido}"
+    ),
+    "subservice_labels": {
+        "eletricista": "eletricista", "chaveiro": "chaveiro",
+        "encanador": "encanador", "eletrodomesticos": "reparo de eletrodomestico",
     },
     # Regras fixas a repassar ao cliente junto do agendamento.
     "client_instructions": [
@@ -888,6 +902,7 @@ def _optional_keys() -> List[str]:
     return [
         "subservice_label", "veiculo_placa", "veiculo_descricao", "titular_nome", "titular_cpf",
         "local_atual", "local_destino", "problema_descricao", "quando", "pessoa_no_local", "telefone_contato",
+        "endereco_numero", "periodo_preferido",
     ]
 
 

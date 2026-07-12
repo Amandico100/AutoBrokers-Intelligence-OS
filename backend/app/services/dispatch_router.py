@@ -23,6 +23,7 @@ import unicodedata
 from typing import Any, Callable, Dict, Optional
 
 from app.services.insurer_dispatch_service import (
+    build_handoff_dossier,
     client_summary_from_capture,
     guard_human_phase_reply,
     handle_insurer_message,
@@ -202,6 +203,115 @@ async def start_live_dispatch(
     return {"ok": True, "session": session}
 
 
+async def _support_contact(company_id: str) -> str:
+    """WhatsApp do SUPORTE HUMANO da corretora (handoff com dossiê).
+    Fontes: companies.acionamento_profile.suporte_humano_whatsapp →
+    integrations.alert_target (número de alerta S17-3). Vazio = só loga."""
+    try:
+        from app.core.database import create_async_supabase_client
+
+        db = await create_async_supabase_client()
+        res = await db.table("companies").select("acionamento_profile").eq("id", company_id).limit(1).execute()
+        if res.data:
+            prof = res.data[0].get("acionamento_profile") or {}
+            target = _digits(str(prof.get("suporte_humano_whatsapp") or ""))
+            if target:
+                return target
+        res2 = await db.table("integrations").select("alert_target").eq("company_id", company_id).limit(3).execute()
+        for row in res2.data or []:
+            target = _digits(str(row.get("alert_target") or ""))
+            if target:
+                return target
+    except Exception as e:  # noqa: BLE001 — offline/teste: sem contato
+        logger.warning(f"[DISPATCH ROUTER] support contact lookup failed: {type(e).__name__}")
+    return ""
+
+
+async def _log_deflection(company_id: str, session: Dict[str, Any]) -> None:
+    """Telemetria de deflexão: cada needs_human vira registro estruturado
+    (corredor, motivo, quantos passos andou) — é o combustível da meta dos 3%."""
+    entry = {
+        "at": _now_iso(),
+        "case_id": session.get("case_id"),
+        "playbook_ref": session.get("playbook_ref"),
+        "subservice": session.get("subservice"),
+        "reason": str(session.get("reason") or ""),
+        "steps_out": len([t for t in (session.get("transcript") or []) if t.get("direction") == "out"]),
+    }
+    logger.warning(f"[DEFLECTION] {json.dumps(entry, ensure_ascii=False)}")
+    try:
+        redis = await _redis()
+        if redis is not None:
+            key = f"deflection:{company_id}"
+            await redis.lpush(key, json.dumps(entry, ensure_ascii=False))
+            await redis.ltrim(key, 0, 199)
+    except Exception:  # noqa: BLE001
+        pass
+
+
+def _now_iso() -> str:
+    from datetime import datetime, timezone
+
+    return datetime.now(timezone.utc).isoformat()
+
+
+def _queue_key(company_id: str, insurer_phone: str) -> str:
+    return f"dispatch:queue:{company_id}:{_digits(insurer_phone)}"
+
+
+async def enqueue_dispatch(company_id: str, insurer_phone: str, request: Dict[str, Any]) -> int:
+    """FILA multi-cliente: 2º acionamento para a MESMA seguradora espera o 1º
+    terminar (1 conversa por número). Retorna a posição na fila (1-based)."""
+    payload = json.dumps({**request, "queued_at": _now_iso()}, ensure_ascii=False, default=str)
+    redis = await _redis()
+    if redis is not None:
+        size = await redis.rpush(_queue_key(company_id, insurer_phone), payload)
+        await redis.expire(_queue_key(company_id, insurer_phone), 2 * 3600)
+        return int(size)
+    _memory_store.setdefault(_queue_key(company_id, insurer_phone) + ":list", [])
+    _memory_store[_queue_key(company_id, insurer_phone) + ":list"].append(payload)
+    return len(_memory_store[_queue_key(company_id, insurer_phone) + ":list"])
+
+
+async def _pop_queued(company_id: str, insurer_phone: str) -> Optional[Dict[str, Any]]:
+    redis = await _redis()
+    raw = None
+    if redis is not None:
+        raw = await redis.lpop(_queue_key(company_id, insurer_phone))
+    else:
+        lst = _memory_store.get(_queue_key(company_id, insurer_phone) + ":list") or []
+        raw = lst.pop(0) if lst else None
+    if not raw:
+        return None
+    try:
+        return json.loads(raw)
+    except Exception:  # noqa: BLE001
+        return None
+
+
+async def _start_next_in_queue(
+    company_id: str, insurer_phone: str,
+    send_to_insurer: Callable[[str], Any], send_to_client: Callable[[str, str], Any],
+) -> None:
+    """Sessão liberou o número da seguradora → inicia o próximo da fila."""
+    nxt = await _pop_queued(company_id, insurer_phone)
+    if not nxt:
+        return
+    result = await start_live_dispatch(
+        company_id=company_id, case_id=str(nxt.get("case_id") or "queued"),
+        playbook_ref=str(nxt.get("playbook_ref") or ""), subservice=str(nxt.get("subservice") or ""),
+        slots=nxt.get("slots") or {}, client_phone=str(nxt.get("client_phone") or ""),
+        insurer_phone=insurer_phone, sender=send_to_insurer,
+    )
+    client_phone = _digits(str(nxt.get("client_phone") or ""))
+    if result.get("ok") and client_phone:
+        try:
+            send_to_client(client_phone, "Chegou a sua vez! 🙂 Estou acionando a seguradora agora e te aviso assim que sair o protocolo.")
+        except Exception:  # noqa: BLE001
+            pass
+    logger.info(f"[DISPATCH ROUTER] queue drained -> started={result.get('ok')}")
+
+
 async def note_manual_outbound(company_id: str, insurer_phone: str, text: str) -> bool:
     """Registra no transcript uma mensagem MANUAL da corretora (humano clicou/
     digitou direto na conversa com a seguradora — fromMe). Sem isso o espelho
@@ -294,6 +404,7 @@ async def try_route_insurer_inbound(
                 logger.error(f"[DISPATCH ROUTER] test abort notify failed: {type(e).__name__}")
         await save_active_dispatch(company_id, from_phone, session)
         logger.info(f"[DISPATCH ROUTER] test_aborted case={session.get('case_id')} reason={session.get('reason')}")
+        await _start_next_in_queue(company_id, from_phone, send_to_insurer, send_to_client)
         return True
 
     if state == "captured":
@@ -306,13 +417,37 @@ async def try_route_insurer_inbound(
             except Exception as e:  # noqa: BLE001
                 logger.error(f"[DISPATCH ROUTER] client notify failed: {type(e).__name__}")
         # Protocolo capturado → MONITORING: seguimos ouvindo a seguradora para
-        # repassar updates (prestador a caminho, agendamento) ao cliente.
+        # repassar updates ao cliente + FOLLOW-UP proativo com timer ("o guincho
+        # chegou?" ~45min; encerramento carinhoso ~3h) via check_dispatch_followups.
+        from datetime import datetime, timedelta, timezone
+
         session["state"] = "monitoring"
+        session["followup_at"] = (datetime.now(timezone.utc) + timedelta(minutes=45)).isoformat()
+        session["closing_at"] = (datetime.now(timezone.utc) + timedelta(hours=3)).isoformat()
         await save_active_dispatch(company_id, from_phone, session)
         logger.info(f"[DISPATCH ROUTER] captured->monitoring case={session.get('case_id')} protocol=***")
+        await _start_next_in_queue(company_id, from_phone, send_to_insurer, send_to_client)
         return True
 
     if state == "needs_human":
+        reason = str(session.get("reason") or "")
+        # RETOMADA AUTOMÁTICA: a URA derrubou a conversa (timeout/erro) e o fluxo
+        # é idempotente até o freio → reabre SOZINHO uma vez, sem humano.
+        if reason == "insurer_closed" and int(session.get("retry_count") or 0) == 0:
+            await clear_active_dispatch(company_id, from_phone)
+            retry = await start_live_dispatch(
+                company_id=company_id, case_id=str(session.get("case_id") or "retry"),
+                playbook_ref=str(session.get("playbook_ref") or ""),
+                subservice=str(session.get("subservice") or ""),
+                slots=session.get("slots") or {},
+                client_phone=str(session.get("client_phone") or ""),
+                insurer_phone=from_phone, sender=send_to_insurer,
+            )
+            if retry.get("ok"):
+                retry["session"]["retry_count"] = 1
+                await save_active_dispatch(company_id, from_phone, retry["session"])
+                logger.info(f"[DISPATCH ROUTER] insurer_closed -> auto-retry iniciado case={session.get('case_id')}")
+                return True
         client_phone = str(session.get("client_phone") or "").strip()
         if client_phone and not session.get("client_notified_handoff"):
             try:
@@ -323,13 +458,24 @@ async def try_route_insurer_inbound(
                 session["client_notified_handoff"] = True
             except Exception as e:  # noqa: BLE001
                 logger.error(f"[DISPATCH ROUTER] handoff notify failed: {type(e).__name__}")
-        if str(session.get("reason") or "") == "insurer_closed":
-            # Seguradora derrubou a conversa: liberar o lock imediatamente
-            # (um novo acionamento pode ser aberto na sequência).
+        # DOSSIÊ MASTIGADO para o suporte humano da corretora (1x por sessão).
+        if not session.get("dossier_sent"):
+            support = await _support_contact(company_id)
+            if support:
+                try:
+                    send_to_client(support, build_handoff_dossier(session, reason))
+                    session["dossier_sent"] = True
+                except Exception as e:  # noqa: BLE001
+                    logger.error(f"[DISPATCH ROUTER] dossier send failed: {type(e).__name__}")
+            else:
+                logger.warning("[DISPATCH ROUTER] handoff SEM contato de suporte configurado (acionamento_profile.suporte_humano_whatsapp)")
+        await _log_deflection(company_id, session)
+        if reason == "insurer_closed":
             await clear_active_dispatch(company_id, from_phone)
+            await _start_next_in_queue(company_id, from_phone, send_to_insurer, send_to_client)
         else:
             await save_active_dispatch(company_id, from_phone, session)
-        logger.warning(f"[DISPATCH ROUTER] needs_human case={session.get('case_id')} reason={session.get('reason')}")
+        logger.warning(f"[DISPATCH ROUTER] needs_human case={session.get('case_id')} reason={reason}")
         return True
 
     await save_active_dispatch(company_id, from_phone, session)
