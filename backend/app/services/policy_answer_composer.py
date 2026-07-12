@@ -200,14 +200,17 @@ def _compose_operational_summary(result: Dict[str, Any], pack: Dict[str, Any]) -
     selected = result.get("selected") or result.get("policy") or {}
     header = _policy_header({**selected, **pack})
     number = _display_number({**pack, **selected})
-    status = str(selected.get("policy_status") or pack.get("policy_status") or "").strip() or "situação não informada"
+    # Situação pelo que IMPORTA: vigência real por data. Status administrativo
+    # cru da fonte ("Recebido e não entregue ao cliente") é ruído interno que
+    # confunde — só entra quando agrega (cancelada).
+    vigencia_real = _real_vigencia({**pack, **selected})
     valid_from = selected.get("valid_from") or pack.get("valid_from") or "-"
     valid_to = selected.get("valid_to") or pack.get("valid_to") or "-"
     holder = str(selected.get("holder_name") or "").strip()
     lines = [
         f"Encontrei a apólice **{number}** — {header}.",
         "",
-        f"- **Situação:** {status}",
+        f"- **Situação:** {vigencia_real}",
         f"- **Vigência:** {valid_from} a {valid_to}",
     ]
     if holder:
@@ -311,9 +314,8 @@ def _compose_options(matches: List[Dict[str, Any]]) -> str:
         valid_from = match.get("valid_from") or "-"
         valid_to = match.get("valid_to") or "-"
         lines.append(f"{idx}. **{number}** — {insurer} · {product} · vigência {valid_from} a {valid_to} ({vig})")
-    if hidden:
-        lines.append("")
-        lines.append(f"(Ocultei {hidden} apólice(s) vencida(s)/cancelada(s) do histórico.)")
+    # Vencidas/canceladas ficam fora da lista em silêncio — anunciar "ocultei X
+    # apólices" é ruído interno que não ajuda ninguém (feedback founder 11/07).
     return "\n".join(lines)
 
 

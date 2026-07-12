@@ -8,12 +8,48 @@ connection resolution so Chat, detail and probe share the same rule.
 
 import logging
 import os
+import re
 from typing import Any, Dict, Optional, Type
 
 from langchain_core.tools import BaseTool
 from pydantic import BaseModel, Field
 
 logger = logging.getLogger(__name__)
+
+# Papéis que falam com o CLIENTE FINAL (segurado) — a resposta é uma CONVERSA,
+# não um relatório de apólice para o corretor (incidente 2026-07-11: o guard de
+# formatação do copiloto substituía as falas do atendente pelo resumo canônico).
+_CLIENT_FACING_ROLES = ("attendance", "insured_external")
+
+# Intenção de ramo deduzida do pedido do cliente (para escolher a apólice certa
+# sem perguntar: serviço de CARRO nunca é atendido por apólice de celular/vida).
+_AUTO_INTENT_RE = re.compile(
+    r"guincho|reboque|bateria|pneu|chaveiro|socorro|pane|\bcarro\b|ve[íi]culo|moto\b|estepe|motor", re.IGNORECASE
+)
+_RESI_INTENT_RE = re.compile(
+    r"resid[êe]nc|\bcasa\b|apartamento|encanador|eletricista|vazamento|telhado|fechadura da porta|eletrodom[ée]stic",
+    re.IGNORECASE,
+)
+
+
+def _product_hint_from_query(query: Optional[str]) -> Optional[str]:
+    text = str(query or "")
+    if _AUTO_INTENT_RE.search(text):
+        return "auto"
+    if _RESI_INTENT_RE.search(text):
+        return "resi"
+    return None
+
+
+def _match_product_kind(match: Dict[str, Any]) -> Optional[str]:
+    from app.services.policy_answer_composer import humanize_product
+
+    label = str(humanize_product(match.get("product")) or "").strip().lower()
+    if label.startswith("auto"):
+        return "auto"
+    if label.startswith("resid"):
+        return "resi"
+    return None
 
 
 class InfocapLookupInput(BaseModel):
@@ -60,6 +96,10 @@ class InfocapPolicyLookupTool(BaseTool):
     @property
     def _unmasked(self) -> bool:
         return self.agent_role in ("", "core")
+
+    @property
+    def _client_facing(self) -> bool:
+        return self.agent_role in _CLIENT_FACING_ROLES
 
     async def _arun(
         self,
@@ -110,7 +150,7 @@ class InfocapPolicyLookupTool(BaseTool):
                     internal_key=key,
                 )
                 content, assistance_policy, rendered = self._render_content(det, user_query, detail=True)
-                contract = self._build_policy_response_contract(det, rendered, assistance_policy)
+                contract = self._build_policy_response_contract(det, rendered, assistance_policy, client_facing=self._client_facing)
                 return {"content": content, "data": det, "found": bool(det.get("ok")), "policy_response_contract": contract}
 
             result = await provider.lookup(
@@ -125,8 +165,46 @@ class InfocapPolicyLookupTool(BaseTool):
                 db=db,
                 internal_key=key,
             )
+            # ATENDIMENTO (cliente final): quando o pedido deixa claro o ramo
+            # (guincho => AUTO) e existe exatamente UMA apólice vigente desse
+            # ramo, seleciona SOZINHO — nunca oferecer apólice de celular/vida
+            # para problema de carro (incidente 2026-07-11).
+            if (
+                self._client_facing
+                and str(result.get("status") or "") in ("ambiguous_policy", "policy_number_ambiguous", "multiple_matches")
+            ):
+                hint = _product_hint_from_query(user_query)
+                if hint:
+                    from app.services.policy_answer_composer import _real_vigencia
+
+                    matches = [m for m in (result.get("matches") or []) if isinstance(m, dict)]
+                    cands = [
+                        m for m in matches
+                        if _real_vigencia(m) == "vigente" and _match_product_kind(m) == hint
+                    ]
+                    numbers = {str(m.get("policy_number") or m.get("numapo") or "").strip() for m in cands}
+                    numbers.discard("")
+                    if len(numbers) == 1:
+                        picked = numbers.pop()
+                        logger.info("[InfocapPolicyLookupTool] atendimento: apólice %s auto-selecionada pelo ramo do pedido", picked[:6] + "***")
+                        result = await provider.lookup(
+                            company_id=self.company_id,
+                            document=document or None,
+                            name=name or None,
+                            policy_number=picked,
+                            user_query=user_query,
+                            document_evidence_requested=bool(document_evidence_requested),
+                            force_document_evidence_refresh=bool(force_document_evidence_refresh),
+                            unmasked=self._unmasked,
+                            db=db,
+                            internal_key=key,
+                        )
+            # FICHA do atendimento: para serviço de carro, placa/veículo vêm da
+            # fonte (o atendente NUNCA pede placa ao cliente).
+            if self._client_facing and str(result.get("status") or "") == "found":
+                await self._enrich_vehicle(result, provider, document, db, key)
             content, assistance_policy, rendered = self._render_content(result, user_query, detail=False)
-            contract = self._build_policy_response_contract(result, rendered, assistance_policy)
+            contract = self._build_policy_response_contract(result, rendered, assistance_policy, client_facing=self._client_facing)
             return {"content": content, "data": result, "found": bool(result.get("ok")), "policy_response_contract": contract}
         except Exception as e:  # noqa: BLE001
             logger.error(f"[InfocapPolicyLookupTool] erro: {type(e).__name__}")
@@ -143,6 +221,30 @@ class InfocapPolicyLookupTool(BaseTool):
         force_document_evidence_refresh: bool = False,
     ) -> Dict[str, Any]:
         return {"content": "Consulta InfoCap deve ser executada de forma assincrona.", "found": False}
+
+    async def _enrich_vehicle(self, result: Dict[str, Any], provider, document: Optional[str], db, key: str) -> None:
+        """FICHA do atendimento: anexa placa/veículo da apólice AUTO selecionada
+        (porta provider.vehicle — a mesma do portal de vidros). Best-effort."""
+        try:
+            selected = result.get("selected") or result.get("policy") or {}
+            if _match_product_kind(selected) != "auto" or not hasattr(provider, "vehicle"):
+                return
+            doc = str(document or result.get("client_document") or "").strip()
+            number = str(selected.get("policy_number") or selected.get("numapo") or "").strip()
+            if not doc:
+                return
+            info = await provider.vehicle(
+                company_id=self.company_id, document=doc,
+                policy_number=number or None, db=db, internal_key=key,
+            )
+            veh = (info or {}).get("vehicle") or {}
+            if info.get("ok") and (veh.get("placa") or veh.get("veiculo")):
+                result["vehicle_info"] = {
+                    "placa": str(veh.get("placa") or "").strip().upper(),
+                    "veiculo": str(veh.get("veiculo") or "").strip(),
+                }
+        except Exception as e:  # noqa: BLE001 — a ficha nunca derruba a consulta
+            logger.warning(f"[InfocapPolicyLookupTool] vehicle enrich falhou: {type(e).__name__}")
 
     def _render_content(self, data: Dict[str, Any], user_query: Optional[str], detail: bool):
         """SPEC-016.1 D7: sob a flag v2, a tool entrega um BRIEFING estruturado
@@ -162,7 +264,7 @@ class InfocapPolicyLookupTool(BaseTool):
                     if str(data.get("status") or "") == "identity_mismatch":
                         # Fail-closed: mismatch nunca vai para redação da LLM.
                         return rendered, meta.get("assistance_policy"), rendered
-                    briefing = self._build_llm_briefing(data, meta, user_query)
+                    briefing = self._build_llm_briefing(data, meta, user_query, client_facing=self._client_facing)
                     return briefing, meta.get("assistance_policy"), rendered
         except Exception as e:  # noqa: BLE001 — composer nunca pode derrubar a tool
             logger.warning(f"[InfocapPolicyLookupTool] composer v2 indisponivel, usando resumo legado: {type(e).__name__}")
@@ -170,7 +272,7 @@ class InfocapPolicyLookupTool(BaseTool):
         return legacy, None, legacy
 
     @staticmethod
-    def _build_llm_briefing(data: Dict[str, Any], meta: Dict[str, Any], user_query: Optional[str]) -> str:
+    def _build_llm_briefing(data: Dict[str, Any], meta: Dict[str, Any], user_query: Optional[str], client_facing: bool = False) -> str:
         """Briefing interno para a LLM redigir a resposta final em markdown."""
         from app.services.policy_answer_composer import humanize_insurer, humanize_product
 
@@ -241,6 +343,28 @@ class InfocapPolicyLookupTool(BaseTool):
         if limitations:
             lines.append("limitacoes_da_fonte: " + "; ".join(str(item) for item in limitations[:3]))
 
+        vehicle_info = data.get("vehicle_info") or {}
+        if vehicle_info.get("placa") or vehicle_info.get("veiculo"):
+            lines.append(
+                f"veiculo_da_apolice: {vehicle_info.get('veiculo') or '-'} — placa {vehicle_info.get('placa') or '-'} "
+                "(use estes dados; NUNCA peca placa/modelo ao cliente)"
+            )
+
+        if client_facing:
+            # ATENDIMENTO AO SEGURADO: isto e uma CONVERSA de WhatsApp, nao um
+            # relatorio de apolice. O atendente monta a FICHA e segue o fluxo.
+            lines.extend([
+                "",
+                "COMO USAR (voce e o ATENDENTE falando com o CLIENTE no WhatsApp):",
+                "1. NAO despeje este bloco nem faca resumo de apolice: use os dados para SEGUIR o atendimento (frases curtas).",
+                "2. Monte sua FICHA do atendimento com: titular, CPF, apolice, seguradora, placa/veiculo. Dai em diante USE a ficha — NAO consulte de novo, NAO pergunte nada que ja esteja aqui ou na conversa.",
+                "3. Se houver mais de uma apolice vigente: escolha VOCE a coerente com o pedido (servico de CARRO -> apolice AUTO; celular/vida/residencia NUNCA atendem carro) e chame de novo com policy_number. So pergunte ao cliente se houver 2+ apolices do MESMO ramo.",
+                "4. Situacao interna da fonte ('recebido e nao entregue', apolices vencidas ocultadas) NAO interessa ao cliente — se a vigencia esta ok, siga direto para resolver o pedido.",
+                "5. NUNCA invente valor, cobertura, servico ou prazo. Valores em R$: apenas os listados acima.",
+                "6. Ao final da leitura, responda ao cliente APENAS o proximo passo natural da conversa (ex.: confirmar que a apolice esta ativa e perguntar o que falta para acionar).",
+            ])
+            return "\n".join(lines)
+
         lines.extend([
             "",
             "REGRAS OBRIGATORIAS DA RESPOSTA FINAL:",
@@ -257,26 +381,36 @@ class InfocapPolicyLookupTool(BaseTool):
 
     @staticmethod
     def _build_policy_response_contract(
-        data: Dict[str, Any], rendered: str, assistance_policy: Optional[Dict[str, Any]] = None
+        data: Dict[str, Any], rendered: str, assistance_policy: Optional[Dict[str, Any]] = None,
+        client_facing: bool = False,
     ) -> Dict[str, Any]:
         status = data.get("status") or "provider_error"
         pack = data.get("policy_evidence_pack") or {}
         required_facts = []
-        if status in ("ambiguous_policy", "policy_number_ambiguous"):
-            required_facts.append("policy_options")
         if status == "identity_mismatch":
             required_facts.append("identity_mismatch")
-        if pack.get("structured_coverage_absent"):
-            required_facts.append("coverage_absent")
-        if pack.get("document_evidence_ready"):
-            required_facts.append("document_evidence")
-        if status == "source_limited":
-            required_facts.append("source_limited")
+        if not client_facing:
+            # Regras de FORMATAÇÃO do copiloto do corretor (listar todas as
+            # opções, ausência honesta de cobertura, citação documental). Para o
+            # CLIENTE FINAL elas NÃO se aplicam: a resposta é uma conversa de
+            # atendimento, e forçá-las fazia o guard trocar as falas do atendente
+            # pelo resumo canônico (incidente 2026-07-11). Anti-invenção de
+            # valores (allowed_amounts) e identity_mismatch continuam para todos.
+            if status in ("ambiguous_policy", "policy_number_ambiguous"):
+                required_facts.append("policy_options")
+            if pack.get("structured_coverage_absent"):
+                required_facts.append("coverage_absent")
+            if pack.get("document_evidence_ready"):
+                required_facts.append("document_evidence")
+            if status == "source_limited":
+                required_facts.append("source_limited")
         contract_assistance = None
         if isinstance(assistance_policy, dict) and assistance_policy.get("applied"):
             # SPEC-016 E4b: política governada aplicada — o guard garante que a
-            # resposta final cite os serviços padrão.
-            required_facts.append("assistance_policy_applied")
+            # resposta final cite os serviços padrão (só no copiloto do corretor;
+            # na conversa com o cliente o atendente cita quando fizer sentido).
+            if not client_facing:
+                required_facts.append("assistance_policy_applied")
             contract_assistance = {
                 "applied": True,
                 "rule_id": assistance_policy.get("rule_id"),
