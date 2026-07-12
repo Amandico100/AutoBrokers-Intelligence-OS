@@ -466,7 +466,14 @@ _YELUM_FAMILY_STEPS = [
     {"step": "pane_detalhe", "anchor": r"selecione a op[çc][ãa]o que condiz com a pane", "reply": "Problemas no motor",
      "notes": "guincho por pane: leva direto ao Guincho (fluxo real 16/03/2026)"},
     {"step": "endereco_como", "anchor": r"op[çc][õo]es para informar o endere[çc]o onde o ve[íi]culo est[áa]",
-     "reply": "Digitar endereço", "notes": "Digitar endereço / Compartilhar / Informar o CEP / Não sei"},
+     "reply": "Digitar endereço", "notes": "variante jan/2026: Digitar endereço / Compartilhar / Informar o CEP / Não sei"},
+    {"step": "endereco_direto_2026",
+     "anchor": r"para informar o endere[çc]o onde o ve[íi]culo est[áa],? \*?escolha apenas uma",
+     "reply": "{local_atual}", "requires": ["local_atual"],
+     "notes": "URA jul/2026: aceita o endereço COMPLETO digitado — sem clique (validado no teste real 12/07)"},
+    {"step": "descreva_situacao", "anchor": r"descreva em suas palavras", "reply": "{problema_descricao}",
+     "requires": ["problema_descricao"], "fallback_adaptive": True,
+     "notes": "campo livre após 'Não sei' na pane — descrição real do caso"},
     {"step": "endereco_rua", "anchor": r"digite \*?somente a rua", "reply": "{local_rua}",
      "fallback_adaptive": True, "notes": "rua deduzida de local_atual pelo parser; sem dedução → adaptativo"},
     {"step": "endereco_numero", "anchor": r"qual (?:[ée] )?o \*?n[úu]mero\*?\s*\?", "reply": "{local_numero}",
@@ -527,6 +534,9 @@ HDI_AUTO_WHATSAPP_V1["subservice_menu_map"] = {
     "pneu": "Pneu Furado", "chaveiro": "Problema com a chave",
 }
 HDI_AUTO_WHATSAPP_V1["finalize_abort_reply"] = "Sair"  # 'Digite Sair para encerrar'
+# Formulário nativo (flow) exige CLIQUE real — até a resposta estruturada existir,
+# pausa com dossiê (o marcador [FORMULARIO NATIVO] vem do parser de interativas).
+HDI_AUTO_WHATSAPP_V1["handoff_triggers"] = HDI_AUTO_WHATSAPP_V1["handoff_triggers"] + [r"formulario nativo"]
 
 # --- Yelum (ex-Liberty, grupo HDI): v3 minerado do fluxo REAL COMPLETO de
 # 16/03/2026 (conversa "Liberty Fácil Assist" = Yelum rebatizada; 100% bot até o
@@ -549,6 +559,7 @@ YELUM_AUTO_WHATSAPP_V1["subservice_menu_map"] = {
     "pneu": "Pneu Furado", "chaveiro": "Problema com a chave",
 }
 YELUM_AUTO_WHATSAPP_V1["finalize_abort_reply"] = "Sair"  # 'Digite Sair para encerrar'
+YELUM_AUTO_WHATSAPP_V1["handoff_triggers"] = YELUM_AUTO_WHATSAPP_V1["handoff_triggers"] + [r"formulario nativo"]
 
 TOKIO_AUTO_WHATSAPP_V1 = _auto_playbook(
     "tokio", "tokio_assistencia_24h",
