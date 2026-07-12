@@ -197,6 +197,48 @@ class InsurerDispatchTool(BaseTool):
         )
         return {"status": "ready_to_send", "content": "\n".join(lines), "plan": plan}
 
+    async def _resolve_vehicle_facts(self, kwargs: dict) -> dict:
+        """FATOS da apólice vêm da FONTE, não do cliente (incidente 2026-07-11:
+        o atendente pedia a placa ao segurado). Para AUTO, resolve placa/veículo/
+        titular server-side via porta provider.vehicle (a mesma do portal de
+        vidros). Best-effort: falha nunca derruba o acionamento."""
+        is_auto = (
+            str(kwargs.get("line_kind") or "").lower() == "auto"
+            or str(kwargs.get("subservice") or "").lower() in ("guincho", "bateria", "pneu")
+        )
+        cpf = "".join(ch for ch in str(kwargs.get("titular_cpf") or "") if ch.isdigit())
+        precisa = not str(kwargs.get("veiculo_placa") or "").strip() or not str(kwargs.get("titular_nome") or "").strip()
+        if not (is_auto and cpf and precisa):
+            return kwargs
+        try:
+            import os as _os
+
+            from app.core.database import create_async_supabase_client
+            from app.providers.policy_data_provider import get_policy_data_provider
+
+            key = _os.getenv("BACKEND_INTERNAL_API_KEY") or _os.getenv("ADMIN_API_KEY")
+            provider = get_policy_data_provider("infocap")
+            if provider is None or not hasattr(provider, "vehicle") or not key:
+                return kwargs
+            db = await create_async_supabase_client()
+            info = await provider.vehicle(
+                company_id=self.company_id, document=cpf, policy_number=None,
+                db=db, internal_key=key,
+            )
+            if info.get("ok"):
+                veh = info.get("vehicle") or {}
+                cli = info.get("client") or {}
+                if veh.get("placa") and not str(kwargs.get("veiculo_placa") or "").strip():
+                    kwargs["veiculo_placa"] = str(veh["placa"]).strip().upper()
+                if veh.get("veiculo") and not str(kwargs.get("veiculo_descricao") or "").strip():
+                    kwargs["veiculo_descricao"] = str(veh["veiculo"]).strip()
+                nome = cli.get("nome") or cli.get("name")
+                if nome and not str(kwargs.get("titular_nome") or "").strip():
+                    kwargs["titular_nome"] = str(nome).strip()
+        except Exception as e:  # noqa: BLE001
+            logger.warning(f"[InsurerDispatch] vehicle facts indisponíveis: {type(e).__name__}")
+        return kwargs
+
     async def _arun(self, **kwargs) -> dict:
         """Caminho LIVE (S17-6): com o gate aberto, cria a sessão real, envia a
         abertura à seguradora pela integração da corretora e ativa o roteador.
@@ -205,6 +247,7 @@ class InsurerDispatchTool(BaseTool):
 
         from app.services.insurer_dispatch_service import dispatch_live_enabled
 
+        kwargs = await self._resolve_vehicle_facts(dict(kwargs))
         base = self._run(**kwargs)
         if base.get("status") != "ready_to_send" or not dispatch_live_enabled():
             return base
