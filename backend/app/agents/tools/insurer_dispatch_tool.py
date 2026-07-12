@@ -180,7 +180,12 @@ class InsurerDispatchTool(BaseTool):
                 return {
                     "status": "missing_data",
                     "missing": plan["missing_slots"],
-                    "content": "Ainda faltam estes dados para acionar: " + "; ".join(faltam) + ". Pergunte UM de cada vez, com naturalidade.",
+                    "content": (
+                        "Ainda faltam estes dados para acionar: " + "; ".join(faltam) + ". "
+                        "ANTES de perguntar ao cliente, PROCURE cada um na CONVERSA e na sua ficha "
+                        "(CPF, endereço e telefone quase sempre JÁ foram ditos) e chame de novo com eles. "
+                        "Pergunte ao cliente SOMENTE o que nunca foi informado — um de cada vez, com naturalidade."
+                    ),
                 }
             return {"status": "error", "content": f"Não foi possível preparar o acionamento ({plan.get('error')}). Acione um atendente humano."}
 

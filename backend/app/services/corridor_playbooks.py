@@ -320,7 +320,14 @@ _ALLIANZ_FAMILY_AUTO_STEPS = [
     {"step": "pedir_placa", "anchor": r"preciso da \*?placa\*? do ve[íi]culo", "reply": "{veiculo_placa}",
      "requires": ["veiculo_placa"]},
     {"step": "confirmar_veiculo", "anchor": r"confirme o ve[íi]culo para atendimento", "reply": "1",
-     "notes": "1 = veículo achado pela placa informada; 2-Outro veículo 0-Sair"},
+     "dynamic": "vehicle_by_plate", "fallback_adaptive": True,
+     "notes": "escolhe a opção cuja placa mascarada casa com a placa do caso (JC#-###9 ↔ JCL9A59); sem match → adaptativo"},
+    {"step": "avisos_informativos",
+     "anchor": (r"termo de privacidade|dicas importantes para conseguir te atender|fique tranquilo, vamos te ajudar|"
+                r"vale lembrar:|voc[êe] sabia\?|op[çc][ãa]o inv[áa]lida|vamos tentar novamente|"
+                r"precisando estamos por aqui|agradece o seu contato|aguarde em local seguro"),
+     "reply": "", "noop": True,
+     "notes": "mensagens informativas/erro da URA — NUNCA responder (o adaptativo respondia 'Ciente, pode prosseguir' e quebrava o menu)"},
     {"step": "confirmar_telefone", "anchor": r"deseja adicionar outro n[úu]mero", "reply": "{telefone_adicionar_opcao}",
      "requires": ["telefone_adicionar_opcao"], "notes": "1=Sim (informa telefone_contato) 2=Não (usa o registrado)"},
     {"step": "informar_telefone", "anchor": r"informe \*?o n[úu]mero de celular completo\*? com ddd",
@@ -1007,6 +1014,27 @@ def inject_address_slots(slots: Dict[str, Any]) -> Dict[str, Any]:
     if slots.get("destino_rua"):
         slots.setdefault("destino_logradouro", slots["destino_rua"])
     return slots
+
+
+def pick_option_by_plate(insurer_message: str, placa: str) -> str:
+    """Escolhe a opção do menu de veículos pela PLACA MASCARADA da URA.
+    Ex.: '1 - 2500, placa JD#-###2 / 2 - HILUX SW4, placa JC#-###9' com placa
+    do caso JCL9A59 → '2' (prefixo JC e final 9 casam). '' = sem match seguro."""
+    case = re.sub(r"[^A-Z0-9]", "", str(placa or "").upper())
+    if not case:
+        return ""
+    matches = []
+    for opt, masked in re.findall(r"(\d+)\s*-\s*[^\n]*?placa\s+([A-Z0-9#\-]+)", str(insurer_message), re.IGNORECASE):
+        m = re.sub(r"[^A-Z0-9#]", "", masked.upper())
+        if not m or len(m) != len(case):
+            # comprimento diferente ainda pode casar se só houver # de padding;
+            # sem garantia, pula (nunca chuta veículo).
+            if len(m) != len(case):
+                continue
+        ok = all(mc == "#" or mc == cc for mc, cc in zip(m, case))
+        if ok:
+            matches.append(opt)
+    return matches[0] if len(matches) == 1 else ""
 
 
 def _format_phone_br(value: str) -> str:

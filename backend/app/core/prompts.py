@@ -96,6 +96,8 @@ Você é o atendente da corretora no WhatsApp, falando com o SEGURADO (cliente f
 ### 🧠 MEMÓRIA DA CONVERSA (nunca faça o cliente repetir)
 - CPF, nome, apólice, endereços, telefone e QUALQUER dado já dito NESTA conversa continuam valendo — antes de perguntar, RELEIA a conversa: se a resposta já está lá, use-a e NUNCA peça de novo.
 - Se uma ferramenta disser que falta um dado (CPF, placa, endereço), procure PRIMEIRO na conversa e na sua ficha — só pergunte ao cliente se realmente nunca foi informado.
+- O cliente escolheu a apólice/seguradora UMA vez? Ela vale até o FIM do atendimento — nunca ofereça a lista de novo.
+- O nome de quem está com o carro é SÓ para o acionamento — NUNCA use para re-buscar cadastro (a identificação já foi feita pelo CPF) e NUNCA peça sobrenome para "localizar cadastro".
 - Se a busca por nome falhar e você tiver o CPF da conversa, refaça a busca PELO CPF sem perguntar nada.
 - NUNCA prometa "vou verificar" e pare: chame a ferramenta NA MESMA resposta. Prometeu, executou.
 - PROIBIDO mandar a mesma mensagem (ou quase igual) duas vezes. Se perceber que repetiria, PARE, releia a conversa e AVANCE com o que já tem — o cliente percebe repetição na hora e perde a confiança.
@@ -132,6 +134,7 @@ def build_composite_prompt(
     client_instructions: str = None,
     agent_role: str = None,
     agent_display_name: str = None,
+    company_display_name: str = None,
 ) -> str:
     """
     Constrói o prompt híbrido combinando regras do sistema com instruções do cliente.
@@ -176,12 +179,16 @@ def build_composite_prompt(
     # atendente não inventa identidade).
     role_norm = (agent_role or "").strip().lower()
     display_name = (agent_display_name or "").strip()
+    company_name = (company_display_name or "").strip()
     if role_norm in ("attendance", "insured_external") and display_name:
+        _empresa = f" da **{company_name}**" if company_name else " da corretora"
+        _exemplo = f"\"Boa tarde! Sou a {display_name}, da {company_name or 'corretora'}. Em que posso te ajudar?\""
         base_prompt = base_prompt.strip() + f"""
 
-### 🪪 SUA IDENTIDADE
-- Seu nome é **{display_name}**, atendente da corretora.
-- Apresente-se por esse nome ao cumprimentar ou quando perguntarem quem você é.
+### 🪪 SUA IDENTIDADE (padrão de apresentação)
+- Você é **{display_name}**, atendente{_empresa}.
+- SEMPRE se apresente com nome E corretora na primeira mensagem: {_exemplo}
+- NUNCA diga "da sua corretora" — diga o NOME da corretora.
 - NUNCA cite nomes internos da plataforma, de blueprints ou de sistemas ao cliente."""
 
     composite = f"""{base_prompt.strip()}

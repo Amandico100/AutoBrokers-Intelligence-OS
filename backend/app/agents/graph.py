@@ -671,10 +671,22 @@ async def _build_initial_state(
         or (real_agent_data or {}).get("name")
         or ""
     )
+    # Identidade multi-tenant: o atendente se apresenta como "<nome>, da
+    # <CORRETORA>" (feedback founder 12/07) — nome da empresa vem do cadastro.
+    _company_display_name = ""
+    try:
+        if company_id and supabase_client is not None:
+            _c = supabase_client.table("companies").select("company_name, legal_name").eq(
+                "id", str(company_id)).limit(1).execute()
+            if _c.data:
+                _company_display_name = str(_c.data[0].get("company_name") or _c.data[0].get("legal_name") or "")
+    except Exception as e:  # noqa: BLE001
+        logger.warning(f"[Graph] company name lookup falhou: {type(e).__name__}")
     static_prompt = build_composite_prompt(
         base_instructions,
         agent_role=_agent_role_for_prompt,
         agent_display_name=_agent_display_name,
+        company_display_name=_company_display_name,
     )
 
     # Prompt DINÂMICO (memória) - NÃO será cacheado
