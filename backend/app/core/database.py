@@ -77,12 +77,17 @@ class SupabaseClient:
             # Pega o primeiro item da lista
             conversation_id = conversation_response.data[0]["id"]
 
-            # 2. Buscar mensagens da conversation
+            # 2. Buscar mensagens da conversation.
+            # BUG CRÍTICO corrigido (2026-07-12): desc=False + limit devolvia as
+            # N mensagens mais ANTIGAS da conversa — o atendente enxergava só o
+            # começo do histórico e ficava CEGO para a conversa ATUAL (re-pedia
+            # CPF/endereço, "esquecia" tudo, reiniciava o atendimento). Agora:
+            # pega as N mais RECENTES e devolve em ordem cronológica.
             messages_response = (
                 self.client.table("messages")
                 .select("role, content, type, created_at")
                 .eq("conversation_id", conversation_id)
-                .order("created_at", desc=False)
+                .order("created_at", desc=True)
                 .limit(limit)
                 .execute()
             )
@@ -92,7 +97,7 @@ class SupabaseClient:
                 f"session {session_id}, company {company_id}"
             )
 
-            return messages_response.data
+            return list(reversed(messages_response.data or []))
 
         except Exception as e:
             logger.error(
@@ -267,12 +272,14 @@ class AsyncSupabaseClient:
 
             conversation_id = conv_response.data[0]["id"]
 
-            # 2. Buscar mensagens da conversation
+            # 2. Buscar mensagens da conversation (as N mais RECENTES, em ordem
+            # cronológica — desc=False+limit devolvia as mais ANTIGAS e cegava o
+            # agente para a conversa atual; bug corrigido 2026-07-12).
             messages_response = (
                 await self._client.table("messages")
                 .select("role, content, type, created_at")
                 .eq("conversation_id", conversation_id)
-                .order("created_at", desc=False)
+                .order("created_at", desc=True)
                 .limit(limit)
                 .execute()
             )
@@ -280,7 +287,7 @@ class AsyncSupabaseClient:
             logger.info(
                 f"[DB] Fetched {len(messages_response.data)} messages for session {session_id}"
             )
-            return messages_response.data or []
+            return list(reversed(messages_response.data or []))
 
         except Exception as e:
             logger.error(f"[DB] Error fetching conversation history: {e}")

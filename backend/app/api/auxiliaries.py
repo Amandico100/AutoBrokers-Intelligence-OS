@@ -178,17 +178,18 @@ async def run_resumo_atendimentos(
     if not run_id:
         raise HTTPException(status_code=500, detail="Falha ao registrar a execução.")
 
-    # 4. Ler mensagens (ordenadas, limitadas, escopadas pela conversa validada)
+    # 4. Ler mensagens (as N mais RECENTES, devolvidas em ordem cronológica —
+    # desc=False+limit pegava as mais ANTIGAS e cegava o auxiliar p/ a conversa atual)
     try:
         msgs_resp = (
             await db.client.table("messages")
             .select("role, content, created_at")
             .eq("conversation_id", conversation_id)
-            .order("created_at", desc=False)
+            .order("created_at", desc=True)
             .limit(DEFAULT_MAX_MESSAGES)
             .execute()
         )
-        messages: List[Dict[str, Any]] = msgs_resp.data or []
+        messages: List[Dict[str, Any]] = list(reversed(msgs_resp.data or []))
     except Exception as e:  # noqa: BLE001
         logger.error(f"[AUX] messages read failed: {e}")
         await _fail_run(db, run_id, "Falha ao ler as mensagens da conversa.")
@@ -593,11 +594,12 @@ async def draft_follow_up_whatsapp(
                 await db.client.table("messages")
                 .select("role, content, created_at")
                 .eq("conversation_id", conversation_id)
-                .order("created_at", desc=False)
+                .order("created_at", desc=True)
                 .limit(DEFAULT_MAX_MESSAGES)
                 .execute()
             )
-            messages = msgs.data or []
+            # mais RECENTES, em ordem cronológica (mesmo fix do histórico principal)
+            messages = list(reversed(msgs.data or []))
         except Exception as e:  # noqa: BLE001
             logger.warning(f"[AUX] follow-up messages read failed (non-fatal): {type(e).__name__}")
             messages = []

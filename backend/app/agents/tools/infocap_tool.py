@@ -199,9 +199,11 @@ class InfocapPolicyLookupTool(BaseTool):
                             db=db,
                             internal_key=key,
                         )
-            # FICHA do atendimento: para serviço de carro, placa/veículo vêm da
-            # fonte (o atendente NUNCA pede placa ao cliente).
-            if self._client_facing and str(result.get("status") or "") == "found":
+            # FICHA do atendimento: para apólice AUTO, placa/veículo/contato vêm
+            # da fonte (o atendente NUNCA pede placa ao cliente). Vale para TODOS
+            # os papéis — o Chat Principal (corretor) também precisa desses dados
+            # (12/07: "cadê os dados do veículo" — a ficha era só client_facing).
+            if str(result.get("status") or "") == "found":
                 await self._enrich_vehicle(result, provider, document, db, key)
             content, assistance_policy, rendered = self._render_content(result, user_query, detail=False)
             contract = self._build_policy_response_contract(result, rendered, assistance_policy, client_facing=self._client_facing)
@@ -243,6 +245,12 @@ class InfocapPolicyLookupTool(BaseTool):
                     "placa": str(veh.get("placa") or "").strip().upper(),
                     "veiculo": str(veh.get("veiculo") or "").strip(),
                 }
+                # Contato do cliente na fonte (quando a porta devolve) — o
+                # corretor pergunta "qual o telefone dele?" no Chat Principal.
+                cli = (info or {}).get("client") or {}
+                fone = str(cli.get("telefone") or cli.get("phone") or cli.get("celular") or "").strip()
+                if fone:
+                    result["vehicle_info"]["telefone_cliente"] = fone
         except Exception as e:  # noqa: BLE001 — a ficha nunca derruba a consulta
             logger.warning(f"[InfocapPolicyLookupTool] vehicle enrich falhou: {type(e).__name__}")
 
@@ -345,10 +353,13 @@ class InfocapPolicyLookupTool(BaseTool):
 
         vehicle_info = data.get("vehicle_info") or {}
         if vehicle_info.get("placa") or vehicle_info.get("veiculo"):
-            lines.append(
-                f"veiculo_da_apolice: {vehicle_info.get('veiculo') or '-'} — placa {vehicle_info.get('placa') or '-'} "
-                "(use estes dados; NUNCA peca placa/modelo ao cliente)"
+            linha = (
+                f"veiculo_da_apolice: {vehicle_info.get('veiculo') or '-'} — placa {vehicle_info.get('placa') or '-'}"
             )
+            if vehicle_info.get("telefone_cliente"):
+                linha += f" — telefone do cliente na fonte: {vehicle_info['telefone_cliente']}"
+            linha += " (use estes dados; NUNCA peca placa/modelo ao cliente)"
+            lines.append(linha)
 
         if client_facing:
             # ATENDIMENTO AO SEGURADO: isto e uma CONVERSA de WhatsApp, nao um
