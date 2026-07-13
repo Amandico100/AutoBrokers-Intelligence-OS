@@ -888,7 +888,14 @@ def resolve_insurer_contact(insurer: str, env: Optional[Dict[str, str]] = None, 
         val = "".join(ch for ch in str(env.get(var) or "") if ch.isdigit())
         if val:
             return val
-    return ""
+    # Fallback: Registro de Seguradoras (SPEC-034 — números da planilha,
+    # validados pela corretora). O env continua mandando quando definido.
+    try:
+        from app.services.insurer_registry import registry_whatsapp
+
+        return "".join(ch for ch in registry_whatsapp(normalize_insurer_key(insurer)) if ch.isdigit())
+    except Exception:  # noqa: BLE001
+        return ""
 
 
 def auto_subservice_menu_value(playbook: Dict[str, Any], subservice: str) -> str:

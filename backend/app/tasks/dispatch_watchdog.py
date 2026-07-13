@@ -162,7 +162,22 @@ async def _adaptive_reply(company_id: str, session: Dict[str, Any], insurer_text
         from app.factories.llm_factory import LLMFactory
         from app.services.insurer_dispatch_service import build_human_phase_messages
 
-        msgs = build_human_phase_messages(session, insurer_text)
+        # CÉREBRO v2 (SPEC-034 Onda 2): com Mapa de URA ativo, o cérebro enxerga
+        # o território inteiro — telas conhecidas e o que cada opção faz.
+        ura_map = None
+        try:
+            from app.services.corridor_playbooks import get_playbook
+            from app.services.ura_map_service import get_active_map
+
+            playbook = get_playbook(str(session.get("playbook_ref") or "")) or {}
+            row = await get_active_map(
+                str(playbook.get("insurer_key") or ""),
+                str(playbook.get("line_kind") or "auto"),
+            )
+            ura_map = (row or {}).get("map")
+        except Exception:  # noqa: BLE001 — mapa é opcional
+            ura_map = None
+        msgs = build_human_phase_messages(session, insurer_text, ura_map=ura_map)
         d_provider = _os.getenv("DISPATCH_LLM_PROVIDER") or "openai"
         d_model = _os.getenv("DISPATCH_LLM_MODEL") or "gpt-4o"
         llm = LLMFactory.create_llm(

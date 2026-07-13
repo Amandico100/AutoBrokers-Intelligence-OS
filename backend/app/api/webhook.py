@@ -381,7 +381,19 @@ async def process_whatsapp_message_background(
                     from app.factories.llm_factory import LLMFactory
                     from app.services.insurer_dispatch_service import build_human_phase_messages
 
-                    msgs = build_human_phase_messages(dispatch_session, insurer_text)
+                    # CÉREBRO v2 (SPEC-034): passa o Mapa de URA ativo quando existir.
+                    _ura_map = None
+                    try:
+                        from app.services.corridor_playbooks import get_playbook as _get_pb
+                        from app.services.ura_map_service import get_active_map as _gam
+
+                        _pb = _get_pb(str(dispatch_session.get("playbook_ref") or "")) or {}
+                        _row = await _gam(str(_pb.get("insurer_key") or ""),
+                                          str(_pb.get("line_kind") or "auto"))
+                        _ura_map = (_row or {}).get("map")
+                    except Exception:  # noqa: BLE001
+                        _ura_map = None
+                    msgs = build_human_phase_messages(dispatch_session, insurer_text, ura_map=_ura_map)
                     # Cérebro da fase humana do dispatch: forte por padrão, com
                     # override por env (DISPATCH_LLM_PROVIDER/DISPATCH_LLM_MODEL).
                     import os as _os
