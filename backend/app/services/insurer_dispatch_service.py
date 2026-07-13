@@ -368,7 +368,8 @@ def _would_loop(session: Dict[str, Any], reply: str, step: Optional[str] = None)
     return len(outs) >= 2 and outs[-1] == key and outs[-2] == key
 
 
-def build_human_phase_messages(session: Dict[str, Any], insurer_message: str) -> Dict[str, str]:
+def build_human_phase_messages(session: Dict[str, Any], insurer_message: str,
+                               ura_map: Optional[Dict[str, Any]] = None) -> Dict[str, str]:
     """Prompt da fase humana/adaptativa da seguradora (LLM redige, guard fiscaliza).
 
     INTELIGÊNCIA sem cabresto: além de responder o especialista humano, este cérebro
@@ -401,6 +402,20 @@ def build_human_phase_messages(session: Dict[str, Any], insurer_message: str) ->
     guia_ura = ("\nCONHECIMENTO DO FLUXO (passos típicos e a resposta certa de cada um; "
                 "use pra reconhecer um menu mesmo que a seguradora tenha trocado palavras/ordem):\n"
                 + "\n".join(intents)) if intents else ""
+    # CÉREBRO v2 (SPEC-034): quando existe MAPA DE URA (Cartógrafo/Espelho), o
+    # cérebro enxerga o TERRITÓRIO — todas as telas conhecidas e o que cada opção
+    # faz — e decide pelo OBJETIVO mesmo se a tela atual mudou de texto.
+    if ura_map:
+        try:
+            from app.services.ura_map_service import render_map_for_llm
+
+            mapa_txt = render_map_for_llm(ura_map)
+            if mapa_txt:
+                guia_ura += ("\n\nMAPA COMPLETO DA URA DESTA SEGURADORA (telas conhecidas e o que "
+                             "cada opção faz — localize a tela atual e escolha a opção que avança "
+                             "para o objetivo do caso):\n" + mapa_txt)
+        except Exception:  # noqa: BLE001 — mapa nunca derruba o prompt
+            pass
     subservice = str(session.get("subservice") or "")
     line_kind = str(playbook.get("line_kind") or "residencial")
     insurer_key = str(playbook.get("insurer_key") or "seguradora")
