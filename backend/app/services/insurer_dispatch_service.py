@@ -267,6 +267,12 @@ def handle_insurer_message(
         effective = dict(step)
         if step.get("reply_repeat") and int(step_counts.get(step_name) or 0) >= 1:
             effective["reply"] = step["reply_repeat"]
+        # reply_if_step_done: se OUTRO passo já aconteceu nesta sessão, a resposta
+        # muda (ex.: menu raiz da Porto depois do CPF digitado → serviço direto,
+        # sem re-identificar um cliente que já é o nosso).
+        cond = step.get("reply_if_step_done")
+        if isinstance(cond, dict) and int(step_counts.get(str(cond.get("step") or "")) or 0) >= 1:
+            effective["reply"] = str(cond.get("reply") or effective["reply"])
         if step.get("dynamic") == "vehicle_by_plate":
             # Menu de veículos: escolhe pela PLACA MASCARADA (teste Allianz 12/07:
             # '1' fixo pegou o carro ERRADO numa apólice com 2 veículos).

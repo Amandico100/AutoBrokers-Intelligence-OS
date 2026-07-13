@@ -154,7 +154,10 @@ class InsurerDispatchTool(BaseTool):
                 "ANTES de acionar, CONFIRME com o cliente NA CONVERSA (mensagem única): "
                 f"placa {placa}, o que houve, local atual, destino e telefone de contato. "
                 "Se o cliente corrigir qualquer dado, use o valor corrigido. Depois chame de novo com "
-                "dados_confirmados=true. NÃO diga que já acionou.")}
+                "dados_confirmados=true. ATENÇÃO: NADA foi acionado ainda — é PROIBIDO dizer ao cliente "
+                "que a seguradora foi acionada/contatada. Só afirme acionamento quando ESTA ferramenta "
+                "retornar status 'dispatched'. Assim que o cliente confirmar, chame de novo IMEDIATAMENTE "
+                "(na mesma resposta), não deixe para depois.")}
 
         plan = build_dry_run_plan(playbook_ref, subservice, slots)
 
