@@ -71,6 +71,14 @@ async def _redis():
 
 
 async def save_active_dispatch(company_id: str, insurer_phone: str, session: Dict[str, Any]) -> None:
+    # ESPELHO (SPEC-034): todo transcript novo vai para o banco/dashboard antes
+    # de persistir no Redis — ponto único de captura. Nunca bloqueia o motor.
+    try:
+        from app.services.dispatch_mirror import mirror_session
+
+        await mirror_session(company_id, insurer_phone, session)
+    except Exception:  # noqa: BLE001 — espelho é best-effort
+        pass
     key = _key(company_id, insurer_phone)
     payload = json.dumps(session, ensure_ascii=False, default=str)
     ttl = _MONITOR_TTL_SECONDS if str(session.get("state") or "") == "monitoring" else _TTL_SECONDS

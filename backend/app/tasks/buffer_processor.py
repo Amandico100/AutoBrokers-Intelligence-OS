@@ -91,6 +91,17 @@ def start_buffer_scheduler():
             id="dispatch_followup_check",
             max_instances=1,
         )
+        # VIGIA + SENTINELA (SPEC-034 Onda 1): vigilância de desfecho e
+        # recuperação de travas nos acionamentos — varredura a cada 20s.
+        from app.tasks.dispatch_watchdog import check_dispatch_watchdog
+
+        scheduler.add_job(
+            check_dispatch_watchdog,
+            "interval",
+            seconds=20,
+            id="dispatch_watchdog_check",
+            max_instances=1,
+        )
         scheduler.start()
         logger.info("✅ [BUFFER SCHEDULER] Started (interval: 1s, max_instances: 10)")
     else:
