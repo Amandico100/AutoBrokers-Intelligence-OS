@@ -215,6 +215,22 @@ Estado real (auditoria 13/07): a fundação JÁ EXISTE em código — o que falt
 - **IA de Sugestões (proativa, v2):** auxiliar que periodicamente pergunta ao corretor ("me diga 3 coisas que você precisa agora na corretora — vou tentar resolver") e registra as respostas no mesmo banco. Fecha o ciclo: admin vê → prioriza → responde ao corretor ("você pediu X, chegou").
 - Privacidade: insights agregados globais são anonimizados; o dado bruto fica no escopo da corretora. É o embrião do "maior cérebro de corretoras do mundo" sem vazar dado de ninguém.
 
+### 6.6-A Camadas de acesso por usuário (dono vs funcionário) — REGISTRADO 13/07, executar depois
+
+Decisão do founder: a estrutura é para TODAS as corretoras, e cada corretora tem vários usuários.
+O conhecimento tem 3 camadas (global AutoBrokers → corretora → usuário) e o ACESSO precisa de
+uma 4ª dimensão: o PAPEL do usuário. O dono pode pedir relatório financeiro da InfoCap; um
+vendedor talvez não possa ver finanças. Desenho previsto (não é prioridade agora):
+
+- `user_role` por usuário da corretora (dono/gestor/vendas/operacional) + matriz de permissões
+  por CATEGORIA de dado InfoCap (financeiro, carteira, sinistros, comissões).
+- O guard das tools (mesmo padrão do policy_response_contract) filtra ANTES da LLM — fail-closed.
+- RAG: documentos com `visibility` por papel (campo já previsto no payload — knowledge_scope).
+- Memória do usuário continua individual (camada 3 do memory_service) — já é isolada por user.
+
+Pré-requisitos: modelo de papéis no dashboard + UI de permissões. Executar como onda própria
+pós-testes. Até lá: NÃO expor dados financeiros da InfoCap a usuários não-donos por padrão.
+
 ### 6.6 Evolution GO como provider principal (staged)
 
 Decisão do founder 13/07: GO é mais rápido/melhor que a Evolution API atual e deve virar o principal; os dois continuam disponíveis por cliente.

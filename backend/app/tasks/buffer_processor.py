@@ -102,6 +102,17 @@ def start_buffer_scheduler():
             id="dispatch_watchdog_check",
             max_instances=1,
         )
+        # GARIMPO (SPEC-034 Onda 3): minera desejos/dores dos corretores 1x/dia
+        # (marcador em Redis; captura determinística, custo zero de LLM).
+        from app.services.broker_insights import check_garimpo
+
+        scheduler.add_job(
+            check_garimpo,
+            "interval",
+            seconds=3600,
+            id="garimpo_check",
+            max_instances=1,
+        )
         scheduler.start()
         logger.info("✅ [BUFFER SCHEDULER] Started (interval: 1s, max_instances: 10)")
     else:

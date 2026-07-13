@@ -258,7 +258,11 @@ class SearchService:
         )
 
         # Conhecimento GLOBAL (opt-in, SPEC-003): coleção dedicada, só curadoria publicada.
-        if include_global:
+        # SPEC-034 Onda 3: KNOWLEDGE_GLOBAL_SEARCH=1 liga a busca global para todos
+        # os agentes (fail-safe: coleção ausente/erro é ignorado sem derrubar a busca).
+        import os as _os
+
+        if include_global or _os.getenv("KNOWLEDGE_GLOBAL_SEARCH", "0").strip() == "1":
             try:
                 from .knowledge_scope import build_global_search_kwargs, merge_rag_results
 
