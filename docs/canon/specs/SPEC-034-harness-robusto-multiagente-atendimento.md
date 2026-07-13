@@ -112,9 +112,15 @@ Regra de ouro da arquitetura: **falha nunca é silenciosa e nunca é terminal se
 
 **Problema que resolve:** F2/F4 ("toda vez EU preciso clicar pra destravar").
 
-- Detecção **determinística** (state machine + timers, não LLM — barata, incansável, sem alucinação):
-  - URA mandou mensagem e nós não respondemos em 45s → suspeita de passo não mapeado.
-  - Nós respondemos e URA calada além do padrão dela → suspeita de resposta rejeitada silenciosamente.
+- Detecção **determinística** (state machine + timers, não LLM — barata, incansável, sem alucinação), com **perfis de tempo POR FASE** (ajuste do founder 13/07 — correto: falar com atendente humano da seguradora demora minutos e não pode virar alarme falso):
+
+| Fase da sessão | "URA falou e não respondemos" | "Respondemos e a URA calou" |
+|---|---|---|
+| **URA (bot)** | 30s → intervenção degrau 1 | 90s (bots respondem em segundos; silêncio = resposta rejeitada) |
+| **human_phase** (analista/atendente humano da seguradora) | 30s para NÓS respondermos ao humano | paciência de 10min; cutucada educada aos 10min; alerta ao Vigia aos 20min |
+| **monitoring** (pós-protocolo) | n/a | segue o follow-up scheduler já existente (45min pós-horário do prestador) |
+
+  - A transição URA→humano já é detectada pelo motor (estado `human_phase`); a Sentinela troca de perfil automaticamente.
   - Mesmo par (passo, resposta) 3x → loop (já existe; integra aqui).
 - **Escada de recuperação** (degraus finitos — resposta direta à pergunta "supervisor não vai virar loop?"):
   1. T+45s: repassa a mensagem ao Cérebro v2 com o Mapa de URA + objetivo + histórico ("você está no fluxo da Porto, objetivo recarga de bateria, apareceu esta tela nova — qual opção avança?").
@@ -145,7 +151,8 @@ Regra de ouro da arquitetura: **falha nunca é silenciosa e nunca é terminal se
 
 Viabilidade: **SIM** — tecnicamente é só conversar com a URA via WhatsApp e clicar/digitar cada opção. Provas: Botium Crawler faz isso há anos com chatbots; nosso parser de botões/listas já lê os cards; nosso freio de teste já sabe parar antes de confirmar serviço.
 
-- Roda no **número de exploração** (instância Evolution GO de teste — já criada em 11/07; NUNCA o número de produção).
+- Roda numa **instância Evolution GO DEDICADA ao Cartógrafo** (número próprio de exploração — nunca o número de produção, e separada também da instância GO que virará provider principal, §6.5). Criar instância GO é barato; isolamento total entre exploração e produção.
+- Padrão de qualidade (exigência do founder): o Cartógrafo é o agente com MENOR tolerância a erro do sistema — ele conversa com seguradoras de verdade. Por isso: roda com checklist determinística (freios hard-coded fora do LLM), cada sessão de exploração é gravada integralmente (Espelho), revisada pelo Auditor antes do mapa ser aceito, e o mapa só substitui o anterior após diff aprovado (automático se só adiciona nós; humano se remove/altera).
 - Estratégia BFS educada: entra no fluxo, percorre um ramo até o freio (âncora de finalize → aborta com a resposta de cancelamento), volta ao menu, próximo ramo. Cadência lenta (mensagem a cada 20-40s), horário de baixa (2h-5h), 1 seguradora por noite.
 - **Freios do Cartógrafo (inegociáveis):** nunca responde a confirmação final com "sim"; nunca explora ramo de SINISTRO além do 1º nó; usa CPF de teste combinado com o founder; para se a URA pedir dado que não temos; máximo N mensagens por sessão.
 - Saída: Mapa de URA vN + diff legível vs vN-1 ("Porto: submenu novo após 'Bateria' com 3 opções; rótulo 'Técnico' virou 'Técnico residencial'").
@@ -191,6 +198,33 @@ O RAG vira o destino natural do que os agentes produzem — sem depender de huma
 - Aprendizados do Auditor ("na Azul, cliente com 2 veículos: sempre confirmar placa antes de acionar").
 - Curadoria: Alfaiate/Auditor propõem, versionam e datam os chunks (framework do SPEC-010 já prevê).
 
+### 6.4 Memória em 3 camadas + fundação RAG global (absorve SPEC-003/004/010)
+
+Estado real (auditoria 13/07): a fundação JÁ EXISTE em código — o que falta é ligar, popular e expor.
+
+- **Camadas de memória** (`memory_service.py`, SPEC-004): (1) janela da sessão + sumarização com lock, (2) resumos de sessão persistidos, (3) fatos duráveis do usuário (extração + consolidação). Entregas: auditar o que está ATIVO por papel (atendimento/auxiliares/chat principal), ligar onde estiver dormente, e expor no dashboard ("o que a IA lembra de mim/dos meus clientes") com botão de correção.
+- **Escopos de conhecimento** (`knowledge_scope.py`, SPEC-003): `tenant` (corretora), `agent` (por agente — hoje obrigatório no upload), `global_autobrokers` e `global_carrier` (curados, read-only) — projetados, porém a coleção global `autobrokers_global` está DESLIGADA. Entregas: criar a coleção global, pipeline de curadoria (PII/segredos NUNCA entram; tudo versionado/datado), e o toggle opt-in por agente.
+- **Upload pela corretora**: hoje o upload vive no admin (founder). Entrega: superfície no dashboard da corretora para o corretor subir o conhecimento DELE (metas, playbooks internos, tabelas próprias) no escopo tenant/agent.
+- **Chat RAG paralelo do founder**: kit pronto em `docs/canon/PROMPT-NOVO-CHAT-RAG.md` (missão, instruções de uso da UI, o que subir em qual escopo/chunking, o que nunca subir). O chat popula o conteúdo ENQUANTO as ondas constroem o encanamento — trabalhos paralelos que se encontram na Onda 3.
+
+### 6.5 Garimpo — inteligência de negócio das conversas (novo, pedido 13/07)
+
+"Saber o que milhares de corretores estão querendo" — um pipeline, dois produtos:
+
+- **Garimpo v1 (captura passiva):** classificador barato roda sobre as conversas dos corretores com o Chat Principal/auxiliares e extrai: desejos, dores, pedidos de feature, elogios, dúvidas recorrentes → tabela `broker_insights` (por corretora + agregado global anonimizado). Painel no admin: "o que as corretoras estão pedindo", ranqueado e com tendência. As conversas antigas já salvas em `messages` são mineradas retroativamente na primeira execução.
+- **IA de Sugestões (proativa, v2):** auxiliar que periodicamente pergunta ao corretor ("me diga 3 coisas que você precisa agora na corretora — vou tentar resolver") e registra as respostas no mesmo banco. Fecha o ciclo: admin vê → prioriza → responde ao corretor ("você pediu X, chegou").
+- Privacidade: insights agregados globais são anonimizados; o dado bruto fica no escopo da corretora. É o embrião do "maior cérebro de corretoras do mundo" sem vazar dado de ninguém.
+
+### 6.6 Evolution GO como provider principal (staged)
+
+Decisão do founder 13/07: GO é mais rápido/melhor que a Evolution API atual e deve virar o principal; os dois continuam disponíveis por cliente.
+
+1. Instância GO dedicada ao Cartógrafo (exploração) — Onda 2.
+2. Número do ATENDENTE de teste (5547996274743) migra para GO → os retestes de atendimento já validam o GO em condição real — antes de retomar os testes.
+3. Números de produção das corretoras migram DEPOIS dos testes aprovados, um por vez, com rollback simples (a integração por número já aponta para uma instância; trocar = repontar + reparear).
+4. A Evolution API permanece como fallback e para clientes que já estão nela até migração assistida.
+- Bônus do GO validado em 11/07: envia botões/listas nativos e recebe o protobuf completo — destrava respostas interativas do nosso lado no futuro.
+
 ---
 
 ## 7. Respostas diretas às perguntas do founder
@@ -208,21 +242,49 @@ O RAG vira o destino natural do que os agentes produzem — sem depender de huma
 
 ---
 
-## 8. Sequência de execução
+## 8. Sequência de execução (linha de produção — v2 com os ajustes de 13/07)
 
-| Onda | Entregas | Pré-requisito para |
+Executada onda por onda NESTE chat, sem parar, com relatório em linguagem humana ao fim de cada onda + anúncio da próxima. Ao final de todas: retomar os testes de atendimento (Porto fim-a-fim, Azul do zero, Zurich primeira vez).
+
+| Onda | Entregas | Observações |
 |---|---|---|
-| **1 — Visibilidade & Vigilância** | Espelho (dashboard + transcripts persistentes) · Vigia (watchdog de desfecho + alertas + digest) · Sentinela v1 (stall detection + escada com Cérebro atual) | retomar testes Porto/Azul/Zurich |
-| **2 — Conhecimento vivo** | Schema Mapa de URA · Cérebro v2 (mapa + objetivo) · Cartógrafo v1 (sob demanda, número GO) · Simulador/replay | Alfaiate |
-| **3 — Auto-evolução** | Alfaiate (classes de risco + notificação admin) · Auditor (scorecards + métricas + regressão noturna) · RAG alimentado pelos agentes · GEPA depois | perpetuidade |
+| **1 — Visibilidade & Vigilância** | Espelho (conversas de seguradora no banco + dashboard, botões renderizados) · Vigia (watchdog de desfecho + alertas no grupo + digest) · Sentinela v1 (timers por fase §4.3 + escada de recuperação) | remove as dores imediatas: "cadê a conversa", "ninguém viu", "eu destravo na mão" |
+| **2 — Conhecimento vivo** | Schema Mapa de URA · Cérebro v2 (mapa + objetivo + posição) · Cartógrafo v1 (instância GO dedicada, sob demanda) · Simulador/replay | Cartógrafo com padrão de qualidade máximo (§5.3) |
+| **3 — Memória & RAG core** | Camadas de memória auditadas e LIGADAS p/ todos os papéis · coleção global curada ON (opt-in) · upload de conhecimento no dashboard da corretora · Garimpo v1 (mineração das conversas, incl. retroativa) · suporte ao chat RAG paralelo do founder | encontra com o trabalho do chat RAG |
+| **4 — Auto-evolução** | Alfaiate (classes de risco + simulador + aviso no admin) · Auditor (scorecards LLM-judge + métricas + regressão noturna) · RAG alimentado automaticamente pelos agentes · digest de melhoria | GEPA/DSPy só depois disso estabilizar |
+| **5 — Plataforma** | Evolution GO: número do atendente de teste migra (pré-testes) · IA de Sugestões proativa · pendências úteis das SPECs 021/022/032 que não bloqueiam testes | migração dos números de produção p/ GO: DEPOIS dos testes |
 
-Depois da Onda 1: retomar os testes reais (Porto bateria fim-a-fim, Azul do zero, Zurich primeira vez) — agora com o founder vendo tudo no dashboard e alertas ativos.
+Relação com as SPECs existentes: a 034 ABSORVE a execução prática de SPEC-003/004/010 (Onda 3), antecipa a camada de aprendizado da SPEC-021 (Onda 4) e adia conscientemente o grosso da SPEC-022 (reorg seguradora-cêntrica) e SPEC-032 para depois dos testes — nada nelas bloqueia o atendimento robusto.
 
 ---
 
-## 9. Decisões pendentes do founder
+## 9. Tiering de modelos (recomendação que o founder pediu 13/07)
 
-1. Aprovar este SPEC (ou apontar ajustes).
-2. Onda 1 começa imediatamente após aprovação, neste chat.
+**Nos chats de execução (Claude Code):**
+
+| Chat/tarefa | Modelo | Por quê |
+|---|---|---|
+| Este chat (líder do atendimento; Ondas 1-5: arquitetura, código crítico, corredores, incidentes) | **Fable 5** | decisões de arquitetura + código que fala com seguradoras reais — o custo de um erro paga o modelo |
+| Chat RAG paralelo (curadoria e carga de conhecimento) | **Opus 4.8 (max)** | tarefa importante porém guiada por runbook; Opus max executa perfeitamente e preserva a cota de Fable |
+| Chats operacionais pontuais (rodar um script, conferir log, tarefa mecânica descrita passo a passo) | Opus 4.8 (fast) ou Sonnet | rotina sem decisão de projeto |
+
+**No runtime (produção AutoBrokers):**
+
+| Papel | Modelo | Por quê |
+|---|---|---|
+| Trilho de âncoras dos corredores | nenhum (determinístico) | custo zero, latência zero, sem alucinação |
+| Even (conversa com o segurado) | Sonnet-tier (atual) | volume alto; qualidade suficiente com a ficha + guardas |
+| Cérebro v2 (desvios de URA, recuperação da Sentinela) | **modelo de ponta (Opus/Fable-tier)** | baixo volume × altíssimo valor — é onde "ser inteligente igual você" importa |
+| Sentinela/Vigia (detecção) | nenhum (state machine) | vigilância não pode custar nem alucinar |
+| Garimpo/Auditor (classificação, scorecards) | Haiku-tier | milhares de itens baratos; LLM-judge calibrado |
+| Cartógrafo (classificar telas do mapa) | Haiku/Sonnet-tier + freios determinísticos | a segurança vem dos freios, não do modelo |
+
+---
+
+## 10. Decisões pendentes do founder
+
+1. ~~Aprovar o SPEC~~ → aprovado 13/07 com ajustes (incorporados nesta v2).
+2. GO da Onda 1 (começa neste chat ao comando).
 3. CPF de teste dedicado para o Cartógrafo (pode ser o mesmo dos testes atuais?).
-4. Cadência inicial do Cartógrafo: sob demanda apenas (recomendado para começar) ou já quinzenal?
+4. Cadência inicial do Cartógrafo: sob demanda (recomendado) ou já quinzenal.
+5. Abrir o chat RAG paralelo com o kit `PROMPT-NOVO-CHAT-RAG.md` (recomendação: Claude Code + Opus 4.8 max, não GPT — precisa ler o código do pipeline e mexer no Supabase/Qdrant; GPT serve bem para PREPARAR conteúdo antes do upload).
