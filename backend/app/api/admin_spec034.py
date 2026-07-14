@@ -227,6 +227,40 @@ async def _start_with_send(body: Dict[str, Any], wa, integration) -> Dict[str, A
     )
 
 
+@router.post("/cartographer/stop")
+async def cartographer_stop(body: Dict[str, Any], _: Any = Depends(require_master_admin)) -> Dict[str, Any]:
+    """FREIO DE EMERGÊNCIA: encerra explorações na hora. {"all": true} para todas,
+    ou {"insurer_key": "porto"} para uma. O que já foi mapeado é salvo como
+    'proposed' (nada se perde); nenhuma mensagem a mais é enviada."""
+    stopped = []
+    try:
+        from app.core.redis import get_async_redis_client
+        from app.services.ura_map_service import save_proposed_map
+        from app.services.cartographer import exploration_to_map
+
+        redis = await get_async_redis_client()
+        target_key = str(body.get("insurer_key") or "").strip().lower()
+        async for k in redis.scan_iter(match="carto:active:*"):
+            kk = k.decode() if isinstance(k, (bytes, bytearray)) else str(k)
+            raw = await redis.get(kk)
+            exp = json.loads(raw.decode() if isinstance(raw, (bytes, bytearray)) else raw) if raw else {}
+            if not body.get("all") and target_key and str(exp.get("insurer_key")) != target_key:
+                continue
+            try:
+                map_obj = exploration_to_map(exp)
+                if map_obj.get("nodes"):
+                    await save_proposed_map(str(exp.get("insurer_key")), str(exp.get("ramo") or "auto"),
+                                            map_obj, source="cartographer_stopped")
+            except Exception:  # noqa: BLE001
+                pass
+            await redis.delete(kk)
+            stopped.append(exp.get("insurer_key"))
+    except Exception as e:  # noqa: BLE001
+        logger.warning(f"[ADMIN34] carto stop falhou: {type(e).__name__}")
+        return {"ok": False, "error": type(e).__name__}
+    return {"ok": True, "stopped": stopped}
+
+
 @router.get("/cartographer/status")
 async def cartographer_status(_: Any = Depends(require_master_admin)) -> Dict[str, Any]:
     """Explorações ativas + últimos mapas salvos."""
