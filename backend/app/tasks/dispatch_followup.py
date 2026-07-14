@@ -75,7 +75,7 @@ async def check_dispatch_followups() -> int:
             parts = k.split(":")
             company_id = parts[2] if len(parts) >= 4 else ""
             insurer_phone = parts[3] if len(parts) >= 4 else ""
-            integration = integrations.get_whatsapp_integration(company_id) if company_id else None
+            integration = integrations.get_platform_whatsapp_integration(company_id) if company_id else None
             if not integration:
                 continue
             try:

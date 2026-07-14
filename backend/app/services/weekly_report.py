@@ -85,7 +85,7 @@ async def run_weekly_report() -> int:
                     highlights.append(a["title"])
             text = compose_weekly_message(str(comp.get("company_name") or ""), counts, highlights)
             target = target_whatsapp(profile)
-            integration = integrations.get_whatsapp_integration(company_id)
+            integration = integrations.get_platform_whatsapp_integration(company_id)
             if target and integration:
                 try:
                     wa.send_message(target, text, integration)

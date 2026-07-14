@@ -177,7 +177,7 @@ async def test_alert(body: Dict[str, Any], _: Any = Depends(require_master_admin
 
     company_id = str(body.get("company_id") or "")
     contact = await _support_contact(company_id)
-    integration = get_integration_service().get_whatsapp_integration(company_id)
+    integration = get_integration_service().get_platform_whatsapp_integration(company_id)
     if not contact or not integration:
         return {"ok": False, "error": "sem contato de suporte ou integração"}
     text = ("✅ Teste do canal de alertas do Vigia\n"
@@ -203,7 +203,7 @@ async def cartographer_start(body: Dict[str, Any], _: Any = Depends(require_mast
     from app.services.whatsapp_service import get_whatsapp_service
 
     company_id = str(body.get("company_id") or "")
-    integration = get_integration_service().get_whatsapp_integration(company_id)
+    integration = get_integration_service().get_platform_whatsapp_integration(company_id)
     if not integration:
         return {"ok": False, "error": "sem integração WhatsApp para esta company"}
     wa = get_whatsapp_service()
