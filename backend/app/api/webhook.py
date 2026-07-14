@@ -358,6 +358,32 @@ async def process_whatsapp_message_background(
         company_id = integration["company_id"]
         agent_id = integration.get("agent_id")
 
+        # CARTÓGRAFO (SPEC-034): com CARTOGRAPHER_MODE=1 e exploração ATIVA para
+        # este número de seguradora, o mapeador consome a mensagem — antes do
+        # motor de acionamento (que continua tendo prioridade via checagem no
+        # start_exploration). Mesmo número pareado, zero re-pareamento.
+        try:
+            from app.services.cartographer_runner import (
+                cartographer_mode_enabled,
+                handle_cartographer_inbound,
+            )
+
+            if cartographer_mode_enabled():
+                _carto_texts = [m for m in (buffered_messages or []) if str(m or "").strip()]
+                _carto_text = " 
+".join(_carto_texts) if _carto_texts else (
+                    payload.text.message if payload.text and payload.text.message else "")
+                _carto_handled = await handle_cartographer_inbound(
+                    str(payload.phone or ""),
+                    _carto_text,
+                    lambda text_out: whatsapp_service.send_message(payload.phone, text_out, integration),
+                )
+                if _carto_handled:
+                    logger.info("[WEBHOOK] inbound consumido pelo CARTOGRAFO (exploracao ativa)")
+                    return
+        except Exception as e:  # noqa: BLE001 — cartógrafo nunca derruba o fluxo
+            logger.error(f"[WEBHOOK] cartographer runner error: {type(e).__name__}")
+
         # SPEC-017 P5/P6: se este inbound vem do NÚMERO DA SEGURADORA com um
         # dispatch ATIVO, é a URA/especialista respondendo — roteia para o motor
         # de acionamento e NÃO para o agente de atendimento.

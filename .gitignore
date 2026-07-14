@@ -112,3 +112,4 @@ supabase/.temp/
 # Material privado de corretoras (credenciais, apolices, prints com PII) — NUNCA versionar
 docs/intake/
 .codex_tmp/
+backend/data/cartographer_test_data.json

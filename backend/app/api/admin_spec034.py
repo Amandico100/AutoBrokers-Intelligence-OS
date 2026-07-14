@@ -167,6 +167,65 @@ async def list_maps(_: Any = Depends(require_master_admin)) -> Dict[str, Any]:
     return out
 
 
+@router.post("/cartographer/start")
+async def cartographer_start(body: Dict[str, Any], _: Any = Depends(require_master_admin)) -> Dict[str, Any]:
+    """Inicia UMA exploração de mapa: {company_id, insurer_key, ramo?, test_data{cpf,placa,cep}}.
+    Requer CARTOGRAPHER_MODE=1 no ambiente. O founder dispara seguradora a seguradora."""
+    import os as _os
+
+    if _os.getenv("CARTOGRAPHER_MODE", "0").strip() != "1":
+        return {"ok": False, "error": "CARTOGRAPHER_MODE desligado (env)"}
+    from app.services.cartographer_runner import start_exploration
+    from app.services.integration_service import get_integration_service
+    from app.services.whatsapp_service import get_whatsapp_service
+
+    company_id = str(body.get("company_id") or "")
+    integration = get_integration_service().get_whatsapp_integration(company_id)
+    if not integration:
+        return {"ok": False, "error": "sem integração WhatsApp para esta company"}
+    wa = get_whatsapp_service()
+    _ = start_exploration  # (usado em _start_with_send)
+    return await _start_with_send(body, wa, integration)
+
+
+async def _start_with_send(body: Dict[str, Any], wa, integration) -> Dict[str, Any]:
+    from app.services.cartographer_runner import start_exploration
+    from app.services.corridor_playbooks import resolve_insurer_contact
+    from app.services.insurer_registry import registry_whatsapp
+
+    insurer_key = str(body.get("insurer_key") or "")
+    phone = resolve_insurer_contact(insurer_key) or registry_whatsapp(insurer_key)
+    return await start_exploration(
+        insurer_key=insurer_key,
+        ramo=str(body.get("ramo") or "auto"),
+        test_data=dict(body.get("test_data") or {}),
+        send=lambda text: wa.send_message(phone, text, integration),
+    )
+
+
+@router.get("/cartographer/status")
+async def cartographer_status(_: Any = Depends(require_master_admin)) -> Dict[str, Any]:
+    """Explorações ativas + últimos mapas salvos."""
+    out: Dict[str, Any] = {"active": [], "mode": None}
+    import os as _os
+
+    out["mode"] = _os.getenv("CARTOGRAPHER_MODE", "0")
+    try:
+        from app.core.redis import get_async_redis_client
+
+        r = await get_async_redis_client()
+        async for k in r.scan_iter(match="carto:active:*"):
+            raw = await r.get(k)
+            if raw:
+                exp = json.loads(raw.decode() if isinstance(raw, (bytes, bytearray)) else raw)
+                out["active"].append({"insurer_key": exp.get("insurer_key"), "ramo": exp.get("ramo"),
+                                      "msg_count": exp.get("msg_count"), "state": exp.get("state"),
+                                      "nodes": len(exp.get("nodes") or {})})
+    except Exception as e:  # noqa: BLE001
+        logger.warning(f"[ADMIN34] carto status falhou: {type(e).__name__}")
+    return out
+
+
 @router.get("/company-overview/{company_id}")
 async def company_overview(company_id: str, _: Any = Depends(require_master_admin)) -> Dict[str, Any]:
     """Cockpit 360º da corretora: conversas, qualidade (Auditor), insights
