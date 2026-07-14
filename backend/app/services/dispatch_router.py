@@ -219,7 +219,7 @@ async def _support_contact(company_id: str) -> str:
         from app.core.database import create_async_supabase_client
 
         db = await create_async_supabase_client()
-        res = await db.table("companies").select("acionamento_profile").eq("id", company_id).limit(1).execute()
+        res = await db.client.table("companies").select("acionamento_profile").eq("id", company_id).limit(1).execute()
         if res.data:
             prof = res.data[0].get("acionamento_profile") or {}
             raw = str(prof.get("suporte_humano_whatsapp") or "").strip()
@@ -228,7 +228,7 @@ async def _support_contact(company_id: str) -> str:
                 return raw
             if _digits(raw):
                 return _digits(raw)
-        res2 = await db.table("integrations").select("alert_target").eq("company_id", company_id).limit(3).execute()
+        res2 = await db.client.table("integrations").select("alert_target").eq("company_id", company_id).limit(3).execute()
         for row in res2.data or []:
             raw = str(row.get("alert_target") or "").strip()
             if raw.endswith("@g.us"):
