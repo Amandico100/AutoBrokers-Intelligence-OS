@@ -817,8 +817,33 @@ _PLAYBOOKS: Dict[str, Dict[str, Any]] = {
 }
 
 
+# ALFAIATE (SPEC-034 Onda 4): overlays noop auto-aplicados em runtime — avisos
+# NOVOS da URA passam a ser ignorados sem deploy. Cache em memória, populado
+# pela task periódica (refresh_overlay_cache); vazio = comportamento original.
+_OVERLAY_CACHE: Dict[str, List[Dict[str, Any]]] = {}
+
+
+def set_overlay_cache(data: Dict[str, List[Dict[str, Any]]]) -> None:
+    global _OVERLAY_CACHE
+    _OVERLAY_CACHE = dict(data or {})
+
+
 def get_playbook(playbook_ref: str) -> Optional[Dict[str, Any]]:
-    return _PLAYBOOKS.get(str(playbook_ref or "").strip())
+    ref = str(playbook_ref or "").strip()
+    base = _PLAYBOOKS.get(ref)
+    overlays = _OVERLAY_CACHE.get(ref) or []
+    if not base or not overlays:
+        return base
+    # Cópia rasa com ura_steps NOVO — nunca mutar o playbook-fonte (duplicaria
+    # overlays a cada chamada).
+    merged = dict(base)
+    extra = [
+        {"step": f"overlay_noop_{i}", "anchor": str(o.get("anchor") or ""),
+         "reply": "", "noop": True, "notes": str(o.get("note") or "Alfaiate")}
+        for i, o in enumerate(overlays) if o.get("anchor")
+    ]
+    merged["ura_steps"] = list(base.get("ura_steps") or []) + extra
+    return merged
 
 
 def list_playbooks() -> List[str]:
