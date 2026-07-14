@@ -124,6 +124,17 @@ def start_buffer_scheduler():
             id="auditor_check",
             max_instances=1,
         )
+        # IA DE SUGESTÕES (SPEC-034 Onda 5): auxiliar global ON por padrão —
+        # 1 msg/semana por corretora (segunda, horário comercial, marcador Redis).
+        from app.services.proactive_suggestions import check_suggestions
+
+        scheduler.add_job(
+            check_suggestions,
+            "interval",
+            seconds=1800,
+            id="sugestoes_check",
+            max_instances=1,
+        )
         scheduler.start()
         logger.info("✅ [BUFFER SCHEDULER] Started (interval: 1s, max_instances: 10)")
     else:
