@@ -179,7 +179,8 @@ async def test_alert(body: Dict[str, Any], _: Any = Depends(require_master_admin
     contact = await _support_contact(company_id)
     integration = get_integration_service().get_platform_whatsapp_integration(company_id)
     if not contact or not integration:
-        return {"ok": False, "error": "sem contato de suporte ou integração"}
+        return {"ok": False, "error": "sem contato de suporte ou integração",
+                "contact_found": bool(contact), "integration_found": bool(integration)}
     text = ("✅ Teste do canal de alertas do Vigia\n"
             "Acentuação: ação, atenção, coração, você, análise, órgão, saúde á é í ó ú.\n"
             "Se esta mensagem chegou legível, o canal de handoff está PERFEITO. 🚨")
