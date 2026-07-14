@@ -141,10 +141,22 @@ async def check_auditor() -> int:
             lambda: db.client.table("conversations").select("id, company_id, session_id")
             .gte("last_message_at", cutoff).limit(200).execute()
         )
+        per_company: Dict[str, int] = {}
         for conv in convs.data or []:
             if str(conv.get("session_id") or "").startswith("dispatch:"):
                 continue  # acionamentos têm o Vigia/drift — scorecard é p/ atendimento
-            audited += 1 if await audit_conversation(str(conv["company_id"]), str(conv["id"])) >= 0 else 0
+            cid = str(conv["company_id"])
+            if await audit_conversation(cid, str(conv["id"])) >= 0:
+                audited += 1
+                per_company[cid] = per_company.get(cid, 0) + 1
+        for cid, n in per_company.items():
+            try:
+                from app.services.activity_log import log_activity
+
+                await log_activity(cid, "qualidade", f"Varredura de qualidade concluída — {n} conversa(s) auditada(s)",
+                                   "Cada atendimento recebeu nota e verificação de excelência.")
+            except Exception:  # noqa: BLE001
+                pass
         if audited:
             logger.info(f"[AUDITOR] {audited} conversas auditadas")
     except Exception as e:  # noqa: BLE001

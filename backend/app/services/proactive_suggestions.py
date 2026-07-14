@@ -145,6 +145,11 @@ async def run_weekly_suggestions() -> int:
                 try:
                     wa.send_message(target, text, integration)
                     sent += 1
+                    from app.services.activity_log import log_activity
+
+                    await log_activity(company_id, "inteligencia",
+                                       "Análise semanal de oportunidades entregue",
+                                       "Recomendações personalizadas de vendas e gestão enviadas no WhatsApp.")
                 except Exception as e:  # noqa: BLE001
                     logger.error(f"[SUGESTOES] envio falhou company={company_id}: {type(e).__name__}")
             # Registro SEMPRE (mesmo sem canal — aparece no painel do admin).

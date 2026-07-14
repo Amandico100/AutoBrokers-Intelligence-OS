@@ -121,12 +121,24 @@ async def mine_recent(hours: int = 24, limit: int = 300) -> int:
             .gte("last_message_at", cutoff)
             .order("last_message_at", desc=True).limit(limit).execute()
         )
+        per_company = {}
         for conv in convs.data or []:
             if str(conv.get("session_id") or "").startswith("dispatch:"):
                 continue  # conversa com seguradora não é voz do corretor
-            total += await mine_conversation(
+            n = await mine_conversation(
                 str(conv["company_id"]), str(conv["id"]), conv.get("user_id")
             )
+            total += n
+            if n:
+                per_company[str(conv["company_id"])] = per_company.get(str(conv["company_id"]), 0) + n
+        for cid, n in per_company.items():
+            try:
+                from app.services.activity_log import log_activity
+
+                await log_activity(cid, "inteligencia", f"{n} insight(s) do seu negócio capturado(s)",
+                                   "Suas necessidades e ideias registradas para virarem melhorias e ações.")
+            except Exception:  # noqa: BLE001
+                pass
         if total:
             logger.info(f"[GARIMPO] {total} insights novos gravados")
     except Exception as e:  # noqa: BLE001

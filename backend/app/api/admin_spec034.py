@@ -167,6 +167,29 @@ async def list_maps(_: Any = Depends(require_master_admin)) -> Dict[str, Any]:
     return out
 
 
+@router.post("/test-alert")
+async def test_alert(body: Dict[str, Any], _: Any = Depends(require_master_admin)) -> Dict[str, Any]:
+    """Envia um alerta de TESTE pelo MESMO caminho real do Vigia (suporte humano
+    da corretora) — valida o canal e a acentuação (ç, ã, õ, á, é)."""
+    from app.services.dispatch_router import _support_contact
+    from app.services.integration_service import get_integration_service
+    from app.services.whatsapp_service import get_whatsapp_service
+
+    company_id = str(body.get("company_id") or "")
+    contact = await _support_contact(company_id)
+    integration = get_integration_service().get_whatsapp_integration(company_id)
+    if not contact or not integration:
+        return {"ok": False, "error": "sem contato de suporte ou integração"}
+    text = ("✅ Teste do canal de alertas do Vigia\n"
+            "Acentuação: ação, atenção, coração, você, análise, órgão, saúde á é í ó ú.\n"
+            "Se esta mensagem chegou legível, o canal de handoff está PERFEITO. 🚨")
+    try:
+        get_whatsapp_service().send_message(contact, text, integration)
+        return {"ok": True, "sent_to": contact[:8] + "***"}
+    except Exception as e:  # noqa: BLE001
+        return {"ok": False, "error": type(e).__name__}
+
+
 @router.post("/cartographer/start")
 async def cartographer_start(body: Dict[str, Any], _: Any = Depends(require_master_admin)) -> Dict[str, Any]:
     """Inicia UMA exploração de mapa: {company_id, insurer_key, ramo?, test_data{cpf,placa,cep}}.

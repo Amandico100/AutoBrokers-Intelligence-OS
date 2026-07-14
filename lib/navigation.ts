@@ -20,6 +20,7 @@ export const PILLARS: NavItem[] = [
 
 /** Navegação secundária discreta (não polui o primeiro nível). */
 export const SECONDARY: NavItem[] = [
+  { key: 'atividades', label: 'Atividades', href: '/dashboard/atividades', icon: 'success' },
   { key: 'historico', label: 'Histórico', href: '/dashboard/historico', icon: 'historico' },
   { key: 'configuracoes', label: 'Configurações', href: '/dashboard/configuracoes', icon: 'configuracoes' },
 ];

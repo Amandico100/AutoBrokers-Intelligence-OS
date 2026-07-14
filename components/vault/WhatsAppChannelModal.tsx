@@ -60,21 +60,42 @@ export function WhatsAppChannelModal({
 
         {open && step === 'choose' && (
           <div className="space-y-3">
+            {/* SPEC-034 §6.6: Evolution GO é o caminho RECOMENDADO (mais rápido,
+                botões/listas nativos). A fiação de pareamento GO chega com a
+                migração staged; até lá o clique segue o fluxo Evolution atual. */}
             <button
               onClick={() => setStep('evolution')}
-              className="flex w-full items-start gap-3 rounded-xl border border-border bg-surface p-4 text-left transition-colors hover:border-primary/40 hover:bg-surface-2"
+              className="flex w-full items-start gap-3 rounded-xl border border-primary/40 bg-surface p-4 text-left transition-colors hover:border-primary/70 hover:bg-surface-2"
             >
               <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-lg border border-border bg-brand-soft text-primary">
                 <QrCode className="h-5 w-5" />
               </span>
               <span className="min-w-0 flex-1">
                 <span className="flex items-center gap-2">
-                  <span className="text-sm font-semibold text-foreground">Conexão por QR code</span>
+                  <span className="text-sm font-semibold text-foreground">QR code · Evolution GO</span>
+                  <StatusPill tone="success" label="Recomendado" />
+                </span>
+                <span className="mt-1 block text-xs text-muted-foreground">
+                  A nova geração do pareamento: mais rápida e estável, com botões e listas nativos.
+                  Usa o número que você já tem — escaneia o QR e pronto.
+                </span>
+              </span>
+            </button>
+
+            <button
+              onClick={() => setStep('evolution')}
+              className="flex w-full items-start gap-3 rounded-xl border border-border bg-surface p-4 text-left transition-colors hover:border-primary/40 hover:bg-surface-2"
+            >
+              <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-lg border border-border bg-surface-2 text-muted-foreground">
+                <QrCode className="h-5 w-5" />
+              </span>
+              <span className="min-w-0 flex-1">
+                <span className="flex items-center gap-2">
+                  <span className="text-sm font-semibold text-foreground">QR code · Evolution (clássico)</span>
                   <StatusPill tone="success" label="Disponível" />
                 </span>
                 <span className="mt-1 block text-xs text-muted-foreground">
-                  Usa o número que você já tem (WhatsApp comum). Sem mensalidade. Escaneia o QR e
-                  pronto — ideal para começar e para números de atendimento dedicados.
+                  O canal atual, estável e sem mensalidade. Ideal se você já está conectado por aqui.
                 </span>
               </span>
             </button>

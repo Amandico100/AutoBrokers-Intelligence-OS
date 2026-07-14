@@ -135,6 +135,17 @@ def start_buffer_scheduler():
             id="sugestoes_check",
             max_instances=1,
         )
+        # RELATÓRIO DE SÁBADO (SPEC-036): resumo semanal das Atividades por
+        # corretora ("olha quanta coisa fizemos") — sábado de manhã, 1x/semana.
+        from app.services.weekly_report import check_weekly_report
+
+        scheduler.add_job(
+            check_weekly_report,
+            "interval",
+            seconds=1800,
+            id="relatorio_semanal_check",
+            max_instances=1,
+        )
         scheduler.start()
         logger.info("✅ [BUFFER SCHEDULER] Started (interval: 1s, max_instances: 10)")
     else:
