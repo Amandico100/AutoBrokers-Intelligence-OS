@@ -84,6 +84,12 @@ async def mirror_session(company_id: str, insurer_phone: str, session: Dict[str,
                 lambda: db.client.table("conversations").update(update).eq("id", conv_id).execute()
             )
         session["mirror_idx"] = len(transcript)
+        try:
+            from app.core.heartbeat import beat
+
+            await beat("espelho", len(rows))
+        except Exception:  # noqa: BLE001
+            pass
     except Exception as e:  # noqa: BLE001 — o Espelho nunca derruba o motor
         logger.warning(f"[MIRROR] espelhamento falhou (segue sem espelho): {type(e).__name__}")
 

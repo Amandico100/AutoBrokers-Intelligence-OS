@@ -213,30 +213,69 @@ export default function AdminLayout({ children }: { children: React.ReactNode })
     return <div className="min-h-screen bg-background">{children}</div>;
   }
 
-  // Define menus based on role
+  // SPEC-036 Etapa 1: navegação reorganizada em 10 destinos (operação primeiro,
+  // gestão depois). Nenhuma rota morreu — páginas antigas viram filhos dos hubs.
   const masterMenuItems = [
     { href: '/admin', icon: LayoutDashboard, label: 'Dashboard' },
-    { href: '/admin/companies', icon: Building2, label: 'Empresas' },
-    { href: '/admin/pending-users', icon: UserCheck, label: 'Aprovações Pendentes' },
-    { href: '/admin/all-users', icon: Users, label: 'Todos os Usuários' },
+    { href: '/admin/central-agentes', icon: Bot, label: 'Central de Agentes' },
+    { href: '/admin/acionamentos', icon: MessageSquare, label: 'Acionamentos ao vivo' },
+    { href: '/admin/insights', icon: UserCheck, label: 'Insights · Garimpo' },
+    {
+      href: '/admin/companies',
+      icon: Building2,
+      label: 'Corretoras',
+      submenu: [
+        { href: '/admin/pending-users', label: 'Aprovações pendentes' },
+        { href: '/admin/all-users', label: 'Todos os usuários' },
+      ],
+    },
+    {
+      href: '/admin/conversations',
+      icon: MessageSquare,
+      label: 'Conversas',
+      submenu: [
+        { href: '/admin/conversation-logs', label: 'Logs de conversação' },
+        { href: '/admin/logs', label: 'Logs do sistema' },
+      ],
+    },
     {
       href: '/admin/finops',
       icon: DollarSign,
-      label: 'FinOps',
+      label: 'Financeiro',
       submenu: [
         { href: '/admin/finops/usage', label: 'Consumo LLM' },
         { href: '/admin/finops/pricing', label: 'Tabela de Custos' },
         { href: '/admin/finops/plans', label: 'Planos' },
+        { href: '/admin/costs', label: 'Custos (legado)' },
       ],
     },
-    { href: '/admin/auxiliares', icon: Bot, label: 'Auxiliares Globais' },
-    { href: '/admin/routine-templates', icon: CalendarClock, label: 'Rotinas Prontas' },
-    { href: '/admin/prompt-effective', icon: Shield, label: 'Prompt Efetivo' },
-    { href: '/admin/portal-browser', icon: Globe, label: 'Portal Lab' },
-    { href: '/admin/logs', icon: FileText, label: 'Logs do Sistema' },
-    { href: '/admin/conversation-logs', icon: MessageSquare, label: 'Logs de Conversação' },
-    { href: '/admin/legal-documents', icon: FileText, label: 'Termos e Políticas' },
-    { href: '/admin/settings', icon: Settings, label: 'Configurações' },
+    {
+      href: '/admin/portal-browser',
+      icon: Globe,
+      label: 'Conexões',
+      submenu: [
+        { href: '/admin/insurer-action-channels', label: 'Canais de seguradora' },
+      ],
+    },
+    {
+      href: '/admin/auxiliares',
+      icon: CalendarClock,
+      label: 'Inteligência',
+      submenu: [
+        { href: '/admin/routine-templates', label: 'Rotinas prontas' },
+        { href: '/admin/blueprint-center', label: 'Blueprint Center' },
+        { href: '/admin/prompt-effective', label: 'Prompt efetivo' },
+      ],
+    },
+    { href: '/admin/knowledge-base', icon: FileText, label: 'Conhecimento (RAG)' },
+    {
+      href: '/admin/settings',
+      icon: Settings,
+      label: 'Sistema',
+      submenu: [
+        { href: '/admin/legal-documents', label: 'Termos e políticas' },
+      ],
+    },
   ];
 
   const companyAdminMenuItems = [

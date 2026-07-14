@@ -149,4 +149,11 @@ async def check_auditor() -> int:
             logger.info(f"[AUDITOR] {audited} conversas auditadas")
     except Exception as e:  # noqa: BLE001
         logger.warning(f"[AUDITOR] check falhou: {type(e).__name__}")
+    try:
+        from app.core.heartbeat import beat
+
+        await beat("auditor", audited)
+        await beat("alfaiate")
+    except Exception:  # noqa: BLE001
+        pass
     return audited

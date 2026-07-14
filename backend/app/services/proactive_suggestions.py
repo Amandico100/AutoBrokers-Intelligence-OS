@@ -163,6 +163,12 @@ async def check_suggestions() -> int:
     """Task periódica: dispara 1x por semana, segunda-feira, janela 12h-21h UTC
     (9h-18h no Brasil) — horário comercial, nunca madrugada."""
     now = datetime.now(timezone.utc)
+    try:
+        from app.core.heartbeat import beat
+
+        await beat("sugestoes")
+    except Exception:  # noqa: BLE001
+        pass
     if now.weekday() != 0 or not (12 <= now.hour < 21):
         return 0
     return await run_weekly_suggestions()
