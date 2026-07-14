@@ -88,4 +88,10 @@ async def check_dispatch_followups() -> int:
                 logger.error(f"[FOLLOWUP] envio falhou: {type(e).__name__}")
     except Exception as e:  # noqa: BLE001 — nunca derruba o scheduler
         logger.error(f"[FOLLOWUP] varredura falhou: {type(e).__name__}")
+    try:
+        from app.core.heartbeat import beat
+
+        await beat("followup", sent)
+    except Exception:  # noqa: BLE001
+        pass
     return sent

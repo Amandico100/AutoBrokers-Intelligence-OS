@@ -157,3 +157,10 @@ async def check_garimpo() -> int:
     except Exception as e:  # noqa: BLE001
         logger.warning(f"[GARIMPO] check falhou: {type(e).__name__}")
         return 0
+    finally:
+        try:
+            from app.core.heartbeat import beat
+
+            await beat("garimpo")
+        except Exception:  # noqa: BLE001
+            pass

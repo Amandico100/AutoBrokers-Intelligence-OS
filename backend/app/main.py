@@ -156,6 +156,12 @@ app.include_router(pricing_router, tags=["Admin Pricing"])
 app.include_router(plans_router, tags=["Admin Plans"])
 app.include_router(billing_router, tags=["Billing (Owner)"])
 app.include_router(billing_admin_router, tags=["Admin Billing"])
+
+# SPEC-034/036: superficies do portal admin (Central de Agentes, Acionamentos,
+# Insights, Registro, Mapas/Alfaiate)
+from app.api.admin_spec034 import router as admin_spec034_router
+
+app.include_router(admin_spec034_router, tags=["Admin SPEC-034"])
 app.include_router(stripe_webhooks_router, prefix="/api/webhooks", tags=["Stripe Webhooks"])
 app.include_router(stripe_checkout_router, prefix="/api/billing", tags=["Stripe Checkout"])
 app.include_router(mcp_router, prefix="/api/mcp", tags=["MCP Integrations"])

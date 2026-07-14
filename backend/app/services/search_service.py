@@ -277,6 +277,26 @@ class SearchService:
                 initial_results = merge_rag_results(initial_results, global_results)
             except Exception as e:  # noqa: BLE001
                 logger.warning(f"[Search] global retrieval ignorado: {type(e).__name__}")
+            # SPEC-036: a empresa técnica "AutoBrokers Global Knowledge" é a dona
+            # da biblioteca global — o founder sobe conteúdo por ela na MESMA UI
+            # de Base de Conhecimento; todo agente com busca global lê daqui.
+            try:
+                gk_company = _os.getenv("GLOBAL_KNOWLEDGE_COMPANY_ID", "").strip()
+                if gk_company and gk_company != str(company_id):
+                    gk_results = self.qdrant.search_similar(
+                        company_id=gk_company,
+                        query_embedding=dense_vector,
+                        sparse_embedding=sparse_vector,
+                        agent_id=None,
+                        include_tenant_wide=True,
+                        top_k=20,
+                        score_threshold=0.0,
+                    )
+                    from .knowledge_scope import merge_rag_results as _merge
+
+                    initial_results = _merge(initial_results, gk_results)
+            except Exception as e:  # noqa: BLE001
+                logger.warning(f"[Search] global-knowledge retrieval ignorado: {type(e).__name__}")
 
         if not initial_results:
             logger.info(
