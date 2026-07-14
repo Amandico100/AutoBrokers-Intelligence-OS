@@ -142,7 +142,8 @@ async def handle_cartographer_inbound(from_phone: str, text: str,
         passes = int(exp.get("pass_count") or 0) + 1
         exp["pass_count"] = passes
         max_passes = int(os.getenv("CARTOGRAPHER_MAX_PASSES", "12"))
-        if (state == "done" and passes < max_passes and has_unexplored(exp)):
+        if (state == "done" and passes < max_passes and has_unexplored(exp)
+                and not exp.get("human_engaged")):
             exp["state"] = "exploring"
             exp["msg_count"] = 0
             exp["current_path"] = []
@@ -223,7 +224,7 @@ async def check_cartographer_stalls() -> int:
             passes = int(exp.get("pass_count") or 0) + 1
             exp["pass_count"] = passes
             max_passes = int(os.getenv("CARTOGRAPHER_MAX_PASSES", "12"))
-            restart = passes < max_passes and has_unexplored(exp)
+            restart = passes < max_passes and has_unexplored(exp) and not exp.get("human_engaged")
             if restart and company_id:
                 try:
                     from app.services.integration_service import get_integration_service
