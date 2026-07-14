@@ -178,6 +178,14 @@ def handle_insurer_message(exp: Dict[str, Any], text: str) -> Optional[str]:
 
 def _decide_reply(exp: Dict[str, Any], node_id: str, text: str,
                   options: List[str], kind: str) -> Optional[str]:
+    # FORMULÁRIO NATIVO (app dentro do WhatsApp — família HDI/Yelum): não aceita
+    # texto; registra o nó como 'app_form' (o mapa marca a fronteira do que a
+    # Evolution API alcança — atravessar exige Evolution GO) e encerra o ramo.
+    if "FORMULARIO NATIVO" in text.upper():
+        exp["nodes"][node_id]["kind"] = "app_form"
+        exp["state"] = "done"
+        return None
+
     # HUMANO entrou (freio novo 14/07): saída educada e fim DEFINITIVO da
     # exploração desta seguradora — nunca conversar usando nome de cliente.
     if _HUMANO_RE.search(text):
