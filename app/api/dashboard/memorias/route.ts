@@ -29,13 +29,27 @@ export async function GET() {
   const memoryText = (m: any) =>
     String(m.fact || m.content || m.summary || m.memory || m.text || '').slice(0, 90) || 'Memória aprendida';
 
+  // Humanização: arquivos técnicos (ex.: "infocap-policy-52ff76e0…pdf") viram
+  // nomes legíveis — ninguém lê hash no segundo cérebro.
+  let apoliceN = 0;
+  const humanize = (raw: string): string => {
+    const name = String(raw || '').replace(/\.(pdf|docx|txt|md|csv)$/i, '');
+    if (/^infocap[-_ ]?policy/i.test(name)) { apoliceN += 1; return `Apólice do cliente · InfoCap #${apoliceN}`; }
+    if (/^[0-9a-f-]{20,}$/i.test(name)) return 'Documento importado';
+    return name.replace(/[-_]+/g, ' ').trim().slice(0, 60) || 'Documento';
+  };
+
+  const compRows = (await safe<any[]>(sb.from('companies').select('company_name').eq('id', companyId).limit(1))) as any[];
+  const companyName = compRows[0]?.company_name || 'Sua corretora';
+
   return NextResponse.json({
     ok: true,
-    global: (globalDocs as any[]).map((d) => ({ id: `g-${d.id}`, name: d.file_name, tema: d.knowledge_class || 'Biblioteca', at: d.created_at })),
-    corretora: (docs as any[]).map((d) => ({ id: `c-${d.id}`, name: d.file_name, tema: d.knowledge_class || 'Documentos', at: d.created_at })),
+    company_name: companyName,
+    global: (globalDocs as any[]).map((d) => ({ id: `g-${d.id}`, name: humanize(d.file_name), tema: d.knowledge_class || 'Biblioteca', at: d.created_at })),
+    corretora: (docs as any[]).map((d) => ({ id: `c-${d.id}`, name: humanize(d.file_name), tema: d.knowledge_class || 'Documentos', at: d.created_at })),
     pessoal: (memories as any[]).map((m: any, i: number) => ({ id: `p-${m.id || i}`, name: memoryText(m), tema: 'Você', at: m.created_at })),
     clientes: (convs as any[])
       .filter((c) => !String(c.session_id || '').startsWith('dispatch:'))
-      .map((c) => ({ id: `k-${c.id}`, name: c.user_name || 'Conversa', tema: 'Clientes', at: c.last_message_at })),
+      .map((c) => ({ id: `k-${c.id}`, name: c.user_name && c.user_name !== 'Usuário WhatsApp' ? c.user_name : 'Conversa no WhatsApp', tema: 'Clientes', at: c.last_message_at })),
   });
 }
