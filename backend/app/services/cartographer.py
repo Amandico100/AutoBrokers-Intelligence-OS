@@ -41,12 +41,33 @@ _ABORT_PREFERENCES = ["Sair e não agendar", "Sair", "Cancelar", "Não", "Voltar
 _SINISTRO_RE = re.compile(
     r"sinistro|colis[ãa]o com terceiro|aviso de acidente|avisar ou acompanhar", re.IGNORECASE)
 
-# Pedidos de dados que sabemos preencher com a apólice de teste.
+# Pedidos de dados que sabemos preencher com o dataset COMPLETO (ordem importa:
+# específico antes de genérico). Founder 14/07: "o Cartógrafo não pode ter
+# dados incompletos" — cada ramo tem os obrigatórios no test_data.
 _DATA_REPLIES = [
     (re.compile(r"cpf ou cnpj|digite o cpf|informe o cpf", re.IGNORECASE), "cpf"),
-    (re.compile(r"placa do ve[íi]culo|informe a placa", re.IGNORECASE), "placa"),
+    (re.compile(r"placa", re.IGNORECASE), "placa"),
+    (re.compile(r"complemento", re.IGNORECASE), "complemento"),
+    (re.compile(r"ponto de refer[êe]ncia|refer[êe]ncia do local", re.IGNORECASE), "ponto_referencia"),
+    (re.compile(r"para onde|destino|levar (?:o|seu) ve[íi]culo|onde o guincho deve", re.IGNORECASE), "endereco_destino"),
+    (re.compile(r"endere[çc]o completo|onde (?:voc[êe]|o ve[íi]culo|o carro) est[áa]|local do atendimento"
+                r"|informe o endere[çc]o|digite o endere[çc]o|endere[çc]o do local", re.IGNORECASE), "endereco_local"),
+    (re.compile(r"telefone|celular|n[úu]mero (?:de|para) contato", re.IGNORECASE), "telefone"),
+    (re.compile(r"nome completo|nome de quem|quem est[áa] no local|nome do (?:condutor|respons[áa]vel)", re.IGNORECASE), "nome"),
+    (re.compile(r"cor do ve[íi]culo", re.IGNORECASE), "cor"),
     (re.compile(r"cep\b", re.IGNORECASE), "cep"),
 ]
+
+# Re-identificação (fix 14/07 — URA lembra o número e saúda o cliente anterior):
+# opção de trocar o CPF tem PRIORIDADE na 1ª visita ao menu.
+_REIDENTIFY_RE = re.compile(r"informar outro cpf|outro cpf/?cnpj|n[ãa]o sou|trocar (?:de )?cpf", re.IGNORECASE)
+
+# Humano entrou na conversa (freio novo): sair educadamente e ENCERRAR a
+# exploração — nunca conversar com atendente humano usando nome de cliente.
+_HUMANO_RE = re.compile(
+    r"transferindo (?:voc[êe] )?para|vou te transferir|um de nossos atendentes|nossa equipe (?:vai|ir[áa]) (?:te )?atender"
+    r"|meu nome [ée] [A-ZÀ-Ü][a-zà-ü]+.{0,30}(?:como posso|em que posso)|falar com um especialista agora", re.IGNORECASE)
+POLITE_EXIT = "Ah, me desculpe — era só uma dúvida sobre o menu e já consegui o que eu precisava. Pode encerrar por aqui. Muito obrigado! 🙂"
 
 
 def parse_options(text: str) -> List[str]:
@@ -157,6 +178,14 @@ def handle_insurer_message(exp: Dict[str, Any], text: str) -> Optional[str]:
 
 def _decide_reply(exp: Dict[str, Any], node_id: str, text: str,
                   options: List[str], kind: str) -> Optional[str]:
+    # HUMANO entrou (freio novo 14/07): saída educada e fim DEFINITIVO da
+    # exploração desta seguradora — nunca conversar usando nome de cliente.
+    if _HUMANO_RE.search(text):
+        exp["nodes"][node_id]["kind"] = "humano"
+        exp["human_engaged"] = True
+        exp["state"] = "done"
+        return POLITE_EXIT
+
     # Freio 1: confirmação final → SAIR, nunca confirmar. Marca e encerra o ramo.
     if kind == "finalize":
         exp["nodes"][node_id]["kind"] = "finalize"
@@ -185,6 +214,14 @@ def _decide_reply(exp: Dict[str, Any], node_id: str, text: str,
     if isinstance(visited, list):  # sessão restaurada de JSON
         visited = set(tuple(v) for v in visited)
         exp["visited_edges"] = visited
+
+    # RE-IDENTIFICAÇÃO primeiro (fix 14/07): a URA lembra o cliente anterior do
+    # número — trocar para o CPF de teste tem prioridade sobre a exploração.
+    for lab in options:
+        if _REIDENTIFY_RE.search(lab) and (node_id, lab) not in visited:
+            visited.add((node_id, lab))
+            exp.setdefault("current_path", []).append(lab)
+            return lab
 
     for lab in options:
         # Freio 2: ramo de sinistro — registra que existe e NÃO entra.

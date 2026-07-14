@@ -102,8 +102,12 @@ def run():
     # ---------- CARTOGRAFO ----------
     exp = carto.new_exploration(insurer_key="porto", ramo="auto",
                                 test_data={"cpf": "00081352697", "placa": "ABC1D23"})
-    r1 = carto.handle_insurer_message(exp, "Ola! Escolha a opcao desejada:\nBotao 1: Seguro Auto\nBotao 2: Servico para residencia\nBotao 3: Sinistro de terceiro\nBotao 4: Informar outro CPF/CNPJ")
-    check("cartografo: explora a 1a opcao do menu raiz", r1 == "Seguro Auto", r1)
+    menu_raiz = "Ola! Escolha a opcao desejada:\nBotao 1: Seguro Auto\nBotao 2: Servico para residencia\nBotao 3: Sinistro de terceiro\nBotao 4: Informar outro CPF/CNPJ"
+    r0 = carto.handle_insurer_message(exp, menu_raiz)
+    check("cartografo: RE-IDENTIFICA primeiro (URA lembra o numero)", r0 == "Informar outro CPF/CNPJ", r0)
+    exp["last_node"] = None
+    r1 = carto.handle_insurer_message(exp, menu_raiz)
+    check("cartografo: depois explora a 1a opcao segura", r1 == "Seguro Auto", r1)
     r2 = carto.handle_insurer_message(exp, "Certo! Digite o seu CPF ou CNPJ para localizar o cadastro.")
     check("cartografo: responde o CPF da apolice de teste", r2 == "00081352697", r2)
     r3 = carto.handle_insurer_message(exp, "Encontrei! O que voce precisa?\nBotao 1: Guincho (reboque)\nBotao 2: Bateria\nBotao 3: Chaveiro para veiculo")
