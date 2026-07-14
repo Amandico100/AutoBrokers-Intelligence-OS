@@ -167,6 +167,65 @@ async def list_maps(_: Any = Depends(require_master_admin)) -> Dict[str, Any]:
     return out
 
 
+@router.get("/company-overview/{company_id}")
+async def company_overview(company_id: str, _: Any = Depends(require_master_admin)) -> Dict[str, Any]:
+    """Cockpit 360º da corretora: conversas, qualidade (Auditor), insights
+    (Garimpo), conhecimento e acionamentos recentes — num payload só."""
+    out: Dict[str, Any] = {"company_id": company_id}
+    try:
+        from app.core.database import get_supabase_client
+
+        db = get_supabase_client()
+
+        def _q(fn):
+            try:
+                return fn().data or []
+            except Exception:  # noqa: BLE001
+                return []
+
+        comp = await asyncio.to_thread(lambda: _q(
+            lambda: db.client.table("companies")
+            .select("company_name, status, plan_type, created_at, is_technical")
+            .eq("id", company_id).limit(1).execute()))
+        out["company"] = comp[0] if comp else {}
+
+        convs = await asyncio.to_thread(lambda: _q(
+            lambda: db.client.table("conversations")
+            .select("id, session_id, user_name, last_message_at")
+            .eq("company_id", company_id)
+            .order("last_message_at", desc=True).limit(200).execute()))
+        dispatches = [c for c in convs if str(c.get("session_id") or "").startswith("dispatch:")]
+        out["conversas"] = {"total": len(convs), "acionamentos": len(dispatches),
+                            "recentes": convs[:6], "acionamentos_recentes": dispatches[:6]}
+
+        scores = await asyncio.to_thread(lambda: _q(
+            lambda: db.client.table("conversation_scorecards")
+            .select("score, flags, created_at").eq("company_id", company_id)
+            .order("created_at", desc=True).limit(100).execute()))
+        if scores:
+            out["qualidade"] = {
+                "nota_media": round(sum(int(s.get("score") or 0) for s in scores) / len(scores), 1),
+                "auditadas": len(scores),
+                "flags": Counter(f for s in scores for f in (s.get("flags") or [])).most_common(5),
+            }
+        else:
+            out["qualidade"] = {"nota_media": None, "auditadas": 0, "flags": []}
+
+        insights_rows = await asyncio.to_thread(lambda: _q(
+            lambda: db.client.table("broker_insights")
+            .select("kind, summary, source, created_at").eq("company_id", company_id)
+            .order("created_at", desc=True).limit(30).execute()))
+        out["insights"] = insights_rows[:10]
+
+        docs = await asyncio.to_thread(lambda: _q(
+            lambda: db.client.table("documents")
+            .select("id").eq("company_id", company_id).execute()))
+        out["conhecimento"] = {"documentos": len(docs)}
+    except Exception as e:  # noqa: BLE001
+        logger.warning(f"[ADMIN34] company-overview falhou: {type(e).__name__}")
+    return out
+
+
 @router.post("/maps/{map_id}/activate")
 async def activate_map_endpoint(map_id: str, _: Any = Depends(require_master_admin)) -> Dict[str, Any]:
     """Aprovação 1-clique do founder: promove um mapa proposto a ativo."""
