@@ -113,6 +113,17 @@ def start_buffer_scheduler():
             id="garimpo_check",
             max_instances=1,
         )
+        # AUDITOR + overlays do ALFAIATE (SPEC-034 Onda 4): scorecards 1x/dia
+        # (marcador Redis) e cache de overlays atualizado a cada varredura.
+        from app.services.conversation_auditor import check_auditor
+
+        scheduler.add_job(
+            check_auditor,
+            "interval",
+            seconds=1800,
+            id="auditor_check",
+            max_instances=1,
+        )
         scheduler.start()
         logger.info("✅ [BUFFER SCHEDULER] Started (interval: 1s, max_instances: 10)")
     else:
