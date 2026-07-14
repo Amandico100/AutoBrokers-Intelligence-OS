@@ -11,6 +11,7 @@ const CATS: { id: string; label: string; color: string }[] = [
   { id: 'todas', label: 'Todas', color: '#C6CEDA' },
   { id: 'atendimentos', label: 'Atendimentos', color: '#7FB7E8' },
   { id: 'acionamentos', label: 'Acionamentos', color: '#E2A94F' },
+  { id: 'auxiliares', label: 'Auxiliares & Rotinas', color: '#E06B6B' },
   { id: 'qualidade', label: 'Qualidade', color: '#43C08C' },
   { id: 'conhecimento', label: 'Conhecimento', color: '#B48EAD' },
   { id: 'inteligencia', label: 'Inteligência', color: '#74ACE8' },

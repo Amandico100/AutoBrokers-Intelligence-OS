@@ -122,7 +122,7 @@ async def handle_cartographer_inbound(from_phone: str, text: str,
     exp = await load_exploration(from_phone)
     if not exp:
         return False
-    from app.services.cartographer import exploration_to_map, handle_insurer_message
+    from app.services.cartographer import exploration_to_map, handle_insurer_message, has_unexplored
 
     if isinstance(exp.get("visited_edges"), list):
         exp["visited_edges"] = set(tuple(v) for v in exp["visited_edges"])
@@ -134,12 +134,35 @@ async def handle_cartographer_inbound(from_phone: str, text: str,
             logger.error(f"[CARTO] envio falhou: {type(e).__name__}")
     state = str(exp.get("state") or "")
     if state in ("done", "aborted"):
+        # MULTI-PASS (exigência do founder 14/07: TODAS as combinações, não só
+        # uma rota): terminou um ramo com segurança e ainda há opções seguras
+        # não percorridas → recomeça a conversa ("Oi") mantendo o mapa e as
+        # arestas já visitadas. Limite duro de passadas por seguradora.
+        passes = int(exp.get("pass_count") or 0) + 1
+        exp["pass_count"] = passes
+        max_passes = int(os.getenv("CARTOGRAPHER_MAX_PASSES", "12"))
+        if (state == "done" and passes < max_passes and has_unexplored(exp)):
+            exp["state"] = "exploring"
+            exp["msg_count"] = 0
+            exp["current_path"] = []
+            exp["last_node"] = None
+            exp["last_reply"] = None
+            await _save(from_phone, exp)
+            try:
+                send("Oi")
+                exp.setdefault("transcript", []).append({"direction": "out", "text": "Oi"})
+                await _save(from_phone, exp)
+                logger.info(f"[CARTO] passada {passes} concluída — reiniciando p/ próximo ramo "
+                            f"({exp.get('insurer_key')}, nodes={len(exp.get('nodes') or {})})")
+            except Exception as e:  # noqa: BLE001
+                logger.error(f"[CARTO] reinício falhou: {type(e).__name__}")
+            return True
         try:
             from app.services.ura_map_service import save_proposed_map
 
             map_obj = exploration_to_map(exp)
             map_id = await save_proposed_map(str(exp.get("insurer_key")), str(exp.get("ramo") or "auto"), map_obj)
-            logger.info(f"[CARTO] mapa salvo ({state}): {exp.get('insurer_key')} "
+            logger.info(f"[CARTO] mapa salvo ({state}, {passes} passadas): {exp.get('insurer_key')} "
                         f"nodes={len(map_obj.get('nodes') or {})} id={map_id}")
         except Exception as e:  # noqa: BLE001
             logger.error(f"[CARTO] salvar mapa falhou: {type(e).__name__}")

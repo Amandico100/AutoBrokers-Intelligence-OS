@@ -181,6 +181,24 @@ def _decide_reply(exp: Dict[str, Any], node_id: str, text: str,
     return _pick_abort_reply(options)
 
 
+def has_unexplored(exp: Dict[str, Any]) -> bool:
+    """Ainda existem opções seguras não percorridas? (Base do multi-pass: o
+    founder exige TODAS as combinações, não só uma rota por sessão.)"""
+    visited = exp.get("visited_edges") or set()
+    if isinstance(visited, list):
+        visited = set(tuple(v) for v in visited)
+    for node_id, node in (exp.get("nodes") or {}).items():
+        if node.get("kind") in ("finalize", "needs_data"):
+            continue
+        for opt in node.get("options") or []:
+            lab = str(opt.get("label") or "")
+            if _SINISTRO_RE.search(lab):
+                continue
+            if (node_id, lab) not in visited:
+                return True
+    return False
+
+
 def exploration_to_map(exp: Dict[str, Any]) -> Dict[str, Any]:
     """Converte a exploração no formato canônico do ura_map_service."""
     return {"root": exp.get("root"), "nodes": exp.get("nodes") or {},

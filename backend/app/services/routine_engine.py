@@ -280,6 +280,21 @@ async def _execute_routine(supabase, routine: Dict[str, Any]) -> None:
     except Exception as e:  # noqa: BLE001
         logger.error(f"[ROUTINES] finish falhou: {type(e).__name__}")
 
+    # ATIVIDADES (SPEC-036): execução de rotina vira linha comercial no feed
+    # do dashboard (pedido do founder 14/07 — sem poluir a página de Rotinas).
+    if status == "ok":
+        try:
+            from app.services.activity_log import log_activity
+
+            await log_activity(
+                str(routine.get("company_id") or ""),
+                "auxiliares",
+                f"Rotina executada — {str(routine.get('name') or 'rotina')[:80]}",
+                (output_preview or "")[:200] or "Executada e entregue conforme o agendamento.",
+            )
+        except Exception:  # noqa: BLE001
+            pass
+
 
 async def run_due_routines(supabase) -> int:
     """Executa as rotinas vencidas (claim atômico por next_run_at). Retorna nº executadas."""
