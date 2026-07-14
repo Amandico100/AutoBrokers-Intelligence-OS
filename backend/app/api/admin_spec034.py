@@ -224,6 +224,7 @@ async def _start_with_send(body: Dict[str, Any], wa, integration) -> Dict[str, A
         ramo=str(body.get("ramo") or "auto"),
         test_data=dict(body.get("test_data") or {}),
         send=lambda text: wa.send_message(phone, text, integration),
+        company_id=str(body.get("company_id") or ""),
     )
 
 
@@ -278,7 +279,10 @@ async def cartographer_status(_: Any = Depends(require_master_admin)) -> Dict[st
                 exp = json.loads(raw.decode() if isinstance(raw, (bytes, bytearray)) else raw)
                 out["active"].append({"insurer_key": exp.get("insurer_key"), "ramo": exp.get("ramo"),
                                       "msg_count": exp.get("msg_count"), "state": exp.get("state"),
-                                      "nodes": len(exp.get("nodes") or {})})
+                                      "nodes": len(exp.get("nodes") or {}),
+                                      "passes": exp.get("pass_count") or 0,
+                                      "tail": [str(t.get("direction")) + ": " + str(t.get("text") or "")[:120]
+                                               for t in (exp.get("transcript") or [])[-6:]]})
     except Exception as e:  # noqa: BLE001
         logger.warning(f"[ADMIN34] carto status falhou: {type(e).__name__}")
     return out

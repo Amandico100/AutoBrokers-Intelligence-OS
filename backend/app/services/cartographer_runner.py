@@ -78,7 +78,7 @@ async def clear_exploration(insurer_phone: str) -> None:
 
 
 async def start_exploration(*, insurer_key: str, ramo: str, test_data: Dict[str, str],
-                            send: Callable[[str], None]) -> Dict[str, Any]:
+                            send: Callable[[str], None], company_id: str = "") -> Dict[str, Any]:
     """Abre a exploração e cumprimenta a URA. Recusa se houver acionamento ativo."""
     from app.services.cartographer import new_exploration
     from app.services.insurer_registry import registry_whatsapp
@@ -101,6 +101,7 @@ async def start_exploration(*, insurer_key: str, ramo: str, test_data: Dict[str,
 
     exp = new_exploration(insurer_key=insurer_key, ramo=ramo, test_data=test_data)
     exp["insurer_phone"] = phone
+    exp["company_id"] = company_id
     await _save(phone, exp)
     try:
         send("Oi")
@@ -176,3 +177,86 @@ async def handle_cartographer_inbound(from_phone: str, text: str,
     except Exception:  # noqa: BLE001
         pass
     return True
+
+
+async def check_cartographer_stalls() -> int:
+    """AUTO-RECUPERACAO (fix 14/07, stall ao vivo): exploracao sem progresso ha
+    >90s = ramo morto (tela nao reconhecida / URA nao aceitou a resposta) ->
+    reinicia a passada ("Oi") se ainda houver opcoes seguras; senao finaliza e
+    salva o mapa. Chamado pelo watchdog a cada 20s. Nunca derruba nada."""
+    acted = 0
+    if not cartographer_mode_enabled():
+        return 0
+    try:
+        from datetime import datetime, timezone
+
+        from app.services.cartographer import exploration_to_map, has_unexplored
+
+        r = await _redis()
+        if r is None:
+            return 0
+        async for k in r.scan_iter(match="carto:active:*"):
+            kk = k.decode() if isinstance(k, (bytes, bytearray)) else str(k)
+            raw = await r.get(kk)
+            if not raw:
+                continue
+            exp = json.loads(raw.decode() if isinstance(raw, (bytes, bytearray)) else raw)
+            transcript = exp.get("transcript") or []
+            last_at = (transcript[-1].get("at") if transcript else None) or exp.get("started_at")
+            try:
+                when = datetime.fromisoformat(str(last_at).replace("Z", "+00:00"))
+                if when.tzinfo is None:
+                    when = when.replace(tzinfo=timezone.utc)
+                age = (datetime.now(timezone.utc) - when).total_seconds()
+            except Exception:  # noqa: BLE001
+                age = 0
+            if age < 90:
+                continue
+            phone = str(exp.get("insurer_phone") or kk.split(":")[-1])
+            company_id = str(exp.get("company_id") or "")
+            if isinstance(exp.get("visited_edges"), list):
+                exp["visited_edges"] = set(tuple(v) for v in exp["visited_edges"])
+            if exp.get("last_node") and exp["last_node"] in (exp.get("nodes") or {}):
+                node = exp["nodes"][exp["last_node"]]
+                node.setdefault("kind_original", node.get("kind"))
+                node["kind"] = "needs_data"
+            passes = int(exp.get("pass_count") or 0) + 1
+            exp["pass_count"] = passes
+            max_passes = int(os.getenv("CARTOGRAPHER_MAX_PASSES", "12"))
+            restart = passes < max_passes and has_unexplored(exp)
+            if restart and company_id:
+                try:
+                    from app.services.integration_service import get_integration_service
+                    from app.services.whatsapp_service import get_whatsapp_service
+
+                    integration = get_integration_service().get_platform_whatsapp_integration(company_id)
+                    if integration:
+                        exp["state"] = "exploring"
+                        exp["msg_count"] = 0
+                        exp["last_node"] = None
+                        exp["last_reply"] = None
+                        await _save(phone, exp)
+                        get_whatsapp_service().send_message(phone, "Oi", integration)
+                        exp.setdefault("transcript", []).append(
+                            {"direction": "out", "text": "Oi",
+                             "at": datetime.now(timezone.utc).isoformat(), "via": "auto_restart"})
+                        await _save(phone, exp)
+                        logger.info(f"[CARTO] stall {int(age)}s -> passada {passes} reiniciada ({exp.get('insurer_key')})")
+                        acted += 1
+                        continue
+                except Exception as e:  # noqa: BLE001
+                    logger.error(f"[CARTO] auto-restart falhou: {type(e).__name__}")
+            try:
+                from app.services.ura_map_service import save_proposed_map
+
+                map_obj = exploration_to_map(exp)
+                if map_obj.get("nodes"):
+                    await save_proposed_map(str(exp.get("insurer_key")), str(exp.get("ramo") or "auto"), map_obj)
+                logger.info(f"[CARTO] stall final -> mapa salvo ({exp.get('insurer_key')}, nodes={len(map_obj.get('nodes') or {})})")
+            except Exception as e:  # noqa: BLE001
+                logger.error(f"[CARTO] salvar no stall falhou: {type(e).__name__}")
+            await clear_exploration(phone)
+            acted += 1
+    except Exception as e:  # noqa: BLE001
+        logger.error(f"[CARTO] check_stalls falhou: {type(e).__name__}")
+    return acted

@@ -279,6 +279,12 @@ async def check_dispatch_watchdog() -> int:
     except Exception as e:  # noqa: BLE001 — nunca derruba o scheduler
         logger.error(f"[WATCHDOG] varredura falhou: {type(e).__name__}")
     try:
+        from app.services.cartographer_runner import check_cartographer_stalls
+
+        actions += await check_cartographer_stalls()
+    except Exception:  # noqa: BLE001
+        pass
+    try:
         from app.core.heartbeat import beat
 
         await beat("vigia_sentinela", actions)
