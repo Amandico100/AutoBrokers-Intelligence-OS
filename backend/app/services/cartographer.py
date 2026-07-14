@@ -38,7 +38,8 @@ _FINALIZE_RE = re.compile(
 _ABORT_PREFERENCES = ["Sair e não agendar", "Sair", "Cancelar", "Não", "Voltar", "0", "9"]
 
 # Ramos proibidos de explorar a fundo (freio 2).
-_SINISTRO_RE = re.compile(r"sinistro|colis[ãa]o com terceiro|aviso de acidente", re.IGNORECASE)
+_SINISTRO_RE = re.compile(
+    r"sinistro|colis[ãa]o com terceiro|aviso de acidente|avisar ou acompanhar", re.IGNORECASE)
 
 # Pedidos de dados que sabemos preencher com a apólice de teste.
 _DATA_REPLIES = [
@@ -49,13 +50,26 @@ _DATA_REPLIES = [
 
 
 def parse_options(text: str) -> List[str]:
-    """Extrai os rótulos clicáveis/numerados de uma tela renderizada.
-    Cobre: 'Botão 1: X', listas 'Opção: X', menus numerados '1 - X'."""
+    """Extrai os rótulos clicáveis de uma tela renderizada. Cobre:
+    1. 'Botão 1: X' (botões);
+    2. menus numerados '1 - X';
+    3. LISTAS da Evolution (fix 14/07 — travou a Porto ao vivo): o render das
+       listas é corpo + UM TÍTULO POR LINHA, sem prefixo. Heurística: linhas
+       curtas após o corpo, sem pontuação de frase, viram opções."""
     labels: List[str] = []
     for m in re.finditer(r"bot[ãa]o\s*\d+\s*:\s*([^\n|]+)", text, re.IGNORECASE):
         labels.append(m.group(1).strip())
     for m in re.finditer(r"(?:^|\n)\s*(\d{1,2})\s*[-–.)]\s*([^\n|]{2,60})", text):
         labels.append(m.group(2).strip())
+    if not labels:
+        lines = [ln.strip() for ln in str(text or "").splitlines() if ln.strip()]
+        candidates: List[str] = []
+        for ln in lines[1:]:  # a 1ª linha é o corpo/pergunta
+            if 2 <= len(ln) <= 48 and not ln.endswith((".", "?", "!", ":", ",")) \
+                    and not ln[0].islower() and len(ln.split()) <= 7:
+                candidates.append(ln)
+        if len(candidates) >= 2:
+            labels = candidates
     seen, out = set(), []
     for lab in labels:
         k = lab.lower()
@@ -159,6 +173,12 @@ def _decide_reply(exp: Dict[str, Any], node_id: str, text: str,
             return _pick_abort_reply(options) if options else None
 
     if not options:
+        # Pergunta que não sabemos responder e SEM opções para recuar → fim de
+        # ramo (needs_data): o multi-pass reinicia em vez de ficar mudo p/ sempre
+        # (fix 14/07 — stall ao vivo na Porto).
+        if kind == "pergunta":
+            exp["nodes"][node_id]["kind"] = "needs_data"
+            exp["state"] = "done"
         return None  # informativo — a URA segue sozinha
 
     visited = exp.setdefault("visited_edges", set())
