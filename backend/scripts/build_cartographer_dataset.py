@@ -67,32 +67,78 @@ def infocap_login(base: str, login: str, password: str, application: str) -> str
     import httpx
 
     try:
-        r = httpx.post(f"{base}/api/v1/login", json={
-            "login": login, "password": password, "application": int(application or 0)}, timeout=30)
+        r = httpx.post(f"{base}/login", json={
+            "email": login, "senha": password, "aplicacao": int(application or 0)}, timeout=30)
         r.raise_for_status()
         data = r.json()
-        return data.get("token") or data.get("access_token") or (data.get("data") or {}).get("token")
+        return data.get("token") if isinstance(data, dict) else None
     except Exception as e:  # noqa: BLE001
         print(f"  [!] login InfoCap falhou ({login}): {type(e).__name__}")
         return None
 
 
 def infocap_policies(base: str, token: str, cpf: str) -> list[dict]:
+    """CorpAPI real: /cliente_cpf -> {cliente:[...]}; /cliente_ligacoes -> {documentos:{documentos:[...]}}."""
+    import httpx
+    from datetime import datetime
+
+    headers = {"Authorization": token, "Content-Type": "application/json"}
+    try:
+        r = httpx.get(f"{base}/cliente_cpf", params={"cpf_cnpj": cpf, "codfil": 1}, headers=headers, timeout=30)
+        if r.status_code >= 400:
+            return []
+        records = (r.json() or {}).get("cliente") or []
+        if not records:
+            return []
+        codigo = records[0].get("codigo")
+        nome = str(records[0].get("nome") or "")
+        if not codigo:
+            return []
+        r2 = httpx.get(f"{base}/cliente_ligacoes", params={"codigo": codigo}, headers=headers, timeout=30)
+        if r2.status_code >= 400:
+            return []
+        docs = (((r2.json() or {}).get("documentos") or {}).get("documentos")) or []
+        out = []
+        for doc in docs:
+            if not isinstance(doc, dict):
+                continue
+            if str(doc.get("cancelado") or "F") == "T" or str(doc.get("tipdoc") or "A") != "A":
+                continue
+            fim = str(doc.get("fimvig") or "")
+            try:
+                if datetime.strptime(fim, "%d/%m/%Y") < datetime.now():
+                    continue
+            except Exception:
+                pass
+            doc["_nome_cliente"] = nome
+            out.append(doc)
+        return out
+    except Exception:  # noqa: BLE001
+        return []
+
+
+SEG_MAP = {"ALLI": "allianz", "ZURI": "zurich", "PORT": "porto", "AZUL": "azul",
+           "BRAD": "bradesco", "TOKI": "tokio", "TOKM": "tokio", "YELU": "yelum",
+           "LIBE": "yelum", "MAPF": "mapfre", "HDI": "hdi", "HDIS": "hdi",
+           "ALFA": "alfa", "SULA": "sulamerica", "SUHA": "suhai", "SOMP": "sompo",
+           "ITAU": "itau", "MITS": "mitsui", "SURA": "sura", "UNIM": "unimed"}
+RAMO_MAP = {"AUTO": "auto", "RESI": "residencial", "VIND": "vida", "VIDA": "vida",
+            "EMPR": "empresarial", "COND": "condominio", "FROT": "frota",
+            "SAUD": "saude", "RCIV": "rc", "VIAG": "viagem"}
+
+
+def doc_detail(base: str, token: str, nosnum, codfil=1) -> dict:
     import httpx
 
-    headers = {"Authorization": f"Bearer {token}"}
-    for path in (f"/api/v1/clientes/{cpf}/apolices", f"/api/v1/apolices?cpf={cpf}",
-                 f"/api/v1/policies?document={cpf}"):
-        try:
-            r = httpx.get(f"{base}{path}", headers=headers, timeout=30)
-            if r.status_code == 200:
-                data = r.json()
-                items = data if isinstance(data, list) else data.get("data") or data.get("items") or []
-                if items:
-                    return items
-        except Exception:  # noqa: BLE001
-            continue
-    return []
+    try:
+        r = httpx.get(f"{base}/documento", params={"nosnum": nosnum, "codfil": codfil},
+                      headers={"Authorization": token}, timeout=30)
+        if r.status_code < 400:
+            d = r.json()
+            return d if isinstance(d, dict) else {}
+    except Exception:  # noqa: BLE001
+        pass
+    return {}
 
 
 def main() -> int:
@@ -135,22 +181,35 @@ def main() -> int:
         if not token:
             continue
         print(f"== Consultando InfoCap ({name}) ==")
-        for c in candidates:
+        import re as _re
+        import time as _time
+        for idx, c in enumerate(candidates):
+            if idx and idx % 20 == 0:
+                print(f"  ... {idx}/{len(candidates)} CPFs; {len(dataset)} combos")
             pols = infocap_policies(base, token, c["cpf"])
-            for p in pols:
-                insurer = str(p.get("seguradora") or p.get("insurer") or "").strip().lower()
-                ramo = str(p.get("ramo") or p.get("produto") or p.get("line") or "").strip().lower()
+            _time.sleep(0.2)
+            for pdoc in pols:
+                seg_raw = str(pdoc.get("seguradora") or "").strip().upper()
+                ramo_raw = str(pdoc.get("ramo") or "").strip().upper()
+                insurer = SEG_MAP.get(seg_raw, seg_raw.lower())
+                ramo = RAMO_MAP.get(ramo_raw, ramo_raw.lower())
                 key = f"{insurer}|{ramo}"
                 if insurer and ramo and key not in dataset:
+                    detail = doc_detail(base, token, pdoc.get("nosnum"), pdoc.get("codfil") or 1)
+                    flat = json.dumps(detail, ensure_ascii=False).lower() if detail else ""
+                    placa_m = _re.search('\"placa\"[ ]*:[ ]*\"([a-z0-9-]{6,8})\"', flat)
+                    cep_m = _re.search('\"cep\"[ ]*:[ ]*\"?([0-9]{5}-?[0-9]{3})\"?', flat)
                     dataset[key] = {
-                        "seguradora": insurer, "ramo": ramo, "cpf": c["cpf"],
-                        "nome": p.get("segurado") or p.get("nome") or "",
-                        "placa": p.get("placa") or "", "cep": p.get("cep") or "",
-                        "apolice": p.get("numero") or p.get("apolice") or "",
-                        "vigencia_fim": p.get("vigencia_fim") or p.get("valid_to") or "",
+                        "seguradora": insurer, "seguradora_codigo": seg_raw,
+                        "ramo": ramo, "ramo_codigo": ramo_raw,
+                        "cpf": c["cpf"], "nome": str(pdoc.get("cliente") or pdoc.get("_nome_cliente") or ""),
+                        "placa": (placa_m.group(1).upper() if placa_m else ""),
+                        "cep": (cep_m.group(1) if cep_m else ""),
+                        "apolice": str(pdoc.get("numapo") or ""),
+                        "vigencia_fim": str(pdoc.get("fimvig") or ""),
                         "conta": name,
                     }
-                    print(f"  [+] {insurer} × {ramo}: CPF {c['cpf'][:3]}***")
+                    print(f"  [+] {insurer} x {ramo} ({seg_raw}/{ramo_raw}): {c['cpf'][:3]}*** placa={dataset[key]['placa'] or '-'}")
     Path(args.out).parent.mkdir(parents=True, exist_ok=True)
     Path(args.out).write_text(json.dumps({"dataset": list(dataset.values()),
                                           "candidates": candidates}, ensure_ascii=False, indent=2), encoding="utf-8")
