@@ -225,30 +225,13 @@ export default function AdminLayout({ children }: { children: React.ReactNode })
       icon: Building2,
       label: 'Corretoras',
       submenu: [
+        { href: '/admin/corretoras', label: 'Cockpit (visão 360º)' },
         { href: '/admin/pending-users', label: 'Aprovações pendentes' },
         { href: '/admin/all-users', label: 'Todos os usuários' },
       ],
     },
-    {
-      href: '/admin/conversations',
-      icon: MessageSquare,
-      label: 'Conversas',
-      submenu: [
-        { href: '/admin/conversation-logs', label: 'Logs de conversação' },
-        { href: '/admin/logs', label: 'Logs do sistema' },
-      ],
-    },
-    {
-      href: '/admin/finops',
-      icon: DollarSign,
-      label: 'Financeiro',
-      submenu: [
-        { href: '/admin/finops/usage', label: 'Consumo LLM' },
-        { href: '/admin/finops/pricing', label: 'Tabela de Custos' },
-        { href: '/admin/finops/plans', label: 'Planos' },
-        { href: '/admin/costs', label: 'Custos (legado)' },
-      ],
-    },
+    { href: '/admin/conversas', icon: MessageSquare, label: 'Conversas' },
+    { href: '/admin/financeiro', icon: DollarSign, label: 'Financeiro' },
     {
       href: '/admin/portal-browser',
       icon: Globe,

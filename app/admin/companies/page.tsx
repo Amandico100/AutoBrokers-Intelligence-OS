@@ -729,7 +729,9 @@ export default function AdminCompaniesPage() {
         <div className="text-foreground">Carregando empresas...</div>
       ) : (
         <div className="space-y-4">
-          {companies.map((company) => (
+          {/* SPEC-036: empresas técnicas da plataforma (Blueprint Studio, Global
+              Knowledge) ficam numa seção própria no fim — não se misturam às corretoras. */}
+          {companies.filter((c) => !(c as any).is_technical).map((company) => (
             <Card key={company.id} className="bg-card border-border">
               <CardHeader>
                 <div className="flex items-start justify-between">
@@ -864,6 +866,29 @@ export default function AdminCompaniesPage() {
               </CardContent>
             </Card>
           ))}
+
+          {companies.some((c) => (c as any).is_technical) && (
+            <div className="pt-6">
+              <p className="text-xs uppercase tracking-widest text-muted-foreground mb-2">
+                Empresas técnicas da plataforma
+              </p>
+              {companies.filter((c) => (c as any).is_technical).map((company) => (
+                <Card key={company.id} className="bg-card border-border opacity-80 mb-3">
+                  <CardContent className="py-4 flex items-center gap-3">
+                    <Building2 className="w-5 h-5 text-amber-500" />
+                    <div>
+                      <p className="text-foreground text-sm font-medium">{company.company_name}</p>
+                      <p className="text-xs text-muted-foreground">
+                        {company.company_name.includes('Knowledge')
+                          ? 'Biblioteca global do RAG — gerencie em Conhecimento (RAG)'
+                          : 'Oficina de auxiliares globais — gerencie em Inteligência'}
+                      </p>
+                    </div>
+                  </CardContent>
+                </Card>
+              ))}
+            </div>
+          )}
 
           {companies.length === 0 && (
             <Card className="bg-card border-border">
