@@ -23,8 +23,9 @@ const STATE_META: Record<string, { label: string; color: string }> = {
   needs_human: { label: 'TRAVADO → HUMANO', color: '#E06B6B' },
 };
 
+// "atendente" é papel, não nome próprio — cada corretora batiza o seu (Even é só o da Resulta).
 const ACTOR_META: Record<string, string> = {
-  sentinela: '#E2A94F', vigia: '#E06B6B', even: '#7FB7E8', seguradora: '#8A93A3',
+  sentinela: '#E2A94F', vigia: '#E06B6B', atendente: '#7FB7E8', seguradora: '#8A93A3',
 };
 
 const mono: React.CSSProperties = { fontFamily: 'Geist Mono, monospace' };
@@ -62,7 +63,7 @@ export default function AcionamentosPage() {
     <div style={{ background: '#06080C', minHeight: '100vh', padding: '26px 30px', color: '#E7EBF1', fontFamily: 'Geist, system-ui, sans-serif' }}>
       <div style={{ display: 'flex', alignItems: 'baseline', gap: 14, flexWrap: 'wrap' }}>
         <div style={{ fontSize: 21, fontWeight: 650, letterSpacing: '-0.02em' }}>Acionamentos ao vivo</div>
-        <div style={{ fontSize: 12.5, color: '#7C8798' }}>Even executa, Vigia observa, Sentinela intervém.</div>
+        <div style={{ fontSize: 12.5, color: '#7C8798' }}>O atendente executa, o Vigia observa, a Sentinela intervém.</div>
       </div>
 
       {loading && <div style={{ marginTop: 20, color: '#7C8798', fontSize: 13 }}>carregando sessões…</div>}

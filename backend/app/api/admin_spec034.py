@@ -61,7 +61,9 @@ async def active_sessions(_: Any = Depends(require_master_admin)) -> Dict[str, A
                 "reason": s.get("reason"),
                 "timeline": [
                     {"at": t.get("at"), "direction": t.get("direction"),
-                     "via": t.get("via") or ("seguradora" if t.get("direction") == "in" else "even"),
+                     # "atendente" (nunca um nome próprio: Even é só o nome que a
+                     # Resulta deu — cada corretora batiza o seu).
+                     "via": t.get("via") or ("seguradora" if t.get("direction") == "in" else "atendente"),
                      "text": str(t.get("text") or "")[:300]}
                     for t in transcript
                 ],
