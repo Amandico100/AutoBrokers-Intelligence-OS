@@ -140,7 +140,7 @@ async def run_weekly_suggestions() -> int:
             )
             prompt = compose_prompt(str(comp.get("name") or ""), insights.data or [], None)
             text = await _llm_message(company_id, prompt) or FALLBACK_TEXT
-            integration = integrations.get_whatsapp_integration(company_id)
+            integration = integrations.get_platform_whatsapp_integration(company_id)
             if target and integration:
                 try:
                     wa.send_message(target, text, integration)

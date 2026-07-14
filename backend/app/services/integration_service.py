@@ -173,6 +173,39 @@ class IntegrationService:
             logger.error(f"[INTEGRATION] Error fetching by id: {type(e).__name__}")
             return None
 
+    def get_platform_whatsapp_integration(self, company_id: str):
+        """Integração p/ envios DE PLATAFORMA (alertas do Vigia, follow-ups,
+        sugestões, relatório de sábado) — escopo da CORRETORA, não de um agente.
+
+        BUG 14/07: a busca sem agent_id exigia integração com agent_id NULL;
+        corretoras com integração vinculada a agente (caso Resulta/Even) ficavam
+        SEM canal de alerta — o Vigia falhava em silêncio. Aqui: tenta a global
+        (agent_id NULL) e, se não houver, usa a integração ativa da corretora.
+        """
+        integ = self.get_whatsapp_integration(company_id)
+        if integ:
+            return integ
+        try:
+            res = (
+                self.supabase.table("integrations")
+                .select("*")
+                .eq("company_id", company_id)
+                .eq("is_active", True)
+                .execute()
+            )
+            valid = [i for i in (res.data or [])
+                     if str(i.get("provider", "")).lower().strip() in (
+                         "z-api", "evolution", "evolution-api", "wppconnect",
+                         "whatsapp", "whatsapp-cloud", "meta")]
+            if valid:
+                from app.services.whatsapp.integration_secrets import prepare_integration_for_runtime
+
+                logger.info(f"[BUSCA INTEGRAÇÃO] plataforma: usando integração ativa da corretora {company_id}")
+                return prepare_integration_for_runtime(valid[0])
+        except Exception as e:  # noqa: BLE001
+            logger.error(f"[BUSCA INTEGRAÇÃO] plataforma falhou: {type(e).__name__}")
+        return None
+
     def get_whatsapp_integration(
         self, company_id: str, agent_id: Optional[str] = None
     ) -> Optional[Dict]:
