@@ -31,9 +31,18 @@ export function InsurersClient() {
             </div>
           )}
           {it.glass_service_portal_url && <p className="mt-2 text-[11px] text-faint">Portal de vidros: {it.glass_service_portal_url}</p>}
+          {/* SPEC-022: o card é o hub da seguradora — atalhos para tudo dela num lugar. */}
+          <div className="mt-3 flex flex-wrap gap-2">
+            <a href="/dashboard/personalizacao/corredores" className="rounded-md border border-border bg-surface-2 px-2.5 py-1 text-[11px] text-foreground hover:bg-muted">
+              Corredores desta seguradora →
+            </a>
+            <a href="/dashboard/conectores" className="rounded-md border border-border bg-surface-2 px-2.5 py-1 text-[11px] text-foreground hover:bg-muted">
+              Credenciais de portal →
+            </a>
+          </div>
         </div>
       ))}
-      <p className="text-[10px] text-faint">Contatos globais curados pela plataforma (somente leitura). A Even usa apenas os corredores que sua corretora ativar.</p>
+      <p className="text-[10px] text-faint">Contatos globais curados pela plataforma (somente leitura). Seu atendente usa apenas os corredores que sua corretora ativar.</p>
     </div>
   );
 }

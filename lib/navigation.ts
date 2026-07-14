@@ -9,11 +9,12 @@ export interface NavItem {
   icon: IconName;
 }
 
-/** Os 4 pilares da navegação tenant (UX-001). */
+/** Os pilares da navegação tenant (UX-001 + Memórias/SPEC-036 E3). */
 export const PILLARS: NavItem[] = [
   { key: 'autobrokers', label: 'AutoBrokers', href: '/dashboard', icon: 'autobrokers' },
   { key: 'atendimentos', label: 'Atendimentos', href: '/dashboard/atendimentos', icon: 'atendimentos' },
   { key: 'auxiliares', label: 'Auxiliares', href: '/dashboard/auxiliares', icon: 'auxiliares' },
+  { key: 'memorias', label: 'Memórias', href: '/dashboard/memorias', icon: 'conhecimento' },
   { key: 'personalizacao', label: 'Personalização', short: 'Config', href: '/dashboard/personalizacao', icon: 'personalizacao' },
 ];
 
