@@ -370,8 +370,7 @@ async def process_whatsapp_message_background(
 
             if cartographer_mode_enabled():
                 _carto_texts = [m for m in (buffered_messages or []) if str(m or "").strip()]
-                _carto_text = " 
-".join(_carto_texts) if _carto_texts else (
+                _carto_text = "\n".join(_carto_texts) if _carto_texts else (
                     payload.text.message if payload.text and payload.text.message else "")
                 _carto_handled = await handle_cartographer_inbound(
                     str(payload.phone or ""),
