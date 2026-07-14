@@ -234,6 +234,16 @@ async def run_resumo_atendimentos(
     # 7. Sucesso
     await _succeed_run(db, run_id, output, usage, cost_usd, model_name, conversation_id)
 
+    # ATIVIDADES (SPEC-036): execução de auxiliar vira linha comercial no feed.
+    try:
+        from app.services.activity_log import log_activity
+
+        await log_activity(company_id, "auxiliares",
+                           "Auxiliar executado — Resumo de Atendimentos",
+                           "Análise das conversas concluída e entregue.")
+    except Exception:  # noqa: BLE001
+        pass
+
     return {
         "success": True,
         "run": {
