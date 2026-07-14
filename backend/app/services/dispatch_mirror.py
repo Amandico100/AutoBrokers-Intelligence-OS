@@ -90,6 +90,14 @@ async def mirror_session(company_id: str, insurer_phone: str, session: Dict[str,
             await beat("espelho", len(rows))
         except Exception:  # noqa: BLE001
             pass
+        # ATIVIDADES (SPEC-036): transição de estado vira linha comercial no feed.
+        try:
+            from app.services.activity_log import log_dispatch_transition
+
+            await log_dispatch_transition(
+                company_id, session, insurer_label_from_ref(session.get("playbook_ref")))
+        except Exception:  # noqa: BLE001
+            pass
     except Exception as e:  # noqa: BLE001 — o Espelho nunca derruba o motor
         logger.warning(f"[MIRROR] espelhamento falhou (segue sem espelho): {type(e).__name__}")
 

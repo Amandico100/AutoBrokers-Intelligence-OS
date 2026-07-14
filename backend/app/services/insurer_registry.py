@@ -40,23 +40,24 @@ INSURER_REGISTRY: Dict[str, Dict[str, Any]] = {
     "bradesco": {
         "label": "Bradesco Seguros", "whatsapp": "551130031022",
         "whatsapp_alternativo": "552140042702",
-        "status_validacao": "divergente",
+        "status_validacao": "confirmado",
         "ramos": ["auto", "residencial"],
-        "notas": "Pesquisa 12/07 aponta 21 4004-2702 (cliente) e 21 4004-2703 (corretor). Aguardando confirmação.",
+        "notas": "Atendentes confirmaram 14/07: OS DOIS números funcionam. Mantido o da planilha como ativo; 21 4004-2702 é reserva validada.",
     },
     "hdi": {
         "label": "HDI", "whatsapp": "551155020700", "whatsapp_alternativo": "5511995248188",
-        "status_validacao": "divergente",
+        "status_validacao": "confirmado",
         "ramos": ["auto", "residencial"],
+        "notas": "Atendentes confirmaram 14/07: os dois funcionam. Planilha ativo; alternativo é reserva validada.",
         "fallback_telefone": {"vida_funeral": "08000162727"},
     },
     "itau": {
         "label": "Itaú Seguros", "whatsapp": "551130039303", "whatsapp_alternativo": "",
         "status_validacao": "confirmado",
         "ramos": ["auto", "residencial"],
-        "notas": ("ATENÇÃO: 11 3003-9303 é o canal da PORTO (produtos Porto vendidos pelo Itaú). "
-                  "Residencial Itaú próprio: 11 98355-9577 (não confirmado). Identificar a "
-                  "seguradora EMISSORA da apólice antes de acionar."),
+        "notas": ("ESTRATÉGIA (founder 14/07 — corretora não usa Itaú): a EMISSORA decide. "
+                  "Produto Porto vendido pelo Itaú → este número (é o canal da Porto, validado). "
+                  "Produto Itaú-próprio → SEM canal confirmado: tratar como sem WhatsApp (handoff) até confirmação."),
     },
     "mapfre": {
         "label": "Mapfre", "whatsapp": "551140040101", "whatsapp_alternativo": "",
@@ -70,9 +71,10 @@ INSURER_REGISTRY: Dict[str, Dict[str, Any]] = {
         "ramos": ["auto", "moto", "caminhao", "taxi", "residencial", "vida"],
     },
     "tokio": {
-        "label": "Tokio Marine", "whatsapp": "5511953022395", "whatsapp_alternativo": "5511995786546",
-        "status_validacao": "divergente",
+        "label": "Tokio Marine", "whatsapp": "5511995786546", "whatsapp_alternativo": "5511953022395",
+        "status_validacao": "confirmado",
         "ramos": ["auto", "residencial"],
+        "notas": "Atendentes confirmaram 14/07: o número OFICIAL agora é 11 99578-6546 (o antigo virou reserva). ATENÇÃO: atualizar o env INSURER_CONTACT_TOKIO_ASSISTENCIA (env tem prioridade sobre o registro).",
     },
     "yelum": {
         "label": "Yelum", "whatsapp": "551131321001", "whatsapp_alternativo": "551132061414",

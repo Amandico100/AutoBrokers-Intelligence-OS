@@ -65,9 +65,11 @@ def run():
           reg.registry_whatsapp("yelum") == "551131321001"
           and reg.get_insurer("yelum")["whatsapp_alternativo"] == "551132061414")
     check("registro: Youse sem WhatsApp (nunca tentar)", reg.registry_whatsapp("youse") == "")
-    check("registro: divergentes marcados (bradesco/hdi/tokio/yelum)",
-          all(reg.get_insurer(k)["status_validacao"] == "divergente"
-              for k in ("bradesco", "hdi", "tokio", "yelum")))
+    check("registro: confirmacoes 14/07 aplicadas (tokio novo oficial; hdi/bradesco ok; yelum segue divergente)",
+          reg.get_insurer("tokio")["whatsapp"] == "5511995786546"
+          and all(reg.get_insurer(k)["status_validacao"] == "confirmado"
+                  for k in ("bradesco", "hdi", "tokio"))
+          and reg.get_insurer("yelum")["status_validacao"] == "divergente")
     targets = reg.mapping_targets()
     check("registro: agenda do cartografo tem 11 alvos (12 - Youse)",
           len(targets) == 11, len(targets))
