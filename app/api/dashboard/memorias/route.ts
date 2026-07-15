@@ -42,10 +42,21 @@ export async function GET() {
   const compRows = (await safe<any[]>(sb.from('companies').select('company_name').eq('id', companyId).limit(1))) as any[];
   const companyName = compRows[0]?.company_name || 'Sua corretora';
 
+  // SEGURANÇA (founder 14/07): a biblioteca GLOBAL é a INTELIGÊNCIA da AutoBrokers.
+  // Aparece nas memórias só para DAR VOLUME (impressionar) — NUNCA o nome real do
+  // documento nem o conteúdo. Cada nó vira "{Tema} AutoBrokers #N" (mascarado,
+  // sem file_name, sem link). O conteúdo só é USADO pelos agentes nas respostas.
+  const temaCounter: Record<string, number> = {};
+  const globalMasked = (globalDocs as any[]).map((d) => {
+    const tema = d.knowledge_class || 'Biblioteca';
+    temaCounter[tema] = (temaCounter[tema] || 0) + 1;
+    return { id: `g-${d.id}`, name: `${tema} AutoBrokers #${temaCounter[tema]}`, tema, at: null, locked: true };
+  });
+
   return NextResponse.json({
     ok: true,
     company_name: companyName,
-    global: (globalDocs as any[]).map((d) => ({ id: `g-${d.id}`, name: humanize(d.file_name), tema: d.knowledge_class || 'Biblioteca', at: d.created_at })),
+    global: globalMasked,
     corretora: (docs as any[]).map((d) => ({ id: `c-${d.id}`, name: humanize(d.file_name), tema: d.knowledge_class || 'Documentos', at: d.created_at })),
     pessoal: (memories as any[]).map((m: any, i: number) => ({ id: `p-${m.id || i}`, name: memoryText(m), tema: 'Você', at: m.created_at })),
     clientes: (convs as any[])
