@@ -43,6 +43,7 @@ from typing import Any, Callable, Dict, Mapping
 from app.services.whatsapp.exceptions import UnknownProviderError
 from app.services.whatsapp.providers.base import WhatsAppProvider
 from app.services.whatsapp.providers.evolution import EvolutionProvider
+from app.services.whatsapp.providers.evolution_go import EvolutionGoProvider
 from app.services.whatsapp.providers.uazapi import UazapiProvider
 from app.services.whatsapp.providers.zapi import ZapiProvider
 
@@ -63,6 +64,9 @@ _PROVIDER_FACTORIES: Dict[str, Callable[[Dict[str, Any]], WhatsAppProvider]] = {
     "z-api": ZapiProvider,
     "uazapi": UazapiProvider,
     "evolution": EvolutionProvider,
+    # SPEC-034 (founder 14/07): Evolution GO vira o canal oficial — provider
+    # próprio (wire GO: apikey=token da instância, /send/*), NUNCA alias do v2.
+    "evolution-go": EvolutionGoProvider,
 }
 
 

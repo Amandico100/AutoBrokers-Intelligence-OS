@@ -9,9 +9,11 @@ import { Label } from '@/components/ui/label';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { toast } from 'sonner';
-import { Loader2, Lock, User, Save, SlidersHorizontal } from 'lucide-react';
+import { Loader2, Lock, User, Save, SlidersHorizontal, Wallet } from 'lucide-react';
 import { AvatarUpload } from '@/components/AvatarUpload';
 import { ThemeToggle } from '@/components/ThemeToggle';
+// SPEC-036 (founder): Uso e Custos mora nas Configurações (a rota antiga segue viva).
+import { UsageClient } from '@/app/dashboard/personalizacao/custos/UsageClient';
 
 export default function SettingsPage() {
   const { userId } = useUserId();
@@ -153,7 +155,7 @@ export default function SettingsPage() {
           </div>
 
           <Tabs defaultValue="profile" className="w-full">
-            <TabsList className="grid w-full grid-cols-3 bg-muted border border-border">
+            <TabsList className="grid w-full grid-cols-4 bg-muted border border-border">
               <TabsTrigger
                 value="profile"
                 className="data-[state=active]:bg-background data-[state=active]:text-foreground data-[state=active]:shadow-sm"
@@ -172,7 +174,27 @@ export default function SettingsPage() {
               >
                 <SlidersHorizontal className="h-4 w-4 mr-2" /> Aparência
               </TabsTrigger>
+              <TabsTrigger
+                value="usage"
+                className="data-[state=active]:bg-background data-[state=active]:text-foreground data-[state=active]:shadow-sm"
+              >
+                <Wallet className="h-4 w-4 mr-2" /> Uso e Custos
+              </TabsTrigger>
             </TabsList>
+
+            <TabsContent value="usage" className="mt-6">
+              <Card className="bg-card border-border">
+                <CardHeader>
+                  <CardTitle className="text-foreground">Uso e Custos</CardTitle>
+                  <CardDescription className="text-muted-foreground">
+                    Saldo e consumo reais da sua corretora, por agente e por modelo (últimos 30 dias).
+                  </CardDescription>
+                </CardHeader>
+                <CardContent>
+                  <UsageClient />
+                </CardContent>
+              </Card>
+            </TabsContent>
 
             <TabsContent value="profile" className="mt-6">
               <Card className="bg-card border-border">

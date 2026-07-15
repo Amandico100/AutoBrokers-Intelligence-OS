@@ -74,6 +74,21 @@ export default function ConectoresPage() {
     loadConnections();
   }, []);
 
+  // Founder 14/07: o card do WhatsApp deve refletir o estado REAL da instância
+  // Evolution ("Conectado"), não o rótulo fixo "QR code".
+  const [whatsappConnected, setWhatsappConnected] = useState<boolean | null>(null);
+  useEffect(() => {
+    let alive = true;
+    const check = () =>
+      fetch('/api/dashboard/whatsapp-channel?action=status', { cache: 'no-store' })
+        .then((r) => r.json())
+        .then((j) => { if (alive) setWhatsappConnected(Boolean(j?.connected)); })
+        .catch(() => { if (alive) setWhatsappConnected(null); });
+    check();
+    const t = setInterval(check, 15000);
+    return () => { alive = false; clearInterval(t); };
+  }, []);
+
   // C2-P2 frente 2: aviso de retorno do OAuth (Google Drive / Notion).
   useEffect(() => {
     const sp = new URLSearchParams(window.location.search);
@@ -274,7 +289,9 @@ export default function ConectoresPage() {
                 // Canal WhatsApp: o estado real é o da instância Evolution (mostrado no
                 // modal); a conexão-rascunho legada não deve rotular o card.
                 const cardStatus = isWhatsappChannel
-                  ? { tone: 'info' as const, label: 'QR code' }
+                  ? whatsappConnected
+                    ? { tone: 'success' as const, label: 'Conectado' }
+                    : { tone: 'info' as const, label: 'QR code' }
                   : connStatus ? connectionStatusPill(connStatus) : riskPill(t.risk_level);
                 const connected = connStatus === 'connected';
                 const oauthKey = SLUG_TO_OAUTH_PROVIDER[t.slug]; // google_drive/notion → fluxo OAuth oficial
@@ -289,7 +306,7 @@ export default function ConectoresPage() {
                     tags={[t.auth_type]}
                     cta={
                       isWhatsappChannel
-                        ? 'Conectar (QR code)'
+                        ? whatsappConnected ? 'Gerenciar conexão' : 'Conectar (QR code)'
                         : connected ? 'Gerenciar conexão' : oauthKey ? 'Conectar' : 'Preparar conexão'
                     }
                     onClick={() => {

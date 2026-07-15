@@ -853,6 +853,11 @@ async def _download_evolution_media(integration: dict, message_id: str) -> Optio
     inst = str(integration.get("instance_id") or "")
     if not (base and apikey and inst and message_id):
         return None
+    if str(integration.get("provider") or "").strip().lower() == "evolution-go":
+        # GO usa /message/downloadmedia com o message bruto (shape a confirmar
+        # no primeiro teste ao vivo). Sem inventar wire: mídia entra depois.
+        logger.info("[WEBHOOK EVOLUTION-GO] download de mídia ainda não suportado (texto primeiro)")
+        return None
     try:
         import base64 as b64mod
 
@@ -947,7 +952,34 @@ async def evolution_webhook_token(token: str, request: Request, background_tasks
     """Webhook Evolution API v2 com token por integração (SPEC-017)."""
     integration = await _resolve_webhook_integration("evolution", token)
     body = await request.json()
+    return await _handle_evolution_like_inbound(integration, body, background_tasks, "evolution")
 
+
+@router.post("/api/v1/webhook/evolution-go/{token}")
+@limiter.limit("240/minute")
+async def evolution_go_webhook_token(token: str, request: Request, background_tasks: BackgroundTasks):
+    """Webhook Evolution GO (SPEC-034 — migração do canal p/ GO, founder 14/07).
+
+    O GO entrega o evento whatsmeow; convertemos para o envelope v2 e reusamos
+    TODO o pipeline (normalizador, formulário nativo, buffer, dispatch)."""
+    integration = await _resolve_webhook_integration("evolution-go", token)
+    body = await request.json()
+    from app.services.whatsapp.providers.evolution_go import go_event_to_v2_envelope
+
+    env = go_event_to_v2_envelope(body if isinstance(body, dict) else {})
+    if env.get("event") == "unknown":
+        # Shape ainda não confirmado ao vivo: loga as CHAVES (nunca conteúdo)
+        # para eu ajustar o conversor em minutos no primeiro teste real.
+        keys = list(body)[:12] if isinstance(body, dict) else type(body).__name__
+        logger.warning(f"[WEBHOOK EVOLUTION-GO] payload não reconhecido keys={keys}")
+        return {"status": "ignored", "reason": "unrecognized_payload"}
+    return await _handle_evolution_like_inbound(integration, env, background_tasks, "evolution-go")
+
+
+async def _handle_evolution_like_inbound(
+    integration: dict, body: dict, background_tasks: BackgroundTasks, provider_label: str
+):
+    """Pipeline compartilhado Evolution v2 / Evolution GO (body já no envelope v2)."""
     event = str(body.get("event") or "").strip().lower().replace("_", ".")
     if event == "connection.update":
         state = connection_state_from_payload(body) or "unknown"
@@ -978,7 +1010,7 @@ async def evolution_webhook_token(token: str, request: Request, background_tasks
             except Exception as e:  # noqa: BLE001
                 logger.warning(f"[WEBHOOK EVOLUTION] manual outbound note failed: {type(e).__name__}")
         return {"status": "ignored", "reason": normalized["skip_reason"]}
-    if await _is_duplicate_namespaced("evolution", normalized["message_id"]):
+    if await _is_duplicate_namespaced(provider_label, normalized["message_id"]):
         return {"status": "ignored", "reason": "duplicate"}
 
     # F1 — mídia do cliente (imagem/PDF/áudio): baixa via Evolution, sobe no
