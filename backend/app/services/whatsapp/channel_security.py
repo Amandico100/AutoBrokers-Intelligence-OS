@@ -23,7 +23,7 @@ WEBHOOK_TOKEN_MIN_LEN = 16
 _TOKEN_RE = re.compile(r"^[A-Za-z0-9_-]+$")
 
 # Namespace de dedup por provider (z-api sem prefixo por compat histórica V7).
-DEDUP_NAMESPACES = {"z-api": "", "uazapi": "uazapi:", "evolution": "evolution:"}
+DEDUP_NAMESPACES = {"z-api": "", "uazapi": "uazapi:", "evolution": "evolution:", "evolution-go": "evolution-go:"}
 
 
 def attendant_inbound_allowed(phone: str, allowlist: Optional[str] = "__env__") -> bool:

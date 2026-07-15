@@ -130,6 +130,38 @@ export function WhatsAppChannelCard() {
     }
   };
 
+  // Founder 14/07: sem Desconectar não há como tirar o número da Evolution
+  // pelo dashboard. Dois cliques (confirmação) — desconectar derruba o canal.
+  const [confirmDisconnect, setConfirmDisconnect] = useState(false);
+  const handleDisconnect = async () => {
+    if (!confirmDisconnect) {
+      setConfirmDisconnect(true);
+      return;
+    }
+    setBusy(true);
+    setMessage('');
+    try {
+      const res = await fetch('/api/dashboard/whatsapp-channel', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ action: 'disconnect' }),
+      });
+      const json = await res.json().catch(() => ({}));
+      if (!res.ok || json.ok === false) {
+        setMessage(String(json.error || json.detail || 'Não foi possível desconectar.'));
+      } else {
+        setConnected(false);
+        setState('close');
+        setMessage('WhatsApp desconectado. Para reconectar, gere um novo QR code.');
+      }
+    } catch {
+      setMessage('Falha de comunicação com o servidor.');
+    } finally {
+      setConfirmDisconnect(false);
+      setBusy(false);
+    }
+  };
+
   const label = stateLabel(state, connected);
 
   return (
@@ -212,9 +244,27 @@ export function WhatsAppChannelCard() {
         )}
 
         {connected && (
-          <p className="rounded-lg border border-success/40 bg-surface-2 px-3 py-2 text-xs text-foreground-2">
-            ✅ WhatsApp conectado. Se cair, o número de alerta configurado recebe aviso imediato para reconectar.
-          </p>
+          <div className="flex flex-col gap-3">
+            <p className="rounded-lg border border-success/40 bg-surface-2 px-3 py-2 text-xs text-foreground-2">
+              ✅ WhatsApp conectado. Se cair, o número de alerta configurado recebe aviso imediato para reconectar.
+            </p>
+            <div className="flex items-center justify-between gap-3 rounded-lg border border-destructive/30 bg-surface-2 px-3 py-2">
+              <p className="text-xs text-muted-foreground">
+                {confirmDisconnect
+                  ? 'Tem certeza? O atendimento por WhatsApp para de funcionar até reconectar.'
+                  : 'Precisa trocar de número ou migrar de servidor? Desconecte aqui.'}
+              </p>
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={handleDisconnect}
+                disabled={busy}
+                className="shrink-0 border-destructive/50 text-destructive hover:bg-destructive/10"
+              >
+                {busy ? 'Desconectando…' : confirmDisconnect ? 'Confirmar desconexão' : 'Desconectar'}
+              </Button>
+            </div>
+          </div>
         )}
 
         {message && <p className="text-xs text-muted-foreground">{message}</p>}

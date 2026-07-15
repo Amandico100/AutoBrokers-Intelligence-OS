@@ -195,8 +195,8 @@ class IntegrationService:
             )
             valid = [i for i in (res.data or [])
                      if str(i.get("provider", "")).lower().strip() in (
-                         "z-api", "evolution", "evolution-api", "wppconnect",
-                         "whatsapp", "whatsapp-cloud", "meta")]
+                         "z-api", "evolution", "evolution-api", "evolution-go",
+                         "wppconnect", "whatsapp", "whatsapp-cloud", "meta")]
             if valid:
                 from app.services.whatsapp.integration_secrets import prepare_integration_for_runtime
 
@@ -220,6 +220,7 @@ class IntegrationService:
                 "z-api",
                 "evolution",
                 "evolution-api",
+                "evolution-go",  # SPEC-034: canal oficial migrando p/ Evolution GO
                 "wppconnect",
                 "whatsapp",
                 "whatsapp-cloud",

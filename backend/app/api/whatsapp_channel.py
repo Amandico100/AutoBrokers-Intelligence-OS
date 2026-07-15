@@ -64,6 +64,118 @@ def _public_backend_url() -> str:
     return (os.getenv("PUBLIC_BACKEND_URL") or os.getenv("BACKEND_PUBLIC_URL") or "").rstrip("/")
 
 
+# ------------------------------------------------------------------ #
+# Evolution GO (SPEC-034 — founder 14/07: "transferir tudo de uma vez").
+# Liga com WHATSAPP_CHANNEL_PROVIDER=evolution-go + os envs EVOLUTION_GO_*.
+# O QR/status/desconectar do dashboard passam a falar com o GO; o setup
+# configura o webhook VIA API (/instance/connect aceita webhookUrl — o
+# formulário da UI do GO não é necessário e não persistia).
+# ------------------------------------------------------------------ #
+def _go_enabled() -> bool:
+    return (os.getenv("WHATSAPP_CHANNEL_PROVIDER") or "").strip().lower() == "evolution-go"
+
+
+def _go_cfg() -> Dict[str, str]:
+    base = (os.getenv("EVOLUTION_GO_BASE_URL") or "").rstrip("/")
+    itoken = os.getenv("EVOLUTION_GO_INSTANCE_TOKEN") or ""
+    iname = os.getenv("EVOLUTION_GO_INSTANCE_NAME") or "autobrokers-go-teste"
+    if not base or not itoken:
+        raise HTTPException(status_code=503, detail="evolution_go_not_configured")
+    return {"base_url": base, "instance_token": itoken, "instance_name": iname}
+
+
+async def _go_get(path: str) -> Dict[str, Any]:
+    cfg = _go_cfg()
+    async with httpx.AsyncClient(timeout=_TIMEOUT, base_url=cfg["base_url"]) as client:
+        res = await client.get(path, headers={"apikey": cfg["instance_token"]})
+        if res.status_code >= 400:
+            raise HTTPException(status_code=502, detail=f"evolution_go_http_{res.status_code}")
+        return res.json() if res.content else {}
+
+
+async def _go_status_payload() -> Dict[str, Any]:
+    j = await _go_get("/instance/status")
+    data = j.get("data") if isinstance(j.get("data"), dict) else {}
+    logged_in = bool(data.get("LoggedIn") or data.get("loggedIn"))
+    connected_ws = bool(data.get("Connected") or data.get("connected"))
+    state = "open" if logged_in else ("connecting" if connected_ws else "close")
+    return {"state": state, "connected": logged_in}
+
+
+async def _go_setup(company_id: str, payload: "ChannelSetupPayload", public_url: str) -> Dict[str, Any]:
+    """Setup do canal via Evolution GO: configura o webhook por API no
+    /instance/connect (webhookUrl + subscribe) e grava a integração
+    provider='evolution-go' (o registry envia pelo wire GO)."""
+    cfg = _go_cfg()
+    instance = cfg["instance_name"]
+    token, token_hash, token_prefix = new_webhook_credentials()
+    webhook_url = build_webhook_url(public_url, "evolution-go", token)
+
+    try:
+        async with httpx.AsyncClient(timeout=_TIMEOUT, base_url=cfg["base_url"]) as client:
+            res = await client.post(
+                "/instance/connect",
+                headers={"apikey": cfg["instance_token"], "Content-Type": "application/json"},
+                json={"webhookUrl": webhook_url, "subscribe": ["Message", "Connection"], "immediate": True},
+            )
+            if res.status_code >= 400:
+                logger.error(f"[WA CHANNEL GO] connect failed http={res.status_code} body={(res.text or '')[:120]}")
+                raise HTTPException(status_code=502, detail=f"evolution_go_connect_failed:http_{res.status_code}")
+    except httpx.HTTPError as e:
+        raise HTTPException(status_code=502, detail=f"evolution_go_unreachable:{type(e).__name__}") from e
+
+    supabase = get_supabase_client()
+
+    def _attendant_id() -> Optional[str]:
+        if payload.agent_id:
+            return payload.agent_id
+        try:
+            res = (
+                supabase.client.table("agents").select("id").eq("company_id", company_id)
+                .eq("agent_role", "attendance").limit(1).execute()
+            )
+            return str(res.data[0]["id"]) if res.data else None
+        except Exception:  # noqa: BLE001
+            return None
+
+    agent_id = _attendant_id()
+
+    def _upsert() -> None:
+        record = {
+            "company_id": company_id,
+            "identifier": instance,
+            "purpose": str(payload.purpose or "attendance").strip().lower(),
+            "provider": "evolution-go",
+            "base_url": cfg["base_url"],
+            "instance_id": instance,
+            "token": cfg["instance_token"],
+            "webhook_token_hash": token_hash,
+            "webhook_token_prefix": token_prefix,
+            "alert_target": {"number": payload.alert_number} if payload.alert_number else None,
+            "channel_status": "connecting",
+            "is_active": True,
+            "last_seen_at": datetime.now(timezone.utc).isoformat(),
+        }
+        if agent_id:
+            record["agent_id"] = agent_id
+        existing = (
+            supabase.client.table("integrations").select("id").eq("company_id", company_id)
+            .eq("provider", "evolution-go").eq("instance_id", instance).limit(1).execute()
+        )
+        if existing.data:
+            supabase.client.table("integrations").update(record).eq("id", existing.data[0]["id"]).execute()
+        else:
+            supabase.client.table("integrations").insert(record).execute()
+
+    try:
+        await asyncio.to_thread(_upsert)
+    except Exception as e:  # noqa: BLE001
+        logger.error(f"[WA CHANNEL GO] integração NÃO gravada: {type(e).__name__}: {e}")
+        raise HTTPException(status_code=500, detail="Webhook configurado no GO, mas a integração não foi gravada no banco.")
+    logger.info(f"[WA CHANNEL GO] setup ok instance={instance} token_prefix={token_prefix}")
+    return {"ok": True, "instance": instance, "webhook_token_prefix": token_prefix, "status": "connecting", "provider": "evolution-go"}
+
+
 class ChannelSetupPayload(BaseModel):
     company_id: str
     agent_id: Optional[str] = None
@@ -155,11 +267,14 @@ async def whatsapp_channel_setup(
     company_id = (payload.company_id or "").strip()
     if not company_id:
         raise HTTPException(status_code=400, detail="company_id required")
-    platform = _evolution_platform()
     public_url = _public_backend_url()
     if not public_url:
         raise HTTPException(status_code=503, detail="public_backend_url_not_configured")
 
+    if _go_enabled():
+        return await _go_setup(company_id, payload, public_url)
+
+    platform = _evolution_platform()
     instance = _instance_name(company_id, payload.purpose)
     token, token_hash, token_prefix = new_webhook_credentials()
     webhook_url = build_webhook_url(public_url, "evolution", token)
@@ -316,6 +431,12 @@ async def whatsapp_channel_qr(
     x_autobrokers_internal_key: Optional[str] = Header(default=None, alias="X-AutoBrokers-Internal-Key"),
 ) -> Dict[str, Any]:
     _require_internal_key(x_autobrokers_internal_key)
+    if _go_enabled():
+        j = await _go_get("/instance/qr")
+        d = j.get("data") if isinstance(j.get("data"), dict) else j
+        raw = str(d.get("QRCode") or d.get("qrcode") or d.get("qr") or d.get("base64") or "")
+        return {"ok": bool(raw), "instance": _go_cfg()["instance_name"],
+                "qr_base64": raw or None, "qr_text": None, "raw_state": None}
     platform = _evolution_platform()
     instance = _instance_name(company_id)
     headers = {"apikey": platform["api_key"]}
@@ -336,12 +457,45 @@ async def whatsapp_channel_qr(
     }
 
 
+@router.post("/api/whatsapp-channel/disconnect")
+async def whatsapp_channel_disconnect(
+    payload: Dict[str, Any],
+    x_autobrokers_internal_key: Optional[str] = Header(default=None, alias="X-AutoBrokers-Internal-Key"),
+) -> Dict[str, Any]:
+    """Desconecta (logout) a instância Evolution da corretora — founder 14/07:
+    sem este botão não há como tirar o número da Evolution pelo dashboard.
+    Logout preserva a instância (reconectar = novo QR); não deleta nada."""
+    _require_internal_key(x_autobrokers_internal_key)
+    company_id = str(payload.get("company_id") or "").strip()
+    if not company_id:
+        raise HTTPException(status_code=400, detail="company_id_required")
+    if _go_enabled():
+        cfg = _go_cfg()
+        async with httpx.AsyncClient(timeout=_TIMEOUT, base_url=cfg["base_url"]) as client:
+            res = await client.delete("/instance/logout", headers={"apikey": cfg["instance_token"]})
+            if res.status_code >= 400:
+                raise HTTPException(status_code=502, detail=f"evolution_go_logout_failed:http_{res.status_code}")
+        return {"ok": True, "instance": cfg["instance_name"], "state": "close"}
+    platform = _evolution_platform()
+    instance = _instance_name(company_id)
+    headers = {"apikey": platform["api_key"]}
+    async with httpx.AsyncClient(timeout=_TIMEOUT, base_url=platform["base_url"]) as client:
+        res = await client.delete(f"/instance/logout/{instance}", headers=headers)
+        if res.status_code >= 400:
+            # v2 usa DELETE /instance/logout/{instance}; se indisponível, tenta restart-less close
+            raise HTTPException(status_code=502, detail="evolution_logout_failed")
+    return {"ok": True, "instance": instance, "state": "close"}
+
+
 @router.get("/api/whatsapp-channel/status")
 async def whatsapp_channel_status(
     company_id: str,
     x_autobrokers_internal_key: Optional[str] = Header(default=None, alias="X-AutoBrokers-Internal-Key"),
 ) -> Dict[str, Any]:
     _require_internal_key(x_autobrokers_internal_key)
+    if _go_enabled():
+        st = await _go_status_payload()
+        return {"ok": True, "instance": _go_cfg()["instance_name"], **st}
     platform = _evolution_platform()
     instance = _instance_name(company_id)
     headers = {"apikey": platform["api_key"]}

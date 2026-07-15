@@ -57,6 +57,7 @@ def _bootstrap():
     _load("app.services.whatsapp.providers.zapi", "app/services/whatsapp/providers/zapi.py")
     _load("app.services.whatsapp.providers.uazapi", "app/services/whatsapp/providers/uazapi.py")
     _load("app.services.whatsapp.providers.evolution", "app/services/whatsapp/providers/evolution.py")
+    _load("app.services.whatsapp.providers.evolution_go", "app/services/whatsapp/providers/evolution_go.py")
     return _load("app.services.whatsapp.registry", "app/services/whatsapp/registry.py")
 
 
@@ -81,7 +82,7 @@ def run():
         }
 
     # Canonical set + alias
-    for label, cls_name in (("evolution", "EvolutionProvider"), ("evolution-api", "EvolutionProvider"), ("z-api", "ZapiProvider"), ("uazapi", "UazapiProvider")):
+    for label, cls_name in (("evolution", "EvolutionProvider"), ("evolution-api", "EvolutionProvider"), ("evolution-go", "EvolutionGoProvider"), ("z-api", "ZapiProvider"), ("uazapi", "UazapiProvider")):
         try:
             provider = registry.resolve_provider(integration(label))
             check(f"P1: '{label}' resolve para {cls_name}", type(provider).__name__ == cls_name, type(provider).__name__)

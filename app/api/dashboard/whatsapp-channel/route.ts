@@ -60,6 +60,26 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ ok: false, error: 'Número de alerta inválido (use DDI+DDD+número).' }, { status: 400 });
   }
 
+  // Desconectar (founder 14/07): logout da instância Evolution pelo dashboard.
+  if (body.action === 'disconnect') {
+    try {
+      const backend = getBackendUrl();
+      const res = await fetch(`${backend}/api/whatsapp-channel/disconnect`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', 'X-AutoBrokers-Internal-Key': key },
+        body: JSON.stringify({ company_id: ctx.companyId }),
+        cache: 'no-store',
+      });
+      const json = await res.json().catch(() => ({}));
+      return NextResponse.json(json, { status: res.status });
+    } catch (e) {
+      if (e instanceof BackendUrlError) {
+        return NextResponse.json({ ok: false, error: 'Backend não configurado.' }, { status: 500 });
+      }
+      return NextResponse.json({ ok: false, error: 'Falha ao desconectar o canal WhatsApp.' }, { status: 502 });
+    }
+  }
+
   try {
     const backend = getBackendUrl();
     const res = await fetch(`${backend}/api/whatsapp-channel/setup`, {
