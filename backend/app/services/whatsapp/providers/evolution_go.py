@@ -67,10 +67,15 @@ def go_event_to_v2_envelope(payload: Dict[str, Any]) -> Dict[str, Any]:
     if isinstance(body.get("data"), dict) and ev in ("messages.upsert", "connection.update"):
         return body  # já no formato v2
 
-    # Shape OFICIAL do GO (confirmado na wiki events-system.md + live 14/07):
-    # {"event": "MESSAGE", "instance": "...", "data": {key, message,
-    #  messageTimestamp (STRING), pushName}} — v2 com outro nome de evento.
-    if isinstance(body.get("data"), dict) and ev in ("message", "send.message"):
+    # Shape estilo-wiki ({event:"MESSAGE", data:{key, message,...}}) — SÓ quando
+    # o data realmente tem `key` (a wiki divergia do runtime; o runtime REAL
+    # manda {event:"Message", data:{Info, Message}} — structs Go — que segue
+    # para o conversor whatsmeow abaixo; fonte: whatsmeow.go postMap).
+    if (
+        isinstance(body.get("data"), dict)
+        and ev in ("message", "send.message")
+        and isinstance(body["data"].get("key"), dict)
+    ):
         d = dict(body["data"])
         ts = d.get("messageTimestamp")
         if isinstance(ts, str) and ts.isdigit():
