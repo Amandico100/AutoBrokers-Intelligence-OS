@@ -116,7 +116,9 @@ async def _go_setup(company_id: str, payload: "ChannelSetupPayload", public_url:
             res = await client.post(
                 "/instance/connect",
                 headers={"apikey": cfg["instance_token"], "Content-Type": "application/json"},
-                json={"webhookUrl": webhook_url, "subscribe": ["Message", "Connection"], "immediate": True},
+                # Eventos do GO são UPPERCASE (event_types.go) — "Message" era
+                # descartado em silêncio e a instância ficava SEM inscrição.
+                json={"webhookUrl": webhook_url, "subscribe": ["MESSAGE", "CONNECTION"], "immediate": True},
             )
             if res.status_code >= 400:
                 logger.error(f"[WA CHANNEL GO] connect failed http={res.status_code} body={(res.text or '')[:120]}")
