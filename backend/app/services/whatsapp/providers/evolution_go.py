@@ -67,6 +67,24 @@ def go_event_to_v2_envelope(payload: Dict[str, Any]) -> Dict[str, Any]:
     if isinstance(body.get("data"), dict) and ev in ("messages.upsert", "connection.update"):
         return body  # já no formato v2
 
+    # Shape OFICIAL do GO (confirmado na wiki events-system.md + live 14/07):
+    # {"event": "MESSAGE", "instance": "...", "data": {key, message,
+    #  messageTimestamp (STRING), pushName}} — v2 com outro nome de evento.
+    if isinstance(body.get("data"), dict) and ev in ("message", "send.message"):
+        d = dict(body["data"])
+        ts = d.get("messageTimestamp")
+        if isinstance(ts, str) and ts.isdigit():
+            d["messageTimestamp"] = int(ts)
+        return {"event": "messages.upsert",
+                "instance": str(body.get("instance") or body.get("instanceId") or ""),
+                "data": d}
+    if ev == "connection":
+        d = body.get("data") if isinstance(body.get("data"), dict) else {}
+        raw_state = str(d.get("state") or ("open" if d.get("Connected") or d.get("LoggedIn") else "close")).lower()
+        return {"event": "connection.update",
+                "instance": str(body.get("instance") or body.get("instanceId") or ""),
+                "data": {"state": raw_state}}
+
     # localizar o objeto do evento whatsmeow
     candidates = [body.get("event"), body.get("data"), body.get("Event"), body]
     info: Dict[str, Any] = {}
