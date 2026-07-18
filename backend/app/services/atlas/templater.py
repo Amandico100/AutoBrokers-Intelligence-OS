@@ -50,13 +50,34 @@ def templatize(text: str) -> str:
     return s
 
 
+# Linhas que NÃO são escolha de menu (eco de dados do cliente): "Placa: {X}",
+# "Modelo: Gol", "Telefone {X}" — viram ruído de opção. Filtradas.
+_DATA_ECHO = re.compile(
+    r"^(?:placa|modelo|ve[íi]culo|telefone|celular|nome|cor|marca|ano|cidade|"
+    r"bairro|rua|endere[çc]o|cpf|cnpj|cliente|segurado|chassi|protocolo)\b[:\s]",
+    re.IGNORECASE)
+
+
+def _real_options(labels: List[str]) -> List[str]:
+    """Descarta 'opções' que na verdade são linhas de dados (Placa:/Modelo:/...)
+    ou que contêm placeholder de valor — não são cliques de menu."""
+    out = []
+    for lab in labels:
+        if _DATA_ECHO.match(lab.strip()):
+            continue
+        if "{VALOR}" in lab or "{PLACA}" in lab or "{CPF}" in lab or "{TELEFONE}" in lab:
+            continue
+        out.append(lab)
+    return out
+
+
 def screen_node(text: str) -> Dict:
     """Constrói o nó canônico da tela (template + hash + kind + opções)."""
     from app.services.cartographer import classify_screen, parse_options
     from app.services.ura_map_service import node_hash
 
     template = templatize(text)
-    options = parse_options(template)
+    options = _real_options(parse_options(template))
     kind = classify_screen(template, options)
     # marca app nativo/humano quando reconhecível (mesma semântica do cartógrafo)
     up = template.upper()
