@@ -160,6 +160,21 @@ def run():
     sim = next(o for n in mvv["nodes"].values() for o in n["options"] if o["label"] == "Sim")
     check("variantes registradas (2 destinos)", len(sim.get("variants") or []) == 2, sim.get("variants"))
 
+    # 10b) BLOCO C: rotulador por ECO (menu digitado — Allianz)
+    mecho = {"root": None, "nodes": {}, "edges": {}}
+    weav.weave_session(mecho, [
+        {"direction": "in", "text": "O que você precisa?\n*1 -* Guincho\n*2 -* Chaveiro\n*3 -* Bateria", "wa_timestamp": "1"},
+        # usuário DIGITOU "2" (não vem evento) → tela seguinte ECOA "chaveiro"
+        {"direction": "in", "text": "Certo! Para quando você precisa do *chaveiro*?\n*1 -* Agora\n*2 -* Agendar", "wa_timestamp": "2"},
+    ])
+    n_lab = weav.label_inferred_edges(mecho)
+    weav.compute_coverage(mecho)
+    cha = next((o for n in mecho["nodes"].values() for o in n["options"] if "Chaveiro" in o["label"]), None)
+    check("eco rotulou 1 aresta", n_lab == 1, n_lab)
+    check("opção Chaveiro deduzida (echo)", cha and cha.get("confidence") == "echo" and cha.get("leads_to"), cha)
+    gui = next((o for n in mecho["nodes"].values() for o in n["options"] if "Guincho" in o["label"]), None)
+    check("Guincho continua lacuna", gui and gui.get("confidence") == "gap", gui)
+
     # 11) v2: answer_hint em pergunta aberta
     node_h = tmpl.screen_node("Para começar, me informe somente o CPF ou CNPJ do titular da apólice.")
     check("answer_hint {CPF} em pergunta", (node_h.get("answer_hint") or {}).get("placeholder") == "{CPF}", node_h.get("answer_hint"))

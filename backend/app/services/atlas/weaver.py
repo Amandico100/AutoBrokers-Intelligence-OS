@@ -141,6 +141,36 @@ def weave_session(map_acc: Dict[str, Any], events: List[Dict[str, Any]],
     return map_acc
 
 
+def label_inferred_edges(map_acc: Dict[str, Any]) -> int:
+    """ROTULADOR POR ECO (Bloco C, determinístico — custo zero): em URAs de menu
+    DIGITADO (Allianz "*1 -* ...") a escolha não chega por evento; mas a tela
+    SEGUINTE costuma ecoar a opção ("Certo! ... *chaveiro* ..."). Se o destino
+    de uma aresta sequencial ecoa EXATAMENTE UMA opção da origem, a aresta é
+    rotulada com essa opção (echo=True). Ambíguo = não mexe (qualidade>pressa).
+    Retorna quantas arestas foram rotuladas."""
+    nodes = map_acc.get("nodes") or {}
+    edges = map_acc.get("edges") or {}
+    labeled = 0
+    for ekey in list(edges.keys()):
+        e = edges[ekey]
+        if e.get("label") != "→":
+            continue
+        src, dest = nodes.get(e.get("src")), nodes.get(e.get("to"))
+        if not src or not dest or not src.get("options"):
+            continue
+        dest_norm = _norm_label(dest.get("text", "")[:240])
+        matches = [o["label"] for o in src["options"]
+                   if len(_norm_label(o["label"])) >= 4 and _norm_label(o["label"]) in dest_norm]
+        if len(matches) == 1:
+            new_label = matches[0]
+            new_key = f"{e['src']}|{new_label}"
+            if new_key not in edges:
+                edges[new_key] = {**e, "label": new_label, "inferred": False, "echo": True}
+                del edges[ekey]
+                labeled += 1
+    return labeled
+
+
 def compute_coverage(map_acc: Dict[str, Any]) -> Dict[str, Any]:
     """Casa cada OPÇÃO oferecida com a aresta percorrida (fuzzy), marca lacunas,
     variantes e o status de cada nó. Escolhe a RAIZ pela frequência de abertura."""
@@ -165,7 +195,10 @@ def compute_coverage(map_acc: Dict[str, Any]) -> Dict[str, Any]:
                     break
             if match:
                 opt["leads_to"] = match["to"]
-                opt["confidence"] = "confirmed" if match.get("count", 0) >= _CONFIRM_THRESHOLD else "seen_once"
+                if match.get("echo"):
+                    opt["confidence"] = "echo"  # deduzida pelo eco da tela seguinte
+                else:
+                    opt["confidence"] = "confirmed" if match.get("count", 0) >= _CONFIRM_THRESHOLD else "seen_once"
                 opt["seen_count"] = match.get("count", 0)
                 dests = match.get("dests") or {}
                 if len(dests) > 1:  # variação real (ex.: já tem telefone salvo)
@@ -245,6 +278,9 @@ async def weave_insurer(insurer_key: str, ramo: str = "auto", company_id: Option
         n["text"] for n in list(map_acc["nodes"].values())[:20]))
     ramo_final = ramo or inferred_ramo or "auto"
 
+    echoes = label_inferred_edges(map_acc)  # Bloco C: rotula menus digitados pelo eco
+    if echoes:
+        logger.info(f"[ATLAS WEAVER] {insurer_key}: {echoes} rotas rotuladas por eco")
     compute_coverage(map_acc)
     map_acc.pop("_starts", None)
     map_acc.pop("_seq", None)
