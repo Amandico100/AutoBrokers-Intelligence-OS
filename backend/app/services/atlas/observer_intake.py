@@ -1,0 +1,290 @@
+"""SPEC-038 ATLAS — Observador: captura passiva (Bloco A).
+
+Princípios INEGOCIÁVEIS (decisões do founder 18/07):
+1. MUDO POR CONSTRUÇÃO: este módulo NÃO importa nenhum cliente de envio.
+   Não existe caminho de resposta — é ausência de código, não uma flag.
+2. FILTRO DE BORDA: só conversas com números de SEGURADORA (registry + envs
+   INSURER_CONTACT_*) são processadas. Qualquer outra conversa (amigos, grupos,
+   status) é DESCARTADA na primeira linha — sem armazenar, sem logar conteúdo;
+   apenas contadores agregados no Redis.
+3. Dois modos:
+   - purpose="observer"  → consome o evento (integração dedicada, ex.: celular
+     de atendente humana). Resposta do webhook e FIM.
+   - purpose="attendance" → TAP: captura o que for de seguradora e devolve None
+     para o pipeline normal seguir intacto (Even/dispatch/cartógrafo).
+4. Mídia: só METADADOS (mimetype/filename/kind) — nunca bytes/base64.
+5. fromMe (o que o humano digitou/clicou) é o LADO DE OURO: para direction=out
+   guardamos também o payload bruto da mensagem (cap 50KB) — é a referência
+   real de cliques de lista/botão e, um dia, do nfm_reply do app nativo.
+"""
+
+from __future__ import annotations
+
+import asyncio
+import json
+import logging
+import os
+from datetime import datetime, timedelta, timezone
+from typing import Any, Dict, Optional, Set, Tuple
+
+logger = logging.getLogger(__name__)
+
+_SESSION_GAP = timedelta(hours=2)
+_RAW_CAP_BYTES = 50_000
+
+
+# ------------------------------------------------------------------ #
+# Filtro de borda — allowlist de números de seguradora
+# ------------------------------------------------------------------ #
+def _digits(value: Any) -> str:
+    return "".join(ch for ch in str(value or "") if ch.isdigit())
+
+
+def _br_variants(number: str) -> Set[str]:
+    """Variantes com/sem o nono dígito (mesma regra do channel_security)."""
+    d = _digits(number)
+    if not d:
+        return set()
+    forms = {d}
+    if d.startswith("55"):
+        rest = d[2:]
+        if len(rest) == 11 and rest[2] == "9":
+            forms.add("55" + rest[:2] + rest[3:])
+        elif len(rest) == 10:
+            forms.add("55" + rest[:2] + "9" + rest[2:])
+    return forms
+
+
+def insurer_allowlist() -> Dict[str, str]:
+    """{variante_de_numero: insurer_key} — registry (ativo+alternativo) + envs
+    INSURER_CONTACT_{KEY}_ASSISTENCIA (env tem prioridade na atribuição)."""
+    from app.services.insurer_registry import INSURER_REGISTRY
+
+    mapping: Dict[str, str] = {}
+    for key, info in INSURER_REGISTRY.items():
+        for field in ("whatsapp", "whatsapp_alternativo"):
+            for v in _br_variants(str(info.get(field) or "")):
+                mapping.setdefault(v, key)
+    for env_key, env_val in os.environ.items():
+        if env_key.startswith("INSURER_CONTACT_") and env_val.strip():
+            key = env_key.removeprefix("INSURER_CONTACT_").removesuffix("_ASSISTENCIA")
+            key = key.removesuffix("_ASSISTENCIA_24H").lower().split("_")[0]
+            for v in _br_variants(env_val):
+                mapping[v] = key
+    return mapping
+
+
+async def _count_drop(observer_number: str, reason: str) -> None:
+    """Contador agregado de descartes — NUNCA conteúdo (privacidade)."""
+    try:
+        from app.core.redis import get_async_redis_client
+
+        r = await get_async_redis_client()
+        await r.hincrby(f"atlas:drops:{_digits(observer_number)}", reason, 1)
+    except Exception:  # noqa: BLE001
+        pass
+
+
+# ------------------------------------------------------------------ #
+# Extração da mensagem (reusa o parser canônico do inbound)
+# ------------------------------------------------------------------ #
+def _extract_content(message: Dict[str, Any]) -> Tuple[str, Optional[str], Optional[Dict], Optional[Dict]]:
+    """(msg_type, text, interactive, media_meta) a partir do dict waE2E."""
+    from app.services.whatsapp.evolution_inbound import _interactive_from_message, _unwrap_message
+
+    msg = _unwrap_message(message if isinstance(message, dict) else {})
+    text = msg.get("conversation") or (msg.get("extendedTextMessage") or {}).get("text")
+    if text:
+        return "text", str(text), None, None
+
+    rendered = _interactive_from_message(msg)
+    if rendered:
+        r_text, meta = rendered
+        kind = str((meta or {}).get("kind") or "interactive")
+        return kind, r_text, meta, None
+
+    for media_key, kind in (("imageMessage", "image"), ("documentMessage", "document"),
+                            ("documentWithCaptionMessage", "document"), ("audioMessage", "audio"),
+                            ("videoMessage", "video"), ("stickerMessage", "sticker")):
+        m = msg.get(media_key)
+        if media_key == "documentWithCaptionMessage" and isinstance(m, dict):
+            m = ((m.get("message") or {}).get("documentMessage")) or m
+        if isinstance(m, dict):
+            meta = {"kind": kind, "mimetype": m.get("mimetype"),
+                    "file_name": m.get("fileName") or m.get("title"),
+                    "caption": m.get("caption")}
+            return kind, str(m.get("caption") or ""), None, meta
+
+    # Respostas estruturadas que o humano ENVIA (clique de lista/botão/flow):
+    for resp_key, kind in (("listResponseMessage", "list_reply"),
+                           ("buttonsResponseMessage", "button_reply"),
+                           ("templateButtonReplyMessage", "button_reply"),
+                           ("interactiveResponseMessage", "flow_reply")):
+        m = msg.get(resp_key)
+        if isinstance(m, dict):
+            title = (m.get("title") or (m.get("singleSelectReply") or {}).get("selectedRowId")
+                     or (m.get("selectedDisplayText")) or "")
+            return kind, str(title), {"kind": kind, "raw_keys": sorted(m.keys())}, None
+
+    return "unknown", None, None, None
+
+
+def _raw_capped(message: Any) -> Optional[Dict[str, Any]]:
+    try:
+        blob = json.dumps(message, ensure_ascii=False, default=str)
+        if len(blob.encode("utf-8")) > _RAW_CAP_BYTES:
+            return {"_truncated": True, "keys": sorted(message.keys()) if isinstance(message, dict) else []}
+        return message if isinstance(message, dict) else None
+    except Exception:  # noqa: BLE001
+        return None
+
+
+# ------------------------------------------------------------------ #
+# Persistência (supabase service-role; sessão por janela de 2h)
+# ------------------------------------------------------------------ #
+def _store_event_sync(record: Dict[str, Any]) -> None:
+    from app.core.database import get_supabase_client
+
+    supabase = get_supabase_client()
+    obs, cp = record["observer_number"], record["counterparty"]
+    now_iso = datetime.now(timezone.utc).isoformat()
+    session_id = None
+    try:
+        res = (supabase.client.table("observed_sessions").select("id, last_event_at")
+               .eq("observer_number", obs).eq("counterparty", cp)
+               .eq("status", "open").order("last_event_at", desc=True).limit(1).execute())
+        if res.data:
+            last = res.data[0]
+            try:
+                last_at = datetime.fromisoformat(str(last["last_event_at"]).replace("Z", "+00:00"))
+            except ValueError:
+                last_at = datetime.now(timezone.utc)
+            if datetime.now(timezone.utc) - last_at <= _SESSION_GAP:
+                session_id = last["id"]
+                supabase.client.table("observed_sessions").update(
+                    {"last_event_at": now_iso}).eq("id", session_id).execute()
+            else:
+                supabase.client.table("observed_sessions").update(
+                    {"status": "closed"}).eq("id", last["id"]).execute()
+        if session_id is None:
+            created = supabase.client.table("observed_sessions").insert({
+                "company_id": record["company_id"], "observer_number": obs,
+                "counterparty": cp, "insurer_key": record.get("insurer_key"),
+                "started_at": now_iso, "last_event_at": now_iso, "status": "open",
+            }).execute()
+            session_id = created.data[0]["id"] if created.data else None
+    except Exception as e:  # noqa: BLE001
+        logger.warning(f"[ATLAS] sessão falhou (evento segue sem sessão): {type(e).__name__}")
+
+    record["session_id"] = session_id
+    try:
+        supabase.client.table("observed_events").upsert(
+            record, on_conflict="observer_number,message_id", ignore_duplicates=True
+        ).execute()
+    except Exception:  # noqa: BLE001
+        # fallback: insert simples (índice único ainda protege contra dupe)
+        try:
+            supabase.client.table("observed_events").insert(record).execute()
+        except Exception as e2:  # noqa: BLE001
+            logger.error(f"[ATLAS] evento NÃO gravado: {type(e2).__name__}")
+
+
+# ------------------------------------------------------------------ #
+# Entrada principal — chamada pelo webhook evolution-go
+# ------------------------------------------------------------------ #
+async def observer_tap(integration: dict, body: dict) -> Optional[dict]:
+    """Captura passiva. Retorna dict (resposta ao webhook) quando a integração é
+    purpose='observer' (consome SEMPRE); retorna None em modo TAP (attendance)
+    para o pipeline normal seguir. NUNCA envia nada — por construção."""
+    purpose = str((integration or {}).get("purpose") or "").strip().lower()
+    is_observer = purpose == "observer"
+    consumed = {"status": "observed"} if is_observer else None
+
+    try:
+        ev_name = str((body or {}).get("event") or "").strip().lower().replace("_", ".")
+
+        # HISTORY SYNC (D2): shape ainda não confirmado ao vivo — NUNCA armazenar
+        # conteúdo sem entender; só a ESTRUTURA (chaves/contagens) p/ o relatório.
+        if ev_name in ("historysync", "history.sync"):
+            data = body.get("data") if isinstance(body.get("data"), dict) else {}
+            structure = {k: (len(v) if isinstance(v, list) else type(v).__name__)
+                         for k, v in list(data.items())[:20]}
+            logger.info(f"[ATLAS] HISTORY_SYNC recebido — estrutura: {json.dumps(structure, default=str)[:500]}")
+            try:
+                from app.core.redis import get_async_redis_client
+
+                r = await get_async_redis_client()
+                await r.set("atlas:history_sync:last_structure",
+                            json.dumps(structure, default=str), ex=7 * 24 * 3600)
+                await r.hincrby("atlas:history_sync:count", "events", 1)
+            except Exception:  # noqa: BLE001
+                pass
+            # HistorySync nunca é tráfego de atendimento: consome SEMPRE
+            return consumed or {"status": "observed", "event": "history_sync"}
+
+        if ev_name in ("connection", "connection.update"):
+            return consumed if is_observer else None
+
+        from app.services.whatsapp.providers.evolution_go import go_event_to_v2_envelope
+
+        env = go_event_to_v2_envelope(body if isinstance(body, dict) else {})
+        if env.get("event") != "messages.upsert":
+            return consumed if is_observer else None
+        data = env.get("data") or {}
+        key = data.get("key") or {}
+        message = data.get("message")
+        if not isinstance(message, dict):
+            return consumed if is_observer else None
+
+        remote = str(key.get("remoteJid") or "")
+        observer_number = _digits(integration.get("identifier") or integration.get("instance_id") or "")
+
+        # ---------- FILTRO DE BORDA (privacidade — primeira linha) ----------
+        if remote.endswith(("@g.us", "@broadcast", "@newsletter", "@call")):
+            await _count_drop(observer_number, "group_or_status")
+            return consumed if is_observer else None
+        counterparty = _digits(remote.split("@", 1)[0].split(":", 1)[0])
+        allow = insurer_allowlist()
+        insurer_key = None
+        for v in _br_variants(counterparty):
+            if v in allow:
+                insurer_key = allow[v]
+                break
+        if not insurer_key:
+            await _count_drop(observer_number, "non_insurer")
+            return consumed if is_observer else None
+        # --------------------------------------------------------------------
+
+        from_me = bool(key.get("fromMe"))
+        msg_type, text, interactive, media_meta = _extract_content(message)
+        if from_me:
+            raw = _raw_capped(message)
+            interactive = dict(interactive or {})
+            if raw is not None:
+                interactive["raw_out"] = raw  # o clique/resposta REAL do humano
+
+        ts = data.get("messageTimestamp")
+        wa_ts = None
+        if isinstance(ts, (int, float)) and ts > 0:
+            wa_ts = datetime.fromtimestamp(int(ts), tz=timezone.utc).isoformat()
+
+        record = {
+            "company_id": str(integration.get("company_id") or ""),
+            "observer_number": observer_number or "unknown",
+            "counterparty": counterparty,
+            "insurer_key": insurer_key,
+            "direction": "out" if from_me else "in",
+            "msg_type": msg_type,
+            "text": (text or None),
+            "interactive": interactive or None,
+            "media_meta": media_meta or None,
+            "message_id": str(key.get("id") or "") or None,
+            "wa_timestamp": wa_ts,
+            "source": "live",
+        }
+        await asyncio.to_thread(_store_event_sync, record)
+        logger.info(f"[ATLAS] observado {record['direction']} {insurer_key} tipo={msg_type}")
+    except Exception as e:  # noqa: BLE001 — o TAP JAMAIS derruba o pipeline
+        logger.error(f"[ATLAS] observer tap falhou: {type(e).__name__}")
+
+    return consumed

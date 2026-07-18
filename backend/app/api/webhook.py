@@ -964,6 +964,20 @@ async def evolution_go_webhook_token(token: str, request: Request, background_ta
     TODO o pipeline (normalizador, formulário nativo, buffer, dispatch)."""
     integration = await _resolve_webhook_integration("evolution-go", token)
     body = await request.json()
+
+    # ATLAS (SPEC-038 Bloco A): captura passiva ANTES do pipeline.
+    # purpose='observer' consome (instância dedicada, muda por construção);
+    # purpose='attendance' = TAP: grava o que for de seguradora e o fluxo
+    # segue INTACTO. O tap jamais derruba o atendimento.
+    try:
+        from app.services.atlas.observer_intake import observer_tap
+
+        _observed = await observer_tap(integration, body if isinstance(body, dict) else {})
+        if _observed is not None:
+            return _observed
+    except Exception as e:  # noqa: BLE001
+        logger.error(f"[WEBHOOK EVOLUTION-GO] atlas tap error: {type(e).__name__}")
+
     from app.services.whatsapp.providers.evolution_go import go_event_to_v2_envelope
 
     env = go_event_to_v2_envelope(body if isinstance(body, dict) else {})
