@@ -29,8 +29,9 @@ _PII_PATTERNS: List[Tuple[re.Pattern, str]] = [
 # Rótulos de campo que costumam preceder um VALOR de cliente numa linha
 # "Rótulo: valor" (Placa: QJQ0A91 / Modelo: Gol / Nome: ...).
 _LABELED_VALUE = re.compile(
-    r"(?im)^(\s*[\*\-•]?\s*(?:nome|modelo|placa|ve[íi]culo|cor|endere[çc]o|"
-    r"cliente|segurado|cpf|cnpj|telefone|celular|marca|ano|cidade|bairro|rua)\s*:?\s*)(.+)$"
+    r"(?im)^(\s*[\*\-•]*\s*\*?(?:nome|modelo|placa|ve[íi]culo|cor|endere[çc]o|"
+    r"cliente|segurado|cpf|cnpj|telefone|celular|marca|ano|cidade|estado|bairro|rua|"
+    r"n[úu]mero|complemento|refer[êe]ncia|logradouro)\*?\s*:?\*?\s*)(.+)$"
 )
 
 
