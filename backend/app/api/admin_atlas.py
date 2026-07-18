@@ -69,6 +69,86 @@ async def observer_report(_: Any = Depends(require_master_admin)) -> Dict[str, A
     return {"ok": True, **out, "drops": drops, "history_sync": history}
 
 
+@router.post("/weave")
+async def weave(body: Optional[Dict[str, Any]] = None, _: Any = Depends(require_master_admin)) -> Dict[str, Any]:
+    """Tece o mapa observado. Sem insurer_key: tece TODAS as seguradoras com
+    sessões observadas. Idempotente (reprocessa o histórico)."""
+    from app.services.atlas.weaver import weave_insurer
+
+    payload = body or {}
+    insurer = str(payload.get("insurer_key") or "").strip().lower()
+    ramo = str(payload.get("ramo") or "").strip().lower() or "auto"
+    if insurer:
+        return await weave_insurer(insurer, ramo)
+
+    from app.core.database import get_supabase_client
+
+    supabase = get_supabase_client()
+
+    def _distinct() -> list:
+        rows = (supabase.client.table("observed_sessions")
+                .select("insurer_key").not_.is_("insurer_key", "null").execute().data or [])
+        return sorted({r["insurer_key"] for r in rows if r.get("insurer_key")})
+
+    keys = await asyncio.to_thread(_distinct)
+    results = [await weave_insurer(k, ramo) for k in keys]
+    return {"ok": True, "woven": results}
+
+
+@router.get("/maps")
+async def atlas_maps(_: Any = Depends(require_master_admin)) -> Dict[str, Any]:
+    """Todos os mapas observados (resumo p/ a grade da página Atlas)."""
+    from app.core.database import get_supabase_client
+
+    supabase = get_supabase_client()
+
+    def _q() -> list:
+        return (supabase.client.table("ura_maps")
+                .select("id, insurer_key, ramo, status, source, diff_summary, map, created_at")
+                .in_("status", ["observed", "proposed", "active"])
+                .order("created_at", desc=True).execute().data or [])
+
+    rows = await asyncio.to_thread(_q)
+    # dedupe por (insurer, ramo) mantendo o mais recente; resumo só (sem o mapa inteiro)
+    seen = set()
+    cards = []
+    for r in rows:
+        k = (r["insurer_key"], r["ramo"])
+        if k in seen:
+            continue
+        seen.add(k)
+        cov = ((r.get("map") or {}).get("coverage") or {})
+        cards.append({
+            "id": r["id"], "insurer_key": r["insurer_key"], "ramo": r["ramo"],
+            "status": r["status"], "source": r["source"],
+            "nodes": cov.get("nodes", 0), "coverage_pct": cov.get("pct", 0),
+            "sessions": ((r.get("map") or {}).get("meta") or {}).get("sessions", 0),
+            "updated_at": r["created_at"],
+        })
+    return {"ok": True, "cards": cards}
+
+
+@router.get("/map/{insurer_key}/{ramo}")
+async def atlas_map_detail(insurer_key: str, ramo: str, _: Any = Depends(require_master_admin)) -> Dict[str, Any]:
+    """Mapa completo (árvore) de uma seguradora×ramo para a visualização."""
+    from app.core.database import get_supabase_client
+
+    supabase = get_supabase_client()
+
+    def _q() -> Optional[dict]:
+        rows = (supabase.client.table("ura_maps").select("id, map, status, source, created_at")
+                .eq("insurer_key", insurer_key.lower()).eq("ramo", ramo.lower())
+                .in_("status", ["observed", "proposed", "active"])
+                .order("created_at", desc=True).limit(1).execute().data or [])
+        return rows[0] if rows else None
+
+    row = await asyncio.to_thread(_q)
+    if not row:
+        return {"ok": False, "error": "mapa não encontrado"}
+    return {"ok": True, "insurer_key": insurer_key, "ramo": ramo,
+            "status": row["status"], "map": row.get("map") or {}}
+
+
 @router.post("/observer/history-sync")
 async def trigger_history_sync(
     body: Optional[Dict[str, Any]] = None, _: Any = Depends(require_master_admin)
