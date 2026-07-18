@@ -34,9 +34,43 @@ O pareamento é um **aparelho companheiro somente-leitura por decisão nossa**:
 4. Nenhuma API de delete/edit/label é chamada em instância observer (lint de
    arquitetura: o módulo observer não importa nenhum cliente de escrita).
 
+## PESQUISA BUSINESS/PASSKEY (18/07 — atualiza a D1; fontes verificadas)
+
+**Diagnóstico corrigido:** o bloqueio que o founder viu NÃO é "Business não
+pareia". O que existe é o **travamento por PASSKEY** — decisão **server-side,
+POR CONTA** (bucket A/B da Meta + conta ter passkey + sinal de risco). A
+"senha" que apareceu era a cerimônia de passkey (WebAuthn). Fatos:
+1. Apps Business SEM o travamento pareiam por QR normalmente (WhatsApp Web
+   funciona em Business — mesmo mecanismo).
+2. A **Evolution API v2 (antiga) NÃO suporta a cerimônia** — issue #2618
+   aberta, sem correção. Beco sem saída lá.
+3. O **Evolution GO 0.7.2+ IMPLEMENTOU a cerimônia completa** (guia
+   `passkey-pairing.md` + extensão `passkey-helper/` no repo): eventos
+   `PairPasskeyRequest/Confirmation`, endpoints `/passkey-ceremony/{token}`,
+   extensão Chromium que roda em web.whatsapp.com. Requisitos: env
+   `PASSKEY_PUBLIC_URL` no GO, extensão instalada no Chrome/Edge, e a DONA da
+   conta presente (biometria/celular por perto), ~2 min, UMA vez. Sem bypass
+   headless (confirmado por pesquisa independente citada no guia). Recurso
+   novo, "não validado ponta a ponta" pela comunidade — tratar como
+   experimental até o nosso primeiro sucesso.
+4. **Plano C — conversão oficial Business→Messenger** (FAQ oficial do
+   WhatsApp): mesmo celular, mesmo número, fluxo dentro do app
+   (Configurações → Conta → Mudar para o WhatsApp Messenger), transfere os
+   dados da conta/conversas; PERDE ferramentas comerciais (catálogo,
+   etiquetas, respostas rápidas, mensagens automáticas). Fazer backup antes;
+   JAMAIS desinstalar antes de migrar.
+
+**Estratégia em cascata por atendente:** (A) tentar QR normal no GO — pode
+simplesmente funcionar, Business ou não; (B) se pedir passkey → cerimônia do
+GO com a atendente presente; (C) último recurso → conversão oficial para
+Messenger (decisão da corretora; perde ferramentas Business).
+
 ## CHECKLIST PRÉ-PAREAMENTO (por número, no onboarding)
 
-- [ ] WhatsApp NORMAL (não Business) — bloqueio Meta.
+- [ ] Tentativa 1: QR normal no GO (funciona p/ Business sem travamento).
+- [ ] Se pedir passkey: GO 0.7.2+, env `PASSKEY_PUBLIC_URL`, extensão
+      `passkey-helper` no Chrome/Edge, atendente presente c/ celular (2 min).
+- [ ] Último recurso: migração oficial Business→Messenger (backup antes).
 - [ ] Slot de aparelho vinculado livre (limite ~4: Web/tablet contam).
 - [ ] Termo de consentimento da atendente assinado (LGPD; corretora=controladora).
 - [ ] Número das seguradoras que ela usa conferidos no registry (senão o filtro
@@ -45,15 +79,23 @@ O pareamento é um **aparelho companheiro somente-leitura por decisão nossa**:
 
 ## ARQUITETURA DE EXECUÇÃO (arquivos e mudanças — nível implementação)
 
-### Onda 0 — SPIKE de verificação (1 dia, risco zero, celular de teste)
-Parear um celular nosso como observer e verificar na prática:
-- [ ] `Message` com `IsFromMe=true` chega no webhook (digitado no aparelho).
-- [ ] Protobuf interativo completo chega (lista/botões de uma URA real).
-- [ ] Shape real do `HistorySync` (estrutura, profundidade, mídia?).
-- [ ] **Eco do nfm_reply**: preencher um formulário nativo (Yelum/HDI) no
-      celular de teste e ver se a resposta sincroniza. (Resposta ao maior
-      mistério — com risco zero.)
-- [ ] Confirmar modo cofre: mensagens NÃO marcadas como lidas no principal.
+### Onda 0 — SPIKE de verificação (DECISÃO 18/07: no número do founder, já pareado)
+Sem chip novo: usa o **554796274743** (pessoal do founder, JÁ pareado no GO como
+canal de teste — nada em produção real). Proteções para o número pessoal:
+- O filtro de borda vale DESDE O PRIMEIRO EVENTO: só conversas com números de
+  seguradora do registry são processadas; amigos/grupos/status = descartados na
+  primeira linha (só contadores). Nenhuma automação nova sobre as mensagens dele.
+- Even continua limitada à allowlist atual (só responde ao 7463).
+Verificações:
+- [ ] `Message` com `IsFromMe=true` chega no webhook (founder digita no aparelho).
+- [ ] Protobuf interativo completo chega (founder abre a URA da Yelum/HDI e navega).
+- [ ] **Eco de resposta interativa** SEM risco: testar numa SELEÇÃO DE LISTA
+      inicial do menu (nunca no formulário final) + saída educada — se o clique
+      de lista ecoa, temos o mecanismo; o nfm_reply do formulário final será
+      capturado depois, do tráfego real das atendentes (risco zero de acionar).
+- [ ] Shape real do `HistorySync`: assinar HISTORY_SYNC + testar
+      `POST /chat/history-sync` (endpoint existente no GO) OU re-parear.
+- [ ] Modo cofre: mensagens NÃO marcadas como lidas / sem "online" indevido.
 Saída: relatório GO/NO-GO por item + ajuste fino do plano.
 
 ### Onda 1 — CAPTURA (código puro)
@@ -144,7 +186,22 @@ Saída: relatório GO/NO-GO por item + ajuste fino do plano.
 - Zero mensagens enviadas por instâncias observer (invariante auditável).
 - Payload do nfm_reply capturado (sim/não — destrava Onda 6).
 
-## ORDEM DE LIBERAÇÃO (o que o founder aprova em cada passo)
-1. Aprovar este plano → 2. Onda 0 (celular de teste NOSSO — sem atendentes)
-→ 3. relatório GO/NO-GO → 4. Ondas 1-3 (código+página) → 5. parear a PRIMEIRA
-atendente real (Resulta ou AutoFleet) → 6. Ondas 4-5 → 7. Onda 6.
+## EXECUÇÃO EM BLOCOS (DECISÃO 18/07 — founder pediu blocos maiores; minha divisão)
+
+Ondas consolidadas em 4 BLOCOS — cada um termina com verificação real e
+checkpoint do founder (a qualidade não cede: o gate é por bloco, não por onda):
+
+- **BLOCO A — Fundação + Prova (Ondas 0+1 juntas):** construir a captura
+  (branch observer no webhook, observed_events, multi-instância modo cofre,
+  HISTORY_SYNC) e RODAR o spike no 4743 na sequência imediata — a infra da O1
+  é justamente o instrumento de medição da O0. Entrega: relatório GO/NO-GO +
+  captura viva funcionando.
+- **BLOCO B — Fábrica + Atlas (Ondas 2+3):** Tecelão completo + página
+  /admin/atlas, validados com as sessões reais capturadas no Bloco A.
+- **BLOCO C — Vida própria (Ondas 4+5):** auto-atualização (Sentinela de
+  Rotas + Alfaiate v2 + gate Simulador) + kit de onboarding + Garimpo/Auditor
+  v2 + Descobridor. Ao fim: parear a PRIMEIRA atendente real.
+- **BLOCO D — App nativo (Onda 6):** replicar o payload capturado.
+
+Ordem de liberação: aprovar plano → BLOCO A → relatório → BLOCO B → founder vê
+o Atlas → BLOCO C → 1ª atendente real → BLOCO D.
