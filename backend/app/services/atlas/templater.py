@@ -12,7 +12,7 @@ parse_options/classify_screen (cartographer).
 from __future__ import annotations
 
 import re
-from typing import Dict, List, Tuple
+from typing import Dict, List, Optional, Tuple
 
 # Ordem importa: específico → genérico.
 _PII_PATTERNS: List[Tuple[re.Pattern, str]] = [
@@ -84,12 +84,43 @@ def screen_node(text: str) -> Dict:
     up = template.upper()
     if "FORMULARIO NATIVO" in up:
         kind = "app_form"
-    return {
+    node = {
         "hash": node_hash(template),
         "text": template[:400],
         "kind": kind,
         "options": [{"label": o, "reply": o, "leads_to": None} for o in options],
     }
+    if kind == "pergunta":
+        hint = answer_hint(template)
+        if hint:
+            node["answer_hint"] = hint
+    return node
+
+
+# O que o AGENTE deve responder numa pergunta aberta (founder: "respostas com
+# exemplos, o atendente já sabe o que precisa"). Determinístico, sem PII.
+_ANSWER_HINTS: List[Tuple[re.Pattern, str, str]] = [
+    (re.compile(r"cpf|cnpj", re.IGNORECASE), "{CPF}", "CPF/CNPJ do titular da apólice (só números)"),
+    (re.compile(r"placa", re.IGNORECASE), "{PLACA}", "Placa do veículo (ex.: ABC1D23) — vem da InfoCap"),
+    (re.compile(r"telefone|celular|n[úu]mero (?:de|para) contato", re.IGNORECASE), "{TELEFONE}", "Telefone do cliente com DDD"),
+    (re.compile(r"\bcep\b", re.IGNORECASE), "{CEP}", "CEP do local (8 dígitos)"),
+    (re.compile(r"complemento", re.IGNORECASE), "{COMPLEMENTO}", "Apto/bloco/casa — ou 'não tem'"),
+    (re.compile(r"refer[êe]ncia", re.IGNORECASE), "{REFERENCIA}", "Ponto de referência próximo (mercado, posto...)"),
+    (re.compile(r"endere[çc]o|localiza[çc][ãa]o|onde (?:o ve[íi]culo|o carro|voc[êe]) est[áa]", re.IGNORECASE),
+     "{ENDERECO}", "Endereço completo: rua, número, bairro, cidade - UF"),
+    (re.compile(r"nome", re.IGNORECASE), "{NOME}", "Nome completo de quem acompanha no local"),
+    (re.compile(r"\bdata\b|\bdia\b", re.IGNORECASE), "{DATA}", "Data (dd/mm/aaaa)"),
+    (re.compile(r"motivo|conte o que|descreva", re.IGNORECASE), "{DESCRICAO}", "Descrição curta do ocorrido"),
+]
+
+
+def answer_hint(question_text: str) -> Optional[Dict[str, str]]:
+    """Para telas-pergunta (sem botões): o placeholder e a instrução do que o
+    agente/atendente deve responder. None quando não reconhecido."""
+    for rx, ph, instr in _ANSWER_HINTS:
+        if rx.search(str(question_text or "")):
+            return {"placeholder": ph, "instrucao": instr}
+    return None
 
 
 def infer_ramo_servico(labels: List[str], full_text: str) -> Tuple[str, str]:

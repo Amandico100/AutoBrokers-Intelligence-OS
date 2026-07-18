@@ -142,12 +142,58 @@ def _raw_capped(message: Any) -> Optional[Dict[str, Any]]:
 # ------------------------------------------------------------------ #
 # Persistência (supabase service-role; sessão por janela de 2h)
 # ------------------------------------------------------------------ #
+_CLICK_WINDOW_S = 180  # clique chega segundos após a tela; 3 min é folga segura
+
+
+def _correlate_open_session(observer_number: str):
+    """Fallback p/ ButtonClick sem chat (bug do GO): a sessão de seguradora
+    ABERTA com atividade nos últimos 3 min. Duas ativas na janela = ambíguo →
+    None (privacidade > completude). Retorna (session_id, counterparty, insurer_key)."""
+    try:
+        from app.core.database import get_supabase_client
+
+        supabase = get_supabase_client()
+        res = (supabase.client.table("observed_sessions")
+               .select("id, counterparty, insurer_key, last_event_at")
+               .eq("observer_number", observer_number).eq("status", "open")
+               .order("last_event_at", desc=True).limit(2).execute())
+        rows = res.data or []
+
+        def _fresh(row) -> bool:
+            try:
+                last = datetime.fromisoformat(str(row["last_event_at"]).replace("Z", "+00:00"))
+                return (datetime.now(timezone.utc) - last).total_seconds() <= _CLICK_WINDOW_S
+            except ValueError:
+                return False
+
+        fresh = [r for r in rows if _fresh(r)]
+        if len(fresh) == 1 and fresh[0].get("insurer_key"):
+            r = fresh[0]
+            return r["id"], str(r.get("counterparty") or ""), str(r["insurer_key"])
+        return None
+    except Exception:  # noqa: BLE001
+        return None
+
+
 def _store_event_sync(record: Dict[str, Any]) -> None:
     from app.core.database import get_supabase_client
 
     supabase = get_supabase_client()
     obs, cp = record["observer_number"], record["counterparty"]
     now_iso = datetime.now(timezone.utc).isoformat()
+
+    # Sessão pré-atribuída (correlação do ButtonClick): só atualiza o relógio.
+    if record.get("session_id"):
+        try:
+            supabase.client.table("observed_sessions").update(
+                {"last_event_at": now_iso}).eq("id", record["session_id"]).execute()
+            supabase.client.table("observed_events").upsert(
+                record, on_conflict="observer_number,message_id", ignore_duplicates=True
+            ).execute()
+        except Exception as e:  # noqa: BLE001
+            logger.error(f"[ATLAS] evento (sessão pré-atribuída) não gravado: {type(e).__name__}")
+        return
+
     session_id = None
     try:
         res = (supabase.client.table("observed_sessions").select("id, last_event_at")
@@ -228,25 +274,41 @@ async def observer_tap(integration: dict, body: dict) -> Optional[dict]:
         # BUTTONCLICK (SPEC-038 — o LADO DE OURO): o GO emite um evento próprio
         # quando o humano CLICA num botão/lista OU preenche o FORMULÁRIO NATIVO
         # (InteractiveResponseMessage/NativeFlow — a travessia do app HDI/Yelum!).
-        # Shape: {event:"ButtonClick", data:{buttonId, buttonText, type, chat,
-        # fromMe, messageId, timestamp, extraData}}. É a escolha real do humano.
+        # AUDITORIA FABLE 18/07: no fonte do GO, chat/jid/phone/messageId são
+        # lidos de um dataMap ANINHADO (chegam NULOS). Só buttonId/buttonText/
+        # type/timestamp vêm preenchidos. Resolução do destinatário: (1) chat se
+        # vier; (2) CORRELAÇÃO com a sessão de seguradora ABERTA nos últimos
+        # 3 min (o clique chega segundos após a tela da URA). Ambíguo = descarta
+        # com contador (privacidade > completude). Consome SEMPRE (o pipeline
+        # normal não conhece ButtonClick — evita log de payload desconhecido).
         if ev_name in ("buttonclick", "button.click"):
             data = body.get("data") if isinstance(body.get("data"), dict) else {}
             observer_number = _digits(integration.get("identifier") or integration.get("instance_id") or "")
-            chat = str(data.get("chat") or data.get("jid") or data.get("phone") or "")
-            if chat.endswith(("@g.us", "@broadcast", "@newsletter")):
-                await _count_drop(observer_number, "group_or_status")
-                return consumed if is_observer else None
-            counterparty = _digits(chat.split("@", 1)[0].split(":", 1)[0])
-            allow = insurer_allowlist()
+            always = consumed or {"status": "observed", "event": "button_click"}
+
             insurer_key = None
-            for v in _br_variants(counterparty):
-                if v in allow:
-                    insurer_key = allow[v]
-                    break
+            counterparty = ""
+            session_id = None
+            chat = str(data.get("chat") or data.get("jid") or data.get("phone") or "")
+            if chat:
+                if chat.endswith(("@g.us", "@broadcast", "@newsletter")):
+                    await _count_drop(observer_number, "group_or_status")
+                    return always
+                counterparty = _digits(chat.split("@", 1)[0].split(":", 1)[0])
+                allow = insurer_allowlist()
+                for v in _br_variants(counterparty):
+                    if v in allow:
+                        insurer_key = allow[v]
+                        break
             if not insurer_key:
-                await _count_drop(observer_number, "non_insurer")
-                return consumed if is_observer else None
+                # Fallback: sessão de seguradora ativa na janela (bug do GO: chat nulo)
+                corr = await asyncio.to_thread(_correlate_open_session, observer_number)
+                if corr:
+                    session_id, counterparty, insurer_key = corr
+            if not insurer_key:
+                await _count_drop(observer_number, "buttonclick_unresolved")
+                return always
+
             btype = str(data.get("type") or "button_reply")
             kind = "flow_reply" if "interactive" in btype or "nativeflow" in btype.replace("_", "") else \
                    "list_reply" if "list" in btype else "button_reply"
@@ -254,25 +316,31 @@ async def observer_tap(integration: dict, body: dict) -> Optional[dict]:
             wa_ts = None
             if isinstance(ts, (int, float)) and ts > 0:
                 wa_ts = datetime.fromtimestamp(int(ts), tz=timezone.utc).isoformat()
+            btn_text = str(data.get("buttonText") or "").strip()
+            # messageId vem nulo (bug do GO): id determinístico p/ dedupe
+            msg_id = str(data.get("messageId") or "") or \
+                f"bc-{_digits(str(ts))}-{abs(hash((btn_text, str(data.get('buttonId')))))%10**8}"
             record = {
                 "company_id": str(integration.get("company_id") or ""),
                 "observer_number": observer_number or "unknown",
-                "counterparty": counterparty,
+                "counterparty": counterparty or "unknown",
                 "insurer_key": insurer_key,
                 "direction": "out",  # é a escolha do humano
                 "msg_type": kind,
-                "text": str(data.get("buttonText") or "") or None,
+                "text": btn_text or None,
                 "interactive": {"kind": kind, "id": data.get("buttonId"),
-                                "title": data.get("buttonText"), "go_type": btype,
+                                "title": btn_text, "go_type": btype,
                                 "extra": data.get("extraData")},
                 "media_meta": None,
-                "message_id": str(data.get("messageId") or "") or None,
+                "message_id": msg_id,
                 "wa_timestamp": wa_ts,
                 "source": "live",
             }
+            if session_id:
+                record["session_id"] = session_id
             await asyncio.to_thread(_store_event_sync, record)
-            logger.info(f"[ATLAS] CLIQUE humano {insurer_key} '{record['text']}' ({kind})")
-            return consumed if is_observer else None
+            logger.info(f"[ATLAS] CLIQUE humano {insurer_key} '{btn_text}' ({kind})")
+            return always
 
         from app.services.whatsapp.providers.evolution_go import go_event_to_v2_envelope
 

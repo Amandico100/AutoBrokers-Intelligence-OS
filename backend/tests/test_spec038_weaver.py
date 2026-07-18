@@ -128,6 +128,42 @@ def run():
     check("Guincho é lacuna (gap)", conf.get("Guincho") == "gap", conf)
     check("coverage calculada", m["coverage"]["options_total"] >= 2 and "pct" in m["coverage"], m.get("coverage"))
 
+    # 8) v2: casamento FUZZY clique×opção ("*7 -* *Chaveiro*" × "Chaveiro")
+    check("fuzzy: rótulo formatado casa com clique", weav.labels_match("*7 -* *Chaveiro*", "Chaveiro"))
+    check("fuzzy: não casa rótulos diferentes", not weav.labels_match("Guincho (reboque)", "Chaveiro"))
+
+    # 9) v2: ordem fiel + raiz por frequência de início + paths (transcript)
+    mv = {"root": None, "nodes": {}, "edges": {}}
+    sessao = [
+        {"direction": "in", "text": "Olá! Sou a assistente. O que precisa?\nBotão 1: Guincho\nBotão 2: Chaveiro", "wa_timestamp": "1"},
+        {"direction": "out", "text": "Guincho", "wa_timestamp": "2", "interactive": {"kind": "button_reply", "title": "Guincho"}},
+        {"direction": "in", "text": "Certo, guincho! Qual o endereço?", "wa_timestamp": "3"},
+    ]
+    weav.weave_session(mv, sessao, session_at="2026-07-18T10:00:00Z")
+    weav.weave_session(mv, list(sessao), session_at="2026-07-18T11:00:00Z")  # 2ª passagem
+    weav.compute_coverage(mv)
+    greeting = next(nid for nid, n in mv["nodes"].items() if "Sou a assistente" in n["text"])
+    check("raiz = tela de abertura (frequência)", mv["root"] == greeting, mv.get("root"))
+    orders = [n.get("order") for n in mv["nodes"].values()]
+    check("nós têm ordem de primeira aparição", all(isinstance(o, int) for o in orders), orders)
+    check("paths/transcript gravados", len(mv.get("paths", [])) == 2 and mv["paths"][0]["steps"][0]["c"] == "Guincho", mv.get("paths"))
+    gopt = next(o for n in mv["nodes"].values() for o in n["options"] if o["label"] == "Guincho")
+    check("aresta vista 2x = confirmed", gopt["confidence"] == "confirmed" and gopt.get("seen_count") == 2, gopt)
+
+    # 10) v2: VARIANTES — mesma escolha levando a telas diferentes
+    mvv = {"root": None, "nodes": {}, "edges": {}}
+    base = {"direction": "in", "text": "Deseja continuar?\nBotão 1: Sim\nBotão 2: Não", "wa_timestamp": "1"}
+    click = {"direction": "out", "text": "Sim", "wa_timestamp": "2", "interactive": {"kind": "button_reply", "title": "Sim"}}
+    weav.weave_session(mvv, [dict(base), dict(click), {"direction": "in", "text": "Já temos seu telefone {TELEFONE}. Confirma?", "wa_timestamp": "3"}])
+    weav.weave_session(mvv, [dict(base), dict(click), {"direction": "in", "text": "Informe um telefone para contato.", "wa_timestamp": "3"}])
+    weav.compute_coverage(mvv)
+    sim = next(o for n in mvv["nodes"].values() for o in n["options"] if o["label"] == "Sim")
+    check("variantes registradas (2 destinos)", len(sim.get("variants") or []) == 2, sim.get("variants"))
+
+    # 11) v2: answer_hint em pergunta aberta
+    node_h = tmpl.screen_node("Para começar, me informe somente o CPF ou CNPJ do titular da apólice.")
+    check("answer_hint {CPF} em pergunta", (node_h.get("answer_hint") or {}).get("placeholder") == "{CPF}", node_h.get("answer_hint"))
+
     print(f"\n== Resumo: {PASS} passaram, {FAIL} falharam ==")
     if FAILURES:
         for n, d in FAILURES:
