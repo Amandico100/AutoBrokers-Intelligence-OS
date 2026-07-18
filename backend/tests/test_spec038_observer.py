@@ -190,6 +190,31 @@ def run():
     #    o índice único do banco protege — aqui validamos que message_id vai no registro)
     check("message_id presente p/ dedupe", store["observed_events"][0].get("message_id") == "A1")
 
+    # 8b) BUTTONCLICK: o clique do humano (lado de ouro) vira direction=out
+    bc = {"event": "ButtonClick", "instanceId": "obs1",
+          "data": {"buttonId": "row_chaveiro", "buttonText": "Chaveiro", "type": "list_response",
+                   "chat": hdi, "fromMe": True, "messageId": "BC1", "timestamp": 1752900500}}
+    before = len(store["observed_events"])
+    asyncio.run(intake.observer_tap(integ_obs, bc))
+    evc = store["observed_events"]
+    ok = len(evc) == before + 1 and evc[-1]["direction"] == "out" and evc[-1]["text"] == "Chaveiro" \
+        and evc[-1]["msg_type"] == "list_reply" and evc[-1]["insurer_key"] == "hdi"
+    check("ButtonClick vira escolha do humano (out)", ok, evc[-1] if evc else None)
+
+    # 8c) ButtonClick de formulário NATIVO (NativeFlow) → flow_reply
+    nf = {"event": "ButtonClick", "instanceId": "obs1",
+          "data": {"buttonId": "nfm1", "buttonText": "Enviado", "type": "interactive_response",
+                   "chat": hdi, "fromMe": True, "messageId": "BC2", "timestamp": 1752900600}}
+    asyncio.run(intake.observer_tap(integ_obs, nf))
+    check("ButtonClick NativeFlow → flow_reply", store["observed_events"][-1]["msg_type"] == "flow_reply",
+          store["observed_events"][-1]["msg_type"])
+
+    # 8d) ButtonClick de não-seguradora → descartado
+    bcx = {"event": "ButtonClick", "data": {"buttonText": "X", "chat": amigo, "fromMe": True, "messageId": "BC3"}}
+    before2 = len(store["observed_events"])
+    asyncio.run(intake.observer_tap(integ_obs, bcx))
+    check("ButtonClick não-seguradora descartado", len(store["observed_events"]) == before2)
+
     # 9) allowlist inclui variantes com/sem 9 e envs INSURER_CONTACT_*
     import os
     os.environ["INSURER_CONTACT_TESTE_ASSISTENCIA"] = "5511911112222"

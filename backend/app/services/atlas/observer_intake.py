@@ -225,6 +225,55 @@ async def observer_tap(integration: dict, body: dict) -> Optional[dict]:
         if ev_name in ("connection", "connection.update"):
             return consumed if is_observer else None
 
+        # BUTTONCLICK (SPEC-038 — o LADO DE OURO): o GO emite um evento próprio
+        # quando o humano CLICA num botão/lista OU preenche o FORMULÁRIO NATIVO
+        # (InteractiveResponseMessage/NativeFlow — a travessia do app HDI/Yelum!).
+        # Shape: {event:"ButtonClick", data:{buttonId, buttonText, type, chat,
+        # fromMe, messageId, timestamp, extraData}}. É a escolha real do humano.
+        if ev_name in ("buttonclick", "button.click"):
+            data = body.get("data") if isinstance(body.get("data"), dict) else {}
+            observer_number = _digits(integration.get("identifier") or integration.get("instance_id") or "")
+            chat = str(data.get("chat") or data.get("jid") or data.get("phone") or "")
+            if chat.endswith(("@g.us", "@broadcast", "@newsletter")):
+                await _count_drop(observer_number, "group_or_status")
+                return consumed if is_observer else None
+            counterparty = _digits(chat.split("@", 1)[0].split(":", 1)[0])
+            allow = insurer_allowlist()
+            insurer_key = None
+            for v in _br_variants(counterparty):
+                if v in allow:
+                    insurer_key = allow[v]
+                    break
+            if not insurer_key:
+                await _count_drop(observer_number, "non_insurer")
+                return consumed if is_observer else None
+            btype = str(data.get("type") or "button_reply")
+            kind = "flow_reply" if "interactive" in btype or "nativeflow" in btype.replace("_", "") else \
+                   "list_reply" if "list" in btype else "button_reply"
+            ts = data.get("timestamp")
+            wa_ts = None
+            if isinstance(ts, (int, float)) and ts > 0:
+                wa_ts = datetime.fromtimestamp(int(ts), tz=timezone.utc).isoformat()
+            record = {
+                "company_id": str(integration.get("company_id") or ""),
+                "observer_number": observer_number or "unknown",
+                "counterparty": counterparty,
+                "insurer_key": insurer_key,
+                "direction": "out",  # é a escolha do humano
+                "msg_type": kind,
+                "text": str(data.get("buttonText") or "") or None,
+                "interactive": {"kind": kind, "id": data.get("buttonId"),
+                                "title": data.get("buttonText"), "go_type": btype,
+                                "extra": data.get("extraData")},
+                "media_meta": None,
+                "message_id": str(data.get("messageId") or "") or None,
+                "wa_timestamp": wa_ts,
+                "source": "live",
+            }
+            await asyncio.to_thread(_store_event_sync, record)
+            logger.info(f"[ATLAS] CLIQUE humano {insurer_key} '{record['text']}' ({kind})")
+            return consumed if is_observer else None
+
         from app.services.whatsapp.providers.evolution_go import go_event_to_v2_envelope
 
         env = go_event_to_v2_envelope(body if isinstance(body, dict) else {})
