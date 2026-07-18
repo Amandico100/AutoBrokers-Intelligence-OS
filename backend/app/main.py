@@ -162,6 +162,11 @@ app.include_router(billing_admin_router, tags=["Admin Billing"])
 from app.api.admin_spec034 import router as admin_spec034_router
 
 app.include_router(admin_spec034_router, tags=["Admin SPEC-034"])
+
+# SPEC-038: ATLAS — Observador (relatório do spike + history sync)
+from app.api.admin_atlas import router as admin_atlas_router
+
+app.include_router(admin_atlas_router, tags=["Admin ATLAS (SPEC-038)"])
 app.include_router(stripe_webhooks_router, prefix="/api/webhooks", tags=["Stripe Webhooks"])
 app.include_router(stripe_checkout_router, prefix="/api/billing", tags=["Stripe Checkout"])
 app.include_router(mcp_router, prefix="/api/mcp", tags=["MCP Integrations"])
