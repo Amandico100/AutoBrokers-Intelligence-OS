@@ -90,6 +90,10 @@ def go_event_to_v2_envelope(payload: Dict[str, Any]) -> Dict[str, Any]:
                 "instance": str(body.get("instance") or body.get("instanceId") or ""),
                 "data": {"state": raw_state}}
 
+    # SEND_MESSAGE (SPEC-038): o eco do que a atendente digita/clica NO CELULAR
+    # chega por este canal. Força fromMe=true (é, por definição, saída própria).
+    force_from_me = ev in ("sendmessage", "send.message")
+
     # localizar o objeto do evento whatsmeow
     candidates = [body.get("event"), body.get("data"), body.get("Event"), body]
     info: Dict[str, Any] = {}
@@ -136,7 +140,7 @@ def go_event_to_v2_envelope(payload: Dict[str, Any]) -> Dict[str, Any]:
         "data": {
             "key": {
                 "remoteJid": chat_jid or sender_jid,
-                "fromMe": bool(info.get("IsFromMe") or info.get("isFromMe") or info.get("fromMe")),
+                "fromMe": force_from_me or bool(info.get("IsFromMe") or info.get("isFromMe") or info.get("fromMe")),
                 "id": str(info.get("ID") or info.get("Id") or info.get("id") or ""),
                 **({"participant": sender_jid} if is_group else {}),
             },
