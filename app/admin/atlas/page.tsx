@@ -5,10 +5,11 @@
 // clique na opção → revela a próxima tela; lacunas em âmbar a partir de onde a
 // rota não existe; expandir/colapsar tudo; modal lateral com a sequência escrita.
 
-import { useCallback, useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
   Map as MapIcon, RefreshCw, ChevronRight, AlertTriangle, ListTree,
   ScrollText, X, Maximize2, Minimize2, MousePointerClick, PencilLine, Repeat,
+  Workflow, ZoomIn, ZoomOut, Crosshair,
 } from 'lucide-react';
 
 type Card = {
@@ -104,6 +105,7 @@ function NodeCard({
             {node.options.map((o, i) => {
               const key = `${pathKey}/${o.label}`;
               const gap = o.confidence === 'gap';
+              const echo = o.confidence === 'echo';
               const open = expanded.has(key);
               const loops = o.leads_to ? visited.has(o.leads_to) : false;
               const variants = o.variants && o.variants.length > 1 ? o.variants : null;
@@ -113,9 +115,9 @@ function NodeCard({
                     onClick={() => toggle(key)}
                     style={{
                       display: 'flex', alignItems: 'center', gap: 7, width: '100%', textAlign: 'left',
-                      background: gap ? '#221A0E' : '#10201A',
-                      border: `1px solid ${gap ? '#3A2E1A' : '#1E3326'}`,
-                      color: gap ? C.gap : '#8FCFAB', borderRadius: 8, padding: '6px 10px',
+                      background: gap ? '#221A0E' : echo ? '#0E1B2A' : '#10201A',
+                      border: `1px solid ${gap ? '#3A2E1A' : echo ? '#1D3450' : '#1E3326'}`,
+                      color: gap ? C.gap : echo ? C.blue : '#8FCFAB', borderRadius: 8, padding: '6px 10px',
                       fontSize: 12, cursor: 'pointer',
                     }}
                   >
@@ -124,7 +126,8 @@ function NodeCard({
                     {variants && <span title="Nem sempre leva à mesma tela" style={{ fontSize: 10, color: C.gap, display: 'flex', alignItems: 'center', gap: 3 }}><Repeat size={10} /> varia</span>}
                     {o.seen_count ? <span style={{ fontSize: 10, color: C.dim }}>{o.seen_count}x</span> : null}
                     {gap && <span style={{ fontSize: 10, fontWeight: 700 }}>NÃO MAPEADO</span>}
-                    {!gap && !variants && <span style={{ fontSize: 11 }}>✓</span>}
+                    {echo && <span style={{ fontSize: 10, fontWeight: 700 }} title="Deduzida pelo eco da tela seguinte (menu digitado)">~✓ deduzida</span>}
+                    {!gap && !echo && !variants && <span style={{ fontSize: 11 }}>✓</span>}
                   </button>
 
                   {open && (
@@ -194,6 +197,217 @@ function collectKeys(mapObj: MapObj, nid: string | null, pathKey: string, visite
   if (seq && !nv.has(seq.to)) collectKeys(mapObj, seq.to, `${pathKey}/->`, nv, acc, depth + 1);
 }
 
+// ------------------------------------------------------------------ //
+// CANVAS (estilo n8n): fundo livre com pan/zoom; organograma que abre
+// sob clique — card da pergunta → cards das opções → próxima pergunta.
+// ------------------------------------------------------------------ //
+type LNode = {
+  key: string; type: 'screen' | 'option' | 'stub' | 'loop';
+  screenId?: string; opt?: Opt; label?: string; badge?: string;
+  x: number; y: number; w: number; h: number; color: string;
+  children: LNode[];
+};
+const CDIM = { screen: [280, 132], option: [200, 48], stub: [220, 84], loop: [180, 42] } as const;
+const GX = 28, GY = 66;
+
+function optColor(conf?: string) {
+  if (conf === 'gap') return C.gap;
+  if (conf === 'echo') return C.blue;
+  return C.ok;
+}
+
+function buildCanvasTree(
+  mapObj: MapObj, nid: string, key: string, visited: Set<string>, exp: Set<string>, depth: number,
+): LNode {
+  const node = mapObj.nodes[nid];
+  const [w, h] = CDIM.screen;
+  const col = node?.status === 'complete' ? C.ok : node?.status === 'app_form' ? C.app
+    : node?.status === 'partial' ? C.gap : C.dim;
+  const ln: LNode = { key, type: 'screen', screenId: nid, x: 0, y: 0, w, h, color: col, children: [] };
+  if (!node || depth > 30 || !exp.has(key)) return ln;
+  const nv = new Set(visited); nv.add(nid);
+
+  if ((node.options || []).length > 0) {
+    // TODAS as opções aparecem sempre (pedido do founder) — cada uma é um card
+    for (const o of node.options) {
+      const okey = `${key}/${o.label}`;
+      const [ow, oh] = CDIM.option;
+      const oc: LNode = { key: okey, type: 'option', opt: o, label: o.label, x: 0, y: 0, w: ow, h: oh, color: optColor(o.confidence), children: [] };
+      if (exp.has(okey)) {
+        if (o.confidence === 'gap' || !o.leads_to) {
+          const [sw, sh] = CDIM.stub;
+          oc.children.push({ key: `${okey}/stub`, type: 'stub', x: 0, y: 0, w: sw, h: sh, color: C.gap, children: [] });
+        } else if (o.variants && o.variants.length > 1) {
+          const total = o.variants.reduce((s, v) => s + v.count, 0) || 1;
+          o.variants.forEach((v, vi) => {
+            if (nv.has(v.to)) {
+              const [lw, lh] = CDIM.loop;
+              oc.children.push({ key: `${okey}#${vi}/loop`, type: 'loop', x: 0, y: 0, w: lw, h: lh, color: C.dim, children: [] });
+            } else {
+              const child = buildCanvasTree(mapObj, v.to, `${okey}#${vi}`, nv, exp, depth + 1);
+              child.badge = `${Math.round((100 * v.count) / total)}%`;
+              oc.children.push(child);
+            }
+          });
+        } else if (nv.has(o.leads_to)) {
+          const [lw, lh] = CDIM.loop;
+          oc.children.push({ key: `${okey}/loop`, type: 'loop', x: 0, y: 0, w: lw, h: lh, color: C.dim, children: [] });
+        } else {
+          oc.children.push(buildCanvasTree(mapObj, o.leads_to, okey, nv, exp, depth + 1));
+        }
+      }
+      ln.children.push(oc);
+    }
+  } else {
+    // tela sem opções: continua para a próxima (aresta sequencial/eco)
+    const seq = Object.values(mapObj.edges || {}).find((e) => e.src === nid && e.label === '→');
+    if (seq && !nv.has(seq.to)) {
+      ln.children.push(buildCanvasTree(mapObj, seq.to, `${key}/->`, nv, exp, depth + 1));
+    }
+  }
+  return ln;
+}
+
+function layoutTree(n: LNode): number {
+  // devolve a LARGURA da subárvore e posiciona os filhos relativos (x acumulado depois)
+  if (!n.children.length) return n.w;
+  const widths = n.children.map((c) => layoutTree(c));
+  const total = widths.reduce((s, x) => s + x, 0) + GX * (n.children.length - 1);
+  return Math.max(n.w, total);
+}
+
+function placeTree(n: LNode, cx: number, y: number, acc: LNode[]) {
+  n.x = cx - n.w / 2; n.y = y;
+  acc.push(n);
+  if (!n.children.length) return;
+  const widths = n.children.map((c) => layoutTree(c));
+  const total = widths.reduce((s, x) => s + x, 0) + GX * (n.children.length - 1);
+  let x = cx - total / 2;
+  n.children.forEach((c, i) => {
+    const w = widths[i];
+    placeTree(c, x + w / 2, y + n.h + GY, acc);
+    x += w + GX;
+  });
+}
+
+function CanvasView({ mapObj, exp, toggle, expandAllKeys }: {
+  mapObj: MapObj; exp: Set<string>; toggle: (k: string) => void; expandAllKeys: () => void;
+}) {
+  const boxRef = useRef<HTMLDivElement | null>(null);
+  const [view, setView] = useState({ x: 80, y: 40, k: 0.85 });
+  const drag = useRef<{ on: boolean; sx: number; sy: number; ox: number; oy: number; moved: boolean }>({ on: false, sx: 0, sy: 0, ox: 0, oy: 0, moved: false });
+
+  const flat: LNode[] = useMemo(() => {
+    if (!mapObj.root || !mapObj.nodes[mapObj.root]) return [];
+    const rootLn = buildCanvasTree(mapObj, mapObj.root, 'r', new Set(), exp, 0);
+    const acc: LNode[] = [];
+    placeTree(rootLn, 0, 0, acc);
+    return acc;
+  }, [mapObj, exp]);
+
+  const center = useCallback(() => {
+    const bw = boxRef.current?.clientWidth || 900;
+    setView({ x: bw / 2, y: 40, k: 0.85 });
+  }, []);
+  useEffect(() => { center(); }, [center]);
+
+  const onWheel = (e: React.WheelEvent) => {
+    e.preventDefault();
+    const rect = boxRef.current!.getBoundingClientRect();
+    const mx = e.clientX - rect.left, my = e.clientY - rect.top;
+    setView((v) => {
+      const k2 = Math.min(1.8, Math.max(0.2, v.k * (e.deltaY < 0 ? 1.12 : 0.89)));
+      return { k: k2, x: mx - ((mx - v.x) * k2) / v.k, y: my - ((my - v.y) * k2) / v.k };
+    });
+  };
+  const onDown = (e: React.MouseEvent) => {
+    drag.current = { on: true, sx: e.clientX, sy: e.clientY, ox: view.x, oy: view.y, moved: false };
+  };
+  const onMove = (e: React.MouseEvent) => {
+    if (!drag.current.on) return;
+    const dx = e.clientX - drag.current.sx, dy = e.clientY - drag.current.sy;
+    if (Math.abs(dx) + Math.abs(dy) > 4) drag.current.moved = true;
+    setView((v) => ({ ...v, x: drag.current.ox + dx, y: drag.current.oy + dy }));
+  };
+  const onUp = () => { drag.current.on = false; };
+  const clickNode = (key: string) => { if (!drag.current.moved) toggle(key); };
+
+  return (
+    <div
+      ref={boxRef}
+      onWheel={onWheel} onMouseDown={onDown} onMouseMove={onMove} onMouseUp={onUp} onMouseLeave={onUp}
+      style={{ position: 'relative', height: '72vh', overflow: 'hidden', borderRadius: 12, border: `1px solid ${C.border}`, background: 'radial-gradient(circle, #10151D 1px, #07090D 1px)', backgroundSize: '22px 22px', cursor: drag.current.on ? 'grabbing' : 'grab', userSelect: 'none' }}
+    >
+      {/* controles */}
+      <div style={{ position: 'absolute', top: 10, right: 10, zIndex: 5, display: 'flex', gap: 6 }}>
+        <button onClick={() => setView((v) => ({ ...v, k: Math.min(1.8, v.k * 1.15) }))} style={S.btn} title="Zoom +"><ZoomIn size={14} /></button>
+        <button onClick={() => setView((v) => ({ ...v, k: Math.max(0.2, v.k * 0.87) }))} style={S.btn} title="Zoom -"><ZoomOut size={14} /></button>
+        <button onClick={center} style={S.btn} title="Centralizar"><Crosshair size={14} /></button>
+        <button onClick={expandAllKeys} style={S.btn} title="Expandir tudo"><Maximize2 size={13} /></button>
+      </div>
+      <p style={{ position: 'absolute', bottom: 8, left: 12, zIndex: 5, fontSize: 10.5, color: C.dim, margin: 0 }}>
+        Arraste o fundo para mover · role para zoom · clique num card para abrir/fechar a rota
+      </p>
+
+      <div style={{ position: 'absolute', transform: `translate(${view.x}px, ${view.y}px) scale(${view.k})`, transformOrigin: '0 0' }}>
+        {/* conexões */}
+        <svg style={{ position: 'absolute', overflow: 'visible', pointerEvents: 'none' }} width={1} height={1}>
+          {flat.map((n) => n.children.filter((c) => flat.includes(c)).map((c) => {
+            const x1 = n.x + n.w / 2, y1 = n.y + n.h, x2 = c.x + c.w / 2, y2 = c.y;
+            const my = (y1 + y2) / 2;
+            return <path key={`${n.key}->${c.key}`} d={`M ${x1} ${y1} C ${x1} ${my}, ${x2} ${my}, ${x2} ${y2}`} stroke={c.color} strokeWidth={1.6} fill="none" opacity={0.55} />;
+          }))}
+        </svg>
+
+        {/* cards */}
+        {flat.map((n) => {
+          if (n.type === 'screen') {
+            const node = mapObj.nodes[n.screenId!];
+            const hasKids = (node?.options || []).length > 0 || Object.values(mapObj.edges || {}).some((e) => e.src === n.screenId && e.label === '→');
+            const open = exp.has(n.key);
+            return (
+              <div key={n.key} onMouseDown={(e) => e.stopPropagation()} onClick={() => clickNode(n.key)}
+                style={{ position: 'absolute', left: n.x, top: n.y, width: n.w, height: n.h, background: C.bg2, border: `1px solid ${C.border}`, borderTop: `3px solid ${n.color}`, borderRadius: 10, padding: '9px 11px', cursor: 'pointer', overflow: 'hidden', boxShadow: '0 3px 14px rgba(0,0,0,.35)' }}>
+                {n.badge && <span style={{ position: 'absolute', top: 6, right: 8, fontSize: 9.5, color: C.gap, fontWeight: 700 }}>{n.badge}</span>}
+                <p style={{ fontSize: 11.5, color: '#D6DEE9', margin: 0, lineHeight: 1.4, display: '-webkit-box', WebkitLineClamp: 5, WebkitBoxOrient: 'vertical', overflow: 'hidden', whiteSpace: 'pre-line' }}>{node?.text}</p>
+                {hasKids && (
+                  <span style={{ position: 'absolute', bottom: 5, left: '50%', transform: 'translateX(-50%)', fontSize: 9.5, color: n.color, fontWeight: 700 }}>
+                    {open ? '▲ fechar' : `▼ abrir${(node?.options || []).length ? ` (${node!.options.length} opções)` : ''}`}
+                  </span>
+                )}
+              </div>
+            );
+          }
+          if (n.type === 'option') {
+            const gap = n.opt?.confidence === 'gap';
+            const echo = n.opt?.confidence === 'echo';
+            return (
+              <div key={n.key} onMouseDown={(e) => e.stopPropagation()} onClick={() => clickNode(n.key)}
+                style={{ position: 'absolute', left: n.x, top: n.y, width: n.w, height: n.h, background: gap ? '#221A0E' : echo ? '#0E1B2A' : '#10201A', border: `1.5px solid ${n.color}`, borderRadius: 22, padding: '6px 12px', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: 7 }}>
+                <span style={{ flex: 1, fontSize: 11.5, color: n.color, fontWeight: 600, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{n.label}</span>
+                <span style={{ fontSize: 9, color: n.color, fontWeight: 700 }}>{gap ? '?' : echo ? '~✓' : '✓'}</span>
+              </div>
+            );
+          }
+          if (n.type === 'stub') {
+            return (
+              <div key={n.key} style={{ position: 'absolute', left: n.x, top: n.y, width: n.w, height: n.h, border: `1.5px dashed ${C.gap}`, borderRadius: 10, padding: '8px 10px', background: '#1A150C' }}>
+                <p style={{ fontSize: 10.5, color: C.gap, margin: 0, lineHeight: 1.35 }}>🔍 Rota ainda não observada — será desenhada quando alguém percorrer esta opção num atendimento real.</p>
+              </div>
+            );
+          }
+          return (
+            <div key={n.key} style={{ position: 'absolute', left: n.x, top: n.y, width: n.w, height: n.h, border: `1px solid ${C.border}`, borderRadius: 20, padding: '6px 10px', background: C.bg2, display: 'flex', alignItems: 'center', gap: 6 }}>
+              <Repeat size={11} color={C.dim} />
+              <span style={{ fontSize: 10.5, color: C.dim }}>retorna a uma tela anterior</span>
+            </div>
+          );
+        })}
+      </div>
+    </div>
+  );
+}
+
 export default function AtlasPage() {
   const [cards, setCards] = useState<Card[] | null>(null);
   const [sel, setSel] = useState<{ insurer: string; ramo: string } | null>(null);
@@ -202,6 +416,8 @@ export default function AtlasPage() {
   const [notice, setNotice] = useState('');
   const [expanded, setExpanded] = useState<Set<string>>(new Set());
   const [showTranscript, setShowTranscript] = useState(false);
+  const [viewMode, setViewMode] = useState<'tree' | 'canvas'>('tree');
+  const [canvasExp, setCanvasExp] = useState<Set<string>>(new Set(['r']));
 
   const load = useCallback(() => {
     fetch('/api/admin/atlas/maps').then((r) => r.json()).then((j) => setCards(j.cards || [])).catch(() => setCards([]));
@@ -210,8 +426,41 @@ export default function AtlasPage() {
 
   const openMap = (insurer: string, ramo: string) => {
     setSel({ insurer, ramo }); setMap(null); setExpanded(new Set()); setShowTranscript(false);
+    setCanvasExp(new Set(['r']));
     fetch(`/api/admin/atlas/map/${insurer}/${ramo}`).then((r) => r.json())
       .then((j) => setMap(j.map || null)).catch(() => setMap(null));
+  };
+
+  const toggleCanvas = (k: string) => setCanvasExp((prev) => {
+    const n = new Set(prev);
+    if (n.has(k)) n.delete(k); else n.add(k);
+    return n;
+  });
+  const canvasExpandAll = () => {
+    if (!map || !map.root) return;
+    const acc = new Set<string>();
+    const walk = (nid: string, key: string, visited: Set<string>, depth: number) => {
+      acc.add(key);
+      const node = map.nodes[nid];
+      if (!node || depth > 30) return;
+      const nv = new Set(visited); nv.add(nid);
+      if ((node.options || []).length) {
+        for (const o of node.options) {
+          const okey = `${key}/${o.label}`;
+          acc.add(okey);
+          if (o.variants && o.variants.length > 1) {
+            o.variants.forEach((v, vi) => { if (!nv.has(v.to)) walk(v.to, `${okey}#${vi}`, nv, depth + 1); });
+          } else if (o.leads_to && !nv.has(o.leads_to)) {
+            walk(o.leads_to, okey, nv, depth + 1);
+          }
+        }
+      } else {
+        const seq = Object.values(map.edges || {}).find((e) => e.src === nid && e.label === '→');
+        if (seq && !nv.has(seq.to)) walk(seq.to, `${key}/->`, nv, depth + 1);
+      }
+    };
+    walk(map.root, 'r', new Set(), 0);
+    setCanvasExp(acc);
   };
 
   const runWeave = async () => {
@@ -341,14 +590,18 @@ export default function AtlasPage() {
                       {map.coverage?.nodes || 0} telas · {map.meta?.sessions || 0} sessões · {map.coverage?.options_covered || 0}/{map.coverage?.options_total || 0} opções percorridas
                     </p>
                   </div>
-                  <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
-                    <button onClick={expandAll} style={S.btn}><Maximize2 size={13} /> Expandir tudo</button>
-                    <button onClick={collapseAll} style={S.btn}><Minimize2 size={13} /> Colapsar</button>
+                  <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', alignItems: 'center' }}>
+                    <div style={{ display: 'flex', borderRadius: 10, overflow: 'hidden', border: '1px solid #22384C' }}>
+                      <button onClick={() => setViewMode('tree')} style={{ ...S.btn, border: 'none', borderRadius: 0, background: viewMode === 'tree' ? '#1C324A' : '#12202E' }}><ListTree size={13} /> Árvore</button>
+                      <button onClick={() => setViewMode('canvas')} style={{ ...S.btn, border: 'none', borderRadius: 0, background: viewMode === 'canvas' ? '#1C324A' : '#12202E' }}><Workflow size={13} /> Canvas</button>
+                    </div>
+                    {viewMode === 'tree' && <button onClick={expandAll} style={S.btn}><Maximize2 size={13} /> Expandir tudo</button>}
+                    {viewMode === 'tree' && <button onClick={collapseAll} style={S.btn}><Minimize2 size={13} /> Colapsar</button>}
                     <button onClick={() => setShowTranscript(true)} style={S.btn}><ScrollText size={13} /> Sequência escrita</button>
                   </div>
                 </div>
                 <div style={{ display: 'flex', gap: 14, marginTop: 12, flexWrap: 'wrap', fontSize: 11 }}>
-                  {[[C.ok, 'percorrida ✓'], [C.gap, 'oferecida, não percorrida (lacuna)'], [C.app, 'app nativo'], [C.drift, 'mudou (em breve)'], [C.dim, 'informativa']].map(([col, lab], i) => (
+                  {[[C.ok, 'percorrida ✓'], [C.blue, 'deduzida pelo eco ~✓'], [C.gap, 'oferecida, não percorrida (lacuna)'], [C.app, 'app nativo'], [C.drift, 'mudou (em breve)'], [C.dim, 'informativa']].map(([col, lab], i) => (
                     <span key={i} style={{ display: 'flex', alignItems: 'center', gap: 5, color: '#9AA5B3' }}>
                       <span style={{ width: 9, height: 9, borderRadius: 3, background: col as string }} /> {lab}
                     </span>
@@ -356,7 +609,11 @@ export default function AtlasPage() {
                 </div>
               </div>
 
-              <div style={{ display: 'grid', gridTemplateColumns: '1fr 290px', gap: 14, alignItems: 'start' }}>
+              {viewMode === 'canvas' && (
+                <CanvasView mapObj={map} exp={canvasExp} toggle={toggleCanvas} expandAllKeys={canvasExpandAll} />
+              )}
+
+              <div style={{ display: viewMode === 'tree' ? 'grid' : 'none', gridTemplateColumns: '1fr 290px', gap: 14, alignItems: 'start' }}>
                 {/* A ÁRVORE (sequência fiel, do início) */}
                 <div style={{ ...S.card, padding: 14 }}>
                   <div style={{ display: 'flex', alignItems: 'center', gap: 7, marginBottom: 10, color: C.blue, fontSize: 12, fontWeight: 700 }}>
