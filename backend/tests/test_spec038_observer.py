@@ -206,7 +206,7 @@ def run():
           "data": {"buttonId": "nfm1", "buttonText": "Enviado", "type": "interactive_response",
                    "chat": hdi, "fromMe": True, "messageId": "BC2", "timestamp": 1752900600}}
     asyncio.run(intake.observer_tap(integ_obs, nf))
-    check("ButtonClick NativeFlow → flow_reply", store["observed_events"][-1]["msg_type"] == "flow_reply",
+    check("ButtonClick NativeFlow vira flow_reply", store["observed_events"][-1]["msg_type"] == "flow_reply",
           store["observed_events"][-1]["msg_type"])
 
     # 8d) ButtonClick de não-seguradora → descartado
