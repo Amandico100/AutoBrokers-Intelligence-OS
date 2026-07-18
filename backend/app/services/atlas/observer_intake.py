@@ -145,7 +145,13 @@ def _raw_capped(message: Any) -> Optional[Dict[str, Any]]:
 _CLICK_WINDOW_S = 180  # clique chega segundos após a tela; 3 min é folga segura
 
 
-def _correlate_open_session(observer_number: str):
+def _observer_number_of(integration: dict) -> str:
+    """Identidade do número observado — MESMA computação em captura e correlação
+    (fix 18/07: identifier pode ser o NOME da instância → dígitos vazios)."""
+    return _digits((integration or {}).get("identifier") or (integration or {}).get("instance_id") or "") or "unknown"
+
+
+def _correlate_open_session(observer_number: str, company_id: str = ""):
     """Fallback p/ ButtonClick sem chat (bug do GO): a sessão de seguradora
     ABERTA com atividade nos últimos 3 min. Duas ativas na janela = ambíguo →
     None (privacidade > completude). Retorna (session_id, counterparty, insurer_key)."""
@@ -153,10 +159,12 @@ def _correlate_open_session(observer_number: str):
         from app.core.database import get_supabase_client
 
         supabase = get_supabase_client()
-        res = (supabase.client.table("observed_sessions")
-               .select("id, counterparty, insurer_key, last_event_at")
-               .eq("observer_number", observer_number).eq("status", "open")
-               .order("last_event_at", desc=True).limit(2).execute())
+        q = (supabase.client.table("observed_sessions")
+             .select("id, counterparty, insurer_key, last_event_at")
+             .eq("observer_number", observer_number).eq("status", "open"))
+        if company_id:
+            q = q.eq("company_id", company_id)
+        res = q.order("last_event_at", desc=True).limit(2).execute()
         rows = res.data or []
 
         def _fresh(row) -> bool:
@@ -283,7 +291,7 @@ async def observer_tap(integration: dict, body: dict) -> Optional[dict]:
         # normal não conhece ButtonClick — evita log de payload desconhecido).
         if ev_name in ("buttonclick", "button.click"):
             data = body.get("data") if isinstance(body.get("data"), dict) else {}
-            observer_number = _digits(integration.get("identifier") or integration.get("instance_id") or "")
+            observer_number = _observer_number_of(integration)
             always = consumed or {"status": "observed", "event": "button_click"}
 
             insurer_key = None
@@ -302,7 +310,8 @@ async def observer_tap(integration: dict, body: dict) -> Optional[dict]:
                         break
             if not insurer_key:
                 # Fallback: sessão de seguradora ativa na janela (bug do GO: chat nulo)
-                corr = await asyncio.to_thread(_correlate_open_session, observer_number)
+                corr = await asyncio.to_thread(_correlate_open_session, observer_number,
+                                               str(integration.get("company_id") or ""))
                 if corr:
                     session_id, counterparty, insurer_key = corr
             if not insurer_key:
@@ -354,7 +363,7 @@ async def observer_tap(integration: dict, body: dict) -> Optional[dict]:
             return consumed if is_observer else None
 
         remote = str(key.get("remoteJid") or "")
-        observer_number = _digits(integration.get("identifier") or integration.get("instance_id") or "")
+        observer_number = _observer_number_of(integration)
 
         # ---------- FILTRO DE BORDA (privacidade — primeira linha) ----------
         if remote.endswith(("@g.us", "@broadcast", "@newsletter", "@call")):
