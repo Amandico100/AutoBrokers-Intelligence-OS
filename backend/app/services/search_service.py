@@ -262,7 +262,9 @@ class SearchService:
         # os agentes (fail-safe: coleção ausente/erro é ignorado sem derrubar a busca).
         import os as _os
 
-        if include_global or _os.getenv("KNOWLEDGE_GLOBAL_SEARCH", "0").strip() == "1":
+        # SPEC-040 Onda 2: default LIGADO — a coleção global agora é populada
+        # pelo seed automático (global_knowledge_seed). Desligável via env =0.
+        if include_global or _os.getenv("KNOWLEDGE_GLOBAL_SEARCH", "1").strip() == "1":
             try:
                 from .knowledge_scope import build_global_search_kwargs, merge_rag_results
 

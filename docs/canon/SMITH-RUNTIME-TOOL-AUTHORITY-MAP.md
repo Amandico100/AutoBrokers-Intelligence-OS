@@ -118,6 +118,8 @@ Regra de nomenclatura alvo:
 | Voz | Chat page | mensagens/audio/storage | `sendVoiceToN8N` -> `/api/n8n` | N8N legacy/LangChain/webhook | futura capability de voz/canal | Legacy | passa fora do caminho textual | auditar antes de migrar |
 | N8N legacy | Nenhuma como runtime novo | `companies.use_langchain`, `webhook_url` | company/admin | `/api/n8n` route | nenhuma | Legacy congelado | bifurcacao transport | nao receber features novas |
 | Portal Browser | Admin Portal Browser | registry/session refs/portal maps | rotas Portal Browser | Attendance/portal engine | atual `operational.portal.*`; alvo `portal.*` funcional | Fundacao existente | risco alto se virar browser paralelo | usar somente capabilities + HITL |
+| resumo_atendimentos (SPEC-040 Onda 2) | — (runtime Core) | Redis dispatch + agent_activities + conversation_scorecards | n/a (read-only) | `graph.py` papel core (`OperationsSummaryTool`) | alvo `operations.summary.read` | Funcional | company_id injetado pelo runtime, nunca da LLM | declarar capability formal na R2 |
+| atlas_rotas (SPEC-040 Onda 2) | — (runtime Core) | `ura_maps` (estrutura global, sem dado de cliente) | n/a (read-only) | `graph.py` papel core (`AtlasRoutesTool`) | alvo `atlas.routes.read` | Funcional | conteudo global: agentes usam, corretora nao lista/exporta | declarar capability formal na R2 |
 
 ## 7. Camadas atuais de prompt
 

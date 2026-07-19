@@ -170,6 +170,22 @@ def start_buffer_scheduler():
             id="attendance_purge_check",
             max_instances=1,
         )
+
+        # SPEC-040 Onda 2: seed do conhecimento global (idempotente por hash) —
+        # 1ª rodada ~2min após o boot, depois checagem horária (custo zero se
+        # nada mudou). É o que popula a coleção autobrokers_global sozinho.
+        from datetime import datetime as _dt, timedelta as _td, timezone as _tz
+
+        from app.services.global_knowledge_seed import check_global_seed
+
+        scheduler.add_job(
+            check_global_seed,
+            "interval",
+            seconds=3600,
+            id="global_seed_check",
+            max_instances=1,
+            next_run_time=_dt.now(_tz.utc) + _td(seconds=120),
+        )
         scheduler.start()
         logger.info("✅ [BUFFER SCHEDULER] Started (interval: 1s, max_instances: 10)")
     else:
