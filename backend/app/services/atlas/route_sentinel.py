@@ -194,7 +194,8 @@ async def run_all(company_id: Optional[str] = None) -> List[Dict[str, Any]]:
 
     drifts: List[Dict[str, Any]] = []
     for insurer_key, ramo in await asyncio.to_thread(_keys):
-        woven = await weave_insurer(insurer_key, ramo, company_id)
+        # passada oficial: liga o resolvedor de IA (resíduo ambíguo)
+        woven = await weave_insurer(insurer_key, ramo, company_id, use_ai=True)
         if not woven.get("ok"):
             continue
         fresh = await _load_observed(insurer_key, woven.get("ramo") or ramo)

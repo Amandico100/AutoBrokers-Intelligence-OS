@@ -314,7 +314,7 @@ async def observer_tap(integration: dict, body: dict) -> Optional[dict]:
             data = body.get("data") if isinstance(body.get("data"), dict) else {}
             structure = {k: (len(v) if isinstance(v, list) else type(v).__name__)
                          for k, v in list(data.items())[:20]}
-            logger.info(f"[ATLAS] HISTORY_SYNC recebido — estrutura: {json.dumps(structure, default=str)[:500]}")
+            logger.info(f"[ATLAS] HISTORY_SYNC recebido — estrutura: {json.dumps(structure, default=str)[:400]}")
             try:
                 from app.core.redis import get_async_redis_client
 
@@ -324,7 +324,15 @@ async def observer_tap(integration: dict, body: dict) -> Optional[dict]:
                 await r.hincrby("atlas:history_sync:count", "events", 1)
             except Exception:  # noqa: BLE001
                 pass
-            # HistorySync nunca é tráfego de atendimento: consome SEMPRE
+            # INGESTÃO REAL (pré-requisito de segunda): converte o histórico em
+            # rotas, recência-primeiro, só de seguradoras. Nunca derruba o webhook.
+            try:
+                from app.services.atlas.history_ingest import ingest_history_sync
+
+                res = await ingest_history_sync(integration, body if isinstance(body, dict) else {})
+                logger.info(f"[ATLAS] history ingest: {res}")
+            except Exception as e:  # noqa: BLE001
+                logger.error(f"[ATLAS] history ingest falhou: {type(e).__name__}")
             return consumed or {"status": "observed", "event": "history_sync"}
 
         if ev_name in ("connection", "connection.update"):

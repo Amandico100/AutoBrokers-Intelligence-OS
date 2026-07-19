@@ -103,6 +103,11 @@ def weave_session(map_acc: Dict[str, Any], events: List[Dict[str, Any]],
             map_acc["_seq"] = int(map_acc.get("_seq") or 0) + 1
             nodes[nid] = {**node, "samples": 0, "order": map_acc["_seq"]}
         nodes[nid]["samples"] += 1
+        # RECÊNCIA (founder 18/07): guarda a última vez que a tela apareceu — o
+        # recente prevalece; telas obsoletas são marcadas depois (compute_coverage).
+        st = step["screen"].get("wa_timestamp")
+        if st and str(st) > str(nodes[nid].get("last_seen") or ""):
+            nodes[nid]["last_seen"] = st
         # funde opções novas que apareceram nesta passagem (mantendo a ordem da URA)
         seen = {o["label"] for o in nodes[nid]["options"]}
         for o in node["options"]:
@@ -223,6 +228,26 @@ def compute_coverage(map_acc: Dict[str, Any]) -> Dict[str, Any]:
     starts = map_acc.get("_starts") or {}
     if starts:
         map_acc["root"] = max(starts, key=starts.get)
+
+    # OBSOLETO: telas cujo last_seen é muito mais antigo que o mais recente do
+    # mapa (>60 dias) — provável menu antigo. Marcadas p/ revisão, não apagadas.
+    seens = [str(n.get("last_seen")) for n in nodes.values() if n.get("last_seen")]
+    if seens:
+        newest = max(seens)
+        try:
+            from datetime import datetime, timezone
+
+            newest_dt = datetime.fromtimestamp(int(newest), tz=timezone.utc) if newest.isdigit() \
+                else datetime.fromisoformat(newest.replace("Z", "+00:00"))
+            for n in nodes.values():
+                ls = str(n.get("last_seen") or "")
+                if ls:
+                    ls_dt = datetime.fromtimestamp(int(ls), tz=timezone.utc) if ls.isdigit() \
+                        else datetime.fromisoformat(ls.replace("Z", "+00:00"))
+                    if (newest_dt - ls_dt).days > 60:
+                        n["stale"] = True
+        except (ValueError, OverflowError, OSError):
+            pass
     map_acc["coverage"] = {
         "options_total": total_opts,
         "options_covered": covered_opts,
@@ -232,9 +257,12 @@ def compute_coverage(map_acc: Dict[str, Any]) -> Dict[str, Any]:
     return map_acc
 
 
-async def weave_insurer(insurer_key: str, ramo: str = "auto", company_id: Optional[str] = None) -> Dict[str, Any]:
+async def weave_insurer(insurer_key: str, ramo: str = "auto", company_id: Optional[str] = None,
+                        use_ai: bool = False) -> Dict[str, Any]:
     """Reconstrói o mapa observado de uma seguradora×ramo a partir de TODAS as
-    sessões capturadas (em ordem cronológica) e salva como observed. Idempotente."""
+    sessões capturadas (recência-primeiro) e salva como observed. Idempotente.
+    use_ai=True liga o resolvedor de IA no resíduo ambíguo (custa; só na
+    passada oficial da Sentinela, não no 'Tecer' manual)."""
     from app.core.database import get_supabase_client
     from app.services.atlas.templater import infer_ramo_servico
 
@@ -265,8 +293,11 @@ async def weave_insurer(insurer_key: str, ramo: str = "auto", company_id: Option
         by_session[e.get("session_id")].append(e)
 
     map_acc: Dict[str, Any] = {"root": None, "nodes": {}, "edges": {}}
-    # ORDEM CRONOLÓGICA das sessões (fidelidade — decisão do founder 18/07)
-    for sess in sessions:
+    # RECÊNCIA-PRIMEIRO (founder 18/07): a conversa MAIS RECENTE define a
+    # estrutura/ordem canônica; as antigas só somam cobertura. Menus obsoletos
+    # não contaminam a sequência do fluxo atual.
+    sessions_recent_first = sorted(sessions, key=lambda s: str(s.get("started_at") or ""), reverse=True)
+    for sess in sessions_recent_first:
         evs = by_session.get(sess["id"])
         if evs:
             weave_session(map_acc, evs, session_at=sess.get("started_at"))
@@ -282,6 +313,15 @@ async def weave_insurer(insurer_key: str, ramo: str = "auto", company_id: Option
     if echoes:
         logger.info(f"[ATLAS WEAVER] {insurer_key}: {echoes} rotas rotuladas por eco")
     compute_coverage(map_acc)
+    # RESOLVEDOR DE IA (modelo forte): só o resíduo ambíguo que o eco não pegou.
+    # OPT-IN (custo): só na passada oficial da Sentinela, não no 'Tecer' manual.
+    if use_ai:
+        try:
+            from app.services.atlas.atlas_parser import resolve_typed_choices
+
+            await resolve_typed_choices(map_acc, insurer_key)
+        except Exception as e:  # noqa: BLE001
+            logger.info(f"[ATLAS WEAVER] resolvedor de IA pulado ({type(e).__name__})")
     map_acc.pop("_starts", None)
     map_acc.pop("_seq", None)
     map_acc["meta"] = {"insurer_key": insurer_key, "ramo": ramo_final,
