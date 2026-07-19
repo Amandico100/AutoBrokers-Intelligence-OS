@@ -140,7 +140,32 @@ conduct_playbooks.status + scorecards existentes).
   `/conselho/status`, `/conselho/convene` (manual).
 - Founder ligou `DISPATCH_LLM_MODEL=claude-opus-4-8` (Cérebro v2 nos desvios).
 
-## Próximas ondas (plano aprovado)
-- **ONDA 5 — Central classe mundial:** memória por agente (sleep-time batch),
-  replay/observabilidade na Central, onboarding automático de corretora com
-  contribuição/custo por corretora.
+## ONDA 5 — Memória por agente + Replay + Contribuição (ENTREGUE 19/07)
+
+Main `c041047`. Bateria 49/49 (13 checks novos). Migração `20260719_03`
+APLICADA (agent_memories, RLS service-only).
+
+- `agent_memory.py`: blocos de memória por agente da Central ("o que cada um
+  sabe"), reescritos 1x/dia dos dados REAIS — padrão sleep-time
+  DETERMINÍSTICO, zero LLM (observador: cobertura/seguradora; tecelão: mapas
+  vivos; sentinela: drifts; espelho: capturas+destiladas+baseline interno;
+  auditor: qualidade 7d; garimpo: insights; alfaiate: playbooks por status;
+  conselho: última convocação). Upsert por (agent_task, block_key), marcador
+  diário, rebuild manual.
+- Replay/observabilidade: `/replay/acionamentos` + `/replay/acionamento/{id}`
+  (timeline persistente espelhada + scorecard — sobrevive ao TTL do Redis) e
+  `/replay/atendimento/{session_id}` (sessão do Espelho com transcript
+  MASCARADO — PII fica no cofre — + resumo destilado).
+- `/onboarding/contribuicao`: efeito rede visível — por corretora: sessões de
+  URA observadas, sessões da Parte 1 capturadas/destiladas, primeira/última
+  atividade. Custo por corretora já sai no FinOps (LLMFactory rastreia).
+- Endpoints `/central/memorias` (+ `/rebuild`); scheduler `agent_memory_check`.
+
+## TODAS AS 5 ONDAS ENTREGUES (19/07/2026)
+
+Estado final: 15 agentes na Central; ciclo completo captura → destilação →
+gate → produção → vigilância de regressão → rollback; RAG global
+auto-alimentado; Core com visão operacional; Conselho pronto (OFF).
+Pendências de founder: pareamento das atendentes; aprovação dos primeiros
+cards/playbooks; chaves Kimi/Grok se quiser 4 votos no Conselho; testes E2E
+guiados (roteiro no chat).
