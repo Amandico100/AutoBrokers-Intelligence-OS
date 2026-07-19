@@ -268,6 +268,11 @@ async def onboarding_pair(body: Dict[str, Any], _: Any = Depends(require_master_
     if not company_id:
         raise HTTPException(status_code=400, detail="company_id_required")
     label = str(body.get("label") or "Atendente")
+    # SPEC-040: escopo de captura. Onboarding de atendente captura por padrão
+    # seguradoras E segurados (Espelho de Atendimento); 'insurers_only' opt-out.
+    scope = str(body.get("scope") or "insurers_and_clients").strip().lower()
+    if scope not in ("insurers_only", "insurers_and_clients"):
+        scope = "insurers_and_clients"
     public_url = (os.getenv("PUBLIC_BACKEND_URL") or os.getenv("BACKEND_PUBLIC_URL") or "").rstrip("/")
     cfg = _go_admin()
     instance = _obs_instance_name(company_id, int(body.get("seq") or 1))
@@ -299,7 +304,7 @@ async def onboarding_pair(body: Dict[str, Any], _: Any = Depends(require_master_
             "provider": "evolution-go", "base_url": cfg["base_url"], "instance_id": instance,
             "token": inst_token, "webhook_token_hash": token_hash, "webhook_token_prefix": token_prefix,
             "channel_status": "connecting", "is_active": True, "agent_id": None,
-            "alert_target": {"label": label},
+            "alert_target": {"label": label, "observer_scope": scope},
         }
         existing = (supabase.client.table("integrations").select("id")
                     .eq("company_id", company_id).eq("provider", "evolution-go")
@@ -363,6 +368,7 @@ async def onboarding_status(_: Any = Depends(require_master_admin)) -> Dict[str,
                     state = "indisponível"
                 out.append({"company_id": r["company_id"], "instance": r["instance_id"],
                             "label": (r.get("alert_target") or {}).get("label"),
+                            "scope": (r.get("alert_target") or {}).get("observer_scope") or "insurers_only",
                             "state": state, "since": r.get("created_at")})
     except HTTPException:
         # global key não configurada: ainda lista o que há no banco
