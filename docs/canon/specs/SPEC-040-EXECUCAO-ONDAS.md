@@ -80,6 +80,39 @@ vidro vs sinistro; pré-checks; ordem). Hoje as fichas vivem inline no prompt
 (auditado 19/07: forte); na Onda 3 viram dados destilados pelo Espelho com
 gate — o prompt permanece estável e as fichas evoluem com segurança.
 
+## ONDA 3 — Destilador do Espelho (ENTREGUE 19/07)
+
+Main `22e4608`. Bateria 47/47 (19 checks novos). Migração `20260719_02`
+APLICADA (conduct_playbooks + knowledge_cards, globais, RLS service-only).
+
+- `attendance_distiller.py`: Estágio 1 (braçal, `DISTILLER_LLM_MODEL` default
+  claude-sonnet-5) — extração por sessão sobre transcript MASCARADO
+  (templatize antes de QUALQUER LLM; PII real nunca sai do cofre): tipo/ramo/
+  serviço, conduta, perguntas na ordem, fatos reutilizáveis, score humano.
+  Estágio 2 (estrutural, `DISTILLER_STRONG_MODEL` default claude-opus-4-8 —
+  decisão do founder: estrutural merece o modelo mais forte) — síntese do
+  playbook de conduta por (ramo, serviço), DRAFT versionado (nada auto-aplica
+  antes do gate da Onda 4). `ja_temos_na_apolice=true` ⇒ confirmar, nunca
+  perguntar.
+- Knowledge cards: filtro PII 2 camadas + dedupe md5 + fila pending_review;
+  aprovação publica como CHUNK ATÔMICO no `autobrokers_global` (card já é o
+  formato ideal de RAG — sem chunking pesado no caminho automático).
+- Endpoints admin `/api/admin/atlas/espelho/*`: resumo (baseline humano por
+  corretora — ADMIN-ONLY), cards, decide (approve publica/reject), playbooks,
+  run manual.
+- Agendador: check horário, roda 1x/dia na janela UTC 03-09 (madrugada BRT),
+  teto `DISTILLER_MAX_SESSIONS_PER_RUN`=40, zero LLM sem sessão nova. Custo
+  no FinOps via LLMFactory por company.
+- Prompt do atendente: seção "SISTEMA LENTO OU FORA DO AR" — indisponibilidade
+  de InfoCap/gestor NUNCA trava a conversa (coleta, 1 retry, transparência
+  leve, acionamento ou dossiê com o que houver).
+
+**Respostas ao founder (19/07):** RAG automatizado usa formato certo por tipo
+(cards=chunk atômico; docs canônicos=chunking markdown determinístico;
+chunking semântico/agentic fica p/ uploads humanos grandes); tiering: braçal=
+Sonnet 5, estrutural (playbooks)=Opus 4.8, tudo por env; recomendação de
+upgrade opcional: `DISPATCH_LLM_MODEL` p/ Opus nos desvios do Cérebro v2.
+
 ## Próximas ondas (plano aprovado)
 - **ONDA 3 — Destilação:** job noturno (Sonnet 5, lote) sobre transcripts →
   playbooks de conduta por ramo + knowledge cards SEM PII (filtro 2 camadas +
