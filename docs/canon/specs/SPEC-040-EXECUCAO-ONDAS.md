@@ -113,14 +113,34 @@ chunking semântico/agentic fica p/ uploads humanos grandes); tiering: braçal=
 Sonnet 5, estrutural (playbooks)=Opus 4.8, tudo por env; recomendação de
 upgrade opcional: `DISPATCH_LLM_MODEL` p/ Opus nos desvios do Cérebro v2.
 
+## ONDA 4 — Nunca regredir + Conselho (ENTREGUE 19/07)
+
+Main `60a93e7`. Bateria 48/48 (18 checks novos). Sem migração nova (usa
+conduct_playbooks.status + scorecards existentes).
+
+- `playbook_gate.py`: gate de ativação de playbook — checks determinísticos
+  (ficha completa, ZERO PII via templatize — PII bloqueia SEMPRE), juiz com
+  modelo forte comparando candidato × ativo × condutas douradas humanas (só
+  ativa se nota_candidato >= nota_atual — regredir é impossível por este
+  caminho; sem ativo, piso 70), Conselho opcional; flip versionado
+  (ativo→retired) + rollback de 1 chamada; decisões em Atividades.
+- `agent_council.py`: Conselho de Agentes — OFF por default
+  (`COUNCIL_ENABLED=0`); membros `COUNCIL_MEMBERS` default gpt-5.5 +
+  claude-opus-4-8 + kimi-k3 + grok-4.5 (sem chave = pulado com nota, nada
+  quebra); líder `COUNCIL_LEADER_MODEL` (opus) consolida pareceres paralelos
+  curtos em veredito JSON; contexto cap 3000 chars; heartbeat "conselho"
+  (15º agente da Central); telemetria `council:last_convening`.
+  NOTA: Kimi K3/Grok exigem chave + suporte de provider no LLMFactory — até
+  lá são pulados; founder cola as chaves quando quiser os 4 votos.
+- `regression_sentinel.py`: nota média 24h × 7 dias anteriores POR corretora
+  (scorecards do Auditor, determinístico, zero LLM); queda >=
+  `REGRESSION_DROP_POINTS` (10) com >= `REGRESSION_MIN_SAMPLES` (5) →
+  alerta no canal de suporte (mesmo caminho do Vigia) + Atividades.
+- Endpoints: `/espelho/playbooks/{id}/activate`, `/espelho/playbooks/rollback`,
+  `/conselho/status`, `/conselho/convene` (manual).
+- Founder ligou `DISPATCH_LLM_MODEL=claude-opus-4-8` (Cérebro v2 nos desvios).
+
 ## Próximas ondas (plano aprovado)
-- **ONDA 3 — Destilação:** job noturno (Sonnet 5, lote) sobre transcripts →
-  playbooks de conduta por ramo + knowledge cards SEM PII (filtro 2 camadas +
-  fila de aprovação) → RAG global; Auditor v2 pontua atendimentos humanos
-  (baseline admin-only).
-- **ONDA 4 — Nunca regredir:** suíte dourada + replay noturno + gate de
-  regressão p/ mudança de playbook/prompt + modo sombra + Conselho de Agentes
-  (pronto, desligado, env; Fable líder + GPT/Opus/Kimi/Grok).
 - **ONDA 5 — Central classe mundial:** memória por agente (sleep-time batch),
   replay/observabilidade na Central, onboarding automático de corretora com
   contribuição/custo por corretora.
