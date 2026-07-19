@@ -161,6 +161,26 @@ APLICADA (agent_memories, RLS service-only).
   atividade. Custo por corretora já sai no FinOps (LLMFactory rastreia).
 - Endpoints `/central/memorias` (+ `/rebuild`); scheduler `agent_memory_check`.
 
+## PÓS-ONDAS — SPEC-041 + SPEC-042 (ENTREGUES 19/07, main `9a96f71`)
+
+Founder aprovou executar na espera do pareamento (20/07). Bateria 50/50.
+
+- **SPEC-042 Lapidador** (`prompt_optimizer.py`): otimização reflexiva de
+  conduta no padrão GEPA, na nossa stack (sem dependência nova): feedback
+  TEXTUAL das falhas reais (sessões fracas + flags do Auditor, dedupe) →
+  reflexão com modelo FORTE sobre o playbook ativo + condutas douradas →
+  DRAFT otimizado que SÓ assume via gate nunca-regredir. Semanal por grupo
+  ativo com feedback novo (`LAPIDADOR_MIN_FEEDBACK`=5) + manual
+  `POST /espelho/optimize`; PII no candidato reprova; custo zero ocioso.
+  Fase 2 registrada: calibração do LLM-judge (Nubank), Chat Principal.
+- **SPEC-041 Painéis** (frontend /admin): página nova **/admin/espelho**
+  (resumo vivo, fila de aprovação de cards 1-clique → RAG global, playbooks
+  com Ativar-gate/lapidar/rollback + conteúdo, replay MASCARADO de sessões,
+  contribuição por corretora, rodar destilação); **central-agentes** com
+  blocos de MEMÓRIA por agente; **acionamentos** com Histórico (replay
+  persistente + nota); item "Espelho de Atendimento" no nav. tsc limpo.
+- Endpoint novo `GET /espelho/sessoes` (lista p/ o painel).
+
 ## TODAS AS 5 ONDAS ENTREGUES (19/07/2026)
 
 Estado final: 15 agentes na Central; ciclo completo captura → destilação →
