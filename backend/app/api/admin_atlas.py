@@ -723,3 +723,51 @@ async def onboarding_contribuicao(company_id: Optional[str] = None,
                 "atendimentos_parte1": _count_by_company("attendance_sessions", extra=True)}
 
     return {"ok": True, **(await asyncio.to_thread(_query))}
+
+
+# ------------------------------------------------------------------ #
+# SPEC-041/042 — sessões p/ o painel + Lapidador (otimização GEPA)
+# ------------------------------------------------------------------ #
+@router.get("/espelho/sessoes")
+async def espelho_sessoes(company_id: Optional[str] = None, limit: int = 30,
+                          _: Any = Depends(require_master_admin)) -> Dict[str, Any]:
+    """Sessões do Espelho de Atendimento p/ o painel (metadados + destilado —
+    o transcript completo vem no /replay/atendimento/{id}, mascarado)."""
+    from app.core.database import get_supabase_client
+
+    db = get_supabase_client()
+
+    def _query() -> list:
+        q = (db.client.table("attendance_sessions")
+             .select("id, company_id, counterparty, started_at, status, summary")
+             .order("started_at", desc=True).limit(min(max(1, limit), 100)))
+        if company_id:
+            q = q.eq("company_id", company_id)
+        rows = q.execute().data or []
+        out = []
+        for r in rows:
+            d = ((r.get("summary") or {}).get("distilled")) or {}
+            out.append({"id": r.get("id"), "company_id": r.get("company_id"),
+                        "started_at": r.get("started_at"), "status": r.get("status"),
+                        "servico": d.get("servico"), "ramo": d.get("ramo"),
+                        "tipo": d.get("tipo"), "score": d.get("score"),
+                        "destilada": bool(d and not d.get("skipped"))})
+        return out
+
+    return {"ok": True, "sessoes": await asyncio.to_thread(_query)}
+
+
+@router.post("/espelho/optimize")
+async def espelho_optimize(body: Dict[str, Any],
+                           _: Any = Depends(require_master_admin)) -> Dict[str, Any]:
+    """Lapidador MANUAL (SPEC-042): reflete sobre o feedback real e propõe o
+    playbook otimizado como DRAFT (só assume via gate nunca-regredir)."""
+    from app.services.prompt_optimizer import optimize_playbook
+
+    ramo = str((body or {}).get("ramo") or "").strip()
+    servico = str((body or {}).get("servico") or "").strip()
+    if not ramo or not servico:
+        raise HTTPException(status_code=400, detail="ramo_e_servico_obrigatorios")
+    min_fb = (body or {}).get("min_feedback")
+    return await optimize_playbook(ramo, servico,
+                                   min_feedback=int(min_fb) if min_fb is not None else None)
