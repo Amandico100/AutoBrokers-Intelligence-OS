@@ -23,7 +23,8 @@ type Opt = {
 };
 type Node = {
   hash: string; text: string; kind: string; status?: string; options: Opt[];
-  samples?: number; order?: number; answer_hint?: { placeholder: string; instrucao: string };
+  samples?: number; order?: number; stale?: boolean; last_seen?: string;
+  answer_hint?: { placeholder: string; instrucao: string };
 };
 type Edge = { src: string; label: string; to: string; count: number; inferred?: boolean; order?: number; dests?: Record<string, number> };
 type PathStep = { n: string; c: string | null };
@@ -92,6 +93,9 @@ function NodeCard({
           {node.samples ? <span style={{ fontSize: 10, color: C.dim }}>visto {node.samples}x</span> : null}
         </div>
         <p style={{ fontSize: 12.5, margin: 0, color: '#D6DEE9', lineHeight: 1.45, whiteSpace: 'pre-line' }}>{node.text}</p>
+        {node.stale && (
+          <span style={{ display: 'inline-block', marginTop: 5, fontSize: 10, color: C.gap, border: `1px solid ${C.gap}`, borderRadius: 12, padding: '1px 7px' }}>⏳ tela antiga (menu pode ter mudado)</span>
+        )}
 
         {node.answer_hint && (
           <div style={{ marginTop: 8, background: '#101C2A', border: '1px solid #1D3450', borderRadius: 8, padding: '7px 10px', fontSize: 11.5, color: '#9FC2E4', display: 'flex', gap: 7, alignItems: 'center' }}>
@@ -423,6 +427,14 @@ export default function AtlasPage() {
   const [nativeForms, setNativeForms] = useState<any[] | null>(null);
   const [showForm, setShowForm] = useState(false);
   const [sentinelaBusy, setSentinelaBusy] = useState(false);
+  const [showCost, setShowCost] = useState(false);
+  const [cost, setCost] = useState<any | null>(null);
+
+  useEffect(() => {
+    if (showCost && !cost) {
+      fetch('/api/admin/atlas/cost-estimate').then((r) => r.json()).then((j) => setCost(j)).catch(() => setCost({ error: true }));
+    }
+  }, [showCost, cost]);
 
   useEffect(() => {
     fetch('/api/admin/atlas/drifts').then((r) => r.json()).then((j) => setDrifts(j.drifts || [])).catch(() => {});
@@ -658,6 +670,7 @@ export default function AtlasPage() {
                     </div>
                     {viewMode === 'tree' && <button onClick={expandAll} style={S.btn}><Maximize2 size={13} /> Expandir tudo</button>}
                     {viewMode === 'tree' && <button onClick={collapseAll} style={S.btn}><Minimize2 size={13} /> Colapsar</button>}
+                    <button onClick={() => { setViewMode(viewMode === 'canvas' ? 'canvas' : viewMode); setShowCost(true); }} style={S.btn}><span style={{ fontSize: 12 }}>💰 Custo IA</span></button>
                     <button onClick={() => setShowTranscript(true)} style={S.btn}><ScrollText size={13} /> Sequência escrita</button>
                     {nativeForms && nativeForms.length > 0 && (
                       <button onClick={() => setShowForm(true)} style={{ ...S.btn, background: '#241832', border: '1px solid #4A2E6B', color: '#D4B8F0' }} title="Formulário nativo capturado — a chave do app HDI/Yelum">
@@ -737,6 +750,36 @@ export default function AtlasPage() {
                   )}
                 </div>
               </div>
+
+              {/* MODAL — estimativa de custo do resolvedor de IA */}
+              {showCost && (
+                <div style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,.55)', zIndex: 50 }} onClick={() => setShowCost(false)}>
+                  <div onClick={(e) => e.stopPropagation()} style={{ position: 'absolute', right: 0, top: 0, bottom: 0, width: 'min(460px, 92vw)', background: C.card, borderLeft: `1px solid ${C.border}`, padding: 18, overflowY: 'auto' }}>
+                    <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 10 }}>
+                      <p style={{ fontSize: 14, fontWeight: 700, margin: 0 }}>💰 Custo do resolvedor de IA</p>
+                      <button onClick={() => setShowCost(false)} style={{ background: 'none', border: 'none', color: '#8A93A3', cursor: 'pointer' }}><X size={17} /></button>
+                    </div>
+                    <p style={{ fontSize: 11.5, color: '#8A93A3', marginBottom: 12 }}>
+                      O modelo forte só resolve o resíduo ambíguo (menus digitados sem eco), uma vez por seguradora. A ingestão do histórico é gratuita (determinística). Custo independe do nº de conversas.
+                    </p>
+                    {!cost ? <p style={{ fontSize: 12, color: '#8A93A3' }}>Calculando…</p> : cost.error ? <p style={{ fontSize: 12, color: C.drift }}>Falha ao calcular.</p> : (
+                      <>
+                        <div style={{ background: C.bg2, borderRadius: 8, padding: 12, marginBottom: 12 }}>
+                          <p style={{ fontSize: 12.5, margin: 0 }}>Custo total de 1 passada: <b style={{ color: C.ok }}>R$ {cost.total_brl_one_pass}</b></p>
+                        </div>
+                        {(cost.per_insurer || []).map((p: any, i: number) => (
+                          <div key={i} style={{ display: 'flex', justifyContent: 'space-between', fontSize: 11.5, padding: '5px 0', borderBottom: `1px solid ${C.border}`, color: '#B9C2CE' }}>
+                            <span style={{ textTransform: 'capitalize' }}>{p.insurer_key}</span>
+                            <span style={{ color: C.dim }}>{p.ambiguous_edges} ambíguas</span>
+                            <span style={{ color: C.ok }}>R$ {p.brl_per_insurer}</span>
+                          </div>
+                        ))}
+                        <p style={{ fontSize: 10.5, color: C.dim, marginTop: 10 }}>Modelo: {(cost.per_insurer || [{}])[0]?.model || 'sonnet'} · dólar R$6</p>
+                      </>
+                    )}
+                  </div>
+                </div>
+              )}
 
               {/* MODAL — formulário nativo capturado (a Pedra de Roseta) */}
               {showForm && nativeForms && (

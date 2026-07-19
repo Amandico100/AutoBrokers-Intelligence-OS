@@ -154,6 +154,38 @@ async def atlas_drifts(_: Any = Depends(require_master_admin)) -> Dict[str, Any]
     return {"ok": True, "drifts": await asyncio.to_thread(_q)}
 
 
+@router.get("/cost-estimate")
+async def cost_estimate(_: Any = Depends(require_master_admin)) -> Dict[str, Any]:
+    """Estimativa de custo do resolvedor de IA por seguradora (independe do nº
+    de conversas históricas — a ingestão é gratuita/determinística)."""
+    from app.core.database import get_supabase_client
+    from app.services.atlas.atlas_parser import estimate_cost
+
+    supabase = get_supabase_client()
+
+    def _q() -> list:
+        return (supabase.client.table("ura_maps").select("insurer_key, map")
+                .eq("status", "observed").order("created_at", desc=True).limit(30).execute().data or [])
+
+    rows = await asyncio.to_thread(_q)
+    per = []
+    seen = set()
+    for r in rows:
+        k = r["insurer_key"]
+        if k in seen:
+            continue
+        seen.add(k)
+        mp = r.get("map") or {}
+        nodes = len(mp.get("nodes") or {})
+        ambiguous = sum(1 for e in (mp.get("edges") or {}).values()
+                        if e.get("label") == "→" and not e.get("echo"))
+        est = estimate_cost(nodes, ambiguous)
+        per.append({"insurer_key": k, "nodes": nodes, "ambiguous_edges": ambiguous, **est})
+    total_brl = round(sum(p["brl_per_insurer"] for p in per), 2)
+    return {"ok": True, "per_insurer": per, "total_brl_one_pass": total_brl,
+            "nota": "Custo por PASSADA de tecelagem; a ingestão do histórico é gratuita (determinística)."}
+
+
 @router.get("/native-form/{insurer_key}")
 async def atlas_native_form(insurer_key: str, _: Any = Depends(require_master_admin)) -> Dict[str, Any]:
     """A PEDRA DE ROSETA: o schema do formulário nativo (app HDI/Yelum) + as
