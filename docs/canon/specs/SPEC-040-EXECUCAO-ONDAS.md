@@ -51,12 +51,36 @@ Main `449937e` (feat `5f4330f`). Bateria 45/45. Migração
   `insurers_and_clients` p/ pareamento de atendente); `onboarding/status`
   expõe o escopo por instância.
 
-## Próximas ondas (plano aprovado)
+## ONDA 2 — Visão Operacional do Core + seed global (ENTREGUE 19/07)
 
-- **ONDA 2 — Visão Operacional do Core:** tools determinísticas
-  `resumo_atendimentos` + `atlas_rotas` no Chat Principal; ingestão global do
-  RAG (encanamento que falta) + mapa InfoCap no `global_autobrokers`;
-  authority map atualizado.
+Main `cd80b1c`. Bateria 46/46 (20 checks novos).
+
+- `operational_view.py`: digests determinísticos e token-eficientes —
+  `operations_summary` (ativos no Redis + movimento via agent_activities +
+  qualidade via scorecards; escopo por corretora; fail-soft por seção) e
+  `atlas_routes_summary` (lista de mapas c/ cobertura; detalhe c/ tela de
+  entrada + opções; caminho BFS até um serviço; estrutura global sem dado de
+  cliente).
+- Tools `resumo_atendimentos` (company_id injetado pelo runtime) e
+  `atlas_rotas` ligadas no `graph.py` SÓ para o papel core.
+- `global_knowledge_seed.py`: ingestão idempotente (hash+Redis) dos docs
+  canônicos embarcados (`app/data/global_knowledge/*.md`) na coleção
+  `autobrokers_global` (dense+BM25, scope publicado; substitui versão
+  anterior). Job horário, 1ª rodada ~2min pós-boot. 1º seed: mapa
+  InfoCap/CorpAPI — o Core "sabe navegar" no ERP por conhecimento.
+- `KNOWLEDGE_GLOBAL_SEARCH` default LIGADO (env ainda desliga).
+- Authority map atualizado (2 tools read-only novas, capabilities alvo
+  `operations.summary.read` / `atlas.routes.read` p/ R2).
+
+**Decisão de arquitetura da conversa da Parte 1 (pergunta do founder 19/07):**
+NÚCLEO GLOBAL DE CONDUTA (fixo, no prompt do atendente — tom, empatia, FICHA,
+nunca re-perguntar, InfoCap-primeiro, confirmar antes de acionar) + FICHA DE
+COLETA POR TIPO DE SERVIÇO como DADO versionado (o que coletar em guincho vs
+vidro vs sinistro; pré-checks; ordem). Hoje as fichas vivem inline no prompt
+(auditado 19/07: forte); na Onda 3 viram dados destilados pelo Espelho com
+gate — o prompt permanece estável e as fichas evoluem com segurança.
+
+## Próximas ondas (plano aprovado)
 - **ONDA 3 — Destilação:** job noturno (Sonnet 5, lote) sobre transcripts →
   playbooks de conduta por ramo + knowledge cards SEM PII (filtro 2 camadas +
   fila de aprovação) → RAG global; Auditor v2 pontua atendimentos humanos
