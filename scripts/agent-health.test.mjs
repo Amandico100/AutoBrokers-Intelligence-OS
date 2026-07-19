@@ -14,13 +14,14 @@ const ok = buildAgentDivergences([
 ]);
 assert('saudável sem divergências críticas', isHealthy(ok) && ok.length === 0);
 
-// atendimento nomeado SERGIO → divergência de nome com ação rename
+// SPEC-039 F3: o nome do atendimento é de CADA corretora — o sistema NUNCA
+// força "Even". Um atendimento com qualquer nome NÃO gera divergência de nome.
 const sergio = buildAgentDivergences([
   { id: 'c', name: 'AutoBrokers', agent_role: 'core', is_active: true },
   { id: 'e', name: 'SERGIO', agent_role: 'attendance', is_active: false },
 ]);
-assert('SERGIO gera attendance_name_not_even + ação rename', sergio.some((d) => d.kind === 'attendance_name_not_even' && d.action === 'rename_attendance_even' && d.agent_id === 'e'));
-assert('SERGIO ainda é "healthy" (nome é higiene, não bloqueia)', isHealthy(sergio));
+assert('nome do atendimento NÃO é mais normalizado p/ Even', !sergio.some((d) => d.kind === 'attendance_name_not_even'));
+assert('atendimento com nome próprio é healthy', isHealthy(sergio) && sergio.length === 0);
 
 // faltando core/attendance
 const missing = buildAgentDivergences([{ id: 'e', name: 'Even', agent_role: 'attendance', is_active: false }]);

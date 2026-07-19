@@ -1,5 +1,6 @@
-// SPEC-013 FB-2 — manutenção canônica (master): normalizar atendimento→"Even" e arquivar
-// agente legado/teste. Seguro: nunca arquiva Core/Even; preserva dados (apenas desativa).
+// SPEC-013 FB-2 / SPEC-039 F3 — manutenção canônica (master): arquivar agente
+// legado/teste. O NOME do atendimento é de cada corretora ("Even" é só o da
+// Resulta) — o sistema NUNCA renomeia. Seguro: nunca arquiva Core/atendimento.
 import { NextRequest, NextResponse } from 'next/server';
 import { requireAdminForCompany, supabaseService, assertSameOrigin } from '@/lib/admin/admin-auth';
 
@@ -21,13 +22,6 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ com
 
   const { data: agent } = await supabase.from('agents').select('id, company_id, agent_role, name, context_package').eq('id', agentId).maybeSingle();
   if (!agent?.id || agent.company_id !== companyId) return NextResponse.json({ ok: false, error: 'agente_fora_de_escopo' }, { status: 400 });
-
-  if (action === 'rename_attendance_even') {
-    if (agent.agent_role !== 'attendance') return NextResponse.json({ ok: false, error: 'nao_e_atendimento' }, { status: 400 });
-    const { error } = await supabase.from('agents').update({ name: 'Even', updated_at: new Date().toISOString() }).eq('id', agentId).eq('company_id', companyId);
-    if (error) return NextResponse.json({ ok: false, error: 'update_failed' }, { status: 400 });
-    return NextResponse.json({ ok: true, action, agent_id: agentId, name: 'Even' });
-  }
 
   if (action === 'archive_agent') {
     // NUNCA arquivar os canônicos.
