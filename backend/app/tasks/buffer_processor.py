@@ -199,6 +199,19 @@ def start_buffer_scheduler():
             id="attendance_distiller_check",
             max_instances=1,
         )
+
+        # SPEC-040 Onda 4: Sentinela de Regressão — nota média 24h vs 7 dias,
+        # por corretora; queda relevante = alerta ANTES do cliente sentir.
+        # Determinístico, zero LLM, 1x/dia (marcador na task).
+        from app.services.regression_sentinel import check_regression
+
+        scheduler.add_job(
+            check_regression,
+            "interval",
+            seconds=3600,
+            id="regression_sentinel_check",
+            max_instances=1,
+        )
         scheduler.start()
         logger.info("✅ [BUFFER SCHEDULER] Started (interval: 1s, max_instances: 10)")
     else:
