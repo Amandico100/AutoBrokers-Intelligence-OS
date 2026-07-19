@@ -195,6 +195,13 @@ async def check_atlas_sentinela() -> int:
         except Exception:  # noqa: BLE001 — sem redis, roda mesmo
             pass
         drifts = await run_all(None)  # global (todas as corretoras — a URA é global)
+        # pulsa SEMPRE que roda (mesmo sem drift) — mostra o agente vivo na Central
+        try:
+            from app.core.heartbeat import beat
+
+            await beat("sentinela_rotas", len(drifts))
+        except Exception:  # noqa: BLE001
+            pass
         return len(drifts)
     except Exception as e:  # noqa: BLE001 — nunca derruba o scheduler
         logger.warning(f"[SENTINELA ROTAS] check periódico falhou: {type(e).__name__}")
