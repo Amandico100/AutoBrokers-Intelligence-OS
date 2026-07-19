@@ -220,6 +220,7 @@ export default function AdminLayout({ children }: { children: React.ReactNode })
     { href: '/admin', icon: LayoutDashboard, label: 'Dashboard' },
     { href: '/admin/central-agentes', icon: Bot, label: 'Central de Agentes' },
     { href: '/admin/atlas', icon: Map, label: 'Atlas de Rotas' },
+    { href: '/admin/espelho', icon: UserCheck, label: 'Espelho de Atendimento' },
     { href: '/admin/acionamentos', icon: MessageSquare, label: 'Acionamentos ao vivo' },
     { href: '/admin/insights', icon: UserCheck, label: 'Insights · Garimpo' },
     {

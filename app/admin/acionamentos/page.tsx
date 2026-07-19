@@ -40,10 +40,20 @@ function hhmm(iso: string | null): string {
   try { return new Date(iso).toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' }); } catch { return '--:--'; }
 }
 
+type HistItem = {
+  id: string; company_id: string; title: string; last_message_at: string | null;
+  last_message_preview: string | null;
+};
+type HistTimeline = { at: string | null; quem: string; texto: string };
+
 export default function AcionamentosPage() {
   const [sessions, setSessions] = useState<Session[]>([]);
   const [sel, setSel] = useState(0);
   const [loading, setLoading] = useState(true);
+  const [hist, setHist] = useState<HistItem[]>([]);
+  const [histSel, setHistSel] = useState<string | null>(null);
+  const [histTimeline, setHistTimeline] = useState<HistTimeline[]>([]);
+  const [histScore, setHistScore] = useState<{ score: number; flags: string[] } | null>(null);
 
   useEffect(() => {
     const load = () =>
@@ -52,10 +62,31 @@ export default function AcionamentosPage() {
         .then((d) => setSessions(d.sessions || []))
         .catch(() => undefined)
         .finally(() => setLoading(false));
+    // SPEC-041: histórico persistente (replay) — sobrevive ao Redis.
+    const loadHist = () =>
+      fetch('/api/admin/atlas/replay/acionamentos')
+        .then((r) => r.json())
+        .then((d) => d.ok && setHist(d.acionamentos || []))
+        .catch(() => undefined);
     load();
+    loadHist();
     const t = setInterval(load, 10000);
-    return () => clearInterval(t);
+    const th = setInterval(loadHist, 60000);
+    return () => { clearInterval(t); clearInterval(th); };
   }, []);
+
+  const openHist = (id: string) => {
+    setHistSel(id);
+    fetch(`/api/admin/atlas/replay/acionamento/${id}`)
+      .then((r) => r.json())
+      .then((d) => {
+        if (d.ok) {
+          setHistTimeline(d.timeline || []);
+          setHistScore(d.scorecard || null);
+        }
+      })
+      .catch(() => undefined);
+  };
 
   const cur = sessions[sel];
 
@@ -124,6 +155,55 @@ export default function AcionamentosPage() {
                     </div>
                   );
                 })}
+              </div>
+            </div>
+          )}
+        </div>
+      )}
+
+      {/* SPEC-041 — Histórico (replay persistente: sobrevive ao Redis) */}
+      <div style={{ display: 'flex', alignItems: 'baseline', gap: 12, marginTop: 30, marginBottom: 10 }}>
+        <div style={{ fontSize: 15, fontWeight: 650 }}>Histórico (replay)</div>
+        <div style={{ fontSize: 11.5, color: '#6B7688' }}>
+          acionamentos espelhados no banco — reproduza qualquer um, para sempre
+        </div>
+      </div>
+      {hist.length === 0 ? (
+        <div style={{ ...card, padding: '18px 20px', color: '#7C8798', fontSize: 12.5 }}>
+          Nenhum acionamento espelhado ainda — o histórico aparece aqui a partir do primeiro acionamento real.
+        </div>
+      ) : (
+        <div style={{ display: 'flex', gap: 14, alignItems: 'flex-start' }}>
+          <div style={{ width: 330, minWidth: 280, display: 'flex', flexDirection: 'column', gap: 6 }}>
+            {hist.map((h) => (
+              <div key={h.id} onClick={() => openHist(h.id)}
+                style={{ ...card, padding: '11px 14px', cursor: 'pointer', border: `1px solid ${histSel === h.id ? '#2C3A4E' : '#161D28'}` }}>
+                <div style={{ fontSize: 12.5, fontWeight: 600 }}>{h.title}</div>
+                <div style={{ display: 'flex', gap: 8, marginTop: 5, fontSize: 11, color: '#6B7688' }}>
+                  <span style={mono}>{hhmm(h.last_message_at)}</span>
+                  <span style={{ flex: 1, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
+                    {h.last_message_preview || ''}
+                  </span>
+                </div>
+              </div>
+            ))}
+          </div>
+          {histSel && (
+            <div style={{ ...card, flex: 1, padding: '18px 20px', minWidth: 0 }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
+                <span style={{ fontSize: 14, fontWeight: 600 }}>Replay do acionamento</span>
+                {histScore && <span style={badge(histScore.score >= 75 ? '#43C08C' : '#E2A94F')}>nota {histScore.score}</span>}
+              </div>
+              <div style={{ marginTop: 12, maxHeight: 480, overflow: 'auto' }}>
+                {histTimeline.map((ev, i) => (
+                  <div key={i} style={{ display: 'flex', gap: 12, padding: '7px 0' }}>
+                    <span style={{ ...mono, fontSize: 10.5, color: '#5A6577', minWidth: 40 }}>{hhmm(ev.at)}</span>
+                    <span style={{ ...badge(ev.quem === 'seguradora' ? '#8A93A3' : '#7FB7E8'), minWidth: 88, textAlign: 'center', height: 'fit-content' }}>
+                      {ev.quem.toUpperCase()}
+                    </span>
+                    <span style={{ fontSize: 12.5, color: '#B9C2CF', lineHeight: 1.5, flex: 1, wordBreak: 'break-word' }}>{ev.texto}</span>
+                  </div>
+                ))}
               </div>
             </div>
           )}

@@ -41,8 +41,12 @@ function health(iso: string | null): { label: string; color: string } {
   return { label: 'PARADO', color: '#E06B6B' };
 }
 
+type MemoryBlock = { key: string; content: string; updated_at: string };
+
 export default function CentralAgentesPage() {
   const [agents, setAgents] = useState<AgentStatus[]>([]);
+  const [memorias, setMemorias] = useState<Record<string, { blocks: MemoryBlock[] }>>({});
+  const [openMem, setOpenMem] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
@@ -52,9 +56,17 @@ export default function CentralAgentesPage() {
         .then((d) => setAgents(d.agents || []))
         .catch(() => undefined)
         .finally(() => setLoading(false));
+    // SPEC-041: memória por agente ("o que cada um sabe") — reescrita 1x/dia.
+    const loadMem = () =>
+      fetch('/api/admin/atlas/central/memorias')
+        .then((r) => r.json())
+        .then((d) => d.ok && setMemorias(d.memorias || {}))
+        .catch(() => undefined);
     load();
+    loadMem();
     const t = setInterval(load, 20000);
-    return () => clearInterval(t);
+    const tm = setInterval(loadMem, 120000);
+    return () => { clearInterval(t); clearInterval(tm); };
   }, []);
 
   const totalActions = agents.reduce((a, b) => a + (b.actions_today || 0), 0);
@@ -94,6 +106,19 @@ export default function CentralAgentesPage() {
                 </span>
               </div>
               <div style={{ fontSize: 12.5, color: '#8A93A3', lineHeight: 1.5, minHeight: 36 }}>{a.desc}</div>
+              {(memorias[a.id]?.blocks?.length ?? 0) > 0 && (
+                <div style={{ borderTop: '1px solid #131A23', paddingTop: 8 }}>
+                  <span style={{ ...S.mono, fontSize: 10, color: '#E2A94F', cursor: 'pointer', letterSpacing: '0.06em' }}
+                    onClick={() => setOpenMem(openMem === a.id ? null : a.id)}>
+                    {openMem === a.id ? '▾ MEMÓRIA' : '▸ MEMÓRIA (o que este agente sabe)'}
+                  </span>
+                  {openMem === a.id && memorias[a.id].blocks.map((b) => (
+                    <div key={b.key} style={{ fontSize: 11.5, color: '#A9B2C0', lineHeight: 1.55, marginTop: 7, background: '#080B10', border: '1px solid #131A23', borderRadius: 8, padding: '9px 11px' }}>
+                      {b.content}
+                    </div>
+                  ))}
+                </div>
+              )}
               <div style={{ display: 'flex', alignItems: 'center', gap: 14, ...S.mono, fontSize: 10.5, color: '#5A6577', borderTop: '1px solid #131A23', paddingTop: 10 }}>
                 <span>último run <span style={{ color: '#A9B2C0' }}>{ago(a.last_run)}</span></span>
                 <span style={{ flex: 1 }} />

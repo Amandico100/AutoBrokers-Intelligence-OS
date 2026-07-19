@@ -225,6 +225,18 @@ def start_buffer_scheduler():
             id="agent_memory_check",
             max_instances=1,
         )
+
+        # SPEC-042: Lapidador — otimização reflexiva SEMANAL dos playbooks
+        # ativos com feedback novo (padrão GEPA); draft passa pelo gate.
+        from app.services.prompt_optimizer import check_lapidador
+
+        scheduler.add_job(
+            check_lapidador,
+            "interval",
+            seconds=3600,
+            id="lapidador_check",
+            max_instances=1,
+        )
         scheduler.start()
         logger.info("✅ [BUFFER SCHEDULER] Started (interval: 1s, max_instances: 10)")
     else:
