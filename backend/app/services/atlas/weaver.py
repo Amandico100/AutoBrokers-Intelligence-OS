@@ -299,6 +299,12 @@ async def weave_insurer(insurer_key: str, ramo: str = "auto", company_id: Option
         }).execute()
 
     await asyncio.to_thread(_save)
+    try:
+        from app.core.heartbeat import beat
+
+        await beat("tecelao", 1)
+    except Exception:  # noqa: BLE001
+        pass
     logger.info(f"[ATLAS WEAVER] {insurer_key}/{ramo_final}: {len(map_acc['nodes'])} nós, "
                 f"cobertura {map_acc['coverage']['pct']}%")
     return {"ok": True, "insurer_key": insurer_key, "ramo": ramo_final,
