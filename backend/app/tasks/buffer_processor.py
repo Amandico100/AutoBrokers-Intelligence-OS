@@ -212,6 +212,19 @@ def start_buffer_scheduler():
             id="regression_sentinel_check",
             max_instances=1,
         )
+
+        # SPEC-040 Onda 5: memória por agente — blocos reescritos 1x/dia a
+        # partir dos dados reais (determinístico, zero LLM). A Central mostra
+        # "o que cada agente sabe".
+        from app.services.agent_memory import check_agent_memories
+
+        scheduler.add_job(
+            check_agent_memories,
+            "interval",
+            seconds=3600,
+            id="agent_memory_check",
+            max_instances=1,
+        )
         scheduler.start()
         logger.info("✅ [BUFFER SCHEDULER] Started (interval: 1s, max_instances: 10)")
     else:

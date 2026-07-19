@@ -579,3 +579,147 @@ async def conselho_convene(body: Dict[str, Any],
         raise HTTPException(status_code=400, detail="question_obrigatoria")
     return await convene_council(question, str((body or {}).get("context") or ""),
                                  str((body or {}).get("kind") or "manual"))
+
+
+# ------------------------------------------------------------------ #
+# SPEC-040 Onda 5 — Memórias da Central, Replay e Contribuição
+# ------------------------------------------------------------------ #
+@router.get("/central/memorias")
+async def central_memorias(_: Any = Depends(require_master_admin)) -> Dict[str, Any]:
+    """Blocos de memória de cada agente da Central (o que cada um 'sabe')."""
+    from app.core.heartbeat import AGENT_TASKS
+    from app.services.agent_memory import load_all_memories_sync
+
+    rows = await asyncio.to_thread(load_all_memories_sync)
+    names = {t[0]: t[1] for t in AGENT_TASKS}
+    grouped: Dict[str, Any] = {}
+    for r in rows:
+        task = str(r.get("agent_task"))
+        grouped.setdefault(task, {"agent": names.get(task, task), "blocks": []})
+        grouped[task]["blocks"].append({"key": r.get("block_key"),
+                                        "content": r.get("content"),
+                                        "updated_at": r.get("updated_at")})
+    return {"ok": True, "memorias": grouped}
+
+
+@router.post("/central/memorias/rebuild")
+async def central_memorias_rebuild(_: Any = Depends(require_master_admin)) -> Dict[str, Any]:
+    """Reescrita MANUAL dos blocos (verificação — normalmente roda 1x/dia)."""
+    from app.services.agent_memory import rebuild_agent_memories
+
+    written = await rebuild_agent_memories()
+    return {"ok": True, "blocks_written": written}
+
+
+@router.get("/replay/acionamentos")
+async def replay_acionamentos(company_id: Optional[str] = None, limit: int = 20,
+                              _: Any = Depends(require_master_admin)) -> Dict[str, Any]:
+    """Acionamentos ESPELHADOS (histórico persistente — sobrevive ao Redis)."""
+    from app.core.database import get_supabase_client
+
+    db = get_supabase_client()
+
+    def _query() -> list:
+        q = (db.client.table("conversations")
+             .select("id, company_id, title, session_id, last_message_at, last_message_preview")
+             .like("session_id", "dispatch:%")
+             .order("last_message_at", desc=True).limit(min(max(1, limit), 50)))
+        if company_id:
+            q = q.eq("company_id", company_id)
+        return q.execute().data or []
+
+    return {"ok": True, "acionamentos": await asyncio.to_thread(_query)}
+
+
+@router.get("/replay/acionamento/{conversation_id}")
+async def replay_acionamento(conversation_id: str,
+                             _: Any = Depends(require_master_admin)) -> Dict[str, Any]:
+    """Replay passo a passo de um acionamento: transcript espelhado + nota."""
+    from app.core.database import get_supabase_client
+
+    db = get_supabase_client()
+
+    def _query() -> Dict[str, Any]:
+        msgs = (db.client.table("messages")
+                .select("role, content, created_at").eq("conversation_id", conversation_id)
+                .order("created_at", desc=False).limit(300).execute().data or [])
+        score = (db.client.table("conversation_scorecards")
+                 .select("score, flags, created_at").eq("conversation_id", conversation_id)
+                 .order("created_at", desc=True).limit(1).execute().data or [])
+        return {"timeline": [
+            {"at": m.get("created_at"),
+             "quem": "seguradora" if m.get("role") == "user" else "motor",
+             "texto": str(m.get("content") or "")[:400]} for m in msgs],
+            "scorecard": score[0] if score else None}
+
+    return {"ok": True, **(await asyncio.to_thread(_query))}
+
+
+@router.get("/replay/atendimento/{session_id}")
+async def replay_atendimento(session_id: str,
+                             _: Any = Depends(require_master_admin)) -> Dict[str, Any]:
+    """Replay de uma sessão do Espelho de Atendimento — transcript MASCARADO
+    (PII fica no cofre; a observabilidade não precisa do dado pessoal) +
+    o resumo destilado."""
+    from app.core.database import get_supabase_client
+    from app.services.atlas.templater import templatize
+
+    db = get_supabase_client()
+
+    def _query() -> Dict[str, Any]:
+        sess = (db.client.table("attendance_sessions").select("*")
+                .eq("id", session_id).limit(1).execute().data or [])
+        events = (db.client.table("attendance_transcripts")
+                  .select("direction, msg_type, text, wa_timestamp")
+                  .eq("session_id", session_id)
+                  .order("wa_timestamp", desc=False).limit(300).execute().data or [])
+        return {
+            "session": ({"id": session_id,
+                         "company_id": (sess[0] or {}).get("company_id"),
+                         "started_at": (sess[0] or {}).get("started_at"),
+                         "distilled": ((sess[0] or {}).get("summary") or {}).get("distilled")}
+                        if sess else None),
+            "timeline": [
+                {"at": e.get("wa_timestamp"),
+                 "quem": "atendente" if e.get("direction") == "out" else "cliente",
+                 "tipo": e.get("msg_type"),
+                 "texto": templatize(str(e.get("text") or ""))[:400]} for e in events],
+        }
+
+    return {"ok": True, **(await asyncio.to_thread(_query))}
+
+
+@router.get("/onboarding/contribuicao")
+async def onboarding_contribuicao(company_id: Optional[str] = None,
+                                  _: Any = Depends(require_master_admin)) -> Dict[str, Any]:
+    """Contribuição de cada corretora para a inteligência global: sessões
+    observadas (URA), sessões de atendimento capturadas e destiladas.
+    O efeito rede visível: quem trouxe o quê."""
+    from app.core.database import get_supabase_client
+
+    db = get_supabase_client()
+
+    def _query() -> Dict[str, Any]:
+        def _count_by_company(table: str, extra=None) -> Dict[str, Dict[str, Any]]:
+            q = db.client.table(table).select("company_id, created_at" + (", summary" if extra else ""))
+            if company_id:
+                q = q.eq("company_id", company_id)
+            rows = q.order("created_at", desc=True).limit(3000).execute().data or []
+            out: Dict[str, Dict[str, Any]] = {}
+            for r in rows:
+                cid = str(r.get("company_id"))
+                b = out.setdefault(cid, {"total": 0, "destiladas": 0,
+                                         "primeiro": r.get("created_at"), "ultimo": r.get("created_at")})
+                b["total"] += 1
+                if str(r.get("created_at") or "") < str(b["primeiro"] or ""):
+                    b["primeiro"] = r.get("created_at")
+                if str(r.get("created_at") or "") > str(b["ultimo"] or ""):
+                    b["ultimo"] = r.get("created_at")
+                if extra and ((r.get("summary") or {}).get("distilled")):
+                    b["destiladas"] += 1
+            return out
+
+        return {"observacao_ura": _count_by_company("observed_sessions"),
+                "atendimentos_parte1": _count_by_company("attendance_sessions", extra=True)}
+
+    return {"ok": True, **(await asyncio.to_thread(_query))}
