@@ -12,7 +12,7 @@ import os
 from typing import Any, Dict, Optional
 
 import httpx
-from fastapi import APIRouter, Depends
+from fastapi import APIRouter, Depends, HTTPException
 
 from app.core.auth import require_master_admin
 
@@ -169,8 +169,18 @@ async def atlas_native_form(insurer_key: str, _: Any = Depends(require_master_ad
                 .order("wa_timestamp", desc=True).limit(5).execute().data or [])
 
     rows = await asyncio.to_thread(_q)
-    forms = [r["interactive"].get("native_form") for r in rows
-             if isinstance(r.get("interactive"), dict) and r["interactive"].get("native_form")]
+    from app.services.atlas.observer_intake import _parse_native_form
+
+    forms = []
+    for r in rows:
+        it = r.get("interactive")
+        if not isinstance(it, dict):
+            continue
+        nf = it.get("native_form")
+        if not nf and it.get("extra"):  # captura antiga: parseia o extra na hora
+            nf = _parse_native_form(it.get("extra"))
+        if nf:
+            forms.append(nf)
     return {"ok": True, "insurer_key": insurer_key, "captured": len(forms), "forms": forms}
 
 
