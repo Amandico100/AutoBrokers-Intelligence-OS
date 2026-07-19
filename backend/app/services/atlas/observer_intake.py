@@ -234,7 +234,11 @@ def _correlate_open_session(observer_number: str, company_id: str = ""):
         return None
 
 
-def _store_event_sync(record: Dict[str, Any]) -> None:
+def _store_event_sync(record: Dict[str, Any], events_table: str = "observed_events",
+                      sessions_table: str = "observed_sessions") -> None:
+    """Grava evento + sessão por janela de 2h. Parametrizado por tabela (SPEC-040):
+    a MESMA mecânica serve o Atlas (observed_*) e o Espelho de Atendimento
+    (attendance_*) — lógica única, tabelas isoladas."""
     from app.core.database import get_supabase_client
 
     supabase = get_supabase_client()
@@ -244,9 +248,9 @@ def _store_event_sync(record: Dict[str, Any]) -> None:
     # Sessão pré-atribuída (correlação do ButtonClick): só atualiza o relógio.
     if record.get("session_id"):
         try:
-            supabase.client.table("observed_sessions").update(
+            supabase.client.table(sessions_table).update(
                 {"last_event_at": now_iso}).eq("id", record["session_id"]).execute()
-            supabase.client.table("observed_events").upsert(
+            supabase.client.table(events_table).upsert(
                 record, on_conflict="observer_number,message_id", ignore_duplicates=True
             ).execute()
         except Exception as e:  # noqa: BLE001
@@ -255,7 +259,7 @@ def _store_event_sync(record: Dict[str, Any]) -> None:
 
     session_id = None
     try:
-        res = (supabase.client.table("observed_sessions").select("id, last_event_at")
+        res = (supabase.client.table(sessions_table).select("id, last_event_at")
                .eq("observer_number", obs).eq("counterparty", cp)
                .eq("status", "open").order("last_event_at", desc=True).limit(1).execute())
         if res.data:
@@ -266,13 +270,13 @@ def _store_event_sync(record: Dict[str, Any]) -> None:
                 last_at = datetime.now(timezone.utc)
             if datetime.now(timezone.utc) - last_at <= _SESSION_GAP:
                 session_id = last["id"]
-                supabase.client.table("observed_sessions").update(
+                supabase.client.table(sessions_table).update(
                     {"last_event_at": now_iso}).eq("id", session_id).execute()
             else:
-                supabase.client.table("observed_sessions").update(
+                supabase.client.table(sessions_table).update(
                     {"status": "closed"}).eq("id", last["id"]).execute()
         if session_id is None:
-            created = supabase.client.table("observed_sessions").insert({
+            created = supabase.client.table(sessions_table).insert({
                 "company_id": record["company_id"], "observer_number": obs,
                 "counterparty": cp, "insurer_key": record.get("insurer_key"),
                 "started_at": now_iso, "last_event_at": now_iso, "status": "open",
@@ -283,13 +287,13 @@ def _store_event_sync(record: Dict[str, Any]) -> None:
 
     record["session_id"] = session_id
     try:
-        supabase.client.table("observed_events").upsert(
+        supabase.client.table(events_table).upsert(
             record, on_conflict="observer_number,message_id", ignore_duplicates=True
         ).execute()
     except Exception:  # noqa: BLE001
         # fallback: insert simples (índice único ainda protege contra dupe)
         try:
-            supabase.client.table("observed_events").insert(record).execute()
+            supabase.client.table(events_table).insert(record).execute()
         except Exception as e2:  # noqa: BLE001
             logger.error(f"[ATLAS] evento NÃO gravado: {type(e2).__name__}")
 
@@ -445,6 +449,23 @@ async def observer_tap(integration: dict, body: dict) -> Optional[dict]:
                 insurer_key = allow[v]
                 break
         if not insurer_key:
+            # SPEC-040 Onda 1 — 2º destino (Espelho de Atendimento): conversa
+            # com SEGURADO da corretora vai p/ attendance_transcripts quando a
+            # integração observer tem escopo 'insurers_and_clients'. O resto
+            # continua descartado na borda (privacidade, como hoje).
+            if is_observer:
+                try:
+                    from app.services.atlas.attendance_capture import (
+                        SCOPE_FULL, capture_client_message, observer_scope,
+                    )
+
+                    if observer_scope(integration) == SCOPE_FULL:
+                        stored = await capture_client_message(
+                            integration, counterparty, key, message, data)
+                        if stored:
+                            return consumed
+                except Exception:  # noqa: BLE001 — Espelho NUNCA quebra a borda
+                    pass
             await _count_drop(observer_number, "non_insurer")
             return consumed if is_observer else None
         # --------------------------------------------------------------------

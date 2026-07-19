@@ -21,6 +21,7 @@ from __future__ import annotations
 import asyncio
 import json
 import logging
+import os
 from datetime import datetime, timezone
 from typing import Any, Dict, List, Optional, Tuple
 
@@ -106,8 +107,19 @@ async def ingest_history_sync(integration: dict, body: dict) -> Dict[str, Any]:
     observer_number = _observer_number_of(integration)
     company_id = str(integration.get("company_id") or "")
 
-    # (a) resolve seguradora por conversa; (b) descarta o resto na borda
+    # SPEC-040 Onda 1: escopo da integração decide se as conversas com os
+    # SEGURADOS entram no Espelho de Atendimento (Parte 1) ou são descartadas.
+    try:
+        from app.services.atlas.attendance_capture import SCOPE_FULL, observer_scope
+
+        capture_clients = observer_scope(integration) == SCOPE_FULL
+    except Exception:  # noqa: BLE001 — Espelho nunca bloqueia a ingestão do Atlas
+        capture_clients = False
+
+    # (a) resolve seguradora por conversa; (b) segurado → Espelho (se escopo);
+    # (c) descarta o resto na borda (grupos/status: sempre fora)
     insurer_convs: List[Tuple[str, str, List[Dict[str, Any]]]] = []
+    client_convs: List[Tuple[str, List[Dict[str, Any]]]] = []
     for conv in convs:
         jid = _conv_jid(conv)
         if not jid or jid.endswith(("@g.us", "@broadcast", "@newsletter")):
@@ -120,6 +132,8 @@ async def ingest_history_sync(integration: dict, body: dict) -> Dict[str, Any]:
                 break
         if insurer_key:
             insurer_convs.append((insurer_key, counterparty, _conv_messages(conv)))
+        elif capture_clients and counterparty:
+            client_convs.append((counterparty, _conv_messages(conv)))
 
     # RECÊNCIA: ordena as conversas pela mensagem mais recente (desc)
     def _conv_latest_ts(msgs: List[Dict[str, Any]]) -> int:
@@ -132,54 +146,34 @@ async def ingest_history_sync(integration: dict, body: dict) -> Dict[str, Any]:
 
     insurer_convs.sort(key=lambda c: _conv_latest_ts(c[2]), reverse=True)
 
-    _SESSION_GAP_S = 2 * 3600
     stored = 0
     for insurer_key, counterparty, msgs in insurer_convs:
-        # mensagens da conversa em ordem cronológica; quebra em SESSÕES por
-        # janela de silêncio de 2h (cada acionamento = uma sessão).
-        ordered = sorted(
-            ((*_unwrap_hist_msg(m), i) for i, m in enumerate(msgs)),
-            key=lambda x: (x[2] or 0),
-        )
-        bursts: List[List[tuple]] = []
-        last_ts = None
-        for msg, from_me, ts, i in ordered:
-            if not isinstance(msg, dict):
-                continue
-            if last_ts is not None and ts and (ts - last_ts) > _SESSION_GAP_S:
-                bursts.append([])
-            if not bursts:
-                bursts.append([])
-            bursts[-1].append((msg, from_me, ts, i))
-            last_ts = ts or last_ts
+        stored += await _ingest_conversation(
+            company_id, observer_number, counterparty, insurer_key, msgs,
+            events_table="observed_events", sessions_table="observed_sessions")
 
-        for burst in bursts:
-            if not burst:
-                continue
-            first_ts = next((b[2] for b in burst if b[2]), None)
-            last_bts = next((b[2] for b in reversed(burst) if b[2]), first_ts)
-            session_id = await _ensure_history_session(
-                company_id, observer_number, counterparty, insurer_key, first_ts, last_bts)
-            for msg, from_me, ts, i in burst:
-                msg_type, text, interactive, media_meta = _extract_content(msg)
-                if not text and not media_meta and not interactive:
-                    continue
-                wa_ts = datetime.fromtimestamp(ts, tz=timezone.utc).isoformat() if ts else None
-                mid = f"hist-{counterparty}-{ts or i}-{abs(hash(str(text)[:60])) % 10**7}"
-                record = {
-                    "company_id": company_id, "observer_number": observer_number,
-                    "counterparty": counterparty, "insurer_key": insurer_key,
-                    "direction": "out" if from_me else "in", "msg_type": msg_type,
-                    "text": (text or None),
-                    "interactive": (dict(interactive) if interactive else None),
-                    "media_meta": media_meta or None, "message_id": mid,
-                    "wa_timestamp": wa_ts, "source": "history_sync", "session_id": session_id,
-                }
-                try:
-                    await _store_history_event(record)
-                    stored += 1
-                except Exception:  # noqa: BLE001
-                    pass
+    # SPEC-040 Onda 1 — Parte 1 (segurados) → Espelho de Atendimento.
+    # Recência-primeiro também aqui; cap de segurança p/ históricos gigantes.
+    client_stored = 0
+    if client_convs:
+        try:
+            max_events = int(os.getenv("ATTENDANCE_HISTORY_MAX_EVENTS", "50000"))
+        except ValueError:
+            max_events = 50000
+        client_convs.sort(key=lambda c: _conv_latest_ts(c[1]), reverse=True)
+        for counterparty, msgs in client_convs:
+            if client_stored >= max_events:
+                logger.warning(f"[ESPELHO ATENDIMENTO] cap de histórico atingido ({max_events})")
+                break
+            client_stored += await _ingest_conversation(
+                company_id, observer_number, counterparty, None, msgs,
+                events_table="attendance_transcripts", sessions_table="attendance_sessions")
+        try:
+            from app.core.heartbeat import beat
+
+            await beat("espelho_atendimento", client_stored)
+        except Exception:  # noqa: BLE001
+            pass
 
     # pulso do Observador (histórico também é observação)
     try:
@@ -188,12 +182,76 @@ async def ingest_history_sync(integration: dict, body: dict) -> Dict[str, Any]:
         await beat("observador", stored)
     except Exception:  # noqa: BLE001
         pass
-    logger.info(f"[ATLAS HISTORY] {len(convs)} conversas, {len(insurer_convs)} de seguradora, {stored} eventos")
-    return {"conversations": len(convs), "insurer_conversations": len(insurer_convs), "events_stored": stored}
+    logger.info(
+        f"[ATLAS HISTORY] {len(convs)} conversas, {len(insurer_convs)} de seguradora "
+        f"({stored} eventos), {len(client_convs)} de segurado ({client_stored} eventos)")
+    return {"conversations": len(convs), "insurer_conversations": len(insurer_convs),
+            "events_stored": stored, "client_conversations": len(client_convs),
+            "client_events_stored": client_stored}
+
+
+_SESSION_GAP_S = 2 * 3600
+
+
+async def _ingest_conversation(company_id: str, observer_number: str, counterparty: str,
+                               insurer_key: Optional[str], msgs: List[Dict[str, Any]],
+                               events_table: str, sessions_table: str) -> int:
+    """Uma conversa do histórico → sessões por janela de 2h + eventos dedupe.
+    Mesma mecânica p/ seguradora (Atlas) e segurado (Espelho de Atendimento)."""
+    from app.services.atlas.observer_intake import _extract_content
+
+    ordered = sorted(
+        ((*_unwrap_hist_msg(m), i) for i, m in enumerate(msgs)),
+        key=lambda x: (x[2] or 0),
+    )
+    bursts: List[List[tuple]] = []
+    last_ts = None
+    for msg, from_me, ts, i in ordered:
+        if not isinstance(msg, dict):
+            continue
+        if last_ts is not None and ts and (ts - last_ts) > _SESSION_GAP_S:
+            bursts.append([])
+        if not bursts:
+            bursts.append([])
+        bursts[-1].append((msg, from_me, ts, i))
+        last_ts = ts or last_ts
+
+    stored = 0
+    for burst in bursts:
+        if not burst:
+            continue
+        first_ts = next((b[2] for b in burst if b[2]), None)
+        last_bts = next((b[2] for b in reversed(burst) if b[2]), first_ts)
+        session_id = await _ensure_history_session(
+            company_id, observer_number, counterparty, insurer_key, first_ts, last_bts,
+            sessions_table=sessions_table)
+        for msg, from_me, ts, i in burst:
+            msg_type, text, interactive, media_meta = _extract_content(msg)
+            if not text and not media_meta and not interactive:
+                continue
+            wa_ts = datetime.fromtimestamp(ts, tz=timezone.utc).isoformat() if ts else None
+            mid = f"hist-{counterparty}-{ts or i}-{abs(hash(str(text)[:60])) % 10**7}"
+            record = {
+                "company_id": company_id, "observer_number": observer_number,
+                "counterparty": counterparty, "insurer_key": insurer_key,
+                "direction": "out" if from_me else "in", "msg_type": msg_type,
+                "text": (text or None),
+                "interactive": (dict(interactive) if interactive else None),
+                "media_meta": media_meta or None, "message_id": mid,
+                "wa_timestamp": wa_ts, "source": "history_sync", "session_id": session_id,
+            }
+            try:
+                await _store_history_event(record, events_table=events_table)
+                stored += 1
+            except Exception:  # noqa: BLE001
+                pass
+    return stored
 
 
 def _ensure_history_session_sync(company_id: str, observer_number: str, counterparty: str,
-                                 insurer_key: str, first_ts: Optional[int], last_ts: Optional[int]) -> Optional[str]:
+                                 insurer_key: Optional[str], first_ts: Optional[int],
+                                 last_ts: Optional[int],
+                                 sessions_table: str = "observed_sessions") -> Optional[str]:
     """Cria (idempotente) uma sessão para uma janela histórica. Chave lógica:
     (observer, counterparty, first_ts) — reingestão reusa a mesma sessão."""
     from app.core.database import get_supabase_client
@@ -204,12 +262,12 @@ def _ensure_history_session_sync(company_id: str, observer_number: str, counterp
     last = datetime.fromtimestamp(last_ts, tz=timezone.utc).isoformat() if last_ts else started
     marker = f"hist:{observer_number}:{counterparty}:{first_ts or 0}"
     try:
-        existing = (supabase.client.table("observed_sessions").select("id")
+        existing = (supabase.client.table(sessions_table).select("id")
                     .eq("observer_number", observer_number).eq("counterparty", counterparty)
                     .eq("started_at", started).limit(1).execute())
         if existing.data:
             return existing.data[0]["id"]
-        created = supabase.client.table("observed_sessions").insert({
+        created = supabase.client.table(sessions_table).insert({
             "company_id": company_id, "observer_number": observer_number,
             "counterparty": counterparty, "insurer_key": insurer_key,
             "started_at": started, "last_event_at": last, "status": "closed",
@@ -222,20 +280,22 @@ def _ensure_history_session_sync(company_id: str, observer_number: str, counterp
 
 
 async def _ensure_history_session(company_id: str, observer_number: str, counterparty: str,
-                                  insurer_key: str, first_ts: Optional[int], last_ts: Optional[int]) -> Optional[str]:
+                                  insurer_key: Optional[str], first_ts: Optional[int],
+                                  last_ts: Optional[int],
+                                  sessions_table: str = "observed_sessions") -> Optional[str]:
     return await asyncio.to_thread(_ensure_history_session_sync, company_id, observer_number,
-                                   counterparty, insurer_key, first_ts, last_ts)
+                                   counterparty, insurer_key, first_ts, last_ts, sessions_table)
 
 
-def _store_history_event_sync(record: Dict[str, Any]) -> None:
+def _store_history_event_sync(record: Dict[str, Any], events_table: str = "observed_events") -> None:
     from app.core.database import get_supabase_client
 
     supabase = get_supabase_client()
     # dedupe por (observer_number, message_id) — reingestão não duplica
-    supabase.client.table("observed_events").upsert(
+    supabase.client.table(events_table).upsert(
         record, on_conflict="observer_number,message_id", ignore_duplicates=True
     ).execute()
 
 
-async def _store_history_event(record: Dict[str, Any]) -> None:
-    await asyncio.to_thread(_store_history_event_sync, record)
+async def _store_history_event(record: Dict[str, Any], events_table: str = "observed_events") -> None:
+    await asyncio.to_thread(_store_history_event_sync, record, events_table)

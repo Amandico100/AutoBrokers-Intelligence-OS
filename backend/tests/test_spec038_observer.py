@@ -128,6 +128,7 @@ def _bootstrap():
     sys.modules["app.services.whatsapp.providers.base"] = base
     _load("app.services.whatsapp.providers.evolution_go", "app/services/whatsapp/providers/evolution_go.py")
     intake = _load("app.services.atlas.observer_intake", "app/services/atlas/observer_intake.py")
+    _load("app.services.atlas.attendance_capture", "app/services/atlas/attendance_capture.py")
     return intake, store, redis
 
 

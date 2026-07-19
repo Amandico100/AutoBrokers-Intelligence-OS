@@ -24,6 +24,7 @@ AGENT_TASKS = [
     ("sentinela_rotas", "Sentinela de Rotas", "Vigia se a seguradora mudou o menu; dispara a atualização e avisa no que for estrutural."),
     # Atendimento / acionamento
     ("espelho", "Espelho", "Espelha toda conversa com seguradora no banco e no dashboard, em tempo real."),
+    ("espelho_atendimento", "Espelho de Atendimento", "Captura as conversas de trabalho da equipe da corretora com os segurados — matéria-prima dos playbooks de conduta e knowledge cards (PII isolada, nunca no RAG)."),
     ("vigia_sentinela", "Vigia + Sentinela", "Vigia o desfecho de todo acionamento; a Sentinela destrava conversas paradas na URA."),
     ("followup", "Follow-up", "Pós-acionamento: confere se o prestador chegou e encerra com carinho."),
     ("garimpo", "Garimpo", "Extrai dores, desejos e pedidos das conversas dos corretores — vira insight de produto."),

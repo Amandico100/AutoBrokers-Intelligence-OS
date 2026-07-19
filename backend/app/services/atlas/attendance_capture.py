@@ -1,0 +1,164 @@
+"""SPEC-040 Onda 1 — Espelho de Atendimento: borda de captura da Parte 1.
+
+Segundo destino do Observador: as conversas de TRABALHO da equipe da corretora
+com os SEGURADOS dela (Parte 1 do atendimento), no numero corporativo
+autorizado. Regras inegociaveis:
+
+1. So captura em integracao purpose='observer' com observer_scope=
+   'insurers_and_clients' (ligado explicitamente no pareamento/onboarding).
+   Default de toda integracao existente = 'insurers_only' (nada muda p/ elas).
+2. PII vive AQUI (attendance_transcripts, RLS service-only) e SO aqui.
+   NUNCA vai ao RAG. A destilacao (Onda 3) produz playbooks de conduta e
+   knowledge cards SEM nenhum dado pessoal.
+3. Midia: so METADADOS (mimetype/filename/caption) — nunca bytes/base64.
+4. MUDO por construcao: este modulo nao importa nenhum cliente de envio.
+5. Retencao: o cru expira (env ATTENDANCE_RETENTION_DAYS, default 90 dias,
+   contado da INGESTAO — historico importado hoje vale 90 dias a partir de
+   hoje). O purge roda 1x/dia no APScheduler. O destilado e permanente.
+
+O armazenamento reusa a MESMA mecanica de sessao do Atlas (funcao
+parametrizada em observer_intake) — tabela separada, logica unica.
+"""
+
+from __future__ import annotations
+
+import asyncio
+import logging
+import os
+from datetime import datetime, timedelta, timezone
+from typing import Any, Dict, Optional
+
+logger = logging.getLogger(__name__)
+
+TRANSCRIPTS_TABLE = "attendance_transcripts"
+SESSIONS_TABLE = "attendance_sessions"
+
+SCOPE_INSURERS_ONLY = "insurers_only"
+SCOPE_FULL = "insurers_and_clients"
+
+
+def observer_scope(integration: dict) -> str:
+    """Escopo de captura da integracao observer. Vive em alert_target
+    (jsonb ja existente) para nao exigir migracao de integrations."""
+    at = (integration or {}).get("alert_target")
+    scope = ""
+    if isinstance(at, dict):
+        scope = str(at.get("observer_scope") or "").strip().lower()
+    return scope if scope in (SCOPE_INSURERS_ONLY, SCOPE_FULL) else SCOPE_INSURERS_ONLY
+
+
+async def _beat(actions: int = 1) -> None:
+    try:
+        from app.core.heartbeat import beat
+
+        await beat("espelho_atendimento", actions)
+    except Exception:  # noqa: BLE001
+        pass
+
+
+async def _count_captured(observer_number: str, n: int = 1) -> None:
+    """Contador agregado de capturas por numero observado (telemetria)."""
+    try:
+        from app.core.redis import get_async_redis_client
+
+        r = await get_async_redis_client()
+        await r.hincrby(f"atlas:attendance:{observer_number}", "captured", n)
+    except Exception:  # noqa: BLE001
+        pass
+
+
+async def capture_client_message(integration: dict, counterparty: str,
+                                 key: Dict[str, Any], message: Dict[str, Any],
+                                 data: Dict[str, Any]) -> bool:
+    """Captura uma mensagem viva da conversa equipe<->segurado. Retorna True se
+    armazenou (o chamador nao conta drop). Nunca lanca — falha = False."""
+    try:
+        from app.services.atlas.observer_intake import (
+            _extract_content, _observer_number_of, _store_event_sync,
+        )
+
+        msg_type, text, interactive, media_meta = _extract_content(message)
+        if msg_type == "unknown" and not text and not media_meta and not interactive:
+            return False
+
+        from_me = bool(key.get("fromMe"))
+        ts = data.get("messageTimestamp")
+        wa_ts = None
+        if isinstance(ts, (int, float)) and ts > 0:
+            wa_ts = datetime.fromtimestamp(int(ts), tz=timezone.utc).isoformat()
+
+        record = {
+            "company_id": str(integration.get("company_id") or ""),
+            "observer_number": _observer_number_of(integration),
+            "counterparty": counterparty,
+            "insurer_key": None,
+            "direction": "out" if from_me else "in",
+            "msg_type": msg_type,
+            "text": (text or None),
+            "interactive": interactive or None,
+            "media_meta": media_meta or None,
+            "message_id": str(key.get("id") or "") or None,
+            "wa_timestamp": wa_ts,
+            "source": "live",
+        }
+        await asyncio.to_thread(_store_event_sync, record, TRANSCRIPTS_TABLE, SESSIONS_TABLE)
+        await _count_captured(record["observer_number"])
+        await _beat()
+        logger.info(f"[ESPELHO ATENDIMENTO] capturado {record['direction']} tipo={msg_type}")
+        return True
+    except Exception as e:  # noqa: BLE001 — captura JAMAIS derruba o webhook
+        logger.error(f"[ESPELHO ATENDIMENTO] captura falhou: {type(e).__name__}")
+        return False
+
+
+# ------------------------------------------------------------------ #
+# Retencao — purge diario do cru (o destilado e permanente)
+# ------------------------------------------------------------------ #
+def retention_days() -> int:
+    try:
+        return max(7, int(os.getenv("ATTENDANCE_RETENTION_DAYS", "90")))
+    except ValueError:
+        return 90
+
+
+def purge_expired_sync(days: Optional[int] = None) -> int:
+    """Apaga transcripts/sessoes com created_at alem da retencao.
+    created_at (ingestao), NAO wa_timestamp — historico importado hoje
+    conta 90 dias a partir de hoje."""
+    from app.core.database import get_supabase_client
+
+    supabase = get_supabase_client()
+    cutoff = (datetime.now(timezone.utc) - timedelta(days=days or retention_days())).isoformat()
+    deleted = 0
+    for table in (TRANSCRIPTS_TABLE, SESSIONS_TABLE):
+        try:
+            res = supabase.client.table(table).delete().lt("created_at", cutoff).execute()
+            deleted += len(res.data or [])
+        except Exception as e:  # noqa: BLE001
+            logger.warning(f"[ESPELHO ATENDIMENTO] purge {table} falhou: {type(e).__name__}")
+    return deleted
+
+
+async def check_attendance_purge() -> int:
+    """Task periodica (APScheduler, 1x/dia via marcador Redis)."""
+    try:
+        from app.core.redis import get_async_redis_client
+
+        r = await get_async_redis_client()
+        today = datetime.now(timezone.utc).date().isoformat()
+        marker = await r.get("attendance:purge:last_run")
+        marker = marker.decode() if isinstance(marker, (bytes, bytearray)) else marker
+        if marker == today:
+            return 0
+        await r.set("attendance:purge:last_run", today, ex=3 * 86400)
+    except Exception:  # noqa: BLE001
+        pass
+    try:
+        deleted = await asyncio.to_thread(purge_expired_sync, None)
+        if deleted:
+            logger.info(f"[ESPELHO ATENDIMENTO] purge de retencao: {deleted} registros")
+        await _beat(0)  # pulso sem acao: mostra o agente vivo na Central
+        return deleted
+    except Exception as e:  # noqa: BLE001 — nunca derruba o scheduler
+        logger.warning(f"[ESPELHO ATENDIMENTO] purge falhou: {type(e).__name__}")
+        return 0

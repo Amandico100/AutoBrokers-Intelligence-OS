@@ -158,6 +158,18 @@ def start_buffer_scheduler():
             id="atlas_sentinela_check",
             max_instances=1,
         )
+
+        # SPEC-040 Onda 1: retenção do Espelho de Atendimento — o transcript
+        # cru (com PII) expira; purge 1x/dia (marcador Redis, gate na task).
+        from app.services.atlas.attendance_capture import check_attendance_purge
+
+        scheduler.add_job(
+            check_attendance_purge,
+            "interval",
+            seconds=3600,
+            id="attendance_purge_check",
+            max_instances=1,
+        )
         scheduler.start()
         logger.info("✅ [BUFFER SCHEDULER] Started (interval: 1s, max_instances: 10)")
     else:
