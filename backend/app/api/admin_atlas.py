@@ -397,3 +397,124 @@ async def trigger_history_sync(
             return {"ok": res.status_code < 400, "status": res.status_code, "body": (res.text or "")[:300]}
     except httpx.HTTPError as e:
         return {"ok": False, "error": f"go_unreachable:{type(e).__name__}"}
+
+
+# ------------------------------------------------------------------ #
+# SPEC-040 Onda 3 — Espelho de Atendimento (destilação, cards, playbooks)
+# ------------------------------------------------------------------ #
+@router.get("/espelho/resumo")
+async def espelho_resumo(_: Any = Depends(require_master_admin)) -> Dict[str, Any]:
+    """Visão do Espelho: sessões destiladas, cards por status, playbooks e o
+    BASELINE dos atendimentos humanos (INTERNO — nunca vai ao dashboard)."""
+    from app.core.database import get_supabase_client
+
+    db = get_supabase_client()
+
+    def _query() -> Dict[str, Any]:
+        sessions = (db.client.table("attendance_sessions")
+                    .select("company_id, summary, started_at").eq("status", "closed")
+                    .order("started_at", desc=True).limit(300).execute().data or [])
+        distilled = [s for s in sessions if (s.get("summary") or {}).get("distilled")]
+        scores = [int(((s.get("summary") or {}).get("distilled") or {}).get("score") or 0)
+                  for s in distilled
+                  if ((s.get("summary") or {}).get("distilled") or {}).get("score") is not None]
+        by_company: Dict[str, list] = {}
+        for s in distilled:
+            sc = ((s.get("summary") or {}).get("distilled") or {}).get("score")
+            if sc is not None:
+                by_company.setdefault(str(s.get("company_id")), []).append(int(sc))
+        cards = (db.client.table("knowledge_cards").select("status")
+                 .limit(1000).execute().data or [])
+        card_counts: Dict[str, int] = {}
+        for c in cards:
+            card_counts[c.get("status") or "?"] = card_counts.get(c.get("status") or "?", 0) + 1
+        playbooks = (db.client.table("conduct_playbooks")
+                     .select("id, ramo, servico, version, status, model_used, created_at")
+                     .order("created_at", desc=True).limit(50).execute().data or [])
+        return {
+            "sessions_closed": len(sessions), "sessions_distilled": len(distilled),
+            "baseline_humano": {
+                "media_global": round(sum(scores) / len(scores), 1) if scores else None,
+                "por_corretora": {k: round(sum(v) / len(v), 1) for k, v in by_company.items()},
+                "amostras": len(scores),
+            },
+            "cards": card_counts, "playbooks": playbooks,
+        }
+
+    return {"ok": True, **(await asyncio.to_thread(_query))}
+
+
+@router.get("/espelho/cards")
+async def espelho_cards(status: str = "pending_review",
+                        _: Any = Depends(require_master_admin)) -> Dict[str, Any]:
+    from app.core.database import get_supabase_client
+
+    db = get_supabase_client()
+
+    def _query() -> list:
+        return (db.client.table("knowledge_cards")
+                .select("id, card_text, category, ramo, insurer_key, status, pii_check, created_at")
+                .eq("status", status).order("created_at", desc=True).limit(100).execute().data or [])
+
+    return {"ok": True, "cards": await asyncio.to_thread(_query)}
+
+
+@router.post("/espelho/cards/{card_id}/decide")
+async def espelho_card_decide(card_id: str, body: Dict[str, Any],
+                              _: Any = Depends(require_master_admin)) -> Dict[str, Any]:
+    """Aprova (publica no RAG global) ou rejeita um knowledge card."""
+    from datetime import datetime, timezone
+
+    from app.core.database import get_supabase_client
+
+    action = str((body or {}).get("action") or "").strip().lower()
+    if action not in ("approve", "reject"):
+        raise HTTPException(status_code=400, detail="action_must_be_approve_or_reject")
+    db = get_supabase_client()
+
+    def _get() -> Optional[Dict[str, Any]]:
+        rows = (db.client.table("knowledge_cards").select("*")
+                .eq("id", card_id).limit(1).execute().data or [])
+        return rows[0] if rows else None
+
+    card = await asyncio.to_thread(_get)
+    if not card:
+        raise HTTPException(status_code=404, detail="card_not_found")
+    if action == "reject":
+        await asyncio.to_thread(lambda: db.client.table("knowledge_cards").update(
+            {"status": "rejected"}).eq("id", card_id).execute())
+        return {"ok": True, "status": "rejected"}
+
+    from app.services.attendance_distiller import publish_card_sync
+
+    published = await asyncio.to_thread(publish_card_sync, card)
+    if not published:
+        raise HTTPException(status_code=422, detail="card_failed_pii_or_publish")
+    await asyncio.to_thread(lambda: db.client.table("knowledge_cards").update(
+        {"status": "published",
+         "published_at": datetime.now(timezone.utc).isoformat()}).eq("id", card_id).execute())
+    return {"ok": True, "status": "published"}
+
+
+@router.get("/espelho/playbooks")
+async def espelho_playbooks(_: Any = Depends(require_master_admin)) -> Dict[str, Any]:
+    from app.core.database import get_supabase_client
+
+    db = get_supabase_client()
+
+    def _query() -> list:
+        return (db.client.table("conduct_playbooks")
+                .select("id, ramo, servico, version, status, content, source_stats, model_used, created_at")
+                .order("created_at", desc=True).limit(30).execute().data or [])
+
+    return {"ok": True, "playbooks": await asyncio.to_thread(_query)}
+
+
+@router.post("/espelho/run")
+async def espelho_run(_: Any = Depends(require_master_admin)) -> Dict[str, Any]:
+    """Rodada MANUAL do destilador (verificação/urgência — ignora janela e
+    marcador diário). Custo controlado pelo teto de sessões por rodada."""
+    from app.services.attendance_distiller import distill_once
+
+    stats = await distill_once(force=True)
+    return {"ok": True, **stats}

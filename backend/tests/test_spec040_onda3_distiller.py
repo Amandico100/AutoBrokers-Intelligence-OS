@@ -1,0 +1,347 @@
+# -*- coding: utf-8 -*-
+"""SPEC-040 Onda 3 - Destilador do Espelho de Atendimento.
+
+Cobre: mascaramento de PII ANTES da LLM, extracao por sessao (braçal Sonnet),
+sintese de playbook com modelo FORTE (Opus default), cards com filtro de PII
+em 2 camadas + dedupe, publicacao de card aprovado no RAG global (chunk
+atomico), idempotencia (2a rodada sem custo), resiliencia de ERP no prompt do
+atendente e fiacao no scheduler. Standalone (stubs, sem pytest).
+"""
+
+import asyncio
+import importlib.util
+import json
+import sys
+import types
+from pathlib import Path
+
+ROOT = Path(__file__).resolve().parents[1]
+PASS = FAIL = 0
+FAILURES = []
+
+
+def check(name, ok, detail=""):
+    global PASS, FAIL
+    if ok:
+        PASS += 1
+        print(f"  [ok] {name}")
+    else:
+        FAIL += 1
+        FAILURES.append((name, detail))
+        print(f"  [X] {name}{': ' + str(detail) if detail else ''}")
+
+
+def _load(dotted, rel):
+    path = ROOT / rel
+    spec = importlib.util.spec_from_file_location(dotted, path)
+    mod = importlib.util.module_from_spec(spec)
+    sys.modules[dotted] = mod
+    spec.loader.exec_module(mod)
+    return mod
+
+
+class _Result:
+    def __init__(self, data=None):
+        self.data = data or []
+
+
+class _Table:
+    def __init__(self, store, name):
+        self.store, self.name = store, name
+        self._mode = None
+        self._payload = None
+        self._on_conflict = None
+        self._eq = []
+        self._order = None
+        self._desc = True
+        self._limit = None
+
+    def select(self, *_a, **_k): self._mode = "select"; return self
+    def insert(self, payload): self._mode = "insert"; self._payload = payload; return self
+
+    def upsert(self, payload, on_conflict=None, ignore_duplicates=False):
+        self._mode = "upsert"
+        self._payload = payload
+        self._on_conflict = on_conflict
+        return self
+
+    def update(self, payload): self._mode = "update"; self._payload = payload; return self
+    def eq(self, col, val): self._eq.append((col, val)); return self
+
+    def order(self, col, desc=True):
+        self._order, self._desc = col, desc
+        return self
+
+    def limit(self, n): self._limit = n; return self
+
+    def _rows(self):
+        rows = list(self.store.get(self.name, []))
+        for col, val in self._eq:
+            rows = [r for r in rows if str(r.get(col)) == str(val)]
+        if self._order:
+            rows.sort(key=lambda r: str(r.get(self._order) or ""), reverse=self._desc)
+        if self._limit:
+            rows = rows[: self._limit]
+        return rows
+
+    def execute(self):
+        self.store.setdefault(self.name, [])
+        if self._mode == "upsert" and self._on_conflict:
+            key = self._on_conflict
+            for r in self.store[self.name]:
+                if r.get(key) == self._payload.get(key):
+                    return _Result([])  # duplicado: ignorado
+        if self._mode in ("insert", "upsert"):
+            row = dict(self._payload)
+            row.setdefault("id", f"{self.name}-{len(self.store[self.name]) + 1}")
+            self.store[self.name].append(row)
+            return _Result([row])
+        if self._mode == "update":
+            hit = self._rows()
+            for r in hit:
+                r.update(self._payload)
+            return _Result(hit)
+        return _Result(self._rows())
+
+
+class _Supabase:
+    def __init__(self, store):
+        self.client = self
+        self._store = store
+
+    def table(self, name):
+        return _Table(self._store, name)
+
+
+class _Redis:
+    def __init__(self):
+        self.kv = {}
+
+    async def set(self, key, val, ex=None): self.kv[key] = val
+    async def get(self, key): return self.kv.get(key)
+
+
+class _QdrantRec:
+    def __init__(self):
+        self.inserted = []
+
+    def insert_embeddings(self, **kw):
+        self.inserted.append(kw)
+        return True
+
+
+STAGE1 = {
+    "tipo": "assistencia", "ramo": "auto", "servico": "guincho", "seguradora": "porto",
+    "resumo_conduta": ["acolheu com empatia", "identificou pelo CPF", "coletou endereco"],
+    "perguntas_na_ordem": ["onde o carro esta?", "para onde levar?"],
+    "fatos_reutilizaveis": [
+        "Porto oferece taxi para o cliente apos o guincho ser acionado",
+        "Cliente com CPF 123.456.789-00 possui dois carros na Porto",
+    ],
+    "score": 82, "flags": [],
+}
+PLAYBOOK = {
+    "objetivo": "acionar guincho sem friccao",
+    "acolhimento": "Sinto muito pelo transtorno! Vou resolver isso agora com voce.",
+    "ficha_coleta": [
+        {"campo": "endereco_atual", "como_pedir": "Onde o carro esta agora?",
+         "quando": "apos entender o problema", "ja_temos_na_apolice": False},
+        {"campo": "placa", "como_pedir": "so confirmar", "quando": "antes de acionar",
+         "ja_temos_na_apolice": True},
+    ],
+    "pre_checks": ["lembrar de retirar pertences do veiculo"],
+    "sensibilidade": "cliente pode estar em rodovia: seguranca primeiro",
+    "encerramento": "acompanhar ate o prestador chegar",
+    "frases_exemplo": ["Ja estou acionando, fica tranquilo!"],
+}
+
+
+def _bootstrap():
+    store, redis, qdrant = {}, _Redis(), _QdrantRec()
+    for name in ("app", "app.core", "app.services", "app.services.atlas",
+                 "app.factories", "langchain_core"):
+        m = sys.modules.setdefault(name, types.ModuleType(name))
+        m.__path__ = []
+
+    db = types.ModuleType("app.core.database")
+    db.get_supabase_client = lambda: _Supabase(store)
+    sys.modules["app.core.database"] = db
+
+    red = types.ModuleType("app.core.redis")
+
+    async def _get_redis():
+        return redis
+
+    red.get_async_redis_client = _get_redis
+    sys.modules["app.core.redis"] = red
+
+    cfg = types.ModuleType("app.core.config")
+    cfg.settings = types.SimpleNamespace(OPENAI_API_KEY="k")
+    sys.modules["app.core.config"] = cfg
+
+    utils = types.ModuleType("app.core.utils")
+    utils.get_api_key_for_provider = lambda p, m: "key"
+    sys.modules["app.core.utils"] = utils
+
+    lcm = types.ModuleType("langchain_core.messages")
+
+    class _Msg:
+        def __init__(self, content):
+            self.content = content
+
+    lcm.SystemMessage = _Msg
+    lcm.HumanMessage = _Msg
+    sys.modules["langchain_core.messages"] = lcm
+
+    lf = types.ModuleType("app.factories.llm_factory")
+
+    class LLMFactory:
+        calls = []
+
+        @staticmethod
+        def create_llm(company_config, agent_data, api_key, company_id=None, agent_id=None):
+            model = agent_data.get("llm_model")
+
+            class _LLM:
+                async def ainvoke(self, msgs):
+                    system, user = msgs[0].content, msgs[1].content
+                    LLMFactory.calls.append({"model": model, "system": system, "user": user})
+                    if "treinador" in system:
+                        return types.SimpleNamespace(content=json.dumps(PLAYBOOK, ensure_ascii=False))
+                    return types.SimpleNamespace(content=json.dumps(STAGE1, ensure_ascii=False))
+
+            return _LLM()
+
+    lf.LLMFactory = LLMFactory
+    sys.modules["app.factories.llm_factory"] = lf
+
+    lco = types.ModuleType("langchain_openai")
+
+    class _Emb:
+        def __init__(self, **_k): pass
+
+        def embed_documents(self, chunks):
+            return [[0.1, 0.2] for _ in chunks]
+
+    lco.OpenAIEmbeddings = _Emb
+    sys.modules["langchain_openai"] = lco
+
+    qd = types.ModuleType("app.services.qdrant_service")
+    qd.get_qdrant_service = lambda: qdrant
+    sys.modules["app.services.qdrant_service"] = qd
+
+    _load("app.core.heartbeat", "app/core/heartbeat.py")
+    _load("app.services.atlas.templater", "app/services/atlas/templater.py")
+    _load("app.services.knowledge_scope", "app/services/knowledge_scope.py")
+    dist = _load("app.services.attendance_distiller", "app/services/attendance_distiller.py")
+    return dist, store, redis, qdrant, lf.LLMFactory
+
+
+def _seed_sessions(store):
+    from datetime import datetime, timedelta, timezone
+    base = datetime(2026, 7, 18, 12, 0, tzinfo=timezone.utc)
+    store["attendance_sessions"] = []
+    store["attendance_transcripts"] = []
+    for i in range(3):
+        sid = f"s{i + 1}"
+        store["attendance_sessions"].append({
+            "id": sid, "company_id": "c1", "observer_number": "5548911112222",
+            "counterparty": f"554799911223{i}", "status": "closed",
+            "started_at": (base + timedelta(hours=i)).isoformat(), "summary": {}})
+        store["attendance_transcripts"] += [
+            {"session_id": sid, "direction": "in", "msg_type": "text",
+             "text": "Meu carro quebrou, meu CPF e 123.456.789-00, preciso de guincho por favor",
+             "wa_timestamp": (base + timedelta(hours=i)).isoformat()},
+            {"session_id": sid, "direction": "out", "msg_type": "text",
+             "text": "Sinto muito! Ja estou verificando aqui, me diz onde o carro esta agora?",
+             "wa_timestamp": (base + timedelta(hours=i, minutes=1)).isoformat()},
+            {"session_id": sid, "direction": "in", "msg_type": "text",
+             "text": "Rua das Flores 123, Palhoca. Pode levar para a oficina do centro",
+             "wa_timestamp": (base + timedelta(hours=i, minutes=2)).isoformat()},
+        ]
+
+
+def run():
+    print("== SPEC-040 Onda 3 - Destilador do Espelho ==\n")
+    dist, store, redis, qdrant, factory = _bootstrap()
+    _seed_sessions(store)
+
+    stats = asyncio.run(dist.distill_once(force=True))
+
+    # 1) estagio 1: todas as sessoes destiladas com score (baseline humano)
+    check("3 sessoes destiladas", stats["sessions"] == 3, stats)
+    d0 = (store["attendance_sessions"][0].get("summary") or {}).get("distilled") or {}
+    check("summary com tipo/ramo/servico/score", d0.get("servico") == "guincho"
+          and d0.get("score") == 82 and d0.get("ramo") == "auto", d0)
+
+    # 2) PII mascarada ANTES da LLM (a LLM nunca ve o CPF real)
+    stage1_calls = [c for c in factory.calls if "treinador" not in c["system"]]
+    check("LLM recebeu transcript mascarado ({CPF})",
+          stage1_calls and "{CPF}" in stage1_calls[0]["user"]
+          and "123.456.789-00" not in stage1_calls[0]["user"],
+          stage1_calls[0]["user"][:200] if stage1_calls else "sem chamadas")
+
+    # 3) cards: limpo -> pending_review; com PII -> rejected_pii; dedupe por hash
+    cards = store.get("knowledge_cards", [])
+    pend = [c for c in cards if c.get("status") == "pending_review"]
+    rej = [c for c in cards if c.get("status") == "rejected_pii"]
+    check("card limpo em pending_review", len(pend) == 1 and "taxi" in pend[0]["card_text"], cards)
+    check("card com CPF rejeitado (rejected_pii)", len(rej) == 1, cards)
+    check("dedupe: 3 sessoes iguais nao triplicam cards", len(cards) == 2, len(cards))
+
+    # 4) playbook: sintetizado com o modelo FORTE (default claude-opus-4-8)
+    pbs = store.get("conduct_playbooks", [])
+    check("playbook draft criado", len(pbs) == 1 and pbs[0]["status"] == "draft"
+          and pbs[0]["servico"] == "guincho", pbs)
+    check("playbook usa modelo forte", pbs and pbs[0].get("model_used") == "claude-opus-4-8",
+          pbs[0].get("model_used") if pbs else None)
+    strong_calls = [c for c in factory.calls if "treinador" in c["system"]]
+    check("sintese chamou o modelo forte", strong_calls
+          and strong_calls[0]["model"] == "claude-opus-4-8",
+          [c["model"] for c in strong_calls])
+    check("playbook manda confirmar (nao perguntar) o que ja temos",
+          any(f.get("ja_temos_na_apolice") for f in (pbs[0]["content"].get("ficha_coleta") or [])))
+
+    # 5) idempotencia: 2a rodada nao gasta LLM
+    calls_before = len(factory.calls)
+    stats2 = asyncio.run(dist.distill_once(force=True))
+    check("2a rodada: zero sessao nova, zero LLM",
+          stats2["sessions"] == 0 and len(factory.calls) == calls_before, stats2)
+
+    # 6) publicacao: card aprovado vira chunk atomico no RAG global
+    ok_pub = dist.publish_card_sync(pend[0])
+    check("card aprovado publicado no RAG global", ok_pub and len(qdrant.inserted) == 1)
+    if qdrant.inserted:
+        kw = qdrant.inserted[0]
+        check("publicacao: colecao global + escopo publicado",
+              kw.get("collection_name") == "autobrokers_global"
+              and (kw.get("knowledge_extras") or {}).get("scope") == "global_autobrokers", kw)
+        check("card e chunk atomico (1 chunk)", len(kw.get("chunks") or []) == 1)
+    bad = dict(pend[0])
+    bad["card_text"] = "Cliente CPF 123.456.789-00 tem dois carros"
+    check("card com PII NUNCA publica", dist.publish_card_sync(bad) is False)
+
+    # 7) heartbeat do Espelho pulsou na destilacao
+    hb = redis.kv.get("spec034:heartbeat:espelho_atendimento")
+    check("heartbeat espelho_atendimento pulsou", hb is not None and "last_run" in str(hb))
+
+    # 8) resiliencia de ERP no prompt do atendente + fiacao no scheduler
+    prompts_src = (ROOT / "app/core/prompts.py").read_text(encoding="utf-8")
+    check("prompt: sistema fora do ar nunca trava o atendimento",
+          "SISTEMA LENTO OU FORA DO AR" in prompts_src and "nunca trave" in prompts_src.lower())
+    sched_src = (ROOT / "app/tasks/buffer_processor.py").read_text(encoding="utf-8")
+    check("scheduler: destilador agendado", "attendance_distiller_check" in sched_src)
+    admin_src = (ROOT / "app/api/admin_atlas.py").read_text(encoding="utf-8")
+    check("admin: endpoints do espelho (resumo/cards/playbooks/run)",
+          "/espelho/resumo" in admin_src and "/espelho/cards" in admin_src
+          and "/espelho/playbooks" in admin_src and "/espelho/run" in admin_src)
+
+    print(f"\n== Resumo: {PASS} passaram, {FAIL} falharam ==")
+    if FAILURES:
+        for n, d in FAILURES:
+            print(f"  - {n}: {d}")
+        sys.exit(1)
+
+
+if __name__ == "__main__":
+    run()

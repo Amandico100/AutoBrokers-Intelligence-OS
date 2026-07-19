@@ -186,6 +186,19 @@ def start_buffer_scheduler():
             max_instances=1,
             next_run_time=_dt.now(_tz.utc) + _td(seconds=120),
         )
+
+        # SPEC-040 Onda 3: Destilador do Espelho de Atendimento — 1x/dia na
+        # madrugada (janela + marcador dentro da task). Sonnet no braçal,
+        # modelo forte na síntese de playbook. Zero LLM sem sessão nova.
+        from app.services.attendance_distiller import check_attendance_distiller
+
+        scheduler.add_job(
+            check_attendance_distiller,
+            "interval",
+            seconds=3600,
+            id="attendance_distiller_check",
+            max_instances=1,
+        )
         scheduler.start()
         logger.info("✅ [BUFFER SCHEDULER] Started (interval: 1s, max_instances: 10)")
     else:
