@@ -18,14 +18,19 @@ _KEY = "spec034:heartbeat:{task}"
 _TTL = 7 * 86400
 
 AGENT_TASKS = [
+    # SPEC-038 ATLAS — a equipe do Observador (passiva, sempre ligada)
+    ("observador", "Observador", "Observa em silêncio os atendimentos com as seguradoras e captura cada tela, botão e formulário nativo — nunca envia nada."),
+    ("tecelao", "Tecelão", "Costura as observações em mapas de rota fiéis à sequência real de cada seguradora."),
+    ("sentinela_rotas", "Sentinela de Rotas", "Vigia se a seguradora mudou o menu; dispara a atualização e avisa no que for estrutural."),
+    # Atendimento / acionamento
     ("espelho", "Espelho", "Espelha toda conversa com seguradora no banco e no dashboard, em tempo real."),
     ("vigia_sentinela", "Vigia + Sentinela", "Vigia o desfecho de todo acionamento; a Sentinela destrava conversas paradas na URA."),
     ("followup", "Follow-up", "Pós-acionamento: confere se o prestador chegou e encerra com carinho."),
     ("garimpo", "Garimpo", "Extrai dores, desejos e pedidos das conversas dos corretores — vira insight de produto."),
     ("auditor", "Auditor", "Dá nota de qualidade a cada conversa e detecta regressões nos corredores."),
-    ("alfaiate", "Alfaiate", "Ajusta os playbooks quando a URA da seguradora muda — auto-aplica só o que é seguro."),
+    ("alfaiate", "Alfaiate", "Ajusta os playbooks quando a URA da seguradora muda — auto-aplica só o que passa no Simulador."),
     ("sugestoes", "IA de Sugestões", "Envia recomendações semanais proativas às corretoras e registra as respostas."),
-    ("cartografo", "Cartógrafo", "Mapeia os fluxos de URA das seguradoras (número exclusivo de exploração)."),
+    ("cartografo", "Cartógrafo", "Mapeia os fluxos de URA das seguradoras (exploração ativa — só quando não há tráfego real)."),
     ("cerebro", "Cérebro v2", "Decide nos desvios: lê o Mapa da URA e escolhe a opção que avança para o objetivo."),
 ]
 

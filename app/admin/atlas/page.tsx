@@ -418,6 +418,26 @@ export default function AtlasPage() {
   const [showTranscript, setShowTranscript] = useState(false);
   const [viewMode, setViewMode] = useState<'tree' | 'canvas'>('tree');
   const [canvasExp, setCanvasExp] = useState<Set<string>>(new Set(['r']));
+  const [drifts, setDrifts] = useState<any[]>([]);
+  const [observers, setObservers] = useState<any[]>([]);
+  const [nativeForms, setNativeForms] = useState<any[] | null>(null);
+  const [showForm, setShowForm] = useState(false);
+  const [sentinelaBusy, setSentinelaBusy] = useState(false);
+
+  useEffect(() => {
+    fetch('/api/admin/atlas/drifts').then((r) => r.json()).then((j) => setDrifts(j.drifts || [])).catch(() => {});
+    fetch('/api/admin/atlas/onboarding/status').then((r) => r.json()).then((j) => setObservers(j.observers || [])).catch(() => {});
+  }, []);
+
+  const runSentinela = async () => {
+    setSentinelaBusy(true);
+    try {
+      await fetch('/api/admin/atlas/sentinela/run', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: '{}' });
+      const j = await fetch('/api/admin/atlas/drifts').then((r) => r.json());
+      setDrifts(j.drifts || []);
+      load();
+    } finally { setSentinelaBusy(false); }
+  };
 
   const load = useCallback(() => {
     fetch('/api/admin/atlas/maps').then((r) => r.json()).then((j) => setCards(j.cards || [])).catch(() => setCards([]));
@@ -426,9 +446,11 @@ export default function AtlasPage() {
 
   const openMap = (insurer: string, ramo: string) => {
     setSel({ insurer, ramo }); setMap(null); setExpanded(new Set()); setShowTranscript(false);
-    setCanvasExp(new Set(['r']));
+    setCanvasExp(new Set(['r'])); setNativeForms(null); setShowForm(false);
     fetch(`/api/admin/atlas/map/${insurer}/${ramo}`).then((r) => r.json())
       .then((j) => setMap(j.map || null)).catch(() => setMap(null));
+    fetch(`/api/admin/atlas/native-form/${insurer}`).then((r) => r.json())
+      .then((j) => setNativeForms(j.forms || [])).catch(() => setNativeForms([]));
   };
 
   const toggleCanvas = (k: string) => setCanvasExp((prev) => {
@@ -528,11 +550,50 @@ export default function AtlasPage() {
             </p>
           </div>
         </div>
-        <button onClick={runWeave} disabled={busy} style={S.btn}>
-          <RefreshCw size={14} className={busy ? 'spin' : ''} /> {busy ? 'Tecendo…' : 'Tecer mapas'}
-        </button>
+        <div style={{ display: 'flex', gap: 8 }}>
+          <button onClick={runSentinela} disabled={sentinelaBusy} style={S.btn} title="Tece tudo e checa se alguma seguradora mudou o menu">
+            <AlertTriangle size={14} /> {sentinelaBusy ? 'Verificando…' : 'Sentinela'}
+          </button>
+          <button onClick={runWeave} disabled={busy} style={S.btn}>
+            <RefreshCw size={14} className={busy ? 'spin' : ''} /> {busy ? 'Tecendo…' : 'Tecer mapas'}
+          </button>
+        </div>
       </div>
       {notice && <p style={{ fontSize: 12.5, color: C.blue, margin: '4px 0 14px' }}>{notice}</p>}
+
+      {/* Barra: Observadores ativos + mudanças recentes (Sentinela) */}
+      {!sel && (drifts.length > 0 || observers.length > 0) && (
+        <div style={{ display: 'grid', gridTemplateColumns: observers.length ? '1fr 1fr' : '1fr', gap: 12, marginBottom: 14 }}>
+          {observers.length > 0 && (
+            <div style={S.card}>
+              <p style={{ fontSize: 12.5, fontWeight: 700, margin: '0 0 8px', display: 'flex', alignItems: 'center', gap: 6 }}>📡 Modo Observação — números pareados</p>
+              {observers.map((o, i) => (
+                <div key={i} style={{ display: 'flex', justifyContent: 'space-between', fontSize: 11.5, padding: '4px 0', color: '#B9C2CE' }}>
+                  <span>{o.label || o.instance}</span>
+                  <span style={{ color: o.state === 'conectado' ? C.ok : C.gap }}>{o.state}</span>
+                </div>
+              ))}
+            </div>
+          )}
+          {drifts.length > 0 && (
+            <div style={S.card}>
+              <p style={{ fontSize: 12.5, fontWeight: 700, margin: '0 0 8px', display: 'flex', alignItems: 'center', gap: 6 }}>🔔 Mudanças de menu detectadas</p>
+              <div style={{ display: 'flex', flexDirection: 'column', gap: 6, maxHeight: 160, overflowY: 'auto' }}>
+                {drifts.slice(0, 8).map((d, i) => (
+                  <div key={i} style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: 11.5 }}>
+                    <span style={{ fontSize: 10, fontWeight: 700, color: d.severity === 'structural' ? C.drift : C.gap, textTransform: 'uppercase' }}>{d.severity === 'structural' ? 'estrutural' : 'cosmético'}</span>
+                    <span style={{ color: '#B9C2CE', textTransform: 'capitalize' }}>{d.insurer_key}</span>
+                    <span style={{ color: C.dim, flex: 1 }}>{d.summary}</span>
+                    <span style={{ color: d.auto_applied ? C.ok : d.needs_founder ? C.drift : C.dim, fontSize: 10 }}>
+                      {d.auto_applied ? '✓ auto-aplicado' : d.needs_founder ? '⚠ revisar' : d.status}
+                    </span>
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
+        </div>
+      )}
 
       {!sel && (
         cards === null ? <p style={{ color: '#8A93A3', marginTop: 20 }}>Carregando…</p> :
@@ -598,6 +659,11 @@ export default function AtlasPage() {
                     {viewMode === 'tree' && <button onClick={expandAll} style={S.btn}><Maximize2 size={13} /> Expandir tudo</button>}
                     {viewMode === 'tree' && <button onClick={collapseAll} style={S.btn}><Minimize2 size={13} /> Colapsar</button>}
                     <button onClick={() => setShowTranscript(true)} style={S.btn}><ScrollText size={13} /> Sequência escrita</button>
+                    {nativeForms && nativeForms.length > 0 && (
+                      <button onClick={() => setShowForm(true)} style={{ ...S.btn, background: '#241832', border: '1px solid #4A2E6B', color: '#D4B8F0' }} title="Formulário nativo capturado — a chave do app HDI/Yelum">
+                        🔓 App nativo capturado
+                      </button>
+                    )}
                   </div>
                 </div>
                 <div style={{ display: 'flex', gap: 14, marginTop: 12, flexWrap: 'wrap', fontSize: 11 }}>
@@ -671,6 +737,37 @@ export default function AtlasPage() {
                   )}
                 </div>
               </div>
+
+              {/* MODAL — formulário nativo capturado (a Pedra de Roseta) */}
+              {showForm && nativeForms && (
+                <div style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,.55)', zIndex: 50 }} onClick={() => setShowForm(false)}>
+                  <div onClick={(e) => e.stopPropagation()} style={{ position: 'absolute', right: 0, top: 0, bottom: 0, width: 'min(540px, 94vw)', background: C.card, borderLeft: `1px solid ${C.border}`, padding: 18, overflowY: 'auto' }}>
+                    <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 6 }}>
+                      <p style={{ fontSize: 14, fontWeight: 700, margin: 0, display: 'flex', alignItems: 'center', gap: 7, color: '#D4B8F0' }}>🔓 App nativo — como o humano preencheu</p>
+                      <button onClick={() => setShowForm(false)} style={{ background: 'none', border: 'none', color: '#8A93A3', cursor: 'pointer' }}><X size={17} /></button>
+                    </div>
+                    <p style={{ fontSize: 11.5, color: '#8A93A3', marginBottom: 14 }}>
+                      Este é o formulário dentro do WhatsApp (HDI/Yelum). Capturamos o schema e as respostas reais — a referência para a Even atravessar a tela sozinha, sem humano.
+                    </p>
+                    {nativeForms.map((f, fi) => (
+                      <div key={fi} style={{ marginBottom: 16, background: C.bg2, border: `1px solid ${C.border}`, borderRadius: 10, padding: 12 }}>
+                        <p style={{ fontSize: 12.5, fontWeight: 700, color: C.app, margin: '0 0 4px' }}>{f.flow_name || 'Formulário'}</p>
+                        <p style={{ fontSize: 10.5, color: C.dim, margin: '0 0 10px' }}>flow_id {f.flow_id}</p>
+                        <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+                          {(f.fields || []).map((c: any, ci: number) => (
+                            <div key={ci} style={{ display: 'flex', flexDirection: 'column', gap: 3 }}>
+                              <span style={{ fontSize: 11.5, color: '#B9C2CE' }}>{c.label || c.name}</span>
+                              <span style={{ fontSize: 12, color: C.ok, fontFamily: 'Geist Mono, monospace', background: '#0C1610', border: '1px solid #1E3326', borderRadius: 6, padding: '3px 8px', width: 'fit-content' }}>
+                                → {Array.isArray(c.answer) ? c.answer.join(', ') : String(c.answer ?? '—')}
+                              </span>
+                            </div>
+                          ))}
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              )}
 
               {/* MODAL LATERAL — sequência escrita (transcript fiel, sem PII) */}
               {showTranscript && (

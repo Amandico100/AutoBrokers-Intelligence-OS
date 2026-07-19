@@ -74,6 +74,16 @@ def insurer_allowlist() -> Dict[str, str]:
     return mapping
 
 
+async def _beat() -> None:
+    """Pulso do Observador na Central de Agentes (best-effort)."""
+    try:
+        from app.core.heartbeat import beat
+
+        await beat("observador", 1)
+    except Exception:  # noqa: BLE001
+        pass
+
+
 async def _count_drop(observer_number: str, reason: str) -> None:
     """Contador agregado de descartes — NUNCA conteúdo (privacidade)."""
     try:
@@ -143,6 +153,47 @@ def _raw_capped(message: Any) -> Optional[Dict[str, Any]]:
 # Persistência (supabase service-role; sessão por janela de 2h)
 # ------------------------------------------------------------------ #
 _CLICK_WINDOW_S = 180  # clique chega segundos após a tela; 3 min é folga segura
+
+
+def _parse_native_form(extra: Any) -> Optional[Dict[str, Any]]:
+    """Extrai do native_flow_response (galaxy_message) o SCHEMA do formulário
+    (telas, perguntas) + as RESPOSTAS do humano — a referência p/ replicar por
+    código. flow_token é volátil (não guardar); guardamos flow_id/name + campos.
+    Sem PII de cliente (são respostas situacionais: "em garagem? 1")."""
+    try:
+        if not isinstance(extra, dict):
+            return None
+        raw = extra.get("paramsJSON")
+        if not raw:
+            return None
+        params = json.loads(raw) if isinstance(raw, str) else raw
+        wa = params.get("wa_flow_response_params") or {}
+        # respostas do humano = todo rb_/ckb_/txt_ do params (fora os meta)
+        answers = {k: v for k, v in params.items()
+                   if k not in ("flow_token", "wa_flow_response_params") and not k.startswith("_")}
+        schema = None
+        rm = wa.get("response_message")
+        if isinstance(rm, str):
+            try:
+                schema = json.loads(rm)
+            except Exception:  # noqa: BLE001
+                schema = None
+        fields = []
+        for scr in ((schema or {}).get("screens") or []):
+            for comp in scr.get("components") or []:
+                name = comp.get("name")
+                if name:
+                    fields.append({"screen": scr.get("title"), "name": name,
+                                   "label": comp.get("label"), "answer": answers.get(name)})
+        return {
+            "flow_id": wa.get("flow_id"),
+            "flow_name": wa.get("flow_name") or wa.get("title"),
+            "fields": fields or [{"name": k, "answer": v} for k, v in answers.items()],
+            "answers": answers,
+        }
+    except Exception as e:  # noqa: BLE001
+        logger.warning(f"[ATLAS] parse native form falhou: {type(e).__name__}")
+        return None
 
 
 def _observer_number_of(integration: dict) -> str:
@@ -326,6 +377,13 @@ async def observer_tap(integration: dict, body: dict) -> Optional[dict]:
             if isinstance(ts, (int, float)) and ts > 0:
                 wa_ts = datetime.fromtimestamp(int(ts), tz=timezone.utc).isoformat()
             btn_text = str(data.get("buttonText") or "").strip()
+            native_form = None
+            if kind == "flow_reply":
+                # PEDRA DE ROSETA (app nativo HDI/Yelum): extrai o schema do
+                # formulário e as respostas do humano — ensina a Even a atravessar.
+                native_form = _parse_native_form(data.get("extraData"))
+                if native_form:
+                    btn_text = f"[APP NATIVO] {native_form.get('flow_name') or 'formulário preenchido'}"
             # messageId vem nulo (bug do GO): id determinístico p/ dedupe
             msg_id = str(data.get("messageId") or "") or \
                 f"bc-{_digits(str(ts))}-{abs(hash((btn_text, str(data.get('buttonId')))))%10**8}"
@@ -339,7 +397,8 @@ async def observer_tap(integration: dict, body: dict) -> Optional[dict]:
                 "text": btn_text or None,
                 "interactive": {"kind": kind, "id": data.get("buttonId"),
                                 "title": btn_text, "go_type": btype,
-                                "extra": data.get("extraData")},
+                                "native_form": native_form,
+                                "extra": data.get("extraData") if not native_form else None},
                 "media_meta": None,
                 "message_id": msg_id,
                 "wa_timestamp": wa_ts,
@@ -348,6 +407,7 @@ async def observer_tap(integration: dict, body: dict) -> Optional[dict]:
             if session_id:
                 record["session_id"] = session_id
             await asyncio.to_thread(_store_event_sync, record)
+            await _beat()
             logger.info(f"[ATLAS] CLIQUE humano {insurer_key} '{btn_text}' ({kind})")
             return always
 
@@ -409,6 +469,7 @@ async def observer_tap(integration: dict, body: dict) -> Optional[dict]:
             "source": "live",
         }
         await asyncio.to_thread(_store_event_sync, record)
+        await _beat()
         logger.info(f"[ATLAS] observado {record['direction']} {insurer_key} tipo={msg_type}")
     except Exception as e:  # noqa: BLE001 — o TAP JAMAIS derruba o pipeline
         logger.error(f"[ATLAS] observer tap falhou: {type(e).__name__}")

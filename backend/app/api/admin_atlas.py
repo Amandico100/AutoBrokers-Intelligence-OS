@@ -128,6 +128,52 @@ async def atlas_maps(_: Any = Depends(require_master_admin)) -> Dict[str, Any]:
     return {"ok": True, "cards": cards}
 
 
+@router.post("/sentinela/run")
+async def sentinela_run(body: Optional[Dict[str, Any]] = None, _: Any = Depends(require_master_admin)) -> Dict[str, Any]:
+    """Tece TODAS as seguradoras e passa cada uma pela Sentinela de Rotas
+    (drift → Alfaiate v2 com gate do Simulador → alerta no estrutural)."""
+    from app.services.atlas.route_sentinel import run_all
+
+    drifts = await run_all(str((body or {}).get("company_id") or "") or None)
+    return {"ok": True, "drifts": drifts, "count": len(drifts)}
+
+
+@router.get("/drifts")
+async def atlas_drifts(_: Any = Depends(require_master_admin)) -> Dict[str, Any]:
+    """Histórico de mudanças de menu (Sentinela) — para a página Atlas."""
+    from app.core.database import get_supabase_client
+
+    supabase = get_supabase_client()
+
+    def _q() -> list:
+        return (supabase.client.table("route_drift")
+                .select("id, insurer_key, ramo, severity, summary, auto_applied, "
+                        "simulator_passed, needs_founder, status, created_at")
+                .order("created_at", desc=True).limit(40).execute().data or [])
+
+    return {"ok": True, "drifts": await asyncio.to_thread(_q)}
+
+
+@router.get("/native-form/{insurer_key}")
+async def atlas_native_form(insurer_key: str, _: Any = Depends(require_master_admin)) -> Dict[str, Any]:
+    """A PEDRA DE ROSETA: o schema do formulário nativo (app HDI/Yelum) + as
+    respostas reais que um humano deu — a referência p/ a Even atravessar a tela."""
+    from app.core.database import get_supabase_client
+
+    supabase = get_supabase_client()
+
+    def _q() -> list:
+        return (supabase.client.table("observed_events")
+                .select("interactive, insurer_key, wa_timestamp")
+                .eq("insurer_key", insurer_key.lower()).eq("msg_type", "flow_reply")
+                .order("wa_timestamp", desc=True).limit(5).execute().data or [])
+
+    rows = await asyncio.to_thread(_q)
+    forms = [r["interactive"].get("native_form") for r in rows
+             if isinstance(r.get("interactive"), dict) and r["interactive"].get("native_form")]
+    return {"ok": True, "insurer_key": insurer_key, "captured": len(forms), "forms": forms}
+
+
 @router.get("/map/{insurer_key}/{ramo}")
 async def atlas_map_detail(insurer_key: str, ramo: str, _: Any = Depends(require_master_admin)) -> Dict[str, Any]:
     """Mapa completo (árvore) de uma seguradora×ramo para a visualização."""
@@ -147,6 +193,141 @@ async def atlas_map_detail(insurer_key: str, ramo: str, _: Any = Depends(require
         return {"ok": False, "error": "mapa não encontrado"}
     return {"ok": True, "insurer_key": insurer_key, "ramo": ramo,
             "status": row["status"], "map": row.get("map") or {}}
+
+
+# ------------------------------------------------------------------ #
+# ONBOARDING — parear o WhatsApp de uma atendente como OBSERVADOR
+# (instância própria no GO, modo cofre, HISTORY_SYNC). Founder 18/07:
+# "corretora nova fica 15-30 dias em modo observação".
+# ------------------------------------------------------------------ #
+def _go_admin() -> Dict[str, str]:
+    base = (os.getenv("EVOLUTION_GO_BASE_URL") or "").rstrip("/")
+    gk = os.getenv("EVOLUTION_GO_GLOBAL_KEY") or ""
+    if not base or not gk:
+        raise HTTPException(status_code=503, detail="evolution_go_admin_not_configured "
+                                                    "(defina EVOLUTION_GO_GLOBAL_KEY para onboarding)")
+    return {"base_url": base, "global_key": gk}
+
+
+def _obs_instance_name(company_id: str, seq: int = 1) -> str:
+    return f"ab-obs-{str(company_id).replace('-', '')[:10]}-{seq}"
+
+
+@router.post("/onboarding/pair")
+async def onboarding_pair(body: Dict[str, Any], _: Any = Depends(require_master_admin)) -> Dict[str, Any]:
+    """Cria uma instância OBSERVADORA no GO p/ a corretora e devolve o QR.
+    Modo cofre por construção; subscribe MESSAGE+CONNECTION+HISTORY_SYNC."""
+    import secrets
+
+    from app.core.database import get_supabase_client
+    from app.services.whatsapp.channel_security import build_webhook_url, new_webhook_credentials
+
+    company_id = str(body.get("company_id") or "").strip()
+    if not company_id:
+        raise HTTPException(status_code=400, detail="company_id_required")
+    label = str(body.get("label") or "Atendente")
+    public_url = (os.getenv("PUBLIC_BACKEND_URL") or os.getenv("BACKEND_PUBLIC_URL") or "").rstrip("/")
+    cfg = _go_admin()
+    instance = _obs_instance_name(company_id, int(body.get("seq") or 1))
+    inst_token = secrets.token_hex(16)
+    token, token_hash, token_prefix = new_webhook_credentials()
+    webhook_url = build_webhook_url(public_url, "evolution-go", token)
+
+    async with httpx.AsyncClient(timeout=30.0, base_url=cfg["base_url"]) as client:
+        gk = {"apikey": cfg["global_key"], "Content-Type": "application/json"}
+        # 1) cria a instância (modo cofre no advancedSettings)
+        cr = await client.post("/instance/create", headers=gk, json={
+            "name": instance, "token": inst_token,
+            "advancedSettings": {"readMessages": False, "alwaysOnline": False,
+                                 "rejectCall": False, "ignoreGroups": True, "ignoreStatus": True},
+        })
+        if cr.status_code >= 400 and cr.status_code not in (409, 422):
+            raise HTTPException(status_code=502, detail=f"go_create_failed:http_{cr.status_code}:{(cr.text or '')[:100]}")
+        # 2) conecta + assina (webhook nosso, HISTORY_SYNC ligado)
+        it = {"apikey": inst_token, "Content-Type": "application/json"}
+        await client.post("/instance/connect", headers=it, json={
+            "webhookUrl": webhook_url,
+            "subscribe": ["MESSAGE", "CONNECTION", "HISTORY_SYNC"], "immediate": True})
+
+    supabase = get_supabase_client()
+
+    def _upsert() -> None:
+        record = {
+            "company_id": company_id, "identifier": instance, "purpose": "observer",
+            "provider": "evolution-go", "base_url": cfg["base_url"], "instance_id": instance,
+            "token": inst_token, "webhook_token_hash": token_hash, "webhook_token_prefix": token_prefix,
+            "channel_status": "connecting", "is_active": True, "agent_id": None,
+            "alert_target": {"label": label},
+        }
+        existing = (supabase.client.table("integrations").select("id")
+                    .eq("company_id", company_id).eq("provider", "evolution-go")
+                    .eq("instance_id", instance).limit(1).execute())
+        if existing.data:
+            supabase.client.table("integrations").update(record).eq("id", existing.data[0]["id"]).execute()
+        else:
+            supabase.client.table("integrations").insert(record).execute()
+
+    await asyncio.to_thread(_upsert)
+    return {"ok": True, "instance": instance, "next": f"/api/admin/atlas/onboarding/qr?instance={instance}"}
+
+
+@router.get("/onboarding/qr")
+async def onboarding_qr(instance: str, _: Any = Depends(require_master_admin)) -> Dict[str, Any]:
+    from app.core.database import get_supabase_client
+
+    supabase = get_supabase_client()
+
+    def _tok() -> Optional[str]:
+        rows = (supabase.client.table("integrations").select("token")
+                .eq("instance_id", instance).eq("purpose", "observer").limit(1).execute().data or [])
+        return rows[0]["token"] if rows else None
+
+    tok = await asyncio.to_thread(_tok)
+    if not tok:
+        raise HTTPException(status_code=404, detail="instancia_observer_nao_encontrada")
+    cfg = _go_admin()
+    async with httpx.AsyncClient(timeout=20.0, base_url=cfg["base_url"]) as client:
+        r = await client.get("/instance/qr", headers={"apikey": tok})
+        d = (r.json() or {}).get("data") if r.status_code < 400 and r.content else {}
+    raw = str((d or {}).get("QRCode") or (d or {}).get("qrcode") or (d or {}).get("base64") or "")
+    return {"ok": bool(raw), "instance": instance, "qr_base64": raw or None}
+
+
+@router.get("/onboarding/status")
+async def onboarding_status(_: Any = Depends(require_master_admin)) -> Dict[str, Any]:
+    """Todas as instâncias observadoras + estado ao vivo + eventos capturados hoje."""
+    from app.core.database import get_supabase_client
+
+    supabase = get_supabase_client()
+
+    def _rows() -> list:
+        return (supabase.client.table("integrations")
+                .select("company_id, instance_id, token, channel_status, alert_target, created_at")
+                .eq("purpose", "observer").eq("provider", "evolution-go").execute().data or [])
+
+    rows = await asyncio.to_thread(_rows)
+    out = []
+    try:
+        cfg = _go_admin()
+        async with httpx.AsyncClient(timeout=15.0, base_url=cfg["base_url"]) as client:
+            for r in rows:
+                state = "unknown"
+                try:
+                    st = await client.get("/instance/status", headers={"apikey": r["token"]})
+                    if st.status_code < 400:
+                        data = (st.json() or {}).get("data") or {}
+                        state = "conectado" if (data.get("LoggedIn")) else "aguardando pareamento"
+                except Exception:  # noqa: BLE001
+                    state = "indisponível"
+                out.append({"company_id": r["company_id"], "instance": r["instance_id"],
+                            "label": (r.get("alert_target") or {}).get("label"),
+                            "state": state, "since": r.get("created_at")})
+    except HTTPException:
+        # global key não configurada: ainda lista o que há no banco
+        out = [{"company_id": r["company_id"], "instance": r["instance_id"],
+                "label": (r.get("alert_target") or {}).get("label"),
+                "state": r.get("channel_status") or "?", "since": r.get("created_at")} for r in rows]
+    return {"ok": True, "observers": out}
 
 
 @router.post("/observer/history-sync")
