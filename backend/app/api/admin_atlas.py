@@ -518,3 +518,64 @@ async def espelho_run(_: Any = Depends(require_master_admin)) -> Dict[str, Any]:
 
     stats = await distill_once(force=True)
     return {"ok": True, **stats}
+
+
+# ------------------------------------------------------------------ #
+# SPEC-040 Onda 4 — Gate de playbooks + Conselho de Agentes
+# ------------------------------------------------------------------ #
+@router.post("/espelho/playbooks/{playbook_id}/activate")
+async def espelho_playbook_activate(playbook_id: str,
+                                    _: Any = Depends(require_master_admin)) -> Dict[str, Any]:
+    """Roda o GATE completo (checks + juiz + conselho se ligado) e ativa se
+    aprovado. Regressão é bloqueada por construção."""
+    from app.services.playbook_gate import activate_playbook
+
+    return await activate_playbook(playbook_id)
+
+
+@router.post("/espelho/playbooks/rollback")
+async def espelho_playbook_rollback(body: Dict[str, Any],
+                                    _: Any = Depends(require_master_admin)) -> Dict[str, Any]:
+    """Rollback de 1 chamada: reativa a versão anterior do playbook."""
+    from app.services.playbook_gate import rollback_playbook
+
+    ramo = str((body or {}).get("ramo") or "").strip()
+    servico = str((body or {}).get("servico") or "").strip()
+    if not ramo or not servico:
+        raise HTTPException(status_code=400, detail="ramo_e_servico_obrigatorios")
+    return await rollback_playbook(ramo, servico)
+
+
+@router.get("/conselho/status")
+async def conselho_status(_: Any = Depends(require_master_admin)) -> Dict[str, Any]:
+    from app.services.agent_council import council_enabled, council_members
+
+    last = None
+    try:
+        from app.core.redis import get_async_redis_client
+
+        r = await get_async_redis_client()
+        raw = await r.get("council:last_convening")
+        if raw:
+            import json as _json
+
+            last = _json.loads(raw.decode() if isinstance(raw, (bytes, bytearray)) else raw)
+    except Exception:  # noqa: BLE001
+        pass
+    return {"ok": True, "enabled": council_enabled(),
+            "members": [f"{p}:{m}" for p, m in council_members()],
+            "last_convening": last}
+
+
+@router.post("/conselho/convene")
+async def conselho_convene(body: Dict[str, Any],
+                           _: Any = Depends(require_master_admin)) -> Dict[str, Any]:
+    """Convocação MANUAL (teste/decisão pontual do founder). Com o Conselho
+    desligado, responde enabled=false sem custo nenhum."""
+    from app.services.agent_council import convene_council
+
+    question = str((body or {}).get("question") or "").strip()
+    if not question:
+        raise HTTPException(status_code=400, detail="question_obrigatoria")
+    return await convene_council(question, str((body or {}).get("context") or ""),
+                                 str((body or {}).get("kind") or "manual"))

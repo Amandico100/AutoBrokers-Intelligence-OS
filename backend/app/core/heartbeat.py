@@ -33,6 +33,7 @@ AGENT_TASKS = [
     ("sugestoes", "IA de Sugestões", "Envia recomendações semanais proativas às corretoras e registra as respostas."),
     ("cartografo", "Cartógrafo", "Mapeia os fluxos de URA das seguradoras (exploração ativa — só quando não há tráfego real)."),
     ("cerebro", "Cérebro v2", "Decide nos desvios: lê o Mapa da URA e escolhe a opção que avança para o objetivo."),
+    ("conselho", "Conselho de Agentes", "Segunda opinião multi-modelo (GPT, Opus, Kimi, Grok) para decisões estruturais raras — liga por env, custo controlado."),
 ]
 
 
