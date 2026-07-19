@@ -4,10 +4,10 @@
 export interface AgentLite { id: string; name: string | null; agent_role: string | null; is_active: boolean | null }
 
 export type DivergenceKind =
-  | 'missing_core' | 'missing_attendance' | 'attendance_name_not_even'
+  | 'missing_core' | 'missing_attendance'
   | 'duplicate_core' | 'duplicate_attendance' | 'legacy_test_agent';
 
-export interface Divergence { kind: DivergenceKind; agent_id?: string; label: string; action?: 'rename_attendance_even' | 'archive_agent' }
+export interface Divergence { kind: DivergenceKind; agent_id?: string; label: string; action?: 'archive_agent' }
 
 const TEST_NAME_RE = /\b(teste|test|sandbox|dummy|fixture|tmp|temp)\b/i;
 
@@ -18,16 +18,12 @@ export function buildAgentDivergences(agents: AgentLite[]): Divergence[] {
   const attendance = agents.filter((a) => a.agent_role === 'attendance');
 
   if (core.length === 0) out.push({ kind: 'missing_core', label: 'AutoBrokers (Core) ausente — provisionar.' });
-  if (attendance.length === 0) out.push({ kind: 'missing_attendance', label: 'Even (Atendimento) ausente — provisionar.' });
+  if (attendance.length === 0) out.push({ kind: 'missing_attendance', label: 'Agente de Atendimento ausente — provisionar.' });
   if (core.length > 1) out.push({ kind: 'duplicate_core', label: `${core.length} agentes Core — manter 1 canônico.` });
   if (attendance.length > 1) out.push({ kind: 'duplicate_attendance', label: `${attendance.length} agentes de Atendimento — manter 1 canônico.` });
 
-  // Atendimento com nome diferente de "Even" → oferecer normalização.
-  for (const a of attendance) {
-    if ((a.name || '').trim().toLowerCase() !== 'even') {
-      out.push({ kind: 'attendance_name_not_even', agent_id: a.id, label: `Atendimento nomeado "${a.name ?? '—'}" → normalizar para "Even".`, action: 'rename_attendance_even' });
-    }
-  }
+  // SPEC-039 F3: o NOME do atendimento é de cada corretora ("Even" é só o da
+  // Resulta). O sistema NUNCA força um nome — só exige que o agente exista.
 
   // Agentes customizados que parecem dados de teste → oferecer arquivar.
   for (const a of agents) {

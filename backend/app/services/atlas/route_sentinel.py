@@ -174,6 +174,33 @@ def _founder_alert_number() -> str:
     return raw.split(",")[0].strip() or ""
 
 
+async def check_atlas_sentinela() -> int:
+    """Task periódica (APScheduler): tece TODAS as seguradoras e checa drift,
+    no máximo 1x/dia (marcador Redis). Dá 'vida própria' ao Atlas — auto-atualiza
+    os mapas e detecta mudança de menu sem ninguém clicar. Falha nunca derruba
+    o scheduler."""
+    try:
+        from datetime import datetime, timezone
+
+        today = datetime.now(timezone.utc).date().isoformat()
+        try:
+            from app.core.redis import get_async_redis_client
+
+            redis = await get_async_redis_client()
+            last = await redis.get("atlas:sentinela:last_run")
+            last = last.decode() if isinstance(last, (bytes, bytearray)) else last
+            if last == today:
+                return 0
+            await redis.set("atlas:sentinela:last_run", today, ex=2 * 86400)
+        except Exception:  # noqa: BLE001 — sem redis, roda mesmo
+            pass
+        drifts = await run_all(None)  # global (todas as corretoras — a URA é global)
+        return len(drifts)
+    except Exception as e:  # noqa: BLE001 — nunca derruba o scheduler
+        logger.warning(f"[SENTINELA ROTAS] check periódico falhou: {type(e).__name__}")
+        return 0
+
+
 async def run_all(company_id: Optional[str] = None) -> List[Dict[str, Any]]:
     """Tece TODAS as seguradoras observadas e passa cada uma pela Sentinela.
     Chamado sob demanda (admin) ou por agendamento. Retorna os drifts achados."""

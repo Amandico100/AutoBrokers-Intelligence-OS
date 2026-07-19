@@ -146,6 +146,18 @@ def start_buffer_scheduler():
             id="relatorio_semanal_check",
             max_instances=1,
         )
+        # SENTINELA DE ROTAS (SPEC-038/039 F1): tece TODAS as seguradoras e
+        # detecta mudança de menu — 1x/dia (marcador Redis). Dá vida própria ao
+        # Atlas: os mapas se atualizam sozinhos e o drift é detectado.
+        from app.services.atlas.route_sentinel import check_atlas_sentinela
+
+        scheduler.add_job(
+            check_atlas_sentinela,
+            "interval",
+            seconds=3600,
+            id="atlas_sentinela_check",
+            max_instances=1,
+        )
         scheduler.start()
         logger.info("✅ [BUFFER SCHEDULER] Started (interval: 1s, max_instances: 10)")
     else:

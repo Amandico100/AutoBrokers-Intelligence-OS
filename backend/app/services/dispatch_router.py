@@ -453,6 +453,14 @@ async def try_route_insurer_inbound(
         if verdict["ok"]:
             session = reply_human_phase(session, verdict["reply"], sender=send_to_insurer)
             session["human_phase_guard_fails"] = 0
+            # SPEC-039 F2: o Cérebro v2 decidiu numa fase humana (com o Mapa da
+            # URA) — pulsa na Central de Agentes (antes nunca registrava).
+            try:
+                from app.core.heartbeat import beat
+
+                await beat("cerebro", 1)
+            except Exception:  # noqa: BLE001
+                pass
         else:
             fails = int(session.get("human_phase_guard_fails") or 0) + 1
             session["human_phase_guard_fails"] = fails

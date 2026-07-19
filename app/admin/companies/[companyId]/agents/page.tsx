@@ -347,7 +347,7 @@ export default function AdminCompanyAgentsPage() {
                     <span className="text-muted-foreground">{d.label}</span>
                     {d.action && d.agent_id && (
                       <button onClick={() => runMaintenance(d.action, d.agent_id)} className="rounded-lg border border-primary/40 bg-primary/5 px-3 py-0.5 text-[12px] font-medium text-primary hover:bg-primary/10">
-                        {d.action === 'rename_attendance_even' ? 'Renomear para Even' : 'Arquivar'}
+                        Arquivar
                       </button>
                     )}
                   </div>
@@ -477,7 +477,7 @@ export default function AdminCompanyAgentsPage() {
             )}
             {(['core', 'attendance', 'auxiliary'] as const).map((role) => (
               <div key={role}>
-                <p className="mb-1 text-[12px] font-medium text-foreground">{role === 'core' ? 'AutoBrokers (Core)' : role === 'attendance' ? 'Even (Atendimento)' : 'Auxiliares (teto permitido)'}</p>
+                <p className="mb-1 text-[12px] font-medium text-foreground">{role === 'core' ? 'AutoBrokers (Core)' : role === 'attendance' ? 'Atendimento' : 'Auxiliares (teto permitido)'}</p>
                 <div className="flex flex-wrap gap-1.5">
                   {(caps[role] ?? []).filter((c: any) => c.status !== 'not_allowed_for_role').map((c: any) => (
                     <span key={c.key} title={`${c.key} — ${c.reason}`}

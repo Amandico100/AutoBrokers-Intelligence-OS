@@ -55,7 +55,7 @@ export default function AdminCompanyActivationPage() {
           <p className="mt-1 text-sm text-muted-foreground">{core?.provisioned ? `${core.config?.display_name} · ${core.config?.blueprint_version}` : 'Aguardando provisionamento'}</p>
         </CardContent></Card>
         <Card><CardContent className="p-4">
-          <div className="flex items-center gap-2"><Headphones className="h-4 w-4" /><p className="font-medium">Even</p></div>
+          <div className="flex items-center gap-2"><Headphones className="h-4 w-4" /><p className="font-medium">Atendimento{even?.config?.display_name ? ` · ${even.config.display_name}` : ''}</p></div>
           <p className="mt-1 text-sm text-muted-foreground">{even?.provisioned ? `${even.config?.display_name} · ${even.config?.blueprint_version}` : 'Aguardando provisionamento'}</p>
         </CardContent></Card>
       </div>
