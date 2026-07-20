@@ -181,6 +181,22 @@ Founder aprovou executar na espera do pareamento (20/07). Bateria 50/50.
   persistente + nota); item "Espelho de Atendimento" no nav. tsc limpo.
 - Endpoint novo `GET /espelho/sessoes` (lista p/ o painel).
 
+## PÓS-ONDAS 2 — SPEC-043 Central de Atendimentos do corretor (ENTREGUE 19/07 noite, main `9c6f59b`)
+
+- **Fix do teste A do founder:** tools `resumo_atendimentos`/`atlas_rotas`/
+  `buscar_veiculo` ganharam ponte sync→async real (o runtime do chat invocava
+  o caminho síncrono e o placeholder vazava "consulta deve ser assíncrona").
+- **Dashboard do corretor (mobile-first, linguagem humana, zero LLM):**
+  APIs Next `/api/dashboard/atendimentos` (pipeline unificado: conversas +
+  dispatch ativo do backend + sessões do Espelho; estágio determinístico;
+  score interno NUNCA exposto) e `/atendimentos/segurados` (clientes
+  derivados). Fila = pipeline ao vivo por estágio colorido (Precisa de você
+  vermelho no topo, Acionando azul, Protocolo/Prestador verde, Em conversa,
+  Com a equipe âmbar, Observação); Casos → Histórico com busca+filtros;
+  Segurados = lista real; Conversas = wrapper padrão (header alinhado) +
+  modo WhatsApp no mobile (lista OU thread + voltar) + deep-link `?open=`.
+  Sandbox antigo (attendance_cases/"caso teste") saiu das superfícies.
+
 ## TODAS AS 5 ONDAS ENTREGUES (19/07/2026)
 
 Estado final: 15 agentes na Central; ciclo completo captura → destilação →
