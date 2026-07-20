@@ -8,13 +8,28 @@ GLOBAL das URAs (sem dado de cliente). Read-only por construção.
 
 from __future__ import annotations
 
+import asyncio
 import logging
-from typing import Optional
+from typing import Any, Coroutine, Optional
 
 from langchain.tools import BaseTool
 from pydantic import BaseModel, Field
 
 logger = logging.getLogger(__name__)
+
+
+def _run_sync(coro: Coroutine[Any, Any, str]) -> str:
+    """Ponte sync->async (fix 19/07: o runtime do chat pode invocar a tool
+    pelo caminho SÍNCRONO — o placeholder 'deve ser assíncrona' vazava para o
+    corretor). Sem loop rodando: asyncio.run; com loop: executa em thread."""
+    try:
+        asyncio.get_running_loop()
+    except RuntimeError:
+        return asyncio.run(coro)
+    import concurrent.futures
+
+    with concurrent.futures.ThreadPoolExecutor(max_workers=1) as pool:
+        return pool.submit(asyncio.run, coro).result(timeout=30)
 
 
 class OperationsSummaryInput(BaseModel):
@@ -35,7 +50,11 @@ class OperationsSummaryTool(BaseTool):
     company_id: str = ""
 
     def _run(self, periodo: Optional[str] = "hoje") -> str:
-        return "Consulta operacional deve ser assíncrona."
+        try:
+            return _run_sync(self._arun(periodo))
+        except Exception as e:  # noqa: BLE001
+            logger.error(f"[OperationsSummaryTool] _run erro: {type(e).__name__}")
+            return "Não consegui consultar a operação agora. Tente novamente em instantes."
 
     async def _arun(self, periodo: Optional[str] = "hoje") -> str:
         try:
@@ -67,7 +86,11 @@ class AtlasRoutesTool(BaseTool):
 
     def _run(self, seguradora: Optional[str] = None, ramo: Optional[str] = None,
              servico: Optional[str] = None) -> str:
-        return "Consulta ao Atlas deve ser assíncrona."
+        try:
+            return _run_sync(self._arun(seguradora, ramo, servico))
+        except Exception as e:  # noqa: BLE001
+            logger.error(f"[AtlasRoutesTool] _run erro: {type(e).__name__}")
+            return "Não consegui consultar os mapas do Atlas agora. Tente novamente em instantes."
 
     async def _arun(self, seguradora: Optional[str] = None, ramo: Optional[str] = None,
                     servico: Optional[str] = None) -> str:
