@@ -38,7 +38,15 @@ class VehicleLookupTool(BaseTool):
     company_id: str = ""
 
     def _run(self, document: str, policy_number: Optional[str] = None) -> Dict[str, Any]:
-        return {"content": "Consulta de veículo deve ser assíncrona.", "found": False}
+        # Ponte sync->async (fix 19/07: mesmo bug das tools de visão operacional
+        # — o runtime pode invocar pelo caminho síncrono).
+        try:
+            from app.agents.tools.operations_tools import _run_sync
+
+            return _run_sync(self._arun(document, policy_number))  # type: ignore[arg-type]
+        except Exception as e:  # noqa: BLE001
+            logger.error(f"[VehicleLookupTool] _run erro: {type(e).__name__}")
+            return {"content": "Não consegui consultar o veículo agora. Tente novamente.", "found": False}
 
     async def _arun(self, document: str, policy_number: Optional[str] = None) -> Dict[str, Any]:
         try:

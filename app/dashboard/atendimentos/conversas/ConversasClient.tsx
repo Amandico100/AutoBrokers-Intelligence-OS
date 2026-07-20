@@ -8,6 +8,7 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import {
   Bot,
+  ChevronLeft,
   Headphones,
   Loader2,
   MessageCircle,
@@ -178,6 +179,17 @@ export function ConversasClient() {
     return () => clearInterval(t);
   }, [loadList]);
 
+  // SPEC-043: deep-link ?open=<conversa_id> (Fila/Histórico/Segurados abrem
+  // direto a thread — no mobile, já em tela cheia).
+  useEffect(() => {
+    try {
+      const id = new URLSearchParams(window.location.search).get('open');
+      if (id) setSelectedId(id);
+    } catch {
+      /* sem query — segue normal */
+    }
+  }, []);
+
   useEffect(() => {
     if (!selectedId) return;
     loadThread(selectedId);
@@ -231,10 +243,17 @@ export function ConversasClient() {
         ? 'Escreva sua mensagem…'
         : 'Escreva para assumir a conversa…';
 
+  const threadOpen = Boolean(selectedId || selectedDispatch);
+
   return (
-    <div className="flex h-[calc(100vh-8rem)] min-h-[480px] overflow-hidden rounded-xl border border-border bg-surface">
-      {/* ===== Lista ===== */}
-      <aside className="flex w-full max-w-[340px] shrink-0 flex-col border-r border-border">
+    <div className="flex min-h-0 flex-1 overflow-hidden rounded-xl border border-border bg-surface">
+      {/* ===== Lista (mobile: some quando uma thread está aberta) ===== */}
+      <aside
+        className={cn(
+          'w-full shrink-0 flex-col md:flex md:max-w-[340px] md:border-r md:border-border',
+          threadOpen ? 'hidden' : 'flex',
+        )}
+      >
         <div className="border-b border-border p-3">
           <div className="flex items-center gap-2 rounded-md border border-border bg-surface-2 px-2.5 py-1.5">
             <Search className="h-4 w-4 shrink-0 text-muted-foreground" />
@@ -329,8 +348,13 @@ export function ConversasClient() {
         </div>
       </aside>
 
-      {/* ===== Thread ===== */}
-      <section className="flex min-w-0 flex-1 flex-col bg-background/40">
+      {/* ===== Thread (mobile: tela cheia quando aberta) ===== */}
+      <section
+        className={cn(
+          'min-w-0 flex-1 flex-col bg-background/40 md:flex',
+          threadOpen ? 'flex' : 'hidden',
+        )}
+      >
         {activeDispatch && !selectedId ? (
           <DispatchThread dispatch={activeDispatch} onClose={() => setSelectedDispatch(null)} />
         ) : !selectedId ? (
@@ -344,7 +368,14 @@ export function ConversasClient() {
         ) : (
           <>
             {/* Header + linha de posse */}
-            <div className="flex items-center justify-between gap-3 border-b border-border bg-surface px-4 py-3">
+            <div className="flex items-center justify-between gap-2 border-b border-border bg-surface px-3 py-3 sm:gap-3 sm:px-4">
+              <button
+                onClick={() => { setSelectedId(null); setSelectedDispatch(null); }}
+                className="-ml-1 shrink-0 rounded-md p-1.5 text-muted-foreground transition-colors hover:text-foreground md:hidden"
+                aria-label="Voltar para a lista"
+              >
+                <ChevronLeft className="h-5 w-5" />
+              </button>
               <div className="min-w-0">
                 <p className="truncate text-sm font-semibold text-foreground">
                   {conversation ? displayName(conversation) : '…'}
@@ -495,8 +526,15 @@ function DispatchThread({ dispatch, onClose }: { dispatch: DispatchSession; onCl
   const captured = dispatch.captured || {};
   return (
     <>
-      <div className="flex items-center justify-between gap-3 border-b border-border bg-surface px-4 py-3">
+      <div className="flex items-center justify-between gap-3 border-b border-border bg-surface px-3 py-3 sm:px-4">
         <div className="flex min-w-0 items-center gap-2">
+          <button
+            onClick={onClose}
+            className="-ml-1 shrink-0 rounded-md p-1.5 text-muted-foreground transition-colors hover:text-foreground md:hidden"
+            aria-label="Voltar para a lista"
+          >
+            <ChevronLeft className="h-5 w-5" />
+          </button>
           <ShieldCheck className="h-5 w-5 shrink-0 text-primary" />
           <div className="min-w-0">
             <p className="truncate text-sm font-semibold text-foreground">

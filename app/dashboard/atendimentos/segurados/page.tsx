@@ -1,16 +1,8 @@
-import { ModulePlaceholder } from '@/components/modules/ModulePlaceholder';
-import { icons } from '@/lib/icons';
+import SeguradosClient from './SeguradosClient';
 
 export const metadata = { title: 'Segurados · Atendimentos' };
 
+// SPEC-043: lista REAL derivada dos atendimentos (cresce sozinha).
 export default function SeguradosPage() {
-  return (
-    <ModulePlaceholder
-      icon={icons.equipe}
-      title="Segurados"
-      subtitle="Clientes e apólices da corretora."
-      breadcrumb={[{ label: 'Atendimentos', href: '/dashboard/atendimentos' }, { label: 'Segurados' }]}
-      description="Os segurados aparecerão aqui."
-    />
-  );
+  return <SeguradosClient />;
 }
