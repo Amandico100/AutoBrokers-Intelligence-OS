@@ -13,6 +13,9 @@ export interface SessionData {
   status: string;
   companyId: string | null;
   companyStatus?: string | null;
+  /** SPEC-047: empresa ATIVA escolhida no seletor (multi-empresa). Validada
+   * contra company_members a cada request; null = empresa primária. */
+  activeCompanyId?: string | null;
   expiresAt: string;
 }
 
