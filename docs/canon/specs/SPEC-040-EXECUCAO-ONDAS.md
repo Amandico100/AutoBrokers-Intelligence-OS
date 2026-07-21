@@ -221,6 +221,20 @@ tsc limpo, 24 checks novos.
   pessoal COEXISTEM por template (índices parciais no lugar do singleton);
   modal de escolha no conectar; owner assinado no state anti-CSRF do OAuth.
 
+## PÓS-ONDAS 7 — SPEC-048 ENTREGUE (21/07)
+
+Isolamento real entre corretoras + variáveis vivas + Equipe no dashboard.
+
+- BUG GRAVE corrigido: requireCompanyMember (2º seam, 15 rotas) ignorava a
+  empresa ativa → editar dados com AutoFleet ativa sobrescreveu a Resulta.
+  Agora honra activeCompanyId com papel DO VÍNCULO; Resulta restaurada.
+- Variáveis: form edita o CRU ({{attendant_name}}/{{company_name}}), preview
+  renderizado separado — nome nunca mais congela na abertura.
+- Equipe no dashboard: lista por vínculos (donos nas duas), adicionar pessoa
+  (senha provisória, sem confirmação de e-mail), modal com dados + editar/
+  remover vínculo — só admin; dono protegido.
+- Teste spec048 22 checks; bateria 55/55; tsc limpo.
+
 ## PÓS-ONDAS 6 — SPEC-047 ENTREGUE (21/07)
 
 Multi-empresa + WhatsApp por corretora + acessos organizados (doc SPEC-047).
