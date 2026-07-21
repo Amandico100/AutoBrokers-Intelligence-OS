@@ -197,6 +197,30 @@ Founder aprovou executar na espera do pareamento (20/07). Bateria 50/50.
   modo WhatsApp no mobile (lista OU thread + voltar) + deep-link `?open=`.
   Sandbox antigo (attendance_cases/"caso teste") saiu das superfícies.
 
+## PÓS-ONDAS 3 — SPEC-044 Três Camadas ENTREGUE (20/07, main `34c48c6`)
+
+Bloco 1 da trinca 044-046. Migração `20260720_01` APLICADA. Bateria 51/51,
+tsc limpo, 24 checks novos.
+
+- **Restrição-mestra descoberta na auditoria e respeitada em tudo:** o grafo
+  do agente é CACHEADO por (company, agent) e compartilhado entre usuários —
+  identidade NUNCA no construtor; viaja POR REQUISIÇÃO (state→tool_node;
+  ContextVar→cost_callback).
+- **Custos por pessoa:** `request_context.py` (ContextVar) setado no
+  process_message; cost_callback grava `details.user_id`; Custos e Uso mostra
+  quebra por pessoa (tokens + % do uso, 30d).
+- **Conhecimento pessoal:** SCOPE_PERSONAL + owner no payload Qdrant; busca
+  padrão EXCLUI personal (à prova de vazamento — nem atendimento nem colegas
+  veem); busca pessoal extra só com user_id da requisição; upload com escolha
+  "Da corretora / Só para mim" (dono SEMPRE da sessão); lista esconde docs
+  pessoais alheios (nem o nome vaza).
+- **Rotinas com dono:** criadas NO CHAT = pessoais do autor (default);
+  galeria/manual = corretora; List/Manage filtram por execução; pessoal de
+  terceiro é invisível e imutável (404 sem oráculo de existência).
+- **Conectores pessoais (padrão ChatGPT Enterprise):** conexão da corretora e
+  pessoal COEXISTEM por template (índices parciais no lugar do singleton);
+  modal de escolha no conectar; owner assinado no state anti-CSRF do OAuth.
+
 ## TODAS AS 5 ONDAS ENTREGUES (19/07/2026)
 
 Estado final: 15 agentes na Central; ciclo completo captura → destilação →
