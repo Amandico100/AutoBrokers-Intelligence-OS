@@ -67,34 +67,84 @@ def _public_backend_url() -> str:
 # ------------------------------------------------------------------ #
 # Evolution GO (SPEC-034 — founder 14/07: "transferir tudo de uma vez").
 # Liga com WHATSAPP_CHANNEL_PROVIDER=evolution-go + os envs EVOLUTION_GO_*.
-# O QR/status/desconectar do dashboard passam a falar com o GO; o setup
-# configura o webhook VIA API (/instance/connect aceita webhookUrl — o
-# formulário da UI do GO não é necessário e não persistia).
+#
+# SPEC-047 MULTI-CORRETORA: uma instância GO POR corretora (ab-<company>),
+# criada via EVOLUTION_GO_GLOBAL_KEY com token próprio (mesmo padrão do
+# onboarding do Atlas) e persistida em integrations — QR/status/desconectar
+# resolvem a instância DA corretora pela linha do banco, nunca por env.
+# A instância única por env (EVOLUTION_GO_INSTANCE_TOKEN) vira fallback
+# legado para quem já estava pareado por ela.
 # ------------------------------------------------------------------ #
 def _go_enabled() -> bool:
     return (os.getenv("WHATSAPP_CHANNEL_PROVIDER") or "").strip().lower() == "evolution-go"
 
 
-def _go_cfg() -> Dict[str, str]:
+def _go_base() -> str:
     base = (os.getenv("EVOLUTION_GO_BASE_URL") or "").rstrip("/")
+    if not base:
+        raise HTTPException(status_code=503, detail="evolution_go_not_configured")
+    return base
+
+
+def _go_env_fallback() -> Optional[Dict[str, str]]:
     itoken = os.getenv("EVOLUTION_GO_INSTANCE_TOKEN") or ""
     iname = os.getenv("EVOLUTION_GO_INSTANCE_NAME") or "autobrokers-go-teste"
-    if not base or not itoken:
-        raise HTTPException(status_code=503, detail="evolution_go_not_configured")
-    return {"base_url": base, "instance_token": itoken, "instance_name": iname}
+    if not itoken:
+        return None
+    return {"instance_name": iname, "instance_token": itoken}
 
 
-async def _go_get(path: str) -> Dict[str, Any]:
-    cfg = _go_cfg()
-    async with httpx.AsyncClient(timeout=_TIMEOUT, base_url=cfg["base_url"]) as client:
+def _go_instance_name(company_id: str, purpose: str) -> str:
+    base = f"ab-{str(company_id).replace('-', '')[:12]}"
+    p = str(purpose or "attendance").strip().lower()
+    if p in ("", "attendance"):
+        return base
+    suffix = "".join(ch for ch in p if ch.isalnum())[:10] or "aux"
+    return f"{base}-{suffix}"
+
+
+async def _go_company_channel(company_id: str, purpose: str = "attendance") -> Optional[Dict[str, str]]:
+    """Instância GO DA corretora (linha ativa em integrations)."""
+    supabase = get_supabase_client()
+
+    def _q() -> list:
+        return (
+            supabase.client.table("integrations")
+            .select("instance_id, token")
+            .eq("company_id", company_id).eq("provider", "evolution-go")
+            .eq("purpose", str(purpose or "attendance").strip().lower())
+            .eq("is_active", True)
+            .order("last_seen_at", desc=True).limit(1).execute().data or []
+        )
+
+    rows = await asyncio.to_thread(_q)
+    if rows and rows[0].get("token"):
+        return {"instance_name": rows[0]["instance_id"], "instance_token": rows[0]["token"]}
+    return None
+
+
+async def _go_resolve(company_id: str, purpose: str = "attendance") -> Dict[str, str]:
+    """Resolve a instância a usar: linha da corretora > fallback env legado."""
+    row = await _go_company_channel(company_id, purpose)
+    if row:
+        return row
+    env = _go_env_fallback()
+    if env:
+        return env
+    raise HTTPException(status_code=503, detail="evolution_go_not_configured")
+
+
+async def _go_get(company_id: str, path: str) -> Dict[str, Any]:
+    cfg = await _go_resolve(company_id)
+    async with httpx.AsyncClient(timeout=_TIMEOUT, base_url=_go_base()) as client:
         res = await client.get(path, headers={"apikey": cfg["instance_token"]})
         if res.status_code >= 400:
             raise HTTPException(status_code=502, detail=f"evolution_go_http_{res.status_code}")
         return res.json() if res.content else {}
 
 
-async def _go_status_payload() -> Dict[str, Any]:
-    j = await _go_get("/instance/status")
+async def _go_status_payload(company_id: str) -> Dict[str, Any]:
+    j = await _go_get(company_id, "/instance/status")
     data = j.get("data") if isinstance(j.get("data"), dict) else {}
     logged_in = bool(data.get("LoggedIn") or data.get("loggedIn"))
     connected_ws = bool(data.get("Connected") or data.get("connected"))
@@ -103,22 +153,68 @@ async def _go_status_payload() -> Dict[str, Any]:
 
 
 async def _go_setup(company_id: str, payload: "ChannelSetupPayload", public_url: str) -> Dict[str, Any]:
-    """Setup do canal via Evolution GO: configura o webhook por API no
-    /instance/connect (webhookUrl + subscribe) e grava a integração
-    provider='evolution-go' (o registry envia pelo wire GO)."""
-    cfg = _go_cfg()
-    instance = cfg["instance_name"]
+    """Setup do canal via Evolution GO — POR corretora.
+
+    1) Reusa a instância da corretora se já existir (linha em integrations);
+    2) senão CRIA `ab-<company>` via EVOLUTION_GO_GLOBAL_KEY com token próprio
+       e modo cofre (readMessages/alwaysOnline/rejectCall off, ignora grupos/status);
+    3) senão (sem global key) cai no fallback legado por env.
+    Sempre reconfigura o webhook via /instance/connect; HISTORY_SYNC assinado —
+    no pareamento fresco o histórico alimenta o Espelho/Atlas.
+    """
+    import secrets
+
+    base = _go_base()
+    purpose = str(payload.purpose or "attendance").strip().lower()
+    existing = await _go_company_channel(company_id, purpose)
+    global_key = os.getenv("EVOLUTION_GO_GLOBAL_KEY") or ""
+
+    if existing:
+        instance, inst_token = existing["instance_name"], existing["instance_token"]
+    elif global_key:
+        instance = _go_instance_name(company_id, purpose)
+        inst_token = secrets.token_hex(16)
+        try:
+            async with httpx.AsyncClient(timeout=_TIMEOUT, base_url=base) as client:
+                cr = await client.post(
+                    "/instance/create",
+                    headers={"apikey": global_key, "Content-Type": "application/json"},
+                    json={
+                        "name": instance, "token": inst_token,
+                        "advancedSettings": {"readMessages": False, "alwaysOnline": False,
+                                             "rejectCall": False, "ignoreGroups": True, "ignoreStatus": True},
+                    },
+                )
+                # 409/422 = instância já existe no GO (ex.: setup anterior sem linha
+                # no banco). Sem a linha não temos o token antigo — falha explícita.
+                if cr.status_code in (409, 422):
+                    raise HTTPException(status_code=502,
+                                        detail="evolution_go_instance_exists_sem_registro (remova a instância no GO ou restaure a linha em integrations)")
+                if cr.status_code >= 400:
+                    raise HTTPException(status_code=502,
+                                        detail=f"evolution_go_create_failed:http_{cr.status_code}:{(cr.text or '')[:100]}")
+        except httpx.HTTPError as e:
+            raise HTTPException(status_code=502, detail=f"evolution_go_unreachable:{type(e).__name__}") from e
+    else:
+        env = _go_env_fallback()
+        if not env:
+            raise HTTPException(status_code=503, detail="evolution_go_not_configured (defina EVOLUTION_GO_GLOBAL_KEY)")
+        instance, inst_token = env["instance_name"], env["instance_token"]
+
     token, token_hash, token_prefix = new_webhook_credentials()
     webhook_url = build_webhook_url(public_url, "evolution-go", token)
 
     try:
-        async with httpx.AsyncClient(timeout=_TIMEOUT, base_url=cfg["base_url"]) as client:
+        async with httpx.AsyncClient(timeout=_TIMEOUT, base_url=base) as client:
             res = await client.post(
                 "/instance/connect",
-                headers={"apikey": cfg["instance_token"], "Content-Type": "application/json"},
+                headers={"apikey": inst_token, "Content-Type": "application/json"},
                 # Eventos do GO são UPPERCASE (event_types.go) — "Message" era
                 # descartado em silêncio e a instância ficava SEM inscrição.
-                json={"webhookUrl": webhook_url, "subscribe": ["MESSAGE", "CONNECTION"], "immediate": True},
+                # HISTORY_SYNC: no pareamento fresco o histórico vira matéria-prima
+                # do Espelho de Atendimento (SPEC-040) e do Atlas.
+                json={"webhookUrl": webhook_url,
+                      "subscribe": ["MESSAGE", "CONNECTION", "HISTORY_SYNC"], "immediate": True},
             )
             if res.status_code >= 400:
                 logger.error(f"[WA CHANNEL GO] connect failed http={res.status_code} body={(res.text or '')[:120]}")
@@ -146,11 +242,11 @@ async def _go_setup(company_id: str, payload: "ChannelSetupPayload", public_url:
         record = {
             "company_id": company_id,
             "identifier": instance,
-            "purpose": str(payload.purpose or "attendance").strip().lower(),
+            "purpose": purpose,
             "provider": "evolution-go",
-            "base_url": cfg["base_url"],
+            "base_url": base,
             "instance_id": instance,
-            "token": cfg["instance_token"],
+            "token": inst_token,
             "webhook_token_hash": token_hash,
             "webhook_token_prefix": token_prefix,
             "alert_target": {"number": payload.alert_number} if payload.alert_number else None,
@@ -168,6 +264,11 @@ async def _go_setup(company_id: str, payload: "ChannelSetupPayload", public_url:
             supabase.client.table("integrations").update(record).eq("id", existing.data[0]["id"]).execute()
         else:
             supabase.client.table("integrations").insert(record).execute()
+        # Uma função = um canal ativo: instâncias GO antigas desta mesma função
+        # saem de cena (evita rotear/enviar por dois números ao mesmo tempo).
+        supabase.client.table("integrations").update({"is_active": False}) \
+            .eq("company_id", company_id).eq("provider", "evolution-go") \
+            .eq("purpose", purpose).neq("instance_id", instance).execute()
 
     try:
         await asyncio.to_thread(_upsert)
@@ -434,10 +535,11 @@ async def whatsapp_channel_qr(
 ) -> Dict[str, Any]:
     _require_internal_key(x_autobrokers_internal_key)
     if _go_enabled():
-        j = await _go_get("/instance/qr")
+        cfg = await _go_resolve(company_id)
+        j = await _go_get(company_id, "/instance/qr")
         d = j.get("data") if isinstance(j.get("data"), dict) else j
         raw = str(d.get("QRCode") or d.get("qrcode") or d.get("qr") or d.get("base64") or "")
-        return {"ok": bool(raw), "instance": _go_cfg()["instance_name"],
+        return {"ok": bool(raw), "instance": cfg["instance_name"],
                 "qr_base64": raw or None, "qr_text": None, "raw_state": None}
     platform = _evolution_platform()
     instance = _instance_name(company_id)
@@ -472,8 +574,8 @@ async def whatsapp_channel_disconnect(
     if not company_id:
         raise HTTPException(status_code=400, detail="company_id_required")
     if _go_enabled():
-        cfg = _go_cfg()
-        async with httpx.AsyncClient(timeout=_TIMEOUT, base_url=cfg["base_url"]) as client:
+        cfg = await _go_resolve(company_id)
+        async with httpx.AsyncClient(timeout=_TIMEOUT, base_url=_go_base()) as client:
             res = await client.delete("/instance/logout", headers={"apikey": cfg["instance_token"]})
             if res.status_code >= 400:
                 raise HTTPException(status_code=502, detail=f"evolution_go_logout_failed:http_{res.status_code}")
@@ -496,8 +598,9 @@ async def whatsapp_channel_status(
 ) -> Dict[str, Any]:
     _require_internal_key(x_autobrokers_internal_key)
     if _go_enabled():
-        st = await _go_status_payload()
-        return {"ok": True, "instance": _go_cfg()["instance_name"], **st}
+        cfg = await _go_resolve(company_id)
+        st = await _go_status_payload(company_id)
+        return {"ok": True, "instance": cfg["instance_name"], **st}
     platform = _evolution_platform()
     instance = _instance_name(company_id)
     headers = {"apikey": platform["api_key"]}

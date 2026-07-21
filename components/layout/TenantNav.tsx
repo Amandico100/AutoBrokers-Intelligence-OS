@@ -16,11 +16,20 @@ import { clearSession } from '@/lib/session';
  * Corpo da navegação tenant — usado pela sidebar desktop e pelo drawer mobile.
  * `onNavigate` fecha o drawer no mobile ao clicar num item.
  */
+interface MyCompany {
+  id: string;
+  name: string;
+  active: boolean;
+}
+
 export function TenantNav({ onNavigate }: { onNavigate?: () => void }) {
   const pathname = usePathname();
   const router = useRouter();
   const [company, setCompany] = useState('');
   const [userName, setUserName] = useState('');
+  // SPEC-047: multi-empresa — quem tem mais de um vínculo troca por aqui.
+  const [myCompanies, setMyCompanies] = useState<MyCompany[]>([]);
+  const [switching, setSwitching] = useState(false);
 
   useEffect(() => {
     let active = true;
@@ -33,10 +42,36 @@ export function TenantNav({ onNavigate }: { onNavigate?: () => void }) {
         }
       })
       .catch(() => {});
+    fetch('/api/auth/companies')
+      .then((r) => (r.ok ? r.json() : null))
+      .then((d) => {
+        if (active && Array.isArray(d?.companies)) setMyCompanies(d.companies);
+      })
+      .catch(() => {});
     return () => {
       active = false;
     };
   }, []);
+
+  const switchCompany = async (companyId: string) => {
+    if (switching) return;
+    setSwitching(true);
+    try {
+      const res = await fetch('/api/auth/companies', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ company_id: companyId }),
+      });
+      if (res.ok) {
+        // Recarrega tudo — todas as telas passam a responder pela empresa ativa.
+        window.location.assign('/dashboard');
+        return;
+      }
+    } catch {
+      /* mantém a empresa atual */
+    }
+    setSwitching(false);
+  };
 
   const handleLogout = async () => {
     try {
@@ -111,12 +146,29 @@ export function TenantNav({ onNavigate }: { onNavigate?: () => void }) {
 
       {/* Rodapé */}
       <div className="mt-auto border-t border-border-soft p-3">
-        {(company || userName) && (
+        {myCompanies.length > 1 ? (
+          <div className="mb-3 px-1">
+            <label className="mb-1 block text-[10px] font-medium uppercase tracking-wide text-muted-foreground">
+              Empresa
+            </label>
+            <select
+              value={myCompanies.find((c) => c.active)?.id || ''}
+              onChange={(e) => switchCompany(e.target.value)}
+              disabled={switching}
+              className="w-full rounded-lg border border-border bg-surface-2 px-2 py-1.5 text-sm font-medium text-foreground outline-none"
+            >
+              {myCompanies.map((c) => (
+                <option key={c.id} value={c.id}>{c.name}</option>
+              ))}
+            </select>
+            {userName && <p className="mt-1 truncate text-xs text-muted-foreground">{userName}</p>}
+          </div>
+        ) : (company || userName) ? (
           <div className="mb-3 px-1">
             {company && <p className="truncate text-sm font-medium text-foreground">{company}</p>}
             {userName && <p className="truncate text-xs text-muted-foreground">{userName}</p>}
           </div>
-        )}
+        ) : null}
         <div className="flex items-center gap-2">
           <button
             onClick={handleLogout}

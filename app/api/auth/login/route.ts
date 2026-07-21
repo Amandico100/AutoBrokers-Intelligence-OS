@@ -88,6 +88,8 @@ export async function POST(request: NextRequest) {
     ironSession.status = sessionData.status;
     ironSession.companyId = sessionData.companyId;
     ironSession.companyStatus = sessionData.companyStatus;
+    // SPEC-047: login sempre começa na empresa primária; a troca é explícita.
+    ironSession.activeCompanyId = null;
     ironSession.expiresAt = sessionData.expiresAt;
 
     await ironSession.save();

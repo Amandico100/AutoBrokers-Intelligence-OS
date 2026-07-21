@@ -221,6 +221,23 @@ tsc limpo, 24 checks novos.
   pessoal COEXISTEM por template (índices parciais no lugar do singleton);
   modal de escolha no conectar; owner assinado no state anti-CSRF do OAuth.
 
+## PÓS-ONDAS 6 — SPEC-047 ENTREGUE (21/07)
+
+Multi-empresa + WhatsApp por corretora + acessos organizados (doc SPEC-047).
+Migração 20260721_01 APLICADA (RLS 6 tabelas + company_members com seed).
+
+- Canal GO POR corretora (ab-<company>, global key, modo cofre, HISTORY_SYNC,
+  fallback env legado); pareamento com UMA casa (hub Corretora → WhatsApp;
+  modal sem escolha falsa; Conectores vira atalho; clássico só no backend).
+- Mesmo e-mail em 2+ corretoras: company_members + activeCompanyId na sessão
+  (validado por request) + seletor no rodapé do dashboard.
+- AutoFleet criada (agentes: Core ativo, Atendimento em observação) + dados
+  oficiais das duas corretoras + usuários Rafael/André/Saionara/Regina
+  (senha inicial mudar123) + amandus@autobrokers.digital (owner 2x).
+- Teste spec047 32 checks; bateria 54/54; tsc limpo.
+- PLANO aguardando validação do founder: Equipe no dashboard, 3 papéis de
+  permissão, aprovações sem burocracia, Stripe real (seção 5 da SPEC-047).
+
 ## PÓS-ONDAS 5 — SPEC-046 ENTREGUE (20/07)
 
 Bloco 3 da trinca — fecha os três buracos. Migração graveyard APLICADA.

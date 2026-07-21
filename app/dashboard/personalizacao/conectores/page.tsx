@@ -2,6 +2,7 @@
 
 import { useEffect, useMemo, useState } from 'react';
 import Link from 'next/link';
+import { useRouter } from 'next/navigation';
 
 import { cn } from '@/lib/utils';
 import { DetailHeader, DetailSection, GalleryGrid, GalleryCard, StatusPill } from '@/components/patterns';
@@ -20,7 +21,6 @@ import { DropdownMenu, DropdownMenuTrigger, DropdownMenuContent, DropdownMenuIte
 import { SLUG_TO_OAUTH_PROVIDER } from '@/lib/connectors/oauth-providers';
 import type { ConnectorTemplate, TenantConnection } from '@/lib/vault/types';
 import { CreateConnectionModal } from '@/components/vault/CreateConnectionModal';
-import { WhatsAppChannelModal } from '@/components/vault/WhatsAppChannelModal';
 import { ConfigureWhatsAppModal } from '@/components/vault/ConfigureWhatsAppModal';
 import { ConfigureInfocapModal } from '@/components/vault/ConfigureInfocapModal';
 import { PermissionGrantPanel } from '@/components/vault/PermissionGrantPanel';
@@ -39,6 +39,7 @@ function Loading() {
 }
 
 export default function ConectoresPage() {
+  const router = useRouter();
   const [tab, setTab] = useState<Tab>('catalog');
   const [templates, setTemplates] = useState<ConnectorTemplate[] | null>(null);
   const [connections, setConnections] = useState<TenantConnection[] | null>(null);
@@ -50,7 +51,6 @@ export default function ConectoresPage() {
   const [configureConnId, setConfigureConnId] = useState<string | null>(null);
   const [configureOpen, setConfigureOpen] = useState(false);
   const [infocapOpen, setInfocapOpen] = useState(false); // SPEC-014 C-FIX-1 (F)
-  const [whatsappModalOpen, setWhatsappModalOpen] = useState(false); // SPEC-017: modal do canal
   const [infocapConnId, setInfocapConnId] = useState<string | null>(null); // C-FIX-2
   const [ownerChoice, setOwnerChoice] = useState<string | null>(null); // SPEC-044: escolha corretora/pessoal (OAuth)
 
@@ -282,8 +282,9 @@ export default function ConectoresPage() {
                 cta="Conectar portais"
                 href="/dashboard/personalizacao/conectores/portais"
               />
-              {/* SPEC-017 (UX Founder): o card WhatsApp da galeria abre o MODAL do
-                  canal (Evolution + QR). Slug real do template legado: whatsapp_zapi. */}
+              {/* SPEC-047: o pareamento tem UMA casa — Personalização → Corretora →
+                  WhatsApp. O card aqui é só um atalho para lá (nada de segundo
+                  fluxo de conexão). Slug real do template legado: whatsapp_zapi. */}
               {templates.map((t) => {
                 const isWhatsappChannel = String(t.slug) === 'whatsapp_zapi';
                 const connStatus = statusByTemplate[t.id];
@@ -307,11 +308,11 @@ export default function ConectoresPage() {
                     tags={[t.auth_type]}
                     cta={
                       isWhatsappChannel
-                        ? whatsappConnected ? 'Gerenciar conexão' : 'Conectar (QR code)'
+                        ? 'Gerenciar no hub da corretora'
                         : connected ? 'Gerenciar conexão' : oauthKey ? 'Conectar' : 'Preparar conexão'
                     }
                     onClick={() => {
-                      if (isWhatsappChannel) { setWhatsappModalOpen(true); return; }
+                      if (isWhatsappChannel) { router.push('/dashboard/personalizacao/corretora/whatsapp'); return; }
                       if (connected) { setTab('connections'); return; }
                       if (oauthKey) { setOwnerChoice(oauthKey); return; } // SPEC-044: corretora ou pessoal
                       openCreate(t);
@@ -418,7 +419,6 @@ export default function ConectoresPage() {
       />
 
       {/* SPEC-017: canal WhatsApp da corretora (Evolution + QR) */}
-      <WhatsAppChannelModal open={whatsappModalOpen} onOpenChange={setWhatsappModalOpen} />
 
       <ConfigureWhatsAppModal
         open={configureOpen}

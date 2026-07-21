@@ -21,8 +21,12 @@ export interface SessionCompany {
 }
 
 /**
- * Resolve o usuário autenticado + company_id (via users_v2).
- * Retorna null se não autenticado ou sem empresa. O company_id NUNCA vem do client.
+ * Resolve o usuário autenticado + company_id. O company_id NUNCA vem do client.
+ *
+ * SPEC-047 (multi-empresa): se a sessão tem uma empresa ATIVA escolhida no
+ * seletor, ela vale — desde que exista o vínculo em company_members (validado
+ * a cada request; revogou o vínculo, o acesso cai na hora). Sem escolha,
+ * vale a empresa primária (users_v2.company_id), como sempre.
  */
 export async function resolveSessionCompany(): Promise<SessionCompany | null> {
   const cookieStore = await cookies();
@@ -30,6 +34,19 @@ export async function resolveSessionCompany(): Promise<SessionCompany | null> {
   if (!session.userId) return null;
 
   const supabase = getSupabaseAdmin();
+
+  const active = session.activeCompanyId || null;
+  if (active) {
+    const { data: member } = await supabase
+      .from('company_members')
+      .select('company_id')
+      .eq('user_id', session.userId)
+      .eq('company_id', active)
+      .eq('status', 'active')
+      .maybeSingle();
+    if (member?.company_id) return { userId: session.userId, companyId: member.company_id };
+  }
+
   const { data, error } = await supabase
     .from('users_v2')
     .select('company_id')
