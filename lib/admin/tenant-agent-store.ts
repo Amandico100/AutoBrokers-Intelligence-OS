@@ -57,6 +57,27 @@ export async function patchTenantAgentConfig(supabase: SupabaseClient, companyId
   return { ok: true as const, rejected: upd.rejected, config: sanitizeAgentConfigForDashboard(bp, name, upd.context_package) };
 }
 
+/**
+ * SPEC-045 — botão LIGAR/DESLIGAR do Agente de Atendimento (agents.is_active).
+ * SÓ o papel attendance é alternável (o Core/AutoBrokers fica sempre ativo).
+ * DESLIGADO = modo observação: o número segue pareado, a equipe humana atende
+ * e o sistema captura (Espelho). O OBSERVADOR NUNCA DESLIGA — o botão governa
+ * apenas se o agente RESPONDE. O gate correspondente vive no webhook (backend).
+ */
+export async function setTenantAgentActive(
+  supabase: SupabaseClient, companyId: string, role: AgentRole, isActive: boolean,
+) {
+  if (role !== 'attendance') return { ok: false as const, error: 'toggle_only_attendance' };
+  const { data: agent } = await supabase.from('agents').select('id, is_active')
+    .eq('company_id', companyId).eq('agent_role', role).maybeSingle();
+  if (!agent?.id) return { ok: false as const, error: 'agent_not_provisioned' };
+  const { error } = await supabase.from('agents')
+    .update({ is_active: isActive, updated_at: new Date().toISOString() })
+    .eq('id', agent.id).eq('company_id', companyId);
+  if (error) return { ok: false as const, error: 'update_failed' };
+  return { ok: true as const, is_active: isActive };
+}
+
 export async function resetTenantAgentConfig(supabase: SupabaseClient, companyId: string, role: AgentRole) {
   const bp = getBlueprintByRole(role);
   if (!bp) return { ok: false as const, error: 'unknown_role' };

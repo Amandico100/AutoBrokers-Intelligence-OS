@@ -637,6 +637,28 @@ async def process_whatsapp_message_background(
             # Atualizar unread...
             return
 
+        # 6.5 SPEC-045 — MODO OBSERVAÇÃO: agente de atendimento DESLIGADO
+        # (agents.is_active=false). O número segue pareado, a atendente humana
+        # responde pelo celular, e o sistema CAPTURA (conversa já espelhada no
+        # passo 5 + cofre do Espelho aqui). O agente não responde ninguém.
+        # Ligar o agente no dashboard reativa a resposta NO MESMO número —
+        # o Observador/Espelho seguem funcionando sempre (nunca desligam).
+        try:
+            from app.services.atlas.attendance_capture import (
+                attendance_observation_mode, capture_channel_message,
+            )
+
+            if await attendance_observation_mode(company_id):
+                await capture_channel_message(
+                    company_id, payload.connectedPhone or "", payload.phone,
+                    message_text, "in", payload.messageId,
+                    "voice" if final_audio_url else ("image" if final_image_url else "text"),
+                )
+                logger.info("[WEBHOOK] 👁 Modo observação — capturado sem resposta do agente.")
+                return
+        except Exception as e:  # noqa: BLE001 — na dúvida, fluxo normal
+            logger.warning(f"[WEBHOOK] observation gate falhou: {type(e).__name__}")
+
         # 7. Fluxo IA
         # 🔥 BILLING: Verificar saldo antes de invocar IA
         from app.services.billing_service import get_billing_service
@@ -655,8 +677,22 @@ async def process_whatsapp_message_background(
         logger.info(f"[WEBHOOK] Invoking AI Agent for company {company_id}...")
         langchain_service = LangChainService(settings.OPENAI_API_KEY, supabase)
 
+        # SPEC-045 — NOTA DE CONTEXTO: se este cliente recebeu envio de
+        # plataforma recente (cobrança/campanha), o atendente responde SABENDO
+        # do que se trata. Só o texto enviado à IA — a mensagem salva (passo 5)
+        # fica limpa. Sem envio recente = zero ruído.
+        message_for_ai = message_text
+        try:
+            from app.services.platform_outbound import context_note_for
+
+            _note = await context_note_for(company_id, payload.phone)
+            if _note:
+                message_for_ai = f"{message_text}\n\n{_note}"
+        except Exception:  # noqa: BLE001
+            pass
+
         ai_response, metrics = await langchain_service.process_message(
-            user_message=message_text,
+            user_message=message_for_ai,
             company_id=company_id,
             user_id=user_id,
             session_id=session_id,
@@ -1023,6 +1059,25 @@ async def _handle_evolution_like_inbound(
                 )
             except Exception as e:  # noqa: BLE001
                 logger.warning(f"[WEBHOOK EVOLUTION] manual outbound note failed: {type(e).__name__}")
+            # SPEC-045 — MODO OBSERVAÇÃO: a resposta da ATENDENTE HUMANA pelo
+            # celular (fromMe) é o lado de ouro da conduta — captura no cofre
+            # do Espelho quando o agente está desligado e não é seguradora.
+            try:
+                from app.services.atlas.attendance_capture import (
+                    attendance_observation_mode, capture_channel_message,
+                )
+                from app.services.atlas.observer_intake import _br_variants, insurer_allowlist
+
+                _company = str(integration.get("company_id") or "")
+                _phone = str(normalized["phone"])
+                _is_insurer = any(v in insurer_allowlist() for v in _br_variants(_phone))
+                if _company and not _is_insurer and await attendance_observation_mode(_company):
+                    await capture_channel_message(
+                        _company, str(integration.get("identifier") or ""), _phone,
+                        str(normalized["text"]), "out", normalized.get("message_id"),
+                    )
+            except Exception as e:  # noqa: BLE001
+                logger.warning(f"[WEBHOOK EVOLUTION] observation fromMe capture failed: {type(e).__name__}")
         return {"status": "ignored", "reason": normalized["skip_reason"]}
     if await _is_duplicate_namespaced(provider_label, normalized["message_id"]):
         return {"status": "ignored", "reason": "duplicate"}

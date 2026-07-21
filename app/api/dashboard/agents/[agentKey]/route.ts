@@ -3,7 +3,7 @@
 // da própria corretora. Nunca confia em body/query. Resposta sanitizada.
 import { NextRequest, NextResponse } from 'next/server';
 import { requireCompanyMember, assertSameOrigin } from '@/lib/admin/admin-auth';
-import { getTenantAgentConfig, patchTenantAgentConfig, roleForKey } from '@/lib/admin/tenant-agent-store';
+import { getTenantAgentConfig, patchTenantAgentConfig, roleForKey, setTenantAgentActive } from '@/lib/admin/tenant-agent-store';
 
 export const dynamic = 'force-dynamic';
 
@@ -26,6 +26,14 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ ag
   const auth = await requireCompanyMember({ write: true });
   if (!auth.ok) return NextResponse.json({ ok: false, error: auth.error }, { status: auth.status });
   const body = await req.json().catch(() => ({}));
+
+  // SPEC-045: botão LIGAR/DESLIGAR (só attendance). Mutação isolada — não
+  // mistura com variáveis/overrides.
+  if (typeof body.is_active === 'boolean') {
+    const toggled = await setTenantAgentActive(auth.supabase, auth.ctx.companyId, role, body.is_active);
+    return NextResponse.json(toggled, { status: toggled.ok ? 200 : 400 });
+  }
+
   const input = {
     variables: body.variables && typeof body.variables === 'object' ? body.variables : undefined,
     overrides: body.overrides && typeof body.overrides === 'object' ? body.overrides : undefined,

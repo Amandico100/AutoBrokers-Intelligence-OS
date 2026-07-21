@@ -237,6 +237,18 @@ def start_buffer_scheduler():
             id="lapidador_check",
             max_instances=1,
         )
+
+        # SPEC-045: fila de cortesia — envios de plataforma adiados (cliente
+        # estava em atendimento) são re-tentados a cada 10 min.
+        from app.services.platform_outbound import check_platform_queue
+
+        scheduler.add_job(
+            check_platform_queue,
+            "interval",
+            seconds=600,
+            id="platform_queue_check",
+            max_instances=1,
+        )
         scheduler.start()
         logger.info("✅ [BUFFER SCHEDULER] Started (interval: 1s, max_instances: 10)")
     else:

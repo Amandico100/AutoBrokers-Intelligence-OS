@@ -27,6 +27,7 @@ const inputCls = 'mt-1 w-full rounded-lg border border-border bg-background px-3
 export function AgentConfigClient({ agentKey }: { agentKey: 'autobrokers' | 'even' }) {
   const [config, setConfig] = useState<Config | null>(null);
   const [provisioned, setProvisioned] = useState(true);
+  const [isActive, setIsActive] = useState<boolean | null>(null); // SPEC-045: toggle (attendance)
   const [vars, setVars] = useState<Record<string, string>>({});
   const [overrides, setOverrides] = useState<Record<string, string>>({});
   const [busy, setBusy] = useState(false);
@@ -37,6 +38,7 @@ export function AgentConfigClient({ agentKey }: { agentKey: 'autobrokers' | 'eve
     const j = await fetch(`/api/dashboard/agents/${agentKey}`).then((r) => r.json()).catch(() => ({}));
     if (j?.ok) {
       setProvisioned(Boolean(j.provisioned));
+      setIsActive(typeof j?.agent?.is_active === 'boolean' ? j.agent.is_active : null);
       const c: Config = j.config;
       setConfig(c);
       const v: Record<string, string> = {};
@@ -48,6 +50,26 @@ export function AgentConfigClient({ agentKey }: { agentKey: 'autobrokers' | 'eve
     } else setNotice(j?.error || 'Falha ao carregar.');
   }, [agentKey]);
   useEffect(() => { load(); }, [load]);
+
+  // SPEC-045 — botão LIGAR/DESLIGAR (só o agente de atendimento). O Observador
+  // e o Espelho NUNCA desligam — o botão governa apenas se o agente RESPONDE.
+  const toggleActive = async () => {
+    if (isActive === null || busy) return;
+    const turningOn = !isActive;
+    const msg = turningOn
+      ? 'Ligar o agente? A partir de agora ELE responde os segurados neste número (a captura e o aprendizado continuam).'
+      : 'Desligar o agente? O número continua conectado: a equipe humana atende e o sistema segue observando e aprendendo — o agente só para de responder.';
+    if (!window.confirm(msg)) return;
+    setBusy(true); setNotice('');
+    const r = await fetch(`/api/dashboard/agents/${agentKey}`, {
+      method: 'PATCH', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ is_active: turningOn }),
+    });
+    const j = await r.json().catch(() => ({}));
+    if (j?.ok) { setIsActive(Boolean(j.is_active)); setNotice(turningOn ? 'Agente LIGADO — atendendo os segurados.' : 'Agente DESLIGADO — modo observação (equipe humana atende).'); }
+    else setNotice(`Não foi possível alterar: ${j?.error || r.status}`);
+    setBusy(false);
+  };
 
   const save = async () => {
     setBusy(true); setNotice(''); setErrors([]);
@@ -109,12 +131,46 @@ export function AgentConfigClient({ agentKey }: { agentKey: 'autobrokers' | 'eve
 
   return (
     <div className="space-y-6">
+      {/* SPEC-045 — LIGAR/DESLIGAR (só atendimento). Observador nunca desliga. */}
+      {agentKey === 'even' && provisioned && isActive !== null && (
+        <div className={`rounded-lg border p-4 ${isActive ? 'border-emerald-500/30 bg-emerald-500/5' : 'border-border bg-card'}`}>
+          <div className="flex flex-wrap items-center gap-3">
+            <div className="min-w-0 flex-1">
+              <p className="text-sm font-semibold text-foreground">
+                {isActive ? '💬 Atendendo os segurados' : '👁 Observando em silêncio'}
+              </p>
+              <p className="mt-1 text-xs leading-relaxed text-muted-foreground">
+                {isActive
+                  ? 'O agente responde os segurados no WhatsApp da corretora. O aprendizado contínuo segue normalmente.'
+                  : 'A equipe humana atende pelo celular e o sistema observa e aprende. Quando você ligar, o agente assume as respostas NESTE MESMO número — sem re-parear nada.'}
+              </p>
+            </div>
+            <button
+              onClick={toggleActive}
+              disabled={busy}
+              className={`shrink-0 rounded-lg px-4 py-2 text-sm font-medium transition-colors disabled:opacity-50 ${
+                isActive
+                  ? 'border border-border bg-surface-2 text-foreground hover:bg-background'
+                  : 'border border-emerald-500/50 bg-emerald-500/10 text-emerald-600 hover:bg-emerald-500/20'
+              }`}
+            >
+              {busy ? '…' : isActive ? 'Desligar agente' : 'Ligar agente'}
+            </button>
+          </div>
+        </div>
+      )}
+
       {/* Identidade / prévia */}
       <div className="rounded-lg border border-border bg-card p-4">
         <p className="text-[11px] uppercase tracking-wide text-faint">Apresentação</p>
         <p className="mt-1 text-lg font-semibold text-foreground">{config.display_name}</p>
         {config.brand_locked_name && <p className="mt-1 text-[11px] text-amber-600">A marca “AutoBrokers” é fixa e não pode ser renomeada.</p>}
         {opening && <p className="mt-2 rounded-md border border-border bg-background px-3 py-2 text-sm text-muted-foreground">“{opening}”</p>}
+        {opening && agentKey === 'even' && (
+          <p className="mt-1.5 text-[11px] text-muted-foreground">
+            É o ponto de partida — se o cliente já contar o que precisa, o agente pula a abertura e vai direto ao assunto.
+          </p>
+        )}
         {!provisioned && <p className="mt-2 text-[11px] text-amber-600">Agente ainda não provisionado para esta corretora.</p>}
       </div>
 

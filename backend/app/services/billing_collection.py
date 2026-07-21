@@ -673,6 +673,10 @@ async def execute_billing_collection_routine(supabase, routine: Dict[str, Any]) 
     elif items and cfg.get("send_mode") == "live" and not customer_send_allowed(cfg):
         blockers.append("envio ao cliente bloqueado por configuracao/gate de seguranca")
     elif items and cfg.get("send_mode") == "live":
+        # SPEC-045: quando o envio live for homologado, ele DEVE sair por
+        # app.services.platform_outbound.send_to_client_guarded (fila de
+        # cortesia + registro em platform_sends p/ a nota de contexto do
+        # atendente) — nunca por send_message direto.
         blockers.append("envio direto ao cliente permanece desativado nesta fase de homologacao")
 
     return _format_report(

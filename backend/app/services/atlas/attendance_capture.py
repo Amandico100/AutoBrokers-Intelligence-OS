@@ -111,6 +111,83 @@ async def capture_client_message(integration: dict, counterparty: str,
         return False
 
 
+async def capture_channel_message(company_id: str, channel_number: str, counterparty: str,
+                                  text: str, direction: str, message_id: Optional[str] = None,
+                                  msg_type: str = "text") -> bool:
+    """SPEC-045 — captura no NÚMERO DE ATENDIMENTO em MODO OBSERVAÇÃO
+    (agente desligado; atendente humana responde pelo celular). Texto já vem
+    normalizado do pipeline — sem parse waE2E. Mesmo cofre, mesma sessão de 2h."""
+    try:
+        from app.services.atlas.observer_intake import _digits, _store_event_sync
+
+        clean = str(text or "").strip()
+        if not clean:
+            return False
+        record = {
+            "company_id": str(company_id or ""),
+            "observer_number": _digits(channel_number) or "attendance-channel",
+            "counterparty": _digits(counterparty) or str(counterparty or "unknown"),
+            "insurer_key": None,
+            "direction": "out" if direction == "out" else "in",
+            "msg_type": msg_type or "text",
+            "text": clean,
+            "interactive": None,
+            "media_meta": None,
+            "message_id": str(message_id or "") or None,
+            "wa_timestamp": datetime.now(timezone.utc).isoformat(),
+            "source": "live",
+        }
+        await asyncio.to_thread(_store_event_sync, record, TRANSCRIPTS_TABLE, SESSIONS_TABLE)
+        await _count_captured(record["observer_number"])
+        await _beat()
+        return True
+    except Exception as e:  # noqa: BLE001 — captura JAMAIS derruba o webhook
+        logger.error(f"[ESPELHO ATENDIMENTO] captura de canal falhou: {type(e).__name__}")
+        return False
+
+
+_OBS_MODE_TTL_S = 60
+
+
+async def attendance_observation_mode(company_id: str) -> bool:
+    """SPEC-045 — a corretora está em MODO OBSERVAÇÃO? True quando o agente de
+    atendimento existe e está DESLIGADO (agents.is_active=false): o número
+    continua pareado, a equipe humana atende e o sistema captura; o agente não
+    responde ninguém. Cache Redis 60s (o gate roda no caminho quente).
+    O OBSERVADOR NUNCA DESLIGA — este modo só governa a RESPOSTA do agente."""
+    cache_key = f"attendance:obsmode:{company_id}"
+    try:
+        from app.core.redis import get_async_redis_client
+
+        r = await get_async_redis_client()
+        cached = await r.get(cache_key)
+        if cached is not None:
+            val = cached.decode() if isinstance(cached, (bytes, bytearray)) else str(cached)
+            return val == "1"
+    except Exception:  # noqa: BLE001
+        r = None
+
+    def _query() -> bool:
+        from app.core.database import get_supabase_client
+
+        db = get_supabase_client()
+        rows = (db.client.table("agents").select("id, is_active")
+                .eq("company_id", str(company_id)).eq("agent_role", "attendance")
+                .limit(1).execute().data or [])
+        return bool(rows) and rows[0].get("is_active") is False
+
+    try:
+        obs = await asyncio.to_thread(_query)
+    except Exception:  # noqa: BLE001 — na dúvida, comportamento atual (responder)
+        return False
+    try:
+        if r is not None:
+            await r.set(cache_key, "1" if obs else "0", ex=_OBS_MODE_TTL_S)
+    except Exception:  # noqa: BLE001
+        pass
+    return obs
+
+
 # ------------------------------------------------------------------ #
 # Retencao — purge diario do cru (o destilado e permanente)
 # ------------------------------------------------------------------ #
