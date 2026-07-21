@@ -148,6 +148,8 @@ async def list_active_dispatches(company_id: str) -> list:
             "playbook_ref": s.get("playbook_ref"),
             "client_phone": s.get("client_phone"),
             "captured": s.get("captured") or {},
+            "slots": s.get("slots") or {},
+            "reason": s.get("reason"),
             "transcript": s.get("transcript") or [],
             "created_at": s.get("created_at"),
         })

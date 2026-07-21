@@ -16,15 +16,17 @@ export async function GET(_req: NextRequest) {
   if (!ctx) return NextResponse.json({ error: 'Não autorizado' }, { status: 401 });
   const supabase = getSupabaseAdmin();
 
+  type Atendimento = { conversa_id: string; quando: string | null; preview: string | null };
   type Segurado = {
     telefone: string; nome: string | null; atendimentos: number;
     ultimo_contato: string | null; conversa_id: string | null;
+    historico: Atendimento[];
   };
   const byPhone = new Map<string, Segurado>();
 
   const { data: convs } = await supabase
     .from('conversations')
-    .select('id, user_phone, user_name, last_message_at, created_at')
+    .select('id, user_phone, user_name, last_message_at, last_message_preview, created_at')
     .eq('company_id', ctx.companyId)
     .eq('channel', 'whatsapp')
     .order('last_message_at', { ascending: false, nullsFirst: false })
@@ -35,6 +37,9 @@ export async function GET(_req: NextRequest) {
     if (!phone) continue;
     const cur = byPhone.get(phone);
     const when = c.last_message_at || c.created_at || null;
+    // SPEC-046: perfil leve — cada segurado carrega os últimos atendimentos
+    // (cada um abre a FICHA correspondente).
+    const entry: Atendimento = { conversa_id: c.id, quando: when, preview: c.last_message_preview || null };
     if (!cur) {
       byPhone.set(phone, {
         telefone: phone,
@@ -42,11 +47,13 @@ export async function GET(_req: NextRequest) {
         atendimentos: 1,
         ultimo_contato: when,
         conversa_id: c.id,
+        historico: [entry],
       });
     } else {
       cur.atendimentos += 1;
       if (!cur.nome && (c.user_name || '').trim()) cur.nome = (c.user_name || '').trim();
       if (when && (!cur.ultimo_contato || when > cur.ultimo_contato)) cur.ultimo_contato = when;
+      if (cur.historico.length < 5) cur.historico.push(entry);
     }
   }
 
@@ -66,7 +73,7 @@ export async function GET(_req: NextRequest) {
       if (!cur) {
         byPhone.set(phone, {
           telefone: phone, nome: null, atendimentos: 1,
-          ultimo_contato: when, conversa_id: null,
+          ultimo_contato: when, conversa_id: null, historico: [],
         });
       } else {
         cur.atendimentos += 1;

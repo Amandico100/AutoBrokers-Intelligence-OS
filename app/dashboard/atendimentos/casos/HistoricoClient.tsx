@@ -145,7 +145,7 @@ export default function HistoricoClient() {
               return (
                 <button
                   key={i.key}
-                  onClick={() => i.conversa_id && router.push(`/dashboard/atendimentos/conversas?open=${i.conversa_id}`)}
+                  onClick={() => i.conversa_id && router.push(`/dashboard/atendimentos/ficha/${i.conversa_id}`)}
                   disabled={!i.conversa_id}
                   className={cn(
                     'w-full rounded-xl border border-border bg-surface p-3.5 text-left transition-colors',
@@ -165,7 +165,7 @@ export default function HistoricoClient() {
                       </span>
                     )}
                     <span className="flex-1" />
-                    {i.conversa_id && <span className="text-[11px] text-primary">ver conversa →</span>}
+                    {i.conversa_id && <span className="text-[11px] text-primary">ver ficha →</span>}
                   </div>
                 </button>
               );

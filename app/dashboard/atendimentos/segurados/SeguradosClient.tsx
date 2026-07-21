@@ -1,15 +1,22 @@
 'use client';
 
 // SPEC-043 — Segurados atendidos (lista real derivada dos atendimentos).
-// Mobile-first: busca + cartões com contato e último atendimento.
+// SPEC-046 — o clique abre um PERFIL leve: dados + lista de atendimentos,
+// e cada atendimento abre a Ficha (não mais a conversa crua direto).
 
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import { useRouter } from 'next/navigation';
-import { Loader2, Search, Users } from 'lucide-react';
+import { ChevronDown, Loader2, Search, Users } from 'lucide-react';
 
 import { DetailHeader } from '@/components/patterns';
 import { icons } from '@/lib/icons';
 import { cn } from '@/lib/utils';
+
+interface Atendimento {
+  conversa_id: string;
+  quando: string | null;
+  preview: string | null;
+}
 
 interface Segurado {
   telefone: string;
@@ -17,6 +24,7 @@ interface Segurado {
   atendimentos: number;
   ultimo_contato: string | null;
   conversa_id: string | null;
+  historico: Atendimento[];
 }
 
 function fmtPhone(p: string): string {
@@ -39,6 +47,7 @@ export default function SeguradosClient() {
   const router = useRouter();
   const [segurados, setSegurados] = useState<Segurado[] | null>(null);
   const [query, setQuery] = useState('');
+  const [openPhone, setOpenPhone] = useState<string | null>(null);
 
   const load = useCallback(async () => {
     try {
@@ -95,33 +104,66 @@ export default function SeguradosClient() {
             </p>
           </div>
         ) : (
-          <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
-            {filtered.map((s) => (
-              <button
-                key={s.telefone}
-                onClick={() => s.conversa_id && router.push(`/dashboard/atendimentos/conversas?open=${s.conversa_id}`)}
-                disabled={!s.conversa_id}
-                className={cn(
-                  'flex items-center gap-3 rounded-xl border border-border bg-surface p-3.5 text-left transition-colors',
-                  s.conversa_id ? 'hover:bg-surface-2' : 'cursor-default',
-                )}
-              >
-                <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full border border-border bg-surface-2 text-sm font-semibold text-muted-foreground">
-                  {(s.nome || s.telefone).charAt(0).toUpperCase()}
-                </span>
-                <span className="min-w-0 flex-1">
-                  <span className="block truncate text-sm font-medium text-foreground">
-                    {s.nome || fmtPhone(s.telefone)}
-                  </span>
-                  <span className="mt-0.5 flex items-center gap-2 text-[11px] text-muted-foreground">
-                    <span className="font-mono">{fmtPhone(s.telefone)}</span>
-                    <span>· {s.atendimentos} atendimento{s.atendimentos > 1 ? 's' : ''}</span>
-                    <span className="flex-1" />
-                    <span>{fmtWhen(s.ultimo_contato)}</span>
-                  </span>
-                </span>
-              </button>
-            ))}
+          <div className="space-y-2">
+            {filtered.map((s) => {
+              const aberto = openPhone === s.telefone;
+              const podeAbrir = s.historico.length > 0;
+              return (
+                <div key={s.telefone} className="rounded-xl border border-border bg-surface">
+                  <button
+                    onClick={() => podeAbrir && setOpenPhone(aberto ? null : s.telefone)}
+                    disabled={!podeAbrir}
+                    className={cn(
+                      'flex w-full items-center gap-3 p-3.5 text-left transition-colors',
+                      podeAbrir ? 'hover:bg-surface-2' : 'cursor-default',
+                    )}
+                  >
+                    <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full border border-border bg-surface-2 text-sm font-semibold text-muted-foreground">
+                      {(s.nome || s.telefone).charAt(0).toUpperCase()}
+                    </span>
+                    <span className="min-w-0 flex-1">
+                      <span className="block truncate text-sm font-medium text-foreground">
+                        {s.nome || fmtPhone(s.telefone)}
+                      </span>
+                      <span className="mt-0.5 flex items-center gap-2 text-[11px] text-muted-foreground">
+                        <span className="font-mono">{fmtPhone(s.telefone)}</span>
+                        <span>· {s.atendimentos} atendimento{s.atendimentos > 1 ? 's' : ''}</span>
+                        <span className="flex-1" />
+                        <span>{fmtWhen(s.ultimo_contato)}</span>
+                      </span>
+                    </span>
+                    {podeAbrir && (
+                      <ChevronDown
+                        className={cn('h-4 w-4 shrink-0 text-muted-foreground transition-transform', aberto && 'rotate-180')}
+                      />
+                    )}
+                  </button>
+
+                  {aberto && (
+                    <div className="border-t border-border/60 px-3.5 py-2.5">
+                      <p className="mb-2 text-[11px] font-medium text-muted-foreground">
+                        Atendimentos deste cliente
+                      </p>
+                      <div className="space-y-1.5">
+                        {s.historico.map((a) => (
+                          <button
+                            key={a.conversa_id}
+                            onClick={() => router.push(`/dashboard/atendimentos/ficha/${a.conversa_id}`)}
+                            className="flex w-full items-baseline gap-2 rounded-lg border border-border/60 bg-surface-2 px-3 py-2 text-left transition-colors hover:bg-brand-soft"
+                          >
+                            <span className="shrink-0 text-[11px] text-muted-foreground">{fmtWhen(a.quando)}</span>
+                            <span className="min-w-0 flex-1 truncate text-xs text-foreground">
+                              {a.preview || 'Atendimento registrado'}
+                            </span>
+                            <span className="shrink-0 text-[11px] text-primary">ficha →</span>
+                          </button>
+                        ))}
+                      </div>
+                    </div>
+                  )}
+                </div>
+              );
+            })}
           </div>
         )}
       </div>
