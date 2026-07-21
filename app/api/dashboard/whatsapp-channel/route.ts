@@ -60,6 +60,27 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ ok: false, error: 'Número de alerta inválido (use DDI+DDD+número).' }, { status: 400 });
   }
 
+  // SPEC-049: configurar/editar o AVISO de queda a qualquer momento.
+  if (body.action === 'set-alert') {
+    const mode = String(body.mode || '');
+    try {
+      const backend = getBackendUrl();
+      const res = await fetch(`${backend}/api/whatsapp-channel/set-alert`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', 'X-AutoBrokers-Internal-Key': key },
+        body: JSON.stringify({ company_id: ctx.companyId, mode, alert_number: alertNumber || null }),
+        cache: 'no-store',
+      });
+      const json = await res.json().catch(() => ({}));
+      return NextResponse.json(json, { status: res.status });
+    } catch (e) {
+      if (e instanceof BackendUrlError) {
+        return NextResponse.json({ ok: false, error: 'Backend não configurado.' }, { status: 500 });
+      }
+      return NextResponse.json({ ok: false, error: 'Falha ao salvar o aviso.' }, { status: 502 });
+    }
+  }
+
   // Desconectar (founder 14/07): logout da instância Evolution pelo dashboard.
   if (body.action === 'disconnect') {
     try {

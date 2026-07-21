@@ -1,8 +1,10 @@
 'use client';
 
-// Canal WhatsApp da corretora (SPEC-017 P1.3) — Evolution + QR code.
-// Card autocontido: status ao vivo, conexão por QR e número de alerta de
-// desconexão (S17-3). Fala apenas com /api/dashboard/whatsapp-channel (sessão).
+// Canal WhatsApp da corretora (SPEC-017 / SPEC-049).
+// PASSO 1 = QR code com instruções (o que importa). PASSO 2 = aviso de queda,
+// OPCIONAL e editável a qualquer momento (número próprio OU o grupo do
+// suporte humano — o mesmo dos dossiês). O diagnóstico técnico da Evolution
+// saiu da tela (era interno da plataforma e só confundia o corretor).
 
 import { useCallback, useEffect, useRef, useState } from 'react';
 
@@ -20,6 +22,7 @@ interface StatusResponse {
   instance?: string;
   detail?: string;
   error?: string;
+  alert?: { mode: 'number' | 'support' | null; number: string | null };
 }
 
 const POLL_MS = 5000;
@@ -37,28 +40,24 @@ export function WhatsAppChannelCard() {
   const [state, setState] = useState<ChannelState>('unknown');
   const [connected, setConnected] = useState(false);
   const [qr, setQr] = useState<string | null>(null);
-  const [alertNumber, setAlertNumber] = useState('');
   const [busy, setBusy] = useState(false);
   const [message, setMessage] = useState('');
-  const [diag, setDiag] = useState<Record<string, unknown> | null>(null);
+  // SPEC-049 — aviso de queda (passo 2, opcional, sempre editável)
+  const [alertMode, setAlertMode] = useState<'number' | 'support' | 'off'>('off');
+  const [alertNumber, setAlertNumber] = useState('');
+  const [alertSaved, setAlertSaved] = useState<{ mode: string | null; number: string | null }>({ mode: null, number: null });
+  const [alertBusy, setAlertBusy] = useState(false);
+  const [alertMsg, setAlertMsg] = useState('');
 
-  const loadDiagnostics = useCallback(async () => {
-    try {
-      const res = await fetch('/api/dashboard/whatsapp-channel?action=diagnostics', { cache: 'no-store' });
-      const json = await res.json().catch(() => ({}));
-      setDiag(json && typeof json === 'object' ? json : null);
-    } catch {
-      setDiag(null);
-    }
-  }, []);
   const pollRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const wantQrRef = useRef(false);
+  const alertLoadedRef = useRef(false);
 
   const refreshStatus = useCallback(async () => {
     try {
       const res = await fetch('/api/dashboard/whatsapp-channel?action=status', { cache: 'no-store' });
       const json: StatusResponse = await res.json().catch(() => ({}));
-      if (res.status === 503 || json.detail === 'evolution_not_configured') {
+      if (res.status === 503 || json.detail === 'evolution_go_not_configured' || json.detail === 'evolution_not_configured') {
         setState('not_configured');
         setConnected(false);
         return;
@@ -70,25 +69,28 @@ export function WhatsAppChannelCard() {
       const s = String(json.state || 'unknown').toLowerCase();
       setConnected(Boolean(json.connected));
       setState((s as ChannelState) || 'unknown');
+      // Config do aviso salva no servidor — carrega UMA vez (não sobrescreve
+      // o que a pessoa está digitando a cada poll).
+      if (!alertLoadedRef.current && json.alert) {
+        alertLoadedRef.current = true;
+        setAlertSaved(json.alert);
+        if (json.alert.mode === 'support') setAlertMode('support');
+        else if (json.alert.mode === 'number') { setAlertMode('number'); setAlertNumber(json.alert.number || ''); }
+      }
       if (json.connected) {
         setQr(null);
         wantQrRef.current = false;
         setMessage('');
       } else if (s === 'connecting' || s === 'close' || wantQrRef.current) {
-        // Instância existe e aguarda pareamento: busca o QR SEMPRE (sobrevive a
-        // refresh da página — o QR expira e é renovado a cada ciclo do poll).
         const qres = await fetch('/api/dashboard/whatsapp-channel?action=qr', { cache: 'no-store' });
         const qjson = await qres.json().catch(() => ({}));
         if (qres.ok && qjson.qr_base64) {
           const raw = String(qjson.qr_base64);
-          // Só renderiza como imagem o que É imagem (data URI ou base64 puro).
           const looksBase64 = raw.startsWith('data:') || (raw.length > 200 && !raw.includes(' '));
           if (looksBase64) {
             setQr(raw.startsWith('data:') ? raw : `data:image/png;base64,${raw}`);
             setMessage('');
           }
-        } else if (qres.ok && qjson.qr_text) {
-          setMessage('QR gerado em formato texto pelo servidor — clique em "Gerar novo QR" para tentar a imagem novamente.');
         }
       }
     } catch {
@@ -98,12 +100,11 @@ export function WhatsAppChannelCard() {
 
   useEffect(() => {
     refreshStatus();
-    loadDiagnostics();
     pollRef.current = setInterval(refreshStatus, POLL_MS);
     return () => {
       if (pollRef.current) clearInterval(pollRef.current);
     };
-  }, [refreshStatus, loadDiagnostics]);
+  }, [refreshStatus]);
 
   const handleConnect = async () => {
     setBusy(true);
@@ -112,15 +113,13 @@ export function WhatsAppChannelCard() {
       const res = await fetch('/api/dashboard/whatsapp-channel', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ action: 'setup', alert_number: alertNumber || undefined }),
+        body: JSON.stringify({ action: 'setup' }),
       });
       const json = await res.json().catch(() => ({}));
       if (!res.ok || json.ok === false) {
-        setMessage(String(json.error || json.detail || 'Não foi possível iniciar a conexão.'));
-        await loadDiagnostics();
+        setMessage(String(json.error || json.detail || 'Não foi possível iniciar a conexão. Tente de novo em instantes.'));
       } else {
         wantQrRef.current = true;
-        setMessage('Instância pronta. Escaneie o QR code com o WhatsApp da corretora (Aparelhos conectados).');
         await refreshStatus();
       }
     } catch {
@@ -130,8 +129,36 @@ export function WhatsAppChannelCard() {
     }
   };
 
-  // Founder 14/07: sem Desconectar não há como tirar o número da Evolution
-  // pelo dashboard. Dois cliques (confirmação) — desconectar derruba o canal.
+  const saveAlert = async () => {
+    setAlertBusy(true);
+    setAlertMsg('');
+    try {
+      const res = await fetch('/api/dashboard/whatsapp-channel', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ action: 'set-alert', mode: alertMode, alert_number: alertMode === 'number' ? alertNumber : undefined }),
+      });
+      const json = await res.json().catch(() => ({}));
+      if (!res.ok || json.ok === false) {
+        const d = String(json.error || json.detail || '');
+        setAlertMsg(
+          d.includes('numero_igual_ao_pareado') ? 'Use OUTRO número — este é o próprio número pareado.'
+            : d.includes('numero_invalido') ? 'Número inválido (use DDI+DDD+número, ex.: 5548999998888).'
+              : d.includes('canal_nao_configurado') ? 'Gere o QR code primeiro (Passo 1) — depois configure o aviso.'
+                : 'Não foi possível salvar o aviso.',
+        );
+      } else {
+        setAlertSaved(json.alert || { mode: alertMode === 'off' ? null : alertMode, number: alertNumber || null });
+        setAlertMsg('Aviso salvo. ✓');
+      }
+    } catch {
+      setAlertMsg('Falha de comunicação com o servidor.');
+    } finally {
+      setAlertBusy(false);
+    }
+  };
+
+  // Founder 14/07: sem Desconectar não há como tirar o número pelo dashboard.
   const [confirmDisconnect, setConfirmDisconnect] = useState(false);
   const handleDisconnect = async () => {
     if (!confirmDisconnect) {
@@ -163,6 +190,11 @@ export function WhatsAppChannelCard() {
   };
 
   const label = stateLabel(state, connected);
+  const alertSummary = alertSaved.mode === 'support'
+    ? 'Aviso vai para o grupo do suporte humano (o mesmo dos dossiês).'
+    : alertSaved.mode === 'number' && alertSaved.number
+      ? `Aviso vai para o número ${alertSaved.number}.`
+      : 'Nenhum aviso configurado ainda — recomendamos configurar.';
 
   return (
     <DetailSection>
@@ -175,7 +207,7 @@ export function WhatsAppChannelCard() {
             <div>
               <p className="text-sm font-semibold text-foreground">WhatsApp da corretora</p>
               <p className="text-xs text-muted-foreground">
-                Canal de atendimento aos segurados (Evolution · QR code · sem mensalidade).
+                O número que atende seus segurados — conecte por QR code em 2 minutos.
               </p>
             </div>
           </div>
@@ -184,75 +216,49 @@ export function WhatsAppChannelCard() {
 
         {state === 'not_configured' && (
           <p className="rounded-lg border border-border bg-surface-2 px-3 py-2 text-xs text-muted-foreground">
-            O serviço Evolution ainda não foi configurado pela plataforma (EVOLUTION_BASE_URL/EVOLUTION_API_KEY).
+            O canal ainda não foi liberado pela plataforma para esta corretora — fale com o suporte AutoBrokers.
           </p>
         )}
 
+        {/* ---------- PASSO 1 — CONECTAR (QR code) ---------- */}
         {!connected && state !== 'not_configured' && (
-          <div className="flex flex-col gap-3">
-            <p className="text-xs text-foreground-2">
-              <span className="font-semibold">É AQUI que você conecta o WhatsApp de atendimento da corretora.</span>{' '}
-              Clique em “Gerar QR code” e escaneie com o celular do número de atendimento.
-            </p>
-            <div className="flex flex-col gap-3 sm:flex-row sm:items-end">
-              <div className="flex-1">
-                <label className="mb-1 block text-xs font-medium text-foreground-2">
-                  Passo 1 (opcional) — número de ALERTA se a conexão cair (outro número, nunca o de atendimento)
-                </label>
-                <input
-                  value={alertNumber}
-                  onChange={(e) => setAlertNumber(e.target.value)}
-                  placeholder="Ex.: 5548999998888"
-                  className="w-full rounded-lg border border-border bg-surface-2 px-3 py-2 text-sm text-foreground outline-none focus:border-primary/60"
-                />
-              </div>
+          <div className="rounded-lg border border-primary/30 bg-surface p-3">
+            <p className="text-xs font-semibold text-foreground">Passo 1 — Conectar o número de atendimento</p>
+            <ol className="mt-2 list-decimal space-y-1 pl-4 text-xs text-muted-foreground">
+              <li>Clique em <span className="font-medium text-foreground">Gerar QR code</span> aqui embaixo.</li>
+              <li>No celular do atendimento: <span className="font-medium text-foreground">WhatsApp → Configurações → Dispositivos conectados → Conectar dispositivo</span>.</li>
+              <li>Aponte a câmera para o QR. Quando aparecer “Conectado”, pronto — continue atendendo normalmente pelo celular.</li>
+            </ol>
+            <div className="mt-3 flex items-center gap-3">
               <Button onClick={handleConnect} disabled={busy}>
-                {busy ? 'Preparando…' : qr ? 'Gerar novo QR' : 'Passo 2 — Gerar QR code'}
+                {busy ? 'Preparando…' : qr ? 'Gerar novo QR' : 'Gerar QR code'}
               </Button>
+              {qr && <span className="text-[11px] text-muted-foreground">O QR expira rápido — se falhar, gere um novo.</span>}
             </div>
-          </div>
-        )}
 
-        {diag && !connected && (
-          <div className="rounded-lg border border-border bg-surface-2 px-3 py-2 text-xs text-foreground-2">
-            <p className="mb-1 font-semibold text-foreground">Diagnóstico do canal</p>
-            <ul className="space-y-0.5">
-              <li>{diag.evolution_base_url_set ? '✅' : '❌'} EVOLUTION_BASE_URL configurada</li>
-              <li>{diag.evolution_api_key_set ? '✅' : '❌'} EVOLUTION_API_KEY configurada</li>
-              <li>{diag.public_backend_url_set ? '✅' : '❌'} PUBLIC_BACKEND_URL configurada</li>
-              <li>
-                {diag.evolution_reachable ? '✅' : '❌'} Servidor Evolution alcançável
-                {diag.evolution_http_status ? ` (HTTP ${String(diag.evolution_http_status)})` : ''}
-                {diag.evolution_version ? ` · v${String(diag.evolution_version)}` : ''}
-              </li>
-              <li>ℹ️ Instância: {String(diag.instance || '-')} · estado: {String(diag.instance_state || '-')}</li>
-              {typeof diag.error === 'string' && diag.error ? <li>❗ {diag.error}</li> : null}
-            </ul>
-            <p className="mt-1 text-faint">Me envie um print deste diagnóstico se continuar falhando.</p>
-          </div>
-        )}
-
-        {qr && !connected && (
-          <div className="flex flex-col items-center gap-2 rounded-lg border border-border bg-white p-4">
-            {/* eslint-disable-next-line @next/next/no-img-element */}
-            <img src={qr} alt="QR code do WhatsApp" className="h-56 w-56" />
-            <p className="text-center text-xs text-neutral-600">
-              WhatsApp → Configurações → Aparelhos conectados → Conectar aparelho.
-              O QR expira rápido; se falhar, clique em “Gerar novo QR”.
-            </p>
+            {qr && (
+              <div className="mt-3 flex flex-col items-center gap-2 rounded-lg border border-border bg-white p-4">
+                {/* eslint-disable-next-line @next/next/no-img-element */}
+                <img src={qr} alt="QR code do WhatsApp" className="h-56 w-56" />
+                <p className="text-center text-xs text-neutral-600">
+                  WhatsApp → Configurações → Dispositivos conectados → Conectar dispositivo.
+                </p>
+              </div>
+            )}
           </div>
         )}
 
         {connected && (
           <div className="flex flex-col gap-3">
             <p className="rounded-lg border border-success/40 bg-surface-2 px-3 py-2 text-xs text-foreground-2">
-              ✅ WhatsApp conectado. Se cair, o número de alerta configurado recebe aviso imediato para reconectar.
+              ✅ WhatsApp conectado. A equipe continua atendendo pelo celular normalmente — e o
+              atendimento NÃO cai se o celular ficar sem bateria ou sem internet por um tempo.
             </p>
             <div className="flex items-center justify-between gap-3 rounded-lg border border-destructive/30 bg-surface-2 px-3 py-2">
               <p className="text-xs text-muted-foreground">
                 {confirmDisconnect
                   ? 'Tem certeza? O atendimento por WhatsApp para de funcionar até reconectar.'
-                  : 'Precisa trocar de número ou migrar de servidor? Desconecte aqui.'}
+                  : 'Precisa trocar de número? Desconecte aqui e gere um novo QR.'}
               </p>
               <Button
                 variant="outline"
@@ -263,6 +269,69 @@ export function WhatsAppChannelCard() {
               >
                 {busy ? 'Desconectando…' : confirmDisconnect ? 'Confirmar desconexão' : 'Desconectar'}
               </Button>
+            </div>
+          </div>
+        )}
+
+        {/* ---------- PASSO 2 — AVISO DE QUEDA (opcional, sempre editável) ---------- */}
+        {state !== 'not_configured' && (
+          <div className="rounded-lg border border-border bg-surface p-3">
+            <p className="text-xs font-semibold text-foreground">Passo 2 (opcional) — Aviso se a conexão cair</p>
+            <p className="mt-1 text-[11px] text-muted-foreground">
+              Se o WhatsApp de atendimento desconectar, mandamos um aviso na hora para reconectar.
+              {' '}{alertSummary} Você pode configurar ou trocar isso quando quiser.
+            </p>
+            <div className="mt-2 space-y-2">
+              <label className="flex items-start gap-2 text-xs text-foreground">
+                <input
+                  type="radio"
+                  name="alert-mode"
+                  checked={alertMode === 'support'}
+                  onChange={() => setAlertMode('support')}
+                  className="mt-0.5"
+                />
+                <span>
+                  <span className="font-medium">Grupo do suporte humano</span>{' '}
+                  <span className="text-muted-foreground">— o mesmo grupo que já recebe os dossiês; todo mundo vê o aviso. (Recomendado)</span>
+                </span>
+              </label>
+              <label className="flex items-start gap-2 text-xs text-foreground">
+                <input
+                  type="radio"
+                  name="alert-mode"
+                  checked={alertMode === 'number'}
+                  onChange={() => setAlertMode('number')}
+                  className="mt-0.5"
+                />
+                <span className="flex-1">
+                  <span className="font-medium">Outro número de WhatsApp</span>{' '}
+                  <span className="text-muted-foreground">— nunca o número pareado (ele estará fora do ar).</span>
+                  {alertMode === 'number' && (
+                    <input
+                      value={alertNumber}
+                      onChange={(e) => setAlertNumber(e.target.value)}
+                      placeholder="Ex.: 5548999998888"
+                      className="mt-1 w-full rounded-lg border border-border bg-surface-2 px-3 py-2 text-sm text-foreground outline-none focus:border-primary/60"
+                    />
+                  )}
+                </span>
+              </label>
+              <label className="flex items-start gap-2 text-xs text-foreground">
+                <input
+                  type="radio"
+                  name="alert-mode"
+                  checked={alertMode === 'off'}
+                  onChange={() => setAlertMode('off')}
+                  className="mt-0.5"
+                />
+                <span className="text-muted-foreground">Sem aviso por enquanto</span>
+              </label>
+            </div>
+            <div className="mt-2 flex items-center gap-2">
+              <Button variant="outline" size="sm" onClick={saveAlert} disabled={alertBusy}>
+                {alertBusy ? 'Salvando…' : 'Salvar aviso'}
+              </Button>
+              {alertMsg && <span className="text-[11px] text-muted-foreground">{alertMsg}</span>}
             </div>
           </div>
         )}

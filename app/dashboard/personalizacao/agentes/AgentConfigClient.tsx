@@ -36,6 +36,9 @@ export function AgentConfigClient({ agentKey }: { agentKey: 'autobrokers' | 'eve
   const [busy, setBusy] = useState(false);
   const [notice, setNotice] = useState('');
   const [errors, setErrors] = useState<string[]>([]);
+  // SPEC-048: abertura/encerramento ficam TRAVADOS por padrão (mexer errado
+  // quebra o atendimento) — editar exige clique + aviso.
+  const [unlocked, setUnlocked] = useState<Record<string, boolean>>({});
 
   const load = useCallback(async () => {
     const j = await fetch(`/api/dashboard/agents/${agentKey}`).then((r) => r.json()).catch(() => ({}));
@@ -103,7 +106,37 @@ export function AgentConfigClient({ agentKey }: { agentKey: 'autobrokers' | 'eve
   if (!config) return <p className="text-sm text-muted-foreground">Carregando…</p>;
   const opening = config.preview?.opening_message || vars.opening_message;
 
+  const PROTECTED_KEYS = ['opening_message', 'closing_message'];
+
+  const unlock = (key: string) => {
+    if (!window.confirm(
+      'Atenção: esta mensagem afeta o atendimento real no WhatsApp.\n\n'
+      + 'As palavras {{attendant_name}} e {{company_name}} são variáveis — elas trocam '
+      + 'sozinhas pelo nome do atendente e da corretora. NÃO as apague nem digite nomes fixos '
+      + 'no lugar delas.\n\nQuer editar mesmo assim?',
+    )) return;
+    setUnlocked((p) => ({ ...p, [key]: true }));
+  };
+
   const renderVar = (v: Variable) => {
+    // Campos-template protegidos: mostram a PRÉVIA renderizada; editar o cru
+    // (com variáveis) só após o aviso. "Restaurar padrão" desfaz qualquer erro.
+    if (PROTECTED_KEYS.includes(v.key) && !unlocked[v.key]) {
+      return (
+        <div className="mt-1 flex items-start gap-2">
+          <p className="min-w-0 flex-1 rounded-lg border border-border bg-surface-2 px-3 py-2 text-sm text-muted-foreground">
+            {config?.preview?.[v.key] || vars[v.key] || '—'}
+          </p>
+          <button
+            type="button"
+            onClick={() => unlock(v.key)}
+            className="shrink-0 rounded-lg border border-border bg-surface-2 px-3 py-2 text-xs text-muted-foreground transition-colors hover:text-foreground"
+          >
+            Editar
+          </button>
+        </div>
+      );
+    }
     if (v.input_kind === 'select') {
       return (
         <select value={vars[v.key] ?? ''} onChange={(e) => setVars((p) => ({ ...p, [v.key]: e.target.value }))} className={inputCls}>
@@ -185,7 +218,7 @@ export function AgentConfigClient({ agentKey }: { agentKey: 'autobrokers' | 'eve
             <label key={v.key} className={`block text-[12px] ${v.input_kind === 'textarea' ? 'sm:col-span-2' : ''}`}>
               <span className="text-muted-foreground">{v.label}</span>
               {renderVar(v)}
-              {(v.key === 'opening_message' || v.key === 'closing_message') && (
+              {(v.key === 'opening_message' || v.key === 'closing_message') && unlocked[v.key] && (
                 <span className="mt-1 block text-[11px] text-muted-foreground">
                   Dica: use <code className="rounded bg-surface-2 px-1">{'{{attendant_name}}'}</code> e{' '}
                   <code className="rounded bg-surface-2 px-1">{'{{company_name}}'}</code> — trocam sozinhas

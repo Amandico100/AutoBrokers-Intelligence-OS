@@ -221,6 +221,22 @@ tsc limpo, 24 checks novos.
   pessoal COEXISTEM por template (índices parciais no lugar do singleton);
   modal de escolha no conectar; owner assinado no state anti-CSRF do OAuth.
 
+## PÓS-ONDAS 8 — SPEC-049 ENTREGUE (21/07)
+
+Pareamento limpo + aviso de queda robusto + Garimpo v2 (doc SPEC-049).
+
+- Fix do rename: whitelist de variáveis seguras SÓ na abertura/encerramento
+  (guard fail-closed intacto; prova funcional no teste).
+- Abertura/encerramento travados na UI (Editar + aviso).
+- Card do canal: Passo 1 QR com instruções; Passo 2 aviso de queda opcional e
+  SEMPRE editável (grupo do suporte humano OU outro número ≠ pareado);
+  diagnóstico Evolution legado fora da tela.
+- Alerta de desconexão: destino suporte-humano/número/fallback; remetente
+  plataforma→outra integração ativa→Atividades; set-alert endpoint.
+- Garimpo v2: camada LLM barata (Haiku, 1/corretora/dia, ≤8k chars) sobre a
+  regex; kinds duvida_seguros/necessidade; desligável.
+- Teste spec049 30 checks; bateria 56/56; tsc limpo.
+
 ## PÓS-ONDAS 7 — SPEC-048 ENTREGUE (21/07)
 
 Isolamento real entre corretoras + variáveis vivas + Equipe no dashboard.

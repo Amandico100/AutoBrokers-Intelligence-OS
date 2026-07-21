@@ -311,6 +311,19 @@ export const VAR_MAX_LENGTH: Record<string, number> = {
 const CONTROL_CHARS = /[\u0000-\u0008\u000B\u000C\u000E-\u001F\u007F]/g;
 const TEMPLATE_INJECTION = /\{\{|\}\}/;
 
+// SPEC-048: abertura/encerramento são TEMPLATES do tenant — as variáveis
+// seguras abaixo são permitidas NELES (e só nelas). Qualquer outro {{...}}
+// continua bloqueado (guard de injeção intacto). Sem isso, o form (que agora
+// edita o valor CRU) não conseguia salvar nada: até trocar o nome do
+// atendente falhava com template_injection.
+const TEMPLATE_FIELDS = new Set(['opening_message', 'closing_message']);
+const SAFE_PLACEHOLDERS = /\{\{\s*(attendant_name|company_name|business_hours|handoff_target)\s*\}\}/g;
+
+function hasUnsafeTemplate(field: string, val: string): boolean {
+  const rest = TEMPLATE_FIELDS.has(field) ? val.replace(SAFE_PLACEHOLDERS, '') : val;
+  return TEMPLATE_INJECTION.test(rest);
+}
+
 /** URL de avatar precisa ser https pública (bloqueia data:/javascript:/file:/localhost/IP privado). */
 export function isSafeAvatarUrl(u: string): boolean {
   let url: URL;
@@ -343,7 +356,7 @@ export function validateTenantAgentInput(bp: CanonicalBlueprint, input: TenantAg
       if (!bv) { errors.push(`${k}:campo_nao_editavel`); continue; }
       if (typeof raw !== 'string') { errors.push(`${k}:tipo_invalido`); continue; }
       const val = raw.replace(CONTROL_CHARS, '').trim();
-      if (TEMPLATE_INJECTION.test(val)) { errors.push(`${k}:template_injection`); continue; }
+      if (hasUnsafeTemplate(k, val)) { errors.push(`${k}:template_injection`); continue; }
       const max = bv.max_length ?? VAR_MAX_LENGTH[k] ?? 200;
       if (val.length > max) { errors.push(`${k}:tamanho_maximo`); continue; }
       if (bv.options && bv.options.length && !bv.options.some((o) => o.value === val)) { errors.push(`${k}:opcao_invalida`); continue; }
