@@ -95,9 +95,14 @@ class CreateRoutineTool(BaseTool):
             return {"content": "Instruções muito curtas — descreva exatamente o que a rotina deve fazer em cada execução."}
 
         next_run = compute_next_run(schedule, "America/Sao_Paulo")
+        # SPEC-044: rotina criada NO CHAT é do USUÁRIO que pediu (visibility
+        # personal — só ele vê/gerencia/recebe). O user_id chega POR EXECUÇÃO
+        # (injetado pelo tool_node; o grafo é cacheado — nunca do construtor).
+        effective_user = str(kwargs.get("user_id") or self.user_id or "") or None
         record = {
             "company_id": self.company_id,
-            "created_by": self.user_id or None,
+            "created_by": effective_user,
+            "visibility": "personal" if effective_user else "company",
             "name": str(kwargs.get("name") or "Rotina")[:120],
             "instructions": instructions,
             "schedule": schedule,
@@ -150,18 +155,21 @@ class ListRoutinesTool(BaseTool):
         self.company_id = str(company_id or "")
         self.supabase_client = supabase_client
 
-    def _run(self, include_inactive: bool = False) -> dict:
+    def _run(self, include_inactive: bool = False, user_id: str = None, **kwargs) -> dict:
         try:
             client = getattr(self.supabase_client, "client", self.supabase_client)
             q = client.table("routines").select(
-                "id, name, schedule, delivery, is_active, next_run_at, consecutive_failures"
+                "id, name, schedule, delivery, is_active, next_run_at, consecutive_failures, visibility, created_by"
             ).eq("company_id", self.company_id).order("created_at")
             if not include_inactive:
                 q = q.eq("is_active", True)
             res = q.execute()
         except Exception as e:  # noqa: BLE001
             return {"content": f"Não consegui listar as rotinas ({type(e).__name__})."}
-        rows = res.data or []
+        # SPEC-044: da corretora = todos veem; pessoal = só o dono.
+        uid = str(user_id or "")
+        rows = [r for r in (res.data or [])
+                if (r.get("visibility") or "company") != "personal" or str(r.get("created_by") or "") == uid]
         if not rows:
             return {"content": "Nenhuma rotina cadastrada ainda. Ofereça criar uma."}
         lines = []
@@ -169,11 +177,12 @@ class ListRoutinesTool(BaseTool):
             sch = r.get("schedule") or {}
             when = f"diária às {sch.get('time')}" if sch.get("kind") == "daily" else f"a cada {sch.get('minutes')} min"
             status = "ativa" if r.get("is_active") else "pausada"
-            lines.append(f"- {r.get('name')} · {when} · entrega {((r.get('delivery') or {}).get('channel'))} · {status} · próxima: {str(r.get('next_run_at') or '-')[:16]}")
-        return {"content": "Rotinas da corretora:\n" + "\n".join(lines)}
+            dona = "pessoal" if (r.get("visibility") or "company") == "personal" else "da corretora"
+            lines.append(f"- {r.get('name')} · {when} · entrega {((r.get('delivery') or {}).get('channel'))} · {status} · {dona} · próxima: {str(r.get('next_run_at') or '-')[:16]}")
+        return {"content": "Rotinas:\n" + "\n".join(lines)}
 
-    async def _arun(self, include_inactive: bool = False) -> dict:
-        return self._run(include_inactive=include_inactive)
+    async def _arun(self, include_inactive: bool = False, user_id: str = None, **kwargs) -> dict:
+        return self._run(include_inactive=include_inactive, user_id=user_id, **kwargs)
 
 
 class ManageRoutineInput(BaseModel):
@@ -207,11 +216,16 @@ class ManageRoutineTool(BaseTool):
         self.company_id = str(company_id or "")
         self.supabase_client = supabase_client
 
-    def _find(self, client, routine_id: str):
+    def _find(self, client, routine_id: str, user_id: str = ""):
         res = client.table("routines").select("*").eq("company_id", self.company_id).execute()
         rid = str(routine_id or "").strip()
+        uid = str(user_id or "")
         for row in res.data or []:
             if str(row["id"]).startswith(rid) or rid == str(row["id"]):
+                # SPEC-044: rotina PESSOAL de outro usuário é invisível — nem
+                # confirma que existe (mesmo comportamento de "não encontrada").
+                if (row.get("visibility") or "company") == "personal" and str(row.get("created_by") or "") != uid:
+                    return None
                 return row
         return None
 
@@ -220,7 +234,7 @@ class ManageRoutineTool(BaseTool):
 
         client = getattr(self.supabase_client, "client", self.supabase_client)
         action = str(kwargs.get("action") or "").strip().lower()
-        row = self._find(client, str(kwargs.get("routine_id") or ""))
+        row = self._find(client, str(kwargs.get("routine_id") or ""), str(kwargs.get("user_id") or ""))
         if not row:
             return {"content": "Rotina não encontrada. Use list_routines e confira o id."}
 

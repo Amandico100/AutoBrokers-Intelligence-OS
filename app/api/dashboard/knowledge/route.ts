@@ -8,6 +8,7 @@ export const dynamic = 'force-dynamic';
 export async function GET(_req: NextRequest) {
   const auth = await requireCompanyMember({ write: false });
   if (!auth.ok) return NextResponse.json({ ok: false, error: auth.error }, { status: auth.status });
-  const out = await getKnowledge(auth.supabase, auth.ctx.companyId);
+  // SPEC-044: o viewer filtra docs pessoais — só o dono vê os próprios.
+  const out = await getKnowledge(auth.supabase, auth.ctx.companyId, auth.ctx.userId);
   return NextResponse.json(out);
 }

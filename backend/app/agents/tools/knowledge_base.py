@@ -87,6 +87,7 @@ class KnowledgeBaseTool(BaseTool):
         query: str,
         agent_id: Optional[str] = None,  # 🔥 Injetado pelo tool_node
         is_hyde_enabled: bool = True,    # 🔥 NOVO: Controla busca profunda
+        user_id: Optional[str] = None,   # SPEC-044: injetado pelo tool_node (busca pessoal)
         **kwargs,
     ) -> dict:
         """
@@ -115,6 +116,7 @@ class KnowledgeBaseTool(BaseTool):
                 query=query,
                 agent_id=agent_id,
                 is_hyde_enabled=is_hyde_enabled,  # 🔥 Passa config de HyDE
+                user_id=user_id,  # SPEC-044: docs pessoais SÓ do usuário da sessão
             )
 
             # Log do resultado
@@ -148,6 +150,7 @@ class KnowledgeBaseTool(BaseTool):
                 "agent_id": agent_id,
             }
 
-    async def _arun(self, query: str, agent_id: Optional[str] = None, is_hyde_enabled: bool = True, **kwargs) -> dict:
+    async def _arun(self, query: str, agent_id: Optional[str] = None, is_hyde_enabled: bool = True,
+                    user_id: Optional[str] = None, **kwargs) -> dict:
         """Versão assíncrona - por enquanto chama a síncrona."""
-        return self._run(query, agent_id=agent_id, is_hyde_enabled=is_hyde_enabled, **kwargs)
+        return self._run(query, agent_id=agent_id, is_hyde_enabled=is_hyde_enabled, user_id=user_id, **kwargs)

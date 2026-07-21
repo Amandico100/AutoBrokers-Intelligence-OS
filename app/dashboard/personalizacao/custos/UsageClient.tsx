@@ -3,7 +3,8 @@
 import { useEffect, useState } from 'react';
 
 type Group = { key: string; cost_brl: number; tokens: number };
-type Data = { balance_brl: number; alert_80: boolean; alert_100: boolean; period_total_brl: number; period_tokens: number; by_agent: Group[]; by_model: Group[]; has_data: boolean };
+type PerUser = { user_id: string; name: string; tokens: number; cost_usd: number };
+type Data = { balance_brl: number; alert_80: boolean; alert_100: boolean; period_total_brl: number; period_tokens: number; by_agent: Group[]; by_model: Group[]; has_data: boolean; per_user?: PerUser[] };
 
 const brl = (n: number) => n.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' });
 const int = (n: number) => n.toLocaleString('pt-BR');
@@ -42,6 +43,21 @@ export function UsageClient() {
               <span className="text-foreground">{brl(g.cost_brl)} · {int(g.tokens)} tokens</span>
             </div>
           ))}
+        </div>
+      )}
+
+      {(d.per_user?.length ?? 0) > 0 && (
+        <div className="rounded-lg border border-border bg-card p-4">
+          <p className="mb-2 text-sm font-medium text-foreground">Por pessoa (Chat Principal, 30 dias)</p>
+          {(() => {
+            const total = d.per_user!.reduce((a, b) => a + b.tokens, 0) || 1;
+            return d.per_user!.map((u) => (
+              <div key={u.user_id} className="flex items-center justify-between border-t border-border py-1.5 text-[12px] first:border-0">
+                <span className="text-muted-foreground">{u.name}</span>
+                <span className="text-foreground">{int(u.tokens)} tokens · {Math.round((u.tokens / total) * 100)}% do uso</span>
+              </div>
+            ));
+          })()}
         </div>
       )}
 

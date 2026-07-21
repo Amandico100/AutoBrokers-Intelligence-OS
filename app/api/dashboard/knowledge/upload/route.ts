@@ -25,6 +25,12 @@ export async function POST(req: NextRequest) {
     fd.set('agent_id', agentId);
     // Linguagem do corretor: sem jargão — a estratégia fica automática (semântica).
     fd.set('strategy', 'semantic');
+    // SPEC-044: destino do conhecimento — corretora (default) ou pessoal.
+    // O DONO é sempre o usuário da sessão (nunca vem do formulário).
+    if (String(incoming.get('target') || '') === 'personal') {
+      fd.set('scope', 'personal');
+      fd.set('owner_user_id', String(auth.ctx.userId || ''));
+    }
 
     const res = await fetch(new URL('/documents/upload', BACKEND_URL), { method: 'POST', body: fd });
     const body = await res.text();

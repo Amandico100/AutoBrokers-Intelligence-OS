@@ -41,6 +41,8 @@ class OAuthStorePayload(BaseModel):
     scope: Optional[str] = None
     account_label: Optional[str] = None
     name: Optional[str] = None
+    # SPEC-044: conexão PESSOAL (padrão ChatGPT Enterprise) — NULL = da corretora.
+    owner_user_id: Optional[str] = None
 
 
 @router.post("/connectors/oauth/store")
@@ -81,13 +83,16 @@ async def store_oauth_token(
     conn_config = {"scope": payload.scope, "account_label": payload.account_label, "expires_at": expires_at}
     now_iso = datetime.now(timezone.utc).isoformat()
 
-    # upsert: 1 conexão não-arquivada por (company, template) — respeita o índice singleton
-    existing_res = (
-        await db.client.table("tenant_connections")
+    # SPEC-044 upsert por DONO: 1 conexão da CORRETORA (owner NULL) + 1 PESSOAL
+    # por usuário para o mesmo template (índices parciais garantem no banco).
+    owner = (payload.owner_user_id or "").strip() or None
+    q = (
+        db.client.table("tenant_connections")
         .select("id")
         .eq("company_id", company_id).eq("connector_template_id", template_id).neq("status", "archived")
-        .order("created_at", desc=False).limit(1).execute()
     )
+    q = q.eq("owner_user_id", owner) if owner else q.is_("owner_user_id", "null")
+    existing_res = await q.order("created_at", desc=False).limit(1).execute()
     existing = existing_res.data[0] if existing_res and existing_res.data else None
 
     fields = {
@@ -96,7 +101,8 @@ async def store_oauth_token(
         "status": "connected",
         "health_status": "healthy",
         "last_checked_at": now_iso,
-        "metadata": {"configured_via": "oauth", "provider": slug},
+        "metadata": {"configured_via": "oauth", "provider": slug,
+                     "ownership": "personal" if owner else "company"},
         "updated_at": now_iso,
     }
     if existing:
@@ -104,9 +110,12 @@ async def store_oauth_token(
         await db.client.table("tenant_connections").update(fields).eq("id", conn_id).eq("company_id", company_id).execute()
     else:
         ins = {**fields, "company_id": company_id, "connector_template_id": template_id,
-               "name": payload.name or f"{slug} — corretora"}
+               "owner_user_id": owner,
+               "name": payload.name or (f"{slug} — pessoal" if owner else f"{slug} — corretora")}
         ins_res = await db.client.table("tenant_connections").insert(ins).execute()
         conn_id = ins_res.data[0]["id"] if ins_res and ins_res.data else None
 
-    logger.info(f"[OAUTH STORE] company={company_id} slug={slug} connection={conn_id} status=connected")
-    return {"ok": True, "connection_id": conn_id, "status": "connected", "slug": slug}
+    logger.info(f"[OAUTH STORE] company={company_id} slug={slug} connection={conn_id} "
+                f"owner={'personal' if owner else 'company'} status=connected")
+    return {"ok": True, "connection_id": conn_id, "status": "connected", "slug": slug,
+            "ownership": "personal" if owner else "company"}

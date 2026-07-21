@@ -287,6 +287,16 @@ class LangChainService:
             ConversationMetrics(start_time=time.time()) if collect_metrics else None
         )
 
+        # SPEC-044: identidade do usuário POR REQUISIÇÃO (ContextVar) — o grafo
+        # é cacheado/compartilhado; o CostCallbackHandler lê daqui na hora de
+        # atribuir o custo. Nunca no construtor do grafo/LLM.
+        try:
+            from app.core.request_context import set_current_user_id
+
+            set_current_user_id(user_id)
+        except Exception:  # noqa: BLE001
+            pass
+
         try:
             if not company_id:
                 raise ValueError("company_id is required")

@@ -223,6 +223,7 @@ class SearchService:
         original_query: str,
         agent_id: Optional[str] = None,
         include_global: bool = False,
+        user_id: Optional[str] = None,  # SPEC-044: habilita a busca PESSOAL do usuário
     ) -> List[Dict]:
         """
         Executa Busca HÍBRIDA (Dense + Sparse) + Rerank Preciso (Top 5).
@@ -246,6 +247,8 @@ class SearchService:
             sparse_vector = None
 
         # 2. Busca Híbrida no Qdrant (Recall) - COM FILTRO DE AGENTE
+        # SPEC-044: a busca padrão EXCLUI docs pessoais (scope=personal) —
+        # documento pessoal de um usuário jamais aparece para outro/atendimento.
         initial_results = self.qdrant.search_similar(
             company_id=company_id,
             query_embedding=dense_vector,
@@ -253,9 +256,28 @@ class SearchService:
             agent_id=agent_id,
             include_tenant_wide=True,  # vê docs do agente + tenant-wide (nunca de outro agente)
             exclude_metadata_document_types=["official_policy_document"],
+            exclude_scopes=["personal"],
             top_k=20,
             score_threshold=0.0,
         )
+
+        # SPEC-044: busca PESSOAL — só quando há usuário de dashboard na
+        # requisição (atendimento nunca passa user_id → nunca vê doc pessoal).
+        if user_id:
+            try:
+                from .knowledge_scope import build_personal_search_kwargs, merge_rag_results
+
+                personal_results = self.qdrant.search_similar(
+                    company_id=company_id,
+                    query_embedding=dense_vector,
+                    sparse_embedding=sparse_vector,
+                    top_k=10,
+                    score_threshold=0.0,
+                    **build_personal_search_kwargs(user_id),
+                )
+                initial_results = merge_rag_results(initial_results, personal_results)
+            except Exception as e:  # noqa: BLE001
+                logger.warning(f"[Search] personal retrieval ignorado: {type(e).__name__}")
 
         # Conhecimento GLOBAL (opt-in, SPEC-003): coleção dedicada, só curadoria publicada.
         # SPEC-034 Onda 3: KNOWLEDGE_GLOBAL_SEARCH=1 liga a busca global para todos
@@ -321,6 +343,7 @@ class SearchService:
         agent_id: Optional[str] = None,
         is_hyde_enabled: bool = True,
         include_global: bool = False,
+        user_id: Optional[str] = None,  # SPEC-044: busca pessoal do usuário da sessão
     ) -> Dict[str, Any]:
         """
         Executa a estratégia de busca em cascata com Híbrido como padrão.
@@ -357,7 +380,7 @@ class SearchService:
 
         # --- TENTATIVA 1: Hybrid Search ---
         logger.info(f"[Search] Tentativa 1: Híbrida para '{query}'")
-        results_std = self._execute_search(company_id, query, query, agent_id=agent_id, include_global=include_global)
+        results_std = self._execute_search(company_id, query, query, agent_id=agent_id, include_global=include_global, user_id=user_id)
 
         best_score_std = _get_effective_score(results_std[0]) if results_std else 0
         if results_std:
@@ -431,7 +454,7 @@ class SearchService:
         hyde_doc = self._generate_hyde_doc(query, company_id, agent_id)
 
         results_hyde = self._execute_search(
-            company_id, hyde_doc, query, agent_id=agent_id, include_global=include_global
+            company_id, hyde_doc, query, agent_id=agent_id, include_global=include_global, user_id=user_id
         )
 
         best_score_hyde = _get_effective_score(results_hyde[0]) if results_hyde else 0
