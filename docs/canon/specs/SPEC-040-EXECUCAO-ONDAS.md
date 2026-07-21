@@ -221,6 +221,35 @@ tsc limpo, 24 checks novos.
   pessoal COEXISTEM por template (índices parciais no lugar do singleton);
   modal de escolha no conectar; owner assinado no state anti-CSRF do OAuth.
 
+## PÓS-ONDAS 5 — SPEC-046 ENTREGUE (20/07)
+
+Bloco 3 da trinca — fecha os três buracos. Migração graveyard APLICADA.
+Teste 58 checks; bateria 53/53; tsc limpo.
+
+- **Ficha do Atendimento:** /dashboard/atendimentos/ficha/[conversaId] —
+  resumo mastigado (destilado do Espelho quando houver, senão regras),
+  estágio, apólice InfoCap read-only (CPF identificado, unmasked p/ o
+  corretor), veículo/placa dos slots, linha do tempo de EVENTOS, anexos em
+  grade, dossiê REAL (novo GET /api/dispatch/dossier reconstrói via
+  build_handoff_dossier), ações Abrir conversa · Assumir · espelho do
+  acionamento. Fila/Histórico abrem a FICHA; Segurados vira perfil leve
+  (histórico → fichas). Score interno NUNCA exposto.
+- **Bug real corrigido:** o pipeline lia `.sessions` mas o backend responde
+  `.dispatches` — acionamentos ativos nunca apareciam na Fila.
+- **Limpeza 100/100 (provas de morte nos commits):** UI casos/[caseId]+
+  CasesIndexClient; rotas /api/attendance/cases/* e whatsapp/* (bridge);
+  30 módulos do runtime TS (fecho de órfãos por grafo de imports) + 22
+  scripts de teste do MVP; backend: desvio 4b do webhook, /attendance/
+  agent-reply, ATTENDANCE_BRIDGE_URL. Preservados: portal-browser stack,
+  support-destinations, conectores InfoCap.
+- **Banco reversível:** attendance_cases/corridor_runs/dispatch_packets →
+  schema `graveyard` (PII fica no banco; reverter = SET SCHEMA public).
+- **Admin devolvido:** item com submenu NAVEGA (bug do sumiço de
+  /admin/companies); subitem "Empresas & Agentes"; Cockpit → "Configuração
+  completa" na tela real (Identidade/HTTP Tools/MCP/WhatsApp/Agentes).
+- Selos "MVP ativo/Em breve" removidos dos cards de Atendimentos.
+- Pendência registrada: número dedicado de Auxiliares (multi-instância GO).
+
 ## PÓS-ONDAS 4 — SPEC-045 ENTREGUE (20/07, main `4b00c60`)
 
 Bloco 2 da trinca. Migração `20260720_02` (platform_sends) APLICADA.
