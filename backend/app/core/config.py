@@ -81,10 +81,8 @@ class Settings(BaseSettings):
     WHATSAPP_WEBHOOK_SECRET: Optional[str] = None
     WHATSAPP_DEDUPE_TTL_SECONDS: int = 120  # dedupe de messageId (Redis)
 
-    # Attendance Runtime sobre WhatsApp (42W0) — bridge para o runtime Next.
-    # DEFAULT OFF: não altera o fluxo atual (Core/LangChain) até ser habilitado.
-    ATTENDANCE_WHATSAPP_ENABLED: bool = False
-    ATTENDANCE_BRIDGE_URL: Optional[str] = None  # ex.: https://app.exemplo/api/attendance/whatsapp/inbound
+    # (SPEC-046) O bridge TS de atendimento (42W0) foi removido — o atendente
+    # externo roda direto no Smith desde a SPEC-017 P2. Só a chave interna fica.
     BACKEND_INTERNAL_API_KEY: Optional[str] = None
 
     # Attendance media (42M0/42M1/42M2) — limite de tamanho para extração inline.

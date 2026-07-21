@@ -188,10 +188,9 @@ app.include_router(
     whatsapp_integrations_router, prefix="/api/whatsapp-integrations", tags=["WhatsApp Integrations"]
 )
 
-# === Attendance Agent Reply (stateless, guardrailed LLM fallback — 42B5L-BE) ===
-from app.api.attendance_agent_reply import router as attendance_agent_reply_router
-
-app.include_router(attendance_agent_reply_router, tags=["Attendance Agent Reply"])
+# (SPEC-046) attendance_agent_reply removido — era o fallback LLM do runtime
+# TS legado (42B5L-BE); único chamador (lib/attendance/runtime-llm-fallback.ts)
+# saiu junto com o bridge. O atendente roda direto no Smith.
 
 # === InfoCap Connector Secret Storage (secret flow — 42I2.0C) ===
 from app.api.infocap_connector import router as infocap_connector_router
