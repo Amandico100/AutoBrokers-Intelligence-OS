@@ -63,17 +63,15 @@ export const resumoPermissions: PermissionGroup[] = [
 ];
 
 // ---------- Personalização ----------
+// SPEC-045 — grade nas 3 camadas: AutoBrokers (Chat Principal) DIRETO, sem a
+// etapa "Agentes"; o Agente de Atendimento vive DENTRO de Corretora.
 export const personalizacaoAreas: ModuleArea[] = [
-  { key: 'agentes', icon: icons.auxiliares, title: 'Agentes', description: 'AutoBrokers (chat) e Even (atendimento).', href: '/dashboard/personalizacao/agentes', status: { tone: 'success', label: 'Configurável' } },
-  { key: 'prontidao', icon: icons.casos, title: 'Prontidão', description: 'O que falta para o piloto entrar no ar.', href: '/dashboard/personalizacao/prontidao', status: { tone: 'info', label: 'Checklist' } },
-  { key: 'corredores', icon: icons.seguradoras, title: 'Corredores', description: 'Ative os fluxos por seguradora e ramo.', href: '/dashboard/personalizacao/corredores', status: { tone: 'success', label: 'Ativável' } },
-  { key: 'conectores', icon: icons.conectores, title: 'Conectores', description: 'Integrações reutilizáveis.', href: '/dashboard/personalizacao/conectores' },
+  { key: 'autobrokers', icon: icons.auxiliares, title: 'AutoBrokers', description: 'Chat Principal — seu copiloto interno. Tom, idioma e identidade.', href: '/dashboard/personalizacao/agentes/autobrokers', status: { tone: 'success', label: 'Chat Principal' } },
+  { key: 'corretora', icon: icons.corretora, title: 'Corretora', description: 'Dados, agente de atendimento, WhatsApp, equipe, conhecimento e custos.', href: '/dashboard/personalizacao/corretora', status: { tone: 'success', label: 'Hub da empresa' } },
+  { key: 'conectores', icon: icons.conectores, title: 'Conectores', description: 'Integrações da corretora ou pessoais — você escolhe ao conectar.', href: '/dashboard/personalizacao/conectores' },
   { key: 'seguradoras', icon: icons.seguradoras, title: 'Seguradoras', description: 'Canais, portais e corredores.', href: '/dashboard/personalizacao/seguradoras' },
-  { key: 'conhecimento', icon: icons.conhecimento, title: 'Conhecimento', description: 'Documentos e fontes da corretora.', href: '/dashboard/personalizacao/conhecimento' },
-  { key: 'corretora', icon: icons.corretora, title: 'Corretora', description: 'Dados e identidade.', href: '/dashboard/personalizacao/corretora' },
-  { key: 'equipe', icon: icons.equipe, title: 'Equipe', description: 'Usuários e permissões.', href: '/dashboard/personalizacao/equipe' },
-  // SPEC-036 (founder): Uso e Custos mudou para Configurações (aba própria). Rota antiga viva.
-  { key: 'custos', icon: icons.cobranca, title: 'Custos e Uso', description: 'Agora em Configurações → Uso e Custos.', href: '/dashboard/configuracoes', status: { tone: 'neutral', label: 'Mudou de lugar' } },
+  { key: 'corredores', icon: icons.seguradoras, title: 'Corredores', description: 'Ative os fluxos por seguradora e ramo.', href: '/dashboard/personalizacao/corredores', status: { tone: 'success', label: 'Ativável' } },
+  { key: 'prontidao', icon: icons.casos, title: 'Prontidão', description: 'O que falta para o atendimento entrar no ar.', href: '/dashboard/personalizacao/prontidao', status: { tone: 'info', label: 'Checklist' } },
 ];
 
 export const conectores: GalleryItem[] = [

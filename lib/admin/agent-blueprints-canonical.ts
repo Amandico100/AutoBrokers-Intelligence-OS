@@ -89,7 +89,9 @@ export const AUTOBROKERS_CORE_BLUEPRINT: CanonicalBlueprint = {
 
 export const EVEN_ATTENDANCE_BLUEPRINT: CanonicalBlueprint = {
   blueprint_key: 'even-attendance-v1',
-  blueprint_version: 'v1',
+  // SPEC-045 v2: pronome/genero REMOVIDOS (founder 20/07 — a LLM resolve pelo
+  // contexto); abertura padrao usa variaveis ({{attendant_name}}/{{company_name}}).
+  blueprint_version: 'v2',
   role: 'attendance',
   audience: 'insured_external',
   brand_locked_name: null,
@@ -100,27 +102,18 @@ export const EVEN_ATTENDANCE_BLUEPRINT: CanonicalBlueprint = {
   default_llm_provider: 'openai',
   default_llm_model: 'gpt-4o-mini',
   system_prompt_template: [
-    'Voce e {{attendant_name}} ({{attendant_gender}}), atendente de assistencia e sinistro da {{company_name}} no WhatsApp.',
-    'Atenda o segurado com clareza, empatia e seguranca. Use {{attendant_pronoun}} ao se referir a si.',
+    'Voce e {{attendant_name}}, atendente de assistencia e sinistro da {{company_name}} no WhatsApp.',
+    'Atenda o segurado com clareza, empatia e seguranca.',
     'Regras: nunca prometa cobertura sem evidencia; nunca diga que acionou a seguradora sem acao real; nunca invente protocolo;',
     'colete uma informacao por vez; em risco grave (fumaca, faisca, incendio, risco a vida) oriente seguranca e encaminhe a humano;',
     'use apenas os corredores e subcorredores habilitados pela corretora; quando faltar evidencia de apolice, informe que vai verificar;',
     'mascare dados sensiveis; em duvida, encaminhe a {{handoff_target}}. Horario de atendimento: {{business_hours}}. Tom: {{tone}}.',
-    'Abertura sugerida: "{{opening_message}}". Encerramento sugerido: "{{closing_message}}".',
+    'Abertura sugerida (PONTO DE PARTIDA — se o cliente ja disser o que precisa, va direto ao assunto): "{{opening_message}}".',
+    'Encerramento sugerido: "{{closing_message}}".',
   ].join(' '),
   variables: [
     { key: 'company_name', label: 'Nome da corretora', default: '', editable_by_tenant: false },
     { key: 'attendant_name', label: 'Nome do atendente', default: 'Even', editable_by_tenant: true, input_kind: 'text', max_length: 60 },
-    { key: 'attendant_gender', label: 'Gênero', default: 'feminino', editable_by_tenant: true, input_kind: 'select', options: [
-      { value: 'feminino', label: 'Feminino' },
-      { value: 'masculino', label: 'Masculino' },
-      { value: 'neutro', label: 'Neutro' },
-    ] },
-    { key: 'attendant_pronoun', label: 'Pronome', default: 'ela', editable_by_tenant: true, input_kind: 'select', options: [
-      { value: 'ela', label: 'Ela' },
-      { value: 'ele', label: 'Ele' },
-      { value: 'elu', label: 'Elu (neutro)' },
-    ] },
     { key: 'tone', label: 'Tom', default: 'acolhedor e objetivo', editable_by_tenant: true, input_kind: 'select', options: [
       { value: 'acolhedor e objetivo', label: 'Acolhedor e objetivo' },
       { value: 'caloroso e empático', label: 'Caloroso e empático' },
@@ -133,11 +126,11 @@ export const EVEN_ATTENDANCE_BLUEPRINT: CanonicalBlueprint = {
       { value: 'segunda a sábado, 8h às 20h', label: 'Estendido (seg–sáb, 8h–20h)' },
     ] },
     { key: 'handoff_target', label: 'Destino de handoff humano', default: 'um atendente humano da corretora', editable_by_tenant: true, input_kind: 'text', max_length: 160 },
-    { key: 'opening_message', label: 'Mensagem de abertura', default: 'Ola! Sou a Even, atendente da sua corretora. Como posso ajudar?', editable_by_tenant: true, input_kind: 'textarea', max_length: 350 },
+    { key: 'opening_message', label: 'Mensagem de abertura', default: 'Ola! Sou {{attendant_name}}, da {{company_name}}. Como posso ajudar?', editable_by_tenant: true, input_kind: 'textarea', max_length: 350 },
     { key: 'closing_message', label: 'Mensagem de encerramento', default: 'Posso ajudar em algo mais?', editable_by_tenant: true, input_kind: 'textarea', max_length: 350 },
   ],
   immutable_guardrails: ATTENDANCE_GUARDRAILS,
-  safe_override_fields: ['avatar_url', 'attendant_name', 'attendant_gender', 'attendant_pronoun', 'tone', 'business_hours', 'handoff_target', 'opening_message', 'closing_message', 'voice', 'llm_temperature'],
+  safe_override_fields: ['avatar_url', 'attendant_name', 'tone', 'business_hours', 'handoff_target', 'opening_message', 'closing_message', 'voice', 'llm_temperature'],
   default_active: false, // Even nasce provisionada e INATIVA
 };
 
@@ -232,6 +225,13 @@ export function resolveEffectiveConfig(input: EffectiveConfigInput): EffectiveCo
   }
   values.company_name = input.company_name; // sistema impõe
   values.broker_brand = bp.brand_locked_name ?? values.attendant_name ?? '';
+
+  // SPEC-045: abertura/encerramento PADRÃO usam {{attendant_name}}/{{company_name}}
+  // — render aninhado (uma passada) para o texto final nunca vazar chaves.
+  // Texto do tenant é plano por segurança (TEMPLATE_INJECTION bloqueia {{}}).
+  for (const nested of ['opening_message', 'closing_message'] as const) {
+    if (values[nested]) values[nested] = renderTemplate(values[nested], values);
+  }
 
   // 2) overrides seguros (whitelist) — MATERIALIZADOS (valores realmente aplicados).
   const applied: string[] = [];

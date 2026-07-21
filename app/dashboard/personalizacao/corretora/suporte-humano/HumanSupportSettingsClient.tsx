@@ -191,7 +191,7 @@ export default function HumanSupportSettingsClient() {
             { label: 'Corretora', href: '/dashboard/personalizacao/corretora' },
             { label: 'Suporte humano' },
           ]}
-          status={{ tone: 'info', label: 'MVP ativo · sem envio real' }}
+          status={{ tone: 'success', label: 'Ativo' }}
           actions={
             <button
               onClick={load}
@@ -202,9 +202,9 @@ export default function HumanSupportSettingsClient() {
           }
         />
 
-        <div className="rounded-lg border border-warning/30 bg-warning/5 px-3 py-2 text-xs text-warning">
-          Neste MVP, o destino humano será usado para preparar e copiar dossiês. Nenhuma mensagem é enviada
-          automaticamente.
+        <div className="rounded-lg border border-border bg-card px-3 py-2 text-xs text-muted-foreground">
+          Quando um atendimento precisar de uma pessoa, o dossiê completo (cliente, apólice, o que já
+          foi feito) chega automaticamente no destino configurado aqui — grupo ou número de WhatsApp da equipe.
         </div>
 
         {notice && (
