@@ -142,6 +142,19 @@ class CostCallbackHandler(BaseCallbackHandler):
             if parent_run_id:
                 log_details["parent_run_id"] = str(parent_run_id)
 
+            # SPEC-044: atribuição POR USUÁRIO lida do contexto da requisição
+            # (o callback é construído junto com o grafo CACHEADO — a identidade
+            # nunca pode vir do construtor, senão atribui ao usuário errado).
+            if "user_id" not in log_details:
+                try:
+                    from app.core.request_context import get_current_user_id
+
+                    _uid = get_current_user_id()
+                    if _uid:
+                        log_details["user_id"] = _uid
+                except Exception:  # noqa: BLE001
+                    pass
+
             # Log Síncrono (pois estamos dentro de um callback)
             self.usage_service.track_cost_sync(
                 service_type=self.service_type,

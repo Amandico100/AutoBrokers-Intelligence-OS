@@ -33,6 +33,11 @@ export async function GET(req: NextRequest, { params }: { params: Promise<{ prov
   const redirect = process.env[cfg.redirectEnv] || `${base}/api/connectors/${provider}/callback`;
   const nonce = randomUUID();
 
+  // SPEC-044: dono da conexão — '?owner=me' = pessoal (só o usuário da sessão);
+  // default = da corretora. O userId vem da SESSÃO, nunca da query.
+  const ownerParam = new URL(req.url).searchParams.get('owner');
+  const ownerUserId = ownerParam === 'me' ? ctx.userId : null;
+
   const authUrl = new URL(cfg.authUrl);
   authUrl.searchParams.set('client_id', clientId);
   authUrl.searchParams.set('redirect_uri', redirect);
@@ -42,7 +47,7 @@ export async function GET(req: NextRequest, { params }: { params: Promise<{ prov
   for (const [k, v] of Object.entries(cfg.authParams || {})) authUrl.searchParams.set(k, v);
 
   const res = NextResponse.redirect(authUrl.toString());
-  res.cookies.set('ab_oauth_state', JSON.stringify({ nonce, provider, companyId: ctx.companyId }), {
+  res.cookies.set('ab_oauth_state', JSON.stringify({ nonce, provider, companyId: ctx.companyId, ownerUserId }), {
     httpOnly: true, secure: true, sameSite: 'lax', maxAge: 600, path: '/',
   });
   return res;

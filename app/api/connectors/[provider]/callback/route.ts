@@ -32,7 +32,7 @@ export async function GET(req: NextRequest, { params }: { params: Promise<{ prov
   if (oauthErr || !code) return fail('cancelled');
 
   // valida state (anti-CSRF) contra o cookie httpOnly
-  let st: { nonce?: string; provider?: string; companyId?: string } | null = null;
+  let st: { nonce?: string; provider?: string; companyId?: string; ownerUserId?: string | null } | null = null;
   try { const c = req.cookies.get('ab_oauth_state')?.value; st = c ? JSON.parse(c) : null; } catch { st = null; }
   if (!st || st.nonce !== state || st.provider !== provider || !st.companyId) return fail('state');
 
@@ -79,7 +79,9 @@ export async function GET(req: NextRequest, { params }: { params: Promise<{ prov
         expires_in: tok.expires_in ?? null,
         scope: typeof tok.scope === 'string' ? tok.scope : (cfg.scopes.join(' ') || null),
         account_label: tok.workspace_name || tok.bot_id || null,
-        name: `${cfg.label} — corretora`,
+        // SPEC-044: conexão pessoal (owner do state assinado) ou da corretora.
+        owner_user_id: st.ownerUserId || null,
+        name: st.ownerUserId ? `${cfg.label} — pessoal` : `${cfg.label} — corretora`,
       }),
     });
     if (!storeRes.ok) return fail('store');

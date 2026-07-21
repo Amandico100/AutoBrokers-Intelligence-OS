@@ -21,20 +21,24 @@ export async function getTeam(supabase: SupabaseClient, companyId: string) {
   return { ok: true as const, members, total: members.length };
 }
 
-export async function getKnowledge(supabase: SupabaseClient, companyId: string) {
+export async function getKnowledge(supabase: SupabaseClient, companyId: string, viewerUserId?: string) {
   const { data } = await supabase.from('documents')
-    .select('file_name, file_type, status, scope, knowledge_class, visibility, chunks_count, created_at')
+    .select('file_name, file_type, status, scope, knowledge_class, visibility, chunks_count, created_at, owner_user_id')
     .eq('company_id', companyId).order('created_at', { ascending: false }).limit(500);
-  const docs = (data ?? []).map((d: any) => ({
-    file_name: d.file_name ?? 'Documento',
-    file_type: d.file_type ?? null,
-    status: d.status ?? 'desconhecido',
-    scope: d.scope ?? 'private',
-    knowledge_class: d.knowledge_class ?? null,
-    visibility: d.visibility ?? null,
-    chunks: d.chunks_count ?? 0,
-    created_at: d.created_at ?? null,
-  }));
+  const docs = (data ?? [])
+    // SPEC-044: documento PESSOAL só aparece para o dono — nem o nome vaza.
+    .filter((d: any) => d.scope !== 'personal' || (viewerUserId && d.owner_user_id === viewerUserId))
+    .map((d: any) => ({
+      file_name: d.file_name ?? 'Documento',
+      file_type: d.file_type ?? null,
+      status: d.status ?? 'desconhecido',
+      scope: d.scope ?? 'private',
+      mine: d.scope === 'personal',
+      knowledge_class: d.knowledge_class ?? null,
+      visibility: d.visibility ?? null,
+      chunks: d.chunks_count ?? 0,
+      created_at: d.created_at ?? null,
+    }));
   const ready = docs.filter((d) => /ready|done|completed|processed|ingested/i.test(d.status)).length;
   return { ok: true as const, documents: docs, total: docs.length, ready };
 }

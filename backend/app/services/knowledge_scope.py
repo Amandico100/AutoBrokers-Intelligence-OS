@@ -12,9 +12,10 @@ documentos antigos sem scope são tratados como 'tenant'. Defaults sempre seguro
 """
 from typing import Any, Dict, List, Optional
 
-# ── Escopos canônicos (SPEC-003 §1) ───────────────────────────────────────────
+# ── Escopos canônicos (SPEC-003 §1 + SPEC-044 pessoal) ────────────────────────
 SCOPE_TENANT = "tenant"
 SCOPE_AGENT = "agent"
+SCOPE_PERSONAL = "personal"  # SPEC-044: documento do USUÁRIO — só o dono vê
 SCOPE_GLOBAL_AUTOBROKERS = "global_autobrokers"
 SCOPE_GLOBAL_CARRIER = "global_carrier"
 SCOPE_WORKFLOW = "workflow"
@@ -23,6 +24,7 @@ SCOPE_CONNECTOR = "connector"
 VALID_SCOPES = {
     SCOPE_TENANT,
     SCOPE_AGENT,
+    SCOPE_PERSONAL,
     SCOPE_GLOBAL_AUTOBROKERS,
     SCOPE_GLOBAL_CARRIER,
     SCOPE_WORKFLOW,
@@ -50,6 +52,7 @@ def normalize_document_scope(agent_id: Optional[str], requested_scope: Optional[
 # Campos de conhecimento que podem viajar no payload do Qdrant (todos opcionais).
 PAYLOAD_KNOWLEDGE_KEYS = [
     "scope",
+    "owner_user_id",  # SPEC-044: dono do documento pessoal (scope=personal)
     "knowledge_class",
     "namespace",
     "version",
@@ -79,6 +82,18 @@ def extract_payload_extras(
     if "scope" not in extras:
         extras["scope"] = normalize_document_scope(agent_id, None)
     return extras
+
+
+def build_personal_search_kwargs(user_id: str) -> Dict[str, Any]:
+    """SPEC-044 — kwargs p/ buscar SÓ os documentos pessoais do usuário da
+    sessão (scope=personal + owner_user_id). Sem user_id não há busca pessoal
+    (o runtime de atendimento nunca passa user → nunca vê doc pessoal)."""
+    return {
+        "agent_id": None,
+        "include_tenant_wide": False,
+        "scope_match": [SCOPE_PERSONAL],
+        "owner_user_id": str(user_id),
+    }
 
 
 def build_global_search_kwargs(

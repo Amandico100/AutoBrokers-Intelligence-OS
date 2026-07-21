@@ -46,17 +46,21 @@ export async function GET(_req: NextRequest) {
   if (!ctx) return NextResponse.json({ error: 'Não autorizado' }, { status: 401 });
   const supabase = getSupabaseAdmin();
 
-  const { data: routines, error } = await supabase
+  const { data: allRoutines, error } = await supabase
     .from('routines')
-    .select('id, name, instructions, schedule, delivery, knowledge, config, is_active, last_run_at, next_run_at, consecutive_failures, created_at')
+    .select('id, name, instructions, schedule, delivery, knowledge, config, is_active, last_run_at, next_run_at, consecutive_failures, created_at, visibility, created_by')
     .eq('company_id', ctx.companyId)
     .order('created_at', { ascending: false });
   if (error) {
     console.error('[ROTINAS] list error:', error.message);
     return NextResponse.json({ error: 'Erro ao listar (a migration de rotinas já foi aplicada?)' }, { status: 500 });
   }
+  // SPEC-044: rotina PESSOAL só aparece para o dono; da corretora, para todos.
+  const routines = (allRoutines || [])
+    .filter((r) => (r.visibility || 'company') !== 'personal' || r.created_by === ctx.userId)
+    .map((r) => ({ ...r, mine: (r.visibility || 'company') === 'personal' }));
 
-  const ids = (routines || []).map((r) => r.id);
+  const ids = routines.map((r) => r.id);
   let runs: unknown[] = [];
   if (ids.length) {
     const { data } = await supabase
@@ -67,7 +71,7 @@ export async function GET(_req: NextRequest) {
       .limit(30);
     runs = data || [];
   }
-  return NextResponse.json({ routines: routines || [], runs });
+  return NextResponse.json({ routines, runs });
 }
 
 export async function POST(req: NextRequest) {
@@ -84,6 +88,21 @@ export async function POST(req: NextRequest) {
   const id = String(body.id || '');
   const action = String(body.action || '');
   if (!id && action !== 'create') return NextResponse.json({ error: 'id é obrigatório' }, { status: 400 });
+
+  // SPEC-044: rotina PESSOAL de outro usuário é invisível e imutável para
+  // terceiros — respondemos "não encontrada" (nem confirma que existe).
+  if (id) {
+    const { data: target } = await supabase
+      .from('routines')
+      .select('id, visibility, created_by')
+      .eq('id', id)
+      .eq('company_id', ctx.companyId)
+      .maybeSingle();
+    if (!target) return NextResponse.json({ error: 'Rotina não encontrada' }, { status: 404 });
+    if ((target.visibility || 'company') === 'personal' && target.created_by !== ctx.userId) {
+      return NextResponse.json({ error: 'Rotina não encontrada' }, { status: 404 });
+    }
+  }
 
   if (action === 'delete') {
     const { error } = await supabase.from('routines').delete().eq('id', id).eq('company_id', ctx.companyId);

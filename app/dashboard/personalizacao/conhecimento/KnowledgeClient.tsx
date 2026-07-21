@@ -16,6 +16,7 @@ export function KnowledgeClient() {
   const [d, setD] = useState<Data | null>(null);
   const [agents, setAgents] = useState<Agent[]>([]);
   const [agentId, setAgentId] = useState('');
+  const [target, setTarget] = useState<'company' | 'personal'>('company');
   const [file, setFile] = useState<File | null>(null);
   const [sending, setSending] = useState(false);
   const [msg, setMsg] = useState<string | null>(null);
@@ -45,6 +46,7 @@ export function KnowledgeClient() {
       const fd = new FormData();
       fd.set('file', file);
       fd.set('agent_id', agentId);
+      fd.set('target', target); // SPEC-044: corretora (todos) ou pessoal (só você)
       const res = await fetch('/api/dashboard/knowledge/upload', { method: 'POST', body: fd });
       if (res.ok) {
         setMsg('Documento recebido! Estou processando — em alguns minutos ele entra no conhecimento do assistente.');
@@ -80,6 +82,27 @@ export function KnowledgeClient() {
           onChange={(e) => setFile(e.target.files?.[0] || null)}
           className="block w-full text-xs text-muted-foreground file:mr-3 file:rounded-md file:border-0 file:bg-primary file:px-3 file:py-1.5 file:text-xs file:font-medium file:text-primary-foreground"
         />
+        {/* SPEC-044: destino do conhecimento — 3 camadas em linguagem humana */}
+        <div className="flex gap-2">
+          {([
+            { id: 'company', label: '🏢 Da corretora', hint: 'todo mundo da equipe usa' },
+            { id: 'personal', label: '👤 Só para mim', hint: 'ninguém mais vê' },
+          ] as const).map((t) => (
+            <button
+              key={t.id}
+              type="button"
+              onClick={() => setTarget(t.id)}
+              className={`flex-1 rounded-md border px-3 py-2 text-left text-xs transition-colors ${
+                target === t.id
+                  ? 'border-primary/50 bg-primary/5 text-foreground'
+                  : 'border-border bg-background text-muted-foreground hover:text-foreground'
+              }`}
+            >
+              <span className="block font-medium">{t.label}</span>
+              <span className="block text-[10px] opacity-80">{t.hint}</span>
+            </button>
+          ))}
+        </div>
         <div className="flex items-center gap-2">
           <select
             value={agentId}

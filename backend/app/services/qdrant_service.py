@@ -272,6 +272,8 @@ class QdrantService:
         scope_match: Optional[List[str]] = None,  # filtra por scope (ex.: global) — SPEC-003
         curation_published_only: bool = False,  # só conhecimento curado/publicado (global)
         exclude_metadata_document_types: Optional[List[str]] = None,
+        exclude_scopes: Optional[List[str]] = None,  # SPEC-044: ex. ['personal'] na busca padrão
+        owner_user_id: Optional[str] = None,  # SPEC-044: docs pessoais SÓ do dono
         score_threshold: float = 0.0,
         sparse_embedding: Optional[Any] = None,
         collection_name: Optional[str] = None,
@@ -350,6 +352,17 @@ class QdrantService:
                         key="metadata.document_type",
                         match=MatchAny(any=list(exclude_metadata_document_types)),
                     )
+                )
+            # SPEC-044: a busca PADRÃO exclui escopos privados (ex.: 'personal')
+            # — documento pessoal de um usuário JAMAIS aparece para outro.
+            if exclude_scopes:
+                must_not_conditions.append(
+                    FieldCondition(key="scope", match=MatchAny(any=list(exclude_scopes)))
+                )
+            # SPEC-044: busca pessoal — trava no DONO (junto com scope_match=['personal']).
+            if owner_user_id:
+                must_conditions.append(
+                    FieldCondition(key="owner_user_id", match=MatchValue(value=str(owner_user_id)))
                 )
 
             if must_conditions or should_conditions or must_not_conditions:

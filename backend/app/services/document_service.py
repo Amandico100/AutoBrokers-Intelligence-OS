@@ -43,6 +43,8 @@ class DocumentService:
         file_size: int,
         content_type: str = "application/octet-stream",
         agent_id: Optional[str] = None,  # 🔥 Obrigatório para multi-agent
+        scope: Optional[str] = None,  # SPEC-044: 'personal' = doc do usuário
+        owner_user_id: Optional[str] = None,  # SPEC-044: dono (scope=personal)
     ) -> Optional[str]:
         """
         Upload de documento -> Extração -> Save Raw JSON -> DB Insert
@@ -76,17 +78,27 @@ class DocumentService:
             # Extrair Texto e Páginas
             text_content, pages = self.extract_text_internal(file_bytes, file_type)
 
+            # SPEC-044: escopo pessoal — o metadata viaja até o payload do
+            # Qdrant (extract_payload_extras lê scope/owner_user_id daqui).
+            from .knowledge_scope import SCOPE_PERSONAL
+
+            is_personal = scope == SCOPE_PERSONAL and bool(owner_user_id)
+
             # Salvar JSON Raw (Bronze Layer)
+            raw_meta = {
+                "filename": filename,
+                "file_type": file_type,
+                "file_size": file_size,
+                "agent_id": agent_id,  # 🔥 Incluir nos metadados
+                "uploaded_at": datetime.now().isoformat(),
+            }
+            if is_personal:
+                raw_meta["scope"] = SCOPE_PERSONAL
+                raw_meta["owner_user_id"] = str(owner_user_id)
             raw_data = {
                 "text_content": text_content,
                 "pages": pages,
-                "metadata": {
-                    "filename": filename,
-                    "file_type": file_type,
-                    "file_size": file_size,
-                    "agent_id": agent_id,  # 🔥 Incluir nos metadados
-                    "uploaded_at": datetime.now().isoformat(),
-                },
+                "metadata": raw_meta,
             }
 
             json_bytes = BytesIO(
@@ -114,28 +126,25 @@ class DocumentService:
             # Escopo de conhecimento (SPEC-003); default seguro tenant/agent.
             from .knowledge_scope import normalize_document_scope
 
-            _doc_scope = normalize_document_scope(agent_id)
+            _doc_scope = SCOPE_PERSONAL if is_personal else normalize_document_scope(agent_id)
 
             # Criar registro no Banco
-            result = (
-                self.supabase.table("documents")
-                .insert(
-                    {
-                        "id": document_id,
-                        "company_id": company_id,
-                        "agent_id": agent_id,  # 🔥 Salva agent_id
-                        "scope": _doc_scope,
-                        "file_name": filename,
-                        "file_type": file_type,
-                        "file_size": file_size,
-                        "minio_path": minio_path,
-                        "qdrant_collection": qdrant_collection,
-                        "ingestion_strategy": "recursive",
-                        "status": "pending",
-                    }
-                )
-                .execute()
-            )
+            _row = {
+                "id": document_id,
+                "company_id": company_id,
+                "agent_id": agent_id,  # 🔥 Salva agent_id
+                "scope": _doc_scope,
+                "file_name": filename,
+                "file_type": file_type,
+                "file_size": file_size,
+                "minio_path": minio_path,
+                "qdrant_collection": qdrant_collection,
+                "ingestion_strategy": "recursive",
+                "status": "pending",
+            }
+            if is_personal:
+                _row["owner_user_id"] = str(owner_user_id)
+            result = self.supabase.table("documents").insert(_row).execute()
 
             if result.data:
                 logger.info(f"Documento {document_id} criado para agent {agent_id}")

@@ -739,6 +739,11 @@ async def tool_node(state: AgentState, tools: list) -> dict:
     raw_agent_id = agent_data.get("id") if agent_data else None
     agent_id = str(raw_agent_id) if raw_agent_id else None
 
+    # SPEC-044: usuário da REQUISIÇÃO (o grafo é cacheado/compartilhado — a
+    # identidade viaja no state e é injetada por execução, nunca no construtor).
+    raw_user_id = state.get("user_id")
+    request_user_id = str(raw_user_id) if raw_user_id else None
+
     # 🔥 Extrair is_hyde_enabled (default True para retrocompatibilidade)
     is_hyde_enabled = agent_data.get("is_hyde_enabled", True) if agent_data else True
     current_user_query = ""
@@ -774,8 +779,13 @@ async def tool_node(state: AgentState, tools: list) -> dict:
                 try:
                     # Injeção de Dependências Dinâmicas (invisível para a LLM)
                     if tool_name == "knowledge_base_search":
-                        # 🔥 Injeta agent_id E is_hyde_enabled
-                        tool_args = {**tool_args, "agent_id": agent_id, "is_hyde_enabled": is_hyde_enabled}
+                        # 🔥 Injeta agent_id, is_hyde_enabled e (SPEC-044) o usuário
+                        # da requisição — habilita a busca nos docs PESSOAIS dele.
+                        tool_args = {**tool_args, "agent_id": agent_id, "is_hyde_enabled": is_hyde_enabled,
+                                     "user_id": request_user_id}
+                    elif tool_name in ("create_routine", "list_routines", "manage_routine"):
+                        # SPEC-044: rotinas com dono — visibilidade pessoal/corretora
+                        tool_args = {**tool_args, "user_id": request_user_id}
                     elif tool_name == "csv_analytics":
                         # 🔥 Injeta agent_id para isolamento multi-tenant
                         tool_args = {**tool_args, "agent_id": agent_id}

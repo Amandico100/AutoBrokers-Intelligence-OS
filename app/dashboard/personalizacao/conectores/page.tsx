@@ -52,6 +52,7 @@ export default function ConectoresPage() {
   const [infocapOpen, setInfocapOpen] = useState(false); // SPEC-014 C-FIX-1 (F)
   const [whatsappModalOpen, setWhatsappModalOpen] = useState(false); // SPEC-017: modal do canal
   const [infocapConnId, setInfocapConnId] = useState<string | null>(null); // C-FIX-2
+  const [ownerChoice, setOwnerChoice] = useState<string | null>(null); // SPEC-044: escolha corretora/pessoal (OAuth)
 
   const loadConnections = () =>
     fetchTenantConnections()
@@ -312,7 +313,7 @@ export default function ConectoresPage() {
                     onClick={() => {
                       if (isWhatsappChannel) { setWhatsappModalOpen(true); return; }
                       if (connected) { setTab('connections'); return; }
-                      if (oauthKey) { window.location.href = `/api/connectors/${oauthKey}/authorize`; return; }
+                      if (oauthKey) { setOwnerChoice(oauthKey); return; } // SPEC-044: corretora ou pessoal
                       openCreate(t);
                     }}
                   />
@@ -432,6 +433,51 @@ export default function ConectoresPage() {
         connectionId={infocapConnId}
         onConfigured={() => { setNotice('InfoCap conectada com segurança.'); loadConnections(); }}
       />
+
+      {/* SPEC-044: escolha do DONO da conexão OAuth (padrão ChatGPT Enterprise).
+          Elementos nativos (regra do tema) — sem Radix portal. */}
+      {ownerChoice && (
+        <div
+          className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 p-4"
+          onClick={() => setOwnerChoice(null)}
+        >
+          <div
+            className="w-full max-w-md rounded-xl border border-border bg-surface p-5"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <p className="text-sm font-semibold text-foreground">Conectar para quem?</p>
+            <p className="mt-1 text-xs text-muted-foreground">
+              Você pode ter as duas conexões ao mesmo tempo — uma da corretora e uma sua.
+            </p>
+            <div className="mt-4 space-y-2">
+              <button
+                onClick={() => { window.location.href = `/api/connectors/${ownerChoice}/authorize`; }}
+                className="w-full rounded-lg border border-border bg-surface-2 p-3 text-left transition-colors hover:border-primary/50"
+              >
+                <span className="block text-sm font-medium text-foreground">🏢 Toda a corretora</span>
+                <span className="block text-xs text-muted-foreground">
+                  Todo mundo da equipe usa esta conta nas respostas e automações.
+                </span>
+              </button>
+              <button
+                onClick={() => { window.location.href = `/api/connectors/${ownerChoice}/authorize?owner=me`; }}
+                className="w-full rounded-lg border border-border bg-surface-2 p-3 text-left transition-colors hover:border-primary/50"
+              >
+                <span className="block text-sm font-medium text-foreground">👤 Só para mim</span>
+                <span className="block text-xs text-muted-foreground">
+                  Fica no seu perfil — só as suas conversas usam; ninguém mais vê.
+                </span>
+              </button>
+            </div>
+            <button
+              onClick={() => setOwnerChoice(null)}
+              className="mt-3 w-full rounded-lg border border-border px-3 py-2 text-xs text-muted-foreground transition-colors hover:text-foreground"
+            >
+              Cancelar
+            </button>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

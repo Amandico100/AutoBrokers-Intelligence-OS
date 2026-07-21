@@ -266,6 +266,8 @@ async def upload_document(
     agent_id: str = Form(...),
     strategy: str = Form("semantic"),
     ingestion_mode: str = Form("semantic"),  # "semantic" | "filesystem"
+    scope: str = Form(""),  # SPEC-044: "personal" = documento do usuário
+    owner_user_id: str = Form(""),  # SPEC-044: dono (obrigatório se scope=personal)
     _: bool = Depends(require_master_admin),
 ):
     """
@@ -323,6 +325,13 @@ async def upload_document(
                 status_code=400, detail="Arquivo muito grande. Máximo: 10MB"
             )
 
+        # SPEC-044: escopo pessoal exige o dono (a rota do dashboard trava o
+        # owner na sessão; aqui só validamos coerência).
+        _scope = (scope or "").strip().lower() or None
+        _owner = (owner_user_id or "").strip() or None
+        if _scope == "personal" and not _owner:
+            raise HTTPException(status_code=400, detail="owner_user_id é obrigatório para scope=personal")
+
         # Upload do documento (via thread para não bloquear event loop)
         file_data = BytesIO(file_content)
         document_id = await asyncio.to_thread(
@@ -333,6 +342,8 @@ async def upload_document(
                 file_size=file_size,
                 content_type=file.content_type or "application/octet-stream",
                 agent_id=agent_id,
+                scope=_scope,
+                owner_user_id=_owner,
             )
         )
 

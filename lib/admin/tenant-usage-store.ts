@@ -42,5 +42,32 @@ export async function gatherUsage(supabase: SupabaseClient, companyId: string) {
     }
   } catch { /* segue */ }
 
-  return buildUsageView({ balance_brl, alert_80, alert_100, rows });
+  // SPEC-044: quebra POR PESSOA (30d) — atribuição vem do token_usage_logs
+  // (details.user_id, gravado por requisição via request_context no backend).
+  const per_user: { user_id: string; name: string; tokens: number; cost_usd: number }[] = [];
+  try {
+    const { data: logs } = await supabase.from('token_usage_logs')
+      .select('details, input_tokens, output_tokens, total_cost_usd')
+      .eq('company_id', companyId).gte('created_at', sinceISO).limit(8000);
+    const byUser = new Map<string, { tokens: number; cost_usd: number }>();
+    for (const l of logs ?? []) {
+      const uid = String(((l as any).details ?? {})?.user_id ?? '');
+      if (!uid) continue;
+      const cur = byUser.get(uid) ?? { tokens: 0, cost_usd: 0 };
+      cur.tokens += Number((l as any).input_tokens ?? 0) + Number((l as any).output_tokens ?? 0);
+      cur.cost_usd += Number((l as any).total_cost_usd ?? 0);
+      byUser.set(uid, cur);
+    }
+    if (byUser.size) {
+      const { data: users } = await supabase.from('users_v2')
+        .select('id, first_name, last_name').in('id', Array.from(byUser.keys()));
+      const nameOf = new Map((users ?? []).map((u: any) => [u.id, `${u.first_name ?? ''} ${u.last_name ?? ''}`.trim() || 'Usuário']));
+      byUser.forEach((v, uid) => {
+        per_user.push({ user_id: uid, name: nameOf.get(uid) ?? 'Usuário', tokens: v.tokens, cost_usd: Number(v.cost_usd.toFixed(4)) });
+      });
+      per_user.sort((a, b) => b.tokens - a.tokens);
+    }
+  } catch { /* honesto: sem quebra por pessoa */ }
+
+  return { ...buildUsageView({ balance_brl, alert_80, alert_100, rows }), per_user };
 }
