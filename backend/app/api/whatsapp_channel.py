@@ -591,16 +591,104 @@ async def whatsapp_channel_disconnect(
     return {"ok": True, "instance": instance, "state": "close"}
 
 
+async def _channel_alert_info(company_id: str, purpose: str = "attendance") -> Dict[str, Any]:
+    """Config atual do AVISO de queda (SPEC-049) — número próprio ou o mesmo
+    destino do suporte humano/dossiês."""
+    supabase = get_supabase_client()
+
+    def _q() -> list:
+        return (
+            supabase.client.table("integrations").select("alert_target")
+            .eq("company_id", company_id).eq("purpose", purpose).eq("is_active", True)
+            .order("last_seen_at", desc=True).limit(1).execute().data or []
+        )
+
+    rows = await asyncio.to_thread(_q)
+    target = rows[0].get("alert_target") if rows else None
+    if isinstance(target, str):
+        import json as _json
+
+        try:
+            target = _json.loads(target)
+        except Exception:  # noqa: BLE001
+            target = {"number": target}
+    if not isinstance(target, dict):
+        return {"mode": None, "number": None}
+    if target.get("use_support_destination"):
+        return {"mode": "support", "number": None}
+    number = str(target.get("number") or "").strip()
+    return {"mode": "number" if number else None, "number": number or None}
+
+
+class ChannelAlertPayload(BaseModel):
+    company_id: str
+    purpose: str = "attendance"
+    # mode: 'number' (alert_number obrigatório) | 'support' (grupo/nº do
+    # suporte humano — o mesmo dos dossiês) | 'off'
+    mode: str
+    alert_number: Optional[str] = None
+
+
+@router.post("/api/whatsapp-channel/set-alert")
+async def whatsapp_channel_set_alert(
+    payload: ChannelAlertPayload,
+    x_autobrokers_internal_key: Optional[str] = Header(default=None, alias="X-AutoBrokers-Internal-Key"),
+) -> Dict[str, Any]:
+    """SPEC-049 — configura/edita o AVISO de queda a qualquer momento (a opção
+    nunca some do dashboard). O número de aviso NUNCA pode ser o número pareado."""
+    _require_internal_key(x_autobrokers_internal_key)
+    company_id = (payload.company_id or "").strip()
+    mode = (payload.mode or "").strip().lower()
+    if not company_id or mode not in ("number", "support", "off"):
+        raise HTTPException(status_code=400, detail="parametros_invalidos")
+
+    target: Optional[Dict[str, Any]] = None
+    if mode == "number":
+        digits = "".join(ch for ch in str(payload.alert_number or "") if ch.isdigit())
+        if len(digits) < 10 or len(digits) > 15:
+            raise HTTPException(status_code=400, detail="numero_invalido")
+        target = {"number": digits}
+    elif mode == "support":
+        target = {"use_support_destination": True}
+
+    supabase = get_supabase_client()
+    purpose = (payload.purpose or "attendance").strip().lower()
+
+    def _rows() -> list:
+        return (
+            supabase.client.table("integrations").select("id, identifier")
+            .eq("company_id", company_id).eq("purpose", purpose).eq("is_active", True)
+            .limit(5).execute().data or []
+        )
+
+    rows = await asyncio.to_thread(_rows)
+    if not rows:
+        raise HTTPException(status_code=404, detail="canal_nao_configurado (gere o QR primeiro)")
+    if mode == "number" and target:
+        for row in rows:
+            paired = "".join(ch for ch in str(row.get("identifier") or "") if ch.isdigit())
+            if paired and paired == target["number"]:
+                raise HTTPException(status_code=400, detail="numero_igual_ao_pareado (use OUTRO número)")
+
+    def _update() -> None:
+        for row in rows:
+            supabase.client.table("integrations").update({"alert_target": target}).eq("id", row["id"]).execute()
+
+    await asyncio.to_thread(_update)
+    return {"ok": True, "alert": await _channel_alert_info(company_id, purpose)}
+
+
 @router.get("/api/whatsapp-channel/status")
 async def whatsapp_channel_status(
     company_id: str,
     x_autobrokers_internal_key: Optional[str] = Header(default=None, alias="X-AutoBrokers-Internal-Key"),
 ) -> Dict[str, Any]:
     _require_internal_key(x_autobrokers_internal_key)
+    alert = await _channel_alert_info(company_id)
     if _go_enabled():
         cfg = await _go_resolve(company_id)
         st = await _go_status_payload(company_id)
-        return {"ok": True, "instance": cfg["instance_name"], **st}
+        return {"ok": True, "instance": cfg["instance_name"], "alert": alert, **st}
     platform = _evolution_platform()
     instance = _instance_name(company_id)
     headers = {"apikey": platform["api_key"]}
@@ -611,4 +699,4 @@ async def whatsapp_channel_status(
             data = res.json()
             inner = data.get("instance") if isinstance(data.get("instance"), dict) else data
             state = str(inner.get("state") or inner.get("connectionStatus") or "unknown").lower()
-    return {"ok": True, "instance": instance, "state": state, "connected": state in ("open", "connected")}
+    return {"ok": True, "instance": instance, "state": state, "connected": state in ("open", "connected"), "alert": alert}
