@@ -229,6 +229,7 @@ export default function AdminLayout({ children }: { children: React.ReactNode })
       label: 'Corretoras',
       submenu: [
         { href: '/admin/corretoras', label: 'Cockpit (visão 360º)' },
+        { href: '/admin/companies', label: 'Empresas & Agentes' },
         { href: '/admin/pending-users', label: 'Aprovações pendentes' },
         { href: '/admin/all-users', label: 'Todos os usuários' },
       ],
@@ -319,39 +320,55 @@ export default function AdminLayout({ children }: { children: React.ReactNode })
             const isActive = hasSubmenu ? pathname.startsWith(item.href) : pathname === item.href;
 
             if (hasSubmenu) {
+              // SPEC-046: o item-pai NAVEGA para o próprio href (antes só
+              // expandia — /admin/companies ficava inalcançável). A seta,
+              // separada, expande/recolhe o submenu.
               return (
                 <div key={item.href}>
-                  <button
-                    onClick={() => {
-                      setExpandedMenus((prev) =>
-                        prev.includes(item.href)
-                          ? prev.filter((h) => h !== item.href)
-                          : [...prev, item.href],
-                      );
-                    }}
-                    className={`w-full flex items-center justify-between gap-3 px-4 py-3 rounded-lg transition-colors ${isActive
+                  <div
+                    className={`flex items-center rounded-lg transition-colors ${isActive
                       ? 'bg-blue-600 text-white shadow-md shadow-blue-900/20'
                       : 'text-muted-foreground hover:text-foreground hover:bg-accent'
                       }`}
                   >
-                    <div className="flex items-center gap-3">
+                    <Link
+                      href={item.href}
+                      onClick={() => {
+                        setExpandedMenus((prev) =>
+                          prev.includes(item.href) ? prev : [...prev, item.href],
+                        );
+                      }}
+                      className="flex flex-1 items-center gap-3 px-4 py-3"
+                    >
                       <item.icon className="w-5 h-5" />
                       <span className="font-medium">{item.label}</span>
-                    </div>
-                    <svg
-                      className={`w-4 h-4 transition-transform ${isExpanded ? 'rotate-180' : ''}`}
-                      fill="none"
-                      viewBox="0 0 24 24"
-                      stroke="currentColor"
+                    </Link>
+                    <button
+                      aria-label={`Expandir ${item.label}`}
+                      onClick={() => {
+                        setExpandedMenus((prev) =>
+                          prev.includes(item.href)
+                            ? prev.filter((h) => h !== item.href)
+                            : [...prev, item.href],
+                        );
+                      }}
+                      className="px-3 py-3"
                     >
-                      <path
-                        strokeLinecap="round"
-                        strokeLinejoin="round"
-                        strokeWidth={2}
-                        d="M19 9l-7 7-7-7"
-                      />
-                    </svg>
-                  </button>
+                      <svg
+                        className={`w-4 h-4 transition-transform ${isExpanded ? 'rotate-180' : ''}`}
+                        fill="none"
+                        viewBox="0 0 24 24"
+                        stroke="currentColor"
+                      >
+                        <path
+                          strokeLinecap="round"
+                          strokeLinejoin="round"
+                          strokeWidth={2}
+                          d="M19 9l-7 7-7-7"
+                        />
+                      </svg>
+                    </button>
+                  </div>
                   {isExpanded && (
                     <div className="ml-6 mt-1 space-y-1">
                       {item.submenu.map((sub: any) => (
