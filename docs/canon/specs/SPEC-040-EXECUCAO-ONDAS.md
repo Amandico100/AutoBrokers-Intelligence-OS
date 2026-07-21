@@ -221,6 +221,33 @@ tsc limpo, 24 checks novos.
   pessoal COEXISTEM por template (índices parciais no lugar do singleton);
   modal de escolha no conectar; owner assinado no state anti-CSRF do OAuth.
 
+## PÓS-ONDAS 4 — SPEC-045 ENTREGUE (20/07, main `4b00c60`)
+
+Bloco 2 da trinca. Migração `20260720_02` (platform_sends) APLICADA.
+Bateria 52/52, tsc limpo, 24 checks novos.
+
+- **Modo observação + toggle (o fluxo do founder):** agente de atendimento
+  DESLIGADO = número segue pareado, equipe humana atende, sistema captura
+  (inbound salvo/espelhado + cofre do Espelho; fromMe da atendente também).
+  LIGAR no dashboard = o agente responde NO MESMO número, sem re-parear.
+  O OBSERVADOR NUNCA DESLIGA (correção do founder aplicada). Gate no webhook
+  antes de billing/IA; helper cacheado 60s; toggle attendance-only
+  (Core sempre ativo) via PATCH {is_active}.
+- **Fila de cortesia + nota de contexto:** platform_outbound — envio de
+  auxiliar a cliente OCUPADO (dispatch vivo ou conversa recente) espera na
+  fila (retry 10min, expira 24h, Atividades); envio registrado em
+  platform_sends; quando o cliente responde a uma cobrança, o atendente
+  recebe a nota de contexto SÓ no texto da IA (mensagem salva limpa).
+  Corretora pequena com 1 número = suportada com segurança.
+- **Blueprint v2:** pronome/gênero REMOVIDOS; abertura padrão
+  "Olá! Sou {{attendant_name}}, da {{company_name}}..." com render aninhado.
+- **Superfícies:** card "AutoBrokers — Chat Principal" DIRETO (etapa Agentes
+  morta, rota redireciona); hub Corretora (Dados · Agente de Atendimento ·
+  WhatsApp · Suporte humano · Equipe · Conhecimento · Custos e Uso); hub
+  WhatsApp por FUNÇÃO (Atendimento completo; Auxiliares default = mesmo
+  número + fila; número dedicado GO = SPEC-046); toggle UI com estados
+  humanos; "MVP ativo · sem envio real" trocado pela verdade atual.
+
 ## TODAS AS 5 ONDAS ENTREGUES (19/07/2026)
 
 Estado final: 15 agentes na Central; ciclo completo captura → destilação →
