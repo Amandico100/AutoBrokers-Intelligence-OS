@@ -13,6 +13,9 @@ type Config = {
   editable_variables: Variable[];
   editable_override_fields: OverrideField[];
   current_overrides: Record<string, unknown>;
+  // SPEC-048: valores RENDERIZADOS só p/ exibição (os campos editam o cru
+  // com {{variáveis}} — nome do atendente/corretora trocam sozinhos).
+  preview?: Record<string, string>;
 };
 
 const OVERRIDE_LABEL: Record<string, string> = {
@@ -98,7 +101,7 @@ export function AgentConfigClient({ agentKey }: { agentKey: 'autobrokers' | 'eve
   };
 
   if (!config) return <p className="text-sm text-muted-foreground">Carregando…</p>;
-  const opening = vars.opening_message;
+  const opening = config.preview?.opening_message || vars.opening_message;
 
   const renderVar = (v: Variable) => {
     if (v.input_kind === 'select') {
@@ -182,6 +185,13 @@ export function AgentConfigClient({ agentKey }: { agentKey: 'autobrokers' | 'eve
             <label key={v.key} className={`block text-[12px] ${v.input_kind === 'textarea' ? 'sm:col-span-2' : ''}`}>
               <span className="text-muted-foreground">{v.label}</span>
               {renderVar(v)}
+              {(v.key === 'opening_message' || v.key === 'closing_message') && (
+                <span className="mt-1 block text-[11px] text-muted-foreground">
+                  Dica: use <code className="rounded bg-surface-2 px-1">{'{{attendant_name}}'}</code> e{' '}
+                  <code className="rounded bg-surface-2 px-1">{'{{company_name}}'}</code> — trocam sozinhas
+                  quando você renomear o atendente ou a corretora.
+                </span>
+              )}
             </label>
           ))}
           {config.editable_override_fields.map((f) => (

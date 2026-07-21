@@ -3,6 +3,20 @@ import { cookies } from 'next/headers';
 import { getIronSession } from 'iron-session';
 import { createClient } from '@supabase/supabase-js';
 import { sessionOptions, SessionData } from '@/lib/iron-session';
+import { resolveSessionCompany } from '@/lib/vault/server';
+
+/** SPEC-048: o nome exibido é o da empresa ATIVA (seletor), não o da primária. */
+async function activeCompanyName(fallback: string): Promise<string> {
+  try {
+    const ctx = await resolveSessionCompany();
+    if (!ctx) return fallback;
+    const { data } = await supabaseAdmin
+      .from('companies').select('company_name').eq('id', ctx.companyId).maybeSingle();
+    return data?.company_name || fallback;
+  } catch {
+    return fallback;
+  }
+}
 
 export const dynamic = 'force-dynamic';
 
@@ -57,7 +71,7 @@ export async function GET(request: NextRequest) {
         cpf: data?.cpf || '',
         birth_date: data?.birth_date || '',
         avatar_url: data?.avatar_url || '',
-        companyName: (data?.companies as any)?.company_name || 'Empresa',
+        companyName: await activeCompanyName((data?.companies as any)?.company_name || 'Empresa'),
       });
     }
 
@@ -76,7 +90,7 @@ export async function GET(request: NextRequest) {
     return NextResponse.json({
       name: `${data?.first_name || ''} ${data?.last_name || ''}`.trim(),
       email: data?.email || '',
-      companyName: (data?.companies as any)?.company_name || 'Empresa',
+      companyName: await activeCompanyName((data?.companies as any)?.company_name || 'Empresa'),
     });
   } catch (error: any) {
     console.error('[USER PROFILE] Error:', error);

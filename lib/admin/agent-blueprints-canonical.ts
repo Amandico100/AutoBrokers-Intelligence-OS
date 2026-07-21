@@ -455,6 +455,10 @@ export function sanitizeAgentConfigForDashboard(
   editable_variables: Array<{ key: string; label: string; value: string; input_kind: 'text' | 'textarea' | 'select'; options: BlueprintOption[]; max_length: number }>;
   editable_override_fields: Array<{ key: string; input_kind: 'text' | 'textarea' | 'select' | 'url' | 'number'; options: BlueprintOption[] }>;
   current_overrides: Record<string, unknown>;
+  /** SPEC-048: versões RENDERIZADAS ({{variáveis}} resolvidas) — SÓ para
+   * exibição. Os campos editáveis acima carregam o valor CRU salvo, para o
+   * template com variáveis nunca ser congelado num nome/empresa. */
+  preview: Record<string, string>;
 } {
   const saved = (currentContextPackage && typeof currentContextPackage === 'object' && !Array.isArray(currentContextPackage))
     ? ((currentContextPackage as Record<string, unknown>)[TENANT_AGENT_CONFIG_NS] as any) : null;
@@ -471,12 +475,15 @@ export function sanitizeAgentConfigForDashboard(
   return {
     blueprint_key: bp.blueprint_key, blueprint_version: bp.blueprint_version, role: bp.role, audience: bp.audience,
     brand_locked_name: bp.brand_locked_name, display_name: eff.display_name,
+    // SPEC-048: o campo edita o valor CRU salvo (variáveis preservadas) — o
+    // renderizado ia pro form e, ao salvar, congelava "Joana"/nome da empresa.
     editable_variables: bp.variables.filter((v) => v.editable_by_tenant).map((v) => ({
-      key: v.key, label: v.label, value: eff.variables_used[v.key] ?? v.default,
+      key: v.key, label: v.label, value: savedVars[v.key] ?? v.default,
       input_kind: v.input_kind ?? 'text', options: v.options ?? [], max_length: v.max_length ?? VAR_MAX_LENGTH[v.key] ?? 200,
     })),
     // só os override-fields que NÃO são variáveis (variáveis já vêm acima) viram inputs próprios.
     editable_override_fields: bp.safe_override_fields.filter((k) => !varKeys.has(k)).map(overrideMeta),
     current_overrides: (saved && typeof saved.overrides === 'object') ? saved.overrides : {},
+    preview: { ...eff.variables_used },
   };
 }
