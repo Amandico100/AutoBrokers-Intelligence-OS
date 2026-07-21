@@ -284,11 +284,13 @@ export default function AdminCompanyAgentsPage() {
                 <Building2 className="w-5 h-5 text-white" />
               </div>
               <div>
-                <p className="text-sm text-muted-foreground">Gerenciando agentes de</p>
+                <p className="text-sm text-muted-foreground">Configuração completa da corretora</p>
                 <h1 className="text-2xl font-bold text-foreground">{companyName}</h1>
               </div>
             </div>
-            <p className="text-muted-foreground mt-2">Configure os agentes de IA desta empresa</p>
+            <p className="text-muted-foreground mt-2">
+              Identidade, HTTP Tools, MCP, WhatsApp, agentes e subagentes — tudo desta empresa num lugar só.
+            </p>
           </div>
           <Button
             onClick={handleCreateAgent}

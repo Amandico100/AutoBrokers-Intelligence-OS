@@ -61,6 +61,21 @@ export default function CorretorasCockpit() {
           {companies.map((c) => <option key={c.id} value={c.id}>{c.company_name}</option>)}
         </select>
         {loading && <span style={{ fontSize: 12, color: '#7C8798' }}>carregando…</span>}
+        <span style={{ flex: 1 }} />
+        {/* SPEC-046: caminho de volta para a tela REAL de configuração da
+            empresa (Identidade, HTTP Tools, MCP, WhatsApp, Agentes, Subagentes). */}
+        {sel && (
+          <a
+            href={`/admin/companies/${sel}/agents`}
+            style={{
+              background: '#12233A', border: '1px solid #2C4A72', color: '#7FB7E8',
+              borderRadius: 9, padding: '7px 14px', fontSize: 13, fontWeight: 600,
+              textDecoration: 'none',
+            }}
+          >
+            ⚙ Configuração completa
+          </a>
+        )}
       </div>
 
       {ov && (

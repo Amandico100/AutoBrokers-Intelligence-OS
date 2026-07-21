@@ -83,8 +83,10 @@ export default function AttendanceQueueClient() {
     return () => clearInterval(t);
   }, [load]);
 
+  // SPEC-046: o clique abre a FICHA (dossiê vivo) — a conversa completa
+  // vira um botão dentro dela.
   const open = (i: Item) => {
-    if (i.conversa_id) router.push(`/dashboard/atendimentos/conversas?open=${i.conversa_id}`);
+    if (i.conversa_id) router.push(`/dashboard/atendimentos/ficha/${i.conversa_id}`);
   };
 
   const live = (items || []).filter((i) => i.stage !== 'concluido');
@@ -165,7 +167,7 @@ export default function AttendanceQueueClient() {
                         </span>
                       )}
                       <span className="flex-1" />
-                      {i.conversa_id && <span className="text-primary">abrir conversa →</span>}
+                      {i.conversa_id && <span className="text-primary">abrir ficha →</span>}
                     </div>
                   </button>
                 ))}

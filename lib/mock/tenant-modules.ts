@@ -21,11 +21,12 @@ export type GalleryItem = {
 };
 
 // ---------- Atendimentos ----------
+// SPEC-046: linguagem humana, sem selos de MVP — as quatro áreas estão vivas.
 export const atendimentoAreas: ModuleArea[] = [
-  { key: 'fila', icon: icons.fila, title: 'Fila', description: 'Casos aguardando atendimento.', href: '/dashboard/atendimentos/fila', status: { tone: 'info', label: 'MVP ativo' } },
-  { key: 'casos', icon: icons.casos, title: 'Casos', description: 'Detalhe, timeline e ações.', href: '/dashboard/atendimentos/casos', status: { tone: 'info', label: 'MVP ativo' } },
-  { key: 'conversas', icon: icons.conversas, title: 'Conversas', description: 'Histórico por canal.', href: '/dashboard/atendimentos/conversas', status: { tone: 'neutral', label: 'Em breve' } },
-  { key: 'segurados', icon: icons.equipe, title: 'Segurados', description: 'Clientes e apólices.', href: '/dashboard/atendimentos/segurados', status: { tone: 'neutral', label: 'Em breve' } },
+  { key: 'fila', icon: icons.fila, title: 'Fila', description: 'O que está acontecendo agora, em tempo real.', href: '/dashboard/atendimentos/fila' },
+  { key: 'historico', icon: icons.casos, title: 'Histórico', description: 'Tudo que já aconteceu, com busca — cada item abre a ficha.', href: '/dashboard/atendimentos/casos' },
+  { key: 'conversas', icon: icons.conversas, title: 'Conversas', description: 'As conversas completas, como no WhatsApp.', href: '/dashboard/atendimentos/conversas' },
+  { key: 'segurados', icon: icons.equipe, title: 'Segurados', description: 'Clientes atendidos e o histórico de cada um.', href: '/dashboard/atendimentos/segurados' },
 ];
 
 // ---------- Auxiliares ----------

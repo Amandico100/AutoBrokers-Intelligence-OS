@@ -253,80 +253,6 @@ async def process_audio_for_storage(
 # ==============================================================================
 # 42W0 — Attendance Runtime bridge (flag-gated; default OFF)
 # ==============================================================================
-async def _is_attendance_agent(agent_id: Optional[str]) -> bool:
-    """True se o agente conectado é um Attendance Agent (insured_external)."""
-    if not agent_id:
-        return False
-    try:
-        res = await asyncio.to_thread(
-            lambda: supabase.client.table("agents").select("agent_role").eq("id", agent_id).limit(1).execute()
-        )
-        return bool(res.data) and res.data[0].get("agent_role") == "attendance"
-    except Exception as e:  # noqa: BLE001
-        logger.warning(f"[WEBHOOK] attendance agent check failed: {type(e).__name__}")
-        return False
-
-
-async def _forward_to_attendance_bridge(
-    *,
-    company_id: str,
-    agent_id: Optional[str],
-    user_id: str,
-    conversation_id: str,
-    phone: str,
-    connected_phone: str,
-    sender_name: Optional[str],
-    message_id: Optional[str],
-    text: str,
-    media_kind: str = "text",
-) -> None:
-    """
-    Encaminha o inbound ao Attendance Runtime (Next bridge). O bridge faz case
-    routing + reply (mesmo cérebro do dashboard) e devolve um outbound dry-run.
-    NÃO envia para seguradora/prestador. Envio real só se a política liberar.
-    """
-    url = settings.ATTENDANCE_BRIDGE_URL
-    key = settings.BACKEND_INTERNAL_API_KEY or os.getenv("BACKEND_INTERNAL_API_KEY") or os.getenv("ADMIN_API_KEY")
-    safe = f"...{str(phone)[-4:]}"
-    if not url or not key:
-        logger.warning("[WEBHOOK] attendance bridge not configured (URL/key) — skipping attendance routing")
-        return
-    body = {
-        "company_id": company_id,
-        "agent_id": agent_id,
-        "user_id": user_id,
-        "conversation_id": conversation_id,
-        "phone": phone,
-        "connected_phone": connected_phone,
-        "sender_name": sender_name,
-        "message_id": message_id,
-        "text": text,
-        "media_kind": media_kind,
-    }
-    try:
-        async with httpx.AsyncClient(timeout=30.0) as client:
-            resp = await client.post(url, json=body, headers={"X-AutoBrokers-Internal-Key": key})
-        data = resp.json() if resp.status_code < 400 else {}
-    except Exception as e:  # noqa: BLE001
-        logger.error(f"[WEBHOOK] attendance bridge call failed for {safe}: {type(e).__name__}")
-        return
-
-    auto_reply = data.get("auto_reply")
-    outbound = data.get("outbound") or {}
-    # Envio real SOMENTE se a política do bridge liberar (default: dry-run → não envia).
-    if auto_reply and outbound.get("external_send_allowed") is True and outbound.get("dry_run") is False:
-        integration = integration_service.get_whatsapp_integration(company_id, agent_id)
-        if integration:
-            try:
-                whatsapp_service.send_message(phone, auto_reply, integration)
-                logger.info(f"[WEBHOOK] attendance outbound sent to {safe}")
-            except Exception as e:  # noqa: BLE001
-                logger.error(f"[WEBHOOK] attendance outbound send failed for {safe}: {type(e).__name__}")
-    else:
-        logger.info(f"[WEBHOOK] attendance outbound DRY-RUN for {safe} (no external send)")
-
-
-# ==============================================================================
 # MAIN BACKGROUND TASK
 # ==============================================================================
 async def process_whatsapp_message_background(
@@ -586,33 +512,9 @@ async def process_whatsapp_message_background(
             agent_id=agent_id,
         )
 
-        # 4b. 42W0 — Atendimento externo vai para o Attendance Runtime (não o Core),
-        # quando habilitado e o agente é um Attendance Agent. O bridge cuida de
-        # persistir mensagens + reply; aqui só encaminhamos e (talvez) enviamos.
-        # SPEC-017 P2 (D1/D2 — cérebro ÚNICO): com ATTENDANT_SMITH_ENABLED (default
-        # ligado), o atendente externo roda DIRETO no Smith como qualquer agente —
-        # o bridge TS legado só é usado se a flag for explicitamente desligada.
-        _attendant_on_smith = str(os.getenv("ATTENDANT_SMITH_ENABLED", "true")).strip().lower() in ("1", "true", "yes", "on")
-        if (
-            not is_human_mode
-            and not _attendant_on_smith
-            and settings.ATTENDANCE_WHATSAPP_ENABLED
-            and await _is_attendance_agent(agent_id)
-        ):
-            logger.info("[WEBHOOK] Routing inbound to Attendance Runtime bridge (legacy flag)")
-            await _forward_to_attendance_bridge(
-                company_id=company_id,
-                agent_id=agent_id,
-                user_id=user_id,
-                conversation_id=conversation_id,
-                phone=payload.phone,
-                connected_phone=payload.connectedPhone,
-                sender_name=payload.senderName,
-                message_id=payload.messageId,
-                text=message_text,
-                media_kind="audio" if final_audio_url else ("image" if final_image_url else "text"),
-            )
-            return
+        # (SPEC-046) O desvio 4b para o "Attendance Runtime bridge" (TS legado,
+        # 42W0) foi REMOVIDO: desde a SPEC-017 P2 o atendente externo roda
+        # direto no Smith como qualquer agente — cérebro único, sem bridge.
 
         # 5. Salvar Msg Usuário
         try:

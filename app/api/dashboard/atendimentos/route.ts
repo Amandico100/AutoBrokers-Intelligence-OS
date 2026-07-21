@@ -97,7 +97,9 @@ export async function GET(_req: NextRequest) {
         `${getBackendUrl()}/api/dispatch/active?company_id=${encodeURIComponent(ctx.companyId)}`,
         { headers: { 'X-AutoBrokers-Internal-Key': key }, cache: 'no-store' },
       );
-      if (res.ok) dispatches = (await res.json())?.sessions || [];
+      // O backend responde {dispatches: [...]} — SPEC-046 corrige a chave
+      // (antes lia .sessions e os acionamentos ativos nunca apareciam na Fila).
+      if (res.ok) dispatches = (await res.json())?.dispatches || [];
     } catch {
       /* pipeline segue sem os ativos — fail-soft */
     }
