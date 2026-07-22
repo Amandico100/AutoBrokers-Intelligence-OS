@@ -1,0 +1,300 @@
+From 01f3f5ec4c3c28289c26977a034dfbef6b048743 Mon Sep 17 00:00:00 2001
+From: AutoBrokers Engineering <engineering@autobrokers.local>
+Date: Wed, 22 Jul 2026 16:10:22 -0300
+Subject: [PATCH 3/4] passkey webhook events
+
+---
+ cmd/evolution-go/main.go                 |  6 ++++-
+ pkg/instance/service/instance_service.go | 32 +++++++++++++++++++++---
+ pkg/passkey/ceremony/store.go            | 18 +++++++++++--
+ pkg/passkey/handler/passkey_handler.go   | 23 +++++++++++++++++
+ pkg/server/handler/server_handler.go     |  8 +++---
+ pkg/whatsmeow/service/whatsmeow.go       | 13 +++++-----
+ 6 files changed, 84 insertions(+), 16 deletions(-)
+
+diff --git a/cmd/evolution-go/main.go b/cmd/evolution-go/main.go
+index a583a55..d82f045 100644
+--- a/cmd/evolution-go/main.go
++++ b/cmd/evolution-go/main.go
+@@ -204,6 +204,10 @@ func setupRouter(db *gorm.DB, authDB *sql.DB, sqliteDB *sql.DB, config *config.C
+ 
+ 	// CORS middleware — must be before everything else
+ 	r.Use(func(c *gin.Context) {
++		if strings.HasPrefix(c.Request.URL.Path, "/passkey-ceremony") {
++			c.Next()
++			return
++		}
+ 		c.Writer.Header().Set("Access-Control-Allow-Origin", "*")
+ 		c.Writer.Header().Set("Access-Control-Allow-Credentials", "true")
+ 		c.Writer.Header().Set("Access-Control-Allow-Methods", "GET, POST, PUT, PATCH, DELETE, OPTIONS")
+@@ -238,7 +242,7 @@ func setupRouter(db *gorm.DB, authDB *sql.DB, sqliteDB *sql.DB, config *config.C
+ 		label_handler.NewLabelHandler(labelService),
+ 		newsletter_handler.NewNewsletterHandler(newsletterService),
+ 		pollHandler,
+-		server_handler.NewServerHandler(),
++		server_handler.NewServerHandler(version),
+ 	).AssignRoutes(r)
+ 
+ 	if config.ConnectOnStartup {
+diff --git a/pkg/instance/service/instance_service.go b/pkg/instance/service/instance_service.go
+index bdc6b6f..d988075 100644
+--- a/pkg/instance/service/instance_service.go
++++ b/pkg/instance/service/instance_service.go
+@@ -90,9 +90,9 @@ type StatusStruct struct {
+ }
+ 
+ type QrcodeStruct struct {
+-	Qrcode   string `json:"qrcode"`
+-	Code     string `json:"code"`
+-	State    string `json:"state,omitempty"`
++	Qrcode    string `json:"qrcode"`
++	Code      string `json:"code"`
++	State     string `json:"state,omitempty"`
+ 	ErrorCode string `json:"errorCode,omitempty"`
+ 	// Passkey ceremony fields. Populated when the account requires a WebAuthn
+ 	// passkey to finish linking (no QR to scan at that point). The manager uses
+@@ -101,6 +101,8 @@ type QrcodeStruct struct {
+ 	PasskeyStage   string `json:"passkeyStage,omitempty"`
+ 	PasskeyOpenURL string `json:"passkeyOpenUrl,omitempty"`
+ 	PasskeyCode    string `json:"passkeyCode,omitempty"`
++	PasskeyError   string `json:"passkeyError,omitempty"`
++	ExpiresAt      string `json:"expiresAt,omitempty"`
+ }
+ 
+ type PairStruct struct {
+@@ -468,9 +470,13 @@ func (i instances) GetQr(instance *instance_model.Instance) (*QrcodeStruct, erro
+ 		if token, state, ok := store.StateByInstance(instance.Id); ok {
+ 			logger.LogInfo("[%s] Passkey ceremony active (stage=%s) — returning passkey info instead of QR", instance.Id, state.Stage)
+ 			return &QrcodeStruct{
++				State:          normalizedPasskeyState(state.Stage, state.ErrorCode),
++				ErrorCode:      state.ErrorCode,
+ 				PasskeyStage:   state.Stage,
+ 				PasskeyCode:    state.Code,
+ 				PasskeyOpenURL: buildPasskeyOpenURL(token),
++				PasskeyError:   state.Error,
++				ExpiresAt:      state.ExpiresAt.UTC().Format(time.RFC3339),
+ 			}, nil
+ 		}
+ 	}
+@@ -532,6 +538,26 @@ func buildPasskeyOpenURL(token string) string {
+ 	return "https://web.whatsapp.com/#wapk=" + wapk
+ }
+ 
++func normalizedPasskeyState(stage, errorCode string) string {
++	if errorCode != "" {
++		return errorCode
++	}
++	switch stage {
++	case "challenge":
++		return "passkey_challenge"
++	case "awaiting_confirmation":
++		return "passkey_awaiting_confirmation"
++	case "confirmation":
++		return "passkey_code_available"
++	case "confirmed":
++		return "authenticating"
++	case "error":
++		return "passkey_failed"
++	default:
++		return "passkey_required"
++	}
++}
++
+ func (i instances) Pair(data *PairStruct, instance *instance_model.Instance) (*PairReturnStruct, error) {
+ 	logger := i.loggerWrapper.GetLogger(instance.Id)
+ 	client := i.clientPointer[instance.Id]
+diff --git a/pkg/passkey/ceremony/store.go b/pkg/passkey/ceremony/store.go
+index 0165a0d..e0e3185 100644
+--- a/pkg/passkey/ceremony/store.go
++++ b/pkg/passkey/ceremony/store.go
+@@ -44,6 +44,8 @@ type State struct {
+ 	Code          string          `json:"code,omitempty"`
+ 	SkipHandoffUX bool            `json:"skipHandoffUX"`
+ 	Error         string          `json:"error,omitempty"`
++	ErrorCode     string          `json:"errorCode,omitempty"`
++	ExpiresAt     time.Time       `json:"expiresAt"`
+ }
+ 
+ type entry struct {
+@@ -102,10 +104,11 @@ func (s *Store) Start(instanceID string, pk json.RawMessage) string {
+ 	}
+ 
+ 	tok := newToken()
++	expiresAt := now.Add(defaultTTL)
+ 	s.byToken[tok] = &entry{
+ 		instanceID: instanceID,
+-		state:      State{Stage: StageChallenge, PublicKey: pk, SkipHandoffUX: false},
+-		expiresAt:  now.Add(defaultTTL),
++		state:      State{Stage: StageChallenge, PublicKey: pk, SkipHandoffUX: false, ExpiresAt: expiresAt},
++		expiresAt:  expiresAt,
+ 	}
+ 	s.byInst[instanceID] = tok
+ 	return tok
+@@ -126,6 +129,7 @@ func (s *Store) setStateByInstance(instanceID string, mutate func(*State)) {
+ 	}
+ 	mutate(&e.state)
+ 	e.expiresAt = time.Now().Add(defaultTTL)
++	e.state.ExpiresAt = e.expiresAt
+ }
+ 
+ // SetConfirmation moves the ceremony to the confirmation stage with a code.
+@@ -137,6 +141,7 @@ func (s *Store) SetConfirmation(instanceID, code string, skipHandoffUX bool) {
+ 		st.Code = code
+ 		st.SkipHandoffUX = skipHandoffUX
+ 		st.Error = ""
++		st.ErrorCode = ""
+ 	})
+ }
+ 
+@@ -146,6 +151,7 @@ func (s *Store) SetAwaitingConfirmation(instanceID string) {
+ 		st.Stage = StageAwaitingConfirmation
+ 		st.PublicKey = nil
+ 		st.Error = ""
++		st.ErrorCode = ""
+ 	})
+ }
+ 
+@@ -154,14 +160,22 @@ func (s *Store) SetConfirmed(instanceID string) {
+ 	s.setStateByInstance(instanceID, func(st *State) {
+ 		st.Stage = StageConfirmed
+ 		st.Error = ""
++		st.ErrorCode = ""
+ 	})
+ }
+ 
+ // SetError records a ceremony error.
+ func (s *Store) SetError(instanceID, msg string) {
++	s.SetErrorCode(instanceID, "passkey_failed", msg)
++}
++
++// SetErrorCode records a stable, machine-readable terminal error while
++// preserving a human-readable description for the helper UI.
++func (s *Store) SetErrorCode(instanceID, code, msg string) {
+ 	s.setStateByInstance(instanceID, func(st *State) {
+ 		st.Stage = StageError
+ 		st.Error = msg
++		st.ErrorCode = code
+ 	})
+ }
+ 
+diff --git a/pkg/passkey/handler/passkey_handler.go b/pkg/passkey/handler/passkey_handler.go
+index eff68c7..897a6c7 100644
+--- a/pkg/passkey/handler/passkey_handler.go
++++ b/pkg/passkey/handler/passkey_handler.go
+@@ -76,6 +76,10 @@ func (h *PasskeyHandler) GetCeremony(c *gin.Context) {
+ 	if state.Error != "" {
+ 		resp["error"] = state.Error
+ 	}
++	if state.ErrorCode != "" {
++		resp["errorCode"] = state.ErrorCode
++	}
++	resp["expiresAt"] = state.ExpiresAt
+ 	c.JSON(http.StatusOK, resp)
+ }
+ 
+@@ -175,9 +179,28 @@ func (h *PasskeyHandler) Confirm(c *gin.Context) {
+ func RegisterRoutes(eng *gin.Engine, svc whatsmeow_service.WhatsmeowService) {
+ 	h := NewPasskeyHandler(svc)
+ 	grp := eng.Group("/passkey-ceremony")
++	grp.Use(passkeyCORS())
+ 	{
++		grp.OPTIONS("/*path", func(c *gin.Context) { c.Status(http.StatusNoContent) })
+ 		grp.GET("/:token", h.GetCeremony)
+ 		grp.POST("/:token/response", h.SubmitResponse)
+ 		grp.POST("/:token/confirm", h.Confirm)
+ 	}
+ }
++
++func passkeyCORS() gin.HandlerFunc {
++	return func(c *gin.Context) {
++		// The engine has legacy wildcard CORS for authenticated API routes. The
++		// public passkey bridge is intentionally restricted to WhatsApp Web,
++		// because WebAuthn assertions must be created on that origin.
++		c.Writer.Header().Del("Access-Control-Allow-Origin")
++		c.Writer.Header().Del("Access-Control-Allow-Credentials")
++		c.Writer.Header().Set("Vary", "Origin")
++		if c.GetHeader("Origin") == "https://web.whatsapp.com" {
++			c.Writer.Header().Set("Access-Control-Allow-Origin", "https://web.whatsapp.com")
++			c.Writer.Header().Set("Access-Control-Allow-Methods", "GET, POST, OPTIONS")
++			c.Writer.Header().Set("Access-Control-Allow-Headers", "Content-Type")
++		}
++		c.Next()
++	}
++}
+diff --git a/pkg/server/handler/server_handler.go b/pkg/server/handler/server_handler.go
+index d20bd73..2d05bd5 100644
+--- a/pkg/server/handler/server_handler.go
++++ b/pkg/server/handler/server_handler.go
+@@ -7,15 +7,17 @@ type ServerHandler interface {
+ }
+ 
+ type serverHandler struct {
++	version string
+ }
+ 
+ // ServerOk implements ServerHandler.
+ func (s *serverHandler) ServerOk(ctx *gin.Context) {
+ 	ctx.JSON(200, gin.H{
+-		"status": "ok",
++		"status":  "ok",
++		"version": s.version,
+ 	})
+ }
+ 
+-func NewServerHandler() ServerHandler {
+-	return &serverHandler{}
++func NewServerHandler(version string) ServerHandler {
++	return &serverHandler{version: version}
+ }
+diff --git a/pkg/whatsmeow/service/whatsmeow.go b/pkg/whatsmeow/service/whatsmeow.go
+index 8f52252..5cb345f 100644
+--- a/pkg/whatsmeow/service/whatsmeow.go
++++ b/pkg/whatsmeow/service/whatsmeow.go
+@@ -1005,8 +1005,7 @@ func (mycli *MyClient) myEventHandler(rawEvt interface{}) {
+ 		openURL := "https://web.whatsapp.com/#wapk=" + wapk
+ 
+ 		mycli.loggerWrapper.GetLogger(mycli.userID).LogInfo(
+-			"[%s] Passkey required. Open this URL in a browser with the Evolution Passkey Helper extension:\n%s\n(ceremony token=%s, base=%s)",
+-			mycli.userID, openURL, token, publicBase,
++			"[%s] Passkey required (stage=challenge, ttl=5m)", mycli.userID,
+ 		)
+ 
+ 		// Surface the ceremony info to webhooks/queues so the manager UI can
+@@ -1025,8 +1024,8 @@ func (mycli *MyClient) myEventHandler(rawEvt interface{}) {
+ 		postMap["event"] = "PasskeyConfirmation"
+ 		mycli.passkeyCeremony.SetConfirmation(mycli.userID, evt.Code, false)
+ 		mycli.loggerWrapper.GetLogger(mycli.userID).LogInfo(
+-			"[%s] Passkey confirmation code=%s (skipHandoffUX from server=%v, forced to manual)",
+-			mycli.userID, evt.Code, evt.SkipHandoffUX,
++			"[%s] Passkey confirmation received (skipHandoffUX from server=%v, forced to manual)",
++			mycli.userID, evt.SkipHandoffUX,
+ 		)
+ 		postMap["data"] = map[string]interface{}{
+ 			"code":  evt.Code,
+@@ -2212,7 +2211,7 @@ func (w *whatsmeowService) CallWebhook(instance *instance_model.Instance, queueN
+ 			w.loggerWrapper.GetLogger(instance.Id).LogInfo("[%s] Event received of type %s", instance.Id, eventType)
+ 			w.sendToQueueOrWebhook(instance, queueName, jsonData)
+ 		}
+-	case "QRCode", "QRTimeout", "QRSuccess":
++	case "QRCode", "QRTimeout", "QRSuccess", "PasskeyRequest", "PasskeyConfirmation", "PasskeyError":
+ 		if contains(subscriptions, "QRCODE") {
+ 			w.loggerWrapper.GetLogger(instance.Id).LogInfo("[%s] Event received of type %s", instance.Id, eventType)
+ 			w.sendToQueueOrWebhook(instance, queueName, jsonData)
+@@ -2479,7 +2478,7 @@ func (w *whatsmeowService) SendToGlobalQueues(eventType string, payload []byte,
+ 				globalEventType = "GROUP"
+ 			case "NewsletterJoin", "NewsletterLeave":
+ 				globalEventType = "NEWSLETTER"
+-			case "QRCode", "QRTimeout", "QRSuccess":
++			case "QRCode", "QRTimeout", "QRSuccess", "PasskeyRequest", "PasskeyConfirmation", "PasskeyError":
+ 				globalEventType = "QRCODE"
+ 			default:
+ 				w.loggerWrapper.GetLogger(userId).LogInfo("[%s] Event %s not mapped to global event type", userId, eventType)
+@@ -2537,7 +2536,7 @@ func (w *whatsmeowService) SendToGlobalQueues(eventType string, payload []byte,
+ 			globalEventType = "GROUP"
+ 		case "NewsletterJoin", "NewsletterLeave":
+ 			globalEventType = "NEWSLETTER"
+-		case "QRCode", "QRTimeout", "QRSuccess":
++		case "QRCode", "QRTimeout", "QRSuccess", "PasskeyRequest", "PasskeyConfirmation", "PasskeyError":
+ 			globalEventType = "QRCODE"
+ 		default:
+ 			globalEventType = ""

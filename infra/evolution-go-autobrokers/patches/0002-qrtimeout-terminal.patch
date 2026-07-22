@@ -1,0 +1,237 @@
+From 18dd797683b0ffdf7e329cf71df09075fe51b979 Mon Sep 17 00:00:00 2001
+From: AutoBrokers Engineering <engineering@autobrokers.local>
+Date: Wed, 22 Jul 2026 16:07:32 -0300
+Subject: [PATCH 2/4] qrtimeout terminal
+
+---
+ pkg/instance/service/instance_service.go | 39 +++++++---
+ pkg/whatsmeow/service/whatsmeow.go       | 90 ++++++++----------------
+ 2 files changed, 62 insertions(+), 67 deletions(-)
+
+diff --git a/pkg/instance/service/instance_service.go b/pkg/instance/service/instance_service.go
+index fa43c94..bdc6b6f 100644
+--- a/pkg/instance/service/instance_service.go
++++ b/pkg/instance/service/instance_service.go
+@@ -90,8 +90,10 @@ type StatusStruct struct {
+ }
+ 
+ type QrcodeStruct struct {
+-	Qrcode string `json:"qrcode"`
+-	Code   string `json:"code"`
++	Qrcode   string `json:"qrcode"`
++	Code     string `json:"code"`
++	State    string `json:"state,omitempty"`
++	ErrorCode string `json:"errorCode,omitempty"`
+ 	// Passkey ceremony fields. Populated when the account requires a WebAuthn
+ 	// passkey to finish linking (no QR to scan at that point). The manager uses
+ 	// PasskeyStage to switch its UI and PasskeyOpenUrl for the
+@@ -234,6 +236,8 @@ func (i instances) Connect(data *ConnectStruct, instance *instance_model.Instanc
+ 	instance.RabbitmqEnable = data.RabbitmqEnable
+ 	instance.NatsEnable = data.NatsEnable
+ 	instance.WebSocketEnable = data.WebSocketEnable
++	// Connect is the explicit retry boundary after terminal pairing states.
++	instance.DisconnectReason = ""
+ 
+ 	err := i.instanceRepository.Update(instance)
+ 	if err != nil {
+@@ -415,13 +419,19 @@ func (i instances) GetQr(instance *instance_model.Instance) (*QrcodeStruct, erro
+ 	logger := i.loggerWrapper.GetLogger(instance.Id)
+ 	client := i.clientPointer[instance.Id]
+ 
+-	// Se não há cliente ou o cliente está logado, precisamos iniciar um novo cliente
+-	if client == nil || client.IsLoggedIn() {
+-		if client != nil && client.IsLoggedIn() {
+-			logger.LogInfo("[%s] Client is logged in, starting new instance for QR code", instance.Id)
+-		} else {
+-			logger.LogInfo("[%s] No client found, starting new instance for QR code", instance.Id)
++	if client == nil {
++		if state := normalizedPairingTerminalState(instance.DisconnectReason); state != "" {
++			return &QrcodeStruct{State: state, ErrorCode: state}, nil
+ 		}
++	}
++	if client != nil && client.IsLoggedIn() {
++		return &QrcodeStruct{State: "connected"}, nil
++	}
++
++	// Starting a missing client is an explicit QR request. A logged-in client is
++	// handled above and is never replaced merely to produce a new QR.
++	if client == nil {
++		logger.LogInfo("[%s] No client found, starting new instance for QR code", instance.Id)
+ 
+ 		// Iniciar nova instância para gerar QR code
+ 		err := i.whatsmeowService.StartInstance(instance.Id)
+@@ -478,6 +488,9 @@ func (i instances) GetQr(instance *instance_model.Instance) (*QrcodeStruct, erro
+ 
+ 		code = instance.Qrcode
+ 		if code == "" {
++			if state := normalizedPairingTerminalState(instance.DisconnectReason); state != "" {
++				return &QrcodeStruct{State: state, ErrorCode: state}, nil
++			}
+ 			return nil, fmt.Errorf("no QR code available. Please wait a moment and try again")
+ 		}
+ 	}
+@@ -490,11 +503,21 @@ func (i instances) GetQr(instance *instance_model.Instance) (*QrcodeStruct, erro
+ 	qr := &QrcodeStruct{
+ 		Qrcode: parts[0],
+ 		Code:   parts[1],
++		State:  "qr_ready",
+ 	}
+ 
+ 	return qr, nil
+ }
+ 
++func normalizedPairingTerminalState(reason string) string {
++	switch reason {
++	case "qr_expired", "re_pair_required", "db_pool_exhausted", "provider_unavailable":
++		return reason
++	default:
++		return ""
++	}
++}
++
+ // buildPasskeyOpenURL builds the URL the manager opens to start the passkey
+ // ceremony: https://web.whatsapp.com/#wapk=<base64url({t:token,b:publicBase})>.
+ // publicBase must be the PUBLICLY reachable API base the browser can hit; set it
+diff --git a/pkg/whatsmeow/service/whatsmeow.go b/pkg/whatsmeow/service/whatsmeow.go
+index 18b1d7d..8f52252 100644
+--- a/pkg/whatsmeow/service/whatsmeow.go
++++ b/pkg/whatsmeow/service/whatsmeow.go
+@@ -575,41 +575,7 @@ func (w whatsmeowService) StartClient(cd *ClientData) {
+ 				w.loggerWrapper.GetLogger(cd.Instance.Id).LogError("[%s] Error updating instance: %s", cd.Instance.Id, err)
+ 			}
+ 
+-			postMap := make(map[string]interface{})
+-
+-			postMap["event"] = "LoggedOut"
+-
+-			dataMap := make(map[string]interface{})
+-
+-			dataMap["reason"] = "Logged out"
+-
+-			postMap["data"] = dataMap
+-
+-			postMap["instanceToken"] = mycli.token
+-			postMap["instanceId"] = mycli.userID
+-			postMap["instanceName"] = cd.Instance.Name
+-
+-			var queueName string
+-
+-			if _, ok := postMap["event"]; ok {
+-				queueName = strings.ToLower(fmt.Sprintf("%s.%s", cd.Instance.Id, postMap["event"]))
+-			}
+-
+-			values, err := json.Marshal(postMap)
+-			if err != nil {
+-				w.loggerWrapper.GetLogger(cd.Instance.Id).LogError("[%s] Failed to marshal JSON for queue", cd.Instance.Id)
+-				return
+-			}
+-
+-			go w.CallWebhook(cd.Instance, queueName, values)
+-
+-			if mycli.config.AmqpGlobalEnabled || mycli.config.NatsGlobalEnabled {
+-				go mycli.service.SendToGlobalQueues(postMap["event"].(string), values, mycli.userID)
+-			}
+-
+-			// restart client
+-			w.loggerWrapper.GetLogger(cd.Instance.Id).LogInfo("[%s] Restarting client", cd.Instance.Id)
+-			w.StartClient(cd)
++			w.loggerWrapper.GetLogger(cd.Instance.Id).LogInfo("[%s] Client stopped; waiting for an explicit connect request", cd.Instance.Id)
+ 			return
+ 		default:
+ 			time.Sleep(1000 * time.Millisecond)
+@@ -717,11 +683,6 @@ func (mycli *MyClient) handleQRCodes(codes []string) {
+ 				}
+ 				mycli.loggerWrapper.GetLogger(instanceID).LogWarn("[%s] Maximum QR code count reached (%d), forcing logout and QRTimeout", instanceID, mycli.config.QrcodeMaxCount)
+ 
+-				if mycli.WAClient.IsConnected() {
+-					if err := mycli.WAClient.Logout(context.Background()); err != nil {
+-						mycli.loggerWrapper.GetLogger(instanceID).LogWarn("[%s] Error during forced logout: %v", instanceID, err)
+-					}
+-				}
+ 				mycli.teardownQR(fmt.Sprintf("Maximum QR code count (%d) reached", mycli.config.QrcodeMaxCount), true)
+ 				return
+ 			}
+@@ -794,23 +755,27 @@ func (mycli *MyClient) handleQRCodes(codes []string) {
+ // If reason is non-empty it is included in the QRTimeout payload (max-count path).
+ func (mycli *MyClient) teardownQR(reason string, forceLogout bool) {
+ 	instanceID := mycli.userID
++	errorCode := "qr_expired"
++	mycli.Instance.DisconnectReason = errorCode
++	mycli.Instance.Connected = false
+ 
+ 	if err := mycli.instanceRepository.UpdateQrcode(instanceID, ""); err != nil {
+ 		mycli.loggerWrapper.GetLogger(instanceID).LogError("[%s] Error updating instance: %s", instanceID, err)
+ 	}
+ 
+-	if reason != "" {
+-		if err := mycli.instanceRepository.UpdateConnected(instanceID, false, reason); err != nil {
+-			mycli.loggerWrapper.GetLogger(instanceID).LogError("[%s] Error updating instance status: %v", instanceID, err)
+-		}
++	if err := mycli.instanceRepository.UpdateConnected(instanceID, false, errorCode); err != nil {
++		mycli.loggerWrapper.GetLogger(instanceID).LogError("[%s] Error updating instance status: %v", instanceID, err)
+ 	}
+ 
+-	data := map[string]interface{}{}
+-	if reason != "" {
+-		data["reason"] = reason
+-		data["qrcount"] = mycli.qrcodeCount
+-		data["maxCount"] = mycli.config.QrcodeMaxCount
+-		data["forceLogout"] = forceLogout
++	if reason == "" {
++		reason = "QR code expired"
++	}
++	data := map[string]interface{}{
++		"reason":      reason,
++		"errorCode":   errorCode,
++		"qrcount":     mycli.qrcodeCount,
++		"maxCount":    mycli.config.QrcodeMaxCount,
++		"forceLogout": forceLogout,
+ 	}
+ 	postMap := map[string]interface{}{
+ 		"event":         "QRTimeout",
+@@ -1824,7 +1789,8 @@ func (mycli *MyClient) myEventHandler(rawEvt interface{}) {
+ 		mycli.userInfoCache.Delete(mycli.Instance.Token)
+ 		mycli.loggerWrapper.GetLogger(mycli.userID).LogInfo("[%s] UserInfo cache cleared for token: %s", mycli.userID, mycli.Instance.Token)
+ 
+-		mycli.Instance.DisconnectReason = evt.Reason.String()
++		providerReason := evt.Reason.String()
++		mycli.Instance.DisconnectReason = "re_pair_required"
+ 		mycli.Instance.Connected = false
+ 		err := mycli.instanceRepository.UpdateConnected(mycli.Instance.Id, mycli.Instance.Connected, mycli.Instance.DisconnectReason)
+ 		if err != nil {
+@@ -1852,7 +1818,8 @@ func (mycli *MyClient) myEventHandler(rawEvt interface{}) {
+ 
+ 		dataMap := postMap["data"].(map[string]interface{})
+ 
+-		dataMap["reason"] = evt.Reason.String()
++		dataMap["reason"] = "re_pair_required"
++		dataMap["providerReason"] = providerReason
+ 
+ 		// Enviar evento LoggedOut para webhook/RabbitMQ ANTES de matar o canal
+ 		postMap["instanceToken"] = mycli.Instance.Token
+@@ -1964,13 +1931,18 @@ func (mycli *MyClient) myEventHandler(rawEvt interface{}) {
+ 			mycli.loggerWrapper.GetLogger(mycli.userID).LogError("[%s] Error updating instance: %s", mycli.Instance.Id, err)
+ 		}
+ 
+-		// Trigger instance restart via websocket-capable service (non-blocking)
+-		go func(instanceID string) {
+-			mycli.loggerWrapper.GetLogger(instanceID).LogInfo("[%s] Disconnected detected, restarting instance", instanceID)
+-			if err := mycli.service.ReconnectClient(instanceID); err != nil {
+-				mycli.loggerWrapper.GetLogger(instanceID).LogError("[%s] Failed to restart instance: %v", instanceID, err)
+-			}
+-		}(mycli.userID)
++		if mycli.WAClient == nil || mycli.WAClient.Store == nil || mycli.WAClient.Store.ID == nil {
++			mycli.loggerWrapper.GetLogger(mycli.userID).LogInfo("[%s] Unpaired client disconnected; waiting for an explicit pairing attempt", mycli.userID)
++		} else {
++			// A persisted, paired session may reconnect automatically. Pairing
++			// attempts are terminal and must be retried explicitly by the caller.
++			go func(instanceID string) {
++				mycli.loggerWrapper.GetLogger(instanceID).LogInfo("[%s] Paired session disconnected, reconnecting instance", instanceID)
++				if err := mycli.service.ReconnectClient(instanceID); err != nil {
++					mycli.loggerWrapper.GetLogger(instanceID).LogError("[%s] Failed to reconnect paired instance: %v", instanceID, err)
++				}
++			}(mycli.userID)
++		}
+ 	case *events.LabelEdit:
+ 		doWebhook = true
+ 		postMap["event"] = "LabelEdit"

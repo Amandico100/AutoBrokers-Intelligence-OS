@@ -1,0 +1,471 @@
+From b54c67e3c515e508689164bea8fc77a1a26eb80a Mon Sep 17 00:00:00 2001
+From: AutoBrokers Engineering <engineering@autobrokers.local>
+Date: Wed, 22 Jul 2026 16:03:52 -0300
+Subject: [PATCH 1/4] sqlstore lifecycle
+
+---
+ cmd/evolution-go/main.go           |  10 +-
+ pkg/config/config.go               | 217 ++++++++++++++++-------------
+ pkg/config/env/env.go              |  92 ++++++------
+ pkg/whatsmeow/service/whatsmeow.go |  44 +++---
+ 4 files changed, 198 insertions(+), 165 deletions(-)
+
+diff --git a/cmd/evolution-go/main.go b/cmd/evolution-go/main.go
+index 5234583..a583a55 100644
+--- a/cmd/evolution-go/main.go
++++ b/cmd/evolution-go/main.go
+@@ -289,7 +289,7 @@ func initAuthDB(config *config.Config) (*sql.DB, string, error) {
+ 		}
+ 	}
+ 
+-	db, err := sql.Open("sqlite", exPath+"/dbdata/users.db?_pragma=foreign_keys(1)&_busy_timeout=3000")
++	db, err := sql.Open("sqlite", exPath+"/dbdata/main.db?_pragma=foreign_keys(1)&_busy_timeout=3000&cache=shared&_journal_mode=WAL")
+ 	if err != nil {
+ 		return nil, "", err
+ 	}
+@@ -312,10 +312,10 @@ func initPostgresAuthDB(config *config.Config) (*sql.DB, error) {
+ 	}
+ 
+ 	// Configurar pool de conexões para evitar conexões ociosas não fechadas
+-	db.SetMaxOpenConns(25)                 // Máximo de 25 conexões abertas simultaneamente
+-	db.SetMaxIdleConns(5)                  // Máximo de 5 conexões ociosas no pool
+-	db.SetConnMaxLifetime(5 * time.Minute) // Reconectar após 5 minutos para evitar timeouts
+-	db.SetConnMaxIdleTime(1 * time.Minute) // Fechar conexões ociosas após 1 minuto
++	db.SetMaxOpenConns(config.PostgresMaxOpenConns)
++	db.SetMaxIdleConns(config.PostgresMaxIdleConns)
++	db.SetConnMaxLifetime(time.Duration(config.PostgresConnMaxLifetimeMinutes) * time.Minute)
++	db.SetConnMaxIdleTime(time.Duration(config.PostgresConnMaxIdleTimeMinutes) * time.Minute)
+ 
+ 	err = db.Ping()
+ 	if err != nil {
+diff --git a/pkg/config/config.go b/pkg/config/config.go
+index c90c9e1..9b5a33c 100644
+--- a/pkg/config/config.go
++++ b/pkg/config/config.go
+@@ -17,50 +17,54 @@ import (
+ )
+ 
+ type Config struct {
+-	PostgresAuthDB       string
+-	postgresUsersDB      string
+-	PostgresHost         string
+-	PostgresPort         string
+-	PostgresUser         string
+-	PostgresPassword     string
+-	PostgresDB           string
+-	DatabaseSaveMessages bool
+-	GlobalApiKey         string
+-	WaDebug              string
+-	LogType              string
+-	WebhookFiles         bool
+-	ConnectOnStartup     bool
+-	OsName               string
+-	AmqpUrl              string
+-	AmqpGlobalEnabled    bool
+-	WebhookUrl           string
+-	ClientName           string
+-	ApiAudioConverter    string
+-	ApiAudioConverterKey string
+-	MinioEndpoint        string
+-	MinioAccessKey       string
+-	MinioSecretKey       string
+-	MinioBucket          string
+-	MinioUseSSL          bool
+-	MinioEnabled         bool
+-	MinioRegion          string
+-	WhatsappVersionMajor int
+-	WhatsappVersionMinor int
+-	WhatsappVersionPatch int
+-	ProxyProtocol        string
+-	ProxyHost            string
+-	ProxyPort            string
+-	ProxyUsername        string
+-	ProxyPassword        string
+-	AmqpGlobalEvents     []string
+-	AmqpSpecificEvents   []string
+-	NatsUrl              string
+-	NatsGlobalEnabled    bool
+-	NatsGlobalEvents     []string
+-	EventIgnoreGroup     bool
+-	EventIgnoreStatus    bool
+-	QrcodeMaxCount       int
+-	CheckUserExists      bool
++	PostgresAuthDB                 string
++	postgresUsersDB                string
++	PostgresHost                   string
++	PostgresPort                   string
++	PostgresUser                   string
++	PostgresPassword               string
++	PostgresDB                     string
++	PostgresMaxOpenConns           int
++	PostgresMaxIdleConns           int
++	PostgresConnMaxLifetimeMinutes int
++	PostgresConnMaxIdleTimeMinutes int
++	DatabaseSaveMessages           bool
++	GlobalApiKey                   string
++	WaDebug                        string
++	LogType                        string
++	WebhookFiles                   bool
++	ConnectOnStartup               bool
++	OsName                         string
++	AmqpUrl                        string
++	AmqpGlobalEnabled              bool
++	WebhookUrl                     string
++	ClientName                     string
++	ApiAudioConverter              string
++	ApiAudioConverterKey           string
++	MinioEndpoint                  string
++	MinioAccessKey                 string
++	MinioSecretKey                 string
++	MinioBucket                    string
++	MinioUseSSL                    bool
++	MinioEnabled                   bool
++	MinioRegion                    string
++	WhatsappVersionMajor           int
++	WhatsappVersionMinor           int
++	WhatsappVersionPatch           int
++	ProxyProtocol                  string
++	ProxyHost                      string
++	ProxyPort                      string
++	ProxyUsername                  string
++	ProxyPassword                  string
++	AmqpGlobalEvents               []string
++	AmqpSpecificEvents             []string
++	NatsUrl                        string
++	NatsGlobalEnabled              bool
++	NatsGlobalEvents               []string
++	EventIgnoreGroup               bool
++	EventIgnoreStatus              bool
++	QrcodeMaxCount                 int
++	CheckUserExists                bool
+ 
+ 	// Logger configurations
+ 	LogMaxSize    int
+@@ -169,10 +173,10 @@ func (c *Config) CreateUsersDB() (*gorm.DB, error) {
+ 	}
+ 
+ 	// Configurar pool de conexões para evitar conexões ociosas não fechadas
+-	sqlDB.SetMaxOpenConns(25)                 // Máximo de 25 conexões abertas simultaneamente
+-	sqlDB.SetMaxIdleConns(5)                  // Máximo de 5 conexões ociosas no pool
+-	sqlDB.SetConnMaxLifetime(5 * time.Minute) // Reconectar após 5 minutos para evitar timeouts
+-	sqlDB.SetConnMaxIdleTime(1 * time.Minute) // Fechar conexões ociosas após 1 minuto
++	sqlDB.SetMaxOpenConns(c.PostgresMaxOpenConns)
++	sqlDB.SetMaxIdleConns(c.PostgresMaxIdleConns)
++	sqlDB.SetConnMaxLifetime(time.Duration(c.PostgresConnMaxLifetimeMinutes) * time.Minute)
++	sqlDB.SetConnMaxIdleTime(time.Duration(c.PostgresConnMaxIdleTimeMinutes) * time.Minute)
+ 
+ 	return db, nil
+ }
+@@ -194,10 +198,10 @@ func (c *Config) CreateAuthDB() (*sql.DB, error) {
+ 	}
+ 
+ 	// Configurar pool de conexões para evitar conexões ociosas não fechadas
+-	db.SetMaxOpenConns(25)                 // Máximo de 25 conexões abertas simultaneamente
+-	db.SetMaxIdleConns(5)                  // Máximo de 5 conexões ociosas no pool
+-	db.SetConnMaxLifetime(5 * time.Minute) // Reconectar após 5 minutos para evitar timeouts
+-	db.SetConnMaxIdleTime(1 * time.Minute) // Fechar conexões ociosas após 1 minuto
++	db.SetMaxOpenConns(c.PostgresMaxOpenConns)
++	db.SetMaxIdleConns(c.PostgresMaxIdleConns)
++	db.SetConnMaxLifetime(time.Duration(c.PostgresConnMaxLifetimeMinutes) * time.Minute)
++	db.SetConnMaxIdleTime(time.Duration(c.PostgresConnMaxIdleTimeMinutes) * time.Minute)
+ 
+ 	// Testar a conexão
+ 	err = db.Ping()
+@@ -343,49 +347,58 @@ func Load() *Config {
+ 	}
+ 
+ 	config := &Config{
+-		PostgresAuthDB:       postgresAuthDB,
+-		postgresUsersDB:      postgresUsersDB,
+-		DatabaseSaveMessages: databaseSaveMessages == "true",
+-		GlobalApiKey:         globalApiKey,
+-		WaDebug:              waDebug,
+-		LogType:              logType,
+-		WebhookFiles:         webhookFiles == "true",
+-		ConnectOnStartup:     connectOnStartup == "true",
+-		OsName:               osName,
+-		AmqpUrl:              amqpUrl,
+-		AmqpGlobalEnabled:    amqpGlobalEnabled == "true",
+-		WebhookUrl:           webhookUrl,
+-		ClientName:           clientName,
+-		ApiAudioConverter:    apiAudioConverter,
+-		ApiAudioConverterKey: apiAudioConverterKey,
+-		PostgresHost:         postgresHost,
+-		PostgresPort:         postgresPort,
+-		PostgresUser:         postgresUser,
+-		PostgresPassword:     postgresPassword,
+-		PostgresDB:           postgresDB,
+-		WhatsappVersionMajor: major,
+-		WhatsappVersionMinor: minor,
+-		WhatsappVersionPatch: patch,
+-		ProxyProtocol:        proxyProtocol,
+-		ProxyHost:            proxyHost,
+-		ProxyPort:            proxyPort,
+-		ProxyUsername:        proxyUsername,
+-		ProxyPassword:        proxyPassword,
+-		EventIgnoreGroup:     eventIgnoreGroup == "true",
+-		EventIgnoreStatus:    eventIgnoreStatus == "true",
+-		QrcodeMaxCount:       qrMaxCount,
+-		CheckUserExists:      checkUserExists != "false", // Default true, set to false to disable
+-		AmqpGlobalEvents:     amqpGlobalEvents,
+-		AmqpSpecificEvents:   amqpSpecificEvents,
+-		NatsUrl:              natsUrl,
+-		NatsGlobalEnabled:    natsGlobalEnabled == "true",
+-		NatsGlobalEvents:     natsGlobalEvents,
+-		LogMaxSize:           logMaxSize,
+-		LogMaxBackups:        logMaxBackups,
+-		LogMaxAge:            logMaxAge,
+-		LogDirectory:         logDirectory,
+-		LogCompress:          logCompress,
+-	}
++		PostgresAuthDB:                 postgresAuthDB,
++		postgresUsersDB:                postgresUsersDB,
++		PostgresMaxOpenConns:           20,
++		PostgresMaxIdleConns:           5,
++		PostgresConnMaxLifetimeMinutes: 30,
++		PostgresConnMaxIdleTimeMinutes: 5,
++		DatabaseSaveMessages:           databaseSaveMessages == "true",
++		GlobalApiKey:                   globalApiKey,
++		WaDebug:                        waDebug,
++		LogType:                        logType,
++		WebhookFiles:                   webhookFiles == "true",
++		ConnectOnStartup:               connectOnStartup == "true",
++		OsName:                         osName,
++		AmqpUrl:                        amqpUrl,
++		AmqpGlobalEnabled:              amqpGlobalEnabled == "true",
++		WebhookUrl:                     webhookUrl,
++		ClientName:                     clientName,
++		ApiAudioConverter:              apiAudioConverter,
++		ApiAudioConverterKey:           apiAudioConverterKey,
++		PostgresHost:                   postgresHost,
++		PostgresPort:                   postgresPort,
++		PostgresUser:                   postgresUser,
++		PostgresPassword:               postgresPassword,
++		PostgresDB:                     postgresDB,
++		WhatsappVersionMajor:           major,
++		WhatsappVersionMinor:           minor,
++		WhatsappVersionPatch:           patch,
++		ProxyProtocol:                  proxyProtocol,
++		ProxyHost:                      proxyHost,
++		ProxyPort:                      proxyPort,
++		ProxyUsername:                  proxyUsername,
++		ProxyPassword:                  proxyPassword,
++		EventIgnoreGroup:               eventIgnoreGroup == "true",
++		EventIgnoreStatus:              eventIgnoreStatus == "true",
++		QrcodeMaxCount:                 qrMaxCount,
++		CheckUserExists:                checkUserExists != "false", // Default true, set to false to disable
++		AmqpGlobalEvents:               amqpGlobalEvents,
++		AmqpSpecificEvents:             amqpSpecificEvents,
++		NatsUrl:                        natsUrl,
++		NatsGlobalEnabled:              natsGlobalEnabled == "true",
++		NatsGlobalEvents:               natsGlobalEvents,
++		LogMaxSize:                     logMaxSize,
++		LogMaxBackups:                  logMaxBackups,
++		LogMaxAge:                      logMaxAge,
++		LogDirectory:                   logDirectory,
++		LogCompress:                    logCompress,
++	}
++
++	config.PostgresMaxOpenConns = positiveIntFromEnv(config_env.POSTGRES_MAX_OPEN_CONNS, config.PostgresMaxOpenConns)
++	config.PostgresMaxIdleConns = positiveIntFromEnv(config_env.POSTGRES_MAX_IDLE_CONNS, config.PostgresMaxIdleConns)
++	config.PostgresConnMaxLifetimeMinutes = positiveIntFromEnv(config_env.POSTGRES_CONN_MAX_LIFETIME_MINUTES, config.PostgresConnMaxLifetimeMinutes)
++	config.PostgresConnMaxIdleTimeMinutes = positiveIntFromEnv(config_env.POSTGRES_CONN_MAX_IDLE_TIME_MINUTES, config.PostgresConnMaxIdleTimeMinutes)
+ 
+ 	minioEnabled := os.Getenv(config_env.MINIO_ENABLED) == "true"
+ 	if minioEnabled {
+@@ -430,6 +443,20 @@ func panicIfEmpty(key, value string) {
+ 	}
+ }
+ 
++func positiveIntFromEnv(key string, fallback int) int {
++	raw := strings.TrimSpace(os.Getenv(key))
++	if raw == "" {
++		return fallback
++	}
++
++	value, err := strconv.Atoi(raw)
++	if err != nil || value <= 0 {
++		logger.LogWarn("[CONFIG] %s must be a positive integer; using %d", key, fallback)
++		return fallback
++	}
++	return value
++}
++
+ // validateAMQPURL validates if the AMQP URL has the correct scheme and format
+ func validateAMQPURL(amqpURL string) error {
+ 	if amqpURL == "" {
+diff --git a/pkg/config/env/env.go b/pkg/config/env/env.go
+index cda9be8..8291a0f 100644
+--- a/pkg/config/env/env.go
++++ b/pkg/config/env/env.go
+@@ -1,50 +1,54 @@
+ package config_env
+ 
+ const (
+-	POSTGRES_AUTH_DB        = "POSTGRES_AUTH_DB"
+-	POSTGRES_USERS_DB       = "POSTGRES_USERS_DB"
+-	POSTGRES_HOST           = "POSTGRES_HOST"
+-	POSTGRES_PORT           = "POSTGRES_PORT"
+-	POSTGRES_USER           = "POSTGRES_USER"
+-	POSTGRES_PASSWORD       = "POSTGRES_PASSWORD"
+-	POSTGRES_DB             = "POSTGRES_DB"
+-	DATABASE_SAVE_MESSAGES  = "DATABASE_SAVE_MESSAGES"
+-	GLOBAL_API_KEY          = "GLOBAL_API_KEY"
+-	WA_DEBUG                = "DEBUG_ENABLED"
+-	LOGTYPE                 = "LOG_TYPE"
+-	WEBHOOKFILES            = "WEBHOOK_FILES"
+-	CONNECT_ON_STARTUP      = "CONNECT_ON_STARTUP"
+-	OS_NAME                 = "OS_NAME"
+-	AMQP_URL                = "AMQP_URL"
+-	AMQP_GLOBAL_ENABLED     = "AMQP_GLOBAL_ENABLED"
+-	AMQP_GLOBAL_EVENTS      = "AMQP_GLOBAL_EVENTS"
+-	AMQP_SPECIFIC_EVENTS    = "AMQP_SPECIFIC_EVENTS"
+-	WEBHOOK_URL             = "WEBHOOK_URL"
+-	CLIENT_NAME             = "CLIENT_NAME"
+-	API_AUDIO_CONVERTER     = "API_AUDIO_CONVERTER"
+-	API_AUDIO_CONVERTER_KEY = "API_AUDIO_CONVERTER_KEY"
+-	MINIO_ENDPOINT          = "MINIO_ENDPOINT"
+-	MINIO_ACCESS_KEY        = "MINIO_ACCESS_KEY"
+-	MINIO_SECRET_KEY        = "MINIO_SECRET_KEY"
+-	MINIO_BUCKET            = "MINIO_BUCKET"
+-	MINIO_USE_SSL           = "MINIO_USE_SSL"
+-	MINIO_ENABLED           = "MINIO_ENABLED"
+-	MINIO_REGION            = "MINIO_REGION"
+-	WHATSAPP_VERSION_MAJOR  = "WHATSAPP_VERSION_MAJOR"
+-	WHATSAPP_VERSION_MINOR  = "WHATSAPP_VERSION_MINOR"
+-	WHATSAPP_VERSION_PATCH  = "WHATSAPP_VERSION_PATCH"
+-	PROXY_PROTOCOL          = "PROXY_PROTOCOL"
+-	PROXY_HOST              = "PROXY_HOST"
+-	PROXY_PORT              = "PROXY_PORT"
+-	PROXY_USERNAME          = "PROXY_USERNAME"
+-	PROXY_PASSWORD          = "PROXY_PASSWORD"
+-	NATS_URL                = "NATS_URL"
+-	NATS_GLOBAL_ENABLED     = "NATS_GLOBAL_ENABLED"
+-	NATS_GLOBAL_EVENTS      = "NATS_GLOBAL_EVENTS"
+-	EVENT_IGNORE_GROUP      = "EVENT_IGNORE_GROUP"
+-	EVENT_IGNORE_STATUS     = "EVENT_IGNORE_STATUS"
+-	QRCODE_MAX_COUNT        = "QRCODE_MAX_COUNT"
+-	CHECK_USER_EXISTS       = "CHECK_USER_EXISTS"
++	POSTGRES_AUTH_DB                    = "POSTGRES_AUTH_DB"
++	POSTGRES_USERS_DB                   = "POSTGRES_USERS_DB"
++	POSTGRES_HOST                       = "POSTGRES_HOST"
++	POSTGRES_PORT                       = "POSTGRES_PORT"
++	POSTGRES_USER                       = "POSTGRES_USER"
++	POSTGRES_PASSWORD                   = "POSTGRES_PASSWORD"
++	POSTGRES_DB                         = "POSTGRES_DB"
++	POSTGRES_MAX_OPEN_CONNS             = "POSTGRES_MAX_OPEN_CONNS"
++	POSTGRES_MAX_IDLE_CONNS             = "POSTGRES_MAX_IDLE_CONNS"
++	POSTGRES_CONN_MAX_LIFETIME_MINUTES  = "POSTGRES_CONN_MAX_LIFETIME_MINUTES"
++	POSTGRES_CONN_MAX_IDLE_TIME_MINUTES = "POSTGRES_CONN_MAX_IDLE_TIME_MINUTES"
++	DATABASE_SAVE_MESSAGES              = "DATABASE_SAVE_MESSAGES"
++	GLOBAL_API_KEY                      = "GLOBAL_API_KEY"
++	WA_DEBUG                            = "DEBUG_ENABLED"
++	LOGTYPE                             = "LOG_TYPE"
++	WEBHOOKFILES                        = "WEBHOOK_FILES"
++	CONNECT_ON_STARTUP                  = "CONNECT_ON_STARTUP"
++	OS_NAME                             = "OS_NAME"
++	AMQP_URL                            = "AMQP_URL"
++	AMQP_GLOBAL_ENABLED                 = "AMQP_GLOBAL_ENABLED"
++	AMQP_GLOBAL_EVENTS                  = "AMQP_GLOBAL_EVENTS"
++	AMQP_SPECIFIC_EVENTS                = "AMQP_SPECIFIC_EVENTS"
++	WEBHOOK_URL                         = "WEBHOOK_URL"
++	CLIENT_NAME                         = "CLIENT_NAME"
++	API_AUDIO_CONVERTER                 = "API_AUDIO_CONVERTER"
++	API_AUDIO_CONVERTER_KEY             = "API_AUDIO_CONVERTER_KEY"
++	MINIO_ENDPOINT                      = "MINIO_ENDPOINT"
++	MINIO_ACCESS_KEY                    = "MINIO_ACCESS_KEY"
++	MINIO_SECRET_KEY                    = "MINIO_SECRET_KEY"
++	MINIO_BUCKET                        = "MINIO_BUCKET"
++	MINIO_USE_SSL                       = "MINIO_USE_SSL"
++	MINIO_ENABLED                       = "MINIO_ENABLED"
++	MINIO_REGION                        = "MINIO_REGION"
++	WHATSAPP_VERSION_MAJOR              = "WHATSAPP_VERSION_MAJOR"
++	WHATSAPP_VERSION_MINOR              = "WHATSAPP_VERSION_MINOR"
++	WHATSAPP_VERSION_PATCH              = "WHATSAPP_VERSION_PATCH"
++	PROXY_PROTOCOL                      = "PROXY_PROTOCOL"
++	PROXY_HOST                          = "PROXY_HOST"
++	PROXY_PORT                          = "PROXY_PORT"
++	PROXY_USERNAME                      = "PROXY_USERNAME"
++	PROXY_PASSWORD                      = "PROXY_PASSWORD"
++	NATS_URL                            = "NATS_URL"
++	NATS_GLOBAL_ENABLED                 = "NATS_GLOBAL_ENABLED"
++	NATS_GLOBAL_EVENTS                  = "NATS_GLOBAL_EVENTS"
++	EVENT_IGNORE_GROUP                  = "EVENT_IGNORE_GROUP"
++	EVENT_IGNORE_STATUS                 = "EVENT_IGNORE_STATUS"
++	QRCODE_MAX_COUNT                    = "QRCODE_MAX_COUNT"
++	CHECK_USER_EXISTS                   = "CHECK_USER_EXISTS"
+ 
+ 	// Logger configurations
+ 	LOG_MAX_SIZE    = "LOG_MAX_SIZE"
+diff --git a/pkg/whatsmeow/service/whatsmeow.go b/pkg/whatsmeow/service/whatsmeow.go
+index 366f0ed..18b1d7d 100644
+--- a/pkg/whatsmeow/service/whatsmeow.go
++++ b/pkg/whatsmeow/service/whatsmeow.go
+@@ -79,6 +79,7 @@ type clientVersion struct {
+ type whatsmeowService struct {
+ 	instanceRepository instance_repository.InstanceRepository
+ 	authDB             *sql.DB
++	authContainer      *sqlstore.Container
+ 	messageRepository  message_repository.MessageRepository
+ 	labelRepository    label_repository.LabelRepository
+ 	pollService        poll_service.PollService // NOVO: Serviço de enquetes
+@@ -314,27 +315,9 @@ func (w whatsmeowService) StartClient(cd *ClientData) {
+ 		}
+ 	}
+ 
+-	var container *sqlstore.Container
+-
+-	if w.config.WaDebug != "" {
+-		dbLog := waLog.Stdout("Database", w.config.WaDebug, true)
+-		if w.config.PostgresAuthDB != "" {
+-			container, err = sqlstore.New(context.Background(), "postgres", w.config.PostgresAuthDB, dbLog)
+-		} else {
+-			dsn := fmt.Sprintf("file:%s/dbdata/main.db?_pragma=foreign_keys(1)&_busy_timeout=5000&cache=shared&mode=rwc&_journal_mode=WAL", w.exPath)
+-			container, err = sqlstore.New(context.Background(), "sqlite", dsn, dbLog)
+-		}
+-	} else {
+-		if w.config.PostgresAuthDB != "" {
+-			container, err = sqlstore.New(context.Background(), "postgres", w.config.PostgresAuthDB, nil)
+-		} else {
+-			dsn := fmt.Sprintf("file:%s/dbdata/main.db?_pragma=foreign_keys(1)&_busy_timeout=5000&cache=shared&mode=rwc&_journal_mode=WAL", w.exPath)
+-			container, err = sqlstore.New(context.Background(), "sqlite", dsn, nil)
+-		}
+-	}
+-
+-	if err != nil {
+-		w.loggerWrapper.GetLogger(cd.Instance.Id).LogError("[%s] Failed to create container: %v", cd.Instance.Id, err)
++	container := w.authContainer
++	if container == nil {
++		w.loggerWrapper.GetLogger(cd.Instance.Id).LogError("[%s] Shared auth container is unavailable", cd.Instance.Id)
+ 		return
+ 	}
+ 
+@@ -2810,9 +2793,28 @@ func NewWhatsmeowService(
+ 	// Inicializar PollService de forma segura
+ 	pollSvc := poll_service.NewPollService(authDB, loggerWrapper)
+ 
++	var dbLog waLog.Logger
++	if config.WaDebug != "" {
++		dbLog = waLog.Stdout("Database", config.WaDebug, true)
++	}
++
++	var authContainer *sqlstore.Container
++	if authDB != nil {
++		authContainer = sqlstore.NewWithDB(authDB, "postgres", dbLog)
++	} else if sqliteDB != nil {
++		authContainer = sqlstore.NewWithDB(sqliteDB, "sqlite", dbLog)
++	}
++	if authContainer == nil {
++		loggerWrapper.GetLogger("server").LogError("Shared auth database is unavailable")
++	} else if err := authContainer.Upgrade(context.Background()); err != nil {
++		loggerWrapper.GetLogger("server").LogError("Failed to upgrade shared auth container: %v", err)
++		authContainer = nil
++	}
++
+ 	return &whatsmeowService{
+ 		instanceRepository: instanceRepository,
+ 		authDB:             authDB,
++		authContainer:      authContainer,
+ 		messageRepository:  messageRepository,
+ 		labelRepository:    labelRepository,
+ 		pollService:        pollSvc, // NOVO: Serviço de enquetes
