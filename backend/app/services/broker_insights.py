@@ -6,9 +6,9 @@ dúvidas recorrentes, elogios e risco de churn → tabela `broker_insights`
 corretores estão querendo" — decisão do founder 13/07.
 
 CUSTO (decisão consciente): a captura v1 é DETERMINÍSTICA (regex de padrões de
-desejo/dor — custo ZERO por mensagem). Uma LLM barata pode refinar os achados
-em lote (GARIMPO_LLM=1, desligada por padrão) — nunca roda na conversa inteira.
-Conversas espelhadas de seguradora (dispatch:) ficam FORA do garimpo.
+desejo/dor — custo ZERO por mensagem). GARIMPO v2 (SPEC-049): camada LLM barata
+LIGADA por padrão — 1 chamada/corretora/dia, entrada limitada, desligável com
+GARIMPO_LLM=0. Conversas espelhadas de seguradora (dispatch:) ficam FORA.
 """
 
 from __future__ import annotations
@@ -259,6 +259,7 @@ async def mine_recent(hours: int = 24, limit: int = 300) -> int:
 async def check_garimpo() -> int:
     """Task periódica (scheduler): minera as últimas 24h, no máximo 1x/dia
     (marcador em Redis; sem Redis, roda mesmo — dedup por quote segura)."""
+    mined = 0
     try:
         from datetime import datetime, timezone
 
@@ -275,7 +276,8 @@ async def check_garimpo() -> int:
             await redis.set(key, today, ex=2 * 86400)
         except Exception:  # noqa: BLE001 — sem redis, segue (dedup protege)
             pass
-        return await mine_recent(hours=24)
+        mined = await mine_recent(hours=24)
+        return mined
     except Exception as e:  # noqa: BLE001
         logger.warning(f"[GARIMPO] check falhou: {type(e).__name__}")
         return 0
@@ -283,6 +285,8 @@ async def check_garimpo() -> int:
         try:
             from app.core.heartbeat import beat
 
-            await beat("garimpo")
+            # SPEC-050: pulso COM contagem — antes batia sem número e a Central
+            # mostrava o Garimpo com "0 ações" mesmo minerando.
+            await beat("garimpo", mined)
         except Exception:  # noqa: BLE001
             pass

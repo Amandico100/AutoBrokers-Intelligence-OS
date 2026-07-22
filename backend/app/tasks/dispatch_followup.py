@@ -84,6 +84,16 @@ async def check_dispatch_followups() -> int:
                 await save_active_dispatch(company_id, insurer_phone, session)
                 sent += 1
                 logger.info(f"[FOLLOWUP] {todo[0]} enviado case={session.get('case_id')}")
+                # SPEC-050 (auditoria): a ação vira linha no feed de Atividades.
+                try:
+                    from app.services.activity_log import log_activity
+
+                    await log_activity(company_id, "acionamentos",
+                                       "Cliente acompanhado após o acionamento"
+                                       if todo[0] == "followup_sent" else "Atendimento encerrado com carinho",
+                                       "Conferimos com o cliente se o prestador chegou e se está tudo certo.")
+                except Exception:  # noqa: BLE001
+                    pass
             except Exception as e:  # noqa: BLE001
                 logger.error(f"[FOLLOWUP] envio falhou: {type(e).__name__}")
     except Exception as e:  # noqa: BLE001 — nunca derruba o scheduler

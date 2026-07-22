@@ -107,12 +107,16 @@ async def apply_auto_overlays(playbook_ref: str, classes: Dict[str, List[Dict[st
 
 
 async def tailor_from_maps(playbook_ref: str, old_map: Dict[str, Any],
-                           new_map: Dict[str, Any]) -> Dict[str, Any]:
-    """Pipeline completo: diff → classes → auto-aplica noops → relatório."""
+                           new_map: Dict[str, Any], apply: bool = True) -> Dict[str, Any]:
+    """Pipeline completo: diff → classes → (opcional) auto-aplica noops → relatório.
+
+    SPEC-050 (auditoria): `apply=False` permite ao chamador rodar o GATE do
+    Simulador ANTES de qualquer escrita — a gravação do overlay nunca pode
+    acontecer antes da validação (era exatamente o furo encontrado)."""
     from app.services.ura_map_service import diff_maps
 
     diff = diff_maps(old_map or {}, new_map or {})
     classes = classify_diff(diff, new_map)
-    applied = await apply_auto_overlays(playbook_ref, classes)
+    applied = await apply_auto_overlays(playbook_ref, classes) if apply else 0
     return {"diff": diff, "classes": classes, "auto_applied": applied,
             "report": render_patch_report(playbook_ref, classes)}

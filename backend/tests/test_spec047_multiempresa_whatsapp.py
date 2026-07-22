@@ -49,8 +49,9 @@ check("env de instancia unica virou fallback legado", "_go_env_fallback" in _ch)
 check("uma funcao = um canal ativo (desativa antigos)",
       '"is_active": False}' in _ch.replace("'", '"') or '{"is_active": False}' in _ch)
 check("QR resolve a instancia da corretora", "_go_resolve(company_id)" in _ch)
-check("instancia existente sem registro = falha explicita",
-      "evolution_go_instance_exists_sem_registro" in _ch)
+# SPEC-050: evoluiu de falha explicita para AUTO-CURA (delete+recria fantasma)
+check("instancia existente sem registro = auto-cura (delete+recria)",
+      "_go_find_by_name" in _ch and "instance/delete/" in _ch)
 
 # ---------------------------------------------------------------------------
 print("\n[2] Superficie unica de pareamento")

@@ -4,10 +4,10 @@ CUSTO (decisão de projeto, pergunta do founder 13/07): CASCATA.
 - Camada 0 (sempre, grátis): scorecard HEURÍSTICO determinístico — repetição de
   mensagem, re-pedir CPF, amnésia ("não tenho seu..."), conversa arrastada,
   frustração do cliente. Pega a maioria dos problemas por R$0.
-- Camada 1 (opcional, barata): LLM-judge (AUDITOR_LLM=1) só nas conversas que a
-  heurística marcou OU por amostragem (AUDITOR_SAMPLE, padrão 0.2) — modelo
-  Haiku-tier via env AUDITOR_LLM_MODEL.
-- Camada 2 (raríssima, forte): síntese executiva semanal — não é por conversa.
+- Camadas 1/2 (LLM-judge por amostragem; síntese semanal): PLANEJADAS, ainda
+  NÃO implementadas — hoje só a heurística roda (method='heuristic' sempre).
+  SPEC-050: docstring corrigida — antes anunciava envs AUDITOR_LLM/AUDITOR_SAMPLE
+  que não existiam no código (auditoria não pode se apoiar em promessa).
 
 REGRESSÃO (grátis): as conversas espelhadas de acionamento viram detector de
 drift — se uma tela da URA que ONTEM tinha resposta hoje não casa com nenhum
@@ -73,6 +73,19 @@ async def audit_conversation(company_id: str, conversation_id: str) -> int:
         from app.core.database import get_supabase_client
 
         db = get_supabase_client()
+        # SPEC-050 (auditoria): dedup ESTRUTURAL por conversa/dia — o marcador
+        # Redis diário era a única proteção; Redis fora do ar duplicava
+        # scorecards a cada varredura.
+        from datetime import datetime, timezone
+
+        today = datetime.now(timezone.utc).date().isoformat()
+        dup = await asyncio.to_thread(
+            lambda: db.client.table("conversation_scorecards").select("id")
+            .eq("conversation_id", conversation_id).gte("created_at", today)
+            .limit(1).execute()
+        )
+        if dup.data:
+            return -2  # já auditada hoje
         msgs = await asyncio.to_thread(
             lambda: db.client.table("messages").select("role, content")
             .eq("conversation_id", conversation_id)
