@@ -13,6 +13,8 @@ import { Button } from '@/components/ui/button';
 import { Icon } from '@/components/ui/Icon';
 import { icons } from '@/lib/icons';
 
+import { WhatsAppPairingFlow } from './WhatsAppPairingFlow';
+
 type ChannelState = 'unknown' | 'connecting' | 'open' | 'close' | 'error' | 'not_configured';
 
 interface StatusResponse {
@@ -39,7 +41,6 @@ function stateLabel(state: ChannelState, connected: boolean): { text: string; to
 export function WhatsAppChannelCard() {
   const [state, setState] = useState<ChannelState>('unknown');
   const [connected, setConnected] = useState(false);
-  const [qr, setQr] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
   const [message, setMessage] = useState('');
   // SPEC-049 — aviso de queda (passo 2, opcional, sempre editável)
@@ -49,11 +50,13 @@ export function WhatsAppChannelCard() {
   const [alertBusy, setAlertBusy] = useState(false);
   const [alertMsg, setAlertMsg] = useState('');
 
-  const pollRef = useRef<ReturnType<typeof setInterval> | null>(null);
-  const wantQrRef = useRef(false);
+  const pollRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const statusInFlightRef = useRef(false);
   const alertLoadedRef = useRef(false);
 
   const refreshStatus = useCallback(async () => {
+    if (statusInFlightRef.current) return;
+    statusInFlightRef.current = true;
     try {
       const res = await fetch('/api/dashboard/whatsapp-channel?action=status', { cache: 'no-store' });
       const json: StatusResponse = await res.json().catch(() => ({}));
@@ -78,56 +81,27 @@ export function WhatsAppChannelCard() {
         else if (json.alert.mode === 'number') { setAlertMode('number'); setAlertNumber(json.alert.number || ''); }
       }
       if (json.connected) {
-        setQr(null);
-        wantQrRef.current = false;
         setMessage('');
-      } else if (s === 'connecting' || s === 'close' || wantQrRef.current) {
-        const qres = await fetch('/api/dashboard/whatsapp-channel?action=qr', { cache: 'no-store' });
-        const qjson = await qres.json().catch(() => ({}));
-        if (qres.ok && qjson.qr_base64) {
-          const raw = String(qjson.qr_base64);
-          const looksBase64 = raw.startsWith('data:') || (raw.length > 200 && !raw.includes(' '));
-          if (looksBase64) {
-            setQr(raw.startsWith('data:') ? raw : `data:image/png;base64,${raw}`);
-            setMessage('');
-          }
-        }
       }
     } catch {
       setState('error');
+    } finally {
+      statusInFlightRef.current = false;
     }
   }, []);
 
   useEffect(() => {
-    refreshStatus();
-    pollRef.current = setInterval(refreshStatus, POLL_MS);
+    let active = true;
+    const pollStatus = async () => {
+      await refreshStatus();
+      if (active) pollRef.current = setTimeout(() => void pollStatus(), POLL_MS);
+    };
+    void pollStatus();
     return () => {
-      if (pollRef.current) clearInterval(pollRef.current);
+      active = false;
+      if (pollRef.current) clearTimeout(pollRef.current);
     };
   }, [refreshStatus]);
-
-  const handleConnect = async () => {
-    setBusy(true);
-    setMessage('');
-    try {
-      const res = await fetch('/api/dashboard/whatsapp-channel', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ action: 'setup' }),
-      });
-      const json = await res.json().catch(() => ({}));
-      if (!res.ok || json.ok === false) {
-        setMessage(String(json.error || json.detail || 'Não foi possível iniciar a conexão. Tente de novo em instantes.'));
-      } else {
-        wantQrRef.current = true;
-        await refreshStatus();
-      }
-    } catch {
-      setMessage('Falha de comunicação com o servidor.');
-    } finally {
-      setBusy(false);
-    }
-  };
 
   const saveAlert = async () => {
     setAlertBusy(true);
@@ -220,32 +194,15 @@ export function WhatsAppChannelCard() {
           </p>
         )}
 
-        {/* ---------- PASSO 1 — CONECTAR (QR code) ---------- */}
+        {/* ---------- PASSO 1 — PAREAMENTO CONTROLADO ---------- */}
         {!connected && state !== 'not_configured' && (
-          <div className="rounded-lg border border-primary/30 bg-surface p-3">
-            <p className="text-xs font-semibold text-foreground">Passo 1 — Conectar o número de atendimento</p>
-            <ol className="mt-2 list-decimal space-y-1 pl-4 text-xs text-muted-foreground">
-              <li>Clique em <span className="font-medium text-foreground">Gerar QR code</span> aqui embaixo.</li>
-              <li>No celular do atendimento: <span className="font-medium text-foreground">WhatsApp → Configurações → Dispositivos conectados → Conectar dispositivo</span>.</li>
-              <li>Aponte a câmera para o QR. Quando aparecer “Conectado”, pronto — continue atendendo normalmente pelo celular.</li>
-            </ol>
-            <div className="mt-3 flex items-center gap-3">
-              <Button onClick={handleConnect} disabled={busy}>
-                {busy ? 'Preparando…' : qr ? 'Gerar novo QR' : 'Gerar QR code'}
-              </Button>
-              {qr && <span className="text-[11px] text-muted-foreground">O QR expira rápido — se falhar, gere um novo.</span>}
-            </div>
-
-            {qr && (
-              <div className="mt-3 flex flex-col items-center gap-2 rounded-lg border border-border bg-white p-4">
-                {/* eslint-disable-next-line @next/next/no-img-element */}
-                <img src={qr} alt="QR code do WhatsApp" className="h-56 w-56" />
-                <p className="text-center text-xs text-neutral-600">
-                  WhatsApp → Configurações → Dispositivos conectados → Conectar dispositivo.
-                </p>
-              </div>
-            )}
-          </div>
+          <WhatsAppPairingFlow
+            onConnected={() => {
+              setConnected(true);
+              setState('open');
+              setMessage('');
+            }}
+          />
         )}
 
         {connected && (

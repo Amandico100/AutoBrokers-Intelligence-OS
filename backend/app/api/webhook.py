@@ -916,7 +916,7 @@ async def evolution_go_webhook_token(token: str, request: Request, background_ta
     except Exception as e:  # noqa: BLE001
         logger.error(f"[WEBHOOK EVOLUTION-GO] atlas tap error: {type(e).__name__}")
 
-    from app.services.whatsapp.providers.evolution_go import go_event_to_v2_envelope
+    from app.services.whatsapp.evolution_go_events import go_event_to_v2_envelope
 
     env = go_event_to_v2_envelope(body if isinstance(body, dict) else {})
     if env.get("event") == "unknown":

@@ -33,6 +33,7 @@ from app.services.whatsapp.exceptions import (
     ProviderNotSupportedError,
     WhatsappRetryableError,
 )
+from app.services.whatsapp.evolution_go_events import go_event_to_v2_envelope
 from app.services.whatsapp.models import (
     CanonicalMessage,
     InboundBatch,
@@ -51,104 +52,6 @@ _GO_CAPABILITIES = ProviderCapabilities()
 def _strip_jid(value: Any) -> str:
     text = str(value or "")
     return text.split("@", 1)[0].split(":", 1)[0] if text else ""
-
-
-def go_event_to_v2_envelope(payload: Dict[str, Any]) -> Dict[str, Any]:
-    """Converte o evento do Evolution GO (whatsmeow) para o envelope Evolution v2.
-
-    Tolerante por design: o shape EXATO só é confirmável com a instância pareada
-    (primeiro teste do estágio GO). Cobre as variantes prováveis:
-    - já-v2: ``{event: "messages.upsert", data: {...}}`` → passa direto;
-    - whatsmeow: ``{type|event: "Message", event|data: {Info: {...}, Message: {...}}}``.
-    Payload irreconhecível → envelope com event="unknown" (a rota loga as chaves).
-    """
-    body = payload or {}
-    ev = str(body.get("event") or "").strip().lower().replace("_", ".")
-    if isinstance(body.get("data"), dict) and ev in ("messages.upsert", "connection.update"):
-        return body  # já no formato v2
-
-    # Shape estilo-wiki ({event:"MESSAGE", data:{key, message,...}}) — SÓ quando
-    # o data realmente tem `key` (a wiki divergia do runtime; o runtime REAL
-    # manda {event:"Message", data:{Info, Message}} — structs Go — que segue
-    # para o conversor whatsmeow abaixo; fonte: whatsmeow.go postMap).
-    if (
-        isinstance(body.get("data"), dict)
-        and ev in ("message", "send.message")
-        and isinstance(body["data"].get("key"), dict)
-    ):
-        d = dict(body["data"])
-        ts = d.get("messageTimestamp")
-        if isinstance(ts, str) and ts.isdigit():
-            d["messageTimestamp"] = int(ts)
-        return {"event": "messages.upsert",
-                "instance": str(body.get("instance") or body.get("instanceId") or ""),
-                "data": d}
-    if ev == "connection":
-        d = body.get("data") if isinstance(body.get("data"), dict) else {}
-        raw_state = str(d.get("state") or ("open" if d.get("Connected") or d.get("LoggedIn") else "close")).lower()
-        return {"event": "connection.update",
-                "instance": str(body.get("instance") or body.get("instanceId") or ""),
-                "data": {"state": raw_state}}
-
-    # SEND_MESSAGE (SPEC-038): o eco do que a atendente digita/clica NO CELULAR
-    # chega por este canal. Força fromMe=true (é, por definição, saída própria).
-    force_from_me = ev in ("sendmessage", "send.message")
-
-    # localizar o objeto do evento whatsmeow
-    candidates = [body.get("event"), body.get("data"), body.get("Event"), body]
-    info: Dict[str, Any] = {}
-    message: Optional[Dict[str, Any]] = None
-    for c in candidates:
-        if not isinstance(c, dict):
-            continue
-        i = c.get("Info") if isinstance(c.get("Info"), dict) else c.get("info") if isinstance(c.get("info"), dict) else None
-        m = c.get("Message") if isinstance(c.get("Message"), dict) else c.get("message") if isinstance(c.get("message"), dict) else None
-        if i or m:
-            info, message = (i or {}), m
-            break
-
-    kind = str(body.get("type") or body.get("Type") or ev or "").strip().lower()
-    # eventos de conexão do whatsmeow → connection.update v2
-    if kind in ("connected", "loggedout", "disconnected", "logged_out", "connectfailure", "streamreplaced") or (
-        not message and kind in ("connection", "connection.update")
-    ):
-        state = "open" if kind == "connected" else "close"
-        return {"event": "connection.update", "instance": str(body.get("instanceId") or body.get("instance") or ""),
-                "data": {"state": state}}
-
-    if not message:
-        return {"event": "unknown", "instance": str(body.get("instanceId") or ""), "data": {}}
-
-    chat_jid = str(info.get("Chat") or info.get("chat") or "")
-    sender_jid = str(info.get("Sender") or info.get("sender") or "")
-    is_group = chat_jid.endswith("@g.us")
-    ts_raw = info.get("Timestamp") or info.get("timestamp")
-    ts: Optional[int] = None
-    if isinstance(ts_raw, (int, float)):
-        ts = int(ts_raw)
-    elif isinstance(ts_raw, str) and ts_raw:
-        try:
-            from datetime import datetime
-
-            ts = int(datetime.fromisoformat(ts_raw.replace("Z", "+00:00")).timestamp())
-        except ValueError:
-            ts = None
-
-    return {
-        "event": "messages.upsert",
-        "instance": str(body.get("instanceId") or body.get("instance") or ""),
-        "data": {
-            "key": {
-                "remoteJid": chat_jid or sender_jid,
-                "fromMe": force_from_me or bool(info.get("IsFromMe") or info.get("isFromMe") or info.get("fromMe")),
-                "id": str(info.get("ID") or info.get("Id") or info.get("id") or ""),
-                **({"participant": sender_jid} if is_group else {}),
-            },
-            "message": message,
-            "pushName": info.get("PushName") or info.get("pushName"),
-            "messageTimestamp": ts,
-        },
-    }
 
 
 class EvolutionGoProvider:

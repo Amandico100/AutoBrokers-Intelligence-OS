@@ -57,6 +57,7 @@ def _bootstrap():
     _load("app.services.whatsapp.providers.zapi", "app/services/whatsapp/providers/zapi.py")
     _load("app.services.whatsapp.providers.uazapi", "app/services/whatsapp/providers/uazapi.py")
     _load("app.services.whatsapp.providers.evolution", "app/services/whatsapp/providers/evolution.py")
+    _load("app.services.whatsapp.evolution_go_events", "app/services/whatsapp/evolution_go_events.py")
     _load("app.services.whatsapp.providers.evolution_go", "app/services/whatsapp/providers/evolution_go.py")
     return _load("app.services.whatsapp.registry", "app/services/whatsapp/registry.py")
 

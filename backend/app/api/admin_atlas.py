@@ -513,7 +513,8 @@ async def espelho_playbooks(_: Any = Depends(require_master_admin)) -> Dict[str,
 @router.post("/espelho/run")
 async def espelho_run(_: Any = Depends(require_master_admin)) -> Dict[str, Any]:
     """Rodada MANUAL do destilador (verificação/urgência — ignora janela e
-    marcador diário). Custo controlado pelo teto de sessões por rodada."""
+    marcador diário). Processa somente dados novos; custo controlado pelo teto
+    de sessões por rodada."""
     from app.services.attendance_distiller import distill_once
 
     stats = await distill_once(force=True)

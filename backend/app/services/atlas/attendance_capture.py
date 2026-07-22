@@ -47,6 +47,53 @@ def observer_scope(integration: dict) -> str:
     return scope if scope in (SCOPE_INSURERS_ONLY, SCOPE_FULL) else SCOPE_INSURERS_ONLY
 
 
+def _digits(value: Any) -> str:
+    return "".join(ch for ch in str(value or "") if ch.isdigit())
+
+
+def client_chat_allowed(
+    integration: dict,
+    observer_number: str,
+    remote_jid: str,
+    counterparty: str,
+    alternate_jid: str = "",
+) -> bool:
+    """Fail-closed boundary for insurer/client observation.
+
+    Only direct WhatsApp chats are eligible. Tenant-owned exclusions live in
+    ``integrations.alert_target`` so one brokerage can never alter another
+    brokerage's boundary.
+    """
+    if observer_scope(integration) != SCOPE_FULL:
+        return False
+    remote = str(remote_jid or "").strip().lower()
+    if not remote.endswith(("@s.whatsapp.net", "@lid")):
+        return False
+    if remote.endswith(("@g.us", "@broadcast", "@newsletter", "@call")):
+        return False
+    if remote.endswith("@lid"):
+        alternate = str(alternate_jid or "").strip().lower()
+        if not alternate.endswith("@s.whatsapp.net"):
+            return False
+        number = _digits(alternate.split("@", 1)[0].split(":", 1)[0])
+    else:
+        number = _digits(counterparty or remote.split("@", 1)[0].split(":", 1)[0])
+    if not number:
+        return False
+    own = _digits(observer_number)
+    if own and number == own:
+        return False
+    alert_target = (integration or {}).get("alert_target")
+    alert_target = alert_target if isinstance(alert_target, dict) else {}
+    excluded = {
+        _digits(value)
+        for field in ("observer_exclusions", "internal_numbers")
+        for value in (alert_target.get(field) or [])
+        if _digits(value)
+    }
+    return number not in excluded
+
+
 async def _beat(actions: int = 1) -> None:
     try:
         from app.core.heartbeat import beat
@@ -69,13 +116,24 @@ async def _count_captured(observer_number: str, n: int = 1) -> None:
 
 async def capture_client_message(integration: dict, counterparty: str,
                                  key: Dict[str, Any], message: Dict[str, Any],
-                                 data: Dict[str, Any]) -> bool:
+                                 data: Dict[str, Any], *, remote_jid: str = "",
+                                 alternate_jid: str = "") -> bool:
     """Captura uma mensagem viva da conversa equipe<->segurado. Retorna True se
     armazenou (o chamador nao conta drop). Nunca lanca — falha = False."""
     try:
         from app.services.atlas.observer_intake import (
             _extract_content, _observer_number_of, _store_event_sync,
         )
+
+        observer_number = _observer_number_of(integration)
+        if not client_chat_allowed(
+            integration,
+            observer_number,
+            remote_jid or f"{counterparty}@s.whatsapp.net",
+            counterparty,
+            alternate_jid,
+        ):
+            return False
 
         msg_type, text, interactive, media_meta = _extract_content(message)
         if msg_type == "unknown" and not text and not media_meta and not interactive:
@@ -89,7 +147,7 @@ async def capture_client_message(integration: dict, counterparty: str,
 
         record = {
             "company_id": str(integration.get("company_id") or ""),
-            "observer_number": _observer_number_of(integration),
+            "observer_number": observer_number,
             "counterparty": counterparty,
             "insurer_key": None,
             "direction": "out" if from_me else "in",
@@ -101,7 +159,25 @@ async def capture_client_message(integration: dict, counterparty: str,
             "wa_timestamp": wa_ts,
             "source": "live",
         }
+        if media_meta:
+            media_meta.update({
+                "message_id": record["message_id"],
+                "wa_timestamp": wa_ts,
+                "company_id": record["company_id"],
+                "enrichment_status": "pending",
+            })
+            record["media_meta"] = media_meta
         await asyncio.to_thread(_store_event_sync, record, TRANSCRIPTS_TABLE, SESSIONS_TABLE)
+        if media_meta:
+            try:
+                from app.services.atlas.observer_media import enqueue_observer_media
+
+                await enqueue_observer_media(integration, TRANSCRIPTS_TABLE, message, record)
+            except Exception as exc:  # noqa: BLE001 - fila nunca invalida a captura
+                logger.warning(
+                    "[ESPELHO ATENDIMENTO] fila de mídia indisponível: %s",
+                    type(exc).__name__,
+                )
         await _count_captured(record["observer_number"])
         await _beat()
         logger.info(f"[ESPELHO ATENDIMENTO] capturado {record['direction']} tipo={msg_type}")

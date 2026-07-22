@@ -1,0 +1,13 @@
+{
+  "manifest_version": 3,
+  "name": "AutoBrokers — Assistente de Passkey WhatsApp",
+  "version": "0.7.2.1",
+  "description": "Conclui o pareamento por passkey no WhatsApp Web. Não lê conversas nem solicita senhas.",
+  "content_scripts": [
+    {
+      "matches": ["https://web.whatsapp.com/*"],
+      "js": ["content.js"],
+      "run_at": "document_idle"
+    }
+  ]
+}

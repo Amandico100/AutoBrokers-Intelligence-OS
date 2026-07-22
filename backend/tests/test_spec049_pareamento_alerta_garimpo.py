@@ -70,7 +70,9 @@ check("aviso explica as variaveis antes de liberar", "NÃO as apague" in _cli)
 print("\n[2] Card de pareamento — QR primeiro, sem diagnostico legado")
 
 _card = _src("components/vault/WhatsAppChannelCard.tsx")
-check("Passo 1 = conectar/QR", "Passo 1" in _card and "Gerar QR code" in _card)
+_flow = _src("components/vault/WhatsAppPairingFlow.tsx")
+check("Passo 1 = conectar/QR", "Passo 1" in _flow and "Gerar QR code" in _flow
+      and "WhatsAppPairingFlow" in _card)
 check("Passo 2 = aviso de queda, opcional", "Passo 2 (opcional)" in _card)
 check("diagnostico Evolution legado REMOVIDO",
       "EVOLUTION_BASE_URL" not in _card and "diagnostics" not in _card)
