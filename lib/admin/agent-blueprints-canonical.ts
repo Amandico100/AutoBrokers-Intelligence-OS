@@ -435,8 +435,20 @@ export function computeAgentConfigUpdate(
   const cp: Record<string, unknown> = (currentContextPackage && typeof currentContextPackage === 'object' && !Array.isArray(currentContextPackage))
     ? { ...(currentContextPackage as Record<string, unknown>) } : {};
   const editableVarKeys = bp.variables.filter((v) => v.editable_by_tenant).map((v) => v.key);
+  // SPEC-050: persistir o valor CRU (o que veio do form / o que já estava
+  // salvo), NUNCA eff.variables_used — este vem pós-render aninhado, e gravar
+  // ele congelava o nome dentro da abertura ("Sou FERNANDA..." literal):
+  // o 1º save funcionava na tela, mas fossilizava o template.
+  const prevSaved: Record<string, string> = (() => {
+    const ns = (cp[TENANT_AGENT_CONFIG_NS] as { variables?: Record<string, string> } | undefined);
+    return ns && typeof ns.variables === 'object' ? { ...ns.variables } : {};
+  })();
   const savedVars: Record<string, string> = {};
-  for (const k of editableVarKeys) savedVars[k] = eff.variables_used[k];
+  for (const k of editableVarKeys) {
+    const incoming = input.variables && typeof input.variables === 'object' ? input.variables[k] : undefined;
+    const raw = incoming !== undefined ? incoming : prevSaved[k];
+    if (raw !== undefined && raw !== null && String(raw) !== '') savedVars[k] = String(raw);
+  }
   cp[TENANT_AGENT_CONFIG_NS] = {
     blueprint_key: bp.blueprint_key,
     blueprint_version: bp.blueprint_version,

@@ -221,6 +221,22 @@ tsc limpo, 24 checks novos.
   pessoal COEXISTEM por template (índices parciais no lugar do singleton);
   modal de escolha no conectar; owner assinado no state anti-CSRF do OAuth.
 
+## PÓS-ONDAS 9 — SPEC-050 ENTREGUE (21/07)
+
+QR definitivo + 2ª raiz do congela-nome + Conhecimento humano + AUDITORIA
+COMPLETA da Central (15 agentes, 3 auditores) + Padrão de Agente obrigatório
+(doc SPEC-050 com scorecard e backlog P1-P7).
+
+- QR: instância zumbi apagada no GO (sessão registrada nunca emite QR);
+  Desconectar nuclear (logout→delete→retire) + auto-cura no setup.
+- Nome: computeAgentConfigUpdate gravava o RENDERIZADO — agora persiste o CRU.
+- Conhecimento: sem "qual assistente" (Core resolvido no servidor); lista
+  humanizada (apólices InfoCap legíveis, status em português).
+- Auditoria: achado GRAVE corrigido — Alfaiate gravava overlay ANTES do gate
+  do Simulador. + 6 quick-wins (run_all guard, Auditor dedup+docstring,
+  Garimpo beat/doc, Vigia+Follow-up nas Atividades).
+- Teste spec050 19 checks; bateria 57/57; tsc limpo.
+
 ## PÓS-ONDAS 8 — SPEC-049 ENTREGUE (21/07)
 
 Pareamento limpo + aviso de queda robusto + Garimpo v2 (doc SPEC-049).

@@ -102,10 +102,12 @@ async def check_insurer(insurer_key: str, ramo: str, observed_map: Dict[str, Any
 async def _alfaiate_with_gate(playbook_ref: str, old_map: Dict[str, Any],
                               new_map: Dict[str, Any]) -> Dict[str, Any]:
     """Alfaiate v2: só AUTO-APLICA se o Simulador aprovar o playbook novo contra
-    o mapa novo. Reusa tailor_from_maps (diff→classes→overlays) mas fiscaliza."""
-    from app.services.playbook_tailor import tailor_from_maps
+    o mapa novo. SPEC-050 (auditoria): o GATE roda ANTES da escrita — antes o
+    overlay já estava no banco quando o Simulador rodava, o que anulava o gate."""
+    from app.services.playbook_tailor import apply_auto_overlays, tailor_from_maps
 
-    result = await tailor_from_maps(playbook_ref, old_map, new_map)
+    # 1) Diff + classes + relatório, SEM gravar nada ainda.
+    result = await tailor_from_maps(playbook_ref, old_map, new_map, apply=False)
     passed = None
     try:
         from app.services.ura_simulator import simulate
@@ -120,7 +122,11 @@ async def _alfaiate_with_gate(playbook_ref: str, old_map: Dict[str, Any],
         logger.info(f"[ALFAIATE v2] simulador indisponível ({type(e).__name__}) — não auto-aplica")
         passed = None
 
-    applied = bool(result.get("auto_applied")) and passed is True
+    # 2) Escrita SÓ com o gate verde (fail-closed: sem simulador = sem escrita).
+    applied_count = 0
+    if passed is True:
+        applied_count = await apply_auto_overlays(playbook_ref, result.get("classes") or {})
+    applied = applied_count > 0
     try:
         from app.core.heartbeat import beat
 
@@ -228,15 +234,20 @@ async def run_all(company_id: Optional[str] = None) -> List[Dict[str, Any]]:
 
     drifts: List[Dict[str, Any]] = []
     for insurer_key, ramo in await asyncio.to_thread(_keys):
-        # passada oficial: liga o resolvedor de IA (resíduo ambíguo)
-        woven = await weave_insurer(insurer_key, ramo, company_id, use_ai=True)
-        if not woven.get("ok"):
-            continue
-        fresh = await _load_observed(insurer_key, woven.get("ramo") or ramo)
-        if fresh:
-            d = await check_insurer(insurer_key, woven.get("ramo") or ramo, fresh)
-            if d:
-                drifts.append(d)
+        # SPEC-050 (auditoria): guarda POR seguradora — uma falha (ex.: mapa
+        # corrompido de uma marca) não pode abortar a passada diária inteira.
+        try:
+            # passada oficial: liga o resolvedor de IA (resíduo ambíguo)
+            woven = await weave_insurer(insurer_key, ramo, company_id, use_ai=True)
+            if not woven.get("ok"):
+                continue
+            fresh = await _load_observed(insurer_key, woven.get("ramo") or ramo)
+            if fresh:
+                d = await check_insurer(insurer_key, woven.get("ramo") or ramo, fresh)
+                if d:
+                    drifts.append(d)
+        except Exception as e:  # noqa: BLE001
+            logger.error(f"[SENTINELA ROTAS] {insurer_key}/{ramo} falhou (segue as demais): {type(e).__name__}")
     return drifts
 
 

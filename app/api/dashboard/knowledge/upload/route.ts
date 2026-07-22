@@ -15,9 +15,27 @@ export async function POST(req: NextRequest) {
   try {
     const incoming = await req.formData();
     const file = incoming.get('file');
-    const agentId = String(incoming.get('agent_id') || '');
-    if (!file || !agentId) {
-      return NextResponse.json({ ok: false, error: 'Arquivo e agente são obrigatórios.' }, { status: 400 });
+    if (!file) {
+      return NextResponse.json({ ok: false, error: 'Escolha um arquivo.' }, { status: 400 });
+    }
+    // SPEC-050: o conhecimento é da CORRETORA — todos os assistentes usam
+    // automaticamente (a busca é por company, não por agente). O vínculo de
+    // agente virou detalhe técnico: resolvemos o Core aqui, sem perguntar
+    // "qual assistente vai usar" ao corretor.
+    let agentId = String(incoming.get('agent_id') || '');
+    if (!agentId) {
+      const { data: core } = await auth.supabase
+        .from('agents').select('id')
+        .eq('company_id', auth.ctx.companyId).eq('agent_role', 'core')
+        .limit(1).maybeSingle();
+      const fallback = core?.id
+        ? null
+        : (await auth.supabase.from('agents').select('id')
+            .eq('company_id', auth.ctx.companyId).limit(1).maybeSingle()).data;
+      agentId = String(core?.id || fallback?.id || '');
+    }
+    if (!agentId) {
+      return NextResponse.json({ ok: false, error: 'A corretora ainda não tem assistentes provisionados.' }, { status: 400 });
     }
     const fd = new FormData();
     fd.set('file', file);

@@ -147,6 +147,16 @@ async def _sentinela_recover(
     dossier = build_handoff_dossier(session, reason="Travou na URA e a recuperação automática esgotou")
     await _support_alert(company_id, dossier, wa, integration)
     session["dossier_sent"] = True
+    # SPEC-050 (auditoria): a ação mais importante do Vigia agora aparece no
+    # feed de Atividades da corretora (antes era invisível fora dos logs).
+    try:
+        from app.services.activity_log import log_activity
+
+        await log_activity(company_id, "acionamentos",
+                           "Dossiê entregue à equipe — acionamento travou",
+                           "A URA parou de responder e a recuperação automática esgotou; o caso foi passado com todos os dados.")
+    except Exception:  # noqa: BLE001
+        pass
     logger.warning(f"[SENTINELA] escada esgotada → needs_human case={session.get('case_id')}")
     return "handoff"
 

@@ -169,53 +169,79 @@ async def _go_setup(company_id: str, payload: "ChannelSetupPayload", public_url:
     existing = await _go_company_channel(company_id, purpose)
     global_key = os.getenv("EVOLUTION_GO_GLOBAL_KEY") or ""
 
-    if existing:
-        instance, inst_token = existing["instance_name"], existing["instance_token"]
-    elif global_key:
-        instance = _go_instance_name(company_id, purpose)
-        inst_token = secrets.token_hex(16)
-        try:
-            async with httpx.AsyncClient(timeout=_TIMEOUT, base_url=base) as client:
+    async def _go_find_by_name(client: httpx.AsyncClient, name: str) -> Optional[Dict[str, Any]]:
+        if not global_key:
+            return None
+        r = await client.get("/instance/all", headers={"apikey": global_key})
+        for row in (r.json() or {}).get("data", []) if r.status_code < 400 and r.content else []:
+            if str(row.get("name") or "") == name:
+                return row
+        return None
+
+    async def _go_create(client: httpx.AsyncClient, name: str, tok: str) -> None:
+        cr = await client.post(
+            "/instance/create",
+            headers={"apikey": global_key, "Content-Type": "application/json"},
+            json={
+                "name": name, "token": tok,
+                "advancedSettings": {"readMessages": False, "alwaysOnline": False,
+                                     "rejectCall": False, "ignoreGroups": True, "ignoreStatus": True},
+            },
+        )
+        if cr.status_code in (409, 422):
+            # Instância existe no GO sem linha no banco (setup interrompido).
+            # AUTO-CURA: apaga e recria limpa — sem beco sem saída pro corretor.
+            ghost = await _go_find_by_name(client, name)
+            if ghost and ghost.get("id"):
+                await client.delete(f"/instance/delete/{ghost['id']}", headers={"apikey": global_key})
                 cr = await client.post(
                     "/instance/create",
                     headers={"apikey": global_key, "Content-Type": "application/json"},
-                    json={
-                        "name": instance, "token": inst_token,
-                        "advancedSettings": {"readMessages": False, "alwaysOnline": False,
-                                             "rejectCall": False, "ignoreGroups": True, "ignoreStatus": True},
-                    },
+                    json={"name": name, "token": tok,
+                          "advancedSettings": {"readMessages": False, "alwaysOnline": False,
+                                               "rejectCall": False, "ignoreGroups": True, "ignoreStatus": True}},
                 )
-                # 409/422 = instância já existe no GO (ex.: setup anterior sem linha
-                # no banco). Sem a linha não temos o token antigo — falha explícita.
-                if cr.status_code in (409, 422):
-                    raise HTTPException(status_code=502,
-                                        detail="evolution_go_instance_exists_sem_registro (remova a instância no GO ou restaure a linha em integrations)")
-                if cr.status_code >= 400:
-                    raise HTTPException(status_code=502,
-                                        detail=f"evolution_go_create_failed:http_{cr.status_code}:{(cr.text or '')[:100]}")
-        except httpx.HTTPError as e:
-            raise HTTPException(status_code=502, detail=f"evolution_go_unreachable:{type(e).__name__}") from e
-    else:
-        env = _go_env_fallback()
-        if not env:
-            raise HTTPException(status_code=503, detail="evolution_go_not_configured (defina EVOLUTION_GO_GLOBAL_KEY)")
-        instance, inst_token = env["instance_name"], env["instance_token"]
+        if cr.status_code >= 400:
+            raise HTTPException(status_code=502,
+                                detail=f"evolution_go_create_failed:http_{cr.status_code}:{(cr.text or '')[:100]}")
 
     token, token_hash, token_prefix = new_webhook_credentials()
     webhook_url = build_webhook_url(public_url, "evolution-go", token)
+    connect_body = {
+        # Eventos do GO são UPPERCASE (event_types.go) — "Message" era
+        # descartado em silêncio e a instância ficava SEM inscrição.
+        # HISTORY_SYNC: no pareamento fresco o histórico vira matéria-prima
+        # do Espelho de Atendimento (SPEC-040) e do Atlas.
+        "webhookUrl": webhook_url,
+        "subscribe": ["MESSAGE", "CONNECTION", "HISTORY_SYNC"], "immediate": True,
+    }
 
     try:
         async with httpx.AsyncClient(timeout=_TIMEOUT, base_url=base) as client:
-            res = await client.post(
-                "/instance/connect",
-                headers={"apikey": inst_token, "Content-Type": "application/json"},
-                # Eventos do GO são UPPERCASE (event_types.go) — "Message" era
-                # descartado em silêncio e a instância ficava SEM inscrição.
-                # HISTORY_SYNC: no pareamento fresco o histórico vira matéria-prima
-                # do Espelho de Atendimento (SPEC-040) e do Atlas.
-                json={"webhookUrl": webhook_url,
-                      "subscribe": ["MESSAGE", "CONNECTION", "HISTORY_SYNC"], "immediate": True},
-            )
+            if existing:
+                instance, inst_token = existing["instance_name"], existing["instance_token"]
+            elif global_key:
+                instance = _go_instance_name(company_id, purpose)
+                inst_token = secrets.token_hex(16)
+                await _go_create(client, instance, inst_token)
+            else:
+                env = _go_env_fallback()
+                if not env:
+                    raise HTTPException(status_code=503, detail="evolution_go_not_configured (defina EVOLUTION_GO_GLOBAL_KEY)")
+                instance, inst_token = env["instance_name"], env["instance_token"]
+
+            res = await client.post("/instance/connect",
+                                    headers={"apikey": inst_token, "Content-Type": "application/json"},
+                                    json=connect_body)
+            if res.status_code in (401, 404) and existing and global_key:
+                # Linha aponta p/ instância que não existe mais no GO (zumbi).
+                # AUTO-CURA: recria com token novo e reconecta.
+                logger.warning(f"[WA CHANNEL GO] linha zumbi (instance={instance}) — recriando")
+                inst_token = secrets.token_hex(16)
+                await _go_create(client, instance, inst_token)
+                res = await client.post("/instance/connect",
+                                        headers={"apikey": inst_token, "Content-Type": "application/json"},
+                                        json=connect_body)
             if res.status_code >= 400:
                 logger.error(f"[WA CHANNEL GO] connect failed http={res.status_code} body={(res.text or '')[:120]}")
                 raise HTTPException(status_code=502, detail=f"evolution_go_connect_failed:http_{res.status_code}")
@@ -574,11 +600,44 @@ async def whatsapp_channel_disconnect(
     if not company_id:
         raise HTTPException(status_code=400, detail="company_id_required")
     if _go_enabled():
+        # SPEC-050: desconectar DE VERDADE. O logout do GO nem sempre limpa a
+        # sessão registrada (jid fica; "Reconnecting") — e sessão registrada
+        # NUNCA emite QR novo (foi o "Gerar QR não gera" do founder). Se a
+        # sessão persistir, apagamos a instância no GO (chave global) e
+        # desativamos a linha: o próximo "Gerar QR" cria instância limpa.
         cfg = await _go_resolve(company_id)
+        global_key = os.getenv("EVOLUTION_GO_GLOBAL_KEY") or ""
         async with httpx.AsyncClient(timeout=_TIMEOUT, base_url=_go_base()) as client:
-            res = await client.delete("/instance/logout", headers={"apikey": cfg["instance_token"]})
-            if res.status_code >= 400:
-                raise HTTPException(status_code=502, detail=f"evolution_go_logout_failed:http_{res.status_code}")
+            try:
+                await client.delete("/instance/logout", headers={"apikey": cfg["instance_token"]})
+            except httpx.HTTPError:
+                pass  # a limpeza abaixo resolve mesmo sem logout
+            still_registered = False
+            if global_key:
+                try:
+                    r = await client.get("/instance/all", headers={"apikey": global_key})
+                    for row in (r.json() or {}).get("data", []) if r.status_code < 400 and r.content else []:
+                        if str(row.get("name") or "") == cfg["instance_name"] and str(row.get("jid") or ""):
+                            still_registered = True
+                            if row.get("id"):
+                                await client.delete(f"/instance/delete/{row['id']}", headers={"apikey": global_key})
+                            break
+                except httpx.HTTPError:
+                    pass
+        if still_registered:
+            supabase = get_supabase_client()
+
+            def _retire() -> None:
+                supabase.client.table("integrations").update(
+                    {"is_active": False, "channel_status": "retired"}
+                ).eq("company_id", company_id).eq("provider", "evolution-go") \
+                    .eq("instance_id", cfg["instance_name"]).execute()
+
+            try:
+                await asyncio.to_thread(_retire)
+            except Exception as e:  # noqa: BLE001
+                logger.warning(f"[WA CHANNEL GO] retire falhou: {type(e).__name__}")
+            logger.info(f"[WA CHANNEL GO] instância {cfg['instance_name']} removida (sessão registrada persistia)")
         return {"ok": True, "instance": cfg["instance_name"], "state": "close"}
     platform = _evolution_platform()
     instance = _instance_name(company_id)
