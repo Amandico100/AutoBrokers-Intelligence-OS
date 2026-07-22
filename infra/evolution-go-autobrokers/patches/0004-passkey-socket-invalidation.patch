@@ -1,0 +1,132 @@
+From 2897c16b6236cc3621e55c013dd10848a67bbafd Mon Sep 17 00:00:00 2001
+From: AutoBrokers Engineering <engineering@autobrokers.local>
+Date: Wed, 22 Jul 2026 16:12:06 -0300
+Subject: [PATCH 4/4] passkey socket invalidation
+
+---
+ pkg/whatsmeow/service/whatsmeow.go | 75 +++++++++++++++++++++++-------
+ 1 file changed, 58 insertions(+), 17 deletions(-)
+
+diff --git a/pkg/whatsmeow/service/whatsmeow.go b/pkg/whatsmeow/service/whatsmeow.go
+index 5cb345f..97d2397 100644
+--- a/pkg/whatsmeow/service/whatsmeow.go
++++ b/pkg/whatsmeow/service/whatsmeow.go
+@@ -661,9 +661,11 @@ func (mycli *MyClient) handleQRCodes(codes []string) {
+ 			if mycli.WAClient == nil || mycli.WAClient.Store.ID != nil {
+ 				return
+ 			}
+-			if mycli.passkeyCeremony != nil && mycli.passkeyCeremony.HasActiveByInstance(instanceID) {
+-				mycli.loggerWrapper.GetLogger(instanceID).LogInfo("[%s] Passkey ceremony in progress — pausing QR rotation, keeping socket alive", instanceID)
+-				return
++			if mycli.passkeyCeremony != nil {
++				if _, state, ok := mycli.passkeyCeremony.StateByInstance(instanceID); ok {
++					mycli.loggerWrapper.GetLogger(instanceID).LogInfo("[%s] Passkey ceremony owns pairing lifecycle (stage=%s) — stopping QR rotation", instanceID, state.Stage)
++					return
++				}
+ 			}
+ 
+ 			mycli.qrcodeCount++
+@@ -677,9 +679,11 @@ func (mycli *MyClient) handleQRCodes(codes []string) {
+ 			// Max-count reached: force logout + teardown + QRTimeout (0 = disabled).
+ 			// But never tear down while a passkey ceremony is in flight.
+ 			if mycli.config.QrcodeMaxCount > 0 && mycli.qrcodeCount >= mycli.config.QrcodeMaxCount {
+-				if mycli.passkeyCeremony != nil && mycli.passkeyCeremony.HasActiveByInstance(instanceID) {
+-					mycli.loggerWrapper.GetLogger(instanceID).LogInfo("[%s] QR max-count reached but passkey ceremony active — not tearing down", instanceID)
+-					return
++				if mycli.passkeyCeremony != nil {
++					if _, state, ok := mycli.passkeyCeremony.StateByInstance(instanceID); ok {
++						mycli.loggerWrapper.GetLogger(instanceID).LogInfo("[%s] QR max-count reached but passkey ceremony owns lifecycle (stage=%s) — not tearing down", instanceID, state.Stage)
++						return
++					}
+ 				}
+ 				mycli.loggerWrapper.GetLogger(instanceID).LogWarn("[%s] Maximum QR code count reached (%d), forcing logout and QRTimeout", instanceID, mycli.config.QrcodeMaxCount)
+ 
+@@ -733,9 +737,11 @@ func (mycli *MyClient) handleQRCodes(codes []string) {
+ 		// GetQRChannel's "timeout") — UNLESS a passkey ceremony is in flight, in
+ 		// which case the socket must stay alive for the ceremony to complete.
+ 		if mycli.WAClient != nil && mycli.WAClient.Store.ID == nil {
+-			if mycli.passkeyCeremony != nil && mycli.passkeyCeremony.HasActiveByInstance(instanceID) {
+-				mycli.loggerWrapper.GetLogger(instanceID).LogInfo("[%s] QR codes exhausted but passkey ceremony active — keeping socket alive", instanceID)
+-				return
++			if mycli.passkeyCeremony != nil {
++				if _, state, ok := mycli.passkeyCeremony.StateByInstance(instanceID); ok {
++					mycli.loggerWrapper.GetLogger(instanceID).LogInfo("[%s] QR codes exhausted but passkey ceremony owns lifecycle (stage=%s) — not replacing its terminal state", instanceID, state.Stage)
++					return
++				}
+ 			}
+ 			mycli.teardownQR("", false)
+ 		}
+@@ -801,6 +807,21 @@ func (mycli *MyClient) teardownQR(reason string, forceLogout bool) {
+ 	}
+ }
+ 
++func (mycli *MyClient) invalidatePasskeyCeremony(errorCode, message string) bool {
++	if mycli.passkeyCeremony == nil || !mycli.passkeyCeremony.HasActiveByInstance(mycli.userID) {
++		return false
++	}
++
++	mycli.passkeyCeremony.SetErrorCode(mycli.userID, errorCode, message)
++	mycli.Instance.Connected = false
++	mycli.Instance.DisconnectReason = errorCode
++	if err := mycli.instanceRepository.UpdateConnected(mycli.userID, false, errorCode); err != nil {
++		mycli.loggerWrapper.GetLogger(mycli.userID).LogError("[%s] Failed to persist passkey terminal state: %v", mycli.userID, err)
++	}
++	mycli.loggerWrapper.GetLogger(mycli.userID).LogWarn("[%s] Passkey ceremony invalidated: %s", mycli.userID, errorCode)
++	return true
++}
++
+ func (mycli *MyClient) myEventHandler(rawEvt interface{}) {
+ 	userID := mycli.userID
+ 	postMap := make(map[string]interface{})
+@@ -1047,8 +1068,17 @@ func (mycli *MyClient) myEventHandler(rawEvt interface{}) {
+ 			"stage": "error",
+ 		}
+ 	case *events.StreamReplaced:
+-		mycli.loggerWrapper.GetLogger(mycli.userID).LogInfo("[%s] Received StreamReplaced event", mycli.userID)
+-		return
++		if mycli.invalidatePasskeyCeremony("passkey_socket_restarted", "WhatsApp replaced the socket during passkey authentication") {
++			doWebhook = true
++			postMap["event"] = "PasskeyError"
++			postMap["data"] = map[string]interface{}{
++				"stage":     "error",
++				"errorCode": "passkey_socket_restarted",
++			}
++		} else {
++			mycli.loggerWrapper.GetLogger(mycli.userID).LogInfo("[%s] Received StreamReplaced event", mycli.userID)
++			return
++		}
+ 	case *events.TemporaryBan:
+ 		mycli.loggerWrapper.GetLogger(mycli.userID).LogInfo("[%s] User received temporary ban for %s", mycli.userID, evt.Code.String())
+ 		doWebhook = true
+@@ -1923,14 +1953,25 @@ func (mycli *MyClient) myEventHandler(rawEvt interface{}) {
+ 		mycli.userInfoCache.Delete(mycli.Instance.Token)
+ 		mycli.loggerWrapper.GetLogger(mycli.userID).LogInfo("[%s] UserInfo cache cleared for token: %s", mycli.userID, mycli.Instance.Token)
+ 
+-		mycli.Instance.DisconnectReason = "Disconnected emitted because the websocket is closed by the server."
+-		mycli.Instance.Connected = false
+-		err := mycli.instanceRepository.UpdateConnected(mycli.Instance.Id, mycli.Instance.Connected, mycli.Instance.DisconnectReason)
+-		if err != nil {
+-			mycli.loggerWrapper.GetLogger(mycli.userID).LogError("[%s] Error updating instance: %s", mycli.Instance.Id, err)
++		passkeyInterrupted := mycli.invalidatePasskeyCeremony("passkey_socket_restarted", "WhatsApp socket disconnected during passkey authentication")
++		if passkeyInterrupted {
++			postMap["event"] = "PasskeyError"
++			postMap["data"] = map[string]interface{}{
++				"stage":     "error",
++				"errorCode": "passkey_socket_restarted",
++			}
++		} else {
++			mycli.Instance.DisconnectReason = "Disconnected emitted because the websocket is closed by the server."
++			mycli.Instance.Connected = false
++			err := mycli.instanceRepository.UpdateConnected(mycli.Instance.Id, mycli.Instance.Connected, mycli.Instance.DisconnectReason)
++			if err != nil {
++				mycli.loggerWrapper.GetLogger(mycli.userID).LogError("[%s] Error updating instance: %s", mycli.Instance.Id, err)
++			}
+ 		}
+ 
+-		if mycli.WAClient == nil || mycli.WAClient.Store == nil || mycli.WAClient.Store.ID == nil {
++		if passkeyInterrupted {
++			mycli.loggerWrapper.GetLogger(mycli.userID).LogInfo("[%s] Passkey socket restart is terminal; waiting for an explicit retry", mycli.userID)
++		} else if mycli.WAClient == nil || mycli.WAClient.Store == nil || mycli.WAClient.Store.ID == nil {
+ 			mycli.loggerWrapper.GetLogger(mycli.userID).LogInfo("[%s] Unpaired client disconnected; waiting for an explicit pairing attempt", mycli.userID)
+ 		} else {
+ 			// A persisted, paired session may reconnect automatically. Pairing
