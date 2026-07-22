@@ -44,7 +44,9 @@ LABEL org.opencontainers.image.title="Evolution Go AutoBrokers" \
       org.opencontainers.image.source="https://github.com/evolution-foundation/evolution-go"
 RUN apk add --no-cache tzdata ffmpeg libjpeg-turbo libwebp poppler-utils wget \
     && addgroup -S evolution \
-    && adduser -S -G evolution evolution
+    && adduser -S -G evolution evolution \
+    && mkdir -p /app/logs \
+    && chown evolution:evolution /app/logs
 WORKDIR /app
 COPY --from=build --chown=evolution:evolution /out/server ./server
 COPY --from=source --chown=evolution:evolution /src/manager/dist ./manager/dist

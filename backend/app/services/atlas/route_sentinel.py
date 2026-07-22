@@ -16,10 +16,66 @@ Determinístico primeiro (diff_maps é puro). Nunca derruba quem chama.
 from __future__ import annotations
 
 import asyncio
+import hashlib
+import json
 import logging
 from typing import Any, Dict, List, Optional
 
 logger = logging.getLogger(__name__)
+
+
+def _drift_signature(insurer_key: str, ramo: str, severity: str, diff: Dict[str, Any]) -> str:
+    payload = {
+        "insurer_key": insurer_key,
+        "ramo": ramo,
+        "severity": severity,
+        "added": diff.get("added") or [],
+        "removed": diff.get("removed") or [],
+        "changed_options": diff.get("changed_options") or [],
+    }
+    raw = json.dumps(payload, ensure_ascii=False, sort_keys=True, separators=(",", ":"))
+    return hashlib.sha256(raw.encode("utf-8")).hexdigest()
+
+
+def _session_watermarks(rows: List[Dict[str, Any]]) -> List[tuple[str, str, str]]:
+    """Collapse observed sessions into one deterministic watermark per route."""
+    latest: Dict[tuple[str, str], str] = {}
+    for row in rows:
+        insurer = str(row.get("insurer_key") or "").strip()
+        if not insurer:
+            continue
+        ramo = str(row.get("ramo") or "auto")
+        stamp = str(row.get("last_event_at") or "")
+        key = (insurer, ramo)
+        latest[key] = max(latest.get(key, ""), stamp)
+    return [(key[0], key[1], stamp) for key, stamp in sorted(latest.items())]
+
+
+def _watermark_key(insurer_key: str, ramo: str) -> str:
+    digest = hashlib.sha256(f"{insurer_key}\0{ramo}".encode("utf-8")).hexdigest()[:24]
+    return f"atlas:sentinela:watermark:{digest}"
+
+
+async def _claim_with_redis(redis: Any, key: str, *, ttl_seconds: int) -> Optional[str]:
+    """Atomic single-winner claim shared by all API/scheduler workers."""
+    import secrets
+
+    token = secrets.token_hex(12)
+    acquired = await redis.set(key, token, nx=True, ex=max(1, ttl_seconds))
+    return token if acquired else None
+
+
+async def _release_redis_claim(redis: Any, key: str, token: str) -> None:
+    try:
+        await redis.eval(
+            "if redis.call('get',KEYS[1])==ARGV[1] then "
+            "return redis.call('del',KEYS[1]) else return 0 end",
+            1,
+            key,
+            token,
+        )
+    except Exception:  # noqa: BLE001 - claim TTL remains the fallback
+        pass
 
 
 def classify_severity(diff: Dict[str, Any], new_map: Dict[str, Any]) -> str:
@@ -54,6 +110,7 @@ async def check_insurer(insurer_key: str, ramo: str, observed_map: Dict[str, Any
         return None  # sem mudança
 
     severity = classify_severity(diff, observed_map)
+    signature = _drift_signature(insurer_key, ramo, severity, diff)
     summary = (f"{len(diff.get('added') or [])} telas novas, "
                f"{len(diff.get('removed') or [])} removidas, "
                f"{len(diff.get('changed_options') or [])} menus alterados")
@@ -61,6 +118,45 @@ async def check_insurer(insurer_key: str, ramo: str, observed_map: Dict[str, Any
     auto_applied = False
     simulator_passed: Optional[bool] = None
     needs_founder = severity == "structural"
+
+    supabase = get_supabase_client()
+    drift_claim_redis = None
+    drift_claim_token: Optional[str] = None
+    drift_claim_key = f"atlas:sentinela:drift:{signature}"
+    if needs_founder:
+        try:
+            from app.core.redis import get_async_redis_client
+
+            drift_claim_redis = await get_async_redis_client()
+            drift_claim_token = await _claim_with_redis(
+                drift_claim_redis, drift_claim_key, ttl_seconds=90 * 86400
+            )
+            if not drift_claim_token:
+                return None
+        except Exception:  # noqa: BLE001 - DB dedupe remains a fail-safe
+            drift_claim_redis = None
+            drift_claim_token = None
+
+        def _same_unresolved_drift() -> bool:
+            rows = (
+                supabase.client.table("route_drift")
+                .select("detail,status")
+                .eq("insurer_key", insurer_key).eq("ramo", ramo)
+                .order("created_at", desc=True).limit(10).execute().data or []
+            )
+            for previous in rows:
+                if previous.get("status") not in ("open", "escalated"):
+                    continue
+                detail = previous.get("detail") if isinstance(previous.get("detail"), dict) else {}
+                if detail.get("signature") == signature:
+                    return True
+            return False
+
+        try:
+            if await asyncio.to_thread(_same_unresolved_drift):
+                return None
+        except Exception as e:  # noqa: BLE001
+            logger.warning(f"[SENTINELA ROTAS] dedupe falhou: {type(e).__name__}")
 
     # COSMÉTICO → Alfaiate v2 com GATE do Simulador
     if severity == "cosmetic":
@@ -72,21 +168,28 @@ async def check_insurer(insurer_key: str, ramo: str, observed_map: Dict[str, Any
         except Exception as e:  # noqa: BLE001
             logger.warning(f"[SENTINELA ROTAS] alfaiate falhou: {type(e).__name__}")
 
-    supabase = get_supabase_client()
     row = {
         "insurer_key": insurer_key, "ramo": ramo, "severity": severity,
         "summary": summary, "detail": {"added": (diff.get("added") or [])[:20],
-                                       "changed": (diff.get("changed_options") or [])[:20]},
+                                       "removed": (diff.get("removed") or [])[:20],
+                                       "changed": (diff.get("changed_options") or [])[:20],
+                                       "signature": signature},
         "auto_applied": auto_applied, "simulator_passed": simulator_passed,
         "needs_founder": needs_founder,
         "status": "applied" if auto_applied else ("escalated" if needs_founder else "open"),
     }
+    inserted = False
     try:
         await asyncio.to_thread(lambda: supabase.client.table("route_drift").insert(row).execute())
+        inserted = True
     except Exception as e:  # noqa: BLE001
         logger.warning(f"[SENTINELA ROTAS] registro falhou: {type(e).__name__}")
+        if drift_claim_redis is not None and drift_claim_token:
+            await _release_redis_claim(
+                drift_claim_redis, drift_claim_key, drift_claim_token
+            )
 
-    if needs_founder:
+    if needs_founder and inserted:
         await _alert_founder(insurer_key, ramo, summary, diff)
 
     try:
@@ -96,7 +199,7 @@ async def check_insurer(insurer_key: str, ramo: str, observed_map: Dict[str, Any
     except Exception:  # noqa: BLE001
         pass
     logger.info(f"[SENTINELA ROTAS] {insurer_key}/{ramo}: {severity} — {summary}")
-    return row
+    return row if inserted else None
 
 
 async def _alfaiate_with_gate(playbook_ref: str, old_map: Dict[str, Any],
@@ -182,25 +285,32 @@ def _founder_alert_number() -> str:
 
 async def check_atlas_sentinela() -> int:
     """Task periódica (APScheduler): tece TODAS as seguradoras e checa drift,
-    no máximo 1x/dia (marcador Redis). Dá 'vida própria' ao Atlas — auto-atualiza
+    incrementalmente a cada janela configurada. Dá 'vida própria' ao Atlas — auto-atualiza
     os mapas e detecta mudança de menu sem ninguém clicar. Falha nunca derruba
     o scheduler."""
     try:
+        import os
         from datetime import datetime, timezone
 
-        today = datetime.now(timezone.utc).date().isoformat()
+        try:
+            interval_minutes = max(1, int(os.getenv("ATLAS_INCREMENTAL_INTERVAL_MINUTES", "15")))
+        except ValueError:
+            interval_minutes = 15
+        window = int(datetime.now(timezone.utc).timestamp() // (interval_minutes * 60))
         try:
             from app.core.redis import get_async_redis_client
 
             redis = await get_async_redis_client()
-            last = await redis.get("atlas:sentinela:last_run")
-            last = last.decode() if isinstance(last, (bytes, bytearray)) else last
-            if last == today:
+            run_claim = await _claim_with_redis(
+                redis,
+                f"atlas:sentinela:last_run:{window}",
+                ttl_seconds=max(120, interval_minutes * 120),
+            )
+            if not run_claim:
                 return 0
-            await redis.set("atlas:sentinela:last_run", today, ex=2 * 86400)
         except Exception:  # noqa: BLE001 — sem redis, roda mesmo
             pass
-        drifts = await run_all(None)  # global (todas as corretoras — a URA é global)
+        drifts = await run_all(None, incremental=True)
         # pulsa SEMPRE que roda (mesmo sem drift) — mostra o agente vivo na Central
         try:
             from app.core.heartbeat import beat
@@ -214,7 +324,9 @@ async def check_atlas_sentinela() -> int:
         return 0
 
 
-async def run_all(company_id: Optional[str] = None) -> List[Dict[str, Any]]:
+async def run_all(
+    company_id: Optional[str] = None, *, incremental: bool = False
+) -> List[Dict[str, Any]]:
     """Tece TODAS as seguradoras observadas e passa cada uma pela Sentinela.
     Chamado sob demanda (admin) ou por agendamento. Retorna os drifts achados."""
     from app.core.database import get_supabase_client
@@ -222,18 +334,44 @@ async def run_all(company_id: Optional[str] = None) -> List[Dict[str, Any]]:
 
     supabase = get_supabase_client()
 
-    def _keys() -> List[tuple]:
-        rows = (supabase.client.table("observed_sessions").select("insurer_key, ramo")
+    def _keys() -> List[tuple[str, str, str]]:
+        rows = (supabase.client.table("observed_sessions").select("insurer_key, ramo, last_event_at")
                 .not_.is_("insurer_key", "null").execute().data or [])
-        seen = set()
-        for r in rows:
-            k = (r.get("insurer_key"), r.get("ramo") or "auto")
-            if r.get("insurer_key"):
-                seen.add(k)
-        return sorted(seen)
+        return _session_watermarks(rows)
+
+    redis = None
+    if incremental:
+        try:
+            from app.core.redis import get_async_redis_client
+
+            redis = await get_async_redis_client()
+        except Exception:  # noqa: BLE001 - no Redis means process safely
+            redis = None
 
     drifts: List[Dict[str, Any]] = []
-    for insurer_key, ramo in await asyncio.to_thread(_keys):
+    for insurer_key, ramo, watermark in await asyncio.to_thread(_keys):
+        marker_key = _watermark_key(insurer_key, ramo)
+        route_claim_key = f"{marker_key}:run"
+        route_claim_token: Optional[str] = None
+        if incremental and redis is not None:
+            route_claim_token = await _claim_with_redis(
+                redis, route_claim_key, ttl_seconds=15 * 60
+            )
+            if not route_claim_token:
+                continue
+            try:
+                previous = await redis.get(marker_key)
+                previous = previous.decode() if isinstance(previous, (bytes, bytearray)) else previous
+                if previous == watermark:
+                    await _release_redis_claim(
+                        redis, route_claim_key, route_claim_token
+                    )
+                    route_claim_token = None
+                    continue
+            except Exception as e:  # noqa: BLE001
+                logger.warning(
+                    f"[SENTINELA ROTAS] watermark indisponível: {type(e).__name__}"
+                )
         # SPEC-050 (auditoria): guarda POR seguradora — uma falha (ex.: mapa
         # corrompido de uma marca) não pode abortar a passada diária inteira.
         try:
@@ -246,8 +384,13 @@ async def run_all(company_id: Optional[str] = None) -> List[Dict[str, Any]]:
                 d = await check_insurer(insurer_key, woven.get("ramo") or ramo, fresh)
                 if d:
                     drifts.append(d)
+            if incremental and redis is not None:
+                await redis.set(marker_key, watermark, ex=90 * 86400)
         except Exception as e:  # noqa: BLE001
             logger.error(f"[SENTINELA ROTAS] {insurer_key}/{ramo} falhou (segue as demais): {type(e).__name__}")
+        finally:
+            if redis is not None and route_claim_token:
+                await _release_redis_claim(redis, route_claim_key, route_claim_token)
     return drifts
 
 

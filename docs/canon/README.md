@@ -46,6 +46,10 @@ Documents in `docs/audits`, `docs/plans`, `docs/adr`, and `docs/sql` are histori
 | `SPEC-004-agent-intelligence-context-architecture.md` | Canonical Agent Intelligence, Context Assembly and Role Architecture. Separates AutoBrokers Core, Atendimento, Auxiliares, Corredores, SubAgents, RAG, memory and tools while preserving Smith. |
 | `SPEC-005-atendimento-runtime-architecture.md` | Canonical Atendimento runtime architecture and Attendance Agent boundary. Defines case, conversation, corridor, dispatch packet, HITL, policy evidence, channel abstraction and MVP/post-MVP boundaries. |
 | `SPEC-006-allianz-residencial-corredor-eletricista-mvp.md` | Canonical Allianz Residential Assistance corridor family and Electrician MVP. Defines subcorridors, phases, slots, guardrails, dispatch packet, readiness and golden tests. |
+| `specs/SPEC-051-evolution-go-pareamento-passkey-observador.md` | Evolution Go versionado, pareamento QR/passkey, modo Observador silencioso e operação incremental dos agentes. |
+| `runbooks/RUNBOOK-PAREAMENTO-WHATSAPP-CORRETORA.md` | Procedimento operacional para parear Resulta e corretoras futuras com baixo atrito. |
+| `runbooks/RUNBOOK-PASSKEY-WHATSAPP.md` | Instalação e uso seguro do assistente de passkey no Chrome/Edge. |
+| `runbooks/RUNBOOK-EVOLUTION-GO-POOL-POSTGRES.md` | Diagnóstico e recuperação do pool Postgres dedicado ao Evolution Go. |
 
 ## Operating Rule
 

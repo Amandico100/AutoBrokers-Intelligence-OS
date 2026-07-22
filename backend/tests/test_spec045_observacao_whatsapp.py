@@ -163,6 +163,7 @@ def _bootstrap():
     base.ProviderCapabilities = type("PC", (), {"__init__": lambda s, **k: None})
     sys.modules["app.services.whatsapp.providers.base"] = base
     _load("app.services.whatsapp.evolution_inbound", "app/services/whatsapp/evolution_inbound.py")
+    _load("app.services.whatsapp.evolution_go_events", "app/services/whatsapp/evolution_go_events.py")
     _load("app.services.whatsapp.providers.evolution_go", "app/services/whatsapp/providers/evolution_go.py")
     _load("app.services.atlas.observer_intake", "app/services/atlas/observer_intake.py")
     cap = _load("app.services.atlas.attendance_capture", "app/services/atlas/attendance_capture.py")

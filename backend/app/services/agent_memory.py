@@ -198,17 +198,23 @@ async def rebuild_agent_memories() -> int:
 
 
 async def check_agent_memories() -> int:
-    """Task periódica (horária; executa 1x/dia via marcador). Custo zero."""
+    """Task periódica; reescreve por janela de 6h (configurável). Custo zero."""
     try:
+        import os
+
         from app.core.redis import get_async_redis_client
 
         r = await get_async_redis_client()
-        today = datetime.now(timezone.utc).date().isoformat()
+        try:
+            hours = max(1, int(os.getenv("AGENT_MEMORY_INTERVAL_HOURS", "6")))
+        except ValueError:
+            hours = 6
+        window = str(int(datetime.now(timezone.utc).timestamp() // (hours * 3600)))
         marker = await r.get(_MARKER)
         marker = marker.decode() if isinstance(marker, (bytes, bytearray)) else marker
-        if marker == today:
+        if marker == window:
             return 0
-        await r.set(_MARKER, today, ex=3 * 86400)
+        await r.set(_MARKER, window, ex=3 * 86400)
     except Exception:  # noqa: BLE001
         pass
     try:

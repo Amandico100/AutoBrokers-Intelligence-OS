@@ -6,9 +6,10 @@
 
 ## DECISÕES DO FOUNDER (18/07 — cravadas)
 
-- **D1 Números:** dos WhatsApps da corretora, porém **WhatsApp NORMAL (nunca
-  Business — a Meta bloqueia o pareamento de Business)**. Corretoras futuras
-  podem variar → checklist pré-pareamento obrigatório (abaixo).
+- **D1 Números:** dos WhatsApps de trabalho da corretora. **WhatsApp Business
+  pode parear normalmente por QR. Algumas contas podem exigir passkey por
+  decisão server-side.** Corretoras futuras podem variar → checklist
+  pré-pareamento obrigatório (abaixo).
 - **D2 Histórico:** IMPORTAR via HistorySync, com duas condições absolutas:
   (a) qualidade — as IAs não podem se confundir na análise (merge conservador:
   histórico só contribui arestas de alta confiança; ambíguo = descartado, nunca

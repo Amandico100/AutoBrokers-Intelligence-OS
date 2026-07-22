@@ -30,9 +30,10 @@ export function WhatsAppChannelModal({
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent className="max-h-[90vh] max-w-2xl overflow-y-auto">
         <DialogHeader>
-          <DialogTitle>WhatsApp da corretora</DialogTitle>
+          <DialogTitle>Conectar WhatsApp da corretora</DialogTitle>
           <DialogDescription>
-            Conecte por QR code — usa o número que você já tem, escaneia e pronto.
+            Use o número de trabalho que a equipe já atende. O celular e o WhatsApp Web
+            continuarão funcionando normalmente.
           </DialogDescription>
         </DialogHeader>
 

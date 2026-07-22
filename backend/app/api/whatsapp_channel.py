@@ -119,23 +119,28 @@ async def _go_company_channel(company_id: str, purpose: str = "attendance") -> O
 
     rows = await asyncio.to_thread(_q)
     if rows and rows[0].get("token"):
-        return {"instance_name": rows[0]["instance_id"], "instance_token": rows[0]["token"]}
+        from app.services.whatsapp.integration_secrets import prepare_integration_for_runtime
+
+        row = prepare_integration_for_runtime(rows[0]) or rows[0]
+        return {"instance_name": row["instance_id"], "instance_token": row["token"]}
     return None
 
 
 async def _go_resolve(company_id: str, purpose: str = "attendance") -> Dict[str, str]:
-    """Resolve a instância a usar: linha da corretora > fallback env legado."""
+    """Resolve a instância da corretora; fallback legado só atende attendance."""
     row = await _go_company_channel(company_id, purpose)
     if row:
         return row
+    if str(purpose or "attendance").strip().lower() == "observer":
+        raise HTTPException(status_code=404, detail="observer_channel_not_paired")
     env = _go_env_fallback()
     if env:
         return env
     raise HTTPException(status_code=503, detail="evolution_go_not_configured")
 
 
-async def _go_get(company_id: str, path: str) -> Dict[str, Any]:
-    cfg = await _go_resolve(company_id)
+async def _go_get(company_id: str, path: str, purpose: str = "attendance") -> Dict[str, Any]:
+    cfg = await _go_resolve(company_id, purpose)
     async with httpx.AsyncClient(timeout=_TIMEOUT, base_url=_go_base()) as client:
         res = await client.get(path, headers={"apikey": cfg["instance_token"]})
         if res.status_code >= 400:
@@ -143,8 +148,8 @@ async def _go_get(company_id: str, path: str) -> Dict[str, Any]:
         return res.json() if res.content else {}
 
 
-async def _go_status_payload(company_id: str) -> Dict[str, Any]:
-    j = await _go_get(company_id, "/instance/status")
+async def _go_status_payload(company_id: str, purpose: str = "attendance") -> Dict[str, Any]:
+    j = await _go_get(company_id, "/instance/status", purpose)
     data = j.get("data") if isinstance(j.get("data"), dict) else {}
     logged_in = bool(data.get("LoggedIn") or data.get("loggedIn"))
     connected_ws = bool(data.get("Connected") or data.get("connected"))
@@ -225,6 +230,11 @@ async def _go_setup(company_id: str, payload: "ChannelSetupPayload", public_url:
                 inst_token = secrets.token_hex(16)
                 await _go_create(client, instance, inst_token)
             else:
+                if purpose == "observer":
+                    raise HTTPException(
+                        status_code=503,
+                        detail="evolution_go_not_configured (defina EVOLUTION_GO_GLOBAL_KEY)",
+                    )
                 env = _go_env_fallback()
                 if not env:
                     raise HTTPException(status_code=503, detail="evolution_go_not_configured (defina EVOLUTION_GO_GLOBAL_KEY)")
@@ -265,7 +275,9 @@ async def _go_setup(company_id: str, payload: "ChannelSetupPayload", public_url:
     agent_id = _attendant_id()
 
     def _upsert() -> None:
-        record = {
+        from app.services.whatsapp.integration_secrets import prepare_integration_for_storage
+
+        record = prepare_integration_for_storage({
             "company_id": company_id,
             "identifier": instance,
             "purpose": purpose,
@@ -279,7 +291,7 @@ async def _go_setup(company_id: str, payload: "ChannelSetupPayload", public_url:
             "channel_status": "connecting",
             "is_active": True,
             "last_seen_at": datetime.now(timezone.utc).isoformat(),
-        }
+        })
         if agent_id:
             record["agent_id"] = agent_id
         existing = (
@@ -310,6 +322,143 @@ class ChannelSetupPayload(BaseModel):
     agent_id: Optional[str] = None
     alert_number: Optional[str] = None  # S17-3: destino do alerta de desconexão
     purpose: str = "attendance"  # S17-12: multi-número por corretora (attendance | auxiliary:<slug> | dispatch)
+
+
+class PairingPayload(BaseModel):
+    company_id: str
+    purpose: str = "observer"
+    method: str = "qr"
+    phone_number: Optional[str] = None
+    correlation_id: Optional[str] = None
+
+
+def _pairing_http_error(exc: Exception) -> HTTPException:
+    from app.services.whatsapp.pairing_orchestrator import (
+        PairingConflictError,
+        PairingNotFoundError,
+    )
+
+    if isinstance(exc, PairingNotFoundError):
+        return HTTPException(status_code=404, detail="pairing_not_found")
+    if isinstance(exc, PairingConflictError):
+        return HTTPException(status_code=409, detail=str(exc))
+    if isinstance(exc, ValueError):
+        return HTTPException(status_code=400, detail=str(exc))
+    return HTTPException(status_code=503, detail="pairing_unavailable")
+
+
+@router.post("/api/whatsapp-channel/pairing")
+async def whatsapp_channel_pairing(
+    payload: PairingPayload,
+    x_autobrokers_internal_key: Optional[str] = Header(default=None, alias="X-AutoBrokers-Internal-Key"),
+    x_correlation_id: Optional[str] = Header(default=None, alias="X-Correlation-ID"),
+) -> Dict[str, Any]:
+    """Inicia uma única tentativa explícita de QR ou código de pareamento."""
+    _require_internal_key(x_autobrokers_internal_key)
+    from app.services.whatsapp.pairing_orchestrator import get_pairing_orchestrator
+
+    try:
+        return await get_pairing_orchestrator().start(
+            payload.company_id,
+            payload.purpose,
+            correlation_id=x_correlation_id or payload.correlation_id,
+            method=payload.method,
+            phone_number=payload.phone_number,
+        )
+    except Exception as exc:  # noqa: BLE001
+        raise _pairing_http_error(exc) from exc
+
+
+@router.get("/api/whatsapp-channel/pairing/{attempt_id}")
+async def whatsapp_channel_pairing_state(
+    attempt_id: str,
+    company_id: str,
+    purpose: str = "observer",
+    x_autobrokers_internal_key: Optional[str] = Header(default=None, alias="X-AutoBrokers-Internal-Key"),
+) -> Dict[str, Any]:
+    _require_internal_key(x_autobrokers_internal_key)
+    from app.services.whatsapp.pairing_orchestrator import get_pairing_orchestrator
+
+    try:
+        return await get_pairing_orchestrator().get(company_id, purpose, attempt_id)
+    except Exception as exc:  # noqa: BLE001
+        raise _pairing_http_error(exc) from exc
+
+
+@router.post("/api/whatsapp-channel/pairing/{attempt_id}/retry")
+async def whatsapp_channel_pairing_retry(
+    attempt_id: str,
+    payload: PairingPayload,
+    x_autobrokers_internal_key: Optional[str] = Header(default=None, alias="X-AutoBrokers-Internal-Key"),
+    x_correlation_id: Optional[str] = Header(default=None, alias="X-Correlation-ID"),
+) -> Dict[str, Any]:
+    _require_internal_key(x_autobrokers_internal_key)
+    from app.services.whatsapp.pairing_orchestrator import get_pairing_orchestrator
+
+    try:
+        return await get_pairing_orchestrator().retry(
+            payload.company_id,
+            payload.purpose,
+            attempt_id,
+            x_correlation_id or payload.correlation_id or str(__import__("uuid").uuid4()),
+        )
+    except Exception as exc:  # noqa: BLE001
+        raise _pairing_http_error(exc) from exc
+
+
+@router.post("/api/whatsapp-channel/pairing/{attempt_id}/cancel")
+async def whatsapp_channel_pairing_cancel(
+    attempt_id: str,
+    payload: PairingPayload,
+    x_autobrokers_internal_key: Optional[str] = Header(default=None, alias="X-AutoBrokers-Internal-Key"),
+) -> Dict[str, Any]:
+    _require_internal_key(x_autobrokers_internal_key)
+    from app.services.whatsapp.pairing_orchestrator import get_pairing_orchestrator
+
+    try:
+        return await get_pairing_orchestrator().cancel(
+            payload.company_id, payload.purpose, attempt_id
+        )
+    except Exception as exc:  # noqa: BLE001
+        raise _pairing_http_error(exc) from exc
+
+
+@router.get("/api/admin/whatsapp-channel/diagnostics")
+async def whatsapp_pairing_admin_diagnostics(
+    company_id: str,
+    purpose: str = "observer",
+    x_autobrokers_internal_key: Optional[str] = Header(default=None, alias="X-AutoBrokers-Internal-Key"),
+) -> Dict[str, Any]:
+    """Diagnóstico sem credenciais para suporte de uma tentativa específica."""
+    _require_internal_key(x_autobrokers_internal_key)
+    from app.services.whatsapp.pairing_orchestrator import (
+        get_pairing_orchestrator,
+        public_pairing_state,
+    )
+
+    orchestrator = get_pairing_orchestrator()
+    redis = await orchestrator._redis()  # noqa: SLF001 - superfície admin interna
+    current = orchestrator._decode(await redis.get(orchestrator._key(company_id, purpose)))  # noqa: SLF001
+    health: Dict[str, Any] = {"reachable": False, "version": None}
+    try:
+        async with httpx.AsyncClient(timeout=10.0, base_url=orchestrator.base_url) as client:
+            response = await client.get("/server/ok")
+            payload = response.json() if response.status_code < 400 and response.content else {}
+            health = {
+                "reachable": response.status_code < 500,
+                "version": payload.get("version"),
+                "http_status": response.status_code,
+            }
+    except httpx.HTTPError:
+        health["error"] = "provider_unavailable"
+    integration = await orchestrator._integration(company_id, purpose)  # noqa: SLF001
+    return {
+        "ok": True,
+        "provider": health,
+        "integration_present": bool(integration),
+        "purpose": purpose,
+        "attempt": public_pairing_state(current or {}),
+    }
 
 
 @router.get("/api/whatsapp-channel/diagnostics")
@@ -557,16 +706,25 @@ async def whatsapp_channel_setup(
 @router.get("/api/whatsapp-channel/qr")
 async def whatsapp_channel_qr(
     company_id: str,
+    purpose: str = "attendance",
     x_autobrokers_internal_key: Optional[str] = Header(default=None, alias="X-AutoBrokers-Internal-Key"),
 ) -> Dict[str, Any]:
     _require_internal_key(x_autobrokers_internal_key)
     if _go_enabled():
-        cfg = await _go_resolve(company_id)
-        j = await _go_get(company_id, "/instance/qr")
+        cfg = await _go_resolve(company_id, purpose)
+        j = await _go_get(company_id, "/instance/qr", purpose)
         d = j.get("data") if isinstance(j.get("data"), dict) else j
         raw = str(d.get("QRCode") or d.get("qrcode") or d.get("qr") or d.get("base64") or "")
-        return {"ok": bool(raw), "instance": cfg["instance_name"],
-                "qr_base64": raw or None, "qr_text": None, "raw_state": None}
+        return {
+            "ok": bool(raw), "instance": cfg["instance_name"],
+            "qr_base64": raw or None, "qr_text": d.get("code") if not raw else None,
+            "raw_state": d.get("state"), "error_code": d.get("errorCode"),
+            "passkey_stage": d.get("passkeyStage"),
+            "passkey_open_url": d.get("passkeyOpenUrl"),
+            "passkey_code": d.get("passkeyCode"),
+            "passkey_error": d.get("passkeyError"),
+            "expires_at": d.get("expiresAt"),
+        }
     platform = _evolution_platform()
     instance = _instance_name(company_id)
     headers = {"apikey": platform["api_key"]}
@@ -605,7 +763,8 @@ async def whatsapp_channel_disconnect(
         # NUNCA emite QR novo (foi o "Gerar QR não gera" do founder). Se a
         # sessão persistir, apagamos a instância no GO (chave global) e
         # desativamos a linha: o próximo "Gerar QR" cria instância limpa.
-        cfg = await _go_resolve(company_id)
+        purpose = str(payload.get("purpose") or "attendance").strip().lower()
+        cfg = await _go_resolve(company_id, purpose)
         global_key = os.getenv("EVOLUTION_GO_GLOBAL_KEY") or ""
         async with httpx.AsyncClient(timeout=_TIMEOUT, base_url=_go_base()) as client:
             try:
@@ -740,13 +899,25 @@ async def whatsapp_channel_set_alert(
 @router.get("/api/whatsapp-channel/status")
 async def whatsapp_channel_status(
     company_id: str,
+    purpose: str = "attendance",
     x_autobrokers_internal_key: Optional[str] = Header(default=None, alias="X-AutoBrokers-Internal-Key"),
 ) -> Dict[str, Any]:
     _require_internal_key(x_autobrokers_internal_key)
-    alert = await _channel_alert_info(company_id)
+    alert = await _channel_alert_info(company_id, purpose)
     if _go_enabled():
-        cfg = await _go_resolve(company_id)
-        st = await _go_status_payload(company_id)
+        if str(purpose or "attendance").strip().lower() == "observer":
+            company_channel = await _go_company_channel(company_id, purpose)
+            if not company_channel:
+                return {
+                    "ok": True,
+                    "instance": None,
+                    "state": "close",
+                    "connected": False,
+                    "unpaired": True,
+                    "alert": alert,
+                }
+        cfg = await _go_resolve(company_id, purpose)
+        st = await _go_status_payload(company_id, purpose)
         return {"ok": True, "instance": cfg["instance_name"], "alert": alert, **st}
     platform = _evolution_platform()
     instance = _instance_name(company_id)

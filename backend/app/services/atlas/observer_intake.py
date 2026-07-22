@@ -121,7 +121,7 @@ def _extract_content(message: Dict[str, Any]) -> Tuple[str, Optional[str], Optio
             m = ((m.get("message") or {}).get("documentMessage")) or m
         if isinstance(m, dict):
             meta = {"kind": kind, "mimetype": m.get("mimetype"),
-                    "file_name": m.get("fileName") or m.get("title"),
+                    "filename": m.get("fileName") or m.get("title"),
                     "caption": m.get("caption")}
             return kind, str(m.get("caption") or ""), None, meta
 
@@ -339,9 +339,6 @@ async def observer_tap(integration: dict, body: dict) -> Optional[dict]:
                 logger.error(f"[ATLAS] history ingest falhou: {type(e).__name__}")
             return consumed or {"status": "observed", "event": "history_sync"}
 
-        if ev_name in ("connection", "connection.update"):
-            return consumed if is_observer else None
-
         # BUTTONCLICK (SPEC-038 — o LADO DE OURO): o GO emite um evento próprio
         # quando o humano CLICA num botão/lista OU preenche o FORMULÁRIO NATIVO
         # (InteractiveResponseMessage/NativeFlow — a travessia do app HDI/Yelum!).
@@ -423,9 +420,26 @@ async def observer_tap(integration: dict, body: dict) -> Optional[dict]:
             logger.info(f"[ATLAS] CLIQUE humano {insurer_key} '{btn_text}' ({kind})")
             return always
 
-        from app.services.whatsapp.providers.evolution_go import go_event_to_v2_envelope
+        from app.services.whatsapp.evolution_go_events import go_event_to_v2_envelope
 
         env = go_event_to_v2_envelope(body if isinstance(body, dict) else {})
+        if env.get("event") == "connection.update":
+            connection = env.get("data") if isinstance(env.get("data"), dict) else {}
+            state = str(connection.get("reason") or connection.get("state") or "unknown")
+            if is_observer and integration.get("id"):
+                def _update_connection() -> None:
+                    from app.core.database import get_supabase_client
+
+                    db = get_supabase_client()
+                    db.client.table("integrations").update({
+                        "channel_status": state,
+                        "last_seen_at": datetime.now(timezone.utc).isoformat(),
+                    }).eq("id", integration["id"]).eq(
+                        "company_id", integration.get("company_id")
+                    ).execute()
+
+                await asyncio.to_thread(_update_connection)
+            return consumed if is_observer else None
         if env.get("event") != "messages.upsert":
             return consumed if is_observer else None
         data = env.get("data") or {}
@@ -435,13 +449,21 @@ async def observer_tap(integration: dict, body: dict) -> Optional[dict]:
             return consumed if is_observer else None
 
         remote = str(key.get("remoteJid") or "")
+        remote_alt = str(
+            key.get("remoteJidAlt")
+            or key.get("remoteJidPn")
+            or data.get("remoteJidAlt")
+            or data.get("senderAlt")
+            or ""
+        )
         observer_number = _observer_number_of(integration)
 
         # ---------- FILTRO DE BORDA (privacidade — primeira linha) ----------
         if remote.endswith(("@g.us", "@broadcast", "@newsletter", "@call")):
             await _count_drop(observer_number, "group_or_status")
             return consumed if is_observer else None
-        counterparty = _digits(remote.split("@", 1)[0].split(":", 1)[0])
+        counterparty_source = remote_alt if remote.endswith("@lid") else remote
+        counterparty = _digits(counterparty_source.split("@", 1)[0].split(":", 1)[0])
         allow = insurer_allowlist()
         insurer_key = None
         for v in _br_variants(counterparty):
@@ -456,12 +478,25 @@ async def observer_tap(integration: dict, body: dict) -> Optional[dict]:
             if is_observer:
                 try:
                     from app.services.atlas.attendance_capture import (
-                        SCOPE_FULL, capture_client_message, observer_scope,
+                        SCOPE_FULL, capture_client_message, client_chat_allowed,
+                        observer_scope,
                     )
 
-                    if observer_scope(integration) == SCOPE_FULL:
+                    if (
+                        observer_scope(integration) == SCOPE_FULL
+                        and client_chat_allowed(
+                            integration, observer_number, remote, counterparty, remote_alt,
+                        )
+                    ):
                         stored = await capture_client_message(
-                            integration, counterparty, key, message, data)
+                            integration,
+                            counterparty,
+                            key,
+                            message,
+                            data,
+                            remote_jid=remote,
+                            alternate_jid=remote_alt,
+                        )
                         if stored:
                             return consumed
                 except Exception:  # noqa: BLE001 — Espelho NUNCA quebra a borda
@@ -497,7 +532,22 @@ async def observer_tap(integration: dict, body: dict) -> Optional[dict]:
             "wa_timestamp": wa_ts,
             "source": "live",
         }
+        if media_meta:
+            media_meta.update({
+                "message_id": record["message_id"],
+                "wa_timestamp": wa_ts,
+                "company_id": record["company_id"],
+                "enrichment_status": "pending",
+            })
+            record["media_meta"] = media_meta
         await asyncio.to_thread(_store_event_sync, record)
+        if media_meta:
+            try:
+                from app.services.atlas.observer_media import enqueue_observer_media
+
+                await enqueue_observer_media(integration, "observed_events", message, record)
+            except Exception as exc:  # noqa: BLE001 - fila nunca invalida a captura
+                logger.warning("[ATLAS] fila de mídia indisponível: %s", type(exc).__name__)
         await _beat()
         logger.info(f"[ATLAS] observado {record['direction']} {insurer_key} tipo={msg_type}")
     except Exception as e:  # noqa: BLE001 — o TAP JAMAIS derruba o pipeline

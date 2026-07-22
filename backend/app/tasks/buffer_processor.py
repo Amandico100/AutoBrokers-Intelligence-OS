@@ -4,6 +4,7 @@ ASYNC VERSION: Redis operations are non-blocking.
 """
 
 import logging
+import os
 
 from apscheduler.schedulers.asyncio import AsyncIOScheduler
 
@@ -18,6 +19,13 @@ logging.getLogger("apscheduler.executors").setLevel(logging.WARNING)
 logging.getLogger("apscheduler.executors.default").setLevel(logging.WARNING)
 
 scheduler = AsyncIOScheduler()
+
+
+def _env_int(name: str, default: int, minimum: int = 1) -> int:
+    try:
+        return max(minimum, int(os.getenv(name, str(default))))
+    except (TypeError, ValueError):
+        return default
 
 
 async def check_buffers():
@@ -154,8 +162,20 @@ def start_buffer_scheduler():
         scheduler.add_job(
             check_atlas_sentinela,
             "interval",
-            seconds=3600,
+            minutes=_env_int("ATLAS_INCREMENTAL_INTERVAL_MINUTES", 15),
             id="atlas_sentinela_check",
+            max_instances=1,
+        )
+
+        # SPEC-051: mídias do Observador nunca bloqueiam o webhook. Um lote
+        # pequeno é enriquecido separadamente e armazenado apenas em cofre.
+        from app.services.atlas.observer_media import observer_media_check
+
+        scheduler.add_job(
+            observer_media_check,
+            "interval",
+            seconds=_env_int("OBSERVER_MEDIA_INTERVAL_SECONDS", 10, minimum=5),
+            id="observer_media_check",
             max_instances=1,
         )
 
@@ -221,7 +241,7 @@ def start_buffer_scheduler():
         scheduler.add_job(
             check_agent_memories,
             "interval",
-            seconds=3600,
+            hours=_env_int("AGENT_MEMORY_INTERVAL_HOURS", 6),
             id="agent_memory_check",
             max_instances=1,
         )

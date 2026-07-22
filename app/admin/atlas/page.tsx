@@ -427,6 +427,7 @@ export default function AtlasPage() {
   const [nativeForms, setNativeForms] = useState<any[] | null>(null);
   const [showForm, setShowForm] = useState(false);
   const [sentinelaBusy, setSentinelaBusy] = useState(false);
+  const [learningBusy, setLearningBusy] = useState(false);
   const [showCost, setShowCost] = useState(false);
   const [cost, setCost] = useState<any | null>(null);
 
@@ -449,6 +450,27 @@ export default function AtlasPage() {
       setDrifts(j.drifts || []);
       load();
     } finally { setSentinelaBusy(false); }
+  };
+
+  const runLearning = async () => {
+    setLearningBusy(true);
+    setNotice('Processando somente as conversas novas…');
+    try {
+      const response = await fetch('/api/admin/atlas/espelho/run', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: '{}',
+      });
+      const result = await response.json().catch(() => ({}));
+      setNotice(response.ok && result.ok
+        ? `Aprendizado atualizado: ${Number(result.processed || result.distilled || 0)} sessão(ões) nova(s).`
+        : 'Não foi possível processar o aprendizado agora.');
+      load();
+    } catch {
+      setNotice('Não foi possível processar o aprendizado agora.');
+    } finally {
+      setLearningBusy(false);
+    }
   };
 
   const load = useCallback(() => {
@@ -563,6 +585,9 @@ export default function AtlasPage() {
           </div>
         </div>
         <div style={{ display: 'flex', gap: 8 }}>
+          <button onClick={runLearning} disabled={learningBusy} style={S.btn} title="Processa somente os dados novos observados">
+            <Workflow size={14} /> {learningBusy ? 'Processando…' : 'Processar aprendizado agora'}
+          </button>
           <button onClick={runSentinela} disabled={sentinelaBusy} style={S.btn} title="Tece tudo e checa se alguma seguradora mudou o menu">
             <AlertTriangle size={14} /> {sentinelaBusy ? 'Verificando…' : 'Sentinela'}
           </button>
