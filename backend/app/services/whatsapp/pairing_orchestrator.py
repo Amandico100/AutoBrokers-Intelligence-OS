@@ -784,7 +784,12 @@ class PairingOrchestrator:
         redis = await self._redis()
         lock_value = secrets.token_hex(12)
         lock_key = self._lock_key(company_id, purpose)
-        acquired = await redis.set(lock_key, lock_value, nx=True, ex=SETUP_DEADLINE_SECONDS + 5)
+        acquired = await redis.set(
+            lock_key,
+            lock_value,
+            nx=True,
+            ex=int(SETUP_DEADLINE_SECONDS) + 5,
+        )
         if not acquired:
             current = self._decode(await redis.get(self._key(company_id, purpose)))
             if current and current.get("state") not in TERMINAL_STATES:

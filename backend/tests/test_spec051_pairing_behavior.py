@@ -34,6 +34,9 @@ class FakeRedis:
         return self.values.get(key)
 
     async def set(self, key, value, nx=False, ex=None):
+        assert ex is None or isinstance(ex, (int, timedelta)), (
+            "redis-py only accepts int or timedelta for ex"
+        )
         if nx and key in self.values:
             return False
         self.values[key] = value
