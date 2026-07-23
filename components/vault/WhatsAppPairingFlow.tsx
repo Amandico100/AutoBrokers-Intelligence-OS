@@ -30,12 +30,23 @@ export function WhatsAppPairingFlow({ onConnected }: { onConnected?: () => void 
     pollTimerRef.current = null;
   }, []);
 
+  const resetToStart = useCallback(() => {
+    stopPolling();
+    sessionStorage.removeItem(STORAGE_KEY);
+    if (!mountedRef.current) return;
+    setPairing(null);
+    setSecondsLeft(null);
+  }, [stopPolling]);
+
   const applyState = useCallback((next: PairingState) => {
     if (!mountedRef.current) return;
     setPairing(next);
-    if (next.attempt_id) sessionStorage.setItem(STORAGE_KEY, next.attempt_id);
-    if (next.state === 'connected' || next.state === 'already_connected') {
+    if (TERMINAL.has(next.state)) {
       sessionStorage.removeItem(STORAGE_KEY);
+    } else if (next.attempt_id) {
+      sessionStorage.setItem(STORAGE_KEY, next.attempt_id);
+    }
+    if (next.state === 'connected' || next.state === 'already_connected') {
       onConnected?.();
     }
   }, [onConnected]);
@@ -48,13 +59,17 @@ export function WhatsAppPairingFlow({ onConnected }: { onConnected?: () => void 
         `/api/dashboard/whatsapp-channel?action=pairing&attempt_id=${encodeURIComponent(attemptId)}`,
         { cache: 'no-store' },
       );
-      const json = (await response.json().catch(() => ({}))) as PairingState;
+      const json = (await response.json().catch(() => ({}))) as PairingState & { detail?: string };
       if (!response.ok) {
-        if (response.status === 404) sessionStorage.removeItem(STORAGE_KEY);
+        const detail = String(json.detail || '');
+        if (response.status === 404 || detail === 'pairing_not_found') {
+          resetToStart();
+          return;
+        }
         applyState({
           attempt_id: attemptId,
           state: response.status === 504 ? 'timed_out' : 'technical_error',
-          error: String((json as { detail?: string }).detail || 'Falha ao consultar a tentativa.'),
+          error: detail || 'Falha ao consultar a tentativa.',
         });
         return;
       }
@@ -71,13 +86,18 @@ export function WhatsAppPairingFlow({ onConnected }: { onConnected?: () => void 
     } finally {
       inFlightRef.current = false;
     }
-  }, [applyState, stopPolling]);
+  }, [applyState, resetToStart, stopPolling]);
 
   const start = useCallback(async (action: 'pairing' | 'retry' = 'pairing') => {
     if (inFlightRef.current) return;
     inFlightRef.current = true;
     setBusy(true);
     stopPolling();
+    if (action === 'pairing') {
+      sessionStorage.removeItem(STORAGE_KEY);
+      setPairing(null);
+      setSecondsLeft(null);
+    }
     try {
       const response = await fetch('/api/dashboard/whatsapp-channel', {
         method: 'POST',
@@ -91,10 +111,15 @@ export function WhatsAppPairingFlow({ onConnected }: { onConnected?: () => void 
       });
       const json = (await response.json().catch(() => ({}))) as PairingState & { detail?: string };
       if (!response.ok) {
+        const detail = String(json.detail || json.error || '');
+        if (response.status === 404 || detail === 'pairing_not_found') {
+          resetToStart();
+          return;
+        }
         applyState({
-          attempt_id: pairing?.attempt_id,
+          attempt_id: action === 'retry' ? pairing?.attempt_id : undefined,
           state: response.status === 409 ? 'recoverable_error' : response.status === 504 ? 'timed_out' : 'technical_error',
-          error: String(json.detail || json.error || 'Não foi possível iniciar o pareamento.'),
+          error: detail || 'Não foi possível iniciar o pareamento.',
         });
         return;
       }
@@ -106,12 +131,16 @@ export function WhatsAppPairingFlow({ onConnected }: { onConnected?: () => void 
         );
       }
     } catch {
-      applyState({ attempt_id: pairing?.attempt_id, state: 'provider_unavailable', error: 'Falha de comunicação com o servidor.' });
+      applyState({
+        attempt_id: action === 'retry' ? pairing?.attempt_id : undefined,
+        state: 'provider_unavailable',
+        error: 'Falha de comunicação com o servidor.',
+      });
     } finally {
       inFlightRef.current = false;
       setBusy(false);
     }
-  }, [applyState, pairing?.attempt_id, phoneMode, phoneNumber, poll, stopPolling]);
+  }, [applyState, pairing?.attempt_id, phoneMode, phoneNumber, poll, resetToStart, stopPolling]);
 
   const cancel = useCallback(async () => {
     if (!pairing?.attempt_id || inFlightRef.current) return;
@@ -134,7 +163,6 @@ export function WhatsAppPairingFlow({ onConnected }: { onConnected?: () => void 
         return;
       }
       applyState(json.state ? json : { attempt_id: pairing.attempt_id, state: 'cancelled' });
-      if ((json.state || 'cancelled') === 'cancelled') sessionStorage.removeItem(STORAGE_KEY);
     } catch {
       applyState({
         attempt_id: pairing.attempt_id,
@@ -177,7 +205,7 @@ export function WhatsAppPairingFlow({ onConnected }: { onConnected?: () => void 
       <PairingStateView
         pairing={pairing}
         secondsLeft={secondsLeft}
-        onRetry={() => void start(pairing.attempt_id ? 'retry' : 'pairing')}
+        onRetry={() => void start(TERMINAL.has(pairing.state) ? 'pairing' : pairing.attempt_id ? 'retry' : 'pairing')}
         onCancel={() => void cancel()}
         onContinuePasskey={() => pairing.attempt_id && void poll(pairing.attempt_id)}
       />
