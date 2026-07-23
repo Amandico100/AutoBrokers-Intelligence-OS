@@ -1,3 +1,7 @@
+> [!WARNING]
+> **STATUS: PARCIALMENTE SUPERADA PELA SPEC-052.**  
+> Esta SPEC permanece válida como histórico e fundação das três camadas, mas a arquitetura soberana de cérebro único, Knowledge Global, memória, Context Assembly, aprendizagem e ferramentas está em `SPEC-052-cerebro-cognitivo-unificado-autobrokers.md`. Em qualquer conflito, a SPEC-052 prevalece.
+
 # SPEC-044 — Três Camadas: Global · Corretora · Usuário (fundação backend)
 
 > Aprovada pelo founder em 20/07/2026. Modelo copiado do que funciona nas
@@ -9,7 +13,7 @@
 ## O modelo (regra de decisão)
 
 "Se a pessoa sair da corretora amanhã, isso deve continuar existindo para o
-time?" SIM → 🏢 corretora. NÃO → 👤 usuário. Conteúdo da plataforma → 🌐 global.
+ time?" SIM → 🏢 corretora. NÃO → 👤 usuário. Conteúdo da plataforma → 🌐 global.
 
 | Recurso | 🌐 Global | 🏢 Corretora | 👤 Usuário |
 |---|---|---|---|
