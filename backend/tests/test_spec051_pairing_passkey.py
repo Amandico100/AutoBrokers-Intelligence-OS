@@ -83,7 +83,7 @@ def test_api_proxy_and_modal_contracts():
     assert "setInterval" not in flow
     assert "setTimeout" in flow and "poll_after_ms" in flow
     assert "inFlightRef" in flow and "attempt_id" in flow
-    assert "pairing.attempt_id ? 'retry' : 'pairing'" in flow
+    assert "TERMINAL.has(pairing.state) ? 'pairing'" in flow
     assert "if (!response.ok)" in flow and "pairing_state_busy" in flow
     assert "pairing_code" in view and "Código de pareamento" in view
 
@@ -110,6 +110,17 @@ def test_api_proxy_and_modal_contracts():
 
     assert 'detail="observer_channel_not_paired"' in api
     assert '"unpaired": True' in api
+
+
+def test_expired_or_missing_attempt_returns_to_clean_start():
+    flow = (WEB / "components/vault/WhatsAppPairingFlow.tsx").read_text(encoding="utf-8")
+
+    assert "if (TERMINAL.has(next.state))" in flow
+    assert "sessionStorage.removeItem(STORAGE_KEY)" in flow
+    assert "response.status === 404 || detail === 'pairing_not_found'" in flow
+    assert "resetToStart();" in flow
+    assert "setPairing(null)" in flow
+    assert "TERMINAL.has(pairing.state) ? 'pairing'" in flow
 
 
 def test_helper_is_versioned_and_origin_restricted():
@@ -149,6 +160,7 @@ def test_twelve_modal_cases():
 if __name__ == "__main__":
     test_pairing_state_contract_and_provider_normalization()
     test_api_proxy_and_modal_contracts()
+    test_expired_or_missing_attempt_returns_to_clean_start()
     test_helper_is_versioned_and_origin_restricted()
     test_twelve_modal_cases()
-    print("PASS: SPEC-051 pairing/passkey contracts (12 modal cases)")
+    print("PASS: SPEC-051 pairing/passkey contracts (12 modal cases + stale-attempt recovery)")
