@@ -1,6 +1,6 @@
 ---
 > **Status:** canonical  
-> **Versão:** 1.7 — Skill Registry & Tool Gateway autorizados  
+> **Versão:** 1.8 — Artifact Hub & Report Studio autorizados  
 > **Última atualização:** 2026-07-24  
 > **Produto:** AutoBrokers.ai  
 > **Sistema:** AutoBrokers Intelligence OS  
@@ -28,9 +28,12 @@ Esta pasta é a fonte de verdade documental ativa do AutoBrokers.ai.
 5. [`specs/SPEC-056-skill-registry-tool-gateway.md`](specs/SPEC-056-skill-registry-tool-gateway.md)  
    Governa e autoriza o Skill Registry, Capability Packs, Tool Definitions/Releases, Tool Gateway único, seleção dinâmica e migração de native/HTTP/MCP/Portal/delegation.
 
-6. SPECs posteriores explicitamente subordinadas às SPECs 052–056.
+6. [`specs/SPEC-057-artifact-hub-report-studio.md`](specs/SPEC-057-artifact-hub-report-studio.md)  
+   Governa e autoriza Artifact Hub, Report Studio, templates versionados, renderer determinístico, relatórios web/PDF, XLSX, CSV, PPTX, DOCX, gráficos, Evidence Packs, compartilhamento e entrega.
 
-7. ADRs, SPECs e relatórios históricos apenas quando não houver conflito.
+7. SPECs posteriores explicitamente subordinadas às SPECs 052–057.
+
+8. ADRs, SPECs e relatórios históricos apenas quando não houver conflito.
 
 Leia também o índice detalhado em [`specs/README.md`](specs/README.md).
 
@@ -46,6 +49,7 @@ Leia também o índice detalhado em [`specs/README.md`](specs/README.md).
 - **Capability Registry** governa poderes.
 - **Skill Registry** governa procedimentos versionados.
 - **Tool Gateway** governa seleção e execução das ferramentas.
+- **Artifact Hub** governa resultados, versões, renders, compartilhamento e entrega.
 - **Vault** governa segredos e conexões.
 - **ResultVision / Agent OS histórico** são referências de domínio, não runtimes ativos.
 
@@ -65,6 +69,8 @@ Artifact é resultado de primeira classe.
 Vault governa segredos.
 Capability Registry governa acesso.
 Tool Gateway governa todas as famílias de tools.
+Artifact Hub governa todos os novos entregáveis.
+MinIO privado armazena bytes; Supabase guarda metadata e autoridade.
 Schema e migrations são governados pela SPEC-054.
 ```
 
@@ -90,6 +96,7 @@ Schema e migrations são governados pela SPEC-054.
 | `audits/AUDIT-SPEC-054-foundation-hardening-schema-governance-2026-07-24.md` | Auditoria read-only obrigatória antes da SPEC-054. |
 | `specs/SPEC-055-durable-work-runs-queue-checkpoints-hitl.md` | Execução durável de lançamento. |
 | `specs/SPEC-056-skill-registry-tool-gateway.md` | Skills versionadas e Tool Gateway único de lançamento. |
+| `specs/SPEC-057-artifact-hub-report-studio.md` | Artifacts e Report Studio de lançamento, com Visual Acceptance Pack obrigatório. |
 | `runbooks/RUNBOOK-PAREAMENTO-WHATSAPP-CORRETORA.md` | Pareamento de corretoras com baixo atrito. |
 | `runbooks/RUNBOOK-PASSKEY-WHATSAPP.md` | Fluxo de passkey. |
 | `runbooks/RUNBOOK-EVOLUTION-GO-POOL-POSTGRES.md` | Diagnóstico do pool Postgres Evolution Go. |
@@ -102,6 +109,8 @@ As SPECs 002 e 019 continuam como fundação histórica de Auxiliares e Rotinas,
 
 A SPEC-014 continua como fundação histórica do Capability Registry, mas a SPEC-056 prevalece em Skill Releases, Capability Packs, Tool Definitions/Releases, seleção dinâmica, Tool Gateway e cutover de autoridades legadas.
 
+Relatórios textuais, exports isolados, PDFs avulsos e templates espalhados continuam como evidência histórica, mas a SPEC-057 prevalece em Artifact Hub, versões, renderers, templates, Report Studio, compartilhamento e entrega.
+
 ## Regra operacional
 
 Quando documentos canônicos divergirem:
@@ -112,6 +121,7 @@ SPEC-052
 → SPEC-054 para schema e segurança de fundação
 → SPEC-055 para execução durável
 → SPEC-056 para Skills, capabilities e tools
+→ SPEC-057 para artifacts, renderers, relatórios e entregas
 → SPEC subordinada mais nova e explícita
 → ADR aplicável
 → documento histórico
