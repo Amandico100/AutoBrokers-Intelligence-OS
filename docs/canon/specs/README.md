@@ -22,6 +22,10 @@
 - `SPEC-061` — Portal Admin Control Plane;
 - `SPEC-062` — Evals, Billing, Rollout & Production Readiness.
 
+## Auditoria preparatória da SPEC-054
+
+- [`../audits/AUDIT-SPEC-054-foundation-hardening-schema-governance-2026-07-24.md`](../audits/AUDIT-SPEC-054-foundation-hardening-schema-governance-2026-07-24.md) — censo read-only do Supabase e da `main`, cobrindo schema vivo, migrations, RLS, funções, Storage, multi-tenancy, SSRF, MCP, Authority Strict, idempotência, performance, rollout e critérios de aceite. Esta auditoria deve ser lida antes de escrever ou executar a SPEC-054.
+
 ## SPECs parcialmente superadas
 
 As seguintes SPECs permanecem disponíveis como histórico e detalhamento técnico, mas não são mais autoridade soberana quando houver conflito:
