@@ -1,6 +1,6 @@
 ---
 > **Status:** canonical  
-> **Versão:** 1.4 — Cérebro Unificado + Work OS  
+> **Versão:** 1.5 — Foundation Hardening autorizado  
 > **Última atualização:** 2026-07-24  
 > **Produto:** AutoBrokers.ai  
 > **Sistema:** AutoBrokers Intelligence OS  
@@ -19,9 +19,12 @@ Esta pasta é a fonte de verdade documental ativa do AutoBrokers.ai.
 2. [`specs/SPEC-053-autobrokers-work-os-core-harness.md`](specs/SPEC-053-autobrokers-work-os-core-harness.md)  
    Governa o Work OS: Core Harness, Skills, Tool Gateway, execução durável, Auxiliares, Rotinas, approvals, artifacts e Portal Admin Control Plane.
 
-3. SPECs posteriores explicitamente subordinadas às SPECs 052 e 053.
+3. [`specs/SPEC-054-foundation-hardening-schema-governance.md`](specs/SPEC-054-foundation-hardening-schema-governance.md)  
+   Governa e autoriza a implementação do fechamento P0, Storage privado, baseline reproduzível, integridade multi-tenant, hardening de HTTP/MCP, Authority Strict progressivo e idempotência preparatória.
 
-4. ADRs, SPECs e relatórios históricos apenas quando não houver conflito.
+4. SPECs posteriores explicitamente subordinadas às SPECs 052, 053 e 054.
+
+5. ADRs, SPECs e relatórios históricos apenas quando não houver conflito.
 
 Leia também o índice detalhado em [`specs/README.md`](specs/README.md).
 
@@ -49,6 +52,7 @@ Work Run é execução.
 Artifact é resultado de primeira classe.
 Vault governa segredos.
 Capability Registry governa acesso.
+Schema e migrations são governados pela SPEC-054.
 ```
 
 ## Documentos canônicos principais
@@ -69,6 +73,8 @@ Capability Registry governa acesso.
 | `specs/SPEC-051-evolution-go-pareamento-passkey-observador.md` | Evolution Go, QR/passkey, Observador silencioso e aprendizado incremental. |
 | `specs/SPEC-052-cerebro-cognitivo-unificado-autobrokers.md` | Cérebro cognitivo unificado e soberano. |
 | `specs/SPEC-053-autobrokers-work-os-core-harness.md` | Work OS e Harness avançado soberano. |
+| `specs/SPEC-054-foundation-hardening-schema-governance.md` | Hardening de fundação autorizado para execução em três blocos macro. |
+| `audits/AUDIT-SPEC-054-foundation-hardening-schema-governance-2026-07-24.md` | Auditoria read-only obrigatória antes da execução da SPEC-054. |
 | `runbooks/RUNBOOK-PAREAMENTO-WHATSAPP-CORRETORA.md` | Pareamento de corretoras com baixo atrito. |
 | `runbooks/RUNBOOK-PASSKEY-WHATSAPP.md` | Fluxo de passkey. |
 | `runbooks/RUNBOOK-EVOLUTION-GO-POOL-POSTGRES.md` | Diagnóstico do pool Postgres Evolution Go. |
@@ -84,7 +90,9 @@ As SPECs 002 e 019 continuam como fundação histórica de Auxiliares e Rotinas,
 Quando documentos canônicos divergirem:
 
 ```text
-SPEC-052 / SPEC-053
+SPEC-052
+→ SPEC-053
+→ SPEC-054 para schema, segurança de fundação, Storage, egress, MCP e Authority
 → SPEC subordinada mais nova e explícita
 → ADR aplicável
 → documento histórico
