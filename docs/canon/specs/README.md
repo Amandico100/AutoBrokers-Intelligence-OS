@@ -7,13 +7,13 @@
 
 1. `SPEC-052-cerebro-cognitivo-unificado-autobrokers.md` — arquitetura cognitiva soberana: conhecimento, memória, contexto, aprendizagem e cérebro unificado.
 2. `SPEC-053-autobrokers-work-os-core-harness.md` — arquitetura soberana do Work OS: Core Harness, Skills, Tool Gateway, execução durável, Auxiliares, Rotinas, artifacts e Control Plane.
-3. [`SPEC-054-foundation-hardening-schema-governance.md`](SPEC-054-foundation-hardening-schema-governance.md) — SPEC canônica e autorizada para execução: fechamento P0, Storage privado, baseline reproduzível, integridade multi-tenant, hardening de HTTP/MCP, Authority Strict progressivo e idempotência preparatória.
-4. SPECs posteriores explicitamente subordinadas às SPECs 052, 053 e 054.
-5. SPECs anteriores apenas quando não houver conflito.
+3. [`SPEC-054-foundation-hardening-schema-governance.md`](SPEC-054-foundation-hardening-schema-governance.md) — fechamento P0, Storage privado, baseline reproduzível, integridade multi-tenant, hardening de HTTP/MCP, Authority Strict progressivo e idempotência preparatória.
+4. [`SPEC-055-durable-work-runs-queue-checkpoints-hitl.md`](SPEC-055-durable-work-runs-queue-checkpoints-hitl.md) — execução universal de lançamento: Work Runs, steps, attempts, Redis Streams, worker Smith, leases, checkpoints, HITL, approvals, side effects idempotentes e integração com Rotinas, Auxiliares e Portais.
+5. SPECs posteriores explicitamente subordinadas às SPECs 052–055.
+6. SPECs anteriores apenas quando não houver conflito.
 
 ## Próxima sequência subordinada
 
-- `SPEC-055` — Durable Work Runs, Queue, Checkpoints & HITL;
 - `SPEC-056` — Skill Registry & Tool Gateway;
 - `SPEC-057` — Artifact Hub & Report Studio;
 - `SPEC-058` — Auxiliary & Routine Factory;
@@ -25,9 +25,13 @@
 ## SPEC-054 — auditoria e execução
 
 - [`../audits/AUDIT-SPEC-054-foundation-hardening-schema-governance-2026-07-24.md`](../audits/AUDIT-SPEC-054-foundation-hardening-schema-governance-2026-07-24.md) — censo read-only do Supabase e da `main`, cobrindo schema vivo, migrations, RLS, funções, Storage, multi-tenancy, SSRF, MCP, Authority Strict, idempotência, performance, rollout e critérios de aceite.
-- [`SPEC-054-foundation-hardening-schema-governance.md`](SPEC-054-foundation-hardening-schema-governance.md) — documento de implementação autorizado. Deve ser executado em três blocos macro, com APPLY/VERIFY/ROLLBACK, gates automáticos e canário Amandus → Resulta → AutoFleet.
+- [`SPEC-054-foundation-hardening-schema-governance.md`](SPEC-054-foundation-hardening-schema-governance.md) — documento de implementação autorizado em três blocos macro, com APPLY/VERIFY/ROLLBACK e canário Amandus → Resulta → AutoFleet.
 
-A auditoria deve ser lida antes da SPEC. A SPEC governa a implementação.
+## SPEC-055 — execução durável de lançamento
+
+- [`SPEC-055-durable-work-runs-queue-checkpoints-hitl.md`](SPEC-055-durable-work-runs-queue-checkpoints-hitl.md) — documento de implementação autorizado em três blocos macro. Ao final, `work_runs` deve ser a autoridade universal ativa, o worker deve estar em produção e os caminhos de Rotinas, Auxiliares e Portais devem criar/atualizar Work Runs sem execução paralela.
+
+A SPEC-055 não é um laboratório. Testes, canários e flags são gates internos da mesma entrega de lançamento e não justificam deixar a funcionalidade permanentemente desligada.
 
 ## SPECs parcialmente superadas
 
@@ -43,24 +47,25 @@ As seguintes SPECs permanecem disponíveis como histórico e detalhamento técni
 - `SPEC-040-ESPELHO-VISAO-OPERACIONAL-E-CENTRAL-COMPLETA.md` e documentos relacionados;
 - `SPEC-044-tres-camadas-global-corretora-usuario.md`.
 
-### Work OS, Auxiliares e Rotinas — prevalece SPEC-053
+### Work OS, Auxiliares e Rotinas — prevalecem SPEC-053 e SPEC-055
 
 - `../SPEC-002-auxiliares-runtime-smith.md`, somente onde conflitar com a ontologia e o modelo universal de Work Run;
 - `SPEC-019-rotinas-auxiliares-claude-parity.md`, especialmente a equivalência antiga entre Auxiliares e Rotinas;
-- seções históricas de `SPEC-034` sobre harness quando conflitarem com o Tool Gateway, Skills, HITL ou execução durável.
+- seções históricas de `SPEC-034` sobre harness quando conflitarem com Tool Gateway, HITL ou execução durável;
+- `routine_runs`, `auxiliary_runs` e `portal_jobs` não podem ser interpretados como autoridades universais após a execução da SPEC-055.
 
 ## Regra para agentes de desenvolvimento
 
 ```text
 Leia a SPEC-052 para conhecimento, memória, contexto e aprendizagem.
-Leia a SPEC-053 para harness, Skills, tools, MCPs, Auxiliares, Rotinas,
-Work Runs, approvals, artifacts e Portal Admin.
-Leia a SPEC-054 antes de alterar schema, migrations, RLS, Storage,
-service-role, HTTP egress, MCP sandbox, Authority Strict ou idempotência.
+Leia a SPEC-053 para Work OS, ontologia, Skills, tools, Auxiliares e artifacts.
+Leia a SPEC-054 antes de alterar schema, segurança, Storage, egress ou Authority.
+Leia a SPEC-055 antes de alterar filas, workers, Work Runs, checkpoints,
+approvals, Rotinas, Auxiliares, Portal Jobs, retry, cancelamento ou idempotência.
 
 Não crie RAG, memória, publisher, runtime, scheduler, executor,
-Artifact Hub ou catálogo paralelo.
-Não use decisões históricas que contradigam as SPECs 052, 053 e 054.
+fila, Work Run, approval, Artifact Hub ou catálogo paralelo.
+Não use decisões históricas que contradigam as SPECs 052–055.
 Em ambiguidade, pare e solicite decisão do CEO/Founder.
 ```
 
