@@ -1,6 +1,10 @@
+> [!WARNING]
+> **STATUS: PARCIALMENTE SUPERADA PELA SPEC-053.**  
+> Esta SPEC continua válida ao afirmar que Auxiliares são camada de produto, Smith é o runtime e Vault governa segredos/permissões. Porém, a ontologia atual, o modelo universal de `Work Run`, a separação entre Auxiliar, Skill, Workflow e Rotina, a execução durável, approvals e artifacts são governados por `specs/SPEC-053-autobrokers-work-os-core-harness.md`. Em qualquer conflito, as SPECs 052 e 053 prevalecem.
+
 # SPEC-002 — Auxiliares usam Smith Agents/Subagents como runtime
 
-> **Status:** CANÔNICO (lei do projeto). Toda IA (Claude/Codex/qualquer chat) DEVE ler isto antes de mexer em Auxiliares, Agents ou Vault.
+> **Status:** CANÔNICO HISTÓRICO, subordinado às SPECs 052 e 053. Toda IA deve ler a arquitetura mais recente antes de mexer em Auxiliares, Agents, Rotinas, Skills ou Vault.
 > **Data:** 2026-06-09 · Relacionado: ADR-001 (runtime), ADR-002 (Vault), UX-007 (auxiliares), ROADMAP-001.
 
 ## 1. Decisão oficial
@@ -15,21 +19,25 @@ Vault                  = GOVERNANÇA (segredos, conectores, permissões, HITL, a
 Estávamos caminhando para uma estrutura paralela de Auxiliares que reimplementaria inteligência/execução por fora — desperdiçando a estrutura pronta do Smith (agents, subagents, memória, tools, MCP, segurança, delegations, RAG, logs). Isto fica **proibido**.
 
 ## 3. Camadas
-- **Produto (Auxiliares):** `auxiliary_templates` (catálogo global, Admin), `tenant_auxiliaries` (instalação por corretora), `auxiliary_runs` (histórico), Galeria/Meus/Execuções, Admin → Auxiliares Globais.
+- **Produto (Auxiliares):** `auxiliary_templates` (catálogo global, Admin), `tenant_auxiliaries` (instalação por corretora), `auxiliary_runs` (histórico legado), Galeria/Meus/Execuções, Admin → Auxiliares Globais.
 - **Runtime (Smith):** `agents`/subagents por empresa, `agent_delegations`, tools (`agent_http_tools`/MCP/UCP), memória, segurança, `backend/app/api/agents.py` (`POST /api/agents/` via `AgentService`).
 - **Governança (Vault):** `connector_templates`, `tenant_connections`, `permission_grants`, `approval_requests`, `vault_audit_log`; segredos cifrados; HITL; auditoria.
+
+> Nota atual: `auxiliary_runs` permanece como histórico/compatibilidade até migração governada para o modelo universal de Work Run definido pela SPEC-053.
 
 ## 4. Tipos de runtime (declarados no template)
 Todo Auxiliar avançado DEVE declarar runtime em `auxiliary_templates.default_config.runtime.kind`:
 - **`specific_executor`** — tarefa fixa com executor dedicado já implementado (ex.: `resumo-atendimentos`, `follow-up-whatsapp`). `{ "kind":"specific_executor", "executor":"<slug>" }`.
 - **`smith_agent_blueprint`** — usa um Agent/Subagent Smith como motor. Guarda o **blueprint** (sem segredos). `{ "kind":"smith_agent_blueprint", "agent_blueprint": { name, slug, is_subagent, allow_direct_chat, llm_provider, llm_model, agent_system_prompt, ... } }`.
-- **`workflow`** — corredor/workflow (fase futura). `{ "kind":"workflow", "workflow":"<id>" }`.
+- **`workflow`** — corredor/workflow. `{ "kind":"workflow", "workflow":"<id>" }`.
 - **`none`** — sem runtime técnico ainda (em preparação).
+
+A SPEC-053 permite que um Auxiliar combine Skills, workflow, executor, Agent/Subagent e Rotinas; estes kinds são a representação histórica atual e devem ser migrados sem criar motor paralelo.
 
 ## 5. Modelo global × por empresa
 - O **template global** guarda apenas um **blueprint** (modelo), **não** um agent compartilhado.
 - Templates globais **NÃO compartilham um único agent** entre empresas.
-- O **agent/subagent real é criado por empresa** ao instalar.
+- O **agent/subagent real é criado por empresa** ao instalar quando o runtime exigir Agent dedicado.
 
 ## 6. Instalação
 Ao instalar um Auxiliar global numa corretora (`POST /api/admin/auxiliaries/templates/[id]/install`):
@@ -39,123 +47,114 @@ Ao instalar um Auxiliar global numa corretora (`POST /api/admin/auxiliaries/temp
 4. Se `kind = specific_executor`: grava `config.runtime.kind='specific_executor'` (não cria agent).
 5. Se `kind = none/workflow`: instala sem agent.
 6. **Idempotência:** se `config.runtime.agent_id` já existe, NÃO cria outro agent.
+7. A execução futura deve convergir para `work_runs`, preservando compatibilidade até migração aprovada.
 
 ## 7. Personalização por corretora
-O agent criado é da corretora — ela pode evoluí-lo em **Admin → Empresa → Agents** (prompt, modelo, tools, memória, segurança). O template global permanece como modelo; mudanças por corretora vivem no agent dela.
+O runtime local pode ser configurado conforme permissões, conexão, dados, tom e necessidades da corretora. O template global permanece como modelo; mudanças locais não podem contaminar automaticamente o template global.
 
 ## 8. Regra de segredos (OBRIGATÓRIA)
 Campos **proibidos** em blueprints/config/templates/logs/frontend/relatórios:
 `llm_api_key, vision_api_key, token, client_token, access_token, refresh_token, api_key, password, secret, credential`.
-Qualquer blueprint extraído de um agent existente DEVE passar por **sanitização profunda** (`sanitizeBlueprint`). Segredos vivem **só no Vault** (cifrados) e nos campos próprios do agent (cifrados pelo runtime), nunca em `auxiliary_templates.default_config` nem `tenant_auxiliaries.config`.
+Qualquer blueprint extraído de um agent existente DEVE passar por **sanitização profunda** (`sanitizeBlueprint`). Segredos vivem **só no Vault** (cifrados) e nos campos próprios governados pelo runtime, nunca em `auxiliary_templates.default_config` nem `tenant_auxiliaries.config`.
 
 ## 9. WhatsApp/Vault como caminho oficial
 - Caminho oficial de credenciais WhatsApp: **Personalização → Conectores (Vault)** — token cifrado, `tenant_connection` → `integrations.id`, permissões, HITL, dry-run, auditoria.
-- A aba de WhatsApp no **Agent Admin antigo** é **legado técnico**: não é caminho oficial para segredos; a rota `/api/admin/integrations` **já bloqueia** gravação de `token`/`client_token` (39A4.1).
+- A aba de WhatsApp no **Agent Admin antigo** é **legado técnico**: não é caminho oficial para segredos.
 
 ## 10. O que é PROIBIDO
 - Criar motor paralelo de execução de Auxiliares.
 - Compartilhar um agent global entre empresas.
 - Salvar segredos em `default_config`/`config`/logs/frontend.
-- Usar a rota antiga de WhatsApp como caminho oficial de segredo.
-- Criar Auxiliar avançado **sem declarar runtime**.
-- Rodar SQL/alterar schema sem aprovação do Architect/fundador.
+- Usar rota antiga como caminho oficial de segredo.
+- Criar Auxiliar avançado sem runtime, Skill ou workflow declarado.
+- Tratar Rotina como sinônimo de Auxiliar.
+- Criar história de execução paralela ao Work Run canônico após sua implantação.
+- Rodar SQL/alterar schema sem aprovação e inventário real.
 
 ## 11. Como novas IAs devem proceder
-1. Ler esta SPEC + ADR-001/ADR-002 + UX-007 antes de mexer.
-2. Auxiliar = produto; runtime = Smith agent/executor/workflow.
-3. Reusar `POST /api/agents/` para criar agents (nunca insert cru em `agents`).
+1. Ler SPEC-052 + SPEC-053 + esta SPEC + ADR-001/ADR-002 + UX-007.
+2. Auxiliar = produto; runtime = Smith; Rotina = gatilho; Skill = procedimento; Work Run = execução.
+3. Reusar serviços canônicos; nunca insert cru em `agents`.
 4. Reusar Vault para segredos/conectores/HITL.
-5. Sem schema novo sem aprovação; preferir JSON (`default_config`/`config`) resiliente.
+5. Não criar schema paralelo.
 6. Sanitizar qualquer blueprint; nunca copiar segredo.
+7. Planejar migração progressiva de `auxiliary_runs` para Work Run.
 
 ## 12. Checklist antes de criar um novo Auxiliar
-- [ ] Tem `auxiliary_template` (catálogo) com `slug` único?
-- [ ] `default_config.runtime.kind` declarado (`specific_executor` | `smith_agent_blueprint` | `workflow` | `none`)?
-- [ ] Se `smith_agent_blueprint`: blueprint **sem segredos**? agent criado **por empresa** na instalação?
-- [ ] Ações externas passam por **Vault + HITL** (approval_request)?
-- [ ] Conectores/segredos no **Vault**, não no modal antigo?
-- [ ] Sem motor paralelo? Sem SQL/schema sem aprovação?
-- [ ] Execuções aparecem em `auxiliary_runs`?
+- [ ] Tem `auxiliary_template` com `slug` único?
+- [ ] Outcome e Skill estão definidos?
+- [ ] Runtime necessário está declarado?
+- [ ] Conectores e capabilities estão declarados?
+- [ ] Blueprint sem segredos?
+- [ ] Ações externas passam por Vault + approval executável?
+- [ ] Há rotina somente quando houver gatilho/agendamento?
+- [ ] Execuções convergem para Work Run?
+- [ ] Sem motor paralelo?
+- [ ] Há evals, custo e Admin Projection?
 
 ---
 
-# Apêndice A — Guia detalhado (41A.2)
+# Apêndice A — Guia histórico detalhado (41A.2)
 
-## A1. Fluxo completo de criação
-1. **Agent técnico (experimental/sandbox)** — crie/teste um Agent/Subagent em **Admin → Empresas → Agents** (prompt, modelo, tools, memória, segurança).
-2. **Publicar como template** — **Admin → Auxiliares Globais → "Publicar Agent existente"**: extrai um **blueprint sanitizado** (sem segredos) e cria `auxiliary_templates` com `runtime.kind='smith_agent_blueprint'`.
-3. **Instalar por corretora** — instala `tenant_auxiliaries`; se blueprint, cria/vincula um Agent **da corretora**.
-4. **Personalizar localmente** — a corretora evolui o agent dela (documentos, tom, horários, integrações) em Admin → Empresa → Agents.
-5. **Executar / Auditar** — execução via runtime; histórico em `auxiliary_runs`; ações externas via Vault + HITL + `vault_audit_log`.
+## A1. Fluxo histórico de criação
+1. **Agent técnico (experimental/sandbox)** — crie/teste um Agent/Subagent em **Admin → Empresas → Agents**.
+2. **Publicar como template** — extrai um blueprint sanitizado e cria `auxiliary_templates`.
+3. **Instalar por corretora** — instala `tenant_auxiliaries`; se blueprint, cria/vincula um Agent da corretora.
+4. **Personalizar localmente** — documentos, tom, horários, integrações e permissões permanecem locais.
+5. **Executar/Auditar** — execução pelo Smith; histórico legado em `auxiliary_runs`, com migração futura para Work Run.
 
 ## A2. Inteligência global × personalização local
-- **Global (viaja no blueprint):** prompts base, regras, playbooks, raciocínio operacional, estrutura de atendimento, guardrails. Curada e versionada.
-- **Local (fica na instância da corretora):** documentos, dados da corretora, tom local, horários, integrações, permissões, carteiras, seguradoras atendidas, contatos.
-- **Conhecimento sensível/local NÃO é global por padrão.** Nunca empacotar dado de uma corretora no template global.
+- **Global:** prompts base, regras, playbooks, Skills, guardrails e estrutura curada/versionada.
+- **Local:** documentos, dados, tom, horários, integrações, permissões, carteiras e contatos.
+- Conhecimento sensível/local não é global por padrão.
 
-## A3. Tipos de Auxiliar (visibilidade)
-- **global** — disponível a todas as corretoras na Galeria.
-- **exclusivo de uma corretora** — `default_config.visibility = { type:'private', company_id }` (filtragem futura na Galeria; por ora pode ser instalado só na empresa).
-- **experimental/sandbox** — `status='draft'` / `is_active=false`.
-- **em preparação** — `runtime.kind='none'` (sem executor/agent ainda).
+## A3. Tipos de Auxiliar
+- **global** — disponível a todas as corretoras;
+- **privado** — exclusivo de tenant;
+- **experimental/sandbox** — draft/inativo;
+- **em preparação** — dependências incompletas.
 
 ## A4. Relação com RAG
-- O blueprint pode **declarar** que exige conhecimento, mas **documentos globais ≠ documentos locais**.
-- O **agent local da corretora** recebe os **documentos locais** dela.
-- **Conhecimento global** deve ser **curado e versionado** (fase 41C). Não misturar conhecimento de corretoras.
+- Blueprint/Skill pode declarar necessidade de conhecimento.
+- Documentos globais e locais permanecem separados pela SPEC-052.
+- Conhecimento sensível/local nunca é global automaticamente.
 
-## A5. Relação com corredores/workflows
-- Corredores/workflows usam **agents/subagents como executores de fases** — `runtime.kind='workflow'`.
-- Corredor **não é** um Auxiliar simples; é orquestração de fases (fase 42A).
+## A5. Relação com workflows e rotinas
+- Workflow coordena fases.
+- Agent/Subagent pode executar fases.
+- Rotina apenas inicia um trabalho.
+- Auxiliar pode combinar essas peças sem virar motor paralelo.
 
-## A6. Regras para novas IAs (decisão de runtime)
-- Tarefa fixa simples → **`specific_executor`**.
-- Precisa de tools/MCP/RAG/memória/persona → **`smith_agent_blueprint`** (Smith Agent/Subagent).
-- Processo com fases → **`workflow`** (corredor).
-- Sempre **declarar runtime** antes de criar; nunca motor paralelo.
+## A6. Decisão de runtime
+- Tarefa fixa → `specific_executor`.
+- Precisa de tools/MCP/RAG/memória → Smith Agent/Subagent ou Skill com tools.
+- Processo com fases → workflow.
+- Pedido recorrente → adicionar Rotina ao Auxiliar/Skill.
 
 ## A7. Como evitar duplicidade
-- Instalação é **idempotente** por `(company_id, slug)`.
-- Publicar um agent existente **da mesma empresa** com "instalar na origem" → **vincula o agent original** (`linked_original:true`), **não cria cópia**.
-- Instalar o mesmo template em **outra empresa** → cria um novo agent a partir do blueprint.
+- Instalação idempotente por `(company_id, slug)`.
+- Agent global nunca compartilhado entre tenants.
+- Work Run será a história universal após migração.
 
-## A8. Segredos (reforço)
-- `FORBIDDEN_SECRET_KEYS` removidos por `sanitizeBlueprint` (profundo) em qualquer publicação.
-- **GET legado** de `/api/admin/integrations` **não retorna** token/client_token — apenas flags (`has_token`, `token_configured`). Caminho oficial de credenciais = **Vault**.
+## A8. Segredos
+- Sanitização profunda obrigatória.
+- Vault é a autoridade.
 
 ---
 
-# Apêndice B — Capability Matrix + Exemplos (41A.3)
+# Apêndice B — Capability Matrix histórica
 
-## B1. Capability Matrix: Agent Orquestrador × SubAgent Especialista
 | Capacidade | Agent Orquestrador | SubAgent Especialista |
 |---|---|---|
-| Modelo (provider/model) | ✅ | ✅ |
-| Prompt / persona | ✅ | ✅ |
+| Modelo | ✅ | ✅ |
+| Prompt/persona | ✅ | ✅ |
 | HTTP Tools | ✅ | ✅ |
 | MCP | ✅ | ✅ |
-| Memória / RAG | ✅ | ✅ (mesmas colunas de agents) |
-| Segurança / guardrails | ✅ | ✅ |
-| Chat direto | ✅ (canal) | ⚠️ só **debug/treino** (`allow_direct_chat`) |
+| Memória/RAG | ✅ | ✅ |
+| Segurança | ✅ | ✅ |
+| Chat direto | ✅ | ⚠️ debug/treino |
 | Widget público | ✅ | ❌ |
-| WhatsApp direto | ✅ (via Vault) | ❌ |
-| Especialistas próprios | ✅ | ❌ (MVP) |
-| Commerce/UCP | ✅ | ❌ (MVP) |
+| WhatsApp direto | ✅ via Vault | ❌ |
+| Especialistas próprios | ✅ | ❌ MVP |
 
-**Orquestrador** conversa e conduz (tem canais). **Especialista** executa tarefa técnica chamada pelo orquestrador (sem canais públicos próprios). Na UI do Admin (`AgentConfigModal`), para `isSubagent=true` ficam **ocultos** Widget/WhatsApp/Commerce/Especialistas; **visíveis** Memória e Segurança.
-
-## B2. Como usar Especialistas/SubAgents
-1. Crie o **Orquestrador** (canal/condução) e os **Especialistas** (subagents) na empresa.
-2. Ligue-os por **delegations** (orquestrador → especialistas).
-3. Cada especialista tem prompt/tools/MCP/memória/segurança próprios; sem canal público.
-4. Publique o **orquestrador** como Auxiliar (blueprint) quando quiser reuso entre corretoras.
-
-## B3. Exemplos canônicos
-1. **Atendimento Assistência Residencial:** Orquestrador (WhatsApp/condução) + Especialista "Triagem de Assistência" (RAG de coberturas + HTTP tool de protocolo) + HITL antes de acionar prestador. Runtime: orquestrador `smith_agent_blueprint`; fases futuras via `workflow`.
-2. **Pesquisa/Prospecção (Firecrawl):** Especialista "Pesquisa" com MCP/HTTP tool de scraping **autorizado** (Firecrawl) — sem credenciais no blueprint (Vault guarda chave). Orquestrador chama o especialista e resume. Sem browser próprio nem scraping fora de tool homologada.
-3. **Sinistro Auto:** Orquestrador + Especialista "Sinistro" (RAG de documentos de sinistro + checklist) → gera rascunho → `approval_request` (HITL) → ação externa só após aprovação (Vault/auditoria).
-
-## B4. Próximo estágio — RAG global × local
-- **Global (curado/versionado):** playbooks, regras de produto, raciocínio — viaja no blueprint/base de conhecimento global.
-- **Local (por corretora):** documentos, carteiras, seguradoras atendidas — ficam no agent local da corretora.
-- Conhecimento **sensível/local nunca é global por padrão**. A camada de Conhecimento/RAG será o batch **41C**.
+O Tool Gateway e os Capability Packs da SPEC-053 passam a governar a exposição real dessas capacidades por trabalho.
