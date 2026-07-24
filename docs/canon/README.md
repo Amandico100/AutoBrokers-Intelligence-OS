@@ -1,56 +1,93 @@
 ---
 > **Status:** canonical  
-> **Versão:** 1.2 — Refoundation, Design & Intelligence Readiness  
-> **Última atualização:** 2026-06-12
+> **Versão:** 1.4 — Cérebro Unificado + Work OS  
+> **Última atualização:** 2026-07-24  
 > **Produto:** AutoBrokers.ai  
 > **Sistema:** AutoBrokers Intelligence OS  
-> **Função:** índice da documentação canônica ativa  
-> **Lei nova:** [SPEC-002](SPEC-002-auxiliares-runtime-smith.md) — Auxiliares usam **Smith Agents/Subagents como runtime** (produto por cima, motor Smith por baixo, Vault governando). Não criar motor paralelo.
-> **Lei nova:** [SPEC-003](SPEC-003-knowledge-rag-memory.md) — arquitetura canônica de **Conhecimento/RAG/Memória** em 8 camadas (global / seguradora / tenant / agent / workflow / case / audit / connector). Reusar o RAG do Smith; **não criar motor de RAG paralelo**.
-> **Lei nova:** [SPEC-004](SPEC-004-agent-intelligence-context-architecture.md) — arquitetura canônica de **Inteligência dos Agentes, papéis, Context Assembly e fronteiras**. AutoBrokers Core, Atendimento, Auxiliares, Corredores, SubAgents, RAG, memória e tools devem permanecer separados e integrados ao runtime Smith.
-> **Lei nova:** [SPEC-005](SPEC-005-atendimento-runtime-architecture.md) — **Atendimento é estado + workflow estruturado** (caso, conversa, corredor, dispatch packet, HITL), executado dentro do Smith. Atendimento **não** é apenas WhatsApp, **não** é RAG e **não** é prompt solto.
-> **Lei nova:** [SPEC-006](SPEC-006-allianz-residencial-corredor-eletricista-mvp.md) — **Allianz Residencial nasce como família de corredor**, com **Eletricista** como primeiro slice MVP (dry-run/HITL), preparada para Encanador, Chaveiro, Desentupimento e Eletrodomésticos sem reescrever o runtime.
->
-> Esta pasta contém a documentação viva que orienta estratégia, UX, runtime, segurança, design e execução.  
-> Documentos históricos em `docs/_archive/` não devem orientar decisões atuais, salvo quando forem explicitamente citados por um documento canônico.
-
+> **Função:** índice principal da documentação canônica ativa
+---
 
 # AutoBrokers Intelligence OS Canon
 
-This folder is the active documentation source of truth for AutoBrokers.ai and the AutoBrokers Intelligence OS.
+Esta pasta é a fonte de verdade documental ativa do AutoBrokers.ai.
 
-The project is being refounded around a clear separation:
+## Autoridade soberana atual
 
-- AutoBrokers.ai is the product.
-- AutoBrokers is the principal broker-facing agent.
-- Smith is the invisible technical runtime engine.
-- ResultVision is historical domain reference.
-- Agent OS / AutoBrokers Intelligence OS V2 is domain brain and architecture reference, not active runtime.
+1. [`specs/SPEC-052-cerebro-cognitivo-unificado-autobrokers.md`](specs/SPEC-052-cerebro-cognitivo-unificado-autobrokers.md)  
+   Governa conhecimento, RAG, memória, Context Assembly, aprendizagem, capabilities e o cérebro cognitivo unificado.
 
-Documents in `docs/audits`, `docs/plans`, `docs/adr`, and `docs/sql` are historical unless they are explicitly migrated into this folder. Archived documents remain available for traceability in `docs/_archive`.
+2. [`specs/SPEC-053-autobrokers-work-os-core-harness.md`](specs/SPEC-053-autobrokers-work-os-core-harness.md)  
+   Governa o Work OS: Core Harness, Skills, Tool Gateway, execução durável, Auxiliares, Rotinas, approvals, artifacts e Portal Admin Control Plane.
 
-## Canonical Documents
+3. SPECs posteriores explicitamente subordinadas às SPECs 052 e 053.
 
-| Document | Purpose |
+4. ADRs, SPECs e relatórios históricos apenas quando não houver conflito.
+
+Leia também o índice detalhado em [`specs/README.md`](specs/README.md).
+
+## Separação oficial
+
+- **AutoBrokers.ai** é o produto.
+- **AutoBrokers** é o agente principal voltado ao corretor.
+- **Smith** é o runtime técnico invisível.
+- **Supabase** é a fonte durável de verdade operacional.
+- **Redis** é transitório: fila, locks, leases e cache.
+- **Qdrant** é índice semântico derivado.
+- **MinIO** armazena documentos e artifacts.
+- **ResultVision / Agent OS histórico** são referências de domínio, não runtimes ativos.
+
+## Leis centrais
+
+```text
+Um único cérebro lógico.
+Um único runtime Smith.
+Nenhum RAG, memória, publisher, scheduler ou executor paralelo.
+Auxiliar é trabalhador de produto.
+Rotina é gatilho.
+Skill é procedimento.
+Work Run é execução.
+Artifact é resultado de primeira classe.
+Vault governa segredos.
+Capability Registry governa acesso.
+```
+
+## Documentos canônicos principais
+
+| Documento | Propósito |
 | --- | --- |
-| `PRD-001-visao-produto.md` | Product vision, audience, modules, MVP and naming rules. |
-| `ADR-001-runtime.md` | Runtime architecture decision and boundaries. |
-| `UX-001-navegacao.md` | Navigation architecture for tenant dashboard and admin global. |
-| `DS-001-design-brief.md` | Design direction brief for Claude Design. Not the final design system. |
-| `UX-007-auxiliares.md` | Initial product and technical direction for Auxiliares. |
-| `ADR-002-vault.md` | Initial decision for Vault, credentials, PII and sensitive data boundaries. |
-| `ADR-003-atendimento.md` | Initial decision for Atendimento and curated domain migration. |
-| `ROADMAP-001-execucao.md` | Execution sequence and responsibility boundaries. |
-| `SPEC-002-auxiliares-runtime-smith.md` | Canonical law: Auxiliares = product; Smith Agents/SubAgents = runtime; Vault = governance. |
-| `SPEC-003-knowledge-rag-memory.md` | Canonical Knowledge/RAG/Memory architecture (8 layers, scope/curadoria/versioning, legacy migration). |
-| `SPEC-004-agent-intelligence-context-architecture.md` | Canonical Agent Intelligence, Context Assembly and Role Architecture. Separates AutoBrokers Core, Atendimento, Auxiliares, Corredores, SubAgents, RAG, memory and tools while preserving Smith. |
-| `SPEC-005-atendimento-runtime-architecture.md` | Canonical Atendimento runtime architecture and Attendance Agent boundary. Defines case, conversation, corridor, dispatch packet, HITL, policy evidence, channel abstraction and MVP/post-MVP boundaries. |
-| `SPEC-006-allianz-residencial-corredor-eletricista-mvp.md` | Canonical Allianz Residential Assistance corridor family and Electrician MVP. Defines subcorridors, phases, slots, guardrails, dispatch packet, readiness and golden tests. |
-| `specs/SPEC-051-evolution-go-pareamento-passkey-observador.md` | Evolution Go versionado, pareamento QR/passkey, modo Observador silencioso e operação incremental dos agentes. |
-| `runbooks/RUNBOOK-PAREAMENTO-WHATSAPP-CORRETORA.md` | Procedimento operacional para parear Resulta e corretoras futuras com baixo atrito. |
-| `runbooks/RUNBOOK-PASSKEY-WHATSAPP.md` | Instalação e uso seguro do assistente de passkey no Chrome/Edge. |
-| `runbooks/RUNBOOK-EVOLUTION-GO-POOL-POSTGRES.md` | Diagnóstico e recuperação do pool Postgres dedicado ao Evolution Go. |
+| `PRD-001-visao-produto.md` | Visão de produto, público, módulos, MVP e naming. |
+| `ADR-001-runtime.md` | Runtime oficial e fronteiras entre produto, Smith e domínio. |
+| `ADR-002-vault.md` | Vault, credenciais, PII e limites de dados sensíveis. |
+| `ADR-003-atendimento.md` | Atendimento e migração curada de domínio. |
+| `UX-001-navegacao.md` | Arquitetura de navegação do tenant e Admin. |
+| `UX-007-auxiliares.md` | Direção histórica de UX de Auxiliares, subordinada à SPEC-053. |
+| `SPEC-002-auxiliares-runtime-smith.md` | Fundação histórica: Auxiliares = produto; Smith = runtime; Vault = governança. Parcialmente superada pela SPEC-053. |
+| `SPEC-005-atendimento-runtime-architecture.md` | Arquitetura de Atendimento, casos, corredores, Evidence Pack e HITL. |
+| `SPEC-006-allianz-residencial-corredor-eletricista-mvp.md` | Corredor Allianz Residencial/Eletricista e expansão da família. |
+| `SPEC-014-capability-registry-knowledge-os.md` | Capability Registry e governança de acesso. |
+| `specs/SPEC-019-rotinas-auxiliares-claude-parity.md` | Fundação histórica do motor de Rotinas. Parcialmente superada pela SPEC-053. |
+| `specs/SPEC-051-evolution-go-pareamento-passkey-observador.md` | Evolution Go, QR/passkey, Observador silencioso e aprendizado incremental. |
+| `specs/SPEC-052-cerebro-cognitivo-unificado-autobrokers.md` | Cérebro cognitivo unificado e soberano. |
+| `specs/SPEC-053-autobrokers-work-os-core-harness.md` | Work OS e Harness avançado soberano. |
+| `runbooks/RUNBOOK-PAREAMENTO-WHATSAPP-CORRETORA.md` | Pareamento de corretoras com baixo atrito. |
+| `runbooks/RUNBOOK-PASSKEY-WHATSAPP.md` | Fluxo de passkey. |
+| `runbooks/RUNBOOK-EVOLUTION-GO-POOL-POSTGRES.md` | Diagnóstico do pool Postgres Evolution Go. |
 
-## Operating Rule
+## Documentos parcialmente superados
 
-When canonical docs and historical docs disagree, `docs/canon` wins.
+As SPECs 003, 004, 008, 010, 034, 040 e 044 continuam como histórico e detalhamento, mas a SPEC-052 prevalece em arquitetura cognitiva.
+
+As SPECs 002 e 019 continuam como fundação histórica de Auxiliares e Rotinas, mas a SPEC-053 prevalece em ontologia, Work Runs, Skills, Tool Gateway, approvals, artifacts e Control Plane.
+
+## Regra operacional
+
+Quando documentos canônicos divergirem:
+
+```text
+SPEC-052 / SPEC-053
+→ SPEC subordinada mais nova e explícita
+→ ADR aplicável
+→ documento histórico
+```
+
+Em ambiguidade relevante, o agente deve parar e solicitar validação do CEO/Founder.
