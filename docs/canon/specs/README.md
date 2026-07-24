@@ -10,12 +10,12 @@
 3. [`SPEC-054-foundation-hardening-schema-governance.md`](SPEC-054-foundation-hardening-schema-governance.md) — fechamento P0, Storage privado, baseline reproduzível, integridade multi-tenant, hardening de HTTP/MCP, Authority Strict progressivo e idempotência preparatória.
 4. [`SPEC-055-durable-work-runs-queue-checkpoints-hitl.md`](SPEC-055-durable-work-runs-queue-checkpoints-hitl.md) — execução universal de lançamento: Work Runs, steps, attempts, Redis Streams, worker Smith, leases, checkpoints, HITL, approvals, side effects idempotentes e integração com Rotinas, Auxiliares e Portais.
 5. [`SPEC-056-skill-registry-tool-gateway.md`](SPEC-056-skill-registry-tool-gateway.md) — catálogo canônico e versionado de Skills, Capability Packs e Tool Releases; Tool Gateway único; seleção dinâmica; migração de native/HTTP/MCP/Portal/delegation; biblioteca inicial de Skills e ativação em produção.
-6. SPECs posteriores explicitamente subordinadas às SPECs 052–056.
-7. SPECs anteriores apenas quando não houver conflito.
+6. [`SPEC-057-artifact-hub-report-studio.md`](SPEC-057-artifact-hub-report-studio.md) — Artifact Hub único, Report Studio, templates versionados, renderer determinístico, relatório web/PDF, XLSX, CSV, PPTX, DOCX, gráficos, Evidence Pack, compartilhamento, entrega e Visual Acceptance Pack.
+7. SPECs posteriores explicitamente subordinadas às SPECs 052–057.
+8. SPECs anteriores apenas quando não houver conflito.
 
 ## Próxima sequência subordinada
 
-- `SPEC-057` — Artifact Hub & Report Studio;
 - `SPEC-058` — Auxiliary & Routine Factory;
 - `SPEC-059` — Briefing, Proatividade & Garimpo v3;
 - `SPEC-060` — Research Intelligence;
@@ -38,6 +38,12 @@ A SPEC-055 não é um laboratório. Testes, canários e flags são gates interno
 - [`SPEC-056-skill-registry-tool-gateway.md`](SPEC-056-skill-registry-tool-gateway.md) — documento de implementação autorizado em três blocos macro. Ao final, o Capability Registry existente continua como autoridade, o Skill Registry complementa a governança, o Tool Gateway é o único caminho de seleção/execução, Skills iniciais estão publicadas e native/HTTP/MCP/Portal/delegation não mantêm autorização paralela.
 
 A SPEC-056 também não é um catálogo visual ou uma fase beta. A entrega só termina quando Skills reais forem usadas pelo Core e pelos Work Runs em produção.
+
+## SPEC-057 — Artifact Hub e Report Studio de lançamento
+
+- [`SPEC-057-artifact-hub-report-studio.md`](SPEC-057-artifact-hub-report-studio.md) — documento de implementação autorizado em três blocos macro. Ao final, artifacts são objetos de primeira classe, MinIO privado armazena bytes, Work Runs/Skills geram versões e renders, o Report Studio funciona pelo chat e os formatos web/PDF/XLSX/CSV/PPTX/DOCX/SVG/PNG/Evidence Pack estão ativos.
+
+A SPEC-057 exige um **Visual Acceptance Pack** separado como referência de design, mas ele não é outro runtime, sistema ou SPEC. Nenhum template de lançamento é considerado final sem aprovação visual do Founder.
 
 ## SPECs parcialmente superadas
 
@@ -65,6 +71,12 @@ As seguintes SPECs permanecem disponíveis como histórico e detalhamento técni
 - definições hardcoded de Portal Skills continuam como evidência histórica, não como catálogo canônico;
 - autorização por `tools_config`, menção em prompt, row isolada de HTTP tool ou descoberta automática MCP é superada pelo Tool Gateway.
 
+### Artifacts, relatórios e entregáveis — prevalece SPEC-057
+
+- relatórios textuais históricos, exports isolados, PDFs avulsos e templates espalhados continuam como evidência, mas toda nova geração deve passar pelo Artifact Hub;
+- `weekly_report.py` continua como compatibilidade de entrega até o cutover, não como autoridade do relatório completo;
+- componentes Recharts existentes podem permanecer em telas antigas, mas novos artifacts seguem o Chart Spec e renderer definidos pela SPEC-057.
+
 ## Regra para agentes de desenvolvimento
 
 ```text
@@ -76,10 +88,12 @@ Leia a SPEC-055 antes de alterar Work Runs, fila, worker, checkpoint,
 HITL, approvals, side effects ou integração de execução.
 Leia a SPEC-056 antes de alterar Skills, capabilities, toolsets,
 HTTP/MCP/native/Portal tools, subagentes ou seleção dinâmica.
+Leia a SPEC-057 antes de alterar artifacts, relatórios, templates,
+renderers, PDF/XLSX/PPTX/DOCX, gráficos, compartilhamento ou entrega.
 
 Não crie RAG, memória, publisher, runtime, scheduler, executor,
 Skill Registry, Tool Gateway, Artifact Hub ou catálogo paralelo.
-Não use decisões históricas que contradigam as SPECs 052–056.
+Não use decisões históricas que contradigam as SPECs 052–057.
 Em ambiguidade, pare e solicite decisão do CEO/Founder.
 ```
 
