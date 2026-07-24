@@ -1,6 +1,6 @@
 ---
 > **Status:** canonical  
-> **Versão:** 1.6 — Work Runs duráveis autorizados  
+> **Versão:** 1.7 — Skill Registry & Tool Gateway autorizados  
 > **Última atualização:** 2026-07-24  
 > **Produto:** AutoBrokers.ai  
 > **Sistema:** AutoBrokers Intelligence OS  
@@ -20,14 +20,17 @@ Esta pasta é a fonte de verdade documental ativa do AutoBrokers.ai.
    Governa o Work OS: Core Harness, Skills, Tool Gateway, execução durável, Auxiliares, Rotinas, approvals, artifacts e Portal Admin Control Plane.
 
 3. [`specs/SPEC-054-foundation-hardening-schema-governance.md`](specs/SPEC-054-foundation-hardening-schema-governance.md)  
-   Governa e autoriza o fechamento P0, Storage privado, baseline reproduzível, integridade multi-tenant, hardening de HTTP/MCP, Authority Strict progressivo e idempotência preparatória.
+   Governa e autoriza o fechamento P0, Storage privado, baseline reproduzível, integridade multi-tenant, hardening de HTTP/MCP, Authority Strict e idempotência preparatória.
 
 4. [`specs/SPEC-055-durable-work-runs-queue-checkpoints-hitl.md`](specs/SPEC-055-durable-work-runs-queue-checkpoints-hitl.md)  
-   Governa e autoriza a implementação operacional de lançamento de Work Runs, Redis Streams, worker Smith, leases, checkpoints, HITL executável, approvals, cancelamento, retry e side effects idempotentes.
+   Governa e autoriza Work Runs universais, fila, worker Smith, leases, checkpoints, HITL, approvals e integração durável de Rotinas, Auxiliares e Portais.
 
-5. SPECs posteriores explicitamente subordinadas às SPECs 052–055.
+5. [`specs/SPEC-056-skill-registry-tool-gateway.md`](specs/SPEC-056-skill-registry-tool-gateway.md)  
+   Governa e autoriza o Skill Registry, Capability Packs, Tool Definitions/Releases, Tool Gateway único, seleção dinâmica e migração de native/HTTP/MCP/Portal/delegation.
 
-6. ADRs, SPECs e relatórios históricos apenas quando não houver conflito.
+6. SPECs posteriores explicitamente subordinadas às SPECs 052–056.
+
+7. ADRs, SPECs e relatórios históricos apenas quando não houver conflito.
 
 Leia também o índice detalhado em [`specs/README.md`](specs/README.md).
 
@@ -40,6 +43,10 @@ Leia também o índice detalhado em [`specs/README.md`](specs/README.md).
 - **Redis** é transitório: fila, locks, leases e cache.
 - **Qdrant** é índice semântico derivado.
 - **MinIO** armazena documentos e artifacts.
+- **Capability Registry** governa poderes.
+- **Skill Registry** governa procedimentos versionados.
+- **Tool Gateway** governa seleção e execução das ferramentas.
+- **Vault** governa segredos e conexões.
 - **ResultVision / Agent OS histórico** são referências de domínio, não runtimes ativos.
 
 ## Leis centrais
@@ -47,17 +54,18 @@ Leia também o índice detalhado em [`specs/README.md`](specs/README.md).
 ```text
 Um único cérebro lógico.
 Um único runtime Smith.
-Nenhum RAG, memória, publisher, scheduler, fila ou executor paralelo.
+Nenhum RAG, memória, publisher, scheduler ou executor paralelo.
 Auxiliar é trabalhador de produto.
 Rotina é gatilho.
-Skill é procedimento.
-Work Run é execução universal.
+Skill é procedimento versionado.
+Capability é poder governável.
+Tool é implementação.
+Work Run é execução.
 Artifact é resultado de primeira classe.
-Approval executável governa side effects sensíveis.
 Vault governa segredos.
 Capability Registry governa acesso.
+Tool Gateway governa todas as famílias de tools.
 Schema e migrations são governados pela SPEC-054.
-Fila, checkpoints e HITL são governados pela SPEC-055.
 ```
 
 ## Documentos canônicos principais
@@ -73,14 +81,15 @@ Fila, checkpoints e HITL são governados pela SPEC-055.
 | `SPEC-002-auxiliares-runtime-smith.md` | Fundação histórica: Auxiliares = produto; Smith = runtime; Vault = governança. Parcialmente superada pela SPEC-053. |
 | `SPEC-005-atendimento-runtime-architecture.md` | Arquitetura de Atendimento, casos, corredores, Evidence Pack e HITL. |
 | `SPEC-006-allianz-residencial-corredor-eletricista-mvp.md` | Corredor Allianz Residencial/Eletricista e expansão da família. |
-| `SPEC-014-capability-registry-knowledge-os.md` | Capability Registry e governança de acesso. |
+| `SPEC-014-capability-registry-knowledge-os.md` | Fundação histórica do Capability Registry; subordinada à SPEC-056 para Skills e Tool Gateway. |
 | `specs/SPEC-019-rotinas-auxiliares-claude-parity.md` | Fundação histórica do motor de Rotinas. Parcialmente superada pela SPEC-053. |
 | `specs/SPEC-051-evolution-go-pareamento-passkey-observador.md` | Evolution Go, QR/passkey, Observador silencioso e aprendizado incremental. |
 | `specs/SPEC-052-cerebro-cognitivo-unificado-autobrokers.md` | Cérebro cognitivo unificado e soberano. |
 | `specs/SPEC-053-autobrokers-work-os-core-harness.md` | Work OS e Harness avançado soberano. |
-| `specs/SPEC-054-foundation-hardening-schema-governance.md` | Hardening de fundação autorizado para execução em três blocos macro. |
-| `specs/SPEC-055-durable-work-runs-queue-checkpoints-hitl.md` | Execução durável de lançamento, autorizada para implementação e ativação em produção. |
-| `audits/AUDIT-SPEC-054-foundation-hardening-schema-governance-2026-07-24.md` | Auditoria read-only obrigatória antes da execução da SPEC-054. |
+| `specs/SPEC-054-foundation-hardening-schema-governance.md` | Hardening de fundação autorizado para execução. |
+| `audits/AUDIT-SPEC-054-foundation-hardening-schema-governance-2026-07-24.md` | Auditoria read-only obrigatória antes da SPEC-054. |
+| `specs/SPEC-055-durable-work-runs-queue-checkpoints-hitl.md` | Execução durável de lançamento. |
+| `specs/SPEC-056-skill-registry-tool-gateway.md` | Skills versionadas e Tool Gateway único de lançamento. |
 | `runbooks/RUNBOOK-PAREAMENTO-WHATSAPP-CORRETORA.md` | Pareamento de corretoras com baixo atrito. |
 | `runbooks/RUNBOOK-PASSKEY-WHATSAPP.md` | Fluxo de passkey. |
 | `runbooks/RUNBOOK-EVOLUTION-GO-POOL-POSTGRES.md` | Diagnóstico do pool Postgres Evolution Go. |
@@ -89,7 +98,9 @@ Fila, checkpoints e HITL são governados pela SPEC-055.
 
 As SPECs 003, 004, 008, 010, 034, 040 e 044 continuam como histórico e detalhamento, mas a SPEC-052 prevalece em arquitetura cognitiva.
 
-As SPECs 002 e 019 continuam como fundação histórica de Auxiliares e Rotinas, mas as SPECs 053 e 055 prevalecem em ontologia, execução universal, filas, checkpoints, approvals, retry, cancelamento e integração operacional.
+As SPECs 002 e 019 continuam como fundação histórica de Auxiliares e Rotinas, mas a SPEC-053 prevalece em ontologia, Work Runs, Skills, Tool Gateway, approvals, artifacts e Control Plane.
+
+A SPEC-014 continua como fundação histórica do Capability Registry, mas a SPEC-056 prevalece em Skill Releases, Capability Packs, Tool Definitions/Releases, seleção dinâmica, Tool Gateway e cutover de autoridades legadas.
 
 ## Regra operacional
 
@@ -98,8 +109,9 @@ Quando documentos canônicos divergirem:
 ```text
 SPEC-052
 → SPEC-053
-→ SPEC-054 para schema, segurança de fundação, Storage, egress, MCP e Authority
-→ SPEC-055 para Work Runs, filas, worker, checkpoints, HITL e idempotência universal
+→ SPEC-054 para schema e segurança de fundação
+→ SPEC-055 para execução durável
+→ SPEC-056 para Skills, capabilities e tools
 → SPEC subordinada mais nova e explícita
 → ADR aplicável
 → documento histórico
