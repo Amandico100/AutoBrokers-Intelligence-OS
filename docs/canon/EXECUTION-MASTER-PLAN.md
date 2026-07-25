@@ -400,3 +400,4 @@ Nenhum outro enxerto é permitido sem entrada em [`CHANGE-ADDENDA.md`](CHANGE-AD
 | 25/07/2026 | 1 | Código de Storage escrito: resolver, proxy autenticado, upload server-side | — |
 | 25/07/2026 | 1 | **A3 PENDENTE** — fecha buckets; só após deploy do proxy (expand→contract) | — |
 | 25/07/2026 | 1 | Gate de type-check: `tsc --noEmit` **exit 0**, zero erro | `bdaeafa` |
+| 25/07/2026 | 1 | `next build`: **Compiled successfully**. Falha posterior e ambiental (secrets ausentes no worktree) em rotas nao tocadas | `8b9faee` |
