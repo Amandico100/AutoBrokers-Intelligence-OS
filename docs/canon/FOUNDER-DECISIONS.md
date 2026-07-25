@@ -462,3 +462,41 @@ Fornecer acesso read-only a EasyPanel, Qdrant, MinIO e Redis de produção, e in
 
 1. Os objetos de `chat-docs` (30) e `chat-media` (26) têm URLs públicas já enviadas a clientes por WhatsApp? Necessário antes de fechar os buckets (SPEC-054 Bloco A).
 2. `backend/docker-compose.yml` espelha produção? Se sim, `minio:latest` e credenciais default viram item obrigatório de hardening.
+
+---
+
+## D15 — Identidade de marca da corretora entra no escopo da SPEC-057
+
+**Data:** 25/07/2026 · **Estado:** AUTORIZADA pelo Founder (mensagem de 25/07) · **Origem:** Founder
+
+### O que foi decidido
+
+A SPEC-057 passa a incluir, além do Artifact Hub e do Report Studio:
+
+1. **Captura automática da identidade visual da corretora** a partir do site e das
+   redes sociais que ela declarar (Firecrawl + busca direta).
+2. **Página "Identidade da corretora"** dentro de Personalização → Corretora, com
+   tudo editável pelo corretor.
+3. **Toda peça entregue carrega a marca da corretora** — logo obrigatório,
+   paleta derivada, tipografia quando houver sinal.
+4. **Catálogo de templates premium** desenhado pelo Executor, não fornecido pelo
+   Founder. O Visual Acceptance Pack passa a ser **produzido** pelo Executor e
+   **revisado** pelo Founder, invertendo o fluxo previsto na SPEC-057 §14.
+
+### Palavras do Founder
+
+> "TODOS OS LAYOUTS PQ VC TEM MUITO BOM GOSTO. MAS QUERO NIVEL MAIS PREMIUM
+> ENTERPRISE, WOW POSSIVEL." · "VC NAO PRECISA ESPERAR O HUMANO... VC VAI CRIAR
+> ISSO AGORA." · "EU NO FINAL VOU ANALISAR E FAZER AJUSTES SE PRECISAR."
+
+### O que esta decisão NÃO autoriza
+
+- Publicar peça em nome da corretora para terceiros sem aprovação.
+- Capturar qualquer host que a corretora não tenha declarado.
+- Usar dado de segurado em peça de demonstração.
+- Reduzir o escopo original da SPEC-057 (Artifact Hub segue integral).
+
+### Consequência
+
+Escopo maior que o previsto. Registrado em CA-008. O gate humano da SPEC-057 §14
+continua existindo — muda apenas quem produz o material que passa por ele.

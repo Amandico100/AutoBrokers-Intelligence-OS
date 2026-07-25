@@ -59,9 +59,16 @@ def _roda_script(nome: str) -> tuple[bool, str]:
     caminho = os.path.join(TESTES, nome)
     if not os.path.exists(caminho):
         return False, f"runner ausente: {nome}"
+    # O runner filho escreve acentuação e setas. Sem forçar UTF-8, no Windows
+    # ele herda o codepage do console (cp1252), estoura UnicodeEncodeError ao
+    # imprimir e sai com código 1 — e o gate acusa regressão de produto onde só
+    # houve encoding de terminal. Um gate que grita lobo passa a ser ignorado,
+    # que é o pior estado possível para um gate.
+    ambiente = {**os.environ, "PYTHONIOENCODING": "utf-8", "PYTHONUTF8": "1"}
     try:
         p = subprocess.run(
-            [sys.executable, caminho], capture_output=True, text=True, timeout=300, cwd=RAIZ
+            [sys.executable, caminho], capture_output=True, text=True, timeout=300,
+            cwd=RAIZ, env=ambiente, encoding="utf-8", errors="replace"
         )
     except subprocess.TimeoutExpired:
         return False, "timeout de 300s"
@@ -284,6 +291,10 @@ CASOS: list[Caso] = [
          "SPEC-056", lambda: _roda_script("test_spec056_skill_registry_gateway.py")),
     Caso("SKL-02", "capacidades", "Ação de efeito externo nunca roda sem aprovação",
          "SPEC-056", lambda: caso_efeito_grave_exige_aprovacao()),
+    # A peça é o que o cliente do corretor vê. Ilegível ou fora da marca, ela
+    # queima a corretora na frente do cliente dela — por isso entra no gate.
+    Caso("MRC-01", "identidade", "Toda peça sai legível e com a marca da corretora",
+         "SPEC-057", lambda: _roda_script("test_spec057_brand_identity.py")),
     Caso("IDN-01", "identidade", "Corretora A não enxerga dados da corretora B",
          "SPEC-048", lambda: _roda_script("test_spec048_isolamento_corretoras.py")),
     Caso("CAP-01", "capacidades", "Agente só recebe os poderes do seu papel",
