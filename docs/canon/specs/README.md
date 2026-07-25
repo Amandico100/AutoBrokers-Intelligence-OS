@@ -1,7 +1,7 @@
 # Índice e autoridade das SPECs canônicas
 
 > [!IMPORTANT]
-> Para qualquer tarefa relacionada a conhecimento, RAG, memória, Context Assembly, aprendizagem, ferramentas, Skills, conectores, MCPs, Auxiliares, Rotinas, Work Runs, approvals, artifacts, proatividade, briefings, Garimpo ou Portal Admin, leia primeiro as SPECs **052** e **053**.
+> Para qualquer tarefa relacionada a conhecimento, RAG, memória, Context Assembly, aprendizagem, ferramentas, Skills, conectores, MCPs, Auxiliares, Rotinas, Work Runs, approvals, artifacts, proatividade, briefings, Garimpo, pesquisa, crawling, fontes, citações, monitors ou Portal Admin, leia primeiro as SPECs **052** e **053**.
 
 ## Autoridade atual
 
@@ -13,12 +13,12 @@
 6. [`SPEC-057-artifact-hub-report-studio.md`](SPEC-057-artifact-hub-report-studio.md) — Artifact Hub único, Report Studio, templates versionados, renderer determinístico, relatório web/PDF, XLSX, CSV, PPTX, DOCX, gráficos, Evidence Pack, compartilhamento, entrega e Visual Acceptance Pack.
 7. [`SPEC-058-auxiliary-routine-factory.md`](SPEC-058-auxiliary-routine-factory.md) — Factory único de Auxiliares e Rotinas; classificação de padrão de trabalho; criação por chat e dashboard; releases, instalações, revisões, triggers, readiness, custos, demanda e cutover dos caminhos legados.
 8. [`SPEC-059-briefing-proatividade-garimpo-v3.md`](SPEC-059-briefing-proatividade-garimpo-v3.md) — Intelligence Fabric único: eventos, sinais, evidências, Findings, recomendações, Briefing Diário/Semanal, Garimpo v3, Demand Radar, feedback, outcome e migração da proatividade histórica.
-9. SPECs posteriores explicitamente subordinadas às SPECs 052–059.
-10. SPECs anteriores apenas quando não houver conflito.
+9. [`SPEC-060-research-intelligence.md`](SPEC-060-research-intelligence.md) — Research Intelligence único: Research Orchestrator, providers, fontes, crawling, claims, citações, Evidence Packs, monitors, pesquisa regulatória/concorrentes/SEO-AEO/empresas e migração do web search histórico.
+10. SPECs posteriores explicitamente subordinadas às SPECs 052–060.
+11. SPECs anteriores apenas quando não houver conflito.
 
 ## Próxima sequência subordinada
 
-- `SPEC-060` — Research Intelligence;
 - `SPEC-061` — Portal Admin Control Plane;
 - `SPEC-062` — Evals, Billing, Rollout & Production Readiness.
 
@@ -57,6 +57,12 @@ A SPEC-058 revoga definitivamente a equivalência “Auxiliares = Rotinas”. Ne
 
 A SPEC-059 substitui a proatividade superficial como autoridade. `broker_insights.py`, `proactive_suggestions.py`, `weekly_report.py`, `regression_sentinel.py`, o Admin Insights histórico e seus schedulers diretos permanecem apenas como fontes/adapters até o cutover. Nenhum deles pode continuar como motor soberano concorrente.
 
+## SPEC-060 — Research Intelligence de lançamento
+
+- [`SPEC-060-research-intelligence.md`](SPEC-060-research-intelligence.md) — documento de implementação autorizado em três blocos macro. Ao final, o Research Orchestrator governa pesquisa rápida, verificada, profunda, site audit, business discovery, claim checking e monitors; Tavily e Firecrawl são providers homologados; fontes, snapshots, claims e citações são persistidos; artifacts e Intelligence Signals estão integrados.
+
+A SPEC-060 não autoriza scraping irrestrito. Firecrawl é capability global da plataforma, não cérebro soberano. Descoberta de empresas deve usar Places API/provider permitido, sem scraping da interface do Google Maps. `TavilyService` e `WebSearchTool` históricos permanecem apenas como adapters até o cutover.
+
 ## SPECs parcialmente superadas
 
 As seguintes SPECs permanecem disponíveis como histórico e detalhamento técnico, mas não são mais autoridade soberana quando houver conflito:
@@ -88,6 +94,12 @@ As seguintes SPECs permanecem disponíveis como histórico e detalhamento técni
 - mensagem semanal fixa, relatório textual isolado, alerta direto fora de Work Run, ranking simples de frases e marcador Redis sem autoridade durável são superados pela SPEC-059;
 - `broker_insights` permanece como origem/projeção temporária, não como registro canônico de inteligência após o cutover.
 
+### Pesquisa, web search, crawling e monitors — prevalece SPEC-060
+
+- `backend/app/services/tavily_service.py`, `backend/app/agents/tools/web_search.py`, menções históricas a busca web e a capability `platform.web.search` permanecem como fundação técnica;
+- retorno textual de três resultados, attachment direto da tool ao grafo, ausência de claims/citações e Tavily como caminho soberano são superados pela SPEC-060;
+- Firecrawl, Tavily, Places e futuros providers devem operar pelo Research Orchestrator + Tool Gateway, sem publisher, RAG, scheduler ou motor paralelo.
+
 ### Capabilities, Skills e tools — prevalece SPEC-056
 
 - `../SPEC-014-capability-registry-knowledge-os.md` continua como fundação histórica do Registry, mas a SPEC-056 prevalece em Skill Releases, Capability Packs, Tool Definitions/Releases, seleção dinâmica, Tool Gateway e cutover das autoridades legadas;
@@ -117,11 +129,13 @@ Leia a SPEC-058 antes de alterar Auxiliares, Rotinas, templates,
 instalações, revisões, criação pelo chat/dashboard, triggers ou catálogo.
 Leia a SPEC-059 antes de alterar sinais, Findings, recomendações,
 briefings, Garimpo, proatividade, Demand Radar, feedback ou outcomes.
+Leia a SPEC-060 antes de alterar pesquisa, Tavily, Firecrawl, web search,
+crawling, fontes, claims, citações, monitors, SEO/AEO ou business discovery.
 
 Não crie RAG, memória, publisher, runtime, scheduler, executor,
 Skill Registry, Tool Gateway, Artifact Hub, Auxiliary Factory,
-Intelligence Fabric, Garimpo ou motor proativo paralelo.
-Não use decisões históricas que contradigam as SPECs 052–059.
+Intelligence Fabric, Research Orchestrator, Garimpo ou motor paralelo.
+Não use decisões históricas que contradigam as SPECs 052–060.
 Em ambiguidade, pare e solicite decisão do CEO/Founder.
 ```
 
