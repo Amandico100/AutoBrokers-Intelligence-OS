@@ -81,6 +81,24 @@ class SmithWorker:
 
         logger.info("[SmithWorker] iniciado id=%s concorrencia=%d", self.worker_id, CONCORRENCIA)
 
+        # Painel de subsistemas: o worker roda sozinho num container proprio, e
+        # sem isto a unica forma de saber se ele tem o que precisa e esperar
+        # nada acontecer e adivinhar por que.
+        try:
+            import os as _os
+
+            from app.services.knowledge.insurance_corpus import InsuranceCorpusService
+            from app.services.research.firecrawl import configurado as _fc
+
+            _pend = len(InsuranceCorpusService(self.db).vencidos(limite=50))
+            logger.info(
+                "[SmithWorker] firecrawl=%s | corpus normativo: %d documento(s) "
+                "aprovado(s) aguardando | manutencao a cada %ss",
+                "configurado" if _fc() else "SEM CHAVE NESTE SERVICO",
+                _pend, INTERVALO_MANUTENCAO_S)
+        except Exception as _e:  # noqa: BLE001
+            logger.warning("[SmithWorker] painel indisponivel: %s", type(_e).__name__)
+
     async def executar(self) -> None:
         await self.iniciar()
         tarefas = [
@@ -172,6 +190,18 @@ class SmithWorker:
             from app.services.research.firecrawl import configurado
 
             if not configurado():
+                # Pular em SILENCIO aqui era indistinguivel de "nao havia nada a
+                # fazer". O corpus ficaria parado para sempre e o log nao diria
+                # por que. Avisa uma vez por processo — repetir a cada ciclo
+                # viraria ruido que se aprende a ignorar.
+                if not getattr(self, "_avisou_sem_firecrawl", False):
+                    self._avisou_sem_firecrawl = True
+                    pendentes = InsuranceCorpusService(self.db).vencidos(limite=1)
+                    logger.warning(
+                        "[SmithWorker] corpus normativo PARADO: FIRECRAWL_API_KEY nao "
+                        "configurada NESTE servico%s. A chave precisa estar tambem no "
+                        "worker, nao so na API.",
+                        f" — ha documento(s) aprovado(s) aguardando" if pendentes else "")
                 return
             r = await InsuranceCorpusService(self.db).reconferir_pendentes(limite=3)
             if r.get("mudaram"):
