@@ -363,38 +363,39 @@ async def buscar_pagina(url: str, *, allowlist: Optional[list[str]] = None) -> S
     return sinais
 
 
-async def buscar_com_firecrawl(url: str) -> Optional[SinaisWeb]:
-    """Usa Firecrawl quando há chave. Resolve JS; é o que pega construtor de site."""
-    chave = os.getenv("FIRECRAWL_API_KEY", "").strip()
-    if not chave:
+async def buscar_com_firecrawl(url: str, *, supabase=None,
+                               company_id: Optional[str] = None) -> Optional[SinaisWeb]:
+    """Usa Firecrawl quando há chave. Resolve JS; é o que pega construtor de site.
+
+    Delega ao cliente único em `services/research/firecrawl.py` — inclusive para
+    que o consumo seja medido no mesmo lugar que todo o resto. Uma segunda
+    implementação de chamada ao Firecrawl aqui significaria crédito gasto que
+    não aparece na conta da corretora.
+    """
+    from app.services.research.firecrawl import (
+        FirecrawlClient, FirecrawlIndisponivel, configurado)
+
+    if not configurado():
         return None
 
-    import httpx
-
-    policy = eg.EgressPolicy.from_iterable([FIRECRAWL_HOST], max_response_bytes=MAX_HTML)
-    endpoint = f"https://{FIRECRAWL_HOST}/v1/scrape"
-    eg.check_url(endpoint, policy)
-
+    cli = FirecrawlClient(supabase, company_id=company_id)
     try:
-        async with httpx.AsyncClient(
-            timeout=httpx.Timeout(connect=TIMEOUT_CONEXAO, read=60.0,
-                                  write=TIMEOUT_CONEXAO, pool=TIMEOUT_CONEXAO)
-        ) as client:
-            resp = await client.post(
-                endpoint,
-                headers={"Authorization": f"Bearer {chave}", "Content-Type": "application/json"},
-                json={"url": url, "formats": ["html", "markdown"],
-                      "onlyMainContent": False, "timeout": 45000},
-            )
-        if resp.status_code >= 400:
-            logger.warning("[brand] Firecrawl HTTP %s em %s", resp.status_code, eg.safe_log_url(url))
-            return None
-        dados = (resp.json() or {}).get("data") or {}
+        # `onlyMainContent=False` porque o logo, o rodapé e o JSON-LD ficam
+        # justamente fora do conteúdo principal — o "modo leitura" jogaria fora
+        # exatamente o que interessa aqui.
+        r = await cli.scrape(url, formatos=["html", "markdown"], so_conteudo=False,
+                             skill="brand.capture_identity")
+    except FirecrawlIndisponivel:
+        return None
     except Exception as exc:  # noqa: BLE001
         logger.warning("[brand] Firecrawl indisponivel (%s) — seguindo por busca direta",
                        type(exc).__name__)
         return None
 
+    if not r.ok or not isinstance(r.dados, dict):
+        return None
+
+    dados = r.dados
     html = dados.get("html") or dados.get("rawHtml") or ""
     sinais = extrair_sinais(html, url, via="firecrawl")
     if dados.get("markdown"):
@@ -408,7 +409,8 @@ async def buscar_com_firecrawl(url: str) -> Optional[SinaisWeb]:
     return sinais
 
 
-async def coletar(url: str, *, allowlist: Optional[list[str]] = None) -> SinaisWeb:
+async def coletar(url: str, *, allowlist: Optional[list[str]] = None,
+                  supabase=None, company_id: Optional[str] = None) -> SinaisWeb:
     """Firecrawl quando dá, busca direta sempre. O melhor resultado dos dois.
 
     Não é "tenta um, senão o outro": se ambos rodam, as listas de logo e as
@@ -417,7 +419,7 @@ async def coletar(url: str, *, allowlist: Optional[list[str]] = None) -> SinaisW
     """
     direto = await buscar_pagina(url, allowlist=allowlist)
     try:
-        fc = await buscar_com_firecrawl(url)
+        fc = await buscar_com_firecrawl(url, supabase=supabase, company_id=company_id)
     except Exception:  # noqa: BLE001
         fc = None
 

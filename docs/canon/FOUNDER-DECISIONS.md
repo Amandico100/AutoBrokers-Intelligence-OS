@@ -500,3 +500,45 @@ A SPEC-057 passa a incluir, além do Artifact Hub e do Report Studio:
 
 Escopo maior que o previsto. Registrado em CA-008. O gate humano da SPEC-057 §14
 continua existindo — muda apenas quem produz o material que passa por ele.
+
+---
+
+## D16 — Firecrawl como capacidade governada e medida
+
+**Data:** 25/07/2026 · **Estado:** AUTORIZADA pelo Founder · **Origem:** Founder
+
+### O que foi decidido
+
+Firecrawl entra como **capacidade da plataforma** (AutoBrokers paga a chave),
+com consumo medido por corretora desde o primeiro dia.
+
+### O que NÃO foi feito, e por quê
+
+Não foi criada uma segunda busca na web. `platform.web.search` já existe e usa
+Tavily; duplicá-la seria o motor paralelo que o CLAUDE.md §5 proíbe. O que
+entrou é uma capacidade que **não existia**: `platform.web.scrape` — ler uma
+página inteira resolvendo JavaScript, e ler um documento público como texto.
+
+### Medição
+
+Todo consumo emite `usage_event` com `unit_kind='firecrawl_credit'`, nascendo
+`PRE_LAUNCH_NON_BILLABLE` como todo o resto (SPEC-055). **Mede, não cobra.**
+O rating comercial continua sendo da SPEC-062 — e quando ligar, o histórico já
+estará atribuído por corretora.
+
+O crédito reportado pela própria API é sempre preferido à estimativa. Quando só
+há estimativa, o evento é marcado como tal: número inventado que se apresenta
+como medido é pior do que número ausente, porque vira fatura.
+
+### Segurança da chave — PENDÊNCIA ABERTA
+
+A chave foi transmitida por chat e apareceu em captura de tela. Não foi gravada
+em arquivo, commit, log ou documentação — entra apenas como variável de
+ambiente. **Deve ser rotacionada** assim que o sistema estiver rodando: gerar
+nova no painel, trocar a variável, revogar a atual. Registrado junto do D12.
+
+### Limite deliberado
+
+Atendimento **não** recebe leitura profunda. O agente que fala com o segurado
+no WhatsApp não tem por que abrir páginas arbitrárias da internet — a SPEC-054
+já tirou dele o HTTP genérico pelo mesmo motivo.
