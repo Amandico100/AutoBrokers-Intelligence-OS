@@ -1,6 +1,6 @@
 ---
 > **Status:** canonical  
-> **Versão:** 1.9 — Auxiliary & Routine Factory autorizado  
+> **Versão:** 2.0 — Briefing, Proatividade & Garimpo v3 autorizados  
 > **Última atualização:** 2026-07-24  
 > **Produto:** AutoBrokers.ai  
 > **Sistema:** AutoBrokers Intelligence OS  
@@ -34,9 +34,12 @@ Esta pasta é a fonte de verdade documental ativa do AutoBrokers.ai.
 7. [`specs/SPEC-058-auxiliary-routine-factory.md`](specs/SPEC-058-auxiliary-routine-factory.md)  
    Governa e autoriza a fábrica única de Auxiliares e Rotinas: classificação de trabalho, releases, instalações, revisões, criação por conversa/dashboard, triggers, readiness, custos, demanda e cutover do legado.
 
-8. SPECs posteriores explicitamente subordinadas às SPECs 052–058.
+8. [`specs/SPEC-059-briefing-proatividade-garimpo-v3.md`](specs/SPEC-059-briefing-proatividade-garimpo-v3.md)  
+   Governa e autoriza o Intelligence Fabric único: eventos, sinais, evidências, Findings, recomendações, Briefings, Garimpo v3, Demand Radar, feedback, outcomes e migração da proatividade histórica.
 
-9. ADRs, SPECs e relatórios históricos apenas quando não houver conflito.
+9. SPECs posteriores explicitamente subordinadas às SPECs 052–059.
+
+10. ADRs, SPECs e relatórios históricos apenas quando não houver conflito.
 
 Leia também o índice detalhado em [`specs/README.md`](specs/README.md).
 
@@ -54,6 +57,7 @@ Leia também o índice detalhado em [`specs/README.md`](specs/README.md).
 - **Tool Gateway** governa seleção e execução das ferramentas.
 - **Artifact Hub** governa resultados, versões, renders, compartilhamento e entrega.
 - **Auxiliary Factory** governa proposta, instalação, revisão, lifecycle e composição de Auxiliares/Rotinas.
+- **Intelligence Fabric** governa eventos, sinais, evidências, Findings, recomendações, Briefings, demanda e outcomes.
 - **Vault** governa segredos e conexões.
 - **ResultVision / Agent OS histórico** são referências de domínio, não runtimes ativos.
 
@@ -70,12 +74,20 @@ Capability é poder governável.
 Tool é implementação.
 Work Run é execução.
 Artifact é resultado de primeira classe.
+Signal é indício normalizado com evidência.
+Finding é diagnóstico que separa fato de inferência.
+Recommendation é proposta governada, não execução.
+Outcome não medido é inconclusivo, não sucesso.
 Nem toda tarefa recorrente vira um Agent.
 Auxiliary Factory escolhe o menor padrão de trabalho adequado.
+Proatividade exige evidência, relevância, dedupe, cooldown e respeito ao usuário.
+Toda ação recomendada é executada pelo Work OS quando autorizada.
+Garimpo captura e estrutura demanda, mas não publica conhecimento diretamente.
 Vault governa segredos.
 Capability Registry governa acesso.
 Tool Gateway governa todas as famílias de tools.
 Artifact Hub governa todos os novos entregáveis.
+Intelligence Fabric governa sinais, Findings, recomendações, Briefings e outcomes.
 MinIO privado armazena bytes; Supabase guarda metadata e autoridade.
 Schema e migrations são governados pela SPEC-054.
 ```
@@ -104,6 +116,7 @@ Schema e migrations são governados pela SPEC-054.
 | `specs/SPEC-056-skill-registry-tool-gateway.md` | Skills versionadas e Tool Gateway único de lançamento. |
 | `specs/SPEC-057-artifact-hub-report-studio.md` | Artifacts e Report Studio de lançamento, com Visual Acceptance Pack obrigatório. |
 | `specs/SPEC-058-auxiliary-routine-factory.md` | Factory de Auxiliares e Rotinas de lançamento, com criação por conversa/dashboard, catálogo, releases, revisões, triggers e demanda. |
+| `specs/SPEC-059-briefing-proatividade-garimpo-v3.md` | Intelligence Fabric de lançamento: Briefings, proatividade, Garimpo v3, recomendações, Demand Radar, feedback e outcomes. |
 | `runbooks/RUNBOOK-PAREAMENTO-WHATSAPP-CORRETORA.md` | Pareamento de corretoras com baixo atrito. |
 | `runbooks/RUNBOOK-PASSKEY-WHATSAPP.md` | Fluxo de passkey. |
 | `runbooks/RUNBOOK-EVOLUTION-GO-POOL-POSTGRES.md` | Diagnóstico do pool Postgres Evolution Go. |
@@ -118,6 +131,8 @@ A SPEC-014 continua como fundação histórica do Capability Registry, mas a SPE
 
 Relatórios textuais, exports isolados, PDFs avulsos e templates espalhados continuam como evidência histórica, mas a SPEC-057 prevalece em Artifact Hub, versões, renderers, templates, Report Studio, compartilhamento e entrega.
 
+As decisões históricas das SPECs 034, 035, 036, 037, 040 e 049 sobre Garimpo, sugestões semanais, relatório de sábado, regressão e Admin Insights permanecem como fundação. A SPEC-059 prevalece em eventos, sinais, evidências, Findings, recomendações, Briefings, Demand Radar, feedback, outcomes, scheduling e cutover. `broker_insights.py`, `proactive_suggestions.py`, `weekly_report.py`, `regression_sentinel.py` e o Admin Insights histórico deixam de ser autoridades soberanas depois da migração.
+
 ## Regra operacional
 
 Quando documentos canônicos divergirem:
@@ -130,6 +145,7 @@ SPEC-052
 → SPEC-056 para Skills, capabilities e tools
 → SPEC-057 para artifacts, renderers, relatórios e entregas
 → SPEC-058 para Auxiliares, Rotinas, Factory, catálogo e criação
+→ SPEC-059 para sinais, Findings, recomendações, Briefings, Garimpo e outcomes
 → SPEC subordinada mais nova e explícita
 → ADR aplicável
 → documento histórico
