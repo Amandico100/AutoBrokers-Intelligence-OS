@@ -23,7 +23,7 @@
 | # | Etapa | Branch | Estado | Commit inicial | Commit final | Relatório |
 |---|---|---|---|---|---|---|
 | 0 | Contexto persistente e correções canônicas | `chore/execution-foundation` | **CONCLUÍDO** | `3c8c752` | `317b041` | relatório da Fase 0 |
-| 1 | SPEC-054 Bloco A — Fechamento P0 | `feat/spec054-foundation-hardening` | NÃO INICIADO | — | — | — |
+| 1 | SPEC-054 Bloco A — Fechamento P0 | `feat/spec054-foundation-hardening` | **EM EXECUÇÃO** — A1/A2/A4 aplicadas; A3 aguarda deploy | `2c63530` | — | preflight + relatório do Bloco A |
 | 2 | SPEC-054 Blocos B/C — Baseline, Lote 1, memória | `feat/spec054-foundation-hardening` | NÃO INICIADO | — | — | — |
 | 3 | SPEC-055 — Work Runs, usage events, ponte Atendimento | `feat/spec055-durable-work-runs` | NÃO INICIADO | — | — | — |
 | 4 | SPEC-061 Fundação (antecipada) | `feat/spec061-control-plane-foundation` | NÃO INICIADO | — | — | — |
@@ -390,3 +390,12 @@ Nenhum outro enxerto é permitido sem entrada em [`CHANGE-ADDENDA.md`](CHANGE-AD
 | 25/07/2026 | 0 | Template de relatório de execução criado | `f7e5d3b` |
 | 25/07/2026 | 0 | Addendum SPEC-052 e índices canônicos atualizados | `317b041` |
 | 25/07/2026 | 0 | **Fase 0 concluída** — 90 links validados, árvore limpa, sem write em produção | — |
+| 25/07/2026 | 0 | Fase 0 promovida à `main` por merge revisado | `2c63530` |
+| 25/07/2026 | 1 | Preflight do Bloco A concluído — `BLOCKED_BY_ACCESS` | `2c63530` |
+| 25/07/2026 | 1 | **D11** aprovada — Supabase Free + Recovery Pack manual | — |
+| 25/07/2026 | 1 | Recovery Pack validado — 56 objetos (7 MB), 4 rollbacks, checksums | — |
+| 25/07/2026 | 1 | **A1 aplicada** `20260725055327` — `anon` em SECURITY DEFINER: 12 → **0** | — |
+| 25/07/2026 | 1 | **A2 aplicada** `20260725055402` — advisors: 73 → 31, **zero ERROR** | — |
+| 25/07/2026 | 1 | **A4 aplicada** `20260725055753` — 12 URLs públicas → path canônico | — |
+| 25/07/2026 | 1 | Código de Storage escrito: resolver, proxy autenticado, upload server-side | — |
+| 25/07/2026 | 1 | **A3 PENDENTE** — fecha buckets; só após deploy do proxy (expand→contract) | — |
