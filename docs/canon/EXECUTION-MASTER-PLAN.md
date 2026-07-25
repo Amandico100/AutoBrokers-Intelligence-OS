@@ -25,7 +25,7 @@
 | 0 | Contexto persistente e correções canônicas | `chore/execution-foundation` | **CONCLUÍDO** | `3c8c752` | `317b041` | relatório da Fase 0 |
 | 1 | SPEC-054 Bloco A — Fechamento P0 | `feat/spec054-foundation-hardening` | **CONCLUÍDO** — Gate 1 verde | `2c63530` | `98f4fcd` | preflight + relatório do Bloco A |
 | 2 | SPEC-054 Blocos B/C — Baseline, Lote 1, memória | `feat/spec054-foundation-hardening` | **CONCLUÍDO** — Gate 2 verde | `2c63530` | ver relatório | [SPEC-054-EXECUTION-REPORT](reports/SPEC-054-EXECUTION-REPORT.md) |
-| 3 | SPEC-055 — Work Runs, usage events, ponte Atendimento | `feat/spec055-durable-work-runs` | NÃO INICIADO | — | — | — |
+| 3 | SPEC-055 — Work Runs, usage events, ponte Atendimento | `feat/spec055-durable-work-runs` | **CONCLUÍDO** — aguarda serviço do worker | `adc5395` | `21a2c48` | [SPEC-055-EXECUTION-REPORT](reports/SPEC-055-EXECUTION-REPORT.md) |
 | 4 | SPEC-061 Fundação (antecipada) | `feat/spec061-control-plane-foundation` | NÃO INICIADO | — | — | — |
 | 5 | SPEC-056 — Skills, Tool Gateway, Context Assembly 2.0 | `feat/spec056-skill-tool-gateway` | NÃO INICIADO | — | — | — |
 | 6 | SPEC-057 — Artifact Hub & Report Studio | `feat/spec057-artifact-hub` | NÃO INICIADO | — | — | — |
@@ -413,6 +413,15 @@ Nenhum outro enxerto é permitido sem entrada em [`CHANGE-ADDENDA.md`](CHANGE-AD
 | 25/07/2026 | 2 | C4 22 índices duplicados removidos; 28 índices de FK criados | — |
 | 25/07/2026 | 2 | C5 Broker Outcome Regression Pack: **15/15 GATE VERDE** | — |
 | 25/07/2026 | 2 | Deploy API validado; advisors de segurança: **ZERO ERROR, ZERO WARN** | — |
-| 25/07/2026 | 2 | **SPEC-054 CONCLUÍDA** — próximo: preflight da SPEC-055 | — |
+| 25/07/2026 | 2 | **SPEC-054 CONCLUÍDA** | — |
+| 25/07/2026 | 3 | Preflight da SPEC-055 publicado — bloqueador de checkpointer identificado | `adc5395` |
+| 25/07/2026 | 3 | 055-A: 6 tabelas work_*, enums, FKs compostas, RLS — 7/7 garantias no banco | — |
+| 25/07/2026 | 3 | Defeito corrigido: append-only bloqueava CASCADE legítimo (retenção/LGPD) | — |
+| 25/07/2026 | 3 | 055-A: approval_requests evoluída, usage_events, RPC atômica run+outbox | — |
+| 25/07/2026 | 3 | 055-B: effects, queue, runs, approvals, usage, Smith Worker | — |
+| 25/07/2026 | 3 | 055-C: workflows, 4 pontes, API de Work Runs, ponte de Rotinas com flag | — |
+| 25/07/2026 | 3 | Testes: 11/11 do Work OS · **Regression Pack 17/17 GATE VERDE** | — |
+| 25/07/2026 | 3 | Deploy API validado; rotas /api/work vivas (401) | `21a2c48` |
+| 25/07/2026 | 3 | **SPEC-055 CONCLUÍDA** — pendente: serviço dedicado do worker | — |
 | 25/07/2026 | 1 | Gate de type-check: `tsc --noEmit` **exit 0**, zero erro | `bdaeafa` |
 | 25/07/2026 | 1 | `next build`: **Compiled successfully**. Falha posterior e ambiental (secrets ausentes no worktree) em rotas nao tocadas | `8b9faee` |
