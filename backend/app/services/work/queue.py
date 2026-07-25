@@ -16,6 +16,7 @@ duas vezes, e que uma mensagem não confirmada volte para outro worker.
 
 from __future__ import annotations
 
+import asyncio
 import json
 import logging
 from typing import Any, Optional
@@ -66,13 +67,24 @@ class WorkQueue:
     # -- consumo ------------------------------------------------------------
 
     async def consume(self, consumer_name: str, count: int = 1, block_ms: int = 5000) -> list[tuple[str, dict]]:
-        """Lê mensagens novas do grupo. Retorna [(entry_id, payload)]."""
+        """Lê mensagens novas do grupo. Retorna [(entry_id, payload)].
+
+        Fila vazia é o estado NORMAL de um worker saudável. O `block` expira
+        e o cliente Redis levanta `TimeoutError` — que não é falha, é ausência
+        de trabalho. Registrar isso como erro produzia ruído contínuo no log e,
+        pior, mascararia uma falha real de conexão no meio do barulho.
+        """
         try:
             resposta = await self.redis.xreadgroup(
                 CONSUMER_GROUP, consumer_name, {STREAM_KEY: ">"}, count=count, block=block_ms
             )
+        except (asyncio.TimeoutError, TimeoutError):
+            return []  # fila vazia — comportamento esperado
         except Exception as exc:  # noqa: BLE001
-            logger.error("[WorkQueue] consume falhou: %s", type(exc).__name__)
+            # Alguns clientes envolvem o timeout de socket numa exceção própria.
+            if type(exc).__name__ in ("TimeoutError", "ConnectionError") and "timeout" in str(exc).lower():
+                return []
+            logger.error("[WorkQueue] consume falhou: %s: %s", type(exc).__name__, exc)
             return []
 
         return self._parse(resposta)
