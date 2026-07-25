@@ -1,6 +1,6 @@
 ---
 > **Status:** canonical  
-> **Versão:** 2.1 — Research Intelligence autorizado  
+> **Versão:** 2.2 — Portal Admin Control Plane autorizado  
 > **Última atualização:** 2026-07-24  
 > **Produto:** AutoBrokers.ai  
 > **Sistema:** AutoBrokers Intelligence OS  
@@ -40,9 +40,12 @@ Esta pasta é a fonte de verdade documental ativa do AutoBrokers.ai.
 9. [`specs/SPEC-060-research-intelligence.md`](specs/SPEC-060-research-intelligence.md)  
    Governa e autoriza Research Intelligence: pesquisa, providers, fontes, crawling, snapshots, claims, citações, Evidence Packs, monitors, inteligência regulatória, concorrentes, SEO/AEO, descoberta de empresas e migração do web search histórico.
 
-10. SPECs posteriores explicitamente subordinadas às SPECs 052–060.
+10. [`specs/SPEC-061-portal-admin-control-plane.md`](specs/SPEC-061-portal-admin-control-plane.md)  
+    Governa e autoriza o Portal Admin Global como Control Plane único: autenticação/RBAC, Admin Command Gateway, read models, Home/Inbox, Cockpits, operação, inteligência, conexões, conhecimento, financeiro, segurança, evals, releases, auditoria, Support Access e migração das superfícies históricas.
 
-11. ADRs, SPECs e relatórios históricos apenas quando não houver conflito.
+11. SPECs posteriores explicitamente subordinadas às SPECs 052–061.
+
+12. ADRs, SPECs e relatórios históricos apenas quando não houver conflito.
 
 Leia também o índice detalhado em [`specs/README.md`](specs/README.md).
 
@@ -62,6 +65,7 @@ Leia também o índice detalhado em [`specs/README.md`](specs/README.md).
 - **Auxiliary Factory** governa proposta, instalação, revisão, lifecycle e composição de Auxiliares/Rotinas.
 - **Intelligence Fabric** governa eventos, sinais, evidências, Findings, recomendações, Briefings, demanda e outcomes.
 - **Research Intelligence** governa planos de pesquisa, providers, fontes, snapshots, claims, citações, monitors e Evidence Packs.
+- **Portal Admin Control Plane** governa a experiência administrativa global, permissions, read models, comandos, Cockpits, auditoria e operação segura das autoridades anteriores.
 - **Vault** governa segredos e conexões.
 - **ResultVision / Agent OS histórico** são referências de domínio, não runtimes ativos.
 
@@ -93,12 +97,19 @@ Auxiliary Factory escolhe o menor padrão de trabalho adequado.
 Proatividade exige evidência, relevância, dedupe, cooldown e respeito ao usuário.
 Toda ação recomendada é executada pelo Work OS quando autorizada.
 Garimpo captura e estrutura demanda, mas não publica conhecimento diretamente.
+/admin é Control Plane Global da equipe AutoBrokers.
+/dashboard é a superfície das corretoras.
+Frontend e localStorage nunca são autoridade de papel ou permission.
+Toda ação administrativa relevante passa pelo Admin Command Gateway e audit trail.
+Support Access é explícito, temporário e rastreável.
+Portal Admin não cria autoridades de domínio paralelas.
 Vault governa segredos.
 Capability Registry governa acesso.
 Tool Gateway governa todas as famílias de tools.
 Artifact Hub governa todos os novos entregáveis.
 Intelligence Fabric governa sinais, Findings, recomendações, Briefings e outcomes.
 Research Intelligence governa busca, crawling, claims, citações e monitors.
+Portal Admin Control Plane governa administração, composição e comandos seguros.
 MinIO privado armazena bytes; Supabase guarda metadata e autoridade.
 Schema e migrations são governados pela SPEC-054.
 ```
@@ -111,13 +122,15 @@ Schema e migrations são governados pela SPEC-054.
 | `ADR-001-runtime.md` | Runtime oficial e fronteiras entre produto, Smith e domínio. |
 | `ADR-002-vault.md` | Vault, credenciais, PII e limites de dados sensíveis. |
 | `ADR-003-atendimento.md` | Atendimento e migração curada de domínio. |
-| `UX-001-navegacao.md` | Arquitetura de navegação do tenant e Admin. |
+| `UX-001-navegacao.md` | Arquitetura de navegação do tenant e Admin, subordinada à SPEC-061 para o Control Plane final. |
+| `DS-001-design-brief.md` | Direção visual histórica, subordinada à SPEC-061 para o Visual Acceptance Pack do Admin. |
 | `UX-007-auxiliares.md` | Direção histórica de UX de Auxiliares, subordinada à SPEC-058. |
 | `SPEC-002-auxiliares-runtime-smith.md` | Fundação histórica: Auxiliares = produto; Smith = runtime; Vault = governança. Parcialmente superada pela SPEC-058. |
 | `SPEC-005-atendimento-runtime-architecture.md` | Arquitetura de Atendimento, casos, corredores, Evidence Pack e HITL. |
 | `SPEC-006-allianz-residencial-corredor-eletricista-mvp.md` | Corredor Allianz Residencial/Eletricista e expansão da família. |
 | `SPEC-014-capability-registry-knowledge-os.md` | Fundação histórica do Capability Registry; subordinada à SPEC-056 para Skills e Tool Gateway. |
 | `specs/SPEC-019-rotinas-auxiliares-claude-parity.md` | Fundação histórica do motor de Rotinas. Parcialmente superada pelas SPECs 053 e 058. |
+| `specs/SPEC-036-auditoria-e-plano-portal-admin.md` | Auditoria histórica do Portal Admin; subordinada à SPEC-061. |
 | `specs/SPEC-051-evolution-go-pareamento-passkey-observador.md` | Evolution Go, QR/passkey, Observador silencioso e aprendizado incremental. |
 | `specs/SPEC-052-cerebro-cognitivo-unificado-autobrokers.md` | Cérebro cognitivo unificado e soberano. |
 | `specs/SPEC-053-autobrokers-work-os-core-harness.md` | Work OS e Harness avançado soberano. |
@@ -129,6 +142,7 @@ Schema e migrations são governados pela SPEC-054.
 | `specs/SPEC-058-auxiliary-routine-factory.md` | Factory de Auxiliares e Rotinas de lançamento, com criação por conversa/dashboard, catálogo, releases, revisões, triggers e demanda. |
 | `specs/SPEC-059-briefing-proatividade-garimpo-v3.md` | Intelligence Fabric de lançamento: Briefings, proatividade, Garimpo v3, recomendações, Demand Radar, feedback e outcomes. |
 | `specs/SPEC-060-research-intelligence.md` | Research Intelligence de lançamento: providers, fontes, claims, citações, crawling, monitors, Evidence Packs e Skills verticais de pesquisa. |
+| `specs/SPEC-061-portal-admin-control-plane.md` | Portal Admin Global e Control Plane operacional de lançamento. |
 | `runbooks/RUNBOOK-PAREAMENTO-WHATSAPP-CORRETORA.md` | Pareamento de corretoras com baixo atrito. |
 | `runbooks/RUNBOOK-PASSKEY-WHATSAPP.md` | Fluxo de passkey. |
 | `runbooks/RUNBOOK-EVOLUTION-GO-POOL-POSTGRES.md` | Diagnóstico do pool Postgres Evolution Go. |
@@ -147,6 +161,8 @@ As decisões históricas das SPECs 034, 035, 036, 037, 040 e 049 sobre Garimpo, 
 
 `TavilyService`, `WebSearchTool`, menções históricas a busca web e a capability `platform.web.search` permanecem como fundação. A SPEC-060 prevalece em Research Orchestrator, providers, Source Registry, crawling, snapshots, claims, citações, monitors, business discovery, site audit, Intelligence Signals e Knowledge Candidates. Depois do cutover, a tool histórica não pode continuar anexada diretamente ao grafo como autoridade concorrente.
 
+`SPEC-036`, `UX-001`, `DS-001`, relatórios do Claude Design, screenshots do Portal Admin e páginas atuais permanecem como fundação histórica. A SPEC-061 prevalece em separação `/admin` × `/dashboard`, autenticação administrativa, RBAC, Support Access, Admin Command Gateway, Home/Inbox, Cockpits, read models, navegação, auditoria, design, ações e cutover. O Portal Admin não pode espelhar tabelas nem criar lógica de domínio paralela.
+
 ## Regra operacional
 
 Quando documentos canônicos divergirem:
@@ -161,6 +177,7 @@ SPEC-052
 → SPEC-058 para Auxiliares, Rotinas, Factory, catálogo e criação
 → SPEC-059 para sinais, Findings, recomendações, Briefings, Garimpo e outcomes
 → SPEC-060 para pesquisa, providers, fontes, claims, citações e monitors
+→ SPEC-061 para Portal Admin, RBAC, Control Plane, Cockpits, comandos e auditoria
 → SPEC subordinada mais nova e explícita
 → ADR aplicável
 → documento histórico
