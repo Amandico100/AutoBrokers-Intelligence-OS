@@ -1,6 +1,6 @@
 ---
 > **Status:** canonical  
-> **Versão:** 1.8 — Artifact Hub & Report Studio autorizados  
+> **Versão:** 1.9 — Auxiliary & Routine Factory autorizado  
 > **Última atualização:** 2026-07-24  
 > **Produto:** AutoBrokers.ai  
 > **Sistema:** AutoBrokers Intelligence OS  
@@ -31,9 +31,12 @@ Esta pasta é a fonte de verdade documental ativa do AutoBrokers.ai.
 6. [`specs/SPEC-057-artifact-hub-report-studio.md`](specs/SPEC-057-artifact-hub-report-studio.md)  
    Governa e autoriza Artifact Hub, Report Studio, templates versionados, renderer determinístico, relatórios web/PDF, XLSX, CSV, PPTX, DOCX, gráficos, Evidence Packs, compartilhamento e entrega.
 
-7. SPECs posteriores explicitamente subordinadas às SPECs 052–057.
+7. [`specs/SPEC-058-auxiliary-routine-factory.md`](specs/SPEC-058-auxiliary-routine-factory.md)  
+   Governa e autoriza a fábrica única de Auxiliares e Rotinas: classificação de trabalho, releases, instalações, revisões, criação por conversa/dashboard, triggers, readiness, custos, demanda e cutover do legado.
 
-8. ADRs, SPECs e relatórios históricos apenas quando não houver conflito.
+8. SPECs posteriores explicitamente subordinadas às SPECs 052–058.
+
+9. ADRs, SPECs e relatórios históricos apenas quando não houver conflito.
 
 Leia também o índice detalhado em [`specs/README.md`](specs/README.md).
 
@@ -50,6 +53,7 @@ Leia também o índice detalhado em [`specs/README.md`](specs/README.md).
 - **Skill Registry** governa procedimentos versionados.
 - **Tool Gateway** governa seleção e execução das ferramentas.
 - **Artifact Hub** governa resultados, versões, renders, compartilhamento e entrega.
+- **Auxiliary Factory** governa proposta, instalação, revisão, lifecycle e composição de Auxiliares/Rotinas.
 - **Vault** governa segredos e conexões.
 - **ResultVision / Agent OS histórico** são referências de domínio, não runtimes ativos.
 
@@ -66,6 +70,8 @@ Capability é poder governável.
 Tool é implementação.
 Work Run é execução.
 Artifact é resultado de primeira classe.
+Nem toda tarefa recorrente vira um Agent.
+Auxiliary Factory escolhe o menor padrão de trabalho adequado.
 Vault governa segredos.
 Capability Registry governa acesso.
 Tool Gateway governa todas as famílias de tools.
@@ -83,12 +89,12 @@ Schema e migrations são governados pela SPEC-054.
 | `ADR-002-vault.md` | Vault, credenciais, PII e limites de dados sensíveis. |
 | `ADR-003-atendimento.md` | Atendimento e migração curada de domínio. |
 | `UX-001-navegacao.md` | Arquitetura de navegação do tenant e Admin. |
-| `UX-007-auxiliares.md` | Direção histórica de UX de Auxiliares, subordinada à SPEC-053. |
-| `SPEC-002-auxiliares-runtime-smith.md` | Fundação histórica: Auxiliares = produto; Smith = runtime; Vault = governança. Parcialmente superada pela SPEC-053. |
+| `UX-007-auxiliares.md` | Direção histórica de UX de Auxiliares, subordinada à SPEC-058. |
+| `SPEC-002-auxiliares-runtime-smith.md` | Fundação histórica: Auxiliares = produto; Smith = runtime; Vault = governança. Parcialmente superada pela SPEC-058. |
 | `SPEC-005-atendimento-runtime-architecture.md` | Arquitetura de Atendimento, casos, corredores, Evidence Pack e HITL. |
 | `SPEC-006-allianz-residencial-corredor-eletricista-mvp.md` | Corredor Allianz Residencial/Eletricista e expansão da família. |
 | `SPEC-014-capability-registry-knowledge-os.md` | Fundação histórica do Capability Registry; subordinada à SPEC-056 para Skills e Tool Gateway. |
-| `specs/SPEC-019-rotinas-auxiliares-claude-parity.md` | Fundação histórica do motor de Rotinas. Parcialmente superada pela SPEC-053. |
+| `specs/SPEC-019-rotinas-auxiliares-claude-parity.md` | Fundação histórica do motor de Rotinas. Parcialmente superada pelas SPECs 053 e 058. |
 | `specs/SPEC-051-evolution-go-pareamento-passkey-observador.md` | Evolution Go, QR/passkey, Observador silencioso e aprendizado incremental. |
 | `specs/SPEC-052-cerebro-cognitivo-unificado-autobrokers.md` | Cérebro cognitivo unificado e soberano. |
 | `specs/SPEC-053-autobrokers-work-os-core-harness.md` | Work OS e Harness avançado soberano. |
@@ -97,6 +103,7 @@ Schema e migrations são governados pela SPEC-054.
 | `specs/SPEC-055-durable-work-runs-queue-checkpoints-hitl.md` | Execução durável de lançamento. |
 | `specs/SPEC-056-skill-registry-tool-gateway.md` | Skills versionadas e Tool Gateway único de lançamento. |
 | `specs/SPEC-057-artifact-hub-report-studio.md` | Artifacts e Report Studio de lançamento, com Visual Acceptance Pack obrigatório. |
+| `specs/SPEC-058-auxiliary-routine-factory.md` | Factory de Auxiliares e Rotinas de lançamento, com criação por conversa/dashboard, catálogo, releases, revisões, triggers e demanda. |
 | `runbooks/RUNBOOK-PAREAMENTO-WHATSAPP-CORRETORA.md` | Pareamento de corretoras com baixo atrito. |
 | `runbooks/RUNBOOK-PASSKEY-WHATSAPP.md` | Fluxo de passkey. |
 | `runbooks/RUNBOOK-EVOLUTION-GO-POOL-POSTGRES.md` | Diagnóstico do pool Postgres Evolution Go. |
@@ -105,7 +112,7 @@ Schema e migrations são governados pela SPEC-054.
 
 As SPECs 003, 004, 008, 010, 034, 040 e 044 continuam como histórico e detalhamento, mas a SPEC-052 prevalece em arquitetura cognitiva.
 
-As SPECs 002 e 019 continuam como fundação histórica de Auxiliares e Rotinas, mas a SPEC-053 prevalece em ontologia, Work Runs, Skills, Tool Gateway, approvals, artifacts e Control Plane.
+As SPECs 002 e 019 e o UX-007 continuam como fundação histórica de Auxiliares e Rotinas, mas a SPEC-058 prevalece em Factory, releases, instalações, revisões, runtime padrão, criação por conversa/dashboard, lifecycle e cutover.
 
 A SPEC-014 continua como fundação histórica do Capability Registry, mas a SPEC-056 prevalece em Skill Releases, Capability Packs, Tool Definitions/Releases, seleção dinâmica, Tool Gateway e cutover de autoridades legadas.
 
@@ -122,6 +129,7 @@ SPEC-052
 → SPEC-055 para execução durável
 → SPEC-056 para Skills, capabilities e tools
 → SPEC-057 para artifacts, renderers, relatórios e entregas
+→ SPEC-058 para Auxiliares, Rotinas, Factory, catálogo e criação
 → SPEC subordinada mais nova e explícita
 → ADR aplicável
 → documento histórico
