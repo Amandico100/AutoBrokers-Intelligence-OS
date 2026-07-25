@@ -14,12 +14,12 @@
 7. [`SPEC-058-auxiliary-routine-factory.md`](SPEC-058-auxiliary-routine-factory.md) — Factory único de Auxiliares e Rotinas; classificação de padrão de trabalho; criação por chat e dashboard; releases, instalações, revisões, triggers, readiness, custos, demanda e cutover dos caminhos legados.
 8. [`SPEC-059-briefing-proatividade-garimpo-v3.md`](SPEC-059-briefing-proatividade-garimpo-v3.md) — Intelligence Fabric único: eventos, sinais, evidências, Findings, recomendações, Briefing Diário/Semanal, Garimpo v3, Demand Radar, feedback, outcome e migração da proatividade histórica.
 9. [`SPEC-060-research-intelligence.md`](SPEC-060-research-intelligence.md) — Research Intelligence único: Research Orchestrator, providers, fontes, crawling, claims, citações, Evidence Packs, monitors, pesquisa regulatória/concorrentes/SEO-AEO/empresas e migração do web search histórico.
-10. SPECs posteriores explicitamente subordinadas às SPECs 052–060.
-11. SPECs anteriores apenas quando não houver conflito.
+10. [`SPEC-061-portal-admin-control-plane.md`](SPEC-061-portal-admin-control-plane.md) — Control Plane Global único: autenticação e RBAC administrativos, Admin Command Gateway, read models, Home/Inbox, Cockpit por corretora, Work Runs, approvals, Agents, Skills, Tools, Connections, Intelligence, Research, Knowledge, Financeiro, Segurança, Evals, Releases, auditoria e migração do Portal Admin histórico.
+11. SPECs posteriores explicitamente subordinadas às SPECs 052–061.
+12. SPECs anteriores apenas quando não houver conflito.
 
 ## Próxima sequência subordinada
 
-- `SPEC-061` — Portal Admin Control Plane;
 - `SPEC-062` — Evals, Billing, Rollout & Production Readiness.
 
 ## SPEC-054 — auditoria e execução
@@ -63,6 +63,12 @@ A SPEC-059 substitui a proatividade superficial como autoridade. `broker_insight
 
 A SPEC-060 não autoriza scraping irrestrito. Firecrawl é capability global da plataforma, não cérebro soberano. Descoberta de empresas deve usar Places API/provider permitido, sem scraping da interface do Google Maps. `TavilyService` e `WebSearchTool` históricos permanecem apenas como adapters até o cutover.
 
+## SPEC-061 — Portal Admin Control Plane de lançamento
+
+- [`SPEC-061-portal-admin-control-plane.md`](SPEC-061-portal-admin-control-plane.md) — documento de implementação autorizado em três blocos macro. Ao final, `/admin` é exclusivo do Control Plane Global, `/dashboard` permanece para as corretoras, autenticação/permissions são server-side, ações passam pelo Admin Command Gateway, Home/Inbox/Cockpits são acionáveis e todas as autoridades das SPECs 052–060 possuem administração funcional.
+
+A SPEC-061 substitui o Portal Admin fragmentado como autoridade de experiência. `app/admin/layout.tsx`, Dashboard, Central de Agentes, Cockpit, páginas de Agents, FinOps, Portais, Knowledge, Insights e rotas históricas permanecem como fundação/adapters até o cutover. `localStorage`, redirect client-side, modais técnicas extensas e páginas que espelham tabelas não podem continuar como autoridade de autenticação, permissão ou arquitetura de produto.
+
 ## SPECs parcialmente superadas
 
 As seguintes SPECs permanecem disponíveis como histórico e detalhamento técnico, mas não são mais autoridade soberana quando houver conflito:
@@ -100,6 +106,12 @@ As seguintes SPECs permanecem disponíveis como histórico e detalhamento técni
 - retorno textual de três resultados, attachment direto da tool ao grafo, ausência de claims/citações e Tavily como caminho soberano são superados pela SPEC-060;
 - Firecrawl, Tavily, Places e futuros providers devem operar pelo Research Orchestrator + Tool Gateway, sem publisher, RAG, scheduler ou motor paralelo.
 
+### Portal Admin e Control Plane — prevalece SPEC-061
+
+- `SPEC-036-auditoria-e-plano-portal-admin.md`, `UX-001-navegacao.md`, `DS-001-design-brief.md`, relatórios Claude Design, screenshots do Portal Admin e páginas atuais permanecem como evidência histórica e visual;
+- menu histórico, `/admin` compartilhado com company admins, sessão client-side, health inferido no componente, modal única de Agent com muitas abas e páginas isoladas são superados pela SPEC-061;
+- nenhuma nova tela pode criar comando, permissão, read model ou autoridade de domínio paralela ao Control Plane BFF/Admin Command Gateway e às SPECs 052–060.
+
 ### Capabilities, Skills e tools — prevalece SPEC-056
 
 - `../SPEC-014-capability-registry-knowledge-os.md` continua como fundação histórica do Registry, mas a SPEC-056 prevalece em Skill Releases, Capability Packs, Tool Definitions/Releases, seleção dinâmica, Tool Gateway e cutover das autoridades legadas;
@@ -131,11 +143,15 @@ Leia a SPEC-059 antes de alterar sinais, Findings, recomendações,
 briefings, Garimpo, proatividade, Demand Radar, feedback ou outcomes.
 Leia a SPEC-060 antes de alterar pesquisa, Tavily, Firecrawl, web search,
 crawling, fontes, claims, citações, monitors, SEO/AEO ou business discovery.
+Leia a SPEC-061 antes de alterar /admin, autenticação administrativa,
+RBAC, permissions, Cockpits, Admin Inbox, Control Plane BFF, comandos,
+auditoria, Support Access, navegação ou qualquer superfície global.
 
 Não crie RAG, memória, publisher, runtime, scheduler, executor,
 Skill Registry, Tool Gateway, Artifact Hub, Auxiliary Factory,
-Intelligence Fabric, Research Orchestrator, Garimpo ou motor paralelo.
-Não use decisões históricas que contradigam as SPECs 052–060.
+Intelligence Fabric, Research Orchestrator, Control Plane,
+Garimpo ou motor paralelo.
+Não use decisões históricas que contradigam as SPECs 052–061.
 Em ambiguidade, pare e solicite decisão do CEO/Founder.
 ```
 
