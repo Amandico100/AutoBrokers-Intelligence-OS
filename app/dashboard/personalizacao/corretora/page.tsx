@@ -16,6 +16,15 @@ export default function CorretoraPage() {
           breadcrumb={[{ label: 'Personalização', href: '/dashboard/personalizacao' }, { label: 'Corretora' }]}
         />
         <GalleryGrid>
+          {/* Vem primeiro: é a identidade que todas as peças geradas carregam. */}
+          <GalleryCard
+            icon={icons.corretora}
+            title="Identidade da corretora"
+            description="Logo, cores e tipografia da sua marca — capturados do seu site. Todo relatório e PDF sai com esta identidade."
+            status={{ tone: 'info', label: 'Automático' }}
+            cta="Montar"
+            href="/dashboard/personalizacao/corretora/identidade"
+          />
           <GalleryCard
             icon={icons.corretora}
             title="Dados da corretora"

@@ -28,6 +28,7 @@ from uvicorn.middleware.proxy_headers import ProxyHeadersMiddleware
 from app.agents.graph import close_async_postgres_pool
 from app.api import chat_router
 from app.api.agent_config import router as agent_config_router
+from app.api.brand import router as brand_router
 from app.api.documents import router as documents_router
 from app.api.webhook import router as webhook_router
 from app.core import settings
@@ -178,6 +179,9 @@ app.add_middleware(
 # Registrar rotas
 app.include_router(chat_router, tags=["Chat"])
 app.include_router(documents_router, tags=["Documents"])
+# SPEC-057 — identidade da corretora. Egresso e derivacao de paleta ficam
+# no backend, onde vive o egress_guard.
+app.include_router(brand_router, tags=["Brand Identity"])
 app.include_router(agent_config_router, prefix="/api/agent", tags=["Agent Config"])
 from app.api.agents import router as agents_router
 from app.api.billing import router as billing_router
