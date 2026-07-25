@@ -542,3 +542,55 @@ nova no painel, trocar a variável, revogar a atual. Registrado junto do D12.
 Atendimento **não** recebe leitura profunda. O agente que fala com o segurado
 no WhatsApp não tem por que abrir páginas arbitrárias da internet — a SPEC-054
 já tirou dele o HTTP genérico pelo mesmo motivo.
+
+---
+
+## D17 — Corpus normativo: ler uma vez, servir a todas
+
+**Data:** 25/07/2026 · **Estado:** AUTORIZADA pelo Founder · **Origem:** Founder
+
+### A proposta do Founder
+
+> "TODAS AS CONDIÇÕES GERAIS SÃO AS MESMAS PARA TODAS AS CORRETORAS, TODOS OS
+> SEGURADOS. ENTÃO NÃO TEM SENTIDO IR SEMPRE LÁ BUSCAR A INFORMAÇÃO QUE
+> PODERÍAMOS COLOCAR NAS MEMÓRIAS/RAG."
+
+### Avaliação do Executor: correta, e por uma razão a mais
+
+Custo é o argumento óbvio e ele procede. O argumento mais forte é **consistência**:
+se duas corretoras perguntarem a mesma coisa sobre a mesma apólice e receberem
+respostas diferentes porque o PDF foi lido em dias diferentes, isso não é
+desperdício — é **erro**. Documento normativo tem de dar a mesma resposta para
+todo mundo.
+
+### O que impede isto de virar passivo
+
+Uma apólice emitida em 2023 é regida pela condição vigente **na emissão**, não
+pela de hoje. Um cache que guarda "a condição atual" e responde sobre apólice
+antiga pode estar confiantemente errado sobre cobertura — e o corretor repete
+isso ao cliente.
+
+Por isso o catálogo guarda **número de processo SUSEP** (a identidade legal),
+**vigência** e histórico de versões; e o cabeçalho de procedência entra
+**dentro** do texto ingerido, para que qualquer trecho recuperado carregue a
+seguradora, o ramo e a vigência junto.
+
+### Nenhuma estrutura paralela
+
+A coleção Qdrant global, o serviço de busca e a `knowledge.global.search` já
+existiam. Foi criado apenas o **catálogo**. A ingestão usa as mesmas primitivas
+do `global_knowledge_seed` (mesma coleção, mesmo escopo, mesmo serviço Qdrant),
+mudando só o `namespace` de `canon` para `normative`. A reconferência periódica
+entra no laço de manutenção do worker da SPEC-055 — nenhum agendador novo.
+
+### Curadoria é humana
+
+Descoberta automática **propõe**; `approved_at` libera. Documento normativo
+alimenta o cérebro de todas as corretoras — isso não se decide por acaso de
+navegação. O worker só ingere o que foi aprovado.
+
+### Custo
+
+A leitura é da **plataforma**, não da corretora que porventura disparou. Cobrar
+da primeira corretora a leitura de um documento que serve a todas seria cobrar
+quem chegou primeiro.

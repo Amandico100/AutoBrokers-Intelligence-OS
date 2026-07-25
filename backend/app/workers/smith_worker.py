@@ -154,8 +154,35 @@ class SmithWorker:
                         "[SmithWorker] %d efeito(s) aguardando reconciliação — nenhum repetido automaticamente",
                         len(pendentes),
                     )
+                # SPEC-057 H — reconferencia do corpus normativo. Entra no laco
+                # que JA existe: criar um agendador proprio para isto seria o
+                # motor paralelo que o CLAUDE.md 5 proibe.
+                await self._reconferir_corpus()
             except Exception as exc:  # noqa: BLE001
                 logger.error("[SmithWorker] manutenção: %s", type(exc).__name__)
+
+    async def _reconferir_corpus(self) -> None:
+        """Passa nos documentos normativos vencidos, poucos por ciclo.
+
+        Trabalho de fundo nao pode competir com o trabalho que o corretor esta
+        esperando — por isso o limite e baixo e a falha e silenciosa aqui.
+        """
+        try:
+            from app.services.knowledge.insurance_corpus import InsuranceCorpusService
+            from app.services.research.firecrawl import configurado
+
+            if not configurado():
+                return
+            r = await InsuranceCorpusService(self.db).reconferir_pendentes(limite=3)
+            if r.get("mudaram"):
+                logger.warning(
+                    "[SmithWorker] corpus normativo: %d documento(s) MUDARAM na origem",
+                    r["mudaram"])
+            elif r.get("conferidos"):
+                logger.info("[SmithWorker] corpus normativo: %d conferido(s), sem mudanca",
+                            r["conferidos"])
+        except Exception as exc:  # noqa: BLE001
+            logger.warning("[SmithWorker] reconferencia do corpus: %s", type(exc).__name__)
 
     # ------------------------------------------------------------------
     # Execução

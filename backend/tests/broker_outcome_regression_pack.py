@@ -295,6 +295,10 @@ CASOS: list[Caso] = [
     # queima a corretora na frente do cliente dela — por isso entra no gate.
     Caso("MRC-01", "identidade", "Toda peça sai legível e com a marca da corretora",
          "SPEC-057", lambda: _roda_script("test_spec057_brand_identity.py")),
+    # Corpus normativo entra no cerebro de TODAS as corretoras. Ruido aqui
+    # nao e um erro de uma corretora — e uma resposta errada dada a todas.
+    Caso("MRC-02", "conhecimento", "Só entra no corpus normativo o que é norma",
+         "SPEC-057", lambda: _roda_script("test_spec057_corpus_normativo.py")),
     Caso("IDN-01", "identidade", "Corretora A não enxerga dados da corretora B",
          "SPEC-048", lambda: _roda_script("test_spec048_isolamento_corretoras.py")),
     Caso("CAP-01", "capacidades", "Agente só recebe os poderes do seu papel",
