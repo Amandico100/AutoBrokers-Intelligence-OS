@@ -280,6 +280,33 @@ try:
     from app.api.work_runs import router as work_runs_router
     app.include_router(work_runs_router, tags=["Work Runs"])
     logger.info("[STARTUP] Work Runs API registrada")
+
+    # Painel de subsistemas no startup. Sem isto, a unica forma de saber o que
+    # esta ligado e adivinhar pelo comportamento — e um log que nao responde
+    # "o que esta no ar?" obriga a diagnosticar por tentativa.
+    try:
+        import os as _os
+
+        from app.agents.context_assembly import modo as _ctx_modo
+        from app.agents.gateway_cutover import modo_atual as _gw_modo
+        from app.services.research.firecrawl import configurado as _fc_ok
+
+        logger.info(
+            "[STARTUP] SUBSISTEMAS SPEC-054..057 | marca=%s artefatos=%s corpus=%s | "
+            "tool_gateway=%s context_assembly=%s authority_strict=%s | "
+            "firecrawl=%s ponte_rotinas=%s worker_na_api=%s",
+            "on" if brand_router else "off",
+            "on" if artifacts_router else "off",
+            "on" if corpus_router else "off",
+            _gw_modo(), _ctx_modo(),
+            "on" if str(_os.getenv("AUTHORITY_STRICT_MODE", "")).strip().lower()
+            in ("1", "true", "yes", "on") else "off",
+            "configurado" if _fc_ok() else "SEM CHAVE",
+            "on" if str(_os.getenv("WORK_RUNS_ROUTINE_BRIDGE", "")).strip() in ("1", "true", "on") else "off",
+            "on" if str(_os.getenv("WORK_WORKER_IN_PROCESS", "")).strip() in ("1", "true", "on") else "off",
+        )
+    except Exception as _e:  # noqa: BLE001
+        logger.warning("[STARTUP] painel de subsistemas indisponivel: %s", type(_e).__name__)
 except Exception as _e:
     logger.error(f"[STARTUP] Work Runs API indisponivel: {type(_e).__name__}")
 
