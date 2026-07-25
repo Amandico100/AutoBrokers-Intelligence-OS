@@ -11,12 +11,12 @@
 4. [`SPEC-055-durable-work-runs-queue-checkpoints-hitl.md`](SPEC-055-durable-work-runs-queue-checkpoints-hitl.md) — execução universal de lançamento: Work Runs, steps, attempts, Redis Streams, worker Smith, leases, checkpoints, HITL, approvals, side effects idempotentes e integração com Rotinas, Auxiliares e Portais.
 5. [`SPEC-056-skill-registry-tool-gateway.md`](SPEC-056-skill-registry-tool-gateway.md) — catálogo canônico e versionado de Skills, Capability Packs e Tool Releases; Tool Gateway único; seleção dinâmica; migração de native/HTTP/MCP/Portal/delegation; biblioteca inicial de Skills e ativação em produção.
 6. [`SPEC-057-artifact-hub-report-studio.md`](SPEC-057-artifact-hub-report-studio.md) — Artifact Hub único, Report Studio, templates versionados, renderer determinístico, relatório web/PDF, XLSX, CSV, PPTX, DOCX, gráficos, Evidence Pack, compartilhamento, entrega e Visual Acceptance Pack.
-7. SPECs posteriores explicitamente subordinadas às SPECs 052–057.
-8. SPECs anteriores apenas quando não houver conflito.
+7. [`SPEC-058-auxiliary-routine-factory.md`](SPEC-058-auxiliary-routine-factory.md) — Factory único de Auxiliares e Rotinas; classificação de padrão de trabalho; criação por chat e dashboard; releases, instalações, revisões, triggers, readiness, custos, demanda e cutover dos caminhos legados.
+8. SPECs posteriores explicitamente subordinadas às SPECs 052–058.
+9. SPECs anteriores apenas quando não houver conflito.
 
 ## Próxima sequência subordinada
 
-- `SPEC-058` — Auxiliary & Routine Factory;
 - `SPEC-059` — Briefing, Proatividade & Garimpo v3;
 - `SPEC-060` — Research Intelligence;
 - `SPEC-061` — Portal Admin Control Plane;
@@ -45,6 +45,12 @@ A SPEC-056 também não é um catálogo visual ou uma fase beta. A entrega só t
 
 A SPEC-057 exige um **Visual Acceptance Pack** separado como referência de design, mas ele não é outro runtime, sistema ou SPEC. Nenhum template de lançamento é considerado final sem aprovação visual do Founder.
 
+## SPEC-058 — Auxiliary & Routine Factory de lançamento
+
+- [`SPEC-058-auxiliary-routine-factory.md`](SPEC-058-auxiliary-routine-factory.md) — documento de implementação autorizado em três blocos macro. Ao final, o Factory escolhe entre Work Run único, Rotina, Auxiliar, workflow, executor especializado ou Agent-backed; templates possuem releases; instalações possuem revisões; criação por chat e dashboard funciona; Rotinas acionam Work Runs; templates iniciais estão ativos.
+
+A SPEC-058 revoga definitivamente a equivalência “Auxiliares = Rotinas”. Nem toda tarefa recorrente cria um novo Agent. O runtime padrão é Skill Release + Capability Pack + Work Run, com Agent dedicado apenas quando houver justificativa técnica.
+
 ## SPECs parcialmente superadas
 
 As seguintes SPECs permanecem disponíveis como histórico e detalhamento técnico, mas não são mais autoridade soberana quando houver conflito:
@@ -59,11 +65,16 @@ As seguintes SPECs permanecem disponíveis como histórico e detalhamento técni
 - `SPEC-040-ESPELHO-VISAO-OPERACIONAL-E-CENTRAL-COMPLETA.md` e documentos relacionados;
 - `SPEC-044-tres-camadas-global-corretora-usuario.md`.
 
-### Work OS, Auxiliares e Rotinas — prevalece SPEC-053
+### Work OS — prevalece SPEC-053
 
-- `../SPEC-002-auxiliares-runtime-smith.md`, somente onde conflitar com a ontologia e o modelo universal de Work Run;
-- `SPEC-019-rotinas-auxiliares-claude-parity.md`, especialmente a equivalência antiga entre Auxiliares e Rotinas;
-- seções históricas de `SPEC-034` sobre harness quando conflitarem com o Tool Gateway, Skills, HITL ou execução durável.
+- seções históricas de `SPEC-034` sobre harness quando conflitarem com Work Runs, Tool Gateway, Skills, HITL ou execução durável.
+
+### Auxiliares e Rotinas — prevalece SPEC-058
+
+- `../SPEC-002-auxiliares-runtime-smith.md` continua como fundação histórica de Auxiliares sobre Smith, mas a SPEC-058 prevalece em releases, instalações, revisões, Factory, criação, lifecycle e runtime padrão;
+- `SPEC-019-rotinas-auxiliares-claude-parity.md` continua como fundação histórica do scheduler e tools conversacionais, mas a equivalência antiga entre Auxiliares e Rotinas está revogada;
+- `UX-007-auxiliares.md` continua como referência de produto, mas criação livre deixa de ser “futura” e passa a ser obrigação operacional da SPEC-058;
+- criação automática de Agent por todo template, execução direta de prompt bruto por Rotina e runs paralelos deixam de ser autoridade após o cutover.
 
 ### Capabilities, Skills e tools — prevalece SPEC-056
 
@@ -90,10 +101,12 @@ Leia a SPEC-056 antes de alterar Skills, capabilities, toolsets,
 HTTP/MCP/native/Portal tools, subagentes ou seleção dinâmica.
 Leia a SPEC-057 antes de alterar artifacts, relatórios, templates,
 renderers, PDF/XLSX/PPTX/DOCX, gráficos, compartilhamento ou entrega.
+Leia a SPEC-058 antes de alterar Auxiliares, Rotinas, templates,
+instalações, revisões, criação pelo chat/dashboard, triggers ou catálogo.
 
 Não crie RAG, memória, publisher, runtime, scheduler, executor,
-Skill Registry, Tool Gateway, Artifact Hub ou catálogo paralelo.
-Não use decisões históricas que contradigam as SPECs 052–057.
+Skill Registry, Tool Gateway, Artifact Hub, Auxiliary Factory ou catálogo paralelo.
+Não use decisões históricas que contradigam as SPECs 052–058.
 Em ambiguidade, pare e solicite decisão do CEO/Founder.
 ```
 
