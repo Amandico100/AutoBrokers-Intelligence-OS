@@ -98,7 +98,11 @@ SEGURADORAS = {
     "tokio": ("Tokio Marine", ("tokiomarine.com", "tokio marine")),
     "hdi": ("HDI Seguros", ("hdiseguros.com", "hdi seguros")),
     "mapfre": ("Mapfre", ("mapfre.com", "mapfre")),
-    "liberty": ("Liberty Seguros", ("libertyseguros.com", "liberty seguros")),
+    # Liberty Seguros virou Yelum em 2024. Documento antigo continua valendo e
+    # continua hospedado no dominio antigo — as duas pistas apontam para a
+    # mesma seguradora, senao a condicao geral de ontem vira orfa.
+    "yelum": ("Yelum Seguradora", ("yelum.com.br", "yelum",
+                                   "libertyseguros.com", "liberty seguros")),
     "zurich": ("Zurich", ("zurich.com", "zurich")),
     "azul": ("Azul Seguros", ("azulseguros.com", "azul seguros")),
     "itau": ("Itaú Seguros", ("itau.com.br/seguros", "itaú seguros")),

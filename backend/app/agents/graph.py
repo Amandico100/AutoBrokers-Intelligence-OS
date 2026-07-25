@@ -428,11 +428,39 @@ async def create_agent_graph(
     except Exception as e:  # noqa: BLE001
         logger.warning(f"[Graph] ⚠️ Capability tools (SPEC-014) não anexadas: {e}")
 
+    # === SPEC-057 — o corretor pede o relatório por conversa ===
+    # É aqui que a fundação das 054–057 vira algo que ele vê: "me faz o
+    # panorama do mês" devolve uma peça com a marca da corretora dele.
+    if company_id and supabase_client and str(_agent_role or "core").strip().lower() in ("core", "", "core(legado)"):
+        try:
+            from .tools.report_tool import ferramenta_de_relatorio
+            tools.extend(ferramenta_de_relatorio(
+                company_id=str(company_id), supabase=supabase_client))
+        except Exception as e:  # noqa: BLE001
+            logger.warning(f"[Graph] ⚠️ ferramenta de relatório não anexada: {e}")
+
     # Bind final (Standard + Dinâmicas)
     llm_with_tools = llm.bind_tools(tools)
 
     # === 3. Define os Nós ===
-    agent_fn = partial(agent_node, llm_with_tools=llm_with_tools)
+    # SPEC-057 §I — o cutover para o Tool Gateway acontece POR TURNO, dentro do
+    # nó do agente, e não aqui. O grafo é cacheado por (empresa, agente) e
+    # reusado em muitas conversas: escolher ferramenta na montagem fixaria a
+    # mesma lista para todo mundo, que é exatamente o que o progressive
+    # disclosure da SPEC-056 existe para desfazer. Além disso, aqui não há
+    # mensagem do usuário — e sem ela não há Skill a resolver.
+    agent_fn = partial(
+        agent_node,
+        llm_with_tools=llm_with_tools,
+        llm_base=llm,
+        tools_base=tools,
+        cutover_ctx={
+            "supabase_client": supabase_client,
+            "company_id": str(company_id) if company_id else None,
+            "agent_role": str(_agent_role or "core"),
+            "active_capabilities": active_caps,
+        },
+    )
     tool_fn = partial(tool_node, tools=tools)
     log_fn = partial(log_node, supabase_client=supabase_client)
 

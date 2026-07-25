@@ -259,3 +259,22 @@ async def saude_work_os(
         saida["fila"] = {"erro": type(exc).__name__}
 
     return saida
+
+
+@router.get("/cutover")
+async def cutover_progresso():
+    """Progresso do cutover do grafo para o Tool Gateway. SPEC-057 §Bloco I.
+
+    Responde a única pergunta que importa antes de virar a chave: **em quantas
+    conversas a decisão nova bateu com a antiga?** Sem este número, "está
+    rodando em shadow" é uma afirmação sem prova.
+    """
+    import os
+
+    from app.agents.gateway_cutover import modo_atual, progresso
+
+    p = progresso(get_supabase_client())
+    p["modo"] = modo_atual()
+    p["authority_strict"] = str(
+        os.getenv("AUTHORITY_STRICT_MODE", "")).strip().lower() in ("1", "true", "yes", "on")
+    return p
