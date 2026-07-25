@@ -1,77 +1,107 @@
 # Índice e autoridade das SPECs canônicas
 
 > [!IMPORTANT]
-> Para qualquer tarefa relacionada a conhecimento, RAG, memória, Context Assembly, aprendizagem, ferramentas, Skills, conectores, MCPs, Auxiliares, Rotinas, Work Runs, approvals, artifacts, proatividade, briefings, Garimpo, pesquisa, crawling, fontes, citações, monitors ou Portal Admin, leia primeiro as SPECs **052** e **053**.
+> Para qualquer tarefa relacionada ao cérebro, Work OS, segurança, execução, Skills, tools, artifacts, Auxiliares, proatividade, pesquisa, Portal Admin, evals, billing, rollout ou lançamento do AutoBrokers, leia primeiro as SPECs **052** e **053** e depois siga a sequência até a autoridade específica do domínio.
 
 ## Autoridade atual
 
 1. `SPEC-052-cerebro-cognitivo-unificado-autobrokers.md` — arquitetura cognitiva soberana: conhecimento, memória, contexto, aprendizagem e cérebro unificado.
 2. `SPEC-053-autobrokers-work-os-core-harness.md` — arquitetura soberana do Work OS: Core Harness, Skills, Tool Gateway, execução durável, Auxiliares, Rotinas, artifacts e Control Plane.
-3. [`SPEC-054-foundation-hardening-schema-governance.md`](SPEC-054-foundation-hardening-schema-governance.md) — fechamento P0, Storage privado, baseline reproduzível, integridade multi-tenant, hardening de HTTP/MCP, Authority Strict progressivo e idempotência preparatória.
-4. [`SPEC-055-durable-work-runs-queue-checkpoints-hitl.md`](SPEC-055-durable-work-runs-queue-checkpoints-hitl.md) — execução universal de lançamento: Work Runs, steps, attempts, Redis Streams, worker Smith, leases, checkpoints, HITL, approvals, side effects idempotentes e integração com Rotinas, Auxiliares e Portais.
-5. [`SPEC-056-skill-registry-tool-gateway.md`](SPEC-056-skill-registry-tool-gateway.md) — catálogo canônico e versionado de Skills, Capability Packs e Tool Releases; Tool Gateway único; seleção dinâmica; migração de native/HTTP/MCP/Portal/delegation; biblioteca inicial de Skills e ativação em produção.
-6. [`SPEC-057-artifact-hub-report-studio.md`](SPEC-057-artifact-hub-report-studio.md) — Artifact Hub único, Report Studio, templates versionados, renderer determinístico, relatório web/PDF, XLSX, CSV, PPTX, DOCX, gráficos, Evidence Pack, compartilhamento, entrega e Visual Acceptance Pack.
-7. [`SPEC-058-auxiliary-routine-factory.md`](SPEC-058-auxiliary-routine-factory.md) — Factory único de Auxiliares e Rotinas; classificação de padrão de trabalho; criação por chat e dashboard; releases, instalações, revisões, triggers, readiness, custos, demanda e cutover dos caminhos legados.
-8. [`SPEC-059-briefing-proatividade-garimpo-v3.md`](SPEC-059-briefing-proatividade-garimpo-v3.md) — Intelligence Fabric único: eventos, sinais, evidências, Findings, recomendações, Briefing Diário/Semanal, Garimpo v3, Demand Radar, feedback, outcome e migração da proatividade histórica.
-9. [`SPEC-060-research-intelligence.md`](SPEC-060-research-intelligence.md) — Research Intelligence único: Research Orchestrator, providers, fontes, crawling, claims, citações, Evidence Packs, monitors, pesquisa regulatória/concorrentes/SEO-AEO/empresas e migração do web search histórico.
-10. [`SPEC-061-portal-admin-control-plane.md`](SPEC-061-portal-admin-control-plane.md) — Control Plane Global único: autenticação e RBAC administrativos, Admin Command Gateway, read models, Home/Inbox, Cockpit por corretora, Work Runs, approvals, Agents, Skills, Tools, Connections, Intelligence, Research, Knowledge, Financeiro, Segurança, Evals, Releases, auditoria e migração do Portal Admin histórico.
-11. SPECs posteriores explicitamente subordinadas às SPECs 052–061.
-12. SPECs anteriores apenas quando não houver conflito.
+3. [`SPEC-054-foundation-hardening-schema-governance.md`](SPEC-054-foundation-hardening-schema-governance.md) — fechamento P0, Storage privado, baseline reproduzível, integridade multi-tenant, hardening de HTTP/MCP, Authority Strict e idempotência preparatória.
+4. [`SPEC-055-durable-work-runs-queue-checkpoints-hitl.md`](SPEC-055-durable-work-runs-queue-checkpoints-hitl.md) — Work Runs universais, Redis Streams, worker Smith, leases, checkpoints, HITL, approvals e side effects idempotentes.
+5. [`SPEC-056-skill-registry-tool-gateway.md`](SPEC-056-skill-registry-tool-gateway.md) — Skill Registry, Capability Packs, Tool Releases, Tool Gateway único, seleção dinâmica e cutover das autoridades de tools legadas.
+6. [`SPEC-057-artifact-hub-report-studio.md`](SPEC-057-artifact-hub-report-studio.md) — Artifact Hub, Report Studio, templates versionados, renderer determinístico, formatos profissionais, compartilhamento, entrega e Visual Acceptance Pack.
+7. [`SPEC-058-auxiliary-routine-factory.md`](SPEC-058-auxiliary-routine-factory.md) — Factory único de Auxiliares e Rotinas, classificação de trabalho, criação pelo chat/dashboard, releases, instalações, revisões, triggers e lifecycle.
+8. [`SPEC-059-briefing-proatividade-garimpo-v3.md`](SPEC-059-briefing-proatividade-garimpo-v3.md) — Intelligence Fabric único: sinais, evidências, Findings, recomendações, Briefings, Garimpo v3, Demand Radar, feedback e outcomes.
+9. [`SPEC-060-research-intelligence.md`](SPEC-060-research-intelligence.md) — Research Intelligence único: providers, fontes, crawling, snapshots, Claims, citações, Evidence Packs, monitors e pesquisas verticais.
+10. [`SPEC-061-portal-admin-control-plane.md`](SPEC-061-portal-admin-control-plane.md) — Control Plane Global: autenticação/RBAC server-side, Admin Command Gateway, Home/Inbox, Cockpits, administração das SPECs 052–060, segurança, auditoria e migração do Portal Admin histórico.
+11. [`SPEC-062-evals-billing-rollout-production-readiness.md`](SPEC-062-evals-billing-rollout-production-readiness.md) — autoridade final de lançamento: evals, Release Evidence, CI/CD, SLOs, observabilidade, billing, planos, Usage/Credit Ledgers, reconciliação, margem, carga, backup/restore, onboarding, readiness, rollout e decisão de go-live.
+12. SPECs futuras somente quando subordinadas às SPECs 052–062 e aprovadas pelo Founder.
+13. SPECs anteriores apenas quando não houver conflito.
 
-## Próxima sequência subordinada
+## Estado do programa 052–062
 
-- `SPEC-062` — Evals, Billing, Rollout & Production Readiness.
+A sequência arquitetural está documentalmente completa.
+
+O próximo passo não é criar automaticamente uma SPEC-063.
+
+```text
+Executar SPEC-054
+→ executar SPEC-055
+→ executar SPEC-056
+→ executar SPEC-057
+→ executar SPEC-058
+→ executar SPEC-059
+→ executar SPEC-060
+→ executar SPEC-061
+→ executar SPEC-062
+→ emitir Launch Decision
+```
+
+Cada execução deve produzir relatório final, APPLY/VERIFY/ROLLBACK e evidência dos canários Amandus → Resulta → AutoFleet.
 
 ## SPEC-054 — auditoria e execução
 
-- [`../audits/AUDIT-SPEC-054-foundation-hardening-schema-governance-2026-07-24.md`](../audits/AUDIT-SPEC-054-foundation-hardening-schema-governance-2026-07-24.md) — censo read-only do Supabase e da `main`, cobrindo schema vivo, migrations, RLS, funções, Storage, multi-tenancy, SSRF, MCP, Authority Strict, idempotência, performance, rollout e critérios de aceite.
-- [`SPEC-054-foundation-hardening-schema-governance.md`](SPEC-054-foundation-hardening-schema-governance.md) — documento de implementação autorizado em três blocos macro, com APPLY/VERIFY/ROLLBACK e canário Amandus → Resulta → AutoFleet.
+- [`../audits/AUDIT-SPEC-054-foundation-hardening-schema-governance-2026-07-24.md`](../audits/AUDIT-SPEC-054-foundation-hardening-schema-governance-2026-07-24.md) — censo read-only do Supabase e da `main`.
+- [`SPEC-054-foundation-hardening-schema-governance.md`](SPEC-054-foundation-hardening-schema-governance.md) — implementação autorizada em três blocos, com fechamento P0, schema reproduzível e hardening.
 
-## SPEC-055 — execução durável de lançamento
+## SPEC-055 — execução durável
 
-- [`SPEC-055-durable-work-runs-queue-checkpoints-hitl.md`](SPEC-055-durable-work-runs-queue-checkpoints-hitl.md) — documento de implementação autorizado em três blocos macro. Ao final, `work_runs` deve ser a autoridade universal ativa, o worker deve estar em produção e os caminhos de Rotinas, Auxiliares e Portais devem criar/atualizar Work Runs sem execução paralela.
+- [`SPEC-055-durable-work-runs-queue-checkpoints-hitl.md`](SPEC-055-durable-work-runs-queue-checkpoints-hitl.md) — Work Runs como autoridade universal, worker Smith em produção e integração de Rotinas, Auxiliares e Portais.
 
-A SPEC-055 não é um laboratório. Testes, canários e flags são gates internos da mesma entrega de lançamento e não justificam deixar a funcionalidade permanentemente desligada.
+A SPEC-055 não é laboratório. Flags e canários são gates internos da entrega.
 
-## SPEC-056 — Skills e Tool Gateway de lançamento
+## SPEC-056 — Skills e Tool Gateway
 
-- [`SPEC-056-skill-registry-tool-gateway.md`](SPEC-056-skill-registry-tool-gateway.md) — documento de implementação autorizado em três blocos macro. Ao final, o Capability Registry existente continua como autoridade, o Skill Registry complementa a governança, o Tool Gateway é o único caminho de seleção/execução, Skills iniciais estão publicadas e native/HTTP/MCP/Portal/delegation não mantêm autorização paralela.
+- [`SPEC-056-skill-registry-tool-gateway.md`](SPEC-056-skill-registry-tool-gateway.md) — Capability Registry preservado, Skills versionadas, Tool Gateway único e biblioteca inicial ativa.
 
-A SPEC-056 também não é um catálogo visual ou uma fase beta. A entrega só termina quando Skills reais forem usadas pelo Core e pelos Work Runs em produção.
+Tools native/HTTP/MCP/Portal/delegation não podem manter autorização paralela após o cutover.
 
-## SPEC-057 — Artifact Hub e Report Studio de lançamento
+## SPEC-057 — Artifact Hub e Report Studio
 
-- [`SPEC-057-artifact-hub-report-studio.md`](SPEC-057-artifact-hub-report-studio.md) — documento de implementação autorizado em três blocos macro. Ao final, artifacts são objetos de primeira classe, MinIO privado armazena bytes, Work Runs/Skills geram versões e renders, o Report Studio funciona pelo chat e os formatos web/PDF/XLSX/CSV/PPTX/DOCX/SVG/PNG/Evidence Pack estão ativos.
+- [`SPEC-057-artifact-hub-report-studio.md`](SPEC-057-artifact-hub-report-studio.md) — artifacts como objetos de primeira classe, MinIO privado, Report Studio e formatos web/PDF/XLSX/CSV/PPTX/DOCX/SVG/PNG/Evidence Pack.
 
-A SPEC-057 exige um **Visual Acceptance Pack** separado como referência de design, mas ele não é outro runtime, sistema ou SPEC. Nenhum template de lançamento é considerado final sem aprovação visual do Founder.
+Exige **Visual Acceptance Pack** separado, subordinado à arquitetura e aprovado pelo Founder.
 
-## SPEC-058 — Auxiliary & Routine Factory de lançamento
+## SPEC-058 — Auxiliary & Routine Factory
 
-- [`SPEC-058-auxiliary-routine-factory.md`](SPEC-058-auxiliary-routine-factory.md) — documento de implementação autorizado em três blocos macro. Ao final, o Factory escolhe entre Work Run único, Rotina, Auxiliar, workflow, executor especializado ou Agent-backed; templates possuem releases; instalações possuem revisões; criação por chat e dashboard funciona; Rotinas acionam Work Runs; templates iniciais estão ativos.
+- [`SPEC-058-auxiliary-routine-factory.md`](SPEC-058-auxiliary-routine-factory.md) — Factory escolhe Work Run único, Rotina, Auxiliar, workflow, executor especializado ou Agent-backed.
 
-A SPEC-058 revoga definitivamente a equivalência “Auxiliares = Rotinas”. Nem toda tarefa recorrente cria um novo Agent. O runtime padrão é Skill Release + Capability Pack + Work Run, com Agent dedicado apenas quando houver justificativa técnica.
+A equivalência histórica “Auxiliares = Rotinas” está revogada. O runtime padrão é Skill Release + Capability Pack + Work Run.
 
-## SPEC-059 — Briefing, Proatividade & Garimpo v3 de lançamento
+## SPEC-059 — Briefing, Proatividade & Garimpo v3
 
-- [`SPEC-059-briefing-proatividade-garimpo-v3.md`](SPEC-059-briefing-proatividade-garimpo-v3.md) — documento de implementação autorizado em três blocos macro. Ao final, o sistema opera o pipeline evento → sinal → evidência → Finding → recomendação → Work Run → outcome; Briefings Diário/Semanal estão ativos; Garimpo v3 captura demanda; quiet hours/dedupe/cooldown reduzem ruído; recomendações possuem ações reais e medição.
+- [`SPEC-059-briefing-proatividade-garimpo-v3.md`](SPEC-059-briefing-proatividade-garimpo-v3.md) — pipeline evento → sinal → evidência → Finding → recomendação → Work Run → outcome.
 
-A SPEC-059 substitui a proatividade superficial como autoridade. `broker_insights.py`, `proactive_suggestions.py`, `weekly_report.py`, `regression_sentinel.py`, o Admin Insights histórico e seus schedulers diretos permanecem apenas como fontes/adapters até o cutover. Nenhum deles pode continuar como motor soberano concorrente.
+`broker_insights.py`, `proactive_suggestions.py`, `weekly_report.py`, `regression_sentinel.py` e schedulers históricos são apenas fontes/adapters até o cutover.
 
-## SPEC-060 — Research Intelligence de lançamento
+## SPEC-060 — Research Intelligence
 
-- [`SPEC-060-research-intelligence.md`](SPEC-060-research-intelligence.md) — documento de implementação autorizado em três blocos macro. Ao final, o Research Orchestrator governa pesquisa rápida, verificada, profunda, site audit, business discovery, claim checking e monitors; Tavily e Firecrawl são providers homologados; fontes, snapshots, claims e citações são persistidos; artifacts e Intelligence Signals estão integrados.
+- [`SPEC-060-research-intelligence.md`](SPEC-060-research-intelligence.md) — Research Orchestrator governa pesquisa rápida, verificada, profunda, site audit, business discovery, claim checking e monitors.
 
-A SPEC-060 não autoriza scraping irrestrito. Firecrawl é capability global da plataforma, não cérebro soberano. Descoberta de empresas deve usar Places API/provider permitido, sem scraping da interface do Google Maps. `TavilyService` e `WebSearchTool` históricos permanecem apenas como adapters até o cutover.
+Firecrawl é capability global, não cérebro soberano. Empresas usam Places API/provider permitido, sem scraping da interface do Google Maps.
 
-## SPEC-061 — Portal Admin Control Plane de lançamento
+## SPEC-061 — Portal Admin Control Plane
 
-- [`SPEC-061-portal-admin-control-plane.md`](SPEC-061-portal-admin-control-plane.md) — documento de implementação autorizado em três blocos macro. Ao final, `/admin` é exclusivo do Control Plane Global, `/dashboard` permanece para as corretoras, autenticação/permissions são server-side, ações passam pelo Admin Command Gateway, Home/Inbox/Cockpits são acionáveis e todas as autoridades das SPECs 052–060 possuem administração funcional.
+- [`SPEC-061-portal-admin-control-plane.md`](SPEC-061-portal-admin-control-plane.md) — `/admin` exclusivo do Control Plane Global, `/dashboard` para corretoras, permissions server-side, Admin Command Gateway e administração completa.
 
-A SPEC-061 substitui o Portal Admin fragmentado como autoridade de experiência. `app/admin/layout.tsx`, Dashboard, Central de Agentes, Cockpit, páginas de Agents, FinOps, Portais, Knowledge, Insights e rotas históricas permanecem como fundação/adapters até o cutover. `localStorage`, redirect client-side, modais técnicas extensas e páginas que espelham tabelas não podem continuar como autoridade de autenticação, permissão ou arquitetura de produto.
+`localStorage`, redirects client-side, modais técnicas extensas e páginas que espelham tabelas não podem continuar como autoridades de autenticação, permissão ou produto.
+
+## SPEC-062 — Evals, Billing, Rollout & Production Readiness
+
+- [`SPEC-062-evals-billing-rollout-production-readiness.md`](SPEC-062-evals-billing-rollout-production-readiness.md) — programa final de implementação e lançamento em três blocos: Release Evidence; Billing/Unit Economics; Resiliência/Onboarding/Go-Live.
+
+Regras invioláveis:
+
+- Usage Event não é automaticamente cobrança.
+- Provider cost não é automaticamente preço ao cliente.
+- Os 1.235 logs históricos auditados não podem ser cobrados retroativamente por automação.
+- O boundary comercial deve ser explícito.
+- Billing deve ser append-only, idempotente e reconciliável.
+- Backup somente é aceito após restore comprovado.
+- `GO` exige evidências, zero P0/P1 e aprovação do Founder.
 
 ## SPECs parcialmente superadas
-
-As seguintes SPECs permanecem disponíveis como histórico e detalhamento técnico, mas não são mais autoridade soberana quando houver conflito:
 
 ### Arquitetura cognitiva — prevalece SPEC-052
 
@@ -80,83 +110,78 @@ As seguintes SPECs permanecem disponíveis como histórico e detalhamento técni
 - `../SPEC-008-producao-global-autobrokers.md`;
 - `../SPEC-010-rag-knowledge-memory-curation-autobrokers-smith.md`;
 - `SPEC-034-harness-robusto-multiagente-atendimento.md`;
-- `SPEC-040-ESPELHO-VISAO-OPERACIONAL-E-CENTRAL-COMPLETA.md` e documentos relacionados;
+- `SPEC-040-ESPELHO-VISAO-OPERACIONAL-E-CENTRAL-COMPLETA.md`;
 - `SPEC-044-tres-camadas-global-corretora-usuario.md`.
 
 ### Work OS — prevalece SPEC-053
 
-- seções históricas de `SPEC-034` sobre harness quando conflitarem com Work Runs, Tool Gateway, Skills, HITL ou execução durável.
+- seções históricas de SPEC-034 sobre harness quando conflitarem com Work Runs, Skills, Tool Gateway, HITL ou execução durável.
 
 ### Auxiliares e Rotinas — prevalece SPEC-058
 
-- `../SPEC-002-auxiliares-runtime-smith.md` continua como fundação histórica de Auxiliares sobre Smith, mas a SPEC-058 prevalece em releases, instalações, revisões, Factory, criação, lifecycle e runtime padrão;
-- `SPEC-019-rotinas-auxiliares-claude-parity.md` continua como fundação histórica do scheduler e tools conversacionais, mas a equivalência antiga entre Auxiliares e Rotinas está revogada;
-- `UX-007-auxiliares.md` continua como referência de produto, mas criação livre deixa de ser “futura” e passa a ser obrigação operacional da SPEC-058;
-- criação automática de Agent por todo template, execução direta de prompt bruto por Rotina e runs paralelos deixam de ser autoridade após o cutover.
+- `../SPEC-002-auxiliares-runtime-smith.md` permanece como fundação histórica;
+- `SPEC-019-rotinas-auxiliares-claude-parity.md` permanece como fundação do scheduler histórico;
+- `UX-007-auxiliares.md` permanece como referência de produto;
+- criação de Agent para todo template, prompt bruto por Rotina e runs paralelos deixam de ser autoridade.
 
-### Proatividade, Briefings e Garimpo — prevalece SPEC-059
+### Proatividade e Garimpo — prevalece SPEC-059
 
-- seções de SPEC-034/035/036/037/040/049 sobre Garimpo, sugestões, relatórios semanais, regressão e superfícies de Insights permanecem como fundação histórica;
-- mensagem semanal fixa, relatório textual isolado, alerta direto fora de Work Run, ranking simples de frases e marcador Redis sem autoridade durável são superados pela SPEC-059;
-- `broker_insights` permanece como origem/projeção temporária, não como registro canônico de inteligência após o cutover.
+- decisões históricas das SPECs 034/035/036/037/040/049 permanecem como fundação;
+- mensagem semanal fixa, relatório textual isolado, alerta fora de Work Run e ranking simples são superados;
+- `broker_insights` é origem/projeção temporária, não registro canônico final.
 
-### Pesquisa, web search, crawling e monitors — prevalece SPEC-060
+### Pesquisa — prevalece SPEC-060
 
-- `backend/app/services/tavily_service.py`, `backend/app/agents/tools/web_search.py`, menções históricas a busca web e a capability `platform.web.search` permanecem como fundação técnica;
-- retorno textual de três resultados, attachment direto da tool ao grafo, ausência de claims/citações e Tavily como caminho soberano são superados pela SPEC-060;
-- Firecrawl, Tavily, Places e futuros providers devem operar pelo Research Orchestrator + Tool Gateway, sem publisher, RAG, scheduler ou motor paralelo.
+- `TavilyService`, `WebSearchTool` e a capability histórica `platform.web.search` são adapters até o cutover;
+- retorno textual curto sem Claims/citações e tool anexada diretamente ao grafo deixam de ser autoridade.
 
-### Portal Admin e Control Plane — prevalece SPEC-061
+### Portal Admin — prevalece SPEC-061
 
-- `SPEC-036-auditoria-e-plano-portal-admin.md`, `UX-001-navegacao.md`, `DS-001-design-brief.md`, relatórios Claude Design, screenshots do Portal Admin e páginas atuais permanecem como evidência histórica e visual;
-- menu histórico, `/admin` compartilhado com company admins, sessão client-side, health inferido no componente, modal única de Agent com muitas abas e páginas isoladas são superados pela SPEC-061;
-- nenhuma nova tela pode criar comando, permissão, read model ou autoridade de domínio paralela ao Control Plane BFF/Admin Command Gateway e às SPECs 052–060.
+- SPEC-036, UX-001, DS-001, relatórios Claude Design, screenshots e páginas atuais são evidências históricas/visuais;
+- Admin compartilhado com company admins, sessão client-side, health inferido localmente e páginas isoladas são superados.
 
 ### Capabilities, Skills e tools — prevalece SPEC-056
 
-- `../SPEC-014-capability-registry-knowledge-os.md` continua como fundação histórica do Registry, mas a SPEC-056 prevalece em Skill Releases, Capability Packs, Tool Definitions/Releases, seleção dinâmica, Tool Gateway e cutover das autoridades legadas;
-- definições hardcoded de Portal Skills continuam como evidência histórica, não como catálogo canônico;
-- autorização por `tools_config`, menção em prompt, row isolada de HTTP tool ou descoberta automática MCP é superada pelo Tool Gateway.
+- SPEC-014 permanece como fundação histórica do Capability Registry;
+- definitions hardcoded de Portal Skills e autorização por prompt/tools_config deixam de ser autoridade.
 
-### Artifacts, relatórios e entregáveis — prevalece SPEC-057
+### Artifacts — prevalece SPEC-057
 
-- relatórios textuais históricos, exports isolados, PDFs avulsos e templates espalhados continuam como evidência, mas toda nova geração deve passar pelo Artifact Hub;
-- `weekly_report.py` continua como compatibilidade de entrega até o cutover das SPECs 057/059, não como autoridade do relatório completo;
-- componentes Recharts existentes podem permanecer em telas antigas, mas novos artifacts seguem o Chart Spec e renderer definidos pela SPEC-057.
+- relatórios textuais, exports isolados, PDFs avulsos, templates espalhados e Recharts de telas históricas são evidência/compatibilidade, não autoridade dos novos entregáveis.
+
+### Evals, FinOps, billing e readiness — prevalece SPEC-062
+
+- runners independentes, `conversation_scorecards`, regression sentinel, relatórios históricos de FinOps, `token_usage_logs.billed`, `company_credits.balance_brl`, multiplicador único e readiness baseado em poucos booleanos permanecem como fundação/adapters;
+- nenhum deles isoladamente pode aprovar release, gerar invoice, decidir margem ou autorizar go-live;
+- custo técnico, preço comercial, créditos, assinaturas, invoices e pagamentos devem passar pelo ledger/reconciliação da SPEC-062.
 
 ## Regra para agentes de desenvolvimento
 
 ```text
-Leia a SPEC-052 para conhecimento, memória, contexto e aprendizagem.
-Leia a SPEC-053 para Work OS, Auxiliares, Rotinas, artifacts e Control Plane.
-Leia a SPEC-054 antes de alterar schema, migrations, RLS, Storage,
-service-role, HTTP egress, MCP sandbox, Authority Strict ou idempotência.
-Leia a SPEC-055 antes de alterar Work Runs, fila, worker, checkpoint,
-HITL, approvals, side effects ou integração de execução.
-Leia a SPEC-056 antes de alterar Skills, capabilities, toolsets,
-HTTP/MCP/native/Portal tools, subagentes ou seleção dinâmica.
-Leia a SPEC-057 antes de alterar artifacts, relatórios, templates,
-renderers, PDF/XLSX/PPTX/DOCX, gráficos, compartilhamento ou entrega.
-Leia a SPEC-058 antes de alterar Auxiliares, Rotinas, templates,
-instalações, revisões, criação pelo chat/dashboard, triggers ou catálogo.
-Leia a SPEC-059 antes de alterar sinais, Findings, recomendações,
-briefings, Garimpo, proatividade, Demand Radar, feedback ou outcomes.
-Leia a SPEC-060 antes de alterar pesquisa, Tavily, Firecrawl, web search,
-crawling, fontes, claims, citações, monitors, SEO/AEO ou business discovery.
-Leia a SPEC-061 antes de alterar /admin, autenticação administrativa,
-RBAC, permissions, Cockpits, Admin Inbox, Control Plane BFF, comandos,
-auditoria, Support Access, navegação ou qualquer superfície global.
+Leia SPEC-052 para conhecimento, memória, contexto e aprendizagem.
+Leia SPEC-053 para Work OS e arquitetura geral.
+Leia SPEC-054 antes de alterar schema, segurança, Storage, HTTP/MCP ou Authority.
+Leia SPEC-055 antes de alterar Work Runs, fila, worker, HITL ou side effects.
+Leia SPEC-056 antes de alterar Skills, capabilities, tools, MCPs ou subagentes.
+Leia SPEC-057 antes de alterar artifacts, relatórios, renderers ou entregas.
+Leia SPEC-058 antes de alterar Auxiliares, Rotinas, Factory, triggers ou catálogo.
+Leia SPEC-059 antes de alterar sinais, Findings, Briefings, Garimpo ou outcomes.
+Leia SPEC-060 antes de alterar pesquisa, crawling, fontes, Claims ou monitors.
+Leia SPEC-061 antes de alterar /admin, RBAC, Control Plane, Cockpits ou comandos.
+Leia SPEC-062 antes de alterar evals, CI/CD, SLOs, pricing, billing, créditos,
+assinaturas, reconciliação, margem, backup/restore, onboarding, readiness,
+rollout ou autorização de lançamento.
 
 Não crie RAG, memória, publisher, runtime, scheduler, executor,
 Skill Registry, Tool Gateway, Artifact Hub, Auxiliary Factory,
 Intelligence Fabric, Research Orchestrator, Control Plane,
-Garimpo ou motor paralelo.
-Não use decisões históricas que contradigam as SPECs 052–061.
-Em ambiguidade, pare e solicite decisão do CEO/Founder.
+Eval Platform, Billing Engine, Ledger ou Readiness Engine paralelo.
+Não use decisões históricas que contradigam as SPECs 052–062.
+Em ambiguidade material, pare e solicite decisão do CEO/Founder.
 ```
 
 ## Nome oficial
 
 O chat principal e agente central do produto se chama **AutoBrokers**.
 
-“Jarvys/Jarvis” é apenas uma metáfora externa para explicar a ambição de produto e não deve ser usado em UI, código de produto, agentes ou documentação canônica como nome oficial.
+“Jarvys/Jarvis” é apenas metáfora externa e não deve aparecer em UI, código ou documentação canônica como nome oficial.
