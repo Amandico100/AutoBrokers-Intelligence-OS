@@ -1,7 +1,7 @@
 ---
 > **Status:** canonical  
-> **Versão:** 2.3 — programa 052–062 completo e SPEC-062 autorizada  
-> **Última atualização:** 2026-07-24  
+> **Versão:** 2.4 — programa 052–062 completo, Lotes da SPEC-052 mapeados e execução governada  
+> **Última atualização:** 2026-07-25  
 > **Produto:** AutoBrokers.ai  
 > **Sistema:** AutoBrokers Intelligence OS  
 > **Função:** índice principal da documentação canônica ativa
@@ -11,10 +11,24 @@
 
 Esta pasta é a fonte de verdade documental ativa do AutoBrokers.ai.
 
+## Governança de execução
+
+Antes de qualquer implementação, leia nesta ordem:
+
+| Documento | Função |
+| --- | --- |
+| [`../../CLAUDE.md`](../../CLAUDE.md) | regras invioláveis de processo; porta de entrada de toda sessão |
+| [`EXECUTION-MASTER-PLAN.md`](EXECUTION-MASTER-PLAN.md) | onde estamos, o que vem a seguir, gates e estado por etapa |
+| [`FOUNDER-DECISIONS.md`](FOUNDER-DECISIONS.md) | decisões do Founder — append-only |
+| [`MIGRATIONS-AUTHORITY.md`](MIGRATIONS-AUTHORITY.md) | **obrigatório antes de qualquer SQL** — o repositório não é a fonte completa do schema |
+| [`CHANGE-ADDENDA.md`](CHANGE-ADDENDA.md) | mudanças além do texto literal das SPECs |
+| [`reports/SPEC-EXECUTION-REPORT-TEMPLATE.md`](reports/SPEC-EXECUTION-REPORT-TEMPLATE.md) | template obrigatório de relatório final por SPEC |
+
 ## Autoridade soberana atual
 
 1. [`specs/SPEC-052-cerebro-cognitivo-unificado-autobrokers.md`](specs/SPEC-052-cerebro-cognitivo-unificado-autobrokers.md)  
-   Governa conhecimento, RAG, memória, Context Assembly, aprendizagem e o cérebro cognitivo unificado.
+   Governa conhecimento, RAG, memória, Context Assembly, aprendizagem e o cérebro cognitivo unificado.  
+   Mapa executor dos Lotes 1–5: [`specs/ADDENDUM-SPEC-052-EXECUTION-MAP.md`](specs/ADDENDUM-SPEC-052-EXECUTION-MAP.md).
 
 2. [`specs/SPEC-053-autobrokers-work-os-core-harness.md`](specs/SPEC-053-autobrokers-work-os-core-harness.md)  
    Governa o Work OS: Core Harness, Skills, Tool Gateway, execução durável, Auxiliares, Rotinas, approvals, artifacts e Control Plane.
@@ -54,17 +68,20 @@ Leia também o índice detalhado em [`specs/README.md`](specs/README.md).
 
 ## Estado do programa
 
-A arquitetura 052–062 está documentalmente completa.
+A arquitetura 052–062 está documentalmente completa e os Lotes 1–5 da SPEC-052 receberam dono executor pela decisão **D1**.
 
 ```text
 Documentação aprovada
-→ execução SPEC-054 a SPEC-062
+→ Fase 0: contexto persistente e correções canônicas
+→ execução SPEC-054 a SPEC-062, com os enxertos aprovados
 → relatório final por SPEC
 → Launch Decision
 → go-live e comercialização
 ```
 
-Não criar automaticamente SPEC-063 apenas para adiar a implementação.
+A sequência autorizada, com dependências, gates e estado por etapa, está em [`EXECUTION-MASTER-PLAN.md`](EXECUTION-MASTER-PLAN.md).
+
+Não criar automaticamente SPEC-063 apenas para adiar a implementação. Os Lotes 1–5 da SPEC-052 são executados dentro das SPECs existentes e do pacote **SPEC-052 Cognitive Foundation Closure**, conforme [`specs/ADDENDUM-SPEC-052-EXECUTION-MAP.md`](specs/ADDENDUM-SPEC-052-EXECUTION-MAP.md).
 
 ## Separação oficial
 
