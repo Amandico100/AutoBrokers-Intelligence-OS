@@ -24,7 +24,7 @@
 |---|---|---|---|---|---|---|
 | 0 | Contexto persistente e correções canônicas | `chore/execution-foundation` | **CONCLUÍDO** | `3c8c752` | `317b041` | relatório da Fase 0 |
 | 1 | SPEC-054 Bloco A — Fechamento P0 | `feat/spec054-foundation-hardening` | **CONCLUÍDO** — Gate 1 verde | `2c63530` | `98f4fcd` | preflight + relatório do Bloco A |
-| 2 | SPEC-054 Blocos B/C — Baseline, Lote 1, memória | `feat/spec054-foundation-hardening` | NÃO INICIADO | — | — | — |
+| 2 | SPEC-054 Blocos B/C — Baseline, Lote 1, memória | `feat/spec054-foundation-hardening` | **CONCLUÍDO** — Gate 2 verde | `2c63530` | ver relatório | [SPEC-054-EXECUTION-REPORT](reports/SPEC-054-EXECUTION-REPORT.md) |
 | 3 | SPEC-055 — Work Runs, usage events, ponte Atendimento | `feat/spec055-durable-work-runs` | NÃO INICIADO | — | — | — |
 | 4 | SPEC-061 Fundação (antecipada) | `feat/spec061-control-plane-foundation` | NÃO INICIADO | — | — | — |
 | 5 | SPEC-056 — Skills, Tool Gateway, Context Assembly 2.0 | `feat/spec056-skill-tool-gateway` | NÃO INICIADO | — | — | — |
@@ -403,5 +403,16 @@ Nenhum outro enxerto é permitido sem entrada em [`CHANGE-ADDENDA.md`](CHANGE-AD
 | 25/07/2026 | 1 | **A3 aplicada** — 3 buckets privados, 8 policies PUBLIC removidas, 61 objetos intactos | — |
 | 25/07/2026 | 1 | VERIFY: URL pública antiga 400 na origem; traversal 400; upload sem sessão 401 | — |
 | 25/07/2026 | 1 | **GATE 1 VERDE — Bloco A concluído** | — |
+| 25/07/2026 | 2 | B1 FKs de company em 14 tabelas + 13 índices; 0 órfãos | — |
+| 25/07/2026 | 2 | B2 constraints cross-company; cruzamento de tenant bloqueado em teste | — |
+| 25/07/2026 | 2 | B3 Lote 1 da SPEC-052: segundo caminho global do RAG removido | — |
+| 25/07/2026 | 2 | B4 causa raiz da memória zerada encontrada e corrigida | — |
+| 25/07/2026 | 2 | C1 HTTP Egress Guard + 24 testes de segurança verdes | — |
+| 25/07/2026 | 2 | C2 MCP env allowlist; herança de os.environ eliminada | — |
+| 25/07/2026 | 2 | C3 46/46 capability scopes + 3 correções de fronteira | — |
+| 25/07/2026 | 2 | C4 22 índices duplicados removidos; 28 índices de FK criados | — |
+| 25/07/2026 | 2 | C5 Broker Outcome Regression Pack: **15/15 GATE VERDE** | — |
+| 25/07/2026 | 2 | Deploy API validado; advisors de segurança: **ZERO ERROR, ZERO WARN** | — |
+| 25/07/2026 | 2 | **SPEC-054 CONCLUÍDA** — próximo: preflight da SPEC-055 | — |
 | 25/07/2026 | 1 | Gate de type-check: `tsc --noEmit` **exit 0**, zero erro | `bdaeafa` |
 | 25/07/2026 | 1 | `next build`: **Compiled successfully**. Falha posterior e ambiental (secrets ausentes no worktree) em rotas nao tocadas | `8b9faee` |

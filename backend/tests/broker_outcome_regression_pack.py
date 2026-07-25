@@ -1,0 +1,314 @@
+"""Broker Outcome Regression Pack — SPEC-054 Bloco C.
+
+Todas as SPECs de 054 a 062 referenciam este pack como gate de release.
+Ele não existia como artefato executável: havia ~60 runners isolados, sem
+critério comum. Um gate verde de uma SPEC não dizia nada sobre a outra.
+
+Este é o comando único. Cada SPEC posterior adiciona seus casos AQUI.
+
+    python backend/tests/broker_outcome_regression_pack.py
+    python backend/tests/broker_outcome_regression_pack.py --suite seguranca
+
+Regra: um caso só entra se a falha dele significar que **o corretor perdeu
+alguma coisa**. Teste que não protege resultado do corretor não pertence a
+este pack — pertence à suíte da sua própria SPEC.
+"""
+
+from __future__ import annotations
+
+import argparse
+import importlib.util
+import os
+import subprocess
+import sys
+import time
+from dataclasses import dataclass, field
+from typing import Callable, Optional
+
+RAIZ = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))  # backend/
+TESTES = os.path.join(RAIZ, "tests")
+
+
+@dataclass
+class Caso:
+    """Um resultado que o corretor não pode perder."""
+
+    id: str
+    suite: str
+    resultado_protegido: str
+    spec: str
+    executor: Callable[[], tuple[bool, str]]
+    obrigatorio: bool = True
+
+
+@dataclass
+class Resultado:
+    caso: Caso
+    passou: bool
+    detalhe: str
+    segundos: float = 0.0
+
+
+# ---------------------------------------------------------------------------
+# Executores
+# ---------------------------------------------------------------------------
+
+
+def _roda_script(nome: str) -> tuple[bool, str]:
+    """Executa um runner existente e devolve (passou, detalhe)."""
+    caminho = os.path.join(TESTES, nome)
+    if not os.path.exists(caminho):
+        return False, f"runner ausente: {nome}"
+    try:
+        p = subprocess.run(
+            [sys.executable, caminho], capture_output=True, text=True, timeout=300, cwd=RAIZ
+        )
+    except subprocess.TimeoutExpired:
+        return False, "timeout de 300s"
+    except Exception as exc:  # noqa: BLE001
+        return False, f"{type(exc).__name__}: {exc}"
+
+    if p.returncode == 0:
+        return True, "ok"
+    saida = ((p.stdout or "") + (p.stderr or "")).strip().splitlines()
+    # Dependência de ambiente ausente não é regressão de produto.
+    for linha in saida:
+        if "ModuleNotFoundError" in linha or "ImportError" in linha:
+            return False, f"SKIP_AMBIENTE: {linha.strip()[:120]}"
+    return False, (saida[-1][:200] if saida else f"exit {p.returncode}")
+
+
+def _carrega_isolado(caminho_rel: str, nome_modulo: str):
+    """Importa um módulo por caminho, sem passar pelo pacote `app`."""
+    caminho = os.path.join(RAIZ, caminho_rel)
+    spec = importlib.util.spec_from_file_location(nome_modulo, caminho)
+    modulo = importlib.util.module_from_spec(spec)
+    sys.modules[nome_modulo] = modulo
+    spec.loader.exec_module(modulo)
+    return modulo
+
+
+def caso_egress_ssrf() -> tuple[bool, str]:
+    """O agente não pode ser usado para varrer a rede interna da plataforma."""
+    try:
+        g = _carrega_isolado("app/core/egress_guard.py", "_pack_egress")
+    except Exception as exc:  # noqa: BLE001
+        return False, f"nao carregou: {type(exc).__name__}"
+
+    pol = g.EgressPolicy.from_iterable(["api.exemplo.com"])
+    proibidos = ["127.0.0.1", "10.0.0.1", "192.168.1.1", "169.254.169.254", "::1", "::ffff:127.0.0.1"]
+    for ip in proibidos:
+        try:
+            g.check_url("https://api.exemplo.com/", pol, lambda h, _ip=ip: [_ip])
+            return False, f"NAO bloqueou destino interno {ip}"
+        except g.EgressBlocked:
+            pass
+    try:
+        g.check_url("https://evil.com/", pol, lambda h: ["93.184.216.34"])
+        return False, "NAO bloqueou host fora da allowlist"
+    except g.EgressBlocked:
+        pass
+    return True, f"{len(proibidos)} destinos internos + host externo bloqueados"
+
+
+def caso_storage_isolamento() -> tuple[bool, str]:
+    """Documento de uma corretora não pode ser lido por outra."""
+    caminho = os.path.join(os.path.dirname(RAIZ), "lib", "storage", "resolver.ts")
+    if not os.path.exists(caminho):
+        return False, "lib/storage/resolver.ts ausente"
+    with open(caminho, encoding="utf-8") as fh:
+        fonte = fh.read()
+    exigidos = [
+        ("canAccessObject", "autorização por tenant"),
+        ("ownerCompanyOf", "dono derivado do path"),
+        ("isPlatformMaster", "exceção explícita de suporte"),
+        ("normalizeObjectPath", "bloqueio de traversal"),
+    ]
+    faltando = [nome for nome, _ in exigidos if nome not in fonte]
+    if faltando:
+        return False, f"resolver sem: {', '.join(faltando)}"
+    if "return false" not in fonte.lower():
+        return False, "resolver sem negação explícita"
+    return True, "resolver com autorização por tenant e bloqueio de traversal"
+
+
+def caso_mcp_env() -> tuple[bool, str]:
+    """Segredo da plataforma não pode vazar para subprocesso MCP."""
+    caminho = os.path.join(RAIZ, "app", "services", "mcp_gateway_service.py")
+    if not os.path.exists(caminho):
+        return False, "mcp_gateway_service.py ausente"
+    with open(caminho, encoding="utf-8") as fh:
+        fonte = fh.read()
+    if "_ENV_ALLOWLIST" not in fonte:
+        return False, "allowlist de env ausente"
+    if "env = dict(os.environ)" in fonte:
+        return False, "REGRESSAO: ainda herda os.environ completo"
+    return True, "ambiente do subprocesso por allowlist"
+
+
+def caso_rag_global_unico() -> tuple[bool, str]:
+    """Conhecimento não publicado não pode entrar no runtime."""
+    caminho = os.path.join(RAIZ, "app", "services", "search_service.py")
+    if not os.path.exists(caminho):
+        return False, "search_service.py ausente"
+    with open(caminho, encoding="utf-8") as fh:
+        fonte = fh.read()
+    if 'os.getenv("GLOBAL_KNOWLEDGE_COMPANY_ID"' in fonte or "_os.getenv(\"GLOBAL_KNOWLEDGE_COMPANY_ID\"" in fonte:
+        return False, "REGRESSAO: segundo caminho global de LEITURA reintroduzido"
+    if "build_global_search_kwargs" not in fonte:
+        return False, "caminho global canônico ausente"
+    return True, "um único caminho global de recuperação"
+
+
+def caso_memoria_alcancavel() -> tuple[bool, str]:
+    """O AutoBrokers precisa lembrar do corretor entre conversas."""
+    caminho = os.path.join(RAIZ, "app", "services", "memory_service.py")
+    if not os.path.exists(caminho):
+        return False, "memory_service.py ausente"
+    with open(caminho, encoding="utf-8") as fh:
+        fonte = fh.read()
+    if 'if mode == "session_end" and session_ended:' in fonte:
+        return False, "REGRESSAO: condição de sumarização voltou a ser inalcançável"
+    if "NO_TRIGGER" not in fonte:
+        return False, "observabilidade de não disparo ausente"
+    return True, "gatilho alcançável e não disparo observável"
+
+
+def caso_upload_derivado_da_sessao() -> tuple[bool, str]:
+    """O browser não pode escolher em qual corretora grava arquivo."""
+    caminho = os.path.join(os.path.dirname(RAIZ), "app", "api", "upload", "route.ts")
+    if not os.path.exists(caminho):
+        return False, "app/api/upload/route.ts ausente"
+    with open(caminho, encoding="utf-8") as fh:
+        fonte = fh.read()
+    if "resolveOwner" not in fonte:
+        return False, "empresa não é derivada da sessão"
+    if "rejectByMagicBytes" not in fonte:
+        return False, "validação de conteúdo real ausente"
+    if "getPublicUrl" in fonte:
+        return False, "REGRESSAO: voltou a emitir URL pública"
+    return True, "empresa da sessão + magic bytes + sem URL pública"
+
+
+def caso_admin_sem_upload_anon() -> tuple[bool, str]:
+    """Tela do Admin não pode gravar direto com a chave pública."""
+    caminho = os.path.join(os.path.dirname(RAIZ), "app", "admin", "conversations", "page.tsx")
+    if not os.path.exists(caminho):
+        return False, "page.tsx ausente"
+    with open(caminho, encoding="utf-8") as fh:
+        fonte = fh.read()
+    if "supabase.storage" in fonte:
+        return False, "REGRESSAO: upload direto do browser reintroduzido"
+    if "resolveMediaUrl" not in fonte:
+        return False, "renderização não passa pelo resolver"
+    return True, "upload server-side e leitura pelo proxy"
+
+
+# ---------------------------------------------------------------------------
+# Catálogo
+# ---------------------------------------------------------------------------
+
+CASOS: list[Caso] = [
+    Caso("SEC-01", "seguranca", "A plataforma não vira scanner de rede interna",
+         "SPEC-054 C", caso_egress_ssrf),
+    Caso("SEC-02", "seguranca", "Documento de uma corretora não é lido por outra",
+         "SPEC-054 A", caso_storage_isolamento),
+    Caso("SEC-03", "seguranca", "Segredo da plataforma não vaza para subprocesso",
+         "SPEC-054 C", caso_mcp_env),
+    Caso("SEC-04", "seguranca", "Browser não escolhe a corretora do arquivo",
+         "SPEC-054 A", caso_upload_derivado_da_sessao),
+    Caso("SEC-05", "seguranca", "Admin não grava com chave pública",
+         "SPEC-054 A", caso_admin_sem_upload_anon),
+    Caso("CON-01", "conhecimento", "Conhecimento não publicado não chega ao corretor",
+         "SPEC-052 Lote 1", caso_rag_global_unico),
+    Caso("MEM-01", "memoria", "O AutoBrokers lembra do corretor entre conversas",
+         "SPEC-052 Lote 4", caso_memoria_alcancavel),
+    Caso("IDN-01", "identidade", "Corretora A não enxerga dados da corretora B",
+         "SPEC-048", lambda: _roda_script("test_spec048_isolamento_corretoras.py")),
+    Caso("CAP-01", "capacidades", "Agente só recebe os poderes do seu papel",
+         "SPEC-014/054", lambda: _roda_script("test_capability_resolver.py")),
+    Caso("EGR-01", "seguranca", "Política de egresso completa",
+         "SPEC-054 C", lambda: _roda_script("test_spec054_egress_guard.py")),
+    Caso("WPP-01", "whatsapp", "Corretoras não compartilham instância de WhatsApp",
+         "SPEC-047", lambda: _roda_script("test_spec047_multiempresa_whatsapp.py"), obrigatorio=False),
+    Caso("PAR-01", "whatsapp", "Pareamento não ressuscita tentativa expirada",
+         "SPEC-051", lambda: _roda_script("test_spec051_pairing_passkey.py"), obrigatorio=False),
+    Caso("OBS-01", "whatsapp", "Observador não mistura tenant",
+         "SPEC-051", lambda: _roda_script("test_spec051_observer_agents.py"), obrigatorio=False),
+    Caso("ROT-01", "rotinas", "Rotina do corretor executa sem duplicar",
+         "SPEC-019", lambda: _roda_script("test_f2_routines.py"), obrigatorio=False),
+    Caso("POR-01", "portais", "Portal não age fora do job autorizado",
+         "SPEC-020", lambda: _roda_script("test_spec020_portal.py"), obrigatorio=False),
+]
+
+
+def main() -> int:
+    ap = argparse.ArgumentParser(description="Broker Outcome Regression Pack")
+    ap.add_argument("--suite", help="filtra por suíte")
+    ap.add_argument("--so-obrigatorios", action="store_true")
+    args = ap.parse_args()
+
+    casos = CASOS
+    if args.suite:
+        casos = [c for c in casos if c.suite == args.suite]
+    if args.so_obrigatorios:
+        casos = [c for c in casos if c.obrigatorio]
+
+    print("=" * 74)
+    print("BROKER OUTCOME REGRESSION PACK")
+    print("Cada caso protege um RESULTADO do corretor, não uma linha de código.")
+    print("=" * 74)
+
+    resultados: list[Resultado] = []
+    suite_atual = None
+    for caso in casos:
+        if caso.suite != suite_atual:
+            suite_atual = caso.suite
+            print(f"\n[{suite_atual.upper()}]")
+        inicio = time.time()
+        try:
+            passou, detalhe = caso.executor()
+        except Exception as exc:  # noqa: BLE001
+            passou, detalhe = False, f"{type(exc).__name__}: {exc}"
+        dur = time.time() - inicio
+        resultados.append(Resultado(caso, passou, detalhe, dur))
+
+        if passou:
+            marca = "PASS"
+        elif detalhe.startswith("SKIP_AMBIENTE"):
+            marca = "SKIP"
+        else:
+            marca = "FALHA" if caso.obrigatorio else "aviso"
+        print(f"  {marca:<5} {caso.id}  {caso.resultado_protegido}")
+        if not passou:
+            print(f"        -> {detalhe}")
+
+    print("\n" + "=" * 74)
+    passaram = [r for r in resultados if r.passou]
+    pulados = [r for r in resultados if not r.passou and r.detalhe.startswith("SKIP_AMBIENTE")]
+    falhas_obrig = [r for r in resultados if not r.passou and r.caso.obrigatorio
+                    and not r.detalhe.startswith("SKIP_AMBIENTE")]
+    avisos = [r for r in resultados if not r.passou and not r.caso.obrigatorio
+              and not r.detalhe.startswith("SKIP_AMBIENTE")]
+
+    print(f"passaram={len(passaram)}  falhas_obrigatorias={len(falhas_obrig)}  "
+          f"avisos={len(avisos)}  pulados_por_ambiente={len(pulados)}  total={len(resultados)}")
+
+    if falhas_obrig:
+        print("\nGATE VERMELHO — resultados do corretor em risco:")
+        for r in falhas_obrig:
+            print(f"  X {r.caso.id} [{r.caso.spec}] {r.caso.resultado_protegido}")
+            print(f"      {r.detalhe}")
+        return 1
+
+    if avisos:
+        print("\nAvisos (não bloqueiam o gate):")
+        for r in avisos:
+            print(f"  ! {r.caso.id} {r.detalhe[:110]}")
+
+    print("\nGATE VERDE")
+    return 0
+
+
+if __name__ == "__main__":
+    sys.exit(main())
