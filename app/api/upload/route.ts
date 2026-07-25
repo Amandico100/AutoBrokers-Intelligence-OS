@@ -1,71 +1,118 @@
+// SPEC-054 Bloco A — upload server-side autorizado.
+//
+// Mudanças em relação ao comportamento anterior:
+//   1. a empresa do caminho é DERIVADA DA SESSÃO, nunca aceita do client;
+//   2. a resposta devolve `storagePath` (referência durável) e `url` do proxy
+//      autenticado — `publicUrl` deixa de ser a identidade do objeto;
+//   3. o MIME é validado contra o conteúdo real (magic bytes), não apenas
+//      contra o header enviado pelo browser.
 import { NextRequest, NextResponse } from 'next/server';
-import { cookies } from 'next/headers';
-import { createClient } from '@supabase/supabase-js';
+import { randomUUID } from 'crypto';
 
-// =============================================
-// CONFIGURAÇÕES DE SEGURANÇA (alinhado com Supabase Storage)
-// =============================================
-const MAX_FILE_SIZE = 5 * 1024 * 1024; // 5MB (igual ao bucket chat-media)
+import { getAdminContext, requireCompanyMember } from '@/lib/admin/admin-auth';
+import { buildCanonicalPath, toProxyUrl, type StorageBucket } from '@/lib/storage/resolver';
+import { uploadObject } from '@/lib/storage/signed';
 
-const ALLOWED_BUCKETS = ['chat-media', 'chat-docs', 'attachments', 'avatars', 'voice-messages'];
+export const dynamic = 'force-dynamic';
+
+const MAX_FILE_SIZE = 5 * 1024 * 1024; // 5MB
+
+const ALLOWED_BUCKETS: StorageBucket[] = ['chat-media', 'chat-docs', 'avatars', 'voice-messages'];
 
 const ALLOWED_MIME_TYPES: Record<string, string[]> = {
   'chat-media': [
     'image/jpeg', 'image/png', 'image/gif', 'image/webp',
-    // F1: documentos anexados no chat (o backend extrai o texto via docling)
     'application/pdf',
     'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
     'application/vnd.openxmlformats-officedocument.presentationml.presentation',
     'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
     'text/plain', 'text/csv', 'text/markdown',
   ],
-  attachments: ['image/jpeg', 'image/png', 'image/gif', 'image/webp', 'application/pdf'],
-  // F1: bucket real dos documentos do chat (chat-media só aceita imagem no Supabase)
   'chat-docs': [
     'application/pdf',
     'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
     'application/vnd.openxmlformats-officedocument.presentationml.presentation',
     'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
     'text/plain', 'text/csv', 'text/markdown',
+    'audio/webm', 'audio/ogg', 'audio/mp3', 'audio/mpeg', 'audio/wav',
   ],
   avatars: ['image/jpeg', 'image/png', 'image/webp'],
   'voice-messages': ['audio/webm', 'audio/ogg', 'audio/mp3', 'audio/mpeg', 'audio/wav'],
 };
 
+/** Domínio lógico dentro do path canônico, por bucket. */
+const BUCKET_DOMAIN: Record<string, string> = {
+  'chat-media': 'chat-media',
+  'chat-docs': 'chat-docs',
+  'voice-messages': 'voice-messages',
+  avatars: 'avatars',
+};
+
 /**
- * POST /api/upload
- *
- * Uploads a file to Supabase Storage with security validations.
- * Requires: smith_user_session OR smith_admin_session cookie
+ * Verificação de conteúdo real por magic bytes.
+ * Bloqueia HTML ativo e executáveis mascarados por extensão/`Content-Type`.
+ * Retorna null quando o conteúdo é aceitável.
  */
+function rejectByMagicBytes(bytes: Uint8Array, declaredMime: string): string | null {
+  const head = Array.from(bytes.slice(0, 16));
+  const startsWith = (sig: number[]) => sig.every((b, i) => head[i] === b);
+
+  // executáveis: MZ (PE), ELF, Mach-O
+  if (startsWith([0x4d, 0x5a])) return 'executavel_nao_permitido';
+  if (startsWith([0x7f, 0x45, 0x4c, 0x46])) return 'executavel_nao_permitido';
+  if (startsWith([0xcf, 0xfa, 0xed, 0xfe]) || startsWith([0xfe, 0xed, 0xfa, 0xcf])) {
+    return 'executavel_nao_permitido';
+  }
+
+  // HTML ativo mascarado
+  const asciiHead = new TextDecoder('utf-8', { fatal: false })
+    .decode(bytes.slice(0, 512))
+    .trimStart()
+    .toLowerCase();
+  if (asciiHead.startsWith('<!doctype html') || asciiHead.startsWith('<html') || asciiHead.startsWith('<script')) {
+    return 'html_ativo_nao_permitido';
+  }
+
+  // coerência mínima para os formatos que mais circulam
+  if (declaredMime === 'application/pdf' && !startsWith([0x25, 0x50, 0x44, 0x46])) {
+    return 'conteudo_nao_confere_com_pdf';
+  }
+  if (declaredMime === 'image/png' && !startsWith([0x89, 0x50, 0x4e, 0x47])) {
+    return 'conteudo_nao_confere_com_png';
+  }
+  if (declaredMime === 'image/jpeg' && !startsWith([0xff, 0xd8, 0xff])) {
+    return 'conteudo_nao_confere_com_jpeg';
+  }
+
+  return null;
+}
+
+/** Empresa e usuário SEMPRE derivados do servidor. */
+async function resolveOwner(): Promise<{ companyId: string; ownerId: string | null } | null> {
+  const tenant = await requireCompanyMember({ write: false });
+  if (tenant.ok) return { companyId: tenant.ctx.companyId, ownerId: tenant.ctx.userId };
+
+  const admin = await getAdminContext();
+  if (admin?.companyId) return { companyId: admin.companyId, ownerId: admin.adminId };
+
+  return null;
+}
+
 export async function POST(request: NextRequest) {
   try {
-    // =============================================
-    // AUTHENTICATION CHECK
-    // =============================================
-    const cookieStore = await cookies();
-    const userCookie = cookieStore.get('smith_user_session');
-    const adminCookie = cookieStore.get('smith_admin_session');
-
-    if (!userCookie && !adminCookie) {
+    const owner = await resolveOwner();
+    if (!owner) {
       return NextResponse.json({ error: 'Não autorizado' }, { status: 401 });
     }
 
-    // =============================================
-    // PARSE FORM DATA
-    // =============================================
     const formData = await request.formData();
     const file = formData.get('file') as File | null;
-    const bucket = (formData.get('bucket') as string) || 'attachments';
-    const pathPrefix = (formData.get('path') as string) || '';
+    const bucket = ((formData.get('bucket') as string) || 'chat-docs') as StorageBucket;
 
     if (!file) {
       return NextResponse.json({ error: 'Arquivo não fornecido' }, { status: 400 });
     }
 
-    // =============================================
-    // VALIDAÇÃO: TAMANHO DO ARQUIVO
-    // =============================================
     if (file.size > MAX_FILE_SIZE) {
       const maxMB = MAX_FILE_SIZE / 1024 / 1024;
       return NextResponse.json(
@@ -74,16 +121,10 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    // =============================================
-    // VALIDAÇÃO: BUCKET PERMITIDO
-    // =============================================
     if (!ALLOWED_BUCKETS.includes(bucket)) {
       return NextResponse.json({ error: 'Bucket não permitido' }, { status: 400 });
     }
 
-    // =============================================
-    // VALIDAÇÃO: TIPO DE ARQUIVO
-    // =============================================
     const allowedTypes = ALLOWED_MIME_TYPES[bucket] || [];
     if (!allowedTypes.includes(file.type)) {
       return NextResponse.json(
@@ -92,62 +133,52 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    // =============================================
-    // SERVICE ROLE CLIENT (necessário para upload)
-    // =============================================
-    const supabaseAdmin = createClient(
-      process.env.NEXT_PUBLIC_SUPABASE_URL!,
-      process.env.SUPABASE_SERVICE_ROLE_KEY!,
-      { auth: { persistSession: false } },
-    );
+    const buffer = new Uint8Array(await file.arrayBuffer());
 
-    // =============================================
-    // GENERATE UNIQUE FILENAME
-    // =============================================
-    const timestamp = Date.now();
-    const randomId = Math.random().toString(36).substring(2, 8);
-    const extension = file.name.split('.').pop()?.toLowerCase() || 'bin';
-    const fileName = `${timestamp}_${randomId}.${extension}`;
-    const filePath = pathPrefix ? `${pathPrefix}/${fileName}` : fileName;
+    const magicError = rejectByMagicBytes(buffer, file.type);
+    if (magicError) {
+      return NextResponse.json({ error: magicError }, { status: 415 });
+    }
 
-    // =============================================
-    // UPLOAD FILE
-    // =============================================
-    const arrayBuffer = await file.arrayBuffer();
-    const buffer = new Uint8Array(arrayBuffer);
+    // O caminho é construído no servidor. Nada vindo do client entra aqui.
+    const objectPath = buildCanonicalPath({
+      companyId: owner.companyId,
+      ownerId: owner.ownerId,
+      domain: BUCKET_DOMAIN[bucket] || bucket,
+      fileName: file.name,
+      uuid: randomUUID(),
+    });
 
-    const { data, error: uploadError } = await supabaseAdmin.storage
-      .from(bucket)
-      .upload(filePath, buffer, {
-        contentType: file.type,
-        upsert: false,
-      });
+    const result = await uploadObject({
+      ref: { bucket, path: objectPath },
+      body: buffer,
+      contentType: file.type,
+    });
 
-    if (uploadError) {
-      console.error('[UPLOAD API] Error uploading file:', uploadError);
+    if ('error' in result) {
+      console.error('[UPLOAD API] falha no upload:', result.error);
       return NextResponse.json({ error: 'Erro ao fazer upload do arquivo' }, { status: 500 });
     }
 
-    // =============================================
-    // GET PUBLIC URL
-    // =============================================
-    const {
-      data: { publicUrl },
-    } = supabaseAdmin.storage.from(bucket).getPublicUrl(filePath);
+    const proxyUrl = toProxyUrl({ bucket, path: result.path });
 
     return NextResponse.json(
       {
         success: true,
-        filePath: data.path,
-        publicUrl,
+        // referência DURÁVEL — é isto que deve ser persistido
+        storagePath: `${bucket}/${result.path}`,
+        filePath: result.path,
+        bucket,
+        // URL de leitura autorizada (efêmera do ponto de vista de autorização)
+        url: proxyUrl,
         fileName: file.name,
         mimeType: file.type,
         size: file.size,
       },
       { status: 201 },
     );
-  } catch (error: any) {
-    console.error('[UPLOAD API] Error:', error);
+  } catch (error) {
+    console.error('[UPLOAD API] erro inesperado:', error);
     return NextResponse.json({ error: 'Erro interno ao fazer upload' }, { status: 500 });
   }
 }
