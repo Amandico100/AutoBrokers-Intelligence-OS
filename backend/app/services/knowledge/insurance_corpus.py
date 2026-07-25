@@ -95,13 +95,16 @@ SEGURADORAS = {
     "allianz": ("Allianz Seguros", ("allianz.com.br", "allianz")),
     "bradesco": ("Bradesco Seguros", ("bradescoseguros.com", "bradesco seguros")),
     "sulamerica": ("SulAmérica", ("sulamerica.com", "sulamérica", "sulamerica")),
-    "tokio": ("Tokio Marine", ("tokiomarine.com", "tokio marine")),
+    "tokio": ("Tokio Marine", ("tokiomarine.com", "tokio marine", "tokio_marine")),
     "hdi": ("HDI Seguros", ("hdiseguros.com", "hdi seguros")),
     "mapfre": ("Mapfre", ("mapfre.com", "mapfre")),
     # Liberty Seguros virou Yelum em 2024. Documento antigo continua valendo e
     # continua hospedado no dominio antigo — as duas pistas apontam para a
     # mesma seguradora, senao a condicao geral de ontem vira orfa.
-    "yelum": ("Yelum Seguradora", ("yelum.com.br", "yelum",
+    # O dominio real e yelumseguros.com.br — "yelum.com.br" e so a marca e nao
+    # resolve. Descoberto ao verificar as URLs de verdade; supor o dominio pelo
+    # nome teria recusado todo documento legitimo da seguradora.
+    "yelum": ("Yelum Seguradora", ("yelumseguros.com.br", "yelum",
                                    "libertyseguros.com", "liberty seguros")),
     "zurich": ("Zurich", ("zurich.com", "zurich")),
     "azul": ("Azul Seguros", ("azulseguros.com", "azul seguros")),
