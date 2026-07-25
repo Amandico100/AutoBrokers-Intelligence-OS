@@ -22,7 +22,7 @@
 
 | # | Etapa | Branch | Estado | Commit inicial | Commit final | Relatório |
 |---|---|---|---|---|---|---|
-| 0 | Contexto persistente e correções canônicas | `chore/execution-foundation` | **EM EXECUÇÃO** | `3c8c752` | — | este documento + Fase 0 |
+| 0 | Contexto persistente e correções canônicas | `chore/execution-foundation` | **CONCLUÍDO** | `3c8c752` | `317b041` | relatório da Fase 0 |
 | 1 | SPEC-054 Bloco A — Fechamento P0 | `feat/spec054-foundation-hardening` | NÃO INICIADO | — | — | — |
 | 2 | SPEC-054 Blocos B/C — Baseline, Lote 1, memória | `feat/spec054-foundation-hardening` | NÃO INICIADO | — | — | — |
 | 3 | SPEC-055 — Work Runs, usage events, ponte Atendimento | `feat/spec055-durable-work-runs` | NÃO INICIADO | — | — | — |
@@ -384,3 +384,9 @@ Nenhum outro enxerto é permitido sem entrada em [`CHANGE-ADDENDA.md`](CHANGE-AD
 | 25/07/2026 | — | Auditoria global read-only concluída; veredito `NEEDS_CANONICAL_FIXES` | `3c8c752` |
 | 25/07/2026 | 0 | Decisões D1–D10 fechadas pelo Founder | — |
 | 25/07/2026 | 0 | Worktree `AutoBrokers-Opus-Exec` criado em `chore/execution-foundation` | `3c8c752` |
+| 25/07/2026 | 0 | `CLAUDE.md` criado — autoridade de processo | `cfbf4bc` |
+| 25/07/2026 | 0 | Founder Decisions D1–D10 + P1 e Master Plan registrados | `45f7cac` |
+| 25/07/2026 | 0 | Migrations Authority e Change Addenda declarados | `de2efd0` |
+| 25/07/2026 | 0 | Template de relatório de execução criado | `f7e5d3b` |
+| 25/07/2026 | 0 | Addendum SPEC-052 e índices canônicos atualizados | `317b041` |
+| 25/07/2026 | 0 | **Fase 0 concluída** — 90 links validados, árvore limpa, sem write em produção | — |
