@@ -37,6 +37,8 @@ import {
   DropdownMenuLabel,
 } from '@/components/ui/dropdown-menu';
 import { supabase } from '@/lib/supabase'; // KEPT: Only for Realtime subscriptions
+// SPEC-054 Bloco A: toda midia e lida pelo proxy autenticado, nunca por URL publica.
+import { resolveMediaUrl } from '@/lib/storage/resolver';
 import { useAdminRole } from '@/hooks/useAdminRole';
 import { toast } from 'sonner';
 import { Message } from '@/lib/types';
@@ -526,18 +528,19 @@ export default function AdminConversationsPage() {
 
     setIsUploadingMedia(true);
     try {
-      const timestamp = Date.now();
-      const filename = `${timestamp}_${file.name}`;
-      const path = `admin/${selectedId}/${filename}`;
+      // SPEC-054 Bloco A: upload passa por rota server-side autorizada.
+      // O caminho é derivado da sessão no servidor — o browser não escolhe
+      // mais a empresa nem grava direto com a chave anon.
+      const form = new FormData();
+      form.append('file', file);
+      form.append('bucket', 'chat-media');
 
-      // Storage upload (still uses anon client, OK for public buckets)
-      const { error: uploadError } = await supabase.storage.from('chat-media').upload(path, file);
-
-      if (uploadError) throw uploadError;
-
-      const {
-        data: { publicUrl },
-      } = supabase.storage.from('chat-media').getPublicUrl(path);
+      const uploadResponse = await fetch('/api/upload', { method: 'POST', body: form });
+      if (!uploadResponse.ok) {
+        const detail = await uploadResponse.json().catch(() => ({}));
+        throw new Error(detail?.error || 'upload_failed');
+      }
+      const uploaded = await uploadResponse.json();
 
       // Inserir mensagem via API (bypassa RLS)
       const response = await fetch('/api/admin/conversations/messages', {
@@ -546,7 +549,8 @@ export default function AdminConversationsPage() {
         body: JSON.stringify({
           conversation_id: selectedId,
           content: '📷 Imagem enviada', // Sem prefixo - backend usa sender_user_id
-          image_url: publicUrl,
+          // referência DURÁVEL: path canônico, nunca URL pública
+          image_url: uploaded.storagePath,
           type: 'text',
         }),
       });
@@ -605,20 +609,17 @@ export default function AdminConversationsPage() {
 
     setIsUploadingMedia(true);
     try {
-      const timestamp = Date.now();
-      const filename = `${timestamp}_audio.webm`;
-      const path = `admin/${selectedId}/${filename}`;
+      // SPEC-054 Bloco A: upload de voz via rota server-side autorizada.
+      const form = new FormData();
+      form.append('file', new File([audioBlob], `${Date.now()}_audio.webm`, { type: 'audio/webm' }));
+      form.append('bucket', 'voice-messages');
 
-      // Storage upload (still uses anon client, OK for public buckets)
-      const { error: uploadError } = await supabase.storage
-        .from('voice-messages')
-        .upload(path, audioBlob);
-
-      if (uploadError) throw uploadError;
-
-      const {
-        data: { publicUrl },
-      } = supabase.storage.from('voice-messages').getPublicUrl(path);
+      const uploadResponse = await fetch('/api/upload', { method: 'POST', body: form });
+      if (!uploadResponse.ok) {
+        const detail = await uploadResponse.json().catch(() => ({}));
+        throw new Error(detail?.error || 'upload_failed');
+      }
+      const uploaded = await uploadResponse.json();
 
       // Inserir mensagem via API (bypassa RLS)
       const response = await fetch('/api/admin/conversations/messages', {
@@ -627,7 +628,8 @@ export default function AdminConversationsPage() {
         body: JSON.stringify({
           conversation_id: selectedId,
           content: '🎤 Áudio enviado', // Sem prefixo - backend usa sender_user_id
-          audio_url: publicUrl,
+          // referência DURÁVEL: path canônico, nunca URL pública
+          audio_url: uploaded.storagePath,
           type: 'voice',
         }),
       });
@@ -1009,10 +1011,10 @@ export default function AdminConversationsPage() {
                         {hasImage && (
                           <div className="mb-2 rounded-lg overflow-hidden border border-border">
                             <img
-                              src={msg.image_url}
+                              src={resolveMediaUrl(msg.image_url) ?? undefined}
                               alt="Anexo"
                               className="max-w-full h-auto max-h-[300px] object-cover cursor-pointer hover:opacity-90 transition-opacity"
-                              onClick={() => window.open(msg.image_url, '_blank')}
+                              onClick={() => { const u = resolveMediaUrl(msg.image_url); if (u) window.open(u, '_blank'); }}
                             />
                           </div>
                         )}
@@ -1021,7 +1023,7 @@ export default function AdminConversationsPage() {
                         {hasAudio && (
                           <div className="mb-2">
                             <VoiceMessage
-                              audioUrl={msg.audio_url!}
+                              audioUrl={resolveMediaUrl(msg.audio_url) ?? ''}
                               transcription={!isMediaOnly ? displayContent : undefined}
                             />
                           </div>

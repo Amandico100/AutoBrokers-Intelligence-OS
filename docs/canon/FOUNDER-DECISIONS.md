@@ -28,7 +28,8 @@
 | D8 | Pareamento WhatsApp Resulta/AutoFleet | **NOT_CONFIRMED** | 25/07/2026 |
 | D9 | Memórias antigas do Claude | **APROVADO — NÃO APAGAR** | 25/07/2026 |
 | D10 | Worktree e branches de execução | **APROVADO** | 25/07/2026 |
-| P1 | Acessos de infraestrutura para preflight | **PENDENTE** | 25/07/2026 |
+| **D11** | **Supabase Free sem PITR — Recovery Pack manual** | **APROVADO** | 25/07/2026 |
+| P1 | Acessos de infraestrutura para preflight | **RESOLVIDA POR D11** | 25/07/2026 |
 
 ---
 
@@ -319,7 +320,127 @@ Elimina a confusão de múltiplas pastas que já ocorreu, mantendo `main` como r
 
 ---
 
-## P1 — Acessos de infraestrutura para preflight  `PENDENTE`
+## D11 — Supabase Free sem PITR, compensado por Recovery Pack manual
+
+**Data:** 25/07/2026 · **Estado:** APROVADO
+
+### Contexto
+
+O preflight do Bloco A concluiu com veredito `BLOCKED_BY_ACCESS` porque backup e PITR do Supabase não puderam ser confirmados. O Founder decidiu **permanecer no plano Free** neste momento, sem upgrade para Pro e sem ativação de PITR.
+
+### Decisão
+
+A ausência de PITR **deixa de bloquear** a execução, desde que, antes do primeiro write, seja produzido e validado um Recovery Pack específico e verificável.
+
+O Recovery Pack deve conter, no mínimo:
+
+1. backup lógico manual **quando** houver conexão de banco disponível;
+2. Recovery Pack específico e verificável do bloco em execução;
+3. rollback versionado por migration;
+4. cópia local dos objetos de Storage afetados;
+5. checksums;
+6. VERIFY antes e depois de cada mudança.
+
+### Gate de prosseguimento
+
+Prossegue-se com **uma** destas condições:
+
+- **A** — dump lógico completo validado **+** Recovery Pack validado; **ou**
+- **B** — sem conexão de banco: Recovery Pack específico completo, objetos baixados, checksums válidos e rollback integral validado.
+
+Para somente se **ambas** falharem.
+
+### Resultado da aplicação em 25/07/2026 — Bloco A
+
+Aplicou-se o **caminho B**. `pg_dump`, `psql` e Supabase CLI não estão instalados na máquina e não há string de conexão do banco disponível localmente (apenas arquivos `.env.example`, sem valores reais).
+
+Pacote produzido em `C:\Users\amand\Backups\AutoBrokers\SPEC-054-A-20260725\` — fora do Git, fora de qualquer worktree:
+
+| Item | Estado |
+|---|---|
+| Estado-antes documentado | ✅ `00-STATE-BEFORE.md` |
+| ACLs, owners e `search_path` originais | ✅ |
+| Definição e ACL originais da view UCP | ✅ |
+| Configuração e policies originais de Storage | ✅ |
+| Snapshot das 12 linhas do backfill | ✅ `messages-image-url-snapshot.csv` |
+| Cópia local dos objetos | ✅ **56 objetos, 7 MB, 0 falhas** |
+| Checksums SHA-256 | ✅ `storage-checksums.csv` + `checksums.sha256` |
+| Scripts de rollback | ✅ 4 scripts, um por migration |
+| Contagens de negócio de referência | ✅ |
+
+**Veredito:** `READY_WITH_MANUAL_RECOVERY_PACK`
+
+### Restrições que permanecem
+
+- O pacote cobre **exatamente** o que o Bloco A altera. Não é substituto de backup completo do banco.
+- `portal-evidence` é privado e **não** é alterado pelo Bloco A.
+- Antes do **Bloco B**, que mexe em schema e integridade, será necessário reavaliar a estratégia de backup — o Recovery Pack específico não é suficiente para alterações estruturais amplas.
+- A SPEC-062 §30 continua exigindo **restore comprovado** antes do go-live. D11 não revoga isso.
+
+### SPECs afetadas
+054 (desbloqueia o Bloco A), 062 (mantém a exigência de restore drill).
+
+---
+
+## D12 — Rotação de secrets adiada até o pré-go-live
+
+**Data:** 25/07/2026 · **Estado:** APROVADO
+
+### Contexto
+
+Durante a execução do Bloco A, credenciais de produção foram compartilhadas em texto puro num canal de chat. O executor sinalizou a exposição e recomendou rotação imediata.
+
+### Decisão do Founder
+
+A rotação geral é **adiada até o pré-go-live**.
+
+**Motivo:** ambiente controlado, sem clientes externos ativos, e a rotação completa durante a construção interromperia o desenvolvimento. Amandus é corretora fictícia; Resulta e AutoFleet são pilotos do Founder e sócios.
+
+### Restrições que permanecem
+
+Esta decisão **não** autoriza: imprimir secrets · reproduzi-los em respostas · colocá-los em commit · incluí-los em log · gravá-los em documentação · criar cópias desnecessárias.
+
+### Gatilho de reabertura
+
+Se for detectado segredo **versionado publicamente** ou acessível por terceiros, isso é **bloqueador** e deve ser informado imediatamente. Fora disso, nenhuma SPEC para por causa de rotação.
+
+### Obrigação transferida
+
+A rotação completa passa a ser **pré-condição da SPEC-062** (readiness e go-live).
+
+---
+
+## D13 — Ambiente controlado de pré-produção
+
+**Data:** 25/07/2026 · **Estado:** APROVADO
+
+### Decisão
+
+O AutoBrokers está em ambiente controlado de construção. Amandus é fictícia; Resulta e AutoFleet são pilotos do Founder. Não há cliente externo dependente. Celulares, números e conversas são controlados pelo Founder.
+
+**Consequência:** migrations, merges e deploys podem ser executados com autonomia, mantendo APPLY/VERIFY/ROLLBACK. Pequena regressão interna de sandbox **não** é bloqueio permanente — corrige-se dentro do mesmo bloco. O padrão de construção continua sendo definitivo de produção.
+
+### Permanecem proibidos sem autorização específica
+
+Envio real de WhatsApp a terceiros · ação real em portal de seguradora · ativação de agente externo · remoção irreversível de dados · vazamento entre tenants · exposição de secrets.
+
+---
+
+## D14 — Widget público: preservar função, remover permissão pública
+
+**Data:** 25/07/2026 · **Estado:** CONFIRMADO PELO FOUNDER
+
+### Confirmação
+
+O widget público (`/embed/[agentId]`) existe no código como **funcionalidade futura** de chat incorporável ao site de uma corretora. **Não está instalado em nenhum site público de cliente** e não é usado por usuários externos. O chat do Dashboard e os WhatsApps **não** são esse widget.
+
+### Consequência para o Bloco A
+
+A revogação de `EXECUTE` público em `check_and_increment_rate_limit` está **correta e sem risco**: o único chamador é `backend/app/api/middleware/widget_security.py` via service role. Nenhuma compatibilidade externa bloqueia a mudança e não há sessão externa ativa a preservar.
+
+---
+
+## P1 — Acessos de infraestrutura  `RESOLVIDA POR D11`
 
 **Data de abertura:** 25/07/2026 · **Estado:** PENDENTE — aguardando Founder
 
