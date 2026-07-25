@@ -224,6 +224,14 @@ from app.api.portal import router as portal_router
 
 app.include_router(portal_router, tags=["Portal"])
 
+# SPEC-055 - Work OS: execucao duravel
+try:
+    from app.api.work_runs import router as work_runs_router
+    app.include_router(work_runs_router, tags=["Work Runs"])
+    logger.info("[STARTUP] Work Runs API registrada")
+except Exception as _e:
+    logger.error(f"[STARTUP] Work Runs API indisponivel: {type(_e).__name__}")
+
 
 @app.get("/")
 async def root():

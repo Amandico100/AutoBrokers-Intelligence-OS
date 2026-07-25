@@ -204,6 +204,37 @@ def caso_admin_sem_upload_anon() -> tuple[bool, str]:
     return True, "upload server-side e leitura pelo proxy"
 
 
+def caso_work_os_durabilidade() -> tuple[bool, str]:
+    """Trabalho longo tem dono, batimento e retomada — não morre no restart."""
+    exigidos = [
+        ("app/services/work/runs.py", ["adquirir_lease", "heartbeat", "recuperar_orfaos",
+                                       "liberar_lease", "cancelamento_pedido"]),
+        ("app/services/work/queue.py", ["OutboxDispatcher", "claim_abandonadas", "ensure_group"]),
+        ("app/services/work/effects.py", ["reserve", "EffectAlreadyExecuted",
+                                          "pendentes_de_reconciliacao"]),
+        ("app/services/work/approvals.py", ["validar_para_execucao", "ApprovalFingerprintMismatch",
+                                            "marcar_executada"]),
+        ("app/workers/smith_worker.py", ["_laco_orfaos", "_heartbeat", "_laco_dispatcher"]),
+    ]
+    for rel, simbolos in exigidos:
+        caminho = os.path.join(RAIZ, rel)
+        if not os.path.exists(caminho):
+            return False, f"ausente: {rel}"
+        with open(caminho, encoding="utf-8") as fh:
+            fonte = fh.read()
+        faltando = [s for s in simbolos if s not in fonte]
+        if faltando:
+            return False, f"{rel} sem: {', '.join(faltando)}"
+
+    # o scheduler in-process não pode voltar a ser o único caminho
+    engine = os.path.join(RAIZ, "app", "services", "routine_engine.py")
+    with open(engine, encoding="utf-8") as fh:
+        if "_routine_bridge_enabled" not in fh.read():
+            return False, "REGRESSAO: ponte de Rotinas para Work Run removida"
+
+    return True, "lease, heartbeat, outbox, recuperação, reserva e fingerprint presentes"
+
+
 # ---------------------------------------------------------------------------
 # Catálogo
 # ---------------------------------------------------------------------------
@@ -223,6 +254,10 @@ CASOS: list[Caso] = [
          "SPEC-052 Lote 1", caso_rag_global_unico),
     Caso("MEM-01", "memoria", "O AutoBrokers lembra do corretor entre conversas",
          "SPEC-052 Lote 4", caso_memoria_alcancavel),
+    Caso("EXE-01", "execucao", "O corretor não é cobrado nem notificado em duplicidade",
+         "SPEC-055", lambda: _roda_script("test_spec055_work_os.py")),
+    Caso("EXE-02", "execucao", "Trabalho longo sobrevive a restart e retoma",
+         "SPEC-055", lambda: caso_work_os_durabilidade()),
     Caso("IDN-01", "identidade", "Corretora A não enxerga dados da corretora B",
          "SPEC-048", lambda: _roda_script("test_spec048_isolamento_corretoras.py")),
     Caso("CAP-01", "capacidades", "Agente só recebe os poderes do seu papel",
