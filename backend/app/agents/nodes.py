@@ -487,12 +487,19 @@ INSTRUÇÕES IMPORTANTES:
 from langchain_core.runnables import RunnableConfig
 
 
-async def agent_node(state: AgentState, config: RunnableConfig, llm_with_tools) -> dict:
+async def agent_node(state: AgentState, config: RunnableConfig, llm_with_tools,
+                     llm_base=None, tools_base=None, cutover_ctx=None) -> dict:
     """
     Nó do Agente - Decide se usa uma tool ou responde diretamente.
     INCLUI CORREÇÃO PARA ERRO DE REASONING (OpenAI 400).
 
     Aceita 'config' para propagar callbacks de streaming.
+
+    SPEC-057 §I: é aqui que o Tool Gateway entra, e não na montagem do grafo.
+    O grafo é cacheado por (empresa, agente) e reusado em muitas conversas —
+    escolher ferramenta lá fixaria a mesma lista para todas, que é o oposto do
+    progressive disclosure. Só aqui existe a pergunta do corretor, e sem ela
+    não há Skill a resolver.
     """
     logger.info("[Agent Node] Processando...")
 
@@ -519,6 +526,32 @@ async def agent_node(state: AgentState, config: RunnableConfig, llm_with_tools) 
         if isinstance(msg, HumanMessage) or (hasattr(msg, "type") and msg.type == "human"):
             current_user_query = extract_text_from_content(getattr(msg, "content", ""))
             break
+    # === SPEC-057 §I — Tool Gateway por turno ===
+    # Roda depois de conhecer a pergunta e antes de qualquer chamada ao modelo.
+    # Em `shadow` só grava o diff; em `on` re-liga o modelo com a lista que o
+    # Gateway autorizou — e ele só consegue REMOVER ferramenta, nunca somar.
+    if cutover_ctx and llm_base is not None and tools_base:
+        try:
+            from .gateway_cutover import aplicar as _cutover_aplicar
+            from .gateway_cutover import avaliar as _cutover_avaliar
+
+            _veredito = _cutover_avaliar(
+                tools_legado=tools_base,
+                supabase_client=cutover_ctx.get("supabase_client"),
+                company_id=cutover_ctx.get("company_id"),
+                agent_role=cutover_ctx.get("agent_role") or "core",
+                texto_usuario=current_user_query or "",
+                active_capabilities=cutover_ctx.get("active_capabilities"),
+            )
+            if _veredito.aplicar:
+                _filtradas = _cutover_aplicar(tools_base, _veredito)
+                if len(_filtradas) != len(tools_base):
+                    llm_with_tools = llm_base.bind_tools(_filtradas)
+        except Exception as exc:  # noqa: BLE001
+            # Falha do Gateway nunca derruba o atendimento: o corretor continua
+            # sendo respondido pelo caminho antigo e o erro vira registro.
+            logger.warning("[Agent Node] cutover ignorado: %s", type(exc).__name__)
+
     context_tool_args = _policy_context_tool_args(current_user_query, state.get("infocap_policy_context"))
     if context_tool_args:
         tool_call_id = f"infocap_policy_context_{int(time.time() * 1000)}"

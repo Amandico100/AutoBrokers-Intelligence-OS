@@ -299,6 +299,11 @@ CASOS: list[Caso] = [
     # nao e um erro de uma corretora — e uma resposta errada dada a todas.
     Caso("MRC-02", "conhecimento", "Só entra no corpus normativo o que é norma",
          "SPEC-057", lambda: _roda_script("test_spec057_corpus_normativo.py")),
+    # O cutover troca a autoridade do cerebro de um sistema em producao. Se ele
+    # puder ADICIONAR ferramenta ou derrubar a conversa quando falha, o corretor
+    # perde — ou privilegio de mais, ou atendimento de menos.
+    Caso("CUT-01", "capacidades", "O cutover só tira ferramenta e nunca derruba a conversa",
+         "SPEC-057", lambda: _roda_script("test_spec057_cutover.py")),
     Caso("IDN-01", "identidade", "Corretora A não enxerga dados da corretora B",
          "SPEC-048", lambda: _roda_script("test_spec048_isolamento_corretoras.py")),
     Caso("CAP-01", "capacidades", "Agente só recebe os poderes do seu papel",
