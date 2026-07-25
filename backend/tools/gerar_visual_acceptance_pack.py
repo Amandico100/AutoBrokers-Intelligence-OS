@@ -375,10 +375,470 @@ def dados_briefing() -> list[dict]:
     ]
 
 
+def dados_funil() -> list[dict]:
+    return [
+        {"block": "cover", "props": {
+            "eyebrow": "Comercial", "period": "Julho de 2026",
+            "title": "A perda está na cotação, não na prospecção",
+            "subtitle": "Funil completo do mês, da oportunidade à apólice emitida.",
+            "verdict": "Entram oportunidades suficientes. De cada 10 que chegam à "
+                       "cotação, 4 nunca recebem proposta — é aí que o mês se perde.",
+            "headline_label": "Convertido em apólice", "headline_value": "19,4%",
+            "headline_delta": 2.8}},
+        {"block": "kpis", "props": {
+            "title": "O funil em números",
+            "items": [
+                {"label": "Oportunidades", "value": "412", "delta": 14.1, "since": "vs. junho"},
+                {"label": "Cotações feitas", "value": "268", "delta": 9.4, "since": "vs. junho"},
+                {"label": "Apólices emitidas", "value": "80", "delta": 18.5, "since": "vs. junho"},
+                {"label": "Ciclo médio", "value": "11", "unit": "dias", "delta": -8.3,
+                 "since": "vs. junho", "better": "down"},
+            ]}},
+        {"block": "funnel", "props": {
+            "eyebrow": "Etapas", "title": "Onde as cotações se perdem",
+            "lede": "A conversão entre etapas importa mais que o volume de cada uma.",
+            "stages": [
+                {"rotulo": "Oportunidades recebidas", "valor": 412},
+                {"rotulo": "Contato feito", "valor": 361},
+                {"rotulo": "Cotação solicitada", "valor": 268},
+                {"rotulo": "Proposta enviada", "valor": 162},
+                {"rotulo": "Proposta aceita", "valor": 94},
+                {"rotulo": "Apólice emitida", "valor": 80},
+            ]}},
+        {"block": "verdict", "props": {
+            "text": "A maior queda é de cotação para proposta: 39,6% das cotações não "
+                    "viram proposta enviada. É o dobro da perda de qualquer outra etapa.",
+            "note": "Em volume absoluto a maior perda é entre oportunidade e cotação "
+                    "(144). Mas essa é filtragem natural de lead frio. A perda entre "
+                    "cotação e proposta é trabalho já feito que não foi entregue."}},
+        {"block": "split", "props": {
+            "left": [{"block": "ranking", "props": {
+                "title": "Conversão por produto", "value_type": "percent",
+                "highlight": 2, "max": 7,
+                "items": [
+                    {"rotulo": "Residencial", "valor": 34.2, "nota": "62 emitidas"},
+                    {"rotulo": "Auto", "valor": 27.8, "nota": "104 emitidas"},
+                    {"rotulo": "Vida", "valor": 21.4, "nota": "18 emitidas"},
+                    {"rotulo": "Empresarial", "valor": 14.6, "nota": "11 emitidas"},
+                    {"rotulo": "Condomínio", "valor": 12.1, "nota": "4 emitidas"},
+                    {"rotulo": "Frota", "valor": 9.7, "nota": "3 emitidas"},
+                    {"rotulo": "Riscos de engenharia", "valor": 6.2, "nota": "1 emitida"},
+                ]}}],
+            "right": [{"block": "ring", "props": {
+                "title": "Meta do mês",
+                "items": [{"label": "80 de 95 apólices", "value": 84.2}]}}]}},
+        {"block": "chart", "props": {
+            "eyebrow": "Ritmo", "title": "Cotações por semana",
+            "value_type": "number",
+            "labels": ["S1", "S2", "S3", "S4"],
+            "series": [
+                {"name": "Julho", "values": [58, 74, 71, 65]},
+                {"name": "Junho", "values": [61, 63, 58, 63]},
+            ]}},
+        {"block": "actions", "props": {
+            "title": "Onde atacar primeiro",
+            "items": [
+                {"title": "Prazo máximo de 48h entre cotação e proposta",
+                 "detail": "106 cotações do mês nunca viraram proposta. Metade delas "
+                           "está parada há mais de 5 dias.",
+                 "owner": "Comercial", "due": "esta semana", "impact": "maior perda"},
+                {"title": "Dobrar esforço em residencial",
+                 "detail": "Maior taxa de conversão (34,2%) e menor ciclo. É onde cada "
+                           "hora de trabalho rende mais.",
+                 "owner": "Comercial", "due": "agosto", "impact": "melhor retorno"},
+                {"title": "Revisar abordagem de frota",
+                 "detail": "9,7% de conversão com o maior ticket da casa. Ou o preço "
+                           "está fora, ou a proposta não está chegando pronta.",
+                 "owner": "Técnico", "due": "até 15/08"},
+            ]}},
+        {"block": "sources", "props": {}},
+        {"block": "footer", "props": {}},
+    ]
+
+
+def dados_renovacoes() -> list[dict]:
+    return [
+        {"block": "cover", "props": {
+            "eyebrow": "Renovações", "period": "Próximos 60 dias",
+            "title": "R$ 892 mil vencem até setembro",
+            "subtitle": "Apólices ordenadas por urgência, não por valor.",
+            "verdict": "9 apólices vencem nos próximos 15 dias e 4 delas ainda não "
+                       "tiveram contato. Juntas somam R$ 218 mil.",
+            "headline_label": "Prêmio a renovar", "headline_value": "R$ 892.400"}},
+        {"block": "kpis", "props": {
+            "title": "Janela de risco",
+            "items": [
+                {"label": "A vencer em 15 dias", "value": "9", "since": "R$ 218,4 mil"},
+                {"label": "A vencer em 30 dias", "value": "24", "since": "R$ 431,7 mil"},
+                {"label": "Sem contato", "value": "11", "since": "R$ 294,2 mil"},
+                {"label": "Renovação histórica", "value": "87,2", "unit": "%",
+                 "delta": 1.4, "since": "vs. ano passado"},
+            ]}},
+        {"block": "callout", "props": {
+            "tone": "negative", "title": "4 apólices críticas sem contato",
+            "text": "Vencem em menos de 15 dias e não têm nenhum registro de contato. "
+                    "**R$ 218.400** em prêmio. A mais urgente vence em **3 dias**."}},
+        {"block": "table", "props": {
+            "eyebrow": "Agenda", "title": "Vencimentos ordenados por urgência",
+            "columns": [
+                {"key": "cli", "label": "Cliente"},
+                {"key": "ramo", "label": "Ramo"},
+                {"key": "venc", "label": "Vence em", "align": "right"},
+                {"key": "premio", "label": "Prêmio", "align": "right", "format": "currency"},
+                {"key": "st", "label": "Contato", "pill": True},
+            ],
+            "rows": [
+                {"cli": "Metalúrgica Campeche", "ramo": "Empresarial", "venc": "3 dias",
+                 "premio": 84200.0, "st": "sem resposta", "st_tone": "negative"},
+                {"cli": "Transportadora Sul Log", "ramo": "Frota", "venc": "8 dias",
+                 "premio": 62400.0, "st": "sem contato", "st_tone": "negative"},
+                {"cli": "Colégio São Marcos", "ramo": "Patrimonial", "venc": "11 dias",
+                 "premio": 43100.0, "st": "sem contato", "st_tone": "negative"},
+                {"cli": "Frigorífico Trindade", "ramo": "Frota", "venc": "14 dias",
+                 "premio": 28700.0, "st": "sem contato", "st_tone": "negative"},
+                {"cli": "Condomínio Ilha Bela", "ramo": "Condomínio", "venc": "17 dias",
+                 "premio": 96800.0, "st": "em negociação", "st_tone": "info"},
+                {"cli": "Rede Farmácias Ativa", "ramo": "Empresarial", "venc": "22 dias",
+                 "premio": 61200.0, "st": "proposta enviada", "st_tone": "positive"},
+                {"cli": "Construtora Norte", "ramo": "Eng. risco", "venc": "26 dias",
+                 "premio": 54900.0, "st": "em negociação", "st_tone": "info"},
+                {"cli": "Auto Peças Kobrasol", "ramo": "Empresarial", "venc": "31 dias",
+                 "premio": 22400.0, "st": "proposta enviada", "st_tone": "positive"},
+            ],
+            "total": {"cli": "8 de 24 apólices", "ramo": "", "venc": "",
+                      "premio": 453700.0, "st": ""}}},
+        {"block": "stacked", "props": {
+            "eyebrow": "Distribuição", "title": "Vencimentos por semana e ramo",
+            "value_type": "currency_short",
+            "categories": ["Sem 1", "Sem 2", "Sem 3", "Sem 4", "Sem 5", "Sem 6",
+                           "Sem 7", "Sem 8"],
+            "series": [
+                {"name": "Frota", "values": [62400, 28700, 0, 41200, 0, 33800, 0, 18900]},
+                {"name": "Empresarial", "values": [84200, 0, 61200, 22400, 38600, 0, 29100, 0]},
+                {"name": "Condomínio", "values": [0, 96800, 0, 0, 44200, 0, 0, 31700]},
+                {"name": "Demais", "values": [43100, 0, 54900, 19800, 0, 26400, 41300, 38300]},
+            ]}},
+        {"block": "actions", "props": {
+            "title": "Prioridades desta semana",
+            "items": [
+                {"title": "Metalúrgica Campeche — ligar hoje",
+                 "detail": "Vence em 3 dias, duas tentativas de WhatsApp sem resposta "
+                           "desde 21/07. Telefone fixo ainda não foi tentado.",
+                 "owner": "Comercial", "due": "hoje", "impact": "R$ 84,2 mil"},
+                {"title": "Sul Log — revisar frota antes de cotar",
+                 "detail": "A frota passou de 34 para 42 veículos. Renovar na condição "
+                           "antiga deixaria 8 veículos descobertos.",
+                 "owner": "Técnico", "due": "até 29/07", "impact": "R$ 62,4 mil"},
+                {"title": "Abrir contato com Colégio e Frigorífico",
+                 "detail": "Vencem em 11 e 14 dias, nenhum contato registrado.",
+                 "owner": "Comercial", "due": "até 30/07", "impact": "R$ 71,8 mil"},
+            ]}},
+        {"block": "sources", "props": {}},
+        {"block": "footer", "props": {}},
+    ]
+
+
+def dados_dossie() -> list[dict]:
+    return [
+        {"block": "cover", "props": {
+            "eyebrow": "Dossiê do segurado", "period": "Julho de 2026",
+            "title": "Transportadora Sul Log",
+            "subtitle": "Resumo da sua proteção atual e os pontos que merecem atenção.",
+            "verdict": "Sua frota cresceu de 34 para 42 veículos desde a última "
+                       "renovação. Oito veículos ainda não constam na apólice.",
+            "headline_label": "Valor total protegido", "headline_value": "R$ 8,4 milhões"}},
+        {"block": "kpis", "props": {
+            "title": "Resumo da proteção",
+            "items": [
+                {"label": "Apólices ativas", "value": "4"},
+                {"label": "Veículos cobertos", "value": "34", "since": "de 42 na frota"},
+                {"label": "Valor protegido", "value": "R$ 8,4", "unit": "mi"},
+                {"label": "Próximo vencimento", "value": "8", "unit": "dias"},
+            ]}},
+        {"block": "table", "props": {
+            "eyebrow": "Apólices", "title": "O que está vigente hoje",
+            "columns": [
+                {"key": "ramo", "label": "Proteção"},
+                {"key": "seg", "label": "Seguradora"},
+                {"key": "vig", "label": "Vigência"},
+                {"key": "is", "label": "Valor protegido", "align": "right",
+                 "format": "currency"},
+                {"key": "st", "label": "Situação", "pill": True},
+            ],
+            "rows": [
+                {"ramo": "Frota — 34 veículos", "seg": "Porto Seguro",
+                 "vig": "02/08/25 a 02/08/26", "is": 6200000.0,
+                 "st": "vence em 8 dias", "st_tone": "warning"},
+                {"ramo": "Responsabilidade civil", "seg": "Allianz",
+                 "vig": "15/03/26 a 15/03/27", "is": 1500000.0,
+                 "st": "vigente", "st_tone": "positive"},
+                {"ramo": "Patrimonial — sede", "seg": "Bradesco Seguros",
+                 "vig": "10/11/25 a 10/11/26", "is": 620000.0,
+                 "st": "vigente", "st_tone": "positive"},
+                {"ramo": "Vida em grupo — 28 vidas", "seg": "SulAmérica",
+                 "vig": "01/01/26 a 01/01/27", "is": 84000.0,
+                 "st": "vigente", "st_tone": "positive"},
+            ]}},
+        {"block": "callout", "props": {
+            "tone": "warning", "title": "8 veículos fora da apólice",
+            "text": "Comparando a relação de veículos que vocês nos enviaram em junho "
+                    "com a apólice vigente, **8 veículos** adquiridos após agosto de "
+                    "2025 não foram incluídos. Em caso de sinistro com qualquer um "
+                    "deles, **não haveria cobertura**.\n\n"
+                    "Podemos incluí-los por endosso antes da renovação, sem esperar o "
+                    "vencimento."}},
+        {"block": "ranking", "props": {
+            "eyebrow": "Exposição", "title": "Onde está o maior valor protegido",
+            "value_type": "currency_short", "highlight": 1, "max": 5,
+            "items": [
+                {"rotulo": "Frota de veículos", "valor": 6200000, "nota": "74% do total"},
+                {"rotulo": "Responsabilidade civil", "valor": 1500000, "nota": "18%"},
+                {"rotulo": "Sede e equipamentos", "valor": 620000, "nota": "7%"},
+                {"rotulo": "Vida em grupo", "valor": 84000, "nota": "1%"},
+            ]}},
+        {"block": "actions", "props": {
+            "title": "Nossas recomendações",
+            "items": [
+                {"title": "Incluir os 8 veículos por endosso",
+                 "detail": "Podemos fazer antes da renovação. O custo proporcional "
+                           "até 02/08 é baixo e elimina o risco imediato.",
+                 "owner": "Resulta Seguros", "due": "esta semana"},
+                {"title": "Reavaliar o limite de responsabilidade civil",
+                 "detail": "R$ 1,5 milhão foi contratado quando a frota tinha 22 "
+                           "veículos. Com 42, sugerimos revisar o limite.",
+                 "owner": "Resulta Seguros", "due": "na renovação"},
+                {"title": "Considerar cobertura de carga",
+                 "detail": "A frota está protegida, mas a carga transportada não. "
+                           "É a lacuna mais comum em transportadoras.",
+                 "owner": "Resulta Seguros", "due": "a conversar"},
+            ]}},
+        {"block": "sources", "props": {}},
+        {"block": "footer", "props": {"disclaimer":
+            "Documento informativo. As condições contratuais das apólices "
+            "prevalecem sobre este resumo."}},
+    ]
+
+
+def dados_sinistros() -> list[dict]:
+    return [
+        {"block": "cover", "props": {
+            "eyebrow": "Sinistros", "period": "1º semestre de 2026",
+            "title": "A Porto regula em metade do tempo da HDI",
+            "subtitle": "Desempenho das seguradoras parceiras em prazo, deferimento "
+                        "e reclamação, no semestre.",
+            "verdict": "Prazo médio geral caiu de 18 para 14 dias. A diferença entre "
+                       "a melhor e a pior seguradora é de 19 dias.",
+            "headline_label": "Prazo médio de regulação", "headline_value": "14 dias",
+            "headline_delta": -22.2, "headline_better": "down"}},
+        {"block": "kpis", "props": {
+            "title": "O período em números",
+            "items": [
+                {"label": "Avisos de sinistro", "value": "147", "delta": 6.5,
+                 "since": "vs. 2º sem/25"},
+                {"label": "Prazo médio", "value": "14", "unit": "dias", "delta": -22.2,
+                 "since": "vs. 2º sem/25", "better": "down"},
+                {"label": "Taxa de deferimento", "value": "91,2", "unit": "%",
+                 "delta": 3.4, "since": "vs. 2º sem/25"},
+                {"label": "Reclamações", "value": "6", "delta": -40.0,
+                 "since": "vs. 2º sem/25", "better": "down"},
+            ]}},
+        {"block": "table", "props": {
+            "eyebrow": "Comparação", "title": "Desempenho por seguradora",
+            "lede": "Seguradoras com menos de 10 avisos aparecem, mas a média delas "
+                    "não é comparável — o número de casos está sempre visível.",
+            "columns": [
+                {"key": "seg", "label": "Seguradora"},
+                {"key": "n", "label": "Avisos", "align": "right"},
+                {"key": "prazo", "label": "Prazo médio", "align": "right"},
+                {"key": "def", "label": "Deferimento", "align": "right", "format": "percent"},
+                {"key": "rec", "label": "Reclamações", "align": "right"},
+                {"key": "st", "label": "Leitura", "pill": True},
+            ],
+            "rows": [
+                {"seg": "Porto Seguro", "n": 58, "prazo": "9 dias", "def": 94.8,
+                 "rec": 1, "st": "referência", "st_tone": "positive"},
+                {"seg": "Allianz", "n": 31, "prazo": "12 dias", "def": 93.5,
+                 "rec": 1, "st": "bom", "st_tone": "positive"},
+                {"seg": "Bradesco Seguros", "n": 24, "prazo": "15 dias", "def": 91.7,
+                 "rec": 1, "st": "na média", "st_tone": "info"},
+                {"seg": "SulAmérica", "n": 19, "prazo": "17 dias", "def": 89.5,
+                 "rec": 2, "st": "atenção", "st_tone": "warning"},
+                {"seg": "Tokio Marine", "n": 11, "prazo": "21 dias", "def": 81.8,
+                 "rec": 1, "st": "atenção", "st_tone": "warning"},
+                {"seg": "HDI", "n": 4, "prazo": "28 dias", "def": 75.0,
+                 "rec": 0, "st": "poucos casos", "st_tone": "info"},
+            ],
+            "total": {"seg": "Total", "n": 147, "prazo": "14 dias", "def": 91.2,
+                      "rec": 6, "st": ""}}},
+        {"block": "verdict", "props": {
+            "text": "A HDI aparece com o pior prazo do quadro, mas são só 4 casos. "
+                    "Com essa amostra, a diferença para a Tokio Marine não é "
+                    "estatisticamente distinguível.",
+            "note": "Comparar média de 4 casos com média de 58 sem essa ressalva "
+                    "produziria uma conclusão errada com aparência de dado. As duas "
+                    "seguradoras com amostra pequena entram no quadro marcadas."}},
+        {"block": "split", "props": {
+            "left": [{"block": "ranking", "props": {
+                "title": "Prazo médio de regulação", "value_type": "number",
+                "highlight": 0, "max": 6,
+                "items": [
+                    {"rotulo": "HDI", "valor": 28, "nota": "4 casos · amostra pequena"},
+                    {"rotulo": "Tokio Marine", "valor": 21, "nota": "11 casos"},
+                    {"rotulo": "SulAmérica", "valor": 17, "nota": "19 casos"},
+                    {"rotulo": "Bradesco", "valor": 15, "nota": "24 casos"},
+                    {"rotulo": "Allianz", "valor": 12, "nota": "31 casos"},
+                    {"rotulo": "Porto Seguro", "valor": 9, "nota": "58 casos"},
+                ]}}],
+            "right": [{"block": "donut", "props": {
+                "title": "Status dos avisos", "value_type": "number",
+                "center_value": "147", "center_label": "avisos",
+                "slices": [
+                    {"rotulo": "Pagos", "valor": 118},
+                    {"rotulo": "Em regulação", "valor": 16},
+                    {"rotulo": "Negados", "valor": 9},
+                    {"rotulo": "Em recurso", "valor": 4},
+                ]}}]}},
+        {"block": "callout", "props": {
+            "tone": "info", "title": "Munição para a próxima negociação",
+            "text": "A Porto responde por **39% dos avisos** e tem o melhor prazo do "
+                    "quadro. É argumento concreto para negociar comissão na renovação "
+                    "do acordo comercial — e para justificar ao cliente por que ela é "
+                    "a primeira indicação em auto."}},
+        {"block": "actions", "props": {
+            "title": "Encaminhamentos",
+            "items": [
+                {"title": "Levar o quadro à reunião com a SulAmérica",
+                 "detail": "17 dias de prazo e 2 das 6 reclamações do semestre. É a "
+                           "única com volume relevante e desempenho abaixo da média.",
+                 "owner": "Direção", "due": "agosto"},
+                {"title": "Acompanhar os 4 recursos em aberto",
+                 "detail": "Todos com mais de 30 dias desde a negativa.",
+                 "owner": "Sinistros", "due": "esta semana"},
+            ]}},
+        {"block": "sources", "props": {}},
+        {"block": "footer", "props": {}},
+    ]
+
+
+def dados_pesquisa() -> list[dict]:
+    return [
+        {"block": "cover", "props": {
+            "eyebrow": "Dossiê de pesquisa", "period": "Julho de 2026",
+            "title": "Seguro paramétrico chega ao agro em SC",
+            "subtitle": "O que muda para corretoras de médio porte no Sul, e o que "
+                        "fazer nos próximos seis meses.",
+            "verdict": "Ainda é nicho, mas o produto resolve a objeção mais antiga do "
+                       "agro: o tempo de regulação."}},
+        {"block": "verdict", "props": {
+            "text": "Paramétrico não substitui o seguro agrícola tradicional — "
+                    "compete com a ausência de seguro, que hoje é a situação da "
+                    "maioria dos pequenos produtores.",
+            "note": "É a distinção que muda a abordagem comercial: não é troca de "
+                    "produto, é mercado novo."}},
+        {"block": "prose", "props": {
+            "eyebrow": "Contexto", "title": "O que está em jogo",
+            "text": "No seguro agrícola tradicional, a indenização depende de perícia "
+                    "em campo. Entre o evento e o pagamento passam-se, em média, **45 "
+                    "a 90 dias** — prazo que, para um produtor descapitalizado, chega "
+                    "depois de a decisão de replantio já ter sido tomada.\n\n"
+                    "O seguro paramétrico paga por **gatilho medido**, não por perda "
+                    "verificada. Se o índice pluviométrico da região ficar abaixo do "
+                    "contratado por N dias, a indenização é liberada — sem perícia, "
+                    "sem contestação de valor. O produtor recebe em dias.\n\n"
+                    "A contrapartida é o *risco de base*: pode haver perda real sem "
+                    "gatilho disparado, e gatilho disparado sem perda real. É o ponto "
+                    "que precisa ser explicado na venda, sob pena de o produto "
+                    "queimar na primeira safra ruim."}},
+        {"block": "kpis", "props": {
+            "title": "Números que ancoram a análise",
+            "items": [
+                {"label": "Área agrícola segurada em SC", "value": "23,4", "unit": "%",
+                 "since": "estimativa 2025"},
+                {"label": "Prazo tradicional", "value": "45–90", "unit": "dias"},
+                {"label": "Prazo paramétrico", "value": "3–10", "unit": "dias"},
+                {"label": "Produtores sem seguro", "value": "76,6", "unit": "%",
+                 "since": "o mercado real"},
+            ]}},
+        {"block": "chart", "props": {
+            "eyebrow": "Evidência", "title": "Prêmio de seguro rural em SC",
+            "lede": "Série em milhões de reais. A subvenção federal explica os degraus.",
+            "value_type": "short",
+            "labels": ["2019", "2020", "2021", "2022", "2023", "2024", "2025"],
+            "series": [{"name": "Prêmio rural", "values": [184, 211, 268, 241, 297, 334, 388]}]}},
+        {"block": "prose", "props": {
+            "eyebrow": "Análise", "title": "Leitura",
+            "text": "Três coisas favorecem a entrada agora.\n\n"
+                    "**A distribuição mudou.** Os produtos paramétricos que chegaram "
+                    "ao Brasil nos últimos dois anos são desenhados para venda "
+                    "digital, com apólice curta e contratação em minutos. Isso "
+                    "elimina a barreira que sempre travou o agro para corretora de "
+                    "médio porte: o custo de atender um ticket pequeno.\n\n"
+                    "**O ticket é compatível com o pequeno produtor.** É o que "
+                    "transforma os 76,6% sem seguro de estatística em mercado.\n\n"
+                    "**A objeção é conhecida e endereçável.** Risco de base explicado "
+                    "antes da venda vira característica; explicado depois do sinistro "
+                    "vira processo. Isso é material de treinamento, não de produto — "
+                    "e é onde uma corretora se diferencia."}},
+        {"block": "table", "props": {
+            "eyebrow": "Comparação", "title": "Lado a lado",
+            "columns": [
+                {"key": "d", "label": "Dimensão"},
+                {"key": "t", "label": "Tradicional"},
+                {"key": "p", "label": "Paramétrico"},
+            ],
+            "rows": [
+                {"d": "Base da indenização", "t": "Perda verificada em perícia",
+                 "p": "Índice medido por estação/satélite"},
+                {"d": "Prazo até o pagamento", "t": "45 a 90 dias", "p": "3 a 10 dias"},
+                {"d": "Contestação de valor", "t": "Comum", "p": "Não se aplica"},
+                {"d": "Risco de base", "t": "Não existe", "p": "Existe e precisa ser explicado"},
+                {"d": "Custo de distribuição", "t": "Alto", "p": "Baixo — venda digital"},
+                {"d": "Subvenção federal", "t": "Sim (PSR)", "p": "Parcial, depende do produto"},
+            ]}},
+        {"block": "callout", "props": {
+            "tone": "warning", "title": "O que ainda não sabemos",
+            "text": "Não encontramos série histórica pública de sinistralidade de "
+                    "paramétrico no Brasil com mais de três safras. Toda projeção de "
+                    "resultado neste dossiê é **hipótese**, não evidência — e está "
+                    "marcada como tal no texto."}},
+        {"block": "actions", "props": {
+            "title": "Recomendações",
+            "items": [
+                {"title": "Conversar com duas seguradoras que já operam o produto",
+                 "detail": "Entender condição de comissionamento e material de apoio "
+                           "antes de qualquer compromisso comercial.",
+                 "owner": "Direção", "due": "agosto"},
+                {"title": "Mapear a base atual de clientes com atividade rural",
+                 "detail": "É o teste mais barato: se não houver massa na carteira, "
+                           "o produto exige prospecção nova e muda o cálculo.",
+                 "owner": "Comercial", "due": "até 20/08"},
+                {"title": "Não vender antes de treinar risco de base",
+                 "detail": "É a única recomendação com caráter de restrição. Venda "
+                           "sem essa explicação gera passivo na primeira safra ruim.",
+                 "owner": "Direção", "due": "pré-requisito"},
+            ]}},
+        {"block": "sources", "props": {
+            "title": "Fontes consultadas",
+            "note": "Este dossiê é uma demonstração do formato. Numa execução real, "
+                    "cada fonte abaixo traz URL e data de acesso, e nenhuma afirmação "
+                    "numérica entra sem constar desta lista.",
+            "items": [
+                {"label": "Estrutura", "detail": "amostra do template de pesquisa",
+                 "as_of_label": "demonstração"},
+            ]}},
+        {"block": "footer", "props": {}},
+    ]
+
+
 AMOSTRAS = [
     ("executive.panorama", "Panorama da Corretora", dados_panorama, "aurora"),
     ("financial.commissions", "Carteira e Comissões", dados_comissoes, "meridian"),
     ("briefing.daily", "Briefing Diário", dados_briefing, "obsidian"),
+    ("commercial.pipeline", "Produção e Funil", dados_funil, "aurora"),
+    ("renewals.radar", "Radar de Renovações", dados_renovacoes, "meridian"),
+    ("portfolio.client_dossier", "Dossiê do Segurado", dados_dossie, "aurora"),
+    ("claims.performance", "Sinistros e Seguradoras", dados_sinistros, "meridian"),
+    ("research.market_brief", "Dossiê de Pesquisa", dados_pesquisa, "aurora"),
 ]
 
 

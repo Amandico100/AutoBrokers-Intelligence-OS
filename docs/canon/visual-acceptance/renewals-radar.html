@@ -1,0 +1,384 @@
+<!doctype html>
+<html lang="pt-BR" data-style="meridian">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<meta name="color-scheme" content="light">
+<meta name="robots" content="noindex,nofollow">
+<title>Radar de Renovações · Resulta Seguros</title>
+<style>
+:root{color-scheme:light}
+:root {
+  --ab-canvas: #FBFDFF;
+  --ab-surface: #FFFFFF;
+  --ab-surface-2: #F1F7FB;
+  --ab-elevated: #FFFFFF;
+  --ab-grid: #E3E9ED;
+  --ab-ink-strong: #121D25;
+  --ab-ink-base: #2D373E;
+  --ab-ink-muted: #626A70;
+  --ab-ink-faint: #878F94;
+  --ab-border-hairline: #DCE3E8;
+  --ab-border-strong: #C4CED5;
+  --ab-primary-fill: #1D5579;
+  --ab-primary-text: #1D5579;
+  --ab-primary-on: #FFFFFF;
+  --ab-primary-soft: #DDF4FF;
+  --ab-accent-fill: #EE7501;
+  --ab-accent-text: #C14C00;
+  --ab-accent-on: #000000;
+  --ab-accent-soft: #FFE8D2;
+  --ab-positive-fill: #008955;
+  --ab-positive-text: #00824F;
+  --ab-positive-on: #000000;
+  --ab-positive-soft: #D3FCE3;
+  --ab-negative-fill: #B24B58;
+  --ab-negative-text: #B24B58;
+  --ab-negative-on: #FFFFFF;
+  --ab-negative-soft: #FFE6E8;
+  --ab-warning-fill: #916B00;
+  --ab-warning-text: #916B00;
+  --ab-warning-on: #FFFFFF;
+  --ab-warning-soft: #FFEECD;
+  --ab-info-fill: #0078BA;
+  --ab-info-text: #0076B8;
+  --ab-info-on: #FFFFFF;
+  --ab-info-soft: #D7F4FF;
+  --ab-chart-1: #3F7BA4;
+  --ab-chart-2: #BF975C;
+  --ab-chart-3: #4C4B82;
+  --ab-chart-4: #9AC68E;
+  --ab-chart-5: #A9719A;
+  --ab-chart-6: #64271E;
+  --ab-chart-7: #1A8583;
+  --ab-chart-8: #809FD7;
+  --ab-p-50: #EBF8FF;
+  --ab-p-100: #DAEEFE;
+  --ab-p-200: #BEDDF4;
+  --ab-p-300: #9EC8E7;
+  --ab-p-400: #7AACD2;
+  --ab-p-500: #5B92B9;
+  --ab-p-600: #44799E;
+  --ab-p-700: #316081;
+  --ab-p-800: #204863;
+  --ab-p-900: #123146;
+  --ab-p-950: #071E2D;
+  --ab-font-display: 'Montserrat', -apple-system, BlinkMacSystemFont, 'Segoe UI Variable Display', 'Segoe UI', Inter, Roboto, system-ui, sans-serif;
+  --ab-font-body: 'Montserrat', -apple-system, BlinkMacSystemFont, 'Segoe UI Variable Display', 'Segoe UI', Inter, Roboto, system-ui, sans-serif;
+  --ab-font-mono: 'JetBrains Mono', 'SF Mono', ui-monospace, monospace;
+}
+
+*,*::before,*::after{box-sizing:border-box}
+html{-webkit-text-size-adjust:100%}
+body{margin:0;background:var(--ab-canvas);color:var(--ab-ink-base);
+  font-family:var(--ab-font-body);font-size:16px;line-height:1.6;
+  -webkit-font-smoothing:antialiased;-moz-osx-font-smoothing:grayscale;
+  font-variant-numeric:tabular-nums;text-rendering:optimizeLegibility}
+img{max-width:100%;height:auto;display:block}
+a{color:var(--ab-primary-text)}
+h1,h2,h3,h4{margin:0;font-weight:var(--ab-h-weight);letter-spacing:var(--ab-h-track);
+  line-height:1.14;color:var(--ab-ink-strong);font-family:var(--ab-font-display)}
+p{margin:0 0 1em}
+p:last-child{margin-bottom:0}
+
+/* Numeral tabular em tudo que é número. É o detalhe que faz uma coluna de
+   valores parecer alinhada por um tipógrafo em vez de por acaso. */
+.ab-num,.ab-kpi-value,.ab-rank-value,.ab-bar-value,.ab-axis,
+.ab-table td,.ab-donut-value,.ab-ring-value,.ab-leg-val{
+  font-variant-numeric:tabular-nums lining-nums;font-feature-settings:"tnum" 1,"lnum" 1}
+
+.ab-doc{max-width:var(--ab-measure);margin:0 auto;padding:var(--ab-pad)}
+.ab-block{margin:var(--ab-gap) 0}
+.ab-block:first-child{margin-top:0}
+
+/* ---- tipografia de seção ---- */
+.ab-eyebrow{font-family:var(--ab-font-body);font-size:11px;font-weight:650;
+  letter-spacing:.14em;text-transform:uppercase;color:var(--ab-primary-text);
+  margin:0 0 10px;display:flex;align-items:center;gap:9px}
+.ab-eyebrow::before{content:"";width:18px;height:2px;border-radius:2px;
+  background:var(--ab-accent-fill);flex:none}
+.ab-h2{font-size:var(--ab-h2);margin:0 0 6px}
+.ab-lede{font-size:17px;color:var(--ab-ink-muted);max-width:64ch;margin:0 0 22px}
+
+/* ---- capa ----
+   O logo da corretora vem primeiro e sozinho na linha. É a primeira coisa que
+   o olho encontra, e é o que faz a peça parecer propriedade dela em vez de
+   relatório de fornecedor com o nome do cliente no rodapé. */
+.ab-cover{padding-bottom:var(--ab-gap);border-bottom:1px solid var(--ab-border-hairline)}
+.ab-cover-top{display:flex;align-items:center;justify-content:space-between;
+  gap:20px;margin-bottom:var(--ab-cover-gap,54px);min-height:38px}
+.ab-cover-logo{height:var(--ab-logo-h,42px);width:auto;max-width:230px;object-fit:contain}
+.ab-cover-wordmark{font-family:var(--ab-font-display);font-size:19px;font-weight:650;
+  letter-spacing:-.02em;color:var(--ab-ink-strong)}
+.ab-cover-period{font-size:12px;font-weight:600;letter-spacing:.07em;
+  text-transform:uppercase;color:var(--ab-ink-faint);padding:6px 13px;
+  border:1px solid var(--ab-border-hairline);border-radius:999px;white-space:nowrap}
+.ab-cover-main{max-width:min(100%,22ch + 28ch)}
+.ab-cover-title{font-size:var(--ab-cover-size);line-height:1.04;
+  letter-spacing:var(--ab-cover-track);margin:0 0 14px;max-width:19ch}
+.ab-cover-sub{font-size:clamp(16px,1.7vw,19px);color:var(--ab-ink-muted);
+  max-width:56ch;margin:0}
+.ab-cover-verdict{margin:22px 0 0;font-size:clamp(15px,1.5vw,17px);
+  color:var(--ab-ink-base);max-width:62ch;padding-left:16px;
+  border-left:2px solid var(--ab-accent-fill)}
+.ab-cover-figure{display:flex;align-items:baseline;gap:14px;flex-wrap:wrap;
+  margin-top:38px;padding-top:26px;border-top:1px solid var(--ab-border-hairline)}
+.ab-cover-figure-label{font-size:12px;font-weight:600;letter-spacing:.09em;
+  text-transform:uppercase;color:var(--ab-ink-faint);width:100%}
+.ab-cover-figure-value{font-family:var(--ab-font-display);
+  font-size:clamp(40px,6vw,66px);font-weight:var(--ab-kpi-weight);line-height:1;
+  letter-spacing:-.035em;color:var(--ab-ink-strong)}
+
+/* ---- prosa ---- */
+.ab-prose{max-width:70ch}
+.ab-prose p{font-size:16.5px;line-height:1.72;color:var(--ab-ink-base)}
+.ab-prose code{background:var(--ab-surface-2);padding:1px 6px;border-radius:5px;
+  font-family:var(--ab-font-mono);font-size:.9em}
+
+/* ---- superfícies ---- */
+.ab-card{background:var(--ab-surface);border-radius:var(--ab-radius);
+  border:var(--ab-card-border);box-shadow:var(--ab-shadow);padding:var(--ab-card-pad)}
+
+/* ---- KPI ---- */
+.ab-kpis{display:grid;gap:var(--ab-grid-gap);
+  grid-template-columns:repeat(auto-fit,minmax(196px,1fr))}
+.ab-kpi{background:var(--ab-surface);border-radius:var(--ab-radius);
+  border:var(--ab-card-border);box-shadow:var(--ab-shadow);
+  padding:20px 20px 16px;position:relative;overflow:hidden}
+.ab-kpi::after{content:"";position:absolute;inset:0 auto 0 0;width:3px;
+  background:var(--kpi-accent,var(--ab-primary-fill));opacity:var(--ab-kpi-rail,1)}
+.ab-kpi-label{font-size:12px;font-weight:600;letter-spacing:.05em;
+  text-transform:uppercase;color:var(--ab-ink-faint);margin:0 0 10px}
+.ab-kpi-value{font-family:var(--ab-font-display);font-size:var(--ab-kpi-size);
+  font-weight:var(--ab-kpi-weight);line-height:1;letter-spacing:-.025em;
+  color:var(--ab-ink-strong);display:block}
+.ab-kpi-unit{font-size:.5em;font-weight:500;color:var(--ab-ink-muted);margin-left:3px}
+.ab-kpi-foot{display:flex;align-items:center;justify-content:space-between;
+  gap:10px;margin-top:12px;min-height:22px}
+.ab-delta{display:inline-flex;align-items:center;gap:5px;font-size:13px;
+  font-weight:650;padding:3px 9px;border-radius:999px;white-space:nowrap}
+.ab-delta[data-dir="up"]{color:var(--ab-positive-text);background:var(--ab-positive-soft)}
+.ab-delta[data-dir="down"]{color:var(--ab-negative-text);background:var(--ab-negative-soft)}
+.ab-delta[data-dir="flat"]{color:var(--ab-ink-muted);background:var(--ab-surface-2)}
+.ab-delta svg{width:11px;height:11px;flex:none}
+.ab-kpi-since{font-size:12px;color:var(--ab-ink-faint)}
+
+/* ---- veredito ---- */
+.ab-verdict{border-radius:var(--ab-radius);padding:26px 30px;
+  background:var(--ab-primary-soft);border-left:3px solid var(--ab-primary-fill)}
+.ab-verdict-text{font-family:var(--ab-font-display);font-size:var(--ab-verdict-size);
+  line-height:1.3;letter-spacing:-.02em;color:var(--ab-ink-strong);margin:0}
+.ab-verdict-note{margin:14px 0 0;font-size:14px;color:var(--ab-ink-muted)}
+
+/* ---- gráficos ---- */
+.ab-chart{width:100%;height:auto;display:block;overflow:visible}
+.ab-grid{stroke:var(--ab-grid);stroke-width:1;shape-rendering:crispEdges}
+.ab-axis{fill:var(--ab-ink-faint);font-size:11px;font-family:var(--ab-font-body)}
+.ab-bar-value{fill:var(--ab-ink-muted);font-size:11px;font-weight:600;
+  font-family:var(--ab-font-body)}
+.ab-bridge{stroke:var(--ab-ink-faint);stroke-width:1;stroke-dasharray:2 3;opacity:.6}
+.ab-nodata{display:flex;align-items:center;justify-content:center;gap:10px;
+  min-height:150px;color:var(--ab-ink-faint);font-size:14px;border-radius:var(--ab-radius);
+  border:1px dashed var(--ab-border-hairline);background:var(--ab-surface-2)}
+
+.ab-legend{list-style:none;margin:16px 0 0;padding:0;display:grid;gap:9px}
+.ab-legend--row{display:flex;flex-wrap:wrap;gap:8px 20px;justify-content:center}
+.ab-legend li{display:flex;align-items:center;gap:9px;font-size:13px}
+.ab-legend i{width:10px;height:10px;border-radius:3px;flex:none}
+.ab-leg-name{color:var(--ab-ink-base)}
+.ab-leg-val{margin-left:auto;font-weight:650;color:var(--ab-ink-strong);
+  display:flex;gap:8px;align-items:baseline}
+.ab-leg-val em{font-style:normal;font-weight:500;color:var(--ab-ink-faint);font-size:12px}
+
+.ab-donut{display:flex;gap:30px;align-items:center;flex-wrap:wrap}
+.ab-donut svg{flex:none;width:220px}
+.ab-donut .ab-legend{flex:1;min-width:210px;margin:0}
+.ab-donut-value{fill:var(--ab-ink-strong);font-size:23px;font-weight:700;
+  font-family:var(--ab-font-display)}
+.ab-donut-label{fill:var(--ab-ink-faint);font-size:11px;
+  font-family:var(--ab-font-body);letter-spacing:.06em;text-transform:uppercase}
+
+.ab-ring{display:flex;flex-direction:column;align-items:center;gap:9px}
+.ab-ring svg{width:116px}
+.ab-ring-value{fill:var(--ab-ink-strong);font-size:21px;font-weight:700;
+  font-family:var(--ab-font-display)}
+.ab-ring-label{font-size:12px;color:var(--ab-ink-faint);text-align:center}
+
+/* ---- ranking ---- */
+.ab-rank{display:grid;gap:3px}
+.ab-rank-row{display:grid;grid-template-columns:26px minmax(96px,1.5fr) 3fr auto;
+  gap:14px;align-items:center;padding:9px 10px;border-radius:9px;
+  transition:background .18s ease}
+.ab-rank-row:hover{background:var(--ab-surface-2)}
+.ab-rank-row.is-lead .ab-rank-label{font-weight:650;color:var(--ab-ink-strong)}
+.ab-rank-pos{font-size:12px;color:var(--ab-ink-faint);font-weight:650;text-align:right}
+.ab-rank-label{font-size:14px;color:var(--ab-ink-base);overflow:hidden;
+  text-overflow:ellipsis;white-space:nowrap}
+.ab-rank-track{height:9px;border-radius:999px;background:var(--ab-surface-2);
+  overflow:hidden;min-width:60px}
+.ab-rank-fill{display:block;height:100%;border-radius:999px;width:var(--w)}
+.ab-rank-value{font-size:14px;font-weight:650;color:var(--ab-ink-strong);
+  text-align:right;white-space:nowrap;display:flex;flex-direction:column;align-items:flex-end}
+.ab-rank-note{font-size:11px;font-weight:500;color:var(--ab-ink-faint)}
+
+/* ---- funil ---- */
+.ab-funnel{display:grid;gap:14px}
+.ab-funnel-head{display:flex;justify-content:space-between;align-items:baseline;
+  gap:14px;margin-bottom:7px}
+.ab-funnel-head span{font-size:14px;color:var(--ab-ink-base)}
+.ab-funnel-head strong{font-size:17px;color:var(--ab-ink-strong);font-weight:650}
+.ab-funnel-bar{height:34px;border-radius:8px;background:var(--ab-surface-2);overflow:hidden}
+.ab-funnel-bar span{display:block;height:100%;width:var(--w);border-radius:8px}
+.ab-funnel-conv{display:inline-flex;gap:9px;align-items:baseline;margin-top:7px;
+  font-size:12px;color:var(--ab-ink-faint)}
+.ab-funnel-conv em{font-style:normal;color:var(--ab-negative-text);font-weight:600}
+
+/* ---- tabela ---- */
+.ab-table-wrap{overflow-x:auto;border-radius:var(--ab-radius);
+  border:1px solid var(--ab-border-hairline)}
+.ab-table{width:100%;border-collapse:collapse;font-size:14px;min-width:520px}
+.ab-table th{text-align:left;font-size:11px;font-weight:650;letter-spacing:.07em;
+  text-transform:uppercase;color:var(--ab-ink-faint);padding:12px 16px;
+  background:var(--ab-surface-2);border-bottom:1px solid var(--ab-border-hairline);
+  white-space:nowrap;position:sticky;top:0}
+.ab-table td{padding:12px 16px;border-bottom:1px solid var(--ab-border-hairline);
+  color:var(--ab-ink-base)}
+.ab-table tr:last-child td{border-bottom:0}
+.ab-table tbody tr:hover td{background:var(--ab-surface-2)}
+.ab-table .num{text-align:right;font-weight:600;color:var(--ab-ink-strong)}
+.ab-table tfoot td{font-weight:700;color:var(--ab-ink-strong);
+  background:var(--ab-surface-2);border-top:2px solid var(--ab-border-strong)}
+.ab-pill{display:inline-block;padding:3px 10px;border-radius:999px;font-size:12px;
+  font-weight:600;white-space:nowrap}
+
+/* ---- destaque ---- */
+.ab-callout{display:flex;gap:16px;padding:20px 22px;border-radius:var(--ab-radius);
+  background:var(--ab-surface-2);border-left:3px solid var(--ab-primary-fill)}
+.ab-callout[data-tone="warning"]{background:var(--ab-warning-soft);
+  border-left-color:var(--ab-warning-fill)}
+.ab-callout[data-tone="negative"]{background:var(--ab-negative-soft);
+  border-left-color:var(--ab-negative-fill)}
+.ab-callout[data-tone="positive"]{background:var(--ab-positive-soft);
+  border-left-color:var(--ab-positive-fill)}
+.ab-callout-icon{flex:none;width:22px;height:22px;color:var(--ab-primary-text)}
+.ab-callout h4{font-size:15px;margin:0 0 5px;font-family:var(--ab-font-body);font-weight:700}
+.ab-callout p{font-size:14px;color:var(--ab-ink-muted);margin:0}
+
+/* ---- plano de ação ---- */
+.ab-actions{display:grid;gap:11px;counter-reset:acao}
+.ab-action{display:grid;grid-template-columns:30px 1fr auto;gap:16px;
+  align-items:start;padding:17px 19px;background:var(--ab-surface);
+  border:var(--ab-card-border);border-radius:var(--ab-radius);box-shadow:var(--ab-shadow)}
+.ab-action::before{counter-increment:acao;content:counter(acao);
+  width:26px;height:26px;border-radius:50%;background:var(--ab-primary-fill);
+  color:var(--ab-primary-on);font-size:12px;font-weight:700;display:flex;
+  align-items:center;justify-content:center;font-variant-numeric:normal}
+.ab-action h4{font-size:15px;margin:0 0 4px;font-family:var(--ab-font-body);font-weight:650}
+.ab-action p{font-size:13.5px;color:var(--ab-ink-muted);margin:0}
+.ab-action-meta{display:flex;flex-direction:column;align-items:flex-end;gap:5px;
+  font-size:12px;color:var(--ab-ink-faint);white-space:nowrap}
+
+/* ---- procedência ---- */
+.ab-sources{font-size:12.5px;color:var(--ab-ink-faint);border-top:1px solid
+  var(--ab-border-hairline);padding-top:16px}
+.ab-sources h4{font-size:11px;letter-spacing:.09em;text-transform:uppercase;
+  color:var(--ab-ink-faint);margin:0 0 11px;font-family:var(--ab-font-body);font-weight:650}
+.ab-sources ul{list-style:none;margin:0;padding:0;display:grid;gap:7px}
+.ab-sources li{display:flex;gap:11px;align-items:baseline}
+.ab-sources b{font-weight:600;color:var(--ab-ink-muted);font-size:12.5px}
+.ab-sources time{margin-left:auto;font-variant-numeric:tabular-nums}
+
+/* ---- grade ---- */
+.ab-split{display:grid;gap:var(--ab-grid-gap);grid-template-columns:repeat(auto-fit,minmax(290px,1fr))}
+.ab-split--sidebar{grid-template-columns:minmax(0,1.85fr) minmax(230px,1fr)}
+@media (max-width:760px){.ab-split--sidebar{grid-template-columns:1fr}}
+
+/* ---- rodapé ---- */
+.ab-foot{margin-top:56px;padding-top:26px;border-top:1px solid var(--ab-border-hairline);
+  display:flex;gap:20px;align-items:center;justify-content:space-between;flex-wrap:wrap}
+.ab-foot-brand{display:flex;align-items:center;gap:13px}
+.ab-foot-brand img{height:26px;width:auto;opacity:.85}
+.ab-foot-name{font-size:13px;font-weight:650;color:var(--ab-ink-muted)}
+.ab-foot-meta{font-size:11.5px;color:var(--ab-ink-faint);text-align:right;line-height:1.5}
+.ab-powered{font-size:10.5px;color:var(--ab-ink-faint);opacity:.7;letter-spacing:.03em}
+
+/* ---- movimento ---- */
+@media (prefers-reduced-motion:no-preference){
+  .ab-reveal{opacity:0;transform:translateY(14px);
+    animation:abIn .62s cubic-bezier(.22,.68,.32,1) forwards;
+    animation-delay:calc(var(--i,0)*70ms)}
+  @keyframes abIn{to{opacity:1;transform:none}}
+  .ab-line{stroke-dasharray:2400;stroke-dashoffset:2400;
+    animation:abDraw 1.5s cubic-bezier(.4,0,.2,1) .25s forwards}
+  @keyframes abDraw{to{stroke-dashoffset:0}}
+  .ab-dot{opacity:0;animation:abFade .5s ease 1.5s forwards}
+  @keyframes abFade{to{opacity:1}}
+  .ab-arc{animation:abArc 1.1s cubic-bezier(.3,.7,.3,1) .2s backwards}
+  @keyframes abArc{from{stroke-dasharray:0 9999}}
+  .ab-bar{transform-origin:center bottom;animation:abBar .68s cubic-bezier(.3,.8,.3,1) backwards;
+    animation-delay:calc(.15s + var(--i,0)*40ms)}
+  @keyframes abBar{from{transform:scaleY(0)}}
+  .ab-rank-fill{animation:abGrow .82s cubic-bezier(.25,.8,.3,1) backwards;animation-delay:.2s}
+  @keyframes abGrow{from{width:0}}
+  .ab-funnel-bar span{animation:abGrow .82s cubic-bezier(.25,.8,.3,1) backwards;animation-delay:.2s}
+}
+
+/* ---- impressão ---- */
+@page{size:A4;margin:15mm 14mm 17mm}
+@media print{
+  /* Animação no papel não existe: o que ela faz é imprimir o estado inicial,
+     ou seja, elemento invisível e gráfico pela metade. */
+  *,*::before,*::after{animation:none!important;transition:none!important}
+  .ab-reveal{opacity:1!important;transform:none!important}
+  .ab-line{stroke-dashoffset:0!important;stroke-dasharray:none!important}
+  .ab-dot{opacity:1!important}
+  body{background:#fff!important;font-size:10.5pt}
+  .ab-doc{max-width:none;padding:0}
+  .ab-card,.ab-kpi,.ab-action{box-shadow:none!important;
+    border:1px solid rgba(0,0,0,.14)!important;break-inside:avoid}
+  .ab-block{break-inside:avoid;margin:14pt 0}
+  .ab-cover{break-after:page;min-height:auto}
+  h1,h2,h3,.ab-eyebrow{break-after:avoid}
+  .ab-table{break-inside:auto;font-size:9pt}
+  .ab-table tr{break-inside:avoid}
+  .ab-table th{position:static}
+  .ab-nodata{border:1px solid rgba(0,0,0,.2)}
+  .ab-no-print{display:none!important}
+  a[href]::after{content:""}
+}
+
+:root{
+  --ab-font-display:-apple-system, BlinkMacSystemFont, 'Segoe UI Variable Display', 'Segoe UI', Inter, Roboto, system-ui, sans-serif; --ab-font-body:-apple-system, BlinkMacSystemFont, 'Segoe UI Variable Display', 'Segoe UI', Inter, Roboto, system-ui, sans-serif; --ab-font-mono:ui-monospace, 'SF Mono', SFMono-Regular, 'Cascadia Mono', 'Segoe UI Mono', Menlo, Consolas, monospace;
+  --ab-measure:1180px; --ab-pad:40px 32px 60px; --ab-gap:38px; --ab-grid-gap:14px;
+  --ab-radius:8px; --ab-card-pad:20px;
+  --ab-card-border:1px solid var(--ab-border-hairline);
+  --ab-shadow:none;
+  --ab-h2:clamp(20px,2.2vw,26px); --ab-h-weight:640; --ab-h-track:-.018em;
+  --ab-kpi-size:clamp(27px,3.2vw,35px); --ab-kpi-weight:660; --ab-kpi-rail:1;
+  --ab-verdict-size:clamp(18px,2vw,22px);
+  --ab-cover-size:clamp(29px,3.9vw,43px); --ab-cover-track:-.024em;
+  --ab-cover-gap:34px; --ab-logo-h:34px;
+}
+/* Precisão significa fio de cabelo e densidade. Sem sombra, sem raio grande:
+   o que organiza é a régua, não o relevo. */
+.ab-kpi{padding:16px 18px 14px}
+.ab-kpi-label{font-size:11px;margin-bottom:8px}
+.ab-kpi-value{letter-spacing:-.02em}
+.ab-kpi::after{width:2px}
+.ab-table{font-size:13px}
+.ab-table th,.ab-table td{padding:9px 14px}
+.ab-table td.num,.ab-kpi-value,.ab-rank-value{font-family:var(--ab-font-mono);
+  font-size:.96em;letter-spacing:-.01em}
+.ab-verdict{border-radius:8px;padding:20px 24px;background:var(--ab-surface-2)}
+.ab-block{margin:var(--ab-gap) 0}
+.ab-rank-row{padding:6px 8px;border-radius:5px}
+.ab-card{border-radius:8px}
+
+</style>
+</head>
+<body>
+<main class="ab-doc">
+<header class="ab-block ab-cover ab-reveal"><div class="ab-cover-top"><img src="data:image/png;base64,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" alt="Resulta Seguros" class="ab-cover-logo"><span class="ab-cover-period">Próximos 60 dias</span></div><div class="ab-cover-main"><p class="ab-eyebrow">Renovações</p><h1 class="ab-cover-title">R$ 892 mil vencem até setembro</h1><p class="ab-cover-sub">Apólices ordenadas por urgência, não por valor.</p><p class="ab-cover-verdict">9 apólices vencem nos próximos 15 dias e 4 delas ainda não tiveram contato. Juntas somam R$ 218 mil.</p></div><div class="ab-cover-figure"><span class="ab-cover-figure-label">Prêmio a renovar</span><span class="ab-cover-figure-value ab-num">R$ 892.400</span></div></header><section class="ab-block"><h2 class="ab-h2">Janela de risco</h2><div class="ab-kpis"><div class="ab-kpi ab-reveal" style="--i:0;--kpi-accent:var(--ab-chart-1)"><p class="ab-kpi-label">A vencer em 15 dias</p><span class="ab-kpi-value">9</span><div class="ab-kpi-foot"><span class="ab-kpi-since">R$ 218,4 mil</span></div></div><div class="ab-kpi ab-reveal" style="--i:1;--kpi-accent:var(--ab-chart-2)"><p class="ab-kpi-label">A vencer em 30 dias</p><span class="ab-kpi-value">24</span><div class="ab-kpi-foot"><span class="ab-kpi-since">R$ 431,7 mil</span></div></div><div class="ab-kpi ab-reveal" style="--i:2;--kpi-accent:var(--ab-chart-3)"><p class="ab-kpi-label">Sem contato</p><span class="ab-kpi-value">11</span><div class="ab-kpi-foot"><span class="ab-kpi-since">R$ 294,2 mil</span></div></div><div class="ab-kpi ab-reveal" style="--i:3;--kpi-accent:var(--ab-chart-4)"><p class="ab-kpi-label">Renovação histórica</p><span class="ab-kpi-value">87,2<span class="ab-kpi-unit">%</span></span><div class="ab-kpi-foot"><span class="ab-delta" data-dir="up"><svg viewBox="0 0 12 12" fill="none" aria-hidden="true"><path d="M3 8.5L6 5l3 3.5" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"/></svg>1.4%</span><span class="ab-kpi-since">vs. ano passado</span></div></div></div></section><section class="ab-block ab-reveal"><div class="ab-callout" data-tone="negative"><svg class="ab-callout-icon" viewBox="0 0 24 24" fill="none" aria-hidden="true"><path d="M12 9v4m0 4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"/></svg><div><h4>4 apólices críticas sem contato</h4><p>Vencem em menos de 15 dias e não têm nenhum registro de contato. <strong>R$ 218.400</strong> em prêmio. A mais urgente vence em <strong>3 dias</strong>.</p></div></div></section><section class="ab-block ab-reveal"><p class="ab-eyebrow">Agenda</p><h2 class="ab-h2">Vencimentos ordenados por urgência</h2><div class="ab-table-wrap"><table class="ab-table"><thead><tr><th>Cliente</th><th>Ramo</th><th class=num>Vence em</th><th class=num>Prêmio</th><th>Contato</th></tr></thead><tbody><tr><td>Metalúrgica Campeche</td><td>Empresarial</td><td class=num>3 dias</td><td class=num>R$ 84.200,00</td><td><span class="ab-pill" style="background:var(--ab-negative-soft);color:var(--ab-negative-text)">sem resposta</span></td></tr><tr><td>Transportadora Sul Log</td><td>Frota</td><td class=num>8 dias</td><td class=num>R$ 62.400,00</td><td><span class="ab-pill" style="background:var(--ab-negative-soft);color:var(--ab-negative-text)">sem contato</span></td></tr><tr><td>Colégio São Marcos</td><td>Patrimonial</td><td class=num>11 dias</td><td class=num>R$ 43.100,00</td><td><span class="ab-pill" style="background:var(--ab-negative-soft);color:var(--ab-negative-text)">sem contato</span></td></tr><tr><td>Frigorífico Trindade</td><td>Frota</td><td class=num>14 dias</td><td class=num>R$ 28.700,00</td><td><span class="ab-pill" style="background:var(--ab-negative-soft);color:var(--ab-negative-text)">sem contato</span></td></tr><tr><td>Condomínio Ilha Bela</td><td>Condomínio</td><td class=num>17 dias</td><td class=num>R$ 96.800,00</td><td><span class="ab-pill" style="background:var(--ab-info-soft);color:var(--ab-info-text)">em negociação</span></td></tr><tr><td>Rede Farmácias Ativa</td><td>Empresarial</td><td class=num>22 dias</td><td class=num>R$ 61.200,00</td><td><span class="ab-pill" style="background:var(--ab-positive-soft);color:var(--ab-positive-text)">proposta enviada</span></td></tr><tr><td>Construtora Norte</td><td>Eng. risco</td><td class=num>26 dias</td><td class=num>R$ 54.900,00</td><td><span class="ab-pill" style="background:var(--ab-info-soft);color:var(--ab-info-text)">em negociação</span></td></tr><tr><td>Auto Peças Kobrasol</td><td>Empresarial</td><td class=num>31 dias</td><td class=num>R$ 22.400,00</td><td><span class="ab-pill" style="background:var(--ab-positive-soft);color:var(--ab-positive-text)">proposta enviada</span></td></tr></tbody><tfoot><tr><td>8 de 24 apólices</td><td></td><td class=num></td><td class=num>R$ 453.700,00</td><td></td></tr></tfoot></table></div></section><section class="ab-block ab-reveal"><p class="ab-eyebrow">Distribuição</p><h2 class="ab-h2">Vencimentos por semana e ramo</h2><div class="ab-card"><svg class="ab-chart" viewBox="0 0 720 280" role="img"><line x1="56" y1="238.0" x2="708" y2="238.0" class="ab-grid"/><text x="46" y="242.0" class="ab-axis" text-anchor="end">R$ 0</text><line x1="56" y1="182.5" x2="708" y2="182.5" class="ab-grid"/><text x="46" y="186.5" class="ab-axis" text-anchor="end">R$ 50,0 mil</text><line x1="56" y1="127.0" x2="708" y2="127.0" class="ab-grid"/><text x="46" y="131.0" class="ab-axis" text-anchor="end">R$ 100,0 mil</text><line x1="56" y1="71.5" x2="708" y2="71.5" class="ab-grid"/><text x="46" y="75.5" class="ab-axis" text-anchor="end">R$ 150,0 mil</text><line x1="56" y1="16.0" x2="708" y2="16.0" class="ab-grid"/><text x="46" y="20.0" class="ab-axis" text-anchor="end">R$ 200,0 mil</text><rect x="73.1" y="168.7" width="47.3" height="69.3" fill="var(--ab-chart-1)" class="ab-bar"/><rect x="73.1" y="75.3" width="47.3" height="93.5" fill="var(--ab-chart-2)" class="ab-bar"/><rect x="73.1" y="27.4" width="47.3" height="47.8" fill="var(--ab-chart-4)" class="ab-bar"/><text x="96.8" y="256" class="ab-axis" text-anchor="middle">Sem 1</text><rect x="154.6" y="206.1" width="47.3" height="31.9" fill="var(--ab-chart-1)" class="ab-bar"/><rect x="154.6" y="98.7" width="47.3" height="107.4" fill="var(--ab-chart-3)" class="ab-bar"/><text x="178.2" y="256" class="ab-axis" text-anchor="middle">Sem 2</text><rect x="236.1" y="170.1" width="47.3" height="67.9" fill="var(--ab-chart-2)" class="ab-bar"/><rect x="236.1" y="109.1" width="47.3" height="60.9" fill="var(--ab-chart-4)" class="ab-bar"/><text x="259.8" y="256" class="ab-axis" text-anchor="middle">Sem 3</text><rect x="317.6" y="192.3" width="47.3" height="45.7" fill="var(--ab-chart-1)" class="ab-bar"/><rect x="317.6" y="167.4" width="47.3" height="24.9" fill="var(--ab-chart-2)" class="ab-bar"/><rect x="317.6" y="145.4" width="47.3" height="22.0" fill="var(--ab-chart-4)" class="ab-bar"/><text x="341.2" y="256" class="ab-axis" text-anchor="middle">Sem 4</text><rect x="399.1" y="195.2" width="47.3" height="42.8" fill="var(--ab-chart-2)" class="ab-bar"/><rect x="399.1" y="146.1" width="47.3" height="49.1" fill="var(--ab-chart-3)" class="ab-bar"/><text x="422.8" y="256" class="ab-axis" text-anchor="middle">Sem 5</text><rect x="480.6" y="200.5" width="47.3" height="37.5" fill="var(--ab-chart-1)" class="ab-bar"/><rect x="480.6" y="171.2" width="47.3" height="29.3" fill="var(--ab-chart-4)" class="ab-bar"/><text x="504.2" y="256" class="ab-axis" text-anchor="middle">Sem 6</text><rect x="562.1" y="205.7" width="47.3" height="32.3" fill="var(--ab-chart-2)" class="ab-bar"/><rect x="562.1" y="159.9" width="47.3" height="45.8" fill="var(--ab-chart-4)" class="ab-bar"/><text x="585.8" y="256" class="ab-axis" text-anchor="middle">Sem 7</text><rect x="643.6" y="217.0" width="47.3" height="21.0" fill="var(--ab-chart-1)" class="ab-bar"/><rect x="643.6" y="181.8" width="47.3" height="35.2" fill="var(--ab-chart-3)" class="ab-bar"/><rect x="643.6" y="139.3" width="47.3" height="42.5" fill="var(--ab-chart-4)" class="ab-bar"/><text x="667.2" y="256" class="ab-axis" text-anchor="middle">Sem 8</text></svg><ul class="ab-legend ab-legend--row"><li><i style="background:var(--ab-chart-1)"></i><span>Frota</span></li><li><i style="background:var(--ab-chart-2)"></i><span>Empresarial</span></li><li><i style="background:var(--ab-chart-3)"></i><span>Condomínio</span></li><li><i style="background:var(--ab-chart-4)"></i><span>Demais</span></li></ul></div></section><section class="ab-block"><h2 class="ab-h2">Prioridades desta semana</h2><div class="ab-actions"><div class="ab-action ab-reveal" style="--i:0"><div><h4>Metalúrgica Campeche — ligar hoje</h4><p>Vence em 3 dias, duas tentativas de WhatsApp sem resposta desde 21/07. Telefone fixo ainda não foi tentado.</p></div><div class="ab-action-meta"><span>Comercial</span><span><b>hoje</b></span><span class="ab-pill" style="background:var(--ab-primary-soft);color:var(--ab-primary-text)">R$ 84,2 mil</span></div></div><div class="ab-action ab-reveal" style="--i:1"><div><h4>Sul Log — revisar frota antes de cotar</h4><p>A frota passou de 34 para 42 veículos. Renovar na condição antiga deixaria 8 veículos descobertos.</p></div><div class="ab-action-meta"><span>Técnico</span><span><b>até 29/07</b></span><span class="ab-pill" style="background:var(--ab-primary-soft);color:var(--ab-primary-text)">R$ 62,4 mil</span></div></div><div class="ab-action ab-reveal" style="--i:2"><div><h4>Abrir contato com Colégio e Frigorífico</h4><p>Vencem em 11 e 14 dias, nenhum contato registrado.</p></div><div class="ab-action-meta"><span>Comercial</span><span><b>até 30/07</b></span><span class="ab-pill" style="background:var(--ab-primary-soft);color:var(--ab-primary-text)">R$ 71,8 mil</span></div></div></div></section><section class="ab-block ab-sources"><h4>Origem dos dados</h4><ul><li><b>Carteira</b><span>base de apólices da corretora</span><time datetime="2026-07-25">25/07/2026 06:00</time></li><li><b>Comissões</b><span>extratos conciliados das seguradoras</span><time datetime="2026-06-30">fechamento de junho</time></li><li><b>Atendimento</b><span>conversas registradas no WhatsApp</span><time datetime="2026-07-25">25/07/2026 07:40</time></li></ul></section><footer class="ab-foot"><div class="ab-foot-brand"><img src="data:image/png;base64,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" alt=""><span class="ab-foot-name">Resulta Seguros</span></div><div class="ab-foot-meta">Gerado em 25 de julho de 2026<br>SUSEP 20.2185.4<div class="ab-powered">Inteligência por AutoBrokers</div></div></footer>
+</main>
+</body>
+</html>
