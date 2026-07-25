@@ -94,10 +94,17 @@ class BrandCaptureService:
     # ------------------------------------------------------------------
 
     def obter_ou_criar(self, company_id: str) -> dict:
-        r = (self.db.table("brand_profiles").select("*")
-             .eq("company_id", company_id).maybe_single().execute())
-        if r and r.data:
-            return r.data
+        # `limit(1)` e nao `maybe_single()`: o PostgREST responde HTTP 406 quando
+        # maybe_single nao acha linha, e isso aparece no log como erro numa
+        # situacao que e o caminho normal — primeira visita da corretora. Log
+        # que grita em fluxo normal treina quem le a ignorar log.
+        try:
+            r = (self.db.table("brand_profiles").select("*")
+                 .eq("company_id", company_id).limit(1).execute())
+            if r and r.data:
+                return r.data[0]
+        except Exception as exc:  # noqa: BLE001
+            logger.warning("[brand] leitura de perfil falhou: %s", type(exc).__name__)
         novo = (self.db.table("brand_profiles")
                 .insert({"company_id": company_id}).execute()).data
         return novo[0] if novo else {}

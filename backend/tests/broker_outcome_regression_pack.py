@@ -309,6 +309,10 @@ CASOS: list[Caso] = [
     # e a corretora responde por isso.
     Caso("CTX-01", "conhecimento", "Norma sozinha nunca confirma cobertura de apólice",
          "SPEC-052", lambda: _roda_script("test_spec052_context_assembly.py")),
+    # Inflacao de Agents e o erro mais caro de uma plataforma agentica: um
+    # prompt por corretora, custo que ninguem mediu e nada reaproveitavel.
+    Caso("AUX-01", "capacidades", "O sistema não cria um Agent para cada pedido",
+         "SPEC-058", lambda: _roda_script("test_spec058_factory.py")),
     Caso("IDN-01", "identidade", "Corretora A não enxerga dados da corretora B",
          "SPEC-048", lambda: _roda_script("test_spec048_isolamento_corretoras.py")),
     Caso("CAP-01", "capacidades", "Agente só recebe os poderes do seu papel",
