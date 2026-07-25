@@ -420,8 +420,41 @@ class MemoryService:
                 f"[Memory] Web trigger check: mode={mode}, messages={messages_count}, session_ended={session_ended}"
             )
 
-            if mode == "session_end" and session_ended:
-                return True
+            if mode == "session_end":
+                if session_ended:
+                    return True
+
+                # SPEC-054 Bloco B — correção inicial do Lote 4 da SPEC-052.
+                #
+                # DEFEITO CORRIGIDO: `session_end` era a configuração de TODAS as
+                # 6 linhas de `memory_settings`, mas o único caminho que dispara
+                # o trigger (`graph.py`) sempre passa `session_ended=False`.
+                # A condição era logicamente INALCANÇÁVEL e a memória nunca era
+                # produzida — 523 conversas, 0 `session_summaries`, 0
+                # `user_memories`.
+                #
+                # Correção que PRESERVA a semântica declarada ("resumir quando a
+                # sessão termina") em vez de trocar o modo por baixo: sem um
+                # evento explícito de fim, a inatividade encerra a sessão
+                # logicamente. É o mesmo critério que o modo `inactivity` usa.
+                #
+                # Diagnóstico completo:
+                # docs/canon/reports/SPEC-054-BLOCK-B-MEMORY-DIAGNOSIS.md
+                timeout_min = settings.get("web_inactivity_timeout_min", 30)
+                time_since_last = datetime.utcnow() - last_message_at
+                if time_since_last > timedelta(minutes=timeout_min):
+                    logger.info(
+                        "[Memory] Web session_end por inatividade: "
+                        f"{time_since_last.total_seconds() / 60:.1f}min > {timeout_min}min"
+                    )
+                    return True
+
+                logger.info(
+                    "[Memory] Web session_end sem gatilho: sessão ativa e sem "
+                    f"fim explícito (inatividade {time_since_last.total_seconds() / 60:.1f}min "
+                    f"< {timeout_min}min)"
+                )
+                return False
 
             if mode == "message_count":
                 threshold = settings.get("web_message_threshold", 20)
@@ -473,9 +506,20 @@ class MemoryService:
                     )
                     return True
 
+        # SPEC-054 Bloco B — observabilidade do NÃO disparo.
+        # Antes, `should_trigger = False` era indistinguível, no log, de um
+        # sistema saudável que ainda não atingiu o gatilho. Era por isso que a
+        # memória zerada nunca gerou alerta. Agora o não disparo é explícito.
+        logger.warning(
+            "[Memory][NO_TRIGGER] canal=%s modo_web=%s modo_wpp=%s mensagens=%s "
+            "session_ended=%s — nenhuma condição de sumarização satisfeita",
+            channel,
+            settings.get("web_summarization_mode"),
+            settings.get("whatsapp_summarization_mode"),
+            messages_count,
+            session_ended,
+        )
         return False
-
-
 
     # ==========================================================================
     # MAIN PROCESSING
