@@ -23,7 +23,7 @@
 | # | Etapa | Branch | Estado | Commit inicial | Commit final | Relatório |
 |---|---|---|---|---|---|---|
 | 0 | Contexto persistente e correções canônicas | `chore/execution-foundation` | **CONCLUÍDO** | `3c8c752` | `317b041` | relatório da Fase 0 |
-| 1 | SPEC-054 Bloco A — Fechamento P0 | `feat/spec054-foundation-hardening` | **EM EXECUÇÃO** — A1/A2/A4 aplicadas; A3 aguarda deploy | `2c63530` | — | preflight + relatório do Bloco A |
+| 1 | SPEC-054 Bloco A — Fechamento P0 | `feat/spec054-foundation-hardening` | **CONCLUÍDO** — Gate 1 verde | `2c63530` | `98f4fcd` | preflight + relatório do Bloco A |
 | 2 | SPEC-054 Blocos B/C — Baseline, Lote 1, memória | `feat/spec054-foundation-hardening` | NÃO INICIADO | — | — | — |
 | 3 | SPEC-055 — Work Runs, usage events, ponte Atendimento | `feat/spec055-durable-work-runs` | NÃO INICIADO | — | — | — |
 | 4 | SPEC-061 Fundação (antecipada) | `feat/spec061-control-plane-foundation` | NÃO INICIADO | — | — | — |
@@ -398,6 +398,10 @@ Nenhum outro enxerto é permitido sem entrada em [`CHANGE-ADDENDA.md`](CHANGE-AD
 | 25/07/2026 | 1 | **A2 aplicada** `20260725055402` — advisors: 73 → 31, **zero ERROR** | — |
 | 25/07/2026 | 1 | **A4 aplicada** `20260725055753` — 12 URLs públicas → path canônico | — |
 | 25/07/2026 | 1 | Código de Storage escrito: resolver, proxy autenticado, upload server-side | — |
-| 25/07/2026 | 1 | **A3 PENDENTE** — fecha buckets; só após deploy do proxy (expand→contract) | — |
+| 25/07/2026 | 1 | D12/D13/D14 registradas; merge e publicação da main | `98f4fcd` |
+| 25/07/2026 | 1 | Deploy smith-web validado: login 200, proxy /api/storage 401 | `98f4fcd` |
+| 25/07/2026 | 1 | **A3 aplicada** — 3 buckets privados, 8 policies PUBLIC removidas, 61 objetos intactos | — |
+| 25/07/2026 | 1 | VERIFY: URL pública antiga 400 na origem; traversal 400; upload sem sessão 401 | — |
+| 25/07/2026 | 1 | **GATE 1 VERDE — Bloco A concluído** | — |
 | 25/07/2026 | 1 | Gate de type-check: `tsc --noEmit` **exit 0**, zero erro | `bdaeafa` |
 | 25/07/2026 | 1 | `next build`: **Compiled successfully**. Falha posterior e ambiental (secrets ausentes no worktree) em rotas nao tocadas | `8b9faee` |
