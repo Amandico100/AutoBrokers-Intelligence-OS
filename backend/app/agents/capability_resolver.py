@@ -53,11 +53,18 @@ def resolve_active_capabilities(supabase_client: Any, company_id: str, agent_rol
 
     c = getattr(supabase_client, "client", supabase_client)
     try:
-        bindings = (c.table("capability_bindings").select("capability_key, enabled").eq("agent_role", role).execute().data) or []
+        # SPEC-054 Bloco C: o `scope` passa a ser LIDO. Antes o campo existia,
+        # estava vazio em todos os 46 bindings e era ignorado pelo resolver —
+        # ou seja, "capability ligada" significava acesso irrestrito.
+        bindings = (c.table("capability_bindings").select("capability_key, enabled, scope").eq("agent_role", role).execute().data) or []
         allowed = {b["capability_key"] for b in bindings if b.get("enabled", True)}
+        scopes: Dict[str, Dict[str, Any]] = {
+            b["capability_key"]: (b.get("scope") or {})
+            for b in bindings if b.get("enabled", True)
+        }
         if not allowed:
             return {}
-        caps = (c.table("capabilities").select("capability_key, is_active, owner, requires_connection, provider").in_("capability_key", list(allowed)).execute().data) or []
+        caps = (c.table("capabilities").select("capability_key, is_active, owner, requires_connection, provider, risk").in_("capability_key", list(allowed)).execute().data) or []
         ents = (c.table("tenant_capability_entitlements").select("capability_key, enabled").eq("company_id", company_id).execute().data) or []
         conns = (c.table("tenant_connections").select("status, connector_templates(slug)").eq("company_id", company_id).execute().data) or []
     except Exception as e:  # noqa: BLE001 — fail-closed
@@ -72,23 +79,60 @@ def resolve_active_capabilities(supabase_client: Any, company_id: str, agent_rol
         if slug and str(cn.get("status", "")).lower() in _HEALTHY_CONN:
             connected.add(str(slug))
 
-    out: Dict[str, Dict[str, str]] = {}
+    out: Dict[str, Dict[str, Any]] = {}
     for cap in caps:
         key = cap["capability_key"]
+        scope = scopes.get(key) or {}
         if not cap.get("is_active", True):
-            out[key] = {"status": "disabled", "reason": "capability inativa"}; continue
+            out[key] = {"status": "disabled", "reason": "capability inativa", "scope": scope}; continue
         if key in ent_disabled:
-            out[key] = {"status": "disabled", "reason": "desligada pela corretora"}; continue
+            out[key] = {"status": "disabled", "reason": "desligada pela corretora", "scope": scope}; continue
         if cap.get("requires_connection"):
             slugs = PROVIDER_SLUGS.get(cap.get("provider") or "", [])
             if not any(s in connected for s in slugs):
-                out[key] = {"status": "needs_connection", "reason": "aguardando conexão da corretora"}; continue
+                out[key] = {"status": "needs_connection", "reason": "aguardando conexão da corretora", "scope": scope}; continue
         health = _provider_healthy(cap.get("provider"))
         if health is False:
-            out[key] = {"status": "provider_unavailable", "reason": "provider indisponível (config ausente)"}; continue
-        out[key] = {"status": "active", "reason": "ok"}
+            out[key] = {"status": "provider_unavailable", "reason": "provider indisponível (config ausente)", "scope": scope}; continue
+
+        # SPEC-054 Bloco C — scope vazio em capability sensível NÃO é liberado.
+        # A ausência de escopo declarado passa a ser tratada como configuração
+        # incompleta, não como permissão total. Fail-closed por design.
+        if str(cap.get("risk") or "").lower() == "high" and not scope:
+            logger.warning("[CapabilityResolver] scope ausente em capability HIGH '%s' — negando", key)
+            out[key] = {"status": "scope_missing", "reason": "escopo não declarado para capability de alto risco", "scope": {}}
+            continue
+
+        out[key] = {"status": "active", "reason": "ok", "scope": scope}
     return out
 
 
-def active_keys(resolved: Dict[str, Dict[str, str]]) -> Set[str]:
+def active_keys(resolved: Dict[str, Dict[str, Any]]) -> Set[str]:
     return {k for k, v in resolved.items() if v.get("status") == "active"}
+
+
+def scope_of(resolved: Dict[str, Dict[str, Any]], capability_key: str) -> Dict[str, Any]:
+    """Escopo declarado de uma capability ativa. `{}` quando ausente."""
+    entry = resolved.get(capability_key) or {}
+    return entry.get("scope") or {}
+
+
+def requires_approval(resolved: Dict[str, Dict[str, Any]], capability_key: str) -> bool:
+    """True quando o escopo declara aprovação humana obrigatória.
+
+    É o contrato que a SPEC-055 vai consumir para transformar approval em gate
+    executável. Aqui ele já fica disponível e auditável.
+    """
+    return bool(scope_of(resolved, capability_key).get("requires_approval"))
+
+
+def has_side_effect(resolved: Dict[str, Dict[str, Any]], capability_key: str) -> bool:
+    """True quando a capability produz efeito externo — exige idempotência."""
+    return bool(scope_of(resolved, capability_key).get("side_effect"))
+
+
+def max_calls_per_run(resolved: Dict[str, Dict[str, Any]], capability_key: str, default: int = 20) -> int:
+    try:
+        return int(scope_of(resolved, capability_key).get("max_calls_per_run") or default)
+    except (TypeError, ValueError):
+        return default
