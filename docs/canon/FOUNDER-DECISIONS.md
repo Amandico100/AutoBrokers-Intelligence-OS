@@ -28,7 +28,8 @@
 | D8 | Pareamento WhatsApp Resulta/AutoFleet | **NOT_CONFIRMED** | 25/07/2026 |
 | D9 | Memórias antigas do Claude | **APROVADO — NÃO APAGAR** | 25/07/2026 |
 | D10 | Worktree e branches de execução | **APROVADO** | 25/07/2026 |
-| P1 | Acessos de infraestrutura para preflight | **PENDENTE** | 25/07/2026 |
+| **D11** | **Supabase Free sem PITR — Recovery Pack manual** | **APROVADO** | 25/07/2026 |
+| P1 | Acessos de infraestrutura para preflight | **RESOLVIDA POR D11** | 25/07/2026 |
 
 ---
 
@@ -319,7 +320,69 @@ Elimina a confusão de múltiplas pastas que já ocorreu, mantendo `main` como r
 
 ---
 
-## P1 — Acessos de infraestrutura para preflight  `PENDENTE`
+## D11 — Supabase Free sem PITR, compensado por Recovery Pack manual
+
+**Data:** 25/07/2026 · **Estado:** APROVADO
+
+### Contexto
+
+O preflight do Bloco A concluiu com veredito `BLOCKED_BY_ACCESS` porque backup e PITR do Supabase não puderam ser confirmados. O Founder decidiu **permanecer no plano Free** neste momento, sem upgrade para Pro e sem ativação de PITR.
+
+### Decisão
+
+A ausência de PITR **deixa de bloquear** a execução, desde que, antes do primeiro write, seja produzido e validado um Recovery Pack específico e verificável.
+
+O Recovery Pack deve conter, no mínimo:
+
+1. backup lógico manual **quando** houver conexão de banco disponível;
+2. Recovery Pack específico e verificável do bloco em execução;
+3. rollback versionado por migration;
+4. cópia local dos objetos de Storage afetados;
+5. checksums;
+6. VERIFY antes e depois de cada mudança.
+
+### Gate de prosseguimento
+
+Prossegue-se com **uma** destas condições:
+
+- **A** — dump lógico completo validado **+** Recovery Pack validado; **ou**
+- **B** — sem conexão de banco: Recovery Pack específico completo, objetos baixados, checksums válidos e rollback integral validado.
+
+Para somente se **ambas** falharem.
+
+### Resultado da aplicação em 25/07/2026 — Bloco A
+
+Aplicou-se o **caminho B**. `pg_dump`, `psql` e Supabase CLI não estão instalados na máquina e não há string de conexão do banco disponível localmente (apenas arquivos `.env.example`, sem valores reais).
+
+Pacote produzido em `C:\Users\amand\Backups\AutoBrokers\SPEC-054-A-20260725\` — fora do Git, fora de qualquer worktree:
+
+| Item | Estado |
+|---|---|
+| Estado-antes documentado | ✅ `00-STATE-BEFORE.md` |
+| ACLs, owners e `search_path` originais | ✅ |
+| Definição e ACL originais da view UCP | ✅ |
+| Configuração e policies originais de Storage | ✅ |
+| Snapshot das 12 linhas do backfill | ✅ `messages-image-url-snapshot.csv` |
+| Cópia local dos objetos | ✅ **56 objetos, 7 MB, 0 falhas** |
+| Checksums SHA-256 | ✅ `storage-checksums.csv` + `checksums.sha256` |
+| Scripts de rollback | ✅ 4 scripts, um por migration |
+| Contagens de negócio de referência | ✅ |
+
+**Veredito:** `READY_WITH_MANUAL_RECOVERY_PACK`
+
+### Restrições que permanecem
+
+- O pacote cobre **exatamente** o que o Bloco A altera. Não é substituto de backup completo do banco.
+- `portal-evidence` é privado e **não** é alterado pelo Bloco A.
+- Antes do **Bloco B**, que mexe em schema e integridade, será necessário reavaliar a estratégia de backup — o Recovery Pack específico não é suficiente para alterações estruturais amplas.
+- A SPEC-062 §30 continua exigindo **restore comprovado** antes do go-live. D11 não revoga isso.
+
+### SPECs afetadas
+054 (desbloqueia o Bloco A), 062 (mantém a exigência de restore drill).
+
+---
+
+## P1 — Acessos de infraestrutura  `RESOLVIDA POR D11`
 
 **Data de abertura:** 25/07/2026 · **Estado:** PENDENTE — aguardando Founder
 
