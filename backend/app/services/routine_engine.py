@@ -333,9 +333,77 @@ async def run_due_routines(supabase) -> int:
         except Exception as e:  # noqa: BLE001
             logger.error(f"[ROUTINES] claim falhou: {type(e).__name__}")
             continue
+
+        # SPEC-055 §19 — ponte para execução durável.
+        #
+        # Com a flag ligada, a Rotina deixa de ser executada dentro do
+        # processo da API e passa a CRIAR UM WORK RUN. O Smith Worker executa,
+        # com lease, heartbeat, retomada e trilha auditável.
+        #
+        # Motivo: hoje um deploy no meio de uma rotina mata a rotina, e a
+        # tarefa longa disputa o mesmo event loop das requisições web.
+        #
+        # Expand→contract: default DESLIGADO. Só liga quando o worker estiver
+        # em produção. O claim atômico acima é preservado nos dois caminhos.
+        if _routine_bridge_enabled():
+            if await _criar_work_run_para_rotina(supabase, routine, now_iso):
+                ran += 1
+                continue
+            logger.warning(
+                "[ROUTINES] ponte para Work Run falhou na rotina %s — executando in-process",
+                routine.get("id"),
+            )
+
         await _execute_routine(supabase, routine)
         ran += 1
     return ran
+
+
+def _routine_bridge_enabled() -> bool:
+    import os as _os
+
+    return str(_os.getenv("WORK_RUNS_ROUTINE_BRIDGE", "")).strip().lower() in ("1", "true", "yes", "on")
+
+
+async def _criar_work_run_para_rotina(supabase, routine: Dict[str, Any], tick_iso: str) -> bool:
+    """Cria o Work Run da ocorrência agendada. `True` quando enfileirado.
+
+    A `idempotency_key` inclui o tick: a mesma ocorrência nunca gera dois
+    runs, mesmo que o scheduler rode duas vezes ou dois processos concorram.
+    Era exatamente essa garantia que faltava no motor atual.
+    """
+    try:
+        from app.services.work.runs import WorkRunService
+
+        company_id = routine.get("company_id")
+        if not company_id:
+            return False
+
+        service = WorkRunService(supabase)
+        resultado = await asyncio.to_thread(
+            lambda: service.criar(
+                company_id=str(company_id),
+                source_type="routine",
+                source_id=str(routine["id"]),
+                outcome_type="routine.execution",
+                outcome_title=routine.get("name") or "Rotina agendada",
+                workflow_key="bridge.routine.execute",
+                idempotency_key=f"routine:{routine['id']}:{routine.get('next_run_at') or tick_iso}",
+                input_payload={"routine_id": str(routine["id"])},
+                priority=40,
+                risk_level="low",
+            )
+        )
+        if resultado.get("run_id"):
+            logger.info(
+                "[ROUTINES] rotina %s enfileirada como Work Run %s (reaproveitado=%s)",
+                routine.get("id"), resultado.get("run_id"), resultado.get("reused"),
+            )
+            return True
+        return False
+    except Exception as exc:  # noqa: BLE001
+        logger.error("[ROUTINES] falha ao criar Work Run: %s", type(exc).__name__)
+        return False
 
 
 async def routine_scheduler_loop() -> None:
