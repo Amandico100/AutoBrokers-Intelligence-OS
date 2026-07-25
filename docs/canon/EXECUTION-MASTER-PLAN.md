@@ -27,7 +27,7 @@
 | 2 | SPEC-054 Blocos B/C — Baseline, Lote 1, memória | `feat/spec054-foundation-hardening` | **CONCLUÍDO** — Gate 2 verde | `2c63530` | ver relatório | [SPEC-054-EXECUTION-REPORT](reports/SPEC-054-EXECUTION-REPORT.md) |
 | 3 | SPEC-055 — Work Runs, usage events, ponte Atendimento | `feat/spec055-durable-work-runs` | **CONCLUÍDO** — aguarda serviço do worker | `adc5395` | `21a2c48` | [SPEC-055-EXECUTION-REPORT](reports/SPEC-055-EXECUTION-REPORT.md) |
 | 4 | SPEC-061 Fundação (antecipada) | `feat/spec061-control-plane-foundation` | NÃO INICIADO | — | — | — |
-| 5 | SPEC-056 — Skills, Tool Gateway, Context Assembly 2.0 | `feat/spec056-skill-tool-gateway` | NÃO INICIADO | — | — | — |
+| 5 | SPEC-056 — Skills, Tool Gateway | `feat/spec056-skill-tool-gateway` | **CONCLUÍDO** — cutover do grafo pendente | `21a2c48` | `dddc3ca` | [SPEC-056-EXECUTION-REPORT](reports/SPEC-056-EXECUTION-REPORT.md) |
 | 6 | SPEC-057 — Artifact Hub & Report Studio | `feat/spec057-artifact-hub` | NÃO INICIADO | — | — | — |
 | 7 | SPEC-052 Cognitive Foundation Closure | `feat/spec052-cognitive-foundation-closure` | NÃO INICIADO | — | — | — |
 | 8 | SPEC-058 — Auxiliary & Routine Factory | `feat/spec058-auxiliary-routine-factory` | NÃO INICIADO | — | — | — |
@@ -422,6 +422,15 @@ Nenhum outro enxerto é permitido sem entrada em [`CHANGE-ADDENDA.md`](CHANGE-AD
 | 25/07/2026 | 3 | 055-C: workflows, 4 pontes, API de Work Runs, ponte de Rotinas com flag | — |
 | 25/07/2026 | 3 | Testes: 11/11 do Work OS · **Regression Pack 17/17 GATE VERDE** | — |
 | 25/07/2026 | 3 | Deploy API validado; rotas /api/work vivas (401) | `21a2c48` |
-| 25/07/2026 | 3 | **SPEC-055 CONCLUÍDA** — pendente: serviço dedicado do worker | — |
+| 25/07/2026 | 3 | **SPEC-055 CONCLUÍDA** | — |
+| 25/07/2026 | 3 | Serviço `autobrokers-smith-worker` criado pelo Founder e no ar | — |
+| 25/07/2026 | 3 | **GATE 055 CONFIRMADO**: checkpointer Postgres ativo (4 checkpoints, 31 writes) | — |
+| 25/07/2026 | 3 | `system.healthcheck` completo em produção: created→queued→leased→started→step→succeeded | — |
+| 25/07/2026 | 3 | Corrigido ruído de `TimeoutError` no consume — mascarava falha real | `4154c41` |
+| 25/07/2026 | 5 | 056-A: 11 tabelas do Registry — 5/5 garantias no banco | — |
+| 25/07/2026 | 5 | 056-B: SkillRegistry com progressive disclosure + ToolGateway único | — |
+| 25/07/2026 | 5 | 056-C: 15 tools, 8 Skills, 7 packs, 14 bindings — zero efeito grave sem aprovação | — |
+| 25/07/2026 | 5 | Testes: 16/16 do Gateway · **Regression Pack 19/19 GATE VERDE** | — |
+| 25/07/2026 | 5 | **SPEC-056 CONCLUÍDA** — pendente: cutover do grafo + Context Assembly 2.0 | `dddc3ca` |
 | 25/07/2026 | 1 | Gate de type-check: `tsc --noEmit` **exit 0**, zero erro | `bdaeafa` |
 | 25/07/2026 | 1 | `next build`: **Compiled successfully**. Falha posterior e ambiental (secrets ausentes no worktree) em rotas nao tocadas | `8b9faee` |
