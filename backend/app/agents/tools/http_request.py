@@ -93,50 +93,158 @@ class HttpRequestTool(BaseTool):
 
         return final_url, {}, json_body
 
+    # ------------------------------------------------------------------
+    # SPEC-054 Bloco C — HTTP Egress Guard
+    # ------------------------------------------------------------------
+    def _egress_policy(self):
+        """Política de saída desta tool.
+
+        `allowed_hosts` vem do cadastro. Vazio = DENY ALL: a ausência de
+        allowlist NÃO libera a internet. Sem isso, uma tool cadastrada com
+        URL controlável levaria a SSRF (metadata da cloud, rede interna).
+        """
+        from app.core.egress_guard import EgressPolicy
+
+        raw = getattr(self, "allowed_hosts", None)
+        if not raw:
+            # Fallback seguro: só o host da própria URL configurada.
+            from urllib.parse import urlparse
+
+            host = (urlparse(self.url).hostname or "").lower()
+            raw = [host] if host else []
+
+        return EgressPolicy.from_iterable(
+            raw,
+            allow_plaintext_http=bool(getattr(self, "allow_plaintext_http", False)),
+        )
+
+    def _guard(self, url: str):
+        from app.core.egress_guard import EgressBlocked, check_url, safe_log_url
+
+        try:
+            return check_url(url, self._egress_policy())
+        except EgressBlocked as blocked:
+            logger.warning(
+                "[HttpTool][EGRESS_BLOCKED] motivo=%s detalhe=%s url=%s",
+                blocked.reason, blocked.detail, safe_log_url(url),
+            )
+            raise
+
+    @staticmethod
+    def _validate_response(response) -> Optional[str]:
+        """Content-type e tamanho. Retorna mensagem de erro ou None."""
+        from app.core.egress_guard import MAX_RESPONSE_BYTES, content_type_allowed
+
+        ctype = response.headers.get("content-type")
+        if not content_type_allowed(ctype):
+            return f"Resposta recusada: content-type não permitido ({(ctype or 'ausente')[:60]})."
+
+        declared = response.headers.get("content-length")
+        if declared and declared.isdigit() and int(declared) > MAX_RESPONSE_BYTES:
+            return "Resposta recusada: excede o tamanho máximo permitido."
+
+        if len(response.content) > MAX_RESPONSE_BYTES:
+            return "Resposta recusada: excede o tamanho máximo permitido."
+
+        return None
+
     def _run(self, **kwargs) -> Any:
         """Execução Síncrona (usada pelo LangGraph atual)"""
+        from app.core.egress_guard import (
+            CONNECT_TIMEOUT_S, EgressBlocked, READ_TIMEOUT_S, TOTAL_TIMEOUT_S, safe_log_url,
+        )
+
         try:
             url, params, json_body = self._prepare_request(kwargs)
+            self._guard(url)
 
-            with httpx.Client(timeout=30.0) as client:
+            timeout = httpx.Timeout(TOTAL_TIMEOUT_S, connect=CONNECT_TIMEOUT_S, read=READ_TIMEOUT_S)
+            # follow_redirects=False: cada redirect é revalidado explicitamente.
+            with httpx.Client(timeout=timeout, follow_redirects=False) as client:
                 response = client.request(
-                    method=self.method,
-                    url=url,
-                    headers=self.headers,
-                    params=params,
-                    json=json_body,
+                    method=self.method, url=url, headers=self.headers,
+                    params=params, json=json_body,
                 )
+                response = self._follow_redirects_sync(client, response)
 
                 if response.status_code >= 400:
                     return f"Erro API ({response.status_code}): {response.text[:500]}"
 
+                invalid = self._validate_response(response)
+                if invalid:
+                    logger.warning("[HttpTool] %s url=%s", invalid, safe_log_url(url))
+                    return invalid
+
                 return response.text[:5000]
 
+        except EgressBlocked as blocked:
+            return f"Chamada bloqueada pela política de segurança de saída ({blocked.reason})."
         except Exception as e:
-            logger.error(f"[HttpTool] Erro Sync: {e}", exc_info=True)
+            logger.error(f"[HttpTool] Erro Sync: {type(e).__name__}")
             return "Erro técnico interno na execução da ferramenta."
+
+    def _follow_redirects_sync(self, client, response):
+        from app.core.egress_guard import MAX_REDIRECTS, check_url
+
+        hops = 0
+        while response.is_redirect and hops < MAX_REDIRECTS:
+            location = response.headers.get("location", "")
+            if not location:
+                break
+            if location.startswith("/"):
+                from urllib.parse import urljoin
+
+                location = urljoin(str(response.url), location)
+            check_url(location, self._egress_policy())  # revalida DO ZERO
+            response = client.request(method=self.method, url=location, headers=self.headers)
+            hops += 1
+        return response
 
     async def _arun(self, **kwargs) -> Any:
         """Execução Assíncrona"""
+        from app.core.egress_guard import (
+            CONNECT_TIMEOUT_S, EgressBlocked, MAX_REDIRECTS, READ_TIMEOUT_S,
+            TOTAL_TIMEOUT_S, check_url, safe_log_url,
+        )
+
         try:
             url, params, json_body = self._prepare_request(kwargs)
+            self._guard(url)
 
-            async with httpx.AsyncClient(timeout=30.0) as client:
+            timeout = httpx.Timeout(TOTAL_TIMEOUT_S, connect=CONNECT_TIMEOUT_S, read=READ_TIMEOUT_S)
+            async with httpx.AsyncClient(timeout=timeout, follow_redirects=False) as client:
                 response = await client.request(
-                    method=self.method,
-                    url=url,
-                    headers=self.headers,
-                    params=params,
-                    json=json_body,
+                    method=self.method, url=url, headers=self.headers,
+                    params=params, json=json_body,
                 )
+
+                hops = 0
+                while response.is_redirect and hops < MAX_REDIRECTS:
+                    location = response.headers.get("location", "")
+                    if not location:
+                        break
+                    if location.startswith("/"):
+                        from urllib.parse import urljoin
+
+                        location = urljoin(str(response.url), location)
+                    check_url(location, self._egress_policy())  # revalida DO ZERO
+                    response = await client.request(method=self.method, url=location, headers=self.headers)
+                    hops += 1
 
                 if response.status_code >= 400:
                     return f"Erro API ({response.status_code}): {response.text[:500]}"
 
+                invalid = self._validate_response(response)
+                if invalid:
+                    logger.warning("[HttpTool] %s url=%s", invalid, safe_log_url(url))
+                    return invalid
+
                 return response.text[:5000]
 
+        except EgressBlocked as blocked:
+            return f"Chamada bloqueada pela política de segurança de saída ({blocked.reason})."
         except Exception as e:
-            logger.error(f"[HttpTool] Erro Async: {e}", exc_info=True)
+            logger.error(f"[HttpTool] Erro Async: {type(e).__name__}")
             return "Erro técnico interno na execução da ferramenta."
 
 

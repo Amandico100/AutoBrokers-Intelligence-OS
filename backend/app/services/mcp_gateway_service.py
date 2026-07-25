@@ -68,13 +68,45 @@ class MCPGatewayService:
             raise ValueError(f"Servidor '{server_name}' não suportado")
         return [sys.executable, "-m", module]
 
+    # SPEC-054 Bloco C — allowlist de ambiente para subprocessos MCP.
+    #
+    # DEFEITO CORRIGIDO: o subprocesso recebia `dict(os.environ)` inteiro.
+    # Um servidor MCP interno comprometido, com bug, ou simplesmente verboso
+    # demais em log de erro, recebia SUPABASE_SERVICE_ROLE_KEY, chaves de LLM,
+    # PORTAL_VAULT_KEY, ENCRYPTION_KEY, credenciais do InfoCap e tudo o mais.
+    # Nenhuma dessas variáveis é necessária para um servidor MCP funcionar.
+    #
+    # Hoje não há MCP cadastrado — o risco estava dormente. Fechado antes do
+    # primeiro cadastro, que é o momento barato.
+    _ENV_ALLOWLIST = frozenset({
+        "PATH", "HOME", "USERPROFILE", "TMPDIR", "TEMP", "TMP",
+        "LANG", "LC_ALL", "TZ",
+        "PYTHONPATH", "PYTHONUNBUFFERED", "PYTHONIOENCODING", "PYTHONDONTWRITEBYTECODE",
+        "SYSTEMROOT", "COMSPEC", "PATHEXT",  # necessários no Windows
+        "SSL_CERT_FILE", "SSL_CERT_DIR", "REQUESTS_CA_BUNDLE",
+        "HTTP_PROXY", "HTTPS_PROXY", "NO_PROXY",
+        "LOG_LEVEL",
+    })
+
     def _build_env(self, server_name: str, tokens: Optional[Dict] = None) -> Dict[str, str]:
-        """Constrói variáveis de ambiente para o servidor."""
-        env = dict(os.environ)
+        """Ambiente MÍNIMO do subprocesso MCP.
+
+        Construído por allowlist explícita, nunca herdado de `os.environ`.
+        O único segredo que entra é o token OAuth daquela conexão específica.
+        """
+        env = {k: v for k, v in os.environ.items() if k in self._ENV_ALLOWLIST}
 
         # PYTHONPATH para encontrar módulos
         backend_dir = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
         env["PYTHONPATH"] = backend_dir
+        env.setdefault("PYTHONUNBUFFERED", "1")
+        env.setdefault("PYTHONDONTWRITEBYTECODE", "1")
+
+        logger.info(
+            "[MCP Gateway] env do subprocesso '%s': %d variáveis por allowlist "
+            "(herança completa de os.environ desabilitada)",
+            server_name, len(env),
+        )
 
         if tokens and tokens.get("access_token"):
             token = tokens["access_token"]
