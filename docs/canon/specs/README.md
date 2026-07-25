@@ -1,7 +1,7 @@
 # Índice e autoridade das SPECs canônicas
 
 > [!IMPORTANT]
-> Para qualquer tarefa relacionada a conhecimento, RAG, memória, Context Assembly, aprendizagem, ferramentas, Skills, conectores, MCPs, Auxiliares, Rotinas, Work Runs, approvals, artifacts ou Portal Admin, leia primeiro as SPECs **052** e **053**.
+> Para qualquer tarefa relacionada a conhecimento, RAG, memória, Context Assembly, aprendizagem, ferramentas, Skills, conectores, MCPs, Auxiliares, Rotinas, Work Runs, approvals, artifacts, proatividade, briefings, Garimpo ou Portal Admin, leia primeiro as SPECs **052** e **053**.
 
 ## Autoridade atual
 
@@ -12,12 +12,12 @@
 5. [`SPEC-056-skill-registry-tool-gateway.md`](SPEC-056-skill-registry-tool-gateway.md) — catálogo canônico e versionado de Skills, Capability Packs e Tool Releases; Tool Gateway único; seleção dinâmica; migração de native/HTTP/MCP/Portal/delegation; biblioteca inicial de Skills e ativação em produção.
 6. [`SPEC-057-artifact-hub-report-studio.md`](SPEC-057-artifact-hub-report-studio.md) — Artifact Hub único, Report Studio, templates versionados, renderer determinístico, relatório web/PDF, XLSX, CSV, PPTX, DOCX, gráficos, Evidence Pack, compartilhamento, entrega e Visual Acceptance Pack.
 7. [`SPEC-058-auxiliary-routine-factory.md`](SPEC-058-auxiliary-routine-factory.md) — Factory único de Auxiliares e Rotinas; classificação de padrão de trabalho; criação por chat e dashboard; releases, instalações, revisões, triggers, readiness, custos, demanda e cutover dos caminhos legados.
-8. SPECs posteriores explicitamente subordinadas às SPECs 052–058.
-9. SPECs anteriores apenas quando não houver conflito.
+8. [`SPEC-059-briefing-proatividade-garimpo-v3.md`](SPEC-059-briefing-proatividade-garimpo-v3.md) — Intelligence Fabric único: eventos, sinais, evidências, Findings, recomendações, Briefing Diário/Semanal, Garimpo v3, Demand Radar, feedback, outcome e migração da proatividade histórica.
+9. SPECs posteriores explicitamente subordinadas às SPECs 052–059.
+10. SPECs anteriores apenas quando não houver conflito.
 
 ## Próxima sequência subordinada
 
-- `SPEC-059` — Briefing, Proatividade & Garimpo v3;
 - `SPEC-060` — Research Intelligence;
 - `SPEC-061` — Portal Admin Control Plane;
 - `SPEC-062` — Evals, Billing, Rollout & Production Readiness.
@@ -51,6 +51,12 @@ A SPEC-057 exige um **Visual Acceptance Pack** separado como referência de desi
 
 A SPEC-058 revoga definitivamente a equivalência “Auxiliares = Rotinas”. Nem toda tarefa recorrente cria um novo Agent. O runtime padrão é Skill Release + Capability Pack + Work Run, com Agent dedicado apenas quando houver justificativa técnica.
 
+## SPEC-059 — Briefing, Proatividade & Garimpo v3 de lançamento
+
+- [`SPEC-059-briefing-proatividade-garimpo-v3.md`](SPEC-059-briefing-proatividade-garimpo-v3.md) — documento de implementação autorizado em três blocos macro. Ao final, o sistema opera o pipeline evento → sinal → evidência → Finding → recomendação → Work Run → outcome; Briefings Diário/Semanal estão ativos; Garimpo v3 captura demanda; quiet hours/dedupe/cooldown reduzem ruído; recomendações possuem ações reais e medição.
+
+A SPEC-059 substitui a proatividade superficial como autoridade. `broker_insights.py`, `proactive_suggestions.py`, `weekly_report.py`, `regression_sentinel.py`, o Admin Insights histórico e seus schedulers diretos permanecem apenas como fontes/adapters até o cutover. Nenhum deles pode continuar como motor soberano concorrente.
+
 ## SPECs parcialmente superadas
 
 As seguintes SPECs permanecem disponíveis como histórico e detalhamento técnico, mas não são mais autoridade soberana quando houver conflito:
@@ -76,6 +82,12 @@ As seguintes SPECs permanecem disponíveis como histórico e detalhamento técni
 - `UX-007-auxiliares.md` continua como referência de produto, mas criação livre deixa de ser “futura” e passa a ser obrigação operacional da SPEC-058;
 - criação automática de Agent por todo template, execução direta de prompt bruto por Rotina e runs paralelos deixam de ser autoridade após o cutover.
 
+### Proatividade, Briefings e Garimpo — prevalece SPEC-059
+
+- seções de SPEC-034/035/036/037/040/049 sobre Garimpo, sugestões, relatórios semanais, regressão e superfícies de Insights permanecem como fundação histórica;
+- mensagem semanal fixa, relatório textual isolado, alerta direto fora de Work Run, ranking simples de frases e marcador Redis sem autoridade durável são superados pela SPEC-059;
+- `broker_insights` permanece como origem/projeção temporária, não como registro canônico de inteligência após o cutover.
+
 ### Capabilities, Skills e tools — prevalece SPEC-056
 
 - `../SPEC-014-capability-registry-knowledge-os.md` continua como fundação histórica do Registry, mas a SPEC-056 prevalece em Skill Releases, Capability Packs, Tool Definitions/Releases, seleção dinâmica, Tool Gateway e cutover das autoridades legadas;
@@ -85,7 +97,7 @@ As seguintes SPECs permanecem disponíveis como histórico e detalhamento técni
 ### Artifacts, relatórios e entregáveis — prevalece SPEC-057
 
 - relatórios textuais históricos, exports isolados, PDFs avulsos e templates espalhados continuam como evidência, mas toda nova geração deve passar pelo Artifact Hub;
-- `weekly_report.py` continua como compatibilidade de entrega até o cutover, não como autoridade do relatório completo;
+- `weekly_report.py` continua como compatibilidade de entrega até o cutover das SPECs 057/059, não como autoridade do relatório completo;
 - componentes Recharts existentes podem permanecer em telas antigas, mas novos artifacts seguem o Chart Spec e renderer definidos pela SPEC-057.
 
 ## Regra para agentes de desenvolvimento
@@ -103,10 +115,13 @@ Leia a SPEC-057 antes de alterar artifacts, relatórios, templates,
 renderers, PDF/XLSX/PPTX/DOCX, gráficos, compartilhamento ou entrega.
 Leia a SPEC-058 antes de alterar Auxiliares, Rotinas, templates,
 instalações, revisões, criação pelo chat/dashboard, triggers ou catálogo.
+Leia a SPEC-059 antes de alterar sinais, Findings, recomendações,
+briefings, Garimpo, proatividade, Demand Radar, feedback ou outcomes.
 
 Não crie RAG, memória, publisher, runtime, scheduler, executor,
-Skill Registry, Tool Gateway, Artifact Hub, Auxiliary Factory ou catálogo paralelo.
-Não use decisões históricas que contradigam as SPECs 052–058.
+Skill Registry, Tool Gateway, Artifact Hub, Auxiliary Factory,
+Intelligence Fabric, Garimpo ou motor proativo paralelo.
+Não use decisões históricas que contradigam as SPECs 052–059.
 Em ambiguidade, pare e solicite decisão do CEO/Founder.
 ```
 
