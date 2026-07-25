@@ -31,6 +31,7 @@ from app.api.agent_config import router as agent_config_router
 from app.api.artifacts import router as artifacts_router
 from app.api.brand import router as brand_router
 from app.api.corpus import router as corpus_router
+from app.api.factory import router as factory_router
 from app.api.documents import router as documents_router
 from app.api.webhook import router as webhook_router
 from app.core import settings
@@ -191,6 +192,9 @@ app.include_router(artifacts_router, tags=["Artifact Hub"])
 # SPEC-057 H — corpus normativo. Rotas de PLATAFORMA: o corpus e o mesmo
 # para todas as corretoras, entao nenhuma delas recebe company_id.
 app.include_router(corpus_router, tags=["Corpus Normativo"])
+# SPEC-058 — Auxiliary Factory. /oportunidades e a rota que transforma
+# pedido de corretora em roadmap com evidencia, em vez de opiniao.
+app.include_router(factory_router, tags=["Auxiliary Factory"])
 app.include_router(agent_config_router, prefix="/api/agent", tags=["Agent Config"])
 from app.api.agents import router as agents_router
 from app.api.billing import router as billing_router
