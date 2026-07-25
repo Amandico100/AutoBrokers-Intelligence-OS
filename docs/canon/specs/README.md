@@ -23,22 +23,30 @@
 
 A sequência arquitetural está documentalmente completa.
 
-O próximo passo não é criar automaticamente uma SPEC-063.
+O próximo passo não é criar automaticamente uma SPEC-063. Os Lotes 1–5 da SPEC-052 recebem dono executor pela decisão **D1**, mapeada em [`ADDENDUM-SPEC-052-EXECUTION-MAP.md`](ADDENDUM-SPEC-052-EXECUTION-MAP.md).
 
 ```text
-Executar SPEC-054
-→ executar SPEC-055
-→ executar SPEC-056
-→ executar SPEC-057
-→ executar SPEC-058
-→ executar SPEC-059
-→ executar SPEC-060
-→ executar SPEC-061
-→ executar SPEC-062
+Fase 0 — contexto persistente e correções canônicas
+→ SPEC-054 Bloco A (fechamento P0)
+→ SPEC-054 Blocos B/C  (+ Lote 1 da 052, + diagnóstico de memória)
+→ SPEC-055             (+ usage events técnicos, + ponte Atendimento)
+→ SPEC-061 Fundação    (antecipada — decisão D3)
+→ SPEC-056             (+ Lote 3 da 052: Context Assembly 2.0)
+→ SPEC-057
+→ SPEC-052 Cognitive Foundation Closure  (Lotes 2 e 5)
+→ SPEC-058
+→ SPEC-059             (+ Lote 4 da 052: Memory/Learning Fabric)
+→ SPEC-060
+→ SPEC-061 Blocos B/C
+→ SPEC-062
 → emitir Launch Decision
 ```
 
-Cada execução deve produzir relatório final, APPLY/VERIFY/ROLLBACK e evidência dos canários Amandus → Resulta → AutoFleet.
+A sequência detalhada, com dependências, entradas, saídas, gates, riscos e estado, está em [`../EXECUTION-MASTER-PLAN.md`](../EXECUTION-MASTER-PLAN.md).
+
+Cada execução deve produzir relatório final ([template](../reports/SPEC-EXECUTION-REPORT-TEMPLATE.md)), APPLY/VERIFY/ROLLBACK e evidência dos canários Amandus → Resulta → AutoFleet.
+
+Antes de qualquer SQL, é obrigatória a leitura de [`../MIGRATIONS-AUTHORITY.md`](../MIGRATIONS-AUTHORITY.md).
 
 ## SPEC-054 — auditoria e execução
 
