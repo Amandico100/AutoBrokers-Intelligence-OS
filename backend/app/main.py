@@ -83,7 +83,45 @@ async def lifespan(app: FastAPI):
     app.state.routine_scheduler = _asyncio.create_task(routine_scheduler_loop())
     logger.info("[STARTUP] ✅ Routine engine scheduler started")
 
+    # 5. SPEC-055 — Smith Worker.
+    #
+    # O alvo arquitetural é um SERVIÇO SEPARADO (`python -m app.workers.smith_worker`),
+    # e é assim que deve ficar em produção: tarefa longa não disputa event loop
+    # com requisição web, e um deploy da API não derruba trabalho em curso.
+    #
+    # Enquanto esse serviço não existe no EasyPanel, esta flag permite rodar o
+    # worker dentro da API. Não é o estado final — mas já é melhor do que o
+    # scheduler in-process anterior, porque agora existe lease: se este processo
+    # morrer no meio, o run é recuperado em vez de ficar preso para sempre.
+    #
+    # Default DESLIGADO. Ligar apenas de forma consciente.
+    app.state.smith_worker = None
+    if str(os.getenv("WORK_WORKER_IN_PROCESS", "")).strip().lower() in ("1", "true", "yes", "on"):
+        try:
+            from app.workers.smith_worker import SmithWorker
+
+            _worker = SmithWorker()
+            app.state.smith_worker = _worker
+            app.state.smith_worker_task = _asyncio.create_task(_worker.executar())
+            logger.warning(
+                "[STARTUP] ⚠️ Smith Worker rodando DENTRO da API (ponte). "
+                "O alvo é um serviço dedicado — ver SPEC-055 §11.1."
+            )
+        except Exception as _e:  # noqa: BLE001
+            logger.error("[STARTUP] Smith Worker não iniciou: %s", type(_e).__name__)
+
     yield
+
+    # SPEC-055 — encerrar o worker antes do resto, para liberar leases
+    _worker = getattr(app.state, "smith_worker", None)
+    if _worker:
+        try:
+            _worker.parar.set()
+            _t = getattr(app.state, "smith_worker_task", None)
+            if _t:
+                await _asyncio.wait_for(_t, timeout=20)
+        except Exception:  # noqa: BLE001
+            logger.warning("[SHUTDOWN] Smith Worker encerrado sem confirmação")
 
     # F2 — parar o agendador de rotinas
     task = getattr(app.state, "routine_scheduler", None)
