@@ -267,3 +267,41 @@ Custo médio. Risco de não fazer: crítico — é pré-condição para o Gate 2
 
 ### Autorização
 Executor dentro da SPEC-054 Bloco B, registrando aqui a mudança de estado para EXECUTADA.
+
+---
+
+## CA-008 — Brand Identity Fabric como pré-requisito do Artifact Hub
+
+**Data:** 25/07/2026 · **Estado:** EXECUTADA (Bloco A) · **SPEC:** 057 · **Origem:** D15
+
+### Lacuna encontrada
+
+A SPEC-057 exige que toda peça saia com a identidade da corretora, mas **nenhum
+objeto do sistema guardava identidade de marca**. `companies` tem CNPJ, endereço
+e contato — não tem site, logo, cor nem tipografia. O requisito era inexequível
+como escrito.
+
+### Mudança
+
+Cinco tabelas novas antes do Artifact Hub: `brand_profiles`, `brand_assets`,
+`brand_sources`, `brand_field_provenance`, `brand_profile_versions`. Mais o motor
+de cor em `app/services/brand/`.
+
+### Decisão de engenharia que merece registro
+
+**O logo manda na cor, o CSS não.** Medido no primeiro site real testado: o CSS
+da Resulta devolve `#f78da7`, `#cf2e2e`, `#ff6900`, `#fcb900` — a paleta padrão
+do editor do WordPress, sem uma única cor da marca. O logo devolve `#1D5579`
+(94,4% da tinta) e `#EE7501` (5,6%). Ler cor do CSS daria a **toda** corretora
+em WordPress a mesma identidade rosa-e-âmbar.
+
+`brand_field_provenance` guarda de onde veio cada campo e com que confiança. Sem
+isso, captura automática em material que vai ao cliente final é passivo, não
+ativo — o corretor precisa poder conferir e discordar.
+
+### Custo e risco
+Custo alto (bloco inteiro). Risco de não fazer: a promessa central da SPEC-057
+sairia falsa — peça "personalizada" com a cor da AutoBrokers.
+
+### Autorização
+D15.
