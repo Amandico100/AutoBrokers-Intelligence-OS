@@ -81,21 +81,71 @@ class WebScrapeTool(_Base):
 
 
 class DocumentReadTool(_Base):
+    """Lê documento público — mas só depois de confirmar que não temos.
+
+    Condição geral é o mesmo documento para todas as corretoras. Buscá-lo de
+    novo a cada pergunta cobraria de cada corretora a leitura de algo que já
+    está no conhecimento global — e, pior, poderia devolver respostas
+    diferentes conforme o dia da leitura.
+
+    Ordem: catálogo primeiro. Se estiver lá, custo zero e a resposta vem da
+    busca de conhecimento. Se não estiver, lê ao vivo **e registra o documento
+    como candidato ao corpus** — a próxima corretora que precisar não paga.
+    """
+
     name: str = "document_read"
     description: str = (
-        "Lê um documento público pela URL (PDF, DOCX) e devolve o texto limpo. "
-        "Use para condições gerais de apólice, circulares da SUSEP, manuais e tabelas "
-        "de seguradora. Consome crédito da corretora."
+        "Lê um documento público pela URL (PDF, DOCX). Use para condições gerais de "
+        "apólice, circulares da SUSEP e manuais de seguradora. Antes de usar, prefira "
+        "knowledge_base_search: boa parte das condições gerais já está no conhecimento "
+        "da AutoBrokers e sai de graça."
     )
     args_schema: Type[BaseModel] = _UrlIn
 
     async def _arun(self, url: str, **_: Any) -> str:
+        from ...services.knowledge.insurance_corpus import InsuranceCorpusService
         from ...services.research.firecrawl import ler_pagina
+
+        corpus = None
+        if self.supabase is not None:
+            try:
+                corpus = InsuranceCorpusService(self.supabase)
+                ja = corpus.ja_temos(url)
+            except Exception:  # noqa: BLE001
+                ja = None
+        else:
+            ja = None
+
+        if ja:
+            vig = ja.get("effective_from") or "não declarada"
+            return (
+                f"Este documento **já está no conhecimento da AutoBrokers** — não é "
+                f"preciso baixá-lo de novo.\n\n"
+                f"- **{ja.get('title')}**\n"
+                f"- Seguradora: {ja.get('insurer_name')} · Ramo: {ja.get('product_line')}\n"
+                + (f"- Processo SUSEP: {ja.get('susep_process')}\n" if ja.get("susep_process") else "")
+                + f"- Vigência a partir de: {vig}\n"
+                f"- Conferido pela última vez em: {(ja.get('last_checked_at') or '')[:10]}\n\n"
+                f"Use `knowledge_base_search` com o termo da dúvida para achar o trecho "
+                f"exato. Ao responder, informe a vigência acima — apólice emitida antes "
+                f"dela pode ser regida por versão anterior."
+            )
 
         r = await ler_pagina(url, supabase=self.supabase, company_id=self.company_id,
                              work_run_id=self.work_run_id)
         if not r.get("ok"):
             return f"Não foi possível ler o documento. Motivo: {r.get('mensagem_humana') or r.get('motivo')}"
+
+        # Documento normativo lido ao vivo vira candidato do corpus. É o que
+        # faz a primeira leitura ser a única: quem pagou por ela paga uma vez,
+        # e todas as outras corretoras passam a ter a resposta de graça.
+        if corpus is not None:
+            try:
+                corpus.propor_candidato(url=url, titulo=r.get("titulo") or "",
+                                        texto=r.get("conteudo") or "")
+            except Exception:  # noqa: BLE001
+                pass
+
         corpo = (r.get("conteudo") or "")[:LIMITE_CONTEUDO]
         aviso = ""
         if len(r.get("conteudo") or "") > LIMITE_CONTEUDO:
