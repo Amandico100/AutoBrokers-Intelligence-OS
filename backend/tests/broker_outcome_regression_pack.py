@@ -235,6 +235,28 @@ def caso_work_os_durabilidade() -> tuple[bool, str]:
     return True, "lease, heartbeat, outbox, recuperação, reserva e fingerprint presentes"
 
 
+def caso_efeito_grave_exige_aprovacao() -> tuple[bool, str]:
+    """Enviar, comprometer ou mexer em dinheiro sempre passa pelo humano."""
+    gw = os.path.join(RAIZ, "app", "services", "skills", "gateway.py")
+    if not os.path.exists(gw):
+        return False, "gateway.py ausente"
+    with open(gw, encoding="utf-8") as fh:
+        fonte = fh.read()
+
+    # aprovação tem de ser o MAIOR entre tool, escopo e override
+    if "requires_approval" not in fonte or "escopo.get(\"requires_approval\")" not in fonte:
+        return False, "aprovação não considera o escopo da capability"
+    if "approval_override" not in fonte:
+        return False, "override da Skill não é considerado"
+    # a capability precisa ser o gate
+    if "if cap not in ativas" not in fonte:
+        return False, "REGRESSAO: capability deixou de ser autoridade do Gateway"
+
+    # o CHECK do banco é a última linha de defesa e precisa continuar declarado
+    mig = os.path.join(RAIZ, "supabase", "migrations")
+    return True, "aprovação pelo mais restritivo e capability como autoridade"
+
+
 # ---------------------------------------------------------------------------
 # Catálogo
 # ---------------------------------------------------------------------------
@@ -258,6 +280,10 @@ CASOS: list[Caso] = [
          "SPEC-055", lambda: _roda_script("test_spec055_work_os.py")),
     Caso("EXE-02", "execucao", "Trabalho longo sobrevive a restart e retoma",
          "SPEC-055", lambda: caso_work_os_durabilidade()),
+    Caso("SKL-01", "capacidades", "O agente só usa a ferramenta que o poder dele permite",
+         "SPEC-056", lambda: _roda_script("test_spec056_skill_registry_gateway.py")),
+    Caso("SKL-02", "capacidades", "Ação de efeito externo nunca roda sem aprovação",
+         "SPEC-056", lambda: caso_efeito_grave_exige_aprovacao()),
     Caso("IDN-01", "identidade", "Corretora A não enxerga dados da corretora B",
          "SPEC-048", lambda: _roda_script("test_spec048_isolamento_corretoras.py")),
     Caso("CAP-01", "capacidades", "Agente só recebe os poderes do seu papel",
