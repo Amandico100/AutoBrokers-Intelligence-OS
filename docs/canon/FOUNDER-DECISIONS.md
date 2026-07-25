@@ -382,6 +382,64 @@ Pacote produzido em `C:\Users\amand\Backups\AutoBrokers\SPEC-054-A-20260725\` �
 
 ---
 
+## D12 — Rotação de secrets adiada até o pré-go-live
+
+**Data:** 25/07/2026 · **Estado:** APROVADO
+
+### Contexto
+
+Durante a execução do Bloco A, credenciais de produção foram compartilhadas em texto puro num canal de chat. O executor sinalizou a exposição e recomendou rotação imediata.
+
+### Decisão do Founder
+
+A rotação geral é **adiada até o pré-go-live**.
+
+**Motivo:** ambiente controlado, sem clientes externos ativos, e a rotação completa durante a construção interromperia o desenvolvimento. Amandus é corretora fictícia; Resulta e AutoFleet são pilotos do Founder e sócios.
+
+### Restrições que permanecem
+
+Esta decisão **não** autoriza: imprimir secrets · reproduzi-los em respostas · colocá-los em commit · incluí-los em log · gravá-los em documentação · criar cópias desnecessárias.
+
+### Gatilho de reabertura
+
+Se for detectado segredo **versionado publicamente** ou acessível por terceiros, isso é **bloqueador** e deve ser informado imediatamente. Fora disso, nenhuma SPEC para por causa de rotação.
+
+### Obrigação transferida
+
+A rotação completa passa a ser **pré-condição da SPEC-062** (readiness e go-live).
+
+---
+
+## D13 — Ambiente controlado de pré-produção
+
+**Data:** 25/07/2026 · **Estado:** APROVADO
+
+### Decisão
+
+O AutoBrokers está em ambiente controlado de construção. Amandus é fictícia; Resulta e AutoFleet são pilotos do Founder. Não há cliente externo dependente. Celulares, números e conversas são controlados pelo Founder.
+
+**Consequência:** migrations, merges e deploys podem ser executados com autonomia, mantendo APPLY/VERIFY/ROLLBACK. Pequena regressão interna de sandbox **não** é bloqueio permanente — corrige-se dentro do mesmo bloco. O padrão de construção continua sendo definitivo de produção.
+
+### Permanecem proibidos sem autorização específica
+
+Envio real de WhatsApp a terceiros · ação real em portal de seguradora · ativação de agente externo · remoção irreversível de dados · vazamento entre tenants · exposição de secrets.
+
+---
+
+## D14 — Widget público: preservar função, remover permissão pública
+
+**Data:** 25/07/2026 · **Estado:** CONFIRMADO PELO FOUNDER
+
+### Confirmação
+
+O widget público (`/embed/[agentId]`) existe no código como **funcionalidade futura** de chat incorporável ao site de uma corretora. **Não está instalado em nenhum site público de cliente** e não é usado por usuários externos. O chat do Dashboard e os WhatsApps **não** são esse widget.
+
+### Consequência para o Bloco A
+
+A revogação de `EXECUTE` público em `check_and_increment_rate_limit` está **correta e sem risco**: o único chamador é `backend/app/api/middleware/widget_security.py` via service role. Nenhuma compatibilidade externa bloqueia a mudança e não há sessão externa ativa a preservar.
+
+---
+
 ## P1 — Acessos de infraestrutura  `RESOLVIDA POR D11`
 
 **Data de abertura:** 25/07/2026 · **Estado:** PENDENTE — aguardando Founder
