@@ -384,6 +384,14 @@ async def create_agent_graph(
     # Governado pelo resolver (papel + entitlement + conexão). Papel vazio não recebe nada.
     try:
         if company_id and _active:
+            # SPEC-057 — leitura profunda (Firecrawl). Só entra com a capability
+            # ativa E a chave configurada: tool que sempre responde "não
+            # configurado" gasta token em toda invocação e ensina o modelo a
+            # tentar de novo. Sem chave, a lista volta vazia e nada é anexado.
+            if "platform.web.scrape" in _active:
+                from .tools.deep_web import ferramentas_de_leitura_profunda
+                tools.extend(ferramentas_de_leitura_profunda(
+                    company_id=str(company_id), supabase=supabase_client))
             if "control_plane.read" in _active:
                 from .tools.control_plane_tool import ControlPlaneReadTool
                 tools.append(ControlPlaneReadTool(company_id=str(company_id), supabase_client=supabase_client))

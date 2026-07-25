@@ -145,7 +145,8 @@ class BrandCaptureService:
                 continue
             inicio = time.monotonic()
             try:
-                sinais = await coletar(url, allowlist=declaradas)
+                sinais = await coletar(url, allowlist=declaradas,
+                                       supabase=self.db, company_id=company_id)
                 ok = bool(sinais.http_status and sinais.http_status < 400)
                 fonte = {
                     "company_id": company_id, "brand_profile_id": pid, "kind": kind,
@@ -190,6 +191,9 @@ class BrandCaptureService:
 
         # ---- 4. gravar respeitando o que é humano --------------------------
         aplicados = self._aplicar(company_id, pid, resultado, protegidos)
+        # O mesmo dado alimenta o cadastro da empresa. Fazer o corretor digitar
+        # CNPJ e endereço duas vezes é pedir para ter duas verdades diferentes.
+        self._completar_cadastro(company_id, site)
         resultado.completeness = self._completude(company_id, pid)
 
         status = "captured" if aplicados else "partial"
@@ -382,6 +386,50 @@ class BrandCaptureService:
             patch["updated_at"] = _agora()
             self.db.table("brand_profiles").update(patch).eq("id", pid).execute()
         return aplicados
+
+    def _completar_cadastro(self, company_id: str, s: Optional[SinaisWeb]) -> list[str]:
+        """Preenche `companies` com o que o site revelou — **só o que está vazio**.
+
+        A regra de só-preencher-vazio não é cautela: o cadastro é o que o
+        corretor conferiu e assinou. Um telefone extraído de rodapé de site
+        sobrescrevendo o telefone que ele digitou seria trocar dado verificado
+        por dado inferido, e ninguém perceberia até um cliente ligar no número
+        errado.
+        """
+        if not s:
+            return []
+
+        atual = (self.db.table("companies").select(
+            "company_name, legal_name, cnpj, primary_contact_phone, "
+            "primary_contact_email, cep, street, number, neighborhood, city, state"
+        ).eq("id", company_id).maybe_single().execute()).data or {}
+
+        end = s.endereco or {}
+        candidatos = {
+            "company_name": s.nome or _nome_do_titulo(s.titulo),
+            "legal_name": s.legal_name,
+            "cnpj": s.cnpj,
+            "primary_contact_phone": (s.telefones or [None])[0],
+            "primary_contact_email": (s.emails or [None])[0],
+            "cep": end.get("cep"),
+            "street": end.get("logradouro"),
+            "neighborhood": end.get("bairro"),
+            "city": end.get("cidade"),
+            "state": end.get("uf"),
+        }
+
+        patch = {k: v for k, v in candidatos.items()
+                 if v and not (atual.get(k) or "").strip()}
+        if not patch:
+            return []
+
+        try:
+            self.db.table("companies").update(patch).eq("id", company_id).execute()
+            logger.info("[brand] cadastro complementado: %s", sorted(patch))
+        except Exception as exc:  # noqa: BLE001
+            logger.warning("[brand] cadastro nao complementado: %s", type(exc).__name__)
+            return []
+        return sorted(patch.keys())
 
     def _completude(self, company_id: str, pid: str) -> float:
         """Quanto da identidade está de pé. Vira barra de progresso e gate.
