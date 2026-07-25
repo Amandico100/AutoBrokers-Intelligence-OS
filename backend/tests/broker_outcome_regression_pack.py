@@ -304,6 +304,11 @@ CASOS: list[Caso] = [
     # perde — ou privilegio de mais, ou atendimento de menos.
     Caso("CUT-01", "capacidades", "O cutover só tira ferramenta e nunca derruba a conversa",
          "SPEC-057", lambda: _roda_script("test_spec057_cutover.py")),
+    # A condicao geral no RAG global descreve o PRODUTO. Se ela sozinha
+    # confirmar cobertura de uma apolice concreta, o corretor repete ao cliente
+    # e a corretora responde por isso.
+    Caso("CTX-01", "conhecimento", "Norma sozinha nunca confirma cobertura de apólice",
+         "SPEC-052", lambda: _roda_script("test_spec052_context_assembly.py")),
     Caso("IDN-01", "identidade", "Corretora A não enxerga dados da corretora B",
          "SPEC-048", lambda: _roda_script("test_spec048_isolamento_corretoras.py")),
     Caso("CAP-01", "capacidades", "Agente só recebe os poderes do seu papel",

@@ -305,3 +305,54 @@ sairia falsa — peça "personalizada" com a cor da AutoBrokers.
 
 ### Autorização
 D15.
+
+---
+
+## CA-009 — Context Assembly 2.0 e a regra de cobertura
+
+**Data:** 25/07/2026 · **Estado:** EXECUTADA (shadow) · **SPEC:** 052 Lote 3
+
+### O que existia
+
+O roteador de intenção do sistema era literalmente:
+
+```python
+def should_prefetch_rag(user_message):
+    return len(user_message) > 25
+```
+
+"Bom dia, tudo bem?" (20 chars) não buscava nada. "Me manda o telefone de
+vocês" (28 chars) disparava recuperação completa. Memória do usuário e da
+corretora eram carregadas em **toda** mensagem.
+
+### Por que virou urgente agora
+
+A SPEC-052 §6.4 diz: *"O RAG global nunca confirma sozinho que uma apólice
+específica possui cobertura."* Isso era teórico enquanto o conhecimento global
+tinha só documentos de estrutura.
+
+No momento em que **35 condições gerais** entraram no corpus (Bloco H da
+SPEC-057), a regra deixou de ser teórica. Sem ela, o agente lê "cobre vidro" na
+condição geral da Porto e responde que a apólice do cliente cobre vidro —
+quando a apólice pode ter sido emitida sob outra versão, com cláusula excluída
+ou franquia diferente. O corretor repete ao cliente; a corretora responde.
+
+### O que entrou
+
+`app/agents/context_assembly.py`: Intent Router léxico, Context Planner,
+Evidence Builder com precedência da §6.4, deduplicação por autoridade e
+orçamento com teto por fonte.
+
+Quando a pergunta é sobre cobertura de apólice **concreta** e a evidência é
+normativa, o pacote carrega instrução explícita de **não confirmar** — e a
+vigência da condição viaja junto do texto.
+
+### Modo
+
+`CONTEXT_ASSEMBLY_MODE` = `off` | `shadow` (padrão) | `on`. Em shadow o plano é
+calculado e registrado, mas nada é pulado. Classificação errada que decida "não
+precisa buscar" produz resposta pior sem rastro óbvio — o corretor só vê o
+agente ficar burro. Observar antes de interferir.
+
+### Autorização
+SPEC-052 Lote 3, dentro do escopo já aprovado.

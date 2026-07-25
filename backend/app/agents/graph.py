@@ -571,9 +571,32 @@ async def _build_initial_state(
     # The graph already creates its own LLM in create_agent_graph() with proper callbacks.
     # This function only builds the initial STATE, not the LLM.
 
+    # === SPEC-052 Lote 3 — plano de contexto ===
+    # Decide ANTES de recuperar. Contexto irrelevante nao e neutro: ele compete
+    # com o relevante pela atencao do modelo, e custa token em toda mensagem.
+    try:
+        from .context_assembly import CONTEXT_ASSEMBLY_ATIVO, planejar_para
+
+        from .context_assembly import modo as _ca_modo
+
+        _plano_ctx = planejar_para(user_message)
+        _ca_ativo = CONTEXT_ASSEMBLY_ATIVO()
+        logger.info("[Context] modo=%s | %s | fontes=%s | esforco=%s",
+                    _ca_modo(), _plano_ctx.motivo,
+                    _plano_ctx.fontes or "nenhuma", _plano_ctx.esforco)
+    except Exception as exc:  # noqa: BLE001
+        # Falha no planejador nunca pode impedir o atendimento: sem plano, o
+        # comportamento antigo continua valendo.
+        logger.warning("[Context] planejador indisponivel (%s)", type(exc).__name__)
+        _plano_ctx, _ca_ativo = None, False
+
     # === MEMORY SYSTEM V2 (ASYNC) ===
     memory_context = ""
-    if supabase_client:
+    _quer_memoria = (not _ca_ativo) or (_plano_ctx is None) or any(
+        f.startswith("memoria") for f in _plano_ctx.fontes)
+    if not _quer_memoria:
+        logger.info("[Memory] pulada pelo plano de contexto (%s)", _plano_ctx.intencao.tipo)
+    if supabase_client and _quer_memoria:
         try:
             real_client = supabase_client.client if hasattr(supabase_client, "client") else supabase_client
             memory_service = MemoryService(real_client)
@@ -762,7 +785,14 @@ async def _build_initial_state(
     rag_prefetch_strategy = None
     rag_prefetch_score = None
     try:
-        if should_prefetch_rag(user_message):
+        _quer_rag = (
+            any(f.startswith("rag") or f == "normativo" for f in _plano_ctx.fontes)
+            if (_ca_ativo and _plano_ctx is not None)
+            else should_prefetch_rag(user_message)
+        )
+        if not _quer_rag and _ca_ativo:
+            logger.info("[RAG Prefetch] pulado pelo plano (%s)", _plano_ctx.intencao.tipo)
+        if _quer_rag:
             is_hyde = True
             if real_agent_data is not None:
                 is_hyde = bool(real_agent_data.get("is_hyde_enabled", True))
