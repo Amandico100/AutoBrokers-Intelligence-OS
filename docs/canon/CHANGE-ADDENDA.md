@@ -563,3 +563,62 @@ O Founder relatou que o Admin está confuso: páginas demais, linguagem técnica
 difícil de administrar. Estes três defeitos são evidência concreta disso, não
 impressão. A SPEC-061 (Control Plane) deve tratar navegação e linguagem como
 requisito, não como acabamento.
+
+---
+
+## CA-011 — O Admin foi desenhado para 5 corretoras, não para 1000
+
+**Data:** 26/07/2026 · **Estado:** REGISTRADA — a corrigir na SPEC-061
+**Origem:** Founder · **Prioridade:** ESSENCIAL antes de escalar
+
+### A pergunta do Founder
+
+> "O BRIEFING DA RESULTA VAI APARECER PARA MIM NO PORTAL ADMIN OU VAI APARECER
+> PARA A RESULTA? COMO VOU FAZER QUANDO TIVEREM 1000 CORRETORAS USANDO O
+> SISTEMA? O PORTAL ADMIN É UM LOCAL ONDE É PRA GERENCIAR TUDO, TODAS AS
+> CORRETORAS."
+
+Ele está certo, e a distinção é arquitetural.
+
+### O que está correto hoje
+
+O Briefing é **produto da corretora**, não da plataforma:
+
+- vive em `/dashboard/briefing`, cada corretora vê só o seu
+- `briefing_profiles` tem `scope='company'` e `company_id` obrigatório
+- a Central do Admin já tem filtro opcional por `company_id` e teto de 40
+
+Nada vaza entre corretoras. A separação de audiência está certa.
+
+### O que NÃO escala
+
+A aba "Briefings publicados" da Central lista os mais recentes, limitada a 40.
+Com 5 corretoras isso é uma amostra útil. Com 1000 corretoras publicando
+diariamente, essa lista mostra os últimos 40 minutos de atividade — e passa a
+não responder pergunta nenhuma.
+
+**Lista não é ferramenta de operação em escala.** O que o operador da
+plataforma precisa saber não é *"quais briefings saíram"*, e sim:
+
+- quantas corretoras **não** receberam briefing (essa é a falha, não o sucesso)
+- quantos foram abertos — briefing publicado e nunca aberto é trabalho jogado fora
+- quais regras disparam demais (ruído) e quais nunca disparam (regra morta)
+- quais corretoras estão com saúde degradada
+
+Os cartões agregados no topo da Central já seguem esse princípio e escalam. A
+lista, não.
+
+### Regra que fica para a SPEC-061
+
+Toda tela do Portal Admin responde por **N corretoras**, não por uma. Quando a
+resposta for uma lista, ela precisa de filtro, ordenação por relevância e um
+agregado acima — e a pergunta a fazer no desenho é sempre *"o que isto mostra
+quando houver mil?"*.
+
+O caso individual continua acessível **por busca**, nunca por rolagem.
+
+### Nota
+
+Ligado ao CA-010, que registra os defeitos de navegação encontrados pelo
+Founder. Os dois apontam a mesma causa: o Admin cresceu por adição de páginas,
+sem alguém perguntando como ele se usa.
