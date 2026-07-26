@@ -368,6 +368,63 @@ async def robots_txt():
     return PlainTextResponse("User-agent: *\nDisallow: /\n")
 
 
+def _checar_storage() -> dict:
+    """MinIO: o bucket responde?
+
+    Devolve o ENDEREÇO junto — sem ele, "não conectou" não diz se o problema é
+    o nome do host, a credencial ou o serviço fora do ar. O endereço não é
+    segredo; a senha nunca aparece.
+    """
+    from app.core.config import settings
+
+    alvo = str(getattr(settings, "MINIO_ENDPOINT", "") or "(não configurado)")
+    balde = str(getattr(settings, "MINIO_BUCKET", "") or "documents")
+    try:
+        from app.services.minio_service import MinioService
+
+        existe = MinioService().client.bucket_exists(balde)
+        return {"conectado": True, "endereco": alvo, "bucket": balde,
+                "bucket_existe": bool(existe)}
+    except Exception as exc:  # noqa: BLE001
+        return {"conectado": False, "endereco": alvo, "bucket": balde,
+                "erro": type(exc).__name__,
+                "detalhe": str(exc)[:200],
+                "dica": ("nome de host errado costuma dar erro de DNS; "
+                         "credencial errada dá 403 do S3")}
+
+
+def _checar_redis() -> dict:
+    import os
+
+    url = str(os.getenv("REDIS_URL") or "")
+    # A URL carrega a senha. Só o host aparece.
+    host = url.split("@")[-1] if "@" in url else "(não configurado)"
+    try:
+        import redis  # type: ignore
+
+        redis.Redis.from_url(url, socket_connect_timeout=3).ping()
+        return {"conectado": True, "host": host}
+    except Exception as exc:  # noqa: BLE001
+        return {"conectado": False, "host": host,
+                "erro": type(exc).__name__, "detalhe": str(exc)[:200]}
+
+
+def _checar_qdrant() -> dict:
+    import os
+
+    host = str(os.getenv("QDRANT_HOST") or "(não configurado)")
+    porta = str(os.getenv("QDRANT_PORT") or "6333")
+    try:
+        import httpx
+
+        r = httpx.get(f"http://{host}:{porta}/readyz", timeout=3.0)
+        return {"conectado": r.status_code < 400, "host": f"{host}:{porta}",
+                "http": r.status_code}
+    except Exception as exc:  # noqa: BLE001
+        return {"conectado": False, "host": f"{host}:{porta}",
+                "erro": type(exc).__name__, "detalhe": str(exc)[:200]}
+
+
 @app.get("/health")
 async def health_check(request: Request):
     """Health check detalhado - verifica conexão real com ambos os clientes"""
@@ -404,6 +461,19 @@ async def health_check(request: Request):
         health_status["database_sync"] = "disconnected"
         health_status["error"] = str(e)
         logger.error(f"[HEALTH] Sync database check failed: {e}")
+
+    # 3. Infraestrutura de apoio — SPEC-061.
+    #
+    # Sem isto, "o MinIO está acessível?" era uma pergunta sem resposta: não
+    # havia como saber sem entrar no servidor. E o sintoma de MinIO
+    # inacessível é uma peça que não é gerada — ausência, não erro.
+    #
+    # Estes três NÃO derrubam o health para 503: o Work OS e a conversa
+    # funcionam sem eles. Marcar como doente o que ainda atende faria o
+    # balanceador tirar do ar um serviço que estava trabalhando.
+    health_status["storage"] = _checar_storage()
+    health_status["redis"] = _checar_redis()
+    health_status["qdrant"] = _checar_qdrant()
 
     # Retornar 503 se unhealthy (load balancers dependem disso)
     if health_status["status"] == "unhealthy":
