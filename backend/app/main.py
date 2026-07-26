@@ -389,8 +389,49 @@ def _checar_storage() -> dict:
         return {"conectado": False, "endereco": alvo, "bucket": balde,
                 "erro": type(exc).__name__,
                 "detalhe": str(exc)[:200],
-                "dica": ("nome de host errado costuma dar erro de DNS; "
-                         "credencial errada dá 403 do S3")}
+                "dica": _dica_do_storage(alvo, str(exc))}
+
+
+def _dica_do_storage(endereco: str, erro: str) -> str:
+    """Traduz a falha do MinIO em uma instrução.
+
+    Existe porque "S3Error: InvalidRequest" não diz a ninguém o que fazer — e a
+    causa mais provável neste ambiente é contraintuitiva.
+    """
+    baixo = erro.lower()
+
+    # O caso que custou dois deploys: o MinIO valida o cabeçalho `Host` pela
+    # regra de DNS (RFC 1123), onde **underscore é inválido**. O nome interno
+    # do EasyPanel usa underscore no nome do projeto, então o endereço RESOLVE
+    # (a requisição chega) e o MinIO recusa. Redis e Qdrant funcionam com o
+    # mesmo padrão porque não validam o host.
+    if "invalid hostname" in baixo or "invalidrequest" in baixo:
+        if "_" in endereco:
+            return ("o endereço tem underscore, e o MinIO recusa isso no "
+                    "cabeçalho Host (regra de DNS). O endereço RESOLVE — a "
+                    "requisição chegou e foi recusada. Use um nome só com "
+                    "hífen: o nome curto do serviço "
+                    "(`autobrokers-smith-minio:9000`) ou o endereço público "
+                    "com MINIO_SECURE=true.")
+        return ("o MinIO recusou o cabeçalho Host. Confira se o endereço tem "
+                "apenas letras, números, hífen e ponto.")
+
+    if "403" in baixo or "accessdenied" in baixo or "signature" in baixo:
+        return ("o endereço está certo e a CREDENCIAL não. O backend lê "
+                "MINIO_ROOT_USER e MINIO_ROOT_PASSWORD; o Docling lê "
+                "MINIO_ACCESS_KEY e MINIO_SECRET_KEY.")
+
+    if ("resolve" in baixo or "getaddrinfo" in baixo or "nodename" in baixo
+            or "name or service not known" in baixo):
+        return ("o endereço NÃO resolve — a requisição não chegou. O nome do "
+                "serviço está errado ou ele não está no ar.")
+
+    if "timed out" in baixo or "timeout" in baixo:
+        return ("o endereço resolve e ninguém responde na porta. Confira a "
+                "porta e se o serviço está rodando.")
+
+    return ("sem causa reconhecida. O `detalhe` acima é a mensagem do "
+            "servidor.")
 
 
 def _checar_redis() -> dict:

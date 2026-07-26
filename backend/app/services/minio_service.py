@@ -32,6 +32,25 @@ class MinioService:
         self.secure = settings.MINIO_SECURE
         self.bucket_name = settings.MINIO_BUCKET
 
+        # SPEC-061 — o underscore no endereço é um defeito silencioso.
+        #
+        # O MinIO valida o cabeçalho `Host` pela regra de DNS (RFC 1123), onde
+        # underscore não é permitido. O endereço RESOLVE — a requisição chega —
+        # e o servidor recusa com `InvalidRequest: invalid hostname`.
+        #
+        # É contraintuitivo porque Redis e Qdrant funcionam com o mesmo padrão
+        # de nome: eles não validam o host. O sintoma é uma peça que nunca é
+        # gerada, e isso não abre chamado.
+        #
+        # O aviso vai no arranque para não depender de alguém abrir /health.
+        if "_" in str(self.endpoint):
+            logger.error(
+                "[MinIO] O endereco '%s' contem underscore. O MinIO recusa "
+                "isso no cabecalho Host (regra de DNS) e devolve "
+                "'InvalidRequest: invalid hostname'. Use um nome so com "
+                "hifen — o nome curto do servico ou o endereco publico com "
+                "MINIO_SECURE=true.", self.endpoint)
+
         # Inicializar cliente MinIO
         self.client = Minio(
             self.endpoint,

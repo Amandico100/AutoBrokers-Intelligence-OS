@@ -56,12 +56,17 @@ export default function TeamManagementPage() {
   const [inviteEmail, setInviteEmail] = useState('');
   const [inviteName, setInviteName] = useState('');
 
+  // SPEC-061 §6 — sem guard de PAPEL, igual às outras telas da corretora.
+  //
+  // A pergunta certa não é "qual é o seu papel?" — é "eu tenho uma corretora
+  // para mostrar?". `loadTeam` já devolve cedo quando não há `companyId`, e a
+  // tela mostra o estado vazio.
+  //
+  // Comparar nome de papel era frágil: a sessão grava `master_admin`, o hook
+  // devolve `master`, e cada tela comparava com uma coisa diferente. Foi o que
+  // fez `/admin/documents` parecer quebrado duas vezes.
   useEffect(() => {
     if (!roleLoading) {
-      if (role !== 'company_admin' && role !== 'master') {
-        router.push('/admin');
-        return;
-      }
       loadTeam();
     }
   }, [role, roleLoading, companyId, isOwner]);

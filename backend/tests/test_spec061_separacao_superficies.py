@@ -115,8 +115,37 @@ def teste_admin_expulsa_quem_nao_e_plataforma():
            "a regra de exclusão sumiu do layout")
 
 
+def teste_nenhuma_tela_do_dashboard_empurra_para_admin():
+    print("\n[7] Nenhuma tela da corretora empurra o visitante para /admin")
+    # Esta é a versão FORTE do caso anterior, e existe porque a versão fraca
+    # não bastou: eu conferia se o guard abria exceção para `master`, e o
+    # Founder relatou o mesmo defeito duas vezes.
+    #
+    # A causa era comparar NOME DE PAPEL entre três vocabulários — a sessão
+    # grava `master_admin`, o hook devolve `master`, e cada tela comparava com
+    # uma coisa diferente. Igualdade de string entre vocabulários que ninguém
+    # unificou é frágil por natureza.
+    #
+    # A regra agora é de forma, não de conteúdo: uma tela do `/dashboard` NÃO
+    # empurra ninguém para `/admin`. Se falta corretora para mostrar, ela DIZ
+    # isso. Mensagem explica; redirecionamento silencioso vira vaivém.
+    dash = os.path.join(APP, "dashboard")
+    for pasta, _, arquivos in os.walk(dash):
+        for arq in arquivos:
+            if not arq.endswith((".tsx", ".ts")):
+                continue
+            caminho = os.path.join(pasta, arq)
+            fonte = "\n".join(l for l in _ler(caminho).split("\n")
+                              if not l.lstrip().startswith("//"))
+            empurra = ("push('/admin')" in fonte or 'push("/admin")' in fonte
+                       or "redirect('/admin')" in fonte)
+            rel = os.path.relpath(caminho, os.path.dirname(APP)).replace(os.sep, "/")
+            checar(not empurra, f"{rel} não empurra para /admin",
+                   "quem chega pelo redirecionamento volta ao ponto de partida")
+
+
 def teste_destino_nao_devolve_o_master():
-    print("\n[7] O destino não devolve quem chegou pelo redirecionamento")
+    print("\n[7b] E se houver guard de papel, ele admite o master")
     # O defeito que o Founder encontrou: `/admin/documents` redirecionava
     # CERTO, e o destino mandava o `master` de volta para `/admin`. Da cadeira
     # de quem testa, isso é indistinguível de "não redireciona" — você volta ao
@@ -194,6 +223,7 @@ def main() -> int:
                   teste_admin_nao_tem_mais_menu_de_corretora,
                   teste_dashboard_recebeu_as_telas,
                   teste_admin_expulsa_quem_nao_e_plataforma,
+                  teste_nenhuma_tela_do_dashboard_empurra_para_admin,
                   teste_destino_nao_devolve_o_master,
                   teste_link_interno_nao_atravessa_superficie,
                   teste_hubs_do_admin_nao_embutem_tela_de_corretora):

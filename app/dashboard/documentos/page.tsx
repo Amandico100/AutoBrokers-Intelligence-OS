@@ -12,23 +12,25 @@ export default function DocumentsPage() {
   const { role, companyId, isLoading } = useAdminRole();
   const router = useRouter();
 
-  useEffect(() => {
-    // SPEC-061 §6 — `master` NÃO é expulso.
-    //
-    // Este guard nasceu quando a tela morava em /admin: lá, "não é
-    // company_admin" queria dizer "não é seu". Depois da separação, ela mora
-    // no /dashboard e o efeito virou o oposto do pretendido: /admin/documents
-    // redirecionava para cá, e daqui o master voltava para /admin. Do lado de
-    // quem testa, isso é indistinguível de "o redirecionamento não funciona" —
-    // e foi exatamente assim que o Founder relatou.
-    //
-    // O master de plataforma precisa navegar estas telas: é como ele confere a
-    // experiência da corretora sem mexer numa de verdade (a corretora de
-    // ensaio existe para isso). Mesmo padrão já usado em /dashboard/equipe.
-    if (!isLoading && role !== 'company_admin' && role !== 'master') {
-      router.push('/admin');
-    }
-  }, [role, isLoading, router]);
+  // SPEC-061 §6 — o guard de PAPEL foi removido.
+  //
+  // Ele perguntava "qual é o seu papel?" e mandava para /admin quem não fosse
+  // `company_admin`. Duas coisas erradas nisso:
+  //
+  // 1. **O nome do papel me traiu duas vezes.** A sessão grava `master_admin`,
+  //    o hook devolve `master`, e o guard comparava com uma terceira coisa.
+  //    Um teste de igualdade de string entre três vocabulários é frágil por
+  //    natureza.
+  //
+  // 2. **Devolver para /admin criou um vaivém.** `/admin/documents`
+  //    redirecionava para cá, e daqui voltava para /admin. Da cadeira de quem
+  //    testa, isso é indistinguível de "o redirecionamento não funciona" — e
+  //    foi exatamente assim que o Founder relatou, duas vezes.
+  //
+  // A pergunta certa não é sobre papel: é **"eu tenho uma corretora para
+  // mostrar?"**. É disso que a tela depende, e a resposta já era tratada
+  // abaixo, com uma mensagem clara em vez de um empurrão. Mensagem explica;
+  // redirecionamento silencioso não.
 
   if (isLoading) {
     return (
