@@ -439,6 +439,17 @@ async def create_agent_graph(
         except Exception as e:  # noqa: BLE001
             logger.warning(f"[Graph] ⚠️ ferramenta de relatório não anexada: {e}")
 
+        # SPEC-058 — a Factory pelo chat. "Queria que alguém acompanhasse os
+        # boletos" devolve uma PROPOSTA do formato certo, nunca uma criação:
+        # Auxiliar criado no meio de uma conversa vira coisa que ninguém pediu
+        # e ninguém sabe desligar.
+        try:
+            from .tools.factory_tool import ferramenta_de_automacao
+            tools.extend(ferramenta_de_automacao(
+                company_id=str(company_id), supabase=supabase_client))
+        except Exception as e:  # noqa: BLE001
+            logger.warning(f"[Graph] ⚠️ ferramenta da Factory não anexada: {e}")
+
     # Bind final (Standard + Dinâmicas)
     llm_with_tools = llm.bind_tools(tools)
 

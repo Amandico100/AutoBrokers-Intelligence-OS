@@ -100,6 +100,7 @@ NOME_PARA_CHAVE = {
     "portal_action": "portal.execute",
     "subagent": "delegation.subagent",
     "gerar_relatorio": "artifacts.generate_report",
+    "avaliar_automacao": "factory.evaluate_request",
 }
 
 

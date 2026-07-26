@@ -399,6 +399,30 @@ async def _criar_work_run_para_rotina(supabase, routine: Dict[str, Any], tick_is
                 "[ROUTINES] rotina %s enfileirada como Work Run %s (reaproveitado=%s)",
                 routine.get("id"), resultado.get("run_id"), resultado.get("reused"),
             )
+
+            # SPEC-058 8.11 — a projecao legada aponta para a autoridade.
+            # Sem este vinculo, "quantos trabalhos rodaram" tem duas respostas
+            # (routine_runs e work_runs) e nenhuma sabe da outra. Com ele, a
+            # tabela antiga vira projecao e o work_run vira a fonte soberana.
+            try:
+                run_id = resultado.get("run_id")
+                if run_id:
+                    supabase.client.table("routines").update({
+                        "last_work_run_id": run_id,
+                    }).eq("id", routine.get("id")).execute()
+                    supabase.client.table("routine_runs").insert({
+                        "routine_id": routine.get("id"),
+                        "started_at": tick_iso,
+                        "status": "delegated",
+                        "work_run_id": run_id,
+                        "output_preview": "executando como Work Run",
+                    }).execute()
+            except Exception as exc:  # noqa: BLE001
+                # Falha na projecao nunca pode desfazer o trabalho ja agendado:
+                # o Work Run existe e vai rodar. Perder o espelho e ruim;
+                # cancelar o trabalho por causa do espelho e pior.
+                logger.warning("[ROUTINES] projecao legada nao gravada: %s",
+                               type(exc).__name__)
             return True
         return False
     except Exception as exc:  # noqa: BLE001
