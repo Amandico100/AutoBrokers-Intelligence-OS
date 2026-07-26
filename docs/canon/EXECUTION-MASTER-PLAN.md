@@ -434,3 +434,54 @@ Nenhum outro enxerto é permitido sem entrada em [`CHANGE-ADDENDA.md`](CHANGE-AD
 | 25/07/2026 | 5 | **SPEC-056 CONCLUÍDA** — pendente: cutover do grafo + Context Assembly 2.0 | `dddc3ca` |
 | 25/07/2026 | 1 | Gate de type-check: `tsc --noEmit` **exit 0**, zero erro | `bdaeafa` |
 | 25/07/2026 | 1 | `next build`: **Compiled successfully**. Falha posterior e ambiental (secrets ausentes no worktree) em rotas nao tocadas | `8b9faee` |
+
+---
+
+# ESTADO EM 26/07/2026 — leia isto antes de qualquer execução
+
+**commit de referência:** `202b3f7` na `main` · **gate:** 24/24 VERDE · tsc exit 0
+
+## Etapas concluídas
+
+| SPEC | Estado | O que ficou de pé |
+|---|---|---|
+| **054** | CONCLUÍDA | advisors 73→28 com ZERO error/warn · 46 scopes · buckets fechados |
+| **055** | CONCLUÍDA | Work Runs com lease, heartbeat, outbox, HITL por fingerprint. Gate confirmado em produção |
+| **056** | CONCLUÍDA | Skill Registry + Tool Gateway. 21 tools, 11 Skills, 28 capabilities |
+| **052 L3** | CONCLUÍDA | Context Assembly 2.0 — Intent Router, Planner, Evidence Pack, precedência §6.4 |
+| **057** | CONCLUÍDA | Brand Identity Fabric · Artifact Hub · 8 templates · Firecrawl medido · corpus normativo · cutover do grafo |
+| **058** | Blocos A–E | Factory: schema, árvore de decisão, funil de demanda, painel Admin, chat propõe |
+
+## Flags em produção
+
+| Flag | Valor | Onde | Significa |
+|---|---|---|---|
+| `TOOL_GATEWAY_MODE` | `shadow` | api + worker | Gateway decide em paralelo, diff gravado, lista antiga vale |
+| `CONTEXT_ASSEMBLY_MODE` | `shadow` (padrão) | — | Plano calculado e logado, nada é pulado |
+| `AUTHORITY_STRICT_MODE` | **off** | — | Espera o diff do cutover provar equivalência |
+| `WORK_RUNS_ROUTINE_BRIDGE` | `1` | api + worker | Rotina cria Work Run |
+| `FIRECRAWL_API_KEY` | ativa | api + worker | **Créditos esgotados — ver D18** |
+
+### Critério para virar o Gateway para `on`
+
+`GET /api/work/cutover` → **300 decisões, 98% idênticas, zero erro**.
+Só então `TOOL_GATEWAY_MODE=on`, e só depois `AUTHORITY_STRICT_MODE=1`.
+
+## Bloqueios ativos
+
+1. **D18 — corpus normativo:** 23 documentos na fila por crédito do Firecrawl.
+   Retoma sozinho. Nenhuma ação de código.
+2. **PDF no servidor:** exige Chromium na imagem do contêiner. Regra 1 do
+   CLAUDE.md impede mudança de infra antes do preflight. O CSS de impressão já
+   está pronto e testado; o download funciona pelo navegador.
+
+## Pendências registradas
+
+- **D19** — instalação guiada do Auxiliar (SPEC-058). Sugestão: após a 061.
+- Migrations das SPECs 055–058 estão aplicadas no banco mas **não espelhadas**
+  como arquivo em `backend/supabase/migrations/`. Dívida de governança do
+  Executor; corrigir com dump de `supabase_migrations.schema_migrations`.
+
+## Próxima etapa
+
+**SPEC-059 — Intelligence Fabric.**

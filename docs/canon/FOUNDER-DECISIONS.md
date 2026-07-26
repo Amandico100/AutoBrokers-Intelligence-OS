@@ -594,3 +594,93 @@ navegação. O worker só ingere o que foi aprovado.
 A leitura é da **plataforma**, não da corretora que porventura disparou. Cobrar
 da primeira corretora a leitura de um documento que serve a todas seria cobrar
 quem chegou primeiro.
+
+---
+
+## D18 — Corpus normativo pausado por crédito do Firecrawl
+
+**Data:** 26/07/2026 · **Estado:** BLOQUEIO ATIVO — aguardando ação do Founder
+**Origem:** Founder · **Afeta:** SPEC-057 Bloco H
+
+### Situação
+
+O corpus normativo **funcionou e está parcialmente populado**:
+
+| | |
+|---|---:|
+| Documentos ingeridos | **8** |
+| Chunks no conhecimento global | **3.744** |
+| Bradesco | 5 docs · 2.632 chunks |
+| Mapfre | 3 docs · 1.112 chunks |
+| **Na fila, aguardando crédito** | **23** |
+
+Os 23 restantes falharam com **HTTP 402 (Payment Required)**: o plano gratuito
+do Firecrawl esgotou os créditos após ~13 leituras.
+
+### Decisão do Founder
+
+> "NAO POSSO FAZER O UPGRADE DO PLANO AGORA. ENTAO DEVE CONTINUAR NA FILA ATÉ EU
+> FAZER ESSE UPGRADE."
+
+**Não fazer upgrade agora.** A fila permanece e retoma sozinha.
+
+### O que já está garantido no código
+
+- `HTTP 402` **não gasta tentativa** e **não** marca o documento como
+  `unreachable`. Sem isso o corpus desistiria de documentos válidos por causa
+  da fatura, e ninguém descobriria o motivo real depois.
+- Reagenda para **6 horas** e **para o ciclo** — insistir só produz mais 402.
+- O worker retoma **sozinho** no primeiro ciclo de manutenção após haver
+  crédito. **Nenhuma ação de código é necessária.**
+
+### Quando o Founder fizer o upgrade
+
+Nada a executar. O worker detecta no próximo ciclo (a cada 5 minutos) e
+continua de onde parou, 3 documentos por vez.
+
+Para conferir o andamento:
+
+```sql
+select status, count(*) from normative_documents group by status;
+select count(*) filter (where status='ingested') ingeridos,
+       sum(chunk_count) chunks from normative_documents;
+```
+
+### O que NÃO fazer
+
+- **Não** trocar de provedor para contornar o limite. O Firecrawl está
+  governado, medido e com allowlist de egresso; um contorno seria motor
+  paralelo (CLAUDE.md §5).
+- **Não** marcar os 23 documentos como rejeitados. Eles estão corretos e
+  verificados — o que falta é crédito, não qualidade.
+
+---
+
+## D19 — Instalação guiada do Auxiliar fica pendente
+
+**Data:** 26/07/2026 · **Estado:** PENDENTE por decisão conjunta
+**Origem:** Founder + Executor · **Afeta:** SPEC-058
+
+### O que ficou de fora
+
+O fluxo em que o **corretor aceita a proposta pela tela** e o Auxiliar é de
+fato instalado: revisão registrada, checagem de dependências ("falta conectar
+o WhatsApp") e botão de desligar.
+
+### O que JÁ existe
+
+- Schema completo: `tenant_auxiliary_revisions`, `auxiliary_events`,
+  `auxiliary_template_releases`
+- O chat **propõe** o formato certo (`avaliar_automacao`)
+- O Admin **vê** catálogo, instalações, saúde e oportunidades
+
+Falta apenas o corretor **aceitar por conta própria**.
+
+### Decisão
+
+> Founder: "SE FOR DEMORAR MUITO PODEMOS FAZER DEPOIS FOCADOS EXATAMENTE NISSO.
+> MAS NAO QUERO PICOTAR MAIS AS EXECUÇÕES."
+
+Merece execução dedicada, não um pedaço no fim de outra SPEC. Retomar quando o
+Founder indicar — sugestão do Executor: **depois da SPEC-061** (Control Plane),
+que traz o restante das superfícies de administração.
