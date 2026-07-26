@@ -115,6 +115,59 @@ def teste_admin_expulsa_quem_nao_e_plataforma():
            "a regra de exclusão sumiu do layout")
 
 
+def teste_destino_nao_devolve_o_master():
+    print("\n[7] O destino não devolve quem chegou pelo redirecionamento")
+    # O defeito que o Founder encontrou: `/admin/documents` redirecionava
+    # CERTO, e o destino mandava o `master` de volta para `/admin`. Da cadeira
+    # de quem testa, isso é indistinguível de "não redireciona" — você volta ao
+    # ponto de partida.
+    #
+    # A causa: o guard `role !== 'company_admin'` nasceu quando a tela morava em
+    # /admin, onde queria dizer "não é seu". Depois da mudança de casa, o efeito
+    # virou o oposto.
+    #
+    # Três das cinco telas foram tratadas de formas diferentes no MESMO commit:
+    # `equipe` já excluía o master, `plano` e `conversas` nunca checavam papel,
+    # e `agente` e `documentos` mantiveram o guard antigo. Este caso existe para
+    # que as cinco tenham o mesmo comportamento.
+    import re as _re
+    for novo in MUDARAM_DE_CASA.values():
+        caminho = os.path.join(APP, *novo.strip("/").split("/"), "page.tsx")
+        if not os.path.exists(caminho):
+            continue
+        fonte = _ler(caminho)
+        # Sem guard de papel: nada a conferir — a tela não expulsa ninguém.
+        if "role !== 'company_admin'" not in fonte:
+            checar(True, f"{novo} não expulsa por papel")
+            continue
+        # Com guard: ele PRECISA abrir exceção para o master.
+        tem_excecao = _re.search(
+            r"role\s*!==\s*'company_admin'\s*&&\s*role\s*!==\s*'master'", fonte)
+        checar(tem_excecao is not None,
+               f"{novo} deixa o master entrar",
+               "o guard devolve o master para /admin, e quem chega pelo "
+               "redirecionamento volta ao ponto de partida")
+
+
+def teste_link_interno_nao_atravessa_superficie():
+    print("\n[8] Link do Admin não joga o operador na casa da corretora")
+    # `/admin/knowledge-base/sanitize` tinha um "voltar" para `/admin/documents`
+    # — resíduo da época em que aquela era a Base de Conhecimento do Admin.
+    # Depois da separação, esse "voltar" atravessava para o /dashboard.
+    for pasta, _, arquivos in os.walk(os.path.join(APP, "admin")):
+        for arq in arquivos:
+            if not arq.endswith((".tsx", ".ts")):
+                continue
+            caminho = os.path.join(pasta, arq)
+            fonte = "\n".join(l for l in _ler(caminho).split("\n")
+                              if not l.lstrip().startswith("//"))
+            achados = [antigo for antigo in MUDARAM_DE_CASA
+                       if f'href="{antigo}"' in fonte or f"href='{antigo}'" in fonte]
+            rel = os.path.relpath(caminho, os.path.dirname(APP)).replace(os.sep, "/")
+            checar(not achados, f"{rel} não linka tela que mudou de casa",
+                   f"aponta para {achados}")
+
+
 def teste_hubs_do_admin_nao_embutem_tela_de_corretora():
     print("\n[6] Nenhum hub do Admin embute a visão da corretora")
     # `/admin/conversas` importava `conversations` (o inbox da corretora) e
@@ -141,6 +194,8 @@ def main() -> int:
                   teste_admin_nao_tem_mais_menu_de_corretora,
                   teste_dashboard_recebeu_as_telas,
                   teste_admin_expulsa_quem_nao_e_plataforma,
+                  teste_destino_nao_devolve_o_master,
+                  teste_link_interno_nao_atravessa_superficie,
                   teste_hubs_do_admin_nao_embutem_tela_de_corretora):
         try:
             teste()

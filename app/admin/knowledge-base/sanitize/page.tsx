@@ -274,7 +274,7 @@ export default function SanitizePage() {
             {/* Header */}
             <div className="mb-8">
                 <Link
-                    href="/admin/documents"
+                    href="/admin/knowledge-base"
                     className="inline-flex items-center gap-2 text-sm text-muted-foreground hover:text-foreground transition-colors mb-4"
                 >
                     <ArrowLeft className="w-4 h-4" />

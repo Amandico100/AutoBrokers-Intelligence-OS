@@ -13,7 +13,19 @@ export default function DocumentsPage() {
   const router = useRouter();
 
   useEffect(() => {
-    if (!isLoading && role !== 'company_admin') {
+    // SPEC-061 §6 — `master` NÃO é expulso.
+    //
+    // Este guard nasceu quando a tela morava em /admin: lá, "não é
+    // company_admin" queria dizer "não é seu". Depois da separação, ela mora
+    // no /dashboard e o efeito virou o oposto do pretendido: /admin/documents
+    // redirecionava para cá, e daqui o master voltava para /admin. Do lado de
+    // quem testa, isso é indistinguível de "o redirecionamento não funciona" —
+    // e foi exatamente assim que o Founder relatou.
+    //
+    // O master de plataforma precisa navegar estas telas: é como ele confere a
+    // experiência da corretora sem mexer numa de verdade (a corretora de
+    // ensaio existe para isso). Mesmo padrão já usado em /dashboard/equipe.
+    if (!isLoading && role !== 'company_admin' && role !== 'master') {
       router.push('/admin');
     }
   }, [role, isLoading, router]);

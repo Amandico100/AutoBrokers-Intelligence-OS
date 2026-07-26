@@ -156,3 +156,80 @@ Sou obrigado a ser exato:
 | Páginas no dashboard da corretora | 41 | **46** |
 | Rotas de API do Admin | 114 | 124 |
 | Casos no gate | 30 | **37** |
+
+---
+
+# 12. Resultado da verificação — 27/07/2026
+
+As 44 conferências foram checadas **contra o código-fonte** por um agente
+auxiliar, no commit `10341aa`. Resultado: **38 OK, 2 FALHAS, 4 não verificáveis
+sem navegador** (dados de banco em tempo de execução).
+
+## As duas falhas — e a causa raiz
+
+O Founder relatou que `/admin/documents` **não redirecionava**. O arquivo de
+redirecionamento estava **correto**: os cinco são estruturalmente idênticos,
+sem BOM, sem `layout.tsx` conflitante, sem subpasta.
+
+O defeito estava no **destino**.
+
+```tsx
+// app/dashboard/documentos/page.tsx — ANTES
+if (!isLoading && role !== 'company_admin') {
+  router.push('/admin');       // ← devolve o master
+}
+```
+
+O guard nasceu quando a tela morava em `/admin`, onde *"não é company_admin"*
+queria dizer *"não é seu"*. Depois da mudança de casa, o efeito virou o oposto:
+`/admin/documents` → `/dashboard/documentos` → **de volta para `/admin`**. Da
+cadeira de quem testa, isso é **indistinguível de "o redirecionamento não
+funciona"** — você volta ao ponto de partida.
+
+`/admin/agent` tinha o mesmo defeito, latente e não relatado.
+
+## O que a investigação revelou de pior
+
+As cinco telas foram movidas **no mesmo commit** e tratadas de **três formas
+diferentes**:
+
+| Tela | Guard | Efeito para o master |
+|---|---|---|
+| `equipe` | `!== 'company_admin' && !== 'master'` | entra |
+| `plano`, `conversas` | não checa papel | entra |
+| `agente`, `documentos` | `!== 'company_admin'` | **expulso** |
+
+Não foi regressão posterior — a inconsistência nasceu ali. Três telas iguais,
+três comportamentos.
+
+## Corrigido
+
+- os dois guards passaram a admitir `master`, no mesmo padrão de `equipe`;
+- `/admin/knowledge-base/sanitize` tinha um "voltar" para `/admin/documents` —
+  resíduo de quando aquela era a Base de Conhecimento do Admin. Agora aponta
+  para `/admin/knowledge-base`;
+- o **widget de créditos** do layout do Admin foi removido: 150 linhas que
+  renderizavam sob `role === 'company_admin'`, papel que nunca mais chega
+  àquele layout. Código morto que mantinha viva uma referência a
+  `/admin/billing`.
+
+## Dois casos novos no gate
+
+`SEP-01` ganhou:
+
+- **[7]** nenhum destino devolve quem chegou pelo redirecionamento — as cinco
+  telas precisam ter o mesmo comportamento;
+- **[8]** nenhuma tela do Admin linka para tela que mudou de casa.
+
+O caso [8] foi o que encontrou o widget morto.
+
+## O que continua não verificável por código
+
+| Item | Por quê |
+|---|---|
+| 3.1 — a caixa mostra 2 itens | contagem em tempo de execução |
+| 7.2 — 1 pessoa com acesso | linha no banco, não no código |
+| 9.1–9.3 — as três corretoras | dado de banco |
+
+Os três foram conferidos por consulta direta ao banco de produção e estão
+corretos.
