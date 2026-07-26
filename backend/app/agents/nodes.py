@@ -749,6 +749,55 @@ async def agent_node(state: AgentState, config: RunnableConfig, llm_with_tools,
     return result_update
 
 
+def _abrir_registro_de_invocacao(state: AgentState, *, tool_name: str,
+                                 tool_args: dict):
+    """Contexto de registro da invocação, ou um nulo que não faz nada.
+
+    Devolver um objeto inerte em vez de `None` mantém o `with` do chamador com
+    uma forma só. Se a auditoria estiver indisponível — sem cliente, sem
+    empresa, import quebrado — a ferramenta roda igual: perder o registro é
+    ruim, perder o trabalho do corretor é pior.
+    """
+    try:
+        from app.core.database import get_supabase_client
+        from app.services.skills.invocation_recorder import RegistroDeInvocacao
+
+        company_id = state.get("company_id")
+        if not company_id:
+            agente = state.get("agent_data") or {}
+            company_id = agente.get("company_id")
+        if not company_id:
+            return _RegistroInerte()
+
+        return RegistroDeInvocacao(
+            get_supabase_client(), company_id=str(company_id),
+            nome_da_tool=str(tool_name), argumentos=tool_args or {},
+            trace_id=str(state.get("session_id") or "") or None)
+    except Exception as exc:  # noqa: BLE001
+        logger.warning("[Tool Node] registro de invocação indisponível: %s",
+                       type(exc).__name__)
+        return _RegistroInerte()
+
+
+class _RegistroInerte:
+    """Nulo com a mesma forma. Nunca falha, nunca grava."""
+
+    def __enter__(self):
+        return self
+
+    def __exit__(self, *_):
+        return False
+
+    def ok(self, *_a, **_k):
+        return None
+
+    def erro(self, **_k):
+        return None
+
+    def negada(self, **_k):
+        return None
+
+
 async def tool_node(state: AgentState, tools: list) -> dict:
     """
     Nó de Tools - Executa as tools chamadas pelo agente.
@@ -877,17 +926,32 @@ async def tool_node(state: AgentState, tools: list) -> dict:
                         }
 
 
-                    # Executa a tool
-                    # Tools async-only (caminho assíncrono real). InfoCap (SPEC-014 C-FIX-1)
-                    # precisa do _arun: o _run é apenas um stub que sinaliza uso async.
-                    if tool_name in ("delegate_to_subagent", "infocap_policy_lookup", "insurer_dispatch", "portal_action") and hasattr(tool, "_arun"):
-                        result = await tool._arun(**tool_args)
-                    else:
-                        # Execução via executor para não bloquear o event loop do FastAPI
-                        loop = asyncio.get_running_loop()
-                        result = await loop.run_in_executor(
-                            None, lambda: tool._run(**tool_args)
-                        )
+                    # Executa a tool — REGISTRANDO a invocação no Tool Gateway.
+                    #
+                    # Este `with` é o elo que faltava entre o Gateway e a
+                    # execução: ele decidia QUAIS ferramentas o agente recebia
+                    # e depois perdia a chamada de vista. `tool_invocations`
+                    # ficou em zero com o produto em uso — ver SPEC-056 e o
+                    # Bloco 0 da SPEC-061.
+                    #
+                    # Registrar aqui, e não dentro de cada tool, é o que impede
+                    # que a próxima ferramenta nasça sem auditoria: quem
+                    # esquecer de instrumentar continua registrado, porque o
+                    # ponto de execução é um só.
+                    registro = _abrir_registro_de_invocacao(
+                        state, tool_name=tool_name, tool_args=tool_args)
+                    with registro:
+                        # Tools async-only (caminho assíncrono real). InfoCap (SPEC-014 C-FIX-1)
+                        # precisa do _arun: o _run é apenas um stub que sinaliza uso async.
+                        if tool_name in ("delegate_to_subagent", "infocap_policy_lookup", "insurer_dispatch", "portal_action") and hasattr(tool, "_arun"):
+                            result = await tool._arun(**tool_args)
+                        else:
+                            # Execução via executor para não bloquear o event loop do FastAPI
+                            loop = asyncio.get_running_loop()
+                            result = await loop.run_in_executor(
+                                None, lambda: tool._run(**tool_args)
+                            )
+                        registro.ok(result)
                     tools_used.append(tool_name)
 
                     # Processamento de Resultado

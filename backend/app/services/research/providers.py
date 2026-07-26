@@ -30,7 +30,7 @@ from typing import Any, Optional, Protocol
 
 from .schemas import (TIER_IMPRENSA, RespostaDeProvider, ResultadoDeFonte)
 from .source_policy import classificar
-from .urls import normalizar
+from .urls import dominio_raiz, normalizar
 
 logger = logging.getLogger(__name__)
 
@@ -171,6 +171,135 @@ class TavilyProvider:
             fontes=fontes, creditos=float(len(fontes) or 1),
             credito_estimado=True,
             duracao_ms=int((time.monotonic() - inicio) * 1000))
+
+    async def extract(self, url: str, *, profundidade: str = "basic",
+                      **_: Any) -> RespostaDeProvider:
+        """Lê UMA página já escolhida. Bloco 0 da SPEC-061 §13.1.
+
+        `operacoes` já declarava `extract` e o método não existia — a
+        hierarquia de leitura ia do leitor direto direto para o Firecrawl, o
+        provider mais caro, sem nada no meio. Este é o degrau que faltava:
+        resolve página que monta conteúdo por JavaScript e devolve texto já
+        limpo de menu e rodapé, por uma fração do preço.
+
+        Descobrir NÃO é ler: `search` acha o endereço, `extract` lê o que está
+        nele. Usar `search` para obter conteúdo devolve o resumo do buscador,
+        que não serve para citar no nível da afirmação.
+        """
+        import asyncio
+
+        if not self.disponivel():
+            return _falha(self.provider_key, "extract", SEM_CHAVE)
+
+        alvo = normalizar(url)
+        if not alvo:
+            return _falha(self.provider_key, "extract", INDISPONIVEL)
+
+        inicio = time.monotonic()
+
+        def _extrair() -> dict:
+            return self._obter_cliente().extract(
+                urls=[alvo],
+                extract_depth=profundidade if profundidade in ("basic", "advanced") else "basic",
+            ) or {}
+
+        try:
+            bruto = await asyncio.to_thread(_extrair)
+        except Exception as exc:  # noqa: BLE001
+            texto = str(exc).lower()
+            if "402" in texto or "credit" in texto or "quota" in texto:
+                return _falha(self.provider_key, "extract", SEM_CREDITO, inicio=inicio)
+            logger.warning("[tavily] extract falhou: %s", type(exc).__name__)
+            return _falha(self.provider_key, "extract", INDISPONIVEL, inicio=inicio)
+
+        resultados = bruto.get("results") or []
+        if not resultados:
+            # A API separa `failed_results` de `results`. Uma página que não
+            # pôde ser lida NÃO é uma página vazia — dizer "não tinha nada"
+            # seria afirmar sobre um conteúdo que ninguém viu.
+            return _falha(self.provider_key, "extract", INDISPONIVEL, inicio=inicio)
+
+        primeiro = resultados[0]
+        conteudo = str(primeiro.get("raw_content") or "")[:200_000]
+        tier, oficial = classificar(alvo)
+        fonte = ResultadoDeFonte(
+            url=alvo, titulo=str(primeiro.get("title") or ""),
+            conteudo=conteudo, provider=self.provider_key,
+            tier=tier, oficial=oficial,
+            metadata={"operacao": "extract", "profundidade": profundidade})
+
+        return RespostaDeProvider(
+            ok=bool(conteudo.strip()), provider=self.provider_key,
+            operacao="extract", fontes=[fonte] if conteudo.strip() else [],
+            creditos=1.0, credito_estimado=True,
+            motivo=None if conteudo.strip() else INDISPONIVEL,
+            duracao_ms=int((time.monotonic() - inicio) * 1000))
+
+    async def crawl(self, url: str, *, maximo_de_paginas: int = 20,
+                    profundidade_max: int = 2, **_: Any) -> RespostaDeProvider:
+        """Percorre várias páginas do MESMO site. §13.1.
+
+        Governado por construção, e não por bom senso de quem chama:
+
+        * teto de páginas com limite absoluto — `TETO_DE_CRAWL`;
+        * profundidade limitada;
+        * o domínio do endereço inicial é a fronteira: crawl que sai do site
+          pedido vira varredura da internet, e ninguém orçou isso.
+
+        Não entra em rota automática. É para auditoria de site, mapeamento e
+        monitor homologado — trabalhos em que alguém pediu várias páginas.
+        """
+        import asyncio
+
+        if not self.disponivel():
+            return _falha(self.provider_key, "crawl", SEM_CHAVE)
+
+        alvo = normalizar(url)
+        if not alvo:
+            return _falha(self.provider_key, "crawl", INDISPONIVEL)
+
+        limite = max(1, min(int(maximo_de_paginas), TETO_DE_CRAWL))
+        inicio = time.monotonic()
+
+        def _percorrer() -> dict:
+            return self._obter_cliente().crawl(
+                url=alvo, max_depth=max(1, min(int(profundidade_max), 3)),
+                limit=limite) or {}
+
+        try:
+            bruto = await asyncio.to_thread(_percorrer)
+        except Exception as exc:  # noqa: BLE001
+            texto = str(exc).lower()
+            if "402" in texto or "credit" in texto or "quota" in texto:
+                return _falha(self.provider_key, "crawl", SEM_CREDITO, inicio=inicio)
+            logger.warning("[tavily] crawl falhou: %s", type(exc).__name__)
+            return _falha(self.provider_key, "crawl", INDISPONIVEL, inicio=inicio)
+
+        raiz = dominio_raiz(alvo)
+        fontes: list[ResultadoDeFonte] = []
+        for r in (bruto.get("results") or [])[:limite]:
+            pagina = normalizar(str(r.get("url") or ""))
+            if not pagina or dominio_raiz(pagina) != raiz:
+                continue  # saiu do site pedido
+            tier, oficial = classificar(pagina)
+            fontes.append(ResultadoDeFonte(
+                url=pagina, titulo=str(r.get("title") or ""),
+                conteudo=str(r.get("raw_content") or "")[:100_000],
+                provider=self.provider_key, tier=tier, oficial=oficial,
+                metadata={"operacao": "crawl"}))
+
+        return RespostaDeProvider(
+            ok=bool(fontes), provider=self.provider_key, operacao="crawl",
+            fontes=fontes, creditos=float(len(fontes) or 1),
+            credito_estimado=True,
+            motivo=None if fontes else INDISPONIVEL,
+            duracao_ms=int((time.monotonic() - inicio) * 1000))
+
+
+# Teto absoluto de páginas por crawl. Existe como constante, e não como
+# argumento padrão, porque argumento padrão é sugestão: quem chama sobrescreve.
+# Um crawl sem teto num site grande é uma conta que ninguém previu.
+TETO_DE_CRAWL = 50
 
 
 # ===========================================================================

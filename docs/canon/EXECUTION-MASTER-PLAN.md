@@ -597,3 +597,61 @@ nenhum canal de entrega próprio.
 páginas órfãs do Admin (`ORFAS_ANTERIORES_A_SPEC059`, cobradas pelo caso NAV-01
 do gate) e o CA-014 — toda tela do Admin precisa responder por N corretoras,
 não por uma.
+
+---
+
+# BLOCO 0 DA SPEC-061 — CROSS-SPEC PRODUCTION PROOF GATE (27/07/2026)
+
+Relatório: [CROSS-SPEC-PRODUCTION-PROOF-054-060-2026-07-27](reports/CROSS-SPEC-PRODUCTION-PROOF-054-060-2026-07-27.md)
+
+**Gate 30/30 verde · `tsc` limpo · Security Advisor ERROR 0, WARN 0.**
+
+## O que a produção desmentiu
+
+O produto trabalhava **sem deixar rastro**: 43 Work Runs concluídos, e
+`work_attempts` / `tool_invocations` em zero. Duas causas, as duas defeito
+(CA-020):
+
+1. `work_attempts` não tinha writer nenhum, apesar da docstring prometer;
+2. `tool_invocations` tinha writer no Gateway e **ninguém o chamava**.
+
+`usage_events = 0` e `artifacts = 0` NÃO eram defeito: os 43 runs são workflows
+internos de inteligência, que não chamam provider pago nem pedem peça.
+
+## Corrigido
+
+| # | O quê |
+|---|---|
+| CA-020 | tentativa de etapa + invocação de ferramenta passam a ser gravadas |
+| CA-021 | `v_gateway_cutover_progresso` era SECURITY DEFINER com grant a `anon` |
+| CA-022 | `tavily_extract` entra entre a leitura direta e o Firecrawl |
+| CA-023 | 4 índices dos read models da 061 |
+
+## Migrations aplicadas
+
+`20260727_03_seguranca_view_cutover.sql` · `20260727_04_indices_read_models_061.sql`
+
+## Baseline do Admin para a SPEC-061
+
+| Métrica | Valor |
+|---|---|
+| Páginas em `app/admin/` (não dinâmicas) | 39 |
+| Com link no menu | 24 |
+| Órfãs | 9 (cobradas por `NAV-01`, lista impedida de crescer) |
+| Rotas em `app/api/admin/` | 114 |
+| `localStorage` no Admin | 2 arquivos, ambos de autenticação |
+
+**114 rotas para 39 telas** é a evidência quantitativa do "Admin confuso".
+
+## Pendente de ação do Founder
+
+1. **Rotacionar as chaves expostas** do Tavily e do Google Places — ação física,
+   com o roteiro exato na §9.1 do relatório. Nenhuma delas está no Git.
+2. Após o deploy deste commit, uma conversa real em Amandus que use ferramenta,
+   e conferir `tool_invocations` e `work_attempts` acima de zero.
+3. Decidir a reclassificação do **D18**: com Tavily configurado, Firecrawl vira
+   provider opcional/premium em vez de bloqueio.
+
+## Próxima etapa
+
+**SPEC-061 — Control Plane**, sobre objetos que agora existem e são confiáveis.

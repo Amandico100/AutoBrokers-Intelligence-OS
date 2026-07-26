@@ -101,6 +101,18 @@ NOME_PARA_CHAVE = {
     "subagent": "delegation.subagent",
     "gerar_relatorio": "artifacts.generate_report",
     "avaliar_automacao": "factory.evaluate_request",
+    # SPEC-060. Sem estas linhas, o cutover leria `pesquisar_na_web` como uma
+    # chave que o Registry não conhece e a marcaria como "só no legado" — o
+    # diff acusaria divergência onde não há, e a métrica que decide virar a
+    # chave do Gateway ficaria errada para baixo.
+    "pesquisar_na_web": "research.search_web",
+    "monitorar_fonte": "research.create_monitor",
+    "analisar_site": "research.site_audit",
+    # SPEC-059.
+    "briefing_da_corretora": "intelligence.briefing",
+    "prioridades_da_corretora": "intelligence.findings",
+    "responder_recomendacao": "intelligence.respond",
+    "preferencias_de_briefing": "intelligence.preferences",
 }
 
 

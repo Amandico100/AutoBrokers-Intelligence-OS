@@ -104,6 +104,10 @@ Executor dentro da SPEC | decisão D-nn do Founder | aguardando decisão.
 | CA-017 | "O número está errado" é informação sobre o detector, e ninguém via | 060 | ESSENCIAL | EXECUTADA | 27/07/2026 |
 | CA-018 | Seis peças de pesquisa, porque o dossiê não serve para tudo | 060 | VALIOSA | EXECUTADA | 27/07/2026 |
 | CA-019 | O Auxiliar Radar não podia ser um card que não faz nada | 060 | ESSENCIAL | EXECUTADA | 27/07/2026 |
+| CA-020 | O produto trabalhava sem deixar rastro | Bloco 0 da 061 | BLOCKER | EXECUTADA | 27/07/2026 |
+| CA-021 | A view do cutover era lida por qualquer visitante | Bloco 0 da 061 | BLOCKER | EXECUTADA | 27/07/2026 |
+| CA-022 | Firecrawl era o único degrau acima da leitura direta | Bloco 0 da 061 | ESSENCIAL | EXECUTADA (D18: proposta) | 27/07/2026 |
+| CA-023 | Quatro índices para o Cockpit que ainda não existe | Bloco 0 da 061 | VALIOSA | EXECUTADA | 27/07/2026 |
 
 > **Sobre CA-013 e CA-014.** Nasceram como CA-010 e CA-011, números que já
 > pertenciam a registros da SPEC-059 citados no código e no relatório daquela
@@ -902,3 +906,206 @@ O Auxiliar Ã© o **nome** que a corretora reconhece para esse conjunto.
 `compor_semanal` nÃ£o gera Artifact quando nada mudou. Um radar que entrega
 documento vazio toda semana treina o corretor a nÃ£o abrir o prÃ³ximo â€” e o
 prÃ³ximo pode ser o que importava.
+
+---
+
+## CA-020 â€” O produto trabalhava sem deixar rastro
+
+**Data:** 27/07/2026 Â· **Estado:** EXECUTADA Â· **SPEC:** Bloco 0 da 061 (Â§8, Â§9)
+**Classe:** BLOCKER Â· **Origem:** Executor
+
+### O problema
+
+Com 43 Work Runs concluÃ­dos, 104 etapas e 423 eventos em produÃ§Ã£o:
+
+```text
+work_attempts    = 0
+tool_invocations = 0
+```
+
+Duas causas diferentes, as duas defeito:
+
+1. **`work_attempts` nÃ£o tinha writer nenhum.** A docstring de `executar_passo`
+   prometia "registrando inÃ­cio, fim, **tentativa** e progresso" e a tentativa
+   nunca era gravada.
+2. **`tool_invocations` tinha writer e ninguÃ©m o chamava.**
+   `ToolGateway.registrar_invocacao()` e `finalizar_invocacao()` estavam
+   escritos, sem um Ãºnico chamador no repositÃ³rio.
+
+### ConsequÃªncia de nÃ£o fazer
+
+`work_steps` guarda o **estado final**. Sem a tentativa, uma etapa que sÃ³ passou
+na quarta vez Ã© indistinguÃ­vel de uma que passou de primeira â€” e nÃ£o hÃ¡ como
+diagnosticar trabalho lento.
+
+Sem a invocaÃ§Ã£o, o corretor diz "ele nÃ£o conseguiu consultar a apÃ³lice" e nÃ£o hÃ¡
+como saber se a ferramenta falhou, se foi negada por capability ou se o modelo
+nunca a chamou. O Gateway decidia *quais* ferramentas o agente recebia e depois
+perdia a chamada de vista.
+
+E o Cockpit da SPEC-061 governa exatamente esses objetos: construÃ­do hoje,
+mostraria "0 tentativas, 0 chamadas" e o operador concluiria, errado, que o
+sistema nÃ£o trabalha.
+
+### MudanÃ§a
+
+- `services/work/workflows.py`: `_abrir_tentativa` / `_fechar_tentativa` /
+  `_localizar_step`. NÃºmero vem de quantas tentativas jÃ¡ existem no banco â€” nÃ£o
+  de contador em memÃ³ria, porque o worker pode morrer e outro assumir.
+- `services/skills/invocation_recorder.py` (novo): amarra a execuÃ§Ã£o aos
+  mÃ©todos que **jÃ¡ existiam** no Gateway. NÃ£o Ã© um segundo Gateway.
+- `agents/nodes.py`: o `tool_node` executa dentro de um `with` de registro.
+
+**Registrar no `tool_node`, e nÃ£o dentro de cada ferramenta, Ã© o que impede que
+a prÃ³xima ferramenta nasÃ§a sem auditoria:** quem esquecer de instrumentar
+continua registrado, porque o ponto de execuÃ§Ã£o Ã© um sÃ³.
+
+TrÃªs decisÃµes que valem mais que o cÃ³digo:
+
+- **falhar ao registrar nunca derruba a ferramenta** â€” contabilidade quebrada Ã©
+  ruim, trabalho do corretor perdido Ã© pior;
+- **a invocaÃ§Ã£o que abre sempre fecha** â€” sair sem confirmar fecha como falha,
+  porque "running" eterno polui qualquer contagem de trabalho em andamento;
+- **a mensagem de erro Ã© redigida antes de ir ao banco** â€” exceÃ§Ã£o de provider
+  carrega URL com query string, e query string carrega chave.
+
+### O que NÃƒO era defeito
+
+`usage_events = 0` e `artifacts = 0` estavam **certos**. Os 43 runs sÃ£o todos
+workflows internos de inteligÃªncia, que leem o banco da prÃ³pria corretora e nÃ£o
+chamam provider pago. Sem chave de Tavily e com Firecrawl sem crÃ©dito, zero
+consumo Ã© o nÃºmero verdadeiro.
+
+Tratar as quatro tabelas igual teria produzido correÃ§Ã£o onde nÃ£o havia problema
+â€” e nenhuma onde havia.
+
+### AutorizaÃ§Ã£o
+
+Executor, dentro do Bloco 0 autorizado pelo Founder. Gate `AUD-01`.
+
+---
+
+## CA-021 â€” A view do cutover era lida por qualquer visitante
+
+**Data:** 27/07/2026 Â· **Estado:** EXECUTADA Â· **SPEC:** Bloco 0 da 061 Â§7
+**Classe:** BLOCKER Â· **Origem:** Security Advisor + Founder
+
+### O problema
+
+`public.v_gateway_cutover_progresso` era `SECURITY DEFINER` e concedia
+`SELECT, INSERT, UPDATE, DELETE, TRUNCATE` a **`anon` e `authenticated`**.
+
+A tabela base `tool_gateway_shadow_diffs` tem RLS ligada e zero policy â€” ela
+barrava corretamente esses papÃ©is. A view, por executar com os poderes do dono,
+**contornava exatamente essa barreira**.
+
+### ConsequÃªncia de nÃ£o fazer
+
+Quem tivesse a chave pÃºblica do projeto â€” que por definiÃ§Ã£o vive no navegador â€”
+lia telemetria de plataforma: quantas decisÃµes o Gateway toma por dia, em
+quantas ele diverge do caminho antigo, quantas dÃ£o erro.
+
+NÃ£o Ã© dado de segurado. Ã‰ a resposta para "o AutoBrokers estÃ¡ com quantos por
+cento de divergÃªncia hoje?" â€” que nÃ£o Ã© pergunta de visitante anÃ´nimo.
+
+### MudanÃ§a
+
+`20260727_03`: `security_invoker = on`, `revoke` de `anon`, `authenticated` e
+`public`, `grant select` apenas a `service_role`.
+
+**Por que `security_invoker` e nÃ£o sÃ³ `revoke`:** o `revoke` sozinho resolve
+hoje, mas a view continuaria SECURITY DEFINER e o prÃ³ximo `grant` distraÃ­do â€” ou
+o `GRANT ALL ... TO anon` que o Supabase aplica por padrÃ£o â€” reabriria o buraco
+em silÃªncio. Com `security_invoker`, a RLS da tabela base volta a valer e a
+defesa deixa de depender de alguÃ©m lembrar. Passa a ser estrutural.
+
+SaÃ­da real do Advisor depois: **ERROR 0, WARN 0**, 97 INFO â€” que sÃ£o o deny-all
+deliberado de CLAUDE.md Â§7, nÃ£o pendÃªncia.
+
+### AutorizaÃ§Ã£o
+
+Executor, dentro do Bloco 0.
+
+---
+
+## CA-022 â€” Firecrawl era o Ãºnico degrau acima da leitura direta
+
+**Data:** 27/07/2026 Â· **Estado:** EXECUTADA (reclassificaÃ§Ã£o do D18: **proposta**)
+**SPEC:** Bloco 0 da 061 Â§13, Â§15, Â§16 Â· **Classe:** ESSENCIAL Â· **Origem:** Founder
+
+### O problema
+
+A hierarquia de leitura era `direct_fetch â†’ firecrawl`: o mais barato e, em
+seguida, **o mais caro**. Nada no meio. Uma pÃ¡gina que o leitor direto nÃ£o
+resolvia â€” porque monta conteÃºdo por JavaScript, ou porque o HTML vem sujo de
+menu e rodapÃ© â€” caÃ­a direto no provider premium.
+
+Pior: `TavilyProvider.operacoes` **declarava** `("search", "extract")` e o
+mÃ©todo `extract` **nÃ£o existia**. A capacidade estava anunciada e ausente.
+
+### MudanÃ§a
+
+- `TavilyProvider.extract` â€” lÃª UMA pÃ¡gina jÃ¡ escolhida, devolve texto limpo.
+  Descobrir nÃ£o Ã© ler: `search` acha o endereÃ§o, `extract` lÃª o que estÃ¡ nele.
+  Usar `search` para obter conteÃºdo devolve o resumo do buscador, que nÃ£o serve
+  para citar no nÃ­vel da afirmaÃ§Ã£o.
+- `TavilyProvider.crawl` â€” vÃ¡rias pÃ¡ginas do mesmo site, com **teto absoluto**
+  (`TETO_DE_CRAWL = 50`, constante e nÃ£o argumento padrÃ£o, porque argumento
+  padrÃ£o Ã© sugestÃ£o), profundidade limitada e fronteira de domÃ­nio. Crawl que
+  sai do site pedido vira varredura da internet, e ninguÃ©m orÃ§ou isso.
+- Hierarquia: `direct_fetch â†’ tavily_extract â†’ firecrawl`.
+- PolÃ­tica de roteamento escrita no `provider_router`, incluindo a regra que ela
+  existe para impedir: **escolher provider sÃ³ porque a chave estÃ¡ configurada**.
+
+`Research` (pesquisa profunda do Tavily) **nÃ£o** entra em rota automÃ¡tica: Ã©
+minutos e crÃ©ditos por pergunta, e uma pergunta de rotina que caia nele
+transforma custo previsÃ­vel em conta surpresa.
+
+### Sobre o D18
+
+Com Tavily configurado, **Firecrawl deixa de ser bloqueio** e passa a ser
+provider opcional/premium. O suporte nÃ£o foi removido, o status continua
+explÃ­cito (`no_credit` â‰  erro genÃ©rico) e a fila continua retomÃ¡vel.
+
+Nenhum plano foi comprado. A reclassificaÃ§Ã£o formal em `FOUNDER-DECISIONS.md`
+Ã© decisÃ£o do Founder.
+
+### AutorizaÃ§Ã£o
+
+Executor, dentro do Bloco 0. ReclassificaÃ§Ã£o do D18 fica como **proposta**.
+
+---
+
+## CA-023 â€” Quatro Ã­ndices para o Cockpit que ainda nÃ£o existe
+
+**Data:** 27/07/2026 Â· **Estado:** EXECUTADA Â· **SPEC:** Bloco 0 da 061 Â§19
+**Classe:** VALIOSA Â· **Origem:** Executor
+
+### O problema
+
+O levantamento cruzou as consultas previstas pelo Cockpit da SPEC-061 com os
+Ã­ndices existentes. A maioria jÃ¡ existia. Faltavam quatro, todos com a mesma
+forma â€” *filtra por corretora, ordena por tempo decrescente*:
+
+| Ãndice | Consulta que atende |
+|---|---|
+| `ix_work_runs_company_recente` | "Ãºltimos trabalhos desta corretora" |
+| `ix_work_attempts_company_status` | "onde falhou e quantas vezes tentou" |
+| `ix_tool_invocations_company_recente` | "quais ferramentas usou, quais falharam" |
+| `ix_usage_events_company_recente` | "quanto consumiu no perÃ­odo" |
+
+### Honestidade sobre o ganho
+
+**Custo antes/depois nÃ£o Ã© mensurÃ¡vel hoje.** TrÃªs dessas tabelas estÃ£o com zero
+linhas; com tabela vazia o plano usa Seq Scan de qualquer jeito e o nÃºmero seria
+sem significado.
+
+Foram criados **agora** porque com a tabela vazia a criaÃ§Ã£o Ã© desprezÃ­vel.
+Depois, com volume e o Admin em uso, exigiria `CONCURRENTLY` e uma janela.
+
+Nenhum outro Ã­ndice foi criado. Â§19 pede o oposto de "criar Ã­ndice atÃ© o advisor
+calar".
+
+### AutorizaÃ§Ã£o
+
+Executor, dentro do Bloco 0.

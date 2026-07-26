@@ -450,6 +450,11 @@ CASOS: list[Caso] = [
     # usuário acertar por sorte. As duas já aconteceram — o teste impede a volta.
     Caso("NAV-01", "identidade", "Toda tela tem link no menu e nenhum rótulo é ambíguo",
          "SPEC-059/060", lambda: _roda_script("test_navegacao_sem_pagina_orfa.py")),
+    # Trabalho sem rastro é trabalho que ninguém consegue diagnosticar. O Bloco
+    # 0 achou `work_attempts` sem writer nenhum e `tool_invocations` com writer
+    # que ninguém chamava — com 43 Work Runs concluídos em produção.
+    Caso("AUD-01", "execucao", "Toda etapa e toda ferramenta deixam rastro auditável",
+         "SPEC-055/056", lambda: _roda_script("test_bloco0_auditoria_execucao.py")),
     Caso("IDN-01", "identidade", "Corretora A não enxerga dados da corretora B",
          "SPEC-048", lambda: _roda_script("test_spec048_isolamento_corretoras.py")),
     Caso("CAP-01", "capacidades", "Agente só recebe os poderes do seu papel",

@@ -18,6 +18,8 @@ Auxiliares e Portais sem criar um segundo executor.
 from __future__ import annotations
 
 import logging
+import re
+import time
 from typing import Any, Awaitable, Callable, Optional
 
 logger = logging.getLogger(__name__)
@@ -105,6 +107,7 @@ async def executar_passo(
         raise asyncio_cancelado()
 
     idem = f"{company_id}:{run_id}:{step_key}"
+    step_id: Optional[str] = None
     try:
         res = db.table("work_steps").insert({
             "work_run_id": run_id, "company_id": company_id, "step_key": step_key,
@@ -115,26 +118,136 @@ async def executar_passo(
         }).execute()
         step_id = (res.data or [{}])[0].get("id")
     except Exception as exc:  # noqa: BLE001
-        # Etapa já existe: retomada de um run que morreu no meio.
+        # Etapa já existe: retomada de um run que morreu no meio. O `idem`
+        # é único por (empresa, run, etapa), então o insert bate na constraint
+        # e a etapa antiga é reencontrada — é assim que a retomada não duplica.
         logger.info("[Workflows] etapa %s já registrada (retomada): %s", step_key, type(exc).__name__)
-        step_id = None
+        step_id = _localizar_step(db, run_id, company_id, step_key)
 
-    runs.evento(company_id, run_id, "step.started", nome, step_id=step_id)
+    # A TENTATIVA, que faltava. Sem ela, uma etapa que só passou na quarta vez
+    # é indistinguível de uma que passou de primeira: `work_steps` guarda o
+    # ESTADO FINAL, não a história. Quem perde com isso é quem precisa
+    # diagnosticar — o Admin da SPEC-061 e o Founder olhando um trabalho lento.
+    attempt_id, numero = _abrir_tentativa(db, company_id, run_id, step_id)
+
+    runs.evento(company_id, run_id, "step.started",
+                nome if numero <= 1 else f"{nome} (tentativa {numero})",
+                step_id=step_id)
     runs.marcar_progresso(run_id, company_id, step_key, min(95, ordinal * 20))
 
+    inicio = time.monotonic()
     try:
         resultado = await fn()
     except Exception as exc:  # noqa: BLE001
         if step_id:
             _atualizar_step(db, step_id, {"status": "failed", "finished_at": _agora_iso()})
+        _fechar_tentativa(db, attempt_id, status="failed", inicio=inicio, erro=exc)
         runs.evento(company_id, run_id, "step.failed", f"{nome}: não foi possível concluir",
                     step_id=step_id, severity="error")
         raise
 
     if step_id:
         _atualizar_step(db, step_id, {"status": "succeeded", "finished_at": _agora_iso()})
+    _fechar_tentativa(db, attempt_id, status="succeeded", inicio=inicio)
     runs.evento(company_id, run_id, "step.completed", f"{nome}: concluído", step_id=step_id)
     return resultado
+
+
+def _localizar_step(db: Any, run_id: str, company_id: str,
+                    step_key: str) -> Optional[str]:
+    """Reencontra a etapa de uma retomada. Sem isto, a segunda tentativa
+    ficaria órfã — e a retomada é exatamente quando a tentativa importa."""
+    try:
+        r = (db.table("work_steps").select("id")
+             .eq("work_run_id", run_id).eq("company_id", company_id)
+             .eq("step_key", step_key).limit(1).execute())
+        return (r.data or [{}])[0].get("id")
+    except Exception as exc:  # noqa: BLE001
+        logger.warning("[Workflows] etapa não localizada: %s", type(exc).__name__)
+        return None
+
+
+def _abrir_tentativa(db: Any, company_id: str, run_id: str,
+                     step_id: Optional[str]) -> tuple[Optional[str], int]:
+    """Abre a tentativa da etapa. Devolve `(id, numero)`.
+
+    `work_attempts` é UNIQUE em `(work_step_id, attempt_number)`: o número vem
+    de quantas já existem, e não de um contador em memória — o worker pode
+    morrer e outro assumir, e o número precisa continuar certo mesmo assim.
+
+    Falhar aqui **não** derruba o trabalho: contabilidade quebrada é ruim,
+    trabalho do corretor perdido é pior.
+    """
+    if not step_id:
+        return None, 1
+    numero = 1
+    try:
+        anteriores = (db.table("work_attempts").select("attempt_number")
+                      .eq("work_step_id", step_id)
+                      .order("attempt_number", desc=True).limit(1).execute())
+        if anteriores.data:
+            numero = int(anteriores.data[0].get("attempt_number") or 0) + 1
+    except Exception as exc:  # noqa: BLE001
+        logger.warning("[Workflows] tentativas anteriores: %s", type(exc).__name__)
+
+    try:
+        r = db.table("work_attempts").insert({
+            "company_id": company_id, "work_run_id": run_id,
+            "work_step_id": step_id, "attempt_number": numero,
+            "worker_id": _worker_id(), "status": "running",
+            "started_at": _agora_iso(),
+        }).execute()
+        return (r.data or [{}])[0].get("id"), numero
+    except Exception as exc:  # noqa: BLE001
+        logger.warning("[Workflows] tentativa não aberta: %s", type(exc).__name__)
+        return None, numero
+
+
+def _fechar_tentativa(db: Any, attempt_id: Optional[str], *, status: str,
+                      inicio: float, erro: Optional[BaseException] = None) -> None:
+    """Fecha a tentativa com duração e, quando houve, a classe do erro.
+
+    A mensagem do erro é **redigida**: exceção de provider carrega URL com
+    query string, e query string carrega chave. `error_message_redacted` existe
+    com esse nome porque o schema já sabia disso.
+    """
+    if not attempt_id:
+        return
+    campos: dict[str, Any] = {
+        "status": status, "finished_at": _agora_iso(),
+        "metrics": {"duracao_ms": int((time.monotonic() - inicio) * 1000)},
+    }
+    if erro is not None:
+        campos["error_class"] = type(erro).__name__
+        campos["error_message_redacted"] = _redigir(str(erro))
+        # Erro de programação não é retentável: repetir um `TypeError` produz
+        # o mesmo `TypeError` e queima a fila.
+        campos["retryable"] = type(erro).__name__ not in (
+            "TypeError", "ValueError", "KeyError", "AttributeError",
+            "NotImplementedError", "AssertionError")
+    try:
+        db.table("work_attempts").update(campos).eq("id", attempt_id).execute()
+    except Exception as exc:  # noqa: BLE001
+        logger.warning("[Workflows] tentativa não fechada: %s", type(exc).__name__)
+
+
+_SEGREDO = re.compile(
+    r"(?i)\b(api[_-]?key|token|secret|password|authorization|bearer|"
+    r"key)\b\s*[=:]\s*\S+|tvly-\S+|AIza\S+|fc-\S+|sk-\S+")
+
+
+def _redigir(mensagem: str) -> str:
+    """Nunca deixa segredo chegar ao banco por dentro de uma exceção."""
+    return _SEGREDO.sub("[redigido]", (mensagem or ""))[:1000]
+
+
+def _worker_id() -> str:
+    try:
+        from .runs import worker_id
+
+        return worker_id()
+    except Exception:  # noqa: BLE001
+        return "desconhecido"
 
 
 def _atualizar_step(db: Any, step_id: str, campos: dict) -> None:

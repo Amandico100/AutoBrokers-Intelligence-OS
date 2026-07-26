@@ -30,11 +30,49 @@ from .urls import dominio, normalizar
 logger = logging.getLogger(__name__)
 
 # §14.1 — a hierarquia de aquisição, do mais confiável ao mais caro.
-HIERARQUIA_DE_LEITURA = ("direct_fetch", "firecrawl")
+#
+# `tavily_extract` entra ENTRE os dois a partir do Bloco 0 da SPEC-061: ele
+# resolve a maior parte do que o leitor direto não resolve (página que monta
+# conteúdo por JavaScript, HTML sujo de menu e rodapé) e é mais barato que o
+# Firecrawl. O Firecrawl deixa de ser o único degrau acima do leitor direto e
+# passa a ser o **último recurso**, para o site que nem o Tavily lê.
+HIERARQUIA_DE_LEITURA = ("direct_fetch", "tavily_extract", "firecrawl")
 
-# Descoberta: quem sabe achar. Firecrawl traz conteúdo junto (economiza um
-# passo); Tavily é mais barato e continua vivo sem crédito de Firecrawl.
+# Descoberta: quem sabe achar. Tavily primeiro — mais barato e vivo sem crédito
+# de Firecrawl. O Firecrawl traz conteúdo junto e economiza um passo, mas
+# pagar por isso quando o Tavily já achou a fonte é gastar duas vezes.
 HIERARQUIA_DE_BUSCA = ("tavily", "firecrawl")
+
+# ---------------------------------------------------------------------------
+# Política de roteamento — Bloco 0 da SPEC-061 §16
+# ---------------------------------------------------------------------------
+#
+# A regra que este bloco existe para impedir: **escolher provider só porque a
+# chave está configurada**. Chave configurada diz que o caminho está aberto,
+# não que ele é o certo para este trabalho.
+#
+#   URL oficial conhecida e simples      -> direct_fetch
+#   descoberta aberta                    -> tavily (search)
+#   URL selecionada, leitura insuficiente-> tavily (extract)
+#   site com várias páginas              -> tavily (crawl), com teto declarado
+#   site que nem o Tavily lê             -> firecrawl (último recurso)
+#   descoberta local de empresas         -> places
+#
+# `deep` (Tavily Research) NÃO entra em rota automática: ele é minutos e
+# créditos por pergunta, e uma pergunta de rotina que caia nele transforma
+# custo previsível em conta surpresa. Só entra quando a Skill pede modo
+# profundo e o Work Run tem orçamento — ver `planner.resolver_modo`.
+CUSTO_RELATIVO = {
+    # Ordem de grandeza, para decidir empate. Não é preço: preço vem do
+    # provider, e inventar número aqui seria inventar custo (§16).
+    "direct_fetch": 0,
+    "tavily": 1,
+    "tavily_extract": 1,
+    "places": 2,
+    "tavily_crawl": 3,
+    "firecrawl": 4,
+    "tavily_research": 5,
+}
 
 
 @dataclass
@@ -156,6 +194,19 @@ class ProviderRouter:
     # Aquisição
     # ------------------------------------------------------------------
 
+    def _resolver_leitor(self, chave: str) -> tuple[Optional[Any], Optional[str]]:
+        """`(provider, nome_do_metodo)` para um degrau da hierarquia.
+
+        Um provider pode ocupar mais de um degrau com operações diferentes de
+        custo diferente: `tavily_extract` é o Tavily lendo uma página, e é
+        MUITO mais barato que o Firecrawl. Sem esta indireção, a hierarquia só
+        poderia falar de providers inteiros, e o degrau intermediário — o que
+        evita ir do leitor direto direto para o mais caro — não existiria.
+        """
+        if chave == "tavily_extract":
+            return self.providers.get("tavily"), "extract"
+        return self.providers.get(chave), None
+
     async def ler(self, url: str, *, exigir_conteudo: bool = True) -> Aquisicao:
         """Lê uma fonte pela hierarquia de §14.1, sanitizando o resultado.
 
@@ -181,7 +232,7 @@ class ProviderRouter:
         sem_credito_em: list[str] = []
 
         for chave in HIERARQUIA_DE_LEITURA:
-            provider = self.providers.get(chave)
+            provider, nome_do_metodo = self._resolver_leitor(chave)
             if provider is None:
                 continue
             try:
@@ -192,7 +243,9 @@ class ProviderRouter:
             except Exception:  # noqa: BLE001
                 continue
 
-            metodo = getattr(provider, "fetch", None) or getattr(provider, "scrape", None)
+            metodo = getattr(provider, nome_do_metodo, None) if nome_do_metodo else None
+            if metodo is None:
+                metodo = getattr(provider, "fetch", None) or getattr(provider, "scrape", None)
             if metodo is None:
                 continue
 
