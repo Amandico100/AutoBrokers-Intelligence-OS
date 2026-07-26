@@ -1,7 +1,7 @@
 ---
 > **Status:** relatório de execução — SPEC-061 Portal Admin Control Plane
 > **Branch:** `feat/spec061-control-plane-full`
-> **Commit inicial:** `affd55f` · **Commit final:** `7639b3e` · **Data:** 27/07/2026
+> **Commit inicial:** `affd55f` · **Commit final:** `3b75e09` · **Data:** 27/07/2026
 ---
 
 # SPEC-061 — Relatório de execução
@@ -24,7 +24,7 @@ Agora:  cada papel pode só o que deve, toda escrita passa por um portão,
 
 | Gate | Resultado |
 |---|---|
-| `broker_outcome_regression_pack.py` | **33/33 · GATE VERDE** (era 30/30 ao fim do Bloco 0) |
+| `broker_outcome_regression_pack.py` | **34/34 · GATE VERDE** (era 30/30 ao fim do Bloco 0) |
 | `npx tsc --noEmit` | **exit 0** |
 | Security Advisor | **ERROR 0 · WARN 0** |
 | VERIFY da migration do Control Plane | **9/9 garantias recusaram dado inválido** |
@@ -38,6 +38,7 @@ Agora:  cada papel pode só o que deve, toda escrita passa por um portão,
 | `RBA-01` | Cada papel do Admin pode só o que deve |
 | `AUD-02` | A trilha diz por quê sem vazar segredo |
 | `INB-01` | A caixa mostra a causa, não o sintoma |
+| `COL-01` | O Admin não lê coluna que não existe |
 
 ---
 
@@ -253,8 +254,8 @@ A SPEC-061 tem 3117 linhas e pede, além do que foi entregue:
 |---|---|
 | Sessões: visão, revogação individual e total, break-glass (§7.3) | A |
 | Step-up authentication de fato ligado às ações P3/P4 (§7.4) | A |
-| Cockpit 360º por corretora (§14) | B |
-| Central de Work Runs e de approvals com ação (§15, §16) | B |
+| Cockpit 360º: read model pronto, tela existente (`/admin/corretoras`) ainda não o adotou | B |
+| Central de approvals com ação (§16) — a de Work Runs ficou pronta | B |
 | Hubs de Skills, Tools, MCPs, Auxiliares, Artifacts, Research, Conhecimento | B |
 | FinOps, billing, MRR (§10.7) | B |
 | Command palette e busca global (§11.3) | B |
@@ -264,6 +265,77 @@ A SPEC-061 tem 3117 linhas e pede, além do que foi entregue:
 **Não afirmo que a SPEC-061 está concluída.** O que está pronto é a fundação
 sobre a qual o resto se apoia — autoridade, portão, trilha e a primeira tela — e
 ela está verde e verificada.
+
+---
+
+## 7.1 O que o primeiro deploy real revelou
+
+O Founder implantou API, web e worker, abriu `/admin/inbox` e `/admin/governanca`
+e leu **"Seu papel não inclui ver esta caixa"** — sendo ele o único
+administrador da plataforma. Dois defeitos meus:
+
+### Defeito 1 — nome de papel que eu supus
+
+`PAPEL_LEGADO` nasceu com a chave `"master"`. Esse nome **não existe em lugar
+nenhum do código**: o valor gravado na sessão é `master_admin`
+(`lib/iron-session.ts`, `AdminSessionData.role`).
+
+O teste que eu tinha escrito conferia que o mapeamento *aponta* para um papel
+existente. Não conferia que a **chave** bate com o que a sessão grava. Agora
+`test_spec061_rbac.py` **lê o TypeScript** e cobra que todo papel de plataforma
+esteja no mapa — e que `company_admin` **não** esteja, porque §8.2 proíbe
+convertê-lo em papel global.
+
+### Defeito 2 — eu fiz o Admin depender do backend estar no ar
+
+Até esta SPEC, o master de plataforma via tudo com **zero** chamadas a outro
+serviço. Depois dela, uma variável de ambiente faltando no serviço web — ou o
+backend fora do ar por trinta segundos — trancava o dono para fora.
+
+Isso é regressão de disponibilidade que eu introduzi, não endurecimento.
+
+A rede de segurança: se o backend não responde **e** a sessão é de master de
+plataforma (`isPlatformMaster`, que lê o cookie iron-session assinado no
+servidor e já é a autoridade de hoje em `requireMasterAdmin`), o acesso é
+mantido. Não é afrouxar autorização — é recusar que a permanência de um acesso
+**existente** dependa de um segundo serviço responder. Para os outros papéis
+segue fail-closed.
+
+A tela **avisa** quando está nesse modo, e é isso que distingue as duas causas:
+aviso âmbar = backend inacessível; sem aviso = era o nome do papel.
+
+### Defeito 3 — colunas que eu escrevi de memória
+
+- a Inbox lia `approval_requests.action_key`; a coluna é `action_type`;
+- o Cockpit lia `company_integrations`; a tabela é `integrations`.
+
+O leitor tolerante engolia os dois: **aprovação nunca apareceria na caixa**, sem
+nada indicando por quê. Tolerância que não derruba a tela também não avisa — daí
+o caso `COL-01`, que compara cada consulta com o schema real.
+
+### Bootstrap
+
+`amandico10@hotmail.com` (`e0e5a140…`, único admin) recebeu `platform_owner` sem
+prazo. `/admin/governanca` ganhou conceder, retirar e o motivo obrigatório de
+cada um — sem isso a tela mostrava a governança e não deixava governar.
+
+---
+
+## 7.2 Central de Trabalhos e Cockpit
+
+`/admin/trabalhos` — agregado no topo, lista embaixo. O detalhe mostra etapas
+**e tentativas**: sem elas a tela diria "falhou" e ninguém saberia se foi na
+primeira vez ou na quarta.
+
+`POST /api/work/runs/{id}/retry` não existia. Só reprocessa o que já parou, e
+libera a lease do worker anterior — senão o run voltaria para a fila e ninguém
+conseguiria assumi-lo.
+
+O read model do Cockpit (§14) está pronto e exposto em
+`GET /api/admin/control-plane/cockpit/{company_id}`. **Nenhuma tela nova foi
+criada para ele**: já existe `/admin/corretoras` (SPEC-036, "Cockpit visão
+360º"). Criar uma segunda seria a duplicação que CLAUDE.md §5 proíbe — a tela
+existente pode adotar o read model quando for reformada.
 
 ---
 

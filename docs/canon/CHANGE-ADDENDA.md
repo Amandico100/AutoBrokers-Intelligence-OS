@@ -111,6 +111,8 @@ Executor dentro da SPEC | decisão D-nn do Founder | aguardando decisão.
 | CA-024 | A proteção do Admin acontecia no navegador | 061 A | BLOCKER | EXECUTADA | 27/07/2026 |
 | CA-025 | Minha baseline de páginas órfãs estava errada | 061 C | ESSENCIAL | EXECUTADA | 27/07/2026 |
 | CA-026 | A Inbox precisa mostrar a causa, não o sintoma | 061 B | ESSENCIAL | EXECUTADA | 27/07/2026 |
+| CA-027 | Eu tranquei o dono para fora do próprio Admin | 061 A | BLOCKER | EXECUTADA | 27/07/2026 |
+| CA-028 | Leitor tolerante engolia coluna inexistente | 061 B | BLOCKER | EXECUTADA | 27/07/2026 |
 
 > **Sobre CA-013 e CA-014.** Nasceram como CA-010 e CA-011, números que já
 > pertenciam a registros da SPEC-059 citados no código e no relatório daquela
@@ -1251,3 +1253,101 @@ origem. A aprovaÃ§Ã£o continua pendente; outra pessoa continua vendo.
 ### AutorizaÃ§Ã£o
 
 Executor, dentro da SPEC-061 Bloco B. Gate `INB-01`.
+
+---
+
+## CA-027 — Eu tranquei o dono para fora do próprio Admin
+
+**Data:** 27/07/2026 · **Estado:** EXECUTADA · **SPEC:** 061 Bloco A
+**Classe:** BLOCKER · **Origem:** Founder (primeiro deploy real)
+
+### O problema
+
+O Founder implantou API, web e worker, abriu `/admin/inbox` e
+`/admin/governanca` e leu **"Seu papel não inclui ver esta caixa"** — sendo ele
+o único administrador da plataforma.
+
+Dois defeitos meus, independentes, com o mesmo sintoma:
+
+1. **Nome de papel que eu supus.** `PAPEL_LEGADO` nasceu com a chave
+   `"master"`. Esse nome não existe em lugar nenhum do código: o valor gravado
+   na sessão é `master_admin` (`lib/iron-session.ts`).
+2. **Eu fiz o Admin depender do backend estar no ar.** Até esta SPEC o master
+   via tudo com zero chamadas a outro serviço. Depois dela, uma variável de
+   ambiente faltando no serviço web trancava o dono para fora.
+
+### O que o teste não pegava
+
+`test_spec061_rbac.py` conferia que o mapeamento **aponta** para um papel
+existente. Não conferia que a **chave** bate com o que a sessão grava — a
+diferença entre "o destino existe" e "a porta abre".
+
+### Mudança
+
+- `PAPEL_LEGADO` passou a conhecer `master_admin`, e o teste agora **lê
+  `lib/iron-session.ts`** e cobra que todo papel de plataforma esteja no mapa —
+  e que `company_admin` **não** esteja, porque §8.2 proíbe convertê-lo.
+- Rede de segurança no BFF: sem resposta do backend, se `isPlatformMaster` (que
+  lê o cookie iron-session assinado no servidor, já autoridade em
+  `requireMasterAdmin`) o acesso é mantido, com `podeTudo`.
+
+**Não é afrouxar autorização.** É recusar que a permanência de um acesso
+**existente** dependa de um segundo serviço responder. Para os outros papéis
+segue fail-closed.
+
+A tela **avisa** quando está nesse modo — e é isso que distingue as duas causas:
+aviso âmbar significa backend inacessível; sem aviso, era o nome do papel.
+
+### Bootstrap
+
+`amandico10@hotmail.com` recebeu `platform_owner` sem prazo.
+`/admin/governanca` ganhou conceder, retirar e motivo obrigatório — sem isso a
+tela mostrava a governança e não deixava governar.
+
+### Autorização
+
+Executor, correção de defeito próprio dentro da SPEC-061.
+
+---
+
+## CA-028 — Um leitor tolerante engolia coluna que não existe
+
+**Data:** 27/07/2026 · **Estado:** EXECUTADA · **SPEC:** 061 Bloco B
+**Classe:** BLOCKER · **Origem:** Executor
+
+### O problema
+
+A Inbox lia `approval_requests.action_key`. A coluna real é `action_type` — eu
+escrevi de memória. O Cockpit lia `company_integrations`, tabela que **não
+existe** (é `integrations`, com `channel_status`).
+
+O leitor tolerante (`_ler`, que devolve `[]` quando a consulta falha) engolia os
+dois. **Aprovação nunca apareceria na caixa**, sem nada na tela indicando por
+quê — e a caixa continuaria dizendo "Nada precisa de você agora", que nesse
+caso é mentira.
+
+### A lição
+
+A tolerância está certa: uma fonte fora do ar não pode zerar a caixa inteira.
+Mas um leitor que não derruba a tela **também não avisa**. Ela precisa de um
+teste do lado de fora, senão vira silêncio.
+
+E o canário anterior não pegou: ele rodou `count(*)`, que não toca as colunas
+do `select`.
+
+### Mudança
+
+`test_spec061_colunas_reais.py` (caso `COL-01`) extrai do código os pares
+`(tabela, colunas)` de cada `.table().select()` **e** de cada
+`_ler("tabela","colunas")` — que é onde o defeito estava — e compara com o
+schema real copiado do banco.
+
+Tabela cujo schema não foi copiado precisa estar declarada em
+`NAO_VERIFICADAS` **com o motivo**. Esquecer não é opção; declarar é.
+
+A cópia do schema vem datada e com a consulta que a regera — um teste que
+compara com uma cópia velha é pior que nenhum, porque dá confiança falsa.
+
+### Autorização
+
+Executor, correção de defeito próprio dentro da SPEC-061.

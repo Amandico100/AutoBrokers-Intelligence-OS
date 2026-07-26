@@ -33,7 +33,7 @@
 | 8 | SPEC-058 — Auxiliary & Routine Factory | `feat/spec058-auxiliary-routine-factory` | NÃO INICIADO | — | — | — |
 | 9 | SPEC-059 — Intelligence Fabric + Memory Fabric | `feat/spec059-briefing-proatividade` | **CONCLUÍDO** — verificado de forma independente, mergeado na `main`; gate 26/26, `tsc` limpo, RLS fail-closed nas 14 tabelas | `e9fedef` | `758bc5b` (com as 2 correções pós-merge de navegação) | [SPEC-059-EXECUTION-REPORT](reports/SPEC-059-EXECUTION-REPORT.md) |
 | 10 | SPEC-060 — Research Intelligence | `feat/spec060-research-intelligence` | **CONCLUÍDO** — gate 29/29, `tsc` limpo, canário com dado real | `92e5cc0` | ver relatório | [SPEC-060-EXECUTION-REPORT](reports/SPEC-060-EXECUTION-REPORT.md) |
-| 11 | SPEC-061 — Control Plane | `feat/spec061-control-plane-full` | **EM EXECUÇÃO** — Bloco A completo, Bloco B parcial (Inbox), Bloco C parcial (navegação zerada). Gate 33/33 | `affd55f` | `7639b3e` | [SPEC-061-EXECUTION-REPORT](reports/SPEC-061-EXECUTION-REPORT.md) |
+| 11 | SPEC-061 — Control Plane | `feat/spec061-control-plane-full` | **EM EXECUÇÃO** — Bloco A completo; Bloco B: Inbox + Central de Trabalhos; Bloco C: navegação zerada. Gate 34/34 | `affd55f` | `3b75e09` | [SPEC-061-EXECUTION-REPORT](reports/SPEC-061-EXECUTION-REPORT.md) |
 | 12 | SPEC-062 — Evals, Billing, Resiliência, Rollout | `feat/spec062-evals-billing-readiness` | NÃO INICIADO | — | — | — |
 | 13 | **Launch Decision** | — | NÃO INICIADO | — | — | — |
 
@@ -701,3 +701,43 @@ páginas, e hoje é zero (CA-025).
 
 Concluir os Blocos B e C da SPEC-061 — cockpits, hubs, comandos e o Visual
 Acceptance Pack. Depois, **SPEC-062** (evals, billing, resiliência, rollout).
+
+---
+
+# ADENDO 27/07/2026 — o primeiro deploy real da SPEC-061
+
+O Founder implantou API, web e worker e **não conseguiu abrir nenhuma tela
+nova**: leu "Seu papel não inclui ver esta caixa", sendo ele o único
+administrador da plataforma.
+
+Três defeitos meus, corrigidos (CA-027, CA-028):
+
+1. `PAPEL_LEGADO` usava a chave `"master"`; o valor real da sessão é
+   `master_admin`. O teste conferia que o destino existe, não que a porta abre.
+2. Eu fiz o Admin depender do backend estar no ar. Rede de segurança: o master
+   de plataforma mantém acesso pelo cookie assinado, e a tela **avisa** quando
+   está nesse modo.
+3. A Inbox lia `approval_requests.action_key` (é `action_type`) e o Cockpit lia
+   `company_integrations` (é `integrations`). O leitor tolerante engolia os
+   dois — aprovação nunca apareceria, e a caixa diria "nada precisa de você".
+
+`amandico10@hotmail.com` recebeu `platform_owner` sem prazo.
+
+**Gate 34/34** — com `COL-01`, que compara cada consulta do Admin com o schema
+real do banco.
+
+## Entregue nesta rodada
+
+- `/admin/inbox` — "O que precisa de mim"
+- `/admin/trabalhos` — Central de Trabalhos, com reprocessar e cancelar pelo
+  Command Gateway
+- `/admin/governanca` — conceder e retirar papel, com motivo registrado
+- `POST /api/work/runs/{id}/retry` — não existia
+
+## Pendente da SPEC-061
+
+Cockpit 360º (read model pronto, a tela `/admin/corretoras` da SPEC-036 ainda
+não o adotou — não foi criada uma segunda tela, o que seria a duplicação que o
+CLAUDE.md §5 proíbe), central de approvals com ação, hubs de Skills/Tools/
+Auxiliares/Artifacts/Conhecimento, FinOps, command palette, sessões e step-up,
+Visual Acceptance Pack e migração das rotas históricas.
