@@ -70,6 +70,19 @@ PREFIXOS_DE_SUBPAGINA = (
     "/admin/connectors/",
 )
 
+# Páginas alcançadas por link DENTRO de outra tela, e não pelo menu.
+#
+# Não é a mesma coisa que subpágina: o endereço não é filho de ninguém. É uma
+# tela que responde a mesma pergunta que outra, num recorte diferente — e dois
+# itens de menu para a mesma pergunta é como um menu vira lista.
+#
+# Cada entrada nomeia DE ONDE se chega. Sem isso, a exceção viraria a desculpa
+# para deixar qualquer tela sem link.
+ALCANCADAS_POR_OUTRA_TELA = {
+    "/admin/prompt-effective":
+        "linkada de /admin/capacidades — é o mesmo diagnóstico, por agente",
+}
+
 # DÍVIDA HERDADA — páginas do Admin que já estavam órfãs antes da SPEC-059.
 #
 # Elas ficam listadas, e não filtradas por uma regra genérica, de propósito:
@@ -271,6 +284,7 @@ def teste_nenhuma_pagina_orfa():
         for rota in paginas(base, prefixo):
             if (rota in ligados or rota in SEM_MENU_POR_DESENHO
                     or rota in SEM_MENU_POR_REDIRECIONAR
+                    or rota in ALCANCADAS_POR_OUTRA_TELA
                     or e_redirecionamento(rota, base, prefixo)):
                 continue
             if rota in ORFAS_ANTERIORES_A_SPEC059:
@@ -288,6 +302,30 @@ def teste_nenhuma_pagina_orfa():
     checar(not ja_resolvidas,
            "a lista de dívida herdada está atualizada",
            f"já têm link e podem sair da lista: {', '.join(ja_resolvidas)}")
+
+    # A exceção de "alcançada por outra tela" precisa ser VERIFICADA, não
+    # confiada: uma exceção que declara um link que não existe é pior que
+    # nenhuma exceção — ela promete alcançabilidade e entrega órfã.
+    for rota, motivo in ALCANCADAS_POR_OUTRA_TELA.items():
+        achou = False
+        for pasta, _, arquivos in os.walk(APP):
+            for arq in arquivos:
+                if not arq.endswith((".tsx", ".ts")):
+                    continue
+                caminho = os.path.join(pasta, arq)
+                # A própria página não conta como link para si mesma.
+                if os.path.dirname(caminho).replace(os.sep, "/").endswith(
+                        rota.replace("/admin", "admin")):
+                    continue
+                try:
+                    if f'"{rota}"' in _ler(caminho) or f"'{rota}'" in _ler(caminho):
+                        achou = True
+                        break
+                except Exception:  # noqa: BLE001
+                    continue
+            if achou:
+                break
+        checar(achou, f"{rota} é realmente linkada de alguma tela", motivo)
 
 
 def teste_paginas_das_specs_recentes_estao_no_menu():

@@ -352,6 +352,156 @@ def _venceu(expira: Optional[str], agora: datetime) -> bool:
         return False
 
 
+class CatalogoDeCapacidades:
+    """§10.4 — Skills, ferramentas e os poderes que as governam.
+
+    A pergunta que esta projeção responde é uma só e é difícil de responder
+    hoje: **"o que o AutoBrokers sabe fazer, e o que autoriza cada coisa?"**
+
+    Ela junta três tabelas que vivem separadas por bom motivo — Skill Registry,
+    Tool Gateway e Capability Registry — porque a resposta útil está no cruzamento.
+    Uma Skill publicada cuja capability está inativa **não funciona**, e hoje
+    isso só se descobre quando o corretor pede e nada acontece.
+    """
+
+    def __init__(self, supabase_client: Any):
+        self.raw = supabase_client
+        self.db = getattr(supabase_client, "client", supabase_client)
+
+    def montar(self) -> dict:
+        capacidades = self._ler("capabilities",
+                                "capability_key, name, category, owner, risk, is_active")
+        tools = self._ler("tool_definitions",
+                          "tool_key, name, category, capability_key, "
+                          "side_effect_class, risk_level, requires_approval, is_active")
+        skills = self._ler("skills",
+                           "skill_key, name, description, category, owner, "
+                           "visibility, business_domain, is_active")
+
+        ativas = {c["capability_key"] for c in capacidades if c.get("is_active")}
+        conhecidas = {c["capability_key"] for c in capacidades}
+
+        # O cruzamento que faz a tela valer: ferramenta cuja capability não
+        # existe ou está desligada NÃO executa. Sem esta coluna, a tela
+        # mostraria "ativa" para algo que nunca roda.
+        problemas: list[dict] = []
+        for t in tools:
+            if not t.get("is_active"):
+                continue
+            cap = t.get("capability_key")
+            if cap and cap not in conhecidas:
+                problemas.append({
+                    "o_que": t.get("tool_key"),
+                    "problema": f"aponta para um poder que não existe ({cap})",
+                    "efeito": "a ferramenta nunca vai executar",
+                })
+            elif cap and cap not in ativas:
+                problemas.append({
+                    "o_que": t.get("tool_key"),
+                    "problema": f"o poder que a autoriza está desligado ({cap})",
+                    "efeito": "a ferramenta aparece ativa e não executa",
+                })
+
+        return {
+            "ok": True,
+            "capacidades": sorted(capacidades, key=lambda c: str(c.get("capability_key"))),
+            "ferramentas": [
+                {**t, "poder_ativo": (t.get("capability_key") in ativas)
+                 if t.get("capability_key") else None}
+                for t in sorted(tools, key=lambda t: str(t.get("tool_key")))],
+            "skills": sorted(skills, key=lambda s: str(s.get("skill_key"))),
+            "resumo": {
+                "capacidades_ativas": len(ativas),
+                "capacidades_total": len(capacidades),
+                "ferramentas_ativas": sum(1 for t in tools if t.get("is_active")),
+                "skills_ativas": sum(1 for s in skills if s.get("is_active")),
+                "com_problema": len(problemas),
+            },
+            "problemas": problemas,
+            "mensagem": (f"{len(problemas)} ferramenta(s) não vão executar."
+                         if problemas else
+                         "Toda ferramenta ativa tem um poder ativo que a autoriza."),
+        }
+
+    def _ler(self, tabela: str, campos: str, limite: int = 300) -> list[dict]:
+        try:
+            return (self.db.table(tabela).select(campos)
+                    .limit(limite).execute()).data or []
+        except Exception as exc:  # noqa: BLE001
+            logger.warning("[Capacidades] '%s': %s", tabela, type(exc).__name__)
+            return []
+
+
+class BuscaGlobal:
+    """§11.3 — a busca do command palette.
+
+    Governada, não livre: ela só procura no que a pessoa **pode ver**, e devolve
+    destino, nunca conteúdo. Uma busca global que devolvesse trecho de conversa
+    seria um vazamento com aparência de conveniência.
+    """
+
+    def __init__(self, supabase_client: Any):
+        self.raw = supabase_client
+        self.db = getattr(supabase_client, "client", supabase_client)
+
+    def procurar(self, termo: str, *, permissions: set[str],
+                 limite: int = 12) -> dict:
+        alvo = (termo or "").strip().lower()
+        if len(alvo) < 2:
+            return {"ok": True, "resultados": [],
+                    "mensagem": "Digite ao menos duas letras."}
+
+        resultados: list[dict] = []
+
+        if "companies.read" in permissions:
+            for c in self._ler("companies", "id, company_name"):
+                if alvo in str(c.get("company_name") or "").lower():
+                    resultados.append({
+                        "tipo": "Corretora", "titulo": c.get("company_name"),
+                        "href": "/admin/corretoras"})
+
+        if "skills.read" in permissions:
+            for s in self._ler("skills", "skill_key, name"):
+                if alvo in f"{s.get('name')} {s.get('skill_key')}".lower():
+                    resultados.append({
+                        "tipo": "Skill", "titulo": s.get("name"),
+                        "detalhe": s.get("skill_key"),
+                        "href": "/admin/capacidades"})
+
+        if "tools.read" in permissions:
+            for t in self._ler("tool_definitions", "tool_key, name"):
+                if alvo in f"{t.get('name')} {t.get('tool_key')}".lower():
+                    resultados.append({
+                        "tipo": "Ferramenta", "titulo": t.get("name"),
+                        "detalhe": t.get("tool_key"),
+                        "href": "/admin/capacidades"})
+
+        # Destinos fixos — o jeito mais rápido de chegar numa tela sem caçar
+        # no menu. É metade do valor de um command palette.
+        for rotulo, href, perm in (
+                ("O que precisa de mim", "/admin/inbox", "admin.inbox.read"),
+                ("Trabalhos em andamento", "/admin/trabalhos", "work_runs.read"),
+                ("Esperando decisão", "/admin/aprovacoes", "approvals.read"),
+                ("Quem pode o quê", "/admin/governanca", "audit.read"),
+                ("O que o sistema percebeu", "/admin/inteligencia", "intelligence.read"),
+                ("O que buscamos na internet", "/admin/pesquisa", "research.read"),
+                ("Skills e ferramentas", "/admin/capacidades", "skills.read")):
+            if perm in permissions and alvo in rotulo.lower():
+                resultados.append({"tipo": "Tela", "titulo": rotulo, "href": href})
+
+        return {"ok": True, "resultados": resultados[:limite],
+                "total": len(resultados),
+                "mensagem": ("Nada encontrado." if not resultados else "")}
+
+    def _ler(self, tabela: str, campos: str, limite: int = 200) -> list[dict]:
+        try:
+            return (self.db.table(tabela).select(campos)
+                    .limit(limite).execute()).data or []
+        except Exception as exc:  # noqa: BLE001
+            logger.warning("[Busca] '%s': %s", tabela, type(exc).__name__)
+            return []
+
+
 class CockpitDaCorretora:
     """§14 — tudo sobre UMA corretora, em uma tela.
 

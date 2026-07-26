@@ -31,6 +31,7 @@ import { Button } from '@/components/ui/button';
 import { useAdminRole } from '@/hooks/useAdminRole';
 import { TermsAcceptanceModal } from '@/components/TermsAcceptanceModal';
 import { ThemeToggle } from '@/components/ThemeToggle';
+import BuscaGlobal from '@/components/admin/BuscaGlobal';
 
 interface SubscriptionData {
   has_subscription: boolean;
@@ -266,11 +267,15 @@ export default function AdminLayout({ children }: { children: React.ReactNode })
         { href: '/admin/pesquisa', label: 'O que buscamos na internet' },
         { href: '/admin/auxiliares/factory', label: 'O que as corretoras pediram' },
         { href: '/admin/insights', label: 'Garimpo (legado)' },
+        { href: '/admin/capacidades', label: 'O que o sistema sabe fazer' },
         { href: '/admin/central-agentes', label: 'Agentes' },
         { href: '/admin/auxiliares', label: 'Auxiliares publicados' },
         { href: '/admin/routine-templates', label: 'Rotinas prontas' },
         { href: '/admin/blueprint-center', label: 'Blueprint Center' },
-        { href: '/admin/prompt-effective', label: 'Prompt efetivo' },
+        // "Prompt efetivo" saiu daqui e virou link dentro de "O que o sistema
+        // sabe fazer". Ele é o diagnóstico POR AGENTE da mesma pergunta que
+        // aquela tela responde no geral: o que está anexado e o que autoriza.
+        // Dois itens de menu para a mesma pergunta é como um menu vira lista.
       ],
     },
     {
@@ -361,6 +366,13 @@ export default function AdminLayout({ children }: { children: React.ReactNode })
               </div>
             </div>
           </div>
+        </div>
+
+        {/* SPEC-061 §11.3 — a busca fica ACIMA do menu, não dentro dele.
+            Quem já sabe o que quer não precisa varrer oito hubs; quem não
+            sabe continua tendo o menu logo abaixo. */}
+        <div className="px-4 pt-4">
+          <BuscaGlobal />
         </div>
 
         <nav className="flex-1 p-4 space-y-2 overflow-y-auto min-h-0">

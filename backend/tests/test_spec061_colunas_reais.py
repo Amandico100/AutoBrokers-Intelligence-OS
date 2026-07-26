@@ -107,6 +107,10 @@ NAO_VERIFICADAS = {
     "admin_saved_views": "idem",
     "tool_definitions": "schema da SPEC-056",
     "tool_releases": "schema da SPEC-056",
+    "skills": "schema da SPEC-056, coberto por test_spec056",
+    "capabilities": "schema da SPEC-056/014",
+    "admin_users": "schema histórico; a coluna lida (password_hash) é a mesma "
+                   "do login em lib/auth.ts",
 }
 
 ARQUIVOS = [

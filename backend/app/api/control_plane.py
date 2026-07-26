@@ -349,6 +349,32 @@ async def aprovacoes(company_id: Optional[str] = None, status: str = "pending",
         company_id=company_id, status=status, limite=min(int(limite), 200))
 
 
+@router.get("/capabilities")
+async def capacidades(x_internal_key: Optional[str] = Header(None)):
+    """§10.4 — o que o sistema sabe fazer, e o que autoriza cada coisa."""
+    _autorizar(x_internal_key)
+    from app.services.control_plane.read_models import CatalogoDeCapacidades
+
+    return CatalogoDeCapacidades(_db()).montar()
+
+
+class BuscaIn(BaseModel):
+    termo: str
+    permissions: list[str]
+    pode_tudo: bool = False
+
+
+@router.post("/search")
+async def buscar(payload: BuscaIn, x_internal_key: Optional[str] = Header(None)):
+    """§11.3 — busca governada: só o que a pessoa pode ver."""
+    _autorizar(x_internal_key)
+    from app.services.control_plane.read_models import BuscaGlobal
+    from app.services.control_plane.rbac import PERMISSIONS
+
+    perms = set(PERMISSIONS) if payload.pode_tudo else set(payload.permissions or [])
+    return BuscaGlobal(_db()).procurar(payload.termo, permissions=perms)
+
+
 @router.get("/cockpit/{company_id}")
 async def cockpit(company_id: str, dias: int = 30,
                   x_internal_key: Optional[str] = Header(None)):
