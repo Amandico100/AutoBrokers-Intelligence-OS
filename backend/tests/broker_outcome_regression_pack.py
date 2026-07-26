@@ -455,6 +455,11 @@ CASOS: list[Caso] = [
     # que ninguém chamava — com 43 Work Runs concluídos em produção.
     Caso("AUD-01", "execucao", "Toda etapa e toda ferramenta deixam rastro auditável",
          "SPEC-055/056", lambda: _roda_script("test_bloco0_auditoria_execucao.py")),
+    # Uma matriz de permissão erra em SILÊNCIO: uma permission de escrita que
+    # caia no conjunto do auditor não produz erro — produz um auditor que age,
+    # e ninguém descobre até ele agir.
+    Caso("RBA-01", "identidade", "Cada papel do Admin pode só o que deve",
+         "SPEC-061", lambda: _roda_script("test_spec061_rbac.py")),
     Caso("IDN-01", "identidade", "Corretora A não enxerga dados da corretora B",
          "SPEC-048", lambda: _roda_script("test_spec048_isolamento_corretoras.py")),
     Caso("CAP-01", "capacidades", "Agente só recebe os poderes do seu papel",
