@@ -258,7 +258,25 @@ async def mine_recent(hours: int = 24, limit: int = 300) -> int:
 
 async def check_garimpo() -> int:
     """Task periódica (scheduler): minera as últimas 24h, no máximo 1x/dia
-    (marcador em Redis; sem Redis, roda mesmo — dedup por quote segura)."""
+    (marcador em Redis; sem Redis, roda mesmo — dedup por quote segura).
+
+    SPEC-059 §29.1 — CUTOVER. Com `INTELLIGENCE_CUTOVER` ligado (padrão), a
+    mineração passa a ser um Work Run agendado pelo tick do Smith Worker, e
+    o resultado vira `intelligence_signals` em vez de linha solta em
+    `broker_insights`. A regex desta módulo continua sendo a camada A do
+    Garimpo v3 — ela é importada, não reescrita.
+
+    O job continua registrado de propósito: desligar a flag devolve o
+    comportamento antigo sem precisar de deploy. É rollback, não convivência.
+    """
+    try:
+        from app.services.intelligence.legacy_adapter import cutover_ligado
+
+        if cutover_ligado():
+            return 0
+    except Exception:  # noqa: BLE001 — sem o pacote, segue no caminho antigo
+        pass
+
     mined = 0
     try:
         from datetime import datetime, timezone

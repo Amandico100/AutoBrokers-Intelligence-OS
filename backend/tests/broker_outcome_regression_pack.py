@@ -264,6 +264,56 @@ def caso_efeito_grave_exige_aprovacao() -> tuple[bool, str]:
     return True, "aprovação pelo mais restritivo e capability como autoridade"
 
 
+def caso_inteligencia_estrutural() -> tuple[bool, str]:
+    """As garantias da SPEC-059 que precisam existir no CÓDIGO, não só passar.
+
+    Um teste de comportamento verde não impede alguém de remover a checagem
+    que o torna verde e substituí-la por outra coisa. Estes símbolos são as
+    fronteiras: evidência obrigatória, tier que sustenta fato, cutover do
+    envio direto e o gatilho de memória que vive fora do turno.
+    """
+    exigidos = [
+        ("app/services/intelligence/schemas.py",
+         ["sinal sem evidencia", "TIERS_QUE_SUSTENTAM_ALERTA_CRITICO",
+          "pode_sustentar_alerta_critico"]),
+        ("app/services/intelligence/evidence_service.py",
+         ["def tier_de", "tier_dominante"]),
+        ("app/services/intelligence/finding_engine.py",
+         ["TIERS_QUE_SUSTENTAM_FATO", "fact_statement"]),
+        ("app/services/intelligence/delivery_policy.py",
+         ["em_quiet_hours", "tem_acao_clara", "SEVERIDADES_QUE_FURAM_SILENCIO"]),
+        ("app/services/intelligence/dedupe_service.py",
+         ["pode_repetir", "COOLDOWN_APOS_DISPENSA_SEGUNDOS"]),
+        ("app/services/intelligence/outcome_service.py",
+         ["inconclusive", "measured_at"]),
+        ("app/services/intelligence/legacy_adapter.py", ["cutover_ligado"]),
+        ("app/services/memory_fabric.py",
+         ["sessoes_encerradas", "fechar_sessoes_inativas"]),
+        ("app/workers/smith_worker.py",
+         ["_tick_de_inteligencia", "_varrer_memoria"]),
+    ]
+    for rel, simbolos in exigidos:
+        caminho = os.path.join(RAIZ, rel)
+        if not os.path.exists(caminho):
+            return False, f"ausente: {rel}"
+        with open(caminho, encoding="utf-8") as fh:
+            fonte = fh.read()
+        faltando = [s for s in simbolos if s not in fonte]
+        if faltando:
+            return False, f"{rel} sem: {', '.join(faltando)}"
+
+    # O envio direto do legado não pode voltar a ser incondicional.
+    for rel in ("app/services/proactive_suggestions.py",
+                "app/services/weekly_report.py",
+                "app/services/regression_sentinel.py",
+                "app/services/broker_insights.py"):
+        with open(os.path.join(RAIZ, rel), encoding="utf-8") as fh:
+            if "cutover_ligado" not in fh.read():
+                return False, f"REGRESSAO: {rel} voltou a enviar sem passar pelo cutover"
+
+    return True, "evidência, tier, cooldown, quiet hours, outcome e cutover presentes"
+
+
 # ---------------------------------------------------------------------------
 # Catálogo
 # ---------------------------------------------------------------------------
@@ -313,6 +363,13 @@ CASOS: list[Caso] = [
     # prompt por corretora, custo que ninguem mediu e nada reaproveitavel.
     Caso("AUX-01", "capacidades", "O sistema não cria um Agent para cada pedido",
          "SPEC-058", lambda: _roda_script("test_spec058_factory.py")),
+    # Um sistema proativo erra de dois jeitos, e os dois custam o corretor:
+    # inventando o que nao aconteceu, e repetindo o que ele ja dispensou. O
+    # primeiro destroi a confianca no numero; o segundo ensina a ignorar a tela.
+    Caso("INT-01", "inteligencia", "O briefing não inventa número nem esconde ausência de dado",
+         "SPEC-059", lambda: _roda_script("test_spec059_intelligence.py")),
+    Caso("INT-02", "inteligencia", "Alerta e memória: evidência obrigatória e gatilho alcançável",
+         "SPEC-059", lambda: caso_inteligencia_estrutural()),
     Caso("IDN-01", "identidade", "Corretora A não enxerga dados da corretora B",
          "SPEC-048", lambda: _roda_script("test_spec048_isolamento_corretoras.py")),
     Caso("CAP-01", "capacidades", "Agente só recebe os poderes do seu papel",

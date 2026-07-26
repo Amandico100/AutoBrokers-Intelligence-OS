@@ -31,7 +31,7 @@
 | 6 | SPEC-057 — Artifact Hub & Report Studio | `feat/spec057-artifact-hub` | NÃO INICIADO | — | — | — |
 | 7 | SPEC-052 Cognitive Foundation Closure | `feat/spec052-cognitive-foundation-closure` | NÃO INICIADO | — | — | — |
 | 8 | SPEC-058 — Auxiliary & Routine Factory | `feat/spec058-auxiliary-routine-factory` | NÃO INICIADO | — | — | — |
-| 9 | SPEC-059 — Intelligence Fabric + Memory Fabric | `feat/spec059-intelligence-fabric` | NÃO INICIADO | — | — | — |
+| 9 | SPEC-059 — Intelligence Fabric + Memory Fabric | `feat/spec059-briefing-proatividade` | **CONCLUÍDO** — gate verde com ressalva | `e9fedef` | ver relatório | [SPEC-059-EXECUTION-REPORT](reports/SPEC-059-EXECUTION-REPORT.md) |
 | 10 | SPEC-060 — Research Intelligence | `feat/spec060-research-intelligence` | NÃO INICIADO | — | — | — |
 | 11 | SPEC-061 Blocos B/C — Control Plane completo | `feat/spec061-control-plane-full` | NÃO INICIADO | — | — | — |
 | 12 | SPEC-062 — Evals, Billing, Resiliência, Rollout | `feat/spec062-evals-billing-readiness` | NÃO INICIADO | — | — | — |
@@ -482,6 +482,56 @@ Só então `TOOL_GATEWAY_MODE=on`, e só depois `AUTHORITY_STRICT_MODE=1`.
   como arquivo em `backend/supabase/migrations/`. Dívida de governança do
   Executor; corrigir com dump de `supabase_migrations.schema_migrations`.
 
+---
+
+# ESTADO EM 26/07/2026 (fim do dia) — SPEC-059 concluída
+
+**gate:** 26/26 VERDE · tsc exit 0 · 3 migrations aplicadas com VERIFY
+
+## O que a SPEC-059 acrescentou
+
+| Peça | O que faz |
+|---|---|
+| **Intelligence Fabric** | evento → sinal com evidência → Finding (fato separado de inferência) → recomendação com ação real → Work Run → outcome medido |
+| **12 detectores** | publicados como regras versionadas, pausáveis e recalibráveis **sem deploy** |
+| **Centro de Briefing** | `/dashboard/briefing` — Hoje, Esta semana, Oportunidades, Histórico, Preferências |
+| **Central de Inteligência** | `/admin/inteligencia` — sinais, diagnósticos, demanda anônima, qualidade por regra |
+| **Garimpo v3** | preserva a regex calibrada; muda o destino para `intelligence_signals` e para a Factory |
+| **Demand Radar** | agregado e anônimo por construção (`tenant_hash` com sal) |
+| **Memory Fabric** | Lote 4 da SPEC-052 — fecha sessões inativas fora do turno; `company_memories` e `knowledge_candidates` |
+| **4 tools do Core** | o corretor pergunta "o que precisa da minha atenção?" e recebe o que está gravado |
+
+## Cutover realizado
+
+Os quatro motores proativos antigos **deixaram de enviar por conta própria**:
+Garimpo, IA de Sugestões, relatório de sábado e Sentinela de Regressão. Os
+algoritmos foram preservados e viraram fontes do pipeline.
+
+## Flags novas em produção
+
+| Flag | Valor | Significa |
+|---|---|---|
+| `INTELLIGENCE_CUTOVER` | `1` | pipeline canônico é a autoridade; `=0` faz rollback sem deploy |
+| `INTELLIGENCE_TICK` | `1` | o laço de manutenção do Smith Worker enfileira briefings e detecção |
+| `DEMAND_CLUSTER_SALT` | padrão | sal do hash de tenant no agregado global |
+
+## Bloqueios ativos (inalterados)
+
+1. **D18 — corpus normativo:** 23 documentos na fila por crédito do Firecrawl.
+   Volta a importar na SPEC-060, que é pesquisa externa.
+2. **PDF no servidor:** exige Chromium na imagem. Afeta agora também a peça do
+   briefing e o Radar de Demanda em PDF.
+
+## Pendente de ação do Founder
+
+1. **Deploy da API e do worker** com o código da SPEC-059 — sem ele nada roda.
+2. Após um ciclo, conferir que `briefing_publications` e `session_summaries`
+   deixaram de ser zero.
+3. Decidir quando ligar o **envio proativo externo** (hoje o briefing vive no
+   dashboard e no chat; a política de canal está pronta e desligada).
+
 ## Próxima etapa
 
-**SPEC-059 — Intelligence Fabric.**
+**SPEC-060 — Research Intelligence.** Ela deve **receber** sinais externos pelo
+pipeline da SPEC-059, sem criar outro motor de pesquisa, outro RAG, outro
+publisher, outro scheduler nem outro sistema proativo.

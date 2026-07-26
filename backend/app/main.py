@@ -195,6 +195,18 @@ app.include_router(corpus_router, tags=["Corpus Normativo"])
 # SPEC-058 — Auxiliary Factory. /oportunidades e a rota que transforma
 # pedido de corretora em roadmap com evidencia, em vez de opiniao.
 app.include_router(factory_router, tags=["Auxiliary Factory"])
+# SPEC-059 — Intelligence Fabric. Duas superficies: a da corretora
+# (briefing, prioridades, recomendacoes) e a da plataforma (sinais, regras,
+# demanda agregada e anonima).
+try:
+    from app.api.intelligence import admin as intelligence_admin_router
+    from app.api.intelligence import router as intelligence_router
+
+    app.include_router(intelligence_router, tags=["Intelligence"])
+    app.include_router(intelligence_admin_router, tags=["Admin Intelligence"])
+    logger.info("[STARTUP] Intelligence Fabric API registrada")
+except Exception as _e:  # noqa: BLE001
+    logger.error("[STARTUP] Intelligence API indisponivel: %s", type(_e).__name__)
 app.include_router(agent_config_router, prefix="/api/agent", tags=["Agent Config"])
 from app.api.agents import router as agents_router
 from app.api.billing import router as billing_router

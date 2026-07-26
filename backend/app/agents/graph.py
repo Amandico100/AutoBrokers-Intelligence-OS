@@ -450,6 +450,23 @@ async def create_agent_graph(
         except Exception as e:  # noqa: BLE001
             logger.warning(f"[Graph] ⚠️ ferramenta da Factory não anexada: {e}")
 
+        # SPEC-059 — "o que precisa da minha atenção hoje?" deixa de ser uma
+        # pergunta que o modelo responde por conta própria. As quatro
+        # ferramentas devolvem o que está gravado, com evidência, e a capability
+        # `tenant.intelligence.read` continua sendo a autoridade: sem ela ativa
+        # no Registry, nada é anexado.
+        try:
+            if "tenant.intelligence.read" in _active:
+                from .tools.intelligence_tool import ferramentas_de_inteligencia
+                # Sem `user_id`: o grafo é cacheado por (empresa, agente) e
+                # reusado em muitas conversas — amarrar um usuário aqui faria
+                # o briefing de uma pessoa vazar para a sessão de outra. O
+                # escopo pessoal é aplicado nas APIs, onde há sessão.
+                tools.extend(ferramentas_de_inteligencia(
+                    company_id=str(company_id), supabase=supabase_client))
+        except Exception as e:  # noqa: BLE001
+            logger.warning(f"[Graph] ⚠️ ferramentas de inteligência não anexadas: {e}")
+
     # Bind final (Standard + Dinâmicas)
     llm_with_tools = llm.bind_tools(tools)
 
@@ -1045,6 +1062,21 @@ async def invoke_agent(
                 f"human_messages={human_messages_count}, channel={channel}"
             )
 
+            # SPEC-059 / SPEC-052 Lote 4 — LEIA ANTES DE MEXER.
+            #
+            # `last_message_at=datetime.now()` faz a inatividade ser SEMPRE
+            # zero neste ponto: estamos no meio do turno. Isso não é descuido —
+            # é a consequência de o gatilho viver aqui. Nenhum modo baseado em
+            # TEMPO (`session_end`, `inactivity`) pode disparar durante a
+            # conversa, porque ninguém sabe, no meio dela, que ela acabou.
+            #
+            # Este caminho cobre apenas os modos por CONTAGEM. O fechamento por
+            # inatividade é do varredor `memory_fabric.fechar_sessoes_inativas`,
+            # no laço de manutenção do Smith Worker — lá existe relógio e lá a
+            # sessão pode ser declarada encerrada de verdade.
+            #
+            # Não "conserte" isto passando outro timestamp: o resumo sairia no
+            # meio da conversa, com metade do contexto. Ver CA-011.
             should_trigger = memory_service.should_summarize(
                 settings=settings,
                 channel=channel,

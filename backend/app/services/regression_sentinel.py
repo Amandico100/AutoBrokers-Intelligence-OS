@@ -104,7 +104,27 @@ async def _alert(company_id: str, finding: Dict[str, Any]) -> None:
 
 async def check_regression() -> int:
     """Task periódica (horária; executa 1x/dia via marcador). Nunca derruba o
-    scheduler. Retorna o número de regressões detectadas."""
+    scheduler. Retorna o número de regressões detectadas.
+
+    SPEC-059 §29.4 — CUTOVER. O algoritmo `analyze_regressions` continua sendo
+    a autoridade do cálculo: ele é importado pelo detector
+    `qualidade.regressao_atendimento`, não reescrito.
+
+    O que deixou de acontecer é o `_alert()` daqui — WhatsApp disparado de
+    dentro do detector, sem cooldown, sem quiet hours e sem registro de
+    evidência. A mesma queda agora vira Signal Tier 3, Finding com fato e
+    inferência separados, e chega pelo canal e no horário que o perfil
+    daquela corretora permite.
+    """
+    try:
+        from app.services.intelligence.legacy_adapter import (cutover_ligado,
+                                                              regressao_delegada)
+
+        if cutover_ligado():
+            return regressao_delegada()
+    except Exception:  # noqa: BLE001
+        pass
+
     try:
         from app.core.redis import get_async_redis_client
 

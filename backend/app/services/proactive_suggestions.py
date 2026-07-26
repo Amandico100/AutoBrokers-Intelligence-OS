@@ -166,7 +166,28 @@ async def run_weekly_suggestions() -> int:
 
 async def check_suggestions() -> int:
     """Task periódica: dispara 1x por semana, segunda-feira, janela 12h-21h UTC
-    (9h-18h no Brasil) — horário comercial, nunca madrugada."""
+    (9h-18h no Brasil) — horário comercial, nunca madrugada.
+
+    SPEC-059 §29.2 — CUTOVER. A mensagem semanal de três blocos fixos deixou de
+    ser a autoridade da proatividade. Ela enviava sempre, houvesse ou não algo
+    relevante — o oposto de §15.2 ("mensagem sem ação clara não gera push") e
+    de §0.1 ("nenhuma pergunta semanal genérica obrigatória").
+
+    O que substitui: Finding com evidência → recomendação com ação →
+    Briefing, respeitando dedupe, cooldown e quiet hours.
+
+    `suggestions_enabled` e `target_whatsapp` continuam exportados: outras
+    superfícies os usam para decidir destinatário.
+    """
+    try:
+        from app.services.intelligence.legacy_adapter import (cutover_ligado,
+                                                              sugestoes_desativadas)
+
+        if cutover_ligado():
+            return sugestoes_desativadas()
+    except Exception:  # noqa: BLE001
+        pass
+
     now = datetime.now(timezone.utc)
     try:
         from app.core.heartbeat import beat
