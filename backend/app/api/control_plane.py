@@ -361,6 +361,74 @@ async def cockpit(company_id: str, dias: int = 30,
     return r
 
 
+# ---------------------------------------------------------------------------
+# Sessões e step-up — §7.3, §7.4
+# ---------------------------------------------------------------------------
+
+
+@router.get("/sessions")
+async def sessoes(limite: int = 50, x_internal_key: Optional[str] = Header(None)):
+    _autorizar(x_internal_key)
+    from app.services.control_plane.sessoes import SessoesAdministrativas
+
+    return {"ok": True,
+            "sessoes": SessoesAdministrativas(_db()).listar(
+                limite=min(int(limite), 200))}
+
+
+class RevogarSessaoIn(BaseModel):
+    user_id: str
+    motivo: str
+    revogado_por: str
+
+
+@router.post("/sessions/revoke")
+async def revogar_sessoes(payload: RevogarSessaoIn,
+                          x_internal_key: Optional[str] = Header(None)):
+    _autorizar(x_internal_key)
+    from app.services.control_plane.sessoes import SessoesAdministrativas
+
+    r = SessoesAdministrativas(_db()).revogar_tudo(
+        user_id=payload.user_id, motivo=payload.motivo,
+        revogado_por=payload.revogado_por)
+    if not r.get("ok"):
+        raise HTTPException(400, str(r.get("erro") or "não foi possível"))
+    return r
+
+
+class StepUpIn(BaseModel):
+    user_id: str
+    senha: str
+
+
+@router.post("/step-up")
+async def step_up(payload: StepUpIn,
+                  x_internal_key: Optional[str] = Header(None)):
+    """Confirma que a pessoa ainda está lá. §7.4."""
+    _autorizar(x_internal_key)
+    from app.services.control_plane.sessoes import ConfirmacaoDeIdentidade
+
+    r = ConfirmacaoDeIdentidade(_db()).confirmar(
+        user_id=payload.user_id, senha=payload.senha)
+    if not r.get("ok"):
+        # 401 e não 400: é falha de autenticação, e o front precisa distinguir
+        # "senha errada" de "pedido malformado" para dizer a coisa certa.
+        raise HTTPException(401, str(r.get("erro") or "não confirmado"))
+    return r
+
+
+@router.get("/step-up")
+async def step_up_valido(user_id: str,
+                         x_internal_key: Optional[str] = Header(None)):
+    _autorizar(x_internal_key)
+    from app.services.control_plane.sessoes import (
+        JANELA_DE_STEP_UP_MINUTOS, ConfirmacaoDeIdentidade)
+
+    ok = ConfirmacaoDeIdentidade(_db()).confirmado_recentemente(user_id=user_id)
+    return {"ok": True, "confirmado": ok,
+            "janela_minutos": JANELA_DE_STEP_UP_MINUTOS}
+
+
 @router.get("/roles/bindings")
 async def vinculos(user_id: Optional[str] = None, limite: int = 100,
                    x_internal_key: Optional[str] = Header(None)):

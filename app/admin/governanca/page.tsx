@@ -11,6 +11,7 @@
 //   2. o que cada papel permite?
 //   3. o que foi feito, por quem, e por quê?
 import { useCallback, useEffect, useState } from 'react';
+import ConfirmarIdentidade from '@/components/admin/ConfirmarIdentidade';
 
 type Papel = { role_key: string; nome: string; descricao: string; quantidade_de_permissions: number };
 type Vinculo = {
@@ -70,6 +71,10 @@ export default function GovernancaPage() {
   const [avisoDegradado, setAvisoDegradado] = useState<string | null>(null);
   const [novoUsuario, setNovoUsuario] = useState('');
   const [novoPapel, setNovoPapel] = useState('platform_support');
+  // §7.4 — quando o Gateway responde 428, guardamos a ação e pedimos a senha.
+  // Repetir a ação depois de confirmar evita que a pessoa tenha que preencher
+  // tudo de novo, que é como se desiste de uma tela.
+  const [pedirSenha, setPedirSenha] = useState<null | (() => void)>(null);
 
   const recarregar = useCallback(async () => {
     setCarregando(true);
@@ -123,6 +128,12 @@ export default function GovernancaPage() {
         body: JSON.stringify({ acao, user_id: userId, role_key: roleKey, reason: motivo }),
       });
       const j = await r.json().catch(() => ({}));
+      if (r.status === 428) {
+        // Falta confirmar a identidade. Guarda a ação para repetir depois.
+        setPedirSenha(() => () => agir(acao, userId, roleKey));
+        setRecado(null);
+        return;
+      }
       setRecado(j?.mensagem || (r.ok ? 'Feito.' : 'Não foi possível.'));
       await recarregar();
     } catch {
@@ -134,6 +145,16 @@ export default function GovernancaPage() {
 
   return (
     <div className="p-6 max-w-6xl mx-auto">
+      <ConfirmarIdentidade
+        aberto={pedirSenha !== null}
+        oQue="mudar quem tem acesso administrativo"
+        onCancelar={() => setPedirSenha(null)}
+        onConfirmado={() => {
+          const repetir = pedirSenha;
+          setPedirSenha(null);
+          repetir?.();
+        }}
+      />
       <header className="mb-6">
         <h1 className="text-2xl font-semibold">Quem pode o quê</h1>
         <p className="text-sm text-neutral-600 dark:text-neutral-400 mt-1">

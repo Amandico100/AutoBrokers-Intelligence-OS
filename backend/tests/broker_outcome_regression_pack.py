@@ -505,6 +505,11 @@ CASOS: list[Caso] = [
     # menu não protege nada: quem digitasse o endereço chegava lá.
     Caso("SEP-01", "identidade", "Admin é da plataforma; a corretora trabalha na casa dela",
          "SPEC-061", lambda: _roda_script("test_spec061_separacao_superficies.py")),
+    # Uma sessão aberta há oito horas num computador destravado tinha os mesmos
+    # poderes de quem acabou de digitar a senha. Para ler, tudo bem; para
+    # suspender uma corretora, não.
+    Caso("SEG-01", "seguranca", "Sessão se encerra e identidade se confirma antes do irreversível",
+         "SPEC-061", lambda: _roda_script("test_spec061_stepup_sessoes.py")),
     Caso("IDN-01", "identidade", "Corretora A não enxerga dados da corretora B",
          "SPEC-048", lambda: _roda_script("test_spec048_isolamento_corretoras.py")),
     Caso("CAP-01", "capacidades", "Agente só recebe os poderes do seu papel",

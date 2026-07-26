@@ -58,6 +58,26 @@ function backend(): { url: string; key: string } | null {
   return { url, key };
 }
 
+/** §7.4 — a pessoa confirmou a identidade nos últimos minutos? */
+async function identidadeConfirmada(userId: string): Promise<boolean> {
+  const b = backend();
+  // Sem serviço de controle não há como PROVAR a confirmação. Negar aqui é o
+  // fail-closed correto: o custo do erro é pedir a senha de novo, e o custo do
+  // contrário é uma ação irreversível sem confirmação nenhuma.
+  if (!b) return false;
+  try {
+    const r = await fetch(
+      `${b.url}/api/admin/control-plane/step-up?user_id=${encodeURIComponent(userId)}`,
+      { headers: { 'X-Internal-Key': b.key }, cache: 'no-store' },
+    );
+    if (!r.ok) return false;
+    const j = await r.json();
+    return Boolean(j?.confirmado);
+  } catch {
+    return false;
+  }
+}
+
 async function auditar(corpo: Record<string, unknown>): Promise<boolean> {
   const b = backend();
   if (!b) return false;
@@ -123,6 +143,28 @@ export async function executarComando<T>(cmd: Comando<T>): Promise<Recibo<T>> {
       mensagem:
         'Esta ação exige um motivo escrito. Quem ler isto em seis meses precisa entender por que foi feito.',
     };
+  }
+
+  // §7.4 — step-up. As mesmas permissions que exigem motivo exigem que a
+  // pessoa confirme que AINDA está ali.
+  //
+  // Uma sessão aberta há oito horas num computador destravado tem exatamente
+  // os mesmos poderes de quem acabou de digitar a senha. Para ler a tela de
+  // resumo isso é aceitável; para suspender uma corretora, não.
+  //
+  // O 428 é deliberado: `Precondition Required` diz ao front "falta um passo
+  // antes", e não "você não pode" (403) nem "seu pedido está errado" (400).
+  // O front usa esse código para abrir a caixa de senha e repetir a ação.
+  if (precisaMotivo) {
+    const confirmado = await identidadeConfirmada(auth.autoridade.userId);
+    if (!confirmado) {
+      return {
+        ok: false,
+        status: 428,
+        erro: 'step_up_required',
+        mensagem: 'Confirme sua senha para continuar — esta ação não se desfaz.',
+      };
+    }
   }
 
   let resultado: { ok: boolean; depois?: Record<string, unknown>; erro?: string; dados?: T };
