@@ -262,6 +262,8 @@ export default function AdminLayout({ children }: { children: React.ReactNode })
       label: 'Operação',
       submenu: [
         { href: '/admin/trabalhos', label: 'Trabalhos em andamento' },
+        // §16 — decidir é diferente de consertar. Dois destinos, não um.
+        { href: '/admin/aprovacoes', label: 'Esperando decisão' },
         { href: '/admin/conversas', label: 'Atendimentos' },
         { href: '/admin/conversation-logs', label: 'Histórico de conversas' },
         { href: '/admin/espelho', label: 'Acompanhar um atendimento' },

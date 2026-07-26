@@ -251,6 +251,107 @@ def _sem_sinal(run: dict, agora: datetime, minutos: int = 30) -> bool:
         return False
 
 
+class CentralDeAprovacoes:
+    """§16 — o que espera uma decisão humana.
+
+    A diferença para a Central de Trabalhos: lá o operador conserta, aqui ele
+    **decide**. São dois estados de espera diferentes, e misturá-los faz o
+    operador procurar defeito onde só falta alguém clicar.
+
+    Uma aprovação tem uma propriedade que trabalho falhado não tem: ela
+    **envelhece contra alguém**. Um pedido parado há três dias não é um item
+    da lista — é um cliente sem resposta. Por isso a idade é o primeiro
+    critério de ordem, e não a severidade.
+    """
+
+    def __init__(self, supabase_client: Any):
+        self.raw = supabase_client
+        self.db = getattr(supabase_client, "client", supabase_client)
+
+    def listar(self, *, company_id: Optional[str] = None,
+               status: str = "pending", limite: int = 50) -> dict:
+        try:
+            q = (self.db.table("approval_requests")
+                 .select("id, company_id, action_type, subject_type, subject_id, "
+                         "status, risk_level, preview, requested_at, created_at, "
+                         "expires_at, work_run_id, error_message")
+                 .order("created_at", desc=False)  # mais antigo primeiro
+                 .limit(limite))
+            if status:
+                q = q.eq("status", status)
+            if company_id:
+                q = q.eq("company_id", company_id)
+            linhas = q.execute().data or []
+        except Exception as exc:  # noqa: BLE001
+            logger.warning("[Aprovações] leitura falhou: %s", type(exc).__name__)
+            return {"ok": False, "erro": "não consegui ler as aprovações",
+                    "itens": []}
+
+        agora = _agora()
+        itens = []
+        for l in linhas:
+            criado = l.get("requested_at") or l.get("created_at")
+            itens.append({
+                "id": l.get("id"),
+                "company_id": l.get("company_id"),
+                "o_que": l.get("action_type") or "ação",
+                "sobre": f"{l.get('subject_type') or ''} {l.get('subject_id') or ''}".strip(),
+                "risco": l.get("risk_level") or "low",
+                # `preview` é o que a ação FARIA. É o que permite decidir sem
+                # abrir outra tela — e sem ele "aprovar" vira assinar em branco.
+                "previa": l.get("preview") or {},
+                "criado_em": criado,
+                "expira_em": l.get("expires_at"),
+                "horas_esperando": _horas(criado, agora),
+                "vencida": _venceu(l.get("expires_at"), agora),
+                "work_run_id": l.get("work_run_id"),
+                "status": l.get("status"),
+            })
+
+        vencidas = [i for i in itens if i["vencida"]]
+        return {
+            "ok": True,
+            "itens": itens,
+            "total": len(itens),
+            "vencidas": len(vencidas),
+            "mais_antiga_horas": max((i["horas_esperando"] or 0 for i in itens),
+                                     default=0),
+            "mensagem": self._frase(itens, vencidas),
+        }
+
+    def _frase(self, itens: list[dict], vencidas: list[dict]) -> str:
+        if not itens:
+            return "Nenhuma decisão esperando você."
+        partes = [f"{len(itens)} esperando decisão"]
+        if vencidas:
+            # Vencida é pior que pendente: o prazo passou, e quem pediu já
+            # sentiu. Dizer isso separado evita que se perca no total.
+            partes.append(f"{len(vencidas)} já passaram do prazo")
+        mais_velha = max((i["horas_esperando"] or 0 for i in itens), default=0)
+        if mais_velha >= 24:
+            partes.append(f"a mais antiga há {int(mais_velha // 24)} dia(s)")
+        return " · ".join(partes) + "."
+
+
+def _horas(quando: Optional[str], agora: datetime) -> Optional[float]:
+    if not quando:
+        return None
+    try:
+        d = datetime.fromisoformat(str(quando).replace("Z", "+00:00"))
+        return round((agora - d).total_seconds() / 3600.0, 1)
+    except Exception:  # noqa: BLE001
+        return None
+
+
+def _venceu(expira: Optional[str], agora: datetime) -> bool:
+    if not expira:
+        return False
+    try:
+        return datetime.fromisoformat(str(expira).replace("Z", "+00:00")) < agora
+    except Exception:  # noqa: BLE001
+        return False
+
+
 class CockpitDaCorretora:
     """§14 — tudo sobre UMA corretora, em uma tela.
 

@@ -337,6 +337,18 @@ async def trabalho(run_id: str, company_id: Optional[str] = None,
     return r
 
 
+@router.get("/approvals")
+async def aprovacoes(company_id: Optional[str] = None, status: str = "pending",
+                     limite: int = 50,
+                     x_internal_key: Optional[str] = Header(None)):
+    """§16 — o que espera uma DECISÃO, não um conserto."""
+    _autorizar(x_internal_key)
+    from app.services.control_plane.read_models import CentralDeAprovacoes
+
+    return CentralDeAprovacoes(_db()).listar(
+        company_id=company_id, status=status, limite=min(int(limite), 200))
+
+
 @router.get("/cockpit/{company_id}")
 async def cockpit(company_id: str, dias: int = 30,
                   x_internal_key: Optional[str] = Header(None)):
