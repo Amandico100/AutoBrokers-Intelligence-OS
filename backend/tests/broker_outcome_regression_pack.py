@@ -198,16 +198,38 @@ def caso_upload_derivado_da_sessao() -> tuple[bool, str]:
 
 
 def caso_admin_sem_upload_anon() -> tuple[bool, str]:
-    """Tela do Admin não pode gravar direto com a chave pública."""
-    caminho = os.path.join(os.path.dirname(RAIZ), "app", "admin", "conversations", "page.tsx")
-    if not os.path.exists(caminho):
-        return False, "page.tsx ausente"
-    with open(caminho, encoding="utf-8") as fh:
-        fonte = fh.read()
-    if "supabase.storage" in fonte:
-        return False, "REGRESSAO: upload direto do browser reintroduzido"
-    if "resolveMediaUrl" not in fonte:
-        return False, "renderização não passa pelo resolver"
+    """A tela de conversas não pode gravar direto com a chave pública.
+
+    A tela mudou de casa na SPEC-061 §6: ela é da CORRETORA e passou de
+    `/admin/conversations` para `/dashboard/conversas`. A garantia não mudou —
+    mudou o endereço.
+
+    O caminho antigo é conferido de propósito: se ele voltar a ter conteúdo
+    (em vez do redirecionamento), é porque alguém recriou a tela no lugar
+    errado, e aí a garantia precisa valer nos dois.
+    """
+    raiz_web = os.path.dirname(RAIZ)
+    candidatos = [
+        os.path.join(raiz_web, "app", "dashboard", "conversas", "page.tsx"),
+        os.path.join(raiz_web, "app", "admin", "conversations", "page.tsx"),
+    ]
+    verificados = 0
+    for caminho in candidatos:
+        if not os.path.exists(caminho):
+            continue
+        with open(caminho, encoding="utf-8") as fh:
+            fonte = fh.read()
+        # Redirecionamento não renderiza mídia; não há o que conferir nele.
+        if "redirect(" in fonte and "return (" not in fonte:
+            continue
+        if "supabase.storage" in fonte:
+            return False, f"REGRESSAO: upload direto do browser em {caminho}"
+        if "resolveMediaUrl" not in fonte:
+            return False, f"renderização não passa pelo resolver em {caminho}"
+        verificados += 1
+
+    if not verificados:
+        return False, "tela de conversas não encontrada em nenhum dos caminhos"
     return True, "upload server-side e leitura pelo proxy"
 
 
@@ -478,6 +500,11 @@ CASOS: list[Caso] = [
     # "é uma bagunça e não consigo entender".
     Caso("NAV-02", "identidade", "O Admin cabe na cabeça: 8 hubs, sem jargão",
          "SPEC-061", lambda: _roda_script("test_spec061_navegacao_oito_hubs.py")),
+    # A corretora entrava num endereço chamado "admin" e o sistema ESCONDIA o
+    # que não era dela — com uma lista mantida no navegador. Esconder item de
+    # menu não protege nada: quem digitasse o endereço chegava lá.
+    Caso("SEP-01", "identidade", "Admin é da plataforma; a corretora trabalha na casa dela",
+         "SPEC-061", lambda: _roda_script("test_spec061_separacao_superficies.py")),
     Caso("IDN-01", "identidade", "Corretora A não enxerga dados da corretora B",
          "SPEC-048", lambda: _roda_script("test_spec048_isolamento_corretoras.py")),
     Caso("CAP-01", "capacidades", "Agente só recebe os poderes do seu papel",

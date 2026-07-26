@@ -96,12 +96,37 @@ PREFIXOS_DE_SUBPAGINA = (
 # achou resolve o sintoma errado.
 ORFAS_ANTERIORES_A_SPEC059: set[str] = set()
 
-# `/admin/integrations` não é órfã: ela É um redirecionamento (87 linhas que
-# levam a `/admin`). Pôr link de menu para uma página que só redireciona seria
-# um item que não leva a lugar nenhum.
+# Página que só REDIRECIONA não é órfã: pôr link de menu para ela seria um
+# item que não leva a lugar nenhum.
+#
+# Em vez de manter esta lista à mão — e ela envelhecer em silêncio — o teste
+# LÊ o arquivo e reconhece o padrão. Uma página que importa `redirect` do
+# Next e não renderiza nada é, por definição, uma ponte para outro endereço.
 SEM_MENU_POR_REDIRECIONAR = {
     "/admin/integrations": "redireciona para /admin; não é destino",
 }
+
+
+def e_redirecionamento(rota: str, base: str, prefixo: str) -> bool:
+    """A página só existe para levar a outro lugar?
+
+    SPEC-061 §6.3: as cinco telas da corretora saíram de `/admin` e viraram
+    redirecionamento para `/dashboard`. Elas PRECISAM continuar existindo —
+    link salvo não some quando a rota muda — e não podem ter item de menu.
+    """
+    sub = rota[len(prefixo):].lstrip("/")
+    caminho = os.path.join(base, *sub.split("/"), "page.tsx") if sub else \
+        os.path.join(base, "page.tsx")
+    if not os.path.exists(caminho):
+        return False
+    try:
+        fonte = _ler(caminho)
+    except Exception:  # noqa: BLE001
+        return False
+    # `redirect(...)` do Next, e nenhum JSX de conteúdo.
+    return ("from 'next/navigation'" in fonte
+            and re.search(r"\bredirect\(\s*['\"]/", fonte) is not None
+            and "return (" not in fonte)
 
 
 def paginas(base: str, prefixo: str) -> list[str]:
@@ -245,7 +270,8 @@ def teste_nenhuma_pagina_orfa():
         orfas = []
         for rota in paginas(base, prefixo):
             if (rota in ligados or rota in SEM_MENU_POR_DESENHO
-                    or rota in SEM_MENU_POR_REDIRECIONAR):
+                    or rota in SEM_MENU_POR_REDIRECIONAR
+                    or e_redirecionamento(rota, base, prefixo)):
                 continue
             if rota in ORFAS_ANTERIORES_A_SPEC059:
                 continue

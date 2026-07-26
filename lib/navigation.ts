@@ -32,7 +32,30 @@ export const PILLARS: NavItem[] = [
 export const SECONDARY: NavItem[] = [
   { key: 'atividades', label: 'Atividades', href: '/dashboard/atividades', icon: 'success' },
   { key: 'historico', label: 'Histórico', href: '/dashboard/historico', icon: 'historico' },
+  { key: 'conversas', label: 'Conversas', href: '/dashboard/conversas', icon: 'atendimentos' },
   { key: 'configuracoes', label: 'Configurações', href: '/dashboard/configuracoes', icon: 'configuracoes' },
+];
+
+/**
+ * Administração DA CORRETORA — SPEC-061 §6.
+ *
+ * Estas quatro telas moravam em `/admin`, junto com a administração da
+ * PLATAFORMA. A corretora entrava num endereço chamado "admin" e via um menu
+ * que escondia metade dos itens — e esconder item de menu não protege nada:
+ * quem digitasse o endereço chegava lá.
+ *
+ * Agora elas vivem na casa da corretora. O que muda para ela é só o endereço;
+ * o que muda para a plataforma é que `/admin` passa a ser só dela.
+ *
+ * Ficam separadas dos PILLARS de propósito: são o que se configura de vez em
+ * quando, não o trabalho do dia. Misturá-las com Briefing e Atendimentos
+ * empurraria o trabalho diário para baixo.
+ */
+export const ADMINISTRACAO_DA_CORRETORA: NavItem[] = [
+  { key: 'equipe', label: 'Minha equipe', href: '/dashboard/equipe', icon: 'atendimentos' },
+  { key: 'agente', label: 'Meu agente', href: '/dashboard/agente', icon: 'autobrokers' },
+  { key: 'documentos', label: 'Meus documentos', href: '/dashboard/documentos', icon: 'conhecimento' },
+  { key: 'plano', label: 'Meu plano', href: '/dashboard/plano', icon: 'aprovacao' },
 ];
 
 /**

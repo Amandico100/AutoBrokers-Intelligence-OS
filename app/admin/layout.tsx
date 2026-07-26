@@ -156,32 +156,19 @@ export default function AdminLayout({ children }: { children: React.ReactNode })
   useEffect(() => {
     if (roleLoading || !role) return;
 
-    // Update admin name if we detected a company admin
-    if (role === 'company_admin' && adminName === 'Loading...') {
-      setAdminName('Company Admin');
-    }
-
-    // Master-only routes
-    const masterOnlyRoutes = [
-      '/admin/companies',
-      '/admin/all-users',
-      '/admin/pending-users',
-      '/admin/auxiliares',
-      '/admin/portal-browser',
-      '/admin/logs',
-      '/admin/conversation-logs',
-      '/admin/legal-documents',
-    ];
-
-    // If company admin trying to access master-only route, redirect
-    if (role === 'company_admin' && masterOnlyRoutes.some((route) => pathname.startsWith(route))) {
-      router.push('/admin/team');
-      return;
-    }
-
-    // If member trying to access admin routes, redirect
-    if (role === 'member' && pathname.startsWith('/admin')) {
+    // SPEC-061 §6 — separação definitiva das superfícies.
+    //
+    // A lista `masterOnlyRoutes` que existia aqui SUMIU, e isso é o ponto: ela
+    // enumerava, no navegador, os endereços que o admin de corretora não podia
+    // ver. Enumerar é frágil por natureza — toda tela nova precisava lembrar de
+    // entrar na lista, e quem digitasse o endereço direto chegava lá de
+    // qualquer forma, porque §8.4 já dizia que esconder botão não é segurança.
+    //
+    // Agora a regra é uma só e é de exclusão: `/admin` é da PLATAFORMA. Quem
+    // não é plataforma vai para a casa dele, e não há o que enumerar.
+    if (role && role !== 'master') {
       router.push('/dashboard');
+      return;
     }
   }, [role, roleLoading, pathname, router, adminName]);
 
@@ -331,27 +318,24 @@ export default function AdminLayout({ children }: { children: React.ReactNode })
     },
   ];
 
-  const companyAdminMenuItems = [
-    { href: '/admin/team', icon: Users, label: 'Minha Equipe' },
-    { href: '/admin/conversations', icon: MessageSquare, label: 'Conversas' },
-    { href: '/admin/agent', icon: Bot, label: 'Configurar Agente' },
-    { href: '/admin/documents', icon: FileText, label: 'Base de Conhecimento' },
-    // { href: '/admin/integrations', icon: MessageCircle, label: 'Integrações' }, // HIDDEN: Menu não utilizado
-    // Meu Plano só aparece para owners
-    ...(isOwner ? [{ href: '/admin/billing', icon: CreditCard, label: 'Meu Plano' }] : []),
-    { href: '/admin/settings', icon: Settings, label: 'Configurações' },
-  ];
-
-  // Select menu based on role
-  const menuItems = role === 'master' ? masterMenuItems : companyAdminMenuItems;
-
-  // Items locked when no subscription OR payment failed (past_due)
-  // User can only access: Meu Plano & Configurações
-  const lockedHrefs = ['/admin/team', '/admin/conversations', '/admin/agent', '/admin/documents'];
-  const isPastDue = subscription?.status === 'past_due';
-  const noSubscription = !subscription?.has_subscription;
-  const isLocked = (href: string) =>
-    role === 'company_admin' && (noSubscription || isPastDue) && lockedHrefs.includes(href);
+  // SPEC-061 §6 — `companyAdminMenuItems` foi REMOVIDO.
+  //
+  // As cinco telas que ele listava eram da corretora e mudaram de casa:
+  //
+  //   /admin/team          -> /dashboard/equipe
+  //   /admin/conversations -> /dashboard/conversas
+  //   /admin/agent         -> /dashboard/agente
+  //   /admin/documents     -> /dashboard/documentos
+  //   /admin/billing       -> /dashboard/plano
+  //
+  // Os endereços antigos continuam existindo como redirecionamento: link
+  // salvo não some quando a rota muda.
+  //
+  // O bloqueio por assinatura vencida (`isLocked`) saiu junto — ele só fazia
+  // sentido para o menu da corretora, e a corretora não tem mais menu aqui.
+  // A regra continua valendo onde ela pertence, no `/dashboard`.
+  const menuItems = masterMenuItems;
+  const isLocked = (_href: string) => false;
 
   return (
     <div className="h-screen bg-background flex text-foreground overflow-hidden">
@@ -462,11 +446,7 @@ export default function AdminLayout({ children }: { children: React.ReactNode })
                 <div
                   key={item.href}
                   className="flex items-center justify-between gap-3 px-4 py-3 rounded-lg text-muted-foreground/50 cursor-not-allowed opacity-50"
-                  title={
-                    isPastDue
-                      ? 'Regularize o pagamento para acessar'
-                      : 'Assine um plano para acessar'
-                  }
+                  title="Indisponível"
                 >
                   <div className="flex items-center gap-3">
                     <item.icon className="w-5 h-5" />

@@ -9,14 +9,20 @@ import dynamic from 'next/dynamic';
 const FinopsUsage = dynamic(() => import('../finops/usage/page'), { ssr: false });
 const FinopsPricing = dynamic(() => import('../finops/pricing/page'), { ssr: false });
 const FinopsPlans = dynamic(() => import('../finops/plans/page'), { ssr: false });
-const Billing = dynamic(() => import('../billing/page'), { ssr: false });
+// SPEC-061 §6 — a aba "Cobrança" saiu.
+//
+// Ela embutia `/admin/billing`, que é "Meu Plano" — o plano DA CORRETORA, o
+// que ela paga. Não é a receita da plataforma; é a fatura de um cliente
+// específico, e dentro do Admin ela nem sabia de qual cliente falava.
+//
+// Mudou de casa para `/dashboard/plano`. O que fica aqui é o financeiro da
+// PLATAFORMA: consumo, tabela de custos, planos e custo por corretora.
 const Costs = dynamic(() => import('../costs/page'), { ssr: false });
 
 const TABS = [
   { id: 'usage', label: 'Consumo LLM' },
   { id: 'pricing', label: 'Tabela de custos' },
   { id: 'plans', label: 'Planos' },
-  { id: 'billing', label: 'Cobrança' },
   { id: 'costs', label: 'Custos (legado)' },
 ] as const;
 
@@ -40,7 +46,6 @@ export default function FinanceiroHub() {
       {tab === 'usage' && <FinopsUsage />}
       {tab === 'pricing' && <FinopsPricing />}
       {tab === 'plans' && <FinopsPlans />}
-      {tab === 'billing' && <Billing />}
       {tab === 'costs' && <Costs />}
     </div>
   );
