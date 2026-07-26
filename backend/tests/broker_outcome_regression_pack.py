@@ -460,6 +460,10 @@ CASOS: list[Caso] = [
     # e ninguém descobre até ele agir.
     Caso("RBA-01", "identidade", "Cada papel do Admin pode só o que deve",
          "SPEC-061", lambda: _roda_script("test_spec061_rbac.py")),
+    # A trilha é o lugar que ninguém apaga. Segredo copiado para dentro dela
+    # por um `before/after` de conexão vira um lugar novo onde a chave existe.
+    Caso("AUD-02", "seguranca", "A trilha do Admin diz por quê sem vazar segredo",
+         "SPEC-061", lambda: _roda_script("test_spec061_auditoria.py")),
     Caso("IDN-01", "identidade", "Corretora A não enxerga dados da corretora B",
          "SPEC-048", lambda: _roda_script("test_spec048_isolamento_corretoras.py")),
     Caso("CAP-01", "capacidades", "Agente só recebe os poderes do seu papel",

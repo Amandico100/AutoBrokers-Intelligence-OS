@@ -1,0 +1,233 @@
+"""Control Plane — autoridade administrativa. SPEC-061 §5, §7, §8.
+
+Por que a decisão mora AQUI e não no Next
+-----------------------------------------
+A matriz de papéis é uma autoridade. Duas cópias dela — uma em Python, outra em
+TypeScript — divergem na primeira permission nova: alguém acrescenta a tela, o
+backend passa a cobrar `releases.rollout`, o front não conhece a chave, e o
+operador vê um botão que devolve 403. Ou pior, o inverso.
+
+Então há **um** lugar que decide, e o BFF do Next pergunta a ele.
+
+O custo é uma chamada interna por sessão administrativa — não por requisição:
+o BFF guarda o resultado enquanto a sessão vive. O ganho é não ter como as duas
+respostas discordarem.
+
+O que este módulo NÃO faz
+-------------------------
+Não executa comando, não lê domínio, não compõe read model. Ele responde duas
+perguntas e só: *quem é esta pessoa* e *o que ela pode*. Executar é o Command
+Gateway; ler é o BFF.
+"""
+
+from __future__ import annotations
+
+import logging
+from typing import Any, Optional
+
+from fastapi import APIRouter, Header, HTTPException
+from pydantic import BaseModel
+
+logger = logging.getLogger(__name__)
+
+router = APIRouter(prefix="/api/admin/control-plane", tags=["Control Plane"])
+
+
+def _autorizar(chave: Optional[str]) -> None:
+    """Só o BFF fala com este router. Chave interna, nunca sessão de usuário."""
+    import os
+
+    esperada = (os.getenv("BACKEND_INTERNAL_API_KEY")
+                or os.getenv("ADMIN_API_KEY") or "").strip()
+    if not esperada or (chave or "").strip() != esperada:
+        raise HTTPException(401, "chave interna inválida")
+
+
+def _db():
+    from app.core.database import get_supabase_client
+
+    return get_supabase_client()
+
+
+# ---------------------------------------------------------------------------
+# Autoridade
+# ---------------------------------------------------------------------------
+
+
+class AutoridadeIn(BaseModel):
+    user_id: str
+    # §8.2 — quem já era `master` continua operando enquanto os papéis novos
+    # não são atribuídos. Sem isto, aplicar a SPEC-061 deixaria o Founder de
+    # fora do próprio Admin no primeiro deploy.
+    papel_legado: Optional[str] = None
+
+
+@router.post("/authority")
+async def autoridade(payload: AutoridadeIn,
+                     x_internal_key: Optional[str] = Header(None)):
+    """Papéis, permissions e o menu que a pessoa pode ver."""
+    _autorizar(x_internal_key)
+    from app.services.control_plane.rbac import (PAPEIS,
+                                                 AutoridadeAdministrativa)
+
+    servico = AutoridadeAdministrativa(_db())
+    papeis = servico.papeis(payload.user_id, papel_legado=payload.papel_legado)
+    permissions = sorted(servico.menu(payload.user_id,
+                                      papel_legado=payload.papel_legado))
+    return {
+        "ok": True,
+        "user_id": payload.user_id,
+        "papeis": papeis,
+        "papeis_legiveis": [PAPEIS[p]["nome"] for p in papeis if p in PAPEIS],
+        "permissions": permissions,
+        # Sem papel ativo, o Admin não abre. É o fail-closed do §8.4 chegando
+        # até a tela: menu vazio é mais honesto que menu cheio de 403.
+        "tem_acesso": bool(papeis),
+    }
+
+
+class PodeIn(BaseModel):
+    user_id: str
+    permission_key: str
+    papel_legado: Optional[str] = None
+
+
+@router.post("/can")
+async def pode(payload: PodeIn, x_internal_key: Optional[str] = Header(None)):
+    """A decisão para UMA ação. É o que o Command Gateway consulta."""
+    _autorizar(x_internal_key)
+    from app.services.control_plane.rbac import AutoridadeAdministrativa
+
+    d = AutoridadeAdministrativa(_db()).pode(
+        payload.user_id, payload.permission_key,
+        papel_legado=payload.papel_legado)
+    return {"ok": True, "permitido": d.permitido, "motivo": d.motivo,
+            "risco": d.risco, "exige_step_up": d.exige_step_up,
+            "origem": d.origem, "papeis": d.papeis}
+
+
+@router.get("/roles")
+async def papeis_disponiveis(x_internal_key: Optional[str] = Header(None)):
+    """O catálogo de papéis, para a tela de concessão."""
+    _autorizar(x_internal_key)
+    from app.services.control_plane.rbac import PAPEIS
+
+    return {"ok": True, "papeis": [
+        {"role_key": k, "nome": v["nome"], "descricao": v["descricao"],
+         "quantidade_de_permissions": len(v["permissions"])}
+        for k, v in PAPEIS.items()]}
+
+
+# ---------------------------------------------------------------------------
+# Trilha de auditoria — §9.3
+# ---------------------------------------------------------------------------
+
+
+class AuditoriaIn(BaseModel):
+    actor_user_id: str
+    action_key: str
+    target_type: str
+    result_status: str
+    permission_key: Optional[str] = None
+    target_id: Optional[str] = None
+    company_id: Optional[str] = None
+    reason: Optional[str] = None
+    before: Optional[dict] = None
+    after: Optional[dict] = None
+    metadata: Optional[dict] = None
+    support_session_id: Optional[str] = None
+    work_run_id: Optional[str] = None
+    correlation_id: Optional[str] = None
+    result_code: Optional[str] = None
+
+
+@router.post("/audit")
+async def registrar_auditoria(payload: AuditoriaIn,
+                              x_internal_key: Optional[str] = Header(None)):
+    _autorizar(x_internal_key)
+    from app.services.control_plane.audit import TrilhaAdministrativa
+
+    r = TrilhaAdministrativa(_db()).registrar(
+        actor_user_id=payload.actor_user_id, action_key=payload.action_key,
+        target_type=payload.target_type, result_status=payload.result_status,
+        permission_key=payload.permission_key, target_id=payload.target_id,
+        company_id=payload.company_id, reason=payload.reason,
+        antes=payload.before, depois=payload.after,
+        metadata=payload.metadata, support_session_id=payload.support_session_id,
+        work_run_id=payload.work_run_id, correlation_id=payload.correlation_id,
+        result_code=payload.result_code)
+    if not r.get("ok"):
+        raise HTTPException(400, str(r.get("erro") or "não foi possível registrar"))
+    return r
+
+
+@router.get("/audit")
+async def listar_auditoria(limite: int = 100, company_id: Optional[str] = None,
+                           actor_user_id: Optional[str] = None,
+                           risco: Optional[str] = None,
+                           x_internal_key: Optional[str] = Header(None)):
+    _autorizar(x_internal_key)
+    from app.services.control_plane.audit import TrilhaAdministrativa
+
+    return {"ok": True, "eventos": TrilhaAdministrativa(_db()).listar(
+        limite=min(int(limite), 300), company_id=company_id,
+        actor_user_id=actor_user_id, risco=risco)}
+
+
+# ---------------------------------------------------------------------------
+# Concessão de papel — §9.1
+# ---------------------------------------------------------------------------
+
+
+class ConcederIn(BaseModel):
+    user_id: str
+    role_key: str
+    granted_by_user_id: str
+    reason: Optional[str] = None
+    expira_em_dias: Optional[int] = None
+
+
+@router.post("/roles/grant")
+async def conceder_papel(payload: ConcederIn,
+                         x_internal_key: Optional[str] = Header(None)):
+    _autorizar(x_internal_key)
+    from app.services.control_plane.rbac import ConcessaoDePapel
+
+    r = ConcessaoDePapel(_db()).conceder(
+        user_id=payload.user_id, role_key=payload.role_key,
+        granted_by_user_id=payload.granted_by_user_id,
+        reason=payload.reason, expira_em_dias=payload.expira_em_dias)
+    if not r.get("ok"):
+        raise HTTPException(400, str(r.get("erro") or "não foi possível conceder"))
+    return r
+
+
+class RevogarIn(BaseModel):
+    user_id: str
+    role_key: str
+    revoked_by_user_id: str
+    reason: Optional[str] = None
+
+
+@router.post("/roles/revoke")
+async def revogar_papel(payload: RevogarIn,
+                        x_internal_key: Optional[str] = Header(None)):
+    _autorizar(x_internal_key)
+    from app.services.control_plane.rbac import ConcessaoDePapel
+
+    r = ConcessaoDePapel(_db()).revogar(
+        user_id=payload.user_id, role_key=payload.role_key,
+        revoked_by_user_id=payload.revoked_by_user_id, reason=payload.reason)
+    if not r.get("ok"):
+        raise HTTPException(400, str(r.get("erro") or "não foi possível revogar"))
+    return r
+
+
+@router.get("/roles/bindings")
+async def vinculos(user_id: Optional[str] = None, limite: int = 100,
+                   x_internal_key: Optional[str] = Header(None)):
+    _autorizar(x_internal_key)
+    from app.services.control_plane.rbac import ConcessaoDePapel
+
+    return {"ok": True, "vinculos": ConcessaoDePapel(_db()).listar(
+        user_id=user_id, limite=min(int(limite), 300))}

@@ -290,6 +290,10 @@ export default function AdminLayout({ children }: { children: React.ReactNode })
       label: 'Sistema',
       submenu: [
         { href: '/admin/legal-documents', label: 'Termos e políticas' },
+        // SPEC-061 §8 — o rótulo diz o que a página RESPONDE. "RBAC" ou
+        // "Role bindings" obrigaria quem precisa tirar o acesso de alguém a
+        // saber o nome interno da coisa para achar a tela.
+        { href: '/admin/governanca', label: 'Quem pode o quê' },
       ],
     },
   ];

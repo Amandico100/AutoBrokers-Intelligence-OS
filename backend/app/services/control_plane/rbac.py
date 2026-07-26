@@ -452,3 +452,115 @@ class AutoridadeAdministrativa:
             else:
                 concedidas.discard(chave)
         return frozenset(c for c in concedidas if c in CONJUNTO_DE_PERMISSIONS)
+
+
+# ---------------------------------------------------------------------------
+# Concessão e revogação de papel — §9.1
+# ---------------------------------------------------------------------------
+
+
+class ConcessaoDePapel:
+    """Dá e tira papel administrativo. Toda operação é auditada por quem chama.
+
+    A auditoria não é feita aqui de propósito: ela precisa do ator da SESSÃO,
+    e este serviço não tem sessão. Fazer o registro aqui obrigaria a passar um
+    ator adiante, e um ator passado adiante é um ator que alguém pode inventar.
+    Quem tem a sessão é o Command Gateway — e é ele que registra.
+    """
+
+    def __init__(self, supabase_client: Any):
+        self.raw = supabase_client
+        self.db = getattr(supabase_client, "client", supabase_client)
+
+    def conceder(self, *, user_id: str, role_key: str,
+                 granted_by_user_id: str, reason: Optional[str] = None,
+                 expira_em_dias: Optional[int] = None) -> dict:
+        if role_key not in PAPEIS:
+            return {"ok": False, "erro": f"papel desconhecido: {role_key}"}
+        if str(user_id) == str(granted_by_user_id) and role_key == "platform_owner":
+            # §8.5, segregação de funções: ninguém se promove a dono. É a
+            # única escalada que, uma vez feita, não pode ser desfeita por
+            # mais ninguém.
+            return {"ok": False,
+                    "erro": "ninguém concede a si mesmo o papel de dono"}
+
+        linha: dict[str, Any] = {
+            "user_id": str(user_id), "role_key": role_key,
+            "granted_by_user_id": str(granted_by_user_id),
+            "status": "active", "reason": reason,
+        }
+        if expira_em_dias:
+            from datetime import timedelta
+
+            linha["expires_at"] = (
+                _agora() + timedelta(days=int(expira_em_dias))).isoformat()
+
+        try:
+            r = self.db.table("platform_admin_role_bindings").insert(linha).execute()
+            return {"ok": True, "vinculo": (r.data or [{}])[0]}
+        except Exception as exc:  # noqa: BLE001
+            texto = str(exc).lower()
+            if "duplicate" in texto or "unique" in texto:
+                # A UNIQUE parcial do banco. Devolver a frase humana em vez do
+                # erro de constraint é o que separa "já tem" de "falhou".
+                return {"ok": False, "erro": "essa pessoa já tem esse papel ativo"}
+            logger.error("[RBAC] concessão falhou: %s", type(exc).__name__)
+            return {"ok": False, "erro": "não consegui conceder o papel"}
+
+    def revogar(self, *, user_id: str, role_key: str,
+                revoked_by_user_id: str, reason: Optional[str] = None) -> dict:
+        """Revoga sem apagar.
+
+        O vínculo vira `revoked` e continua existindo: a pergunta "quem tinha
+        acesso em março?" precisa de resposta, e uma linha apagada não
+        responde nada.
+        """
+        try:
+            r = (self.db.table("platform_admin_role_bindings")
+                 .update({"status": "revoked",
+                          "updated_at": _agora().isoformat(),
+                          "reason": reason})
+                 .eq("user_id", str(user_id)).eq("role_key", role_key)
+                 .eq("status", "active").execute())
+            if not r.data:
+                return {"ok": False, "erro": "essa pessoa não tem esse papel ativo"}
+            return {"ok": True, "revogados": len(r.data)}
+        except Exception as exc:  # noqa: BLE001
+            logger.error("[RBAC] revogação falhou: %s", type(exc).__name__)
+            return {"ok": False, "erro": "não consegui revogar o papel"}
+
+    def expirar_vencidos(self) -> int:
+        """Marca como `expired` o que passou do prazo.
+
+        A decisão já trata vencido como inválido — esta varredura existe para
+        que a TELA também mostre a verdade. Um vínculo que aparece "ativo" e
+        não concede nada é a forma mais rápida de alguém achar que o sistema
+        está quebrado.
+        """
+        try:
+            r = (self.db.table("platform_admin_role_bindings")
+                 .update({"status": "expired", "updated_at": _agora().isoformat()})
+                 .eq("status", "active")
+                 .lt("expires_at", _agora().isoformat()).execute())
+            return len(r.data or [])
+        except Exception as exc:  # noqa: BLE001
+            logger.warning("[RBAC] expiração falhou: %s", type(exc).__name__)
+            return 0
+
+    def listar(self, *, user_id: Optional[str] = None,
+               limite: int = 100) -> list[dict]:
+        try:
+            q = (self.db.table("platform_admin_role_bindings")
+                 .select("id, user_id, role_key, status, starts_at, "
+                         "expires_at, granted_by_user_id, reason, created_at")
+                 .order("created_at", desc=True).limit(limite))
+            if user_id:
+                q = q.eq("user_id", str(user_id))
+            linhas = q.execute().data or []
+            for l in linhas:
+                papel = PAPEIS.get(str(l.get("role_key")))
+                l["nome_do_papel"] = papel["nome"] if papel else l.get("role_key")
+            return linhas
+        except Exception as exc:  # noqa: BLE001
+            logger.error("[RBAC] listagem falhou: %s", type(exc).__name__)
+            return []

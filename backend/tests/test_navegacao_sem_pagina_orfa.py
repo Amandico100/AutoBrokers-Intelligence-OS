@@ -78,16 +78,22 @@ PREFIXOS_DE_SUBPAGINA = (
 # SPEC-061 — é lá que esta lista deve encolher até desaparecer.
 #
 # O que este teste impede a partir de agora: que a lista CRESÇA.
+#
+# Corrigida em 27/07/2026, durante a SPEC-061. A lista tinha nove entradas
+# porque este teste lia apenas `masterMenuItems`. Cinco delas são alcançadas
+# normalmente pelo administrador da corretora, por `companyAdminMenuItems`:
+# `/admin/team`, `/admin/conversations`, `/admin/agent`, `/admin/documents` e
+# `/admin/billing`.
+#
+# A dívida real é de QUATRO páginas — e uma delas, `/admin/integrations`, tem
+# o item de menu comentado com `// HIDDEN`. Um teste que superestima a dívida
+# é tão ruim quanto um que a esconde: no primeiro caso alguém "conserta" o que
+# não estava quebrado.
 ORFAS_ANTERIORES_A_SPEC059 = {
-    "/admin/agent",
-    "/admin/billing",
     "/admin/conversation-logs",
-    "/admin/conversations",
     "/admin/costs",
-    "/admin/documents",
-    "/admin/integrations",
+    "/admin/integrations",   # item existe no layout, comentado com `// HIDDEN`
     "/admin/logs",
-    "/admin/team",
 }
 
 
@@ -127,13 +133,20 @@ def menu_tenant() -> list[tuple[str, str]]:
         fonte)
 
 
-def menu_admin() -> list[tuple[str, str]]:
-    """(rótulo, href) do portal admin, incluindo submenus."""
-    fonte = _ler(os.path.join(APP, "admin", "layout.tsx"))
-    inicio = fonte.find("const masterMenuItems")
-    if inicio < 0:
-        return []
-    bloco = fonte[inicio:fonte.find("\n  ];", inicio)]
+def _sem_comentario(fonte: str) -> str:
+    """Link comentado não é link.
+
+    `// { href: '/admin/integrations', ... } // HIDDEN` é código desligado. Sem
+    esta limpeza, o teste declarava a página alcançável e ela não estava em
+    lugar nenhum do menu — o defeito exato que ele existe para pegar, passando
+    despercebido por causa de uma barra dupla.
+    """
+    return "\n".join(l for l in fonte.split("\n")
+                     if not l.lstrip().startswith("//"))
+
+
+def _itens_do_bloco(bloco: str) -> list[tuple[str, str]]:
+    bloco = _sem_comentario(bloco)
     saida: list[tuple[str, str]] = []
     # Item simples: href antes de label.
     for href, rotulo in re.findall(
@@ -146,6 +159,45 @@ def menu_admin() -> list[tuple[str, str]]:
     return saida
 
 
+def _bloco(fonte: str, nome: str) -> str:
+    inicio = fonte.find(nome)
+    if inicio < 0:
+        return ""
+    return fonte[inicio:fonte.find("\n  ];", inicio)]
+
+
+def menu_admin() -> list[tuple[str, str]]:
+    """(rótulo, href) do portal admin — os DOIS menus, com submenus.
+
+    O Admin serve a dois papéis com menus diferentes: `masterMenuItems` para a
+    plataforma e `companyAdminMenuItems` para o administrador da corretora.
+    Ler só o primeiro fazia este teste declarar órfãs cinco páginas que o
+    administrador de corretora alcança normalmente — `/admin/team`,
+    `/admin/conversations`, `/admin/agent`, `/admin/documents` e
+    `/admin/billing`.
+
+    Um teste que superestima a dívida é tão ruim quanto um que a esconde: no
+    primeiro caso alguém "conserta" o que não estava quebrado.
+    """
+    return [item for menu in menus_admin().values() for item in menu]
+
+
+def menus_admin() -> dict[str, list[tuple[str, str]]]:
+    """Os dois menus, SEPARADOS por papel.
+
+    A distinção importa para rótulo duplicado: o layout escolhe um menu ou o
+    outro (`role === 'master' ? masterMenuItems : companyAdminMenuItems`), e
+    ninguém vê os dois. "Conversas" existir nos dois não é ambiguidade — é a
+    mesma ideia dita para públicos diferentes. Comparar os menus somados
+    acusaria um problema que o usuário nunca encontra.
+    """
+    fonte = _ler(os.path.join(APP, "admin", "layout.tsx"))
+    return {
+        "admin (plataforma)": _itens_do_bloco(_bloco(fonte, "const masterMenuItems")),
+        "admin (corretora)": _itens_do_bloco(_bloco(fonte, "const companyAdminMenuItems")),
+    }
+
+
 # ---------------------------------------------------------------------------
 # Testes
 # ---------------------------------------------------------------------------
@@ -153,7 +205,8 @@ def menu_admin() -> list[tuple[str, str]]:
 
 def teste_nenhum_rotulo_duplicado():
     print("\n[1] Nenhum rótulo de menu se repete")
-    for papel, itens in (("corretora", menu_tenant()), ("admin", menu_admin())):
+    papeis = [("corretora", menu_tenant())] + list(menus_admin().items())
+    for papel, itens in papeis:
         vistos: dict[str, list[str]] = {}
         for rotulo, href in itens:
             vistos.setdefault(rotulo.strip().lower(), []).append(href)
@@ -209,7 +262,8 @@ def teste_paginas_das_specs_recentes_estao_no_menu():
     for rota, spec in (("/dashboard/briefing", "SPEC-059"),
                        ("/admin/inteligencia", "SPEC-059"),
                        ("/dashboard/pesquisas", "SPEC-060"),
-                       ("/admin/pesquisa", "SPEC-060")):
+                       ("/admin/pesquisa", "SPEC-060"),
+                       ("/admin/governanca", "SPEC-061")):
         checar(rota in ligados, f"{rota} tem link no menu ({spec})",
                "tela sem link é tela que não existe para quem usa")
 

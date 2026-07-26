@@ -219,6 +219,17 @@ try:
     logger.info("[STARTUP] Research Intelligence API registrada")
 except Exception as _e:  # noqa: BLE001
     logger.error("[STARTUP] Research API indisponivel: %s", type(_e).__name__)
+
+# SPEC-061 — Control Plane. A autoridade administrativa mora aqui, em UM lugar:
+# o BFF do Next pergunta, nao decide. Duas copias da matriz de papeis
+# divergiriam na primeira permission nova.
+try:
+    from app.api.control_plane import router as control_plane_router
+
+    app.include_router(control_plane_router, tags=["Control Plane"])
+    logger.info("[STARTUP] Control Plane API registrada")
+except Exception as _e:  # noqa: BLE001
+    logger.error("[STARTUP] Control Plane API indisponivel: %s", type(_e).__name__)
 app.include_router(agent_config_router, prefix="/api/agent", tags=["Agent Config"])
 from app.api.agents import router as agents_router
 from app.api.billing import router as billing_router
