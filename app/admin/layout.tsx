@@ -8,8 +8,10 @@ import {
   Users,
   UserCheck,
   Activity,
+  Brain,
   Inbox,
   LayoutDashboard,
+  ShieldCheck,
   LogOut,
   Shield,
   FileText,
@@ -219,32 +221,28 @@ export default function AdminLayout({ children }: { children: React.ReactNode })
   // SPEC-036 Etapa 1: navegação reorganizada em 10 destinos (operação primeiro,
   // gestão depois). Nenhuma rota morreu — páginas antigas viram filhos dos hubs.
   const masterMenuItems = [
-    { href: '/admin', icon: LayoutDashboard, label: 'Dashboard' },
-    // SPEC-061 §13 — a primeira tela do dia. O rótulo é a pergunta que o
-    // operador faz ao abrir o Admin, e por isso vem logo abaixo da raiz.
-    { href: '/admin/inbox', icon: Inbox, label: 'O que precisa de mim' },
-    // §15 — para onde a caixa manda quando o item é um trabalho.
-    { href: '/admin/trabalhos', icon: Activity, label: 'Trabalhos em andamento' },
-    { href: '/admin/central-agentes', icon: Bot, label: 'Central de Agentes' },
-    { href: '/admin/atlas', icon: Map, label: 'Atlas de Rotas' },
-    { href: '/admin/espelho', icon: UserCheck, label: 'Espelho de Atendimento' },
-    { href: '/admin/acionamentos', icon: MessageSquare, label: 'Acionamentos ao vivo' },
-    // SPEC-059 §26 — a Central de Inteligência substitui o ranking superficial
-    // de "Insights · Garimpo". A rota antiga continua no ar como adapter
-    // durante a transição (§29.7); a autoridade passou para cá.
+    // SPEC-061 §10 — OITO hubs. Não é preferência estética: o Admin tinha 15
+    // grupos de primeiro nível e 34 links, e o Founder relatou que "é uma
+    // bagunça e não consigo entender".
+    //
+    // Quinze grupos obrigam a pessoa a saber ONDE uma coisa mora antes de
+    // procurá-la. Oito hubs, nomeados pelo ASSUNTO, permitem eliminar sete
+    // deles de cara e olhar dentro de um.
+    //
+    // Nenhuma rota morreu: toda página virou filha do hub a que pertence.
+    // §10 diz "não adicionar novo item de primeiro nível sem revisão
+    // canônica" — daí os oito, exatamente.
+    //
+    // A ordem é a do dia de trabalho: o que exige decisão primeiro
+    // (Visão geral), o que está acontecendo depois (Operação), e o que só se
+    // mexe de vez em quando por último (Governança).
     {
-      href: '/admin/inteligencia',
-      icon: Bot,
-      label: 'Inteligência',
+      href: '/admin',
+      icon: LayoutDashboard,
+      label: 'Visão geral',
       submenu: [
-        // Rótulos no que o item RESPONDE, não no que ele é por dentro.
-        // "Central (sinais, regras, demanda)" descreve a estrutura interna;
-        // quem administra quer saber o que vai encontrar lá.
-        { href: '/admin/inteligencia', label: 'O que o sistema percebeu' },
-        // SPEC-060 §31 — mesmo padrão: o rótulo diz o que a página RESPONDE.
-        { href: '/admin/pesquisa', label: 'O que buscamos na internet' },
-        { href: '/admin/auxiliares/factory', label: 'O que as corretoras pediram' },
-        { href: '/admin/insights', label: 'Garimpo (legado)' },
+        { href: '/admin', label: 'Resumo' },
+        { href: '/admin/inbox', label: 'O que precisa de mim' },
       ],
     },
     {
@@ -252,70 +250,81 @@ export default function AdminLayout({ children }: { children: React.ReactNode })
       icon: Building2,
       label: 'Corretoras',
       submenu: [
-        { href: '/admin/corretoras', label: 'Cockpit (visão 360º)' },
-        { href: '/admin/companies', label: 'Empresas & Agentes' },
-        { href: '/admin/pending-users', label: 'Aprovações pendentes' },
-        { href: '/admin/all-users', label: 'Todos os usuários' },
+        { href: '/admin/companies', label: 'Todas as corretoras' },
+        { href: '/admin/corretoras', label: 'Como cada uma está' },
+        { href: '/admin/all-users', label: 'Pessoas' },
+        { href: '/admin/pending-users', label: 'Esperando aprovação' },
       ],
     },
-    // SPEC-061 Bloco C — as três telas abaixo existiam com conteúdo real (723,
-    // 517 e 222 linhas) e sem nenhum link chegando até elas. Não foram
-    // recriadas: ganharam o lugar a que já pertenciam. Apagar tela que
-    // alguém escreveu e ninguém achou é resolver o sintoma errado.
     {
-      href: '/admin/conversas',
-      icon: MessageSquare,
-      label: 'Conversas',
-      submenu: [{ href: '/admin/conversation-logs', label: 'Histórico detalhado' }],
-    },
-    {
-      href: '/admin/financeiro',
-      icon: DollarSign,
-      label: 'Financeiro',
-      submenu: [{ href: '/admin/costs', label: 'Custo por corretora' }],
-    },
-    {
-      href: '/admin/portal-browser',
-      icon: Globe,
-      label: 'Conexões',
+      href: '/admin/trabalhos',
+      icon: Activity,
+      label: 'Operação',
       submenu: [
-        { href: '/admin/insurer-action-channels', label: 'Canais de seguradora' },
+        { href: '/admin/trabalhos', label: 'Trabalhos em andamento' },
+        { href: '/admin/conversas', label: 'Atendimentos' },
+        { href: '/admin/conversation-logs', label: 'Histórico de conversas' },
+        { href: '/admin/espelho', label: 'Acompanhar um atendimento' },
+        { href: '/admin/acionamentos', label: 'Acionamentos ao vivo' },
       ],
     },
-    // Este grupo chamava-se "Inteligência" — nome que a SPEC-059 passou a usar
-    // para a Central de sinais. Dois itens com o mesmo rótulo deixavam o menu
-    // ambíguo: quem procurava a Central abria este e encontrava blueprints.
-    //
-    // E havia um defeito anterior: o cabeçalho apontava para Auxiliares Globais
-    // enquanto o submenu falava de templates. Cabeçalho e filhos indo para
-    // lugares diferentes é o tipo de coisa que faz o usuário desistir de
-    // procurar e perguntar para outra pessoa.
-    //
-    // O que existe aqui é o que a PLATAFORMA publica para as corretoras:
-    // auxiliares, rotinas e o padrão global dos agentes. Daí o nome.
     {
-      href: '/admin/auxiliares',
-      icon: CalendarClock,
-      label: 'Catálogo Global',
+      href: '/admin/inteligencia',
+      icon: Brain,
+      label: 'Inteligência',
       submenu: [
-        { href: '/admin/auxiliares', label: 'Auxiliares Globais' },
+        { href: '/admin/inteligencia', label: 'O que o sistema percebeu' },
+        { href: '/admin/pesquisa', label: 'O que buscamos na internet' },
+        { href: '/admin/auxiliares/factory', label: 'O que as corretoras pediram' },
+        { href: '/admin/insights', label: 'Garimpo (legado)' },
+        { href: '/admin/central-agentes', label: 'Agentes' },
+        { href: '/admin/auxiliares', label: 'Auxiliares publicados' },
         { href: '/admin/routine-templates', label: 'Rotinas prontas' },
         { href: '/admin/blueprint-center', label: 'Blueprint Center' },
         { href: '/admin/prompt-effective', label: 'Prompt efetivo' },
       ],
     },
-    { href: '/admin/knowledge-base', icon: FileText, label: 'Conhecimento (RAG)' },
     {
-      href: '/admin/settings',
-      icon: Settings,
-      label: 'Sistema',
+      href: '/admin/connectors/portal-browser',
+      icon: Globe,
+      label: 'Conexões',
       submenu: [
-        { href: '/admin/legal-documents', label: 'Termos e políticas' },
-        // SPEC-061 §8 — o rótulo diz o que a página RESPONDE. "RBAC" ou
-        // "Role bindings" obrigaria quem precisa tirar o acesso de alguém a
-        // saber o nome interno da coisa para achar a tela.
+        { href: '/admin/connectors/portal-browser', label: 'Portais das seguradoras' },
+        { href: '/admin/insurer-action-channels', label: 'Canais de seguradora' },
+        { href: '/admin/atlas', label: 'Atlas de rotas' },
+        { href: '/admin/portal-browser', label: 'Navegador de portal' },
+      ],
+    },
+    {
+      href: '/admin/knowledge-base',
+      icon: FileText,
+      label: 'Conhecimento',
+      submenu: [
+        { href: '/admin/knowledge-base', label: 'Base de conhecimento' },
+        { href: '/admin/knowledge-base/sanitize', label: 'Limpar documento' },
+      ],
+    },
+    {
+      href: '/admin/financeiro',
+      icon: DollarSign,
+      label: 'Financeiro',
+      submenu: [
+        { href: '/admin/financeiro', label: 'Receita e planos' },
+        { href: '/admin/costs', label: 'Custo por corretora' },
+        { href: '/admin/finops/usage', label: 'Consumo' },
+        { href: '/admin/finops/pricing', label: 'Preços' },
+        { href: '/admin/finops/plans', label: 'Planos' },
+      ],
+    },
+    {
+      href: '/admin/governanca',
+      icon: ShieldCheck,
+      label: 'Governança',
+      submenu: [
         { href: '/admin/governanca', label: 'Quem pode o quê' },
+        { href: '/admin/legal-documents', label: 'Termos e políticas' },
         { href: '/admin/logs', label: 'Registro técnico' },
+        { href: '/admin/settings', label: 'Configurações' },
       ],
     },
   ];

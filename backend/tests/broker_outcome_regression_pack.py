@@ -473,6 +473,11 @@ CASOS: list[Caso] = [
     # sem nada indicando por quê.
     Caso("COL-01", "operacao", "O Admin não lê coluna que não existe",
          "SPEC-061", lambda: _roda_script("test_spec061_colunas_reais.py")),
+    # O menu cresce sozinho: cada SPEC entrega telas, e "só mais um item no
+    # topo" é sempre a saída fácil. Chegou a 15 grupos, e o Founder disse
+    # "é uma bagunça e não consigo entender".
+    Caso("NAV-02", "identidade", "O Admin cabe na cabeça: 8 hubs, sem jargão",
+         "SPEC-061", lambda: _roda_script("test_spec061_navegacao_oito_hubs.py")),
     Caso("IDN-01", "identidade", "Corretora A não enxerga dados da corretora B",
          "SPEC-048", lambda: _roda_script("test_spec048_isolamento_corretoras.py")),
     Caso("CAP-01", "capacidades", "Agente só recebe os poderes do seu papel",

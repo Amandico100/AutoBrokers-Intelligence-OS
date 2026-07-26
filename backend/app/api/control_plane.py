@@ -287,6 +287,24 @@ async def marcar_item(payload: MarcarIn,
 # ---------------------------------------------------------------------------
 
 
+class HomeIn(BaseModel):
+    permissions: list[str]
+    pode_tudo: bool = False
+    dias: int = 7
+
+
+@router.post("/home")
+async def home(payload: HomeIn, x_internal_key: Optional[str] = Header(None)):
+    """A Home executiva — §12. Decisões primeiro, números por último."""
+    _autorizar(x_internal_key)
+    from app.services.control_plane.home import HomeExecutiva
+    from app.services.control_plane.rbac import PERMISSIONS
+
+    permissions = set(PERMISSIONS) if payload.pode_tudo else set(payload.permissions or [])
+    return HomeExecutiva(_db()).montar(permissions=permissions,
+                                       dias=min(int(payload.dias), 90))
+
+
 @router.get("/work-runs")
 async def trabalhos(company_id: Optional[str] = None, dias: int = 7,
                     estado: Optional[str] = None, limite: int = 50,

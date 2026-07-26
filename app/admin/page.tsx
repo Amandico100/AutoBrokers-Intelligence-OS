@@ -15,6 +15,7 @@ import {
 } from 'lucide-react';
 import Link from 'next/link';
 import { useAdminRole } from '@/hooks/useAdminRole';
+import HomeExecutivaPainel from '@/components/admin/HomeExecutiva';
 
 interface DashboardStats {
   totalCompanies: number;
@@ -108,11 +109,28 @@ export default function AdminDashboardPage() {
   ];
 
   return (
-    <div className="p-8">
+    <div className="p-8 max-w-5xl">
       <div className="mb-8">
-        <h1 className="text-3xl font-bold text-foreground mb-2">Dashboard Administrativo</h1>
-        <p className="text-muted-foreground">AutoBrokers Intelligence OS</p>
+        {/* SPEC-061 §12 — o título passa a ser a pergunta que a tela responde.
+            "Dashboard Administrativo" descreve o que a página É; não ajuda
+            ninguém a decidir o que fazer ao abri-la. */}
+        <h1 className="text-3xl font-bold text-foreground mb-2">Como está hoje</h1>
+        <p className="text-muted-foreground">
+          O que precisa de você, onde dói e o que está rodando.
+        </p>
       </div>
+
+      {/* A leitura hierárquica vem primeiro: decisões antes de números. */}
+      <HomeExecutivaPainel />
+
+      {/* Os contadores antigos continuam, mas ABAIXO e recolhidos. Eles não
+          são inúteis — são contexto. O que estava errado era serem a primeira
+          e única coisa da tela, todos do mesmo tamanho. */}
+      <details className="mt-10 group">
+        <summary className="cursor-pointer text-sm text-muted-foreground hover:text-foreground select-none">
+          Ver números detalhados e atalhos
+        </summary>
+        <div className="mt-6">
 
       {loading ? (
         <div className="text-foreground">Carregando estatísticas...</div>
@@ -258,6 +276,8 @@ export default function AdminDashboardPage() {
           </CardContent>
         </Card>
       </div>
+        </div>
+      </details>
     </div>
   );
 }
