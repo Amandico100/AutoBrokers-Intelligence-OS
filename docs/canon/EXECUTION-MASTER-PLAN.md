@@ -741,3 +741,44 @@ não o adotou — não foi criada uma segunda tela, o que seria a duplicação q
 CLAUDE.md §5 proíbe), central de approvals com ação, hubs de Skills/Tools/
 Auxiliares/Artifacts/Conhecimento, FinOps, command palette, sessões e step-up,
 Visual Acceptance Pack e migração das rotas históricas.
+
+---
+
+# ADENDO 27/07/2026 (noite) — ajustes vindos do uso real
+
+## Modelos
+
+`claude-opus-5` **não estava** na lista de modelos permitidos, e essa lista não
+é catálogo: `agent_config.py` a usa para VALIDAR. Configurar um agente com
+opus-5 era recusado. Acrescentado; `claude-opus-4-8` fica por compatibilidade
+com agentes já gravados.
+
+Defaults trocados para opus-5 em `agent_council.py` e `attendance_distiller.py`.
+
+**O que cada variável de modelo faz** — a pergunta do Founder:
+
+| Variável | Para quê | Onde vive |
+|---|---|---|
+| `DISPATCH_LLM_MODEL` | o modelo que conversa com o **WhatsApp da seguradora** durante um acionamento | env da API/worker |
+| `ATLAS_PARSER_MODEL` | lê e interpreta as rotas dos portais das seguradoras | env |
+| `DISTILLER_STRONG_MODEL` | destila playbooks de conduta a partir de atendimentos | env |
+| `COUNCIL_LEADER_MODEL` | consolida o conselho de modelos | env |
+| **modelo do ATENDIMENTO** | **não vem de env** — vem de `agents.llm_model` no banco, por agente | banco |
+
+`DISPATCH_LLM_MODEL` é **uma só** variável para **um só** uso. Ter duas linhas
+com valores diferentes não são dois propósitos: é conflito.
+
+## AMANDUS SEGUROS
+
+Estava com `company_kind='client'` **e** `is_technical=true` — contraditórios.
+`is_technical` tirava a corretora do Cockpit, do briefing, do relatório semanal
+e a marcava como "origem interna" para os detectores.
+
+Corrigida, com CHECK `companies_kind_e_tecnica_coerentes_ck` impedindo a volta.
+
+## Entregue
+
+`/admin/aprovacoes` — Central de aprovações (§16), ordenada por idade, com
+prévia da ação e motivo obrigatório na recusa.
+
+**Gate 35/35 · tsc limpo.**
