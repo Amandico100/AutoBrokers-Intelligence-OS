@@ -390,6 +390,25 @@ class InsuranceCorpusService:
         }).eq("id", documento_id).execute()
 
         texto, erro = await self._buscar(doc["source_url"], company_id_custeio)
+
+        # HTTP 402 = credito do provedor esgotado. Nao e defeito do documento e
+        # nao pode gastar tentativa: marcar como `unreachable` faria o corpus
+        # desistir de documentos perfeitamente validos por causa da fatura, e
+        # ninguem descobriria o motivo real depois.
+        if erro == "HTTP 402":
+            self.db.table("normative_documents").update({
+                "status": doc.get("status") or "discovered",
+                "fetch_error": "credito do Firecrawl esgotado — aguardando plano",
+                "last_checked_at": _agora(),
+                "next_check_at": (_agora() + timedelta(hours=6)).isoformat(),
+                "updated_at": _agora(),
+            }).eq("id", documento_id).execute()
+            logger.warning(
+                "[corpus] CREDITO DO FIRECRAWL ESGOTADO (HTTP 402). %d documento(s) "
+                "aprovado(s) continuam na fila e serao retomados quando houver credito.",
+                len(self.vencidos(limite=50)))
+            return {"ok": False, "motivo": "credito_esgotado", "bloqueante": True}
+
         if not texto:
             tentativas = int(doc.get("fetch_attempts") or 0) + 1
             # Backoff: documento fora do ar não pode ser tentado todo ciclo.
@@ -406,7 +425,9 @@ class InsuranceCorpusService:
         novo_hash = _hash(texto)
         if doc.get("content_hash") == novo_hash and doc.get("status") == "ingested":
             self._marcar_conferido(documento_id, doc, mudou=False)
-            return {"ok": True, "mudou": False, "chunks": doc.get("chunk_count", 0)}
+            # `chunks: 0` de proposito: nada foi ingerido agora. Devolver a
+            # contagem antiga faria o resumo contar de novo o que ja estava la.
+            return {"ok": True, "mudou": False, "primeira": False, "chunks": 0}
 
         susep = doc.get("susep_process") or extrair_susep(texto)
         vigencia = doc.get("effective_from") or extrair_vigencia(texto)
@@ -455,8 +476,8 @@ class InsuranceCorpusService:
 
         logger.info("[corpus] '%s' v%s ingerido — %s chunks%s",
                     doc["title"][:60], n, chunks, "" if primeira else " (MUDOU na origem)")
-        return {"ok": True, "mudou": not primeira, "versao": n, "chunks": chunks,
-                "susep": susep, "vigencia": vigencia}
+        return {"ok": True, "mudou": not primeira, "primeira": primeira,
+                "versao": n, "chunks": chunks, "susep": susep, "vigencia": vigencia}
 
     async def _buscar(self, url: str, company_id: Optional[str]
                       ) -> tuple[Optional[str], Optional[str]]:
@@ -649,16 +670,26 @@ class InsuranceCorpusService:
         if not pendentes:
             return {"conferidos": 0, "mudaram": 0}
 
-        mudaram, conferidos, falhas = 0, 0, 0
+        novos, mudaram, conferidos, falhas = 0, 0, 0, 0
+        bloqueado = False
         for d in pendentes:
             r = await self.ingerir(d["id"], company_id_custeio=company_id_custeio)
             conferidos += 1
-            if r.get("ok") and r.get("mudou"):
-                mudaram += 1
-                logger.warning(
-                    "[corpus] MUDOU na origem: %s (%s) — versao %s",
-                    d["title"][:70], d["insurer_name"], r.get("versao"))
-            elif not r.get("ok"):
+            if r.get("bloqueante"):
+                # Credito esgotado: parar o ciclo. Insistir nos proximos so
+                # produz mais 402 e enche o log de erro que nao e erro.
+                bloqueado = True
+                break
+            if r.get("ok"):
+                if r.get("mudou"):
+                    mudaram += 1
+                    logger.warning("[corpus] MUDOU na origem: %s (%s) — versao %s",
+                                   d["title"][:70], d["insurer_name"], r.get("versao"))
+                elif r.get("chunks"):
+                    novos += 1
+            else:
                 falhas += 1
+                logger.warning("[corpus] falhou: %s — %s", d["title"][:60], r.get("motivo"))
 
-        return {"conferidos": conferidos, "mudaram": mudaram, "falhas": falhas}
+        return {"conferidos": conferidos, "novos": novos, "mudaram": mudaram,
+                "falhas": falhas, "bloqueado_por_credito": bloqueado}

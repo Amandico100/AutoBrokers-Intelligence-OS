@@ -95,6 +95,13 @@ class FirecrawlClient:
                work_run_id: Optional[str] = None, skill: Optional[str] = None,
                detalhe: Optional[str] = None) -> None:
         """Emite o evento de consumo. Falha aqui nunca derruba a operação."""
+        # Sem tenant, o consumo e da PLATAFORMA — e continuava invisivel porque
+        # este metodo saia cedo. O corpus normativo roda sempre sem tenant, e
+        # era exatamente o gasto que ninguem via. Agora sempre aparece no log,
+        # e vai para usage_events quando ha empresa a quem atribuir.
+        logger.info("[firecrawl] %s · %s credito(s) · %sms%s",
+                    operacao, r.creditos, r.duracao_ms,
+                    "" if not r.credito_estimado else " (estimado)")
         if not self._db or not self.company_id:
             return
         try:
@@ -118,6 +125,8 @@ class FirecrawlClient:
 
     async def _post(self, caminho: str, corpo: dict, *, timeout: float = TIMEOUT_LEITURA
                     ) -> RespostaFirecrawl:
+        # 402 merece nome proprio no log: "Payment Required" e o unico erro
+        # deste cliente que nao se resolve tentando de novo.
         import httpx
 
         url = f"{BASE}{caminho}"
@@ -144,7 +153,11 @@ class FirecrawlClient:
         if resp.status_code >= 400:
             # Nunca logar a URL com querystring nem o corpo — pode conter dado
             # do segurado numa busca.
-            logger.warning("[firecrawl] %s HTTP %s", caminho, resp.status_code)
+            if resp.status_code == 402:
+                logger.error("[firecrawl] CREDITO ESGOTADO (HTTP 402) em %s — "
+                             "o plano precisa de mais credito", caminho)
+            else:
+                logger.warning("[firecrawl] %s HTTP %s", caminho, resp.status_code)
             return RespostaFirecrawl(False, erro=f"HTTP {resp.status_code}", duracao_ms=ms)
 
         try:
