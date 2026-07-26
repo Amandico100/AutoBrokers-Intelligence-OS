@@ -108,6 +108,9 @@ Executor dentro da SPEC | decisão D-nn do Founder | aguardando decisão.
 | CA-021 | A view do cutover era lida por qualquer visitante | Bloco 0 da 061 | BLOCKER | EXECUTADA | 27/07/2026 |
 | CA-022 | Firecrawl era o único degrau acima da leitura direta | Bloco 0 da 061 | ESSENCIAL | EXECUTADA (D18: proposta) | 27/07/2026 |
 | CA-023 | Quatro índices para o Cockpit que ainda não existe | Bloco 0 da 061 | VALIOSA | EXECUTADA | 27/07/2026 |
+| CA-024 | A proteção do Admin acontecia no navegador | 061 A | BLOCKER | EXECUTADA | 27/07/2026 |
+| CA-025 | Minha baseline de páginas órfãs estava errada | 061 C | ESSENCIAL | EXECUTADA | 27/07/2026 |
+| CA-026 | A Inbox precisa mostrar a causa, não o sintoma | 061 B | ESSENCIAL | EXECUTADA | 27/07/2026 |
 
 > **Sobre CA-013 e CA-014.** Nasceram como CA-010 e CA-011, números que já
 > pertenciam a registros da SPEC-059 citados no código e no relatório daquela
@@ -1109,3 +1112,142 @@ calar".
 ### AutorizaÃ§Ã£o
 
 Executor, dentro do Bloco 0.
+
+---
+
+## CA-024 â€” A proteÃ§Ã£o do Admin acontecia no navegador
+
+**Data:** 27/07/2026 Â· **Estado:** EXECUTADA Â· **SPEC:** 061 Bloco A (Â§7.2, Â§8.4)
+**Classe:** BLOCKER Â· **Origem:** Executor
+
+### O problema
+
+`app/admin/layout.tsx` lia a sessÃ£o administrativa de `localStorage` e comparava
+a rota atual com uma lista de `masterOnlyRoutes`. A decisÃ£o de acesso era do
+navegador.
+
+`localStorage` Ã© editÃ¡vel por quem estÃ¡ na frente da tela, e a lista de rotas
+protegidas vivia lÃ¡. Mas o defeito mais grave Ã© outro: **esconder a tela nÃ£o
+protege a API**. Quem quisesse pular a interface chamava a rota direto â€” e ela
+respondia.
+
+Â§8.4 jÃ¡ dizia: *"esconder botÃ£o Ã© conveniÃªncia, nÃ£o seguranÃ§a"*.
+
+### ConsequÃªncia de nÃ£o fazer
+
+Um `company_admin` que soubesse o endereÃ§o de uma rota `master` a acionaria. Com
+118 rotas de API no Admin, a superfÃ­cie nÃ£o Ã© pequena.
+
+### MudanÃ§a
+
+- `lib/admin/control-plane/authority.ts` â€” resolve sessÃ£o â†’ papÃ©is â†’ permissions
+  no servidor, com `exigirPermissao()` como portÃ£o das rotas.
+- `app/api/admin/control-plane/me` â€” o menu passa a ser **derivado** das
+  permissions. Mostrar item que devolve 403 ensina o operador a duvidar da tela
+  inteira, e tela em que nÃ£o se confia deixa de ser usada.
+- `localStorage` volta ao que o Â§7.2 permite: preferÃªncia de barra, tema,
+  densidade.
+
+**A matriz nÃ£o foi duplicada.** O BFF pergunta ao backend. Duas cÃ³pias
+divergiriam na primeira permission nova: alguÃ©m acrescenta a tela, o backend
+passa a cobrar `releases.rollout`, o front nÃ£o conhece a chave, e o operador vÃª
+um botÃ£o que devolve 403 â€” ou o inverso, que Ã© pior.
+
+Cache de 30s por processo, e falha de rede **nÃ£o** entra em cache: backend fora
+do ar nÃ£o pode conceder acesso.
+
+### AutorizaÃ§Ã£o
+
+Executor, dentro da SPEC-061 Bloco A. Gate `RBA-01`.
+
+---
+
+## CA-025 â€” Minha baseline de pÃ¡ginas Ã³rfÃ£s estava errada
+
+**Data:** 27/07/2026 Â· **Estado:** EXECUTADA Â· **SPEC:** 061 Bloco C
+**Classe:** ESSENCIAL Â· **Origem:** Executor (correÃ§Ã£o de si mesmo)
+
+### O problema
+
+O Bloco 0 declarou **9 pÃ¡ginas Ã³rfÃ£s** no Admin. O nÃºmero estava errado, por dois
+defeitos no teste `test_navegacao_sem_pagina_orfa.py` â€” escrito por mim na
+SPEC-060:
+
+1. **Lia apenas `masterMenuItems`.** O Admin serve dois papÃ©is com menus
+   diferentes (`role === 'master' ? masterMenuItems : companyAdminMenuItems`).
+   Cinco das nove sÃ£o alcanÃ§adas normalmente pelo administrador da corretora:
+   `/admin/team`, `/admin/conversations`, `/admin/agent`, `/admin/documents` e
+   `/admin/billing`.
+2. **Contava link comentado como link.** O regex casava
+   `// { href: '/admin/integrations', â€¦ } // HIDDEN` â€” cÃ³digo desligado.
+
+### ConsequÃªncia de nÃ£o fazer
+
+Um teste que **superestima** a dÃ­vida Ã© tÃ£o ruim quanto um que a esconde: no
+primeiro caso alguÃ©m "conserta" o que nÃ£o estava quebrado â€” no caso, criando
+links de menu para telas que jÃ¡ eram alcanÃ§Ã¡veis, e poluindo o menu que a
+SPEC-061 existe para simplificar.
+
+E o segundo defeito escondia o caso real: uma pÃ¡gina cujo item de menu foi
+comentado Ã© exatamente o que o teste deveria pegar, e ele a declarava
+alcanÃ§Ã¡vel.
+
+### MudanÃ§a
+
+- o teste lÃª os **dois** menus;
+- comentÃ¡rios sÃ£o removidos antes do parsing;
+- rÃ³tulo duplicado passou a ser comparado **por menu**, nÃ£o somado â€” "Conversas"
+  existir nos dois nÃ£o Ã© ambiguidade, porque ninguÃ©m vÃª os dois.
+
+A dÃ­vida real era de **quatro** pÃ¡ginas. TrÃªs ganharam link no submenu a que jÃ¡
+pertenciam; `/admin/integrations` Ã© um redirecionamento e ficou como exceÃ§Ã£o
+nomeada. `ORFAS_ANTERIORES_A_SPEC059` Ã© hoje um conjunto **vazio**.
+
+### AutorizaÃ§Ã£o
+
+Executor. CorreÃ§Ã£o de mediÃ§Ã£o prÃ³pria, registrada porque a baseline errada jÃ¡
+tinha ido para o relatÃ³rio do Bloco 0 e para o Master Plan.
+
+---
+
+## CA-026 â€” A Inbox precisa mostrar a causa, nÃ£o o sintoma
+
+**Data:** 27/07/2026 Â· **Estado:** EXECUTADA Â· **SPEC:** 061 Â§13
+**Classe:** ESSENCIAL Â· **Origem:** Executor
+
+### O problema
+
+As SPECs 054â€“060 produzem trabalho o tempo todo, cada um na sua tabela com a sua
+tela. Sem uma caixa Ãºnica, o operador da plataforma abre nove telas de manhÃ£ â€” ou
+nÃ£o abre nenhuma.
+
+E uma caixa mal feita Ã© pior que nenhuma: oito rotinas quebradas pelo mesmo
+provider fora do ar viram oito cartÃµes, o operador trata sintoma, e o provider
+continua fora do ar.
+
+### MudanÃ§a
+
+`services/control_plane/inbox.py` â€” projeÃ§Ã£o de sete fontes, com dedupe por
+causa e prioridade explicÃ¡vel.
+
+A causa Ã© `(fonte, tÃ­tulo, motivo)` e deliberadamente **nÃ£o** inclui a
+corretora: Ã© juntando corretoras diferentes que o cartÃ£o revela que o problema
+Ã© de plataforma. O texto resultante Ã© o do Â§13.4: *"afeta 3 corretoras e 8
+itens"*.
+
+TrÃªs decisÃµes:
+
+- **fonte que a pessoa nÃ£o pode ler nÃ£o Ã© consultada** â€” ler para depois esconder
+  Ã© como dado vaza por um log ou por uma contagem que sobrou na tela;
+- **fonte fora do ar nÃ£o zera a caixa** â€” se aprovaÃ§Ãµes cair, o operador ainda
+  precisa ver os incidentes. Caixa vazia por erro parcial Ã© a pior resposta
+  possÃ­vel para "o que precisa de mim?";
+- **caixa vazia diz que estÃ¡ vazia** â€” sem a frase, ninguÃ©m sabe se estÃ¡ limpa ou
+  quebrada.
+
+Â§13.3: dispensar tira o item da caixa **daquela pessoa** e nÃ£o altera o objeto de
+origem. A aprovaÃ§Ã£o continua pendente; outra pessoa continua vendo.
+
+### AutorizaÃ§Ã£o
+
+Executor, dentro da SPEC-061 Bloco B. Gate `INB-01`.

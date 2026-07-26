@@ -33,7 +33,7 @@
 | 8 | SPEC-058 — Auxiliary & Routine Factory | `feat/spec058-auxiliary-routine-factory` | NÃO INICIADO | — | — | — |
 | 9 | SPEC-059 — Intelligence Fabric + Memory Fabric | `feat/spec059-briefing-proatividade` | **CONCLUÍDO** — verificado de forma independente, mergeado na `main`; gate 26/26, `tsc` limpo, RLS fail-closed nas 14 tabelas | `e9fedef` | `758bc5b` (com as 2 correções pós-merge de navegação) | [SPEC-059-EXECUTION-REPORT](reports/SPEC-059-EXECUTION-REPORT.md) |
 | 10 | SPEC-060 — Research Intelligence | `feat/spec060-research-intelligence` | **CONCLUÍDO** — gate 29/29, `tsc` limpo, canário com dado real | `92e5cc0` | ver relatório | [SPEC-060-EXECUTION-REPORT](reports/SPEC-060-EXECUTION-REPORT.md) |
-| 11 | SPEC-061 Blocos B/C — Control Plane completo | `feat/spec061-control-plane-full` | NÃO INICIADO | — | — | — |
+| 11 | SPEC-061 — Control Plane | `feat/spec061-control-plane-full` | **EM EXECUÇÃO** — Bloco A completo, Bloco B parcial (Inbox), Bloco C parcial (navegação zerada). Gate 33/33 | `affd55f` | `7639b3e` | [SPEC-061-EXECUTION-REPORT](reports/SPEC-061-EXECUTION-REPORT.md) |
 | 12 | SPEC-062 — Evals, Billing, Resiliência, Rollout | `feat/spec062-evals-billing-readiness` | NÃO INICIADO | — | — | — |
 | 13 | **Launch Decision** | — | NÃO INICIADO | — | — | — |
 
@@ -655,3 +655,49 @@ internos de inteligência, que não chamam provider pago nem pedem peça.
 ## Próxima etapa
 
 **SPEC-061 — Control Plane**, sobre objetos que agora existem e são confiáveis.
+
+---
+
+# ESTADO EM 27/07/2026 (fim do dia) — SPEC-061 em execução
+
+Branch `feat/spec061-control-plane-full`, de `affd55f` a `7639b3e`.
+Relatório: [SPEC-061-EXECUTION-REPORT](reports/SPEC-061-EXECUTION-REPORT.md)
+
+**Gate 33/33 verde · `tsc` limpo · Security Advisor ERROR 0, WARN 0.**
+
+## O que ficou pronto
+
+| Bloco | Entrega | Estado |
+|---|---|---|
+| A | 7 tabelas do Control Plane, 9 garantias provadas | **completo** |
+| A | RBAC server-side: 51 permissions, 10 papéis | **completo** |
+| A | BFF, Command Gateway, trilha, tela "Quem pode o quê" | **completo** |
+| B | Admin Inbox — "O que precisa de mim" | **completo** |
+| B | Cockpit 360º, centrais de Work Runs e approvals, hubs, FinOps | **pendente** |
+| C | Dívida de navegação do Admin: 9 → 0 | **completo** |
+| C | Visual Acceptance Pack, migração de rotas, canário 3 tenants | **pendente** |
+
+## O que mudou de verdade
+
+O Admin autorizava por **um bit**. Agora cada papel pode só o que deve, toda
+escrita administrativa passa por um portão, e a trilha diz por quê — sem vazar
+segredo. A proteção saiu do navegador e foi para o servidor (CA-024).
+
+## Correção de medição
+
+A baseline de "9 páginas órfãs" do Bloco 0 estava **errada**: o teste lia só um
+dos dois menus e contava link comentado como link. A dívida real era de quatro
+páginas, e hoje é zero (CA-025).
+
+## Pendente de ação do Founder
+
+1. **Deploy** da API e do worker com este código.
+2. Abrir `/admin/governanca` e conferir que o acesso histórico funciona — o
+   papel `master` vira `platform_owner` automaticamente.
+3. Atribuir papéis reais: hoje todos operam pelo mapeamento do legado.
+4. Rotacionar as chaves expostas (roteiro na §9.1 do relatório do Bloco 0).
+
+## Próxima etapa
+
+Concluir os Blocos B e C da SPEC-061 — cockpits, hubs, comandos e o Visual
+Acceptance Pack. Depois, **SPEC-062** (evals, billing, resiliência, rollout).
