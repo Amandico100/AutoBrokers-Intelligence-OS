@@ -497,9 +497,46 @@ function Regras({ dados, agir }: { dados: any; agir: (c: Record<string, unknown>
   const regras: any[] = dados?.regras?.regras ?? [];
   const registrados: string[] = dados?.regras?.detectores_registrados ?? [];
   const semDetector = regras.filter((r) => !registrados.includes(r.rule_key));
+  // SPEC-059 (melhoria): "o número está errado" é informação sobre o DETECTOR,
+  // não sobre o silêncio. Três corretoras distintas dizendo o mesmo significa
+  // que o limiar ou a fonte estão errados — e isso precisa de olho humano.
+  // Nada é recalibrado automaticamente, de propósito.
+  const paraRevisar = regras.filter((r) => r.qualidade?.revisar_limiar);
 
   return (
     <div className="space-y-5">
+      {paraRevisar.length > 0 && (
+        <section className="rounded-xl border border-destructive/30 bg-destructive/5 p-5">
+          <h2 className="text-sm font-semibold text-foreground">
+            {paraRevisar.length} regra(s) com o número contestado por várias corretoras
+          </h2>
+          <p className="mt-1 text-xs text-muted-foreground">
+            Quando corretoras diferentes dizem que o mesmo detector erra, o problema
+            não é preferência — é o limiar, a fonte ou a conta. Nada foi ajustado
+            automaticamente: a decisão é sua.
+          </p>
+          <ul className="mt-3 space-y-2">
+            {paraRevisar.map((r) => (
+              <li key={r.rule_key} className="flex items-start gap-3 text-sm">
+                <span className="w-8 flex-none text-right font-semibold tabular-nums text-destructive">
+                  {r.qualidade.dado_errado_tenants}
+                </span>
+                <div className="min-w-0 flex-1">
+                  <p className="text-foreground">{r.name}</p>
+                  <p className="text-xs text-muted-foreground">{r.qualidade.motivo_revisao}</p>
+                </div>
+                <button
+                  onClick={() => agir({ acao: 'regra', rule_key: r.rule_key, status: 'paused' })}
+                  className="flex-none rounded-lg border border-border px-3 py-1 text-xs text-foreground hover:bg-secondary"
+                >
+                  Pausar até revisar
+                </button>
+              </li>
+            ))}
+          </ul>
+        </section>
+      )}
+
       {semDetector.length > 0 && (
         <section className="rounded-xl border border-amber-500/30 bg-amber-500/5 p-5">
           <h2 className="text-sm font-semibold text-foreground">
@@ -528,6 +565,7 @@ function Regras({ dados, agir }: { dados: any; agir: (c: Record<string, unknown>
                 <th className="px-5 py-3 font-semibold">Versão</th>
                 <th className="px-5 py-3 text-right font-semibold">Sinais</th>
                 <th className="px-5 py-3 text-right font-semibold">Rejeição</th>
+                <th className="px-5 py-3 text-right font-semibold">Nº errado</th>
                 <th className="px-5 py-3 font-semibold">Último run</th>
                 <th className="px-5 py-3 font-semibold">Ação</th>
               </tr>
@@ -553,6 +591,18 @@ function Regras({ dados, agir }: { dados: any; agir: (c: Record<string, unknown>
                     >
                       {q.taxa_rejeicao != null ? `${q.taxa_rejeicao}%` : '—'}
                     </td>
+                    <td
+                      className={`px-5 py-3 text-right tabular-nums ${
+                        q.revisar_limiar ? 'font-semibold text-destructive' : 'text-muted-foreground'
+                      }`}
+                      title={
+                        q.dado_errado_tenants
+                          ? `${q.dado_errado_tenants} corretora(s) distinta(s) contestaram o número`
+                          : 'ninguém contestou o número desta regra'
+                      }
+                    >
+                      {q.dado_errado ? `${q.dado_errado} (${q.dado_errado_tenants ?? 0})` : '—'}
+                    </td>
                     <td className="px-5 py-3 text-xs text-muted-foreground">
                       {dataCurta(r.last_run_at)}
                     </td>
@@ -575,7 +625,7 @@ function Regras({ dados, agir }: { dados: any; agir: (c: Record<string, unknown>
               })}
               {regras.length === 0 && (
                 <tr>
-                  <td colSpan={6} className="px-5 py-10 text-center text-sm text-muted-foreground">
+                  <td colSpan={7} className="px-5 py-10 text-center text-sm text-muted-foreground">
                     Nenhuma regra publicada.
                   </td>
                 </tr>

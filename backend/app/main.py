@@ -207,6 +207,18 @@ try:
     logger.info("[STARTUP] Intelligence Fabric API registrada")
 except Exception as _e:  # noqa: BLE001
     logger.error("[STARTUP] Intelligence API indisponivel: %s", type(_e).__name__)
+
+# SPEC-060 — Research Intelligence. Pesquisa com fonte, claim e citacao;
+# monitores que so avisam quando muda algo relevante.
+try:
+    from app.api.research import admin as research_admin_router
+    from app.api.research import router as research_router
+
+    app.include_router(research_router, tags=["Research"])
+    app.include_router(research_admin_router, tags=["Admin Research"])
+    logger.info("[STARTUP] Research Intelligence API registrada")
+except Exception as _e:  # noqa: BLE001
+    logger.error("[STARTUP] Research API indisponivel: %s", type(_e).__name__)
 app.include_router(agent_config_router, prefix="/api/agent", tags=["Agent Config"])
 from app.api.agents import router as agents_router
 from app.api.billing import router as billing_router

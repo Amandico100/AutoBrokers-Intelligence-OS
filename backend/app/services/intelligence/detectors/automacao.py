@@ -177,13 +177,20 @@ def resultado_positivo(ctx: ContextoDeDeteccao) -> list[SignalDraft]:
     corte = (ctx.agora - timedelta(hours=janela_h)).isoformat()
     try:
         runs = (ctx.db.table("work_runs")
-                .select("id, outcome_title, outcome_type, finished_at, result_summary")
+                .select("id, outcome_title, outcome_type, finished_at, result_summary, source_type")
                 .eq("company_id", ctx.company_id).eq("status", "completed")
                 .gte("finished_at", corte).limit(200).execute()).data or []
     except Exception as exc:  # noqa: BLE001
         logger.warning("[Detector] work_runs concluidos: %s", type(exc).__name__)
         return []
 
+    # O ciclo de inteligência cria vários Work Runs por hora (detecção,
+    # garimpo, medição). Contá-los como "trabalho entregue" encheria o
+    # briefing de contabilidade interna: "24 trabalhos concluídos hoje" sem
+    # que a corretora tenha pedido nenhum. Ver `intelligence/origem.py`.
+    from ..origem import filtrar_externos
+
+    runs = filtrar_externos("work_run", runs)
     n = len(runs)
     if n < int(ctx.cfg("minimo", 1)):
         return []

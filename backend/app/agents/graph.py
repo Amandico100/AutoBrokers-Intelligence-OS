@@ -215,7 +215,23 @@ async def create_agent_graph(
 
     # Web Search (Tavily) — só quando a capability platform.web.search está ATIVA
     # (binding do papel + entitlement não desligado + TAVILY_API_KEY presente no backend).
-    web_search_tool = WebSearchTool() if "platform.web.search" in _active else None
+    # SPEC-060 §35.6 — depois do cutover o Core NÃO recebe mais a tool antiga.
+    # Ela continua existindo e funcionando; o que muda é que nenhuma resposta
+    # passa a se apoiar numa string de busca sem fonte classificada. Quem
+    # pesquisa é `pesquisar_na_web`, pelo Research Orchestrator.
+    try:
+        from ..services.research.legacy_adapter import (
+            capacidades_ativas as _expandir_caps,
+            web_search_ainda_e_autoridade as _web_legado)
+
+        _active = _expandir_caps(_active)
+        _legado_permitido = _web_legado()
+    except Exception:  # noqa: BLE001
+        _legado_permitido = True
+
+    web_search_tool = (WebSearchTool()
+                       if (_legado_permitido and "platform.web.search" in _active)
+                       else None)
 
     # Onda 3 / SPEC-018 S2/S5: modo ESTRITO de autoridade (default OFF = comportamento
     # atual). Ligado, a autoridade real é a capability do Registry; tools_config vira
@@ -455,6 +471,18 @@ async def create_agent_graph(
         # ferramentas devolvem o que está gravado, com evidência, e a capability
         # `tenant.intelligence.read` continua sendo a autoridade: sem ela ativa
         # no Registry, nada é anexado.
+        # SPEC-060 — pesquisa com fonte. A capability é a autoridade: sem
+        # `platform.research.search` ativa no Registry, nada é anexado. O
+        # alias de `platform.web.search` já foi expandido acima, então quem
+        # tinha busca continua tendo.
+        try:
+            if "platform.research.search" in _active:
+                from .tools.research_tool import ferramentas_de_pesquisa
+                tools.extend(ferramentas_de_pesquisa(
+                    company_id=str(company_id), supabase=supabase_client))
+        except Exception as e:  # noqa: BLE001
+            logger.warning(f"[Graph] ⚠️ ferramentas de pesquisa não anexadas: {e}")
+
         try:
             if "tenant.intelligence.read" in _active:
                 from .tools.intelligence_tool import ferramentas_de_inteligencia

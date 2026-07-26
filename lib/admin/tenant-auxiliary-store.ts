@@ -12,6 +12,46 @@ function visibilityOf(defaultConfig: any): { type: string; company_id?: string }
   return v && typeof v === 'object' ? v : { type: 'global' };
 }
 
+/**
+ * SPEC-060 §37 — Auxiliar cuja instalação tem efeito no backend.
+ *
+ * O Radar precisa CRIAR os monitores no momento em que é instalado. Sem isso a
+ * corretora instala, vê o card "ativo" e nunca recebe aviso — que é pior do
+ * que não instalar, porque parece que está funcionando.
+ *
+ * O template declara o serviço em `default_config.instalacao`; aqui só
+ * traduzimos essa declaração numa chamada. Falha não desfaz a instalação: o
+ * status vira `awaiting_runtime`, do mesmo jeito que já acontece quando um
+ * Agent não pôde ser criado.
+ */
+const INSTALACAO_NO_BACKEND: Record<string, string> = {
+  'radar-mercado-regulacao': '/api/research/radar/install',
+};
+
+async function instalarNoBackend(
+  slug: string, companyId: string, byUser: string,
+  backend?: { url: string; apiKey: string },
+): Promise<{ ok: boolean; detalhe?: string }> {
+  const caminho = INSTALACAO_NO_BACKEND[slug];
+  if (!caminho) return { ok: true };
+  if (!backend?.url || !backend.apiKey) {
+    return { ok: false, detalhe: 'serviço de pesquisa não configurado' };
+  }
+  try {
+    const r = await fetch(`${backend.url.replace(/\/+$/, '')}${caminho}`, {
+      method: 'POST',
+      headers: { 'X-Internal-Key': backend.apiKey, 'Content-Type': 'application/json' },
+      body: JSON.stringify({ company_id: companyId, user_id: byUser }),
+      cache: 'no-store',
+    });
+    if (!r.ok) return { ok: false, detalhe: `backend respondeu ${r.status}` };
+    const j = await r.json().catch(() => ({}));
+    return { ok: j?.ok !== false, detalhe: j?.mensagem || j?.erro };
+  } catch {
+    return { ok: false, detalhe: 'não foi possível falar com o serviço' };
+  }
+}
+
 /** Galeria do tenant: templates globais (ou exclusivos da empresa) + status de instalação. */
 export async function listTenantAuxiliaries(supabase: SupabaseClient, companyId: string) {
   const { data: templates } = await supabase.from('auxiliary_templates')
@@ -69,6 +109,19 @@ export async function installTenantAuxiliary(
     } else { status = 'awaiting_runtime'; configRuntime = { kind: 'smith_agent_blueprint', pending: true }; }
   } else if (runtime.kind === 'specific_executor') {
     configRuntime = { kind: 'specific_executor', executor: runtime.executor || tpl.slug };
+  } else if (runtime.kind === 'workflow') {
+    configRuntime = { kind: 'workflow', workflow: runtime.workflow };
+  }
+
+  // Efeito real da instalação, quando o template declara um. Precisa vir ANTES
+  // de gravar o status: instalar "ativo" e só depois descobrir que o backend
+  // recusou deixaria a corretora com um Auxiliar que não faz nada.
+  const efeito = await instalarNoBackend(tpl.slug, companyId, byUser, backend);
+  if (!efeito.ok) {
+    status = 'awaiting_runtime';
+    configRuntime = { ...configRuntime, pending: true, install_error: efeito.detalhe };
+  } else if (efeito.detalhe) {
+    configRuntime = { ...configRuntime, install_note: efeito.detalhe };
   }
 
   if (dup?.id) {

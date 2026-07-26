@@ -121,22 +121,26 @@ def _faixa_queda(drop: float) -> str:
 #
 # O canal é a metade que quase ficou de fora, e o canário com dado real pegou:
 # a Resulta tinha 20 conversas que casavam com "não encerrada e sem mensagem há
-# mais de 24h" — e 18 delas eram o chat do PRÓPRIO CORRETOR com o AutoBrokers
-# no dashboard, que fica `active` para sempre porque ninguém "encerra" um chat.
+# mais de 24h" — e 18 delas eram o chat do PRÓPRIO CORRETOR com o AutoBrokers.
 #
-# O primeiro briefing dela abriria com "18 atendimentos parados", falando das
-# conversas dele com o assistente. Atendimento é o que envolve um segurado do
-# outro lado; conversa do corretor com a plataforma não é fila de atendimento.
+# A regra virou conceito transversal em `intelligence/origem.py`: **origem
+# interna não vira sinal**. Aqui ela é aplicada com a exceção explícita que
+# este detector precisa — pedido de atendimento humano vale mesmo vindo do web.
 CANAIS_DE_ATENDIMENTO = ("whatsapp", "whatsapp_business", "telegram",
                          "instagram", "sms", "voice", "email")
 
-# Exceção legítima ao filtro de canal: alguém pediu uma pessoa e ninguém veio.
+# Exceção legítima ao filtro de origem: alguém pediu uma pessoa e ninguém veio.
 # Isso é atendimento parado em qualquer canal, inclusive no web.
 ESTADOS_DE_ESPERA_HUMANA = ("human_requested", "waiting_human",
                             "aguardando_humano", "handoff")
 
 ESTADOS_ENCERRADOS = ("closed", "resolved", "encerrada", "finalizada",
                       "arquivada", "resolvida")
+
+
+def espera_atendimento_humano(conversa: dict) -> bool:
+    """A exceção: origem interna, mas problema real e da corretora."""
+    return str(conversa.get("status") or "").lower() in ESTADOS_DE_ESPERA_HUMANA
 
 
 def analisar_paradas(conversas: list[dict], agora, *, horas: float = 24.0,
@@ -148,13 +152,21 @@ def analisar_paradas(conversas: list[dict], agora, *, horas: float = 24.0,
     aparece como "parada" na segunda — e o corretor recebe uma lista de
     problemas que nao sao problemas.
     """
+    from ..origem import filtrar_externos
+
+    # Origem interna sai aqui, de uma vez, pelo conceito compartilhado.
+    externas = filtrar_externos("conversation", conversas or [],
+                                manter=espera_atendimento_humano)
+
     saida = []
-    for c in conversas or []:
+    for c in externas:
         estado = str(c.get("status") or "").lower()
         if estado in ESTADOS_ENCERRADOS:
             continue
         canal = str(c.get("channel") or "").lower()
-        espera_humana = estado in ESTADOS_DE_ESPERA_HUMANA
+        espera_humana = espera_atendimento_humano(c)
+        # Canal de atendimento OU pedido de humano. Um canal que não é de
+        # atendimento e ninguém pediu pessoa não é fila de ninguém.
         if canal not in CANAIS_DE_ATENDIMENTO and not espera_humana:
             continue
         idade = horas_desde(c.get("last_message_at") or c.get("updated_at"), agora)
@@ -203,9 +215,9 @@ def atendimento_parado(ctx: ContextoDeDeteccao) -> list[SignalDraft]:
         logger.warning("[Detector] conversas: %s", type(exc).__name__)
         return []
 
-    # Espelho de seguradora nao e atendimento do segurado.
-    conversas = [c for c in conversas
-                 if not str(c.get("session_id") or "").startswith("dispatch:")]
+    # O filtro de origem interna (espelho de seguradora, chat do corretor,
+    # sessões de sistema) vive dentro de `analisar_paradas`, pelo conceito
+    # compartilhado de `intelligence/origem.py`.
     paradas = analisar_paradas(conversas, ctx.agora, horas=horas)
     if not paradas:
         return []

@@ -314,6 +314,75 @@ def caso_inteligencia_estrutural() -> tuple[bool, str]:
     return True, "evidência, tier, cooldown, quiet hours, outcome e cutover presentes"
 
 
+def caso_pesquisa_estrutural() -> tuple[bool, str]:
+    """As fronteiras da SPEC-060 que precisam existir no CÓDIGO.
+
+    Pesquisa é a área onde o dano não aparece no teste: uma afirmação sem
+    procedência passa em qualquer suíte verde e só quebra quando o corretor
+    repete ao cliente. Estes símbolos são as fronteiras que sustentam a
+    procedência — se sumirem, a pesquisa continua "funcionando" e deixa de
+    valer alguma coisa.
+    """
+    exigidos = [
+        # Tier 5 nunca sustenta fato; contradição oficial derruba maioria.
+        ("app/services/research/schemas.py",
+         ["def sustenta_claim", "def status_do_claim", "contradicted",
+          "def classificar_risco",
+          # Falta de crédito é registrada como `no_credit`, não como `error`:
+          # o custo não foi gasto e a fila continua — misturar os dois some
+          # com a informação de que basta pagar para a fila andar (D18).
+          "no_credit"]),
+        # A verificação é uma lista de checagens declaradas, não um julgamento
+        # do modelo sobre si mesmo.
+        ("app/services/research/claim_service.py",
+         ["def verificar", "def detectar_contradicoes", "def localizar_trecho"]),
+        # Conteúdo de página é DADO, nunca INSTRUÇÃO.
+        ("app/services/research/content_sanitizer.py",
+         ["LIMIAR_QUARENTENA", "seguro_para_o_modelo", "def envelopar"]),
+        # Sem crédito é motivo declarado, não falha silenciosa (D18).
+        ("app/services/research/providers.py",
+         ["SEM_CREDITO", "SEM_CHAVE", "MOTIVO_HUMANO"]),
+        # Monitor não avisa sobre banner de cookie.
+        ("app/services/research/monitor_service.py",
+         ["def limpar_ruido", "vira_signal", "unreachable"]),
+        # Prospecção entrega lista com motivo; nunca campo pessoal sensível.
+        ("app/services/research/discovery.py", ["CRITERIOS", "def calcular_fit"]),
+        # A busca antiga deixa de ser autoridade, com rollback sem deploy.
+        ("app/services/research/legacy_adapter.py",
+         ["cutover_ligado", "web_search_ainda_e_autoridade"]),
+        # "Origem interna não vira sinal" é UM conceito, aplicado por todos.
+        ("app/services/intelligence/origem.py",
+         ["def e_interno", "def filtrar_externos", "CANAIS_INTERNOS"]),
+    ]
+    for rel, simbolos in exigidos:
+        caminho = os.path.join(RAIZ, rel)
+        if not os.path.exists(caminho):
+            return False, f"ausente: {rel}"
+        with open(caminho, encoding="utf-8") as fh:
+            fonte = fh.read()
+        faltando = [s for s in simbolos if s not in fonte]
+        if faltando:
+            return False, f"{rel} sem: {', '.join(faltando)}"
+
+    # Monitor sem Rotina seria um segundo agendador — proibição estrutural.
+    with open(os.path.join(RAIZ, "app/services/research/monitor_service.py"),
+              encoding="utf-8") as fh:
+        if "routine_id" not in fh.read():
+            return False, "REGRESSAO: monitor deixou de nascer preso a uma Rotina"
+
+    # Os detectores da 059 precisam continuar filtrando a origem interna: sem
+    # isso, o sistema volta a apontar o próprio rastro como problema da
+    # corretora — o falso positivo que o canário com dado real encontrou.
+    for rel in ("app/services/intelligence/detectors/qualidade.py",
+                "app/services/intelligence/detectors/operacao.py",
+                "app/services/intelligence/detectors/automacao.py"):
+        with open(os.path.join(RAIZ, rel), encoding="utf-8") as fh:
+            if "filtrar_externos" not in fh.read():
+                return False, f"REGRESSAO: {rel} voltou a contar origem interna"
+
+    return True, "procedência, quarentena, degradação declarada e origem interna"
+
+
 # ---------------------------------------------------------------------------
 # Catálogo
 # ---------------------------------------------------------------------------
@@ -370,6 +439,17 @@ CASOS: list[Caso] = [
          "SPEC-059", lambda: _roda_script("test_spec059_intelligence.py")),
     Caso("INT-02", "inteligencia", "Alerta e memória: evidência obrigatória e gatilho alcançável",
          "SPEC-059", lambda: caso_inteligencia_estrutural()),
+    # Pesquisa é a única parte do sistema que traz informação de FORA. Ela erra
+    # de dois jeitos caros: afirmando sem procedência (o corretor repete ao
+    # cliente e a corretora responde) e obedecendo a uma página da internet.
+    Caso("RES-01", "pesquisa", "Nada é afirmado sem fonte que sustente, e página não dá ordem",
+         "SPEC-060", lambda: _roda_script("test_spec060_research.py")),
+    Caso("RES-02", "pesquisa", "Procedência, quarentena e degradação declarada continuam no código",
+         "SPEC-060", lambda: caso_pesquisa_estrutural()),
+    # Tela sem link é tela que não existe para quem usa; rótulo repetido faz o
+    # usuário acertar por sorte. As duas já aconteceram — o teste impede a volta.
+    Caso("NAV-01", "identidade", "Toda tela tem link no menu e nenhum rótulo é ambíguo",
+         "SPEC-059/060", lambda: _roda_script("test_navegacao_sem_pagina_orfa.py")),
     Caso("IDN-01", "identidade", "Corretora A não enxerga dados da corretora B",
          "SPEC-048", lambda: _roda_script("test_spec048_isolamento_corretoras.py")),
     Caso("CAP-01", "capacidades", "Agente só recebe os poderes do seu papel",

@@ -133,9 +133,16 @@ def analisar_falhas(runs: list[dict], *, minimo: int = 3) -> list[dict]:
     Agrupar por `error_code` e o que transforma "sete trabalhos falharam" em
     "sete trabalhos falharam pelo MESMO motivo" — a segunda frase tem uma
     acao, a primeira nao.
+
+    Trabalho que a PRÓPRIA plataforma disparou (tick, monitor, recomendação)
+    também fica fora: quando o ciclo de inteligência falha, o problema é
+    nosso, não da corretora — e cobrar dela seria pedir que resolvesse algo
+    que ela não controla. Isso aparece no painel do Admin, não no briefing.
     """
+    from ..origem import filtrar_externos
+
     grupos: dict[str, list[dict]] = {}
-    for r in runs or []:
+    for r in filtrar_externos("work_run", runs or []):
         if r.get("status") != "failed":
             continue
         causa = str(r.get("error_code") or "desconhecida")
@@ -153,7 +160,7 @@ def work_run_falhando(ctx: ContextoDeDeteccao) -> list[SignalDraft]:
     corte = _iso_menos_horas(ctx.agora, janela_h)
     try:
         r = (ctx.db.table("work_runs")
-             .select("id, status, error_code, error_message, workflow_key, finished_at")
+             .select("id, status, error_code, error_message, workflow_key, finished_at, source_type")
              .eq("company_id", ctx.company_id).eq("status", "failed")
              .gte("finished_at", corte).limit(300).execute())
     except Exception as exc:  # noqa: BLE001
@@ -218,7 +225,7 @@ def work_run_travado(ctx: ContextoDeDeteccao) -> list[SignalDraft]:
     horas = float(ctx.cfg("horas_travado", 2))
     try:
         r = (ctx.db.table("work_runs")
-             .select("id, status, outcome_title, heartbeat_at, started_at, current_step_key")
+             .select("id, status, outcome_title, heartbeat_at, started_at, current_step_key, source_type")
              .eq("company_id", ctx.company_id)
              .in_("status", ["running", "planning"]).limit(100).execute())
     except Exception as exc:  # noqa: BLE001
@@ -383,7 +390,12 @@ def artifact_nao_entregue(ctx: ContextoDeDeteccao) -> list[SignalDraft]:
     except Exception:  # noqa: BLE001
         pass
 
-    parados = [a for a in arts
+    # Peça gerada por rotina ou monitor sem ninguém pedir não é "peça pronta
+    # e não entregue" — é bookkeeping. O briefing em PDF que a corretora não
+    # abriu é outro assunto, e cobrar isso todo dia vira ruído.
+    from ..origem import filtrar_externos
+
+    parados = [a for a in filtrar_externos("artifact", arts)
                if str(a["id"]) not in vistos
                and (horas_desde(a.get("created_at"), ctx.agora) or 0) >= horas]
     if not parados:

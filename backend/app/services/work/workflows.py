@@ -51,10 +51,16 @@ def carregar_extras() -> None:
     if _extras_carregados:
         return
     _extras_carregados = True
-    try:
-        from app.services.intelligence import workflows as _intel  # noqa: F401
-    except Exception as exc:  # noqa: BLE001
-        logger.error("[Workflows] SPEC-059 não registrada: %s", type(exc).__name__)
+    for spec, modulo in (("SPEC-059", "app.services.intelligence.workflows"),
+                         ("SPEC-060", "app.services.research.workflows")):
+        try:
+            __import__(modulo)
+        except Exception as exc:  # noqa: BLE001
+            # Uma SPEC que não registra não pode impedir a outra: são famílias
+            # de trabalho independentes, e derrubar as duas por causa de um
+            # import quebrado transformaria um defeito em dois.
+            logger.error("[Workflows] %s não registrada: %s", spec,
+                         type(exc).__name__)
 
 
 def resolver_workflow(chave: Optional[str]) -> Optional[WorkflowHandler]:
@@ -171,6 +177,43 @@ async def bridge_rotina(ctx: dict) -> str:
         return "Rotina sem identificador — nada a executar."
 
     db = getattr(ctx["db"], "client", ctx["db"])
+
+    # SPEC-060 §22 — uma Rotina pode ser o gatilho de um monitor de pesquisa.
+    # A checagem vive aqui, e não no motor de Rotinas, porque é aqui que o
+    # trabalho acontece: o motor continua sem saber que pesquisa existe, e o
+    # monitor continua sem agendador próprio.
+    try:
+        from app.services.research.monitor_service import MonitorService
+
+        monitor = MonitorService(ctx["db"]).por_rotina(str(routine_id))
+    except Exception:  # noqa: BLE001
+        monitor = None
+
+    if monitor and monitor.get("is_active"):
+        from app.services.research.workflows import verificar_monitor
+
+        return await verificar_monitor({**ctx, "payload": {
+            **payload, "monitor_id": monitor["id"]}})
+
+    # SPEC-060 §37 — a Rotina de fechamento do Auxiliar Radar declara o
+    # workflow dela em `config.workflow`. A ponte respeita essa declaração em
+    # vez de manter uma lista de nomes aqui: uma lista viraria um segundo
+    # registro de workflows ao lado do da SPEC-055.
+    try:
+        rot = (db.table("routines").select("config")
+               .eq("id", routine_id).maybe_single().execute())
+        declarado = str((((rot.data if rot else None) or {})
+                         .get("config") or {}).get("workflow") or "")
+    except Exception:  # noqa: BLE001
+        declarado = ""
+
+    if declarado:
+        fn = resolver_workflow(declarado)
+        if fn is not None:
+            return await fn({**ctx, "payload": {**payload, **(
+                (((rot.data or {}).get("config") or {}).get("params")) or {})}})
+        logger.warning("[Bridge] rotina %s declara workflow desconhecido: %s",
+                       routine_id, declarado)
 
     async def _executar() -> Any:
         res = db.table("routines").select("*").eq("id", routine_id).maybe_single().execute()

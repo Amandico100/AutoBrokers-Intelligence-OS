@@ -217,11 +217,25 @@ class RuleEngine:
         return True
 
     def qualidade_por_regra(self, *, dias: int = 30) -> list[dict]:
-        """Precisao aparente de cada regra: quanto do que ela produz e dispensado.
+        """O que cada regra produziu, e o que o corretor achou disso.
 
-        Nao e precisao estatistica — e a taxa de rejeicao observada, que e o
-        que existe hoje. Chamar isso de "precisao" sem a ressalva seria
-        exatamente o tipo de numero que a SPEC proibe.
+        Duas métricas diferentes, e a distinção é o ponto:
+
+        * **taxa de rejeição** — quanto do que a regra produz é suprimido ou
+          invalidado. Diz que a regra fala demais.
+        * **"o número está errado"** — quantas corretoras DISTINTAS disseram
+          que o dado desta regra está errado. Diz que o limiar, a fonte ou a
+          conta estão errados. É informação sobre o DETECTOR, não sobre o
+          silêncio, e por isso não pode ser tratada como preferência.
+
+        Não é precisão estatística. Chamar de "precisão" seria exatamente o
+        tipo de número que a SPEC-059 proíbe — por isso os campos se chamam
+        `taxa_rejeicao` e `dado_errado_tenants`.
+
+        **Nada é ajustado automaticamente.** A contagem sobe para a tela e
+        um humano decide. Detector que se recalibra sozinho a partir de
+        reclamação é como se perde a confiança de vez: ninguém consegue
+        explicar depois por que o limiar virou o que virou.
         """
         desde = (_agora() - timedelta(days=dias)).isoformat()
         try:
@@ -230,18 +244,98 @@ class RuleEngine:
                       .gte("created_at", desde).limit(4000).execute()).data or []
         except Exception:  # noqa: BLE001
             return []
+
         por_regra: dict[str, dict] = {}
         for s in sinais:
             chave = s.get("rule_key") or "sem_regra"
-            g = por_regra.setdefault(chave, {"rule_key": chave, "sinais": 0,
-                                             "suprimidos": 0, "invalidados": 0})
+            g = por_regra.setdefault(chave, {
+                "rule_key": chave, "sinais": 0, "suprimidos": 0,
+                "invalidados": 0, "dado_errado": 0, "dado_errado_tenants": 0,
+                "nao_relevante": 0})
             g["sinais"] += 1
             if s.get("status") == "suppressed":
                 g["suprimidos"] += 1
             if s.get("status") == "invalidated":
                 g["invalidados"] += 1
+
+        self._contar_feedback_por_regra(por_regra, desde)
+
         for g in por_regra.values():
             total = max(1, g["sinais"])
             g["taxa_rejeicao"] = round(
                 100.0 * (g["suprimidos"] + g["invalidados"]) / total, 1)
+            # A revisão é pedida por CORRETORAS DISTINTAS, não por ocorrências.
+            # Uma corretora que clica cinco vezes no mesmo item é uma opinião;
+            # três corretoras diferentes dizendo o mesmo é um defeito.
+            g["revisar_limiar"] = g["dado_errado_tenants"] >= 3
+            g["motivo_revisao"] = (
+                f"{g['dado_errado_tenants']} corretoras distintas disseram que o "
+                f"número desta regra está errado — o limiar ou a fonte merecem revisão"
+                if g["revisar_limiar"] else None)
+
         return sorted(por_regra.values(), key=lambda x: -x["sinais"])
+
+    def _contar_feedback_por_regra(self, por_regra: dict[str, dict],
+                                   desde: str) -> None:
+        """Liga a resposta do corretor de volta à REGRA que gerou o item.
+
+        O caminho é `resposta → recomendação → finding → sinal → regra`. Ele é
+        percorrido aqui, e não numa view, porque cada elo pode estar ausente
+        (uma recomendação sem finding, um finding sem sinal) e uma junção
+        ingênua simplesmente perderia esses casos em silêncio.
+        """
+        try:
+            respostas = (self.db.table("recommendation_responses")
+                         .select("recommendation_id, action, company_id")
+                         .in_("action", ["wrong_data", "not_relevant"])
+                         .gte("created_at", desde).limit(2000).execute()).data or []
+            if not respostas:
+                return
+
+            rec_ids = list({str(r["recommendation_id"]) for r in respostas})
+            recs = (self.db.table("recommendations").select("id, finding_id")
+                    .in_("id", rec_ids).limit(2000).execute()).data or []
+            finding_por_rec = {str(r["id"]): str(r.get("finding_id") or "")
+                               for r in recs}
+
+            finding_ids = [f for f in set(finding_por_rec.values()) if f]
+            if not finding_ids:
+                return
+            vinculos = (self.db.table("intelligence_finding_signals")
+                        .select("finding_id, signal_id, role")
+                        .in_("finding_id", finding_ids).limit(4000).execute()).data or []
+            signal_ids = list({str(v["signal_id"]) for v in vinculos})
+            if not signal_ids:
+                return
+            sinais = (self.db.table("intelligence_signals")
+                      .select("id, rule_key").in_("id", signal_ids)
+                      .limit(4000).execute()).data or []
+            regra_por_sinal = {str(s["id"]): s.get("rule_key") for s in sinais}
+
+            regras_por_finding: dict[str, set] = {}
+            for v in vinculos:
+                chave = regra_por_sinal.get(str(v["signal_id"]))
+                if chave:
+                    regras_por_finding.setdefault(str(v["finding_id"]), set()).add(chave)
+        except Exception as exc:  # noqa: BLE001
+            logger.warning("[RuleEngine] feedback por regra: %s", type(exc).__name__)
+            return
+
+        tenants_por_regra: dict[str, set] = {}
+        for r in respostas:
+            finding = finding_por_rec.get(str(r["recommendation_id"]))
+            if not finding:
+                continue
+            for chave in regras_por_finding.get(finding, ()):
+                g = por_regra.setdefault(chave, {
+                    "rule_key": chave, "sinais": 0, "suprimidos": 0,
+                    "invalidados": 0, "dado_errado": 0,
+                    "dado_errado_tenants": 0, "nao_relevante": 0})
+                if r["action"] == "wrong_data":
+                    g["dado_errado"] += 1
+                    tenants_por_regra.setdefault(chave, set()).add(str(r.get("company_id")))
+                else:
+                    g["nao_relevante"] += 1
+
+        for chave, tenants in tenants_por_regra.items():
+            por_regra[chave]["dado_errado_tenants"] = len(tenants)

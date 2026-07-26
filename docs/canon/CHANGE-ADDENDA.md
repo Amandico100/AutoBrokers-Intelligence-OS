@@ -92,6 +92,26 @@ Executor dentro da SPEC | decisão D-nn do Founder | aguardando decisão.
 | CA-005 | Fixar imagens e credenciais do docker-compose | 054 | VALIOSA | PROPOSTA | 25/07/2026 |
 | CA-006 | Consolidar os 60 runners em um pack único | 054 | ESSENCIAL | PROPOSTA | 25/07/2026 |
 | CA-007 | Substituir testes de inspeção de fonte por testes de comportamento | 054 | ESSENCIAL | PROPOSTA | 25/07/2026 |
+| CA-008 | Brand Identity Fabric como pré-requisito do Artifact Hub | 057 | BLOCKER | EXECUTADA | 25/07/2026 |
+| CA-009 | Context Assembly 2.0 e a regra de cobertura | 052 | BLOCKER | EXECUTADA | 25/07/2026 |
+| CA-010 | As nove tools da §27.3 chegam ao chat agrupadas em quatro | 059 | ESSENCIAL | EXECUTADA | 26/07/2026 |
+| CA-011 | O gatilho da memória não pode viver dentro do turno | 059 | BLOCKER | EXECUTADA | 26/07/2026 |
+| CA-012 | Dois falsos positivos que só o dado real revelou | 059 | BLOCKER | EXECUTADA | 26/07/2026 |
+| CA-013 | Menu do Admin: rótulo duplicado e página órfã | 059 | ESSENCIAL | EXECUTADA | 26/07/2026 |
+| CA-014 | O Admin foi desenhado para 5 corretoras, não para 1000 | 061 | ESSENCIAL | REGISTRADA — a corrigir na 061 | 26/07/2026 |
+| CA-015 | "Origem interna não vira sinal" é um conceito, não uma correção pontual | 060 | ESSENCIAL | EXECUTADA | 27/07/2026 |
+| CA-016 | O catálogo de pesquisa já existia; adotá-lo em vez de criar o segundo | 060 | BLOCKER (evitado) | EXECUTADA | 27/07/2026 |
+| CA-017 | "O número está errado" é informação sobre o detector, e ninguém via | 060 | ESSENCIAL | EXECUTADA | 27/07/2026 |
+| CA-018 | Seis peças de pesquisa, porque o dossiê não serve para tudo | 060 | VALIOSA | EXECUTADA | 27/07/2026 |
+| CA-019 | O Auxiliar Radar não podia ser um card que não faz nada | 060 | ESSENCIAL | EXECUTADA | 27/07/2026 |
+
+> **Sobre CA-013 e CA-014.** Nasceram como CA-010 e CA-011, números que já
+> pertenciam a registros da SPEC-059 citados no código e no relatório daquela
+> SPEC. Foram renumerados aqui: dois registros com o mesmo ID tornam a
+> referência ambígua, que é o mesmo defeito de classe que o CA-013 descreve.
+>
+> A regra append-only (§2.1) protege o **conteúdo** de um registro, não um ID
+> colidido — manter a colisão preservaria a forma e destruiria a função.
 
 ---
 
@@ -516,7 +536,13 @@ necessária.
 
 ---
 
-## CA-010 — Menu do Admin: rótulo duplicado e página órfã
+## CA-013 — Menu do Admin: rótulo duplicado e página órfã
+
+> **Renumerado.** Este registro nasceu como CA-010, número que já pertencia ao
+> agrupamento de tools da SPEC-059. Dois registros com o mesmo ID tornam a
+> referência ambígua — o mesmo defeito de classe que este próprio registro
+> descreve, aplicado a uma numeração. Os IDs 010, 011 e 012 permanecem com os
+> registros originais, que já são citados no código e no relatório da SPEC-059.
 
 **Data:** 26/07/2026 · **Estado:** EXECUTADA · **SPEC:** 059 (correção pós-merge)
 
@@ -566,7 +592,9 @@ requisito, não como acabamento.
 
 ---
 
-## CA-011 — O Admin foi desenhado para 5 corretoras, não para 1000
+## CA-014 — O Admin foi desenhado para 5 corretoras, não para 1000
+
+> **Renumerado** de CA-011 pelo mesmo motivo do [CA-013](#ca-013--menu-do-admin-rótulo-duplicado-e-página-órfã).
 
 **Data:** 26/07/2026 · **Estado:** REGISTRADA — a corrigir na SPEC-061
 **Origem:** Founder · **Prioridade:** ESSENCIAL antes de escalar
@@ -619,6 +647,258 @@ O caso individual continua acessível **por busca**, nunca por rolagem.
 
 ### Nota
 
-Ligado ao CA-010, que registra os defeitos de navegação encontrados pelo
+Ligado ao CA-013, que registra os defeitos de navegação encontrados pelo
 Founder. Os dois apontam a mesma causa: o Admin cresceu por adição de páginas,
 sem alguém perguntando como ele se usa.
+
+---
+
+## CA-015 â€” "Origem interna nÃ£o vira sinal" Ã© um conceito, nÃ£o uma correÃ§Ã£o pontual
+
+**Data:** 27/07/2026 Â· **Estado:** EXECUTADA Â· **SPEC:** 060 (melhoria da 059)
+**Classe:** ESSENCIAL Â· **Origem:** Founder
+
+### O problema
+
+O canÃ¡rio da SPEC-059 encontrou dois falsos positivos com dado real (CA-012):
+o chat do corretor com o AutoBrokers contado como "atendimento parado", e uma
+integraÃ§Ã£o aposentada contada como "canal quebrado". Os dois foram corrigidos
+**dentro do detector que os produziu**.
+
+Corrigir dentro do detector resolve o caso e nÃ£o resolve a classe. O sistema
+produz rastro o tempo todo â€” conversas de dashboard, Work Runs de manutenÃ§Ã£o,
+artifacts gerados por rotina, pesquisas disparadas por monitor â€” e **cada
+detector novo Ã© uma nova chance de contar esse rastro como fato da corretora**.
+O corretor recebe um aviso sobre um problema que Ã© o prÃ³prio sistema
+respirando, e a partir do terceiro aviso desses ele para de acreditar na tela.
+
+### O que foi feito
+
+`backend/app/services/intelligence/origem.py` â€” um conceito, quatro conjuntos
+declarados e duas funÃ§Ãµes:
+
+```python
+CANAIS_INTERNOS            # web, dashboard, chat, playground, routine
+PREFIXOS_DE_SESSAO_INTERNA # dispatch:, routine:, work:, monitor:, research:â€¦
+ORIGENS_DE_SISTEMA         # system, monitor, recommendation, intelligenceâ€¦
+ORIGENS_DE_PESQUISA_INTERNA
+
+e_interno(tipo, registro) -> bool
+filtrar_externos(tipo, registros, *, manter=None) -> list[dict]
+```
+
+Duas decisÃµes que valem mais que o cÃ³digo:
+
+1. **Tipo desconhecido devolve `False`.** Na dÃºvida o item PASSA. Um filtro que
+   erra para o lado de esconder produz o silÃªncio â€” e silÃªncio nÃ£o tem sintoma:
+   ninguÃ©m abre chamado dizendo "nÃ£o recebi o aviso que eu nÃ£o sabia que
+   existia". Falso positivo incomoda; falso negativo custa dinheiro.
+
+2. **A exceÃ§Ã£o Ã© explÃ­cita e local.** `manter=` recebe um predicado do prÃ³prio
+   detector. Ã‰ como o pedido de atendimento humano continua aparecendo mesmo
+   vindo do canal `web`: a exceÃ§Ã£o fica escrita onde alguÃ©m consegue ler o
+   motivo, e nÃ£o escondida numa regra genÃ©rica.
+
+Aplicado nos detectores de qualidade, operaÃ§Ã£o e automaÃ§Ã£o. Na SPEC-060, a
+mesma regra impede que **pesquisa disparada pela prÃ³pria plataforma vire sinal
+de mercado da corretora** (`pesquisa_e_interna`, em `adapters.py`).
+
+O gate cobra a presenÃ§a: RES-02 falha se qualquer um dos trÃªs detectores
+deixar de chamar `filtrar_externos`.
+
+---
+
+## CA-016 â€” O catÃ¡logo de pesquisa jÃ¡ existia; adotÃ¡-lo em vez de criar o segundo
+
+**Data:** 27/07/2026 Â· **Estado:** EXECUTADA Â· **SPEC:** 060
+**Classe:** BLOCKER (evitado) Â· **Origem:** Executor
+
+### O que foi encontrado
+
+Ao preparar o seed de capacidades, ferramentas e Skills da SPEC-060, a consulta
+ao banco de produÃ§Ã£o mostrou que **o catÃ¡logo jÃ¡ estava lÃ¡**, semeado em
+26/07/2026 com `execution_manifest->>'spec' = 'SPEC-060'`:
+
+| Camada | Existente |
+|---|---|
+| Capabilities | 8, todas com binding para `core`: `search`, `extract`, `deep`, `monitor`, `places`, `site_audit`, `claim_verify`, `regulatory` |
+| Tools | `research.search_web`, `research.fetch_source`, `research.create_monitor`, `research.site_audit`, `research.search_places`, `research.verify_claims` â€” publicadas, apontando para `app.agents.tools.research_tool` |
+| Skills | `research.quick_verified_answer`, `research.deep_dossier`, `research.claim_verify`, `research.regulatory_watch`, `research.website_seo_aeo_audit`, `research.business_lead_discovery` â€” 1.0.0 publicadas e ligadas ao `core` |
+
+### O que teria acontecido
+
+A migration que eu havia escrito criava um segundo conjunto com chaves prÃ³prias
+(`research.search`, `research.monitor`, `research.answer_with_sources`,
+`research.site_diagnosis`, `research.find_companies`). Duas consequÃªncias:
+
+1. o Tool Gateway passaria a ter **duas ferramentas de busca** com o mesmo
+   efeito e manifestos diferentes, sem nada dizendo qual Ã© a certa;
+2. o teto de 12 tools por execuÃ§Ã£o (SPEC-053 Â§13.1) seria consumido por
+   duplicatas â€” degradando a escolha do modelo em **toda** conversa, inclusive
+   nas que nÃ£o tÃªm nada a ver com pesquisa.
+
+Havia um segundo risco, no ROLLBACK: eu tinha escrito
+`delete from tool_definitions where tool_key like 'research.%'`. Aplicado, ele
+apagaria o catÃ¡logo em uso em produÃ§Ã£o â€” nÃ£o as linhas da minha migration.
+
+### O que foi feito
+
+- A migration foi reescrita para conter **apenas** o Auxiliar do Radar, a Ãºnica
+  linha genuinamente ausente (`20260727_02_spec060_auxiliar_radar.sql`).
+- O ROLLBACK passou a ser `delete ... where slug='radar-mercado-regulacao'` â€”
+  por chave exata, nunca por `LIKE`.
+- O motivo da nÃ£o-inserÃ§Ã£o ficou escrito no cabeÃ§alho da migration, com a lista
+  do que jÃ¡ existe. Sem isso, a prÃ³xima pessoa reabre a mesma discussÃ£o.
+
+Nenhuma mudanÃ§a de cÃ³digo foi necessÃ¡ria: a SPEC-060 depende de
+**capabilities** (`platform.research.*`), nÃ£o de `tool_key`.
+
+### A regra que isso confirma
+
+CLAUDE.md Â§5 â€” consolidar e migrar antes de duplicar â€” vale para **dados de
+catÃ¡logo**, nÃ£o sÃ³ para motores. Um segundo registro de Skills nÃ£o parece um
+motor paralelo enquanto vocÃª o escreve; ele se comporta como um.
+
+E um corolÃ¡rio sobre ROLLBACK: `delete ... like 'prefixo%'` num seed Ã©
+destrutivo por construÃ§Ã£o, porque apaga por padrÃ£o de nome e nÃ£o por autoria.
+Rollback de seed se escreve por chave.
+
+---
+
+## CA-017 â€” "O nÃºmero estÃ¡ errado" Ã© informaÃ§Ã£o sobre o detector, e ninguÃ©m via
+
+**Data:** 27/07/2026 Â· **Estado:** EXECUTADA Â· **SPEC:** 060 (melhoria da 059)
+**Classe:** ESSENCIAL Â· **Origem:** Founder
+
+### O problema
+
+Na SPEC-059, quando o corretor responde `wrong_data` a uma recomendaÃ§Ã£o, o
+efeito era **cooldown**: aquele item para de aparecer para aquela corretora.
+Correto e insuficiente.
+
+`wrong_data` nÃ£o Ã© uma preferÃªncia sobre o item â€” Ã© um **relatÃ³rio de defeito
+sobre a regra que o gerou**. Se trÃªs corretoras diferentes dizem que o mesmo
+detector erra, o limiar estÃ¡ errado para todo mundo, e o sistema tratava isso
+como trÃªs silÃªncios independentes. A informaÃ§Ã£o mais valiosa que a plataforma
+recebe â€” o usuÃ¡rio apontando o erro â€” morria no cooldown.
+
+### O que foi feito
+
+`rule_engine.qualidade_por_regra()` passou a devolver, por regra:
+
+- `dado_errado` â€” quantas vezes disseram que o nÃºmero estÃ¡ errado
+- `dado_errado_tenants` â€” **em quantas corretoras distintas**
+- `nao_relevante`
+- `revisar_limiar` â€” verdadeiro a partir de 3 corretoras distintas
+- `motivo_revisao` â€” a frase em portuguÃªs que explica por quÃª
+
+A contagem percorre resposta â†’ recomendaÃ§Ã£o â†’ finding â†’ sinal â†’ regra. Em
+`/admin/inteligencia`, as regras marcadas aparecem num alerta no topo, e a
+coluna "NÂº errado" fica ao lado de cada regra.
+
+### O que deliberadamente NÃƒO foi feito
+
+**Nenhum limiar Ã© ajustado automaticamente.** A instruÃ§Ã£o do Founder foi
+explÃ­cita, e a razÃ£o Ã© boa: um detector que se recalibra sozinho a partir de
+feedback pode ser levado a qualquer lugar por um punhado de respostas â€” e
+quando alguÃ©m finalmente perguntar por que ele parou de avisar, nÃ£o haverÃ¡
+ninguÃ©m para responder. Ajuste automÃ¡tico de detector sem revisÃ£o Ã© como se
+perde a confianÃ§a de vez.
+
+O sistema **mostra**. Um humano decide.
+
+### Contagem, nÃ£o mÃ©dia
+
+A tela mostra nÃºmero de corretoras distintas, nÃ£o percentual. Dez reclamaÃ§Ãµes
+de uma corretora sÃ£o um caso â€” provavelmente configuraÃ§Ã£o. Uma reclamaÃ§Ã£o de
+dez corretoras Ã© um defeito de regra. Percentual confundiria os dois.
+
+---
+
+## CA-018 â€” Seis peÃ§as de pesquisa, porque o dossiÃª nÃ£o serve para tudo
+
+**Data:** 27/07/2026 Â· **Estado:** EXECUTADA Â· **SPEC:** 060
+**Classe:** VALIOSA Â· **Origem:** Executor
+
+### O problema
+
+A SPEC-057 entregou `research.market_brief` â€” um dossiÃª narrativo, onde o texto
+conduz e o nÃºmero sustenta. Era o Ãºnico template de pesquisa, entÃ£o **todos** os
+modos da SPEC-060 caÃ­am nele: uma lista de 40 empresas para prospectar saÃ­a
+como ensaio, e uma auditoria de site saÃ­a como estudo de mercado.
+
+A informaÃ§Ã£o estava lÃ¡ e o corretor nÃ£o conseguia usar. Documento com a forma
+errada nÃ£o Ã© um problema estÃ©tico: Ã© trabalho entregue que ninguÃ©m aplica.
+
+### O que foi feito
+
+Seis templates no **mesmo catÃ¡logo** de `services/artifacts/templates.py`
+(nenhum motor de peÃ§a novo):
+
+| Chave | Forma | Por que nÃ£o cabia no dossiÃª |
+|---|---|---|
+| `research.evidence_pack` | precision_led | a fonte Ã© o assunto, nÃ£o o pano de fundo |
+| `research.competitor_matrix` | comparative | a comparaÃ§Ã£o lado a lado Ã© o argumento inteiro |
+| `research.site_audit` | precision_led | Ã© lista priorizada de conserto, nÃ£o anÃ¡lise |
+| `research.regulatory_radar` | chronological | publicaÃ§Ã£o e vigÃªncia sÃ£o datas diferentes |
+| `research.company_list` | precision_led | dado para trabalhar, nÃ£o para ler |
+| `research.change_report` | chronological | antes e depois de UMA pÃ¡gina |
+
+`adapters.template_do_modo()` escolhe pela intenÃ§Ã£o do pedido. `escolher()`
+ganhou as pistas novas â€” e `concorr` e `regulaÃ§` **saÃ­ram** das pistas do
+`market_brief`: mantÃª-las nos dois criaria empate, e empate ali Ã© resolvido por
+ordem de dicionÃ¡rio, que Ã© o tipo de comportamento que ninguÃ©m explica depois.
+
+Cada template carrega no `instruction_md` o limite que o protege: a auditoria
+nÃ£o promete posiÃ§Ã£o no Google, a matriz nÃ£o estima faturamento de terceiro, a
+lista de empresas nÃ£o infere renda, o radar nÃ£o trata minuta como norma
+vigente.
+
+---
+
+## CA-019 â€” O Auxiliar Radar nÃ£o podia ser um card que nÃ£o faz nada
+
+**Data:** 27/07/2026 Â· **Estado:** EXECUTADA Â· **SPEC:** 060 Â§37
+**Classe:** ESSENCIAL Â· **Origem:** Executor
+
+### O problema
+
+O caminho genÃ©rico de instalaÃ§Ã£o de Auxiliar (`installTenantAuxiliary`) grava
+`tenant_auxiliaries` e resolve o runtime. Para um Auxiliar com blueprint de
+Agent isso basta. Para o Radar, nÃ£o: ele sÃ³ existe se **os monitores forem
+criados**.
+
+Instalado pelo caminho genÃ©rico, o Radar apareceria como "ativo" na galeria e
+nunca avisaria nada. Ã‰ a pior forma de falhar, porque parece que estÃ¡
+funcionando â€” e a corretora sÃ³ descobre quando perde uma mudanÃ§a de norma.
+
+### O que foi feito
+
+- `services/research/radar.py` â€” `instalar` / `desinstalar` / `status` /
+  `compor_semanal`. A instalaÃ§Ã£o cria os monitores oficiais (SUSEP, CNSP,
+  legislaÃ§Ã£o) via `MonitorService`, cada um preso a uma Rotina, mais a Rotina
+  de fechamento semanal.
+- `POST /api/research/radar/install` â€” o efeito real.
+- `installTenantAuxiliary` passou a chamar o backend **antes** de gravar o
+  status: se o efeito falha, o Auxiliar fica `awaiting_runtime` com o motivo,
+  em vez de `active` mentindo.
+- A Rotina de fechamento declara `config.workflow = research.radar_weekly`, e a
+  ponte de Rotinas passou a respeitar essa declaraÃ§Ã£o. Sem lista de nomes na
+  ponte: uma lista viraria um segundo registro de workflows.
+
+### Nenhum motor novo
+
+| Papel | Quem faz |
+|---|---|
+| agendar | `routine_engine` |
+| verificar | `MonitorService` via `research.monitor_check` |
+| compor | Artifact Hub |
+| avisar | Intelligence Fabric |
+
+O Auxiliar Ã© o **nome** que a corretora reconhece para esse conjunto.
+
+### Sem mudanÃ§a, sem peÃ§a
+
+`compor_semanal` nÃ£o gera Artifact quando nada mudou. Um radar que entrega
+documento vazio toda semana treina o corretor a nÃ£o abrir o prÃ³ximo â€” e o
+prÃ³ximo pode ser o que importava.

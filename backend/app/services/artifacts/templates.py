@@ -510,11 +510,245 @@ RADAR_DE_DEMANDA = Template(
 )
 
 
+# ==========================================================================
+# 14 a 19. Peças de pesquisa — SPEC-060 §27.1
+# ==========================================================================
+#
+# O `research.market_brief` acima continua sendo o dossiê narrativo. O que
+# entra aqui são as SEIS formas que a pesquisa produz e que o dossiê não
+# atende, porque a forma narrativa é outra:
+#
+#   evidence pack     a fonte é o assunto, não o pano de fundo
+#   matriz            comparação lado a lado é o argumento inteiro
+#   auditoria         lista priorizada de conserto, não análise
+#   radar regulatório cronologia — o que mudou e desde quando vale
+#   planilha          dado operacional para trabalhar, não para ler
+#   mudança           antes e depois de UMA página
+#
+# Forçar qualquer uma delas dentro do dossiê produz aquele documento que tem
+# tudo e não responde nada.
+
+
+EVIDENCE_PACK = Template(
+    key="research.evidence_pack",
+    name="Pacote de Evidências",
+    description="Cada afirmação com a fonte que a sustenta, o trecho citado e a data.",
+    category="research", narrative_shape="precision_led", audience="internal",
+    visual_style="obsidian", page_format="a4",
+    composition=[
+        {"block": "cover", "props": {"eyebrow": "Evidências"}},
+        {"block": "callout", "props": {}},
+        {"block": "table", "props": {"eyebrow": "Afirmação por afirmação",
+                                     "title": "O que foi verificado"}},
+        {"block": "prose", "props": {"eyebrow": "Limites",
+                                     "title": "O que este pacote NÃO prova"}},
+        {"block": "sources", "props": {"title": "Fontes",
+                                       "note": "Cada linha acima aponta para uma "
+                                               "destas fontes, com a data em que "
+                                               "foi lida."}},
+        {"block": "footer", "props": {}},
+    ],
+    data_contract={
+        "claims": _campo("array", "afirmações com status, confiança e citações"),
+        "contradictions": _campo("array", "onde as fontes discordam", False),
+        "limitations": _campo("array", "o que não foi possível verificar"),
+    },
+    instruction_md=(
+        "Esta peça existe para ser CONFERIDA. Quem a recebe vai clicar nas "
+        "fontes — escreva pensando nisso.\n\n"
+        "Afirmação sem citação não entra, mesmo que pareça óbvia. Afirmação "
+        "contraditada entra, marcada como contraditada, com as duas fontes: "
+        "esconder a divergência é o pior serviço possível.\n\n"
+        "A seção de limites é obrigatória e não é formalidade. 'Não foi "
+        "possível ler a íntegra da circular' é mais útil ao corretor do que "
+        "um parágrafo confiante escrito a partir do resumo."),
+)
+
+
+MATRIZ_CONCORRENTES = Template(
+    key="research.competitor_matrix",
+    name="Comparativo de Concorrentes",
+    description="Corretoras da região lado a lado: presença, produtos e posicionamento.",
+    category="research", narrative_shape="comparative", audience="internal",
+    visual_style="meridian", page_format="web",
+    composition=[
+        {"block": "cover", "props": {"eyebrow": "Comparativo"}},
+        {"block": "verdict", "props": {}},
+        {"block": "table", "props": {"eyebrow": "Lado a lado",
+                                     "title": "Como cada uma se apresenta"}},
+        {"block": "ranking", "props": {"eyebrow": "Presença",
+                                       "title": "Quem aparece mais"}},
+        {"block": "prose", "props": {"eyebrow": "Leitura",
+                                     "title": "O que isso significa para você"}},
+        {"block": "actions", "props": {"title": "Onde dá para se diferenciar"}},
+        {"block": "sources", "props": {}},
+        {"block": "footer", "props": {}},
+    ],
+    data_contract={
+        "competitors": _campo("array", "concorrentes com atributos comparados"),
+        "dimensions": _campo("array", "as dimensões de comparação"),
+        "opportunities": _campo("array", "lacunas observadas", False),
+    },
+    instruction_md=(
+        "Compare o que é PÚBLICO e observável: site, produtos anunciados, "
+        "canais, avaliações públicas. Nada de estimar faturamento, carteira ou "
+        "comissão de terceiro — é invenção com aparência de dado.\n\n"
+        "Célula sem informação fica vazia e declarada como 'não informado'. "
+        "Preencher com suposição arruína a matriz inteira, porque o leitor não "
+        "tem como saber quais células são reais.\n\n"
+        "A conclusão é sobre O QUE FAZER, não sobre quem é melhor."),
+)
+
+
+AUDITORIA_SITE = Template(
+    key="research.site_audit",
+    name="Diagnóstico do Site",
+    description="O que impede o site da corretora de ser encontrado e entendido.",
+    category="research", narrative_shape="precision_led", audience="internal",
+    visual_style="obsidian", page_format="web",
+    composition=[
+        {"block": "cover", "props": {"eyebrow": "Diagnóstico"}},
+        {"block": "kpis", "props": {"title": "O estado atual"}},
+        {"block": "ranking", "props": {"eyebrow": "Prioridade",
+                                       "title": "Consertar nesta ordem"}},
+        {"block": "table", "props": {"eyebrow": "Página por página",
+                                     "title": "O que foi encontrado"}},
+        {"block": "callout", "props": {}},
+        {"block": "actions", "props": {"title": "O que fazer primeiro"}},
+        {"block": "footer", "props": {"disclaimer":
+            "Diagnóstico técnico do que está publicado. Buscadores decidem "
+            "posicionamento por critérios próprios — nenhuma correção aqui "
+            "garante posição."}},
+    ],
+    data_contract={
+        "pages": _campo("array", "páginas analisadas com achados"),
+        "findings": _campo("array", "achados ordenados por impacto e esforço"),
+        "quick_wins": _campo("array", "correções de esforço baixo", False),
+    },
+    instruction_md=(
+        "Ordene por IMPACTO sobre ESFORÇO. O corretor não vai fazer trinta "
+        "correções — vai fazer três. Diga quais três.\n\n"
+        "Escreva o achado no que ele custa, não no jargão: 'quem procura seguro "
+        "na sua cidade não encontra seu telefone' vale mais que 'ausência de "
+        "marcação LocalBusiness'. O termo técnico pode vir depois, entre "
+        "parênteses, para quem for executar.\n\n"
+        "NUNCA prometa posição no Google. O rodapé diz isso e o texto não pode "
+        "contradizê-lo."),
+)
+
+
+RADAR_REGULATORIO = Template(
+    key="research.regulatory_radar",
+    name="Radar Regulatório",
+    description="O que mudou na regulação do seguro, desde quando vale e o que exige ação.",
+    category="research", narrative_shape="chronological", audience="internal",
+    visual_style="obsidian", page_format="a4",
+    composition=[
+        {"block": "cover", "props": {"eyebrow": "Radar regulatório"}},
+        {"block": "callout", "props": {}},
+        {"block": "table", "props": {"eyebrow": "Linha do tempo",
+                                     "title": "O que mudou e quando passa a valer"}},
+        {"block": "prose", "props": {"eyebrow": "Impacto",
+                                     "title": "O que muda na sua operação"}},
+        {"block": "actions", "props": {"title": "O que precisa ser feito"}},
+        {"block": "sources", "props": {"title": "Publicações oficiais",
+                                       "note": "Somente SUSEP, CNSP, DOU e "
+                                               "legislação. Notícia sobre a norma "
+                                               "não substitui a norma."}},
+        {"block": "footer", "props": {"disclaimer":
+            "Resumo informativo. O texto oficial publicado prevalece."}},
+    ],
+    data_contract={
+        "changes": _campo("array", "mudanças com data de publicação e vigência"),
+        "impact_md": _campo("string", "impacto operacional em prosa"),
+        "deadlines": _campo("array", "prazos com data", False),
+    },
+    instruction_md=(
+        "Aqui a fonte oficial é OBRIGATÓRIA. Nenhuma mudança normativa entra "
+        "apoiada só em imprensa — §16.4 recusa o claim, e esta peça também.\n\n"
+        "Separe sempre DATA DE PUBLICAÇÃO de DATA DE VIGÊNCIA. Confundir as "
+        "duas faz a corretora agir cedo demais ou tarde demais, e as duas doem.\n\n"
+        "Se algo ainda está em consulta pública, diga que é proposta. Tratar "
+        "minuta como norma vigente é o erro mais caro deste documento."),
+)
+
+
+PLANILHA_EMPRESAS = Template(
+    key="research.company_list",
+    name="Lista de Empresas",
+    description="Empresas do segmento e da região, com o motivo de cada uma estar na lista.",
+    category="research", narrative_shape="precision_led", audience="internal",
+    visual_style="meridian", page_format="web",
+    composition=[
+        {"block": "cover", "props": {"eyebrow": "Prospecção"}},
+        {"block": "kpis", "props": {"title": "O que a busca encontrou"}},
+        {"block": "callout", "props": {}},
+        {"block": "table", "props": {"eyebrow": "As empresas",
+                                     "title": "Ordenadas por aderência"}},
+        {"block": "prose", "props": {"eyebrow": "Como usar",
+                                     "title": "O que fazer com esta lista"}},
+        {"block": "sources", "props": {}},
+        {"block": "footer", "props": {"disclaimer":
+            "Dados de cadastro público de estabelecimentos. Confirme antes de "
+            "abordar: registro público envelhece."}},
+    ],
+    data_contract={
+        "companies": _campo("array", "empresas com fit, motivo e dados públicos"),
+        "criteria": _campo("array", "os critérios usados no fit"),
+        "excluded": _campo("array", "quantas foram descartadas e por quê", False),
+    },
+    instruction_md=(
+        "Toda linha carrega o MOTIVO de estar ali. Score sem motivo é palpite "
+        "com número, e o corretor não tem como discordar de um palpite.\n\n"
+        "Somente dado público de estabelecimento: nome, endereço, telefone "
+        "comercial, site, segmento. Nenhum dado pessoal de sócio, nenhuma "
+        "inferência sobre renda, porte financeiro ou perfil de risco.\n\n"
+        "Esta peça ENTREGA A LISTA. Ela não aborda ninguém: qualquer contato "
+        "sai pelo caminho normal, com a aprovação que ele exige."),
+)
+
+
+RELATORIO_DE_MUDANCA = Template(
+    key="research.change_report",
+    name="O Que Mudou",
+    description="Antes e depois de uma página acompanhada, e por que isso importa.",
+    category="research", narrative_shape="chronological", audience="internal",
+    visual_style="obsidian", page_format="web",
+    composition=[
+        {"block": "cover", "props": {"eyebrow": "Mudança detectada"}},
+        {"block": "verdict", "props": {}},
+        {"block": "split", "props": {"eyebrow": "Comparação",
+                                     "title": "Antes e depois"}},
+        {"block": "prose", "props": {"eyebrow": "Leitura",
+                                     "title": "O que isso significa"}},
+        {"block": "actions", "props": {"title": "O que fazer"}},
+        {"block": "sources", "props": {}},
+        {"block": "footer", "props": {}},
+    ],
+    data_contract={
+        "monitor": _campo("object", "o que está sendo acompanhado e desde quando"),
+        "before": _campo("string", "trecho anterior"),
+        "after": _campo("string", "trecho atual"),
+        "why_it_matters": _campo("string", "por que a mudança importa"),
+    },
+    instruction_md=(
+        "Mostre o TRECHO que mudou, não a página inteira. A página inteira "
+        "obriga o leitor a procurar a diferença, e ele não vai.\n\n"
+        "Se a mudança for cosmética — data de atualização, contador, banner — "
+        "esta peça não deveria existir. Ela só é composta quando a mudança é "
+        "relevante; ver §18.3.\n\n"
+        "Diga a data das duas leituras. 'Mudou' sem quando é inútil para quem "
+        "precisa avisar um cliente."),
+)
+
+
 CATALOGO: tuple[Template, ...] = (
     PANORAMA, COMISSOES, FUNIL, PESQUISA,
     DOSSIE_CLIENTE, RENOVACOES, SINISTROS, BRIEFING,
     BRIEFING_OPERACIONAL, BRIEFING_EXECUTIVO, ALERTA_CRITICO,
     DOSSIE_OPORTUNIDADE, RADAR_DE_DEMANDA,
+    EVIDENCE_PACK, MATRIZ_CONCORRENTES, AUDITORIA_SITE,
+    RADAR_REGULATORIO, PLANILHA_EMPRESAS, RELATORIO_DE_MUDANCA,
 )
 
 POR_CHAVE: dict[str, Template] = {t.key: t for t in CATALOGO}
@@ -528,10 +762,28 @@ def escolher(categoria: str = "", texto: str = "") -> Template:
     genérico de 'me faz um relatório'.
     """
     alvo = f"{categoria} {texto}".lower()
+    # As peças de pesquisa da SPEC-060 são mais específicas que o dossiê e
+    # vêm ANTES dele: "comparativo de concorrentes" e "o que a SUSEP mudou"
+    # antes caíam no dossiê genérico porque era o único que existia. Por isso
+    # `concorr` e `regulaç` saíram das pistas do `market_brief` — deixá-las nos
+    # dois criaria empate, e empate aqui é decidido por ordem de dicionário,
+    # que é o tipo de comportamento que ninguém consegue explicar depois.
     pistas = {
         "financial.commissions": ("comiss", "receita", "faturamento", "financeir", "fechamento"),
         "commercial.pipeline": ("funil", "cotaç", "venda", "convers", "pipeline", "produção comercial"),
-        "research.market_brief": ("pesquis", "dossiê de mercado", "estudo", "concorr", "regulaç", "circular"),
+        "research.evidence_pack": ("evidência", "evidencia", "comprov", "é verdade",
+                                   "checagem", "verificar se", "fact"),
+        "research.competitor_matrix": ("concorr", "comparativo de corretora",
+                                       "quem mais atua", "competidor"),
+        "research.site_audit": ("meu site", "nosso site", "seo", "aeo",
+                                "ser encontrado", "auditoria de site"),
+        "research.regulatory_radar": ("regulaç", "susep", "cnsp", "circular",
+                                      "resolução", "norma", "legislaç"),
+        "research.company_list": ("lista de empresas", "prospecç", "empresas de",
+                                  "encontrar empresas", "potenciais clientes"),
+        "research.change_report": ("o que mudou", "mudança na página", "monitor",
+                                   "acompanhar a página"),
+        "research.market_brief": ("pesquis", "dossiê de mercado", "estudo", "mercado de"),
         "portfolio.client_dossier": ("dossiê do", "segurado", "cliente ", "apólices do"),
         "renewals.radar": ("renovaç", "vencimento", "a vencer", "renewal"),
         "claims.performance": ("sinistr", "regulaç de sinistro", "aviso de sinistro"),

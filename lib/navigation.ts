@@ -17,6 +17,11 @@ export const PILLARS: NavItem[] = [
   // qualquer outra. Escondê-lo no secundário faria o produto proativo depender
   // de o corretor lembrar de procurá-lo.
   { key: 'briefing', label: 'Briefing', href: '/dashboard/briefing', icon: 'aprovacao' },
+  // SPEC-060 §30.2 — a pesquisa nasce no chat; esta é a tela onde ela é
+  // reencontrada. Fica como pilar, e não no secundário, pela lição da 059:
+  // tela sem link é tela que não existe para quem usa, e "Pesquisas" é o que
+  // o corretor procura quando quer rever o que mandou conferir.
+  { key: 'pesquisas', label: 'Pesquisas', href: '/dashboard/pesquisas', icon: 'buscar' },
   { key: 'atendimentos', label: 'Atendimentos', href: '/dashboard/atendimentos', icon: 'atendimentos' },
   { key: 'auxiliares', label: 'Auxiliares', href: '/dashboard/auxiliares', icon: 'auxiliares' },
   { key: 'memorias', label: 'Memórias', href: '/dashboard/memorias', icon: 'conhecimento' },

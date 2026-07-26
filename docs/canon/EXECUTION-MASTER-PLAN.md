@@ -31,8 +31,8 @@
 | 6 | SPEC-057 — Artifact Hub & Report Studio | `feat/spec057-artifact-hub` | NÃO INICIADO | — | — | — |
 | 7 | SPEC-052 Cognitive Foundation Closure | `feat/spec052-cognitive-foundation-closure` | NÃO INICIADO | — | — | — |
 | 8 | SPEC-058 — Auxiliary & Routine Factory | `feat/spec058-auxiliary-routine-factory` | NÃO INICIADO | — | — | — |
-| 9 | SPEC-059 — Intelligence Fabric + Memory Fabric | `feat/spec059-briefing-proatividade` | **CONCLUÍDO** — gate verde com ressalva | `e9fedef` | ver relatório | [SPEC-059-EXECUTION-REPORT](reports/SPEC-059-EXECUTION-REPORT.md) |
-| 10 | SPEC-060 — Research Intelligence | `feat/spec060-research-intelligence` | NÃO INICIADO | — | — | — |
+| 9 | SPEC-059 — Intelligence Fabric + Memory Fabric | `feat/spec059-briefing-proatividade` | **CONCLUÍDO** — verificado de forma independente, mergeado na `main`; gate 26/26, `tsc` limpo, RLS fail-closed nas 14 tabelas | `e9fedef` | `758bc5b` (com as 2 correções pós-merge de navegação) | [SPEC-059-EXECUTION-REPORT](reports/SPEC-059-EXECUTION-REPORT.md) |
+| 10 | SPEC-060 — Research Intelligence | `feat/spec060-research-intelligence` | **CONCLUÍDO** — gate 29/29, `tsc` limpo, canário com dado real | `92e5cc0` | ver relatório | [SPEC-060-EXECUTION-REPORT](reports/SPEC-060-EXECUTION-REPORT.md) |
 | 11 | SPEC-061 Blocos B/C — Control Plane completo | `feat/spec061-control-plane-full` | NÃO INICIADO | — | — | — |
 | 12 | SPEC-062 — Evals, Billing, Resiliência, Rollout | `feat/spec062-evals-billing-readiness` | NÃO INICIADO | — | — | — |
 | 13 | **Launch Decision** | — | NÃO INICIADO | — | — | — |
@@ -535,3 +535,65 @@ algoritmos foram preservados e viraram fontes do pipeline.
 **SPEC-060 — Research Intelligence.** Ela deve **receber** sinais externos pelo
 pipeline da SPEC-059, sem criar outro motor de pesquisa, outro RAG, outro
 publisher, outro scheduler nem outro sistema proativo.
+
+---
+
+# ESTADO EM 27/07/2026 — SPEC-060 concluída
+
+Branch `feat/spec060-research-intelligence`, a partir de `92e5cc0`.
+**Gate 29/29 verde · `npx tsc --noEmit` limpo · canário com dado real no banco
+de produção (nada persistido).**
+
+## O que a SPEC-060 acrescentou
+
+| Camada | Entrega |
+|---|---|
+| Schema | 13 tabelas `research_*`, RLS ligada e **zero policy** nas 13 · 6 garantias de conduta em CHECK · 2 triggers (recontagem de citações, append-only de observações) |
+| Fundação | normalização/dedupe de URL · política e tier de fonte · sanitizador de conteúdo com quarentena · 4 providers com degradação declarada · roteador · registro de fontes e cache · verificador de claims |
+| Orquestração | planner com regra de parada declarada antes de começar · orchestrator · monitores · auditoria de site · descoberta de empresas · adaptadores para Intelligence, Knowledge e Artifact |
+| Work OS | 5 workflows: `research.execute`, `research.monitor_check`, `research.site_audit`, `research.business_discovery`, `research.radar_weekly` |
+| Peças | 6 templates novos no catálogo da SPEC-057 (CA-018) |
+| Auxiliar | **Radar de Mercado e Regulação** — instalação com efeito real (CA-019) |
+| Superfície | `/dashboard/pesquisas` e `/admin/pesquisa`, ambas com link no menu |
+| Melhorias da 059 | `origem.py` (CA-015) e contagem de `wrong_data` por regra (CA-017) |
+
+## Cutover realizado
+
+`RESEARCH_CUTOVER=1` (padrão): a `WebSearchTool` antiga deixa de ser anexada ao
+Core; `platform.web.search` expande para `platform.research.search`, de modo
+que **ninguém perde poder no cutover**. Rollback sem deploy: `RESEARCH_CUTOVER=0`.
+
+## O que NÃO foi criado
+
+Nenhuma capability, tool ou Skill nova de pesquisa: o catálogo já existia no
+banco e foi **adotado** (CA-016). Nenhum agendador, nenhum motor de peça,
+nenhum canal de entrega próprio.
+
+## Bloqueios ativos
+
+1. **D18 — crédito do Firecrawl.** Continua. **Não bloqueia a SPEC-060:** a
+   leitura direta (`direct_fetch`) não depende de fatura e sustenta o pipeline.
+   Toda falha distingue `SEM_CHAVE` de `SEM_CREDITO` de `INDISPONIVEL`, com
+   motivo em português. Quando o crédito voltar, a fila anda sozinha.
+2. **PDF no servidor:** exige Chromium na imagem. Afeta as peças de pesquisa em
+   PDF; a versão web sai normalmente.
+3. **Sem chave de Places**, a descoberta de empresas **recusa e explica** — não
+   raspa o Maps.
+
+## Pendente de ação do Founder
+
+1. **Deploy da API e do worker** com o código das SPECs 059 e 060.
+2. Aplicar `20260727_01_spec060_research_foundation.sql` no ambiente de deploy
+   (já aplicado no banco de produção; a de Auxiliar, `20260727_02`, também).
+3. Configurar as chaves de provider quando quiser leitura paga
+   (`TAVILY_API_KEY`, `FIRECRAWL_API_KEY`, `GOOGLE_PLACES_API_KEY`). Sem elas o
+   sistema funciona com leitura direta e **diz** o que não pôde fazer.
+4. Instalar o Auxiliar **Radar de Mercado e Regulação** em uma corretora e
+   conferir, após uma semana, que a peça semanal saiu.
+
+## Próxima etapa
+
+**SPEC-061 — Control Plane.** Ela herda duas dívidas já registradas: as 9
+páginas órfãs do Admin (`ORFAS_ANTERIORES_A_SPEC059`, cobradas pelo caso NAV-01
+do gate) e o CA-014 — toda tela do Admin precisa responder por N corretoras,
+não por uma.

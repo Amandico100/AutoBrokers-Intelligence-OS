@@ -234,6 +234,8 @@ export default function AdminLayout({ children }: { children: React.ReactNode })
         // "Central (sinais, regras, demanda)" descreve a estrutura interna;
         // quem administra quer saber o que vai encontrar lá.
         { href: '/admin/inteligencia', label: 'O que o sistema percebeu' },
+        // SPEC-060 §31 — mesmo padrão: o rótulo diz o que a página RESPONDE.
+        { href: '/admin/pesquisa', label: 'O que buscamos na internet' },
         { href: '/admin/auxiliares/factory', label: 'O que as corretoras pediram' },
         { href: '/admin/insights', label: 'Garimpo (legado)' },
       ],
