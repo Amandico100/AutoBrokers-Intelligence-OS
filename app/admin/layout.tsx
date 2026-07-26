@@ -230,8 +230,11 @@ export default function AdminLayout({ children }: { children: React.ReactNode })
       icon: Bot,
       label: 'Inteligência',
       submenu: [
-        { href: '/admin/inteligencia', label: 'Central (sinais, regras, demanda)' },
-        { href: '/admin/auxiliares/factory', label: 'Fábrica de Auxiliares' },
+        // Rótulos no que o item RESPONDE, não no que ele é por dentro.
+        // "Central (sinais, regras, demanda)" descreve a estrutura interna;
+        // quem administra quer saber o que vai encontrar lá.
+        { href: '/admin/inteligencia', label: 'O que o sistema percebeu' },
+        { href: '/admin/auxiliares/factory', label: 'O que as corretoras pediram' },
         { href: '/admin/insights', label: 'Garimpo (legado)' },
       ],
     },
@@ -256,11 +259,23 @@ export default function AdminLayout({ children }: { children: React.ReactNode })
         { href: '/admin/insurer-action-channels', label: 'Canais de seguradora' },
       ],
     },
+    // Este grupo chamava-se "Inteligência" — nome que a SPEC-059 passou a usar
+    // para a Central de sinais. Dois itens com o mesmo rótulo deixavam o menu
+    // ambíguo: quem procurava a Central abria este e encontrava blueprints.
+    //
+    // E havia um defeito anterior: o cabeçalho apontava para Auxiliares Globais
+    // enquanto o submenu falava de templates. Cabeçalho e filhos indo para
+    // lugares diferentes é o tipo de coisa que faz o usuário desistir de
+    // procurar e perguntar para outra pessoa.
+    //
+    // O que existe aqui é o que a PLATAFORMA publica para as corretoras:
+    // auxiliares, rotinas e o padrão global dos agentes. Daí o nome.
     {
       href: '/admin/auxiliares',
       icon: CalendarClock,
-      label: 'Inteligência',
+      label: 'Catálogo Global',
       submenu: [
+        { href: '/admin/auxiliares', label: 'Auxiliares Globais' },
         { href: '/admin/routine-templates', label: 'Rotinas prontas' },
         { href: '/admin/blueprint-center', label: 'Blueprint Center' },
         { href: '/admin/prompt-effective', label: 'Prompt efetivo' },

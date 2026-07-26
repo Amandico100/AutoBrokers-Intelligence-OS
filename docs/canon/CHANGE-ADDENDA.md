@@ -513,3 +513,53 @@ Os dois casos viraram teste de regressão (`[19]` em
 ### Autorização
 Correção de defeito dentro do escopo da SPEC-059. Nenhuma decisão do Founder
 necessária.
+
+---
+
+## CA-010 — Menu do Admin: rótulo duplicado e página órfã
+
+**Data:** 26/07/2026 · **Estado:** EXECUTADA · **SPEC:** 059 (correção pós-merge)
+
+### O que o Founder encontrou
+
+Ele seguiu a instrução "abra /admin/inteligencia" e **não achou**. Clicou em
+"Inteligência" no menu e caiu em Rotinas prontas / Blueprint Center / Prompt
+efetivo — não na Central de sinais.
+
+### Três defeitos, um deles anterior à SPEC-059
+
+1. **Rótulo duplicado.** A SPEC-059 criou um item "Inteligência"
+   (`/admin/inteligencia`) sem notar que já existia outro com o mesmo rótulo.
+   Menu com dois itens de nome idêntico não é confuso — é **ambíguo**: não há
+   como o usuário saber qual abrir, e ele acerta por sorte.
+
+2. **Página órfã.** `app/admin/inteligencia/page.tsx` tem 589 linhas e existia
+   sem nenhum link chegando até ela pelo Admin. A SPEC-059 lembrou de pôr o
+   Briefing no menu do corretor e esqueceu do Admin. Tela sem link é tela que
+   não existe para quem usa.
+
+3. **Cabeçalho e filhos divergentes** (anterior à 059). O grupo antigo tinha
+   `href: '/admin/auxiliares'` e submenu sobre templates. Clicar no título
+   levava a um lugar; clicar nos filhos, a outro assunto.
+
+### Correção
+
+- O grupo antigo virou **"Catálogo Global"** — nome do que de fato está lá: o
+  que a plataforma publica para as corretoras. Ganhou entrada explícita para
+  Auxiliares Globais, que antes só era alcançável clicando no cabeçalho.
+- Os rótulos do submenu novo passaram a dizer o que **respondem**, não o que
+  são por dentro: "Central (sinais, regras, demanda)" virou **"O que o sistema
+  percebeu"**, e a Fábrica virou **"O que as corretoras pediram"**.
+
+### Regra que fica
+
+Toda página nova precisa de link no menu do papel que a usa, e nenhum rótulo
+pode repetir. Verificar isso deveria fazer parte do gate visual de qualquer
+SPEC que crie tela — hoje não faz.
+
+### Nota para a SPEC-061
+
+O Founder relatou que o Admin está confuso: páginas demais, linguagem técnica,
+difícil de administrar. Estes três defeitos são evidência concreta disso, não
+impressão. A SPEC-061 (Control Plane) deve tratar navegação e linguagem como
+requisito, não como acabamento.
