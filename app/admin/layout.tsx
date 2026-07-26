@@ -255,8 +255,22 @@ export default function AdminLayout({ children }: { children: React.ReactNode })
         { href: '/admin/all-users', label: 'Todos os usuários' },
       ],
     },
-    { href: '/admin/conversas', icon: MessageSquare, label: 'Conversas' },
-    { href: '/admin/financeiro', icon: DollarSign, label: 'Financeiro' },
+    // SPEC-061 Bloco C — as três telas abaixo existiam com conteúdo real (723,
+    // 517 e 222 linhas) e sem nenhum link chegando até elas. Não foram
+    // recriadas: ganharam o lugar a que já pertenciam. Apagar tela que
+    // alguém escreveu e ninguém achou é resolver o sintoma errado.
+    {
+      href: '/admin/conversas',
+      icon: MessageSquare,
+      label: 'Conversas',
+      submenu: [{ href: '/admin/conversation-logs', label: 'Histórico detalhado' }],
+    },
+    {
+      href: '/admin/financeiro',
+      icon: DollarSign,
+      label: 'Financeiro',
+      submenu: [{ href: '/admin/costs', label: 'Custo por corretora' }],
+    },
     {
       href: '/admin/portal-browser',
       icon: Globe,
@@ -298,6 +312,7 @@ export default function AdminLayout({ children }: { children: React.ReactNode })
         // "Role bindings" obrigaria quem precisa tirar o acesso de alguém a
         // saber o nome interno da coisa para achar a tela.
         { href: '/admin/governanca', label: 'Quem pode o quê' },
+        { href: '/admin/logs', label: 'Registro técnico' },
       ],
     },
   ];

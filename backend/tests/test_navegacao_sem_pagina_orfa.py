@@ -89,11 +89,18 @@ PREFIXOS_DE_SUBPAGINA = (
 # o item de menu comentado com `// HIDDEN`. Um teste que superestima a dívida
 # é tão ruim quanto um que a esconde: no primeiro caso alguém "conserta" o que
 # não estava quebrado.
-ORFAS_ANTERIORES_A_SPEC059 = {
-    "/admin/conversation-logs",
-    "/admin/costs",
-    "/admin/integrations",   # item existe no layout, comentado com `// HIDDEN`
-    "/admin/logs",
+#
+# Zerada em 27/07/2026, na SPEC-061 Bloco C: `/admin/conversation-logs`,
+# `/admin/costs` e `/admin/logs` ganharam link no submenu a que já pertenciam.
+# Não foram recriadas nem apagadas — apagar tela que alguém escreveu e ninguém
+# achou resolve o sintoma errado.
+ORFAS_ANTERIORES_A_SPEC059: set[str] = set()
+
+# `/admin/integrations` não é órfã: ela É um redirecionamento (87 linhas que
+# levam a `/admin`). Pôr link de menu para uma página que só redireciona seria
+# um item que não leva a lugar nenhum.
+SEM_MENU_POR_REDIRECIONAR = {
+    "/admin/integrations": "redireciona para /admin; não é destino",
 }
 
 
@@ -237,7 +244,8 @@ def teste_nenhuma_pagina_orfa():
                                  ("admin", os.path.join(APP, "admin"), "/admin")):
         orfas = []
         for rota in paginas(base, prefixo):
-            if rota in ligados or rota in SEM_MENU_POR_DESENHO:
+            if (rota in ligados or rota in SEM_MENU_POR_DESENHO
+                    or rota in SEM_MENU_POR_REDIRECIONAR):
                 continue
             if rota in ORFAS_ANTERIORES_A_SPEC059:
                 continue
