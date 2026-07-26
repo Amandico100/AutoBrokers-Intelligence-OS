@@ -34,6 +34,9 @@ TIPOS_ACEITOS = (
     "executive.panorama", "financial.commissions", "commercial.pipeline",
     "research.market_brief", "portfolio.client_dossier", "renewals.radar",
     "claims.performance", "briefing.daily",
+    # SPEC-059 §17.1 — peças do Intelligence Fabric.
+    "briefing.daily_operational", "briefing.weekly_executive",
+    "briefing.critical_alert_detail", "briefing.opportunity_dossier",
 )
 
 

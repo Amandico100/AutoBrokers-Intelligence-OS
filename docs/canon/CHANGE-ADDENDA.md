@@ -356,3 +356,160 @@ agente ficar burro. Observar antes de interferir.
 
 ### Autorização
 SPEC-052 Lote 3, dentro do escopo já aprovado.
+
+---
+
+## CA-010 — As nove tools da §27.3 chegam ao chat agrupadas em quatro
+
+**Data:** 26/07/2026 · **Estado:** EXECUTADA · **SPEC:** 059 §27.3
+**Classificação:** ESSENCIAL
+
+### O conflito canônico
+
+A SPEC-059 §27.3 nomeia **nove** tools do Core. A SPEC-053 §13.1 fixa um teto
+de **12 ferramentas por execução**, e o Tool Gateway o implementa
+(`MAX_TOOLS_POR_EXECUCAO`). O Core hoje já carrega perto do teto: base de
+conhecimento, busca, handoff, CSV, HTTP router, MCPs, rotinas, operações,
+relatório, Factory.
+
+Anexar nove ferramentas novas estouraria o teto e — pior — degradaria a escolha
+do modelo em **toda** conversa, inclusive nas que nada têm a ver com briefing.
+O corte por prioridade do Gateway derrubaria ferramentas silenciosamente.
+
+### O que foi feito
+
+As nove operações continuam existindo e estão **todas** disponíveis pelas APIs
+de §27.1. No chat elas chegam agrupadas em quatro ferramentas registradas no
+Registry, com release publicada e capability própria:
+
+| Tool registrada | Operações de §27.3 que atende |
+|---|---|
+| `intelligence.briefing` | `get_briefing`, `generate_briefing` |
+| `intelligence.findings` | `list_findings`, `explain_finding`, `list_recommendations` |
+| `intelligence.respond` | `respond_recommendation`, `execute_recommendation`, `report_feedback` |
+| `intelligence.preferences` | `update_preferences` |
+
+Isto **não é redução de escopo** (D5): nenhuma operação foi removida, adiada ou
+tornada indisponível. É consolidação de superfície, e o motivo é proteger a
+qualidade da resposta que o corretor recebe.
+
+### O que seria pior
+
+Registrar as nove chaves no Registry com só quatro implementações. Isso criaria
+cinco entradas governáveis que não executam — exatamente o "botão que promete e
+não cumpre" que a §14.2 existe para impedir.
+
+### Autorização
+Dentro do escopo da SPEC-059; conflito entre duas SPECs canônicas resolvido em
+favor da que protege o resultado do corretor. Registrado para revisão do Founder.
+
+---
+
+## CA-011 — O gatilho da memória não pode viver dentro do turno
+
+**Data:** 26/07/2026 · **Estado:** EXECUTADA · **SPEC:** 052 Lote 4 / 059 Bloco A
+**Classificação:** BLOCKER
+
+### O que a auditoria da SPEC-054 encontrou, e o que faltou
+
+A SPEC-054 Bloco B diagnosticou a memória zerada e corrigiu `should_summarize`:
+o modo `session_end` era inalcançável porque o grafo sempre passa
+`session_ended=False`. A correção adicionou um caminho por inatividade dentro
+do próprio `session_end`.
+
+**A correção ficou inerte, e dá para provar em uma linha.**
+`backend/app/agents/graph.py:1052` chama o gatilho com:
+
+```python
+last_message_at=datetime.now()
+```
+
+No instante do turno, a inatividade é sempre **zero**. A condição "passou do
+timeout" nunca é satisfeita durante a conversa — por construção. As seis linhas
+de `memory_settings` estão todas em `session_end`.
+
+### Evidência (FATO, medido em 26/07/2026)
+
+```text
+conversations       144        user_memories        0
+                               session_summaries    0
+```
+
+Dois meses depois do diagnóstico, ainda zero.
+
+### A conclusão que importa
+
+Ninguém sabe, no meio de uma conversa, que ela acabou. Quem sabe é o relógio,
+depois. **O gatilho não pertence ao turno** — pertence a uma varredura.
+
+### O que entrou
+
+`backend/app/services/memory_fabric.py`: fecha sessões inativas e chama o
+`MemoryService` que já existe, com `session_ended=True`. Roda no laço de
+manutenção do Smith Worker — o mesmo que já faz a reconferência do corpus.
+Nenhum agendador novo (CLAUDE.md §5).
+
+Junto vieram as duas peças que faltavam ao Lote 4: `company_memories` (memória
+da corretora, não da pessoa) e `knowledge_candidates` (o objeto comum onde todas
+as fontes depositam aprendizado antes da curadoria).
+
+E um diagnóstico consultável em `/api/admin/intelligence/memory-health`: o
+defeito ficou dois meses invisível porque **nenhuma tela mostrava a contagem**.
+
+### Autorização
+D1 (Lote 4 da SPEC-052, executado na SPEC-059 Bloco A).
+
+---
+
+## CA-012 — Dois falsos positivos que só o dado real revelou
+
+**Data:** 26/07/2026 · **Estado:** EXECUTADA · **SPEC:** 059 §23.4 e §23.6
+**Classificação:** BLOCKER
+
+### Por que isto está registrado
+
+Os dois defeitos passariam em qualquer teste sintético. Eles só apareceram ao
+rodar as condições dos detectores contra o banco vivo, antes de ligar. Se
+tivessem chegado à produção, o **primeiro briefing da Resulta** — a primeira
+impressão do produto proativo — abriria com vinte avisos falsos.
+
+### Achado 1 — o chat do corretor não é fila de atendimento
+
+O detector `qualidade.atendimento_parado` encontrou **20 conversas paradas** na
+Resulta. Dezoito eram `channel='web'`, `status='active'`: as conversas do
+**próprio corretor** com o AutoBrokers no dashboard, que ficam `active` para
+sempre porque ninguém "encerra" um chat.
+
+A §23.6 pedia definição de parado "por estado **e canal**". Só o estado estava
+implementado. Com o canal, a Resulta cai de 20 para 2 — as duas conversas de
+WhatsApp genuinamente paradas.
+
+Exceção mantida: `HUMAN_REQUESTED` entra em qualquer canal. Alguém pediu uma
+pessoa e ninguém veio é atendimento parado, mesmo no web.
+
+### Achado 2 — canal desligado não é canal quebrado
+
+O detector `conexoes.conexao_degradada` acusava **2 canais ruins** na Resulta.
+Eram integrações antigas com `is_active=false` e estado `close`/`retired` —
+canais que alguém aposentou de propósito. Alertar sobre elas é acusar a
+corretora de um problema que é decisão dela.
+
+Ao mesmo tempo, `close` **não estava** na lista de estados ruins — e há um canal
+de atendimento `is_active=true` com `channel_status='close'`. O detector estava
+simultaneamente inventando dois problemas e perdendo o único real.
+
+Correção: só alerta canal **ligado** em estado ruim; `close`/`closed` entram na
+lista; `connecting` e outros transitórios ficam fora.
+
+### Resultado
+
+Resulta passa de 22 avisos (20 falsos + 2 verdadeiros mal classificados) para
+**3 sinais verdadeiros**: canal de atendimento caído, 2 conversas de WhatsApp
+paradas, 1 trabalho concluído.
+
+Os dois casos viraram teste de regressão (`[19]` em
+`test_spec059_intelligence.py`) para não voltarem.
+
+### Autorização
+Correção de defeito dentro do escopo da SPEC-059. Nenhuma decisão do Founder
+necessária.

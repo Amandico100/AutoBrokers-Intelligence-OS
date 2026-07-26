@@ -176,8 +176,39 @@ class SmithWorker:
                 # que JA existe: criar um agendador proprio para isto seria o
                 # motor paralelo que o CLAUDE.md 5 proibe.
                 await self._reconferir_corpus()
+
+                # SPEC-059 — o Intelligence Fabric usa o MESMO laco. Ele so
+                # ENFILEIRA Work Runs; quem executa continua sendo o ciclo de
+                # consumo deste worker, com lease e retomada.
+                await self._tick_de_inteligencia()
+
+                # SPEC-052 Lote 4 — fechar sessoes paradas e produzir memoria.
+                # O gatilho nao pode viver dentro do turno: ninguem sabe, no
+                # meio da conversa, que ela acabou. Quem sabe e o relogio.
+                await self._varrer_memoria()
             except Exception as exc:  # noqa: BLE001
                 logger.error("[SmithWorker] manutenção: %s", type(exc).__name__)
+
+    async def _tick_de_inteligencia(self) -> None:
+        try:
+            from app.services.intelligence.tick import rodar
+
+            r = await asyncio.to_thread(rodar, self.db)
+            if any(v for k, v in r.items() if isinstance(v, int) and v):
+                logger.info("[SmithWorker] inteligência: %s", r)
+        except Exception as exc:  # noqa: BLE001
+            logger.warning("[SmithWorker] tick de inteligência: %s", type(exc).__name__)
+
+    async def _varrer_memoria(self) -> None:
+        try:
+            from app.services.memory_fabric import fechar_sessoes
+
+            r = await fechar_sessoes(self.db, limite=10)
+            if r.get("resumidas"):
+                logger.info("[SmithWorker] memória: %s sessão(ões) resumida(s) "
+                            "de %s avaliada(s)", r["resumidas"], r["avaliadas"])
+        except Exception as exc:  # noqa: BLE001
+            logger.warning("[SmithWorker] varredura de memória: %s", type(exc).__name__)
 
     async def _reconferir_corpus(self) -> None:
         """Passa nos documentos normativos vencidos, poucos por ciclo.

@@ -361,9 +361,160 @@ BRIEFING = Template(
 )
 
 
+# ==========================================================================
+# 9 a 12. Peças do Intelligence Fabric — SPEC-059 §17.1
+# ==========================================================================
+#
+# O briefing diário já existia como `briefing.daily`. A SPEC-059 nomeia a peça
+# como `briefing.daily_operational` e acrescenta outras quatro. A chave antiga
+# **não é removida**: peças já publicadas apontam para ela, e chave de template
+# é referência de artefato, não rótulo de menu.
+
+BRIEFING_OPERACIONAL = Template(
+    key="briefing.daily_operational",
+    name="Briefing Diário Operacional",
+    description="O que precisa de você hoje, o que já foi resolvido e o que dá para delegar.",
+    category="briefing", narrative_shape="action_led", audience="internal",
+    visual_style="obsidian", page_format="web",
+    composition=BRIEFING.composition,
+    data_contract={
+        "headline": _campo("string", "uma frase que resume o dia"),
+        "sections": _campo("array", "seções do Briefing Spec, já priorizadas"),
+        "missing_data": _campo("array", "o que não pôde ser afirmado no período", False),
+    },
+    instruction_md=(
+        "Briefing é lido em pé, no celular, antes do café. Máximo de uma tela "
+        "até a fila de ações.\n\n"
+        "Seção sem item não vira texto. 'Nenhum risco identificado' ocupa espaço "
+        "e ensina o leitor a pular seções.\n\n"
+        "Todo número vem de um Finding já gravado. Esta peça não calcula nada."),
+)
+
+BRIEFING_EXECUTIVO = Template(
+    key="briefing.weekly_executive",
+    name="Briefing Executivo Semanal",
+    description="Visão gerencial da semana: mudanças, gargalos, resultados e decisões.",
+    category="briefing", narrative_shape="verdict_led", audience="internal",
+    visual_style="aurora", page_format="a4",
+    composition=[
+        {"block": "cover", "props": {"eyebrow": "Briefing executivo"}},
+        {"block": "kpis", "props": {"title": "A semana em números"}},
+        {"block": "verdict", "props": {}},
+        {"block": "actions", "props": {"eyebrow": "Decisões",
+                                       "title": "O que depende de você"}},
+        {"block": "callout", "props": {}},
+        {"block": "table", "props": {"eyebrow": "Entregue",
+                                     "title": "O que ficou pronto"}},
+        {"block": "prose", "props": {"eyebrow": "Transparência",
+                                     "title": "O que ainda não dá para afirmar"}},
+        {"block": "sources", "props": {}},
+        {"block": "footer", "props": {}},
+    ],
+    data_contract={
+        "headline": _campo("string", "a frase que resume a semana"),
+        "executive_summary": _campo("string", "resumo executivo em uma frase"),
+        "sections": _campo("array", "seções do Briefing Spec"),
+        "missing_data": _campo("array", "limitações declaradas", False),
+    },
+    instruction_md=(
+        "Abra pelo veredito: o gestor lê a capa e o primeiro parágrafo.\n\n"
+        "Indicador sem período e sem fonte não entra. 'Melhorou' sem base de "
+        "comparação é ruído com aparência de dado.\n\n"
+        "Quando não houve amostra suficiente, diga isso. 'A qualidade permaneceu "
+        "estável' sem conversas auditadas é uma afirmação falsa."),
+)
+
+ALERTA_CRITICO = Template(
+    key="briefing.critical_alert_detail",
+    name="Detalhe de Alerta Crítico",
+    description="O que aconteceu, a evidência, o impacto e a ação — em uma página.",
+    category="briefing", narrative_shape="verdict_led", audience="internal",
+    visual_style="obsidian", page_format="web",
+    composition=[
+        {"block": "cover", "props": {"eyebrow": "Alerta"}},
+        {"block": "callout", "props": {"tone": "negative"}},
+        {"block": "table", "props": {"eyebrow": "Evidência",
+                                     "title": "O que sustenta esta conclusão"}},
+        {"block": "actions", "props": {"title": "O que fazer agora"}},
+        {"block": "sources", "props": {}},
+        {"block": "footer", "props": {}},
+    ],
+    data_contract={
+        "fato": _campo("string", "o fato observado, com número e período"),
+        "evidencias": _campo("array", "fontes com tier de confiança"),
+        "acoes": _campo("array", "o que fazer, em ordem"),
+    },
+    instruction_md=(
+        "Alerta crítico exige evidência Tier 0, 1 ou 2. Inferência de modelo "
+        "não sustenta alerta — se a única base é hipótese, isto não é alerta.\n\n"
+        "Separe o fato da leitura em blocos distintos. Misturar os dois é o que "
+        "destrói a confiança quando alguém confere."),
+)
+
+DOSSIE_OPORTUNIDADE = Template(
+    key="briefing.opportunity_dossier",
+    name="Dossiê de Oportunidade",
+    description="Uma oportunidade detectada: evidência, impacto, custo e o que fazer.",
+    category="briefing", narrative_shape="narrative_led", audience="internal",
+    visual_style="aurora", page_format="web",
+    composition=[
+        {"block": "cover", "props": {"eyebrow": "Oportunidade"}},
+        {"block": "verdict", "props": {}},
+        {"block": "kpis", "props": {"title": "O tamanho disso"}},
+        {"block": "prose", "props": {"eyebrow": "Por que agora",
+                                     "title": "O que mudou"}},
+        {"block": "actions", "props": {"title": "Como aproveitar"}},
+        {"block": "callout", "props": {}},
+        {"block": "sources", "props": {}},
+        {"block": "footer", "props": {}},
+    ],
+    data_contract={
+        "tese": _campo("string", "a oportunidade em uma frase"),
+        "evidencias": _campo("array", "o que sustenta"),
+        "custo": _campo("object", "faixa estimada, marcada como estimativa", False),
+    },
+    instruction_md=(
+        "Oportunidade sem número verificável é conversa de vendedor. Se o "
+        "impacto não pode ser calculado, diga que é estimativa e mostre o "
+        "método.\n\n"
+        "Nunca prometa resultado garantido — no máximo uma frase comercial leve."),
+)
+
+RADAR_DE_DEMANDA = Template(
+    key="briefing.demand_radar_admin",
+    name="Radar de Demanda",
+    description="O que várias corretoras querem delegar — agregado e anônimo.",
+    category="briefing", narrative_shape="comparative", audience="internal",
+    visual_style="meridian", page_format="web",
+    composition=[
+        {"block": "cover", "props": {"eyebrow": "Radar de demanda"}},
+        {"block": "kpis", "props": {"title": "O funil de demanda"}},
+        {"block": "ranking", "props": {"eyebrow": "Prioridade",
+                                       "title": "O que mais pedem"}},
+        {"block": "table", "props": {"eyebrow": "Detalhe",
+                                     "title": "Necessidades por status"}},
+        {"block": "callout", "props": {}},
+        {"block": "sources", "props": {}},
+        {"block": "footer", "props": {}},
+    ],
+    data_contract={
+        "clusters": _campo("array", "necessidades com contagem de corretoras"),
+        "gaps": _campo("array", "lacunas de capacidade abertas", False),
+    },
+    instruction_md=(
+        "Esta peça é de PLATAFORMA e sai anonimizada. Nenhum nome de corretora, "
+        "nenhuma citação literal, nenhum dado de segurado.\n\n"
+        "Ordene por número de corretoras distintas, não por número de pedidos: "
+        "dez pedidos de uma corretora são um caso; um pedido de dez corretoras "
+        "é um produto."),
+)
+
+
 CATALOGO: tuple[Template, ...] = (
     PANORAMA, COMISSOES, FUNIL, PESQUISA,
     DOSSIE_CLIENTE, RENOVACOES, SINISTROS, BRIEFING,
+    BRIEFING_OPERACIONAL, BRIEFING_EXECUTIVO, ALERTA_CRITICO,
+    DOSSIE_OPORTUNIDADE, RADAR_DE_DEMANDA,
 )
 
 POR_CHAVE: dict[str, Template] = {t.key: t for t in CATALOGO}

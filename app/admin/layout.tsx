@@ -222,7 +222,19 @@ export default function AdminLayout({ children }: { children: React.ReactNode })
     { href: '/admin/atlas', icon: Map, label: 'Atlas de Rotas' },
     { href: '/admin/espelho', icon: UserCheck, label: 'Espelho de Atendimento' },
     { href: '/admin/acionamentos', icon: MessageSquare, label: 'Acionamentos ao vivo' },
-    { href: '/admin/insights', icon: UserCheck, label: 'Insights · Garimpo' },
+    // SPEC-059 §26 — a Central de Inteligência substitui o ranking superficial
+    // de "Insights · Garimpo". A rota antiga continua no ar como adapter
+    // durante a transição (§29.7); a autoridade passou para cá.
+    {
+      href: '/admin/inteligencia',
+      icon: Bot,
+      label: 'Inteligência',
+      submenu: [
+        { href: '/admin/inteligencia', label: 'Central (sinais, regras, demanda)' },
+        { href: '/admin/auxiliares/factory', label: 'Fábrica de Auxiliares' },
+        { href: '/admin/insights', label: 'Garimpo (legado)' },
+      ],
+    },
     {
       href: '/admin/companies',
       icon: Building2,

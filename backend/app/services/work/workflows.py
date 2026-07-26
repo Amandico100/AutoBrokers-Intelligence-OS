@@ -36,13 +36,37 @@ def registrar_workflow(chave: str) -> Callable[[WorkflowHandler], WorkflowHandle
     return decorador
 
 
+_extras_carregados = False
+
+
+def carregar_extras() -> None:
+    """Importa os workflows das SPECs posteriores, uma vez por processo.
+
+    Registro por decorador só existe depois do import. Deixar isso a cargo de
+    cada ponto de entrada (worker, API, teste) garante que alguém esqueça — e o
+    sintoma seria "não sei executar este tipo de trabalho ainda", que parece
+    bug de dado e não de import. Fica aqui, no dono do registro.
+    """
+    global _extras_carregados
+    if _extras_carregados:
+        return
+    _extras_carregados = True
+    try:
+        from app.services.intelligence import workflows as _intel  # noqa: F401
+    except Exception as exc:  # noqa: BLE001
+        logger.error("[Workflows] SPEC-059 não registrada: %s", type(exc).__name__)
+
+
 def resolver_workflow(chave: Optional[str]) -> Optional[WorkflowHandler]:
     if not chave:
         return None
+    if chave not in _REGISTRO:
+        carregar_extras()
     return _REGISTRO.get(chave)
 
 
 def workflows_registrados() -> list[str]:
+    carregar_extras()
     return sorted(_REGISTRO)
 
 

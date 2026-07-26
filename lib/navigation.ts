@@ -12,6 +12,11 @@ export interface NavItem {
 /** Os pilares da navegação tenant (UX-001 + Memórias/SPEC-036 E3). */
 export const PILLARS: NavItem[] = [
   { key: 'autobrokers', label: 'AutoBrokers', href: '/dashboard', icon: 'autobrokers' },
+  // SPEC-059 §25.1 — o Briefing entra como pilar, ao lado do chat. Ele responde
+  // "o que precisa de mim hoje?", que é a pergunta que o corretor faz antes de
+  // qualquer outra. Escondê-lo no secundário faria o produto proativo depender
+  // de o corretor lembrar de procurá-lo.
+  { key: 'briefing', label: 'Briefing', href: '/dashboard/briefing', icon: 'aprovacao' },
   { key: 'atendimentos', label: 'Atendimentos', href: '/dashboard/atendimentos', icon: 'atendimentos' },
   { key: 'auxiliares', label: 'Auxiliares', href: '/dashboard/auxiliares', icon: 'auxiliares' },
   { key: 'memorias', label: 'Memórias', href: '/dashboard/memorias', icon: 'conhecimento' },

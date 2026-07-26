@@ -57,27 +57,56 @@ CUSTO_RELATIVO = {ONE_SHOT: 1, ROTINA: 2, EXECUTOR: 2, AUXILIAR: 3, WORKFLOW: 4,
 # Redação
 # --------------------------------------------------------------------------
 
-_PII = [
-    (re.compile(r"\b\d{3}\.?\d{3}\.?\d{3}-?\d{2}\b"), "[CPF]"),
-    (re.compile(r"\b\d{2}\.?\d{3}\.?\d{3}/?\d{4}-?\d{2}\b"), "[CNPJ]"),
-    (re.compile(r"\b[A-Z]{3}-?\d[A-Z\d]\d{2}\b"), "[PLACA]"),
-    (re.compile(r"[\w.+\-]+@[\w\-]+\.[\w.\-]+"), "[EMAIL]"),
-    (re.compile(r"(?:\+?55\s*)?\(?\d{2}\)?[\s.\-]?\d{4,5}[\s.\-]?\d{4}"), "[TELEFONE]"),
-    (re.compile(r"\bap[óo]lice\s+(?:n[º°.]?\s*)?[\w.\-/]{4,}", re.I), "apólice [NUMERO]"),
-]
-
-
 def redigir(texto: str) -> str:
     """Remove PII antes de o pedido virar dado de roadmap.
 
     O funil de demanda é lido por gente da **plataforma**, não da corretora.
     Um pedido citando o CPF de um segurado não pode atravessar essa fronteira —
     e ninguém percebe que atravessou até ser tarde.
+
+    SPEC-059: os padrões saíram daqui e passaram a viver em
+    `services/intelligence/redaction_service.py`. Duas listas de PII em dois
+    módulos divergem com o tempo, e a que fica para trás é justamente a que
+    deixa passar o CPF. Aqui ficou só a delegação — uma autoridade só.
     """
-    saida = texto or ""
-    for padrao, marca in _PII:
-        saida = padrao.sub(marca, saida)
-    return saida.strip()[:2000]
+    return _modulo_de_redacao().redigir(texto)
+
+
+def _modulo_de_redacao():
+    """Carrega a redação canônica sem passar por `app.services.__init__`.
+
+    O import normal arrastaria LangChain, Qdrant e MinIO junto — e os testes
+    de gate carregam este arquivo isolado, justamente para não depender disso.
+    Um teste que vira SKIP por falta de dependência deixa de proteger o
+    corretor sem ninguém notar, que é pior do que falhar.
+    """
+    global _REDACAO
+    if _REDACAO is not None:
+        return _REDACAO
+
+    import importlib
+    import importlib.util
+    import os
+    import sys
+
+    nome = "app.services.intelligence.redaction_service"
+    modulo = sys.modules.get(nome)
+    if modulo is None:
+        try:
+            modulo = importlib.import_module(nome)
+        except Exception:  # noqa: BLE001 — carga isolada por caminho
+            caminho = os.path.join(
+                os.path.dirname(os.path.dirname(os.path.abspath(__file__))),
+                "intelligence", "redaction_service.py")
+            spec = importlib.util.spec_from_file_location(nome, caminho)
+            modulo = importlib.util.module_from_spec(spec)
+            sys.modules[nome] = modulo
+            spec.loader.exec_module(modulo)
+    _REDACAO = modulo
+    return modulo
+
+
+_REDACAO = None
 
 
 _PARADA = {

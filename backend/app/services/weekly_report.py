@@ -98,7 +98,27 @@ async def run_weekly_report() -> int:
 
 
 async def check_weekly_report() -> int:
-    """Task periódica: sábado, 12h-18h UTC (9h-15h BR), 1x por semana (marcador)."""
+    """Task periódica: sábado, 12h-18h UTC (9h-15h BR), 1x por semana (marcador).
+
+    SPEC-059 §29.3 — CUTOVER. O relatório de sábado virou o **Briefing
+    Executivo Semanal**: mesmas contagens determinísticas de
+    `agent_activities`, agora com período e fonte declarados, junto de
+    gargalos, riscos, resultados medidos e link para a peça completa.
+
+    `compose_weekly_message` continua aqui porque a contagem é boa e custa
+    zero — ela é consumida por `intelligence/legacy_adapter.py` como uma das
+    fontes do briefing. O que saiu de cena foi o envio direto com fecho
+    comercial.
+    """
+    try:
+        from app.services.intelligence.legacy_adapter import (cutover_ligado,
+                                                              relatorio_semanal_desativado)
+
+        if cutover_ligado():
+            return relatorio_semanal_desativado()
+    except Exception:  # noqa: BLE001
+        pass
+
     now = datetime.now(timezone.utc)
     if now.weekday() != 5 or not (12 <= now.hour < 18):
         return 0
