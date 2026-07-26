@@ -33,7 +33,7 @@
 | 8 | SPEC-058 — Auxiliary & Routine Factory | `feat/spec058-auxiliary-routine-factory` | NÃO INICIADO | — | — | — |
 | 9 | SPEC-059 — Intelligence Fabric + Memory Fabric | `feat/spec059-briefing-proatividade` | **CONCLUÍDO** — verificado de forma independente, mergeado na `main`; gate 26/26, `tsc` limpo, RLS fail-closed nas 14 tabelas | `e9fedef` | `758bc5b` (com as 2 correções pós-merge de navegação) | [SPEC-059-EXECUTION-REPORT](reports/SPEC-059-EXECUTION-REPORT.md) |
 | 10 | SPEC-060 — Research Intelligence | `feat/spec060-research-intelligence` | **CONCLUÍDO** — gate 29/29, `tsc` limpo, canário com dado real | `92e5cc0` | ver relatório | [SPEC-060-EXECUTION-REPORT](reports/SPEC-060-EXECUTION-REPORT.md) |
-| 11 | SPEC-061 — Control Plane | `feat/spec061-control-plane-full` | **EM EXECUÇÃO** — Bloco A completo; Bloco B: Inbox + Central de Trabalhos; Bloco C: navegação zerada. Gate 34/34 | `affd55f` | `3b75e09` | [SPEC-061-EXECUTION-REPORT](reports/SPEC-061-EXECUTION-REPORT.md) |
+| 11 | SPEC-061 — Control Plane | `feat/spec061-control-plane-full` | **CONCLUÍDO** — Blocos A, B e C. Gate 37/37, `tsc` limpo, Advisor 0 erros. Aguarda Visual Acceptance do Founder | `affd55f` | `1229352` | [SPEC-061-EXECUTION-REPORT](reports/SPEC-061-EXECUTION-REPORT.md) · [Visual Acceptance Pack](reports/SPEC-061-VISUAL-ACCEPTANCE-PACK.md) |
 | 12 | SPEC-062 — Evals, Billing, Resiliência, Rollout | `feat/spec062-evals-billing-readiness` | NÃO INICIADO | — | — | — |
 | 13 | **Launch Decision** | — | NÃO INICIADO | — | — | — |
 
@@ -782,3 +782,58 @@ Corrigida, com CHECK `companies_kind_e_tecnica_coerentes_ck` impedindo a volta.
 prévia da ação e motivo obrigatório na recusa.
 
 **Gate 35/35 · tsc limpo.**
+
+---
+
+# ESTADO EM 27/07/2026 (fechamento) — SPEC-061 concluída
+
+**Gate 37/37 · `tsc` limpo · Security Advisor ERROR 0, WARN 0.**
+
+Relatório: [SPEC-061-EXECUTION-REPORT](reports/SPEC-061-EXECUTION-REPORT.md)
+Conferência: [Visual Acceptance Pack](reports/SPEC-061-VISUAL-ACCEPTANCE-PACK.md)
+
+## Os três blocos
+
+| Bloco | Entrega |
+|---|---|
+| **A** | 7 tabelas do Control Plane · RBAC com 51 permissions e 10 papéis · BFF · Command Gateway · trilha append-only · sessões e step-up |
+| **B** | "O que precisa de mim" · Central de Trabalhos · Central de aprovações · "O que o sistema sabe fazer" · busca global `Ctrl+K` |
+| **C** | 8 hubs de navegação · Home executiva hierárquica · **separação definitiva** de `/admin` e `/dashboard` · dívida de navegação zerada |
+
+## A separação das superfícies
+
+Cinco telas da corretora saíram de `/admin` e foram para a casa dela, com
+redirecionamento no endereço antigo. A lista `masterOnlyRoutes` — que enumerava
+no navegador o que esconder — **deixou de existir**: a regra virou de exclusão.
+
+```text
+/admin/team          -> /dashboard/equipe
+/admin/conversations -> /dashboard/conversas
+/admin/agent         -> /dashboard/agente
+/admin/documents     -> /dashboard/documentos
+/admin/billing       -> /dashboard/plano
+```
+
+## Números
+
+| | Antes | Depois |
+|---|---|---|
+| Grupos no primeiro nível | 15 | **8** |
+| Páginas com link | 24 | **36** |
+| Páginas órfãs | 9 declaradas (4 reais) | **0** |
+| Casos no gate | 30 | **37** |
+
+## Pendente de ação do Founder
+
+1. **Reimplantar** web + API.
+2. Rodar o [Visual Acceptance Pack](reports/SPEC-061-VISUAL-ACCEPTANCE-PACK.md) —
+   40 conferências, com destaque para os cinco redirecionamentos (§8), o único
+   ponto que pode quebrar link de cliente.
+3. Testar os hostnames de **MinIO** e **Docling** (explica `artifacts = 0`).
+4. Rotacionar as chaves quando o projeto estabilizar.
+
+## Próxima etapa
+
+**SPEC-062 — Evals, Billing, Resiliência e Rollout.** É a última antes do
+Launch Decision, e traz o volume que hoje falta: paginação nas listas, medição
+de qualidade e cobrança.
