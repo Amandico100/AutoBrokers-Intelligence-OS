@@ -464,6 +464,10 @@ CASOS: list[Caso] = [
     # por um `before/after` de conexão vira um lugar novo onde a chave existe.
     Caso("AUD-02", "seguranca", "A trilha do Admin diz por quê sem vazar segredo",
          "SPEC-061", lambda: _roda_script("test_spec061_auditoria.py")),
+    # Oito cartões idênticos fazem o operador tratar sintoma. Um cartão que diz
+    # "afeta 3 corretoras e 8 rotinas" faz ele tratar a causa.
+    Caso("INB-01", "operacao", "A caixa do Admin mostra a causa, não o sintoma",
+         "SPEC-061", lambda: _roda_script("test_spec061_inbox.py")),
     Caso("IDN-01", "identidade", "Corretora A não enxerga dados da corretora B",
          "SPEC-048", lambda: _roda_script("test_spec048_isolamento_corretoras.py")),
     Caso("CAP-01", "capacidades", "Agente só recebe os poderes do seu papel",

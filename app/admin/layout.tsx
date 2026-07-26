@@ -7,6 +7,7 @@ import {
   Building2,
   Users,
   UserCheck,
+  Inbox,
   LayoutDashboard,
   LogOut,
   Shield,
@@ -218,6 +219,9 @@ export default function AdminLayout({ children }: { children: React.ReactNode })
   // gestão depois). Nenhuma rota morreu — páginas antigas viram filhos dos hubs.
   const masterMenuItems = [
     { href: '/admin', icon: LayoutDashboard, label: 'Dashboard' },
+    // SPEC-061 §13 — a primeira tela do dia. O rótulo é a pergunta que o
+    // operador faz ao abrir o Admin, e por isso vem logo abaixo da raiz.
+    { href: '/admin/inbox', icon: Inbox, label: 'O que precisa de mim' },
     { href: '/admin/central-agentes', icon: Bot, label: 'Central de Agentes' },
     { href: '/admin/atlas', icon: Map, label: 'Atlas de Rotas' },
     { href: '/admin/espelho', icon: UserCheck, label: 'Espelho de Atendimento' },

@@ -223,6 +223,57 @@ async def revogar_papel(payload: RevogarIn,
     return r
 
 
+# ---------------------------------------------------------------------------
+# Admin Inbox — §13
+# ---------------------------------------------------------------------------
+
+
+class CaixaIn(BaseModel):
+    admin_user_id: str
+    permissions: list[str]
+    limite: int = 50
+
+
+@router.post("/inbox")
+async def caixa(payload: CaixaIn, x_internal_key: Optional[str] = Header(None)):
+    """A caixa priorizada. As permissions vêm do BFF, que já as resolveu.
+
+    Reenviar a lista em vez de reconsultar evita duas leituras da mesma
+    autoridade na mesma requisição — e mantém uma resposta só como verdade.
+    """
+    _autorizar(x_internal_key)
+    from app.services.control_plane.inbox import CaixaDeEntrada
+
+    return CaixaDeEntrada(_db()).montar(
+        admin_user_id=payload.admin_user_id,
+        permissions=set(payload.permissions or []),
+        limite=min(int(payload.limite), 200))
+
+
+class MarcarIn(BaseModel):
+    admin_user_id: str
+    fonte: str
+    chave: str
+    estado: str
+    adiar_ate: Optional[str] = None
+    nota: Optional[str] = None
+
+
+@router.post("/inbox/mark")
+async def marcar_item(payload: MarcarIn,
+                      x_internal_key: Optional[str] = Header(None)):
+    _autorizar(x_internal_key)
+    from app.services.control_plane.inbox import CaixaDeEntrada
+
+    r = CaixaDeEntrada(_db()).marcar(
+        admin_user_id=payload.admin_user_id, fonte=payload.fonte,
+        chave=payload.chave, estado=payload.estado,
+        adiar_ate=payload.adiar_ate, nota=payload.nota)
+    if not r.get("ok"):
+        raise HTTPException(400, str(r.get("erro") or "não foi possível marcar"))
+    return r
+
+
 @router.get("/roles/bindings")
 async def vinculos(user_id: Optional[str] = None, limite: int = 100,
                    x_internal_key: Optional[str] = Header(None)):
