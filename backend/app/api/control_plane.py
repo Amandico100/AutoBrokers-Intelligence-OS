@@ -231,6 +231,7 @@ async def revogar_papel(payload: RevogarIn,
 class CaixaIn(BaseModel):
     admin_user_id: str
     permissions: list[str]
+    pode_tudo: bool = False
     limite: int = 50
 
 
@@ -243,10 +244,17 @@ async def caixa(payload: CaixaIn, x_internal_key: Optional[str] = Header(None)):
     """
     _autorizar(x_internal_key)
     from app.services.control_plane.inbox import CaixaDeEntrada
+    from app.services.control_plane.rbac import PERMISSIONS
+
+    permissions = set(payload.permissions or [])
+    if payload.pode_tudo:
+        # O dono da plataforma. Expandir aqui, e não mandar 51 chaves pela
+        # rede, mantém a matriz num lugar só.
+        permissions = set(PERMISSIONS)
 
     return CaixaDeEntrada(_db()).montar(
         admin_user_id=payload.admin_user_id,
-        permissions=set(payload.permissions or []),
+        permissions=permissions,
         limite=min(int(payload.limite), 200))
 
 

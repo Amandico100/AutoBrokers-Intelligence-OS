@@ -24,6 +24,7 @@
 // em memória. O ganho é não ter como as duas respostas discordarem.
 import 'server-only';
 import { getAdminContext, supabaseService } from '@/lib/admin/admin-auth';
+import { isPlatformMaster } from '@/lib/admin/admin-auth-policy';
 
 export type Autoridade = {
   userId: string;
@@ -31,6 +32,10 @@ export type Autoridade = {
   papeisLegiveis: string[];
   permissions: Set<string>;
   temAcesso: boolean;
+  /** Dono da plataforma: passa em qualquer permission sem consultar a lista. */
+  podeTudo?: boolean;
+  /** A autoridade veio da rede de segurança, não do backend. Vale para avisar. */
+  degradado?: boolean;
 };
 
 export type FalhaDeAutoridade = {
@@ -111,18 +116,61 @@ export async function resolverAutoridade(): Promise<Autoridade | null> {
     papel_legado: ctx.role ?? null,
   });
 
-  const valor: Autoridade = {
-    userId: ctx.adminId,
-    papeis: Array.isArray(r?.papeis) ? r.papeis : [],
-    papeisLegiveis: Array.isArray(r?.papeis_legiveis) ? r.papeis_legiveis : [],
-    permissions: new Set<string>(Array.isArray(r?.permissions) ? r.permissions : []),
-    temAcesso: Boolean(r?.tem_acesso),
-  };
+  if (r?.ok && r?.tem_acesso) {
+    const valor: Autoridade = {
+      userId: ctx.adminId,
+      papeis: Array.isArray(r.papeis) ? r.papeis : [],
+      papeisLegiveis: Array.isArray(r.papeis_legiveis) ? r.papeis_legiveis : [],
+      permissions: new Set<string>(Array.isArray(r.permissions) ? r.permissions : []),
+      temAcesso: true,
+    };
+    cache.set(ctx.adminId, { em: agora, valor });
+    return valor;
+  }
 
-  // Só entra em cache o que veio do backend. Uma resposta vazia por falha de
-  // rede não pode ficar guardada 30s — ela travaria o Admin de quem tem acesso.
-  if (r?.ok) cache.set(ctx.adminId, { em: agora, valor });
-  return valor;
+  // ---------------------------------------------------------------------
+  // Rede de segurança do master histórico.
+  //
+  // Sem isto, eu introduzi uma regressão grave de disponibilidade: até esta
+  // SPEC o master de plataforma via tudo com ZERO chamadas a outro serviço.
+  // Depois dela, uma variável de ambiente faltando no serviço web — ou o
+  // backend fora do ar por trinta segundos — trancava o dono para fora do
+  // próprio Admin. Foi exatamente o que aconteceu no primeiro deploy.
+  //
+  // Isto NÃO é afrouxar a autorização. `isPlatformMaster` lê a sessão
+  // iron-session, que é assinada no servidor e já é a autoridade de hoje em
+  // `requireMasterAdmin()`. O que se recusa aqui é fazer a permanência do
+  // acesso existente depender de um segundo serviço responder.
+  //
+  // Para todos os outros papéis segue fail-closed: sem resposta do backend,
+  // sem acesso. A diferença é que o master já tinha o acesso antes, e
+  // ninguém o perde por indisponibilidade.
+  if (isPlatformMaster({ role: ctx.role ?? null, companyId: ctx.companyId })) {
+    // `podeTudo` em vez de copiar as 51 chaves: duplicar a lista aqui
+    // recriaria exatamente o problema que a arquitetura evita — duas cópias da
+    // matriz que divergem na primeira permission nova.
+    const valor: Autoridade = {
+      userId: ctx.adminId,
+      papeis: ['platform_owner'],
+      papeisLegiveis: ['Dono da plataforma'],
+      permissions: new Set<string>(),
+      temAcesso: true,
+      podeTudo: true,
+      degradado: true,
+    };
+    // Cache curto: quando o backend voltar, a resposta dele volta a valer.
+    cache.set(ctx.adminId, { em: agora, valor });
+    return valor;
+  }
+
+  return {
+    userId: ctx.adminId,
+    papeis: [],
+    papeisLegiveis: [],
+    permissions: new Set<string>(),
+    temAcesso: false,
+    podeTudo: false,
+  };
 }
 
 /** Descarta o cache de uma pessoa. Chamado ao conceder ou revogar papel. */
@@ -156,7 +204,7 @@ export async function exigirPermissao(
       motivo: 'Sua conta não tem papel administrativo ativo.',
     };
   }
-  if (!autoridade.permissions.has(permissionKey)) {
+  if (!autoridade.podeTudo && !autoridade.permissions.has(permissionKey)) {
     return {
       ok: false,
       status: 403,
@@ -170,5 +218,6 @@ export async function exigirPermissao(
 /** Conveniência de leitura para montar tela. Não substitui `exigirPermissao`. */
 export async function pode(permissionKey: string): Promise<boolean> {
   const a = await resolverAutoridade();
-  return Boolean(a?.temAcesso && a.permissions.has(permissionKey));
+  if (!a?.temAcesso) return false;
+  return Boolean(a.podeTudo || a.permissions.has(permissionKey));
 }

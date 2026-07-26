@@ -44,6 +44,10 @@ export async function GET(req: NextRequest) {
       body: JSON.stringify({
         admin_user_id: auth.autoridade.userId,
         permissions: Array.from(auth.autoridade.permissions),
+        // O dono passa em qualquer permission; sem esta flag, a caixa dele
+        // viria vazia justamente quando o backend acabou de voltar e a lista
+        // ainda não foi recarregada.
+        pode_tudo: Boolean(auth.autoridade.podeTudo),
         limite: Number(req.nextUrl.searchParams.get('limite') || 50),
       }),
       cache: 'no-store',

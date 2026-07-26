@@ -211,7 +211,21 @@ PAPEIS: dict[str, dict[str, Any]] = {
 # §8.2 — o papel histórico. Um único bit vira o papel mais alto porque é o que
 # ele significava na prática; a granularidade vem da atribuição dos papéis
 # novos, não de rebaixar quem já opera hoje e quebrar o Admin.
-PAPEL_LEGADO = {"master": "platform_owner"}
+#
+# `master_admin` é o valor REAL gravado na sessão (`lib/iron-session.ts`,
+# `AdminSessionData.role`). A primeira versão deste mapa tinha só `"master"` —
+# um nome que eu supus e que não existe em lugar nenhum do código. O efeito foi
+# imediato e total: o único administrador da plataforma abriu o Admin e leu
+# "Seu papel não inclui ver esta caixa" em todas as telas novas.
+#
+# `master` fica como sinônimo por segurança, e o teste
+# `test_spec061_rbac.py` passou a cobrar que TODO valor possível de
+# `AdminSessionData.role` esteja neste mapa — supor nome de campo é exatamente
+# o que produziu o defeito.
+PAPEL_LEGADO = {
+    "master_admin": "platform_owner",
+    "master": "platform_owner",
+}
 
 # Ações que exigem confirmação recente de identidade — §7.4. São as que mudam
 # a vida da corretora, mexem em segredo ou em dinheiro.

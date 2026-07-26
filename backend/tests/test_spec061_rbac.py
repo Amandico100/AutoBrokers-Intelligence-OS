@@ -76,6 +76,45 @@ def teste_matriz_integra():
            "o mapeamento do papel histórico aponta para papel que existe")
 
 
+def teste_papel_da_sessao_esta_no_mapa_do_legado():
+    print("\n[1b] O nome que a SESSÃO grava tem que estar no mapa")
+    # Este caso existe por um defeito real. `PAPEL_LEGADO` nasceu com a chave
+    # `"master"` — um nome que eu SUPUS e que não existe em lugar nenhum do
+    # código. O valor gravado é `master_admin` (`lib/iron-session.ts`).
+    #
+    # O efeito foi total: o único administrador da plataforma abriu o Admin e
+    # leu "Seu papel não inclui ver esta caixa" em todas as telas novas.
+    #
+    # Por isso o teste não confere uma constante escrita à mão: ele LÊ o
+    # arquivo do TypeScript. Se alguém renomear o papel na sessão, este caso
+    # fica vermelho antes de o Founder descobrir pela tela.
+    caminho = os.path.join(os.path.dirname(RAIZ), "lib", "iron-session.ts")
+    if not os.path.exists(caminho):
+        checar(False, "lib/iron-session.ts existe", caminho)
+        return
+    with open(caminho, encoding="utf-8") as fh:
+        fonte = fh.read()
+
+    import re
+    linha = re.search(r"role\s*:\s*([^;]+);", fonte)
+    checar(linha is not None, "o campo `role` da sessão foi encontrado")
+    if not linha:
+        return
+    valores = set(re.findall(r"'([^']+)'", linha.group(1)))
+    checar(valores, "com valores literais declarados", str(valores))
+
+    # `company_admin` NÃO deve estar no mapa: §8.2 é explícita — "nenhum
+    # company_admin será convertido automaticamente em papel global".
+    de_plataforma = {v for v in valores if "company" not in v}
+    for v in sorted(de_plataforma):
+        checar(v in R.PAPEL_LEGADO,
+               f"'{v}' (papel de plataforma na sessão) está no mapa do legado",
+               f"mapa tem: {sorted(R.PAPEL_LEGADO)}")
+    for v in sorted(valores - de_plataforma):
+        checar(v not in R.PAPEL_LEGADO,
+               f"'{v}' NÃO vira papel global — §8.2")
+
+
 def teste_auditor_e_somente_leitura():
     print("\n[2] §8.5 — o auditor é somente leitura")
     do_auditor = R.permissions_do_papel("platform_auditor")
@@ -249,6 +288,7 @@ def main() -> int:
     print("=" * 68)
     for teste in (
         teste_matriz_integra,
+        teste_papel_da_sessao_esta_no_mapa_do_legado,
         teste_auditor_e_somente_leitura,
         teste_financeiro_nao_ve_conteudo_da_corretora,
         teste_suporte_nao_mexe_em_cobranca,

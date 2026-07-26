@@ -10,7 +10,7 @@
 //   1. quem tem acesso administrativo hoje?
 //   2. o que cada papel permite?
 //   3. o que foi feito, por quem, e por quê?
-import { useEffect, useState } from 'react';
+import { useCallback, useEffect, useState } from 'react';
 
 type Papel = { role_key: string; nome: string; descricao: string; quantidade_de_permissions: number };
 type Vinculo = {
@@ -64,41 +64,73 @@ export default function GovernancaPage() {
   const [papeis, setPapeis] = useState<Papel[]>([]);
   const [vinculos, setVinculos] = useState<Vinculo[]>([]);
   const [eventos, setEventos] = useState<Evento[]>([]);
+  const [salvando, setSalvando] = useState(false);
+  const [recado, setRecado] = useState<string | null>(null);
+  const [degradado, setDegradado] = useState(false);
+  const [avisoDegradado, setAvisoDegradado] = useState<string | null>(null);
+  const [novoUsuario, setNovoUsuario] = useState('');
+  const [novoPapel, setNovoPapel] = useState('platform_support');
 
-  useEffect(() => {
-    let vivo = true;
-    (async () => {
-      setCarregando(true);
-      setErro(null);
-      try {
-        const [rolesRes, auditRes] = await Promise.all([
-          fetch('/api/admin/control-plane/roles', { cache: 'no-store' }),
-          fetch('/api/admin/control-plane/audit?limite=60', { cache: 'no-store' }),
-        ]);
-        if (!vivo) return;
+  const recarregar = useCallback(async () => {
+    setCarregando(true);
+    setErro(null);
+    try {
+      const [rolesRes, auditRes, meRes] = await Promise.all([
+        fetch('/api/admin/control-plane/roles', { cache: 'no-store' }),
+        fetch('/api/admin/control-plane/audit?limite=60', { cache: 'no-store' }),
+        fetch('/api/admin/control-plane/me', { cache: 'no-store' }),
+      ]);
 
-        if (rolesRes.status === 403) {
-          setErro('Seu papel não inclui ver a governança de acesso.');
-          return;
-        }
-        const roles = await rolesRes.json().catch(() => ({}));
-        setPapeis(roles?.catalogo?.papeis ?? []);
-        setVinculos(roles?.vinculos?.vinculos ?? []);
-
-        const audit = await auditRes.json().catch(() => ({}));
-        setEventos(audit?.eventos ?? []);
-      } catch {
-        if (vivo) setErro('Não consegui carregar. Tente de novo em instantes.');
-      } finally {
-        if (vivo) setCarregando(false);
+      if (rolesRes.status === 403) {
+        setErro('Seu papel não inclui ver a governança de acesso.');
+        return;
       }
-    })();
-    return () => {
-      vivo = false;
-    };
+      const roles = await rolesRes.json().catch(() => ({}));
+      setPapeis(roles?.catalogo?.papeis ?? []);
+      setVinculos(roles?.vinculos?.vinculos ?? []);
+
+      const audit = await auditRes.json().catch(() => ({}));
+      setEventos(audit?.eventos ?? []);
+
+      const me = await meRes.json().catch(() => ({}));
+      setDegradado(Boolean(me?.degradado));
+      setAvisoDegradado(me?.avisoDegradado ?? null);
+    } catch {
+      setErro('Não consegui carregar. Tente de novo em instantes.');
+    } finally {
+      setCarregando(false);
+    }
   }, []);
 
+  useEffect(() => {
+    recarregar();
+  }, [recarregar]);
+
   const ativos = vinculos.filter((v) => v.status === 'active');
+
+  async function agir(acao: 'conceder' | 'revogar', userId: string, roleKey: string) {
+    const motivo = window.prompt(
+      acao === 'conceder'
+        ? 'Por que esta pessoa precisa deste papel? (fica registrado)'
+        : 'Por que este papel está sendo retirado? (fica registrado)',
+    );
+    if (motivo === null) return;
+    setSalvando(true);
+    try {
+      const r = await fetch('/api/admin/control-plane/roles', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ acao, user_id: userId, role_key: roleKey, reason: motivo }),
+      });
+      const j = await r.json().catch(() => ({}));
+      setRecado(j?.mensagem || (r.ok ? 'Feito.' : 'Não foi possível.'));
+      await recarregar();
+    } catch {
+      setRecado('Não foi possível falar com o serviço.');
+    } finally {
+      setSalvando(false);
+    }
+  }
 
   return (
     <div className="p-6 max-w-6xl mx-auto">
@@ -125,6 +157,15 @@ export default function GovernancaPage() {
         ))}
       </nav>
 
+      {degradado && (
+        <div className="rounded-lg border border-amber-300 bg-amber-50 dark:border-amber-800 dark:bg-amber-950/40 p-4 mb-6">
+          <p className="text-sm text-amber-900 dark:text-amber-200">
+            {avisoDegradado ||
+              'O serviço de controle não respondeu; você está vendo tudo pelo acesso histórico.'}
+          </p>
+        </div>
+      )}
+
       {carregando && <p className="text-sm text-neutral-500">Carregando…</p>}
 
       {erro && (
@@ -140,8 +181,9 @@ export default function GovernancaPage() {
               ? 'Ninguém tem papel administrativo atribuído ainda. Quem entra hoje usa o acesso histórico.'
               : `${ativos.length} pessoa(s) com acesso ativo.`}
           </p>
+
           {ativos.length > 0 && (
-            <div className="overflow-x-auto rounded-lg border border-neutral-200 dark:border-neutral-800">
+            <div className="overflow-x-auto rounded-lg border border-neutral-200 dark:border-neutral-800 mb-6">
               <table className="w-full text-sm">
                 <thead className="bg-neutral-50 dark:bg-neutral-900 text-left">
                   <tr>
@@ -149,6 +191,7 @@ export default function GovernancaPage() {
                     <th className="px-4 py-2 font-medium">Papel</th>
                     <th className="px-4 py-2 font-medium">Vale até</th>
                     <th className="px-4 py-2 font-medium">Motivo</th>
+                    <th className="px-4 py-2 font-medium"></th>
                   </tr>
                 </thead>
                 <tbody>
@@ -159,8 +202,17 @@ export default function GovernancaPage() {
                       <td className="px-4 py-2">
                         {v.expires_at ? data(v.expires_at) : 'sem prazo'}
                       </td>
-                      <td className="px-4 py-2 text-neutral-600 dark:text-neutral-400">
+                      <td className="px-4 py-2 text-neutral-600 dark:text-neutral-400 max-w-xs">
                         {v.reason || '—'}
+                      </td>
+                      <td className="px-4 py-2 text-right">
+                        <button
+                          disabled={salvando}
+                          onClick={() => agir('revogar', v.user_id, v.role_key)}
+                          className="text-xs px-2 py-1 rounded border border-neutral-300 dark:border-neutral-700 hover:bg-neutral-50 dark:hover:bg-neutral-900 disabled:opacity-50"
+                        >
+                          Retirar
+                        </button>
                       </td>
                     </tr>
                   ))}
@@ -168,6 +220,41 @@ export default function GovernancaPage() {
               </table>
             </div>
           )}
+
+          <div className="rounded-lg border border-neutral-200 dark:border-neutral-800 p-4">
+            <h2 className="font-medium mb-1">Dar acesso a alguém</h2>
+            <p className="text-sm text-neutral-600 dark:text-neutral-400 mb-3">
+              A pessoa precisa já ter conta de administrador. O identificador aparece na coluna
+              &quot;Pessoa&quot; da tabela acima.
+            </p>
+            <div className="flex flex-wrap gap-2 items-center">
+              <input
+                value={novoUsuario}
+                onChange={(e) => setNovoUsuario(e.target.value)}
+                placeholder="Identificador da pessoa"
+                className="px-3 py-1.5 text-sm rounded-md border border-neutral-300 dark:border-neutral-700 bg-transparent min-w-[22rem] font-mono"
+              />
+              <select
+                value={novoPapel}
+                onChange={(e) => setNovoPapel(e.target.value)}
+                className="px-3 py-1.5 text-sm rounded-md border border-neutral-300 dark:border-neutral-700 bg-transparent"
+              >
+                {papeis.map((p) => (
+                  <option key={p.role_key} value={p.role_key}>
+                    {p.nome}
+                  </option>
+                ))}
+              </select>
+              <button
+                disabled={salvando || !novoUsuario.trim()}
+                onClick={() => agir('conceder', novoUsuario.trim(), novoPapel)}
+                className="text-sm px-3 py-1.5 rounded-md bg-neutral-900 text-white dark:bg-neutral-100 dark:text-neutral-900 disabled:opacity-40"
+              >
+                Dar acesso
+              </button>
+            </div>
+            {recado && <p className="text-sm mt-3">{recado}</p>}
+          </div>
         </section>
       )}
 

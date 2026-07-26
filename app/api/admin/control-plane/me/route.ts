@@ -47,12 +47,22 @@ export async function GET() {
     });
   }
 
+  const visiveis = a.podeTudo ? AREAS : AREAS.filter((x) => a.permissions.has(x.permission));
+
   return NextResponse.json({
     ok: true,
     temAcesso: true,
     papeis: a.papeis,
     papeisLegiveis: a.papeisLegiveis,
     permissions: Array.from(a.permissions).sort(),
-    menu: AREAS.filter((x) => a.permissions.has(x.permission)).map(({ permission, ...resto }) => resto),
+    // Quando a autoridade veio da rede de segurança, a tela precisa DIZER.
+    // Um Admin que funciona sem o serviço de controle é um Admin cujas
+    // concessões de papel não estão sendo lidas — e alguém precisa saber
+    // disso antes de concluir que "não tem ninguém com papel".
+    degradado: Boolean(a.degradado),
+    avisoDegradado: a.degradado
+      ? 'O serviço de controle não respondeu. Você está vendo tudo pelo acesso histórico de dono da plataforma; papéis atribuídos não estão sendo aplicados agora.'
+      : null,
+    menu: visiveis.map(({ permission, ...resto }) => resto),
   });
 }
