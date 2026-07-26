@@ -468,6 +468,11 @@ CASOS: list[Caso] = [
     # "afeta 3 corretoras e 8 rotinas" faz ele tratar a causa.
     Caso("INB-01", "operacao", "A caixa do Admin mostra a causa, não o sintoma",
          "SPEC-061", lambda: _roda_script("test_spec061_inbox.py")),
+    # Um leitor tolerante não derruba a tela — e também não avisa. A Inbox lia
+    # `approval_requests.action_key`, que não existe: aprovação NUNCA apareceria,
+    # sem nada indicando por quê.
+    Caso("COL-01", "operacao", "O Admin não lê coluna que não existe",
+         "SPEC-061", lambda: _roda_script("test_spec061_colunas_reais.py")),
     Caso("IDN-01", "identidade", "Corretora A não enxerga dados da corretora B",
          "SPEC-048", lambda: _roda_script("test_spec048_isolamento_corretoras.py")),
     Caso("CAP-01", "capacidades", "Agente só recebe os poderes do seu papel",

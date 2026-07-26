@@ -168,6 +168,72 @@ async def cancelar_run(
     }
 
 
+@router.post("/runs/{run_id}/retry")
+async def reprocessar_run(
+    run_id: str,
+    company_id: str = Query(...),
+    usuario_id: Optional[str] = Query(None),
+    x_internal_key: Optional[str] = Header(None, alias="X-Internal-Key"),
+):
+    """Recoloca um trabalho na fila. SPEC-061 §15.
+
+    Só o que já **parou**: reprocessar algo em andamento criaria duas
+    execuções do mesmo trabalho, e a idempotência protege contra repetir o
+    efeito — não contra alguém pedir duas vezes de propósito.
+
+    O trabalho volta como `queued` com `next_attempt_at` agora. As etapas já
+    concluídas são preservadas: o `executar_passo` reencontra a etapa pelo
+    `idempotency_key` e abre uma tentativa NOVA, que é justamente como o
+    Cockpit passa a mostrar "passou na segunda vez".
+    """
+    _exigir_chave_interna(x_internal_key)
+    from datetime import datetime, timezone
+
+    db = _db()
+    atual = (db.table("work_runs").select("id, status")
+             .eq("id", run_id).eq("company_id", company_id).maybe_single().execute())
+    if not atual or not atual.data:
+        raise HTTPException(status_code=404, detail="trabalho não encontrado")
+
+    status = str(atual.data.get("status") or "")
+    if status not in ("failed", "cancelled", "paused"):
+        raise HTTPException(
+            status_code=409,
+            detail=(f"este trabalho está '{status}' — só dá para reprocessar o "
+                    "que já parou. Cancele antes, se for o caso."))
+
+    agora = datetime.now(timezone.utc).isoformat()
+    try:
+        db.table("work_runs").update({
+            "status": "queued",
+            "next_attempt_at": agora,
+            "error_code": None,
+            "error_message": None,
+            # A lease do worker anterior é liberada: sem isso o run voltaria
+            # para a fila e nenhum worker conseguiria assumi-lo.
+            "lease_owner": None, "lease_token": None, "lease_expires_at": None,
+            "cancel_requested_at": None, "cancelled_at": None,
+            "updated_at": agora,
+        }).eq("id", run_id).eq("company_id", company_id).execute()
+    except Exception as exc:  # noqa: BLE001
+        logger.error("[WorkRuns] retry falhou: %s", type(exc).__name__)
+        raise HTTPException(status_code=500, detail="não consegui recolocar na fila")
+
+    try:
+        from app.services.work.runs import WorkRunService
+
+        WorkRunService(get_supabase_client()).evento(
+            company_id, run_id, "run.retried",
+            "Trabalho recolocado na fila por um operador",
+            actor_type="user", actor_id=usuario_id)
+    except Exception as exc:  # noqa: BLE001
+        logger.warning("[WorkRuns] evento de retry: %s", type(exc).__name__)
+
+    return {"ok": True,
+            "mensagem": ("Trabalho recolocado na fila. As etapas já concluídas "
+                         "são preservadas.")}
+
+
 # ---------------------------------------------------------------------------
 # Aprovações
 # ---------------------------------------------------------------------------

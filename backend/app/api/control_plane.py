@@ -282,6 +282,55 @@ async def marcar_item(payload: MarcarIn,
     return r
 
 
+# ---------------------------------------------------------------------------
+# Central de Trabalhos e Cockpit — §14, §15
+# ---------------------------------------------------------------------------
+
+
+@router.get("/work-runs")
+async def trabalhos(company_id: Optional[str] = None, dias: int = 7,
+                    estado: Optional[str] = None, limite: int = 50,
+                    x_internal_key: Optional[str] = Header(None)):
+    """Agregado primeiro, lista depois — CA-014.
+
+    Uma lista dos últimos 40 responde bem com 5 corretoras e deixa de
+    responder qualquer coisa com mil. O agregado continua respondendo.
+    """
+    _autorizar(x_internal_key)
+    from app.services.control_plane.read_models import CentralDeTrabalhos
+
+    central = CentralDeTrabalhos(_db())
+    return {"ok": True,
+            "resumo": central.resumo(company_id=company_id,
+                                     dias=min(int(dias), 90)),
+            "lista": central.listar(company_id=company_id, estado=estado,
+                                    limite=min(int(limite), 200))}
+
+
+@router.get("/work-runs/{run_id}")
+async def trabalho(run_id: str, company_id: Optional[str] = None,
+                   x_internal_key: Optional[str] = Header(None)):
+    _autorizar(x_internal_key)
+    from app.services.control_plane.read_models import CentralDeTrabalhos
+
+    r = CentralDeTrabalhos(_db()).detalhe(run_id, company_id=company_id)
+    if not r.get("ok"):
+        raise HTTPException(404, str(r.get("erro") or "não encontrado"))
+    return r
+
+
+@router.get("/cockpit/{company_id}")
+async def cockpit(company_id: str, dias: int = 30,
+                  x_internal_key: Optional[str] = Header(None)):
+    _autorizar(x_internal_key)
+    from app.services.control_plane.read_models import CockpitDaCorretora
+
+    r = CockpitDaCorretora(_db()).montar(company_id, dias=min(int(dias), 180))
+    if not r.get("ok"):
+        raise HTTPException(404, str(r.get("erro") or "não encontrada"))
+    return r
+
+
 @router.get("/roles/bindings")
 async def vinculos(user_id: Optional[str] = None, limite: int = 100,
                    x_internal_key: Optional[str] = Header(None)):

@@ -177,14 +177,21 @@ class CaixaDeEntrada:
     # ------------------------------------------------------------------
 
     def _aprovacoes_pendentes(self) -> list[ItemDaCaixa]:
+        # `action_type`, não `action_key`. Escrevi `action_key` de memória e o
+        # leitor tolerante engolia o erro de coluna: a caixa nunca mostraria
+        # aprovação nenhuma, sem nada indicando por quê.
+        #
+        # É o risco de um leitor que não derruba a tela — ele também não avisa.
+        # Por isso `test_spec061_read_models.py` cobra os nomes de coluna
+        # contra a lista real do banco.
         linhas = self._ler("approval_requests",
-                           "id, company_id, status, created_at, action_key, "
+                           "id, company_id, status, created_at, action_type, "
                            "risk_level",
                            filtros={"status": "pending"})
         return [ItemDaCaixa(
             fonte="approval", chave=str(l["id"]),
             titulo="Aprovação esperando decisão",
-            detalhe=f"Ação: {l.get('action_key') or 'não informada'}",
+            detalhe=f"Ação: {l.get('action_type') or 'não informada'}",
             severidade="high" if str(l.get("risk_level")) in ("high", "critical") else "medium",
             company_id=l.get("company_id"), ocorrido_em=l.get("created_at"),
             href="/admin/aprovacoes",

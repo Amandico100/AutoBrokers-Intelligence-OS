@@ -7,6 +7,7 @@ import {
   Building2,
   Users,
   UserCheck,
+  Activity,
   Inbox,
   LayoutDashboard,
   LogOut,
@@ -222,6 +223,8 @@ export default function AdminLayout({ children }: { children: React.ReactNode })
     // SPEC-061 §13 — a primeira tela do dia. O rótulo é a pergunta que o
     // operador faz ao abrir o Admin, e por isso vem logo abaixo da raiz.
     { href: '/admin/inbox', icon: Inbox, label: 'O que precisa de mim' },
+    // §15 — para onde a caixa manda quando o item é um trabalho.
+    { href: '/admin/trabalhos', icon: Activity, label: 'Trabalhos em andamento' },
     { href: '/admin/central-agentes', icon: Bot, label: 'Central de Agentes' },
     { href: '/admin/atlas', icon: Map, label: 'Atlas de Rotas' },
     { href: '/admin/espelho', icon: UserCheck, label: 'Espelho de Atendimento' },
