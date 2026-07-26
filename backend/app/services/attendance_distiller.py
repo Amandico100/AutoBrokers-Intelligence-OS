@@ -9,7 +9,7 @@ ESTÁGIO 1 (modelo braçal, env DISTILLER_LLM_MODEL, default claude-sonnet-5):
   perguntas), fatos reutilizáveis SEM dado pessoal, nota 0-100 (baseline
   humano — INTERNO, só admin; nunca no dashboard da corretora).
 
-ESTÁGIO 2 (modelo FORTE, env DISTILLER_STRONG_MODEL, default claude-opus-4-8):
+ESTÁGIO 2 (modelo FORTE, env DISTILLER_STRONG_MODEL, default claude-opus-5):
   síntese dos playbooks de conduta por (ramo, serviço) — baixo volume, alto
   valor estrutural (decisão do founder 19/07: o estrutural merece o modelo
   mais forte; o braçal fica no Sonnet). Playbook nasce como DRAFT versionado —
@@ -54,7 +54,7 @@ def _env_int(name: str, default: int) -> int:
 def _provider_model(strong: bool) -> Tuple[str, str]:
     provider = os.getenv("DISTILLER_PROVIDER") or "anthropic"
     if strong:
-        return provider, os.getenv("DISTILLER_STRONG_MODEL") or "claude-opus-4-8"
+        return provider, os.getenv("DISTILLER_STRONG_MODEL") or "claude-opus-5"
     return provider, os.getenv("DISTILLER_LLM_MODEL") or "claude-sonnet-5"
 
 

@@ -9,9 +9,9 @@ o sistema funciona 100% sem o Conselho; ligado, ele agrega valor nas decisões
 estruturais. Ligar = COUNCIL_ENABLED=1 no ambiente.
 
 Membros (env COUNCIL_MEMBERS, "provider:model" separados por vírgula):
-default "openai:gpt-5.5,anthropic:claude-opus-4-8,moonshot:kimi-k3,xai:grok-4.5".
+default "openai:gpt-5.5,anthropic:claude-opus-5,moonshot:kimi-k3,xai:grok-4.5".
 Membro sem API key/provider suportado é PULADO com nota — nada quebra.
-Líder consolida: COUNCIL_LEADER_MODEL (default claude-opus-4-8/anthropic).
+Líder consolida: COUNCIL_LEADER_MODEL (default claude-opus-5/anthropic).
 
 Custo controlado por construção: contexto cap 3000 chars, parecer curto,
 pareceres em PARALELO, e o Conselho só é convocado em decisão estrutural.
@@ -52,7 +52,7 @@ def council_enabled() -> bool:
 
 def council_members() -> List[Tuple[str, str]]:
     raw = os.getenv("COUNCIL_MEMBERS") or \
-        "openai:gpt-5.5,anthropic:claude-opus-4-8,moonshot:kimi-k3,xai:grok-4.5"
+        "openai:gpt-5.5,anthropic:claude-opus-5,moonshot:kimi-k3,xai:grok-4.5"
     out: List[Tuple[str, str]] = []
     for item in raw.split(","):
         if ":" in item:
@@ -64,7 +64,7 @@ def council_members() -> List[Tuple[str, str]]:
 
 def _leader() -> Tuple[str, str]:
     return (os.getenv("COUNCIL_LEADER_PROVIDER") or "anthropic",
-            os.getenv("COUNCIL_LEADER_MODEL") or "claude-opus-4-8")
+            os.getenv("COUNCIL_LEADER_MODEL") or "claude-opus-5")
 
 
 async def _ask_model(provider: str, model: str, system: str, user: str) -> Optional[str]:

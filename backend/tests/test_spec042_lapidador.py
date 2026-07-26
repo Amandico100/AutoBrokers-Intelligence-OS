@@ -236,7 +236,7 @@ def run():
     check("draft otimizado criado (nunca assume sozinho)",
           res.get("ok") is True and len(drafts) == 1 and drafts[0]["version"] == 2, res)
     check("reflexao usou o modelo FORTE",
-          factory.calls and factory.calls[-1]["model"] == "claude-opus-4-8",
+          factory.calls and factory.calls[-1]["model"] == "claude-opus-5",
           [c["model"] for c in factory.calls])
     check("mudancas explicadas no retorno", "re-pedir CPF" in " ".join(res.get("mudancas") or []),
           res.get("mudancas"))

@@ -289,15 +289,15 @@ def run():
     check("card com CPF rejeitado (rejected_pii)", len(rej) == 1, cards)
     check("dedupe: 3 sessoes iguais nao triplicam cards", len(cards) == 2, len(cards))
 
-    # 4) playbook: sintetizado com o modelo FORTE (default claude-opus-4-8)
+    # 4) playbook: sintetizado com o modelo FORTE (default claude-opus-5)
     pbs = store.get("conduct_playbooks", [])
     check("playbook draft criado", len(pbs) == 1 and pbs[0]["status"] == "draft"
           and pbs[0]["servico"] == "guincho", pbs)
-    check("playbook usa modelo forte", pbs and pbs[0].get("model_used") == "claude-opus-4-8",
+    check("playbook usa modelo forte", pbs and pbs[0].get("model_used") == "claude-opus-5",
           pbs[0].get("model_used") if pbs else None)
     strong_calls = [c for c in factory.calls if "treinador" in c["system"]]
     check("sintese chamou o modelo forte", strong_calls
-          and strong_calls[0]["model"] == "claude-opus-4-8",
+          and strong_calls[0]["model"] == "claude-opus-5",
           [c["model"] for c in strong_calls])
     check("playbook manda confirmar (nao perguntar) o que ja temos",
           any(f.get("ja_temos_na_apolice") for f in (pbs[0]["content"].get("ficha_coleta") or [])))

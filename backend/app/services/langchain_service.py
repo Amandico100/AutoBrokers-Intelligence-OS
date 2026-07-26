@@ -126,7 +126,15 @@ SUPPORTED_PROVIDERS = {
         "o3-mini",
     ],
     "anthropic": [
+        # `claude-opus-5` faltava, e esta lista NÃO é catálogo: `agent_config.py`
+        # a usa para VALIDAR (`Model 'x' not available for provider`). Sem ela
+        # aqui, configurar um agente com opus-5 era recusado — e a mensagem de
+        # erro falava de "provider", não de lista desatualizada.
+        "claude-opus-5",
         "claude-sonnet-5",
+        # Mantido: agentes gravados no banco ainda podem apontar para ele, e
+        # removê-lo faria a configuração deles virar inválida na próxima
+        # gravação. Sai quando ninguém mais o usar.
         "claude-opus-4-8",
         "claude-haiku-4-5-20251001",
         "claude-opus-4-6",
