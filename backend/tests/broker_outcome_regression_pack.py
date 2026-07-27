@@ -532,6 +532,12 @@ CASOS: list[Caso] = [
     # descobre na hora) e aprovando o errado (você não descobre nunca).
     Caso("EVL-01", "conhecimento", "O arnês pega o defeito e não acusa quem está certo",
          "SPEC-062", lambda: _roda_script("test_spec062_evals.py")),
+    # Um checklist mente de dois jeitos: dando o beneficio da duvida ao que nao
+    # verificou, e misturando perguntas de donos diferentes. Hoje "operar" e
+    # "vender" sao coisas distintas — nao ha catalogo comercial (D22) e as
+    # corretoras precisam trabalhar assim mesmo.
+    Caso("PRT-01", "operacao", "Mede-se primeiro; promete-se depois",
+         "SPEC-062", lambda: _roda_script("test_spec062_prontidao_e_sli.py")),
     # Medido em producao sem cookie nenhum: `/dashboard` e `/admin` barravam com
     # 307, e `/api/admin/proxy/agents/company/<id>/...` devolvia 200 com o prompt
     # da corretora. O proxy carimbava a chave de master para quem passasse na rua.

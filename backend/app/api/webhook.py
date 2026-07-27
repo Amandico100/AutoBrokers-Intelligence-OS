@@ -4,6 +4,7 @@ Corrigido: Datas ISO e Sanitização de Logs
 """
 
 import asyncio
+import time as _tempo
 import hmac
 import logging
 import os
@@ -568,12 +569,19 @@ async def process_whatsapp_message_background(
         if _em_silencio:
             try:
                 from app.services.atlas.attendance_capture import capture_channel_message
+                from app.services.observability import sli as _sli
 
+                _t0 = _tempo.perf_counter()
                 await capture_channel_message(
                     company_id, payload.connectedPhone or "", payload.phone,
                     message_text, "in", payload.messageId,
                     "voice" if final_audio_url else ("image" if final_image_url else "text"),
                 )
+                # SPEC-062 §18 — quanto demora observar. E o SLI que diz se o
+                # Observador aguenta o volume da corretora sem atrasar nada.
+                _sli.registrar(_sli.WHATSAPP_OBSERVACAO,
+                               (_tempo.perf_counter() - _t0) * 1000,
+                               company_id=company_id)
                 logger.info("[WEBHOOK] 👁 Modo observação — capturado sem resposta do agente.")
             except Exception as e:  # noqa: BLE001
                 # Perder o transcript é ruim e é recuperável — a conversa

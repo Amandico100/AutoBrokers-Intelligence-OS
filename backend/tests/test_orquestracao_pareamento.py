@@ -183,6 +183,54 @@ def teste_cartografo_para_com_o_agente_desligado():
            "o freio do acionamento real continua valendo")
 
 
+def teste_cartografo_so_age_pelo_clique_do_founder():
+    print("\n[6b] Sem o clique do Founder, o Cartógrafo NUNCA age")
+    # Regra do Founder (27/07/2026): "SÓ QUERO QUE VC GARANTA QUE O CARTÓGRAFO
+    # SÓ VAI FAZER ALGUMA COISA NO DIA EM QUE EU INICIAR A EXPLORAÇÃO E ESSA É A
+    # ÚNICA FORMA DELE AGIR."
+    #
+    # São três portas, e as três precisam estar abertas ao mesmo tempo. Este
+    # caso existe porque abrir uma delas por acidente é fácil: basta um worker
+    # novo importar `start_exploration` "só para testar".
+    fonte = _sem_comentario_py(_ler("app", "services", "cartographer_runner.py"))
+
+    # Porta 1 — a exploração só nasce em `start_exploration`.
+    base = os.path.join(RAIZ, "app")
+    quem_inicia: list[str] = []
+    for pasta, _, arquivos in os.walk(base):
+        for arq in arquivos:
+            if not arq.endswith(".py"):
+                continue
+            caminho = os.path.join(pasta, arq)
+            rel = os.path.relpath(caminho, RAIZ).replace(os.sep, "/")
+            if rel.endswith("services/cartographer_runner.py"):
+                continue
+            with open(caminho, encoding="utf-8") as fh:
+                if re.search(r"\bstart_exploration\s*\(", _sem_comentario_py(fh.read())):
+                    quem_inicia.append(rel)
+    indevidos = [c for c in quem_inicia if "/api/admin" not in c]
+    checar(not indevidos, "só a superfície de Admin inicia exploração",
+           f"iniciam também: {indevidos}")
+    print(f"      quem inicia: {quem_inicia or '(ninguém)'}")
+
+    # Porta 2 — o inbound não faz nada sem exploração salva.
+    i = fonte.find("async def handle_cartographer_inbound")
+    corpo = fonte[i: i + 700] if i != -1 else ""
+    checar("if not exp:" in corpo and "return False" in corpo,
+           "sem exploração salva, o inbound é devolvido intacto",
+           "é isto que impede o Cartógrafo de reagir a mensagem de seguradora "
+           "durante a observação")
+
+    # Porta 3 — o watchdog só mexe no que já existe; não cria nada.
+    j = fonte.find("async def check_cartographer_stalls")
+    watchdog = fonte[j: j + 2500] if j != -1 else ""
+    checar('scan_iter(match="carto:active:*")' in watchdog,
+           "o watchdog varre o que JÁ existe")
+    checar("start_exploration(" not in watchdog,
+           "e NUNCA cria exploração nova",
+           "auto-recuperação que cria trabalho do zero deixa de ser recuperação")
+
+
 def teste_observador_continua_mudo():
     print("\n[7] Nada disso deu voz ao Observador")
     for arq in ("observer_intake.py", "attendance_capture.py", "weaver.py",
@@ -220,6 +268,7 @@ def main() -> int:
                   teste_parear_nao_mexe_no_agente,
                   teste_so_o_botao_liga_e_e_por_corretora,
                   teste_cartografo_para_com_o_agente_desligado,
+                  teste_cartografo_so_age_pelo_clique_do_founder,
                   teste_observador_continua_mudo,
                   teste_confirmar_ligado_falha_para_o_silencio):
         try:

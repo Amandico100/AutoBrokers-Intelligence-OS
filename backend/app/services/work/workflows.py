@@ -230,6 +230,24 @@ def _fechar_tentativa(db: Any, attempt_id: Optional[str], *, status: str,
     except Exception as exc:  # noqa: BLE001
         logger.warning("[Workflows] tentativa não fechada: %s", type(exc).__name__)
 
+    # SPEC-062 §18.2 — duração e falha de Work Run viram SLI aqui, no ponto em
+    # que a tentativa fecha. Medir só o caminho feliz produziria um p95 lindo e
+    # mentiroso: a lentidão mora justamente onde as coisas dão errado, e a
+    # tentativa que falhou é a que interessa.
+    try:
+        from ..observability import sli as _sli
+
+        _sli.registrar(_sli.WORK_RUN_DURACAO,
+                       campos["metrics"]["duracao_ms"],
+                       contexto={"status": status,
+                                 "erro_classe": campos.get("error_class")})
+        if status != "succeeded":
+            _sli.registrar(_sli.WORK_RUN_FALHA, 1, unidade="evento",
+                           contexto={"erro_classe": campos.get("error_class"),
+                                     "retryable": campos.get("retryable")})
+    except Exception:  # noqa: BLE001
+        pass  # métrica nunca atrapalha o trabalho
+
 
 _SEGREDO = re.compile(
     r"(?i)\b(api[_-]?key|token|secret|password|authorization|bearer|"

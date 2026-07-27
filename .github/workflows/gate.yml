@@ -1,0 +1,103 @@
+# SPEC-062 §15 — o gate roda sozinho, em todo PR e em todo push na main.
+#
+# POR QUE ISTO EXISTE
+# ===================
+# O `broker_outcome_regression_pack` só protege o corretor se alguém rodar. Até
+# agora dependia de eu lembrar, e "lembrar" não é um controle: é uma intenção.
+#
+# O que ele impede, concretamente: um PR que reintroduza o vazamento do proxy,
+# que dê voz ao Observador, ou que faça o agente de atendimento nascer ligado —
+# tudo isso já tem caso no pacote, e todos passariam despercebidos num
+# `git push` apressado às onze da noite.
+#
+# O QUE ELE NÃO FAZ
+# =================
+# Não implanta. Não toca em produção. Não precisa de nenhum segredo — e é de
+# propósito: um workflow com credencial de produção é uma superfície nova de
+# ataque, e o gate não precisa de nenhuma para provar o que prova.
+#
+# Os casos que dependem de banco ou de rede se declaram `SKIP_AMBIENTE` e não
+# derrubam o gate. O que roda aqui é o que dá para provar lendo o código —
+# que é a maioria, e é justamente o que regride em silêncio.
+
+name: Gate de resultados do corretor
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+# Um PR que recebe três pushes em cinco minutos não precisa de três execuções:
+# só a última importa. Sem isto a fila entope e o gate vira "aquilo que demora".
+concurrency:
+  group: gate-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  conduta:
+    name: Conduta — o corretor não pode perder isto
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          # O manifesto grava o commit e diz se a árvore está limpa. Sem o
+          # histórico, `git log -1` não tem o que ler.
+          fetch-depth: 2
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+
+      - name: Rodar o pacote de conduta
+        working-directory: backend
+        env:
+          # Os runners escrevem acentuação e setas. Sem forçar UTF-8, o
+          # processo filho estoura UnicodeEncodeError e o gate acusa regressão
+          # de produto onde só houve encoding de terminal.
+          PYTHONIOENCODING: utf-8
+          PYTHONUTF8: '1'
+        run: python tests/broker_outcome_regression_pack.py
+
+      - name: Gerar o manifesto de release
+        if: always()
+        working-directory: backend
+        env:
+          PYTHONIOENCODING: utf-8
+          PYTHONUTF8: '1'
+          BUILD_COMMIT: ${{ github.sha }}
+        # `|| true`: o manifesto sai com código 1 quando o gate está vermelho, e
+        # isso é correto — mas aqui ele é evidência, não um segundo veredito. O
+        # veredito é o passo acima.
+        run: python scripts/release_manifest.py > manifesto.json || true
+
+      - name: Anexar o manifesto
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: manifesto-${{ github.sha }}
+          path: backend/manifesto.json
+          retention-days: 30
+
+  tipos:
+    name: Tipos do painel
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: npm
+
+      - name: Instalar
+        run: npm ci --prefer-offline --no-audit --no-fund
+
+      - name: Conferir tipos
+        # `tsc --noEmit` pega o que o navegador só mostraria em produção: uma
+        # propriedade renomeada, um retorno que mudou de forma.
+        run: npx tsc --noEmit

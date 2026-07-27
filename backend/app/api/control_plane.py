@@ -382,6 +382,56 @@ async def unit_economics(dias: int = 30, company_id: Optional[str] = None,
         dias=max(1, min(int(dias), 365)), company_id=company_id)
 
 
+@router.get("/prontidao")
+async def prontidao(company_id: Optional[str] = None,
+                    x_internal_key: Optional[str] = Header(None)):
+    """SPEC-062 §33 — podemos ir ao ar? São quatro perguntas, não uma.
+
+    Separa PODER OPERAR de PODER VENDER: uma corretora trabalha plenamente sem
+    catálogo de preço, que é exatamente o estado de hoje (D22).
+    """
+    _autorizar(x_internal_key)
+    from app.services.control_plane.prontidao import Prontidao
+
+    return Prontidao(_db()).completa(company_id)
+
+
+@router.get("/slo")
+async def slo(sli: Optional[str] = None, dias: int = 7,
+              company_id: Optional[str] = None,
+              x_internal_key: Optional[str] = Header(None)):
+    """SPEC-062 §18 — a base para PROPOR um SLO. Nunca para prometer um.
+
+    Sem `sli`, devolve o resumo de todos. Cada linha diz quantas amostras
+    sustentam o número: um p99 sobre menos de 100 medições é ruído com cara de
+    estatística, e a resposta fala isso com todas as letras.
+    """
+    _autorizar(x_internal_key)
+    from app.services.observability import sli as _s
+
+    nomes = [sli] if sli else [
+        _s.CHAT_PRIMEIRA_RESPOSTA, _s.WHATSAPP_INBOUND, _s.WHATSAPP_OBSERVACAO,
+        _s.WORK_RUN_DURACAO, _s.WORK_RUN_FALHA, _s.ATLAS_TECELAGEM,
+        _s.FERRAMENTA_DURACAO,
+    ]
+    dias = max(1, min(int(dias), 90))
+    medidos = [_s.resumo(n, dias=dias, company_id=company_id) for n in nomes]
+    com_dado = [m for m in medidos if m.get("amostras")]
+
+    return {
+        "periodo_dias": dias,
+        "slis": medidos,
+        "com_medicao": len(com_dado),
+        "prontos_para_virar_slo": [m["sli"] for m in com_dado
+                                   if m.get("base_confiavel")],
+        "frase": ("Nenhum SLI tem medição ainda — a base começa com o tráfego "
+                  "real." if not com_dado else
+                  f"{len(com_dado)} SLI(s) com medição; "
+                  f"{len([m for m in com_dado if m.get('base_confiavel')])} "
+                  "com amostra suficiente para propor SLO."),
+    }
+
+
 class BuscaIn(BaseModel):
     termo: str
     permissions: list[str]
