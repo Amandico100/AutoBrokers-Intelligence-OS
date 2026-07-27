@@ -93,8 +93,20 @@ def _require_sufficient_balance(company_id: str) -> None:
     """
     from app.services.billing_service import get_billing_service
 
-    if not get_billing_service().has_sufficient_balance(company_id):
-        raise HTTPException(status_code=402, detail="insufficient_credits")
+    # SPEC-062 §4, leis 2 e 4 — a PORTEIRA decide, nao o saldo direto.
+    #
+    # `has_sufficient_balance` misturava medir com cobrar: qualquer corretora
+    # sem linha em `company_credits` lia saldo zero e era recusada. Foi o que
+    # aconteceu com a AutoFleet — empresa ativa, bloqueada porque uma linha nao
+    # existia. Bloqueio nao foi decisao comercial; foi ausencia de dado.
+    #
+    # A porteira respeita o interruptor BILLING_ENFORCEMENT (padrao: DESLIGADO)
+    # e mantem a suspensao valendo sempre.
+    from app.services.billing_gate import pode_consumir
+
+    pode, motivo = pode_consumir(company_id)
+    if not pode:
+        raise HTTPException(status_code=402, detail=motivo)
 
 
 @router.post("/resumo-atendimentos/run")

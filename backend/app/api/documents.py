@@ -696,11 +696,20 @@ async def start_benchmark(request: BenchmarkRequest, background_tasks: Backgroun
     from app.services.billing_service import get_billing_service
     billing_service = get_billing_service()
 
-    if not billing_service.has_sufficient_balance(request.company_id):
-        raise HTTPException(
-            status_code=402,
-            detail="Créditos insuficientes para executar benchmark. Faça upgrade do plano ou aguarde a renovação."
-        )
+    # SPEC-062 §4, leis 2 e 4 — a PORTEIRA decide, nao o saldo direto.
+    #
+    # `has_sufficient_balance` misturava medir com cobrar: qualquer corretora
+    # sem linha em `company_credits` lia saldo zero e era recusada. Foi o que
+    # aconteceu com a AutoFleet — empresa ativa, bloqueada porque uma linha nao
+    # existia. Bloqueio nao foi decisao comercial; foi ausencia de dado.
+    #
+    # A porteira respeita o interruptor BILLING_ENFORCEMENT (padrao: DESLIGADO)
+    # e mantem a suspensao valendo sempre.
+    from app.services.billing_gate import pode_consumir
+
+    pode, motivo = pode_consumir(request.company_id)
+    if not pode:
+        raise HTTPException(status_code=402, detail=motivo)
 
     job_id = str(uuid4())
     redis = get_redis_client()

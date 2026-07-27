@@ -566,8 +566,13 @@ async def process_whatsapp_message_background(
         from app.services.billing_service import get_billing_service
         billing_service = get_billing_service()
 
-        if not billing_service.has_sufficient_balance(company_id):
-            logger.info(f"[WEBHOOK] 💰 Insufficient balance for company {company_id} - skipping AI")
+        # SPEC-062 §4, leis 2 e 4 — a PORTEIRA decide, nao o saldo direto.
+        # Interruptor BILLING_ENFORCEMENT (padrao DESLIGADO); suspensao vale sempre.
+        from app.services.billing_gate import pode_consumir
+
+        _pode, _motivo = pode_consumir(company_id)
+        if not _pode:
+            logger.info("[WEBHOOK] barrado pela porteira: %s", _motivo)
             # Enviar mensagem informativa ao usuário
             whatsapp_service.send_message(
                 to_number=payload.phone,

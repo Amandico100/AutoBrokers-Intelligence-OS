@@ -164,8 +164,13 @@ async def chat_endpoint(
         from app.services.billing_service import get_billing_service
         billing_service = get_billing_service()
 
-        if not billing_service.has_sufficient_balance(str(chat_request.companyId)):
-            logger.info(f"[CHAT] 💰 Insufficient balance for company {chat_request.companyId}")
+        # SPEC-062 §4, leis 2 e 4 — a PORTEIRA decide, nao o saldo direto.
+        # Interruptor BILLING_ENFORCEMENT (padrao DESLIGADO); suspensao vale sempre.
+        from app.services.billing_gate import pode_consumir
+
+        _pode, _motivo = pode_consumir(str(chat_request.companyId))
+        if not _pode:
+            logger.info("[CHAT] barrado pela porteira: %s", _motivo)
             # Return empty response (not error) to avoid "connection error" in frontend
             return ChatResponse(output="", companyId=str(chat_request.companyId), sessionId=str(chat_request.sessionId))
 
@@ -346,8 +351,12 @@ async def chat_stream(
     from app.services.billing_service import get_billing_service
     billing_service = get_billing_service()
 
-    if not billing_service.has_sufficient_balance(str(chat_request.companyId)):
-        logger.info(f"[STREAM] 💰 Insufficient balance for company {chat_request.companyId}")
+    # SPEC-062 §4, leis 2 e 4 — a PORTEIRA decide, nao o saldo direto.
+    from app.services.billing_gate import pode_consumir
+
+    _pode, _motivo = pode_consumir(str(chat_request.companyId))
+    if not _pode:
+        logger.info("[STREAM] barrado pela porteira: %s", _motivo)
 
         async def no_balance_response():
             data = json.dumps({"token": "Creditos insuficientes para responder. Configure plano/creditos da empresa no Admin."})

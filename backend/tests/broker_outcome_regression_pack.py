@@ -510,6 +510,12 @@ CASOS: list[Caso] = [
     # suspender uma corretora, não.
     Caso("SEG-01", "seguranca", "Sessão se encerra e identidade se confirma antes do irreversível",
          "SPEC-061", lambda: _roda_script("test_spec061_stepup_sessoes.py")),
+    # A AutoFleet estava sem serviço. Empresa ativa, sem assinatura, sem linha
+    # em `company_credits` — saldo lido como zero, HTTP 402 no chat e nos
+    # auxiliares. Ninguém decidiu bloqueá-la: o bloqueio foi a ausência de uma
+    # linha numa tabela, num produto que ainda não tem preço aprovado.
+    Caso("COB-01", "operacao", "Ninguém é barrado por algo que ainda não tem preço",
+         "SPEC-062", lambda: _roda_script("test_spec062_porteira_de_cobranca.py")),
     Caso("IDN-01", "identidade", "Corretora A não enxerga dados da corretora B",
          "SPEC-048", lambda: _roda_script("test_spec048_isolamento_corretoras.py")),
     Caso("CAP-01", "capacidades", "Agente só recebe os poderes do seu papel",
