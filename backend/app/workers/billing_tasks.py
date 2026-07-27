@@ -122,19 +122,60 @@ def process_unbilled_usage(self):
     """
     logger.info("[Billing Worker] Starting process_unbilled_usage...")
 
+    # SPEC-062 §22.2 item 8 — impedir o worker legado de debitar
+    # retroativamente.
+    #
+    # Este worker busca `billed = false` e debita crédito. Hoje existem 1.239
+    # linhas nesse estado: o registro técnico de um ano de desenvolvimento e
+    # teste. Nenhuma delas é dívida de ninguém, e o produto ainda não tem
+    # catálogo comercial aprovado (§4 lei 17).
+    #
+    # O que separava as corretoras de um débito retroativo de um ano era
+    # `USE_CELERY=false` — uma variável de ambiente. Não é proteção; é sorte.
+    #
+    # Duas travas agora, e as duas precisam ceder:
+    #   1. a cobrança tem de estar LIGADA;
+    #   2. o consumo tem de ter nascido DEPOIS da fronteira comercial.
+    from ..services.billing_gate import (
+        cobranca_ligada,
+        consumo_e_cobravel,
+        fronteira_comercial,
+    )
+
+    if not cobranca_ligada():
+        logger.info("[Billing Worker] Cobranca DESLIGADA nesta instalacao — "
+                    "nada foi debitado. O consumo continua medido.")
+        return {"processed": 0, "transactions": 0, "motivo": "cobranca_desligada"}
+
+    if not fronteira_comercial():
+        logger.warning("[Billing Worker] Sem COMMERCIAL_GO_LIVE_AT definido — "
+                       "todo consumo e pre-lancamento (SPEC-062 §22.1). "
+                       "Nada foi debitado.")
+        return {"processed": 0, "transactions": 0, "motivo": "sem_fronteira"}
+
     try:
         supabase = get_supabase_client()
         billing_service = get_billing_service()
 
         # Fetch unbilled logs
         result = supabase.table("token_usage_logs") \
-            .select("id, company_id, model_name, input_tokens, output_tokens, total_cost_usd, agent_id") \
+            .select("id, company_id, model_name, input_tokens, output_tokens, total_cost_usd, agent_id, created_at") \
             .eq("billed", False) \
             .order("created_at") \
             .limit(BATCH_SIZE) \
             .execute()
 
-        logs = result.data or []
+        todos = result.data or []
+
+        # A filtragem é por DATA lida na hora, e não por marcação gravada nas
+        # linhas. A §22.3 proíbe `update token_usage_logs set billed = ...`
+        # como atalho de migração: reescrever histórico para resolver problema
+        # de cobrança é o tipo de coisa que ninguém consegue desfazer depois.
+        logs = [l for l in todos if consumo_e_cobravel(l.get("created_at"))]
+        if len(logs) < len(todos):
+            logger.info("[Billing Worker] %d de %d logs sao anteriores a "
+                        "fronteira comercial e NAO serao cobrados.",
+                        len(todos) - len(logs), len(todos))
 
         if not logs:
             logger.info("[Billing Worker] No unbilled logs found.")
@@ -241,18 +282,45 @@ def process_company_billing(self, company_id: str):
     """
     logger.info(f"[Billing Worker] Processing company {company_id}...")
 
+    # SPEC-062 §22.2 item 8 — as mesmas duas travas da tarefa periódica.
+    #
+    # Esta é a versão sob demanda, disparada por alguém. Deixar a porta dos
+    # fundos aberta porque "só roda quando alguém pede" é exatamente como o
+    # débito retroativo aconteceria: alguém pede uma vez, para conferir.
+    from ..services.billing_gate import (
+        cobranca_ligada,
+        consumo_e_cobravel,
+        fronteira_comercial,
+    )
+
+    if not cobranca_ligada():
+        logger.info("[Billing Worker] Cobranca DESLIGADA — nada debitado para %s",
+                    company_id)
+        return {"processed": 0, "cost_brl": 0, "motivo": "cobranca_desligada"}
+
+    if not fronteira_comercial():
+        logger.warning("[Billing Worker] Sem COMMERCIAL_GO_LIVE_AT — todo "
+                       "consumo e pre-lancamento. Nada debitado para %s",
+                       company_id)
+        return {"processed": 0, "cost_brl": 0, "motivo": "sem_fronteira"}
+
     try:
         supabase = get_supabase_client()
         billing_service = get_billing_service()
 
         # Fetch unbilled logs for this company
         result = supabase.table("token_usage_logs") \
-            .select("id, model_name, input_tokens, output_tokens, total_cost_usd, agent_id") \
+            .select("id, model_name, input_tokens, output_tokens, total_cost_usd, agent_id, created_at") \
             .eq("company_id", company_id) \
             .eq("billed", False) \
             .execute()
 
-        logs = result.data or []
+        todos = result.data or []
+        logs = [l for l in todos if consumo_e_cobravel(l.get("created_at"))]
+        if len(logs) < len(todos):
+            logger.info("[Billing Worker] %d de %d logs de %s sao anteriores a "
+                        "fronteira comercial e NAO serao cobrados.",
+                        len(todos) - len(logs), len(todos), company_id)
 
         if not logs:
             logger.info(f"[Billing Worker] No unbilled logs for company {company_id}")

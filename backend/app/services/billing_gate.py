@@ -66,6 +66,72 @@ def motivo_de_estar_desligada() -> str:
             f"Para ligar: {FLAG}=1.")
 
 
+# ---------------------------------------------------------------------------
+# SPEC-062 §22 — a fronteira comercial
+# ---------------------------------------------------------------------------
+#
+# Existem 1.239 linhas em `token_usage_logs`, todas com `billed = false`. Elas
+# são o registro técnico de um ano de desenvolvimento e teste — não são dívida
+# de ninguém.
+#
+# O worker legado `process_unbilled_usage` busca exatamente `billed = false` e
+# debita crédito. Ele está parado só porque `USE_CELERY=false`. Uma variável de
+# ambiente separa as corretoras de receberem um débito retroativo de um ano.
+#
+# A §22.1 dá a regra: tudo antes do `commercial_go_live_at` é
+# `PRE_LAUNCH_NON_BILLABLE`, salvo decisão explícita do Founder. E a §22.3
+# proíbe o atalho — `update token_usage_logs set billed = ...` sem snapshot e
+# plano de rollback. Por isso a fronteira é uma DATA lida na hora, e não uma
+# marcação gravada nas linhas: ela não reescreve histórico, e desfazer é mudar
+# uma variável.
+#
+# Ausente = ainda não houve lançamento comercial = nada é cobrável. O padrão
+# protege; ligar é ato deliberado.
+FRONTEIRA = "COMMERCIAL_GO_LIVE_AT"
+
+
+def fronteira_comercial() -> Optional[str]:
+    """A data ISO a partir da qual consumo pode ser cobrado. `None` = nenhuma."""
+    valor = (os.getenv(FRONTEIRA) or "").strip()
+    return valor or None
+
+
+def consumo_e_cobravel(criado_em: Any) -> bool:
+    """Este registro de consumo nasceu depois do lançamento comercial?
+
+    Responde `False` quando não há fronteira, quando a data é ilegível, ou
+    quando o consumo é anterior a ela. Os três casos são "não sei" — e não
+    saber nunca pode virar cobrança.
+    """
+    fronteira = fronteira_comercial()
+    if not fronteira:
+        return False
+    if not criado_em:
+        return False
+    try:
+        from datetime import datetime
+
+        def _ler(x: Any) -> "datetime":
+            if isinstance(x, datetime):
+                return x
+            return datetime.fromisoformat(str(x).replace("Z", "+00:00"))
+
+        nascimento, corte = _ler(criado_em), _ler(fronteira)
+        if (nascimento.tzinfo is None) != (corte.tzinfo is None):
+            # Comparar ingênuo com consciente levanta TypeError. Cair no
+            # `except` já daria o resultado certo, mas por acidente.
+            from datetime import timezone as _tz
+            if nascimento.tzinfo is None:
+                nascimento = nascimento.replace(tzinfo=_tz.utc)
+            else:
+                corte = corte.replace(tzinfo=_tz.utc)
+        return nascimento >= corte
+    except Exception as exc:  # noqa: BLE001
+        logger.warning("[Fronteira] data ilegível (%s) — tratando como "
+                       "pré-lançamento", type(exc).__name__)
+        return False
+
+
 class PorteiraDeCobranca:
     """Decide se uma ação pode seguir, e diz por quê.
 

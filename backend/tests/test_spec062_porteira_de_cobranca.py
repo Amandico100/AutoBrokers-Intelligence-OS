@@ -218,9 +218,84 @@ def teste_nenhuma_rota_chama_o_saldo_direto():
            f"{usos} usos")
 
 
+def teste_fronteira_comercial_nasce_ausente():
+    print("\n[8] Sem lançamento comercial, nada é cobrável")
+    os.environ.pop(G.FRONTEIRA, None)
+    checar(G.fronteira_comercial() is None,
+           "sem a variável, não existe fronteira")
+    checar(not G.consumo_e_cobravel("2026-07-26T02:31:45+00:00"),
+           "e portanto NENHUM consumo é cobrável",
+           "§22.1: tudo antes do go-live é PRE_LAUNCH_NON_BILLABLE")
+
+
+def teste_a_fronteira_separa_antes_e_depois():
+    print("\n[9] A fronteira separa o antes do depois")
+    os.environ[G.FRONTEIRA] = "2026-08-01T00:00:00+00:00"
+    try:
+        checar(not G.consumo_e_cobravel("2026-07-26T02:31:45+00:00"),
+               "consumo de 26/07 (antes) NÃO é cobrável")
+        checar(G.consumo_e_cobravel("2026-08-15T10:00:00+00:00"),
+               "consumo de 15/08 (depois) é cobrável")
+        # Data ilegível, ausente ou ingênua: os três são "não sei", e não
+        # saber nunca pode virar cobrança.
+        for ruim in (None, "", "ontem", "2026-13-45"):
+            checar(not G.consumo_e_cobravel(ruim),
+                   f"data {ruim!r} não vira cobrança")
+        # Ingênua vs consciente: comparar levantaria TypeError. O resultado
+        # tem que sair da regra, não do acidente de cair no except.
+        checar(G.consumo_e_cobravel("2026-08-15T10:00:00"),
+               "data sem fuso é comparada, não descartada por erro")
+    finally:
+        os.environ.pop(G.FRONTEIRA, None)
+
+
+def teste_worker_legado_nao_debita_retroativo():
+    print("\n[10] O worker legado não debita os 1.239 logs históricos")
+    # `process_unbilled_usage` busca `billed = false` e debita crédito. Existem
+    # 1.239 linhas nesse estado — o registro técnico de um ano de trabalho. O
+    # que separava as corretoras de um débito retroativo de um ano era
+    # `USE_CELERY=false`: uma variável de ambiente. Não é proteção, é sorte.
+    import re
+
+    caminho = os.path.join(RAIZ, "app", "workers", "billing_tasks.py")
+    with open(caminho, encoding="utf-8") as fh:
+        fonte = fh.read()
+    sem_comentario = "\n".join(l for l in fonte.split("\n")
+                               if not l.lstrip().startswith("#"))
+
+    # As duas tarefas que debitam precisam das duas travas, cada uma.
+    for tarefa in ("def process_unbilled_usage", "def process_company_billing"):
+        inicio = sem_comentario.find(tarefa)
+        checar(inicio != -1, f"{tarefa} existe")
+        if inicio == -1:
+            continue
+        # Recorta até a próxima tarefa (ou o fim do arquivo).
+        resto = sem_comentario[inicio + 10:]
+        fim = resto.find("\ndef ")
+        corpo = resto[:fim] if fim != -1 else resto
+
+        pos_debito = corpo.find("debit_credits")
+        pos_ligada = corpo.find("cobranca_ligada()")
+        pos_fronteira = corpo.find("fronteira_comercial()")
+
+        checar(pos_ligada != -1 and (pos_debito == -1 or pos_ligada < pos_debito),
+               f"{tarefa}: confere a cobrança ANTES de debitar")
+        checar(pos_fronteira != -1 and (pos_debito == -1 or pos_fronteira < pos_debito),
+               f"{tarefa}: confere a fronteira ANTES de debitar")
+        checar("consumo_e_cobravel" in corpo,
+               f"{tarefa}: filtra log anterior ao lançamento")
+
+    # §22.3 é explícita: nada de reescrever histórico como atalho.
+    atalho = re.search(r"update\s*\(\s*\{\s*[\"']billed[\"']\s*:\s*False",
+                       sem_comentario, re.I)
+    checar(atalho is None,
+           "ninguém remarca `billed` em massa como atalho de migração",
+           "§22.3 proíbe: reescrever histórico não se desfaz")
+
+
 def main() -> int:
     print("=" * 68)
-    print("SPEC-062 §4 — MEDIR NÃO É COBRAR")
+    print("SPEC-062 §4 e §22 — MEDIR NÃO É COBRAR")
     print("=" * 68)
     for teste in (teste_padrao_e_desligado,
                   teste_autofleet_nao_e_bloqueada,
@@ -228,7 +303,10 @@ def main() -> int:
                   teste_nunca_devolve_so_um_booleano,
                   teste_erro_de_banco_nao_bloqueia,
                   teste_ligada_a_porteira_barra,
-                  teste_nenhuma_rota_chama_o_saldo_direto):
+                  teste_nenhuma_rota_chama_o_saldo_direto,
+                  teste_fronteira_comercial_nasce_ausente,
+                  teste_a_fronteira_separa_antes_e_depois,
+                  teste_worker_legado_nao_debita_retroativo):
         try:
             teste()
         except Exception as exc:  # noqa: BLE001

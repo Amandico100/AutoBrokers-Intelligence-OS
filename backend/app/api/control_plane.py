@@ -358,6 +358,30 @@ async def capacidades(x_internal_key: Optional[str] = Header(None)):
     return CatalogoDeCapacidades(_db()).montar()
 
 
+@router.get("/unit-economics")
+async def unit_economics(dias: int = 30, company_id: Optional[str] = None,
+                         x_internal_key: Optional[str] = Header(None)):
+    """SPEC-062 §26 — quanto cada corretora custa de provedor.
+
+    Responde CUSTO, nunca preço. `provider_cost` e `customer_price` são coisas
+    diferentes (§23.1), e o segundo não existe enquanto o catálogo comercial
+    não for aprovado (§4 lei 17). É este número que permite decidir o preço —
+    não é o preço.
+    """
+    _autorizar(x_internal_key)
+    import os
+
+    from app.services.control_plane.unit_economics import EconomiaPorCorretora
+
+    try:
+        cotacao = float(os.getenv("DOLLAR_RATE", "6.0"))
+    except (TypeError, ValueError):
+        cotacao = 6.0
+
+    return EconomiaPorCorretora(_db(), cotacao_dolar=cotacao).montar(
+        dias=max(1, min(int(dias), 365)), company_id=company_id)
+
+
 class BuscaIn(BaseModel):
     termo: str
     permissions: list[str]

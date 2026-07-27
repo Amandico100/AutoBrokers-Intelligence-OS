@@ -516,6 +516,16 @@ CASOS: list[Caso] = [
     # linha numa tabela, num produto que ainda não tem preço aprovado.
     Caso("COB-01", "operacao", "Ninguém é barrado por algo que ainda não tem preço",
          "SPEC-062", lambda: _roda_script("test_spec062_porteira_de_cobranca.py")),
+    # `usage_events` tinha a forma exata da §21.1 e ZERO linhas: tabela sem
+    # escritor. Sem medição atribuída, a margem não é calculável e o preço do
+    # produto seria adivinhado. Medir é o que produz o preço.
+    Caso("USO-01", "operacao", "Todo consumo vira linha, e uma linha só",
+         "SPEC-062", lambda: _roda_script("test_spec062_usage_ledger.py")),
+    # Sem saber o que cada corretora custa, o preço sai de palpite. E um
+    # relatório de custo erra caro de duas formas: mostrando preço onde deveria
+    # mostrar custo, e truncando em silêncio (metade do custo parece boa notícia).
+    Caso("ECO-01", "operacao", "Dá para saber o que cada corretora custa",
+         "SPEC-062", lambda: _roda_script("test_spec062_unit_economics.py")),
     # Medido em producao sem cookie nenhum: `/dashboard` e `/admin` barravam com
     # 307, e `/api/admin/proxy/agents/company/<id>/...` devolvia 200 com o prompt
     # da corretora. O proxy carimbava a chave de master para quem passasse na rua.

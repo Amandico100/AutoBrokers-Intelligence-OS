@@ -684,3 +684,100 @@ Falta apenas o corretor **aceitar por conta própria**.
 Merece execução dedicada, não um pedaço no fim de outra SPEC. Retomar quando o
 Founder indicar — sugestão do Executor: **depois da SPEC-061** (Control Plane),
 que traz o restante das superfícies de administração.
+
+---
+
+## D20 — O motor de agentes não vai para a mão da corretora
+
+**27/07/2026** · SPEC-061 §6 · commit `0eb903b`
+
+A SPEC-061 §6 manda tirar cinco telas do `/admin`. O Executor moveu as cinco
+para a raiz do `/dashboard` sem ver que quatro delas **já tinham casa** em
+`/dashboard/personalizacao`, desde a SPEC-045. Resultado: duas telas para cada
+coisa, e a que ficou visível era a crua do admin.
+
+A tela de agentes movida trazia **"Criar Novo Agente"** e uma **lixeira**. A
+lixeira apagava `autobrokers-sandbox` — o agente ATIVO que **é** o chat da
+corretora. Um corretor curioso desligaria o próprio produto sem entender.
+
+### Decisão
+
+> Founder: "NOSSA PROPOSTA NAO É TER UMA ESTRUTURA DE CRIAÇÃO DE AGENTES PARA AS
+> CORRETORAS, PELO MENOS POR ENQUANTO. ELE NAO VAI SABER FAZER. CAPAZ DE FAZER
+> MERDA AINDA."
+
+O motor de construir agentes, subagentes, `tools_config` e temperatura fica na
+plataforma, em `/admin/companies/<id>/agents`, onde já estava. A corretora vê
+apenas o que é dela, em Personalização, com linguagem de gente.
+
+Isto **não** reverte a §6: `/admin` continua sendo só da plataforma. O que se
+desfaz é a duplicação, não a separação.
+
+### Regra que fica
+
+**O menu do `/dashboard` não cresce.** Coisa nova entra DENTRO de um item que
+já existe. Se não couber em nenhum, o desenho dos itens é que está errado — não
+falta um item. Registrado em `lib/navigation.ts` e cobrado por SEP-01.
+
+---
+
+## D21 — Nenhum consumo anterior ao lançamento comercial vira cobrança
+
+**27/07/2026** · SPEC-062 §22 · commits `f38369b`, `0eb903b`
+
+Existem **1.239 linhas** em `token_usage_logs` com `billed = false` — o registro
+técnico de um ano de desenvolvimento e teste. O worker legado
+`process_unbilled_usage` busca exatamente esse estado e **debita crédito**.
+
+O que separava as corretoras de um débito retroativo de um ano era
+`USE_CELERY=false`. Uma variável de ambiente. Não é proteção; é sorte.
+
+E a **AutoFleet estava sem serviço**: empresa ativa, sem linha em
+`company_credits`, saldo lido como zero, HTTP 402 no chat e nos auxiliares.
+Ninguém decidiu bloqueá-la — o bloqueio foi a ausência de uma linha numa tabela.
+Com dado real, a regra antiga barrava **3 das 5 empresas**.
+
+### Decisão
+
+> Founder: "PRECISAMOS DEIXAR TUDO DESLIGADO AINDA ESSA PARTE DE COBRANÇA. AS
+> CORRETORAS QUE TEM NO SISTEMA ATÉ AGORA NAO PODEM SER TRAVADAS POR CAUSA DOS
+> TOKENS OU PLANOS." · "TODO O CUSTO RETROATIVO NAO VAI SER COBRADO."
+
+Duas travas, ambas com padrão que protege:
+
+| Variável | Ausente significa | Efeito |
+|---|---|---|
+| `BILLING_ENFORCEMENT` | desligado | ninguém é barrado por saldo ou plano |
+| `COMMERCIAL_GO_LIVE_AT` | não houve lançamento | nenhum consumo é cobrável |
+
+Suspensão continua valendo sempre — é decisão humana, não consequência de saldo.
+
+A fronteira é uma **data lida na hora**, não uma marcação gravada nas linhas: a
+§22.3 proíbe `update token_usage_logs set billed = ...` como atalho. Desfazer é
+mudar uma variável, não reescrever histórico.
+
+---
+
+## D22 — PENDENTE: o catálogo comercial
+
+**27/07/2026** · SPEC-062 §45 · **bloqueia o Bloco B**
+
+O que está construído e **não** depende de preço: medição (`usage_events` ligado
+ao gargalo de LLM), custo por corretora/modelo/skill (§26), e as duas travas
+acima.
+
+O que **não** pode ser construído sem decisão do Founder:
+
+1. **Preço dos planos** e o que cada um inclui, em RESULTADO e não em token
+   ("300 cotações", não "2 milhões de tokens").
+2. **A margem** sobre custo de provedor. Hoje o `sell_multiplier` no banco é
+   `2.68` — herdado, não decidido.
+3. **Provedor de pagamento.** Análise do Executor em 27/07: Stripe ou
+   Asaas/Vindi/Iugu (~2-4%) contra Hotmart/Kiwify (~9-10%). Em R$ 2.000/mês a
+   diferença é ~R$ 1.400 por cliente por ano.
+4. **A data do `COMMERCIAL_GO_LIVE_AT`.**
+5. **Teto de overage** e se existe trial.
+
+**Recomendação registrada:** decidir depois de 30 dias medindo com a cobrança
+desligada. O consumo real das corretoras é que dá o preço — hoje ele seria
+palpite. Ver relatório de 27/07/2026.

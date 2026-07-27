@@ -169,9 +169,115 @@ class CostCallbackHandler(BaseCallbackHandler):
                 cached_tokens=cached_tokens,
             )
 
+            # SPEC-062 §21 — o mesmo consumo, no ledger que a SPEC-062 usa.
+            self._registrar_no_ledger(
+                model=model,
+                input_tokens=input_tokens,
+                output_tokens=output_tokens,
+                cache_creation_tokens=cache_creation_tokens,
+                cache_read_tokens=cache_read_tokens,
+                cached_tokens=cached_tokens,
+                run_id=run_id,
+                parent_run_id=parent_run_id,
+            )
+
         except Exception as e:
             # Nunca falha a chamada do LLM por erro de log
             logger.error(f"[CostCallback] Error logging usage: {e}")
+
+    # ------------------------------------------------------------------
+    # SPEC-062 §21 — Usage Ledger
+    # ------------------------------------------------------------------
+    #
+    # `usage_events` existe com a forma da §21.1 desde a SPEC-055 e estava com
+    # ZERO linhas: tabela sem escritor. O único que chamava o `UsageService`
+    # dela era o Firecrawl. Todo o consumo de LLM ia só para
+    # `token_usage_logs` (1.239 linhas), que é o ledger legado — ele registra
+    # token por modelo, mas não sabe dizer de qual skill, tool, work run ou
+    # artifact aquele gasto veio.
+    #
+    # Sem isso, a SPEC-062 §26 (unit economics) não tem de onde tirar número, e
+    # o preço do produto seria adivinhado. Medir é o que produz o preço.
+    #
+    # Por que AQUI e não em cada lugar que chama LLM: este callback é o
+    # gargalo único — ele é injetado em toda instância de chat model do
+    # sistema. Um escritor num gargalo é um escritor; cinco escritores
+    # espalhados são cinco lugares para esquecer.
+    #
+    # O ledger legado continua intacto. Isto é um segundo registro do mesmo
+    # fato, não uma substituição — trocar de ledger com o produto no ar é
+    # como trocar o pneu andando.
+
+    _PROVEDOR_POR_PREFIXO = (
+        ("claude", "anthropic"),
+        ("gpt", "openai"),
+        ("o1", "openai"),
+        ("o3", "openai"),
+        ("gemini", "google"),
+        ("llama", "meta"),
+        ("mistral", "mistral"),
+        ("deepseek", "deepseek"),
+        ("grok", "xai"),
+    )
+
+    @classmethod
+    def _provedor_do_modelo(cls, modelo: str) -> Optional[str]:
+        nome = (modelo or "").lower()
+        for prefixo, provedor in cls._PROVEDOR_POR_PREFIXO:
+            if prefixo in nome:
+                return provedor
+        return None
+
+    def _registrar_no_ledger(
+        self,
+        *,
+        model: str,
+        input_tokens: int,
+        output_tokens: int,
+        cache_creation_tokens: int,
+        cache_read_tokens: int,
+        cached_tokens: int,
+        run_id: UUID,
+        parent_run_id: Optional[UUID],
+    ) -> None:
+        # `usage_events.company_id` é NOT NULL. Consumo sem empresa (tarefa
+        # global, script) não vira linha órfã: fica de fora e o ledger legado
+        # continua tendo o registro técnico.
+        if not self.company_id:
+            return
+
+        try:
+            from ...services.work.usage import UsageService as LedgerDaSpec062
+
+            custo = self.usage_service.calculate_cost(
+                model, input_tokens, output_tokens,
+                cache_creation_tokens, cache_read_tokens, cached_tokens,
+            )
+
+            LedgerDaSpec062(self.usage_service.supabase).registrar(
+                company_id=str(self.company_id),
+                source=self.service_type,
+                # `run_id` é único por chamada de LLM e vem do LangChain. Isso
+                # torna o registro exatamente-uma-vez de graça: se o callback
+                # disparar duas vezes, o índice único
+                # `(company_id, idempotency_key)` recusa a segunda e o
+                # `UsageService` trata isso como sucesso.
+                idempotency_key=f"llm:{run_id}",
+                correlation_id=str(parent_run_id or run_id),
+                provider=self._provedor_do_modelo(model),
+                model=model,
+                input_tokens=input_tokens,
+                output_tokens=output_tokens,
+                units=int(input_tokens or 0) + int(output_tokens or 0),
+                unit_kind="token",
+                provider_cost_usd=float(custo or 0),
+            )
+        except Exception as exc:  # noqa: BLE001
+            # Perder uma medição é ruim; derrubar a resposta do corretor por
+            # causa dela é pior. O ledger legado já guardou o fato.
+            logger.warning(
+                "[CostCallback] usage_event não registrado: %s", type(exc).__name__
+            )
 
     def on_llm_error(
         self,
