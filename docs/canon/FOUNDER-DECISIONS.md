@@ -781,3 +781,65 @@ O que **não** pode ser construído sem decisão do Founder:
 **Recomendação registrada:** decidir depois de 30 dias medindo com a cobrança
 desligada. O consumo real das corretoras é que dá o preço — hoje ele seria
 palpite. Ver relatório de 27/07/2026.
+
+---
+
+## D23 — O Observador não desliga; o agente de atendimento só fala pelo botão
+
+**27/07/2026** · SPEC-038/040/045 · auditoria de pareamento
+
+### As regras, ditadas pelo Founder
+
+1. **O Observador nunca desliga.** Pareou, observa — com o agente ligado ou
+   desligado, hoje e daqui a um ano. Ele completa as rotas que faltam e
+   atualiza quando encontra diferença.
+2. **O agente de atendimento nasce desligado** e só é ligado pelo botão do
+   dashboard.
+3. Ligado, responde. Desligado, **nunca** responde: quem atende é a pessoa,
+   direto no WhatsApp.
+4. Cada corretora é independente: ligar o agente da Resulta não faz nada na
+   AutoFleet.
+5. Com o agente desligado, o **Cartógrafo fica parado** — o número pertence à
+   atendente humana.
+
+> Founder: "O AGENTE DE ATENDIMENTO NASCE DESLIGADO. ELE SÓ É LIGADO SE CLICAR
+> NO BOTÃO DEPOIS DE PAREADO." · "O OBSERVADOR NUNCA DESLIGA. ELE É DIFERENTE
+> DO AGENTE DE ATENDIMENTO."
+
+### O defeito que a auditoria encontrou
+
+`observer_tap` devolvia "consumido" sempre que a integração fosse
+`purpose='observer'`, e o webhook faz `if _observed is not None: return`. O
+dashboard pareia justamente com `purpose='observer'`.
+
+**Toda mensagem morria ali — inclusive depois do clique em "Ligar agente".** No
+dia 8 o botão viraria verde, a tela diria "Atendendo os segurados", e o agente
+ficaria mudo para sempre. O pior tipo de defeito: tudo parece certo.
+
+Causa: duas decisões diferentes coladas numa variável só. **Capturar** nunca
+para; **consumir** para quando o agente assume.
+
+### O que mudou
+
+| Antes | Agora |
+|---|---|
+| consumia sempre que `purpose='observer'` | consome só enquanto o agente está calado |
+| pareamento desligava o agente | pareamento não toca no agente |
+| silêncio dependia do pareamento | silêncio vem do nascimento (blueprint + gatilho no banco) |
+| Cartógrafo podia explorar durante a observação | Cartógrafo recusa com o agente desligado |
+
+**Por que o pareamento parou de desligar:** re-parear é comum (telefone
+desligado, logout, QR vencido, troca de aparelho) e **desligava um agente que
+estava trabalhando**, sem avisar ninguém.
+
+**Por que o Cartógrafo para:** ele explora mandando mensagem para a seguradora
+pelo **mesmo número** da atendente. Com o agente desligado, é ela quem está
+conversando com aquela seguradora naquele instante. O freio que existia
+(`dispatch:active`) não cobria conversa de humano — o sistema não sabia que ela
+estava lá.
+
+### Garantias
+
+ORQ-01 e OBS-02 no gate (44/44). Gatilho `atendimento_nasce_desligado` aplicado
+e provado em produção: agente de atendimento criado com `is_active=true` nasce
+`false`; o core continua nascendo `true`.

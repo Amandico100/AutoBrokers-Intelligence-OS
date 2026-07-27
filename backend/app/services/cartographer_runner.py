@@ -84,6 +84,42 @@ async def start_exploration(*, insurer_key: str, ramo: str, test_data: Dict[str,
     from app.services.insurer_registry import registry_whatsapp
     from app.services.corridor_playbooks import resolve_insurer_contact
 
+    # REGRA DO FOUNDER (27/07/2026): enquanto o agente de atendimento está
+    # DESLIGADO, o número pertence à atendente humana — e o Cartógrafo fica
+    # parado.
+    #
+    # O motivo é concreto e não é teórico. O Cartógrafo explora mandando
+    # mensagem para a seguradora **pelo mesmo número** que a atendente usa. Com
+    # o agente desligado, é ela quem está conversando com aquela seguradora,
+    # naquele instante, sobre um sinistro real. Duas mãos digitando no mesmo
+    # WhatsApp confunde os dois lados: a seguradora responde a exploração
+    # achando que responde o caso, e a atendente vê no aparelho dela mensagens
+    # que não escreveu.
+    #
+    # O freio que existia — recusar se houver `dispatch:active` — não cobre
+    # isso: conversa de HUMANO não abre sessão de dispatch. O sistema não sabia
+    # que ela estava lá.
+    #
+    # Com o agente LIGADO, o número já é do sistema e a exploração volta a ser
+    # legítima — continua valendo o freio do acionamento real.
+    if company_id:
+        try:
+            from app.services.atlas.attendance_capture import attendance_agent_active
+
+            if not await attendance_agent_active(str(company_id)):
+                return {"ok": False, "error": (
+                    "O agente de atendimento desta corretora está desligado — "
+                    "quem atende neste número é a equipe humana. A exploração "
+                    "só roda com o agente ligado, para não escrever no meio da "
+                    "conversa dela.")}
+        except Exception as exc:  # noqa: BLE001
+            # Não conseguir confirmar não é autorização para escrever no
+            # WhatsApp da corretora.
+            logger.error("[CARTO] não confirmei o estado do agente (%s) — "
+                         "exploração recusada", type(exc).__name__)
+            return {"ok": False, "error": "não foi possível confirmar o estado "
+                                          "do agente de atendimento"}
+
     phone = resolve_insurer_contact(insurer_key) or registry_whatsapp(insurer_key)
     if not phone:
         return {"ok": False, "error": f"sem WhatsApp para '{insurer_key}'"}

@@ -225,6 +225,37 @@ async def capture_channel_message(company_id: str, channel_number: str, counterp
 _OBS_MODE_TTL_S = 60
 
 
+async def attendance_agent_active(company_id: str) -> bool:
+    """O agente de atendimento desta corretora está LIGADO?
+
+    Pergunta positiva de propósito. `attendance_observation_mode` responde a
+    negativa e devolve `False` em dois casos que não são a mesma coisa: agente
+    ligado, e agente que nem existe. Para decidir se alguém vai responder, os
+    dois casos precisam ser distinguidos — corretora sem agente provisionado não
+    pode acabar respondendo por omissão.
+
+    Só devolve `True` com prova: existe a linha e `is_active` é verdadeiro.
+    Falha de leitura devolve `False` — não conseguir confirmar que o agente está
+    ligado nunca pode virar permissão para falar.
+    """
+    try:
+        from app.core.database import get_supabase_client
+
+        def _query() -> bool:
+            db = get_supabase_client()
+            rows = (db.client.table("agents").select("id, is_active")
+                    .eq("company_id", str(company_id))
+                    .eq("agent_role", "attendance").limit(1).execute().data or [])
+            return bool(rows) and rows[0].get("is_active") is True
+
+        return await asyncio.to_thread(_query)
+    except Exception as exc:  # noqa: BLE001
+        logger.error("[Atendimento] não foi possível confirmar se o agente de "
+                     "%s está ligado (%s) — assumindo DESLIGADO",
+                     company_id, type(exc).__name__)
+        return False
+
+
 async def attendance_observation_mode(company_id: str) -> bool:
     """SPEC-045 — a corretora está em MODO OBSERVAÇÃO? True quando o agente de
     atendimento existe e está DESLIGADO (agents.is_active=false): o número

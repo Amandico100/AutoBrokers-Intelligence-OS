@@ -546,6 +546,12 @@ CASOS: list[Caso] = [
     # A corretora vai parear o WhatsApp de PRODUÇÃO. Nesse arranjo, responder
     # sem poder não se desfaz; calar sem precisar custa alguns minutos da
     # atendente humana. Nenhuma falha técnica pode virar uma resposta.
+    # O Observador nao desliga nunca; o agente de atendimento nasce desligado e
+    # so fala se o botao mandar. As duas coisas estavam coladas numa variavel so
+    # e, com o dashboard pareando `purpose='observer'`, TODA mensagem morria no
+    # observador — inclusive depois do clique em "Ligar agente".
+    Caso("ORQ-01", "whatsapp", "O Observador nao para; o agente so fala se o botao mandar",
+         "SPEC-038/045", lambda: _roda_script("test_orquestracao_pareamento.py")),
     Caso("OBS-02", "whatsapp", "Nenhuma falha técnica vira resposta ao segurado",
          "SPEC-038/045", lambda: _roda_script("test_observador_silencio.py")),
     Caso("WPP-01", "whatsapp", "Corretoras não compartilham instância de WhatsApp",

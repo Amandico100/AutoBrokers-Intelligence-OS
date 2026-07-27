@@ -138,16 +138,43 @@ def teste_o_observador_e_mudo_por_construcao():
         checar(not envios, f"{arq} não chama nenhum envio", str(set(envios)))
 
 
-def teste_o_pareamento_desliga_o_agente():
-    print("\n[5] Parear o Observador DESLIGA o agente de atendimento")
-    # Sem isto, o silêncio dependeria de alguém lembrar de desligar o agente
-    # antes de encostar o celular no QR code.
+def teste_o_silencio_nao_depende_do_pareamento():
+    print("\n[5] O silêncio vem do NASCIMENTO, não do pareamento")
+    # Este caso já cobrou o oposto: que o pareamento desligasse o agente. A
+    # intenção era boa e o efeito colateral era grave — **re-parear desligava um
+    # agente que estava trabalhando**. E re-parear não é raro: telefone
+    # desligado, logout, QR vencido, troca de aparelho. A corretora reconectava
+    # e o agente ficava mudo sem aviso, com o painel dizendo "Observando em
+    # silêncio" e ninguém entendendo o clique que faltava.
+    #
+    # Decisão do Founder (27/07/2026): "O AGENTE DE ATENDIMENTO NASCE
+    # DESLIGADO. ELE SÓ É LIGADO SE CLICAR NO BOTÃO DEPOIS DE PAREADO."
+    #
+    # O silêncio de uma corretora nova passa a vir de onde deveria ter vindo
+    # desde o começo: do nascimento do agente, em dois lugares independentes.
     fonte = _sem_comentario(_ler("app", "services", "whatsapp",
                                  "pairing_orchestrator.py"))
-    bloco = fonte[fonte.find("if purpose == \"observer\":"):]
-    checar('"is_active": False' in bloco and 'agent_role", "attendance"' in bloco,
-           "o pareamento do observador desativa o agente de atendimento",
-           "o silêncio não pode depender de memória humana")
+    checar(re.search(r'table\("agents"\)\.update\(\{"is_active"', fonte) is None,
+           "o pareamento não mexe no estado do agente",
+           "re-parear silenciaria um agente em produção")
+
+    # Garantia 1 — o blueprint.
+    caminho_bp = os.path.join(os.path.dirname(RAIZ), "lib", "admin",
+                              "agent-blueprints-canonical.ts")
+    with open(caminho_bp, encoding="utf-8") as fh:
+        bp = fh.read()
+    i = bp.find("export const EVEN_ATTENDANCE_BLUEPRINT")
+    j = bp.find("export const ", i + 10) if i != -1 else -1
+    atendimento = bp[i: j if j != -1 else len(bp)] if i != -1 else ""
+    checar("default_active: false" in atendimento,
+           "o blueprint do atendimento nasce inativo")
+
+    # Garantia 2 — o banco, para qualquer caminho que não passe pelo blueprint.
+    mig = os.path.join(RAIZ, "supabase", "migrations",
+                       "20260727_08_atendimento_nasce_desligado.sql")
+    checar(os.path.exists(mig), "há gatilho no banco cobrindo os outros caminhos",
+           "a coluna is_active tem default true: sem gatilho, um insert "
+           "direto criaria um agente LIGADO")
 
 
 def teste_o_pareamento_liga_a_captura_de_clientes():
@@ -197,7 +224,7 @@ def main() -> int:
                   teste_o_portao_indisponivel_e_silencio,
                   teste_falha_de_captura_nao_libera_a_resposta,
                   teste_o_observador_e_mudo_por_construcao,
-                  teste_o_pareamento_desliga_o_agente,
+                  teste_o_silencio_nao_depende_do_pareamento,
                   teste_o_pareamento_liga_a_captura_de_clientes,
                   teste_o_cartografo_nao_explora_sozinho):
         try:

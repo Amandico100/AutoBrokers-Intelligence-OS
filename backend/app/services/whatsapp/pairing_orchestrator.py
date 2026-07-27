@@ -507,9 +507,25 @@ class PairingOrchestrator:
             db.client.table("integrations").update({"is_active": False}) \
                 .eq("company_id", company_id).eq("provider", "evolution-go") \
                 .eq("purpose", purpose).neq("instance_id", instance).execute()
-            if purpose == "observer":
-                db.client.table("agents").update({"is_active": False}) \
-                    .eq("company_id", company_id).eq("agent_role", "attendance").execute()
+            # O pareamento NÃO mexe no estado do agente de atendimento.
+            #
+            # Aqui existia um `update({"is_active": False})`. A intenção era
+            # boa — garantir silêncio ao parear — e o efeito colateral era
+            # grave: **re-parear desligava um agente que estava trabalhando.**
+            #
+            # E re-parear não é raro. A sessão do WhatsApp cai: telefone
+            # desligado, logout, QR vencido, troca de aparelho. A corretora
+            # reconecta e, sem nada dizer, o agente que atendia há semanas fica
+            # mudo. O painel mostra "Observando em silêncio" e ninguém entende
+            # por quê — o clique que faltava é invisível.
+            #
+            # O silêncio de uma corretora NOVA não depende disto: o agente de
+            # atendimento nasce desligado pelo blueprint
+            # (`EVEN_ATTENDANCE_BLUEPRINT.default_active = false`) e por gatilho
+            # no banco. Quem liga é o botão, e só ele.
+            #
+            # Decisão do Founder, 27/07/2026: "O AGENTE DE ATENDIMENTO NASCE
+            # DESLIGADO. ELE SÓ É LIGADO SE CLICAR NO BOTÃO DEPOIS DE PAREADO."
 
         await asyncio.to_thread(_upsert)
 

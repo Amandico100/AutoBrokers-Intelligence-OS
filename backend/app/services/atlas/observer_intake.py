@@ -306,8 +306,42 @@ async def observer_tap(integration: dict, body: dict) -> Optional[dict]:
     purpose='observer' (consome SEMPRE); retorna None em modo TAP (attendance)
     para o pipeline normal seguir. NUNCA envia nada — por construção."""
     purpose = str((integration or {}).get("purpose") or "").strip().lower()
+
+    # `is_observer` governa a CAPTURA, e não muda nunca. Esta é a regra do
+    # Founder, e ela é absoluta: **o Observador não desliga.** Pareou, observa —
+    # com o agente ligado ou desligado, hoje e daqui a um ano.
     is_observer = purpose == "observer"
-    consumed = {"status": "observed"} if is_observer else None
+
+    # `consumed` governa outra coisa: se o evento PARA aqui.
+    #
+    # As duas coisas estavam coladas, e isso quebrava o dia em que o Founder
+    # liga o agente. O dashboard pareia com `purpose='observer'`; o webhook faz
+    # `if _observed is not None: return _observed`. Com as duas grudadas, TODA
+    # mensagem morria aqui — inclusive depois de o botão "Ligar agente" ser
+    # clicado. O botão viraria verde, a tela diria "Atendendo os segurados", e o
+    # agente ficaria mudo para sempre. O pior tipo de defeito: tudo parece
+    # certo.
+    #
+    # Separadas:
+    #   agente CALADO   → captura e o evento para aqui (ninguém mais tem o que
+    #                     fazer com ele; quem responde é a atendente humana,
+    #                     pelo celular).
+    #   agente LIGADO   → captura e o evento SEGUE para o pipeline, que entrega
+    #                     ao agente. É a promessa da tela: "assume as respostas
+    #                     NESTE MESMO número — sem re-parear nada".
+    #
+    # A pergunta é positiva ("o agente está ligado?") e falha para o lado do
+    # silêncio: não conseguir confirmar que está ligado faz o evento parar aqui.
+    _agente_ligado = False
+    if is_observer:
+        try:
+            from app.services.atlas.attendance_capture import attendance_agent_active
+
+            _agente_ligado = await attendance_agent_active(
+                str((integration or {}).get("company_id") or ""))
+        except Exception:  # noqa: BLE001
+            _agente_ligado = False
+    consumed = {"status": "observed"} if (is_observer and not _agente_ligado) else None
 
     try:
         ev_name = str((body or {}).get("event") or "").strip().lower().replace("_", ".")
