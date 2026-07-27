@@ -526,6 +526,12 @@ CASOS: list[Caso] = [
     # mostrar custo, e truncando em silêncio (metade do custo parece boa notícia).
     Caso("ECO-01", "operacao", "Dá para saber o que cada corretora custa",
          "SPEC-062", lambda: _roda_script("test_spec062_unit_economics.py")),
+    # Este pacote prova CONDUTA (o código faz o que deve). Ele não prova
+    # QUALIDADE (a resposta continua boa). O arnês de eval responde a segunda
+    # pergunta — e erra de dois jeitos: reprovando o certo (chato, você
+    # descobre na hora) e aprovando o errado (você não descobre nunca).
+    Caso("EVL-01", "conhecimento", "O arnês pega o defeito e não acusa quem está certo",
+         "SPEC-062", lambda: _roda_script("test_spec062_evals.py")),
     # Medido em producao sem cookie nenhum: `/dashboard` e `/admin` barravam com
     # 307, e `/api/admin/proxy/agents/company/<id>/...` devolvia 200 com o prompt
     # da corretora. O proxy carimbava a chave de master para quem passasse na rua.

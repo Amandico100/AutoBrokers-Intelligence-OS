@@ -1351,3 +1351,57 @@ compara com uma cópia velha é pior que nenhum, porque dá confiança falsa.
 ### Autorização
 
 Executor, correção de defeito próprio dentro da SPEC-061.
+
+---
+
+## CA-020 — `middleware.ts` libera todo `/api/` sem olhar sessão
+
+**ESSENCIAL** · registrado em 27/07/2026 · autorizado pelo Founder para a SPEC-063
+
+### Problema
+
+```ts
+const isApiRoute = apiRoutes.includes(pathname) || pathname.startsWith('/api/');
+if (isPublicRoute || isPublicPrefix || isApiRoute) return response;
+```
+
+Todo endereço sob `/api/` passa pelo middleware **sem nenhuma checagem de
+sessão**. As rotas conferem por conta própria — e é aí que mora o risco: a
+proteção depende de cada autor lembrar.
+
+### Evidência
+
+Medido em produção em 27/07/2026, sem cookie nenhum:
+
+```
+GET /dashboard                                 → 307 para /login
+GET /admin/companies                           → 307 para /admin/login
+GET /api/admin/proxy/agents/company/<id>/…     → 200 com o prompt da corretora
+```
+
+O `lib/admin-proxy.ts` era uma das rotas que não conferiam: carimbava
+`X-Admin-API-Key` (a chave de plataforma) em requisição de qualquer pessoa da
+internet e entregava ao backend, que obedecia — GET, PUT e DELETE em agente de
+qualquer corretora. Origem: primeiro commit do repositório (`6274293`,
+04/06/2026), do código original do Smith.
+
+### Consequência
+
+O buraco conhecido foi fechado em `6cc4bf1` e `0eb903b` (só sessão de
+plataforma passa). **A causa de raiz continua.** Não há outro buraco conhecido
+hoje — mas o padrão é o oposto do que deveria ser: **uma rota nova mal escrita
+nasce pública**, e o autor não recebe nenhum sinal disso.
+
+### Correção proposta (SPEC-063)
+
+Inverter o padrão: o middleware exige sessão em `/api/**` por omissão, e as
+rotas genuinamente públicas entram numa lista curta e explícita
+(`/api/auth/login`, `/api/admin/login`, webhooks com token próprio, `/embed/`).
+
+Uma rota nova passa a nascer **fechada**. Esquecer de listá-la produz um 401 em
+desenvolvimento — visível — em vez de uma exposição silenciosa em produção.
+
+### Autorização
+
+> Founder, 27/07/2026: "SOBRE ESSA QUESTÃO ABAIXO EU CONCORDO. PODE DEIXAR
+> ANOTADO."
