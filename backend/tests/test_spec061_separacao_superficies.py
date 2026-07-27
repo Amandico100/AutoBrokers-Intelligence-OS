@@ -30,13 +30,27 @@ RAIZ = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)
 APP = os.path.join(RAIZ, "app")
 FALHAS: list[str] = []
 
-# As cinco telas que mudaram de casa, e para onde foram.
+# As cinco telas que saíram do `/admin`, e onde a corretora as encontra.
+#
+# Quatro delas apontam para dentro da Personalização, e não para um endereço
+# novo na raiz do dashboard. O motivo está registrado em `lib/navigation.ts`:
+# a casa já existia desde a SPEC-045, e criar um segundo endereço para a mesma
+# coisa não é organizar — é duplicar.
 MUDARAM_DE_CASA = {
-    "/admin/team": "/dashboard/equipe",
+    "/admin/team": "/dashboard/personalizacao/equipe",
     "/admin/conversations": "/dashboard/conversas",
-    "/admin/agent": "/dashboard/agente",
-    "/admin/documents": "/dashboard/documentos",
-    "/admin/billing": "/dashboard/plano",
+    "/admin/agent": "/dashboard/personalizacao/agentes/autobrokers",
+    "/admin/documents": "/dashboard/personalizacao/conhecimento",
+    "/admin/billing": "/dashboard/personalizacao/custos",
+}
+
+# Os quatro endereços que eu criei na raiz do dashboard e que ficaram órfãos.
+# Continuam existindo como redirecionamento — link salvo não pode virar 404.
+RAIZ_DUPLICADA = {
+    "/dashboard/equipe": "/dashboard/personalizacao/equipe",
+    "/dashboard/agente": "/dashboard/personalizacao/agentes/autobrokers",
+    "/dashboard/documentos": "/dashboard/personalizacao/conhecimento",
+    "/dashboard/plano": "/dashboard/personalizacao/custos",
 }
 
 
@@ -94,13 +108,89 @@ def teste_admin_nao_tem_mais_menu_de_corretora():
                f"'{antigo}' não é item de menu do Admin")
 
 
-def teste_dashboard_recebeu_as_telas():
-    print("\n[4] A corretora encontra as telas na casa dela")
+def _menu_renderizado() -> tuple[list[str], list[str]]:
+    """Os endereços que o corretor REALMENTE vê, lidos do componente que pinta.
+
+    A versão anterior deste teste lia `lib/navigation.ts` e conferia se o link
+    existia lá. Passou verde enquanto quatro telas estavam órfãs — porque o
+    grupo onde os links moravam nunca foi importado por componente nenhum.
+    Provar que o dado existe não prova que ele aparece.
+
+    Agora o caminho é o mesmo do navegador: descobrir quais grupos o
+    `TenantNav.tsx` renderiza, e só então ler os itens desses grupos.
+    """
+    nav = _ler(os.path.join(RAIZ, "components", "layout", "TenantNav.tsx"))
+    grupos = re.findall(r"\{([A-Z_]{3,})\.map\(", nav)
+
     fonte = _ler(os.path.join(RAIZ, "lib", "navigation.ts"))
-    checar("ADMINISTRACAO_DA_CORRETORA" in fonte,
-           "existe um grupo de administração da corretora")
-    for novo in MUDARAM_DE_CASA.values():
-        checar(f"href: '{novo}'" in fonte, f"{novo} tem link no dashboard")
+    enderecos: list[str] = []
+    for grupo in grupos:
+        bloco = re.search(rf"export const {grupo}[^=]*=\s*\[(.*?)\n\];", fonte, re.S)
+        if bloco:
+            enderecos += re.findall(r"href:\s*'([^']+)'", bloco.group(1))
+    return grupos, enderecos
+
+
+def teste_dashboard_recebeu_as_telas():
+    print("\n[4] A corretora ALCANÇA as telas pelo menu que ela vê")
+    grupos, enderecos = _menu_renderizado()
+    checar(bool(grupos), "o TenantNav renderiza pelo menos um grupo", str(grupos))
+    print(f"      grupos renderizados: {', '.join(grupos)}")
+    print(f"      itens no menu: {len(enderecos)}")
+
+    # Alcançável = o próprio endereço está no menu, OU ele mora DENTRO de um
+    # item do menu. `/dashboard/personalizacao/equipe` é alcançável porque
+    # "Personalização" está no menu e a tela vive dentro dela.
+    def alcancavel(destino: str) -> bool:
+        return any(destino == e or destino.startswith(e.rstrip("/") + "/")
+                   for e in enderecos)
+
+    for destino in MUDARAM_DE_CASA.values():
+        checar(alcancavel(destino), f"{destino} é alcançável pelo menu",
+               "tela sem caminho no menu é tela que não existe para quem usa")
+
+
+def teste_o_menu_nao_cresce():
+    print("\n[4b] O menu não cresceu para acomodar as telas que mudaram")
+    # A regra que ficou: coisa nova entra DENTRO de um item que já existe. Foi
+    # criar quatro itens de primeiro nível que produziu o problema anterior —
+    # e ainda por cima nenhum deles chegou a aparecer.
+    _, enderecos = _menu_renderizado()
+    for destino in list(MUDARAM_DE_CASA.values()) + list(RAIZ_DUPLICADA):
+        if destino == "/dashboard/conversas":
+            continue  # já era item do menu antes de tudo isso
+        checar(destino not in enderecos,
+               f"'{destino}' não virou item de primeiro nível",
+               "o menu tem que caber na cabeça; ele não cresce a cada tela")
+
+    # O comentário que EXPLICA a remoção cita o nome antigo, e deve citar —
+    # senão a próxima pessoa recria o grupo sem saber por que ele saiu. O que
+    # se cobra aqui é o CÓDIGO.
+    nav = _ler(os.path.join(RAIZ, "lib", "navigation.ts"))
+    nav_sem_comentario = re.sub(r"/\*.*?\*/", "", nav, flags=re.S)
+    nav_sem_comentario = "\n".join(l for l in nav_sem_comentario.split("\n")
+                                   if not l.lstrip().startswith("//"))
+    checar("ADMINISTRACAO_DA_CORRETORA" not in nav_sem_comentario,
+           "o grupo órfão foi removido de vez",
+           "declarar grupo que ninguém renderiza é como não ter feito nada")
+
+
+def teste_duplicata_da_raiz_redireciona():
+    print("\n[4c] Os endereços duplicados da raiz levam para a casa única")
+    for antigo, novo in RAIZ_DUPLICADA.items():
+        caminho = os.path.join(APP, *antigo.strip("/").split("/"), "page.tsx")
+        if not os.path.exists(caminho):
+            checar(False, f"{antigo} continua existindo como redirecionamento",
+                   "o arquivo sumiu — link salvo vira 404")
+            continue
+        fonte = _ler(caminho)
+        checar(f"redirect('{novo}')" in fonte,
+               f"{antigo} leva para {novo}")
+        # E não pode ter sobrado tela de verdade junto com o redirect: duas
+        # telas para a mesma coisa é o defeito que este bloco desfaz.
+        checar("'use client'" not in fonte,
+               f"{antigo} não renderiza mais uma segunda tela",
+               "sobrou interface junto com o redirecionamento")
 
 
 def teste_admin_expulsa_quem_nao_e_plataforma():
@@ -244,6 +334,8 @@ def main() -> int:
                   teste_endereco_antigo_redireciona,
                   teste_admin_nao_tem_mais_menu_de_corretora,
                   teste_dashboard_recebeu_as_telas,
+                  teste_o_menu_nao_cresce,
+                  teste_duplicata_da_raiz_redireciona,
                   teste_admin_expulsa_quem_nao_e_plataforma,
                   teste_nenhuma_tela_do_dashboard_empurra_para_admin,
                   teste_destino_nao_devolve_o_master,

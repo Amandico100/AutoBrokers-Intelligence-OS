@@ -1,204 +1,25 @@
-'use client';
+// SPEC-061 §6 — desfazendo uma DUPLICAÇÃO, não a separação.
+//
+// Esta tela era o "Gerenciar Agentes IA" do /admin. Eu a movi para cá achando
+// que estava mudando de casa. Não estava: a casa já existia.
+//
+// O `/dashboard/personalizacao` já tinha, desde a SPEC-045, uma tela feita PARA
+// a corretora — com linguagem de gente ("Criatividade" no lugar de
+// `temperature`), trilha de navegação, e sem botão de criar nem de apagar.
+// Mover esta para cá não organizou nada: passou a haver duas telas de agente no
+// mesmo dashboard, e a que ficou visível era a errada.
+//
+// Ela trazia "Criar Novo Agente" e uma lixeira. A lixeira apagava
+// `autobrokers-sandbox` — o agente ATIVO que É o chat da corretora. Um corretor
+// curioso desligaria o próprio produto sem entender o que fez.
+//
+// Decisão do Founder em 27/07/2026: o motor de construir agentes fica no
+// /admin, onde já está (`/admin/companies/<id>/agents`), para a plataforma
+// personalizar quando um cliente pedir. A corretora vê só o que é dela.
+//
+// O código antigo não se perdeu: `git log --follow app/dashboard/agente/page.tsx`.
+import { redirect } from 'next/navigation';
 
-import { useEffect, useState } from 'react';
-import { useRouter } from 'next/navigation';
-import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
-import { Button } from '@/components/ui/button';
-import { Bot, Plus, Loader2 } from 'lucide-react';
-import { useAdminRole } from '@/hooks/useAdminRole';
-import { AgentConfigModal } from '@/components/admin/AgentConfigModal';
-import { AgentFlowView } from '@/components/agents/AgentFlowView';
-import type { AgentWithDelegations } from '@/components/agents/hooks/useAgentFlowLayout';
-import { Agent } from '@/types/agent';
-import { useToast } from '@/hooks/use-toast';
-
-export default function AgentConfigPage() {
-  const { role, companyId, isLoading } = useAdminRole();
-  const router = useRouter();
-  const { toast } = useToast();
-  const [agents, setAgents] = useState<AgentWithDelegations[]>([]);
-  const [loadingAgents, setLoadingAgents] = useState(false);
-  const [selectedAgentId, setSelectedAgentId] = useState<string | undefined>(undefined);
-  const [isModalOpen, setIsModalOpen] = useState(false);
-
-  const BACKEND_URL = process.env.NEXT_PUBLIC_BACKEND_URL || 'http://localhost:8000';
-
-  // SPEC-061 §6 — o guard de PAPEL foi removido.
-  //
-  // Ele perguntava "qual é o seu papel?" e mandava para /admin quem não fosse
-  // `company_admin`. Duas coisas erradas nisso:
-  //
-  // 1. **O nome do papel me traiu duas vezes.** A sessão grava `master_admin`,
-  //    o hook devolve `master`, e o guard comparava com uma terceira coisa.
-  //    Um teste de igualdade de string entre três vocabulários é frágil por
-  //    natureza.
-  //
-  // 2. **Devolver para /admin criou um vaivém.** `/admin/documents`
-  //    redirecionava para cá, e daqui voltava para /admin. Da cadeira de quem
-  //    testa, isso é indistinguível de "o redirecionamento não funciona" — e
-  //    foi exatamente assim que o Founder relatou, duas vezes.
-  //
-  // A pergunta certa não é sobre papel: é **"eu tenho uma corretora para
-  // mostrar?"**. É disso que a tela depende, e a resposta já era tratada
-  // abaixo, com uma mensagem clara em vez de um empurrão. Mensagem explica;
-  // redirecionamento silencioso não.
-
-  useEffect(() => {
-    if (companyId) {
-      loadAgents();
-    }
-  }, [companyId]);
-
-  const loadAgents = async () => {
-    setLoadingAgents(true);
-    try {
-      const response = await fetch(`/api/admin/proxy/agents/company/${companyId}/with-delegations`);
-      if (response.ok) {
-        const data = await response.json();
-        setAgents(data);
-      } else {
-        throw new Error('Failed to load agents');
-      }
-    } catch (error) {
-      console.error('Error loading agents:', error);
-      toast({
-        title: 'Erro',
-        description: 'Falha ao carregar agentes',
-        variant: 'destructive',
-      });
-    } finally {
-      setLoadingAgents(false);
-    }
-  };
-
-  const handleCreateAgent = () => {
-    setSelectedAgentId(undefined);
-    setIsModalOpen(true);
-  };
-
-  const handleEditAgent = (agentId: string) => {
-    setSelectedAgentId(agentId);
-    setIsModalOpen(true);
-  };
-
-  const handleArchiveAgent = async (agentId: string) => {
-    if (!confirm('Tem certeza que deseja arquivar este agente?')) return;
-
-    try {
-      const response = await fetch(`/api/admin/proxy/agents/${agentId}`, {
-        method: 'DELETE',
-      });
-
-      if (response.ok) {
-        toast({
-          title: 'Sucesso',
-          description: 'Agente arquivado com sucesso',
-        });
-        loadAgents();
-      } else {
-        throw new Error('Failed to archive agent');
-      }
-    } catch (error) {
-      console.error('Error archiving agent:', error);
-      toast({
-        title: 'Erro',
-        description: 'Falha ao arquivar agente',
-        variant: 'destructive',
-      });
-    }
-  };
-
-  const handleModalClose = () => {
-    setIsModalOpen(false);
-    setSelectedAgentId(undefined);
-    loadAgents();
-  };
-
-  if (isLoading) {
-    return (
-      <div className="p-8">
-        <div className="text-white">Carregando...</div>
-      </div>
-    );
-  }
-
-  if (!companyId) {
-    return (
-      <div className="p-8">
-        <div className="text-red-400">Erro: Empresa não encontrada</div>
-      </div>
-    );
-  }
-
-  return (
-    <div className="p-8">
-      {/* Header */}
-      <div className="mb-8 flex items-center justify-between">
-        <div>
-          <h1 className="text-3xl font-bold text-white mb-2 flex items-center gap-3">
-            <Bot className="w-8 h-8" />
-            Gerenciar Agentes IA
-          </h1>
-          <p className="text-gray-400">
-            Crie e configure múltiplos agentes com diferentes personalidades e funções
-          </p>
-        </div>
-        <Button
-          onClick={handleCreateAgent}
-          className="bg-blue-600 hover:bg-blue-700 text-white gap-2"
-        >
-          <Plus className="w-4 h-4" />
-          Criar Novo Agente
-        </Button>
-      </div>
-
-      {/* Agents Grid */}
-      {loadingAgents ? (
-        <div className="flex items-center justify-center py-12">
-          <Loader2 className="w-8 h-8 animate-spin text-blue-500" />
-        </div>
-      ) : agents.length === 0 ? (
-        <Card className="bg-[#1A1A1A] border-[#2D2D2D]">
-          <CardContent className="py-12 text-center">
-            <Bot className="w-16 h-16 text-gray-600 mx-auto mb-4" />
-            <h3 className="text-xl font-semibold text-white mb-2">Nenhum agente criado ainda</h3>
-            <p className="text-gray-400 mb-6">
-              Crie seu primeiro agente para começar a personalizar seu assistente IA
-            </p>
-            <Button
-              onClick={handleCreateAgent}
-              className="bg-blue-600 hover:bg-blue-700 text-white gap-2"
-            >
-              <Plus className="w-4 h-4" />
-              Criar Primeiro Agente
-            </Button>
-          </CardContent>
-        </Card>
-      ) : (
-        <AgentFlowView
-          agents={agents}
-          onEdit={handleEditAgent}
-          onArchive={handleArchiveAgent}
-        />
-      )}
-
-      {/* Info Card */}
-      <div className="mt-6 p-4 bg-blue-500/10 border border-blue-500/30 rounded-lg">
-        <p className="text-sm text-blue-400">
-          💡 <strong>Dica:</strong> Você pode criar agentes especializados para diferentes funções
-          (vendas, suporte, atendimento) e vinculá-los a canais específicos como WhatsApp.
-        </p>
-      </div>
-
-      {/* Modal */}
-      {isModalOpen && (
-        <AgentConfigModal
-          companyId={companyId}
-          agentId={selectedAgentId}
-          open={isModalOpen}
-          onOpenChange={handleModalClose}
-        />
-      )}
-    </div>
-  );
+export default function RedirecionaParaMeuAgente() {
+  redirect('/dashboard/personalizacao/agentes/autobrokers');
 }

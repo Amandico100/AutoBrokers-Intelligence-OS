@@ -13,5 +13,5 @@
 import { redirect } from 'next/navigation';
 
 export default function RedirecionaParaEquipe() {
-  redirect('/dashboard/equipe');
+  redirect('/dashboard/personalizacao/equipe');
 }

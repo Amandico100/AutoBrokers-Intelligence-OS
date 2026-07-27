@@ -12,10 +12,6 @@ import {
 const BACKEND_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000';
 const ADMIN_API_KEY = process.env.ADMIN_API_KEY || '';
 
-/** Qualquer UUID que apareça logo depois de um segmento `company`. */
-const EMPRESA_NO_CAMINHO =
-  /\/company\/([0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12})/i;
-
 /**
  * Quem está chamando? Só isso — não decide o que pode, decide se existe.
  *
@@ -74,16 +70,36 @@ async function quemChama(): Promise<
  * com o código original. Não é regressão de nenhuma SPEC; é dívida que nunca
  * foi olhada porque a rota funcionava.
  *
- * O que este arquivo garante agora:
+ * A REGRA, e por que ela pode ser tão simples
+ * -------------------------------------------
+ * **Só sessão de PLATAFORMA passa.** Sem sessão -> 401. Sessão de corretora ->
+ * 403, qualquer que seja o caminho.
  *
- *   1. Sem sessão nenhuma -> 401. Fecha a exposição pública.
- *   2. Sessão de corretora não alcança o `company/<id>` de outra corretora.
+ * A primeira versão desta correção era mais frouxa: deixava a corretora passar
+ * e só barrava quando o endereço trazia `company/<id>` de outra. Aquilo cobria
+ * `agents/company/<id>/...` e deixava `agents/<agent_id>` em aberto — o UUID do
+ * agente não diz de quem ele é, então quem soubesse o número alcançava o agente
+ * alheio. Ficou registrado como P0 em aberto.
  *
- * O que ele NÃO garante, e está registrado como P0 em aberto: caminhos que
- * endereçam o recurso direto (`agents/<agent_id>`) não trazem a empresa no
- * endereço, então uma corretora logada ainda alcança o agente de outra se
- * souber o UUID. Fechar isso exige escopo no backend, na área que o Founder
- * pediu para não mexer antes de entender.
+ * O que fechou o P0 não foi mais código aqui: foi o dashboard parar de precisar
+ * deste proxy. As telas de agente, equipe, conhecimento e custos que eu havia
+ * duplicado na raiz do `/dashboard` viraram redirecionamentos para a
+ * Personalização — que fala com `/api/dashboard/*`, com escopo por sessão.
+ *
+ * Depois disso, TODOS os chamadores de `/api/admin/proxy/*` vivem em `/admin`:
+ *
+ *   app/admin/companies/[companyId]/agents/page.tsx
+ *   app/admin/blueprint-center/page.tsx        (AgentConfigModal)
+ *   app/admin/companies/page.tsx               (DocumentManagementModal)
+ *   app/admin/knowledge-base/page.tsx          (DocumentManagementModal)
+ *
+ * Nenhum no `/dashboard`. Então não há caso legítimo de corretora aqui, e a
+ * regra não precisa adivinhar dono de UUID: ela recusa a corretora inteira.
+ *
+ * Isso é melhor que a versão com escopo por dois motivos. Não depende de o
+ * caminho carregar a empresa — vale para qualquer rota, inclusive as que ainda
+ * não existem. E falha do lado seguro: uma rota nova mal desenhada vira um 403
+ * visível em desenvolvimento, não um vazamento silencioso em produção.
  */
 export async function authenticatedProxy(
   request: NextRequest,
@@ -99,15 +115,13 @@ export async function authenticatedProxy(
       );
     }
 
-    if (chamador.tipo === 'corretora') {
-      const alvo = backendPath.match(EMPRESA_NO_CAMINHO)?.[1];
-      if (alvo && alvo.toLowerCase() !== (chamador.companyId ?? '').toLowerCase()) {
-        // Não é 404 de propósito: 404 aqui vira oráculo de existência de UUID.
-        return NextResponse.json(
-          { error: 'Esta corretora não é a sua.' },
-          { status: 403 },
-        );
-      }
+    if (chamador.tipo !== 'plataforma') {
+      // 403 e não 404 de propósito: 404 aqui viraria oráculo de existência de
+      // UUID — quem chutasse números descobriria quais recursos existem.
+      return NextResponse.json(
+        { error: 'Esta área é da plataforma.' },
+        { status: 403 },
+      );
     }
 
     // 1. Construir URL do backend preservando query params

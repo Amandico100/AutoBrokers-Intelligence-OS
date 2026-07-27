@@ -13,5 +13,5 @@
 import { redirect } from 'next/navigation';
 
 export default function RedirecionaParaDocumentos() {
-  redirect('/dashboard/documentos');
+  redirect('/dashboard/personalizacao/conhecimento');
 }

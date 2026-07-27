@@ -83,16 +83,64 @@ def teste_proxy_confere_quem_chama():
            f"401 em {pos_401}, chave em {pos_chave}")
 
 
-def teste_corretora_nao_alcanca_outra():
-    print("\n[2] Corretora logada não alcança o endereço de outra corretora")
+def teste_so_a_plataforma_passa():
+    print("\n[2] Só sessão de plataforma passa — corretora nenhuma")
     fonte = _sem_comentario(_ler("lib", "admin-proxy.ts"))
     checar("status: 403" in fonte,
-           "existe recusa por empresa que não é a sua")
-    checar("companyId" in fonte,
-           "a comparação usa a empresa da sessão")
+           "existe recusa para quem não é plataforma")
+    checar("!== 'plataforma'" in fonte,
+           "a recusa é por NÃO SER plataforma, não por empresa errada",
+           "a versão por empresa deixava `agents/<id>` em aberto: o UUID do "
+           "agente não diz de quem ele é")
     # 404 aqui viraria oráculo: quem chuta UUID descobre quais existem.
     checar("status: 404" not in fonte,
            "a recusa não é 404 — 404 revelaria quais UUIDs existem")
+
+
+def teste_nenhuma_tela_da_corretora_usa_o_proxy():
+    print("\n[2b] Nenhuma tela do /dashboard depende deste proxy")
+    # É isto que sustenta a regra do caso [2]. Se uma tela da corretora voltar a
+    # chamar o proxy, a regra "só plataforma" quebra aquela tela — e o teste
+    # avisa AQUI, com o nome do arquivo, em vez de o corretor descobrir com um
+    # 403 na cara.
+    #
+    # A checagem é transitiva de propósito: a tela raramente chama o proxy
+    # direto, ela importa um componente que chama.
+    import re as _re
+
+    componentes: set[str] = set()
+    base_comp = os.path.join(RAIZ, "components")
+    for pasta, _, arquivos in os.walk(base_comp):
+        for arq in arquivos:
+            if not arq.endswith((".tsx", ".ts")):
+                continue
+            caminho = os.path.join(pasta, arq)
+            with open(caminho, encoding="utf-8") as fh:
+                if "api/admin/proxy/" in fh.read():
+                    componentes.add(os.path.splitext(arq)[0])
+
+    suspeitos: list[str] = []
+    base_dash = os.path.join(RAIZ, "app", "dashboard")
+    for pasta, _, arquivos in os.walk(base_dash):
+        for arq in arquivos:
+            if not arq.endswith((".tsx", ".ts")):
+                continue
+            caminho = os.path.join(pasta, arq)
+            with open(caminho, encoding="utf-8") as fh:
+                fonte = fh.read()
+            rel = os.path.relpath(caminho, RAIZ).replace(os.sep, "/")
+            if "api/admin/proxy/" in fonte:
+                suspeitos.append(f"{rel} (chama direto)")
+                continue
+            for comp in componentes:
+                if _re.search(rf"\b{_re.escape(comp)}\b", fonte):
+                    suspeitos.append(f"{rel} (via {comp})")
+                    break
+
+    checar(not suspeitos,
+           "nenhuma tela da corretora alcança o proxy da plataforma",
+           f"alcançam: {suspeitos}")
+    print(f"      componentes que falam com o proxy: {sorted(componentes)}")
 
 
 def teste_nenhuma_rota_de_proxy_escapa():
@@ -139,7 +187,8 @@ def main() -> int:
     print("O PROXY DO ADMIN NÃO EMPRESTA A CHAVE DE MASTER")
     print("=" * 68)
     for teste in (teste_proxy_confere_quem_chama,
-                  teste_corretora_nao_alcanca_outra,
+                  teste_so_a_plataforma_passa,
+                  teste_nenhuma_tela_da_corretora_usa_o_proxy,
                   teste_nenhuma_rota_de_proxy_escapa,
                   teste_middleware_continua_liberando_api):
         try:

@@ -37,26 +37,33 @@ export const SECONDARY: NavItem[] = [
 ];
 
 /**
- * Administração DA CORRETORA — SPEC-061 §6.
+ * Não existe um terceiro grupo de menu — e isso é deliberado.
  *
- * Estas quatro telas moravam em `/admin`, junto com a administração da
- * PLATAFORMA. A corretora entrava num endereço chamado "admin" e via um menu
- * que escondia metade dos itens — e esconder item de menu não protege nada:
- * quem digitasse o endereço chegava lá.
+ * Existiu por um dia: `ADMINISTRACAO_DA_CORRETORA`, com quatro itens novos
+ * ("Minha equipe", "Meu agente", "Meus documentos", "Meu plano"), para as
+ * telas que a SPEC-061 §6 tirou do `/admin`.
  *
- * Agora elas vivem na casa da corretora. O que muda para ela é só o endereço;
- * o que muda para a plataforma é que `/admin` passa a ser só dela.
+ * Duas coisas estavam erradas nele.
  *
- * Ficam separadas dos PILLARS de propósito: são o que se configura de vez em
- * quando, não o trabalho do dia. Misturá-las com Briefing e Atendimentos
- * empurraria o trabalho diário para baixo.
+ * A primeira: **nenhum componente o renderizava.** Ele foi declarado aqui e
+ * nunca importado, então as quatro telas ficaram órfãs — só alcançáveis
+ * digitando o endereço. O teste que deveria pegar isso conferia se o link
+ * existia NESTE ARQUIVO, e não se ele aparecia na tela. Provou a declaração,
+ * não o menu.
+ *
+ * A segunda, que é a que importa: **as quatro já tinham casa.** Desde a
+ * SPEC-045, `/dashboard/personalizacao` é o lugar do que se configura de vez em
+ * quando — equipe, conhecimento, custos, agente. Criar quatro itens de primeiro
+ * nível para o que já morava dentro de um item existente não é organizar: é
+ * duplicar, e empurrar o trabalho do dia (Briefing, Atendimentos) para baixo.
+ *
+ * A regra que fica: **o menu não cresce.** Coisa nova entra DENTRO de um item
+ * que já existe. Se não couber em nenhum, a pergunta certa é se o desenho dos
+ * itens está errado — não se falta um item.
+ *
+ * As quatro telas antigas viraram redirecionamentos para a Personalização, e
+ * `/admin/team|agent|documents|billing` apontam direto para lá.
  */
-export const ADMINISTRACAO_DA_CORRETORA: NavItem[] = [
-  { key: 'equipe', label: 'Minha equipe', href: '/dashboard/equipe', icon: 'atendimentos' },
-  { key: 'agente', label: 'Meu agente', href: '/dashboard/agente', icon: 'autobrokers' },
-  { key: 'documentos', label: 'Meus documentos', href: '/dashboard/documentos', icon: 'conhecimento' },
-  { key: 'plano', label: 'Meu plano', href: '/dashboard/plano', icon: 'aprovacao' },
-];
 
 /**
  * Estado ativo da navegação.

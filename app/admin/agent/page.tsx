@@ -13,5 +13,5 @@
 import { redirect } from 'next/navigation';
 
 export default function RedirecionaParaAgente() {
-  redirect('/dashboard/agente');
+  redirect('/dashboard/personalizacao/agentes/autobrokers');
 }
