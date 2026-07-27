@@ -153,25 +153,68 @@ export default function AdminLayout({ children }: { children: React.ReactNode })
     setLoading(false);
   }, [mounted, pathname]);
 
-  // Route protection for company admins
+  // SPEC-061 §6 — quem pode ficar em `/admin`.
+  //
+  // A lista `masterOnlyRoutes` que existia aqui SUMIU, e isso continua certo:
+  // ela enumerava, no navegador, os endereços que o admin de corretora não
+  // podia ver, e enumerar é frágil — toda tela nova precisava lembrar de entrar
+  // na lista, e quem digitasse o endereço chegava lá de qualquer jeito.
+  //
+  // O que estava errado era a PERGUNTA. "Qual é o seu papel?" parece a mesma
+  // coisa que "você é a plataforma?", e não é: o dono é as duas coisas ao mesmo
+  // tempo — plataforma, e também usuário dentro de uma corretora. Qual das duas
+  // respostas aparece depende de qual sessão sobreviveu, e há três, com
+  // vocabulários e prazos diferentes:
+  //
+  //   localStorage `smith_admin_session`  →  diz "master",        dura 8 horas
+  //   cookie       `smith_admin_session`  →  diz "master_admin",  morre ao fechar o navegador
+  //   cookie       `smith_user_session`   →  diz "admin"/"owner", dura dias
+  //
+  // Quando as duas primeiras somem — oito horas depois, ou na segunda de manhã
+  // com o navegador reiniciado — sobra a terceira. Aí `/api/admin/me` responde
+  // "admin de corretora", que é VERDADE e é a resposta errada para esta
+  // pergunta. A regra tratava isso como prova de "você não é a plataforma" e,
+  // valendo para todo `/admin/*`, transformava cada endereço do Admin num pulo
+  // para o `/dashboard`. Sem saída, porque o pulo acontecia antes de qualquer
+  // tela carregar.
+  //
+  // A pergunta certa tem UM dono — o servidor — e TRÊS respostas. Era a
+  // terceira que faltava: quem não tem sessão nenhuma pediu o portal da
+  // plataforma e precisa receber a porta dele, não uma deportação silenciosa.
   useEffect(() => {
-    if (roleLoading || !role) return;
+    if (!mounted) return;
+    if (pathname === '/admin/login') return;
 
-    // SPEC-061 §6 — separação definitiva das superfícies.
-    //
-    // A lista `masterOnlyRoutes` que existia aqui SUMIU, e isso é o ponto: ela
-    // enumerava, no navegador, os endereços que o admin de corretora não podia
-    // ver. Enumerar é frágil por natureza — toda tela nova precisava lembrar de
-    // entrar na lista, e quem digitasse o endereço direto chegava lá de
-    // qualquer forma, porque §8.4 já dizia que esconder botão não é segurança.
-    //
-    // Agora a regra é uma só e é de exclusão: `/admin` é da PLATAFORMA. Quem
-    // não é plataforma vai para a casa dele, e não há o que enumerar.
-    if (role && role !== 'master') {
-      router.push('/dashboard');
-      return;
-    }
-  }, [role, roleLoading, pathname, router, adminName]);
+    let atual = true;
+
+    (async () => {
+      try {
+        const resposta = await fetch('/api/admin/me', { credentials: 'include' });
+        if (!atual) return;
+
+        if (resposta.ok) {
+          const dados = await resposta.json();
+          // 1. É a plataforma. Fica.
+          if (dados?.sessionType === 'master_admin') return;
+          // 2. É corretora. A casa dela é outra, e existe.
+          router.push('/dashboard');
+          return;
+        }
+
+        // 3. Não é ninguém ainda. Quem pediu `/admin` recebe o login do
+        //    `/admin` — é assim que se volta para dentro.
+        router.push('/admin/login');
+      } catch {
+        // Falha de rede não é prova de que você não é a plataforma. Deixa
+        // ficar: cada tela de dentro tem a própria checagem no servidor, e
+        // expulsar por causa de wifi ruim é o defeito, não a proteção.
+      }
+    })();
+
+    return () => {
+      atual = false;
+    };
+  }, [mounted, pathname, router]);
 
   const handleLogout = async () => {
     try {

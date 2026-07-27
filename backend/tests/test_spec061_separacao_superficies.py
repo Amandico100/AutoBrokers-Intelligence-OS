@@ -104,15 +104,37 @@ def teste_dashboard_recebeu_as_telas():
 
 
 def teste_admin_expulsa_quem_nao_e_plataforma():
-    print("\n[5] Quem não é plataforma não fica em /admin")
+    print("\n[5] Quem não é plataforma não fica em /admin — e quem é, FICA")
+    # Este caso já cobrou a regra de exclusão escrita como `role !== 'master'`,
+    # e essa versão trancou o Founder para fora do próprio Admin.
+    #
+    # O papel resolvido no NAVEGADOR vem de três sessões com vocabulários e
+    # prazos diferentes (localStorage diz "master" e dura 8h; o cookie diz
+    # "master_admin" e morre ao fechar o navegador; a sessão de usuário diz
+    # "admin"). Quando as duas primeiras expiram, sobra a terceira — e ela
+    # responde "corretora", que é verdade e é a resposta errada para a pergunta
+    # "você é a plataforma?". Valendo para todo `/admin/*`, isso vira um pulo
+    # para o `/dashboard` sem saída.
+    #
+    # O que o teste protege agora é a FORMA da decisão, não a string do papel:
+    # quem decide é o servidor, e há três destinos, não dois.
     fonte = _ler(os.path.join(APP, "admin", "layout.tsx"))
-    # A regra de exclusão, com o redirecionamento para a casa certa.
-    padrao = re.search(
-        r"if\s*\(\s*role\s*&&\s*role\s*!==\s*'master'\s*\)\s*\{\s*\n?\s*router\.push\('/dashboard'\)",
-        fonte)
-    checar(padrao is not None,
-           "papel diferente de plataforma é mandado para /dashboard",
+    sem_comentario = "\n".join(l for l in fonte.split("\n")
+                               if not l.lstrip().startswith("//"))
+
+    checar("router.push('/dashboard')" in sem_comentario,
+           "quem é corretora é mandado para a casa dela",
            "a regra de exclusão sumiu do layout")
+    checar("router.push('/admin/login')" in sem_comentario,
+           "quem não tem sessão recebe o login do Admin",
+           "sem isso, quem pede /admin é deportado e não tem como voltar")
+    checar("sessionType" in sem_comentario and "master_admin" in sem_comentario,
+           "quem decide é a sessão no servidor, não o papel do navegador",
+           "voltou a decidir por string de papel no cliente")
+    checar(re.search(r"if\s*\(\s*role\s*&&\s*role\s*!==\s*'master'\s*\)\s*\{\s*\n?\s*router\.push\('/dashboard'\)",
+                     sem_comentario) is None,
+           "não expulsa mais pelo papel adivinhado no navegador",
+           "esta é exatamente a regra que trancou o dono para fora")
 
 
 def teste_nenhuma_tela_do_dashboard_empurra_para_admin():
