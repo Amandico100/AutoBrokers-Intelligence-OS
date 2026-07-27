@@ -254,8 +254,26 @@ async def attendance_observation_mode(company_id: str) -> bool:
 
     try:
         obs = await asyncio.to_thread(_query)
-    except Exception:  # noqa: BLE001 — na dúvida, comportamento atual (responder)
-        return False
+    except Exception as exc:  # noqa: BLE001
+        # FAIL-CLOSED no silêncio. Esta linha já devolveu `False` — "na dúvida,
+        # responder" — e a dúvida era razoável quando o agente ligado era o
+        # normal e a observação, a exceção.
+        #
+        # Hoje é o contrário. A corretora pareia o WhatsApp REAL dela para o
+        # Observador trabalhar em silêncio por dias, com a equipe humana
+        # atendendo os segurados como sempre. Nesse mundo, os dois erros
+        # possíveis não têm o mesmo tamanho:
+        #
+        #   responder sem poder  → um segurado real recebe resposta de robô que
+        #                          ninguém autorizou, no número da corretora.
+        #                          Não se desfaz.
+        #   calar sem precisar   → a atendente humana responde, como faz hoje.
+        #                          Custa alguns minutos.
+        #
+        # Não conseguir LER o estado do agente não é permissão para falar.
+        logger.error("[Observação] não foi possível ler o estado do agente (%s) "
+                     "— assumindo SILÊNCIO para %s", type(exc).__name__, company_id)
+        return True
     try:
         if r is not None:
             await r.set(cache_key, "1" if obs else "0", ex=_OBS_MODE_TTL_S)

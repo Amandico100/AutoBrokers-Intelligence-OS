@@ -537,6 +537,11 @@ CASOS: list[Caso] = [
          "SPEC-014/054", lambda: _roda_script("test_capability_resolver.py")),
     Caso("EGR-01", "seguranca", "Política de egresso completa",
          "SPEC-054 C", lambda: _roda_script("test_spec054_egress_guard.py")),
+    # A corretora vai parear o WhatsApp de PRODUÇÃO. Nesse arranjo, responder
+    # sem poder não se desfaz; calar sem precisar custa alguns minutos da
+    # atendente humana. Nenhuma falha técnica pode virar uma resposta.
+    Caso("OBS-02", "whatsapp", "Nenhuma falha técnica vira resposta ao segurado",
+         "SPEC-038/045", lambda: _roda_script("test_observador_silencio.py")),
     Caso("WPP-01", "whatsapp", "Corretoras não compartilham instância de WhatsApp",
          "SPEC-047", lambda: _roda_script("test_spec047_multiempresa_whatsapp.py"), obrigatorio=False),
     Caso("PAR-01", "whatsapp", "Pareamento não ressuscita tentativa expirada",

@@ -545,21 +545,43 @@ async def process_whatsapp_message_background(
         # passo 5 + cofre do Espelho aqui). O agente não responde ninguém.
         # Ligar o agente no dashboard reativa a resposta NO MESMO número —
         # o Observador/Espelho seguem funcionando sempre (nunca desligam).
+        # A decisão de FALAR e o ato de CAPTURAR são separados de propósito.
+        #
+        # Antes eram um `try` só, e isso criava um caminho que ninguém queria:
+        # se a CAPTURA falhasse, o `except` engolia e o código seguia para o
+        # fluxo de IA — o agente respondia um segurado real porque a gravação
+        # do transcript deu erro. Duas falhas diferentes, o mesmo desfecho
+        # errado.
+        #
+        # Agora: primeiro decide-se se pode falar; depois grava-se, e uma falha
+        # na gravação não vira permissão para falar.
         try:
-            from app.services.atlas.attendance_capture import (
-                attendance_observation_mode, capture_channel_message,
-            )
+            from app.services.atlas.attendance_capture import attendance_observation_mode
 
-            if await attendance_observation_mode(company_id):
+            _em_silencio = await attendance_observation_mode(company_id)
+        except Exception as e:  # noqa: BLE001
+            # Nem o portão conseguiu ser consultado. Fail-closed: não falar.
+            logger.error("[WEBHOOK] portão de observação indisponível (%s) — "
+                         "assumindo SILÊNCIO", type(e).__name__)
+            _em_silencio = True
+
+        if _em_silencio:
+            try:
+                from app.services.atlas.attendance_capture import capture_channel_message
+
                 await capture_channel_message(
                     company_id, payload.connectedPhone or "", payload.phone,
                     message_text, "in", payload.messageId,
                     "voice" if final_audio_url else ("image" if final_image_url else "text"),
                 )
                 logger.info("[WEBHOOK] 👁 Modo observação — capturado sem resposta do agente.")
-                return
-        except Exception as e:  # noqa: BLE001 — na dúvida, fluxo normal
-            logger.warning(f"[WEBHOOK] observation gate falhou: {type(e).__name__}")
+            except Exception as e:  # noqa: BLE001
+                # Perder o transcript é ruim e é recuperável — a conversa
+                # continua no WhatsApp da corretora. Responder sem autorização
+                # não é recuperável.
+                logger.error("[WEBHOOK] captura do espelho falhou (%s) — o "
+                             "agente permanece em silêncio", type(e).__name__)
+            return
 
         # 7. Fluxo IA
         # 🔥 BILLING: Verificar saldo antes de invocar IA
