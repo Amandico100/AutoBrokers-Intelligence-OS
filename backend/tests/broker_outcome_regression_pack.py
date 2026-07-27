@@ -516,6 +516,11 @@ CASOS: list[Caso] = [
     # linha numa tabela, num produto que ainda não tem preço aprovado.
     Caso("COB-01", "operacao", "Ninguém é barrado por algo que ainda não tem preço",
          "SPEC-062", lambda: _roda_script("test_spec062_porteira_de_cobranca.py")),
+    # Medido em producao sem cookie nenhum: `/dashboard` e `/admin` barravam com
+    # 307, e `/api/admin/proxy/agents/company/<id>/...` devolvia 200 com o prompt
+    # da corretora. O proxy carimbava a chave de master para quem passasse na rua.
+    Caso("PRX-01", "seguranca", "O proxy do Admin não empresta a chave de master",
+         "SPEC-054/061", lambda: _roda_script("test_proxy_admin_exige_sessao.py")),
     Caso("IDN-01", "identidade", "Corretora A não enxerga dados da corretora B",
          "SPEC-048", lambda: _roda_script("test_spec048_isolamento_corretoras.py")),
     Caso("CAP-01", "capacidades", "Agente só recebe os poderes do seu papel",
