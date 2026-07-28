@@ -234,7 +234,10 @@ def start_buffer_scheduler():
         scheduler.add_job(
             check_attendance_distiller,
             "interval",
-            seconds=3600,
+            # A cada 30 min. No regime normal a task sai em milissegundos (fora
+            # da janela da madrugada ou marcador do dia ja gravado); o intervalo
+            # curto so importa no MODO DE RECUPERACAO, depois de um pareamento.
+            seconds=_env_int("DISTILLER_CHECK_SECONDS", 1800),
             id="attendance_distiller_check",
             max_instances=1,
         )

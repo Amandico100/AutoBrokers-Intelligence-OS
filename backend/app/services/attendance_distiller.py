@@ -118,14 +118,42 @@ _STAGE1_SYSTEM = (
 
 
 def _load_undistilled_sync(max_sessions: int) -> List[Dict[str, Any]]:
+    """As próximas sessões a destilar, buscando ALÉM das já destiladas.
+
+    Isto era `limit(max_sessions * 4)` e teria travado a recuperação no meio do
+    caminho — de um jeito silencioso, que é o pior.
+
+    A conta: o PostgREST corta em 1.000 linhas. Depois de destilar as primeiras
+    mil, a consulta continuaria devolvendo essas mesmas mil — todas já
+    marcadas — e o filtro encontraria **zero** pendentes. O Destilador
+    concluiria "não há trabalho" com 5.000 sessões na fila, e o painel diria
+    que estava tudo em dia.
+
+    Agora ele avança pelas páginas até juntar o lote pedido ou a fonte secar.
+    """
     from app.core.database import get_supabase_client
 
     db = get_supabase_client()
-    rows = (db.client.table("attendance_sessions")
-            .select("id, company_id, observer_number, counterparty, started_at, summary")
-            .eq("status", "closed").order("started_at", desc=True)
-            .limit(max_sessions * 4).execute().data or [])
-    return [r for r in rows if not ((r.get("summary") or {}).get("distilled"))][:max_sessions]
+    pendentes: List[Dict[str, Any]] = []
+    inicio = 0
+    while len(pendentes) < max_sessions:
+        lote = (db.client.table("attendance_sessions")
+                .select("id, company_id, observer_number, counterparty, "
+                        "started_at, summary")
+                .eq("status", "closed")
+                # Mais antigas primeiro na recuperação: o histórico entrou de
+                # uma vez, e processar do fim para o começo deixaria as
+                # conversas mais velhas para sempre no fim da fila.
+                .order("started_at", desc=False)
+                .range(inicio, inicio + 999).execute().data) or []
+        pendentes.extend(r for r in lote
+                         if not ((r.get("summary") or {}).get("distilled")))
+        if len(lote) < 1000:
+            break
+        inicio += 1000
+        if inicio > 200_000:
+            break
+    return pendentes[:max_sessions]
 
 
 def _load_session_text_sync(session_id: str) -> str:
@@ -289,7 +317,7 @@ async def distill_once(force: bool = False, *, atrasado: bool = False) -> Dict[s
     max_sessions = _env_int(
         "DISTILLER_BACKLOG_SESSIONS_PER_RUN" if atrasado
         else "DISTILLER_MAX_SESSIONS_PER_RUN",
-        200 if atrasado else 40)
+        400 if atrasado else 40)
     min_group = _env_int("DISTILLER_MIN_SESSIONS", _MIN_SESSIONS_DEFAULT)
 
     sessions = await asyncio.to_thread(_load_undistilled_sync, max_sessions)
@@ -297,46 +325,35 @@ async def distill_once(force: bool = False, *, atrasado: bool = False) -> Dict[s
         return stats
 
     touched_groups: Dict[Tuple[str, str], int] = {}
-    for sess in sessions:
-        try:
-            text = await asyncio.to_thread(_load_session_text_sync, sess["id"])
-            if len(text) < 80:  # sessão sem conteúdo útil (só mídia/1 msg)
-                summary = dict(sess.get("summary") or {})
-                summary["distilled"] = {"skipped": "curta"}
-                await asyncio.to_thread(_save_session_summary_sync, sess["id"], summary)
-                continue
-            raw = await _call_llm(_STAGE1_SYSTEM, text, company_id=str(sess.get("company_id") or ""))
-            data = _parse_json(raw)
-            if not data:
-                continue
-            summary = dict(sess.get("summary") or {})
-            summary["distilled"] = {
-                "tipo": data.get("tipo"), "ramo": data.get("ramo"),
-                "servico": data.get("servico"), "seguradora": data.get("seguradora"),
-                "resumo_conduta": data.get("resumo_conduta") or [],
-                "perguntas_na_ordem": data.get("perguntas_na_ordem") or [],
-                "score": data.get("score"), "flags": data.get("flags") or [],
-                "at": datetime.now(timezone.utc).isoformat(),
-            }
-            await asyncio.to_thread(_save_session_summary_sync, sess["id"], summary)
-            stats["sessions"] += 1
 
-            for fato in (data.get("fatos_reutilizaveis") or [])[:8]:
-                card_meta = {"ramo": data.get("ramo"), "seguradora": data.get("seguradora")}
-                cid = await asyncio.to_thread(_store_card_sync, str(fato), card_meta)
-                if cid:
-                    if _card_pii_clean(" ".join(str(fato).split())):
-                        stats["cards_new"] += 1
-                    else:
-                        stats["cards_rejected_pii"] += 1
+    # As sessoes sao destiladas EM PARALELO, com teto.
+    #
+    # Medido em 28/07/2026 numa rodada real: 30 sessoes em 9min55s — ~20s cada,
+    # quase tudo esperando o modelo responder. Em fila, as 6.125 sessoes que o
+    # pareamento trouxe levariam 34 HORAS.
+    #
+    # E cada sessao e independente da outra: nada no estagio 1 depende do
+    # resultado da anterior. Esperar uma para comecar a proxima nao comprava
+    # qualidade nenhuma — comprava so tempo.
+    #
+    # O teto existe por tres motivos concretos, e nao por prudencia vaga:
+    #   1. limite de requisicoes por minuto do provedor;
+    #   2. o Supabase tambem e chamado por sessao (ler transcript, gravar
+    #      resumo, gravar cards);
+    #   3. custo concentrado: paralelizar nao gasta mais, gasta ANTES — e um
+    #      erro sistematico queimaria o saldo mais rapido do que alguem nota.
+    teto = _env_int("DISTILLER_CONCURRENCY", 6)
+    vagas = asyncio.Semaphore(teto)
+    trava_stats = asyncio.Lock()
 
-            ramo = str(data.get("ramo") or "outro")
-            servico = str(data.get("servico") or "outro")
-            touched_groups[(ramo, servico)] = touched_groups.get((ramo, servico), 0) + 1
-        except Exception as e:  # noqa: BLE001
-            logger.error(f"[DESTILADOR] sessão {sess.get('id')} falhou: {type(e).__name__}")
+    async def _uma_sessao(sess: Dict[str, Any]) -> None:
+        async with vagas:
+            await _destilar_sessao(sess, stats, touched_groups, trava_stats)
 
-    # Estágio 2 — playbooks dos grupos tocados nesta rodada (modelo FORTE)
+    await asyncio.gather(*[_uma_sessao(s) for s in sessions],
+                         return_exceptions=True)
+
+    # Estagio 2 — playbooks dos grupos tocados nesta rodada (modelo FORTE)
     for (ramo, servico), _n in touched_groups.items():
         try:
             if servico in ("outro", "") or ramo in ("",):
@@ -357,14 +374,77 @@ async def distill_once(force: bool = False, *, atrasado: bool = False) -> Dict[s
         except Exception as e:  # noqa: BLE001
             logger.error(f"[DESTILADOR] playbook {ramo}/{servico} falhou: {type(e).__name__}")
 
+    # Pulso na Central de Agentes: é o que mostra o Destilador VIVO. Sem ele, a
+    # tela diz "sem sinal" e ninguém distingue "parado" de "sem trabalho".
     try:
         from app.core.heartbeat import beat
 
         await beat("espelho_atendimento", stats["sessions"])
     except Exception:  # noqa: BLE001
         pass
-    logger.info(f"[DESTILADOR] rodada: {stats}")
+
+    logger.info("[DESTILADOR] rodada: %s", stats)
     return stats
+
+
+async def _destilar_sessao(sess: Dict[str, Any], stats: Dict[str, int],
+                           touched_groups: Dict[Tuple[str, str], int],
+                           trava: "asyncio.Lock") -> None:
+    """Uma sessao, do transcript ao resumo e aos cards.
+
+    Extraida do laco para poder rodar em paralelo. A logica e a mesma de antes,
+    linha por linha; o que mudou foi so QUEM chama e quantas ao mesmo tempo.
+
+    Os contadores sao incrementados sob trava: `+=` em dicionario compartilhado
+    por corrotinas concorrentes perde incremento, e um relatorio que diz "28"
+    quando foram 30 e pior que um que nao diz nada.
+    """
+    try:
+        text = await asyncio.to_thread(_load_session_text_sync, sess["id"])
+        if len(text) < 80:  # sessão sem conteúdo útil (só mídia/1 msg)
+            summary = dict(sess.get("summary") or {})
+            summary["distilled"] = {"skipped": "curta"}
+            await asyncio.to_thread(_save_session_summary_sync, sess["id"], summary)
+            return
+        raw = await _call_llm(_STAGE1_SYSTEM, text,
+                              company_id=str(sess.get("company_id") or ""))
+        data = _parse_json(raw)
+        if not data:
+            return
+        summary = dict(sess.get("summary") or {})
+        summary["distilled"] = {
+            "tipo": data.get("tipo"), "ramo": data.get("ramo"),
+            "servico": data.get("servico"), "seguradora": data.get("seguradora"),
+            "resumo_conduta": data.get("resumo_conduta") or [],
+            "perguntas_na_ordem": data.get("perguntas_na_ordem") or [],
+            "score": data.get("score"), "flags": data.get("flags") or [],
+            "at": datetime.now(timezone.utc).isoformat(),
+        }
+        await asyncio.to_thread(_save_session_summary_sync, sess["id"], summary)
+
+        novos = rejeitados = 0
+        for fato in (data.get("fatos_reutilizaveis") or [])[:8]:
+            card_meta = {"ramo": data.get("ramo"), "seguradora": data.get("seguradora")}
+            cid = await asyncio.to_thread(_store_card_sync, str(fato), card_meta)
+            if cid:
+                if _card_pii_clean(" ".join(str(fato).split())):
+                    novos += 1
+                else:
+                    rejeitados += 1
+
+        ramo = str(data.get("ramo") or "outro")
+        servico = str(data.get("servico") or "outro")
+
+        async with trava:
+            stats["sessions"] += 1
+            stats["cards_new"] += novos
+            stats["cards_rejected_pii"] += rejeitados
+            touched_groups[(ramo, servico)] = touched_groups.get((ramo, servico), 0) + 1
+    except Exception as e:  # noqa: BLE001
+        # Uma sessão que falha não derruba as outras cinco em voo, e a próxima
+        # rodada a pega de novo: ela continua sem a marca `distilled`.
+        logger.error("[DESTILADOR] sessão %s falhou: %s",
+                     sess.get("id"), type(e).__name__)
 
 
 def _fila_pendente() -> int:
@@ -373,10 +453,24 @@ def _fila_pendente() -> int:
 
     try:
         db = get_supabase_client()
-        rows = (db.client.table("attendance_sessions").select("summary")
-                .eq("status", "closed").limit(20_000).execute().data or [])
-        return sum(1 for r in rows
-                   if not ((r.get("summary") or {}).get("distilled")))
+        # PAGINADO. `limit(20_000)` era ilusão: o PostgREST corta em 1.000 sem
+        # avisar, e a fila apareceria como 1.000 para sempre — o modo de
+        # recuperação nunca desligaria, ou pior, nunca ligaria se o corte
+        # ficasse abaixo do limiar.
+        pendentes = 0
+        inicio = 0
+        while True:
+            lote = (db.client.table("attendance_sessions").select("summary")
+                    .eq("status", "closed")
+                    .order("started_at", desc=True)
+                    .range(inicio, inicio + 999).execute().data) or []
+            pendentes += sum(1 for r in lote
+                             if not ((r.get("summary") or {}).get("distilled")))
+            if len(lote) < 1000:
+                return pendentes
+            inicio += 1000
+            if inicio > 200_000:
+                return pendentes
     except Exception:  # noqa: BLE001
         return 0
 
@@ -425,8 +519,8 @@ async def check_attendance_distiller() -> int:
             from app.core.redis import get_async_redis_client
 
             r = await get_async_redis_client()
-            janela = now.strftime("%Y-%m-%dT%H")
-            if not await r.set(f"{_MARKER}:atraso:{janela}", "1", ex=5400, nx=True):
+            janela = now.strftime("%Y-%m-%dT%H") + ("a" if now.minute < 30 else "b")
+            if not await r.set(f"{_MARKER}:atraso:{janela}", "1", ex=2700, nx=True):
                 return 0
             logger.info("[DESTILADOR] %d sessões na fila — modo de recuperação",
                         pendentes)

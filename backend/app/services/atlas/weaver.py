@@ -374,8 +374,20 @@ async def weave_insurer(insurer_key: str, ramo: str = "auto", company_id: Option
 
     # Idempotente: substitui a proposta observada anterior (não empilha versões).
     def _save() -> None:
+        # Aposenta TODO mapa observado desta seguradora — não só os do mesmo
+        # ramo.
+        #
+        # Quando o ramo padrão mudou de "auto" para "todos" em 28/07/2026, a
+        # filtragem por `ramo` deixou os mapas antigos vivos: a tela do Atlas
+        # passou a mostrar "Allianz · Auto" E "Allianz · Todos", com números
+        # diferentes, sem dizer qual valia.
+        #
+        # Existe UM mapa observado por seguradora, porque existe UM WhatsApp e
+        # UMA URA. Dois cartões para a mesma seguradora é o operador tendo de
+        # adivinhar, e adivinhar errado significa o agente seguindo o mapa
+        # velho.
         supabase.client.table("ura_maps").update({"status": "superseded"}).eq(
-            "insurer_key", insurer_key).eq("ramo", ramo_final).eq(
+            "insurer_key", insurer_key).eq(
             "source", "observed").eq("status", "observed").execute()
         supabase.client.table("ura_maps").insert({
             "insurer_key": insurer_key, "ramo": ramo_final, "version": 1,
