@@ -87,43 +87,10 @@ def labels_match(option_label: str, click_label: str) -> bool:
 
 
 def _sem_copias(events: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
-    """Uma mensagem gravada três vezes é uma mensagem.
+    """A mesma regra de identidade que o Destilador usa. Ver `atlas.mensagem`."""
+    from app.services.atlas.mensagem import sem_copias
 
-    Reimportações do histórico gravaram a mesma mensagem várias vezes (2,66x na
-    Allianz, 2,90x na Zurich, medido em 28/07/2026). A causa foi corrigida em
-    `history_ingest._history_message_id`, mas as cópias já gravadas continuam
-    lá — e elas não são só peso.
-
-    O Tecelão casa cada tela com a resposta que vem LOGO DEPOIS. Com as cópias
-    intercaladas a sequência vira tela-tela-tela-resposta: as duas primeiras
-    ficam sem escolha casada e viram aresta apenas inferida. Nas telas de lista
-    e botão da Porto, 70% ficaram sem resposta.
-
-    A identidade é (sessão, direção, instante, tipo, texto). Duas mensagens
-    iguais, no mesmo segundo, na mesma direção, dentro da mesma sessão, são a
-    mesma mensagem — não um cliente que disse "Ok" duas vezes no mesmo segundo.
-
-    Nada é apagado do banco: isto é leitura.
-    """
-    vistos: set = set()
-    saida: List[Dict[str, Any]] = []
-    for e in events:
-        instante, texto = e.get("wa_timestamp"), e.get("text")
-        # Sem instante ou sem texto (foto, áudio) não há identidade segura:
-        # na dúvida a mensagem FICA. Perder é irreversível; sobrar não é.
-        if not instante or not texto:
-            saida.append(e)
-            continue
-        chave = (e.get("session_id"), e.get("direction"), instante,
-                 e.get("msg_type"), texto)
-        if chave in vistos:
-            continue
-        vistos.add(chave)
-        saida.append(e)
-    if len(saida) != len(events):
-        logger.info("atlas.weaver: %d eventos lidos, %d únicos (%d cópias ignoradas)",
-                    len(events), len(saida), len(events) - len(saida))
-    return saida
+    return sem_copias(events)
 
 
 def _events_to_steps(events: List[Dict[str, Any]]) -> List[Dict[str, Any]]:

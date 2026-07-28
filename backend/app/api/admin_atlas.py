@@ -176,7 +176,14 @@ async def atlas_maps(_: Any = Depends(require_master_admin)) -> Dict[str, Any]:
         cards.append({
             "id": r["id"], "insurer_key": r["insurer_key"], "ramo": r["ramo"],
             "status": r["status"], "source": r["source"],
-            "nodes": cov.get("nodes", 0), "coverage_pct": cov.get("pct", 0),
+            # `nodes_ura` e o tamanho da URA de verdade. `nodes` conta tambem
+            # as telas da conversa com o especialista humano — 757 das 930 da
+            # Allianz. Mostrar 930 como "telas da URA" faz o operador achar
+            # que o mapa esta gigante e a cobertura pessima, quando a URA tem
+            # algumas dezenas de telas e a conversa nao tem rota.
+            "nodes": cov.get("nodes_ura", cov.get("nodes", 0)),
+            "nodes_humano": cov.get("nodes_humano", 0),
+            "coverage_pct": cov.get("pct", 0),
             "sessions": ((r.get("map") or {}).get("meta") or {}).get("sessions", 0),
             "updated_at": r["created_at"],
         })
@@ -481,7 +488,7 @@ async def abrir_orcamento_midia(
     Ordem de uso: abrir o orçamento aqui, depois disparar
     `POST /observer/history-sync`.
     """
-    from app.services.atlas.history_ingest import abrir_orcamento_de_midia
+    from app.services.atlas.observer_media import abrir_orcamento_de_midia
 
     pedido = int((body or {}).get("quantas") or 0)
     autorizadas = await abrir_orcamento_de_midia(pedido)

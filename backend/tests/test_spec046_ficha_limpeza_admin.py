@@ -198,8 +198,15 @@ print("\n[7] Portal Admin - navegacao devolvida")
 _layout = _src("app/admin/layout.tsx")
 check("item-pai com submenu NAVEGA (Link + seta separada)",
       "flex flex-1 items-center gap-3 px-4 py-3" in _layout and "Expandir ${item.label}" in _layout)
-check("subitem Empresas & Agentes -> /admin/companies",
-      "Empresas & Agentes" in _layout)
+# O rótulo "Empresas & Agentes" deixou de existir na SPEC-061 (commit 2d6c5ad),
+# quando o Admin foi reorganizado em 8 hubs e o item virou "Corretoras" com o
+# subitem "Todas as corretoras". O teste continuou procurando a palavra morta e
+# falhava enquanto a navegação estava certa.
+#
+# O que importa aqui nunca foi o texto: é existir um caminho do menu até a
+# lista de corretoras. É isso que passa a ser verificado.
+check("o menu leva à lista de corretoras (/admin/companies)",
+      "'/admin/companies'" in _layout and "orretora" in _layout)
 _cockpit = _src("app/admin/corretoras/page.tsx")
 check("Cockpit tem Configuracao completa -> companies/[id]/agents",
       "Configura" in _cockpit and "/agents" in _cockpit)

@@ -35,39 +35,17 @@ def _bootstrap():
         m = sys.modules.setdefault(name, types.ModuleType(name))
         m.__path__ = []
     _load("app.services.ura_map_service", "app/services/ura_map_service.py")
-    # cartographer importa muita coisa; stub só o que o templater usa
-    cart = types.ModuleType("app.services.cartographer")
-    _real = _load("app.services._cart_real", "app/services/cartographer.py") if False else None
-    # reimplementa via import real seria pesado; expõe parse_options/classify_screen reais
-    import re
-
-    def parse_options(text):
-        labels = []
-        for m in re.finditer(r"bot[ãa]o\s*\d+\s*:\s*([^\n|]+)", text, re.IGNORECASE):
-            labels.append(m.group(1).strip())
-        for m in re.finditer(r"(?:^|\n)\s*(\d{1,2})\s*[-–.)]\s*([^\n|]{2,60})", text):
-            labels.append(m.group(2).strip())
-        if not labels:
-            lines = [ln.strip() for ln in str(text or "").splitlines() if ln.strip()]
-            cand = [ln for ln in lines[1:] if 2 <= len(ln) <= 48 and not ln.endswith((".", "?", "!", ":", ",")) and not ln[0].islower() and len(ln.split()) <= 7]
-            if len(cand) >= 2:
-                labels = cand
-        seen, out = set(), []
-        for l in labels:
-            if l.lower() not in seen:
-                seen.add(l.lower()); out.append(l)
-        return out
-
-    def classify_screen(text, options):
-        if options:
-            return "menu"
-        if "?" in text or re.search(r"informe|digite|qual", text, re.IGNORECASE):
-            return "pergunta"
-        return "informativo"
-
-    cart.parse_options = parse_options
-    cart.classify_screen = classify_screen
-    sys.modules["app.services.cartographer"] = cart
+    # O CARTÓGRAFO DE VERDADE, não uma cópia dele.
+    #
+    # Aqui existia uma reimplementação de `parse_options`/`classify_screen`
+    # dentro do teste — com o limite de 48 caracteres e sem tirar o negrito,
+    # ou seja, a versão de antes dos consertos de 28/07/2026.
+    #
+    # Um teste que valida o Tecelão contra um parser que não é o de produção
+    # não testa o Tecelão: testa a cópia. Ele passaria com o produto quebrado
+    # e quebraria com o produto certo — que foi exatamente o que aconteceu
+    # quando `_HUMANO_RE` passou a ser usado e o stub não o tinha.
+    _load("app.services.cartographer", "app/services/cartographer.py")
     tmpl = _load("app.services.atlas.templater", "app/services/atlas/templater.py")
     weav = _load("app.services.atlas.weaver", "app/services/atlas/weaver.py")
     return tmpl, weav

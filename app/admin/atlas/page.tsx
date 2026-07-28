@@ -653,7 +653,7 @@ export default function AtlasPage() {
                       <div style={{ width: 42, height: 42, borderRadius: 11, background: b.bg, color: '#fff', display: 'flex', alignItems: 'center', justifyContent: 'center', fontWeight: 700, fontSize: 15 }}>{b.mono}</div>
                       <div style={{ flex: 1, minWidth: 0 }}>
                         <p style={{ fontSize: 14, fontWeight: 700, margin: 0, textTransform: 'capitalize' }}>{c.insurer_key} · {c.ramo}</p>
-                        <p style={{ fontSize: 11.5, color: '#8A93A3', margin: '2px 0 0' }}>{c.nodes} telas · {c.sessions} sessões observadas</p>
+                        <p style={{ fontSize: 11.5, color: '#8A93A3', margin: '2px 0 0' }}>{c.nodes} telas da URA{(c as any).nodes_humano ? ` · ${(c as any).nodes_humano} de conversa com o especialista` : ''} · {c.sessions} sessões observadas</p>
                       </div>
                     </div>
                     <div style={{ marginTop: 12 }}>

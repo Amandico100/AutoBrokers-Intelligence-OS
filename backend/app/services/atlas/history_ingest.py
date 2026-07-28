@@ -28,45 +28,6 @@ from typing import Any, Dict, List, Optional, Tuple
 
 logger = logging.getLogger(__name__)
 
-# Quantas mídias do histórico ainda podem ser enfileiradas. O contador vive no
-# REDIS porque o teto atravessa requisições: quem autoriza é o Admin, e quem
-# gasta é o webhook do HistorySync, que chega depois e várias vezes.
-#
-# Fechado por padrão. A instrução do Founder em 28/07/2026 foi explícita —
-# "NÃO FAÇA A ANÁLISE DAS 9565 MÍDIAS VIA API NUNCA. APENAS AS 20". Quem abre
-# é uma ação humana, nunca o código.
-_ORCAMENTO_MIDIA = "atlas:history:media_budget"
-
-
-async def _pode_gastar_midia() -> bool:
-    """Consome uma unidade do orçamento. Sem orçamento aberto, responde não.
-
-    `DECR` numa chave inexistente cria em -1 e devolve -1 — então a ausência
-    de autorização já é uma recusa, sem precisar de nenhum `if` extra. É a
-    falha fechada saindo de graça do próprio Redis.
-    """
-    try:
-        from app.core.redis import get_async_redis_client
-
-        r = await get_async_redis_client()
-        return int(await r.decr(_ORCAMENTO_MIDIA)) >= 0
-    except Exception:  # noqa: BLE001 — Redis fora = nada é gasto
-        return False
-
-
-async def abrir_orcamento_de_midia(quantas: int, validade_s: int = 7200) -> int:
-    """Autoriza N mídias do histórico a serem baixadas e lidas. Ação humana."""
-    quantas = max(0, min(int(quantas or 0), 500))
-    from app.core.redis import get_async_redis_client
-
-    r = await get_async_redis_client()
-    if quantas <= 0:
-        await r.delete(_ORCAMENTO_MIDIA)
-        return 0
-    await r.set(_ORCAMENTO_MIDIA, quantas, ex=validade_s)
-    return quantas
-
-
 def _find_conversations(data: Any) -> List[Dict[str, Any]]:
     """Localiza a lista de conversas no payload (tolerante a casing/aninhamento)."""
     if isinstance(data, dict):
@@ -333,7 +294,10 @@ async def _ingest_conversation(company_id: str, observer_number: str, counterpar
             # a instrução de 28/07/2026 foi explícita — "NÃO FAÇA A ANÁLISE
             # DAS 9565 MÍDIAS VIA API NUNCA. APENAS AS 20". Zero significa
             # zero: nenhuma transcrição é disparada sem alguém pedir.
-            if media_meta and await _pode_gastar_midia():
+            # Sem `if` de orçamento aqui: quem decide é `enqueue_observer_media`,
+            # o portão único. Checar nos dois lugares gastaria dois créditos
+            # por mídia e o teto de 20 viraria 10.
+            if media_meta:
                 try:
                     from app.services.atlas.observer_media import enqueue_observer_media
 

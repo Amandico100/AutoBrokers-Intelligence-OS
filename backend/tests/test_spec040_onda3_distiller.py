@@ -55,6 +55,7 @@ class _Table:
         self._order = None
         self._desc = True
         self._limit = None
+        self._range = None
 
     def select(self, *_a, **_k): self._mode = "select"; return self
     def insert(self, payload): self._mode = "insert"; self._payload = payload; return self
@@ -74,6 +75,18 @@ class _Table:
 
     def limit(self, n): self._limit = n; return self
 
+    def range(self, inicio, fim):
+        """Paginação, como o PostgREST de verdade.
+
+        O falso não tinha `range` e o Destilador quebrava com
+        `'_Table' object has no attribute 'range'` — enquanto em produção
+        rodava. Um falso que não sabe fazer o que o real faz esconde exatamente
+        o defeito que a paginação existe para evitar: o corte silencioso em
+        1.000 linhas.
+        """
+        self._range = (int(inicio), int(fim))
+        return self
+
     def _rows(self):
         rows = list(self.store.get(self.name, []))
         for col, val in self._eq:
@@ -82,6 +95,9 @@ class _Table:
             rows.sort(key=lambda r: str(r.get(self._order) or ""), reverse=self._desc)
         if self._limit:
             rows = rows[: self._limit]
+        if self._range:
+            inicio, fim = self._range
+            rows = rows[inicio:fim + 1]
         return rows
 
     def execute(self):
@@ -232,6 +248,11 @@ def _bootstrap():
 
     _load("app.core.heartbeat", "app/core/heartbeat.py")
     _load("app.services.atlas.templater", "app/services/atlas/templater.py")
+    # A regra de identidade de mensagem. O Destilador a usa para nao mandar
+    # a mesma linha duas vezes para a LLM; sem ela registrada aqui, TODAS as
+    # sessoes falham com ModuleNotFoundError — foi o que aconteceu quando o
+    # filtro de copias entrou, em 28/07/2026.
+    _load("app.services.atlas.mensagem", "app/services/atlas/mensagem.py")
     _load("app.services.knowledge_scope", "app/services/knowledge_scope.py")
     dist = _load("app.services.attendance_distiller", "app/services/attendance_distiller.py")
     return dist, store, redis, qdrant, lf.LLMFactory

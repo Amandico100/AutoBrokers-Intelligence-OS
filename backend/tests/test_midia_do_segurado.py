@@ -1,40 +1,5 @@
-"""O agente precisa VER a mídia — e ninguém transcreve 9.002 sem mandar.
-
-O que foi medido em 28/07/2026
-------------------------------
-Nenhum áudio, foto ou documento do Espelho foi lido. Nem um:
-
-    document 3.572   image 2.685   audio 2.631   video 114     = 9.002
-
-    9.002 do history_sync ... nunca entraram na fila
-       23 ao vivo .......... tentaram e falharam, TODAS
-
-Em seguro isso é caro de um jeito que não aparece: o áudio é onde o cliente
-explica o sinistro, e o documento é a apólice.
-
-Duas descobertas mudaram o desenho
-----------------------------------
-**1. São dois wires, não um.** O Swagger do próprio fork
-(`/swagger/doc.json`) mostra `POST /message/downloadmedia` com corpo
-`{message: waE2E.Message}`, e responde 404 em `/chat/getBase64FromMediaMessage`
-— que é o wire do Baileys. O caminho do Evolution GO no webhook estava
-marcado "shape a confirmar" e devolvia `None`: com o agente ligado, toda foto
-do segurado seria invisível.
-
-**2. A mídia antiga só existe durante o sync.** O download exige o
-`waE2E.Message` inteiro — `mediaKey`, `directPath`, `fileEncSha256` — e nada
-disso é gravado. `media_meta` guarda tipo, nome e legenda. Depois que a
-ingestão retorna, aquela foto é inalcançável para sempre.
-
-Por isso o orçamento existe
----------------------------
-> Founder, 28/07/2026: "NÃO FAÇA A ANÁLISE DAS 9565 MÍDIAS VIA API NUNCA.
->  APENAS AS 20 QUE VC FALOU."
-
-Quem autoriza é o Admin; quem gasta é o webhook do sync, que chega depois e
-várias vezes. O contador é um `DECR` no Redis: sem crédito aberto ele devolve
--1, e a recusa sai de graça do próprio Redis.
-"""
+"""O agente precisa VER a mídia — e ninguém transcreve 9.002 sem mandar.\n\nO que foi medido em 28/07/2026\n------------------------------\nNenhum áudio, foto ou documento do Espelho foi lido. Nem um:\n\n    document 3.572   image 2.685   audio 2.631   video 114     = 9.002\n\n    9.002 do history_sync ... nunca entraram na fila\n       23 ao vivo .......... tentaram e falharam, TODAS\n\nEm seguro isso é caro de um jeito que não aparece: o áudio é onde o cliente\nexplica o sinistro, e o documento é a apólice.\n\nDuas descobertas mudaram o desenho\n----------------------------------\n**1. São dois wires, não um.** O Swagger do próprio fork\n(`/swagger/doc.json`) mostra `POST /message/downloadmedia` com corpo\n`{message: waE2E.Message}`, e responde 404 em `/chat/getBase64FromMediaMessage`\n— que é o wire do Baileys. O caminho do Evolution GO no webhook estava\nmarcado "shape a confirmar" e devolvia `None`: com o agente ligado, toda foto\ndo segurado seria invisível.\n\n**2. A mídia antiga só existe durante o sync.** O download exige o\n`waE2E.Message` inteiro — `mediaKey`, `directPath`, `fileEncSha256` — e nada\ndisso é gravado. `media_meta` guarda tipo, nome e legenda. Depois que a\ningestão retorna, aquela foto é inalcançável para sempre.\n\nPor isso o orçamento existe\n---------------------------\n> Founder, 28/07/2026: "NÃO FAÇA A ANÁLISE DAS 9565 MÍDIAS VIA API NUNCA.
+>  APENAS AS 20 QUE VC FALOU."\n\nQuem autoriza é o Admin; quem gasta é o webhook do sync, que chega depois e\nvárias vezes. O contador é um `DECR` no Redis: sem crédito aberto ele devolve\n-1, e a recusa sai de graça do próprio Redis.\n"""
 
 from __future__ import annotations
 
@@ -76,7 +41,7 @@ def _funcao(fonte: str, nome: str) -> str:
 
 def teste_o_orcamento_nasce_fechado():
     print("\n[1] Sem alguém mandar, nenhuma mídia é transcrita")
-    fonte = _so_codigo(_ler("app", "services", "atlas", "history_ingest.py"))
+    fonte = _so_codigo(_ler("app", "services", "atlas", "observer_media.py"))
     gasto = _funcao(fonte, "_pode_gastar_midia")
     checar(bool(gasto), "existe a função que consome o orçamento")
     checar("decr(" in gasto,
@@ -92,7 +57,7 @@ def teste_o_orcamento_nasce_fechado():
 
 def teste_abrir_o_orcamento_e_ato_humano_e_limitado():
     print("\n[2] Abrir o crédito é ato humano, e tem teto")
-    fonte = _so_codigo(_ler("app", "services", "atlas", "history_ingest.py"))
+    fonte = _so_codigo(_ler("app", "services", "atlas", "observer_media.py"))
     abrir = _funcao(fonte, "abrir_orcamento_de_midia")
     checar(bool(abrir), "existe a função que autoriza")
     checar("min(" in abrir and "500" in abrir,
@@ -111,16 +76,13 @@ def teste_abrir_o_orcamento_e_ato_humano_e_limitado():
 
 def teste_a_ingestao_so_enfileira_com_credito():
     print("\n[3] A ingestão não enfileira mídia por conta própria")
-    fonte = _so_codigo(_ler("app", "services", "atlas", "history_ingest.py"))
-    checar("await _pode_gastar_midia()" in fonte,
-           "a fila de mídia passa pelo orçamento")
-    i = fonte.find("await _pode_gastar_midia()")
-    trecho = fonte[i:i + 400]
-    checar("enqueue_observer_media" in trecho,
-           "e é isso que decide se a mídia entra na fila")
-    checar("media_meta and await _pode_gastar_midia()" in fonte,
-           "a condição vem ANTES de gastar",
-           "gastar crédito em mensagem sem mídia esvaziaria o teto à toa")
+    hist = _so_codigo(_ler("app", "services", "atlas", "history_ingest.py"))
+    checar("enqueue_observer_media" in hist,
+           "a ingestão do histórico oferece a mídia à fila")
+    checar("_pode_gastar_midia" not in hist,
+           "e NÃO checa o orçamento por conta própria",
+           "checar aqui e na fila gastaria dois créditos por mídia: "
+           "o teto de 20 viraria 10")
 
 
 def teste_o_agente_enxerga_a_midia_no_wire_certo():
@@ -164,6 +126,41 @@ def teste_a_mensagem_crua_nunca_e_gravada():
            "guarda só o metadado (tipo, nome, legenda)")
 
 
+def teste_observacao_nao_transcreve_sozinha():
+    print("\n[6] Agente desligado não gasta dinheiro com mídia")
+    # Consertar o download ligaria a transcrição automática de toda foto e
+    # todo áudio que chegasse — para sempre, sem ninguém pedir. Nos caminhos
+    # de OBSERVAÇÃO ninguém está esperando resposta: o agente está desligado
+    # e a mídia só está sendo arquivada.
+    #
+    # Quando o agente está LIGADO é outro caso: o webhook baixa, descreve e
+    # responde na mesma requisição, e não passa por esta fila. Aí gastar é o
+    # serviço sendo prestado.
+    midia = _so_codigo(_ler("app", "services", "atlas", "observer_media.py"))
+    fila = _funcao(midia, "enqueue_observer_media")
+    checar("_pode_gastar_midia()" in fila,
+           "a fila de observação passa pelo orçamento",
+           "sem isso, cada mídia recebida vira transcrição paga")
+    checar("return False" in fila.split("_pode_gastar_midia()")[1][:80],
+           "e sem crédito ela apenas ARQUIVA, sem ler")
+
+    # A trava tem de estar num lugar SÓ. Checar na ingestão e na fila gastaria
+    # dois créditos por mídia, e o teto de 20 viraria 10.
+    hist = _so_codigo(_ler("app", "services", "atlas", "history_ingest.py"))
+    checar("_pode_gastar_midia" not in hist,
+           "a ingestão não checa de novo",
+           "duas checagens = dois créditos por mídia")
+    checar("enqueue_observer_media" in hist,
+           "ela continua enfileirando; quem decide é o portão")
+
+    # E o portão vale para TODOS os caminhos de observação.
+    for arq in ("attendance_capture.py", "observer_intake.py"):
+        f = _so_codigo(_ler("app", "services", "atlas", arq))
+        if "enqueue_observer_media" in f:
+            checar("_pode_gastar_midia" not in f,
+                   f"{arq} também confia no portão único")
+
+
 def main() -> int:
     print("=" * 70)
     print("O AGENTE VÊ A MÍDIA; NINGUÉM TRANSCREVE 9.002 SEM MANDAR")
@@ -172,7 +169,8 @@ def main() -> int:
                   teste_abrir_o_orcamento_e_ato_humano_e_limitado,
                   teste_a_ingestao_so_enfileira_com_credito,
                   teste_o_agente_enxerga_a_midia_no_wire_certo,
-                  teste_a_mensagem_crua_nunca_e_gravada):
+                  teste_a_mensagem_crua_nunca_e_gravada,
+                  teste_observacao_nao_transcreve_sozinha):
         try:
             teste()
         except Exception as exc:  # noqa: BLE001

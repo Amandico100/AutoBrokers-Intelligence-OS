@@ -55,6 +55,45 @@ def _message_for_download(value: Any) -> Any:
     return value
 
 
+# Quantas mídias do histórico ainda podem ser enfileiradas. O contador vive no
+# REDIS porque o teto atravessa requisições: quem autoriza é o Admin, e quem
+# gasta é o webhook do HistorySync, que chega depois e várias vezes.
+#
+# Fechado por padrão. A instrução do Founder em 28/07/2026 foi explícita —
+# "NÃO FAÇA A ANÁLISE DAS 9565 MÍDIAS VIA API NUNCA. APENAS AS 20". Quem abre
+# é uma ação humana, nunca o código.
+_ORCAMENTO_MIDIA = "atlas:history:media_budget"
+
+
+async def _pode_gastar_midia() -> bool:
+    """Consome uma unidade do orçamento. Sem orçamento aberto, responde não.
+
+    `DECR` numa chave inexistente cria em -1 e devolve -1 — então a ausência
+    de autorização já é uma recusa, sem precisar de nenhum `if` extra. É a
+    falha fechada saindo de graça do próprio Redis.
+    """
+    try:
+        from app.core.redis import get_async_redis_client
+
+        r = await get_async_redis_client()
+        return int(await r.decr(_ORCAMENTO_MIDIA)) >= 0
+    except Exception:  # noqa: BLE001 — Redis fora = nada é gasto
+        return False
+
+
+async def abrir_orcamento_de_midia(quantas: int, validade_s: int = 7200) -> int:
+    """Autoriza N mídias do histórico a serem baixadas e lidas. Ação humana."""
+    quantas = max(0, min(int(quantas or 0), 500))
+    from app.core.redis import get_async_redis_client
+
+    r = await get_async_redis_client()
+    if quantas <= 0:
+        await r.delete(_ORCAMENTO_MIDIA)
+        return 0
+    await r.set(_ORCAMENTO_MIDIA, quantas, ex=validade_s)
+    return quantas
+
+
 async def enqueue_observer_media(
     integration: Dict[str, Any],
     table: str,
@@ -64,6 +103,27 @@ async def enqueue_observer_media(
     """Queue raw message shape without credentials; Redis is transient."""
     if table not in ALLOWED_TABLES or not record.get("message_id") or not message:
         return False
+
+    # QUEM PRECISA ENTENDER A MÍDIA É O AGENTE QUE ESTÁ RESPONDENDO AGORA.
+    #
+    # Esta fila serve aos caminhos de OBSERVAÇÃO: o Espelho arquivando a
+    # conversa do segurado com a atendente humana, e o Atlas guardando o que a
+    # seguradora mandou. Nos dois casos ninguém está esperando resposta — o
+    # agente está desligado.
+    #
+    # Quando o agente está LIGADO, a mídia não passa por aqui: o webhook baixa,
+    # descreve e responde na mesma requisição. Aí gastar é o serviço.
+    #
+    # Sem esta trava, consertar o download (28/07/2026) ligaria a transcrição
+    # automática de toda foto e todo áudio que chegasse na Resulta, para
+    # sempre, sem ninguém pedir. O Founder tem US$ 1,28 de crédito.
+    #
+    # O crédito é o mesmo `DECR` do histórico: sem orçamento aberto devolve -1
+    # e a mídia só é arquivada. Ela não se perde — fica sem leitura, e a
+    # leitura pode ser feita depois, quando alguém decidir pagar por ela.
+    if not await _pode_gastar_midia():
+        return False
+
     payload = {
         "table": table,
         "company_id": str(record.get("company_id") or ""),

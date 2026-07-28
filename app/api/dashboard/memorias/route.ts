@@ -27,7 +27,22 @@ export async function GET() {
     // INTELIGÊNCIA GLOBAL — só o que dá para CONTAR. Nunca `map`, nunca
     // `card_text`. O que sai daqui é nome de pasta e quantidade.
     safe<any[]>(sb.from('ura_maps').select('insurer_key, status').neq('status', 'superseded').limit(400)),
-    safe<any[]>(sb.from('knowledge_cards').select('ramo, status').neq('status', 'rejected_pii').limit(4000)),
+    // Paginado, não `limit(4000)`: o PostgREST devolve no máximo 1.000 linhas
+    // por consulta e NÃO avisa. São 926 cartas hoje — cabe. Na semana que vem
+    // não cabe, e o cérebro pararia de crescer na tela sem ninguém notar. Foi
+    // exatamente esse silêncio que construiu o mapa da Allianz sobre 40% do
+    // material em 28/07/2026.
+    (async () => {
+      const tudo: any[] = [];
+      for (let inicio = 0; inicio < 20000; inicio += 1000) {
+        const lote = await safe<any[]>(
+          sb.from('knowledge_cards').select('ramo').neq('status', 'rejected_pii')
+            .order('created_at', { ascending: true }).range(inicio, inicio + 999));
+        tudo.push(...(lote as any[]));
+        if ((lote as any[]).length < 1000) break;
+      }
+      return tudo;
+    })(),
   ]);
 
   const memoryText = (m: any) =>

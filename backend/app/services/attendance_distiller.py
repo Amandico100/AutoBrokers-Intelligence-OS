@@ -173,14 +173,14 @@ def _load_session_text_sync(session_id: str) -> str:
     """
     from app.core.database import get_supabase_client
     from app.services.atlas.templater import templatize
-    from app.services.atlas.weaver import _sem_copias
+    from app.services.atlas.mensagem import sem_copias
 
     db = get_supabase_client()
     events = (db.client.table("attendance_transcripts")
               .select("session_id, direction, msg_type, text, wa_timestamp")
               .eq("session_id", session_id)
               .order("wa_timestamp", desc=False).limit(400).execute().data or [])
-    events = _sem_copias(events)
+    events = sem_copias(events)
     lines = []
     for e in events:
         who = "ATENDENTE" if e.get("direction") == "out" else "CLIENTE"
@@ -458,8 +458,15 @@ async def _destilar_sessao(sess: Dict[str, Any], stats: Dict[str, int],
     except Exception as e:  # noqa: BLE001
         # Uma sessão que falha não derruba as outras cinco em voo, e a próxima
         # rodada a pega de novo: ela continua sem a marca `distilled`.
-        logger.error("[DESTILADOR] sessão %s falhou: %s",
-                     sess.get("id"), type(e).__name__)
+        # O nome da exceção sozinho não conserta nada. Em 28/07/2026 um
+        # `ModuleNotFoundError` derrubou TODAS as sessões e a linha de log não
+        # dizia qual módulo faltava — a mesma cegueira do "HTTPStatusError" da
+        # mídia. Para erro de import, o nome do módulo é a informação inteira,
+        # e não é dado de ninguém.
+        faltou = getattr(e, "name", "") or ""
+        logger.error("[DESTILADOR] sessão %s falhou: %s%s",
+                     sess.get("id"), type(e).__name__,
+                     f" ({faltou})" if faltou else "")
 
 
 def _fila_pendente() -> int:

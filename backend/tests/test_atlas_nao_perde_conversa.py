@@ -261,15 +261,34 @@ def teste_o_espelho_le_cada_mensagem_uma_vez():
     i = fonte.find("def _load_session_text_sync")
     trecho = fonte[i:i + 1400] if i >= 0 else ""
     checar(bool(trecho), "a leitura do transcript existe")
-    checar("_sem_copias" in trecho,
-           "o transcript enviado à LLM passa pelo mesmo filtro de cópias",
+    checar("sem_copias" in trecho,
+           "o transcript enviado à LLM passa pelo filtro de cópias",
            "sem isso o custo dobra e as conversas longas perdem o fim")
     checar("attendance_transcripts" in trecho, "e continua lendo a tabela certa")
 
-    # O filtro é UM só, compartilhado com o Tecelão. Duas implementações
-    # divergiriam com o tempo e uma delas voltaria a contar copiado.
-    checar("from app.services.atlas.weaver import _sem_copias" in trecho,
-           "e é o MESMO filtro do Tecelão, não uma segunda cópia da regra")
+    # A REGRA EXISTE UMA VEZ SÓ, NO CÓDIGO INTEIRO.
+    #
+    # Duas implementações divergiriam com o tempo e uma delas voltaria a contar
+    # cópia como conversa. E ela mora num módulo sem dependência nenhuma: a
+    # primeira versão vivia dentro do Tecelão, o Destilador o importava, e o
+    # Atlas inteiro vinha atrás — um `ModuleNotFoundError` derrubou TODAS as
+    # sessões de uma vez em 28/07/2026.
+    donos = []
+    for raiz, _, arquivos in os.walk(os.path.join(RAIZ, "app")):
+        for a in arquivos:
+            if not a.endswith(".py"):
+                continue
+            corpo = open(os.path.join(raiz, a), encoding="utf-8").read()
+            if re.search(r"^def sem_copias\(", corpo, re.M):
+                donos.append(os.path.relpath(os.path.join(raiz, a), RAIZ))
+    checar(len(donos) == 1, "a regra de identidade é definida em UM lugar", str(donos))
+    checar(donos and donos[0].endswith("mensagem.py"),
+           "e mora num módulo sem dependências", str(donos))
+
+    dono = open(os.path.join(RAIZ, *donos[0].split(os.sep)), encoding="utf-8").read() if donos else ""
+    checar("from app.services" not in dono and "import app." not in dono,
+           "o módulo da regra não importa nada do sistema",
+           "foi o import pesado que derrubou a destilação inteira")
 
 
 def teste_a_falha_de_midia_diz_o_que_houve():
