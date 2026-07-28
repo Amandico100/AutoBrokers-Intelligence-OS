@@ -1405,3 +1405,123 @@ desenvolvimento — visível — em vez de uma exposição silenciosa em produç
 
 > Founder, 27/07/2026: "SOBRE ESSA QUESTÃO ABAIXO EU CONCORDO. PODE DEIXAR
 > ANOTADO."
+
+---
+
+## CA-029 — Um `hash()` aleatório dobrou o material e torceu as rotas
+
+**Classificação: BLOCKER (corrigido) + ESSENCIAL (limpeza pendente)**
+**Data:** 28/07/2026 · commits `a2bde81`, `b0e1778`, `73a8b1f`
+
+### Problema
+
+A ingestão de histórico montava o id da mensagem assim:
+
+```python
+mid = f"hist-{counterparty}-{ts}-{abs(hash(str(text)[:60])) % 10**7}"
+```
+
+`hash()` de string em Python é **aleatorizado a cada processo**. O
+`on_conflict="observer_number,message_id"` — que existe exatamente para impedir
+duplicação — nunca disparava, porque o id mudava a cada reimportação.
+
+### Evidência
+
+| Tabela | Linhas | Mensagens reais | Fator |
+|---|---:|---:|---:|
+| `observed_events` (Allianz) | 14.203 | 5.330 | 2,66x |
+| `observed_events` (Zurich) | 273 | 94 | 2,90x |
+| `attendance_transcripts` | 116.877 | 58.786 | 1,99x |
+
+Três `history_sync` num só dia (14:01, 15:02, 15:43), cada um gravando tudo
+de novo. No `live`, o fator é 1,00x — o id vem do WhatsApp e é estável.
+
+### Consequência
+
+**Não era custo, era rota.** O Tecelão casa cada tela com a resposta que vem
+logo depois. Com as cópias intercaladas a sequência vira tela-tela-tela-
+resposta, e como o destino da aresta sequencial é eleito por maioria, o voto
+da tela em si mesma chegava a **vencer o destino real**:
+
+| Mapa | Arestas | Apontando para a própria tela |
+|---|---:|---:|
+| Allianz | 1.899 | 840 (44%) |
+| Porto | 576 | 284 (49%) |
+| Yelum | 280 | 152 (54%) |
+| Tokio | 58 | 40 (69%) |
+
+No Espelho, o transcript é cortado em 7.000 caracteres: **56 sessões
+estouravam o teto e só 9 estourariam sem as cópias.** As 47 do meio perdiam o
+fim — onde o atendimento se resolve.
+
+E o id só olhava os 60 primeiros caracteres: duas mensagens longas de começo
+igual colidiam, e a segunda era **descartada em silêncio**. Isso perdia
+mensagem, contra a regra do Founder.
+
+### Corrigido
+
+`_history_message_id()` com sha1 de (direção, tipo, texto inteiro), provado
+estável em processos separados com `PYTHONHASHSEED=random`. As cópias já
+gravadas são ignoradas na **leitura**, pelo mesmo filtro no Tecelão e no
+Espelho. Tela apontando para si mesma sem escolha capturada deixa de virar
+aresta — com escolha capturada continua, porque "digitou 9 e voltou pro menu"
+é rota de verdade.
+
+### Pendente de decisão do Founder
+
+**15.176 linhas em `observed_events` e ~58.091 em `attendance_transcripts`
+continuam no banco**, ignoradas na leitura. Apagá-las é §10.1 — decisão do
+Founder, com tabela de backup antes.
+
+**47 sessões do Espelho foram destiladas com o texto cortado.** Redestilar só
+essas é barato e recupera perda real.
+
+---
+
+## CA-030 — Nenhum áudio, foto ou documento do Espelho foi lido
+
+**Classificação: ESSENCIAL — não corrigido, depende de decisão**
+**Data:** 28/07/2026
+
+### Problema
+
+9.588 mensagens de mídia no Espelho. Nenhuma com transcrição, nenhuma com OCR:
+
+```
+document 3.900   image 2.950   audio 2.631   video 130
+```
+
+O que chega à LLM é `[audio]`. Em seguro, o áudio é justamente onde o cliente
+explica o sinistro, e o documento é a apólice.
+
+### Evidência
+
+- **9.565** vieram do `history_sync` e **nunca entraram na fila** de
+  enriquecimento — só o caminho `live` enfileira.
+- **23** do `live` tentaram e **falharam todas**, gravadas como
+  `HTTPStatusError`.
+
+Sondagem do servidor sem token, em 28/07/2026:
+
+```
+POST /message/downloadmedia              → HTTP 401   (rota existe)
+POST /chat/getBase64FromMediaMessage     → HTTP 404
+POST /message/download                   → HTTP 404
+POST /media/download                     → HTTP 404
+```
+
+**A rota está certa.** O problema é autenticação ou corpo — e o registro não
+distinguia 401 (token) de 404 (mídia expirada) de 5xx (servidor fora), que
+pedem três consertos diferentes.
+
+### Feito agora
+
+`_motivo_da_falha()` grava `HTTP 401 /message/downloadmedia`: status e rota,
+nunca o corpo (pode trazer dado de cliente) e nunca o token. A próxima mídia
+ao vivo diz exatamente o que houve.
+
+### Decisão pendente
+
+Enriquecer as 9.565 mídias do histórico tem custo de transcrição e as mídias
+antigas podem já ter expirado no WhatsApp. **Recomendação: testar numa amostra
+de 20 antes de decidir o lote.**
