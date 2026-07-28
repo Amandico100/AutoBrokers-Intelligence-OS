@@ -248,6 +248,25 @@ def publish_card_sync(card: Dict[str, Any]) -> bool:
     chunk = (f"({' / '.join(str(b) for b in prefix_bits)}) " if prefix_bits else "") + text
     dense = OpenAIEmbeddings(model="text-embedding-3-small",
                              api_key=settings.OPENAI_API_KEY).embed_documents([chunk])
+
+    # A BUSCA E HIBRIDA — E A CARTA ENTRAVA SO COM METADE.
+    #
+    # `search_service` consulta denso E esparso (BM25) e combina. Todo caminho
+    # de ingestao manda os dois: o seed do canon, a ingestao de documentos, o
+    # corpus de seguros. So a carta ia com `sparse_embeddings=None`.
+    #
+    # O denso acha por SIGNIFICADO e o BM25 acha por TERMO EXATO. Sem o
+    # esparso, procurar "CVV", "carta verde", "endosso" ou "DDA" — palavras
+    # que o corretor digita exatamente assim — nao encontrava carta nenhuma.
+    # Metade do RAG estava desligada justamente para o conhecimento novo.
+    sparse = None
+    try:
+        from fastembed import SparseTextEmbedding
+
+        sparse = list(SparseTextEmbedding(model_name="Qdrant/bm25").embed([chunk]))
+    except Exception as exc:  # noqa: BLE001 — sem esparso ainda publica, so acha menos
+        logger.warning("[DESTILADOR] vetor esparso indisponivel: %s", type(exc).__name__)
+
     qdrant = get_qdrant_service()
     company = (os.getenv("GLOBAL_KNOWLEDGE_COMPANY_ID") or "").strip() or "autobrokers-global"
     return bool(qdrant.insert_embeddings(
@@ -255,7 +274,7 @@ def publish_card_sync(card: Dict[str, Any]) -> bool:
         embeddings=dense, chunks=[chunk],
         metadata={"document_name": "Knowledge Card (Espelho de Atendimento)",
                   "source": "attendance_distiller", "chunk_type": "knowledge_card"},
-        sparse_embeddings=None, collection_name=GLOBAL_COLLECTION, agent_id=None,
+        sparse_embeddings=sparse, collection_name=GLOBAL_COLLECTION, agent_id=None,
         knowledge_extras={"scope": SCOPE_GLOBAL_AUTOBROKERS, "curation_status": "published",
                           "namespace": "cards"},
     ))

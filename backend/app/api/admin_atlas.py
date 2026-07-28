@@ -598,6 +598,118 @@ async def espelho_card_decide(card_id: str, body: Dict[str, Any],
     return {"ok": True, "status": "published"}
 
 
+@router.post("/espelho/curar-cartas")
+async def curar_cartas(body: Optional[Dict[str, Any]] = None,
+                       _: Any = Depends(require_master_admin)) -> Dict[str, Any]:
+    """Junta as cartas que dizem a mesma coisa e barra as que prometem absoluto.
+
+    Sem isto, aprovar as cartas jogaria no RAG vinte versões de "após o prazo a
+    apólice é cancelada". O agente buscaria "prazo de pagamento", receberia
+    vinte quase-cópias e gastaria todo o orçamento de contexto com uma ideia
+    só — o conhecimento diverso sufocado justamente quando mais importa.
+
+    `aplicar=false` (padrão) só RELATA: nada muda no banco.
+    """
+    import asyncio as _a
+
+    from scripts.curar_cartas import _ABSOLUTO, _riqueza, agrupar
+
+    aplicar = bool((body or {}).get("aplicar"))
+
+    def _rodar() -> Dict[str, Any]:
+        db = get_supabase_client()
+        cartas, inicio = [], 0
+        while True:
+            lote = (db.client.table("knowledge_cards")
+                    .select("id, card_text, insurer_key, ramo")
+                    .eq("status", "pending_review")
+                    .order("created_at", desc=False)
+                    .range(inicio, inicio + 999).execute().data) or []
+            cartas.extend(lote)
+            if len(lote) < 1000:
+                break
+            inicio += 1000
+
+        barradas = [c for c in cartas if _ABSOLUTO.search(c["card_text"] or "")]
+        proibidos = {c["id"] for c in barradas}
+        grupos = agrupar([c for c in cartas if c["id"] not in proibidos])
+        grupos.sort(key=len, reverse=True)
+        guardar, dispensar = [], []
+        for g in grupos:
+            g.sort(key=_riqueza, reverse=True)
+            guardar.append(g[0])
+            dispensar.extend(g[1:])
+
+        if aplicar:
+            for grupo, novo_status in ((barradas, "rejected_absoluto"),
+                                       (dispensar, "superseded")):
+                ids = [c["id"] for c in grupo]
+                for i in range(0, len(ids), 100):
+                    db.client.table("knowledge_cards").update(
+                        {"status": novo_status}).in_("id", ids[i:i + 100]).execute()
+
+        return {
+            "lidas": len(cartas),
+            "barradas_por_absoluto": len(barradas),
+            "quase_copias_juntadas": len(dispensar),
+            "ideias_distintas": len(guardar),
+            "aplicado": aplicar,
+            "exemplos_barrados": [c["card_text"][:150] for c in barradas[:8]],
+            "maiores_grupos": [
+                {"quantas": len(g), "fica": g[0]["card_text"][:130],
+                 "juntadas": [c["card_text"][:110] for c in g[1:4]]}
+                for g in grupos[:6] if len(g) > 2],
+        }
+
+    return {"ok": True, **await _a.to_thread(_rodar)}
+
+
+@router.post("/espelho/aprovar-lote")
+async def aprovar_lote(body: Optional[Dict[str, Any]] = None,
+                       _: Any = Depends(require_master_admin)) -> Dict[str, Any]:
+    """Publica no RAG global as cartas que sobraram da curadoria.
+
+    O Founder não é especialista em seguros e não tem como ler 1.441 fatos um
+    a um — e a revisão que importa aqui é a de PII, que já roda em duas camadas
+    (`templatize` determinístico + instrução à LLM) e é reconferida no momento
+    da publicação por `_card_pii_clean`.
+
+    Publica em lotes pequenos: cada carta vira um embedding, e um erro no meio
+    não pode deixar metade publicada sem ninguém saber qual metade.
+    """
+    import asyncio as _a
+
+    from app.services.attendance_distiller import publish_card_sync
+
+    limite = max(1, min(int((body or {}).get("limite") or 200), 2000))
+
+    def _rodar() -> Dict[str, Any]:
+        db = get_supabase_client()
+        alvo = (db.client.table("knowledge_cards")
+                .select("id, card_text, insurer_key, ramo")
+                .eq("status", "pending_review")
+                .order("created_at", desc=False).limit(limite).execute().data) or []
+        publicadas, falhas = 0, 0
+        for c in alvo:
+            try:
+                if publish_card_sync(c):
+                    db.client.table("knowledge_cards").update(
+                        {"status": "published",
+                         "published_at": datetime.now(timezone.utc).isoformat()}
+                    ).eq("id", c["id"]).execute()
+                    publicadas += 1
+                else:
+                    falhas += 1
+            except Exception:  # noqa: BLE001 — uma carta ruim não trava o lote
+                falhas += 1
+        restam = (db.client.table("knowledge_cards").select("id", count="exact")
+                  .eq("status", "pending_review").limit(1).execute())
+        return {"publicadas": publicadas, "falhas": falhas,
+                "ainda_pendentes": getattr(restam, "count", None)}
+
+    return {"ok": True, **await _a.to_thread(_rodar)}
+
+
 @router.get("/espelho/playbooks")
 async def espelho_playbooks(_: Any = Depends(require_master_admin)) -> Dict[str, Any]:
     from app.core.database import get_supabase_client
