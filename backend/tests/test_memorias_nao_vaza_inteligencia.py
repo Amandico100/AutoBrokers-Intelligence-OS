@@ -98,9 +98,16 @@ def teste_o_texto_da_carta_nunca_sai():
     checar("card_text" not in sel, "e NÃO pede o texto da carta", sel)
     checar("ramo" in sel, "pede só o ramo", sel)
     # Cartas barradas por PII não entram nem na contagem.
-    checar("rejected_pii" in fonte and "neq" in fonte,
-           "as cartas rejeitadas por PII ficam fora inteiras",
-           "foram barradas por conter dado de pessoa")
+    # Passou de `neq('rejected_pii')` para uma LISTA de permissão. Existem
+    # quatro status agora e só dois são conhecimento vivo: `superseded` são as
+    # quase-cópias que a curadoria juntou, `rejected_pii` e
+    # `rejected_absoluto` foram barradas. Excluir uma a uma erra no dia em que
+    # nascer o quinto status — permitir explicitamente, não.
+    checar("'pending_review', 'published'" in fonte,
+           "só o conhecimento vivo é contado",
+           "lista de permissão, não de exclusão")
+    checar("rejected" not in _select_de(fonte, "knowledge_cards"),
+           "e a carta barrada por PII não entra nem na contagem")
 
 
 def teste_o_nome_do_documento_global_ja_e_conteudo():

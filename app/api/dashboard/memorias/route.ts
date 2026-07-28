@@ -19,7 +19,7 @@ export async function GET() {
     try { const { data } = await p; return (data as T) ?? ([] as unknown as T); } catch { return [] as unknown as T; }
   };
 
-  const [docs, globalDocs, memories, convs, rotas, cartas] = await Promise.all([
+  const [docs, globalDocs, memories, convs, rotas, playbooks, cartas] = await Promise.all([
     safe<any[]>(sb.from('documents').select('id, file_name, knowledge_class, created_at').eq('company_id', companyId).limit(150)),
     safe<any[]>(sb.from('documents').select('id, knowledge_class').eq('company_id', GK_COMPANY_ID).limit(200)),
     safe<any[]>(sb.from('user_memories').select('*').eq('company_id', companyId).limit(80)),
@@ -27,6 +27,11 @@ export async function GET() {
     // INTELIGÊNCIA GLOBAL — só o que dá para CONTAR. Nunca `map`, nunca
     // `card_text`. O que sai daqui é nome de pasta e quantidade.
     safe<any[]>(sb.from('ura_maps').select('insurer_key, status').neq('status', 'superseded').limit(400)),
+    // Playbooks de conduta: como o melhor atendimento humano é conduzido, por
+    // ramo e serviço. Hoje são zero — a síntese estava quebrada e foi
+    // corrigida — mas a pasta precisa existir para aparecer no dia em que
+    // nascerem, sem ninguém lembrar de mexer aqui de novo.
+    safe<any[]>(sb.from('conduct_playbooks').select('ramo, servico, status').limit(400)),
     // Paginado, não `limit(4000)`: o PostgREST devolve no máximo 1.000 linhas
     // por consulta e NÃO avisa. São 926 cartas hoje — cabe. Na semana que vem
     // não cabe, e o cérebro pararia de crescer na tela sem ninguém notar. Foi
@@ -36,7 +41,11 @@ export async function GET() {
       const tudo: any[] = [];
       for (let inicio = 0; inicio < 20000; inicio += 1000) {
         const lote = await safe<any[]>(
-          sb.from('knowledge_cards').select('ramo').neq('status', 'rejected_pii')
+          // `in_` e não `neq`: existem QUATRO status e só dois são
+          // conhecimento vivo. `superseded` são quase-cópias que a curadoria
+          // juntou e `rejected_*` foram barradas — contá-las incharia o
+          // número sem o cérebro saber nada a mais.
+          sb.from('knowledge_cards').select('ramo').in('status', ['pending_review', 'published'])
             .order('created_at', { ascending: true }).range(inicio, inicio + 999));
         tudo.push(...(lote as any[]));
         if ((lote as any[]).length < 1000) break;
@@ -104,6 +113,18 @@ export async function GET() {
   }
   for (const [r, n] of Array.from(porRamo.entries()).sort((a, b) => b[1] - a[1])) {
     pastasGlobais.push({ tema: `Procedimentos · ${RAMO_LABEL[r] || 'Outros ramos'}`, total: n });
+  }
+
+  const porServico = new Map<string, number>();
+  for (const p of playbooks as any[]) {
+    const r = String(p?.ramo || '').trim();
+    const sv = String(p?.servico || '').trim();
+    if (!r || !sv) continue;
+    const k = `${RAMO_LABEL[r.toLowerCase()] || r} · ${sv}`;
+    porServico.set(k, (porServico.get(k) || 0) + 1);
+  }
+  for (const [k, n] of Array.from(porServico.entries()).sort((a, b) => b[1] - a[1])) {
+    pastasGlobais.push({ tema: `Conduta · ${k}`, total: n });
   }
 
   const porClasse = new Map<string, number>();

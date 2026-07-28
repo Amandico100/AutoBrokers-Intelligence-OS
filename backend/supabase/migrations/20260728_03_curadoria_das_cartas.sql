@@ -1,0 +1,67 @@
+-- =====================================================================
+-- 20260728_03 — Curadoria das cartas de conhecimento (aplicado)
+-- =====================================================================
+--
+-- POR QUE
+-- -------
+-- 1.441 cartas extraídas das conversas reais. Lidas uma a uma (295 lidas:
+-- as 240 de auto e as 55 que a triagem apontou como arriscadas), a qualidade
+-- é alta e NÃO HÁ PII — nenhum nome, CPF, endereço ou link.
+--
+-- O problema só aparece olhando o conjunto:
+--
+--     "Quando o pagamento em cartão não é autorizado, a seguradora gera boleto…"
+--     "Quando o pagamento no cartão não é autorizado, a seguradora gera boleto…"
+--
+-- No RAG isso é veneno: o agente busca "cartão recusado", recebe quinze
+-- quase-cópias e gasta todo o orçamento de contexto com uma ideia só.
+--
+-- O LIMIAR FOI MEDIDO, NÃO ESCOLHIDO
+-- ----------------------------------
+-- Amostrando a faixa 0,40–0,54 par a par, quase tudo era a mesma ideia
+-- reescrita — mas em 0,45 apareceu um falso positivo real ("boletos são
+-- enviados ao segurado" × "alterações de forma de pagamento"). Corte em 0,47.
+--
+-- E SÓ JUNTA DENTRO DA MESMA SEGURADORA
+-- -------------------------------------
+-- "Quando a parcela do cartão não é autorizada, a seguradora HDI gera boleto"
+-- não é a mesma informação que a versão genérica: é ela que dá confiança ao
+-- agente quando o segurado é da HDI. Preservar a especificidade custou 106
+-- junções (273 → 167) e vale cada uma — o chunk vai para o Qdrant prefixado
+-- com "(hdi / auto)" e é assim que a busca acerta.
+--
+-- BARRADAS
+-- --------
+-- Promessa absoluta sobre dinheiro ou cobertura. Em seguro quase tudo tem
+-- exceção, e um agente repetindo um absoluto errado faz a corretora prometer
+-- o que não pode cumprir.
+--
+-- REVERSÍVEL: nada é apagado. `superseded` e `rejected_absoluto` continuam na
+-- tabela, auditáveis, e voltam com um UPDATE.
+-- =====================================================================
+
+-- APPLY: ver a consulta completa em backend/scripts/curar_cartas.py
+-- (mesma lógica, executada via SQL em 28/07/2026 21:4x).
+
+-- ---------------------------------------------------------------------
+-- VERIFY — RODADO, saída real
+-- ---------------------------------------------------------------------
+-- select status, count(*) from knowledge_cards group by 1 order by 2 desc;
+--
+--   pending_review ...... 1.274   ← seguem para publicação no RAG
+--   superseded .........    165   ← quase-cópias juntadas
+--   rejected_pii .......     90   ← barradas antes, pelo filtro de PII
+--   rejected_absoluto ..      2   ← promessa sem exceção
+--
+--   1.441 -> 1.274 ideias distintas, 38 seguradoras preservadas
+--
+-- ---------------------------------------------------------------------
+-- ROLLBACK
+-- ---------------------------------------------------------------------
+-- update knowledge_cards set status='pending_review'
+--  where status in ('superseded','rejected_absoluto');
+--
+-- PENDENTE: publicar no RAG global exige embeddings (API). O crédito da
+-- plataforma acabou em 28/07/2026 — a publicação fica para quando voltar,
+-- via POST /api/admin/atlas/espelho/aprovar-lote. Custo estimado com
+-- text-embedding-3-small: menos de um centavo para as 1.274.
