@@ -41,7 +41,7 @@ volta.
 | Peça | RPO proposto | RTO proposto | De onde vem |
 |---|---|---|---|
 | Postgres | 24 h | 2 h | backup diário do plano Supabase |
-| MinIO | 24 h | 2 h | **depende de rotina que ainda não existe** |
+| MinIO | **1 h** | 2 h | rotina horária para o Backblaze B2 (§6) |
 | Qdrant | ∞ (reconstruível) | 4 h | reindexar a partir do Postgres |
 | Redis | ~0 min de dado durável | 15 min | subir e deixar reencher |
 | Evolution Go | sessão | 30 min | re-parear o celular |
@@ -53,14 +53,14 @@ volta.
 >
 > Vira compromisso depois do primeiro ensaio (§4 abaixo).
 
-### O buraco conhecido: MinIO
+### O buraco do MinIO — FECHADO em 28/07/2026
 
-O Supabase faz backup do Postgres pelo plano. **O MinIO não tem rotina de
-backup.** São 5 MB hoje, e cada objeto é um documento que a corretora enviou —
-não é reconstruível a partir de lugar nenhum.
+Até esta data, o Supabase fazia backup do Postgres pelo plano e **o MinIO não
+tinha rotina nenhuma**. Cada objeto é um documento que a corretora enviou, e o
+Postgres guarda o *ponteiro*, não o arquivo — não havia de onde reconstruir.
 
-**Enquanto não houver rotina, o RPO real do MinIO é "desde sempre":** se o
-volume sumir, some tudo.
+**O RPO do storage era "desde sempre". Passou a ser 1 hora.** O procedimento de
+recuperação e a evidência do primeiro backup estão em **§6 (RB-06)**.
 
 ---
 
@@ -196,8 +196,9 @@ O ensaio precisa provar quatro coisas, nesta ordem:
 1. **Postgres restaura** — restaurar um backup num projeto Supabase novo e
    conferir a contagem de linhas das tabelas críticas (`companies`, `agents`,
    `work_runs`, `attendance_transcripts`).
-2. **MinIO restaura** — e antes disso, **existir uma rotina de cópia**. Hoje não
-   existe. Este é o item mais urgente da lista.
+2. **MinIO restaura** — a rotina existe desde 28/07 e a restauração de UM
+   objeto já foi provada por SHA-256 (§6). Falta provar a restauração
+   **completa**: derrubar o bucket num ambiente de teste e reconstruir tudo.
 3. **Qdrant reconstrói** — apagar uma coleção de teste e reindexar a partir do
    Postgres. Se não reconstruir, a "reconstruibilidade" era suposição.
 4. **Redis some sem levar nada durável junto** — derrubar o Redis e confirmar
