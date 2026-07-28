@@ -200,18 +200,33 @@ def teste_alerta_da_corretora_vai_para_o_suporte_humano():
            f"{pos_expl} {pos_sup} {pos_fb}")
 
 
-def teste_alerta_de_plataforma_nao_vai_para_a_corretora():
-    print("\n[8] 'O backup falhou' não é problema do corretor")
+def teste_alerta_de_plataforma_vai_para_a_caixa_do_admin():
+    print("\n[8] 'O backup falhou' vai para a CAIXA DO ADMIN, não para WhatsApp")
+    # Este caso já cobrou o contrário — que o alerta fosse para um número de
+    # plantão no WhatsApp. O Founder corrigiu a direção em 28/07/2026:
+    #
+    #   "QUERO QUE ENVIE MSG DENTRO DO PORTAL ADMIN E NÃO PARA UM WHATSAPP.
+    #    WHATSAPP É PARA SUPORTE HUMANO DAS COISAS DE CADA CORRETORA."
+    #
+    # E a separação está certa: são dois públicos com dois problemas. O
+    # WhatsApp da corretora recebe o que a EQUIPE DELA resolve, no telefone,
+    # agora. A caixa do Admin recebe o que a PLATAFORMA resolve, no
+    # computador, com histórico.
     fonte = _sem_comentario(_ler("app", "services", "whatsapp", "alerts.py"))
     i = fonte.find("async def alerta_de_plataforma")
-    corpo = fonte[i: i + 1200] if i != -1 else ""
+    corpo = fonte[i: i + 2600] if i != -1 else ""
     checar(bool(corpo), "existe um caminho separado para alerta de plataforma")
-    checar("PLATFORM_ALERT_FALLBACK_NUMBER" in corpo,
-           "que vai para o plantão da plataforma")
-    checar("_support_contact" not in corpo,
-           "e NUNCA para o grupo da corretora",
-           "mandar problema de infraestrutura para o corretor troca confiança "
+    checar("platform_incidents" in corpo,
+           "que abre incidente na caixa do Admin")
+    checar("_support_contact" not in corpo and "send_text" not in corpo,
+           "e NUNCA manda WhatsApp para a corretora",
+           "problema de infraestrutura no telefone do corretor troca confiança "
            "por ruído")
+    # Repetição não pode virar enxurrada: um backup que falha de hora em hora
+    # tem de abrir UM incidente, não vinte e quatro cartões por dia.
+    checar("incident_key" in corpo and "in_(\"status\"" in corpo,
+           "e a mesma causa reabre o mesmo incidente em vez de empilhar",
+           "caixa cheia de cartões repetidos é caixa que ninguém abre")
 
 
 def teste_backup_esta_agendado():
@@ -238,7 +253,7 @@ def main() -> int:
                   teste_falha_de_backup_alerta,
                   teste_retentativa_com_espera_crescente,
                   teste_alerta_da_corretora_vai_para_o_suporte_humano,
-                  teste_alerta_de_plataforma_nao_vai_para_a_corretora,
+                  teste_alerta_de_plataforma_vai_para_a_caixa_do_admin,
                   teste_backup_esta_agendado):
         try:
             teste()

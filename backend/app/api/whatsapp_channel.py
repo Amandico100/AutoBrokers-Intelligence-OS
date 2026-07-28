@@ -930,3 +930,22 @@ async def whatsapp_channel_status(
             inner = data.get("instance") if isinstance(data.get("instance"), dict) else data
             state = str(inner.get("state") or inner.get("connectionStatus") or "unknown").lower()
     return {"ok": True, "instance": instance, "state": state, "connected": state in ("open", "connected"), "alert": alert}
+
+
+@router.get("/api/whatsapp-channel/grupos")
+async def whatsapp_channel_grupos(
+    company_id: str,
+    x_autobrokers_internal_key: Optional[str] = Header(default=None, alias="X-AutoBrokers-Internal-Key"),
+) -> Dict[str, Any]:
+    """Os grupos do WhatsApp pareado, para o corretor escolher numa lista.
+
+    Existe para substituir a instrucao "abra o WhatsApp Web e copie dezoito
+    digitos da barra de enderecos" — que e onde a configuracao do suporte
+    humano morria antes de comecar.
+
+    Nunca levanta: devolve `ok=false` com uma frase que diz o que fazer.
+    """
+    _require_internal_key(x_autobrokers_internal_key)
+    from app.services.whatsapp.grupos import listar_grupos
+
+    return await listar_grupos(company_id)

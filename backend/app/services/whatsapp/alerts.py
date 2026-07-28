@@ -97,34 +97,82 @@ def _alert_destination(integration: Dict[str, Any]) -> Optional[str]:
     return fallback or None
 
 
-async def alerta_de_plataforma(titulo: str, corpo: str,
+async def alerta_de_plataforma(titulo: str, corpo: str, *,
+                               chave: Optional[str] = None,
+                               severidade: str = "sev2",
                                company_id: Optional[str] = None) -> bool:
-    """Alerta de PLATAFORMA (backup falhou, subsistema fora do ar).
+    """Alerta de PLATAFORMA — abre incidente na CAIXA DO ADMIN, não no WhatsApp.
 
-    Vai para o número de plantão da plataforma — nunca para o grupo da
-    corretora. O corretor não tem o que fazer com "o backup do storage falhou",
-    e mandar isso para ele troca confiança por ruído.
+    Decisão do Founder, 28/07/2026:
+
+    > "QUERO QUE ENVIE MSG DENTRO DO PORTAL ADMIN E NÃO PARA UM WHATSAPP.
+    >  WHATSAPP É PARA SUPORTE HUMANO DAS COISAS DE CADA CORRETORA."
+
+    E a separação está certa. São dois públicos com dois problemas:
+
+        WhatsApp da corretora  →  "seu WhatsApp caiu". Quem age é a equipe
+                                  dela, no telefone, agora.
+        Caixa do Admin         →  "o backup do storage falhou". Quem age é a
+                                  plataforma, no computador, com histórico.
+
+    Mandar infraestrutura para o WhatsApp de alguém troca confiança por ruído:
+    depois do terceiro aviso que não é para você, você para de ler todos.
+
+    `platform_incidents` já existe e a Inbox do Admin já a lê (SPEC-061 §16).
+    Nada novo foi criado — o alerta passou a usar o caminho que estava lá.
+
+    A `incident_key` é ESTÁVEL por tipo de problema. Um backup que falha de
+    hora em hora abre UM incidente que continua aberto, não vinte e quatro
+    cartões por dia — que é como uma caixa útil vira uma caixa que ninguém abre.
     """
     try:
-        destino = os.getenv("PLATFORM_ALERT_FALLBACK_NUMBER", "").strip()
-        if not destino:
-            logger.error("[ALERTA] %s — sem PLATFORM_ALERT_FALLBACK_NUMBER "
-                         "configurado, aviso não saiu", titulo)
-            return False
+        from app.core.database import get_supabase_client
 
-        integration = _platform_alert_integration()
-        if not integration:
-            logger.error("[ALERTA] %s — sem canal para enviar", titulo)
-            return False
+        db = get_supabase_client()
+        raw = getattr(db, "client", db)
+        chave_final = chave or f"auto:{titulo.lower().replace(' ', '_')[:60]}"
 
-        from app.services.whatsapp.registry import resolve_provider
+        def _gravar() -> bool:
+            # Já existe um incidente aberto com esta mesma causa? Então só
+            # atualiza o resumo. Reabrir o mesmo problema a cada hora não é
+            # informação nova, é barulho.
+            abertos = (raw.table("platform_incidents")
+                       .select("id, status")
+                       .eq("incident_key", chave_final)
+                       .in_("status", ["open", "acknowledged"])
+                       .limit(1).execute().data or [])
+            if abertos:
+                raw.table("platform_incidents").update({
+                    "summary": titulo[:200],
+                    "impact_summary": corpo[:1000],
+                    "updated_at": _now_iso(),
+                }).eq("id", abertos[0]["id"]).execute()
+                return True
 
-        texto = f"🔧 *AutoBrokers — {titulo}*\n\n{corpo}"
-        r = resolve_provider(integration).send_text(destino, texto)
-        return bool(getattr(r, "success", False))
+            raw.table("platform_incidents").insert({
+                "incident_key": chave_final,
+                "severity": severidade,
+                "status": "open",
+                "scope": "platform" if not company_id else "tenant",
+                "summary": titulo[:200],
+                "impact_summary": corpo[:1000],
+                "source_refs": [{"tipo": "alerta_automatico"}],
+            }).execute()
+            return True
+
+        return bool(await asyncio.to_thread(_gravar))
     except Exception as e:  # noqa: BLE001
-        logger.error("[ALERTA] falhou: %s", type(e).__name__)
+        # Se nem o incidente conseguiu ser aberto, ao menos o log grita. Um
+        # alerta que falha em silêncio é a segunda falha do mesmo evento.
+        logger.error("[ALERTA] '%s' NÃO registrado (%s): %s",
+                     titulo, type(e).__name__, corpo[:200])
         return False
+
+
+def _now_iso() -> str:
+    from datetime import datetime, timezone
+
+    return datetime.now(timezone.utc).isoformat()
 
 
 def _sender_integration(integration: Dict[str, Any]) -> Optional[Dict[str, Any]]:

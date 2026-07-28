@@ -57,7 +57,31 @@ const EXAMPLE: Partial<FormState> = {
   silence_minutes: 15,
 };
 
+type Grupo = { jid: string; nome: string; participantes: number | null };
+
 export default function HumanSupportSettingsClient() {
+  // Os grupos do WhatsApp pareado. Substituem a instrucao antiga de "abra o
+  // WhatsApp Web e copie dezoito digitos da barra de enderecos" — que e onde
+  // a configuracao do suporte humano morria antes de comecar.
+  const [grupos, setGrupos] = useState<Grupo[]>([]);
+  const [gruposFrase, setGruposFrase] = useState('');
+  const [buscandoGrupos, setBuscandoGrupos] = useState(false);
+
+  const carregarGrupos = async () => {
+    setBuscandoGrupos(true);
+    try {
+      const r = await fetch('/api/dashboard/whatsapp-grupos', { cache: 'no-store' });
+      const j = await r.json();
+      setGrupos(Array.isArray(j?.grupos) ? j.grupos : []);
+      setGruposFrase(String(j?.frase || ''));
+    } catch {
+      setGrupos([]);
+      setGruposFrase('Nao consegui falar com o WhatsApp agora. Voce pode colar o ID do grupo manualmente.');
+    } finally {
+      setBuscandoGrupos(false);
+    }
+  };
+
   const [items, setItems] = useState<Destination[] | null>(null);
   const [error, setError] = useState(false);
   const [form, setForm] = useState<FormState>(EMPTY_FORM);
@@ -202,9 +226,32 @@ export default function HumanSupportSettingsClient() {
           }
         />
 
-        <div className="rounded-lg border border-border bg-card px-3 py-2 text-xs text-muted-foreground">
-          Quando um atendimento precisar de uma pessoa, o dossiê completo (cliente, apólice, o que já
-          foi feito) chega automaticamente no destino configurado aqui — grupo ou número de WhatsApp da equipe.
+        {/* O corretor precisa saber O QUE vai chegar neste grupo antes de
+            escolher quem entra nele. Um grupo com a pessoa errada dentro
+            recebe dado de segurado; um grupo sem a pessoa certa nao recebe
+            aviso nenhum. As duas coisas comecam nesta decisao. */}
+        <div className="space-y-2 rounded-lg border border-border bg-card px-3 py-3 text-xs text-muted-foreground">
+          <p className="font-medium text-foreground">O que chega neste destino</p>
+          <ul className="space-y-1.5">
+            <li>
+              <span className="font-medium text-foreground">Dossiê de atendimento.</span>{' '}
+              Quando o agente não souber seguir — sinistro, caso sem rota conhecida —, chega
+              aqui o resumo completo: cliente, apólice e o que já foi feito. Alguém da equipe
+              assume dali.
+            </li>
+            <li>
+              <span className="font-medium text-foreground">Aviso de WhatsApp desconectado.</span>{' '}
+              Se o celular da corretora cair, sair do ar ou o pareamento expirar, o aviso chega
+              aqui na hora — porque enquanto estiver assim, ninguém está sendo atendido por
+              aquele número.
+            </li>
+          </ul>
+          <p className="pt-1">
+            Por isso o ideal é um <span className="font-medium text-foreground">grupo</span>, e
+            não um número: quem estiver no grupo vê, e não depende de uma pessoa só estar
+            disponível. Coloque no grupo quem realmente precisa agir — vai circular dado de
+            segurado ali.
+          </p>
         </div>
 
         {notice && (
@@ -284,12 +331,56 @@ export default function HumanSupportSettingsClient() {
               <span className="text-foreground">
                 {editingId ? 'Novo destino / ref (opcional)' : 'Destino / ref'}
               </span>
+
+              {/* Para GRUPO de WhatsApp, o corretor escolhe numa lista. Colar
+                  `120363422850006552@g.us` da barra de enderecos e onde a
+                  configuracao morria antes de comecar. O campo manual continua
+                  logo abaixo: o WhatsApp pode estar desconectado, e a tela nao
+                  pode virar um beco sem saida por causa disso. */}
+              {form.destination_type === 'whatsapp_group' && (
+                <div className="space-y-1">
+                  <div className="flex flex-wrap items-center gap-2">
+                    <select
+                      value={grupos.some((g) => g.jid === form.destination_ref) ? form.destination_ref : ''}
+                      onChange={(e) => setF({ destination_ref: e.target.value })}
+                      className="min-w-0 flex-1 rounded-md border border-border bg-background px-3 py-2 text-sm text-foreground focus:border-primary/50 focus:outline-none"
+                    >
+                      <option value="">
+                        {grupos.length ? '— escolha um grupo —' : '— nenhum grupo carregado —'}
+                      </option>
+                      {grupos.map((g) => (
+                        <option key={g.jid} value={g.jid}>
+                          {g.nome}
+                          {g.participantes ? ` (${g.participantes} pessoas)` : ''}
+                        </option>
+                      ))}
+                    </select>
+                    <button
+                      type="button"
+                      onClick={carregarGrupos}
+                      disabled={buscandoGrupos}
+                      className="shrink-0 rounded-md border border-border px-3 py-2 text-xs text-foreground hover:bg-surface-2 disabled:opacity-50"
+                    >
+                      {buscandoGrupos ? 'Buscando…' : 'Buscar grupos'}
+                    </button>
+                  </div>
+                  {gruposFrase && (
+                    <span className="block text-[11px] text-muted-foreground">{gruposFrase}</span>
+                  )}
+                </div>
+              )}
+
               <input
                 value={form.destination_ref}
                 onChange={(e) => setF({ destination_ref: e.target.value })}
                 placeholder={DESTINATION_REF_PLACEHOLDER[form.destination_type] || ''}
                 className="w-full rounded-md border border-border bg-background px-3 py-2 font-mono text-xs text-foreground focus:border-primary/50 focus:outline-none"
               />
+              {form.destination_type === 'whatsapp_group' && (
+                <span className="block text-[11px] text-muted-foreground">
+                  Ou cole o ID do grupo aqui, se preferir.
+                </span>
+              )}
               {editingId && (
                 <span className="text-[11px] text-muted-foreground">
                   Deixe em branco para manter o destino atual (o valor não é exibido por segurança).
