@@ -19,11 +19,15 @@ export async function GET() {
     try { const { data } = await p; return (data as T) ?? ([] as unknown as T); } catch { return [] as unknown as T; }
   };
 
-  const [docs, globalDocs, memories, convs] = await Promise.all([
+  const [docs, globalDocs, memories, convs, rotas, cartas] = await Promise.all([
     safe<any[]>(sb.from('documents').select('id, file_name, knowledge_class, created_at').eq('company_id', companyId).limit(150)),
-    safe<any[]>(sb.from('documents').select('id, file_name, knowledge_class, created_at').eq('company_id', GK_COMPANY_ID).limit(200)),
+    safe<any[]>(sb.from('documents').select('id, knowledge_class').eq('company_id', GK_COMPANY_ID).limit(200)),
     safe<any[]>(sb.from('user_memories').select('*').eq('company_id', companyId).limit(80)),
     safe<any[]>(sb.from('conversations').select('id, user_name, session_id, last_message_at').eq('company_id', companyId).order('last_message_at', { ascending: false }).limit(60)),
+    // INTELIGÊNCIA GLOBAL — só o que dá para CONTAR. Nunca `map`, nunca
+    // `card_text`. O que sai daqui é nome de pasta e quantidade.
+    safe<any[]>(sb.from('ura_maps').select('insurer_key, status').neq('status', 'superseded').limit(400)),
+    safe<any[]>(sb.from('knowledge_cards').select('ramo, status').neq('status', 'rejected_pii').limit(4000)),
   ]);
 
   const memoryText = (m: any) =>
@@ -42,21 +46,80 @@ export async function GET() {
   const compRows = (await safe<any[]>(sb.from('companies').select('company_name').eq('id', companyId).limit(1))) as any[];
   const companyName = compRows[0]?.company_name || 'Sua corretora';
 
-  // SEGURANÇA (founder 14/07): a biblioteca GLOBAL é a INTELIGÊNCIA da AutoBrokers.
-  // Aparece nas memórias só para DAR VOLUME (impressionar) — NUNCA o nome real do
-  // documento nem o conteúdo. Cada nó vira "{Tema} AutoBrokers #N" (mascarado,
-  // sem file_name, sem link). O conteúdo só é USADO pelos agentes nas respostas.
-  const temaCounter: Record<string, number> = {};
-  const globalMasked = (globalDocs as any[]).map((d) => {
-    const tema = d.knowledge_class || 'Biblioteca';
-    temaCounter[tema] = (temaCounter[tema] || 0) + 1;
-    return { id: `g-${d.id}`, name: `${tema} AutoBrokers #${temaCounter[tema]}`, tema, at: null, locked: true };
-  });
+  // SEGURANÇA (founder 14/07 e 28/07): a camada GLOBAL é a INTELIGÊNCIA da
+  // AutoBrokers. A corretora VÊ as pastas e o volume — é o que mostra que
+  // existe um cérebro grande operando por trás — e NUNCA vê o conteúdo.
+  //
+  // Até 28/07/2026 esta camada lia só `documents` da empresa técnica global,
+  // que está VAZIA. O resultado é o que o Founder viu na tela: nenhum nó
+  // global. Enquanto isso a inteligência real existia e era invisível —
+  // 926 cartas de procedimento em curadoria e 9 mapas de rota ativos.
+  //
+  // O que sai daqui é NOME DE PASTA e QUANTIDADE. Nada mais:
+  //   - de `ura_maps`, só `insurer_key` — nunca o `map`;
+  //   - de `knowledge_cards`, só `ramo` — nunca o `card_text`;
+  //   - de `documents` do acervo global, só `knowledge_class` — nem o
+  //     `file_name`, que já é conteúdo.
+  //
+  // As cartas `rejected_pii` ficam fora inteiras: foram barradas por conter
+  // dado de pessoa e não entram nem na contagem.
+  const RAMO_LABEL: Record<string, string> = {
+    auto: 'Auto', residencial: 'Residencial', vida: 'Vida',
+    empresarial: 'Empresarial', outro: 'Outros ramos',
+  };
+  const pastasGlobais: { tema: string; total: number }[] = [];
+
+  // Uma pasta por seguradora mapeada. `insurer_key` é vocabulário controlado;
+  // chaves sujas de importação (`technical__hdi`, `porto/tokio/resulta`) ficam
+  // de fora — o nome de uma corretora jamais pode aparecer como pasta global.
+  const porSeguradora = new Map<string, number>();
+  for (const r of rotas as any[]) {
+    const k = String(r?.insurer_key || '').trim().toLowerCase();
+    if (!k || k.includes('__') || k.includes('/')) continue;
+    porSeguradora.set(k, (porSeguradora.get(k) || 0) + 1);
+  }
+  for (const [k, n] of Array.from(porSeguradora.entries()).sort((a, b) => b[1] - a[1])) {
+    pastasGlobais.push({ tema: `Rotas · ${k.charAt(0).toUpperCase()}${k.slice(1)}`, total: n });
+  }
+
+  const porRamo = new Map<string, number>();
+  for (const c of cartas as any[]) {
+    const r = String(c?.ramo || 'outro').trim().toLowerCase();
+    porRamo.set(r, (porRamo.get(r) || 0) + 1);
+  }
+  for (const [r, n] of Array.from(porRamo.entries()).sort((a, b) => b[1] - a[1])) {
+    pastasGlobais.push({ tema: `Procedimentos · ${RAMO_LABEL[r] || 'Outros ramos'}`, total: n });
+  }
+
+  const porClasse = new Map<string, number>();
+  for (const d of globalDocs as any[]) {
+    const c = String(d?.knowledge_class || 'Biblioteca').trim();
+    porClasse.set(c, (porClasse.get(c) || 0) + 1);
+  }
+  for (const [c, n] of Array.from(porClasse.entries()).sort((a, b) => b[1] - a[1])) {
+    pastasGlobais.push({ tema: `Biblioteca · ${c}`, total: n });
+  }
+
+  // O grafo é uma simulação de forças O(n²) por quadro: desenhar as 935
+  // unidades faria a tela travar no notebook do corretor. Cada pasta rende no
+  // máximo 24 estrelas, e o total VERDADEIRO viaja em `global_total` para o
+  // cabeçalho não mentir para menos.
+  const MAX_POR_PASTA = 24;
+  const globalMasked: any[] = [];
+  let globalTotal = 0;
+  for (const p of pastasGlobais) {
+    globalTotal += p.total;
+    for (let i = 0; i < Math.min(p.total, MAX_POR_PASTA); i++) {
+      globalMasked.push({ id: `g-${p.tema}-${i}`, name: `${p.tema} · ${i + 1}`, tema: p.tema, at: null, locked: true });
+    }
+  }
 
   return NextResponse.json({
     ok: true,
     company_name: companyName,
     global: globalMasked,
+    global_total: globalTotal,
+    global_pastas: pastasGlobais.length,
     corretora: (docs as any[]).map((d) => ({ id: `c-${d.id}`, name: humanize(d.file_name), tema: d.knowledge_class || 'Documentos', at: d.created_at })),
     pessoal: (memories as any[]).map((m: any, i: number) => ({ id: `p-${m.id || i}`, name: memoryText(m), tema: 'Você', at: m.created_at })),
     clientes: (convs as any[])

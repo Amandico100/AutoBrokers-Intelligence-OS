@@ -8,10 +8,10 @@
 
 import { useEffect, useRef, useState } from 'react';
 
-type Item = { id: string; name: string; tema: string; at?: string };
+type Item = { id: string; name: string; tema: string; at?: string; locked?: boolean };
 type Node = {
   id: string; name: string; layer: 'global' | 'corretora' | 'pessoal'; tema: string;
-  hub?: boolean; core?: boolean; col: string; r: number; x: number; y: number;
+  hub?: boolean; core?: boolean; locked?: boolean; col: string; r: number; x: number; y: number;
   vx: number; vy: number; ax: number; ay: number; ag: number; q: number;
 };
 
@@ -66,7 +66,7 @@ export default function MemoriasPage() {
           nodes.push(hub);
           edges.push({ a: core, b: hub, spine: true });
           items.slice(0, 60).forEach((it) => {
-            const n: Node = { id: it.id, name: it.name, layer: c.key, tema, col: LAYER[c.key].col, r: 3.4 + rnd() * 3.8, x: ax + (rnd() - 0.5) * 90, y: ay + (rnd() - 0.5) * 90, vx: 0, vy: 0, ax, ay, ag: 0.004, q: 14 };
+            const n: Node = { id: it.id, name: it.name, layer: c.key, tema, locked: it.locked, col: LAYER[c.key].col, r: 3.4 + rnd() * 3.8, x: ax + (rnd() - 0.5) * 90, y: ay + (rnd() - 0.5) * 90, vx: 0, vy: 0, ax, ay, ag: 0.004, q: 14 };
             nodes.push(n); edges.push({ a: hub, b: n });
           });
         });
@@ -75,7 +75,13 @@ export default function MemoriasPage() {
       nodes.forEach((n) => adj.set(n, []));
       edges.forEach((e) => { adj.get(e.a)!.push(e.b); adj.get(e.b)!.push(e.a); });
       st.nodes = nodes; st.edges = edges; st.adj = adj; st.alpha = 1; st.pulses = [];
-      setCounts({ mem: totalLeaves, con: edges.length });
+      // O grafo desenha no máximo 24 estrelas por pasta global — senão a
+      // simulação de forças trava. O cabeçalho mostra o número VERDADEIRO:
+      // dizer "52 memórias" quando existem 987 é vender o cérebro por menos
+      // do que ele é.
+      const desenhadasGlobais = (data.global || []).length;
+      const reaisGlobais = Number(data.global_total || desenhadasGlobais);
+      setCounts({ mem: totalLeaves - desenhadasGlobais + reaisGlobais, con: edges.length });
     };
 
     fetch('/api/dashboard/memorias').then((r) => r.json()).then((d) => { if (d?.ok) build(d); }).catch(() => {});
@@ -326,7 +332,7 @@ export default function MemoriasPage() {
       </div>
 
       <div style={{ position: 'absolute', left: 22, bottom: 18, background: 'rgba(10,13,19,0.78)', border: '1px solid #161D28', borderRadius: 12, padding: '12px 14px', fontSize: 11.5, color: '#A9B2C0', pointerEvents: 'none' }}>
-        <div style={{ display: 'flex', gap: 9, alignItems: 'center' }}><span style={{ width: 9, height: 9, background: '#E2A94F', transform: 'rotate(45deg)', borderRadius: 1.5, boxShadow: '0 0 8px rgba(226,169,79,0.6)' }} /> Global AutoBrokers — biblioteca curada</div>
+        <div style={{ display: 'flex', gap: 9, alignItems: 'center' }}><span style={{ width: 9, height: 9, background: '#E2A94F', transform: 'rotate(45deg)', borderRadius: 1.5, boxShadow: '0 0 8px rgba(226,169,79,0.6)' }} /> Global AutoBrokers — inteligência da plataforma <span style={{ color: '#E2A94F', marginLeft: 2 }}>· protegida</span></div>
         <div style={{ display: 'flex', gap: 9, alignItems: 'center', marginTop: 6 }}><span style={{ width: 9, height: 9, background: '#5D9BE0', borderRadius: '50%', boxShadow: '0 0 8px rgba(93,155,224,0.6)' }} /> Corretora e clientes — docs e operação</div>
         <div style={{ display: 'flex', gap: 9, alignItems: 'center', marginTop: 6 }}><span style={{ width: 9, height: 9, background: '#43C08C', borderRadius: '50%', boxShadow: '0 0 8px rgba(67,192,140,0.6)' }} /> Pessoal — o que a IA aprendeu de você</div>
       </div>
@@ -348,10 +354,25 @@ export default function MemoriasPage() {
             <span onClick={() => setSel(null)} style={{ color: '#5A6577', cursor: 'pointer', fontSize: 16 }}>✕</span>
           </div>
           <div style={{ fontSize: 16, fontWeight: 600, marginTop: 10, lineHeight: 1.35 }}>{sel.name}</div>
-          <a href={`/dashboard/chat?q=${encodeURIComponent(`O que você sabe sobre "${sel.name}"?`)}`}
-            style={{ display: 'block', textAlign: 'center', marginTop: 16, background: 'linear-gradient(180deg,#16344E,#112A40)', border: '1px solid #2C577E', borderRadius: 11, padding: '11px 14px', fontSize: 13, color: '#CBE4F8', textDecoration: 'none' }}>
-            Perguntar ao AutoBrokers sobre isso
-          </a>
+          {sel.locked ? (
+            // A inteligência global é da AutoBrokers, não da corretora. A pasta
+            // e o volume aparecem — é o que mostra o tamanho do cérebro. O
+            // conteúdo não abre, e o botão que levaria ao chat sairia daqui com
+            // um rótulo mascarado ("Procedimentos · Auto · 37") que não quer
+            // dizer nada. Melhor dizer a verdade do que fingir um atalho.
+            <div style={{ marginTop: 16, background: 'rgba(226,169,79,0.06)', border: '1px solid rgba(226,169,79,0.25)', borderRadius: 11, padding: '13px 14px' }}>
+              <div style={{ fontFamily: mono, fontSize: 10, letterSpacing: '0.14em', textTransform: 'uppercase', color: '#E2A94F' }}>conteúdo protegido</div>
+              <div style={{ fontSize: 12.5, color: '#A9B2C0', marginTop: 7, lineHeight: 1.55 }}>
+                Esta é a inteligência da AutoBrokers. Os agentes usam este conhecimento
+                para atender por você — ele não é exibido nem exportado.
+              </div>
+            </div>
+          ) : (
+            <a href={`/dashboard/chat?q=${encodeURIComponent(`O que você sabe sobre "${sel.name}"?`)}`}
+              style={{ display: 'block', textAlign: 'center', marginTop: 16, background: 'linear-gradient(180deg,#16344E,#112A40)', border: '1px solid #2C577E', borderRadius: 11, padding: '11px 14px', fontSize: 13, color: '#CBE4F8', textDecoration: 'none' }}>
+              Perguntar ao AutoBrokers sobre isso
+            </a>
+          )}
           <div style={{ fontFamily: mono, fontSize: 10, letterSpacing: '0.14em', textTransform: 'uppercase', color: '#5A6577', margin: '18px 0 8px' }}>Conexões</div>
           {conns.map((c: Node) => (
             <div key={c.id} onClick={() => setSel(c)} style={{ display: 'flex', gap: 10, alignItems: 'center', padding: '8px 6px', borderRadius: 8, fontSize: 12.5, color: '#B9C2CF', cursor: 'pointer' }}>
