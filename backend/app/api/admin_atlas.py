@@ -415,19 +415,34 @@ async def onboarding_status(_: Any = Depends(require_master_admin)) -> Dict[str,
                 .eq("purpose", "observer").eq("provider", "evolution-go").execute().data or [])
 
     rows = await asyncio.to_thread(_rows)
+
+    # O TOKEN VEM CIFRADO DO BANCO.
+    #
+    # A chamada ao Evolution usava `r["token"]` cru, sem descriptografar. O
+    # servidor respondia 401, o código caía no `except` e o Founder via
+    # "unknown" nos dois observadores — enquanto o banco dizia `connected` para
+    # a Resulta, que estava capturando havia horas.
+    #
+    # E quando a chamada ao vivo falha por qualquer motivo, o estado gravado
+    # ainda é uma informação melhor que "unknown". "Não sei" só quando não se
+    # sabe mesmo.
+    from app.services.whatsapp.channel_state import normalizar_estado
+    from app.services.whatsapp.integration_secrets import decrypt_integration_secret
+
     out = []
     try:
         cfg = _go_admin()
         async with httpx.AsyncClient(timeout=15.0, base_url=cfg["base_url"]) as client:
             for r in rows:
-                state = "unknown"
+                state = normalizar_estado(r.get("channel_status")) or "desconhecido"
                 try:
-                    st = await client.get("/instance/status", headers={"apikey": r["token"]})
+                    apikey = decrypt_integration_secret(r.get("token")) or ""
+                    st = await client.get("/instance/status", headers={"apikey": apikey})
                     if st.status_code < 400:
                         data = (st.json() or {}).get("data") or {}
                         state = "conectado" if (data.get("LoggedIn")) else "aguardando pareamento"
-                except Exception:  # noqa: BLE001
-                    state = "indisponível"
+                except Exception:  # noqa: BLE001 — fica o estado gravado, não "unknown"
+                    pass
                 out.append({"company_id": r["company_id"], "instance": r["instance_id"],
                             "label": (r.get("alert_target") or {}).get("label"),
                             "scope": (r.get("alert_target") or {}).get("observer_scope") or "insurers_only",
