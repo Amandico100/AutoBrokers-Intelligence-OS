@@ -538,6 +538,11 @@ CASOS: list[Caso] = [
     # corretoras precisam trabalhar assim mesmo.
     Caso("PRT-01", "operacao", "Mede-se primeiro; promete-se depois",
          "SPEC-062", lambda: _roda_script("test_spec062_prontidao_e_sli.py")),
+    # O MinIO guarda a UNICA copia de cada documento que a corretora enviou —
+    # o Postgres guarda o ponteiro, nao o arquivo. Ate 28/07/2026 nao havia
+    # rotina nenhuma: o RPO real era "desde sempre".
+    Caso("BKP-01", "operacao", "O que foi guardado nao se perde",
+         "SPEC-062", lambda: _roda_script("test_backup_e_alertas.py")),
     # Medido em producao sem cookie nenhum: `/dashboard` e `/admin` barravam com
     # 307, e `/api/admin/proxy/agents/company/<id>/...` devolvia 200 com o prompt
     # da corretora. O proxy carimbava a chave de master para quem passasse na rua.

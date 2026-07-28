@@ -220,3 +220,86 @@ Honestidade sobre os limites, para ninguém confiar demais:
 - **Nenhum postmortem escrito** — não houve incidente registrado ainda.
 - **Rotação de segredo não está descrita** aqui: é procedimento do Founder e
   envolve credencial que este documento nunca deve conter.
+
+---
+
+## 6. RB-06 · Recuperar o storage a partir do backup
+
+**Quando usar:** o volume do MinIO se perdeu, corrompeu, ou um documento foi
+apagado por engano.
+
+### O que existe
+
+| | |
+|---|---|
+| Destino | Backblaze B2, bucket **privado** `autobrokers-minio-backup-prod` |
+| Endereço | `s3.us-east-005.backblazeb2.com` |
+| Frequência | de hora em hora, incremental |
+| Retenção | *Keep all versions* — sobrescrever não apaga o anterior |
+| Estrutura | os objetos ficam sob o prefixo `documents/` |
+
+**A rotina NUNCA apaga no destino.** Objeto removido do MinIO **continua** na
+cópia. É deliberado: um espelho que replica exclusão é inútil no caso que mais
+importa.
+
+### Recuperar UM documento
+
+```python
+from minio import Minio
+from io import BytesIO
+
+B2 = Minio("s3.us-east-005.backblazeb2.com",
+           access_key="<MINIO_BACKUP_S3_ACCESS_KEY_ID>",
+           secret_key="<MINIO_BACKUP_S3_SECRET_ACCESS_KEY>", secure=True)
+MINIO = Minio("<MINIO_ENDPOINT>", access_key="<MINIO_ROOT_USER>",
+              secret_key="<MINIO_ROOT_PASSWORD>", secure=True)
+
+caminho = "04b5cdbc-.../arquivo.pdf"          # sem o prefixo `documents/`
+r = B2.get_object("autobrokers-minio-backup-prod", f"documents/{caminho}")
+dado = r.read(); r.close(); r.release_conn()
+MINIO.put_object("documents", caminho, BytesIO(dado), len(dado))
+```
+
+### Recuperar TUDO
+
+```bash
+cd backend
+python -c "from app.services.backup.minio_backup import conferir; print(conferir())"
+```
+
+Isso diz o que falta. A restauração completa é o mesmo laço acima, invertendo
+origem e destino.
+
+### Conferir sem restaurar nada
+
+```python
+from app.services.backup.minio_backup import conferir, provar_restauracao
+print(conferir())              # contagem e tamanho batem?
+print(provar_restauracao())    # baixa um objeto e compara byte a byte
+```
+
+### Evidência do primeiro backup — 28/07/2026
+
+```
+copiados=18  pulados=0  bytes=5,28 MB  em 13,0s
+
+CONFERENCIA
+  origem ..: 18 objetos, 5.536.030 bytes
+  destino .: 18 objetos, 5.536.030 bytes
+  OK  contagem e tamanho batem
+
+RESTAURACAO de '04b5cdbc-.../0ceb7719-9fd4'
+  sha256 origem : 88aca42d406eb3aab93d149003cd7924
+  sha256 backup : 88aca42d406eb3aab93d149003cd7924
+  OK  byte a byte idêntico
+```
+
+> **O RPO do storage deixou de ser "desde sempre" e passou a ser 1 hora.**
+
+### Por que Python e não `mc` ou `rclone`
+
+Os dois exigiriam instalar um binário na imagem Docker — dependência nova para
+manter, atualizar e depurar quando o backup falhar às três da manhã. A
+biblioteca `minio` já está instalada e fala S3 com os dois lados. Verificado
+contra o Backblaze antes de escrever a rotina: listar, gravar, ler de volta e
+comparar byte a byte.

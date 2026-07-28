@@ -179,6 +179,25 @@ def start_buffer_scheduler():
             max_instances=1,
         )
 
+        # SPEC-062 §30.3 — BACKUP DO STORAGE, de hora em hora.
+        #
+        # O Supabase faz backup do Postgres pelo plano. O MinIO nao tinha
+        # rotina nenhuma — e e ele que guarda a UNICA copia de cada documento
+        # que a corretora enviou. O Postgres guarda o ponteiro, nao o arquivo.
+        #
+        # A rotina e incremental (so copia o que falta) e NUNCA apaga no
+        # destino: um espelho que replica exclusao e inutil justamente no caso
+        # que mais importa — alguem apaga por engano e o backup apaga junto.
+        from app.services.backup.minio_backup import rodar_periodicamente as _backup
+
+        scheduler.add_job(
+            _backup,
+            "interval",
+            minutes=_env_int("MINIO_BACKUP_INTERVAL_MINUTES", 60),
+            id="minio_backup",
+            max_instances=1,
+        )
+
         # SPEC-040 Onda 1: retenção do Espelho de Atendimento — o transcript
         # cru (com PII) expira; purge 1x/dia (marcador Redis, gate na task).
         from app.services.atlas.attendance_capture import check_attendance_purge

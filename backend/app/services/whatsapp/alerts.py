@@ -58,24 +58,73 @@ def _alert_target_dict(integration: Dict[str, Any]) -> Dict[str, Any]:
 
 
 def _alert_destination(integration: Dict[str, Any]) -> Optional[str]:
-    """Número OU grupo (@g.us) de destino do alerta."""
+    """Número OU grupo (@g.us) de destino do alerta.
+
+    A ordem é: destino explícito → SUPORTE HUMANO da corretora → fallback da
+    plataforma.
+
+    O suporte humano deixou de exigir a bandeira `use_support_destination` em
+    28/07/2026. Decisão do Founder:
+
+    > "QUANDO CONECTAR O SUPORTE HUMANO, O ALERTA JÁ ESTÁ EMBUTIDO JUNTO. NÃO
+    >  PRECISA NEM FALAR NADA."
+
+    E o raciocínio dele está certo: o grupo do suporte humano já é onde a
+    corretora recebe o dossiê quando o agente não sabe seguir. É o mesmo grupo,
+    com as mesmas pessoas, olhado pelas mesmas horas. Pedir que ela configure um
+    SEGUNDO destino só para "WhatsApp caiu" é criar um passo que alguém vai
+    esquecer — e o alerta que ninguém configurou é o alerta que não existe.
+
+    A mensagem é que muda, não o destino.
+    """
     target = _alert_target_dict(integration)
     number = str(target.get("number") or target.get("group") or "").strip()
     if number:
         return number
-    if target.get("use_support_destination"):
-        company_id = str(integration.get("company_id") or "")
-        if company_id:
-            try:
-                from app.services.dispatch_router import _support_contact
 
-                contact = _run_async(_support_contact(company_id))
-                if contact:
-                    return contact
-            except Exception as e:  # noqa: BLE001
-                logger.warning(f"[WA ALERT] support destination lookup failed: {type(e).__name__}")
+    company_id = str(integration.get("company_id") or "")
+    if company_id:
+        try:
+            from app.services.dispatch_router import _support_contact
+
+            contact = _run_async(_support_contact(company_id))
+            if contact:
+                return contact
+        except Exception as e:  # noqa: BLE001
+            logger.warning(f"[WA ALERT] support destination lookup failed: {type(e).__name__}")
+
     fallback = os.getenv("PLATFORM_ALERT_FALLBACK_NUMBER", "").strip()
     return fallback or None
+
+
+async def alerta_de_plataforma(titulo: str, corpo: str,
+                               company_id: Optional[str] = None) -> bool:
+    """Alerta de PLATAFORMA (backup falhou, subsistema fora do ar).
+
+    Vai para o número de plantão da plataforma — nunca para o grupo da
+    corretora. O corretor não tem o que fazer com "o backup do storage falhou",
+    e mandar isso para ele troca confiança por ruído.
+    """
+    try:
+        destino = os.getenv("PLATFORM_ALERT_FALLBACK_NUMBER", "").strip()
+        if not destino:
+            logger.error("[ALERTA] %s — sem PLATFORM_ALERT_FALLBACK_NUMBER "
+                         "configurado, aviso não saiu", titulo)
+            return False
+
+        integration = _platform_alert_integration()
+        if not integration:
+            logger.error("[ALERTA] %s — sem canal para enviar", titulo)
+            return False
+
+        from app.services.whatsapp.registry import resolve_provider
+
+        texto = f"🔧 *AutoBrokers — {titulo}*\n\n{corpo}"
+        r = resolve_provider(integration).send_text(destino, texto)
+        return bool(getattr(r, "success", False))
+    except Exception as e:  # noqa: BLE001
+        logger.error("[ALERTA] falhou: %s", type(e).__name__)
+        return False
 
 
 def _sender_integration(integration: Dict[str, Any]) -> Optional[Dict[str, Any]]:
