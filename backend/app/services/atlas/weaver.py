@@ -45,9 +45,44 @@ def _norm_label(label: str) -> str:
 
 
 def labels_match(option_label: str, click_label: str) -> bool:
+    """Esta opção do menu é a que a pessoa escolheu?
+
+    Existem duas formas de escolher, e o casamento tinha só uma.
+
+    **Clique** (lista/botão do WhatsApp): o rótulo volta inteiro, e comparar
+    texto com texto resolve.
+
+    **Digitação** (URA de texto, como a Allianz): a pessoa manda **"2"**. O
+    rótulo da opção é "2 - Residência, Condomínio ou Empresa". Comparar os dois
+    como texto nunca casa — e foi isso que produziu 4% de cobertura sobre
+    milhares de atendimentos reais em 28/07/2026.
+
+    O número é a chave. Quando os dois lados têm número, ele decide sozinho:
+    "2" e "2 - Residência…" são a mesma escolha, e "2" e "3 - Vida…" não são —
+    mesmo que os textos se pareçam.
+    """
+    from app.services.cartographer import numero_da_opcao
+
+    bruto_clique = str(click_label or "").strip()
+
+    # Caminho do menu digitado. Só vale quando a resposta é SÓ o número: um
+    # CPF de 11 dígitos ou um endereço que começa com número não são escolha
+    # de menu.
+    if bruto_clique.isdigit() and len(bruto_clique) <= 2:
+        n_opcao = numero_da_opcao(option_label)
+        return n_opcao is not None and n_opcao.lstrip("0") == bruto_clique.lstrip("0")
+
     a, b = _norm_label(option_label), _norm_label(click_label)
     if not a or not b:
         return False
+
+    # Quando a opção tem número e o clique também, os números têm de bater —
+    # senão "1 - Residencial" casaria com "2 - Condomínio" pela semelhança do
+    # texto ao redor.
+    n_a, n_b = numero_da_opcao(option_label), numero_da_opcao(click_label)
+    if n_a and n_b and n_a.lstrip("0") != n_b.lstrip("0"):
+        return False
+
     return a == b or a.endswith(b) or b.endswith(a) or (len(b) >= 4 and b in a) or (len(a) >= 4 and a in b)
 
 

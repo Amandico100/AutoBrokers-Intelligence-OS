@@ -70,27 +70,88 @@ _HUMANO_RE = re.compile(
 POLITE_EXIT = "Ah, me desculpe — era só uma dúvida sobre o menu e já consegui o que eu precisava. Pode encerrar por aqui. Muito obrigado! 🙂"
 
 
+def _sem_negrito(texto: str) -> str:
+    """Tira o negrito do WhatsApp (`*assim*`) sem mexer no resto.
+
+    Isto é a raiz de um defeito caro. A Allianz manda o menu assim:
+
+        *1 -* Automóvel, Moto ou Caminhão
+        *2 -* Residência, Condomínio ou Empresa
+
+    O asterisco vem ANTES do número. O regex de menu numerado espera o dígito
+    logo após a quebra de linha, então não casava nada — e a tela mais
+    importante da corretora (a que escolhe Residencial, Condomínio ou
+    Empresarial) ficava com ZERO opções detectadas.
+
+    Medido em 28/07/2026 sobre as conversas reais da Resulta: 930 telas
+    capturadas e só 170 com opções. Não era "os clientes só pedem uma coisa" —
+    era o leitor cego para o formato da seguradora.
+    """
+    # `*` só delimita negrito quando abraça conteúdo sem espaço na borda. Um
+    # asterisco solto no meio de um endereço não deve ser tocado.
+    return re.sub(r"\*(\S(?:[^*\n]*\S)?)\*", r"\1", str(texto or ""))
+
+
+# `2` do menu, `2)` , `2 -` … O número é a CHAVE de casamento com o que o
+# humano digita. Guardá-lo junto do rótulo é o que liga "a atendente digitou 2"
+# à opção "Residência, Condomínio ou Empresa".
+_NUMERADA = re.compile(r"(?:^|\n)\s*(\d{1,2})\s*[-–.)\]]\s*([^\n|]{2,80})")
+
+
 def parse_options(text: str) -> List[str]:
-    """Extrai os rótulos clicáveis de uma tela renderizada. Cobre:
-    1. 'Botão 1: X' (botões);
-    2. menus numerados '1 - X';
-    3. LISTAS da Evolution (fix 14/07 — travou a Porto ao vivo): o render das
-       listas é corpo + UM TÍTULO POR LINHA, sem prefixo. Heurística: linhas
-       curtas após o corpo, sem pontuação de frase, viram opções."""
+    """Extrai os rótulos clicáveis de uma tela renderizada.
+
+    Formatos cobertos:
+      1. `Botão 1: X` (botões da Evolution);
+      2. menus numerados `1 - X`, `1) X`, `*1 -* X`, `*1 - X:* descrição`;
+      3. listas da Evolution: corpo + um título por linha, sem prefixo.
+
+    O rótulo devolvido vem **com o número na frente** quando o menu é numerado
+    (`"2 - Residência, Condomínio ou Empresa"`). Sem o número, a aresta gravada
+    como `"2"` — que é o que a atendente digitou — nunca casa com a opção, e a
+    rota aparece como não percorrida mesmo tendo sido percorrida centenas de
+    vezes.
+    """
+    limpo = _sem_negrito(text)
     labels: List[str] = []
-    for m in re.finditer(r"bot[ãa]o\s*\d+\s*:\s*([^\n|]+)", text, re.IGNORECASE):
+
+    for m in re.finditer(r"bot[ãa]o\s*\d+\s*:\s*([^\n|]+)", limpo, re.IGNORECASE):
         labels.append(m.group(1).strip())
-    for m in re.finditer(r"(?:^|\n)\s*(\d{1,2})\s*[-–.)]\s*([^\n|]{2,60})", text):
-        labels.append(m.group(2).strip())
+
+    for m in _NUMERADA.finditer(limpo):
+        numero, rotulo = m.group(1), m.group(2).strip().rstrip(":")
+        # O `:` do formato `1 - Residencial: Para sua casa...` separa o rótulo
+        # da explicação. O que se clica é o rótulo.
+        if ":" in rotulo:
+            cabeca, _, cauda = rotulo.partition(":")
+            if len(cabeca.strip()) >= 2:
+                rotulo = cabeca.strip()
+        labels.append(f"{numero} - {rotulo}" if rotulo else numero)
+
     if not labels:
-        lines = [ln.strip() for ln in str(text or "").splitlines() if ln.strip()]
+        lines = [ln.strip() for ln in limpo.splitlines() if ln.strip()]
         candidates: List[str] = []
         for ln in lines[1:]:  # a 1ª linha é o corpo/pergunta
-            if 2 <= len(ln) <= 48 and not ln.endswith((".", "?", "!", ":", ",")) \
-                    and not ln[0].islower() and len(ln.split()) <= 7:
+            # Marcador de LISTA (`- item`, `• item`) não é opção de menu. A
+            # Allianz manda uma tela de instruções assim:
+            #
+            #     - Escolha a opção desejada digitando o número;
+            #     - Ainda não consigo entender fotos, vídeos ou áudios;
+            #
+            # Sem esta exclusão, a tela de dicas viraria um "menu" de duas
+            # opções que ninguém pode escolher — e opção que não existe vira
+            # lacuna eterna na cobertura.
+            if ln[0] in "-–•*·":
+                continue
+            # 80 e não 48: `*1 - Residencial:* Para sua casa ou apartamento
+            # individual` tem 56 caracteres e era descartado por 8 — perdendo
+            # justamente o menu de ramo da Allianz.
+            if 2 <= len(ln) <= 80 and not ln.endswith((".", "?", "!", ":", ",", ";")) \
+                    and not ln[0].islower() and len(ln.split()) <= 10:
                 candidates.append(ln)
         if len(candidates) >= 2:
             labels = candidates
+
     seen, out = set(), []
     for lab in labels:
         k = lab.lower()
@@ -98,6 +159,12 @@ def parse_options(text: str) -> List[str]:
             seen.add(k)
             out.append(lab)
     return out
+
+
+def numero_da_opcao(label: str) -> Optional[str]:
+    """O número que a pessoa digita para escolher esta opção, se houver."""
+    m = re.match(r"\s*(\d{1,2})\s*[-–.)\]]", str(label or ""))
+    return m.group(1) if m else None
 
 
 def classify_screen(text: str, options: List[str]) -> str:

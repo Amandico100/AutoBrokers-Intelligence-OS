@@ -569,6 +569,12 @@ CASOS: list[Caso] = [
     # corretora usou pouco", nunca a "o leitor cortou".
     Caso("ATL-01", "whatsapp", "Nenhuma conversa se perde ao virar mapa",
          "SPEC-038", lambda: _roda_script("test_atlas_nao_perde_conversa.py")),
+    # A Allianz manda `*1 -* Automovel...` — asterisco ANTES do digito — e a
+    # atendente responde "2". O parser nao via o formato e o casamento comparava
+    # texto com texto: 930 telas, 170 com opcoes, 4% de cobertura sobre milhares
+    # de atendimentos reais. Nao era falta de rota, era cegueira de formato.
+    Caso("ATL-02", "whatsapp", "Nenhum atendimento se perde por formato da seguradora",
+         "SPEC-038", lambda: _roda_script("test_atlas_le_menu_digitado.py")),
     Caso("OBS-02", "whatsapp", "Nenhuma falha técnica vira resposta ao segurado",
          "SPEC-038/045", lambda: _roda_script("test_observador_silencio.py")),
     Caso("WPP-01", "whatsapp", "Corretoras não compartilham instância de WhatsApp",
