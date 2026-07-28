@@ -245,11 +245,11 @@ def teste_a_URA_acaba_quando_entra_gente():
 
     fonte = open(os.path.join(RAIZ, "app", "services", "atlas", "weaver.py"),
                  encoding="utf-8").read()
-    checar('nodes[nid]["fase"] = "humano"' in fonte,
-           "o Tecelão marca a fase humana")
-    checar('if node.get("fase") == "humano":' in fonte,
-           "e a cobertura não conta opção de tela humana",
-           "contá-la faria a lacuna nunca fechar: não há o que clicar")
+    checar('nodes[nid][chave]' in fonte,
+           "o Tecelão registra de que lado do handoff a tela apareceu")
+    checar('node["fase"] = "humano" if e_humana else "ura"' in fonte,
+           "e a fase é decidida no cálculo, não carimbada na hora",
+           "carimbar durante a sessão contaminou 782 telas em 28/07/2026")
     checar('"nodes_ura"' in fonte and '"nodes_humano"' in fonte,
            "e as duas contagens aparecem separadas",
            "senão fica a pergunta: por que 900 telas se a URA tem 50?")
@@ -358,6 +358,67 @@ def teste_voltar_ao_mesmo_menu_e_rota_de_verdade():
            str([(e["label"], e["src"] == e["to"]) for e in acc["edges"].values()]))
 
 
+HANDOFF = ("Vou transferir seu caso para um especialista. Para agilizar, "
+           "ele já tem acesso a todo histórico da nossa conversa")
+
+
+def teste_o_menu_nunca_e_carimbado_de_conversa_humana():
+    print("\n[17] Uma tela com menu é da URA, sempre")
+    # UMA SESSÃO É UMA JANELA DE DUAS HORAS. O cliente é transferido para o
+    # especialista e depois VOLTA a falar com a URA na mesma janela.
+    #
+    # A primeira versão da marca de fase carimbava `fase="humano"` na hora, e o
+    # carimbo ficava no nó para sempre. Bastou isso acontecer uma vez para o
+    # menu principal da Allianz virar "conversa humana" — e tela marcada assim
+    # é PULADA no cálculo de rotas.
+    #
+    # Medido nos mapas de 28/07/2026: 782 das 919 telas carimbadas, incluindo
+    # 56 telas COM MENU. O Canvas ficou sem nenhuma rota depois da raiz, tudo
+    # laranja, com 94 opções percorridas que ninguém via.
+    acc = {"root": None, "nodes": {}, "edges": {}}
+    W.weave_session(acc, [
+        _ev("in", "10:00:00", MENU_CURTO), _ev("out", "10:00:10", "1"),
+        _ev("in", "10:00:20", "Qual o CEP?"), _ev("out", "10:00:30", "88000-000"),
+        _ev("in", "10:01:00", HANDOFF),
+        _ev("in", "10:05:00", "Boa tarde! Precisa de escada?"),
+        # ainda dentro da janela de 2h, outro atendimento comeca
+        _ev("in", "11:00:00", MENU_CURTO), _ev("out", "11:00:10", "2"),
+        _ev("in", "11:00:20", "Qual o CEP?")])
+    W.compute_coverage(acc)
+
+    menu = [n for n in acc["nodes"].values() if "Qual seguro" in n["text"]][0]
+    checar(menu.get("fase") == "ura", "o menu continua sendo da URA",
+           f"ficou {menu.get('fase')}")
+    checar(all(o.get("confidence") for o in menu["options"]),
+           "e suas opções foram AVALIADAS",
+           "confidence nulo = a tela foi pulada e nenhuma rota sai dela")
+    checar([o for o in menu["options"] if o.get("leads_to")],
+           "com destino gravado — é isto que o Canvas desenha")
+
+    fala = [n for n in acc["nodes"].values() if "Boa tarde" in n["text"]][0]
+    checar(fala.get("fase") == "humano",
+           "a fala solta do especialista continua fora da conta",
+           "ela não tem menu e nunca apareceu antes do handoff")
+
+    cep = [n for n in acc["nodes"].values() if "CEP" in n["text"]][0]
+    checar(cep.get("fase") == "ura",
+           "e uma tela vista ANTES do handoff não vira humana depois",
+           "era assim que a contaminação se espalhava")
+
+
+def teste_a_regra_de_fase_esta_no_calculo_e_nao_no_carimbo():
+    print("\n[18] A fase é decidida no fim, com o quadro inteiro")
+    fonte = open(os.path.join(RAIZ, "app", "services", "atlas", "weaver.py"),
+                 encoding="utf-8").read()
+    checar('nodes[nid]["fase"] = "humano"' not in fonte,
+           "o Tecelão não carimba a fase durante a sessão",
+           "carimbar na hora é o que contaminou 782 telas")
+    checar("pos_handoff" in fonte and "pre_handoff" in fonte,
+           "ele apenas CONTA de que lado do handoff a tela apareceu")
+    checar('not node.get("options")' in fonte,
+           "e tela com menu nunca é fase humana")
+
+
 def main() -> int:
     print("=" * 70)
     print("O TECELÃO ENXERGA A URA DE TEXTO, NÃO SÓ A DE BOTÃO")
@@ -377,7 +438,9 @@ def main() -> int:
                   teste_protocolos_diferentes_sao_a_mesma_tela,
                   teste_tela_nao_aponta_para_si_mesma,
                   teste_a_escolha_nao_se_perde_junto,
-                  teste_voltar_ao_mesmo_menu_e_rota_de_verdade):
+                  teste_voltar_ao_mesmo_menu_e_rota_de_verdade,
+                  teste_o_menu_nunca_e_carimbado_de_conversa_humana,
+                  teste_a_regra_de_fase_esta_no_calculo_e_nao_no_carimbo):
         try:
             teste()
         except Exception as exc:  # noqa: BLE001

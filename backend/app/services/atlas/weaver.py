@@ -164,12 +164,23 @@ def weave_session(map_acc: Dict[str, Any], events: List[Dict[str, Any]],
             nodes[nid] = {**node, "samples": 0, "order": map_acc["_seq"]}
         nodes[nid]["samples"] += 1
 
-        # A marca é por TELA e sobrevive entre sessões: se uma tela já foi vista
-        # depois de um handoff alguma vez, ela é da fase humana sempre. O
-        # contrário não vale — uma tela da URA não vira humana porque apareceu
-        # uma vez fora de ordem.
-        if fase_humana:
-            nodes[nid]["fase"] = "humano"
+        # CONTA, NÃO CARIMBA.
+        #
+        # A primeira versão marcava `fase="humano"` na hora e a marca ficava no
+        # nó para sempre. Uma sessão é uma janela de DUAS HORAS: o cliente é
+        # transferido para o especialista e depois volta a falar com a URA na
+        # mesma janela. Bastou isso acontecer uma vez para o MENU PRINCIPAL da
+        # Allianz ser carimbado como conversa humana.
+        #
+        # Medido em 28/07/2026: 782 das 919 telas viraram "humano", incluindo o
+        # menu de ramo e mais 55 telas COM MENU. Tela marcada assim é pulada no
+        # cálculo de rotas — foi por isso que o Canvas ficou sem nenhuma rota
+        # depois da raiz, com tudo laranja.
+        #
+        # Agora só se CONTA de que lado do handoff a tela apareceu. Quem decide
+        # é `compute_coverage`, no fim, com o quadro inteiro na mão.
+        chave = "pos_handoff" if fase_humana else "pre_handoff"
+        nodes[nid][chave] = int(nodes[nid].get(chave) or 0) + 1
         if not fase_humana and _HUMANO_RE.search(texto_bruto):
             # A tela que ANUNCIA a transferência ainda é da URA — ela é o fim
             # da rota, e o agente precisa saber que chegou nela.
@@ -283,10 +294,22 @@ def compute_coverage(map_acc: Dict[str, Any]) -> Dict[str, Any]:
     total_opts = covered_opts = 0
     for nid, node in nodes.items():
         node_gaps = 0
-        # Tela da fase humana não entra na conta de cobertura. Ela não tem menu
-        # a percorrer — tem gente digitando. Contá-la faria a cobertura cair
-        # para sempre, porque a "lacuna" nunca fecharia: não há o que clicar.
-        if node.get("fase") == "humano":
+        # TELA COM MENU É DA URA. SEMPRE.
+        #
+        # Pessoa nenhuma manda "*1 -* Automóvel *2 -* Residência". Esta é a
+        # regra que impede a contaminação: mesmo que a tela só tenha aparecido
+        # depois de um handoff, se ela oferece escolha ela é da URA.
+        #
+        # Fora isso, é da fase humana a tela que NUNCA apareceu antes de um
+        # handoff. "Boa tarde!", "Ok um momento", "Precisa de escada?" — texto
+        # livre do especialista, que não tem rota a percorrer. Contá-la faria a
+        # cobertura cair para sempre: a lacuna nunca fecha porque não há o que
+        # clicar.
+        e_humana = (not node.get("options")
+                    and int(node.get("pos_handoff") or 0) > 0
+                    and int(node.get("pre_handoff") or 0) == 0)
+        node["fase"] = "humano" if e_humana else "ura"
+        if e_humana:
             continue
         for opt in node.get("options") or []:
             total_opts += 1
