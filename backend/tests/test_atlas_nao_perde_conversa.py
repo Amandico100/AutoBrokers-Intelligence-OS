@@ -246,6 +246,55 @@ def teste_a_mesma_mensagem_tem_sempre_o_mesmo_id():
                "o 'Ok' da seguradora não é o 'Ok' da corretora")
 
 
+def teste_o_espelho_le_cada_mensagem_uma_vez():
+    print("\n[9] O Espelho não paga duas vezes pela mesma conversa")
+    # Medido em 28/07/2026: `attendance_transcripts` tinha 116.877 linhas para
+    # 58.786 mensagens reais (1,99x, todas do history_sync — o `live` está em
+    # 1,00x). Cada conversa chegava à LLM com toda mensagem escrita duas vezes:
+    # média de 15,1 linhas para 7,4 mensagens.
+    #
+    # E o transcript é cortado em 7.000 caracteres: 56 sessões estouravam o
+    # teto, e só 9 estourariam sem as cópias. As 47 do meio são as conversas
+    # mais longas — as que mais tinham a ensinar — e perdiam o fim, que é onde
+    # o atendimento se resolve.
+    fonte = _so_codigo(_ler("app", "services", "attendance_distiller.py"))
+    i = fonte.find("def _load_session_text_sync")
+    trecho = fonte[i:i + 1400] if i >= 0 else ""
+    checar(bool(trecho), "a leitura do transcript existe")
+    checar("_sem_copias" in trecho,
+           "o transcript enviado à LLM passa pelo mesmo filtro de cópias",
+           "sem isso o custo dobra e as conversas longas perdem o fim")
+    checar("attendance_transcripts" in trecho, "e continua lendo a tabela certa")
+
+    # O filtro é UM só, compartilhado com o Tecelão. Duas implementações
+    # divergiriam com o tempo e uma delas voltaria a contar copiado.
+    checar("from app.services.atlas.weaver import _sem_copias" in trecho,
+           "e é o MESMO filtro do Tecelão, não uma segunda cópia da regra")
+
+
+def teste_a_falha_de_midia_diz_o_que_houve():
+    print("\n[10] 'HTTPStatusError' não conserta nada")
+    # 23 mídias marcadas `failed` no Espelho, todas com o mesmo texto. 401
+    # (token), 404 (mídia expirada no WhatsApp) e 5xx (servidor fora) pedem
+    # três consertos diferentes, e o registro não distinguia nenhum.
+    fonte = _so_codigo(_ler("app", "services", "atlas", "observer_media.py"))
+    checar("_motivo_da_falha" in fonte, "a falha é traduzida antes de gravar")
+    checar("status_code" in fonte, "e o status HTTP entra no registro")
+    # A janela é a FUNÇÃO, não um punhado de caracteres: `_download_media` vem
+    # logo depois e lê o token por dever de ofício. Medir o vizinho errado dá
+    # alarme falso hoje e silêncio no dia que importa.
+    i = fonte.find("def _motivo_da_falha")
+    resto = fonte[i:]
+    # `async def` também encerra a função: procurar só por `def` faz a janela
+    # engolir a próxima — foi o que aconteceu na primeira versão deste teste.
+    prox = re.search(r"\n(?:async\s+)?def\s", resto[1:])
+    corpo = resto[:prox.start() + 1] if prox else resto
+    checar(".text" not in corpo and ".content" not in corpo,
+           "sem o corpo da resposta, que pode trazer dado de cliente")
+    checar("token" not in corpo.lower() and "apikey" not in corpo.lower(),
+           "e sem nada que se pareça com credencial", corpo[-90:])
+
+
 def main() -> int:
     print("=" * 70)
     print("NENHUMA CONVERSA SE PERDE AO VIRAR MAPA")
@@ -257,7 +306,9 @@ def main() -> int:
                   teste_um_vocabulario_so_para_o_estado_do_canal,
                   teste_nada_no_atlas_apaga_conversa,
                   teste_a_purga_do_espelho_e_governada,
-                  teste_a_mesma_mensagem_tem_sempre_o_mesmo_id):
+                  teste_a_mesma_mensagem_tem_sempre_o_mesmo_id,
+                  teste_o_espelho_le_cada_mensagem_uma_vez,
+                  teste_a_falha_de_midia_diz_o_que_houve):
         try:
             teste()
         except Exception as exc:  # noqa: BLE001

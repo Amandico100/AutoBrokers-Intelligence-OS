@@ -157,15 +157,30 @@ def _load_undistilled_sync(max_sessions: int) -> List[Dict[str, Any]]:
 
 
 def _load_session_text_sync(session_id: str) -> str:
-    """Transcript cronológico MASCARADO (PII nunca chega à LLM)."""
+    """Transcript cronológico MASCARADO (PII nunca chega à LLM).
+
+    As cópias do history_sync entravam aqui inteiras. Medido em 28/07/2026:
+    116.877 linhas para 58.786 mensagens reais (1,99x). Cada conversa chegava
+    à LLM com **toda mensagem escrita duas vezes** — média de 15,1 linhas para
+    7,4 mensagens.
+
+    Não era só o dobro do custo. O transcript é cortado em 7.000 caracteres:
+    **56 sessões estouravam o teto, e só 9 estourariam sem as cópias.** As 47
+    do meio são as conversas mais longas — as que mais tinham a ensinar — e
+    perdiam o fim, que é justamente onde o atendimento se resolve.
+
+    Corrigir isto baixa o custo pela metade e AUMENTA a qualidade. Não é troca.
+    """
     from app.core.database import get_supabase_client
     from app.services.atlas.templater import templatize
+    from app.services.atlas.weaver import _sem_copias
 
     db = get_supabase_client()
     events = (db.client.table("attendance_transcripts")
-              .select("direction, msg_type, text, wa_timestamp")
+              .select("session_id, direction, msg_type, text, wa_timestamp")
               .eq("session_id", session_id)
               .order("wa_timestamp", desc=False).limit(400).execute().data or [])
+    events = _sem_copias(events)
     lines = []
     for e in events:
         who = "ATENDENTE" if e.get("direction") == "out" else "CLIENTE"

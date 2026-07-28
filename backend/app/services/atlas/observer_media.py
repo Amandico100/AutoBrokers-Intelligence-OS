@@ -114,6 +114,34 @@ def _load_integration_sync(payload: Dict[str, Any]) -> Optional[Dict[str, Any]]:
     return prepare_integration_for_runtime(rows[0])
 
 
+def _motivo_da_falha(exc: BaseException) -> str:
+    """O nome da exceção não conserta nada; o status HTTP sim.
+
+    Em 28/07/2026 havia 23 mídias marcadas `failed` no Espelho, todas com o
+    mesmo texto: "HTTPStatusError". Não dá para saber se é token errado (401),
+    mídia expirada no WhatsApp (404) ou servidor fora (5xx) — e são três
+    consertos completamente diferentes.
+
+    Sondado sem token, `/message/downloadmedia` responde 401 e as rotas
+    alternativas respondem 404: a rota está certa. Falta saber o status real
+    da chamada autenticada, e é isso que este campo passa a guardar.
+
+    Só o status e a rota. Nunca o corpo da resposta nem o token: o corpo pode
+    trazer dado de cliente, e o token nunca aparece em log.
+    """
+    resposta = getattr(exc, "response", None)
+    codigo = getattr(resposta, "status_code", None)
+    if codigo:
+        pedido = getattr(exc, "request", None)
+        caminho = ""
+        try:
+            caminho = urlparse(str(getattr(pedido, "url", "") or "")).path
+        except Exception:  # noqa: BLE001
+            caminho = ""
+        return f"HTTP {codigo}{(' ' + caminho) if caminho else ''}"
+    return type(exc).__name__
+
+
 async def _download_media(
     integration: Dict[str, Any], message: Dict[str, Any]
 ) -> Tuple[bytes, str]:
@@ -315,12 +343,13 @@ async def check_observer_media(batch_size: int = 3) -> int:
             finally:
                 await redis.delete(lock_key)
         except Exception as exc:  # noqa: BLE001
-            logger.error("[OBSERVER MEDIA] enrichment failed: %s", type(exc).__name__)
+            motivo = _motivo_da_falha(exc)
+            logger.error("[OBSERVER MEDIA] enrichment failed: %s", motivo)
             try:
                 await asyncio.to_thread(
                     _update_record_sync,
                     payload,
-                    {"enrichment_status": "failed", "enrichment_error": type(exc).__name__},
+                    {"enrichment_status": "failed", "enrichment_error": motivo},
                 )
             except Exception:  # noqa: BLE001
                 pass
