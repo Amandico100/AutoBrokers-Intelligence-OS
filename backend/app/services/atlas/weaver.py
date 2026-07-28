@@ -282,6 +282,8 @@ def label_inferred_edges(map_acc: Dict[str, Any]) -> int:
 def compute_coverage(map_acc: Dict[str, Any]) -> Dict[str, Any]:
     """Casa cada OPÇÃO oferecida com a aresta percorrida (fuzzy), marca lacunas,
     variantes e o status de cada nó. Escolhe a RAIZ pela frequência de abertura."""
+    from app.services.cartographer import acao_conhecida
+
     edges = map_acc.get("edges") or {}
     nodes = map_acc.get("nodes") or {}
 
@@ -318,6 +320,9 @@ def compute_coverage(map_acc: Dict[str, Any]) -> Dict[str, Any]:
                 if labels_match(opt["label"], e["label"]):
                     match = e
                     break
+            acao_desta = acao_conhecida(opt["label"])
+            if acao_desta:
+                opt["acao"] = acao_desta
             if match:
                 opt["leads_to"] = match["to"]
                 if match.get("echo"):
@@ -332,9 +337,31 @@ def compute_coverage(map_acc: Dict[str, Any]) -> Dict[str, Any]:
                         key=lambda v: -v["count"])
                 covered_opts += 1
             else:
-                opt["leads_to"] = None
-                opt["confidence"] = "gap"
-                node_gaps += 1
+                # OPÇÃO CUJO COMPORTAMENTO JÁ SE CONHECE NÃO É LACUNA.
+                #
+                # "Voltar" aparece 222 vezes nos mapas e 190 delas contavam
+                # como buraco. Ninguém clica em "Voltar" num atendimento real
+                # — e se clicasse não ensinaria nada: já se sabe que volta.
+                # A lacuna nunca fecharia, e ela afunda a cobertura de todas
+                # as seguradoras para sempre.
+                #
+                # Pior é a escolha de horário: "{DATA} (quarta-feira)" muda de
+                # rótulo todo dia, então o mapa de amanhã inventa lacunas novas
+                # que ninguém jamais percorre.
+                #
+                # `acao` também é o que o agente precisa saber: "Voltar" é a
+                # saída quando ele errou o caminho, "Sair" é como encerrar sem
+                # deixar a conversa pendurada, e qualquer horário serve.
+                acao = acao_conhecida(opt["label"])
+                if acao:
+                    opt["leads_to"] = None
+                    opt["acao"] = acao
+                    opt["confidence"] = "navegacao"
+                    covered_opts += 1
+                else:
+                    opt["leads_to"] = None
+                    opt["confidence"] = "gap"
+                    node_gaps += 1
         if node.get("kind") == "app_form":
             node["status"] = "app_form"
         elif not node.get("options"):

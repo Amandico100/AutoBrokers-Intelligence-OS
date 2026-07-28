@@ -204,6 +204,58 @@ def parse_options(text: str) -> List[str]:
     return out
 
 
+# Opções cujo comportamento já é conhecido sem ninguém precisar percorrer.
+#
+# Medido nos mapas em 28/07/2026: "voltar" aparece 222 vezes em 5 seguradoras
+# (190 delas contadas como lacuna), "sair" 73 vezes, "encerrar atendimento" 5.
+# São ~270 lacunas que nunca fecham — porque ninguém clica em "Voltar" num
+# atendimento de verdade, e se clicar não ensina nada: já se sabe o que
+# acontece.
+#
+# O agente também precisa disso. "Voltar" não é uma rota a descobrir: é a
+# saída de emergência quando ele errou o caminho, e "Sair" é como encerrar
+# sem deixar a conversa pendurada.
+_NAVEGACAO = (
+    ("voltar", re.compile(r"^(?:voltar|volta|retornar|voltar ao menu|menu anterior|"
+                          r"voltar ao in[íi]cio|voltar para o in[íi]cio)$", re.IGNORECASE)),
+    ("sair",   re.compile(r"^(?:sair|encerrar|finalizar|encerrar atendimento|"
+                          r"finalizar atendimento|encerrar conversa)$", re.IGNORECASE)),
+    ("menu",   re.compile(r"^(?:menu principal|in[íi]cio|menu|come[çc]ar de novo)$",
+                          re.IGNORECASE)),
+)
+
+# Escolha de data/horário de agendamento. Cada dia gera um rótulo diferente
+# ("{DATA} (quarta-feira)", "entre 10h e 12h"), então essas opções NUNCA
+# fecham: o mapa de amanhã cria lacunas novas que ninguém percorre. E todas
+# levam ao mesmo lugar — a tela de confirmação do agendamento.
+_ESCOLHA_DE_HORARIO = re.compile(
+    r"\{DATA\}|^\s*(?:entre\s+)?\d{1,2}h(?:\d{2})?\s*(?:[àa]s|e|-)\s*\d{1,2}h|"
+    r"(?:segunda|ter[çc]a|quarta|quinta|sexta|s[áa]bado|domingo)-?feira",
+    re.IGNORECASE)
+
+
+def acao_conhecida(label: str) -> Optional[str]:
+    """O que esta opção faz, quando dá para saber sem observar.
+
+    Devolve "voltar", "sair", "menu", "horario" — ou None quando a opção é
+    conteúdo de verdade e só um atendimento real pode ensinar.
+
+    É deliberadamente curto. "Cancelar serviço", "Mais opções" e "Outro
+    assunto" FICAM de fora: parecem navegação e não são — abrem fluxo próprio,
+    e marcá-las como conhecidas esconderia rota que falta mapear.
+    """
+    limpo = re.sub(r"^\s*\d{1,2}\s*[-–.)\]]\s*", "", str(label or "")).strip()
+    limpo = re.sub(r"^[^\w{]+", "", limpo).strip()  # emoji/ícone na frente
+    if not limpo:
+        return None
+    for acao, rx in _NAVEGACAO:
+        if rx.match(limpo):
+            return acao
+    if _ESCOLHA_DE_HORARIO.search(limpo):
+        return "horario"
+    return None
+
+
 def numero_da_opcao(label: str) -> Optional[str]:
     """O número que a pessoa digita para escolher esta opção, se houver."""
     m = re.match(r"\s*(\d{1,2})\s*[-–.)\]]", str(label or ""))

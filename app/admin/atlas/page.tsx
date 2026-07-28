@@ -18,7 +18,7 @@ type Card = {
 };
 type Variant = { to: string; count: number };
 type Opt = {
-  label: string; leads_to: string | null; confidence?: string;
+  label: string; leads_to: string | null; confidence?: string; acao?: string;
   seen_count?: number; variants?: Variant[];
 };
 type Node = {
@@ -110,6 +110,14 @@ function NodeCard({
               const key = `${pathKey}/${o.label}`;
               const gap = o.confidence === 'gap';
               const echo = o.confidence === 'echo';
+              // Comportamento já conhecido: Voltar volta, Sair encerra, e um
+              // horário de agendamento leva à mesma confirmação que qualquer
+              // outro. Não é lacuna e não adianta pedir atendimento para isso.
+              const conhecida = o.confidence === 'navegacao';
+              const ROTULO_ACAO: Record<string, string> = {
+                voltar: 'volta à tela anterior', sair: 'encerra o atendimento',
+                menu: 'volta ao menu principal', horario: 'escolhe um horário',
+              };
               const open = expanded.has(key);
               const loops = o.leads_to ? visited.has(o.leads_to) : false;
               const variants = o.variants && o.variants.length > 1 ? o.variants : null;
@@ -130,13 +138,18 @@ function NodeCard({
                     {variants && <span title="Nem sempre leva à mesma tela" style={{ fontSize: 10, color: C.gap, display: 'flex', alignItems: 'center', gap: 3 }}><Repeat size={10} /> varia</span>}
                     {o.seen_count ? <span style={{ fontSize: 10, color: C.dim }}>{o.seen_count}x</span> : null}
                     {gap && <span style={{ fontSize: 10, fontWeight: 700 }}>NÃO MAPEADO</span>}
+                    {conhecida && <span style={{ fontSize: 10, color: '#7FB79A' }}>{ROTULO_ACAO[String(o.acao || '')] || 'comportamento conhecido'}</span>}
                     {echo && <span style={{ fontSize: 10, fontWeight: 700 }} title="Deduzida pelo eco da tela seguinte (menu digitado)">~✓ deduzida</span>}
                     {!gap && !echo && !variants && <span style={{ fontSize: 11 }}>✓</span>}
                   </button>
 
                   {open && (
                     <div style={{ marginLeft: 14, paddingLeft: 14, borderLeft: `2px solid ${gap ? '#3A2E1A' : '#22384C'}`, marginTop: 6, display: 'flex', flexDirection: 'column', gap: 6 }}>
-                      {gap ? (
+                      {conhecida ? (
+                        <div style={{ border: '1px solid #1E3326', borderRadius: 8, padding: '9px 11px', fontSize: 11.5, color: '#8FCFAB', background: '#10201A' }}>
+                          ✓ {ROTULO_ACAO[String(o.acao || '')] || 'comportamento conhecido'} — não precisa de atendimento para mapear.
+                        </div>
+                      ) : gap ? (
                         <div style={{ border: `1px dashed ${C.gap}`, borderRadius: 8, padding: '9px 11px', fontSize: 11.5, color: C.gap, background: '#1A150C' }}>
                           🔍 Rota ainda não observada. Quando uma atendente escolher &quot;{o.label}&quot; num atendimento real, o Observador desenha o que vem depois.
                         </div>
@@ -217,6 +230,9 @@ const GX = 28, GY = 66;
 function optColor(conf?: string) {
   if (conf === 'gap') return C.gap;
   if (conf === 'echo') return C.blue;
+  // `navegacao` = comportamento ja conhecido (Voltar / Sair / escolher horario).
+  // Verde porque nao falta nada ali, e com rotulo proprio na legenda porque
+  // dizer "percorrida" seria mentira: ninguem percorreu, nos e que sabemos.
   return C.ok;
 }
 
@@ -238,7 +254,11 @@ function buildCanvasTree(
       const [ow, oh] = CDIM.option;
       const oc: LNode = { key: okey, type: 'option', opt: o, label: o.label, x: 0, y: 0, w: ow, h: oh, color: optColor(o.confidence), children: [] };
       if (exp.has(okey)) {
-        if (o.confidence === 'gap' || !o.leads_to) {
+        if (o.confidence === 'navegacao') {
+          // Nada a desenhar: "Voltar" volta, "Sair" encerra, e qualquer
+          // horario leva a mesma confirmacao. Abrir um "rota nao observada"
+          // aqui pediria um atendimento que nao ensina nada.
+        } else if (o.confidence === 'gap' || !o.leads_to) {
           const [sw, sh] = CDIM.stub;
           oc.children.push({ key: `${okey}/stub`, type: 'stub', x: 0, y: 0, w: sw, h: sh, color: C.gap, children: [] });
         } else if (o.variants && o.variants.length > 1) {
@@ -705,7 +725,7 @@ export default function AtlasPage() {
                   </div>
                 </div>
                 <div style={{ display: 'flex', gap: 14, marginTop: 12, flexWrap: 'wrap', fontSize: 11 }}>
-                  {[[C.ok, 'percorrida ✓'], [C.blue, 'deduzida pelo eco ~✓'], [C.gap, 'oferecida, não percorrida (lacuna)'], [C.app, 'app nativo'], [C.drift, 'mudou (em breve)'], [C.dim, 'informativa']].map(([col, lab], i) => (
+                  {[[C.ok, 'percorrida ✓'], [C.blue, 'deduzida pelo eco ~✓'], [C.ok, 'comportamento conhecido (Voltar/Sair/horário)'], [C.gap, 'oferecida, não percorrida (lacuna)'], [C.app, 'app nativo'], [C.drift, 'mudou (em breve)'], [C.dim, 'informativa']].map(([col, lab], i) => (
                     <span key={i} style={{ display: 'flex', alignItems: 'center', gap: 5, color: '#9AA5B3' }}>
                       <span style={{ width: 9, height: 9, borderRadius: 3, background: col as string }} /> {lab}
                     </span>

@@ -419,6 +419,61 @@ def teste_a_regra_de_fase_esta_no_calculo_e_nao_no_carimbo():
            "e tela com menu nunca é fase humana")
 
 
+def teste_voltar_e_sair_nao_sao_lacuna():
+    print("\n[19] Voltar e Sair não são rota a descobrir")
+    # Medido nos mapas de 28/07/2026: "voltar" aparece 222 vezes em 5
+    # seguradoras e 190 contavam como lacuna; "sair" 73 vezes, 71 lacunas.
+    # Ninguém clica em "Voltar" num atendimento real — e se clicasse não
+    # ensinaria nada. A lacuna nunca fecha e afunda a cobertura para sempre.
+    for rotulo, esperado in (("3 - Voltar", "voltar"), ("4 - Sair", "sair"),
+                             ("Encerrar atendimento", "sair"),
+                             ("Menu principal", "menu")):
+        checar(C.acao_conhecida(rotulo) == esperado,
+               f"'{rotulo}' tem comportamento conhecido: {esperado}",
+               str(C.acao_conhecida(rotulo)))
+
+    # A escolha de horário é pior: o rótulo MUDA todo dia, então o mapa de
+    # amanhã inventa lacunas novas que ninguém jamais percorre.
+    for rotulo in ("{DATA} (quarta-feira)", "entre 10h00 e 12h00",
+                   "2 - {DATA} (sexta-feira)"):
+        checar(C.acao_conhecida(rotulo) == "horario",
+               f"'{rotulo}' é escolha de horário")
+
+
+def teste_o_que_parece_navegacao_e_nao_e():
+    print("\n[20] O que parece navegação e não é continua sendo lacuna")
+    # Marcar demais é pior que marcar de menos: esconde rota que falta mapear,
+    # e o Founder deixaria de pedir o atendimento que a descobriria.
+    for rotulo in ("Cancelar serviço", "Mais opções", "Outro assunto",
+                   "1 - Automóvel, Moto ou Caminhão", "Sim", "Não",
+                   "Voltar ao trabalho", "Sair de casa", "Não encontrei o assunto"):
+        checar(C.acao_conhecida(rotulo) is None,
+               f"'{rotulo}' continua sendo rota de verdade",
+               str(C.acao_conhecida(rotulo)))
+
+
+def teste_a_cobertura_conta_o_conhecido_como_fechado():
+    print("\n[21] E a cobertura para de contar isso como buraco")
+    acc = {"root": None, "nodes": {}, "edges": {}}
+    W.weave_session(acc, [
+        _ev("in", "10:00:00", "Escolha:\n*1 -* Guincho\n*2 -* Voltar\n*3 -* Sair"),
+        _ev("out", "10:00:10", "1"),
+        _ev("in", "10:00:20", "Qual o CEP?")])
+    W.compute_coverage(acc)
+    menu = [n for n in acc["nodes"].values() if "Escolha" in n["text"]][0]
+    por_rotulo = {o["label"]: o for o in menu["options"]}
+    checar(por_rotulo["1 - Guincho"]["confidence"] in ("seen_once", "confirmed"),
+           "a opção real percorrida continua percorrida")
+    for rot in ("2 - Voltar", "3 - Sair"):
+        checar(por_rotulo[rot]["confidence"] == "navegacao",
+               f"'{rot}' vira comportamento conhecido, não lacuna")
+        checar(por_rotulo[rot].get("acao") in ("voltar", "sair"),
+               f"e o agente recebe o que '{rot}' faz")
+    checar(acc["coverage"]["pct"] == 100,
+           "cobertura fecha em 100% — não havia buraco nenhum ali",
+           str(acc["coverage"]))
+
+
 def main() -> int:
     print("=" * 70)
     print("O TECELÃO ENXERGA A URA DE TEXTO, NÃO SÓ A DE BOTÃO")
@@ -440,7 +495,10 @@ def main() -> int:
                   teste_a_escolha_nao_se_perde_junto,
                   teste_voltar_ao_mesmo_menu_e_rota_de_verdade,
                   teste_o_menu_nunca_e_carimbado_de_conversa_humana,
-                  teste_a_regra_de_fase_esta_no_calculo_e_nao_no_carimbo):
+                  teste_a_regra_de_fase_esta_no_calculo_e_nao_no_carimbo,
+                  teste_voltar_e_sair_nao_sao_lacuna,
+                  teste_o_que_parece_navegacao_e_nao_e,
+                  teste_a_cobertura_conta_o_conhecido_como_fechado):
         try:
             teste()
         except Exception as exc:  # noqa: BLE001
