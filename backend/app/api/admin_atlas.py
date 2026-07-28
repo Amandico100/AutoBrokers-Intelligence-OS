@@ -91,8 +91,47 @@ async def weave(body: Optional[Dict[str, Any]] = None, _: Any = Depends(require_
         return sorted({r["insurer_key"] for r in rows if r.get("insurer_key")})
 
     keys = await asyncio.to_thread(_distinct)
-    results = [await weave_insurer(k, ramo) for k in keys]
-    return {"ok": True, "woven": results}
+
+    # Uma seguradora ruim NÃO derruba as outras seis.
+    #
+    # Isto era `[await weave_insurer(k, ramo) for k in keys]` — uma lista sem
+    # tratamento de erro. Em 28/07/2026, com o histórico da Resulta recém
+    # importado, a Tokio passou a levantar exceção e o botão "Tecer mapas"
+    # devolvia HTTP 500 em 1,3s: **as sete seguradoras ficavam sem mapa por
+    # causa de uma**. E a mensagem que chegava na tela era "Falha ao tecer",
+    # sem dizer qual nem por quê.
+    #
+    # Duas coisas mudam aqui, e a segunda vale mais que a primeira:
+    #
+    #   1. cada seguradora é tecida por conta própria;
+    #   2. a resposta DIZ qual falhou e com que erro — em vez de um 500 mudo.
+    #
+    # O erro aparece pelo nome da classe e pela mensagem, sem traceback: quem
+    # abre a tela é o operador, não o programador. O traceback continua nos
+    # logs e no Sentry, para quem for consertar.
+    tecidos: list = []
+    falhas: list = []
+    for k in keys:
+        try:
+            r = await weave_insurer(k, ramo)
+            (tecidos if r.get("ok") else falhas).append(
+                r if r.get("ok") else {"insurer_key": k, "erro": r.get("error")})
+        except Exception as exc:  # noqa: BLE001
+            logger.exception("[ATLAS] tecelagem de '%s' falhou", k)
+            falhas.append({"insurer_key": k,
+                           "erro": f"{type(exc).__name__}: {str(exc)[:300]}"})
+
+    return {
+        # `ok` só é verdadeiro se TODAS teceram. O Founder pediu explicitamente
+        # que todos os mapas sejam preenchidos: um "ok" com buraco escondido
+        # seria a resposta mais perigosa possível aqui.
+        "ok": not falhas,
+        "woven": tecidos,
+        "falhas": falhas,
+        "frase": (f"{len(tecidos)} mapa(s) tecidos." if not falhas else
+                  f"{len(tecidos)} tecidos, {len(falhas)} falharam: "
+                  + "; ".join(f"{f['insurer_key']} — {f['erro']}" for f in falhas)),
+    }
 
 
 @router.get("/maps")

@@ -268,20 +268,65 @@ async def weave_insurer(insurer_key: str, ramo: str = "auto", company_id: Option
 
     supabase = get_supabase_client()
 
+    # O PostgREST devolve no máximo 1.000 linhas por consulta, em silêncio.
+    #
+    # Isto custou caro em 28/07/2026. O laço abaixo pedia os eventos em lotes de
+    # 50 sessões e confiava no que voltava. Com o histórico da Resulta:
+    #
+    #     Allianz .. 81 sessões, 2 lotes  ->  2.000 eventos de 4.986
+    #     Porto .... 38 sessões, 1 lote   ->  1.000 eventos de 1.009
+    #
+    # O mapa da Allianz foi construído sobre 40% do material, e o número
+    # gravado em `meta.events` era exatamente 2000 — redondo demais para ser
+    # coincidência, e ninguém olhou.
+    #
+    # Truncar em silêncio é o pior defeito que um leitor pode ter: o mapa não
+    # parecia quebrado, parecia pequeno. E "pequeno" a gente atribui a "a
+    # corretora usou pouco".
+    _PAGINA = 1000
+
+    def _pagina_tudo(query_fn) -> List[Dict]:
+        """Lê TODAS as páginas até a fonte secar. Nunca devolve pela metade."""
+        tudo: List[Dict] = []
+        inicio = 0
+        while True:
+            lote = (query_fn().range(inicio, inicio + _PAGINA - 1).execute().data) or []
+            tudo.extend(lote)
+            if len(lote) < _PAGINA:
+                return tudo
+            inicio += _PAGINA
+            if inicio > 500_000:
+                # Trava de segurança. Se um dia chegarmos aqui, é bug de laço,
+                # não volume real — e é melhor gritar no log do que girar.
+                logger.error("[ATLAS WEAVER] paginação passou de 500k linhas em "
+                             "'%s' — interrompendo", insurer_key)
+                return tudo
+
     def _load() -> Tuple[List[Dict], List[Dict]]:
-        sess_q = (supabase.client.table("observed_sessions").select("id, started_at, ramo, servico")
-                  .eq("insurer_key", insurer_key).order("started_at", desc=False))
-        if company_id:
-            sess_q = sess_q.eq("company_id", company_id)
-        sessions = sess_q.execute().data or []
+        def _sessoes():
+            q = (supabase.client.table("observed_sessions")
+                 .select("id, started_at, ramo, servico")
+                 .eq("insurer_key", insurer_key).order("started_at", desc=False))
+            return q.eq("company_id", company_id) if company_id else q
+
+        sessions = _pagina_tudo(_sessoes)
         sess_ids = [s["id"] for s in sessions]
+
         events: List[Dict] = []
         for i in range(0, len(sess_ids), 50):
             batch = sess_ids[i:i + 50]
-            ev = (supabase.client.table("observed_events")
-                  .select("session_id, direction, msg_type, text, interactive, wa_timestamp, created_at")
-                  .in_("session_id", batch).execute().data or [])
-            events.extend(ev)
+
+            def _eventos(b=batch):
+                return (supabase.client.table("observed_events")
+                        .select("session_id, direction, msg_type, text, "
+                                "interactive, wa_timestamp, created_at")
+                        .in_("session_id", b)
+                        # A ordem é obrigatória para paginar: sem `order`, o
+                        # Postgres não garante a mesma sequência entre páginas,
+                        # e a paginação passa a pular e repetir linhas.
+                        .order("created_at", desc=False))
+
+            events.extend(_pagina_tudo(_eventos))
         return sessions, events
 
     sessions, events = await asyncio.to_thread(_load)

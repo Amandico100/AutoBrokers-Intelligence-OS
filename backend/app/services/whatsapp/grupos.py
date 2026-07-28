@@ -122,7 +122,9 @@ async def listar_grupos(company_id: str) -> dict:
                          "volte aqui."}
 
     estado = str(integracao.get("channel_status") or "")
-    if estado != "connected":
+    from app.services.whatsapp.channel_state import esta_conectado
+
+    if not esta_conectado(estado):
         # Perguntar os grupos de um WhatsApp desligado devolve 500 — ou pendura.
         # Melhor dizer a verdade antes de tentar.
         return {"ok": False, "grupos": [], "motivo": "desconectado",

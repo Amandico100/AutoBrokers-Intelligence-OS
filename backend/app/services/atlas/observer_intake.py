@@ -465,8 +465,14 @@ async def observer_tap(integration: dict, body: dict) -> Optional[dict]:
                     from app.core.database import get_supabase_client
 
                     db = get_supabase_client()
+                    from app.services.whatsapp.channel_state import normalizar_estado
+
                     db.client.table("integrations").update({
-                        "channel_status": state,
+                        # Vocabulario unico: o Evolution fala "open"/"close" e
+                        # as telas leem "connected". Traduzir na escrita e o
+                        # que impede o Admin de mostrar `unknown` para um
+                        # WhatsApp que esta funcionando.
+                        "channel_status": normalizar_estado(state),
                         "last_seen_at": datetime.now(timezone.utc).isoformat(),
                     }).eq("id", integration["id"]).eq(
                         "company_id", integration.get("company_id")

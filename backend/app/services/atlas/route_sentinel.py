@@ -38,14 +38,47 @@ def _drift_signature(insurer_key: str, ramo: str, severity: str, diff: Dict[str,
 
 
 def _session_watermarks(rows: List[Dict[str, Any]]) -> List[tuple[str, str, str]]:
-    """Collapse observed sessions into one deterministic watermark per route."""
+    """Uma marca d'água por rota — para saber se há material novo a tecer.
+
+    A marca é a data de INGESTÃO (`created_at`), não a data original da
+    mensagem (`last_event_at`). A troca aconteceu em 28/07/2026, e o motivo é
+    concreto.
+
+    O que acontecia
+    ---------------
+    A Resulta pareou o WhatsApp e o `HISTORY_SYNC` despejou 7.445 eventos de
+    seis seguradoras em duas horas — conversas de março, junho e julho. A
+    Sentinela comparou `max(last_event_at)`, viu que a mensagem mais nova da
+    Allianz continuava sendo a de 18/07 que ela já conhecia, e concluiu
+    **"nada novo"**.
+
+    Resultado: 4.954 eventos da Allianz chegaram e o mapa não foi retecido.
+    Ficou seis dias parado com 22 telas, enquanto os dados davam 450.
+
+    Por que `created_at` é a marca certa
+    ------------------------------------
+    A pergunta que a Sentinela faz é *"chegou material novo desde a última
+    tecelagem?"* — e material novo é o que **entrou**, não o que é recente.
+    Pareamento traz passado: detectar novidade pela data da mensagem falha
+    justamente quando a novidade É passado, que é o caso mais importante que
+    existe aqui.
+
+    `created_at` só anda para a frente quando dado entra. Não há como o
+    histórico de março fazer a marca voltar.
+
+    A tecelagem em si continua **recência-primeiro** (decisão do Founder,
+    18/07): a conversa mais recente define a sequência canônica, e as antigas
+    só somam cobertura. Isto muda apenas QUANDO tecer, nunca COMO.
+    """
     latest: Dict[tuple[str, str], str] = {}
     for row in rows:
         insurer = str(row.get("insurer_key") or "").strip()
         if not insurer:
             continue
         ramo = str(row.get("ramo") or "auto")
-        stamp = str(row.get("last_event_at") or "")
+        # `created_at` primeiro; `last_event_at` só como reserva para linhas
+        # antigas que porventura não tenham o campo.
+        stamp = str(row.get("created_at") or row.get("last_event_at") or "")
         key = (insurer, ramo)
         latest[key] = max(latest.get(key, ""), stamp)
     return [(key[0], key[1], stamp) for key, stamp in sorted(latest.items())]
@@ -335,8 +368,27 @@ async def run_all(
     supabase = get_supabase_client()
 
     def _keys() -> List[tuple[str, str, str]]:
-        rows = (supabase.client.table("observed_sessions").select("insurer_key, ramo, last_event_at")
-                .not_.is_("insurer_key", "null").execute().data or [])
+        # Paginado. O PostgREST corta em 1.000 linhas SEM avisar, e aqui isso
+        # não daria erro nenhum: daria uma lista de rotas incompleta, e as
+        # seguradoras que ficassem de fora simplesmente nunca seriam retecidas.
+        #
+        # Hoje são 177 sessões e caberia. Com três corretoras pareadas não cabe
+        # mais — e o sintoma seria "o mapa da Tokio parou de atualizar", sem
+        # nada no log para explicar.
+        rows: List[Dict[str, Any]] = []
+        inicio = 0
+        while True:
+            lote = (supabase.client.table("observed_sessions")
+                    .select("insurer_key, ramo, last_event_at, created_at")
+                    .not_.is_("insurer_key", "null")
+                    # Ordem fixa: sem ela o Postgres não garante a mesma
+                    # sequência entre páginas, e a paginação pula e repete.
+                    .order("created_at", desc=False)
+                    .range(inicio, inicio + 999).execute().data) or []
+            rows.extend(lote)
+            if len(lote) < 1000:
+                break
+            inicio += 1000
         return _session_watermarks(rows)
 
     redis = None

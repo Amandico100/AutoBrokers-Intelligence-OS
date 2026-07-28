@@ -563,6 +563,12 @@ CASOS: list[Caso] = [
     # observador — inclusive depois do clique em "Ligar agente".
     Caso("ORQ-01", "whatsapp", "O Observador nao para; o agente so fala se o botao mandar",
          "SPEC-038/045", lambda: _roda_script("test_orquestracao_pareamento.py")),
+    # O tecelao construiu o mapa da Allianz com 2.000 dos 4.986 eventos — o
+    # limite padrao do PostgREST, que corta em 1.000 linhas SEM avisar. O mapa
+    # nao parecia quebrado, parecia pequeno. E "pequeno" a gente atribui a "a
+    # corretora usou pouco", nunca a "o leitor cortou".
+    Caso("ATL-01", "whatsapp", "Nenhuma conversa se perde ao virar mapa",
+         "SPEC-038", lambda: _roda_script("test_atlas_nao_perde_conversa.py")),
     Caso("OBS-02", "whatsapp", "Nenhuma falha técnica vira resposta ao segurado",
          "SPEC-038/045", lambda: _roda_script("test_observador_silencio.py")),
     Caso("WPP-01", "whatsapp", "Corretoras não compartilham instância de WhatsApp",

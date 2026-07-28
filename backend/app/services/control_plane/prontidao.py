@@ -167,7 +167,8 @@ class Prontidao:
                     .eq("company_id", company_id).eq("provider", "evolution-go")
                     .eq("purpose", "observer").eq("is_active", True)
                     .limit(1).execute().data or [])
-            canal = 1 if rows and str(rows[0].get("channel_status")) == "connected" else 0
+            from ..whatsapp.channel_state import esta_conectado
+            canal = 1 if rows and esta_conectado(rows[0].get("channel_status")) else 0
         except Exception:  # noqa: BLE001
             canal = -1
 

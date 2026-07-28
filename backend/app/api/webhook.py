@@ -972,9 +972,12 @@ async def _handle_evolution_like_inbound(
         state = connection_state_from_payload(body) or "unknown"
         logger.info(f"[WEBHOOK EVOLUTION] connection.update state={state}")
         try:
+            from app.services.whatsapp.channel_state import normalizar_estado
+
             def _update_status():
                 supabase.client.table("integrations").update(
-                    {"channel_status": state, "last_seen_at": datetime.now(timezone.utc).isoformat()}
+                    {"channel_status": normalizar_estado(state),
+                     "last_seen_at": datetime.now(timezone.utc).isoformat()}
                 ).eq("id", integration.get("id")).execute()
             await asyncio.to_thread(_update_status)
         except Exception as e:  # noqa: BLE001
