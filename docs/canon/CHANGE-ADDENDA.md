@@ -1525,3 +1525,97 @@ ao vivo diz exatamente o que houve.
 Enriquecer as 9.565 mídias do histórico tem custo de transcrição e as mídias
 antigas podem já ter expirado no WhatsApp. **Recomendação: testar numa amostra
 de 20 antes de decidir o lote.**
+
+---
+
+## CA-031 — A mídia do segurado, o que ela custa e por que o plano Max não serve
+
+**Classificação: ESSENCIAL (ao vivo, corrigido) + decisão de custo (histórico)**
+**Data:** 28/07/2026 · commit `682dd91`
+
+### O que estava desligado
+
+`_download_evolution_media`, para `evolution-go`:
+
+```python
+# GO usa /message/downloadmedia com o message bruto (shape a confirmar
+# no primeiro teste ao vivo). Sem inventar wire: mídia entra depois.
+return None
+```
+
+A prudência estava certa na época. Mas com o **agente de atendimento ligado**,
+isso significa que toda foto de dano, todo áudio explicando o sinistro e todo
+PDF de apólice que o segurado mandasse seria invisível para o agente.
+
+O fork publica o próprio Swagger em `/swagger/doc.json`:
+
+```
+POST /message/downloadmedia   body = { message: waE2E.Message }
+POST /chat/getBase64FromMediaMessage   → 404 (é o wire do Baileys)
+```
+
+Ou seja: o corpo que o Observador já enviava estava certo. Corrigido; o
+caminho reusa `observer_media._download_media` — um motor só.
+
+### Por que não existe "reprocessar as 9.002"
+
+O download exige o `waE2E.Message` inteiro — `mediaKey`, `directPath`,
+`fileEncSha256`. **Nada disso fica no banco.** `media_meta` guarda tipo, nome
+e legenda. Depois que a ingestão retorna, aquela foto é inalcançável.
+
+As 23 falhas ao vivo também não dão para repetir: o payload do Redis expirou.
+
+A única via é enfileirar **durante** um novo HistorySync — que é como o
+orçamento foi construído.
+
+### O custo real (preços da nossa `llm_pricing`, 28/07/2026)
+
+| Item | Quantidade | Custo |
+|---|---:|---:|
+| Áudio (Whisper, 45s médios) | 2.631 | US$ 11,84 |
+| Imagem (gpt-4o-mini) | 2.685 | US$ 0,77 |
+| Imagem (gemini-2.5-flash-lite) | 2.685 | US$ 0,26 |
+| Documento (docling local + resumo flash-lite) | 3.572 | US$ 0,57 |
+| Vídeo | 114 | desprezível |
+| **Tudo, cenário baixo** | **9.002** | **US$ 8,72** |
+| **Tudo, cenário pessimista (áudios de 2 min)** | **9.002** | **US$ 32,91** |
+| **As 20 do teste** | 20 | **US$ 0,03** |
+
+O receio de que fosse caro não se confirma: **ler tudo custa menos que um
+almoço.** O item que domina é o áudio, e não há alternativa barata — é
+Whisper a US$ 0,006/minuto.
+
+### Por que o plano Max não resolve isto
+
+O Founder propôs enriquecer pelo Claude Code com o plano Max, talvez com
+Sonnet num agente paralelo. Três impedimentos, em ordem de peso:
+
+1. **Claude não recebe áudio.** O áudio é 90% do custo. O plano Max não toca
+   no item que pesa.
+2. **As mídias não são arquivos que eu possa abrir.** Elas só existem dentro
+   do WhatsApp durante o sync, e baixá-las exige o token da instância, que
+   vive no backend.
+3. **Para imagem o ganho seria de US$ 0,77** — e mesmo assim o backend teria
+   de baixar e guardar tudo antes.
+
+Usar Opus para isso custaria **US$ 27,52 só nas imagens** e não melhoraria
+nada: descrever foto de para-choque amassado não é trabalho de modelo de
+raciocínio.
+
+### O orçamento
+
+> Founder, 28/07/2026: "NÃO FAÇA A ANÁLISE DAS 9565 MÍDIAS VIA API NUNCA.
+>  APENAS AS 20 QUE VC FALOU."
+
+`POST /admin/atlas/observer/media-budget {"quantas": 20}` abre o crédito;
+`POST /admin/atlas/observer/history-sync` gasta. O contador é um `DECR` no
+Redis: sem crédito aberto devolve -1 e a mídia é ignorada. Teto de 500 por
+pedido, validade de 2 horas, zero fecha.
+
+### Recomendação
+
+1. Rodar as 20 (US$ 0,03) e confirmar que o download funciona.
+2. Se funcionar, ler as mídias dos **últimos 90 dias** em vez de tudo — a
+   regra do próprio Founder é que conversa mais nova vale mais.
+3. Gravar `seconds` e `fileLength` no `media_meta` para a próxima estimativa
+   ser medida, não estimada. **Ainda não feito.**
