@@ -65,8 +65,29 @@ _REIDENTIFY_RE = re.compile(r"informar outro cpf|outro cpf/?cnpj|n[ãa]o sou|tro
 # Humano entrou na conversa (freio novo): sair educadamente e ENCERRAR a
 # exploração — nunca conversar com atendente humano usando nome de cliente.
 _HUMANO_RE = re.compile(
-    r"transferindo (?:voc[êe] )?para|vou te transferir|um de nossos atendentes|nossa equipe (?:vai|ir[áa]) (?:te )?atender"
-    r"|meu nome [ée] [A-ZÀ-Ü][a-zà-ü]+.{0,30}(?:como posso|em que posso)|falar com um especialista agora", re.IGNORECASE)
+    # Formas que a URA usa para dizer "daqui em diante é gente".
+    #
+    # Esta lista era estreita demais e deixava passar justamente a frase que a
+    # Allianz mais repete — "Vou transferir seu caso para um especialista",
+    # vista 233 vezes nas conversas da Resulta. O padrão exigia "vou TE
+    # transferir" ou "transferindo para", e nenhum casava.
+    #
+    # O custo do erro: tudo que o especialista humano digitou depois disso
+    # ("Boa tarde!", "Ok um momento", "Precisa de escada?") entrou no Atlas
+    # como se fosse tela de URA. O mapa da Allianz tinha 930 telas quando a URA
+    # real tem umas dezenas — o resto era conversa.
+    r"transferindo (?:voc[êe] )?para"
+    r"|vou (?:te |lhe )?transferir"
+    r"|vou (?:transferir|encaminhar|direcionar) (?:seu |o seu |sua |a sua )?"
+    r"(?:caso|atendimento|solicita[çc][ãa]o|chamado|contato)"
+    r"|(?:transferir|encaminhar|direcionar).{0,20}(?:para|a) um(?:a)? "
+    r"(?:especialista|atendente|consultor|analista)"
+    r"|um de nossos atendentes"
+    r"|nossa equipe (?:vai|ir[áa]) (?:te )?atender"
+    r"|aguarde.{0,30}(?:atendente|especialista|consultor)"
+    r"|meu nome [ée] [A-ZÀ-Ü][a-zà-ü]+.{0,30}(?:como posso|em que posso)"
+    r"|falar com um especialista agora",
+    re.IGNORECASE)
 POLITE_EXIT = "Ah, me desculpe — era só uma dúvida sobre o menu e já consegui o que eu precisava. Pode encerrar por aqui. Muito obrigado! 🙂"
 
 
@@ -96,6 +117,12 @@ def _sem_negrito(texto: str) -> str:
 # humano digita. Guardá-lo junto do rótulo é o que liga "a atendente digitou 2"
 # à opção "Residência, Condomínio ou Empresa".
 _NUMERADA = re.compile(r"(?:^|\n)\s*(\d{1,2})\s*[-–.)\]]\s*([^\n|]{2,80})")
+
+
+# `Ex: ...`, `Assistência: 8923467`, `Data do vencimento: ...` — cabeça curta,
+# dois-pontos, valor. Só usado no palpite por linha; menu numerado e lista
+# estruturada não passam por aqui.
+_ROTULO_VALOR = re.compile(r"^[^:\n]{1,40}:\s*\S")
 
 
 def parse_options(text: str) -> List[str]:
@@ -142,6 +169,22 @@ def parse_options(text: str) -> List[str]:
             # opções que ninguém pode escolher — e opção que não existe vira
             # lacuna eterna na cobertura.
             if ln[0] in "-–•*·":
+                continue
+            # `Rótulo: valor` é LEITURA DE DADO, nunca escolha de menu.
+            #
+            # A tela de comprovante da Yelum ("Assistência: 8923467"), a da
+            # Porto ("Agendamento: 28/01/2026, entre 10h00 e 12h00") e a da
+            # Zurich ("Quantidade de parcelas restantes: 3") produziam 260
+            # opções inventadas em 54 telas na conta de 28/07/2026. E uma
+            # tela da HDI trazia um histórico colado — "10:56 - ALINE
+            # FERNANDA ...: Isso que estou questionando" — que colocava o
+            # NOME DE UMA PESSOA dentro de um rótulo de opção, num mapa que
+            # é conhecimento global entre corretoras.
+            #
+            # Opção inventada é pior que opção perdida: a perdida aparece
+            # como tela sem menu (dá para ver); a inventada vira rota que
+            # ninguém pode percorrer e afunda a cobertura para sempre.
+            if _ROTULO_VALOR.match(ln):
                 continue
             # 80 e não 48: `*1 - Residencial:* Para sua casa ou apartamento
             # individual` tem 56 caracteres e era descartado por 8 — perdendo

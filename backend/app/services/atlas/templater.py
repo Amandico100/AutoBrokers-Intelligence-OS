@@ -28,10 +28,20 @@ _PII_PATTERNS: List[Tuple[re.Pattern, str]] = [
 
 # Rótulos de campo que costumam preceder um VALOR de cliente numa linha
 # "Rótulo: valor" (Placa: QJQ0A91 / Modelo: Gol / Nome: ...).
+#
+# A segunda metade da lista veio das telas de COMPROVANTE, medidas em
+# 28/07/2026. "Assistência: 8923467" (Yelum) e "Agendamento: 28/01/2026, entre
+# 10h00 e 12h00" (Porto) não eram mascarados, e cada protocolo diferente virava
+# uma TELA diferente: 18 nós na Yelum e 10 na Porto para o que é uma tela só.
+# Mascarado o valor, o mapa volta a ter o tamanho da URA de verdade.
 _LABELED_VALUE = re.compile(
     r"(?im)^(\s*[\*\-•]*\s*\*?(?:nome|modelo|placa|ve[íi]culo|cor|endere[çc]o|"
     r"cliente|segurado|cpf|cnpj|telefone|celular|marca|ano|cidade|estado|bairro|rua|"
-    r"n[úu]mero|complemento|refer[êe]ncia|logradouro)\*?\s*:?\*?\s*)(.+)$"
+    r"n[úu]mero|complemento|refer[êe]ncia|logradouro|"
+    r"assist[êe]ncia|agendamento|protocolo|boleto|parcelas?|senha|ordem|"
+    r"chamado|solicita[çc][ãa]o|atendimento|pedido|ap[óo]lice|sinistro|contrato|"
+    r"data do (?:vencimento|pagamento(?: mensal)?)|"
+    r"quantidade de parcelas(?: a pagar| restantes)?)\*?\s*:?\*?\s*)(.+)$"
 )
 
 
@@ -72,13 +82,61 @@ def _real_options(labels: List[str]) -> List[str]:
     return out
 
 
-def screen_node(text: str) -> Dict:
-    """Constrói o nó canônico da tela (template + hash + kind + opções)."""
+def _options_do_interativo(interactive: Optional[Dict]) -> List[str]:
+    """Os títulos exatos de uma lista/botão do WhatsApp.
+
+    Esta é a fonte da verdade e estava sendo ignorada. O evento guarda a
+    estrutura que o WhatsApp mandou:
+
+        {"kind": "list", "options": [
+            {"title": "Abertura de sinistro",
+             "description": "Batida ou acidente com envolvimento de terceiros"},
+            {"title": "Carro reserva",
+             "description": "Solicitar, prorrogar ou dúvidas com as locações"}]}
+
+    O Tecelão lia o TEXTO RENDERIZADO e adivinhava quais linhas eram opção —
+    e no render a lista vira título e descrição em linhas alternadas, sem
+    marca. Resultado medido em 28/07/2026: a Porto ficou com 859 "opções" em
+    353 telas, quase o dobro do real, porque as descrições viraram opções.
+
+    E opção que não existe nunca é percorrida: cada descrição contada virava
+    uma lacuna permanente, afundando a cobertura de todas as seguradoras que
+    usam lista.
+    """
+    if not isinstance(interactive, dict):
+        return []
+    titulos: List[str] = []
+    for op in interactive.get("options") or []:
+        if isinstance(op, dict):
+            t = str(op.get("title") or "").strip()
+        else:
+            t = str(op or "").strip()
+        if t:
+            titulos.append(t)
+    return titulos
+
+
+def screen_node(text: str, interactive: Optional[Dict] = None) -> Dict:
+    """Constrói o nó canônico da tela (template + hash + kind + opções).
+
+    Quando a tela veio como lista ou botão do WhatsApp, as opções saem da
+    ESTRUTURA (`interactive`), não do texto. Só quando não há estrutura — URA
+    de texto puro, como a da Allianz — é que o texto é interpretado.
+    """
     from app.services.cartographer import classify_screen, parse_options
     from app.services.ura_map_service import node_hash
 
     template = templatize(text)
-    options = _real_options(parse_options(template))
+
+    estruturadas = _options_do_interativo(interactive)
+    if estruturadas:
+        # Os títulos também passam pelo templatize: uma lista pode trazer o
+        # nome do segurado num item ("Confirmar João da Silva"), e PII não
+        # entra no Atlas nem como rótulo de opção.
+        options = _real_options([templatize(t) for t in estruturadas])
+    else:
+        options = _real_options(parse_options(template))
+
     kind = classify_screen(template, options)
     # marca app nativo/humano quando reconhecível (mesma semântica do cartógrafo)
     up = template.upper()

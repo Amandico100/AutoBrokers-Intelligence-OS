@@ -127,17 +127,47 @@ def weave_session(map_acc: Dict[str, Any], events: List[Dict[str, Any]],
     starts: Dict[str, int] = map_acc.setdefault("_starts", {})
     steps = _events_to_steps(events)
 
+    # A URA acaba quando entra gente.
+    #
+    # A Allianz diz "Vou transferir seu caso para um especialista" — 233 vezes
+    # nas conversas da Resulta — e dali em diante quem escreve é uma pessoa.
+    # "Boa tarde!", "Ok um momento", "Precisa de escada?", "Seria
+    # desentupimento": tudo isso entrava no Atlas como se fosse tela de menu.
+    #
+    # O mapa da Allianz tinha 930 telas quando a URA de verdade tem umas
+    # dezenas. O resto era conversa — e conversa não tem rota.
+    #
+    # As telas continuam sendo guardadas, com `fase="humano"`: elas ensinam
+    # como o especialista conduz, e isso vale. O que muda é que param de contar
+    # como opção de menu a percorrer, e param de poluir a árvore de navegação.
+    from app.services.cartographer import _HUMANO_RE
+
+    fase_humana = False
+
     path_steps: List[Dict[str, Any]] = []
     prev_node_id: Optional[str] = None
     prev_choice: Optional[str] = None
     first = True
     for step in steps:
-        node = screen_node(step["screen"].get("text") or "")
+        texto_bruto = step["screen"].get("text") or ""
+        node = screen_node(texto_bruto, step["screen"].get("interactive"))
         nid = node["hash"]
         if nid not in nodes:
             map_acc["_seq"] = int(map_acc.get("_seq") or 0) + 1
             nodes[nid] = {**node, "samples": 0, "order": map_acc["_seq"]}
         nodes[nid]["samples"] += 1
+
+        # A marca é por TELA e sobrevive entre sessões: se uma tela já foi vista
+        # depois de um handoff alguma vez, ela é da fase humana sempre. O
+        # contrário não vale — uma tela da URA não vira humana porque apareceu
+        # uma vez fora de ordem.
+        if fase_humana:
+            nodes[nid]["fase"] = "humano"
+        if not fase_humana and _HUMANO_RE.search(texto_bruto):
+            # A tela que ANUNCIA a transferência ainda é da URA — ela é o fim
+            # da rota, e o agente precisa saber que chegou nela.
+            nodes[nid]["kind"] = "handoff_humano"
+            fase_humana = True
         # RECÊNCIA (founder 18/07): guarda a última vez que a tela apareceu — o
         # recente prevalece; telas obsoletas são marcadas depois (compute_coverage).
         st = step["screen"].get("wa_timestamp")
@@ -226,6 +256,11 @@ def compute_coverage(map_acc: Dict[str, Any]) -> Dict[str, Any]:
     total_opts = covered_opts = 0
     for nid, node in nodes.items():
         node_gaps = 0
+        # Tela da fase humana não entra na conta de cobertura. Ela não tem menu
+        # a percorrer — tem gente digitando. Contá-la faria a cobertura cair
+        # para sempre, porque a "lacuna" nunca fecharia: não há o que clicar.
+        if node.get("fase") == "humano":
+            continue
         for opt in node.get("options") or []:
             total_opts += 1
             match = None
@@ -288,6 +323,11 @@ def compute_coverage(map_acc: Dict[str, Any]) -> Dict[str, Any]:
         "options_covered": covered_opts,
         "pct": round(100 * covered_opts / total_opts) if total_opts else 0,
         "nodes": len(nodes),
+        # Separar as duas contagens é o que impede a pergunta "por que 900
+        # telas se a URA tem 50?". A URA tem 50; o resto é a conversa com o
+        # especialista, que é material valioso e não é rota.
+        "nodes_ura": sum(1 for n in nodes.values() if n.get("fase") != "humano"),
+        "nodes_humano": sum(1 for n in nodes.values() if n.get("fase") == "humano"),
     }
     return map_acc
 
