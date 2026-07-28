@@ -275,17 +275,41 @@ def _extract_document_sync(blob: bytes, mimetype: str, filename: str) -> Optiona
     return clean[:20_000] if clean else None
 
 
+def _teto_de_audio_s() -> int:
+    """Quantos segundos de áudio vale a pena transcrever.
+
+    Whisper cobra por minuto. Um áudio de doze minutos custa US$ 0,072 — mais
+    de 5% do saldo que a plataforma tinha em 28/07/2026, numa mensagem só. E
+    em atendimento de seguro, o que decide o caso está nos primeiros minutos:
+    o resto costuma ser espera, ruído ou a pessoa repetindo.
+
+    Três minutos cobrem o áudio real de um segurado explicando um sinistro e
+    custam US$ 0,018. Acima disso o áudio é ARQUIVADO e fica sem transcrição —
+    visível, recuperável, e não vira conta.
+    """
+    try:
+        return max(15, min(1800, int(os.getenv("MEDIA_MAX_AUDIO_SECONDS", "180"))))
+    except ValueError:
+        return 180
+
+
 async def _derive_text(
     blob: bytes,
     mimetype: str,
     filename: str,
     company_id: str,
+    segundos: Optional[int] = None,
 ) -> Optional[str]:
     if mimetype.startswith("audio/"):
         from app.core.config import settings
         from app.services.audio_service import AudioService
 
         if not settings.OPENAI_API_KEY:
+            return None
+        teto = _teto_de_audio_s()
+        if segundos and segundos > teto:
+            logger.info("[OBSERVER MEDIA] áudio de %ds acima do teto de %ds: arquivado sem transcrição",
+                        segundos, teto)
             return None
         return await AudioService(settings.OPENAI_API_KEY).transcribe_audio(
             base64.b64encode(blob).decode("ascii"), company_id=company_id, agent_id=None
@@ -356,7 +380,8 @@ async def _process_payload(payload: Dict[str, Any]) -> None:
             filename,
         )
         derived_text = await _derive_text(
-            blob, mimetype, filename, str(payload.get("company_id") or "")
+            blob, mimetype, filename, str(payload.get("company_id") or ""),
+            segundos=(meta or {}).get("segundos"),
         )
         await asyncio.to_thread(
             _update_record_sync,

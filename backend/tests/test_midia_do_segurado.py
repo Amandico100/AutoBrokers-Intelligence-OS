@@ -161,6 +161,37 @@ def teste_observacao_nao_transcreve_sozinha():
                    f"{arq} também confia no portão único")
 
 
+def teste_audio_longo_nao_vira_conta():
+    print("\n[7] Áudio de doze minutos não vira despesa")
+    # Whisper cobra por minuto. Doze minutos custam US$ 0,072 numa mensagem só
+    # — mais de 5% do saldo que a plataforma tinha em 28/07/2026. E o que
+    # decide um caso de seguro está nos primeiros minutos.
+    midia = _so_codigo(_ler("app", "services", "atlas", "observer_media.py"))
+    checar("_teto_de_audio_s" in midia, "existe um teto de duração")
+    f = _funcao(midia, "_teto_de_audio_s")
+    checar("MEDIA_MAX_AUDIO_SECONDS" in f, "e ele é ajustável por env")
+    checar("180" in f, "com padrão de 3 minutos (US$ 0,018 por áudio)")
+    checar("min(" in f and "max(" in f,
+           "e o env não pode pedir um teto absurdo nem zero")
+
+    derivar = _funcao(midia, "_derive_text")
+    checar("segundos" in derivar, "a transcrição conhece a duração")
+    # A comparação e a desistência, literais — medir por distância de
+    # caracteres dá alarme falso quando o código muda de forma.
+    guarda = re.search(r"if segundos and segundos > teto:(?:.|\n){0,400}?return None",
+                       derivar)
+    checar(bool(guarda),
+           "e acima do teto o áudio é ARQUIVADO, sem transcrição",
+           "arquivado é recuperável; transcrito é dinheiro gasto")
+
+    # A duração só existe se alguém a gravar. O WhatsApp manda e nós
+    # jogávamos fora — foi por isso que estimar o custo de 2.631 áudios virou
+    # um palpite entre US$ 7,89 e US$ 31,57.
+    intake = _so_codigo(_ler("app", "services", "atlas", "observer_intake.py"))
+    checar('"segundos"' in intake, "a ingestão grava a duração do áudio")
+    checar('"bytes"' in intake, "e o tamanho do arquivo")
+
+
 def main() -> int:
     print("=" * 70)
     print("O AGENTE VÊ A MÍDIA; NINGUÉM TRANSCREVE 9.002 SEM MANDAR")
@@ -170,7 +201,8 @@ def main() -> int:
                   teste_a_ingestao_so_enfileira_com_credito,
                   teste_o_agente_enxerga_a_midia_no_wire_certo,
                   teste_a_mensagem_crua_nunca_e_gravada,
-                  teste_observacao_nao_transcreve_sozinha):
+                  teste_observacao_nao_transcreve_sozinha,
+                  teste_audio_longo_nao_vira_conta):
         try:
             teste()
         except Exception as exc:  # noqa: BLE001

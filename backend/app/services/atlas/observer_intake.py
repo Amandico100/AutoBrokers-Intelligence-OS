@@ -123,6 +123,23 @@ def _extract_content(message: Dict[str, Any]) -> Tuple[str, Optional[str], Optio
             meta = {"kind": kind, "mimetype": m.get("mimetype"),
                     "filename": m.get("fileName") or m.get("title"),
                     "caption": m.get("caption")}
+            # DURAÇÃO E TAMANHO — o WhatsApp já manda, e nós jogávamos fora.
+            #
+            # Sem isso, estimar o custo de transcrever 2.631 áudios virou um
+            # palpite entre US$ 7,89 e US$ 31,57: uma diferença de quatro vezes
+            # em cima de uma suposição sobre quantos segundos as pessoas falam.
+            #
+            # Com o número gravado, o custo passa a ser CONTA, e um áudio de
+            # doze minutos pode ser reconhecido e recusado antes de virar
+            # dinheiro.
+            for origem, destino in (("seconds", "segundos"), ("fileLength", "bytes"),
+                                    ("pageCount", "paginas")):
+                valor = m.get(origem)
+                if valor is not None:
+                    try:
+                        meta[destino] = int(valor)
+                    except (TypeError, ValueError):
+                        pass
             return kind, str(m.get("caption") or ""), None, meta
 
     # Respostas estruturadas que o humano ENVIA (clique de lista/botão/flow):
