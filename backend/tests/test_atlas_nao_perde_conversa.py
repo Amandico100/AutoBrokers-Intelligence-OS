@@ -204,6 +204,48 @@ def teste_a_purga_do_espelho_e_governada():
            "uma variável mal digitada não pode virar purga imediata")
 
 
+def teste_a_mesma_mensagem_tem_sempre_o_mesmo_id():
+    print("\n[8] Reimportar o histórico não cria cópia")
+    # Medido em 28/07/2026: a Allianz tinha 14.203 linhas para 5.330 mensagens
+    # reais. Os três history_sync do dia (14:01, 15:02, 15:43) gravaram tudo de
+    # novo. O `on_conflict="observer_number,message_id"` existe e estava certo;
+    # o id é que mudava, porque terminava em `hash(texto)` — e `hash()` de
+    # string em Python é aleatorizado A CADA PROCESSO.
+    fonte = _so_codigo(_ler("app", "services", "atlas", "history_ingest.py"))
+    checar("abs(hash(" not in fonte,
+           "o id não depende mais do hash aleatório do processo",
+           "com PYTHONHASHSEED variável, cada reimportação duplica tudo")
+    checar("hashlib" in fonte, "usa hash determinístico")
+
+    import hashlib as _h
+    import importlib.util as _iu
+    spec = _iu.spec_from_file_location(
+        "_hi", os.path.join(RAIZ, "app", "services", "atlas", "history_ingest.py"))
+    mod = _iu.module_from_spec(spec)
+    try:
+        spec.loader.exec_module(mod)
+    except Exception:  # noqa: BLE001 — sem deps de runtime, basta a função
+        mod = None
+
+    if mod is not None and hasattr(mod, "_history_message_id"):
+        f = mod._history_message_id
+        a = f("5511", 1767117869, 0, False, "text", "Termo de Privacidade")
+        b = f("5511", 1767117869, 0, False, "text", "Termo de Privacidade")
+        checar(a == b, "a mesma mensagem gera o mesmo id")
+        # O id antigo usava só os 60 primeiros caracteres. Duas mensagens
+        # longas com o mesmo começo colidiam, e a segunda era descartada em
+        # silêncio pelo `ignore_duplicates` — isso PERDIA mensagem.
+        longa_a = "x" * 60 + " primeira"
+        longa_b = "x" * 60 + " segunda"
+        checar(f("5511", 100, 0, False, "text", longa_a)
+               != f("5511", 100, 0, False, "text", longa_b),
+               "duas mensagens longas de começo igual não colidem",
+               "o id antigo truncava em 60 e a segunda sumia")
+        checar(f("5511", 100, 0, False, "text", "Ok")
+               != f("5511", 100, 0, True, "text", "Ok"),
+               "o 'Ok' da seguradora não é o 'Ok' da corretora")
+
+
 def main() -> int:
     print("=" * 70)
     print("NENHUMA CONVERSA SE PERDE AO VIRAR MAPA")
@@ -214,7 +256,8 @@ def main() -> int:
                   teste_uma_seguradora_ruim_nao_derruba_as_outras,
                   teste_um_vocabulario_so_para_o_estado_do_canal,
                   teste_nada_no_atlas_apaga_conversa,
-                  teste_a_purga_do_espelho_e_governada):
+                  teste_a_purga_do_espelho_e_governada,
+                  teste_a_mesma_mensagem_tem_sempre_o_mesmo_id):
         try:
             teste()
         except Exception as exc:  # noqa: BLE001

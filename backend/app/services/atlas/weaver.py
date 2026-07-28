@@ -86,6 +86,46 @@ def labels_match(option_label: str, click_label: str) -> bool:
     return a == b or a.endswith(b) or b.endswith(a) or (len(b) >= 4 and b in a) or (len(a) >= 4 and a in b)
 
 
+def _sem_copias(events: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
+    """Uma mensagem gravada três vezes é uma mensagem.
+
+    Reimportações do histórico gravaram a mesma mensagem várias vezes (2,66x na
+    Allianz, 2,90x na Zurich, medido em 28/07/2026). A causa foi corrigida em
+    `history_ingest._history_message_id`, mas as cópias já gravadas continuam
+    lá — e elas não são só peso.
+
+    O Tecelão casa cada tela com a resposta que vem LOGO DEPOIS. Com as cópias
+    intercaladas a sequência vira tela-tela-tela-resposta: as duas primeiras
+    ficam sem escolha casada e viram aresta apenas inferida. Nas telas de lista
+    e botão da Porto, 70% ficaram sem resposta.
+
+    A identidade é (sessão, direção, instante, tipo, texto). Duas mensagens
+    iguais, no mesmo segundo, na mesma direção, dentro da mesma sessão, são a
+    mesma mensagem — não um cliente que disse "Ok" duas vezes no mesmo segundo.
+
+    Nada é apagado do banco: isto é leitura.
+    """
+    vistos: set = set()
+    saida: List[Dict[str, Any]] = []
+    for e in events:
+        instante, texto = e.get("wa_timestamp"), e.get("text")
+        # Sem instante ou sem texto (foto, áudio) não há identidade segura:
+        # na dúvida a mensagem FICA. Perder é irreversível; sobrar não é.
+        if not instante or not texto:
+            saida.append(e)
+            continue
+        chave = (e.get("session_id"), e.get("direction"), instante,
+                 e.get("msg_type"), texto)
+        if chave in vistos:
+            continue
+        vistos.add(chave)
+        saida.append(e)
+    if len(saida) != len(events):
+        logger.info("atlas.weaver: %d eventos lidos, %d únicos (%d cópias ignoradas)",
+                    len(events), len(saida), len(events) - len(saida))
+    return saida
+
+
 def _events_to_steps(events: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
     """Ordena a sessão e casa cada tela da URA (in) com a resposta humana (out)
     que veio logo depois. Retorna [{screen, choice}]."""
@@ -183,6 +223,26 @@ def weave_session(map_acc: Dict[str, Any], events: List[Dict[str, Any]],
             first = False
 
         # liga a aresta do passo anterior até este nó
+        # Uma tela apontando para ELA MESMA, sem escolha capturada, não é rota.
+        #
+        # Medido em 28/07/2026 nos mapas gravados: 840 das 1.899 arestas da
+        # Allianz (44%), 284 das 576 da Porto (49%), 40 das 58 da Tokio (69%).
+        # Quase metade das setas do Atlas não levava a lugar nenhum.
+        #
+        # Vinham das cópias do histórico: a mesma tela gravada três vezes vira
+        # A→A→A. E como o destino da aresta sequencial é eleito por maioria
+        # (`dests`), o voto de A em si mesma chegava a VENCER o destino real —
+        # a seta passava a apontar de volta para a própria tela.
+        #
+        # Com escolha capturada é diferente e fica: "digitou 9 e voltou pro
+        # mesmo menu" é rota de verdade, e o agente precisa saber disso.
+        if prev_node_id == nid and prev_choice is None:
+            # A escolha DESTE passo continua valendo para o passo seguinte —
+            # descartá-la junto com a aresta inútil apagaria uma rota real.
+            prev_choice = _choice_label(step["choice"])
+            path_steps.append({"n": nid, "c": prev_choice})
+            continue
+
         if prev_node_id is not None:
             label = prev_choice or "→"  # sem escolha capturada = sequencial
             ekey = f"{prev_node_id}|{label}"
@@ -407,6 +467,8 @@ async def weave_insurer(insurer_key: str, ramo: str = "auto", company_id: Option
     sessions, events = await asyncio.to_thread(_load)
     if not events:
         return {"ok": False, "error": "sem eventos observados", "insurer_key": insurer_key}
+
+    events = _sem_copias(events)
 
     by_session: Dict[str, List[Dict]] = defaultdict(list)
     for e in events:

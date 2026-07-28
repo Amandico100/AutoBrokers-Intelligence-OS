@@ -1,5 +1,40 @@
-"""O Tecelão enxerga a URA de TEXTO — não só a de botão. SPEC-038.\n\nO que foi medido em 28/07/2026\n------------------------------\nCom o histórico da Resulta já importado, o mapa da Allianz mostrava:\n\n    930 telas capturadas\n    170 com opções detectadas     ← 760 telas cegas\n    592 opções, 27 percorridas    ← 4% de cobertura\n  1.899 arestas\n\nMil e oitocentas arestas com vinte e sete opções cobertas é uma contradição: o\nsistema SABIA que depois da tela A veio a tela B, e não sabia que foi porque\nalguém digitou "2".\n\nA leitura do Founder estava certa\n---------------------------------\n> "NÃO É POSSÍVEL QUE EM MILHARES DE ATENDIMENTOS AS PESSOAS PEÇAM SÓ A MESMA
->  COISA DE RESIDENCIAL. TALVEZ O AGENTE ESTEJA CEGO."\n\nEstava. Três defeitos somados, todos no mesmo lugar:\n\n**1. O negrito do WhatsApp escondia o número.** A Allianz manda\n`*1 -* Automóvel, Moto ou Caminhão` — asterisco ANTES do dígito. O regex de\nmenu numerado esperava o dígito logo após a quebra de linha e não casava nada.\n\n**2. O rótulo perdia o número.** Onde o parser casava, ele guardava só o texto\n("Residência, Condomínio ou Empresa") e jogava fora o "2". Mas a atendente\ndigita **"2"** — e "2" nunca casa com "Residência…".\n\n**3. O menu de ramo caía por 8 caracteres.** A heurística de linhas curtas\naceitava até 48; `*1 - Residencial:* Para sua casa ou apartamento individual`\ntem 56. Justamente a tela que escolhe Residencial, Condomínio ou Empresarial —\na mais importante para a Resulta — ficava com ZERO opções.\n\nEstes casos usam o texto REAL capturado do WhatsApp da Allianz.\n"""
+"""O Tecelão enxerga a URA de TEXTO — não só a de botão. SPEC-038.
+
+O que foi medido em 28/07/2026
+------------------------------
+Com o histórico da Resulta já importado, o mapa da Allianz mostrava:
+
+    930 telas capturadas
+    170 com opções detectadas     ← 760 telas cegas
+    592 opções, 27 percorridas    ← 4% de cobertura
+  1.899 arestas
+
+Mil e oitocentas arestas com vinte e sete opções cobertas é uma contradição: o
+sistema SABIA que depois da tela A veio a tela B, e não sabia que foi porque
+alguém digitou "2".
+
+A leitura do Founder estava certa
+---------------------------------
+> "NÃO É POSSÍVEL QUE EM MILHARES DE ATENDIMENTOS AS PESSOAS PEÇAM SÓ A MESMA
+>  COISA DE RESIDENCIAL. TALVEZ O AGENTE ESTEJA CEGO."
+
+Estava. Três defeitos somados, todos no mesmo lugar:
+
+**1. O negrito do WhatsApp escondia o número.** A Allianz manda
+`*1 -* Automóvel, Moto ou Caminhão` — asterisco ANTES do dígito. O regex de
+menu numerado esperava o dígito logo após a quebra de linha e não casava nada.
+
+**2. O rótulo perdia o número.** Onde o parser casava, ele guardava só o texto
+("Residência, Condomínio ou Empresa") e jogava fora o "2". Mas a atendente
+digita **"2"** — e "2" nunca casa com "Residência…".
+
+**3. O menu de ramo caía por 8 caracteres.** A heurística de linhas curtas
+aceitava até 48; `*1 - Residencial:* Para sua casa ou apartamento individual`
+tem 56. Justamente a tela que escolhe Residencial, Condomínio ou Empresarial —
+a mais importante para a Resulta — ficava com ZERO opções.
+
+Estes casos usam o texto REAL capturado do WhatsApp da Allianz.
+"""
 
 from __future__ import annotations
 
@@ -267,6 +302,62 @@ def teste_protocolos_diferentes_sao_a_mesma_tela():
            "e o número do protocolo não fica guardado", a["text"][:70])
 
 
+MENU_CURTO = "Qual seguro?\n*1 -* Auto\n*2 -* Casa"
+
+
+def _ev(direcao: str, hora: str, texto: str) -> dict:
+    return {"session_id": "s1", "direction": direcao, "wa_timestamp": hora,
+            "msg_type": "text", "text": texto}
+
+
+def teste_tela_nao_aponta_para_si_mesma():
+    print("\n[14] Metade das setas não levava a lugar nenhum")
+    # Medido nos mapas gravados em 28/07/2026: 840 das 1.899 arestas da Allianz
+    # (44%), 284 das 576 da Porto (49%), 40 das 58 da Tokio (69%) saíam de uma
+    # tela e voltavam para ela mesma. Vinham das cópias do histórico.
+    #
+    # E o destino da aresta sequencial é eleito por maioria: o voto da tela em
+    # si mesma chegava a VENCER o destino real, e a seta passava a apontar de
+    # volta para a própria tela. Rota errada, não só rota inútil.
+    brutos = [_ev("in", "10:00:00", MENU_CURTO)] * 3 + \
+             [_ev("out", "10:00:30", "2"), _ev("in", "10:01:00", "Qual o CEP?")]
+    unicos = W._sem_copias(brutos)
+    checar(len(unicos) == 3, "três cópias da mesma tela viram uma",
+           f"{len(brutos)} lidas, {len(unicos)} únicas")
+
+    acc = {"root": None, "nodes": {}, "edges": {}}
+    W.weave_session(acc, unicos)
+    para_si = [e for e in acc["edges"].values() if e["src"] == e["to"]]
+    checar(not para_si, "nenhuma seta aponta para a própria tela", str(para_si))
+    checar(any(not e["inferred"] for e in acc["edges"].values()),
+           "e a escolha real virou aresta confirmada")
+
+
+def teste_a_escolha_nao_se_perde_junto():
+    print("\n[15] Jogar fora a seta inútil não pode jogar fora a escolha")
+    acc = {"root": None, "nodes": {}, "edges": {}}
+    W.weave_session(acc, [_ev("in", "10:00:00", MENU_CURTO),
+                          _ev("in", "10:00:01", MENU_CURTO),
+                          _ev("out", "10:00:30", "2"),
+                          _ev("in", "10:01:00", "Qual o CEP?")])
+    confirmadas = [e["label"] for e in acc["edges"].values() if not e["inferred"]]
+    checar(confirmadas, "a escolha '2' sobreviveu como aresta confirmada",
+           str([(e["label"], e["inferred"]) for e in acc["edges"].values()]))
+
+
+def teste_voltar_ao_mesmo_menu_e_rota_de_verdade():
+    print("\n[16] Digitar errado e voltar ao mesmo menu É rota")
+    # Aqui a tela aponta para ela mesma DE PROPÓSITO, e o agente precisa saber:
+    # é o caminho do erro. Só a volta sem escolha capturada é que não ensina.
+    acc = {"root": None, "nodes": {}, "edges": {}}
+    W.weave_session(acc, [_ev("in", "10:00:00", MENU_CURTO),
+                          _ev("out", "10:00:10", "9"),
+                          _ev("in", "10:00:20", MENU_CURTO)])
+    para_si = [e for e in acc["edges"].values() if e["src"] == e["to"]]
+    checar(len(para_si) == 1, "a volta por escolha real continua no mapa",
+           str([(e["label"], e["src"] == e["to"]) for e in acc["edges"].values()]))
+
+
 def main() -> int:
     print("=" * 70)
     print("O TECELÃO ENXERGA A URA DE TEXTO, NÃO SÓ A DE BOTÃO")
@@ -283,7 +374,10 @@ def main() -> int:
                   teste_a_URA_acaba_quando_entra_gente,
                   teste_comprovante_nao_e_menu,
                   teste_nome_de_pessoa_nao_vira_rotulo,
-                  teste_protocolos_diferentes_sao_a_mesma_tela):
+                  teste_protocolos_diferentes_sao_a_mesma_tela,
+                  teste_tela_nao_aponta_para_si_mesma,
+                  teste_a_escolha_nao_se_perde_junto,
+                  teste_voltar_ao_mesmo_menu_e_rota_de_verdade):
         try:
             teste()
         except Exception as exc:  # noqa: BLE001

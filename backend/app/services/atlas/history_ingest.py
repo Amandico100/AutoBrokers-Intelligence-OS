@@ -19,6 +19,7 @@ Guardamos o payload BRUTO do 1º sync no Redis p/ inspeção e ajuste fino.
 from __future__ import annotations
 
 import asyncio
+import hashlib
 import json
 import logging
 import os
@@ -193,6 +194,34 @@ async def ingest_history_sync(integration: dict, body: dict) -> Dict[str, Any]:
 _SESSION_GAP_S = 2 * 3600
 
 
+def _history_message_id(counterparty: str, ts: Optional[int], i: int, from_me: bool,
+                        msg_type: str, text: Optional[str]) -> str:
+    """A identidade de uma mensagem histórica. A MESMA mensagem tem de gerar o
+    MESMO id em qualquer execução.
+
+    O id anterior terminava em `abs(hash(texto[:60])) % 10**7`. `hash()` de
+    string em Python é **aleatorizado a cada processo** (PYTHONHASHSEED): a
+    mesma mensagem ganhava um id novo a cada reimportação, e o
+    `on_conflict="observer_number,message_id"` — que existe justamente para
+    isso — nunca disparava.
+
+    Medido em 28/07/2026: a Allianz tinha 14.203 linhas para 5.330 mensagens
+    reais (2,66x), com os três history_sync do dia às 14:01, 15:02 e 15:43
+    gravando cópias. Não era o WhatsApp mandando de novo — era o id.
+
+    O estrago não era só custo. O Tecelão casa cada tela com a resposta que vem
+    LOGO DEPOIS; com as cópias intercaladas, a sequência vira tela-tela-tela-
+    resposta e a escolha se perde. Nas telas de lista e botão da Porto, 70%
+    ficaram sem resposta casada.
+
+    Entram na identidade também a direção e o tipo: a mesma palavra ("Ok") pode
+    ser dita pelos dois lados no mesmo segundo, e são duas mensagens.
+    """
+    corpo = f"{from_me}|{msg_type}|{text or ''}".encode("utf-8", "replace")
+    marca = hashlib.sha1(corpo).hexdigest()[:12]
+    return f"hist-{counterparty}-{ts or f'i{i}'}-{marca}"
+
+
 async def _ingest_conversation(company_id: str, observer_number: str, counterparty: str,
                                insurer_key: Optional[str], msgs: List[Dict[str, Any]],
                                events_table: str, sessions_table: str) -> int:
@@ -230,7 +259,7 @@ async def _ingest_conversation(company_id: str, observer_number: str, counterpar
             if not text and not media_meta and not interactive:
                 continue
             wa_ts = datetime.fromtimestamp(ts, tz=timezone.utc).isoformat() if ts else None
-            mid = f"hist-{counterparty}-{ts or i}-{abs(hash(str(text)[:60])) % 10**7}"
+            mid = _history_message_id(counterparty, ts, i, from_me, msg_type, text)
             record = {
                 "company_id": company_id, "observer_number": observer_number,
                 "counterparty": counterparty, "insurer_key": insurer_key,
