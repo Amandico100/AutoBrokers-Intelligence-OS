@@ -244,7 +244,16 @@ def publish_card_sync(card: Dict[str, Any]) -> bool:
     text = str(card.get("card_text") or "").strip()
     if not text or not _card_pii_clean(text):
         return False
-    prefix_bits = [b for b in (card.get("insurer_key"), card.get("ramo")) if b]
+    # O ASSUNTO ENTRA NO TEXTO, de propósito.
+    #
+    # A busca é híbrida e o BM25 casa por palavra exata. Sem "cobrança" escrito
+    # no chunk, uma pergunta sobre boleto disputa espaço em igualdade com uma
+    # carta de vistoria que por acaso menciona pagamento — e boleto é pedido de
+    # muitas formas ("não recebi", "segunda via", "venceu", "manda o código").
+    from app.services.curadoria_cartas import assunto_da_carta
+
+    prefix_bits = [b for b in (card.get("insurer_key"), card.get("ramo"),
+                               assunto_da_carta(text)) if b]
     chunk = (f"({' / '.join(str(b) for b in prefix_bits)}) " if prefix_bits else "") + text
     dense = OpenAIEmbeddings(model="text-embedding-3-small",
                              api_key=settings.OPENAI_API_KEY).embed_documents([chunk])
@@ -470,6 +479,33 @@ async def distill_once(force: bool = False, *, atrasado: bool = False) -> Dict[s
                     stats["playbooks"] += 1
         except Exception as e:  # noqa: BLE001
             logger.error(f"[DESTILADOR] playbook {ramo}/{servico} falhou: {type(e).__name__}")
+
+    # CURAR E PUBLICAR FAZEM PARTE DA RODADA.
+    #
+    # Antes isso dependia de alguém abrir uma tela e apertar um botão que nem
+    # existia direito. Com 1.274 cartas prontas e centenas chegando a cada
+    # corretora pareada, "alguém lembra" não é um plano — e carta não publicada
+    # é conhecimento que o agente não tem na hora de atender.
+    #
+    # A revisão de PII é determinística e roda em três camadas (`templatize` na
+    # extração, instrução à LLM, `_card_pii_clean` no instante da publicação).
+    # O que sobra para o humano é rejeitar um fato errado, e isso continua em
+    # /admin/espelho — rejeitar tira do RAG.
+    #
+    # Curar ANTES de publicar: senão as quase-cópias entram no Qdrant e tirá-las
+    # de lá depois é bem mais caro do que não colocar.
+    try:
+        from app.services.curadoria_cartas import curar_sync, publicar_lote_sync
+
+        cur = await asyncio.to_thread(curar_sync, True)
+        pub = await asyncio.to_thread(
+            publicar_lote_sync, _env_int("CARDS_PUBLISH_PER_RUN", 300))
+        stats["cards_juntados"] = cur.get("juntadas", 0)
+        stats["cards_publicados"] = pub.get("publicadas", 0)
+        logger.info("[DESTILADOR] cartas: %d juntadas, %d publicadas no RAG",
+                    cur.get("juntadas", 0), pub.get("publicadas", 0))
+    except Exception as e:  # noqa: BLE001 — publicar nunca derruba a destilação
+        logger.error("[DESTILADOR] curadoria/publicação falhou: %s", type(e).__name__)
 
     # Pulso na Central de Agentes: é o que mostra o Destilador VIVO. Sem ele, a
     # tela diz "sem sinal" e ninguém distingue "parado" de "sem trabalho".

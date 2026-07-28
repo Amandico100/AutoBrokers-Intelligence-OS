@@ -271,6 +271,10 @@ def _bootstrap():
     # sessoes falham com ModuleNotFoundError — foi o que aconteceu quando o
     # filtro de copias entrou, em 28/07/2026.
     _load("app.services.atlas.mensagem", "app/services/atlas/mensagem.py")
+    # A curadoria das cartas roda dentro da rodada do Destilador. Sem
+    # registrar aqui, o `except` engole um ModuleNotFoundError e o teste
+    # concorda com uma publicacao que nunca acontece.
+    _load("app.services.curadoria_cartas", "app/services/curadoria_cartas.py")
     _load("app.services.knowledge_scope", "app/services/knowledge_scope.py")
     dist = _load("app.services.attendance_distiller", "app/services/attendance_distiller.py")
     return dist, store, redis, qdrant, lf.LLMFactory
@@ -322,9 +326,14 @@ def run():
 
     # 3) cards: limpo -> pending_review; com PII -> rejected_pii; dedupe por hash
     cards = store.get("knowledge_cards", [])
-    pend = [c for c in cards if c.get("status") == "pending_review"]
+    pend = [c for c in cards if c.get("status") in ("pending_review", "published")]
     rej = [c for c in cards if c.get("status") == "rejected_pii"]
-    check("card limpo em pending_review", len(pend) == 1 and "taxi" in pend[0]["card_text"], cards)
+    # O card limpo nao PARA em pending_review: a mesma rodada ja o publica.
+    # Verificar que ele "fica pendente" testaria o gargalo que foi removido.
+    limpos = [c for c in cards if c.get("status") in ("pending_review", "published")]
+    check("card limpo passou pelo filtro e foi publicado",
+          len(limpos) == 1 and "taxi" in limpos[0]["card_text"]
+          and limpos[0]["status"] == "published", cards)
     check("card com CPF rejeitado (rejected_pii)", len(rej) == 1, cards)
     check("dedupe: 3 sessoes iguais nao triplicam cards", len(cards) == 2, len(cards))
 
@@ -368,16 +377,28 @@ def run():
     check("2a rodada: zero sessao nova, zero LLM",
           stats2["sessions"] == 0 and len(factory.calls) == calls_before, stats2)
 
-    # 6) publicacao: card aprovado vira chunk atomico no RAG global
-    ok_pub = dist.publish_card_sync(pend[0])
-    check("card aprovado publicado no RAG global", ok_pub and len(qdrant.inserted) == 1)
+    # 6) publicacao: acontece NA RODADA, nao num clique
+    #
+    # Este caso pegava `pend[0]` e publicava a mao. Com a publicacao dentro do
+    # Destilador, `pending_review` fica VAZIO depois da rodada — o teste falhou
+    # com IndexError, e falhou dizendo a verdade: o card ja tinha sido
+    # publicado sozinho, que e exatamente o comportamento novo.
+    publicados = [c for c in store.get("knowledge_cards", []) if c.get("status") == "published"]
+    check("card publicado sozinho na rodada do Destilador",
+          len(publicados) >= 1 and len(qdrant.inserted) >= 1,
+          f"publicados={len(publicados)} chunks={len(qdrant.inserted)}")
+    check("e o assunto entra no texto do chunk (busca hibrida casa por termo)",
+          any("cobranca" in (ch or "") or "assistencia" in (ch or "")
+              or "sinistro" in (ch or "") or "processo" in (ch or "")
+              for kw in qdrant.inserted for ch in (kw.get("chunks") or [])),
+          [kw.get("chunks") for kw in qdrant.inserted][:1])
     if qdrant.inserted:
         kw = qdrant.inserted[0]
         check("publicacao: colecao global + escopo publicado",
               kw.get("collection_name") == "autobrokers_global"
               and (kw.get("knowledge_extras") or {}).get("scope") == "global_autobrokers", kw)
         check("card e chunk atomico (1 chunk)", len(kw.get("chunks") or []) == 1)
-    bad = dict(pend[0])
+    bad = dict((publicados or store.get("knowledge_cards", []))[0])
     bad["card_text"] = "Cliente CPF 123.456.789-00 tem dois carros"
     check("card com PII NUNCA publica", dist.publish_card_sync(bad) is False)
 
