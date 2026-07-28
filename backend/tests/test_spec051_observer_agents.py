@@ -104,15 +104,36 @@ def test_media_enrichment_and_agent_orchestration_contracts():
     assert "processa somente dados novos" in admin.lower()
 
     sentinel_mod = _load("spec051_route_sentinel", "app/services/atlas/route_sentinel.py")
+
+    # A marca d'água é a data de INGESTÃO (`created_at`), não a data original da
+    # mensagem. Trocado em 28/07/2026: o `HISTORY_SYNC` do pareamento traz
+    # conversas ANTIGAS, e comparar pela data da mensagem fazia a Sentinela
+    # concluir "nada novo" com 4.954 eventos recém-chegados.
+    #
+    # E sessão sem ramo declarado pertence ao mapa COMPLETO da seguradora — não
+    # a um mapa de "auto". A seguradora tem UM WhatsApp para toda a assistência;
+    # a URA ramifica em auto, residencial e condomínio DENTRO da mesma árvore.
     watermarks = sentinel_mod._session_watermarks([
-        {"insurer_key": "hdi", "ramo": "auto", "last_event_at": "2026-07-22T10:00:00Z"},
-        {"insurer_key": "hdi", "ramo": "auto", "last_event_at": "2026-07-22T11:00:00Z"},
-        {"insurer_key": "porto", "ramo": None, "last_event_at": "2026-07-22T09:00:00Z"},
+        {"insurer_key": "hdi", "ramo": "auto",
+         "last_event_at": "2026-07-22T10:00:00Z", "created_at": "2026-07-28T10:00:00Z"},
+        {"insurer_key": "hdi", "ramo": "auto",
+         "last_event_at": "2026-07-22T11:00:00Z", "created_at": "2026-07-28T11:00:00Z"},
+        {"insurer_key": "porto", "ramo": None,
+         "last_event_at": "2026-07-22T09:00:00Z", "created_at": "2026-07-28T09:00:00Z"},
     ])
     assert watermarks == [
-        ("hdi", "auto", "2026-07-22T11:00:00Z"),
-        ("porto", "auto", "2026-07-22T09:00:00Z"),
-    ]
+        ("hdi", "auto", "2026-07-28T11:00:00Z"),
+        ("porto", "todos", "2026-07-28T09:00:00Z"),
+    ], watermarks
+
+    # E a prova do que motivou a troca: histórico ANTIGO que acabou de entrar
+    # tem de mover a marca. Com a regra velha (data da mensagem), este caso
+    # devolveria a data de março e a Sentinela não reteceria nada.
+    antigo = sentinel_mod._session_watermarks([
+        {"insurer_key": "tokio", "ramo": None,
+         "last_event_at": "2026-03-06T15:00:00Z", "created_at": "2026-07-28T14:00:00Z"},
+    ])
+    assert antigo == [("tokio", "todos", "2026-07-28T14:00:00Z")], antigo
 
 
 def test_multitenant_pairing_keys_and_browser_secret_boundary():

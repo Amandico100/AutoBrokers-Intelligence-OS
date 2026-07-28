@@ -81,6 +81,16 @@ def render_map_for_llm(map_obj: Dict[str, Any], max_nodes: int = 30) -> str:
 
 
 # ── IO Supabase (best-effort) ─────────────────────────────────────────────────
+# Uma seguradora tem UM WhatsApp para toda a assistencia. A URA pergunta qual
+# seguro e ramifica dali — o mapa observado contem a arvore INTEIRA, com auto,
+# residencial, condominio e empresarial dentro dela.
+#
+# `todos` e o ramo desse mapa unico. Rotula-lo como "auto" era mentira com
+# consequencia: a Resulta conversa sobre residencial e condominio, a AutoFleet
+# so sobre auto e frota, e as duas falam com o MESMO numero.
+RAMO_COMPLETO = "todos"
+
+
 async def save_proposed_map(insurer_key: str, ramo: str, map_obj: Dict[str, Any],
                             source: str = "cartographer") -> Optional[str]:
     try:
@@ -106,15 +116,30 @@ async def save_proposed_map(insurer_key: str, ramo: str, map_obj: Dict[str, Any]
 
 
 async def get_active_map(insurer_key: str, ramo: str = "auto") -> Optional[Dict[str, Any]]:
+    """O mapa ativo da seguradora. Cai para o mapa COMPLETO quando não há um
+    específico do ramo pedido.
+
+    Quem chama pergunta por um ramo concreto — o acionamento pede "auto",
+    porque é o que o playbook dele diz. Mas o mapa observado é **um só**, com a
+    árvore inteira, e vive sob `todos`.
+
+    Sem esta reserva, mudar o rótulo para a verdade faria o acionamento parar de
+    achar o mapa: uma correção de nome viraria um defeito de funcionamento.
+    """
     try:
         from app.core.database import get_supabase_client
 
         db = get_supabase_client()
-        res = await asyncio.to_thread(
-            lambda: db.client.table("ura_maps").select("*")
-            .eq("insurer_key", insurer_key).eq("ramo", ramo).eq("status", "active")
-            .order("version", desc=True).limit(1).execute()
-        )
+
+        def _buscar(r: str):
+            return (db.client.table("ura_maps").select("*")
+                    .eq("insurer_key", insurer_key).eq("ramo", r)
+                    .eq("status", "active")
+                    .order("version", desc=True).limit(1).execute())
+
+        res = await asyncio.to_thread(lambda: _buscar(ramo))
+        if not res.data and ramo != RAMO_COMPLETO:
+            res = await asyncio.to_thread(lambda: _buscar(RAMO_COMPLETO))
         return res.data[0] if res.data else None
     except Exception as e:  # noqa: BLE001
         logger.warning(f"[URA_MAP] get_active falhou: {type(e).__name__}")

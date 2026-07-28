@@ -279,10 +279,17 @@ def _save_playbook_draft_sync(ramo: str, servico: str, content: Dict[str, Any],
 # ------------------------------------------------------------------ #
 # Orquestração
 # ------------------------------------------------------------------ #
-async def distill_once(force: bool = False) -> Dict[str, int]:
-    """Uma rodada completa: estágio 1 -> cards -> estágio 2. Retorna contadores."""
+async def distill_once(force: bool = False, *, atrasado: bool = False) -> Dict[str, int]:
+    """Uma rodada completa: estágio 1 -> cards -> estágio 2. Retorna contadores.
+
+    `atrasado=True` usa o lote de recuperação — maior, para dar conta do
+    histórico que entra de uma vez no pareamento.
+    """
     stats = {"sessions": 0, "cards_new": 0, "cards_rejected_pii": 0, "playbooks": 0}
-    max_sessions = _env_int("DISTILLER_MAX_SESSIONS_PER_RUN", 40)
+    max_sessions = _env_int(
+        "DISTILLER_BACKLOG_SESSIONS_PER_RUN" if atrasado
+        else "DISTILLER_MAX_SESSIONS_PER_RUN",
+        200 if atrasado else 40)
     min_group = _env_int("DISTILLER_MIN_SESSIONS", _MIN_SESSIONS_DEFAULT)
 
     sessions = await asyncio.to_thread(_load_undistilled_sync, max_sessions)
@@ -360,26 +367,73 @@ async def distill_once(force: bool = False) -> Dict[str, int]:
     return stats
 
 
+def _fila_pendente() -> int:
+    """Quantas sessões esperam destilação. Zero LLM — só contagem."""
+    from app.core.database import get_supabase_client
+
+    try:
+        db = get_supabase_client()
+        rows = (db.client.table("attendance_sessions").select("summary")
+                .eq("status", "closed").limit(20_000).execute().data or [])
+        return sum(1 for r in rows
+                   if not ((r.get("summary") or {}).get("distilled")))
+    except Exception:  # noqa: BLE001
+        return 0
+
+
 async def check_attendance_distiller() -> int:
-    """Task periódica (APScheduler, horária): roda 1x/dia na madrugada.
-    Zero custo quando não há sessão nova. Nunca derruba o scheduler."""
+    """Task periódica (horária): 1x/dia na madrugada — ou de hora em hora
+    enquanto houver ATRASO grande.
+
+    Por que existe o modo de atraso
+    -------------------------------
+    O ritmo de uma vez por noite, 40 sessões, foi desenhado para o regime
+    normal: a corretora conversa, algumas dezenas de atendimentos por dia, e a
+    madrugada dá conta.
+
+    O pareamento quebra essa premissa. Quando a Resulta conectou o WhatsApp em
+    28/07/2026, o `HISTORY_SYNC` despejou **6.105 sessões de uma vez**. A 40 por
+    noite, o Espelho levaria **cinco meses** para processar o que chegou numa
+    tarde — e o agente de atendimento seria ligado no dia 8 sem quase nada do
+    que a equipe humana ensinou.
+
+    A regra: enquanto a fila for grande, roda de hora em hora com lote maior.
+    Voltando ao normal, volta para uma vez por noite. O custo continua limitado
+    pelo lote — o que muda é a frequência, não o gasto por rodada.
+    """
+    atrasado = False
     try:
         now = datetime.now(timezone.utc)
-        if now.hour not in _RUN_WINDOW_UTC:
-            return 0
-        from app.core.redis import get_async_redis_client
+        pendentes = await asyncio.to_thread(_fila_pendente)
+        atrasado = pendentes >= _env_int("DISTILLER_BACKLOG_THRESHOLD", 200)
 
-        r = await get_async_redis_client()
-        today = now.date().isoformat()
-        marker = await r.get(_MARKER)
-        marker = marker.decode() if isinstance(marker, (bytes, bytearray)) else marker
-        if marker == today:
-            return 0
-        await r.set(_MARKER, today, ex=3 * 86400)
+        if not atrasado:
+            if now.hour not in _RUN_WINDOW_UTC:
+                return 0
+            from app.core.redis import get_async_redis_client
+
+            r = await get_async_redis_client()
+            today = now.date().isoformat()
+            marker = await r.get(_MARKER)
+            marker = marker.decode() if isinstance(marker, (bytes, bytearray)) else marker
+            if marker == today:
+                return 0
+            await r.set(_MARKER, today, ex=3 * 86400)
+        else:
+            # Modo atraso: uma rodada por hora, com trava para duas instâncias
+            # da API não processarem a mesma fila e pagarem duas vezes.
+            from app.core.redis import get_async_redis_client
+
+            r = await get_async_redis_client()
+            janela = now.strftime("%Y-%m-%dT%H")
+            if not await r.set(f"{_MARKER}:atraso:{janela}", "1", ex=5400, nx=True):
+                return 0
+            logger.info("[DESTILADOR] %d sessões na fila — modo de recuperação",
+                        pendentes)
     except Exception:  # noqa: BLE001
         pass
     try:
-        stats = await distill_once()
+        stats = await distill_once(atrasado=atrasado)
         return stats.get("sessions", 0)
     except Exception as e:  # noqa: BLE001
         logger.error(f"[DESTILADOR] check falhou: {type(e).__name__}")

@@ -15,6 +15,7 @@ import httpx
 from fastapi import APIRouter, Depends, HTTPException
 
 from app.core.auth import require_master_admin
+from app.services.ura_map_service import RAMO_COMPLETO
 
 logger = logging.getLogger(__name__)
 router = APIRouter(prefix="/api/admin/atlas", tags=["Admin ATLAS (SPEC-038)"])
@@ -75,9 +76,24 @@ async def weave(body: Optional[Dict[str, Any]] = None, _: Any = Depends(require_
     sessões observadas. Idempotente (reprocessa o histórico)."""
     from app.services.atlas.weaver import weave_insurer
 
+    # O ramo padrão NÃO é "auto".
+    #
+    # A seguradora tem UM WhatsApp para toda a assistência. A URA começa
+    # perguntando qual seguro — auto, residencial, condomínio, empresarial — e
+    # ramifica dali. O mapa observado contém a árvore INTEIRA: a própria árvore
+    # da Tokio, tecida em 28/07/2026, tem o galho "menu de serviços do seguro
+    # Condomínio" dentro dela.
+    #
+    # Chamar isso de "auto" era mentira com consequência prática: a Resulta não
+    # vende auto — ela conversa sobre residencial e condomínio — e a AutoFleet
+    # só faz auto e frota. As duas falam com o MESMO número da seguradora, e
+    # percorrem galhos diferentes da mesma árvore.
+    #
+    # `todos` diz a verdade: um mapa por seguradora, e o ramo é uma ESCOLHA
+    # dentro dele, não um mapa separado.
     payload = body or {}
     insurer = str(payload.get("insurer_key") or "").strip().lower()
-    ramo = str(payload.get("ramo") or "").strip().lower() or "auto"
+    ramo = str(payload.get("ramo") or "").strip().lower() or RAMO_COMPLETO
     if insurer:
         return await weave_insurer(insurer, ramo)
 

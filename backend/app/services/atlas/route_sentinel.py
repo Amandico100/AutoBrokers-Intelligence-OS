@@ -23,6 +23,10 @@ from typing import Any, Dict, List, Optional
 
 logger = logging.getLogger(__name__)
 
+# Import local nas funcoes, nao no topo: `ura_map_service` puxa o cliente do
+# banco em tempo de carga, e um modulo do Atlas nao pode exigir banco so
+# para ser importado por um teste.
+
 
 def _drift_signature(insurer_key: str, ramo: str, severity: str, diff: Dict[str, Any]) -> str:
     payload = {
@@ -75,7 +79,9 @@ def _session_watermarks(rows: List[Dict[str, Any]]) -> List[tuple[str, str, str]
         insurer = str(row.get("insurer_key") or "").strip()
         if not insurer:
             continue
-        ramo = str(row.get("ramo") or "auto")
+        # Sessao sem ramo declarado pertence ao mapa COMPLETO da seguradora,
+        # nao a um mapa de "auto" que nao existe.
+        ramo = str(row.get("ramo") or "todos")
         # `created_at` primeiro; `last_event_at` só como reserva para linhas
         # antigas que porventura não tenham o campo.
         stamp = str(row.get("created_at") or row.get("last_event_at") or "")

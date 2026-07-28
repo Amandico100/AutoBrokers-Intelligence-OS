@@ -63,16 +63,28 @@ class LLMFactory:
             f"temp={temperature if use_temperature else 'fixed'}"
         )
 
-        callbacks = []
-        if company_id:
-            callbacks.append(
-                CostCallbackHandler(
-                    service_type="chat",
-                    company_id=company_id,
-                    agent_id=agent_id,
-                    model_name=model
-                )
+        # O callback de custo é SEMPRE anexado.
+        #
+        # Antes ele só entrava quando havia `company_id`, e isso abria um buraco
+        # grande: todo trabalho de PLATAFORMA — o Tecelão resolvendo rotas
+        # ambíguas com Opus 5, o Destilador do Espelho, o Cartógrafo — roda sem
+        # corretora dona e ficava **invisível no ledger**.
+        #
+        # Medido em 28/07/2026: `token_usage_logs` com ZERO chamadas em três
+        # horas, enquanto o console da Anthropic mostrava US$ 0,54 gastos. O
+        # dinheiro saía e o sistema não sabia dizer em quê.
+        #
+        # `service_type` distingue: consumo de corretora é "chat"; o que a
+        # plataforma gasta por conta própria é "plataforma", e some do custo por
+        # corretora sem sumir do total.
+        callbacks = [
+            CostCallbackHandler(
+                service_type="chat" if company_id else "plataforma",
+                company_id=company_id,
+                agent_id=agent_id,
+                model_name=model,
             )
+        ]
 
         if provider == "openai":
             return LLMFactory._create_openai(
