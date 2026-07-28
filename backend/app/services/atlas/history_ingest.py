@@ -28,6 +28,44 @@ from typing import Any, Dict, List, Optional, Tuple
 
 logger = logging.getLogger(__name__)
 
+# Quantas mídias do histórico ainda podem ser enfileiradas. O contador vive no
+# REDIS porque o teto atravessa requisições: quem autoriza é o Admin, e quem
+# gasta é o webhook do HistorySync, que chega depois e várias vezes.
+#
+# Fechado por padrão. A instrução do Founder em 28/07/2026 foi explícita —
+# "NÃO FAÇA A ANÁLISE DAS 9565 MÍDIAS VIA API NUNCA. APENAS AS 20". Quem abre
+# é uma ação humana, nunca o código.
+_ORCAMENTO_MIDIA = "atlas:history:media_budget"
+
+
+async def _pode_gastar_midia() -> bool:
+    """Consome uma unidade do orçamento. Sem orçamento aberto, responde não.
+
+    `DECR` numa chave inexistente cria em -1 e devolve -1 — então a ausência
+    de autorização já é uma recusa, sem precisar de nenhum `if` extra. É a
+    falha fechada saindo de graça do próprio Redis.
+    """
+    try:
+        from app.core.redis import get_async_redis_client
+
+        r = await get_async_redis_client()
+        return int(await r.decr(_ORCAMENTO_MIDIA)) >= 0
+    except Exception:  # noqa: BLE001 — Redis fora = nada é gasto
+        return False
+
+
+async def abrir_orcamento_de_midia(quantas: int, validade_s: int = 7200) -> int:
+    """Autoriza N mídias do histórico a serem baixadas e lidas. Ação humana."""
+    quantas = max(0, min(int(quantas or 0), 500))
+    from app.core.redis import get_async_redis_client
+
+    r = await get_async_redis_client()
+    if quantas <= 0:
+        await r.delete(_ORCAMENTO_MIDIA)
+        return 0
+    await r.set(_ORCAMENTO_MIDIA, quantas, ex=validade_s)
+    return quantas
+
 
 def _find_conversations(data: Any) -> List[Dict[str, Any]]:
     """Localiza a lista de conversas no payload (tolerante a casing/aninhamento)."""
@@ -108,6 +146,7 @@ async def ingest_history_sync(integration: dict, body: dict) -> Dict[str, Any]:
     observer_number = _observer_number_of(integration)
     company_id = str(integration.get("company_id") or "")
 
+
     # SPEC-040 Onda 1: escopo da integração decide se as conversas com os
     # SEGURADOS entram no Espelho de Atendimento (Parte 1) ou são descartadas.
     try:
@@ -151,7 +190,8 @@ async def ingest_history_sync(integration: dict, body: dict) -> Dict[str, Any]:
     for insurer_key, counterparty, msgs in insurer_convs:
         stored += await _ingest_conversation(
             company_id, observer_number, counterparty, insurer_key, msgs,
-            events_table="observed_events", sessions_table="observed_sessions")
+            events_table="observed_events", sessions_table="observed_sessions",
+            integration_id=str(integration.get("id") or ""))
 
     # SPEC-040 Onda 1 — Parte 1 (segurados) → Espelho de Atendimento.
     # Recência-primeiro também aqui; cap de segurança p/ históricos gigantes.
@@ -168,7 +208,8 @@ async def ingest_history_sync(integration: dict, body: dict) -> Dict[str, Any]:
                 break
             client_stored += await _ingest_conversation(
                 company_id, observer_number, counterparty, None, msgs,
-                events_table="attendance_transcripts", sessions_table="attendance_sessions")
+                events_table="attendance_transcripts", sessions_table="attendance_sessions",
+                integration_id=str(integration.get("id") or ""))
         try:
             from app.core.heartbeat import beat
 
@@ -224,7 +265,8 @@ def _history_message_id(counterparty: str, ts: Optional[int], i: int, from_me: b
 
 async def _ingest_conversation(company_id: str, observer_number: str, counterparty: str,
                                insurer_key: Optional[str], msgs: List[Dict[str, Any]],
-                               events_table: str, sessions_table: str) -> int:
+                               events_table: str, sessions_table: str,
+                               integration_id: str = "") -> int:
     """Uma conversa do histórico → sessões por janela de 2h + eventos dedupe.
     Mesma mecânica p/ seguradora (Atlas) e segurado (Espelho de Atendimento)."""
     from app.services.atlas.observer_intake import _extract_content
@@ -274,6 +316,32 @@ async def _ingest_conversation(company_id: str, observer_number: str, counterpar
                 stored += 1
             except Exception:  # noqa: BLE001
                 pass
+
+            # A MÍDIA ANTIGA SÓ EXISTE AQUI, NESTE INSTANTE.
+            #
+            # `/message/downloadmedia` do Evolution GO exige o `waE2E.Message`
+            # inteiro — `mediaKey`, `directPath`, `fileEncSha256`. Nada disso é
+            # gravado no banco: `media_meta` guarda tipo, nome e legenda. Uma
+            # foto do histórico, depois que esta função retorna, é
+            # inalcançável para sempre.
+            #
+            # São 9.002 mídias no Espelho (3.572 documentos, 2.685 imagens,
+            # 2.631 áudios, 114 vídeos), nenhuma lida. Em seguro o áudio é
+            # onde o cliente explica o sinistro e o documento é a apólice.
+            #
+            # FECHADO POR PADRÃO. `limite_midia` vem do Founder por chamada:
+            # a instrução de 28/07/2026 foi explícita — "NÃO FAÇA A ANÁLISE
+            # DAS 9565 MÍDIAS VIA API NUNCA. APENAS AS 20". Zero significa
+            # zero: nenhuma transcrição é disparada sem alguém pedir.
+            if media_meta and await _pode_gastar_midia():
+                try:
+                    from app.services.atlas.observer_media import enqueue_observer_media
+
+                    await enqueue_observer_media(
+                        {"id": integration_id, "company_id": company_id},
+                        events_table, msg, record)
+                except Exception as exc:  # noqa: BLE001 — mídia nunca derruba a ingestão
+                    logger.warning("[HISTORY] fila de mídia indisponível: %s", type(exc).__name__)
     return stored
 
 

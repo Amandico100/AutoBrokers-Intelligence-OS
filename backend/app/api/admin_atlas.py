@@ -454,6 +454,46 @@ async def trigger_history_sync(
         return {"ok": False, "error": f"go_unreachable:{type(e).__name__}"}
 
 
+@router.post("/observer/media-budget")
+async def abrir_orcamento_midia(
+    body: Optional[Dict[str, Any]] = None, _: Any = Depends(require_master_admin)
+) -> Dict[str, Any]:
+    """Autoriza N mídias do histórico a serem baixadas, transcritas e lidas.
+
+    Por que precisa de autorização explícita
+    ----------------------------------------
+    São 9.002 mídias paradas no Espelho — 3.572 documentos, 2.685 imagens,
+    2.631 áudios, 114 vídeos — e nenhuma foi lida. Em seguro isso importa: o
+    áudio é onde o cliente explica o sinistro, o documento é a apólice.
+
+    Mas transcrever tudo é uma decisão de dinheiro, e a instrução do Founder em
+    28/07/2026 foi "NÃO FAÇA A ANÁLISE DAS 9565 MÍDIAS VIA API NUNCA. APENAS
+    AS 20". Então o padrão é ZERO e quem abre é uma pessoa, por chamada.
+
+    Por que o orçamento vive fora desta requisição
+    ----------------------------------------------
+    A mídia antiga só é alcançável DURANTE um HistorySync: o download exige o
+    `waE2E.Message` inteiro (mediaKey, directPath, fileEncSha256), e nada disso
+    fica no banco. Esta rota abre o crédito; o webhook do sync, que chega
+    depois, gasta. O contador é um `DECR` no Redis: sem crédito aberto ele
+    devolve -1 e a mídia é ignorada — a falha fechada sai de graça.
+
+    Ordem de uso: abrir o orçamento aqui, depois disparar
+    `POST /observer/history-sync`.
+    """
+    from app.services.atlas.history_ingest import abrir_orcamento_de_midia
+
+    pedido = int((body or {}).get("quantas") or 0)
+    autorizadas = await abrir_orcamento_de_midia(pedido)
+    return {
+        "ok": True,
+        "autorizadas": autorizadas,
+        "validade_horas": 2,
+        "proximo_passo": ("dispare POST /admin/atlas/observer/history-sync"
+                          if autorizadas else "orçamento fechado: nenhuma mídia será lida"),
+    }
+
+
 # ------------------------------------------------------------------ #
 # SPEC-040 Onda 3 — Espelho de Atendimento (destilação, cards, playbooks)
 # ------------------------------------------------------------------ #

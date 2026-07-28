@@ -818,18 +818,48 @@ async def _is_duplicate_namespaced(provider: str, message_id: Optional[str]) -> 
         return False
 
 
-async def _download_evolution_media(integration: dict, message_id: str) -> Optional[tuple]:
-    """(bytes, mimetype) da mídia criptografada do WhatsApp via Evolution
-    getBase64FromMediaMessage. F1: sem isso, imagem/PDF do cliente nunca chega."""
+async def _download_evolution_media(integration: dict, message_id: str,
+                                    raw_message: Optional[dict] = None) -> Optional[tuple]:
+    """(bytes, mimetype) da mídia criptografada do WhatsApp via Evolution.
+
+    São DOIS wires diferentes, e confundi-los é ficar cego para a mídia:
+
+    - Baileys (`evolution`): ``/chat/getBase64FromMediaMessage/{instância}``,
+      corpo ``{"message": {"key": {"id": ...}}}`` — o id basta.
+    - GO (`evolution-go`): ``/message/downloadmedia``, corpo
+      ``{"message": <waE2E.Message>}`` — a mensagem INTEIRA é obrigatória,
+      porque é ela que traz `mediaKey`/`directPath`/`fileEncSha256`.
+
+    O caminho do GO estava marcado como "shape a confirmar" e devolvia None:
+    com o agente ligado, toda foto, áudio e PDF do segurado ficaria invisível.
+    O shape foi confirmado em 28/07/2026 no próprio Swagger do fork
+    (`/swagger/doc.json`, `DownloadMediaStruct` = `{message: waE2E.Message}`),
+    que também mostrou que `/chat/getBase64FromMediaMessage` responde 404 ali —
+    são forks distintos mesmo.
+
+    O download em si é o do Observador (`observer_media._download_media`), que
+    já trata tamanho máximo e base64 com prefixo `data:`. Um motor só.
+    """
     base = str(integration.get("base_url") or "").rstrip("/")
     apikey = str(integration.get("token") or "")
     inst = str(integration.get("instance_id") or "")
-    if not (base and apikey and inst and message_id):
+    if not (base and apikey):
         return None
     if str(integration.get("provider") or "").strip().lower() == "evolution-go":
-        # GO usa /message/downloadmedia com o message bruto (shape a confirmar
-        # no primeiro teste ao vivo). Sem inventar wire: mídia entra depois.
-        logger.info("[WEBHOOK EVOLUTION-GO] download de mídia ainda não suportado (texto primeiro)")
+        if not raw_message:
+            logger.warning("[WEBHOOK EVOLUTION-GO] sem a mensagem crua não há como baixar a mídia")
+            return None
+        try:
+            from app.services.atlas.observer_media import _download_media
+
+            return await _download_media(integration, raw_message)
+        except Exception as exc:  # noqa: BLE001 — mídia nunca derruba o atendimento
+            from app.services.atlas.observer_media import _motivo_da_falha
+
+            logger.error("[WEBHOOK EVOLUTION-GO] download de mídia falhou: %s",
+                         _motivo_da_falha(exc))
+            return None
+    if not (inst and message_id):
         return None
     try:
         import base64 as b64mod
@@ -1044,10 +1074,12 @@ async def _handle_evolution_like_inbound(
         if blob_mime is None:
             # Fallback: download via API (retry 1x — o store da Evolution pode
             # persistir a mensagem DEPOIS do webhook disparar).
-            blob_mime = await _download_evolution_media(integration, normalized["message_id"])
+            blob_mime = await _download_evolution_media(
+                integration, normalized["message_id"], normalized.get("raw_message"))
             if blob_mime is None:
                 await asyncio.sleep(2.5)
-                blob_mime = await _download_evolution_media(integration, normalized["message_id"])
+                blob_mime = await _download_evolution_media(
+                    integration, normalized["message_id"], normalized.get("raw_message"))
         if blob_mime:
             blob, mime = blob_mime
             mime = mime or str(media.get("mimetype") or "")

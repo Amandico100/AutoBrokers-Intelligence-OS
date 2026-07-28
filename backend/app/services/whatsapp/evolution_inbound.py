@@ -264,6 +264,16 @@ def normalize_evolution_inbound(payload: Dict[str, Any]) -> Dict[str, Any]:
             text, interactive = rendered
 
     out.update({
+        # A mensagem crua do WhatsApp, em memória e só nesta requisição.
+        #
+        # `/message/downloadmedia` do Evolution GO exige o `waE2E.Message`
+        # inteiro — é ele que traz `mediaKey`, `directPath` e `fileEncSha256`,
+        # sem os quais a foto do segurado não pode ser baixada nem descriptada.
+        # Só o `message_id` não basta (isso é o wire do Baileys, outro fork).
+        #
+        # Nunca é gravada em banco nem em log: é material do cliente, e o
+        # `media_meta` que fica guardado tem só tipo, nome e legenda.
+        "raw_message": msg_dict or None,
         "message_id": str(message_id) if message_id else None,
         "phone": _phone_from_jid(remote_jid),
         "connected_phone": _phone_from_jid(payload.get("sender")) or str(payload.get("instance") or "") or None,
