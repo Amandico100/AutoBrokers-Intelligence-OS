@@ -281,20 +281,69 @@ _STAGE2_SYSTEM = (
 
 
 def _load_group_summaries_sync(ramo: str, servico: str, limit: int = 30) -> List[Dict[str, Any]]:
+    """Os atendimentos JÁ DESTILADOS de um (ramo, serviço).
+
+    Isto lia as 300 sessões mais RECENTES e filtrava em Python. E a recuperação
+    do histórico processa da mais ANTIGA para a mais nova — as duas funções
+    olhavam para pontas opostas da linha do tempo.
+
+    O efeito, medido em 28/07/2026: **zero playbooks** com 7.620 sessões
+    destiladas. Enquanto o histórico era processado, as 300 mais recentes ainda
+    não tinham `distilled`, o filtro devolvia lista vazia e a síntese era
+    pulada em toda rodada. Existem grupos com 152, 72 e 69 atendimentos.
+
+    Agora o filtro é do banco: pede as sessões DAQUELE grupo, mais recentes
+    primeiro, e para quando tem o bastante.
+    """
     from app.core.database import get_supabase_client
 
     db = get_supabase_client()
     rows = (db.client.table("attendance_sessions")
             .select("summary").eq("status", "closed")
-            .order("started_at", desc=True).limit(300).execute().data or [])
-    out = []
-    for r in rows:
-        d = ((r.get("summary") or {}).get("distilled")) or {}
-        if d and str(d.get("ramo")) == ramo and str(d.get("servico")) == servico:
-            out.append(d)
-        if len(out) >= limit:
-            break
-    return out
+            .eq("summary->distilled->>ramo", ramo)
+            .eq("summary->distilled->>servico", servico)
+            .order("started_at", desc=True).limit(limit).execute().data or [])
+    return [d for d in ((r.get("summary") or {}).get("distilled") for r in rows) if d]
+
+
+def _grupos_sem_playbook_sync(limite: int) -> List[Tuple[str, str]]:
+    """Grupos que já têm material suficiente e nenhum playbook ainda.
+
+    A síntese só olhava os grupos TOCADOS na rodada. Com o histórico inteiro já
+    destilado, quase nenhuma rodada toca grupo nenhum — e os playbooks nunca
+    apareceriam, por mais conversa que houvesse no banco.
+
+    Os maiores primeiro: é onde está a conduta que mais se repete, e portanto o
+    padrão mais confiável de aprender.
+    """
+    from app.core.database import get_supabase_client
+
+    db = get_supabase_client()
+    try:
+        existentes = {(r.get("ramo"), r.get("servico")) for r in
+                      (db.client.table("conduct_playbooks").select("ramo, servico")
+                       .execute().data or [])}
+        contagem: Dict[Tuple[str, str], int] = {}
+        inicio = 0
+        while inicio < 20000:
+            lote = (db.client.table("attendance_sessions").select("summary")
+                    .eq("status", "closed")
+                    .range(inicio, inicio + 999).execute().data) or []
+            for r in lote:
+                d = ((r.get("summary") or {}).get("distilled")) or {}
+                ramo, servico = str(d.get("ramo") or ""), str(d.get("servico") or "")
+                if not ramo or servico in ("", "outro"):
+                    continue
+                contagem[(ramo, servico)] = contagem.get((ramo, servico), 0) + 1
+            if len(lote) < 1000:
+                break
+            inicio += 1000
+        faltando = [g for g, n in sorted(contagem.items(), key=lambda x: -x[1])
+                    if g not in existentes and n >= _MIN_SESSIONS_DEFAULT]
+        return faltando[:limite]
+    except Exception as e:  # noqa: BLE001
+        logger.warning("[DESTILADOR] varredura de grupos falhou: %s", type(e).__name__)
+        return []
 
 
 def _save_playbook_draft_sync(ramo: str, servico: str, content: Dict[str, Any],
@@ -368,8 +417,22 @@ async def distill_once(force: bool = False, *, atrasado: bool = False) -> Dict[s
     await asyncio.gather(*[_uma_sessao(s) for s in sessions],
                          return_exceptions=True)
 
-    # Estagio 2 — playbooks dos grupos tocados nesta rodada (modelo FORTE)
-    for (ramo, servico), _n in touched_groups.items():
+    # Estagio 2 — playbooks (modelo FORTE)
+    #
+    # Alem dos grupos tocados nesta rodada, entram os que JA TEM material e
+    # nenhum playbook. Sem isso, com o historico inteiro ja destilado, nenhuma
+    # rodada toca grupo nenhum e a sintese nunca acontece.
+    #
+    # TETO POR RODADA: cada playbook e uma chamada ao modelo mais caro. Sem
+    # teto, a primeira rodada depois deste conserto tentaria sintetizar todos
+    # os grupos de uma vez. Com teto, eles saem aos poucos e o custo por
+    # rodada e previsivel.
+    por_rodada = _env_int("DISTILLER_PLAYBOOKS_PER_RUN", 3)
+    grupos = list(touched_groups.keys())
+    for g in _grupos_sem_playbook_sync(por_rodada):
+        if g not in grupos:
+            grupos.append(g)
+    for (ramo, servico) in grupos[:por_rodada]:
         try:
             if servico in ("outro", "") or ramo in ("",):
                 continue

@@ -45,6 +45,24 @@ class _Result:
         self.data = data or []
 
 
+def _valor_em(linha, coluna):
+    """Le `summary->distilled->>ramo` como o PostgREST le.
+
+    O falso comparava `linha.get("summary->distilled->>ramo")`, que nunca
+    existe, e devolvia lista vazia em silencio. Foi assim que a sintese de
+    playbook passou no teste enquanto estava quebrada em producao.
+    """
+    if "->" not in coluna:
+        return linha.get(coluna)
+    partes = coluna.replace("->>", "->").split("->")
+    atual = linha
+    for parte in partes:
+        if not isinstance(atual, dict):
+            return None
+        atual = atual.get(parte.strip())
+    return atual
+
+
 class _Table:
     def __init__(self, store, name):
         self.store, self.name = store, name
@@ -90,7 +108,7 @@ class _Table:
     def _rows(self):
         rows = list(self.store.get(self.name, []))
         for col, val in self._eq:
-            rows = [r for r in rows if str(r.get(col)) == str(val)]
+            rows = [r for r in rows if str(_valor_em(r, col)) == str(val)]
         if self._order:
             rows.sort(key=lambda r: str(r.get(self._order) or ""), reverse=self._desc)
         if self._limit:
@@ -322,6 +340,27 @@ def run():
           [c["model"] for c in strong_calls])
     check("playbook manda confirmar (nao perguntar) o que ja temos",
           any(f.get("ja_temos_na_apolice") for f in (pbs[0]["content"].get("ficha_coleta") or [])))
+
+    # 4b) o playbook nasce mesmo quando a rodada NAO tocou o grupo.
+    #
+    # Com o historico inteiro ja destilado, quase nenhuma rodada toca grupo
+    # nenhum. Se a sintese so olhasse os grupos tocados, os playbooks nunca
+    # apareceriam — foi o que aconteceu em producao: 7.620 sessoes destiladas
+    # e ZERO playbooks, com grupos de 152, 72 e 69 atendimentos parados.
+    faltando = dist._grupos_sem_playbook_sync(5)
+    check("varredura acha grupo com material e sem playbook",
+          isinstance(faltando, list), faltando)
+    check("e nao devolve o grupo que ja tem playbook",
+          ("auto", "guincho") not in faltando, faltando)
+
+    # E o custo por rodada tem teto: cada playbook e uma chamada ao modelo mais
+    # caro, e sem teto a primeira rodada tentaria sintetizar todos de uma vez.
+    fonte_d = (ROOT / "app/services/attendance_distiller.py").read_text(encoding="utf-8")
+    check("teto de playbooks por rodada", "DISTILLER_PLAYBOOKS_PER_RUN" in fonte_d)
+    check("e a busca do grupo e feita pelo BANCO, nao filtrando em Python",
+          'eq("summary->distilled->>ramo"' in fonte_d,
+          "ler as 300 mais recentes e filtrar depois deu zero durante toda a "
+          "recuperacao, que processa da mais antiga para a mais nova")
 
     # 5) idempotencia: 2a rodada nao gasta LLM
     calls_before = len(factory.calls)
