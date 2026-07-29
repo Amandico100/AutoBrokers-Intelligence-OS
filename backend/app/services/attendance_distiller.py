@@ -58,6 +58,42 @@ def _provider_model(strong: bool) -> Tuple[str, str]:
     return provider, os.getenv("DISTILLER_LLM_MODEL") or "claude-sonnet-5"
 
 
+def _texto_da_resposta(result: Any) -> Optional[str]:
+    """O TEXTO da resposta — não a representação da lista de blocos.
+
+    Isto era `str(getattr(result, "content", ""))`. Quando o modelo PENSA, o
+    LangChain devolve `content` como uma LISTA de blocos:
+
+        [{"type": "thinking", ...}, {"type": "text", "text": "{...json...}"}]
+
+    `str()` numa lista devolve a repr da lista. O leitor de JSON procura a
+    primeira `{` e a última `}` e encaixa tudo que está no meio — inclusive o
+    bloco de pensamento — então `json.loads` falha e a rodada não salva nada.
+    O modelo respondeu, o token foi pago, e o resultado foi jogado fora.
+
+    Medido em 29/07/2026: 11 chamadas ao Opus 5 na síntese de playbook,
+    3.395 tokens de saída cada, US$ 0,45 gastos, ZERO playbooks salvos.
+
+    A causa é uma mudança de padrão do modelo: o Claude Opus 5 pensa por
+    padrão (o Opus 4.8 não pensava se ninguém pedisse). O código funcionava
+    com o modelo antigo e passou a jogar dinheiro fora com o novo, sem
+    nenhum erro aparecer em lugar nenhum.
+    """
+    bruto = getattr(result, "content", None)
+    if isinstance(bruto, str):
+        return bruto.strip() or None
+    if isinstance(bruto, list):
+        partes = []
+        for bloco in bruto:
+            if isinstance(bloco, dict):
+                if bloco.get("type") == "text" and bloco.get("text"):
+                    partes.append(str(bloco["text"]))
+            elif isinstance(bloco, str):
+                partes.append(bloco)
+        return ("\n".join(partes)).strip() or None
+    return str(bruto or "").strip() or None
+
+
 async def _call_llm(system: str, user: str, company_id: str = "", strong: bool = False) -> Optional[str]:
     """Chamada única de LLM (padrão da casa: LLMFactory + FinOps por company)."""
     try:
@@ -74,7 +110,7 @@ async def _call_llm(system: str, user: str, company_id: str = "", strong: bool =
             agent_id=None,
         )
         result = await llm.ainvoke([SystemMessage(content=system), HumanMessage(content=user)])
-        return str(getattr(result, "content", "") or "").strip() or None
+        return _texto_da_resposta(result)
     except Exception as e:  # noqa: BLE001
         logger.warning(f"[DESTILADOR] LLM falhou ({'forte' if strong else 'padrão'}): {type(e).__name__}")
         return None

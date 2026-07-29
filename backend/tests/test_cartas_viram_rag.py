@@ -1,30 +1,6 @@
-"""Da carta crua ao RAG, sem ninguém precisar apertar botão. SPEC-040/052.
-
-O que estava travado
---------------------
-1.274 cartas prontas, ZERO publicadas. O conhecimento existia, tinha sido
-extraído de 7.622 atendimentos reais, e não chegava ao agente — porque
-dependia de alguém abrir uma tela e apertar um botão que nem estava claro.
-
-> Founder, 29/07/2026: "NAO SEI SE EU TENHO QUE APERTAR UM BOTAO OU VC QUE VAI
+"""Da carta crua ao RAG, sem ninguém precisar apertar botão. SPEC-040/052.\n\nO que estava travado\n--------------------\n1.274 cartas prontas, ZERO publicadas. O conhecimento existia, tinha sido\nextraído de 7.622 atendimentos reais, e não chegava ao agente — porque\ndependia de alguém abrir uma tela e apertar um botão que nem estava claro.\n\n> Founder, 29/07/2026: "NAO SEI SE EU TENHO QUE APERTAR UM BOTAO OU VC QUE VAI
 >  FAZER ISSO. SE FOR EU, TEM QUE ME EXPLICAR QUAL É O CAMINHO DENTRO DO
->  PORTAL ADMIN QUE ESTA CONFUSO PRA MIM AINDA."
-
-Quando a resposta certa exige explicar um caminho, o caminho está errado. Com
-centenas de cartas novas a cada corretora pareada, "alguém lembra" não é plano.
-
-As três garantias deste arquivo
--------------------------------
-**Junta o que diz a mesma coisa** — e só dentro da mesma seguradora, porque
-"a HDI gera boleto" não é a mesma informação que a genérica.
-
-**O assunto entra no texto do chunk** — a busca é híbrida e o BM25 casa por
-palavra exata. Boleto é pedido de muitas formas ("não recebi", "segunda via",
-"venceu", "manda o código"), e sem "cobrança" escrito no chunk essa pergunta
-disputa espaço com uma carta de vistoria que por acaso menciona pagamento.
-
-**Publicar faz parte da rodada** — não de um clique.
-"""
+>  PORTAL ADMIN QUE ESTA CONFUSO PRA MIM AINDA."\n\nQuando a resposta certa exige explicar um caminho, o caminho está errado. Com\ncentenas de cartas novas a cada corretora pareada, "alguém lembra" não é plano.\n\nAs três garantias deste arquivo\n-------------------------------\n**Junta o que diz a mesma coisa** — e só dentro da mesma seguradora, porque\n"a HDI gera boleto" não é a mesma informação que a genérica.\n\n**O assunto entra no texto do chunk** — a busca é híbrida e o BM25 casa por\npalavra exata. Boleto é pedido de muitas formas ("não recebi", "segunda via",\n"venceu", "manda o código"), e sem "cobrança" escrito no chunk essa pergunta\ndisputa espaço com uma carta de vistoria que por acaso menciona pagamento.\n\n**Publicar faz parte da rodada** — não de um clique.\n"""
 
 from __future__ import annotations
 
@@ -177,6 +153,61 @@ def teste_a_carta_entra_no_rag_com_as_duas_metades():
            "é a terceira camada, a que não depende de ninguém lembrar")
 
 
+def teste_o_modelo_que_pensa_nao_joga_a_resposta_fora():
+    print("\n[7] Resposta com bloco de pensamento continua legível")
+    # O Claude Opus 5 PENSA por padrão (o Opus 4.8 não pensava se ninguém
+    # pedisse). Com isso o LangChain devolve `content` como LISTA de blocos, e
+    # `str()` numa lista devolve a repr da lista — o leitor de JSON encaixa o
+    # bloco de pensamento junto e `json.loads` falha.
+    #
+    # Medido em 29/07/2026: 11 chamadas ao Opus 5 na síntese de playbook,
+    # 3.395 tokens de saída cada, US$ 0,45 gastos, ZERO playbooks salvos.
+    # O modelo respondeu, o token foi pago, e o resultado foi jogado fora —
+    # sem erro aparecer em lugar nenhum.
+    import json as _json
+
+    fonte = _ler("app", "services", "attendance_distiller.py")
+    i = fonte.find("def _texto_da_resposta")
+    resto = fonte[i:]
+    prox = re.search(r"\n(?:async\s+)?def\s", resto[1:])
+    corpo = resto[:prox.start() + 1] if prox else resto
+    ns = {"Any": object, "Optional": object}
+    exec(corpo, ns)
+    extrair = ns["_texto_da_resposta"]
+
+    class _R:
+        def __init__(self, c):
+            self.content = c
+
+    com_pensamento = _R([
+        {"type": "thinking", "thinking": "vou montar o playbook {passo 1}"},
+        {"type": "text", "text": '{"objetivo":"guincho","ficha_coleta":[{"campo":"placa"}]}'},
+    ])
+    texto = extrair(com_pensamento)
+    checar(bool(texto) and "thinking" not in texto,
+           "o bloco de pensamento não entra no texto", str(texto)[:80])
+    try:
+        checar(bool(_json.loads(texto)["ficha_coleta"]),
+               "e o JSON do playbook é legível")
+    except Exception as exc:  # noqa: BLE001
+        checar(False, "e o JSON do playbook é legível", f"{type(exc).__name__}")
+
+    checar(extrair(_R('{"a":1}')) == '{"a":1}', "texto puro continua funcionando")
+    checar(extrair(_R([])) is None and extrair(_R(None)) is None,
+           "e vazio continua virando None")
+
+    # A checagem é dentro de `_call_llm`: o comentário de `_texto_da_resposta`
+    # CITA o código antigo para explicar o defeito, e procurar no arquivo
+    # inteiro acusaria a própria explicação.
+    k = fonte.find("async def _call_llm")
+    resto_call = fonte[k:]
+    prox_call = re.search(r"\n(?:async\s+)?def\s", resto_call[1:])
+    corpo_call = resto_call[:prox_call.start() + 1] if prox_call else resto_call
+    checar('str(getattr(result, "content"' not in corpo_call,
+           "a leitura crua com str() não voltou em `_call_llm`",
+           "era ela que transformava a lista de blocos em lixo")
+
+
 def main() -> int:
     print("=" * 70)
     print("A CARTA VIRA CONHECIMENTO DO AGENTE SEM NINGUÉM APERTAR BOTÃO")
@@ -186,7 +217,8 @@ def main() -> int:
                   teste_junta_a_mesma_ideia_e_preserva_a_seguradora,
                   teste_promessa_absoluta_e_barrada,
                   teste_publicar_faz_parte_da_rodada,
-                  teste_a_carta_entra_no_rag_com_as_duas_metades):
+                  teste_a_carta_entra_no_rag_com_as_duas_metades,
+                  teste_o_modelo_que_pensa_nao_joga_a_resposta_fora):
         try:
             teste()
         except Exception as exc:  # noqa: BLE001
