@@ -132,7 +132,7 @@ toda rodada, para sempre, em silêncio.
 | 1b | **Cobertura mentia para cima** | **corrigido; exige re-tecer** |
 | 2 | Destilar o resto: ~4.800 Resulta + ~530 AutoFleet | em andamento |
 | 3 | WhatsApps desconectados desde 18:49 de 29/07 | esperando repareamento |
-| 4 | 50 sessões abertas não fecham → não destilam | investigar |
+| 4 | ~~Sessões abertas não fecham~~ | **corrigido, §15** |
 | 5 | Playbooks de conduta: 3 existem, faltam os demais | precisa teto > 0 |
 | 6 | Validar os 3% da AutoFleet pelo caminho automático | `TETO=20`, ~US$ 0,13 |
 | 7 | `isForwarded` não é persistido → conduta trocada (CA-021) | registrado |
@@ -455,3 +455,36 @@ texto por `mascarar.remascarar()`, nunca por `templatize` direto** — §4.1.
 
 **Não fazer imagem.** Descrever foto de para-choque não ensina processo, e sem o
 modelo enxergar de verdade a descrição não paga o custo.
+
+---
+
+## 15. Auditoria das sessoes abertas (29/07, 23h) — corrigido
+
+**FATO.** 50 sessoes estavam : 43 da Resulta, 7 da AutoFleet. A mais antiga
+desde **21/07** — oito dias — com 423 mensagens paradas. Fila do Destilador so
+olha , entao tudo isso era conhecimento invisivel.
+
+**FATO — nenhuma era conversa com seguradora.** O material que o Founder
+considera insubstituivel estava intacto. Mas nada no sistema garantia isso: foi
+sorte, nao projeto.
+
+**A causa.** A sessao fechava so no caminho de ENTRADA de mensagem: quando
+chegava mensagem NOVA da mesma pessoa depois do intervalo de duas horas. Se o
+segurado nunca escreve de novo — o caso normal quando o atendimento resolveu —
+ninguem fechava nada, para sempre.
+
+**O conserto.** Varredura em , antes de ler o teto de gasto:
+sessao sem mensagem por mais de **seis horas** fecha. Seis e o triplo do
+intervalo de sessao, de proposito — fechar cedo partiria uma conversa em duas e
+ensinaria conduta pela metade, que e pior que esperar.
+
+Roda mesmo com o teto em zero: nao chama modelo, e e o que destrava material
+para quando houver credito.
+
+**Resultado.** 38 sessoes fechadas na varredura manual, 320 mensagens na fila.
+Sobraram 12 abertas, a mais antiga com 6h — recentes de verdade, e a proxima
+rodada as pega.
+
+ trava as quatro condicoes,
+incluindo a inversa (sessao viva de 30min e de 3h NAO fecham) e a de arquitetura
+(nenhum servico novo foi criado para uma consulta de duas linhas).
