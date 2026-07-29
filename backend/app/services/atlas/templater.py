@@ -16,8 +16,17 @@ from typing import Dict, List, Optional, Tuple
 
 # Ordem importa: específico → genérico.
 _PII_PATTERNS: List[Tuple[re.Pattern, str]] = [
-    (re.compile(r"\b\d{3}\.?\d{3}\.?\d{3}-?\d{2}\b"), "{CPF}"),
-    (re.compile(r"\b\d{2}\.?\d{3}\.?\d{3}/?\d{4}-?\d{2}\b"), "{CNPJ}"),
+    # `(?<!\d)` e `(?!\d)` no lugar de `\b`. A fronteira de palavra falha ao
+    # lado de sublinhado, porque para o regex `_` é letra: num anexo chamado
+    # `CTPS_12345678900.pdf` o CPF passava inteiro. Achado por um subagente
+    # destilando o lote 002 da AutoFleet em 29/07/2026 — a mesma família do
+    # defeito que separava `tokio_marine` de `tokio`.
+    #
+    # A âncora por dígito ainda é MAIS segura que `\b` para o vizinho de baixo:
+    # onze dígitos no meio de um cartão de dezesseis não casam, então o CPF não
+    # come um pedaço do cartão e deixa o resto exposto.
+    (re.compile(r"(?<!\d)\d{3}\.?\d{3}\.?\d{3}-?\d{2}(?!\d)"), "{CPF}"),
+    (re.compile(r"(?<!\d)\d{2}\.?\d{3}\.?\d{3}/?\d{4}-?\d{2}(?!\d)"), "{CNPJ}"),
     # NÚMERO DE CARTÃO — 13 a 19 dígitos, em grupos ou corridos.
     #
     # Descoberto em 29/07/2026 por um subagente destilando o lote 003: um
@@ -35,7 +44,12 @@ _PII_PATTERNS: List[Tuple[re.Pattern, str]] = [
     # vale tudo — e é assim que ela aparece.
     (re.compile(r"(?i)\b(?:validade|venc(?:imento)?\.?)\s*:?\s*\d{2}\s*/\s*\d{2,4}\b"),
      "validade {VALIDADE}"),
-    (re.compile(r"\b[A-Z]{3}[-\s]?\d[A-Z0-9]\d{2}\b"), "{PLACA}"),   # Mercosul e antiga
+    # Mercosul e antiga. `IGNORECASE` porque o segurado digita "abc1d23" no
+    # WhatsApp tanto quanto "ABC1D23", e a placa em minúsculas passava direto.
+    # O formato é específico o bastante para não morder prosa: três letras,
+    # dígito, alfanumérico, dois dígitos, sem separador de palavra em volta.
+    (re.compile(r"(?<![A-Za-z0-9])[A-Z]{3}[-\s]?\d[A-Z0-9]\d{2}(?![A-Za-z0-9])",
+                re.IGNORECASE), "{PLACA}"),
     (re.compile(r"\b\d{5}-?\d{3}\b"), "{CEP}"),
     (re.compile(r"(?<!\d)(?:\+?55\s?)?\(?\d{2}\)?\s?9?\d{4}[-\s]?\d{4}(?!\d)"), "{TELEFONE}"),
     (re.compile(r"\b\d{2}/\d{2}/\d{2,4}\b"), "{DATA}"),
@@ -73,6 +87,12 @@ _LABELED_VALUE = re.compile(
     # conversa. `senha` já estava na lista; o que vem ao lado dela, não.
     # Credencial não é dado de um cliente — é a chave do cofre de todos eles.
     r"login|usu[áa]rio|e-?mail|acesso|token|c[óo]digo de acesso|"
+    # DADO BANCÁRIO. Um subagente destilando o primeiro lote da AutoFleet em
+    # 29/07/2026 achou nome, CPF e dados bancários completos do beneficiário de
+    # um reembolso, em texto claro. Agência e conta não estavam em lista
+    # nenhuma — e são o que basta para o dinheiro sair do lugar errado.
+    r"banco|ag[êe]ncia|conta(?: corrente| poupan[çc]a)?|pix|chave pix|"
+    r"favorecido|benefici[áa]rio|titular|"
     r"chamado|solicita[çc][ãa]o|atendimento|pedido|ap[óo]lice|sinistro|contrato|"
     r"data do (?:vencimento|pagamento(?: mensal)?)|"
     r"quantidade de parcelas(?: a pagar| restantes)?)\*?\s*:?\*?\s*)(.+)$"

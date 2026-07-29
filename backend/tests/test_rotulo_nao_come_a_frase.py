@@ -81,6 +81,11 @@ CONHECIMENTO = [
     "O protocolo aberto na seguradora deve ser informado ao segurado",
     "Protocolo de atendimento é gerado automaticamente pela central",
     "O chassi precisa constar no documento enviado para a vistoria",
+    # A conta e o banco viraram rotulos: prosa que comeca com eles tem de
+    # sobreviver, senao o conserto de PII apaga conhecimento de cobranca.
+    "A conta corrente do segurado deve ser informada no formulário",
+    "Banco emissor identificado no canto superior esquerdo do boleto",
+    "O beneficiário apresenta documento de identidade na retirada do reserva",
 ]
 
 # Rótulos de verdade, de tela de comprovante — estes TÊM de ser mascarados.
@@ -105,6 +110,17 @@ DADOS_DE_CLIENTE = [
     "4111-1111-1111-1111",
     "cartão 4111.1111.1111.1111 validade 12/28",
     "validade: 03/2029",
+    # AutoFleet, lote 001-002: nome, CPF e dados bancarios completos do
+    # beneficiario de um reembolso; CPF dentro do nome de um PDF; placa
+    # digitada em minusculas. Agencia e conta nao estavam em lista nenhuma —
+    # e sao o que basta para o dinheiro sair para o lugar errado.
+    "Agência: 1234",
+    "Conta corrente 98765-4",
+    "Banco: 341",
+    "PIX: joao@email.com",
+    "CTPS_12345678900.pdf",
+    "abc1d23",
+    "ABC1D23",
 ]
 
 
