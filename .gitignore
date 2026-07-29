@@ -116,3 +116,4 @@ backend/data/cartographer_test_data.json
 
 # Lotes de destilacao externa: transcripts mascarados, nao versionados
 backend/scripts/destilacao_max/lotes/
+backend/scripts/destilacao_max/lotes_autofleet/
