@@ -84,6 +84,18 @@ _PII_PATTERNS: List[Tuple[re.Pattern, str]] = [
     # quem tem a string cobra em nome de quem a gerou. Começa sempre por 000201
     # (payload format indicator do BR Code) e vem numa tacada só.
     (re.compile(r"\b000201[0-9A-Za-z.\-*+/:]{25,}"), "{PIX_COPIA_E_COLA}"),
+    # RÓTULO NO MEIO DA LINHA. `_LABELED_VALUE` está ancorado em `^`, porque
+    # nasceu para ler TELA de comprovante, onde cada campo ocupa uma linha. Mas
+    # gente escreve num parágrafo só: "segue os dados banco 341 agencia 1234
+    # conta 56789". Um subagente destilando o lote 003 da AutoFleet achou o
+    # bloco bancário inteiro de um beneficiário de reembolso escrito assim.
+    #
+    # Aqui a lista é CURTA e o valor precisa conter DÍGITO. É o que separa
+    # "conta 98765-4" de "a conta corrente do segurado deve ser informada" —
+    # prosa não tem número no meio. Sem essa exigência, a regra comeria a
+    # metade das cartas de cobrança, que é o defeito que já consertamos hoje.
+    (re.compile(r"(?i)\b(banco|ag[êe]ncia|conta|pix|senha|login|usu[áa]rio|token)"
+                r"\s*:?\s*(?=[\w@.\-]*\d)[\w@.\-]{3,}"), r"\1 {VALOR}"),
 ]
 
 # Rótulos de campo que costumam preceder um VALOR de cliente numa linha
