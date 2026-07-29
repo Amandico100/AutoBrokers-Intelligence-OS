@@ -145,8 +145,20 @@ def teste_publicar_faz_parte_da_rodada():
            "com teto por rodada",
            "1.274 cartas de uma vez é um pico de custo sem necessidade")
     # Falhar ao publicar não pode derrubar a destilação inteira.
-    trecho = fonte[max(0, i - 900):j + 700]
-    checar("except Exception" in trecho, "e uma falha aqui não derruba a rodada")
+    #
+    # Medir a distância em caracteres já deu alarme falso três vezes neste
+    # projeto: basta alguém escrever um comentário e a janela desliza. O que
+    # importa é a ESTRUTURA — as duas chamadas dentro do mesmo `try`, com um
+    # `except` logo depois.
+    bloco = re.search(
+        r"try:(?:.|
+)*?curar_sync(?:.|
+)*?publicar_lote_sync(?:.|
+)*?except Exception",
+        fonte)
+    checar(bool(bloco),
+           "e uma falha aqui não derruba a rodada",
+           "curar e publicar têm de estar no mesmo try, com except depois")
 
 
 def teste_a_carta_entra_no_rag_com_as_duas_metades():
