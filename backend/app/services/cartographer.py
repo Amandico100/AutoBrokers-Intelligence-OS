@@ -251,9 +251,85 @@ def acao_conhecida(label: str) -> Optional[str]:
     for acao, rx in _NAVEGACAO:
         if rx.match(limpo):
             return acao
+    if _MAIS_NAVEGACAO.match(limpo):
+        return "menu"
     if _ESCOLHA_DE_HORARIO.search(limpo):
         return "horario"
+    if _ESCOLHA_DE_PRESTADOR.search(limpo):
+        return "prestador"
+    if _NOTA_DE_PESQUISA.match(str(label or "").strip()):
+        return "pesquisa"
+    if _PROTOCOLO_COMO_OPCAO.match(str(label or "").strip()):
+        return "protocolo"
+    # Contra o rótulo BRUTO, não o limpo: `limpo` já teve o "2 - " removido, e
+    # "2 - Não, prefiro falar com um atendente" — opção legítima e numerada —
+    # passaria a parecer texto corrido de 35 caracteres sem número.
+    if numero_da_opcao(label) is None and _NAO_E_OPCAO.match(str(label or "").strip()):
+        return "nao_e_opcao"
     return None
+
+
+# LISTA DE PRESTADOR NÃO É MENU DA URA.
+#
+# A Porto oferece as oficinas mais próximas do cliente, com distância e
+# endereço: "2 - Porto Alegre São João - 5.16km - Av Benjamin Constant, 1242".
+# Cada cliente recebe uma lista diferente, então CADA ITEM é uma lacuna que
+# nunca fecha — e são muitos por atendimento.
+#
+# Medido em 29/07/2026: das 372 lacunas distintas da Porto, boa parte é isso.
+# É a mesma família de "Voltar" e da escolha de horário: o comportamento já se
+# conhece (escolher um prestador leva à confirmação daquele prestador), e o
+# rótulo muda a cada atendimento.
+_ESCOLHA_DE_PRESTADOR = re.compile(
+    r"\d+[.,]\d+\s*km"                                  # "5.16km"
+    r"|\b(?:av|avenida|r|rua|rod|rodovia|estrada|al|alameda)\.?\s+[^,]{3,},\s*\d"
+    r"|\s-\s[a-z]{2}$",                                 # "…, canoas - rs"
+    re.IGNORECASE)
+
+# TEXTO CORRIDO NÃO É OPÇÃO.
+#
+# O leitor de tela também capturou frase de pesquisa de satisfação ("peço
+# gentilmente que avalie meu atendimento", "a pesquisa é super rápida e vai nos
+# ajudar") e item de lista de documentos ("laudo técnico atestando a causa e
+# extensão dos danos"). Nenhuma delas é escolha de menu — ninguém digita nada
+# para "escolhê-las" — e todas contavam como buraco eterno na cobertura.
+#
+# A marca é dupla e tem de ser dupla: **sem número de opção** E longa.
+#
+# O limite de 32 caracteres não é palpite — é limite do WhatsApp. Título de
+# linha de lista aceita 24 caracteres e título de botão aceita 20. Logo, opção
+# interativa de verdade NUNCA passa de ~24 sem vir numerada. Acima disso, sem
+# número, é texto que o leitor de tela pegou por engano.
+#
+# Exigir as duas condições é o que evita comer opção legítima — apagar rota de
+# verdade seria pior do que a lacuna eterna que estamos consertando.
+_NAO_E_OPCAO = re.compile(r"^(?![\d]).{32,}$", re.DOTALL)
+
+# NOTA DE PESQUISA DE SATISFAÇÃO NÃO É ROTA.
+#
+# A Porto fecha o atendimento com uma escala de 0 a 10 — "09 = bom 🥰",
+# "10 = ótimo 🤩". São ONZE opções por tela de pesquisa, e ninguém dá todas as
+# notas: cada nota não dada fica lacuna para sempre. Mesma família de "Voltar".
+# Navegação que faltava, achada nas lacunas reais da Porto em 29/07/2026.
+# "Escolher outra opção" e "Encerrar a conversa" são o mesmo tipo de coisa que
+# "Voltar" e "Sair": comportamento conhecido, e ninguém as clica num
+# atendimento real porque o objetivo é resolver, não navegar.
+_MAIS_NAVEGACAO = re.compile(
+    r"^(?:escolher outra op|outra op[çc][ãa]o|encerrar (?:a )?conversa|"
+    r"continuar o assunto|outros hor[áa]rios|fico no aguardo|"
+    r"n[ãa]o sei o cep|informar outro cpf|recome[çc]ar com outro)",
+    re.IGNORECASE)
+
+_NOTA_DE_PESQUISA = re.compile(r"^\s*\d{1,2}\s*[=]\s*\S", re.IGNORECASE)
+
+# PROTOCOLO DO CLIENTE COMO RÓTULO DE OPÇÃO.
+#
+# "1 - 124279107688" é a lista dos sinistros DAQUELE cliente. Cada atendimento
+# traz números diferentes, então cada item é uma lacuna que nunca fecha — igual
+# à lista de oficinas próximas. O comportamento se conhece: escolher um
+# protocolo abre aquele protocolo.
+_PROTOCOLO_COMO_OPCAO = re.compile(r"^\s*\d{1,2}\s*[-–.)\]]\s*\d{6,}\s*$")
+
 
 
 def numero_da_opcao(label: str) -> Optional[str]:

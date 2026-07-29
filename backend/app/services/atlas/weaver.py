@@ -316,9 +316,19 @@ def compute_coverage(map_acc: Dict[str, Any]) -> Dict[str, Any]:
     # A chave é (conjunto de opções da tela, rótulo da opção). Duas telas que
     # oferecem exatamente as mesmas escolhas são a mesma tela do ponto de vista
     # de navegação, ainda que o cabeçalho traga um protocolo diferente.
+    def _chave_de_opcao(label: str) -> str:
+        """Identidade da opcao. Preserva o NUMERO — `_norm_label` apaga digitos,
+        porque foi feito para casar clique x opcao, e usa-lo como identidade
+        fundia "1 - Guincho" com "2 - Guincho". Medido em 29/07/2026: com
+        `_norm_label` a Allianz deu 67%, e a medida deduplicada correta era 37%.
+        Um conserto de cobertura inflada nao pode inflar por outro caminho."""
+        s = unicodedata.normalize("NFKD", str(label or ""))
+        s = "".join(ch for ch in s if not unicodedata.combining(ch)).lower()
+        return re.sub(r"[^a-z0-9]", "", s)
+
     def _assinatura_do_menu(node: Dict[str, Any]) -> str:
         return "|".join(sorted(
-            _norm_label(o.get("label") or "") for o in (node.get("options") or [])))
+            _chave_de_opcao(o.get("label") or "") for o in (node.get("options") or [])))
 
     universo: set = set()
     percorrido: set = set()
@@ -343,7 +353,16 @@ def compute_coverage(map_acc: Dict[str, Any]) -> Dict[str, Any]:
         if e_humana:
             continue
         for opt in node.get("options") or []:
-            _chave = (_sig, _norm_label(opt.get("label") or ""))
+            _acao_previa = acao_conhecida(opt.get("label") or "")
+            if _acao_previa == "nao_e_opcao":
+                # Frase de pesquisa de satisfacao e item de lista de documentos
+                # nao sao escolha de menu: ninguem digita nada para "escolhe-las".
+                # Ficam fora dos DOIS lados da fracao — conta-las como cobertas
+                # inflaria, e como lacuna afundaria a cobertura para sempre.
+                opt["confidence"] = "nao_e_opcao"
+                opt["acao"] = "nao_e_opcao"
+                continue
+            _chave = (_sig, _chave_de_opcao(opt.get("label") or ""))
             universo.add(_chave)
             match = None
             for e in by_src.get(nid, []):

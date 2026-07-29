@@ -139,6 +139,10 @@ toda rodada, para sempre, em silêncio.
 | 8 | 45 chaves de seguradora distintas, com sujeira antiga | limpeza pendente |
 | 9 | Áudio: conhecimento falado que não fica registrado | decisão do Founder |
 | 10 | Relatório consolidado de condutas de risco observadas | ~7 ocorrências |
+| 11 | **SPEC-063** (P1 de segurança, CA-020) | não iniciada |
+| 12 | **SPEC-064** | não iniciada |
+| 13 | Cobertura pela fatia que a corretora atende | proposta |
+| 14 | Curadoria de áudio — instrução pronta | aguarda o texto terminar |
 
 ---
 
@@ -320,3 +324,134 @@ escrito. Fazer depois é mais barato e mais preciso.
 
 **Imagem: não recomendo.** Descrever foto de para-choque não ensina processo, e
 sem o modelo enxergar de verdade a descrição não vale o custo.
+
+---
+
+## 11. SPEC-063 e SPEC-064 — não perder de vista
+
+Ficaram para trás quando a campanha de destilação virou prioridade em 29/07.
+**Nenhuma das duas foi iniciada.** O texto canônico está em `docs/canon/specs/`.
+
+**SPEC-063** nasceu de CA-020, o middleware de `/api/`: uma rota do dashboard
+respondia sem passar pela verificação esperada, e a causa-raiz nunca foi isolada
+— foi contornada. Enquanto isso ficar aberto existe um caminho de requisição
+cuja garantia de autorização é por convenção, não por código. É P1 pela regra do
+CLAUDE.md §10.4, e por isso não pode ir para produção com cliente pagante.
+
+**SPEC-064** é a etapa seguinte do plano de execução. Antes de começar, reler
+`EXECUTION-MASTER-PLAN.md` e `FOUNDER-DECISIONS.md`: a campanha de destilação
+**não** revogou nada, só entrou na frente.
+
+Também abertos, do relatório da SPEC-062: prova de restore, RPO/RTO,
+OpenTelemetry, e o Bloco B de billing (travado pela decisão D22).
+
+---
+
+## 12. Por que a cobertura da Porto é 29% depois de anos atendendo
+
+Fui olhar as 372 lacunas distintas da Porto. Elas se dividem em quatro famílias,
+e só a última vale perseguir.
+
+**1. Nunca vai ser percorrido, por natureza**
+
+```
+"09 = bom"  "10 = ótimo"           escala 0-10 da pesquisa de satisfação
+"1 - 124279107688"                 protocolo DAQUELE cliente
+"2 - Porto Alegre São João         oficina próxima DAQUELE endereço
+     - 5.16km - Av Benjamin..."
+```
+
+Onze notas por tela de pesquisa. Uma lista de protocolos por cliente. Uma lista
+de oficinas por endereço. **Cada item é uma lacuna que nunca fecha** — mesma
+família de "Voltar". Corrigido em 29/07 com `pesquisa`, `protocolo` e
+`prestador` em `acao_conhecida`.
+
+**2. Não é opção nenhuma**
+
+```
+"peço gentilmente que avalie meu atendimento"
+"laudo técnico atestando a causa e extensão dos danos"
+```
+
+Frase de pesquisa e item de lista de documentos capturados como se fossem
+escolha. Corrigido: sem número de opção e com mais de 32 caracteres não é opção
+— o WhatsApp limita título de linha de lista a 24 caracteres, então opção
+interativa de verdade nunca passa disso sem vir numerada. Ficam fora dos DOIS
+lados da fração.
+
+**3. Outro negócio da Porto, que a corretora não vende**
+
+```
+"seguro saúde"  "consultar extrato"  "segunda via do cartão"
+"regulamento do programa"  "ajuda com o app da porto"
+```
+
+A Porto Seguro é conglomerado: banco, cartão, saúde, programa de pontos. O
+WhatsApp é um só e oferece tudo. A corretora nunca vai percorrer isso — e não
+deveria. **NÃO foi suprimido:** esconder rota real seria mentir de novo, só para
+o outro lado. Ver §13.
+
+**4. Cauda longa legítima**
+
+```
+"caçamba aberta"  "pesado 2 a 3 eixos"  "portão de aço"
+"fogão, cooktop ou forno"  "micro-ondas"  "kit instalação"
+```
+
+Rota de verdade, só rara. **É a única família que vale perseguir**, e ela se
+preenche com atendimento real ao longo do tempo — ou com o Cartógrafo
+explorando a URA de propósito, que é para isso que ele existe.
+
+### A conclusão que importa
+
+29% não é mapa mal feito. É o **denominador medindo a coisa errada**: inclui o
+conglomerado inteiro quando a corretora precisa de uma fatia. Depois dos
+consertos a estimativa sobe pouco (Porto 29→32, Bradesco 17→37), porque as
+famílias 1 e 2 são pequenas na Porto: 11 das 372.
+
+---
+
+## 13. Proposta: cobertura da fatia que importa
+
+Hoje é `opções percorridas / TODAS as opções descobertas`, o que mistura "seguro
+saúde" com "guincho".
+
+A medida honesta é **por ramo alcançável**: das opções que descem do galho que a
+corretora atende, quantas já foram percorridas? Esse número mede o que o agente
+precisa para atender, e é o único que deveria mandar continuar ou parar de
+explorar.
+
+Não implementado. É decisão de produto, não conserto, e antes dela vale terminar
+a destilação — que é o que trava o lançamento.
+
+---
+
+## 14. Instrução: curadoria de áudio (quando o Founder autorizar)
+
+O levantamento está na §10. Esta é a instrução de execução.
+
+**Pré-requisito:** as cartas de TEXTO das duas corretoras terminadas. Áudio é
+complemento, não substituto — transcrever antes gastaria em sessão que já
+entregou seu conhecimento por escrito.
+
+**Passo 1 — escolher o que transcrever.** Não é amostra aleatória. São os áudios
+do **ATENDENTE** (`direction='out'`) em sessões cuja destilação devolveu
+`fatos_reutilizaveis` vazio. O áudio do cliente é o caso ("meu carro quebrou na
+avenida tal"); o do atendente é o processo. São ~715 nas duas corretoras.
+
+**Passo 2 — baixar a mídia.** Pelo `/message/downloadmedia` do fork GO da
+Evolution, com body `{message: waE2E.Message}`. O
+`/chat/getBase64FromMediaMessage` é o caminho Baileys e devolve 404 neste fork.
+**Exige o WhatsApp pareado.**
+
+**Passo 3 — transcrever.** Whisper (`whisper-1`), US$ 0,006/min. É API, e é a
+única forma: Claude não recebe áudio neste ambiente. Custo estimado dos 715:
+**US$ 2,15 a US$ 2,90**. Abrir orçamento explícito antes, como se faz com mídia.
+
+**Passo 4 — anexar e re-destilar.** A transcrição entra no texto da sessão como
+`ATENDENTE: <transcrição>`, a sessão volta para a fila (`summary` sem
+`distilled`) e um subagente a destila de novo pelo caminho normal. **Passe o
+texto por `mascarar.remascarar()`, nunca por `templatize` direto** — §4.1.
+
+**Não fazer imagem.** Descrever foto de para-choque não ensina processo, e sem o
+modelo enxergar de verdade a descrição não paga o custo.
