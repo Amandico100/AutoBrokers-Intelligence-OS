@@ -498,8 +498,13 @@ async def distill_once(force: bool = False, *, atrasado: bool = False) -> Dict[s
         from app.services.curadoria_cartas import curar_sync, publicar_lote_sync
 
         cur = await asyncio.to_thread(curar_sync, True)
+        # 1.000 e nao 300. Com 914 cartas na fila e UMA rodada por noite, um
+        # teto de 300 levaria QUATRO NOITES para o agente ter o que a equipe
+        # ensinou. Publicar e barato — um embedding pequeno por carta, menos de
+        # dois centavos pelas 914 — e a rodada agora roda em segundo plano,
+        # entao demorar alguns minutos nao trava tela nenhuma.
         pub = await asyncio.to_thread(
-            publicar_lote_sync, _env_int("CARDS_PUBLISH_PER_RUN", 300))
+            publicar_lote_sync, _env_int("CARDS_PUBLISH_PER_RUN", 1000))
         stats["cards_juntados"] = cur.get("juntadas", 0)
         stats["cards_publicados"] = pub.get("publicadas", 0)
         logger.info("[DESTILADOR] cartas: %d juntadas, %d publicadas no RAG",
