@@ -68,6 +68,11 @@ _LABELED_VALUE = re.compile(
     r"cliente|segurado|cpf|cnpj|telefone|celular|marca|ano|cidade|estado|bairro|rua|"
     r"n[úu]mero|complemento|refer[êe]ncia|logradouro|"
     r"assist[êe]ncia|agendamento|protocolo|boleto|parcelas?|senha|ordem|"
+    # CREDENCIAL. Um subagente destilando o lote 009 em 29/07/2026 achou login
+    # e senha da corretora no portal da Allianz em texto claro dentro de uma
+    # conversa. `senha` já estava na lista; o que vem ao lado dela, não.
+    # Credencial não é dado de um cliente — é a chave do cofre de todos eles.
+    r"login|usu[áa]rio|e-?mail|acesso|token|c[óo]digo de acesso|"
     r"chamado|solicita[çc][ãa]o|atendimento|pedido|ap[óo]lice|sinistro|contrato|"
     r"data do (?:vencimento|pagamento(?: mensal)?)|"
     r"quantidade de parcelas(?: a pagar| restantes)?)\*?\s*:?\*?\s*)(.+)$"
