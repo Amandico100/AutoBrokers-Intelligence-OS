@@ -143,6 +143,8 @@ toda rodada, para sempre, em silêncio.
 | 12 | **SPEC-064** | não iniciada |
 | 13 | Cobertura pela fatia que a corretora atende | proposta |
 | 14 | Curadoria de áudio — instrução pronta | aguarda o texto terminar |
+| 15 | ~~Tokio com 12%~~ | **investigado: não é defeito, §17** |
+| 16 | **Botão interativo chegando com `options: []`** | 146 telas da Porto — §17 |
 
 ---
 
@@ -514,3 +516,75 @@ a remoção de lacuna falsa, não otimismo novo.
 
 A Tokio continua em 12% com 36 sessões e só 178 eventos. **É a próxima
 investigação** — cinco eventos por sessão está muito abaixo de todas as outras.
+
+---
+
+## 17. Auditoria da Tokio (30/07) — não está quebrada, resolve fora do WhatsApp
+
+**A pergunta:** 36 sessões e só 178 eventos, 4,9 por sessão, contra 62,6 da
+Allianz. Parecia leitor cego para o formato da Tokio, como aconteceu com a
+Allianz (o asterisco antes do número).
+
+**FATO — não é isso.** Testei o leitor no formato de lista da Tokio e ele lê
+certo pelos títulos da estrutura. Testei no aviso informativo e ele **não**
+inventa opção. Nenhum defeito de leitura.
+
+**FATO — a correlação que explica tudo:**
+
+```
+             sessoes  eventos  ev/sessao  % com link  escolhas humanas
+tokio            36      178       4,9       58%            41
+mapfre            9      160      17,8       67%            47
+porto           125    3.092      24,7       17%         1.134
+yelum            83    3.026      36,5       34%         1.256
+hdi              38    2.074      54,6       34%           806
+allianz         116    7.256      62,6       16%         3.142
+```
+
+**Quanto mais conversas recebem link, menos eventos por sessão.** Correlação
+inversa perfeita nas seis seguradoras.
+
+**A Tokio entrega um link do portal de autoatendimento em 58% das conversas** e
+a conversa termina ali:
+
+> "Verifiquei que você possui uma Assistência em aberto para seu PATRIMONIO,
+>  para te ajudar já vou deixar aqui onde você pode acompanhar todas as etapas
+>  do serviço! https://autoatendimento.tokiomarine.com.br/..."
+
+Só 41 escolhas humanas em 36 sessões — pouco mais de uma por conversa. Não há
+árvore para percorrer porque **o fluxo sai do WhatsApp**.
+
+**Não implementei conserto, porque não há defeito.** Inventar um seria pior.
+
+### O que isso ensina, e vale mais que o número
+
+Para a Tokio, **o caminho é o portal, não a URA**. O agente precisa saber disso —
+e hoje não sabe. Não é conserto de Atlas: é carta de conhecimento, e sai da
+destilação de atendimento, não do mapa de rotas.
+
+Os 12% da Tokio são o mesmo fenômeno da Porto (§12): o menu oferece a empresa
+inteira — "Cartão digital", "Localizar Corretores", "Cotar um Seguro" — e a
+corretora precisa de duas opções. Com 36 sessões de material, a fatia percorrida
+é pequena por natureza.
+
+### Defeito REAL encontrado no caminho: botão sem botão
+
+```
+                telas interativas   com `options: []`
+porto                    624              146   (23%)
+hdi                      435               36
+yelum                    613               26
+azul                     145               22
+tokio                     61               35   (57%)
+```
+
+A estrutura do WhatsApp chega com `{"kind": "buttons", "options": []}` — diz que
+a mensagem é interativa e não traz os botões. Verifiquei que isso **não** gera
+opção fantasma: nesses casos o texto é aviso informativo e o leitor
+corretamente não extrai nada.
+
+Mas onde o botão EXISTIA, a rota foi perdida em silêncio. **146 telas da Porto.**
+A cura é na captura (`observer_intake`), não no leitor: descobrir por que
+`options` vem vazio para esse tipo de mensagem. **Pendência registrada, não
+corrigida** — mexer na captura sem entender o payload arriscaria o que hoje
+funciona.
