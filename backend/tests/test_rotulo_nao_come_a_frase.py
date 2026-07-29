@@ -76,6 +76,11 @@ CONHECIMENTO = [
     "Cliente sem habilitação pode apresentar declaração da família no sinistro",
     "Contrato de seguro residencial cobre danos elétricos mediante laudo",
     "Parcelas no cartão são lançadas mês a mês, e não como compra parcelada",
+    # Achadas por um subagente destilando o lote 002 em 29/07/2026: a palavra
+    # depois de "protocolo" era engolida mesmo sendo prosa.
+    "O protocolo aberto na seguradora deve ser informado ao segurado",
+    "Protocolo de atendimento é gerado automaticamente pela central",
+    "O chassi precisa constar no documento enviado para a vistoria",
 ]
 
 # Rótulos de verdade, de tela de comprovante — estes TÊM de ser mascarados.

@@ -22,8 +22,20 @@ _PII_PATTERNS: List[Tuple[re.Pattern, str]] = [
     (re.compile(r"\b\d{5}-?\d{3}\b"), "{CEP}"),
     (re.compile(r"(?<!\d)(?:\+?55\s?)?\(?\d{2}\)?\s?9?\d{4}[-\s]?\d{4}(?!\d)"), "{TELEFONE}"),
     (re.compile(r"\b\d{2}/\d{2}/\d{2,4}\b"), "{DATA}"),
-    (re.compile(r"\bprotocolo[:\s]*\#?\s*[\w\-]{4,}", re.IGNORECASE), "protocolo {PROTOCOLO}"),
-    (re.compile(r"\bchassi[:\s]*\w{6,}", re.IGNORECASE), "chassi {CHASSI}"),
+    # O `(?=[\w-]*\d)` exige um DÍGITO no que vem depois da palavra.
+    #
+    # Sem ele, "protocolo aberto" virava "protocolo {PROTOCOLO}" — qualquer
+    # palavra de 4+ letras era tratada como número de protocolo. E como
+    # `_card_pii_clean` reprova todo texto que o templatize mudaria, uma carta
+    # legítima como "o protocolo aberto na seguradora deve ser informado ao
+    # segurado" era marcada como PII e nunca chegava ao RAG.
+    #
+    # É a mesma família do defeito do rótulo sem dois-pontos, encontrada no
+    # mesmo dia (29/07/2026) por um subagente destilando o lote 002. Número de
+    # protocolo e número de chassi SEMPRE têm dígito; prosa, não.
+    (re.compile(r"\bprotocolo[:\s]*\#?\s*(?=[\w-]*\d)[\w\-]{4,}", re.IGNORECASE),
+     "protocolo {PROTOCOLO}"),
+    (re.compile(r"\bchassi[:\s]*(?=\w*\d)\w{6,}", re.IGNORECASE), "chassi {CHASSI}"),
 ]
 
 # Rótulos de campo que costumam preceder um VALOR de cliente numa linha
