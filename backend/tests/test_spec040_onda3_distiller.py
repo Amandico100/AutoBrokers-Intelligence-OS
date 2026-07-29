@@ -11,8 +11,16 @@ atendente e fiacao no scheduler. Standalone (stubs, sem pytest).
 import asyncio
 import importlib.util
 import json
+import os
 import sys
 import types
+
+# A partir de 29/07/2026 `distill_once` não gasta nada sem um teto explícito
+# (`DESTILADOR_TETO_POR_RODADA`, padrão 0). Este teste exercita justamente o
+# caminho AUTORIZADO — ler conversas e sintetizar playbook —, então ele declara
+# o teto como a produção declarará. Sem esta linha o teste passaria a validar o
+# silêncio da trava, e não a destilação. Ver test_teto_de_gasto.py.
+os.environ["DESTILADOR_TETO_POR_RODADA"] = "500"
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]

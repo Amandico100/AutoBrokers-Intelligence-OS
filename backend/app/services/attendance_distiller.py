@@ -51,6 +51,22 @@ def _env_int(name: str, default: int) -> int:
         return default
 
 
+def _teto_de_gasto() -> int:
+    """Quantas conversas UMA rodada pode ler. Zero é resposta válida.
+
+    Não usa `_env_int` de propósito: aquele faz `max(1, ...)`, porque
+    concorrência ou tamanho de lote em zero travaria o sistema. Aqui zero é
+    exatamente o que se quer dizer — **não gaste nada** — e passar por
+    `_env_int` transformaria o teto travado em "uma conversa e um playbook por
+    rodada". O playbook é a chamada mais cara do sistema; a trava vazaria
+    justamente pelo cano mais largo, e em silêncio.
+    """
+    try:
+        return max(0, int(str(os.getenv("DESTILADOR_TETO_POR_RODADA", "0")).strip() or 0))
+    except ValueError:
+        return 0
+
+
 def _provider_model(strong: bool) -> Tuple[str, str]:
     provider = os.getenv("DISTILLER_PROVIDER") or "anthropic"
     if strong:
@@ -455,15 +471,42 @@ async def distill_once(force: bool = False, *, atrasado: bool = False) -> Dict[s
     histórico que entra de uma vez no pareamento.
     """
     stats = {"sessions": 0, "cards_new": 0, "cards_rejected_pii": 0, "playbooks": 0}
-    max_sessions = _env_int(
+
+    # ------------------------------------------------------------------ #
+    # TETO DE GASTO — o ponto único por onde todo custo de modelo passa
+    # ------------------------------------------------------------------ #
+    # O botão "Processar aprendizado" e a rodada agendada chamam esta mesma
+    # função. Sem teto, um clique com 6.118 conversas na fila gasta todo o
+    # saldo disponível — foi o que aconteceu em 29/07/2026: a estimativa era
+    # de US$ 1 e a rodada consumiu US$ 6, porque ela não processa "um lote",
+    # processa até a fila secar ou o crédito acabar.
+    #
+    # Enquanto a destilação pelo plano Max estiver rodando por fora, este teto
+    # fica em 0 e NENHUMA chamada de modelo acontece. Uma corretora nova pode
+    # ser pareada com segurança: ela captura tudo, e nada é cobrado.
+    #
+    # O teto NÃO desliga curar e publicar. Essas duas etapas não chamam modelo
+    # de linguagem — só o embedding, que custa centavos — e são justamente o
+    # caminho por onde as cartas escritas por fora chegam ao RAG. Travar o
+    # gasto não pode significar travar o conhecimento.
+    teto = _teto_de_gasto()
+    if teto <= 0:
+        logger.info("[DESTILADOR] teto em 0: nenhuma chamada de modelo nesta "
+                    "rodada. Curadoria e publicação seguem normalmente. "
+                    "Para religar, DESTILADOR_TETO_POR_RODADA=<n> sessões.")
+
+    max_sessions = min(teto, _env_int(
         "DISTILLER_BACKLOG_SESSIONS_PER_RUN" if atrasado
         else "DISTILLER_MAX_SESSIONS_PER_RUN",
-        400 if atrasado else 40)
+        400 if atrasado else 40))
     min_group = _env_int("DISTILLER_MIN_SESSIONS", _MIN_SESSIONS_DEFAULT)
 
-    sessions = await asyncio.to_thread(_load_undistilled_sync, max_sessions)
-    if not sessions:
-        return stats
+    # Sem `return` antecipado quando não há sessão: antes, fila vazia abortava
+    # a rodada inteira e as cartas prontas ficavam sem publicar. Com a
+    # destilação externa isso passou a ser o caso NORMAL, não a exceção.
+    sessions = (await asyncio.to_thread(_load_undistilled_sync, max_sessions)
+                if max_sessions > 0 else [])
+    stats["teto"] = teto
 
     touched_groups: Dict[Tuple[str, str], int] = {}
 
@@ -504,7 +547,9 @@ async def distill_once(force: bool = False, *, atrasado: bool = False) -> Dict[s
     # teto, a primeira rodada depois deste conserto tentaria sintetizar todos
     # os grupos de uma vez. Com teto, eles saem aos poucos e o custo por
     # rodada e previsivel.
-    por_rodada = _env_int("DISTILLER_PLAYBOOKS_PER_RUN", 3)
+    # O playbook é a chamada mais cara do sistema (modelo forte, resposta
+    # longa). Com o teto em 0 nenhum é sintetizado — `grupos[:0]` é vazio.
+    por_rodada = min(teto, _env_int("DISTILLER_PLAYBOOKS_PER_RUN", 3))
     grupos = list(touched_groups.keys())
     for g in _grupos_sem_playbook_sync(por_rodada):
         if g not in grupos:

@@ -697,9 +697,26 @@ async def espelho_run(_: Any = Depends(require_master_admin)) -> Dict[str, Any]:
                 pass
 
     _a.create_task(_rodar())
-    return {"ok": True, "iniciado": True,
-            "mensagem": "Aprendizado em processamento. Pode levar alguns "
-                        "minutos; o resultado aparece em Espelho de Atendimento."}
+
+    # A tela precisa dizer a VERDADE sobre o que a rodada vai fazer. Com o teto
+    # em 0 ela cura e publica, mas não chama modelo nenhum — dizer "processando
+    # aprendizado" nesse estado faria o Founder esperar por cartas novas que
+    # não vêm, e clicar de novo.
+    import os as _os
+
+    try:
+        teto = int(str(_os.getenv("DESTILADOR_TETO_POR_RODADA", "0")).strip() or 0)
+    except ValueError:
+        teto = 0
+    if teto <= 0:
+        return {"ok": True, "iniciado": True, "teto": 0,
+                "mensagem": "Publicando no RAG as cartas já prontas. A leitura "
+                            "de conversas novas está TRAVADA (teto de gasto em "
+                            "zero) — nenhum crédito de API será consumido."}
+    return {"ok": True, "iniciado": True, "teto": teto,
+            "mensagem": f"Aprendizado em processamento (até {teto} conversas "
+                        "nesta rodada). O resultado aparece em Espelho de "
+                        "Atendimento."}
 
 
 # ------------------------------------------------------------------ #
