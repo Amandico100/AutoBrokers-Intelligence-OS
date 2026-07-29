@@ -466,6 +466,46 @@ def _checar_qdrant() -> dict:
                 "erro": type(exc).__name__, "detalhe": str(exc)[:200]}
 
 
+def _sinais_do_codigo() -> dict:
+    """O que este processo sabe fazer. Serve para responder "o deploy entrou?"
+    sem gastar um centavo e sem depender de o build injetar variável nenhuma.
+
+    Cada chave é uma peça que nasceu num commit datado. Se a peça existe, o
+    commit está no ar. Peça nova = uma linha nova aqui.
+    """
+    import os as _os
+
+    sinais: dict = {"git_commit": _os.getenv("GIT_COMMIT") or "nao-injetado"}
+    try:
+        from app.services import attendance_distiller as _d
+
+        sinais["teto_de_gasto"] = hasattr(_d, "_teto_de_gasto")
+        sinais["fecha_sessao_vencida"] = hasattr(_d, "_fechar_sessoes_vencidas_sync")
+        sinais["le_resposta_com_pensamento"] = hasattr(_d, "_texto_da_resposta")
+        sinais["teto_atual"] = _d._teto_de_gasto() if hasattr(_d, "_teto_de_gasto") else None
+    except Exception:  # noqa: BLE001
+        sinais["destilador"] = "indisponivel"
+    try:
+        from app.services.atlas.templater import templatize
+
+        # Cada frase abaixo só passa/mascara com o conserto de PII do dia.
+        sinais["pii_cartao"] = templatize("4111 1111 1111 1111") != "4111 1111 1111 1111"
+        sinais["pii_nao_come_a_frase"] = templatize(
+            "Boleto de seguro nao pago leva ao cancelamento") == \
+            "Boleto de seguro nao pago leva ao cancelamento"
+        sinais["pii_rotulo_com_barra"] = templatize(
+            "Cidade/CEP onde o reparo sera feito") == "Cidade/CEP onde o reparo sera feito"
+    except Exception:  # noqa: BLE001
+        sinais["templater"] = "indisponivel"
+    try:
+        from app.services.corridor_playbooks import normalize_insurer_key
+
+        sinais["seguradora_normalizada"] = normalize_insurer_key("tokio_marine") == "tokio"
+    except Exception:  # noqa: BLE001
+        pass
+    return sinais
+
+
 @app.get("/health")
 async def health_check(request: Request):
     """Health check detalhado - verifica conexão real com ambos os clientes"""
@@ -481,6 +521,19 @@ async def health_check(request: Request):
         "database_async": "unknown",
         "langchain": "initialized",
         "timestamp": datetime.utcnow().isoformat(),
+        # QUAL CÓDIGO ESTÁ NO AR.
+        #
+        # Em 29 e 30/07/2026 a pergunta "o deploy entrou?" apareceu seis vezes,
+        # e não havia como responder: nada aqui dizia qual versão respondia.
+        # A dúvida custava um clique em botão que gasta crédito só para
+        # descobrir, pela mensagem que voltava, se o código era o novo.
+        #
+        # `GIT_COMMIT` depende do build injetar a variável, e o EasyPanel pode
+        # não injetar. Então além dela vão os SINAIS: presença das travas que
+        # nasceram em cada commit. Eles não dependem de build nenhum — são o
+        # próprio código respondendo se existe. Uma peça nova acrescenta uma
+        # linha aqui e a pergunta some.
+        "codigo": _sinais_do_codigo(),
     }
 
     # 1. Verificar cliente async (primary - non-blocking)
