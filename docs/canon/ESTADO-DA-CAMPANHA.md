@@ -128,7 +128,8 @@ toda rodada, para sempre, em silêncio.
 
 | # | O quê | Estado |
 |---|---|---|
-| 1 | **Telas quase-duplicadas no Atlas** | achado, não corrigido — §7 |
+| 1 | ~~Telas quase-duplicadas no Atlas~~ | **investigado: hipótese errada, §9** |
+| 1b | **Cobertura mentia para cima** | **corrigido; exige re-tecer** |
 | 2 | Destilar o resto: ~4.800 Resulta + ~530 AutoFleet | em andamento |
 | 3 | WhatsApps desconectados desde 18:49 de 29/07 | esperando repareamento |
 | 4 | 50 sessões abertas não fecham → não destilam | investigar |
@@ -211,3 +212,111 @@ atendimento, porque cobertura inflada esconde rota que o agente precisa achar.
 Método: agrupar nós por conjunto de opções normalizado, não pelo texto inteiro
 da tela. Duas telas com as mesmas opções na mesma ordem são a mesma tela, ainda
 que o cabeçalho traga um protocolo diferente.
+
+
+---
+
+## 9. Auditoria de assinatura de tela (29/07, 22h) — a hipótese estava errada
+
+Eu previ que as 686 telas da Porto eram a mesma tela repetida, e que normalizar
+protocolo e saudação colapsaria tudo. **Medi, e não é isso.**
+
+```
+                telas   sem numeros   sem numero+saudacao
+Porto            816        806              797
+Allianz        1.250      1.231            1.183
+Yelum            545        544              534
+```
+
+Nove por cento de redução. Os textos são **genuinamente diferentes** — não são
+variantes da mesma tela.
+
+O que a medição mostrou de fato:
+
+```
+             telas   menus distintos   telas SEM opção
+Allianz      1.250        141              1.022
+Porto          816        167                545
+Yelum          545         67                428
+HDI            440         53                335
+```
+
+**A maioria dos nós não tem menu nenhum.** São mensagens de texto livre — a URA
+informando ("aguarde, vamos transferir") ou o especialista conversando. Cada
+frase distinta virou um nó. Isso infla o número de "telas" na tela do admin e
+polui o Canvas, mas **não afeta a cobertura**, porque cobertura só conta opção.
+
+### O defeito real, e ele é o oposto do que eu esperava
+
+A cobertura **mentia PARA CIMA**, porque `compute_coverage` somava por nó e a
+mesma opção era contada uma vez por cópia da tela. A tela que mais duplica é a
+mais percorrida — duplicou porque apareceu em muitas sessões — então o
+numerador inflava mais que o denominador.
+
+```
+            painel   real   opções distintas   percorridas
+Allianz      63%     37%         451              165
+Porto        29%     21%         965              207
+Yelum        32%     24%         277               66
+HDI          33%     23%         225               52
+Zurich       31%     15%         144               22
+Azul         36%     27%         133               36
+Bradesco     14%     11%         100               11
+Tokio        11%     10%          72                7
+Mapfre       22%     18%          44                8
+Alfa         53%     44%          41               18
+```
+
+**Vinte e seis pontos de otimismo na Allianz.** Cobertura baixa manda continuar
+explorando; cobertura que mente para cima manda **parar** — e o que fica sem
+explorar é rota que o agente vai precisar no meio de um atendimento.
+
+**Corrigido:** a chave passou a ser (conjunto de opções da tela, rótulo da
+opção). Duas telas que oferecem exatamente as mesmas escolhas são a mesma tela
+para efeito de navegação. `test_cobertura_nao_mente_para_cima.py` trava as
+quatro condições, incluindo a inversa: menus DIFERENTES não podem ser fundidos.
+
+**Exige re-tecer os mapas** para o número corrigido aparecer.
+
+---
+
+## 10. Levantamento de áudio (29/07) — medido
+
+```
+                 áudios   do cliente   do atendente   imagens   documentos
+Resulta           2.660      2.399           261       2.851      3.580
+AutoFleet           993        539           454         452        169
+TOTAL             3.653      2.938           715
+```
+
+Duração **não** está gravada em nenhum dos 3.653 (`media_meta.seconds` é nulo).
+Estimativa por média de mensagem de voz de atendimento (30 a 40s):
+
+```
+TUDO (3.653 audios) ................. US$ 11 a US$ 15
+SÓ O ÁUDIO DO ATENDENTE (715) ....... US$ 2,15 a US$ 2,90
+```
+
+### A seleção certa não é amostra aleatória, é por direção
+
+O áudio do **cliente** é o caso: "meu carro quebrou na avenida tal". Situacional,
+não ensina processo.
+
+O áudio do **atendente** é o conhecimento: é ele explicando o procedimento — e é
+exatamente o que os subagentes relataram faltar, conversa após conversa.
+
+**715 áudios de atendente por ~US$ 2** cobre a lacuna que importa, sem amostra e
+sem perder conteúdo de valor.
+
+### Depois do texto, não junto
+
+1. Terminar as cartas de texto (rodando, custo zero).
+2. Saber **quais sessões deram zero cartas** — são as que perderam conhecimento.
+3. Transcrever só o áudio do atendente dessas sessões.
+4. Anexar a transcrição ao texto da sessão e re-destilar só elas.
+
+Fazer antes gastaria transcrição em sessão que já entregou seu conhecimento por
+escrito. Fazer depois é mais barato e mais preciso.
+
+**Imagem: não recomendo.** Descrever foto de para-choque não ensina processo, e
+sem o modelo enxergar de verdade a descrição não vale o custo.

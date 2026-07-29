@@ -293,8 +293,37 @@ def compute_coverage(map_acc: Dict[str, Any]) -> Dict[str, Any]:
         if e.get("label") != "→":
             by_src[e["src"]].append(e)
 
-    total_opts = covered_opts = 0
+    # A COBERTURA CONTA OPÇÃO DISTINTA, NÃO OCORRÊNCIA DE OPÇÃO.
+    #
+    # Isto somava `+= 1` por nó. E a MESMA tela aparece como vários nós, porque
+    # a assinatura é o texto inteiro e o texto muda de uma sessão para outra (um
+    # nome, um "bom dia", uma linha a mais). Cada cópia trazia as mesmas opções
+    # de novo, e as duas parcelas cresciam — só que não na mesma proporção.
+    #
+    # A tela que mais duplica é justamente a mais percorrida (duplicou porque
+    # apareceu em muitas sessões), então o numerador inflava mais que o
+    # denominador e a cobertura saía OTIMISTA. Medido em 29/07/2026 com dado
+    # real, deduplicando por (menu, rótulo):
+    #
+    #     Allianz  painel 63%  ->  real 37%      Porto  29% -> 21%
+    #     Yelum        32%     ->      24%       HDI    33% -> 23%
+    #     Zurich       31%     ->      15%
+    #
+    # Vinte e seis pontos de otimismo na Allianz. O Founder olhava 63% e via um
+    # mapa quase explorado; o mapa está em pouco mais de um terço. Cobertura que
+    # mente para cima é pior que cobertura baixa: ela manda parar de explorar.
+    #
+    # A chave é (conjunto de opções da tela, rótulo da opção). Duas telas que
+    # oferecem exatamente as mesmas escolhas são a mesma tela do ponto de vista
+    # de navegação, ainda que o cabeçalho traga um protocolo diferente.
+    def _assinatura_do_menu(node: Dict[str, Any]) -> str:
+        return "|".join(sorted(
+            _norm_label(o.get("label") or "") for o in (node.get("options") or [])))
+
+    universo: set = set()
+    percorrido: set = set()
     for nid, node in nodes.items():
+        _sig = _assinatura_do_menu(node)
         node_gaps = 0
         # TELA COM MENU É DA URA. SEMPRE.
         #
@@ -314,7 +343,8 @@ def compute_coverage(map_acc: Dict[str, Any]) -> Dict[str, Any]:
         if e_humana:
             continue
         for opt in node.get("options") or []:
-            total_opts += 1
+            _chave = (_sig, _norm_label(opt.get("label") or ""))
+            universo.add(_chave)
             match = None
             for e in by_src.get(nid, []):
                 if labels_match(opt["label"], e["label"]):
@@ -335,7 +365,7 @@ def compute_coverage(map_acc: Dict[str, Any]) -> Dict[str, Any]:
                     opt["variants"] = sorted(
                         ({"to": d, "count": c} for d, c in dests.items()),
                         key=lambda v: -v["count"])
-                covered_opts += 1
+                percorrido.add(_chave)
             else:
                 # OPÇÃO CUJO COMPORTAMENTO JÁ SE CONHECE NÃO É LACUNA.
                 #
@@ -357,7 +387,7 @@ def compute_coverage(map_acc: Dict[str, Any]) -> Dict[str, Any]:
                     opt["leads_to"] = None
                     opt["acao"] = acao
                     opt["confidence"] = "navegacao"
-                    covered_opts += 1
+                    percorrido.add(_chave)
                 else:
                     opt["leads_to"] = None
                     opt["confidence"] = "gap"
@@ -396,9 +426,9 @@ def compute_coverage(map_acc: Dict[str, Any]) -> Dict[str, Any]:
         except (ValueError, OverflowError, OSError):
             pass
     map_acc["coverage"] = {
-        "options_total": total_opts,
-        "options_covered": covered_opts,
-        "pct": round(100 * covered_opts / total_opts) if total_opts else 0,
+        "options_total": len(universo),
+        "options_covered": len(percorrido),
+        "pct": round(100 * len(percorrido) / len(universo)) if universo else 0,
         "nodes": len(nodes),
         # Separar as duas contagens é o que impede a pergunta "por que 900
         # telas se a URA tem 50?". A URA tem 50; o resto é a conversa com o
