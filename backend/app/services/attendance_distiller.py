@@ -135,6 +135,11 @@ def _parse_json(text: Optional[str]) -> Optional[Dict[str, Any]]:
 # ------------------------------------------------------------------ #
 # Estágio 1 — extração por sessão (braçal)
 # ------------------------------------------------------------------ #
+# Quantas vezes vale a pena insistir numa sessão cuja resposta não foi lida.
+# Três: uma falha pode ser instabilidade do modelo, três é defeito — e a partir
+# daí cada tentativa é dinheiro comprando o mesmo erro.
+LIMITE_DE_FALHAS = 3
+
 _STAGE1_SYSTEM = (
     "Você analisa uma conversa de ATENDIMENTO de corretora de seguros no WhatsApp "
     "(equipe da corretora falando com o segurado). A conversa já está MASCARADA "
@@ -182,8 +187,16 @@ def _load_undistilled_sync(max_sessions: int) -> List[Dict[str, Any]]:
                 # conversas mais velhas para sempre no fim da fila.
                 .order("started_at", desc=False)
                 .range(inicio, inicio + 999).execute().data) or []
-        pendentes.extend(r for r in lote
-                         if not ((r.get("summary") or {}).get("distilled")))
+        for r in lote:
+            resumo = r.get("summary") or {}
+            if resumo.get("distilled"):
+                continue
+            # Sessão que já recusou três vezes sai da fila. Sem isto, ela volta
+            # em TODA rodada e cobra de novo pelo mesmo erro — foi assim que
+            # 2.334 chamadas repetidas custaram US$ 15 em 28/07/2026.
+            if int(resumo.get("distill_falhas") or 0) >= LIMITE_DE_FALHAS:
+                continue
+            pendentes.append(r)
         if len(lote) < 1000:
             break
         inicio += 1000
@@ -584,6 +597,31 @@ async def _destilar_sessao(sess: Dict[str, Any], stats: Dict[str, int],
                               company_id=str(sess.get("company_id") or ""))
         data = _parse_json(raw)
         if not data:
+            # O MODELO JA RESPONDEU E JA FOI COBRADO. Sem marca nenhuma, esta
+            # sessao volta na fila da proxima rodada, paga de novo, falha de
+            # novo — para sempre, e em silencio.
+            #
+            # Foi exatamente isso em 28/07/2026: o Sonnet 5 passou a PENSAR por
+            # padrao, a resposta virou lista de blocos, `_parse_json` recusou, e
+            # 3.445 chamadas produziram 1.111 destilacoes. As outras 2.334 foram
+            # a MESMA sessao tentada varias vezes — US$ 15 dos US$ 22 gastos.
+            #
+            # A causa esta corrigida em `_texto_da_resposta`. Este contador e o
+            # que impede a proxima causa, ainda desconhecida, de custar o mesmo:
+            # depois de tres recusas a sessao para de ser tentada e aparece no
+            # painel como parada. Perder uma sessao e barato; pagar por ela
+            # indefinidamente sem ninguem ver, nao.
+            summary = dict(sess.get("summary") or {})
+            falhas = int(summary.get("distill_falhas") or 0) + 1
+            summary["distill_falhas"] = falhas
+            await asyncio.to_thread(_save_session_summary_sync, sess["id"], summary)
+            async with trava:
+                stats["falhas_de_leitura"] = stats.get("falhas_de_leitura", 0) + 1
+                if falhas >= LIMITE_DE_FALHAS:
+                    stats["paradas"] = stats.get("paradas", 0) + 1
+            logger.warning("[DESTILADOR] sessão %s: resposta ilegível (%dª vez%s)",
+                           sess.get("id"), falhas,
+                           ", parada" if falhas >= LIMITE_DE_FALHAS else "")
             return
         summary = dict(sess.get("summary") or {})
         summary["distilled"] = {
