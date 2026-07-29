@@ -28,6 +28,7 @@ from __future__ import annotations
 
 import importlib.util
 import json
+import re
 import os
 import sys
 import types
@@ -78,6 +79,37 @@ normalize_insurer_key = _carregar_servico("corridor_playbooks").normalize_insure
 # ser idêntico ao que o destilador faria — senão o conhecimento extraído aqui
 # seria diferente do extraído lá, sem ninguém saber qual dos dois está certo.
 TETO = 7000
+
+
+_QUEM = re.compile(r"^(CLIENTE|ATENDENTE): ?(.*)$")
+
+
+def remascarar(conversa: str) -> str:
+    """Passa o portão CORRIGIDO por cima de um transcript já montado.
+
+    NUNCA chame `templatize` direto num transcript inteiro. `cliente` está na
+    lista de rótulos do `_LABELED_VALUE`, e a regra é ancorada em início de
+    linha: `CLIENTE: meu vidro trincou ontem` casa como "rótulo: valor" e a
+    fala inteira do segurado vira `{VALOR}`.
+
+    Foi o que eu fiz em 29/07/2026, três vezes, ao reaplicar o mascarador nos
+    lotes pendentes depois de cada conserto de PII. O subagente do lote 013
+    percebeu: "a mascaração de origem colapsa quase toda fala do CLIENTE em
+    {VALOR}, o que impede reconstruir `perguntas_na_ordem` e derruba o teto de
+    fatos extraíveis". Consertando vazamento eu estava apagando conhecimento.
+
+    Aqui o prefixo é retirado, o texto da mensagem é mascarado como em
+    produção — uma mensagem de cada vez, que é o único jeito que o
+    `_LABELED_VALUE` foi desenhado para ver — e o prefixo volta.
+    """
+    saida = []
+    for linha in str(conversa or "").split("\n"):
+        m = _QUEM.match(linha)
+        if m:
+            saida.append(f"{m.group(1)}: {templatize(m.group(2))}")
+        else:
+            saida.append(templatize(linha))
+    return "\n".join(saida)
 
 
 def transcript(eventos: list) -> str:
