@@ -155,6 +155,12 @@ def templatize(text: str) -> str:
         # ("Placa QJQ0A91"). Prosa em minúscula é frase, não campo.
         if ":" not in m.group(1):
             primeira = val.split()[0]
+            # Valor começa com letra ou dígito. "Cidade/CEP onde o reparo será
+            # feito" é RÓTULO de campo de um playbook de conduta, e a regra
+            # tratava "/CEP" como valor em caixa alta — reprovou o playbook de
+            # vidros no gate de PII em 30/07/2026, por dado que não existe.
+            if not primeira[0].isalnum():
+                return m.group(0)
             parece_valor = primeira[0].isdigit() or (
                 len(primeira) >= 2 and primeira.upper() == primeira
                 and any(c.isalnum() for c in primeira))
