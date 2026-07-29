@@ -151,10 +151,7 @@ def teste_publicar_faz_parte_da_rodada():
     # importa é a ESTRUTURA — as duas chamadas dentro do mesmo `try`, com um
     # `except` logo depois.
     bloco = re.search(
-        r"try:(?:.|
-)*?curar_sync(?:.|
-)*?publicar_lote_sync(?:.|
-)*?except Exception",
+        r"try:(?:.|\n)*?curar_sync(?:.|\n)*?publicar_lote_sync(?:.|\n)*?except Exception",
         fonte)
     checar(bool(bloco),
            "e uma falha aqui não derruba a rodada",
