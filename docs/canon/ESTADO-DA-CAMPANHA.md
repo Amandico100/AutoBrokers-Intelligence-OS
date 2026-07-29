@@ -456,35 +456,61 @@ texto por `mascarar.remascarar()`, nunca por `templatize` direto** — §4.1.
 **Não fazer imagem.** Descrever foto de para-choque não ensina processo, e sem o
 modelo enxergar de verdade a descrição não paga o custo.
 
+
 ---
 
-## 15. Auditoria das sessoes abertas (29/07, 23h) — corrigido
+## 15. Auditoria das sessões abertas (29/07, 23h) — corrigido
 
-**FATO.** 50 sessoes estavam : 43 da Resulta, 7 da AutoFleet. A mais antiga
-desde **21/07** — oito dias — com 423 mensagens paradas. Fila do Destilador so
-olha , entao tudo isso era conhecimento invisivel.
+**FATO.** 50 sessões estavam `open`: 43 da Resulta, 7 da AutoFleet. A mais antiga
+desde **21/07** — oito dias — com 423 mensagens paradas. A fila do Destilador só
+olha `status='closed'`, então tudo isso era conhecimento invisível.
 
 **FATO — nenhuma era conversa com seguradora.** O material que o Founder
-considera insubstituivel estava intacto. Mas nada no sistema garantia isso: foi
-sorte, nao projeto.
+considera insubstituível estava intacto. Mas nada no sistema garantia isso: foi
+sorte, não projeto.
 
-**A causa.** A sessao fechava so no caminho de ENTRADA de mensagem: quando
-chegava mensagem NOVA da mesma pessoa depois do intervalo de duas horas. Se o
-segurado nunca escreve de novo — o caso normal quando o atendimento resolveu —
-ninguem fechava nada, para sempre.
+**A causa.** A sessão fechava só no caminho de ENTRADA de mensagem: quando
+chegava mensagem NOVA da mesma pessoa depois do intervalo de duas horas
+(`observer_intake._SESSION_GAP`). Se o segurado nunca escreve de novo — o caso
+normal quando o atendimento resolveu — ninguém fechava nada, para sempre.
 
-**O conserto.** Varredura em , antes de ler o teto de gasto:
-sessao sem mensagem por mais de **seis horas** fecha. Seis e o triplo do
-intervalo de sessao, de proposito — fechar cedo partiria uma conversa em duas e
-ensinaria conduta pela metade, que e pior que esperar.
+**O conserto.** `_fechar_sessoes_vencidas_sync()` em `distill_once`, **antes** de
+ler o teto de gasto: sessão sem mensagem por mais de **seis horas** fecha. Seis é
+o triplo do intervalo de sessão, de propósito — fechar cedo partiria uma conversa
+em duas e ensinaria conduta pela metade, que é pior que esperar.
 
-Roda mesmo com o teto em zero: nao chama modelo, e e o que destrava material
-para quando houver credito.
+Roda mesmo com o teto em zero: não chama modelo, e é justamente o que destrava
+material para quando houver crédito. Se estivesse depois de um `return` por teto
+zero, a varredura nunca aconteceria — o material ficaria invisível exatamente
+enquanto se economiza.
 
-**Resultado.** 38 sessoes fechadas na varredura manual, 320 mensagens na fila.
-Sobraram 12 abertas, a mais antiga com 6h — recentes de verdade, e a proxima
+**Onde mora e por quê.** No Destilador, não num serviço novo com agendamento
+próprio: seria motor paralelo para uma consulta de duas linhas (CLAUDE.md §5).
+Ele já roda periodicamente, já é quem precisa da sessão fechada, e já tem trava
+de rodada única.
+
+**Resultado.** 38 sessões fechadas na varredura manual, 320 mensagens na fila.
+Sobraram 12 abertas, a mais antiga com 6h — recentes de verdade, e a próxima
 rodada as pega.
 
- trava as quatro condicoes,
-incluindo a inversa (sessao viva de 30min e de 3h NAO fecham) e a de arquitetura
-(nenhum servico novo foi criado para uma consulta de duas linhas).
+`test_conversa_que_acabou_nao_fica_aberta.py` trava as quatro condições,
+incluindo a inversa (sessão viva de 30min e de 3h **não** fecham) e a de
+arquitetura (nenhum serviço novo foi criado).
+
+---
+
+## 16. Estado do Atlas depois dos consertos de 29/07
+
+```
+allianz  73%   ·  alfa     58%  ·  azul   44%  ·  bradesco 38%
+porto    37%   ·  hdi      36%  ·  yelum  34%  ·  zurich   28%
+mapfre   25%   ·  tokio    12%                      média: 39%
+```
+
+Movimento em relação ao painel de antes dos consertos: Bradesco +21, Azul +9,
+Porto +8, Allianz +6. São exatamente as seguradoras que mais usam lista de
+oficinas próximas e pesquisa de satisfação — o que confirma que o que subiu foi
+a remoção de lacuna falsa, não otimismo novo.
+
+A Tokio continua em 12% com 36 sessões e só 178 eventos. **É a próxima
+investigação** — cinco eventos por sessão está muito abaixo de todas as outras.
