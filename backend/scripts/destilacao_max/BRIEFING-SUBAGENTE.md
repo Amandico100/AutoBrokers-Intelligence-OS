@@ -66,6 +66,21 @@ Escreva do ponto de vista de quem vai **repetir** aquilo, não de quem está
 descrevendo. "Confirmou a placa antes de abrir o chamado" ensina; "falou sobre
 o veículo" não.
 
+## Quando a conversa parecer ter os papéis trocados
+
+Acontece: a equipe **encaminha** a mensagem do segurado para dentro do grupo, e
+o transcript rotula ATENDENTE um texto que o segurado escreveu. O sistema não
+guarda a marca de encaminhamento, então não há como corrigir automaticamente.
+
+Se as falas estiverem visivelmente trocadas:
+
+- `fatos_reutilizaveis` **pode** ser preenchido — um fato de processo é
+  verdadeiro independentemente de quem o disse.
+- `resumo_conduta` e `perguntas_na_ordem` devem ficar **vazios**. Eles ensinam
+  como a atendente conduz, e aprender conduta de uma fala do cliente ensina o
+  agente a fazer a pergunta errada, do lado errado da conversa.
+- Escreva o motivo em `flags`.
+
 ## Proibido em qualquer campo
 
 Nome de pessoa, telefone, placa, CPF/CNPJ, endereço, valor em reais, número de

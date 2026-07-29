@@ -1619,3 +1619,53 @@ pedido, validade de 2 horas, zero fecha.
    regra do próprio Founder é que conversa mais nova vale mais.
 3. Gravar `seconds` e `fileLength` no `media_meta` para a próxima estimativa
    ser medida, não estimada. **Ainda não feito.**
+
+---
+
+## CA-021 · Mensagem encaminhada troca quem falou — VALIOSA
+
+**Achado por** um subagente destilando o lote 007 em 29/07/2026, com dado real.
+
+### O problema
+
+Na sessão `35a2f0a9-…` falas claramente do segurado ("Mas para adiantar ela
+está enchendo e não para transborda", "Vou testar fim-de-semana") aparecem
+como **ATENDENTE**.
+
+A causa é estrutural, não é bug de código: `direction` vem de `from_me`. Quando
+alguém da equipe **encaminha** a mensagem do segurado para dentro do grupo de
+observação, a mensagem sai do número da corretora — `from_me` é verdadeiro, e o
+transcript rotula ATENDENTE um texto que o segurado escreveu.
+
+### Por que importa mais do que parece
+
+`fatos_reutilizaveis` sobrevive: um fato de processo continua verdadeiro
+independentemente de quem o disse.
+
+`resumo_conduta` e `perguntas_na_ordem`, não. Eles ensinam **como a melhor
+atendente conduz**, e alimentam os playbooks. Aprender conduta de uma fala do
+cliente atribuída à atendente ensina o agente a fazer a pergunta errada, do
+lado errado da conversa.
+
+### O que impede de consertar hoje
+
+`attendance_transcripts` não guarda a marca de encaminhamento. As colunas são
+`direction, msg_type, text, interactive, media_meta, message_id, wa_timestamp,
+source` — o `contextInfo.isForwarded` do WhatsApp não é persistido. Sem esse
+dado, nenhuma regra determinística distingue "a atendente escreveu" de "a
+atendente encaminhou".
+
+### Encaminhamento
+
+**Agora:** o briefing do subagente manda devolver `fatos_reutilizaveis` só
+quando o fato independe de quem falou, e **zerar a conduta** quando a
+atribuição parecer trocada, com a razão em `flags`. Foi o que o subagente do
+lote 007 fez por conta própria, e está certo.
+
+**Depois:** persistir `isForwarded` na captura e reprocessar. É mudança na
+ingestão, e o histórico já capturado não recupera a marca — só o que entrar
+daqui para frente. Não bloqueia a campanha.
+
+**Não fazer:** inferir encaminhamento por heurística de texto. Errar para o
+lado de "isto é do cliente" apaga conduta legítima da atendente; errar para o
+outro lado é o defeito que já temos. Sem o dado, o silêncio é mais honesto.
