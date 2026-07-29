@@ -653,13 +653,53 @@ async def espelho_playbooks(_: Any = Depends(require_master_admin)) -> Dict[str,
 
 @router.post("/espelho/run")
 async def espelho_run(_: Any = Depends(require_master_admin)) -> Dict[str, Any]:
-    """Rodada MANUAL do destilador (verificação/urgência — ignora janela e
-    marcador diário). Processa somente dados novos; custo controlado pelo teto
-    de sessões por rodada."""
+    """Rodada MANUAL do destilador — dispara e volta na hora.
+
+    Isto esperava a rodada TERMINAR para responder. Em 29/07/2026 o Founder
+    clicou, a rodada publicou 278 cartas no RAG em vários minutos, e a
+    requisição estourou o tempo antes disso: a tela disse **"não foi possível
+    processar o aprendizado agora"** enquanto o trabalho estava sendo feito e
+    concluído com sucesso.
+
+    Uma tela que diz que falhou quando deu certo é pior que uma que não diz
+    nada: leva a clicar de novo, e clicar de novo dobra o gasto.
+
+    Agora dispara em segundo plano e responde na hora. O resultado aparece em
+    /admin/espelho (cartas publicadas) e no pulso do Destilador.
+    """
+    import asyncio as _a
+
+    from app.core.redis import get_async_redis_client
     from app.services.attendance_distiller import distill_once
 
-    stats = await distill_once(force=True)
-    return {"ok": True, **stats}
+    # Trava de 30 min: o clique manual e a rodada agendada nao podem processar
+    # a mesma fila ao mesmo tempo e pagar duas vezes pelo mesmo trabalho.
+    try:
+        r = await get_async_redis_client()
+        if not await r.set("distiller:rodada_manual", "1", ex=1800, nx=True):
+            return {"ok": True, "ja_rodando": True,
+                    "mensagem": "Uma rodada já está em andamento. O resultado "
+                                "aparece em Espelho de Atendimento."}
+    except Exception:  # noqa: BLE001 — Redis fora não impede rodar
+        pass
+
+    async def _rodar() -> None:
+        try:
+            stats = await distill_once(force=True)
+            logger.info("[ESPELHO] rodada manual concluída: %s", stats)
+        except Exception as exc:  # noqa: BLE001
+            logger.error("[ESPELHO] rodada manual falhou: %s", type(exc).__name__)
+        finally:
+            try:
+                r2 = await get_async_redis_client()
+                await r2.delete("distiller:rodada_manual")
+            except Exception:  # noqa: BLE001
+                pass
+
+    _a.create_task(_rodar())
+    return {"ok": True, "iniciado": True,
+            "mensagem": "Aprendizado em processamento. Pode levar alguns "
+                        "minutos; o resultado aparece em Espelho de Atendimento."}
 
 
 # ------------------------------------------------------------------ #

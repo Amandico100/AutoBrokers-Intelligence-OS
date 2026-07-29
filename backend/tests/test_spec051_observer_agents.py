@@ -101,7 +101,17 @@ def test_media_enrichment_and_agent_orchestration_contracts():
     assert '"status": "pending_review"' in distiller
     assert "rebuild_agent_memories" in memory
     assert "/espelho/run" in admin
-    assert "processa somente dados novos" in admin.lower()
+    # A rodada manual processa SO o que e novo — e a garantia disso esta no
+    # carregador de sessoes, nao numa frase da docstring. A versao anterior
+    # deste assert casava o texto "processa somente dados novos"; reescrever a
+    # documentacao da rota quebrava o teste sem nada ter mudado no
+    # comportamento, e um teste assim ensina a nao mexer no comentario.
+    assert 'not ((r.get("summary") or {}).get("distilled"))' in distiller,         "o destilador tem de pular o que ja foi destilado"
+    # E a rodada manual nao pode TRAVAR a tela esperando terminar: publicar
+    # centenas de cartas leva minutos. Em 29/07/2026 a requisicao estourou o
+    # tempo e a tela disse que falhou enquanto 278 cartas eram publicadas.
+    assert "create_task" in admin, "a rodada manual dispara em segundo plano"
+    assert "rodada_manual" in admin, "com trava contra duas rodadas simultaneas"
 
     sentinel_mod = _load("spec051_route_sentinel", "app/services/atlas/route_sentinel.py")
 

@@ -200,6 +200,14 @@ def publicar_lote_sync(limite: int = 300) -> Dict[str, Any]:
                 ).eq("id", c["id"]).execute()
                 publicadas += 1
             else:
+                # NAO VOLTA PARA A FILA. `publish_card_sync` so devolve False
+                # quando o texto reprova no filtro de PII do momento da
+                # publicacao — a terceira e ultima camada. Deixar em
+                # `pending_review` faria a mesma carta ser tentada em toda
+                # rodada, para sempre, ocupando lugar de quem ainda nao
+                # publicou. Na rodada de 29/07/2026 foram 22 assim.
+                db.client.table("knowledge_cards").update(
+                    {"status": "rejected_pii"}).eq("id", c["id"]).execute()
                 falhas += 1
         except Exception as exc:  # noqa: BLE001 — uma carta ruim não trava o lote
             falhas += 1

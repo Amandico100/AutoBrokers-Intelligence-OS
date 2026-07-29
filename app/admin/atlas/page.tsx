@@ -474,7 +474,7 @@ export default function AtlasPage() {
 
   const runLearning = async () => {
     setLearningBusy(true);
-    setNotice('Processando somente as conversas novas…');
+    setNotice('Enviando para processamento…');
     try {
       const response = await fetch('/api/admin/atlas/espelho/run', {
         method: 'POST',
@@ -482,12 +482,21 @@ export default function AtlasPage() {
         body: '{}',
       });
       const result = await response.json().catch(() => ({}));
+      // A MENSAGEM VEM DO SERVIDOR, não é montada aqui.
+      //
+      // Isto lia `result.processed || result.distilled` — dois campos que a
+      // rota nunca devolveu — e caía no texto de erro. Em 29/07/2026 o Founder
+      // clicou, a rodada publicou 278 cartas no RAG com sucesso, e a tela
+      // disse "não foi possível processar o aprendizado agora".
+      //
+      // Tela que diz que falhou quando deu certo leva a clicar de novo, e
+      // clicar de novo dobra o gasto.
       setNotice(response.ok && result.ok
-        ? `Aprendizado atualizado: ${Number(result.processed || result.distilled || 0)} sessão(ões) nova(s).`
-        : 'Não foi possível processar o aprendizado agora.');
+        ? String(result.mensagem || 'Aprendizado em processamento.')
+        : 'Não foi possível iniciar o processamento agora.');
       load();
     } catch {
-      setNotice('Não foi possível processar o aprendizado agora.');
+      setNotice('Não foi possível iniciar o processamento agora.');
     } finally {
       setLearningBusy(false);
     }
