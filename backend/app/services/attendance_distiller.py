@@ -174,6 +174,53 @@ _STAGE1_SYSTEM = (
 )
 
 
+def _fechar_sessoes_vencidas_sync() -> int:
+    """Fecha a sessão que acabou e ninguém fechou. Custo zero, sem modelo.
+
+    A sessão só fechava quando chegava mensagem NOVA da mesma pessoa depois do
+    intervalo de duas horas (`observer_intake._SESSION_GAP`). Se o segurado
+    nunca escreve de novo — que é o caso normal quando o atendimento resolveu —
+    a sessão fica `open` **para sempre**, e `_load_undistilled_sync` só olha
+    `status='closed'`.
+
+    Medido em 29/07/2026: 43 sessões da Resulta abertas, uma desde 21/07 —
+    oito dias — com 423 mensagens paradas. Conversa completa, conhecimento
+    dentro, invisível para o Destilador. Nenhuma delas era de seguradora, o que
+    salvou o material que não pode ser perdido; mas nada garantia isso.
+
+    A margem é generosa de propósito: **seis horas** sem nenhuma mensagem, três
+    vezes o intervalo de sessão. Fechar cedo partiria uma conversa em duas e
+    ensinaria conduta pela metade — pior que esperar. Fechar tarde só atrasa.
+
+    Roda em toda rodada, INCLUSIVE com o teto de gasto em zero: não chama
+    modelo, e é justamente o que destrava material para quando houver crédito.
+    """
+    from datetime import timedelta
+
+    from app.core.database import get_supabase_client
+
+    limite = (datetime.now(timezone.utc) - timedelta(hours=6)).isoformat()
+    db = get_supabase_client()
+    try:
+        alvo = (db.client.table("attendance_sessions")
+                .select("id")
+                .eq("status", "open")
+                .lt("last_event_at", limite)
+                .limit(1000).execute().data) or []
+        for i in range(0, len(alvo), 100):
+            ids = [r["id"] for r in alvo[i:i + 100]]
+            db.client.table("attendance_sessions").update(
+                {"status": "closed"}).in_("id", ids).execute()
+        if alvo:
+            logger.info("[DESTILADOR] %d sessões vencidas fechadas — entram na fila",
+                        len(alvo))
+        return len(alvo)
+    except Exception as exc:  # noqa: BLE001
+        logger.warning("[DESTILADOR] varredura de sessões abertas falhou: %s",
+                       type(exc).__name__)
+        return 0
+
+
 def _load_undistilled_sync(max_sessions: int) -> List[Dict[str, Any]]:
     """As próximas sessões a destilar, buscando ALÉM das já destiladas.
 
@@ -506,6 +553,11 @@ async def distill_once(force: bool = False, *, atrasado: bool = False) -> Dict[s
     # de linguagem — só o embedding, que custa centavos — e são justamente o
     # caminho por onde as cartas escritas por fora chegam ao RAG. Travar o
     # gasto não pode significar travar o conhecimento.
+    # ANTES DE TUDO, e independente do teto: a conversa que acabou tem de ser
+    # marcada como acabada. Não chama modelo, não custa nada, e sem isto o
+    # material fica invisível — ver `_fechar_sessoes_vencidas_sync`.
+    stats["sessoes_fechadas"] = await asyncio.to_thread(_fechar_sessoes_vencidas_sync)
+
     teto = _teto_de_gasto()
     if teto <= 0:
         logger.info("[DESTILADOR] teto em 0: nenhuma chamada de modelo nesta "
