@@ -710,6 +710,25 @@ async def _destilar_sessao(sess: Dict[str, Any], stats: Dict[str, int],
         raw = await _call_llm(_STAGE1_SYSTEM, text,
                               company_id=str(sess.get("company_id") or ""))
         data = _parse_json(raw)
+        if not data and not raw:
+            # A CHAMADA NEM RESPONDEU. Não é defeito desta sessão: é crédito
+            # acabado, rede caída, provedor sobrecarregado (529). `_call_llm`
+            # devolve None nos dois casos, e contar isso como recusa da sessão
+            # foi o defeito da minha própria trava.
+            #
+            # Medido em 30/07/2026: 350 sessões chegaram a três "falhas" e
+            # ficaram PARADAS PARA SEMPRE porque a conta ficou sem crédito no
+            # meio de uma rodada. Perdi 350 conversas com um guarda que existia
+            # justamente para não perder dinheiro — e sem que ninguém veja, que
+            # é o pior formato.
+            #
+            # Sem marca: a sessão volta na fila e será tentada quando houver
+            # crédito. O gasto repetido que a trava evita é outro — resposta
+            # ILEGÍVEL, que é defeito real e não passa daqui.
+            logger.info("[DESTILADOR] sessão %s: modelo não respondeu (crédito "
+                        "ou rede) — segue na fila, sem contar recusa",
+                        sess.get("id"))
+            return
         if not data:
             # O MODELO JA RESPONDEU E JA FOI COBRADO. Sem marca nenhuma, esta
             # sessao volta na fila da proxima rodada, paga de novo, falha de

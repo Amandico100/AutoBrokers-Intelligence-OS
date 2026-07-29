@@ -177,7 +177,7 @@ def teste_a_recusa_e_registrada_antes_de_desistir():
     # O recorte é o trecho entre `if not data:` e o `return` que o encerra —
     # medir por distância em caracteres pegaria o corpo do sucesso e daria
     # verde sem motivo.
-    i = fonte.find("if not data:")
+    i = fonte.find("if not data:", fonte.find("if not data and not raw:") + 1)
     ramo = fonte[i:fonte.find("return", i)] if i >= 0 else ""
     checar(bool(ramo), "o caminho da resposta ilegível existe")
     checar("distill_falhas" in ramo, "ele incrementa o contador de recusas")
@@ -186,6 +186,22 @@ def teste_a_recusa_e_registrada_antes_de_desistir():
            "sem gravar, o contador reinicia em zero toda rodada e a sessão "
            "é cobrada para sempre — o defeito de US$ 15")
     checar("+ 1" in ramo or "+1" in ramo, "somando à contagem anterior")
+
+
+def teste_chamada_que_nao_respondeu_nao_conta_recusa():
+    print("\n[3b] Crédito acabado não é culpa da sessão")
+    import inspect
+
+    fonte = inspect.getsource(DIST._destilar_sessao)
+    i = fonte.find("if not data and not raw:")
+    ramo = fonte[i:fonte.find("if not data:", i)] if i >= 0 else ""
+    checar(bool(ramo),
+           "existe caminho separado para `raw` vazio",
+           "sem ele, credito acabado no meio da rodada parava a sessao para "
+           "sempre — 350 conversas em 30/07/2026")
+    checar("distill_falhas" not in ramo,
+           "e ele NAO incrementa o contador de recusas")
+    checar("return" in ramo, "so devolve, deixando a sessao na fila")
 
 
 def teste_o_texto_util_continua_gerando_carta():
@@ -217,6 +233,7 @@ def main() -> int:
     for teste in (teste_le_o_texto_e_nao_a_lista_de_blocos,
                   teste_sessao_que_recusou_tres_vezes_sai_da_fila,
                   teste_a_recusa_e_registrada_antes_de_desistir,
+                  teste_chamada_que_nao_respondeu_nao_conta_recusa,
                   teste_o_texto_util_continua_gerando_carta):
         try:
             teste()
