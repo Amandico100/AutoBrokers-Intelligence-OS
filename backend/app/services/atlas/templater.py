@@ -25,7 +25,15 @@ _PII_PATTERNS: List[Tuple[re.Pattern, str]] = [
     # A âncora por dígito ainda é MAIS segura que `\b` para o vizinho de baixo:
     # onze dígitos no meio de um cartão de dezesseis não casam, então o CPF não
     # come um pedaço do cartão e deixa o resto exposto.
-    (re.compile(r"(?<!\d)\d{3}\.?\d{3}\.?\d{3}-?\d{2}(?!\d)"), "{CPF}"),
+    # LINHA DIGITÁVEL DE BOLETO — 44 a 48 dígitos, com pontos e espaços. Vem
+    # ANTES de tudo: os padrões de baixo mordem pedaços dela (o de cartão come
+    # 16 dígitos, o de CPF come 11) e deixam o resto exposto, que é o pior dos
+    # dois mundos. Como o PIX copia-e-cola, não é dado pessoal — é instrumento
+    # de pagamento: quem tem a string paga, ou cobra. Lote 012, 29/07/2026.
+    (re.compile(r"(?<!\d)(?:\d[\s.]{0,2}){40,}\d(?!\d)"), "{LINHA_DIGITAVEL}"),
+    # O separador aceita ESPAÇO. "123 456 789 00" é como o segurado digita o
+    # CPF no WhatsApp, e só a forma com ponto era reconhecida.
+    (re.compile(r"(?<!\d)\d{3}[\s.]?\d{3}[\s.]?\d{3}[\s-]?\d{2}(?!\d)"), "{CPF}"),
     (re.compile(r"(?<!\d)\d{2}\.?\d{3}\.?\d{3}/?\d{4}-?\d{2}(?!\d)"), "{CNPJ}"),
     # NÚMERO DE CARTÃO — 13 a 19 dígitos, em grupos ou corridos.
     #
@@ -67,6 +75,15 @@ _PII_PATTERNS: List[Tuple[re.Pattern, str]] = [
     (re.compile(r"\bprotocolo[:\s]*\#?\s*(?=[\w-]*\d)[\w\-]{4,}", re.IGNORECASE),
      "protocolo {PROTOCOLO}"),
     (re.compile(r"\bchassi[:\s]*(?=\w*\d)\w{6,}", re.IGNORECASE), "chassi {CHASSI}"),
+    # SEGREDO DENTRO DE URL. A regra de rótulo exige o rótulo no começo da
+    # linha; `...artigo?auth_token=abc123` esconde a credencial no meio de um
+    # link que parece inofensivo. Achado no lote 011 da Resulta, 29/07/2026.
+    (re.compile(r"(?i)([?&](?:auth_token|access_token|token|api_?key|senha|password|pwd)=)[^\s&#]+"),
+     r"\1{SEGREDO}"),
+    # PAYLOAD PIX copia-e-cola. Não é credencial, é instrumento de pagamento:
+    # quem tem a string cobra em nome de quem a gerou. Começa sempre por 000201
+    # (payload format indicator do BR Code) e vem numa tacada só.
+    (re.compile(r"\b000201[0-9A-Za-z.\-*+/:]{25,}"), "{PIX_COPIA_E_COLA}"),
 ]
 
 # Rótulos de campo que costumam preceder um VALOR de cliente numa linha
