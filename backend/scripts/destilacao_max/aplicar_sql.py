@@ -35,7 +35,7 @@ import re
 import sys
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
-from mascarar import templatize  # noqa: E402  — o mesmo portão de PII
+from mascarar import normalize_insurer_key, templatize  # noqa: E402
 
 # O Windows redireciona `>` na codepage ANSI (cp1252), não em UTF-8. Sem esta
 # linha, "apólice" e "ocorrência" saem corrompidos no arquivo .sql e entram
@@ -103,7 +103,11 @@ def main() -> int:
             sessoes += 1
 
             ramo = str(d.get("ramo") or "outro")
-            seg = str(d.get("seguradora") or "").strip().lower() or None
+            # Mesma normalização de `_store_card_sync`: "Tokio", "Tokio Marine"
+            # e "Tókio Marine" são UMA seguradora. Sem isto o subagente que
+            # escreve "tokio marine" cria uma pasta que o filtro por seguradora
+            # nunca encontra.
+            seg = normalize_insurer_key(str(d.get("seguradora") or "")) or None
             for fato in (d.get("fatos_reutilizaveis") or [])[:8]:
                 texto = " ".join(str(fato or "").split())
                 if len(texto) < 15 or len(texto) > 400:

@@ -58,6 +58,22 @@ def _carregar(nome: str):
 templatize = _carregar("templater").templatize
 sem_copias = _carregar("mensagem").sem_copias
 
+
+def _carregar_servico(nome: str):
+    caminho = os.path.join(RAIZ, "app", "services", f"{nome}.py")
+    spec = importlib.util.spec_from_file_location(f"app.services.{nome}", caminho)
+    mod = importlib.util.module_from_spec(spec)
+    sys.modules[f"app.services.{nome}"] = mod
+    spec.loader.exec_module(mod)
+    return mod
+
+
+# A chave canônica da seguradora vem do MESMO normalizador dos corredores —
+# `corridor_playbooks` não importa nada pesado, então carrega por caminho igual
+# ao templater. Reescrever a tabela de apelidos aqui criaria a terceira cópia
+# dela no projeto, e a que envelhece primeiro é sempre a que ninguém olha.
+normalize_insurer_key = _carregar_servico("corridor_playbooks").normalize_insurer_key
+
 # O mesmo teto de produção: acima disto a conversa é cortada, e o corte tem de
 # ser idêntico ao que o destilador faria — senão o conhecimento extraído aqui
 # seria diferente do extraído lá, sem ninguém saber qual dos dois está certo.

@@ -867,16 +867,38 @@ _INSURER_ALIASES = {
     "bradesco": "bradesco", "bradesco seguros": "bradesco", "bradesco auto/re": "bradesco",
     "mapfre": "mapfre", "mapfre seguros": "mapfre",
     "zurich": "zurich", "zurich seguros": "zurich", "zurich santander": "zurich",
+    # Vistas nas conversas reais da Resulta em 29/07/2026, durante a destilação
+    # do histórico. Sem elas, "sompo seguros" e "seguros sura" viravam chaves
+    # diferentes de "sompo" e "sura", e o filtro por seguradora perdia carta.
+    "sompo": "sompo", "sompo seguros": "sompo",
+    "sura": "sura", "seguros sura": "sura",
+    "metlife": "metlife", "met life": "metlife",
+    "axa": "axa", "axa seguros": "axa",
+    "youse": "youse",
+    "suhai": "suhai", "suhai seguradora": "suhai",
+    "mitsui": "mitsui", "msig": "mitsui", "mitsui sumitomo": "mitsui",
+    "akad": "akad", "akad seguros": "akad",
+    "caixa": "caixa", "caixa seguradora": "caixa", "caixa seguros": "caixa",
 }
 
 
 def normalize_insurer_key(insurer: str) -> str:
     """Normaliza nome/sigla de seguradora para a chave canônica de playbook."""
-    raw = _norm(insurer)
+    # `_` e `-` viram espaço antes de comparar: "tokio_marine" chega assim de
+    # importação antiga, e para o regex o sublinhado é letra — `\btokio\b` não
+    # casaria, e a chave sobreviveria separada da `tokio` de todas as outras.
+    raw = re.sub(r"[^a-z0-9]+", " ", _norm(insurer)).strip()
     if raw in _INSURER_ALIASES:
         return _INSURER_ALIASES[raw]
+    # PALAVRA INTEIRA, não pedaço de palavra.
+    #
+    # Isto era `if alias in raw`. Com "axa" na lista, "caixa seguradora" virava
+    # `axa` — duas seguradoras diferentes fundidas numa chave só, e o agente
+    # respondendo regra da AXA para segurado da Caixa. Substring é aceitável
+    # enquanto ninguém acrescenta um alias curto; o dia em que alguém
+    # acrescenta, o erro é silencioso e sai errado para o cliente.
     for alias, key in _INSURER_ALIASES.items():
-        if alias in raw:
+        if re.search(rf"\b{re.escape(alias)}\b", raw):
             return key
     return raw.split()[0] if raw else ""
 

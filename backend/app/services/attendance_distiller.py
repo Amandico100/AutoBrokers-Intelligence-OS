@@ -273,6 +273,18 @@ def _card_pii_clean(text: str) -> bool:
     return templatize(text) == text
 
 
+def _chave_da_seguradora(nome: Any) -> str:
+    """A chave canônica da seguradora. Import tardio: `corridor_playbooks` não
+    depende de nada pesado, mas o destilador também é carregado por scripts
+    fora do backend e não deve arrastar o pacote inteiro no topo."""
+    try:
+        from app.services.corridor_playbooks import normalize_insurer_key
+
+        return normalize_insurer_key(str(nome or ""))
+    except Exception:  # noqa: BLE001
+        return str(nome or "").strip().lower()
+
+
 def _store_card_sync(fato: str, meta: Dict[str, Any]) -> Optional[str]:
     from app.core.database import get_supabase_client
 
@@ -286,7 +298,12 @@ def _store_card_sync(fato: str, meta: Dict[str, Any]) -> Optional[str]:
         "card_text": text,
         "category": meta.get("category") or "processo",
         "ramo": meta.get("ramo"),
-        "insurer_key": (str(meta.get("seguradora") or "").strip().lower() or None),
+        # NORMALIZADA, não só em minúsculas. As conversas trazem "Tokio",
+        # "Tokio Marine", "Tókio Marine" e "tokio_marine" para a mesma
+        # seguradora; guardadas como estão, viram quatro pastas e o filtro por
+        # seguradora perde carta em três delas. Medido em 29/07/2026 no
+        # histórico da Resulta. O normalizador é o MESMO dos corredores.
+        "insurer_key": (_chave_da_seguradora(meta.get("seguradora")) or None),
         "status": "pending_review" if clean else "rejected_pii",
         "pii_check": {"deterministic": clean, "llm_instructed": True},
     }
