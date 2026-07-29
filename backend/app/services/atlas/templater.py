@@ -18,6 +18,23 @@ from typing import Dict, List, Optional, Tuple
 _PII_PATTERNS: List[Tuple[re.Pattern, str]] = [
     (re.compile(r"\b\d{3}\.?\d{3}\.?\d{3}-?\d{2}\b"), "{CPF}"),
     (re.compile(r"\b\d{2}\.?\d{3}\.?\d{3}/?\d{4}-?\d{2}\b"), "{CNPJ}"),
+    # NÚMERO DE CARTÃO — 13 a 19 dígitos, em grupos ou corridos.
+    #
+    # Descoberto em 29/07/2026 por um subagente destilando o lote 003: um
+    # parceiro colou no WhatsApp o número completo do cartão, validade e nome
+    # do titular de um segurado. O mascarador pegava CPF, CNPJ, placa, CEP,
+    # telefone e data — cartão, não. O dado mais sensível que existe numa
+    # conversa de corretora atravessava o portão inteiro.
+    #
+    # Vem depois de CPF e CNPJ para não roubar o rótulo deles (11 e 14 dígitos
+    # continuam sendo {CPF} e {CNPJ}), e antes de telefone, que morderia um
+    # pedaço do meio do cartão e deixaria o resto exposto.
+    (re.compile(r"(?<!\d)\d{4}[\s.\-]?\d{4}[\s.\-]?\d{4}[\s.\-]?\d{1,7}(?!\d)"), "{CARTAO}"),
+    # Validade de cartão: "12/28", "12/2028". A regra de data pede dd/mm/aaaa
+    # e não pega isto. Sozinha a validade não vale nada; ao lado do número,
+    # vale tudo — e é assim que ela aparece.
+    (re.compile(r"(?i)\b(?:validade|venc(?:imento)?\.?)\s*:?\s*\d{2}\s*/\s*\d{2,4}\b"),
+     "validade {VALIDADE}"),
     (re.compile(r"\b[A-Z]{3}[-\s]?\d[A-Z0-9]\d{2}\b"), "{PLACA}"),   # Mercosul e antiga
     (re.compile(r"\b\d{5}-?\d{3}\b"), "{CEP}"),
     (re.compile(r"(?<!\d)(?:\+?55\s?)?\(?\d{2}\)?\s?9?\d{4}[-\s]?\d{4}(?!\d)"), "{TELEFONE}"),

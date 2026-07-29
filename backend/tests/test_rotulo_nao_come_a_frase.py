@@ -96,6 +96,15 @@ DADOS_DE_CLIENTE = [
     "Modelo: Gol 1.0",
     "Agendamento: 28/01/2026, entre 10h00 e 12h00",
     "Endereço: Rua das Flores, 100",
+    # CARTÃO DE CRÉDITO — o dado mais sensível que aparece numa conversa de
+    # corretora, e o mascarador não o via até 29/07/2026. Três subagentes
+    # acharam o mesmo buraco em lotes diferentes, no mesmo dia: parceiros e
+    # segurados colam número, validade e titular no WhatsApp.
+    "4111 1111 1111 1111",
+    "5432109876543210",
+    "4111-1111-1111-1111",
+    "cartão 4111.1111.1111.1111 validade 12/28",
+    "validade: 03/2029",
 ]
 
 
@@ -116,6 +125,23 @@ def teste_o_dado_do_cliente_continua_barrado():
                "passou intacto — vazaria para a LLM" if saida == linha else "")
 
 
+def teste_cartao_nao_vira_cpf_nem_telefone():
+    print("\n[3] O cartão é mascarado INTEIRO, e não em pedaços")
+    # A regra de telefone morderia "1111 1111" do meio de um cartão e deixaria
+    # os outros oito dígitos expostos. Por isso a regra de cartão vem antes
+    # dela — e depois de CPF e CNPJ, que mantêm o rótulo próprio.
+    saida = templatize("4111 1111 1111 1111")
+    checar(saida.strip() == "{CARTAO}",
+           "o número inteiro vira um único {CARTAO}",
+           f"virou: {saida!r}")
+    checar(templatize("123.456.789-00").strip() == "{CPF}",
+           "e o CPF continua sendo {CPF}, não {CARTAO}")
+    checar(templatize("12.345.678/0001-90").strip() == "{CNPJ}",
+           "e o CNPJ continua sendo {CNPJ}")
+    checar("{CEP}" in templatize("CEP 01310-100"),
+           "e o CEP não é confundido com cartão")
+
+
 def teste_a_carta_chega_ao_rag():
     print("\n[3] A consequência real: a carta chega ao RAG")
     # `_card_pii_clean` é exatamente `templatize(t) == t`. Reproduzir a
@@ -132,6 +158,7 @@ def main() -> int:
     print("=" * 70)
     for teste in (teste_a_frase_de_conhecimento_sobrevive,
                   teste_o_dado_do_cliente_continua_barrado,
+                  teste_cartao_nao_vira_cpf_nem_telefone,
                   teste_a_carta_chega_ao_rag):
         try:
             teste()
