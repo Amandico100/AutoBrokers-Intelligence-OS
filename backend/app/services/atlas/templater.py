@@ -56,6 +56,27 @@ def templatize(text: str) -> str:
         # não mascara se o "valor" já é placeholder ou é curtíssimo/opção
         if val.startswith("{") or len(val) <= 1:
             return m.group(0)
+        # SEM DOIS-PONTOS, o rótulo pode ser só a primeira palavra de uma frase.
+        #
+        # O `:` era opcional, e o `(.+)$` é guloso: "Boleto de seguro não pago
+        # até a data limite leva ao cancelamento" virava "Boleto {VALOR}".
+        # Como `_card_pii_clean` reprova todo texto que o templatize mudaria,
+        # QUALQUER carta começando por boleto / sinistro / apólice / protocolo /
+        # atendimento era marcada como PII e nunca chegava ao RAG. Medido em
+        # 29/07/2026: 51 das 306 barradas — 17% — eram conhecimento legítimo
+        # jogado fora, e nenhuma delas tinha dado de pessoa.
+        #
+        # Com dois-pontos é rótulo de formulário e o valor é do cliente. Sem
+        # dois-pontos, só é valor se PARECER valor: começa com dígito
+        # ("Assistência 8923467") ou é um código/nome em caixa alta
+        # ("Placa QJQ0A91"). Prosa em minúscula é frase, não campo.
+        if ":" not in m.group(1):
+            primeira = val.split()[0]
+            parece_valor = primeira[0].isdigit() or (
+                len(primeira) >= 2 and primeira.upper() == primeira
+                and any(c.isalnum() for c in primeira))
+            if not parece_valor:
+                return m.group(0)
         return f"{m.group(1)}{{VALOR}}"
     s = _LABELED_VALUE.sub(_mask_labeled, s)
     return s
