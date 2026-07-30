@@ -171,17 +171,72 @@ def curar_sync(aplicar: bool = True) -> Dict[str, Any]:
             "juntadas": len(copias), "ideias_distintas": len(ficam), "aplicado": aplicar}
 
 
+def reconciliar_indice_sync(limite: int = 500) -> Dict[str, int]:
+    """Tira do Qdrant os pontos de cartas que já não estão publicadas.
+
+    Por que o banco sozinho não resolve
+    -----------------------------------
+    Despublicar são dois movimentos: mudar o status e apagar o vetor. Quem muda
+    o status é o banco; quem apaga o vetor é o Qdrant. Quando o segundo falha —
+    rede, credencial ausente, script rodando fora do servidor — o primeiro já
+    aconteceu, e sobra o pior estado possível: uma carta que a auditoria vê como
+    removida e a busca continua entregando.
+
+    Marcar `qdrant_pendente` no lugar de fingir sucesso transforma essa falha em
+    trabalho pendente. Aqui ela é feita, com a credencial de quem roda no
+    servidor, e a marca sai.
+    """
+    from app.core.database import get_supabase_client
+    from app.services.attendance_distiller import despublicar_carta_sync
+
+    db = get_supabase_client()
+    pendentes = (db.client.table("knowledge_cards").select("id, status")
+                 .eq("pii_check->>qdrant_pendente", "true")
+                 .limit(max(1, min(int(limite or 500), 2000))).execute().data) or []
+
+    limpas = falhas = 0
+    for c in pendentes:
+        try:
+            # `despublicar_carta_sync` já apaga o ponto e, se conseguir, grava o
+            # status. Aqui o status certo já está no banco, então só interessa
+            # que o ponto saia; passar o status atual evita reescrevê-lo.
+            if despublicar_carta_sync(str(c["id"]), motivo=str(c.get("status") or "superseded")):
+                atual = (db.client.table("knowledge_cards").select("pii_check")
+                         .eq("id", c["id"]).limit(1).execute().data or [{}])
+                marca = dict((atual[0] or {}).get("pii_check") or {})
+                marca.pop("qdrant_pendente", None)
+                db.client.table("knowledge_cards").update(
+                    {"pii_check": marca}).eq("id", c["id"]).execute()
+                limpas += 1
+            else:
+                falhas += 1
+        except Exception as exc:  # noqa: BLE001 — um ponto ruim não trava o resto
+            falhas += 1
+            logger.warning("[CARTAS] reconciliação falhou em %s: %s",
+                           c["id"], type(exc).__name__)
+
+    if limpas or falhas:
+        logger.info("[CARTAS] reconciliação: %d pontos removidos · %d pendentes",
+                    limpas, falhas)
+    return {"limpas": limpas, "falhas": falhas, "pendentes": len(pendentes)}
+
+
 def publicar_lote_sync(limite: int = 300) -> Dict[str, Any]:
     """Publica no RAG global as cartas que sobraram da curadoria.
 
     Uma de cada vez, marcando logo depois: se a rodada cair no meio, o que já
     foi publicado está marcado e a próxima continua de onde parou — nunca
     republica nem deixa metade sem ninguém saber qual metade.
+
+    Antes de publicar, reconcilia: carta errada que ficou no índice responde
+    junto com a certa que a substitui, e a busca não sabe qual das duas é a boa.
+    Tirar a velha primeiro é mais importante que colocar a nova.
     """
     from app.core.database import get_supabase_client
     from app.services.attendance_distiller import publish_card_sync
 
     db = get_supabase_client()
+    reconciliado = reconciliar_indice_sync()
     alvo = (db.client.table("knowledge_cards")
             .select("id, card_text, insurer_key, ramo")
             .eq("status", "pending_review")
@@ -213,4 +268,6 @@ def publicar_lote_sync(limite: int = 300) -> Dict[str, Any]:
             falhas += 1
             logger.warning("[CARTAS] publicação falhou: %s", type(exc).__name__)
 
-    return {"publicadas": publicadas, "falhas": falhas, "tentadas": len(alvo)}
+    return {"publicadas": publicadas, "falhas": falhas, "tentadas": len(alvo),
+            "indice_reconciliado": reconciliado.get("limpas", 0),
+            "indice_pendente": reconciliado.get("falhas", 0)}
