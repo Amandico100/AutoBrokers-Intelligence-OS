@@ -109,9 +109,21 @@ _PII_PATTERNS: List[Tuple[re.Pattern, str]] = [
     # a lista tinha "agência" e "conta" por extenso, e ninguém escreve por
     # extenso quando está com pressa. A exigência de DÍGITO no valor é o que
     # mantém isso seguro: "a CC do condomínio" não tem número e passa.
+    # O valor aceita PONTUAÇÃO DE SENHA, e um conector curto antes dele.
+    #
+    # A classe era `[\w@.\-]`, que para em `!` e `$`. Resultado medido no lote
+    # 010 da Resulta: a senha do banco da corretora saiu como
+    # `senha do banco {VALOR}!2026` — metade mascarada. Meia senha é pior que
+    # nenhuma: parece protegida e não está.
+    #
+    # O conector opcional (`é`, `e`, `=`) cobre "a senha é Xy9$Kl", que é como
+    # gente escreve. A exigência de DÍGITO segue sendo o que protege o
+    # conhecimento: "a senha do atendimento são os quatro últimos dígitos do
+    # telefone" não tem número junto ao rótulo e continua passando inteira.
     (re.compile(r"(?i)\b(banco|ag[êe]ncia|ag|conta corrente|conta|c/c|cc|pix|senha|"
                 r"login|usu[áa]rio|token)"
-                r"\s*[:.]?\s*(?=[\w@.\-/]*\d)[\w@.\-]{3,}"), r"\1 {VALOR}"),
+                r"\s*(?:[:.=]|\b[ée]\b)?\s*(?=[\w@.\-/!#$%&*+=?]*\d)"
+                r"[\w@.\-!#$%&*+=?]{3,}"), r"\1 {VALOR}"),
 ]
 
 # Rótulos de campo que costumam preceder um VALOR de cliente numa linha
