@@ -36,6 +36,9 @@ def _agora() -> datetime:
 class ArtifactService:
     def __init__(self, supabase_client: Any):
         self.db = getattr(supabase_client, "client", supabase_client)
+        # Um upsert por template por processo. Sem isto, toda criação de
+        # artefato faria uma escrita a mais numa tabela que quase nunca muda.
+        self._templates_conferidos: set = set()
 
     # ------------------------------------------------------------------
 
@@ -65,6 +68,7 @@ class ArtifactService:
         """Cria o artefato e a versão 1 em rascunho, com a marca já congelada."""
         from ..brand.capture import BrandCaptureService
 
+        self._garantir_template(template_key)
         marca = BrandCaptureService(self.db).snapshot_para_artefato(company_id)
 
         art = (self.db.table("artifacts").insert({
@@ -88,6 +92,48 @@ class ArtifactService:
                      detalhe={"template": template_key, "marca_padrao": marca.get("is_fallback")})
 
         return {"artifact": artefato, "version": versao, "brand": marca}
+
+    def _garantir_template(self, template_key: str) -> None:
+        """Põe no banco o template que o catálogo declara, se ele ainda não estiver lá.
+
+        Por que isto existe
+        -------------------
+        `artifacts.template_key` é chave estrangeira para `report_templates`. O
+        catálogo de verdade, porém, vive em Python (`templates.py`), e a
+        migration original não semeou nenhuma linha.
+
+        O resultado, medido em 30/07/2026: dos 19 templates do catálogo, 8
+        estavam no banco e 11 não. Entre os 11 ausentes estavam
+        `briefing.daily_operational` e `briefing.weekly_executive` — justamente
+        os dois que o briefing diário usa. Toda criação de artefato morria em
+        violação de chave estrangeira, calada, e o banco mostrava
+        `artifacts = 0` com dezessete briefings parados em `pending`: não havia
+        o que entregar.
+
+        Semear uma vez conserta o passado e não impede o retorno: o próximo
+        template escrito em Python volta a faltar no banco. Como a fonte é o
+        catálogo, é ele que deve mandar — e a hora de sincronizar é a hora do
+        uso, que é a única em que se sabe que o template é necessário.
+        """
+        if template_key in self._templates_conferidos:
+            return
+        try:
+            from .templates import POR_CHAVE
+
+            t = POR_CHAVE.get(template_key)
+            if t is not None:
+                self.db.table("report_templates").upsert({
+                    "template_key": t.key, "name": t.name,
+                    "description": t.description, "category": t.category,
+                    "narrative_shape": t.narrative_shape,
+                    "audience": getattr(t, "audience", "internal"),
+                }, on_conflict="template_key", ignore_duplicates=True).execute()
+        except Exception as exc:  # noqa: BLE001
+            # Não derruba a criação: se o template já existir, o insert seguinte
+            # funciona; se não existir, a FK dará o erro claro logo abaixo.
+            logger.warning("[ARTIFACTS] não consegui garantir o template %s: %s",
+                           template_key, type(exc).__name__)
+        self._templates_conferidos.add(template_key)
 
     def nova_versao(self, *, company_id: str, artifact_id: str, payload: dict,
                     composition: list[dict], data_sources: Optional[list[dict]] = None,
