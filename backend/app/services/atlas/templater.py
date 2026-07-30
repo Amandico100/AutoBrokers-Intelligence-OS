@@ -84,6 +84,25 @@ _PII_PATTERNS: List[Tuple[re.Pattern, str]] = [
     # quem tem a string cobra em nome de quem a gerou. Começa sempre por 000201
     # (payload format indicator do BR Code) e vem numa tacada só.
     (re.compile(r"\b000201[0-9A-Za-z.\-*+/:]{25,}"), "{PIX_COPIA_E_COLA}"),
+    # SEGREDO LONGE DO RÓTULO.
+    #
+    # A regra de rótulo exige o valor logo depois dele. Estes três formatos, do
+    # lote 020, põem palavras no meio:
+    #
+    #     "A senha para abrir o PDF e os 5 primeiros digitos do seu cpf 91227"
+    #     "senha do arquivo: 91227"
+    #     "o codigo de seguranca do atendimento e 4471"
+    #
+    # Aqui a unidade é a LINHA: se ela fala de senha, código de acesso/segurança
+    # ou token, toda sequência de QUATRO ou mais dígitos nela é segredo.
+    #
+    # Quatro e não três de propósito: "os 5 primeiros dígitos" sobrevive, e a
+    # instrução continua legível — o que se perde é o número, que é o segredo.
+    # E a regra só age na linha que já se declara sobre credencial, então
+    # "o boleto vence em 10 dias" nunca é tocado.
+    (re.compile(r"(?im)^(?=.*(?:senha|c[óo]digo de (?:seguran[çc]a|acesso)|token))"
+                r"(.*?)(?<!\d)(\d{4,})(?!\d)"),
+     lambda m: f"{m.group(1)}{{SEGREDO}}"),
     # VALOR EM REAIS. Franquia de um segurado, indenização de um sinistro,
     # prejuízo apurado — número que só vale para aquele caso.
     #
