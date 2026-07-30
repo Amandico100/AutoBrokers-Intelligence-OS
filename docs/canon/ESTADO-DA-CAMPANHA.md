@@ -147,7 +147,7 @@ toda rodada, para sempre, em silêncio.
 | 16 | **Botão interativo chegando com `options: []`** | 146 telas da Porto — §17 |
 | 17 | **Auditoria dos corredores** — Founder 30/07, §18 | não iniciada |
 | 18 | **Corredores de CONVERSA de cobrança** (auxiliar) — §18 | não iniciada |
-| 19 | Despublicar 8 cartas contraditórias (Porto boleto, prazo do prestador) | caminho pronto |
+| 19 | **Despublicar cartas erradas — lista em §19** | caminho pronto, 6 famílias |
 
 ---
 
@@ -644,3 +644,75 @@ Prioridade dentro de sinistro:
    franquias diferentes
 4. **prazo** — vistoria, liberação, reanálise de recusa
 5. **conduta na abertura** — o que perguntar antes de abrir, na ordem
+
+---
+
+## 19. Lista de despublicação — cartas erradas no RAG (30/07)
+
+O caminho existe desde 30/07 (`despublicar_carta_sync`). Esta é a lista, em ordem
+de gravidade. **Publicar o texto novo ANTES de tirar o velho**, para não abrir
+buraco no meio.
+
+### 19.1 Allianz: "20 dias e a cobertura cai" — ERRA CONTRA O SEGURADO
+
+Cartas dos lotes 003 a 006 dizem que o pagamento em até 20 dias após o
+vencimento não afeta a cobertura, e que **depois disso a cobertura cai**.
+
+Nos lotes 013 e 014 a Allianz aparece **14 vezes** e nunca assim. O único prazo é
+a **data limite impressa no documento**, cerca de sete semanas depois do
+vencimento, com juros diários. A atendente afirma ao segurado, literal:
+*"continua segurado sim… tem cobertura até lá"*.
+
+**Esta é a pior direção de erro possível.** Um segurado que acredita estar sem
+cobertura deixa de acionar assistência a que tem direito, ou compra outro seguro
+sem precisar. Errar dizendo que tem cobertura quando não tem é grave; errar
+dizendo que não tem quando tem é grave **e** ninguém reclama, então nunca se
+descobre.
+
+Fatos corretos em `73d1ab0e` e `3a2684e3`. Divergência registrada em `5f5861fe`,
+`d22a99c8` e `3099e200` — três lotes discordando da mesma regra.
+
+### 19.2 Yelum: "QRCode PIX vale 24 horas" — CONTAMINAÇÃO ENTRE SEGURADORAS
+
+Carta do lote 002. Nos cinco PIX de Yelum dos lotes 013/014 o código vem com
+vencimento **dias à frente**. As 24 horas são da **Youse**, não da Yelum.
+
+É exatamente o erro que o Founder temia quando pediu organização por seguradora:
+a regra de uma atribuída a outra. Fato corrigido em `879f0899`.
+
+### 19.3 Porto: 38 x 55 dias
+
+Lote 011 diz 55; lotes 010 e 013 dizem 38, "conforme instruções no próprio
+boleto". Uma das duas está errada. **A carta segura é "o prazo é o que está
+impresso no documento"** — que é verdadeira nos dois casos e não depende de
+adivinhar qual conversa era mais recente.
+
+### 19.4 Porto: "emite boleto atualizado" — SEIS cartas
+
+A Porto deixou de emitir. Três conversas independentes mais as instruções
+impressas. Ids: `504d26d1`, `85dc5d32`, `4fec304f`, `0d30578f`, `e3616c1d`,
+`a5184ce0`. Substituta já publicada: `5240a7ca`.
+
+### 19.5 Youse: "gera boleto de prazo estendido" — falta o recorte
+
+O próprio especialista da Youse informou o limite: **acima de nove dias de
+atraso não há boleto, só PIX**. Canal oficial, então o fato novo já entrou
+(`052aac1a`); a carta antiga precisa do recorte, não da remoção.
+
+### 19.6 Prazo de retorno do prestador: 10 x 20 dias
+
+Duas cartas dizem 10; a mensagem oficial de agendamento da Porto diz **20 dias
+corridos** para comprar a peça e pedir o retorno. Prevalece o canal oficial.
+
+---
+
+### A lição que essas seis carregam
+
+**Conhecimento de seguro tem prazo de validade, e a base não sabe disso.** Cinco
+das seis famílias não são erro de extração — são regra que MUDOU, ou regra de uma
+seguradora atribuída a outra. Nenhum teste pega isso; só um leitor comparando
+lotes distantes.
+
+Por isso a instrução dada aos subagentes em 30/07 — *"se uma carta anterior
+parecer desatualizada, diga explicitamente"* — vale mais que qualquer verificação
+automática que eu escrevesse. Foi ela que produziu esta lista.
