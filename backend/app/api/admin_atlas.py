@@ -37,9 +37,15 @@ async def observer_report(_: Any = Depends(require_master_admin)) -> Dict[str, A
         sessions = (supabase.client.table("observed_sessions")
                     .select("insurer_key, counterparty, status, started_at, last_event_at")
                     .order("last_event_at", desc=True).limit(10).execute())
+        from app.services.atlas.observer_intake import sem_coordenadas
+
         rows = []
         for e in (events.data or []):
-            rows.append({**e, "text": (str(e.get("text") or "")[:120] or None)})
+            # `media_meta` guarda `mediaKey`, que é chave de descriptografia.
+            # Ela precisa estar no banco para a mídia ser recuperável e não
+            # pode sair numa resposta HTTP: aqui vira presença/ausência.
+            rows.append({**e, "text": (str(e.get("text") or "")[:120] or None),
+                         "media_meta": sem_coordenadas(e.get("media_meta"))})
         return {"events": rows, "sessions": sessions.data or []}
 
     out = await asyncio.to_thread(_query)

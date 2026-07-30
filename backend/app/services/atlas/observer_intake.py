@@ -29,6 +29,35 @@ from typing import Any, Dict, Optional, Set, Tuple
 
 logger = logging.getLogger(__name__)
 
+# O que permite buscar e descriptografar uma mídia no WhatsApp.
+#
+# Fica numa constante só, e não espalhado em literais, porque a lista tem dois
+# usos que precisam andar juntos: quem GRAVA (a captura, logo abaixo) e quem
+# ESCONDE (`sem_coordenadas`, usado por toda leitura que sai do backend).
+# Separadas, acrescentar uma chave nova no gravador e esquecer do escondedor
+# publicaria um segredo — e é exatamente o tipo de esquecimento que ninguém
+# percebe, porque o dado continua funcionando.
+COORDENADAS_DE_MIDIA = ("directPath", "mediaKey", "fileEncSha256", "fileSha256",
+                        "mediaKeyTimestamp", "url")
+
+
+def sem_coordenadas(meta: Optional[Dict[str, Any]]) -> Optional[Dict[str, Any]]:
+    """Troca as coordenadas de download por presença/ausência.
+
+    `mediaKey` é chave de descriptografia. Ela precisa existir no banco para a
+    mídia ser recuperável, e não pode aparecer em resposta de API, log ou
+    relatório — CLAUDE.md §13.3: mostrar presença, nunca o valor.
+    """
+    if not isinstance(meta, dict):
+        return meta
+    limpo = {k: v for k, v in meta.items() if k not in COORDENADAS_DE_MIDIA}
+    achadas = [k for k in COORDENADAS_DE_MIDIA if meta.get(k) not in (None, "")]
+    if achadas:
+        limpo["download"] = "recuperavel"
+    elif str(meta.get("kind") or "") in ("audio", "image", "video", "document"):
+        limpo["download"] = "sem coordenadas"
+    return limpo
+
 _SESSION_GAP = timedelta(hours=2)
 _RAW_CAP_BYTES = 50_000
 
@@ -140,6 +169,28 @@ def _extract_content(message: Dict[str, Any]) -> Tuple[str, Optional[str], Optio
                         meta[destino] = int(valor)
                     except (TypeError, ValueError):
                         pass
+
+            # AS COORDENADAS DE DOWNLOAD — sem elas a mídia é irrecuperável.
+            #
+            # Medido em 30/07/2026: 3.653 áudios capturados, ZERO com bytes
+            # guardados e ZERO com chave de download. Dentro deles estava o
+            # treinamento de emissão de seis seguradoras, que só existe em
+            # áudio. Não é material perdido por descuido de ninguém: a captura
+            # guardava a FICHA (duração, tamanho, formato) e descartava o que
+            # permite buscar o conteúdo.
+            #
+            # O worker de mídia recebia o payload inteiro pela fila do Redis e
+            # funcionava — enquanto a fila existisse. Ela expira em 3 dias.
+            # Depois disso, ninguém no sistema sabia mais onde estava o áudio,
+            # porque a única cópia das coordenadas era a que tinha evaporado.
+            #
+            # Guardar aqui torna a mídia recuperável enquanto o WhatsApp a
+            # mantiver no servidor, mesmo que a fila caia, o worker falhe ou o
+            # processamento só aconteça semanas depois.
+            for chave in COORDENADAS_DE_MIDIA:
+                valor = m.get(chave)
+                if valor not in (None, ""):
+                    meta[chave] = valor if isinstance(valor, (str, int)) else str(valor)
             return kind, str(m.get("caption") or ""), None, meta
 
     # Respostas estruturadas que o humano ENVIA (clique de lista/botão/flow):
