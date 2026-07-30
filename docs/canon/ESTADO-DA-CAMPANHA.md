@@ -149,6 +149,7 @@ toda rodada, para sempre, em silêncio.
 | 18 | **Corredores de CONVERSA de cobrança** (auxiliar) — §18 | não iniciada |
 | 19 | **Despublicar/reescrever cartas erradas — §19 e §20** | caminho pronto |
 | 20 | **Regra por APÓLICE: carta ensina onde ler — §20** | achado 30/07 |
+| 21 | **As nove lacunas do acervo — §21** | mapa da próxima fase |
 
 ---
 
@@ -789,3 +790,121 @@ Já visível nos lotes lidos até aqui:
 apólice**. O conserto delas não é remover, é reescrever para ensinar a
 verificar. Registrar prazo como número fixo é o defeito; registrar onde o número
 mora é a carta.
+
+---
+
+## 21. As nove lacunas do acervo (30/07) — o que escrever a seguir
+
+Pedi ao subagente do último lote que, em vez de escrever mais cartas, lesse os
+**52 destilados** e dissesse o que **falta**. Ele mediu cada lacuna cruzando o
+texto das cartas com o das conversas e com as `flags` dos destiladores
+anteriores. É o mapa da próxima fase.
+
+Base: **3.990 conversas destiladas, 4.478 cartas** no conjunto lido.
+
+### 1. Prazo e caminho da reanálise de recusa — IMPACTO MÁXIMO
+
+20 cartas falam de reanálise. **Zero** dizem em quanto tempo o segurado pode
+pedir, quantas vezes cabe, e o que reinicia a contagem.
+
+Dois destiladores independentes registraram a mesma pergunta sem resposta, um
+deles literalmente: *"é uma lacuna de conhecimento que aparece na operação e não
+está respondida em nenhuma conversa"*.
+
+**Recusa é o momento de maior risco de perder o cliente, e o agente não tem o
+que responder.** Não sai de conversa — sai de perguntar à seguradora.
+
+### 2. Sinistro residencial de CONTEÚDO — os bens do morador
+
+Só 9 cartas mencionam conteúdo/bens móveis. O acervo está fortemente inclinado ao
+**prédio**: área comum, tubulação, telhado, elevador, condomínio como pessoa
+jurídica.
+
+Uma flag registra a própria atendente dizendo que **nunca atendeu esse tipo de
+sinistro** — e é o ramo principal da corretora.
+
+### 3. Assistência residencial: regra do prestador e da peça
+
+153 sessões de assistência residencial no corpus. As perguntas que ficam sem
+resposta são sempre as mesmas três:
+
+- posso chamar um técnico meu ou tem de ser credenciado?
+- o encanador que começou volta para terminar?
+- o que faço com a peça que já comprei?
+
+Só 11 cartas tratam credenciado × livre escolha, e **uma** trata carência.
+**É o serviço de maior volume e o de menor densidade de carta.**
+
+### 4. Rateio / subseguro / capital segurado insuficiente — ZERO cartas
+
+É a explicação padrão de por que a indenização sai **abaixo** do prejuízo em
+condomínio. Uma conversa pergunta e fica sem resposta.
+
+Enquanto ninguém escrever, **o agente vai prometer o prejuízo cheio e a
+seguradora vai pagar proporcional.**
+
+### 5. "Súbito e imprevisto" — a regra-mãe do enquadramento — ZERO cartas
+
+O acervo tem exclusões **enumeradas** e boas: desgaste natural, deterioração
+gradativa, vício próprio, corrosão, umidade, chuva. Mas não tem o **conceito**
+que permite responder *"isso é coberto?"* para um evento que não está em lista
+nenhuma.
+
+**Hoje o agente só sabe responder o que já viu acontecer.** Esta é a carta que
+transforma um índice em entendimento.
+
+### 6. Renovação e reajuste do residencial/condomínio
+
+31 sessões de renovação no corpus inteiro, 3 residenciais, 2 cartas sobre
+reajuste. Uma flag mostra o segurado misturando sinistro e renovação no mesmo
+contato e *"a renovação não foi respondida nem encaminhada"*; outra mostra lead
+de cotação sem atendimento depois do repasse. **Chega na porta e ninguém
+conduz.**
+
+### 7. Segundo orçamento: quantos e quando
+
+16 conversas mencionam pedir outro orçamento, 8 cartas, e há pergunta direta sem
+resposta. Existe carta boa sobre **discriminar** material e mão de obra — falta
+*quantos* e *quando*.
+
+### 8. Documento próprio do condomínio
+
+"Livro de ocorrência" aparece como exigência da reguladora em 3 conversas e tem
+2 cartas. **Quem coletar documentação de condomínio pela lista genérica de
+residencial vai entregar incompleto.**
+
+### 9. Imóvel desocupado, vago ou em obra — INFERÊNCIA, não medição
+
+Zero cartas e **zero conversas**. É exclusão e agravamento clássicos do produto,
+mas não há evidência na operação. **Lacuna por dedução, não por demanda** — e
+está marcada assim de propósito.
+
+---
+
+### A não-lacuna que vale separar
+
+*Prazo de retorno depois da vistoria* aparece como pergunta sem resposta numa
+conversa, mas o acervo **tem** a carta certa — 13 delas dizendo que os 30 dias
+contam do último documento entregue, não da abertura.
+
+**Ali o defeito não é de conhecimento, é de uso.** Escrever outra carta não
+resolve nada; o que resolve é o agente achar a que existe.
+
+Essa distinção importa para a próxima fase: **lacuna de conteúdo se preenche
+escrevendo; lacuna de recuperação se resolve na busca.** Confundir as duas
+produz um acervo gordo que continua não respondendo.
+
+---
+
+### De onde vem cada resposta
+
+```
+das seguradoras ...... 1 (reanálise) · 4 (rateio) · 5 (súbito e imprevisto)
+                       9 (imóvel vago)
+das conversas ........ 2 (conteúdo) · 3 (assistência) · 6 (renovação)
+                       7 (orçamento) · 8 (livro de ocorrência)
+```
+
+**Quatro das nove não saem de conversa nenhuma** — nem com mais dez mil
+atendimentos. Saem das condições gerais e do canal do corretor, que é exatamente
+a campanha de acervo prevista em `CURADORIA-POR-SUBAGENTES.md` §6.
