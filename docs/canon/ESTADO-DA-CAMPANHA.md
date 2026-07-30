@@ -145,6 +145,9 @@ toda rodada, para sempre, em silêncio.
 | 14 | Curadoria de áudio — instrução pronta | aguarda o texto terminar |
 | 15 | ~~Tokio com 12%~~ | **investigado: não é defeito, §17** |
 | 16 | **Botão interativo chegando com `options: []`** | 146 telas da Porto — §17 |
+| 17 | **Auditoria dos corredores** — Founder 30/07, §18 | não iniciada |
+| 18 | **Corredores de CONVERSA de cobrança** (auxiliar) — §18 | não iniciada |
+| 19 | Despublicar 8 cartas contraditórias (Porto boleto, prazo do prestador) | caminho pronto |
 
 ---
 
@@ -588,3 +591,56 @@ A cura é na captura (`observer_intake`), não no leitor: descobrir por que
 `options` vem vazio para esse tipo de mensagem. **Pendência registrada, não
 corrigida** — mexer na captura sem entender o payload arriscaria o que hoje
 funciona.
+
+## 18. Cobrança é para OUTRO trabalhador — e isso muda o que vale escrever
+
+Existem dois consumidores diferentes deste conhecimento, e eles nascem em
+pontas opostas da conversa:
+
+| | **Agente de atendimento** | **Auxiliar de cobrança** |
+|---|---|---|
+| quem começa | o **segurado** manda mensagem | a **corretora** envia o boleto |
+| assunto | assistência, sinistro, apólice | parcela em aberto, inadimplência |
+| o que precisa saber | como conduzir, o que cobre | o que responder DEPOIS do envio |
+
+A prática das duas corretoras é: a atendente entra no portal da seguradora, vê
+as parcelas em aberto e **envia o boleto ao segurado**. O que acontece a seguir
+— as perguntas dele, as objeções, o que a seguradora aceita — é o material do
+**Auxiliar de cobrança**, não do agente de atendimento.
+
+### O que isso muda na prática
+
+**A mensagem-modelo de cobrança continua saturada.** Já existem 20+ cartas
+canônicas de recusa de cartão, uma por seguradora e produto. Não escreva outra.
+
+**Mas a CONVERSA DEPOIS do boleto é ouro, e é escassa.** Escreva sempre que
+aparecer:
+
+- o que o segurado pergunta ao receber o boleto, e a resposta certa
+- o que muda quando ele já pagou, pagou errado, ou pagou o boleto de outra
+  parcela
+- o que a seguradora aceita e não aceita depois do vencimento — reprogramar,
+  atualizar, quantas vezes
+- o que acontece com a cobertura no meio do caminho
+- quando a corretora **não pode** resolver e o segurado tem de falar com a
+  seguradora
+- juros, multa, quem calcula, e se a corretora pode abater
+
+Cada seguradora e cada produto tem regra própria nisso. Amarre sempre à
+seguradora **e** ao produto: a Allianz de auto e a de condomínio têm prazos
+diferentes, e informar o errado é cobrança indevida.
+
+### Sinistro: escreva tudo, mesmo sem corredor
+
+Ainda não existe corredor de acionamento para sinistro — o agente vai coletar e
+passar para um humano. **Isso não diminui o valor do conhecimento, aumenta.**
+Quem recebe o caso precisa que a coleta tenha vindo completa e certa.
+
+Prioridade dentro de sinistro:
+
+1. **documento exigido** por seguradora, por cobertura e por tipo de evento
+2. **exclusão** — o que não é coberto, e por quê
+3. **enquadramento** — quando o mesmo evento cabe em duas coberturas com
+   franquias diferentes
+4. **prazo** — vistoria, liberação, reanálise de recusa
+5. **conduta na abertura** — o que perguntar antes de abrir, na ordem
