@@ -94,8 +94,14 @@ _PII_PATTERNS: List[Tuple[re.Pattern, str]] = [
     # "conta 98765-4" de "a conta corrente do segurado deve ser informada" —
     # prosa não tem número no meio. Sem essa exigência, a regra comeria a
     # metade das cartas de cobrança, que é o defeito que já consertamos hoje.
-    (re.compile(r"(?i)\b(banco|ag[êe]ncia|conta|pix|senha|login|usu[áa]rio|token)"
-                r"\s*:?\s*(?=[\w@.\-]*\d)[\w@.\-]{3,}"), r"\1 {VALOR}"),
+    # As ABREVIAÇÕES entram junto. Um subagente destilando o lote 006 da Resulta
+    # achou o bloco bancário de um condomínio escrito "AG 1234 C/C 56789-0" —
+    # a lista tinha "agência" e "conta" por extenso, e ninguém escreve por
+    # extenso quando está com pressa. A exigência de DÍGITO no valor é o que
+    # mantém isso seguro: "a CC do condomínio" não tem número e passa.
+    (re.compile(r"(?i)\b(banco|ag[êe]ncia|ag|conta corrente|conta|c/c|cc|pix|senha|"
+                r"login|usu[áa]rio|token)"
+                r"\s*[:.]?\s*(?=[\w@.\-/]*\d)[\w@.\-]{3,}"), r"\1 {VALOR}"),
 ]
 
 # Rótulos de campo que costumam preceder um VALOR de cliente numa linha
