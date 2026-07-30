@@ -495,6 +495,16 @@ def _sinais_do_codigo() -> dict:
             "Boleto de seguro nao pago leva ao cancelamento"
         sinais["pii_rotulo_com_barra"] = templatize(
             "Cidade/CEP onde o reparo sera feito") == "Cidade/CEP onde o reparo sera feito"
+        sinais["pii_email"] = templatize("a@b.com.br") != "a@b.com.br"
+        sinais["pii_numero_longo"] = templatize("protocolo: 999999999") != "protocolo: 999999999"
+        sinais["pii_senha_com_hifen"] = templatize("senha - Abc2026") != "senha - Abc2026"
+        # A inversa, e ela vale tanto quanto: o conhecimento tem de sobreviver.
+        # Se esta virar False, o mascarador ficou guloso e esta apagando carta.
+        sinais["conhecimento_sobrevive"] = (
+            templatize("A senha do atendimento sao os quatro ultimos digitos do telefone")
+            == "A senha do atendimento sao os quatro ultimos digitos do telefone"
+            and templatize("A assistencia cobre ate 200 km da residencia")
+            == "A assistencia cobre ate 200 km da residencia")
     except Exception:  # noqa: BLE001
         sinais["templater"] = "indisponivel"
     try:
