@@ -83,7 +83,7 @@ _PII_PATTERNS: List[Tuple[re.Pattern, str]] = [
     # acrescentasse deixaria o próximo passar, então a lista fecha com um
     # coringa: qualquer parâmetro cujo NOME contenha "chave", "token", "key",
     # "senha" ou "secret".
-    (re.compile(r"(?i)([?&][^=&\s]*(?:chave|token|key|senha|password|pwd|secret)"
+    (re.compile(r"(?i)([?&][^=&\s]*(?:chave|chnfe|chcte|token|key|senha|password|pwd|secret)"
                 r"[^=&\s]*=)[^\s&#]+"), r"\1{SEGREDO}"),
     # PAYLOAD PIX copia-e-cola. Não é credencial, é instrumento de pagamento:
     # quem tem a string cobra em nome de quem a gerou. Começa sempre por 000201
