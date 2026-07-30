@@ -139,3 +139,32 @@ Prioridade dentro de sinistro:
    franquias diferentes
 4. **prazo** — vistoria, liberação, reanálise de recusa
 5. **conduta na abertura** — o que perguntar antes de abrir, na ordem
+
+## Regra que é POR APÓLICE: ensine onde ler, não o que está escrito
+
+Franquia, limite, data limite de pagamento e relação entre coberturas **variam
+por apólice** — são contratados, não regulamentados.
+
+Medido em 30/07: num condomínio o mesmo vendaval cabia em vendaval (20%) e em
+vidros (10%), com escolha de franquia; em outro, a cobertura de vendaval excluía
+vidros e a de vidros excluía vendaval, e o evento **ficou sem cobertura
+nenhuma**. As duas conversas estão certas. Uma carta que enuncie qualquer das
+duas como regra geral está errada.
+
+Três sinais de que a regra é por apólice, e qualquer um basta:
+
+1. a conversa cita planilha de coberturas, condições da apólice, "verificar na
+   apólice";
+2. duas conversas da MESMA seguradora e MESMO produto discordam e nenhuma é erro;
+3. o valor é franquia, limite ou teto.
+
+Nesses casos escreva a carta que **ensina a verificar**:
+
+> "A relação entre a cobertura de vendaval e a de vidros varia por apólice:
+> existem apólices em que o mesmo evento cabe nas duas com franquias
+> diferentes, e apólices em que cada uma exclui a outra e o evento fica sem
+> enquadramento. A planilha de coberturas tem de ser lida antes de informar o
+> segurado."
+
+É menos satisfatória e é a única honesta. **Registrar prazo como número fixo é o
+defeito; registrar onde o número mora é a carta.**

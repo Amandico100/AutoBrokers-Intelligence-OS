@@ -147,7 +147,8 @@ toda rodada, para sempre, em silêncio.
 | 16 | **Botão interativo chegando com `options: []`** | 146 telas da Porto — §17 |
 | 17 | **Auditoria dos corredores** — Founder 30/07, §18 | não iniciada |
 | 18 | **Corredores de CONVERSA de cobrança** (auxiliar) — §18 | não iniciada |
-| 19 | **Despublicar cartas erradas — lista em §19** | caminho pronto, 6 famílias |
+| 19 | **Despublicar/reescrever cartas erradas — §19 e §20** | caminho pronto |
+| 20 | **Regra por APÓLICE: carta ensina onde ler — §20** | achado 30/07 |
 
 ---
 
@@ -716,3 +717,75 @@ lotes distantes.
 Por isso a instrução dada aos subagentes em 30/07 — *"se uma carta anterior
 parecer desatualizada, diga explicitamente"* — vale mais que qualquer verificação
 automática que eu escrevesse. Foi ela que produziu esta lista.
+
+---
+
+## 20. O terceiro eixo: existe regra que é POR APÓLICE (30/07)
+
+Eu vinha organizando o conhecimento em dois eixos — **seguradora** e **produto**.
+O lote 015 mostrou que falta um terceiro, e que ignorá-lo faz o agente prometer
+cobertura que não existe.
+
+### O caso
+
+Um evento de vendaval quebrou o blindex da cerca da piscina de um condomínio.
+
+```
+lote 010 (apólice A) ... o mesmo evento cabe em DUAS coberturas, com franquias
+                         diferentes: vendaval 20% dos prejuízos, vidros 10%.
+                         A escolha muda quanto o condomínio paga.
+
+lote 015 (apólice B) ... a cobertura de vendaval EXCLUI vidros e a de vidros
+                         EXCLUI vendaval. O evento fica sem enquadramento
+                         possível — não há cobertura nenhuma.
+```
+
+**As duas estão certas.** São apólices diferentes, com planilhas de cobertura
+diferentes. O que está errado é uma carta que enuncie qualquer das duas como
+regra geral.
+
+### O que isso muda
+
+Uma carta que diz *"vendaval e vidros podem ser enquadrados nas duas coberturas"*
+faz o agente prometer escolha de franquia a um condomínio cuja apólice exclui as
+duas. Pior: o segurado ouve que tem cobertura e não tem.
+
+**A carta certa não afirma o enquadramento — ensina a verificar:**
+
+> *"A relação entre a cobertura de vendaval e a de vidros varia por apólice:
+> existem apólices em que o mesmo evento cabe nas duas, com franquias
+> diferentes, e apólices em que cada uma exclui a outra e o evento fica sem
+> enquadramento. A planilha de coberturas da apólice tem de ser lida antes de
+> informar o segurado."*
+
+Ela é menos satisfatória e é a única honesta.
+
+### Como reconhecer uma regra por apólice
+
+Três sinais, e qualquer um deles basta:
+
+1. a conversa cita **planilha de coberturas**, **condições da apólice** ou
+   **verificar na apólice**;
+2. duas conversas da MESMA seguradora e MESMO produto discordam, e nenhuma delas
+   é erro — é o caso deste lote;
+3. o valor é franquia, limite ou teto — que são contratados, não regulamentados.
+
+Nesses casos a carta ensina **onde ler**, não **o que está escrito**.
+
+### Onde mais isso aparece
+
+Já visível nos lotes lidos até aqui:
+
+- **data limite de pagamento** — a Allianz apareceu com ~50 dias em três casos,
+  e uma carta do mesmo lote veio **sem** data limite nenhuma. Não é número, é
+  campo do sistema.
+- **data limite da HDI** — a mesma data limite apareceu para parcelas com
+  vencimento separado por mais de um mês. Não é "N dias após o vencimento".
+- **franquia** — percentual e mínimo variam por apólice em todas as
+  seguradoras vistas.
+
+**Isto reclassifica parte da §19:** algumas das cartas que eu ia despublicar por
+"desatualizadas" não estão desatualizadas — estão **generalizando o que é por
+apólice**. O conserto delas não é remover, é reescrever para ensinar a
+verificar. Registrar prazo como número fixo é o defeito; registrar onde o número
+mora é a carta.
