@@ -150,6 +150,8 @@ toda rodada, para sempre, em silêncio.
 | 19 | **Despublicar/reescrever cartas erradas — §19 e §20** | caminho pronto |
 | 20 | **Regra por APÓLICE: carta ensina onde ler — §20** | achado 30/07 |
 | 21 | **As nove lacunas do acervo — §21** | mapa da próxima fase |
+| 22 | **Áudios perdidos; deploy ANTES de reconectar — §22** | achado 30/07 |
+| 23 | **Quatro lacunas escritas + o que NÃO foi escrito — §23** | 24 cartas |
 
 ---
 
@@ -908,3 +910,113 @@ das conversas ........ 2 (conteúdo) · 3 (assistência) · 6 (renovação)
 **Quatro das nove não saem de conversa nenhuma** — nem com mais dez mil
 atendimentos. Saem das condições gerais e do canal do corretor, que é exatamente
 a campanha de acervo prevista em `CURADORIA-POR-SUBAGENTES.md` §6.
+
+---
+
+## 22. Os áudios estão perdidos, e a captura foi consertada (30/07)
+
+Fui transcrever e não havia o que transcrever.
+
+```
+3.653 áudios registrados
+        0 com bytes guardados
+        0 com chave de download (mediaKey, directPath, url)
+       26 presos em `pending` · 11 com falha de HTTP
+```
+
+**A captura guardava a ficha e jogava fora o conteúdo.** Registrava duração,
+tamanho e formato; descartava `mediaKey` e `directPath`, que são o que o
+WhatsApp manda para permitir buscar e descriptografar depois.
+
+O worker de mídia recebia o payload inteiro pela fila do Redis e funcionava —
+**enquanto a fila existisse. Ela expira em três dias.** Depois disso a única
+cópia das coordenadas tinha evaporado.
+
+**Os 3.653 estão perdidos.** Inclusive o treinamento de emissão de seis
+seguradoras, que um destilador encontrou citado e que não existe escrito.
+
+### O conserto e a tensão que ele criou
+
+A captura agora guarda as coordenadas. E aí:
+
+> `mediaKey` **é** chave de descriptografia. Precisa existir no banco para a
+> mídia ser recuperável **e não pode sair em resposta de API** (§13.3).
+
+As duas exigências puxam para lados opostos. O relatório do observador devolvia
+`media_meta` cru — passaria a exibir a chave. Por isso a lista vive numa
+**constante só**, lida pelo gravador e pelo escondedor: duas listas paralelas
+significam que acrescentar uma chave ao gravador e esquecer do escondedor
+publica um segredo **sem ninguém perceber**, porque o dado continua funcionando.
+
+### A sequência mudou — deploy ANTES de reconectar
+
+Quando o WhatsApp reconecta, ele **re-entrega o histórico**. Com a correção no
+ar, as coordenadas dos áudios que ainda estiverem no servidor do WhatsApp são
+guardadas, e aí dá para transcrever.
+
+**Sem o deploy antes, a reconexão perde os áudios de novo, do mesmo jeito.**
+
+Quantos ainda existem lá é desconhecido — o WhatsApp poda mídia antiga. Pode ser
+nenhum. Mas é a única chance, e custa um deploy.
+
+---
+
+## 23. As quatro lacunas escritas (30/07) — 24 cartas
+
+Escritas a partir da lógica do produto, não de conversa, porque nenhuma conversa
+as responde. `seguradora` = null em todas: são regras do PRODUTO.
+
+```
+A  súbito e imprevisto ............ 7 cartas
+B  rateio / subseguro ............. 6
+C  imóvel desocupado ou em obra ... 5
+D  reanálise de recusa ............ 6
+```
+
+O subagente sondou o acervo antes de escrever e confirmou a auditoria:
+`rateio` 0 · `subseguro` 0 · `desocupad` 0 · `vago` 0 · `agravamento` 0 ·
+`súbito` 0 · `fortuito` 0. As 24 não colidem com nenhuma existente.
+Zero barradas por PII, zero dígitos em qualquer carta.
+
+**A carta que fecha a lacuna A**, e que transforma um índice em entendimento:
+
+> "Quando o segurado pergunta se algo está coberto e o evento não aparece em
+> lista nenhuma, a resposta se monta em três passos: o evento foi súbito e veio
+> de fora, existe cobertura contratada que o alcance, e a causa apurada não é
+> das excluídas. Faltando qualquer um dos três, não há indenização."
+
+**A carta que evita a promessa impossível (B):**
+
+> "São três motivos diferentes para a indenização vir abaixo do prejuízo, e eles
+> se somam: a franquia, que é descontada; o limite máximo daquela cobertura, que
+> é teto; e o rateio, que corta proporcionalmente. Verifique os três na apólice
+> antes de dar expectativa, porque explicar só a franquia deixa a impressão de
+> que a seguradora pagou menos do que devia."
+
+---
+
+### O que NÃO foi escrito — e por quê
+
+Esta lista vale tanto quanto as cartas. Num acervo que vai responder a segurado
+de verdade, **lacuna honesta é melhor que carta errada.**
+
+| # | não escrito | razão |
+|---|---|---|
+| 1 | número de dias para imóvel ser "vago" | varia por seguradora e produto |
+| 2 | percentual ou margem de dispensa de rateio | sem fonte de quão universal é |
+| 3 | **prazo da SUSEP para pagar após documentação completa** | **existe em circular — fonte identificável** |
+| 4 | prazo de resposta da ouvidoria | mesma razão |
+| 5 | prazo para pedir reanálise | **não existe como regra geral — e a carta diz isso** |
+| 6 | se dano consequente de causa gradual excluída é indenizado | é por apólice; a carta não afirma nem nega |
+| 7 | perda automática de garantia por não comunicar agravamento | a lei exige má-fé; escreveu "arrisca perder" |
+| 8 | rateio em auto | variantes de valor referenciado/determinado |
+| 9 | **se a apólice do condomínio alcança o interior das unidades** | **zero fonte — provavelmente a próxima lacuna real** |
+| 10 | procedimento na SUSEP e em plataforma de consumidor | escreveu só o certo: fiscaliza, não decide sinistro |
+
+**Os itens 3 e 9 são trabalho futuro com endereço.** O 3 tem fonte pública e
+citável (circular SUSEP); o 9 sai das condições gerais de uma apólice de
+condomínio. Nenhum dos dois sai de conversa.
+
+**O item 5 é a melhor resposta da campanha:** a lacuna de maior impacto foi
+respondida dizendo que a regra geral não existe — que é a verdade, e é o que
+impede o agente de inventar um prazo.
