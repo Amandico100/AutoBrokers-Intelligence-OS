@@ -157,6 +157,15 @@ _PII_PATTERNS: List[Tuple[re.Pattern, str]] = [
     #
     # Achado pelos subagentes nos lotes 007 e 008 da Resulta, em três conversas.
     (re.compile(r"(?i)R\$\s*\d{1,3}(?:[.\s]\d{3})*(?:,\d{2})?"), "{VALOR_RS}"),
+    # VALOR EM REAIS SEM O "R$".
+    #
+    # Os lotes 032 e 033 trouxeram franquia e prejuízo escritos só como
+    # "2.480,00" e "1.250,50" — a regra anterior exigia o símbolo.
+    #
+    # Exige separador de milhar OU três dígitos antes da vírgula, para que
+    # "1,50 metros" e "0,5%" não sejam tocados. Continua valendo que o que
+    # ENSINA é percentual e prazo, não cifra.
+    (re.compile(r"(?<![\d,.])(?:\d{1,3}(?:\.\d{3})+|\d{3,}),\d{2}(?![\d])"), "{VALOR_RS}"),
     # RÓTULO NO MEIO DA LINHA. `_LABELED_VALUE` está ancorado em `^`, porque
     # nasceu para ler TELA de comprovante, onde cada campo ocupa uma linha. Mas
     # gente escreve num parágrafo só: "segue os dados banco 341 agencia 1234
