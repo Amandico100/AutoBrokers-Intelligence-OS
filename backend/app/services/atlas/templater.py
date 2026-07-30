@@ -78,8 +78,13 @@ _PII_PATTERNS: List[Tuple[re.Pattern, str]] = [
     # SEGREDO DENTRO DE URL. A regra de rótulo exige o rótulo no começo da
     # linha; `...artigo?auth_token=abc123` esconde a credencial no meio de um
     # link que parece inofensivo. Achado no lote 011 da Resulta, 29/07/2026.
-    (re.compile(r"(?i)([?&](?:auth_token|access_token|token|api_?key|senha|password|pwd)=)[^\s&#]+"),
-     r"\1{SEGREDO}"),
+    # `chave_acesso` e `chNFe` entraram depois: o lote 031 trouxe URL de download
+    # de nota fiscal com a chave na query string. Cada nome novo que eu
+    # acrescentasse deixaria o próximo passar, então a lista fecha com um
+    # coringa: qualquer parâmetro cujo NOME contenha "chave", "token", "key",
+    # "senha" ou "secret".
+    (re.compile(r"(?i)([?&][^=&\s]*(?:chave|token|key|senha|password|pwd|secret)"
+                r"[^=&\s]*=)[^\s&#]+"), r"\1{SEGREDO}"),
     # PAYLOAD PIX copia-e-cola. Não é credencial, é instrumento de pagamento:
     # quem tem a string cobra em nome de quem a gerou. Começa sempre por 000201
     # (payload format indicator do BR Code) e vem numa tacada só.
