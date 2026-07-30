@@ -327,7 +327,7 @@ def _chave_da_seguradora(nome: Any) -> str:
     try:
         from app.services.corridor_playbooks import normalize_insurer_key
 
-        return normalize_insurer_key(str(nome or ""))
+        return normalize_insurer_key(str(nome or ""), para="conhecimento")
     except Exception:  # noqa: BLE001
         return str(nome or "").strip().lower()
 

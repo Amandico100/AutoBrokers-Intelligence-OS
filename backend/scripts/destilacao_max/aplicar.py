@@ -54,7 +54,7 @@ def _distilled(d: dict) -> dict:
 
 def _cartas_de(d: dict) -> list:
     ramo = str(d.get("ramo") or "outro")
-    seg = normalize_insurer_key(str(d.get("seguradora") or "")) or None
+    seg = normalize_insurer_key(str(d.get("seguradora") or ""), para="conhecimento") or None
     if seg and not re.fullmatch(r"[a-z0-9_-]{2,40}", seg):
         seg = None
     saida = []

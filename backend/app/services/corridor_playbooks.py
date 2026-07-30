@@ -858,7 +858,8 @@ def list_playbooks() -> List[str]:
 # Azul é do grupo Porto MAS tem WhatsApp e URA próprios → corredor próprio.
 _INSURER_ALIASES = {
     "allianz": "allianz", "allianz seguros": "allianz",
-    "porto": "porto", "porto seguro": "porto", "itau": "porto", "itau seguros": "porto",
+    "porto": "porto", "porto seguro": "porto",
+    "itau": "itau", "itau seguros": "itau",
     "azul": "azul", "azul seguros": "azul",
     "hdi": "hdi", "hdi seguros": "hdi",
     "yelum": "yelum", "liberty": "yelum", "liberty seguros": "yelum", "libe": "yelum",
@@ -882,14 +883,34 @@ _INSURER_ALIASES = {
 }
 
 
-def normalize_insurer_key(insurer: str) -> str:
-    """Normaliza nome/sigla de seguradora para a chave canônica de playbook."""
+# QUEM OPERA A ASSISTÊNCIA DE QUEM.
+#
+# Isto NÃO é grafia alternativa — é fato de negócio: a carteira de auto do Itaú
+# é operada pela infraestrutura da Porto, e o corredor de acionamento tem de
+# apontar para lá. `test_spec031_auto_dispatch` cobre isso.
+#
+# Mas o Itaú vende vida e residencial em nome próprio, e um subagente
+# destilando o lote 043 mostrou o efeito de misturar os dois usos: "uma regra
+# específica do Itaú seria arquivada como Porto" — a mesma família do erro que
+# atribuiu à Yelum o prazo de PIX da Youse.
+#
+# Uma tabela, duas leituras. ACIONAR pergunta "por onde eu ligo"; ARQUIVAR
+# pergunta "de quem é esta regra". São perguntas diferentes e a resposta certa
+# é diferente.
+_OPERADO_POR = {"itau": "porto"}
+
+
+def normalize_insurer_key(insurer: str, para: str = "corredor") -> str:
+    """Chave canônica da seguradora.
+
+    `para="corredor"` (padrão): por onde se aciona. Aplica `_OPERADO_POR`.
+    `para="conhecimento"`: de quem é a regra. NÃO aplica — uma carta do Itaú
+    fica sob Itaú, senão o agente responde regra da Porto a segurado do Itaú.
+    """
     # `_` e `-` viram espaço antes de comparar: "tokio_marine" chega assim de
     # importação antiga, e para o regex o sublinhado é letra — `\btokio\b` não
     # casaria, e a chave sobreviveria separada da `tokio` de todas as outras.
     raw = re.sub(r"[^a-z0-9]+", " ", _norm(insurer)).strip()
-    if raw in _INSURER_ALIASES:
-        return _INSURER_ALIASES[raw]
     # PALAVRA INTEIRA, não pedaço de palavra.
     #
     # Isto era `if alias in raw`. Com "axa" na lista, "caixa seguradora" virava
@@ -897,10 +918,15 @@ def normalize_insurer_key(insurer: str) -> str:
     # respondendo regra da AXA para segurado da Caixa. Substring é aceitável
     # enquanto ninguém acrescenta um alias curto; o dia em que alguém
     # acrescenta, o erro é silencioso e sai errado para o cliente.
+    def _final(chave: str) -> str:
+        return _OPERADO_POR.get(chave, chave) if para == "corredor" else chave
+
+    if raw in _INSURER_ALIASES:
+        return _final(_INSURER_ALIASES[raw])
     for alias, key in _INSURER_ALIASES.items():
         if re.search(rf"\b{re.escape(alias)}\b", raw):
-            return key
-    return raw.split()[0] if raw else ""
+            return _final(key)
+    return _final(raw.split()[0]) if raw else ""
 
 
 def resolve_playbook_ref(insurer: str, line_kind: str = "auto", channel: str = "whatsapp") -> Optional[str]:

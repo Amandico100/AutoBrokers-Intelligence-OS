@@ -59,7 +59,10 @@ _PII_PATTERNS: List[Tuple[re.Pattern, str]] = [
     (re.compile(r"(?<![A-Za-z0-9])[A-Z]{3}[-\s]?\d[A-Z0-9]\d{2}(?![A-Za-z0-9])",
                 re.IGNORECASE), "{PLACA}"),
     (re.compile(r"\b\d{5}-?\d{3}\b"), "{CEP}"),
-    (re.compile(r"(?<!\d)(?:\+?55\s?)?\(?\d{2}\)?\s?9?\d{4}[-\s]?\d{4}(?!\d)"), "{TELEFONE}"),
+    # O `\s?` depois do 9 — é como muita gente escreve: "(51) 9 9999-8888".
+    # O padrão exigia o 9 colado no resto e deixava passar o formato mais comum
+    # em teclado de celular. Achado no lote 041 em 30/07/2026.
+    (re.compile(r"(?<!\d)(?:\+?55\s?)?\(?\d{2}\)?\s?9?\s?\d{4}[-\s]?\d{4}(?!\d)"), "{TELEFONE}"),
     (re.compile(r"\b\d{2}/\d{2}/\d{2,4}\b"), "{DATA}"),
     # O `(?=[\w-]*\d)` exige um DÍGITO no que vem depois da palavra.
     #
