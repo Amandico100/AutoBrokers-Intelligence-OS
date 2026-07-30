@@ -121,8 +121,20 @@ _PII_PATTERNS: List[Tuple[re.Pattern, str]] = [
     # conhecimento: "a senha do atendimento são os quatro últimos dígitos do
     # telefone" não tem número junto ao rótulo e continua passando inteira.
     (re.compile(r"(?i)\b(banco|ag[êe]ncia|ag|conta corrente|conta|c/c|cc|pix|senha|"
-                r"login|usu[áa]rio|token)"
-                r"\s*(?:[:.=]|\b[ée]\b)?\s*(?=[\w@.\-/!#$%&*+=?]*\d)"
+                r"login|usu[áa]rio|token|acesso|c[óo]digo)"
+                # O SEPARADOR TAMBÉM É HÍFEN E BARRA VERTICAL.
+                #
+                # Descoberto em 30/07/2026 varrendo os lotes 020-029 pela FORMA
+                # das linhas (letras viram `a`, dígitos viram `9`) — sem trazer
+                # um único valor para o contexto. A forma que apareceu 18 vezes:
+                #
+                #     aaaaa - aa999999          "senha - <valor>"
+                #     aaaaa - aaaaa9999!@
+                #
+                # É como se escreve uma lista de acessos de portal, e era o
+                # formato que o subagente do lote 023 tinha reportado como
+                # "o mascarador não trata senha". Tratava — só não com hífen.
+                r"\s*(?:[:.=\-–|]|\b[ée]\b)?\s*(?=[\w@.\-/!#$%&*+=?]*\d)"
                 r"[\w@.\-!#$%&*+=?]{3,}"), r"\1 {VALOR}"),
 ]
 
