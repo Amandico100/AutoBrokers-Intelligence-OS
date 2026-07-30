@@ -598,6 +598,17 @@ async def espelho_card_decide(card_id: str, body: Dict[str, Any],
     if not card:
         raise HTTPException(status_code=404, detail="card_not_found")
     if action == "reject":
+        # Carta JÁ PUBLICADA tem de sair do ÍNDICE, não só do banco. Antes,
+        # rejeitar mudava o `status` e o vetor continuava no Qdrant entregando a
+        # carta errada ao agente para sempre — e a tela dizia que estava
+        # resolvido, que é o pior formato de defeito.
+        if str(card.get("status") or "") == "published":
+            from app.services.attendance_distiller import despublicar_carta_sync
+
+            saiu = await asyncio.to_thread(despublicar_carta_sync, card_id, "rejected")
+            if not saiu:
+                raise HTTPException(status_code=503, detail="nao_saiu_do_indice")
+            return {"ok": True, "status": "rejected", "saiu_do_indice": True}
         await asyncio.to_thread(lambda: db.client.table("knowledge_cards").update(
             {"status": "rejected"}).eq("id", card_id).execute())
         return {"ok": True, "status": "rejected"}

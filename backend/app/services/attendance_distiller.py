@@ -362,6 +362,52 @@ def _store_card_sync(fato: str, meta: Dict[str, Any]) -> Optional[str]:
         return None
 
 
+def despublicar_carta_sync(card_id: str, motivo: str = "superseded") -> bool:
+    """Tira a carta do RAG de verdade — do índice, não só do banco.
+
+    Rejeitar uma carta mudava só o `status` na tabela. O vetor continuava no
+    Qdrant, e a busca continuava entregando a carta ao agente para sempre.
+    Quem rejeitava acreditava ter removido conhecimento errado e não removia
+    nada: o pior formato possível, porque a tela dizia que estava resolvido.
+
+    Achado em 30/07/2026 por um subagente destilando o lote 011: a Porto DEIXOU
+    de emitir boleto atualizado, e havia SEIS cartas publicadas afirmando que
+    emite. Sem este caminho, as seis ficariam no índice contradizendo a nova —
+    e o agente responderia uma ou outra por sorte da busca.
+
+    Conhecimento de seguro tem prazo de validade. Uma base que só sabe crescer
+    fica errada com o tempo, e o erro fica invisível porque a carta velha
+    parece tão boa quanto a nova.
+
+    O ponto é gravado como `card-<id>` em `publish_card_sync`; é por esse nome
+    que ele sai.
+    """
+    from app.core.config import settings
+    from app.services.knowledge_scope import GLOBAL_COLLECTION
+    from app.services.qdrant_service import get_qdrant_service
+
+    from app.core.database import get_supabase_client
+
+    company = str(getattr(settings, "GLOBAL_KNOWLEDGE_COMPANY_ID", "")
+                  or os.getenv("GLOBAL_KNOWLEDGE_COMPANY_ID") or "")
+    try:
+        get_qdrant_service().delete_document(
+            company_id=company, document_id=f"card-{card_id}",
+            collection_name=GLOBAL_COLLECTION)
+    except Exception as exc:  # noqa: BLE001
+        # Falhar aqui e marcar no banco seria voltar ao defeito: o banco diria
+        # removido e o índice continuaria entregando. Melhor não marcar.
+        logger.error("[CARTAS] não consegui tirar %s do índice: %s — status "
+                     "NÃO alterado, a carta continua marcada como publicada",
+                     card_id, type(exc).__name__)
+        return False
+
+    get_supabase_client().client.table("knowledge_cards").update(
+        {"status": motivo}).eq("id", card_id).execute()
+    logger.info("[CARTAS] %s saiu do RAG (%s)", card_id, motivo)
+    return True
+
+
 def publish_card_sync(card: Dict[str, Any]) -> bool:
     """Card aprovado -> RAG global como chunk atômico (o card JÁ É o chunk)."""
     from langchain_openai import OpenAIEmbeddings
