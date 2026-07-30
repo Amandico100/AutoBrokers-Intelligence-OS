@@ -298,7 +298,12 @@ def teste_protocolos_diferentes_sao_a_mesma_tela():
     a = T.screen_node("Sua solicitação foi registrada!\nAssistência: 8923467")
     b = T.screen_node("Sua solicitação foi registrada!\nAssistência: 9124710")
     checar(a["hash"] == b["hash"], "dois protocolos = uma tela só")
-    checar("8923467" not in a["text"] and "{VALOR}" in a["text"],
+    # O que importa é o NÚMERO não ficar, não qual placeholder entrou no lugar.
+    # Este teste afirmava `{VALOR}` e ficou vermelho em 30/07/2026 quando uma
+    # regra nova passou a mascarar o protocolo mais cedo, como `{NUMERO}` — a
+    # proteção intacta, o rótulo diferente. Teste que afirma detalhe de
+    # implementação quebra quando a implementação melhora.
+    checar("8923467" not in a["text"] and "{" in a["text"],
            "e o número do protocolo não fica guardado", a["text"][:70])
 
 

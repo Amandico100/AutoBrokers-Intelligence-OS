@@ -84,6 +84,32 @@ _PII_PATTERNS: List[Tuple[re.Pattern, str]] = [
     # quem tem a string cobra em nome de quem a gerou. Começa sempre por 000201
     # (payload format indicator do BR Code) e vem numa tacada só.
     (re.compile(r"\b000201[0-9A-Za-z.\-*+/:]{25,}"), "{PIX_COPIA_E_COLA}"),
+    # E-MAIL. Nenhuma carta de conhecimento precisa de um endereço específico —
+    # o que ensina é "o condomínio envia por e-mail", não qual endereço. 43
+    # apareceram nos lotes pendentes, incluindo corporativos com nome e
+    # sobrenome no próprio endereço.
+    (re.compile(r"[\w.+-]+@[\w-]+\.[\w.]{2,}"), "{EMAIL}"),
+    # CAUDA DE PIX COPIA-E-COLA.
+    #
+    # A cabeça é mascarada por `{PIX_COPIA_E_COLA}` e a cauda sobrevive na mesma
+    # linha: `***9999a999`, o CRC final do BR Code. Eu havia registrado isso como
+    # risco baixo — "cauda sem cabeça não paga nada" — e mantenho o julgamento.
+    # Mas agora tenho a FORMA exata (22 ocorrências), então o padrão é preciso e
+    # não há motivo para deixar.
+    (re.compile(r"\*{3}\d{3,4}[0-9A-Za-z]{2,6}"), "{PIX_FIM}"),
+    # NÚMERO LONGO NO MEIO DA LINHA, DEPOIS DE UM RÓTULO QUE NÃO ESTÁ NA LISTA.
+    #
+    # A forma que a varredura mais achou (74 vezes): `palavra: 999999999`.
+    # Protocolo, celular de nove dígitos sem DDD, número de aviso, matrícula.
+    # Cada rótulo novo que eu acrescentasse à lista deixaria o próximo passar.
+    #
+    # Sete dígitos ou mais, no meio da linha, é IDENTIFICADOR — em seguro o que
+    # ensina é percentual, prazo em dias e quilometragem, e nenhum desses passa
+    # de quatro dígitos. Valor em reais já foi mascarado antes desta regra.
+    #
+    # O `(?<![\d{])` e o `(?![\d}])` impedem que a regra morda o interior de um
+    # placeholder já colocado.
+    (re.compile(r"(?<![\d{])\d{7,11}(?![\d}])"), "{NUMERO}"),
     # NÚMERO SOZINHO NUMA LINHA, SEM RÓTULO NENHUM.
     #
     # O lote 024 trouxe seis casos assim: login do portal Bradesco em grupos de
