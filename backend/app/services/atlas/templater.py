@@ -85,6 +85,25 @@ _PII_PATTERNS: List[Tuple[re.Pattern, str]] = [
     # "senha" ou "secret".
     (re.compile(r"(?i)([?&][^=&\s]*(?:chave|chnfe|chcte|token|key|senha|password|pwd|secret)"
                 r"[^=&\s]*=)[^\s&#]+"), r"\1{SEGREDO}"),
+    # CAMINHO E QUERY DE URL — o domínio fica, o resto sai.
+    #
+    # Seis sessões dos lotes 036/037 trazem link curto com token no CAMINHO,
+    # não na query: rastreio de prestador, regularização de parcela,
+    # contratação. A regra de parâmetro não alcança, porque não há `?nome=`.
+    #
+    # Mascarar a URL inteira apagaria conhecimento real — "o acompanhamento da
+    # Tokio é no autoatendimento.tokiomarine.com.br" é a carta que o agente
+    # precisa. Então o DOMÍNIO fica e o caminho vai embora: sobra o que ensina,
+    # sai o que identifica uma pessoa ou autoriza uma ação.
+    (re.compile(r"(?i)\b((?:https?://)?[a-z0-9.-]+\.(?:com|com\.br|br|net|org|gov\.br|io)"
+                r"(?::\d+)?)(/\S+)"), r"\1/{CAMINHO}"),
+    # CARTÃO COM O MEIO JÁ MASCARADO, PONTAS EM CLARO.
+    #
+    # O lote 037 trouxe "1234 **** **** 5678": alguém mascarou o meio e as
+    # pontas ficaram. A regra de cartão exige quatro grupos de dígitos e não
+    # casa. Oito dígitos de um cartão mais a bandeira já bastam para muita
+    # coisa — e a linha PARECE protegida, que é o pior estado possível.
+    (re.compile(r"(?<!\d)\d{4}[\s.\-]*(?:[*xX]{2,}[\s.\-]*){1,4}\d{4}(?!\d)"), "{CARTAO}"),
     # PAYLOAD PIX copia-e-cola. Não é credencial, é instrumento de pagamento:
     # quem tem a string cobra em nome de quem a gerou. Começa sempre por 000201
     # (payload format indicator do BR Code) e vem numa tacada só.
