@@ -52,7 +52,7 @@ def _distilled(d: dict) -> dict:
     }
 
 
-def _cartas_de(d: dict) -> list:
+def _cartas_de(d: dict, sessao: str = "") -> list:
     ramo = str(d.get("ramo") or "outro")
     seg = normalize_insurer_key(str(d.get("seguradora") or ""), para="conhecimento") or None
     if seg and not re.fullmatch(r"[a-z0-9_-]{2,40}", seg):
@@ -68,7 +68,8 @@ def _cartas_de(d: dict) -> list:
             "card_text": texto, "category": "processo", "ramo": ramo,
             "insurer_key": seg,
             "status": "pending_review" if limpo else "rejected_pii",
-            "pii_check": {"deterministic": limpo, "llm_instructed": True, "por": MARCA},
+            "pii_check": {"deterministic": limpo, "llm_instructed": True,
+                          "por": MARCA, "sessao": sessao},
         })
     return saida
 
@@ -113,7 +114,7 @@ def main() -> int:
                 resumo["distilled"] = _distilled(d)
                 db.table("attendance_sessions").update({"summary": resumo}).eq("id", sid).execute()
                 sessoes += 1
-                for c in _cartas_de(d):
+                for c in _cartas_de(d, sid):
                     cartas.setdefault(c["card_hash"], c)
 
         linhas = list(cartas.values())
