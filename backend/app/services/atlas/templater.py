@@ -84,6 +84,19 @@ _PII_PATTERNS: List[Tuple[re.Pattern, str]] = [
     # quem tem a string cobra em nome de quem a gerou. Começa sempre por 000201
     # (payload format indicator do BR Code) e vem numa tacada só.
     (re.compile(r"\b000201[0-9A-Za-z.\-*+/:]{25,}"), "{PIX_COPIA_E_COLA}"),
+    # NÚMERO SOZINHO NUMA LINHA, SEM RÓTULO NENHUM.
+    #
+    # O lote 024 trouxe seis casos assim: login do portal Bradesco em grupos de
+    # dígitos, celular de nove dígitos sem DDD (a regra de telefone exige o
+    # DDD), código de acesso a plataforma de pagamento. Todos numa linha só,
+    # sem palavra que os anuncie — então nenhuma regra de rótulo os alcança.
+    #
+    # É seguro tratar por posição: **carta de conhecimento nunca é só um
+    # número**. Num transcript, linha que é apenas dígitos é dado de alguém.
+    #
+    # Mínimo de sete dígitos para que "197" (polícia), "200" (km de cobertura)
+    # e "2026" (ano) continuem intactos — são conhecimento e aparecem sozinhos.
+    (re.compile(r"(?m)^\s*\d[\d\s.\-]{5,15}\d\s*$"), "{NUMERO}"),
     # SEGREDO LONGE DO RÓTULO.
     #
     # A regra de rótulo exige o valor logo depois dele. Estes três formatos, do
