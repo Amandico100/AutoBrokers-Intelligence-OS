@@ -513,6 +513,40 @@ def _sinais_do_codigo() -> dict:
         sinais["seguradora_normalizada"] = normalize_insurer_key("tokio_marine") == "tokio"
     except Exception:  # noqa: BLE001
         pass
+
+    # O SINAL QUE DECIDE SE DÁ PARA RECONECTAR O WHATSAPP.
+    #
+    # 3.653 áudios foram capturados sem as coordenadas de download e estão
+    # perdidos. A correção grava `mediaKey`/`directPath`; sem ela no ar, a
+    # reconexão re-entrega o histórico e perde os áudios de novo, do mesmo jeito
+    # silencioso. Não dá para "achar que subiu" — tem de dar para conferir.
+    #
+    # Confere as duas metades, porque uma sem a outra é defeito: gravar sem
+    # esconder publicaria a chave de descriptografia numa resposta de API.
+    try:
+        from app.services.atlas.observer_intake import (
+            COORDENADAS_DE_MIDIA, sem_coordenadas)
+
+        amostra = {"kind": "audio", "segundos": 44, "mediaKey": "x", "directPath": "/y"}
+        limpo = sem_coordenadas(amostra)
+        sinais["midia_recuperavel"] = ("mediaKey" in COORDENADAS_DE_MIDIA
+                                       and "directPath" in COORDENADAS_DE_MIDIA)
+        sinais["midia_chave_escondida"] = ("mediaKey" not in limpo
+                                           and limpo.get("download") == "recuperavel")
+    except Exception:  # noqa: BLE001
+        sinais["midia_recuperavel"] = False
+        sinais["midia_chave_escondida"] = False
+
+    # O template do briefing existe no catálogo? Sem ele, o artefato morre em
+    # chave estrangeira e o briefing fica em `pending` sem ninguém saber.
+    try:
+        from app.services.artifacts.templates import POR_CHAVE
+
+        sinais["templates_do_briefing"] = all(
+            k in POR_CHAVE for k in ("briefing.daily_operational",
+                                     "briefing.weekly_executive"))
+    except Exception:  # noqa: BLE001
+        sinais["templates_do_briefing"] = False
     return sinais
 
 
