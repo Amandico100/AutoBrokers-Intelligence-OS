@@ -87,8 +87,41 @@ export async function installTenantAuxiliary(
   supabase: SupabaseClient, companyId: string, templateId: string, byUser: string,
   backend?: { url: string; apiKey: string },
 ) {
-  const { data: tpl } = await supabase.from('auxiliary_templates').select('id, slug, name, default_config').eq('id', templateId).maybeSingle();
+  const { data: tpl } = await supabase.from('auxiliary_templates')
+    .select('id, slug, name, default_config, catalog_state, required_connectors, missing_for_launch')
+    .eq('id', templateId).maybeSingle();
   if (!tpl?.id) return { ok: false as const, error: 'template_inexistente' };
+
+  // SPEC-064 D.1 — "em breve" aparece no catálogo e NÃO liga.
+  //
+  // A trava vive aqui, e não só no botão da tela. Botão desabilitado é
+  // conveniência; quem impede de verdade é o servidor. Sem isso, um POST
+  // direto instalaria um Auxiliar cujo runtime é `none` — e a corretora
+  // ficaria com um card "ligado" que nunca faz nada, que é pior do que não
+  // ter ligado, porque parece que está trabalhando.
+  if ((tpl as any).catalog_state === 'coming_soon') {
+    return {
+      ok: false as const,
+      error: 'ainda_nao_disponivel',
+      detalhe: (tpl as any).missing_for_launch || 'Este Auxiliar ainda está em construção.',
+    };
+  }
+
+  // SPEC-064 + decisão do Founder de 02/08 — a conexão é da CORRETORA.
+  //
+  // Se ela já conectou o portal da seguradora para outro Auxiliar, este aqui
+  // usa a mesma conexão: ninguém reconecta nada. O que não pode é ligar um
+  // Auxiliar cuja conexão não existe — ele rodaria e falharia em silêncio.
+  const exigidos: string[] = Array.isArray((tpl as any).required_connectors)
+    ? (tpl as any).required_connectors : [];
+  if (exigidos.length > 0) {
+    const { conexoesDaCorretora } = await import('@/lib/auxiliaries/catalog');
+    const prontos = await conexoesDaCorretora(supabase, companyId);
+    const faltando = exigidos.filter((s) => !prontos.has(s));
+    if (faltando.length > 0) {
+      return { ok: false as const, error: 'falta_conectar', faltando };
+    }
+  }
 
   // idempotente por (company, slug); reativa se estava desinstalado
   const { data: dup } = await supabase.from('tenant_auxiliaries').select('id, status').eq('company_id', companyId).eq('slug', tpl.slug).maybeSingle();
