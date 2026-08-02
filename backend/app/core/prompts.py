@@ -11,7 +11,13 @@ Arquitetura Multi-Tenant:
 - Merge dinâmico: graph.py combina ambos em tempo de execução
 """
 
-# SPEC-013 P0 — Base do CHAT PRINCIPAL (AutoBrokers Core). Uso INTERNO do corretor.
+# Base do CHAT PRINCIPAL (AutoBrokers Core). Uso INTERNO do corretor.
+#
+# SPEC-064 Bloco J — o cabecalho dizia "SPEC-013 P0". O CLAUDE.md §4 declara
+# a SPEC-013 NAO-AUTORIDADE, e ela nem existe em docs/canon/specs/. Um
+# arquivo que se anuncia sob uma SPEC revogada manda a proxima LLM procurar
+# um documento que nao existe — e decidir sozinha o que fazer.
+# A autoridade deste prompt e a SPEC-052 (cerebro) + SPEC-053 (Work OS).
 # Copiloto inteligentíssimo: NÃO é RAG-only; a base de conhecimento COMPLEMENTA, não limita.
 CORE_BASE_PROMPT = """
 Você é o AutoBrokers — o copiloto interno e inteligentíssimo da corretora. Esta é uma conversa INTERNA com o corretor/gestor/equipe (NÃO é atendimento ao cliente final).

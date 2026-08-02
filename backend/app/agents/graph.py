@@ -890,7 +890,14 @@ async def _build_initial_state(
                 user_message,
                 str(agent_id) if agent_id else None,
                 is_hyde,
-                _rag_include_global,  # global ON p/ Core (SPEC-013), OFF p/ attendance/auxiliar
+                # SPEC-064 Bloco J — o comentario aqui dizia "OFF p/ attendance"
+                # e a linha logo acima INCLUI 'attendance' na lista. O codigo
+                # esta certo: o atendente PRECISA do conhecimento global — sao
+                # as 8.916 cartas destiladas de atendimento real. Era o
+                # comentario que estava velho, e comentario que contradiz o
+                # codigo ao lado e pior que comentario nenhum: ele faz a
+                # proxima pessoa "consertar" o que funciona.
+                _rag_include_global,  # ON para core E attendance; OFF para auxiliar
             )
             if rag_result and rag_result.get("found") and rag_result.get("content"):
                 rag_prefetch_content = rag_result.get("content") or ""

@@ -843,3 +843,74 @@ estava lá.
 ORQ-01 e OBS-02 no gate (44/44). Gatilho `atendimento_nasce_desligado` aplicado
 e provado em produção: agente de atendimento criado com `is_active=true` nasce
 `false`; o core continua nascendo `true`.
+
+---
+
+## P2 — A organização do primeiro nível do Admin  `AGUARDANDO FOUNDER`
+
+**Data de abertura:** 02/08/2026 · **Origem:** SPEC-064 Bloco I
+
+### O conflito
+
+Duas SPECs canônicas propõem estruturas diferentes para o primeiro nível do
+portal admin, e **as duas foram escritas com razão.**
+
+```
+SPEC-061 §10   OITO hubs, aprovados por você depois de dizer
+               "é uma bagunça e não consigo entender de fato tudo"
+               (o Admin tinha chegado a QUINZE grupos)
+
+               Visão geral · Corretoras · Operação · Inteligência ·
+               Conexões · Conhecimento · Financeiro · Governança
+
+SPEC-064 I.3   SEIS hubs, reorganizados pela ontologia
+
+               Corretoras · Agentes · Auxiliares · Capacidades ·
+               Operação · Inteligência
+```
+
+### Por que não decidi sozinho
+
+A SPEC-061 §10 é explícita: *"não adicionar novo item de primeiro nível sem
+revisão canônica"* — e há um teste automatizado que a faz valer.
+
+**Eu cheguei a criar um nono hub e o teste me pegou.** Ele estava certo: seria
+repetir, no admin, exatamente o que a SPEC-064 acabara de desfazer no menu do
+corretor. **"O menu não cresce" vale para os dois lados.**
+
+E trocar oito hubs que você aprovou por seis, de passagem, no fim de uma
+execução, sem você ver — isso não é revisão canônica. É decisão de arquitetura
+tomada sozinho, que o CLAUDE.md §10 proíbe.
+
+### O que foi feito enquanto isso
+
+📊 O problema que a auditoria mediu era real: o submenu "Inteligência" tinha
+**nove itens, e quatro respondiam outra pergunta** — *"o que o sistema sabe
+fazer"* em vez de *"o que o sistema percebeu"*.
+
+**A separação foi feita dentro do submenu**, que a §10 deixa livre: as quatro
+telas do catálogo passaram a se anunciar com o prefixo `Catálogo:`. O primeiro
+nível continua com oito.
+
+```
+O que o sistema percebeu      ← "o que ele viu"
+O que buscamos na internet
+O que as corretoras pediram
+Garimpo (legado)
+Catálogo: Auxiliares          ← "o que ele sabe fazer"
+Catálogo: Agentes
+Catálogo: Modelos de rotina
+Catálogo: Skills, ferramentas e conectores
+Blueprint Center
+```
+
+**Resolve a confusão sem crescer o menu.** É a solução mínima honesta enquanto
+a decisão maior não é sua.
+
+### O que preciso de você
+
+**Ficamos com os oito hubs da SPEC-061, ou passamos para os seis da SPEC-064?**
+
+Se ficarmos com oito, a SPEC-064 I.3 é marcada como **superada** e a solução
+acima vira definitiva. Se passarmos para seis, é uma mudança visual grande no
+admin e merece uma leva própria — não o rabo de uma SPEC.

@@ -248,7 +248,19 @@ registrar commit inicial
 → registrar commit final no relatório
 ```
 
-O item de backup depende de **P1** em [`FOUNDER-DECISIONS.md`](FOUNDER-DECISIONS.md). Enquanto estiver pendente, **nenhum write em produção é autorizado**.
+> [!NOTE]
+> **Atualizado em 02/08/2026, SPEC-064 Bloco J.**
+> Este parágrafo dizia *"enquanto P1 estiver pendente, nenhum write em produção é autorizado"*.
+> **P1 foi RESOLVIDA POR D11 em 25/07/2026** — está escrito no próprio
+> [`FOUNDER-DECISIONS.md`](FOUNDER-DECISIONS.md), linha 32.
+>
+> Quem lesse este documento hoje concluiria que está proibido de aplicar migration —
+> e nove migrations foram aplicadas desde então. Documento canônico que descreve um
+> bloqueio já removido não protege: **ele ensina a ignorar o documento.**
+
+Write em produção **está autorizado** desde a resolução de P1 (D11). O que continua
+valendo é o resto desta seção: registrar commit inicial, exportar DDL, registrar
+advisors antes e depois, e canário Amandus → Resulta → AutoFleet.
 
 ---
 

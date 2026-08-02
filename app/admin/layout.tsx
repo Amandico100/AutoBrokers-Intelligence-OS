@@ -25,6 +25,7 @@ import {
   Lock,
   Globe,
   CalendarClock,
+
 } from 'lucide-react';
 import { getAdminSession, clearAdminSession } from '@/lib/adminSession';
 import { Button } from '@/components/ui/button';
@@ -305,20 +306,39 @@ export default function AdminLayout({ children }: { children: React.ReactNode })
       href: '/admin/inteligencia',
       icon: Brain,
       label: 'Inteligência',
+      // SPEC-064 Bloco I — o que mudou, e o que NÃO mudou, e por quê.
+      //
+      // A auditoria mediu o problema certo: este submenu tinha NOVE itens, e
+      // quatro respondiam outra pergunta. "O que o sistema PERCEBEU" e "o que
+      // o sistema SABE FAZER" são coisas diferentes, e estavam juntas.
+      //
+      // Eu cheguei a criar um nono hub "Catálogo" para separá-las — e o teste
+      // da SPEC-061 §10 me pegou. Ele está certo: §10 diz "não adicionar novo
+      // item de primeiro nível sem revisão canônica", e o Admin já chegou a
+      // QUINZE grupos antes de o Founder dizer "é uma bagunça". Fazer isso
+      // seria repetir, no admin, exatamente o que a SPEC-064 desfez no menu do
+      // corretor. **O menu não cresce vale para os dois lados.**
+      //
+      // Então a separação acontece DENTRO do submenu, que é livre — a ordem
+      // agrupa por pergunta, com os rótulos dizendo qual é qual.
+      //
+      // A reorganização de primeiro nível que a SPEC-064 I.3 propõe (seis
+      // hubs em vez de oito) CONFLITA com a estrutura que o Founder aprovou na
+      // SPEC-061. Registrada em FOUNDER-DECISIONS.md — é decisão dele, não
+      // minha (CLAUDE.md §10).
       submenu: [
+        // o que o sistema PERCEBEU
         { href: '/admin/inteligencia', label: 'O que o sistema percebeu' },
         { href: '/admin/pesquisa', label: 'O que buscamos na internet' },
         { href: '/admin/auxiliares/factory', label: 'O que as corretoras pediram' },
         { href: '/admin/insights', label: 'Garimpo (legado)' },
-        { href: '/admin/capacidades', label: 'O que o sistema sabe fazer' },
-        { href: '/admin/central-agentes', label: 'Agentes' },
-        { href: '/admin/auxiliares', label: 'Auxiliares publicados' },
-        { href: '/admin/routine-templates', label: 'Rotinas prontas' },
+        // o que o sistema SABE FAZER — o catálogo, na ordem da ontologia:
+        // quem faz · quem conversa · quando acontece · o que autoriza
+        { href: '/admin/auxiliares', label: 'Catálogo: Auxiliares' },
+        { href: '/admin/central-agentes', label: 'Catálogo: Agentes' },
+        { href: '/admin/routine-templates', label: 'Catálogo: Modelos de rotina' },
+        { href: '/admin/capacidades', label: 'Catálogo: Skills, ferramentas e conectores' },
         { href: '/admin/blueprint-center', label: 'Blueprint Center' },
-        // "Prompt efetivo" saiu daqui e virou link dentro de "O que o sistema
-        // sabe fazer". Ele é o diagnóstico POR AGENTE da mesma pergunta que
-        // aquela tela responde no geral: o que está anexado e o que autoriza.
-        // Dois itens de menu para a mesma pergunta é como um menu vira lista.
       ],
     },
     // SPEC-064 Bloco H — o Portal Browser saiu daqui junto com o código.

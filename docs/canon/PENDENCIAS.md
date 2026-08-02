@@ -219,6 +219,32 @@ existir** — e **nenhum promete número** (CLAUDE.md §12.1).
 
 ---
 
+## P-29 · A SPEC dos portais — cobrança em todas as seguradoras
+
+**Decidida em 02/08/2026 pelo Founder, para depois destas SPECs.**
+
+📊 O produto tem **17 portais** cadastrados — 15 de corretor (um por
+seguradora) e 2 de vidros. **Só a Allianz tem jornada de cobrança
+implementada.**
+
+```
+1. o Cobrador da Allianz é o MOLDE — ele funciona ponta a ponta
+2. cada seguradora nova é uma jornada no portal_worker, mesmo desenho
+3. ANTES de escrever robô, conferir se ela tem API (é para isso que
+   os 33 endereços de API do catálogo servem — P-26)
+4. cobrança primeiro; renovação depois, se a estrutura sustentar
+```
+
+> **Regra que não muda:** cobrança de outra seguradora **não é Auxiliar novo**.
+> É o mesmo "Cobrança Feita" com mais um portal na configuração da corretora.
+> Um auxiliar por seguradora seria a bagunça voltando pela porta dos fundos.
+
+**E o portal de vidros** já existe (2 portais, `cred_kind: public`) e faz parte
+do atendimento de assistência. Entra na mesma revisão.
+
+- **Destrava:** decisão do Founder de abrir a SPEC.
+- **Detalhe completo:** [`PORTAIS-E-CORREDORES.md`](PORTAIS-E-CORREDORES.md)
+
 ## P-26 · O catálogo de 189 portais está mapeado e não é usado
 
 📊 `lib/attendance/portal-global-catalog-seed.ts` — **8.696 linhas, 189 portais
