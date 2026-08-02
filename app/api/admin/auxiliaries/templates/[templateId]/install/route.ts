@@ -2,7 +2,8 @@ import { NextRequest, NextResponse } from 'next/server';
 
 import {
   getAdminSupabase,
-  hasAdminCookie,
+  requireFactoryAdmin,
+  factoryAuthResponse,
   getTableColumns,
   pickColumns,
   parseJsonField,
@@ -79,7 +80,8 @@ async function resolveRuntimeBinding(
  * smith_agent_blueprint, cria/vincula um Agent Smith da corretora (canônico, SPEC-002).
  */
 export async function POST(req: NextRequest, { params }: { params: Promise<{ templateId: string }> }) {
-  if (!(await hasAdminCookie())) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
+  const auth = await requireFactoryAdmin(req);
+  if (!auth.ok) return factoryAuthResponse(auth);
   const { templateId } = await params;
 
   let body: Record<string, unknown> = {};

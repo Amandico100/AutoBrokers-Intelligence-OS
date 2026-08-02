@@ -2,7 +2,8 @@ import { NextRequest, NextResponse } from 'next/server';
 
 import {
   getAdminSupabase,
-  hasAdminCookie,
+  requireFactoryAdmin,
+  factoryAuthResponse,
   getTableColumns,
   pickColumns,
   parseJsonField,
@@ -14,7 +15,8 @@ export const dynamic = 'force-dynamic';
 
 /** GET /api/admin/auxiliaries/templates — lista todos os templates globais (ativos e inativos). */
 export async function GET() {
-  if (!(await hasAdminCookie())) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
+  const auth = await requireFactoryAdmin();
+  if (!auth.ok) return factoryAuthResponse(auth);
 
   const supabase = getAdminSupabase();
   let res = await supabase.from('auxiliary_templates').select('*').order('created_at', { ascending: true });
@@ -28,7 +30,8 @@ export async function GET() {
 
 /** POST /api/admin/auxiliaries/templates — cria um template global (resiliente ao schema). */
 export async function POST(req: NextRequest) {
-  if (!(await hasAdminCookie())) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
+  const auth = await requireFactoryAdmin(req);
+  if (!auth.ok) return factoryAuthResponse(auth);
 
   let body: Record<string, unknown> = {};
   try {

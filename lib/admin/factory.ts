@@ -1,8 +1,8 @@
 // Server-only helpers para a Fábrica de Auxiliares (Admin Global).
 // Resiliente ao schema: descobre as colunas reais em runtime (select * limit 1) e grava
 // apenas a interseção, evitando "column does not exist" sem nunca alterar o schema.
-import { cookies } from 'next/headers';
 import { createClient, type SupabaseClient } from '@supabase/supabase-js';
+import { assertSameOrigin, requireMasterAdmin, type AuthFail } from '@/lib/admin/admin-auth';
 
 export const TEMPLATE_FALLBACK_COLS = [
   'id',
@@ -33,10 +33,37 @@ export function getAdminSupabase(): SupabaseClient {
   );
 }
 
-/** Guard mínimo do Admin Global (mesmo padrão das rotas /api/admin existentes). */
-export async function hasAdminCookie(): Promise<boolean> {
-  const store = await cookies();
-  return Boolean(store.get('smith_admin_session'));
+/**
+ * SPEC-064 Bloco I.1 — o guard da Fábrica.
+ *
+ * Aqui existia `hasAdminCookie()`, que devolvia `true` para QUALQUER cookie
+ * chamado `smith_admin_session`, com qualquer valor. Sem assinatura, sem
+ * expiração, sem conferir se o admin ainda existe.
+ *
+ * Ele guardava oito rotas — entre elas **criar template global** e **instalar
+ * auxiliar em qualquer corretora**. Na prática, quem conseguisse escrever um
+ * cookie com aquele nome instalava software na corretora de outra pessoa.
+ *
+ * A correção não inventa padrão novo: usa `requireMasterAdmin()`, que decodifica
+ * a sessão iron-session, valida o papel e confirma no banco que o admin não foi
+ * revogado — o mesmo caminho que as rotas novas já usam. Mutação também exige
+ * same-origin, por defesa em profundidade.
+ */
+export async function requireFactoryAdmin(
+  req?: { headers: { get(name: string): string | null } },
+): Promise<{ ok: true; supabase: SupabaseClient } | AuthFail> {
+  if (req) {
+    const crossOrigin = assertSameOrigin(req);
+    if (crossOrigin) return crossOrigin;
+  }
+  const auth = await requireMasterAdmin();
+  if (!auth.ok) return auth;
+  return { ok: true, supabase: auth.supabase };
+}
+
+/** Resposta padrão de recusa, para as rotas não repetirem o formato. */
+export function factoryAuthResponse(fail: AuthFail): Response {
+  return Response.json({ error: fail.error }, { status: fail.status });
 }
 
 /** Colunas reais de uma tabela (via amostra). Cai para `fallback` se vazia/erro. */

@@ -2,7 +2,8 @@ import { NextRequest, NextResponse } from 'next/server';
 
 import {
   getAdminSupabase,
-  hasAdminCookie,
+  requireFactoryAdmin,
+  factoryAuthResponse,
   getTableColumns,
   pickColumns,
   parseJsonField,
@@ -13,7 +14,8 @@ export const dynamic = 'force-dynamic';
 
 /** GET /api/admin/auxiliaries/templates/[templateId] — um template. */
 export async function GET(_req: NextRequest, { params }: { params: Promise<{ templateId: string }> }) {
-  if (!(await hasAdminCookie())) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
+  const auth = await requireFactoryAdmin();
+  if (!auth.ok) return factoryAuthResponse(auth);
   const { templateId } = await params;
 
   const supabase = getAdminSupabase();
@@ -28,7 +30,8 @@ export async function GET(_req: NextRequest, { params }: { params: Promise<{ tem
  * Atualiza textos/flags/JSON. O slug é IMUTÁVEL (evita quebrar instalações por slug).
  */
 export async function PATCH(req: NextRequest, { params }: { params: Promise<{ templateId: string }> }) {
-  if (!(await hasAdminCookie())) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
+  const auth = await requireFactoryAdmin(req);
+  if (!auth.ok) return factoryAuthResponse(auth);
   const { templateId } = await params;
 
   let body: Record<string, unknown> = {};

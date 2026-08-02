@@ -2,7 +2,8 @@ import { NextRequest, NextResponse } from 'next/server';
 
 import {
   getAdminSupabase,
-  hasAdminCookie,
+  requireFactoryAdmin,
+  factoryAuthResponse,
   getTableColumns,
   pickColumns,
   TEMPLATE_FALLBACK_COLS,
@@ -21,7 +22,8 @@ export const dynamic = 'force-dynamic';
  * visibility: 'global' | 'exclusive'. installOriginal: vincula o agent ORIGINAL (não cria cópia).
  */
 export async function POST(req: NextRequest) {
-  if (!(await hasAdminCookie())) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
+  const auth = await requireFactoryAdmin(req);
+  if (!auth.ok) return factoryAuthResponse(auth);
 
   let body: Record<string, unknown> = {};
   try {

@@ -1,12 +1,13 @@
 import { NextRequest, NextResponse } from 'next/server';
 
-import { getAdminSupabase, hasAdminCookie } from '@/lib/admin/factory';
+import { getAdminSupabase, requireFactoryAdmin, factoryAuthResponse } from '@/lib/admin/factory';
 
 export const dynamic = 'force-dynamic';
 
 /** GET /api/admin/auxiliaries/templates/[templateId]/installations — corretoras com este template. */
 export async function GET(_req: NextRequest, { params }: { params: Promise<{ templateId: string }> }) {
-  if (!(await hasAdminCookie())) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
+  const auth = await requireFactoryAdmin();
+  if (!auth.ok) return factoryAuthResponse(auth);
   const { templateId } = await params;
 
   const supabase = getAdminSupabase();
