@@ -81,6 +81,19 @@ PREFIXOS_DE_SUBPAGINA = (
 ALCANCADAS_POR_OUTRA_TELA = {
     "/admin/prompt-effective":
         "linkada de /admin/capacidades — é o mesmo diagnóstico, por agente",
+
+    # SPEC-064 Bloco B — as três que saíram do menu de sete pilares.
+    #
+    # Sair do menu não pode virar sumir. Cada uma nomeia de onde se chega, e o
+    # caso do §3 CONFERE o link de verdade: exceção que promete alcance e
+    # entrega órfã é pior que exceção nenhuma.
+    "/dashboard/entregas/pesquisas":
+        "linkada do filtro 'Pesquisas' em /dashboard/entregas — pesquisa é "
+        "Skill do chat, e o resultado se reencontra em Entregas",
+    "/dashboard/configuracoes":
+        "linkada como 'Meu perfil' no rodapé do TenantNav — é a camada do "
+        "USUÁRIO (nome, senha, avatar, consumo), não da corretora. Não é "
+        "trabalho do dia, então não é pilar; mora junto de quem ela pertence",
 }
 
 # DÍVIDA HERDADA — páginas do Admin que já estavam órfãs antes da SPEC-059.
@@ -306,38 +319,94 @@ def teste_nenhuma_pagina_orfa():
     # A exceção de "alcançada por outra tela" precisa ser VERIFICADA, não
     # confiada: uma exceção que declara um link que não existe é pior que
     # nenhuma exceção — ela promete alcançabilidade e entrega órfã.
+    # `components/` entra na varredura desde a SPEC-064: a barra de navegação
+    # é um componente, e um link que mora nela é tão real quanto um que mora
+    # numa página. Sem isso, o teste declararia órfã uma tela linkada do menu.
+    ONDE_PODE_HAVER_LINK = (APP, os.path.join(RAIZ, "components"))
+
     for rota, motivo in ALCANCADAS_POR_OUTRA_TELA.items():
         achou = False
-        for pasta, _, arquivos in os.walk(APP):
-            for arq in arquivos:
-                if not arq.endswith((".tsx", ".ts")):
-                    continue
-                caminho = os.path.join(pasta, arq)
-                # A própria página não conta como link para si mesma.
-                if os.path.dirname(caminho).replace(os.sep, "/").endswith(
-                        rota.replace("/admin", "admin")):
-                    continue
-                try:
-                    if f'"{rota}"' in _ler(caminho) or f"'{rota}'" in _ler(caminho):
-                        achou = True
-                        break
-                except Exception:  # noqa: BLE001
-                    continue
+        for base in ONDE_PODE_HAVER_LINK:
             if achou:
                 break
+            for pasta, _, arquivos in os.walk(base):
+                for arq in arquivos:
+                    if not arq.endswith((".tsx", ".ts")):
+                        continue
+                    caminho = os.path.join(pasta, arq)
+                    # A própria página não conta como link para si mesma.
+                    if os.path.dirname(caminho).replace(os.sep, "/").endswith(
+                            rota.replace("/admin", "admin").replace("/dashboard", "dashboard")):
+                        continue
+                    try:
+                        fonte = _ler(caminho)
+                    except Exception:  # noqa: BLE001
+                        continue
+                    if f'"{rota}"' in fonte or f"'{rota}'" in fonte:
+                        achou = True
+                        break
+                if achou:
+                    break
         checar(achou, f"{rota} é realmente linkada de alguma tela", motivo)
 
 
 def teste_paginas_das_specs_recentes_estao_no_menu():
-    print("\n[4] As telas das SPECs 059 e 060 estão alcançáveis")
+    """As telas das SPECs recentes continuam alcançáveis — no lugar certo.
+
+    ATUALIZADO EM 02/08/2026, SPEC-064 Bloco B.
+
+    Este caso exigia que `/dashboard/briefing` e `/dashboard/pesquisas`
+    tivessem link NO MENU. O princípio está certo — *tela sem link é tela que
+    não existe para quem usa* — e foi ele que fez as duas virarem PILARES nas
+    SPECs 059 e 060.
+
+    A conclusão é que estava errada. Briefing é um **Auxiliar** e Pesquisa é
+    uma **Skill**: o lugar delas é DENTRO de um pilar, não como pilar. Sete
+    itens de menu, dois deles Auxiliares disfarçados, é como um menu vira lista
+    — e o próprio `navigation.ts` trazia escrito que "o menu não cresce".
+
+    O que este caso protege continua idêntico: **alcançável**. Mudou só o que
+    conta como alcance — link no menu OU dentro do pilar que a contém.
+    """
+    print("\n[4] As telas das SPECs 059-061 continuam alcançáveis")
     ligados = {href for _, href in menu_tenant()} | {href for _, href in menu_admin()}
-    for rota, spec in (("/dashboard/briefing", "SPEC-059"),
-                       ("/admin/inteligencia", "SPEC-059"),
-                       ("/dashboard/pesquisas", "SPEC-060"),
+
+    for rota, spec in (("/admin/inteligencia", "SPEC-059"),
                        ("/admin/pesquisa", "SPEC-060"),
                        ("/admin/governanca", "SPEC-061")):
         checar(rota in ligados, f"{rota} tem link no menu ({spec})",
                "tela sem link é tela que não existe para quem usa")
+
+    # As duas que saíram do menu: continuam alcançáveis, por dentro do pilar.
+    for rota, de_onde, spec in (
+        ("/dashboard/auxiliares/checklist-6h/hoje",
+         "da ficha do Auxiliar 'Checklist das 6h'", "SPEC-059 → 064"),
+        ("/dashboard/entregas/pesquisas",
+         "do filtro 'Pesquisas' em Entregas", "SPEC-060 → 064"),
+    ):
+        achou = False
+        for pasta, _, arquivos in os.walk(os.path.join(RAIZ, "app")):
+            if "node_modules" in pasta:
+                continue
+            for arq in arquivos:
+                if not arq.endswith((".ts", ".tsx")):
+                    continue
+                caminho = os.path.join(pasta, arq)
+                # A própria página não conta como link para si mesma.
+                if os.path.normpath(caminho).endswith(
+                        os.path.normpath(rota.replace("/dashboard", "dashboard") + "/page.tsx")):
+                    continue
+                try:
+                    fonte = _ler(caminho)
+                except Exception:  # noqa: BLE001
+                    continue
+                if f'"{rota}"' in fonte or f"'{rota}'" in fonte:
+                    achou = True
+                    break
+            if achou:
+                break
+        checar(achou, f"{rota} é alcançável {de_onde} ({spec})",
+               "saiu do menu não pode virar sumiu")
 
 
 def main() -> int:

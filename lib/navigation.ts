@@ -9,61 +9,75 @@ export interface NavItem {
   icon: IconName;
 }
 
-/** Os pilares da navegação tenant (UX-001 + Memórias/SPEC-036 E3). */
+/**
+ * Os CINCO pilares da navegação da corretora — SPEC-064 Bloco B.
+ *
+ * Eram sete, e dois deles eram Auxiliares disfarçados de item de menu:
+ *
+ *     Briefing    é um Auxiliar. Virou "Checklist das 6h", no catálogo.
+ *     Pesquisas   é uma Skill do chat. O resultado se reencontra em Entregas.
+ *
+ * E havia três itens no secundário respondendo a MESMA pergunta — "o que já
+ * aconteceu aqui?": Atividades, Histórico e Conversas. Viraram um pilar só,
+ * **Entregas**, com filtro por tipo.
+ *
+ * A ordem é a do dia do corretor: ele fala com o AutoBrokers, olha os
+ * atendimentos, confere quem trabalha por ele, vê o que ficou pronto, e só
+ * então mexe em configuração.
+ */
 export const PILLARS: NavItem[] = [
   { key: 'autobrokers', label: 'AutoBrokers', href: '/dashboard', icon: 'autobrokers' },
-  // SPEC-059 §25.1 — o Briefing entra como pilar, ao lado do chat. Ele responde
-  // "o que precisa de mim hoje?", que é a pergunta que o corretor faz antes de
-  // qualquer outra. Escondê-lo no secundário faria o produto proativo depender
-  // de o corretor lembrar de procurá-lo.
-  { key: 'briefing', label: 'Briefing', href: '/dashboard/briefing', icon: 'aprovacao' },
-  // SPEC-060 §30.2 — a pesquisa nasce no chat; esta é a tela onde ela é
-  // reencontrada. Fica como pilar, e não no secundário, pela lição da 059:
-  // tela sem link é tela que não existe para quem usa, e "Pesquisas" é o que
-  // o corretor procura quando quer rever o que mandou conferir.
-  { key: 'pesquisas', label: 'Pesquisas', href: '/dashboard/pesquisas', icon: 'buscar' },
   { key: 'atendimentos', label: 'Atendimentos', href: '/dashboard/atendimentos', icon: 'atendimentos' },
   { key: 'auxiliares', label: 'Auxiliares', href: '/dashboard/auxiliares', icon: 'auxiliares' },
-  { key: 'memorias', label: 'Memórias', href: '/dashboard/memorias', icon: 'conhecimento' },
+  { key: 'entregas', label: 'Entregas', href: '/dashboard/entregas', icon: 'success' },
   { key: 'personalizacao', label: 'Personalização', short: 'Config', href: '/dashboard/personalizacao', icon: 'personalizacao' },
 ];
 
-/** Navegação secundária discreta (não polui o primeiro nível). */
-export const SECONDARY: NavItem[] = [
-  { key: 'atividades', label: 'Atividades', href: '/dashboard/atividades', icon: 'success' },
-  { key: 'historico', label: 'Histórico', href: '/dashboard/historico', icon: 'historico' },
-  { key: 'conversas', label: 'Conversas', href: '/dashboard/conversas', icon: 'atendimentos' },
-  { key: 'configuracoes', label: 'Configurações', href: '/dashboard/configuracoes', icon: 'configuracoes' },
-];
+/**
+ * Não existe mais navegação secundária — e isso é o resultado, não a intenção.
+ *
+ * Ela tinha quatro itens: Atividades, Histórico, Conversas e Configurações.
+ *
+ *   Atividades · Histórico   respondiam "o que já aconteceu?" → Entregas
+ *   Conversas                era uma SEGUNDA tela de conversa da corretora,
+ *                            chamando /api/admin/conversations de dentro do
+ *                            dashboard. A tela canônica é
+ *                            /dashboard/atendimentos/conversas (SPEC-043).
+ *                            A duplicata foi removida.
+ *   Configurações            é Personalização com outro nome.
+ *
+ * Um menu secundário existe para o que é raro e legítimo. Quando tudo que
+ * está nele ou duplica um pilar ou pertence a um, ele não é secundário: é
+ * dívida com barra de rolagem.
+ */
+export const SECONDARY: NavItem[] = [];
 
 /**
- * Não existe um terceiro grupo de menu — e isso é deliberado.
+ * A regra que fica: **o menu não cresce.**
  *
- * Existiu por um dia: `ADMINISTRACAO_DA_CORRETORA`, com quatro itens novos
- * ("Minha equipe", "Meu agente", "Meus documentos", "Meu plano"), para as
- * telas que a SPEC-061 §6 tirou do `/admin`.
+ * Coisa nova entra DENTRO de um item que já existe. Se não couber em nenhum,
+ * a pergunta certa é se o desenho dos itens está errado — não se falta um item.
  *
- * Duas coisas estavam erradas nele.
+ * Ela já existia aqui, escrita, e foi violada duas vezes: Briefing (SPEC-059)
+ * e Pesquisas (SPEC-060) entraram como pilares porque "tela sem link é tela
+ * que não existe". O diagnóstico estava certo e a conclusão errada — as duas
+ * eram Auxiliar e Skill, e o lugar delas era dentro de um pilar existente.
  *
- * A primeira: **nenhum componente o renderizava.** Ele foi declarado aqui e
- * nunca importado, então as quatro telas ficaram órfãs — só alcançáveis
- * digitando o endereço. O teste que deveria pegar isso conferia se o link
- * existia NESTE ARQUIVO, e não se ele aparecia na tela. Provou a declaração,
- * não o menu.
+ * Por isso agora a regra é TESTE, não comentário:
+ * `backend/tests/test_menu_nao_cresce.py` conta os pilares. Comentário que
+ * ninguém é obrigado a obedecer é decoração.
  *
- * A segunda, que é a que importa: **as quatro já tinham casa.** Desde a
- * SPEC-045, `/dashboard/personalizacao` é o lugar do que se configura de vez em
- * quando — equipe, conhecimento, custos, agente. Criar quatro itens de primeiro
- * nível para o que já morava dentro de um item existente não é organizar: é
- * duplicar, e empurrar o trabalho do dia (Briefing, Atendimentos) para baixo.
- *
- * A regra que fica: **o menu não cresce.** Coisa nova entra DENTRO de um item
- * que já existe. Se não couber em nenhum, a pergunta certa é se o desenho dos
- * itens está errado — não se falta um item.
- *
- * As quatro telas antigas viraram redirecionamentos para a Personalização, e
- * `/admin/team|agent|documents|billing` apontam direto para lá.
+ * Histórico das telas que já mudaram de casa:
+ *   /admin/team|agent|documents|billing  → dentro da Personalização
+ *   /dashboard/equipe|agente|documentos|plano → idem (redirecionam)
+ *   /dashboard/briefing        → /dashboard/auxiliares/checklist-6h
+ *   /dashboard/pesquisas       → /dashboard/entregas?tipo=pesquisa
+ *   /dashboard/memorias        → /dashboard/personalizacao/memorias
+ *   /dashboard/atividades      → /dashboard/entregas
+ *   /dashboard/historico       → /dashboard/entregas?tipo=conversa
+ *   /dashboard/conversas       → /dashboard/atendimentos/conversas
  */
+export const MENU_NAO_CRESCE = 5 as const;
 
 /**
  * Estado ativo da navegação.

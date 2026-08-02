@@ -139,10 +139,16 @@ export function TenantNav({ onNavigate }: { onNavigate?: () => void }) {
       {/* Pilares */}
       <nav className="flex flex-col gap-1 px-3">{PILLARS.map(renderItem)}</nav>
 
-      <div className="mx-3 my-3 border-t border-border-soft" />
-
-      {/* Secundário */}
-      <nav className="flex flex-col gap-1 px-3">{SECONDARY.map(renderItem)}</nav>
+      {/* Secundário — SPEC-064 Bloco B esvaziou o grupo (Atividades e Histórico
+          viraram Entregas; Conversas era duplicata; Configurações é
+          Personalização). O separador e o <nav> só aparecem se ele voltar a
+          ter item: divisória sozinha no meio da barra é sujeira visível. */}
+      {SECONDARY.length > 0 && (
+        <>
+          <div className="mx-3 my-3 border-t border-border-soft" />
+          <nav className="flex flex-col gap-1 px-3">{SECONDARY.map(renderItem)}</nav>
+        </>
+      )}
 
       {/* Rodapé */}
       <div className="mt-auto border-t border-border-soft p-3">
@@ -169,6 +175,22 @@ export function TenantNav({ onNavigate }: { onNavigate?: () => void }) {
             {userName && <p className="truncate text-xs text-muted-foreground">{userName}</p>}
           </div>
         ) : null}
+
+        {/* SPEC-064 Bloco B — "Meu perfil" é a camada do USUÁRIO.
+            /dashboard/configuracoes não é duplicata de Personalização: aquela
+            é da CORRETORA (conectores, seguradoras, conhecimento, equipe);
+            esta é da PESSOA (nome, senha, avatar, tema, seu consumo). Ela saiu
+            do menu porque não é trabalho do dia — mas sair do menu não pode
+            virar sumir, então mora junto de quem ela pertence: o rodapé, ao
+            lado do nome do usuário. Ver docs/canon/CAMADAS-DE-CONEXAO.md. */}
+        <Link
+          href="/dashboard/configuracoes"
+          className="mb-2 flex items-center gap-2 rounded-lg px-3 py-2 text-sm text-muted-foreground transition-colors hover:bg-surface-2 hover:text-foreground"
+        >
+          <Icon icon={icons.configuracoes} size={16} />
+          Meu perfil
+        </Link>
+
         <div className="flex items-center gap-2">
           <button
             onClick={handleLogout}

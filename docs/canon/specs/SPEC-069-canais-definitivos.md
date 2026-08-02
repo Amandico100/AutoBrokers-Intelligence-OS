@@ -275,6 +275,74 @@ o governador de envio da SPEC-063 continua valendo
 **A mudança de maior valor é mover cobrança para o oficial.** É mais barata que o
 que pagamos hoje, **e tira o único uso que pode destruir o telefone da corretora.**
 
+## A.2.1 A pergunta que a SPEC-064 deixou registrada: onde ficam as conversas de VÁRIOS números?
+
+> **Acrescentado em 02/08/2026**, durante a SPEC-064, a pedido do Founder.
+> **Não é para executar agora. É para não ser descoberto tarde.**
+
+O problema aparece no momento em que a divisão de canais da §A.2 vira realidade:
+
+```
+atendimento ..... Evolution Go · número A · o SEGURADO escreve
+cobrança ........ API da Meta  · número B · NÓS escrevemos
+(futuro) ........ campanha     · número C
+```
+
+**O mesmo cliente vai ter conversa em dois ou três números diferentes.** E hoje
+a tela de conversas (`/dashboard/atendimentos/conversas`) foi desenhada para um
+canal só — ela lista `conversations` sem nenhuma noção de "por qual número isto
+entrou".
+
+### O que quebra se ninguém decidir antes
+
+```
+a mesma pessoa vira duas conversas soltas, sem se reconhecerem
+o atendente responde sobre o boleto sem saber que houve boleto
+   (é o Bloco E da SPEC-063, agora multiplicado por N canais)
+"assumir a conversa" fica ambíguo: assumir qual?
+e a caixa de entrada vira uma lista onde nada tem contexto
+```
+
+### A recomendação, para quando descongelar
+
+**Uma caixa, várias linhas — nunca várias caixas.**
+
+```
+1. `conversations` ganha CANAL DE ORIGEM explícito
+   (integration_id + purpose: attendance | billing | campaign)
+   Hoje existe `channel`, que diz "web" ou "whatsapp" — não diz QUAL whatsapp.
+
+2. A tela agrupa por PESSOA, não por número.
+   Uma pessoa, uma thread visível, com as mensagens marcadas pela origem —
+   do mesmo jeito que um e-mail mostra "para: financeiro@" sem criar uma
+   segunda caixa de entrada.
+
+3. Responder devolve pelo MESMO canal que recebeu.
+   Nunca pelo "canal disponível" — é assim que a cobrança sairia pelo número
+   do atendimento, ou pior, pelo observador (SPEC-063 Bloco D).
+
+4. O agente que responde é o do canal.
+   Cobrança tem agente de cobrança (SPEC-063 E.2.2). Atendimento tem o dele.
+   Um agente só respondendo em dois papéis é o mesmo defeito da SPEC-063
+   Bloco A com outra roupa.
+
+5. E o identificador da pessoa é o TELEFONE DELA + a corretora — nunca só o
+   telefone. O buffer sem tenant (SPEC-063 H.2) já provou onde isso dá errado.
+```
+
+**A regra que resume:** *o número é por onde a mensagem passou, não quem é o
+cliente.* Modelar o contrário é o que produz caixa duplicada.
+
+### Por que fica registrado e não executado
+
+📊 **Medido em 02/08/2026:** nenhuma corretora tem WhatsApp pareado, e a
+cobrança não tem número próprio. **Não há conversa de segundo canal para
+organizar** — e desenhar a caixa multicanal antes de existir o segundo canal
+seria construir sobre suposição.
+
+**O gatilho é o Bloco A desta SPEC.** No dia em que a cobrança ganhar número
+próprio, esta seção deixa de ser registro e vira requisito.
+
 ## A.3 O modelo multi-tenant — e o prazo escondido
 
 **FATO:** o modelo em nome de terceiro foi descontinuado em 01/10/2025. **Cada

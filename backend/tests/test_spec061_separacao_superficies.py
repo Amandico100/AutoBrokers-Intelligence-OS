@@ -36,9 +36,18 @@ FALHAS: list[str] = []
 # novo na raiz do dashboard. O motivo está registrado em `lib/navigation.ts`:
 # a casa já existia desde a SPEC-045, e criar um segundo endereço para a mesma
 # coisa não é organizar — é duplicar.
+#
+# `/admin/conversations` mudou de destino em 02/08/2026, na SPEC-064 Bloco B.
+# A §6 tinha movido a tela para `/dashboard/conversas`, e a auditoria da 064
+# mediu o efeito colateral: passaram a existir DUAS telas de conversa da
+# corretora. A que veio do admin continuou chamando `/api/admin/conversations`
+# de dentro da casa da corretora — a mesma mistura que a §6 mandou desfazer.
+# A duplicata foi removida; o destino agora é a tela de tenant da SPEC-043.
+#
+# O propósito deste caso não mudou: rota antiga leva à casa nova, nunca a 404.
 MUDARAM_DE_CASA = {
     "/admin/team": "/dashboard/personalizacao/equipe",
-    "/admin/conversations": "/dashboard/conversas",
+    "/admin/conversations": "/dashboard/atendimentos/conversas",
     "/admin/agent": "/dashboard/personalizacao/agentes/autobrokers",
     "/admin/documents": "/dashboard/personalizacao/conhecimento",
     "/admin/billing": "/dashboard/personalizacao/custos",

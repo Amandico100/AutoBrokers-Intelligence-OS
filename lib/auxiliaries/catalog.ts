@@ -83,8 +83,17 @@ export interface ItemDoCatalogo {
   tela_de_execucao: string | null;
 }
 
-/** As telas de execução que ainda vivem fora da rota do Auxiliar. */
+/**
+ * A tela onde cada Auxiliar é operado, quando ele tem uma.
+ *
+ * `checklist-6h` é a antiga `/dashboard/briefing` — 828 linhas que mostram o
+ * briefing do dia. Ela mudou de casa inteira: apagar o conteúdo e mandar o
+ * corretor para a ficha do Auxiliar teria deixado ele sem o briefing.
+ *
+ * As outras duas ainda moram sob `galeria/` e o port é dívida registrada.
+ */
 const TELA_DE_EXECUCAO: Record<string, string> = {
+  'checklist-6h': '/dashboard/auxiliares/checklist-6h/hoje',
   'follow-up-whatsapp': '/dashboard/auxiliares/galeria/follow-up-whatsapp',
   'resumo-atendimentos': '/dashboard/auxiliares/galeria/resumo-atendimentos',
 };

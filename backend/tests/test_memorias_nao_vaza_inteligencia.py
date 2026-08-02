@@ -44,7 +44,17 @@ import sys
 
 RAIZ = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 ROTA = os.path.join(RAIZ, "app", "api", "dashboard", "memorias", "route.ts")
-PAGINA = os.path.join(RAIZ, "app", "dashboard", "memorias", "page.tsx")
+
+# SPEC-064 Bloco B — a tela mudou de endereço, não de conteúdo.
+#
+# Memória é configuração de como o sistema lembra de você: personalização, não
+# pilar de menu. `/dashboard/memorias` continua existindo e redireciona — link
+# salvo não vira 404 —, mas quem tem a tela é
+# `/dashboard/personalizacao/memorias`.
+#
+# O que este arquivo protege não mudou nem um pouco: que a tela da corretora
+# não exponha o que é da inteligência da plataforma.
+PAGINA = os.path.join(RAIZ, "app", "dashboard", "personalizacao", "memorias", "page.tsx")
 FALHAS: list[str] = []
 
 
