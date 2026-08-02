@@ -22,6 +22,7 @@ Nome oficial do agente central: **AutoBrokers**. "Jarvys/Jarvis" é metáfora ex
 1. [`docs/canon/EXECUTION-MASTER-PLAN.md`](docs/canon/EXECUTION-MASTER-PLAN.md) — onde estamos.
 2. [`docs/canon/FOUNDER-DECISIONS.md`](docs/canon/FOUNDER-DECISIONS.md) — o que já foi decidido.
 3. [`docs/canon/ONTOLOGIA-DO-TRABALHO.md`](docs/canon/ONTOLOGIA-DO-TRABALHO.md) — **o que é cada coisa e onde mora.** Antes de criar qualquer peça.
+   · [`docs/canon/CAMADAS-DE-CONEXAO.md`](docs/canon/CAMADAS-DE-CONEXAO.md) — **quem paga, quem conecta, quem usa.** Antes de criar conector.
 4. [`docs/canon/README.md`](docs/canon/README.md) — índice canônico.
 5. A SPEC da etapa atual + **SPEC-052** e **SPEC-053**, sempre.
 6. [`docs/canon/MIGRATIONS-AUTHORITY.md`](docs/canon/MIGRATIONS-AUTHORITY.md) — **antes de qualquer SQL**.

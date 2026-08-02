@@ -98,21 +98,40 @@ export const CATEGORIAS: Record<string, { rotulo: string; emoji: string }> = {
   tempo_livre:        { rotulo: 'Tempo livre',        emoji: '⏱️' },
 };
 
-/** Onde o corretor vai resolver cada tipo de conexão. */
+/**
+ * Onde o corretor vai resolver cada conexão.
+ *
+ * Só entram conectores de `scope='company'` ou `'user'` — os de plataforma
+ * nunca ficam pendentes, então nunca precisam de destino.
+ */
 const ONDE_CONECTAR: Record<string, string> = {
   insurance_portal: '/dashboard/personalizacao/conectores/portais',
   infocap:          '/dashboard/personalizacao/conectores',
   whatsapp_zapi:    '/dashboard/personalizacao/corretora/whatsapp',
-  firecrawl:        '/dashboard/personalizacao/conectores',
   google_drive:     '/dashboard/personalizacao/conectores',
   notion:           '/dashboard/personalizacao/conectores',
 };
 
 /**
- * Conectores que não se conectam: são internos e sempre existem.
- * Tratá-los como pendentes travaria Auxiliares que não dependem de nada de fora.
+ * SPEC-064 — a regra das três camadas, em uma frase:
+ *
+ *   A DEFINIÇÃO do conector é sempre global.
+ *   O que muda é QUEM SEGURA A CREDENCIAL.
+ *
+ *     platform  a AutoBrokers paga e todas usam        Firecrawl, Tavily,
+ *               → a corretora não conecta nada          fontes internas
+ *     company   a conta da corretora                    InfoCap, portal, Drive
+ *     user      a conta da pessoa                       Outlook, Gmail
+ *
+ * Conector de plataforma está SEMPRE pronto: a chave é nossa e vive no
+ * ambiente. Tratá-lo como pendente travaria um Auxiliar que funciona — foi
+ * exatamente o que aconteceu quando `firecrawl` entrou em `required_connectors`
+ * sem esta distinção: a tela passou a pedir, a toda corretora, que conectasse
+ * um serviço que já estava pago e ligado.
+ *
+ * Ver docs/canon/CAMADAS-DE-CONEXAO.md.
  */
-const SEMPRE_PRONTOS = new Set(['internal_conversations', 'internal_documents']);
+const SCOPE_PLATAFORMA = 'platform';
 
 /**
  * O que ESTA corretora tem conectado — calculado uma vez, vale para todos.
@@ -132,9 +151,14 @@ export async function conexoesDaCorretora(
   supabase: SupabaseClient,
   companyId: string,
 ): Promise<Set<string>> {
-  const prontos = new Set<string>(SEMPRE_PRONTOS);
+  const prontos = new Set<string>();
 
-  const [conexoes, portais, integracoes] = await Promise.all([
+  const [plataforma, conexoes, portais, integracoes] = await Promise.all([
+    // O que a AutoBrokers paga já está pronto para todas, sempre.
+    supabase.from('connector_templates')
+      .select('slug')
+      .eq('scope', SCOPE_PLATAFORMA)
+      .eq('is_active', true),
     supabase.from('tenant_connections')
       .select('status, connector_template_id, connector_templates(slug)')
       .eq('company_id', companyId)
@@ -147,6 +171,8 @@ export async function conexoesDaCorretora(
       .eq('company_id', companyId)
       .eq('is_active', true),
   ]);
+
+  for (const p of plataforma.data ?? []) prontos.add(p.slug);
 
   for (const c of conexoes.data ?? []) {
     const slug = (c as any)?.connector_templates?.slug;
