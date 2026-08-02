@@ -466,6 +466,27 @@ async def create_agent_graph(
         except Exception as e:  # noqa: BLE001
             logger.warning(f"[Graph] ⚠️ ferramenta da Factory não anexada: {e}")
 
+        # SPEC-064 Bloco G — o chat manda o Auxiliar trabalhar AGORA.
+        #
+        # Era a decisão D9 do plano de execução — "o corretor pede no chat e
+        # recebe ali mesmo, em vez de esperar a rotina" — e nenhuma SPEC a
+        # implementou: a 064 cobria criar e editar, e executar caiu entre elas.
+        #
+        # Não é executor novo: enfileira `bridge.auxiliary.execute`, o MESMO
+        # workflow da Rotina. Muda só `source_type='chat'`, para o histórico
+        # distinguir "rodou porque eu pedi" de "rodou sozinho".
+        # Sem `user_id` aqui, pelo mesmo motivo das ferramentas de inteligência
+        # logo abaixo: **o grafo é cacheado por (empresa, agente)** e reusado em
+        # muitas conversas. Amarrar um usuário na montagem faria o trabalho de
+        # uma pessoa nascer no nome de outra. Quem pediu é resolvido no turno.
+        try:
+            from .tools.auxiliary_run_tool import AuxiliaryRunTool
+            tools.append(AuxiliaryRunTool(
+                supabase_client=supabase_client,
+                company_id=str(company_id)))
+        except Exception as e:  # noqa: BLE001
+            logger.warning(f"[Graph] ⚠️ ferramenta de executar Auxiliar não anexada: {e}")
+
         # SPEC-059 — "o que precisa da minha atenção hoje?" deixa de ser uma
         # pergunta que o modelo responde por conta própria. As quatro
         # ferramentas devolvem o que está gravado, com evidência, e a capability
