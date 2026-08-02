@@ -1,6 +1,6 @@
 // 43P1.2 — acessor do Global Portal Catalog (seed gerado a partir do intake
 // oficial). Sem credencial/PII. real_action_allowed sempre false.
-import type { PortalDefinitionRecord } from '@/lib/attendance/portal-admin-sanitizers';
+import type { PortalDefinitionRecord } from '@/lib/attendance/portal-catalog-types';
 import { PORTAL_GLOBAL_CATALOG_SEED, PORTAL_GLOBAL_CATALOG_STATS, PORTAL_GLOBAL_CATALOG_GENERATED_AT } from '@/lib/attendance/portal-global-catalog-seed';
 
 export function getGlobalPortalCatalogSeed(): PortalDefinitionRecord[] {

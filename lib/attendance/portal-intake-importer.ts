@@ -3,7 +3,7 @@
 // produz PortalDefinitionRecord GLOBAIS (scope:'global'), sem credencial/PII,
 // preservando fonte/confidence/checked_at. NUNCA acessa portal/URL real.
 
-import type { PortalDefinitionRecord, PortalAuthMethod, ChallengeProfile } from '@/lib/attendance/portal-admin-sanitizers';
+import type { PortalDefinitionRecord, PortalAuthMethod, ChallengeProfile } from '@/lib/attendance/portal-catalog-types';
 
 // --- CSV / Markdown parsing -------------------------------------------------
 

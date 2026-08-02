@@ -30,6 +30,10 @@ const PROVIDER_SLUGS: Record<string, string[]> = {
   'mcp:google-calendar': ['google_calendar'],
   'mcp:slack': ['slack'],
   notion: ['notion'],
+  // SPEC-064 Bloco H — quem entra no portal e o portal_worker. O mapa do
+  // cockpit tem de casar com `capability_resolver.PROVIDER_SLUGS`: se os
+  // dois divergirem, a tela diz 'conectado' sobre algo que o runtime nega.
+  portal_worker: ['insurance_portal'],
   portal_browser: ['insurance_portal', 'browserbase'],
 };
 

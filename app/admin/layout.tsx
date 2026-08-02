@@ -321,15 +321,25 @@ export default function AdminLayout({ children }: { children: React.ReactNode })
         // Dois itens de menu para a mesma pergunta é como um menu vira lista.
       ],
     },
+    // SPEC-064 Bloco H — o Portal Browser saiu daqui junto com o código.
+    //
+    // Este submenu tinha DOIS itens para o simulador ("Portais das
+    // seguradoras" e "Navegador de portal"), e nenhum dos dois jamais acessou
+    // um portal: todas as sessões tinham `real_action_allowed: false`, as
+    // contas tinham `credential_ref: null`, e os canários da Resulta foram
+    // abortados em 21/06.
+    //
+    // Quem entra na Allianz de verdade é o `portal_worker`, e a credencial da
+    // corretora se cadastra na casa dela —
+    // `/dashboard/personalizacao/conectores/portais`, que grava na tabela
+    // `portal_accounts` que o worker lê.
     {
-      href: '/admin/connectors/portal-browser',
+      href: '/admin/insurer-action-channels',
       icon: Globe,
       label: 'Conexões',
       submenu: [
-        { href: '/admin/connectors/portal-browser', label: 'Portais das seguradoras' },
         { href: '/admin/insurer-action-channels', label: 'Canais de seguradora' },
         { href: '/admin/atlas', label: 'Atlas de rotas' },
-        { href: '/admin/portal-browser', label: 'Navegador de portal' },
       ],
     },
     {

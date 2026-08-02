@@ -30,10 +30,28 @@ PROVIDER_SLUGS: Dict[str, list] = {
     "mcp:google-calendar": ["google_calendar"],
     "mcp:slack": ["slack"],
     "notion": ["notion"],
+    # SPEC-064 Bloco H — quem entra no portal da seguradora é o `portal_worker`.
+    # `portal_browser` continua aqui de propósito: expand-first. O código aceita
+    # os dois enquanto a migration 064_07 não roda, e o rollback dela não
+    # quebra nada. O simulador some do repositório; o mapa some depois.
+    "portal_worker": ["insurance_portal"],
     "portal_browser": ["insurance_portal", "browserbase"],
 }
 
 _HEALTHY_CONN = {"connected", "active", "healthy"}
+
+# Providers cuja conexão NÃO mora em `tenant_connections`.
+#
+# 📊 Medido em 02/08/2026: `tenant_connections` nunca teve uma linha de portal.
+# A única conta de portal do sistema é a da Resulta na Allianz — e ela vive em
+# `portal_accounts`, com credencial, desde 08/07.
+#
+# Sem esta ponte, as cinco capabilities de portal resolviam `needs_connection`
+# para TODAS as corretoras, inclusive a que tem o portal funcionando e baixando
+# boleto. O registro dizia "bloqueado" sobre uma coisa que estava rodando — o
+# que não protege nada e ainda garante que, no dia em que alguém ligar a
+# checagem, o Cobrador para sem ninguém entender por quê.
+CONEXAO_EM_PORTAL_ACCOUNTS = {"portal_worker", "portal_browser"}
 
 
 def _provider_healthy(provider: Optional[str]) -> Optional[bool]:
@@ -67,6 +85,9 @@ def resolve_active_capabilities(supabase_client: Any, company_id: str, agent_rol
         caps = (c.table("capabilities").select("capability_key, is_active, owner, requires_connection, provider, risk").in_("capability_key", list(allowed)).execute().data) or []
         ents = (c.table("tenant_capability_entitlements").select("capability_key, enabled").eq("company_id", company_id).execute().data) or []
         conns = (c.table("tenant_connections").select("status, connector_templates(slug)").eq("company_id", company_id).execute().data) or []
+        # SPEC-064 Bloco H — a conexão de portal mora aqui, não em
+        # `tenant_connections`. Ver CONEXAO_EM_PORTAL_ACCOUNTS.
+        portais = (c.table("portal_accounts").select("portal_key, health").eq("company_id", company_id).execute().data) or []
     except Exception as e:  # noqa: BLE001 — fail-closed
         logger.warning(f"[CapabilityResolver] fail-closed (erro de banco): {type(e).__name__}: {e}")
         return {}
@@ -78,6 +99,14 @@ def resolve_active_capabilities(supabase_client: Any, company_id: str, agent_rol
         slug = (rel or {}).get("slug") if isinstance(rel, dict) else None
         if slug and str(cn.get("status", "")).lower() in _HEALTHY_CONN:
             connected.add(str(slug))
+
+    # Uma conta de portal com credencial satisfaz `insurance_portal`.
+    #
+    # `health` nasce 'unknown' e só vira 'failing' depois de uma falha real —
+    # tratar 'unknown' como desconectado negaria a capacidade justamente da
+    # corretora que acabou de cadastrar a conta e ainda não rodou nada.
+    if any(str(p.get("health") or "").lower() != "failing" for p in portais):
+        connected.add("insurance_portal")
 
     out: Dict[str, Dict[str, Any]] = {}
     for cap in caps:

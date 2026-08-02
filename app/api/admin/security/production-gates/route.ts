@@ -1,5 +1,8 @@
+// SPEC-064 Bloco H — autenticação pelo caminho canônico.
+// Esta rota resolvia sessão de admin por um helper que morava dentro do
+// módulo do Portal Browser (removido). Auth pertence a `admin-auth.ts`.
 import { NextResponse } from 'next/server';
-import { getPortalSupabaseAdmin, getPortalAdminContext } from '@/lib/attendance/portal-admin-context';
+import { getAdminContext } from '@/lib/admin/admin-auth';
 import {
   getProductionFlags,
   evaluateGlobalKillSwitch,
@@ -13,10 +16,9 @@ export const dynamic = 'force-dynamic';
 
 /** GET — health-check dos gates de produção. Tudo bloqueado por padrão; sem segredos. */
 export async function GET() {
-  const supabase = getPortalSupabaseAdmin();
   try {
-    const { userId } = await getPortalAdminContext(supabase);
-    if (!userId) return NextResponse.json({ ok: false, error: 'Unauthorized' }, { status: 401 });
+    const ctx = await getAdminContext();
+    if (!ctx?.adminId) return NextResponse.json({ ok: false, error: 'Unauthorized' }, { status: 401 });
 
     const flags = getProductionFlags();
     const kill = evaluateGlobalKillSwitch(flags);

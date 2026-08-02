@@ -219,6 +219,66 @@ existir** — e **nenhum promete número** (CLAUDE.md §12.1).
 
 ---
 
+## P-26 · O catálogo de 189 portais está mapeado e não é usado
+
+📊 `lib/attendance/portal-global-catalog-seed.ts` — **8.696 linhas, 189 portais
+de seguradora** levantados de pesquisa oficial: Allianz, Porto, HDI, Sompo,
+Mapfre, Bradesco, Chubb, Azul, Junto, Liberty, Alfa e Open Insurance. Cada um
+com URL de login, métodos de autenticação, perfil de desafio (captcha/MFA/OTP)
+e jornadas suportadas.
+
+**Ele sobreviveu à remoção do Portal Browser de propósito** — o simulador era
+código morto; o catálogo é pesquisa. Mas hoje **nada o consome**.
+
+> O Founder foi explícito: depois destas SPECs, repetir na Porto, HDI, Tokio e
+> Yelum o que já funciona na Allianz. **Este catálogo é o mapa desse
+> trabalho** — e a ordem de prioridade já está medida (P-27).
+
+- **Destrava:** a SPEC de novos portais.
+- **Custa se esquecer:** refazer o levantamento de 189 portais do zero.
+
+## P-27 · A ordem dos corredores, medida
+
+📊 Medido no acervo real (cartas de auto por seguradora), 02/08/2026:
+
+```
+Allianz .... 439      (+178 residencial +91 outros = 708 no total)
+Yelum ...... 276
+Tokio ...... 251
+HDI ........ 184
+Youse ...... 177      ← não estava na lista do Founder
+Porto ...... 165      ← é a 6ª, não a 2ª
+Bradesco ... 116
+Mapfre ..... 100
+```
+
+**A lista de seguradoras do Founder estava certa; a ordem não.** E a SPEC-063
+F.2.1 afirma que "as 69.150 transcrições dizem quais são" — 📊 **elas não
+dizem**: `attendance_sessions.insurer_key` é NULL em 100% das 8.872 sessões
+(P-10). Quem diz são as cartas.
+
+- **Destrava:** a SPEC-063 Bloco F.
+- **Dono:** 🤖
+
+## P-28 · A capability de portal existe e ninguém a exerce
+
+📊 Medido: `billing_collection.py` **não consulta o Capability Resolver**. As
+cinco `operational.portal.*` são declaradas e nunca checadas — o Cobrador entra
+no portal por fora do modelo de governança.
+
+A SPEC-064 consertou a **declaração** (o provider agora nomeia quem trabalha, e
+o resolver enxerga `portal_accounts`), então ela deixou de mentir. **Falta
+ligar a checagem.**
+
+> Enquanto ninguém checar, a capability é documentação. No dia em que alguém
+> ligar sem antes conferir, o Cobrador para — e a causa vai parecer
+> desconexa.
+
+- **Destrava:** o Tool Gateway sair de `shadow` (📊 `TOOL_GATEWAY_MODE=shadow`).
+- **Custa se esquecer:** é uma armadilha armada, não uma dívida passiva.
+
+---
+
 # 🔵 REGISTRADO PARA O MOMENTO CERTO
 
 ## P-20 · Conversas de vários WhatsApps
@@ -297,3 +357,6 @@ está proibido de aplicar migration.
 | P-23 | `main` atrasada | 🧑 | **tudo em produção** |
 | P-24 | Binários soltos | 🤖 | — |
 | P-25 | Doc de migrations desatualizado | 🤖 | — |
+| P-26 | Catálogo de 189 portais sem consumidor | 🤖 | novos portais |
+| P-27 | Ordem dos corredores (medida) | 🤖 | SPEC-063 F |
+| P-28 | Capability de portal não é exercida | 🤖 | Tool Gateway |

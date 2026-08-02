@@ -1,7 +1,7 @@
 // AUTO-GERADO por scripts/generate-portal-global-catalog.mjs (43P1.2). NÃO editar à mão.
 // Fonte: docs/intake/portal-registry/portal_registry_unificado_linha_a_linha.csv (official_research).
 // Sem credencial/PII. Catálogo GLOBAL (scope:'global'). real_action_allowed sempre false.
-import type { PortalDefinitionRecord } from '@/lib/attendance/portal-admin-sanitizers';
+import type { PortalDefinitionRecord } from '@/lib/attendance/portal-catalog-types';
 
 export const PORTAL_GLOBAL_CATALOG_GENERATED_AT = '2026-06-18T00:00:00.000Z';
 export const PORTAL_GLOBAL_CATALOG_STATS = {

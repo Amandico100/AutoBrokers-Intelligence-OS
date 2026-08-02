@@ -37,11 +37,11 @@ export const CAPABILITY_CATALOG: Capability[] = [
   { key: 'tenant.slack.read_write', name: 'Slack', category: 'communication', owner: 'tenant', risk: 'medium', requires_connection: true, requires_approval: true, provider: 'mcp:slack' },
   { key: 'tenant.notion.read_write', name: 'Notion', category: 'productivity', owner: 'tenant', risk: 'medium', requires_connection: true, requires_approval: true, provider: 'notion' },
   { key: 'operational.whatsapp.send', name: 'Enviar WhatsApp', category: 'communication', owner: 'operational', risk: 'high', requires_connection: true, requires_approval: true, provider: 'zapi', note: 'consentimento + aprovação' },
-  { key: 'operational.portal.policy.read', name: 'Portal — apólice (leitura)', category: 'insurance_ops', owner: 'operational', risk: 'high', requires_connection: true, requires_approval: false, provider: 'portal_browser', note: 'HITL' },
-  { key: 'operational.portal.billing.read', name: 'Portal — cobrança (leitura)', category: 'insurance_ops', owner: 'operational', risk: 'high', requires_connection: true, requires_approval: false, provider: 'portal_browser', note: 'HITL' },
-  { key: 'operational.portal.assistance.read', name: 'Portal — assistência (leitura)', category: 'insurance_ops', owner: 'operational', risk: 'high', requires_connection: true, requires_approval: false, provider: 'portal_browser', note: 'HITL' },
-  { key: 'operational.portal.assistance.prepare', name: 'Portal — preparar abertura', category: 'insurance_ops', owner: 'operational', risk: 'high', requires_connection: true, requires_approval: false, provider: 'portal_browser', note: 'prepara, não abre' },
-  { key: 'operational.portal.assistance.request', name: 'Portal — abrir assistência', category: 'insurance_ops', owner: 'operational', risk: 'high', requires_connection: true, requires_approval: true, provider: 'portal_browser', note: 'abre com aprovação' },
+  { key: 'operational.portal.policy.read', name: 'Portal — apólice (leitura)', category: 'insurance_ops', owner: 'operational', risk: 'high', requires_connection: true, requires_approval: false, provider: 'portal_worker', note: 'HITL' },
+  { key: 'operational.portal.billing.read', name: 'Portal — cobrança (leitura)', category: 'insurance_ops', owner: 'operational', risk: 'high', requires_connection: true, requires_approval: false, provider: 'portal_worker', note: 'HITL' },
+  { key: 'operational.portal.assistance.read', name: 'Portal — assistência (leitura)', category: 'insurance_ops', owner: 'operational', risk: 'high', requires_connection: true, requires_approval: false, provider: 'portal_worker', note: 'HITL' },
+  { key: 'operational.portal.assistance.prepare', name: 'Portal — preparar abertura', category: 'insurance_ops', owner: 'operational', risk: 'high', requires_connection: true, requires_approval: false, provider: 'portal_worker', note: 'prepara, não abre' },
+  { key: 'operational.portal.assistance.request', name: 'Portal — abrir assistência', category: 'insurance_ops', owner: 'operational', risk: 'high', requires_connection: true, requires_approval: true, provider: 'portal_worker', note: 'abre com aprovação' },
 ];
 
 // §6 da SPEC-014 — matriz rígida: o conjunto MÁXIMO permitido por papel.
