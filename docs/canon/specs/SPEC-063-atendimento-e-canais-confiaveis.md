@@ -85,6 +85,58 @@ A precede tudo porque é o P0. H (higiene de plataforma) vem cedo porque o
 
 ---
 
+# BLOCO 0 — A auditoria que vem antes de qualquer linha de código
+
+**Obrigatório. Nenhum bloco desta SPEC começa antes deste terminar.**
+
+Esta SPEC foi escrita a partir de auditorias, prints e leitura de código — não a
+partir do sistema rodando com dado real na frente. **Algumas premissas podem
+estar erradas**, e é mais barato descobrir agora.
+
+## 0.1 O que a auditoria tem de responder
+
+```
+1. CADA AFIRMAÇÃO desta SPEC ainda é verdade hoje?
+   arquivo:linha citado ainda existe e diz o que a SPEC diz?
+   o número do banco ainda é aquele?
+
+2. O QUE MUDOU desde que a SPEC foi escrita?
+   commit novo, migration aplicada, comportamento alterado
+
+3. O QUE A SPEC NÃO PREVIU?
+   caminho que ninguém mapeou, dependência escondida,
+   efeito colateral em outra parte do sistema
+
+4. O QUE PODE SER MELHOR do que está escrito?
+   solução mais simples, peça que já existe e não foi vista,
+   ordem de execução melhor
+
+5. O QUE VAI QUEBRAR?
+   quem consome o que vamos mudar, e o que acontece com ele
+```
+
+## 0.2 O relatório
+
+Entregue ao Founder **antes** da execução, com:
+
+```
+✅ CONFIRMADO ....... o que a auditoria verificou e está certo
+⚠️ CORRIGIDO ........ o que a SPEC dizia errado, e o certo
+➕ ACRESCENTADO ..... o que faltava e precisa entrar
+❓ EM ABERTO ........ o que não deu para determinar, e o que falta para saber
+🚫 RETIRADO ......... o que a SPEC propõe e a auditoria mostrou não valer
+```
+
+**Sem esse relatório aprovado, a execução não começa.**
+
+## 0.3 Por que isso é regra e não zelo
+
+Nesta sessão, seis auditorias mudaram o plano seis vezes — e três acharam
+defeitos que teriam ido para produção. **A auditoria não atrasa a execução: ela
+evita a reexecução.**
+
+---
+
 # BLOCO A — Quem atende é quem deve atender
 
 **Grau: P0.** É o bloco que impede o vazamento.
