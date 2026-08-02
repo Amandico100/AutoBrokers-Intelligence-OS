@@ -21,9 +21,10 @@ Nome oficial do agente central: **AutoBrokers**. "Jarvys/Jarvis" é metáfora ex
 
 1. [`docs/canon/EXECUTION-MASTER-PLAN.md`](docs/canon/EXECUTION-MASTER-PLAN.md) — onde estamos.
 2. [`docs/canon/FOUNDER-DECISIONS.md`](docs/canon/FOUNDER-DECISIONS.md) — o que já foi decidido.
-3. [`docs/canon/README.md`](docs/canon/README.md) — índice canônico.
-4. A SPEC da etapa atual + **SPEC-052** e **SPEC-053**, sempre.
-5. [`docs/canon/MIGRATIONS-AUTHORITY.md`](docs/canon/MIGRATIONS-AUTHORITY.md) — **antes de qualquer SQL**.
+3. [`docs/canon/ONTOLOGIA-DO-TRABALHO.md`](docs/canon/ONTOLOGIA-DO-TRABALHO.md) — **o que é cada coisa e onde mora.** Antes de criar qualquer peça.
+4. [`docs/canon/README.md`](docs/canon/README.md) — índice canônico.
+5. A SPEC da etapa atual + **SPEC-052** e **SPEC-053**, sempre.
+6. [`docs/canon/MIGRATIONS-AUTHORITY.md`](docs/canon/MIGRATIONS-AUTHORITY.md) — **antes de qualquer SQL**.
 
 Preflight: `git rev-parse --show-toplevel` (deve ser `AutoBrokers-Opus-Exec`) · `git branch --show-current` · `git rev-parse HEAD` (registrar no relatório) · `git status --short` (limpo ao iniciar).
 
