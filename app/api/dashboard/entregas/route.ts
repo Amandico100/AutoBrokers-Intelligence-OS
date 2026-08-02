@@ -38,6 +38,31 @@ interface Entrega {
 
 const LIMITE_POR_FONTE = 120;
 
+/**
+ * O estado da entrega, em português — e só quando ele não é o esperado.
+ *
+ * `sent` devolve null de propósito: dizer "entregue" numa lista de coisas
+ * entregues é ruído. O que precisa aparecer é o que saiu do trilho.
+ *
+ * `pending` só existe se o executor não rodou (SPEC-064 Bloco E). Ele ficava
+ * em 100% das publicações porque `delivery_policy.decidir()` não tinha
+ * chamador nenhum. Se voltar a aparecer aqui, é sinal de regressão.
+ */
+function estadoDaEntrega(status: string | null): string | null {
+  switch (status) {
+    case 'partial':
+      return 'Entregue em parte — um dos canais falhou';
+    case 'failed':
+      return 'Não foi possível entregar em nenhum canal';
+    case 'skipped':
+      return 'A política adiou a entrega — abra para ver o motivo';
+    case 'pending':
+      return 'Publicado — a entrega ainda não foi decidida';
+    default:
+      return null;
+  }
+}
+
 export async function GET(_req: NextRequest) {
   const auth = await requireCompanyMember({ write: false });
   if (!auth.ok) return NextResponse.json({ ok: false, error: auth.error }, { status: auth.status });
@@ -102,12 +127,11 @@ export async function GET(_req: NextRequest) {
       id: `briefing:${b.id}`,
       tipo: 'documento',
       titulo: b.headline || 'Checklist do dia',
-      // A honestidade que o Bloco E vai consertar: enquanto `delivery_status`
-      // for 'pending', o briefing foi PUBLICADO e não ENTREGUE. Dizer o
-      // contrário aqui esconderia o defeito em vez de mostrá-lo.
-      detalhe: b.delivery_status === 'pending'
-        ? 'Publicado — a entrega no canal ainda não aconteceu'
-        : (b.summary_text ?? null),
+      // O estado da entrega aparece quando ele NÃO é o esperado. Um briefing
+      // que saiu em todos os canais não precisa dizer isso — mas um que ficou
+      // pela metade, ou que a política adiou, precisa. Esconder isso faria a
+      // lista parecer saudável enquanto um canal está quebrado.
+      detalhe: estadoDaEntrega(b.delivery_status) ?? b.summary_text ?? null,
       quando: b.published_at || b.created_at,
       href: '/dashboard/auxiliares/checklist-6h',
       origem: 'Checklist das 6h',

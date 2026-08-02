@@ -503,8 +503,33 @@ class BriefingService:
                          subject_id=pub_id, mensagem=spec.headline,
                          detalhe={"tipo": spec.briefing_type,
                                   "itens": len(spec.itens)})
+
+        # SPEC-064 Bloco E — publicar não é entregar.
+        #
+        # Aqui a linha nascia com `delivery_status = 'pending'` e ficava assim
+        # para sempre: 26 de 26 publicações estavam pendentes em 02/08/2026, e
+        # `delivery_policy.decidir()` — a política que decide canal e horário —
+        # tinha ZERO chamadores em produção. Não havia bug: havia um fio solto
+        # entre duas peças prontas.
+        #
+        # A entrega é best-effort de propósito: se ela falhar, o briefing
+        # continua publicado e visível em Entregas. O que NÃO pode acontecer é
+        # o inverso — a publicação dar certo e ninguém nunca saber o que houve
+        # com a entrega.
+        entrega = self._entregar(publicacao, perfil)
+
         return {"ok": True, "reaproveitado": False, "publication": publicacao,
-                "spec": spec.como_payload()}
+                "spec": spec.como_payload(), "entrega": entrega}
+
+    def _entregar(self, publicacao: dict, perfil: dict) -> Optional[dict]:
+        """Chama o executor de entrega. Falha aqui nunca desfaz a publicação."""
+        try:
+            from .delivery_executor import DeliveryExecutor
+
+            return DeliveryExecutor(self.db).entregar(publicacao, perfil=perfil)
+        except Exception as exc:  # noqa: BLE001
+            logger.warning("[Briefing] entrega não executada: %s", type(exc).__name__)
+            return {"ok": False, "erro": type(exc).__name__}
 
     def _publicacao_existente(self, spec: BriefingSpec) -> Optional[dict]:
         try:

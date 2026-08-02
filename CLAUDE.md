@@ -107,6 +107,17 @@ Fora disso: complete o bloco, execute o VERIFY e avance.
 
 Vão para [`docs/canon/CHANGE-ADDENDA.md`](docs/canon/CHANGE-ADDENDA.md), classificadas como **BLOCKER · ESSENCIAL · VALIOSA · FUTURA**, com problema, evidência, consequência e autorização. **Escopo não pode ser reduzido sem decisão explícita do Founder** (D5) — sugestões de adiamento são propostas registradas, nunca execução. Nada é executado silenciosamente.
 
+### 11.1 O que fica pendente vai para [`PENDENCIAS.md`](docs/canon/PENDENCIAS.md)
+
+**Toda SPEC que termina deixa lá o que não coube nela** — chave de API que
+falta, integração que espera terceiro, tela que ainda mora no lugar errado,
+tabela sem escritor. Cada entrada diz **o que destrava**, **de quem é** (🧑
+Founder ou 🤖 execução) e **o que custa esquecer**.
+
+> **Deixar pronto e desligado é aceitável. Deixar pronto e não anotado, não.**
+
+Nada sai da lista sem estar feito ou sem uma decisão registrada.
+
 ## 12. Relatório por SPEC
 
 Use [`docs/canon/reports/SPEC-EXECUTION-REPORT-TEMPLATE.md`](docs/canon/reports/SPEC-EXECUTION-REPORT-TEMPLATE.md). Sempre: commit inicial e final · arquivos alterados · migrations com APPLY/VERIFY/ROLLBACK · testes com **saída real** · o que ficou fora e por quê · canário Amandus → Resulta → AutoFleet · riscos remanescentes · declaração de que nenhum motor paralelo foi criado.
