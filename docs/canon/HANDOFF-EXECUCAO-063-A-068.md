@@ -214,22 +214,32 @@ EXTERNO
 
 ---
 
-## 10. O achado que dá o tom do produto
+## 10. O achado que dava o tom do produto — e estava errado
 
-Extraído do portal da Allianz em 15/07/2026, dado real da Resulta:
+> ⚠️ **CORRIGIDO EM 02/08/2026 pela auditoria forense de entrada.**
+> O quadro que estava aqui era **leitura errada de um relatório de
+> inadimplência**, e ficou registrada porque o extrator do portal batiza a coluna
+> com o nome errado. Detalhe completo em
+> [`SPEC-065 §C.1.1`](specs/SPEC-065-carteira-e-dinheiro-visivel.md) e em
+> [`reports/AUDITORIA-FORENSE-ENTRADA-NOVO-LIDER.md`](reports/AUDITORIA-FORENSE-ENTRADA-NOVO-LIDER.md).
+
+O que se lia como *"o ramo Empresa PME paga comissão ZERO"* era, na verdade,
+**uma única parcela vencida — a 4/4** — dentro do relatório de inadimplência.
+A prova é aritmética:
 
 ```
-ramo                          apólices    prêmio        comissão
-─────────────────────────────────────────────────────────────────
-2013 · Residência Digital         3       R$   593,83   R$ 17,76   → 2,99%
-2024 · Empresa PME                1       R$ 1.297,56   R$  0,00   → ZERO
+106,03 + 107,17 + 380,63 = 593,83   ← as três PARCELAS VENCIDAS
+  0,00 +   0,03 +  17,73 =  17,76   ← a comissão DAQUELAS TRÊS
 ```
 
-**Idêntico em 11/07 e em 15/07. Congelado assim há semanas.**
+📊 **O que fica de verdadeiro:** o mecanismo. A comissão é liberada por parcela
+paga; se o segurado atrasa, ela não é gerada; e **o sistema já lê esse dado e o
+descarta antes de gravar.**
 
-Ou a comissão é zero de verdade — e a corretora vende um produto que não paga
-nada, sem saber. Ou é erro de cadastro — e há comissão a cobrar.
+📊 **E o tamanho real da evidência:** a única medição de comissão em risco que
+existe no sistema é **R$ 17,76**, sobre 5 parcelas vencidas. **Qualquer número
+maior precisa vir de query, nunca de estimativa.**
 
-> **Nos dois casos o corretor precisa saber. E hoje ninguém olha.**
->
-> **É isso que o produto faz. Todo o resto é infraestrutura para isso acontecer.**
+> **A lição que substitui o achado:** o produto existe para achar dinheiro real.
+> **Por isso mesmo, número ilustrativo nunca pode ser formatado como número
+> medido.** Ver a regra 📊/💭 no CLAUDE.md.

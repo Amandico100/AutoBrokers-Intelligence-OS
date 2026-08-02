@@ -383,28 +383,72 @@ E por ramo (`extract_totals_from_rows:210`): `qtd_apolices · premio · comissao
 **Aí `backend/app/services/billing_collection.py:350` descarta o campo
 `comissao`** antes de gravar.
 
-**Dado real, extraído em 15/07/2026:**
+> ⚠️ **CORRIGIDO EM 02/08/2026 pela auditoria forense de entrada.**
+> O que estava escrito aqui era uma leitura errada, e ficou registrada porque
+> **o extrator do portal batiza a coluna com o nome errado.** Ver §C.1.1.
 
-| ramo | apólices | prêmio | comissão | taxa |
-|---|---|---|---|---|
-| 2013 · Residência Digital | 3 | R$ 593,83 | R$ 17,76 | **2,99%** |
-| 2024 · Empresa PME | 1 | R$ 1.297,56 | **R$ 0,00** | **ZERO** |
+### C.1.1 O defeito de nomenclatura que causou o erro
 
-**Idêntico em 11/07 e 15/07.** Está congelado assim há semanas.
-
-## C.2 Duas explicações, e as duas valem dinheiro
+`extract_totals_from_rows` devolve `qtd_apolices · premio · comissao`.
+**Nenhum dos três é o que o nome diz.** A tabela de origem é o relatório de
+**inadimplência**, e as colunas são:
 
 ```
-1. a comissão É zero → a corretora vende um produto que não paga nada,
-                        e não sabe
-2. é erro de cadastro → tem comissão a cobrar
+qtd_apolices ... apólices COM PARCELA VENCIDA no ramo
+premio ......... 📊 soma do VALOR DAS PARCELAS VENCIDAS   ← não é prêmio
+comissao ....... 📊 soma da comissão DAQUELAS PARCELAS     ← não é a comissão do ramo
 ```
 
-**Nos dois casos o corretor precisa saber. Hoje ninguém olha.**
+**A prova aritmética, na varredura de 15/07:**
 
-**Validar no Bloco 0:** confirmar contra o InfoCap qual a comissão contratada
-desse produto. **Se o InfoCap disser 20% e o portal disser zero, é o primeiro
-achado real do produto.**
+```
+106,03 + 107,17 + 380,63 = 593,83   ✓  as três parcelas vencidas
+  0,00 +   0,03 +  17,73 =  17,76   ✓  a comissão daquelas três
+```
+
+**Correção obrigatória neste bloco:** renomear para
+`qtd_apolices_com_parcela_vencida · valor_parcelas_vencidas ·
+comissao_parcelas_vencidas`. **É a causa, não o efeito.** Enquanto o campo mentir
+no nome, todo leitor futuro — humano ou LLM — erra do mesmo jeito.
+
+### C.1.2 O que o dado realmente mostra
+
+📊 **Medido** — universo completo das varreduras de 08/07 a 15/07, Resulta ×
+Allianz: **5 parcelas vencidas distintas**.
+
+| parcela | valor vencido | comissão | % |
+|---|---|---|---|
+| **4/4** (última) | R$ 1.297,56 | **R$ 0,00** | 0,00% |
+| **10/10** (última) | R$ 106,03 | **R$ 0,00** | 0,00% |
+| 3/10 | R$ 96,95 | R$ 0,03 | 0,03% |
+| 3/10 | R$ 107,17 | R$ 0,03 | 0,03% |
+| 2/7 | R$ 380,63 | R$ 17,73 | 4,66% |
+
+**As duas linhas com comissão zero são as duas últimas parcelas.**
+
+💭 **Inferência não provada:** comissão antecipada nas primeiras parcelas,
+prática padrão. **Não explica tudo** — a parcela 2/7 paga 4,66% e a 3/10 paga
+0,03%, 150× de diferença. **O formato muda por produto, e é isso que precisa ser
+descoberto**, não "zero ou erro".
+
+**🚫 RETIRADO:** a dicotomia *"ou a comissão é zero de verdade, ou é erro de
+cadastro"*. Havia uma terceira explicação, mais provável, que não foi
+considerada.
+
+## C.2 O que continua valendo, e é o que importa
+
+**O mecanismo é real:** a comissão é liberada por parcela paga. Se o segurado
+atrasa, ela não é gerada. **E hoje o sistema lê esse dado e joga fora.**
+
+**O que muda:** este bloco para de prometer um achado específico e passa a
+entregar a **capacidade de descobrir a regra de comissionamento por produto**,
+cruzando parcela × comissão ao longo do tempo. A afirmação de valor sai do texto
+e passa a ser calculada.
+
+**Validar no Bloco 0:** confirmar contra o InfoCap a comissão contratada do
+produto e o esquema de antecipação. **📊 A única medição de comissão em risco
+que existe hoje no sistema inteiro é R$ 17,76.** Qualquer número maior que isso
+precisa vir de query, não de estimativa.
 
 ## C.3 A correção
 

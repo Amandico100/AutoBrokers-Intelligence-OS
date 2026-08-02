@@ -111,6 +111,24 @@ Use [`docs/canon/reports/SPEC-EXECUTION-REPORT-TEMPLATE.md`](docs/canon/reports/
 
 Separe **FATO**, **INFERÊNCIA** e **RECOMENDAÇÃO**. Não afirme que algo funciona só porque existe código.
 
+### 12.1 Número medido e número ilustrativo têm marcação obrigatória
+
+> Acrescentado em 02/08/2026, depois que um número de exemplo virou "achado do
+> produto" e atravessou seis documentos como se fosse medição.
+
+| Marca | Significado | Exigência |
+|---|---|---|
+| 📊 | **medido** | data, fonte e a query/comando que produziu o número |
+| 💭 | **ilustrativo** | exemplo de copy ou hipótese — **nunca citável como fato** |
+
+**Vale em SPEC, relatório, prompt, handoff e commit.** Número sem marca, em
+documento novo, é defeito de revisão.
+
+**E o corolário que fecha a porta:** se o nome de um campo mente sobre o que ele
+guarda (`premio` que é parcela vencida), **conserte o campo** — não só o texto.
+O texto errado é o sintoma; o nome errado é a causa, e ela reinfecta todo leitor
+seguinte.
+
 ## 13. Regras finais
 
 1. Não alterar produção antes do preflight de infraestrutura (P1 pendente).

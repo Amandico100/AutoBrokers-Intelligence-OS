@@ -27,6 +27,12 @@ Ninguém usa esse dado porque ele vem num arquivo bruto de 542 MB e **a coluna
 que a documentação manda usar está zerada desde 2013** — quem segue o manual
 calcula 0% e não percebe. Nós descobrimos qual é a coluna certa.
 
+> 💭 **Aviso acrescentado em 02/08/2026.** Todos os blocos *"O que isso vira na
+> tela"* neste documento são **copy ilustrativa** — texto de exemplo, com números
+> inventados para mostrar o formato. **Nenhum deles é medição.** Estavam
+> formatados igual a dado real, e foi assim que um deles atravessou seis
+> documentos como se fosse um achado. Ver CLAUDE.md §12.1.
+
 **O que isso vira na tela do corretor:**
 
 > *"Você está colocando 40% do seu auto na Allianz. A sinistralidade dela em
