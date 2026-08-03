@@ -173,6 +173,31 @@ class IntegrationService:
             logger.error(f"[INTEGRATION] Error fetching by id: {type(e).__name__}")
             return None
 
+    # SPEC-063 Bloco D — PROIBIÇÃO, não prioridade.
+    #
+    # O Observador é o número que a corretora pareia para o sistema ESCUTAR as
+    # conversas reais dela. Ele é mudo por construção: o módulo de captura não
+    # importa nenhum cliente de envio.
+    #
+    # Mas os seletores de canal de SAÍDA nunca olharam `purpose`. Onde havia
+    # ordenação, o observador ficava por último — e "por último" vira "o
+    # escolhido" quando é o único ativo. 📊 Em 02/08/2026 Amandus e AutoFleet
+    # tinham EXATAMENTE isso: só o observador ativo.
+    #
+    # Cobrança, follow-up e alerta sairiam pelo número que existe para ficar
+    # calado. O segurado receberia mensagem de um número que nunca falou com
+    # ele, e a corretora perderia o silêncio que pediu ao parear.
+    #
+    # Última prioridade não protege. Só a proibição protege.
+    PROPOSITOS_QUE_NUNCA_ENVIAM = frozenset({"observer"})
+
+    @classmethod
+    def pode_enviar(cls, integracao: Optional[Dict]) -> bool:
+        """Esta integração pode ser canal de SAÍDA?"""
+        if not integracao:
+            return False
+        return str(integracao.get("purpose") or "").strip().lower()             not in cls.PROPOSITOS_QUE_NUNCA_ENVIAM
+
     def get_platform_whatsapp_integration(self, company_id: str):
         """Integração p/ envios DE PLATAFORMA (alertas do Vigia, follow-ups,
         sugestões, relatório de sábado) — escopo da CORRETORA, não de um agente.
@@ -183,8 +208,12 @@ class IntegrationService:
         (agent_id NULL) e, se não houver, usa a integração ativa da corretora.
         """
         integ = self.get_whatsapp_integration(company_id)
-        if integ:
+        if integ and self.pode_enviar(integ):
             return integ
+        if integ:
+            logger.warning("[BUSCA INTEGRAÇÃO] a integração encontrada para %s é "
+                           "'%s' — proibida como canal de saída (SPEC-063 D)",
+                           company_id, integ.get("purpose"))
         try:
             res = (
                 self.supabase.table("integrations")
@@ -196,7 +225,13 @@ class IntegrationService:
             valid = [i for i in (res.data or [])
                      if str(i.get("provider", "")).lower().strip() in (
                          "z-api", "evolution", "evolution-api", "evolution-go",
-                         "wppconnect", "whatsapp", "whatsapp-cloud", "meta")]
+                         "wppconnect", "whatsapp", "whatsapp-cloud", "meta")
+                     and self.pode_enviar(i)]
+            if not valid:
+                logger.warning("[BUSCA INTEGRAÇÃO] corretora %s NAO tem canal de saida "
+                               "elegivel (o observador nao conta). Nada sera enviado — "
+                               "e isso e melhor que enviar pelo numero que deve calar.",
+                               company_id)
             if valid:
                 from app.services.whatsapp.integration_secrets import prepare_integration_for_runtime
 

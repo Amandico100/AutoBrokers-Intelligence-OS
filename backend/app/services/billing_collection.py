@@ -408,7 +408,15 @@ def _find_whatsapp_integration(client, company_id: str) -> Optional[Dict[str, An
         .eq("is_active", True)
         .execute()
     )
-    rows = [dict(r) for r in (res.data or [])]
+    # SPEC-063 Bloco D — o observador sai da lista ANTES da ordenação.
+    #
+    # Antes: rank = {"auxiliary": 0, "attendance": 1} e todo o resto valia 2 —
+    # inclusive `observer`. Com `return rows[0] if rows else None`, a corretora
+    # que só tem o observador ativo mandava COBRANÇA pelo número que existe
+    # para ficar calado. 📊 Amandus e AutoFleet estavam exatamente assim.
+    from app.services.integration_service import IntegrationService
+
+    rows = [dict(r) for r in (res.data or []) if IntegrationService.pode_enviar(r)]
     rank = {"auxiliary": 0, "attendance": 1}
     rows.sort(key=lambda r: rank.get(str(r.get("purpose") or ""), 2))
     return rows[0] if rows else None
