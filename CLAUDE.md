@@ -101,6 +101,35 @@ Proibido sem manifesto aprovado: mover, renomear, apagar ou reaplicar migration 
 - **Não** pedir aprovação manual do Founder entre todos os blocos.
 - Pasta única `AutoBrokers-Opus-Exec`; uma branch por SPEC/pacote; recomendada uma sessão nova por SPEC.
 
+### 9.1 Build verde **não** é prova de que a aplicação sobe
+
+> Acrescentado em 02/08/2026, depois que o produto ficou **1h40 fora do ar** com
+> todos os gates verdes.
+
+Uma pasta `[slug]` nasceu ao lado de uma `[templateId]` na mesma posição da
+árvore de rotas. O Next.js exige **um nome de parâmetro por posição**. Passaram:
+`next build` (287 rotas), `tsc --noEmit`, 111 testes, a imagem Docker e o
+`Ready in 1253ms` do contêiner. A linha seguinte foi
+`getSortedRoutes: You cannot use different slug names…` — e **todas** as rotas
+passaram a devolver 500, inclusive a página de 404.
+
+**Todos os gates paravam antes de ligar o servidor.**
+
+Antes de declarar gate verde numa SPEC que mexeu em `app/`, `middleware.ts`,
+`instrumentation.ts`, `next.config.js` ou variáveis de ambiente:
+
+```
+npm run test:rotas-montam     a tabela de rotas monta (getSortedRoutes real)
+next start + 1 requisição     o servidor RESPONDE — não só compila
+```
+
+Uma rota que responde 200 vale mais que um build de 287 rotas.
+
+**E o sintoma engana:** `public/` continua servindo 200 porque o servidor de
+estáticos não passa pelo roteador. Parece "algumas telas quebradas"; é o produto
+inteiro. Ao investigar queda, o primeiro teste é **rota que executa código**
+(`/api/…`), nunca um arquivo.
+
 ## 10. Condições legítimas de parada
 
 Pare e registre **somente** por: (1) risco de perda de dados · (2) decisão comercial ou de precificação · (3) conflito canônico · (4) P0/P1 de segurança ou cross-tenant · (5) ação física do Founder (QR, passkey, acesso, pagamento) · (6) mudança material de escopo · (7) custo extraordinário · (8) falta de acesso indispensável.

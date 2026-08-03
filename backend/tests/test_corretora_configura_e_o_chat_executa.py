@@ -113,7 +113,7 @@ def teste_a_escrita_existe_com_historico():
            "se a ordem inverter, uma falha deixa mudança sem história")
 
     rota = _sem_comentario(
-        _ler("app", "api", "dashboard", "auxiliaries", "[slug]", "config", "route.ts"))
+        _ler("app", "api", "dashboard", "auxiliaries", "[auxiliar]", "config", "route.ts"))
     checar("export async function PATCH" in rota, "existe rota de escrita")
     checar("requireCompanyMember" in rota and "write: true" in rota,
            "a escrita exige papel administrativo da própria corretora")
@@ -162,7 +162,7 @@ def teste_isolamento_entre_duas_corretoras():
            "conhecer o id de outra corretora não pode bastar")
 
     rota = _sem_comentario(
-        _ler("app", "api", "dashboard", "auxiliaries", "[slug]", "config", "route.ts"))
+        _ler("app", "api", "dashboard", "auxiliaries", "[auxiliar]", "config", "route.ts"))
     checar("auth.ctx.companyId" in rota and "body?.companyId" not in rota,
            "o company_id vem da SESSÃO, nunca do corpo da requisição")
 

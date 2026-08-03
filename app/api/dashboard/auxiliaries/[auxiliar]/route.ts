@@ -7,10 +7,18 @@ import { getBackendUrl } from '@/lib/backend-url';
 
 export const dynamic = 'force-dynamic';
 
-export async function POST(req: NextRequest, { params }: { params: Promise<{ templateId: string }> }) {
+// O segmento chama-se `[auxiliar]` — e não `[templateId]` — porque o Next.js
+// exige UM nome de parâmetro por posição, e a rota irmã `config/` identifica o
+// Auxiliar por SLUG. Dois nomes na mesma posição não é preferência de estilo:
+// derruba a montagem da tabela de rotas e o servidor inteiro passa a devolver
+// 500 (02/08/2026 — o site ficou 1h40 fora do ar por causa disso).
+//
+// Cada handler renomeia localmente para o que ELE recebe, e o nome do segmento
+// não mente sobre nenhum dos dois.
+export async function POST(req: NextRequest, { params }: { params: Promise<{ auxiliar: string }> }) {
   const xo = assertSameOrigin(req);
   if (xo) return NextResponse.json({ ok: false, error: xo.error }, { status: xo.status });
-  const { templateId } = await params;
+  const { auxiliar: templateId } = await params;
   const auth = await requireCompanyMember({ write: true });
   if (!auth.ok) return NextResponse.json({ ok: false, error: auth.error }, { status: auth.status });
   const body = await req.json().catch(() => ({}));
