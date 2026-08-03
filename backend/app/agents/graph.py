@@ -626,6 +626,135 @@ def should_prefetch_rag(user_message: str) -> bool:
     return len(msg) > 25
 
 
+
+# ===================================================================== #
+# SPEC-063 Blocos S e G — o que o atendente já sabe, e como se conduz
+# ===================================================================== #
+
+# Teto do bloco de conduta, em caracteres.
+#
+# Os playbooks têm de 6 a 10 KB cada. Colar um inteiro empurraria o RAG e o
+# histórico para fora do contexto — o agente ganharia conduta e perderia o
+# conhecimento com que responde. A SPEC-063 G exige teto explícito, e é este.
+_TETO_DA_CONDUTA = 2600
+
+
+def _slots_obrigatorios_do_caso(ficha: dict) -> list:
+    """Os dados que ESTE caso exige, segundo o corredor que o executa.
+
+    A lista não é inventada aqui: vem de `corridor_playbooks`, que é a
+    autoridade sobre o que a URA daquela seguradora vai pedir. Se não der para
+    resolver o corredor, devolve lista vazia — e a ficha simplesmente não
+    mostra "o que falta". Vazio é honesto; lista chutada faria o agente cobrar
+    do cliente um dado que ninguém vai usar.
+    """
+    try:
+        from app.services.corridor_playbooks import (
+            missing_slots_for_subservice,
+            resolve_playbook_ref,
+        )
+    except Exception:  # noqa: BLE001
+        return []
+
+    ramo = str(ficha.get("ramo") or "").strip().lower()
+    servico = str(ficha.get("servico") or "").strip().lower()
+    seguradora = str(ficha.get("seguradora") or "").strip().lower()
+    if not (ramo and servico and seguradora):
+        return []
+    try:
+        ref = resolve_playbook_ref(seguradora, ramo, "whatsapp")
+        if not ref:
+            return []
+        # `missing_slots_for_subservice` devolve o que falta dado o que já há;
+        # com dicionário vazio, ele devolve a lista COMPLETA de obrigatórios.
+        return list(missing_slots_for_subservice(ref, servico, {}) or [])
+    except Exception as exc:  # noqa: BLE001
+        logger.debug("[FICHA] slots do caso indisponíveis (%s)", type(exc).__name__)
+        return []
+
+
+async def _conduta_do_caso(supabase_client, mensagem: str) -> str:
+    """A conduta destilada de atendimentos humanos reais, para ESTE tipo de caso.
+
+    📊 16 playbooks (12 ativos), gerados por claude-opus-5 a partir de 297
+    atendimentos humanos, com objetivo, verificações prévias, ficha de coleta,
+    acolhimento e sensibilidade. Todos órfãos: lidos apenas pelo juiz que os
+    aprova e pela tela do admin que os conta.
+
+    O ramo e o serviço são inferidos pelo classificador que o Atlas já usa
+    (`infer_ramo_servico`) — determinístico, sem chamada de modelo. Um
+    classificador novo aqui seria um segundo jeito de responder a mesma
+    pergunta, e os dois divergiriam com o tempo.
+    """
+    import asyncio
+
+    texto = str(mensagem or "").strip()
+    if len(texto) < 8:
+        return ""
+    try:
+        from app.services.atlas.templater import infer_ramo_servico
+
+        ramo, servico = infer_ramo_servico([], texto)
+    except Exception:  # noqa: BLE001
+        return ""
+    if not (ramo and servico):
+        return ""
+
+    cli = supabase_client.client if hasattr(supabase_client, "client") else supabase_client
+    if cli is None:
+        return ""
+
+    def _q():
+        return (cli.table("conduct_playbooks")
+                .select("content, ramo, servico, version")
+                .eq("ramo", ramo).eq("servico", servico).eq("status", "active")
+                .order("version", desc=True).limit(1).execute())
+
+    try:
+        res = await asyncio.to_thread(_q)
+    except Exception as exc:  # noqa: BLE001
+        logger.warning("[CONDUTA] leitura falhou (%s)", type(exc).__name__)
+        return ""
+    if not res.data:
+        return ""
+
+    c = res.data[0].get("content") or {}
+    if not isinstance(c, dict):
+        return ""
+
+    linhas = [f"=== 🎧 COMO SE CONDUZ UM ATENDIMENTO DE {servico.upper()} "
+              f"({ramo.upper()}) ===",
+              "Destilado de atendimentos humanos reais desta corretora. "
+              "Não é script: é o jeito que funciona."]
+
+    if c.get("objetivo"):
+        linhas.append(f"Objetivo: {str(c['objetivo']).strip()}")
+
+    def _lista(chave: str, titulo: str, teto: int) -> None:
+        itens = c.get(chave)
+        if isinstance(itens, list) and itens:
+            linhas.append(titulo)
+            for it in itens[:teto]:
+                linhas.append(f"  · {str(it).strip()}")
+        elif isinstance(itens, str) and itens.strip():
+            linhas.append(f"{titulo} {itens.strip()}")
+
+    _lista("pre_checks", "Confira ANTES de prometer qualquer coisa:", 5)
+    _lista("ficha_coleta", "Colete de uma vez só (não peça em conta-gotas):", 12)
+    _lista("acolhimento", "Como abrir:", 2)
+    _lista("sensibilidade", "Cuidado humano:", 3)
+    _lista("encerramento", "Como fechar:", 2)
+
+    bloco = chr(10).join(linhas)
+    if len(bloco) > _TETO_DA_CONDUTA:
+        # Cortar no fim de uma linha, não no meio de uma frase: conduta cortada
+        # na metade de uma orientação é pior que conduta ausente.
+        bloco = bloco[:_TETO_DA_CONDUTA].rsplit(chr(10), 1)[0]
+        bloco += chr(10) + "  (...conduta resumida para nao empurrar o conhecimento para fora)"
+    logger.info("[CONDUTA] injetada | %s/%s | %d chars", ramo, servico, len(bloco))
+    return bloco
+
+
 async def _build_initial_state(
     user_message: str,
     company_id: str,
@@ -971,6 +1100,48 @@ async def _build_initial_state(
             logger.info("[AuxContext] skipped reason=not_core_or_no_trigger")
     except Exception as e:  # noqa: BLE001 — awareness nunca pode quebrar o chat
         logger.warning(f"[AuxContext] error ignored type={type(e).__name__}")
+
+    # ------------------------------------------------------------------ #
+    # SPEC-063 Blocos S e G — a ficha do atendimento e a conduta destilada.
+    #
+    # (helpers logo abaixo, em _slots_obrigatorios_do_caso e _conduta_do_caso)
+    #
+    # Só para quem fala com o SEGURADO. O copiloto interno do corretor não tem
+    # ficha de atendimento nem conduta de assistência: são outra conversa.
+    # ------------------------------------------------------------------ #
+    if str(_agent_role or "").lower() in ("attendance", "insured_external"):
+        # --- S · O QUE JÁ SE SABE ---------------------------------------
+        # A memória do que já foi perguntado era a janela de 60 mensagens.
+        # Passou disso, o CPF que o cliente deu no começo sumia — e o código
+        # registra que isso JÁ aconteceu em produção. Num sinistro real, isso é
+        # pedir o CPF de novo a quem acabou de bater o carro.
+        try:
+            from app.services.attendance_ficha import bloco_para_o_prompt, carregar
+
+            _cli = supabase_client.client if hasattr(supabase_client, "client") else supabase_client
+            _ficha = await carregar(_cli, str(company_id), str(session_id or ""))
+            _obrig = _slots_obrigatorios_do_caso(_ficha)
+            _bloco_ficha = bloco_para_o_prompt(_ficha, _obrig)
+            if _bloco_ficha:
+                dynamic_context += f"\n\n{_bloco_ficha}"
+                logger.info("[FICHA] injetada | fase=%s | confirmados=%d",
+                            _ficha.get("fase"), len(_ficha.get("confirmados") or {}))
+        except Exception as e:  # noqa: BLE001 — a ficha nunca derruba o turno
+            logger.warning("[FICHA] não injetada (%s)", type(e).__name__)
+
+        # --- G · COMO SE CONDUZ ESTE TIPO DE ATENDIMENTO ------------------
+        # 📊 16 playbooks de conduta, 12 ativos, destilados por claude-opus-5 de
+        # 297 atendimentos HUMANOS reais, com ficha de coleta de até 19 campos.
+        # Eram lidos por exatamente duas coisas: o juiz que os aprova e a tela
+        # do admin que os conta. Nenhuma palavra chegava ao turno.
+        #
+        # As "fases" que o agente seguia eram seis parágrafos escritos à mão.
+        try:
+            _bloco_conduta = await _conduta_do_caso(supabase_client, user_message)
+            if _bloco_conduta:
+                dynamic_context += f"\n\n{_bloco_conduta}"
+        except Exception as e:  # noqa: BLE001
+            logger.warning("[CONDUTA] não injetada (%s)", type(e).__name__)
 
     # Prompt completo para uso geral
     composite_prompt = static_prompt + dynamic_context

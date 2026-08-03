@@ -798,6 +798,81 @@ class _RegistroInerte:
         return None
 
 
+
+# Campos que a tool de acionamento declara e que valem como dado do caso.
+# Só entram aqui os que o CLIENTE confirmou ou que a InfoCap resolveu — nada de
+# campo de controle interno.
+_SLOTS_DA_FICHA = (
+    "titular_cpf", "titular_nome", "telefone_contato",
+    "veiculo_placa", "local_atual", "local_destino",
+    "endereco_numero", "problema_descricao", "periodo_preferido",
+    "risco_confirmado_sem_fumaca", "aparelho_marca_modelo", "aparelho_idade",
+)
+
+
+async def _gravar_ficha_do_turno(state: dict, tool_name: str,
+                                 tool_args: dict, result) -> None:
+    """Guarda o que este turno apurou, para o próximo não reperguntar.
+
+    SPEC-063 Bloco S. É o lado da ESCRITA do laço que fecha o buraco: o modelo
+    declara os slots na tool, a ficha grava, e o turno seguinte mostra de volta.
+
+    Nunca levanta para fora: uma falha aqui custa a memória de um turno; deixar
+    a exceção subir custaria a resposta ao segurado.
+    """
+    from app.core.database import get_supabase_client
+    from app.services.attendance_ficha import FASE_COM_HUMANO, gravar
+
+    company_id = str(state.get("company_id") or "")
+    session_id = str(state.get("session_id") or "")
+    if not (company_id and session_id):
+        return
+
+    novidades: dict = {}
+
+    if tool_name == "request_human_agent":
+        # Devolvido a uma pessoa. A fase trava aqui: só um humano tira daqui.
+        novidades["fase"] = FASE_COM_HUMANO
+    else:
+        confirmados = {k: tool_args.get(k) for k in _SLOTS_DA_FICHA
+                       if tool_args.get(k) not in (None, "")}
+        if confirmados:
+            novidades["confirmados"] = confirmados
+        for origem, destino in (("insurer_key", "seguradora"),
+                                ("line_kind", "ramo"),
+                                ("subservice", "servico"),
+                                ("servico", "servico")):
+            if tool_args.get(origem):
+                novidades[destino] = tool_args[origem]
+        # A placa resolvida pela InfoCap é prova de apólice localizada; o
+        # modelo não pode marcar isso sozinho.
+        if tool_args.get("dados_confirmados") is True and tool_args.get("veiculo_placa"):
+            novidades["apolice_confirmada"] = True
+
+        texto = str(result if isinstance(result, str) else (result or {}))
+        # Protocolo só entra se veio do RESULTADO da tool — nunca de algo que o
+        # modelo tenha escrito. Protocolo inventado é o defeito que o guardrail
+        # `no_fake_protocol` existe para impedir.
+        import re as _re
+        m = _re.search(r"protocolo[^0-9A-Za-z]{0,12}([A-Za-z0-9-]{5,})", texto, _re.I)
+        if m:
+            novidades["acionamento"] = {"protocolo": m.group(1)}
+
+    if not novidades:
+        return
+
+    try:
+        from app.services.attendance_ficha import ficha_vazia
+        from app.agents.graph import _slots_obrigatorios_do_caso
+
+        obrig = _slots_obrigatorios_do_caso({**ficha_vazia(), **novidades})
+    except Exception:  # noqa: BLE001
+        obrig = []
+
+    await gravar(get_supabase_client().client, company_id, session_id,
+                 novidades, obrig)
+
+
 async def tool_node(state: AgentState, tools: list) -> dict:
     """
     Nó de Tools - Executa as tools chamadas pelo agente.
@@ -958,6 +1033,26 @@ async def tool_node(state: AgentState, tools: list) -> dict:
                             )
                         registro.ok(result)
                     tools_used.append(tool_name)
+
+                    # SPEC-063 Bloco S — o turno deixa MEMÓRIA.
+                    #
+                    # A tool de acionamento obriga o modelo a declarar 15+ campos
+                    # que ele reconstrói do texto da conversa. Esses campos eram
+                    # usados uma vez e jogados fora: na chamada seguinte, tudo de
+                    # novo, a partir de um histórico que pode já ter perdido o
+                    # começo (janela de 60 mensagens).
+                    #
+                    # Aqui o que o modelo declarou vira ficha. No próximo turno o
+                    # grafo mostra de volta, e o cliente para de ouvir a mesma
+                    # pergunta. Grava DEPOIS da execução: o que o modelo alegou
+                    # numa chamada que estourou não é dado confirmado.
+                    if tool_name in ("insurer_dispatch", "request_human_agent"):
+                        try:
+                            await _gravar_ficha_do_turno(
+                                state, tool_name, tool_args, result)
+                        except Exception as _e:  # noqa: BLE001
+                            logger.warning("[FICHA] turno sem memória (%s)",
+                                           type(_e).__name__)
 
                     # Processamento de Resultado
                     if tool_name == "knowledge_base_search":
