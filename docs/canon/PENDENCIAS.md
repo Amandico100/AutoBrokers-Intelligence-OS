@@ -487,3 +487,42 @@ cabem, e a captura não escolhe entre elas.
 adiante o que lhe derem. Ninguém finge saber.
 
 **O que destrava.** O loopback (P-63): ele mostra o que um cliente real põe ali.
+
+---
+
+## P-65 · 🔴 A tela de pareamento diz uma coisa e liga outra
+
+**O que aconteceu, 03/08/2026 20:15–20:24.** O Founder abriu "Conectar WhatsApp
+da corretora" no painel e escaneou. 📊 Quem conectou foram as instâncias do
+**Observador** (`ab-obs-*`), não as de atendimento (`ab-*`), que seguem
+`disconnected` — confirmado pelo batimento às 20:25:35.
+
+O Observador nasce com escopo `insurers_and_clients`. Resultado: **2.556
+transcrições e 745 sessões** de 630 contatos pessoais entraram em
+`attendance_transcripts` — a tabela que alimenta o destilador de cartas.
+
+**Contido e revertido.** Escopo fechado nas 3 integrações, API reiniciada para
+matar o lote em voo, dados apagados. 📊 Restaurado ao número exato de antes
+(69.150 transcrições · 8.872 sessões) e **nenhuma carta foi gerada**
+(`knowledge_cards` parou em 30/07, zero no período).
+
+**A causa, e ela é de produto.** A tela promete *"Use o número de trabalho que a
+equipe já atende"* e não diz, em lugar nenhum, que **tudo que não for grupo será
+gravado e pode virar conhecimento consultável**. Uma pessoa não tem como saber
+antes de escanear. O texto descreve a intenção; não descreve a consequência.
+
+**O que destrava.** Ler o código que a tela chama, e:
+1. a tela declarar o que será capturado, com as palavras certas, ANTES do QR;
+2. o rótulo do cartão bater com a instância que ele de fato conecta;
+3. escolher o escopo na hora do pareamento, e não depois.
+
+**O que custa esquecer.** Da próxima vez pode ser o telefone pessoal de um
+corretor de verdade — e aí não é reversível com um DELETE nosso.
+
+## P-66 · O payload cru do histórico fica 7 dias no Redis 🤖
+
+📊 `history_ingest.py` guarda o primeiro sync inteiro em Redis, até 200 KB, TTL 7
+dias. O DELETE do Postgres **não** o alcança. Vence sozinho em 10/08/2026.
+
+**O que destrava.** Limpar a chave, ou aceitar o vencimento. Não há PII em
+índice nem em RAG — é cache bruto, não consultável.
