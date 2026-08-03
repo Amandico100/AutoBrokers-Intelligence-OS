@@ -649,6 +649,8 @@ class PairingOrchestrator:
             rows = (listing.json() or {}).get("data", []) if listing.status_code < 400 else []
             ghost = next((row for row in rows if str(row.get("name") or "") == instance), None)
             if ghost and not ghost.get("jid") and ghost.get("id"):
+                # Casca vazia: existe no provedor mas nunca chegou a ter telefone.
+                # Não dá para conectar, então some e nasce de novo.
                 await client.delete(f"/instance/delete/{ghost['id']}", headers={"apikey": self.global_key})
                 response = await client.post(
                     "/instance/create",
@@ -662,6 +664,23 @@ class PairingOrchestrator:
                         },
                     },
                 )
+            elif ghost:
+                # A instância existe E tem telefone. **Isto não é erro** — é o caso
+                # normal de quem já pareou uma vez e quer parear de novo.
+                #
+                # Tratar como erro criava um beco sem saída, e ele apareceu em
+                # 03/08/2026: a tela mostrava "Desconectado" (então não havia botão
+                # Desconectar) e todo "Gerar novo QR" morria em
+                # `configuration_error` — *"a configuração do canal precisa de
+                # ajuste pelo suporte"*. Não havia suporte a chamar: era o próprio
+                # código recusando a única saída.
+                #
+                # Quem decide o que fazer é a linha logo depois desta função, que
+                # pergunta o status e já sabe tratar os dois desfechos: LoggedIn
+                # verdadeiro vira `already_connected`; falso segue para o QR novo.
+                # Aqui basta não atrapalhar.
+                logger.info("[PAIRING] instancia %s ja existe com telefone — seguindo para o status", instance)
+                return
         if response.status_code >= 400:
             raise RuntimeError(f"provider_http_{response.status_code}")
 
