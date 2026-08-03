@@ -100,6 +100,62 @@ def _norm(text: str) -> str:
     return "".join(ch for ch in normalized if not unicodedata.combining(ch)).lower()
 
 
+async def _support_alert_seguro(company_id: str, session: Dict[str, Any], resumo: str) -> None:
+    """O segurado não recebeu o protocolo — alguém tem de saber HOJE.
+
+    Não existe segunda chance automática aqui: a URA já encerrou, o serviço está
+    aberto, e o único que não sabe disso é justamente quem vai receber o
+    prestador. Um humano resolve isso em trinta segundos — se souber.
+    """
+    try:
+        from app.services.dispatch_router import resolver_destino_de_suporte  # noqa: F401
+    except Exception:  # noqa: BLE001
+        pass
+    try:
+        from app.services.integration_service import integration_service
+
+        destino = integration_service.resolver_destino_de_suporte(company_id)
+        if not destino:
+            return
+        from app.services.whatsapp_service import whatsapp_service
+
+        integ = integration_service.get_platform_whatsapp_integration(company_id)
+        if not integ:
+            return
+        aviso = ("⚠️ O aviso de protocolo NÃO chegou ao segurado.\n"
+                 f"Caso: {session.get('case_id')}\n"
+                 f"Telefone: {session.get('client_phone')}\n\n{resumo}")
+        whatsapp_service.send_message(destino, aviso, integ)
+    except Exception:  # noqa: BLE001
+        logger.warning("[DISPATCH ROUTER] alerta de falha de aviso nao saiu")
+
+
+async def _registrar_fala_ao_cliente(company_id: str, client_phone: str,
+                                     kind: str, resumo: str) -> None:
+    """Deixa RASTRO de tudo que o motor diz ao segurado.
+
+    📊 Até 03/08 o motor falava com o cliente e **ninguém registrava**. O agente
+    de atendimento não tinha como saber que o protocolo já tinha sido entregue —
+    e podia prometer "já te retorno com o número" que já fora enviado dois
+    minutos antes, pelo mesmo WhatsApp.
+
+    O lugar certo já existia: `platform_sends` é exatamente a tabela que alimenta
+    a nota de contexto do atendente (`context_note_for`). O motor é que não
+    escrevia nela.
+
+    Best-effort de propósito: registro que falha não pode impedir o segurado de
+    receber a notícia. Perder o rastro é ruim; perder a mensagem é pior.
+    """
+    if not client_phone:
+        return
+    try:
+        from app.services.platform_outbound import record_platform_send
+
+        await record_platform_send(company_id, client_phone, kind, resumo[:180])
+    except Exception:  # noqa: BLE001
+        logger.warning("[DISPATCH ROUTER] rastro do aviso ao cliente falhou")
+
+
 def _key(company_id: str, insurer_phone: str) -> str:
     digits = "".join(ch for ch in str(insurer_phone or "") if ch.isdigit())
     return f"dispatch:active:{company_id}:{digits}"
@@ -733,6 +789,29 @@ async def start_live_dispatch(
         # sessão velha (>45min).
         stale = str(existing.get("state") or "") in ("needs_human", "captured", "test_aborted", "monitoring")
         stale = stale or str(existing.get("reason") or "") == "insurer_closed"
+
+        # MAS `monitoring` COM FOLLOW-UP AGENDADO NAO E SESSAO MORTA.
+        #
+        # 📊 O Follow-up morria ao nascer, e por um caminho que ninguem veria:
+        # `_start_next_in_queue` roda na MESMA transicao que criou o timer
+        # (captured -> monitoring), inicia o proximo da fila no MESMO
+        # `insurer_phone`, e este trecho apagava a sessao anterior por "velha".
+        #
+        # O efeito: numa corretora com dois acionamentos na mesma seguradora, o
+        # segurado do primeiro NUNCA recebia a pergunta "o prestador chegou?".
+        # E nao havia erro nenhum — a sessao simplesmente sumia.
+        #
+        # `monitoring` significa "o servico foi aberto e estamos acompanhando".
+        # Isso e o CONTRARIO de morto. Enquanto houver um follow-up ou um
+        # encerramento por vir, a sessao fica.
+        if stale and str(existing.get("state") or "") == "monitoring":
+            tem_compromisso = bool(
+                (existing.get("followup_at") and not existing.get("followup_sent"))
+                or (existing.get("closing_at") and not existing.get("closing_sent"))
+            )
+            if tem_compromisso:
+                logger.info("[DISPATCH ROUTER] monitoring com follow-up pendente — nao supersede")
+                return {"ok": False, "error": "dispatch_monitoring_com_followup", "session": existing}
         try:
             from datetime import datetime, timezone
 
@@ -1158,8 +1237,30 @@ async def try_route_insurer_inbound(
             try:
                 send_to_client(client_phone, summary)
                 session["client_notified"] = True
+                # O aviso passa a EXISTIR para quem atende. Sem isto, o agente
+                # podia prometer o protocolo que já tinha sido entregue.
+                await _registrar_fala_ao_cliente(
+                    company_id, client_phone, "acionamento_protocolo", summary)
+                # E entra no transcript: é o que o Espelho, a linha do tempo e o
+                # dossiê mostram. Falar com o cliente e não deixar rastro faz os
+                # três mentirem por omissão.
+                session.setdefault("transcript", []).append(
+                    {"direction": "out", "text": f"[AO CLIENTE] {summary}",
+                     "at": _now_iso(), "step": "aviso_de_protocolo"})
             except Exception as e:  # noqa: BLE001
+                # FALHA AO AVISAR NÃO PODE PASSAR EM SILÊNCIO.
+                #
+                # 📊 Antes, o erro era logado e o fluxo seguia para `monitoring`
+                # como se tudo tivesse dado certo: `client_notified` ficava
+                # ausente e ninguém olhava. O protocolo se perdia para o cliente
+                # em definitivo — ele nunca saberia que o serviço foi aberto.
                 logger.error(f"[DISPATCH ROUTER] client notify failed: {type(e).__name__}")
+                session["client_notify_failed"] = type(e).__name__
+                try:
+                    from app.services.dispatch_router import _support_alert_seguro
+                    await _support_alert_seguro(company_id, session, summary)
+                except Exception:  # noqa: BLE001
+                    pass
         # Protocolo capturado → MONITORING: seguimos ouvindo a seguradora para
         # repassar updates ao cliente + FOLLOW-UP proativo com timer ("o guincho
         # chegou?" ~45min; encerramento carinhoso ~3h) via check_dispatch_followups.

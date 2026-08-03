@@ -81,7 +81,53 @@ async def check_dispatch_followups() -> int:
             try:
                 wa.send_message(client_phone, todo[1], integration)
                 session[todo[0]] = True
+
+                # A PERGUNTA PASSA A EXISTIR NA CONVERSA.
+                #
+                # 📊 Ate 03/08 esta mensagem saia e nao deixava rastro nenhum: o
+                # cliente respondia "nao chegou ainda" e caia no agente de
+                # atendimento, que **nao sabia que uma pergunta tinha sido
+                # feita**. A resposta chegava sem contexto e o ciclo nunca
+                # fechava.
+                #
+                # Nao e preciso um agente novo para ler a resposta: basta o
+                # agente da entrada SABER o que foi perguntado. `platform_sends`
+                # e exatamente a tabela que alimenta a nota de contexto dele.
+                try:
+                    from app.services.platform_outbound import record_platform_send
+
+                    await record_platform_send(
+                        company_id, client_phone,
+                        "acionamento_followup" if todo[0] == "followup_sent" else "acionamento_encerramento",
+                        todo[1][:180])
+                except Exception:  # noqa: BLE001
+                    logger.warning("[FOLLOWUP] rastro do envio nao registrado")
+
+                # E entra no transcript, como o Vigia ja faz — sem isto o
+                # Espelho, a linha do tempo e o dossie omitem o que foi dito.
+                session.setdefault("transcript", []).append(
+                    {"direction": "out", "text": f"[AO CLIENTE] {todo[1]}",
+                     "at": datetime.now(timezone.utc).isoformat(),
+                     "step": todo[0]})
+
+                # E O ENCERRAMENTO PASSA A ENCERRAR.
+                #
+                # 📊 `closing_sent` so mandava texto: a sessao ficava viva em
+                # `monitoring` ate o TTL de 24h. Nada marcava resolvido, nada
+                # liberava a corretora, e o Vigia e cego a `monitoring` — uma
+                # sessao que silencia para sempre nao era vista por ninguem.
+                if todo[0] == "closing_sent":
+                    session["state"] = "resolvido"
+                    session["resolved_at"] = datetime.now(timezone.utc).isoformat()
+
                 await save_active_dispatch(company_id, insurer_phone, session)
+                if todo[0] == "closing_sent":
+                    try:
+                        from app.services.dispatch_router import clear_active_dispatch
+
+                        await clear_active_dispatch(company_id, insurer_phone)
+                    except Exception:  # noqa: BLE001
+                        logger.warning("[FOLLOWUP] sessao encerrada nao foi liberada")
                 sent += 1
                 logger.info(f"[FOLLOWUP] {todo[0]} enviado case={session.get('case_id')}")
                 # SPEC-050 (auditoria): a ação vira linha no feed de Atividades.

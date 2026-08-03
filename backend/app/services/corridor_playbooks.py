@@ -423,7 +423,22 @@ def _auto_playbook(insurer_key: str, contact_ref: str, ura_steps, finalize_ancho
         "finalize_anchors": finalize_anchors,
         "human_phase_guidance": _AUTO_HUMAN_PHASE_GUIDANCE,
         "capture_anchors": dict(_AUTO_CAPTURE_ANCHORS),
+        # A lista do GUINCHO só vale para o guincho.
+        #
+        # 📊 `_AUTO_CLIENT_INSTRUCTIONS_LOCAL` existia desde sempre e nunca foi
+        # usada: a fábrica injetava a de guincho em TODOS os subserviços. Quem
+        # pedia troca de pneu recebia "aguarde com as chaves e o documento do
+        # veículo, e alguém para acompanhar o GUINCHO".
+        #
+        # Instrução errada não é só feia: faz o segurado procurar documento que
+        # não vai precisar e esperar um caminhão que não vem.
         "client_instructions": list(_AUTO_CLIENT_INSTRUCTIONS_GUINCHO),
+        "client_instructions_por_subservico": {
+            "guincho": list(_AUTO_CLIENT_INSTRUCTIONS_GUINCHO),
+            "bateria": list(_AUTO_CLIENT_INSTRUCTIONS_LOCAL),
+            "pneu": list(_AUTO_CLIENT_INSTRUCTIONS_LOCAL),
+            "chaveiro": list(_AUTO_CLIENT_INSTRUCTIONS_LOCAL),
+        },
         "handoff_triggers": list(_AUTO_HANDOFF_TRIGGERS),
         "unknown_step_policy": "adaptive_then_handoff",
     }
@@ -443,12 +458,6 @@ _ALLIANZ_FAMILY_AUTO_STEPS = [
     {"step": "confirmar_veiculo", "anchor": r"confirme o ve[íi]culo para atendimento", "reply": "1",
      "dynamic": "vehicle_by_plate", "fallback_adaptive": True,
      "notes": "escolhe a opção cuja placa mascarada casa com a placa do caso (JC#-###9 ↔ JCL9A59); sem match → adaptativo"},
-    {"step": "avisos_informativos",
-     "anchor": (r"termo de privacidade|dicas importantes para conseguir te atender|fique tranquilo, vamos te ajudar|"
-                r"vale lembrar:|voc[êe] sabia\?|op[çc][ãa]o inv[áa]lida|vamos tentar novamente|"
-                r"precisando estamos por aqui|agradece o seu contato|aguarde em local seguro"),
-     "reply": "", "noop": True,
-     "notes": "mensagens informativas/erro da URA — NUNCA responder (o adaptativo respondia 'Ciente, pode prosseguir' e quebrava o menu)"},
     {"step": "confirmar_telefone", "anchor": r"deseja adicionar outro n[úu]mero", "reply": "{telefone_adicionar_opcao}",
      "requires": ["telefone_adicionar_opcao"], "notes": "1=Sim (informa telefone_contato) 2=Não (usa o registrado)"},
     {"step": "informar_telefone", "anchor": r"informe \*?o n[úu]mero de celular completo\*? com ddd",
@@ -482,6 +491,24 @@ _ALLIANZ_FAMILY_AUTO_STEPS = [
      "fallback_adaptive": True, "notes": "só dígitos ('Km 205' é rejeitado — o parser extrai '205')"},
     {"step": "confirmar_atendimento", "anchor": r"podemos confirmar o atendimento", "reply": "1",
      "notes": "confirmação FINAL (RESUMO). Só alcançada em modo LIVE — no teste o freio cancela antes."},
+    # NOOP POR ÚLTIMO — a ordem é a regra, e ela quase custou o corredor.
+    #
+    # A âncora inclui "opção inválida|vamos tentar novamente|aguarde em
+    # local seguro". 📊 Quando a URA reenvia o menu NA MESMA mensagem do
+    # aviso — que é o comportamento típico — este noop casava primeiro e o
+    # corredor ficava MUDO diante de um menu que sabia responder. A URA
+    # encerra por inatividade e o acionamento morre sem erro no log.
+    #
+    # `match_ura_step` devolve o PRIMEIRO que casa. Noop é o "não sei o que
+    # fazer com isto" — tem de ser o ÚLTIMO consultado, como já é na
+    # família HDI (`aguarde_fila` é o último de lá).
+    {"step": "avisos_informativos",
+     "anchor": (r"termo de privacidade|dicas importantes para conseguir te atender|fique tranquilo, vamos te ajudar|"
+                r"vale lembrar:|voc[êe] sabia\?|op[çc][ãa]o inv[áa]lida|vamos tentar novamente|"
+                r"precisando estamos por aqui|agradece o seu contato|aguarde em local seguro"),
+     "reply": "", "noop": True,
+     "notes": "mensagens informativas/erro da URA — NUNCA responder (o adaptativo respondia 'Ciente, pode prosseguir' e quebrava o menu)"},
+
 ]
 _ALLIANZ_FAMILY_FINALIZE = [
     # Texto REAL 2026: RESUMO → "Podemos confirmar o atendimento?"
@@ -576,12 +603,22 @@ PORTO_AUTO_WHATSAPP_V1 = _auto_playbook(
          "notes": "Porto aceita endereço em texto livre; 1ª vez = origem, 2ª = destino do guincho"},
         {"step": "endereco_correto", "anchor": r"est[áa] correto\s*\?", "reply": "Sim",
          "notes": "confirma o geocode do endereço QUE NÓS digitamos"},
-        {"step": "aguarde",
-         "anchor": r"aguarde um momento|que bom ter voc[êe] de volta|aguarde enquanto solicito|localizei o endere[çc]o|para informar o endere[çc]o, voc[êe] tem essas op[çc][õo]es|compartilhe a sua localiza[çc][ãa]o|preencha o formul[áa]rio abaixo|falta pouco para finalizarmos",
-         "reply": "", "noop": True, "notes": "mensagens de espera/instrução — não responder"},
         {"step": "confirmar_solicitacao", "anchor": r"como voc[êe] quer prosseguir|posso confirmar sua solicita[çc][ãa]o",
          "reply": "Confirmar solicitação",
          "notes": "confirmação FINAL. Só alcançada em modo LIVE — no teste o freio cancela antes."},
+        # NOOP POR ÚLTIMO — mesma regra da família Allianz.
+        #
+        # 📊 A âncora deste noop inclui "falta pouco para finalizarmos", e o
+        # passo `confirmar_solicitacao` vinha DEPOIS dele. Se a Porto mandar
+        # as duas frases juntas — "Falta pouco para finalizarmos! Como você
+        # quer prosseguir?" — o corredor cala na TELA FINAL.
+        #
+        # Em modo teste o freio salva. Em modo LIVE, não: o acionamento
+        # morreria a um clique de terminar, sem erro nenhum.
+        {"step": "aguarde",
+         "anchor": r"aguarde um momento|que bom ter voc[êe] de volta|aguarde enquanto solicito|localizei o endere[çc]o|para informar o endere[çc]o, voc[êe] tem essas op[çc][õo]es|compartilhe a sua localiza[çc][ãa]o|preencha o formul[áa]rio abaixo|falta pouco para finalizarmos",
+         "reply": "", "noop": True, "notes": "mensagens de espera/instrução — não responder"},
+
     ],
     finalize_anchors=[
         # Texto REAL 2026: "Como você quer prosseguir? Confirmar solicitação ..."

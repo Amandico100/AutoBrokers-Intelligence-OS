@@ -1080,6 +1080,18 @@ def build_human_phase_messages(session: Dict[str, Any], insurer_message: str,
                              "para o objetivo do caso):\n" + mapa_txt)
         except Exception:  # noqa: BLE001 — mapa nunca derruba o prompt
             pass
+    # A ORIENTAÇÃO DO PLAYBOOK ENTRA NO PROMPT.
+    #
+    # 📊 `human_phase_guidance` existia em 4 playbooks e **nenhum código a lia** —
+    # nem em `app/`, nem nos testes. Este prompt era montado do zero a partir dos
+    # `ura_steps`, e toda a orientação escrita à mão ficava de fora.
+    #
+    # Uma delas, a residencial, carrega uma regra de SEGURANÇA sobre cobertura
+    # esgotada. Estava escrita, revisada, e não chegava a lugar nenhum.
+    orientacao = str(playbook.get("human_phase_guidance") or "").strip()
+    if orientacao:
+        guia_ura += ("\n\nORIENTAÇÃO DESTE CORREDOR (escrita por quem observou esta "
+                     "seguradora — vale mais que a sua intuição):\n" + orientacao)
     subservice = str(session.get("subservice") or "")
     line_kind = str(playbook.get("line_kind") or "residencial")
     insurer_key = str(playbook.get("insurer_key") or "seguradora")
@@ -1263,7 +1275,17 @@ def client_summary_from_capture(session: Dict[str, Any]) -> Optional[str]:
     lines.append(f"O número do atendimento é {captured['protocol']}.")
     if captured.get("password"):
         lines.append(f"O prestador vai pedir uma senha de acesso: {captured['password']}.")
-    for instruction in (playbook.get("client_instructions") or [])[:2]:
+    # A instrução certa para ESTE serviço.
+    #
+    # 📊 A fábrica injetava a lista do guincho em todos os subserviços, e a lista
+    # de "serviço no local" existia sem consumidor. Quem pedia troca de pneu
+    # recebia "aguarde com as chaves e o documento do veículo, e alguém para
+    # acompanhar o GUINCHO" — mandando procurar documento que não vai precisar e
+    # esperar um caminhão que não vem.
+    por_sub = playbook.get("client_instructions_por_subservico") or {}
+    sub_do_caso = canonical_subservice(session.get("subservice"))
+    instrucoes = por_sub.get(sub_do_caso) or playbook.get("client_instructions") or []
+    for instruction in instrucoes[:2]:
         lines.append(instruction)
     lines.append("Qualquer coisa até lá, é só me chamar por aqui 🙂")
     return "\n".join(lines)
