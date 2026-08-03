@@ -73,7 +73,22 @@ _memory_store: Dict[str, str] = {}  # fallback p/ testes offline
 _MONITOR_FORWARD_RE = (
     r"prestador(?:.{0,80})(?:a caminho|encontrad|realizar[áa]|chegada)|encontramos o prestador|"
     r"agendad[ao] para|previs[ãa]o de chegada|faltam aproximadamente|procurando um prestador|"
-    r"foi aberta com sucesso|est[áa] a caminho"
+    r"foi aberta com sucesso|est[áa] a caminho|"
+    # MÁ NOTÍCIA TAMBÉM É NOTÍCIA — e é a que mais urge.
+    #
+    # 📊 Até 03/08 a lista branca só deixava passar o que dava certo. Uma URA
+    # que dissesse "não encontramos prestador na sua região" ou "serviço
+    # cancelado" era **silenciosamente engolida**: o segurado continuava
+    # esperando um guincho que não vinha, e a corretora não sabia de nada.
+    #
+    # Repassar o problema é o que separa acompanhar de torcer. Quem está com o
+    # carro parado no acostamento precisa saber que precisa de outra saída — e
+    # precisa saber ANTES, não quando desistir de esperar.
+    r"n[ãa]o (?:foi poss[íi]vel|conseguimos|encontramos|localizamos)|"
+    r"sem prestador|nenhum prestador|indispon[íi]vel na (?:sua )?regi[ãa]o|"
+    r"cancelad[ao]|servi[çc]o negad|n[ãa]o (?:h[áa]|possui) cobertura|"
+    r"fora da [áa]rea de atendimento|houve um problema|"
+    r"atraso|remarcad[ao]|reagendad[ao]"
 )
 _MONITOR_IGNORE_RE = (
     r"pesquisa|avalie|sua opini[ãa]o|recomendaria|grau de satisfa[çc][ãa]o|nota"
@@ -1159,7 +1174,25 @@ async def try_route_insurer_inbound(
         reason = str(session.get("reason") or "")
         # RETOMADA AUTOMÁTICA: a URA derrubou a conversa (timeout/erro) e o fluxo
         # é idempotente até o freio → reabre SOZINHO uma vez, sem humano.
-        if reason == "insurer_closed" and int(session.get("retry_count") or 0) == 0:
+        # `not session.get("captured")` — a guarda que faltava.
+        #
+        # A retomada existe para quando a URA derruba a conversa ANTES de abrir
+        # nada: o fluxo é idempotente até o freio, então refazer é seguro.
+        #
+        # Deixa de ser seguro no instante em que a seguradora já deu um
+        # protocolo. Aí o serviço EXISTE — há um guincho a caminho — e reabrir
+        # manda um segundo. O segurado recebe dois prestadores, a corretora
+        # responde por dois acionamentos, e a seguradora vê duplicidade no
+        # sistema dela.
+        #
+        # 📊 O risco não era teórico: até 03/08 o gatilho de `captured` exigia
+        # protocolo E (agendamento OU eta OU link). O residencial da Allianz não
+        # captura eta nem link — então protocolo sem agendamento reconhecido
+        # caía direto aqui, e o re-acionamento era o caminho normal, não a
+        # exceção. Os dois consertos são o mesmo defeito visto de dois lados.
+        if (reason == "insurer_closed"
+                and int(session.get("retry_count") or 0) == 0
+                and not (session.get("captured") or {}).get("protocol")):
             await clear_active_dispatch(company_id, from_phone)
             retry = await start_live_dispatch(
                 company_id=company_id, case_id=str(session.get("case_id") or "retry"),

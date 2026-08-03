@@ -824,7 +824,32 @@ def handle_insurer_message(
         session.setdefault("captured", {}).update(captured)
 
     got = session.get("captured", {})
-    if got.get("protocol") and (got.get("schedule") or got.get("eta_minutes") or got.get("tracking_link")):
+    # O PROTOCOLO SOZINHO JÁ É NOTÍCIA — e o segurado tem direito a ela.
+    #
+    # A regra era `protocol` E (`schedule` OU `eta` OU `tracking_link`). A ideia
+    # era boa: só avisar quando houvesse o quadro completo. Mas 📊 o playbook
+    # residencial da Allianz captura apenas `protocol`, `password` e `schedule`
+    # — **sem eta e sem link**. Se a URA devolvesse o protocolo e o agendamento
+    # não casasse o regex exato, o segurado **nunca era avisado**: o número
+    # ficava no dossiê, e a pessoa que teve um cano estourando em casa não sabia
+    # que o serviço tinha sido aberto.
+    #
+    # Protocolo é a prova de que o chamado existe. Chegou o protocolo, avisa —
+    # com o que houver. `client_summary_from_capture` já monta a mensagem com os
+    # campos presentes e omite os ausentes; não há risco de frase quebrada.
+    #
+    # E uma exceção que só apareceu ao afrouxar a regra: mensagem que pede
+    # HANDOFF não vira captura, por mais que pareça trazer um protocolo.
+    #
+    # 📊 A Alfa responde *"no momento eu não consigo te ajudar, entre em contato
+    # com a nossa Central nos telefones: 4003-2532"*. A âncora de protocolo casa
+    # o **telefone**. Com a regra antiga isso passava despercebido — faltavam o
+    # eta e o link, então nunca virava `captured`. Afrouxar teria transformado
+    # uma recusa em "serviço aberto, aqui está seu protocolo 4003-2532".
+    #
+    # O handoff é avaliado depois da captura neste fluxo, e mudar essa ordem
+    # mexeria em tudo. Consultá-lo aqui é a correção local e verificável.
+    if got.get("protocol") and not detect_handoff_trigger(playbook, insurer_message):
         session["state"] = "captured"
         return session
 
