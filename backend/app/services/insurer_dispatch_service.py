@@ -585,6 +585,23 @@ def _responder_formulario_nativo(
     if flow is None and e_formulario_agora:
         flow = native_flow(playbook, str(((interactive or {}).get("flow") or {}).get("flow_id") or ""))
     if not flow:
+        # Chegou um formulário e não sabemos qual é.
+        #
+        # Até 03/08/2026 esta linha era inalcançável: os playbooks tinham um
+        # gatilho `r"formulario nativo"` que mandava para humano antes de chegar
+        # aqui. O gatilho saiu quando o canal de resposta passou a existir e foi
+        # provado — e sem esta guarda o formulário desconhecido **escorregava
+        # para a fase humana em silêncio**, sem motivo gravado, sem ninguém
+        # avisado e sem nada a explicar depois.
+        #
+        # Fail-closed por construção: o que não se reconhece, não se responde —
+        # e se diz por quê. É esta guarda, e não uma lista no playbook, que
+        # protege os formulários que ainda não foram capturados.
+        marcador = "FORMULARIO NATIVO" in str(insurer_message or "").upper()
+        if e_formulario_agora or marcador:
+            session["state"] = "needs_human"
+            session["reason"] = "formulario_nativo_desconhecido"
+            return session
         return None
 
     montado = montar_resposta_de_flow(flow, session.get("slots") or {})

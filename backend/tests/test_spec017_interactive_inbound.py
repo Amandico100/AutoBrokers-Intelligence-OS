@@ -179,8 +179,17 @@ def run():
     check("E2E: 'descreva em suas palavras' -> descricao do caso",
           _outs(s)[-1] == SLOTS["problema_descricao"], _outs(s)[-1:])
     s = dispatch.handle_insurer_message(s, flow["text"])
-    check("E2E: FLOW nativo -> needs_human com dossie (interim)",
-          s["state"] == "needs_human" and "formulario nativo" in str(s.get("reason") or ""), (s.get("state"), s.get("reason")))
+    # 📊 ATUALIZADO 03/08/2026. Este check dizia "(interim)" — e o interim acabou:
+    # o canal de resposta a formulário existe e foi provado no ar, então o gatilho
+    # `r"formulario nativo"` saiu dos playbooks de auto da família.
+    #
+    # O flow deste teste tem `flow_id: "999"` — DESCONHECIDO. E é justamente esse
+    # o caso que importa guardar: sem o gatilho, ele escorregava para a fase
+    # humana em silêncio. Agora pausa com motivo. O que protege deixou de ser uma
+    # lista no playbook e passou a ser o motor.
+    check("E2E: FLOW nativo DESCONHECIDO -> pausa com motivo, nao escorrega",
+          s["state"] == "needs_human" and s.get("reason") == "formulario_nativo_desconhecido",
+          (s.get("state"), s.get("reason")))
 
     print(f"\n== Resumo: {PASS} passaram, {FAIL} falharam ==")
     if FAILURES:

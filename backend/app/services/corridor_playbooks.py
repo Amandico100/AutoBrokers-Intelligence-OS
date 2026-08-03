@@ -943,11 +943,19 @@ HDI_AUTO_WHATSAPP_V1["subservice_menu_map"] = {
     "pneu": "Pneu Furado", "chaveiro": "Problema com a chave",
 }
 HDI_AUTO_WHATSAPP_V1["finalize_abort_reply"] = "Sair"  # 'Digite Sair para encerrar'
-# Formulário nativo (flow) exige CLIQUE real — até a resposta estruturada existir,
-# pausa com dossiê (o marcador [FORMULARIO NATIVO] vem do parser de interativas).
-HDI_AUTO_WHATSAPP_V1["handoff_triggers"] = HDI_AUTO_WHATSAPP_V1["handoff_triggers"] + [r"formulario nativo"]
-# O schema do flow, para quando o transporte souber ENVIAR a resposta estruturada.
-# O gatilho de handoff acima continua valendo: ter o schema não é ter o canal.
+# O schema do flow. 📊 E, desde 03/08/2026, o TRANSPORTE também existe:
+# `/send/interactiveResponse` foi provada no ar, com o embrulho
+# DocumentWithCaption — ver O-FORMULARIO-NATIVO-RESOLVIDO.md.
+#
+# Por isso o gatilho `r"formulario nativo"` saiu daqui. Ele existia porque "ter o
+# schema não é ter o canal" — e era verdade. Mantê-lo agora desviaria para humano
+# exatamente o caso que o produto passou a saber resolver sozinho, e o trabalho
+# das últimas semanas não renderia nada.
+#
+# O que protege no lugar dele NÃO é uma regra escrita aqui — é o motor:
+# `montar_resposta_de_flow` recusa responder formulário que não conhece, ou com
+# campo obrigatório sem valor, e devolve `ok=False`. Aí sim o acionamento pausa,
+# com o dossiê e o motivo. **Fail-closed por construção, não por lista.**
 HDI_AUTO_WHATSAPP_V1["native_flows"] = _NATIVE_FLOWS_FAMILIA_HDI_YELUM
 
 # --- Yelum (ex-Liberty, grupo HDI): v3 minerado do fluxo REAL COMPLETO de
@@ -971,7 +979,8 @@ YELUM_AUTO_WHATSAPP_V1["subservice_menu_map"] = {
     "pneu": "Pneu Furado", "chaveiro": "Problema com a chave",
 }
 YELUM_AUTO_WHATSAPP_V1["finalize_abort_reply"] = "Sair"  # 'Digite Sair para encerrar'
-YELUM_AUTO_WHATSAPP_V1["handoff_triggers"] = YELUM_AUTO_WHATSAPP_V1["handoff_triggers"] + [r"formulario nativo"]
+# O gatilho `r"formulario nativo"` saiu daqui pelo mesmo motivo da HDI: o canal
+# passou a existir e foi provado. Quem recusa formulário desconhecido é o motor.
 # MESMO objeto do corredor da HDI (mesmo bot, mesmo flow_id). `is`, não `==`.
 YELUM_AUTO_WHATSAPP_V1["native_flows"] = _NATIVE_FLOWS_FAMILIA_HDI_YELUM
 
@@ -1389,7 +1398,17 @@ HDI_RESIDENCIAL_WHATSAPP_V1: Dict[str, Any] = {
         # 📊 "Ela não possui mais utilizações de encanador": limite ESGOTADO.
         # Não há acionamento possível — insistir só queima o tempo do segurado.
         r"n[ãa]o possui mais utiliza[çc][õo]es",
-        r"formulario nativo",  # flow nativo exige clique real (mesmo do auto)
+        # 🔴 AQUI o gatilho FICA — e é uma diferença deliberada em relação ao
+        # corredor de auto da mesma seguradora, que o perdeu em 03/08/2026.
+        #
+        # O canal de resposta existe e foi provado. Mas este playbook **não
+        # declara `native_flows`**: nenhum formulário do residencial foi
+        # capturado ainda. Sem schema não há o que responder, e a única saída
+        # honesta é pausar com o dossiê.
+        #
+        # Quando um formulário residencial for observado e virar schema, este
+        # gatilho sai — e não antes.
+        r"formulario nativo",
     ],
     "finalize_anchors": [
         # ponto de não-retorno da família HDI/Yelum — o "para" é OPCIONAL: 📊 a
