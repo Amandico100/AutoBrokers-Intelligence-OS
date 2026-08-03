@@ -526,3 +526,44 @@ dias. O DELETE do Postgres **não** o alcança. Vence sozinho em 10/08/2026.
 
 **O que destrava.** Limpar a chave, ou aceitar o vencimento. Não há PII em
 índice nem em RAG — é cache bruto, não consultável.
+
+---
+
+## P-67 · 🔴 Conversa pessoal no número da corretora não pode virar carta
+
+**O Founder levantou, e ele está certo.** O WhatsApp de uma corretora é um
+telefone de gente. No meio das conversas com segurado vão existir
+*"oi amor, quando você vai no mercado?"*, o grupo do prédio, o cunhado pedindo
+dinheiro. **Não é caso de exceção — é o normal de qualquer telefone de trabalho
+no Brasil.**
+
+Hoje o sistema separa por **origem**: se o número do outro lado está na lista
+das 12 seguradoras, vai para o Atlas; se não está e o escopo é total, vai para
+`attendance_transcripts` — e de lá o destilador faz carta. **A separação é por
+QUEM falou, nunca por SOBRE O QUE se falou.**
+
+📊 O que já existe de proteção, medido: `knowledge_cards` tem **310 cartas
+`rejected_pii`** e **5 `rejected_absoluto`**. Ou seja, há um filtro e ele
+reprova — mas ele mira em **dado pessoal** (CPF, telefone, endereço), não em
+**assunto que não é seguro**. Uma conversa doméstica sem nenhum CPF passa nesse
+filtro sem disparar nada.
+
+**E a curadoria publica `pending_review → published` sem aprovação humana.**
+Então o caminho inteiro existe: conversa doméstica → transcrição → carta →
+RAG consultável pelo agente. Nada nesse caminho pergunta "isto é sobre seguro?".
+
+**O que destrava.** Uma prova de pertinência ANTES de virar carta:
+1. o destilador recusar conversa que não trate de seguro, sinistro,
+   apólice, acionamento ou atendimento — e o teste ter de mostrar que ele
+   recusa mesmo, com um exemplo doméstico real;
+2. carta nova de origem não-seguradora nascer `pending_review` de verdade,
+   com um humano aprovando, até a prova acima existir;
+3. medir quantas das 9.699 cartas atuais vieram de conversa não-seguradora, e
+   revisar essas.
+
+**O que custa esquecer.** O agente de uma corretora respondendo a um segurado
+com conhecimento destilado da vida particular do corretor. Não é um erro
+técnico que se explica — é um constrangimento que não se desfaz.
+
+> Relacionado a [P-65] (a tela não diz o que captura) e [P-66] (payload cru no
+> Redis). Os três nasceram do mesmo pareamento de 03/08.
