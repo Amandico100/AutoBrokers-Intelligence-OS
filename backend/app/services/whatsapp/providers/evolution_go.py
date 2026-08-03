@@ -125,15 +125,30 @@ def _strip_jid(value: Any) -> str:
     return text.split("@", 1)[0].split(":", 1)[0] if text else ""
 
 
-def rota_de_flow_reply(env: Optional[Dict[str, str]] = None) -> str:
-    """A rota DECLARADA para responder formulário nativo. Vazio = não há.
+ROTA_DE_FLOW_REPLY_PROVADA = "/send/interactiveResponse"
 
-    Nunca devolve um palpite. As doze rotas de `ROTAS_DE_ENVIO_MEDIDAS` são de
-    ORIGEM de mensagem; nenhuma delas responde interativa, e escolher a mais
-    parecida seria exatamente o "inventar endpoint" que esta peça não faz."""
+
+def rota_de_flow_reply(env: Optional[Dict[str, str]] = None) -> str:
+    """A rota para responder formulário nativo.
+
+    Já foi um palpite proibido, e por isso este portão nasceu vazio: nenhuma das
+    doze rotas de `ROTAS_DE_ENVIO_MEDIDAS` responde interativa, e escolher a mais
+    parecida seria inventar endpoint.
+
+    📊 Deixou de ser palpite em 03/08/2026. O patch 0005 do nosso fork abriu
+    `/send/interactiveResponse`, e ela foi PROVADA no ar: mensagem enviada de um
+    número nosso para outro, aceita pelo servidor do WhatsApp, com
+    `Type: "InteractiveResponseMessage"` de volta.
+
+    Então o padrão passou a ser a rota provada. A variável de ambiente continua
+    existindo — mas mudou de papel: era o que LIGAVA, agora é o que corrige ou
+    desliga, se um dia o fork mudar de caminho. Um valor explícito sempre vence.
+    """
     fonte = env if env is not None else os.environ
     rota = str(fonte.get(ENV_ROTA_FLOW_REPLY) or "").strip()
     if not rota:
+        return ROTA_DE_FLOW_REPLY_PROVADA
+    if rota.lower() in ("off", "0", "none", "desligado"):
         return ""
     return rota if rota.startswith("/") else f"/{rota}"
 
@@ -387,6 +402,16 @@ class EvolutionGoProvider:
             "number": to,
             "name": nfm["name"],
             "paramsJSON": nfm["paramsJSON"],
+            # 📊 MEDIDO, não escolhido. Em 03/08/2026 seis formas foram enviadas
+            # de um número nosso para outro. Cinco voltaram com o mesmo erro 479
+            # — que o whatsmeow documenta como "Invalid stanza sent". A sexta,
+            # com este embrulho, voltou 200 e o servidor devolveu
+            # `Type: "InteractiveResponseMessage"`.
+            #
+            # É o mesmo embrulho que /send/button usa nas três variantes dele.
+            # Sem ele o WhatsApp recusa a mensagem inteira, em silêncio para o
+            # cliente e com um número para nós.
+            "wrapInDocumentWithCaption": True,
         }
         if nfm.get("version"):
             corpo["version"] = int(nfm["version"])

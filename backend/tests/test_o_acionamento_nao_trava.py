@@ -185,12 +185,22 @@ def teste_o_transporte_do_formulario_nao_foi_inventado():
     checar("/send/text" in rotas and "/send/list" in rotas,
            "as conhecidas continuam lá (a lista é transcrição, não opinião)")
 
+    # 📊 As 12 acima continuam sendo as rotas de ORIGEM do upstream, e nenhuma
+    # delas responde interativa — a afirmação de cima segue de pé.
+    #
+    # A DÉCIMA TERCEIRA é nossa: `/send/interactiveResponse`, aberta pelo patch
+    # 0005 do fork e provada no ar em 03/08/2026 (mensagem aceita entre dois
+    # números nossos, com o embrulho DocumentWithCaption). Por isso este bloco
+    # deixou de exigir vazio: exigir vazio depois que a rota existe seria
+    # guardar uma verdade vencida.
     ambiente_limpo = {k: v for k, v in os.environ.items() if k != GO.ENV_ROTA_FLOW_REPLY}
-    checar(GO.rota_de_flow_reply(ambiente_limpo) == "",
-           "sem rota DECLARADA, `rota_de_flow_reply` devolve vazio",
-           "escolher a rota mais parecida seria inventar endpoint")
+    checar(GO.rota_de_flow_reply(ambiente_limpo) == "/send/interactiveResponse",
+           "sem variável de ambiente, `rota_de_flow_reply` usa a rota PROVADA",
+           "ela não é palpite: foi medida no ar, e o palpite continua proibido")
     checar(GO.rota_de_flow_reply({GO.ENV_ROTA_FLOW_REPLY: "send/flowreply"}) == "/send/flowreply",
            "e uma rota declarada é aceita já normalizada (a barra entra sozinha)")
+    checar(GO.rota_de_flow_reply({GO.ENV_ROTA_FLOW_REPLY: "off"}) == "",
+           "e existe como DESLIGAR sem esperar por um deploy")
 
     # O corpo waE2E: PURO, provável offline. A forma não foi deduzida — 📊 é a
     # dos eventos reais de `flow_reply` do acervo do Observador.
@@ -254,17 +264,32 @@ def teste_o_transporte_do_formulario_nao_foi_inventado():
         return GO.SendResult(ok=False, error="ROTA_CHUTADA")
 
     provider._post = _armadilha  # noqa: SLF001
-    os.environ.pop(GO.ENV_ROTA_FLOW_REPLY, None)
-    r = provider.send_native_flow_response("5548", flow_token="tok", nome_do_envelope="galaxy_message",
-                                           params={"a": "1"})
-    checar(r.ok is False and r.error == "evolution_go_sem_rota_de_flow_reply",
-           "sem rota provada, o envio recusa com o motivo escrito", str(r.error))
-    checar(tentativas == [],
-           "e NÃO faz requisição nenhuma",
-           "chutar /send/text com o JSON dentro entregaria uma parede de texto "
-           "à URA — e ela encerra em 12 minutos")
-    checar(provider.flow_reply_supported() is False,
-           "`flow_reply_supported()` diz não — ter o schema não é ter o canal")
+    # 📊 ATUALIZADO em 03/08/2026. Este bloco guardava a verdade da véspera:
+    # "ter o schema do formulário não é ter o canal". Estava certo — e deixou de
+    # valer no dia em que o canal passou a existir e foi PROVADO no ar (patch
+    # 0005, mensagem aceita entre dois números nossos com o embrulho certo).
+    #
+    # A lição não morreu, só mudou de lugar: a recusa continua tendo de ser
+    # limpa, e agora se testa DESLIGANDO a rota de propósito. Um teste que
+    # afirma "não existe canal" depois que ele existe não protege nada —
+    # ensina a ignorar teste.
+    os.environ[GO.ENV_ROTA_FLOW_REPLY] = "off"
+    try:
+        r = provider.send_native_flow_response("5548", flow_token="tok", nome_do_envelope="galaxy_message",
+                                               params={"a": "1"})
+        checar(r.ok is False and r.error == "evolution_go_sem_rota_de_flow_reply",
+               "com a rota DESLIGADA, o envio recusa com o motivo escrito", str(r.error))
+        checar(tentativas == [],
+               "e NÃO faz requisição nenhuma",
+               "chutar /send/text com o JSON dentro entregaria uma parede de texto "
+               "à URA — e ela encerra em 12 minutos")
+        checar(provider.flow_reply_supported() is False,
+               "e `flow_reply_supported()` diz não enquanto estiver desligada")
+    finally:
+        os.environ.pop(GO.ENV_ROTA_FLOW_REPLY, None)
+
+    checar(provider.flow_reply_supported() is True,
+           "e diz SIM por padrão — a rota existe e foi provada no ar")
 
     # O erro achado no caminho: o `id` do /send/text é o id DA MENSAGEM.
     enviados: list = []

@@ -322,6 +322,40 @@ async def process_whatsapp_message_background(
             def _send_to_client(client_phone: str, text_out: str) -> None:
                 whatsapp_service.send_message(client_phone, text_out, integration)
 
+            def _responder_formulario_nativo(**kwargs) -> bool:
+                """O transporte da resposta de formulário nativo — a última ponte.
+
+                O motor já sabia montar a resposta: lê o schema do formulário,
+                preenche os campos com a ficha do atendimento e ecoa o envelope da
+                captura. Só não tinha por onde entregá-la. Sem esta função,
+                `flow_sender` chegava `None` e **todo** formulário virava
+                `formulario_pronto_sem_transporte` — parado, esperando uma pessoa,
+                com a resposta pronta ao lado.
+
+                📊 A rota existe desde o patch 0005 e foi provada no ar em
+                03/08/2026. Falha aqui devolve False, nunca exceção: o motor
+                trata False pausando para humano, que é o desfecho certo — e uma
+                exceção subindo derrubaria o inbound inteiro.
+                """
+                try:
+                    provider_nome = str((integration or {}).get("provider") or "").strip().lower()
+                    if provider_nome != "evolution-go":
+                        logger.warning("[WEBHOOK] formulario nativo pedido em provider %s", provider_nome)
+                        return False
+                    from app.services.whatsapp.providers.evolution_go import EvolutionGoProvider
+
+                    resultado = EvolutionGoProvider(integration).send_native_flow_response(
+                        str(payload.phone or ""), **kwargs
+                    )
+                    if not getattr(resultado, "ok", False):
+                        logger.error("[WEBHOOK] formulario nativo recusado: %s",
+                                     getattr(resultado, "error", "sem motivo"))
+                        return False
+                    return True
+                except Exception as e:  # noqa: BLE001
+                    logger.error("[WEBHOOK] transporte de formulario falhou: %s", type(e).__name__)
+                    return False
+
             async def _human_reply_provider(dispatch_session, insurer_text):
                 # Fase humana da seguradora: LLM plataforma redige; o guard do
                 # roteador fiscaliza. Qualquer falha aqui → None (acumula, nunca
@@ -381,6 +415,10 @@ async def process_whatsapp_message_background(
                     send_to_insurer=_send_to_insurer,
                     send_to_client=_send_to_client,
                     human_reply_provider=_human_reply_provider,
+                    # A ponte entre "o corredor sabe responder" e "o corredor
+                    # responde". Era sempre None, e por isso nenhum formulário
+                    # nativo jamais foi respondido em produção.
+                    flow_sender=_responder_formulario_nativo,
                     # SPEC-063 — o `interactive` precisa ATRAVESSAR.
                     #
                     # Só o texto chegava aqui, e o `flow_token` mora no
