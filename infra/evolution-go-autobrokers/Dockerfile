@@ -1,7 +1,7 @@
 # syntax=docker/dockerfile:1.7
 
 ARG UPSTREAM_COMMIT=9337afc47e10b86cc896a6f432240e40fee95dd1
-ARG VERSION=0.7.2-autobrokers.1
+ARG VERSION=0.7.2-autobrokers.2
 
 FROM alpine:3.21 AS source
 ARG UPSTREAM_COMMIT
@@ -33,6 +33,7 @@ RUN CGO_ENABLED=1 go test \
       ./pkg/instance/service \
       ./pkg/whatsmeow/service \
       ./pkg/server/handler \
+      ./pkg/sendMessage/... \
     && CGO_ENABLED=1 go build -trimpath -ldflags "-s -w -X main.version=${VERSION}" -o /out/server ./cmd/evolution-go
 
 FROM alpine:3.21 AS final

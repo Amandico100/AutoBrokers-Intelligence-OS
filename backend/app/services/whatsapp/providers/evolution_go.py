@@ -36,11 +36,24 @@ resposta no nosso adapter"*. Isso nunca tinha sido conferido. Agora foi.
     /send/contact · /send/link · /send/location · /send/poll · /send/sticker
     /send/status/text · /send/status/media
 
-**Nenhuma envia RESPOSTA de interativa.** Não existe `/send/interactive`, não
-existe `/send/flow`, não existe rota genérica de protobuf/waE2E cru. As doze
-rotas *originam* mensagens; responder um flow é outro tipo de mensagem waE2E
+**Nenhuma das doze envia RESPOSTA de interativa.** As doze *originam* mensagens;
+responder um flow é outro tipo de mensagem waE2E
 (`interactiveResponseMessage.nativeFlowResponseMessage`, com `name` e
-`paramsJSON`), e nenhum handler do GO o produz.
+`paramsJSON`), e nenhum handler do GO de origem o produz.
+
+Atualização de 03/08/2026 — o que mudou, e o que NÃO mudou
+----------------------------------------------------------
+O patch `0005-send-interactive-response` do nosso fork abre a décima terceira:
+**`POST /send/interactiveResponse`**. A biblioteca por baixo (whatsmeow) sempre
+soube carregar essa mensagem — o caminho de ENTRADA do próprio GO já lê estes
+mesmos campos. O que faltava era a porta de saída, e ela agora existe.
+
+O que **não** mudou: nada disso é prova de que a seguradora aceita a resposta.
+Ter a rota é ter o caminho; ter o caminho não é ter chegado. Por isso ela
+continua atrás de `EVOLUTION_GO_FLOW_REPLY_PATH`, que fica **vazio** até o teste
+de ida e volta entre dois números nossos comparar o que chegou, campo a campo,
+com o clique humano de 18/07. Ligar antes disso seria trocar uma incerteza
+conhecida por uma surpresa no meio de um atendimento real.
 
 Então este arquivo **não inventa endpoint**. Ele entrega:
 
@@ -362,7 +375,25 @@ class EvolutionGoProvider:
         except ValueError as exc:
             logger.error("[EVOLUTION-GO] resposta de formulário recusada: %s", exc)
             return SendResult(ok=False, error=f"flow_reply_invalida:{exc}")
-        return self._post(rota, {"number": to, "message": mensagem})
+
+        # A rota do nosso fork (patch 0005) recebe corpo PLANO, não o waE2E
+        # aninhado — ela mesma monta o protobuf do lado Go. Ainda assim quem
+        # decide o conteúdo é `montar_nfm_reply`, aqui em cima: se as duas
+        # montagens existissem em paralelo, um dia divergiriam, e a divergência
+        # só apareceria numa seguradora descartando a resposta em silêncio.
+        envelope = mensagem["interactiveResponseMessage"]
+        nfm = envelope["nativeFlowResponseMessage"]
+        corpo: Dict[str, Any] = {
+            "number": to,
+            "name": nfm["name"],
+            "paramsJSON": nfm["paramsJSON"],
+        }
+        if nfm.get("version"):
+            corpo["version"] = int(nfm["version"])
+        texto = (envelope.get("body") or {}).get("text")
+        if texto:
+            corpo["body"] = texto
+        return self._post(rota, corpo)
 
 
 def rotas_de_envio_medidas() -> List[str]:

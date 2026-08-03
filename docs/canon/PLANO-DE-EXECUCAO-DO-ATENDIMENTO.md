@@ -60,17 +60,28 @@ travadas. Os corredores dessas seguradoras **já existem** — é trabalho feito
 que não rende.
 
 ```
-1.0  ✅ corrigir o envelope e a identidade do formulário     FEITO
-1.1  o patch 0005 no nosso fork do Evolution GO
-     rota POST /send/interactive-response · ~150 linhas Go, molde: SendButton
-1.2  build: go test do pacote de envio · VERSION 0.7.2-autobrokers.2
-1.3  A PROVA — entre DOIS números nossos, comparando byte a byte com a
-     captura de 18/07. ZERO mensagens para seguradora
-1.4  a última linha: `flow_sender=` chega de app/api/ (hoje é sempre None)
-1.5  só então, ao vivo, com DISPATCH_FINALIZE_MODE=test
+1.0  ✅ corrigir o envelope e a identidade do formulário          FEITO
+1.1  ✅ patch 0005: POST /send/interactiveResponse                FEITO
+        329 linhas · os 5 patches aplicam no commit fixado
+1.2  ✅ o build passa a rodar o teste · VERSION ...autobrokers.2  FEITO
+1.3a ✅ A PROVA DOS BYTES — 4 testes Go que montam a mensagem e
+        comparam com o clique de 18/07. Rodam DENTRO do build,
+        sem telefone, sem pareamento, sem rede                    FEITO
+1.3b ⏳ construir a imagem no EasyPanel — é ela quem compila
+1.3c 🧑 A PROVA DO TRANSPORTE — loopback entre DOIS números
+        nossos. Precisa do pareamento. ZERO msg para seguradora
+1.4  ligar EVOLUTION_GO_FLOW_REPLY_PATH (vazio até 1.3c passar)
+1.5  `flow_sender=` chega de app/api/ (hoje é sempre None)
+1.6  só então, ao vivo, com DISPATCH_FINALIZE_MODE=test
 ```
-**Se 1.3 falhar:** `AdditionalNodes` no mesmo patch. Se também falhar, nada se
-perde — o motor já pausa com a resposta pronta no dossiê.
+**Se 1.3c falhar:** o patch já traz `withBizNodes` — uma bandeira no corpo da
+requisição, não outra imagem para construir. Se nem isso, nada se perde: o motor
+já pausa com a resposta pronta no dossiê.
+
+**O que 1.3a prova e o que não prova.** Prova o codificador: envelope
+`galaxy_message`, `paramsJSON` byte a byte, `version` ausente quando ninguém
+pediu, e a recusa de tudo que exigiria adivinhação. **Não** prova que a
+seguradora aceita — ter o caminho não é ter chegado.
 
 ### FASE 2 · Recolher o que a Fase 0 plantou
 ```

@@ -442,3 +442,48 @@ está proibido de aplicar migration.
 | **P-59** | Os 41% de cobertura da HDI são **projeção**, não número gravado | 🤖 | sai do passo 6 do runbook (retecer) |
 | **P-60** | O passo 7 do portal (escolha de loja/domicílio) **nunca foi exercitado** — em 39 acionamentos, `has_protocol` nunca foi True | 🤖 | um acionamento com `confirm=True` mostra o que há lá |
 | **P-61** | Variante e lado de peça no portal (`RETROVISOR ELÉTRICO` vs `MANUAL`, porta direita/esquerda) | 🤖 | o segurado não diz; adivinhar troca a peça. Hoje para com a lista, que é o certo |
+
+---
+
+## P-62 · Construir a imagem `0.7.2-autobrokers.2` do Evolution GO 🤖→🧑
+
+**O que é.** O patch `0005-send-interactive-response` abre a rota que faltava
+(`POST /send/interactiveResponse`). O código está escrito, os cinco patches
+aplicam limpos no commit fixado, e o teste que prova a montagem já existe.
+
+**O que destrava.** O envio de resposta de formulário nativo — 📊 4 seguradoras
+o usam (Porto 12 · HDI 6 · Azul 4 · Yelum 2) e 460 apólices de auto (26,9% da
+carteira) estão nessas seguradoras.
+
+**Por que ainda não foi feito.** Não há Go nem Docker nesta máquina: **quem
+compila é o build**. Até ele rodar, o código nunca passou por um compilador.
+
+**O que custa esquecer.** Os corredores dessas 4 seguradoras já existem e não
+rendem. É trabalho pronto parado.
+
+## P-63 · A prova de transporte precisa de UM telefone pareado 🧑
+
+**O que é.** Mandar a resposta de um número nosso para outro número nosso e
+comparar o que chega, campo a campo, com o clique humano de 18/07.
+
+**O que destrava.** A diferença entre "escrevemos" e "funciona".
+
+**Por que não dá para pular.** 📊 Temos **uma única** captura real de um humano
+respondendo este formulário — as outras 22 foram gravadas vazias pelo defeito
+que a Fase 0.1 consertou. Um acervo de um não permite conferir hipótese; permite
+só comparar. O loopback é a segunda amostra, e é nossa.
+
+**O que custa esquecer.** Ligar sem provar gasta a única janela do atendimento
+real: a URA da HDI encerra em 12 minutos, e uma resposta em formato errado é
+descartada **em silêncio** — sem erro, sem reenvio.
+
+## P-64 · `version` do envelope continua HIPÓTESE 💭
+
+**O que é.** A captura de 18/07 **não tem** o campo `version`. Não sabemos se o
+remetente não o mandou ou se nosso observador não o leu — as duas explicações
+cabem, e a captura não escolhe entre elas.
+
+**Como está tratado.** O Go **omite** quando ninguém pede, e o Python passa
+adiante o que lhe derem. Ninguém finge saber.
+
+**O que destrava.** O loopback (P-63): ele mostra o que um cliente real põe ali.

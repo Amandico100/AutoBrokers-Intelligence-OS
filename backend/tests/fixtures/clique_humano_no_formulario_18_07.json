@@ -1,0 +1,64 @@
+{
+  "_o_que_e_isto": [
+    "A UNICA captura real de um ser humano respondendo um formulario nativo do",
+    "WhatsApp dentro de um atendimento de seguradora. 18/07/2026, familia HDI.",
+    "",
+    "E unica porque as outras 22 respostas de formulario foram gravadas VAZIAS",
+    "pelo defeito que a Fase 0.1 consertou. Esta sobreviveu. Ela e a verdade",
+    "contra a qual o transporte e medido — nao ha segunda opiniao disponivel.",
+    "",
+    "O original integral vive em observed_events, linha",
+    "ed3f9ea3-7e79-475d-a767-627c5c0ce9ca. Aqui esta a ESTRUTURA, com os",
+    "telefones reais trocados por numeros de exemplo (CLAUDE.md 7) e o campo",
+    "response_message abreviado — o inteiro tem ~6 KB e esta no banco."
+  ],
+
+  "envelope": {
+    "name": "galaxy_message",
+    "type": "native_flow_response",
+    "buttonId": "",
+    "buttonText": "",
+    "_version": "AUSENTE NA CAPTURA — ver nota abaixo"
+  },
+
+  "params_decodificados": {
+    "rb_EmGaragemOuEstacionamento": "1",
+    "rb_NivelDaRua": "4",
+    "ckb_SituacoesVeiculo": ["nenhuma_opcoes"],
+    "rb_InformacoesLocal": "6",
+    "rb_Ocupantes": "1",
+    "flow_token": "00000000-0000-0000-0000-000000000000:551100000000:5500000000000",
+    "wa_flow_response_params": {
+      "title": "Informar condições",
+      "flow_id": "857030507196739",
+      "flow_name": "Automóvel - Detalhes do atendimento (veículo, local e ocupantes) V2 [Redução de perguntas]",
+      "response_message": "{\"screens\":[...],\"response\":[...],\"version\":1}"
+    }
+  },
+
+  "o_que_isto_prova": {
+    "name": "galaxy_message CONFIRMADO. O Passo 0 estava certo, e nao por sorte.",
+    "flow_token": "NAO e um uuid solto. E uuid:numeroDaSeguradora:numeroDoCliente. Os dois telefones vao DENTRO do token. Nunca construir — sempre ecoar.",
+    "resposta_do_formulario": "os dados que a seguradora consome sao as CHAVES DE PRIMEIRO NIVEL (rb_*, ckb_*). Tudo o mais e moldura.",
+    "titulo_vazio": "dt_Ocupantes tem {\"id\":\"4\",\"title\":\"\"} — a opcao 4 nao tem rotulo. Nao adivinhar o que ela significa."
+  },
+
+  "o_que_isto_NAO_prova": {
+    "version": [
+      "A captura NAO tem o campo version. Nosso observador pode nunca te-lo lido,",
+      "ou o remetente pode nao te-lo enviado — as duas explicacoes cabem, e nao da",
+      "para escolher entre elas por este arquivo.",
+      "Ou seja: version=1 continua HIPOTESE. Quem decide e o teste de ida e volta."
+    ],
+    "response_message": [
+      "Nao sabemos se a seguradora EXIGE este campo ou se ele e so a bolha bonita",
+      "que o WhatsApp desenha na conversa. A hipotese razoavel e a segunda — os",
+      "dados uteis estao no primeiro nivel. Mas hipotese razoavel ja nos custou",
+      "caro antes.",
+      "",
+      "E por isso que a camada Go e um CANO BURRO: ela recebe paramsJSON como",
+      "texto e nao entende nada do que carrega. Se descobrirmos amanha que",
+      "response_message e obrigatorio, muda o Python — nao a imagem Docker."
+    ]
+  }
+}

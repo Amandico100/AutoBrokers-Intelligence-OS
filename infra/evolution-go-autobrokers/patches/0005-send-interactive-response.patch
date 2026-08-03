@@ -1,0 +1,429 @@
+From 4a85152de6f5c6e98e2433e510625177a6df142c Mon Sep 17 00:00:00 2001
+From: AutoBrokers Engineering <engineering@autobrokers.local>
+Date: Mon, 3 Aug 2026 10:00:00 -0300
+Subject: send interactive response
+
+A porta de saida que faltava: whatsmeow sempre soube carregar a resposta de um
+formulario nativo -- o caminho de ENTRADA ja le exatamente estes campos -- mas
+nenhuma das 88 rotas a expunha. Acrescenta POST /send/interactiveResponse.
+
+paramsJSON viaja como texto opaco: validado como JSON e repassado byte a byte,
+nunca re-serializado. Os dois switch de messageType ganham o caso novo, sem o
+qual o envio morreria em 'invalid messageType' sem explicar nada.
+
+A montagem fica numa funcao livre para poder ser provada sem telefone, sem
+pareamento e sem rede -- e o teste que a prova roda dentro do build.
+---
+ pkg/routes/routes.go                          |   1 +
+ pkg/sendMessage/handler/send_handler.go       |  64 +++++++
+ .../service/interactive_response_test.go      |  96 ++++++++++
+ pkg/sendMessage/service/send_service.go       | 168 ++++++++++++++++++
+ 4 files changed, 329 insertions(+)
+ create mode 100644 pkg/sendMessage/service/interactive_response_test.go
+
+diff --git a/pkg/routes/routes.go b/pkg/routes/routes.go
+index 8e026a8..963c177 100644
+--- a/pkg/routes/routes.go
++++ b/pkg/routes/routes.go
+@@ -120,6 +120,7 @@ func (r *Routes) AssignRoutes(eng *gin.Engine) {
+ 			routes.POST("/location", r.jidValidationMiddleware.ValidateNumberFieldWithFormatJid(), r.sendHandler.SendLocation)
+ 			routes.POST("/contact", r.jidValidationMiddleware.ValidateContactFields(), r.sendHandler.SendContact) // TODO: send multiple contacts
+ 			routes.POST("/button", r.jidValidationMiddleware.ValidateNumberFieldWithFormatJid(), r.sendHandler.SendButton)
++			routes.POST("/interactiveResponse", r.jidValidationMiddleware.ValidateNumberFieldWithFormatJid(), r.sendHandler.SendInteractiveResponse)
+ 			routes.POST("/list", r.jidValidationMiddleware.ValidateNumberFieldWithFormatJid(), r.sendHandler.SendList)
+ 			routes.POST("/carousel", r.jidValidationMiddleware.ValidateNumberFieldWithFormatJid(), r.sendHandler.SendCarousel)
+ 			routes.POST("/status/text", r.sendHandler.SendStatusText)
+diff --git a/pkg/sendMessage/handler/send_handler.go b/pkg/sendMessage/handler/send_handler.go
+index 7b3feb0..bd44fa6 100644
+--- a/pkg/sendMessage/handler/send_handler.go
++++ b/pkg/sendMessage/handler/send_handler.go
+@@ -21,6 +21,7 @@ type SendHandler interface {
+ 	SendLocation(ctx *gin.Context)
+ 	SendContact(ctx *gin.Context)
+ 	SendButton(ctx *gin.Context)
++	SendInteractiveResponse(ctx *gin.Context)
+ 	SendList(ctx *gin.Context)
+ 	SendCarousel(ctx *gin.Context)
+ 	SendStatusText(ctx *gin.Context)
+@@ -830,6 +831,69 @@ func (s *sendHandler) SendStatusMedia(ctx *gin.Context) {
+ 	ctx.JSON(http.StatusOK, gin.H{"message": "success", "data": message})
+ }
+ 
++// Answer a native flow
++// @Summary Answer a native flow (an "app inside WhatsApp")
++// @Description Sends what a WhatsApp client produces when a person fills in a native flow
++// @Description form and submits it. Every other /send route ORIGINATES an interactive
++// @Description message; this one ANSWERS one.
++// @Description
++// @Description `paramsJSON` is forwarded byte for byte -- validated as JSON, never
++// @Description re-serialised, so key order and escaping survive intact.
++// @Description
++// @Description `name` is the envelope of the flow being answered and has NO default: echo
++// @Description it from the message you are replying to. Values seen in the field are
++// @Description `galaxy_message` (legacy) and `flow` (current). A wrong envelope makes the
++// @Description receiver drop the answer silently -- there is no error to catch.
++// @Description
++// @Description Required body fields: `number`, `name`, `paramsJSON`.
++// @Tags Send Message
++// @Accept json
++// @Produce json
++// @Param message body send_service.InteractiveResponseStruct true "Message data"
++// @Success 200 {object} gin.H "success"
++// @Failure 400 {object} gin.H "Error on validation"
++// @Failure 500 {object} gin.H "Internal server error"
++// @Router /send/interactiveResponse [post]
++func (s *sendHandler) SendInteractiveResponse(ctx *gin.Context) {
++	getInstance := ctx.MustGet("instance")
++
++	instance, ok := getInstance.(*instance_model.Instance)
++	if !ok {
++		ctx.JSON(http.StatusInternalServerError, gin.H{"error": "instance not found"})
++		return
++	}
++
++	var data *send_service.InteractiveResponseStruct
++	err := ctx.ShouldBindBodyWithJSON(&data)
++	if err != nil {
++		ctx.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
++		return
++	}
++
++	if data.Number == "" {
++		ctx.JSON(http.StatusBadRequest, gin.H{"error": "phone number is required"})
++		return
++	}
++
++	if data.Name == "" {
++		ctx.JSON(http.StatusBadRequest, gin.H{"error": "name is required"})
++		return
++	}
++
++	if data.ParamsJSON == "" {
++		ctx.JSON(http.StatusBadRequest, gin.H{"error": "paramsJSON is required"})
++		return
++	}
++
++	message, err := s.sendMessageService.SendInteractiveResponse(data, instance)
++	if err != nil {
++		ctx.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
++		return
++	}
++
++	ctx.JSON(http.StatusOK, gin.H{"message": "success", "data": message})
++}
++
+ func NewSendHandler(
+ 	sendMessageService send_service.SendService,
+ ) SendHandler {
+diff --git a/pkg/sendMessage/service/interactive_response_test.go b/pkg/sendMessage/service/interactive_response_test.go
+new file mode 100644
+index 0000000..615511b
+--- /dev/null
++++ b/pkg/sendMessage/service/interactive_response_test.go
+@@ -0,0 +1,96 @@
++package send_service
++
++import (
++	"encoding/json"
++	"testing"
++)
++
++// A unica captura real que temos de uma pessoa respondendo este formulario:
++// familia HDI, 18/07/2026. Telefones trocados por numeros de exemplo. Todo o
++// resto e literal -- inclusive a ORDEM das chaves e os acentos, que sao
++// exatamente as duas coisas que este teste existe para proteger.
++const cliqueHumanoParams = `{"rb_EmGaragemOuEstacionamento":"1","rb_NivelDaRua":"4","ckb_SituacoesVeiculo":["nenhuma_opcoes"],"rb_InformacoesLocal":"6","rb_Ocupantes":"1","flow_token":"00000000-0000-0000-0000-000000000000:551100000000:5500000000000","wa_flow_response_params":{"title":"Informar condicoes","flow_id":"857030507196739","flow_name":"Automovel - Detalhes do atendimento (veiculo, local e ocupantes) V2"}}`
++
++func TestRespostaDeFlowSaiIgualAoCliqueHumano(t *testing.T) {
++	msg, err := buildInteractiveResponseMessage(&InteractiveResponseStruct{
++		Number:     "5511999999999",
++		Name:       "galaxy_message",
++		ParamsJSON: cliqueHumanoParams,
++	})
++	if err != nil {
++		t.Fatalf("nao montou: %v", err)
++	}
++
++	nf := msg.GetInteractiveResponseMessage().GetNativeFlowResponseMessage()
++	if nf == nil {
++		t.Fatal("nativeFlowResponseMessage ausente -- o oneof nao foi preenchido")
++	}
++
++	if nf.GetName() != "galaxy_message" {
++		t.Errorf("envelope: quero galaxy_message, veio %q", nf.GetName())
++	}
++
++	// Byte a byte. Se algum dia alguem "arrumar" isto com um Unmarshal seguido
++	// de Marshal, as chaves trocam de ordem -- e este teste e o unico lugar onde
++	// isso aparece antes da seguradora.
++	if nf.GetParamsJSON() != cliqueHumanoParams {
++		t.Errorf("paramsJSON foi reescrito no caminho.\n quero: %s\n veio:  %s", cliqueHumanoParams, nf.GetParamsJSON())
++	}
++
++	// Ausente na captura -> ausente no que enviamos.
++	if nf.Version != nil {
++		t.Errorf("version deveria estar AUSENTE quando ninguem pediu, veio %d", nf.GetVersion())
++	}
++
++	if msg.GetInteractiveResponseMessage().GetBody() != nil {
++		t.Error("body deveria estar ausente quando nao foi pedido")
++	}
++}
++
++func TestVersionSoViajaQuandoAlguemPede(t *testing.T) {
++	msg, err := buildInteractiveResponseMessage(&InteractiveResponseStruct{
++		Name:       "flow",
++		ParamsJSON: `{"flow_token":"x"}`,
++		Version:    3,
++	})
++	if err != nil {
++		t.Fatalf("nao montou: %v", err)
++	}
++	if v := msg.GetInteractiveResponseMessage().GetNativeFlowResponseMessage().GetVersion(); v != 3 {
++		t.Errorf("version: quero 3, veio %d", v)
++	}
++}
++
++func TestRecusaOQueNaoPodeAdivinhar(t *testing.T) {
++	casos := []struct {
++		nome string
++		data *InteractiveResponseStruct
++	}{
++		{"sem o nome do envelope", &InteractiveResponseStruct{ParamsJSON: `{"a":1}`}},
++		{"sem paramsJSON", &InteractiveResponseStruct{Name: "galaxy_message"}},
++		{"paramsJSON que nao e JSON", &InteractiveResponseStruct{Name: "galaxy_message", ParamsJSON: "nao sou json"}},
++	}
++	for _, caso := range casos {
++		if _, err := buildInteractiveResponseMessage(caso.data); err == nil {
++			t.Errorf("%s: deveria ter recusado, e aceitou", caso.nome)
++		}
++	}
++}
++
++// Prova que o teste de cima nao passa por acidente: um paramsJSON reescrito por
++// Unmarshal+Marshal REALMENTE difere do original. Sem esta linha, a comparacao
++// byte a byte poderia estar comparando duas coisas iguais por coincidencia, e
++// um guarda que nao tem como falhar nao esta guardando nada.
++func TestAComparacaoByteAByteTemComoFalhar(t *testing.T) {
++	var qualquer map[string]interface{}
++	if err := json.Unmarshal([]byte(cliqueHumanoParams), &qualquer); err != nil {
++		t.Fatalf("a captura nao e JSON valido: %v", err)
++	}
++	reescrito, err := json.Marshal(qualquer)
++	if err != nil {
++		t.Fatalf("nao remarshalou: %v", err)
++	}
++	if string(reescrito) == cliqueHumanoParams {
++		t.Fatal("remarshal devolveu texto identico -- entao o teste de bytes nao prova nada")
++	}
++}
+diff --git a/pkg/sendMessage/service/send_service.go b/pkg/sendMessage/service/send_service.go
+index b885008..b8a7d14 100644
+--- a/pkg/sendMessage/service/send_service.go
++++ b/pkg/sendMessage/service/send_service.go
+@@ -45,6 +45,7 @@ type SendService interface {
+ 	SendLocation(data *LocationStruct, instance *instance_model.Instance) (*MessageSendStruct, error)
+ 	SendContact(data *ContactStruct, instance *instance_model.Instance) (*MessageSendStruct, error)
+ 	SendButton(data *ButtonStruct, instance *instance_model.Instance) (*MessageSendStruct, error)
++	SendInteractiveResponse(data *InteractiveResponseStruct, instance *instance_model.Instance) (*MessageSendStruct, error)
+ 	SendList(data *ListStruct, instance *instance_model.Instance) (*MessageSendStruct, error)
+ 	SendCarousel(data *CarouselStruct, instance *instance_model.Instance) (*MessageSendStruct, error)
+ 	SendStatusText(data *StatusTextStruct, instance *instance_model.Instance) (*MessageSendStruct, error)
+@@ -235,6 +236,52 @@ type ButtonStruct struct {
+ 	VideoUrl string `json:"videoUrl,omitempty"`
+ }
+ 
++// InteractiveResponseStruct is the body for POST /send/interactiveResponse.
++//
++// It sends what a WhatsApp CLIENT produces when a person fills in a native flow
++// -- an "app inside WhatsApp" -- and taps submit. Every other /send route
++// ORIGINATES an interactive message; this one ANSWERS one. That asymmetry is
++// the whole reason the route has to exist: whatsmeow has always been able to
++// carry the answer, and the inbound path in pkg/whatsmeow/service already reads
++// exactly these fields. Only the outbound door was missing.
++//
++// This endpoint is deliberately a dumb pipe. ParamsJSON is carried as an opaque
++// string: checked for being valid JSON, then forwarded byte for byte. It is
++// never unmarshalled and re-marshalled, because that reorders keys and
++// re-escapes unicode, and nobody has established which of those the receiving
++// side is sensitive to.
++type InteractiveResponseStruct struct {
++	// Destination phone number.
++	Number string `json:"number" example:"5511999999999"`
++	// Envelope name, ECHOED from the flow message being answered. Values seen in
++	// the field: "galaxy_message" (legacy) and "flow" (current).
++	//
++	// Required, and with no default on purpose. A wrong envelope makes the
++	// receiver drop the answer silently -- no error, no retry, just a form that
++	// was never heard. A default here would be a guess wearing a friendly name.
++	Name string `json:"name" example:"galaxy_message"`
++	// The answer itself, already serialised. Must be valid JSON. Carries the
++	// flow_token and the form fields.
++	ParamsJSON string `json:"paramsJSON"`
++	// Envelope version. Omitted from the wire when 0 -- absent is a fact we can
++	// state, while 1 would be a guess dressed up as a default.
++	Version int32 `json:"version,omitempty" example:"1"`
++	// Optional body text for the chat bubble.
++	Body string `json:"body,omitempty"`
++	// Typing delay (milliseconds) applied before sending.
++	Delay int32 `json:"delay,omitempty" example:"1200"`
++	// If false, skips automatic formatting of `number` into a JID.
++	FormatJid *bool `json:"formatJid,omitempty"`
++	// Quoted (reply-to) context -- normally the flow message being answered.
++	Quoted QuotedStruct `json:"quoted,omitempty"`
++	// Adds the <biz><interactive native_flow/></biz> stanza nodes that
++	// /send/button injects. A person answering a form is not a business sending
++	// an interactive message, so this is OFF by default. It exists as the
++	// documented fallback for the case where a loopback test shows the answer
++	// not landing -- so that discovery costs a flag, not another image build.
++	WithBizNodes bool `json:"withBizNodes,omitempty"`
++}
++
+ // Row is a selectable item inside a list Section.
+ type Row struct {
+ 	// Row main label.
+@@ -2510,6 +2557,14 @@ func (s *sendService) SendMessage(instance *instance_model.Instance, msg *waE2E.
+ 					QuotedMessage: &waE2E.Message{Conversation: proto.String("")},
+ 				}
+ 			}
++		case "InteractiveResponseMessage":
++			if msg.InteractiveResponseMessage != nil {
++				msg.InteractiveResponseMessage.ContextInfo = &waE2E.ContextInfo{
++					StanzaID:      proto.String(data.Quoted.MessageID),
++					Participant:   proto.String(data.Quoted.Participant),
++					QuotedMessage: &waE2E.Message{Conversation: proto.String("")},
++				}
++			}
+ 		default:
+ 			return nil, fmt.Errorf("invalid messageType: %s", messageType)
+ 		}
+@@ -2550,6 +2605,8 @@ func (s *sendService) SendMessage(instance *instance_model.Instance, msg *waE2E.
+ 			// ContextInfo already set in SendList
+ 		case "ButtonsMessage":
+ 			// Reply-only buttons: ContextInfo already set in SendButton
++		case "InteractiveResponseMessage":
++			// A flow answer that quotes nothing carries no ContextInfo.
+ 		default:
+ 			return nil, fmt.Errorf("invalid messageType: %s", messageType)
+ 		}
+@@ -3365,6 +3422,117 @@ func (s *sendService) sendStatusWebhook(messageSent *MessageSendStruct, instance
+ 	s.loggerWrapper.GetLogger(instance.Id).LogInfo("[%s] Status %s sent successfully", instance.Id, messageType)
+ }
+ 
++// buildInteractiveResponseMessage assembles the answer, and touches nothing
++// else. It is a free function on purpose: the part of this feature that can
++// actually be WRONG is the encoding, and the encoding must be provable without
++// a phone, a pairing or a network. Everything that needs a live client stays in
++// the method below; everything that needs only correctness lives here, where a
++// test can reach it. See interactive_response_test.go.
++//
++// It is also deliberately incurious about the payload. This layer does not know
++// what a CEP is, which insurer is on the other end, or what the form asked. It
++// checks that ParamsJSON is JSON and carries it through untouched. When we
++// later learn some other field is required, that is a change in the caller --
++// not another image to build and roll out.
++func buildInteractiveResponseMessage(data *InteractiveResponseStruct) (*waE2E.Message, error) {
++	if data.Name == "" {
++		return nil, errors.New("name is required: echo it from the flow message being answered, never guess it")
++	}
++
++	if data.ParamsJSON == "" {
++		return nil, errors.New("paramsJSON is required")
++	}
++
++	// json.Valid READS. It does not rewrite, reorder or re-escape -- which is
++	// exactly why it is the only inspection this payload gets.
++	if !json.Valid([]byte(data.ParamsJSON)) {
++		return nil, errors.New("paramsJSON is not valid JSON")
++	}
++
++	nativeFlowResponse := &waE2E.InteractiveResponseMessage_NativeFlowResponseMessage{
++		Name:       proto.String(data.Name),
++		ParamsJSON: proto.String(data.ParamsJSON),
++	}
++
++	// Absent stays absent. The one captured instance of a human answering this
++	// flow carries no version at all, so defaulting it would put a number on the
++	// wire that no one ever observed.
++	if data.Version != 0 {
++		nativeFlowResponse.Version = proto.Int32(data.Version)
++	}
++
++	interactiveResponse := &waE2E.InteractiveResponseMessage{
++		InteractiveResponseMessage: &waE2E.InteractiveResponseMessage_NativeFlowResponseMessage_{
++			NativeFlowResponseMessage: nativeFlowResponse,
++		},
++	}
++
++	if data.Body != "" {
++		interactiveResponse.Body = &waE2E.InteractiveResponseMessage_Body{
++			Text:   proto.String(data.Body),
++			Format: waE2E.InteractiveResponseMessage_Body_DEFAULT.Enum(),
++		}
++	}
++
++	return &waE2E.Message{
++		InteractiveResponseMessage: interactiveResponse,
++	}, nil
++}
++
++// SendInteractiveResponse answers a native flow -- the message a person's phone
++// produces after filling in the form and tapping submit.
++func (s *sendService) SendInteractiveResponse(data *InteractiveResponseStruct, instance *instance_model.Instance) (*MessageSendStruct, error) {
++	if _, err := s.ensureClientConnected(instance.Id); err != nil {
++		return nil, err
++	}
++
++	msg, err := buildInteractiveResponseMessage(data)
++	if err != nil {
++		return nil, err
++	}
++
++	sendData := &SendDataStruct{
++		Number:    data.Number,
++		Delay:     data.Delay,
++		FormatJid: data.FormatJid,
++		Quoted:    data.Quoted,
++	}
++
++	if data.WithBizNodes {
++		bizNodes := []waBinary.Node{
++			{
++				Tag: "biz",
++				Content: []waBinary.Node{{
++					Tag: "interactive",
++					Attrs: waBinary.Attrs{
++						"type": "native_flow",
++						"v":    "1",
++					},
++					Content: []waBinary.Node{{
++						Tag:   "native_flow",
++						Attrs: waBinary.Attrs{"name": data.Name},
++					}},
++				}},
++			},
++		}
++		if !strings.Contains(data.Number, "@g.us") {
++			bizNodes = append(bizNodes, waBinary.Node{
++				Tag:   "bot",
++				Attrs: waBinary.Attrs{"biz_bot": "1"},
++			})
++		}
++		sendData.AdditionalNodes = &bizNodes
++	}
++
++	message, err := s.SendMessage(instance, msg, "InteractiveResponseMessage", sendData)
++	if err != nil {
++		s.loggerWrapper.GetLogger(instance.Id).LogError("[%s] Error sending interactive response: %v", instance.Id, err)
++		return nil, err
++	}
++
++	return message, nil
++}
++
+ func NewSendService(
+ 	clientPointer map[string]*whatsmeow.Client,
+ 	whatsmeowService whatsmeow_service.WhatsmeowService,
+-- 
+2.52.0.windows.1
+
