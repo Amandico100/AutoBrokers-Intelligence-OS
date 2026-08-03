@@ -53,35 +53,34 @@ F  corredores           13 (eram 11) · vidros Azul/Porto/Zurich · HDI e Porto
 
 ## ➡️ A SEQUÊNCIA, na ordem
 
-### FASE 1 · O transporte do formulário nativo — **PRIMEIRO**
-📊 Justificativa medida: 4 seguradoras já usam formulário (Porto 12 desde
-09/2025 · HDI 6 · Azul 4 · Yelum 2). 460 apólices de auto (26,9% da carteira)
-travadas. Os corredores dessas seguradoras **já existem** — é trabalho feito
-que não rende.
+### FASE 1 · O transporte do formulário nativo — ✅ **RESOLVIDO 03/08/2026**
+
+📊 **A mensagem sai, e o WhatsApp aceita.** Provado no ar entre dois números
+nossos: `Type: "InteractiveResponseMessage"`, ID `3EB07C9C74F4A217DE0477`.
 
 ```
-1.0  ✅ corrigir o envelope e a identidade do formulário          FEITO
-1.1  ✅ patch 0005: POST /send/interactiveResponse                FEITO
-        329 linhas · os 5 patches aplicam no commit fixado
-1.2  ✅ o build passa a rodar o teste · VERSION ...autobrokers.2  FEITO
-1.3a ✅ A PROVA DOS BYTES — 4 testes Go que montam a mensagem e
-        comparam com o clique de 18/07. Rodam DENTRO do build,
-        sem telefone, sem pareamento, sem rede                    FEITO
-1.3b ⏳ construir a imagem no EasyPanel — é ela quem compila
-1.3c 🧑 A PROVA DO TRANSPORTE — loopback entre DOIS números
-        nossos. Precisa do pareamento. ZERO msg para seguradora
-1.4  ligar EVOLUTION_GO_FLOW_REPLY_PATH (vazio até 1.3c passar)
-1.5  `flow_sender=` chega de app/api/ (hoje é sempre None)
-1.6  só então, ao vivo, com DISPATCH_FINALIZE_MODE=test
+1.0  ✅ o envelope se ECOA da captura, nunca se adivinha
+1.1  ✅ patch 0005 — POST /send/interactiveResponse (a 13ª rota, nossa)
+1.2  ✅ o build roda o teste do codificador · 4 testes Go
+1.3  ✅ patch 0006 — o embrulho vira bandeira, para poder ser MEDIDO
+1.4  ✅ A PROVA — 6 formas, 5 recusadas com 479, 1 aceita
+1.5  ✅ o embrulho vira o padrão · a rota vira o padrão · a ponte liga
 ```
-**Se 1.3c falhar:** o patch já traz `withBizNodes` — uma bandeira no corpo da
-requisição, não outra imagem para construir. Se nem isso, nada se perde: o motor
-já pausa com a resposta pronta no dossiê.
 
-**O que 1.3a prova e o que não prova.** Prova o codificador: envelope
-`galaxy_message`, `paramsJSON` byte a byte, `version` ausente quando ninguém
-pediu, e a recusa de tudo que exigiria adivinhação. **Não** prova que a
-seguradora aceita — ter o caminho não é ter chegado.
+**A resposta: `DocumentWithCaptionMessage`.** O mesmo embrulho que os botões
+usam. Sem ele o servidor recusa a mensagem inteira com 479 — *"Invalid stanza
+sent"* — em silêncio para o cliente e com um número para nós.
+
+E o que fez a diferença metodológica: **a primeira tentativa da bateria era
+controle.** Ela deu 479 igual à rodada anterior, então o mérito é do embrulho e
+de mais nada. Sem controle, um acerto se credita ao lugar errado.
+
+📊 Desbloqueia **4 seguradoras** que já usam formulário (Porto 12 · HDI 6 ·
+Azul 4 · Yelum 2) e as **460 apólices de auto** (26,9% da carteira) nelas.
+
+**O que ainda NÃO está provado:** que a seguradora aceita a nossa resposta no
+meio de um atendimento real. Provamos o transporte, não o desfecho. É o que a
+Fase 3 mede, família por família.
 
 ### FASE 2 · Recolher o que a Fase 0 plantou
 ```
