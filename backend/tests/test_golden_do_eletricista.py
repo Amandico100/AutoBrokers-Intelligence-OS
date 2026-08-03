@@ -169,8 +169,25 @@ SLOTS_COMPLETOS = {
 def _acionar(**kwargs) -> dict:
     """Chama a tool do atendente como o runtime chamaria. NUNCA envia nada:
     `_run` é o caminho síncrono e não tem envio; o envio real mora em `_arun`
-    atrás do gate `INSURER_DISPATCH_LIVE`."""
+    atrás do gate `INSURER_DISPATCH_LIVE`.
+
+    **A seguradora é obrigatória, e passou a ser explícita aqui.**
+
+    Estes casos golden nasceram da família `allianz_residential_assistance` e
+    chamavam a tool sem `insurer_key`, apoiados num fallback que mandava tudo
+    sem seguradora para o corredor residencial da Allianz.
+
+    Esse fallback foi removido em 03/08/2026: ele não só usava o ROTEIRO da
+    Allianz para outra seguradora — ele resolvia o TELEFONE DE DESTINO como
+    Allianz. A mensagem de um segurado da Porto iria para o WhatsApp da Allianz.
+
+    Declarar a seguradora aqui não enfraquece o teste: é o que o runtime real
+    faz, porque quem descobre a seguradora é a consulta de apólice na InfoCap
+    antes de qualquer acionamento. Um teste que dependia de um atalho perigoso
+    estava testando o atalho, não o corredor.
+    """
     ferramenta = TOOL.InsurerDispatchTool(company_id="corretora-A")
+    kwargs.setdefault("insurer_key", "allianz")
     return ferramenta._run(**kwargs)
 
 

@@ -19,6 +19,22 @@ Seed v1: Allianz Residencial WhatsApp — minerado da conversa real da corretora
 com a Allianz Assistência 24h (fluxo comprovado, valores sintéticos).
 O contato real da seguradora vem da configuração da corretora/plataforma
 (insurer_contact_ref), NUNCA hard-coded aqui.
+
+DESFECHO (SPEC-063, 03/08/2026): **nem todo corredor ABRE chamado.**
+`outcome`, por seguradora e por subserviço, diz como o trabalho TERMINA:
+
+    abre        segue o fluxo até o protocolo (Azul/vidros — e todo o resto)
+    encaminha   a seguradora NÃO abre chamado por este canal: ela entrega um
+                FORMULÁRIO (Porto/vidros) ou uma ORIENTAÇÃO (Zurich/vidros).
+                O corredor entrega isso ao segurado e encerra como
+                resolvido-por-encaminhamento. Encaminhar não é falhar — é o
+                desfecho correto naquela seguradora.
+
+E onde NÃO há menu observado, o subserviço simplesmente não é declarado:
+`subservice_supported()` devolve False e o caso vira handoff. 📊 Vidros só está
+ligado em azul, porto e zurich porque só nessas três o rótulo do menu foi
+capturado em `ura_maps` (status='observed', 03/08/2026). Inventar rótulo de menu
+é o defeito que manda o segurado para a opção errada da seguradora.
 """
 
 from __future__ import annotations
@@ -149,9 +165,20 @@ ALLIANZ_RESIDENCIAL_WHATSAPP_V1: Dict[str, Any] = {
             "tipo_servico_opcao": "1",
             "required_slots": ["titular_cpf", "endereco_numero", "telefone_contato", "problema_descricao", "periodo_preferido"],
         },
+        # ENCANADOR (SPEC-063, 03/08/2026): mesma espinha do eletricista — mesma
+        # opção de URA ("1 - casa"), mesmos dados de apólice/contato — e os slots
+        # do problema trocados para VAZAMENTO. O eletricista pergunta se há
+        # fumaça; o encanador pergunta se a água está escorrendo e se o registro
+        # foi fechado. É o mesmo padrão de guardrail: a pergunta que separa
+        # "pinga a torneira" de "está alagando" tem de ser feita ANTES do
+        # acionamento, porque as duas frases pedem prioridades diferentes.
+        # 💭 A URA da Allianz não pede estes campos — quem os usa é o
+        # ESPECIALISTA humano da assistência (e a corretora, para priorizar).
         "encanador": {
             "tipo_servico_opcao": "1",
-            "required_slots": ["titular_cpf", "endereco_numero", "telefone_contato", "problema_descricao", "periodo_preferido"],
+            "required_slots": ["titular_cpf", "endereco_numero", "telefone_contato", "problema_descricao",
+                               "periodo_preferido", "vazamento_local", "agua_escorrendo",
+                               "risco_confirmado_registro_fechado"],
         },
         "eletrodomesticos": {
             "tipo_servico_opcao": "2",
@@ -233,6 +260,85 @@ _AUTO_SUBSERVICES = {
     "pneu": {"required_slots": _AUTO_SLOTS_COMMON},
     "chaveiro": {"required_slots": _AUTO_SLOTS_COMMON},
 }
+
+# ---------------------------------------------------------------------------
+# DESFECHO do corredor (SPEC-063, 03/08/2026)
+# ---------------------------------------------------------------------------
+# Até aqui todo corredor tinha um só fim possível: chegar ao protocolo. Vidros
+# provou que isso é falso. Na Porto, o fluxo de vidro TERMINA num formulário; na
+# Zurich, numa orientação. Sem nomear esse desfecho, o motor ficaria esperando
+# um protocolo que nunca vem, e o atendimento morreria em "monitorando".
+OUTCOME_ABRE = "abre"            # vai até o protocolo (padrão de todo subserviço)
+OUTCOME_ENCAMINHA = "encaminha"  # entrega link/orientação ao segurado e ENCERRA
+
+# VIDRO NÃO É REBOQUE. Não se pergunta onde o veículo está nem para onde levar:
+# ou o prestador vai até o veículo, ou o veículo vai à oficina de vidro na data
+# combinada. Os slots saem de `_AUTO_SLOTS_COMMON` **menos** `local_atual` —
+# derivação explícita para que ninguém precise conferir duas listas:
+#   titular_cpf · veiculo_placa · problema_descricao (o dano) · quando (a data)
+#   · telefone_contato
+_VIDROS_SLOTS = [s for s in _AUTO_SLOTS_COMMON if s != "local_atual"]
+_VIDROS_LABEL = "conserto ou troca de vidro"
+
+# ---------------------------------------------------------------------------
+# APELIDOS DE SUBSERVIÇO — um nome canônico por trabalho
+# ---------------------------------------------------------------------------
+# `pane seca` é o caso que obriga esta tabela a existir.
+#
+# 📊 Evidência de URA (`ura_maps` status='observed', 03/08/2026): NENHUMA das 10
+# seguradoras tem opção própria de pane seca. Allianz e Alfa dizem
+# "*3* - Guincho para *pane mecânica*"; a Zurich lista "pane seca" DENTRO da
+# assistência 24h, junto de reboque e socorro mecânico; Bradesco, HDI e Yelum
+# usam "Pane ou Defeito", genérico. Não há um único menu em que "pane seca"
+# seja uma tecla.
+#
+# Declarar um subserviço `pane_seca` obrigaria a inventar essa tecla — e o
+# corredor responderia à URA uma opção que não existe na tela. Um menu inventado
+# é pior que subserviço nenhum. Então pane seca ENTRA PELO GUINCHO, e o
+# classificador do Atlas (`infer_ramo_servico`, que já devolve "pane_seca")
+# chega aqui e é traduzido, sem um segundo classificador para divergir.
+_SUBSERVICE_ALIASES = {
+    "pane_seca": "guincho", "pane seca": "guincho", "paneseca": "guincho",
+    "combustivel": "guincho", "falta de combustivel": "guincho",
+    "sem combustivel": "guincho",
+    # o segurado fala no singular, e às vezes fala da peça
+    "vidro": "vidros", "para-brisa": "vidros", "parabrisa": "vidros",
+    "para brisa": "vidros", "retrovisor": "vidros",
+    # residencial: um nome por trabalho. A Porto chama de "elétrica" e
+    # "hidráulica" o que a Allianz e a HDI chamam de eletricista e encanador.
+    "eletrodomestico": "eletrodomesticos", "eletrica": "eletricista",
+    "hidraulica": "encanador", "encanamento": "encanador",
+    "desentupidor": "desentupimento",
+}
+
+
+def canonical_subservice(subservice: str) -> str:
+    """Nome canônico do subserviço: 'pane seca' → 'guincho', 'vidro' → 'vidros'.
+
+    Sem apelido conhecido, devolve o próprio nome em minúsculas — NUNCA um
+    palpite. Nome desconhecido continua desconhecido, e vira handoff lá na
+    frente (`subservice_supported`)."""
+    raw = str(subservice or "").strip().lower()
+    if not raw:
+        return ""
+    return _SUBSERVICE_ALIASES.get(_norm(raw), raw)
+
+
+def _ativar_vidros(playbook: Dict[str, Any], *, menu_value: str, outcome: str,
+                   referral: Optional[Dict[str, Any]] = None) -> None:
+    """Liga `vidros` NUMA seguradora — só onde o rótulo do menu foi observado.
+
+    Chamar isto é uma afirmação de evidência: existe menu capturado, e ele diz
+    exatamente `menu_value`. Seguradora sem essa captura NÃO recebe a chamada, e
+    por isso `subservice_supported(pb, "vidros")` devolve False lá."""
+    playbook.setdefault("subservices", {})["vidros"] = {
+        "required_slots": list(_VIDROS_SLOTS),
+        "outcome": outcome,
+        **({"referral": dict(referral)} if referral else {}),
+    }
+    playbook.setdefault("subservice_menu_map", {})["vidros"] = menu_value
+    playbook.setdefault("subservice_labels", {})["vidros"] = _VIDROS_LABEL
+
 
 # Resumo estruturado do pedido (aberto ao cair no atendente humano da seguradora).
 _AUTO_OPENING_TEMPLATE = (
@@ -410,10 +516,29 @@ PORTO_AUTO_WHATSAPP_V1 = _auto_playbook(
          "notes": "lista: Novo serviço / Acompanhar / Cancelar / ..."},
         {"step": "menu_servico", "anchor": r"o que voc[êe] precisa\?.*guincho", "reply": "{servico_texto}",
          "requires": ["servico_texto"],
-         "notes": "responder o RÓTULO completo (Guincho (reboque) / Bateria / Chaveiro para veículo / Técnico)"},
+         "notes": "responder o RÓTULO completo. 📊 lista real 03/08/2026: Guincho (reboque) / Bateria / "
+                  "Troca de pneu / Conserto de vidro (Inclui retrovisor, farol ou lanterna) / "
+                  "Chaveiro para o veículo / Táxi"},
         {"step": "bateria_submenu", "anchor": r"entendi\. o que voc[êe] precisa",
          "reply": "Recarga de bateria",
          "notes": "submenu após 'Bateria' (teste real 12/07: Recarga de bateria / Bateria nova / Na garantia — travava aqui)"},
+        # VIDROS na Porto NÃO abre chamado aqui — DESFECHO = encaminha.
+        # 📊 URA real 03/08/2026, três mensagens seguidas:
+        #   "Certo. Para conserto ou reparo de vidro, retrovisor, farol ou
+        #    lanterna, é necessário *preencher o formulário* de sinistro de
+        #    vidros abaixo"
+        #   "https://porto.vc/reparovidros"
+        #   "Não se preocupe, esse acionamento *para vidros* não irá afetar a
+        #    sua classe de bônus."
+        # O link vem numa mensagem SOZINHA — por isso ele é capturado por
+        # `capture_anchors.tracking_link` (qualquer http), e não por uma âncora
+        # que exija a palavra 'formulário' na mesma mensagem. A URL NÃO fica
+        # escrita aqui: quem a entrega é a seguradora, na hora.
+        {"step": "vidros_formulario",
+         "anchor": (r"necess[áa]rio \*?preencher o formul[áa]rio\*? de sinistro de vidros|"
+                    r"para conserto ou reparo de vidro,? retrovisor,? farol ou lanterna"),
+         "reply": "", "noop": True, "referral": True, "outcome": OUTCOME_ENCAMINHA,
+         "notes": "não responder à URA: o trabalho passa a ser ENTREGAR o formulário ao segurado e encerrar"},
         {"step": "necessidade_guincho", "anchor": r"op[çc][ãa]o que descreve melhor a sua necessidade",
          "reply": "Remoção de veículo",
          "notes": "Remoção de veículo (pane) · 'Envolvimento em acidente' = sinistro → handoff antes de chegar aqui"},
@@ -639,7 +764,9 @@ AZUL_AUTO_WHATSAPP_V1 = _auto_playbook(
          "notes": "1-Novo serviço"},
         {"step": "menu_servico", "anchor": r"o que voc[êe] precisa\?\s*\|?\s*\*?1\*?\s*-\s*guincho", "reply": "{servico_opcao}",
          "requires": ["servico_opcao"],
-         "notes": "1-Guincho 2-Bateria 3-Troca de pneu 4-Chaveiro (numerado)"},
+         "notes": "📊 menu real 03/08/2026 (numerado): 1-Guincho (reboque) 2-Bateria 3-Troca de pneu "
+                  "4-Chaveiro para o veículo 5-Conserto ou troca de vidro, retrovisor... "
+                  "— na Azul vidro é TECLA, e o fluxo segue normal até o protocolo"},
         {"step": "bateria_submenu", "anchor": r"entendi\. o que voc[êe] precisa\?.*recarga de bateria",
          "reply": "Recarga de bateria", "notes": "submenu da bateria: Recarga / Bateria nova / Na garantia"},
         {"step": "quando", "anchor": r"para quando voc[êe] precisa que esse servi[çc]o", "reply": "1",
@@ -741,9 +868,11 @@ MAPFRE_AUTO_WHATSAPP_V1 = _auto_playbook(
     finalize_anchors=[r"podemos confirmar", r"posso confirmar", r"deseja confirmar"],
 )
 MAPFRE_AUTO_WHATSAPP_V1["subservice_menu_map"] = {"guincho": "Assistência 24H", "bateria": "Assistência 24H", "pneu": "Assistência 24H", "chaveiro": "Assistência 24H"}
-# Mapfre exige nascimento em TODOS os subserviços auto.
+# Mapfre exige nascimento em TODOS os subserviços auto. O `**v` preserva as
+# outras chaves do subserviço (outcome, tipo_servico_opcao): reconstruir só com
+# `required_slots` apagava em silêncio tudo o mais que fosse declarado.
 MAPFRE_AUTO_WHATSAPP_V1["subservices"] = {
-    k: {"required_slots": list(v["required_slots"]) + ["titular_nascimento"]}
+    k: {**v, "required_slots": list(v["required_slots"]) + ["titular_nascimento"]}
     for k, v in _AUTO_SUBSERVICES.items()
 }
 
@@ -756,6 +885,25 @@ ZURICH_AUTO_WHATSAPP_V1 = _auto_playbook(
         {"step": "menu_servicos", "anchor": r"escolha um dos servi[çc]os para continuar", "reply": "Assistência 24h"},
         {"step": "acionar_assistencia", "anchor": r"acionar a assist[êe]ncia 24h\*? ou \*?acionar o seguro", "reply": "Acionar assistência 24h",
          "notes": "colisão/roubo é SINISTRO (handoff), não assistência"},
+        # VIDROS na Zurich é ITEM DE LISTA e é INFORMATIVO — DESFECHO = encaminha.
+        # 📊 URA real 03/08/2026: "Você deseja acionar qual serviço? Acionar
+        # seguro / Assistência {VALOR} / Assistência a vidros / Voltar ao menu".
+        # Só o corredor de VIDROS responde este menu por rótulo: o rótulo dos
+        # outros serviços vem com um VALOR variável da apólice, e adivinhá-lo
+        # seria clicar na tecla errada. Para guincho/bateria/pneu/chaveiro este
+        # passo não existe e quem decide continua sendo o adaptativo.
+        {"step": "menu_acionar_servico_vidros", "anchor": r"deseja acionar qual servi[çc]o",
+         "reply": "{servico_texto}", "requires": ["servico_texto"],
+         "only_subservices": ["vidros"],
+         "notes": "responder o rótulo 'Assistência a vidros' (vem de subservice_menu_map)"},
+        # 📊 "*Assistência a vidros*: encontre informações sobre como pedir o
+        # reparo ou a troca de vidros, para-brisa, faróis e retrovi[sores]" —
+        # a Zurich ORIENTA; não abre chamado neste fluxo.
+        {"step": "vidros_orientacao",
+         "anchor": (r"assist[êe]ncia a vidros\*?\s*:?\s*encontre informa[çc][õo]es|"
+                    r"como pedir o reparo ou a troca de vidros"),
+         "reply": "", "noop": True, "referral": True, "outcome": OUTCOME_ENCAMINHA,
+         "notes": "não responder à URA: entregar a orientação ao segurado e encerrar"},
         {"step": "pedir_cpf", "anchor": r"qual o seu \*?cpf/?cnpj", "reply": "{titular_cpf}", "requires": ["titular_cpf"]},
         {"step": "pedir_placa", "anchor": r"qual a \*?placa do ve[íi]culo", "reply": "{veiculo_placa}",
          "requires": ["veiculo_placa"]},
@@ -799,6 +947,292 @@ ZURICH_AUTO_WHATSAPP_V1["subservice_menu_map"] = {
 ZURICH_AUTO_WHATSAPP_V1["finalize_abort_reply"] = ""  # sem opção de sair no resumo: silêncio (URA encerra sozinha)
 
 
+# ===========================================================================
+# VIDROS — ligado em TRÊS seguradoras, e desligado nas outras sete
+# ===========================================================================
+# 📊 `ura_maps` status='observed', banco de produção, 03/08/2026.
+#
+#   azul .... TECLA numerada: "*5* - Conserto ou troca de vidro, retrovi[sor]"
+#             → desfecho ABRE: segue o fluxo normal até o protocolo.
+#   porto ... item de LISTA: "Conserto de vidro (Inclui retrovisor, farol ou
+#             lanterna)" → e o fluxo TERMINA num formulário → desfecho ENCAMINHA.
+#   zurich .. item de LISTA: "Assistência a vidros" → texto informativo sobre
+#             como pedir o reparo → desfecho ENCAMINHA.
+#
+# 📊 SEM evidência de vidro no menu de assistência: allianz, tokio, mapfre,
+# yelum, hdi, alfa. (bradesco também não tem.) Nessas, `vidros` NÃO é declarado:
+# `subservice_supported()` devolve False, `missing_slots_for_subservice()`
+# devolve ["subservico_invalido"] e o caso vira handoff humano. É de propósito.
+# Ligar vidros nas dez "porque o produto sabe falar de vidro" faria o corredor
+# apertar uma tecla que não existe na tela daquela seguradora.
+_VIDROS_REFERRAL_PORTO = {
+    "kind": "formulario",
+    "closes_as": "resolvido_por_encaminhamento",
+    "link_capture": "tracking_link",  # o link chega numa mensagem sozinha
+    "client_message": (
+        "A Porto trata vidro, retrovisor, farol e lanterna por FORMULÁRIO de sinistro de vidros — "
+        "não é chamado aberto pelo WhatsApp da assistência. Encaminhe ao segurado o link que a "
+        "seguradora enviou NESTA conversa (nunca digite um endereço de memória) e repasse o que a "
+        "própria URA diz: este acionamento para vidros não afeta a classe de bônus."
+    ),
+}
+_VIDROS_REFERRAL_ZURICH = {
+    "kind": "orientacao",
+    "closes_as": "resolvido_por_encaminhamento",
+    "link_capture": "tracking_link",
+    "client_message": (
+        "A Zurich responde vidros com ORIENTAÇÃO: onde encontrar como pedir o reparo ou a troca de "
+        "vidros, para-brisa, faróis e retrovisores. Repasse ao segurado exatamente o que a seguradora "
+        "enviou nesta conversa — sem completar com prazo, valor ou franquia que ela não disse."
+    ),
+}
+_ativar_vidros(AZUL_AUTO_WHATSAPP_V1, menu_value="5", outcome=OUTCOME_ABRE)
+_ativar_vidros(PORTO_AUTO_WHATSAPP_V1, menu_value="Conserto de vidro",
+               outcome=OUTCOME_ENCAMINHA, referral=_VIDROS_REFERRAL_PORTO)
+_ativar_vidros(ZURICH_AUTO_WHATSAPP_V1, menu_value="Assistência a vidros",
+               outcome=OUTCOME_ENCAMINHA, referral=_VIDROS_REFERRAL_ZURICH)
+
+
+# ===========================================================================
+# SPEC-063: RESIDENCIAL fora da Allianz — HDI e Porto
+# ===========================================================================
+# Até 03/08/2026 havia UM corredor residencial (Allianz) e dez de auto. Estes
+# dois nascem do que foi OBSERVADO, e só dele: onde a evidência acaba, o passo
+# não existe e o motor cai no adaptativo guardado / handoff, como já faz hoje.
+#
+# Uma escolha explícita: onde o corredor de auto da MESMA seguradora já tinha
+# uma âncora de identificação (CPF, menu raiz), ela é REUSADA e marcada nas
+# `notes`. É a mesma URA, o mesmo bot e a mesma porta de entrada — reusar não é
+# inventar. O que NÃO é reusado é qualquer passo com cara de auto (placa, cor do
+# veículo, rodovia, garagem): esses não têm equivalente residencial observado.
+
+_RESID_HUMAN_PHASE_GUIDANCE = (
+    "Voce conduz, EM NOME DA CORRETORA, um acionamento de assistencia RESIDENCIAL no WhatsApp da "
+    "seguradora. Pode ser a URA (menu numerado ou botoes) ou um atendente humano. Responda menus "
+    "escolhendo a opcao coerente com o subservico/dados do caso; responda pedidos de dado com o valor "
+    "exato do caso (CPF, endereco da apolice, telefone). O endereco e o DA APOLICE — nao invente, e "
+    "nao use endereco de outro caso. Se a seguradora for CONFIRMAR/ABRIR o servico, NAO confirme: o "
+    "passo final exige aprovacao da corretora. Se a seguradora disser que a apolice nao tem cobertura "
+    "residencial ou que acabaram as utilizacoes, NAO insista: registre e devolva ao humano. Use "
+    "SOMENTE dados do caso. Se nao der pra deduzir, responda exatamente: NAO_SEI."
+)
+
+# Resumo estruturado ao ESPECIALISTA humano da assistência (residencial).
+# Só usa chaves de `_optional_keys()` — chave fora dali derruba o template
+# inteiro para o texto genérico de auto.
+_RESID_OPENING_TEMPLATE = (
+    "Ola, aqui e a corretora. Preciso acionar {subservice_label} para a residencia do nosso segurado.\n"
+    "Titular: {titular_nome} (CPF {titular_cpf})\n"
+    "Endereco: o da apolice, numero {endereco_numero}\n"
+    "Problema: {problema_descricao}\n"
+    "Telefone de contato: {telefone_contato}\n"
+    "Periodo preferido: {periodo_preferido}"
+)
+
+_RESID_HANDOFF_TRIGGERS = [
+    r"sinistro", r"n[ãa]o localizamos", r"cpf.*inv[áa]lido", r"n[ãa]o foi poss[íi]vel",
+    r"sem cobertura", r"n[ãa]o (?:tem|possui) cobertura",
+]
+
+# Os dados que cada TRABALHO exige — não os que cada seguradora exige.
+# O eletricista pergunta de fumaça, o encanador pergunta do registro e o
+# eletrodoméstico pergunta da marca, seja na Allianz ou na HDI. Guardrail que
+# existe só num corredor não é guardrail: é coincidência.
+_RESID_SLOTS_BASE = ["titular_cpf", "telefone_contato", "problema_descricao"]
+_RESID_SLOTS_POR_TRABALHO = {
+    "encanador": ["vazamento_local", "agua_escorrendo", "risco_confirmado_registro_fechado"],
+    "eletricista": ["risco_confirmado_sem_fumaca"],
+    "eletrodomesticos": ["aparelho_marca_modelo", "aparelho_idade"],
+    "chaveiro": [],
+    "desentupimento": [],
+}
+
+
+def _resid_slots(trabalho: str) -> List[str]:
+    return list(_RESID_SLOTS_BASE) + list(_RESID_SLOTS_POR_TRABALHO.get(trabalho) or [])
+
+
+# --- HDI residencial (📊 o corredor residencial mais bem observado do acervo) ---
+# Mesmo bot white-label "Assistência 24 horas" do corredor de auto da HDI/Yelum:
+# botões por rótulo, timeout de 12 min, protocolo no mesmo formato.
+#
+# NÃO há passo de endereço aqui, e isso é evidência, não esquecimento: a URA
+# identifica a apólice pelo CPF e trabalha com o endereço dela. Se aparecer um
+# passo pedindo endereço, ele vira `pending` e o humano assume — melhor que um
+# slot obrigatório que ninguém usa, cobrado do cliente por precaução.
+HDI_RESIDENCIAL_WHATSAPP_V1: Dict[str, Any] = {
+    "playbook_id": "hdi-residencial-whatsapp",
+    "version": 1,
+    "insurer_key": "hdi",
+    "line_kind": "residencial",
+    "channel": "whatsapp",
+    "insurer_contact_ref": "hdi_assistencia_24h",
+    "description": ("Assistência 24h RESIDENCIAL HDI via WhatsApp "
+                    "(encanador/desentupimento/eletricista/chaveiro/eletrodoméstico)."),
+    "ura_steps": [
+        {"step": "identificacao_dado",
+         "anchor": (r"informe \*?apenas um dos dados|informe \*?um dos dados abaixo|"
+                    r"informe somente o \*?cpf ou cnpj\*? do t[íi]tular"),
+         "reply": "{titular_cpf}", "requires": ["titular_cpf"],
+         "notes": "âncora REUSADA do corredor de auto da MESMA URA — a identificação é a mesma "
+                  "porta para os dois ramos"},
+        {"step": "desambiguacao_veiculo_ou_residencial",
+         "anchor": r"identifiquei em seu cadastro a placa",
+         "reply": "Residencial",
+         "notes": "📊 'Identifiquei em seu cadastro a placa {PLACA}. Deseja continuar com o "
+                  "atendimento para o veículo ou atendimento residencial? Botão 1: Automóvel "
+                  "Botão 2: Residencial'. O corredor de AUTO responde 'Automóvel' nesta MESMA "
+                  "tela — é o passo que separa os dois ramos, e errar aqui atende o carro de "
+                  "quem pediu encanador"},
+        {"step": "menu_servico_residencial",
+         "anchor": r"qual [ée] o servi[çc]o que voc[êe] precisa solicitar",
+         "reply": "{tipo_servico_opcao}", "requires": ["tipo_servico_opcao"],
+         "notes": "📊 lista real: Encanador (conserto de vazamentos como torneiras, sifões, etc) / "
+                  "Desentupimento (desentupimento residencial) / Eletricista / Chaveiro / "
+                  "Eletrodoméstico — responder o RÓTULO, que vem do subserviço"},
+        {"step": "servico_ja_aberto",
+         "anchor": r"localizamos o servi[çc]o de .{0,80}?deseja acompanhar",
+         "reply": "Novo serviço",
+         "notes": "📊 'Para esse CPF localizamos o serviço de *ENCANADOR*. Deseja acompanhar? "
+                  "Botão 1: Acompanhar Botão 2: Novo serviço Botão 3: Voltar'. O corredor abre o "
+                  "que o cliente pediu HOJE. Acompanhar chamado antigo é outro trabalho e quem "
+                  "decide é o atendente"},
+        {"step": "utilizacoes_restantes",
+         "anchor": r"(?:tem somente|possui)\s+\d+\s+utiliza[çc][õo]es",
+         "reply": "", "noop": True,
+         "notes": "📊 'Segurada tem somente 2 utilizações de encanador nessa apólice' — informativo "
+                  "sobre o LIMITE da apólice: registrar no dossiê e seguir, nunca responder"},
+    ],
+    "subservices": {
+        "encanador": {"tipo_servico_opcao": "Encanador", "required_slots": _resid_slots("encanador")},
+        "desentupimento": {"tipo_servico_opcao": "Desentupimento", "required_slots": _resid_slots("desentupimento")},
+        "eletricista": {"tipo_servico_opcao": "Eletricista", "required_slots": _resid_slots("eletricista")},
+        "chaveiro": {"tipo_servico_opcao": "Chaveiro", "required_slots": _resid_slots("chaveiro")},
+        "eletrodomesticos": {"tipo_servico_opcao": "Eletrodoméstico", "required_slots": _resid_slots("eletrodomesticos")},
+    },
+    # O rótulo do menu vai em `tipo_servico_opcao` (e NÃO em `subservice_menu_map`)
+    # porque é essa a chave que o motor injeta em linha residencial. Declarar nas
+    # duas seria manter dois lugares dizendo a mesma coisa, para divergirem depois.
+    "subservice_labels": {
+        "encanador": "encanador", "desentupimento": "desentupimento",
+        "eletricista": "eletricista", "chaveiro": "chaveiro",
+        "eletrodomesticos": "reparo de eletrodomestico",
+    },
+    "opening_template": _RESID_OPENING_TEMPLATE,
+    "human_phase_guidance": _RESID_HUMAN_PHASE_GUIDANCE,
+    # Mesmo bot do corredor de auto da HDI → mesmo formato de protocolo/ETA.
+    # (o prefixo `_AUTO_` do nome é de onde a âncora foi minerada, não do ramo.)
+    "capture_anchors": dict(_AUTO_CAPTURE_ANCHORS),
+    # Sem regras fixas ao cliente observadas nesta URA. A do maior de 18 anos e a
+    # da senha de acesso são da Allianz — copiá-las para cá seria inventar.
+    "client_instructions": [],
+    "handoff_triggers": _RESID_HANDOFF_TRIGGERS + [
+        # 📊 "Ela não possui mais utilizações de encanador": limite ESGOTADO.
+        # Não há acionamento possível — insistir só queima o tempo do segurado.
+        r"n[ãa]o possui mais utiliza[çc][õo]es",
+        r"formulario nativo",  # flow nativo exige clique real (mesmo do auto)
+    ],
+    "finalize_anchors": [
+        r"atendimento para agora ou prefere agendar",  # ponto de não-retorno da família HDI/Yelum
+        r"podemos confirmar", r"posso confirmar", r"deseja confirmar",
+    ],
+    "finalize_abort_reply": "Sair",  # 'Digite Sair para encerrar'
+    "unknown_step_policy": "pause_and_handoff",  # corredor novo: pausa antes de improvisar
+    "coverage_guardrails": [
+        "📊 'Ela não possui mais utilizações de encanador' — a apólice residencial tem LIMITE de "
+        "utilizações POR SUBSERVIÇO. Esgotado, não existe acionamento: é handoff com o motivo "
+        "escrito, e a corretora oferece o serviço particular se o cliente quiser.",
+        "📊 'Segurada tem somente 2 utilizações de encanador nessa apólice' — quando a URA disser "
+        "quantas restam, isso vai ao dossiê: é o dado que evita gastar a última utilização num "
+        "problema pequeno.",
+    ],
+}
+
+# --- PORTO residencial (a rota existe; os subserviços são genéricos) --------------
+# 📊 A Porto expõe a ROTA ("Serviços para residência") e descreve o que ela cobre
+# ("Assistência de elétrica, hidráulica e conserto de eletrodomésticos"), mas
+# NENHUM submenu de escolha do subserviço foi observado. Por isso este corredor
+# NÃO declara rótulo de menu por subserviço: ele chega até a rota residencial e,
+# do submenu em diante, quem conduz é o adaptativo guardado / o humano.
+# Declarar um rótulo aqui seria adivinhar a tecla.
+PORTO_RESIDENCIAL_WHATSAPP_V1: Dict[str, Any] = {
+    "playbook_id": "porto-residencial-whatsapp",
+    "version": 1,
+    "insurer_key": "porto",
+    "line_kind": "residencial",
+    "channel": "whatsapp",
+    "insurer_contact_ref": "porto_assistencia_24h",
+    "description": "Assistência RESIDENCIAL Porto via WhatsApp (elétrica/hidráulica/eletrodomésticos).",
+    "ura_steps": [
+        {"step": "menu_raiz", "anchor": r"escolha a op[çc][ãa]o desejada",
+         "reply": "Informar outro CPF/CNPJ",
+         "notes": "âncora REUSADA do corredor de auto da Porto: a URA lembra o CPF do ÚLTIMO "
+                  "atendimento (o WhatsApp é da corretora e atende N clientes) — re-identificar "
+                  "SEMPRE. Sem `reply_repeat`: o rótulo residencial da 2ª volta não foi observado, "
+                  "e chutar aqui manda o caso para a rota errada"},
+        {"step": "pedir_cpf", "anchor": r"(?:informe|digite) o (?:seu )?\*?cpf ou cnpj\*?",
+         "reply": "{titular_cpf}", "requires": ["titular_cpf"],
+         "notes": "âncora REUSADA do corredor de auto da Porto (mesma porta de identificação)"},
+        {"step": "menu_tipo_atendimento",
+         "anchor": r"qual tipo de atendimento voc[êe] precisa",
+         "reply": "Serviços para residência",
+         "notes": "📊 lista real 03/08/2026: 'Serviços para veículo / Serviços para residência / "
+                  "Consultar apólice / Voltar', com a linha residencial descrita como "
+                  "'Assistência de elétrica, hidráulica e conserto de elet[rodomésticos]'"},
+        {"step": "menu_como_ajudar_resid",
+         "anchor": r"como eu posso te ajudar\?.*servi[çc]os para resid[êe]ncia",
+         "reply": "Serviços para residência",
+         "notes": "variante do MESMO menu observada no corredor de auto ('como eu posso te "
+                  "ajudar?'), respondida aqui pelo rótulo residencial"},
+        {"step": "aguarde",
+         "anchor": (r"aguarde um momento|que bom ter voc[êe] de volta|aguarde enquanto solicito|"
+                    r"falta pouco para finalizarmos"),
+         "reply": "", "noop": True,
+         "notes": "noop REUSADO do corredor de auto: mensagens de espera não se respondem"},
+    ],
+    "subservices": {
+        "eletricista": {"required_slots": _resid_slots("eletricista")},
+        "encanador": {"required_slots": _resid_slots("encanador")},
+        "eletrodomesticos": {"required_slots": _resid_slots("eletrodomesticos")},
+    },
+    # As palavras da Porto, para o resumo ao analista humano. As CHAVES são as
+    # canônicas do produto (eletricista/encanador/eletrodomesticos): a Porto
+    # chamar de "elétrica" e "hidráulica" não pode virar um segundo vocabulário
+    # — `canonical_subservice` traduz 'eletrica'/'hidraulica' para cá.
+    "subservice_labels": {
+        "eletricista": "assistencia de eletrica",
+        "encanador": "assistencia de hidraulica",
+        "eletrodomesticos": "conserto de eletrodomestico",
+    },
+    "opening_template": _RESID_OPENING_TEMPLATE,
+    "human_phase_guidance": _RESID_HUMAN_PHASE_GUIDANCE,
+    "capture_anchors": dict(_AUTO_CAPTURE_ANCHORS),
+    "client_instructions": [],
+    "handoff_triggers": _RESID_HANDOFF_TRIGGERS + [
+        # 📊 "Parece que as apólices no CNPJ informado não tem cobertura para
+        # serviços residenciais. Nestes casos é possível realizar a assistência
+        # de forma particular." Serviço PARTICULAR não é acionamento de apólice:
+        # é conversa comercial com o cliente, e ela é de gente.
+        r"n[ãa]o tem cobertura para servi[çc]os residenciais",
+        r"assist[êe]ncia de forma particular",
+    ],
+    "finalize_anchors": [
+        r"como voc[êe] quer prosseguir", r"posso confirmar sua solicita[çc][ãa]o",
+        r"posso confirmar", r"deseja confirmar",
+    ],
+    "finalize_abort_reply": "Sair e não agendar",
+    "unknown_step_policy": "pause_and_handoff",
+    "coverage_guardrails": [
+        "📊 'Parece que as apólices no CNPJ informado não tem cobertura para serviços residenciais. "
+        "Nestes casos é possível realizar a assistência de forma particular.' — apólice sem cobertura "
+        "residencial NÃO vira acionamento. Vira handoff, e a oferta de serviço particular é decisão "
+        "comercial da corretora com o cliente.",
+        "📊 Nenhum submenu de subserviço residencial foi observado na Porto: do 'Serviços para "
+        "residência' em diante o corredor não tem tecla mapeada.",
+    ],
+}
+
+
 _PLAYBOOKS: Dict[str, Dict[str, Any]] = {
     f"{p['playbook_id']}@v{p['version']}": p
     for p in (
@@ -813,6 +1247,8 @@ _PLAYBOOKS: Dict[str, Dict[str, Any]] = {
         BRADESCO_AUTO_WHATSAPP_V1,
         MAPFRE_AUTO_WHATSAPP_V1,
         ZURICH_AUTO_WHATSAPP_V1,
+        HDI_RESIDENCIAL_WHATSAPP_V1,
+        PORTO_RESIDENCIAL_WHATSAPP_V1,
     )
 }
 
@@ -899,6 +1335,14 @@ _INSURER_ALIASES = {
 # é diferente.
 _OPERADO_POR = {"itau": "porto"}
 
+# E a operação é POR CARTEIRA. 📊 O que a evidência diz é que a carteira de AUTO
+# do Itaú roda na infraestrutura da Porto — nada foi observado sobre residencial.
+# Enquanto só existia corredor residencial da Allianz, a distinção não aparecia.
+# Com o corredor residencial da PORTO no ar, aplicar `_OPERADO_POR` a residencial
+# mandaria uma apólice residencial do Itaú para o roteiro da Porto — exatamente
+# o erro que a tabela acima descreve, com o sinal trocado.
+_OPERADO_POR_LINHAS = {"itau": ("auto",)}
+
 
 def normalize_insurer_key(insurer: str, para: str = "corredor") -> str:
     """Chave canônica da seguradora.
@@ -931,9 +1375,13 @@ def normalize_insurer_key(insurer: str, para: str = "corredor") -> str:
 
 def resolve_playbook_ref(insurer: str, line_kind: str = "auto", channel: str = "whatsapp") -> Optional[str]:
     """Resolve o playbook_ref pela seguradora + linha. None se não houver."""
-    key = normalize_insurer_key(insurer)
     line = str(line_kind or "auto").strip().lower()
     line = "residencial" if line in ("residencial", "residencia", "resid", "casa", "home") else line
+    # Quem opera a assistência de quem vale POR CARTEIRA (ver `_OPERADO_POR_LINHAS`).
+    key = normalize_insurer_key(insurer, para="conhecimento")
+    operador = _OPERADO_POR.get(key)
+    if operador and line in _OPERADO_POR_LINHAS.get(key, ()):
+        key = operador
     for ref, pb in _PLAYBOOKS.items():
         if (pb.get("insurer_key") == key and pb.get("line_kind") == line
                 and pb.get("channel") == str(channel or "whatsapp").strip().lower()):
@@ -972,8 +1420,60 @@ def resolve_insurer_contact(insurer: str, env: Optional[Dict[str, str]] = None, 
 
 
 def auto_subservice_menu_value(playbook: Dict[str, Any], subservice: str) -> str:
-    """Opção/rótulo do menu da seguradora para o subserviço auto (guincho→'3' ou 'Guincho')."""
-    return str((playbook.get("subservice_menu_map") or {}).get(str(subservice or "").strip().lower()) or "")
+    """Opção/rótulo do menu da seguradora para o subserviço auto (guincho→'3' ou 'Guincho').
+
+    Vazio quando a seguradora não tem menu OBSERVADO para aquele subserviço —
+    e vazio significa handoff, nunca 'escolhe a primeira opção'."""
+    sub = canonical_subservice(subservice)
+    return str((playbook.get("subservice_menu_map") or {}).get(sub) or "")
+
+
+def subservice_supported(playbook: Dict[str, Any], subservice: str) -> bool:
+    """Esta seguradora tem corredor observado para este subserviço?
+
+    False = não há evidência (📊 vidros em allianz/tokio/mapfre/yelum/hdi/alfa/
+    bradesco, por exemplo) → o caso vira handoff humano com o motivo escrito.
+    Nunca é convite para improvisar um menu."""
+    subs = playbook.get("subservices") or {}
+    return canonical_subservice(subservice) in subs
+
+
+def subservice_outcome(playbook: Dict[str, Any], subservice: str) -> str:
+    """Como este corredor TERMINA: `abre` (vai até o protocolo) ou `encaminha`
+    (a seguradora entrega formulário/orientação e o caso encerra resolvido).
+
+    Subserviço inexistente devolve "" — não existe desfecho para trabalho que
+    esta seguradora não faz por este canal."""
+    sub = (playbook.get("subservices") or {}).get(canonical_subservice(subservice))
+    if sub is None:
+        return ""
+    return str(sub.get("outcome") or OUTCOME_ABRE)
+
+
+def subservice_referral(playbook: Dict[str, Any], subservice: str) -> Dict[str, Any]:
+    """O encaminhamento declarado do subserviço (formulário/orientação), ou {}.
+
+    Traz `client_message` (o que dizer ao segurado, sem inventar link nem prazo),
+    `closes_as` e onde o link cai (`link_capture`)."""
+    sub = (playbook.get("subservices") or {}).get(canonical_subservice(subservice)) or {}
+    return dict(sub.get("referral") or {})
+
+
+def detect_referral_step(playbook: Dict[str, Any], insurer_message: str) -> Optional[Dict[str, Any]]:
+    """O passo de ENCAMINHAMENTO que casou com a mensagem da seguradora.
+
+    É o espelho de `detect_finalize_anchor`, do outro lado do fluxo: em vez de
+    'a seguradora vai abrir o serviço', diz 'a seguradora não vai abrir serviço
+    nenhum aqui — ela entregou o caminho'. Quem chama decide encerrar o caso
+    como resolvido-por-encaminhamento e repassar o `client_message` do
+    subserviço ao segurado."""
+    text = _norm(insurer_message)
+    for step in playbook.get("ura_steps") or []:
+        if not step.get("referral"):
+            continue
+        if re.search(step.get("anchor") or r"$^", text, re.IGNORECASE | re.DOTALL):
+            return step
+    return None
 
 
 def render_opening_message(playbook: Dict[str, Any], subservice: str, slots: Dict[str, Any]) -> str:
@@ -1021,7 +1521,7 @@ def match_ura_step(playbook: Dict[str, Any], insurer_message: str, subservice: O
     `only_subservices` restringe o passo a certos subserviços (a MESMA pergunta
     da URA pode exigir respostas diferentes por serviço)."""
     text = _norm(insurer_message)
-    sub = str(subservice or "").strip().lower()
+    sub = canonical_subservice(subservice)  # 'pane seca' entra pelo caminho do guincho
     for step in playbook.get("ura_steps") or []:
         only = step.get("only_subservices")
         if only and sub not in [str(x).lower() for x in only]:
@@ -1191,8 +1691,18 @@ def extract_capture_anchors(playbook: Dict[str, Any], insurer_message: str) -> D
     return out
 
 
-def missing_slots_for_subservice(playbook: Dict[str, Any], subservice: str, slots: Dict[str, Any]) -> List[str]:
-    sub = (playbook.get("subservices") or {}).get(str(subservice or "").strip().lower())
+def missing_slots_for_subservice(playbook: Any, subservice: str, slots: Dict[str, Any]) -> List[str]:
+    """O que ainda falta para acionar. `["subservico_invalido"]` quando esta
+    seguradora não faz este trabalho por este canal — que é handoff, não bloqueio
+    de coleta.
+
+    Aceita o playbook OU o `playbook_ref` (string). A ficha do atendente, em
+    `graph.py::_slots_obrigatorios_do_caso`, passa o ref: com a assinatura antiga
+    isso levantava AttributeError dentro do `try` do chamador e a ficha ficava
+    permanentemente sem a linha "o que falta" — falha silenciosa, verde no CI."""
+    if isinstance(playbook, str):
+        playbook = get_playbook(playbook) or {}
+    sub = ((playbook or {}).get("subservices") or {}).get(canonical_subservice(subservice))
     if not sub:
         return ["subservico_invalido"]
     return [f for f in sub.get("required_slots") or [] if not str(slots.get(f) or "").strip()]

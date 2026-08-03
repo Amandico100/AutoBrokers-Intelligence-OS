@@ -118,7 +118,18 @@ class InsurerDispatchTool(BaseTool):
         line = str(kwargs.get("line_kind") or "").strip().lower()
         subservice = str(kwargs.get("subservice") or "").strip().lower()
         if not line:
-            line = "auto" if subservice in ("guincho", "bateria", "pneu") else ""
+            # `chaveiro` NÃO entra aqui de propósito: ele existe nos dois lados —
+            # chaveiro do carro e chaveiro da casa. Enquanto só a Allianz tinha
+            # corredor residencial, deduzir era quase inofensivo. Com HDI e Porto
+            # residenciais no ar, um chaveiro de CARRO sem `line_kind` iria para
+            # o menu residencial e pediria o número da casa a quem está parado no
+            # acostamento.
+            #
+            # Ambíguo não se deduz: pergunta-se.
+            line = "auto" if subservice in ("guincho", "bateria", "pneu",
+                                            "pane_seca", "vidros") else ""
+            if not line and subservice in ("chaveiro",):
+                return None, insurer
 
         # Sem seguradora não há para onde mandar. Adivinhar o destino é pior que
         # não acionar: a conversa de um segurado iria para outra empresa.
