@@ -304,6 +304,14 @@ from app.api.dispatch_monitor import router as dispatch_monitor_router
 
 app.include_router(dispatch_monitor_router, tags=["Dispatch"])
 
+# === SPEC-063 — Catálogo de corredores para a tela (a lista vem do CÓDIGO) ===
+# A página de Corredores lia `corridor_templates` (2 linhas) enquanto o motor
+# executava 13 corredores de `corridor_playbooks.py`. Sem esta rota, a tela não
+# tem como enxergar quem executa.
+from app.api.corridors import router as corridors_router
+
+app.include_router(corridors_router, tags=["Corridors"])
+
 # === Attendance Media (audio transcription — 42M0) ===
 from app.api.attendance_media import router as attendance_media_router
 

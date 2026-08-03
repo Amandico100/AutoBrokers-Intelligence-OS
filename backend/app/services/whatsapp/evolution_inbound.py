@@ -302,6 +302,62 @@ def normalize_evolution_inbound(payload: Dict[str, Any]) -> Dict[str, Any]:
     return out
 
 
+def dados_do_formulario_nativo(origem: Dict[str, Any]) -> Optional[Dict[str, Any]]:
+    """O que o transporte precisa para RESPONDER um formulário nativo, ou None.
+
+    Aceita as duas formas que circulam no produto: o payload cru do webhook e o
+    dict já normalizado por :func:`normalize_evolution_inbound`. Devolve
+    ``{"flow_id", "flow_token", "cta", "name"}``.
+
+    POR QUE ISTO É UMA FUNÇÃO, E NÃO UM `dict.get` NA MÃO DO CHAMADOR
+    ------------------------------------------------------------------
+    Porque o `flow_token` tem uma regra que precisa viajar junto com ele, e
+    regra em comentário solto não viaja: **ele é da sessão e não pode ser
+    persistido.** Ele nasce na mensagem que abre o formulário, vale só naquela
+    conversa, e some quando ela acaba. Guardá-lo em banco não o torna reusável —
+    torna um token morto guardado para sempre, que é a pior combinação
+    possível: sem utilidade e com superfície.
+
+    📊 O acervo do Observador já segue essa regra do lado da leitura
+    (`observer_intake._parse_native_form` exclui `flow_token` do que arquiva).
+    Esta função é o mesmo compromisso do lado da escrita.
+
+    O caminho quente do produto ainda não chama isto: `webhook.py` entrega ao
+    roteador de acionamento apenas o TEXTO da mensagem, então o token não
+    atravessa. O motor já sabe recebê-lo (`handle_insurer_message(...,
+    interactive=...)`); falta o webhook passá-lo. Enquanto não passa, o motor
+    monta a resposta e PAUSA — que é o comportamento certo, não um contorno.
+    """
+    if not isinstance(origem, dict):
+        return None
+    interativa = origem.get("interactive")
+    if not isinstance(interativa, dict):
+        dados = origem.get("data") if isinstance(origem.get("data"), dict) else origem
+        mensagem = dados.get("message") if isinstance(dados.get("message"), dict) else {}
+        rendered = _interactive_from_message(_unwrap_message(mensagem))
+        interativa = rendered[1] if rendered else None
+    if not isinstance(interativa, dict) or interativa.get("kind") != "flow":
+        return None
+    flow = interativa.get("flow") or {}
+    if not isinstance(flow, dict):
+        return None
+    # `flow_id` chega como número em parte dos payloads reais — `_clean` só
+    # trata str, e um id numérico virando "" faria o schema do formulário nunca
+    # ser encontrado (falha silenciosa, exatamente a que trava o acionamento).
+    def _txt(valor: Any) -> str:
+        return "" if valor is None else str(valor).strip()
+
+    flow_id, token = _txt(flow.get("flow_id")), _txt(flow.get("flow_token"))
+    if not flow_id and not token:
+        return None
+    return {
+        "flow_id": flow_id,
+        "flow_token": token,
+        "cta": _clean(flow.get("cta")),
+        "name": _clean(flow.get("name")) or "flow",
+    }
+
+
 def connection_state_from_payload(payload: Dict[str, Any]) -> Optional[str]:
     """Extrai estado de conexão de eventos `connection.update` (watchdog)."""
     if not isinstance(payload, dict):

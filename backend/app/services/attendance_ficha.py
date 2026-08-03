@@ -65,6 +65,12 @@ ORDEM_DAS_FASES: List[str] = [
 
 # Rótulos legíveis para o bloco que vai ao modelo. Chave técnica não ajuda o
 # modelo a conversar: "titular_cpf" vira "CPF do titular".
+#
+# Esta tabela é o ÚNICO vocabulário de rótulo do atendimento. O motor de
+# acionamento a importa (`insurer_dispatch_service._rotulo`) em vez de manter a
+# sua — duas tabelas de rótulo divergem no dia em que alguém renomear um slot
+# num lado só, e aí a mesma pergunta aparece com dois nomes para o mesmo
+# corretor.
 ROTULOS = {
     "titular_cpf": "CPF do titular",
     "titular_nome": "nome do titular",
@@ -78,6 +84,33 @@ ROTULOS = {
     "risco_confirmado_sem_fumaca": "confirmação de que não há fumaça/faísca",
     "aparelho_marca_modelo": "marca e modelo do aparelho",
     "aparelho_idade": "idade do aparelho",
+    # --- auto: o que as URAs pedem, e o que o formulário nativo exige --------
+    "veiculo_cor": "cor do veículo",
+    "veiculo_descricao": "modelo do veículo",
+    "pessoa_no_local": "quem está com o veículo",
+    "quando": "agora ou agendado",
+    "rodovia": "se está em rodovia",
+    "ponto_referencia": "ponto de referência",
+    "local_cep": "CEP de onde o veículo está",
+    "local_rua": "rua onde o veículo está",
+    "local_numero": "número do local",
+    "local_bairro": "bairro do local",
+    "local_cidade": "cidade do local",
+    "local_uf": "estado (UF) do local",
+    "destino_cep": "CEP do destino",
+    "destino_rua": "rua do destino",
+    "destino_numero": "número do destino",
+    "destino_bairro": "bairro do destino",
+    "destino_cidade": "cidade do destino",
+    "destino_uf": "estado (UF) do destino",
+    # Os quatro do formulário nativo da família HDI/Yelum. Sem eles o
+    # acionamento vai até a última tela e para — que é 📊 o que aconteceu nos 4
+    # acionamentos mais recentes dessa família.
+    "veiculo_em_garagem": "se o veículo está em garagem/estacionamento",
+    "veiculo_nivel_rua": "em que nível o veículo está (subsolo, rua, acima)",
+    "veiculo_situacoes": "condições do veículo (rebaixado, blindado, travado…)",
+    "local_situacao": "como é o local (seguro, escuro, pouco movimento)",
+    "ocupantes_particularidade": "se há criança, idoso ou PcD no local",
 }
 
 _VAZIOS = ("", "none", "null", "nao informado", "não informado", "n/a", "-")
@@ -180,6 +213,41 @@ def fundir(ficha: Dict[str, Any], novidades: Dict[str, Any],
             "fase": nova["fase"], "em": nova["atualizada_em"],
         }])[-12:]
     return nova
+
+
+def rotulo(slot: str) -> str:
+    """O nome humano do slot. Slot sem rótulo devolve o próprio nome — nunca
+    um nome bonito inventado, que esconderia um campo que ninguém batizou."""
+    return ROTULOS.get(str(slot or ""), str(slot or ""))
+
+
+def dados_conhecidos(ficha: Optional[Dict[str, Any]] = None,
+                     extras: Optional[Dict[str, Any]] = None) -> Dict[str, Any]:
+    """Tudo que o sistema JÁ SABE deste atendimento, achatado, sem vazio.
+
+    É a fonte do banco de respostas determinístico
+    (`insurer_dispatch_service.responder_da_ficha`): quando a URA pergunta o CEP
+    e o CEP está aqui, a resposta sai na hora — sem varredura de 20s, sem
+    Sentinela, sem LLM. A URA da HDI encerra sozinha em 12 minutos; um dado que
+    já está na ficha desde o começo não pode custar minutos para sair.
+
+    Duas propriedades, e as duas são o motivo de a função existir:
+
+    **Ausente é ausente.** Chave sem valor de verdade (`_tem_valor`) não entra.
+    O banco de respostas só sabe recusar o que não recebe — se um "não
+    informado" entrasse aqui como se fosse dado, ele seria RESPONDIDO à
+    seguradora como se fosse verdade.
+
+    **O caso vence a ficha.** `extras` (os slots do acionamento em curso) entra
+    por cima: se o corretor corrigiu o endereço ao abrir o acionamento, é o
+    endereço corrigido que vai para a URA, não o que a ficha guardou antes.
+    """
+    saida: Dict[str, Any] = {}
+    for fonte in ((ficha or {}).get("confirmados") or {}, extras or {}):
+        for chave, valor in fonte.items():
+            if _tem_valor(valor):
+                saida[str(chave)] = valor if isinstance(valor, (list, tuple)) else str(valor).strip()
+    return saida
 
 
 def bloco_para_o_prompt(ficha: Dict[str, Any],

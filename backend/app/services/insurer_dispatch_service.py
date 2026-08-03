@@ -24,14 +24,19 @@ from typing import Any, Callable, Dict, List, Optional
 
 from app.services.corridor_playbooks import (
     auto_subservice_menu_value,
+    canonical_subservice,
     detect_finalize_anchor,
     detect_handoff_trigger,
+    detect_native_flow,
     extract_capture_anchors,
     get_playbook,
     match_ura_step,
     missing_slots_for_subservice,
+    montar_resposta_de_flow,
+    native_flow,
     render_opening_message,
     render_reply,
+    resolve_playbook_ref,
 )
 
 DISPATCH_STATES = (
@@ -318,12 +323,421 @@ def start_dispatch(
     return _emit(session, opening_message or "Olá", sender=sender, next_state="ura")
 
 
+# ===========================================================================
+# BANCO DE RESPOSTAS DETERMINÍSTICO — a camada ANTES do Cérebro
+# ===========================================================================
+#
+# O DEFEITO DE ARQUITETURA QUE ISTO DESFAZ
+# -----------------------------------------
+# Até aqui, uma tela da URA sem passo mapeado tinha UM caminho: a sessão
+# pausava, o Vigia percebia na varredura (a cada 20s), acionava o Sentinela, que
+# chamava o Cérebro (LLM forte, rede, latência de modelo). **São minutos.**
+#
+# E a URA da HDI encerra a conversa sozinha — está escrito na tela de
+# boas-vindas dela. Gastar minutos para responder *"qual o CEP?"*, com o CEP na
+# ficha desde a primeira mensagem do segurado, não é lento: é perder o
+# acionamento por causa de um dado que já estava na mão.
+#
+# A DIVISÃO, E POR QUE ELA É ASSIMÉTRICA
+# ---------------------------------------
+#   pergunta de DADO      responde NA HORA, da ficha. Sem LLM, sem espera.
+#   pergunta de DECISÃO   só passo mapeado do corredor, ou uma pessoa.
+#
+# Errar numa pergunta de DADO custa um dado errado, que a URA rejeita ou o
+# analista corrige. Errar numa de DECISÃO **abre um serviço no nome do
+# segurado** — despacha guincho, agenda visita, cria protocolo. Por isso a
+# lista de DECISÃO é uma NEGATIVA EXPLÍCITA: qualquer tela que cheire a
+# confirmação, agendamento ou escolha de serviço nunca é respondida daqui,
+# mesmo que também pareça uma pergunta de dado.
+#
+# ISTO NÃO SUBSTITUI O CÉREBRO. Fica na frente dele. Pergunta que este banco
+# não reconhece, ou cujo dado não está na ficha, segue exatamente o caminho de
+# antes — pausa, Vigia, Sentinela, Cérebro. Nada foi removido.
+
+# O reconhecedor é REGEX sobre a tela, nunca um modelo. Um classificador
+# probabilístico aqui traria de volta a latência que estamos matando, e traria
+# junto a chance de classificar "podemos confirmar?" como pergunta de dado.
+_MARCA_DE_PERGUNTA = (
+    r"\?|\b(?:informe|informa|digite|digita|qual|quais|envie|envia|preciso d|"
+    r"poderia (?:me )?(?:informar|dizer|passar)|me (?:informe|diga|passe)|nos informe)\b"
+)
+
+# A NEGATIVA EXPLÍCITA. Casar com QUALQUER uma destas encerra o assunto: o
+# banco não responde, e a tela segue para o caminho antigo (passo mapeado, ou
+# gente). Escrita larga de propósito — um falso positivo aqui custa uma pausa;
+# um falso negativo custa um prestador despachado.
+_PERGUNTAS_DE_DECISAO = (
+    r"\bconfirm(?:a|ar|e|ei|amos|ado|ada|acao)\b",
+    r"(?:podemos|posso|deseja|gostaria de|quer) (?:confirmar|continuar|prosseguir|seguir|abrir|agendar|cancelar)",
+    r"\bagendar\b|\bagendamento\b|\breagendar\b|\bagendad",
+    # 📊 O ponto de não-retorno da família HDI/Yelum, nas três redações reais.
+    # O prompt desta tarefa listava "agora ou agendar" como pergunta de DADO.
+    # Ela NÃO é: responder 'Agora' ABRE o serviço na hora, e o corredor já a
+    # trata como `finalize_anchor` (freio) E como passo mapeado `quando_agora`.
+    # Respondê-la daqui seria abrir uma segunda porta em volta do freio —
+    # exatamente o que o aviso de segurança desta tarefa proíbe. Fica em
+    # DECISÃO, e quem responde continua sendo o passo mapeado, atrás do freio.
+    r"atendimento (?:para )?agora ou prefere",
+    r"est[ao]{1,2}o? corret[oa]s?\b|\bconfere\b|\bresumo (?:do|da|de|abaixo)\b",
+    r"abrir (?:o |a |um |uma )?(?:chamado|servi[cç]o|solicita[cç][ao]{1,2}o|assist[eê]ncia|atendimento)",
+    r"(?:qual|escolha|selecione|informe)[^\n]{0,30}\b(?:servi[cç]o|op[cç][ao]{1,2}o|alternativa|tipo de atendimento)\b",
+    r"\bcancelar\b|\bencerrar\b|\bdesistir\b",
+)
+
+# A tabela de perguntas de DADO: (campo, o que a tela pergunta, onde o dado mora).
+#
+# O que NÃO está aqui, e por quê: rua, número, bairro, cidade e estado. Eles são
+# passos mapeados com `reply_repeat` — na família HDI a MESMA pergunta ("qual é
+# o número?") significa a origem na primeira vez e o DESTINO na segunda. Um
+# banco sem estado não sabe qual das duas é, e responder o número da origem
+# quando a URA pede o do destino põe o guincho na rua errada. Pergunta cuja
+# resposta depende de onde a conversa está não é pergunta de dado: é passo.
+_PERGUNTAS_DE_DADO = (
+    # Destino ANTES de origem: as duas falam de endereço, e a mais específica
+    # tem de ser testada primeiro ou "para onde levar" cairia em `local_atual`.
+    ("destino", r"para onde (?:devemos |vamos |voce quer |o senhor quer )?(?:levar|rebocar|remover|"
+                r"encaminhar)|endere[cç]o (?:de|do) destino|local de destino|destino do (?:ve[ií]culo|reboque|guincho)",
+     ("local_destino",)),
+    ("destino_cep", r"cep (?:de|do) destino|cep (?:para|do local) (?:onde|para onde) (?:levar|vamos)",
+     ("destino_cep",)),
+    ("cep", r"\bcep\b", ("local_cep",)),
+    ("telefone", r"(?:n[uú]mero de |numero de )?(?:telefone|celular|whatsapp)\b|\bddd\b",
+     ("telefone_contato",)),
+    ("nome_no_local", r"nome (?:completo )?(?:d[ae] |do )?pessoa que est[aá]|nome de quem est[aá]|"
+                      r"nome do (?:contato|acompanhante)",
+     ("pessoa_no_local", "titular_nome")),
+    ("nome_titular", r"nome (?:completo )?do (?:titular|segurado|propriet[aá]ri|condutor)",
+     ("titular_nome",)),
+    ("cor", r"cor do (?:ve[ií]culo|carro|autom[oó]vel)|\bqual a cor\b", ("veiculo_cor",)),
+    ("placa", r"\bplaca\b", ("veiculo_placa",)),
+    ("cpf", r"\bcpf\b|\bcnpj\b", ("titular_cpf",)),
+    ("endereco", r"endere[cç]o (?:onde|completo|do local|atual|em que)|\bqual (?:[eé] )?o endere[cç]o\b|"
+                 r"onde (?:o )?(?:ve[ií]culo|carro) (?:est[aá]|se encontra)|localiza[cç][ao]{1,2}o do ve[ií]culo",
+     ("local_atual",)),
+)
+
+
+def _rotulo(slot: str) -> str:
+    """O nome humano de um slot, vindo do vocabulário ÚNICO da ficha.
+
+    Import tardio e com rede de segurança: este módulo é núcleo puro e roda em
+    testes que carregam um arquivo só. Rótulo é enfeite de leitura — nunca pode
+    ser motivo de um acionamento não sair."""
+    try:
+        from app.services.attendance_ficha import rotulo as _r
+
+        return _r(slot)
+    except Exception:  # noqa: BLE001
+        return str(slot or "")
+
+
+def pergunta_de_decisao(playbook: Optional[Dict[str, Any]], insurer_message: str) -> str:
+    """O padrão de DECISÃO que casou com a tela, ou "" quando nenhuma casou.
+
+    Confere DUAS fontes, e a ordem importa pouco porque as duas vetam:
+
+    1. Os `finalize_anchors` DO PRÓPRIO corredor — a lista que já define, por
+       seguradora, o que abre serviço de verdade. Ler dela em vez de copiá-la é
+       o que garante que uma âncora nova de finalização passe a proteger o
+       banco de respostas no mesmo commit, sem ninguém lembrar de vir aqui.
+    2. A lista genérica acima, para as seguradoras cujo freio ainda não tem
+       aquela redação mapeada.
+    """
+    texto = _norm_text(insurer_message)
+    if not texto.strip():
+        return ""
+    for padrao in ((playbook or {}).get("finalize_anchors") or []):
+        try:
+            if re.search(padrao, texto, re.IGNORECASE):
+                return f"finalize_anchor:{padrao}"
+        except re.error:  # noqa: PERF203 — âncora malformada não pode abrir a porta
+            continue
+    for padrao in _PERGUNTAS_DE_DECISAO:
+        if re.search(padrao, texto, re.IGNORECASE):
+            return f"decisao:{padrao}"
+    return ""
+
+
+def responder_da_ficha(
+    playbook: Optional[Dict[str, Any]],
+    insurer_message: str,
+    dados: Optional[Dict[str, Any]] = None,
+) -> Dict[str, Any]:
+    """A tela pergunta um DADO que já está na ficha? Então responde, na hora.
+
+    Devolve sempre um dicionário com `ok`, e o `motivo` explica a recusa:
+
+        ok=True   → {"campo", "slot", "resposta", "trecho"}
+        ok=False  → motivo em {"vazia", "decisao", "nao_e_pergunta",
+                               "nao_reconhecida", "sem_dado_na_ficha"}
+
+    `sem_dado_na_ficha` é o motivo mais importante da lista: a pergunta FOI
+    reconhecida e o dado NÃO existe. Aí não se inventa, não se aproxima e não
+    se pega "o parecido" — cai no caminho antigo (pausa → Vigia → Cérebro), que
+    é lento mas honesto. Um CEP inventado manda o guincho para outro bairro.
+    """
+    dados = {k: v for k, v in (dados or {}).items() if str(v or "").strip()}
+    texto = _norm_text(insurer_message)
+    if not texto.strip():
+        return {"ok": False, "motivo": "vazia"}
+
+    decisao = pergunta_de_decisao(playbook, insurer_message)
+    if decisao:
+        return {"ok": False, "motivo": "decisao", "padrao": decisao}
+
+    # Aviso informativo ("o prestador está a caminho") não é pergunta, e uma
+    # resposta a ele confundiria a URA — que espera silêncio ali.
+    if not re.search(_MARCA_DE_PERGUNTA, texto, re.IGNORECASE):
+        return {"ok": False, "motivo": "nao_e_pergunta"}
+
+    for campo, padrao, candidatos in _PERGUNTAS_DE_DADO:
+        if not re.search(padrao, texto, re.IGNORECASE):
+            continue
+        for slot in candidatos:
+            valor = str(dados.get(slot) or "").strip()
+            if valor:
+                return {"ok": True, "campo": campo, "slot": slot, "resposta": valor,
+                        "trecho": str(insurer_message)[:120]}
+        # Reconhecida e sem dado: PARA AQUI. Continuar o laço deixaria uma
+        # âncora mais larga (ex.: `\bcpf\b`) responder uma pergunta que já
+        # tinha dono — e responder a pergunta errada com o dado certo é
+        # indistinguível, para a seguradora, de responder qualquer bobagem.
+        return {"ok": False, "motivo": "sem_dado_na_ficha", "campo": campo,
+                "slot": candidatos[0], "rotulo": _rotulo(candidatos[0])}
+    return {"ok": False, "motivo": "nao_reconhecida"}
+
+
+# ===========================================================================
+# FORMULÁRIO NATIVO — do reconhecimento ao transporte
+# ===========================================================================
+
+def registrar_formulario_nativo(session: Dict[str, Any],
+                                interactive: Optional[Dict[str, Any]]) -> bool:
+    """Guarda, NA SESSÃO, o que veio junto do formulário nativo.
+
+    O `flow_token` mora no topo da sessão de propósito, e o nome dele é o que o
+    protege: `snapshot_duravel` corta toda chave cujo nome contenha "token"
+    (`_CHAVES_PROIBIDAS`), então ele fica no Redis — que é transitório, como a
+    conversa — e **nunca** entra no checkpoint durável do Work Run. Aninhá-lo
+    dentro de outro dicionário furaria esse corte em silêncio.
+    """
+    if not isinstance(interactive, dict) or interactive.get("kind") != "flow":
+        return False
+    flow = interactive.get("flow") or {}
+    if not isinstance(flow, dict):
+        return False
+    token = "" if flow.get("flow_token") is None else str(flow["flow_token"]).strip()
+    flow_id = "" if flow.get("flow_id") is None else str(flow["flow_id"]).strip()
+    if not token and not flow_id:
+        return False
+    if token:
+        session["flow_token"] = token          # volátil — some com a sessão
+    if flow_id:
+        session["flow_id_ativo"] = flow_id
+    if flow.get("cta"):
+        session["flow_cta"] = str(flow["cta"])[:120]
+    session["flow_name_ativo"] = str(flow.get("name") or "flow")
+    return True
+
+
+def _responder_formulario_nativo(
+    session: Dict[str, Any],
+    playbook: Dict[str, Any],
+    insurer_message: str,
+    *,
+    interactive: Optional[Dict[str, Any]] = None,
+    flow_sender: Optional[Callable[..., Any]] = None,
+) -> Optional[Dict[str, Any]]:
+    """Detecta → monta → entrega. `None` = não é formulário; siga o fluxo antigo.
+
+    Os três desfechos possíveis, e nenhum deles é "responde mais ou menos":
+
+    - **falta dado** → pausa nomeando cada campo que falta, com a pergunta que
+      a seguradora fez e as opções que ela oferece. Formulário meio preenchido
+      escolhe o equipamento errado; é pior que formulário nenhum.
+    - **pronto, sem transporte** → pausa. 📊 Este build do Evolution GO não tem
+      rota de resposta de interativa (12 rotas de envio, nenhuma responde). A
+      resposta montada vai no dossiê para a pessoa clicar em segundos, em vez
+      de reentrevistar o segurado.
+    - **pronto, com transporte provado** → envia, respeitando o MESMO portão de
+      envio real de todo o resto do motor.
+    """
+    # A decisão é POR MENSAGEM, nunca pelo que a sessão lembra. Resolver o
+    # schema por `session["flow_id_ativo"]` faria TODA mensagem seguinte ser
+    # tratada como o formulário de novo: a URA manda dez telas depois dele, e o
+    # motor responderia formulário a cada uma. O que identifica um formulário é
+    # a mensagem que chegou agora — o texto que abre o flow, ou os metadados da
+    # interativa desta mensagem.
+    e_formulario_agora = isinstance(interactive, dict) and interactive.get("kind") == "flow"
+    flow = detect_native_flow(playbook, insurer_message)
+    if flow is None and e_formulario_agora:
+        flow = native_flow(playbook, str(((interactive or {}).get("flow") or {}).get("flow_id") or ""))
+    if not flow:
+        return None
+
+    montado = montar_resposta_de_flow(flow, session.get("slots") or {})
+    session["flow_resposta"] = {
+        "ok": montado["ok"], "flow_id": montado["flow_id"], "flow_name": montado["flow_name"],
+        "params": montado["params"], "missing": montado["missing"],
+        "missing_detail": montado["missing_detail"], "defaults_used": montado["defaults_used"],
+    }
+
+    if not montado["ok"]:
+        faltantes = [d.get("campo") for d in montado["missing_detail"]]
+        session["state"] = "needs_human"
+        session["reason"] = f"formulario_incompleto:{','.join(str(f) for f in faltantes)}"
+        session["missing_slots"] = list(montado["missing"])
+        return session
+
+    token = str(session.get("flow_token") or "")
+    if not token:
+        # O corpo do formulário chegou, o token não. Sem ele o WhatsApp recusa a
+        # resposta — e uma resposta recusada gasta a janela de 12min da URA sem
+        # dizer nada a ninguém.
+        session["state"] = "needs_human"
+        session["reason"] = "formulario_pronto_sem_flow_token"
+        return session
+    if flow_sender is None:
+        session["state"] = "needs_human"
+        session["reason"] = "formulario_pronto_sem_transporte"
+        return session
+
+    live = bool(session.get("live")) and dispatch_live_enabled()
+    resumo = f"[FORMULÁRIO NATIVO respondido: {len(montado['params'])} campos]"
+    session.setdefault("transcript", []).append(
+        {"direction": "out", "text": resumo, "at": _now(), "dry_run": not live,
+         "step": "formulario_nativo"}
+    )
+    if live:
+        try:
+            enviado = flow_sender(
+                flow_token=token,
+                flow_name=montado["flow_name"] or session.get("flow_name_ativo") or "flow",
+                params=montado["params"],
+            )
+        except Exception as exc:  # noqa: BLE001 — transporte nunca derruba o motor
+            enviado = False
+            session["flow_envio_erro"] = type(exc).__name__
+        if not enviado:
+            session["state"] = "needs_human"
+            session["reason"] = "formulario_envio_falhou"
+            return session
+    session["state"] = "ura"
+    return session
+
+
+# ===========================================================================
+# O QUE SERÁ PEDIDO — declarado ANTES, para coletar uma vez só
+# ===========================================================================
+
+def _slots_com_padrao_do_motor(playbook: Dict[str, Any], sub: Dict[str, Any]) -> List[str]:
+    """Os slots que `new_dispatch_session` preenche sozinho, para ESTE corredor.
+
+    Espelha a injeção de padrões daquela função — de propósito, campo por campo.
+    Perguntar ao cliente algo cuja resposta o motor já sabe é a outra metade do
+    defeito: a primeira metade é descobrir tarde o que falta; a segunda é fazer
+    o segurado responder o que ninguém precisava perguntar."""
+    comuns = ["telefone_adicionar_opcao", "ponto_referencia"]
+    if sub.get("tipo_servico_opcao"):
+        comuns.append("tipo_servico_opcao")
+    if str(playbook.get("line_kind") or "") == "auto":
+        comuns += ["servico_opcao", "servico_texto", "roda_travada", "quando",
+                   "veiculo_cor", "rodovia"]
+    return comuns
+
+
+def tudo_que_sera_pedido(seguradora: str, ramo: str = "auto",
+                         subservico: str = "") -> Dict[str, Any]:
+    """A lista COMPLETA do que o acionamento vai pedir — antes de começar.
+
+    O defeito que isto desfaz é de sequência, não de dado: hoje o acionamento
+    descobre no MEIO da conversa com a seguradora que falta uma informação, e aí
+    já é tarde — a URA está esperando, o relógio dela corre, e voltar ao
+    segurado para perguntar mais uma coisa custa a conversa inteira. Com a lista
+    na mão antes de abrir a conversa, a coleta com o cliente acontece **uma vez
+    só**.
+
+    E ela junta TRÊS fontes, porque as três aparecem na tela da seguradora:
+
+    1. `required_slots` do subserviço — o que o corredor já declarava.
+    2. Os `requires` dos passos de URA aplicáveis ao subserviço.
+    3. **Os campos obrigatórios do formulário nativo** — a fonte que faltava, e
+       a que 📊 travou os 4 acionamentos mais recentes da família HDI/Yelum. Um
+       formulário que exige "em que nível da rua o veículo está" não perdoa: sem
+       esse dado não há resposta possível, e ele nunca esteve em `required_slots`.
+
+    Devolve ``{"ok", "playbook_ref", "seguradora", "subservico", "obrigatorios",
+    "com_padrao", "slots", "erro"}``. `obrigatorios` traz, por item, `slot`,
+    `rotulo`, `origem` e — quando vem do formulário — a `pergunta` e as `opcoes`
+    exatas da seguradora, para o corretor perguntar com as palavras dela.
+    """
+    saida: Dict[str, Any] = {
+        "ok": False, "playbook_ref": "", "seguradora": str(seguradora or ""),
+        "subservico": canonical_subservice(subservico), "obrigatorios": [],
+        "com_padrao": [], "slots": [], "erro": "",
+    }
+    ref = resolve_playbook_ref(seguradora, ramo)
+    if not ref:
+        saida["erro"] = "corredor_inexistente"
+        return saida
+    playbook = get_playbook(ref) or {}
+    saida["playbook_ref"] = ref
+    sub_key = canonical_subservice(subservico)
+    sub = (playbook.get("subservices") or {}).get(sub_key)
+    if sub is None:
+        saida["erro"] = "subservico_invalido"
+        return saida
+
+    com_padrao = _slots_com_padrao_do_motor(playbook, sub)
+    saida["com_padrao"] = [{"slot": s, "rotulo": _rotulo(s), "origem": "padrao_do_motor"}
+                           for s in com_padrao]
+    vistos: set = set(com_padrao)
+    itens: List[Dict[str, Any]] = []
+
+    def _somar(slot: str, origem: str, extra: Optional[Dict[str, Any]] = None) -> None:
+        nome = str(slot or "").strip()
+        if not nome or nome in vistos:
+            return
+        vistos.add(nome)
+        itens.append({"slot": nome, "rotulo": _rotulo(nome), "origem": origem, **(extra or {})})
+
+    for slot in sub.get("required_slots") or []:
+        _somar(slot, "subservico")
+
+    for step in playbook.get("ura_steps") or []:
+        only = step.get("only_subservices")
+        if only and sub_key not in [str(x).lower() for x in only]:
+            continue
+        for slot in step.get("requires") or []:
+            _somar(slot, f"passo_de_ura:{step.get('step')}")
+
+    for schema in (playbook.get("native_flows") or {}).values():
+        for tela in schema.get("screens") or []:
+            for comp in tela.get("components") or []:
+                if not comp.get("required") or comp.get("default") is not None:
+                    continue
+                _somar(str(comp.get("slot") or comp.get("name") or ""), "formulario_nativo", {
+                    "campo_do_formulario": str(comp.get("name") or ""),
+                    "pergunta": str(comp.get("label") or ""),
+                    "opcoes": [str(o.get("title") or "") for o in comp.get("options") or []
+                               if str(o.get("title") or "").strip()],
+                    "condicional": bool(comp.get("visible_if")),
+                })
+
+    saida["obrigatorios"] = itens
+    saida["slots"] = [i["slot"] for i in itens]
+    saida["ok"] = True
+    return saida
+
+
 def handle_insurer_message(
     session: Dict[str, Any],
     insurer_message: str,
     *,
     sender: Optional[Callable[[str], Any]] = None,
     human_phase_reply: Optional[str] = None,
+    interactive: Optional[Dict[str, Any]] = None,
+    flow_sender: Optional[Callable[..., Any]] = None,
 ) -> Dict[str, Any]:
     """Processa UMA mensagem da seguradora e decide a próxima ação.
 
@@ -346,6 +760,12 @@ def handle_insurer_message(
     session.setdefault("transcript", []).append(
         {"direction": "in", "text": str(insurer_message)[:2000], "at": _now()}
     )
+
+    # O `flow_token` chega JUNTO da mensagem que abre o formulário e não volta
+    # mais. Guardar aqui, antes de qualquer decisão, é o que garante que ele
+    # exista quando a resposta estiver pronta — inclusive se o formulário só for
+    # respondido algumas mensagens depois.
+    registrar_formulario_nativo(session, interactive)
 
     captured = extract_capture_anchors(playbook, insurer_message)
     if captured:
@@ -439,6 +859,17 @@ def handle_insurer_message(
             step_counts[step_name] = int(step_counts.get(step_name) or 0) + 1
             return _emit(session, rendered["reply"], sender=sender, next_state="ura", step=step_name)
 
+    # FORMULÁRIO NATIVO (a tela que não aceita texto). Vem ANTES do gatilho de
+    # handoff porque o gatilho `formulario nativo` do corredor casaria primeiro
+    # e o caso viraria `needs_human` sem que ninguém tivesse tentado montar a
+    # resposta. O gatilho continua no corredor, e continua sendo a rede: quando
+    # o schema deste flow não é conhecido, esta função devolve None e a queda em
+    # needs_human acontece exatamente como antes.
+    pelo_formulario = _responder_formulario_nativo(
+        session, playbook, insurer_message, interactive=interactive, flow_sender=flow_sender)
+    if pelo_formulario is not None:
+        return pelo_formulario
+
     trigger = detect_handoff_trigger(playbook, insurer_message)
     if trigger:
         session["state"] = "needs_human"
@@ -448,6 +879,29 @@ def handle_insurer_message(
     # Pesquisa de satisfação/avaliação pós-atendimento: ignorar sempre.
     if re.search(_SURVEY_NOOP_RE, _norm_text(insurer_message), re.IGNORECASE):
         return session
+
+    # BANCO DE RESPOSTAS DETERMINÍSTICO — a camada ANTES do Cérebro.
+    #
+    # Chega aqui a tela que nenhum passo mapeado reconheceu. Antes, isso era
+    # pausa garantida: Vigia (20s), Sentinela, Cérebro — minutos, numa URA que
+    # encerra em 12. Se a pergunta for por um DADO que já está no caso, ela é
+    # respondida agora, sem rede nenhuma. Se não for, nada muda: segue para a
+    # fase humana e para o Cérebro, como sempre foi.
+    da_ficha = responder_da_ficha(playbook, insurer_message, session.get("slots") or {})
+    if da_ficha.get("ok"):
+        passo = f"ficha:{da_ficha['campo']}"
+        if _would_loop(session, da_ficha["resposta"], passo):
+            session["state"] = "needs_human"
+            session["reason"] = "loop_guard"
+            return session
+        estado = session.get("state") if session.get("state") in ("ura", "human_phase") else "ura"
+        return _emit(session, da_ficha["resposta"], sender=sender, next_state=estado, step=passo)
+    if da_ficha.get("motivo") == "sem_dado_na_ficha":
+        # A pergunta foi entendida e o dado NÃO existe. Não se inventa: registra
+        # o nome do que falta (o humano lê isso no dossiê) e segue o caminho antigo.
+        session["falta_para_a_ura"] = {"campo": da_ficha.get("campo"),
+                                       "slot": da_ficha.get("slot"),
+                                       "rotulo": da_ficha.get("rotulo")}
 
     # Sem âncora de URA: fase humana da seguradora.
     if session.get("state") == "ura":
@@ -668,6 +1122,35 @@ def build_handoff_dossier(session: Dict[str, Any], reason: str = "") -> str:
         linhas.append("*Já capturado da seguradora:*")
         for k, v in captured.items():
             linhas.append(f"- {k}: {v}")
+
+    # FORMULÁRIO NATIVO: o que o humano vê aqui decide se ele leva 10 segundos
+    # ou reentrevista o segurado. Quando a resposta está pronta, vai pronta —
+    # ele só toca nas opções. Quando falta dado, vai a pergunta da seguradora
+    # com as opções DELA, para ele perguntar com as palavras certas.
+    flow_resposta = session.get("flow_resposta") or {}
+    if flow_resposta:
+        linhas.append("")
+        if flow_resposta.get("ok") and flow_resposta.get("params"):
+            linhas.append("*Formulário do app: RESPOSTA PRONTA — é só marcar assim:*")
+            for campo, valor in (flow_resposta["params"] or {}).items():
+                escolha = ", ".join(str(v) for v in valor) if isinstance(valor, (list, tuple)) else str(valor)
+                linhas.append(f"- {campo}: {escolha}")
+            if flow_resposta.get("defaults_used"):
+                linhas.append(f"  (saíram de padrão: {', '.join(flow_resposta['defaults_used'])} — confira)")
+        else:
+            linhas.append("*Formulário do app: FALTA dado para responder.*")
+            for det in (flow_resposta.get("missing_detail") or [])[:6]:
+                pergunta = str(det.get("pergunta") or det.get("campo") or "")
+                opcoes = ", ".join(str(o.get("titulo") or o.get("id")) for o in det.get("opcoes") or [])
+                linhas.append(f"- {pergunta}" + (f"\n  opções: {opcoes}" if opcoes else ""))
+                if det.get("motivo") == "valor_nao_reconhecido":
+                    linhas.append(f"  (o caso diz \"{det.get('valor_recebido')}\" e isso não casa com "
+                                  "nenhuma opção da tela)")
+
+    falta = session.get("falta_para_a_ura") or {}
+    if falta.get("rotulo"):
+        linhas.append("")
+        linhas.append(f"*A seguradora pediu e não temos:* {falta['rotulo']}")
     tail = [t for t in (session.get("transcript") or []) if t.get("text")][-6:]
     if tail:
         linhas.append("")

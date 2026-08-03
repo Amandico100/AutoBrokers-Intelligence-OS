@@ -1,39 +1,76 @@
 #!/usr/bin/env node
-/** TA2-B — catálogo de corredores (puro, offline). */
-import { buildCorridorCatalog, nextCorridorStatus, corridorRequirements } from '../lib/admin/tenant-corridor-catalog.ts';
+/** SPEC-063 — catálogo de corredores (puro, offline).
+ *
+ * O catálogo NÃO é mais `corridor_templates`: ele vem do código que executa
+ * (`corridor_playbooks.py`, servido por GET /api/corridors/catalog). Este teste
+ * prova só a composição pura: catálogo do código + estado da corretora → cards.
+ */
+import {
+  buildCorridorCatalog,
+  corridorIdForTemplateKey,
+  foldActivationStatus,
+  nextCorridorStatus,
+} from '../lib/admin/tenant-corridor-catalog.ts';
 
 let pass = 0, fail = 0; const failures = [];
 function assert(n, c) { if (c) { pass++; console.log(`  ✓ ${n}`); } else { fail++; failures.push(n); console.log(`  ✗ ${n}`); } }
 
-console.log('== TA2-B — corridor catalog ==\n');
+console.log('== SPEC-063 — corridor catalog ==\n');
 
-const templates = [
-  { id: 't1', scope: 'global', corridor_key: 'allianz_residential_assistance', subcorridor_key: null, display_name: 'Allianz Residencial — Assistência', insurer_key: 'allianz', line_kind: 'residencial', macro_service: 'assistencia', service_type: 'whatsapp', readiness: null, requires_action_engine: false, requires_dispatch_packet: false, allowed_channels: ['whatsapp'], is_active: true },
-  { id: 't2', scope: 'global', corridor_key: 'allianz_residential_assistance', subcorridor_key: 'electrician', display_name: 'Allianz Residencial — Eletricista', insurer_key: 'allianz', line_kind: 'residencial', macro_service: 'assistencia', service_type: 'portal', readiness: 'needs_portal', requires_action_engine: true, requires_dispatch_packet: true, allowed_channels: ['portal'], is_active: true },
-  { id: 't3', scope: 'global', corridor_key: 'porto_auto', subcorridor_key: null, display_name: 'Porto Auto', insurer_key: 'porto', line_kind: 'auto', macro_service: 'sinistro', service_type: null, readiness: null, requires_action_engine: false, requires_dispatch_packet: false, allowed_channels: [], is_active: true },
-  { id: 't4', scope: 'global', corridor_key: 'inactive', subcorridor_key: null, display_name: 'Inativo', insurer_key: 'x', line_kind: null, macro_service: null, service_type: null, readiness: null, requires_action_engine: false, requires_dispatch_packet: false, allowed_channels: [], is_active: false },
+// Dois corredores como o backend os entrega (forma, não conteúdo: a lista real
+// vive no Python e nunca é copiada para cá).
+const corredores = [
+  {
+    corridor_id: 'seguradora-a-residencial-whatsapp', playbook_ref: 'seguradora-a-residencial-whatsapp@v1',
+    insurer_key: 'seguradora_a', insurer_label: 'Seguradora A', line_kind: 'residencial', line_label: 'Residencial',
+    channel: 'whatsapp', channel_label: 'WhatsApp', title: 'Seguradora A · Residencial',
+    subservices: [{ key: 's1', label: 'Trabalho 1', outcome: 'abre', referral_kind: null, menu_mapeado: true }],
+    outcome_summary: 'abre', handoff_sinistro: true, menu_mapeado: true,
+  },
+  {
+    corridor_id: 'seguradora-b-auto-whatsapp', playbook_ref: 'seguradora-b-auto-whatsapp@v1',
+    insurer_key: 'seguradora_b', insurer_label: 'Seguradora B', line_kind: 'auto', line_label: 'Auto',
+    channel: 'whatsapp', channel_label: 'WhatsApp', title: 'Seguradora B · Auto',
+    subservices: [
+      { key: 's2', label: 'Trabalho 2', outcome: 'abre', referral_kind: null, menu_mapeado: true },
+      { key: 's3', label: 'Trabalho 3', outcome: 'encaminha', referral_kind: 'formulario', menu_mapeado: true },
+    ],
+    outcome_summary: 'misto', handoff_sinistro: true, menu_mapeado: true,
+  },
 ];
-const acts = [{ corridor_template_id: 't1', status: 'active' }, { corridor_template_id: 't2', status: 'paused' }];
 
-const cat = buildCorridorCatalog(templates, acts);
-assert('template inativo é filtrado', cat.length === 3);
-const byId = Object.fromEntries(cat.map((c) => [c.template_id, c]));
-assert('t1 ativo', byId.t1.status === 'active' && byId.t1.installed === true);
-assert('t2 pausado', byId.t2.status === 'paused' && byId.t2.installed === true);
-assert('t3 disponível (não instalado)', byId.t3.status === 'available' && byId.t3.installed === false);
-assert('t1 requer canal WhatsApp', byId.t1.requirements.includes('Canal WhatsApp conectado'));
-assert('t2 requer portal + aprovação', byId.t2.requirements.includes('Portal da seguradora conectado') && byId.t2.requirements.includes('Ação externa requer aprovação'));
-assert('ordenado por título', cat[0].title.localeCompare(cat[1].title) <= 0);
+const cat = buildCorridorCatalog(corredores, { 'seguradora-a-residencial-whatsapp': 'active' });
+assert('um card por corredor do código', cat.length === 2);
+const byId = Object.fromEntries(cat.map((c) => [c.corridor_id, c]));
+assert('ativado aparece ativo', byId['seguradora-a-residencial-whatsapp'].status === 'active');
+assert('ativado conta como instalado', byId['seguradora-a-residencial-whatsapp'].installed === true);
+assert('nunca ativado aparece DISPONÍVEL (não some)', byId['seguradora-b-auto-whatsapp'].status === 'available');
+assert('nunca ativado não conta como instalado', byId['seguradora-b-auto-whatsapp'].installed === false);
+assert('o desfecho por subserviço sobrevive à montagem',
+  byId['seguradora-b-auto-whatsapp'].subservices.filter((s) => s.outcome === 'encaminha').length === 1);
+assert('o card não ganha subserviço que o código não declarou',
+  byId['seguradora-a-residencial-whatsapp'].subservices.length === 1);
+
+// pausado
+const pausado = buildCorridorCatalog(corredores, { 'seguradora-b-auto-whatsapp': 'paused' });
+assert('pausado aparece pausado', pausado[1].status === 'paused' && pausado[1].installed === true);
+
+// N linhas de ativação, uma decisão só
+assert('ativo vence pausado', foldActivationStatus(['paused', 'active']) === 'active');
+assert('só pausado → pausado', foldActivationStatus(['paused', null]) === 'paused');
+assert('sem ativação → null', foldActivationStatus([null, undefined, '']) === null);
+
+// ponte de identificador legado
+assert('chave legada aponta para o corredor do código',
+  corridorIdForTemplateKey('allianz_residential_assistance') === 'allianz-residencial-whatsapp');
+assert('chave desconhecida passa intacta',
+  corridorIdForTemplateKey('corredor-qualquer') === 'corredor-qualquer');
 
 // próximos status
 assert('activate→active', nextCorridorStatus('activate') === 'active');
 assert('resume→active', nextCorridorStatus('resume') === 'active');
 assert('pause→paused', nextCorridorStatus('pause') === 'paused');
 assert('ação inválida→null', nextCorridorStatus('explode') === null);
-
-// requisitos dedupe
-const reqs = corridorRequirements({ allowed_channels: ['portal'], service_type: 'portal', requires_action_engine: false, readiness: 'needs_portal' });
-assert('requisitos sem duplicar portal', reqs.filter((r) => r === 'Portal da seguradora conectado').length === 1);
 
 console.log(`\n== Resumo: ${pass} passaram, ${fail} falharam ==`);
 if (fail > 0) { for (const f of failures) console.log(`  - ${f}`); process.exit(1); }

@@ -1031,6 +1031,8 @@ async def try_route_insurer_inbound(
     send_to_insurer: Callable[[str], Any],
     send_to_client: Callable[[str, str], Any],
     human_reply_provider: Optional[Callable[..., Any]] = None,
+    interactive: Optional[Dict[str, Any]] = None,
+    flow_sender: Optional[Callable[..., Any]] = None,
 ) -> bool:
     """Se o inbound vier do número da seguradora com dispatch ativo, processa
     aqui e retorna True (o webhook NÃO deve seguir para o agente).
@@ -1040,6 +1042,19 @@ async def try_route_insurer_inbound(
     human_reply_provider(session, texto) — async; redige a resposta na fase
     humana da seguradora. TODA resposta passa pelo guard determinístico;
     2 reprovações seguidas → needs_human (nunca responde às cegas).
+
+    interactive — os metadados da mensagem interativa, como o parser de inbound
+    os entrega (`normalize_evolution_inbound(...)["interactive"]`). É por aqui
+    que o `flow_token` do formulário nativo chega ao motor. Volátil: fica na
+    sessão (Redis) e é cortado do checkpoint durável pelo nome.
+    `webhook.py` ainda não o passa — enquanto não passar, o motor monta a
+    resposta do formulário e PAUSA, que é o desfecho certo, não um contorno.
+
+    flow_sender(flow_token=, flow_name=, params=) — o transporte que entrega a
+    resposta do formulário nativo. `None` (o padrão) significa "não há caminho
+    provado", e o motor pausa em vez de fingir que respondeu. 📊 O build atual
+    do Evolution GO não tem rota para isso: 12 rotas de envio, nenhuma responde
+    interativa (ver `providers/evolution_go.py`).
     """
     session = await load_active_dispatch(company_id, from_phone)
     if not session:
@@ -1068,7 +1083,8 @@ async def try_route_insurer_inbound(
         await save_active_dispatch(company_id, from_phone, session)
         return True
 
-    session = handle_insurer_message(session, text, sender=send_to_insurer)
+    session = handle_insurer_message(session, text, sender=send_to_insurer,
+                                     interactive=interactive, flow_sender=flow_sender)
     state = session.get("state")
 
     # Fase humana: LLM redige, guard fiscaliza, falha repetida pausa (fail-closed).

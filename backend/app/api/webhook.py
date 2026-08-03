@@ -381,6 +381,14 @@ async def process_whatsapp_message_background(
                     send_to_insurer=_send_to_insurer,
                     send_to_client=_send_to_client,
                     human_reply_provider=_human_reply_provider,
+                    # SPEC-063 — o `interactive` precisa ATRAVESSAR.
+                    #
+                    # Só o texto chegava aqui, e o `flow_token` mora no
+                    # `interactive` da mensagem. Sem ele o motor sabe montar a
+                    # resposta do formulário nativo e não tem como endereçá-la.
+                    # É a última ponte entre "o corredor sabe" e "o corredor faz"
+                    # — e é uma linha.
+                    interactive=(payload_dict or {}).get("interactive"),
                 ) or handled
                 if not handled:
                     break  # sem sessão ativa para este número — segue fluxo normal
