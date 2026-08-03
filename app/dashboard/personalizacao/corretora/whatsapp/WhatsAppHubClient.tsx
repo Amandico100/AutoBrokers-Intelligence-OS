@@ -14,6 +14,10 @@ import { WhatsAppChannelModal } from '@/components/vault/WhatsAppChannelModal';
 export function WhatsAppHubClient() {
   const [status, setStatus] = useState<{ connected: boolean; instance?: string } | null>(null);
   const [modalOpen, setModalOpen] = useState(false);
+  const [provaAberta, setProvaAberta] = useState(false);
+  const [paraNumero, setParaNumero] = useState('');
+  const [provando, setProvando] = useState(false);
+  const [resultado, setResultado] = useState<Record<string, unknown> | null>(null);
 
   const load = useCallback(() => {
     fetch('/api/dashboard/whatsapp-channel?action=status', { cache: 'no-store' })
@@ -61,7 +65,65 @@ export function WhatsAppHubClient() {
               >
                 {status?.connected ? 'Gerenciar conexão' : 'Conectar número (QR code)'}
               </button>
+              {status?.connected ? (
+                <button
+                  onClick={() => setProvaAberta((v) => !v)}
+                  className="rounded-lg border border-border px-3 py-1.5 text-xs font-medium text-muted-foreground transition-colors hover:bg-surface-2"
+                >
+                  Provar envio de formulário
+                </button>
+              ) : null}
             </div>
+
+            {/* Diagnóstico: algumas seguradoras respondem com um formulário
+                dentro do WhatsApp. Saber ANTES se este canal consegue devolvê-lo
+                vale mais do que descobrir no meio de um acionamento, onde a URA
+                fecha em minutos e não avisa que descartou a resposta. */}
+            {provaAberta ? (
+              <div className="mt-3 rounded-lg border border-border bg-surface-2 p-3">
+                <p className="text-xs leading-relaxed text-muted-foreground">
+                  Envia uma resposta de formulário de verdade, deste número para outro. Use um
+                  número <span className="font-medium text-foreground">seu</span> — vai chegar uma
+                  mensagem técnica lá.
+                </p>
+                <div className="mt-2 flex flex-wrap items-center gap-2">
+                  <input
+                    value={paraNumero}
+                    onChange={(e) => setParaNumero(e.target.value)}
+                    placeholder="DDD + número de destino"
+                    inputMode="numeric"
+                    className="min-w-0 flex-1 rounded-lg border border-border bg-card px-3 py-1.5 text-xs text-foreground placeholder:text-muted-foreground"
+                  />
+                  <button
+                    disabled={provando || !paraNumero.replace(/\D/g, '')}
+                    onClick={async () => {
+                      setProvando(true);
+                      setResultado(null);
+                      try {
+                        const r = await fetch('/api/dashboard/prova-de-formulario', {
+                          method: 'POST',
+                          headers: { 'Content-Type': 'application/json' },
+                          body: JSON.stringify({ para: paraNumero }),
+                        });
+                        setResultado(await r.json());
+                      } catch {
+                        setResultado({ success: false, frase: 'Não consegui enviar.' });
+                      } finally {
+                        setProvando(false);
+                      }
+                    }}
+                    className="rounded-lg border border-primary/40 bg-primary/5 px-3 py-1.5 text-xs font-medium text-primary transition-colors hover:bg-primary/10 disabled:opacity-50"
+                  >
+                    {provando ? 'Enviando…' : 'Enviar prova'}
+                  </button>
+                </div>
+                {resultado ? (
+                  <pre className="mt-2 max-h-56 overflow-auto whitespace-pre-wrap break-words rounded-lg border border-border bg-card p-2 text-[11px] leading-relaxed text-muted-foreground">
+                    {JSON.stringify(resultado, null, 2)}
+                  </pre>
+                ) : null}
+              </div>
+            ) : null}
           </div>
         </div>
       </div>

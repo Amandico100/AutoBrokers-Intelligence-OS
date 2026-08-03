@@ -506,15 +506,29 @@ matar o lote em voo, dados apagados. 📊 Restaurado ao número exato de antes
 (69.150 transcrições · 8.872 sessões) e **nenhuma carta foi gerada**
 (`knowledge_cards` parou em 30/07, zero no período).
 
-**A causa, e ela é de produto.** A tela promete *"Use o número de trabalho que a
-equipe já atende"* e não diz, em lugar nenhum, que **tudo que não for grupo será
-gravado e pode virar conhecimento consultável**. Uma pessoa não tem como saber
-antes de escanear. O texto descreve a intenção; não descreve a consequência.
+**A causa — CORRIGIDO em 03/08 depois de ler o código.** Minha primeira leitura
+dizia "a tela mente". Está errado, e ao contrário: **o texto da tela está certo
+e o nome interno é que envelheceu.**
 
-**O que destrava.** Ler o código que a tela chama, e:
+📊 `app/api/dashboard/whatsapp-channel/route.ts:9` — `const PURPOSE = 'observer'`,
+usado nas 9 chamadas da rota. **Não existe nenhum caminho na UI que pareie
+`attendance`.** O `/setup`, que tem esse padrão, não tem quem o chame.
+
+E 📊 `observer_intake.py:483-523` mostra por que isso não é um bug de
+comportamento: a instância chamada "observer" **vira o canal de atendimento
+sozinha** quando o agente é ligado, no mesmo número, sem re-parear. O comentário
+no código é literal: *"agente LIGADO → captura e o evento SEGUE para o pipeline"*.
+A tela promete exatamente isso: *"ligar o agente ativa as respostas automáticas
+neste mesmo número"*.
+
+**Então o defeito real é o escopo, não o rótulo.** Aquele pareamento captura
+tudo que não for grupo, e ninguém é avisado disso antes de escanear.
+
+**O que destrava.**
 1. a tela declarar o que será capturado, com as palavras certas, ANTES do QR;
-2. o rótulo do cartão bater com a instância que ele de fato conecta;
-3. escolher o escopo na hora do pareamento, e não depois.
+2. escolher o escopo na hora do pareamento, e não depois;
+3. renomear `observer` para o que a coisa é — ou aceitar o nome e documentar,
+   mas não deixar os dois significados convivendo.
 
 **O que custa esquecer.** Da próxima vez pode ser o telefone pessoal de um
 corretor de verdade — e aí não é reversível com um DELETE nosso.
@@ -567,3 +581,28 @@ técnico que se explica — é um constrangimento que não se desfaz.
 
 > Relacionado a [P-65] (a tela não diz o que captura) e [P-66] (payload cru no
 > Redis). Os três nasceram do mesmo pareamento de 03/08.
+
+---
+
+## P-68 · ⚖️ Conflito canônico: "observer nunca envia" vs. o que o código faz
+
+📊 `SPEC-069-canais-definitivos.md:57` diz *"guarda dura: observer nunca é canal
+de saída"*. 📊 `integration_service.py:192-199` implementa
+`PROPOSITOS_QUE_NUNCA_ENVIAM = {"observer"}` — mas ela só é consultada em **3
+lugares**, todos de envio **frio** iniciado pela plataforma (alerta do Vigia,
+follow-up, cobrança).
+
+📊 O caminho **reativo** — responder quem escreveu — não passa por ela:
+`webhook.py:276-278` fixa a integração que RECEBEU e `webhook.py:710-712`
+responde por ela mesma. Com o agente ligado, **a resposta ao segurado sai pelo
+`ab-obs-*`**. Isso é por desenho: é a promessa da tela.
+
+**Não é bug — é uma frase mais absoluta que o código.** E é defensável: o risco
+de bloqueio do WhatsApp está no envio frio, não em responder quem falou com você.
+
+**O que destrava.** 🧑 Decidir qual vence antes do piloto e alinhar os dois:
+ou a SPEC passa a dizer "observer não INICIA conversa", ou o código passa a
+proibir de verdade — e aí a promessa de "mesmo número" cai junto.
+
+**O que custa esquecer.** Alguém lê a SPEC, conclui que aquele número é mudo
+para sempre, e desenha em cima disso.

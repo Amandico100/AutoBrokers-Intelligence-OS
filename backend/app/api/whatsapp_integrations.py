@@ -242,6 +242,156 @@ async def health(
     }
 
 
+class ProvaDeFormularioPayload(BaseModel):
+    company_id: str
+    para: str
+    integration_id: Optional[str] = None
+
+
+@router.post("/prova-de-formulario")
+async def prova_de_formulario(
+    payload: ProvaDeFormularioPayload,
+    x_autobrokers_internal_key: Optional[str] = Header(default=None, alias="X-AutoBrokers-Internal-Key"),
+    db: AsyncSupabaseClient = Depends(get_async_db),
+):
+    """Prova que este canal consegue RESPONDER um formulário nativo.
+
+    Envia, de um número nosso para outro número nosso, exatamente o tipo de
+    mensagem que o telefone de uma pessoa produz ao preencher um formulário
+    dentro do WhatsApp e tocar enviar. **Manda de verdade** — não é dry-run.
+
+    Existe porque a coisa que pode estar errada só aparece no ar. O
+    codificador já é provado por teste em Go dentro do build; o que nenhum
+    teste alcança é a rede: se o WhatsApp aceita a mensagem, entrega, e se do
+    outro lado ela volta a ser lida como resposta de formulário.
+
+    Por que um endpoint, e não um comando de terminal: a chave da instância é
+    cifrada em repouso e só se abre dentro do processo. Um teste que exija
+    alguém colar a chave em algum lugar não é um teste — é um vazamento com
+    hora marcada. Aqui a chave é aberta em memória, usada, e nunca sai na
+    resposta.
+
+    Fica como diagnóstico permanente: qualquer corretora pode conferir o
+    próprio canal sem depender de quem escreveu o código.
+    """
+    _require_internal_key(x_autobrokers_internal_key)
+
+    company_id = (payload.company_id or "").strip()
+    para = "".join(ch for ch in str(payload.para or "") if ch.isdigit())
+    if not company_id:
+        raise HTTPException(status_code=400, detail="company_id is required")
+    if not para:
+        raise HTTPException(status_code=400, detail="para (numero de destino) is required")
+
+    try:
+        query = (
+            db.client.table("integrations")
+            .select("*")
+            .eq("company_id", company_id)
+            .eq("provider", "evolution-go")
+            .eq("is_active", True)
+        )
+        if payload.integration_id:
+            query = query.eq("id", payload.integration_id.strip())
+        resp = await query.limit(1).execute()
+    except Exception as e:  # noqa: BLE001
+        logger.error(f"[PROVA FORMULARIO] lookup falhou: {type(e).__name__}")
+        raise HTTPException(status_code=500, detail="Failed to load integration") from e
+
+    if not resp.data:
+        raise HTTPException(status_code=404, detail="Nenhuma integracao evolution-go ativa para esta corretora")
+
+    runtime = prepare_integration_for_runtime(resp.data[0]) or {}
+    base_url = str(runtime.get("base_url") or "").rstrip("/")
+    token = runtime.get("token")
+    if not base_url or not token:
+        raise HTTPException(status_code=422, detail="Integracao sem base_url ou sem chave utilizavel")
+
+    # A forma vem da ÚNICA captura real que temos de um humano respondendo este
+    # formulário (18/07/2026, família HDI). O flow_token guarda os dois
+    # telefones dentro dele — por isso é montado, e nunca inventado solto.
+    from app.services.whatsapp.providers.evolution_go import montar_nfm_reply
+
+    origem = "".join(ch for ch in str(runtime.get("identifier") or "") if ch.isdigit()) or "0"
+    flow_token = f"00000000-0000-0000-0000-000000000000:{origem}:{para}"
+    try:
+        mensagem = montar_nfm_reply(
+            flow_token=flow_token,
+            params={"prova_de_canal": "1"},
+            nome_do_envelope="galaxy_message",
+            flow_response_params={
+                "title": "Prova de canal",
+                "flow_id": "0",
+                "flow_name": "AutoBrokers — prova de envio de formulario",
+            },
+            body_text="Prova tecnica do AutoBrokers. Pode ignorar.",
+        )
+    except ValueError as exc:
+        raise HTTPException(status_code=422, detail=f"montagem recusada: {exc}") from exc
+
+    envelope = mensagem["interactiveResponseMessage"]
+    nfm = envelope["nativeFlowResponseMessage"]
+    corpo = {"number": para, "name": nfm["name"], "paramsJSON": nfm["paramsJSON"]}
+    if nfm.get("version"):
+        corpo["version"] = int(nfm["version"])
+    texto = (envelope.get("body") or {}).get("text")
+    if texto:
+        corpo["body"] = texto
+
+    import asyncio
+
+    import requests
+
+    url = f"{base_url}/send/interactiveResponse"
+
+    def _enviar():
+        return requests.post(
+            url,
+            json=corpo,
+            headers={"Content-Type": "application/json", "apikey": str(token)},
+            timeout=30,
+        )
+
+    try:
+        r = await asyncio.to_thread(_enviar)
+    except Exception as e:  # noqa: BLE001
+        logger.error(f"[PROVA FORMULARIO] envio falhou: {type(e).__name__}")
+        raise HTTPException(status_code=502, detail=f"Evolution GO inalcancavel: {type(e).__name__}") from e
+
+    # 404 aqui significa uma coisa só, e vale dizer com todas as letras: a
+    # imagem no ar é anterior ao patch 0005 e não tem a porta de saída.
+    if r.status_code == 404:
+        return {
+            "success": False,
+            "http": 404,
+            "diagnostico": "rota_ausente",
+            "explicacao": (
+                "Este Evolution GO nao tem POST /send/interactiveResponse. "
+                "A imagem precisa ser 0.7.2-autobrokers.2 ou mais nova."
+            ),
+        }
+
+    corpo_devolvido: Any
+    try:
+        corpo_devolvido = r.json()
+    except Exception:  # noqa: BLE001
+        corpo_devolvido = (r.text or "")[:400]
+
+    logger.info("[PROVA FORMULARIO] company=%s http=%s", company_id, r.status_code)
+    return {
+        "success": 200 <= r.status_code < 300,
+        "http": r.status_code,
+        "enviado": {
+            "para": para,
+            "envelope": corpo["name"],
+            "tamanho_paramsJSON": len(corpo["paramsJSON"]),
+            "tem_body": "body" in corpo,
+            "version_enviada": corpo.get("version"),
+        },
+        "resposta_do_evolution": corpo_devolvido,
+    }
+
+
 class SendDryRunPayload(BaseModel):
     company_id: str
     integration_id: str
