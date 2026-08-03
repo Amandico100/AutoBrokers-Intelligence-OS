@@ -56,7 +56,7 @@
 |---|---|---|---|
 | **Portal** | o site da seguradora, com login da corretora | um **site** | tabela `portals` (17) · `portal_worker` |
 | **Corredor** | o roteiro para acionar assistência | a **URA** da seguradora | `corridor_playbooks.py` |
-| **Atlas** | os mapas de URA observados | — | `ura_maps` (251) |
+| **Atlas** | os mapas de URA observados | — | `ura_maps` — **10 vivos** (`status='observed'`) |
 | **RAG** | o conhecimento que o agente usa para falar | o **segurado** | `knowledge_cards` (8.916) |
 
 ```

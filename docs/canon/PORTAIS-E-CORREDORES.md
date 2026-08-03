@@ -113,18 +113,33 @@ RAG        o agente conversa com o SEGURADO
 
 ### O que o Atlas já mapeou
 
-📊 `ura_maps` — **251 mapas de URA**, em 11 seguradoras:
+📊 Medido em 02/08/2026: `ura_maps` tem **10 mapas VIVOS** (`status='observed'`)
+— **um por seguradora**, tecidos em 29/07 — mais **238 versões aposentadas**
+(`superseded`) e 3 `retired`. Total de linhas: 251.
 
-| Seguradora | Mapas | | Seguradora | Mapas |
+| Seguradora | Versões no histórico | | Seguradora | Versões |
 |---|---:|---|---|---:|
-| **Yelum** | 49 | | Tokio | 24 |
-| **Porto** | 41 | | Alfa | 8 |
-| **Allianz** | 35 | | Bradesco | 8 |
-| **HDI** | 35 | | Azul | 8 |
-| **Zurich** | 25 | | Mapfre | 8 |
+| Yelum | 49 | | Tokio | 24 |
+| Porto | 41 | | Alfa · Bradesco | 8 · 8 |
+| Allianz · HDI | 35 · 35 | | Azul · Mapfre | 8 · 8 |
+| Zurich | 25 | | | |
 
-**É a matéria-prima dos corredores, e ela já existe.** O trabalho da SPEC-063
-Bloco F é transformar mapa em corredor — não sair mapeando do zero.
+> **Correção de 02/08/2026 (CLAUDE.md §12.1).** Este documento e o
+> [`GLOSSARIO.md`](GLOSSARIO.md) diziam **"251 mapas de URA"** com marca 📊. Era
+> contagem de LINHAS apresentada como contagem de mapas — e a tabela acima
+> listava versões na coluna "Mapas". O código é explícito sobre por quê
+> (`atlas/weaver.py`): *"Existe UM mapa observado por seguradora, porque existe
+> UM WhatsApp e UMA URA."* O erro foi meu, atravessou dois documentos canônicos,
+> e é exatamente o defeito que a §12.1 foi escrita para impedir.
+> **Contagem certa: `where status='observed'`.**
+
+**É matéria-prima, e ela existe. Mas hoje ela não chega a lugar nenhum.**
+📊 `corridor_playbooks.py` não contém uma única referência a `ura_maps`, e
+`agents/graph.py` — quem monta o turno do agente — não lê `ura_maps`, nem
+`corridor_playbooks`, nem `conduct_playbooks`. Os únicos leitores da tabela são
+telas de admin e o próprio Atlas. **Não existe caminho de código entre o mapa e
+quem atende.** O trabalho da SPEC-063 Bloco F é construir esse caminho — não
+sair mapeando do zero.
 
 ### A ordem, medida
 
