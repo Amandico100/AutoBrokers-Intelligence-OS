@@ -261,6 +261,21 @@ _AUTO_SUBSERVICES = {
     "chaveiro": {"required_slots": _AUTO_SLOTS_COMMON},
 }
 
+# QUEM ESPERA NA RUA, E QUEM NÃO ESPERA.
+#
+# Guincho, bateria, pneu e chaveiro acontecem ONDE o carro parou: a seguradora
+# pergunta o nome de quem vai acompanhar o serviço, e sem esse nome o corredor
+# trava no meio da conversa.
+#
+# 📊 Vidro não. O próprio `_VIDROS_SLOTS` já tira o `local_atual` com a nota
+# "VIDRO NÃO É REBOQUE… não se pergunta onde o veículo está" — o reparo é
+# agendado, e ninguém fica esperando na rua. Exigir `pessoa_no_local` para vidro
+# faria o produto perguntar ao segurado exatamente o que a decisão de projeto
+# mandou não perguntar.
+#
+# `pane_seca` entra: é o guincho por outro nome, e o motor já canonicaliza.
+_SUBSERVICOS_COM_ALGUEM_NO_LOCAL = ["guincho", "bateria", "pneu", "chaveiro"]
+
 # ---------------------------------------------------------------------------
 # DESFECHO do corredor (SPEC-063, 03/08/2026)
 # ---------------------------------------------------------------------------
@@ -644,7 +659,9 @@ _YELUM_FAMILY_STEPS = [
      "notes": "agimos em nome da corretora"},
     {"step": "pessoa_no_local", "anchor": r"[ée] a pessoa que est[áa] (?:no )?local para acompanhar", "reply": "Não"},
     {"step": "nome_pessoa_local", "anchor": r"qual [ée] o nome da pessoa que est[áa] no local",
-     "reply": "{pessoa_no_local}", "requires": ["pessoa_no_local"]},
+     "reply": "{pessoa_no_local}", "requires": ["pessoa_no_local"],
+     "only_subservices": _SUBSERVICOS_COM_ALGUEM_NO_LOCAL,
+     "notes": "quem acompanha o servico NO LOCAL. Vidro nao entra: o reparo e agendado, ninguem espera na rua."},
     {"step": "telefone_local", "anchor": r"n[úu]mero de (?:celular|telefone)\*? com ddd da pessoa que est[áa] no local",
      "reply": "{telefone_contato}", "requires": ["telefone_contato"]},
     {"step": "telefone_confirma", "anchor": r"o n[úu]mero de telefone \d+ est[áa] correto", "reply": "Sim"},
@@ -1063,7 +1080,9 @@ AZUL_AUTO_WHATSAPP_V1 = _auto_playbook(
         {"step": "no_local", "anchor": r"[ée] voc[êe] que estar[áa] no local para acompanhar", "reply": "2",
          "notes": "1-Sim 2-Não (informamos quem estará)"},
         {"step": "nome_no_local", "anchor": r"qual [ée] o nome de quem estar[áa] no local", "reply": "{pessoa_no_local}",
-         "requires": ["pessoa_no_local"]},
+         "requires": ["pessoa_no_local"],
+         "only_subservices": _SUBSERVICOS_COM_ALGUEM_NO_LOCAL,
+         "notes": "quem acompanha o servico NO LOCAL. Vidro nao entra: o reparo e agendado, ninguem espera na rua."},
         {"step": "telefone_contato", "anchor": r"informe um n[úu]mero de contato\. digite no formato",
          "reply": "{telefone_contato}", "requires": ["telefone_contato"], "format": "phone_br",
          "notes": "formato ESTRITO '(dd) 99999-9999' — o motor formata os dígitos"},
@@ -2226,4 +2245,45 @@ def missing_slots_for_subservice(playbook: Any, subservice: str, slots: Dict[str
     sub = ((playbook or {}).get("subservices") or {}).get(canonical_subservice(subservice))
     if not sub:
         return ["subservico_invalido"]
-    return [f for f in sub.get("required_slots") or [] if not str(slots.get(f) or "").strip()]
+
+    faltando = [f for f in sub.get("required_slots") or [] if not str(slots.get(f) or "").strip()]
+
+    # O QUE OS PASSOS EXIGEM TAMBÉM CONTA.
+    #
+    # `required_slots` é a lista escrita à mão. Mas os passos de URA declaram
+    # `requires` por conta própria, e as duas listas divergiam em silêncio.
+    #
+    # 📊 03/08/2026: `pessoa_no_local` é exigido por três playbooks (HDI, Yelum,
+    # Azul) e não está em `required_slots` de subserviço nenhum. O efeito não era
+    # uma recusa honesta — era uma MENTIRA: a sessão nascia `ready_to_send`, o
+    # acionamento começava, e o corredor travava no meio da conversa, com a URA
+    # rodando e o cronômetro correndo.
+    #
+    # Passo com `fallback_adaptive` fica de fora: ali a falta é prevista, e o
+    # cérebro responde. O que entra aqui é só o que trava de verdade.
+    #
+    # Consertar o gate, e não os três passos, fecha a classe inteira: qualquer
+    # `requires` novo passa a ser cobrado ANTES, por construção.
+    alvo = canonical_subservice(subservice)
+    for passo in (playbook or {}).get("ura_steps") or []:
+        if passo.get("fallback_adaptive") or passo.get("noop"):
+            continue
+        only = passo.get("only_subservices")
+        if only and alvo not in [str(x).lower() for x in only]:
+            continue
+        for campo in passo.get("requires") or []:
+            # O que o MOTOR preenche não se cobra do cliente.
+            #
+            # `tipo_servico_opcao`, `servico_opcao`, `telefone_adicionar_opcao`:
+            # todos são escolha de MENU, derivada do `subservice_menu_map` por
+            # `new_dispatch_session`. Cobrá-los aqui faria o produto perguntar ao
+            # segurado qual botão apertar na URA da seguradora — que é a pergunta
+            # que o corredor existe para não fazer.
+            #
+            # O sufixo é a regra, e não uma lista: lista diverge, sufixo não.
+            # Quem injeta é `insurer_dispatch_service._slots_com_padrao_do_motor`.
+            if campo.endswith("_opcao"):
+                continue
+            if campo not in faltando and not str(slots.get(campo) or "").strip():
+                faltando.append(campo)
+    return faltando

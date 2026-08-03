@@ -231,7 +231,19 @@ def new_dispatch_session(
     if not playbook:
         return {"state": "needs_human", "reason": "playbook_not_found", "playbook_ref": playbook_ref}
 
-    sub = (playbook.get("subservices") or {}).get(str(subservice or "").lower(), {})
+    # `canonical_subservice`, e não `.lower()` cru.
+    #
+    # 📊 O apelido existe justamente para isto: a Porto chama "elétrica" e
+    # "hidráulica" o que nós chamamos de eletricista e encanador. Três outros
+    # pontos do produto já canonicalizavam — `missing_slots_for_subservice`,
+    # `auto_subservice_menu_value` e `match_ura_step`. Este, que é o PRIMEIRO da
+    # cadeia, não.
+    #
+    # O efeito era pior do que uma falha: `sub` vinha vazio, então
+    # `tipo_servico_opcao` ficava None e a sessão nascia `ready_to_send` — a
+    # peça mais adiante é que travava, no meio da conversa com a URA rodando.
+    # A sessão dizia que estava pronta, e não estava.
+    sub = (playbook.get("subservices") or {}).get(canonical_subservice(subservice), {})
     merged_slots = dict(slots or {})
     # Opção de menu do subserviço (ex.: eletricista => tipo_servico "1").
     if sub.get("tipo_servico_opcao") and not merged_slots.get("tipo_servico_opcao"):
