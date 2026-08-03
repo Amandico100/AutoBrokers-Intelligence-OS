@@ -557,9 +557,23 @@ async def process_whatsapp_message_background(
         # Agora: primeiro decide-se se pode falar; depois grava-se, e uma falha
         # na gravação não vira permissão para falar.
         try:
-            from app.services.atlas.attendance_capture import attendance_observation_mode
+            # SPEC-063 Bloco A — a pergunta virou POSITIVA.
+            #
+            # Antes: `attendance_observation_mode` — que só devolve True quando o
+            # agente de atendimento EXISTE e está desligado. Corretora que NÃO TEM
+            # agente de atendimento recebia False, e False significava "pode
+            # falar". O pipeline seguia e respondia o segurado com o primeiro
+            # agente ativo por data — o copiloto interno, cujo prompt manda
+            # entregar CPF sem mascarar.
+            #
+            # Os dois estados não são a mesma coisa e não podem cair no mesmo
+            # ramo: "desligado de propósito" e "nunca existiu" são ambos motivo
+            # para calar, e nenhum é motivo para falar.
+            #
+            # Agora: só fala quem PROVA que tem agente de atendimento ligado.
+            from app.services.atlas.attendance_capture import attendance_agent_active
 
-            _em_silencio = await attendance_observation_mode(company_id)
+            _em_silencio = not await attendance_agent_active(company_id)
         except Exception as e:  # noqa: BLE001
             # Nem o portão conseguiu ser consultado. Fail-closed: não falar.
             logger.error("[WEBHOOK] portão de observação indisponível (%s) — "
@@ -637,6 +651,13 @@ async def process_whatsapp_message_background(
             channel="whatsapp",
             image_url=final_image_url,
             agent_id=agent_id,
+            # SPEC-063 Bloco A — este caminho fala com o SEGURADO. O papel é
+            # exigido, não sugerido: se a corretora não tiver agente de
+            # atendimento ativo, `process_message` levanta e ninguém responde.
+            # É a segunda trava, depois do portão de silêncio — porque o
+            # `agent_id` da integração pode estar velho ou apontar para o
+            # agente errado, e um id herdado não pode virar permissão de fala.
+            required_role="attendance",
         )
 
         # 8. Salvar Resposta IA
@@ -1033,15 +1054,20 @@ async def _handle_evolution_like_inbound(
             # celular (fromMe) é o lado de ouro da conduta — captura no cofre
             # do Espelho quando o agente está desligado e não é seguradora.
             try:
+                # SPEC-063 Bloco A — mesma troca do portao de fala, pelo motivo
+                # inverso: aqui queremos CAPTURAR a resposta da atendente humana.
+                # `attendance_observation_mode` so era True com agente existente
+                # e desligado; corretora SEM agente nenhum — que e a mais humana
+                # de todas — nao tinha o lado de ouro capturado.
                 from app.services.atlas.attendance_capture import (
-                    attendance_observation_mode, capture_channel_message,
+                    attendance_agent_active, capture_channel_message,
                 )
                 from app.services.atlas.observer_intake import _br_variants, insurer_allowlist
 
                 _company = str(integration.get("company_id") or "")
                 _phone = str(normalized["phone"])
                 _is_insurer = any(v in insurer_allowlist() for v in _br_variants(_phone))
-                if _company and not _is_insurer and await attendance_observation_mode(_company):
+                if _company and not _is_insurer and not await attendance_agent_active(_company):
                     await capture_channel_message(
                         _company, str(integration.get("identifier") or ""), _phone,
                         str(normalized["text"]), "out", normalized.get("message_id"),

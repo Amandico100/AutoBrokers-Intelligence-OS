@@ -160,6 +160,54 @@ def _parse_iso(value: Any) -> Optional[datetime]:
         return None
 
 
+def _resolver_agente_de_atendimento(company_id: str) -> Optional[str]:
+    """Quem responde o segurado nesta corretora — ou nada, se não houver ninguém.
+
+    SPEC-063 Bloco A. O pareamento de um número de ATENDIMENTO precisa dizer,
+    no próprio registro da integração, qual agente responde por ele. Sem isso o
+    motor escolhia o agente ativo mais antigo — o copiloto interno.
+
+    Devolve o id do agente de papel `attendance` da corretora, ATIVO OU NÃO.
+    O papel é o que importa aqui; ligar e desligar é decisão de outra tela, e
+    quem trata o desligado é o portão de silêncio no webhook. Amarrar só o
+    ativo faria o pareamento de uma corretora em modo observação nascer sem
+    dono — e ela é justamente a que mais precisa do dono certo registrado.
+
+    Falha de leitura devolve `None` e o pareamento segue: um `agent_id` nulo
+    faz o webhook calar (fail-closed), enquanto um id errado faria falar.
+    """
+    try:
+        from app.core.database import get_supabase_client
+
+        db = get_supabase_client()
+        rows = (db.client.table("agents").select("id, is_active")
+                .eq("company_id", str(company_id))
+                .eq("agent_role", "attendance")
+                .order("created_at").limit(1).execute().data or [])
+        if not rows:
+            logger.warning(
+                "[PAREAMENTO] empresa %s nao tem agente de papel 'attendance'. "
+                "A integracao nasce SEM dono e o webhook vai calar ate existir um. "
+                "Isso e proposital: melhor mudo que respondido pelo agente errado.",
+                company_id,
+            )
+            return None
+        if rows[0].get("is_active") is not True:
+            logger.info(
+                "[PAREAMENTO] empresa %s: agente de atendimento %s amarrado, porem DESLIGADO "
+                "— o numero fica em modo observacao ate alguem liga-lo.",
+                company_id, rows[0].get("id"),
+            )
+        return str(rows[0]["id"])
+    except Exception as exc:  # noqa: BLE001
+        logger.error(
+            "[PAREAMENTO] nao foi possivel resolver o agente de atendimento de %s (%s) "
+            "— gravando sem dono, o que faz o webhook calar.",
+            company_id, type(exc).__name__,
+        )
+        return None
+
+
 def _human_error(code: Optional[str]) -> Optional[str]:
     messages = {
         "provider_unavailable": "O serviço de conexão está indisponível no momento.",
@@ -490,7 +538,20 @@ class PairingOrchestrator:
             "alert_target": target or None,
             "channel_status": "connecting",
             "is_active": True,
-            "agent_id": None if purpose == "observer" else None,
+            # SPEC-063 Bloco A. Aqui estava `None if purpose == "observer" else None`
+            # — um ternário que devolve None nos DOIS ramos. Escrito para dizer
+            # "observador não tem agente", acabou dizendo "ninguém tem agente".
+            #
+            # Sem `agent_id`, o webhook chamava o motor sem indicar quem deveria
+            # responder, e o seletor pegava o agente ativo mais antigo: o COPILOTO
+            # INTERNO, cujo prompt manda entregar CPF sem mascarar. O segurado
+            # falaria com o agente errado, no número da corretora.
+            #
+            # Agora: observador continua sem agente (é mudo por construção), e
+            # atendimento recebe o agente de papel `attendance` da própria
+            # corretora. Se ele não existir, fica nulo E o pareamento avisa —
+            # nulo por ausência é diferente de nulo por desenho.
+            "agent_id": _resolver_agente_de_atendimento(company_id) if purpose == "attendance" else None,
             "last_seen_at": _iso(_utcnow()),
         })
 

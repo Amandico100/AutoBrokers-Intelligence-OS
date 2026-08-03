@@ -186,7 +186,8 @@ class LangChainService:
         logger.info("LangChain service initialized with Multi-Agent support")
 
     async def _get_raw_agent(
-        self, company_id: str, agent_id: Optional[str] = None
+        self, company_id: str, agent_id: Optional[str] = None,
+        required_role: Optional[str] = None,
     ) -> Dict[str, Any]:
         """
         Busca o agente "cru" direto do banco para ter acesso às chaves criptografadas.
@@ -194,8 +195,22 @@ class LangChainService:
 
         Usa asyncio.to_thread() para não bloquear o event loop do FastAPI
         enquanto a query HTTP ao Supabase executa (~5-50ms).
+
+        SPEC-063 Bloco A — `required_role` existe porque esta função escolhia
+        **o agente ativo mais antigo da corretora**, sem olhar o papel. Quando o
+        pareamento do WhatsApp gravava `agent_id` nulo (o ternário morto de
+        `pairing_orchestrator`), quem respondia o SEGURADO era o primeiro por
+        `created_at` — nas três corretoras de produção, o **core**, cujo prompt
+        instrui a entregar CPF sem mascarar.
+
+        A regra agora é: **papel pedido é papel entregue.** Se o papel certo não
+        existe ou está desligado, devolve `None` — e quem chamou tem de calar.
+        Devolver o agente errado é pior que não responder: o segurado recebe uma
+        resposta de um agente que não foi feito para falar com ele.
         """
         try:
+            papel = str(required_role or "").strip().lower() or None
+
             def _fetch():
                 query = (
                     self.supabase.client.table("agents")
@@ -206,15 +221,32 @@ class LangChainService:
 
                 if agent_id:
                     query = query.eq("id", agent_id)
+                elif papel:
+                    query = query.eq("agent_role", papel)
 
                 return query.order("created_at").limit(1).execute()
 
             result = await asyncio.to_thread(_fetch)
 
-            if result.data and len(result.data) > 0:
-                return result.data[0]
+            if not (result.data and len(result.data) > 0):
+                return None
 
-            return None
+            agente = result.data[0]
+
+            # A trava final: mesmo com `agent_id` explícito, o papel tem de bater.
+            # Um id apontando para o agente errado (dado velho, pareamento antigo)
+            # não pode virar permissão para falar com o segurado.
+            if papel:
+                papel_do_agente = str(agente.get("agent_role") or "").strip().lower()
+                if papel_do_agente != papel:
+                    logger.error(
+                        "[AGENTE] papel exigido=%s mas o agente %s da empresa %s tem papel=%s "
+                        "— recusando. Ninguém responde com o papel errado.",
+                        papel, agente.get("id"), company_id, papel_do_agente or "(vazio)",
+                    )
+                    return None
+
+            return agente
         except Exception as e:
             logger.error(f"Error fetching raw agent: {e}")
             return None
@@ -290,6 +322,7 @@ class LangChainService:
         channel: str = "web",
         agent_id: Optional[str] = None,
         async_supabase_client=None,  # NEW: For async memory operations
+        required_role: Optional[str] = None,
     ) -> Tuple[str, Optional[ConversationMetrics]]:
         metrics = (
             ConversationMetrics(start_time=time.time()) if collect_metrics else None
@@ -315,9 +348,20 @@ class LangChainService:
                 raise ValueError(f"Company {company_id} not found")
 
             # 2. BUSCAR AGENTE (RAW)
-            agent = await self._get_raw_agent(company_id, agent_id)
+            # SPEC-063 Bloco A — `required_role` viaja do chamador. O caminho do
+            # WhatsApp exige "attendance"; sem esse papel ninguém responde ao
+            # segurado, nem por omissão nem por fallback.
+            agent = await self._get_raw_agent(company_id, agent_id, required_role=required_role)
 
             if not agent:
+                if required_role:
+                    logger.error(
+                        "[CONFIG] empresa %s nao tem agente ATIVO com papel '%s' — "
+                        "recusando responder (SPEC-063 A)", company_id, required_role,
+                    )
+                    raise ValueError(
+                        f"AGENTE_DE_PAPEL_AUSENTE: nenhum agente ativo com papel '{required_role}'."
+                    )
                 logger.error(f"[CONFIG] No active agents found for company {company_id}")
                 raise ValueError("CONFIG_REQUIRED: Nenhum Agente de IA encontrado.")
 

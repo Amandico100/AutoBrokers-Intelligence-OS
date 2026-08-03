@@ -97,6 +97,30 @@ class InfocapPolicyLookupTool(BaseTool):
     def _unmasked(self) -> bool:
         return self.agent_role in ("", "core")
 
+    @staticmethod
+    def _doc_para_o_publico(doc: Any, unmasked: bool) -> Optional[str]:
+        """O CPF só aparece por inteiro para quem é de dentro da corretora.
+
+        SPEC-063 Bloco A. O tool já sabia distinguir o público desde
+        `_client_facing` — mas `_summarize` e `_summarize_detail` são
+        `@staticmethod` e nunca receberam essa informação. Resultado: os dois
+        renderizadores de fallback imprimiam `CPF/CNPJ: {doc}` cru, inclusive no
+        caminho que fala com o SEGURADO pelo WhatsApp.
+
+        Consertar só o prompt teria deixado este caminho aberto — e quem
+        consertasse acharia que tinha resolvido. Por isso o corte é aqui, no
+        lugar que escreve, e não numa instrução que o modelo pode ignorar.
+
+        Para o segurado o documento vira sufixo: ele confirma identidade sem
+        expor o número numa conversa que pode ser encaminhada.
+        """
+        s = "".join(ch for ch in str(doc or "") if ch.isdigit())
+        if not s:
+            return None
+        if unmasked:
+            return str(doc)
+        return f"•••{s[-4:]}" if len(s) >= 4 else "•••"
+
     @property
     def _client_facing(self) -> bool:
         return self.agent_role in _CLIENT_FACING_ROLES
@@ -276,7 +300,8 @@ class InfocapPolicyLookupTool(BaseTool):
                     return briefing, meta.get("assistance_policy"), rendered
         except Exception as e:  # noqa: BLE001 — composer nunca pode derrubar a tool
             logger.warning(f"[InfocapPolicyLookupTool] composer v2 indisponivel, usando resumo legado: {type(e).__name__}")
-        legacy = self._summarize_detail(data) if detail else self._summarize(data)
+        legacy = (self._summarize_detail(data, unmasked=self._unmasked) if detail
+                  else self._summarize(data, unmasked=self._unmasked))
         return legacy, None, legacy
 
     @staticmethod
@@ -480,7 +505,7 @@ class InfocapPolicyLookupTool(BaseTool):
         return lines
 
     @staticmethod
-    def _summarize_detail(d: Dict[str, Any]) -> str:
+    def _summarize_detail(d: Dict[str, Any], unmasked: bool = False) -> str:
         if not d.get("ok"):
             st = d.get("status")
             if st in ("blocked_not_configured", "blocked_missing_credentials"):
@@ -505,7 +530,7 @@ class InfocapPolicyLookupTool(BaseTool):
         lines = [
             "Detalhes da apolice (InfoCap):",
             f"- Seguradora: {pack.get('insurer_detected') or '-'} - Produto: {pack.get('product_detected') or '-'}",
-            f"- Numero da apolice: {num} - Titular: {titular}" + (f" - CPF/CNPJ: {pack.get('document')}" if pack.get("document") else ""),
+            f"- Numero da apolice: {num} - Titular: {titular}" + (f" - CPF/CNPJ: {_doc}" if (_doc := InfocapPolicyLookupTool._doc_para_o_publico(pack.get("document"), unmasked)) else ""),
             f"- Situacao: {pack.get('policy_status') or '-'} - Vigencia: {pack.get('valid_from') or '-'} a {pack.get('valid_to') or '-'}",
         ]
         if pack.get("installments"):
@@ -525,11 +550,12 @@ class InfocapPolicyLookupTool(BaseTool):
         return "\n".join(lines)
 
     @staticmethod
-    def _summarize(r: Dict[str, Any]) -> str:
+    def _summarize(r: Dict[str, Any], unmasked: bool = False) -> str:
         status = r.get("status")
         cli = ""
         if r.get("client_document") or r.get("client_name"):
-            cli = f"\n- Cliente: {r.get('client_name') or '-'} - CPF/CNPJ: {r.get('client_document') or '-'}"
+            _docc = InfocapPolicyLookupTool._doc_para_o_publico(r.get("client_document"), unmasked)
+            cli = f"\n- Cliente: {r.get('client_name') or '-'} - CPF/CNPJ: {_docc or '-'}"
         if r.get("ok") and status == "found":
             sel = r.get("selected") or {}
             pack = r.get("policy_evidence_pack") or {}
@@ -549,7 +575,7 @@ class InfocapPolicyLookupTool(BaseTool):
             lines = [
                 "Apolice localizada na InfoCap:",
                 f"- Seguradora: {sel.get('insurer_key') or '-'} - Produto: {sel.get('product') or '-'}",
-                f"- Numero da apolice: {num} - Titular: {titular}" + (f" - CPF/CNPJ: {doc}" if doc else ""),
+                f"- Numero da apolice: {num} - Titular: {titular}" + (f" - CPF/CNPJ: {_docp}" if (_docp := InfocapPolicyLookupTool._doc_para_o_publico(doc, unmasked)) else ""),
                 f"- Situacao: {sel.get('policy_status') or '-'} ({active_text}) - Vigencia: {sel.get('valid_from') or '-'} a {sel.get('valid_to') or '-'}",
             ]
             if pack.get("structured_coverage_absent"):
