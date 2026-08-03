@@ -130,6 +130,45 @@ estáticos não passa pelo roteador. Parece "algumas telas quebradas"; é o prod
 inteiro. Ao investigar queda, o primeiro teste é **rota que executa código**
 (`/api/…`), nunca um arquivo.
 
+### 9.2 Medir vence deduzir — e toda bateria precisa de controle
+
+> Acrescentado em 03/08/2026, depois que o envio de formulário nativo do
+> WhatsApp foi resolvido por **medição**, não por leitura.
+
+Havia **uma** captura real do que se queria reproduzir. Um acervo de um permite
+comparar; **não permite conferir hipótese**. Deduzir a diferença por leitura era
+impossível — e cada palpite errado custava um ciclo de build inteiro.
+
+O que funcionou:
+
+```
+varie UM fator por vez        version · nós biz · body · embrulho · segredo
+inclua uma linha de CONTROLE  repete a rodada anterior
+pare no primeiro que passar
+```
+
+📊 Cinco formas deram o mesmo erro → **fator que não muda o resultado não é a
+causa**, e o payload inteiro caiu de uma vez. A sexta passou.
+
+**A linha de controle é o que dá direito à conclusão.** Ela deu o mesmo erro de
+antes, então o mérito foi do fator que mudou e de mais nada. Sem ela, um acerto
+se credita ao lugar errado — e se constrói em cima de uma causa que não era.
+
+E leia o erro **na fonte**: `479` não foi pesquisado, foi lido no comentário da
+biblioteca que o documenta.
+
+### 9.3 Teste que guarda verdade vencida é pior que teste nenhum
+
+No mesmo dia, dois testes tiveram de ser **atualizados**: eles afirmavam que não
+existia canal para responder formulário. Era verdade — até o canal existir.
+
+Quando um fato muda, o teste muda com ele, e **a lição migra em vez de morrer**:
+a recusa limpa continua sendo testada, agora desligando a rota de propósito.
+Manter a afirmação vencida só ensinaria a ignorar teste.
+
+**Corolário:** um guarda que não tem como falhar não guarda nada. Quando o teste
+comparar duas coisas, prove que elas **conseguem** ser diferentes.
+
 ## 10. Condições legítimas de parada
 
 Pare e registre **somente** por: (1) risco de perda de dados · (2) decisão comercial ou de precificação · (3) conflito canônico · (4) P0/P1 de segurança ou cross-tenant · (5) ação física do Founder (QR, passkey, acesso, pagamento) · (6) mudança material de escopo · (7) custo extraordinário · (8) falta de acesso indispensável.
