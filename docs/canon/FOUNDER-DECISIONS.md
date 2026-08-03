@@ -935,3 +935,41 @@ a decisão maior não é sua.
 Se ficarmos com oito, a SPEC-064 I.3 é marcada como **superada** e a solução
 acima vira definitiva. Se passarmos para seis, é uma mudança visual grande no
 admin e merece uma leva própria — não o rabo de uma SPEC.
+
+---
+
+## D-Canal-01 · Um pareamento, duas funções, uma boca — 03/08/2026
+
+**Decisão do Founder, palavras dele:**
+
+> *"Conectou uma vez, está ligado para atendimento e para observador. O
+> observador nunca fala nada, nunca responde, só o atendimento. O atendimento
+> nasce desligado e precisa clicar em Agente de Atendimento para ele começar a
+> responder, senão mesmo conectado continua mudo. O observador é sempre em
+> silêncio."*
+
+**Isto encerra a P-68.** O conflito era entre a SPEC-069 (*"observer nunca é
+canal de saída"*) e o código, que responde o segurado pela integração que
+recebeu — inclusive quando ela se chama `observer`.
+
+**A decisão resolve dizendo que os dois estavam certos sobre coisas diferentes:**
+
+```
+OBSERVAR   é uma FUNÇÃO, e ela é muda por natureza. Nunca inicia, nunca
+           responde, não tem voz. Roda sempre, do pareamento em diante.
+
+ATENDER    é a outra FUNÇÃO no MESMO número. É ela que fala. Nasce
+           DESLIGADA e só passa a responder quando alguém liga o agente.
+```
+
+**Não são dois números e não são dois pareamentos.** O que existia era um `purpose`
+chamado `observer` fazendo as duas coisas — e a SPEC lendo esse nome como se
+fosse a função.
+
+**O que muda no texto:** SPEC-069 passa a dizer *"a função de observação nunca
+emite; quem emite é o atendimento, e ele nasce desligado"*. 📊 O código já se
+comporta assim: `pairing_orchestrator.py` faz o agente nascer desligado e
+`attendance_agent_active` é fail-closed (falha de leitura = silêncio).
+
+**O que fica pendente:** o `purpose` continua se chamando `observer` enquanto
+carrega as duas funções. Renomear é seguro só com migração — fica em [P-65].

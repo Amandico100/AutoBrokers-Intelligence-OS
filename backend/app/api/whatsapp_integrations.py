@@ -331,64 +331,103 @@ async def prova_de_formulario(
 
     envelope = mensagem["interactiveResponseMessage"]
     nfm = envelope["nativeFlowResponseMessage"]
-    corpo = {"number": para, "name": nfm["name"], "paramsJSON": nfm["paramsJSON"]}
-    if nfm.get("version"):
-        corpo["version"] = int(nfm["version"])
+    params_json = nfm["paramsJSON"]
     texto = (envelope.get("body") or {}).get("text")
-    if texto:
-        corpo["body"] = texto
+
+    # A BATERIA. O WhatsApp recusou a primeira tentativa com 479, que o próprio
+    # whatsmeow documenta como "Invalid stanza sent (smax-invalid)": recusa do
+    # ENVELOPE da mensagem, não do conteúdo. O paramsJSON estava certo; o que
+    # está em dúvida é a estrutura em volta dele.
+    #
+    # Só existe uma captura real deste tipo de mensagem, e ela não registra o
+    # envelope inteiro — então a diferença não dá para deduzir por leitura. Dá
+    # para MEDIR: variar um fator por vez e ver qual o servidor aceita.
+    #
+    # Para a primeira e a última mensagem chegarem, quem decide são elas.
+    tentativas = [
+        {"nome": "como a captura (sem version, sem nos biz)", "version": 0, "biz": False, "body": True},
+        {"nome": "com os nos biz", "version": 0, "biz": True, "body": True},
+        {"nome": "com version 1", "version": 1, "biz": False, "body": True},
+        {"nome": "version 1 + nos biz", "version": 1, "biz": True, "body": True},
+        {"nome": "sem body", "version": 0, "biz": False, "body": False},
+    ]
 
     import asyncio
 
     import requests
 
     url = f"{base_url}/send/interactiveResponse"
+    resultados = []
+    vencedora = None
 
-    def _enviar():
-        return requests.post(
-            url,
-            json=corpo,
-            headers={"Content-Type": "application/json", "apikey": str(token)},
-            timeout=30,
-        )
+    for t in tentativas:
+        corpo: Dict[str, Any] = {"number": para, "name": nfm["name"], "paramsJSON": params_json}
+        if t["version"]:
+            corpo["version"] = int(t["version"])
+        if t["body"] and texto:
+            corpo["body"] = texto
+        if t["biz"]:
+            corpo["withBizNodes"] = True
 
-    try:
-        r = await asyncio.to_thread(_enviar)
-    except Exception as e:  # noqa: BLE001
-        logger.error(f"[PROVA FORMULARIO] envio falhou: {type(e).__name__}")
-        raise HTTPException(status_code=502, detail=f"Evolution GO inalcancavel: {type(e).__name__}") from e
+        def _enviar(c=corpo):
+            return requests.post(
+                url, json=c,
+                headers={"Content-Type": "application/json", "apikey": str(token)},
+                timeout=30,
+            )
 
-    # 404 aqui significa uma coisa só, e vale dizer com todas as letras: a
-    # imagem no ar é anterior ao patch 0005 e não tem a porta de saída.
-    if r.status_code == 404:
-        return {
-            "success": False,
-            "http": 404,
-            "diagnostico": "rota_ausente",
-            "explicacao": (
-                "Este Evolution GO nao tem POST /send/interactiveResponse. "
-                "A imagem precisa ser 0.7.2-autobrokers.2 ou mais nova."
-            ),
-        }
+        try:
+            r = await asyncio.to_thread(_enviar)
+        except Exception as e:  # noqa: BLE001
+            resultados.append({"tentativa": t["nome"], "http": None, "erro": type(e).__name__})
+            continue
 
-    corpo_devolvido: Any
-    try:
-        corpo_devolvido = r.json()
-    except Exception:  # noqa: BLE001
-        corpo_devolvido = (r.text or "")[:400]
+        # 404 é conclusivo e não adianta insistir: a imagem no ar é anterior ao
+        # patch 0005 e não tem a porta de saída.
+        if r.status_code == 404:
+            return {
+                "success": False,
+                "diagnostico": "rota_ausente",
+                "explicacao": (
+                    "Este Evolution GO nao tem POST /send/interactiveResponse. "
+                    "A imagem precisa ser 0.7.2-autobrokers.2 ou mais nova."
+                ),
+            }
 
-    logger.info("[PROVA FORMULARIO] company=%s http=%s", company_id, r.status_code)
+        try:
+            devolvido = r.json()
+        except Exception:  # noqa: BLE001
+            devolvido = (r.text or "")[:300]
+
+        ok = 200 <= r.status_code < 300
+        resultados.append({
+            "tentativa": t["nome"],
+            "http": r.status_code,
+            "aceito": ok,
+            "resposta": devolvido,
+        })
+        logger.info("[PROVA FORMULARIO] company=%s '%s' http=%s", company_id, t["nome"], r.status_code)
+
+        if ok:
+            vencedora = t["nome"]
+            break
+
     return {
-        "success": 200 <= r.status_code < 300,
-        "http": r.status_code,
-        "enviado": {
-            "para": para,
-            "envelope": corpo["name"],
-            "tamanho_paramsJSON": len(corpo["paramsJSON"]),
-            "tem_body": "body" in corpo,
-            "version_enviada": corpo.get("version"),
-        },
-        "resposta_do_evolution": corpo_devolvido,
+        "success": vencedora is not None,
+        "vencedora": vencedora,
+        "para": para,
+        "envelope": nfm["name"],
+        "tamanho_paramsJSON": len(params_json),
+        "tentativas": resultados,
+        "leitura": (
+            f"O WhatsApp ACEITOU: {vencedora}. Esta e a forma a usar."
+            if vencedora
+            else (
+                "Nenhuma forma foi aceita. 479 = 'Invalid stanza sent' — o servidor "
+                "recusa o envelope, nao o conteudo. O proximo passo e no Go: embrulhar "
+                "em DocumentWithCaptionMessage, como /send/button ja faz."
+            )
+        ),
     }
 
 
