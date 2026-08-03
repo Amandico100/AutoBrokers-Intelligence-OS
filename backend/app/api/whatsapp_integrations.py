@@ -344,12 +344,27 @@ async def prova_de_formulario(
     # para MEDIR: variar um fator por vez e ver qual o servidor aceita.
     #
     # Para a primeira e a última mensagem chegarem, quem decide são elas.
+    # RODADA 2. A primeira rodada mediu os fatores de PAYLOAD — version, nós biz,
+    # body — e os cinco deram 479 igual. Fator que não muda o resultado não é a
+    # causa: isso descarta o conteúdo e aponta para a FORMA.
+    #
+    # Sobraram as duas coisas que /send/button faz em todas as suas variantes e
+    # que nós não fazíamos: o embrulho DocumentWithCaptionMessage e os 32 bytes
+    # de MessageSecret. Viraram bandeiras no patch 0006.
+    #
+    # A primeira linha é controle: se ela parar de dar 479, quem mudou foi outra
+    # coisa, e o resto da leitura não vale.
     tentativas = [
-        {"nome": "como a captura (sem version, sem nos biz)", "version": 0, "biz": False, "body": True},
-        {"nome": "com os nos biz", "version": 0, "biz": True, "body": True},
-        {"nome": "com version 1", "version": 1, "biz": False, "body": True},
-        {"nome": "version 1 + nos biz", "version": 1, "biz": True, "body": True},
-        {"nome": "sem body", "version": 0, "biz": False, "body": False},
+        {"nome": "controle — como na rodada 1", "version": 0, "biz": False, "body": True,
+         "embrulho": False, "segredo": False},
+        {"nome": "embrulho DocumentWithCaption", "version": 0, "biz": False, "body": True,
+         "embrulho": True, "segredo": False},
+        {"nome": "MessageSecret", "version": 0, "biz": False, "body": True,
+         "embrulho": False, "segredo": True},
+        {"nome": "embrulho + MessageSecret", "version": 0, "biz": False, "body": True,
+         "embrulho": True, "segredo": True},
+        {"nome": "embrulho + segredo + nos biz (igual ao botao)", "version": 0, "biz": True,
+         "body": True, "embrulho": True, "segredo": True},
     ]
 
     import asyncio
@@ -368,6 +383,10 @@ async def prova_de_formulario(
             corpo["body"] = texto
         if t["biz"]:
             corpo["withBizNodes"] = True
+        if t.get("embrulho"):
+            corpo["wrapInDocumentWithCaption"] = True
+        if t.get("segredo"):
+            corpo["withMessageSecret"] = True
 
         def _enviar(c=corpo):
             return requests.post(
@@ -423,9 +442,12 @@ async def prova_de_formulario(
             f"O WhatsApp ACEITOU: {vencedora}. Esta e a forma a usar."
             if vencedora
             else (
-                "Nenhuma forma foi aceita. 479 = 'Invalid stanza sent' — o servidor "
-                "recusa o envelope, nao o conteudo. O proximo passo e no Go: embrulhar "
-                "em DocumentWithCaptionMessage, como /send/button ja faz."
+                "Nenhuma forma foi aceita. Se ate 'embrulho + segredo + nos biz' — que e "
+                "exatamente a forma dos botoes, que FUNCIONAM — deu 479, entao o servidor "
+                "nao recusa a forma: recusa o TIPO. Ou seja, uma conta comum nao pode "
+                "ORIGINAR uma resposta de formulario sem ter recebido o formulario antes. "
+                "Nesse caso o proximo teste tem de ser com um flow de verdade chegando, e "
+                "nao com um fabricado por nos."
             )
         ),
     }

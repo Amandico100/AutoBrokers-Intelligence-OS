@@ -1,0 +1,141 @@
+From ad8e4ba6c5d8b585e258d3d3588299995e45220c Mon Sep 17 00:00:00 2001
+From: AutoBrokers Engineering <engineering@autobrokers.local>
+Date: Mon, 3 Aug 2026 22:00:00 -0300
+Subject: send interactive response: embrulho e segredo como bandeiras
+
+479 = 'Invalid stanza sent'. Os fatores de payload foram medidos e nao mudam
+nada. Sobraram as duas diferencas ESTRUTURAIS entre a nossa mensagem e as que
+funcionam: o embrulho DocumentWithCaptionMessage e o MessageSecret.
+
+Viram bandeira em vez de escolha, porque nao ha captura do envelope inteiro e
+portanto nao da para saber por leitura qual das duas e. Uma imagem, quatro
+combinacoes.
+---
+ .../service/interactive_response_test.go      | 58 +++++++++++++++++++
+ pkg/sendMessage/service/send_service.go       | 36 +++++++++++-
+ 2 files changed, 92 insertions(+), 2 deletions(-)
+
+diff --git a/pkg/sendMessage/service/interactive_response_test.go b/pkg/sendMessage/service/interactive_response_test.go
+index 615511b..d6a5d43 100644
+--- a/pkg/sendMessage/service/interactive_response_test.go
++++ b/pkg/sendMessage/service/interactive_response_test.go
+@@ -94,3 +94,61 @@ func TestAComparacaoByteAByteTemComoFalhar(t *testing.T) {
+ 		t.Fatal("remarshal devolveu texto identico -- entao o teste de bytes nao prova nada")
+ 	}
+ }
++
++func TestOEmbrulhoMudaAMensagem(t *testing.T) {
++	base := &InteractiveResponseStruct{Name: "galaxy_message", ParamsJSON: `{"a":1}`}
++
++	sem, err := buildInteractiveResponseMessage(base)
++	if err != nil {
++		t.Fatalf("nao montou: %v", err)
++	}
++	if sem.DocumentWithCaptionMessage != nil {
++		t.Error("sem a bandeira, NAO devia haver embrulho")
++	}
++	if sem.GetInteractiveResponseMessage() == nil {
++		t.Error("sem a bandeira, a resposta fica no topo")
++	}
++
++	com, err := buildInteractiveResponseMessage(&InteractiveResponseStruct{
++		Name: "galaxy_message", ParamsJSON: `{"a":1}`, WrapInDocumentWithCaption: true,
++	})
++	if err != nil {
++		t.Fatalf("nao montou: %v", err)
++	}
++	if com.DocumentWithCaptionMessage == nil {
++		t.Fatal("com a bandeira, o embrulho tem de existir")
++	}
++	if com.GetInteractiveResponseMessage() != nil {
++		t.Error("com o embrulho, a resposta NAO pode continuar tambem no topo")
++	}
++	dentro := com.DocumentWithCaptionMessage.GetMessage().GetInteractiveResponseMessage()
++	if dentro == nil {
++		t.Fatal("a resposta tem de estar DENTRO do embrulho")
++	}
++	if dentro.GetNativeFlowResponseMessage().GetParamsJSON() != `{"a":1}` {
++		t.Error("o embrulho nao pode alterar o conteudo")
++	}
++}
++
++func TestOSegredoSoApareceQuandoPedido(t *testing.T) {
++	sem, _ := buildInteractiveResponseMessage(&InteractiveResponseStruct{
++		Name: "galaxy_message", ParamsJSON: `{"a":1}`,
++	})
++	if sem.MessageContextInfo != nil {
++		t.Error("sem a bandeira, nao ha MessageContextInfo")
++	}
++
++	com, _ := buildInteractiveResponseMessage(&InteractiveResponseStruct{
++		Name: "galaxy_message", ParamsJSON: `{"a":1}`, WithMessageSecret: true,
++	})
++	if com.MessageContextInfo == nil || len(com.MessageContextInfo.MessageSecret) != 32 {
++		t.Fatal("com a bandeira, tem de haver 32 bytes de segredo")
++	}
++
++	outro, _ := buildInteractiveResponseMessage(&InteractiveResponseStruct{
++		Name: "galaxy_message", ParamsJSON: `{"a":1}`, WithMessageSecret: true,
++	})
++	if string(com.MessageContextInfo.MessageSecret) == string(outro.MessageContextInfo.MessageSecret) {
++		t.Error("dois segredos iguais seguidos: nao e aleatorio")
++	}
++}
+diff --git a/pkg/sendMessage/service/send_service.go b/pkg/sendMessage/service/send_service.go
+index b8a7d14..1d81807 100644
+--- a/pkg/sendMessage/service/send_service.go
++++ b/pkg/sendMessage/service/send_service.go
+@@ -280,6 +280,16 @@ type InteractiveResponseStruct struct {
+ 	// documented fallback for the case where a loopback test shows the answer
+ 	// not landing -- so that discovery costs a flag, not another image build.
+ 	WithBizNodes bool `json:"withBizNodes,omitempty"`
++
++	// Wraps the answer in DocumentWithCaptionMessage, the way /send/button wraps
++	// every one of its three variants without exception. The wrapper exists so a
++	// client that does not know the inner type shows "unsupported message"
++	// instead of breaking -- and the server may well require it for that reason.
++	WrapInDocumentWithCaption bool `json:"wrapInDocumentWithCaption,omitempty"`
++	// Adds MessageContextInfo with 32 random bytes of MessageSecret. SendButton
++	// sets this on every interactive message it builds, with the note "required
++	// for iOS to render interactive messages".
++	WithMessageSecret bool `json:"withMessageSecret,omitempty"`
+ }
+ 
+ // Row is a selectable item inside a list Section.
+@@ -3474,9 +3484,31 @@ func buildInteractiveResponseMessage(data *InteractiveResponseStruct) (*waE2E.Me
+ 		}
+ 	}
+ 
+-	return &waE2E.Message{
++	final := &waE2E.Message{
+ 		InteractiveResponseMessage: interactiveResponse,
+-	}, nil
++	}
++
++	// The wrapper goes on the OUTSIDE, exactly as SendButton does it: the inner
++	// Message carries the payload and the outer one carries nothing else.
++	if data.WrapInDocumentWithCaption {
++		final = &waE2E.Message{
++			DocumentWithCaptionMessage: &waE2E.FutureProofMessage{
++				Message: &waE2E.Message{
++					InteractiveResponseMessage: interactiveResponse,
++				},
++			},
++		}
++	}
++
++	if data.WithMessageSecret {
++		segredo := make([]byte, 32)
++		if _, err := crypto_rand.Read(segredo); err != nil {
++			return nil, err
++		}
++		final.MessageContextInfo = &waE2E.MessageContextInfo{MessageSecret: segredo}
++	}
++
++	return final, nil
+ }
+ 
+ // SendInteractiveResponse answers a native flow -- the message a person's phone
+-- 
+2.52.0.windows.1
+

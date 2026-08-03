@@ -1,7 +1,7 @@
 # syntax=docker/dockerfile:1.7
 
 ARG UPSTREAM_COMMIT=9337afc47e10b86cc896a6f432240e40fee95dd1
-ARG VERSION=0.7.2-autobrokers.2
+ARG VERSION=0.7.2-autobrokers.3
 
 FROM alpine:3.21 AS source
 ARG UPSTREAM_COMMIT
