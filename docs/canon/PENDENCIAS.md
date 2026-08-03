@@ -720,3 +720,53 @@ os outros não importam, porque a mensagem nunca sai.
 **O que custa esquecer:** o ciclo termina em *"aqui está seu protocolo"* e a
 corretora nunca sabe se o serviço foi prestado. É a diferença entre acionar e
 resolver.
+
+
+---
+
+## ✅ FECHADAS EM 03/08/2026 — o dia do formulário nativo
+
+Registro do que saiu desta lista, com o que provou cada uma.
+
+| # | O que era | Como fechou |
+|---|---|---|
+| **P-68** | conflito canônico "observer nunca envia" | decisão do Founder → **D-Canal-01**: observar é função muda; atender fala e nasce desligado |
+| **P-69** | mapas do Atlas anteriores ao conserto da não-rota | 🧑 o Founder clicou em **Tecer mapas**. 📊 HDI 36→41%, Yelum 34→36%, Allianz 75% |
+| **P-70 (2,3,5)** | o timer do Follow-up morria ao nascer; a pergunta não deixava rastro | `monitoring` com compromisso pendente deixa de ser sessão velha; a pergunta entra em `platform_sends` e no transcript |
+
+### E o que a auditoria de ponta a ponta fechou no mesmo dia
+
+```
+R1   protocolo sozinho já avisa o segurado (o residencial da Allianz não
+     captura eta nem link — a pessoa nunca sabia que o serviço foi aberto)
+R2   sem protocolo, a retomada roda; COM protocolo, não — reabrir mandaria
+     um segundo prestador para o mesmo carro
+R3   o flow_token atravessa: o webhook copia o `interactive` e o buffer
+     não o apaga na rajada
+R4   tudo que o motor diz ao cliente vira rastro; falha de aviso alerta
+     o suporte em vez de sumir no log
+R5   o encerramento ENCERRA: marca resolvido e libera a sessão
+R5b  má notícia também passa — cancelado, sem prestador, fora da área
+```
+
+### E os achados da revisão dos 13 corredores
+
+```
+🔴 1  o freio não disparava em 28 das 33 vezes (negrito do WhatsApp no
+      *para*), no PONTO DE NÃO-RETORNO. E o CI estava verde porque a
+      fixture escrevia a frase sem os asteriscos
+🔴 2  `pessoa_no_local` era exigido por passos e não declarado — a sessão
+      nascia "pronta" e travava no meio. O PORTÃO foi consertado, não os
+      três passos: fecha a classe inteira
+🔴 3  apelido de subserviço não resolvia na abertura (hidráulica,
+      desentupidor, eletrodoméstico)
+🟠 4  vidro exigia quem acompanha no local — vidro é agendado
+🟠 5/6 três noop fora de ordem sombreavam o menu re-perguntado
+🟠 7  `human_phase_guidance`: 4 blocos de orientação, zero leitores
+🟡 10 instruções de guincho iam para pneu, bateria e chaveiro
+```
+
+**Restam de P-70:** o item 3 (ler e classificar a resposta do cliente e agir) e
+o item 6 (teste com relógio de mentira). O item 5 — passar pelo canal governado
+— continua aberto **de propósito**: exige exceção explícita para `monitoring`,
+senão `client_busy` adia o follow-up para sempre.
