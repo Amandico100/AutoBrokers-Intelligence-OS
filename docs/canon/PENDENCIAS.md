@@ -770,3 +770,48 @@ R5b  má notícia também passa — cancelado, sem prestador, fora da área
 o item 6 (teste com relógio de mentira). O item 5 — passar pelo canal governado
 — continua aberto **de propósito**: exige exceção explícita para `monitoring`,
 senão `client_busy` adia o follow-up para sempre.
+
+---
+
+## P-71 · 🧑 AMANHÃ: o acionamento REAL da HDI, em modo teste
+
+**É a última coisa não provada da cadeia inteira, e não dá para provar sem ela.**
+
+📊 Provamos que a mensagem de resposta a formulário **sai e o WhatsApp aceita**
+(`Type: "InteractiveResponseMessage"`, entre dois números nossos). **Não**
+provamos que a **seguradora** aceita essa resposta no meio de um atendimento.
+São coisas diferentes, e só uma seguradora de verdade responde a segunda.
+
+### O passo a passo
+
+```
+1  🧑  parear os WhatsApps das corretoras (Amandus, Resulta, AutoFleet)
+2  🤖  conferir DISPATCH_FINALIZE_MODE=test e a allowlist
+3  🧑  abrir conversa com a HDI pelo número da corretora
+4  🤖  andar o menu até o formulário nativo chegar
+5  🤖  responder AQUELE formulário — não um fabricado
+6  🤖  ler o que a HDI devolve
+```
+
+**O freio segura antes do ponto de não-retorno.** 📊 E ele foi consertado em
+03/08: não disparava em 28 das 33 redações reais, por causa do negrito do
+WhatsApp. Agora dispara nas quatro formas conhecidas.
+
+### O que este teste responde, e nada mais responde
+
+```
+a resposta chega com o flow_token certo?
+a HDI aceita, ou descarta em silêncio?
+`response_message` é exigido? (a hipótese nº 2 do documento do formulário)
+`version` precisa viajar? (a hipótese nº 1)
+```
+
+**Também destrava:** a InfoCap (P-01) — sem ela o agente pergunta a placa ao
+segurado em vez de confirmar a apólice.
+
+**O que custa esquecer:** todo o resto está pronto e desligado esperando esta
+prova. Sem ela, não há como ligar `INSURER_DISPATCH_LIVE` para corretora
+nenhuma — e o produto continua sabendo acionar sem nunca ter acionado.
+
+> Ver [`O-FORMULARIO-NATIVO-RESOLVIDO.md`](O-FORMULARIO-NATIVO-RESOLVIDO.md) §7
+> (o que não está provado) e §8 (o que falta para 100%).
