@@ -91,7 +91,26 @@ class MessageBufferService:
             data = json.loads(raw_data)
             data["messages"].append(message)
             data["last_at"] = now_iso
-            data["payload"] = payload
+
+            # O ÚLTIMO PAYLOAD VENCE — MENOS PARA O `interactive`.
+            #
+            # Sobrescrever o payload é o certo para telefone, id e integração: o
+            # mais recente é o mais verdadeiro. Mas o `interactive` carrega o
+            # `flow_token` do formulário nativo, e ele é ÚNICO na janela: chega
+            # numa mensagem só, e as seguintes vêm sem ele.
+            #
+            # A URA da família HDI manda rajadas — o formulário e, logo atrás,
+            # um aviso de fila. Com a sobrescrita crua, o aviso apagava o token
+            # do formulário, e a resposta ficava sem endereço. O motor pausaria
+            # com `formulario_pronto_sem_flow_token` e ninguém saberia que a
+            # causa foi um debounce de 8 segundos.
+            #
+            # Interativa nova vence a antiga; ausência não vence presença.
+            anterior = (data.get("payload") or {}).get("interactive")
+            novo = dict(payload or {})
+            if anterior and not novo.get("interactive"):
+                novo["interactive"] = anterior
+            data["payload"] = novo
             is_first = False
         else:
             data = {

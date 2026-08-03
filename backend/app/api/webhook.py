@@ -1196,6 +1196,20 @@ async def _handle_evolution_like_inbound(
         "senderName": normalized["sender_name"],
         "momment": normalized.get("timestamp"),
         "_integration_id": integration.get("id"),
+        # A METADE QUE FALTAVA DA PONTE.
+        #
+        # O leitor já existia — `try_route_insurer_inbound` recebe
+        # `interactive=payload_dict.get("interactive")` — mas quem MONTA o
+        # payload nunca copiava o campo. Resultado: sempre `None`, e o
+        # `flow_token` (que endereça a resposta do formulário e carrega os dois
+        # telefones dentro dele) morria aqui, três linhas antes de ser usado.
+        #
+        # 📊 O canal de resposta a formulário foi provado no ar em 03/08/2026.
+        # Sem esta linha ele nunca teria sido exercitado em produção: o motor
+        # montaria a resposta e pausaria por falta de token, exatamente como
+        # `evolution_inbound.py` já avisava em comentário — *"o caminho quente
+        # do produto ainda não chama isto"*.
+        "interactive": normalized.get("interactive"),
     }
     if image_payload or audio_payload:
         background_tasks.add_task(process_whatsapp_message_background, payload_dict)
