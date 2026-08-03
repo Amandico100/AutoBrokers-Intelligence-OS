@@ -606,3 +606,29 @@ proibir de verdade — e aí a promessa de "mesmo número" cai junto.
 
 **O que custa esquecer.** Alguém lê a SPEC, conclui que aquele número é mudo
 para sempre, e desenha em cima disso.
+
+---
+
+## P-69 · 🧑 Um clique: reteceer os mapas do Atlas
+
+**Um clique, e a cobertura de 10 seguradoras melhora sem escrever uma linha.**
+
+📊 Os mapas em `ura_maps` são de **29/07/2026**. O mecanismo que desconta a
+NÃO-ROTA da cobertura — pesquisa de satisfação e lista gerada pelo cliente — é
+de **02–03/08**. **Os mapas são anteriores ao conserto.**
+
+📊 Verificado contra o texto literal das duas telas de pesquisa da HDI: o
+detector devolve `pesquisa_de_satisfacao` e **zero opções** nas duas. Ele está
+certo; os mapas é que estão velhos.
+
+Só na família HDI+Yelum são **20 opções fantasmas** (2 pesquisas × 5 notas × 2
+seguradoras) contadas como "não cobertas" sem que exista trabalho a fazer.
+Elas rebaixam os 36% e 34% e escondem qual é a cobertura real.
+
+**O que destrava.** Painel → **Atlas** → botão **"Tecer mapas"**. É idempotente
+e reprocessa o histórico inteiro. **Não depende de pareamento nenhum** — lê o
+acervo que já temos.
+
+**O que custa esquecer.** Toda decisão de prioridade da Fase 3 usa a cobertura
+como número. Com 20 opções fantasmas dentro dela, a prioridade sai errada — e
+o esforço vai para onde não precisava.
