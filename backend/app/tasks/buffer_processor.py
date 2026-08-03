@@ -47,10 +47,15 @@ async def check_buffers():
             )
 
             for key in keys:
-                phone = key.split(":")[-1]
+                # SPEC-063 Bloco H — a chave agora tem tenant
+                # (`whatsapp_buffer:{integracao}:{telefone}`) e o varredor passa
+                # a chave INTEIRA. Extrair o telefone e remontar a chave era o
+                # que prendia o buffer ao formato antigo de uma parte só.
+                chave = key.decode() if isinstance(key, (bytes, bytearray)) else str(key)
+                phone = chave.rsplit(":", 1)[-1]
 
-                if await buffer_service.should_process(phone):
-                    buffer = await buffer_service.get_and_clear_buffer(phone)
+                if await buffer_service.should_process(chave):
+                    buffer = await buffer_service.get_and_clear_buffer(chave)
 
                     if buffer:
                         combined_msg = buffer_service.get_combined_message(buffer)

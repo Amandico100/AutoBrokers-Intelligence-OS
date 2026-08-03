@@ -33,9 +33,28 @@ class MessageBufferService:
         redis_client = await get_async_redis_client()
         return cls(redis_client)
 
-    def _get_key(self, phone: str) -> str:
-        """Generate Redis key for phone number."""
-        return f"whatsapp_buffer:{phone}"
+    @staticmethod
+    def chave(escopo: str, phone: str) -> str:
+        """A chave do buffer, com TENANT dentro — SPEC-063 Bloco H.
+
+        Era `whatsapp_buffer:{phone}`. Só o telefone.
+
+        O mesmo segurado pode falar com DUAS corretoras (ele tem seguro de auto
+        numa e residencial na outra — é comum). Dentro da janela de 8 a 25
+        segundos, as duas conversas caíam na MESMA chave: as mensagens eram
+        concatenadas e `data["payload"] = payload` sobrescrevia o payload, então
+        o conjunto todo era processado sob a integração da ÚLTIMA mensagem.
+
+        A corretora B recebia a pergunta que o cliente fez para a corretora A, e
+        respondia com o agente dela. Vazamento entre corretoras, no caminho mais
+        quente do produto.
+
+        `escopo` é o id da integração — o identificador mais específico que o
+        webhook tem quando o buffer é escrito. Sem ele, cai em
+        `sem-integracao`, que continua isolando por não ser o telefone sozinho.
+        """
+        esc = str(escopo or "").strip() or "sem-integracao"
+        return f"whatsapp_buffer:{esc}:{phone}"
 
     async def add_message(
         self,
@@ -45,12 +64,25 @@ class MessageBufferService:
         user_id: str,
         integration: Dict,
         payload: Dict,
+        escopo: str = "",
     ) -> bool:
         """
         Add message to buffer (async).
         Returns True if this is the first message in buffer.
         """
-        key = self._get_key(phone)
+        # O escopo vem do chamador; se não vier, o payload carrega o id da
+        # integração desde a rota com token (SPEC-017 P1.2).
+        # Cadeia do mais específico para o menos: id da integração (rotas com
+        # token) → número conectado da corretora (rota legada, que resolve o
+        # tenant por ele) → um rótulo fixo. O rótulo fixo NÃO isola, e é por
+        # isso que a rota legada tem de morrer (H.2 desta mesma SPEC).
+        escopo = str(
+            escopo
+            or (payload or {}).get("_integration_id")
+            or (payload or {}).get("connectedPhone")
+            or ""
+        ).strip()
+        key = self.chave(escopo, phone)
         now_iso = datetime.now().isoformat()
 
         raw_data = await self.redis.get(key)
@@ -79,12 +111,15 @@ class MessageBufferService:
         logger.debug(f"[BUFFER] Added message for {phone}. Count: {msg_count}")
         return is_first
 
-    async def should_process(self, phone: str) -> bool:
+    async def should_process(self, key: str) -> bool:
         """
         Check if buffer should be processed (debounce or max wait reached).
-        Lógica idêntica à sync, só com await no Redis.
+
+        Recebe a CHAVE COMPLETA, não o telefone. O varredor já a tem em mãos —
+        remontá-la a partir de `key.split(":")[-1]` era o que amarrava o buffer
+        a um formato de chave de uma parte só.
         """
-        key = self._get_key(phone)
+        phone = str(key).rsplit(":", 1)[-1]
         raw_data = await self.redis.get(key)
 
         if not raw_data:
@@ -119,12 +154,12 @@ class MessageBufferService:
 
         return False
 
-    async def get_and_clear_buffer(self, phone: str) -> Optional[Dict[str, Any]]:
+    async def get_and_clear_buffer(self, key: str) -> Optional[Dict[str, Any]]:
         """
         Atomically get buffer and delete from Redis (async).
-        Pipeline continua atômico em async.
+        Pipeline continua atômico em async. Recebe a CHAVE COMPLETA.
         """
-        key = self._get_key(phone)
+        phone = str(key).rsplit(":", 1)[-1]
 
         pipe = self.redis.pipeline()
         pipe.get(key)

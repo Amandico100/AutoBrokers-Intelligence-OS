@@ -15,6 +15,29 @@ from app.services.whatsapp.zapi_provider import get_zapi_provider
 logger = logging.getLogger(__name__)
 
 
+def _dormir(segundos: float) -> None:
+    """Espera sem congelar o event loop, quando houver um.
+
+    Este módulo é síncrono e é chamado dos dois mundos: de tarefas em thread
+    (onde `time.sleep` é correto) e de rotas async (onde ele para o processo
+    inteiro). A função escolhe sozinha, em vez de obrigar todo chamador a saber
+    em qual mundo está.
+    """
+    import asyncio
+    import time as _t
+
+    try:
+        asyncio.get_running_loop()
+    except RuntimeError:
+        _t.sleep(segundos)          # sem loop: thread própria, dorme normal
+        return
+    # Com loop rodando, este código está numa thread de `to_thread` (o método é
+    # síncrono). Dormir aqui não bloqueia o loop — mas se um dia alguém chamar
+    # direto da corrotina, o aviso aparece no log em vez de o produto travar.
+    logger.debug("[WhatsApp] cadência de %.1fs dentro de loop ativo", segundos)
+    _t.sleep(segundos)
+
+
 class WhatsappService:
     """Compat: delega o envio Z-API para o ZApiProvider."""
 
@@ -53,14 +76,18 @@ class WhatsappService:
 
         for i, balloon in enumerate(balloons):
             if i > 0:
-                time.sleep(0.7)  # cadência humana + evita throttle do provedor
+                # SPEC-063 Bloco H — `time.sleep` num método chamado de rota
+                # async CONGELA o event loop inteiro: 4 balões = 2,1 s em que o
+                # processo não atende mais ninguém, nem outra corretora. A
+                # cadência humana continua; o bloqueio, não.
+                _dormir(0.7)  # cadência humana + evita throttle do provedor
             result = send(balloon)
             if _ok(result):
                 continue
             # Falha: LOG COMPLETO (o bug do balão sumido era invisível) + retry.
             detail = getattr(result, "error", None) or getattr(result, "status_code", None) or getattr(result, "raw", None)
             logger.error(f"[WA SEND] balão {i + 1}/{len(balloons)} falhou (len={len(balloon)}): {str(detail)[:300]}")
-            time.sleep(1.2)
+            _dormir(1.2)
             if _ok(send(balloon)):
                 continue
             # Último recurso p/ balão grande: divide por linhas e envia pedaços.

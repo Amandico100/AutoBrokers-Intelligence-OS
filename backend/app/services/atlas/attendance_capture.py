@@ -201,7 +201,23 @@ async def capture_channel_message(company_id: str, channel_number: str, counterp
             return False
         record = {
             "company_id": str(company_id or ""),
-            "observer_number": _digits(channel_number) or "attendance-channel",
+            # SPEC-063 Bloco H — o "número do observador" nunca foi um número.
+            #
+            # `channel_number` chega como o `identifier` da integração, e no
+            # evolution-go isso é o NOME DA INSTÂNCIA (`ab-obs-04b5cdbc04-1`).
+            # `_digits` picotava o nome e produzia `045041` — e quando o nome não
+            # tinha dígito nenhum, caía no literal `"attendance-channel"`,
+            # 📊 que já apareceu numa sessão de produção.
+            #
+            # A busca da sessão aberta e o índice de deduplicação usam
+            # `(observer_number, message_id)` SEM `company_id`. Duas corretoras
+            # caindo no mesmo valor teriam as conversas FUNDIDAS.
+            #
+            # Prefixar com a corretora garante unicidade sem depender da forma do
+            # identifier. O valor deixa de fingir que é telefone — e passa a ser
+            # o que sempre foi: a identidade do canal daquela corretora.
+            "observer_number": f"{str(company_id or 'sem-empresa')[:8]}:"
+                               f"{_digits(channel_number) or str(channel_number or 'canal')[:24]}",
             "counterparty": _digits(counterparty) or str(counterparty or "unknown"),
             "insurer_key": None,
             "direction": "out" if direction == "out" else "in",

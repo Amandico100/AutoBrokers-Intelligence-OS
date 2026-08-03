@@ -76,8 +76,18 @@ class Settings(BaseSettings):
 
     # WhatsApp webhook security (42W0)
     # AUTH_MODE: disabled | shared_secret | provider_signature.
-    # Produção deve usar shared_secret/provider_signature; dev pode disabled (com warning).
-    WHATSAPP_WEBHOOK_AUTH_MODE: str = "disabled"
+    #
+    # SPEC-063 Bloco H — o padrão era `disabled`, e o EasyPanel NÃO define esta
+    # variável: produção rodava com a rota legada `/webhook/z-api` aberta,
+    # resolvendo o TENANT pelo `connectedPhone` do CORPO da requisição.
+    #
+    # Quem soubesse o número conectado de uma corretora — que ela publica no
+    # site — podia injetar mensagem no tenant dela.
+    #
+    # O padrão passa a ser `shared_secret`: nasce fechado. Ambiente de
+    # desenvolvimento continua podendo abrir explicitamente, e aí o aviso no log
+    # é o registro de que alguém escolheu isso.
+    WHATSAPP_WEBHOOK_AUTH_MODE: str = "shared_secret"
     WHATSAPP_WEBHOOK_SECRET: Optional[str] = None
     WHATSAPP_DEDUPE_TTL_SECONDS: int = 120  # dedupe de messageId (Redis)
 
