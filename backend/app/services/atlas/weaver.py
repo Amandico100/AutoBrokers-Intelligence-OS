@@ -147,7 +147,13 @@ def weave_session(map_acc: Dict[str, Any], events: List[Dict[str, Any]],
     # As telas continuam sendo guardadas, com `fase="humano"`: elas ensinam
     # como o especialista conduz, e isso vale. O que muda é que param de contar
     # como opção de menu a percorrer, e param de poluir a árvore de navegação.
-    from app.services.cartographer import _HUMANO_RE
+    #
+    # 03/08/2026 — quem responde a pergunta agora é `entrou_humano`, não o
+    # regex cru. 📊 Na HDI o regex reconhecia 3 das 23 formas de anunciar
+    # transferência (3 de 61 ocorrências), e alargá-lo sem freio marcaria a
+    # tela de BOAS-VINDAS como handoff, porque ela OFERECE falar com um
+    # analista "caso seja necessário". Ver `cartographer.entrou_humano`.
+    from app.services.cartographer import entrou_humano, nao_e_rota
 
     fase_humana = False
 
@@ -181,11 +187,21 @@ def weave_session(map_acc: Dict[str, Any], events: List[Dict[str, Any]],
         # é `compute_coverage`, no fim, com o quadro inteiro na mão.
         chave = "pos_handoff" if fase_humana else "pre_handoff"
         nodes[nid][chave] = int(nodes[nid].get(chave) or 0) + 1
-        if not fase_humana and _HUMANO_RE.search(texto_bruto):
+        if not fase_humana and entrou_humano(texto_bruto):
             # A tela que ANUNCIA a transferência ainda é da URA — ela é o fim
             # da rota, e o agente precisa saber que chegou nela.
             nodes[nid]["kind"] = "handoff_humano"
             fase_humana = True
+
+        # NÃO É ROTA — E FICA REGISTRADO POR QUÊ.
+        #
+        # Pesquisa de satisfação e lista gerada pelo cliente não têm caminho a
+        # percorrer. A marca fica NO NÓ, ao lado do texto: apagar o nó
+        # destruiria a evidência de que a tela existe e de por que ela não
+        # entra na conta. Quem lê a marca é `compute_coverage`.
+        motivo = nao_e_rota(texto_bruto)
+        if motivo:
+            nodes[nid]["nao_rota"] = motivo
         # RECÊNCIA (founder 18/07): guarda a última vez que a tela apareceu — o
         # recente prevalece; telas obsoletas são marcadas depois (compute_coverage).
         st = step["screen"].get("wa_timestamp")
@@ -352,6 +368,20 @@ def compute_coverage(map_acc: Dict[str, Any]) -> Dict[str, Any]:
         node["fase"] = "humano" if e_humana else "ura"
         if e_humana:
             continue
+        # TELA SEM ROTA SAI DOS DOIS LADOS DA FRAÇÃO.
+        #
+        # A marca vem de `weave_session`/`cartographer.nao_e_rota`. O nó fica
+        # no mapa com o texto e o motivo; o que ele não faz é oferecer opção
+        # para contar. Esta segunda barreira existe porque as opções podem ter
+        # vindo da estrutura `interactive` — que não passa por `parse_options`
+        # e portanto escapa do filtro de lá. É o caso da pesquisa da Mapfre,
+        # que chega como lista do WhatsApp.
+        if node.get("nao_rota"):
+            for opt in node.get("options") or []:
+                opt["confidence"] = "nao_rota"
+                opt["acao"] = node["nao_rota"]
+            node["status"] = "nao_rota"
+            continue
         for opt in node.get("options") or []:
             _acao_previa = acao_conhecida(opt.get("label") or "")
             if _acao_previa == "nao_e_opcao":
@@ -444,6 +474,32 @@ def compute_coverage(map_acc: Dict[str, Any]) -> Dict[str, Any]:
                         n["stale"] = True
         except (ValueError, OverflowError, OSError):
             pass
+    # A FÓRMULA DA COBERTURA, escrita por inteiro (03/08/2026).
+    #
+    #                   |{ (menu, opção) que já sabemos percorrer }|
+    #     cobertura  =  ───────────────────────────────────────────
+    #                   |{ (menu, opção) que SÃO rota a percorrer }|
+    #
+    # A unidade é o par (assinatura do menu, rótulo da opção) — opção DISTINTA,
+    # não ocorrência: a mesma tela vira vários nós quando o texto varia, e
+    # contar por nó inflava o numerador mais que o denominador (26 pontos de
+    # otimismo na Allianz em 29/07/2026).
+    #
+    # SAI DOS DOIS LADOS o que não é rota — não conta como coberto nem como
+    # lacuna, porque não há nada a percorrer:
+    #
+    #     nó com `fase="humano"`   conversa do especialista depois do handoff
+    #     nó com `nao_rota`        pesquisa de satisfação, lista do cliente
+    #     opção `nao_e_opcao`      texto corrido que o leitor pegou por engano
+    #
+    # ENTRA NOS DOIS LADOS o que é rota de comportamento já conhecido — conta
+    # como coberto sem precisar ser percorrido, porque percorrer não ensinaria
+    # nada: Voltar, Sair, menu, faixa de horário, escolha de prestador, nota de
+    # pesquisa solta, protocolo como rótulo (ver `cartographer.acao_conhecida`).
+    #
+    # A diferença entre os dois grupos é o que a exploração pode APRENDER.
+    # Lacuna que nunca fecha no denominador afunda a cobertura para sempre e
+    # manda o Founder explorar o que não existe.
     map_acc["coverage"] = {
         "options_total": len(universo),
         "options_covered": len(percorrido),
@@ -454,6 +510,10 @@ def compute_coverage(map_acc: Dict[str, Any]) -> Dict[str, Any]:
         # especialista, que é material valioso e não é rota.
         "nodes_ura": sum(1 for n in nodes.values() if n.get("fase") != "humano"),
         "nodes_humano": sum(1 for n in nodes.values() if n.get("fase") == "humano"),
+        # A terceira pilha, que antes se escondia dentro de "URA": telas que
+        # existem, foram capturadas, e não são caminho — pesquisa e lista do
+        # cliente. Separadas para que ninguém as procure como rota que falta.
+        "nodes_nao_rota": sum(1 for n in nodes.values() if n.get("nao_rota")),
     }
     return map_acc
 

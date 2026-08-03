@@ -76,18 +76,120 @@ _HUMANO_RE = re.compile(
     # ("Boa tarde!", "Ok um momento", "Precisa de escada?") entrou no Atlas
     # como se fosse tela de URA. O mapa da Allianz tinha 930 telas quando a URA
     # real tem umas dezenas — o resto era conversa.
+    # 03/08/2026 — A HDI TEM O MESMO DEFEITO, MAIOR.
+    #
+    # 📊 Medido em `observed_events` da HDI (1.965 eventos, 38 sessões, projeto
+    # dcajcvlzcjbmyapmklil): das 23 formas distintas de anunciar transferência
+    # este padrão pegava TRÊS — 3 ocorrências de 61. A frase canônica da
+    # seguradora,
+    #
+    #     "Para seguir com o seu atendimento será necessário falar com um de
+    #      nossos especialistas. Por favor, aguarde."
+    #
+    # passava batida porque o padrão espera `aguarde.{0,30}especialista` e a
+    # HDI INVERTE A ORDEM: o especialista vem antes do aguarde.
+    #
+    # O padrão ficou organizado por FAMÍLIA. Uma seguradora nova traz uma
+    # redação nova, quase nunca uma família nova.
+
+    # (1) TRANSFERÊNCIA ANUNCIADA — "eu vou passar você adiante".
     r"transferindo (?:voc[êe] )?para"
     r"|vou (?:te |lhe )?transferir"
     r"|vou (?:transferir|encaminhar|direcionar) (?:seu |o seu |sua |a sua )?"
     r"(?:caso|atendimento|solicita[çc][ãa]o|chamado|contato)"
-    r"|(?:transferir|encaminhar|direcionar).{0,20}(?:para|a) um(?:a)? "
+    # "vou te transferir para um DE NOSSOS analistas": o "de nossos" no meio
+    # quebrava `para um (especialista|analista)`, que exigia o substantivo
+    # colado no artigo. 📊 6 das formas cegas da HDI morriam exatamente aqui.
+    r"|(?:transferir|transfiro|encaminhar|direcionar)"
+    r".{0,25}(?:para|a) um(?:a)?(?: d[oe]s? nossos?| d[oe] nossas?)? ?"
+    r"(?:especialista|atendente|consultor|analista|colaborador)"
+    r"|(?:enquanto|assim que) (?:te |lhe )?transfiro"
+    r"|(?:irei|vamos|iremos|preciso|precisar[ei]?) (?:te |lhe )?"
+    r"(?:transferir|encaminhar|direcionar)"
+    r"|voc[êe] foi transferid[oa]"
+    r"|transferir para (?:o )?setor"
+
+    # (2) FILA — ninguém põe cliente em fila para falar com robô.
+    # 📊 A família mais comum da HDI: 12+10+7+5+4+2+2 ocorrências, variando só
+    # o tempo médio de espera. E "antedimento" é typo DELES, não meu.
+    r"|\bna fila\b|\bda fila\b|para fila de|fila de an?te?ndimento"
+    r"|aguarde at[ée] que um d[oe]s? nossos?"
+    r"|(?:procuramos|buscamos|localizamos) um (?:atendente|analista|especialista)"
+    r"|toda (?:a )?nossa equipe est[áa] em atendimento"
+
+    # (3) FALAR COM GENTE — a HDI diz "será necessário falar com".
+    r"|falar com um(?:a)? (?:d[oe]s? nossos?|d[oe] nossas?) ?"
+    r"(?:especialista|atendente|consultor|analista|colaborador)"
+    # "será necessário a AJUDA DE UM DE nossos analistas" e "será necessário a
+    # ANÁLISE DE nossos especialistas" — as duas na HDI, com e sem o "um de".
+    r"|(?:ajuda|an[áa]lise|aux[íi]lio)\s+d[eo](?:\s+um\s+d[eo])?\s+nossos?\s+"
     r"(?:especialista|atendente|consultor|analista)"
     r"|um de nossos atendentes"
+    r"|um de nossos analistas (?:vai|ir[áa]) seguir"
     r"|nossa equipe (?:vai|ir[áa]) (?:te )?atender"
     r"|aguarde.{0,30}(?:atendente|especialista|consultor)"
-    r"|meu nome [ée] [A-ZÀ-Ü][a-zà-ü]+.{0,30}(?:como posso|em que posso)"
-    r"|falar com um especialista agora",
+    r"|falar com um especialista agora"
+
+    # (4) A PESSOA SE APRESENTA — já é ela escrevendo, não a URA.
+    # 📊 11 nomes distintos na HDI: "Olá, meu nome é Camila Rossi e irei
+    # realizar seu atendimento." Cada nome virava uma TELA nova do mapa.
+    r"|meu nome [ée] .{1,60}?(?:irei realizar|vou realizar|darei continuidade"
+    r"|dar continuidade|e irei|e vou|como posso|em que posso)"
+    r"|dar[ei]? continuidade (?:no|ao) seu atendimento"
+
+    # (5) A PESSOA ENCERRA — o fim da conversa humana também é fase humana.
+    r"|conversa foi (?:encerrada|finalizada) pelo atendente"
+    r"|conversa foi colocada em espera",
     re.IGNORECASE)
+
+# A OFERTA CONDICIONAL NÃO É UM HANDOFF.
+#
+# 📊 A tela de BOAS-VINDAS da HDI — a primeira mensagem de toda sessão — diz:
+#
+#     "Ao final da abertura, após a pesquisa de satisfação, caso seja
+#      necessário, você pode falar com um de nossos analistas digitando
+#      'falar com atendente'."
+#
+# É instrução sobre o futuro, não passagem para gente. Sem este freio, alargar
+# `_HUMANO_RE` marcaria a PRIMEIRA tela de toda sessão da HDI como handoff — e
+# a URA INTEIRA viraria "conversa". É o estrago de 28/07/2026 na Allianz (782
+# de 919 telas carimbadas como humano) entrando pela porta oposta.
+#
+# O sinal é o modo verbal: quem OFERECE diz "você pode", "caso precise", "se
+# desejar", "digitando". Quem TRANSFERE diz "será necessário", "aguarde",
+# "vou te transferir".
+_HUMANO_HIPOTETICO = re.compile(
+    r"caso (?:seja|precise|queira|deseje|necess[áa]rio)"
+    r"|voc[êe] (?:pode|poder[áa]|consegue)"
+    r"|se (?:precisar|desejar|preferir|quiser|for necess[áa]rio)"
+    r"|digitando|basta (?:digitar|enviar|responder)"
+    r"|a qualquer momento|sempre que (?:precisar|quiser)",
+    re.IGNORECASE)
+
+# A pergunta é feita FRASE A FRASE. Sobre o texto inteiro, o "caso seja
+# necessário" da tela de boas-vindas absolveria uma transferência real escrita
+# três linhas abaixo — e o inverso também: uma frase de transferência de
+# verdade faria a oferta condicional passar por handoff.
+_FIM_DE_FRASE = re.compile(r"(?<=[.!?;])\s+|\n+")
+
+
+def entrou_humano(texto: str) -> bool:
+    """A URA acabou e daqui em diante quem escreve é uma pessoa?
+
+    É esta função — não `_HUMANO_RE` cru — que o Tecelão e o Cartógrafo devem
+    perguntar. O regex sozinho não distingue "será necessário falar com um de
+    nossos especialistas" (aconteceu) de "caso seja necessário, você pode falar
+    com um de nossos analistas" (pode acontecer um dia), e as duas frases estão
+    na MESMA seguradora — a segunda na tela de abertura de toda sessão.
+    """
+    for frase in _FIM_DE_FRASE.split(str(texto or "")):
+        if not frase.strip():
+            continue
+        if _HUMANO_RE.search(frase) and not _HUMANO_HIPOTETICO.search(frase):
+            return True
+    return False
+
+
 POLITE_EXIT = "Ah, me desculpe — era só uma dúvida sobre o menu e já consegui o que eu precisava. Pode encerrar por aqui. Muito obrigado! 🙂"
 
 
@@ -125,6 +227,133 @@ _NUMERADA = re.compile(r"(?:^|\n)\s*(\d{1,2})\s*[-–.)\]]\s*([^\n|]{2,80})")
 _ROTULO_VALOR = re.compile(r"^[^:\n]{1,40}:\s*\S")
 
 
+# MENU SEM CHAMADA PARA ESCOLHER NÃO É MENU.
+#
+# O terceiro ramo de `parse_options` — o das linhas nuas — é um PALPITE: ele
+# assume que duas ou mais linhas curtas no fim de uma mensagem são opções. É
+# ele que lê as listas da Evolution quando a estrutura não vem, e é ele que
+# produziu as duas piores invenções do mapa da HDI (📊 03/08/2026):
+#
+#     "Seguimos à disposição.\n\nFique tranquilo…\n\nHDI\nCerteza que te
+#      deixa seguro"          →  menu de 2 opções. É o RODAPÉ DE ASSINATURA.
+#
+#     "so para confirmar\nLocalização do Cliente\nEndereço: …\nLocalização
+#      de Destino\nEndereço: …"   →  menu de 2 opções. É o HUMANO digitando.
+#
+# Nenhuma das duas pede escolha nenhuma. A regra que separa é essa mesma: uma
+# tela que oferece caminho SEMPRE convida a escolher — pergunta, ou manda
+# selecionar, digitar, informar, indicar.
+#
+# 📊 Blast radius medido sobre os 10 mapas observados: dos 918 nós com opções,
+# 19 caem por esta regra — e 16 deles são anotação de analista, dump de dados
+# de prestador, assinatura ou lista de documentos. Dos 3 restantes, os menus
+# reais (Bradesco, Yelum, Porto) vêm da estrutura `interactive`, que nem passa
+# por aqui; e o da Porto ("Os horários mais próximos…") tem as três opções já
+# classificadas como horário/navegação, então não muda cobertura.
+_CHAMADA_PARA_ESCOLHER = re.compile(
+    r"\?"
+    r"|selecion|escolh|digit|inform|clique|toque|marque|respond"
+    r"|me (?:diga|dizer)|poderia"
+    r"|op[çc][ãa]o|op[çc][õo]es|qual|quais|prefere|abaixo|a seguir"
+    r"|indique|indicando|envie|enviar",
+    re.IGNORECASE)
+
+
+# PESQUISA DE SATISFAÇÃO NÃO É ROTA — EM NENHUM FORMATO.
+#
+# 📊 Medido nos mapas observados em 03/08/2026. A HDI usa DOIS formatos na
+# mesma seguradora, e nenhum era reconhecido:
+#
+#     "A sua opinião é muito importante. O que achou do atendimento prestado
+#      pelo nosso analista?"        →  5 - Ótimo / 4 - Bom / … / 1 - Péssimo
+#     "O quão satisfeito você está com este atendimento?"  →  1 / 2 / 3 / 4 / 5
+#
+# São 10 lacunas na HDI que nunca fecham: ninguém dá todas as notas, e a nota
+# que não deu vira buraco eterno. Mesma família do "Voltar", e a Porto já
+# tinha metade dela tratada por `_NOTA_DE_PESQUISA` ("09 = bom 🥰").
+#
+# O DETECTOR É DUPLO DE PROPÓSITO. A palavra "pesquisa" sozinha não serve —
+# estas TRÊS telas falam de pesquisa e SÃO rota de verdade:
+#
+#     Zurich  "…ainda não respondeu nossa pesquisa. O que acha de fazer isso
+#              agora?"                                    → Sim | Não
+#     Mapfre  "O acompanhamento está sendo satisfatório?" → Sim | Não
+#     Yelum   "…a pesquisa não foi respondida…"           → Responder pesquisa
+#                                                           | Novo atendimento
+#
+# O que separa é a ESCALA. A tela de pesquisa oferece uma RÉGUA: números nus,
+# ou os degraus ótimo/bom/neutro/ruim/péssimo. Quem oferece Sim/Não está
+# perguntando o caminho — não pedindo nota.
+_PEDIDO_DE_NOTA = re.compile(
+    r"qu[ãa]o satisfeit|grau de satisfa[çc][ãa]o|pesquisa de satisfa[çc][ãa]o"
+    r"|avalie|avaliar o atendimento|como voc[êe] avalia"
+    r"|sua opini[ãa]o [ée] (?:muito )?importante"
+    r"|o que achou do atendimento"
+    r"|d[êe] (?:uma )?nota|nota de \d+ a \d+"
+    r"|\d+ muito bom e \d+ muito ruim",
+    re.IGNORECASE)
+
+# Os degraus da régua. `bo[am]` cobre "Bom"/"Boa"; o número nu cobre a escala
+# crua ("1\n2\n3\n4\n5") que a HDI manda sem rótulo nenhum.
+_PALAVRA_DE_NOTA = re.compile(
+    r"\b(?:[óo]tim[oa]|bo[am]|regular|neutr[oa]|indiferente|ruim|p[ée]ssim[oa]"
+    r"|satisfeit[oa]|insatisfeit[oa]|excelente)\b",
+    re.IGNORECASE)
+
+
+def _e_degrau_de_escala(linha: str) -> bool:
+    s = str(linha or "").strip()
+    if not s:
+        return False
+    nu = re.sub(r"[^\w\s]", " ", s).strip()
+    if re.fullmatch(r"\d{1,2}", nu):
+        return True
+    return bool(_PALAVRA_DE_NOTA.search(nu))
+
+
+# LISTA GERADA PELO CLIENTE NÃO É ROTA.
+#
+# 📊 "Identificamos que há mais de um veículo para esta apólice, por favor,
+# *digite o número* indicando o veículo…" — a HDI lista as placas DAQUELE
+# segurado. Cada cliente recebe uma lista diferente, então cada item é uma
+# lacuna que nunca fecha. É a mesma família da lista de oficinas próximas da
+# Porto (`_ESCOLHA_DE_PRESTADOR`) e da lista de protocolos
+# (`_PROTOCOLO_COMO_OPCAO`).
+#
+# O templatizador já apaga as placas reconhecíveis, mas sobrou "17 - Placa
+# 0KM0000" (placa de zero-quilômetro, que não tem a forma de placa) e o
+# "18 - Nenhuma das opções anteriores" que fecha a lista. Por isso a regra é
+# de TELA e não de rótulo: "Nenhuma das anteriores" é opção LEGÍTIMA em dois
+# menus reais da HDI ("Criança | Idoso | … | Nenhuma das anteriores") e não
+# pode ser descartada pelo texto dela.
+#
+# Deliberadamente estreita: a Porto tem "Por favor, selecione o veículo." sem
+# o "mais de um", e ali "Outro veículo" é rota de verdade — fica de fora.
+_LISTA_DO_CLIENTE = re.compile(
+    r"(?:identificamos|identifiquei|encontramos|encontrei)[^.\n]{0,60}"
+    r"mais de (?:um ve[íi]culo|uma ap[óo]lice|um contrato)"
+    r"|digite o n[úu]mero[^.\n]{0,40}indicando o ve[íi]culo",
+    re.IGNORECASE)
+
+
+def nao_e_rota(text: str) -> Optional[str]:
+    """Esta TELA inteira não oferece caminho nenhum? Devolve o motivo, ou None.
+
+    Difere de `acao_conhecida`, que julga um rótulo: aqui o veredito é da tela.
+    Uma tela marcada assim continua no mapa com o texto e o motivo — é
+    evidência, e apagá-la destruiria a prova de por que ela não conta. O que
+    ela deixa de ter é OPÇÃO: e sem opção, ela sai dos dois lados da fração da
+    cobertura (ver `weaver.compute_coverage`).
+    """
+    s = _sem_negrito(str(text or ""))
+    if _PEDIDO_DE_NOTA.search(s) and sum(
+            1 for ln in s.splitlines() if _e_degrau_de_escala(ln)) >= 3:
+        return "pesquisa_de_satisfacao"
+    if _LISTA_DO_CLIENTE.search(s):
+        return "lista_do_cliente"
+    return None
+
+
 def parse_options(text: str) -> List[str]:
     """Extrai os rótulos clicáveis de uma tela renderizada.
 
@@ -138,7 +367,14 @@ def parse_options(text: str) -> List[str]:
     como `"2"` — que é o que a atendente digitou — nunca casa com a opção, e a
     rota aparece como não percorrida mesmo tendo sido percorrida centenas de
     vezes.
+
+    Telas que `nao_e_rota` reprova saem daqui SEM opção nenhuma — pesquisa de
+    satisfação e lista gerada pelo cliente não têm caminho a percorrer, e o
+    que elas produziam era lacuna que nunca fecha.
     """
+    if nao_e_rota(text):
+        return []
+
     limpo = _sem_negrito(text)
     labels: List[str] = []
 
@@ -155,7 +391,10 @@ def parse_options(text: str) -> List[str]:
                 rotulo = cabeca.strip()
         labels.append(f"{numero} - {rotulo}" if rotulo else numero)
 
-    if not labels:
+    # O RAMO DO PALPITE — e ele só corre se a tela CONVIDAR a escolher.
+    # Ver `_CHAMADA_PARA_ESCOLHER`: sem convite, linha curta no fim da mensagem
+    # é assinatura da seguradora ou frase de gente, não item de menu.
+    if not labels and _CHAMADA_PARA_ESCOLHER.search(limpo):
         lines = [ln.strip() for ln in limpo.splitlines() if ln.strip()]
         candidates: List[str] = []
         for ln in lines[1:]:  # a 1ª linha é o corpo/pergunta
@@ -216,8 +455,14 @@ def parse_options(text: str) -> List[str]:
 # saída de emergência quando ele errou o caminho, e "Sair" é como encerrar
 # sem deixar a conversa pendurada.
 _NAVEGACAO = (
+    # "Responder novamente" é a irmã do "Voltar" na HDI: a tela "Não entendi.
+    # Lembre-se que, para responder, você precisa selecionar o botão…" oferece
+    # as duas, e só "Voltar" era reconhecida. 📊 A outra ficava como lacuna que
+    # nunca fecha — ninguém erra de propósito num atendimento real, e se
+    # errasse não ensinaria nada: já se sabe que ela repete a pergunta.
     ("voltar", re.compile(r"^(?:voltar|volta|retornar|voltar ao menu|menu anterior|"
-                          r"voltar ao in[íi]cio|voltar para o in[íi]cio)$", re.IGNORECASE)),
+                          r"voltar ao in[íi]cio|voltar para o in[íi]cio|"
+                          r"responder novamente|tentar novamente)$", re.IGNORECASE)),
     ("sair",   re.compile(r"^(?:sair|encerrar|finalizar|encerrar atendimento|"
                           r"finalizar atendimento|encerrar conversa)$", re.IGNORECASE)),
     ("menu",   re.compile(r"^(?:menu principal|in[íi]cio|menu|come[çc]ar de novo)$",
@@ -228,8 +473,15 @@ _NAVEGACAO = (
 # ("{DATA} (quarta-feira)", "entre 10h e 12h"), então essas opções NUNCA
 # fecham: o mapa de amanhã cria lacunas novas que ninguém percorre. E todas
 # levam ao mesmo lugar — a tela de confirmação do agendamento.
+#
+# 03/08/2026 — a faixa de horário também vem com NOME na frente.
+#
+# 📊 A HDI oferece "Manhã (08h às 12h)" e "Tarde (13h às 18h)". O padrão
+# exigia que a faixa começasse a linha (`^\s*(?:entre\s+)?\d`), então as duas
+# eram lacuna. É a mesma coisa que "entre 10h e 12h": qualquer período serve,
+# e todos levam à confirmação do agendamento.
 _ESCOLHA_DE_HORARIO = re.compile(
-    r"\{DATA\}|^\s*(?:entre\s+)?\d{1,2}h(?:\d{2})?\s*(?:[àa]s|e|-)\s*\d{1,2}h|"
+    r"\{DATA\}|(?:entre\s+)?\d{1,2}\s*h(?:\d{2})?\s*(?:[àa]s|as|at[ée]|e|-)\s*\d{1,2}\s*h|"
     r"(?:segunda|ter[çc]a|quarta|quinta|sexta|s[áa]bado|domingo)-?feira",
     re.IGNORECASE)
 
@@ -426,7 +678,7 @@ def _decide_reply(exp: Dict[str, Any], node_id: str, text: str,
 
     # HUMANO entrou (freio novo 14/07): saída educada e fim DEFINITIVO da
     # exploração desta seguradora — nunca conversar usando nome de cliente.
-    if _HUMANO_RE.search(text):
+    if entrou_humano(text):
         exp["nodes"][node_id]["kind"] = "humano"
         exp["human_engaged"] = True
         exp["state"] = "done"

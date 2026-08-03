@@ -17,6 +17,7 @@ import unicodedata
 from typing import Any, Dict, List, Optional
 
 from portal_worker.journeys import JourneyResult
+from portal_worker.journeys.vidros_lanternas import explicar_match
 
 VALID_ACTIONS = ("fill", "select", "click", "check", "done", "ask_human")
 MAX_STEPS = 22
@@ -137,7 +138,10 @@ _SYSTEM = (
     "Se o botao Avancar/Continuar aparecer DESABILITADO (disabled) ou o clique nao mudar a tela, "
     "e porque um campo OBRIGATORIO ainda esta VAZIO: o payload traz 'pending_required' = a LISTA "
     "EXATA dos campos que faltam (com o label). Preencha CADA UM deles antes de Avancar — um por "
-    "vez, comecando pelo primeiro de pending_required. Para um campo 'select', use action select com "
+    "vez, comecando pelo primeiro de pending_required. Se uma acao sua voltar "
+    "'click_bloqueado: ... Falta preencher: X, Y' em acoes_ja_feitas, o botao EXISTE e esta "
+    "BLOQUEADO: NAO reclique — preencha X e depois Y. 'click_notfound' e outra coisa: o botao nao "
+    "esta na tela (procure o rotulo certo). Para um campo 'select', use action select com "
     "target = o label/name do campo (ex.: 'tipo de telefone') e value = a opcao (ex.: 'Comercial'). "
     "NUNCA repita a mesma acao que ja aplicou (ex.: reselecionar um campo que ja tem valor) — olhe "
     "'pending_required' e mire no que AINDA falta. 'mdselects' lista os dropdowns Material com label/"
@@ -185,19 +189,55 @@ async def decide_next_action(state: Dict[str, Any], goal: str, collected: Dict[s
 
 
 # ---- aplicar acao (imperativo Playwright) ----
-async def _click_button(page, text: str) -> bool:
+async def _click_button(page, text: str) -> str:
+    """'clicked' | 'disabled' (existe mas esta bloqueado) | 'notfound'.
+
+    A diferenca importa: 📊 03/08/2026 — 31 dos 34 acionamentos com passos
+    gravados bateram em 'click_notfound' no Avancar, e o cerebro recebia a mesma
+    palavra tanto para 'o botao sumiu' quanto para 'o botao existe mas falta
+    preencher um campo'. Sem saber a diferenca, ele reclicava ate a tela ser
+    declarada travada. Botao DESABILITADO nao e botao ausente: e campo faltando."""
     t = _norm(text)
+    achou_desabilitado = False
     for b in await page.query_selector_all("button, a[role=button], input[type=submit], input[type=button]"):
         try:
-            if not await b.is_visible() or await b.is_disabled():
-                continue  # botao disabled (ex.: Avancar aguardando campo obrigatorio) -> pula
+            if not await b.is_visible():
+                continue
             label = _norm(await b.inner_text() or "") or _norm(await b.get_attribute("value") or "")
-            if t and t in label:
-                await b.click()
-                return True
+            if not (t and t in label):
+                continue
+            if await b.is_disabled():
+                achou_desabilitado = True
+                continue
+            await b.click()
+            return "clicked"
         except Exception:  # noqa: BLE001
             continue
-    return False
+    return "disabled" if achou_desabilitado else "notfound"
+
+
+async def _campos_que_faltam(page) -> List[str]:
+    """Os obrigatorios ainda vazios — o motivo real de um Avancar desabilitado.
+    Devolve os rotulos para o cerebro mirar no campo certo em vez de reclicar."""
+    try:
+        return await page.evaluate(
+            """() => {
+              const clean = t => (t||'').replace(/\\s+/g,' ').trim();
+              const vis = el => !!(el.offsetParent || el.getClientRects().length);
+              const rot = e => { const c = e.closest('md-input-container,.md-input-container,md-autocomplete');
+                    const l = c && c.querySelector('label'); if (l) return clean(l.textContent);
+                    return clean((e.labels && e.labels[0] && e.labels[0].textContent)
+                       || e.getAttribute('aria-label') || e.getAttribute('placeholder')
+                       || e.getAttribute('name') || e.id); };
+              return [...document.querySelectorAll(
+                  'input.ng-invalid-required,textarea.ng-invalid-required,md-select.ng-invalid-required,'
+                + 'md-select.ng-invalid.ng-required,md-autocomplete.ng-invalid-required,'
+                + 'md-datepicker.ng-invalid-required,md-checkbox.ng-invalid-required')]
+                .filter(vis).map(rot).filter(Boolean).slice(0, 8);
+            }"""
+        ) or []
+    except Exception:  # noqa: BLE001
+        return []
 
 
 async def _find_input(page, target: str):
@@ -364,9 +404,15 @@ def score_option_tokens(want: str, option: str) -> int:
 async def _apply_mdselect(page, target: str, value: str):
     """Dirige um <md-select> do jeito CERTO (AngularJS so atualiza o ng-model assim):
     clica p/ abrir o overlay e clica no <md-option> pelo texto. Retorna None se a tela
-    NAO tem md-select alvo (cai no _apply_select nativo). Match por SIMILARIDADE de
-    tokens; em campo CRITICO sem match, devolve as opcoes reais ao cerebro (nunca
-    chuta a 1a opcao — foi assim que 'vidro da porta' virou 'VIDRO PARABRISA')."""
+    NAO tem md-select alvo (cai no _apply_select nativo).
+
+    QUEM DECIDE e o match_option (puro, testavel offline, um so no sistema). Antes
+    existia um segundo placar escrito em JS aqui dentro, e era ELE que rodava em
+    producao: bastava UM token em comum para clicar. 📊 03/08/2026 — em 34
+    acionamentos com passos gravados, esse placar escolheu campo critico 17 vezes e
+    NUNCA parou para perguntar; 6 escolhas estavam erradas ('vidro da porta' ->
+    'VIDRO PARABRISA - CARGA', 3x; relato de furto -> 'CHOQUE TERMICO', 3x).
+    Em campo CRITICO sem match confiante, devolve as opcoes reais ao cerebro."""
     m = await _find_mdselect(page, target, value)
     if m is None:
         return None
@@ -393,54 +439,54 @@ async def _apply_mdselect(page, target: str, value: str):
         return "mdselect_open_fail"
     await page.wait_for_timeout(650)
     try:
-        # Casa E CLICA a md-option em JS: o ng-click do AngularJS dispara igual, mas
-        # e IMUNE a interceptacao de overlay/backdrop (o click do Playwright estourava
-        # 4s quando o container de um md-select anterior interceptava). Escopo nas
-        # md-option VISIVEIS (as do select ja fechado ficam no DOM com offsetParent nulo).
-        # Match por SIMILARIDADE de tokens (espelho de score_option_tokens): mais
-        # palavras em comum vence; exato = prioridade. Campo CRITICO sem nenhum token
-        # em comum -> NAO clica: devolve as opcoes reais p/ o cerebro decidir.
-        res = await page.evaluate(
-            """(args) => {
-              const want = args.want, critical = args.critical;
-              const n = t => (t||'').normalize('NFKD').replace(/[\\u0300-\\u036f]/g,'').trim().toLowerCase();
-              const stop = new Set(['de','da','do','das','dos','e','o','a','os','as','um','uma','no','na','em','para','por','com']);
-              const toks = s => n(s).replace(/-/g,' ').split(/\\s+/).filter(t => t && !stop.has(t));
-              const w = n(want); const wt = toks(want);
-              const vis = el => !!(el.offsetParent || el.getClientRects().length);
-              const opts = [...document.querySelectorAll('md-option')].filter(vis);
-              const isSel = o => n(o.textContent).includes('selecione');
-              const real = opts.filter(o => !isSel(o));
-              if (!real.length) return {ok:false, n:opts.length};
-              let best = null, bestScore = -1;
-              for (const o of real) {
-                const ot = n(o.textContent);
-                let sc = (w && ot === w) ? 999 : toks(ot).filter(t => wt.includes(t)).length;
-                if (sc > bestScore) { best = o; bestScore = sc; }
-              }
-              if (bestScore <= 0) {
-                if (critical) return {ok:false, nomatch:true,
-                  options: real.map(o => (o.textContent||'').trim().slice(0,60)).slice(0,20)};
-                best = real[0];   // campo de formato: qualquer opcao valida serve
-              }
-              best.click();
-              return {ok:true, text:(best.textContent||'').trim().slice(0,40), score:bestScore};
-            }""",
-            {"want": value, "critical": _is_critical_select(target)},
-        )
-        await page.wait_for_timeout(300)
-        if isinstance(res, dict) and res.get("ok"):
-            return f"mdselect={_norm(res.get('text') or '')}"
-        if isinstance(res, dict) and res.get("nomatch"):
-            # Fecha o overlay e devolve as opcoes REAIS ao cerebro (proxima decisao
-            # ve a lista em acoes_ja_feitas e escolhe o texto exato). Inteligencia,
-            # nao chute.
+        # 1) LER as opcoes reais do overlay. So leitura — a decisao e do Python.
+        # Escopo nas md-option VISIVEIS (as do select ja fechado ficam no DOM com
+        # offsetParent nulo, e clicar nelas marcaria o campo errado).
+        visiveis = []
+        for o in await page.query_selector_all("md-option"):
             try:
-                await page.keyboard.press("Escape")
+                if await o.is_visible():
+                    txt = " ".join((await o.inner_text() or "").split())
+                    if txt:
+                        visiveis.append((txt, o))
             except Exception:  # noqa: BLE001
-                pass
-            opts = [str(o) for o in (res.get("options") or [])]
-            return "mdselect_options=" + " | ".join(opts)
+                continue
+        reais = [(t, o) for t, o in visiveis if "selecione" not in _norm(t)]
+        if reais:
+            # 2) DECIDIR com a funcao PURA — a mesma que os testes exercitam offline.
+            critico = _is_critical_select(target)
+            escolha = explicar_match(value, [t for t, _ in reais])["escolha"]
+            if escolha is None and not critico:
+                escolha = reais[0][0]      # campo de formato: qualquer valor serve
+            if escolha is None:
+                # Campo CRITICO sem match confiante: FECHA o overlay e devolve as
+                # opcoes REAIS ao cerebro. A proxima decisao ve a lista em
+                # acoes_ja_feitas e copia o texto exato. Inteligencia, nao chute.
+                try:
+                    await page.keyboard.press("Escape")
+                except Exception:  # noqa: BLE001
+                    pass
+                return "mdselect_options=" + " | ".join(t[:60] for t, _ in reais[:20])
+            # 3) CLICAR a opcao escolhida. Primeiro pelo elemento; se o backdrop de
+            # um md-select anterior interceptar (estourava 4s no Playwright), cai
+            # no ng-click via JS, que e imune a interceptacao.
+            alvo = next(o for t, o in reais if t == escolha)
+            try:
+                await alvo.click(timeout=3000)
+            except Exception:  # noqa: BLE001
+                await page.evaluate(
+                    """(txt) => {
+                      const lim = t => (t||'').replace(/\\s+/g,' ').trim();
+                      const vis = el => !!(el.offsetParent || el.getClientRects().length);
+                      const o = [...document.querySelectorAll('md-option')].filter(vis)
+                                 .find(x => lim(x.textContent) === txt);
+                      if (o) { o.click(); return true; }
+                      return false;
+                    }""",
+                    escolha,
+                )
+            await page.wait_for_timeout(300)
+            return f"mdselect={_norm(escolha)}"
     except Exception:  # noqa: BLE001
         pass
     # DIAGNOSTICO: nada clicavel — grava o overlay real p/ ver o que tem.
@@ -545,8 +591,77 @@ async def apply_action(page, action: Dict[str, Any]) -> str:
     if a == "check":
         return await _apply_check(page, target, value)
     if a == "click":
-        return "clicked" if await _click_button(page, target) else "click_notfound"
+        r = await _click_button(page, target)
+        if r == "clicked":
+            return "clicked"
+        if r == "disabled":
+            faltam = await _campos_que_faltam(page)
+            return ("click_bloqueado: o botao existe mas esta DESABILITADO. Falta preencher: "
+                    + (", ".join(faltam) if faltam else "campo obrigatorio nao identificado"))
+        return "click_notfound"
     return "noop"
+
+
+def _rotulo_do_campo(state: Dict[str, Any], alvo: str) -> str:
+    """PURO: a pergunta LITERAL que o portal fez naquele campo. O cerebro mira
+    ora pelo name tecnico ('qualItemDanificado'), ora pelo rotulo — aqui o
+    name vira a frase que o humano vai ler ('Qual foi a peca danificada?')."""
+    t = _norm(alvo)
+    if not t:
+        return ""
+    for campo in list((state or {}).get("mdselects") or []) + list((state or {}).get("selects") or []):
+        nome, rotulo = _norm(campo.get("name") or ""), str(campo.get("label") or "").strip()
+        if rotulo and nome and (t == nome or t in nome or nome in t):
+            return rotulo
+    return alvo
+
+
+def _pedido_do_segurado(collected: Dict[str, Any]) -> Dict[str, Any]:
+    """PURO: o que o segurado disse, do jeito que ele disse. Vai junto com toda
+    parada — sem isso, quem for resolver no lugar do robo nao sabe o que casar."""
+    dano = (collected or {}).get("dano") or {}
+    return {k: v for k, v in {
+        "peca": dano.get("peca"), "como": dano.get("como"),
+        "onde": dano.get("onde"), "descricao": dano.get("descricao"),
+    }.items() if v}
+
+
+async def _estado_seguro(page) -> Dict[str, Any]:
+    """capture_state que nunca derruba a parada. Registrar o motivo do
+    needs_human nao pode transformar uma parada honesta em 'failed'."""
+    try:
+        return await capture_state(page)
+    except Exception:  # noqa: BLE001
+        return {}
+
+
+def _registrar_parada(evidence: Dict[str, Any], state: Dict[str, Any], collected: Dict[str, Any],
+                      campo: str = "", pergunta: str = "", opcoes: Optional[List[str]] = None) -> None:
+    """Uma parada so vale se um humano resolver em 10 segundos. Entao ela guarda
+    SEMPRE: o passo, a pergunta literal do portal, TODAS as opcoes oferecidas e o
+    que o segurado disse. 📊 03/08/2026: nos 33 needs_human de producao,
+    evidence.opcoes estava NULO em 33 — ninguem tinha como decidir sem reabrir o
+    portal, e a proxima versao do match_option nao tinha com o que aprender."""
+    state = state or {}
+    evidence["passo"] = {
+        "url": state.get("url") or "",
+        "titulo": state.get("heading") or "",
+        "obrigatorios_vazios": state.get("pending_required") or [],
+    }
+    evidence["pedido_do_segurado"] = _pedido_do_segurado(collected)
+    if campo:
+        evidence["campo"] = campo
+    if pergunta:
+        evidence["pergunta"] = pergunta
+    if opcoes:
+        evidence["opcoes"] = [str(o) for o in opcoes]
+    # Se o cerebro nao nomeou o campo, guarda TODOS os dropdowns da tela com as
+    # opcoes reais: e o material bruto do proximo ajuste do casamento.
+    if not evidence.get("opcoes"):
+        listas = [{"campo": s.get("label") or s.get("name") or "", "opcoes": s.get("options") or []}
+                  for s in (state.get("selects") or []) if s.get("options")]
+        if listas:
+            evidence["dropdowns_da_tela"] = listas[:6]
 
 
 async def run_adaptive(page, goal: str, collected: Dict[str, Any], evidence: Dict[str, Any],
@@ -559,7 +674,11 @@ async def run_adaptive(page, goal: str, collected: Dict[str, Any], evidence: Dic
             evidence["final"] = state.get("text", "")[:600]
             return JourneyResult(status="done", captured={"stage": "protocolo"}, message="protocolo capturado (adaptive)")
         if is_confirm_screen(state) and not confirm:
+            # A TRAVA: o passo 6 e o que ABRE o pedido na seguradora. Sem
+            # confirm=True nada e enviado — para aqui e espera aprovacao humana.
             evidence["stage_80"] = state.get("text", "")[:600]
+            _registrar_parada(evidence, state, collected,
+                              pergunta=state.get("heading") or "Confirme a peca danificada")
             return JourneyResult(status="needs_human", captured={"stage": "confirme_80"},
                                  message="cheguei na confirmacao (80%) — aprove para enviar")
         action = await decide_next_action(state, goal, collected, history)
@@ -571,6 +690,8 @@ async def run_adaptive(page, goal: str, collected: Dict[str, Any], evidence: Dic
                                        "text": (state.get("text") or "")[:800],
                                        "buttons": state.get("buttons", [])}
             if not confirm:
+                _registrar_parada(evidence, state, collected,
+                                  pergunta=state.get("heading") or "revisao final antes de enviar")
                 return JourneyResult(status="needs_human", captured={"stage": "fim_preenchimento"},
                                      message="preenchimento completo — pare para revisao/aprovacao antes de enviar")
             return JourneyResult(status="done", message="concluido (adaptive)")
@@ -584,6 +705,7 @@ async def run_adaptive(page, goal: str, collected: Dict[str, Any], evidence: Dic
                 history[-1] = action
             else:
                 evidence["debug_dom"] = await _dump_dom(page)
+                _registrar_parada(evidence, state, collected, pergunta=str(action.get("value") or ""))
                 return JourneyResult(status="needs_human", captured={"pergunta": action.get("value")},
                                      message=f"preciso de: {action.get('value')}")
         applied = await apply_action(page, action)
@@ -594,6 +716,8 @@ async def run_adaptive(page, goal: str, collected: Dict[str, Any], evidence: Dic
         if applied.startswith("mdselect_options="):
             evidence["campo"] = action.get("target")
             evidence["opcoes"] = [o.strip() for o in applied.split("=", 1)[1].split("|") if o.strip()]
+            evidence["pergunta"] = _rotulo_do_campo(state, str(action.get("target") or ""))
+            evidence["pedido_do_segurado"] = _pedido_do_segurado(collected)
         sig = (action.get("action"), action.get("target"), action.get("value"), applied)
         steps = evidence.setdefault("adaptive_steps", [])
         steps.append({"a": sig[0], "t": sig[1], "v": (action.get("value") or "")[:30], "r": applied[:80]})
@@ -603,12 +727,16 @@ async def run_adaptive(page, goal: str, collected: Dict[str, Any], evidence: Dic
         if len(sigs) == 3 and len(set(sigs)) == 1:
             evidence["debug_dom"] = await _dump_dom(page)
             evidence["mdselect_overlay"] = LAST_MDSELECT_DEBUG
+            _registrar_parada(evidence, await _estado_seguro(page), collected,
+                              campo=str(sig[1] or ""), pergunta=f"o portal nao aceitou: {applied}"[:200])
             return JourneyResult(status="needs_human", captured={"stage": "sem_progresso"},
                                  message=f"tela travada: repetiu '{sig[0]} {sig[1]} {sig[2]}' -> {applied}")
         await page.wait_for_timeout(1200)
     # DIAGNOSTICO: se travou, despeja o DOM real da tela pra achar a causa (nao chutar).
     evidence["debug_dom"] = await _dump_dom(page)
     evidence["mdselect_overlay"] = LAST_MDSELECT_DEBUG
+    _registrar_parada(evidence, await _estado_seguro(page), collected,
+                      pergunta="cheguei ao teto de passos sem concluir")
     return JourneyResult(status="needs_human", captured={"steps": evidence.get("adaptive_steps")},
                          message="muitos passos sem concluir (adaptive) — precisa de revisao")
 

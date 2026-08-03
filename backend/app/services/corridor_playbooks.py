@@ -588,6 +588,26 @@ PORTO_AUTO_WHATSAPP_V1["finalize_abort_reply"] = "Sair e não agendar"
 # 100% bot até o protocolo) + 28/01/2026 (HDI). Botões por rótulo; timeout 12min.
 # PONTO DE NÃO-RETORNO: "quer o atendimento para agora ou prefere agendar?" —
 # responder Agora/Agendar ABRE o serviço na hora. O destino é seguro de informar.
+
+# ...e essa pergunta tem TRÊS redações reais. 📊 Banco de produção, 03/08/2026,
+# `observed_events` ILIKE '%prefere agendar%' (auto E residencial da família):
+#
+#   "Você está solicitando o atendimento *para* agora ou prefere agendar..."  hdi 9
+#   "Você quer o atendimento *para* agora ou prefere agendar..."       hdi 2 · yelum 17
+#   "Você precisa do atendimento agora ou prefere agendar..."          hdi 1 · yelum 4
+#
+# A terceira NÃO tem o "para" — e era a única que a âncora literal
+# `atendimento para agora ou prefere agendar` não pegava. O freio ficava furado
+# exatamente na tela que ABRE o serviço na hora. 📊 A ocorrência da HDI
+# (02/06/2026, sessão 26c0546f) é RESIDENCIAL: a mesma sessão traz "Para esse CPF
+# localizamos o serviço de *ENCANADOR*" e "Ela não possui mais utilizações de
+# encanador".
+#
+# O "para" vira opcional, e a âncora vira UMA constante: ela é usada no passo de
+# URA e nos freios de três playbooks, e três cópias literais divergem no dia em
+# que a seguradora escrever a quarta redação.
+_HDI_FAMILY_AGORA_OU_AGENDAR = r"atendimento (?:para )?agora ou prefere agendar"
+
 _YELUM_FAMILY_STEPS = [
     {"step": "identificacao_dado",
      "anchor": r"informe \*?apenas um dos dados|informe \*?um dos dados abaixo|informe somente o \*?cpf ou cnpj\*? do t[íi]tular",
@@ -656,7 +676,7 @@ _YELUM_FAMILY_STEPS = [
     {"step": "deseja_continuar", "anchor": r"deseja continuar (?:este|com o) atendimento", "reply": "Sim"},
     {"step": "falar_analista", "anchor": r"gostaria de falar com um de nossos analistas", "reply": "Sim",
      "notes": "72h/pós-atendimento (teste real 12/07): SIM → fila → analista humano recebe o resumo do caso e abre a nova solicitação"},
-    {"step": "quando_agora", "anchor": r"atendimento para agora ou prefere agendar", "reply": "Agora",
+    {"step": "quando_agora", "anchor": _HDI_FAMILY_AGORA_OU_AGENDAR, "reply": "Agora",
      "notes": "PONTO DE NÃO-RETORNO (abre na hora). Só alcançado em modo LIVE — no teste o freio cancela antes."},
     {"step": "aguarde_fila",
      "anchor": (r"ainda n[ãa]o identificamos a sua resposta|voc[êe] est[áa] na fila|alto volume de atendimentos|"
@@ -671,9 +691,243 @@ _YELUM_FAMILY_STEPS = [
 ]
 _YELUM_FAMILY_FINALIZE = [
     # Único gate real: responder 'Agora'/'Agendar' ABRE o serviço imediatamente.
-    r"atendimento para agora ou prefere agendar",
+    _HDI_FAMILY_AGORA_OU_AGENDAR,
     r"podemos confirmar", r"deseja confirmar",
 ]
+
+# ===========================================================================
+# FORMULÁRIO NATIVO (WhatsApp Flow) — a tela que não aceita texto
+# ===========================================================================
+# 📊 Desde 18/06/2026 a família HDI/Yelum substituiu as telas de condição do
+# veículo por um **WhatsApp Flow** (aplicativo dentro do WhatsApp). A mensagem
+# que o abre é sempre a mesma, e ela NÃO tem botões:
+#
+#   "Para que a remoção do veículo ocorra sem imprevistos, precisamos entender
+#    o local e as condições do veículo."
+#
+# 📊 `observed_events` (banco de produção, consultado em 03/08/2026): essa
+# mensagem aparece 4 vezes — hdi 18/06, hdi 15/07, hdi 18/07 e yelum 18/07 — e
+# são os 4 acionamentos mais recentes da família. TODOS param nela: o corredor
+# reconhece o marcador `[FORMULARIO NATIVO]` do parser de interativas e cai em
+# `handoff_triggers` → needs_human. Nenhum deles chegou ao protocolo.
+#
+# O que destrava é RESPONDER o formulário por código. E responder exige o
+# SCHEMA — quais telas, quais campos, e o **id** de cada opção. Ele está
+# capturado: o clique humano de 18/07/2026 (`msg_type='flow_reply'`,
+# `source='live'`) trouxe, dentro de `wa_flow_response_params.response_message`,
+# o formulário inteiro com `data-source` de cada componente.
+#
+# Este bloco é a transcrição desse schema. É DADO versionado, como o resto dos
+# corredores: nada aqui foi deduzido de tela parecida, e onde a captura veio
+# vazia (ver `rb_Ocupantes` id "4") o vazio ficou vazio.
+#
+# UM REGISTRO, DUAS REFERÊNCIAS: HDI e Yelum são o MESMO bot white-label e usam
+# o MESMO `flow_id`. O registro é um objeto só, apontado pelos dois playbooks —
+# `native_flows` de um É `native_flows` do outro (`is`, não `==`). Duplicar
+# criaria dois schemas para divergirem no dia em que a HDI mudar uma opção.
+NATIVE_FLOW_CONDICOES_VEICULO = "857030507196739"
+
+# Âncora da mensagem que ABRE o flow (o corpo vem antes do marcador do parser).
+NATIVE_FLOW_PROMPT_ANCHOR = r"precisamos entender o local e as condi[çc][õo]es do ve[íi]culo"
+
+_FLOW_CONDICOES_VEICULO_V2: Dict[str, Any] = {
+    "flow_id": NATIVE_FLOW_CONDICOES_VEICULO,
+    "flow_name": ("Automóvel - Detalhes do atendimento (veículo, local e ocupantes) V2 "
+                  "[Redução de perguntas]"),
+    "insurer_family": ("hdi", "yelum"),
+    "prompt_anchor": NATIVE_FLOW_PROMPT_ANCHOR,
+    # Procedência da transcrição — quem duvidar refaz a query.
+    "observed": {
+        "source": "observed_events.interactive → extra.paramsJSON → "
+                  "wa_flow_response_params.response_message",
+        "insurer_key": "hdi",
+        "msg_type": "flow_reply",
+        "event_source": "live",
+        "wa_timestamp": "2026-07-18T21:51:52Z",
+    },
+    "screens": [
+        {
+            "id": "scr_SituacaoVeiculo",
+            "title": "Situação do veículo",
+            "components": [
+                {
+                    "name": "rb_EmGaragemOuEstacionamento",
+                    "type": "RadioButtonsGroup",
+                    "label": "O veículo está em uma garagem ou estacionamento?",
+                    "required": True,
+                    # `"visible": "${data.isVisibleGaragem}"` — bandeira que só o
+                    # servidor da seguradora resolve. Offline não dá para avaliar,
+                    # e o lado seguro é tratar como VISÍVEL: assim o campo continua
+                    # obrigatório e o caso PEDE o dado, em vez de omitir em silêncio
+                    # um campo que o formulário pode estar exigindo.
+                    "visible_if": {"kind": "data", "key": "isVisibleGaragem"},
+                    "slot": "veiculo_em_garagem",
+                    # SEM padrão, de propósito. Esta resposta é o que decide se
+                    # `rb_NivelDaRua` — que escolhe o EQUIPAMENTO — chega a ser
+                    # perguntada. Chutar "Não" aqui seria a porta dos fundos da
+                    # regra que proíbe chutar o nível da rua.
+                    "default": None,
+                    "options": [{"id": "1", "title": "Sim"}, {"id": "0", "title": "Não"}],
+                    # Apelidos só onde a palavra JÁ significa a opção. "prédio",
+                    # "condomínio" e "shopping" ficaram de fora: carro parado na
+                    # rua em frente ao prédio não está em garagem nenhuma.
+                    "aliases": {
+                        "sim": "1", "s": "1", "garagem": "1", "estacionamento": "1",
+                        "subsolo": "1",
+                        "nao": "0", "n": "0", "rua": "0", "via publica": "0",
+                        "na rua": "0", "estacionado na rua": "0",
+                    },
+                },
+                {
+                    "name": "rb_NivelDaRua",
+                    "type": "RadioButtonsGroup",
+                    "label": "Em relação ao nível da rua, onde o veículo está?",
+                    "required": True,
+                    # `"visible": "`${form.rb_EmGaragemOuEstacionamento} == '1'`"` —
+                    # esta DÁ para avaliar offline, porque o form é o que estamos
+                    # montando. Veículo fora de garagem: a tela não aparece, o campo
+                    # não é exigido e não entra na resposta.
+                    "visible_if": {"kind": "form", "field": "rb_EmGaragemOuEstacionamento",
+                                   "equals": "1"},
+                    "slot": "veiculo_nivel_rua",
+                    # SEM padrão: escolhe o EQUIPAMENTO enviado (plataforma, asa
+                    # delta, munck). Errar aqui manda o guincho que não sobe a rampa.
+                    "default": None,
+                    "options": [
+                        {"id": "1", "title": "Subsolo",
+                         "description": "Acesso por rampa interna ou níveis abaixo do solo."},
+                        {"id": "2", "title": "Acima do nível da rua",
+                         "description": "Acesso por rampa íngreme ou acima do nível da via"},
+                        {"id": "3", "title": "Nível da rua - com restrição de acesso",
+                         "description": "Acesso direto pela rua, mas com restrições de espaço ou manobra"},
+                        {"id": "4", "title": "Nível da rua - com acesso livre",
+                         "description": "Acesso direto pela rua, com livre espaço para remoção e manobra"},
+                    ],
+                    # "rampa" NÃO é apelido de nada: aparece na descrição do
+                    # subsolo ("rampa interna") E na do acima do nível ("rampa
+                    # íngreme}"). Palavra ambígua num campo que escolhe equipamento
+                    # tem de ficar sem resposta, não virar moeda ao ar. Pelo mesmo
+                    # motivo "nível da rua" sozinho não resolve: serve às opções 3 e 4.
+                    "aliases": {
+                        "subsolo": "1", "garagem subterranea": "1", "abaixo do solo": "1",
+                        "acima": "2", "acima do nivel": "2", "elevado": "2", "rampa ingreme": "2",
+                        "restricao": "3", "com restricao": "3", "restricao de acesso": "3",
+                        "livre": "4", "acesso livre": "4",
+                    },
+                },
+                {
+                    "name": "ckb_SituacoesVeiculo",
+                    "type": "CheckboxGroup",
+                    "label": "O veículo possui alguma das características abaixo?",
+                    "required": True,
+                    "multiple": True,
+                    "slot": "veiculo_situacoes",
+                    # COM padrão: é a mesma resposta que o corredor já dava por
+                    # texto nos passos `cambio_rodas`, `rebaixado` e
+                    # `eletrico_hibrido` ("Não" em cada um) — e "nenhuma" é o que
+                    # ela vira quando as três viram uma tela só.
+                    "default": ["nenhuma_opcoes"],
+                    "none_option": "nenhuma_opcoes",
+                    "options": [
+                        {"id": "cambio_travado", "title": "Câmbio ou rodas travadas"},
+                        {"id": "veiculo_rebaixado", "title": "Veículo rebaixado"},
+                        {"id": "veiculo_blindado", "title": "Veículo blindado"},
+                        {"id": "eletrico_hibrido", "title": "Veículo elétrico ou híbrido"},
+                        {"id": "nenhuma_opcoes", "title": "Nenhuma das opções"},
+                    ],
+                    "aliases": {
+                        "cambio travado": "cambio_travado", "rodas travadas": "cambio_travado",
+                        "roda travada": "cambio_travado", "travado": "cambio_travado",
+                        "rebaixado": "veiculo_rebaixado",
+                        "blindado": "veiculo_blindado",
+                        "eletrico": "eletrico_hibrido", "hibrido": "eletrico_hibrido",
+                        "nenhuma": "nenhuma_opcoes", "nenhum": "nenhuma_opcoes",
+                        "nao": "nenhuma_opcoes", "nada": "nenhuma_opcoes",
+                    },
+                },
+            ],
+        },
+        {
+            "id": "scr_InformacoesLocal",
+            "title": "Informações do Local",
+            "components": [
+                {
+                    "name": "rb_InformacoesLocal",
+                    "type": "RadioButtonsGroup",
+                    "label": "Qual é a situação do local onde você está?",
+                    "required": True,
+                    "slot": "local_situacao",
+                    # SEM padrão: muda a PRIORIDADE do atendimento. Responder
+                    # "Local Seguro" por preguiça de perguntar é rebaixar, no
+                    # escuro, o caso de quem está parado num lugar perigoso.
+                    "default": None,
+                    # No JSON o `data-source` é `${data.dt_InformacoesLocal}`; os
+                    # valores vieram resolvidos em `screenState.data`.
+                    "options": [
+                        {"id": "6", "title": "Local Seguro"},
+                        {"id": "2", "title": "Local escuro ou mal iluminado"},
+                        {"id": "3", "title": "Área com pouca circulação de pessoas"},
+                    ],
+                    # Onde há dúvida, o apelido puxa para o lado MAIS protegido:
+                    # "deserto"/"isolado" viram "pouca circulação", que sobe a
+                    # prioridade. O caminho contrário — inferir "seguro" — é o que
+                    # não se faz.
+                    "aliases": {
+                        "seguro": "6", "local seguro": "6",
+                        "escuro": "2", "mal iluminado": "2", "sem iluminacao": "2",
+                        "pouca circulacao": "3", "deserto": "3", "isolado": "3",
+                    },
+                },
+            ],
+        },
+        {
+            "id": "scr_IdentificacaoOcupantes",
+            "title": "Identificação dos ocupantes",
+            "components": [
+                {
+                    "name": "rb_Ocupantes",
+                    "type": "RadioButtonsGroup",
+                    "label": "Há alguém no local com as dependências abaixo?",
+                    "required": True,
+                    "slot": "ocupantes_particularidade",
+                    # COM padrão: é literalmente a resposta que o corredor já dava
+                    # no passo de texto `ocupantes` ("Nenhuma das anteriores").
+                    "default": "1",
+                    "options": [
+                        {"id": "2", "title": "Criança"},
+                        {"id": "3", "title": "Idoso"},
+                        # 📊 O TÍTULO VEIO VAZIO NA CAPTURA. O JSON real traz
+                        # {"id":"4","title":""}. Inventar "Gestante" aqui seria
+                        # exatamente o defeito que este arquivo proíbe em menu de
+                        # URA — só que pior, porque ninguém reconferiria depois.
+                        # Sem título não há apelido, e por isso um caso que diga
+                        # "gestante" NÃO casa com opção nenhuma: vira `missing` e
+                        # o humano clica. Sai do escuro quando houver captura com
+                        # o título preenchido.
+                        {"id": "4", "title": "", "titulo_ausente": True},
+                        {"id": "5", "title": "Pessoa com deficiência"},
+                        {"id": "6", "title": "Cirurgia Recente"},
+                        {"id": "1", "title": "Nenhuma das anteriores"},
+                    ],
+                    "aliases": {
+                        "crianca": "2", "bebe": "2", "menor": "2",
+                        "idoso": "3", "idosa": "3",
+                        "pcd": "5", "deficiente": "5", "deficiencia": "5",
+                        "cirurgia": "6", "cirurgia recente": "6", "operado": "6",
+                        "nenhuma": "1", "nenhum": "1", "ninguem": "1", "nao": "1",
+                    },
+                },
+            ],
+        },
+    ],
+}
+
+# O registro. Um objeto, indexado por flow_id — os dois playbooks apontam para
+# ELE, não para cópias dele.
+_NATIVE_FLOWS_FAMILIA_HDI_YELUM: Dict[str, Dict[str, Any]] = {
+    NATIVE_FLOW_CONDICOES_VEICULO: _FLOW_CONDICOES_VEICULO_V2,
+}
+
 
 HDI_AUTO_WHATSAPP_V1 = _auto_playbook(
     "hdi", "hdi_assistencia_24h",
@@ -692,6 +946,9 @@ HDI_AUTO_WHATSAPP_V1["finalize_abort_reply"] = "Sair"  # 'Digite Sair para encer
 # Formulário nativo (flow) exige CLIQUE real — até a resposta estruturada existir,
 # pausa com dossiê (o marcador [FORMULARIO NATIVO] vem do parser de interativas).
 HDI_AUTO_WHATSAPP_V1["handoff_triggers"] = HDI_AUTO_WHATSAPP_V1["handoff_triggers"] + [r"formulario nativo"]
+# O schema do flow, para quando o transporte souber ENVIAR a resposta estruturada.
+# O gatilho de handoff acima continua valendo: ter o schema não é ter o canal.
+HDI_AUTO_WHATSAPP_V1["native_flows"] = _NATIVE_FLOWS_FAMILIA_HDI_YELUM
 
 # --- Yelum (ex-Liberty, grupo HDI): v3 minerado do fluxo REAL COMPLETO de
 # 16/03/2026 (conversa "Liberty Fácil Assist" = Yelum rebatizada; 100% bot até o
@@ -715,6 +972,8 @@ YELUM_AUTO_WHATSAPP_V1["subservice_menu_map"] = {
 }
 YELUM_AUTO_WHATSAPP_V1["finalize_abort_reply"] = "Sair"  # 'Digite Sair para encerrar'
 YELUM_AUTO_WHATSAPP_V1["handoff_triggers"] = YELUM_AUTO_WHATSAPP_V1["handoff_triggers"] + [r"formulario nativo"]
+# MESMO objeto do corredor da HDI (mesmo bot, mesmo flow_id). `is`, não `==`.
+YELUM_AUTO_WHATSAPP_V1["native_flows"] = _NATIVE_FLOWS_FAMILIA_HDI_YELUM
 
 TOKIO_AUTO_WHATSAPP_V1 = _auto_playbook(
     "tokio", "tokio_assistencia_24h",
@@ -1133,7 +1392,11 @@ HDI_RESIDENCIAL_WHATSAPP_V1: Dict[str, Any] = {
         r"formulario nativo",  # flow nativo exige clique real (mesmo do auto)
     ],
     "finalize_anchors": [
-        r"atendimento para agora ou prefere agendar",  # ponto de não-retorno da família HDI/Yelum
+        # ponto de não-retorno da família HDI/Yelum — o "para" é OPCIONAL: 📊 a
+        # tela residencial da HDI diz "Você precisa do atendimento agora ou
+        # prefere agendar" (sessão 26c0546f, 02/06/2026, encanador) e a âncora
+        # literal antiga não disparava justamente aqui.
+        _HDI_FAMILY_AGORA_OU_AGENDAR,
         r"podemos confirmar", r"posso confirmar", r"deseja confirmar",
     ],
     "finalize_abort_reply": "Sair",  # 'Digite Sair para encerrar'
@@ -1650,6 +1913,224 @@ def render_reply(step: Dict[str, Any], slots: Dict[str, Any]) -> Dict[str, Any]:
     if step.get("format") == "phone_br":
         reply = _format_phone_br(reply)
     return {"ok": True, "missing": [], "reply": reply}
+
+
+# ---------------------------------------------------------------------------
+# FORMULÁRIO NATIVO: montar a resposta por código
+# ---------------------------------------------------------------------------
+# `render_reply` responde uma tela de texto. Isto responde uma tela de APP: em
+# vez de uma string, um objeto com o id de cada opção — o `paramsJSON` que o
+# WhatsApp Flow espera de volta.
+#
+# É PURO: entra schema + slots, sai dicionário. Sem rede, sem banco, sem hora.
+# Dá para provar offline, e é por isso que o freio abaixo é confiável.
+
+
+def native_flow(playbook: Dict[str, Any], flow_id: str) -> Optional[Dict[str, Any]]:
+    """O schema do formulário nativo daquele `flow_id`, ou None.
+
+    Indexado por `flow_id` porque é o que a seguradora manda (o parser de
+    interativas já o entrega em `interactive.flow.flow_id`) — e porque duas
+    seguradoras da mesma família apontam para o MESMO registro."""
+    return (playbook.get("native_flows") or {}).get(str(flow_id or "").strip()) or None
+
+
+def detect_native_flow(playbook: Dict[str, Any], insurer_message: str) -> Optional[Dict[str, Any]]:
+    """O flow cuja mensagem de ABERTURA casa com a mensagem da seguradora.
+
+    Serve ao caso em que o `flow_id` não chegou (mensagem só com o corpo): a
+    frase que abre o formulário é estável e está guardada no schema. Sem
+    `prompt_anchor` declarado, o flow não é adivinhado."""
+    text = _norm(insurer_message)
+    for flow in (playbook.get("native_flows") or {}).values():
+        anchor = flow.get("prompt_anchor")
+        if anchor and re.search(anchor, text, re.IGNORECASE | re.DOTALL):
+            return flow
+    return None
+
+
+def _flow_components(flow_schema: Dict[str, Any]):
+    for screen in flow_schema.get("screens") or []:
+        for comp in screen.get("components") or []:
+            if comp.get("name"):
+                yield screen, comp
+
+
+def _flow_vazio(valor: Any) -> bool:
+    """Vazio é ausência de resposta. `False` é uma RESPOSTA."""
+    if isinstance(valor, bool):
+        return False
+    if valor is None:
+        return True
+    if isinstance(valor, (list, tuple, set)):
+        return not [v for v in valor if not _flow_vazio(v)]
+    return not str(valor).strip()
+
+
+def _flow_visivel(comp: Dict[str, Any], parcial: Dict[str, Any]) -> tuple:
+    """(visível?, é condicional?) do componente, dadas as respostas já montadas.
+
+    Três casos, e o do meio é o que importa:
+      - sem `visible_if`            → visível, direto;
+      - `${form.X} == 'v'`          → dá para avaliar: X já está montado, ou não;
+      - `${data.X}`, ou X ainda sem resposta → INDETERMINADO.
+
+    Indeterminado conta como VISÍVEL. É de graça: se X não foi respondido, X já
+    está em `missing` e o caso já está travado — incluir o dependente só entrega
+    a pergunta inteira de uma vez, em vez de devolvê-la de novo na rodada
+    seguinte. Tratar como invisível é que seria caro: omitiria, calado, um campo
+    que o formulário talvez esteja exigindo."""
+    cond = comp.get("visible_if")
+    if not cond:
+        return True, False
+    if cond.get("kind") == "form":
+        campo = str(cond.get("field") or "")
+        if campo not in parcial:
+            return True, True  # indeterminado
+        return str(parcial.get(campo)) == str(cond.get("equals")), False
+    return True, True  # ${data.*}: só o servidor da seguradora sabe
+
+
+def _resolver_opcao_de_flow(comp: Dict[str, Any], bruto: Any) -> Optional[str]:
+    """id da opção para o valor do caso. `None` = NÃO reconhecido — e não
+    reconhecido nunca vira o padrão (ver `montar_resposta_de_flow`)."""
+    if isinstance(bruto, bool):
+        bruto = "sim" if bruto else "nao"
+    raw = str(bruto).strip()
+    if not raw:
+        return None
+    options = comp.get("options") or []
+    for o in options:  # 1) o caso já fala em id
+        if raw == str(o.get("id")):
+            return str(o.get("id"))
+    token = _norm(raw).strip()
+    for o in options:  # 2) título exato — opção SEM título não casa com nada
+        titulo = _norm(o.get("title") or "").strip()
+        if titulo and token == titulo:
+            return str(o.get("id"))
+    alias = (comp.get("aliases") or {}).get(token)  # 3) apelido declarado
+    if alias:
+        return str(alias)
+    if len(token) >= 4:  # 4) contido em UM título só (dois = ambíguo = None)
+        hits = [str(o.get("id")) for o in options
+                if _norm(o.get("title") or "").strip() and token in _norm(o.get("title") or "")]
+        if len(hits) == 1:
+            return hits[0]
+    return None
+
+
+def montar_resposta_de_flow(flow_schema: Dict[str, Any], slots: Dict[str, Any]) -> Dict[str, Any]:
+    """Monta o `paramsJSON` de resposta do formulário nativo a partir dos slots.
+
+    Devolve::
+
+        {"ok": bool, "flow_id": str, "flow_name": str,
+         "params": dict | None,        # None quando ok=False — NUNCA parcial
+         "missing": [nome_do_campo],   # mesma forma de `render_reply`
+         "missing_detail": [{campo, pergunta, motivo, valor_recebido, opcoes,
+                             condicional}],
+         "defaults_used": [nome_do_campo]}
+
+    TRÊS REGRAS, e as três existem porque formulário meio preenchido é pior que
+    formulário nenhum — o primeiro despacha o equipamento errado, o segundo
+    chama um humano:
+
+    1. **Todo campo `required` visível precisa de valor.** Faltando um,
+       `ok=False` e `params=None`. Não existe resposta parcial.
+    2. **Padrão só cobre AUSÊNCIA.** Se o slot tem valor e ele não casa com
+       nenhuma opção, isso é `valor_nao_reconhecido` — vira `missing`, não vira
+       o padrão. É o que impede um caso que diz "gestante" (📊 opção cujo título
+       veio VAZIO na captura) de ser silenciosamente rebaixado para "Nenhuma das
+       anteriores".
+    3. **Só se responde o que a tela mostra.** Campo cuja condição de
+       visibilidade é FALSA não entra na resposta nem na lista de faltantes.
+
+    O `flow_token` NÃO sai daqui: ele é da sessão, muda a cada conversa, e quem
+    o injeta é o transporte na hora do envio. Manter a função pura é o que
+    permite provar tudo isto offline."""
+    slots = slots or {}
+    params: Dict[str, Any] = {}
+    missing: List[str] = []
+    detail: List[Dict[str, Any]] = []
+    defaults_used: List[str] = []
+
+    def _falta(comp: Dict[str, Any], motivo: str, valor: Any = None, condicional: bool = False) -> None:
+        missing.append(str(comp.get("name")))
+        detail.append({
+            "campo": str(comp.get("name")),
+            "pergunta": str(comp.get("label") or ""),
+            "motivo": motivo,
+            "valor_recebido": valor,
+            "condicional": condicional,
+            "opcoes": [{"id": str(o.get("id")), "titulo": str(o.get("title") or "")}
+                       for o in comp.get("options") or []],
+        })
+
+    for _screen, comp in _flow_components(flow_schema):
+        nome = str(comp.get("name"))
+        visivel, condicional = _flow_visivel(comp, params)
+        if not visivel:
+            continue
+
+        # O caso pode falar o nome do CAMPO (quem já conhece o flow) ou o nome do
+        # SLOT (o vocabulário do corredor). Os dois valem; o campo tem precedência.
+        bruto = slots.get(nome)
+        if _flow_vazio(bruto):
+            bruto = slots.get(str(comp.get("slot") or ""))
+
+        if _flow_vazio(bruto):
+            padrao = comp.get("default")
+            if padrao is not None:
+                params[nome] = list(padrao) if isinstance(padrao, (list, tuple)) else padrao
+                defaults_used.append(nome)
+            elif comp.get("required"):
+                _falta(comp, "sem_valor", None, condicional)
+            continue
+
+        if comp.get("multiple"):
+            itens = bruto if isinstance(bruto, (list, tuple, set)) else re.split(r"[;,/|]|\be\b", str(bruto))
+            ids: List[str] = []
+            nao_reconhecidos: List[str] = []
+            for item in itens:
+                if _flow_vazio(item):
+                    continue
+                oid = _resolver_opcao_de_flow(comp, item)
+                if oid:
+                    ids.append(oid)
+                else:
+                    nao_reconhecidos.append(str(item).strip())
+            if nao_reconhecidos:
+                _falta(comp, "valor_nao_reconhecido", nao_reconhecidos, condicional)
+                continue
+            ids = list(dict.fromkeys(ids))
+            nenhuma = comp.get("none_option")
+            # "Nenhuma das opções" junto de uma característica real é contradição
+            # da coleta, não do formulário: o fato positivo vence.
+            if nenhuma and len(ids) > 1 and nenhuma in ids:
+                ids = [i for i in ids if i != nenhuma]
+            if not ids:
+                if comp.get("required"):
+                    _falta(comp, "sem_valor", None, condicional)
+                continue
+            params[nome] = ids
+            continue
+
+        oid = _resolver_opcao_de_flow(comp, bruto)
+        if not oid:
+            _falta(comp, "valor_nao_reconhecido", bruto, condicional)
+            continue
+        params[nome] = oid
+
+    ok = not missing
+    return {
+        "ok": ok,
+        "flow_id": str(flow_schema.get("flow_id") or ""),
+        "flow_name": str(flow_schema.get("flow_name") or ""),
+        "params": params if ok else None,
+        "missing": missing,
+        "missing_detail": detail,
+        "defaults_used": defaults_used,
+    }
 
 
 def detect_handoff_trigger(playbook: Dict[str, Any], insurer_message: str) -> Optional[str]:

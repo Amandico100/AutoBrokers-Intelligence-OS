@@ -197,7 +197,7 @@ _SESSION_GAP_S = 2 * 3600
 
 
 def _history_message_id(counterparty: str, ts: Optional[int], i: int, from_me: bool,
-                        msg_type: str, text: Optional[str]) -> str:
+                        msg_type: str, text: Optional[str], ident: str = "") -> str:
     """A identidade de uma mensagem histórica. A MESMA mensagem tem de gerar o
     MESMO id em qualquer execução.
 
@@ -218,8 +218,31 @@ def _history_message_id(counterparty: str, ts: Optional[int], i: int, from_me: b
 
     Entram na identidade também a direção e o tipo: a mesma palavra ("Ok") pode
     ser dita pelos dois lados no mesmo segundo, e são duas mensagens.
+
+    E entra o **ID DO CLIQUE**, quando existe.
+
+    📊 Medido em 03/08/2026: 937 dos 947 cliques de botão do histórico tinham
+    `text` vazio — o extrator não conhecia a grafia `selectedButtonID`. Com o
+    texto vazio, dois cliques DIFERENTES no mesmo segundo produziam a MESMA
+    identidade, e o `ignore_duplicates=True` do upsert descartava o segundo em
+    silêncio: o defeito de leitura virava perda de linha. Que segundos com
+    mensagens distintas existem neste histórico está medido — 367 grupos
+    (counterparty, segundo, direção, tipo) com textos diferentes, 738 linhas.
+
+    Só muda o id de quem TEM interativo: 947 button_reply, 633 list_reply e 23
+    flow_reply. Mensagem de texto não tem `ident`, mantém o id de sempre, e a
+    reingestão continua deduplicando as 13.659 sem criar cópia.
+
+    O índice `i` continua fora quando há timestamp, e continua de propósito: ele
+    depende da ORDEM em que o WhatsApp mandou as mensagens, que muda entre
+    syncs — era assim que nascia a duplicação de 2,66x.
     """
-    corpo = f"{from_me}|{msg_type}|{text or ''}".encode("utf-8", "replace")
+    # O trecho do id SÓ é acrescentado quando existe. Um `|` a mais no fim, com
+    # `ident` vazio, mudaria o hash de TODA mensagem de texto — 13.659 delas — e
+    # a próxima sincronização gravaria uma cópia de cada uma. É a diferença
+    # entre reingerir 1.603 linhas de propósito e 15.262 por descuido.
+    corpo = (f"{from_me}|{msg_type}|{text or ''}" + (f"|{ident}" if ident else "")
+             ).encode("utf-8", "replace")
     marca = hashlib.sha1(corpo).hexdigest()[:12]
     return f"hist-{counterparty}-{ts or f'i{i}'}-{marca}"
 
@@ -262,7 +285,8 @@ async def _ingest_conversation(company_id: str, observer_number: str, counterpar
             if not text and not media_meta and not interactive:
                 continue
             wa_ts = datetime.fromtimestamp(ts, tz=timezone.utc).isoformat() if ts else None
-            mid = _history_message_id(counterparty, ts, i, from_me, msg_type, text)
+            mid = _history_message_id(counterparty, ts, i, from_me, msg_type, text,
+                                      str((interactive or {}).get("id") or ""))
             record = {
                 "company_id": company_id, "observer_number": observer_number,
                 "counterparty": counterparty, "insurer_key": insurer_key,

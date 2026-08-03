@@ -125,6 +125,93 @@ async def _count_drop(observer_number: str, reason: str) -> None:
 
 
 # ------------------------------------------------------------------ #
+# O CLIQUE DO HUMANO — extração tolerante à grafia
+# ------------------------------------------------------------------ #
+# Quem serializa o protobuf do WhatsApp escolhe o nome das chaves, e não avisa.
+#
+# 📊 Medido em 03/08/2026 (`observed_events`, projeto de produção
+# `dcajcvlzcjbmyapmklil`): dos 947 cliques de botão vindos do histórico, 937
+# chegaram na forma
+#
+#     ["Response", "contextInfo", "selectedButtonID", "type"]
+#
+# e o extrator procurava exatamente `title`, `singleSelectReply.selectedRowId`
+# e `selectedDisplayText` — nenhuma das três está aí. Os 937 viraram string
+# vazia: **98,9% dos cliques de botão da corretora foram apagados na leitura.**
+# Os 23 `flow_reply` (["InteractiveResponseMessage", "body", "contextInfo"])
+# também, porque ninguém olhava `body`.
+#
+# Não é defeito só do histórico: a mesma forma aparece em `source='live'` no
+# Espelho de Atendimento (4 eventos, todos sem texto). Os 10 cliques ao vivo que
+# funcionam no Atlas vêm de OUTRO caminho — o evento `ButtonClick` do GO.
+#
+# 💭 INFERÊNCIA (não medida — o banco guarda as chaves, não os valores):
+# `Response` e `InteractiveResponseMessage` são os nomes dos campos `oneof` das
+# structs Go do whatsmeow, que vazam como objeto ANINHADO quando o payload não
+# passa pelo protojson; `selectedButtonID` e `selectedID` são o mesmo vazamento,
+# na grafia Go do "ID". Por isso a busca abaixo **não confere nome exato**:
+# normaliza (minúsculas, sem `_`), varre nível por nível — do mais raso ao mais
+# fundo — e para no primeiro achado. Se a inferência estiver errada quanto ao
+# nome interno, o rótulo continua vazio e o ID continua sendo guardado: a
+# aresta sobrevive de qualquer jeito. Uma grafia nova de um campo já conhecido
+# deixa de ser incidente.
+
+# `contextInfo` carrega a mensagem CITADA — a tela anterior inteira, com o
+# `title` e os `buttonId` dela. Descer ali roubaria o rótulo da tela e o
+# colaria no clique: a resposta passaria a se chamar como a pergunta.
+_CHAVE_DE_CONTEXTO = "contextinfo"
+
+# Rótulo = o que o humano LEU no botão. A ordem é a preferência.
+_CHAVES_DE_ROTULO = ("title", "selecteddisplaytext", "displaytext",
+                     "selectedtext", "buttontext", "text")
+# Identidade = o que o humano CLICOU. Opaco serve; vazio não serve.
+_CHAVES_DE_ID = ("selectedbuttonid", "selectedid", "selectedrowid",
+                 "buttonid", "rowid", "id", "name")
+
+
+def _niveis_de(m: Dict[str, Any], fundo: int = 2) -> list:
+    """Os escalares do payload agrupados por profundidade, chaves normalizadas.
+
+    Nível 0 é o topo, nível 1 é o que está dentro de um objeto do topo, e assim
+    por diante. Manter os níveis separados é o que garante que o campo mais
+    específico ganhe do genérico sem depender da ordem do dicionário.
+    """
+    niveis: list = []
+    atual = [m]
+    for _ in range(fundo + 1):
+        if not atual:
+            break
+        nivel: Dict[str, Any] = {}
+        proximo: list = []
+        for d in atual:
+            for k, v in d.items():
+                nk = str(k).lower().replace("_", "")
+                if nk == _CHAVE_DE_CONTEXTO:
+                    continue
+                if isinstance(v, dict):
+                    proximo.append(v)
+                elif nk not in nivel:
+                    nivel[nk] = v
+        niveis.append(nivel)
+        atual = proximo
+    return niveis
+
+
+def _primeiro_valor(niveis: list, chaves: Tuple[str, ...]) -> str:
+    """O primeiro valor útil, do nível mais raso para o mais fundo."""
+    for nivel in niveis:
+        for chave in chaves:
+            v = nivel.get(chave)
+            if isinstance(v, bool):
+                continue
+            if isinstance(v, str) and v.strip():
+                return v.strip()
+            if isinstance(v, int):
+                return str(v)
+    return ""
+
+
+# ------------------------------------------------------------------ #
 # Extração da mensagem (reusa o parser canônico do inbound)
 # ------------------------------------------------------------------ #
 def _extract_content(message: Dict[str, Any]) -> Tuple[str, Optional[str], Optional[Dict], Optional[Dict]]:
@@ -193,16 +280,40 @@ def _extract_content(message: Dict[str, Any]) -> Tuple[str, Optional[str], Optio
                     meta[chave] = valor if isinstance(valor, (str, int)) else str(valor)
             return kind, str(m.get("caption") or ""), None, meta
 
-    # Respostas estruturadas que o humano ENVIA (clique de lista/botão/flow):
-    for resp_key, kind in (("listResponseMessage", "list_reply"),
-                           ("buttonsResponseMessage", "button_reply"),
-                           ("templateButtonReplyMessage", "button_reply"),
-                           ("interactiveResponseMessage", "flow_reply")):
-        m = msg.get(resp_key)
-        if isinstance(m, dict):
-            title = (m.get("title") or (m.get("singleSelectReply") or {}).get("selectedRowId")
-                     or (m.get("selectedDisplayText")) or "")
-            return kind, str(title), {"kind": kind, "raw_keys": sorted(m.keys())}, None
+    # Respostas estruturadas que o humano ENVIA (clique de lista/botão/flow).
+    # A chave externa também é procurada normalizada: foi a grafia Go que
+    # produziu o defeito, e ela pode chegar no invólucro tanto quanto no miolo.
+    normalizadas = {str(k).lower().replace("_", ""): k for k in msg}
+    for alvo, kind in (("listresponsemessage", "list_reply"),
+                       ("buttonsresponsemessage", "button_reply"),
+                       ("templatebuttonreplymessage", "button_reply"),
+                       ("interactiveresponsemessage", "flow_reply")):
+        if alvo not in normalizadas:
+            continue
+        m = msg.get(normalizadas[alvo])
+        if not isinstance(m, dict):
+            continue
+        niveis = _niveis_de(m)
+        rotulo = _primeiro_valor(niveis, _CHAVES_DE_ROTULO)
+        ident = _primeiro_valor(niveis, _CHAVES_DE_ID)
+        interactive: Dict[str, Any] = {"kind": kind, "raw_keys": sorted(m.keys())}
+        if rotulo:
+            interactive["title"] = rotulo
+        if ident:
+            # `id` é o registro. `selected` é ONDE O TECELÃO PROCURA:
+            # `weaver._choice_label` lê "title" e depois "selected" — e nada no
+            # sistema escrevia "selected". Sem isso, o clique sem rótulo vira
+            # aresta "→", e como a chave da aresta é `origem|rótulo`, TODOS os
+            # cliques sem rótulo de um mesmo menu colapsam numa aresta só.
+            # 📊 03/08/2026: 1.805 das 4.999 arestas dos mapas atuais (36,1%)
+            # são exatamente isso — Porto 44,6%, HDI 45,3%, Tokio 63,6%.
+            interactive["id"] = ident
+            interactive["selected"] = ident
+        # RÓTULO NÃO SE INVENTA. Sem texto legível, `text` fica vazio e quem
+        # distingue a aresta é o id opaco. Escrever o id no lugar do texto faria
+        # o Atlas mostrar `btn_3a9f` ao corretor como se a seguradora tivesse
+        # escrito isso — um id não é um rótulo, e mentir aqui é pior que calar.
+        return kind, rotulo, interactive, None
 
     return "unknown", None, None, None
 
