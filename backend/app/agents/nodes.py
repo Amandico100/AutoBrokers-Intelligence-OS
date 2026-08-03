@@ -880,8 +880,13 @@ async def tool_node(state: AgentState, tools: list) -> dict:
                         # 📂 File System Search: injeta agent_id
                         tool_args = {**tool_args, "agent_id": agent_id}
                     elif tool_name == "request_human_agent":
+                        # SPEC-063 Bloco B — `company_id` passa a viajar junto.
+                        # Sem ele o UPDATE da conversa filtrava só por session_id
+                        # (viola CLAUDE.md §7) e o aviso ao suporte não tinha
+                        # como saber de QUEM é o destino.
                         session_id = state.get("session_id")
-                        tool_args = {**tool_args, "session_id": session_id}
+                        tool_args = {**tool_args, "session_id": session_id,
+                                     "company_id": state.get("company_id")}
                     elif tool_name == "http_api":
                         allowed_http_tools = state.get("allowed_http_tools", [])
                         tool_args = {**tool_args, "allowed_tools": allowed_http_tools}

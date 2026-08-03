@@ -213,33 +213,125 @@ async def start_live_dispatch(
     return {"ok": True, "session": session}
 
 
-async def _support_contact(company_id: str) -> str:
-    """WhatsApp do SUPORTE HUMANO da corretora (handoff com dossiê).
-    Fontes: companies.acionamento_profile.suporte_humano_whatsapp →
-    integrations.alert_target (número de alerta S17-3). Vazio = só loga."""
+def _normalizar_destino(raw: Any) -> str:
+    """GRUPO do WhatsApp (…@g.us) é destino válido — não reduzir a dígitos."""
+    s = str(raw or "").strip()
+    if not s:
+        return ""
+    return s if s.endswith("@g.us") else _digits(s)
+
+
+async def _destino_e_compartilhado(db, company_id: str, destino: str) -> Optional[str]:
+    """Este destino pertence a MAIS DE UMA corretora? Devolve o motivo, ou None.
+
+    SPEC-063 Bloco B. 📊 Em 02/08/2026, Resulta e AutoFleet apontavam para o
+    MESMO grupo de WhatsApp em `acionamento_profile`. O dossiê de handoff leva
+    nome, telefone e CPF do segurado. Mandar o dossiê de um segurado da
+    AutoFleet para um grupo que a Resulta lê é vazamento entre corretoras —
+    o pior defeito que este produto pode ter.
+
+    A regra é **recusar, não avisar**. Um handoff que não sai é um problema
+    operacional que alguém conserta em minutos. Um CPF na conversa errada não
+    se desfaz.
+    """
+    if not destino:
+        return None
+    try:
+        outras: set = set()
+
+        r1 = await (db.client.table("human_support_destinations")
+                    .select("company_id, destination_ref")
+                    .eq("destination_ref", destino).eq("is_active", True)
+                    .limit(20).execute())
+        for row in r1.data or []:
+            if str(row.get("company_id")) != str(company_id):
+                outras.add(str(row.get("company_id")))
+
+        r2 = await (db.client.table("companies")
+                    .select("id, acionamento_profile").limit(200).execute())
+        for row in r2.data or []:
+            if str(row.get("id")) == str(company_id):
+                continue
+            prof = row.get("acionamento_profile") or {}
+            if _normalizar_destino(prof.get("suporte_humano_whatsapp")) == destino:
+                outras.add(str(row.get("id")))
+
+        if outras:
+            return (f"destino de suporte compartilhado com {len(outras)} outra(s) "
+                    f"corretora(s) — recusado para não vazar dossiê de segurado")
+    except Exception as e:  # noqa: BLE001
+        # Não conseguir PROVAR que é exclusivo não é permissão para enviar.
+        logger.error("[DISPATCH ROUTER] nao foi possivel verificar exclusividade do "
+                     "destino (%s) — recusando por seguranca", type(e).__name__)
+        return "não foi possível verificar se o destino é exclusivo desta corretora"
+    return None
+
+
+async def resolver_destino_de_suporte(company_id: str) -> Dict[str, Any]:
+    """O destino canônico de suporte humano da corretora — com prova de que é dela.
+
+    Este é o ÚNICO resolvedor. Antes existiam duas verdades que não se falavam:
+    a UI gravava em `human_support_destinations` (com prioridade, horário e
+    escalonamento) e o backend lia `companies.acionamento_profile` — 📊 e a
+    tabela da UI não aparecia UMA VEZ em `backend/app/`. Resultado: a corretora
+    configurava um destino na tela e o dossiê ia para outro lugar.
+
+    Ordem de autoridade, do mais específico para o mais velho:
+
+        human_support_destinations   ativo, primary primeiro, depois priority
+        companies.acionamento_profile.suporte_humano_whatsapp
+        integrations.alert_target
+
+    Devolve ``{"destino": str, "fonte": str, "recusa": Optional[str]}``.
+    Com `recusa` preenchida, **não envie** — o motivo é para o log e para a tela.
+    """
+    saida: Dict[str, Any] = {"destino": "", "fonte": "", "recusa": None}
     try:
         from app.core.database import create_async_supabase_client
 
         db = await create_async_supabase_client()
-        res = await db.client.table("companies").select("acionamento_profile").eq("id", company_id).limit(1).execute()
-        if res.data:
-            prof = res.data[0].get("acionamento_profile") or {}
-            raw = str(prof.get("suporte_humano_whatsapp") or "").strip()
-            # GRUPO do WhatsApp (…@g.us) é destino válido — não reduzir a dígitos.
-            if raw.endswith("@g.us"):
-                return raw
-            if _digits(raw):
-                return _digits(raw)
-        res2 = await db.client.table("integrations").select("alert_target").eq("company_id", company_id).limit(3).execute()
-        for row in res2.data or []:
-            raw = str(row.get("alert_target") or "").strip()
-            if raw.endswith("@g.us"):
-                return raw
-            if _digits(raw):
-                return _digits(raw)
+
+        res0 = await (db.client.table("human_support_destinations")
+                      .select("destination_ref, is_primary, priority_order")
+                      .eq("company_id", company_id).eq("is_active", True)
+                      .order("is_primary", desc=True).order("priority_order")
+                      .limit(1).execute())
+        if res0.data:
+            saida["destino"] = _normalizar_destino(res0.data[0].get("destination_ref"))
+            saida["fonte"] = "human_support_destinations"
+
+        if not saida["destino"]:
+            res = await (db.client.table("companies").select("acionamento_profile")
+                         .eq("id", company_id).limit(1).execute())
+            if res.data:
+                prof = res.data[0].get("acionamento_profile") or {}
+                saida["destino"] = _normalizar_destino(prof.get("suporte_humano_whatsapp"))
+                if saida["destino"]:
+                    saida["fonte"] = "acionamento_profile (legado)"
+
+        if not saida["destino"]:
+            res2 = await (db.client.table("integrations").select("alert_target")
+                          .eq("company_id", company_id).limit(3).execute())
+            for row in res2.data or []:
+                d = _normalizar_destino(row.get("alert_target"))
+                if d:
+                    saida["destino"], saida["fonte"] = d, "integrations.alert_target"
+                    break
+
+        if saida["destino"]:
+            motivo = await _destino_e_compartilhado(db, company_id, saida["destino"])
+            if motivo:
+                logger.error("[SUPORTE] corretora %s: %s", company_id, motivo)
+                saida["recusa"] = motivo
+                saida["destino"] = ""
     except Exception as e:  # noqa: BLE001 — offline/teste: sem contato
         logger.warning(f"[DISPATCH ROUTER] support contact lookup failed: {type(e).__name__}")
-    return ""
+    return saida
+
+
+async def _support_contact(company_id: str) -> str:
+    """Compatibilidade: devolve só o destino, vazio quando recusado."""
+    return (await resolver_destino_de_suporte(company_id)).get("destino") or ""
 
 
 async def _log_deflection(company_id: str, session: Dict[str, Any]) -> None:

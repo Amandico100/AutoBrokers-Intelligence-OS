@@ -247,6 +247,21 @@ async def create_agent_graph(
         strict=_strict_authority, capability_key=LEGACY_TOOL_CAPABILITIES["human_handoff"],
     )
 
+    # SPEC-063 Bloco B — para quem FALA COM O SEGURADO, devolver para humano não
+    # é um extra que se liga numa tela: é o único caminho legítimo em SINISTRO,
+    # em risco grave e quando não existe corredor para aquela seguradora.
+    #
+    # 📊 Em 02/08/2026 os agentes de atendimento tinham `tools_config = {}` — e
+    # `ATTENDANCE_BASE_PROMPT` MANDA chamar humano nesses casos. O prompt
+    # prometia o que a ferramenta não tinha como cumprir: o modelo dizia "vou
+    # chamar um atendente" e não havia ferramenta para chamar.
+    #
+    # Prompt que promete e ferramenta que não existe é pior que nenhum dos dois.
+    if not allow_human_handoff and str(_agent_role or "").lower() in ("attendance", "insured_external"):
+        allow_human_handoff = True
+        logger.info("[Graph] 🔔 HumanHandoffTool ligada por PAPEL (%s): o prompt "
+                    "promete humano em sinistro e risco grave", _agent_role)
+
     # Unwrap para pegar o client real (tools usam .table() diretamente)
     real_supabase_client = getattr(supabase_client, 'client', supabase_client) if supabase_client else None
 
