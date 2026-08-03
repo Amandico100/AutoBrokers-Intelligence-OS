@@ -606,7 +606,28 @@ PORTO_AUTO_WHATSAPP_V1["finalize_abort_reply"] = "Sair e não agendar"
 # O "para" vira opcional, e a âncora vira UMA constante: ela é usada no passo de
 # URA e nos freios de três playbooks, e três cópias literais divergem no dia em
 # que a seguradora escrever a quarta redação.
-_HDI_FAMILY_AGORA_OU_AGENDAR = r"atendimento (?:para )?agora ou prefere agendar"
+#
+# 🔴 E O NEGRITO DO WHATSAPP QUASE CUSTOU UM PRESTADOR DESPACHADO SEM QUERER.
+#
+# 📊 03/08/2026: a âncora era `atendimento (?:para )?agora ou prefere agendar` —
+# sem escapar o asterisco. As duas redações mais frequentes mandam `*para*` em
+# NEGRITO, e o asterisco chega literal (nada no pipeline o remove).
+#
+#   "...o atendimento *para* agora ou prefere agendar..."   28 de 33 ocorrências
+#
+# Ou seja: **o freio não disparava em 85% das vezes**, e justamente na tela que
+# este arquivo chama de PONTO DE NÃO-RETORNO. Sem freio, o caso caía no cérebro
+# adaptativo — que tem `quando_agora → "Agora"` no guia de fluxo. A trava
+# determinística virava uma frase de prompt.
+#
+# E estava verde no CI porque as fixtures do teste escreviam a mensagem **sem os
+# asteriscos**, embora o docstring do próprio teste os citasse.
+#
+# As três palavras que a seguradora pode negritar ganham `\*?`, que é a
+# convenção já usada em 93 âncoras deste arquivo.
+_HDI_FAMILY_AGORA_OU_AGENDAR = (
+    r"\*?atendimento\*? (?:\*?para\*? )?\*?agora\*? ou prefere agendar"
+)
 
 _YELUM_FAMILY_STEPS = [
     {"step": "identificacao_dado",

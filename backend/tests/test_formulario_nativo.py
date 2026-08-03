@@ -105,12 +105,29 @@ RESPOSTA_REAL = {
 
 # As TRÊS redações reais do ponto de não-retorno (📊 `observed_events`,
 # ILIKE '%prefere agendar%', 03/08/2026). Texto integral, como a URA manda.
-AGENDAR_V1 = ("Você está solicitando o atendimento para agora ou prefere agendar para um outro momento?\n"
+#
+# 🔴 COM OS ASTERISCOS. Eles estavam faltando aqui até 03/08, e a falta escondeu
+# o defeito mais perigoso do dia: a âncora do freio não escapava o `*`, então
+# **não disparava em 28 das 33 ocorrências reais** — no ponto de não-retorno.
+#
+# O CI ficou verde o tempo todo porque esta fixture escrevia a mensagem limpa,
+# enquanto o docstring deste mesmo arquivo (linhas 39-41) transcrevia o texto
+# real, com negrito. O teste checava uma frase que a seguradora nunca mandou.
+#
+# **Fixture que "limpa" o texto de entrada não testa o produto — testa a
+# fixture.** Se um dia estas linhas parecerem feias com os asteriscos, é porque
+# a mensagem real é assim.
+AGENDAR_V1 = ("Você está solicitando o atendimento *para* agora ou prefere agendar para um outro momento?\n"
               "Botão 1: Agora\nBotão 2: Agendar\nBotão 3: Voltar")
-AGENDAR_V2 = ("Você quer o atendimento para agora ou prefere agendar para outro momento?\n"
+AGENDAR_V2 = ("Você quer o atendimento *para* agora ou prefere agendar para outro momento?\n"
               "Botão 1: Agora\nBotão 2: Agendar\nBotão 3: Voltar")
 AGENDAR_V3_SEM_PARA = ("Você precisa do atendimento agora ou prefere agendar para outro momento?\n"
                        "Botão 1: Agora\nBotão 2: Agendar\nBotão 3: Voltar")
+# E a quarta forma que a seguradora PODE mandar: o negrito noutra palavra.
+# Não foi observada ainda — mas a âncora tem de aguentar, porque o custo de
+# errar aqui é despachar um prestador de verdade num teste.
+AGENDAR_V4_NEGRITO_MOVEL = ("Você quer o *atendimento* para *agora* ou prefere agendar?\n"
+                            "Botão 1: Agora\nBotão 2: Agendar\nBotão 3: Voltar")
 
 
 def _flow():
@@ -317,16 +334,17 @@ def teste_o_freio_residencial_dispara_nas_tres_variantes():
     for ref, rotulo in ((HDI_RESID, "HDI residencial"), (HDI_AUTO, "HDI auto"),
                         (YELUM_AUTO, "Yelum auto")):
         pb = PB.get_playbook(ref)
-        for texto, nome in ((AGENDAR_V1, "'está solicitando o atendimento PARA agora'"),
-                            (AGENDAR_V2, "'quer o atendimento PARA agora'"),
-                            (AGENDAR_V3_SEM_PARA, "'precisa do atendimento agora' (SEM o 'para')")):
+        for texto, nome in ((AGENDAR_V1, "'está solicitando o atendimento *para* agora'"),
+                            (AGENDAR_V2, "'quer o atendimento *para* agora'"),
+                            (AGENDAR_V3_SEM_PARA, "'precisa do atendimento agora' (SEM o 'para')"),
+                            (AGENDAR_V4_NEGRITO_MOVEL, "negrito em OUTRA palavra")):
             checar(PB.detect_finalize_anchor(pb, texto) is not None,
                    f"{rotulo}: freia em {nome}",
                    "responder Agora/Agendar ABRE o serviço na hora")
 
     # E o corredor sabe RESPONDER a mesma tela em modo LIVE — a âncora do passo
-    # é a mesma constante, então as três variantes também casam com o passo.
-    for texto in (AGENDAR_V1, AGENDAR_V2, AGENDAR_V3_SEM_PARA):
+    # é a mesma constante, então as variantes também casam com o passo.
+    for texto in (AGENDAR_V1, AGENDAR_V2, AGENDAR_V3_SEM_PARA, AGENDAR_V4_NEGRITO_MOVEL):
         passo = PB.match_ura_step(PB.get_playbook(HDI_AUTO), texto, subservice="guincho")
         checar((passo or {}).get("step") == "quando_agora",
                f"e o passo `quando_agora` casa: {texto[:34]}…",
