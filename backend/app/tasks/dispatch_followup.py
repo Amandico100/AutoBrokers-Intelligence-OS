@@ -79,7 +79,43 @@ async def check_dispatch_followups() -> int:
             if not integration:
                 continue
             try:
-                wa.send_message(client_phone, todo[1], integration)
+                # PELO CANAL GOVERNADO — com a exceção que o torna possível.
+                #
+                # 📊 Era o único envio frio a segurado que furava o governador:
+                # não respeitava a parada de emergência, não contava nos tetos e
+                # não entrava em `platform_sends`.
+                #
+                # Plugar aqui exigiu a exceção de `monitoring` em `client_busy`
+                # (ver platform_outbound). Sem ela, o follow-up seria adiado para
+                # sempre: ele só roda em `monitoring`, e `monitoring` o marcaria
+                # como ocupado. Consertar um lado sem o outro teria trocado
+                # "manda sem governo" por "nunca manda" — e o segundo é pior,
+                # porque não deixa rastro nenhum.
+                try:
+                    from app.services.platform_outbound import send_to_client_guarded
+
+                    resultado = await send_to_client_guarded(
+                        company_id, client_phone, todo[1],
+                        kind="acionamento_followup" if todo[0] == "followup_sent"
+                        else "acionamento_encerramento",
+                        summary=todo[1][:180],
+                    )
+                    r = resultado or {}
+                    # `queued` é SUCESSO, e essa distinção importa.
+                    #
+                    # O governador tem fila própria com backoff: quando ele
+                    # enfileira, a mensagem VAI sair — só não agora. Tratar isso
+                    # como falha faria este laço reenviar a cada 60s e empilhar
+                    # cópias da mesma pergunta.
+                    #
+                    # O que é falha de verdade é `ok: False` (governador negou
+                    # de vez). Aí não marcamos nada e a próxima varredura tenta.
+                    if not r.get("ok"):
+                        logger.info("[FOLLOWUP] governador negou case=%s motivo=%s",
+                                    session.get("case_id"), r.get("reason"))
+                        continue
+                except ImportError:
+                    wa.send_message(client_phone, todo[1], integration)
                 session[todo[0]] = True
 
                 # A PERGUNTA PASSA A EXISTIR NA CONVERSA.

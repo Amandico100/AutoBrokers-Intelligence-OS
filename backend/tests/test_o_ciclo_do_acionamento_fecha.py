@@ -139,6 +139,29 @@ def o_timer_do_followup_sobrevive() -> None:
            "o timer morria no mesmo instante em que nascia")
 
 
+def o_followup_passa_pelo_governador() -> None:
+    """P-70 item 5 — e a excecao que o torna possivel."""
+    fup = (RAIZ / "app/tasks/dispatch_followup.py").read_text(encoding="utf-8")
+    gov = (RAIZ / "app/services/platform_outbound.py").read_text(encoding="utf-8")
+
+    checar("send_to_client_guarded" in fup,
+           "o follow-up passa pelo canal GOVERNADO",
+           "era o unico envio frio a segurado que furava o governador")
+    checar('r.get("ok")' in fup,
+           "e trata `queued` como SUCESSO, nao como falha",
+           "senao reenviaria a cada 60s e empilharia copias da mesma pergunta")
+
+    checar("_ESTADOS_QUE_NAO_OCUPAM" in gov and '"monitoring"' in gov,
+           "e `monitoring` deixa de marcar o cliente como ocupado")
+    # A prova de que a excecao E necessaria: sem ela, o estado em que o
+    # follow-up roda seria o mesmo que o impediria de rodar.
+    i = gov.index("_ESTADOS_QUE_NAO_OCUPAM = (")
+    linha = gov[i:gov.index("\n", i)]
+    checar("monitoring" in linha and "insurer_closed" in linha,
+           "os tres estados estao na mesma tupla — um lugar so",
+           linha)
+
+
 def o_guarda_tem_como_falhar() -> None:
     """Um regex que casa tudo passaria em todos os checks de cima."""
     fonte = (RAIZ / "app/services/dispatch_router.py").read_text(encoding="utf-8")
@@ -168,6 +191,8 @@ def main() -> int:
     r5_o_encerramento_encerra()
     print("== o timer do follow-up sobrevive ==")
     o_timer_do_followup_sobrevive()
+    print("== o follow-up passa pelo governador ==")
+    o_followup_passa_pelo_governador()
     print("== o guarda tem como falhar ==")
     o_guarda_tem_como_falhar()
 

@@ -192,6 +192,24 @@ def _phone_variants(phone: str) -> set:
     return _br_variants(phone)
 
 
+# Estados em que o cliente NÃO está ocupado, para os fins da fila de cortesia.
+#
+# `test_aborted` e `insurer_closed`: o acionamento acabou.
+#
+# `monitoring` é diferente, e entrou em 03/08/2026: o serviço foi aberto e
+# estamos acompanhando. É exatamente o estado em que o follow-up pergunta *"o
+# prestador já chegou?"* — a única mensagem do produto que existe para ser
+# mandada nesse momento.
+#
+# Sem esta exceção, plugar o follow-up no canal governado o adiaria **para
+# sempre**: ele só roda em `monitoring`, e `monitoring` o marcaria como ocupado.
+#
+# A fila de cortesia existe para o cliente não ser interrompido no meio de um
+# atendimento — não para ele deixar de receber notícia do atendimento que ele
+# mesmo pediu.
+_ESTADOS_QUE_NAO_OCUPAM = ("test_aborted", "insurer_closed", "monitoring")
+
+
 async def client_busy(company_id: str, phone: str) -> Optional[str]:
     """Cliente em atendimento? Retorna o MOTIVO ('acionamento'|'conversa')
     ou None. Determinístico: Redis (dispatch ativo) + conversations recentes."""
@@ -203,7 +221,7 @@ async def client_busy(company_id: str, phone: str) -> Optional[str]:
 
         for s in await list_active_dispatches(str(company_id)):
             if _digits(s.get("client_phone")) in variants and \
-                    str(s.get("state") or "") not in ("test_aborted", "insurer_closed"):
+                    str(s.get("state") or "") not in _ESTADOS_QUE_NAO_OCUPAM:
                 return "acionamento"
     except Exception:  # noqa: BLE001
         pass
