@@ -536,7 +536,19 @@ def registrar_formulario_nativo(session: Dict[str, Any],
         session["flow_id_ativo"] = flow_id
     if flow.get("cta"):
         session["flow_cta"] = str(flow["cta"])[:120]
-    session["flow_name_ativo"] = str(flow.get("name") or "flow")
+    # SPEC-063 — este é o NOME DO ENVELOPE, não o nome do formulário.
+    #
+    # 📊 O clique humano de 18/07/2026 traz `name = "galaxy_message"` — o rótulo
+    # LEGADO da Meta, que o bot da família HDI/Yelum usa. O nome do formulário
+    # ("Automóvel - Detalhes do atendimento…") é outra coisa e mora em
+    # `wa_flow_response_params.flow_name`.
+    #
+    # A regra é ECOAR o que veio na captura. O padrão `"flow"` saiu daqui de
+    # propósito: ele é o rótulo ATUAL da Meta, e chutá-lo numa seguradora que
+    # usa o legado faz a resposta ser descartada em silêncio — gastando a única
+    # janela antes de a URA encerrar. Sem captura, melhor pausar.
+    if flow.get("name"):
+        session["envelope_do_flow"] = str(flow["name"])
     return True
 
 
@@ -610,10 +622,21 @@ def _responder_formulario_nativo(
     )
     if live:
         try:
+            envelope = session.get("envelope_do_flow")
+            if not envelope:
+                # Sem o nome ecoado da captura, não se envia. Pausa com a
+                # resposta pronta — o humano marca em segundos.
+                raise ValueError("envelope_do_flow ausente: nao ecoado da captura")
             enviado = flow_sender(
                 flow_token=token,
-                flow_name=montado["flow_name"] or session.get("flow_name_ativo") or "flow",
+                nome_do_envelope=envelope,
                 params=montado["params"],
+                flow_response_params={
+                    k: v for k, v in (
+                        ("flow_id", montado.get("flow_id")),
+                        ("flow_name", montado.get("flow_name")),
+                    ) if v
+                } or None,
             )
         except Exception as exc:  # noqa: BLE001 — transporte nunca derruba o motor
             enviado = False

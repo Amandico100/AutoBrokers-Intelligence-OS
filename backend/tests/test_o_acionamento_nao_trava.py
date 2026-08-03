@@ -194,12 +194,16 @@ def teste_o_transporte_do_formulario_nao_foi_inventado():
 
     # O corpo waE2E: PURO, provável offline. A forma não foi deduzida — 📊 é a
     # dos eventos reais de `flow_reply` do acervo do Observador.
-    corpo = GO.montar_nfm_reply(flow_token="tok-abc", flow_name="Detalhes",
+    corpo = GO.montar_nfm_reply(flow_token="tok-abc", nome_do_envelope="galaxy_message",
                                 params={"rb_InformacoesLocal": "6"})
     interativa = corpo["interactiveResponseMessage"]
     nfm = interativa["nativeFlowResponseMessage"]
-    checar(nfm["name"] == "Detalhes" and "paramsJSON" in nfm,
+    checar(nfm["name"] == "galaxy_message" and "paramsJSON" in nfm,
            "o corpo é interactiveResponseMessage → nativeFlowResponseMessage")
+    checar(nfm["name"] != "Detalhes",
+           "o envelope NAO usa o nome do formulário",
+           "📊 o clique humano de 18/07 traz name='galaxy_message'; usar o "
+           "flow_name faria a seguradora descartar a resposta em silêncio")
     params = json.loads(nfm["paramsJSON"])
     checar(params.get("flow_token") == "tok-abc",
            "o flow_token entra AQUI — e só aqui",
@@ -209,9 +213,29 @@ def teste_o_transporte_do_formulario_nao_foi_inventado():
     checar(interativa["body"]["text"] == "Formulario enviado",
            "com o mesmo corpo de bolha que o WhatsApp mostra")
 
+    # A IDENTIDADE do formulário — é ela que diz QUAL formulário está sendo
+    # respondido. Faltava, e sem ela a seguradora não sabe a que se refere.
+    com_id = GO.montar_nfm_reply(
+        flow_token="tok-abc", nome_do_envelope="galaxy_message",
+        params={"rb_InformacoesLocal": "6"},
+        flow_response_params={"flow_id": "857030507196739", "title": "Informar condições"})
+    p_id = json.loads(com_id["interactiveResponseMessage"]["nativeFlowResponseMessage"]["paramsJSON"])
+    checar(p_id.get("wa_flow_response_params", {}).get("flow_id") == "857030507196739",
+           "a identidade do formulário viaja em wa_flow_response_params",
+           "📊 o clique real de 18/07 a carrega; sem ela, faltava metade")
+    checar(p_id.get("flow_token") == "tok-abc" and p_id.get("rb_InformacoesLocal") == "6",
+           "e ela não empurra o token nem as respostas para fora")
+
     for rotulo, kwargs in (
-        ("sem token", {"flow_token": "", "flow_name": "x", "params": {"a": "1"}}),
-        ("sem respostas", {"flow_token": "t", "flow_name": "x", "params": {}}),
+        ("sem token", {"flow_token": "", "nome_do_envelope": "galaxy_message",
+                       "params": {"a": "1"}}),
+        ("sem respostas", {"flow_token": "t", "nome_do_envelope": "galaxy_message",
+                           "params": {}}),
+        # O nome do envelope é ECOADO da captura. Sem padrão, de propósito:
+        # um default aqui seria um palpite escondido atrás de uma assinatura
+        # amigável, e o palpite errado é descartado em silêncio.
+        ("sem o nome do envelope", {"flow_token": "t", "nome_do_envelope": "",
+                                    "params": {"a": "1"}}),
     ):
         try:
             GO.montar_nfm_reply(**kwargs)
@@ -231,7 +255,7 @@ def teste_o_transporte_do_formulario_nao_foi_inventado():
 
     provider._post = _armadilha  # noqa: SLF001
     os.environ.pop(GO.ENV_ROTA_FLOW_REPLY, None)
-    r = provider.send_native_flow_response("5548", flow_token="tok", flow_name="f",
+    r = provider.send_native_flow_response("5548", flow_token="tok", nome_do_envelope="galaxy_message",
                                            params={"a": "1"})
     checar(r.ok is False and r.error == "evolution_go_sem_rota_de_flow_reply",
            "sem rota provada, o envio recusa com o motivo escrito", str(r.error))
@@ -259,8 +283,8 @@ def teste_o_formulario_completo_e_montado_e_o_incompleto_recusado():
     print("\n[T2] Formulário nativo: monta o completo, RECUSA o incompleto")
     enviados: list = []
 
-    def transporte(flow_token, flow_name, params):
-        enviados.append({"token": flow_token, "name": flow_name, "params": params})
+    def transporte(flow_token, nome_do_envelope, params, flow_response_params=None):
+        enviados.append({"token": flow_token, "name": nome_do_envelope, "params": params})
         return True
 
     # --- caso completo, com transporte provado -----------------------------

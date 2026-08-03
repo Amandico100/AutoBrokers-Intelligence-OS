@@ -128,40 +128,75 @@ def rota_de_flow_reply(env: Optional[Dict[str, str]] = None) -> str:
 def montar_nfm_reply(
     *,
     flow_token: str,
-    flow_name: str,
     params: Dict[str, Any],
+    nome_do_envelope: str,
+    flow_response_params: Optional[Dict[str, Any]] = None,
     body_text: Optional[str] = None,
+    version: int = 1,
 ) -> Dict[str, Any]:
     """O corpo waE2E de uma resposta de formulário nativo. PURO.
 
-    Duas coisas moram aqui, e as duas precisam existir juntas para a seguradora
-    aceitar a resposta:
+    Três coisas moram aqui, e as três precisam existir juntas para a resposta
+    ser aceita:
 
     1. **O `flow_token`**, que é da SESSÃO — veio na mensagem que abriu o
        formulário e vale só para aquela conversa. `montar_resposta_de_flow`, no
        corredor, deliberadamente NÃO o produz (ele é transporte, não é dado do
        caso). É aqui, e só aqui, que ele entra.
-    2. **As respostas**, no mesmo objeto, achatadas ao lado do token — é assim
-       que 📊 o clique humano de 18/07/2026 chegou (`paramsJSON` com
-       `flow_token` + `rb_*`/`ckb_*` no mesmo nível).
+    2. **As respostas**, achatadas ao lado do token — é assim que 📊 o clique
+       humano de 18/07/2026 chegou.
+    3. **`wa_flow_response_params`**, que carrega a identidade do formulário
+       (título, `flow_id`, `flow_name`). Faltava, e é o que diz à seguradora
+       QUAL formulário está sendo respondido.
 
-    Levantar `ValueError` sem token é deliberado: uma resposta sem token é
-    recusada pelo WhatsApp, e mandá-la assim gastaria a única janela que a URA
-    dá antes de encerrar sozinha.
+    O NOME DO ENVELOPE NÃO SE ADIVINHA
+    ----------------------------------
+    Este campo já esteve errado aqui: usávamos o `flow_name` —
+    *"Automóvel - Detalhes do atendimento…"*. 📊 O clique humano real de
+    18/07/2026 traz ``name = "galaxy_message"``.
+
+    A Meta documenta ``"flow"`` como o nome atual e ``"galaxy_message"`` como
+    legado; o bot da família HDI/Yelum usa o **legado**. Escolher entre os dois
+    por regra seria apostar — e apostar errado faz a seguradora descartar a
+    resposta em silêncio, gastando a única janela antes de a URA encerrar.
+
+    Por isso `nome_do_envelope` é **obrigatório e sem padrão**: quem chama tem
+    de ECOAR o que veio na captura. Um default aqui seria um palpite escondido
+    atrás de uma assinatura amigável.
+
+    Levantar `ValueError` sem token é deliberado: resposta sem token é recusada,
+    e mandá-la assim queima a janela à toa.
     """
     token = str(flow_token or "").strip()
     if not token:
         raise ValueError("flow_token ausente — resposta de formulário sem token é rejeitada")
     if not isinstance(params, dict) or not params:
         raise ValueError("params vazio — formulário meio preenchido é pior que nenhum")
-    corpo = {"flow_token": token, **params}
+    envelope = str(nome_do_envelope or "").strip()
+    if not envelope:
+        raise ValueError(
+            "nome_do_envelope ausente — ele se ECOA da captura ('galaxy_message' na "
+            "família HDI/Yelum), nunca se adivinha"
+        )
+
+    corpo: Dict[str, Any] = {"flow_token": token, **params}
+    if flow_response_params:
+        # Vai por ÚLTIMO de propósito: se um dia uma resposta trouxer uma chave
+        # com este nome, a identidade do formulário é que tem de vencer.
+        corpo["wa_flow_response_params"] = flow_response_params
+
     return {
         "interactiveResponseMessage": {
             "body": {"text": str(body_text or _CORPO_PADRAO_FLOW_REPLY), "format": "EXTENSIONS"},
             "nativeFlowResponseMessage": {
-                "name": str(flow_name or "flow"),
+                "name": envelope,
                 "paramsJSON": json.dumps(corpo, ensure_ascii=False),
-                "version": 3,
+                # 💭 1 é o que o fork do Baileys que implementa isso usa. O "3"
+                # do Meta é parâmetro de quem ENVIA o formulário, não de quem o
+                # responde. Hipótese, não medição: a captura de 18/07 não traz
+                # este campo porque o Evolution GO o descarta na leitura.
+                # Quem decide é o teste de ida e volta entre dois números nossos.
+                "version": int(version),
             },
         }
     }
@@ -298,9 +333,11 @@ class EvolutionGoProvider:
         to: str,
         *,
         flow_token: str,
-        flow_name: str,
         params: Dict[str, Any],
+        nome_do_envelope: str,
+        flow_response_params: Optional[Dict[str, Any]] = None,
         body_text: Optional[str] = None,
+        version: int = 1,
     ) -> SendResult:
         """Envia a resposta do formulário nativo — se houver rota provada.
 
@@ -317,8 +354,11 @@ class EvolutionGoProvider:
                 "As 12 rotas de envio conhecidas só ORIGINAM mensagem.", ENV_ROTA_FLOW_REPLY)
             return SendResult(ok=False, error="evolution_go_sem_rota_de_flow_reply")
         try:
-            mensagem = montar_nfm_reply(flow_token=flow_token, flow_name=flow_name,
-                                        params=params, body_text=body_text)
+            mensagem = montar_nfm_reply(
+                flow_token=flow_token, params=params,
+                nome_do_envelope=nome_do_envelope,
+                flow_response_params=flow_response_params,
+                body_text=body_text, version=version)
         except ValueError as exc:
             logger.error("[EVOLUTION-GO] resposta de formulário recusada: %s", exc)
             return SendResult(ok=False, error=f"flow_reply_invalida:{exc}")
