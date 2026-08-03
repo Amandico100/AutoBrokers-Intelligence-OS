@@ -156,10 +156,30 @@ export function InsurersClient() {
             )}
             {tab === 'corredores' && (
               <div className="space-y-3">
+                {/* SPEC-063 — esta tela dizia:
+                   *   "…corredor(es) ativo(s) nesta seguradora — o atendente já
+                   *    aciona por eles."
+                   *   "Ative para o atendente acionar esta seguradora
+                   *    automaticamente."
+                   *
+                   * As duas frases eram falsas. Quem aciona é a InsurerDispatchTool,
+                   * e ela resolve o roteiro por (seguradora, ramo) contra dicionários
+                   * EM MEMÓRIA — nunca abre o banco. Ativar ou pausar um corredor
+                   * aqui não mudava absolutamente nada no que o atendente conseguia
+                   * fazer. A regra que ligaria as duas pontas (isCorridorOperable)
+                   * foi apagada em 20/07 junto com o runtime órfão.
+                   *
+                   * Uma tela que promete capacidade inexistente é pior que uma tela
+                   * vazia: a corretora clica, acredita, e conta com isso. */}
                 <p className="text-sm text-muted-foreground">
                   {selected.has_active_corridor
-                    ? `Sua corretora tem ${selected.active_corridors} corredor(es) ativo(s) nesta seguradora — o atendente já aciona por eles.`
-                    : 'Nenhum corredor ativo. Ative para o atendente acionar esta seguradora automaticamente.'}
+                    ? `Sua corretora marcou ${selected.active_corridors} corredor(es) como ativo(s) nesta seguradora.`
+                    : 'Nenhum corredor marcado como ativo nesta seguradora.'}
+                </p>
+                <p className="text-xs text-muted-foreground">
+                  Ativar aqui registra a intenção da corretora. Quem aciona de fato é o
+                  roteiro de atendimento, e ele é o mesmo para todas — nenhuma ação
+                  externa, envio ou portal é executado por esta tela.
                 </p>
                 <a href="/dashboard/personalizacao/corredores" className="inline-block rounded-lg border border-border bg-surface-2 px-3 py-2 text-xs font-medium text-foreground hover:bg-muted">
                   Gerenciar corredores →
