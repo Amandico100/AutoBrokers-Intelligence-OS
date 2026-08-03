@@ -815,3 +815,23 @@ nenhuma — e o produto continua sabendo acionar sem nunca ter acionado.
 
 > Ver [`O-FORMULARIO-NATIVO-RESOLVIDO.md`](O-FORMULARIO-NATIVO-RESOLVIDO.md) §7
 > (o que não está provado) e §8 (o que falta para 100%).
+
+
+---
+
+## ⚠️ AVISO SOBRE O ÍNDICE RÁPIDO DESTE ARQUIVO
+
+📊 Auditado em 03/08/2026: o índice rápido acima ainda lista **P-05, P-06, P-07,
+P-08 e P-14 como abertas**. As cinco foram fechadas pelos Blocos A, B, P e C da
+SPEC-063 e estão provadas por teste.
+
+**Quem confiar no índice vai reexecutar trabalho pronto.** A tabela de fechadas
+(seção "FECHADAS EM 03/08/2026") é a que vale.
+
+| Pendência | Fechada por | Guardada por |
+|---|---|---|
+| P-05 AutoFleet com agente ativo sem prompt | Bloco P | `test_a_corretora_nasce_completa.py` |
+| P-06 handoff mente na falha | Bloco B | `test_handoff_chega_em_alguem.py` |
+| P-07 handoff sem filtro de tenant | Bloco B | idem |
+| P-08 CPF vaza por dois caminhos | Bloco A | `test_quem_responde_o_segurado.py` |
+| P-14 briefing sem governador | Bloco C | `test_governador_de_envio.py` |

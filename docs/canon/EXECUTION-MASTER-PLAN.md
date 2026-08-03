@@ -837,3 +837,76 @@ no navegador o que esconder — **deixou de existir**: a regra virou de exclusã
 **SPEC-062 — Evals, Billing, Resiliência e Rollout.** É a última antes do
 Launch Decision, e traz o volume que hoje falta: paginação nas listas, medição
 de qualidade e cobrança.
+
+
+---
+
+# Painel de estado — atualizado em 03/08/2026
+
+> Este arquivo é o **primeiro que toda sessão lê**. Entre 27/07 e 03/08 ele parou
+> na SPEC-062 enquanto sete SPECs andavam — quem o lesse acharia que estávamos
+> uma semana atrás. **Documento canônico desatualizado não é neutro: ele mente.**
+
+## Onde estamos
+
+```
+main = HEAD          tudo publicado e em producao (verificado 03/08 23h)
+suite                134 verdes · tsc 0 · tabela de rotas monta
+```
+
+| SPEC | O que é | Estado |
+|---|---|---|
+| 052 · 053 | cérebro · Work OS | **autoridade**, não etapa |
+| 054 · 055 · 056 | fundação · Work Runs · Skills | ✅ concluídas |
+| 057 | Artifact Hub | ⚠️ falta o visualizador na tela da corretora ([P-15]) |
+| 058 | Auxiliares e Rotinas | ⚠️ falta o escritor de `auxiliary_events` ([P-18]) |
+| 059 · 060 · 061 | briefing · research · control plane | ✅ concluídas |
+| 062 | evals · billing · go-live | ❌ não iniciada |
+| **063** | **atendimento e canais** | 🔵 **em execução — ver abaixo** |
+| 064 | ontologia e casa limpa | ✅ concluída |
+| 065 | carteira e dinheiro visível | 🔴 bloqueada pela InfoCap — **exceto Blocos D e F** |
+| 066 | acervo SUSEP e RAG | 🟢 **executável agora** — só fonte pública |
+| 067 | o Descobridor | depende de 065 e 066 |
+| 068 | prontidão e go-live | 🟢 **Bloco A executável agora** |
+| 069 | canais definitivos | ⏸️ congelada por decisão do Founder |
+
+## A SPEC-063 tem DOIS gates, e só um fechou
+
+```
+✅ GATE DE CODIGO      134 testes · tsc 0 · rotas montam · deploy verificado
+🔴 GATE DA PROVA VIVA  §6.1 exige WhatsApp pareado. NADA esta pareado.
+                       É a P-71, e é a primeira coisa de amanhã.
+```
+
+**E ela cresceu além do próprio texto.** A SPEC previa 8 blocos; a execução
+descobriu mais trabalho do que a SPEC continha:
+
+```
+BLOCOS DA SPEC   A B C D H S G ✅ · E P V ⚠️ parciais · F ⚠️ 13 de ~25
+FASE 0           ✅ 11 consertos estruturais que valem para TODAS as seguradoras
+FASE 1           ✅ o formulario nativo SAI e o WhatsApp ACEITA (provado no ar)
+                 🔴 falta o desfecho NA SEGURADORA — P-71
+FASES 2 a 5      ❌ dependem de pareamento
+```
+
+> Ver [`O-FORMULARIO-NATIVO-RESOLVIDO.md`](O-FORMULARIO-NATIVO-RESOLVIDO.md),
+> [`O-QUE-JA-QUEBROU-E-QUEM-GUARDA.md`](O-QUE-JA-QUEBROU-E-QUEM-GUARDA.md) e
+> [`PLANO-DE-EXECUCAO-DO-ATENDIMENTO.md`](PLANO-DE-EXECUCAO-DO-ATENDIMENTO.md).
+
+## O que dá para fazer AGORA, sem pareamento e sem InfoCap
+
+```
+1  SPEC-068 Bloco A     📊 hoje TODA rota /api/ passa pelo middleware sem
+                        checagem de sessao. Rota nova nasce publica e
+                        ninguem e avisado — e vamos ligar CPF de segurado
+                        passando por elas
+2  o lote 🤖 pequeno    P-34 P-36 P-37 P-38 P-43 P-46 P-47 P-56 — todos sem
+                        dependencia externa. P-36 PRIMEIRO: e a classe de
+                        defeito que ja zerou a AutoFleet e segue aberta em
+                        tres lugares
+3  P-67                 conversa pessoal no numero da corretora virar carta
+                        no RAG. O filtro de PII mira dado pessoal, nao
+                        pertinencia
+4  SPEC-066 inteira     fonte publica, sem senha, sem pareamento
+5  SPEC-065 Blocos D+F  declarados independentes da InfoCap
+```
