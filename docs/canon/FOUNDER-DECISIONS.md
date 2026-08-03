@@ -846,7 +846,28 @@ e provado em produção: agente de atendimento criado com `is_active=true` nasce
 
 ---
 
-## P2 — A organização do primeiro nível do Admin  `AGUARDANDO FOUNDER`
+## P2 — A organização do primeiro nível do Admin  `RESOLVIDA — 02/08/2026`
+
+> **Decisão delegada ao líder técnico pelo Founder** em 02/08, com o pedido de
+> "pensar em como seria no GPT e no Claude para ser administrado".
+>
+> **FICAM OS OITO HUBS da SPEC-061.** A SPEC-064 I.3 é marcada como
+> **SUPERADA** neste ponto.
+>
+> **Três razões:**
+> 1. Os seis hubs da SPEC-064 **não cobrem tudo** — Financeiro, Conhecimento e
+>    Governança sumiriam. Não é simplificação: é omissão.
+> 2. O padrão do Claude e do GPT **não é "menos seções"** — é cada seção
+>    responder uma pergunta inteira. Oito nomeadas por assunto já é isso.
+> 3. O problema medido nunca foi a quantidade: eram **quatro telas no hub
+>    errado**. Rótulo resolve o que hub novo só mascararia.
+>
+> **O que foi feito:** as quatro telas do catálogo se anunciam com prefixo —
+> `Catálogo: Auxiliares`, `Catálogo: Agentes`, `Catálogo: Modelos de rotina`,
+> `Catálogo: Skills, ferramentas e conectores`. Primeiro nível intacto em 8.
+
+### Registro original do conflito
+
 
 **Data de abertura:** 02/08/2026 · **Origem:** SPEC-064 Bloco I
 
