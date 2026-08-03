@@ -207,6 +207,21 @@ def _bootstrap():
     sys.modules["app.services.whatsapp_service"] = was
 
     po = _load("app.services.platform_outbound", "app/services/platform_outbound.py")
+
+    # SPEC-063 Bloco C — este teste é sobre a FILA DE CORTESIA (não escrever
+    # para quem está em conversa), e passou a esbarrar no governador de envio,
+    # que nasceu depois dele.
+    #
+    # O governador tem janela (08:00–20:00, domingo bloqueado) e espaçamento de
+    # 4 a 8 min entre mensagens frias. Sem neutralizá-los, este teste ficava
+    # verde às 14:00 e vermelho às 01:12 — e um teste que muda de resultado com
+    # o relógio da máquina não prova nada, só informa que turno era.
+    #
+    # Neutralizo APENAS as duas restrições novas, e nada mais: a cortesia, o
+    # registro em Atividades e a nota de contexto continuam sendo exercitados de
+    # verdade. Janela e espaçamento têm teste próprio, com prova funcional nas
+    # quatro bordas, em `test_governador_de_envio.py`.
+    po.avaliar_vazao = lambda **k: po.Veredito(True, "governador neutralizado neste teste", 0)
     return cap, po, store, redis, dr, was, act
 
 

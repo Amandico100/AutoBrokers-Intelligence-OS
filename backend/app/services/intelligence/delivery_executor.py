@@ -47,6 +47,7 @@ que aconteceu" e "sei exatamente o que falta ligar".
 from __future__ import annotations
 
 import logging
+import os
 from datetime import datetime, timezone
 from typing import Any, Optional
 
@@ -229,26 +230,118 @@ class DeliveryExecutor:
 
         E não sai antes do governador de envio existir.
 
-        PENDÊNCIA P-14 — hoje **não existe limitação de taxa em lugar nenhum**
-        (SPEC-063 Bloco C). Mandar briefing por WhatsApp sem governador é
-        repetir o defeito da cobrança, que percorre 50 destinatários sem pausa.
+        PENDÊNCIA P-14 — **resolvida na SPEC-063 Bloco C**. Até ela, não havia
+        limitação de taxa em lugar nenhum, e mandar briefing por WhatsApp seria
+        repetir o defeito da cobrança, que percorria 50 destinatários sem pausa.
 
-        A guarda é dura de propósito: uma flag de configuração poderia ser
-        ligada por engano. Uma dependência de código não.
+        A guarda continua sendo dura de propósito: uma flag de configuração
+        poderia ser ligada por engano. Uma dependência de código não. Ela
+        permanece aqui — se o governador for removido ou renomeado, este canal
+        volta a se fechar sozinho, em vez de passar a enviar sem freio.
+
+        O briefing é mensagem **fria**: é a plataforma falando primeiro. Ele vai
+        pela mesma porta governada de qualquer outra fria, e aceita ser adiado.
         """
         try:
-            from app.services.whatsapp import outbound_governor  # noqa: F401
+            from app.services.whatsapp import outbound_governor
         except Exception:  # noqa: BLE001
             return ResultadoDeCanal(
                 "whatsapp", False,
                 "governador de envio ainda não existe — o briefing não sai por "
                 "WhatsApp até a SPEC-063 Bloco C (PENDENCIAS.md P-14)")
 
-        # Quando o governador existir, é aqui que a manchete + link saem por
-        # ele. Nunca por caminho próprio (CLAUDE.md §5).
-        return ResultadoDeCanal(
-            "whatsapp", False,
-            "governador presente, envio de briefing ainda não implementado")
+        destinos = self._telefones(perfil)
+        if not destinos:
+            return ResultadoDeCanal(
+                "whatsapp", False,
+                "governador presente, mas o perfil não tem nenhum telefone de "
+                "WhatsApp em recipient_refs — não há para quem enviar")
+
+        company_id = publicacao.get("company_id")
+        if not company_id:
+            return ResultadoDeCanal(
+                "whatsapp", False,
+                "governador presente, mas a publicação não diz de qual corretora "
+                "é — sem corretora não há canal nem teto de vazão")
+
+        veredito = outbound_governor.governar_envio_sync(str(company_id))
+        if not veredito.pode:
+            # Não é falha: é o governador funcionando. O motivo dele já vem
+            # escrito para humano — não reescrevo por cima.
+            return ResultadoDeCanal("whatsapp", False,
+                                    f"governador adiou: {veredito.motivo}",
+                                    {"esperar_s": veredito.esperar_s})
+
+        texto = self._manchete_curta(publicacao)
+        enviados, erros = [], []
+        for numero in destinos:
+            try:
+                # `temperatura=QUENTE` porque o slot de vazão JÁ foi reservado
+                # na linha acima. Pedir de novo por dentro consumiria um segundo
+                # slot para a mesma aproximação e travaria o próximo destinatário
+                # por mais 4–8 min sem motivo.
+                res = outbound_governor.send_to_client_guarded(
+                    str(company_id), numero, texto, "briefing",
+                    (publicacao.get("headline") or "briefing")[:120],
+                    temperatura=outbound_governor.QUENTE)
+                res = self._esperar(res)
+                (enviados if (res or {}).get("ok") else erros).append(numero)
+            except Exception as exc:  # noqa: BLE001
+                logger.warning("[Entrega] WhatsApp falhou: %s", type(exc).__name__)
+                erros.append(numero)
+
+        if enviados:
+            return ResultadoDeCanal(
+                "whatsapp", True,
+                f"governador liberou e a manchete saiu para {len(enviados)} "
+                f"número(s)", {"falhas": len(erros)})
+        return ResultadoDeCanal("whatsapp", False,
+                                "governador liberou, mas nenhuma mensagem saiu "
+                                "do canal de WhatsApp da corretora")
+
+    @staticmethod
+    def _esperar(resultado: Any) -> dict:
+        """`send_to_client_guarded` é corrotina. Este módulo é síncrono."""
+        import asyncio
+        import inspect
+
+        if not inspect.isawaitable(resultado):
+            return resultado or {}
+        try:
+            asyncio.get_running_loop()
+        except RuntimeError:
+            return asyncio.run(resultado) or {}
+        import concurrent.futures
+
+        with concurrent.futures.ThreadPoolExecutor(max_workers=1) as ex:
+            return ex.submit(asyncio.run, resultado).result(timeout=30) or {}
+
+    def _manchete_curta(self, publicacao: dict) -> str:
+        """Manchete + link. Nunca o relatório: WhatsApp não é onde se lê análise.
+
+        O link aponta para o painel, que é onde o briefing já está — a mensagem
+        é um aviso com endereço, não uma cópia do conteúdo.
+        """
+        manchete = str(publicacao.get("headline") or "Seu checklist do AutoBrokers").strip()
+        base = (os.getenv("APP_PUBLIC_URL") or "").strip().rstrip("/")
+        if base:
+            return f"{manchete[:180]}\n\n{base}/dashboard/entregas"
+        return manchete[:180]
+
+    def _telefones(self, perfil: dict) -> list[str]:
+        refs = perfil.get("recipient_refs")
+        if isinstance(refs, dict):
+            refs = refs.get("whatsapp") or refs.get("phones") or refs.get("telefones") or []
+        elif isinstance(refs, (str, list)):
+            # `recipient_refs` plano é lista de e-mail (é assim que `_destinatarios`
+            # a lê). Sem a chave explícita de WhatsApp, não há telefone aqui.
+            refs = []
+        saida = []
+        for t in (refs or []):
+            digitos = "".join(c for c in str(t) if c.isdigit())
+            if len(digitos) >= 10:
+                saida.append(digitos)
+        return saida
 
     # ------------------------------------------------------------------
 

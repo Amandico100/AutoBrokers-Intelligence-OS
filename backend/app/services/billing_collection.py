@@ -3,6 +3,30 @@
 Este modulo NAO e um worker novo. Ele e uma especializacao do motor existente de
 rotinas: enfileira portal_jobs, consolida evidencias e devolve o relatorio para
 o routine_engine entregar pelo canal da rotina.
+
+SPEC-063 Bloco C — a rajada que este arquivo produzia
+=====================================================
+`_send_test_messages` percorria ate `max_boletos_por_execucao` itens (limite
+50) e, para cada um, enviava DUAS mensagens: o texto e o boleto em PDF. 📊
+50 x 2 = 100 mensagens seguidas, sem uma unica pausa, saindo do WhatsApp da
+corretora. Um numero novo que faz isso e banido — e quem perde o canal e a
+corretora, nao a plataforma.
+
+Agora cada item pergunta ao governador (`platform_outbound`) antes de sair.
+
+**O governador conta APROXIMACOES, nao mensagens.** Texto + boleto para o mesmo
+segurado sao um unico ato de fala: quem recebe ve uma conversa, nao duas
+abordagens. Espacar o PDF em 6 minutos do texto que o anuncia seria pior que
+nao espacar — deixaria o segurado esperando um anexo que ele acabou de ler que
+viria "abaixo". Entao o par sai junto, e o governador cobra o intervalo antes do
+PROXIMO segurado.
+
+Quando o governador manda esperar, a rotina espera de verdade (`asyncio.sleep`,
+que nao congela o event loop — a licao do Bloco H) ate um orcamento de tempo.
+Estourado o orcamento, ou fechada a janela, ela **para e relata**: os itens nao
+enviados nao entram em `billing_sent_log`, e por isso a proxima execucao os
+pega de onde parou. Nao ha fila nova nem estado novo — o anti-duplicacao que ja
+existia e o que torna "parar no meio" seguro.
 """
 from __future__ import annotations
 
@@ -13,6 +37,11 @@ from datetime import datetime, timezone
 from typing import Any, Dict, Iterable, List, Optional
 
 BILLING_KIND = "billing_collection"
+# Quanto tempo uma execucao da rotina aceita ficar esperando o governador
+# liberar o proximo slot. Uma hora cabe ~9 aproximacoes espacadas em 4–8 min;
+# alem disso e melhor terminar o relatorio e continuar na proxima execucao do
+# que segurar uma rotina viva por meio dia.
+GOVERNOR_WAIT_BUDGET_S = 3600
 DEFAULT_PORTAL_KEYS = ["allianz_corretor"]
 # Mensagem PADRÃO TRAVADA (definida pelo founder 2026-07-11). Sem negrito/itálico,
 # com espaçamento entre as linhas. É a que aparece (read-only) no campo do
@@ -525,11 +554,25 @@ async def _send_test_messages(
     by_recibo = _boletos_by_recibo(boletos)
     sent: List[Dict[str, Any]] = []
     skipped = 0
-    for item in items[: int(cfg["max_boletos_por_execucao"])]:
+    orcamento_s = float(GOVERNOR_WAIT_BUDGET_S)
+    a_enviar = items[: int(cfg["max_boletos_por_execucao"])]
+    for indice, item in enumerate(a_enviar):
         recibo_key = str(item.get("recibo") or "").strip()
         if recibo_key and recibo_key in already:
             skipped += 1
             continue
+
+        # SPEC-063 Bloco C — o portao de vazao, UMA vez por segurado.
+        liberado, motivo, esperou = await _esperar_o_governador(company_id, orcamento_s)
+        orcamento_s -= esperou
+        if not liberado:
+            pendentes = len(a_enviar) - indice
+            blockers.append(
+                f"governador de envio: parei em {len(sent)} envio(s) — {motivo}. "
+                f"{pendentes} item(ns) ficaram para a proxima execucao (nao foram "
+                f"marcados como enviados, entao nao se perdem)")
+            break
+
         boleto = by_recibo.get(recibo_key)
         boleto_url = await asyncio.to_thread(_signed_boleto_url, client, boleto.get("storage_path") if boleto else "")
         text = _format_test_message(item, cfg, boleto, boleto_url)
@@ -571,10 +614,67 @@ async def _send_test_messages(
                 blockers.append("modo teste: envio do PDF como documento falhou; usei link temporario como fallback")
         if entry["ok"]:
             await asyncio.to_thread(_record_sent, client, company_id, item, "test", bool(entry.get("document_sent")))
+            # O contador de vazao vive em `platform_sends`, e ele so conta o
+            # que foi registrado. Sem esta linha o governador espacaria as
+            # mensagens e continuaria achando que o dia esta zerado — o teto
+            # diario nunca fecharia.
+            await _registrar_no_governador(company_id, number, item, cfg)
         sent.append(entry)
     if skipped:
         blockers.append(f"anti-duplicacao: {skipped} boleto(s) ja enviados anteriormente foram pulados (nao reenviamos o mesmo)")
     return sent
+
+
+async def _esperar_o_governador(company_id: str, orcamento_s: float) -> tuple:
+    """Pergunta ao governador se pode enviar. `(liberado, motivo, esperou_s)`.
+
+    Tres respostas possiveis:
+
+    * **libera** — o slot ja foi reservado; envie agora.
+    * **manda esperar pouco** (espacamento, dentro do orcamento) — dorme e
+      pergunta de novo. `asyncio.sleep`, nao `time.sleep`: congelar o event
+      loop por 6 minutos derrubaria o atendimento de TODAS as corretoras.
+    * **manda esperar muito** (janela fechada, domingo, teto do dia, freio
+      puxado) — nao adianta dormir. A rotina para e relata.
+
+    Falha ao CARREGAR o governador nao libera o envio. Era exatamente assim que
+    a rajada de 100 mensagens saia: sem ninguem para dizer nao.
+    """
+    try:
+        from app.services.platform_outbound import governar_envio
+    except Exception as e:  # noqa: BLE001
+        return False, f"governador indisponivel ({type(e).__name__}) — nada sai sem freio", 0.0
+
+    esperou = 0.0
+    while True:
+        try:
+            veredito = await governar_envio(str(company_id))
+        except Exception as e:  # noqa: BLE001
+            return False, f"governador nao respondeu ({type(e).__name__})", esperou
+        if veredito.pode:
+            return True, veredito.motivo, esperou
+        espera = float(veredito.esperar_s or 0)
+        if espera <= 0 or espera > (orcamento_s - esperou):
+            return False, veredito.motivo, esperou
+        await asyncio.sleep(espera)
+        esperou += espera
+
+
+async def _registrar_no_governador(company_id: str, number: str,
+                                   item: Dict[str, Any], cfg: Dict[str, Any]) -> None:
+    """Anota o envio em `platform_sends` — a fonte duravel dos tetos."""
+    try:
+        from app.services.platform_outbound import record_platform_send
+
+        parcela = _first_text(item.get("numero_parcela"), item.get("parcela"), default="?")
+        seguradora = _portal_insurer_name(item, cfg)
+        await record_platform_send(str(company_id), number, "billing",
+                                   f"cobranca da parcela {parcela} ({seguradora})")
+    except Exception:  # noqa: BLE001
+        # Best-effort: perder o registro nao pode derrubar a rotina. Mas ele
+        # subestima o contador, e subestimar teto e o lado perigoso — por isso
+        # o espacamento (que vive no Redis, nao aqui) continua valendo.
+        pass
 
 
 def _format_report(
@@ -681,10 +781,12 @@ async def execute_billing_collection_routine(supabase, routine: Dict[str, Any]) 
     elif items and cfg.get("send_mode") == "live" and not customer_send_allowed(cfg):
         blockers.append("envio ao cliente bloqueado por configuracao/gate de seguranca")
     elif items and cfg.get("send_mode") == "live":
-        # SPEC-045: quando o envio live for homologado, ele DEVE sair por
-        # app.services.platform_outbound.send_to_client_guarded (fila de
-        # cortesia + registro em platform_sends p/ a nota de contexto do
-        # atendente) — nunca por send_message direto.
+        # SPEC-045 + SPEC-063 Bloco C: quando o envio live for homologado, ele
+        # DEVE sair por app.services.platform_outbound.send_to_client_guarded
+        # — que hoje ja carrega as tres guardas de uma vez: fila de cortesia
+        # (nao atropela atendimento), governador de vazao (espacamento, tetos,
+        # janela, freio) e registro em platform_sends. Nunca por send_message
+        # direto: e o send_message direto que ignora as tres.
         blockers.append("envio direto ao cliente permanece desativado nesta fase de homologacao")
 
     return _format_report(

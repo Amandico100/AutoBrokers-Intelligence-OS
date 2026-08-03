@@ -43,8 +43,141 @@ DISPATCH_STATES = (
     "monitoring",      # protocolo capturado; só repassa updates da seguradora ao cliente
     "test_aborted",    # modo TESTE: fluxo completo executado e CANCELADO na confirmação final
     "needs_human",
-    "blocked_gate",
 )
+# `blocked_gate` foi REMOVIDO em 03/08/2026 (SPEC-063 Bloco E).
+# 📊 `grep -rn "blocked_gate"` no repositório inteiro devolvia UMA ocorrência: a
+# própria declaração. Nada atribuía, nada lia, nada testava.
+#
+# E o nome mentia sobre a máquina. O portão (`INSURER_DISPATCH_LIVE`) nunca
+# BLOQUEIA uma fase: com ele fechado o acionamento roda inteiro em DRY-RUN —
+# `_emit` grava o transcript, marca `dry_run: True` e avança o estado do mesmo
+# jeito. Quem registra se o envio foi real é `session["live"]`, não um estado.
+#
+# Estado morto num enum que agora vira LINHA DE BANCO (espelho durável no Work
+# Run) é pior que estado morto em memória: obriga a reconciliação a classificar
+# como "em voo" ou "encerrado" algo que nenhuma transição produz. Removido.
+
+# ---------------------------------------------------------------------------
+# A máquina de estados, escrita como dado — SPEC-063 Bloco E
+# ---------------------------------------------------------------------------
+#
+# Esta é a única máquina de estados real do produto, e até 03/08/2026 ela morava
+# SÓ no Redis (`dispatch:active:{company}:{digits}`, TTL 6h — 24h em
+# `monitoring`). 📊 `grep -c work_run insurer_dispatch_service.py` → 0.
+#
+# Um restart do Redis, ou seis horas de silêncio, perdiam um acionamento EM VOO
+# e não havia reconciliação: um segurado com o guincho a caminho ficava órfão e
+# ninguém ficava sabendo. Isso viola CLAUDE.md §6 (Supabase é a verdade durável,
+# Redis é transitório) e a SPEC-055 (Work Run = execução universal).
+#
+# O que segue é PURO — o núcleo continua sem falar com banco. Quem escreve o
+# espelho durável é o `dispatch_router`, usando estas funções para não inventar
+# um segundo vocabulário de fases ao lado deste.
+
+# Quantas fases já andou. Serve de `ordinal` da etapa no Work Run e de ordem de
+# leitura humana na linha do tempo. NÃO é chave: a conversa oscila
+# (ura → human_phase → ura) e a mesma fase se repete várias vezes por sessão.
+_ORDEM_DAS_FASES: Dict[str, int] = {
+    "preparing": 1,
+    "ready_to_send": 2,
+    "ura": 3,
+    "human_phase": 4,
+    "captured": 5,
+    "monitoring": 6,
+    "needs_human": 8,
+    "test_aborted": 9,
+}
+
+# EM VOO = existe trabalho acontecendo que alguém precisa terminar.
+FASES_EM_VOO = ("preparing", "ready_to_send", "ura", "human_phase", "captured", "monitoring")
+
+# ENCERRADAS = a máquina não fala mais com a seguradora por conta própria.
+FASES_ENCERRADAS = ("needs_human", "test_aborted")
+
+# Fase do acionamento → status durável do Work Run (SPEC-055 §9).
+#
+# Não inventamos vocabulário: o enum `work_run_status` do banco já tem as
+# palavras certas. `monitoring` e `needs_human` são `waiting_input` porque em
+# ambas o trabalho existe, não terminou, e depende de algo de fora — a
+# seguradora mandando update, ou uma pessoa assumindo.
+STATUS_WORK_RUN_POR_FASE: Dict[str, str] = {
+    "preparing": "queued",
+    "ready_to_send": "queued",
+    "ura": "running",
+    "human_phase": "running",
+    "captured": "running",
+    "monitoring": "waiting_input",
+    "needs_human": "waiting_input",
+    "test_aborted": "completed",
+}
+
+# Quanto tempo uma sessão desta fase ainda vale. Espelha o TTL do Redis: passou
+# disso, restaurar não ajuda ninguém — a conversa com a seguradora já morreu.
+_JANELA_DE_VIDA_SEGUNDOS: Dict[str, int] = {"monitoring": 24 * 3600}
+_JANELA_PADRAO_SEGUNDOS = 6 * 3600
+
+# Chaves que NUNCA entram no retrato durável. Nenhuma existe hoje na sessão —
+# a lista está aqui para que um campo novo com nome de credencial não vire linha
+# de banco por descuido (CLAUDE.md §7: nenhum segredo em log ou artifact).
+_CHAVES_PROIBIDAS = ("token", "secret", "senha_acesso_portal", "api_key",
+                     "password_hash", "authorization", "credential")
+
+
+def ordem_da_fase(state: str) -> int:
+    return _ORDEM_DAS_FASES.get(str(state or ""), 0)
+
+
+def fase_em_voo(state: str) -> bool:
+    return str(state or "") in FASES_EM_VOO
+
+
+def status_duravel_da_fase(state: str) -> str:
+    """A fase do acionamento traduzida para o vocabulário do Work Run."""
+    return STATUS_WORK_RUN_POR_FASE.get(str(state or ""), "running")
+
+
+def janela_de_vida_segundos(state: str) -> int:
+    """Por quanto tempo uma sessão nesta fase ainda merece ser restaurada."""
+    return _JANELA_DE_VIDA_SEGUNDOS.get(str(state or ""), _JANELA_PADRAO_SEGUNDOS)
+
+
+def snapshot_duravel(session: Dict[str, Any], *, cauda: int = 8) -> Dict[str, Any]:
+    """Retrato da sessão que basta para ela VOLTAR do banco.
+
+    Duas escolhas deliberadas:
+
+    1. **O transcript vai só de rabo.** Os bytes inteiros já são duráveis: o
+       Espelho (SPEC-034) grava cada mensagem em `messages`, lincada ao caso.
+       Repetir o transcript completo em cada checkpoint transformaria uma
+       conversa de 20 mensagens em centenas de KB de jsonb duplicado. O que o
+       motor precisa para continuar é a fase, os slots e as capturas; a cauda
+       fica porque o guard de loop e o dossiê de handoff leem as últimas saídas.
+
+    2. **Nada com cara de credencial atravessa.** Ver `_CHAVES_PROIBIDAS`.
+    """
+    retrato = {k: v for k, v in dict(session or {}).items()
+               if not any(p in str(k).lower() for p in _CHAVES_PROIBIDAS)}
+    transcript = list(retrato.get("transcript") or [])
+    retrato["transcript"] = transcript[-max(0, int(cauda)):] if cauda else []
+    retrato["transcript_total"] = len(transcript)
+    return retrato
+
+
+def sessao_restaurada(snapshot: Dict[str, Any], *, motivo: str) -> Dict[str, Any]:
+    """A sessão que volta do banco, com o contador do Espelho recalibrado.
+
+    Sem esta recalibragem o Espelho PARARIA DE ESPELHAR em silêncio: ele decide
+    o que gravar por `transcript[mirror_idx:]`, e o retrato durável carrega só a
+    cauda. Um `mirror_idx` de 20 sobre um transcript de 8 faz
+    `len(transcript) <= idx` — e toda mensagem nova a partir daí some do
+    dashboard até o transcript passar de 20 outra vez.
+    """
+    sessao = dict(snapshot or {})
+    sessao.pop("transcript_total", None)
+    sessao["mirror_idx"] = len(sessao.get("transcript") or [])
+    sessao["restaurado_em"] = _now()
+    sessao["restaurado_motivo"] = str(motivo or "")[:200]
+    return sessao
 
 
 def dispatch_live_enabled() -> bool:

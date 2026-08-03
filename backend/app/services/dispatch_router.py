@@ -12,14 +12,29 @@ Este módulo:
   e encerra a sessão.
 
 Fail-safe: needs_human → sessão pausa e marca handoff (nunca responde às cegas).
+
+SPEC-063 Bloco E — o Redis deixou de ser a ÚNICA verdade
+--------------------------------------------------------
+Até 03/08/2026 o estado do acionamento existia só na chave acima. Um restart do
+Redis, ou seis horas de silêncio, perdiam um acionamento EM VOO — e não havia
+reconciliação nenhuma: o segurado com o guincho a caminho ficava órfão e ninguém
+percebia. O Vigia (`dispatch_watchdog`) não cobre isso: ele varre as sessões que
+ESTÃO no Redis, então é justamente cego para a que sumiu de lá.
+
+Agora cada transição de fase vira checkpoint durável num **Work Run** (SPEC-055,
+o mesmo motor de todo o resto — nenhuma tabela nova, nenhum executor paralelo).
+O Redis continua sendo o cache quente; o que ele não é mais é a única cópia.
 """
 
 from __future__ import annotations
 
+import hashlib
 import json
 import logging
 import re
 import unicodedata
+import uuid
+from datetime import datetime, timezone
 from typing import Any, Callable, Dict, Optional
 
 from app.services.insurer_dispatch_service import (
@@ -33,6 +48,20 @@ from app.services.insurer_dispatch_service import (
 )
 
 logger = logging.getLogger(__name__)
+
+
+def _motor():
+    """O vocabulário de fases do motor, carregado sob demanda.
+
+    Import tardio de propósito. Este módulo é importado por telas, tarefas e
+    testes que **dublam** o motor de acionamento (`sys.modules[...] = stub`), e
+    um import de topo obrigaria todo dublê a conhecer cada nome novo que o
+    espelho durável usa — quebrando quem não tem nada a ver com o assunto.
+    Quando qualquer função daqui roda, o núcleo já está carregado: custo zero."""
+    from app.services import insurer_dispatch_service as motor
+
+    return motor
+
 
 _TTL_SECONDS = 6 * 3600
 _MONITOR_TTL_SECONDS = 24 * 3600  # updates da seguradora chegam por até ~1 dia
@@ -70,26 +99,25 @@ async def _redis():
         return None
 
 
-async def save_active_dispatch(company_id: str, insurer_phone: str, session: Dict[str, Any]) -> None:
-    # ESPELHO (SPEC-034): todo transcript novo vai para o banco/dashboard antes
-    # de persistir no Redis — ponto único de captura. Nunca bloqueia o motor.
-    try:
-        from app.services.dispatch_mirror import mirror_session
+async def _gravar_no_redis(company_id: str, insurer_phone: str, session: Dict[str, Any],
+                           ttl: Optional[int] = None) -> None:
+    """Escreve a sessão no cache quente. Só isso — nada de espelho nem banco.
 
-        await mirror_session(company_id, insurer_phone, session)
-    except Exception:  # noqa: BLE001 — espelho é best-effort
-        pass
+    Existe separado de `save_active_dispatch` porque a restauração precisa
+    devolver a sessão ao Redis SEM disparar de novo o espelho e o checkpoint que
+    a produziram (seria gravar duas vezes o mesmo passado)."""
     key = _key(company_id, insurer_phone)
+    if ttl is None:
+        ttl = _MONITOR_TTL_SECONDS if str(session.get("state") or "") == "monitoring" else _TTL_SECONDS
     payload = json.dumps(session, ensure_ascii=False, default=str)
-    ttl = _MONITOR_TTL_SECONDS if str(session.get("state") or "") == "monitoring" else _TTL_SECONDS
     redis = await _redis()
     if redis is not None:
-        await redis.set(key, payload, ex=ttl)
+        await redis.set(key, payload, ex=max(60, int(ttl)))
     else:
         _memory_store[key] = payload
 
 
-async def load_active_dispatch(company_id: str, insurer_phone: str) -> Optional[Dict[str, Any]]:
+async def _ler_do_redis(company_id: str, insurer_phone: str) -> Optional[Dict[str, Any]]:
     key = _key(company_id, insurer_phone)
     redis = await _redis()
     raw = await redis.get(key) if redis is not None else _memory_store.get(key)
@@ -101,13 +129,520 @@ async def load_active_dispatch(company_id: str, insurer_phone: str) -> Optional[
         return None
 
 
+async def save_active_dispatch(company_id: str, insurer_phone: str, session: Dict[str, Any]) -> None:
+    # ESPELHO (SPEC-034): todo transcript novo vai para o banco/dashboard antes
+    # de persistir no Redis — ponto único de captura. Nunca bloqueia o motor.
+    try:
+        from app.services.dispatch_mirror import mirror_session
+
+        await mirror_session(company_id, insurer_phone, session)
+    except Exception:  # noqa: BLE001 — espelho é best-effort
+        pass
+    # CHECKPOINT DURÁVEL (SPEC-063 E): a fase vai para o Work Run ANTES do Redis.
+    # Ordem importa: se o processo morrer entre as duas escritas, o pior caso é
+    # um checkpoint mais novo que o cache — recuperável. O inverso (cache mais
+    # novo que a verdade durável) é justamente o defeito que estamos matando.
+    await registrar_checkpoint(company_id, insurer_phone, session)
+    await _gravar_no_redis(company_id, insurer_phone, session)
+
+
+async def load_active_dispatch(company_id: str, insurer_phone: str) -> Optional[Dict[str, Any]]:
+    sessao = await _ler_do_redis(company_id, insurer_phone)
+    if sessao is None:
+        # Cache vazio é o SINTOMA do defeito desta SPEC. Uma vez por processo,
+        # isso agenda a varredura que compara a verdade durável com o cache.
+        _agendar_reconciliacao_uma_vez()
+    return sessao
+
+
 async def clear_active_dispatch(company_id: str, insurer_phone: str) -> None:
+    # Ler antes de apagar: é a última chance de saber QUAL Work Run esta chave
+    # representava. Sem isto, toda sessão encerrada de propósito (supersede,
+    # retomada automática, seguradora que derrubou a conversa) deixaria um run
+    # eternamente "em voo" — o defeito do `corridor_runs`, 📊 50 execuções
+    # abandonadas em `active`, hoje no schema `graveyard`.
+    sessao = await _ler_do_redis(company_id, insurer_phone)
     key = _key(company_id, insurer_phone)
     redis = await _redis()
     if redis is not None:
         await redis.delete(key)
     else:
         _memory_store.pop(key, None)
+    if sessao and sessao.get("work_run_id"):
+        await _encerrar_work_run(company_id, sessao, motivo="sessão encerrada e liberada")
+
+
+# ---------------------------------------------------------------------------
+# ESPELHO DURÁVEL DO ACIONAMENTO — SPEC-063 Bloco E sobre a SPEC-055
+# ---------------------------------------------------------------------------
+#
+# POR QUE UM WORK RUN, E NÃO UMA TABELA DE ESTADO NOVA
+# ----------------------------------------------------
+# Porque a tabela nova já foi tentada e morreu: 📊 `corridor_runs` tem 50
+# execuções abandonadas, todas em `active`, e hoje mora no schema `graveyard`.
+# CLAUDE.md §5 proíbe criar executor em paralelo ao existente, e a SPEC-055 já
+# define Work Run como a execução universal — com etapa, checkpoint, linha do
+# tempo e retomada. O acionamento é uma execução. Ele cabe lá inteiro.
+#
+# POR QUE NÃO PASSA PELO `work_run_create`
+# -----------------------------------------
+# O RPC grava, na mesma transação, uma linha em `work_queue_outbox`. O
+# OutboxDispatcher publica no Redis Stream, o Smith Worker consome e chama
+# `resolver_workflow("acionamento.seguradora")` — que devolve `None`, porque
+# **este trabalho não é executado pelo worker**: quem o executa é o inbound do
+# WhatsApp, mensagem por mensagem, ao longo de horas. O worker então marcaria o
+# run como `failed` com "workflow_desconhecido" enquanto o acionamento está VIVO.
+# O espelho durável passaria a mentir — que é pior do que não existir.
+#
+# Por isso o run nasce direto na tabela, com `runtime_kind='acionamento'`: mesma
+# tabela, mesmo enum de status, mesma linha do tempo em `work_events`, mesmos
+# checkpoints em `work_steps`. O que ele não tem é fila — de propósito.
+#
+# E não há conflito com o varredor de órfãos da SPEC-055: `recuperar_orfaos()`
+# filtra `lease_expires_at < agora`, e um run sem lease tem esse campo NULO —
+# PostgREST não devolve NULL num `.lt()`. O Smith Worker nunca toca nestes runs.
+
+WORKFLOW_ACIONAMENTO = "acionamento.seguradora"
+RUNTIME_ACIONAMENTO = "acionamento"
+
+_STATUS_EM_VOO_WORK_RUN = ("draft", "queued", "planning", "running",
+                           "waiting_approval", "waiting_input", "paused",
+                           "retry_scheduled", "cancelling")
+_ERRO_ORFAO = "acionamento_orfao"
+_PRAZO_EXPIRAR_ORFAO_DIAS = 7
+_reconciliacao_agendada = False
+
+
+async def _db():
+    """Cliente durável. `None` quando offline (teste) — nunca derruba o motor."""
+    try:
+        from app.core.database import create_async_supabase_client
+
+        return await create_async_supabase_client()
+    except Exception as e:  # noqa: BLE001
+        logger.error("[ACIONAMENTO DURAVEL] banco indisponivel (%s) — o acionamento "
+                     "segue, mas SEM espelho durável nesta escrita", type(e).__name__)
+        return None
+
+
+def _agora() -> datetime:
+    return datetime.now(timezone.utc)
+
+
+def _idade_segundos(ts: Any) -> float:
+    """Segundos desde `ts`. `-1` quando ilegível — quem chama decide o que fazer
+    com o desconhecido (aqui: tratar como velho, nunca como novo)."""
+    try:
+        quando = datetime.fromisoformat(str(ts or "").replace("Z", "+00:00"))
+        if quando.tzinfo is None:
+            quando = quando.replace(tzinfo=timezone.utc)
+        return (_agora() - quando).total_seconds()
+    except Exception:  # noqa: BLE001
+        return -1.0
+
+
+def _chave_idempotente(insurer_digits: str, session: Dict[str, Any]) -> str:
+    """Um run por SESSÃO de acionamento, não por caso.
+
+    O `case_id` sozinho fundiria coisas diferentes: a retomada automática depois
+    de a URA derrubar a conversa abre uma SEGUNDA tentativa, e um guincho novo
+    para o mesmo caso semanas depois é outro trabalho. `created_at` da sessão
+    separa as três sem inventar contador nenhum."""
+    caso = str(session.get("case_id") or "sem-caso")
+    nascimento = str(session.get("created_at") or "")
+    return f"acionamento:{insurer_digits}:{caso}:{nascimento}"[:250]
+
+
+def _progresso_da_fase(fase: str, status: str) -> int:
+    if status == "completed":
+        return 100
+    return max(5, min(95, _motor().ordem_da_fase(fase) * 15))
+
+
+async def _garantir_work_run(db, company_id: str, insurer_digits: str,
+                             session: Dict[str, Any]) -> Optional[str]:
+    """O Work Run desta sessão — reaproveitado, nunca duplicado."""
+    if session.get("work_run_id"):
+        return str(session["work_run_id"])
+
+    idem = _chave_idempotente(insurer_digits, session)
+    achado = await (db.client.table("work_runs").select("id")
+                    .eq("company_id", company_id).eq("idempotency_key", idem)
+                    .limit(1).execute())
+    if achado.data:
+        session["work_run_id"] = str(achado.data[0]["id"])
+        return session["work_run_id"]
+
+    fase = str(session.get("state") or "preparing")
+    status = _motor().status_duravel_da_fase(fase)
+    run_id = str(uuid.uuid4())
+    entrada = {
+        "company_id": str(company_id),
+        "case_id": str(session.get("case_id") or ""),
+        "insurer_phone": insurer_digits,
+        "playbook_ref": str(session.get("playbook_ref") or ""),
+        "subservice": str(session.get("subservice") or ""),
+    }
+    agora = _agora().isoformat()
+    linha = {
+        "id": run_id,
+        "company_id": str(company_id),
+        "source_type": "chat",
+        "source_id": str(session.get("case_id") or "")[:180] or None,
+        "outcome_type": "acionamento_assistencia",
+        "outcome_title": (f"Acionamento {str(session.get('playbook_ref') or 'seguradora')}"
+                          f" — {str(session.get('subservice') or 'assistência')}")[:180],
+        "status": status,
+        # Alto por definição: o outro lado é a seguradora de verdade, e com
+        # INSURER_DISPATCH_LIVE aberto cada passo sai no WhatsApp dela.
+        "risk_level": "high",
+        "runtime_kind": RUNTIME_ACIONAMENTO,
+        "workflow_key": WORKFLOW_ACIONAMENTO,
+        "workflow_version": "1.0.0",
+        "thread_id": f"work:{company_id}:{run_id}",
+        "input_payload": entrada,
+        "input_fingerprint": hashlib.sha256(
+            json.dumps(entrada, sort_keys=True, ensure_ascii=False).encode()).hexdigest(),
+        "idempotency_key": idem,
+        "current_step_key": fase,
+        "progress_percent": _progresso_da_fase(fase, status),
+        "queued_at": agora,
+        "started_at": agora,
+    }
+    await db.client.table("work_runs").insert(linha).execute()
+    session["work_run_id"] = run_id
+    await _evento(db, company_id, run_id, "run.created",
+                  "Acionamento aberto na seguradora — a partir daqui cada fase "
+                  "fica gravada, mesmo se o cache cair.",
+                  payload={"fase": fase, "case_id": entrada["case_id"]})
+    logger.info("[ACIONAMENTO DURAVEL] run %s criado para o caso %s",
+                run_id, entrada["case_id"] or "?")
+    return run_id
+
+
+async def _evento(db, company_id: str, run_id: str, tipo: str, mensagem: str, *,
+                  severidade: str = "info", payload: Optional[Dict[str, Any]] = None) -> None:
+    """Linha do tempo do Work Run. Sem dado do segurado: quem guarda o conteúdo
+    da conversa é o Espelho, e `payload_redacted` tem esse nome por um motivo."""
+    try:
+        await db.client.table("work_events").insert({
+            "company_id": str(company_id),
+            "work_run_id": run_id,
+            "event_type": tipo,
+            "actor_type": "system",
+            "severity": severidade,
+            "message_human": str(mensagem)[:1000],
+            "payload_redacted": payload or {},
+        }).execute()
+    except Exception as e:  # noqa: BLE001
+        logger.warning("[ACIONAMENTO DURAVEL] evento '%s' nao registrado: %s",
+                       tipo, type(e).__name__)
+
+
+async def registrar_checkpoint(company_id: str, insurer_phone: str,
+                               session: Dict[str, Any]) -> Optional[str]:
+    """Grava a fase atual do acionamento como etapa durável do Work Run.
+
+    Uma etapa POR FASE (`uq_work_steps_run_key` garante isso), atualizada a cada
+    save. A conversa oscila — `ura → human_phase → ura` acontece toda hora —
+    então a fase não serve de ordem cronológica: o mais recente é o de
+    `finished_at` maior, e é assim que a restauração acha o retrato certo.
+    """
+    digits = _digits(insurer_phone)
+    fase = str(session.get("state") or "")
+    if not fase or not company_id:
+        return None
+
+    db = await _db()
+    if db is None:
+        return None
+
+    try:
+        run_id = await _garantir_work_run(db, company_id, digits, session)
+        if not run_id:
+            return None
+
+        status = _motor().status_duravel_da_fase(fase)
+        agora = _agora().isoformat()
+        retrato = _motor().snapshot_duravel(session)
+
+        etapa = {
+            "work_run_id": run_id,
+            "company_id": str(company_id),
+            "step_key": fase,
+            "ordinal": _motor().ordem_da_fase(fase),
+            "name": f"Fase do acionamento: {fase}",
+            "step_type": "dispatch_phase",
+            "status": "succeeded" if fase not in _motor().FASES_ENCERRADAS else "waiting_input",
+            "risk_level": "high",
+            "output_summary": retrato,
+            "idempotency_key": f"{company_id}:{run_id}:{fase}"[:250],
+            "finished_at": agora,
+            "updated_at": agora,
+        }
+        existente = await (db.client.table("work_steps").select("id, attempt_count")
+                           .eq("work_run_id", run_id).eq("step_key", fase)
+                           .limit(1).execute())
+        if existente.data:
+            etapa["attempt_count"] = int(existente.data[0].get("attempt_count") or 0) + 1
+            await (db.client.table("work_steps").update(etapa)
+                   .eq("id", existente.data[0]["id"]).execute())
+        else:
+            etapa["attempt_count"] = 1
+            etapa["started_at"] = agora
+            await db.client.table("work_steps").insert(etapa).execute()
+
+        campos: Dict[str, Any] = {
+            "status": status,
+            "current_step_key": fase,
+            "progress_percent": _progresso_da_fase(fase, status),
+            "updated_at": agora,
+        }
+        if status == "completed":
+            campos["finished_at"] = agora
+            campos["result_summary"] = (
+                "Simulação completa: o fluxo rodou até a confirmação final e foi "
+                "CANCELADO antes de abrir o serviço (modo teste)."
+                if fase == "test_aborted" else "Acionamento concluído.")
+        if fase == "needs_human":
+            campos["error_code"] = f"needs_human:{str(session.get('reason') or '')}"[:180]
+            campos["error_message"] = ("O acionamento precisa de uma pessoa da corretora "
+                                       "para continuar.")
+        await db.client.table("work_runs").update(campos).eq("id", run_id).execute()
+
+        if fase != str(session.get("_checkpoint_fase") or ""):
+            await _evento(db, company_id, run_id, "step.completed",
+                          f"Acionamento agora em '{fase}'.",
+                          severidade="warning" if fase == "needs_human" else "info",
+                          payload={"fase": fase, "motivo": str(session.get("reason") or "")})
+            session["_checkpoint_fase"] = fase
+        return run_id
+    except Exception as e:  # noqa: BLE001
+        # ERRO, não warning: falhar aqui devolve o produto ao defeito que esta
+        # SPEC existe para matar — o acionamento voltando a morar só no Redis.
+        logger.error("[ACIONAMENTO DURAVEL] checkpoint da fase '%s' NAO gravado (%s) — "
+                     "esta sessao esta sem espelho durável", fase, type(e).__name__)
+        return None
+
+
+async def _encerrar_work_run(company_id: str, session: Dict[str, Any], *,
+                             motivo: str, status: Optional[str] = None) -> None:
+    """Fecha o run desta sessão. Um run que ninguém fecha é um órfão futuro."""
+    run_id = str(session.get("work_run_id") or "")
+    if not run_id:
+        return
+    db = await _db()
+    if db is None:
+        return
+    fase = str(session.get("state") or "")
+    final = status or ("completed" if fase in ("captured", "monitoring", "test_aborted")
+                       else "cancelled")
+    try:
+        agora = _agora().isoformat()
+        await (db.client.table("work_runs").update({
+            "status": final,
+            "finished_at": agora,
+            "updated_at": agora,
+            "progress_percent": 100 if final == "completed" else _progresso_da_fase(fase, final),
+            "result_summary": f"{motivo} (última fase: {fase or 'desconhecida'})"[:400],
+        }).eq("id", run_id).execute())
+        await _evento(db, company_id, run_id,
+                      "run.succeeded" if final == "completed" else "run.cancelled",
+                      motivo, payload={"fase": fase})
+    except Exception as e:  # noqa: BLE001
+        logger.error("[ACIONAMENTO DURAVEL] run %s nao foi encerrado (%s)",
+                     run_id, type(e).__name__)
+
+
+def _agendar_reconciliacao_uma_vez() -> None:
+    """Dispara a varredura de boot, uma vez por processo, fora do caminho quente."""
+    global _reconciliacao_agendada
+    if _reconciliacao_agendada:
+        return
+    try:
+        import asyncio
+
+        asyncio.get_running_loop().create_task(reconciliar_acionamentos_orfaos())
+        _reconciliacao_agendada = True
+    except Exception:  # noqa: BLE001 — sem loop rodando: tenta na próxima
+        pass
+
+
+async def _ultimo_retrato(db, run_id: str, fase: str) -> Optional[Dict[str, Any]]:
+    """O checkpoint mais recente do run. Preferimos o da fase que o run declara;
+    sem ele, o de `finished_at` maior — porque a fase oscila e a ordem numérica
+    não é cronológica."""
+    try:
+        if fase:
+            r = await (db.client.table("work_steps").select("output_summary, finished_at")
+                       .eq("work_run_id", run_id).eq("step_key", fase).limit(1).execute())
+            if r.data and (r.data[0].get("output_summary") or {}):
+                return r.data[0]
+        r2 = await (db.client.table("work_steps").select("output_summary, finished_at")
+                    .eq("work_run_id", run_id).order("finished_at", desc=True)
+                    .limit(1).execute())
+        return r2.data[0] if r2.data else None
+    except Exception as e:  # noqa: BLE001
+        logger.error("[RECONCILIACAO] retrato do run %s ilegivel (%s)", run_id, type(e).__name__)
+        return None
+
+
+async def reconciliar_acionamentos_orfaos(limite: int = 50) -> Dict[str, int]:
+    """Compara a verdade durável com o cache e não deixa acionamento órfão calado.
+
+    Roda no boot (agendada no primeiro cache-miss do processo) e pode ser
+    chamada por qualquer laço de manutenção. É idempotente: um órfão já
+    sinalizado não vira alarme de novo.
+
+    O QUE ELA RESTAURA, E O QUE ELA DELIBERADAMENTE NÃO RESTAURA
+    ------------------------------------------------------------
+    Restaura `monitoring`. Nessa fase o motor **nunca fala com a seguradora** —
+    o roteador só repassa updates ao segurado e ignora pesquisa de satisfação.
+    Devolver a sessão ao cache é puro ganho: é o caso do guincho a caminho.
+
+    NÃO restaura `ura` nem `human_phase`. Ali a sessão VOLTARIA A RESPONDER à
+    seguradora, e com `INSURER_DISPATCH_LIVE` aberto isso é mensagem real num
+    atendimento que já andou sem nós — do lado de lá pode ter havido timeout,
+    encerramento ou outro atendente. Ressuscitar uma conversa dessas é o bug
+    "sessão zumbi" de 12/07 com outro nome. Essas viram `needs_human` com motivo
+    escrito e uma pessoa assume. Menos automação; nunca automação errada.
+    """
+    resumo = {"vistos": 0, "vivos": 0, "restaurados": 0, "orfaos": 0,
+              "encerrados": 0, "expirados": 0, "ja_sinalizados": 0}
+    db = await _db()
+    if db is None:
+        return resumo
+
+    try:
+        res = await (db.client.table("work_runs")
+                     .select("id, company_id, status, current_step_key, input_payload, "
+                             "error_code, created_at")
+                     .eq("workflow_key", WORKFLOW_ACIONAMENTO)
+                     .in_("status", list(_STATUS_EM_VOO_WORK_RUN))
+                     .order("created_at", desc=True).limit(int(limite)).execute())
+        runs = res.data or []
+    except Exception as e:  # noqa: BLE001
+        logger.error("[RECONCILIACAO] varredura falhou (%s) — nenhum acionamento "
+                     "foi conferido neste boot", type(e).__name__)
+        return resumo
+
+    for run in runs:
+        resumo["vistos"] += 1
+        try:
+            await _reconciliar_um(db, run, resumo)
+        except Exception as e:  # noqa: BLE001
+            logger.error("[RECONCILIACAO] run %s nao pode ser reconciliado (%s)",
+                         run.get("id"), type(e).__name__)
+
+    if resumo["vistos"]:
+        logger.info("[RECONCILIACAO] %s", json.dumps(resumo, ensure_ascii=False))
+    return resumo
+
+
+async def _reconciliar_um(db, run: Dict[str, Any], resumo: Dict[str, int]) -> None:
+    run_id = str(run.get("id") or "")
+    company_id = str(run.get("company_id") or "")
+    entrada = run.get("input_payload") or {}
+    insurer = _digits(str(entrada.get("insurer_phone") or ""))
+    fase = str(run.get("current_step_key") or "")
+
+    if insurer and await _ler_do_redis(company_id, insurer) is not None:
+        resumo["vivos"] += 1
+        return
+
+    # Daqui para baixo: o banco diz que existe trabalho em voo e o cache não tem
+    # nada. É exatamente o buraco que esta SPEC fecha.
+    retrato = await _ultimo_retrato(db, run_id, fase)
+    snapshot = (retrato or {}).get("output_summary") or {}
+    idade = _idade_segundos((retrato or {}).get("finished_at") or run.get("created_at"))
+    janela = _motor().janela_de_vida_segundos(fase)
+
+    if str(run.get("error_code") or "") == _ERRO_ORFAO:
+        # Já gritou. Só não pode ficar gritando para sempre nem virar entulho.
+        if idade < 0 or idade > _PRAZO_EXPIRAR_ORFAO_DIAS * 86400:
+            await (db.client.table("work_runs").update({
+                "status": "expired", "finished_at": _agora().isoformat(),
+                "updated_at": _agora().isoformat(),
+                "result_summary": "Acionamento órfão sem desfecho em 7 dias — encerrado.",
+            }).eq("id", run_id).execute())
+            resumo["expirados"] += 1
+        else:
+            resumo["ja_sinalizados"] += 1
+        return
+
+    # `insurer` é obrigatório para restaurar: sem ele a chave do cache sairia
+    # truncada (`dispatch:active:{empresa}:`) e a "restauração" gravaria uma
+    # sessão que inbound nenhum acharia — pior que não restaurar, porque
+    # pareceria resolvido. Sem telefone, o run cai no caminho do órfão.
+    if fase == "monitoring" and insurer and snapshot and 0 <= idade <= janela:
+        sessao = _motor().sessao_restaurada(snapshot, motivo="reconciliacao_boot")
+        await _gravar_no_redis(company_id, insurer, sessao,
+                               ttl=max(300, int(janela - idade)))
+        await _evento(db, company_id, run_id, "run.recovered",
+                      "Acompanhamento restaurado: o cache tinha perdido este "
+                      "acionamento e o cliente voltou a receber as atualizações.",
+                      severidade="warning",
+                      payload={"fase": fase, "idade_s": int(idade)})
+        logger.warning("[RECONCILIACAO] monitoramento restaurado run=%s caso=%s",
+                       run_id, entrada.get("case_id") or "?")
+        resumo["restaurados"] += 1
+        return
+
+    if fase in ("monitoring", "captured") and idade > janela:
+        await (db.client.table("work_runs").update({
+            "status": "completed", "finished_at": _agora().isoformat(),
+            "updated_at": _agora().isoformat(), "progress_percent": 100,
+            "result_summary": "Monitoramento encerrado por tempo — a janela de "
+                              "acompanhamento do acionamento passou.",
+        }).eq("id", run_id).execute())
+        resumo["encerrados"] += 1
+        return
+
+    if fase in _motor().FASES_ENCERRADAS:
+        # A máquina já entregou: em `needs_human` o dossiê foi para o suporte da
+        # corretora e o segurado foi avisado; em `test_aborted` o fluxo rodou até
+        # a confirmação e cancelou. Sumir do cache aqui é o fim natural do
+        # trabalho AUTOMÁTICO — gritar "órfão" seria alarme falso, e alarme falso
+        # é como se ensina uma equipe a ignorar alarme.
+        await (db.client.table("work_runs").update({
+            "status": "completed", "finished_at": _agora().isoformat(),
+            "updated_at": _agora().isoformat(), "progress_percent": 100,
+            "result_summary": ("Caso entregue à equipe da corretora — a parte "
+                               "automática do acionamento terminou aqui."),
+        }).eq("id", run_id).execute())
+        resumo["encerrados"] += 1
+        return
+
+    # ÓRFÃO QUE GRITA. Não devolvemos a sessão ao cache: em `ura`/`human_phase`
+    # ela voltaria a FALAR com a seguradora (ver docstring). Vira trabalho
+    # esperando gente, com o motivo escrito em três lugares que humanos leem.
+    agora = _agora().isoformat()
+    await (db.client.table("work_runs").update({
+        "status": "waiting_input",
+        "error_code": _ERRO_ORFAO,
+        "error_message": (f"O acionamento sumiu do cache na fase '{fase or 'desconhecida'}' "
+                          "e não pode ser retomado sozinho sem risco de responder "
+                          "errado à seguradora. Precisa de alguém da corretora."),
+        "updated_at": agora,
+    }).eq("id", run_id).execute())
+    await _evento(db, company_id, run_id, "approval.requested",
+                  "Este acionamento perdeu o acompanhamento automático e precisa "
+                  "de uma pessoa. O caso está inteiro na página Conversas.",
+                  severidade="error",
+                  payload={"fase": fase, "case_id": str(entrada.get("case_id") or ""),
+                           "idade_s": int(idade)})
+    logger.error("[RECONCILIACAO] ACIONAMENTO ORFAO run=%s fase=%s caso=%s idade_s=%s",
+                 run_id, fase or "?", entrada.get("case_id") or "?", int(idade))
+    try:
+        from app.services.activity_log import log_activity
+
+        await log_activity(company_id, "acionamentos",
+                           "Acionamento precisa de alguém da equipe",
+                           "O acompanhamento automático foi interrompido. O caso está "
+                           "preparado na página Conversas para alguém assumir.")
+    except Exception:  # noqa: BLE001
+        pass
+    resumo["orfaos"] += 1
 
 
 def _digits(phone: str) -> str:

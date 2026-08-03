@@ -296,6 +296,33 @@ def start_buffer_scheduler():
             id="platform_queue_check",
             max_instances=1,
         )
+
+        # SPEC-063 Bloco V — HEARTBEAT DO CANAL: o vigia que desmente.
+        #
+        # 📊 03/08/2026, banco de produção: três integrações ATIVAS afirmando
+        # `connected`/`connecting` com `last_seen_at` congelado em 28-29/07 —
+        # quatro e cinco dias de estado que ninguém confirmava. A causa era que
+        # NADA renovava a coluna: ela só é escrita quando chega um
+        # `connection.update`, e evento de transição não chega em canal parado.
+        #
+        # O heartbeat pergunta ao provedor e grava a resposta. Confirmou →
+        # renova `last_seen_at` (é o que faz a idade da coluna significar algo).
+        # Não confirmou por mais de 15 min → o estado vira `unknown` e a tela
+        # para de prometer atendimento. A lógica inteira mora em
+        # `channel_state.py`, o dono declarado do estado do canal; aqui só se
+        # registra o job no agendador que já existe.
+        from app.services.whatsapp.channel_state import verificar_canais
+
+        scheduler.add_job(
+            verificar_canais,
+            "interval",
+            minutes=_env_int("CHANNEL_HEARTBEAT_INTERVAL_MINUTES", 5),
+            id="channel_heartbeat_check",
+            max_instances=1,
+            # Primeira passada logo após o boot: depois de um deploy a verdade
+            # é restaurada em ~90s, não no fim do primeiro intervalo.
+            next_run_time=_dt.now(_tz.utc) + _td(seconds=90),
+        )
         scheduler.start()
         logger.info("✅ [BUFFER SCHEDULER] Started (interval: 1s, max_instances: 10)")
     else:
