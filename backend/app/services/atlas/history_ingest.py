@@ -117,6 +117,26 @@ async def ingest_history_sync(integration: dict, body: dict) -> Dict[str, Any]:
     except Exception:  # noqa: BLE001 — Espelho nunca bloqueia a ingestão do Atlas
         capture_clients = False
 
+    def _cliente_permitido(integ: Dict[str, Any], observador: str, jid: str, numero: str) -> bool:
+        """A mesma fronteira que o caminho AO VIVO aplica — aqui também.
+
+        Estas duas portas divergiam: quem excluísse um número da observação via
+        `observer_exclusions` ficava protegido nas mensagens que chegassem
+        dali em diante, e desprotegido no histórico que o pareamento traz de
+        uma vez. E o histórico é justamente o volume — anos de conversa contra
+        as mensagens de um dia.
+
+        Uma exclusão que não vale para o histórico não é uma exclusão; é um
+        pedido educado. Fail-closed: se a checagem não puder rodar, não grava.
+        """
+        try:
+            from app.services.atlas.attendance_capture import client_chat_allowed
+
+            return client_chat_allowed(integ, observador, jid, numero)
+        except Exception:  # noqa: BLE001
+            logger.warning("[ESPELHO ATENDIMENTO] fronteira do cliente indisponível — não gravando")
+            return False
+
     # (a) resolve seguradora por conversa; (b) segurado → Espelho (se escopo);
     # (c) descarta o resto na borda (grupos/status: sempre fora)
     insurer_convs: List[Tuple[str, str, List[Dict[str, Any]]]] = []
@@ -133,7 +153,7 @@ async def ingest_history_sync(integration: dict, body: dict) -> Dict[str, Any]:
                 break
         if insurer_key:
             insurer_convs.append((insurer_key, counterparty, _conv_messages(conv)))
-        elif capture_clients and counterparty:
+        elif capture_clients and counterparty and _cliente_permitido(integration, observer_number, jid, counterparty):
             client_convs.append((counterparty, _conv_messages(conv)))
 
     # RECÊNCIA: ordena as conversas pela mensagem mais recente (desc)

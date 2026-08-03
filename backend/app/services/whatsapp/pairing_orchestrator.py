@@ -522,7 +522,15 @@ class PairingOrchestrator:
         db = get_supabase_client()
         target = dict(alert_target or {})
         if purpose == "observer":
-            target["observer_scope"] = "insurers_and_clients"
+            # `setdefault`, não atribuição. O Observador NASCE vendo segurado
+            # também — é assim que as cartas da AutoFleet se formaram, e o padrão
+            # continua esse. Mas quem pediu explicitamente `insurers_only` pediu
+            # por um motivo, e um re-pareamento não pode desfazer isso em
+            # silêncio: era o que acontecia aqui, e o efeito só apareceria
+            # depois, com conversa que ninguém queria gravar já gravada.
+            #
+            # As duas linhas abaixo já usavam setdefault. Esta era a estranha.
+            target.setdefault("observer_scope", "insurers_and_clients")
             target.setdefault("observer_exclusions", [])
             target.setdefault("internal_numbers", [])
         record = prepare_integration_for_storage({
