@@ -26,7 +26,21 @@ AGENT_TASKS = [
     ("espelho", "Espelho", "Espelha toda conversa com seguradora no banco e no dashboard, em tempo real."),
     ("espelho_atendimento", "Espelho de Atendimento", "Captura as conversas de trabalho da equipe da corretora com os segurados — matéria-prima dos playbooks de conduta e knowledge cards (PII isolada, nunca no RAG)."),
     ("vigia_sentinela", "Vigia + Sentinela", "Vigia o desfecho de todo acionamento; a Sentinela destrava conversas paradas na URA."),
-    ("followup", "Follow-up", "Pós-acionamento: confere se o prestador chegou e encerra com carinho."),
+    # ⚠️ INCOMPLETO, e a descrição diz isso.
+    #
+    # 📊 03/08/2026: ele PERGUNTA ao segurado se o prestador chegou — e
+    # **ninguém lê a resposta**. Ela cai no agente de atendimento comum, que não
+    # tem acesso à sessão do acionamento (a chave do acionamento é o telefone da
+    # SEGURADORA; o do cliente nunca casa).
+    #
+    # A descrição antiga prometia "confere se o prestador chegou". Perguntar não
+    # é conferir. E o card ficava VERDE, porque o critério da Central é só "o
+    # laço rodou" — o pulso é dado mesmo quando a varredura não achou nada.
+    #
+    # **Um card amarelo verdadeiro vale mais que um verde falso.** Enquanto o
+    # passo 5 da SPEC-063 (F.2.3) não existir, esta linha não pode prometer o
+    # que o código não faz. Ver P-70.
+    ("followup", "Follow-up", "Pós-acionamento: PERGUNTA ao segurado se o prestador chegou e manda o encerramento. ⚠️ A resposta do cliente ainda não é lida por ninguém — o ciclo não fecha (P-70)."),
     ("garimpo", "Garimpo", "Extrai dores, desejos e pedidos das conversas dos corretores — vira insight de produto."),
     ("auditor", "Auditor", "Dá nota de qualidade a cada conversa e detecta regressões nos corredores."),
     ("alfaiate", "Alfaiate", "Ajusta os playbooks quando a URA da seguradora muda — auto-aplica só o que passa no Simulador."),

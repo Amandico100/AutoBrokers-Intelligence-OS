@@ -632,3 +632,91 @@ acervo que já temos.
 **O que custa esquecer.** Toda decisão de prioridade da Fase 3 usa a cobertura
 como número. Com 20 opções fantasmas dentro dela, a prioridade sai errada — e
 o esforço vai para onde não precisava.
+
+---
+
+## P-70 · 🟠 O Follow-up pergunta e ninguém escuta
+
+**O Founder olhou a Central de Agentes e perguntou se o Follow-up é legado,
+duplicado, quebrado, ou se vale eliminar. A auditoria respondeu: nenhum dos
+quatro. É metade construída, e a metade que existe é boa.**
+
+### O que ele faz bem
+
+📊 `_followup_schedule` agenda 45 min **depois do ETA real do prestador** — não
+depois do protocolo — com janela educada 8h30–21h. Isso é produto pensado, não
+encanamento. E é o **único** componente do sistema que fala com o segurado por
+iniciativa própria depois do acionamento. Nada mais faz isso.
+
+### O que está quebrado
+
+```
+1  a resposta do cliente NÃO É LIDA por ninguém
+   a chave do acionamento é o telefone da SEGURADORA; o do cliente
+   nunca casa, e a resposta cai no agente comum, que não sabe do que
+   se trata. 📊 zero leitores no backend inteiro
+
+2  o timer é apagado por baixo
+   `_start_next_in_queue` roda na MESMA transição que criou o timer, e
+   `start_live_dispatch` trata `monitoring` como sessão velha e limpa.
+   Com fila na mesma seguradora, o follow-up morre ao nascer
+
+3  é o único envio frio a segurado que fura o governador
+   não respeita a parada de emergência, não conta nos tetos, não entra
+   em `platform_sends`. E plugar direto no canal governado QUEBRA:
+   `client_busy` considera ocupada toda sessão em `monitoring` — que é
+   exatamente o estado em que ele roda. Precisa de exceção explícita
+
+4  o "encerramento" não encerra
+   só manda texto; a sessão fica viva até o TTL de 24h
+
+5  a mensagem não entra no transcript
+   o Espelho, a timeline e o dossiê não a mostram — o Vigia faz isso, ele não
+
+6  zero teste
+   nenhum teste chama `check_dispatch_followups`
+```
+
+### 📊 E o card verde era falso — isto já foi corrigido
+
+O critério da Central é só *"o laço rodou nos últimos 15 min"*. O pulso é dado
+**mesmo quando a varredura não acha nada**. "SAUDÁVEL · 0 ações" queria dizer
+apenas *"rodei e não encontrei nada"*.
+
+A descrição no catálogo passou a dizer a verdade em 03/08. **Um card amarelo
+verdadeiro vale mais que um verde falso.**
+
+### DUPLICAÇÃO — a resposta à pergunta do Founder
+
+**Não duplica função.** 📊 O Vigia trata `monitoring` como estado terminal e se
+cala exatamente onde o Follow-up age. E os públicos são opostos:
+
+```
+VIGIA      fala com a SEGURADORA e com o suporte da corretora
+FOLLOW-UP  fala com o SEGURADO
+```
+
+**Duplica mecânica.** Dois jobs (20s e 60s) varrem o mesmo keyspace, com o mesmo
+parsing e as mesmas chamadas. Uma terceira varredura existe para a tela.
+
+**E há três homônimos que confundem** e não têm relação: o auxiliar comercial
+"Follow-up de WhatsApp" (proposta), o card "Follow-up de Propostas · Em breve",
+e a fase `follow_up` de `corridor_templates` — 📊 esta última com **zero
+leitores em qualquer linguagem**.
+
+### A recomendação
+
+**Manter e completar, fundindo a MECÂNICA e mantendo os NOMES separados.**
+
+Um varredor único que percorre `dispatch:active:*` uma vez e roteia por estado:
+vivo → Vigia · `monitoring` → Follow-up. Mata a varredura dupla, mantém dois
+cards na Central (papéis distintos), e cria o lugar natural para o passo 5 —
+quando o cliente responde *"não chegou"*, quem já sabe alertar o suporte e
+montar dossiê é o Vigia.
+
+**O que destrava:** os 6 itens acima, na ordem. O item 2 vem primeiro — sem ele
+os outros não importam, porque a mensagem nunca sai.
+
+**O que custa esquecer:** o ciclo termina em *"aqui está seu protocolo"* e a
+corretora nunca sabe se o serviço foi prestado. É a diferença entre acionar e
+resolver.
