@@ -28,7 +28,7 @@ class InsurerDispatchInput(BaseModel):
     insurer_key: Optional[str] = Field(default=None, description=(
         "Seguradora da apólice (allianz | porto | hdi | yelum | tokio | alfa | azul | bradesco | mapfre | zurich). "
         "ATENÇÃO: apólice Liberty = use 'yelum' (a Liberty foi rebatizada para Yelum — MESMA seguradora, MESMO corredor). "
-        "Itaú = 'porto'. Descubra pela InfoCap; para assistência AUTO é OBRIGATÓRIO. Residencial sem isso assume Allianz."))
+        "Itaú = 'porto'. Descubra pela InfoCap. OBRIGATÓRIO SEMPRE: sem seguradora não há acionamento — vira handoff humano. Nunca assuma uma seguradora que o cliente não disse."))
     titular_nascimento: Optional[str] = Field(default=None, description=(
         "[auto Mapfre] Data de nascimento do titular (dd/mm/aaaa) — a Mapfre valida identidade com ela"))
     line_kind: Optional[str] = Field(default=None, description="Linha: auto | residencial. Para carro use 'auto'.")
@@ -80,11 +80,38 @@ class InsurerDispatchTool(BaseTool):
         self.case_id = str(case_id or "")
         self.supabase_client = supabase_client
 
-    _PLAYBOOK_REF = "allianz-residencial-whatsapp@v1"  # default residencial (compat)
+    # Mantido só para quem ainda referencia o nome; NÃO é mais fallback de
+    # resolução — ver `_resolve_playbook_ref`. Um "default" de corredor mandava
+    # o segurado de uma seguradora para o WhatsApp de outra.
+    _PLAYBOOK_REF = "allianz-residencial-whatsapp@v1"
 
     def _resolve_playbook_ref(self, kwargs: dict) -> tuple:
-        """Resolve (playbook_ref, insurer_key) por insurer_key + linha. AUTO exige
-        insurer_key; residencial sem insurer cai no default Allianz residencial."""
+        """Resolve (playbook_ref, insurer_key). **Sem corredor = sem acionamento.**
+
+        Aqui existia, na última linha, ``return self._PLAYBOOK_REF, "allianz"`` —
+        um fallback para o corredor RESIDENCIAL DA ALLIANZ sempre que a linha não
+        fosse auto e a seguradora não tivesse corredor próprio.
+
+        Duas coisas quebravam ao mesmo tempo, e a segunda é a grave:
+
+        1. o **roteiro** era o da Allianz — passos de URA, âncoras e freios de
+           uma seguradora aplicados à conversa de outra;
+        2. e `insurer_key` voltava como ``"allianz"``, então o telefone de
+           destino era resolvido como Allianz. **A mensagem do segurado da Porto
+           iria para o WhatsApp da Allianz.**
+
+        O ramo que trata a ausência de corredor já existia logo abaixo, e está
+        certo — *"não tenho corredor… acione um atendente humano"*. Ele só era
+        **inalcançável**, porque este fallback garantia que `playbook_ref` nunca
+        fosse vazio.
+
+        A regra do Founder, 03/08/2026: *"tudo que não tiver corredor e
+        sinistros, na parte de acionamento vira handoff"*. É o que passa a
+        acontecer — e handoff com motivo escrito, não silêncio.
+
+        Devolver ``(None, insurer)`` preserva o nome da seguradora que o cliente
+        pediu, para o handoff poder dizer de quem se trata.
+        """
         from app.services.corridor_playbooks import resolve_playbook_ref
 
         insurer = str(kwargs.get("insurer_key") or "").strip()
@@ -92,14 +119,19 @@ class InsurerDispatchTool(BaseTool):
         subservice = str(kwargs.get("subservice") or "").strip().lower()
         if not line:
             line = "auto" if subservice in ("guincho", "bateria", "pneu") else ""
+
+        # Sem seguradora não há para onde mandar. Adivinhar o destino é pior que
+        # não acionar: a conversa de um segurado iria para outra empresa.
+        if not insurer:
+            return None, ""
+
         if line == "auto":
-            ref = resolve_playbook_ref(insurer, "auto") if insurer else None
-            return ref, insurer
-        if insurer:
-            ref = resolve_playbook_ref(insurer, "residencial")
-            if ref:
-                return ref, insurer
-        return self._PLAYBOOK_REF, "allianz"
+            return resolve_playbook_ref(insurer, "auto"), insurer
+
+        # Residencial, ou linha não declarada: tenta residencial e, se não
+        # houver, tenta auto — mas SEMPRE da seguradora pedida, nunca de outra.
+        return (resolve_playbook_ref(insurer, "residencial")
+                or resolve_playbook_ref(insurer, "auto")), insurer
 
     def _attendance_agent_id(self) -> Optional[str]:
         """Resolve o agente ATENDENTE (role attendance) — a integracao WhatsApp e
@@ -136,9 +168,13 @@ class InsurerDispatchTool(BaseTool):
         subservice, slots = self._extract_slots(kwargs)
         playbook_ref, insurer_key = self._resolve_playbook_ref(kwargs)
         if not playbook_ref:
-            return {"status": "error", "content": (
-                f"Não tenho um corredor de assistência auto para a seguradora '{insurer_key or '?'}' ainda. "
-                "Colete os dados e acione um atendente humano para seguir com a seguradora.")}
+            quem = insurer_key or "essa seguradora"
+            return {"status": "sem_corredor", "handoff_necessario": True, "content": (
+                f"Não existe corredor de acionamento para {quem} neste serviço. "
+                "NÃO tente acionar por outro caminho e NÃO invente protocolo. "
+                "Chame `request_human_agent` agora, com o motivo "
+                f"'sem corredor para {quem}', e diga ao cliente que um atendente "
+                "da corretora vai assumir — os dados que ele já deu ficam registrados.")}
 
         # GUARDA ANTI-INVENÇÃO (incidente 2026-07-10: placa e telefone inventados
         # foram parar na seguradora). Determinístico, fora do alcance do LLM:
