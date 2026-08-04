@@ -115,6 +115,29 @@ def start_buffer_scheduler():
             id="dispatch_watchdog_check",
             max_instances=1,
         )
+        # VIGIA DO PORTAL (SPEC-065): a SEGUNDA varredura do MESMO vigia.
+        #
+        # 📊 Medido em 04/08/2026: `dispatch_watchdog` e `handoff_watchdog` têm
+        # zero menções a "portal". Eles cuidam do corredor de WhatsApp com a
+        # seguradora; o portal de vidros é outro caminho (`portal_jobs`) e não
+        # tinha ninguém olhando.
+        #
+        # O ponto cego era estreito e fatal: a `portal_action` espera o worker
+        # por 150s e conta ao segurado o que aconteceu. Depois disso, ninguém.
+        # O job chega em `needs_human` mais tarde e a conversa nunca fica
+        # sabendo — o segurado ouviu "um minutinho" e o minutinho não acaba.
+        #
+        # 60s (e não 20s): job de portal leva minutos, não segundos. Varrer mais
+        # rápido só gastaria banco para reencontrar o mesmo job.
+        from app.tasks.vigia_do_portal import varrer_portal
+
+        scheduler.add_job(
+            varrer_portal,
+            "interval",
+            seconds=60,
+            id="vigia_do_portal",
+            max_instances=1,
+        )
         # GARIMPO (SPEC-034 Onda 3): minera desejos/dores dos corretores 1x/dia
         # (marcador em Redis; captura determinística, custo zero de LLM).
         from app.services.broker_insights import check_garimpo

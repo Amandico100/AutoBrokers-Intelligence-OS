@@ -22,6 +22,42 @@ logger = logging.getLogger(__name__)
 
 
 # --------------------------------------------------------------------------- #
+# A FAMÍLIA QUE TEM PORTAL — a fronteira entre "handoff" e "outro caminho"
+# --------------------------------------------------------------------------- #
+# 📊 Medido em 04/08/2026: `vidros` cai em `subservico_invalido` em 10 dos 13
+# corredores de WhatsApp. Só Azul, Porto e Zurich atendem vidros por lá.
+#
+# E o portal público (abraseuatendimento.com.br) atende dezenas de seguradoras
+# — e cobre mais que vidro: a tela da Porto diz literalmente "Vidros,
+# faróis/lanternas (E retrovisores)". Por isso esta lista é MAIS LARGA que o
+# `_canonizar` do corredor, que só conhece vidro/parabrisa/retrovisor.
+#
+# Ela é deliberadamente ESTREITA em outra direção: um item aqui dentro faz o
+# sistema oferecer o portal em vez de um humano. Colocar aqui algo que o portal
+# não conserta troca um handoff honesto por uma promessa vazia — o que é pior.
+# Por isso nada de "amassado", "pintura", "lataria", "roda", "pneu": a Porto
+# oferece roda/pneu, mas 📊 Yelum e Tokio não, e o mapa não foi medido.
+_FAMILIA_COM_PORTAL = (
+    "vidro", "parabrisa", "para-brisa", "para brisa", "windshield",
+    "retrovisor", "espelho", "farol", "farolete", "farolim", "lanterna",
+    "vigia", "insulfilm", "pelicula",
+)
+
+
+def _e_familia_de_vidros(subservico: Optional[str]) -> bool:
+    """PURO: este trabalho tem portal? Decide handoff × portal quando o corredor
+    de WhatsApp da seguradora não atende.
+
+    Sinistro (colisão, roubo, incêndio) JAMAIS entra aqui — ele é handoff
+    sempre, e é a regra que mais importa do produto inteiro.
+    """
+    t = (subservico or "").strip().lower()
+    if not t:
+        return False
+    return any(p in t for p in _FAMILIA_COM_PORTAL)
+
+
+# --------------------------------------------------------------------------- #
 # O QUE É DADO DE VERDADE — conferência determinística, fora do alcance do LLM
 # --------------------------------------------------------------------------- #
 # O incidente de 2026-07-10 ("placa e telefone inventados foram parar na
@@ -272,6 +308,24 @@ class InsurerDispatchTool(BaseTool):
         playbook_ref, insurer_key = self._resolve_playbook_ref(kwargs)
         if not playbook_ref:
             quem = insurer_key or "essa seguradora"
+            # SPEC-065 — este ramo é o MAIOR dos dois, e por isso o desvio
+            # precisa estar aqui também.
+            #
+            # 📊 Existem 13 corredores de WhatsApp. O portal de vidros atende
+            # DEZENAS de seguradoras. Ou seja: a maioria das seguradoras nem
+            # chega na checagem de subserviço lá embaixo — ela para AQUI, por
+            # não ter corredor nenhum. Um segurado da HDI, da Mapfre ou da
+            # Bradesco com o vidro quebrado era mandado para um humano nesta
+            # linha, sem que ninguém tivesse perguntado ao portal.
+            #
+            # Sinistro continua handoff. Só a família com portal desvia.
+            if _e_familia_de_vidros(subservice):
+                return {"status": "use_portal", "handoff_necessario": False, "content": (
+                    f"Não existe corredor de WhatsApp para {quem}, MAS O PORTAL OFICIAL "
+                    "DE VIDROS ATENDE DEZENAS DE SEGURADORAS — provavelmente esta. NÃO "
+                    "chame `request_human_agent` e NÃO diga ao cliente que não dá. Chame "
+                    "`portal_action` agora, com o CPF do titular, a data do dano e o relato. "
+                    "Se o portal não atender esta seguradora, ELE avisa — e só aí é handoff.")}
             return {"status": "sem_corredor", "handoff_necessario": True, "content": (
                 f"Não existe corredor de acionamento para {quem} neste serviço. "
                 "NÃO tente acionar por outro caminho e NÃO invente protocolo. "
@@ -333,6 +387,35 @@ class InsurerDispatchTool(BaseTool):
             if SUBSERVICO_INVALIDO in (plan.get("missing_slots") or []):
                 trabalho = subservice or "esse serviço"
                 quem = insurer_key or "essa seguradora"
+
+                # SPEC-065 — "sem corredor" não é o mesmo que "sem caminho".
+                #
+                # 📊 Medido em 04/08/2026 varrendo os 13 corredores: `vidros`
+                # cai aqui em **10 deles**. Só Azul, Porto e Zurich têm vidros
+                # no WhatsApp da seguradora.
+                #
+                # E o portal público de vidros atende DEZENAS de seguradoras —
+                # Yelum, Tokio, HDI, Allianz, Bradesco, Mapfre, Itaú, Mitsui…
+                # (📊 o dropdown de abraseuatendimento.com.br começa em ALFA,
+                # ALIRO, ALLIANZ, AXA, AZUL e segue).
+                #
+                # Ou seja: em 10 de 13 seguradoras, um segurado que dizia
+                # "quebrei o vidro" era mandado para um humano — enquanto
+                # existia um caminho automático servindo justamente ela. O
+                # produto entregava handoff onde tinha serviço.
+                #
+                # Sinistro continua handoff SEMPRE, sem exceção. O que muda é
+                # só a família de vidros, que é a que tem portal.
+                if _e_familia_de_vidros(subservice):
+                    return {"status": "use_portal", "handoff_necessario": False,
+                            "missing": [], "content": (
+                                f"A {quem} não faz '{trabalho}' pelo WhatsApp de assistência, "
+                                "MAS ISSO NÃO É UM BECO: o portal oficial de vidros atende esta "
+                                "seguradora. NÃO chame `request_human_agent` e NÃO diga ao cliente "
+                                "que não dá. Chame a ferramenta `portal_action` agora, com o CPF do "
+                                "titular, a data do dano e o relato do que aconteceu. Se o portal "
+                                "não atender esta seguradora, ELE vai te dizer — e só aí é handoff.")}
+
                 return {"status": "sem_corredor", "handoff_necessario": True,
                         "missing": [], "content": (
                             f"A {quem} não atende '{trabalho}' por este canal de assistência — "

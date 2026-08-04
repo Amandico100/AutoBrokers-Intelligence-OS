@@ -973,3 +973,82 @@ comporta assim: `pairing_orchestrator.py` faz o agente nascer desligado e
 
 **O que fica pendente:** o `purpose` continua se chamando `observer` enquanto
 carrega as duas funções. Renomear é seguro só com migração — fica em [P-65].
+
+---
+
+## D-Vidros-01 · O Atendente opera o portal de vidros ponta a ponta — 04/08/2026
+
+**Decisão do Founder, palavras dele:**
+
+> *"Se a pergunta foi se o agente de atendimento pode operar o portal de vidros?
+> A resposta é sim, óbvio. Ele deve operar de ponta a ponta. É importantíssimo
+> que seja um atendimento que a gente nunca erre, porque tem volume."*
+
+E, sobre a trava:
+
+> *"Portal funcionando sem erros e sem o agente travar, e nós conseguirmos o mais
+> perto de 100% de atendimentos com sucesso possível, é um dos principais
+> objetivos nossos. Ideal é 100% de sucesso, mas sei que alguma trava pode
+> acontecer e precisamos de handoff pra isso também. Não pode ficar travado."*
+
+**Isto encerra a P-70.**
+
+### E a pergunta estava mal formulada — por minha conta
+
+Eu registrei isso como *conflito canônico entre a SPEC-053 e a SPEC-020*. 📊 Medido
+em 04/08/2026, **não havia conflito.** A SPEC-053 §5.2 diz, literalmente:
+
+> *"corredores definidos; menor privilégio; (…) sem ferramentas genéricas de
+> gestão, marketing ou administração"*
+
+Ela proíbe **ferramenta genérica**, e manda usar **corredor definido**. São coisas
+diferentes, e o registro já sabia disso:
+
+```
+tenant.portal.execute                  entre em qualquer portal, faça qualquer
+                                       coisa.  GENÉRICA.  attendance: NEGADA ✅
+                                       (e continua negada — está certo)
+
+operational.portal.assistance.prepare  abra atendimento de vidros, sem enviar.
+operational.portal.assistance.request  envie, com aprovação.
+                                       CORREDOR.  attendance: LIBERADAS ✅
+                                       (desde sempre, nunca foram usadas)
+```
+
+O `portal_action` não é genérico: jornada fixa, parâmetros montados no servidor a
+partir da InfoCap, `confirm=False` cravado no código. **É o corredor.**
+
+**O que estava errado era o portão:** `graph.py` exigia a chave *genérica* para
+soltar uma ferramenta *específica*. Corrigido no código, sem tocar na SPEC-053 e
+sem afrouxar nada.
+
+### E havia mais duas travas, que decisão nenhuma resolveria
+
+📊 Medidas no mesmo dia, e nenhuma delas dependia de gente:
+
+| Trava | O que estava escrito | Por que era impossível |
+|---|---|---|
+| provider nulo | `tenant.portal.execute.provider = NULL` + exige conexão | o resolver busca o slug **pelo nome** do provider. Nulo → lista vazia → `needs_connection` **para sempre**. Não existia conexão que resolvesse, nem tela onde clicar. |
+| credencial de site sem login | as 3 de assistência exigiam conexão | 📊 `portals.cred_kind = 'public'` nos **2** portais de vidros. Exigia cadastrar credencial de um site que não pede credencial. |
+
+Consequência prática: a AutoFleet — e **toda corretora que entrar amanhã** — era
+barrada para abrir vidros, num portal que qualquer pessoa abre no navegador.
+
+### O que fica de pé
+
+- `tenant.portal.execute` **continua negada** ao Atendente. A SPEC-053 §5.2 fica
+  intacta, e um teste reprova quem tentar "resolver o conflito" religando-a.
+- Cobrança e apólice acontecem em portal de corretor (📊 15 portais, todos
+  `login_password`) e **continuam exigindo conexão**.
+- O envio real segue com aprovação (`assistance.request`,
+  `requires_approval: true`) e atrás do `PORTAL_REAL_ENABLED` no worker.
+
+### O último interruptor é do Founder
+
+📊 Os quatro agentes de atendimento do sistema estão com `is_active = false` —
+Saionara (Resulta), Maria Regina (AutoFleet), JOANA (Amandus), Even (Blueprint).
+Isso **não é defeito**: é o modo observação da [D23], funcionando como desenhado.
+Enquanto estiver assim, o agente captura e não fala — inclusive não aciona portal.
+
+**Ligar o agente de atendimento é o gesto que liga tudo isto.** É do Founder, e é
+um clique.

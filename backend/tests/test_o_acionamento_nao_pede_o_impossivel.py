@@ -122,7 +122,22 @@ def a_pergunta_impossivel_sumiu() -> None:
 
 
 def o_vidros_sem_corredor_tambem_sai_do_laco() -> None:
-    """📊 `vidros` cai no sentinela em 10 dos 13 corredores."""
+    """📊 `vidros` cai no sentinela em 10 dos 13 corredores.
+
+    ATUALIZADO em 04/08/2026 (SPEC-065). A intencao deste caso nunca foi
+    "vidros tem de virar handoff" — era **sair do laco**: nao interrogar o
+    segurado sobre um campo que nao existe.
+
+    O desfecho ficou melhor que handoff. O portal publico de vidros atende
+    dezenas de seguradoras, e a Bradesco e uma delas: mandar essa pessoa para
+    um humano era jogar fora um caminho automatico que servia justamente ela.
+
+    Guardar o desfecho ANTIGO aqui seria pior que nao ter teste — travaria a
+    melhoria em nome de uma frase escrita antes de ela existir (CLAUDE.md 9.3).
+    O que este caso guarda agora e a intencao original, que nao mudou:
+    **nao pergunte o impossivel** — e mais uma coisa que so agora e verdade:
+    **exista um caminho.**
+    """
     sem = [ref for ref, pb in PB._PLAYBOOKS.items()
            if PB.missing_slots_for_subservice(pb, "vidros", {}) == [PB.SUBSERVICO_INVALIDO]]
     checar(len(sem) >= 8,
@@ -130,8 +145,33 @@ def o_vidros_sem_corredor_tambem_sai_do_laco() -> None:
            "se isto cair a zero, o teste abaixo deixou de olhar alguma coisa")
     r = _acionar(**{**CASO_AUTO, "insurer_key": "bradesco", "subservice": "vidros",
                     "problema_descricao": "parabrisa trincado"})
-    checar(r["status"] == "sem_corredor",
-           "e a bradesco em vidros vira handoff, nao interrogatorio", str(r)[:120])
+
+    # O que nunca pode voltar: interrogatorio sobre campo inexistente.
+    checar(not r.get("missing"),
+           "a bradesco em vidros NAO vira interrogatorio",
+           f"missing={r.get('missing')} — era este o defeito original")
+    checar("subservico_invalido" not in r["content"],
+           "o nome do sentinela nao chega ao texto que o LLM le")
+
+    # E o que passou a ser verdade: existe caminho, e ele nao e uma pessoa.
+    checar(r["status"] == "use_portal",
+           "a bradesco em vidros vai para o PORTAL, nao para um humano",
+           f"status={r['status']} — 📊 o portal publico atende dezenas de "
+           "seguradoras; handoff aqui era servico jogado fora")
+    checar(r.get("handoff_necessario") is False,
+           "e por isso nao marca handoff", str(r)[:120])
+    checar("portal_action" in r["content"],
+           "o texto diz POR ONDE ir",
+           "dizer 'nao e beco' sem dizer o caminho e um beco com outro nome")
+
+    # CONTROLE — o desvio nao pode ter vazado para sinistro. Se um dia
+    # `colisao` cair aqui, uma pessoa que bateu o carro recebe um formulario
+    # de troca de vidro. E a pior falha que este produto consegue cometer.
+    for sinistro in ("colisao", "roubo", "incendio"):
+        rs = _acionar(**{**CASO_AUTO, "insurer_key": "bradesco", "subservice": sinistro})
+        checar(rs["status"] == "sem_corredor" and rs.get("handoff_necessario") is True,
+               f"CONTROLE — `{sinistro}` na bradesco continua indo para GENTE",
+               f"status={rs['status']}")
 
 
 def o_que_a_seguradora_FAZ_continua_passando() -> None:

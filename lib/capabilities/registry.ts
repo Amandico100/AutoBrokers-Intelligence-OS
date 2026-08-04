@@ -39,9 +39,16 @@ export const CAPABILITY_CATALOG: Capability[] = [
   { key: 'operational.whatsapp.send', name: 'Enviar WhatsApp', category: 'communication', owner: 'operational', risk: 'high', requires_connection: true, requires_approval: true, provider: 'zapi', note: 'consentimento + aprovação' },
   { key: 'operational.portal.policy.read', name: 'Portal — apólice (leitura)', category: 'insurance_ops', owner: 'operational', risk: 'high', requires_connection: true, requires_approval: false, provider: 'portal_worker', note: 'HITL' },
   { key: 'operational.portal.billing.read', name: 'Portal — cobrança (leitura)', category: 'insurance_ops', owner: 'operational', risk: 'high', requires_connection: true, requires_approval: false, provider: 'portal_worker', note: 'HITL' },
-  { key: 'operational.portal.assistance.read', name: 'Portal — assistência (leitura)', category: 'insurance_ops', owner: 'operational', risk: 'high', requires_connection: true, requires_approval: false, provider: 'portal_worker', note: 'HITL' },
-  { key: 'operational.portal.assistance.prepare', name: 'Portal — preparar abertura', category: 'insurance_ops', owner: 'operational', risk: 'high', requires_connection: true, requires_approval: false, provider: 'portal_worker', note: 'prepara, não abre' },
-  { key: 'operational.portal.assistance.request', name: 'Portal — abrir assistência', category: 'insurance_ops', owner: 'operational', risk: 'high', requires_connection: true, requires_approval: true, provider: 'portal_worker', note: 'abre com aprovação' },
+  // SPEC-065 — assistência = vidros = portal PÚBLICO, e por isso as três
+  // abaixo não exigem conexão. 📊 04/08/2026, tabela `portals`: os 2 portais
+  // de vidros são `cred_kind='public'`; os 15 de corretor são
+  // `login_password`. Exigir credencial de um site sem login não protegia
+  // nada — só garantia que toda corretora nova resolvesse `needs_connection`
+  // para sempre, sem tela onde clicar. As duas de cima (apólice e cobrança)
+  // acontecem em portal de corretor e CONTINUAM exigindo.
+  { key: 'operational.portal.assistance.read', name: 'Portal — assistência (leitura)', category: 'insurance_ops', owner: 'operational', risk: 'high', requires_connection: false, requires_approval: false, provider: 'portal_worker', note: 'portal público' },
+  { key: 'operational.portal.assistance.prepare', name: 'Portal — preparar abertura', category: 'insurance_ops', owner: 'operational', risk: 'high', requires_connection: false, requires_approval: false, provider: 'portal_worker', note: 'prepara, não abre' },
+  { key: 'operational.portal.assistance.request', name: 'Portal — abrir assistência', category: 'insurance_ops', owner: 'operational', risk: 'high', requires_connection: false, requires_approval: true, provider: 'portal_worker', note: 'abre com aprovação' },
 ];
 
 // §6 da SPEC-014 — matriz rígida: o conjunto MÁXIMO permitido por papel.

@@ -974,3 +974,117 @@ cobertos por casos dedicados ([3]), não pela varredura.
 para as RPCs que tocam a coluna.
 **O que custa esquecer:** uma RPC nova que escreva o prompt nasce invisível para
 a varredura, que é a peça que promete "não sobrou nenhum".
+
+---
+
+## P-77 · 🧑 O ÚLTIMO INTERRUPTOR: o agente de atendimento nasce desligado
+
+📊 Medido em 04/08/2026: os **quatro** agentes de atendimento do sistema estão
+com `is_active = false` — Saionara (Resulta), Maria Regina (AutoFleet), JOANA
+(Amandus), Even (Blueprint).
+
+**Isso não é defeito.** É o modo observação da [D23], funcionando como desenhado:
+o número segue pareado, a atendente humana responde pelo celular, o sistema
+captura tudo e o agente não fala com ninguém.
+
+Mas tem uma consequência que vale escrever: **enquanto estiver assim, todo o
+portal de vidros fica inerte.** Um segurado pode mandar "quebrei o vidro" e nada
+acontece — não porque falte código, e sim porque a boca está fechada.
+
+**O que destrava:** 🧑 Founder — ligar o Agente de Atendimento no dashboard da
+corretora. É um clique, e ele liga a cadeia inteira.
+**O que custa esquecer:** achar que o portal "não funciona" quando ele nunca foi
+chamado. É o tipo de conclusão que faz desmontar o que está certo.
+
+---
+
+## P-78 · 🟡 `vidro do porta-malas` é lido como vidro lateral
+
+📊 `identidade_peca("vidro do porta-malas")` devolve `{lateral}`, porque
+**"porta"** é sinônimo de lateral no vocabulário de peças. O portal ofereceria
+`VIDRO DE PORTA` para um vidro que é do porta-malas.
+
+Achado pelo executor do bloco 7.5 ao montar o catálogo de perguntas; é falha
+**pré-existente** do vocabulário compartilhado, não do trabalho novo.
+
+**O que destrava:** 🤖 execução — `_EXPRESSOES` resolve `porta-malas` /
+`porta malas` / `portamalas` ANTES de separar em tokens, como já faz com
+`para brisa`. É o mesmo mecanismo, e cabe em três linhas.
+**O que custa esquecer:** um vidro trocado errado, e o portal proíbe corrigir —
+teria de abrir OUTRO acionamento.
+
+---
+
+## P-79 · 🟠 O portal manda `especificos`, mas a tool não tem campo para o LADO
+
+O bloco 7.5 abriu `especificos` no schema da `portal_action`, e as respostas do
+80% (película, dianteira/traseira, lado) finalmente chegam ao portal.
+
+Falta o outro lado da moeda: **a chave de idempotência não conhece o lado.**
+📊 O portal diz, literalmente, que *"se o item possuir lateralidade será
+necessário abrir uma nova solicitação para o outro lado"*. Dois vidros quebrados
+são dois pedidos — e, se o agente escrever a mesma `peca` genérica nos dois, o
+segundo é **barrado** pela idempotência como se fosse repetição.
+
+A frase de "já existe" ensina a saída (*descreva a peça com o lado*), mas
+depender do texto para o modelo acertar é o que esta SPEC inteira está desfazendo.
+
+**O que destrava:** 🤖 execução — `especificos.lado_motorista_ou_carona` entra
+na `chave_de_idempotencia` quando estiver presente.
+**O que custa esquecer:** o segundo vidro nunca é aberto, e o segurado descobre
+quando o vidraceiro chega e conserta um só.
+
+---
+
+## P-80 · 🟡 Telas do portal que ainda não foram medidas
+
+Do mapa [`O-PORTAL-DE-VIDROS-TELA-POR-TELA.md`](O-PORTAL-DE-VIDROS-TELA-POR-TELA.md) §7:
+
+| Lacuna | O que destrava |
+|---|---|
+| **Consultar atendimento** — o acompanhamento oficial | 🧑 uma captura de tela |
+| Perguntas específicas de retrovisor, farol, lanterna, vigia, teto | 🧑 captura ou 1ª execução real |
+| Telas de **roda/pneu/suspensão** (só a Porto oferece) | 🧑 uma captura na Porto |
+| Quais seguradoras da lista realmente atendem vidros | 🤖 tentativa por seguradora |
+
+**Nenhuma impede o corredor de funcionar** — todas caem no caminho adaptativo,
+que lê a tela real. Elas definem quanto o robô precisa pensar em vez de
+reconhecer. A primeira é a mais valiosa: hoje prometemos "acompanho até o fim" e
+a fonte oficial desse acompanhamento existe e não está ligada.
+
+**O que custa esquecer:** o `especificas_mapeadas()` já declara em voz alta o que
+não conhece — então o risco não é errar calado, é continuar pensando mais do que
+o necessário.
+
+---
+
+## P-81 · 🟡 O cérebro do portal é OpenAI; o resto do produto poderia decidir isso
+
+📊 `PORTAL_VISION_MODEL` passou de `gpt-4o-mini` para `gpt-4o` em 04/08, com
+rede de segurança: erro de modelo cai uma vez no antigo, para que um nome
+inválido nunca custe um acionamento.
+
+📊 `app/core/config.py` só declara `OPENAI_API_KEY` — não há chave Anthropic no
+backend. Trocar o cérebro do portal por um modelo Claude exigiria uma chave nova.
+
+**O que destrava:** 🧑 Founder — decidir se vale, e fornecer a chave.
+**O que custa esquecer:** nada imediato. É otimização, não trava — e o
+preenchimento determinístico do bloco 7 já tirou do modelo a maior parte do
+trabalho onde ele errava.
+
+---
+
+## P-82 · 🟡 `_expandir_caps` recebe um `set` e não expande nada
+
+`graph.py:227` chama `capacidades_ativas(_active)` com um **set**, e a função
+começa com `if not isinstance(ativas, dict): return ativas`. Ou seja: o alias
+`platform.web.search` → `platform.research.search` nunca acontece naquele ponto.
+
+Achado de passagem ao consertar o portão do portal (bloco 7.1). Não é do escopo
+desta SPEC e **não** foi tocado — mexer nisso muda permissão de pesquisa, que é
+outro assunto.
+
+**O que destrava:** 🤖 execução — ou a função aceita `set`, ou a chamada passa o
+dicionário resolvido. Com teste que prove a expansão acontecendo.
+**O que custa esquecer:** quem tinha a capability antiga não ganha a nova no
+cutover — exatamente o que o expand-first prometeu evitar.

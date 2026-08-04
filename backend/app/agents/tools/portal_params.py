@@ -5,13 +5,42 @@ SPEC-025: os FATOS (placa, veiculo, chassi, endereco, seguradora) vem da InfoCap
 placa/local. O LLM so decide o que e julgamento: qual apolice (se varias), o dano
 (peca/como/onde/descricao) e a data. normalize_insurer traduz o nome legado da
 InfoCap para a marca que o portal usa (Liberty -> Yelum).
+
+BLOCO 7.5 — A CONFERENCIA ACONTECE ANTES DE O PORTAL ABRIR.
+📊 39 acionamentos, 33 paradas em `needs_human`, zero protocolos: o sistema abria
+o portal e SO ENTAO descobria o que nao sabia. Agora `build_portal_params` so
+devolve params quando nada do que o portal vai perguntar esta em aberto — e
+quando falta, devolve a PERGUNTA pronta, em portugues de gente, para o agente
+fazer ao segurado. O catalogo do que o portal pergunta mora num lugar so:
+`app/services/perguntas_do_portal_de_vidros.py`.
 """
 from __future__ import annotations
 
 import unicodedata
 from typing import Optional, Tuple
 
-REQUIRED = ("cpf_cnpj", "data_dano")
+from app.services.perguntas_do_portal_de_vidros import (
+    compor_descricao,
+    mensagem_para_o_agente,
+    o_que_falta,
+    para_o_segurado,
+)
+
+# O QUE O AGENTE CONSEGUE DEVOLVER HOJE — e por que isso limita o que trava.
+#
+# Bloquear numa pergunta cuja resposta nao tem como chegar de volta cria o laco
+# infinito que este repo ja pagou uma vez: o agente pergunta, o segurado
+# responde, o schema da tool descarta a resposta, e a MESMA pergunta volta para
+# sempre (era o defeito do `subservico_invalido` em `insurer_dispatch_tool`,
+# provado em `test_o_acionamento_nao_pede_o_impossivel.py`).
+#
+# Estes cinco sao os campos de `PortalActionInput` que carregam resposta de
+# pergunta. As especificas do 80% (pelicula, lado, trincado) NAO estao aqui
+# porque a tool ainda nao tem campo para elas: elas continuam sendo COLETADAS
+# (entram na mensagem que o agente le) e o transporte daqui para baixo ja existe
+# — `params['especificos']` e lido por `vidros_lanternas.abrir_atendimento` e
+# entregue ao cerebro adaptativo. Falta so um campo `especificos` na tool.
+TRANSPORTAVEIS = ("cpf_cnpj", "data_dano", "peca", "como_ocorreu", "onde_ocorreu")
 
 
 def _fold(s: Optional[str]) -> str:
@@ -55,12 +84,13 @@ def normalize_insurer(name: Optional[str]) -> str:
 def build_portal_params(flat: dict, profile: dict, infocap: dict) -> Tuple[Optional[dict], Optional[str]]:
     """(params, erro). flat = decisoes do LLM (cpf, data, dano, placa_informada
     fallback). profile = perfil de acionamento da corretora. infocap = retorno REAL
-    do vehicle lookup (policy/vehicle/client). erro != None quando falta fato."""
-    flat = flat or {}
-    missing = [k for k in REQUIRED if not str(flat.get(k) or "").strip()]
-    if missing:
-        return None, f"Faltam dados do acionamento: {', '.join(missing)}. Pergunte ao segurado."
+    do vehicle lookup (policy/vehicle/client). erro != None quando falta fato.
 
+    A ordem e deliberada: primeiro os fatos que NAO dependem do segurado (perfil
+    da corretora, seguradora, placa) — recusar por eles e barato e nao gasta a
+    paciencia de ninguem. So depois a FICHA DO ACIONAMENTO, que precisa da
+    InfoCap ja lida (o veiculo e o CEP saem de la) para saber o que NAO perguntar."""
+    flat = flat or {}
     profile = profile or {}
     sol = {
         "relacao": "Corretor",
@@ -89,6 +119,34 @@ def build_portal_params(flat: dict, profile: dict, infocap: dict) -> Tuple[Optio
         return None, ("A apolice na InfoCap nao trouxe a PLACA do veiculo. Pergunte a placa ao segurado "
                       "e chame de novo com placa_informada.")
 
+    # -------------------------------------------------------------------
+    # BLOCO 7.5 — A FICHA DO ACIONAMENTO, conferida ANTES de abrir o portal.
+    #
+    # `ja_sei` junta as duas fontes: o que o segurado respondeu (via LLM) e o
+    # que a InfoCap trouxe (veiculo e cep). E a segunda fonte que faz o produto
+    # NAO perguntar a versao do carro nem o CEP a quem acabou de ter o vidro
+    # quebrado — eles ja estao na apolice (mapa §8.3).
+    # -------------------------------------------------------------------
+    bruto = flat.get("especificos")
+    especificos = {str(k): v for k, v in bruto.items()} if isinstance(bruto, dict) else {}
+    ja_sei = {
+        "cpf_cnpj": flat.get("cpf_cnpj"),
+        "data_dano": flat.get("data_dano"),
+        "peca": flat.get("peca"),
+        "como_ocorreu": flat.get("como_ocorreu"),
+        "onde_ocorreu": flat.get("onde_ocorreu"),
+        "descricao": flat.get("descricao"),
+        "veiculo": veh.get("veiculo"),
+        "cep": cli.get("cep"),
+        **especificos,
+    }
+    peca_dita = str(flat.get("peca") or "").strip()
+    faltam = o_que_falta(peca_dita, ja_sei)
+    # So trava no que o agente CONSEGUE responder de volta (ver TRANSPORTAVEIS).
+    # O resto vai junto na mensagem, para ele coletar na mesma conversa.
+    if [p for p in para_o_segurado(faltam) if p.campo in TRANSPORTAVEIS]:
+        return None, mensagem_para_o_agente(faltam, peca_dita)
+
     endereco_txt = _fold(", ".join(p for p in (
         " ".join(x for x in (cli.get("logradouro"), cli.get("numero")) if x),
         cli.get("bairro"), f"{cli.get('cidade') or ''} {cli.get('estado') or ''}".strip(),
@@ -97,9 +155,9 @@ def build_portal_params(flat: dict, profile: dict, infocap: dict) -> Tuple[Optio
 
     params = {
         "insurer_name": insurer,
-        "cpf_cnpj": str(flat["cpf_cnpj"]).strip(),
+        "cpf_cnpj": str(flat.get("cpf_cnpj") or "").strip(),
         "placa": placa,
-        "data_dano": str(flat["data_dano"]).strip(),
+        "data_dano": str(flat.get("data_dano") or "").strip(),
         "solicitante": sol,
         "segurado": {
             "nome": str(cli.get("nome") or "").strip(),
@@ -116,8 +174,16 @@ def build_portal_params(flat: dict, profile: dict, infocap: dict) -> Tuple[Optio
             "peca": str(flat.get("peca") or "").strip(),
             "como": str(flat.get("como_ocorreu") or "").strip(),
             "onde": str(flat.get("onde_ocorreu") or "").strip(),
-            "descricao": str(flat.get("descricao") or "").strip(),
+            # 📊 O portal exige minimo de 30 caracteres aqui. Nao se pede ao
+            # segurado que "escreva mais": o texto e COMPOSTO do que ele ja
+            # disse (peca + relato + data + local). Relato dele com 30+ vai
+            # inteiro, com as palavras dele.
+            "descricao": compor_descricao(ja_sei),
         },
+        # As respostas do passo 6 (80%), ja coletadas na conversa. A journey ja
+        # le esta chave (`vidros_lanternas.abrir_atendimento`) e a entrega ao
+        # cerebro adaptativo — era o unico pedaco do caminho que nascia vazio.
+        "especificos": {k: v for k, v in especificos.items() if str(v or "").strip()},
         "local": {
             "estado": _fold(cli.get("estado")).upper(),
             "cidade": _fold(cli.get("cidade")).title(),
@@ -149,3 +215,150 @@ def format_result(job: dict) -> str:
     if status == "failed":
         return f"Nao consegui concluir no portal: {job.get('error') or ev.get('message') or 'erro'}."
     return "Enfileirei o acionamento; o worker de portais ainda nao processou (o acesso a portais esta desligado?)."
+
+
+# ===========================================================================
+# SPEC-065 bloco 7.2 — o portal nunca abre duas vezes o mesmo pedido.
+#
+# 📊 O `Nº do atendimento` nasce no passo 7, no TOPO da tela, antes da escolha
+# da loja (docs/canon/O-PORTAL-DE-VIDROS-TELA-POR-TELA.md §7). O pedido ja
+# existe na seguradora antes de o fluxo terminar — reexecutar nao corrige, cria
+# um SEGUNDO atendimento.
+#
+# 📊 E ja aconteceu, em escala: 39 jobs `abrir_atendimento` para 5 pedidos
+# distintos (Supabase dcajcvlzcjbmyapmklil, 04/08/2026). Um unico pedido tem 30
+# jobs. Nao machucou ninguem so porque o gate do worker esta desligado.
+#
+# A chave identifica o PEDIDO, nao o job: corretora + placa + peca + data do
+# dano. Logica pura aqui para poder ser testada sem banco, sem langchain e sem
+# LLM — o guarda que so existe dentro do `_arun` e um guarda que ninguem
+# consegue provar.
+# ===========================================================================
+
+_CHAVE_VERSAO = "v1"
+
+# "vidro DA porta" e "vidro DE porta" sao a mesma peca. Estas palavras so ligam
+# as outras; se ficarem na chave, viram dois pedidos que sao um.
+_LIGACOES = frozenset({
+    "de", "da", "do", "das", "dos", "e", "a", "o", "as", "os",
+    "no", "na", "nos", "nas", "em", "um", "uma", "ao", "aos", "com",
+})
+
+_PECA_MAX = 80  # limita a entrada do indice; o LLM as vezes escreve uma frase
+
+
+def normalizar_peca(texto: Optional[str]) -> str:
+    """A peca como IDENTIDADE, nao como texto.
+
+    Tira acento, caixa e pontuacao; joga fora as palavras de ligacao; ordena o
+    que sobra. 'Vidro da Porta', 'vidro de porta' e 'porta - vidro' viram a
+    mesma coisa.
+
+    O que NAO e jogado fora, de proposito: os qualificadores. 'dianteira',
+    'traseira', 'esquerdo', 'direito' e 'motorista' continuam na chave, porque
+    o portal exige um pedido por item e por lado (§3 do mapa) — dois vidros
+    quebrados sao dois atendimentos, e uma chave que os fundisse deixaria um
+    lado quebrado sem ninguem saber.
+
+    Ordenar e seguro aqui e nao noutro lugar: para dois pedidos DIFERENTES
+    colidirem depois da ordenacao, eles teriam de ser anagramas de token — e
+    peca diferente sempre troca uma palavra (dianteira/traseira), nunca so a
+    ordem delas.
+    """
+    bruto = _fold(texto).lower()
+    palavras = sorted(
+        p for p in ("".join(c if c.isalnum() else " " for c in bruto)).split()
+        if p and p not in _LIGACOES
+    )
+    return " ".join(palavras)[:_PECA_MAX]
+
+
+def normalizar_placa(texto: Optional[str]) -> str:
+    """'qjq-0a91' e 'QJQ0A91' sao o mesmo carro. So alfanumerico, maiusculo."""
+    return "".join(c for c in _fold(texto).upper() if c.isalnum())
+
+
+def normalizar_data(texto: Optional[str]) -> str:
+    """'5/7/2026', '05-07-2026' e '05/07/2026' sao o mesmo dia.
+
+    Nao vira digito puro: '5/7/2026' -> '572026' e '05/07/2026' -> '05072026'
+    dariam chaves diferentes para a mesma data. Zero-padding resolve; formato
+    que nao seja de tres partes cai no digito puro, que ao menos e estavel.
+    """
+    partes = [p for p in ("".join(c if c.isdigit() else " " for c in str(texto or ""))).split() if p]
+    if len(partes) == 3:
+        d, m, a = partes
+        if len(a) == 2:
+            a = "20" + a
+        return f"{d.zfill(2)}{m.zfill(2)}{a.zfill(4)}"
+    return "".join(partes)
+
+
+def chave_de_idempotencia(params: Optional[dict], company_id: Optional[str] = None) -> str:
+    """A impressao digital do PEDIDO. String vazia = sem chave (nao bloqueia nada).
+
+    `company_id` vem separado porque `build_portal_params` nao o coloca em
+    `params` — e mexer nela nao e desta tarefa. Aceita tambem `params['company_id']`
+    para quem ja o tiver embutido.
+
+    O que entra: corretora, placa, peca normalizada, data do dano.
+    O que NAO entra, e por que:
+
+      · a descricao livre — o segurado reconta a mesma historia com outras
+        palavras ("quebraram o vidro" / "encontrei o carro arrombado") e isso
+        criaria pedidos "diferentes" que sao o mesmo. Justamente o erro que
+        custa caro: um segundo atendimento na seguradora nao se desfaz.
+      · o `como_ocorreu` e o `onde_ocorreu` — mesma razao, sao julgamento do
+        LLM sobre o mesmo fato.
+      · a seguradora — ela e DERIVADA da apolice, que e derivada da placa. Se o
+        `normalize_insurer` mudar de opiniao entre duas chamadas (Liberty ->
+        Yelum), a chave mudaria sozinha e o guarda sumiria em silencio.
+      · o CPF — tambem derivado: e o titular da apolice daquela placa.
+
+    Retorna "" quando falta corretora, placa ou data — sem esses tres nao ha
+    pedido para identificar, e uma chave meia-boca fundiria pedidos de carros
+    diferentes. Na pratica e inalcancavel: `build_portal_params` ja recusa sem
+    placa e sem data, e a tool sempre tem company_id. Fail-open de proposito:
+    o guarda nunca pode ser o motivo de um atendimento nao acontecer.
+    """
+    params = params or {}
+    empresa = str(company_id or params.get("company_id") or "").strip()
+    placa = normalizar_placa(params.get("placa"))
+    data = normalizar_data(params.get("data_dano"))
+    if not (empresa and placa and data):
+        return ""
+    peca = normalizar_peca((params.get("dano") or {}).get("peca"))
+    return f"{_CHAVE_VERSAO}:{empresa}:{placa}:{data}:{peca}"
+
+
+def frase_de_pedido_ja_existente(job: Optional[dict]) -> str:
+    """O que o agente diz quando o pedido JA existe — sem mentir.
+
+    Nao inventa protocolo nem status: para um job que TERMINOU, o fato vem de
+    `format_result` sobre o job real. Para um job ainda em curso o fato e
+    omitido de proposito — `format_result` diria "Enfileirei o acionamento", e
+    nesta chamada nada foi enfileirado; a frase mentiria sobre quem fez o que.
+
+    O que esta funcao acrescenta e a explicacao de por que NAO abrimos outro, e
+    a saida legitima para o caso em que o segurado realmente tem um segundo
+    pedido (outra peca, outro lado).
+    """
+    job = job or {}
+    status = str(job.get("status") or "")
+    outro_pedido = (
+        "Se o segurado quebrou OUTRA peca ou o OUTRO lado, isso e um pedido "
+        "separado (o portal so aceita um item por atendimento): descreva a peca "
+        "com o lado — ex.: 'vidro da porta traseira esquerda' — e chame de novo."
+    )
+    if status in ("done", "needs_human"):
+        return (
+            "Ja existe um atendimento aberto para este mesmo veiculo, peca e data do dano. "
+            "NAO abri outro: o numero do atendimento nasce antes do fim do fluxo no portal, "
+            "entao repetir criaria um SEGUNDO atendimento na seguradora, e isso nao se desfaz. "
+            f"{format_result(job)} Repasse esse resultado ao segurado. {outro_pedido}"
+        )
+    return (
+        "Ja existe um acionamento EM ANDAMENTO para este mesmo veiculo, peca e data do dano — "
+        "nao abri outro. Diga ao segurado que o pedido dele ja esta em curso e que voce avisa "
+        f"assim que houver resposta. {outro_pedido}"
+    )

@@ -28,13 +28,33 @@ def check(name, cond, detail=None):
         print(f"  [X] {name}{': ' + str(detail) if detail else ''}")
 
 
-for name in ("app", "app.agents", "app.agents.tools"):
+# O QUE MUDOU NO CARREGAMENTO (bloco 7.5): `portal_params` passou a importar o
+# catalogo de perguntas do portal. Os pacotes `app.*` continuam sendo stubs —
+# `app/services/__init__.py` puxa langchain/qdrant/minio e esta suite roda sem
+# eles —, entao as dependencias reais entram por CAMINHO, pre-registradas em
+# sys.modules. E `backend/` vai para o sys.path porque o catalogo importa
+# `identidade_peca` do `portal_worker`: o vocabulario de peca e UM SO, e ele
+# mora la desde a SPEC-020.
+if str(ROOT) not in sys.path:
+    sys.path.insert(0, str(ROOT))
+
+for name in ("app", "app.agents", "app.agents.tools", "app.services"):
     m = sys.modules.setdefault(name, types.ModuleType(name))
     m.__path__ = []
 
-spec = importlib.util.spec_from_file_location("app.agents.tools.portal_params", ROOT / "app/agents/tools/portal_params.py")
-pp = importlib.util.module_from_spec(spec)
-spec.loader.exec_module(pp)
+
+def _carregar(dotted, rel):
+    spec = importlib.util.spec_from_file_location(dotted, ROOT / rel)
+    mod = importlib.util.module_from_spec(spec)
+    sys.modules[dotted] = mod
+    spec.loader.exec_module(mod)
+    return mod
+
+
+_carregar("app.services.attendance_ficha", "app/services/attendance_ficha.py")
+_carregar("app.services.perguntas_do_portal_de_vidros",
+          "app/services/perguntas_do_portal_de_vidros.py")
+pp = _carregar("app.agents.tools.portal_params", "app/agents/tools/portal_params.py")
 
 PROFILE = {"nome": "Auto Fleet Corretora", "email": "operacional@autofleet.com.br", "telefone": "4833646664", "cpf_cnpj": "00000000000191"}
 

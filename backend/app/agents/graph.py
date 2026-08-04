@@ -451,9 +451,37 @@ async def create_agent_graph(
                 from .tools.operations_tools import AtlasRoutesTool, OperationsSummaryTool
                 tools.append(OperationsSummaryTool(company_id=str(company_id)))
                 tools.append(AtlasRoutesTool())
-            # SPEC-020 P3 — portal_action: acessar portais (capability tenant.portal.execute;
-            # core/auxiliary/attendance). Execucao real fica atras do gate PORTAL_REAL_ENABLED no worker.
-            if "tenant.portal.execute" in _active:
+            # SPEC-020 P3 / SPEC-065 — portal_action: abrir atendimento de vidros.
+            #
+            # DUAS chaves soltam esta ferramenta, e a diferenca entre elas e o que
+            # separava o Atendente do portal ha quatro semanas:
+            #
+            #   tenant.portal.execute                    -> generica. core, auxiliary.
+            #   operational.portal.assistance.prepare    -> o corredor. attendance.
+            #
+            # 📊 Medido em 04/08/2026: `tenant.portal.execute` esta desligada para
+            # `attendance` desde a SPEC-054 Bloco C, com o motivo na propria linha:
+            # "SPEC-053 5.2 - Atendimento externo nao recebe ferramenta generica".
+            #
+            # E esta CERTO. `portal.execute` — entre em qualquer portal e faca
+            # qualquer coisa — e a ferramenta generica que a 053 proibe a quem
+            # conversa com desconhecidos no WhatsApp. Afrouxar aquilo seria dar a um
+            # agente exposto a texto de estranho a chave de todos os portais.
+            #
+            # Mas `portal_action` NAO e generica: jornada fixa (`vidros_lanternas` /
+            # `abrir_atendimento`), parametros montados no servidor a partir da
+            # InfoCap, `confirm=False` cravado. E um CORREDOR DEFINIDO — que e o que
+            # a 053 5.2 manda usar ("corredores definidos; menor privilegio").
+            #
+            # E o corredor ja tinha chave, ja ligada para o Atendente desde sempre:
+            # `assistance.prepare` (preparar, com requires_approval_before_submit) e
+            # `assistance.request` (enviar, com requires_approval). O portao e que
+            # nunca aprendeu a conferi-la — exigia a chave generica para soltar uma
+            # ferramenta especifica.
+            #
+            # Nao era conflito entre SPEC-053 e SPEC-020. Era o portao lendo a chave
+            # errada, e a discussao canonica inteira nasceu desse engano.
+            if _active & {"operational.portal.assistance.prepare", "tenant.portal.execute"}:
                 from .tools.portal_tool import PortalActionTool
                 tools.append(PortalActionTool(company_id=str(company_id), supabase_client=supabase_client))
     except Exception as e:  # noqa: BLE001

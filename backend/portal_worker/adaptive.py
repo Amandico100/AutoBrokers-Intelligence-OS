@@ -17,9 +17,12 @@ import unicodedata
 from typing import Any, Dict, List, Optional
 
 from portal_worker.journeys import JourneyResult
-from portal_worker.journeys.vidros_lanternas import explicar_match
+from portal_worker.journeys.vidros_lanternas import explicar_match, explicar_especifico
 
 VALID_ACTIONS = ("fill", "select", "click", "check", "done", "ask_human")
+# O modelo que ja rodou em producao. Serve de rede: se o padrao novo nao existir
+# na conta, o acionamento cai aqui em vez de morrer.
+_MODELO_DE_RESERVA = "gpt-4o-mini"
 MAX_STEPS = 22
 _PROTO = ("protocolo", "numero do atendimento", "n do atendimento", "solicitacao registrada", "atendimento n")
 LAST_MDSELECT_DEBUG = None  # ultimo overlay md-option nao-clicavel (diagnostico)
@@ -128,8 +131,12 @@ _SYSTEM = (
     "Escolha a peca/causa/local/respostas com INTELIGENCIA a partir do que o segurado relatou. "
     "Em 'select', o value deve ser um texto de OPCAO REAL: se a tela mostrar as options do select, "
     "COPIE exatamente a opcao mais coerente com o relato (nao parafraseie). Se uma acao sua voltar "
-    "com resultado 'mdselect_options=...' em acoes_ja_feitas, essas SAO as opcoes reais daquele "
-    "campo: refaca o select escolhendo UMA delas (texto exato). "
+    "com resultado 'mdselect_options=...' ou 'select_options=...' em acoes_ja_feitas, essas SAO as "
+    "opcoes reais daquele campo: refaca o select escolhendo UMA delas (texto exato). "
+    "Nas perguntas ESPECIFICAS dos 80% (lado do item, porta dianteira/traseira, pelicula/insulfilm, "
+    "posicao do trincado, maior/menor que 10 cm, versao do veiculo) responda com o que o SEGURADO "
+    "disse ou com o que a apolice ja diz. NUNCA escolha 'Nao sabe' para destravar a tela: isso "
+    "faz a seguradora perder qual vidro pedir. 'Nao sabe' so quando o segurado nao souber mesmo. "
     "JAMAIS use ask_human para campos de FORMATO/preferencia onde qualquer valor serve (tipo de "
     "telefone, tipo de contato, DDD, 'como prefere ser atendido') — escolha DIRETO (ex.: Comercial, "
     "ou a 1a opcao valida do select). ask_human e SO para um dado REAL do segurado/dano que nao "
@@ -165,7 +172,15 @@ async def decide_next_action(state: Dict[str, Any], goal: str, collected: Dict[s
                              history: List[Dict[str, Any]], force: bool = False) -> Dict[str, Any]:
     """Chama o cerebro (LLM) para decidir a proxima acao. Fail-safe -> ask_human."""
     key = os.getenv("OPENAI_API_KEY") or ""
-    model = os.getenv("PORTAL_VISION_MODEL", "gpt-4o-mini")
+    # 📊 O padrao era `gpt-4o-mini` — um modelo pequeno conduzindo uma tarefa
+    # agentica de 22 passos com 1.500 caracteres de instrucao. A autopsia dos 39
+    # acionamentos mostra os tres sintomas classicos de instrucao nao seguida:
+    # perguntou o que estava no payload (4x), repetiu acao que ja tinha dado
+    # certo (7x) e escreveu "Santa Catarina" onde o prompt manda a SIGLA.
+    #
+    # Continua trocavel por env — e o fallback abaixo garante que um nome de
+    # modelo invalido nunca derrube o acionamento.
+    model = os.getenv("PORTAL_VISION_MODEL", "gpt-4o")
     if not key:
         return {"action": "ask_human", "value": "cerebro de visao indisponivel (sem OPENAI_API_KEY no worker)", "reason": "no key"}
     system = _SYSTEM + (_FORCE_CHOOSE if force else "")
@@ -174,13 +189,22 @@ async def decide_next_action(state: Dict[str, Any], goal: str, collected: Dict[s
     try:
         import httpx
 
+        mensagens = [{"role": "system", "content": system}, {"role": "user", "content": user}]
         async with httpx.AsyncClient(timeout=45.0) as c:
-            r = await c.post(
-                "https://api.openai.com/v1/chat/completions",
-                headers={"Authorization": f"Bearer {key}"},
-                json={"model": model, "temperature": 0, "response_format": {"type": "json_object"},
-                      "messages": [{"role": "system", "content": system}, {"role": "user", "content": user}]},
-            )
+            async def _pedir(m: str):
+                return await c.post(
+                    "https://api.openai.com/v1/chat/completions",
+                    headers={"Authorization": f"Bearer {key}"},
+                    json={"model": m, "temperature": 0, "response_format": {"type": "json_object"},
+                          "messages": mensagens},
+                )
+
+            r = await _pedir(model)
+            # Um nome de modelo que a conta nao tem nao pode custar o
+            # acionamento inteiro. Cai UMA vez no modelo antigo, que
+            # comprovadamente responde — pior decisao e melhor que nenhuma.
+            if r.status_code >= 400 and model != _MODELO_DE_RESERVA:
+                r = await _pedir(_MODELO_DE_RESERVA)
             data = r.json()
             content = data["choices"][0]["message"]["content"]
         return parse_action(json.loads(content))
@@ -313,7 +337,11 @@ async def _set_select(page, s, label: str) -> str:
 async def _apply_select(page, target: str, value: str) -> str:
     """Casa o valor em algum <select>; se identificar o campo-alvo (por name/label)
     mas o valor nao casar exato, pega a 1a opcao real (ex.: tipo de telefone, onde
-    qualquer valor serve). Assim nao trava por causa de um dropdown obrigatorio."""
+    qualquer valor serve). Assim nao trava por causa de um dropdown obrigatorio.
+
+    🔴 A 1a opcao real SO vale em campo tolerante. Este e o mesmo sorteio que o
+    _apply_mdselect ja evitava — pela porta do <select> nativo, onde ninguem
+    tinha posto a checagem. Em campo critico devolve as opcoes ao cerebro."""
     t, v = _norm(target), _norm(value)
     target_sel = None
     for s in await page.query_selector_all("select"):
@@ -328,12 +356,14 @@ async def _apply_select(page, target: str, value: str) -> str:
                 return f"select={done}" if done else "select_fail"
         if t and (t == name or t in name or name in t):   # 2) e o campo-alvo?
             target_sel = (s, opts)
-    if target_sel:                            # 3) campo certo, valor nao casou -> 1a real
+    if target_sel:                            # 3) campo certo, valor nao casou
         s, opts = target_sel
-        for o in opts:
-            if o and "selecione" not in _norm(o):
-                done = await _set_select(page, s, o)
-                return f"select_default={done}" if done else "select_fail"
+        reais = [o for o in opts if o and "selecione" not in _norm(o)]
+        if _is_critical_select(target):        # critico: PARAR e devolver a lista
+            return "select_options=" + " | ".join(o[:60] for o in reais[:20])
+        for o in reais:                        # tolerante: 1a real serve
+            done = await _set_select(page, s, o)
+            return f"select_default={done}" if done else "select_fail"
     return "select_notfound"
 
 
@@ -380,13 +410,49 @@ async def _find_mdselect(page, target: str, value: str):
     return None
 
 
+# Campos de FORMATO/preferencia: o portal so quer que estejam preenchidos, e
+# qualquer opcao valida serve. Sao verificados ANTES da lista de criticos — se
+# virarem criticos, o robo trava num campo onde parar nao protege ninguem.
+_TOLERANTES = ("tipo de telefone", "tipotelefone", "tipo do telefone",
+               "tipo de contato", "tipocontato", "ddd", "como prefere",
+               "prefere ser atendido", "meio de contato", "forma de contato")
+
+# 🔴 Campos onde a opcao ERRADA vira SERVICO errado — e o portal nao deixa
+# corrigir: seria preciso abrir OUTRO acionamento (mapa do portal §3).
+#
+# 📊 medido em 04/08/2026 com a lista antiga ("item","peca","danific","ocorreu",
+#    "causa","dano"), em backend/tests/test_o_80_por_cento_sabe_o_que_pergunta.py:
+#      _is_critical_select("Escolha a loja onde deseja realizar o servico") -> False
+#      _is_critical_select("O trincado esta maior ou menor que 10 cm?")     -> False
+#      _is_critical_select("Poderia informar a posicao do trincado?")       -> False
+#    Campo nao-critico sem match cai na 1a opcao (escolha = reais[0][0]). Na
+#    tela do passo 7 isso e SORTEAR A OFICINA; na do trincado, 'menor que 10 cm'
+#    virava "Maior (troca do vidro)" — trocar um parabrisa que tinha reparo.
+#
+# Falso positivo aqui e barato (o robo para e pergunta); falso negativo e caro
+# (o robo escolhe errado e o pedido abre). Por isso a lista peca por incluir.
+_CRITICOS = (
+    "item", "peca", "danific", "ocorreu", "causa", "dano",        # ja existiam
+    "loja", "oficina", "unidade", "concessionaria", "prestador",  # ONDE consertar
+    "domicili", "agendar", "agendamento", "horario",              # COMO e QUANDO
+    "lado", "direita", "esquerda", "dianteira", "traseira",       # QUAL vidro
+    "pelicula", "insulfilm", "controle solar",
+    "trincad", "trinca", "posicao", "tamanho",
+    "versao", "comfortline",
+    "estado", "cidade", "cep", "municipio", "bairro",             # ONDE o segurado esta
+)
+
+
 def _is_critical_select(target: str) -> bool:
-    """PURO: campos onde escolher a opcao ERRADA = acionamento ERRADO (item/peca
-    danificada, causa/como ocorreu). Nesses NUNCA cair na 1a opcao as cegas —
-    devolver as opcoes reais ao cerebro. Campos de formato (tipo de telefone etc.)
-    continuam tolerantes (qualquer opcao valida serve)."""
+    """PURO: campos onde escolher a opcao ERRADA = acionamento ERRADO. Nesses
+    NUNCA cair na 1a opcao as cegas — devolver as opcoes reais ao cerebro.
+    Campos de FORMATO continuam tolerantes (qualquer opcao valida serve), e e
+    por isso que a checagem deles vem primeiro: um campo pode conter uma palavra
+    critica por acaso, mas se ele e de formato, parar nele nao protege ninguem."""
     t = _norm(target)
-    return any(k in t for k in ("item", "peca", "danific", "ocorreu", "causa", "dano"))
+    if any(k in t for k in _TOLERANTES):
+        return False
+    return any(k in t for k in _CRITICOS)
 
 
 def score_option_tokens(want: str, option: str) -> int:
@@ -453,11 +519,26 @@ async def _apply_mdselect(page, target: str, value: str):
                 continue
         reais = [(t, o) for t, o in visiveis if "selecione" not in _norm(t)]
         if reais:
-            # 2) DECIDIR com a funcao PURA — a mesma que os testes exercitam offline.
+            # 2) DECIDIR com as funcoes PURAS — as mesmas que os testes exercitam
+            # offline. Sao DUAS porque o portal faz duas perguntas diferentes: a
+            # do passo 4 e sobre a PECA ("VIDRO DE PORTA"); a do passo 6 (80%) e
+            # sobre um ATRIBUTO dela (lado, dianteira/traseira, pelicula, tamanho
+            # do trincado) — e ali o mapa de pecas ATRAPALHA: 📊 'porta dianteira'
+            # contra ["DIANTEIRA","TRASEIRA"] devolvia None porque o veto de peca
+            # eliminava as duas opcoes reais. Cada funcao diz quando a lista NAO
+            # e dela ('dominio' == 'nenhum'), entao continua havendo um so lugar
+            # que decide cada pergunta — nunca dois placares para a mesma.
             critico = _is_critical_select(target)
-            escolha = explicar_match(value, [t for t, _ in reais])["escolha"]
-            if escolha is None and not critico:
-                escolha = reais[0][0]      # campo de formato: qualquer valor serve
+            esp = explicar_especifico(value, [t for t, _ in reais], target)
+            if esp["dominio"] != "nenhum":
+                escolha = esp["escolha"]
+            else:
+                escolha = explicar_match(value, [t for t, _ in reais])["escolha"]
+            # Campo de FORMATO: qualquer opcao valida serve. Mas NUNCA quando a
+            # pergunta e um atributo do 80% — ali a 1a opcao seria sortear lado,
+            # tamanho ou posicao, e o portal nao deixa corrigir depois.
+            if escolha is None and not critico and esp["dominio"] == "nenhum":
+                escolha = reais[0][0]
             if escolha is None:
                 # Campo CRITICO sem match confiante: FECHA o overlay e devolve as
                 # opcoes REAIS ao cerebro. A proxima decisao ve a lista em
@@ -664,12 +745,133 @@ def _registrar_parada(evidence: Dict[str, Any], state: Dict[str, Any], collected
             evidence["dropdowns_da_tela"] = listas[:6]
 
 
+# ---------------------------------------------------------------------------
+# O QUE E FATO NAO PASSA POR UM MODELO
+# ---------------------------------------------------------------------------
+# 📊 Autopsia dos 39 acionamentos (04/08/2026, Supabase dcajcvlzcjbmyapmklil):
+#
+#   9  estouraram o teto de 22 passos
+#   4  o cerebro PERGUNTOU um dado que estava no payload — inclusive
+#      "Qual e o tipo de telefone do segurado?", que o proprio prompt do
+#      sistema proibe literalmente
+#   7  ele repetiu uma acao que ja tinha voltado `filled` / `mdselect=corretor`,
+#      ou seja, que TINHA FUNCIONADO
+#   1  mandou "Santa Catarina" num autocomplete onde o prompt manda usar a SIGLA
+#
+# 📊 E nao foi falta de cerebro: ZERO jobs registram `cerebro de visao
+# indisponivel` ou `nao consegui decidir`. Ele estava la, com a instrucao na
+# frente, e nao seguiu.
+#
+# Nome da corretora, e-mail, CNPJ, telefone, relacao (`Corretor`), estado,
+# cidade e CEP tem **um unico valor certo, sabido antes de a tela abrir**.
+# Mandar um modelo "decidir" preenche-los cria tres riscos de graca: ele
+# pergunta o que ja sabe, erra o formato, ou gasta passos do teto.
+#
+# Cada campo preenchido por codigo e um passo que nao e gasto — e o teto foi
+# atingido 9 vezes.
+#
+# A REGRA DE SEGURANCA: so preenche quando EXATAMENTE UM campo visivel e vazio
+# casa. Duas correspondencias = ambiguidade = o cerebro decide. E o mesmo
+# principio do `explicar_match`: na duvida, nao chuta.
+_FATOS_DE_TEXTO = (
+    # (chave, pistas que identificam o campo, pistas que o DESQUALIFICAM)
+    ("nome",     ("nome-solicitante", "nome completo", "nome do solicitante"), ("segurado",)),
+    ("cpf_cnpj", ("cpf-cnpj-solicitante", "cpf ou cnpj", "cnpj"), ("inserir-cpf", "placa")),
+    ("email",    ("email", "e-mail"), ()),
+    ("telefone", ("telefone",), ("tipo",)),
+)
+_FATOS_DE_LOCAL = (
+    ("estado", ("estado", "uf"), ("cidade",)),
+    ("cidade", ("cidade",), ("estado",)),
+    ("cep",    ("cep",), ()),
+)
+
+
+def _identidade_do_campo(campo: Dict[str, Any]) -> str:
+    return _norm(" ".join(str(campo.get(k) or "") for k in ("id", "name", "placeholder", "label")))
+
+
+def fatos_da_tela(state: Dict[str, Any], collected: Dict[str, Any]) -> List[Dict[str, str]]:
+    """PURO: quais campos DESTA tela tem valor conhecido e ainda estao vazios.
+
+    Devolve [{'alvo', 'valor', 'de'}]. Vazio quando nao ha nada obvio a fazer —
+    e ai o cerebro trabalha, que e para o que ele serve.
+    """
+    state = state or {}
+    solicitante = (collected or {}).get("solicitante") or {}
+    local = (collected or {}).get("local") or {}
+    campos = [c for c in (state.get("inputs") or []) if not str(c.get("value") or "").strip()]
+
+    saida: List[Dict[str, str]] = []
+    for origem, chaves in ((solicitante, _FATOS_DE_TEXTO), (local, _FATOS_DE_LOCAL)):
+        for chave, pistas, proibidas in chaves:
+            valor = str(origem.get(chave) or "").strip()
+            if not valor:
+                continue
+            casaram = [c for c in campos
+                       if any(p in _identidade_do_campo(c) for p in pistas)
+                       and not any(x in _identidade_do_campo(c) for x in proibidas)]
+            # Zero: o campo nao esta nesta tela. Dois ou mais: ambiguo — quem
+            # decide e o cerebro, com a tela inteira na frente.
+            if len(casaram) != 1:
+                continue
+            c = casaram[0]
+            saida.append({"alvo": str(c.get("id") or c.get("name") or c.get("label") or ""),
+                          "valor": valor, "de": chave})
+    return saida
+
+
+async def preencher_o_que_e_fato(page, state: Dict[str, Any], collected: Dict[str, Any]) -> List[str]:
+    """Preenche os campos de valor conhecido. Devolve o que foi preenchido."""
+    feitos: List[str] = []
+    for f in fatos_da_tela(state, collected):
+        if not f["alvo"]:
+            continue
+        try:
+            r = await apply_action(page, {"action": "fill", "target": f["alvo"], "value": f["valor"]})
+        except Exception:  # noqa: BLE001
+            continue
+        if str(r).startswith("filled"):
+            feitos.append(f["de"])
+            await page.wait_for_timeout(250)
+
+    # A relacao com o titular tem UM valor certo: somos a corretora. E o tipo de
+    # telefone e formato puro — qualquer opcao valida serve, e o cerebro chegou a
+    # PERGUNTAR por ele. Nenhum dos dois merece uma chamada de modelo.
+    for alvo, valor, nome in (("relacao com o titular", "Corretor", "relacao"),
+                              ("segr", "Corretor", "relacao"),
+                              ("tipo de telefone", "", "tipo_de_telefone")):
+        if nome in feitos:
+            continue
+        vazio_obrigatorio = any(
+            _norm(alvo) in _norm(str(m.get("label") or "") + " " + str(m.get("name") or ""))
+            and m.get("empty_required")
+            for m in (state.get("mdselects") or []))
+        if not vazio_obrigatorio:
+            continue
+        try:
+            r = await apply_action(page, {"action": "select", "target": alvo, "value": valor})
+        except Exception:  # noqa: BLE001
+            continue
+        if str(r).startswith(("mdselect=", "select=", "select_default=")):
+            feitos.append(nome)
+            await page.wait_for_timeout(250)
+    return feitos
+
+
 async def run_adaptive(page, goal: str, collected: Dict[str, Any], evidence: Dict[str, Any],
                        max_steps: int = MAX_STEPS, confirm: bool = False) -> JourneyResult:
-    """Loop agentico: enxerga a tela -> cerebro decide -> executa. Nunca trava."""
+    """Loop agentico: preenche o que e FATO -> enxerga -> cerebro decide o resto."""
     history: List[Dict[str, Any]] = []
     for _ in range(max_steps):
         state = await capture_state(page)
+        # Antes de gastar um passo com o modelo: o que ja sabemos, escrevemos.
+        # Nao consome passo do teto de proposito — preencher o conhecido nao e
+        # uma decisao, e transcricao.
+        preenchidos = await preencher_o_que_e_fato(page, state, collected)
+        if preenchidos:
+            evidence.setdefault("preenchidos_por_fato", []).extend(preenchidos)
+            state = await capture_state(page)
         if has_protocol(state):
             evidence["final"] = state.get("text", "")[:600]
             return JourneyResult(status="done", captured={"stage": "protocolo"}, message="protocolo capturado (adaptive)")
@@ -713,7 +915,7 @@ async def run_adaptive(page, goal: str, collected: Dict[str, Any], evidence: Dic
         # casou volta com as opcoes REAIS (mdselect_options=...) e a proxima decisao
         # escolhe o texto exato da lista — inteligencia com a lista na mao, sem chute.
         history[-1] = {**action, "resultado": applied[:220]}
-        if applied.startswith("mdselect_options="):
+        if applied.startswith(("mdselect_options=", "select_options=")):
             evidence["campo"] = action.get("target")
             evidence["opcoes"] = [o.strip() for o in applied.split("=", 1)[1].split("|") if o.strip()]
             evidence["pergunta"] = _rotulo_do_campo(state, str(action.get("target") or ""))

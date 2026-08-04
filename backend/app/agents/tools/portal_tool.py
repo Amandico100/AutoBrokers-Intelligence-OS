@@ -13,6 +13,16 @@ PORTAL_REAL_ENABLED (no worker) off ate o founder ligar.
 
 Identidade do solicitante (multi-tenant): PERFIL DE ACIONAMENTO da corretora
 (companies), nunca do segurado nem inventado. Logica pura em portal_params.py.
+
+BLOCO 7.2 — UM PEDIDO, UM ATENDIMENTO.
+📊 O `Nº do atendimento` nasce no passo 7 do portal, ANTES do fim do fluxo: uma
+segunda execucao nao corrige a primeira, cria um SEGUNDO atendimento na
+seguradora — e isso nao se desfaz. 📊 Sem guarda, 39 jobs `abrir_atendimento`
+viraram 5 pedidos distintos (um deles repetido 30 vezes). Agora o `_arun`
+calcula a impressao digital do PEDIDO (`chave_de_idempotencia`), procura um job
+vivo com ela, e ou se anexa ao que ja roda ou devolve o resultado do que ja
+terminou. A corrida de dois inserts simultaneos e decidida pelo indice unico
+parcial `idx_portal_jobs_pedido_vivo` e cai no mesmo caminho, nunca num erro.
 """
 from __future__ import annotations
 
@@ -24,12 +34,24 @@ from typing import Optional, Type
 from langchain_core.tools import BaseTool
 from pydantic import BaseModel, Field
 
-from .portal_params import build_portal_params, format_result
+from .portal_params import (
+    build_portal_params,
+    chave_de_idempotencia,
+    format_result,
+    frase_de_pedido_ja_existente,
+)
 
 logger = logging.getLogger(__name__)
 
 POLL_TIMEOUT_S = 150
 POLL_EVERY_S = 5
+
+# SPEC-065 7.2 — o mesmo conjunto do indice unico parcial
+# `idx_portal_jobs_pedido_vivo`: a chave vale enquanto o pedido esta vivo, e
+# `failed` e a unica valvula de escape (acionamento que precisa ser refeito
+# depois de corrigido o CPF, a apolice ou a InfoCap).
+STATUS_MORTO = "failed"
+STATUS_EM_CURSO = ("queued", "running")
 
 
 class PortalActionInput(BaseModel):
@@ -45,6 +67,19 @@ class PortalActionInput(BaseModel):
     placa_informada: Optional[str] = Field(
         default=None,
         description="APENAS se a ferramenta pediu a placa (apolice sem placa na InfoCap) e o CLIENTE informou. NUNCA deduza/invente.")
+    # SPEC-065 7.5 — o campo que faltava para as respostas do 80% CHEGAREM ao
+    # portal. `build_portal_params` ja lia `flat["especificos"]` e
+    # `vidros_lanternas.abrir_atendimento` ja lia `params["especificos"]`: o
+    # caminho inteiro existia e era interrompido aqui, no schema, que descartava
+    # o que o agente tinha coletado. 📊 As perguntas do 80% sao a ultima tela
+    # antes do pedido — chegar la sem elas e ter feito todo o percurso a toa.
+    especificos: Optional[dict] = Field(
+        default=None,
+        description=("Respostas das perguntas especificas do 80%, quando ja coletadas na conversa. "
+                     "Chaves: pelicula, porta_dianteira_ou_traseira, lado_motorista_ou_carona, "
+                     "posicao_do_trincado, tamanho_do_trincado. Use 'nao sabe' SO se o segurado "
+                     "realmente nao souber — nunca para agilizar: o portal precisa disso para "
+                     "pedir o vidro certo."))
     session_id: Optional[str] = Field(default=None, description="(injetado pelo runtime — NAO preencher)")
 
 
@@ -52,8 +87,17 @@ class PortalActionTool(BaseTool):
     name: str = "portal_action"
     description: str = (
         "Abre o atendimento de VIDROS/farois/lanternas/retrovisores no portal da seguradora. "
-        "Use quando o segurado precisar de servico de vidros e voce ja tiver: CPF, data do dano e o relato "
-        "do que aconteceu. A ferramenta busca SOZINHA os dados reais da apolice (placa, veiculo, endereco, "
+        # SPEC-065 7.5 — a frase antiga pedia TRES coisas ("CPF, data do dano e o relato") para
+        # um portal que pergunta CINCO, e "o relato do que aconteceu" era satisfeito por "quebrou
+        # o vidro", que nao nomeia peca nenhuma. 📊 33 dos 39 acionamentos pararam no meio, e o
+        # motivo mais caro era sempre o mesmo: descobrir dentro do portal o que faltava.
+        # Depois que o portal abre, cada dado que falta custa o atendimento inteiro.
+        "Use SO quando voce ja tiver, da conversa: CPF do titular, data do dano, QUAL PECA quebrou "
+        "(para-brisa / vidro de porta / vidro de janela / vigia / retrovisor / farol / lanterna — "
+        "'quebrou o vidro' NAO serve, nao diz qual), COMO aconteceu, ONDE (cidade ou rodovia) e, se "
+        "for vidro de porta ou para-brisa, as respostas especificas: tem pelicula (insulfilm)? porta "
+        "dianteira ou traseira? lado do motorista ou do carona? posicao e tamanho do trincado? "
+        "Pergunte tudo ANTES de chamar. A ferramenta busca SOZINHA os dados reais da apolice (placa, veiculo, endereco, "
         "seguradora) na InfoCap — NAO peca placa/CEP/endereco ao cliente. Se houver mais de uma apolice AUTO "
         "ativa, ela devolve as opcoes para voce perguntar qual. Ela avisa o cliente que esta abrindo e volta "
         "com o resultado. NAO finaliza sozinha o pedido."
@@ -90,10 +134,14 @@ class PortalActionTool(BaseTool):
         except Exception:  # noqa: BLE001
             return None
 
-    def _notify(self, session_id: str, text: str) -> None:
+    def _notify(self, session_id: str, text: str, agent_id: Optional[str] = None) -> None:
         """Manda uma mensagem AGORA pro segurado (via WhatsApp da corretora), pra ele
         nunca ficar no silencio enquanto o portal roda (~1 min). Best-effort, mas
-        agora CONFIAVEL: resolve o agente atendente antes do lookup da integracao."""
+        agora CONFIAVEL: resolve o agente atendente antes do lookup da integracao.
+
+        `agent_id` entra por parametro (SPEC-065 7.2) porque o `_arun` ja o
+        resolveu para gravar no job — resolver de novo seria a mesma consulta
+        duas vezes. Sem parametro, o comportamento e o de antes."""
         try:
             parts = str(session_id or "").split(":")
             if len(parts) < 3 or parts[0] != "whatsapp":
@@ -105,7 +153,7 @@ class PortalActionTool(BaseTool):
             from app.services.whatsapp_service import get_whatsapp_service
 
             svc = get_integration_service()
-            agent_id = self._attendance_agent_id()
+            agent_id = agent_id or self._attendance_agent_id()
             integration = svc.get_whatsapp_integration(self.company_id, agent_id)
             if not integration:  # ultimo recurso: qualquer integracao ativa sem agente
                 integration = svc.get_whatsapp_integration(self.company_id)
@@ -136,6 +184,49 @@ class PortalActionTool(BaseTool):
         except Exception:  # noqa: BLE001
             pass
         return profile
+
+    def _buscar_pedido_vivo(self, chave: str) -> Optional[dict]:
+        """SPEC-065 7.2 — este PEDIDO ja tem job vivo?
+
+        Filtra por corretora SEMPRE (CLAUDE.md §7): a chave ja embute a
+        corretora, mas guarda que depende do formato de uma string nao e guarda.
+
+        'Vivo' = tudo menos `failed`, exatamente o predicado do indice unico
+        parcial `idx_portal_jobs_pedido_vivo`. Se a leitura e o indice
+        discordarem, o insert estoura 23505 num caminho que a leitura jurava
+        estar livre — e o guarda vira um erro de atendimento.
+
+        Falha de leitura devolve None de proposito: o insert seguinte ainda tem
+        o indice unico como segunda rede. Melhor tentar e ser barrado pelo banco
+        do que travar o acionamento porque uma consulta caiu."""
+        if not chave:
+            return None
+        try:
+            r = (self._client().table("portal_jobs")
+                 .select("id, status, evidence, error, created_at")
+                 .eq("company_id", self.company_id)
+                 .eq("idempotency_key", chave)
+                 .neq("status", STATUS_MORTO)
+                 .order("created_at", desc=True)
+                 .limit(1).execute())
+            return dict(r.data[0]) if r.data else None
+        except Exception:  # noqa: BLE001
+            logger.warning("[PortalAction] busca de pedido vivo indisponivel — seguindo para o insert")
+            return None
+
+    @staticmethod
+    def _e_chave_duplicada(exc: Exception) -> bool:
+        """23505 = unique_violation do Postgres.
+
+        A corrida existe de verdade: duas chamadas de `portal_action` no mesmo
+        segundo passam as duas pela leitura, acham nada, e chegam juntas no
+        insert. O banco decide qual vence. A perdedora NAO pode estourar o
+        atendimento — ela cai no caminho de quem achou um existente, que e a
+        verdade do que aconteceu."""
+        alvo = " ".join(str(x) for x in (
+            getattr(exc, "code", ""), getattr(exc, "message", ""),
+            getattr(exc, "details", ""), exc)).lower()
+        return "23505" in alvo or "duplicate key" in alvo or "unique constraint" in alvo
 
     async def _fetch_infocap(self, cpf: str, policy_number: Optional[str]) -> dict:
         """SPEC-025: fatos reais da apolice AUTO (placa/veiculo/endereco) via porta
@@ -189,31 +280,81 @@ class PortalActionTool(BaseTool):
         if err:
             return {"content": err}
 
-        # 3) Enfileira o job para o portal-worker.
-        try:
-            ins = self._client().table("portal_jobs").insert({
-                "company_id": self.company_id,
-                "portal_key": "vidros_lanternas",
-                "journey": "abrir_atendimento",
-                "params": params,
-                "status": "queued",
-            }).execute()
-            job_id = ins.data[0]["id"] if ins.data else None
-        except Exception as e:  # noqa: BLE001
-            logger.error(f"[PortalAction] enfileirar falhou: {type(e).__name__}")
-            return {"content": f"Nao consegui enfileirar o acionamento ({type(e).__name__})."}
+        # 3) SPEC-065 7.2 — este pedido ja existe? O protocolo da seguradora nasce
+        # no passo 7, ANTES do fim do fluxo: reexecutar nao corrige, cria um
+        # SEGUNDO atendimento. 📊 39 jobs para 5 pedidos distintos e o que
+        # acontecia sem este bloco.
+        chave = chave_de_idempotencia(params, self.company_id)
+        job_id: Optional[str] = None
+        reaproveitado = False
 
-        # Ack IMEDIATO pro segurado: nunca deixa ele no silencio enquanto o portal roda.
-        veic = (params.get("segurado") or {}).get("veiculo") or "seu veiculo"
-        self._notify(
-            session_id,
-            f"Perfeito! 🙌 Ja vou acionar a seguradora pra abrir seu atendimento de vidros "
-            f"({veic}, placa {params.get('placa')}). Isso leva mais ou menos 1 minutinho — "
-            "ja volto aqui com a confirmacao, ta? 🙂",
-        )
+        existente = self._buscar_pedido_vivo(chave)
+        if existente:
+            if str(existente.get("status")) in STATUS_EM_CURSO:
+                # Anexa-se ao que ja roda em vez de criar outro. O segurado ja
+                # recebeu o ack na primeira chamada — repeti-lo seria dizer duas
+                # vezes que estamos comecando algo que ja comecou.
+                job_id, reaproveitado = str(existente.get("id")), True
+                logger.info("[PortalAction] pedido ja em andamento — anexando ao job existente")
+            else:
+                # Pedido terminado (done/needs_human): a resposta ja existe, e
+                # abrir outro seria o segundo atendimento. Sai antes de gastar
+                # qualquer consulta a mais.
+                return {"content": frase_de_pedido_ja_existente(existente)}
 
-        # 4) Aguarda o worker terminar (o segurado esta na conversa). asyncio.sleep:
+        # O agente atendente e resolvido uma vez so: ele vai para o job (para quem
+        # responder depois saber por qual integracao falar) e para o `_notify`.
+        agent_id = self._attendance_agent_id() if not reaproveitado else None
+
+        # 4) Enfileira o job para o portal-worker — so quando nao havia um vivo.
+        if not reaproveitado:
+            try:
+                ins = self._client().table("portal_jobs").insert({
+                    "company_id": self.company_id,
+                    "portal_key": "vidros_lanternas",
+                    "journey": "abrir_atendimento",
+                    "params": params,
+                    "status": "queued",
+                    "idempotency_key": chave or None,  # "" nunca vai para o banco
+                    "session_id": session_id or None,  # o caminho de volta a conversa
+                    "agent_id": agent_id,
+                }).execute()
+                job_id = ins.data[0]["id"] if ins.data else None
+            except Exception as e:  # noqa: BLE001
+                if not self._e_chave_duplicada(e):
+                    logger.error(f"[PortalAction] enfileirar falhou: {type(e).__name__}")
+                    return {"content": f"Nao consegui enfileirar o acionamento ({type(e).__name__})."}
+                # Perdeu a corrida: outra chamada criou o pedido entre a leitura e
+                # o insert. Isso nao e erro — e o guarda funcionando.
+                logger.info("[PortalAction] corrida perdida (23505) — o pedido ja tinha sido criado")
+                concorrente = self._buscar_pedido_vivo(chave)
+                if not concorrente:
+                    return {"content": frase_de_pedido_ja_existente({"status": "queued"})}
+                if str(concorrente.get("status")) not in STATUS_EM_CURSO:
+                    return {"content": frase_de_pedido_ja_existente(concorrente)}
+                job_id, reaproveitado = str(concorrente.get("id")), True
+
+        # Ack IMEDIATO pro segurado: nunca deixa ele no silencio enquanto o portal
+        # roda. So quando o job nasceu AGORA — quem se anexou a um job em curso ja
+        # mandou este recado na primeira chamada, e repeti-lo diria duas vezes que
+        # estamos comecando algo que ja comecou.
+        if not reaproveitado:
+            veic = (params.get("segurado") or {}).get("veiculo") or "seu veiculo"
+            self._notify(
+                session_id,
+                f"Perfeito! 🙌 Ja vou acionar a seguradora pra abrir seu atendimento de vidros "
+                f"({veic}, placa {params.get('placa')}). Isso leva mais ou menos 1 minutinho — "
+                "ja volto aqui com a confirmacao, ta? 🙂",
+                agent_id,
+            )
+
+        if not job_id:
+            return {"content": "Nao consegui enfileirar o acionamento (o banco nao devolveu o job)."}
+
+        # 5) Aguarda o worker terminar (o segurado esta na conversa). asyncio.sleep:
         # NAO bloqueia o event loop (o time.sleep antigo travava o atendente inteiro).
+        # Quando `reaproveitado`, o poll acompanha o job que JA existia — e por isso
+        # que uma segunda chamada nao precisa de um segundo job para responder.
         deadline = time.time() + POLL_TIMEOUT_S
         while time.time() < deadline:
             await asyncio.sleep(POLL_EVERY_S)
@@ -223,7 +364,30 @@ class PortalActionTool(BaseTool):
             except Exception:  # noqa: BLE001
                 continue
             if str(job.get("status")) in ("done", "needs_human", "failed"):
+                # SPEC-065 — a MARCA que cala o Vigia do Portal.
+                #
+                # Daqui o resultado vai para o agente, que conta ao segurado. O
+                # `vigia_do_portal` varre o que terminou e ninguem entregou; sem
+                # esta marca ele reavisaria TODO acionamento bem-sucedido, e o
+                # segurado receberia duas versoes da mesma coisa sem saber qual
+                # vale. Duplicar aviso e pior que nao avisar.
+                #
+                # Marcar aqui e nao pelo relogio e proposital: relogio erra
+                # quando o processo reinicia; a marca so existe se a entrega
+                # aconteceu de fato.
+                try:
+                    self._client().table("portal_jobs").update({
+                        "evidence": {**(job.get("evidence") or {}), "entregue_ao_agente": True},
+                    }).eq("id", job_id).execute()
+                except Exception:  # noqa: BLE001
+                    pass  # falhar a marca nao pode derrubar a resposta ao segurado
                 return {"content": format_result(job)}
+        # Estourou os 150s. Aqui morava o defeito: a tool dizia "enfileirei, o
+        # worker nao processou" e o agente chamava de novo — criando o segundo
+        # atendimento. Quem se anexou a um job em curso recebe a verdade do que
+        # aconteceu (nada foi enfileirado nesta chamada) e a instrucao de nao repetir.
+        if reaproveitado:
+            return {"content": frase_de_pedido_ja_existente({"status": "queued"})}
         return {"content": format_result({"status": "queued"})}
 
     def _run(self, **flat) -> dict:

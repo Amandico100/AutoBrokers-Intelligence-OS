@@ -34,11 +34,18 @@ protocolos capturados (has_protocol jamais retornou True).
 
 DESIGN "cerebro unico": o AGENTE (Smith) DECIDE as escolhas (peca/como/onde/
 especificos) a partir da conversa com o segurado; a journey CASA a escolha com a
-opcao real do dropdown (match_option). Sem match confiante -> needs_human COM as
-opcoes disponiveis (o agente/humano decide; a journey nunca escolhe errado nem
-trava). match_option e puro e testavel offline — e e o UNICO placar do sistema:
-o adaptive.py o importa em vez de manter um segundo, escrito em JS, que decidia
-diferente do que os testes provavam.
+opcao real do dropdown. Sem match confiante -> needs_human COM as opcoes
+disponiveis (o agente/humano decide; a journey nunca escolhe errado nem trava).
+
+Sao DOIS vocabularios puros, porque o portal faz DUAS perguntas diferentes:
+  explicar_match       PECA — 'vidro da porta' x 'VIDRO DE PORTA' (passo 4)
+  explicar_especifico  ATRIBUTO da peca — lado, dianteira/traseira, pelicula,
+                       tamanho e posicao do trincado (passo 6, os 80%)
+Um vocabulario NAO e um segundo placar: cada um sabe dizer quando a lista NAO e
+dele (explicar_especifico devolve dominio='nenhum'), entao continua havendo um
+so lugar que decide cada pergunta. O que nao pode voltar a existir e o que ja
+existiu: um segundo placar escrito em JS dentro do adaptive.py, decidindo a
+MESMA pergunta diferente do que os testes provavam.
 
 A TRAVA: o passo 6 e o que ABRE o pedido. run_adaptive para nele com
 confirm=False (is_confirm_screen) e tambem recusa o 'done' do cerebro sem
@@ -48,6 +55,7 @@ confirm. Nao afrouxar: 📊 o unico job 'done' de producao foi criado
 """
 from __future__ import annotations
 
+import re
 import unicodedata
 from typing import Any, Dict, List, Optional
 
@@ -220,6 +228,349 @@ def match_option(wanted: str, options: List[str]) -> Optional[str]:
     errado abre um pedido errado na seguradora; parar so custa 10 segundos de
     um humano. Testavel offline."""
     return explicar_match(wanted, options)["escolha"]
+
+
+# ===========================================================================
+# VOCABULARIO DO 80% — o passo 6 nao pergunta PECA, pergunta ATRIBUTO.
+#
+# 📊 As perguntas reais, do mapa MEDIDO (docs/canon/O-PORTAL-DE-VIDROS-TELA-POR-
+# TELA.md §4 — captura tela a tela do Founder, 06/07/2026):
+#   VIDRO DE PORTA (Yelum)  1) tem pelicula de controle solar (insulfilm)?
+#                           2) e da porta DIANTEIRA ou TRASEIRA?
+#                           3) qual o LADO? -> Lado do carona / Lado do motorista
+#   PARABRISA (Tokio)       1) posicao do trincado? -> em frente ao motorista /
+#                              em frente ao carona / nas bordas / no centro
+#                           2) maior ou menor que 10 CM? -> troca x REPARO
+#                           3) a versao do veiculo e comfortline?
+#
+# Por que NAO da para reaproveitar o casamento de PECAS:
+#
+# 📊 medido em 04/08/2026 (backend/tests/test_o_80_por_cento_sabe_o_que_pergunta.py,
+#    secao [M1], que roda a funcao antiga contra as opcoes reais):
+#      explicar_match("porta dianteira", ["DIANTEIRA","TRASEIRA","Nao sabe"]) -> None
+#    porque identidade_peca('porta dianteira') = {lateral} e
+#           identidade_peca('DIANTEIRA')      = {parabrisa}  (via _POSICAO)
+#    -> o VETO de peca elimina as DUAS opcoes reais e sobra so 'Nao sabe'.
+#    O MAPA CERTO NUM LUGAR E O MAPA ERRADO NO OUTRO: na tela da peca
+#    'dianteira' significa parabrisa; na tela do atributo significa a porta da
+#    frente — e a peca ja foi escolhida duas telas antes.
+#
+# 📊 e o placar por tokens nao tem como resolver o resto: 'lado do passageiro'
+#    e 'Lado do carona' so compartilham 'lado', que aparece em TODA opcao e por
+#    isso pesa 0.0. Nenhum ajuste de peso descobre que passageiro = carona.
+#    Isso nao e semelhanca de texto, e TABELA DE FATO.
+#
+# 🔴 E o fato que mais custa errar: NO BRASIL O MOTORISTA SENTA A ESQUERDA.
+#    lado do motorista = ESQUERDO · lado do carona = DIREITO.
+#    Errar o lado manda trocar o vidro errado — e o portal PROIBE corrigir:
+#    seria preciso abrir OUTRO acionamento (mapa §3). Nao ha desfazer.
+# ===========================================================================
+
+def _espacado(s: str) -> str:
+    """Texto normalizado com a pontuacao virando espaco e com folga nas pontas —
+    para casar FRASES ('quem dirige', 'de tras') sem tropecar em virgula,
+    parentese ou fim de linha."""
+    t = "".join(c if c.isalnum() else " " for c in _norm(s))
+    return " " + " ".join(t.split()) + " "
+
+
+def _palavras(s: str) -> set:
+    """Palavras cruas: sem acento e sem pontuacao, mas SEM tirar plural e SEM
+    tirar palavra vazia. Diferente de _tokens de proposito: aqui 'nao' e 'sem'
+    PRECISAM sobreviver — sao eles que invertem a resposta ('nao tem pelicula')."""
+    return set(_espacado(s).split())
+
+
+def _menciona(texto: str, termos) -> bool:
+    """Termo de UMA palavra casa como TOKEN INTEIRO; termo de VARIAS casa como
+    trecho. E o que impede 'lado' de casar dentro de 'isolado' e ainda deixa
+    'quem dirige' casar dentro de 'lado de quem dirige'."""
+    palavras, frase = _palavras(texto), _espacado(texto)
+    for t in termos:
+        t = _norm(t)
+        if " " in t:
+            if f" {t} " in frase:
+                return True
+        elif t and t in palavras:
+            return True
+    return False
+
+
+# 🔴 A tabela de fato do lado. Motorista a ESQUERDA (Brasil). Note quem NAO
+# esta aqui: 'do meu lado' — quem fala pode ser o segurado, o corretor ou quem
+# estava no banco do carona. Fica de fora para a funcao PARAR em vez de chutar.
+_LADO = {
+    "motorista": ("motorista", "condutor", "volante", "esquerdo", "esquerda",
+                  "quem dirige", "quem esta dirigindo", "quem conduz",
+                  "lado do volante", "lado do condutor"),
+    "carona": ("carona", "passageiro", "acompanhante", "direito", "direita",
+               "porta luvas", "porta-luvas"),
+}
+_PORTA = {
+    "dianteira": ("dianteira", "dianteiro", "frontal", "frente", "da frente",
+                  "de frente", "na frente", "primeira porta", "porta da frente"),
+    "traseira": ("traseira", "traseiro", "tras", "atras", "de tras", "la atras",
+                 "fundo", "banco de tras", "segunda porta", "porta de tras"),
+}
+_POSICAO_TRINCA = {
+    "motorista": ("motorista", "condutor", "volante", "esquerdo", "esquerda", "quem dirige"),
+    "carona": ("carona", "passageiro", "acompanhante", "direito", "direita"),
+    "bordas": ("borda", "bordas", "canto", "cantos", "quina", "quinas", "beirada",
+               "beira", "beiradas", "extremidade", "extremidades", "moldura", "orla"),
+    "centro": ("centro", "central", "meio", "no meio", "bem no meio"),
+}
+_SIM_NAO = {"sim": ("sim",), "nao": ("nao",)}
+# Tamanho do trincado. 📊 O limite 10 esta escrito na propria pergunta do
+# portal: "O trincado esta maior ou menor que 10 cm?" — e ele decide TROCA x
+# REPARO, ou seja, qual servico o vidraceiro vai prestar.
+_LIMITE_CM = 10.0
+_TAMANHO = {
+    "maior": ("maior", "maiores", "grande", "grandona", "comprido", "comprida",
+              "longa", "longo", "atravessa", "atravessando", "de ponta a ponta",
+              "rachadura", "rachado", "rachada", "rachou", "enorme", "mais de", "acima de"),
+    "menor": ("menor", "menores", "pequeno", "pequena", "pequenininha", "moeda",
+              "pontinho", "unha", "dedo", "estrelinha", "olho de boi", "minusculo",
+              "minuscula", "menos de", "abaixo de", "do tamanho de uma moeda"),
+}
+# Como a OPCAO se escreve quando o portal descreve o SERVICO em vez do tamanho
+# ("Maior (troca do vidro)" / "Menor (possibilidade de reparo)"). So vale para
+# classificar OPCAO: 'quero trocar' dito pelo segurado nao mede trincado nenhum.
+_TAMANHO_SERVICO = {"maior": ("troca", "trocar", "substituicao", "substituir"),
+                    "menor": ("reparo", "reparar", "conserto", "consertar")}
+# Pelicula: os dois lados do sim/nao, e os marcadores que INVERTEM a resposta.
+_PELICULA_SIM = ("pelicula", "peliculas", "insulfilm", "insufilm", "fume",
+                 "escurecido", "escurecida", "escuro", "escura", "papel fume",
+                 "controle solar", "filme", "film")
+_PELICULA_NAO = ("original", "originais", "incolor", "transparente", "de fabrica")
+_NEGACAO = ("nao", "sem", "nenhum", "nenhuma", "negativo", "nunca", "jamais")
+_AFIRMACAO = ("sim", "tem", "possui", "positivo", "isso", "correto", "afirmativo",
+              "exato", "claro", "com certeza", "isso mesmo")
+# 🔴 'Nao sabe' esta em TODAS as perguntas do 80% e e uma armadilha: destrava a
+# tela e o portal deixa de saber qual vidro pedir (mapa §4a e §8.2). So e
+# honesto quando o SEGURADO realmente nao sabe — nunca por preguica do robo.
+_IGNORANCIA = ("nao sei", "nao sabe", "nao sabemos", "nao sei dizer", "nao soube dizer",
+               "nao sabe dizer", "nao sei informar", "nao sabe informar", "nao faco ideia",
+               "nao lembro", "nao me lembro", "nao tenho certeza", "nao reparei",
+               "nao consigo dizer", "nao da pra saber", "sem informacao", "nao informado")
+# Palavras que a pergunta do portal usa para se enunciar e que por isso NAO
+# identificam do que ela trata ("A versao do veiculo e comfortline?" trata de
+# comfortline, nao de 'versao').
+_GENERICOS_PERGUNTA = {
+    "qual", "quais", "quando", "onde", "como", "poderia", "informar", "favor", "por",
+    "veiculo", "carro", "vidro", "vidros", "item", "peca", "danificado", "danificada",
+    "esta", "estao", "tem", "foi", "ser", "sobre", "versao", "modelo", "seu", "sua",
+    "atendimento", "portal", "selecione", "opcao", "escolha", "lado", "posicao",
+    "tamanho", "trincado", "trinca", "solicitante", "titular", "segurado",
+}
+# Uma opcao de ATRIBUTO e curta ("Menor (possibilidade de reparo)" = 3 palavras).
+# A lista de LOJAS carrega endereco inteiro — e um bairro chamado 'Centro' nao
+# pode virar 'posicao do trincado'. Este teto e o que separa as duas coisas.
+_MAX_PALAVRAS_ATRIBUTO = 6
+_RE_MEDIDA = re.compile(r"(\d+(?:[.,]\d+)?)\s*(centimetros?|cm|milimetros?|mm|metros?|m)\b")
+_FATOR_CM = {"cm": 1.0, "centimetro": 1.0, "centimetros": 1.0,
+             "mm": 0.1, "milimetro": 0.1, "milimetros": 0.1,
+             "m": 100.0, "metro": 100.0, "metros": 100.0}
+
+
+def _nomeia_peca(texto: str) -> bool:
+    """PURO: ha um SUBSTANTIVO de peca no texto? Diferente de identidade_peca:
+    aqui a POSICAO sozinha ('DIANTEIRA') NAO conta como peca — e justamente por
+    isso que ela pode ser resposta de atributo no 80%. E o que mantem
+    ['FAROL DIANTEIRO','LANTERNA TRASEIRA'] sendo escolha de PECA."""
+    toks = set(_tokens(texto))
+    if any(t in _AMBIGUOS for t in toks):
+        return True
+    return any(_singular(_norm(s)) in toks for sinonimos in _PECAS.values() for s in sinonimos)
+
+
+def _e_opcao_de_ignorancia(opcao: str) -> bool:
+    """A opcao 'Nao sabe' / 'Nao informado' que toda pergunta do 80% oferece."""
+    o = _norm(opcao)
+    return (o.startswith("nao sabe") or o.startswith("nao sei")
+            or o.startswith("nao informad") or o in ("desconheco", "sem informacao"))
+
+
+def _classe(texto: str, *tabelas) -> set:
+    """PURO: em que classe(s) do dominio o texto cai. Mais de uma classe = o
+    texto e ambiguo DE VERDADE ('na borda do lado do motorista')."""
+    achadas = set()
+    for tabela in tabelas:
+        for classe, termos in tabela.items():
+            if _menciona(texto, termos):
+                achadas.add(classe)
+    return achadas
+
+
+def _e_dominio(uteis: List[str], *tabelas) -> bool:
+    """A lista de opcoes PERTENCE a este dominio? Exige que TODA opcao caia em
+    EXATAMENTE uma classe e que haja pelo menos DUAS classes distintas —
+    'quase encaixa' nao encaixa."""
+    classes = []
+    for o in uteis:
+        c = _classe(o, *tabelas)
+        if len(c) != 1:
+            return False
+        classes.append(next(iter(c)))
+    return len(set(classes)) >= 2
+
+
+def _pode_ser_atributo(uteis: List[str]) -> bool:
+    """Dois portoes antes de qualquer dominio de atributo abrir:
+    (a) nenhuma opcao nomeia uma PECA — ['FAROL DIANTEIRO','LANTERNA TRASEIRA']
+        e escolha de peca, e quem decide isso continua sendo explicar_match;
+    (b) as opcoes sao CURTAS — a lista de lojas tem endereco dentro."""
+    return bool(uteis) and not any(_nomeia_peca(o) for o in uteis) \
+        and all(len(_palavras(o)) <= _MAX_PALAVRAS_ATRIBUTO for o in uteis)
+
+
+def _qual_dominio(uteis: List[str]):
+    """PURO: (nome_do_dominio, tabelas) ou ('', ()). A ordem importa so para
+    NOMEAR: lado e posicao_do_trincado compartilham motorista/carona e dariam a
+    mesma resposta; 'lado' vem antes por ser a pergunta mais curta."""
+    for nome, tabelas in (("lado", (_LADO,)),
+                          ("porta_dianteira_traseira", (_PORTA,)),
+                          ("tamanho_trincado", (_TAMANHO, _TAMANHO_SERVICO)),
+                          ("posicao_trincado", (_POSICAO_TRINCA,)),
+                          ("sim_nao", (_SIM_NAO,))):
+        if _e_dominio(uteis, *tabelas):
+            return nome, tabelas
+    return "", ()
+
+
+def _centimetros(texto: str) -> Optional[float]:
+    """PURO: '20 cm' -> 20.0 · '3 mm' -> 0.3 · 'meio metro' -> None (sem digito).
+    Le a medida que o segurado deu, em centimetros, para comparar com os 10 cm
+    que o portal usa para decidir troca x reparo."""
+    m = _RE_MEDIDA.search(_norm(texto))
+    if not m:
+        return None
+    try:
+        valor = float(m.group(1).replace(",", "."))
+    except ValueError:  # noqa: PERF203
+        return None
+    return valor * _FATOR_CM.get(m.group(2), 1.0)
+
+
+def _termo_da_pergunta(pergunta: str) -> str:
+    """PURO: a palavra de que a pergunta TRATA, quando ha uma so.
+    'A versao do veiculo e comfortline?' -> 'comfortline'. Duas candidatas ou
+    nenhuma -> '' (a pergunta nao se deixa resumir; nao inventamos)."""
+    candidatas = [t for t in _palavras(pergunta)
+                  if len(t) >= 5 and t not in _GENERICOS_PERGUNTA and not t.isdigit()]
+    return candidatas[0] if len(candidatas) == 1 else ""
+
+
+def _classe_sim_nao(resposta: str, pergunta: str):
+    """PURO: (classe, motivo) para um sim/nao. Trata a NEGACAO explicitamente —
+    'nao tem pelicula' cita 'pelicula' e mesmo assim a resposta e NAO. Um placar
+    por tokens inverteria isso, e vidro com insulfilm custa outro preco."""
+    # 🔴 'Nao sei' NAO e 'Nao'. Sem esta linha o token 'nao' de 'nao sei' cai na
+    # negacao la embaixo e o robo AFIRMA que o vidro nao tem pelicula — quando o
+    # segurado so disse que nao sabe. Inventar fato e pior que parar. (Este e o
+    # unico dominio em que da para confundir os dois: nos outros 'nao' nao e
+    # resposta valida.)
+    if _menciona(resposta, _IGNORANCIA):
+        return "", "nao_sabe"
+    neg = _menciona(resposta, _NEGACAO)
+    termo = _termo_da_pergunta(pergunta)
+    # Vocabulario de pelicula quando e disso que a pergunta trata — ou quando
+    # nao da para saber do que ela trata (o cerebro as vezes mira pelo name
+    # tecnico e a pergunta chega vazia). Se a pergunta nomeia OUTRO termo
+    # ('comfortline'), 'escurecido' nao pode significar sim.
+    if _menciona(pergunta, ("pelicula", "peliculas", "insulfilm", "controle solar")) or not termo:
+        marca = _menciona(resposta, _PELICULA_SIM)
+        inverso = _menciona(resposta, _PELICULA_NAO)
+    else:
+        marca = termo in _palavras(resposta)
+        inverso = False
+    if marca and inverso:
+        return "", "resposta_contraditoria"
+    if marca:
+        return ("nao" if neg else "sim"), ""
+    if inverso:                       # 'nao e original' = tem pelicula
+        return ("sim" if neg else "nao"), ""
+    if _menciona(resposta, _AFIRMACAO) and not neg:
+        return "sim", ""
+    if neg:
+        return "nao", ""
+    return "", "nao_reconhecido"
+    # NAO inferimos 'Nao' pela AUSENCIA do termo na descricao do veiculo: a
+    # descricao da InfoCap pode vir truncada, e um 'Nao' errado em
+    # 'e comfortline?' pede o parabrisa sem o suporte do sensor — vidro errado.
+
+
+def _classe_tamanho(resposta: str):
+    """PURO: (classe, motivo) para 'maior ou menor que 10 cm'. A MEDIDA e a
+    PALAVRA precisam concordar; se discordarem ('menor que 20 cm' — que pode
+    ser dos dois lados dos 10), nao ha resposta honesta e a funcao para."""
+    cm = _centimetros(resposta)
+    pelo_numero = ""
+    if cm is not None and cm != _LIMITE_CM:
+        pelo_numero = "maior" if cm > _LIMITE_CM else "menor"
+    achadas = _classe(resposta, _TAMANHO)
+    if len(achadas) > 1:
+        return "", "ambiguo"
+    pela_palavra = next(iter(achadas)) if achadas else ""
+    if pelo_numero and pela_palavra and pelo_numero != pela_palavra:
+        return "", "medida_contradiz_a_palavra"
+    classe = pelo_numero or pela_palavra
+    return (classe, "") if classe else ("", "nao_reconhecido")
+
+
+def explicar_especifico(resposta: str, opcoes: List[str], pergunta: str = "") -> Dict[str, Any]:
+    """PURO: casa a resposta do segurado com a opcao real de uma pergunta
+    ESPECIFICA do 80% (lado · dianteira/traseira · pelicula · tamanho e posicao
+    do trincado · sim/nao). Devolve o mesmo formato de explicar_match mais
+    'dominio' e 'classe'.
+
+    'dominio' == 'nenhum' significa 'esta lista nao e minha' — quem chamou deve
+    usar o casamento de PECAS. E o unico jeito honesto de ter dois vocabularios
+    sem ter dois placares: cada um diz quando NAO e o dono da pergunta.
+
+    escolha None = para e devolve as opcoes, igual ao casamento de pecas. Errar
+    o lado aqui manda trocar o vidro errado, e o portal nao deixa corrigir."""
+    reais = [o for o in (opcoes or []) if str(o).strip() and "selecione" not in _norm(o)]
+    uteis = [o for o in reais if not _e_opcao_de_ignorancia(o)]
+    base: Dict[str, Any] = {"escolha": None, "motivo": "fora_do_dominio",
+                            "dominio": "nenhum", "classe": "", "opcoes": reais}
+    if not _pode_ser_atributo(uteis):
+        return base
+    dominio, tabelas = _qual_dominio(uteis)
+    if not dominio:
+        return base
+    base["dominio"] = dominio
+    if not str(resposta or "").strip():
+        return {**base, "motivo": "resposta_vazia"}
+
+    if dominio == "sim_nao":
+        classe, motivo = _classe_sim_nao(resposta, pergunta)
+    elif dominio == "tamanho_trincado":
+        classe, motivo = _classe_tamanho(resposta)
+    else:
+        achadas = _classe(resposta, *tabelas)
+        classe = next(iter(achadas)) if len(achadas) == 1 else ""
+        motivo = "" if classe else ("ambiguo" if achadas else "nao_reconhecido")
+
+    if not classe:
+        # So DEPOIS de nao achar resposta de verdade e que 'Nao sabe' entra —
+        # e so se o segurado tiver dito que nao sabe. 'nao sei o que houve, mas
+        # quebrou o do lado do motorista' responde LADO DO MOTORISTA.
+        ignorancia = [o for o in reais if _e_opcao_de_ignorancia(o)]
+        if _menciona(resposta, _IGNORANCIA) and len(ignorancia) == 1:
+            return {**base, "escolha": ignorancia[0], "motivo": "nao_sabe_honesto",
+                    "classe": "nao_sabe"}
+        return {**base, "motivo": motivo}
+
+    candidatos = [o for o in uteis if classe in _classe(o, *tabelas)]
+    if len(candidatos) != 1:
+        return {**base, "classe": classe,
+                "motivo": "opcao_ambigua" if candidatos else "sem_opcao_para_a_resposta"}
+    return {**base, "escolha": candidatos[0], "motivo": "atributo", "classe": classe}
+
+
+def responder_especifico(resposta: str, opcoes: List[str], pergunta: str = "") -> Optional[str]:
+    """PURO: a opcao do 80% que responde ao segurado COM CONFIANCA, ou None."""
+    return explicar_especifico(resposta, opcoes, pergunta)["escolha"]
 
 
 # ---- login (portais de CORRETOR — os que pedem login/senha; vidros nao usa) ----
