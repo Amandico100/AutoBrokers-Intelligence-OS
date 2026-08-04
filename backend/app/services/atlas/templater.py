@@ -16,6 +16,33 @@ from typing import Dict, List, Optional, Tuple
 
 # Ordem importa: específico → genérico.
 _PII_PATTERNS: List[Tuple[re.Pattern, str]] = [
+    # NOME NA SAUDAÇÃO — SPEC-065, 04/08/2026.
+    #
+    # `_LABELED_VALUE` mascara nome DEPOIS de um rótulo (`Nome: Fulano`). A
+    # saudação de uma URA não tem rótulo nenhum: ela diz "Olá, Fulano!" e
+    # pronto. 📊 Medido no Atlas de produção: **28 nós** guardam um primeiro
+    # nome de pessoa desse jeito — Tokio 15, Bradesco 5, Allianz 4, Porto 4.
+    # E na Tokio é a **RAIZ do mapa**, a tela por onde toda sessão começa.
+    #
+    # O Atlas é estrutura global: ele descreve o menu da seguradora, não o
+    # cliente. Um nome ali não ajuda ninguém e atravessa corretoras.
+    #
+    # A regra é ESTREITA de propósito: só depois de uma saudação, só uma ou
+    # duas palavras capitalizadas, e só até a pontuação. "Olá! Digite o CPF"
+    # não é nome; "Bem-vindo à Central" também não — por isso as preposições
+    # e artigos ficam de fora do casamento.
+    # A lista de exclusão é a metade que faz a regra funcionar: depois de uma
+    # saudação vem, quase sempre, um VERBO capitalizado ("Olá! Digite o CPF").
+    # Sem ela, `Digite` virava `{NOME}` e a tela perdia a instrução — que é
+    # justamente o conhecimento que este mascarador existe para preservar.
+    (re.compile(r"(?i)\b(ol[áa]|oi|bem[- ]vindo[ao]?|prezad[oa])([,!]?\s+)"
+                r"(?!(?:digite|informe|escolha|selecione|envie|clique|aguarde|responda|"
+                r"para|qual|como|quando|onde|quem|seja|bem|vamos|antes|agora|ainda|caso|"
+                r"este|esta|esse|essa|isso|nossa|nosso|obrigad|tudo|aqui|sou|somos|"
+                r"estamos|precisa|poderia|favor|por|deseja|voc[êe]|segue|falta|basta|"
+                r"de|da|do|ao|à|a|o|senhor|senhora|novamente|cliente|segurad)\b)"
+                r"([A-ZÀ-Ú][a-zà-ú]{2,}(?:\s+[A-ZÀ-Ú][a-zà-ú]{2,})?)"),
+     r"\1\2{NOME}"),
     # `(?<!\d)` e `(?!\d)` no lugar de `\b`. A fronteira de palavra falha ao
     # lado de sublinhado, porque para o regex `_` é letra: num anexo chamado
     # `CTPS_12345678900.pdf` o CPF passava inteiro. Achado por um subagente

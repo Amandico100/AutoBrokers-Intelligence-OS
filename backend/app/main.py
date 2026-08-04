@@ -506,6 +506,14 @@ def _sinais_do_codigo() -> dict:
         sinais["pii_email"] = templatize("a@b.com.br") != "a@b.com.br"
         sinais["pii_numero_longo"] = templatize("protocolo: 999999999") != "protocolo: 999999999"
         sinais["pii_senha_com_hifen"] = templatize("senha - Abc2026") != "senha - Abc2026"
+        # SPEC-065 — nome na SAUDACAO. 📊 28 nos do Atlas de producao guardavam
+        # um primeiro nome de pessoa (Tokio 15, Bradesco 5, Allianz 4, Porto 4),
+        # e na Tokio era a RAIZ do mapa. `_LABELED_VALUE` so mascara nome depois
+        # de rotulo; saudacao nao tem rotulo.
+        sinais["pii_nome_na_saudacao"] = (
+            "{NOME}" in templatize("Ola, Carla - Autofleet Seguros!")
+            # e o par que impede o mascarador de comer a instrucao da tela
+            and templatize("Ola! Digite o CPF/CNPJ") == "Ola! Digite o CPF/CNPJ")
         # A inversa, e ela vale tanto quanto: o conhecimento tem de sobreviver.
         # Se esta virar False, o mascarador ficou guloso e esta apagando carta.
         sinais["conhecimento_sobrevive"] = (
