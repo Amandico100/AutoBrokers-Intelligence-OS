@@ -21,6 +21,7 @@ import {
 } from 'lucide-react';
 
 import { StatusPill, type StatusTone } from '@/components/patterns/StatusPill';
+import { dispatchStateMeta } from '@/lib/attendance/dispatch-states';
 import { cn } from '@/lib/utils';
 
 interface Conversation {
@@ -89,12 +90,11 @@ const insurerLabelFromRef = (ref?: string | null): string => {
   return INSURER_LABEL[key] || 'Seguradora · Assistência 24h';
 };
 
-const DISPATCH_STATE_LABEL: Record<string, { label: string; tone: StatusTone }> = {
-  ura: { label: 'Respondendo URA', tone: 'info' },
-  human_phase: { label: 'Especialista da seguradora', tone: 'info' },
-  needs_human: { label: 'Precisa de você', tone: 'warning' },
-  captured: { label: 'Protocolo capturado', tone: 'success' },
-};
+// `DISPATCH_STATE_LABEL` morava aqui com QUATRO dos dez estados. Os outros seis
+// — inclusive `encaminhado` e `resolvido` — caíam no fallback e apareciam para
+// o corretor como a string crua do motor ("resolvido", cinza). Os rótulos deste
+// arquivo eram os mesmos da lista canônica, então não há razão para um mapa
+// local: `dispatchStateMeta` é a fonte, e ela cobre os dez por tipo.
 
 function ownership(c: Conversation, me: string | null) {
   if (c.status === 'closed') return { tone: 'neutral' as StatusTone, label: 'Encerrada' };
@@ -273,7 +273,7 @@ export function ConversasClient() {
                 Seguradora · acionamentos ativos
               </p>
               {dispatches.map((d) => {
-                const st = DISPATCH_STATE_LABEL[d.state || ''] || { label: d.state || '—', tone: 'neutral' as StatusTone };
+                const st = dispatchStateMeta(d.state);
                 return (
                   <button
                     key={d.insurer_phone + (d.case_id || '')}
@@ -522,7 +522,7 @@ export function ConversasClient() {
 }
 
 function DispatchThread({ dispatch, onClose }: { dispatch: DispatchSession; onClose: () => void }) {
-  const st = DISPATCH_STATE_LABEL[dispatch.state || ''] || { label: dispatch.state || '—', tone: 'neutral' as StatusTone };
+  const st = dispatchStateMeta(dispatch.state);
   const captured = dispatch.captured || {};
   return (
     <>

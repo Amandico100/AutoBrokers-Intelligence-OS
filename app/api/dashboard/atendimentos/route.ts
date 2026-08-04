@@ -26,6 +26,11 @@ export const dynamic = 'force-dynamic';
 // `Stage` vem de `@/lib/attendance/dispatch-states` — a lista canônica. Ela
 // morava aqui, escrita à mão, e era uma das sete cópias que deixaram
 // `encaminhado` e `resolvido` órfãos no TypeScript inteiro.
+//
+// 📊 Auditoria de 04/08/2026: o `import` da lista canônica já existia aqui, mas
+// as cadeias de ternários abaixo continuavam intactas — `stageFromDispatchState`,
+// `dispatchStateMeta` e `zeroCountsByStage` estavam importados e NÃO usados. Um
+// caso `resolvido` ainda caía em 'acionando'. Importar não é ligar.
 
 interface Item {
   key: string;
@@ -109,11 +114,8 @@ export async function GET(_req: NextRequest) {
   for (const d of dispatches) {
     const clientPhone = digits(d.client_phone);
     if (clientPhone) dispatchClientPhones.add(clientPhone);
-    const stage: Stage =
-      d.state === 'needs_human' ? 'precisa_de_voce'
-        : d.state === 'captured' ? 'protocolo'
-          : d.state === 'monitoring' ? 'monitorando'
-            : 'acionando';
+    const stage: Stage = stageFromDispatchState(d.state);
+    const meta = dispatchStateMeta(d.state);
     const insurer = insurerFromRef(d.playbook_ref);
     const servico = SERVICO_LABEL[d.subservice || ''] || d.subservice || 'Assistência';
     const protocolo = String((d.captured || {}).protocol || '') || null;
@@ -123,11 +125,10 @@ export async function GET(_req: NextRequest) {
       stage,
       kind: 'acionamento',
       titulo: `${servico} · ${insurer}`,
-      detalhe:
-        stage === 'precisa_de_voce' ? 'O acionamento precisa de uma pessoa — o dossiê já foi entregue à equipe.'
-          : stage === 'protocolo' ? `Protocolo garantido${protocolo ? ` (${protocolo})` : ''} — serviço confirmado na seguradora.`
-            : stage === 'monitorando' ? 'Serviço confirmado — acompanhando a chegada do prestador.'
-              : 'Conversando com a seguradora agora para abrir o serviço.',
+      // A frase vem do mapa canônico. O NÚMERO do protocolo saiu dela de
+      // propósito: ele é dado do caso, não do estado, e já é exibido no seu
+      // próprio chip pela Fila e pelo Histórico (campo `protocolo` abaixo).
+      detalhe: meta.detalhe,
       cliente: null,
       telefone: clientPhone || null,
       quando: d.created_at,
@@ -198,10 +199,9 @@ export async function GET(_req: NextRequest) {
     /* tabela pode estar vazia — segue */
   }
 
-  const counts: Record<Stage, number> = {
-    precisa_de_voce: 0, acionando: 0, protocolo: 0, monitorando: 0,
-    em_conversa: 0, com_equipe: 0, observacao: 0, concluido: 0,
-  };
+  // Zerar contador por contador à mão era a oitava lista: um estágio novo
+  // nasceria sem chave aqui e o `counts[i.stage] += 1` somaria sobre `undefined`.
+  const counts = zeroCountsByStage();
   for (const i of items) counts[i.stage] += 1;
 
   return NextResponse.json({ items, counts });

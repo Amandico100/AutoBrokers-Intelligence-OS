@@ -885,3 +885,43 @@ desfecho certo em handoff.
 **P-38 — a fraqueza do sinal não depende de ninguém lembrar.** `unknown` nasce
 num tier que a própria SPEC-059 recusa como origem de alerta crítico. O teste
 prova isso forçando `severity="critical"` e vendo o schema reprovar.
+
+---
+
+## P-72 · 🟠 O portão do CI não pega o defeito que aconteceu
+
+📊 `.github/workflows/gate.yml` roda **dois passos**: um pacote de regressão
+Python e `npx tsc --noEmit`. **Nenhum `.mjs`, e nem o `run_all.py`** — hoje 146
+testes que ninguém executa automaticamente.
+
+**E a consequência é precisa, não genérica.** Desde 04/08 os mapas do front são
+`Record<DispatchState, …>` exaustivos por tipo. Então:
+
+```
+estado novo no TypeScript sem rótulo   → o CI PEGA (via tsc) ✅
+estado novo no PYTHON que o front não conhece → o CI NÃO PEGA ❌
+```
+
+**E o segundo é exatamente o que aconteceu.** `encaminhado` e `resolvido`
+nasceram no Python e ficaram órfãos em sete arquivos de tela — um caso encerrado
+com sucesso aparecia ao corretor como *"conversando com a seguradora agora"*.
+
+O guarda que cobre isso **existe** — `npm run test:atendimento-estados`, que lê o
+Python e compara com a lista canônica do TS — e **não roda no CI**.
+
+**O que destrava:** 🧑 decisão de mexer no gate. Acrescentar `run_all.py` e os
+`npm run test:*` é pequeno, mas muda o que bloqueia um merge — e isso é chamada
+sua, não minha.
+
+**O que custa esquecer:** o guarda existe e a promessa que ele carrega ("o dia em
+que o backend criar um estado que o front não conhece, o teste fica vermelho")
+só vale se alguém digitar o comando.
+
+## P-73 · 🟡 `npm run lint` está vermelho no repositório inteiro
+
+📊 2.161 erros `prettier/prettier`, quase todos `Delete ␍` — quebra de linha do
+Windows. **Linha de controle:** `components/patterns/StatusPill.tsx`, que
+ninguém tocou nesta jornada, dá 36 erros iguais. **É pré-existente.**
+
+Ninguém vê porque `next.config.js` traz `eslint.ignoreDuringBuilds: true` e o
+gate não roda lint. Consertar é reformatar o repositório inteiro — 🧑 decisão.

@@ -9,13 +9,10 @@ import { useCallback, useEffect, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { Headphones, Loader2, RefreshCw } from 'lucide-react';
 
-import { DetailHeader, StatusPill, type StatusTone } from '@/components/patterns';
+import { DetailHeader, StatusPill } from '@/components/patterns';
+import { STAGE_META, STAGES_EM_VOO, type Stage } from '@/lib/attendance/dispatch-states';
 import { icons } from '@/lib/icons';
 import { cn } from '@/lib/utils';
-
-type Stage =
-  | 'precisa_de_voce' | 'acionando' | 'protocolo' | 'monitorando'
-  | 'em_conversa' | 'com_equipe' | 'observacao' | 'concluido';
 
 interface Item {
   key: string;
@@ -30,15 +27,24 @@ interface Item {
   protocolo: string | null;
 }
 
-const STAGES: { id: Stage; label: string; tone: StatusTone; desc: string }[] = [
-  { id: 'precisa_de_voce', label: 'Precisa de você', tone: 'danger', desc: 'aguardando uma pessoa da corretora' },
-  { id: 'acionando', label: 'Acionando a seguradora', tone: 'info', desc: 'o sistema está abrindo o serviço agora' },
-  { id: 'monitorando', label: 'Acompanhando o prestador', tone: 'success', desc: 'serviço confirmado — monitorando a chegada' },
-  { id: 'protocolo', label: 'Protocolo garantido', tone: 'success', desc: 'serviço confirmado na seguradora' },
-  { id: 'em_conversa', label: 'Em conversa', tone: 'info', desc: 'o atendente está falando com o segurado' },
-  { id: 'com_equipe', label: 'Com a equipe', tone: 'warning', desc: 'alguém da corretora assumiu' },
-  { id: 'observacao', label: 'Atendimento da equipe (observado)', tone: 'neutral', desc: 'a atendente conversa e o sistema registra' },
-];
+// O que é DESTA tela é a ORDEM — urgência primeiro, porque é assim que o
+// corretor varre a fila. Rótulo, tom e a própria existência de cada estágio
+// vêm da lista canônica; `Record<Stage, number>` obriga a dar posição a todo
+// estágio novo, em vez de deixá-lo sumir da fila sem ninguém perceber.
+const ORDEM_NA_FILA: Record<Stage, number> = {
+  precisa_de_voce: 1,
+  acionando: 2,
+  monitorando: 3,
+  protocolo: 4,
+  em_conversa: 5,
+  com_equipe: 6,
+  observacao: 7,
+  concluido: 99, // não entra na fila: vive na seção "Concluídos hoje"
+};
+
+const STAGES = [...STAGES_EM_VOO]
+  .sort((a, b) => ORDEM_NA_FILA[a] - ORDEM_NA_FILA[b])
+  .map((id) => ({ id, ...STAGE_META[id] }));
 
 function fmtWhen(iso: string | null): string {
   if (!iso) return '';

@@ -8,13 +8,10 @@ import { useCallback, useEffect, useMemo, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { History, Loader2, Search } from 'lucide-react';
 
-import { DetailHeader, StatusPill, type StatusTone } from '@/components/patterns';
+import { DetailHeader, StatusPill } from '@/components/patterns';
+import { STAGE_META, type Stage } from '@/lib/attendance/dispatch-states';
 import { icons } from '@/lib/icons';
 import { cn } from '@/lib/utils';
-
-type Stage =
-  | 'precisa_de_voce' | 'acionando' | 'protocolo' | 'monitorando'
-  | 'em_conversa' | 'com_equipe' | 'observacao' | 'concluido';
 
 interface Item {
   key: string;
@@ -29,17 +26,26 @@ interface Item {
   protocolo: string | null;
 }
 
-const STAGE_META: Record<Stage, { label: string; tone: StatusTone }> = {
-  precisa_de_voce: { label: 'Precisa de você', tone: 'danger' },
-  acionando: { label: 'Acionando', tone: 'info' },
-  protocolo: { label: 'Protocolo garantido', tone: 'success' },
-  monitorando: { label: 'Acompanhando prestador', tone: 'success' },
-  em_conversa: { label: 'Em conversa', tone: 'info' },
-  com_equipe: { label: 'Com a equipe', tone: 'warning' },
-  observacao: { label: 'Equipe (observado)', tone: 'neutral' },
-  concluido: { label: 'Concluído', tone: 'neutral' },
+// O histórico é uma LISTA densa: aqui o rótulo é a versão curta ("Acionando",
+// não "Acionando a seguradora"). Essa diferença é de tela, e por isso fica.
+// O TOM vem da lista canônica — e `Record<Stage, string>` obriga a batizar todo
+// estágio novo, em vez de deixá-lo cair num rótulo genérico.
+const ROTULO_CURTO: Record<Stage, string> = {
+  precisa_de_voce: 'Precisa de você',
+  acionando: 'Acionando',
+  protocolo: 'Protocolo garantido',
+  monitorando: 'Acompanhando prestador',
+  em_conversa: 'Em conversa',
+  com_equipe: 'Com a equipe',
+  observacao: 'Equipe (observado)',
+  concluido: 'Concluído',
 };
 
+// 📊 O filtro "Concluídos" (auditoria de 04/08/2026) nunca encontrava um caso
+// `encaminhado` nem `resolvido`: o defeito não era este teste, era o estágio
+// que chegava da API — a rota mandava 'acionando' para os dois. Com
+// `stageFromDispatchState` na rota, `concluido` passou a significar CONCLUÍDO,
+// e este `===` finalmente vale o que promete.
 const FILters: { id: string; label: string; test: (i: Item) => boolean }[] = [
   { id: 'todos', label: 'Todos', test: () => true },
   { id: 'andamento', label: 'Em andamento', test: (i) => i.stage !== 'concluido' },
@@ -141,7 +147,8 @@ export default function HistoricoClient() {
         ) : (
           <div className="space-y-2">
             {filtered.map((i) => {
-              const m = STAGE_META[i.stage];
+              const tom = STAGE_META[i.stage]?.tone || 'neutral';
+              const rotulo = ROTULO_CURTO[i.stage] || i.stage;
               return (
                 <button
                   key={i.key}
@@ -158,7 +165,7 @@ export default function HistoricoClient() {
                   </div>
                   <p className="mt-1 truncate text-xs text-muted-foreground">{i.detalhe}</p>
                   <div className="mt-1.5 flex items-center gap-2">
-                    <StatusPill tone={m.tone} label={m.label} />
+                    <StatusPill tone={tom} label={rotulo} />
                     {i.protocolo && (
                       <span className="rounded border border-border bg-surface-2 px-1.5 py-0.5 font-mono text-[11px] text-muted-foreground">
                         {i.protocolo}

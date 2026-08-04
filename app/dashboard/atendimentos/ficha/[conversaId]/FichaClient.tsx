@@ -11,13 +11,10 @@ import {
   MessageCircle, Mic, Paperclip, ShieldCheck, UserRound,
 } from 'lucide-react';
 
-import { DetailHeader, StatusPill, type StatusTone } from '@/components/patterns';
+import { DetailHeader, StatusPill } from '@/components/patterns';
+import { STAGE_META, type Stage } from '@/lib/attendance/dispatch-states';
 import { icons } from '@/lib/icons';
 import { cn } from '@/lib/utils';
-
-type Stage =
-  | 'precisa_de_voce' | 'acionando' | 'protocolo' | 'monitorando'
-  | 'em_conversa' | 'com_equipe' | 'concluido';
 
 interface TimelineEvent { at: string | null; label: string; detail: string | null; done: boolean }
 interface Anexo { id: string; tipo: 'imagem' | 'audio' | 'arquivo'; url: string; quando: string | null; de: 'cliente' | 'atendente' }
@@ -48,15 +45,10 @@ interface Ficha {
   mensagens_total: number;
 }
 
-const STAGE_META: Record<Stage, { label: string; tone: StatusTone }> = {
-  precisa_de_voce: { label: 'Precisa de você', tone: 'danger' },
-  acionando: { label: 'Acionando a seguradora', tone: 'info' },
-  protocolo: { label: 'Protocolo garantido', tone: 'success' },
-  monitorando: { label: 'Acompanhando o prestador', tone: 'success' },
-  em_conversa: { label: 'Em conversa', tone: 'info' },
-  com_equipe: { label: 'Com a equipe', tone: 'warning' },
-  concluido: { label: 'Concluído', tone: 'neutral' },
-};
+// O `STAGE_META` local era rótulo por rótulo IGUAL ao canônico — e ainda assim
+// era uma cópia: ela não tinha `observacao`, e um caso observado abria a ficha
+// com o estágio de "Em conversa" (o fallback). Cópia idêntica não é
+// redundância inofensiva: é uma lista que vai divergir sozinha.
 
 function fmtWhen(iso: string | null): string {
   if (!iso) return '';

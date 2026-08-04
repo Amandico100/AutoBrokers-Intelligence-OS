@@ -32,6 +32,7 @@
     "test:insurer-contacts": "node scripts/attendance-insurer-contacts.test.mjs",
     "test:agent-blueprints-canonical": "node scripts/admin-agent-blueprints-canonical.test.mjs",
     "test:agent-health": "node scripts/agent-health.test.mjs",
+    "test:atendimento-estados": "node scripts/atendimento-estados.test.mjs",
     "test:finops-usage-context": "node scripts/admin-finops-usage-context.test.mjs"
   },
   "dependencies": {

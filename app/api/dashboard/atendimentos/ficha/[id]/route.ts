@@ -2,6 +2,12 @@ import { NextRequest, NextResponse } from 'next/server';
 
 import { resolveSessionCompany, getSupabaseAdmin } from '@/lib/vault/server';
 import { BackendUrlError, getBackendUrl } from '@/lib/backend-url';
+import {
+  type Stage,
+  dispatchStateMeta,
+  isDispatchStateEncerrado,
+  stageFromDispatchState,
+} from '@/lib/attendance/dispatch-states';
 
 export const dynamic = 'force-dynamic';
 
@@ -18,9 +24,8 @@ export const dynamic = 'force-dynamic';
  * Nota/score interno NUNCA aparece (decisão do founder).
  */
 
-type Stage =
-  | 'precisa_de_voce' | 'acionando' | 'protocolo' | 'monitorando'
-  | 'em_conversa' | 'com_equipe' | 'concluido';
+// `Stage` era declarado aqui à mão — e sem `observacao`. Agora vem da lista
+// canônica: quem decide o vocabulário de estágio é um arquivo só.
 
 interface TimelineEvent {
   at: string | null;
@@ -162,10 +167,7 @@ export async function GET(_req: NextRequest, { params }: { params: Promise<{ id:
   const fresh = now - lastAt < 48 * 3600e3;
   let stage: Stage;
   if (dispatch) {
-    stage = dispatch.state === 'needs_human' ? 'precisa_de_voce'
-      : dispatch.state === 'captured' ? 'protocolo'
-        : dispatch.state === 'monitoring' ? 'monitorando'
-          : 'acionando';
+    stage = stageFromDispatchState(dispatch.state);
   } else if (conversation.status === 'closed') stage = 'concluido';
   else if (conversation.status === 'HUMAN_REQUESTED') stage = 'precisa_de_voce';
   else if (conversation.claimed_by) stage = 'com_equipe';
@@ -174,10 +176,16 @@ export async function GET(_req: NextRequest, { params }: { params: Promise<{ id:
   let resumo = resumoDestilado;
   if (!resumo) {
     if (dispatch) {
+      // A frase do estado vem do mapa canônico. Antes só DOIS estados tinham
+      // frase própria aqui (`monitoring` e `needs_human`): um caso `resolvido`
+      // produzia "Guincho acionado na Porto." e ponto final — o desfecho, que é
+      // o que o corretor abre a ficha para saber, não era dito em lugar nenhum.
+      // `captured` com número já foi dito na linha do protocolo; não se repete.
+      const fraseDoEstado = dispatch.state === 'captured' && protocolo
+        ? '' : ` ${dispatchStateMeta(dispatch.state).detalhe}`;
       resumo = `${servico} acionado na ${insurer}.`
         + (protocolo ? ` Protocolo ${protocolo} garantido.` : '')
-        + (dispatch.state === 'monitoring' ? ' Acompanhando a chegada do prestador.' : '')
-        + (dispatch.state === 'needs_human' ? ' O caso precisa de uma pessoa — o dossiê já foi entregue à equipe.' : '');
+        + fraseDoEstado;
     } else if (stage === 'com_equipe') {
       resumo = `${conversation.claimed_by_name || 'Alguém da equipe'} assumiu este atendimento.`;
     } else if (stage === 'precisa_de_voce') {
@@ -217,6 +225,12 @@ export async function GET(_req: NextRequest, { params }: { params: Promise<{ id:
     }
     if (dispatch.state === 'needs_human') {
       timeline.push({ at: null, label: 'Entregue à equipe', detail: dispatch.reason || 'O dossiê completo foi enviado à corretora.', done: true });
+    } else if (isDispatchStateEncerrado(dispatch.state)) {
+      // `encaminhado`, `resolvido` e `test_aborted` são TERMINAIS e não tinham
+      // evento nenhum: a linha do tempo de um caso encerrado com sucesso parava
+      // em "Acionou a Porto" e parecia trabalho travado no meio.
+      const desfecho = dispatchStateMeta(dispatch.state);
+      timeline.push({ at: null, label: desfecho.label, detail: desfecho.detalhe, done: true });
     }
   }
   if (conversation.claimed_by) {

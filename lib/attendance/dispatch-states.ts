@@ -60,7 +60,9 @@ export type DispatchState = (typeof DISPATCH_STATES)[number];
 
 /**
  * ENCERRADOS: a máquina não fala mais com a seguradora por conta própria.
- * Espelho de `FASES_ENCERRADAS` + `test_aborted`.
+ * Espelho de `FASES_ENCERRADAS` — que já inclui `test_aborted`. (Dizia
+ * "`FASES_ENCERRADAS` + `test_aborted`", o que faria um leitor seguinte
+ * acrescentá-lo duas vezes. O teste compara os dois conjuntos.)
  */
 export const DISPATCH_STATES_ENCERRADOS = [
   'encaminhado',

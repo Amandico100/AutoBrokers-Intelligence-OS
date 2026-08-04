@@ -5,6 +5,12 @@
 
 import { useEffect, useState } from 'react';
 
+import {
+  DISPATCH_STATE_META,
+  type DispatchState,
+  type StageTone,
+} from '@/lib/attendance/dispatch-states';
+
 type TimelineItem = { at: string | null; direction: string; via: string; text: string };
 type Session = {
   company_id: string; insurer_phone: string; insurer_label: string; case_id: string;
@@ -12,16 +18,45 @@ type Session = {
   reason: string | null; timeline: TimelineItem[];
 };
 
-const STATE_META: Record<string, { label: string; color: string }> = {
-  ura: { label: 'EM ANDAMENTO', color: '#7FB7E8' },
-  human_phase: { label: 'FASE HUMANA', color: '#7FB7E8' },
-  preparing: { label: 'PREPARANDO', color: '#8A93A3' },
-  ready_to_send: { label: 'PRONTO', color: '#8A93A3' },
-  monitoring: { label: 'MONITORANDO', color: '#43C08C' },
-  captured: { label: 'PROTOCOLO OK', color: '#43C08C' },
-  test_aborted: { label: 'TESTE CONCLUÍDO', color: '#43C08C' },
-  needs_human: { label: 'TRAVADO → HUMANO', color: '#E06B6B' },
+// Este console fala telemetria: rótulo curto, CAIXA ALTA. Por isso o RÓTULO
+// continua sendo dele — mas o TOM (e portanto a cor) vem da lista canônica.
+//
+// 📊 Auditoria de 04/08/2026: `encaminhado` e `resolvido` não existiam neste
+// mapa (`Record<string, …>` não reclama de chave faltando), e um acionamento
+// encerrado COM SUCESSO era pintado com o cinza de "estado desconhecido".
+// `Record<DispatchState, …>` fecha essa porta: estado novo sem rótulo aqui
+// passa a ser erro de compilação.
+const COR_POR_TOM: Record<StageTone, string> = {
+  neutral: '#8A93A3',
+  info: '#7FB7E8',
+  success: '#43C08C',
+  warning: '#E2A94F',
+  danger: '#E06B6B',
+  approval: '#E2A94F',
 };
+
+const STATE_LABEL: Record<DispatchState, string> = {
+  preparing: 'PREPARANDO',
+  ready_to_send: 'PRONTO',
+  ura: 'EM ANDAMENTO',
+  human_phase: 'FASE HUMANA',
+  captured: 'PROTOCOLO OK',
+  monitoring: 'MONITORANDO',
+  encaminhado: 'ENCAMINHADO',
+  resolvido: 'RESOLVIDO',
+  test_aborted: 'TESTE CONCLUÍDO',
+  needs_human: 'TRAVADO → HUMANO',
+};
+
+/** O cinza de desconhecido continua existindo — mas agora só alcança um estado
+ *  que o backend criou sem passar pela lista canônica, e o teste de estados
+ *  fica vermelho antes disso chegar à tela. */
+function stateMeta(state: string | null | undefined): { label: string; color: string } {
+  const key = String(state || '') as DispatchState;
+  const label = STATE_LABEL[key];
+  if (!label) return { label: String(state || '—').toUpperCase(), color: '#8A93A3' };
+  return { label, color: COR_POR_TOM[DISPATCH_STATE_META[key].tone] };
+}
 
 // "atendente" é papel, não nome próprio — cada corretora batiza o seu (Even é só o da Resulta).
 const ACTOR_META: Record<string, string> = {
@@ -109,7 +144,7 @@ export default function AcionamentosPage() {
         <div style={{ display: 'flex', gap: 14, marginTop: 16, alignItems: 'flex-start' }}>
           <div style={{ width: 330, minWidth: 280, display: 'flex', flexDirection: 'column', gap: 8 }}>
             {sessions.map((s, i) => {
-              const m = STATE_META[s.state] || { label: s.state?.toUpperCase(), color: '#8A93A3' };
+              const m = stateMeta(s.state);
               return (
                 <div key={`${s.company_id}-${s.insurer_phone}-${s.case_id}`} onClick={() => setSel(i)}
                   style={{ ...card, padding: '13px 15px', cursor: 'pointer', border: `1px solid ${i === sel ? '#2C3A4E' : '#161D28'}`, background: i === sel ? '#0E141C' : '#0B0F15' }}>
@@ -132,8 +167,8 @@ export default function AcionamentosPage() {
             <div style={{ ...card, flex: 1, padding: '20px 22px', minWidth: 0 }}>
               <div style={{ display: 'flex', alignItems: 'center', gap: 12, flexWrap: 'wrap' }}>
                 <div style={{ fontSize: 16, fontWeight: 600 }}>{cur.insurer_label}</div>
-                <span style={badge((STATE_META[cur.state] || { color: '#8A93A3' }).color)}>
-                  {(STATE_META[cur.state] || { label: cur.state }).label}
+                <span style={badge(stateMeta(cur.state).color)}>
+                  {stateMeta(cur.state).label}
                 </span>
                 {cur.sentinela_attempts > 0 && (
                   <span style={badge('#E2A94F')}>SENTINELA {cur.sentinela_attempts}x</span>
