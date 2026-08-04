@@ -1,7 +1,120 @@
 # Resgate dos áudios — o que aconteceu e o que fazer
 
-> **Para quem pegar esta tarefa amanhã (31/07/2026) ou depois.**
-> Situação apurada em 30/07/2026. Contexto completo em `ESTADO-DA-CAMPANHA.md` §22.
+> **Situação apurada em 30/07/2026 · ATUALIZADA em 04/08/2026** com o resultado
+> do primeiro teste real do "caminho A". Contexto em `ESTADO-DA-CAMPANHA.md` §22.
+>
+> ⚠️ **Leia o §0 antes do resto.** O caminho A foi testado, e ele **não basta
+> sozinho** — por um motivo que ninguém tinha medido.
+
+---
+
+## 0. O QUE MUDOU EM 04/08/2026 — leia isto primeiro
+
+### 0.1 O caminho A foi testado. Funciona pela metade.
+
+📊 A AutoFleet repareou em 04/08 às 18:39 e o `history_sync` reentregou tudo
+(20.338 transcrições, terminou às 19:05). O resultado, medido:
+
+```
+6.284 áudios no banco
+2.630 com directPath + mediaKey          ← a correção de 30/07 FUNCIONOU
+    0 com fileEncSha256                  ← 🔴
+    0 com fileSha256                     ← 🔴
+    0 arquivados                         ← consequência
+```
+
+🔴 **`/message/downloadmedia` exige o `waE2E.Message` INTEIRO** — e sem os dois
+hashes não há como decifrar. A coordenada gravada é **parcial**.
+
+> **Repescar áudio do banco é impossível.** Não é lentidão nem falta de
+> autorização: os dados que estão lá não bastam, e nunca vão bastar.
+
+E o próprio `history_ingest.py` já dizia isso, em comentário, desde antes:
+
+> *"A mídia antiga SÓ EXISTE AQUI, NESTE INSTANTE. (…) Uma foto do histórico,
+> depois que esta função retorna, é inalcançável para sempre."*
+
+### 0.2 Havia um segundo motivo, e era pior
+
+📊 O portão do orçamento estava no **enfileiramento**, não na transcrição. O
+comentário do código prometia que *"sem orçamento a mídia só é ARQUIVADA — ela
+não se perde"*. **Não era verdade:** sem orçamento nada era baixado, então nada
+era arquivado.
+
+**Consertado em 04/08.** As duas contas nunca foram a mesma:
+
+```
+baixar + arquivar   custo ZERO — bytes do WhatsApp pela sessão já pareada,
+                    guardados no MinIO do próprio servidor (não toca o Supabase)
+transcrever         Whisper cobra por minuto — só isto pede orçamento
+```
+
+E nasceu o estado `arquivado` (salvo, sem leitura), para dar como achar depois o
+que ainda falta transcrever.
+
+### 0.3 Só áudio desce, por decisão do Founder
+
+📊 Volume medido em 04/08, do que ainda é recuperável:
+
+| tipo | arquivos | tamanho |
+|---|---:|---:|
+| **áudio** | **1.623** | **80 MB** |
+| documento | 292 | 165 MB |
+| imagem | 792 | 106 MB |
+| vídeo | 29 | 106 MB |
+| sticker | 108 | 30 MB |
+
+`OBSERVER_MEDIA_KINDS` (padrão `audio`) corta **84% dos bytes e 43% dos
+arquivos**. Menos tráfego pela sessão é menos risco de o número ser marcado como
+anômalo — e o áudio é onde o segurado explica o caso; foto de documento e PDF de
+apólice a InfoCap já tem estruturado.
+
+### 0.4 O guarda contra bloqueio do número
+
+`_load_integration_sync` conferia se o canal estava ativo **só no caminho de
+fallback**; o caminho normal (por `integration_id`) não conferia nada. Baixar em
+rajada por sessão que cai e volta é exatamente o padrão que faz o WhatsApp
+desconfiar. Agora recusa canal fora do ar e **levanta** — o item volta para a
+fila em vez de ser marcado como visto sem ter baixado.
+
+📊 Ritmo: 3 arquivos a cada 10s = **18/min**. Para os 1.623 áudios, ~90 min.
+
+### 0.5 O caminho que sobrou, e a decisão do Founder
+
+**Para os áudios da AutoFleet existe UM caminho: reparear de novo, agora com o
+conserto no ar.** O `history_sync` reentrega as mensagens cruas, e desta vez a
+mídia é enfileirada e baixada.
+
+📊 E o texto não duplica — provado no ar em 04/08: **1 duplicata em 13.481
+linhas** depois do repareamento.
+
+**Decisão do Founder em 04/08:** *"não faz mal agora essa questão dos áudios.
+Continuam no celular dela. Não vou pedir agora para ela reparear. Isso fica como
+tarefa pendente mais pra frente, porque os áudios são na verdade cartas pro RAG e
+podemos criar elas com os áudios depois. Quero a destilação apenas das conversas
+em texto agora."*
+
+> **Portanto: a destilação de TEXTO acontece primeiro e não espera áudio.**
+> O áudio entra numa segunda leva, depois de um repareamento combinado.
+
+### 0.6 O que a destilação custou, medido
+
+📊 Consumo de crédito Claude do sistema inteiro, por dia:
+
+```
+29/07   US$ 10,10  em 1.702 chamadas   ← a destilação
+28/07   US$  1,06  em 2.593 chamadas
+resto   US$  0,43
+                    TOTAL US$ 11,59
+```
+
+Isso produziu **9.699 cartas** de **8.872 sessões** — ou seja:
+
+> 📊 **≈ US$ 0,0012 por carta.** A destilação é barata; o que ela precisa é de
+> material e de alguém olhando o resultado.
+
+⚠️ **E o crédito acabou.** A próxima leva precisa de saldo novo. Ver §5 para o
+custo da transcrição, que é a parte que este documento sempre tratou como paga.
 
 ---
 
@@ -55,24 +168,45 @@ recuperável.**
 
 ---
 
-## 3. O caminho A — reconexão (tentar primeiro, custa nada)
+## 3. O caminho A — reconexão · ⚠️ TESTADO EM 04/08, E A CONCLUSÃO MUDOU
 
-Quando o WhatsApp reconecta, ele **re-entrega histórico**. Com a correção no ar,
-as coordenadas dos áudios que **ainda estiverem nos servidores do WhatsApp** são
-gravadas, e aí dá para transcrever.
+> **Esta seção descrevia a esperança. O §0 descreve o resultado.** Fica aqui
+> porque a hipótese era razoável e a diferença entre ela e o que aconteceu é o
+> que ensina — não porque ainda vale como instrução.
 
-**Quantos sobrevivem é desconhecido** — o WhatsApp poda mídia antiga e a retenção
-não é publicada. Pode ser nenhum; podem ser os dos últimos meses.
+**A hipótese era:** reconectar re-entrega o histórico; com a correção no ar, as
+coordenadas são gravadas e dá para transcrever.
 
-**Como verificar depois de reconectar:**
+📊 **O que de fato aconteceu (AutoFleet, 04/08):** as coordenadas **foram**
+gravadas — 2.630 áudios com `directPath` + `mediaKey`. A correção de 30/07
+funcionou.
+
+🔴 **E mesmo assim nada foi baixado**, por dois motivos que a hipótese não
+previa:
+
+1. **A coordenada é parcial.** 0 áudios têm `fileEncSha256`/`fileSha256`, e o
+   `/message/downloadmedia` exige o `waE2E.Message` inteiro. Ver §0.1.
+2. **O portão do orçamento estava no enfileiramento**, então a mídia nem entrava
+   na fila. Ver §0.2 — consertado em 04/08.
+
+**A consulta de verificação continua útil, mas a leitura dela mudou:**
 
 ```sql
-select count(*) filter (where media_meta ? 'mediaKey') as recuperaveis,
-       count(*) as total
+select count(*) filter (where media_meta ? 'mediaKey')        as com_coordenada,
+       count(*) filter (where media_meta ? 'fileEncSha256')   as com_hash,
+       count(*) filter (where media_meta ? 'private_object')  as ARQUIVADO,
+       count(*)                                               as total
 from attendance_transcripts where msg_type='audio';
 ```
 
-Se `recuperaveis > 0`, siga para o §5 (transcrição).
+> **A coluna que importa é `ARQUIVADO`.** `com_coordenada > 0` só diz que a
+> ficha foi guardada; foi exatamente isso que confundiu a leitura em 30/07.
+
+**O caminho real, hoje:** reparear COM o conserto de 04/08 no ar. Aí a mídia é
+enfileirada no instante da reentrega — que é o único instante em que ela existe.
+
+**A lição que fica, e é a mesma do §6 noutra roupa:** *"tem coordenada"* não é
+*"dá para baixar"*. Um dado meio guardado parece guardado.
 
 ---
 
@@ -138,6 +272,22 @@ regra de seleção .... só ÁUDIO DE ATENDENTE (`direction='out'`) com
 custo estimado ...... US$ 2,00 a 2,50 para ~300 áudios
 teto ................ o Founder liberou US$ 5,75; ideal não passar de US$ 3
 ```
+
+> ⚠️ **ATUALIZAÇÃO 04/08/2026 — o teto acima não existe mais.**
+>
+> 📊 O crédito da API Claude **acabou**: US$ 11,59 consumidos, 87% deles num
+> único dia (29/07, a destilação). Ver §0.6.
+>
+> E o teto de áudio do worker é **3 minutos** (`MEDIA_MAX_AUDIO_SECONDS=180`,
+> ≈ US$ 0,018 por áudio). Acima disso o áudio é arquivado sem transcrição —
+> visível, recuperável, e não vira conta. 🔴 Isso significa que o áudio de
+> **23 minutos** da conversa de 16/07 (o alvo principal do §4) **não seria
+> transcrito pelo caminho automático**. Ele precisa de decisão à parte: ou o
+> teto sobe só para ele (~US$ 0,14), ou vai por transcrição manual.
+>
+> **Ordem que vale agora, por decisão do Founder:** destilar o TEXTO primeiro,
+> sem esperar áudio. O áudio é uma segunda leva, com repareamento combinado e
+> saldo novo.
 
 **A destilação continua de graça** — Whisper vira texto, e daí em diante é o
 mesmo pipeline de subagentes pelo plano Max. **A API paga a transcrição, nunca o

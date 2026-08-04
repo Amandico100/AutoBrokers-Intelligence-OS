@@ -1558,3 +1558,55 @@ vistoria, reparos) — fundi-los juntaria fluxos que não são o mesmo.
 - **Custa se esquecer:** cobertura e contagem de telas seguem divididas entre
   cópias, e a raiz de qualquer seguradora nova pode cair na tela errada pelo
   mesmo motivo.
+
+---
+
+## P-96 · 🧑 Os áudios da AutoFleet esperam um repareamento combinado
+
+📊 Medido em 04/08/2026: **1.623 áudios recuperáveis (80 MB)**, e **zero
+arquivados**. O caminho de repesca pelo banco é **impossível** — 0 têm
+`fileEncSha256`/`fileSha256`, e o `/message/downloadmedia` exige a mensagem
+crua inteira.
+
+**O único caminho é reparear com o conserto de 04/08 no ar.** Aí a mídia é
+enfileirada no instante da reentrega, que é o único instante em que ela existe.
+
+📊 E o texto não duplica: **1 duplicata em 13.481 linhas** no repareamento de
+hoje.
+
+**Decisão do Founder (04/08):** *"não faz mal agora. Continuam no celular dela.
+Isso fica como tarefa pendente mais pra frente, porque os áudios são na verdade
+cartas pro RAG e podemos criar elas depois. Quero a destilação apenas das
+conversas em texto agora."*
+
+**O que destrava:** 🧑 combinar com a Regina um novo pareamento (5 minutos dela).
+**O que custa esquecer:** nada imediato — os áudios estão no celular dela. Mas
+cada mês que passa é mais chance de o WhatsApp podar a mídia antiga do servidor,
+e aí nem o repareamento traz.
+**Documentação completa:** [`AUDIOS-RESGATE.md`](AUDIOS-RESGATE.md) §0.
+
+---
+
+## P-97 · 🧑 O crédito da API Claude acabou — e o gasto tem dono
+
+📊 Consumo total medido em 04/08 (`token_usage_logs`):
+
+```
+29/07   US$ 10,10  em 1.702 chamadas   ← a DESTILAÇÃO
+28/07   US$  1,06  em 2.593 chamadas
+resto   US$  0,43
+                    TOTAL US$ 11,59
+```
+
+**Não foi agente de bastidor.** O destilador está desligado, o portal usa OpenAI,
+os vigias não usam LLM. 📊 Foi `service_type='chat'` com `claude-sonnet-5` — a
+destilação das 8.872 sessões em 9.699 cartas.
+
+> 📊 **≈ US$ 0,0012 por carta.** A destilação é barata; o caro seria o
+> raciocínio sem material.
+
+**O que destrava:** 🧑 saldo novo na API Claude. Para a próxima leva (as ~700
+sessões novas da AutoFleet), a conta proporcional é de **menos de US$ 2** — mais
+uma margem para a curadoria.
+**O que custa esquecer:** sem saldo, a destilação não roda, e 📊 o material cru
+expira por volta de **27/10** (retenção de 90 dias).
