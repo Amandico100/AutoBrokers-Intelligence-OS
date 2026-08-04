@@ -39,7 +39,11 @@ MAX_SENTINELA_ATTEMPTS = 2
 
 HUMAN_NUDGE_TEXT = "Oi! Seguimos por aqui no aguardo, tá bom? 🙂"
 
-_TERMINAL_STATES = {"test_aborted", "needs_human", "monitoring", "captured"}
+# `encaminhado` entra aqui (P-46): o corredor terminou o trabalho por
+# encaminhamento e não espera mais nada da seguradora. Fora desta lista, o Vigia
+# cobraria resposta de uma conversa que acabou — e o encaminhamento entregue
+# viraria alerta de travamento.
+_TERMINAL_STATES = {"test_aborted", "needs_human", "monitoring", "captured", "encaminhado"}
 
 
 def _age_s(ts: Optional[str]) -> float:

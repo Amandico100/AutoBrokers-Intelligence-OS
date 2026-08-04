@@ -9,6 +9,7 @@ import { artifactToBlueprint, extractSavedTenantInput, captureAgentSnapshot } fr
 import { scanForSecrets } from '@/lib/admin/blueprint-release';
 import { isClientCompany } from '@/lib/admin/company-kind';
 import { getCompanyKind } from '@/lib/admin/company-kind-store';
+import { problemasDoUpdate, conferirPromptGravado } from '@/lib/admin/provision-tenant';
 
 const AGENT_SNAPSHOT_FIELDS = 'id, name, avatar_url, llm_temperature, agent_system_prompt, context_package, blueprint_version, agent_role';
 const RPC_MISSING = ['42883', 'PGRST202']; // função inexistente (pré-migration)
@@ -39,6 +40,17 @@ export async function applyRollout(supabase: SupabaseClient, releaseId: string, 
   const name = await companyName(supabase, companyId);
   const upd = computeAgentConfigUpdate(bp, name, (agent as any).context_package, input);
 
+  // P-36 — O PORTÃO, antes de qualquer escrita.
+  //
+  // Este é o caminho de maior alcance dos três: o blueprint aqui NÃO é o
+  // canônico do código, é o que veio dentro do artefato da release
+  // (`artifactToBlueprint`). Uma release publicada com `system_prompt_template`
+  // vazio materializa a casca de guardrails — ~560 caracteres e nenhuma
+  // instrução — e a desce sobre o agente da corretora, que continua ATIVO.
+  // Era exatamente esse o estado da AutoFleet em 02/08/2026.
+  const problemas = problemasDoUpdate(bp, upd);
+  if (problemas.length) return { ok: false as const, error: 'prompt_invalido', details: problemas };
+
   // snapshot do estado ATUAL (para rollback seguro, inclusive 1º rollout)
   const snapshot = captureAgentSnapshot(agent as any);
 
@@ -64,6 +76,14 @@ export async function applyRollout(supabase: SupabaseClient, releaseId: string, 
     if (RPC_MISSING.includes(error.code ?? '')) return { ok: false as const, error: 'rollout_migration_required' };
     return { ok: false as const, error: 'apply_failed', details: [error.message] };
   }
+
+  // Quem escreve é uma RPC no Postgres: o que ela realmente gravou não está em
+  // nenhuma variável daqui. Sem esta releitura, "apliquei" seria afirmação
+  // sobre uma requisição enviada, não sobre um fato no banco — e o agente
+  // mudo seguiria ativo até alguém abrir a conversa de um segurado.
+  const conferido = await conferirPromptGravado(supabase, companyId, agent.id, 'apply_release_rollout');
+  if (!conferido.ok) return { ok: false as const, error: conferido.reason ?? 'prompt_vazio_apos_escrita', details: [rel.blueprint_key] };
+
   return { ok: true as const, rollout_id: data, release_id: rel.id, company_id: companyId, blueprint_key: rel.blueprint_key, version: rel.semantic_version };
 }
 

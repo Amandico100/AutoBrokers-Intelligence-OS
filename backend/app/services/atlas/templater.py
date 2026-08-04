@@ -425,9 +425,35 @@ def answer_hint(question_text: str) -> Optional[Dict[str, str]]:
     return None
 
 
+# Subserviços que SÓ existem no residencial. Quem cai num deles já disse o ramo:
+# não existe encanador de automóvel. `chaveiro` fica de fora de propósito — ele
+# existe nos dois ramos, e quem decide ali é a palavra "residenc" no texto.
+_SERVICOS_SO_RESIDENCIAIS = ("eletricista", "encanador", "desentupimento", "eletrodomesticos")
+
+
 def infer_ramo_servico(labels: List[str], full_text: str) -> Tuple[str, str]:
     """Infere ramo/serviço PELA ROTA (labels), não pelo número (uma seguradora
-    atende vários ramos no mesmo WhatsApp)."""
+    atende vários ramos no mesmo WhatsApp).
+
+    P-47 — O SERVIÇO É O SUBSERVIÇO, NUNCA O RAMO.
+    ----------------------------------------------
+    Havia um balde chamado `"residencial"` que engolia *encanador*, *eletricista*
+    e a própria palavra *residência*, e devolvia `("residencial", "residencial")`.
+    Como nome de serviço isso não existe em lugar nenhum: `"residencial"` não é
+    subserviço de nenhum corredor — os declarados são `eletricista`, `encanador`,
+    `chaveiro`, `eletrodomesticos` e `desentupimento`. O acionamento caía em
+    `subservico_invalido` e o caso virava handoff, para um trabalho que os três
+    corredores residenciais sabem fazer.
+
+    E o dano não era só no acionamento: `graph.py` usa este par para achar o
+    playbook de conduta (`ramo` + `servico`), e nenhum playbook se chama
+    "residencial/residencial". A busca voltava vazia sempre.
+
+    Os termos abaixo são os MESMOS de `corridor_playbooks._SUBSERVICE_ALIASES` —
+    de propósito. A Porto chama de "elétrica" e "hidráulica" o que a Allianz e a
+    HDI chamam de eletricista e encanador; inventar um vocabulário próprio aqui
+    seria um segundo classificador para divergir do primeiro com o tempo.
+    """
     blob = (" ".join(labels) + " " + str(full_text or "")).lower()
     servico = ""
     for key, terms in (
@@ -437,12 +463,18 @@ def infer_ramo_servico(labels: List[str], full_text: str) -> Tuple[str, str]:
         ("pane_seca", ("pane seca", "combustivel", "combustível")),
         ("pneu", ("pneu", "troca de pneu", "estepe")),
         ("vidros", ("vidro", "para-brisa", "parabrisa")),
-        ("residencial", ("encanador", "eletricista", "chaveiro residencial", "residencia", "residência")),
+        # Residenciais, cada um com o próprio nome canônico. `eletrodomesticos`
+        # vem antes de `eletricista` porque é o mais específico dos dois.
+        ("eletrodomesticos", ("eletrodomestico", "eletrodoméstico", "linha branca")),
+        ("eletricista", ("eletricista", "eletrica", "elétrica")),
+        ("encanador", ("encanador", "encanamento", "hidraulica", "hidráulica")),
+        ("desentupimento", ("desentupi",)),
     ):
         if any(t in blob for t in terms):
             servico = key
             break
-    ramo = "residencial" if servico == "residencial" or "residenc" in blob else "auto"
+    # A palavra "residência" continua decidindo o RAMO — ela nunca foi um serviço.
+    ramo = "residencial" if servico in _SERVICOS_SO_RESIDENCIAIS or "residenc" in blob else "auto"
     if any(t in blob for t in ("sinistro", "colisao", "colisão", "acidente")):
         servico = servico or "sinistro"
     return ramo, servico

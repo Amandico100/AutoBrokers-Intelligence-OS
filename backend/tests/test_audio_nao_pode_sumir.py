@@ -48,17 +48,29 @@ for _n, _p in (("app", ("app",)), ("app.services", ("app", "services")),
         m.__package__ = _n
         sys.modules[_n] = m
 
-# `_extract_content` importa o desembrulhador do inbound da Evolution, e esse
-# módulo puxa a configuração inteira do app (pydantic_settings, openai...). Nada
-# disso participa da decisão que este arquivo testa — qual campo é guardado e
-# qual é escondido. Stub mínimo: desembrulhar é devolver a própria mensagem.
-for _n in ("app.services.whatsapp", "app.services.whatsapp.evolution_inbound"):
-    if _n not in sys.modules:
-        _m = types.ModuleType(_n)
-        if _n.endswith("evolution_inbound"):
-            _m._unwrap_message = lambda msg: msg
-            _m._interactive_from_message = lambda msg: None
-        sys.modules[_n] = _m
+# `_extract_content` importa do inbound da Evolution. Havia aqui um STUB, com a
+# justificativa de que aquele módulo puxava a configuração inteira do app
+# (pydantic_settings, openai...). 📊 03/08/2026: `evolution_inbound.py` importa
+# `json` e `typing`, e mais nada. A justificativa era verdade um dia; hoje não é.
+#
+# E o stub cobrava caro: em P-56 a extração tolerante de clique mudou de casa
+# para lá, e o stub — que só sabia desembrulhar — quebrou o carregamento deste
+# arquivo. Um duble que precisa aprender tudo que o original aprende não é
+# isolamento, é uma segunda implementação. Carregar o módulo REAL custa dois
+# imports da biblioteca padrão (CLAUDE.md §9.3: quando o fato muda, o teste
+# muda com ele).
+if "app.services.whatsapp" not in sys.modules:
+    _w = types.ModuleType("app.services.whatsapp")
+    _w.__path__ = [os.path.join(RAIZ, "app", "services", "whatsapp")]
+    _w.__package__ = "app.services.whatsapp"
+    sys.modules["app.services.whatsapp"] = _w
+if "app.services.whatsapp.evolution_inbound" not in sys.modules:
+    _es = importlib.util.spec_from_file_location(
+        "app.services.whatsapp.evolution_inbound",
+        os.path.join(RAIZ, "app", "services", "whatsapp", "evolution_inbound.py"))
+    _em = importlib.util.module_from_spec(_es)
+    sys.modules["app.services.whatsapp.evolution_inbound"] = _em
+    _es.loader.exec_module(_em)
 
 _spec = importlib.util.spec_from_file_location(
     "app.services.atlas.observer_intake",

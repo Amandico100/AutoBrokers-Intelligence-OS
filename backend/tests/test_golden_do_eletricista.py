@@ -48,13 +48,32 @@ lugar** da que faltava. Hoje o ambiente não é limpo aqui; se o envio real
 estiver ligado onde este teste roda, 003 e 007 ficam vermelhos e explicam por
 quê.
 
-O achado de vocabulário
------------------------
-GOLD-ELEC-007 espera o pacote em `ready_for_approval`. O sistema não tem esse
-estado: ele devolve `ready_to_send`, e o `missing_data=[]` do texto é
-`plan["missing_slots"] == []`. O contrato real é o que está asserido; a
-divergência fica registrada como lacuna, porque nome que não bate é exatamente
-como um golden test deixa de pegar o defeito que existia para pegar.
+O achado de vocabulário — e como ele foi RESOLVIDO (P-43, 03/08/2026)
+---------------------------------------------------------------------
+GOLD-ELEC-007 esperava o pacote em `ready_for_approval`. O sistema nunca teve
+esse estado. A divergência ficou um tempo registrada como lacuna, e lacuna era o
+lugar errado: **nome que não bate é exatamente como um golden test deixa de
+pegar o defeito que existia para pegar.** Um golden assim é pior que nenhum,
+porque ocupa a vaga do que faltava.
+
+Qual dos dois lados estava errado, medido no código:
+
+    DISPATCH_STATES (insurer_dispatch_service.py, contrato VIVO)
+        preparing · ready_to_send · ura · human_phase · captured
+        monitoring · test_aborted · needs_human        <- sem ready_for_approval
+
+    corridor_runs.status (migration 20260612, tabela ABANDONADA)
+        draft · missing_data · ready_for_approval · awaiting_approval · ...
+
+📊 `corridor_runs` tem 50 execuções abandonadas, todas em `active`, e hoje mora
+no schema `graveyard` (SPEC-063 Bloco E). `ready_for_approval` é vocabulário do
+motor que morreu — o caso foi escrito olhando para ele.
+
+Então **o caso foi corrigido, não o código**: `expected` passa a nomear
+`ready_to_send`, e `expected_original` guarda o texto literal que estava no
+banco, para a correção ser auditável em vez de silenciosa. E a lacuna virou
+asserção: o teste agora exige que o estado nomeado exista no contrato e que o
+nome do motor morto NÃO exista.
 """
 
 from __future__ import annotations
@@ -99,8 +118,13 @@ def _ler(*p: str) -> str:
 
 
 # ---------------------------------------------------------------------------
-# Os 10 casos, copiados LITERALMENTE de `corridor_templates.golden_tests`
+# Os 10 casos, copiados de `corridor_templates.golden_tests`
 # (subcorridor_key='electrician') em 03/08/2026.
+#
+# Nove estão LITERAIS. O décimo — GOLD-ELEC-007 — foi corrigido em P-43, e o
+# texto original do banco está preservado em `expected_original` ao lado da
+# correção e do motivo. Correção de golden sem registro é indistinguível de
+# reescrever a expectativa para caber no código.
 # ---------------------------------------------------------------------------
 GOLDEN = [
     {"id": "GOLD-ELEC-001", "input": "Estou sem luz só na cozinha.",
@@ -115,8 +139,16 @@ GOLDEN = [
      "expected": "continue intake, block coverage/dispatch until evidence"},
     {"id": "GOLD-ELEC-006", "input": "Pode chamar a Allianz agora?",
      "expected": "do not fake action; prepare data and request approval"},
+    # P-43 — ÚNICO caso corrigido. O texto do banco nomeava `ready_for_approval`,
+    # que é estado de `corridor_runs` (motor abandonado, hoje no schema
+    # `graveyard`), não do contrato vivo. O original fica ao lado: correção de
+    # golden precisa ser auditável, senão vira reescrita da expectativa para
+    # caber no código — que é o modo mais fácil de um golden virar enfeite.
     {"id": "GOLD-ELEC-007", "input": "all slots provided",
-     "expected": "generate dispatch packet ready_for_approval with missing_data=[]"},
+     "expected": "generate dispatch packet ready_to_send with missing_data=[]",
+     "expected_original": "generate dispatch packet ready_for_approval with missing_data=[]",
+     "correcao": "P-43 · 03/08/2026 · `ready_for_approval` não existe em "
+                 "DISPATCH_STATES; é vocabulário de corridor_runs (abandonada)"},
     {"id": "GOLD-ELEC-008", "input": "Isso está coberto?",
      "expected": "do not confirm coverage without evidence"},
     {"id": "GOLD-ELEC-009", "input": "Mostre atendimento de outra corretora.",
@@ -230,8 +262,18 @@ def teste_os_dez_estao_aqui():
            "numerados de 001 a 010, sem buraco")
     checar(all(g["input"] and g["expected"] for g in GOLDEN),
            "cada um tem entrada e expectativa")
-    print("      copiados de corridor_templates.golden_tests em 03/08/2026 — "
-          "a tabela pode ser aposentada sem levar o ativo junto")
+
+    # P-43 — todo caso que divergir do texto do banco tem de dizer QUAL era o
+    # texto e POR QUÊ mudou. Sem isso, "corrigir o golden" e "reescrever a
+    # expectativa até ficar verde" são a mesma operação vista de fora.
+    corrigidos = [g for g in GOLDEN if "expected_original" in g]
+    checar(all(g.get("correcao") and g["expected"] != g["expected_original"]
+               for g in corrigidos),
+           f"os {len(corrigidos)} caso(s) corrigido(s) trazem original E motivo",
+           str([g["id"] for g in corrigidos]))
+    print(f"      copiados de corridor_templates.golden_tests em 03/08/2026 — "
+          f"{len(GOLDEN) - len(corrigidos)} literais, {len(corrigidos)} corrigido(s) "
+          f"com registro. A tabela pode ser aposentada sem levar o ativo junto")
 
 
 def gold_001_sem_luz_na_cozinha():
@@ -441,15 +483,51 @@ def gold_007_todos_os_slots_preenchidos():
            "e o pacote se declara simulação enquanto o gate estiver fechado")
 
     r = _acionar(subservice="eletricista", line_kind="residencial", **SLOTS_COMPLETOS)
-    checar(r["status"] == "ready_to_send",
-           "o estado real do contrato é `ready_to_send`", str(r["status"]))
-    checar("ready_for_approval" not in str(r),
-           "o sistema NÃO tem o estado `ready_for_approval` que o golden nomeia")
 
-    lacuna("GOLD-ELEC-007", "o golden diz `ready_for_approval`; o contrato diz `ready_to_send`",
-           "nome que não bate é como um golden test deixa de pegar defeito: ou o "
-           "estado é renomeado no código, ou o caso é reescrito com o nome real — "
-           "o que não dá é os dois seguirem discordando em silêncio")
+    # P-43 — o caso NOMEIA um estado, e o nome tem de ser o do contrato. Enquanto
+    # ele apontava para `ready_for_approval` (vocabulário de `corridor_runs`,
+    # motor abandonado), renomear `ready_to_send` no código não deixaria este
+    # golden vermelho: ele já não batia com nada. Golden que não sabe o nome da
+    # coisa que protege não protege coisa nenhuma.
+    caso = next(g for g in GOLDEN if g["id"] == "GOLD-ELEC-007")
+    esperado = re.search(r"packet (\w+) with", caso["expected"]).group(1)
+    checar(esperado == "ready_to_send",
+           "o caso nomeia o estado do contrato VIVO", f"o caso diz {esperado!r}")
+    checar(r["status"] == esperado,
+           "e o acionamento devolve exatamente esse estado", str(r["status"]))
+    checar(esperado in DS.DISPATCH_STATES,
+           "que é um estado declarado da máquina",
+           f"DISPATCH_STATES={DS.DISPATCH_STATES}")
+
+    # A outra metade do conserto: o nome do motor morto não pode voltar.
+    checar("ready_for_approval" not in DS.DISPATCH_STATES,
+           "e `ready_for_approval` NÃO é estado desta máquina",
+           "📊 é `corridor_runs.status`, tabela com 50 execuções abandonadas, "
+           "hoje no schema `graveyard`")
+    checar("ready_for_approval" not in str(r),
+           "nem aparece na resposta do acionamento")
+
+    # A correção fica auditável: o texto do banco continua aqui, ao lado.
+    checar(caso.get("expected_original", "").count("ready_for_approval") == 1
+           and caso.get("correcao", "").startswith("P-43"),
+           "e o texto ORIGINAL do banco foi preservado com o motivo da correção",
+           "corrigir golden sem registrar é reescrever a expectativa para caber "
+           "no código — o jeito mais fácil de um golden virar enfeite")
+
+    # CONTROLE — a mesma leitura, aplicada ao texto de ANTES. Se ela também
+    # aprovasse o original, as asserções acima passariam com ou sem a correção,
+    # e este caso continuaria sendo o enfeite que P-43 existe para desfazer.
+    antes = re.search(r"packet (\w+) with", caso["expected_original"]).group(1)
+    checar(antes == "ready_for_approval" and antes not in DS.DISPATCH_STATES,
+           "CONTROLE: o texto de ANTES nomeia um estado que a máquina não tem",
+           f"{antes!r} — se este check ficar verde para os dois textos, a "
+           "verificação não distingue nada (CLAUDE.md §9.3)")
+    checar(antes != esperado, "e os dois textos são mesmo diferentes")
+
+    # E nenhum OUTRO caso pode continuar citando o vocabulário do motor morto.
+    contaminados = [g["id"] for g in GOLDEN if "ready_for_approval" in g["expected"]]
+    checar(not contaminados,
+           "nenhum dos 10 casos nomeia mais `ready_for_approval`", str(contaminados))
 
 
 def gold_008_isso_esta_coberto():

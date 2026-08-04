@@ -28,6 +28,7 @@ from app.services.corridor_playbooks import (
     detect_finalize_anchor,
     detect_handoff_trigger,
     detect_native_flow,
+    detect_referral_step,
     extract_capture_anchors,
     get_playbook,
     match_ura_step,
@@ -37,6 +38,7 @@ from app.services.corridor_playbooks import (
     render_opening_message,
     render_reply,
     resolve_playbook_ref,
+    subservice_referral,
 )
 
 DISPATCH_STATES = (
@@ -46,6 +48,7 @@ DISPATCH_STATES = (
     "human_phase",
     "captured",
     "monitoring",      # protocolo capturado; só repassa updates da seguradora ao cliente
+    "encaminhado",     # a seguradora NÃO abre chamado aqui: entregou formulário/orientação
     "test_aborted",    # modo TESTE: fluxo completo executado e CANCELADO na confirmação final
     "needs_human",
 )
@@ -89,6 +92,7 @@ _ORDEM_DAS_FASES: Dict[str, int] = {
     "human_phase": 4,
     "captured": 5,
     "monitoring": 6,
+    "encaminhado": 7,
     "needs_human": 8,
     "test_aborted": 9,
 }
@@ -97,7 +101,13 @@ _ORDEM_DAS_FASES: Dict[str, int] = {
 FASES_EM_VOO = ("preparing", "ready_to_send", "ura", "human_phase", "captured", "monitoring")
 
 # ENCERRADAS = a máquina não fala mais com a seguradora por conta própria.
-FASES_ENCERRADAS = ("needs_human", "test_aborted")
+#
+# `encaminhado` é o SEGUNDO desfecho de sucesso do produto (P-46). Ele entra
+# aqui e não em FASES_EM_VOO porque o trabalho ACABOU: a seguradora disse que
+# não abre chamado por este canal e entregou o caminho; o corredor entregou esse
+# caminho ao segurado. Esperar um protocolo que não vem é como o caso ficava
+# aberto até o watchdog.
+FASES_ENCERRADAS = ("needs_human", "test_aborted", "encaminhado")
 
 # Fase do acionamento → status durável do Work Run (SPEC-055 §9).
 #
@@ -113,6 +123,9 @@ STATUS_WORK_RUN_POR_FASE: Dict[str, str] = {
     "captured": "running",
     "monitoring": "waiting_input",
     "needs_human": "waiting_input",
+    # `encaminhado` é `completed` — e não `waiting_input` — porque nada mais é
+    # esperado de ninguém: o segurado já tem o formulário/orientação na mão.
+    "encaminhado": "completed",
     "test_aborted": "completed",
 }
 
@@ -782,6 +795,82 @@ def tudo_que_sera_pedido(seguradora: str, ramo: str = "auto",
     return saida
 
 
+# ---------------------------------------------------------------------------
+# ENCAMINHAMENTO — o segundo desfecho possível do corredor (P-46)
+# ---------------------------------------------------------------------------
+#
+# Até aqui todo corredor tinha um fim só: chegar ao protocolo. Vidros provou que
+# isso é falso. 📊 URA da Porto, observada em 03/08/2026, TRÊS mensagens seguidas:
+#
+#     "Certo. Para conserto ou reparo de vidro, retrovisor, farol ou lanterna,
+#      é necessário *preencher o formulário* de sinistro de vidros abaixo"
+#     "https://porto.vc/reparovidros"
+#     "Não se preocupe, esse acionamento *para vidros* não irá afetar a sua
+#      classe de bônus."
+#
+# `detect_referral_step()` e `subservice_referral()` existiam e estavam
+# provados, e **nada em produção os chamava**. O passo era `noop` — correto, o
+# corredor não deve responder à URA aqui — e o caso ficava aberto até o
+# watchdog: o segurado nunca recebia o formulário, e o desfecho era registrado
+# como abandono.
+#
+# POR QUE NÃO SE FECHA NA PRIMEIRA MENSAGEM
+# ------------------------------------------
+# O ENTREGÁVEL é o link, e ele vem na mensagem SEGUINTE, sozinho. Fechar na
+# âncora entregaria ao segurado uma frase sobre um formulário sem o formulário.
+# Então a âncora abre uma janela curta de escuta, o link é capturado pelo mesmo
+# `extract_capture_anchors` de sempre (`tracking_link`), e só aí o caso encerra.
+#
+# E se o link NÃO vier: handoff, com motivo escrito. `client_message` da Porto
+# manda encaminhar "o link que a seguradora enviou NESTA conversa (nunca digite
+# um endereço de memória)" — sem link não há entrega, e inventar um endereço de
+# vidro é o tipo de ajuda que manda o segurado para o lugar errado.
+
+# Quantas mensagens da seguradora esperar pelo link depois da âncora. Três é o
+# tamanho da sequência observada; passar disso é a URA falando de outra coisa.
+ENCAMINHAMENTO_MENSAGENS_DE_ESPERA = 3
+
+# O que cada tipo de encaminhamento precisa ter em mãos para poder encerrar.
+#
+# `formulario` (Porto): o entregável é o ENDEREÇO. Sem ele, o `client_message`
+# manda o atendente "encaminhar o link que a seguradora enviou nesta conversa" —
+# uma instrução para repassar uma coisa que não existe. Espera, e sem link vira
+# handoff: ninguém digita um endereço de vidro de memória.
+#
+# `orientacao` (Zurich): o entregável é o TEXTO. 📊 A mensagem observada em
+# 03/08/2026 não traz link nenhum — "encontre informações sobre como pedir o
+# reparo ou a troca de vidros, para-brisa, faróis e retrovisores". Esperar um
+# link que a seguradora nunca mandou transformaria o desfecho certo em handoff.
+_ENCAMINHAMENTO_EXIGE_LINK = ("formulario",)
+
+
+def _resolver_encaminhamento(session: Dict[str, Any]) -> Dict[str, Any]:
+    """Fecha o caso como `encaminhado` quando o entregável já está em mãos.
+
+    Enquanto o link não chega, devolve a sessão sem resposta — quem está do
+    outro lado é uma URA que não espera nada de nós neste ponto.
+    """
+    ref = dict(session.get("referral") or {})
+    link = str((session.get("captured") or {}).get("tracking_link") or "").strip()
+    exige_link = str(ref.get("kind") or "") in _ENCAMINHAMENTO_EXIGE_LINK
+
+    if link or not exige_link:
+        ref["link"] = link
+        ref["entregue_em"] = _now()
+        session["referral"] = ref
+        session["state"] = "encaminhado"
+        session["reason"] = f"encaminhado:{ref.get('kind') or 'orientacao'}"
+        return session
+
+    esperou = int(ref.get("aguardando") or 0) + 1
+    ref["aguardando"] = esperou
+    session["referral"] = ref
+    if esperou > ENCAMINHAMENTO_MENSAGENS_DE_ESPERA:
+        session["state"] = "needs_human"
+        session["reason"] = "encaminhamento_sem_link"
+    return session
+
+
 def handle_insurer_message(
     session: Dict[str, Any],
     insurer_message: str,
@@ -824,6 +913,16 @@ def handle_insurer_message(
         session.setdefault("captured", {}).update(captured)
 
     got = session.get("captured", {})
+
+    # P-46 — JÁ ESTAMOS NUM ENCAMINHAMENTO: a partir daqui tudo o que a
+    # seguradora manda é ENTREGA, não pergunta. Esta janela vem antes de tudo de
+    # propósito. Depois de "aqui não se abre chamado", uma âncora de protocolo
+    # que casasse um telefone ou um número qualquer transformaria um formulário
+    # de vidro em "seu serviço foi aberto, protocolo X" — e nenhum passo de URA
+    # deve ser respondido enquanto se espera o link.
+    if session.get("referral"):
+        return _resolver_encaminhamento(session)
+
     # O PROTOCOLO SOZINHO JÁ É NOTÍCIA — e o segurado tem direito a ela.
     #
     # A regra era `protocol` E (`schedule` OU `eta` OU `tracking_link`). A ideia
@@ -852,6 +951,28 @@ def handle_insurer_message(
     if got.get("protocol") and not detect_handoff_trigger(playbook, insurer_message):
         session["state"] = "captured"
         return session
+
+    # P-46 — A SEGURADORA DISSE QUE NÃO ABRE CHAMADO AQUI.
+    #
+    # Espelho de `detect_finalize_anchor`, do outro lado do fluxo: em vez de "a
+    # seguradora vai abrir o serviço", é "a seguradora não vai abrir serviço
+    # nenhum aqui — ela entregou o caminho". Vem DEPOIS da captura de protocolo
+    # (protocolo real vence sempre) e ANTES de qualquer passo de URA, porque a
+    # partir daqui não há mais menu a responder.
+    passo_encaminha = detect_referral_step(playbook, insurer_message)
+    if passo_encaminha:
+        session["referral"] = {
+            **subservice_referral(playbook, session.get("subservice") or ""),
+            "step": str(passo_encaminha.get("step") or ""),
+            # As PALAVRAS DA SEGURADORA. Os dois `client_message` mandam
+            # "repassar exatamente o que a seguradora enviou nesta conversa" —
+            # sem guardar o texto, quem entrega teria de parafraseá-lo, e
+            # paráfrase de instrução de sinistro é onde nasce a promessa que
+            # ninguém fez.
+            "insurer_text": str(insurer_message)[:600],
+            "aguardando": 0,
+        }
+        return _resolver_encaminhamento(session)
 
     # Seguradora ENCERROU a conversa (timeout/resposta inválida): parar de falar
     # e liberar a corretora para reabrir (visto no teste Yelum 2026-07-10).

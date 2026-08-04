@@ -251,24 +251,36 @@ def teste_o_contexto_citado_nao_contamina():
                f"{nome}: o contextInfo ficou de fora",
                "descer no contextInfo faria a resposta se chamar como a pergunta")
 
-    fonte = _sem_comentario(_ler("backend", "app", "services", "atlas", "observer_intake.py"))
+    # P-56 (03/08/2026) — a busca tolerante MUDOU DE CASA: foi para
+    # `evolution_inbound.py`, o parser canonico, porque o MESMO defeito estava
+    # vivo la (`_text_from_message` lia `selectedButtonId`, d minusculo) e uma
+    # grafia nova nao pode precisar ser aprendida em dois arquivos.
+    fonte = _sem_comentario(_ler("backend", "app", "services", "whatsapp", "evolution_inbound.py"))
     checar("_CHAVE_DE_CONTEXTO" in fonte and 'nk == _CHAVE_DE_CONTEXTO' in fonte,
            "a exclusao do contextInfo e explicita no codigo, nao acidental")
 
 
 def teste_a_busca_cega_antiga_sumiu():
     print("\n[C5] A busca que so conhecia tres chaves nao existe mais")
-    fonte = _ler("backend", "app", "services", "atlas", "observer_intake.py")
-    codigo = _sem_comentario(fonte)
+    intake = _sem_comentario(_ler("backend", "app", "services", "atlas", "observer_intake.py"))
+    parser = _sem_comentario(_ler("backend", "app", "services", "whatsapp", "evolution_inbound.py"))
     checar('m.get("title") or (m.get("singleSelectReply") or {}).get("selectedRowId")'
-           not in codigo,
-           "a expressao de tres chaves saiu",
+           not in intake,
+           "a expressao de tres chaves saiu do observador",
            "ela era cega para 937 dos 947 cliques de botao")
+
+    # As chaves moram no parser canonico agora — e SO la (P-56). Duas listas em
+    # dois arquivos e como a segunda fica para tras: foi assim que o defeito do
+    # observador durou tres semanas a mais no inbound.
     for chave in ("selectedbuttonid", "selectedid", "selectedrowid"):
-        checar(chave in codigo, f"a chave real '{chave}' e procurada")
+        checar(chave in parser, f"a chave real '{chave}' e procurada no parser")
     for chave in ("selecteddisplaytext", "title", "text"):
-        checar(chave in codigo, f"a chave de rotulo '{chave}' e procurada")
-    checar('"selected"' in codigo,
+        checar(chave in parser, f"a chave de rotulo '{chave}' e procurada no parser")
+    checar("_CHAVES_DE_ID" not in intake.split("from app.services.whatsapp.evolution_inbound", 1)[0],
+           "o observador nao mantem uma SEGUNDA lista de grafias",
+           "e ele quem importa a do parser (CLAUDE.md §5)")
+
+    checar('"selected"' in intake,
            "o id tambem vai para 'selected'",
            "e onde weaver._choice_label procura — e ninguem escrevia ali")
 

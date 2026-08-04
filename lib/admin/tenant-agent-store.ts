@@ -2,12 +2,18 @@
 // Reusa a tabela `agents` (Smith). NÃO cria estrutura paralela. A config editável
 // é mesclada em context_package + colunas reais (name/avatar/temperature) + o
 // agent_system_prompt é RE-RENDERIZADO (o runtime passa a usar a config).
+//
+// P-36 — este era o caminho MAIS quente dos três que gravavam
+// `agent_system_prompt` sem o portão de prompt vazio: é o que roda quando
+// alguém salva a tela de Personalização. Ele reescreve o prompt inteiro a cada
+// save, e nada conferia o que saiu nem o que o banco guardou.
 import type { SupabaseClient } from '@supabase/supabase-js';
 import {
   getBlueprintByRole, computeAgentConfigUpdate, resetAgentConfigUpdate, sanitizeAgentConfigForDashboard,
   validateTenantAgentInput,
   type AgentRole, type TenantAgentConfigInput,
 } from '@/lib/admin/agent-blueprints-canonical';
+import { problemasDoUpdate, conferirPromptGravado } from '@/lib/admin/provision-tenant';
 
 export type AgentKey = 'autobrokers' | 'even';
 export function roleForKey(key: string): AgentRole | null {
@@ -50,10 +56,22 @@ export async function patchTenantAgentConfig(supabase: SupabaseClient, companyId
   if (!v.ok) return { ok: false as const, error: 'validation_failed', errors: v.errors };
 
   const upd = computeAgentConfigUpdate(bp, name, agent.context_package, v.clean);
+
+  // O PORTÃO, antes da escrita. Uma personalização que se resolve para nada
+  // (variável faltando, template quebrado) produziria a casca de guardrails —
+  // ~560 caracteres sem uma instrução sobre o que o agente é. Recusar o save é
+  // melhor que emudecer um agente que já falava.
+  const problemas = problemasDoUpdate(bp, upd);
+  if (problemas.length) return { ok: false as const, error: 'prompt_invalido', errors: problemas };
+
   const { error } = await supabase.from('agents')
     .update({ ...upd.columns, context_package: upd.context_package, updated_at: new Date().toISOString() })
     .eq('id', agent.id).eq('company_id', companyId);
   if (error) return { ok: false as const, error: 'update_failed' };
+
+  const conferido = await conferirPromptGravado(supabase, companyId, agent.id, 'patch_tenant_agent_config');
+  if (!conferido.ok) return { ok: false as const, error: conferido.reason ?? 'prompt_vazio_apos_escrita' };
+
   return { ok: true as const, rejected: upd.rejected, config: sanitizeAgentConfigForDashboard(bp, name, upd.context_package) };
 }
 
@@ -86,9 +104,19 @@ export async function resetTenantAgentConfig(supabase: SupabaseClient, companyId
   if (!agent?.id) return { ok: false as const, error: 'agent_not_provisioned' };
 
   const upd = resetAgentConfigUpdate(bp, name, agent.context_package);
+
+  // Voltar ao padrão também reescreve o prompt inteiro. Se o blueprint global
+  // estiver quebrado, "resetar" seria o botão que apaga a voz do agente.
+  const problemas = problemasDoUpdate(bp, upd);
+  if (problemas.length) return { ok: false as const, error: 'prompt_invalido', errors: problemas };
+
   const { error } = await supabase.from('agents')
     .update({ ...upd.columns, context_package: upd.context_package, updated_at: new Date().toISOString() })
     .eq('id', agent.id).eq('company_id', companyId);
   if (error) return { ok: false as const, error: 'update_failed' };
+
+  const conferido = await conferirPromptGravado(supabase, companyId, agent.id, 'reset_tenant_agent_config');
+  if (!conferido.ok) return { ok: false as const, error: conferido.reason ?? 'prompt_vazio_apos_escrita' };
+
   return { ok: true as const, config: sanitizeAgentConfigForDashboard(bp, name, upd.context_package) };
 }

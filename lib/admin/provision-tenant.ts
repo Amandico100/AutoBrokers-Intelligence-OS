@@ -99,6 +99,77 @@ function personalizacaoDe(bp: CanonicalBlueprint, variaveis: Record<string, stri
   return renderTemplate(bp.system_prompt_template, variaveis);
 }
 
+/**
+ * O MESMO portão, aplicado ao resultado de `computeAgentConfigUpdate` /
+ * `resetAgentConfigUpdate`.
+ *
+ * P-36 — este arquivo tinha o portão e o usava; três outros caminhos escreviam
+ * `agents.agent_system_prompt` sem passar por ele (`tenant-agent-store`,
+ * `release-rollout-store`, `blueprint-studio-store`). Ter o portão em um
+ * caminho e não nos outros é o mesmo que não ter portão: 📊 a AutoFleet ficou
+ * com um agente CORE **ativo e de prompt zero** (auditoria de 02/08/2026,
+ * `docs/canon/reports/SPEC-063-BLOCO-0-AUDITORIA.md`, Parte C.6) saindo do
+ * mesmo blueprint que rendeu 650 caracteres na Resulta.
+ *
+ * Existe para que ninguém precise reconstruir o par (prompt final,
+ * personalização) na mão — foi reconstruí-lo errado, ou não reconstruí-lo,
+ * que abriu os três furos.
+ */
+export function problemasDoUpdate(
+  bp: CanonicalBlueprint,
+  upd: { columns: Record<string, unknown>; effective: { variables_used: Record<string, string> } },
+): string[] {
+  return problemasDoPrompt(
+    String(upd.columns.agent_system_prompt ?? ''),
+    personalizacaoDe(bp, upd.effective.variables_used),
+  );
+}
+
+/**
+ * O portão para prompt de AUTORIA (Blueprint Studio).
+ *
+ * Aqui `{{placeholder}}` NÃO é defeito — é o ponto: o Source Agent guarda o
+ * template, e quem resolve as variáveis é a materialização por corretora. E
+ * nada soma a casca de guardrails por cima, então a medida dupla de
+ * `problemasDoPrompt` (que existe justamente porque a casca vazia já tem ~560
+ * caracteres) não se aplica. O que sobra, e é o que mata, é o VAZIO.
+ *
+ * E aqui o vazio custa mais caro que numa corretora: um Source Agent mudo vira
+ * release, e a release desce para TODAS as corretoras que a receberem.
+ */
+export function problemasDoPromptDeAutoria(prompt: string, minimoChars: number): string[] {
+  const texto = String(prompt ?? '').trim();
+  if (!texto) return ['prompt_de_autoria_vazio'];
+  if (texto.length < minimoChars) return [`prompt_de_autoria_curto:${texto.length}`];
+  return [];
+}
+
+/**
+ * Relê do BANCO o que ficou gravado e DESLIGA o agente se ele ficou mudo.
+ *
+ * Era a verificação que não existia em 02/08/2026: o agente era escrito e o
+ * resultado nunca era conferido. Trigger, default de coluna, RPC que ignora um
+ * campo ou coluna truncada aparecem aqui — não na primeira conversa do
+ * segurado. "Gravei" tem de ser afirmação sobre um fato lido de volta, não
+ * sobre uma requisição enviada.
+ *
+ * Silêncio é melhor que um agente ativo sem uma linha de instrução e sem
+ * nenhuma trava — por isso a consequência é desligar, não só reportar.
+ */
+export async function conferirPromptGravado(
+  supabase: SupabaseClient, companyId: string, agentId: string, origem: string,
+): Promise<{ ok: boolean; chars: number; reason?: string }> {
+  const { data } = await supabase.from('agents')
+    .select('agent_system_prompt').eq('id', agentId).eq('company_id', companyId).maybeSingle();
+  const gravado = String((data as { agent_system_prompt?: string | null } | null)?.agent_system_prompt ?? '');
+  if (gravado.trim()) return { ok: true, chars: gravado.length };
+
+  await supabase.from('agents')
+    .update({ is_active: false, agent_enabled: false, updated_at: new Date().toISOString() })
+    .eq('id', agentId).eq('company_id', companyId);
+  return { ok: false, chars: 0, reason: `prompt_vazio_apos_escrita:${origem}:agente_desligado` };
+}
+
 // ---------------------------------------------------------------------------
 // 2. Materialização do agente a partir do blueprint
 // ---------------------------------------------------------------------------
@@ -277,7 +348,7 @@ async function curarAgenteExistente(
   const salvo = extractSavedTenantInput(existente.context_package);
   const upd = computeAgentConfigUpdate(bp, companyName, existente.context_package, salvo);
   const novo = String(upd.columns.agent_system_prompt ?? '');
-  const problemas = problemasDoPrompt(novo, personalizacaoDe(bp, upd.effective.variables_used));
+  const problemas = problemasDoUpdate(bp, upd);
   if (problemas.length) return { id: existente.id, action: 'error', reason: `blueprint_invalido:${problemas.join(',')}` };
 
   const cp = marcarHerancaAplicada(upd.context_package, {
@@ -628,7 +699,7 @@ async function reaplicarNoAgente(
   const novo = String(upd.columns.agent_system_prompt ?? '');
 
   // Fail-closed também aqui: um blueprint quebrado não apaga o que existe.
-  const problemas = problemasDoPrompt(novo, personalizacaoDe(bp, upd.effective.variables_used));
+  const problemas = problemasDoUpdate(bp, upd);
   if (problemas.length) {
     return { role, agent_id: agent.id, acao: 'erro', chars_antes: atual.length, detalhe: `blueprint_invalido:${problemas.join(',')}` };
   }

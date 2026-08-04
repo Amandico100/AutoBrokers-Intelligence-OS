@@ -835,3 +835,53 @@ SPEC-063 e estão provadas por teste.
 | P-07 handoff sem filtro de tenant | Bloco B | idem |
 | P-08 CPF vaza por dois caminhos | Bloco A | `test_quem_responde_o_segurado.py` |
 | P-14 briefing sem governador | Bloco C | `test_governador_de_envio.py` |
+
+---
+
+## ✅ O LOTE 🤖 FECHADO EM 03/08/2026 — oito de uma vez
+
+📊 Suíte **134 → 141 verdes** · `tsc` 0 · tabela de rotas monta (286) ·
+`agent-health` 24/24. Verificado por mim, não aceito de relatório.
+
+| # | O que era | Como fechou |
+|---|---|---|
+| **P-36** | 3 caminhos escreviam o prompt do agente **sem o portão** — foi por um deles que a AutoFleet ficou ativa e muda | o portão virou função única em `provision-tenant.ts`, e os três passam por ela |
+| **P-56** | `selectedButtonId` × `selectedButtonID` no inbound — **o mesmo defeito dos 937 cliques**, noutro arquivo, vivo há 3 semanas depois de consertarmos o gêmeo | busca tolerante, e agora ela mora **num lugar só** |
+| **P-34** | a varredura de acionamento órfão rodava 1× por processo | job periódico de 5 min |
+| **P-37** | `agent-health` não via agente **mudo** | vê, e aparece na ficha |
+| **P-38** | `unknown` sumia do radar | classe própria, com sinal deliberadamente mais fraco |
+| **P-43** | golden test esperava `ready_for_approval` | 📊 **o caso é que estava errado**: esse estado só existe em `corridor_runs`, a tabela abandonada. Corrigido com o texto original preservado |
+| **P-46** | `encaminha` declarado e sem consumidor | desfecho `encaminhado` de verdade, ensinado a 7 consumidores |
+| **P-47** | `infer_ramo_servico` devolvia "residencial" genérico → `subservico_invalido` | 4 subserviços com nome próprio |
+
+### Três achados que não estavam na lista
+
+```
+1  scripts/agent-health.test.mjs NUNCA RODOU — importava .ts e o node morria
+   no import, antes da primeira asserção. Teste que não roda é pior que teste
+   ausente: ele conta como cobertura. Consertado e virou `npm run test:agent-health`
+
+2  o stub de test_audio_nao_pode_sumir.py era justificado por um fato VENCIDO
+   (dizia que o módulo puxava a stack de IA; 📊 ele importa `json` e `typing`).
+   Passou a carregar o módulo real — CLAUDE.md §9.3
+
+3  test_o_clique_nao_se_perde.py C4/C5 agora guardam que a busca tolerante mora
+   em UM LUGAR SÓ. Duas listas de grafias em dois arquivos foi exatamente como
+   o P-56 sobreviveu três semanas ao conserto do observador
+```
+
+### E duas decisões de julgamento, registradas porque são decisões
+
+**P-46 foi maior que as "~30 linhas" estimadas.** Encaminhar é um **desfecho**, e
+desfecho sem estado é desfecho que ninguém enxerga. Por isso o estado novo.
+
+E o corredor **não fecha na âncora**: 📊 o link do formulário da Porto vem na
+mensagem *seguinte*. Fechar antes entregaria ao segurado uma frase sobre um
+formulário — sem o formulário. Janela de 3 mensagens; sem link, vai para uma
+pessoa. **Ninguém digita endereço de vidro de memória.** A Zurich fecha na hora,
+porque 📊 a mensagem dela não traz link nenhum: esperar um transformaria o
+desfecho certo em handoff.
+
+**P-38 — a fraqueza do sinal não depende de ninguém lembrar.** `unknown` nasce
+num tier que a própria SPEC-059 recusa como origem de alerta crítico. O teste
+prova isso forçando `severity="critical"` e vendo o schema reprovar.

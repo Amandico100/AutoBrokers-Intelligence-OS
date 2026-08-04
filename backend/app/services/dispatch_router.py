@@ -506,7 +506,11 @@ async def _encerrar_work_run(company_id: str, session: Dict[str, Any], *,
     if db is None:
         return
     fase = str(session.get("state") or "")
-    final = status or ("completed" if fase in ("captured", "monitoring", "test_aborted")
+    # `encaminhado` é DESFECHO DE SUCESSO (P-46): a seguradora não abre chamado
+    # por este canal, e o segurado recebeu o formulário/orientação. Fora desta
+    # lista, um encaminhamento entregue seria gravado como `cancelled`.
+    final = status or ("completed" if fase in ("captured", "monitoring",
+                                               "test_aborted", "encaminhado")
                        else "cancelled")
     try:
         agora = _agora().isoformat()
@@ -785,9 +789,10 @@ async def start_live_dispatch(
     if existing:
         # Sessão MORTA não pode bloquear um novo acionamento (teste 2026-07-10:
         # lock preso após a seguradora derrubar a conversa). Supersede quando:
-        # needs_human/captured/test_aborted/monitoring, seguradora encerrou, ou
-        # sessão velha (>45min).
-        stale = str(existing.get("state") or "") in ("needs_human", "captured", "test_aborted", "monitoring")
+        # needs_human/captured/test_aborted/monitoring/encaminhado, seguradora
+        # encerrou, ou sessão velha (>45min).
+        stale = str(existing.get("state") or "") in ("needs_human", "captured", "test_aborted",
+                                                     "monitoring", "encaminhado")
         stale = stale or str(existing.get("reason") or "") == "insurer_closed"
 
         # MAS `monitoring` COM FOLLOW-UP AGENDADO NAO E SESSAO MORTA.
@@ -1227,6 +1232,59 @@ async def try_route_insurer_inbound(
                 logger.error(f"[DISPATCH ROUTER] test abort notify failed: {type(e).__name__}")
         await save_active_dispatch(company_id, from_phone, session)
         logger.info(f"[DISPATCH ROUTER] test_aborted case={session.get('case_id')} reason={session.get('reason')}")
+        await _start_next_in_queue(company_id, from_phone, send_to_insurer, send_to_client)
+        return True
+
+    if state == "encaminhado":
+        # P-46 — O SEGUNDO DESFECHO DE SUCESSO. A seguradora não abre chamado
+        # por este canal; ela entregou o caminho, e o trabalho do corredor é
+        # ENTREGAR esse caminho ao segurado e encerrar.
+        #
+        # Antes disto, o passo de encaminhamento era `noop` (certo: não se
+        # responde à URA aqui) e o caso ficava aberto até o watchdog — o
+        # segurado nunca recebia o formulário e o desfecho virava abandono.
+        referral = dict(session.get("referral") or {})
+        client_phone = str(session.get("client_phone") or "").strip()
+        # O LINK É O DA CONVERSA, nunca um endereço de memória: quem o escreve é
+        # a seguradora, e `extract_capture_anchors` só o guarda se ele chegou.
+        # As palavras da seguradora vão junto, entre aspas e sem paráfrase — é
+        # o que os dois `client_message` mandam repassar.
+        dito = str(referral.get("insurer_text") or "").strip()
+        partes = [str(referral.get("client_message") or "").strip(),
+                  f"A seguradora informou:\n“{dito}”" if dito else "",
+                  str(referral.get("link") or "").strip()]
+        aviso = "\n\n".join(p for p in partes if p)
+        if aviso and client_phone and not session.get("client_notified_referral"):
+            try:
+                send_to_client(client_phone, aviso)
+                session["client_notified_referral"] = True
+                await _registrar_fala_ao_cliente(
+                    company_id, client_phone, "acionamento_encaminhamento", aviso)
+                session.setdefault("transcript", []).append(
+                    {"direction": "out", "text": f"[AO CLIENTE] {aviso}",
+                     "at": _now_iso(), "step": "encaminhamento"})
+            except Exception as e:  # noqa: BLE001
+                # Mesma regra do protocolo: falha de aviso NÃO passa em silêncio.
+                # Sem esta entrega o encaminhamento não aconteceu — o segurado
+                # ficou sem o formulário e o caso se declararia resolvido.
+                logger.error(f"[DISPATCH ROUTER] referral notify failed: {type(e).__name__}")
+                session["client_notify_failed"] = type(e).__name__
+                try:
+                    await _support_alert_seguro(company_id, session, aviso)
+                except Exception:  # noqa: BLE001
+                    pass
+        await _log_deflection(company_id, session)
+        # SALVAR ANTES DE LIBERAR. `clear_active_dispatch` relê a sessão do
+        # Redis para saber QUAL Work Run fechar e em que fase — sem este save
+        # ela leria o estado anterior e encerraria o run como `cancelled`,
+        # registrando um encaminhamento bem-sucedido como abandono.
+        session["resolved_at"] = _now_iso()
+        await save_active_dispatch(company_id, from_phone, session)
+        # Sessão ENCERRADA: liberar a chave é o que impede o run de ficar
+        # eternamente "em voo" e o que deixa o próximo acionamento entrar.
+        await clear_active_dispatch(company_id, from_phone)
+        logger.info(f"[DISPATCH ROUTER] encaminhado case={session.get('case_id')} "
+                    f"kind={referral.get('kind')} link={'sim' if referral.get('link') else 'nao'}")
         await _start_next_in_queue(company_id, from_phone, send_to_insurer, send_to_client)
         return True
 

@@ -19,8 +19,37 @@ logger = logging.getLogger(__name__)
 # `close` e `closed` entram porque é assim que o Evolution reporta canal caído —
 # descobrir isso custou um canário: sem eles, o WhatsApp da corretora podia
 # estar fora do ar e o detector não veria nada.
+#
+# O que está aqui é QUEDA MEDIDA: alguém — o provedor, o webhook, a sonda —
+# afirmou que o canal não está de pé.
 ESTADOS_RUINS = ("expired", "degraded", "error", "disconnected", "revoked",
                  "failed", "close", "closed")
+
+# P-38 — O ESTADO QUE NINGUÉM CONFIRMOU.
+#
+# O heartbeat da SPEC-063 Bloco V demove para `unknown` o canal que afirmava
+# `connected`/`connecting` e que ninguém confirma há mais de 15 minutos. A
+# escolha da palavra é deliberada e está certa: **não medimos queda nenhuma**,
+# só perdemos o direito de dizer "Conectado" (`channel_state.decidir_heartbeat`,
+# regra 3). Afirmar `disconnected` sem ter medido seria o mesmo pecado do outro
+# lado — e é por isso que `unknown` NÃO entra em ESTADOS_RUINS.
+#
+# Só que ficar de fora das duas listas significava SILÊNCIO. 📊 03/08/2026, banco
+# de produção: três canais ativos com `last_seen_at` congelado há 4 e 5 dias. O
+# heartbeat os demoveria para `unknown` — a tela pararia de mentir — e o
+# briefing não diria uma palavra. O canal saía do radar exatamente quando
+# passava a merecer atenção: some da tela como "Conectado" e não aparece em
+# lugar nenhum como problema.
+#
+# Então ele ganha classe própria e sinal mais fraco: severidade menor, confiança
+# menor, e o texto diz o que é verdade — "não conseguimos confirmar", nunca
+# "está indisponível". O tier `TIER_ANALISE` faz a própria SPEC-059 recusar
+# severidade `critical` para este caso (`TIERS_QUE_SUSTENTAM_ALERTA_CRITICO`):
+# a fraqueza do sinal deixa de depender de alguém lembrar dela.
+ESTADOS_SEM_CONFIRMACAO = ("unknown",)
+
+CLASSE_QUEDA = "queda_medida"
+CLASSE_SEM_CONFIRMACAO = "sem_confirmacao"
 
 # `connecting` NÃO entra: é estado de transição. Alertar nele produziria um
 # aviso a cada reconexão normal.
@@ -32,6 +61,18 @@ ESTADOS_TRANSITORIOS = ("connecting", "qr", "pairing", "starting")
 # ---------------------------------------------------------------------------
 
 
+def _quem_depende(dependentes: dict) -> str:
+    """"um Auxiliar e duas Rotinas" — ou vazio, quando ninguém depende."""
+    rotinas = int(dependentes.get("rotinas") or 0)
+    auxiliares = int(dependentes.get("auxiliares") or 0)
+    pedacos = []
+    if auxiliares:
+        pedacos.append(plural(auxiliares, "Auxiliar", "Auxiliares"))
+    if rotinas:
+        pedacos.append(plural(rotinas, "Rotina", "Rotinas"))
+    return " e ".join(pedacos)
+
+
 def descrever_impacto(nome_conexao: str, dependentes: dict) -> str:
     """Frase de §23.4. Sem dependentes, nao inventa consequencia.
 
@@ -39,17 +80,28 @@ def descrever_impacto(nome_conexao: str, dependentes: dict) -> str:
     falso — e alarme falso e o caminho mais curto para o corretor desligar
     os avisos.
     """
-    rotinas = int(dependentes.get("rotinas") or 0)
-    auxiliares = int(dependentes.get("auxiliares") or 0)
-    if not rotinas and not auxiliares:
+    quem = _quem_depende(dependentes)
+    if not quem:
         return f"A conexão {nome_conexao} está indisponível."
-    pedacos = []
-    if auxiliares:
-        pedacos.append(plural(auxiliares, "Auxiliar", "Auxiliares"))
-    if rotinas:
-        pedacos.append(plural(rotinas, "Rotina", "Rotinas"))
     return (f"A conexão {nome_conexao} está indisponível. "
-            f"{' e '.join(pedacos)} dependem dela e ficam parados até a reconexão.")
+            f"{quem} dependem dela e ficam parados até a reconexão.")
+
+
+def descrever_sem_confirmacao(nome_conexao: str, dependentes: dict) -> str:
+    """P-38 — a frase do canal que ninguém conseguiu medir.
+
+    A diferença com `descrever_impacto` não é de tom, é de **verdade**: ali o
+    canal está comprovadamente fora; aqui só sabemos que não conseguimos
+    confirmá-lo. Escrever "está indisponível" nos dois casos treinaria o
+    corretor a desconfiar dos dois — e o dia em que a queda for real ele já
+    terá aprendido a não olhar.
+    """
+    quem = _quem_depende(dependentes)
+    base = (f"Não conseguimos confirmar a conexão {nome_conexao} — ela pode estar "
+            f"fora do ar sem ter avisado.")
+    if not quem:
+        return base
+    return f"{base} {quem} dependem dela."
 
 
 def canais_com_problema(integracoes: list[dict]) -> list[dict]:
@@ -66,6 +118,11 @@ def canais_com_problema(integracoes: list[dict]) -> list[dict]:
     ignorar a tela inteira.
 
     O que importa é a combinação: canal LIGADO em estado ruim.
+
+    P-38 — devolve DUAS classes, e quem chama precisa saber a diferença:
+    `queda_medida` (alguém afirmou que caiu) e `sem_confirmacao` (o heartbeat
+    demoveu para `unknown` porque ninguém confirmou nada). Misturar as duas
+    faria o briefing anunciar como queda algo que não foi medido.
     """
     saida = []
     for i in integracoes or []:
@@ -74,12 +131,16 @@ def canais_com_problema(integracoes: list[dict]) -> list[dict]:
         estado = str(i.get("channel_status") or "").lower()
         if estado in ESTADOS_TRANSITORIOS:
             continue
-        if estado not in ESTADOS_RUINS:
+        if estado in ESTADOS_RUINS:
+            classe = CLASSE_QUEDA
+        elif estado in ESTADOS_SEM_CONFIRMACAO:
+            classe = CLASSE_SEM_CONFIRMACAO
+        else:
             continue
         saida.append({
             "id": str(i["id"]),
             "nome": f"{i.get('provider') or 'canal'} ({i.get('purpose') or 'geral'})",
-            "estado": estado, "origem": "integrations"})
+            "estado": estado, "origem": "integrations", "classe": classe})
     return saida
 
 
@@ -96,7 +157,8 @@ def conexao_degradada(ctx: ContextoDeDeteccao) -> list[SignalDraft]:
             if estado in ESTADOS_RUINS:
                 problemas.append({"id": str(c["id"]),
                                   "nome": c.get("name") or "conexão",
-                                  "estado": estado, "origem": "tenant_connections"})
+                                  "estado": estado, "origem": "tenant_connections",
+                                  "classe": CLASSE_QUEDA})
     except Exception as exc:  # noqa: BLE001
         logger.warning("[Detector] tenant_connections: %s", type(exc).__name__)
 
@@ -115,32 +177,53 @@ def conexao_degradada(ctx: ContextoDeDeteccao) -> list[SignalDraft]:
         return []
 
     dependentes = _contar_dependentes(ctx)
+    tem_dependente = bool(dependentes.get("rotinas") or dependentes.get("auxiliares"))
     saida: list[SignalDraft] = []
     for p in problemas:
+        # P-38 — o sinal do canal NÃO CONFIRMADO é o mesmo tipo, com a mesma
+        # chave de deduplicação e força menor. Tipo novo o esconderia de quem já
+        # olha `connection_health`; mesma força faria a suspeita competir de
+        # igual para igual com a queda medida na fila do briefing.
+        sem_confirmacao = p.get("classe") == CLASSE_SEM_CONFIRMACAO
         saida.append(SignalDraft(
             company_id=ctx.company_id,
             signal_type="connection_health",
             subject_type="connection", subject_id=p["id"],
-            summary_redacted=descrever_impacto(p["nome"], dependentes),
+            summary_redacted=(descrever_sem_confirmacao(p["nome"], dependentes)
+                              if sem_confirmacao
+                              else descrever_impacto(p["nome"], dependentes)),
             dedupe_key=chave_de_sinal(
                 company_id=ctx.company_id, signal_type="connection_health",
                 subject_type="connection", subject_id=p["id"],
                 rule_key=ctx.rule_key, rule_version=ctx.rule_version,
                 parametros={"estado": p["estado"]}),
-            trust_tier=TIER_DADO_VIVO,
+            # `TIER_ANALISE` não é decoração: `TIERS_QUE_SUSTENTAM_ALERTA_CRITICO`
+            # o exclui, então a SPEC-059 RECUSA um `critical` vindo daqui. A
+            # fraqueza do sinal deixa de depender de alguém lembrar dela.
+            trust_tier=TIER_ANALISE if sem_confirmacao else TIER_DADO_VIVO,
             rule_key=ctx.rule_key, rule_version=ctx.rule_version,
-            severity="critical" if (dependentes.get("rotinas") or dependentes.get("auxiliares"))
-                     else "high",
-            confidence=1.0,
-            impact_score=min(100.0, 60.0 + 10.0 * (dependentes.get("rotinas", 0)
-                                                   + dependentes.get("auxiliares", 0))),
-            urgency_score=85.0, actionability_score=90.0, freshness_score=100.0,
+            severity=("medium" if tem_dependente else "low") if sem_confirmacao
+                     else ("critical" if tem_dependente else "high"),
+            # Confiança < 1 porque é isto que sabemos: que NÃO sabemos.
+            confidence=0.6 if sem_confirmacao else 1.0,
+            impact_score=min(100.0, (30.0 if sem_confirmacao else 60.0)
+                             + 10.0 * (dependentes.get("rotinas", 0)
+                                       + dependentes.get("auxiliares", 0))),
+            urgency_score=40.0 if sem_confirmacao else 85.0,
+            actionability_score=60.0 if sem_confirmacao else 90.0,
+            freshness_score=100.0,
             metadata={"conexao": p["nome"], "estado": p["estado"],
-                      "origem": p["origem"], "dependentes": dependentes},
+                      "origem": p["origem"], "dependentes": dependentes,
+                      "classe": p.get("classe", CLASSE_QUEDA),
+                      "confirmado": not sem_confirmacao},
             evidencias=[evidencia(
-                tipo="estado", sistema=p["origem"], ref=f"{p['origem']}:{p['id']}",
-                resumo=f"estado='{p['estado']}' na conexão {p['nome']}",
-                tier=TIER_DADO_VIVO,
+                tipo="ausencia_de_confirmacao" if sem_confirmacao else "estado",
+                sistema=p["origem"], ref=f"{p['origem']}:{p['id']}",
+                resumo=(f"o heartbeat demoveu {p['nome']} para '{p['estado']}': "
+                        f"ninguém confirmou o canal dentro da janela"
+                        if sem_confirmacao
+                        else f"estado='{p['estado']}' na conexão {p['nome']}"),
+                tier=TIER_ANALISE if sem_confirmacao else TIER_DADO_VIVO,
                 valores={"estado": p["estado"], **dependentes})],
         ))
     return saida

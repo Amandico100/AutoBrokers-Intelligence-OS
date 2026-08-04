@@ -26,6 +26,7 @@ _STATE_PT = {
     "captured": "protocolo garantido",
     "monitoring": "monitorando a chegada do prestador",
     "needs_human": "com a equipe humana (dossiê entregue)",
+    "encaminhado": "resolvido por encaminhamento (formulário/orientação entregue)",
     "test_aborted": "simulação concluída (modo teste)",
     "insurer_closed": "encerrado pela seguradora",
     "queued": "na fila (aguardando vez)",

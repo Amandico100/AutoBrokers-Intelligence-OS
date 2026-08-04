@@ -207,7 +207,10 @@ def _phone_variants(phone: str) -> set:
 # A fila de cortesia existe para o cliente não ser interrompido no meio de um
 # atendimento — não para ele deixar de receber notícia do atendimento que ele
 # mesmo pediu.
-_ESTADOS_QUE_NAO_OCUPAM = ("test_aborted", "insurer_closed", "monitoring")
+# `encaminhado` (P-46) entra pelo mesmo motivo de `test_aborted`: o acionamento
+# ACABOU. Sem ele, a mensagem que entrega o formulário de vidro ao segurado
+# ficaria na fila de cortesia esperando o fim de um atendimento que já terminou.
+_ESTADOS_QUE_NAO_OCUPAM = ("test_aborted", "insurer_closed", "monitoring", "encaminhado")
 
 
 async def client_busy(company_id: str, phone: str) -> Optional[str]:

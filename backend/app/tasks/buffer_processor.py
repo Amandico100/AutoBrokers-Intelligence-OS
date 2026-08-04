@@ -297,6 +297,40 @@ def start_buffer_scheduler():
             max_instances=1,
         )
 
+        # SPEC-063 Bloco E / P-34 — VARREDURA DE ACIONAMENTO ÓRFÃO, periódica.
+        #
+        # A varredura existia e era boa; o GATILHO é que era frágil.
+        # `_agendar_reconciliacao_uma_vez()` dispara no primeiro cache-miss do
+        # processo, uma vez só. Isso tem duas falhas, e a segunda é a que dói:
+        #
+        #   1. uma vez por processo — depois disso, um Redis esvaziado às 3h da
+        #      manhã só é notado no próximo deploy;
+        #   2. e ela depende de TRÁFEGO. Se o cache cair e nenhuma mensagem
+        #      chegar, `load_active_dispatch` nunca é chamado, o cache-miss
+        #      nunca acontece, e o segurado com o guincho a caminho fica órfão
+        #      **em silêncio** — exatamente o caso que a varredura existe para
+        #      cobrir. O único sintoma é uma conversa que não anda.
+        #
+        # 5 minutos é folgado contra a janela real: a sessão vive 6h no Redis
+        # (24h em `monitoring`). O que muda é o piso — o atraso máximo para
+        # perceber um órfão deixa de ser "até alguém mandar uma mensagem" e
+        # passa a ser um número.
+        #
+        # A varredura é idempotente por construção (órfão já sinalizado não
+        # vira alarme de novo) e limitada a 50 runs em voo por passada.
+        from app.services.dispatch_router import reconciliar_acionamentos_orfaos
+
+        scheduler.add_job(
+            reconciliar_acionamentos_orfaos,
+            "interval",
+            minutes=_env_int("DISPATCH_RECONCILE_INTERVAL_MINUTES", 5),
+            id="dispatch_reconcile_check",
+            max_instances=1,
+            # Depois de um deploy, o cache está vazio e a verdade durável não.
+            # Este é o momento de maior chance de órfão no dia inteiro.
+            next_run_time=_dt.now(_tz.utc) + _td(seconds=60),
+        )
+
         # SPEC-063 Bloco V — HEARTBEAT DO CANAL: o vigia que desmente.
         #
         # 📊 03/08/2026, banco de produção: três integrações ATIVAS afirmando

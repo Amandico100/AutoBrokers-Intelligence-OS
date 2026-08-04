@@ -10,6 +10,9 @@ import {
   buildAuxiliaryArtifact, auxiliaryBlueprintKey,
 } from '@/lib/admin/blueprint-release';
 import { getTableColumns, pickColumns } from '@/lib/admin/factory';
+import {
+  problemasDoPromptDeAutoria, conferirPromptGravado, PERSONALIZACAO_MINIMA_CHARS,
+} from '@/lib/admin/provision-tenant';
 
 const STUDIO_KIND = 'platform_blueprint_studio';
 const SOURCE_SLUG: Record<string, string> = {
@@ -46,8 +49,22 @@ function sourceAgentPayload(studioId: string, bp: CanonicalBlueprint) {
 async function ensureSourceAgent(supabase: SupabaseClient, studioId: string, bp: CanonicalBlueprint) {
   const { data: existing } = await supabase.from('agents').select('id').eq('company_id', studioId).eq('agent_role', bp.role).limit(1).maybeSingle();
   if (existing?.id) return { id: existing.id, action: 'exists' as const };
-  const { data: created, error } = await supabase.from('agents').insert(sourceAgentPayload(studioId, bp)).select('id').single();
+
+  // P-36 — O PORTÃO, na versão de AUTORIA (placeholders são o ponto aqui, não
+  // defeito). Um Source Agent mudo não emudece uma corretora: vira release, e
+  // a release desce para TODAS as que a receberem. É o furo mais barato de
+  // fechar e o mais caro de deixar aberto.
+  const problemas = problemasDoPromptDeAutoria(bp.system_prompt_template, PERSONALIZACAO_MINIMA_CHARS);
+  if (problemas.length) return { id: null, action: 'error' as const, reason: `prompt_invalido:${problemas.join(',')}` };
+
+  const { data: created, error } = await supabase.from('agents').insert(sourceAgentPayload(studioId, bp)).select('id, agent_system_prompt').single();
   if (error || !created?.id) return { id: null, action: 'error' as const, reason: error?.code ?? 'insert_failed' };
+
+  const gravado = String((created as { agent_system_prompt?: string | null }).agent_system_prompt ?? '');
+  if (!gravado.trim()) {
+    await conferirPromptGravado(supabase, studioId, created.id, 'ensure_source_agent');
+    return { id: created.id, action: 'error' as const, reason: 'prompt_vazio_apos_insert:source_agent_desligado' };
+  }
   return { id: created.id, action: 'created' as const };
 }
 
@@ -133,6 +150,15 @@ export async function createSourceAuxiliary(supabase: SupabaseClient, input: { n
   const { data: dup } = await supabase.from('agents').select('id').eq('company_id', studioId).eq('slug', slug).maybeSingle();
   if (dup?.id) return { ok: false as const, error: 'slug_em_uso' };
 
+  // P-36 — o prompt sai de uma variável NOMEADA e passa pelo portão antes de
+  // virar linha. A barra aqui é só "não vazio", e mais baixa que a do Source
+  // Agent de propósito: o auxiliar sem descrição nasce com um esboço de uma
+  // frase, que é o comportamento do produto. O que não pode existir é a linha
+  // com prompt em branco — dela nasce um auxiliar que a Galeria publica mudo.
+  const promptDeAutoria = input.description?.trim() || `Voce e o auxiliar ${name}.`;
+  const problemas = problemasDoPromptDeAutoria(promptDeAutoria, 1);
+  if (problemas.length) return { ok: false as const, error: 'prompt_invalido', details: problemas };
+
   const { data: created, error } = await supabase.from('agents').insert({
     company_id: studioId,
     name,
@@ -144,10 +170,15 @@ export async function createSourceAuxiliary(supabase: SupabaseClient, input: { n
     allow_direct_chat: false,
     studio_source_kind: 'global_auxiliary',
     blueprint_version: `aux-${slug}`,
-    agent_system_prompt: input.description?.trim() || `Voce e o auxiliar ${name}.`,
+    agent_system_prompt: promptDeAutoria,
     security_settings: { enabled: false },
-  }).select('id, name, slug, studio_source_kind').single();
+  }).select('id, name, slug, studio_source_kind, agent_system_prompt').single();
   if (error || !created?.id) return { ok: false as const, error: 'insert_failed', details: [error?.message ?? ''] };
+
+  if (!String((created as { agent_system_prompt?: string | null }).agent_system_prompt ?? '').trim()) {
+    await conferirPromptGravado(supabase, studioId, created.id, 'create_source_auxiliary');
+    return { ok: false as const, error: 'prompt_vazio_apos_insert:source_auxiliary_desligado' };
+  }
   return { ok: true as const, source_agent: created };
 }
 

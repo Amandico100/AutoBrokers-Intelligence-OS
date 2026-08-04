@@ -1,7 +1,10 @@
 // SPEC-013 FB-2 — diagnóstico de runtime + divergências (master, read-only). Sem segredo.
 import { NextRequest, NextResponse } from 'next/server';
 import { requireAdminForCompany, supabaseService } from '@/lib/admin/admin-auth';
-import { buildAgentDivergences, isHealthy, effectiveCoreModel, type AgentLite } from '@/lib/admin/agent-health';
+import {
+  buildAgentDivergences, isHealthy, effectiveCoreModel, estadoDaVoz, personalizacaoDoPrompt,
+  type AgentLite,
+} from '@/lib/admin/agent-health';
 
 export const dynamic = 'force-dynamic';
 
@@ -12,10 +15,17 @@ export async function GET(_req: NextRequest, { params }: { params: Promise<{ com
   if (!auth.ok) return NextResponse.json({ ok: false, error: auth.error }, { status: auth.status });
   const supabase = supabaseService();
 
+  // P-37 — `agent_system_prompt` entra no select. Sem esta coluna o diagnóstico
+  // é cego ao agente MUDO, que é o estado que a AutoFleet teve: presente, único,
+  // ATIVO e com zero caractere de instrução. O texto NÃO é devolvido na resposta
+  // — só o veredito e o tamanho.
   const { data: agentsRaw } = await supabase.from('agents')
-    .select('id, name, agent_role, is_active, llm_provider, llm_model').eq('company_id', companyId);
+    .select('id, name, agent_role, is_active, llm_provider, llm_model, agent_system_prompt').eq('company_id', companyId);
   const agents = (agentsRaw ?? []) as any[];
-  const lite: AgentLite[] = agents.map((a) => ({ id: a.id, name: a.name, agent_role: a.agent_role, is_active: a.is_active }));
+  const lite: AgentLite[] = agents.map((a) => ({
+    id: a.id, name: a.name, agent_role: a.agent_role, is_active: a.is_active,
+    agent_system_prompt: a.agent_system_prompt ?? null,
+  }));
   const divergences = buildAgentDivergences(lite);
 
   const core = agents.find((a) => a.agent_role === 'core');
@@ -30,6 +40,11 @@ export async function GET(_req: NextRequest, { params }: { params: Promise<{ com
     present: true, is_active: Boolean(a.is_active), provider: a.llm_provider ?? 'openai',
     model_stored: a.llm_model ?? null,
     model_effective: a.agent_role === 'core' ? effectiveCoreModel(a.llm_model) : (a.llm_model ?? null),
+    // Só o veredito e as medidas — nunca o texto do prompt (CLAUDE.md §13.3).
+    voice: estadoDaVoz(a.agent_system_prompt),
+    mute: estadoDaVoz(a.agent_system_prompt) !== 'ok',
+    prompt_chars: String(a.agent_system_prompt ?? '').length,
+    personalization_chars: personalizacaoDoPrompt(a.agent_system_prompt).length,
   } : { present: false };
 
   return NextResponse.json({

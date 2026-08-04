@@ -338,8 +338,11 @@ export default function AdminCompanyAgentsPage() {
           </summary>
           <Card className="mt-3 bg-card border-border"><CardContent className="p-4 space-y-3">
             <div className="grid grid-cols-1 gap-2 sm:grid-cols-3 text-[12px]">
-              <div className="rounded-md border border-border bg-background px-3 py-2">AutoBrokers · modelo <span className="text-foreground">{health.core?.model_effective ?? '—'}</span></div>
-              <div className="rounded-md border border-border bg-background px-3 py-2">Even · {health.even?.present ? (health.even?.is_active ? 'ativa' : 'inativa') : 'ausente'}</div>
+              {/* P-37: "ativo" era a única coisa que estas fichas diziam — e a
+                  AutoFleet estava ativa e MUDA. Voz vem primeiro: um agente sem
+                  instrução não é um agente ligado, é um agente que não trabalha. */}
+              <div className="rounded-md border border-border bg-background px-3 py-2">AutoBrokers · {health.core?.mute ? <span className="text-amber-600">MUDO (sem instrução)</span> : <>modelo <span className="text-foreground">{health.core?.model_effective ?? '—'}</span></>}</div>
+              <div className="rounded-md border border-border bg-background px-3 py-2">Even · {!health.even?.present ? 'ausente' : health.even?.mute ? <span className="text-amber-600">MUDA (sem instrução)</span> : (health.even?.is_active ? 'ativa' : 'inativa')}</div>
               <div className="rounded-md border border-border bg-background px-3 py-2">Saldo R$ {Number(health.balance_brl ?? 0).toFixed(2)} · Conhecimento {health.knowledge?.private_docs ?? 0} doc(s)</div>
             </div>
             {Array.isArray(health.divergences) && health.divergences.length > 0 ? (

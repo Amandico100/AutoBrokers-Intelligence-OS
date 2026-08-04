@@ -46,6 +46,121 @@ def _clean(text: Any) -> str:
     return str(text).strip() if isinstance(text, str) and text.strip() else ""
 
 
+# ------------------------------------------------------------------ #
+# O CLIQUE — extração tolerante à grafia
+# ------------------------------------------------------------------ #
+# Quem serializa o protobuf do WhatsApp escolhe o nome das chaves, e não avisa.
+#
+# 📊 Medido em 03/08/2026 (`observed_events`, projeto de produção
+# `dcajcvlzcjbmyapmklil`): dos 947 cliques de botão vindos do histórico, 937
+# chegaram na forma
+#
+#     ["Response", "contextInfo", "selectedButtonID", "type"]
+#
+# e o extrator procurava exatamente `title`, `singleSelectReply.selectedRowId`
+# e `selectedDisplayText` — nenhuma das três está aí. **98,9% dos cliques de
+# botão da corretora foram apagados na leitura.**
+#
+# P-56 — o mesmo defeito estava VIVO aqui, no caminho ao vivo: até 03/08/2026
+# `_text_from_message` procurava `selectedButtonId` (d minúsculo) e o campo real
+# é `selectedButtonID`. E aqui a consequência é pior que no observador: texto
+# vazio vira `skip:no_text`, e a mensagem inteira é DESCARTADA — o corredor não
+# vê o clique do segurado, e o atendente humano também não.
+#
+# Estas funções moram neste arquivo, e não no observador, porque este é o
+# parser canônico de mensagem do WhatsApp e não importa nada da aplicação. O
+# observador as importa daqui (`observer_intake._extract_content`) — uma
+# grafia nova precisa ser aprendida UMA vez, não duas (CLAUDE.md §5).
+#
+# 💭 INFERÊNCIA (não medida — o banco guarda as chaves, não os valores):
+# `Response` e `InteractiveResponseMessage` são os nomes dos campos `oneof` das
+# structs Go do whatsmeow, que vazam como objeto ANINHADO quando o payload não
+# passa pelo protojson; `selectedButtonID` e `selectedID` são o mesmo vazamento,
+# na grafia Go do "ID". Por isso a busca abaixo **não confere nome exato**:
+# normaliza (minúsculas, sem `_`), varre nível por nível — do mais raso ao mais
+# fundo — e para no primeiro achado.
+
+# `contextInfo` carrega a mensagem CITADA — a tela anterior inteira, com o
+# `title` e os `buttonId` dela. Descer ali roubaria o rótulo da tela e o
+# colaria no clique: a resposta passaria a se chamar como a pergunta.
+_CHAVE_DE_CONTEXTO = "contextinfo"
+
+# Rótulo = o que o humano LEU no botão. A ordem é a preferência.
+_CHAVES_DE_ROTULO = ("title", "selecteddisplaytext", "displaytext",
+                     "selectedtext", "buttontext", "text")
+# Identidade = o que o humano CLICOU. Opaco serve; vazio não serve.
+_CHAVES_DE_ID = ("selectedbuttonid", "selectedid", "selectedrowid",
+                 "buttonid", "rowid", "id", "name")
+
+# Os invólucros de resposta estruturada, na grafia normalizada. A chave EXTERNA
+# também é procurada normalizada: foi a grafia Go que produziu o defeito, e ela
+# pode chegar no invólucro tanto quanto no miolo.
+_INVOLUCROS_DE_RESPOSTA = (
+    ("listresponsemessage", "list_reply"),
+    ("buttonsresponsemessage", "button_reply"),
+    ("templatebuttonreplymessage", "button_reply"),
+    ("interactiveresponsemessage", "flow_reply"),
+)
+
+
+def _niveis_de(m: Dict[str, Any], fundo: int = 2) -> list:
+    """Os escalares do payload agrupados por profundidade, chaves normalizadas.
+
+    Nível 0 é o topo, nível 1 é o que está dentro de um objeto do topo, e assim
+    por diante. Manter os níveis separados é o que garante que o campo mais
+    específico ganhe do genérico sem depender da ordem do dicionário.
+    """
+    niveis: list = []
+    atual = [m]
+    for _ in range(fundo + 1):
+        if not atual:
+            break
+        nivel: Dict[str, Any] = {}
+        proximo: list = []
+        for d in atual:
+            for k, v in d.items():
+                nk = str(k).lower().replace("_", "")
+                if nk == _CHAVE_DE_CONTEXTO:
+                    continue
+                if isinstance(v, dict):
+                    proximo.append(v)
+                elif nk not in nivel:
+                    nivel[nk] = v
+        niveis.append(nivel)
+        atual = proximo
+    return niveis
+
+
+def _primeiro_valor(niveis: list, chaves: Tuple[str, ...]) -> str:
+    """O primeiro valor útil, do nível mais raso para o mais fundo."""
+    for nivel in niveis:
+        for chave in chaves:
+            v = nivel.get(chave)
+            if isinstance(v, bool):
+                continue
+            if isinstance(v, str) and v.strip():
+                return v.strip()
+            if isinstance(v, int):
+                return str(v)
+    return ""
+
+
+def _resposta_estruturada(message: Dict[str, Any]) -> Optional[Tuple[str, str, str]]:
+    """(kind, rótulo, id) do clique — ou None se não houver resposta estruturada."""
+    if not isinstance(message, dict):
+        return None
+    normalizadas = {str(k).lower().replace("_", ""): k for k in message}
+    for alvo, kind in _INVOLUCROS_DE_RESPOSTA:
+        if alvo not in normalizadas:
+            continue
+        m = message.get(normalizadas[alvo])
+        if not isinstance(m, dict):
+            continue
+        niveis = _niveis_de(m)
+        return kind, _primeiro_valor(niveis, _CHAVES_DE_ROTULO), _primeiro_valor(niveis, _CHAVES_DE_ID)
+    return None
+
+
 def _interactive_from_message(message: Dict[str, Any]) -> Optional[Tuple[str, Dict[str, Any]]]:
     """(texto_renderizado, metadados) para botões/listas/templates/flows.
 
@@ -183,24 +298,19 @@ def _text_from_message(message: Dict[str, Any]) -> Optional[str]:
                 return caption.strip()
     # RESPOSTAS interativas (clique em botão/lista — ex.: humano copilotando a
     # URA com fromMe, ou cliente respondendo lista): extrair o rótulo escolhido.
-    btn_resp = message.get("buttonsResponseMessage")
-    if isinstance(btn_resp, dict):
-        picked = _clean(btn_resp.get("selectedDisplayText")) or _clean(btn_resp.get("selectedButtonId"))
-        if picked:
-            return picked
-    tpl_resp = message.get("templateButtonReplyMessage")
-    if isinstance(tpl_resp, dict) and _clean(tpl_resp.get("selectedDisplayText")):
-        return _clean(tpl_resp.get("selectedDisplayText"))
-    lst_resp = message.get("listResponseMessage")
-    if isinstance(lst_resp, dict):
-        picked = _clean(lst_resp.get("title")) or _clean((lst_resp.get("singleSelectReply") or {}).get("selectedRowId"))
-        if picked:
-            return picked
-    inter_resp = message.get("interactiveResponseMessage")
-    if isinstance(inter_resp, dict):
-        picked = _clean((inter_resp.get("body") or {}).get("text"))
-        if picked:
-            return picked
+    #
+    # P-56 — as quatro grafias eram procuradas por nome exato, e a mais comum
+    # (📊 937 de 947 cliques) não estava na lista. Aqui a busca é normalizada:
+    # `selectedButtonID`, `selectedButtonId` e `selected_button_id` são o mesmo
+    # campo, e uma grafia nova deixa de ser incidente.
+    escolha = _resposta_estruturada(message)
+    if escolha:
+        _kind, rotulo, ident = escolha
+        # O rótulo (o que a pessoa LEU) tem precedência. O id opaco é o último
+        # recurso, e vale a pena: sem texto nenhum o inbound devolve
+        # `skip:no_text` e a mensagem some — o corredor deixa de ver o clique.
+        if rotulo or ident:
+            return rotulo or ident
     return None
 
 

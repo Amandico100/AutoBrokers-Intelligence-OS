@@ -25,6 +25,12 @@ DISPATCH_STATE_TITLES = {
                  "Serviço confirmado junto à seguradora; monitorando a chegada do prestador."),
     "monitoring": ("acionamentos", "Monitoramento premium ativo — {label}",
                    "Acompanhando o prestador e mantendo o cliente informado até o fim."),
+    # P-46 — o segundo desfecho de SUCESSO. Sem esta linha, um encaminhamento
+    # entregue não apareceria em Atividades: a corretora resolveu o caso do
+    # segurado e o feed não registraria trabalho nenhum.
+    "encaminhado": ("acionamentos", "Resolvido por encaminhamento — {label}",
+                    "A seguradora não abre chamado por este canal; o formulário/orientação "
+                    "dela foi entregue ao segurado e o caso encerrou."),
     "test_aborted": ("acionamentos", "Simulação completa — {label}",
                      "Fluxo executado de ponta a ponta em modo de validação."),
     "needs_human": ("acionamentos", "Dossiê entregue à equipe — {label}",
