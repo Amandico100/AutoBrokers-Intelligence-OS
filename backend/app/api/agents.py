@@ -268,8 +268,12 @@ async def update_agent(
     # Primeiro buscar o agente para obter o company_id
     existing_agent = service.get_agent_by_id(agent_id)
 
+    # P-38 — o tenant do agente viaja junto com a escrita (CLAUDE.md §7).
+    # Já estava sendo buscado aqui só para invalidar cache; o update ignorava.
+    tenant = str(existing_agent.company_id) if existing_agent else None
+
     # Atualizar o agente
-    updated_agent = service.update_agent(agent_id, agent_data)
+    updated_agent = service.update_agent(agent_id, agent_data, company_id=tenant)
 
     # 🔥 INVALIDAR CACHE DO GRAFO para que mudanças de modelo/config sejam aplicadas imediatamente
     try:

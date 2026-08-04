@@ -925,3 +925,52 @@ ninguém tocou nesta jornada, dá 36 erros iguais. **É pré-existente.**
 
 Ninguém vê porque `next.config.js` traz `eslint.ignoreDuringBuilds: true` e o
 gate não roda lint. Consertar é reformatar o repositório inteiro — 🧑 decisão.
+
+## P-74 · 🟡 O `delete_agent` do backend não filtra por tenant
+
+`backend/app/services/agent_service.py:delete_agent` arquiva o agente com
+`.update({"is_active": False}).eq("id", ...)` — **sem `.eq("company_id", ...)`**.
+É a mesma classe do defeito que o P-38 fechou no `update_agent`, e o backend roda
+com service role: RLS sem policy não protege contra erro de filtro no código
+(CLAUDE.md §7).
+
+Não foi consertado junto porque estava fora da lista do bloco e a correção muda
+o comportamento quando a resolução do tenant falha — decisão de contrato, não de
+digitação.
+
+**O que destrava:** 🤖 execução, junto com uma varredura das outras escritas de
+`agents` escopadas só por `id`.
+**O que custa esquecer:** um `id` errado (ou adivinhado) desliga o agente de
+outra corretora, e o soft delete não deixa rastro de quem pediu.
+
+## P-75 · 🟡 `scripts/admin-agent-blueprints-canonical.test.mjs` não roda
+
+📊 04/08/2026: `node scripts/admin-agent-blueprints-canonical.test.mjs` morre no
+import, antes da primeira asserção — ele faz
+`import ... from '../lib/admin/agent-blueprints-canonical.ts'`, e o node não
+resolve a extensão `.ts` em ESM. **Pré-existente**: confirmado rodando o arquivo
+com `git stash` aplicado, antes de qualquer mudança desta jornada.
+
+É exatamente o defeito que `scripts/agent-health.test.mjs` já teve e documenta —
+lá foi resolvido transpilando o módulo com a API do próprio TypeScript. A
+correção é copiar aquele `carregarTS()`.
+
+**O que destrava:** 🤖 execução (o padrão já existe no repositório).
+**O que custa esquecer:** `npm run test:agent-blueprints-canonical` aparece na
+lista de scripts e dá a impressão de que os blueprints canônicos têm prova
+executável. Não têm — e é esse arquivo que compõe o prompt de toda corretora.
+
+## P-76 · 🟢 A varredura do portão do prompt cobre `agents` e `companies`, e só
+
+`backend/tests/test_o_portao_do_prompt_e_um_so.py` passou a varrer o repositório
+por escritas nas tabelas onde `agent_system_prompt` mora, classificando cada uma
+como transparente (chaves à vista) ou opaca (variável, spread, `**`).
+
+Ela **não** enxerga escrita por RPC do Postgres — `apply_release_rollout` e
+`rollback_release_rollout` gravam a coluna dentro do banco. Os dois estão
+cobertos por casos dedicados ([3]), não pela varredura.
+
+**O que destrava:** 🤖 execução — varrer `supabase.rpc('...')` e exigir releitura
+para as RPCs que tocam a coluna.
+**O que custa esquecer:** uma RPC nova que escreva o prompt nasce invisível para
+a varredura, que é a peça que promete "não sobrou nenhum".

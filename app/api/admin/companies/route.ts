@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { cookies } from 'next/headers';
 import { createClient } from '@supabase/supabase-js';
-import { provisionTenant } from '@/lib/admin/provision-tenant';
+import { provisionTenant, problemasDoPromptDeAutoria, PERSONALIZACAO_MINIMA_CHARS } from '@/lib/admin/provision-tenant';
 import { requireMasterAdmin, assertSameOrigin } from '@/lib/admin/admin-auth';
 
 // Service Role Client
@@ -10,6 +10,27 @@ const supabaseAdmin = createClient(
   process.env.SUPABASE_SERVICE_ROLE_KEY!,
   { auth: { persistSession: false } },
 );
+
+/**
+ * P-38 — ESTE ARQUIVO NÃO ESTAVA NA LISTA, E ESCREVIA A COLUNA.
+ *
+ * `insert([body])` e `.update(updateData)` mandam o CORPO CRU da requisição
+ * para `companies`, sem whitelist de campo. `companies.agent_system_prompt` é a
+ * camada legada — e ela é LIDA pelo runtime:
+ * `backend/app/agents/nodes.py:438` monta o prompt base a partir dela.
+ *
+ * Um POST/PUT de super-admin com `agent_system_prompt: ''` no corpo emudecia a
+ * corretora, e nenhuma varredura por menção da coluna acharia isto: o nome dela
+ * não aparece em lugar nenhum deste arquivo. Só uma varredura pelas ESCRITAS DA
+ * TABELA encontra um escritor opaco.
+ *
+ * O portão é o mesmo (`problemasDoPromptDeAutoria`) — aqui o texto é digitado
+ * por gente, e nada soma a casca de guardrails por cima.
+ */
+function recusaDePromptNoCorpo(corpo: Record<string, unknown>): string[] {
+  if (!('agent_system_prompt' in corpo)) return []; // ausência não é escrita
+  return problemasDoPromptDeAutoria(String(corpo.agent_system_prompt ?? ''), PERSONALIZACAO_MINIMA_CHARS);
+}
 
 /**
  * GET /api/admin/companies
@@ -124,6 +145,11 @@ export async function POST(request: NextRequest) {
 
     const body = await request.json();
 
+    const problemas = recusaDePromptNoCorpo(body);
+    if (problemas.length) {
+      return NextResponse.json({ error: 'prompt_invalido', details: problemas }, { status: 400 });
+    }
+
     const { data, error } = await supabaseAdmin.from('companies').insert([body]).select().single();
 
     if (error) {
@@ -169,6 +195,11 @@ export async function PUT(request: NextRequest) {
 
     if (!id) {
       return NextResponse.json({ error: 'Company ID is required' }, { status: 400 });
+    }
+
+    const problemas = recusaDePromptNoCorpo(updateData);
+    if (problemas.length) {
+      return NextResponse.json({ error: 'prompt_invalido', details: problemas }, { status: 400 });
     }
 
     // VALIDATION: If max_users is being updated, check current admin count

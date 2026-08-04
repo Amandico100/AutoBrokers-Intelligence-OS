@@ -93,10 +93,35 @@ def _norm(text: str) -> str:
 #
 # O grupo aceita dígitos com hífen: a Azul emite "protocolo ... 1-104106503215".
 # HDI emite "a solicitação de GUINCHO para a assistência *9257546* foi aberta".
+#
+# 🔴 E FALTAVA O FORMATO MAIS COMUM DE TODOS: `*Assistência:* 9666474`.
+#
+# 📊 04/08/2026, `observed_events`: **30 mensagens** de HDI, Yelum e Allianz têm
+# a etiqueta `Assistência:` seguida do número — é o `*Resumo da solicitação*`,
+# a última mensagem do acionamento, a que fecha o caso::
+#
+#     *Resumo da solicitação*
+#     *Placa:* AZH0926
+#     *Assistência:* 9662631        <- hdi, auto
+#     *Assistência:* 9666474        <- yelum, residencial (encanador)
+#     Assistência: 52339760         <- allianz
+#
+# Nenhuma casava. As alternativas exigiam "NÚMERO DA assistência", "PARA A
+# assistência" ou "SOBRE SUA assistência"; a etiqueta sozinha, com dois-pontos,
+# não estava prevista. Rodando o motor de verdade sobre o resumo real, o
+# resultado era `captured: {}` — o corredor abria o serviço, recebia o número na
+# tela e encerrava sem ele. É assim que um acionamento fica "monitorando" para
+# sempre, e é a família do defeito que deixou 50 `corridor_runs` abandonados.
+#
+# O `(?=\*?\s*:)` exige os DOIS-PONTOS logo depois da palavra, e é ele que
+# impede o falso positivo óbvio: "Assistência 24 horas" (o nome do serviço, que
+# aparece na saudação de toda sessão da família) não tem dois-pontos e continua
+# não casando.
 _ANCORA_DE_PROTOCOLO = (
     r"(?:protocolo(?:\s+de\s+atendimento)?|"
     r"n[úu]mero\s+da\s+(?:sua\s+)?(?:ordem|os|solicita[çc][ãa]o|assist[êe]ncia)|"
-    r"para a assist[êe]ncia|sobre sua assist[êe]ncia|o\.?s\.?)"
+    r"para a assist[êe]ncia|sobre sua assist[êe]ncia|o\.?s\.?|"
+    r"\*?assist[êe]ncia\*?(?=\*?\s*:))"
     r"[^\d]{0,24}(\d[\d-]{4,18}\d)"
 )
 
@@ -1784,6 +1809,313 @@ PORTO_RESIDENCIAL_WHATSAPP_V1: Dict[str, Any] = {
 }
 
 
+# --- YELUM residencial -------------------------------------------------------
+#
+# 📊 04/08/2026, `observed_events` (banco de produção `dcajcvlzcjbmyapmklil`).
+# A Yelum é o MESMO bot white-label "Assistência 24 horas" da HDI — e por isso a
+# tentação era copiar `HDI_RESIDENCIAL_WHATSAPP_V1` e trocar o `insurer_key`.
+# A medição desautorizou a cópia.
+#
+# O QUE A EVIDÊNCIA DIZ (query: `observed_events` por `insurer_key`)
+# ------------------------------------------------------------------
+#
+#     sinal                                        yelum   hdi
+#     eventos totais                                3.026  2.074
+#     "Identifiquei ... a placa" (desambiguação)       23      8
+#     menções a encanador                              44     28
+#     menções a eletricista                            39     27
+#     menções a chaveiro                               46     33
+#     "serviço que você precisa"                        6     14
+#     "utilizações"                                     0      4   <-- ZERO
+#
+# São 6 sessões residenciais completas da Yelum, três delas indo 100% pelo bot
+# até o protocolo (8981006 · 9124710 · 9666474). É mais evidência do que a HDI
+# tinha quando o corredor dela foi escrito.
+#
+# 🔴 SEIS ÂNCORAS DA FAMÍLIA NÃO CASAM COM O TEXTO DA YELUM
+#
+# Medido rodando cada regex contra a mensagem literal:
+#
+#     passo                âncora da família/HDI                    Yelum diz
+#     identificacao        "informe somente o *CPF ou CNPJ* do      "informe o *CPF ou CNPJ*
+#                           titular"                                 que deseja atendimento"
+#     informar_nome        "informe o seu nome ou como..."          "Me informe seu *nome* ou como"
+#     perfil               "em qual dessas opções você se           "escolha a opção que melhor
+#                           enquadra"                                te representa"
+#     confirma_endereco    "você confirma O endereço"               "Você confirma ESTE endereço?"
+#     nome_pessoa_local    "qual é o nome da pessoa que está        "qual é o nome da pessoa
+#                           no local"                                responsável por acompanhar
+#                                                                    o técnico no local"
+#     servico_ja_aberto    "localizamos o serviço de X"             "localizamos algumas
+#                                                                    assistências"
+#
+# Copiar a HDI teria produzido um corredor que emudece em SEIS telas — inclusive
+# na que pede o CPF. As âncoras abaixo são as da YELUM, e onde as duas famílias
+# escrevem igual a âncora aceita as duas redações.
+#
+# 🔴 E O MENU TEM OUTRO RÓTULO: a Yelum chama eletrodoméstico de **"Linha
+# branca"**. Responder "Eletrodoméstico" (o rótulo da HDI) aperta uma tecla que
+# não existe nesta tela.
+#
+# O QUE ESTE CORREDOR **NÃO** DECLARA, E POR QUÊ
+# ----------------------------------------------
+# 📊 `utilizações`: ZERO ocorrências na Yelum (a HDI tem 4). O passo
+# `utilizacoes_restantes`, o gatilho "não possui mais utilizações" e os dois
+# `coverage_guardrails` de limite por apólice ficam de fora. O que cobre a
+# lacuna não é uma lista: é `unknown_step_policy: pause_and_handoff` — tela
+# desconhecida pausa o acionamento com o dossiê, antes de improvisar.
+# **Destrava quando aparecer uma sessão da Yelum com o texto de limite.**
+#
+# 📊 "Esta residência possui complemento?" e os horários de entrada em
+# condomínio: 1 sessão cada, e a resposta depende do caso. Um passo com
+# `reply` chutado aqui aperta botão errado; sem passo, o corredor pausa.
+#
+# 📊 "Ar condicionado", "Dedetização" e "Linha marrom" aparecem no menu real, e
+# NÃO existe subserviço canônico para eles no produto. Declarar rótulo sem
+# subserviço criaria uma tecla sem trabalho do outro lado.
+
+_YELUM_RESID_ABERTURA = (
+    r"seja bem-?vindo ao atendimento digital|"
+    r"vi que voc[êe] est[áa] precisando de uma assist[êe]ncia residencial|"
+    r"dicas sobre como funciona o nosso atendimento|"
+    r"aqui voc[êe] pode \*?acompanhar\*? todas as suas assist[êe]ncias"
+)
+
+YELUM_RESIDENCIAL_WHATSAPP_V1: Dict[str, Any] = {
+    "playbook_id": "yelum-residencial-whatsapp",
+    "version": 1,
+    "insurer_key": "yelum",
+    "line_kind": "residencial",
+    "channel": "whatsapp",
+    "insurer_contact_ref": "yelum_assistencia_24h",
+    "description": ("Assistência 24h RESIDENCIAL Yelum via WhatsApp "
+                    "(encanador/desentupimento/eletricista/chaveiro/linha branca)."),
+    "ura_steps": [
+        {"step": "abertura", "anchor": _YELUM_RESID_ABERTURA, "reply": "", "noop": True,
+         "notes": "📊 'Olá, seja bem-vindo ao atendimento digital de *Assistência 24 horas* da "
+                  "*Yelum Seguradora!*' (6 de 6 sessões) — saudação e dicas de uso não se respondem"},
+        {"step": "menu_auto_ou_resid",
+         "anchor": (r"assist[êe]ncia para seu \*?autom[óo]vel\*? ou \*?resid[êe]ncia|"
+                    r"servi[çc]os de assist[êe]ncia para seu \*?autom[óo]vel\*? ou \*?resid[êe]ncia"),
+         "reply": "🏠 Residência",
+         "notes": "📊 'Você gostaria de solicitar serviços ou acompanhar serviços de assistência "
+                  "para seu *automóvel* ou *residência*? Botão 1: 🚗 Automóvel Botão 2: 🏠 Residência' "
+                  "(3 sessões; a variante sem 'solicitar' aparece 10x). O RÓTULO tem emoji — é ele "
+                  "que a tela mostra, e é ele que se responde"},
+        {"step": "desambiguacao_veiculo_ou_residencial",
+         "anchor": r"identifiquei em seu cadastro a placa",
+         "reply": "Residencial",
+         "notes": "📊 23 ocorrências na Yelum (contra 8 na HDI) — é a tela mais observada dos dois "
+                  "ramos. 'Identifiquei em seu cadastro a placa {PLACA}. Deseja continuar com o "
+                  "atendimento para o veículo ou atendimento residencial? Botão 1: Automóvel "
+                  "Botão 2: Residencial'. O corredor de AUTO da Yelum responde 'Automóvel' nesta "
+                  "MESMA tela: errar aqui atende o carro de quem pediu encanador"},
+        {"step": "identificacao_dado",
+         "anchor": (r"informe somente o \*?cpf ou cnpj\*? do t[íi]tular|"
+                    r"informe \*?apenas um dos dados|informe \*?um dos dados abaixo|"
+                    r"informe o \*?cpf ou cnpj\*? que deseja atendimento"),
+         "reply": "{titular_cpf}", "requires": ["titular_cpf"],
+         "notes": "📊 TRÊS redações reais. A terceira — 'Para prosseguirmos vou precisar de alguns "
+                  "dados para melhor atendê-lo. Por favor informe o *CPF ou CNPJ* que deseja "
+                  "atendimento' (3 sessões) — NÃO casava com a âncora da família HDI, e é a "
+                  "primeira tela do atendimento: o corredor emudecia na porta de entrada"},
+        {"step": "informar_nome",
+         "anchor": r"me informe (?:o )?seu \*?nome\*? ou como|informe o seu nome ou como gostaria de ser chamad",
+         "reply": "Atendimento",
+         "notes": "📊 'Me informe seu *nome* ou como *gostaria de ser chamado*.' (3 sessões) — a "
+                  "família de auto exigia 'informe O SEU nome' e não casava. A resposta é a MESMA "
+                  "do corredor de auto: quem opera o canal é a corretora"},
+        {"step": "perfil",
+         "anchor": (r"escolha a op[çc][ãa]o que melhor te representa|"
+                    r"em qual dessas op[çc][õo]es voc[êe] se enquadra"),
+         "reply": "Sou corretor(a)",
+         "notes": "📊 duas redações, 3 sessões cada, MESMOS botões: 'Sou segurado(a) / Sou "
+                  "corretor(a) / Outro'. Agimos em nome da corretora"},
+        {"step": "pessoa_no_local",
+         "anchor": r"[ée] a pessoa que est[áa] (?:no )?local para acompanhar",
+         "reply": "Não",
+         "notes": "📊 'Saionara você é a pessoa que está local para acompanhar o serviço?' "
+                  "(3 sessões) — quem opera o canal não é quem espera o técnico"},
+        {"step": "nome_pessoa_local",
+         "anchor": (r"nome da pessoa respons[áa]vel por acompanhar o t[ée]cnico|"
+                    r"nome da pessoa que estar[áa] na resid[êe]ncia para receber o t[ée]cnico|"
+                    r"qual [ée] o nome da pessoa que est[áa] no local"),
+         "reply": "{pessoa_no_local}", "requires": ["pessoa_no_local"],
+         "notes": "📊 DUAS redações residenciais (3 sessões cada), nenhuma delas casando com a "
+                  "âncora de auto da família. Aqui não há 'only_subservices': em residencial "
+                  "SEMPRE tem alguém esperando o técnico"},
+        {"step": "telefone_local",
+         "anchor": r"n[úu]mero de (?:celular|telefone)\*? com ddd da pessoa que est[áa] no local",
+         "reply": "{telefone_contato}", "requires": ["telefone_contato"],
+         "notes": "âncora REUSADA da família (casa palavra por palavra: 6 de 6 sessões). 📊 A URA "
+                  "recusa telefone mal formatado e repete a MESMA pergunta — a âncora pega as duas"},
+        {"step": "telefone_confirma",
+         "anchor": r"o n[úu]mero de telefone \d+ est[áa] correto", "reply": "Sim",
+         "notes": "âncora REUSADA da família (6 ocorrências medidas no residencial da Yelum)"},
+        {"step": "endereco_da_apolice",
+         "anchor": (r"localizamos o seguinte endere[çc]o|"
+                    r"para esse cpf est[áa] cadastrado o endere[çc]o"),
+         "reply": "", "noop": True,
+         "notes": "📊 'Para esse CPF informado localizamos o seguinte endereço: *Rua:* ... "
+                  "*Numero:* ...' — INFORMATIVO, e vem logo antes da confirmação. Responder aqui "
+                  "adianta uma resposta para a tela errada. O endereço é o DA APÓLICE: a URA já o "
+                  "tem, e é por isso que não existe passo pedindo endereço neste corredor"},
+        {"step": "confirma_endereco",
+         "anchor": r"voc[êe] confirma (?:o|este) endere[çc]o", "reply": "Sim",
+         "notes": "📊 'Você confirma este endereço?' — 6 de 6 sessões. A âncora da família exigia "
+                  "'confirma O endereço' e não casava em NENHUMA. Confirmar aqui é seguro: o "
+                  "endereço foi lido do cadastro da apólice, não digitado por nós"},
+        {"step": "casa_ou_condominio",
+         "anchor": (r"resid[êe]ncia [ée] uma casa individual ou est[áa] localizada em um condom[íi]nio|"
+                    r"sua resid[êe]ncia [ée] uma casa ou fica em um condom[íi]nio"),
+         "reply": "{tipo_imovel}", "fallback_adaptive": True,
+         "notes": "📊 NÃO EXISTE NA HDI. Duas redações (3 e 2 sessões) com RÓTULOS DIFERENTES: "
+                  "'Casa / Condomínio' e 'Casa / Condomínio/prédio'. Por isso não há resposta fixa "
+                  "e o adaptativo guardado escolhe o rótulo que está NA TELA. E não vira slot "
+                  "obrigatório: o tipo de imóvel é exigência DESTA seguradora, não do trabalho — "
+                  "`_RESID_SLOTS_BASE` só carrega o que todo encanador precisa"},
+        {"step": "ponto_referencia",
+         "anchor": r"preciso que voc[êe] me informe pelo menos uma refer[êe]ncia",
+         "reply": "{ponto_referencia}", "fallback_adaptive": True,
+         "notes": "📊 'Agora, preciso que você me informe pelo menos uma referência. *Ex: Próximo "
+                  "ao Banco Z...*' — 6 de 6 sessões, a tela mais frequente do corredor. Sem "
+                  "referência no caso, o adaptativo responde o que a corretora respondeu de fato "
+                  "('sem referencia')"},
+        {"step": "servico_ja_aberto",
+         "anchor": r"localizamos (?:o servi[çc]o de|algumas assist[êe]ncias).{0,80}?deseja acompanhar",
+         "reply": "Novo serviço",
+         "notes": "📊 DUAS redações: 'localizamos o serviço de *CHAVEIRO RESIDENCIAL*' e "
+                  "'localizamos algumas assistências'. A segunda não casava com a âncora da HDI. "
+                  "O corredor abre o que o cliente pediu HOJE; acompanhar chamado antigo é outro "
+                  "trabalho, e quem decide é o atendente"},
+        {"step": "menu_servico_residencial",
+         "anchor": r"qual (?:[ée] )?o servi[çc]o que voc[êe] precisa",
+         "reply": "{tipo_servico_opcao}", "requires": ["tipo_servico_opcao"],
+         "notes": "📊 lista real: Encanador / Desentupimento / Eletricista / Chaveiro / "
+                  "**Linha branca** / Ar condicionado / Voltar — e numa sessão também Linha marrom "
+                  "e Dedetização. 'Linha branca' é o nome que a Yelum dá a eletrodoméstico: "
+                  "responder 'Eletrodoméstico' (rótulo da HDI) aperta tecla inexistente"},
+        {"step": "recado_de_cobertura",
+         "anchor": (r"para continuar com a sua solicita[çc][ãa]o temos um recado|"
+                    r"reparos emergenciais em virtude de vazamento|"
+                    r"m[ãa]o de obra para reparos emergenciais em tomadas"),
+         "reply": "", "noop": True,
+         "notes": "📊 texto de COBERTURA por subserviço, enviado depois da escolha. Informativo: "
+                  "vai ao dossiê e o corredor segue (o conteúdo está em `coverage_guardrails`)"},
+        {"step": "detalhe_do_vazamento",
+         "anchor": r"(?:qual desses itens est[áa] com vazamento|e onde [ée] o vazamento)",
+         "reply": "{vazamento_local}", "requires": ["vazamento_local"],
+         "fallback_adaptive": True, "only_subservices": ["encanador"],
+         "notes": "📊 'Qual desses itens está com vazamento? Torneira / Torneira elétrica / Sifão / "
+                  "Chuveiro / Válvulas de descarga / Registro / Mais opções / Voltar' — e a "
+                  "variante 'Certo! E onde é o vazamento?' com a MESMA lista. Encaixa no slot "
+                  "`vazamento_local`, que já existia porque é pergunta do TRABALHO"},
+        {"step": "comodo_do_vazamento",
+         "anchor": r"em qual c[ôo]modo|selecione em qual ambiente est[áa] o chuveiro",
+         "reply": "", "fallback_adaptive": True, "only_subservices": ["encanador"],
+         "notes": "📊 'Em qual cômodo? Cozinha / Banheiro / Lavanderia' e 'Selecione em qual "
+                  "ambiente está o chuveiro: Suíte / Banheiro social / Área externa'. Rótulos "
+                  "DIFERENTES por caminho — sem resposta fixa, quem escolhe é o adaptativo, "
+                  "lendo a tela e a descrição do problema"},
+        {"step": "detalhe_eletrico",
+         "anchor": (r"op[çc][ãa]o que corresponde com o seu problema|"
+                    r"selecione abaixo qual [ée] o problema el[ée]trico"),
+         "reply": "", "fallback_adaptive": True, "only_subservices": ["eletricista"],
+         "notes": "📊 'Falta de energia / Problema elétrico' e depois 'Tomadas / Interruptores / "
+                  "Lâmpadas / Reatores queimados / Disjuntores/fusíveis / Chuveiro / Torneira "
+                  "elétrica'. 2 sessões cada"},
+        {"step": "periodo_preferido",
+         "anchor": r"qual o melhor per[íi]odo",
+         "reply": "{periodo_preferido}", "fallback_adaptive": True,
+         "notes": "📊 'Qual o melhor período? Manhã (08h às 12h) / Tarde (13h às 18h)' — 1 sessão. "
+                  "Só aparece depois de escolher AGENDAR. `periodo_preferido` já é slot do "
+                  "residencial (vai no resumo ao humano)"},
+        {"step": "aguarde",
+         "anchor": (r"ainda n[ãa]o identificamos a sua resposta|sua resposta est[áa] diferente do que solicitamos|"
+                    r"assist[êe]ncia solicitada|sua assist[êe]ncia j[áa] est[áa] em andamento|"
+                    r"o qu[ãa]o satisfeito voc[êe] est[áa]|gostaria de saber o que voc[êe] achou|"
+                    r"muito obrigada por ter respondido|foi um prazer te atender|"
+                    r"se precisar esclarecer mais alguma d[úu]vida"),
+         "reply": "", "noop": True,
+         "notes": "📊 avisos, confirmações e PESQUISA DE SATISFAÇÃO. A pesquisa vem depois do "
+                  "protocolo e não é parte do acionamento: responder nota de atendimento em nome "
+                  "do segurado é opinião que não é nossa"},
+        {"step": "deseja_continuar",
+         "anchor": r"deseja continuar (?:este|com o) atendimento", "reply": "Sim",
+         "notes": "âncora REUSADA da família (3 sessões medidas no residencial)"},
+    ],
+    "subservices": {
+        "encanador": {"tipo_servico_opcao": "Encanador", "required_slots": _resid_slots("encanador")},
+        "desentupimento": {"tipo_servico_opcao": "Desentupimento", "required_slots": _resid_slots("desentupimento")},
+        "eletricista": {"tipo_servico_opcao": "Eletricista", "required_slots": _resid_slots("eletricista")},
+        "chaveiro": {"tipo_servico_opcao": "Chaveiro", "required_slots": _resid_slots("chaveiro")},
+        # 🔴 "Linha branca", não "Eletrodoméstico". A chave é a CANÔNICA do
+        # produto; o rótulo é o que está escrito na tela da Yelum.
+        "eletrodomesticos": {"tipo_servico_opcao": "Linha branca", "required_slots": _resid_slots("eletrodomesticos")},
+    },
+    "subservice_labels": {
+        "encanador": "encanador", "desentupimento": "desentupimento",
+        "eletricista": "eletricista", "chaveiro": "chaveiro",
+        "eletrodomesticos": "reparo de eletrodomestico (linha branca)",
+    },
+    "opening_template": _RESID_OPENING_TEMPLATE,
+    "human_phase_guidance": _RESID_HUMAN_PHASE_GUIDANCE,
+    "capture_anchors": dict(_AUTO_CAPTURE_ANCHORS),
+    # 🔴 AQUI a Yelum tem o que a HDI não tinha. O corredor da HDI declara
+    # `client_instructions: []` com a nota de que a regra do maior de 18 anos e a
+    # da senha "são da Allianz — copiá-las para cá seria inventar". Na YELUM elas
+    # são MEDIDAS, palavra por palavra, em 3 sessões cada.
+    "client_instructions": [
+        "📊 A senha da visita técnica são os 4 ÚLTIMOS DÍGITOS do celular informado da pessoa que "
+        "estará no local (ou do WhatsApp que pediu a assistência). Ela deve ser repassada ao "
+        "técnico assim que ele chegar — sem a senha, o prestador não executa o serviço.",
+        "📊 É necessária a presença de uma pessoa MAIOR DE 18 ANOS no local para receber e "
+        "acompanhar o prestador. Se for preciso trocar peças, o material fica por conta do "
+        "segurado (a mão de obra é que está coberta).",
+    ],
+    "handoff_triggers": _RESID_HANDOFF_TRIGGERS + [
+        # 📊 '*Saionara - Resulta*, por ser um item essencial, vou te transferir
+        # para que um de nossos analistas de continuidade ao atendimento.' A
+        # própria URA declara que dali em diante quem atende é gente.
+        r"vou te transferir para",
+        # 🔴 O gatilho de formulário nativo FICA. Ele saiu dos corredores de AUTO
+        # da HDI/Yelum em 03/08/2026 porque o canal de resposta foi provado E o
+        # schema estava capturado. Aqui não há schema: `native_flows` não é
+        # declarado, e nenhum formulário RESIDENCIAL foi observado. Sem schema
+        # não há o que responder, e a única saída honesta é pausar com o dossiê.
+        r"formulario nativo",
+    ],
+    "finalize_anchors": [
+        # 📊 'Você precisa do atendimento agora ou prefere agendar para outro
+        # momento? Botão 1: Agora' — 4 de 6 sessões. É a redação SEM o "para",
+        # a que a âncora literal antiga não pegava. Responder ABRE o serviço.
+        _HDI_FAMILY_AGORA_OU_AGENDAR,
+        r"podemos confirmar", r"posso confirmar", r"deseja confirmar",
+    ],
+    "finalize_abort_reply": "Sair",
+    "unknown_step_policy": "pause_and_handoff",
+    "coverage_guardrails": [
+        "📊 ENCANADOR: 'Reparos emergenciais em virtude de vazamento (aparente) em tubulações em PVC "
+        "de 1 a 4 polegadas, ou em dispositivos hidráulicos como: torneiras, sifões, encanamento de "
+        "chuveiros, válvulas de descarga, boia de caixa d'água.' Vazamento NÃO aparente e tubulação "
+        "fora dessa bitola não estão nesta cobertura.",
+        "📊 ELETRICISTA: 'Mão de obra para reparos emergenciais em tomadas queimadas, interruptores "
+        "defeituosos, troca de lâmpadas ou reatores queimados, disjuntores e fusíveis danificados, "
+        "troca de chuveiros ou resistências (não blindados).' Chuveiro BLINDADO está fora.",
+        "📊 LINHA BRANCA: 'Está coberto a mão de obra e peças (até o limite de cobertura contratada) "
+        "para reparo de eletrodomésticos com defeito no mecanismo — para equipamentos com até 10 "
+        "(dez) anos de fabricação.' Aparelho com mais de 10 anos não é acionamento.",
+        "📊 A MÃO DE OBRA é o que está coberto: material de troca de peças fica por conta do "
+        "segurado, e a própria URA avisa isso antes de abrir.",
+        "⚠️ LIMITE DE UTILIZAÇÕES: a HDI (mesmo bot) informa quantas utilizações restam e recusa "
+        "quando esgotam. Na YELUM isso NÃO foi observado — 📊 zero ocorrências de 'utilizações' em "
+        "3.026 eventos. Por isso este corredor não declara passo nem gatilho de limite: se a tela "
+        "aparecer, `unknown_step_policy: pause_and_handoff` devolve o caso ao humano em vez de "
+        "improvisar. Destrava quando uma sessão da Yelum trouxer o texto.",
+    ],
+}
+
+
 _PLAYBOOKS: Dict[str, Dict[str, Any]] = {
     f"{p['playbook_id']}@v{p['version']}": p
     for p in (
@@ -1800,6 +2132,7 @@ _PLAYBOOKS: Dict[str, Dict[str, Any]] = {
         ZURICH_AUTO_WHATSAPP_V1,
         HDI_RESIDENCIAL_WHATSAPP_V1,
         PORTO_RESIDENCIAL_WHATSAPP_V1,
+        YELUM_RESIDENCIAL_WHATSAPP_V1,
     )
 }
 

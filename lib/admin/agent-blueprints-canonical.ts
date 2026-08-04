@@ -168,6 +168,14 @@ const GUARDRAIL_LABELS: Record<string, string> = {
  * bloco de REGRAS IMUTÁVEIS. Assim nenhum texto livre da corretora consegue ficar
  * "abaixo" de uma guardrail nem enfraquecê-la (defesa contra prompt injection).
  */
+// P-38 — quem DETECTA a mudez (`lib/admin/agent-health.ts` e
+// `backend/app/services/portao_do_prompt.py`) procura pelos dois cabeçalhos
+// abaixo. Se o emissor reescrever a linha e o detector não souber, a casca de
+// guardrails passa a contar como voz e o agente mudo volta a ser invisível.
+// Este arquivo é SELF-CONTAINED (`scripts/admin-agent-blueprints-canonical.test.mjs`
+// o carrega direto pelo node), então as linhas ficam literais aqui e a
+// igualdade com o contrato é provada por
+// `backend/tests/test_o_portao_vale_no_backend.py`.
 export function composeSystemPromptWithGuardrails(personalized: string, guardrails: string[]): string {
   const rules = guardrails.map((g) => `- ${GUARDRAIL_LABELS[g] ?? g}`).join('\n');
   return [

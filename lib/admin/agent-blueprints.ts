@@ -1,6 +1,21 @@
 // Cria Agents/Subagents Smith a partir de um blueprint (caminho canônico: backend /api/agents/).
 // NUNCA copia segredos (blueprint é sanitizado antes). Server-only.
+//
+// P-38 — ESTE ARQUIVO NASCIA COM O AGENTE MUDO E LIGADO.
+//
+// `agent_system_prompt: s('agent_system_prompt') || undefined` e, na linha
+// seguinte, `is_active: true`. Em JSON, `undefined` não vira `null`: a CHAVE
+// SOME. O backend recebia um insert sem prompt nenhum e com o agente ativo, e
+// nada em todo o caminho tinha como perceber — nem o portão do TypeScript
+// (que vive em provision-tenant.ts, outro fluxo), nem o backend, que até
+// 04/08/2026 não tinha portão.
+//
+// A regra é a de `createSourceAuxiliary`: aqui o mínimo é "não vazio", e não
+// os 120 caracteres do agente canônico. Auxiliar sem descrição nasce com um
+// esboço de uma frase de propósito — isso é o produto. O que não pode existir
+// é a linha com prompt em branco E ativa.
 import { sanitizeBlueprint } from './auxiliary-runtime';
+import { problemasDoPromptDeAutoria } from './provision-tenant';
 
 export interface AgentCreatePayload {
   company_id: string;
@@ -12,6 +27,8 @@ export interface AgentCreatePayload {
   llm_model: string;
   agent_system_prompt?: string;
   is_active: boolean;
+  /** Por que o agente nasceu desligado. Ausente = nasceu com voz. */
+  prompt_problemas?: string[];
 }
 
 function slugify(input: string): string {
@@ -29,6 +46,11 @@ export function buildAgentCreatePayload(
   const b = (k: string, d: boolean) => (typeof bp[k] === 'boolean' ? (bp[k] as boolean) : d);
   const base = slugify(s('slug') || s('name') || 'auxiliar');
   const suffix = Date.now().toString(36).slice(-4);
+
+  // O PORTÃO, antes de montar o payload. `problemas` vazio = o prompt serve.
+  const prompt = s('agent_system_prompt');
+  const problemas = problemasDoPromptDeAutoria(prompt ?? '', 1);
+
   return {
     company_id: companyId,
     name: s('name') || 'Auxiliar',
@@ -37,8 +59,12 @@ export function buildAgentCreatePayload(
     allow_direct_chat: b('allow_direct_chat', false),
     llm_provider: s('llm_provider') || 'openai',
     llm_model: s('llm_model') || 'gpt-4o-mini',
-    agent_system_prompt: s('agent_system_prompt') || undefined,
-    is_active: true,
+    agent_system_prompt: problemas.length ? undefined : prompt,
+    // O agente mudo NASCE DESLIGADO. Era `true` fixo, uma linha abaixo de um
+    // prompt que podia ter sumido do JSON — as duas decisões estavam lado a
+    // lado e nenhuma olhava para a outra.
+    is_active: problemas.length === 0,
+    ...(problemas.length ? { prompt_problemas: problemas } : {}),
   };
 }
 
@@ -52,10 +78,14 @@ export async function createAgentViaBackend(
   payload: AgentCreatePayload,
 ): Promise<{ agentId?: string; error?: string }> {
   try {
+    // `prompt_problemas` é diagnóstico local: explica por que `is_active` veio
+    // false. Não atravessa o fio — o backend tem o seu próprio portão e não
+    // deve confiar num campo que o cliente mandou.
+    const { prompt_problemas: _local, ...corpo } = payload;
     const res = await fetch(`${backendUrl}/api/agents/`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json', 'X-Admin-API-Key': adminApiKey },
-      body: JSON.stringify(payload),
+      body: JSON.stringify(corpo),
     });
     const raw = await res.text();
     let data: Record<string, unknown> = {};

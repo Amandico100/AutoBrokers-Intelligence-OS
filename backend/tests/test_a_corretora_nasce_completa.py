@@ -161,8 +161,21 @@ def teste_prompt_vazio_e_impossivel():
 
     checar("export function problemasDoPrompt(" in codigo,
            "existe um portão que examina o prompt antes de gravar")
-    for problema in ("'prompt_vazio'", "'personalizacao_vazia'", "'placeholder_nao_resolvido'"):
-        checar(problema in codigo, f"o portão reconhece {problema}")
+
+    # P-38 — os nomes dos motivos saíram deste arquivo e viraram CONTRATO
+    # (`lib/admin/portao-do-prompt.contract.json`), porque o backend precisou do
+    # mesmo portão em Python e dois portões com nomes próprios seria um segundo
+    # portão (CLAUDE.md §5). A verdade que este caso guarda não mudou — mudou
+    # onde ela mora, e por isso a checagem migra em vez de morrer (§9.3):
+    # agora ela exige que o motivo exista NO CONTRATO **e** que o portão o use.
+    import json as _json
+    contrato = _json.loads(_ler("lib", "admin", "portao-do-prompt.contract.json"))
+    for problema in ("prompt_vazio", "personalizacao_vazia", "placeholder_nao_resolvido"):
+        checar(contrato["motivos"].get(problema) == problema,
+               f"o contrato declara o motivo '{problema}'")
+        checar(f"M.{problema}" in codigo,
+               f"e o portão o usa a partir do contrato (M.{problema})",
+               "escrever a string aqui de novo faria os dois runtimes divergirem")
 
     checar("PERSONALIZACAO_MINIMA_CHARS" in codigo,
            "a personalização é medida SEPARADAMENTE do prompt final",

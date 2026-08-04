@@ -54,17 +54,33 @@ import { extractSavedTenantInput } from '@/lib/admin/release-rollout';
 import { CAPABILITY_CATALOG } from '@/lib/capabilities/registry';
 import { getCompanyKind } from '@/lib/admin/company-kind-store';
 import { isPlatformCompany } from '@/lib/admin/company-kind';
+import CONTRATO from '@/lib/admin/portao-do-prompt.contract.json';
+import { estadoDaVoz } from '@/lib/admin/agent-health';
 
 // ---------------------------------------------------------------------------
 // 1. O PORTÃO: prompt vazio é IMPOSSÍVEL
 // ---------------------------------------------------------------------------
+//
+// P-38 — as MEDIDAS e os NOMES DOS MOTIVOS saíram daqui e viraram contrato.
+//
+// O portão precisou existir também em Python (`agent_service.update_agent` e
+// `agent_config.save_agent_config` escrevem a coluna e nenhum `import` de
+// TypeScript os alcança). Um portão em Python com números próprios seria um
+// SEGUNDO portão (CLAUDE.md §5) — e portões que medem coisas diferentes são
+// pior que um portão só, porque cada lado passa a acreditar no seu.
+//
+// Então o que se espelha é o CONTRATO, e ele mora num arquivo:
+// `lib/admin/portao-do-prompt.contract.json`. Este lado o IMPORTA; o lado
+// Python declara os mesmos valores (a imagem do backend não enxerga `lib/`) e
+// `backend/tests/test_o_portao_vale_no_backend.py` prova a igualdade.
 
 /** Prompt final composto (personalização + guardrails). O real hoje passa de 1.200. */
-export const PROMPT_MINIMO_CHARS = 400;
+export const PROMPT_MINIMO_CHARS = CONTRATO.prompt_minimo_chars;
 /** Só a parte personalizada. O real hoje passa de 600. */
-export const PERSONALIZACAO_MINIMA_CHARS = 120;
+export const PERSONALIZACAO_MINIMA_CHARS = CONTRATO.personalizacao_minima_chars;
 
-const PLACEHOLDER_PENDENTE = /\{\{\s*[a-z0-9_]+\s*\}\}/i;
+const M = CONTRATO.motivos;
+const PLACEHOLDER_PENDENTE = new RegExp(CONTRATO.placeholder_pendente, 'i');
 
 /**
  * Por que DUAS medidas e não só "prompt não vazio".
@@ -81,15 +97,15 @@ export function problemasDoPrompt(promptFinal: string, personalizado: string): s
   const final = String(promptFinal ?? '').trim();
   const pessoal = String(personalizado ?? '').trim();
 
-  if (!final) problemas.push('prompt_vazio');
-  else if (final.length < PROMPT_MINIMO_CHARS) problemas.push(`prompt_curto_demais:${final.length}`);
+  if (!final) problemas.push(M.prompt_vazio);
+  else if (final.length < PROMPT_MINIMO_CHARS) problemas.push(`${M.prompt_curto_demais}:${final.length}`);
 
-  if (!pessoal) problemas.push('personalizacao_vazia');
-  else if (pessoal.length < PERSONALIZACAO_MINIMA_CHARS) problemas.push(`personalizacao_curta:${pessoal.length}`);
+  if (!pessoal) problemas.push(M.personalizacao_vazia);
+  else if (pessoal.length < PERSONALIZACAO_MINIMA_CHARS) problemas.push(`${M.personalizacao_curta}:${pessoal.length}`);
 
   // `{{company_name}}` sobrando significa que a variável não chegou: o agente
   // se apresentaria com as chaves literais na frente do corretor.
-  if (final && PLACEHOLDER_PENDENTE.test(final)) problemas.push('placeholder_nao_resolvido');
+  if (final && PLACEHOLDER_PENDENTE.test(final)) problemas.push(M.placeholder_nao_resolvido);
 
   return problemas;
 }
@@ -139,8 +155,12 @@ export function problemasDoUpdate(
  */
 export function problemasDoPromptDeAutoria(prompt: string, minimoChars: number): string[] {
   const texto = String(prompt ?? '').trim();
-  if (!texto) return ['prompt_de_autoria_vazio'];
-  if (texto.length < minimoChars) return [`prompt_de_autoria_curto:${texto.length}`];
+  if (!texto) return [M.prompt_de_autoria_vazio];
+  if (texto.length < minimoChars) return [`${M.prompt_de_autoria_curto}:${texto.length}`];
+  // Casca sem instrução é muda por dentro, tenha o tamanho que tiver. Um
+  // template de autoria não traz o bloco de regras imutáveis — quem chega aqui
+  // com ele e sem nada acima colou um prompt COMPOSTO e vazio por dentro.
+  if (estadoDaVoz(texto) === 'so_guardrails') return [M.prompt_so_guardrails];
   return [];
 }
 
@@ -162,12 +182,15 @@ export async function conferirPromptGravado(
   const { data } = await supabase.from('agents')
     .select('agent_system_prompt').eq('id', agentId).eq('company_id', companyId).maybeSingle();
   const gravado = String((data as { agent_system_prompt?: string | null } | null)?.agent_system_prompt ?? '');
-  if (gravado.trim()) return { ok: true, chars: gravado.length };
+  // `estadoDaVoz`, e não `.trim()`: existem DOIS jeitos de ficar mudo, e o
+  // segundo é o que passa em qualquer checagem de "não vazio" — a casca de
+  // guardrails, ~560 caracteres de moldura sem uma instrução dentro.
+  if (estadoDaVoz(gravado) === 'ok') return { ok: true, chars: gravado.length };
 
   await supabase.from('agents')
     .update({ is_active: false, agent_enabled: false, updated_at: new Date().toISOString() })
     .eq('id', agentId).eq('company_id', companyId);
-  return { ok: false, chars: 0, reason: `prompt_vazio_apos_escrita:${origem}:agente_desligado` };
+  return { ok: false, chars: 0, reason: `${M.prompt_vazio_apos_escrita}:${origem}:${M.agente_desligado}` };
 }
 
 // ---------------------------------------------------------------------------

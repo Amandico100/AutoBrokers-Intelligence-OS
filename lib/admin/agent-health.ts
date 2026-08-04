@@ -1,5 +1,13 @@
 // SPEC-013 FB-2 (close) — saúde + divergências dos agentes de uma corretora (PURO, testável).
 // Alimenta o painel de Diagnóstico & manutenção (sem página nova; folded na tela de Agentes).
+//
+// SEM IMPORT, DE PROPÓSITO. `scripts/agent-health.test.mjs` transpila ESTE
+// arquivo com a API do TypeScript e o executa dentro de um `new Function(...)`
+// — o `require` de lá resolve relativo a `scripts/`, e não conhece o alias
+// `@/`. Qualquer import aqui mata a única prova que EXECUTA a detecção de
+// mudez, em vez de ler o código. As constantes abaixo são conferidas contra
+// `lib/admin/portao-do-prompt.contract.json` por
+// `backend/tests/test_o_portao_vale_no_backend.py`.
 
 export interface AgentLite {
   id: string; name: string | null; agent_role: string | null; is_active: boolean | null;
@@ -42,6 +50,13 @@ const TEST_NAME_RE = /\b(teste|test|sandbox|dummy|fixture|tmp|temp)\b/i;
 // medida aqui é a PERSONALIZAÇÃO — o que está acima do bloco de regras — e não
 // o comprimento do texto inteiro.
 
+// P-38 — estes dois textos existem em QUATRO lugares, e agora há um teste que
+// os compara: o contrato (`lib/admin/portao-do-prompt.contract.json`), o
+// emissor (`composeSystemPromptWithGuardrails`), este detector, e o detector do
+// backend (`backend/app/services/portao_do_prompt.py`). Bastava alguém
+// reescrever a linha em UM deles para a extração devolver o prompt inteiro, a
+// casca de guardrails virar "ok", e a mudez voltar a ser invisível — em
+// silêncio, e com todos os testes verdes.
 const CABECALHO_PERSONALIZACAO = '=== PERSONALIZACAO DA CORRETORA';
 const CABECALHO_GUARDRAILS = '=== REGRAS IMUTAVEIS DO AUTOBROKERS';
 

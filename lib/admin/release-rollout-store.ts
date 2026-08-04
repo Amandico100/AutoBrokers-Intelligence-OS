@@ -87,6 +87,24 @@ export async function applyRollout(supabase: SupabaseClient, releaseId: string, 
   return { ok: true as const, rollout_id: data, release_id: rel.id, company_id: companyId, blueprint_key: rel.blueprint_key, version: rel.semantic_version };
 }
 
+/**
+ * P-38 — DESFAZER TAMBÉM ESCREVE O PROMPT, e por isso também tem portão.
+ *
+ * `applyRollout` foi consertado em P-36; o rollback não. Ele chama uma RPC que
+ * restaura o SNAPSHOT LITERAL capturado antes do rollout — e o snapshot é uma
+ * foto do que existia, não uma promessa de que aquilo prestava. Se o agente já
+ * estava mudo quando a release desceu (📊 exatamente o estado da AutoFleet em
+ * 02/08/2026: core ATIVO com prompt de zero caracteres), desfazer devolve o
+ * mudo e o deixa ativo. E "voltei ao que era antes" soa como conserto.
+ *
+ * A recusa NÃO pode ser antes da RPC: o snapshot vive dentro de
+ * `agent_release_rollouts` e quem o escolhe é a função do Postgres — ler o
+ * "último rollout aplicado" daqui seria reimplementar a seleção dela em
+ * TypeScript, para as duas divergirem depois. Então a ordem é: desfaz, RELÊ o
+ * que ficou, e se o que voltou é mudo, o agente é DESLIGADO com nome próprio.
+ * O rollback continua registrado — o histórico não mente —, mas o agente não
+ * volta ao ar sem voz.
+ */
 export async function rollbackRollout(supabase: SupabaseClient, companyId: string, blueprintKey: string, byUser: string) {
   const { data, error } = await supabase.rpc('rollback_release_rollout', {
     p_company_id: companyId, p_blueprint_key: blueprintKey, p_by: byUser,
@@ -95,6 +113,22 @@ export async function rollbackRollout(supabase: SupabaseClient, companyId: strin
     if (RPC_MISSING.includes(error.code ?? '')) return { ok: false as const, error: 'rollout_migration_required' };
     return { ok: false as const, error: 'rollback_failed', details: [error.message] };
   }
+
+  const bpMeta = getCanonicalBlueprint(blueprintKey);
+  const { data: agent } = await supabase.from('agents').select('id')
+    .eq('company_id', companyId).eq('agent_role', bpMeta?.role ?? '').maybeSingle();
+  if (agent?.id) {
+    const conferido = await conferirPromptGravado(supabase, companyId, agent.id, 'rollback_release_rollout');
+    if (!conferido.ok) {
+      return {
+        ok: false as const,
+        error: conferido.reason ?? 'prompt_vazio_apos_escrita',
+        details: [blueprintKey, 'snapshot_restaurado_estava_mudo'],
+        rollout_id: data, company_id: companyId, blueprint_key: blueprintKey,
+      };
+    }
+  }
+
   return { ok: true as const, rollout_id: data, company_id: companyId, blueprint_key: blueprintKey };
 }
 

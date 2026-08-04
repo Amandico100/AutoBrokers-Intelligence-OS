@@ -46,6 +46,32 @@ Um teste que lê código-fonte passa fácil demais. O caso [5] roda a MESMA
 verificação sobre o código como ele era ANTES do conserto — copiado verbatim
 para dentro deste arquivo. Se ele ficar verde, esta suíte inteira não está
 guardando nada (CLAUDE.md §9.3).
+
+P-38 — E a varredura que provava "não sobrou nenhum" não varria nada
+--------------------------------------------------------------------
+O caso [6] chamava-se "Varredura: toda escrita da coluna passa por um portão" e
+era um **dicionário fixo de quatro arquivos ``.ts``**. Ele não olhava o
+repositório e não olhava ``.py``. Confirmava que os quatro que eu já tinha
+consertado continuavam consertados — o que é útil, e não é uma varredura.
+
+Sobraram três escritores, e nenhum deles seria achado por uma busca pelo nome
+da coluna::
+
+    backend/app/services/agent_service.py   grava `model_dump()`
+    backend/app/api/agent_config.py         escreve companies.agent_system_prompt
+    app/api/admin/companies/route.ts        `insert([body])` — corpo CRU, e o
+                                            arquivo inteiro nunca citava a coluna
+
+Quem procura a palavra acha quem foi honesto o bastante para escrevê-la. Então
+a pergunta do caso [6] mudou: **quem escreve nas TABELAS onde a coluna mora?**
+Toda escrita opaca (payload que é variável, spread ou ``**``) pode carregar a
+coluna sem nomeá-la, e precisa do portão. O caso [7] é o controle da varredura:
+ela é apontada para o ``agent_service.py`` como ele era, que nunca menciona a
+coluna, e tem de ACUSAR.
+
+E o rollback (caso [3]) entrou junto: ``applyRollout`` foi consertado em P-36 e
+``rollbackRollout`` não. Ele restaura um snapshot literal — e snapshot é foto do
+que existia, não promessa de que aquilo prestava.
 """
 
 from __future__ import annotations
@@ -217,6 +243,26 @@ def teste_a_release_nao_desce_um_prompt_vazio():
     checar("'prompt_invalido'" in corpo,
            "e a recusa tem nome próprio, distinto de 'apply_failed'")
 
+    # P-38 — DESFAZER TAMBÉM ESCREVE O PROMPT.
+    #
+    # `applyRollout` foi consertado em P-36 e o rollback não. A RPC restaura o
+    # SNAPSHOT LITERAL de antes do rollout — e o snapshot é uma foto do que
+    # existia, não uma promessa de que aquilo prestava. 📊 Se o agente já estava
+    # mudo quando a release desceu (o estado da AutoFleet em 02/08/2026),
+    # desfazer devolve o mudo e o deixa ativo. E "voltei ao que era antes" soa
+    # como conserto.
+    volta = _corpo(codigo, "export async function rollbackRollout(")
+    checar(bool(volta), "rollbackRollout existe")
+    checar("conferirPromptGravado(supabase, companyId, agent.id" in volta,
+           "rollbackRollout: o banco é relido DEPOIS de restaurar o snapshot",
+           "o snapshot pode ser mudo; restaurá-lo é uma escrita como outra qualquer")
+    checar(volta.index("conferirPromptGravado(") > volta.index("supabase.rpc('rollback_release_rollout'"),
+           "e a releitura vem DEPOIS da RPC")
+    checar("snapshot_restaurado_estava_mudo" in volta,
+           "e o motivo distingue 'o rollback falhou' de 'o rollback funcionou "
+           "e devolveu um agente mudo'",
+           "são dois problemas diferentes e exigem ações diferentes")
+
 
 def teste_o_studio_nao_publica_um_source_agent_mudo():
     print("\n[4] Studio: o vazio que não fica numa corretora só")
@@ -271,24 +317,237 @@ def teste_a_verificacao_tem_como_falhar():
            "e APROVA o código de hoje — os dois lados conseguem ser diferentes")
 
 
+# ---------------------------------------------------------------------------
+# A VARREDURA DE VERDADE (P-38)
+# ---------------------------------------------------------------------------
+#
+# O caso [6] era um DICIONÁRIO FIXO de quatro arquivos `.ts`. Ele não varria
+# nada: conferia que os quatro que eu já tinha consertado continuavam
+# consertados. Um quinto escritor era invisível por construção — e havia três:
+#
+#     backend/app/services/agent_service.py     update_agent / create_agent
+#     backend/app/api/agent_config.py           companies.agent_system_prompt
+#     app/api/admin/companies/route.ts          insert([body]) — corpo CRU
+#
+# E o mais importante: NENHUM DOS TRÊS seria achado por uma busca pelo nome da
+# coluna. `agent_service.py` escreve `model_dump()`; `companies/route.ts` nem
+# menciona `agent_system_prompt`. Quem procura a palavra acha quem foi honesto o
+# bastante para escrevê-la.
+#
+# Então a varredura mudou de pergunta:
+#
+#     ERRADO  quem menciona `agent_system_prompt`?
+#     CERTO   quem ESCREVE nas tabelas onde essa coluna mora?
+#
+# `agents` e `companies`. Toda escrita OPACA (payload que é variável, spread ou
+# `**`) pode carregar a coluna sem nomeá-la, e por isso precisa do portão. As
+# escritas TRANSPARENTES (objeto literal com chaves visíveis) são lidas aqui
+# mesmo: se nenhuma chave é a coluna, elas não têm como emudecer ninguém.
+
+RAIZ_VARREDURA = RAIZ
+PASTAS_IGNORADAS = {
+    "node_modules", ".next", ".git", "__pycache__", ".venv", "venv",
+    "docs", "migrations", "_archive", "INTAKE", "dist", "build", ".vercel",
+    "tests",  # este arquivo cita código de ANTES como CONTROLE, não o executa
+}
+EXTENSOES = (".ts", ".tsx", ".py")
+
+# `.table("agents").update(` · `.from('companies').insert(` · com quebras de linha
+_ESCRITA_RE = re.compile(
+    r"""(?:\.table|\.from)\(\s*['"](agents|companies)['"]\s*\)"""
+    r"""((?:[^;\n]|\n(?=\s*\.))*?)\.(update|insert|upsert)\(""",
+    re.S,
+)
+
+# As funções que SÃO o portão. Tocar na coluna sem citar uma delas é o furo.
+MARCAS_DO_PORTAO = (
+    "problemasDoUpdate(", "problemasDoPrompt(", "problemasDoPromptDeAutoria(",
+    "conferirPromptGravado(", "prompt_vazio_apos_insert",
+    "problemas_da_escrita_de_prompt(", "conferir_prompt_gravado(",
+    "desligar_se_nascer_mudo(",
+)
+
+# Escritas OPACAS que provadamente não conseguem carregar a coluna, com o
+# motivo. Entrar aqui exige que o motivo seja verdade — e o caso confere.
+OPACAS_JUSTIFICADAS = {
+    "lib/admin/company-profile-store.ts":
+        ("COMPANY_PROFILE_FIELDS",
+         "`v.clean` só recebe chaves de COMPANY_PROFILE_FIELDS (whitelist do validador)"),
+    "backend/app/services/brand/capture.py":
+        ("candidatos = {",
+         "`patch` é filtrado de `candidatos`, um dicionário literal de 10 campos de cadastro"),
+}
+
+
+
+_FIM_DO_METODO = re.compile(r"\n    def |\ndef |\nclass ")
+
+
+def _corpo_do_metodo(fonte: str, assinatura: str) -> str:
+    """Recorta o corpo de um metodo Python ate o proximo `def` de mesmo nivel."""
+    if assinatura not in fonte:
+        return ""
+    return _FIM_DO_METODO.split(fonte.split(assinatura, 1)[1])[0]
+
+
+def _arquivos_do_repo():
+    for base, dirs, files in os.walk(RAIZ_VARREDURA):
+        dirs[:] = [d for d in dirs if d not in PASTAS_IGNORADAS]
+        for nome in files:
+            if nome.endswith(EXTENSOES):
+                caminho = os.path.join(base, nome)
+                yield os.path.relpath(caminho, RAIZ_VARREDURA).replace("\\", "/"), caminho
+
+
+def _argumento_da_escrita(fonte: str, fim: int) -> str:
+    """O primeiro pedaço do payload — o bastante para saber se é opaco."""
+    return fonte[fim:fim + 160].replace("\n", " ")
+
+
+def _e_opaca(arg: str) -> bool:
+    """Payload cujas chaves NÃO estão à vista no ponto da escrita.
+
+    Variável (`update_data`, `patch`), spread (`...upd.columns`) ou unpacking
+    (`**colunas`): qualquer um pode trazer `agent_system_prompt` sem escrevê-lo.
+    """
+    limpo = arg.lstrip()
+    if not limpo.startswith(("{", "[")):
+        return True  # identificador ou chamada de função
+    return "..." in arg or "**" in arg
+
+
+def varrer_escritores():
+    """Devolve {caminho: [(tabela, verbo, arg, opaca)]} para todo o repositório."""
+    achados: dict = {}
+    for rel, absoluto in _arquivos_do_repo():
+        try:
+            with open(absoluto, encoding="utf-8") as fh:
+                fonte = fh.read()
+        except (OSError, UnicodeDecodeError):
+            continue
+        if "agents" not in fonte and "companies" not in fonte:
+            continue
+        limpo = _sem_comentario(fonte) if rel.endswith((".ts", ".tsx")) else fonte
+        for m in _ESCRITA_RE.finditer(limpo):
+            arg = _argumento_da_escrita(limpo, m.end())
+            achados.setdefault(rel, []).append((m.group(1), m.group(3), arg, _e_opaca(arg)))
+    return achados
+
+
 def teste_nenhuma_escrita_do_prompt_ficou_de_fora():
-    print("\n[6] Varredura: toda escrita da coluna passa por um portão")
-    # Um conserto que fecha três portas e deixa a quarta aberta não conserta
-    # nada. A varredura é sobre a coluna, não sobre as funções que eu lembrei.
-    esperado = {
-        "lib/admin/provision-tenant.ts": {"problemasDoUpdate(", "problemasDoPrompt(",
-                                          "prompt_vazio_apos_insert"},
-        "lib/admin/tenant-agent-store.ts": {"problemasDoUpdate(", "conferirPromptGravado("},
-        "lib/admin/release-rollout-store.ts": {"problemasDoUpdate(", "conferirPromptGravado("},
-        "lib/admin/blueprint-studio-store.ts": {"problemasDoPromptDeAutoria(", "conferirPromptGravado("},
-    }
-    for caminho, marcas in esperado.items():
-        fonte = _sem_comentario(_ler(*caminho.split("/")))
-        escreve = "agent_system_prompt:" in fonte or "upd.columns" in fonte
-        checar(escreve, f"{caminho} de fato escreve o prompt",
-               "se parou de escrever, este caso virou verdade vencida (§9.3)")
-        for marca in sorted(marcas):
-            checar(marca in fonte, f"{caminho} usa {marca}")
+    print("\n[6] Varredura REAL: quem escreve nas tabelas da coluna passa pelo portão")
+
+    achados = varrer_escritores()
+    checar(len(achados) >= 10,
+           f"a varredura encontrou escritores de verdade ({len(achados)} arquivos)",
+           "se cair para dois ou três, o regex parou de casar e o caso virou decoração")
+
+    # Os arquivos que a auditoria conhece TÊM de aparecer. Se a varredura
+    # deixasse um deles de fora, ela estaria cega para o que já se sabe.
+    for conhecido in ("lib/admin/provision-tenant.ts",
+                      "lib/admin/tenant-agent-store.ts",
+                      "lib/admin/blueprint-studio-store.ts",
+                      "backend/app/services/agent_service.py",
+                      "backend/app/api/agent_config.py",
+                      "app/api/admin/companies/route.ts"):
+        checar(conhecido in achados,
+               f"a varredura enxerga {conhecido}",
+               "é um escritor conhecido: não aparecer significa regex furado")
+
+    # A PROVA de que a pergunta antiga estava errada: `agent_service.update_agent`
+    # grava `model_dump()` e NÃO nomeia a coluna em lugar nenhum do método. Uma
+    # varredura por menção da palavra devolve zero para ele — e era exatamente o
+    # caminho mais grave.
+    upd = _corpo_do_metodo(_ler("backend", "app", "services", "agent_service.py"),
+                           "def update_agent(")
+    checar(bool(upd), "update_agent foi encontrado em agent_service.py")
+    checar("agent_system_prompt" in upd,
+           "hoje update_agent NOMEIA a coluna (foi o portão que a trouxe)",
+           "e é por isso que a varredura NÃO pode depender do nome: antes do "
+           "conserto, o método inteiro gravava a coluna sem nunca citá-la")
+
+    # O veredito, arquivo por arquivo.
+    sem_portao: list = []
+    for rel, escritas in sorted(achados.items()):
+        opacas = [e for e in escritas if e[3]]
+        if not opacas:
+            # Só objetos literais: as chaves estão à vista.
+            fonte = _sem_comentario(_ler(*rel.split("/")))
+            corpos = " ".join(e[2] for e in escritas)
+            checar("agent_system_prompt" not in corpos,
+                   f"{rel}: escreve só chaves literais, e nenhuma é o prompt",
+                   corpos[:110])
+            continue
+
+        fonte = _sem_comentario(_ler(*rel.split("/")))
+        if rel in OPACAS_JUSTIFICADAS:
+            marca, motivo = OPACAS_JUSTIFICADAS[rel]
+            checar(marca in fonte,
+                   f"{rel}: a justificativa continua verdadeira — {motivo}",
+                   f"'{marca}' sumiu do arquivo: a isenção caducou (§9.3)")
+            checar("agent_system_prompt" not in fonte,
+                   f"{rel}: e ele nunca menciona a coluna")
+            continue
+
+        tem = [m for m in MARCAS_DO_PORTAO if m in fonte]
+        checar(bool(tem),
+               f"{rel}: escrita OPACA passa pelo portão ({', '.join(tem[:2]) or 'NENHUMA'})",
+               f"{len(opacas)} escrita(s) com payload que pode carregar a coluna "
+               f"sem nomeá-la — foi assim que agent_service.py ficou invisível")
+        if not tem:
+            sem_portao.append(rel)
+
+    checar(not sem_portao,
+           "nenhum escritor opaco ficou sem portão",
+           f"sem portão: {sem_portao}")
+
+
+def teste_a_varredura_acha_um_escritor_novo():
+    print("\n[7] CONTROLE da varredura — ela enxerga um escritor que NÃO existe no repo")
+    # A varredura só vale se conseguir ACUSAR. Aqui ela é apontada para um
+    # arquivo sintético — o `agent_service.py` como era, que nunca menciona a
+    # coluna e grava um dicionário opaco. Se este caso ficar verde no sentido
+    # errado (varredura não acha nada), o caso [6] passaria de graça para
+    # sempre.
+    NOVO_ESCRITOR_PY = '''
+    def update_agent(self, agent_id, agent_data):
+        update_data = agent_data.model_dump(exclude_unset=True)
+        result = (
+            self.supabase.client.table("agents")
+            .update(update_data)
+            .eq("id", str(agent_id))
+            .execute()
+        )
+        return result
+'''
+    achados = list(_ESCRITA_RE.finditer(NOVO_ESCRITOR_PY))
+    checar(len(achados) == 1,
+           "a varredura ACHA a escrita mesmo sem a coluna ser mencionada",
+           f"{len(achados)} — era exatamente este código, e a busca por "
+           "'agent_system_prompt' devolvia zero")
+    checar("agent_system_prompt" not in NOVO_ESCRITOR_PY,
+           "e o arquivo de exemplo de fato nunca nomeia a coluna",
+           "se nomeasse, o controle não provaria nada sobre escritor invisível")
+    arg = _argumento_da_escrita(NOVO_ESCRITOR_PY, achados[0].end()) if achados else ""
+    checar(_e_opaca(arg), "e a classifica como OPACA", repr(arg[:40]))
+
+    # E o inverso: escrita transparente que não toca no prompt NÃO é opaca.
+    TRANSPARENTE = """
+      await supabase.from('agents').update({ allow_web_search: true, updated_at: nowIso })
+    """
+    m = list(_ESCRITA_RE.finditer(TRANSPARENTE))
+    checar(len(m) == 1 and not _e_opaca(_argumento_da_escrita(TRANSPARENTE, m[0].end())),
+           "e uma escrita de chaves literais NÃO é acusada de opaca",
+           "senão todo update do repositório viraria pendência e o caso vira ruído")
+
+    # E o spread, que parece literal e não é.
+    SPREAD = """
+      await supabase.from('agents').update({ ...upd.columns, updated_at: agora })
+    """
+    ms = list(_ESCRITA_RE.finditer(SPREAD))
+    checar(len(ms) == 1 and _e_opaca(_argumento_da_escrita(SPREAD, ms[0].end())),
+           "e `{ ...variavel }` é tratado como OPACO",
+           "era a forma exata de tenant-agent-store.ts e provision-tenant.ts")
 
 
 def main() -> int:
@@ -301,7 +560,8 @@ def main() -> int:
                   teste_a_release_nao_desce_um_prompt_vazio,
                   teste_o_studio_nao_publica_um_source_agent_mudo,
                   teste_a_verificacao_tem_como_falhar,
-                  teste_nenhuma_escrita_do_prompt_ficou_de_fora):
+                  teste_nenhuma_escrita_do_prompt_ficou_de_fora,
+                  teste_a_varredura_acha_um_escritor_novo):
         try:
             teste()
         except Exception as exc:  # noqa: BLE001

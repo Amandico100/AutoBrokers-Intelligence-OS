@@ -13,6 +13,11 @@ from pydantic import BaseModel, Field, validator
 
 from app.core import get_supabase_client
 from app.services.encryption_service import get_encryption_service
+from app.services.portao_do_prompt import (
+    PERSONALIZACAO_MINIMA_CHARS,
+    conferir_prompt_gravado,
+    problemas_da_escrita_de_prompt,
+)
 from app.services.langchain_service import (
     SUPPORTED_PROVIDERS,
     get_models_for_provider,
@@ -310,13 +315,38 @@ async def save_agent_config(company_id: str, config: AgentConfigRequest):
             "llm_top_k": config.llm_top_k,
             "llm_frequency_penalty": config.llm_frequency_penalty,
             "llm_presence_penalty": config.llm_presence_penalty,
-            "agent_system_prompt": config.agent_system_prompt,
             "agent_enabled": config.agent_enabled,
             "use_langchain": config.use_langchain,
             "allow_web_search": config.allow_web_search,
             "allow_vision": config.allow_vision,
             "vision_model": config.vision_model,  # VISION
         }
+
+        # P-38 — A CAMADA LEGADA TAMBÉM EMUDECE, e é lida pelo runtime:
+        # `backend/app/agents/nodes.py:438` monta o prompt base a partir de
+        # `company_config.get("agent_system_prompt")`, e
+        # `backend/app/services/prompt_effective_service.py:111` a exibe como
+        # camada 2. Ela é a MESMA coluna de nome, em outra tabela.
+        #
+        # Havia DOIS jeitos de emudecer aqui, e o segundo era invisível:
+        #
+        #   a) mandar "" — string vazia por cima de um prompt que funcionava;
+        #   b) OMITIR o campo — `agent_system_prompt` é Optional e o dicionário
+        #      o incluía SEMPRE. Um PUT que só trocasse o modelo gravava NULL
+        #      na coluna, e a empresa perdia a instrução sem ninguém pedir.
+        #
+        # (a) é recusado com nome próprio. (b) deixa de existir: chave ausente
+        # é ausência, e ausência preserva o que está lá.
+        if config.agent_system_prompt is not None:
+            problemas = problemas_da_escrita_de_prompt(
+                config.agent_system_prompt, minimo_chars=PERSONALIZACAO_MINIMA_CHARS
+            )
+            if problemas:
+                raise HTTPException(
+                    status_code=status.HTTP_400_BAD_REQUEST,
+                    detail=f"prompt_invalido: {','.join(problemas)}",
+                )
+            update_data["agent_system_prompt"] = config.agent_system_prompt
 
         # Criptografar API key SOMENTE se for diferente de "UNCHANGED"
         if config.llm_api_key and config.llm_api_key != "UNCHANGED":
@@ -345,6 +375,20 @@ async def save_agent_config(company_id: str, config: AgentConfigRequest):
 
         if not result.data:
             raise Exception("Failed to update company config")
+
+        # A releitura, quando o prompt foi tocado. "Gravei" é fato lido de
+        # volta, não requisição enviada — e o que voltar mudo é DESLIGADO
+        # (`agent_enabled=false`), nunca deixado ativo e sem instrução.
+        if "agent_system_prompt" in update_data:
+            conferido = conferir_prompt_gravado(
+                supabase.client, company_id, company_id,
+                "agent_config.save_agent_config", tabela="companies",
+            )
+            if not conferido.ok:
+                raise HTTPException(
+                    status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+                    detail=conferido.reason or "prompt_vazio_apos_escrita",
+                )
 
         logger.info(
             f"Agent config saved for company {company_id}: provider={config.llm_provider}, model={config.llm_model}"
