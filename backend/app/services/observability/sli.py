@@ -52,6 +52,10 @@ WORK_RUN_DURACAO = "work_run.duracao_ms"
 WORK_RUN_FALHA = "work_run.falha"
 ATLAS_TECELAGEM = "atlas.tecelagem_ms"
 FERRAMENTA_DURACAO = "tool.duracao_ms"
+# Quanto tempo o segurado ficou esperando um humano que já foi chamado. Não é
+# latência de máquina: é a espera de uma PESSOA que pediu uma PESSOA. Sem este
+# número, `HUMAN_REQUESTED` é um estado que ninguém mede e do qual ninguém sai.
+HANDOFF_ESPERA = "handoff.espera_humana_ms"
 
 # Amostragem. Com tráfego alto, gravar 100% das medições produz uma tabela que
 # custa mais que o produto. Padrão 1.0 porque hoje o volume é baixo e a

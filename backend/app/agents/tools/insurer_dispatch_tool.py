@@ -21,6 +21,97 @@ from pydantic import BaseModel, Field
 logger = logging.getLogger(__name__)
 
 
+# --------------------------------------------------------------------------- #
+# O QUE É DADO DE VERDADE — conferência determinística, fora do alcance do LLM
+# --------------------------------------------------------------------------- #
+# O incidente de 2026-07-10 ("placa e telefone inventados foram parar na
+# seguradora") gerou um guarda que conferia só o telefone, e o conferia mal.
+# Estas três funções são o guarda de verdade. Todas seguem a mesma regra: só
+# reprovam o que É comprovadamente inválido, nunca o que apenas parece estranho.
+# Reprovar dado verdadeiro é o defeito que faz alguém desligar o guarda.
+
+# DDDs em uso no Brasil. A lista existe porque `00` e `10` não são DDD, e um
+# telefone com DDD inexistente é invenção com cara de número.
+_DDD_BR = frozenset({
+    11, 12, 13, 14, 15, 16, 17, 18, 19, 21, 22, 24, 27, 28, 31, 32, 33, 34, 35,
+    37, 38, 41, 42, 43, 44, 45, 46, 47, 48, 49, 51, 53, 54, 55, 61, 62, 63, 64,
+    65, 66, 67, 68, 69, 71, 73, 74, 75, 77, 79, 81, 82, 83, 84, 85, 86, 87, 88,
+    89, 91, 92, 93, 94, 95, 96, 97, 98, 99,
+})
+
+# Antiga (ABC1234) e Mercosul (ABC1D23) no MESMO padrão: a 5ª posição é o único
+# ponto em que elas divergem, e ali cabe letra ou dígito.
+_PLACA_BR = re.compile(r"^[A-Z]{3}\d[A-Z0-9]\d{2}$")
+
+
+def _digitos(valor) -> str:
+    return re.sub(r"\D", "", str(valor or ""))
+
+
+def _digito_verificador(numeros, pesos) -> int:
+    resto = sum(n * p for n, p in zip(numeros, pesos)) % 11
+    return 0 if resto < 2 else 11 - resto
+
+
+def cpf_valido(valor) -> bool:
+    """CPF pelo DÍGITO VERIFICADOR, não pelo comprimento.
+
+    `12345678901` tem onze dígitos e não é CPF de ninguém. Um CPF errado não
+    atrasa o atendimento: ele abre o chamado na apólice de outra pessoa.
+    """
+    d = [int(c) for c in _digitos(valor)]
+    if len(d) != 11 or len(set(d)) == 1:  # 111.111.111-11 fecha a conta e não existe
+        return False
+    return (d[9] == _digito_verificador(d[:9], range(10, 1, -1))
+            and d[10] == _digito_verificador(d[:10], range(11, 1, -1)))
+
+
+def cnpj_valido(valor) -> bool:
+    """CNPJ pelo dígito verificador. Existe porque o titular pode ser PESSOA
+    JURÍDICA — condomínio e empresa são carteira inteira no residencial, e as
+    URAs pedem "CPF ou CNPJ". Reprovar um CNPJ verdadeiro travaria o corredor."""
+    d = [int(c) for c in _digitos(valor)]
+    if len(d) != 14 or len(set(d)) == 1:
+        return False
+    pesos1 = [5, 4, 3, 2, 9, 8, 7, 6, 5, 4, 3, 2]
+    return (d[12] == _digito_verificador(d[:12], pesos1)
+            and d[13] == _digito_verificador(d[:13], [6] + pesos1))
+
+
+def documento_br_valido(valor) -> bool:
+    """O que o campo `titular_cpf` de fato aceita: CPF **ou** CNPJ."""
+    return cpf_valido(valor) or cnpj_valido(valor)
+
+
+def placa_br_valida(valor) -> bool:
+    """Placa nos dois formatos legais. Separador e caixa não importam."""
+    return bool(_PLACA_BR.match(re.sub(r"[^A-Za-z0-9]", "", str(valor or "")).upper()))
+
+
+def telefone_br_valido(valor) -> bool:
+    """Telefone brasileiro pelas regras que a ANATEL de fato impõe.
+
+    Substitui `(\\d)\\1{4,}` — "cinco dígitos repetidos" — que reprovava
+    `48999990000`: um celular real de Florianópolis, e o número do
+    `CASO_COMPLETO` dos testes deste repositório. Cinco repetições cabem num
+    número verdadeiro; DDD inexistente e celular sem o 9 inicial, não.
+    """
+    d = _digitos(valor)
+    if d.startswith("55") and len(d) in (12, 13):
+        d = d[2:]  # código do país
+    if len(d) not in (10, 11) or len(set(d)) == 1:
+        return False
+    if int(d[:2]) not in _DDD_BR:
+        return False
+    assinante = d[2:]
+    if len(d) == 11 and assinante[0] != "9":
+        return False   # celular tem 9 dígitos começando em 9 desde 2016
+    if len(d) == 10 and assinante[0] not in "2345":
+        return False   # fixo começa em 2-5
+    # Sete repetições seguidas não sobrevivem a um número real; cinco sim.
+    return not re.search(r"(\d)\1{6,}", d)
+
+
 class InsurerDispatchInput(BaseModel):
     subservice: str = Field(description=(
         "Subserviço. Residencial: eletricista | chaveiro | encanador | eletrodomesticos. "
@@ -174,6 +265,7 @@ class InsurerDispatchTool(BaseTool):
     def _run(self, **kwargs) -> dict:
         """Valida e monta o plano. NUNCA envia nada — o envio real (gate aberto)
         acontece só no _arun. Honestidade: sem envio, sem alegar acionamento."""
+        from app.services.corridor_playbooks import SUBSERVICO_INVALIDO
         from app.services.insurer_dispatch_service import build_dry_run_plan
 
         subservice, slots = self._extract_slots(kwargs)
@@ -188,13 +280,29 @@ class InsurerDispatchTool(BaseTool):
                 "da corretora vai assumir — os dados que ele já deu ficam registrados.")}
 
         # GUARDA ANTI-INVENÇÃO (incidente 2026-07-10: placa e telefone inventados
-        # foram parar na seguradora). Determinístico, fora do alcance do LLM:
+        # foram parar na seguradora). Determinístico, fora do alcance do LLM.
+        #
+        # 📊 03/08/2026: o comentário citava PLACA e o código conferia SÓ telefone.
+        # `placa='1'` e `placa='nao sei'` chegavam a `ready_to_send` — a placa
+        # errada abre chamado para o carro de outra pessoa. E o guarda de telefone
+        # (`(\d)\1{4,}`) reprovava `48999990000`, que é um celular REAL de
+        # Florianópolis e é o `CASO_COMPLETO` dos testes deste próprio repositório.
+        # Guarda que reprova o verdadeiro ensina a desligar o guarda.
         is_auto = "auto" in str(playbook_ref)
-        digits_only = "".join(ch for ch in str(kwargs.get("telefone_contato") or "") if ch.isdigit())
-        if digits_only and re.search(r"(\d)\1{4,}", digits_only):
-            return {"status": "missing_data", "missing": ["telefone_contato"], "content": (
-                "O telefone informado parece placeholder (dígitos repetidos). Pergunte ao cliente o telefone "
-                "REAL de quem estará com o veículo — nunca preencha com número genérico.")}
+        for campo, valor, ok, comojá in (
+            ("telefone_contato", kwargs.get("telefone_contato"), telefone_br_valido,
+             "o telefone REAL de quem estará com o veículo (com DDD)"),
+            ("veiculo_placa", kwargs.get("veiculo_placa"), placa_br_valida,
+             "a placa REAL do veículo (formato ABC1D23 ou ABC1234) — confirme na apólice, "
+             "na InfoCap ou com o cliente"),
+            ("titular_cpf", kwargs.get("titular_cpf"), documento_br_valido,
+             "o CPF (ou CNPJ) REAL do titular da apólice"),
+        ):
+            if str(valor or "").strip() and not ok(valor):
+                return {"status": "missing_data", "missing": [campo], "content": (
+                    f"O valor informado em `{campo}` não é válido — não passa na conferência "
+                    "determinística de formato. NÃO envie isso à seguradora e NÃO tente adivinhar: "
+                    f"descubra {comojá}. Se o cliente não souber, chame `request_human_agent`.")}
         if is_auto and not kwargs.get("dados_confirmados"):
             placa = str(kwargs.get("veiculo_placa") or "—")
             return {"status": "confirm_first", "content": (
@@ -209,6 +317,31 @@ class InsurerDispatchTool(BaseTool):
         plan = build_dry_run_plan(playbook_ref, subservice, slots)
 
         if not plan.get("ok"):
+            # SENTINELA, NÃO CAMPO.
+            #
+            # `subservico_invalido` diz "esta seguradora não faz este trabalho
+            # por este canal" — é irmão de `sem_corredor`, e a resposta certa é a
+            # mesma: handoff. Traduzi-lo em `missing_data` mandava o LLM perguntar
+            # ao cliente um dado que não existe; o cliente respondia qualquer
+            # coisa, o slot continuava faltando, e o laço nunca terminava.
+            #
+            # 📊 03/08/2026, varrendo `_PLAYBOOKS` com
+            # `missing_slots_for_subservice(pb, sub, {})`: `colisao`, `roubo` e
+            # `incendio` — os TRÊS sinistros — caem aqui em **13 de 13**
+            # corredores, e `vidros` em 10. O caminho mais grave do produto era
+            # o que perguntava ao segurado o nome de um campo inexistente.
+            if SUBSERVICO_INVALIDO in (plan.get("missing_slots") or []):
+                trabalho = subservice or "esse serviço"
+                quem = insurer_key or "essa seguradora"
+                return {"status": "sem_corredor", "handoff_necessario": True,
+                        "missing": [], "content": (
+                            f"A {quem} não atende '{trabalho}' por este canal de assistência — "
+                            "e sinistro (colisão, roubo, incêndio) NUNCA se abre por aqui. "
+                            "NÃO peça mais nenhum dado ao cliente por causa disto: não falta dado, "
+                            "falta caminho. NÃO tente acionar por outro corredor e NÃO invente protocolo. "
+                            "Chame `request_human_agent` agora, com o motivo "
+                            f"'{quem} não tem corredor para {trabalho}', e diga ao cliente que um "
+                            "atendente da corretora vai assumir — o que ele já contou fica registrado.")}
             if plan.get("missing_slots"):
                 friendly = {
                     "titular_cpf": "CPF do titular",

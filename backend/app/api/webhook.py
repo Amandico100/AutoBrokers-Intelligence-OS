@@ -261,6 +261,26 @@ async def process_whatsapp_message_background(
     buffered_messages: Optional[list] = None,
 ):
     """Processa mensagem WhatsApp em background (Evita bloqueio do Webhook)"""
+    # AS DUAS CONDIÇÕES DO FALLBACK — ver o `except` no fim desta função.
+    #
+    # Uma exceção no caminho da IA deixava o segurado em SILÊNCIO TOTAL: o
+    # `except` de fora só logava. O ramo de áudio, dez passos acima, sempre
+    # avisou ("Erro ao processar áudio"); o caminho principal, não. A pessoa
+    # mandava a mensagem e nada voltava — nunca.
+    #
+    # Mas avisar tem duas pré-condições, e nenhuma pode ser presumida:
+    #
+    #   `_pode_falar_ao_cliente`  o PORTÃO DE SILÊNCIO já autorizou. Falar por
+    #                             uma corretora em modo observação não é
+    #                             recuperável (é o mesmo raciocínio do passo
+    #                             6.5). Enquanto o portão não passou, o padrão
+    #                             é calar — inclusive no erro.
+    #   `_resposta_ja_enviada`    a resposta do agente já saiu. Uma exceção
+    #                             DEPOIS do envio (métrica, preview, billing)
+    #                             não pode virar um segundo balão dizendo que
+    #                             deu errado quando deu certo.
+    _pode_falar_ao_cliente = False
+    _resposta_ja_enviada = False
     try:
         # LOG SANITIZADO: Apenas último 4 dígitos do telefone
         safe_phone = f"...{str(payload_dict.get('phone', ''))[-4:]}"
@@ -651,6 +671,10 @@ async def process_whatsapp_message_background(
                              "agente permanece em silêncio", type(e).__name__)
             return
 
+        # Daqui para baixo o agente TEM autorização para falar com este segurado
+        # — e, portanto, tem o dever de não emudecer se algo explodir.
+        _pode_falar_ao_cliente = True
+
         # 7. Fluxo IA
         # 🔥 BILLING: Verificar saldo antes de invocar IA
         from app.services.billing_service import get_billing_service
@@ -750,12 +774,37 @@ async def process_whatsapp_message_background(
         )
 
         if success:
+            _resposta_ja_enviada = True
             logger.info(f"[WEBHOOK BACKGROUND] ✅ Message sent to {safe_phone}")
         else:
             logger.error("[WEBHOOK BACKGROUND] Failed to send WhatsApp message")
 
     except Exception as e:
         logger.error(f"[WEBHOOK BACKGROUND] Critical Error: {str(e)}", exc_info=True)
+        # O SEGURADO NÃO FICA SEM RESPOSTA.
+        #
+        # Log não é atendimento. Quem mandou a mensagem não vê o Sentry: vê um
+        # WhatsApp que não respondeu, e conclui que ninguém está lá.
+        #
+        # O texto é curto e **não promete nada que não vá acontecer**: não diz
+        # que um atendente vai assumir (ninguém foi acionado), não diz que a
+        # mensagem foi registrada (a gravação pode ter sido justamente o que
+        # falhou) e não estima prazo. Diz o que é verdade — deu erro aqui — e o
+        # que a pessoa pode fazer agora.
+        if _pode_falar_ao_cliente and not _resposta_ja_enviada:
+            try:
+                whatsapp_service.send_message(
+                    to_number=payload.phone,
+                    text=("Tive uma falha técnica aqui e não consegui processar sua "
+                          "última mensagem. Pode enviar de novo, por favor? "
+                          "Se for urgente, ligue para a corretora."),
+                    integration=integration,
+                )
+                logger.info("[WEBHOOK BACKGROUND] fallback honesto enviado ao cliente")
+            except Exception:  # noqa: BLE001
+                # O fallback do fallback é o log. Aqui o canal em si está fora.
+                logger.error("[WEBHOOK BACKGROUND] nem o fallback saiu — cliente "
+                             "SEM resposta (canal indisponível)")
 
 
 # ==============================================================================

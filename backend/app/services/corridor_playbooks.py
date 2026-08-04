@@ -44,9 +44,35 @@ import unicodedata
 from typing import Any, Dict, List, Optional
 
 
+# O `*` do NEGRITO do WhatsApp some ANTES do casamento de âncora.
+#
+# 📊 03/08/2026: das 426 ocorrências de âncora nos playbooks, **272 quebravam**
+# se a seguradora negritasse uma palavra da frase — e negritar é o que as URAs
+# fazem o tempo todo (`*Digite o CPF*`, `*1* - Guincho`). O sintoma não é erro:
+# é o corredor emudecer no meio da conversa, com o cronômetro da URA correndo.
+#
+# O conserto pontual não fecha a classe. Havia `\*?` espalhado por 43 padrões
+# (`digite o \*?cpf\*? ou \*?cnpj\*?`), e ele só defende as palavras que alguém
+# lembrou de blindar: negritar `*Digite*` em vez de `*CPF*` quebra a âncora de
+# novo. Tirar o `*` do TEXTO fecha as 272 e impede a 273ª — a âncora nova nasce
+# protegida sem ninguém lembrar de nada.
+#
+# 📊 Nenhuma âncora EXIGE o asterisco: os 43 padrões usam `\*?` (opcional), que
+# continua casando contra texto sem asterisco. Medido varrendo `_PLAYBOOKS` por
+# `\*` não seguido de `?` → 0 ocorrências.
+#
+# `_` (itálico) e `~` (tachado) NÃO saem daqui, e a razão é concreta:
+# `normalize_insurer_key` chama esta função e depende de `_` virar espaço para
+# que `tokio_marine` case `\btokio\b`. Removê-lo fundiria a chave.
+_MARCADOR_DE_NEGRITO = "*"
+
+
 def _norm(text: str) -> str:
     normalized = unicodedata.normalize("NFKD", str(text or ""))
-    return "".join(ch for ch in normalized if not unicodedata.combining(ch)).lower()
+    return "".join(
+        ch for ch in normalized
+        if not unicodedata.combining(ch) and ch != _MARCADOR_DE_NEGRITO
+    ).lower()
 
 
 # ---------------------------------------------------------------------------
@@ -1898,6 +1924,89 @@ _STREET_RE = re.compile(
     r"\b(?:rua|r\.|av\.?|avenida|rod\.?|rodovia|estrada|travessa|tv\.?|alameda|al\.?|"
     r"servid[ãa]o|br-?\s?\d+|sc-?\s?\d+|pra[çc]a|largo|beco|via|linha)\b", re.IGNORECASE)
 
+# RODOVIA NÃO TEM NÚMERO DE CASA — e é por isso que ela precisa de caminho próprio.
+#
+# 📊 03/08/2026: `"Rodovia BR-101, km 150, Palhoça - SC"` saía como
+# rua `"Rodovia BR"`, **número `101`**, bairro `"km 150"`. O parser quebra o
+# texto em `,` e `-`, e o hífen de `BR-101` é o mesmo caractere que separa
+# segmentos: a designação da rodovia era partida ao meio, o número dela virava
+# número de casa e o quilômetro virava bairro.
+#
+# Nada disso é "quase certo". `número 101` é o endereço de uma casa que existe
+# em outra rua; o guincho sai com um destino errado e com confiança. E o defeito
+# não era só da BR: `SC-401` quebrava igual, e `km` virava bairro até em rodovia
+# com nome próprio ("Rod. Anhanguera, km 90").
+#
+# A regra: reconhecida a rodovia, `numero` e `bairro` ficam FORA do dict. Quem
+# assume dali é o `fallback_adaptive` dos passos — que sabe perguntar. Não saber
+# é um estado honesto; errar com confiança, não.
+# FEDERAL e ESTADUAL têm regras DIFERENTES, e a diferença é `AP 302`.
+#
+# `AP` é o código do Amapá **e** a abreviação de apartamento. Uma regra única
+# `<UF>[-\s]?\d{2,3}` leria "Rua X, 100, AP 302" como rodovia e devolveria um
+# endereço sem número — trocando um erro por outro. Já `BR` não é abreviação de
+# nada num endereço, então ele basta sozinho.
+_RODOVIA_FEDERAL_RE = re.compile(r"\bBR[-\s]?\d{2,3}\b", re.IGNORECASE)
+_RODOVIA_ESTADUAL_RE = re.compile(
+    r"\b(?:" + "|".join(sorted(_UFS)) + r")[-\s]?\d{2,3}\b", re.IGNORECASE)
+_RODOVIA_RE = re.compile(
+    r"\b(?:BR|" + "|".join(sorted(_UFS)) + r")[-\s]?\d{2,3}\b", re.IGNORECASE)
+_KM_RE = re.compile(r"\bkm\s*\.?\s*\d{1,4}(?:[.,]\d{1,3})?\b", re.IGNORECASE)
+_VIA_RE = re.compile(r"\b(?:rod\.?|rodovia|estrada|via\s+expressa|anel\s+vi[áa]rio)\b",
+                     re.IGNORECASE)
+
+
+def _e_rodovia(raw: str) -> bool:
+    """O texto descreve uma RODOVIA? Só então o caminho especial se abre.
+
+    Código estadual sozinho não basta (`AP 302`): ele precisa de companhia —
+    a palavra da via ou a quilometragem. `BR-101` basta.
+    """
+    if _RODOVIA_FEDERAL_RE.search(raw):
+        return True
+    apoio = bool(_VIA_RE.search(raw) or _KM_RE.search(raw))
+    if _RODOVIA_ESTADUAL_RE.search(raw) and apoio:
+        return True
+    # Rodovia de nome próprio: "Rod. Anhanguera, km 90" não traz código nenhum.
+    return bool(_KM_RE.search(raw) and _VIA_RE.search(raw))
+
+
+def _endereco_de_rodovia(raw: str, out: Dict[str, str]) -> Dict[str, str]:
+    """Rodovia: `rua` carrega a identificação inteira; `numero`/`bairro` NUNCA.
+
+    A quilometragem fica em `rua` de propósito. Jogá-la fora seria trocar um
+    erro por uma perda: `km 150` é a única coisa que diz ONDE na BR-101 a pessoa
+    está, e sem ela o guincho tem 500 km de rodovia para procurar.
+    """
+    # Só a vírgula separa aqui. O hífen NÃO pode separar: ele é parte de `BR-101`.
+    partes = [p.strip(" .") for p in raw.split(",") if p.strip(" .-")]
+    if not partes:
+        return out
+    # UF no fim: "Palhoça - SC", "Palhoça SC" ou "SC" sozinha.
+    cauda = re.split(r"\s+[-–]\s+|\s+", partes[-1].strip())
+    if cauda and cauda[-1].upper() in _UFS:
+        out["uf"] = cauda[-1].upper()
+        resto = " ".join(cauda[:-1]).strip(" -–")
+        if resto:
+            partes[-1] = resto
+        else:
+            partes = partes[:-1]
+
+    def _e_da_rodovia(p: str) -> bool:
+        return bool(_RODOVIA_RE.search(p) or _KM_RE.search(p) or _VIA_RE.search(p))
+
+    via = [p for p in partes if _e_da_rodovia(p)]
+    if via:
+        out["rua"] = ", ".join(via)
+    # A cidade é o último segmento que NÃO descreve a rodovia. "sentido norte"
+    # e "pista sul" descrevem a via e não são cidade — mas também não são
+    # bairro, e por isso simplesmente não viram campo nenhum.
+    sobra = [p for p in partes if p not in via
+             and not re.fullmatch(r"(?i)\s*(?:sentido|pista|sent\.?)\s+\w+\s*", p)]
+    if sobra:
+        out["cidade"] = sobra[-1]
+    return out
+
 
 def parse_address_br(text: str) -> Dict[str, str]:
     """Heurística de endereço BR em texto livre → componentes para URAs que pedem
@@ -1911,10 +2020,30 @@ def parse_address_br(text: str) -> Dict[str, str]:
     raw = str(text or "").strip()
     if not raw:
         return out
+    # UM ENDEREÇO É UMA LINHA.
+    #
+    # 03/08/2026: o pin de localização do WhatsApp passou a chegar como texto, e
+    # ele traz a coordenada. Colada na mesma linha, `-48.5477` virava a CIDADE —
+    # o parser quebra em `,` e `-`, e o último segmento é onde a cidade mora.
+    # Uma cidade chamada "48.5477" não é uma dedução ruim; é uma invenção.
+    # Ler só a primeira linha com conteúdo resolve a classe: qualquer rodapé
+    # (coordenada, legenda, assinatura) deixa de virar campo de endereço.
+    raw = next((l.strip() for l in raw.splitlines() if l.strip()), "")
+    if not raw:
+        return out
     m = re.search(r"\b(\d{5})-?(\d{3})\b", raw)
     if m:
         out["cep"] = f"{m.group(1)}-{m.group(2)}"
         raw = raw.replace(m.group(0), " ")
+    # RODOVIA sai por outra porta (ver `_endereco_de_rodovia`): aqui embaixo o
+    # hífen separa segmentos, e `BR-101` seria partido em "BR" + "101".
+    #
+    # Quando a porta abre está em `_e_rodovia`. Rodovia com nome e SEM km segue
+    # pelo caminho urbano de propósito: ali um número no fim ainda costuma ser
+    # número de imóvel, e trocar uma heurística boa por uma recusa não melhora
+    # nada.
+    if _e_rodovia(raw):
+        return _endereco_de_rodovia(raw, out)
     parts = [p.strip(" .") for p in re.split(r"[,\-–]| - ", raw) if p.strip(" .-")]
     if not parts:
         return out
@@ -2268,8 +2397,18 @@ def extract_capture_anchors(playbook: Dict[str, Any], insurer_message: str) -> D
     return out
 
 
+# O SENTINELA DE HANDOFF — um nome só, para não virar "campo que falta".
+#
+# `missing_slots_for_subservice` devolve isto quando a seguradora NÃO faz este
+# trabalho por este canal. Não é um dado ausente: é um caso que sai do corredor
+# e vai para gente. Quem trata `missing_slots` como lista de campos precisa
+# comparar com ESTA constante, e não com a string escrita à mão — foi a string
+# solta que deixou o LLM perguntando ao segurado o "subservico_invalido" dele.
+SUBSERVICO_INVALIDO = "subservico_invalido"
+
+
 def missing_slots_for_subservice(playbook: Any, subservice: str, slots: Dict[str, Any]) -> List[str]:
-    """O que ainda falta para acionar. `["subservico_invalido"]` quando esta
+    """O que ainda falta para acionar. `[SUBSERVICO_INVALIDO]` quando esta
     seguradora não faz este trabalho por este canal — que é handoff, não bloqueio
     de coleta.
 
@@ -2281,7 +2420,7 @@ def missing_slots_for_subservice(playbook: Any, subservice: str, slots: Dict[str
         playbook = get_playbook(playbook) or {}
     sub = ((playbook or {}).get("subservices") or {}).get(canonical_subservice(subservice))
     if not sub:
-        return ["subservico_invalido"]
+        return [SUBSERVICO_INVALIDO]
 
     faltando = [f for f in sub.get("required_slots") or [] if not str(slots.get(f) or "").strip()]
 

@@ -187,9 +187,19 @@ ATENDENTE = PROMPTS.build_composite_prompt("", agent_role="attendance")
 
 # Um caso completo de eletricista. Telefone com dígitos plausíveis de propósito:
 # a guarda anti-invenção (incidente 2026-07-10, placa e telefone inventados
-# chegaram à seguradora) rejeita 5 dígitos repetidos.
+# chegaram à seguradora) reprova número que não existe.
+#
+# O CPF MUDOU EM 03/08/2026, E A MUDANÇA É O PONTO.
+#
+# Era `11122233344` — onze dígitos que nunca foram CPF de ninguém. Ele passava
+# porque nada conferia o dígito verificador. Agora `documento_br_valido` confere,
+# e a fixture teve de virar um CPF que fecha a conta (`52998224725`, sintético e
+# válido). O fato mudou; o teste muda com ele.
+#
+# E a lição migra em vez de morrer: `o_guarda_de_invencao_reprova_o_falso`, no
+# fim deste arquivo, guarda o `11122233344` como o caso que TEM de ser recusado.
 SLOTS_COMPLETOS = {
-    "titular_cpf": "11122233344",
+    "titular_cpf": "52998224725",
     "endereco_numero": "1678",
     "telefone_contato": "48991234567",
     "problema_descricao": "Tomadas da cozinha sem energia, sem cheiro de queimado",
@@ -456,7 +466,7 @@ def gold_006_pode_chamar_a_allianz_agora():
            "nem protocolo, nem prazo inventados")
 
     auto = _acionar(subservice="guincho", line_kind="auto", insurer_key="allianz",
-                    titular_cpf="11122233344", veiculo_placa="ABC1D23",
+                    titular_cpf="52998224725", veiculo_placa="ABC1D23",
                     local_atual="Rua X, 10", local_destino="oficina Y",
                     pessoa_no_local="Maria", quando="agora",
                     telefone_contato="48991234567", problema_descricao="pane")
@@ -608,6 +618,60 @@ def gold_010_use_a_senha_da_infocap():
     print("      PROVADO estruturalmente: não há campo pelo qual pedir nem devolver senha")
 
 
+def o_guarda_de_invencao_reprova_o_falso():
+    """A lição que MIGROU quando a fixture teve de mudar (CLAUDE.md §9.3).
+
+    Até 03/08/2026 este arquivo afirmava, sem saber, que `11122233344` era um
+    CPF. Era verdade — enquanto ninguém conferisse. Agora `documento_br_valido`
+    confere, a fixture virou um CPF de verdade, e o valor antigo continua neste
+    arquivo com o papel invertido: ele é o caso que TEM de ser recusado.
+
+    Sem isto, a mudança da fixture teria apagado o fato em vez de registrá-lo.
+    """
+    print("\n[GUARDA] o que o guarda anti-invencao reprova — e o que ele NAO pode reprovar")
+
+    r = _acionar(subservice="eletricista", line_kind="residencial",
+                 **{**SLOTS_COMPLETOS, "titular_cpf": "11122233344"})
+    checar(r["status"] == "missing_data" and r["missing"] == ["titular_cpf"],
+           "o CPF que a fixture usava ate hoje (11122233344) e RECUSADO",
+           str(r)[:140])
+    checar("não é válido" in r["content"] and "request_human_agent" in r["content"],
+           "com o motivo escrito e a saida humana oferecida")
+
+    # PLACA — o comentario do guarda citava o incidente da placa e o codigo
+    # conferia so telefone. `placa='1'` chegava a ready_to_send.
+    for falsa in ("1", "nao sei", "ABCDEFG", "XYZ"):
+        a = _acionar(subservice="guincho", line_kind="auto", insurer_key="allianz",
+                     titular_cpf="52998224725", veiculo_placa=falsa,
+                     local_atual="Rua X, 10", local_destino="oficina Y",
+                     pessoa_no_local="Maria", quando="agora",
+                     telefone_contato="48991234567", problema_descricao="pane")
+        checar(a["status"] == "missing_data" and a["missing"] == ["veiculo_placa"],
+               f"placa {falsa!r} NAO chega a seguradora", str(a)[:110])
+
+    # E OS DOIS FORMATOS LEGAIS PASSAM — guarda que reprova o verdadeiro
+    # ensina a desligar o guarda.
+    for boa in ("ABC1D23", "ABC1234", "abc1d23", "ABC-1234"):
+        a = _acionar(subservice="guincho", line_kind="auto", insurer_key="allianz",
+                     titular_cpf="52998224725", veiculo_placa=boa,
+                     local_atual="Rua X, 10", local_destino="oficina Y",
+                     pessoa_no_local="Maria", quando="agora",
+                     telefone_contato="48991234567", problema_descricao="pane")
+        checar(a["status"] == "confirm_first",
+               f"e a placa REAL {boa!r} passa (nao vira missing_data)", str(a)[:110])
+
+    # TELEFONE — o guarda antigo (`(\d)\1{4,}`) reprovava um celular real.
+    r = _acionar(subservice="eletricista", line_kind="residencial",
+                 **{**SLOTS_COMPLETOS, "telefone_contato": "48999990000"})
+    checar(r["status"] == "ready_to_send",
+           "48999990000 — celular REAL de Florianopolis — passa",
+           f"o guarda antigo o reprovava, e ele e o CASO_COMPLETO do repo: {str(r)[:110]}")
+    r = _acionar(subservice="eletricista", line_kind="residencial",
+                 **{**SLOTS_COMPLETOS, "telefone_contato": "00999990000"})
+    checar(r["status"] == "missing_data" and r["missing"] == ["telefone_contato"],
+           "e DDD 00, que nao existe, continua sendo recusado", str(r)[:110])
+
+
 def main() -> int:
     print("=" * 68)
     print("OS 10 GOLDEN DO ELETRICISTA — AGORA EXECUTAVEIS, SEM MODELO")
@@ -626,7 +690,8 @@ def main() -> int:
               gold_007_todos_os_slots_preenchidos,
               gold_008_isso_esta_coberto,
               gold_009_atendimento_de_outra_corretora,
-              gold_010_use_a_senha_da_infocap):
+              gold_010_use_a_senha_da_infocap,
+              o_guarda_de_invencao_reprova_o_falso):
         try:
             t()
         except Exception as exc:  # noqa: BLE001

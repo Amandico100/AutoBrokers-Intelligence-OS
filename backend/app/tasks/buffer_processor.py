@@ -357,6 +357,37 @@ def start_buffer_scheduler():
             # é restaurada em ~90s, não no fim do primeiro intervalo.
             next_run_time=_dt.now(_tz.utc) + _td(seconds=90),
         )
+        # SPEC-063 — VIGIA DO HANDOFF HUMANO: `HUMAN_REQUESTED` deixa de ser
+        # estado sem saída.
+        #
+        # 📊 03/08/2026, banco de produção: UMA conversa presa em
+        # `HUMAN_REQUESTED` há ~730 horas. Trinta dias. A causa não foi a
+        # marcação — foi que NENHUM job olhava `conversations.status`. O aviso
+        # ao suporte saía uma vez, no instante do pedido; se ninguém viu aquela
+        # mensagem, ninguém veria nunca mais.
+        #
+        # É a MESMA fragilidade do gatilho de reconciliação de acionamento
+        # órfão, logo acima: um estado que só é observado quando nasce não é
+        # observado. Este job dá a ele um piso — o atraso máximo para alguém
+        # ser lembrado deixa de ser "para sempre" e passa a ser um número.
+        #
+        # A lógica mora em `app/tasks/handoff_watchdog.py`, ao lado dos outros
+        # vigias, e o import da FERRAMENTA de handoff (que arrasta `langgraph`)
+        # acontece dentro da função, por execução. `main.py` chama
+        # `start_buffer_scheduler()` sem `try`: um ImportError aqui derrubaria a
+        # aplicação inteira, não só este job (CLAUDE.md §9.1).
+        from app.tasks.handoff_watchdog import varrer_handoffs_parados
+
+        scheduler.add_job(
+            varrer_handoffs_parados,
+            "interval",
+            minutes=_env_int("HANDOFF_WATCHDOG_INTERVAL_MINUTES", 10),
+            id="handoff_watchdog_check",
+            max_instances=1,
+            # Depois de um deploy, quem já estava esperando continua esperando.
+            next_run_time=_dt.now(_tz.utc) + _td(seconds=120),
+        )
+
         scheduler.start()
         logger.info("✅ [BUFFER SCHEDULER] Started (interval: 1s, max_instances: 10)")
     else:

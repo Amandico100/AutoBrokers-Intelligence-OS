@@ -23,6 +23,7 @@ from datetime import datetime, timezone
 from typing import Any, Callable, Dict, List, Optional
 
 from app.services.corridor_playbooks import (
+    _norm as _norm_corredor,
     auto_subservice_menu_value,
     canonical_subservice,
     detect_finalize_anchor,
@@ -1146,10 +1147,16 @@ def handle_insurer_message(
 
 
 def _norm_text(text: str) -> str:
-    import unicodedata
+    """A MESMA normalização das âncoras de corredor — uma definição só.
 
-    normalized = unicodedata.normalize("NFKD", str(text or ""))
-    return "".join(ch for ch in normalized if not unicodedata.combining(ch)).lower()
+    Era uma cópia literal de `corridor_playbooks._norm`, e cópia de normalizador
+    é onde o conserto de um lado deixa o outro quebrado: os padrões daqui
+    (`insurer_closed`, pesquisa de satisfação, "me chamo X") e os `finalize_anchors`
+    lidos em `pergunta_de_decisao` são âncoras de corredor pelo mesmo critério —
+    casam texto de seguradora. Delegar garante que o `*` do negrito do WhatsApp
+    caia nos dois lugares, hoje e no próximo conserto.
+    """
+    return _norm_corredor(text)
 
 
 def _would_loop(session: Dict[str, Any], reply: str, step: Optional[str] = None) -> bool:

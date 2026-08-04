@@ -12,6 +12,12 @@ incompleto). Agora são renderizadas em texto NO MESMO FORMATO dos exports do
 WhatsApp usados para minerar os corredores ("Botão 1: X" / linhas de lista),
 então as âncoras dos playbooks casam sem mudança. Os metadados (ids, flow)
 seguem em `interactive` para respostas estruturadas futuras.
+
+PIN DE LOCALIZAÇÃO (03/08/2026): `locationMessage` e `liveLocationMessage`
+caíam no mesmo `skip:no_text`. O agente perguntava "onde você está", o segurado
+mandava o pin — a resposta mais rápida que o WhatsApp oferece a quem está no
+acostamento — e o sistema ficava mudo. Agora o pin vira texto: nome/endereço do
+lugar primeiro (é o que `parse_address_br` lê), coordenada rotulada no fim.
 """
 
 from __future__ import annotations
@@ -279,6 +285,81 @@ def _interactive_from_message(message: Dict[str, Any]) -> Optional[Tuple[str, Di
     return None
 
 
+# ------------------------------------------------------------------ #
+# O PIN — a resposta que o produto pedia e depois jogava fora
+# ------------------------------------------------------------------ #
+# O agente pergunta "onde você está"; a pessoa no acostamento faz a coisa mais
+# rápida que o WhatsApp oferece e manda o PIN. O laço de mídia acima não conhece
+# `locationMessage`, `_text_from_message` não achava texto, e `normalize_...`
+# devolvia `skip: no_text`. O sistema ficava mudo para a única resposta que o
+# segurado tinha como dar depressa — e a pergunta era do próprio sistema.
+#
+# O que sai daqui é TEXTO, na ordem que serve a quem lê depois: o endereço
+# primeiro (é o que `parse_address_br` sabe ler), a coordenada rotulada no fim
+# (é o que o guincho usa, e é dado bruto, não endereço).
+_LAT_KEYS = ("degreesLatitude", "latitude", "lat")
+_LON_KEYS = ("degreesLongitude", "longitude", "lng", "lon", "long")
+
+
+def _coord(fonte: Dict[str, Any], chaves) -> Optional[float]:
+    """Primeira chave presente que vira float. Grafia tolerante, como no clique."""
+    for k in chaves:
+        v = fonte.get(k)
+        if isinstance(v, bool) or v is None:
+            continue
+        try:
+            return float(v)
+        except (TypeError, ValueError):
+            continue
+    return None
+
+
+def _grau(valor: float) -> str:
+    """6 casas (~0,11 m) sem zeros pendurados — o guincho lê isto."""
+    return f"{valor:.6f}".rstrip("0").rstrip(".") or "0"
+
+
+def _texto_de_localizacao(message: Dict[str, Any]) -> Optional[str]:
+    """O pin virado em texto útil, ou None quando não há pin nenhum."""
+    for chave, ao_vivo in (("locationMessage", False), ("liveLocationMessage", True)):
+        loc = message.get(chave)
+        if not isinstance(loc, dict):
+            continue
+        lat = _coord(loc, _LAT_KEYS)
+        lon = _coord(loc, _LON_KEYS)
+        # (0, 0) é o DEFAULT do protobuf para `double` não preenchido, não a Ilha
+        # Nula no golfo da Guiné. Tratar como coordenada mandaria o guincho para
+        # o meio do Atlântico com a confiança de quem tem número.
+        if lat is None or lon is None or (lat == 0 and lon == 0):
+            lat = lon = None
+        rotulo = _clean(loc.get("name"))
+        endereco = _clean(loc.get("address"))
+        legenda = _clean(loc.get("caption"))  # a live location traz aqui
+        if lat is None and not (rotulo or endereco or legenda):
+            continue  # pin vazio não é resposta; deixa o skip:no_text acontecer
+
+        cabeca = "Localização ao vivo compartilhada" if ao_vivo else "Localização compartilhada"
+        # LINHAS SEPARADAS, e não uma frase só.
+        #
+        # A coordenada colada no fim do endereço envenenava `parse_address_br`:
+        # ele quebra o texto em `,` e `-`, e `-48.5477` virava a CIDADE. Endereço
+        # é uma linha; a coordenada é outra. O parser lê a primeira e ignora o
+        # resto — errado com confiança é o defeito que este conserto evita, não
+        # o que ele deveria introduzir.
+        endereco_humano = ", ".join(dict.fromkeys([p for p in (rotulo, endereco) if p]))
+        linhas: List[str] = []
+        if endereco_humano:
+            linhas.append(endereco_humano)
+        cauda = f"{cabeca}: {_grau(lat)},{_grau(lon)}" if lat is not None else f"{cabeca} (sem coordenada)"
+        if ao_vivo and lat is not None:
+            cauda += " — a pessoa pode estar em movimento"
+        linhas.append(cauda)
+        if legenda and legenda not in endereco_humano:
+            linhas.append(legenda)
+        return "\n".join(linhas).strip()
+    return None
+
+
 def _text_from_message(message: Dict[str, Any]) -> Optional[str]:
     if not isinstance(message, dict):
         return None
@@ -290,6 +371,9 @@ def _text_from_message(message: Dict[str, Any]) -> Optional[str]:
         text = extended.get("text")
         if isinstance(text, str) and text.strip():
             return text.strip()
+    pin = _texto_de_localizacao(message)
+    if pin:
+        return pin
     for media_key in ("imageMessage", "videoMessage", "documentMessage"):
         media = message.get(media_key)
         if isinstance(media, dict):
