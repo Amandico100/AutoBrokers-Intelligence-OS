@@ -1152,3 +1152,55 @@ com nome, é auditável.
 - **Idempotência do portal** — 📊 o protocolo nasce no passo 7 ANTES do fim do
   fluxo; reexecutar cria um SEGUNDO atendimento, e o índice único impede.
 - **Sinistro nunca vira portal** — colisão, roubo e incêndio continuam handoff.
+
+---
+
+## D-Gate-01 · A SPEC-063 fecha o portão de CÓDIGO; a prova viva vai para a 068 — 04/08/2026
+
+**Decisão do Founder:** autorizou a recomendação do líder técnico, literal:
+*"pode fazer"*.
+
+### O diagnóstico que levou a isso
+
+📊 A SPEC-063 tem **dois portões, e só um pode ser fechado por código.**
+
+```
+portão de CÓDIGO      165 testes verdes · tudo em produção        ✅ FECHADO
+portão de PROVA VIVA  um WhatsApp pareado atendendo um segurado   ← nenhuma
+                      de verdade, sem incidente                      linha de
+                                                                     código
+                                                                     produz isto
+```
+
+📊 **32 pendências nasceram dela. 24 seguem abertas — 11 dependem do Founder,
+13 de execução.** E a causa não é falta de trabalho:
+
+> **A SPEC cresceu para além do próprio texto.** Previa 8 blocos; a execução
+> entregou 11 + uma Fase 0 com 11 consertos estruturais + descobriu 5 fases
+> seguintes. Cada auditoria achou defeito real — o CPF vazava por dois caminhos,
+> o freio não disparava em 28 de 33 vezes, o portal parava no 80% para sempre.
+>
+> É trabalho legítimo. Mas **sem critério de parada, uma SPEC de atendimento não
+> termina nunca**, porque sempre há mais um nó de URA para mapear.
+
+### O que muda
+
+- A **SPEC-063 está encerrada** no que diz respeito a código.
+- A **prova viva** (§6.1 dela) passa a ser item da **SPEC-068**, que é
+  exatamente o portão de go-live e existe para isso.
+- As 13 pendências 🤖 dela continuam válidas e nomeadas, mas **não bloqueiam o
+  encerramento** — elas viram fila da 068 ou de quem as herdar.
+
+### Os três atos físicos, numa sessão só
+
+1. Um grupo de WhatsApp **por corretora** (hoje AutoFleet e Resulta apontam para
+   o mesmo, e o roteador recusa de propósito — P-85)
+2. Parear os números
+3. **Ligar o agente na AMANDUS primeiro** — 📊 a `ATTENDANT_INBOUND_ALLOWLIST`
+   já limita a um número, então é teste seguro por construção
+
+### Por que isto não é abrir mão de qualidade
+
+Nada foi afrouxado: os 165 testes continuam verdes, os guardas continuam de pé,
+e as pendências continuam escritas com dono. O que muda é **onde a régua de
+"terminou" fica** — e ela sai de um lugar onde nenhum código a alcança.
