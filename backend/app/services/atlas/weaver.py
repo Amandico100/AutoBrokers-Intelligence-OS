@@ -44,6 +44,43 @@ def _norm_label(label: str) -> str:
     return s
 
 
+def _norm_frase(texto: str) -> str:
+    """Normaliza PRESERVANDO a fronteira de palavra — e é essa a diferença.
+
+    `_norm_label` apaga tudo que não é letra, inclusive o espaço: "para manhã"
+    vira `paramanha`, que CONTÉM `amanha`. Foi assim que o eco decidiu, no mapa
+    da Bradesco em produção, que a pessoa escolheu *Amanhã* — quando a tela
+    seguinte só dizia "*06:00* para manhã".
+
+    Aqui o espaço vira separador e sobrevive. Comparar ` amanha ` com
+    ` para manha ` não casa, que é a resposta certa. Os dígitos ficam: "02
+    (duas) unidades" precisa deles para casar com o eco da tela seguinte.
+    """
+    s = unicodedata.normalize("NFKD", str(texto or ""))
+    s = "".join(ch for ch in s if not unicodedata.combining(ch)).lower()
+    return re.sub(r"\s+", " ", re.sub(r"[^a-z0-9]+", " ", s)).strip()
+
+
+def _sem_numero_de_opcao(label: str) -> str:
+    """Tira o "7 - " de "7 - Chaveiro". Mesma regra do `cartographer`: a tela
+    seguinte ecoa a PALAVRA ("precisa do *chaveiro*?"), nunca o número."""
+    return re.sub(r"^\s*\d{1,2}\s*[-–.)\]]\s*", "", str(label or "")).strip()
+
+
+def _so_placeholder(label: str) -> bool:
+    """O rótulo é só PII mascarada ({CPF}, {CNPJ}, {TELEFONE})?
+
+    A Porto tem uma tela de erro — "digite um *CPF ou CNPJ válido*, conforme
+    exemplos abaixo" — cujos "exemplos" o leitor de opções capturou como se
+    fossem escolhas de menu. O eco então casava `{CNPJ}` com a palavra "CNPJ"
+    da pergunta seguinte e gravava uma rota chamada `{CNPJ}`. 📊 Duas arestas
+    assim nos mapas de 04/08/2026.
+
+    Valor mascarado não é escolha: ninguém digita "{CNPJ}" para navegar.
+    """
+    return not re.search(r"[a-zà-ú]", re.sub(r"\{[^}]*\}", " ", str(label or "")), re.IGNORECASE)
+
+
 def labels_match(option_label: str, click_label: str) -> bool:
     """Esta opção do menu é a que a pessoa escolheu?
 
@@ -84,6 +121,26 @@ def labels_match(option_label: str, click_label: str) -> bool:
         return False
 
     return a == b or a.endswith(b) or b.endswith(a) or (len(b) >= 4 and b in a) or (len(a) >= 4 and a in b)
+
+
+# TELA DE ESPERA — a que pede paciência, não a que abre o atendimento.
+#
+# Deliberadamente estreita: só pega tela CURTA, SEM MENU, que COMEÇA pedindo
+# para aguardar. "Aguarde um momento 🙂" entra; "Olá! Enquanto aguarda, veja
+# nossas opções: 1 - …" não entra, porque tem menu. Alargar isto custaria uma
+# raiz legítima, que é um preço pior do que a raiz errada que ela conserta.
+_ESPERA = re.compile(
+    r"^(?:aguarde|aguardando|so um momento|um momento|so um instante|um instante|"
+    r"so um minuto|um minuto|estamos verificando|estou verificando|"
+    r"estamos analisando|estou analisando|ja retorno|ja te respondo)\b")
+
+
+def _tela_de_espera(node: Dict[str, Any]) -> bool:
+    """Esta tela é só um 'já te atendo'? Então ela não é porta de entrada."""
+    if node.get("options"):
+        return False
+    texto = _norm_frase(str(node.get("text") or ""))
+    return len(texto) <= 120 and bool(_ESPERA.match(texto))
 
 
 def _sem_copias(events: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
@@ -259,19 +316,96 @@ def weave_session(map_acc: Dict[str, Any], events: List[Dict[str, Any]],
         prev_choice = choice_lab
 
     if path_steps:
+        # AS 12 MAIS RECENTES — e a mais recente por ÚLTIMO.
+        #
+        # Era `del paths[:-_MAX_PATHS]`, que guarda as 12 ÚLTIMAS ANEXADAS. E o
+        # laço de `weave_insurer` é recência-primeiro: as últimas anexadas são
+        # as sessões MAIS ANTIGAS do acervo. 📊 Medido em 04/08/2026: a Allianz
+        # exibia caminhos de 28/07/2025 a 17/09/2025 com sessão mais nova em
+        # 04/08/2026 — onze meses de atraso no modal "Sequência escrita".
+        #
+        # E o estrago não parava no modal. `route_sentinel._script_from_observed`
+        # lê `paths[-1]` chamando-o de "transcript observado mais recente":
+        # estava recebendo a conversa MAIS ANTIGA de todas, e era com ela que o
+        # Alfaiate montava o script do Simulador. Um menu de um ano atrás
+        # decidindo se o playbook de hoje passa.
+        #
+        # Ordenar por data CRESCENTE conserta os dois de uma vez: sobram as 12
+        # mais novas, e `paths[-1]` volta a ser o que o nome promete. Sessão sem
+        # data vai para o começo — desconhecido não desloca recente conhecido.
         paths: List[Dict[str, Any]] = map_acc.setdefault("paths", [])
         paths.append({"at": session_at, "steps": path_steps})
+        paths.sort(key=lambda p: str(p.get("at") or ""))
         del paths[:-_MAX_PATHS]
     return map_acc
+
+
+def _prosa_do_destino(dest: Dict[str, Any]) -> str:
+    """O texto do destino MENOS o menu que ele próprio oferece.
+
+    Eco é a tela seguinte repetindo a escolha na NARRATIVA — "Certo! Para
+    quando precisa do *chaveiro*?". Quando a palavra só aparece porque a tela
+    seguinte oferece a MESMA opção de novo, não há eco nenhum: há um botão
+    repetido.
+
+    📊 É o defeito que produziu, no mapa da HDI de 04/08/2026:
+
+        "O veículo é elétrico ou híbrido?" --Voltar (5x)--> "O veículo é rebaixado?"
+        "Houve vítimas no local?"          --Voltar (6x)--> "A polícia foi acionada?"
+
+    As duas telas são `Sim`/`Não`/`Voltar`. "sim" e "nao" têm 3 letras e caíam
+    no piso de 4; sobrava "voltar" — presente no destino porque o destino
+    também tem botão Voltar. O que o humano de fato respondeu na primeira: 14
+    cliques sem rótulo e 4 "Não". Nenhum "Voltar".
+    """
+    prosa = " " + _norm_frase(str(dest.get("text") or "")[:240]) + " "
+    for o in dest.get("options") or []:
+        frase = _norm_frase(_sem_numero_de_opcao(o.get("label") or ""))
+        if frase:
+            # `(?= )` consome só o espaço da frente: rótulos repetidos em
+            # sequência ("ENCANADOR ENCANADOR") continuam sendo alcançados.
+            prosa = re.sub(r" " + re.escape(frase) + r"(?= )", " ", prosa)
+    return prosa
 
 
 def label_inferred_edges(map_acc: Dict[str, Any]) -> int:
     """ROTULADOR POR ECO (Bloco C, determinístico — custo zero): em URAs de menu
     DIGITADO (Allianz "*1 -* ...") a escolha não chega por evento; mas a tela
-    SEGUINTE costuma ecoar a opção ("Certo! ... *chaveiro* ..."). Se o destino
-    de uma aresta sequencial ecoa EXATAMENTE UMA opção da origem, a aresta é
-    rotulada com essa opção (echo=True). Ambíguo = não mexe (qualidade>pressa).
-    Retorna quantas arestas foram rotuladas."""
+    SEGUINTE costuma ecoar a opção ("Certo! ... *chaveiro* ..."). Se a PROSA do
+    destino ecoa EXATAMENTE UMA opção da origem, a aresta ganha esse rótulo —
+    **como palpite**, não como escolha capturada.
+
+    Quatro coisas que o eco NÃO pode fazer, cada uma paga com um defeito medido
+    em produção em 04/08/2026 (📊 47 arestas `echo` nos 10 mapas observados):
+
+    1. **Não pode chamar navegação de escolha.** 35 das 47 (74%) foram
+       rotuladas com Voltar/Sair/menu. Quem sabe o que é navegação é
+       `cartographer.acao_conhecida` — a mesma autoridade que a cobertura usa.
+       Ela pega até o caso que a regra da prosa não pega: a Porto tem duas
+       telas cujo texto É "Se quiser mudar de opção, digite voltar."
+
+    2. **Não pode casar no meio de uma palavra.** Ver `_norm_frase`: "para
+       manhã" continha "amanha" e virou a escolha *Amanhã* na Bradesco.
+
+    3. **Não pode achar eco no menu do destino.** Ver `_prosa_do_destino`.
+
+    4. **Não pode zerar `inferred`.** Era o pior: a aresta nascia
+       `inferred=False`, e um palpite entrava no mapa com a mesma cara de uma
+       escolha que alguém clicou de verdade. Quem lê não tinha como separar as
+       duas. Agora `inferred` continua `True` e só `echo=True` diz de onde veio
+       o rótulo — `compute_coverage` marca a opção como `confidence="echo"`.
+
+    Sobre o piso de 4 letras, que descarta `sim`/`não`: ele FICA, de propósito.
+    Uma URA não ecoa "Sim" — ela ecoa o assunto ("Certo, guincho!"); e num menu
+    de botão a escolha chega como evento de clique, então o eco nem é o
+    instrumento certo ali. Baixar o piso só faria "Não entendi" casar com a
+    opção "Não". O resíduo Sim/Não é trabalho do resolvedor de IA
+    (`atlas_parser`), que lê sentido — não do eco, que lê coincidência.
+
+    Ambíguo = não mexe (qualidade>pressa). Retorna quantas arestas rotulou.
+    """
+    from app.services.cartographer import acao_conhecida
+
     nodes = map_acc.get("nodes") or {}
     edges = map_acc.get("edges") or {}
     labeled = 0
@@ -282,14 +416,24 @@ def label_inferred_edges(map_acc: Dict[str, Any]) -> int:
         src, dest = nodes.get(e.get("src")), nodes.get(e.get("to"))
         if not src or not dest or not src.get("options"):
             continue
-        dest_norm = _norm_label(dest.get("text", "")[:240])
-        matches = [o["label"] for o in src["options"]
-                   if len(_norm_label(o["label"])) >= 4 and _norm_label(o["label"]) in dest_norm]
+        prosa = _prosa_do_destino(dest)
+        matches: List[str] = []
+        for o in src["options"]:
+            rotulo = o.get("label") or ""
+            if acao_conhecida(rotulo) or _so_placeholder(rotulo):
+                continue
+            alvo = _norm_frase(_sem_numero_de_opcao(rotulo))
+            if len(re.sub(r"[^a-z]", "", alvo)) < 4:
+                continue
+            if f" {alvo} " in prosa:
+                matches.append(rotulo)
         if len(matches) == 1:
             new_label = matches[0]
             new_key = f"{e['src']}|{new_label}"
             if new_key not in edges:
-                edges[new_key] = {**e, "label": new_label, "inferred": False, "echo": True}
+                # `inferred` NÃO é tocado: vem True da aresta sequencial e
+                # continua True. Rótulo adivinhado segue sendo palpite.
+                edges[new_key] = {**e, "label": new_label, "echo": True}
                 del edges[ekey]
                 labeled += 1
     return labeled
@@ -450,10 +594,35 @@ def compute_coverage(map_acc: Dict[str, Any]) -> Dict[str, Any]:
         else:
             node["status"] = "partial"
 
-    # RAIZ fiel: a tela por onde as sessões mais começam
+    # RAIZ fiel: a tela por onde as sessões mais começam — TIRANDO as telas de
+    # espera, que não são porta de entrada de nada.
+    #
+    # 📊 04/08/2026, mapa da Porto em produção: a raiz eleita era
+    # "Aguarde um momento 🙂". Ela aparece 93 vezes, mas só 10 das 149 sessões
+    # começam nela — e 57 arestas apontam PARA ela. É tela que se recebe no
+    # meio do caminho, não tela por onde se chega.
+    #
+    # Ela venceu por um motivo que não é mérito: é a única candidata que NÃO
+    # fragmenta. As aberturas de verdade da Porto trazem o nome do cliente no
+    # meio da frase ("Eu estou falando com Fulano?", 20 sessões; "Oi, sou
+    # assistente virtual da Porto 👋\n\nFulano, ...", 56 sessões) e o
+    # mascarador só cobre nome COLADO na saudação — então cada nome vira um nó
+    # com 1 voto, enquanto "Aguarde um momento 🙂" junta os 10 dela num nó só.
+    # A causa de raiz é a duplicação de nós; ver PENDENCIAS.
+    #
+    # ⚠️ Não tente "a raiz é a tela sem aresta entrando". Medido no mesmo dia:
+    # 7 das 10 raízes atuais TÊM aresta entrando (porto 57, allianz 21, yelum
+    # 7, hdi 7, azul 3, alfa 2, mapfre 1) — a janela de 2h faz a conversa voltar
+    # à saudação, e essa regra reprovaria 6 raízes que estão certas.
     starts = map_acc.get("_starts") or {}
+    for _nid, _q in starts.items():
+        if _nid in nodes:
+            nodes[_nid]["starts"] = _q  # a eleição fica auditável no mapa salvo
     if starts:
-        map_acc["root"] = max(starts, key=starts.get)
+        elegiveis = {nid: q for nid, q in starts.items()
+                     if not _tela_de_espera(nodes.get(nid) or {})}
+        urna = elegiveis or starts  # todas de espera? então não há o que trocar
+        map_acc["root"] = max(urna, key=urna.get)
 
     # OBSOLETO: telas cujo last_seen é muito mais antigo que o mais recente do
     # mapa (>60 dias) — provável menu antigo. Marcadas p/ revisão, não apagadas.

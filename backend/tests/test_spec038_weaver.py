@@ -152,6 +152,15 @@ def run():
     check("opção Chaveiro deduzida (echo)", cha and cha.get("confidence") == "echo" and cha.get("leads_to"), cha)
     gui = next((o for n in mecho["nodes"].values() for o in n["options"] if "Guincho" in o["label"]), None)
     check("Guincho continua lacuna", gui and gui.get("confidence") == "gap", gui)
+    # 04/08/2026 — este bloco afirmava que o eco ROTULA e parava aí. Faltava a
+    # metade que decide se o mapa mente: o eco não pode zerar `inferred`. Ele
+    # zerava, e 47 palpites entraram nos mapas de produção com cara de escolha
+    # capturada. A afirmação nova mora aqui porque é aqui que o contrato do eco
+    # está escrito. O caso completo — URA de botão Sim/Não/Voltar — está em
+    # `test_o_eco_nao_inventa_escolha.py`.
+    aresta_eco = next(e for e in mecho["edges"].values() if e.get("echo"))
+    check("e a aresta do eco continua `inferred` (palpite não vira fato)",
+          aresta_eco.get("inferred") is True, aresta_eco)
 
     # 11) v2: answer_hint em pergunta aberta
     node_h = tmpl.screen_node("Para começar, me informe somente o CPF ou CNPJ do titular da apólice.")

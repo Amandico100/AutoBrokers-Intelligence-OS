@@ -58,6 +58,30 @@ _PII_PATTERNS: List[Tuple[re.Pattern, str]] = [
     # dois mundos. Como o PIX copia-e-cola, não é dado pessoal — é instrumento
     # de pagamento: quem tem a string paga, ou cobra. Lote 012, 29/07/2026.
     (re.compile(r"(?<!\d)(?:\d[\s.]{0,2}){40,}\d(?!\d)"), "{LINHA_DIGITAVEL}"),
+    # TELEFONE ANUNCIADO PELA PRÓPRIA TELA — vem ANTES do CPF, e a ordem é o
+    # conserto inteiro. SPEC-065, 04/08/2026.
+    #
+    # 📊 Medido no Atlas de produção: **46 nós em 6 seguradoras** escrevem
+    # `"O número de telefone {CPF} está correto?"`. Um celular brasileiro com
+    # DDD tem 11 dígitos — os mesmos 11 do CPF — e o padrão de CPF vem primeiro,
+    # então mordia o telefone e o de telefone nunca era testado.
+    #
+    # CLAUDE.md §12.1: quando o nome do campo mente sobre o que ele guarda,
+    # **conserte o campo**. O texto errado é o sintoma; o rótulo errado é a
+    # causa, e ela reinfecta todo leitor seguinte — inclusive a carta que
+    # alguém vai escrever a partir dessa tela.
+    #
+    # A desambiguação NÃO é por forma do número (CPF e celular têm 11 dígitos e
+    # nenhuma regra de dígito separa os dois sem erro). É pelo CONTEXTO: se a
+    # própria frase diz "telefone", "celular", "WhatsApp" ou "contato", o número
+    # ao lado é telefone. A tela já disse o que é; basta escutá-la.
+    #
+    # Proteção não muda: os dois caminhos mascaram. O que muda é o rótulo dizer
+    # a verdade.
+    (re.compile(r"(?i)(telefone|celular|whats\s?app|whatsapp|n[úu]mero de contato|fone)"
+                r"([^\d\n]{0,20})"
+                r"(?<!\d)(?:\+?55\s?)?\(?\d{2}\)?\s?9?[\s.-]?\d{4}[\s.-]?\d{3,4}(?!\d)"),
+     r"\1\2{TELEFONE}"),
     # O separador aceita ESPAÇO. "123 456 789 00" é como o segurado digita o
     # CPF no WhatsApp, e só a forma com ponto era reconhecida.
     (re.compile(r"(?<!\d)\d{3}[\s.]?\d{3}[\s.]?\d{3}[\s-]?\d{2}(?!\d)"), "{CPF}"),

@@ -1481,3 +1481,80 @@ aberto"* — e não existe.
 o bloqueio e corrigir a frase, que hoje afirma um atendimento que não existe.
 **O que custa esquecer:** um segurado ouve que o pedido dele já está aberto, e
 não está.
+
+---
+
+## P-94 · 🟠 O mascarador chama de `{CPF}` o celular de 11 dígitos
+
+📊 Medido em 04/08/2026 nos 10 mapas `observed`: **46 nós em 6 seguradoras**
+guardam a frase *"O número de telefone {CPF} está correto?"*. Um deles é a tela
+mais percorrida da HDI (20 passagens).
+
+```sql
+select count(*) from ura_maps m, jsonb_each(m.map->'nodes') k
+ where m.status='observed'
+   and k.value->>'text' ~* '(telefone|celular|whatsapp|contato)[^\n]{0,40}\{CPF\}';
+```
+
+A causa é ordem de regra, não sorte. Em `templater._PII_PATTERNS` o padrão de
+CPF vem antes do de telefone, e `\d{3}\d{3}\d{3}\d{2}` casa exatamente os 11
+dígitos de um celular com DDD. O telefone nunca chega a ser testado.
+
+O dado continua protegido — o número sai da mesma forma. O que se perde é a
+**estrutura**, que é justamente o que o Atlas existe para guardar: a tela diz
+que pergunta CPF quando ela pergunta telefone. CLAUDE.md §12.1 manda consertar o
+campo, não o texto — e aqui o campo é o rótulo do placeholder.
+
+Desambiguar 11 dígitos não é trivial: `47988087463` é um celular válido e um CPF
+possível. A pista boa é a palavra ao redor (`telefone`, `celular`, `contato`,
+`WhatsApp`) — a mesma que `_ANSWER_HINTS` já usa para outra finalidade no mesmo
+arquivo.
+
+- **Destrava:** 🤖 uma regra em `templater.py` que, havendo `telefone|celular|
+  contato|whatsapp` até ~40 caracteres antes do número, marque `{TELEFONE}`
+  antes de o padrão de CPF rodar. Reprocessar os mapas depois.
+- **Dono:** 🤖 execução — **não foi feito nesta passada porque `templater.py`
+  estava em edição por outra frente** (04/08/2026).
+- **Custa se esquecer:** o agente que ler o mapa vai responder um CPF onde a URA
+  pede telefone, e a tela seguinte é de erro. E cada leitor novo do mapa herda a
+  mentira.
+
+## P-95 · 🟠 O mesmo texto vira vários nós, e isso elegeu a raiz errada da Porto
+
+📊 Medido em 04/08/2026: nós que repetem os 80 primeiros caracteres de outro —
+yelum 12,2% (72 de 590) · hdi 10,6% · porto 10,2% (86 de 841) · azul 7,2% ·
+allianz 6,6% · o resto abaixo de 4%.
+
+```sql
+with n as (select m.insurer_key, left(k.value->>'text',80) p80
+             from ura_maps m, jsonb_each(m.map->'nodes') k where m.status='observed')
+select insurer_key, count(*)-count(distinct p80) from n group by 1;
+```
+
+A identidade do nó é o hash do texto inteiro templatizado. Quando sobra
+qualquer coisa variável no meio da frase, a mesma tela vira vários nós. O caso
+dominante é **nome de pessoa fora da saudação**: a regra `{NOME}` só cobre nome
+COLADO em "Olá,"/"Oi,", e a Porto escreve *"Oi, sou assistente virtual da Porto
+👋\n\nFulano, estou aqui pra falar sobre…"* — o nome vem depois da quebra.
+
+**Consequência medida:** a eleição da raiz é por contagem de aberturas, e conta
+por nó. 📊 Das 149 sessões da Porto, 56 começam por essa saudação e 20 por *"Eu
+estou falando com Fulano?"* — mas cada nome vira um nó de 1 voto. `"Aguarde um
+momento 🙂"`, que não fragmenta, juntava 10 votos num nó só **e ganhava a
+eleição**. O Tecelão agora tira tela de espera da urna (04/08/2026), o que
+conserta o sintoma; a fragmentação continua.
+
+⚠️ **Não conserte fundindo por prefixo.** 📊 A Porto tem quatro grupos distintos
+com os MESMOS 80 primeiros caracteres e continuações diferentes (sinistro,
+vistoria, reparos) — fundi-los juntaria fluxos que não são o mesmo.
+
+- **Destrava:** 🤖 alargar o mascaramento de nome em `templater.py` (nome depois
+  de quebra de linha, e no molde "falando com Fulano?"), e só então reprocessar.
+  Mexer na identidade do nó invalida `hash`, `src`, `to` e `leads_to` de todos os
+  mapas gravados — é reprocessamento completo, não migração.
+- **Dono:** 🤖 execução — **não feito nesta passada: o conserto mora em
+  `templater.py`, em edição por outra frente**, e o risco de fundir tela errada é
+  maior que o do sintoma.
+- **Custa se esquecer:** cobertura e contagem de telas seguem divididas entre
+  cópias, e a raiz de qualquer seguradora nova pode cair na tela errada pelo
+  mesmo motivo.

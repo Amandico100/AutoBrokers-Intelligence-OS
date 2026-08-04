@@ -510,6 +510,15 @@ def _sinais_do_codigo() -> dict:
         # um primeiro nome de pessoa (Tokio 15, Bradesco 5, Allianz 4, Porto 4),
         # e na Tokio era a RAIZ do mapa. `_LABELED_VALUE` so mascara nome depois
         # de rotulo; saudacao nao tem rotulo.
+        # SPEC-065 §12.1 — o campo que MENTE. 📊 46 nos em 6 seguradoras
+        # escreviam "O numero de telefone {CPF} esta correto?": celular com DDD
+        # tem 11 digitos, os mesmos do CPF, e o padrao de CPF vinha primeiro.
+        # Confere os DOIS lados: o telefone anunciado vira {TELEFONE}, e o CPF
+        # de verdade continua {CPF}.
+        sinais["pii_telefone_nao_vira_cpf"] = (
+            "{TELEFONE}" in templatize("O numero de telefone 47988087463 esta correto?")
+            and "{CPF}" not in templatize("O numero de telefone 47988087463 esta correto?")
+            and "{CPF}" in templatize("Seu CPF 03074327936 esta correto?"))
         sinais["pii_nome_na_saudacao"] = (
             "{NOME}" in templatize("Ola, Carla - Autofleet Seguros!")
             # e o par que impede o mascarador de comer a instrucao da tela
