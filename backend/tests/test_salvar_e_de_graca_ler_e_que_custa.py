@@ -215,6 +215,69 @@ def teste_o_detector_consegue_acusar():
            "e reconhece um carregador SEM guarda de canal")
 
 
+def teste_so_baixa_o_que_foi_pedido():
+    """O Founder pediu ÁUDIO. Baixar o resto é tráfego que não pediram.
+
+    > *"Não precisa baixar as imagens e documentos. A ideia é garantir que temos
+    >  os áudios agora salvos para podermos transcrever e destilar depois."*
+
+    📊 Medido em 04/08/2026, o que o corte economiza:
+
+        audio      1.623 arquivos ·  80 MB   ← onde o segurado EXPLICA o caso
+        document     292          · 165 MB
+        image        792          · 106 MB
+        video         29          · 106 MB
+        sticker      108          ·  30 MB
+
+    Só áudio corta **84% dos bytes e 43% dos arquivos**. E menos tráfego pela
+    sessão do WhatsApp é menos risco de o número ser marcado como anômalo — a
+    garantia que ele pediu com todas as letras.
+
+    O filtro fica no ENFILEIRAMENTO, não no worker: o que não entra na fila não
+    gasta tráfego nenhum.
+    """
+    import os
+
+    print("\n[6] Só o tipo pedido entra na fila")
+    mod = _carregar_modulo()
+
+    anterior = os.environ.pop("OBSERVER_MEDIA_KINDS", None)
+    try:
+        checar(mod.tipos_que_baixamos() == frozenset({"audio"}),
+               "o padrão é SÓ áudio", str(sorted(mod.tipos_que_baixamos())))
+
+        # CONTROLE — a função consegue devolver outra coisa. Sem isto, um
+        # `return {"audio"}` cravado passaria por configuração respeitada.
+        os.environ["OBSERVER_MEDIA_KINDS"] = "audio,image"
+        checar(mod.tipos_que_baixamos() == frozenset({"audio", "image"}),
+               "CONTROLE — e obedece quando alguém alarga",
+               str(sorted(mod.tipos_que_baixamos())))
+
+        os.environ["OBSERVER_MEDIA_KINDS"] = ""
+        checar(mod.tipos_que_baixamos() == frozenset({"audio"}),
+               "env vazia cai no lado seguro (áudio), não em 'tudo'",
+               "vazio virando 'tudo' baixaria 488 MB sem ninguém pedir")
+    finally:
+        os.environ.pop("OBSERVER_MEDIA_KINDS", None)
+        if anterior is not None:
+            os.environ["OBSERVER_MEDIA_KINDS"] = anterior
+
+    # E o filtro tem de estar no enfileiramento.
+    fn = _funcao("enqueue_observer_media")
+    checar(fn is not None and "tipos_que_baixamos" in _chamadas(fn),
+           "o enfileiramento consulta o filtro",
+           "no worker seria tarde: o tráfego já teria acontecido")
+
+
+def _carregar_modulo():
+    import importlib.util
+
+    spec = importlib.util.spec_from_file_location("_observer_media", ALVO)
+    m = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(m)
+    return m
+
+
 def main() -> int:
     print("=" * 70)
     print("SALVAR E DE GRACA; LER E QUE CUSTA")
@@ -223,7 +286,8 @@ def main() -> int:
                   teste_transcrever_continua_pedindo_orcamento,
                   teste_nao_baixa_por_canal_que_caiu,
                   teste_o_ritmo_continua_manso,
-                  teste_o_detector_consegue_acusar):
+                  teste_o_detector_consegue_acusar,
+                  teste_so_baixa_o_que_foi_pedido):
         try:
             teste()
         except Exception as exc:  # noqa: BLE001

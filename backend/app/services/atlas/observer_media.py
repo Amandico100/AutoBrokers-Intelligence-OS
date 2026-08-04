@@ -37,6 +37,38 @@ def _max_bytes() -> int:
         return 15 * 1024 * 1024
 
 
+def tipos_que_baixamos() -> frozenset:
+    """Quais mídias vale a pena guardar. Padrão: SÓ ÁUDIO.
+
+    Decisão do Founder em 04/08/2026: *"não precisa baixar as imagens e
+    documentos. A ideia é garantir que temos os áudios agora salvos para
+    podermos transcrever e destilar depois."*
+
+    E ela tem razão de sobra nos números medidos no mesmo dia:
+
+        audio      1.623 arquivos ·  80 MB   ← onde o segurado EXPLICA o caso
+        document     292          · 165 MB
+        image        792          · 106 MB
+        video         29          · 106 MB
+        sticker      108          ·  30 MB
+
+    Baixar só áudio corta 84% dos bytes e 43% dos arquivos. Menos tráfego pela
+    sessão do WhatsApp é menos risco de o número ser marcado como anômalo — que
+    é a garantia que o Founder pediu com todas as letras.
+
+    E é o corte com melhor retorno: em atendimento de seguro, o áudio é onde a
+    pessoa conta o que aconteceu. Foto de documento e PDF de apólice são dado
+    que a InfoCap já tem estruturado.
+
+    Alargável por env sem deploy quando fizer sentido (ex.: `audio,image`).
+    """
+    bruto = str(os.getenv("OBSERVER_MEDIA_KINDS", "audio") or "").strip().lower()
+    if bruto in ("*", "todos", "all"):
+        return frozenset({"audio", "image", "video", "document", "sticker"})
+    tipos = {t.strip() for t in bruto.split(",") if t.strip()}
+    return frozenset(tipos) or frozenset({"audio"})
+
+
 def _safe_filename(value: str) -> str:
     clean = re.sub(r"[^A-Za-z0-9._-]+", "-", str(value or "")).strip(".-")
     return clean[:120] or "attachment"
@@ -102,6 +134,16 @@ async def enqueue_observer_media(
 ) -> bool:
     """Queue raw message shape without credentials; Redis is transient."""
     if table not in ALLOWED_TABLES or not record.get("message_id") or not message:
+        return False
+
+    # SÓ O QUE FOI PEDIDO DESCE. Ver `tipos_que_baixamos`: o padrão é áudio.
+    #
+    # Filtrar AQUI, e não no worker, é de propósito: o que não entra na fila
+    # não gasta tráfego pela sessão do WhatsApp, e é o tráfego que decide o
+    # risco de o número ser marcado como anômalo.
+    tipo = str(((record.get("media_meta") or {}) if isinstance(record.get("media_meta"), dict)
+                else {}).get("kind") or record.get("msg_type") or "").strip().lower()
+    if tipo and tipo not in tipos_que_baixamos():
         return False
 
     # SALVAR É DE GRAÇA. LER É QUE CUSTA. — SPEC-065, 04/08/2026.
