@@ -596,6 +596,28 @@ def _sinais_do_codigo() -> dict:
     except Exception:  # noqa: BLE001
         sinais["pergunta_antes_de_abrir"] = False
 
+    # OS INTERRUPTORES, VISÍVEIS DE FORA.
+    #
+    # Em 04/08 eu disse ao Founder "confira `INSURER_DISPATCH_LIVE` no EasyPanel"
+    # — e isso é pedir que ele caçe uma variável num painel para descobrir se o
+    # produto vai funcionar. Se uma env fechada faz o botão "Ligar agente" virar
+    # decoração **sem erro nenhum para explicar**, o estado dela tem de ser
+    # observável no mesmo lugar onde se pergunta "o deploy entrou?".
+    #
+    # São três interruptores independentes, e a diferença entre eles importa:
+    #   acionamento_liberado  a env do corredor + do portal está aberta?
+    #   freio_de_emergencia   alguém armou o freio manual?
+    #   (o terceiro é `agents.is_active`, que mora no banco e tem tela própria)
+    try:
+        from app.services.insurer_dispatch_service import (
+            dispatch_live_enabled, freio_de_emergencia_armado)
+
+        sinais["acionamento_env_aberta"] = bool(dispatch_live_enabled())
+        sinais["freio_de_emergencia_armado"] = bool(freio_de_emergencia_armado())
+    except Exception:  # noqa: BLE001
+        sinais["acionamento_env_aberta"] = None
+        sinais["freio_de_emergencia_armado"] = None
+
     # O template do briefing existe no catálogo? Sem ele, o artefato morre em
     # chave estrangeira e o briefing fica em `pending` sem ninguém saber.
     try:
