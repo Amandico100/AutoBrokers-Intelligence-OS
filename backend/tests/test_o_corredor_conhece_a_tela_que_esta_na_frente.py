@@ -28,6 +28,7 @@ continuar acertando, senão o conserto trocou um buraco por outro.
 from __future__ import annotations
 
 import importlib.util
+import os
 import re
 import sys
 import types
@@ -63,6 +64,15 @@ def _carregar(rel: str, nome: str):
 
 PB = _carregar("app/services/corridor_playbooks.py", "cp_telas")
 DISPATCH = _carregar("app/services/insurer_dispatch_service.py", "ids_telas")
+
+# ATUALIZADO em 04/08/2026 (P-90), CLAUDE.md §9.3 — `DISPATCH_FINALIZE_MODE`
+# nasce em `live`. O freio de finalização era o padrão porque o Founder testava
+# no próprio celular; a decisão dele foi que a única trava passa a ser o agente
+# desligado.
+#
+# `o_modo_teste_da_azul_cancela_de_verdade` continua sendo exatamente o que o
+# nome diz — o MODO TESTE. Ele só passa a armá-lo em vez de herdá-lo.
+os.environ["DISPATCH_FINALIZE_MODE"] = "test"
 
 
 # ---------------------------------------------------------------------------

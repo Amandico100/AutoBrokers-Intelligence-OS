@@ -212,18 +212,130 @@ def sessao_restaurada(snapshot: Dict[str, Any], *, motivo: str) -> Dict[str, Any
     return sessao
 
 
+# ===========================================================================
+# P-90 — O INTERRUPTOR PASSA A SER UM SÓ: `agents.is_active`
+# ===========================================================================
+#
+# Decisão do Founder, 04/08/2026, dita duas vezes e nas palavras dele:
+#
+#   "A questão de trava no final sempre foi por um motivo exclusivo. Eu estava
+#    fazendo os testes no meu próprio celular. Se não tivesse a trava, seriam
+#    feitos os acionamentos dos serviços de vidro de verdade."
+#   "Quero tudo pronto e funcionando, mas o agente de atendimento tem que
+#    continuar desligado. Só podem funcionar se clicar em LIGAR AGENTE."
+#
+# O que isso muda: as travas de ENV existiam porque não havia um interruptor
+# confiável no produto. Agora há — `agents.is_active` do agente de atendimento,
+# lido por `attendance_agent_active`, com fail-closed em erro de leitura. 📊 Em
+# 04/08/2026 os quatro agentes `attendance` do banco estão `is_active=false`
+# (`SELECT agent_role, is_active FROM agents`).
+#
+# Trava sobre trava não protege mais; esconde. Quem tem duas fechaduras nunca
+# sabe qual está segurando — e a auditoria de 02/08 já registrou o custo disso
+# ("uma trava que depende de outra trava não é trava, é sorte").
+#
+# O que fica: UM freio de emergência, legível, desarmado por padrão. Ele existe
+# para o dia em que for preciso parar tudo sem esperar um deploy — uma linha de
+# env, os dois corredores (portal de vidros E WhatsApp) param juntos.
+
+FREIO_DE_EMERGENCIA = "ACIONAMENTO_FREIO_DE_EMERGENCIA"
+
+# O que conta como "sim" e o que conta como "não". Escrito uma vez: um dos dois
+# conjuntos escrito com uma palavra a menos vira um portão que abre por engano.
+_LIGADO = ("1", "true", "yes", "on", "sim")
+_DESLIGADO = ("0", "false", "no", "off", "nao", "não")
+
+
+def freio_de_emergencia_armado(valor: Optional[str] = None) -> bool:
+    """O freio de emergência está PUXADO? PURO quando `valor` é passado.
+
+    Desarmado por padrão — no sentido seguro, que aqui é o sentido do Founder:
+    com o freio solto, quem segura o acionamento é o agente desligado, e mais
+    nada. Armar é uma linha (`ACIONAMENTO_FREIO_DE_EMERGENCIA=true`) e derruba
+    os DOIS corredores de uma vez, sem deploy.
+
+    Só um "sim" explícito arma. Um valor escrito errado (`ACIONAMENTO_FREIO=xyz`)
+    NÃO arma o freio de propósito: um freio que se arma sozinho por um typo é um
+    produto que para de funcionar sem ninguém entender por quê — e o efeito de
+    não acionar é invisível, ao contrário do efeito de acionar.
+    """
+    bruto = os.getenv(FREIO_DE_EMERGENCIA, "") if valor is None else valor
+    return str(bruto or "").strip().lower() in _LIGADO
+
+
+def acionamento_liberado(agente_ligado: bool, freio_armado: Optional[bool] = None) -> bool:
+    """PURO. A REGRA, escrita num lugar só — vale para o portal e para o WhatsApp.
+
+    Duas condições, as duas necessárias:
+      1. o agente de atendimento da corretora está LIGADO;
+      2. o freio de emergência está solto.
+
+    `agente_ligado` chega de fora porque quem sabe responder é
+    `attendance_agent_active(company_id)`, que fala com o banco e é async — e a
+    regra tem de poder ser provada sem banco, sem rede e sem LLM. Guarda que só
+    existe dentro de um `await` é guarda que ninguém consegue testar.
+    """
+    if not bool(agente_ligado):
+        return False
+    return not (freio_de_emergencia_armado() if freio_armado is None else bool(freio_armado))
+
+
 def dispatch_live_enabled() -> bool:
-    """S17-6: envio real à seguradora SÓ com a flag ligada + corretora avisada."""
-    return str(os.getenv("INSURER_DISPATCH_LIVE", "")).strip().lower() in ("1", "true", "yes", "on")
+    """O envio REAL à seguradora está liberado pelo AMBIENTE?
+
+    Mudou em 04/08/2026 (P-90) e o que mudou foi o PADRÃO, não a mecânica.
+
+    Antes: `INSURER_DISPATCH_LIVE` ausente = FECHADO. O gate S17-6 nasceu quando
+    o Founder testava no próprio celular e um acionamento de verdade mandaria um
+    prestador à casa dele. Esse motivo acabou: hoje quem segura é o agente
+    desligado, e `InsurerDispatchTool` só existe para um agente `attendance`
+    ATIVO (graph.py só a anexa para esse papel; `_get_raw_agent` filtra
+    `is_active=True`; e o webhook já parou antes, em `attendance_agent_active`).
+
+    Agora: ausente = ABERTO. Duas coisas ainda fecham, e as duas são explícitas:
+      · o freio de emergência (`ACIONAMENTO_FREIO_DE_EMERGENCIA`);
+      · um `INSURER_DISPATCH_LIVE=false` escrito por alguém.
+
+    O "não" explícito continua valendo de propósito. Ignorar uma variável que um
+    operador escreveu com a própria mão é como discordar dele em silêncio — e o
+    silêncio só é descoberto quando já não dá para desfazer.
+
+    ⚠️ Consequência operacional, e ela é real: se o ambiente de produção herdou
+    `INSURER_DISPATCH_LIVE=false` do `.env.example` antigo, ligar o agente NÃO
+    basta — é preciso apagar aquela linha. Está registrado em PENDENCIAS.
+    """
+    if freio_de_emergencia_armado():
+        return False
+    bruto = str(os.getenv("INSURER_DISPATCH_LIVE", "")).strip().lower()
+    if bruto in _DESLIGADO:
+        return False
+    return True
 
 
 def finalize_live_for(playbook_ref: str) -> bool:
-    """Decisão do founder (2026-07-11): o freio de finalização existe SÓ para os
-    TESTES (a IA executa o fluxo inteiro e CANCELA antes de abrir o serviço).
-    Corredor VALIDADO passa a completar ponta a ponta sem humano:
-    - DISPATCH_FINALIZE_MODE=live libera TODOS os corredores;
-    - DISPATCH_FINALIZE_LIVE_PLAYBOOKS=ref1,ref2 gradua corredor a corredor."""
-    mode = str(os.getenv("DISPATCH_FINALIZE_MODE", "test")).strip().lower()
+    """O corredor pode CONCLUIR o pedido na seguradora, ou cancela no final?
+
+    Decisão do founder (2026-07-11): o freio de finalização existe SÓ para os
+    TESTES — a IA executa o fluxo inteiro e CANCELA antes de abrir o serviço.
+
+    04/08/2026 (P-90): o padrão passou de `test` para `live`, pelo mesmo motivo
+    do gate acima e por um a mais, que é o pior dos dois.
+
+    Meio aberto é pior que fechado. Com o envio liberado e a finalização em
+    `test`, mensagens REAIS chegam à URA da seguradora, o fluxo anda até o fim
+    e é CANCELADO — o segurado ouviu "estou acionando", ninguém vem, e a
+    seguradora registrou uma conversa que não virou serviço. Ou o corredor
+    trabalha, ou ele não fala; não existe um meio termo honesto.
+
+    Continua sendo possível voltar ao ensaio, e sem deploy:
+      · DISPATCH_FINALIZE_MODE=test volta a cancelar na confirmação final;
+      · DISPATCH_FINALIZE_LIVE_PLAYBOOKS=ref1,ref2 gradua corredor a corredor
+        (só faz sentido junto com `test`);
+      · o freio de emergência fecha tudo, aqui também.
+    """
+    if freio_de_emergencia_armado():
+        return False
+    mode = str(os.getenv("DISPATCH_FINALIZE_MODE", "live")).strip().lower()
     if mode == "live":
         return True
     live_refs = [x.strip() for x in str(os.getenv("DISPATCH_FINALIZE_LIVE_PLAYBOOKS", "")).split(",") if x.strip()]
@@ -356,8 +468,9 @@ def build_dry_run_plan(playbook_ref: str, subservice: str, slots: Dict[str, Any]
         "steps": steps,
         "live": dispatch_live_enabled(),
         "note": (
-            "Acionamento REAL liberado." if dispatch_live_enabled()
-            else "MODO SIMULAÇÃO: nada será enviado à seguradora até a liberação do Founder (INSURER_DISPATCH_LIVE)."
+            "Acionamento REAL liberado pelo ambiente." if dispatch_live_enabled()
+            else ("MODO SIMULAÇÃO: nada será enviado à seguradora — o ambiente está fechado "
+                  "(freio de emergência armado ou INSURER_DISPATCH_LIVE=false).")
         ),
     }
 

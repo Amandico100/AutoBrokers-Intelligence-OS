@@ -308,11 +308,53 @@ async def _alert_founder(insurer_key: str, ramo: str, summary: str, diff: Dict[s
                f"O menu da seguradora mudou de forma que exige revisão. "
                f"Abra o Atlas de Rotas para conferir e aprovar.")
         svc = get_integration_service()
-        integ = svc.get_platform_whatsapp_integration()  # corretora da plataforma
+        # 🔴 SPEC-065 — esta linha chamava `get_platform_whatsapp_integration()`
+        # SEM argumento, numa função cuja assinatura exige `company_id`. Todo
+        # disparo levantava `TypeError`, o `except` abaixo engolia, e **o alerta
+        # de mudança estrutural do Atlas nunca chegou ao Founder** — nem uma vez.
+        #
+        # É o aviso que importa exatamente agora: quando os WhatsApps das
+        # corretoras conectarem, conversas novas vão remodelar as rotas. O Atlas
+        # acumula e versiona (📊 253 mapas `superseded` preservados), então ele
+        # não apaga o que estava certo — mas quem precisa REVISAR uma mudança
+        # estrutural é uma pessoa, e a pessoa não estava sendo avisada.
+        #
+        # O Atlas é GLOBAL: a rota é da seguradora, não de uma corretora. Então
+        # não há `company_id` no escopo, e usar um fixo seria escolher a
+        # corretora de alguém para carregar aviso de plataforma. Resolve-se pelo
+        # primeiro canal de saída ELEGÍVEL que existir — `pode_enviar` continua
+        # valendo, então o número do observador nunca é usado para falar.
+        integ = _canal_de_plataforma(svc)
         if integ:
             get_whatsapp_service().send_message(_founder_alert_number(), msg, integ)
+        else:
+            logger.warning("[SENTINELA ROTAS] mudança em %s/%s detectada e SEM canal "
+                           "de saída elegível — o alerta não saiu", insurer_key, ramo)
     except Exception as e:  # noqa: BLE001
         logger.warning(f"[SENTINELA ROTAS] alerta ao founder falhou: {type(e).__name__}")
+
+
+def _canal_de_plataforma(svc: Any) -> Optional[Dict[str, Any]]:
+    """O primeiro canal de saída elegível do sistema, para aviso de PLATAFORMA.
+
+    Aviso de Atlas não pertence a nenhuma corretora — a rota é da seguradora.
+    Percorre as empresas e devolve a primeira com canal que pode falar. Quem
+    decide o que "pode falar" continua sendo `pode_enviar` (o observador nunca
+    entra), então este caminho não fura a regra do silêncio.
+    """
+    try:
+        from app.core.database import get_supabase_client
+
+        db = get_supabase_client()
+        empresas = (db.client.table("companies").select("id")
+                    .limit(50).execute().data) or []
+        for empresa in empresas:
+            integ = svc.get_platform_whatsapp_integration(str(empresa["id"]))
+            if integ:
+                return integ
+    except Exception as e:  # noqa: BLE001
+        logger.warning("[SENTINELA ROTAS] não consegui resolver canal (%s)", type(e).__name__)
+    return None
 
 
 def _founder_alert_number() -> str:

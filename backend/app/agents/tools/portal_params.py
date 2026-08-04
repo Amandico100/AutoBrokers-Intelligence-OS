@@ -40,7 +40,23 @@ from app.services.perguntas_do_portal_de_vidros import (
 # (entram na mensagem que o agente le) e o transporte daqui para baixo ja existe
 # — `params['especificos']` e lido por `vidros_lanternas.abrir_atendimento` e
 # entregue ao cerebro adaptativo. Falta so um campo `especificos` na tool.
-TRANSPORTAVEIS = ("cpf_cnpj", "data_dano", "peca", "como_ocorreu", "onde_ocorreu")
+TRANSPORTAVEIS = ("cpf_cnpj", "data_dano", "peca", "como_ocorreu", "onde_ocorreu",
+                  # SPEC-065 — a preferência de ONDE consertar entra aqui, e a
+                  # razão é que uma parada no passo 7 é TERMINAL.
+                  #
+                  # 📊 O `Nº do atendimento` nasce no passo 7, ANTES da escolha
+                  # da loja. Parar ali não é "tentar de novo depois": o pedido já
+                  # existe na seguradora, e reexecutar cria um SEGUNDO.
+                  #
+                  # Sem esta linha, a preferência era coletada mas não cobrada:
+                  # se ela fosse a ÚNICA coisa faltando, o agente nunca era
+                  # avisado, o portal abria, e o fluxo morria na última tela —
+                  # no lugar mais caro possível.
+                  #
+                  # E é a pergunta mais fácil de todas: "o técnico vai até você,
+                  # ou você prefere levar numa oficina?" — qualquer pessoa
+                  # responde sem consultar nada.
+                  "onde_realizar_o_servico")
 
 
 def _fold(s: Optional[str]) -> str:
@@ -81,10 +97,25 @@ def normalize_insurer(name: Optional[str]) -> str:
     return raw.title() if raw else ""
 
 
-def build_portal_params(flat: dict, profile: dict, infocap: dict) -> Tuple[Optional[dict], Optional[str]]:
+def build_portal_params(flat: dict, profile: dict, infocap: dict,
+                        *, enviar_de_verdade: bool = False) -> Tuple[Optional[dict], Optional[str]]:
     """(params, erro). flat = decisoes do LLM (cpf, data, dano, placa_informada
     fallback). profile = perfil de acionamento da corretora. infocap = retorno REAL
     do vehicle lookup (policy/vehicle/client). erro != None quando falta fato.
+
+    P-90 — `enviar_de_verdade` e o que vira `params['confirm']`, e ele NASCE
+    False. Aqui morava um `"confirm": False` CRAVADO: nenhum caminho do
+    repositorio conseguia liga-lo, entao o acionamento percorria o formulario
+    inteiro e parava no 80% para sempre. 📊 9 dos 39 jobs chegaram exatamente
+    ali ("cheguei na confirmacao (80%) — aprove para enviar") e a aprovacao nao
+    existia em lugar nenhum.
+
+    Continua nascendo False de proposito: quem decide e o CHAMADOR, que sabe se
+    o agente de atendimento da corretora esta ligado (`portal_tool._arun`).
+    Um default True aqui faria com que qualquer chamada nova — um teste, uma
+    rotina, um caminho que ainda nao existe — abrisse pedido de verdade na
+    seguradora por esquecimento. Esquecer tem de custar um pedido a menos,
+    nunca um pedido a mais.
 
     A ordem e deliberada: primeiro os fatos que NAO dependem do segurado (perfil
     da corretora, seguradora, placa) — recusar por eles e barato e nao gasta a
@@ -189,15 +220,54 @@ def build_portal_params(flat: dict, profile: dict, infocap: dict) -> Tuple[Optio
             "cidade": _fold(cli.get("cidade")).title(),
             "cep": str(cli.get("cep") or "").strip(),
         },
-        "confirm": False,  # a tool NUNCA envia de verdade — para no 80% (aprovacao separada)
+        # P-90 — O QUE DECIDE SE O PEDIDO NASCE DE VERDADE.
+        #
+        # `confirm=False` faz `run_adaptive` parar em `is_confirm_screen` (o 80%)
+        # e devolver `needs_human`; `confirm=True` deixa o fluxo seguir ate o
+        # passo 7, onde o Nº do atendimento aparece
+        # (docs/canon/O-PORTAL-DE-VIDROS-TELA-POR-TELA.md §7).
+        #
+        # O valor vem de fora, do agente ligado — nao de uma constante. Era a
+        # constante que fazia 39 acionamentos morrerem a 20% do fim.
+        "confirm": bool(enviar_de_verdade),
     }
     return params, None
 
 
 def format_result(job: dict) -> str:
-    """Traduz o job terminado para uma frase natural para o agente."""
+    """Traduz o job terminado para uma frase natural para o agente.
+
+    🔴 O NUMERO VEM PRIMEIRO, EM QUALQUER STATUS.
+
+    📊 O `Nº do atendimento` nasce no passo 7, no topo da tela, ANTES da escolha
+    da loja (mapa §7). Logo o pedido pode EXISTIR na seguradora num job que
+    terminou `needs_human` (travou depois) ou ate `failed` (o navegador caiu
+    depois). Nesses casos o segurado tem um atendimento aberto — e a unica coisa
+    que o torna rastreavel e este numero chegar ate ele.
+
+    Por isso a checagem do protocolo vem ANTES do `switch` de status: amarrar o
+    numero ao status `done` faria o caso mais perigoso (pedido aberto + fluxo
+    quebrado) ser justamente o unico que nao o diria.
+
+    E a frase avisa para NAO reexecutar: repetir o fluxo cria um SEGUNDO
+    atendimento, e isso nao se desfaz (mapa §9.5).
+    """
     status = str((job or {}).get("status") or "")
     ev = (job or {}).get("evidence") or {}
+    protocolo = str(ev.get("protocolo") or "").strip()
+    if protocolo:
+        passo7 = ev.get("passo7") if isinstance(ev.get("passo7"), dict) else {}
+        recomendacao = str(passo7.get("recomendacao") or "").strip()
+        if not recomendacao:
+            recomendacao = ("Confirme com o segurado onde o servico sera feito (tecnico a domicilio "
+                            "ou uma das lojas) — essa escolha e dele, e ela ainda esta em aberto.")
+        return (
+            f"O atendimento FOI ABERTO na seguradora. Numero do atendimento: {protocolo}. "
+            f"DIGA ESSE NUMERO AO SEGURADO — e com ele que ele acompanha e cobra o servico. "
+            f"{recomendacao} "
+            "NAO peca para eu abrir de novo: o pedido ja existe e repetir criaria um segundo "
+            "atendimento na seguradora, que nao se desfaz."
+        ).strip()
     if status == "done":
         return f"Acionamento concluido no portal. {ev.get('message') or 'protocolo gerado'}".strip()
     if status == "needs_human":

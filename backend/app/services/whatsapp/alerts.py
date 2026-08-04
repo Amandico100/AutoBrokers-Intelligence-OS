@@ -188,14 +188,29 @@ def _sender_integration(integration: Dict[str, Any]) -> Optional[Dict[str, Any]]
         from app.core.database import get_supabase_client
 
         db = get_supabase_client()
+        from app.services.integration_service import IntegrationService
+        from app.services.whatsapp.channel_state import normalizar_estado, CONECTADO, CONECTANDO
+
+        # `purpose` entrou no SELECT porque sem ele não dá para aplicar a regra
+        # que já existe: 🔴 SPEC-065 — este caminho escolhia por `is_active` e
+        # podia devolver o OBSERVADOR. O aviso de queda sairia pelo número que
+        # existe justamente para ficar calado — e ele dispara exatamente quando
+        # um canal cai, que é quando o observador costuma ser o único de pé.
         rows = (
             db.client.table("integrations")
-            .select("provider, base_url, instance_id, token, channel_status")
+            .select("provider, purpose, base_url, instance_id, token, channel_status")
             .eq("company_id", company_id).eq("is_active", True)
             .neq("instance_id", fallen_instance).limit(5).execute().data or []
         )
         for row in rows:
-            if str(row.get("channel_status") or "") in ("close", "closed", "disconnected", "logout"):
+            # A comparação era com strings cruas e não enxergava `retired` nem
+            # `unknown` — dois estados que existem e significam "não fale por
+            # aqui". `normalizar_estado` é o tradutor único (SPEC-063 Bloco V).
+            if normalizar_estado(row.get("channel_status")) not in (CONECTADO, CONECTANDO):
+                continue
+            if not IntegrationService.pode_enviar(row):
+                logger.info("[WA ALERT] '%s' não pode ser canal de saída — pulando",
+                            row.get("purpose"))
                 continue
             if row.get("base_url") and row.get("token"):
                 return row

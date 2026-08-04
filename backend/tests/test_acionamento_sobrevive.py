@@ -385,10 +385,35 @@ def teste_o_portao_e_o_freio_nao_afrouxaram():
     print("\n[E5] SEGURANCA: portao de envio e freio de finalizacao intactos")
     fonte = _ler("backend", "app", "services", "insurer_dispatch_service.py")
 
-    checar('os.getenv("INSURER_DISPATCH_LIVE", "")' in fonte,
-           "o portao continua nascendo FECHADO (default vazio)")
-    checar('os.getenv("DISPATCH_FINALIZE_MODE", "test")' in fonte,
-           "o freio de finalizacao continua em 'test' por padrao")
+    # ATUALIZADO em 04/08/2026 (P-90), CLAUDE.md §9.3 — aqui se afirmava que o
+    # portao nascia FECHADO e o freio nascia em 'test'. Era verdade ate a
+    # decisao do Founder: a unica trava passa a ser `agents.is_active` do agente
+    # de atendimento. As duas travas de env existiam porque ele testava no
+    # proprio celular, e esse motivo acabou quando o interruptor virou produto.
+    #
+    # A licao migra: o que este caso protege e que o portao continua EXISTINDO e
+    # continua FECHAVEL. Ele passa a exercita-lo em vez de ler a receita dele.
+    _antes = {k: os.environ.get(k) for k in ("INSURER_DISPATCH_LIVE",
+                                             "DISPATCH_FINALIZE_MODE",
+                                             DISPATCH.FREIO_DE_EMERGENCIA)}
+    try:
+        for k in _antes:
+            os.environ.pop(k, None)
+        # CONTROLE: sem nada armado os dois abrem. Sem esta linha, as duas
+        # asserções seguintes passariam mesmo num portao que so sabe dizer nao.
+        checar(DISPATCH.dispatch_live_enabled() is True
+               and DISPATCH.finalize_live_for("hdi-auto-whatsapp@v1") is True,
+               "CONTROLE: sem nada armado, portao e freio nascem ABERTOS")
+        os.environ[DISPATCH.FREIO_DE_EMERGENCIA] = "true"
+        checar(DISPATCH.dispatch_live_enabled() is False,
+               "o freio de emergencia continua FECHANDO o portao de envio")
+        checar(DISPATCH.finalize_live_for("hdi-auto-whatsapp@v1") is False,
+               "e continua segurando a finalizacao junto")
+    finally:
+        for k, v in _antes.items():
+            os.environ.pop(k, None)
+            if v is not None:
+                os.environ[k] = v
     checar("if finalize and not _finalize_allowed(session):" in fonte,
            "o bloco que CANCELA antes de abrir o servico segue de pe")
 

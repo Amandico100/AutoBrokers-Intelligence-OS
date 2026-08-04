@@ -105,6 +105,17 @@ def _carregar(dotted: str, rel: str):
 PB = _carregar("app.services.corridor_playbooks", "app/services/corridor_playbooks.py")
 DS = _carregar("app.services.insurer_dispatch_service", "app/services/insurer_dispatch_service.py")
 
+# ATUALIZADO em 04/08/2026 (P-90), CLAUDE.md §9.3 — o FREIO DE FINALIZAÇÃO
+# deixou de ser o padrão. Ele existia porque o Founder testava no próprio
+# celular; a decisão dele foi que a única trava passa a ser o agente desligado,
+# e `DISPATCH_FINALIZE_MODE` nasce em `live`.
+#
+# O caso [Y5] deste arquivo prova que a tela do ponto de não-retorno PARA o
+# motor — e isso continua sendo verdade e continua valendo a pena provar. O que
+# muda é que agora o ensaio é ARMADO de propósito, em vez de herdado. Um teste
+# que dependia de um padrão parou de testar no instante em que o padrão mudou.
+os.environ["DISPATCH_FINALIZE_MODE"] = "test"
+
 REF = "yelum-residencial-whatsapp@v1"
 
 # ---------------------------------------------------------------------------

@@ -7,9 +7,16 @@ InfoCap (/itens + /cliente_cpf), server-side — o LLM NUNCA fornece placa/local
 (era isso que fazia o agente inventar ABC1D23/Sao Paulo). O LLM so passa o que e
 julgamento: CPF (da conversa), qual apolice (se varias), data do dano e o relato.
 
-A tool NUNCA finaliza o pedido sozinha (confirm=False -> journey para na tela de
-confirmacao); o envio real e um passo de aprovacao separado. Gate
-PORTAL_REAL_ENABLED (no worker) off ate o founder ligar.
+P-90 — QUEM DECIDE SE O PEDIDO NASCE DE VERDADE E O INTERRUPTOR DO AGENTE.
+Ate 04/08/2026 esta tool tinha `confirm=False` CRAVADO em `portal_params`, e
+nenhum caminho do repositorio conseguia liga-lo: o acionamento percorria o
+formulario inteiro e parava no 80% para sempre (📊 9 dos 39 jobs terminaram
+exatamente ali). Agora `confirm` e o resultado de UMA regra, escrita num lugar
+so (`insurer_dispatch_service.acionamento_liberado`): o agente de atendimento
+da corretora esta ligado E o freio de emergencia esta solto. Agente desligado
+continua parando no 80% — que e exatamente o comportamento de antes, e por isso
+ligar o agente e a unica coisa que muda o desfecho. Gate PORTAL_REAL_ENABLED
+(no worker) continua governando se o worker sequer pega o job.
 
 Identidade do solicitante (multi-tenant): PERFIL DE ACIONAMENTO da corretora
 (companies), nunca do segurado nem inventado. Logica pura em portal_params.py.
@@ -163,6 +170,32 @@ class PortalActionTool(BaseTool):
         except Exception:  # noqa: BLE001
             pass
 
+    async def _envio_liberado(self) -> bool:
+        """P-90 — este acionamento pode CONCLUIR o pedido na seguradora?
+
+        Uma pergunta, duas condicoes, e as duas moram fora daqui de proposito:
+        `attendance_agent_active` (o interruptor que o Founder clica) e
+        `acionamento_liberado` (a regra, compartilhada com o corredor de
+        WhatsApp). Reescrever a regra aqui criaria duas verdades sobre a mesma
+        coisa — e no dia em que uma mudasse, a outra continuaria valendo em
+        silencio.
+
+        Fail-closed em qualquer imprevisto: nao conseguir CONFIRMAR que o agente
+        esta ligado nunca pode virar permissao para abrir pedido. O pior caso do
+        `False` e um acionamento que para no 80%, como sempre parou; o pior caso
+        do `True` e um atendimento aberto de verdade na seguradora, que nao se
+        desfaz (o Nº nasce no passo 7, antes do fim do fluxo).
+        """
+        try:
+            from app.services.atlas.attendance_capture import attendance_agent_active
+            from app.services.insurer_dispatch_service import acionamento_liberado
+
+            return acionamento_liberado(await attendance_agent_active(self.company_id))
+        except Exception as exc:  # noqa: BLE001
+            logger.error("[PortalAction] nao foi possivel confirmar o interruptor do agente "
+                         "(%s) — o pedido para no 80%%", type(exc).__name__)
+            return False
+
     def _load_profile(self) -> dict:
         """Solicitante = identidade da CORRETORA (multi-tenant). REUSA os 'Dados da
         Corretora' (primary_contact_*/cnpj); acionamento_profile e override opcional."""
@@ -276,9 +309,16 @@ class PortalActionTool(BaseTool):
                                "Tente de novo em instantes; se persistir, acione um humano."}
 
         # 2) params = fatos (InfoCap) + julgamento (LLM) + solicitante (corretora)
-        params, err = build_portal_params(flat, self._load_profile(), info)
+        #
+        # P-90 — e o interruptor do agente, que vira `params['confirm']`. E o
+        # UNICO lugar do fluxo em que "abrir o pedido de verdade" se decide.
+        enviar = await self._envio_liberado()
+        params, err = build_portal_params(flat, self._load_profile(), info,
+                                          enviar_de_verdade=enviar)
         if err:
             return {"content": err}
+        logger.info("[PortalAction] confirm=%s (agente de atendimento %s)",
+                    enviar, "LIGADO" if enviar else "desligado ou freio armado")
 
         # 3) SPEC-065 7.2 — este pedido ja existe? O protocolo da seguradora nasce
         # no passo 7, ANTES do fim do fluxo: reexecutar nao corrige, cria um

@@ -1253,6 +1253,23 @@ tela passa a dizer `5547*****463 · pareado em 29/07`.
 **O que custa esquecer:** nenhuma auditoria de "quem está conectado" é possível,
 e a próxima confusão vai custar o mesmo tempo que esta.
 
+> **Escrito em 04/08/2026 (SPEC-063).** As três colunas nascem na migration
+> `20260804_03_o_repareamento_nao_duplica.sql` (**ainda não aplicada** — P-91), e
+> quem as preenche são `pairing_orchestrator._mark_connected` (do
+> `/instance/status`) e o `connection.update` do Observador. A regra de leitura
+> mora sozinha em `app/services/whatsapp/numero_pareado.py` e **não inventa**:
+> sem JID do provedor, devolve `None` em vez de deduzir do nome da instância.
+>
+> ⚠️ **Sem backfill, e de propósito.** O telefone das linhas já pareadas não
+> existe em campo nenhum deste banco — só apareceria num `/instance/status` ao
+> vivo. Reconstruí-lo a partir do `identifier` seria repetir o engano que criou o
+> `6955221`. As três integrações atuais ficam com o campo **vazio até reparear**.
+>
+> O fallback literal também morreu: `"unknown"` passou a ser
+> `{company_id[:8]}:sem-digitos`, então duas corretoras sem dígito no identifier
+> deixam de colidir. 📊 Os 167 eventos já gravados com `"unknown"` **continuam
+> como estão** — reescrevê-los mudaria a chave de dedupe deles.
+
 ---
 
 ## P-89 · 🟠 Os índices de deduplicação não têm `company_id`
@@ -1268,24 +1285,199 @@ pareamento.
 **O que custa esquecer:** transcrição de uma corretora descartada como duplicata
 da outra — e o pior tipo de perda, a silenciosa.
 
+> **Escrito em 04/08/2026 (SPEC-063).** Os índices com `company_id` nascem na
+> migration `20260804_03` (**não aplicada** — P-91), e nascem **ao lado** dos
+> antigos, não no lugar deles. O motivo está medido:
+>
+> O código grava com `on_conflict`, que o Postgres exige que case **exatamente**
+> com um índice único existente. Dropar o antigo antes de o deploy chegar faria
+> `_store_history_event` levar `42P10` — e como `_ingest_conversation` engole a
+> exceção, **a ingestão do histórico gravaria zero linha reportando sucesso**.
+> Com os dois vivos, as duas grafias funcionam e a ordem entre migration e deploy
+> deixa de importar.
+>
+> 📊 Medido antes de escrever: **0 linhas** colidem com a chave nova e **0** pares
+> `(observer_number, message_id)` existem em duas corretoras — a construção dos
+> índices não pode falhar, e nada muda de lado.
+>
+> ⚠️ **A fusão entre corretoras só fecha de fato com o DROP dos antigos** (P-91),
+> porque enquanto existirem são eles, mais estritos, que decidem.
+> `test_o_repareamento_nao_duplica.py` [3] mede as três configurações e mostra a
+> transição colapsando — de propósito, para que o estado intermediário não seja
+> confundido com o final.
+
 ---
 
-## P-90 · 🟠 O portal para no 80% e NADA no sistema pode aprovar
+## P-91 · 🧑 A migration `20260804_03` está escrita e NÃO aplicada
 
-📊 `build_portal_params` crava `"confirm": False`, e uma busca no repositório
-inteiro não acha **nenhum** caminho que ligue `confirm=True`.
+O arquivo `backend/supabase/migrations/20260804_03_o_repareamento_nao_duplica.sql`
+existe, com APPLY/VERIFY/ROLLBACK, e **nunca foi executado** — por instrução
+explícita. Ele é o que fecha P-88 e P-89.
 
-O acionamento percorre o formulário todo, chega na tela de confirmação e para —
-que é o freio funcionando. Mas não existe o outro lado: nem tela, nem resposta
-de WhatsApp, nem rotina que aprove. **O pedido nunca é enviado.**
+Enquanto não for aplicado, o código já em produção continua funcionando pela
+chave antiga (a reserva existe justamente para isso), mas:
 
-📊 É o que explica os 9 acionamentos que "chegaram na confirmação (80%)" e nunca
-viraram protocolo.
+- `paired_phone_e164` não existe → o telefone pareado continua sem ser gravado;
+- as chaves de dedupe continuam sem `company_id`.
 
-**O que destrava:** 🤖 execução — o passo de aprovação. A capability já existe e
-já descreve o contrato (`operational.portal.assistance.request`,
-`requires_approval: true`, `max_calls_per_run: 2`). Falta o mecanismo. 🧑 E uma
-decisão junto: aprovar é um clique no painel, uma resposta no WhatsApp do
-suporte, ou os dois?
-**O que custa esquecer:** o portal está pronto para fazer 95% do trabalho e parar
-na última porta. É a diferença entre "funciona" e "entrega".
+**O que destrava:** 🧑 Founder aplica a migration e roda o VERIFY do cabeçalho
+(cinco consultas, incluindo a que prova que o guarda **consegue** falhar).
+Depois: 🤖 deploy do backend — e só **então** a segunda migration, de uma linha
+por índice, com os três `DROP INDEX` já escritos no cabeçalho do arquivo.
+**O que custa esquecer:** parear a Regina e a Saionara antes disso significa
+perder a única janela em que a separação por corretora era barata — depois dela,
+os dados das duas já estarão dentro da mesma chave.
+
+---
+
+## P-92 · 🟠 Um parâmetro do onboarding pode duplicar o acervo inteiro
+
+📊 `admin_atlas.py:346` — `instance = _obs_instance_name(company_id, int(body.get("seq") or 1))`.
+
+O `seq` vem do **corpo do request**. E `observer_number` é `_digits()` do nome da
+instância: `ab-obs-6c9c55e22f-1` → `6955221`; `ab-obs-6c9c55e22f-2` → `6955222`.
+
+Chave diferente = **nada casa** = o history_sync regrava tudo. 📊 São 9.982
+transcrições da AutoFleet e 59.168 da Resulta a um dígito de distância.
+
+O caminho normal é seguro — `pairing_orchestrator._instance_name` crava `-1` e
+`_prepare_and_connect` reusa o `instance_id` já gravado. O risco é só esta porta.
+
+**O que destrava:** 🤖 execução — ignorar `seq` quando já existe integração
+observer para a corretora, ou recusar `seq != 1` sem confirmação explícita.
+Não foi feito aqui porque `admin_atlas.py` está fora do escopo que me foi dado.
+**O que custa esquecer:** o pareamento "manual de emergência" é justamente o que
+alguém usa sob pressão, que é quando ninguém confere um campo numérico.
+
+---
+
+## P-93 · 🟡 1.035 linhas ao vivo ainda podem ganhar cópia no repareamento
+
+📊 04/08/2026: as duas fontes gravam `message_id` de famílias incompatíveis —
+`history_sync` usa `hist-…` (100% das 85.766 linhas) e o caminho ao vivo usa o id
+do WhatsApp (100% das 1.035). O índice único não tem como saber que são a mesma
+mensagem.
+
+O cruzamento por conteúdo em `history_ingest._impressoes_ao_vivo` fecha isso
+**daqui para a frente** e está provado em `test_o_repareamento_nao_duplica.py` [4].
+Duas ressalvas honestas:
+
+1. Ele só compara mensagens **com texto**. Áudio, foto e documento ficam de fora
+   de propósito (regra de `atlas/mensagem.py`: sem texto não há identidade
+   segura, e perder áudio é irreversível). 📊 São 9.002 mídias no Espelho.
+2. Ele é *fail-open*: se a leitura falhar, a ingestão segue sem o cruzamento — o
+   pior desfecho vira uma cópia, que se conserta, em vez de uma mensagem
+   descartada, que não.
+
+**O que destrava:** 🤖 execução — depois do primeiro repareamento, rodar o
+detector abaixo e decidir sobre o que sobrar:
+
+```sql
+SELECT company_id, counterparty, wa_timestamp, direction, msg_type, count(*)
+  FROM attendance_transcripts
+ WHERE wa_timestamp IS NOT NULL AND text IS NOT NULL
+ GROUP BY 1,2,3,4,5 HAVING count(*) > 1;
+```
+
+**O que custa esquecer:** a duplicata de mídia não aparece em contagem de
+conversa, aparece no custo de transcrever o mesmo áudio duas vezes.
+
+---
+
+## P-90 · ✅ RESOLVIDO em 04/08/2026 — a aprovação é o botão LIGAR AGENTE
+
+📊 `build_portal_params` cravava `"confirm": False`, e uma busca no repositório
+inteiro não achava **nenhum** caminho que ligasse `confirm=True`. O acionamento
+percorria o formulário todo, chegava na tela de confirmação e parava. 📊 É o que
+explica os 9 acionamentos que "chegaram na confirmação (80%)" e nunca viraram
+protocolo.
+
+Esta entrada propunha construir um passo de aprovação (tela, WhatsApp do
+suporte, ou os dois). **O Founder respondeu outra coisa, e a resposta dele é
+melhor**, porque tira uma trava em vez de somar uma:
+
+> *"A questão de trava no final sempre foi por um motivo exclusivo. Eu estava
+> fazendo os testes no meu próprio celular. Se não tivesse a trava, seriam
+> feitos os acionamentos dos serviços de vidro de verdade."*
+> *"Quero tudo pronto e funcionando, mas o agente de atendimento tem que
+> continuar desligado. Só podem funcionar se clicar em LIGAR AGENTE."*
+
+O que passou a valer: **um interruptor só, `agents.is_active` do agente de
+atendimento.** `portal_tool` e `insurer_dispatch_tool` perguntam
+`attendance_agent_active` antes de agir e derivam dela o `confirm` do portal e o
+envio real do corredor de WhatsApp (regra única em
+`insurer_dispatch_service.acionamento_liberado`). Provado nos dois sentidos em
+`backend/tests/test_o_que_acontece_quando_o_agente_liga.py`.
+
+📊 Em 04/08/2026 os quatro agentes `attendance` estão `is_active=false` — nada
+sai enquanto ninguém clicar.
+
+---
+
+## P-91 · 🧑 Duas linhas de env que podem fazer o botão não funcionar
+
+Herança do desenho antigo. **Se o Founder ligar o agente e nada acontecer, é
+uma destas duas** — e não haverá erro nenhum para explicar por quê.
+
+1. **`INSURER_DISPATCH_LIVE`** — o padrão do código passou a ser ABERTO, mas um
+   `false` *escrito* continua fechando (de propósito: ignorar o que um operador
+   escreveu é discordar dele em silêncio). O `.env.example` antigo trazia
+   `INSURER_DISPATCH_LIVE=false`; se o ambiente do EasyPanel herdou essa linha,
+   **apague-a**.
+2. **`PORTAL_REAL_ENABLED`** (serviço `portal-worker`) — com ela desligada o
+   worker sobe, responde `/health` e **não pega job nenhum**. O acionamento de
+   vidros é enfileirado e fica em `queued` para sempre. 📊 Os 39 jobs de
+   `abrir_atendimento` têm `started_at` preenchido (último em 10/07/2026), o que
+   indica que ela já esteve ligada — mas o estado atual do ambiente não é
+   legível daqui.
+
+**O que destrava:** 🧑 Founder — conferir as duas variáveis no EasyPanel.
+**O que custa esquecer:** o botão vira decoração, sem mensagem de erro.
+
+---
+
+## P-92 · 🤖 O chat interno também alcança o portal de vidros
+
+📊 04/08/2026, `capability_bindings`: `tenant.portal.execute` está **ligada para
+`core` e `auxiliary`** (e desligada para `attendance`). O chat interno da
+corretora, portanto, também recebe `portal_action` — e ele **não** passa pelo
+portão `attendance_agent_active` do webhook, porque fala com o corretor, não com
+o segurado.
+
+📊 Alcance real hoje: **uma** corretora. A capability exige conexão
+(`requires_connection=true`, provider `portal_worker`) e só a Resulta
+(`04b5cdbc…`) tem linha em `portal_accounts`; o `core` dela está ativo.
+
+Não é um buraco aberto: `portal_tool` subordina o `confirm` ao mesmo
+interruptor, então com o agente de atendimento desligado o job do chat interno
+nasce `confirm=False` e para no 80% — exatamente o que já fazia. Mas **quando o
+agente for ligado, este caminho também passa a poder abrir pedido de verdade.**
+
+**O que destrava:** 🧑 decisão de produto — o corretor pode abrir um chamado de
+vidro pelo chat interno? Se não, é um `UPDATE capability_bindings SET
+enabled=false WHERE agent_role='core' AND capability_key='tenant.portal.execute'`.
+**O que custa esquecer:** ninguém procura o acionamento de vidros no chat
+interno, e é de lá que ele pode sair.
+
+---
+
+## P-93 · 🤖 Um job parado no 80% bloqueia o pedido que agora poderia ser aberto
+
+A chave de idempotência (`idx_portal_jobs_pedido_vivo`) bloqueia todo status
+menos `failed` — inclusive `needs_human`. Correto para o que ela foi feita.
+
+Mas um job que rodou com `confirm=False` **não abriu atendimento nenhum** (é o
+que `confirm=False` garante: `run_adaptive` para em `is_confirm_screen`). Se um
+pedido foi tentado com o agente desligado e ficou em `needs_human`, a mesma
+placa + peça + data com o agente ligado recebe *"já existe um atendimento
+aberto"* — e não existe.
+
+📊 Alcance hoje: **zero.** Os 91 jobs históricos têm `idempotency_key IS NULL`
+(a migration não fez backfill de propósito) e o último `abrir_atendimento` é de
+10/07/2026. A janela é só entre agora e o clique no botão.
+
+**O que destrava:** 🤖 execução — ou marcar `failed` o job de 80% cujo
+`params->>'confirm'` é `false` quando uma chamada nova está liberada, ou aceitar
+o bloqueio e corrigir a frase, que hoje afirma um atendimento que não existe.
+**O que custa esquecer:** um segurado ouve que o pedido dele já está aberto, e
+não está.

@@ -119,6 +119,122 @@ def teste_a_prova_funcional():
            "integração legada sem rótulo continua podendo enviar")
 
 
+def teste_todo_seletor_de_saida_respeita():
+    """A varredura que faltava — e é ela que teria pego o defeito de 04/08.
+
+    Este arquivo provava que a FUNÇÃO `pode_enviar` recusa o observador, e
+    conferia dois chamadores conhecidos. Nenhum dos três olhava para quem mais
+    escolhe canal de saída por conta própria.
+
+    🔴 E havia um: `whatsapp/alerts.py::_sender_integration` consultava
+    `integrations` filtrando só por `is_active`, **sem `purpose` e sem
+    `pode_enviar`**. O aviso de queda de canal sairia pelo número do observador
+    — e ele dispara exatamente quando um canal cai, que é justamente quando o
+    observador costuma ser o único de pé.
+
+    A regra agora é sobre QUEM CONSULTA, não sobre a função: quem lê
+    `integrations` para escolher por onde falar tem de aplicar o portão.
+    """
+    import ast
+
+    print("\n[5] Todo seletor de canal de SAÍDA aplica o portão")
+    base = os.path.join(RAIZ, "backend", "app")
+    culpados: list[str] = []
+    isentos_vistos: list[str] = []
+    vistos = 0
+
+    # A REGRA É SOBRE O PAPEL DA FUNÇÃO, e a primeira versão deste guarda errou
+    # aqui: ela procurava "consulta `integrations` e menciona base_url/token", o
+    # que descreve TODO pareamento, sonda e upsert do sistema — 17 funções
+    # corretas acusadas. Parear não é enviar.
+    #
+    # O que define um seletor de saída é o NOME dele: ele existe para responder
+    # "por onde eu falo?". `_sender_integration`, `get_*_whatsapp_integration`,
+    # `canal_de_saida`. Limite conhecido e declarado: uma função que faça isso
+    # com nome que não diga isso escapa — e o remédio para essa é a revisão, não
+    # um detector mais esperto que erraria de novo.
+    MARCAS = ("sender", "remetente", "canal_de_saida", "canal_de_plataforma",
+              "outbound", "whatsapp_integration")
+
+    # A ÚNICA isenção, e ela é sutil o bastante para valer a explicação:
+    #
+    # `get_whatsapp_integration(company_id, agent_id)` é o caminho pelo qual o
+    # ATENDENTE responde o segurado. Ele casa pelo `agent_id` — e, pela
+    # [D-Canal-01], **um pareamento serve às duas funções, no mesmo número**: a
+    # linha se chama `observer` e carrega o atendimento junto ([P-65] registra
+    # que o nome é que ficou para trás).
+    #
+    # Aplicar `pode_enviar` aqui quebraria o produto de um jeito silencioso: a
+    # corretora pareia, clica em "Ligar agente", e o agente pensa a resposta e
+    # não tem por onde mandá-la.
+    #
+    # O que segura este caminho é OUTRA coisa, e ela é mais forte: o portão
+    # `attendance_agent_active`. Com o agente desligado, ninguém chega aqui.
+    # É a diferença entre "por onde o atendente fala" (esta) e "por onde a
+    # PLATAFORMA fala sozinha" (todas as outras, que aplicam o portão).
+    ISENTO_POR_DESENHO = {
+        "integration_service.py::get_whatsapp_integration":
+            "é o canal do ATENDENTE, e a [D-Canal-01] usa o mesmo número para as "
+            "duas funções; quem segura este caminho é `attendance_agent_active`",
+    }
+
+    for pasta, _, arquivos in os.walk(base):
+        for arq in arquivos:
+            if not arq.endswith(".py"):
+                continue
+            caminho = os.path.join(pasta, arq)
+            try:
+                fonte = open(caminho, encoding="utf-8").read()
+                arvore = ast.parse(fonte)
+            except (SyntaxError, OSError):
+                continue
+            for no in ast.walk(arvore):
+                if not isinstance(no, (ast.FunctionDef, ast.AsyncFunctionDef)):
+                    continue
+                if not any(m in no.name.lower() for m in MARCAS):
+                    continue
+                trecho = ast.get_source_segment(fonte, no) or ""
+                # E ele tem de realmente ESCOLHER (consultar a tabela). Quem só
+                # repassa o que recebeu não é seletor.
+                if 'table("integrations")' not in trecho:
+                    continue
+                vistos += 1
+                chave = f"{arq}::{no.name}"
+                if chave in ISENTO_POR_DESENHO:
+                    isentos_vistos.append(chave)
+                    continue
+                chamadas = [c.func.attr for c in ast.walk(no)
+                            if isinstance(c, ast.Call) and isinstance(c.func, ast.Attribute)]
+                nomes = [c.func.id for c in ast.walk(no)
+                         if isinstance(c, ast.Call) and isinstance(c.func, ast.Name)]
+                if "pode_enviar" not in chamadas + nomes:
+                    culpados.append(
+                        f"{os.path.relpath(caminho, RAIZ).replace(os.sep, '/')}::{no.name}:{no.lineno}")
+
+    checar(vistos > 0, f"a varredura achou {vistos} seletor(es) para conferir",
+           "zero significa que o detector cegou — e teste que não olha passa sempre")
+    checar(not culpados, "todos aplicam `pode_enviar`",
+           f"não aplicam: {culpados}")
+
+    # CONTRAPROVA — o detector precisa saber acusar. Um seletor de mentira, que
+    # consulta e escolhe sem o portão, TEM de aparecer.
+    falso = ast.parse(
+        'def escolher(db):\n'
+        '    linhas = db.table("integrations").select("*").execute().data\n'
+        '    for l in linhas:\n'
+        '        if l.get("base_url") and l.get("token"):\n'
+        '            return l\n')
+    fn = next(n for n in ast.walk(falso) if isinstance(n, ast.FunctionDef))
+    trecho_falso = ('def escolher(db):\n    linhas = db.table("integrations")'
+                    '.select("*").execute().data\n    for l in linhas:\n'
+                    '        if l.get("base_url") and l.get("token"):\n            return l\n')
+    chamadas_falsas = [c.func.attr for c in ast.walk(fn)
+                       if isinstance(c, ast.Call) and isinstance(c.func, ast.Attribute)]
+    checar('table("integrations")' in trecho_falso and "pode_enviar" not in chamadas_falsas,
+           "CONTRAPROVA — um seletor sem portão é reconhecível",
+           "prova que o verde acima vem do código estar certo")
+
+
 def main() -> int:
     print("=" * 68)
     print("O OBSERVADOR ESCUTA — E NUNCA FALA")
@@ -126,7 +242,8 @@ def main() -> int:
     for t in (teste_a_proibicao_existe_e_e_uma_so,
               teste_a_busca_de_plataforma_respeita,
               teste_a_cobranca_respeita,
-              teste_a_prova_funcional):
+              teste_a_prova_funcional,
+              teste_todo_seletor_de_saida_respeita):
         try:
             t()
         except Exception as exc:  # noqa: BLE001

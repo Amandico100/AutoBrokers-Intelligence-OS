@@ -18,13 +18,28 @@ from typing import Any, Dict, List, Optional
 
 from portal_worker.journeys import JourneyResult
 from portal_worker.journeys.vidros_lanternas import explicar_match, explicar_especifico
+# Duas declaracoes do mesmo modulo de proposito: a linha acima e o placar de
+# PECA/ATRIBUTO, e ela e literalmente o que dois testes leem para provar que
+# nao existe um segundo placar aqui dentro (test_portal_de_reparos [R6],
+# test_o_80_por_cento_sabe_o_que_pergunta [7.4i]). Emenda-la numa lista so
+# quebraria essas duas guardas sem que a verdade que elas guardam mudasse.
+# Abaixo, pelo MESMO motivo, o vocabulario do PROTOCOLO e da escolha do passo 7:
+# uma lista de rotulos copiada em dois arquivos sao duas verdades que divergem
+# no dia em que so uma for corrigida — e foi exatamente o que aconteceu com o
+# `_PROTO` que vivia aqui.
+from portal_worker.journeys.vidros_lanternas import (
+    botao_de_domicilio,
+    botao_de_loja,
+    extrair_protocolo,
+    preferencia_de_atendimento,
+    tem_protocolo,
+)
 
 VALID_ACTIONS = ("fill", "select", "click", "check", "done", "ask_human")
 # O modelo que ja rodou em producao. Serve de rede: se o padrao novo nao existir
 # na conta, o acionamento cai aqui em vez de morrer.
 _MODELO_DE_RESERVA = "gpt-4o-mini"
 MAX_STEPS = 22
-_PROTO = ("protocolo", "numero do atendimento", "n do atendimento", "solicitacao registrada", "atendimento n")
 LAST_MDSELECT_DEBUG = None  # ultimo overlay md-option nao-clicavel (diagnostico)
 
 
@@ -62,7 +77,68 @@ def is_confirm_screen(state: Dict[str, Any]) -> bool:
 
 
 def has_protocol(state: Dict[str, Any]) -> bool:
-    return any(s in _norm((state or {}).get("text", "")) for s in _PROTO)
+    """PURO: esta tela ja mostra o pedido aberto? O vocabulario e UM SO e mora
+    em `vidros_lanternas` — antes havia duas listas identicas por copia, em dois
+    arquivos, e a que rodava aqui nao reconhecia o formato real (📊 ver a secao
+    DO PROTOCOLO la; `Nº do atendimento: 22842291` devolvia False)."""
+    return tem_protocolo((state or {}).get("text", ""))
+
+
+def registrar_protocolo(evidence: Dict[str, Any], page_text: str) -> str:
+    """Grava o protocolo na evidencia ASSIM QUE ELE APARECE. Devolve o numero.
+
+    🔴 Por que nao pode esperar o fim: 📊 o `Nº do atendimento` nasce no passo 7,
+    no TOPO da tela, ANTES da escolha da loja (mapa §7). Entre esse instante e o
+    fim do fluxo cabem um teto de passos estourado, uma tela travada e uma
+    excecao do Playwright. Em qualquer um desses o pedido JA EXISTE na
+    seguradora — e um segurado com atendimento aberto que ninguem sabe rastrear
+    e o pior resultado possivel deste sistema: pior que falhar, porque falhar
+    pelo menos nao promete nada.
+
+    Por que gravar em `evidence` e nao no retorno: `evidence` e o MESMO dicionario
+    que o worker ja escreve no job em TODOS os desfechos — inclusive no `except`
+    que grava `status=failed`. Um numero que so viajasse no JourneyResult morreria
+    junto com a excecao que o impediu de chegar.
+
+    IDEMPOTENTE: o primeiro numero visto manda. Reescrever a cada tela deixaria
+    o campo a mercê do ultimo numero que passasse pela pagina.
+    """
+    if not isinstance(evidence, dict):
+        return ""
+    if str(evidence.get("protocolo") or "").strip():
+        return str(evidence["protocolo"])
+    numero = extrair_protocolo(page_text)
+    if numero:
+        evidence["protocolo"] = numero
+        evidence["protocolo_visto_em"] = (page_text or "")[:300]
+    return numero
+
+
+def aviso_de_pedido_aberto(evidence: Dict[str, Any]) -> str:
+    """PURO: o prefixo que toda PARADA depois do passo 7 precisa carregar. ""
+    quando nao ha protocolo — nao se avisa sobre um pedido que nao existe.
+
+    Sem esta frase, uma parada por "tela travada" ocorrida DEPOIS do passo 7
+    parece uma tentativa que nao deu em nada, e a reacao natural de quem le e
+    tentar de novo — que e exatamente o que cria o segundo atendimento.
+    """
+    numero = str((evidence or {}).get("protocolo") or "").strip()
+    if not numero:
+        return ""
+    return (f"ATENCAO: o atendimento JA FOI ABERTO na seguradora (N {numero}) — "
+            "NAO reexecute, repetir cria um segundo pedido. ")
+
+
+async def registrar_protocolo_da_pagina(page, evidence: Dict[str, Any]) -> str:
+    """Le SO o texto da tela e grava o protocolo, se houver. Chamada depois de
+    cada clique: e o clique que cria o pedido, e o intervalo entre ele e a
+    proxima leitura completa da tela e justamente onde o numero se perderia.
+    Nunca levanta excecao — um erro aqui nao pode derrubar o acionamento."""
+    try:
+        texto = await page.evaluate("() => (document.body.innerText||'').slice(0,2000)")
+    except Exception:  # noqa: BLE001
+        return ""
+    return registrar_protocolo(evidence, str(texto or ""))
 
 
 async def capture_state(page) -> Dict[str, Any]:
@@ -142,6 +218,11 @@ _SYSTEM = (
     "ou a 1a opcao valida do select). ask_human e SO para um dado REAL do segurado/dano que nao "
     "esta no payload e nao da pra deduzir (ex.: o que exatamente aconteceu, se voce nao tiver). "
     "NAO clique em botao que FINALIZE o pedido (confirmar/enviar) — pare que o sistema cuida disso. "
+    "Se a tela ja mostrar um numero de atendimento/protocolo, o pedido JA FOI ABERTO: responda "
+    "action=done imediatamente. NAO clique em 'Agendar na loja', 'Agendar a domicilio', "
+    "'Consultar distancia' nem 'Cancelar atendimento' — QUAL loja (ou se o tecnico vai ate a casa "
+    "dele) e escolha do SEGURADO, e o portal nao deixa corrigir: seria preciso abrir outro "
+    "atendimento. Escolher por ele nao e agilidade, e sorteio. "
     "Se o botao Avancar/Continuar aparecer DESABILITADO (disabled) ou o clique nao mudar a tela, "
     "e porque um campo OBRIGATORIO ainda esta VAZIO: o payload traz 'pending_required' = a LISTA "
     "EXATA dos campos que faltam (com o label). Preencha CADA UM deles antes de Avancar — um por "
@@ -707,6 +788,88 @@ def _pedido_do_segurado(collected: Dict[str, Any]) -> Dict[str, Any]:
     }.items() if v}
 
 
+# ---------------------------------------------------------------------------
+# O PASSO 7 — o protocolo ja nasceu; falta dizer ONDE o servico acontece
+# ---------------------------------------------------------------------------
+# 📊 A tela (mapa §7) mostra `Nº do atendimento: 22842291` no topo e, abaixo,
+# "Escolha a loja onde deseja realizar o serviço": ou "Agendar a domicilio",
+# ou uma lista de lojas com endereco e "Agendar na loja".
+#
+# 🔴 POR QUE O ROBO NAO ESCOLHE, E POR QUE ISSO NAO E COVARDIA
+#
+# 1. A lista de lojas so existe NESTA tela. O segurado nunca a viu. Perguntar
+#    antes "qual loja?" seria pedir que ele responda algo que ele nao sabe.
+# 2. Escolher por ele — a primeira, a mais perto — e sortear com passos extras:
+#    quem mora numa ponta da cidade e trabalha na outra tem uma resposta que
+#    nenhuma heuristica de distancia adivinha.
+# 3. E o portal NAO deixa corrigir: seria preciso abrir OUTRO acionamento
+#    (mapa §3 e §9.5). Nao existe desfazer.
+#
+# 🔴 E POR QUE O ROBO TAMBEM NAO CLICA EM "Agendar a domicilio" — nem quando o
+# segurado pediu domicilio. O que vem DEPOIS desse botao e uma tela de
+# AGENDAMENTO (dia e hora) que 📊 nunca foi capturada (mapa §7, lacunas) e para
+# a qual nao temos dado nenhum do segurado. Clicar so mudaria o sorteio de tela:
+# em vez de sortear a loja, o robo sortearia o dia em que um tecnico vai a casa
+# de alguem. Parar aqui e mais barato do que parar uma tela adiante — e o
+# protocolo, que era a coisa irrecuperavel, ja esta salvo.
+#
+# O que a preferencia coletada na conversa compra, entao: o dossie chega
+# RESOLVIDO. Quem termina nao precisa ligar de volta para o segurado — ja sabe
+# se ele quer o tecnico em casa ou se vai levar o carro, e ja ve na mesma tela
+# se o CEP dele tem domicilio.
+_ONDE_REALIZAR_O_SERVICO = "onde_realizar_o_servico"
+
+
+def preferencia_do_segurado(collected: Dict[str, Any]) -> str:
+    """PURO: 'domicilio' | 'loja' | ''. Le a resposta coletada na conversa, que
+    viaja em `especificos` — o mesmo transporte das respostas do 80%."""
+    especificos = (collected or {}).get("especificos") or {}
+    if not isinstance(especificos, dict):
+        return ""
+    return preferencia_de_atendimento(str(especificos.get(_ONDE_REALIZAR_O_SERVICO) or ""))
+
+
+def decidir_no_passo_7(state: Dict[str, Any], collected: Dict[str, Any]) -> Dict[str, Any]:
+    """PURO: o dossie da tela do protocolo. NUNCA devolve uma escolha de loja.
+
+    Devolve os FATOS da tela (protocolo, se ha domicilio, se ha lojas), o que o
+    segurado pediu, e a frase que diz a quem for terminar exatamente o que fazer.
+    """
+    state = state or {}
+    botoes = state.get("buttons") or []
+    protocolo = extrair_protocolo(state.get("text", ""))
+    preferencia = preferencia_do_segurado(collected)
+    domicilio, loja = botao_de_domicilio(botoes), botao_de_loja(botoes)
+
+    if preferencia == "domicilio" and domicilio:
+        recomendacao = (f"O segurado pediu atendimento a DOMICILIO e o portal oferece '{domicilio}' "
+                        "para o CEP dele: clique nesse botao e agende com ele o dia e a hora.")
+    elif preferencia == "domicilio" and not domicilio:
+        recomendacao = ("O segurado pediu atendimento a DOMICILIO, mas o portal NAO oferece domicilio "
+                        "nesta tela — 📊 ele depende de disponibilidade no CEP. Avise o segurado e "
+                        "escolha com ele uma das lojas listadas.")
+    elif preferencia == "loja":
+        recomendacao = ("O segurado prefere LEVAR o carro. Mostre a ele as lojas desta tela (nome, "
+                        "endereco e distancia) e deixe que ELE escolha — eu nao escolho loja.")
+    else:
+        recomendacao = ("Ainda nao sei se o segurado prefere que o tecnico va ate ele ou levar o carro "
+                        "numa loja. Pergunte, e escolha com ele nesta tela.")
+    if not (domicilio or loja):
+        recomendacao += (" (Nenhum botao de agendamento visivel nesta leitura — confira a tela real "
+                         "antes de concluir.)")
+
+    return {
+        "protocolo": protocolo,
+        "preferencia": preferencia,
+        "tem_domicilio": bool(domicilio),
+        "tem_loja": bool(loja),
+        "botao_domicilio": domicilio,
+        "botao_loja": loja,
+        "recomendacao": recomendacao,
+        "pedido_do_segurado": _pedido_do_segurado(collected),
+    }
+
+
 async def _estado_seguro(page) -> Dict[str, Any]:
     """capture_state que nunca derruba a parada. Registrar o motivo do
     needs_human nao pode transformar uma parada honesta em 'failed'."""
@@ -873,8 +1036,27 @@ async def run_adaptive(page, goal: str, collected: Dict[str, Any], evidence: Dic
             evidence.setdefault("preenchidos_por_fato", []).extend(preenchidos)
             state = await capture_state(page)
         if has_protocol(state):
-            evidence["final"] = state.get("text", "")[:600]
-            return JourneyResult(status="done", captured={"stage": "protocolo"}, message="protocolo capturado (adaptive)")
+            # O pedido JA EXISTE na seguradora. A PRIMEIRA coisa a fazer, antes
+            # de decidir qualquer outra, e gravar o numero: dai em diante nada
+            # que der errado consegue mais apaga-lo.
+            protocolo = registrar_protocolo(evidence, state.get("text", ""))
+            evidence["final"] = state.get("text", "")[:1200]
+            passo7 = decidir_no_passo_7(state, collected)
+            evidence["passo7"] = passo7
+            # 🔴 `done`, e nao `needs_human`, mesmo faltando escolher a loja.
+            # Nao e otimismo: `needs_human` neste sistema significa "aprove e eu
+            # continuo" e abre a porta para o job ser reenfileirado — e reexecutar
+            # este acionamento comecaria do passo 1 e criaria um SEGUNDO
+            # atendimento na seguradora (mapa §9.5). O trabalho que a tool
+            # prometeu ("abrir o atendimento") esta FEITO e tem numero; o que
+            # falta e uma escolha do segurado, e ela vai escrita no resultado.
+            return JourneyResult(
+                status="done",
+                captured={"stage": "protocolo", "protocolo": protocolo},
+                message=((f"atendimento aberto no portal, N {protocolo}. " if protocolo
+                          else "atendimento aberto no portal (o portal nao mostrou o numero nesta tela). ")
+                         + passo7["recomendacao"]),
+            )
         if is_confirm_screen(state) and not confirm:
             # A TRAVA: o passo 6 e o que ABRE o pedido na seguradora. Sem
             # confirm=True nada e enviado — para aqui e espera aprovacao humana.
@@ -896,7 +1078,13 @@ async def run_adaptive(page, goal: str, collected: Dict[str, Any], evidence: Dic
                                   pergunta=state.get("heading") or "revisao final antes de enviar")
                 return JourneyResult(status="needs_human", captured={"stage": "fim_preenchimento"},
                                      message="preenchimento completo — pare para revisao/aprovacao antes de enviar")
-            return JourneyResult(status="done", message="concluido (adaptive)")
+            # Ultima rede: o cerebro pode declarar fim numa tela cuja redacao do
+            # protocolo o `tem_protocolo` nao reconheca. Se o numero estiver ali,
+            # ele sai daqui gravado; se nao estiver, nada e inventado.
+            protocolo = registrar_protocolo(evidence, state.get("text", ""))
+            return JourneyResult(status="done", captured={"protocolo": protocolo} if protocolo else {},
+                                 message=(f"concluido (adaptive) — atendimento N {protocolo}"
+                                          if protocolo else "concluido (adaptive)"))
         if action["action"] == "ask_human":
             # Backstop anti-travamento: o cerebro tende a "pedir por educacao" em selects/radios.
             # Forca UMA re-decisao imperativa antes de desistir. So devolve needs_human se, mesmo
@@ -909,8 +1097,16 @@ async def run_adaptive(page, goal: str, collected: Dict[str, Any], evidence: Dic
                 evidence["debug_dom"] = await _dump_dom(page)
                 _registrar_parada(evidence, state, collected, pergunta=str(action.get("value") or ""))
                 return JourneyResult(status="needs_human", captured={"pergunta": action.get("value")},
-                                     message=f"preciso de: {action.get('value')}")
+                                     message=aviso_de_pedido_aberto(evidence)
+                                     + f"preciso de: {action.get('value')}")
         applied = await apply_action(page, action)
+        # 🔴 A JANELA MAIS CARA DO FLUXO INTEIRO. E um clique que CRIA o pedido, e
+        # entre ele e a proxima leitura completa da tela cabem uma excecao do
+        # Playwright, a parada por tela travada e o fim do teto de passos. Ler o
+        # texto AQUI custa um evaluate e fecha a janela: o numero fica gravado
+        # antes de qualquer coisa poder dar errado.
+        if applied == "clicked":
+            await registrar_protocolo_da_pagina(page, evidence)
         # O cerebro VE o resultado de cada acao (acoes_ja_feitas): um select que nao
         # casou volta com as opcoes REAIS (mdselect_options=...) e a proxima decisao
         # escolhe o texto exato da lista — inteligencia com a lista na mao, sem chute.
@@ -929,18 +1125,24 @@ async def run_adaptive(page, goal: str, collected: Dict[str, Any], evidence: Dic
         if len(sigs) == 3 and len(set(sigs)) == 1:
             evidence["debug_dom"] = await _dump_dom(page)
             evidence["mdselect_overlay"] = LAST_MDSELECT_DEBUG
-            _registrar_parada(evidence, await _estado_seguro(page), collected,
+            estado_final = await _estado_seguro(page)
+            registrar_protocolo(evidence, estado_final.get("text", ""))
+            _registrar_parada(evidence, estado_final, collected,
                               campo=str(sig[1] or ""), pergunta=f"o portal nao aceitou: {applied}"[:200])
             return JourneyResult(status="needs_human", captured={"stage": "sem_progresso"},
-                                 message=f"tela travada: repetiu '{sig[0]} {sig[1]} {sig[2]}' -> {applied}")
+                                 message=aviso_de_pedido_aberto(evidence)
+                                 + f"tela travada: repetiu '{sig[0]} {sig[1]} {sig[2]}' -> {applied}")
         await page.wait_for_timeout(1200)
     # DIAGNOSTICO: se travou, despeja o DOM real da tela pra achar a causa (nao chutar).
     evidence["debug_dom"] = await _dump_dom(page)
     evidence["mdselect_overlay"] = LAST_MDSELECT_DEBUG
-    _registrar_parada(evidence, await _estado_seguro(page), collected,
+    estado_final = await _estado_seguro(page)
+    registrar_protocolo(evidence, estado_final.get("text", ""))
+    _registrar_parada(evidence, estado_final, collected,
                       pergunta="cheguei ao teto de passos sem concluir")
     return JourneyResult(status="needs_human", captured={"steps": evidence.get("adaptive_steps")},
-                         message="muitos passos sem concluir (adaptive) — precisa de revisao")
+                         message=aviso_de_pedido_aberto(evidence)
+                         + "muitos passos sem concluir (adaptive) — precisa de revisao")
 
 
 async def _dump_dom(page) -> Dict[str, Any]:

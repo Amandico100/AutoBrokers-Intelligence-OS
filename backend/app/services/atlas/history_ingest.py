@@ -167,12 +167,17 @@ async def ingest_history_sync(integration: dict, body: dict) -> Dict[str, Any]:
 
     insurer_convs.sort(key=lambda c: _conv_latest_ts(c[2]), reverse=True)
 
+    # O que esta corretora já capturou ao vivo — uma leitura por tabela, antes
+    # de gravar qualquer coisa. Ver `_impressoes_ao_vivo` para o porquê.
+    vivos_atlas = await _impressoes_ao_vivo(company_id, "observed_events")
+
     stored = 0
     for insurer_key, counterparty, msgs in insurer_convs:
         stored += await _ingest_conversation(
             company_id, observer_number, counterparty, insurer_key, msgs,
             events_table="observed_events", sessions_table="observed_sessions",
-            integration_id=str(integration.get("id") or ""))
+            integration_id=str(integration.get("id") or ""),
+            ja_ao_vivo=vivos_atlas)
 
     # SPEC-040 Onda 1 — Parte 1 (segurados) → Espelho de Atendimento.
     # Recência-primeiro também aqui; cap de segurança p/ históricos gigantes.
@@ -183,6 +188,7 @@ async def ingest_history_sync(integration: dict, body: dict) -> Dict[str, Any]:
         except ValueError:
             max_events = 50000
         client_convs.sort(key=lambda c: _conv_latest_ts(c[1]), reverse=True)
+        vivos_espelho = await _impressoes_ao_vivo(company_id, "attendance_transcripts")
         for counterparty, msgs in client_convs:
             if client_stored >= max_events:
                 logger.warning(f"[ESPELHO ATENDIMENTO] cap de histórico atingido ({max_events})")
@@ -190,7 +196,8 @@ async def ingest_history_sync(integration: dict, body: dict) -> Dict[str, Any]:
             client_stored += await _ingest_conversation(
                 company_id, observer_number, counterparty, None, msgs,
                 events_table="attendance_transcripts", sessions_table="attendance_sessions",
-                integration_id=str(integration.get("id") or ""))
+                integration_id=str(integration.get("id") or ""),
+                ja_ao_vivo=vivos_espelho)
         try:
             from app.core.heartbeat import beat
 
@@ -214,6 +221,123 @@ async def ingest_history_sync(integration: dict, body: dict) -> Dict[str, Any]:
 
 
 _SESSION_GAP_S = 2 * 3600
+
+# ------------------------------------------------------------------ #
+# O CRUZAMENTO ENTRE O QUE JÁ CHEGOU AO VIVO E O QUE O HISTÓRICO TRAZ
+# ------------------------------------------------------------------ #
+# 📊 Medido em 04/08/2026 (projeto dcajcvlzcjbmyapmklil):
+#
+#     source=history_sync   68.445 transcrições   100% com id `hist-…`
+#     source=live              705 transcrições   100% com id do WhatsApp
+#     (em observed_events: 17.321 e 330, mesma separação limpa)
+#
+# As duas fontes escrevem `message_id` de famílias DIFERENTES. O caminho ao
+# vivo grava o `key.id` do WhatsApp; a ingestão do histórico grava
+# `hist-{counterparty}-{ts}-{sha1}`, porque o payload histórico nem sempre traz
+# o id e um id que muda entre execuções já duplicou este banco uma vez.
+#
+# Consequência: uma mensagem capturada AO VIVO e reentregue depois pelo
+# history_sync é **estruturalmente incapaz** de deduplicar contra si mesma. A
+# chave nunca colide, o `ignore_duplicates` nunca dispara, e nasce a segunda
+# linha. 📊 Hoje há 1.035 linhas ao vivo nessa condição (705 + 330), e o
+# repareamento traz justamente a janela recente onde elas vivem.
+#
+# ⚠️ POR QUE NÃO SE RESOLVE UNIFICANDO O ID
+#
+# A saída óbvia — fazer o histórico usar o `key.id` do WhatsApp, que existe no
+# payload — trocaria o id de 85.766 linhas já gravadas. No pareamento seguinte
+# NENHUMA delas casaria, e o acervo inteiro seria reimportado. Seria trocar
+# 1.035 duplicatas por 85.766: 83 vezes pior, e exatamente o que o Founder
+# proibiu. O id derivado fica.
+#
+# O que resolve é comparar pelo CONTEÚDO antes de gravar: se esta mensagem já
+# existe ao vivo, o histórico não a grava de novo.
+_PAGINA_IMPRESSOES = 1000
+_MAX_IMPRESSOES = 50_000
+
+
+def _epoch_de(valor: Any) -> int:
+    """ISO do banco ou epoch → segundos. 0 quando não dá para saber."""
+    if isinstance(valor, (int, float)):
+        return int(valor)
+    try:
+        return int(datetime.fromisoformat(
+            str(valor).replace("Z", "+00:00")).timestamp())
+    except (TypeError, ValueError):
+        return 0
+
+
+def _impressao(counterparty: str, ts: Any, direction: str,
+               msg_type: str, text: Optional[str]) -> Optional[Tuple]:
+    """A identidade de uma mensagem SEM depender do `message_id`.
+
+    É a mesma regra de `atlas/mensagem.py::sem_copias` — (instante, direção,
+    tipo, texto) dentro de uma conversa — e é deliberado que seja a mesma: duas
+    definições de "é a mesma mensagem" divergiriam, e uma delas voltaria a
+    contar cópia como conversa.
+
+    Devolve `None` quando não há instante ou não há texto. Áudio, foto e
+    documento não têm identidade segura por conteúdo, e a regra da casa é
+    explícita: **na dúvida a mensagem fica**. Sobrar uma cópia se conserta;
+    perder o áudio em que o segurado narra o sinistro, não.
+    """
+    epoch = _epoch_de(ts)
+    limpo = str(text or "").strip()
+    if not epoch or not limpo:
+        return None
+    return (str(counterparty or ""), epoch, str(direction or ""),
+            str(msg_type or ""), limpo)
+
+
+def _impressoes_ao_vivo_sync(company_id: str, events_table: str) -> set:
+    """O que esta corretora JÁ capturou ao vivo, por conteúdo.
+
+    Paginado de propósito: 📊 o PostgREST devolve no máximo 1.000 linhas por
+    consulta e **não avisa** — foi assim que o Tecelão construiu mapas sobre 40%
+    do material em 28/07/2026. Aqui o efeito seria pior que um mapa pequeno: as
+    linhas não lidas viram exatamente as duplicatas que esta função existe para
+    impedir.
+    """
+    from app.core.database import get_supabase_client
+
+    supabase = get_supabase_client()
+    impressoes: set = set()
+    inicio = 0
+    while inicio < _MAX_IMPRESSOES:
+        lote = (supabase.client.table(events_table)
+                .select("counterparty, wa_timestamp, direction, msg_type, text")
+                .eq("company_id", company_id).eq("source", "live")
+                # Duas ordens, não uma: `wa_timestamp` empata (mensagens no
+                # mesmo segundo existem, e são o caso comum numa rajada), e
+                # ordem parcial faz a paginação pular e repetir linhas. Repetir
+                # aqui é inofensivo — é um conjunto —, mas PULAR devolveria uma
+                # impressão a menos, que é exatamente uma duplicata a mais.
+                .order("wa_timestamp", desc=True).order("message_id")
+                .range(inicio, inicio + _PAGINA_IMPRESSOES - 1).execute().data or [])
+        for linha in lote:
+            marca = _impressao(linha.get("counterparty"), linha.get("wa_timestamp"),
+                               linha.get("direction"), linha.get("msg_type"),
+                               linha.get("text"))
+            if marca:
+                impressoes.add(marca)
+        if len(lote) < _PAGINA_IMPRESSOES:
+            break
+        inicio += _PAGINA_IMPRESSOES
+    return impressoes
+
+
+async def _impressoes_ao_vivo(company_id: str, events_table: str) -> set:
+    """Nunca derruba a ingestão. Falhar aqui devolve conjunto vazio, e o pior
+    desfecho passa a ser uma cópia — recuperável. Fechar a porta no escuro
+    faria o oposto: descartaria mensagem de verdade por não conseguir ler."""
+    if not company_id:
+        return set()
+    try:
+        return await asyncio.to_thread(_impressoes_ao_vivo_sync, company_id, events_table)
+    except Exception as exc:  # noqa: BLE001
+        logger.warning("[ATLAS HISTORY] impressões ao vivo indisponíveis (%s) — "
+                       "seguindo sem o cruzamento", type(exc).__name__)
+        return set()
 
 
 def _history_message_id(counterparty: str, ts: Optional[int], i: int, from_me: bool,
@@ -270,7 +394,8 @@ def _history_message_id(counterparty: str, ts: Optional[int], i: int, from_me: b
 async def _ingest_conversation(company_id: str, observer_number: str, counterparty: str,
                                insurer_key: Optional[str], msgs: List[Dict[str, Any]],
                                events_table: str, sessions_table: str,
-                               integration_id: str = "") -> int:
+                               integration_id: str = "",
+                               ja_ao_vivo: Optional[set] = None) -> int:
     """Uma conversa do histórico → sessões por janela de 2h + eventos dedupe.
     Mesma mecânica p/ seguradora (Atlas) e segurado (Espelho de Atendimento)."""
     from app.services.atlas.observer_intake import _extract_content
@@ -304,6 +429,21 @@ async def _ingest_conversation(company_id: str, observer_number: str, counterpar
             msg_type, text, interactive, media_meta = _extract_content(msg)
             if not text and not media_meta and not interactive:
                 continue
+
+            # JÁ CHEGOU AO VIVO? ENTÃO NÃO É CONVERSA NOVA.
+            #
+            # O pedido do Founder é literal: "Quero apenas conversas novas
+            # sendo baixadas". Uma mensagem que o Observador já capturou ao
+            # vivo não é nova — e como as duas fontes usam famílias de
+            # `message_id` diferentes, o índice único não tem como perceber
+            # isso sozinho. Sem esta linha, o repareamento grava a segunda
+            # cópia e o banco passa a mostrar cada conversa recente em dobro.
+            if ja_ao_vivo:
+                marca = _impressao(counterparty, ts, "out" if from_me else "in",
+                                   msg_type, text)
+                if marca and marca in ja_ao_vivo:
+                    continue
+
             wa_ts = datetime.fromtimestamp(ts, tz=timezone.utc).isoformat() if ts else None
             mid = _history_message_id(counterparty, ts, i, from_me, msg_type, text,
                                       str((interactive or {}).get("id") or ""))
@@ -367,9 +507,17 @@ def _ensure_history_session_sync(company_id: str, observer_number: str, counterp
     last = datetime.fromtimestamp(last_ts, tz=timezone.utc).isoformat() if last_ts else started
     marker = f"hist:{observer_number}:{counterparty}:{first_ts or 0}"
     try:
-        existing = (supabase.client.table(sessions_table).select("id")
+        # Filtrado por corretora pelo mesmo motivo da busca ao vivo: sem isso,
+        # a sessão histórica de uma corretora pode ser reusada por outra que
+        # compartilhe `observer_number`, e as duas conversas passam a morar na
+        # mesma linha. Aqui o efeito é ainda mais silencioso que ao vivo — a
+        # reingestão simplesmente "encontra" a sessão e nunca cria a certa.
+        consulta = (supabase.client.table(sessions_table).select("id")
                     .eq("observer_number", observer_number).eq("counterparty", counterparty)
-                    .eq("started_at", started).limit(1).execute())
+                    .eq("started_at", started))
+        if company_id:
+            consulta = consulta.eq("company_id", company_id)
+        existing = consulta.limit(1).execute()
         if existing.data:
             return existing.data[0]["id"]
         created = supabase.client.table(sessions_table).insert({
@@ -394,12 +542,19 @@ async def _ensure_history_session(company_id: str, observer_number: str, counter
 
 def _store_history_event_sync(record: Dict[str, Any], events_table: str = "observed_events") -> None:
     from app.core.database import get_supabase_client
+    from app.services.atlas.observer_intake import _upsert_sem_duplicar
 
     supabase = get_supabase_client()
-    # dedupe por (observer_number, message_id) — reingestão não duplica
-    supabase.client.table(events_table).upsert(
-        record, on_conflict="observer_number,message_id", ignore_duplicates=True
-    ).execute()
+    # Dedupe por (company_id, observer_number, message_id), com a chave antiga
+    # como reserva — reingestão não duplica, e a ordem entre aplicar a migration
+    # 20260804_03 e subir o deploy deixa de importar.
+    #
+    # Este caminho é o mais frágil dos dois e por isso o que mais precisa da
+    # reserva: aqui NÃO há fallback para `insert` simples, e o chamador
+    # (`_ingest_conversation`) engole a exceção com `except Exception: pass`.
+    # Uma chave que não casa com índice nenhum faria a ingestão do histórico
+    # gravar zero linha e reportar sucesso.
+    _upsert_sem_duplicar(supabase, events_table, record)
 
 
 async def _store_history_event(record: Dict[str, Any], events_table: str = "observed_events") -> None:

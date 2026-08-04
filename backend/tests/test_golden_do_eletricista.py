@@ -364,25 +364,46 @@ def gold_003_a_rua_inteira_sem_energia():
     # de perguntar se o gate estava fechado. A resposta era sempre "sim" porque
     # o próprio teste apagava a pergunta. Asserção que garante o próprio verde
     # é pior que asserção nenhuma: ela ocupa o lugar da que faltava.
-    ambiente = os.getenv("INSURER_DISPATCH_LIVE")
-    checar(str(ambiente or "").strip().lower() not in ("1", "true", "yes", "on"),
-           "o ambiente que roda este teste NÃO está com o envio real ligado",
-           f"INSURER_DISPATCH_LIVE={ambiente!r} — com o portão aberto, "
-           "'não despachar' deixa de ser garantido pelo sistema e passa a "
-           "depender do modelo acertar a leitura")
-
-    anterior = os.environ.pop("INSURER_DISPATCH_LIVE", None)
+    # ATUALIZADO em 04/08/2026 (P-90), CLAUDE.md §9.3
+    # -----------------------------------------------
+    # Aqui se afirmava que **sem a variável o gate nasce FECHADO**. Era verdade,
+    # e deixou de ser: decisão do Founder, o que segura o envio real passou a
+    # ser `agents.is_active` do agente de atendimento, e o ambiente nasce
+    # ABERTO. A trava de env existia porque ele testava no próprio celular.
+    #
+    # A lição migra inteira. O que este caso precisa garantir continua sendo
+    # "com o portão fechado nada chega à seguradora, nem por engano de
+    # classificação" — só que agora ele FECHA o portão de propósito. E a
+    # armadilha que o comentário abaixo descreve continua valendo, agora com o
+    # sinal trocado: quem apaga a variável não fecha nada, ABRE.
+    anterior = os.environ.get("INSURER_DISPATCH_LIVE")
     try:
+        os.environ["INSURER_DISPATCH_LIVE"] = "false"
         checar(DS.dispatch_live_enabled() is False,
-               "sem a variável, o gate de envio real nasce FECHADO",
-               "sem a flag, nada chega à seguradora — nem por engano de classificação")
-        os.environ["INSURER_DISPATCH_LIVE"] = "talvez"
+               "com `INSURER_DISPATCH_LIVE=false` o envio real fica FECHADO",
+               "nada chega à seguradora — nem por engano de classificação")
+        # E o freio de emergência fecha os DOIS corredores de uma linha só.
+        os.environ.pop("INSURER_DISPATCH_LIVE", None)
+        os.environ[DS.FREIO_DE_EMERGENCIA] = "true"
         checar(DS.dispatch_live_enabled() is False,
-               "e valor ambíguo continua fechado (só 'sim' explícito abre)")
+               "e o freio de emergência fecha mesmo sem `INSURER_DISPATCH_LIVE`")
+        # CONTROLE: sem nada armado, o portão ABRE. Sem esta linha, um
+        # `dispatch_live_enabled` que só soubesse dizer False passaria nas duas
+        # asserções acima sem guardar coisa nenhuma.
+        os.environ.pop(DS.FREIO_DE_EMERGENCIA, None)
+        checar(DS.dispatch_live_enabled() is True,
+               "CONTROLE: com nada armado o portão ABRE — quem segura é o agente",
+               "se este caso desse False junto com os outros dois, os outros dois "
+               "não estariam medindo o portão, só a incapacidade de abri-lo")
     finally:
+        os.environ.pop(DS.FREIO_DE_EMERGENCIA, None)
         os.environ.pop("INSURER_DISPATCH_LIVE", None)
         if anterior is not None:
             os.environ["INSURER_DISPATCH_LIVE"] = anterior
+
+    # O resto do caso mede o comportamento com o portão FECHADO — que agora é
+    # um estado que se declara, e não mais o padrão.
+    os.environ["INSURER_DISPATCH_LIVE"] = "false"
 
     r = _acionar(subservice="eletricista", line_kind="residencial",
                  problema_descricao="a rua inteira está sem energia")

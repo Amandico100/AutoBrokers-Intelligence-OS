@@ -32,6 +32,14 @@ dos campos, vistos nos jobs, sao:
 O passo 7 (loja/protocolo) NUNCA foi alcancado: em 39 acionamentos, zero
 protocolos capturados (has_protocol jamais retornou True).
 
+📊 E quando ele for alcancado, o reconhecimento estava QUEBRADO — medido em
+04/08/2026 contra o texto literal do mapa: `has_protocol("Nº do atendimento:
+22842291")` devolvia False, e `interpret_atendimento` devolvia "parou em
+passo5" para a tela que prova que o pedido foi aberto. A causa e uma letra
+('º' vira 'o' no NFKD; '°' some no ascii-ignore) e esta escrita por extenso na
+secao DO PROTOCOLO, abaixo. Zero protocolos capturados nao era so falta de
+oportunidade: era tambem um olho fechado.
+
 DESIGN "cerebro unico": o AGENTE (Smith) DECIDE as escolhas (peca/como/onde/
 especificos) a partir da conversa com o segurado; a journey CASA a escolha com a
 opcao real do dropdown. Sem match confiante -> needs_human COM as opcoes
@@ -593,16 +601,228 @@ def interpret_login(page_text: str, url: str = "") -> JourneyResult:
 
 
 _VIDROS_ERR = ("nao encontrad", "invalid", "nao localizamos", "apolice nao", "sem cobertura")
-_VIDROS_PROTO = ("protocolo", "numero do atendimento", "n do atendimento", "solicitacao registrada",
-                 "atendimento n")
+
+
+# ===========================================================================
+# O PROTOCOLO — o numero que prova que o pedido existe
+#
+# 📊 Ele nasce no passo 7, NO TOPO da tela, ANTES da escolha da loja
+# (docs/canon/O-PORTAL-DE-VIDROS-TELA-POR-TELA.md §7): `Nº do atendimento:
+# 22842291`. Quando este numero aparece, o pedido JA EXISTE na seguradora —
+# desistir daqui em diante nao desfaz nada, e repetir o fluxo cria um SEGUNDO
+# atendimento (mapa §9.5).
+#
+# 🔴 O DEFEITO QUE ESTA SECAO DESFAZ — medido, nao lido.
+#
+# 📊 04/08/2026, contra o texto literal do mapa, com o codigo de entao
+#    (`_PROTO` = protocolo | numero do atendimento | n do atendimento |
+#     solicitacao registrada | atendimento n):
+#
+#      has_protocol({"text": "Nº do atendimento: 22842291"})   -> False
+#      has_protocol({"text": "N° do atendimento: 22842291"})   -> True
+#      interpret_atendimento(".../passo5/<uuid>", <tela 7>)
+#          -> needs_human, captured={'stage': 'passo5'}, "parou em passo5"
+#
+# A causa e de uma letra. `_norm` faz NFKD + ascii-ignore, e os dois sinais que
+# um humano le como "numero" nao se comportam igual:
+#
+#      'º' MASCULINE ORDINAL INDICATOR  -> NFKD 'o'  -> "No do atendimento"
+#      '°' DEGREE SIGN                  -> NFKD '°'  -> some  -> "N do atendimento"
+#
+# O portal usa 'º' (o ordinal). A lista tinha "n do atendimento" e nao tinha
+# "no do atendimento" — entao reconhecia o sinal ERRADO e nao reconhecia o
+# certo. A tela do protocolo teria sido registrada como "parou em passo5": o
+# atendimento aberto, e nos declarando que o robo tinha parado no meio.
+#
+# 📊 Isso nunca custou um atendimento so porque o passo 7 nunca foi alcancado
+# (39 acionamentos, zero protocolos). Ele esta prestes a ser.
+#
+# Por que a extracao mora AQUI e nao no adaptive.py: a mesma regra ja valia
+# para `explicar_match`. Duas listas de rotulo em dois arquivos sao duas
+# verdades que divergem no dia em que so uma for corrigida — e era exatamente
+# esse o estado anterior (`_PROTO` e `_VIDROS_PROTO`, identicas por copia).
+# ===========================================================================
+
+# Rotulos do MAIS especifico ao MAIS generico: o primeiro que casar responde.
+# Todos sao comparados com FRONTEIRA DE PALAVRA dos dois lados (ver `_espacado`)
+# — sem isso "no de atendimento" casaria dentro de "plaNO DE ATENDIMENTO".
+_ROTULOS_DE_PROTOCOLO = (
+    "numero do atendimento", "numero de atendimento",
+    "no do atendimento", "no de atendimento",      # 'Nº ...' (ordinal) depois do NFKD
+    "n do atendimento",                            # 'N° ...' (grau) depois do ascii-ignore
+    "numero do protocolo", "numero da solicitacao",
+    "atendimento numero", "atendimento no", "atendimento n",
+    "protocolo",
+)
+# Marcas de que a tela E a do protocolo, mesmo quando o numero nao se deixa ler
+# (portal que escreve so "Solicitacao registrada"). Servem para RECONHECER a
+# tela; nunca para inventar um numero.
+_MARCAS_DE_PROTOCOLO = _ROTULOS_DE_PROTOCOLO + ("solicitacao registrada", "atendimento registrado")
+# Do rotulo ate o numero cabem ": ", " nº ", " numero " — nao um paragrafo.
+# `[^0-9]{0,16}` e essa folga; o `[0-9]` final e o que impede o ponto/hifen de
+# grudar no fim ("Protocolo: 123456." -> "123456").
+_RE_NUMERO_DO_PROTOCOLO = re.compile(r"[^0-9]{0,16}([0-9][0-9./\-]{2,24}[0-9])")
+# Menos de 5 digitos nao e protocolo: e o "1 (um) ITEM" do aviso que aparece em
+# todas as telas, ou uma data. 📊 O numero real medido tem 8.
+_MINIMO_DE_DIGITOS_DO_PROTOCOLO = 5
+_SEPARADORES_DE_NUMERO = ".-/"
+
+
+def _frase_do_protocolo(texto: str) -> str:
+    """Normalizado com fronteira de palavra, PRESERVANDO o separador que estiver
+    ENTRE DIGITOS.
+
+    `_espacado` troca toda pontuacao por espaco. Isso e certo para casar frases
+    e fatal para um protocolo escrito `2026-0001234`: ele sairia partido em dois
+    e o primeiro pedaco viraria o "numero" — 🔴 um protocolo truncado nao e meio
+    protocolo, e um numero ERRADO, e o segurado vai usa-lo para cobrar a
+    seguradora.
+
+    A regra e exata de proposito: o separador so sobrevive com digito dos DOIS
+    lados. Assim `2026-0001234` fica inteiro e o ponto final de um rotulo
+    ("atendimento.") continua virando espaco, sem o qual a fronteira de palavra
+    deixaria de casar.
+    """
+    bruto = _norm(texto)
+    saida = []
+    for i, c in enumerate(bruto):
+        if c.isalnum():
+            saida.append(c)
+        elif (c in _SEPARADORES_DE_NUMERO and i and bruto[i - 1].isdigit()
+                and i + 1 < len(bruto) and bruto[i + 1].isdigit()):
+            saida.append(c)
+        else:
+            saida.append(" ")
+    return " " + " ".join("".join(saida).split()) + " "
+
+
+def extrair_protocolo(page_text: str) -> str:
+    """PURO: o NUMERO do atendimento que a tela mostra. "" quando nao ha.
+
+    Le so o que esta colado ao rotulo. Um numero solto na tela (o CEP da loja,
+    um telefone, o '1 (um) ITEM' do aviso) nao vira protocolo — dizer ao
+    segurado um numero errado e pior que nao dizer numero nenhum.
+    """
+    frase = _frase_do_protocolo(page_text)
+    for rotulo in _ROTULOS_DE_PROTOCOLO:
+        alvo = f" {rotulo} "
+        pos = frase.find(alvo)
+        while pos != -1:
+            m = _RE_NUMERO_DO_PROTOCOLO.match(frase, pos + len(alvo) - 1)
+            if m:
+                numero = m.group(1).strip(_SEPARADORES_DE_NUMERO)
+                if sum(c.isdigit() for c in numero) >= _MINIMO_DE_DIGITOS_DO_PROTOCOLO:
+                    return numero
+            pos = frase.find(alvo, pos + 1)
+    return ""
+
+
+def tem_protocolo(page_text: str) -> bool:
+    """PURO: esta tela e a do protocolo? Mais larga que `extrair_protocolo` de
+    proposito — a tela pode anunciar o pedido sem um numero legivel, e ainda
+    assim o pedido EXISTE. Reconhecer a tela e o que impede o robo de seguir
+    clicando como se nao tivesse aberto nada."""
+    if extrair_protocolo(page_text):
+        return True
+    frase = _frase_do_protocolo(page_text)
+    return any(f" {m} " in frase for m in _MARCAS_DE_PROTOCOLO)
+
+
+# ===========================================================================
+# DOMICILIO x LOJA — a escolha do passo 7, que e do SEGURADO
+#
+# 📊 A tela oferece duas saidas (mapa §7): "Agendar a domicilio" (com os selos
+# "Sem deslocamento · Economia de tempo · Atendimento premium") e a lista de
+# lojas, cada uma com endereco, "Consultar distancia", "Ver no mapa" e
+# "Agendar na loja".
+#
+# O que se pergunta ao segurado e a PREFERENCIA, nunca a loja: ele nao conhece
+# a lista, e a lista so existe nesta tela. E a preferencia nem sempre e
+# atendivel — 📊 o rotulo do CEP diz que ele serve para "verificar se ha
+# disponibilidade de atendimento em domicilio na sua regiao", ou seja, o
+# domicilio pode simplesmente nao existir no CEP dele.
+#
+# 🔴 A assimetria proposital desta funcao: na duvida ela NAO diz 'domicilio'.
+# Marcar loja por engano custa uma parada com a lista na mao (barato, e o
+# humano ve as palavras do segurado no dossie). Marcar domicilio por engano
+# marcaria um tecnico para ir a casa de quem pediu para levar o carro.
+# ===========================================================================
+_ATENDIMENTO_A_DOMICILIO = (
+    "domicilio", "domiciliar", "casa", "residencia", "em casa", "na minha casa",
+    "ate mim", "ate min", "ate aqui", "onde eu estou", "onde estou", "onde eu estiver",
+    "no trabalho", "no meu trabalho", "no escritorio", "venha ate", "venham ate",
+    "tecnico venha", "vem aqui", "venha aqui", "sem sair", "sem deslocamento",
+)
+_ATENDIMENTO_NA_LOJA = (
+    "loja", "lojas", "oficina", "oficinas", "unidade", "unidades", "concessionaria",
+    "vidracaria", "levar", "levo", "levando", "vou levar", "prefiro levar",
+    "vou ate", "vou la", "presencial", "deixar o carro", "deixo o carro",
+)
+# So estas negacoes bloqueiam o 'domicilio'. 'sem' fica de fora de proposito:
+# 📊 e palavra do proprio selo do portal ("Sem deslocamento") — inclui-la faria
+# a resposta mais clara de todas ser recusada.
+_NEGA_A_PREFERENCIA = ("nao", "nem", "nunca", "jamais")
+
+
+def preferencia_de_atendimento(resposta: str) -> str:
+    """PURO: 'domicilio' | 'loja' | '' (nao da para saber).
+
+    '' NAO e falha: e a resposta honesta quando o texto diz as duas coisas
+    ("nao tenho como levar" fala de levar e de impedimento) ou nenhuma. Quem
+    chama para e mostra a lista real — o que ja seria feito de qualquer forma.
+    """
+    achadas = _classe(resposta, {"domicilio": _ATENDIMENTO_A_DOMICILIO,
+                                 "loja": _ATENDIMENTO_NA_LOJA})
+    if len(achadas) != 1:
+        return ""
+    classe = next(iter(achadas))
+    if classe == "domicilio" and _menciona(resposta, _NEGA_A_PREFERENCIA):
+        return ""
+    return classe
+
+
+def botao_de_domicilio(botoes) -> str:
+    """PURO: o texto do botao "Agendar a domicilio", ou "". 📊 So existe quando
+    o CEP do segurado tem cobertura de domicilio."""
+    return _primeiro_botao(botoes, ("agendar", "domicili"))
+
+
+def botao_de_loja(botoes) -> str:
+    """PURO: o texto de um botao "Agendar na loja", ou "". A presenca dele diz
+    que HA lojas na tela; QUAL delas continua sendo escolha do segurado."""
+    return _primeiro_botao(botoes, ("agendar", "loja"))
+
+
+def _primeiro_botao(botoes, exigidos) -> str:
+    """PURO: o texto do 1o botao VISIVEL e habilitado que contem todos os termos.
+    Aceita a lista de `capture_state` ({'text','disabled'}) ou strings cruas."""
+    for b in botoes or []:
+        texto = str((b.get("text") if isinstance(b, dict) else b) or "")
+        if isinstance(b, dict) and b.get("disabled"):
+            continue
+        alvo = _norm(texto)
+        if alvo and all(termo in alvo for termo in exigidos):
+            return " ".join(texto.split())
+    return ""
 
 
 def interpret_atendimento(url: str, page_text: str) -> JourneyResult:
-    """PURO: em que ponto do acionamento de vidros parou."""
+    """PURO: em que ponto do acionamento de vidros parou.
+
+    A ordem importa e nao e cosmetica: o protocolo e conferido ANTES da URL
+    porque a tela do protocolo MORA em `#/<slug>/passo5/<uuid>` (mapa §2). Ler
+    a URL primeiro devolveria "parou em passo5" para a tela que prova que o
+    atendimento foi aberto.
+    """
     u = _norm(url)
+    if tem_protocolo(page_text):
+        numero = extrair_protocolo(page_text)
+        return JourneyResult(
+            status="done",
+            captured={"stage": "protocolo", "protocolo": numero},
+            message=(f"protocolo capturado: {numero}" if numero else "protocolo capturado"),
+        )
     text = _norm(page_text)
-    if any(s in text for s in _VIDROS_PROTO):
-        return JourneyResult(status="done", captured={"stage": "protocolo"}, message="protocolo capturado")
     if any(s in text for s in _VIDROS_ERR):
         return JourneyResult(status="failed", message="portal nao localizou CPF/placa ou dado invalido")
     for stage in ("passo5", "passo4", "passo3", "passo2", "passo1", "menu-atendimento"):

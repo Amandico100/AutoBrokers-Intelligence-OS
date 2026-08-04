@@ -230,7 +230,11 @@ def teste_a_chave_nasce_dos_params_de_verdade():
     flat = {"cpf_cnpj": "03074327936", "data_dano": "05/07/2026",
             "peca": "vidro de porta", "como_ocorreu": "encontrou o veiculo danificado",
             "onde_ocorreu": "urbano",
-            "descricao": "o carro estava estacionado e o vidro da porta foi quebrado"}
+            "descricao": "o carro estava estacionado e o vidro da porta foi quebrado",
+        # SPEC-065 — a preferencia de ONDE consertar passou a ser cobrada
+        # antes de abrir o portal: uma parada no passo 7 e TERMINAL (o
+        # numero do atendimento ja nasceu ali, e reexecutar cria outro).
+            "especificos": {"onde_realizar_o_servico": "levar na oficina"}}
     params, erro = pp.build_portal_params(flat, PERFIL, INFOCAP)
     checar("build_portal_params produziu params", erro is None and params is not None, str(erro))
     if not params:

@@ -143,18 +143,35 @@ def teste_as_variaveis_de_envio_estao_documentadas():
     for v in ("WHATSAPP_WEBHOOK_AUTH_MODE", "WHATSAPP_WEBHOOK_SECRET",
               "INSURER_DISPATCH_LIVE", "DISPATCH_FINALIZE_MODE",
               "DISPATCH_FINALIZE_LIVE_PLAYBOOKS", "CARTOGRAPHER_MODE",
+              "ACIONAMENTO_FREIO_DE_EMERGENCIA",
               "ATTENDANT_INBOUND_ALLOWLIST", "CONTEXT_ASSEMBLY_MODE",
               "DESTILADOR_TETO_POR_RODADA", "CHAT_HISTORY_WINDOW"):
         checar(f"\n{v}=" in env, f"{v} documentada")
 
-    # E o padrão escrito no exemplo tem de ser o SEGURO.
-    checar("\nINSURER_DISPATCH_LIVE=false" in env,
-           "o exemplo traz o portão de envio FECHADO",
-           "exemplo com padrão perigoso é armadilha para quem clonar")
-    checar("\nDISPATCH_FINALIZE_MODE=test" in env,
-           "e o freio de finalização acionado")
+    # ATUALIZADO em 04/08/2026 (P-90), CLAUDE.md §9.3
+    # -----------------------------------------------
+    # Este caso exigia `INSURER_DISPATCH_LIVE=false` e `DISPATCH_FINALIZE_MODE=
+    # test` no exemplo — "o padrão escrito tem de ser o SEGURO". Era verdade
+    # enquanto o env ERA a trava. Decisão do Founder, 04/08: a trava passou a
+    # ser `agents.is_active` do agente de atendimento, e ele quer "tudo pronto e
+    # funcionando" atrás desse único botão. Um exemplo que ainda mandasse
+    # `false` seria pior que inútil: quem o copiasse ligaria o agente e nada
+    # aconteceria, sem nenhum erro para explicar por quê.
+    #
+    # A lição migra e fica mais forte: o exemplo continua tendo de nascer
+    # SEGURO — e o que o mantém seguro agora é o freio de emergência declarado
+    # e SOLTO (linha vazia), mais o Cartógrafo desligado. Um exemplo que já
+    # viesse com o freio armado ensinaria a ignorá-lo.
+    checar("\nACIONAMENTO_FREIO_DE_EMERGENCIA=\n" in env,
+           "o freio de emergência está no exemplo e nasce SOLTO",
+           "quem clona precisa saber que ele existe antes de precisar dele")
+    checar("\nINSURER_DISPATCH_LIVE=\n" in env,
+           "e o portão de envio real não vem mais pré-fechado no exemplo",
+           "um `false` herdado faria o agente ligado não acionar nada — e "
+           "sem erro nenhum para explicar")
     checar("\nCARTOGRAPHER_MODE=0" in env,
-           "e o Cartógrafo, que envia WhatsApp real a seguradoras, desligado")
+           "e o Cartógrafo, que envia WhatsApp real a seguradoras, desligado",
+           "ele NÃO passa pelo interruptor do agente: continua desligado no exemplo")
 
 
 def main() -> int:

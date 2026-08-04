@@ -92,8 +92,13 @@ def _new(ref, sub="guincho", slots=None):
 
 def run():
     print("== SPEC-031 Faixa 0 - freio por modo + URAs reais 2026 ==\n")
-    os.environ.pop("INSURER_DISPATCH_LIVE", None)
-    os.environ.pop("DISPATCH_FINALIZE_MODE", None)
+    # ATUALIZADO em 04/08/2026 (P-90), CLAUDE.md §9.3 — os dois padrões
+    # viraram ABERTOS: quem segura o acionamento agora é `agents.is_active`
+    # do agente de atendimento, e não mais uma ausência de variável. Este
+    # arquivo continua provando o comportamento FECHADO/ENSAIO — mas agora
+    # ele o ARMA de propósito, em vez de herdá-lo de um default que mudou.
+    os.environ["INSURER_DISPATCH_LIVE"] = "false"
+    os.environ["DISPATCH_FINALIZE_MODE"] = "test"
     os.environ.pop("DISPATCH_FINALIZE_LIVE_PLAYBOOKS", None)
 
     # ---------- MODO TESTE (default): confirmacao final CANCELA ----------
@@ -134,7 +139,7 @@ def run():
     slp = _new("porto-auto-whatsapp@v1")
     slp = dispatch.handle_insurer_message(slp, "Como voce quer prosseguir? Confirmar solicitacao Sair e nao agendar")
     check("LIVE porto: confirma com 'Confirmar solicitacao'", _outs(slp)[-1] == "Confirmar solicitação", _outs(slp)[-1:])
-    os.environ.pop("DISPATCH_FINALIZE_MODE", None)
+    os.environ["DISPATCH_FINALIZE_MODE"] = "test"
 
     # ---------- Graduacao POR CORREDOR (live so para playbooks listados) ----------
     os.environ["DISPATCH_FINALIZE_LIVE_PLAYBOOKS"] = "porto-auto-whatsapp@v1"

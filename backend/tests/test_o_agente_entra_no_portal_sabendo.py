@@ -100,6 +100,13 @@ UNIVERSAIS_OK = {
     "onde_ocorreu": "rodoviario",
     "veiculo": "NIVUS COMFORTLINE 1.0 200 TSI FLEX AUT",   # InfoCap
     "cep": "88040-600",                                     # InfoCap
+    # 📊 O passo 7 pergunta "Escolha a loja onde deseja realizar o serviço"
+    # (mapa §7), e a preferência domicílio × loja passou a ser universal: TODO
+    # acionamento chega àquela tela. Entrou nesta ficha porque ela se chama
+    # "tudo que a conversa já apurou" — não porque as asserções abaixo tenham
+    # deixado de valer. Que ela É cobrada quando falta, e NÃO quando já se sabe,
+    # está provado em test_o_protocolo_volta_para_o_segurado.py [M3].
+    P.ONDE_REALIZAR_O_SERVICO: "domicilio",
 }
 
 PARABRISA_COMPLETO = {
@@ -412,7 +419,19 @@ INFOCAP = {
 FLAT_COMPLETO = {"cpf_cnpj": "03074327936", "data_dano": "05/07/2026",
                  "peca": "vidro de porta", "como_ocorreu": "encontrou o veiculo danificado",
                  "onde_ocorreu": "urbano",
-                 "descricao": "o carro estava estacionado e o vidro da porta foi quebrado"}
+                 "descricao": "o carro estava estacionado e o vidro da porta foi quebrado",
+                 # SPEC-065 — "completo" mudou de significado em 04/08.
+                 #
+                 # A preferência de ONDE consertar passou a ser cobrada antes de
+                 # abrir o portal, e a razão é que uma parada no passo 7 é
+                 # TERMINAL: 📊 o `Nº do atendimento` nasce ali, ANTES da escolha
+                 # da loja, e reexecutar cria um SEGUNDO atendimento.
+                 #
+                 # A fixture acompanha o fato. Deixá-la sem a preferência faria
+                 # este arquivo continuar afirmando que um acionamento incompleto
+                 # está completo — que é exatamente o tipo de verdade vencida que
+                 # a §9.3 manda atualizar.
+                 "especificos": {"onde_realizar_o_servico": "levar na oficina"}}
 
 
 def o_portal_nao_abre_com_o_relato_vago() -> None:
@@ -434,7 +453,15 @@ def o_caso_completo_continua_abrindo() -> None:
     p, e = PP.build_portal_params(FLAT_COMPLETO, PROFILE, INFOCAP)
     checar(e is None and p is not None, "CONTROLE: caso completo abre normalmente", str(e)[:160])
     checar(p and p["dano"]["peca"] == "vidro de porta", "e o dano continua chegando ao portal")
-    checar(p and p["confirm"] is False, "e confirm continua False (nunca envia sozinha)")
+    # ATUALIZADO em 04/08/2026 (P-90), CLAUDE.md §9.3 — "confirm continua False
+    # (nunca envia sozinha)" era verdade porque o valor estava CRAVADO. Agora
+    # ele nasce False e é o agente de atendimento LIGADO que o abre. O que este
+    # CONTROLE guarda é o default fechado, não a impossibilidade de abrir.
+    checar(p and p["confirm"] is False, "e confirm nasce False sem quem o ligue")
+    p_on, _ = PP.build_portal_params(FLAT_COMPLETO, PROFILE, INFOCAP, enviar_de_verdade=True)
+    checar(p_on and p_on["confirm"] is True,
+           "CONTROLE: e com o agente ligado ele CONSEGUE abrir",
+           "dois False seguidos provariam apenas que a função não sabe dizer True")
 
 
 def as_especificas_nao_travam_o_acionamento() -> None:
@@ -448,7 +475,11 @@ def as_especificas_nao_travam_o_acionamento() -> None:
     p, e = PP.build_portal_params(FLAT_COMPLETO, PROFILE, INFOCAP)
     faltam = P.o_que_falta("vidro de porta", {"cpf_cnpj": "1", "data_dano": "1",
                                               "como_ocorreu": "1", "onde_ocorreu": "1",
-                                              "veiculo": "1", "cep": "1"})
+                                              "veiculo": "1", "cep": "1",
+                                              # ver UNIVERSAIS_OK: universal nova,
+                                              # respondida aqui para que a conta
+                                              # abaixo continue sendo das 3 do 80%
+                                              P.ONDE_REALIZAR_O_SERVICO: "loja"})
     checar(len(P.para_o_segurado(faltam)) == 3,
            "as 3 especificas do vidro de porta CONTINUAM sendo cobradas por o_que_falta",
            str(campos(faltam)))
@@ -481,8 +512,14 @@ def a_primeira_pergunta_e_sempre_transportavel() -> None:
 
 def as_respostas_do_80_por_cento_chegam_ao_portal() -> None:
     """O transporte de `especificos` existe daqui para baixo — e agora é escrito."""
-    especificos = {"pelicula": "NÃO", "porta_dianteira_ou_traseira": "DIANTEIRA",
-                   "lado_motorista_ou_carona": "Lado do motorista"}
+    do_80 = {"pelicula": "NÃO", "porta_dianteira_ou_traseira": "DIANTEIRA",
+             "lado_motorista_ou_carona": "Lado do motorista"}
+    # `especificos` é o MESMO transporte de duas coisas: as respostas do 80% e a
+    # preferência de onde consertar. Por isso aqui se MISTURA em vez de
+    # substituir — a primeira versão deste caso trocava o dicionário inteiro e
+    # derrubava a preferência junto, que é um jeito de o teste criar o defeito
+    # que ele deveria estar medindo.
+    especificos = {**do_80, **FLAT_COMPLETO["especificos"]}
     p, e = PP.build_portal_params({**FLAT_COMPLETO, "especificos": especificos},
                                   PROFILE, INFOCAP)
     checar(e is None and p is not None, "params montados com as especificas", str(e)[:120])
@@ -491,8 +528,9 @@ def as_respostas_do_80_por_cento_chegam_ao_portal() -> None:
            str((p or {}).get("especificos")))
 
     p2, _ = PP.build_portal_params(FLAT_COMPLETO, PROFILE, INFOCAP)
-    checar(p2 and p2.get("especificos") == {},
-           "CONTROLE: sem coleta, a chave nasce VAZIA (nao inventada)",
+    coletadas = {k: v for k, v in (p2 or {}).get("especificos", {}).items() if k in do_80}
+    checar(p2 is not None and coletadas == {},
+           "CONTROLE: sem coleta, NENHUMA resposta do 80% e inventada",
            str((p2 or {}).get("especificos")))
 
 

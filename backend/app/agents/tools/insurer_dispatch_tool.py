@@ -2,10 +2,19 @@
 
 Papel attendance usa esta tool quando o levantamento estiver completo:
 - valida elegibilidade operacional (slots mínimos do playbook);
-- monta o PLANO exato do acionamento (dry-run enquanto o gate S17-6 estiver
-  fechado — nada é enviado à seguradora sem liberação do Founder);
+- monta o PLANO exato do acionamento;
 - devolve briefing para o atendente informar o cliente com honestidade
   ("estou acionando" só quando for real; em simulação, registra pendência).
+
+P-90 (04/08/2026) — O QUE SEGURA O ENVIO REAL É UMA COISA SÓ.
+Era o gate S17-6 (`INSURER_DISPATCH_LIVE`, fechado por padrão), criado quando o
+Founder testava no próprio celular. Decisão dele, dita duas vezes: a trava passa
+a ser `agents.is_active` do agente de atendimento — "tudo pronto e funcionando,
+mas o agente tem que continuar desligado; só pode funcionar se clicar em LIGAR
+AGENTE". Com o agente desligado esta tool prepara o plano e NÃO envia nada, que
+é exatamente o que ela fazia com o gate fechado. Resta um freio de emergência
+por env (`ACIONAMENTO_FREIO_DE_EMERGENCIA`), solto por padrão, que fecha este
+corredor e o do portal de vidros de uma vez.
 
 Playbook v1: allianz-residencial-whatsapp@v1 (eletricista, chaveiro, encanador,
 eletrodomésticos).
@@ -511,10 +520,43 @@ class InsurerDispatchTool(BaseTool):
             logger.warning(f"[InsurerDispatch] vehicle facts indisponíveis: {type(e).__name__}")
         return kwargs
 
+    async def _acionamento_liberado(self) -> bool:
+        """P-90 — esta corretora pode acionar a seguradora DE VERDADE agora?
+
+        A regra mora em `acionamento_liberado` e vale igual para o portal de
+        vidros: agente de atendimento LIGADO **e** freio de emergência solto.
+
+        Esta checagem é cinto E suspensório, de propósito. `InsurerDispatchTool`
+        já só existe para um agente `attendance` ATIVO — 📊 `graph.py` só a anexa
+        quando `_agent_role == "attendance"`, `_get_raw_agent` filtra
+        `is_active=True`, e o webhook já parou antes em `attendance_agent_active`.
+        Mas essas três travas moram longe daqui e nenhuma delas pode ser provada
+        por um teste desta ferramenta. Um guarda que ninguém consegue exercitar é
+        um guarda que ninguém percebe quando some.
+
+        Fail-closed: erro de leitura vira dry-run, nunca envio.
+        """
+        try:
+            from app.services.atlas.attendance_capture import attendance_agent_active
+            from app.services.insurer_dispatch_service import acionamento_liberado
+
+            return acionamento_liberado(await attendance_agent_active(self.company_id))
+        except Exception as exc:  # noqa: BLE001
+            logger.error("[InsurerDispatch] não foi possível confirmar o interruptor do "
+                         "agente (%s) — mantendo simulação", type(exc).__name__)
+            return False
+
     async def _arun(self, **kwargs) -> dict:
-        """Caminho LIVE (S17-6): com o gate aberto, cria a sessão real, envia a
-        abertura à seguradora pela integração da corretora e ativa o roteador.
-        Qualquer pré-condição faltando → resposta honesta SEM envio."""
+        """Caminho LIVE: com o agente de atendimento LIGADO, cria a sessão real,
+        envia a abertura à seguradora pela integração da corretora e ativa o
+        roteador. Qualquer pré-condição faltando → resposta honesta SEM envio.
+
+        P-90 (04/08/2026) — o que segura aqui deixou de ser o env `INSURER_
+        DISPATCH_LIVE` e passou a ser o interruptor que o Founder clica. As duas
+        perguntas são feitas nesta ordem porque a barata vem primeiro: o ambiente
+        (`dispatch_live_enabled`, hoje aberto por padrão, fechado pelo freio de
+        emergência) e só então o banco (`attendance_agent_active`).
+        """
         import os
 
         from app.services.insurer_dispatch_service import dispatch_live_enabled
@@ -522,6 +564,13 @@ class InsurerDispatchTool(BaseTool):
         kwargs = await self._resolve_vehicle_facts(dict(kwargs))
         base = self._run(**kwargs)
         if base.get("status") != "ready_to_send" or not dispatch_live_enabled():
+            return base
+        if not await self._acionamento_liberado():
+            # Nada sai. O conteúdo devolvido é o MESMO plano em simulação que a
+            # tool sempre devolveu com o gate fechado — o agente desligado não
+            # muda o texto, muda o mundo: nenhuma mensagem chega à seguradora.
+            logger.info("[InsurerDispatch] agente de atendimento desligado (ou freio "
+                        "armado) — plano preparado, NADA enviado")
             return base
 
         from app.services.corridor_playbooks import insurer_contact_env_var, resolve_insurer_contact

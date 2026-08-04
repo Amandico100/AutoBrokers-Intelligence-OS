@@ -4,9 +4,24 @@ Rodar:
     python backend/tests/test_spec017_dispatch.py
 
 Replay OFFLINE da URA real da Allianz Assistência 24h (frases reais do robô,
-dados 100% sintéticos). Prova: respostas determinísticas por âncora, gate
-INSURER_DISPATCH_LIVE fail-closed, captura de protocolo/senha/agendamento só
-por âncora, fail-safes (passo desconhecido, slot faltante, sinistro).
+dados 100% sintéticos). Prova: respostas determinísticas por âncora, o gate de
+envio real, captura de protocolo/senha/agendamento só por âncora, fail-safes
+(passo desconhecido, slot faltante, sinistro).
+
+ATUALIZADO em 04/08/2026 (P-90), CLAUDE.md §9.3
+-----------------------------------------------
+Este arquivo afirmava que **a ausência da variável `INSURER_DISPATCH_LIVE`
+significava gate FECHADO**. Era verdade — até a decisão do Founder de 04/08:
+o que segura o envio real passou a ser `agents.is_active` do agente de
+atendimento, e o ambiente nasce ABERTO. A trava de env existia porque ele
+testava no próprio celular; esse motivo acabou quando o interruptor virou
+produto.
+
+A lição não morre, ela migra: o que este arquivo continua provando é que
+**com o gate fechado nada sai**. Só que agora ele fecha o gate de propósito
+(`INSURER_DISPATCH_LIVE=false`) em vez de contar com um padrão. Guarda que
+depende de uma ausência para de guardar no dia em que a ausência mudar de
+significado — foi exatamente o que aconteceu aqui.
 """
 
 import importlib.util
@@ -81,11 +96,19 @@ URA = {
 
 def run():
     print("== SPEC-017 P4 - playbook + dispatch dry-run ==\n")
-    os.environ.pop("INSURER_DISPATCH_LIVE", None)  # gate FECHADO (default)
+    # P-90: fechar é um ATO, não mais um padrão. Ver o cabeçalho do arquivo.
+    os.environ["INSURER_DISPATCH_LIVE"] = "false"
 
     playbook = pb.get_playbook(REF)
     check("P4: playbook Allianz registrado", playbook is not None and playbook["insurer_key"] == "allianz")
-    check("P4: gate fechado por default", dispatch.dispatch_live_enabled() is False)
+    check("P4: gate fechado quando alguém escreve 'false'", dispatch.dispatch_live_enabled() is False)
+    # CONTROLE — as duas pontas do portão têm de dar respostas DIFERENTES, senão
+    # o caso acima não mede nada: um `dispatch_live_enabled` que só soubesse
+    # dizer False passaria neste arquivo inteiro sem guardar coisa nenhuma.
+    os.environ.pop("INSURER_DISPATCH_LIVE", None)
+    check("P4: e ABERTO por padrão (o agente desligado é quem segura agora)",
+          dispatch.dispatch_live_enabled() is True)
+    os.environ["INSURER_DISPATCH_LIVE"] = "false"
 
     # Slots completos p/ eletricista -> ready_to_send.
     s = dispatch.new_dispatch_session(case_id="case-1", company_id="co-1", playbook_ref=REF, subservice="eletricista", slots=SLOTS)
@@ -155,7 +178,7 @@ def run():
         s4 = dispatch.start_dispatch(s4, sender=real_sent.append)
         check("P4: gate aberto envia via sender", real_sent == ["Olá"] and not s4["transcript"][-1]["dry_run"], real_sent)
     finally:
-        os.environ.pop("INSURER_DISPATCH_LIVE", None)
+        os.environ["INSURER_DISPATCH_LIVE"] = "false"  # P-90: fechar virou um ATO
 
     # ---- P5: plano dry-run para a tool do atendente ----
     print("\n== P5 - build_dry_run_plan + tool do atendente ==\n")
@@ -230,7 +253,7 @@ def run():
             check("P6: sinistro -> pausa + aviso humanizado ao cliente", paused and paused["state"] == "needs_human" and to_client2 and "equipe" in to_client2[0], to_client2)
             await router.clear_active_dispatch("co-R", "551140901444")
         finally:
-            os.environ.pop("INSURER_DISPATCH_LIVE", None)
+            os.environ["INSURER_DISPATCH_LIVE"] = "false"  # P-90: fechar virou um ATO
 
     _aio.run(_router_flow())
 
@@ -274,7 +297,7 @@ def run():
                 res3,
             )
         finally:
-            os.environ.pop("INSURER_DISPATCH_LIVE", None)
+            os.environ["INSURER_DISPATCH_LIVE"] = "false"  # P-90: fechar virou um ATO
 
     _aio.run(_live_flow())
 
@@ -344,7 +367,7 @@ def run():
                 msgs["system"][:120],
             )
         finally:
-            os.environ.pop("INSURER_DISPATCH_LIVE", None)
+            os.environ["INSURER_DISPATCH_LIVE"] = "false"  # P-90: fechar virou um ATO
 
     _aio.run(_human_phase_flow())
 
@@ -371,7 +394,7 @@ def run():
             await router.clear_active_dispatch("co-M", "551140901444")
             check("ESPELHO: sessao encerrada some da lista", await router.list_active_dispatches("co-M") == [])
         finally:
-            os.environ.pop("INSURER_DISPATCH_LIVE", None)
+            os.environ["INSURER_DISPATCH_LIVE"] = "false"  # P-90: fechar virou um ATO
 
     _aio.run(_mirror_flow())
 

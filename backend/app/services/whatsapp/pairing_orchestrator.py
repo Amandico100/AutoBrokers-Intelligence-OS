@@ -667,19 +667,43 @@ class PairingOrchestrator:
 
         await asyncio.to_thread(_upsert)
 
-    async def _mark_connected(self, state: Dict[str, Any]) -> None:
+    async def _mark_connected(
+        self, state: Dict[str, Any], status_payload: Optional[Dict[str, Any]] = None
+    ) -> None:
+        """Marca a linha como conectada — e guarda QUAL telefone conectou.
+
+        SPEC-063. Até 04/08/2026 este update gravava estado e relógio, e
+        descartava a identidade. O resultado prático foi o Founder não conseguir
+        dizer qual número estava pareado no celular da atendente: a informação
+        passava por aqui a cada conexão e nunca era escrita em lugar nenhum.
+
+        `status_payload` é o corpo do `/instance/status`, que o whatsmeow
+        preenche com o JID do aparelho depois do pareamento. Quando ele não vem,
+        `dados_de_pareamento` devolve `{}` e o update segue sem esses campos —
+        preservando o telefone gravado antes. Um refresh silencioso não pode
+        apagar o que o pareamento já provou.
+        """
         from app.core.database import get_supabase_client
+        from app.services.whatsapp.numero_pareado import dados_de_pareamento, mascarar
 
         db = get_supabase_client()
+        agora = _iso(_utcnow())
+        campos: Dict[str, Any] = {"channel_status": "connected", "last_seen_at": agora}
+        try:
+            campos.update(dados_de_pareamento(status_payload or {}, agora))
+        except Exception:  # noqa: BLE001 — identidade nunca impede marcar conectado
+            pass
 
         def _update() -> None:
-            db.client.table("integrations").update({
-                "channel_status": "connected",
-                "last_seen_at": _iso(_utcnow()),
-            }).eq("company_id", state["company_id"]).eq("purpose", state["purpose"]) \
+            db.client.table("integrations").update(campos) \
+                .eq("company_id", state["company_id"]).eq("purpose", state["purpose"]) \
                 .eq("instance_id", state["instance"]).execute()
 
         await asyncio.to_thread(_update)
+        if campos.get("paired_phone_e164"):
+            # Mascarado sempre: é a linha de trabalho de uma pessoa real.
+            logger.info("[PAIRING] %s pareado em %s", state["purpose"],
+                        mascarar(campos["paired_phone_e164"]))
 
     async def _invalidate_incomplete(self, integration: Optional[Dict[str, Any]]) -> None:
         """Best-effort teardown for an expired/cancelled ceremony.
@@ -798,7 +822,7 @@ class PairingOrchestrator:
                     instance=instance,
                     created_at=state["created_at"],
                 ))
-                await self._mark_connected(state)
+                await self._mark_connected(state, status_json)
                 return await self._save(state)
 
             webhook_token, webhook_hash, webhook_prefix = new_webhook_credentials()
@@ -921,7 +945,7 @@ class PairingOrchestrator:
             **{key: value for key, value in normalized.items() if key != "error_code"},
         ))
         if next_state in ("connected", "already_connected"):
-            await self._mark_connected(state)
+            await self._mark_connected(state, status_json)
         return await self._save(state)
 
     @staticmethod

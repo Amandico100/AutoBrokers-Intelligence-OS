@@ -591,13 +591,58 @@ def teste_o_corredor_declara_tudo_antes_de_comecar():
 
 
 def teste_o_portao_de_envio_real_nao_afrouxou():
-    print("\n[T9] O portão continua fechado onde tem de estar")
+    """ATUALIZADO em 04/08/2026 (P-90), CLAUDE.md §9.3.
+
+    Este caso afirmava duas coisas que eram verdade e deixaram de ser:
+    `dispatch_live_enabled` exigia a flag explícita, e o freio de finalização
+    nascia em `test`. Decisão do Founder, dita duas vezes: a única trava passa a
+    ser `agents.is_active` do agente de atendimento — "tudo pronto e
+    funcionando, mas o agente tem que continuar desligado".
+
+    E ele afirmava isso lendo o TEXTO da fonte, que é a forma mais frágil de
+    guardar um portão: casava a receita, não o resultado. Agora ele exercita o
+    portão de verdade, nos dois sentidos, com CONTROLE — porque um portão que
+    só sabe dizer "não" passa em qualquer asserção de "não".
+    """
+    print("\n[T9] O portão continua fechável — e agora é exercitado, não lido")
     fonte = _ler("backend", "app", "services", "insurer_dispatch_service.py")
-    checar('os.getenv("INSURER_DISPATCH_LIVE", "")' in fonte
-           and 'in ("1", "true", "yes", "on")' in fonte,
-           "`dispatch_live_enabled` continua exigindo a flag explícita")
-    checar('os.getenv("DISPATCH_FINALIZE_MODE", "test")' in fonte,
-           "e o freio de finalização continua nascendo em `test`")
+
+    _antes = {k: os.environ.get(k) for k in ("INSURER_DISPATCH_LIVE",
+                                             "DISPATCH_FINALIZE_MODE",
+                                             MOTOR.FREIO_DE_EMERGENCIA)}
+    try:
+        for k in _antes:
+            os.environ.pop(k, None)
+        # CONTROLE — sem nada armado, os dois nascem ABERTOS. É o que muda em
+        # relação a ontem, e é o que dá direito às três asserções seguintes.
+        checar(MOTOR.dispatch_live_enabled() is True,
+               "CONTROLE: sem nada armado, o envio real nasce ABERTO",
+               "quem segura agora é o agente desligado, não a ausência de um env")
+        checar(MOTOR.finalize_live_for("hdi-auto-whatsapp@v1") is True,
+               "CONTROLE: e o freio de finalização nasce SOLTO")
+
+        os.environ["INSURER_DISPATCH_LIVE"] = "false"
+        checar(MOTOR.dispatch_live_enabled() is False,
+               "um `false` escrito por um operador continua fechando o envio",
+               "ignorar o que alguém escreveu com a própria mão é discordar em silêncio")
+        os.environ.pop("INSURER_DISPATCH_LIVE", None)
+
+        os.environ["DISPATCH_FINALIZE_MODE"] = "test"
+        checar(MOTOR.finalize_live_for("hdi-auto-whatsapp@v1") is False,
+               "e `DISPATCH_FINALIZE_MODE=test` continua devolvendo o ensaio")
+        os.environ.pop("DISPATCH_FINALIZE_MODE", None)
+
+        os.environ[MOTOR.FREIO_DE_EMERGENCIA] = "true"
+        checar(MOTOR.dispatch_live_enabled() is False
+               and MOTOR.finalize_live_for("hdi-auto-whatsapp@v1") is False,
+               "e o freio de emergência fecha os DOIS de uma linha só",
+               "é o que existe para o dia em que for preciso parar sem deploy")
+    finally:
+        for k, v in _antes.items():
+            os.environ.pop(k, None)
+            if v is not None:
+                os.environ[k] = v
+
     checar('return bool(session.get("finalize_approved")) or finalize_live_for(' in fonte,
            "`_finalize_allowed` inalterado")
 

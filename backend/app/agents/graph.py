@@ -481,6 +481,41 @@ async def create_agent_graph(
             #
             # Nao era conflito entre SPEC-053 e SPEC-020. Era o portao lendo a chave
             # errada, e a discussao canonica inteira nasceu desse engano.
+            #
+            # 🔴 P-90, 04/08/2026 — AS DUAS CHAVES NÃO SÃO DO MESMO PAPEL, E ISSO
+            # IMPORTA MAIS DO QUE PARECIA.
+            #
+            # 📊 Medido no Supabase dcajcvlzcjbmyapmklil em 04/08/2026:
+            #
+            #     SELECT agent_role, capability_key, enabled FROM capability_bindings
+            #      WHERE capability_key LIKE '%portal%';
+            #
+            #   · `operational.portal.assistance.prepare` → SÓ `attendance`.
+            #   · `tenant.portal.execute`                 → `core` e `auxiliary`
+            #                                               (desligada para attendance).
+            #
+            # Ou seja: o CHAT INTERNO da corretora (papel `core`) também recebe
+            # `portal_action`. Ele não passa pelo portão `attendance_agent_active`
+            # do webhook — ele responde ao corretor, não ao segurado.
+            #
+            # 📊 Hoje isso alcança UMA corretora: `tenant.portal.execute` exige
+            # conexão (`requires_connection=true`, provider `portal_worker`), e só
+            # a Resulta (04b5cdbc…) tem linha em `portal_accounts`. O core dela
+            # está ativo. Logo, o chat interno da Resulta consegue enfileirar um
+            # `portal_jobs` de `abrir_atendimento` HOJE.
+            #
+            # Por que isso NÃO foi fechado aqui, e sim subordinado:
+            # `portal_tool._arun` pergunta `attendance_agent_active` ANTES de montar
+            # os params, e é essa resposta que vira `confirm`. Com o agente de
+            # atendimento desligado, o job do chat interno nasce `confirm=False` e
+            # para no 80% — exatamente o que ele já fazia. Nada foi aberto por este
+            # caminho, e nada passa a ser. Quando o Founder ligar o agente, este
+            # caminho passa a poder abrir pedido de verdade também, e isso está
+            # escrito no relatório em vez de escondido numa capability.
+            #
+            # Fechar a chave do `core` é uma decisão de produto (o corretor pode
+            # abrir um chamado de vidro pelo chat?), não de execução — e mudá-la
+            # exige escrever no banco. Fica registrado, não decidido sozinho.
             if _active & {"operational.portal.assistance.prepare", "tenant.portal.execute"}:
                 from .tools.portal_tool import PortalActionTool
                 tools.append(PortalActionTool(company_id=str(company_id), supabase_client=supabase_client))

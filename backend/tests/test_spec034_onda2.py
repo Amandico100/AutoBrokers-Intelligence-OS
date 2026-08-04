@@ -14,6 +14,7 @@ Rodar: python backend/tests/test_spec034_onda2.py
 """
 
 import importlib.util
+import os
 import sys
 import types
 from pathlib import Path
@@ -54,6 +55,18 @@ ums = _load("app.services.ura_map_service", "app/services/ura_map_service.py")
 carto = _load("app.services.cartographer", "app/services/cartographer.py")
 eng = _load("app.services.insurer_dispatch_service", "app/services/insurer_dispatch_service.py")
 sim = _load("app.services.ura_simulator", "app/services/ura_simulator.py")
+
+# ATUALIZADO em 04/08/2026 (P-90), CLAUDE.md §9.3 — `DISPATCH_FINALIZE_MODE`
+# nasce em `live`. O freio de finalizacao era o padrao porque o Founder testava
+# no proprio celular; decisao dele, o unico interruptor passou a ser
+# `agents.is_active` do agente de atendimento.
+#
+# Este arquivo SIMULA a URA contra um script gravado — ele existe para ensaiar,
+# e `reached_finalize` significa "o motor parou na tela que ABRE o servico".
+# Com o freio solto ele responderia "Confirmar solicitacao" a uma seguradora de
+# mentira e nunca chegaria a um estado encerrado. O ensaio agora e ARMADO de
+# proposito, em vez de herdado de um padrao que mudou.
+os.environ["DISPATCH_FINALIZE_MODE"] = "test"
 
 
 def run():

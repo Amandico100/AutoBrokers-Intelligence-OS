@@ -74,7 +74,10 @@ INFOCAP = {
 
 FLAT = {"cpf_cnpj": "03074327936", "data_dano": "05/07/2026",
         "peca": "vidro de porta", "como_ocorreu": "encontrou o veiculo danificado", "onde_ocorreu": "urbano",
-        "descricao": "o carro estava estacionado e o vidro da porta foi quebrado"}
+        "descricao": "o carro estava estacionado e o vidro da porta foi quebrado",
+        # SPEC-065 — "completo" mudou: a preferencia de onde consertar entra
+        # aqui porque parar no passo 7 e terminal (o Nº ja nasceu la).
+        "especificos": {"onde_realizar_o_servico": "levar na oficina"}}
 
 
 def run():
@@ -110,7 +113,18 @@ def run():
     check("endereco composto e ASCII-fold", "CAPITAO ROMUALDO" in p["segurado"]["endereco"] and "LIMOES" in p["segurado"]["endereco"], p["segurado"]["endereco"])
     check("solicitante = Corretor", p["solicitante"]["relacao"] == "Corretor")
     check("dano do LLM (julgamento)", p["dano"]["peca"] == "vidro de porta")
-    check("confirm sempre False (nunca envia sozinha)", p["confirm"] is False)
+    # ATUALIZADO em 04/08/2026 (P-90), CLAUDE.md §9.3 — aqui se afirmava
+    # "confirm SEMPRE False (nunca envia sozinha)". O "sempre" era literal: o
+    # valor estava CRAVADO e nenhum caminho do repositório conseguia ligá-lo,
+    # então o acionamento parava no 80% para sempre. Decisão do Founder: quem
+    # decide passa a ser o agente de atendimento ligado.
+    # A lição migra — o que continua tendo de ser verdade é que a função PURA
+    # nasce fechada, para que esquecer custe um pedido a menos e nunca um a mais.
+    check("confirm nasce False (esquecer não pode abrir pedido)", p["confirm"] is False)
+    p_on, _ = pp.build_portal_params(FLAT, PROFILE, INFOCAP, enviar_de_verdade=True)
+    check("CONTROLE: e o chamador CONSEGUE ligá-lo", p_on["confirm"] is True,
+          "se os dois dessem False, o caso acima não mediria nada — era exatamente "
+          "esse o defeito de ontem")
 
     # sem placa na InfoCap -> pede placa_informada (fallback honesto, nunca inventa)
     sem_placa = {**INFOCAP, "vehicle": {**INFOCAP["vehicle"], "placa": ""}}

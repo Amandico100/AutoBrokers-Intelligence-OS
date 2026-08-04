@@ -1052,3 +1052,103 @@ Enquanto estiver assim, o agente captura e não fala — inclusive não aciona p
 
 **Ligar o agente de atendimento é o gesto que liga tudo isto.** É do Founder, e é
 um clique.
+
+---
+
+## D-Observador-02 · Telefone pareado é telefone OFICIAL de atendimento — 04/08/2026
+
+**Decisão do Founder, palavras dele:**
+
+> *"São os números oficiais da corretora para atendimento. Sempre que for
+> conectado um WhatsApp no atendimento e acionamento da corretora, esse celular
+> deve ser tratado como telefone oficial de atendimento e deve baixar as
+> conversas para ser feita a curadoria depois, destilação, criação de novas
+> cartas."*
+
+E o limite, na mesma frase:
+
+> *"Mas é preciso ter cuidado com conversas pessoais, conversas que não têm valor
+> para o cérebro e não devem virar carta. **Não precisamos ter milhões de cartas.
+> Precisamos ter um cérebro inteligentíssimo que entende tudo de seguros.**"*
+
+**Isto encerra a P-84.**
+
+### A regra arquitetural que sai daqui
+
+> **A captura é ampla. O juízo de valor é da DESTILAÇÃO.**
+
+```
+CAPTURAR   telefone pareado por corretora = oficial de atendimento
+           -> observer_scope = insurers_and_clients, sempre
+
+DESTILAR   "isto aumenta a inteligência do cérebro?"
+           -> conversa pessoal, papo sem valor: NÃO vira carta
+```
+
+Isso resolve a tensão que me travava. Eu tinha tentado estreitar a captura para
+proteger contra dado pessoal, e estava resolvendo o problema na camada errada:
+capturar de menos perde material que não volta, e a proteção que importa é
+**não publicar no RAG**, não **não gravar**.
+
+📊 Aplicado no mesmo dia às três integrações de observador (AMANDUS, AutoFleet,
+Resulta), que estavam em `insurers_only` — não por escolha, e sim porque foi
+assim que a **contenção de 29/07** as deixou. Uma emergência tinha virado
+política sem ninguém decidir.
+
+**O que fica pendente:** o filtro de valor na destilação ainda não existe como
+peça nomeada. Vai em [P-87] junto com religar o destilador.
+
+---
+
+## D-Portal-02 · As travas de teste saem; o interruptor é o "Ligar agente" — 04/08/2026
+
+**Decisão do Founder, palavras dele:**
+
+> *"A questão de trava no final sempre foi por um motivo exclusivo. Eu estava
+> fazendo os testes no meu próprio celular e era apenas teste nos atendimentos.
+> Se não tivesse a trava, seriam feitos os acionamentos dos serviços de vidro de
+> verdade. Essa é a única função da trava que coloquei na época."*
+>
+> *"Se o atendimento estiver pronto no portal, podemos tirar as travas, **desde
+> que os agentes de atendimento permaneçam desligados ainda**. Quero tudo pronto
+> e funcionando, mas o agente de atendimento tem que continuar desligado. É pra
+> ficar tudo pronto e desligado."*
+>
+> *"Se tiver alguma trava no atendimento de WhatsApp também, onde é feito o
+> acionamento, também pode tirar a trava dos corredores."*
+>
+> *"No momento em que apertar o LIGAR AGENTE, aí os corredores que tiverem
+> ativados funcionarão."*
+
+**Isto encerra a P-90.**
+
+### O que muda, e o que passa a segurar
+
+Eram DUAS travas, e nenhuma delas era de segurança do produto — as duas eram
+andaimes de teste:
+
+| Trava | Por que existia | Estado |
+|---|---|---|
+| `confirm=False` cravado | os testes do Founder no celular dele abririam serviço de vidro de verdade | **sai** |
+| dry-run do corredor de WhatsApp | mesma coisa, no acionamento por WhatsApp | **sai** |
+
+**O que passa a segurar é UMA coisa só, e ela é visível numa tela:**
+
+```
+agents.is_active = false   ->  o agente não atende, não aciona, não abre portal
+                               (📊 os quatro estão false)
+
+clique em "Ligar agente"   ->  tudo funciona ponta a ponta
+```
+
+É melhor assim do que com as travas: uma trava escondida no código faz alguém
+apertar o botão verde e não entender por que nada acontece. Um interruptor só,
+com nome, é auditável.
+
+### O que continua travado, e não sai
+
+- **O modo observação é mudo** — nenhum caminho fala com o segurado com o agente
+  desligado. É a regra da [D23], e ela tem guarda próprio.
+- **Idempotência do portal** — 📊 o protocolo nasce no passo 7 ANTES do fim do
+  fluxo; reexecutar cria um SEGUNDO atendimento, e o índice único impede.
+- **Sinistro nunca vira portal** — colisão, roubo e incêndio continuam handoff.

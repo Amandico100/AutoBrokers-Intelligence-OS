@@ -66,8 +66,13 @@ RES_SLOTS = {
 
 def run():
     print("== SPEC-031 - operacao ponta a ponta ==\n")
-    os.environ.pop("INSURER_DISPATCH_LIVE", None)
-    os.environ.pop("DISPATCH_FINALIZE_MODE", None)
+    # ATUALIZADO em 04/08/2026 (P-90), CLAUDE.md §9.3 — os dois padrões
+    # viraram ABERTOS: quem segura o acionamento agora é `agents.is_active`
+    # do agente de atendimento, e não mais uma ausência de variável. Este
+    # arquivo continua provando o comportamento FECHADO/ENSAIO — mas agora
+    # ele o ARMA de propósito, em vez de herdá-lo de um default que mudou.
+    os.environ["INSURER_DISPATCH_LIVE"] = "false"
+    os.environ["DISPATCH_FINALIZE_MODE"] = "test"
 
     # ---------- Dossie de handoff mastigado ----------
     s = dispatch.new_dispatch_session(case_id="d1", company_id="co", playbook_ref="yelum-auto-whatsapp@v3", subservice="guincho", slots=dict(SLOTS))
@@ -109,7 +114,7 @@ def run():
         send_to_insurer=sent_ins.append, send_to_client=lambda p, t: sent_cli.append((p, t)),
     ))
     check("retry: 2a queda vira handoff (sem loop infinito)", handled2 and any("colega" in t for _, t in sent_cli), sent_cli[-1:] if sent_cli else None)
-    os.environ.pop("INSURER_DISPATCH_LIVE", None)
+    os.environ["INSURER_DISPATCH_LIVE"] = "false"
 
     # ---------- Follow-up timers gravados na captura ----------
     mc = dispatch.new_dispatch_session(case_id="f1", company_id="coF", playbook_ref="porto-auto-whatsapp@v1", subservice="guincho", slots=dict(SLOTS))

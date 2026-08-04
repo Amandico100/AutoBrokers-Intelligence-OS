@@ -146,6 +146,11 @@ POSICAO_DO_TRINCADO = "posicao_do_trincado"
 TAMANHO_DO_TRINCADO = "tamanho_do_trincado"
 VERSAO_DO_VEICULO = "versao_do_veiculo"
 CEP_DO_SEGURADO = "cep_do_segurado"
+# 📊 Passo 7: "Escolha a loja onde deseja realizar o serviço." Guarda a
+# PREFERÊNCIA ("domicilio" / "loja"), nunca a loja escolhida — `loja_escolhida`
+# mentiria sobre o que o campo pode conter, porque a lista de lojas só existe
+# na tela do portal e o segurado nunca a viu.
+ONDE_REALIZAR_O_SERVICO = "onde_realizar_o_servico"
 
 # Onde a resposta MORA em `ja_sei`, quando não é na própria chave do campo.
 # 📊 A versão sai do campo `Veículo` da InfoCap ("NIVUS COMFORTLINE 1.0 200 TSI
@@ -171,6 +176,12 @@ class Pergunta:
     opcoes: Tuple[str, ...] = ()
     aceita_nao_sabe: bool = False
     porque: str = ""
+    # Como a resposta VOLTA para cá. Vazio = o agente já sabe (o campo tem o
+    # nome dele no schema da tool). Preenchido = uma linha literal de instrução,
+    # para a pergunta que o schema da tool ainda não nomeia. Sem isso a pergunta
+    # é feita, o segurado responde, e a resposta morre no caminho de volta — o
+    # laço que este repositório já pagou uma vez (`subservico_invalido`).
+    como_devolver: str = ""
 
     @property
     def onde_mora(self) -> str:
@@ -218,6 +229,40 @@ _UNIVERSAIS: Tuple[Pergunta, ...] = (
         "Foi na cidade ou na estrada/rodovia?",
         opcoes=("urbano", "rodoviario"),
         porque="📊 campo `ondeOcorreuDano` do passo 4.",
+    ),
+    # 📊 Passo 7 do mapa: `Nº do atendimento` no topo e, logo abaixo, "Escolha a
+    # loja onde deseja realizar o serviço" — com "Agendar a domicílio" de um
+    # lado e a lista de lojas do outro.
+    #
+    # O DESENHO, e por que ele é de PREFERÊNCIA e não de escolha:
+    #
+    # **A lista de lojas só existe naquela tela.** Perguntar "qual loja?" antes
+    # de abrir o portal é pedir ao segurado que responda algo que ele não sabe —
+    # a mesma falha de perguntar a versão do veículo (§4b do mapa), só que pelo
+    # outro lado: lá a resposta estava conosco, aqui ela ainda não existe.
+    #
+    # **Mas a preferência ele sabe agora, e sempre.** "O técnico vai até você ou
+    # você prefere levar?" é respondível por qualquer pessoa, em qualquer estado
+    # emocional, sem consultar nada. É a única metade da decisão que cabe numa
+    # conversa de WhatsApp — e é a metade que evita a ligação de volta.
+    #
+    # **E ela nem sempre é atendível.** 📊 O rótulo do CEP diz que ele serve para
+    # "verificar se há disponibilidade de atendimento em domicílio na sua
+    # região". O texto abaixo promete só o que o portal pode cumprir: diz que
+    # depende do CEP, em vez de prometer domicílio e desmentir depois.
+    #
+    # Por isso NÃO tem `aceita_nao_sabe`: numa preferência não existe "não sei"
+    # honesto — existe "tanto faz", que é uma resposta e passa por `respondida`.
+    Pergunta(
+        ONDE_REALIZAR_O_SERVICO,
+        "Última coisa: você prefere que o técnico vá até você (em casa ou no trabalho) "
+        "ou prefere levar o carro numa loja? O atendimento em domicílio depende de ter "
+        "cobertura no seu CEP — se não tiver, eu te mostro as lojas mais perto.",
+        opcoes=("domicilio", "loja"),
+        como_devolver="registre em especificos: {\"onde_realizar_o_servico\": \"domicilio\"} ou "
+                      "{\"onde_realizar_o_servico\": \"loja\"}",
+        porque="📊 é a pergunta do passo 7, onde o `Nº do atendimento` JÁ existe (mapa §7). "
+               "A loja concreta NÃO se pergunta antes: a lista só aparece naquela tela.",
     ),
     Pergunta(
         CEP_DO_SEGURADO,
@@ -538,11 +583,18 @@ def mensagem_para_o_agente(faltam: List[Pergunta], peca: str = "") -> str:
         linhas.append(f'  "{perguntas[0].texto}"{_marca_nao_sabe(perguntas[0])}')
         if perguntas[0].opcoes:
             linhas.append(f"  respostas que o portal aceita: {' / '.join(perguntas[0].opcoes)}")
+        if perguntas[0].como_devolver:
+            linhas.append(f"  {perguntas[0].como_devolver}")
         if len(perguntas) > 1:
             linhas.append("")
             linhas.append("E na sequencia, uma de cada vez, ainda vou precisar destas:")
             for p in perguntas[1:]:
                 linhas.append(f'  · "{p.texto}"{_marca_nao_sabe(p)}')
+                # Uma pergunta cuja resposta nao tem como voltar e uma pergunta
+                # feita a toa: o segurado responde e o schema descarta. Onde o
+                # caminho de volta nao e obvio, ele vai escrito.
+                if p.como_devolver:
+                    linhas.append(f"      ({p.como_devolver})")
         linhas.append("")
         # A marca vai POR PERGUNTA, e nao numa frase geral, porque a frase geral
         # criava um laco: mandada em bloco, ela autoriza registrar "nao sabe" em

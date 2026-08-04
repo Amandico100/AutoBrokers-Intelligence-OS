@@ -66,8 +66,13 @@ def _outs(s):
 
 def run():
     print("== SPEC-031 - fixes Allianz 12/07 ==\n")
-    os.environ.pop("INSURER_DISPATCH_LIVE", None)
-    os.environ.pop("DISPATCH_FINALIZE_MODE", None)
+    # ATUALIZADO em 04/08/2026 (P-90), CLAUDE.md §9.3 — os dois padrões
+    # viraram ABERTOS: quem segura o acionamento agora é `agents.is_active`
+    # do agente de atendimento, e não mais uma ausência de variável. Este
+    # arquivo continua provando o comportamento FECHADO/ENSAIO — mas agora
+    # ele o ARMA de propósito, em vez de herdá-lo de um default que mudou.
+    os.environ["INSURER_DISPATCH_LIVE"] = "false"
+    os.environ["DISPATCH_FINALIZE_MODE"] = "test"
 
     # ---------- pick_option_by_plate ----------
     menu = "Por favor, confirme o veiculo para atendimento:\n\n1 - 2500,  placa JD#-###2\n2 - HILUX SW4,  placa JC#-###9\n3 - Outro veiculo\n0 - Sair"

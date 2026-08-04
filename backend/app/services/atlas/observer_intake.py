@@ -313,9 +313,92 @@ def _parse_native_form(extra: Any) -> Optional[Dict[str, Any]]:
 
 
 def _observer_number_of(integration: dict) -> str:
-    """Identidade do número observado — MESMA computação em captura e correlação
-    (fix 18/07: identifier pode ser o NOME da instância → dígitos vazios)."""
-    return _digits((integration or {}).get("identifier") or (integration or {}).get("instance_id") or "") or "unknown"
+    """A identidade do CANAL que observou. Não é telefone — e não pode virar um.
+
+    O nome mente, e o nome é o sintoma: `observer_number` guarda `_digits()` do
+    **nome da instância** do evolution-go. 📊 04/08/2026: `ab-obs-6c9c55e22f-1`
+    vira `6955221`, que não é o telefone de ninguém.
+
+    ⚠️ POR QUE ESTE VALOR NÃO PODE PASSAR A SER O TELEFONE DE VERDADE
+
+    Esta função não computa um identificador: ela computa **metade da chave de
+    deduplicação**. O índice é `(observer_number, message_id)`, e é ele que faz
+    o history_sync reentregar o histórico inteiro sem gravar nada de novo.
+
+    📊 Medido em 04/08/2026 no projeto dcajcvlzcjbmyapmklil:
+
+        attendance_transcripts   69.150 linhas   observer_number: 045041 / 6955221
+        observed_events          17.651 linhas   observer_number: 045041 / 6955221
+
+    Trocar o significado da coluna faria as linhas novas nascerem com
+    `5547...` enquanto as 86.801 antigas seguem com `045041`/`6955221`. A chave
+    deixaria de casar, o `ignore_duplicates` nunca dispararia, e o próximo
+    pareamento **regravaria o acervo inteiro**. É o oposto exato do pedido do
+    Founder — "NÃO QUERO QUE AS CONVERSAS QUE JÁ FORAM BAIXADAS SEJAM
+    DUPLICADAS" — e o estrago seria de 86.801 linhas.
+
+    Por isso o telefone de verdade nasceu em OUTRO lugar, onde ele responde à
+    pergunta que motivou o pedido sem tocar em chave nenhuma:
+    `integrations.paired_phone_e164` (migration 20260804_03). Chave estável e
+    identidade legível são necessidades diferentes e agora moram separadas.
+
+    E a estabilidade é real, não sorte: 📊 `pairing_orchestrator._instance_name`
+    devolve sempre `ab-obs-{company[:10]}-1`, e `_prepare_and_connect` reusa o
+    `instance_id` já gravado. Reparear a mesma corretora reproduz o mesmo valor.
+
+    O QUE MUDA AQUI: só o fallback.
+
+    O literal `"unknown"` era compartilhado por TODAS as corretoras cujo
+    identifier não tivesse dígito. 📊 Já há 167 eventos assim em produção, e uma
+    transcrição com `"attendance-channel"`. Duas corretoras caindo no mesmo
+    literal teriam a mesma chave de dedupe: a mensagem da segunda seria
+    descartada em silêncio — perda que não aparece em log nenhum, porque a linha
+    simplesmente não nasce.
+
+    Prefixar com a corretora resolve sem tocar em quem já tem dígitos. É a mesma
+    forma que `attendance_capture.capture_channel_message` já usa.
+    """
+    integration = integration or {}
+    digitos = _digits(integration.get("identifier") or integration.get("instance_id") or "")
+    if digitos:
+        return digitos
+    return f"{str(integration.get('company_id') or 'sem-empresa')[:8]}:sem-digitos"
+
+
+# ------------------------------------------------------------------ #
+# A GRAVAÇÃO QUE NÃO DEPENDE DA ORDEM DO DEPLOY
+# ------------------------------------------------------------------ #
+# `company_id` entra nas chaves de dedupe pela migration 20260804_03, e ela e o
+# deploy do backend não sobem no mesmo segundo. Entre os dois instantes existe
+# uma janela, e ela é perigosa nos DOIS sentidos:
+#
+#   índice novo, código velho  → `on_conflict="observer_number,message_id"` não
+#                                casa com índice nenhum → 42P10 → a ingestão do
+#                                histórico grava ZERO linha, em silêncio
+#   código novo, índice velho  → o espelho do mesmo problema
+#
+# Pedir a chave nova e aceitar a antiga como reserva faz a ordem deixar de
+# importar. Não é remendo: é o mesmo dado, escrito com a chave que o banco
+# souber honrar naquele instante.
+#
+# O `upsert` é `ON CONFLICT DO NOTHING`. Se a primeira tentativa gravou, a
+# segunda não faz nada; se falhou, nada foi escrito. Repetir é seguro.
+_CHAVE_DEDUPE = "company_id,observer_number,message_id"
+_CHAVE_DEDUPE_LEGADA = "observer_number,message_id"
+
+
+def _upsert_sem_duplicar(supabase: Any, tabela: str, record: Dict[str, Any]) -> None:
+    """Grava uma mensagem no máximo UMA vez, com a chave que o banco aceitar."""
+    try:
+        supabase.client.table(tabela).upsert(
+            record, on_conflict=_CHAVE_DEDUPE, ignore_duplicates=True
+        ).execute()
+        return
+    except Exception:  # noqa: BLE001 — índice novo ainda não aplicado
+        pass
+    supabase.client.table(tabela).upsert(
+        record, on_conflict=_CHAVE_DEDUPE_LEGADA, ignore_duplicates=True
+    ).execute()
 
 
 def _correlate_open_session(observer_number: str, company_id: str = ""):
@@ -359,6 +442,7 @@ def _store_event_sync(record: Dict[str, Any], events_table: str = "observed_even
 
     supabase = get_supabase_client()
     obs, cp = record["observer_number"], record["counterparty"]
+    empresa = str(record.get("company_id") or "")
     now_iso = datetime.now(timezone.utc).isoformat()
 
     # Sessão pré-atribuída (correlação do ButtonClick): só atualiza o relógio.
@@ -366,18 +450,32 @@ def _store_event_sync(record: Dict[str, Any], events_table: str = "observed_even
         try:
             supabase.client.table(sessions_table).update(
                 {"last_event_at": now_iso}).eq("id", record["session_id"]).execute()
-            supabase.client.table(events_table).upsert(
-                record, on_conflict="observer_number,message_id", ignore_duplicates=True
-            ).execute()
+            _upsert_sem_duplicar(supabase, events_table, record)
         except Exception as e:  # noqa: BLE001
             logger.error(f"[ATLAS] evento (sessão pré-atribuída) não gravado: {type(e).__name__}")
         return
 
     session_id = None
     try:
-        res = (supabase.client.table(sessions_table).select("id, last_event_at")
-               .eq("observer_number", obs).eq("counterparty", cp)
-               .eq("status", "open").order("last_event_at", desc=True).limit(1).execute())
+        # O FILTRO POR CORRETORA NESTA BUSCA NÃO É ENFEITE.
+        #
+        # Sem ele, "a sessão aberta deste observador com este interlocutor"
+        # atravessa corretoras: duas com o mesmo `observer_number` — e o literal
+        # de fallback garantia isso — falando com o mesmo número escreveriam na
+        # MESMA sessão. As conversas ficariam intercaladas numa linha só, e o
+        # transcript que vai para a LLM misturaria segurado de uma com segurado
+        # de outra. É o pior tipo de vazamento: não aparece em log, aparece no
+        # texto que o modelo lê.
+        #
+        # 📊 A tabela irmã já filtrava por empresa no índice
+        # (`ix_attendance_sessions_lookup`); `observed_sessions` não. A migration
+        # 20260804_03 dá a ela o índice equivalente.
+        consulta = (supabase.client.table(sessions_table).select("id, last_event_at")
+                    .eq("observer_number", obs).eq("counterparty", cp)
+                    .eq("status", "open"))
+        if empresa:
+            consulta = consulta.eq("company_id", empresa)
+        res = consulta.order("last_event_at", desc=True).limit(1).execute()
         if res.data:
             last = res.data[0]
             try:
@@ -403,9 +501,7 @@ def _store_event_sync(record: Dict[str, Any], events_table: str = "observed_even
 
     record["session_id"] = session_id
     try:
-        supabase.client.table(events_table).upsert(
-            record, on_conflict="observer_number,message_id", ignore_duplicates=True
-        ).execute()
+        _upsert_sem_duplicar(supabase, events_table, record)
     except Exception:  # noqa: BLE001
         # fallback: insert simples (índice único ainda protege contra dupe)
         try:
@@ -582,17 +678,50 @@ async def observer_tap(integration: dict, body: dict) -> Optional[dict]:
 
                     db = get_supabase_client()
                     from app.services.whatsapp.channel_state import normalizar_estado
+                    from app.services.whatsapp.numero_pareado import (
+                        dados_de_pareamento, mascarar,
+                    )
 
-                    db.client.table("integrations").update({
+                    agora = datetime.now(timezone.utc).isoformat()
+                    campos = {
                         # Vocabulario unico: o Evolution fala "open"/"close" e
                         # as telas leem "connected". Traduzir na escrita e o
                         # que impede o Admin de mostrar `unknown` para um
                         # WhatsApp que esta funcionando.
                         "channel_status": normalizar_estado(state),
-                        "last_seen_at": datetime.now(timezone.utc).isoformat(),
-                    }).eq("id", integration["id"]).eq(
-                        "company_id", integration.get("company_id")
-                    ).execute()
+                        "last_seen_at": agora,
+                    }
+
+                    # QUAL NÚMERO ESTÁ NESTE CELULAR.
+                    #
+                    # Em 04/08/2026 essa pergunta não tinha resposta: o
+                    # pareamento gravava o estado e descartava a identidade.
+                    # O Founder não soube dizer qual linha estava conectada no
+                    # aparelho da atendente, e não havia onde olhar.
+                    #
+                    # O JID é lido do corpo CRU, não do envelope: o
+                    # `go_event_to_v2_envelope` reduz `connection.update` a
+                    # `{state, reason}` e joga o resto fora. Ler daqui evita
+                    # mexer no normalizador, que serve outros consumidores.
+                    #
+                    # Silêncio do provedor não apaga o que ele já disse:
+                    # `dados_de_pareamento` devolve {} quando não há JID, e um
+                    # update sem esses campos preserva o telefone anterior.
+                    try:
+                        campos.update(dados_de_pareamento(body, agora))
+                    except Exception:  # noqa: BLE001 — identidade nunca derruba estado
+                        pass
+
+                    db.client.table("integrations").update(campos).eq(
+                        "id", integration["id"]
+                    ).eq("company_id", integration.get("company_id")).execute()
+
+                    if campos.get("paired_phone_e164"):
+                        # Mascarado SEMPRE. É o telefone de trabalho de uma
+                        # pessoa real; o log precisa dizer QUAL linha conectou,
+                        # não publicá-la (CLAUDE.md §13.3).
+                        logger.info("[ATLAS] linha pareada: %s",
+                                    mascarar(campos["paired_phone_e164"]))
 
                 await asyncio.to_thread(_update_connection)
             return consumed if is_observer else None

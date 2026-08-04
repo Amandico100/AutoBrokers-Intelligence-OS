@@ -323,6 +323,39 @@ def _obs_instance_name(company_id: str, seq: int = 1) -> str:
     return f"ab-obs-{str(company_id).replace('-', '')[:10]}-{seq}"
 
 
+def _instancia_de_observador_ja_existente(company_id: str) -> Optional[str]:
+    """O nome de instância que esta corretora JÁ usa — ligado ou desligado.
+
+    Nome de instância não é um detalhe de infraestrutura: `observer_number`, que
+    é metade da chave de deduplicação do Espelho e do Atlas, é derivado dele.
+    Trocar o nome troca a chave, e trocar a chave faz o acervo inteiro deixar de
+    casar — no repareamento seguinte, tudo é regravado.
+
+    📊 04/08/2026: 69.150 transcrições e 17.651 eventos dependem disto.
+
+    Por isso lê linha DESLIGADA também. Desconectar é pausa, não recomeço — a
+    mesma razão do `_escopo_lembrado` no orquestrador de pareamento.
+    """
+    try:
+        from app.core.database import get_supabase_client
+
+        db = get_supabase_client()
+        linhas = (db.client.table("integrations").select("instance_id, created_at")
+                  .eq("company_id", str(company_id))
+                  .eq("provider", "evolution-go").eq("purpose", "observer")
+                  .order("created_at").limit(5).execute().data) or []
+        for linha in linhas:
+            nome = str(linha.get("instance_id") or "").strip()
+            if nome:
+                return nome
+    except Exception as exc:  # noqa: BLE001
+        # Fail-safe para o lado SEGURO: sem resposta, quem chama gera o nome
+        # padrão (`-1`), que é o que o caminho normal sempre usou.
+        logger.warning("[ATLAS ONBOARDING] não consegui ler a instância existente (%s)",
+                       type(exc).__name__)
+    return None
+
+
 @router.post("/onboarding/pair")
 async def onboarding_pair(body: Dict[str, Any], _: Any = Depends(require_master_admin)) -> Dict[str, Any]:
     """Cria uma instância OBSERVADORA no GO p/ a corretora e devolve o QR.
@@ -343,7 +376,24 @@ async def onboarding_pair(body: Dict[str, Any], _: Any = Depends(require_master_
         scope = "insurers_and_clients"
     public_url = (os.getenv("PUBLIC_BACKEND_URL") or os.getenv("BACKEND_PUBLIC_URL") or "").rstrip("/")
     cfg = _go_admin()
-    instance = _obs_instance_name(company_id, int(body.get("seq") or 1))
+    # 🔴 SPEC-065 — o nome da instância REUSA o que já existe para esta corretora.
+    #
+    # Antes ele saía de `_obs_instance_name(company_id, seq)`, e o `seq` vinha do
+    # CORPO DA REQUISIÇÃO. Um `seq: 2` gera `ab-obs-<10>-2`, cujos dígitos são
+    # outros — e `observer_number` (metade da chave de deduplicação) é derivado
+    # justamente do nome da instância.
+    #
+    # 📊 Consequência medida: 69.150 transcrições e 17.651 eventos deixariam de
+    # casar com a chave, o `ignore_duplicates` nunca dispararia, e o pareamento
+    # seguinte **regravaria o acervo inteiro**. É o oposto exato do que o Founder
+    # pediu ("não quero que as conversas que já foram baixadas sejam duplicadas").
+    #
+    # O caminho normal cravava `-1` e por isso o defeito nunca apareceu. Mas a
+    # porta existia, e ela é aberta por um campo que qualquer chamador escolhe.
+    # Nome de instância é IDENTIDADE de acervo: quem já tem, mantém.
+    instance = await asyncio.to_thread(
+        _instancia_de_observador_ja_existente, company_id
+    ) or _obs_instance_name(company_id, int(body.get("seq") or 1))
     inst_token = secrets.token_hex(16)
     token, token_hash, token_prefix = new_webhook_credentials()
     webhook_url = build_webhook_url(public_url, "evolution-go", token)
