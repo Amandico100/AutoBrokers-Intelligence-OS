@@ -224,8 +224,32 @@ def run():
     check("azul escolhe pneu = 3", _outs(az)[-1] == "3", _outs(az))
     az = dispatch.handle_insurer_message(az, "Para quando voce precisa que esse servico seja realizado? *Importante*: a solicitacao sera confirmada somente apos a finalizacao do agendamento. *1* - Tenho urgencia *2* - Quero agendar")
     check("azul 'para quando' NAO freia (e coleta)", az["state"] != "needs_human" and _outs(az)[-1] == "1", (az.get("state"), _outs(az)[-1:]))
-    az = dispatch.handle_insurer_message(az, "Tudo esta correto? *1* - Sim *2* - Alterar localizacao *3* - Alterar quem esta no local? *4* - Sair e nao agendar")
-    check("FREIO teste azul: 'tudo esta correto' cancela (4=Sair e nao agendar)", az["state"] == "test_aborted" and _outs(az)[-1] == "4", (az.get("state"), _outs(az)[-1:]))
+    # 🔴 A TELA QUE ABRE O SERVIÇO NA AZUL MUDOU — e o teste tinha de mudar com ela.
+    #
+    # Até 04/08/2026 esta linha afirmava que o freio da Azul disparava em "Tudo
+    # está correto?" e cancelava com "4". As duas metades venceram:
+    #
+    # 📊 `observed_events` insurer_key='azul', medido em 04/08/2026:
+    #   "Como você quer prosseguir? ... Sair e não agendar"  8×  07/04→28/07/2026
+    #   "Tudo está correto? ... *4* - Sair e não agendar"    2×  17/09→26/12/2025
+    #
+    # A Azul entrou no grupo Porto e herdou o bot: a tela viva é LISTA e o
+    # cancelamento é o RÓTULO. O freio declarado (`tudo está correto`) não
+    # aparece há sete meses — ou seja, a Azul não freava em NADA, e o "4" que ela
+    # mandaria seria rejeitado pela lista.
+    #
+    # A lição migra em vez de morrer: a tela ANTIGA continua freando (o corredor
+    # não pode perder o que já sabia), e a tela NOVA passa a frear com o rótulo.
+    az_antiga = dispatch.handle_insurer_message(
+        dict(az), "Tudo esta correto? *1* - Sim *2* - Alterar localizacao *3* - Alterar quem esta no local? *4* - Sair e nao agendar")
+    check("FREIO teste azul: a tela NUMERADA de 2025 continua freando",
+          az_antiga["state"] == "test_aborted", (az_antiga.get("state"), _outs(az_antiga)[-1:]))
+    az = dispatch.handle_insurer_message(
+        az, "Como voce quer prosseguir?\nConfirmar solicitacao\nMudar localizacao atual\n"
+            "Alterar local de destino\nAlterar dados de contato\nSair e nao agendar")
+    check("FREIO teste azul: a tela em LISTA de 2026 cancela com o ROTULO",
+          az["state"] == "test_aborted" and _outs(az)[-1] == "Sair e não agendar",
+          (az.get("state"), _outs(az)[-1:]))
     az2 = dispatch.handle_insurer_message(
         dispatch.start_dispatch(dispatch.new_dispatch_session(case_id="az2", company_id="co", playbook_ref="azul-auto-whatsapp@v1", subservice="pneu", slots=AUTO_SLOTS)),
         "Pronto! O seu servico foi agendado para *hoje*, em ate 60 minutos. Aqui esta seu protocolo de atendimento: 1-104106503215")

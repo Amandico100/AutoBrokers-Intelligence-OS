@@ -2,6 +2,12 @@ import { NextRequest, NextResponse } from 'next/server';
 
 import { resolveSessionCompany, getSupabaseAdmin } from '@/lib/vault/server';
 import { getBackendUrl } from '@/lib/backend-url';
+import {
+  type Stage,
+  dispatchStateMeta,
+  stageFromDispatchState,
+  zeroCountsByStage,
+} from '@/lib/attendance/dispatch-states';
 
 export const dynamic = 'force-dynamic';
 
@@ -17,15 +23,9 @@ export const dynamic = 'force-dynamic';
  * Estágio calculado em linguagem humana. Score interno NUNCA é exposto.
  */
 
-type Stage =
-  | 'precisa_de_voce'
-  | 'acionando'
-  | 'protocolo'
-  | 'monitorando'
-  | 'em_conversa'
-  | 'com_equipe'
-  | 'observacao'
-  | 'concluido';
+// `Stage` vem de `@/lib/attendance/dispatch-states` — a lista canônica. Ela
+// morava aqui, escrita à mão, e era uma das sete cópias que deixaram
+// `encaminhado` e `resolvido` órfãos no TypeScript inteiro.
 
 interface Item {
   key: string;

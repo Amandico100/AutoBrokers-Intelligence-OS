@@ -272,9 +272,21 @@ def new_dispatch_session(
     # A sessão dizia que estava pronta, e não estava.
     sub = (playbook.get("subservices") or {}).get(canonical_subservice(subservice), {})
     merged_slots = dict(slots or {})
-    # Opção de menu do subserviço (ex.: eletricista => tipo_servico "1").
-    if sub.get("tipo_servico_opcao") and not merged_slots.get("tipo_servico_opcao"):
-        merged_slots["tipo_servico_opcao"] = sub["tipo_servico_opcao"]
+    # TODA opção de menu declarada no subserviço vira slot — pelo SUFIXO, não
+    # pelo nome. Era `tipo_servico_opcao` escrito à mão, um campo só.
+    #
+    # 📊 04/08/2026: a URA residencial da Allianz tem DOIS menus em sequência —
+    # "Informe o tipo de serviço" (a família) e "De qual profissional?" (o
+    # ofício, 13 ocorrências). Com a injeção nominal, declarar a segunda tecla no
+    # playbook não bastava: ela nunca chegava aos slots, `render_reply` devolvia
+    # `missing` e o acionamento parava no menu que o corredor sabia responder.
+    #
+    # O sufixo `_opcao` já é a regra em `missing_slots_for_subservice` ("o que o
+    # MOTOR preenche não se cobra do cliente") e em `_slots_com_padrao_do_motor`.
+    # Ler a mesma regra aqui é o que faz a tecla nova nascer ligada.
+    for chave, valor in (sub or {}).items():
+        if chave.endswith("_opcao") and valor and not merged_slots.get(chave):
+            merged_slots[chave] = valor
     # Default seguro: sem telefone extra => usa o registrado (opção 2).
     if not str(merged_slots.get("telefone_adicionar_opcao") or "").strip():
         merged_slots["telefone_adicionar_opcao"] = "1" if merged_slots.get("telefone_contato") else "2"
@@ -717,8 +729,9 @@ def _slots_com_padrao_do_motor(playbook: Dict[str, Any], sub: Dict[str, Any]) ->
     defeito: a primeira metade é descobrir tarde o que falta; a segunda é fazer
     o segurado responder o que ninguém precisava perguntar."""
     comuns = ["telefone_adicionar_opcao", "ponto_referencia"]
-    if sub.get("tipo_servico_opcao"):
-        comuns.append("tipo_servico_opcao")
+    # Mesma regra de sufixo da injeção em `new_dispatch_session`: qualquer
+    # `*_opcao` declarada no subserviço é do MOTOR, e some da lista do cliente.
+    comuns += [chave for chave in (sub or {}) if chave.endswith("_opcao") and sub.get(chave)]
     if str(playbook.get("line_kind") or "") == "auto":
         comuns += ["servico_opcao", "servico_texto", "roda_travada", "quando",
                    "veiculo_cor", "rodovia"]

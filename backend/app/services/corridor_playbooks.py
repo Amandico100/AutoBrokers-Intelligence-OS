@@ -75,6 +75,32 @@ def _norm(text: str) -> str:
     ).lower()
 
 
+# O PROTOCOLO É UM SÓ — E A SEGURADORA ESCREVE A ETIQUETA DELE DE SEIS JEITOS.
+#
+# Esta âncora nasceu dentro de `_AUTO_CAPTURE_ANCHORS` e passou a viver aqui, no
+# topo, por um motivo medido:
+#
+# 📊 04/08/2026, `observed_events` insurer_key='allianz': **19 mensagens** trazem
+# `*Protocolo N.°:*` (15) ou `*Protocolo Nrº:*` (4) — é o cabeçalho do RESUMO,
+# o formato mais comum de protocolo da Allianz. A âncora do corredor RESIDENCIAL
+# era própria (`protocolo\s*:?\s*\*?(\d{5,12})`) e exigia o `:` colado no
+# "protocolo": `N.°:` e `Nrº:` entram no meio e ela não casa NENHUM dos 19.
+# A de AUTO casa os dois — ela tolera `[^\d]{0,24}` entre a palavra e o número.
+#
+# Duas âncoras para o MESMO fato é o defeito: o corredor de auto captura o
+# protocolo e o residencial encerra sem número, no mesmo dia, na mesma
+# seguradora, no mesmo formato de mensagem. Uma definição, dois leitores.
+#
+# O grupo aceita dígitos com hífen: a Azul emite "protocolo ... 1-104106503215".
+# HDI emite "a solicitação de GUINCHO para a assistência *9257546* foi aberta".
+_ANCORA_DE_PROTOCOLO = (
+    r"(?:protocolo(?:\s+de\s+atendimento)?|"
+    r"n[úu]mero\s+da\s+(?:sua\s+)?(?:ordem|os|solicita[çc][ãa]o|assist[êe]ncia)|"
+    r"para a assist[êe]ncia|sobre sua assist[êe]ncia|o\.?s\.?)"
+    r"[^\d]{0,24}(\d[\d-]{4,18}\d)"
+)
+
+
 # ---------------------------------------------------------------------------
 # Seed: Allianz Residencial WhatsApp v1
 # ---------------------------------------------------------------------------
@@ -164,7 +190,36 @@ ALLIANZ_RESIDENCIAL_WHATSAPP_V1: Dict[str, Any] = {
             "anchor": r"informe o tipo de\s+servi[çc]o",
             "reply": "{tipo_servico_opcao}",
             "requires": ["tipo_servico_opcao"],
-            "notes": "1=casa (encanador/eletricista/chaveiro) · 2=eletrodomésticos · 3=outros",
+            "notes": "📊 64 ocorrências: 'Vamos lá! Informe o tipo de serviço: *1 -* Serviços "
+                     "Emergenciais (encanador, eletricista e chaveiro) *2 -* Para meus "
+                     "eletrodomésticos *3 -* Outros serviços'",
+        },
+        {
+            # 🔴 O SEGUNDO MENU — o que escolhe o PROFISSIONAL de verdade.
+            #
+            # 📊 04/08/2026, `observed_events` insurer_key='allianz': 13
+            # ocorrências de "De qual profissional? / *1 -* Eletricista /
+            # *2 -* Encanador / *3 -* Desentupimento / *4 -* Chaveiro /
+            # *5 -* Voltar" — e `match_ura_step` devolvia NENHUM passo.
+            #
+            # O playbook conhecia só a URA anterior (`informe o tipo de
+            # serviço`), que escolhe a FAMÍLIA ("1 - Serviços Emergenciais").
+            # Quem escolhe o ofício é esta tela, e ela vem logo depois.
+            #
+            # 📊 Fluxo real completo (sessão 9694992d, 13/07/2026, encanador):
+            #   'Informe o tipo de serviço' → 1
+            #   'De qual profissional?'     → 2
+            #   'E para quando precisa do *Encanador*?' → 1 (Agora)
+            #   ... árvore do problema ... → RESUMO → 1 → protocolo 52652744
+            #
+            # Sem este passo o menu caía no cérebro adaptativo, que teria de
+            # adivinhar a tecla do ofício — e a tecla errada não falha: ela
+            # abre chamado de OUTRO profissional na apólice do segurado.
+            "step": "menu_profissional",
+            "anchor": r"de qual profissional",
+            "reply": "{profissional_opcao}",
+            "requires": ["profissional_opcao"],
+            "notes": "📊 13 ocorrências: 1-Eletricista 2-Encanador 3-Desentupimento 4-Chaveiro 5-Voltar",
         },
         {
             "step": "complemento_referencia",
@@ -182,13 +237,21 @@ ALLIANZ_RESIDENCIAL_WHATSAPP_V1: Dict[str, Any] = {
         },
     ],
     # Subserviços -> slots mínimos (do caso) antes de iniciar o acionamento.
+    #
+    # DOIS menus, duas opções. `tipo_servico_opcao` responde "Informe o tipo de
+    # serviço" (a FAMÍLIA); `profissional_opcao` responde "De qual profissional?"
+    # (o OFÍCIO). Quem injeta os dois nos slots é `new_dispatch_session`, pela
+    # regra do sufixo `_opcao` — a mesma que já impede que eles sejam cobrados
+    # do segurado em `missing_slots_for_subservice`.
     "subservices": {
         "eletricista": {
             "tipo_servico_opcao": "1",
+            "profissional_opcao": "1",
             "required_slots": ["titular_cpf", "endereco_numero", "telefone_contato", "problema_descricao", "periodo_preferido", "risco_confirmado_sem_fumaca"],
         },
         "chaveiro": {
             "tipo_servico_opcao": "1",
+            "profissional_opcao": "4",
             "required_slots": ["titular_cpf", "endereco_numero", "telefone_contato", "problema_descricao", "periodo_preferido"],
         },
         # ENCANADOR (SPEC-063, 03/08/2026): mesma espinha do eletricista — mesma
@@ -202,11 +265,37 @@ ALLIANZ_RESIDENCIAL_WHATSAPP_V1: Dict[str, Any] = {
         # ESPECIALISTA humano da assistência (e a corretora, para priorizar).
         "encanador": {
             "tipo_servico_opcao": "1",
+            "profissional_opcao": "2",
             "required_slots": ["titular_cpf", "endereco_numero", "telefone_contato", "problema_descricao",
                                "periodo_preferido", "vazamento_local", "agua_escorrendo",
                                "risco_confirmado_registro_fechado"],
         },
+        # DESENTUPIMENTO — a opção 3 do menu real, que não era serviço declarado.
+        #
+        # 📊 04/08/2026: "De qual profissional? ... *3 -* Desentupimento" aparece
+        # nas 13 ocorrências do menu. Sem estar em `subservices`,
+        # `subservice_supported()` devolvia False, `missing_slots_for_subservice`
+        # devolvia `[SUBSERVICO_INVALIDO]` e o caso virava handoff — na
+        # seguradora RESIDENCIAL mais observada do acervo, com a tecla à vista.
+        #
+        # A HDI residencial já o declara desde 03/08. Um mesmo trabalho existir
+        # num corredor e não no outro não é escopo: é esquecimento.
+        #
+        # Os slots do problema são os do ENCANADOR menos o registro fechado: quem
+        # está com o ralo entupido não tem registro para fechar. É a mesma
+        # decisão que separa "pinga a torneira" de "está alagando", aplicada ao
+        # trabalho certo.
+        "desentupimento": {
+            "tipo_servico_opcao": "1",
+            "profissional_opcao": "3",
+            "required_slots": ["titular_cpf", "endereco_numero", "telefone_contato", "problema_descricao",
+                               "periodo_preferido"],
+        },
         "eletrodomesticos": {
+            # Sem `profissional_opcao`: eletrodoméstico sai pela opção 2 do PRIMEIRO
+            # menu ("Para meus eletrodomésticos") e a tela "De qual profissional?"
+            # não aparece nesse ramo. Declarar uma tecla que a URA não mostra é o
+            # defeito que manda o segurado para a opção errada.
             "tipo_servico_opcao": "2",
             "required_slots": ["titular_cpf", "endereco_numero", "telefone_contato", "aparelho_marca_modelo", "aparelho_idade", "problema_descricao", "periodo_preferido"],
         },
@@ -225,8 +314,12 @@ ALLIANZ_RESIDENCIAL_WHATSAPP_V1: Dict[str, Any] = {
     ],
     "finalize_abort_reply": "SAIR",  # a URA aceita SAIR a qualquer momento
     # Âncoras de captura no retorno da seguradora (formatos 2024 E 2026).
+    # `protocol` é a definição ÚNICA do arquivo (ver `_ANCORA_DE_PROTOCOLO`): a
+    # âncora própria que morava aqui perdia os 19 `*Protocolo N.°:*` do RESUMO.
+    # `password` e `schedule` continuam próprios — a senha de acesso de 4 dígitos
+    # e o "entre 9h e 13h" são da assistência residencial e de mais ninguém.
     "capture_anchors": {
-        "protocol": r"(?:n[úu]mero (?:da assist[êe]ncia|de protocolo) [ée]|protocolo)\s*:?\s*\*?(\d{5,12})",
+        "protocol": _ANCORA_DE_PROTOCOLO,
         "password": r"senha (?:de acesso|ser[áa]).*?(\d{4})",
         "schedule": r"agendad[ao] para o dia\s*(\d{1,2}(?:/\d{1,2}(?:/\d{2,4})?)?)\s*,?\s*entre\s*(\d{1,2}\s?h)\s*e\s*(\d{1,2}\s?h)",
     },
@@ -242,7 +335,8 @@ ALLIANZ_RESIDENCIAL_WHATSAPP_V1: Dict[str, Any] = {
     ),
     "subservice_labels": {
         "eletricista": "eletricista", "chaveiro": "chaveiro",
-        "encanador": "encanador", "eletrodomesticos": "reparo de eletrodomestico",
+        "encanador": "encanador", "desentupimento": "desentupimento",
+        "eletrodomesticos": "reparo de eletrodomestico",
     },
     # Regras fixas a repassar ao cliente junto do agendamento.
     "client_instructions": [
@@ -405,11 +499,11 @@ _AUTO_HUMAN_PHASE_GUIDANCE = (
 )
 
 # Captura comum de protocolo/OS + link de acompanhamento (auto).
-# O grupo aceita dígitos com hífen: a Azul emite "protocolo ... 1-104106503215".
-# HDI emite "a solicitação de GUINCHO para a assistência *9257546* foi aberta".
+# `protocol` é `_ANCORA_DE_PROTOCOLO` — a mesma que o residencial usa. Ela subiu
+# para o topo do arquivo quando o corredor residencial da Allianz precisou dela.
 # Zurich agenda com "prevista para o dia X às Y"; Porto/Allianz dão ETA em minutos.
 _AUTO_CAPTURE_ANCHORS = {
-    "protocol": r"(?:protocolo(?:\s+de\s+atendimento)?|n[úu]mero\s+da\s+(?:sua\s+)?(?:ordem|os|solicita[çc][ãa]o|assist[êe]ncia)|para a assist[êe]ncia|sobre sua assist[êe]ncia|o\.?s\.?)[^\d]{0,24}(\d[\d-]{4,18}\d)",
+    "protocol": _ANCORA_DE_PROTOCOLO,
     "schedule": r"(?:agendad?[ao]?|prevista?)\s+para\s+(?:o\s+dia\s+)?\*?(\d{1,2}/\d{1,2}/\d{2,4})\*?(?:\s*(?:[àa]s|,)?\s*\*?(\d{1,2}[:h]\d{0,2}))?",
     "eta": r"(?:previs[ãa]o(?:\s+de\s+chegada)?\s*:?|previsto para ser realizado[^\n]{0,20}?em|em at[ée])\s*(?:at[ée]\s+)?(\d{1,3})\s*min",
     "tracking_link": r"(https?://\S+)",
@@ -1156,15 +1250,71 @@ AZUL_AUTO_WHATSAPP_V1 = _auto_playbook(
          "notes": "só a PERGUNTA (o RESUMO também contém 'Ponto de referência:'); se não houver, 'não tem'"},
         {"step": "algo_mais", "anchor": r"posso te ajudar com algo mais", "reply": "Não",
          "notes": "pós-protocolo: encerrar com educação"},
+        # 🔴 O RESUMO. Informativo, e por isso NOOP — mas noop com motivo.
+        #
+        # 📊 04/08/2026, `observed_events` insurer_key='azul': 8 ocorrências de
+        # "Antes de confirmar a solicitação, confira as informações 👇" e NENHUM
+        # passo casava. Sem passo, a mensagem caía no cérebro adaptativo com o
+        # guia dizendo "responda menus escolhendo a opção coerente" — e a única
+        # coisa parecida com opção neste texto é o serviço que ele resume.
+        # Responder ao resumo é responder à confirmação um passo antes dela.
+        {"step": "resumo_solicitacao",
+         "anchor": r"antes de confirmar a solicita[çc][ãa]o,? confira as informa[çc][õo]es",
+         "reply": "", "noop": True,
+         "notes": "RESUMO da Azul — a tela de decisão vem na mensagem SEGUINTE ('Como você quer prosseguir?')"},
         {"step": "confirmar_tudo", "anchor": r"tudo est[áa] correto", "reply": "1",
-         "notes": "confirmação FINAL (RESUMO). Só alcançada em modo LIVE — no teste o freio cancela antes."},
+         "notes": "confirmação FINAL da URA NUMERADA (📊 2 ocorrências, últimas em 26/12/2025). "
+                  "Só alcançada em modo LIVE — no teste o freio cancela antes."},
+        # 🔴 A TELA QUE ABRE O SERVIÇO — a mesma da Porto, na mesma posição.
+        #
+        # 📊 04/08/2026: "Como você quer prosseguir? / Confirmar solicitação /
+        # Mudar localização atual / Alterar local de destino / Alterar dados de
+        # contato / Sair e não agendar" — 8 ocorrências, de 07/04 a 28/07/2026.
+        # É LISTA (`interactive.kind = list`): responde-se o RÓTULO.
+        #
+        # A Azul entrou no grupo Porto e herdou o bot. A URA numerada
+        # ("Tudo está correto?") não aparece desde 26/12/2025.
+        {"step": "confirmar_solicitacao", "anchor": r"como voc[êe] quer prosseguir",
+         "reply": "Confirmar solicitação",
+         "notes": "confirmação FINAL da URA em LISTA. Só alcançada em modo LIVE — no teste o freio cancela antes."},
+        # POR ÚLTIMO, e a ordem É a regra (mesma lição do noop da família Allianz).
+        #
+        # 📊 "Está correto?\nBotão 1: Sim\nBotão 2: Não" — 13 ocorrências, a tela
+        # de MAIOR frequência da Azul, e nenhum passo casava. Ela confirma o
+        # geocode do endereço QUE NÓS digitamos (a mensagem anterior é sempre
+        # "Localizei o endereço ...").
+        #
+        # A âncora é genérica de propósito — a URA não repete o endereço na
+        # pergunta —, e por isso ela tem de ser consultada DEPOIS de
+        # `telefone_correto` ("O número está correto?" → "1") e de
+        # `confirmar_tudo` ("Tudo está correto?" → "1"): as duas também contêm
+        # "está correto?" e as duas são menus NUMERADOS. Responder "Sim" a um
+        # menu numerado é resposta inválida; responder "1" a esta lista de
+        # botões também. `match_ura_step` devolve o PRIMEIRO que casa.
+        {"step": "endereco_correto", "anchor": r"est[áa] correto\s*\?", "reply": "Sim",
+         "notes": "confirma o geocode do endereço que NÓS digitamos (botões Sim/Não). "
+                  "Passo GENÉRICO — precisa ficar depois dos específicos"},
     ],
     finalize_anchors=[
+        # 📊 O freio REAL de 2026: a tela em lista (8 ocorrências, a última em
+        # 28/07/2026). Antes desta linha a Azul não freava em NADA: o freio
+        # declarado era `tudo está correto`, que não aparece desde 26/12/2025.
+        r"como voc[êe] quer prosseguir",
         r"tudo est[áa] correto", r"posso confirmar", r"confirmar o agendamento",
     ],
 )
 AZUL_AUTO_WHATSAPP_V1["subservice_menu_map"] = {"guincho": "1", "bateria": "2", "pneu": "3", "chaveiro": "4"}
-AZUL_AUTO_WHATSAPP_V1["finalize_abort_reply"] = "4"  # '4 - Sair e não agendar' no RESUMO
+# O CANCELAMENTO PRECISA SER ACEITÁVEL PELA TELA QUE ESTÁ NA FRENTE.
+#
+# Era "4", de "*4* - Sair e não agendar" do RESUMO numerado. 📊 Essa tela teve 2
+# ocorrências e a última foi em 26/12/2025. A tela viva é LISTA, e nela a opção
+# se chama "Sair e não agendar" — dígito é rejeitado ("Não entendi sua resposta.
+# Selecione o botão abaixo", igual à Porto, que é o mesmo bot).
+#
+# Freio que dispara e manda uma resposta rejeitada não cancela nada: a sessão
+# fica marcada `test_aborted` do nosso lado e a URA continua parada na tela de
+# confirmação do lado da seguradora.
+AZUL_AUTO_WHATSAPP_V1["finalize_abort_reply"] = "Sair e não agendar"
 
 # --- BRADESCO (bot Europ; PLACA primeiro; fluxo REAL 05/01/2026) ------------------
 BRADESCO_AUTO_WHATSAPP_V1 = _auto_playbook(
@@ -1455,12 +1605,28 @@ HDI_RESIDENCIAL_WHATSAPP_V1: Dict[str, Any] = {
                   "Botão 2: Residencial'. O corredor de AUTO responde 'Automóvel' nesta MESMA "
                   "tela — é o passo que separa os dois ramos, e errar aqui atende o carro de "
                   "quem pediu encanador"},
+        # 🔴 O MESMO MENU, DUAS REDAÇÕES — e a âncora só conhecia uma.
+        #
+        # 📊 04/08/2026, `observed_events` (hdi + yelum, mesmo bot white-label):
+        #
+        #   "Qual é o serviço que você precisa solicitar?"   hdi 7 · yelum 3
+        #   "Qual o serviço que você precisa?"               hdi 7 · yelum 3
+        #
+        # A segunda perde o "é" E o "solicitar" — os dois pedaços que a âncora
+        # literal exigia. `match_ura_step` devolvia NENHUM em metade das
+        # entradas, no passo que ESCOLHE O TRABALHO. O corredor emudecia diante
+        # da tela que ele existe para responder.
+        #
+        # O "é" e o "solicitar" viram opcionais — a mesma solução do
+        # `_HDI_FAMILY_AGORA_OU_AGENDAR`, que já tinha três redações da mesma
+        # pergunta. A âncora fica presa ao que não varia: "o serviço que você
+        # precisa".
         {"step": "menu_servico_residencial",
-         "anchor": r"qual [ée] o servi[çc]o que voc[êe] precisa solicitar",
+         "anchor": r"qual (?:[ée] )?o servi[çc]o que voc[êe] precisa",
          "reply": "{tipo_servico_opcao}", "requires": ["tipo_servico_opcao"],
          "notes": "📊 lista real: Encanador (conserto de vazamentos como torneiras, sifões, etc) / "
                   "Desentupimento (desentupimento residencial) / Eletricista / Chaveiro / "
-                  "Eletrodoméstico — responder o RÓTULO, que vem do subserviço"},
+                  "Linha branca / Ar condicionado — responder o RÓTULO, que vem do subserviço"},
         {"step": "servico_ja_aberto",
          "anchor": r"localizamos o servi[çc]o de .{0,80}?deseja acompanhar",
          "reply": "Novo serviço",

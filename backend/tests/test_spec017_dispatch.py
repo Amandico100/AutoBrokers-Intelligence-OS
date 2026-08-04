@@ -160,8 +160,17 @@ def run():
     # ---- P5: plano dry-run para a tool do atendente ----
     print("\n== P5 - build_dry_run_plan + tool do atendente ==\n")
     plan = dispatch.build_dry_run_plan(REF, "eletricista", SLOTS)
-    check("P5: plano dry-run completo (15 passos: URA 2026 + multi-cliente + confirmação)",
-          plan["ok"] and len(plan["steps"]) == 15, plan.get("steps"))
+    # 16, e não 15: em 04/08 o corredor passou a conhecer "De qual profissional?"
+    # (📊 13 ocorrências no banco, e nenhum passo casava). O número subiu porque a
+    # URA sempre teve esse menu — o que faltava era o corredor.
+    check("P5: plano dry-run completo (16 passos: URA 2026 + multi-cliente + confirmação)",
+          plan["ok"] and len(plan["steps"]) == 16, plan.get("steps"))
+    # E o guarda migra em vez de morrer: contar passos não prova qual tecla vai
+    # em qual menu. Os DOIS menus em sequência entram por nome e por resposta —
+    # "1" na família (Serviços Emergenciais) e "1" no ofício (Eletricista).
+    teclas = {s["step"]: s["reply"] for s in plan["steps"]}
+    check("P5: os DOIS menus da URA residencial estão no plano, com a tecla certa",
+          teclas.get("menu_tipo_servico") == "1" and teclas.get("menu_profissional") == "1", teclas)
     check("P5: plano contém CPF e opção de serviço", any(s["reply"] == "11122233344" for s in plan["steps"]) and plan["steps"][-1]["reply"] == "1", plan["steps"])
     check("P5: nota deixa claro o modo simulação", "SIMULA" in plan["note"].upper(), plan["note"])
     plan_missing = dispatch.build_dry_run_plan(REF, "eletricista", {"titular_cpf": "111"})
