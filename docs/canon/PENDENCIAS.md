@@ -1088,3 +1088,56 @@ outro assunto.
 dicionário resolvido. Com teste que prove a expansão acontecendo.
 **O que custa esquecer:** quem tinha a capability antiga não ganha a nova no
 cutover — exatamente o que o expand-first prometeu evitar.
+
+---
+
+## P-83 · 🧑 METADE DA SPEC-065 ESTÁ NO AR; A OUTRA METADE ESPERA UM CLIQUE
+
+📊 Medido em 04/08/2026, depois do deploy do commit `79077f6`:
+
+```
+web           200        ✅ no ar
+API           healthy    ✅ no ar
+portal-worker build_time 2026-08-04T12:32:36Z   ❌ NÃO reconstruiu
+```
+
+Verifiquei por 4 minutos, de 30 em 30 segundos: o `build_time` não mudou. **O
+portal-worker é um serviço próprio no EasyPanel, com gatilho de deploy próprio,
+e eu só tenho os gatilhos da API e do web.**
+
+### O que isso significa, arquivo por arquivo
+
+| Onde | Serviço | Está no ar? |
+|---|---|---|
+| capability + portão do `portal_action` (`graph.py`) | API | ✅ |
+| roteamento "sem corredor de vidro → portal" (`insurer_dispatch_tool.py`) | API | ✅ |
+| Vigia do Portal (`vigia_do_portal.py`, `buffer_processor.py`) | API | ✅ |
+| idempotência e `session_id` (`portal_tool.py`, `portal_params.py`) | API | ✅ |
+| campo `especificos` + descrição da tool | API | ✅ |
+| perguntar antes de abrir (`perguntas_do_portal_de_vidros.py`) | API | ✅ |
+| as duas migrations | Supabase | ✅ (aplicadas e verificadas) |
+| **preenchimento determinístico + modelo** (`adaptive.py`) | **worker** | ❌ |
+| **vocabulário do 80% + loja crítica** (`vidros_lanternas.py`, `adaptive.py`) | **worker** | ❌ |
+
+**A parte que decide se o portal é chamado está no ar. A parte que decide o que
+ele digita, não.**
+
+⚠️ Consequência concreta enquanto isto durar: se um acionamento rodar agora, ele
+usa o `gpt-4o-mini` antigo, sem preenchimento determinístico, e `"menor que 10
+cm"` ainda pode virar **"Maior (troca do vidro)"**. 📊 Na prática o risco é
+teórico hoje — a [P-77] mantém os agentes de atendimento desligados, então
+nenhum acionamento nasce. Mas as duas pendências têm de ser resolvidas **na
+ordem certa: esta primeiro, a P-77 depois.**
+
+**O que destrava:** 🧑 Founder — uma das duas:
+1. clicar **Deploy** no serviço `portal-worker` no EasyPanel, ou
+2. me passar o gatilho dele (`http://187.77.45.227:3000/api/deploy/<token>`),
+   do mesmo jeito que passou o do `evolution-go-teste`.
+
+**Como conferir que funcionou:** o `build_time` em
+`https://autobrokers-intelligence-os-portal-worker.golhpm.easypanel.host/health`
+tem de ser MAIOR que `2026-08-04T12:32:36Z`.
+
+**O que custa esquecer:** ligar o atendimento (P-77) com o worker velho no ar. O
+sistema passaria a acionar de verdade, com os defeitos que esta SPEC consertou
+ainda em produção — e o pior deles troca um para-brisa que tinha conserto.
