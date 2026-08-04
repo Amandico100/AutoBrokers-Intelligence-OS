@@ -104,26 +104,34 @@ async def enqueue_observer_media(
     if table not in ALLOWED_TABLES or not record.get("message_id") or not message:
         return False
 
-    # QUEM PRECISA ENTENDER A MÍDIA É O AGENTE QUE ESTÁ RESPONDENDO AGORA.
+    # SALVAR É DE GRAÇA. LER É QUE CUSTA. — SPEC-065, 04/08/2026.
     #
-    # Esta fila serve aos caminhos de OBSERVAÇÃO: o Espelho arquivando a
-    # conversa do segurado com a atendente humana, e o Atlas guardando o que a
-    # seguradora mandou. Nos dois casos ninguém está esperando resposta — o
-    # agente está desligado.
+    # Aqui ficava `if not await _pode_gastar_midia(): return False`, e o
+    # comentário ao lado prometia que "sem orçamento aberto a mídia só é
+    # ARQUIVADA — ela não se perde". **A promessa não era verdade.** O portão
+    # estava no ENFILEIRAMENTO, então sem orçamento nada era baixado, nada era
+    # arquivado, e o áudio ficava só como uma coordenada num campo JSON.
     #
-    # Quando o agente está LIGADO, a mídia não passa por aqui: o webhook baixa,
-    # descreve e responde na mesma requisição. Aí gastar é o serviço.
+    # 📊 Medido em 04/08/2026: 2.849 mídias com coordenada de download,
+    # **ZERO arquivadas**. E 3.654 áudios anteriores ao conserto das
+    # coordenadas já estão perdidos para sempre — não têm nem a coordenada.
     #
-    # Sem esta trava, consertar o download (28/07/2026) ligaria a transcrição
-    # automática de toda foto e todo áudio que chegasse na Resulta, para
-    # sempre, sem ninguém pedir. O Founder tem US$ 1,28 de crédito.
+    # As duas operações têm custos que não se parecem em nada:
     #
-    # O crédito é o mesmo `DECR` do histórico: sem orçamento aberto devolve -1
-    # e a mídia só é arquivada. Ela não se perde — fica sem leitura, e a
-    # leitura pode ser feita depois, quando alguém decidir pagar por ela.
-    if not await _pode_gastar_midia():
-        return False
-
+    #   BAIXAR + ARQUIVAR   dinheiro nenhum. Os bytes vêm do WhatsApp pela
+    #                       sessão já pareada e vão para o MinIO, que roda no
+    #                       servidor da própria casa. 📊 488 MB no total, dos
+    #                       quais 80 MB de áudio.
+    #
+    #   TRANSCREVER/LER     Whisper cobra por minuto. É o que precisa de
+    #                       orçamento, e continua tendo.
+    #
+    # E a assimetria decide: uma coordenada de mídia do WhatsApp EXPIRA. Não
+    # arquivar hoje é escolher perder o áudio; transcrever depois é sempre
+    # possível, porque o arquivo estará no nosso disco.
+    #
+    # Então o enfileiramento é livre, e o portão desceu para o único lugar onde
+    # há conta a pagar: `_derive_text`, no processamento.
     payload = {
         "table": table,
         "company_id": str(record.get("company_id") or ""),
@@ -171,7 +179,30 @@ def _load_integration_sync(payload: Dict[str, Any]) -> Optional[Dict[str, Any]]:
     rows = query.limit(1).execute().data or []
     if not rows or str(rows[0].get("company_id") or "") != str(payload.get("company_id") or ""):
         return None
-    return prepare_integration_for_runtime(rows[0])
+
+    # NUNCA BAIXAR POR UM CANAL QUE NÃO ESTÁ DE PÉ. — SPEC-065, 04/08/2026.
+    #
+    # O caminho por `integration_id` acima não conferia nada disso, e é o
+    # caminho normal (o payload sempre traz o id). Uma linha aposentada seguia
+    # servindo download.
+    #
+    # E o risco não é acadêmico: baixar mídia em rajada por uma sessão que está
+    # caindo e voltando é justamente o padrão que faz o WhatsApp desconfiar do
+    # número. O Founder pediu essa garantia com todas as letras — *"precisa se
+    # precaver no fato de baixar os áudios não vá bloquear o número"*.
+    #
+    # Fila não se perde: o item volta a ser tentado quando o canal voltar, e a
+    # coordenada continua no banco. Adiar é barato; ser bloqueado, não.
+    linha = rows[0]
+    if not linha.get("is_active"):
+        raise RuntimeError("canal_aposentado")
+    from app.services.whatsapp.channel_state import esta_conectado, normalizar_estado
+
+    estado = normalizar_estado(linha.get("channel_status"))
+    if not (esta_conectado(estado) or estado == "connecting"):
+        raise RuntimeError(f"canal_{estado}")
+
+    return prepare_integration_for_runtime(linha)
 
 
 def _motivo_da_falha(exc: BaseException) -> str:
@@ -379,21 +410,32 @@ async def _process_payload(payload: Dict[str, Any]) -> None:
             mimetype,
             filename,
         )
-        derived_text = await _derive_text(
-            blob, mimetype, filename, str(payload.get("company_id") or ""),
-            segundos=(meta or {}).get("segundos"),
-        )
-        await asyncio.to_thread(
-            _update_record_sync,
-            payload,
-            {
-                "mimetype": mimetype,
-                "filename": filename,
-                "private_object": private_object,
-                "derived_text": derived_text,
-                "enrichment_status": "processed",
-            },
-        )
+        # O ARQUIVO JÁ ESTÁ SALVO. A leitura é a parte que pode esperar.
+        #
+        # `_pode_gastar_midia` desceu do enfileiramento para cá (SPEC-065): sem
+        # orçamento aberto, o áudio fica **arquivado e sem transcrição** — que é
+        # exatamente o que o comentário lá em cima sempre prometeu e o código
+        # não fazia. Transcrever depois é sempre possível; recuperar um áudio
+        # cuja coordenada expirou, não.
+        pode_ler = await _pode_gastar_midia()
+        derived_text = None
+        if pode_ler:
+            derived_text = await _derive_text(
+                blob, mimetype, filename, str(payload.get("company_id") or ""),
+                segundos=(meta or {}).get("segundos"),
+            )
+        mudancas = {
+            "mimetype": mimetype,
+            "filename": filename,
+            "private_object": private_object,
+            # `arquivado` diz "os bytes estão no nosso disco, o texto não foi
+            # lido". É um estado diferente de `processed`, e a diferença é o
+            # que permite achar depois o que ainda falta transcrever.
+            "enrichment_status": "processed" if pode_ler else "arquivado",
+        }
+        if pode_ler:
+            mudancas["derived_text"] = derived_text
+        await asyncio.to_thread(_update_record_sync, payload, mudancas)
     finally:
         if temp_path:
             try:

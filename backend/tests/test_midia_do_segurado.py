@@ -128,21 +128,43 @@ def teste_a_mensagem_crua_nunca_e_gravada():
 
 def teste_observacao_nao_transcreve_sozinha():
     print("\n[6] Agente desligado não gasta dinheiro com mídia")
-    # Consertar o download ligaria a transcrição automática de toda foto e
-    # todo áudio que chegasse — para sempre, sem ninguém pedir. Nos caminhos
-    # de OBSERVAÇÃO ninguém está esperando resposta: o agente está desligado
-    # e a mídia só está sendo arquivada.
+    # ATUALIZADO em 04/08/2026 (SPEC-065). A verdade que este caso guarda —
+    # **agente desligado não gera conta** — não mudou e continua sendo o
+    # primeiro `checar` abaixo. O que mudou foi ONDE o portão fica.
     #
-    # Quando o agente está LIGADO é outro caso: o webhook baixa, descreve e
-    # responde na mesma requisição, e não passa por esta fila. Aí gastar é o
-    # serviço sendo prestado.
+    # Ele estava no ENFILEIRAMENTO, e o comentário original prometia que "sem
+    # crédito ela apenas ARQUIVA, sem ler". 📊 A promessa não se cumpria: sem
+    # orçamento nada era baixado, então nada era arquivado. Medido em 04/08:
+    # **2.849 mídias com coordenada de download, ZERO arquivadas** — e 3.654
+    # áudios anteriores já perdidos por não terem nem a coordenada.
+    #
+    # A decisão do Founder separou as duas contas, que nunca foram a mesma:
+    #
+    #   baixar + arquivar  →  custo ZERO (bytes do WhatsApp, disco da casa)
+    #   transcrever        →  Whisper cobra por minuto
+    #
+    # E a coordenada de mídia EXPIRA. Não arquivar hoje é escolher perder o
+    # áudio; transcrever depois é sempre possível.
+    #
+    # Então o portão desceu para `_process_payload`, imediatamente antes de
+    # `_derive_text` — o único lugar onde há dinheiro. Guardar a posição antiga
+    # aqui manteria a promessa quebrada em nome de uma frase (CLAUDE.md §9.3).
     midia = _so_codigo(_ler("app", "services", "atlas", "observer_media.py"))
-    fila = _funcao(midia, "enqueue_observer_media")
-    checar("_pode_gastar_midia()" in fila,
-           "a fila de observação passa pelo orçamento",
+    processa = _funcao(midia, "_process_payload")
+    checar("_pode_gastar_midia()" in processa,
+           "a transcrição passa pelo orçamento",
            "sem isso, cada mídia recebida vira transcrição paga")
-    checar("return False" in fila.split("_pode_gastar_midia()")[1][:80],
-           "e sem crédito ela apenas ARQUIVA, sem ler")
+    checar("_derive_text" in processa.split("_pode_gastar_midia()")[1][:400],
+           "e é a LEITURA que ele governa, não o arquivamento")
+    # O arquivo tem de ser salvo ANTES da pergunta sobre dinheiro.
+    checar(processa.find("_archive_private_sync") < processa.find("_pode_gastar_midia()"),
+           "e o arquivo é salvo ANTES de consultar o orçamento",
+           "se a ordem inverter, volta a existir mídia com coordenada e sem bytes")
+
+    fila = _funcao(midia, "enqueue_observer_media")
+    checar("_pode_gastar_midia" not in fila,
+           "CONTROLE — o enfileiramento NÃO cobra orçamento (baixar é de graça)",
+           "era este portão que deixava 2.849 mídias sem nunca descer")
 
     # A trava tem de estar num lugar SÓ. Checar na ingestão e na fila gastaria
     # dois créditos por mídia, e o teto de 20 viraria 10.
