@@ -545,6 +545,57 @@ def _sinais_do_codigo() -> dict:
         sinais["midia_recuperavel"] = False
         sinais["midia_chave_escondida"] = False
 
+    # SPEC-065 — o portal de vidros. Estas quatro linhas existem porque hoje eu
+    # NÃO consegui provar, de fora, que o deploy da API tinha entrado.
+    #
+    # 📊 O `portal-worker` tem `build_time` no `/health` e a prova foi imediata:
+    # 14:23:47Z > 12:32:36Z. A API só respondia "healthy" — que é o mesmo que ela
+    # respondia antes do deploy. É a lição do §9.1 noutra roupa: "subiu" não é
+    # observável só porque o processo está de pé.
+    #
+    # Cada linha aqui é uma peça que nasceu em 04/08 e que **não existia ontem**.
+    try:
+        from app.agents.tools.insurer_dispatch_tool import _e_familia_de_vidros
+
+        # Vidro sem corredor vai ao portal; sinistro continua indo para gente.
+        # As DUAS metades, porque uma sem a outra é o defeito, não o conserto.
+        sinais["vidro_sem_corredor_vai_ao_portal"] = (
+            _e_familia_de_vidros("vidros") is True
+            and _e_familia_de_vidros("colisao") is False)
+    except Exception:  # noqa: BLE001
+        sinais["vidro_sem_corredor_vai_ao_portal"] = False
+    try:
+        from app.tasks.vigia_do_portal import diagnosticar
+
+        # Acusa o que ficou parado e fica quieto com o que já foi entregue.
+        parado = diagnosticar({"status": "needs_human", "params": {}, "evidence": {},
+                               "created_at": "2020-01-01T00:00:00+00:00"})
+        entregue = diagnosticar({"status": "needs_human", "params": {},
+                                 "evidence": {"entregue_ao_agente": True},
+                                 "created_at": "2020-01-01T00:00:00+00:00"})
+        sinais["vigia_do_portal"] = bool(parado) and entregue is None
+    except Exception:  # noqa: BLE001
+        sinais["vigia_do_portal"] = False
+    try:
+        from app.agents.tools.portal_tool import PortalActionInput
+
+        # O campo que leva as respostas do 80% até o portal. `model_fields` é
+        # pydantic v2; `__fields__` é v1. Ler os dois evita que este sinal
+        # responda "não subiu" por causa da versão da biblioteca — que é
+        # exatamente o falso negativo que faria alguém redeployar à toa.
+        _campos = getattr(PortalActionInput, "model_fields", None) or \
+            getattr(PortalActionInput, "__fields__", {})
+        sinais["portal_leva_os_especificos"] = "especificos" in _campos
+    except Exception:  # noqa: BLE001
+        sinais["portal_leva_os_especificos"] = False
+    try:
+        from app.services.perguntas_do_portal_de_vidros import o_que_falta
+
+        # Pergunta antes de abrir — e fica calado quando não há o que perguntar.
+        sinais["pergunta_antes_de_abrir"] = bool(o_que_falta("parabrisa", {}))
+    except Exception:  # noqa: BLE001
+        sinais["pergunta_antes_de_abrir"] = False
+
     # O template do briefing existe no catálogo? Sem ele, o artefato morre em
     # chave estrangeira e o briefing fica em `pending` sem ninguém saber.
     try:

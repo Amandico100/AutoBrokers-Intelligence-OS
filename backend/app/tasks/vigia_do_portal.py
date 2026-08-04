@@ -257,12 +257,32 @@ async def varrer_portal() -> int:
             integracao = integracoes.get_platform_whatsapp_integration(company_id) if company_id else None
 
             # 1) o segurado, primeiro. Ele é quem está esperando.
+            #
+            # 🔴 Mas SÓ se o agente estiver ligado. Este era o furo desta própria
+            # varredura no dia em que ela nasceu: ela roda no scheduler, a cada
+            # 60s, e o portão de silêncio do `webhook.py` não passa por aqui.
+            #
+            # Com o agente em modo observação, a atendente humana responde pelo
+            # celular. Um robô entrando na conversa para dizer "não consegui
+            # abrir seu vidro" seria o sistema falando sem ter permissão — e
+            # numa conversa onde o segurado acha que está falando com gente.
+            #
+            # Fail-closed: erro de leitura = silêncio. É a mesma regra do
+            # webhook, e ela vale para todo sender, não só para o que responde.
             sessao = str(job.get("session_id") or "")
             partes = sessao.split(":")
             if len(partes) >= 3 and partes[0] == "whatsapp" and integracao:
+                try:
+                    from app.services.atlas.attendance_capture import attendance_agent_active
+
+                    pode_falar = await attendance_agent_active(company_id)
+                except Exception:  # noqa: BLE001
+                    pode_falar = False
                 telefone = "".join(c for c in partes[1] if c.isdigit())
-                if telefone:
+                if telefone and pode_falar:
                     wa.send_message(telefone, achado["para_o_segurado"], integracao)
+                elif telefone:
+                    logger.info("[VIGIA-PORTAL] 🔇 agente em silêncio — só a equipe é avisada")
 
             # 2) a equipe, com o dossiê pronto.
             from app.tasks.dispatch_watchdog import _support_alert

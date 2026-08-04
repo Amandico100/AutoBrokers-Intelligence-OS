@@ -87,6 +87,25 @@ def _go_base() -> str:
 
 
 def _go_env_fallback() -> Optional[Dict[str, str]]:
+    """APOSENTADO em 04/08/2026 (SPEC-065). NÃO voltar a chamar.
+
+    Devolve a instância GLOBAL do ambiente. Era usada como rede quando a
+    corretora não tinha linha ativa — e essa rede cruzava tenant:
+
+    📊 `EVOLUTION_GO_INSTANCE_NAME` tem como padrão `autobrokers-go-teste`, que é
+    o nome da linha de attendance **da Resulta** (criada 15/07). A **AutoFleet
+    não tem linha de attendance nenhuma** — que é o estado natural de qualquer
+    corretora antes do primeiro pareamento.
+
+    Resultado: a tela de WhatsApp de uma corretora resolvia para a instância de
+    outra. Status, QR e **disconnect** inclusos.
+
+    A função continua aqui, e só isso, porque o teste da SPEC-047 verifica o
+    NOME dela para afirmar que o `env` de instância única virou legado. Apagá-la
+    deixaria aquele teste verde por ausência — que é a pior forma de verde.
+    O guarda de verdade é o `test_o_canal_de_uma_corretora_nao_e_de_outra`, que
+    exige que ninguém a CHAME.
+    """
     itoken = os.getenv("EVOLUTION_GO_INSTANCE_TOKEN") or ""
     iname = os.getenv("EVOLUTION_GO_INSTANCE_NAME") or "autobrokers-go-teste"
     if not itoken:
@@ -127,16 +146,38 @@ async def _go_company_channel(company_id: str, purpose: str = "attendance") -> O
 
 
 async def _go_resolve(company_id: str, purpose: str = "attendance") -> Dict[str, str]:
-    """Resolve a instância da corretora; fallback legado só atende attendance."""
+    """Resolve a instância DA corretora. Sem linha ativa, ninguém é atendido.
+
+    🔴 SPEC-065 — aqui morava um cruzamento de tenant, e ele estava armado.
+
+    O código caía num `_go_env_fallback()` que devolve a instância GLOBAL
+    (`EVOLUTION_GO_INSTANCE_NAME`, padrão `autobrokers-go-teste`) com o token do
+    ambiente. 📊 Medido em 04/08/2026: esse nome é o da linha de **attendance da
+    Resulta**, criada em 15/07. E a **AutoFleet não tem linha de attendance
+    nenhuma**.
+
+    Ou seja: abrir a tela de WhatsApp da AutoFleet resolvia para a instância da
+    Resulta. Status, QR e — o pior — **disconnect** de um tenant operando o canal
+    de outro. Bastava uma corretora sem linha ativa, que é o estado natural de
+    toda corretora nova.
+
+    CLAUDE.md §7 não admite exceção: nenhum dado atravessa tenants. Um fallback
+    que escolhe a instância de outra empresa quando não acha a sua não é
+    tolerância a falha — é a falha.
+
+    Sem linha ativa agora é 404 explícito, para os dois propósitos. A tela lê
+    isso como "não pareado" e oferece o QR, que é exatamente o que deve
+    acontecer com quem ainda não pareou.
+    """
     row = await _go_company_channel(company_id, purpose)
     if row:
         return row
+    # Os códigos vão LITERAIS, não montados por f-string: é por eles que se
+    # procura num log de produção às duas da manhã, e string que só existe
+    # depois de interpolada não aparece em busca nenhuma.
     if str(purpose or "attendance").strip().lower() == "observer":
         raise HTTPException(status_code=404, detail="observer_channel_not_paired")
-    env = _go_env_fallback()
-    if env:
-        return env
-    raise HTTPException(status_code=503, detail="evolution_go_not_configured")
+    raise HTTPException(status_code=404, detail="attendance_channel_not_paired")
 
 
 async def _go_get(company_id: str, path: str, purpose: str = "attendance") -> Dict[str, Any]:
@@ -230,15 +271,19 @@ async def _go_setup(company_id: str, payload: "ChannelSetupPayload", public_url:
                 inst_token = secrets.token_hex(16)
                 await _go_create(client, instance, inst_token)
             else:
-                if purpose == "observer":
-                    raise HTTPException(
-                        status_code=503,
-                        detail="evolution_go_not_configured (defina EVOLUTION_GO_GLOBAL_KEY)",
-                    )
-                env = _go_env_fallback()
-                if not env:
-                    raise HTTPException(status_code=503, detail="evolution_go_not_configured (defina EVOLUTION_GO_GLOBAL_KEY)")
-                instance, inst_token = env["instance_name"], env["instance_token"]
+                # 🔴 SPEC-065 — aqui o attendance caía na instância GLOBAL do
+                # ambiente e, logo abaixo, esse nome era GRAVADO na linha da
+                # corretora. Duas corretoras diferentes acabariam apontando para
+                # a MESMA instância do Evolution Go — um WhatsApp só, servindo
+                # dois tenants, com as conversas de ambos no mesmo lugar.
+                #
+                # Sem a chave global não há como criar instância própria, e
+                # instância própria é a única forma correta. Então é 503 para os
+                # DOIS propósitos, e a mensagem diz o que configurar.
+                raise HTTPException(
+                    status_code=503,
+                    detail="evolution_go_not_configured (defina EVOLUTION_GO_GLOBAL_KEY)",
+                )
 
             res = await client.post("/instance/connect",
                                     headers={"apikey": inst_token, "Content-Type": "application/json"},
@@ -783,20 +828,41 @@ async def whatsapp_channel_disconnect(
                             break
                 except httpx.HTTPError:
                     pass
-        if still_registered:
-            supabase = get_supabase_client()
+        # 🔴 SPEC-065 — a gravação SAIU de dentro do `if still_registered`.
+        #
+        # Ela estava lá dentro, e por isso o botão "Desconectar" mentia: quando o
+        # `logout` já tinha limpado a sessão antes do `GET /instance/all`,
+        # `still_registered` era False, **o banco não era tocado**, e a linha
+        # continuava `is_active=True` — com o webhook aceitando evento de um
+        # canal que a tela dizia estar desligado.
+        #
+        # 📊 Medido em 04/08/2026, depois de o Founder clicar em desconectar em
+        # tudo: AMANDUS e AutoFleet ficaram `retired`+`is_active=false`; a
+        # Resulta ficou `disconnected`+`is_active=TRUE`. **Mesmo botão, dois
+        # resultados** — e o dele foi o que continuou capturando.
+        #
+        # Apagar a instância no provedor É condicional (só existe o que existe).
+        # Aposentar a linha, não: o usuário mandou desligar. Se o provedor já
+        # tinha esquecido a sessão, com mais razão ainda.
+        supabase = get_supabase_client()
 
-            def _retire() -> None:
-                supabase.client.table("integrations").update(
-                    {"is_active": False, "channel_status": "retired"}
-                ).eq("company_id", company_id).eq("provider", "evolution-go") \
-                    .eq("instance_id", cfg["instance_name"]).execute()
+        def _retire() -> None:
+            supabase.client.table("integrations").update({
+                "is_active": False,
+                "channel_status": "retired",
+                # `updated_at` não tem trigger nesta tabela (medido), e sem ele
+                # a data da linha continua sendo a do PAREAMENTO. Foi por isso
+                # que a reconstrução do incidente de 29/07 leu a data errada.
+                "updated_at": datetime.now(timezone.utc).isoformat(),
+            }).eq("company_id", company_id).eq("provider", "evolution-go") \
+                .eq("instance_id", cfg["instance_name"]).execute()
 
-            try:
-                await asyncio.to_thread(_retire)
-            except Exception as e:  # noqa: BLE001
-                logger.warning(f"[WA CHANNEL GO] retire falhou: {type(e).__name__}")
-            logger.info(f"[WA CHANNEL GO] instância {cfg['instance_name']} removida (sessão registrada persistia)")
+        try:
+            await asyncio.to_thread(_retire)
+        except Exception as e:  # noqa: BLE001
+            logger.warning(f"[WA CHANNEL GO] retire falhou: {type(e).__name__}")
+        logger.info("[WA CHANNEL GO] instância %s desligada (sessão no provedor: %s)",
+                    cfg["instance_name"], "removida" if still_registered else "já não existia")
         return {"ok": True, "instance": cfg["instance_name"], "state": "close"}
     platform = _evolution_platform()
     instance = _instance_name(company_id)

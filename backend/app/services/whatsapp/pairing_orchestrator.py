@@ -505,6 +505,51 @@ class PairingOrchestrator:
         rows = await asyncio.to_thread(_query)
         return prepare_integration_for_runtime(rows[0]) if rows else None
 
+    async def _escopo_lembrado(self, company_id: str, purpose: str) -> Optional[Dict[str, Any]]:
+        """O que esta corretora JÁ escolheu observar — mesmo com a linha desligada.
+
+        🔴 SPEC-065 — aqui morava a repetição do incidente de 29/07.
+
+        O escopo era herdado de `_integration()`, que filtra `is_active=True`.
+        Uma corretora que **desconectou** perdia a memória da própria escolha, e
+        o `setdefault` abaixo lhe dava o escopo mais largo que existe.
+
+        📊 Medido em 04/08/2026, e as duas corretoras cairiam em lados opostos
+        da MESMA ação:
+
+            AutoFleet   is_active=false  -> sem memória -> volta a ver TUDO
+            Resulta     is_active=TRUE   -> preserva    -> segue só seguradora
+
+        A da esquerda é a que a Regina ia parear, no celular dela. A do meio da
+        tabela é o incidente de 29/07 outra vez — 630 contatos pessoais.
+
+        Desconectar é uma pausa, não um esquecimento. A escolha de quem pode ser
+        gravado pertence à corretora e sobrevive ao botão de desconectar.
+        """
+        from app.core.database import get_supabase_client
+
+        db = get_supabase_client()
+
+        def _query() -> list:
+            return (
+                db.client.table("integrations").select("alert_target, is_active, created_at")
+                .eq("company_id", company_id).eq("provider", "evolution-go")
+                .eq("purpose", purpose)
+                .order("created_at", desc=True).limit(5).execute().data or []
+            )
+
+        try:
+            linhas = await asyncio.to_thread(_query)
+        except Exception:  # noqa: BLE001
+            return None
+        # A mais recente que REALMENTE declarou um escopo. Linha sem `alert_target`
+        # não é memória: é ausência, e ausência não pode sobrescrever escolha.
+        for linha in linhas:
+            alvo = linha.get("alert_target") or {}
+            if isinstance(alvo, dict) and alvo.get("observer_scope"):
+                return alvo
+        return None
+
     async def _persist_integration(
         self,
         *,
@@ -530,6 +575,30 @@ class PairingOrchestrator:
             # depois, com conversa que ninguém queria gravar já gravada.
             #
             # As duas linhas abaixo já usavam setdefault. Esta era a estranha.
+            #
+            # SPEC-065 — eu tentei estreitar este padrão em 04/08 e VOLTEI ATRÁS.
+            #
+            # O argumento para estreitar era bom: 📊 em 29/07 o escopo largo
+            # custou 2.556 transcrições e 745 sessões de 630 contatos
+            # particulares, capturadas de um celular PESSOAL. E o sistema não tem
+            # como saber se o telefone que está sendo pareado é o de trabalho de
+            # uma corretora ou o pessoal de alguém — 📊 não existe tabela de
+            # segurados com telefone neste banco.
+            #
+            # Mas o argumento contra é de PRODUTO, e ele é do Founder, não meu:
+            # com o estreito, sete dias de observação rendem **zero conversa de
+            # atendimento** — e é exatamente delas que saem a curadoria e as
+            # cartas. `test_observador_silencio.py` defende isso, e está certo.
+            #
+            # Estreitar o padrão sozinho seria reduzir escopo em silêncio para
+            # comprar segurança (CLAUDE.md §11). O que faço aqui é o que me cabe:
+            # **a escolha passa a ser lembrada** (`_escopo_lembrado`, acima), para
+            # que ela seja uma decisão e não um acidente de `is_active`.
+            #
+            # ⚠️ Registrado em P-84: hoje as TRÊS memórias dizem `insurers_only`
+            # porque foi assim que a contenção de 29/07 as deixou. Isso é uma
+            # emergência virando política sem ninguém ter decidido. Antes de
+            # parear, o Founder precisa dizer, por corretora, o que pode gravar.
             target.setdefault("observer_scope", "insurers_and_clients")
             target.setdefault("observer_exclusions", [])
             target.setdefault("internal_numbers", [])
@@ -741,7 +810,11 @@ class PairingOrchestrator:
                 instance_token=instance_token,
                 webhook_hash=webhook_hash,
                 webhook_prefix=webhook_prefix,
-                alert_target=(integration or {}).get("alert_target"),
+                # A memória do escopo NÃO vem de `integration`: aquela busca
+                # filtra `is_active=True`, e desconectar apagaria a escolha da
+                # corretora. Ver `_escopo_lembrado`.
+                alert_target=(await self._escopo_lembrado(company_id, purpose)
+                              or (integration or {}).get("alert_target")),
             )
 
             state.update(build_pairing_state(

@@ -524,7 +524,32 @@ async def process_whatsapp_message_background(
                     logger.info("[WEBHOOK] Processing Audio Message")
                 except Exception as e:
                     logger.error(f"Whisper failed: {e}")
-                    whatsapp_service.send_message(payload.phone, "Erro ao processar áudio.", integration)
+                    # 🔴 SPEC-065 — aqui o sistema FALAVA com o segurado 115
+                    # linhas ANTES do portão de silêncio (`_em_silencio`, abaixo).
+                    #
+                    # Áudio é o formato mais comum de segurado no WhatsApp. Uma
+                    # transcrição que falha mandava "Erro ao processar áudio."
+                    # para ele — com o agente DESLIGADO, em modo observação, com
+                    # a atendente humana respondendo pelo celular. Do lado dele:
+                    # o robô se intrometeu numa conversa que era de gente.
+                    #
+                    # 📊 Só não mordia porque a `ATTENTANT_INBOUND_ALLOWLIST`
+                    # barrava antes. Uma trava que depende de OUTRA trava não é
+                    # trava: é sorte. No dia em que a allowlist for esvaziada —
+                    # que é o dia do go-live — este caminho abria sozinho.
+                    #
+                    # Agora ele pergunta a mesma coisa que o portão de baixo, e
+                    # fail-closed: erro de leitura = silêncio.
+                    try:
+                        from app.services.atlas.attendance_capture import attendance_agent_active
+
+                        _pode_falar = await attendance_agent_active(company_id)
+                    except Exception:  # noqa: BLE001
+                        _pode_falar = False
+                    if _pode_falar:
+                        whatsapp_service.send_message(payload.phone, "Erro ao processar áudio.", integration)
+                    else:
+                        logger.info("[WEBHOOK] 🔇 audio falhou, mas o agente está em silêncio — não respondo")
                     return
 
         elif branch == "text":

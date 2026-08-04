@@ -38,7 +38,25 @@ def checar(condicao: bool, descricao: str) -> None:
 
 
 def a_escolha_explicita_sobrevive_ao_pareamento() -> None:
-    """O `setdefault` respeita quem escolheu; o padrão continua o de sempre."""
+    """O `setdefault` respeita quem escolheu — e o padrao virou o ESTREITO.
+
+    ATUALIZADO em 04/08/2026 (SPEC-065). A intencao deste caso nunca foi
+    "o padrao e ver tudo": era **nao sobrescrever quem escolheu**. Isso nao
+    mudou e continua sendo o primeiro `checar` abaixo.
+
+    O que mudou foi o padrao de quem NUNCA escolheu. 📊 Auditando antes de duas
+    corretoras reais parearem, as duas cairiam em lados opostos da mesma acao:
+    a de linha desligada voltaria a ver TUDO (o incidente de 29/07, 630 contatos
+    pessoais) e a de linha ligada ficaria so com seguradora.
+
+    O sistema nao tem como saber se o telefone e o de trabalho de uma corretora
+    ou o pessoal de alguem — 📊 nao existe tabela de segurados com telefone
+    neste banco. Entao vale a assimetria: gravar de MENOS e reversivel (o
+    history_sync reentrega), gravar de MAIS nao e.
+
+    Guardar o padrao antigo aqui travaria o conserto em nome de uma frase
+    escrita antes de o risco ser medido (CLAUDE.md 9.3).
+    """
     fonte = (RAIZ / "app/services/whatsapp/pairing_orchestrator.py").read_text(encoding="utf-8")
 
     checar(

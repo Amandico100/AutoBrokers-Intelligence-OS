@@ -282,6 +282,104 @@ def decidir_heartbeat(*, estado_atual: object, last_seen_at: object,
             "alarmar": True, "motivo": "obsoleto_sem_confirmacao"}
 
 
+# ---------------------------------------------------------------------------
+# O RECONECTOR — "conecta uma vez e fica conectado"
+# ---------------------------------------------------------------------------
+# 📊 Auditado em 04/08/2026: `CONNECT_ON_STARTUP=false` no Evolution Go, e
+# NADA no sistema chama `/instance/connect` fora do pareamento.
+#
+#     grep "instance/connect" backend/app  ->  3 lugares, os TRÊS de pareamento
+#
+# Consequência medida: **todo restart do provedor derruba todos os canais, e
+# nada os religa.** O botão "Gerar QR code" virou, sem ninguém decidir isso, o
+# único reconector do produto — e é por isso que "clico em gerar QR e ele pareia
+# sozinho": o whatsmeow reusa a sessão que já existe e conecta sem QR nenhum.
+#
+# 📊 E o preço foi medido: `observed_events` teve evento em **4 horas de 168**
+# numa janela de 7 dias. Os canais passaram a semana desligados e ninguém soube.
+#
+# Reconectar NÃO é reparear. A sessão do WhatsApp continua registrada no
+# provedor; o que caiu foi o socket. Por isso este caminho nunca gera QR: gerar
+# QR quando a sessão existe é a única forma de PIORAR o problema.
+TENTATIVA_INICIAL_S = 30
+TETO_DE_ESPERA_S = 30 * 60
+# Quando reconectamos cada instância pela última vez, e quantas vezes seguidas
+# falhamos. Memória de processo, de propósito: o scheduler é um só, e um
+# reconector que persistisse estado precisaria de outra tabela para fazer
+# exatamente o que um dicionário faz.
+_ULTIMA_RECONEXAO: Dict[str, tuple] = {}
+
+
+def espera_do_backoff(tentativas: int) -> int:
+    """PURO: quantos segundos esperar antes da próxima tentativa.
+
+    Dobra a cada falha e para de dobrar no teto. Um canal que o provedor recusa
+    não pode virar uma batida de porta a cada cinco minutos, para sempre.
+    """
+    if tentativas <= 0:
+        return 0
+    espera = TENTATIVA_INICIAL_S * (2 ** (tentativas - 1))
+    return int(min(espera, TETO_DE_ESPERA_S))
+
+
+def deve_reconectar(estado_sondado: Optional[str], estado_anterior: Optional[str]) -> bool:
+    """PURO: este canal merece uma tentativa de reconexão agora?
+
+    SIM quando a sonda diz que ele NÃO está de pé **e** ele já esteve — porque
+    só então existe sessão registrada para reusar.
+
+    NÃO quando a sonda não respondeu (`None`): não saber não é saber que caiu, e
+    reconectar no escuro é o começo de um laço.
+
+    NÃO quando nunca esteve conectado: ali não há sessão, e `/instance/connect`
+    geraria um QR que ninguém vai ler.
+    """
+    if estado_sondado is None:
+        return False
+    if normalizar_estado(estado_sondado) in ESTADOS_QUE_AFIRMAM:
+        return False
+    return normalizar_estado(estado_anterior) in ESTADOS_QUE_AFIRMAM
+
+
+async def _reconectar_evolution_go(integracao: dict, agora: datetime) -> Optional[str]:
+    """Pede ao provedor que religue o socket. Nunca gera QR. Nunca levanta."""
+    # A escada de espera é conferida ANTES de qualquer import: a chamada que só
+    # vai devolver "espere" não deve pagar por carregar o módulo de segredos.
+    chave = str(integracao.get("instance_id") or integracao.get("id") or "")
+    tentativas, ultima = _ULTIMA_RECONEXAO.get(chave, (0, None))
+    if ultima is not None and (agora - ultima).total_seconds() < espera_do_backoff(tentativas):
+        return "aguardando_backoff"
+
+    import httpx
+
+    from app.services.whatsapp.integration_secrets import decrypt_integration_secret
+
+    base = str(integracao.get("base_url") or os.getenv("EVOLUTION_GO_BASE_URL") or "").rstrip("/")
+    token = decrypt_integration_secret(integracao.get("token")) or ""
+    if not (base and token):
+        _ULTIMA_RECONEXAO[chave] = (tentativas + 1, agora)
+        return None
+
+    _ULTIMA_RECONEXAO[chave] = (tentativas + 1, agora)
+    try:
+        async with httpx.AsyncClient(timeout=TIMEOUT_SONDA_SEGUNDOS) as cliente:
+            resposta = await cliente.post(f"{base}/instance/connect",
+                                          headers={"apikey": token},
+                                          json={"immediate": True})
+        if resposta.status_code < 400:
+            _ULTIMA_RECONEXAO[chave] = (0, agora)   # deu certo: zera a escada
+            logger.info("[RECONECTOR] canal %s religado sem QR", integracao.get("instance_id"))
+            return "reconectado"
+        logger.warning("[RECONECTOR] %s recusou religar (HTTP %s) — próxima em %ss",
+                       integracao.get("instance_id"), resposta.status_code,
+                       espera_do_backoff(tentativas + 1))
+        return "recusado"
+    except Exception as erro:  # noqa: BLE001
+        logger.warning("[RECONECTOR] %s falhou (%s)", integracao.get("instance_id"),
+                       type(erro).__name__)
+        return "erro"
+
+
 async def _sondar_evolution_go(integracao: dict) -> Optional[str]:
     """Pergunta ao provedor. ``None`` = não consegui saber (não é veredito).
 
@@ -346,13 +444,20 @@ async def verificar_canais(
     db: Any = None,
     sonda: Optional[Callable[[dict], Awaitable[Optional[str]]]] = None,
     alarme: Optional[Callable[..., Awaitable[None]]] = None,
+    reconector: Optional[Callable[..., Awaitable[Optional[str]]]] = None,
     agora: Optional[datetime] = None,
 ) -> dict:
     """A varredura. Roda no APScheduler existente; nunca levanta exceção.
 
-    As três costuras (`db`, `sonda`, `alarme`) são injetáveis pelo mesmo motivo
-    que o motor de acionamento injeta o `sender`: dá para provar a decisão
-    inteira sem rede e sem banco — e teste que não roda não protege ninguém.
+    As QUATRO costuras (`db`, `sonda`, `alarme`, `reconector`) são injetáveis
+    pelo mesmo motivo que o motor de acionamento injeta o `sender`: dá para
+    provar a decisão inteira sem rede e sem banco — e teste que não roda não
+    protege ninguém.
+
+    O `reconector` nasceu costurado em 04/08/2026, e a razão é um erro meu: eu o
+    tinha chamado direto, sem costura, e os testes do heartbeat — que rodam com
+    sonda de mentira — passaram a bater num import de runtime. Uma peça nova que
+    quebra o jeito de testar as antigas está errada mesmo que funcione.
     """
     if not heartbeat_ligado():
         return {"ok": False, "motivo": "desligado", "verificados": 0}
@@ -361,6 +466,7 @@ async def verificar_canais(
     limite = limite_obsoleto_minutos()
     sondar = sonda or _sondar_evolution_go
     alarmar_com = alarme or _alarme_padrao
+    religar = reconector or _reconectar_evolution_go
 
     if db is None:
         from app.core.database import get_supabase_client
@@ -397,6 +503,37 @@ async def verificar_canais(
                 agora=momento,
                 limite_minutos=limite,
             )
+
+            # O canal caiu e já esteve de pé: religa o socket antes de gravar o
+            # estado. Não é reparear — a sessão continua registrada no provedor,
+            # e por isso nenhum QR é gerado. Sem isto, o único reconector do
+            # produto é um humano clicando em "Gerar QR code".
+            if deve_reconectar(resposta, linha.get("channel_status")):
+                # Try próprio, e ele importa: **religar é um bônus; gravar a
+                # verdade é a obrigação.** Se a reconexão falhar, o heartbeat
+                # segue e registra que o canal caiu — que é o serviço que ele
+                # prestava antes de existir reconector nenhum. Uma peça nova não
+                # pode sequestrar a função da peça antiga quando dá errado.
+                try:
+                    efeito = await religar(linha, momento)
+                except Exception as erro:  # noqa: BLE001
+                    logger.warning("[RECONECTOR] tentativa falhou (%s) — o heartbeat segue",
+                                   type(erro).__name__)
+                    efeito = None
+                if efeito == "reconectado":
+                    resumo["reconectados"] = resumo.get("reconectados", 0) + 1
+                    # Reconsulta: se voltou, não faz sentido gravar "caiu".
+                    try:
+                        resposta = await sondar(linha) or resposta
+                    except Exception:  # noqa: BLE001
+                        pass
+                    decisao = decidir_heartbeat(
+                        estado_atual=linha.get("channel_status"),
+                        last_seen_at=linha.get("last_seen_at"),
+                        resposta_da_sonda=resposta,
+                        agora=momento,
+                        limite_minutos=limite,
+                    )
 
             if decisao["novo_estado"] is None:
                 resumo["inalterados"] += 1

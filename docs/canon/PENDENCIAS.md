@@ -1141,3 +1141,151 @@ tem de ser MAIOR que `2026-08-04T12:32:36Z`.
 **O que custa esquecer:** ligar o atendimento (P-77) com o worker velho no ar. O
 sistema passaria a acionar de verdade, com os defeitos que esta SPEC consertou
 ainda em produção — e o pior deles troca um para-brisa que tinha conserto.
+
+---
+
+## P-84 · 🧑 DECISÃO: o que o Observador pode gravar, por corretora
+
+📊 Medido em 04/08/2026: as **três** memórias de escopo dizem `insurers_only` —
+AMANDUS, AutoFleet e Resulta. Não porque alguém tenha escolhido: foi assim que a
+**contenção de 29/07** as deixou, quando o Observador capturou 630 contatos
+pessoais de um celular particular.
+
+**Uma emergência virou política sem ninguém decidir.**
+
+E a consequência é concreta: se a Saionara e a Regina parearem amanhã sem tocar
+nisso, **nenhuma conversa de segurado será capturada** — só as de seguradora. É
+exatamente o oposto do que a curadoria e as cartas precisam.
+
+### Os dois custos, para a decisão ser sua e não minha
+
+| Escopo | O que ganha | O que arrisca |
+|---|---|---|
+| `insurers_only` | nenhum dado de terceiro entra | 📊 sete dias de observação rendem **zero** conversa de atendimento |
+| `insurers_and_clients` | o material das cartas | se o telefone for pessoal, entra conversa particular — e o sistema **não tem como distinguir** (📊 não existe tabela de segurados com telefone neste banco) |
+
+O erro de gravar de MENOS é reversível: 📊 o `history_sync` reentregou 133
+eventos de 29/07–03/08 numa rajada de 6 minutos após um restart. O de gravar de
+MAIS não é.
+
+**O que destrava:** 🧑 Founder — dizer, por corretora: o número que vai ser
+pareado é o **celular de trabalho** dela? Se sim, `insurers_and_clients`. Eu
+gravo antes do QR (é uma linha), e a memória passa a preservar para sempre.
+**O que custa esquecer:** parear as duas e descobrir dias depois que não há
+material nenhum para destilar.
+
+---
+
+## P-85 · 🔴 O handoff humano está RECUSADO para AutoFleet e Resulta
+
+📊 As duas apontam para o **mesmo** destino de suporte (o mesmo grupo de
+WhatsApp), replicado em `acionamento_profile`. E `dispatch_router` recusa
+destino compartilhado **de propósito** — para não entregar o CPF de um segurado
+na corretora errada.
+
+Consequência com o agente ligado: *"quero falar com uma pessoa"* **não aciona
+ninguém**. E o dossiê do Vigia do Portal morre no mesmo lugar.
+
+📊 A AMANDUS tem destino próprio e funciona — o que prova que o mecanismo está
+certo e o dado é que está compartilhado.
+
+**O que destrava:** 🧑 Founder — um grupo de WhatsApp por corretora.
+**O que custa esquecer:** o handoff é a última rede. Ligar o agente sem ela é
+prometer "não vou te deixar travado" sem ter para onde passar.
+
+---
+
+## P-86 · 🟠 A allowlist de entrada atende só um número
+
+📊 `ATTENDANT_INBOUND_ALLOWLIST` está preenchida em produção com **um** número.
+Enquanto estiver assim, ligar o agente faz ele atender só esse número e **ignorar
+todo o resto em silêncio** — botão verde, tela dizendo "atendendo", nada
+acontecendo para o segurado.
+
+Isso é ótimo para o teste que o Founder quer fazer na AMANDUS. É armadilha no
+dia do go-live.
+
+**O que destrava:** 🤖+🧑 esvaziar a variável quando for atender de verdade —
+**e só depois de P-85 estar fechada**, senão o agente atende e não tem para quem
+passar quando travar.
+**O que custa esquecer:** achar que o agente está quebrado quando ele está
+obedecendo.
+
+---
+
+## P-87 · 🔴 O destilador está DESLIGADO, e o material expira em outubro
+
+📊 `DESTILADOR_TETO_POR_RODADA` tem padrão **`0`** — e `0` significa "não
+destile nada". Resultado medido:
+
+```
+69.150 transcrições capturadas          ✅
+ 8.872 sessões fechadas                 ✅
+ 1.460 sessões NUNCA destiladas         🔴  (AutoFleet 480 · Resulta 980)
+ 9.416 cartas, TODAS nascidas em 28–30/07 — a máquina rodou uma vez e parou
+```
+
+E o purge de retenção apaga o cru 90 dias depois de capturado: 📊 por volta de
+**27/10/2026**. Sem religar o teto, esse material **expira sem virar carta**.
+
+**O que destrava:** 🤖 execução — definir o teto e rodar uma leva controlada,
+conferindo custo. É a peça que transforma conversa capturada em conhecimento, e
+hoje ela está de pé e desligada.
+**O que custa esquecer:** o acervo inteiro vira lixo com data marcada.
+
+---
+
+## P-88 · 🟠 O telefone pareado nunca é gravado
+
+📊 `observed_sessions.observer_number` da AutoFleet é `6955221` — os dígitos do
+**nome da instância** (`ab-obs-6c9c55e22f-1`), não um telefone. O número que
+realmente pareou não é persistido em lugar nenhum.
+
+É a causa direta da pergunta do Founder — *"já tinha um pareado e eu não sei
+qual era"*. Não dava para saber: o sistema não guarda.
+
+📊 E há fallback literal `"unknown"` (167 eventos da Resulta já estão assim) e
+`"attendance-channel"` (1 transcrição).
+
+**O que destrava:** 🤖 execução — `integrations.paired_jid` / `paired_phone_e164`
+/ `paired_at`, gravados na confirmação da conexão, com backfill do provedor. Toda
+tela passa a dizer `5547*****463 · pareado em 29/07`.
+**O que custa esquecer:** nenhuma auditoria de "quem está conectado" é possível,
+e a próxima confusão vai custar o mesmo tempo que esta.
+
+---
+
+## P-89 · 🟠 Os índices de deduplicação não têm `company_id`
+
+📊 `ux_attendance_transcripts_dedupe` e `uq_observed_events_msg` são
+`(observer_number, message_id)` — **sem corretora**. Somado ao `observer_number`
+que cai em `"unknown"` (P-88), duas corretoras podem ter sessões **fundidas**.
+
+Hoje é teórico. **Com duas corretoras pareando em dias, deixa de ser.**
+
+**O que destrava:** 🤖 execução — `company_id` nos dois índices, antes do segundo
+pareamento.
+**O que custa esquecer:** transcrição de uma corretora descartada como duplicata
+da outra — e o pior tipo de perda, a silenciosa.
+
+---
+
+## P-90 · 🟠 O portal para no 80% e NADA no sistema pode aprovar
+
+📊 `build_portal_params` crava `"confirm": False`, e uma busca no repositório
+inteiro não acha **nenhum** caminho que ligue `confirm=True`.
+
+O acionamento percorre o formulário todo, chega na tela de confirmação e para —
+que é o freio funcionando. Mas não existe o outro lado: nem tela, nem resposta
+de WhatsApp, nem rotina que aprove. **O pedido nunca é enviado.**
+
+📊 É o que explica os 9 acionamentos que "chegaram na confirmação (80%)" e nunca
+viraram protocolo.
+
+**O que destrava:** 🤖 execução — o passo de aprovação. A capability já existe e
+já descreve o contrato (`operational.portal.assistance.request`,
+`requires_approval: true`, `max_calls_per_run: 2`). Falta o mecanismo. 🧑 E uma
+decisão junto: aprovar é um clique no painel, uma resposta no WhatsApp do
+suporte, ou os dois?
+**O que custa esquecer:** o portal está pronto para fazer 95% do trabalho e parar
+na última porta. É a diferença entre "funciona" e "entrega".
