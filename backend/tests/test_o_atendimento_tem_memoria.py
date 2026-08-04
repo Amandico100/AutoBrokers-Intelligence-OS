@@ -205,7 +205,39 @@ def teste_a_ficha_esta_ligada_no_turno():
            "graph.py carrega a ficha")
     checar('dynamic_context += f"\\n\\n{_bloco_ficha}"' in graph,
            "e injeta no contexto do turno")
-    checar('if str(_agent_role or "").lower() in ("attendance", "insured_external"):' in graph,
+    # 🔴 ESTE CHECK FOI O DEFEITO. Ele afirmava a linha COMO TEXTO — e a linha
+    # usava `_agent_role`, que é local de OUTRA função. Virava NameError em toda
+    # chamada de `_build_initial_state`: o chat inteiro caía, para todo papel, e
+    # este teste continuava verde.
+    #
+    # Teste que lê código-fonte não prova que o código RODA. Agora ele confere,
+    # por AST, que todo nome de papel usado ali tem origem na própria função —
+    # o que pega este defeito e o próximo igual, com outro nome.
+    import ast as _ast
+    import builtins as _b
+
+    _arv = _ast.parse(graph)
+    _fn = next(n for n in _ast.walk(_arv)
+               if isinstance(n, (_ast.FunctionDef, _ast.AsyncFunctionDef))
+               and n.name == "_build_initial_state")
+    _locais = {x.id for x in _ast.walk(_fn)
+               if isinstance(x, _ast.Name) and isinstance(x.ctx, _ast.Store)}
+    _locais |= {a.arg for a in _fn.args.args}
+    _mod = {n.targets[0].id for n in _arv.body
+            if isinstance(n, _ast.Assign) and isinstance(n.targets[0], _ast.Name)}
+    _mod |= {n.name for n in _arv.body
+             if isinstance(n, (_ast.FunctionDef, _ast.AsyncFunctionDef, _ast.ClassDef))}
+    _mod |= {a.asname or a.name.split(".")[0] for n in _arv.body
+             if isinstance(n, (_ast.Import, _ast.ImportFrom)) for a in n.names}
+    _orfaos = sorted({x.id for x in _ast.walk(_fn)
+                      if isinstance(x, _ast.Name) and isinstance(x.ctx, _ast.Load)
+                      and x.id.startswith("_agent_role")
+                      and x.id not in _locais and x.id not in _mod
+                      and not hasattr(_b, x.id)})
+    checar(not _orfaos,
+           "o papel do agente vem de uma variável que EXISTE nesta função",
+           f"NameError garantido em: {_orfaos}")
+    checar('_agent_role_for_prompt or ""' in graph,
            "só para quem fala com o segurado",
            "o copiloto interno não tem ficha de atendimento")
 

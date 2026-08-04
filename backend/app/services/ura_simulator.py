@@ -50,7 +50,19 @@ def simulate(playbook_ref: str, subservice: str, slots: Dict[str, Any],
         replied = outs[before]["text"] if len(outs) > before else None
         expected = item.get("expected")
 
-        if session.get("state") == "test_aborted":
+        # O simulador para em TODA fase encerrada, não só em `test_aborted`.
+        #
+        # 📊 Auditoria de 03/08: ele só reconhecia `test_aborted` e `needs_human`.
+        # Um caso que terminasse em `encaminhado` — desfecho de SUCESSO, a
+        # seguradora entregou o formulário — não era reconhecido como fim, e o
+        # simulador seguia alimentando telas a um corredor que já tinha acabado.
+        #
+        # Ler a lista canônica em vez de escrever os nomes aqui é o que impede
+        # este arquivo de envelhecer de novo no próximo desfecho novo.
+        from app.services.insurer_dispatch_service import FASES_ENCERRADAS
+
+        estado_atual = str(session.get("state") or "")
+        if estado_atual in FASES_ENCERRADAS and estado_atual != "needs_human":
             reached_finalize = True
             break
         if session.get("state") == "needs_human":

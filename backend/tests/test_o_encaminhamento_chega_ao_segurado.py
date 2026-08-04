@@ -350,6 +350,43 @@ def teste_o_guarda_tem_como_falhar():
                "ela nao tem vidros observado — cai em handoff, que e o certo")
 
 
+def teste_todo_desfecho_novo_entra_nos_MAPAS():
+    """Estado que nasce fora dos mapas so existe para quem o escreveu.
+
+    📊 03/08/2026: `resolvido` foi criado pelo encerramento do follow-up e NAO
+    entrou em mapa nenhum. O preco, medido na auditoria do mesmo dia:
+
+        ordem_da_fase          -> 0
+        status_duravel_da_fase -> "running"   o Work Run NUNCA fechava
+        _TERMINAL_STATES       -> ausente     o Vigia perseguiria para sempre
+                                              uma conversa encerrada com sucesso
+
+    Este caso nao guarda `resolvido`: guarda a REGRA. Todo estado de
+    `DISPATCH_STATES` tem de estar nos quatro mapas — inclusive o proximo, que
+    ainda nao existe.
+    """
+    print("\n[E5] todo estado declarado esta nos quatro mapas")
+    faltando = []
+    for estado in DS.DISPATCH_STATES:
+        if estado not in DS._ORDEM_DAS_FASES:
+            faltando.append(f"{estado}: fora de _ORDEM_DAS_FASES")
+        if estado not in DS.STATUS_WORK_RUN_POR_FASE:
+            faltando.append(f"{estado}: fora de STATUS_WORK_RUN_POR_FASE")
+        em_voo = estado in DS.FASES_EM_VOO
+        encerrada = estado in DS.FASES_ENCERRADAS
+        if em_voo == encerrada:
+            faltando.append(f"{estado}: precisa estar em EM_VOO **ou** ENCERRADAS, nunca nos dois nem em nenhum")
+    checar(not faltando, "todo estado de DISPATCH_STATES esta nos quatro mapas", "; ".join(faltando))
+
+    # E o Vigia precisa parar em toda fase encerrada — senao cutuca uma
+    # seguradora sobre um servico que ja foi prestado.
+    wd = (RAIZ / "app/tasks/dispatch_watchdog.py").read_text(encoding="utf-8")
+    i = wd.index("_TERMINAL_STATES = {")
+    bloco = wd[i:wd.index("}", i)]
+    fora = [e for e in DS.FASES_ENCERRADAS if f'"{e}"' not in bloco]
+    checar(not fora, "o Vigia para em toda fase encerrada", f"nao conhece: {fora}")
+
+
 def main() -> int:
     print("=" * 74)
     print("O ENCAMINHAMENTO CHEGA AO SEGURADO — P-46")

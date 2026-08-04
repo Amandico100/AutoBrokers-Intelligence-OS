@@ -210,7 +210,8 @@ def _phone_variants(phone: str) -> set:
 # `encaminhado` (P-46) entra pelo mesmo motivo de `test_aborted`: o acionamento
 # ACABOU. Sem ele, a mensagem que entrega o formulário de vidro ao segurado
 # ficaria na fila de cortesia esperando o fim de um atendimento que já terminou.
-_ESTADOS_QUE_NAO_OCUPAM = ("test_aborted", "insurer_closed", "monitoring", "encaminhado")
+_ESTADOS_QUE_NAO_OCUPAM = ("test_aborted", "insurer_closed", "monitoring",
+                          "encaminhado", "resolvido")
 
 
 async def client_busy(company_id: str, phone: str) -> Optional[str]:

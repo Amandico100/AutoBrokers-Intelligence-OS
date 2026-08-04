@@ -31,6 +31,9 @@ DISPATCH_STATE_TITLES = {
     "encaminhado": ("acionamentos", "Resolvido por encaminhamento — {label}",
                     "A seguradora não abre chamado por este canal; o formulário/orientação "
                     "dela foi entregue ao segurado e o caso encerrou."),
+    "resolvido": ("acionamentos", "Atendimento concluído — {label}",
+                  "O serviço foi aberto, acompanhado até o fim, e o ciclo fechou com o "
+                  "segurado. É o desfecho que o produto existe para produzir."),
     "test_aborted": ("acionamentos", "Simulação completa — {label}",
                      "Fluxo executado de ponta a ponta em modo de validação."),
     "needs_human": ("acionamentos", "Dossiê entregue à equipe — {label}",

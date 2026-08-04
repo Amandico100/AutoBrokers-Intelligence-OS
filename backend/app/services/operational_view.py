@@ -27,6 +27,7 @@ _STATE_PT = {
     "monitoring": "monitorando a chegada do prestador",
     "needs_human": "com a equipe humana (dossiê entregue)",
     "encaminhado": "resolvido por encaminhamento (formulário/orientação entregue)",
+    "resolvido": "resolvido — serviço prestado e ciclo fechado",
     "test_aborted": "simulação concluída (modo teste)",
     "insurer_closed": "encerrado pela seguradora",
     "queued": "na fila (aguardando vez)",

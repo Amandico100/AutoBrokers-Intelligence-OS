@@ -1109,7 +1109,18 @@ async def _build_initial_state(
     # Só para quem fala com o SEGURADO. O copiloto interno do corretor não tem
     # ficha de atendimento nem conduta de assistência: são outra conversa.
     # ------------------------------------------------------------------ #
-    if str(_agent_role or "").lower() in ("attendance", "insured_external"):
+    # `_agent_role_for_prompt`, e não `_agent_role`.
+    #
+    # 🔴 03/08/2026: esta linha nasceu com `_agent_role`, que é local de
+    # `create_agent_graph` — **outra função**. Aqui virava `LOAD_GLOBAL` sem
+    # global correspondente: `NameError` em TODA chamada de
+    # `_build_initial_state`, para TODO papel. O chat inteiro caía, e não só a
+    # ficha e a conduta que esta linha guarda.
+    #
+    # E o teste passava porque afirmava a linha **como string**, não executando
+    # a função. É o §9.1 do CLAUDE.md uma camada acima: build verde não prova
+    # que a aplicação sobe — **teste verde não prova que o prompt monta**.
+    if str(_agent_role_for_prompt or "").lower() in ("attendance", "insured_external"):
         # --- S · O QUE JÁ SE SABE ---------------------------------------
         # A memória do que já foi perguntado era a janela de 60 mensagens.
         # Passou disso, o CPF que o cliente deu no começo sumia — e o código

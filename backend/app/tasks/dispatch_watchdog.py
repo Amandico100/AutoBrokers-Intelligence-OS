@@ -43,7 +43,11 @@ HUMAN_NUDGE_TEXT = "Oi! Seguimos por aqui no aguardo, tá bom? 🙂"
 # encaminhamento e não espera mais nada da seguradora. Fora desta lista, o Vigia
 # cobraria resposta de uma conversa que acabou — e o encaminhamento entregue
 # viraria alerta de travamento.
-_TERMINAL_STATES = {"test_aborted", "needs_human", "monitoring", "captured", "encaminhado"}
+# `resolvido` entrou em 03/08: o follow-up confirmou o desfecho e fechou o ciclo.
+# Sem ele aqui, o Vigia perseguiria para sempre uma conversa encerrada com
+# sucesso — cutucando uma seguradora sobre um serviço que já foi prestado.
+_TERMINAL_STATES = {"test_aborted", "needs_human", "monitoring", "captured",
+                    "encaminhado", "resolvido"}
 
 
 def _age_s(ts: Optional[str]) -> float:

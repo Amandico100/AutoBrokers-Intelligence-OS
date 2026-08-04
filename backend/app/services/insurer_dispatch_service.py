@@ -49,6 +49,7 @@ DISPATCH_STATES = (
     "captured",
     "monitoring",      # protocolo capturado; só repassa updates da seguradora ao cliente
     "encaminhado",     # a seguradora NÃO abre chamado aqui: entregou formulário/orientação
+    "resolvido",       # o serviço foi prestado e o ciclo fechou (encerramento do follow-up)
     "test_aborted",    # modo TESTE: fluxo completo executado e CANCELADO na confirmação final
     "needs_human",
 )
@@ -93,8 +94,9 @@ _ORDEM_DAS_FASES: Dict[str, int] = {
     "captured": 5,
     "monitoring": 6,
     "encaminhado": 7,
-    "needs_human": 8,
-    "test_aborted": 9,
+    "resolvido": 8,
+    "needs_human": 9,
+    "test_aborted": 10,
 }
 
 # EM VOO = existe trabalho acontecendo que alguém precisa terminar.
@@ -107,7 +109,17 @@ FASES_EM_VOO = ("preparing", "ready_to_send", "ura", "human_phase", "captured", 
 # não abre chamado por este canal e entregou o caminho; o corredor entregou esse
 # caminho ao segurado. Esperar um protocolo que não vem é como o caso ficava
 # aberto até o watchdog.
-FASES_ENCERRADAS = ("needs_human", "test_aborted", "encaminhado")
+# `resolvido` fecha o ciclo INTEIRO: o serviço foi aberto, acompanhado, e o
+# follow-up confirmou o desfecho. É o desfecho que o produto existe para
+# produzir — e ele foi introduzido em 03/08 SEM entrar em mapa nenhum.
+#
+# 📊 O preço disso, medido na auditoria do mesmo dia: `ordem_da_fase` devolvia
+# 0, `status_duravel_da_fase` devolvia "running" (**o Work Run nunca fechava**),
+# e o estado ficava fora de `_TERMINAL_STATES` — o Vigia perseguiria para sempre
+# uma conversa encerrada com sucesso.
+#
+# Estado novo sem mapa é estado que só existe para quem o escreveu.
+FASES_ENCERRADAS = ("needs_human", "test_aborted", "encaminhado", "resolvido")
 
 # Fase do acionamento → status durável do Work Run (SPEC-055 §9).
 #
@@ -126,6 +138,7 @@ STATUS_WORK_RUN_POR_FASE: Dict[str, str] = {
     # `encaminhado` é `completed` — e não `waiting_input` — porque nada mais é
     # esperado de ninguém: o segurado já tem o formulário/orientação na mão.
     "encaminhado": "completed",
+    "resolvido": "completed",
     "test_aborted": "completed",
 }
 
