@@ -85,6 +85,36 @@ def diagnose(session: Dict[str, Any]) -> Optional[str]:
     age = _age_s(last.get("at"))
     direction = str(last.get("direction") or "")
 
+    # SILÊNCIO DELIBERADO NÃO É TRAVA — e o Vigia falava por cima dele.
+    #
+    # 📊 Achado em 05/08/2026, e era defeito VIVO, não risco de proposta.
+    # Quando o corredor reconhece uma tela que não pede nada ("aguarde,
+    # localizando prestador", termo de privacidade, fila) e fica calado de
+    # propósito, a última entrada do transcript continua sendo `in`. Trinta
+    # segundos depois este `diagnose` devolvia `stall_unanswered`, o Sentinela
+    # era chamado e ESCREVIA numa tela que pedia silêncio — o que na URA
+    # costuma voltar ao menu inicial e reiniciar o acionamento do zero.
+    #
+    # Os 20+ passos `noop` do repositório só funcionavam por sorte: 📊 a
+    # mediana do intervalo entre mensagens da seguradora é 2 segundos, então a
+    # próxima quase sempre chegava antes dos 30. Quando a URA de fato esperava,
+    # a gente atropelava.
+    #
+    # O silêncio tem prazo (`_SILENCIO_S`, 60s — abaixo dos 103s que a Allianz
+    # tolerou no pior caso do acervo). Vencido o prazo, o Vigia volta a agir:
+    # calar para sempre seria a nova forma de travar.
+    quieto_ate = session.get("silencio_deliberado_ate")
+    if quieto_ate:
+        try:
+            limite = datetime.fromisoformat(str(quieto_ate).replace("Z", "+00:00"))
+            if limite.tzinfo is None:
+                limite = limite.replace(tzinfo=timezone.utc)
+            if datetime.now(timezone.utc) < limite:
+                return None
+        except (ValueError, TypeError):
+            # Carimbo ilegível não protege ninguém: segue o diagnóstico normal.
+            pass
+
     if state == "ura":
         if direction == "in" and age > URA_UNANSWERED_S:
             return "stall_unanswered"

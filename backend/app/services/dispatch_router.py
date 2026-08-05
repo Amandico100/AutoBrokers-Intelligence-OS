@@ -34,7 +34,7 @@ import logging
 import re
 import unicodedata
 import uuid
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 from typing import Any, Callable, Dict, Optional
 
 from app.services.insurer_dispatch_service import (
@@ -65,6 +65,16 @@ def _motor():
 
 _TTL_SECONDS = 6 * 3600
 _MONITOR_TTL_SECONDS = 24 * 3600  # updates da seguradora chegam por até ~1 dia
+
+# Quanto tempo o Vigia deve RESPEITAR um silêncio deliberado.
+#
+# 📊 Medido em 05/08/2026 no acervo, isolando encerramentos por inatividade: o
+# menor silêncio que a Allianz tolerou foi de **103 segundos**. Sessenta cabe
+# folgado embaixo disso, e é o dobro dos 30s em que o Vigia hoje acorda.
+#
+# O limite existe porque silêncio sem teto vira a nova forma de travar: o
+# Sentinela precisa poder voltar se a seguradora seguir falando.
+_SILENCIO_S = 60
 _memory_store: Dict[str, str] = {}  # fallback p/ testes offline
 
 # Pós-protocolo: a seguradora manda updates espontâneos (HDI: "prestador a
@@ -1193,10 +1203,18 @@ async def try_route_insurer_inbound(
             draft = await human_reply_provider(session, text)
         except Exception as e:  # noqa: BLE001 — provider nunca derruba o roteador
             logger.error(f"[DISPATCH ROUTER] human reply provider error: {type(e).__name__}")
-        verdict = guard_human_phase_reply(str(draft or ""), session)
+        verdict = guard_human_phase_reply(str(draft or ""), session,
+                                          insurer_message=str(text or ""))
         if verdict["ok"]:
             session = reply_human_phase(session, verdict["reply"], sender=send_to_insurer)
             session["human_phase_guard_fails"] = 0
+            # A retentativa de redação se renova aqui, no ACERTO — e só aqui.
+            # Renová-la na falha faria o ciclo se repetir para sempre: errava,
+            # ganhava perdão, errava de novo, ganhava perdão de novo, e o
+            # contador nunca chegava a dois. 📊 Foi o teste do SPEC-017 que
+            # pegou isso, na primeira rodada depois da mudança.
+            session["retentou_redacao"] = False
+            session["silencios_seguidos"] = 0
             # SPEC-039 F2: o Cérebro v2 decidiu numa fase humana (com o Mapa da
             # URA) — pulsa na Central de Agentes (antes nunca registrava).
             try:
@@ -1205,14 +1223,63 @@ async def try_route_insurer_inbound(
                 await beat("cerebro", 1)
             except Exception:  # noqa: BLE001
                 pass
+        elif verdict.get("silencio"):
+            # SILÊNCIO DELIBERADO — e ele NÃO gasta chance.
+            #
+            # 📊 43,2% das mensagens das seguradoras não pedem nada: aviso,
+            # fila, "aguarde", termo de privacidade. Antes disso existir, duas
+            # telas de aviso seguidas chamavam um humano — por dois avisos.
+            #
+            # O guarda já provou por código que a tela não pede nada; aqui só
+            # se registra. Mas o silêncio tem TETO: três seguidos com a
+            # seguradora ainda falando e o caso volta a andar, porque calar
+            # para sempre é a nova forma de travar.
+            quietos = int(session.get("silencios_seguidos") or 0) + 1
+            session["silencios_seguidos"] = quietos
+            # O Vigia precisa saber que este silêncio é de propósito, senão
+            # ele acorda em 30s e o Sentinela fala por cima da tela.
+            session["silencio_deliberado_ate"] = (
+                datetime.now(timezone.utc) + timedelta(seconds=_SILENCIO_S)
+            ).isoformat()
+            logger.info("[DISPATCH ROUTER] silencio deliberado (%d seguidos) — "
+                        "a tela nao pedia nada", quietos)
+            if quietos >= 3:
+                session["silencios_seguidos"] = 0
+                session["silencio_deliberado_ate"] = None
+                logger.warning("[DISPATCH ROUTER] 3 silencios seguidos — "
+                               "deixando o Vigia acordar")
         else:
-            fails = int(session.get("human_phase_guard_fails") or 0) + 1
-            session["human_phase_guard_fails"] = fails
-            logger.warning(f"[DISPATCH ROUTER] human phase reply rejected ({verdict['reason']}) fails={fails}")
-            if fails >= 2:
-                session["state"] = "needs_human"
-                session["reason"] = f"human_phase_guard:{verdict['reason']}"
-                state = "needs_human"
+            # ERRO DE REDAÇÃO NÃO É RECUSA — e misturar os dois custava caro.
+            #
+            # 📊 Cinco motivos alimentavam UM contador. Uma resposta CERTA com
+            # 401 caracteres contava igual a "não sei", e duas delas chamavam um
+            # humano. O agente acertava e era punido por prolixidade.
+            #
+            # Redação ganha UMA nova tentativa no mesmo turno; recusa conta
+            # direto. O teto de uma é duro: 💭 custa ~4s de modelo contra os
+            # 103s de silêncio que a Allianz tolera — cabe uma vez, não duas.
+            from app.services.insurer_dispatch_service import MOTIVOS_DE_REDACAO
+
+            motivo = str(verdict.get("reason") or "")
+            retentou = bool(session.get("retentou_redacao"))
+            if motivo in MOTIVOS_DE_REDACAO and not retentou:
+                session["retentou_redacao"] = True
+                logger.info("[DISPATCH ROUTER] recusa de REDACAO (%s) — "
+                            "uma nova tentativa, sem gastar chance", motivo)
+            else:
+                # A MARCA NÃO SE APAGA AQUI. Este era um defeito meu, pego pelo
+                # teste: zerar `retentou_redacao` na FALHA fazia o ciclo se
+                # repetir para sempre — errava, ganhava perdão, errava de novo,
+                # ganhava perdão de novo, e o contador nunca chegava a dois.
+                # A retentativa é UMA por turno; ela só se renova quando uma
+                # resposta é de fato aceita (ver o ramo de sucesso acima).
+                fails = int(session.get("human_phase_guard_fails") or 0) + 1
+                session["human_phase_guard_fails"] = fails
+                logger.warning(f"[DISPATCH ROUTER] human phase reply rejected ({verdict['reason']}) fails={fails}")
+                if fails >= 2:
+                    session["state"] = "needs_human"
+                    session["reason"] = f"human_phase_guard:{verdict['reason']}"
+                    state = "needs_human"
 
     if state == "test_aborted":
         # Modo TESTE: fluxo executado até a confirmação final e CANCELADO — nada

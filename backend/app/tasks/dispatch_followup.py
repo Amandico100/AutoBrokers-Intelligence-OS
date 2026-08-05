@@ -11,16 +11,87 @@ corretora. Falhas nunca derrubam o scheduler.
 
 from __future__ import annotations
 
+import hashlib
 import json
 import logging
 from datetime import datetime, timezone
 
 logger = logging.getLogger(__name__)
 
-FOLLOWUP_TEXT = (
-    "Oi! Passando pra saber: o prestador já chegou aí? Tá tudo certo? 🙂\n"
-    "Se ainda não chegou ou algo estiver estranho, me fala que eu resolvo."
+# TRÊS FORMAS DE PERGUNTAR A MESMA COISA — E POR QUE NÃO É SORTEIO.
+#
+# 📊 No acervo real de atendimento da corretora (lido em 05/08/2026), a mesma
+# pergunta nunca sai igual: "Sr {Nome}, guincho já foi deu tudo certo?" ·
+# "Deu certo o guincho?" · "{Nome}, o prestador chegou?". A atendente humana
+# não tem uma frase padrão — e frase padrão repetida é o que denuncia máquina
+# mais rápido que qualquer outra coisa, porque o segurado que aciona duas vezes
+# recebe o MESMO texto, caractere por caractere.
+#
+# ⚠️ A ESCOLHA É POR HASH DO `case_id`, NUNCA POR SORTEIO — e isso é correção,
+# não estética. Esta varredura roda a cada 60s e o envio pode ser retentado: o
+# `continue` do `ok: False`, logo abaixo, devolve o caso à varredura seguinte
+# sem marcar `followup_sent`. Com `random`, a segunda tentativa mandaria OUTRO
+# texto, e o segurado receberia DUAS perguntas diferentes sobre o mesmo guincho
+# — que é pior do que receber a mesma duas vezes, porque parece dois
+# atendimentos. Mesmo caso, mesma frase, sempre.
+#
+# E é `sha1`, não o `hash()` embutido: `hash()` de str é salgado por processo
+# (PYTHONHASHSEED), logo um restart do worker trocaria a variante do MESMO caso
+# no meio do caminho — exatamente o defeito que o determinismo evita.
+FOLLOWUP_VARIANTES = (
+    "o prestador já chegou aí? Tá tudo certo? 🙂\n"
+    "Se ainda não chegou ou algo estiver estranho, me fala que eu resolvo.",
+
+    "passando aqui pra saber do seu atendimento — o prestador já apareceu?\n"
+    "Se ficou alguma coisa fora do combinado, me conta que eu vejo com a seguradora.",
+
+    "deu tudo certo com o serviço aí? 🙂\n"
+    "Se ninguém chegou ainda, me avisa que eu já corro atrás.",
 )
+
+
+def _primeiro_nome(session: dict) -> str:
+    """O primeiro nome do titular, se a ficha do acionamento tiver um.
+
+    Sai dos `slots` da própria sessão — o mesmo `titular_nome` que a InfoCap
+    devolveu e que foi para a seguradora. Não há busca nova nem campo novo.
+
+    Nome inventado é pior que nome nenhum: se o slot vier vazio, sujo ou com
+    placeholder, esta função devolve "" e a mensagem abre com "Oi!".
+    """
+    bruto = str(((session or {}).get("slots") or {}).get("titular_nome") or "").strip()
+    if not bruto or len(bruto) < 2:
+        return ""
+    primeiro = bruto.split()[0].strip(".,;")
+    # Só letras (com acento) valem como nome; qualquer dígito ou marcador
+    # técnico ("não", "n/a", "não informado") é descartado em silêncio.
+    if not primeiro or not primeiro.replace("-", "").replace("'", "").isalpha():
+        return ""
+    if primeiro.lower() in ("nao", "não", "n/a", "na", "sem", "cliente", "titular"):
+        return ""
+    return primeiro[:1].upper() + primeiro[1:].lower()
+
+
+def _variante_de(case_id: str) -> int:
+    """Índice estável da variante para este caso. Sem `case_id`, a primeira."""
+    chave = str(case_id or "").strip()
+    if not chave:
+        return 0
+    return hashlib.sha1(chave.encode("utf-8")).digest()[0] % len(FOLLOWUP_VARIANTES)
+
+
+def texto_de_followup(session: dict) -> str:
+    """A pergunta de acompanhamento desta sessão — sempre a mesma para o mesmo caso."""
+    corpo = FOLLOWUP_VARIANTES[_variante_de(str((session or {}).get("case_id") or ""))]
+    nome = _primeiro_nome(session or {})
+    if nome:
+        return f"{nome}, {corpo}"
+    # Sem nome, a frase sobe de caixa depois do "Oi!" — as variantes são escritas
+    # em minúscula justamente para poderem entrar nos dois formatos.
+    return "Oi! " + corpo[:1].upper() + corpo[1:]
+
+
+
 # O ENCERRAMENTO NÃO AFIRMA O QUE NINGUÉM CONFERIU.
 #
 # 📊 Achado em 05/08/2026, e era o pior defeito de confiança do produto: este
@@ -140,12 +211,31 @@ async def check_dispatch_followups() -> int:
                 continue
             if str(session.get("state") or "") != "monitoring":
                 continue
+            # A CORRETORA DESTA CHAVE SAI DA CHAVE, E ANTES DE QUALQUER USO.
+            #
+            # 📊 Achado em 05/08/2026. Estas três linhas moravam LÁ EMBAIXO,
+            # depois do `if not todo: continue` — e o ramo de encerramento
+            # chamava `_cliente_respondeu_ao_followup(company_id, ...)` acima
+            # delas. Dois defeitos num só lugar:
+            #   1. `UnboundLocalError` na primeira sessão que chegasse ao
+            #      encerramento — e o `except` da varredura inteira engolia,
+            #      então NENHUM follow-up saía e o log só dizia "varredura
+            #      falhou".
+            #   2. Pior: a partir da segunda volta do laço, `company_id` já
+            #      tinha o valor da chave ANTERIOR. A sessão da corretora B era
+            #      conferida contra os transcripts da corretora A —
+            #      leitura cross-tenant (CLAUDE.md §7) num caminho silencioso.
+            # `k` é a única fonte de verdade da corretora aqui; lê-se dela antes
+            # de decidir qualquer coisa. dispatch:active:{company}:{insurer}
+            parts = k.split(":")
+            company_id = parts[2] if len(parts) >= 4 else ""
+            insurer_phone = parts[3] if len(parts) >= 4 else ""
             client_phone = str(session.get("client_phone") or "").strip()
             if not client_phone:
                 continue
             todo = None
             if not session.get("followup_sent") and session.get("followup_at") and _due(session["followup_at"]):
-                todo = ("followup_sent", FOLLOWUP_TEXT)
+                todo = ("followup_sent", texto_de_followup(session))
             elif not session.get("closing_sent") and session.get("closing_at") and _due(session["closing_at"]):
                 # QUEM RESPONDEU NÃO É ENCERRADO PELO RELÓGIO.
                 #
@@ -170,10 +260,6 @@ async def check_dispatch_followups() -> int:
                 todo = ("closing_sent", CLOSING_TEXT)
             if not todo:
                 continue
-            # dispatch:active:{company}:{insurer_phone}
-            parts = k.split(":")
-            company_id = parts[2] if len(parts) >= 4 else ""
-            insurer_phone = parts[3] if len(parts) >= 4 else ""
             integration = integrations.get_platform_whatsapp_integration(company_id) if company_id else None
             if not integration:
                 continue

@@ -1524,12 +1524,78 @@ def _digit_runs(text: str, min_len: int = 5) -> List[str]:
     return runs
 
 
-def guard_human_phase_reply(reply: str, session: Dict[str, Any]) -> Dict[str, Any]:
-    """Guard determinístico da resposta da LLM na fase humana (fail-closed)."""
+# Os motivos de recusa do guarda, separados pelo que eles SIGNIFICAM.
+#
+# 📊 Achado em 05/08/2026: cinco motivos diferentes alimentavam UM contador, e
+# duas recusas chamavam um humano. Uma resposta CERTA com 401 caracteres contava
+# igual a "não sei". O agente acertava e era punido por prolixidade.
+#
+# Erro de redação se corrige pedindo de novo. Recusa de verdade, não.
+MOTIVOS_DE_REDACAO = frozenset({"too_long", "empty", "protocol_without_capture",
+                                "invented_number"})
+MOTIVOS_DE_RECUSA = frozenset({"model_declined"})
+
+
+def _tela_pede_alguma_coisa(playbook: Dict[str, Any], texto: str) -> bool:
+    """A tela da seguradora está pedindo algo, ou só informando?
+
+    É o discriminador que decide se o silêncio deliberado é legítimo. E ele é
+    DETERMINÍSTICO de propósito: o modelo propõe o silêncio, o regex decide.
+    Sem isso, "não responder" viraria só um jeito mais educado de travar — o
+    modelo descobriria que calar não custa nada e calaria em tela que pergunta.
+    """
+    texto = str(texto or "")
+    if not texto.strip():
+        return False
+    # Decisão irreversível NUNCA é silêncio, mesmo sem ponto de interrogação.
+    try:
+        if pergunta_de_decisao(playbook or {}, texto):
+            return True
+    except Exception:  # noqa: BLE001 — sem playbook, cai no marcador genérico
+        pass
+    return bool(re.search(_MARCA_DE_PERGUNTA, texto, re.IGNORECASE))
+
+
+def guard_human_phase_reply(reply: str, session: Dict[str, Any],
+                            *, insurer_message: str = "") -> Dict[str, Any]:
+    """Guard determinístico da resposta da LLM na fase humana (fail-closed).
+
+    TRÊS SAÍDAS, NÃO DUAS — e a terceira fechou quase metade do tráfego.
+    ---------------------------------------------------------------------
+    📊 Medido em 05/08/2026: **43,2% das mensagens das seguradoras não têm
+    marca de pergunta nenhuma** — aviso, saudação, fila, "aguarde", termo de
+    privacidade, pesquisa de satisfação. E o passo `noop`, que é o mecanismo de
+    silêncio escrito à mão, cobre só 14,8% delas na Allianz.
+
+    Os outros 85% caíam aqui, viravam `NAO_SEI`, e duas telas de aviso seguidas
+    chamavam um humano. **Por dois avisos.**
+
+    Agora existe `SEM_RESPOSTA` — mas ele só é aceito se o CÓDIGO provar que
+    cabe. `_tela_pede_alguma_coisa` decide; o modelo apenas propõe. Se ele
+    disser `SEM_RESPOSTA` numa tela que claramente pede algo, isso vira
+    `model_declined` e gasta a chance, como antes.
+
+    `insurer_message` é opcional para não quebrar os chamadores que já existem;
+    sem ela, o silêncio é recusado — falha fechada, que é o certo quando não há
+    como verificar.
+    """
     text = str(reply or "").strip()
     if not text:
         return {"ok": False, "reason": "empty", "reply": ""}
     normalized = text.upper().replace("ÃO", "AO").replace(" ", "_")
+
+    if "SEM_RESPOSTA" in normalized:
+        playbook = get_playbook(str(session.get("playbook_ref") or "")) or {}
+        tela = str(insurer_message or "")
+        if not tela:
+            # Sem a tela não há como verificar. Trata como recusa — nunca
+            # aceitar silêncio no escuro.
+            return {"ok": False, "reason": "model_declined", "reply": text}
+        if _tela_pede_alguma_coisa(playbook, tela):
+            # O modelo quis calar numa tela que pede algo. Isso é recusa.
+            return {"ok": False, "reason": "model_declined", "reply": text}
+        return {"ok": False, "reason": "silencio", "silencio": True, "reply": ""}
+
     if "NAO_SEI" in normalized:
         return {"ok": False, "reason": "model_declined", "reply": text}
     if len(text) > 400:

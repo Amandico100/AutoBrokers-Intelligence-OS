@@ -344,7 +344,20 @@ def run():
             async def bad_provider(session, text):
                 return "O protocolo é 111222333."
 
-            for _ in range(2):
+            # ERRO DE REDACAO GANHA UMA NOVA CHANCE — e o teste muda com o fato.
+            #
+            # 📊 Ate 05/08/2026 este bloco mandava DUAS respostas ruins e
+            # esperava `needs_human`. Era o comportamento certo para o codigo de
+            # entao: CINCO motivos de recusa alimentavam UM contador, e duas
+            # recusas de qualquer especie chamavam um humano — inclusive duas
+            # respostas CERTAS com 401 caracteres.
+            #
+            # Agora "escrevi mal" (numero inventado, texto longo, vazio) ganha
+            # UMA nova tentativa no mesmo turno; so "nao sei" conta direto. A
+            # LICAO NAO MORRE — ela migra: o que importa e que nada e enviado as
+            # cegas e que a sessao PARA quando o modelo insiste no erro. Isso
+            # continua sendo testado, agora com a terceira tentativa.
+            for _ in range(3):
                 await router.try_route_insurer_inbound(
                     company_id="co-HP", from_phone="551140901444",
                     text="Qual o protocolo?",
@@ -354,9 +367,14 @@ def run():
                 )
             paused = await router.load_active_dispatch("co-HP", "551140901444")
             check(
-                "HP: guard barra 2x -> needs_human + cliente avisado (nada enviado as cegas)",
+                "HP: guard barra ate parar -> needs_human + cliente avisado (nada as cegas)",
                 paused and paused["state"] == "needs_human" and len(to_insurer) == 1 and to_client,
                 (paused and paused.get("reason"), len(to_insurer), to_client),
+            )
+            check(
+                "HP: e NADA foi enviado a seguradora nessas tentativas",
+                len(to_insurer) == 1,
+                ("o guarda deixou passar resposta ruim", to_insurer),
             )
             await router.clear_active_dispatch("co-HP", "551140901444")
 
