@@ -10,6 +10,34 @@
 
 ## 0. O QUE MUDOU EM 04/08/2026 — leia isto primeiro
 
+### 0.0 Quinze leitores independentes disseram que o áudio é o buraco
+
+> 📊 Acrescentado em 04/08/2026, depois da noite da destilação. Relatório completo
+> em [`reports/A-NOITE-DA-DESTILACAO-04-08-2026.md`](reports/A-NOITE-DA-DESTILACAO-04-08-2026.md).
+
+Vinte e sete destiladores leram **1.784 conversas** em pacotes diferentes, sem se
+falarem. **Quinze deles** relataram, por conta própria, a mesma coisa: entre 12 e 20
+conversas de cada 70 têm a resposta decisiva em `[audio]`, com só o *"ok, entendi"*
+chegando ao texto.
+
+E um deles formulou o padrão melhor que os outros:
+
+> **"Quanto mais resolutivo o atendimento, mais ele acontece em áudio."**
+
+A pergunta do segurado fica escrita. A explicação da atendente — que é a carta —
+vira `[audio]`. **O acervo guarda sistematicamente a dúvida e perde a resposta.**
+
+Exemplos medidos: *"troca de vidro precisa de BO?"* apareceu duas vezes e foi
+respondida por áudio nas duas. Uma pergunta sobre assistência residencial dentro de
+assistência auto ficou sem resposta nenhuma no transcript. Vários destiladores
+escreveram a mesma recomendação, sem combinarem: *"transcrever áudio rende mais
+cartas do que processar outro pacote inteiro de texto."*
+
+**Consequência que muda a prioridade:** enquanto o resgate parecia salvar arquivos,
+ele era uma dívida de completude. Agora está medido que ele salva **a melhor parte
+do conhecimento** — justamente a que o acervo mais precisa e a única que não dá para
+recuperar de outro jeito. É a pendência de maior retorno medido do produto.
+
 ### 0.1 O caminho A foi testado. Funciona pela metade.
 
 📊 A AutoFleet repareou em 04/08 às 18:39 e o `history_sync` reentregou tudo
@@ -23,11 +51,63 @@
     0 arquivados                         ← consequência
 ```
 
-🔴 **`/message/downloadmedia` exige o `waE2E.Message` INTEIRO** — e sem os dois
-hashes não há como decifrar. A coordenada gravada é **parcial**.
+🔴 A coordenada gravada é **parcial**.
 
 > **Repescar áudio do banco é impossível.** Não é lentidão nem falta de
 > autorização: os dados que estão lá não bastam, e nunca vão bastar.
+
+### 0.1.1 ⚠️ CORREÇÃO de 05/08/2026 — a conclusão estava certa, a razão não
+
+Este parágrafo afirmava, até hoje, que *"sem os dois hashes não há como
+decifrar"*. **Está errado**, e razão errada leva ao conserto errado depois.
+
+📊 Lido na fonte (`whatsmeow/download.go:290,310`): a chave de decifração sai
+**só do `mediaKey`**, por HKDF. Os SHA256 são outra coisa: `fileEncSHA256` é o
+parâmetro `hash=` da URL do CDN, e `fileSHA256` é a conferência de integridade
+do arquivo já baixado.
+
+**A conclusão prática não muda, e por um motivo diferente:** `download.go:249`
+e `:304` transformam um `fileSHA256` ausente em 32 bytes zerados, e a
+comparação então **sempre falha** com `ErrInvalidMediaSHA256`. Os 2.654 áudios
+já gravados continuam irrecuperáveis — não porque falte a chave, mas porque
+falta o que prova que o arquivo chegou inteiro.
+
+E a **causa** de os hashes não estarem no banco não era o Go omitindo: era o
+nosso extrator pedindo o nome errado. Ver §0.1.2.
+
+### 0.1.2 A causa raiz: a caixa alta de uma letra
+
+📊 05/08/2026. O Evolution GO serializa o evento com `json.Marshal` do struct
+do whatsmeow, **não com protojson**. As chaves do webhook são as tags json —
+os nomes do proto, com o acrônimo em MAIÚSCULA:
+
+```
+o fio manda        fileSHA256 · fileEncSHA256 · URL
+nós pedíamos       fileSha256 · fileEncSha256 · url
+```
+
+**A linha de controle**, sobre 2.655 áudios do acervo:
+
+```
+grafia IGUAL à nossa     directPath 2.654 · mediaKey 2.654 · mediaKeyTimestamp 2.655
+grafia DIFERENTE         fileSha256 0 · url 0
+```
+
+Um fator — a caixa das letras — e seis resultados. E o serializador está
+**provado, não suposto**: `mediaKeyTimestamp` chega como **número** JSON, e
+protojson emitiria `int64` como string.
+
+> **É a segunda vez.** `selectedButtonId` × `selectedButtonID` já apagou 98,9%
+> dos cliques na leitura, neste repositório, pelo mesmo serializador. A lição
+> que fica: **quem serializa o protobuf escolhe a caixa das letras e não
+> avisa** — então a leitura tem de casar por grafia normalizada, nunca por
+> nome exato.
+
+Consertado em `observer_intake.py`, com teste
+(`test_a_caixa_alta_do_acronimo_nao_apaga_audio.py`) que inclui a linha de
+controle provando que a grafia antiga **perdia** o payload do Go.
+
+**O conserto salva o futuro, não repesca o passado.**
 
 E o próprio `history_ingest.py` já dizia isso, em comentário, desde antes:
 

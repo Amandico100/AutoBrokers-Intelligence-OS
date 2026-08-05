@@ -93,14 +93,38 @@ def _fonte(*p: str) -> str:
 
 
 # Um áudio como o WhatsApp entrega de verdade.
+#
+# ATUALIZADO em 05/08/2026 — a grafia deste fixture estava ERRADA, e o teste
+# passava mesmo assim. CLAUDE.md §9.3: quando o fato muda, o teste muda com ele.
+#
+# 📊 O que se descobriu: o Evolution GO serializa o evento com `json.Marshal`
+# do struct do whatsmeow, não com protojson. As chaves do fio são os nomes do
+# proto, com o acrônimo em MAIÚSCULA — `fileSHA256`, `fileEncSHA256`, `URL`.
+# Medido sobre 2.655 áudios do acervo: as três chaves de grafia idêntica à
+# nossa lista estavam em 2.654 linhas; as três de grafia diferente, em ZERO.
+#
+# O fixture antigo usava a grafia do Baileys, então ele testava um payload que
+# esta instalação nunca recebe — e por isso o defeito atravessou o teste. A
+# LIÇÃO não mudou (sem coordenada a mídia é irrecuperável); mudou o que é
+# preciso escrever para que ela seja verdade.
 AUDIO = {"audioMessage": {
     "mimetype": "audio/ogg; codecs=opus", "seconds": 44, "fileLength": 100012,
     "ptt": True,
     "directPath": "/v/t62.7117-24/12345_67890_n.enc",
     "mediaKey": "aBcDeFgHiJkLmNoPqRsTuVwXyZ0123456789+/=",
+    "fileEncSHA256": "Zm9vYmFyZW5jc2hhMjU2dmFsdWVoZXJl",
+    "fileSHA256": "Zm9vYmFyc2hhMjU2dmFsdWVoZXJlMDAw",
+    "mediaKeyTimestamp": 1753900000,
+}}
+
+# O mesmo áudio na grafia antiga. O extrator tem de ler os DOIS — é o que
+# impede que trocar o serializador do provedor volte a apagar áudio em
+# silêncio. Guardado aqui como linha de controle da tolerância.
+AUDIO_GRAFIA_ANTIGA = {"audioMessage": {
+    **{k: v for k, v in AUDIO["audioMessage"].items()
+       if k not in ("fileEncSHA256", "fileSHA256")},
     "fileEncSha256": "Zm9vYmFyZW5jc2hhMjU2dmFsdWVoZXJl",
     "fileSha256": "Zm9vYmFyc2hhMjU2dmFsdWVoZXJlMDAw",
-    "mediaKeyTimestamp": 1753900000,
 }}
 
 
@@ -110,9 +134,15 @@ def teste_a_captura_guarda_o_que_permite_buscar():
 
     checar(kind == "audio", "reconhece como áudio")
     checar(meta.get("segundos") == 44, "guarda a duração")
-    for chave in ("directPath", "mediaKey", "fileEncSha256"):
+    for chave in ("directPath", "mediaKey", "fileEncSHA256"):
         checar(meta.get(chave) not in (None, ""), f"guarda `{chave}`",
                "sem isto a mídia é irrecuperável depois que a fila expira")
+
+    # A tolerância às duas grafias, medida e não presumida.
+    _k, _t, _i, antiga = OI._extract_content(AUDIO_GRAFIA_ANTIGA)
+    checar((antiga or {}).get("fileEncSHA256") not in (None, ""),
+           "e lê também a grafia antiga, gravando sob o nome canônico",
+           "trocar o serializador do provedor não pode voltar a apagar áudio")
     checar(OI.sem_coordenadas(meta).get("download") == "recuperavel",
            "a ficha diz que é recuperável")
 

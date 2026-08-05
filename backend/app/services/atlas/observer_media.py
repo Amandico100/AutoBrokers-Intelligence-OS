@@ -74,13 +74,23 @@ def _safe_filename(value: str) -> str:
     return clean[:120] or "attachment"
 
 
+# Miniaturas embutidas, em QUALQUER grafia. O fio do Evolution GO escreve
+# `JPEGThumbnail` (acrônimo maiúsculo, tag do proto) e o filtro pedia
+# `jpegThumbnail` — era código morto, da mesma família do `fileSHA256`.
+#
+# Sem consequência prática hoje, porque o próprio Go já apaga a miniatura de
+# image/video/document antes de emitir. Mas um filtro que não filtra é um
+# comentário mentindo sobre o que o código faz, e o próximo leitor acredita.
+_PREVIAS_EMBUTIDAS = frozenset({"jpegthumbnail", "thumbnail", "thumbnailsha256"})
+
+
 def _message_for_download(value: Any) -> Any:
     """Remove embedded previews; keep media keys/direct paths required by Go."""
     if isinstance(value, dict):
         return {
             key: _message_for_download(item)
             for key, item in value.items()
-            if key not in {"jpegThumbnail", "thumbnail", "thumbnailSha256"}
+            if str(key).lower() not in _PREVIAS_EMBUTIDAS
         }
     if isinstance(value, list):
         return [_message_for_download(item) for item in value]
@@ -259,8 +269,25 @@ def _motivo_da_falha(exc: BaseException) -> str:
     alternativas respondem 404: a rota está certa. Falta saber o status real
     da chamada autenticada, e é isso que este campo passa a guardar.
 
-    Só o status e a rota. Nunca o corpo da resposta nem o token: o corpo pode
-    trazer dado de cliente, e o token nunca aparece em log.
+    Só o status e a rota. Nunca o token, que jamais aparece em log.
+
+    ATUALIZADO em 05/08/2026 — e a lição de 28/07 se repetiu um nível acima.
+    ------------------------------------------------------------------------
+    📊 3.208 mídias falharam com exatamente `HTTP 500 /message/downloadmedia`.
+    O status resolveu a dúvida de 28/07 (não é 401 nem 404), e criou a
+    seguinte: **o Evolution GO devolve 500 para CINCO causas diferentes** —
+    sessão morta, cliente desconectado, tipo de mídia irreconhecível, falha ao
+    criar o diretório de trabalho, e o erro do próprio whatsmeow. São cinco
+    consertos que não se parecem, e o número 500 não distingue nenhum.
+
+    O Go escreve a causa por extenso em `{"error": "..."}` — e nós jogávamos
+    fora de propósito. O receio original era certo (o corpo pode trazer dado de
+    cliente), mas a resposta era desnecessariamente cara: **lê-se só a chave
+    `error`**, que é frase de diagnóstico do servidor, e apagam-se URLs, que
+    são o único lugar onde `directPath` poderia aparecer.
+
+    Guardar o nome da exceção não conserta nada. Guardar o status estreitou o
+    campo. Guardar a frase é o que finalmente nomeia o defeito.
     """
     resposta = getattr(exc, "response", None)
     codigo = getattr(resposta, "status_code", None)
@@ -271,13 +298,79 @@ def _motivo_da_falha(exc: BaseException) -> str:
             caminho = urlparse(str(getattr(pedido, "url", "") or "")).path
         except Exception:  # noqa: BLE001
             caminho = ""
-        return f"HTTP {codigo}{(' ' + caminho) if caminho else ''}"
+        base = f"HTTP {codigo}{(' ' + caminho) if caminho else ''}"
+        frase = _frase_do_provedor(resposta)
+        return f"{base} :: {frase}" if frase else base
     return type(exc).__name__
+
+
+def _frase_do_provedor(resposta: Any) -> str:
+    """A frase de erro do Evolution GO — só ela, e sem URL.
+
+    `{"error": "..."}` é o campo que o `message_handler` do Go preenche com a
+    causa. Nada mais do corpo é lido: `data`, `base64` e afins podem carregar
+    conteúdo de cliente. E mesmo dentro da frase, qualquer URL vira `<url>` —
+    é lá que o `directPath` moraria, e ele é coordenada de download.
+    """
+    try:
+        corpo = resposta.json()
+    except Exception:  # noqa: BLE001 — corpo não-JSON não é diagnóstico
+        return ""
+    if not isinstance(corpo, dict):
+        return ""
+    frase = str(corpo.get("error") or "")[:160]
+    return re.sub(r"https?://\S+", "<url>", frase).strip()
+
+
+def _bytes_embutidos(message: Any) -> Tuple[bytes, str]:
+    """Os bytes que o Evolution GO já pôs no próprio webhook, se puser.
+
+    `WEBHOOK_FILES` é `"true"` por padrão no Evolution GO: ele baixa a mídia na
+    chegada e deixa o conteúdo em `Message.base64`, irmão do `audioMessage`.
+    Quando isso acontece, pedir de novo pelo `/message/downloadmedia` é uma
+    SEGUNDA passada pela sessão do WhatsApp — exatamente o tráfego que decide
+    se um número é marcado como anômalo, e exatamente o que o Founder pediu
+    para evitar.
+
+    💭 Ainda não medi se o `base64` de fato chega nesta instalação. Por isso
+    isto é ATALHO e não substituição: se não vier, o caminho HTTP roda igual.
+    E as duas leituras ensinam algo:
+
+      vem      → o áudio já estava no webhook desde sempre, e o 500 do
+                 `/message/downloadmedia` deixa de importar
+      não vem  → então o PRÓPRIO Go também falhou em baixar, o que move a
+                 causa do 500 para o cliente whatsmeow e descarta de vez a
+                 hipótese de o nosso corpo estar errado
+
+    O `log` existe para que a resposta apareça sem precisar de outra rodada.
+    """
+    if not isinstance(message, dict):
+        return b"", ""
+    embutido = str(message.get("base64") or "")
+    if not embutido:
+        return b"", ""
+    if embutido.startswith("data:") and "," in embutido:
+        cabecalho, embutido = embutido.split(",", 1)
+        mimetype = cabecalho[5:].split(";", 1)[0]
+    else:
+        mimetype = str(message.get("mimetype") or "")
+    try:
+        blob = base64.b64decode(embutido, validate=False)
+    except Exception:  # noqa: BLE001 — base64 ruim não derruba o download
+        return b"", ""
+    if not blob or len(blob) > _max_bytes():
+        return b"", ""
+    logger.info("[OBSERVER MEDIA] bytes vieram no proprio webhook (%d B) — "
+                "sem segunda passada pela sessao", len(blob))
+    return blob, mimetype
 
 
 async def _download_media(
     integration: Dict[str, Any], message: Dict[str, Any]
 ) -> Tuple[bytes, str]:
+    blob, mimetype = _bytes_embutidos(message)
+    if blob:
+        return blob, mimetype
     base_url = str(integration.get("base_url") or "").rstrip("/")
     token = str(integration.get("token") or "")
     parsed = urlparse(base_url)

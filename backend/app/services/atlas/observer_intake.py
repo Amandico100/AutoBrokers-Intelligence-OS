@@ -37,8 +37,37 @@ logger = logging.getLogger(__name__)
 # Separadas, acrescentar uma chave nova no gravador e esquecer do escondedor
 # publicaria um segredo — e é exatamente o tipo de esquecimento que ninguém
 # percebe, porque o dado continua funcionando.
-COORDENADAS_DE_MIDIA = ("directPath", "mediaKey", "fileEncSha256", "fileSha256",
-                        "mediaKeyTimestamp", "url")
+# A CAIXA ALTA DO ACRÔNIMO — e é a SEGUNDA vez que ela nos custa dados.
+#
+# O Evolution GO serializa o evento com `json.Marshal` do struct do whatsmeow,
+# não com protojson. Então as chaves do webhook são as tags json = os nomes do
+# **proto**, com o acrônimo em MAIÚSCULA: `fileSHA256`, `fileEncSHA256`, `URL`.
+# Nós pedíamos a grafia do Baileys (`fileSha256`, `url`) e recebíamos nada.
+#
+# 📊 A linha de controle, medida em 05/08/2026 sobre 2.655 áudios:
+#
+#     grafia IGUAL à nossa      directPath 2.654 · mediaKey 2.654
+#                               mediaKeyTimestamp 2.655
+#     grafia DIFERENTE          fileSha256 0 · url 0
+#
+# Um fator — a caixa das letras — e seis resultados. E o serializador está
+# provado, não suposto: `mediaKeyTimestamp` chega como **número** JSON, e
+# protojson emitiria `int64` como string.
+#
+# É a mesma família do `selectedButtonId` × `selectedButtonID` documentado em
+# `evolution_inbound.py`, que apagou 98,9% dos cliques na leitura. Mesma causa,
+# mesmo serializador, mesma lição: **quem serializa o protobuf escolhe a caixa
+# das letras e não avisa.**
+COORDENADAS_DE_MIDIA = ("directPath", "mediaKey", "fileEncSHA256", "fileSHA256",
+                        "mediaKeyTimestamp", "URL")
+
+# A lista de ESCONDER não pode encolher quando a de GRAVAR muda de caixa.
+# Já existem linhas no banco com as grafias antigas; se elas saírem da
+# ocultação, um `mediaKey` velho passa a vazar em resposta de API. Comparação
+# por minúsculas cobre as duas eras de uma vez.
+_COORDENADAS_OCULTAS = frozenset(
+    c.lower() for c in COORDENADAS_DE_MIDIA + ("fileEncSha256", "fileSha256", "url")
+)
 
 
 def sem_coordenadas(meta: Optional[Dict[str, Any]]) -> Optional[Dict[str, Any]]:
@@ -50,7 +79,7 @@ def sem_coordenadas(meta: Optional[Dict[str, Any]]) -> Optional[Dict[str, Any]]:
     """
     if not isinstance(meta, dict):
         return meta
-    limpo = {k: v for k, v in meta.items() if k not in COORDENADAS_DE_MIDIA}
+    limpo = {k: v for k, v in meta.items() if str(k).lower() not in _COORDENADAS_OCULTAS}
     achadas = [k for k in COORDENADAS_DE_MIDIA if meta.get(k) not in (None, "")]
     if achadas:
         limpo["download"] = "recuperavel"
@@ -214,8 +243,20 @@ def _extract_content(message: Dict[str, Any]) -> Tuple[str, Optional[str], Optio
             # Guardar aqui torna a mídia recuperável enquanto o WhatsApp a
             # mantiver no servidor, mesmo que a fila caia, o worker falhe ou o
             # processamento só aconteça semanas depois.
+            # LEITURA POR GRAFIA NORMALIZADA, e não por nome exato.
+            #
+            # Pedir o nome exato é o que produziu o defeito acima: a lista dizia
+            # `fileSha256`, o fio dizia `fileSHA256`, e o dado sumia em silêncio
+            # — sem erro, sem log, sem nada. Casar por minúsculas faz o extrator
+            # funcionar com as duas grafias, então trocar o serializador do Go
+            # (ou voltar para o Baileys) deixa de ser um evento que apaga áudio.
+            #
+            # O nome de DESTINO continua sendo um só, o do proto: o banco tem de
+            # ter uma chave por coordenada, não uma por fornecedor.
+            por_grafia = {str(k).lower(): k for k in m}
             for chave in COORDENADAS_DE_MIDIA:
-                valor = m.get(chave)
+                origem = por_grafia.get(chave.lower())
+                valor = m.get(origem) if origem else None
                 if valor not in (None, ""):
                     meta[chave] = valor if isinstance(valor, (str, int)) else str(valor)
             return kind, str(m.get("caption") or ""), None, meta
