@@ -21,10 +21,89 @@ FOLLOWUP_TEXT = (
     "Oi! Passando pra saber: o prestador já chegou aí? Tá tudo certo? 🙂\n"
     "Se ainda não chegou ou algo estiver estranho, me fala que eu resolvo."
 )
+# O ENCERRAMENTO NÃO AFIRMA O QUE NINGUÉM CONFERIU.
+#
+# 📊 Achado em 05/08/2026, e era o pior defeito de confiança do produto: este
+# texto saía SÓ PELO RELÓGIO. Um segurado que tinha acabado de responder "não
+# chegou ninguém ainda" recebia, 2h30 depois, "Espero que tenha dado tudo
+# certo!" — e a sessão era marcada `resolvido` e liberada logo abaixo.
+#
+# O caso morria em silêncio dizendo que deu certo. É o único ponto do sistema
+# onde ele afirmava ao cliente um fato que o próprio cliente havia contradito
+# minutos antes.
+#
+# Agora este texto só alcança quem NÃO respondeu — e mesmo aí ele não afirma
+# nada: reconhece que não sabe e deixa a porta aberta. É o que a atendente faz.
+# 📊 Do acervo: "Sr, nao lhe retornei ainda porque ainda nao foi resolvido ta,
+# quero dar so a noticia boa... gentileza aguardar."
 CLOSING_TEXT = (
-    "Espero que tenha dado tudo certo com o serviço! 🙂\n"
-    "Qualquer coisa que precisar, é só me chamar por aqui — estamos sempre à disposição."
+    "Vou deixar seu atendimento registrado aqui comigo 🙂\n"
+    "Se ficou alguma coisa pendente com o serviço, é só me chamar que eu retomo na hora."
 )
+
+
+def _quando_perguntamos(session: dict) -> str:
+    """A hora em que o follow-up saiu, lida do próprio transcript da sessão.
+
+    Não inventa campo novo: a entrada `[AO CLIENTE]` já é gravada com `at` e
+    `step="followup_sent"` no envio, logo abaixo. Ler dali é o que faz esta
+    verificação funcionar para as sessões que já estão no ar agora, sem
+    backfill.
+    """
+    for entrada in reversed(session.get("transcript") or []):
+        if isinstance(entrada, dict) and entrada.get("step") == "followup_sent":
+            return str(entrada.get("at") or "")
+    return ""
+
+
+async def _cliente_respondeu_ao_followup(company_id: str, client_phone: str,
+                                         session: dict) -> bool:
+    """O cliente falou depois de a gente perguntar?
+
+    FALHA ABERTA, de propósito, e é o contrário do costume desta casa.
+    ------------------------------------------------------------------
+    Em toda outra trava do produto a dúvida vira recusa. Aqui não: se esta
+    função não conseguir ler o banco, ela responde **True** — ou seja, NÃO
+    encerra.
+
+    O motivo é a assimetria do dano. Não encerrar um caso já resolvido custa
+    uma sessão viva a mais até o TTL, que ninguém sente. Encerrar um caso NÃO
+    resolvido custa um segurado parado na estrada ouvindo "espero que tenha
+    dado tudo certo" — e a corretora descobrindo pelo cliente.
+
+    📊 O dano da direção errada foi medido: era exatamente isso que acontecia.
+    """
+    quando = _quando_perguntamos(session)
+    if not quando:
+        # Sem rastro da pergunta, não há como saber se houve resposta.
+        return True
+    try:
+        from app.core.database import get_supabase_client
+
+        db = get_supabase_client()
+        alvo = "".join(ch for ch in str(client_phone or "") if ch.isdigit())
+        if not alvo:
+            return True
+        # Os últimos 8 dígitos evitam o problema do 9º dígito e do DDI, que é
+        # a mesma armadilha que o `channel_security` já documenta.
+        r = (db.client.table("attendance_transcripts")
+             .select("id, counterparty, direction, wa_timestamp")
+             .eq("company_id", company_id)
+             .gt("wa_timestamp", quando)
+             .limit(200).execute())
+        for linha in (r.data or []):
+            contraparte = "".join(ch for ch in str(linha.get("counterparty") or "")
+                                  if ch.isdigit())
+            if not contraparte or contraparte[-8:] != alvo[-8:]:
+                continue
+            if str(linha.get("direction") or "").lower() in ("in", "inbound", "received"):
+                return True
+        return False
+    except Exception as exc:  # noqa: BLE001
+        logger.warning("[FOLLOWUP] nao consegui conferir a resposta do cliente "
+                       "(%s) — NAO encerrando, que e o lado seguro",
+                       type(exc).__name__)
+        return True
 
 
 def _due(ts: str) -> bool:
@@ -68,6 +147,26 @@ async def check_dispatch_followups() -> int:
             if not session.get("followup_sent") and session.get("followup_at") and _due(session["followup_at"]):
                 todo = ("followup_sent", FOLLOWUP_TEXT)
             elif not session.get("closing_sent") and session.get("closing_at") and _due(session["closing_at"]):
+                # QUEM RESPONDEU NÃO É ENCERRADO PELO RELÓGIO.
+                #
+                # 📊 Este `elif` só olhava a hora. Um segurado que respondia
+                # "não chegou ninguém ainda" recebia, 2h30 depois, "Espero que
+                # tenha dado tudo certo!" — e a sessão virava `resolvido` logo
+                # abaixo. O caso morria em silêncio afirmando o contrário do
+                # que o próprio cliente tinha acabado de dizer.
+                #
+                # Quem respondeu está sendo conduzido pelo agente de
+                # atendimento. Encerrar por cima é declarar resolvido o que
+                # ninguém conferiu — e é o único ponto do produto onde ele
+                # contradizia o cliente.
+                if await _cliente_respondeu_ao_followup(company_id, client_phone, session):
+                    session["followup_respondido"] = True
+                    session["closing_sent"] = True   # não insiste no relógio
+                    await save_active_dispatch(company_id, insurer_phone, session)
+                    logger.info("[FOLLOWUP] case=%s o cliente respondeu — encerramento "
+                                "por relogio cancelado, o agente conduz",
+                                session.get("case_id"))
+                    continue
                 todo = ("closing_sent", CLOSING_TEXT)
             if not todo:
                 continue
