@@ -513,14 +513,47 @@ _AUTO_OPENING_TEMPLATE = (
     "Contato no local: {pessoa_no_local} - {telefone_contato}"
 )
 
+# O PROMPT SE CONTRADIZIA SOBRE A UNICA DECISAO IRREVERSIVEL QUE EXISTE.
+#
+# 📊 Medido em 05/08/2026. Este texto entra no prompt do acionamento
+# apresentado ao modelo como "escrita por quem observou esta seguradora — VALE
+# MAIS QUE A SUA INTUICAO" (insurer_dispatch_service.py). E ele dizia
+# "NAO confirme". Enquanto isso, 772 caracteres acima, a regra 3 do bloco
+# `system` dizia "CONFIRME com a opcao afirmativa".
+#
+# Duas ordens opostas, no mesmo prompt, sobre abrir ou nao abrir um guincho de
+# verdade — com `DISPATCH_FINALIZE_MODE=live`.
+#
+# A frase de nao-confirmar nasceu quando o modo padrao era `test` e o Founder
+# fazia as provas no proprio celular. O modo virou `live` e o texto ficou. E o
+# Founder decidiu, em 05/08/2026, com todas as letras:
+#
+#   "Ele precisa CONFIRMAR o acionamento com inteligencia e voltar pra avisar o
+#    segurado do que ficou decidido, sem errar, sem travar e SEM PEDIR
+#    APROVACAO DE NINGUEM. Ele e o responsavel pelo atendimento."
+#
+# Entao a orientacao passa a mandar confirmar — e a protecao deixa de ser
+# "nao confirme" (que so adiava o trabalho para um humano) e passa a ser
+# **CONFERIR ANTES**. Uma checagem explicita e verificavel vale mais que uma
+# proibicao, porque a proibicao so garante que nada acontece.
+#
+# ⚠️ O freio de teste NAO sai daqui: `DISPATCH_FINALIZE_MODE` continua sendo
+# quem decide se a confirmacao chega a ser enviada. Prompt nao e trava.
 _AUTO_HUMAN_PHASE_GUIDANCE = (
     "Voce conduz, EM NOME DA CORRETORA, um acionamento de assistencia AUTO no WhatsApp da seguradora. "
     "Pode ser a URA (menu numerado ou botoes) ou um atendente humano. Responda menus escolhendo a opcao "
     "coerente com o subservico/dados do caso; responda pedidos de dado com o valor exato do caso "
-    "(placa, CPF, endereco, telefone). Endereco/local: use o que o cliente informou; nao invente. "
-    "Se a seguradora for CONFIRMAR/ABRIR o servico (agendar, 'posso continuar', 'confirmar'), NAO confirme: "
-    "isso e o passo final e exige aprovacao da corretora. Use SOMENTE dados do caso, nunca invente numeros/"
-    "protocolos/prazos. Se realmente nao der pra deduzir, responda exatamente: NAO_SEI."
+    "(placa, CPF, endereco, telefone). Endereco/local: use o que o cliente informou; nao invente.\n"
+    "QUANDO A SEGURADORA PEDIR PARA CONFIRMAR E ABRIR O SERVICO: voce CONFIRMA. "
+    "Voce e o responsavel por este acionamento e nao precisa de aprovacao de ninguem. "
+    "Antes de confirmar, confira no resumo que a seguradora mostrou: (1) a placa e o veiculo sao os do caso; "
+    "(2) o servico e o que o segurado pediu; (3) o endereco de origem e o que o segurado informou; "
+    "(4) se houver destino, e o que o segurado informou. "
+    "Se os quatro conferem, confirme com a opcao afirmativa. "
+    "Se ALGUM divergir, NAO confirme: corrija com o dado certo do caso, ou responda NAO_SEI se nao houver o dado. "
+    "Confirmar com dado errado abre o servico errado, e isso nao se desfaz.\n"
+    "Use SOMENTE dados do caso, nunca invente numeros/protocolos/prazos. "
+    "Se realmente nao der pra deduzir, responda exatamente: NAO_SEI."
 )
 
 # Captura comum de protocolo/OS + link de acompanhamento (auto).

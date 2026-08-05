@@ -1336,33 +1336,45 @@ def build_human_phase_messages(session: Dict[str, Any], insurer_message: str,
     # CÉREBRO v2 (SPEC-034): quando existe MAPA DE URA (Cartógrafo/Espelho), o
     # cérebro enxerga o TERRITÓRIO — todas as telas conhecidas e o que cada opção
     # faz — e decide pelo OBJETIVO mesmo se a tela atual mudou de texto.
-    if ura_map:
-        try:
-            from app.services.ura_map_service import (
-                render_map_for_llm,
-                resumo_honesto_do_mapa,
-            )
-
-            mapa_txt = render_map_for_llm(ura_map)
-            if mapa_txt:
-                # O RÓTULO DIZ QUANTAS DE QUANTAS. Ele dizia "COMPLETO".
-                #
-                # 📊 05/08/2026: o render corta em 30 telas, e a Allianz tem
-                # 1.323. O prompt afirmava ao modelo que aquilo era o mapa
-                # inteiro — e o modelo não tem como desconfiar do próprio
-                # prompt. Quando a tela atual não estivesse entre as 30, ele
-                # escolheria a "menos errada" das que viu, com confiança.
-                #
-                # Dizer o tamanho da amostra devolve ao modelo o direito de
-                # dizer "não reconheço esta tela" — que é a resposta certa
-                # quando ele de fato não a tem.
-                guia_ura += ("\n\nTELAS CONHECIDAS DA URA DESTA SEGURADORA (" +
-                             resumo_honesto_do_mapa(ura_map) + "). Se a tela atual "
-                             "estiver aqui, escolha a opção que avança para o objetivo "
-                             "do caso. Se NÃO estiver, diga que não a reconhece — a "
-                             "lista é parcial e não cobre a URA inteira:\n" + mapa_txt)
-        except Exception:  # noqa: BLE001 — mapa nunca derruba o prompt
-            pass
+    # O MAPA DA URA NÃO ENTRA NO PROMPT. DECISÃO DO FOUNDER, 05/08/2026.
+    #
+    # O parâmetro `ura_map` continua na assinatura porque os dois chamadores
+    # (webhook.py e dispatch_watchdog.py) ainda o passam, e porque a decisão
+    # pode ser revista quando o mapa souber recortar por caso. Ele é ignorado
+    # de propósito, e este comentário é a razão.
+    #
+    # 📊 O QUE FOI MEDIDO, para um acionamento de GUINCHO na Allianz:
+    #
+    #   o bloco do mapa teria ......... 5.220 caracteres
+    #   o prompt tem hoje ............. 5.098  → dobraria
+    #   o menu de serviço AUTO está na  posição 31   ← o corte é de 30.
+    #                                                  FICA DE FORA.
+    #   telas de guincho .............. posições 56, 61 e 64
+    #
+    #   das 30 telas que ENTRARIAM:
+    #     19 não têm opção nenhuma (avisos, perguntas abertas)
+    #      6 são conversa de gente ("Ok", "Um momento", "Com quem falo?")
+    #      2 são de ramo errado (Dedetização, Substituição de Telhas)
+    #      1 é útil para um guincho
+    #   e a "tela inicial" anunciada seria "Termo de Privacidade", sem opções.
+    #
+    # A CAUSA não é o mapa ser ruim. É ele ser `ramo='todos'` — uma árvore só,
+    # com auto, residencial, condomínio e empresarial misturados — e o render
+    # não receber o caso. Ordenar por "tela mais vista na seguradora inteira"
+    # promove o boilerplate e o menu de residencial, porque é o que mais se
+    # repete numa URA. O corte fica mais eficiente em escolher a coisa errada.
+    #
+    # E o mapa nem entrega o que se queria dele: o render não imprime
+    # `leads_to`, então ele NÃO diz "o que vem depois" — que era o propósito.
+    # 📊 Só 38% das opções da Allianz e 19% das da Porto têm destino gravado.
+    #
+    # O USO CERTO DO MAPA É OUTRO, e é offline: ele é a lista de trabalho de
+    # quem escreve o corredor. 📊 Cruzando as 38 âncoras de `allianz-auto` com
+    # o mapa, 141 telas de menu não têm resposta escrita. Essa lista vira
+    # `ura_steps` — permanente, determinístico, e custo zero em atendimento.
+    #
+    # Ver docs/canon/O-ATLAS-E-PARA-QUEM-ESCREVE-O-CORREDOR.md.
+    _ = ura_map  # ignorado de propósito — ver acima
     # A ORIENTAÇÃO DO PLAYBOOK ENTRA NO PROMPT.
     #
     # 📊 `human_phase_guidance` existia em 4 playbooks e **nenhum código a lia** —

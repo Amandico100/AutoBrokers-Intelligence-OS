@@ -179,30 +179,41 @@ def run():
                                  slots=dict(slots))
     mapa = {"nodes": {"n1": {"text": "o que voce precisa?", "kind": "menu", "hash": "h",
                              "options": [{"label": "Bateria", "reply": "Bateria", "leads_to": None}]}}}
-    # O ROTULO MUDOU EM 05/08/2026, E O TESTE MUDA COM ELE (CLAUDE.md §9.3).
+    # O MAPA SAIU DO PROMPT EM 05/08/2026, POR DECISAO DO FOUNDER.
+    # O teste muda com o fato (CLAUDE.md §9.3), e a licao migra.
     #
-    # Este teste afirmava que o prompt dizia "MAPA COMPLETO DA URA". Era
-    # verdade, e era o defeito: 📊 `render_map_for_llm` corta em 30 telas e a
-    # Allianz tem 1.323. O prompt garantia ao modelo que aquilo era o mapa
-    # inteiro — e o modelo nao tem como desconfiar do proprio prompt.
+    # Este teste afirmava, em duas versoes seguidas, que o mapa CHEGA ao
+    # prompt. A primeira exigia o rotulo "MAPA COMPLETO DA URA" — que era uma
+    # mentira, porque o corte e de 30 telas e a Allianz tem 1.323. A segunda
+    # exigia o rotulo honesto. As duas partiam de que o mapa deve entrar.
     #
-    # A LICAO NAO MORRE, ela migra: o que importava era "o mapa chega ao
-    # prompt quando existe, e nao aparece quando nao existe". Isso continua
-    # sendo testado. O que mudou e que agora o rotulo tambem tem de dizer o
-    # TAMANHO da amostra — porque foi a afirmacao de completude que criava o
-    # erro silencioso.
+    # 📊 A medicao que derrubou a premissa, para um acionamento de GUINCHO:
+    #   o bloco do mapa teria 5.220 caracteres e DOBRARIA o prompt;
+    #   o menu de servico AUTO esta na posicao 31 — o corte e de 30, fica fora;
+    #   das 30 que entrariam, 19 nao tem opcao nenhuma, 2 sao de dedetizacao e
+    #   troca de telhas, e 1 e util.
+    #
+    # A LICAO QUE FICA, e que este teste passa a guardar: **o prompt do
+    # acionamento nao recebe o mapa**. Se alguem religar, aqui quebra — e o
+    # comentario explica por que nao deve religar sem antes o mapa saber
+    # recortar por caso (ramo + subservico), que hoje ele nao sabe.
     msgs = eng.build_human_phase_messages(s, "tela nova qualquer", ura_map=mapa)
     prompt_com = msgs["system"] + msgs["user"]
-    check("cerebro v2: prompt inclui as telas conhecidas da URA",
-          "TELAS CONHECIDAS DA URA" in prompt_com)
-    check("cerebro v2: e declara quantas de quantas (nao afirma completude)",
-          "de 1 telas observadas" in prompt_com
+    check("o mapa NAO entra no prompt, mesmo quando passado",
+          "TELAS CONHECIDAS DA URA" not in prompt_com
           and "MAPA COMPLETO DA URA" not in prompt_com)
-    check("cerebro v2: e autoriza o modelo a dizer que nao reconhece a tela",
-          "nao a reconhece" in prompt_com or "não a reconhece" in prompt_com)
+    check("e o texto do mapa tambem nao vaza pelo corpo",
+          "o que voce precisa?" not in prompt_com.lower())
+
     msgs2 = eng.build_human_phase_messages(s, "tela nova qualquer")
-    check("cerebro v2: sem mapa, prompt continua como antes (retrocompativel)",
-          "TELAS CONHECIDAS DA URA" not in msgs2["system"] + msgs2["user"])
+    prompt_sem = msgs2["system"] + msgs2["user"]
+    # CONTROLE: com e sem mapa o prompt tem de ser IDENTICO. Se um dia
+    # divergirem, alguem religou o bloco — e o teste avisa.
+    check("CONTROLE: passar mapa ou nao passar da o MESMO prompt",
+          prompt_com == prompt_sem)
+    check("e o prompt continua trazendo o conhecimento do corredor",
+          "CONHECIMENTO DO FLUXO" in prompt_sem or "ura_steps" in prompt_sem.lower()
+          or "ORIENTA" in prompt_sem)
 
     print(f"\n== Resumo: {PASS} passaram, {FAIL} falharam ==")
     if FAILURES:

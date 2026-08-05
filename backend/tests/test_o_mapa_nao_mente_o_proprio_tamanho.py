@@ -161,16 +161,34 @@ def teste_o_rotulo_diz_quantas_de_quantas() -> None:
     checar("0 de 0" in vazio, "mapa vazio não explode e diz zero")
 
 
-def teste_o_prompt_nao_diz_mais_completo() -> None:
-    print("\n[6] A palavra que causou o problema saiu do prompt")
+def teste_o_mapa_nao_entra_no_prompt() -> None:
+    """ATUALIZADO em 05/08/2026, no mesmo dia (CLAUDE.md §9.3).
+
+    Este teste exigia que o prompt do acionamento declarasse honestamente o
+    tamanho da amostra. Horas depois, a medição mostrou que a amostra **não
+    deveria existir**: para um guincho na Allianz, o menu de AUTO está na
+    posição 31 de um corte de 30, e o que entra é dedetização e troca de
+    telhas.
+
+    O Founder decidiu tirar o mapa do prompt. A lição migra: o render continua
+    tendo de ser honesto — ele é usado fora do runtime, para escrever corredor
+    — mas o prompt não o recebe mais.
+    """
+    print("\n[6] O mapa não entra no prompt do acionamento")
     caminho = os.path.abspath(os.path.join(
         AQUI, "..", "app", "services", "insurer_dispatch_service.py"))
     with open(caminho, encoding="utf-8") as fh:
         fonte = fh.read()
     checar("MAPA COMPLETO DA URA" not in fonte,
-           "o prompt não afirma mais que o mapa é completo")
-    checar("resumo_honesto_do_mapa" in fonte,
-           "e passou a declarar o tamanho da amostra")
+           "a afirmação de completude não existe mais")
+    checar("TELAS CONHECIDAS DA URA" not in fonte,
+           "e o bloco do mapa saiu do prompt inteiro")
+    checar("render_map_for_llm" not in fonte,
+           "o prompt não chama mais o renderizador",
+           "se voltar, alguém religou o mapa sem recortar por caso")
+    checar("ura_map" in fonte,
+           "CONTROLE: o parâmetro continua existindo, ignorado de propósito",
+           "os dois chamadores ainda o passam; sumir daqui quebraria a chamada")
 
 
 def main() -> int:
@@ -182,7 +200,7 @@ def main() -> int:
                   teste_tela_morta_nao_vira_rota,
                   teste_ordena_por_quantas_vezes_foi_vista,
                   teste_o_rotulo_diz_quantas_de_quantas,
-                  teste_o_prompt_nao_diz_mais_completo):
+                  teste_o_mapa_nao_entra_no_prompt):
         try:
             teste()
         except Exception as exc:  # noqa: BLE001
