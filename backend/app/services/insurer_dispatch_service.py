@@ -402,6 +402,10 @@ def new_dispatch_session(
     # Default seguro: sem telefone extra => usa o registrado (opção 2).
     if not str(merged_slots.get("telefone_adicionar_opcao") or "").strip():
         merged_slots["telefone_adicionar_opcao"] = "1" if merged_slots.get("telefone_contato") else "2"
+
+    # Os campos que o MOTOR preencheu, e que o cliente nunca confirmou.
+    # Ver o comentário logo abaixo, no bloco AUTO.
+    _slots_padrao: set = set()
     # AUTO (SPEC-031): injeta a opção/rótulo do menu de serviço da seguradora
     # (guincho => "3" na Allianz, "Guincho" na Porto) nos slots que os passos usam.
     if str(playbook.get("line_kind") or "") == "auto":
@@ -409,12 +413,30 @@ def new_dispatch_session(
         if menu_value:
             merged_slots.setdefault("servico_opcao", menu_value)
             merged_slots.setdefault("servico_texto", menu_value)
-        merged_slots.setdefault("roda_travada", "não")
-        merged_slots.setdefault("quando", "agora")
-        merged_slots.setdefault("veiculo_cor", "não sei")
-        merged_slots.setdefault("rodovia", "Não")
+        # O QUE O MOTOR PREENCHE NÃO É O QUE O CLIENTE DISSE.
+        #
+        # 📊 Achado em 05/08/2026. Estes `setdefault` existem para a URA não
+        # travar pedindo um campo opcional — e isso está certo. O defeito é o
+        # que vinha depois: o prompt listava TUDO junto, sem distinção, sob o
+        # título "Dados do caso (únicos números permitidos)".
+        #
+        # Consequência: se o segurado está na BR-101 e o parser não pegou, o
+        # modelo afirma a uma PESSOA de verdade que ele **não** está em
+        # rodovia. E rodovia troca o caminhão que vem. O prompt estava
+        # mandando o agente inventar, com todas as letras.
+        #
+        # A lista abaixo é gravada na sessão para que o prompt possa marcar
+        # cada linha com "(padrão — não confirmado com o cliente)". Marcar é o
+        # conserto certo; remover o padrão faria a URA travar.
+        for _campo, _valor in (("roda_travada", "não"), ("quando", "agora"),
+                               ("veiculo_cor", "não sei"), ("rodovia", "Não")):
+            if _campo not in merged_slots or merged_slots.get(_campo) in (None, ""):
+                merged_slots[_campo] = _valor
+                _slots_padrao.add(_campo)
     # Referência do local é opcional em TODAS as linhas ('não tem' é o padrão real).
-    merged_slots.setdefault("ponto_referencia", "não tem")
+    if "ponto_referencia" not in merged_slots or merged_slots.get("ponto_referencia") in (None, ""):
+        merged_slots["ponto_referencia"] = "não tem"
+        _slots_padrao.add("ponto_referencia")
     # Endereços decompostos (rua/nº/bairro/cidade/UF) p/ URAs que pedem separado.
     from app.services.corridor_playbooks import inject_address_slots
 
@@ -427,6 +449,10 @@ def new_dispatch_session(
         "playbook_ref": playbook_ref,
         "subservice": str(subservice or "").lower(),
         "slots": merged_slots,
+        # Quais desses slots o MOTOR preencheu sem o cliente confirmar. O
+        # prompt marca cada um, para o agente nunca afirmar a uma pessoa de
+        # verdade um dado que ninguém disse.
+        "slots_padrao": sorted(_slots_padrao),
         "state": "preparing" if missing else "ready_to_send",
         "missing_slots": missing,
         "transcript": [],  # [{direction, text, at, dry_run}]
@@ -1311,13 +1337,61 @@ def build_human_phase_messages(session: Dict[str, Any], insurer_message: str,
     guard fiscaliza), e se realmente não der pra deduzir → NAO_SEI (pausa p/ humano)."""
     slots = session.get("slots") or {}
     captured = session.get("captured") or {}
-    fatos = "\n".join(f"- {k}: {v}" for k, v in slots.items() if v not in (None, ""))
+    # CADA LINHA DIZ SE O CLIENTE CONFIRMOU OU SE O MOTOR CHUTOU.
+    #
+    # 📊 Sem a marca, o prompt afirmava `rodovia: Não` sob o título "Dados do
+    # caso (únicos números permitidos)" — e o modelo repetia isso a um atendente
+    # humano da seguradora como se o cliente tivesse dito. Rodovia troca o
+    # caminhão que vem.
+    padrao = set(session.get("slots_padrao") or ())
+    fatos = "\n".join(
+        f"- {k}: {v}" + ("   (padrão — o cliente NÃO confirmou)" if k in padrao else "")
+        for k, v in slots.items() if v not in (None, "")
+    )
     if captured:
         fatos += "\n" + "\n".join(f"- capturado {k}: {v}" for k, v in captured.items())
+    if padrao:
+        fatos += ("\n\nAs linhas marcadas (padrão) foram preenchidas pelo sistema para a URA "
+                  "não travar, e NÃO vieram do cliente. Use-as para responder menu. "
+                  "NUNCA as afirme a uma pessoa como fato: se perguntarem por elas, "
+                  "diga que confirma e retorna, ou responda NAO_SEI.")
     pending = session.get("pending_insurer_messages") or []
     contexto_pendente = (
         "\nMensagens anteriores da seguradora ainda sem resposta:\n" + "\n".join(f"- {m}" for m in pending[-3:])
     ) if pending else ""
+
+    # O MODELO COMEÇAVA DO ZERO A CADA TURNO. Era este o "engessado".
+    #
+    # 📊 Medido em 05/08/2026. A única memória que chegava ao prompt era
+    # `pending_insurer_messages` — e `reply_human_phase` ZERA essa lista a cada
+    # resposta aceita (linha ~1476). Ou seja: em toda a fase humana, o modelo
+    # via UMA mensagem e não sabia o que ele mesmo tinha acabado de responder.
+    #
+    # 📊 Um acionamento tem mediana de 10 respostas nossas. Eram dez partidas
+    # do zero. Nenhuma conversa é possível assim — e conversar é justamente o
+    # que se pede dele, porque 89% dos atendimentos da Allianz terminam com um
+    # atendente HUMANO da seguradora do outro lado.
+    #
+    # O `transcript` da sessão sempre teve os dois lados: `direction: "in"` na
+    # entrada (linha ~1042) e `"out"` no `_emit` (linha ~1599). E o `_emit` só
+    # roda DEPOIS que o guarda aceitou — então a cauda nunca traz rascunho
+    # recusado, que seria o modelo achando que disse algo que nunca saiu.
+    #
+    # Seis turnos: cobre a mediana sem competir com o CONHECIMENTO DO FLUXO,
+    # que é a parte medida do prompt e a que decide a resposta certa.
+    historico = []
+    for entrada in (session.get("transcript") or [])[-6:]:
+        if not isinstance(entrada, dict):
+            continue
+        texto = " ".join(str(entrada.get("text") or "").split())[:300]
+        if not texto:
+            continue
+        quem = "você" if str(entrada.get("direction")) == "out" else "seguradora"
+        historico.append(f"[{quem}] {texto}")
+    contexto_historico = (
+        "\n\nO QUE JÁ FOI DITO NESTA CONVERSA (mais antigo primeiro):\n"
+        + "\n".join(historico)
+    ) if historico else ""
     # Intenção de cada passo do playbook — pra o cérebro reconhecer um menu que mudou
     # de texto/ordem e ainda assim escolher certo (adaptativo, não engessado).
     playbook = get_playbook(session.get("playbook_ref") or "") or {}
@@ -1422,8 +1496,15 @@ def build_human_phase_messages(session: Dict[str, Any], insurer_message: str,
         f"{finalize_rule}"
         "4. Se realmente NÃO der pra deduzir a resposta a partir do caso e do fluxo, responda exatamente: NAO_SEI"
     )
+    # A ORDEM DOS BLOCOS NÃO É ARBITRÁRIA.
+    #
+    # O histórico vem DEPOIS do conhecimento do fluxo e ANTES da mensagem
+    # atual, porque é assim que uma conversa se lê: o que já foi dito, e então
+    # o que acabaram de dizer. Colocá-lo no topo faria a cauda competir com os
+    # dados do caso — que são a única fonte de número autorizada.
     user = (
-        f"Dados do caso (únicos números permitidos):\n{fatos}{guia_ura}{contexto_pendente}\n\n"
+        f"Dados do caso (únicos números permitidos):\n{fatos}{guia_ura}"
+        f"{contexto_pendente}{contexto_historico}\n\n"
         f"Mensagem da seguradora agora:\n{insurer_message}\n\nSua resposta:"
     )
     return {"system": system, "user": user}

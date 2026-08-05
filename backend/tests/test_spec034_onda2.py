@@ -215,6 +215,69 @@ def run():
           "CONHECIMENTO DO FLUXO" in prompt_sem or "ura_steps" in prompt_sem.lower()
           or "ORIENTA" in prompt_sem)
 
+    # O MODELO PASSOU A LEMBRAR DO QUE ELE MESMO RESPONDEU.
+    #
+    # 📊 05/08/2026: a unica memoria que chegava ao prompt era
+    # `pending_insurer_messages`, e `reply_human_phase` ZERA essa lista a cada
+    # resposta aceita. Num acionamento de mediana 10 respostas, eram dez
+    # partidas do zero — e conversar era exatamente o que se pedia, porque 89%
+    # dos atendimentos da Allianz terminam com um HUMANO da seguradora.
+    s2 = eng.new_dispatch_session(case_id="c2", company_id="co",
+                                  playbook_ref="porto-auto-whatsapp@v1",
+                                  subservice="bateria", slots=dict(slots))
+    # CONTROLE: sessao sem historico nao inventa bloco de historico.
+    p_vazio = eng.build_human_phase_messages(s2, "primeira tela")["user"]
+    check("CONTROLE: sem historico, o bloco nao aparece",
+          "O QUE JÁ FOI DITO NESTA CONVERSA" not in p_vazio)
+
+    s2["transcript"] = [
+        {"direction": "in", "text": "Ola! Qual servico voce precisa?", "at": "t1"},
+        {"direction": "out", "text": "2", "at": "t2"},
+        {"direction": "in", "text": "Informe a placa do veiculo", "at": "t3"},
+        {"direction": "out", "text": "ABC1D23", "at": "t4"},
+    ]
+    p_hist = eng.build_human_phase_messages(s2, "Confirma o endereco?")["user"]
+    check("com historico, o modelo ve o que ja foi dito",
+          "O QUE JÁ FOI DITO NESTA CONVERSA" in p_hist)
+    check("e ve os DOIS lados, nao so a seguradora",
+          "[você]" in p_hist and "[seguradora]" in p_hist)
+    check("e a propria resposta anterior esta la",
+          "ABC1D23" in p_hist.split("O QUE JÁ FOI DITO")[1])
+    check("o historico vem ANTES da mensagem atual",
+          p_hist.find("O QUE JÁ FOI DITO") < p_hist.find("Mensagem da seguradora agora"))
+
+    # O QUE O MOTOR CHUTOU NAO PODE SER AFIRMADO COMO FATO DO CLIENTE.
+    #
+    # 📊 05/08/2026: `new_dispatch_session` preenche rodovia="Não",
+    # roda_travada="não", veiculo_cor="não sei" para a URA nao travar — e o
+    # prompt listava tudo junto sob "Dados do caso (unicos numeros
+    # permitidos)". Se o segurado esta na BR-101 e o parser nao pegou, o modelo
+    # afirmava a uma PESSOA que ele nao esta em rodovia. Rodovia troca o
+    # caminhao que vem.
+    s3 = eng.new_dispatch_session(case_id="c3", company_id="co",
+                                  playbook_ref="allianz-auto-whatsapp@v1",
+                                  subservice="guincho", slots=dict(slots))
+    check("o motor registra o que ele mesmo preencheu",
+          "rodovia" in (s3.get("slots_padrao") or []))
+    p3 = eng.build_human_phase_messages(s3, "Voce esta em rodovia?")["user"]
+    check("e o prompt marca essas linhas",
+          "(padrão — o cliente NÃO confirmou)" in p3)
+    check("e explica o que fazer com elas",
+          "NUNCA as afirme a uma pessoa como fato" in p3)
+
+    # CONTROLE: quando o CLIENTE informa o campo, ele NAO pode vir marcado.
+    slots_com_rodovia = dict(slots)
+    slots_com_rodovia["rodovia"] = "Sim, BR-101"
+    s4 = eng.new_dispatch_session(case_id="c4", company_id="co",
+                                  playbook_ref="allianz-auto-whatsapp@v1",
+                                  subservice="guincho", slots=slots_com_rodovia)
+    check("CONTROLE: dado informado pelo cliente NAO vira padrao",
+          "rodovia" not in (s4.get("slots_padrao") or []))
+    p4 = eng.build_human_phase_messages(s4, "Voce esta em rodovia?")["user"]
+    linha_rodovia = [l for l in p4.splitlines() if l.startswith("- rodovia:")]
+    check("e a linha dele aparece SEM a marca de padrao",
+          bool(linha_rodovia) and "(padrão" not in linha_rodovia[0])
+
     print(f"\n== Resumo: {PASS} passaram, {FAIL} falharam ==")
     if FAILURES:
         for n, d in FAILURES:
