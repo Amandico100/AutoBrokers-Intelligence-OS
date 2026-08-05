@@ -69,15 +69,96 @@ def diff_maps(old: Dict[str, Any], new: Dict[str, Any]) -> Dict[str, Any]:
 
 
 def render_map_for_llm(map_obj: Dict[str, Any], max_nodes: int = 30) -> str:
-    """Resumo do mapa em texto p/ o Cérebro v2 ('onde estou e o que cada opção faz')."""
+    """Resumo do mapa em texto p/ o Cérebro v2 ('onde estou e o que cada opção faz').
+
+    ESTE CORTE ESCOLHIA PELO DIGEST, E O PROMPT CHAMAVA ISSO DE 'COMPLETO'.
+    ---------------------------------------------------------------------
+    📊 Medido em 05/08/2026. A versão anterior fazia `list(nodes.items())[:30]`.
+    A chave de cada nó é `sha1(...)[:12]` e o mapa mora em JSONB, que **não
+    preserva ordem de inserção** — normaliza por (comprimento, bytes). Todas as
+    chaves têm 12 caracteres, então a ordem era **lexicográfica sobre o digest**:
+    uma amostra pseudo-aleatória estável, sem relação nenhuma com o fluxo.
+
+        allianz   1.323 nós  →  o modelo veria 30   (2,3%)
+        porto       840 nós  →  3,6%
+
+    E `insurer_dispatch_service` anunciava o resultado como *"MAPA COMPLETO DA
+    URA DESTA SEGURADORA"*. **Injetar 2% rotulado como 100% é pior do que não
+    injetar nada:** o modelo confia no que o prompt afirma, e a tela que ele
+    precisa provavelmente não está entre as trinta.
+
+    O material para escolher direito já estava gravado e era ignorado: cada nó
+    tem `samples` (quantas vezes a tela apareceu de verdade), `order`,
+    `nao_rota` e `status`; e o mapa tem `root`. Nada disso era lido.
+
+    Agora: começa pela RAIZ, exclui o que não é rota, e ordena o resto por
+    quantas vezes a tela foi realmente vista. Quem fica de fora é a cauda rara,
+    não um sorteio.
+
+    Isto foi consertado enquanto o caminho está DORMENTE — 📊 `ura_maps` não tem
+    nenhum mapa `active`, então `get_active_map` devolve `None` e esta função
+    não é chamada em produção. Consertar código morto é barato; consertá-lo
+    depois de ligado é uma mudança de comportamento ao vivo.
+    """
     nodes = (map_obj or {}).get("nodes") or {}
+    if not isinstance(nodes, dict) or not nodes:
+        return ""
+
+    raiz_id = str((map_obj or {}).get("root") or "")
+
+    def _vale_como_rota(n: Dict[str, Any]) -> bool:
+        # `nao_rota` marca tela que não leva a lugar nenhum (aviso, despedida).
+        # Renderizá-la como rota ensina o modelo a escolher uma saída morta.
+        return not bool(n.get("nao_rota")) and str(n.get("status") or "") != "nao_rota"
+
+    candidatos = [(nid, n) for nid, n in nodes.items()
+                  if isinstance(n, dict) and _vale_como_rota(n)]
+
+    def _peso(par) -> tuple:
+        _nid, n = par
+        try:
+            vistas = int(n.get("samples") or 0)
+        except (TypeError, ValueError):
+            vistas = 0
+        try:
+            ordem = int(n.get("order") or 10_000)
+        except (TypeError, ValueError):
+            ordem = 10_000
+        # mais vistas primeiro; empate desfeito por quem aparece antes no fluxo
+        return (-vistas, ordem)
+
+    candidatos.sort(key=_peso)
+
+    # A raiz nunca fica de fora: sem ela o modelo não sabe onde o fluxo começa.
+    if raiz_id and raiz_id in nodes:
+        candidatos = ([(raiz_id, nodes[raiz_id])]
+                      + [c for c in candidatos if c[0] != raiz_id])
+
+    escolhidos = candidatos[:max(1, int(max_nodes or 30))]
     lines: List[str] = []
-    for nid, n in list(nodes.items())[:max_nodes]:
+    for nid, n in escolhidos:
         opts = " | ".join(
             f"'{o.get('label')}'→responder '{o.get('reply')}'" for o in (n.get("options") or [])[:8]
         )
-        lines.append(f"- [{n.get('kind')}] \"{n.get('text', '')[:110]}\"" + (f" → opções: {opts}" if opts else ""))
+        marca = " [TELA INICIAL]" if nid == raiz_id else ""
+        lines.append(f"- [{n.get('kind')}]{marca} \"{n.get('text', '')[:110]}\""
+                     + (f" → opções: {opts}" if opts else ""))
     return "\n".join(lines)
+
+
+def resumo_honesto_do_mapa(map_obj: Dict[str, Any], max_nodes: int = 30) -> str:
+    """Quantas telas o modelo está vendo, de quantas existem.
+
+    Existe para que o prompt possa dizer a verdade. O rótulo antigo — "MAPA
+    COMPLETO DA URA DESTA SEGURADORA" — era uma afirmação falsa em 2,3% dos
+    casos da Allianz, e o modelo não tem como desconfiar do próprio prompt.
+    """
+    nodes = (map_obj or {}).get("nodes") or {}
+    total = len(nodes) if isinstance(nodes, dict) else 0
+    mostradas = min(total, max(1, int(max_nodes or 30))) if total else 0
+    cobertura = ((map_obj or {}).get("coverage") or {}).get("pct")
+    extra = f", cobertura observada {cobertura}%" if cobertura not in (None, "") else ""
+    return f"{mostradas} de {total} telas observadas{extra}"
 
 
 # ── IO Supabase (best-effort) ─────────────────────────────────────────────────

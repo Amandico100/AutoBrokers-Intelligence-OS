@@ -89,6 +89,23 @@ SCHEMA: dict[str, set[str]] = {
         "id admin_user_id source_type source_id state snoozed_until "
         "note_redacted updated_at".split()),
     "companies": set("id company_name created_at".split()),
+
+    # As três que o Vigia do cérebro lê (`_cerebro_parado`, 05/08/2026).
+    # 📊 Copiadas de `information_schema.columns` no banco de produção, não da
+    # memória — é a única forma de esta lista guardar alguma coisa.
+    "normative_documents": set(
+        "id insurer_key insurer_name title doc_kind product_line source_url "
+        "susep_process version_label content_hash byte_size chunk_count "
+        "qdrant_collection status fetch_error fetch_attempts effective_from "
+        "effective_until last_change_at last_checked_at next_check_at "
+        "check_interval_days approved_at approved_by notes created_at "
+        "updated_at".split()),
+    "ura_maps": set(
+        "id insurer_key ramo version status map source diff_summary "
+        "created_at".split()),
+    "knowledge_cards": set(
+        "id card_hash card_text category ramo insurer_key status pii_check "
+        "source_count published_at created_at".split()),
 }
 
 # Tabelas que os read models tocam e cujo schema não foi copiado aqui. Cada

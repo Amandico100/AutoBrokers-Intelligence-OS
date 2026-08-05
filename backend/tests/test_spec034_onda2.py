@@ -179,12 +179,30 @@ def run():
                                  slots=dict(slots))
     mapa = {"nodes": {"n1": {"text": "o que voce precisa?", "kind": "menu", "hash": "h",
                              "options": [{"label": "Bateria", "reply": "Bateria", "leads_to": None}]}}}
+    # O ROTULO MUDOU EM 05/08/2026, E O TESTE MUDA COM ELE (CLAUDE.md §9.3).
+    #
+    # Este teste afirmava que o prompt dizia "MAPA COMPLETO DA URA". Era
+    # verdade, e era o defeito: 📊 `render_map_for_llm` corta em 30 telas e a
+    # Allianz tem 1.323. O prompt garantia ao modelo que aquilo era o mapa
+    # inteiro — e o modelo nao tem como desconfiar do proprio prompt.
+    #
+    # A LICAO NAO MORRE, ela migra: o que importava era "o mapa chega ao
+    # prompt quando existe, e nao aparece quando nao existe". Isso continua
+    # sendo testado. O que mudou e que agora o rotulo tambem tem de dizer o
+    # TAMANHO da amostra — porque foi a afirmacao de completude que criava o
+    # erro silencioso.
     msgs = eng.build_human_phase_messages(s, "tela nova qualquer", ura_map=mapa)
-    check("cerebro v2: prompt inclui o MAPA DA URA",
-          "MAPA COMPLETO DA URA" in msgs["system"] + msgs["user"])
+    prompt_com = msgs["system"] + msgs["user"]
+    check("cerebro v2: prompt inclui as telas conhecidas da URA",
+          "TELAS CONHECIDAS DA URA" in prompt_com)
+    check("cerebro v2: e declara quantas de quantas (nao afirma completude)",
+          "de 1 telas observadas" in prompt_com
+          and "MAPA COMPLETO DA URA" not in prompt_com)
+    check("cerebro v2: e autoriza o modelo a dizer que nao reconhece a tela",
+          "nao a reconhece" in prompt_com or "não a reconhece" in prompt_com)
     msgs2 = eng.build_human_phase_messages(s, "tela nova qualquer")
     check("cerebro v2: sem mapa, prompt continua como antes (retrocompativel)",
-          "MAPA COMPLETO DA URA" not in msgs2["system"] + msgs2["user"])
+          "TELAS CONHECIDAS DA URA" not in msgs2["system"] + msgs2["user"])
 
     print(f"\n== Resumo: {PASS} passaram, {FAIL} falharam ==")
     if FAILURES:

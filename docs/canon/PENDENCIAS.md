@@ -1610,3 +1610,49 @@ sessões novas da AutoFleet), a conta proporcional é de **menos de US$ 2** — 
 uma margem para a curadoria.
 **O que custa esquecer:** sem saldo, a destilação não roda, e 📊 o material cru
 expira por volta de **27/10** (retenção de 90 dias).
+
+---
+
+## P-98 · 🧑 O Firecrawl está sem crédito — e 23 documentos estão presos há 8 dias
+
+📊 Medido em 05/08/2026, `normative_documents`:
+
+```
+status         n    com processo SUSEP   com data de inicio   com data de FIM
+─────────────────────────────────────────────────────────────────────────────
+fetching      23           21                   17                  0     🔴
+ingested       8            7                    3                  0
+discovered     4            1                    2                  0
+```
+
+Os 23 pararam em **26/07 02:02**, todos com `fetch_error = 'HTTP 402'` — que é
+**pagamento exigido**, não defeito. O crédito do Firecrawl acabou no meio da
+ingestão do corpus normativo.
+
+### O agravante que ninguém veria
+
+📊 `insurance_corpus.py:654-660` — a função `vencidos()`, que é a **única** que
+reencontra trabalho pendente, procura documentos em `('ingested', 'discovered',
+'unreachable')`. **`fetching` não está na lista.**
+
+`ingerir()` marca `fetching` **antes** de sair para a rede. Se a chamada falha,
+o documento fica nesse estado transitório **para sempre** — aprovado pela
+curadoria, invisível para o varredor, e sem nenhum alarme.
+
+> É a mesma lição que este repositório já aprendeu duas vezes — na reconciliação
+> de acionamento órfão e no vigia de handoff: **um estado que só é observado
+> quando nasce não é observado.**
+
+**O que destrava:** 🧑 crédito no Firecrawl.
+**O que NÃO espera pelo crédito:** 🤖 o varredor de órfãos. Ele não precisa de
+saldo para existir — precisa existir para que, no dia em que o saldo voltar, os
+23 sejam reencontrados sozinhos em vez de esperarem alguém lembrar deles.
+
+**O que custa esquecer:** o corpus normativo é a base para responder cobertura
+pelo contrato, e não pela prática. Sem ele, o agente continua respondendo
+"normalmente é coberto" onde poderia citar a cláusula, a versão e a data.
+
+⚠️ **Cuidado ao destravar:** mover os 23 de volta para um estado varrido faz o
+sistema tentar de novo — e, sem crédito, produzir 23 novas falhas por rodada.
+A saída correta é um estado que seja **visível e não retentável** até o saldo
+voltar. Ver `DESENHO-ATUALIZAR-SEM-ESTRAGAR.md`, §5 item A.

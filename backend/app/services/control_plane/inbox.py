@@ -136,6 +136,9 @@ class CaixaDeEntrada:
             itens += self._sinais_criticos()
         if "knowledge.curate" in permissions:
             itens += self._conhecimento_esperando()
+            # O cérebro parando de aprender é conhecimento que não chega —
+            # mesmo portão de permissão, mesma caixa.
+            itens += self._cerebro_parado()
         if "security.read" in permissions:
             itens += self._incidentes_abertos()
 
@@ -292,6 +295,103 @@ class CaixaDeEntrada:
             acao_sugerida="Revisar e publicar ou descartar",
             permission_para_agir="knowledge.curate")]
 
+    # Quanto tempo cada peça do cérebro pode ficar sem produzir antes de virar
+    # cartão. Não são números redondos: cada um sai do ritmo real do dado.
+    #
+    #   corpus normativo   45 dias é o intervalo de reconferência do próprio
+    #                      código; 8 dias parado já é anomalia
+    #   cartas             a destilação é diária; 21 dias sem carta nova
+    #                      significa que a esteira parou
+    #   `fetching`         ingestão real leva segundos
+    DIAS_SEM_CARTA_NOVA = 21
+    HORAS_PRESO_EM_FETCHING = 2
+
+    def _cerebro_parado(self) -> list[ItemDaCaixa]:
+        """O cérebro parou de aprender — e ninguém percebeu.
+
+        POR QUE ISTO É UM MÉTODO DAQUI, E NÃO UM AGENTE NOVO
+        ----------------------------------------------------
+        📊 Em 05/08/2026 o sistema tinha três peças paradas ao mesmo tempo — 23
+        documentos normativos presos há oito dias, zero mapas de URA `active`
+        desde sempre, e nenhuma fonte externa jamais lida — **e todas as telas
+        pintavam verde**, porque o critério era "o laço rodou", não "o laço
+        produziu".
+
+        A tentação era criar um "Vigia da Atualidade". Duas razões contra:
+
+        1. **CLAUDE.md §5** — a Caixa de Entrada JÁ é o lugar onde o que precisa
+           de atenção humana aparece. Um vigia próprio seria motor paralelo.
+        2. 📊 O destino óbvio para o aviso, `intelligence_signals`, tem
+           `company_id NOT NULL`. Um aviso de plataforma **não tem corretora** —
+           ele teria de escolher uma, e essa corretora receberia manutenção da
+           AutoBrokers na caixa dela. `ItemDaCaixa.company_id` é opcional, e é
+           por isso que este é o lugar certo.
+
+        A frase de cada cartão segue a régua de `_monitores_com_falha`: dizer o
+        que se sabe, e não afirmar o que não se sabe.
+        """
+        agora = datetime.now(timezone.utc)
+        itens: list[ItemDaCaixa] = []
+
+        # 1 · Documento normativo preso no estado transitório.
+        docs = self._ler("normative_documents",
+                         "id, status, updated_at, fetch_error", limite=200)
+        limite_orfao = agora - timedelta(hours=self.HORAS_PRESO_EM_FETCHING)
+        presos = [d for d in docs
+                  if str(d.get("status")) == "fetching"
+                  and _antes_de(d.get("updated_at"), limite_orfao)]
+        if presos:
+            itens.append(ItemDaCaixa(
+                fonte="cerebro", chave="corpus_preso",
+                titulo="Documentos normativos presos no meio da leitura",
+                detalhe=(f"{len(presos)} documento(s) ficaram no estado de "
+                         "leitura sem terminar. Eles estão aprovados e não vão "
+                         "ao cérebro enquanto isso. Não afirmo que o conteúdo "
+                         "mudou — apenas que não consegui terminar de ler."),
+                severidade="high", itens_agrupados=len(presos),
+                ocorrido_em=min((str(d.get("updated_at") or "") for d in presos),
+                                default=None) or None,
+                href="/admin/knowledge-base",
+                acao_sugerida="Conferir o crédito do provider de leitura",
+                permission_para_agir="knowledge.curate"))
+
+        # 2 · O vigia do Atlas não tem o que comparar.
+        mapas = self._ler("ura_maps", "id, status", limite=400)
+        if mapas and not [m for m in mapas if str(m.get("status")) == "active"]:
+            observados = len([m for m in mapas if str(m.get("status")) == "observed"])
+            itens.append(ItemDaCaixa(
+                fonte="cerebro", chave="atlas_sem_mapa_ativo",
+                titulo="O vigia das rotas não tem mapa de referência",
+                detalhe=(f"Existem {observados} mapa(s) desenhados e nenhum "
+                         "promovido a referência. Sem referência, a comparação "
+                         "que detectaria uma seguradora mudando o menu não "
+                         "chega a ser feita. Os mapas continuam sendo "
+                         "redesenhados — o que não acontece é a vigilância."),
+                severidade="high", itens_agrupados=observados,
+                href="/admin/atlas",
+                acao_sugerida="Decidir o piso de cobertura e promover um mapa por vez",
+                permission_para_agir="knowledge.curate"))
+
+        # 3 · A esteira de cartas parou.
+        cartas = self._ler("knowledge_cards", "id, published_at, status", limite=400)
+        publicadas = [str(c.get("published_at") or "") for c in cartas
+                      if str(c.get("status")) == "published" and c.get("published_at")]
+        if publicadas:
+            mais_nova = max(publicadas)
+            if _antes_de(mais_nova, agora - timedelta(days=self.DIAS_SEM_CARTA_NOVA)):
+                itens.append(ItemDaCaixa(
+                    fonte="cerebro", chave="cartas_paradas",
+                    titulo="Nenhuma carta nova há mais de três semanas",
+                    detalhe=(f"A carta mais recente é de {mais_nova[:10]}. A "
+                             "destilação é diária: este silêncio costuma ser a "
+                             "esteira parada, não ausência de conversa."),
+                    severidade="medium", ocorrido_em=mais_nova,
+                    href="/admin/espelho",
+                    acao_sugerida="Conferir o teto por rodada do destilador",
+                    permission_para_agir="knowledge.curate"))
+
+        return itens
+
     def _incidentes_abertos(self) -> list[ItemDaCaixa]:
         linhas = self._ler("platform_incidents",
                            "id, incident_key, severity, status, scope, "
@@ -369,6 +469,24 @@ class CaixaDeEntrada:
 # ---------------------------------------------------------------------------
 # Dedupe por causa — §13.4
 # ---------------------------------------------------------------------------
+
+
+def _antes_de(carimbo: Any, limite: datetime) -> bool:
+    """A data é anterior ao limite? Data ilegível responde NÃO.
+
+    Falha fechada de propósito: um carimbo que não dá para ler não deve virar
+    cartão de alarme. Um alarme falso ensina a ignorar a caixa, e a caixa só
+    serve enquanto quem a lê acredita nela.
+    """
+    if not carimbo:
+        return False
+    try:
+        quando = datetime.fromisoformat(str(carimbo).replace("Z", "+00:00"))
+    except (ValueError, TypeError):
+        return False
+    if quando.tzinfo is None:
+        quando = quando.replace(tzinfo=timezone.utc)
+    return quando < limite
 
 
 def agrupar_por_causa(itens: list[ItemDaCaixa]) -> list[ItemDaCaixa]:

@@ -1338,13 +1338,29 @@ def build_human_phase_messages(session: Dict[str, Any], insurer_message: str,
     # faz — e decide pelo OBJETIVO mesmo se a tela atual mudou de texto.
     if ura_map:
         try:
-            from app.services.ura_map_service import render_map_for_llm
+            from app.services.ura_map_service import (
+                render_map_for_llm,
+                resumo_honesto_do_mapa,
+            )
 
             mapa_txt = render_map_for_llm(ura_map)
             if mapa_txt:
-                guia_ura += ("\n\nMAPA COMPLETO DA URA DESTA SEGURADORA (telas conhecidas e o que "
-                             "cada opção faz — localize a tela atual e escolha a opção que avança "
-                             "para o objetivo do caso):\n" + mapa_txt)
+                # O RÓTULO DIZ QUANTAS DE QUANTAS. Ele dizia "COMPLETO".
+                #
+                # 📊 05/08/2026: o render corta em 30 telas, e a Allianz tem
+                # 1.323. O prompt afirmava ao modelo que aquilo era o mapa
+                # inteiro — e o modelo não tem como desconfiar do próprio
+                # prompt. Quando a tela atual não estivesse entre as 30, ele
+                # escolheria a "menos errada" das que viu, com confiança.
+                #
+                # Dizer o tamanho da amostra devolve ao modelo o direito de
+                # dizer "não reconheço esta tela" — que é a resposta certa
+                # quando ele de fato não a tem.
+                guia_ura += ("\n\nTELAS CONHECIDAS DA URA DESTA SEGURADORA (" +
+                             resumo_honesto_do_mapa(ura_map) + "). Se a tela atual "
+                             "estiver aqui, escolha a opção que avança para o objetivo "
+                             "do caso. Se NÃO estiver, diga que não a reconhece — a "
+                             "lista é parcial e não cobre a URA inteira:\n" + mapa_txt)
         except Exception:  # noqa: BLE001 — mapa nunca derruba o prompt
             pass
     # A ORIENTAÇÃO DO PLAYBOOK ENTRA NO PROMPT.

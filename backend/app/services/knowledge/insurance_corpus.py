@@ -396,12 +396,37 @@ class InsuranceCorpusService:
         # desistir de documentos perfeitamente validos por causa da fatura, e
         # ninguem descobriria o motivo real depois.
         if erro == "HTTP 402":
+            # `.isoformat()` NAS TRES. E a ausencia dele em duas foi o que
+            # encalhou o corpus por oito dias.
+            #
+            # 📊 Autopsia de 05/08/2026. Este tratador nasceu em `d20868c`
+            # (25/07 21:25 -03) para impedir exatamente o encalhe que ele
+            # passou a causar. Os 23 documentos travaram 1h37 depois.
+            #
+            # A cadeia: `ingerir()` marca `fetching` ANTES de ir a rede (l. 389).
+            # O 402 chega. Este UPDATE monta o dicionario com dois `datetime`
+            # CRUS ao lado de um `.isoformat()`. O httpx serializa o corpo com
+            # `json.dumps(..., allow_nan=False)` e SEM `default=` — entao
+            # estoura `TypeError: Object of type datetime is not JSON
+            # serializable`. A excecao sobe, escapa de `ingerir()`, escapa de
+            # `reconferir_pendentes()` e morre num `logger.warning` que imprime
+            # so o NOME da excecao. O status fica `fetching` — e `vencidos()`
+            # (l. 654) procura em ('ingested','discovered','unreachable').
+            # `fetching` nao esta la. Invisivel para sempre.
+            #
+            # 📊 As outras ONZE gravacoes de data neste arquivo usam
+            # `.isoformat()`. Eram estas duas, e so estas duas.
+            #
+            # A licao que fica: **o tratador de erro tambem e codigo, e ele roda
+            # justamente quando ninguem esta olhando.** Um `except` que engole o
+            # tipo da excecao sem a mensagem transforma um erro de digitacao em
+            # oito dias de silencio.
             self.db.table("normative_documents").update({
                 "status": doc.get("status") or "discovered",
                 "fetch_error": "credito do Firecrawl esgotado — aguardando plano",
-                "last_checked_at": _agora(),
+                "last_checked_at": _agora().isoformat(),
                 "next_check_at": (_agora() + timedelta(hours=6)).isoformat(),
-                "updated_at": _agora(),
+                "updated_at": _agora().isoformat(),
             }).eq("id", documento_id).execute()
             logger.warning(
                 "[corpus] CREDITO DO FIRECRAWL ESGOTADO (HTTP 402). %d documento(s) "
@@ -657,7 +682,57 @@ class InsuranceCorpusService:
              .not_.is_("approved_at", "null")
              .lte("next_check_at", _agora().isoformat())
              .order("next_check_at").limit(limite).execute())
-        return r.data or []
+        achados = list(r.data or [])
+        if len(achados) < limite:
+            achados.extend(self._orfaos_de_fetching(limite - len(achados)))
+        return achados
+
+    # Quanto tempo um documento pode ficar em `fetching` antes de ser orfao.
+    # Uma ingestao real leva segundos. Duas horas nao e margem — e certeza.
+    HORAS_ATE_SER_ORFAO = 2
+
+    def _orfaos_de_fetching(self, limite: int) -> list[dict]:
+        """Documentos que morreram ENTRE marcar `fetching` e responder.
+
+        📊 O buraco que isto fecha, medido em 05/08/2026: vinte e tres
+        documentos aprovados ficaram presos em `fetching` por **oito dias**,
+        invisiveis. `ingerir()` marca esse estado ANTES de ir a rede; se o
+        processo morre no meio — deploy, timeout, ou o `TypeError` que este
+        mesmo commit conserta — o documento fica num estado que **nenhuma
+        consulta procura**.
+
+        É a terceira vez que este repositorio aprende a mesma licao. A primeira
+        foi a reconciliacao de acionamento orfao; a segunda, o vigia de
+        handoff. A frase que fica:
+
+            **Um estado que so e observado quando NASCE nao e observado.**
+
+        Por que isto nao inunda o log quando falta credito: `ingerir()` devolve
+        `bloqueante: True` no 402, e `reconferir_pendentes` PARA o ciclo no
+        primeiro. Entao recuperar vinte e tres orfaos custa **uma** tentativa
+        por rodada, nao vinte e tres — e o tratador de 402, agora que ele
+        completa, move cada um para `discovered` com nova janela de seis horas.
+        """
+        if limite <= 0:
+            return []
+        limite_de_idade = (_agora() - timedelta(hours=self.HORAS_ATE_SER_ORFAO)).isoformat()
+        try:
+            r = (self.db.table("normative_documents")
+                 .select("id, title, insurer_name, source_url, next_check_at, status")
+                 .eq("status", "fetching")
+                 .not_.is_("approved_at", "null")
+                 .lt("updated_at", limite_de_idade)
+                 .order("updated_at").limit(limite).execute())
+        except Exception as exc:  # noqa: BLE001 — orfao nao pode derrubar a rodada
+            logger.warning("[corpus] varredura de orfaos falhou: %s: %s",
+                           type(exc).__name__, exc)
+            return []
+        orfaos = list(r.data or [])
+        if orfaos:
+            logger.warning(
+                "[corpus] %d documento(s) presos em `fetching` ha mais de %dh "
+                "foram reencontrados", len(orfaos), self.HORAS_ATE_SER_ORFAO)
+        return orfaos
 
     async def reconferir_pendentes(self, *, limite: int = 5,
                                    company_id_custeio: Optional[str] = None) -> dict:
