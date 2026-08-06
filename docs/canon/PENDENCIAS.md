@@ -1957,3 +1957,78 @@ próprio controle.
 - **Custa se esquecer:** cada queda no meio de uma rodada apaga em definitivo o
   conhecimento das conversas que estavam no arquivo naquele momento, e a perda
   não deixa rastro nenhum.
+
+## P-110 · 🔴 A captura das duas corretoras está PARADA, e o painel diz "Conectado"
+
+📊 Medido em 06/08/2026 (projeto `dcajcvlzcjbmyapmklil`):
+
+```sql
+select c.company_name, max(e.created_at) from observed_events e
+  left join companies c on c.id = e.company_id group by 1;
+--  AutoFleet         04/08 20:34Z   (42 h)
+--  Resulta Seguros   03/08 20:19Z   (67 h)
+```
+
+📊 E a causa, em `GET /instance/all` do provedor no mesmo dia: **três das quatro
+instâncias com `webhook=''` e `events='MESSAGE'`** — inclusive a da AutoFleet,
+que estava `Connected: true, LoggedIn: true` naquele instante.
+
+O reconector chamava `/instance/connect` com só `{"immediate": True}`, e o
+`Connect` do Go grava `Webhook = data.WebhookUrl` **por cima**: religava o canal
+mudo. Consertado em `f81e24e` (`corpo_do_connect` recusa URL vazia; o reconector
+rotaciona a credencial antes de religar).
+
+⚠️ **O conserto não repara o estado que já existe.** As instâncias em produção
+continuam sem webhook até alguém emitir um `connect` completo. O reconector novo
+só age sobre canais que a sonda vê caídos — e a AutoFleet aparece de pé.
+
+- **Destrava:** 🤖 merge de `f81e24e` na `main` (o deploy sai da `main`) **e** um
+  `connect` completo por instância para regravar webhook e eventos. 📊 É seguro
+  com a instância no ar: `UpdateInstanceSettings` (`whatsmeow.go:175+`) só troca
+  campos em memória — não há `Disconnect()` nem `killChannel` no caminho.
+- **Custa se esquecer:** o produto segue sem matéria-prima. Nenhuma conversa
+  entra no Atlas, no Espelho ou no RAG, e a tela continua dizendo que está tudo
+  certo — que é a razão de isto ter durado três dias sem ninguém notar.
+
+## P-111 · 🟠 A linha da Resulta está pareada no telefone errado
+
+📊 `integrations` em 06/08/2026: a instância `ab-obs-04b5cdbc04-1` (Resulta) tem
+`paired_phone_e164 = +554788087463` — **DDD 47**. O Founder identificou o número
+como o **dele**, não o da atendente (que é DDD 48).
+
+Isso explica o sintoma inteiro: a atendente pedia QR para uma linha que já tinha
+dono, e 📊 com `jid` preenchido o whatsmeow **reconecta** em vez de emitir QR
+(`whatsmeow.go:325-335`), então o QR não podia vir.
+
+O caminho existe desde `f81e24e`: `POST /api/whatsapp-channel/pairing/liberar-numero`
+recria a instância com o **mesmo nome** (preservando `observer_number`, metade da
+chave de dedup de 69.150 transcrições) e com `jid` vazio, e o QR volta.
+
+- **Destrava:** 🧑 decisão do Founder — trocar encerra a sessão do DDD 47. Depois
+  🤖 deploy + clicar "trocar número" na tela da Resulta e escanear o QR.
+- **Custa se esquecer:** a corretora segue capturando o WhatsApp errado, e o que
+  o produto aprende não é o atendimento dela.
+
+## P-112 · 🟡 O `/instance/status` do provedor não sabe o que o banco dele sabe
+
+📊 `instance_service.go:391-400`: `Status` lê `clientPointer`, que é **memória do
+processo**. Com `CONNECT_ON_STARTUP=false` (a config de produção), todo restart
+do Evolution Go esvazia esse mapa e **toda** instância passa a responder
+`LoggedIn: false` — inclusive as perfeitamente pareadas.
+
+`f81e24e` contornou no nosso lado (`_sessao_registrada` pergunta ao
+`/instance/all`, que é o estado durável). O contorno é correto e deve ficar, mas
+a mentira continua na fonte, e todo consumidor novo do `/status` vai cair nela.
+
+📊 Dois mapas divergentes agravam: `instance_service.go:366,381,647,796` apagam
+`clientPointer` sem apagar `myClientPointer`. Depois de um `logout`, o `status`
+diz "não está rodando" e o `connect` diz "já está rodando" — e não sobe cliente
+nenhum. Foi medido: um `connect` na instância da Resulta em 06/08 às 14:54Z não
+produziu **uma linha de log**.
+
+- **Destrava:** 🤖 patch 0007 no fork — `Status` consultar o `jid` persistido, e
+  os quatro `delete(clientPointer)` limparem os dois mapas. Exige rebuild da
+  imagem e teste com as duas corretoras no ar.
+- **Custa se esquecer:** todo diagnóstico futuro começa por uma leitura falsa, e
+  a instância zumbi (`client != nil && !IsLoggedIn()`) trava a corretora até o
+  contêiner reiniciar.
