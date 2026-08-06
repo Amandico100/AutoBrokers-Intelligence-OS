@@ -300,6 +300,11 @@ export default function AdminLayout({ children }: { children: React.ReactNode })
         { href: '/admin/conversation-logs', label: 'Histórico de conversas' },
         { href: '/admin/espelho', label: 'Acompanhar um atendimento' },
         { href: '/admin/acionamentos', label: 'Acionamentos ao vivo' },
+        // 06/08/2026 — depois de um conserto não havia como confirmar de fora
+        // se ele tinha subido. A resposta existia, mas exigia montar uma URL à
+        // mão e ler JSON cru. Um item de menu é a diferença entre ter a
+        // informação e conseguir usá-la.
+        { href: '/admin/saude', label: 'Saúde do sistema' },
       ],
     },
     {
