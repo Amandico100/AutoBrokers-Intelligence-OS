@@ -2,7 +2,9 @@
 
 **Data:** 06/08/2026 · **Commit base:** `64c3629` · **Branch:** `feat/spec063-atendimento-canais`
 **Escopo:** por que o QR da Saionara (Resulta) nunca aparece; se a arquitetura de canais escala.
-**Natureza:** auditoria. **Nenhum código de produção foi alterado nesta sessão.**
+**Natureza:** auditoria (Parte I) + execução autorizada (Parte II).
+A Parte I foi escrita **antes** de qualquer alteração, e nenhuma conclusão dela
+depende de código escrito depois. O que foi mudado está declarado na Parte II §10.
 
 Marcação obrigatória (CLAUDE.md §12.1): 📊 medido · 💭 inferência.
 
