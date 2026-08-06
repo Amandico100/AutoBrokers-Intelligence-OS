@@ -156,25 +156,40 @@ async def _support_alert_seguro(company_id: str, session: Dict[str, Any], resumo
     aberto, e o único que não sabe disso é justamente quem vai receber o
     prestador. Um humano resolve isso em trinta segundos — se souber.
     """
+    # 🔴 ESTE BLOCO NUNCA RODOU, e ninguém soube — 06/08/2026.
+    #
+    # Ele importava `integration_service` e `whatsapp_service` como se fossem
+    # objetos de módulo. Os dois são FÁBRICAS (`get_integration_service`,
+    # `get_whatsapp_service`), e os dois imports levantavam ImportError — dentro
+    # de um `except Exception` que escrevia "alerta não saiu" e seguia.
+    #
+    # Ou seja: toda vez que o segurado NÃO recebia o protocolo, o aviso ao
+    # humano também não saía, e o log dizia isso de um jeito que parecia falha
+    # de rede. Foi encontrado por varredura depois que o MESMO defeito parou o
+    # espelho do chat — ver `test_todo_import_aponta_para_algo_que_existe`.
+    #
+    # `resolver_destino_de_suporte` também estava no lugar errado: ela é uma
+    # função DESTE módulo (linha ~953), não um método do integration_service.
     try:
-        from app.services.dispatch_router import resolver_destino_de_suporte  # noqa: F401
-    except Exception:  # noqa: BLE001
-        pass
-    try:
-        from app.services.integration_service import integration_service
+        from app.core.database import get_supabase_client
+        from app.services.integration_service import get_integration_service
+        from app.services.whatsapp_service import get_whatsapp_service
 
-        destino = integration_service.resolver_destino_de_suporte(company_id)
+        destino = await resolver_destino_de_suporte(company_id)
         if not destino:
             return
-        from app.services.whatsapp_service import whatsapp_service
+        alvo = destino.get("number") if isinstance(destino, dict) else destino
+        if not alvo:
+            return
 
-        integ = integration_service.get_platform_whatsapp_integration(company_id)
+        servico = get_integration_service(get_supabase_client().client)
+        integ = servico.get_platform_whatsapp_integration(company_id)
         if not integ:
             return
         aviso = ("⚠️ O aviso de protocolo NÃO chegou ao segurado.\n"
                  f"Caso: {session.get('case_id')}\n"
                  f"Telefone: {session.get('client_phone')}\n\n{resumo}")
-        whatsapp_service.send_message(destino, aviso, integ)
+        get_whatsapp_service().send_message(str(alvo), aviso, integ)
     except Exception:  # noqa: BLE001
         logger.warning("[DISPATCH ROUTER] alerta de falha de aviso nao saiu")
 

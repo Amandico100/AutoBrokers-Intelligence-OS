@@ -243,13 +243,24 @@ async def espelhar_no_chat(*, company_id: str, counterparty: str, texto: str,
         filtro simples, comparação no código. O que o banco faz mal, o Python
         faz bem — e o que o Python faz, eu consigo testar.
         """
-        from app.services.integration_service import integration_service
+        # 🔴 É uma FÁBRICA, não um objeto de módulo.
+        #
+        # 📊 A primeira versão fazia `from ... import integration_service`, e
+        # aquele nome NÃO EXISTE no módulo: `integration_service.py:498` exporta
+        # `get_integration_service(client)`. Resultado medido em 06/08/2026:
+        # **2.255 ImportError** e zero conversas no chat, com o /health dizendo
+        # `espelho_no_chat: true` — porque o código existia; só não corria.
+        #
+        # O teste não pegou porque eu DUBLEI este módulo com a forma que eu
+        # imaginava. Um dublê valida a sua suposição, não a realidade — por isso
+        # agora há um guarda que lê a assinatura real do arquivo.
+        from app.services.integration_service import get_integration_service
 
         # 1) o MESMO usuário e a MESMA chave que o pipeline do agente usa.
         #    ⚠️ A ordem é (phone, company_id, name) — conferida na assinatura
         #    real em `integration_service.py:370`. Trocar os dois primeiros
         #    criaria usuários com o id da empresa como telefone, em silêncio.
-        usuario = integration_service.get_or_create_user(
+        usuario = get_integration_service(cliente).get_or_create_user(
             phone=telefone, company_id=empresa, name=nome)
         if not usuario:
             return None, "sem_usuario"

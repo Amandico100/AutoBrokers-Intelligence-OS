@@ -199,7 +199,16 @@ def _carregar_espelho():
                 # Determinístico e por corretora — como o real.
                 return f"user:{company_id}:{phone}"
 
-        falso.integration_service = _Servico()
+        # 🔴 O dublê tem a forma REAL do módulo: uma FÁBRICA
+        # `get_integration_service(client)`, não um objeto solto.
+        #
+        # 📊 A primeira versão dublava `integration_service` — um nome que NÃO
+        # EXISTE lá. O teste ficou verde contra a minha imaginação enquanto
+        # produção acumulava 2.255 ImportError e o chat ficava vazio.
+        #
+        # Um dublê valida a sua suposição, não a realidade. Por isso, além dele,
+        # `teste_a_ponte_usa_a_API_QUE_EXISTE` lê a assinatura do arquivo real.
+        falso.get_integration_service = lambda *_a, **_k: _Servico()
         sys.modules["app.services.integration_service"] = falso
 
     caminho = os.path.join(RAIZ, "backend", "app", "services", "atlas", "espelho_chat.py")
@@ -346,9 +355,9 @@ def teste_a_ponte_e_o_agente_acham_a_MESMA_conversa():
         msg_type="text", direcao="in", message_id="CONV1",
         quando_iso=_agora_iso(), db=banco))
 
-    from app.services.integration_service import integration_service
+    from app.services.integration_service import get_integration_service
 
-    usuario_do_pipeline = integration_service.get_or_create_user(
+    usuario_do_pipeline = get_integration_service(banco).get_or_create_user(
         phone="554799956540", company_id="autofleet", name=None)
     achadas = (banco.table("conversations").select("id")
                .eq("company_id", "autofleet").eq("user_id", usuario_do_pipeline)
@@ -384,6 +393,52 @@ def teste_a_ponte_e_o_agente_acham_a_MESMA_conversa():
     checar(len(banco2.linhas("conversations")) == 1,
            "CONTROLE — o mesmo número em outro formato cai na MESMA conversa",
            "um hífen não pode partir a conversa de um cliente em duas")
+
+
+def teste_a_ponte_usa_a_API_QUE_EXISTE():
+    print("\n[3b] A ponte chama funções que existem de verdade")
+    import ast
+
+    # 🔴 O GUARDA QUE FALTAVA, e o motivo dele é o defeito mais caro do dia.
+    #
+    # 📊 06/08/2026: a ponte fazia `from app.services.integration_service import
+    # integration_service`. Aquele nome NÃO EXISTE — o módulo exporta a fábrica
+    # `get_integration_service(client)`. Produção acumulou **2.255 ImportError**,
+    # o chat ficou vazio, e todos os testes deste arquivo estavam VERDES: eu
+    # havia dublado o módulo com a forma que imaginei.
+    #
+    # Dublê testa a sua suposição. Este guarda testa o ARQUIVO REAL — e é a
+    # única coisa aqui que teria pego aquele erro.
+    fonte_real = _fonte("backend/app/services/integration_service.py")
+    arvore = ast.parse(fonte_real)
+    nomes_do_modulo = set()
+    for no in arvore.body:  # só o nível de módulo — é o que um import alcança
+        if isinstance(no, (ast.FunctionDef, ast.AsyncFunctionDef, ast.ClassDef)):
+            nomes_do_modulo.add(no.name)
+        elif isinstance(no, ast.Assign):
+            for alvo in no.targets:
+                if isinstance(alvo, ast.Name):
+                    nomes_do_modulo.add(alvo.id)
+        elif isinstance(no, ast.AnnAssign) and isinstance(no.target, ast.Name):
+            nomes_do_modulo.add(no.target.id)
+
+    checar("get_integration_service" in nomes_do_modulo,
+           "o módulo exporta a fábrica `get_integration_service`")
+    checar("integration_service" not in nomes_do_modulo,
+           "CONTROLE — e NÃO exporta um objeto `integration_service`",
+           "era exatamente este nome que a ponte importava, 2.255 vezes por nada")
+
+    # E o que a ponte importa dele tem de estar nessa lista.
+    ponte = ast.parse(_fonte("backend/app/services/atlas/espelho_chat.py"))
+    importados = set()
+    for no in ast.walk(ponte):
+        if isinstance(no, ast.ImportFrom) and (no.module or "").endswith("integration_service"):
+            importados.update(a.name for a in no.names)
+    checar(bool(importados), "a ponte importa algo do integration_service", str(importados))
+    faltando = importados - nomes_do_modulo
+    checar(not faltando,
+           "e tudo o que ela importa EXISTE no módulo",
+           f"faltando: {faltando or 'nada'}")
 
 
 def teste_a_ponte_esta_ligada_e_nao_muda_o_silencio():
@@ -568,6 +623,7 @@ def main() -> int:
     teste_o_que_vira_conversa_e_o_que_nao()
     teste_a_ponte_cria_conversa_e_mensagem()
     teste_a_ponte_e_o_agente_acham_a_MESMA_conversa()
+    teste_a_ponte_usa_a_API_QUE_EXISTE()
     teste_a_ponte_esta_ligada_e_nao_muda_o_silencio()
     teste_nada_disto_liga_agente_nenhum()
     teste_a_lista_do_chat_mostra_sete_dias()

@@ -2239,3 +2239,43 @@ Atendimento` e continua sendo da corretora.
 - **Destrava:** nada. É decisão tomada.
 - **Custa se esquecer:** alguém reabre a ideia daqui a três meses sem saber que
   já foi decidida, e o produto ganha uma inconsistência que ninguém pediu.
+
+## P-121 · ✅ RESOLVIDO — a classe de erro que matou o espelho existia em mais 3 lugares
+
+📊 06/08/2026. O espelho do chat não criava conversa nenhuma. O `/health` dizia
+`espelho_no_chat: true` e o Redis contava a verdade:
+
+```
+espelho_contadores: {"erro:ImportError": 2255}
+```
+
+A ponte fazia `from app.services.integration_service import integration_service`.
+**Esse nome não existe** — o módulo exporta a fábrica `get_integration_service(client)`.
+2.255 tentativas mortas no import, dentro do `try/except` que protege a captura.
+
+**Por que o teste não pegou:** eu havia DUBLADO o módulo com
+`falso.integration_service = _Servico()` — a forma que eu imaginava. Todo teste
+ficou verde contra uma API inexistente. *Um dublê valida a sua suposição, não a
+realidade.*
+
+A varredura que nasceu disso (`test_todo_import_aponta_para_algo_que_existe`,
+311 módulos, sem importar nada) encontrou **mais três em produção**:
+
+| onde | import | consequência |
+|---|---|---|
+| `dispatch_router.py:164` | `integration_service` | o aviso "o segurado NÃO recebeu o protocolo" nunca chegava ao humano |
+| `dispatch_router.py:169` | `whatsapp_service` | idem — segundo import do mesmo bloco |
+| `whatsapp/service.py:54` | `wa_send_retry` | o nome **não existia em lugar nenhum**; o módulo quebrava ao ser importado |
+
+Os três estavam dentro de `try/except` ou em módulo não importado — por isso
+nunca deram erro visível. O primeiro é o mais caro: toda vez que o protocolo
+falhava, o alerta ao humano falhava junto, e o log dizia "alerta não saiu" como
+se fosse rede.
+
+Todos corrigidos. `wa_send_retry` passou a existir de fato em
+`whatsapp_service.py`, com a política que o comentário já descrevia (3
+tentativas, espera exponencial, só falha transitória, última falha sobe).
+
+- **Destrava:** nada. Resolvido e guardado por teste.
+- **Custa se esquecer:** era exatamente o que já custava — funcionalidade morta
+  em silêncio, com log que parecia outra coisa.

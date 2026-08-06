@@ -15,6 +15,52 @@ from app.services.whatsapp.zapi_provider import get_zapi_provider
 logger = logging.getLogger(__name__)
 
 
+def _e_recuperavel(erro: BaseException) -> bool:
+    """Vale a pena tentar de novo? Só falha transitória — nunca recusa do WhatsApp.
+
+    `WhatsappRetryableError` é levantada pelos providers para 429 e 5xx. Erro de
+    conteúdo (número inválido, mensagem recusada) não entra: repetir aquilo é
+    gastar a janela do segurado três vezes com o mesmo resultado.
+    """
+    from app.services.whatsapp.exceptions import WhatsappRetryableError
+
+    return isinstance(erro, (WhatsappRetryableError, ConnectionError, TimeoutError))
+
+
+# A POLÍTICA DE RETRY DE ENVIO — declarada aqui, e não em cada chamador.
+#
+# 🔴 Ela era referida como "a política EXISTENTE" por
+# `app/services/whatsapp/service.py:54`, que fazia
+# `from app.services.whatsapp_service import wa_send_retry`. **O nome não
+# existia em lugar nenhum do projeto.** O módulo inteiro quebrava ao ser
+# importado; ninguém percebeu porque nada o importa hoje.
+#
+# Encontrado em 06/08/2026 pela varredura que nasceu de um defeito irmão — um
+# `from ... import` para um nome inexistente que matou o espelho do chat 2.255
+# vezes em silêncio. Ver `test_todo_import_aponta_para_algo_que_existe`.
+#
+# Três tentativas com espera exponencial (1s, 2s, 4s, teto de 8s), e a última
+# falha SOBE: engolir aqui faria o chamador achar que a mensagem saiu.
+try:
+    from tenacity import (
+        retry,
+        retry_if_exception,
+        stop_after_attempt,
+        wait_exponential,
+    )
+
+    wa_send_retry = retry(
+        stop=stop_after_attempt(3),
+        wait=wait_exponential(multiplier=1, min=1, max=8),
+        retry=retry_if_exception(_e_recuperavel),
+        reraise=True,
+    )
+except ImportError:  # pragma: no cover — tenacity está em requirements.txt
+    def wa_send_retry(funcao):
+        """Sem tenacity, o envio acontece uma vez. Melhor que não acontecer."""
+        return funcao
+
+
 def _dormir(segundos: float) -> None:
     """Espera sem congelar o event loop, quando houver um.
 

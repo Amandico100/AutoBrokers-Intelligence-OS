@@ -172,7 +172,10 @@ def _carregar_espelho():
             def get_or_create_user(phone: str, company_id: str, name=None) -> str:
                 return f"user:{company_id}:{phone}"
 
-        falso.integration_service = _Servico()
+        # A forma REAL do módulo é uma FÁBRICA. 📊 Dublar `integration_service`
+        # — um nome que não existe lá — deixou este arquivo verde enquanto
+        # produção acumulava 2.255 ImportError e o chat ficava vazio.
+        falso.get_integration_service = lambda *_a, **_k: _Servico()
         sys.modules["app.services.integration_service"] = falso
     caminho = os.path.join(RAIZ, "backend", "app", "services", "atlas", "espelho_chat.py")
     spec = importlib.util.spec_from_file_location(nome, caminho)
