@@ -62,7 +62,13 @@ a régua da equipe; nota alta seria mentira sobre um humano que não falou.
 
 ---
 
-## As nove regras
+## As doze regras
+
+> **As regras 10, 11 e 12 nasceram de uma auditoria.** 📊 206 das 1.298 cartas da
+> primeira onda foram conferidas uma a uma contra o transcript: **18,0%** afirmavam o
+> que o material não sustenta e **6,8%** fariam o agente **dizer algo errado a um
+> segurado**. As três regras abaixo são exatamente os três buracos por onde isso
+> passou. Elas vêm primeiro na sua cabeça, ainda que venham por último na lista.
 
 ### 1. A carta é sobre a SEGURADORA. Nunca sobre nós.
 
@@ -196,6 +202,73 @@ quase ninguém o escreve:
 Isso decide se o nosso corredor pode pausar no meio de um acionamento. Escreva
 sempre que aparecer.
 
+### 10. Toda carta carrega o trecho que a sustenta.
+
+Antes de escrever um fato, **ache no transcript a fala da SEGURADORA que o prova** e
+guarde-a. Se você não consegue apontar o trecho, o fato não existe — ele é a sua
+memória de como seguradoras costumam funcionar, não este atendimento.
+
+A carta que mais machuca não é a errada de ponta a ponta: é a de **corpo fiel e cauda
+inventada** — a última oração, depois do travessão, que "fecha o raciocínio".
+📊 31,6% das cartas auditadas tinham esse formato.
+
+```
+Ruim   "A Yelum não aceita link de mapa como localização: o endereço volta como
+        'não foi possível localizar'. Só a localização nativa do WhatsApp funciona."
+                                        └── ninguém enviou localização nativa em
+                                            NENHUMA conversa do lote
+Bom    "A Yelum não aceita link de mapa como localização: um endereço enviado como
+        link do Google Maps volta como 'não foi possível localizar o endereço' e ela
+        passa a exigir o endereço escrito."
+```
+
+**O teste da cauda:** leia só a última oração da sua carta e pergunte *"qual fala da
+seguradora diz isto?"*. Se a resposta for "nenhuma, mas faz sentido", apague a oração.
+
+E o caso especial que decide tudo: **`[clique sem rótulo]` e `{VALOR}` não sustentam
+nada.** Se o rótulo do botão não foi capturado, você **não sabe** qual opção foi
+escolhida nem o que ela faz — e o menu ter oferecido "cancelar" não prova o que
+cancelar faz. 📊 145 das 319 conversas têm clique cego. Descreva o que a seguradora
+escreveu **antes** e **depois** do clique, nunca o clique.
+
+### 11. Você não vê o acervo. Não afirme nada sobre ele.
+
+Você lê **um lote**, quase sempre de **uma seguradora**. Portanto você **não pode**
+escrever "a única", "nenhuma outra", "ao contrário das demais", "só ela", "é a única
+seguradora deste acervo".
+
+📊 Das 2 afirmações de exclusividade auditadas, **2 saíram falsas** — e cada uma foi
+derrubada por uma seguradora que estava em outro lote, que você não leu:
+
+| a carta dizia | o que o acervo tinha |
+|---|---|
+| "'cirurgia recente': categoria que nenhuma outra seguradora deste acervo pergunta" | a Yelum faz a **mesma pergunta, com redação idêntica**, em 17 conversas |
+| "é a única seguradora deste acervo que pede data de nascimento" | a Zurich pede, em 3 conversas |
+
+**Comparação só sobrevive com lastro das DUAS pontas no SEU lote**, e você tem de
+conseguir citar as duas. "A HDI entrega o link no WhatsApp, ao contrário da Bradesco"
+foi escrito num lote em que **as próprias linhas 2 e 3 mostravam a Bradesco entregando
+o link**. Nem o lote inteiro ele tinha lido.
+
+E vale para a mesma seguradora: se você viu **um** atendimento, não escreva
+"a Porto não transfere na primeira vez" — noutra linha do mesmo lote ela transferiu.
+Um caso vira *"a URA pode responder que…"*, nunca *"a URA sempre…"*.
+
+### 12. Sem fala da seguradora, a resposta certa é zero.
+
+Se o transcript não tem falas `SEGURADORA:` — só o nosso `NOS:` batendo na porta, ou
+só um disparo automático sem diálogo — então **não há nada para aprender sobre a
+seguradora**. Escreva `fatos_reutilizaveis: []` e o motivo em `flags`.
+
+📊 A onda passada teve 4 sessões assim. Em 3 delas o destilador escreveu **zero** —
+resposta certa. Na quarta escreveu **duas cartas, e uma era falsa**: afirmava que "as
+mensagens ficam sem retorno", quando a conversa apenas tinha sido **partida em dois
+registros** e a metade seguinte, com 103 eventos, mostrava a seguradora respondendo.
+
+**Sessão curta mente com confiança.** 📊 Sessões com ≤48 eventos deram 1 carta boa em
+9 (11%); com ≥56 eventos, 16 em 28 (57%). Se o material é pouco, escreva pouco — a
+regra 4 já dizia "prefira zero a encher", e esta diz **quando** isso é obrigatório.
+
 ---
 
 ## Onde o ouro está neste acervo
@@ -215,10 +288,21 @@ serviço, saldo de assistências disponíveis, efeito no bônus. A URA enuncia i
 sem ser perguntada, com texto literal e completo — é a melhor fonte de fato que
 existe neste acervo.
 
-**A diferença entre seguradoras.** Duas conversas do mesmo assunto em
-seguradoras diferentes valem mais que dez da mesma. Se a Porto agenda dentro do
-WhatsApp e a MAPFRE devolve um link, as duas cartas juntas ensinam a escolher o
-caminho.
+**A diferença entre seguradoras — em duas cartas, nunca numa.** Se a Porto agenda
+dentro do WhatsApp e a MAPFRE devolve um link, isso vale ouro. Mas o valor está em
+**duas cartas que se sustentam sozinhas**, cada uma citando a sua própria conversa:
+quem compara é a busca, na hora da pergunta, com o acervo inteiro na mão. Você não
+tem o acervo inteiro (regra 11).
+
+```
+Ruim   "A HDI entrega o link no WhatsApp, ao contrário da Bradesco."   ← uma carta
+Bom    "A HDI devolve o resumo e o link de acompanhamento dentro do próprio
+        WhatsApp, sem depender de SMS."                                 ← duas cartas,
+       "A Bradesco entrega o link de acompanhamento por SMS, fora da conversa."   cada
+                                                                        uma com lastro
+```
+
+Escreva **o fato de uma seguradora só** e deixe a comparação para quem consegue fazê-la.
 
 ---
 
