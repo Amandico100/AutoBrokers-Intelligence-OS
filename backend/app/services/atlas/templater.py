@@ -14,35 +14,136 @@ from __future__ import annotations
 import re
 from typing import Dict, List, Optional, Tuple
 
+# NOME NA SAUDAÇÃO — a regra mora aqui fora, com nome, porque ela tem DOIS
+# leitores. O segundo é `mascarar.transcript_seguradora`, que precisa saber
+# QUEM esta regra reconheceu como nome numa sessão para mascarar as outras
+# aparições do mesmo token na mesma conversa (ver a docstring de lá).
+#
+# Ela ficava embutida na lista, sem nome, e o único jeito de alcançá-la de fora
+# era `_PII_PATTERNS[0][0]` — um índice que a próxima regra inserida no topo
+# quebraria em silêncio, e o silêncio aqui é PII passando.
+#
+# 📊 Medido no Atlas de produção: **28 nós** guardam um primeiro nome de pessoa
+# assim — Tokio 15, Bradesco 5, Allianz 4, Porto 4. E na Tokio é a RAIZ do mapa,
+# a tela por onde toda sessão começa.
+#
+# `_LABELED_VALUE` mascara nome DEPOIS de um rótulo (`Nome: Fulano`). A saudação
+# de uma URA não tem rótulo nenhum: ela diz "Olá, Fulano!" e pronto. O Atlas é
+# estrutura global: ele descreve o menu da seguradora, não o cliente. Um nome
+# ali não ajuda ninguém e atravessa corretoras.
+#
+# A regra é ESTREITA de propósito: só depois de uma saudação, só uma ou duas
+# palavras capitalizadas, e só até a pontuação. A lista de exclusão é a metade
+# que faz a regra funcionar: depois de uma saudação vem, quase sempre, um VERBO
+# capitalizado ("Olá! Digite o CPF"). Sem ela, `Digite` virava `{NOME}` e a tela
+# perdia a instrução — que é justamente o conhecimento que este mascarador
+# existe para preservar.
+#
+# O `(?-i:...)` no grupo do nome — 06/08/2026, e ele conserta perda de
+# conhecimento que já estava acontecendo
+# ---------------------------------------------------------------------------
+# O `(?i)` do começo vale para o padrão INTEIRO, então `[A-ZÀ-Ú][a-zà-ú]{2,}`
+# casava minúscula também: qualquer par de palavras depois de uma saudação
+# virava nome, capitalizado ou não. 📊 Medido em 06/08/2026 contra o
+# `templatize` de então:
+#
+#     templatize("Ola, quero abrir um sinistro")
+#     → "Ola, {NOME} um sinistro"
+#
+# Duas palavras de conhecimento apagadas por uma regra de PII, na abertura da
+# conversa, que é onde o segurado diz o que quer. `(?-i:...)` devolve a
+# sensibilidade a maiúscula SÓ no grupo do nome: a saudação continua casando
+# "olá"/"OLÁ"/"Olá", e o nome volta a precisar de inicial maiúscula — que é a
+# única coisa que separa "Maria" de "quero".
+NOME_NA_SAUDACAO = re.compile(
+    r"(?i)\b(ol[áa]|oi|bem[- ]vindo[ao]?|prezad[oa])([,!]?\s+)"
+    r"(?!(?:digite|informe|escolha|selecione|envie|clique|aguarde|responda|"
+    r"para|qual|como|quando|onde|quem|seja|bem|vamos|antes|agora|ainda|caso|"
+    r"este|esta|esse|essa|isso|nossa|nosso|obrigad|tudo|aqui|sou|somos|"
+    r"estamos|precisa|poderia|favor|por|deseja|voc[êe]|segue|falta|basta|"
+    r"de|da|do|ao|à|a|o|senhor|senhora|novamente|cliente|segurad)\b)"
+    r"(?-i:([A-ZÀ-Ú][a-zà-ú]{2,}(?:\s+[A-ZÀ-Ú][a-zà-ú]{2,})?))")
+
+# LOGRADOURO EM PROSA — 06/08/2026, achado no acervo das seguradoras.
+#
+# `_LABELED_VALUE` já mascara `Endereço: ...`, `Rua: ...`, `Bairro: ...`. O que
+# ele não alcança é o endereço escrito no meio de uma frase, sem rótulo, que é
+# como a URA da seguradora ECOA de volta o local do atendimento e como o humano
+# o digita:
+#
+#     "R. Manoel Loureiro, 1653 - Barreiros, São José - SC, {CEP}"
+#
+# 📊 Medido em 06/08/2026 sobre as 319 sessões substanciais de
+# `observed_sessions`: 266 ocorrências, 195 logradouros distintos, todos com
+# número — endereço de residência ou de sinistro de segurado real.
+#
+# O DÍGITO é a regra inteira. Sem ele, "a rua é conhecida na região",
+# "apartamento individual" e "o condomínio está vazando" viram endereço, e o
+# mascarador passa a comer prosa — 📊 foi o que a medição mostrou: das 345
+# ocorrências que a busca por vocabulário achava, 79 não tinham número e
+# nenhuma delas era endereço. É o mesmo critério que já separa
+# "protocolo aberto" de "protocolo 8923467" duas dezenas de linhas abaixo.
+#
+# O TIPO do logradouro fica. "A Porto pede rua e número do local" é
+# conhecimento; qual rua é dado de uma pessoa.
+#
+# O `(?:d[aeo]s?\s+)?` é a metade que faltava na primeira escrita: "Rua das
+# Flores, 123" começa com conectivo minúsculo, e exigir maiúscula logo depois
+# do tipo deixava passar todo logradouro com "da/de/do/das/dos" no nome — que
+# em português é metade deles.
+_LOGRADOURO = re.compile(
+    r"(?i)\b(rua|r\.|av\.|avenida|alameda|al\.|travessa|rodovia|rod\.|estrada|"
+    r"pra[çc]a|servid[ãa]o|condom[íi]nio|edif[íi]cio|ed\.|residencial)\s+"
+    r"(?:(?-i:d[aeo]s?)\s+)?(?-i:[A-ZÀ-Ú0-9][^\n,;]{2,45}?)\s*,?\s*(?:n?[ºo°]?\s*)?"
+    r"\d{1,6}(?:\s*[-/]\s*\d{1,6})?\b")
+
 # Ordem importa: específico → genérico.
 _PII_PATTERNS: List[Tuple[re.Pattern, str]] = [
-    # NOME NA SAUDAÇÃO — SPEC-065, 04/08/2026.
+    # NOME NA SAUDAÇÃO — SPEC-065, 04/08/2026. A regra está definida acima,
+    # com nome, porque `mascarar.transcript_seguradora` também a lê. O porquê
+    # de cada pedaço dela está lá em cima, junto do padrão.
+    (NOME_NA_SAUDACAO, r"\1\2{NOME}"),
+    # NOME DEPOIS DE TRATAMENTO — 06/08/2026. "Sr. Gustavo", "Sra. Magda",
+    # "Dr. Mário". É a forma que sobra depois que a saudação e o vocativo são
+    # tratados: 📊 4 ocorrências nas 319 sessões de seguradora, e é a mais
+    # inequívoca de todas — ninguém escreve "Sr." antes de uma opção de menu.
     #
-    # `_LABELED_VALUE` mascara nome DEPOIS de um rótulo (`Nome: Fulano`). A
-    # saudação de uma URA não tem rótulo nenhum: ela diz "Olá, Fulano!" e
-    # pronto. 📊 Medido no Atlas de produção: **28 nós** guardam um primeiro
-    # nome de pessoa desse jeito — Tokio 15, Bradesco 5, Allianz 4, Porto 4.
-    # E na Tokio é a **RAIZ do mapa**, a tela por onde toda sessão começa.
-    #
-    # O Atlas é estrutura global: ele descreve o menu da seguradora, não o
-    # cliente. Um nome ali não ajuda ninguém e atravessa corretoras.
-    #
-    # A regra é ESTREITA de propósito: só depois de uma saudação, só uma ou
-    # duas palavras capitalizadas, e só até a pontuação. "Olá! Digite o CPF"
-    # não é nome; "Bem-vindo à Central" também não — por isso as preposições
-    # e artigos ficam de fora do casamento.
-    # A lista de exclusão é a metade que faz a regra funcionar: depois de uma
-    # saudação vem, quase sempre, um VERBO capitalizado ("Olá! Digite o CPF").
-    # Sem ela, `Digite` virava `{NOME}` e a tela perdia a instrução — que é
-    # justamente o conhecimento que este mascarador existe para preservar.
-    (re.compile(r"(?i)\b(ol[áa]|oi|bem[- ]vindo[ao]?|prezad[oa])([,!]?\s+)"
-                r"(?!(?:digite|informe|escolha|selecione|envie|clique|aguarde|responda|"
-                r"para|qual|como|quando|onde|quem|seja|bem|vamos|antes|agora|ainda|caso|"
-                r"este|esta|esse|essa|isso|nossa|nosso|obrigad|tudo|aqui|sou|somos|"
-                r"estamos|precisa|poderia|favor|por|deseja|voc[êe]|segue|falta|basta|"
-                r"de|da|do|ao|à|a|o|senhor|senhora|novamente|cliente|segurad)\b)"
-                r"([A-ZÀ-Ú][a-zà-ú]{2,}(?:\s+[A-ZÀ-Ú][a-zà-ú]{2,})?)"),
+    # A exclusão é curta porque o tratamento também precede PAPEL, não só
+    # nome: "Sr. Corretor", "Sra. Segurada". Errar aqui custa um papel virando
+    # `{NOME}`, o que não apaga conhecimento nenhum — o papel já está dito na
+    # frase inteira.
+    (re.compile(r"(?i)\b(sr|sra|srta|dr|dra|dona|senhor|senhora)(\.?\s+)"
+                r"(?!(?:corretor|corretora|segurad|cliente|gerente|perito|"
+                r"doutor|doutora|advogad|analista|atendente|titular)\b)"
+                r"(?-i:[A-ZÀ-Ú][a-zà-ú]{2,}(?:\s+[A-ZÀ-Ú][a-zà-ú]{2,})?)"),
      r"\1\2{NOME}"),
+    # NOME DEPOIS DE APRESENTAÇÃO OU DE PERGUNTA POR NOME — 06/08/2026.
+    #
+    # Três formas achadas no acervo das seguradoras, e as três põem um nome
+    # próprio a uma palavra de distância de um rótulo que o anuncia:
+    #
+    #     "Meu nome é THAIS, darei continuidade em seu atendimento"   (a URA)
+    #     "me chamo Saionara"                                          (nós)
+    #     "*Quem estará no local:* Julia"                              (resumo)
+    #
+    # `_LABELED_VALUE` não alcança nenhuma: a primeira e a segunda não têm
+    # dois-pontos, e "quem estará no local" não é um rótulo da lista dele — nem
+    # deveria ser, porque a lista é de campos de formulário e este é uma frase.
+    #
+    # Aceita CAIXA ALTA no nome ("THAIS"), que as outras regras de nome não
+    # aceitam de propósito: aqui o rótulo já garantiu que o que vem é nome, e
+    # atendente de central escreve o próprio nome em maiúscula o tempo todo.
+    (re.compile(r"(?i)\b(meu nome (?:é|e)|me chamo|nome de quem|"
+                r"quem (?:estar[áa]|est[áa]|vai estar|ir[áa] estar)[^:\n]{0,30}|"
+                r"nome do respons[áa]vel|falo com|atendente)"
+                r"(\s*:?\*?\s+)"
+                r"(?!(?:o|a|um|uma|voc[êe]|senhor|senhora|segurad|cliente)\b)"
+                r"(?-i:[A-ZÀ-Ú][A-Za-zà-ú]{2,}(?:\s+[A-ZÀ-Ú][A-Za-zà-ú]{2,})?)"),
+     r"\1\2{NOME}"),
+    # LOGRADOURO EM PROSA — 06/08/2026. Definida acima, junto da medição.
+    # Vem cedo: os padrões numéricos abaixo mordem o número da casa e deixam o
+    # nome da rua exposto, que é o pior dos dois estados.
+    (_LOGRADOURO, r"\1 {ENDERECO}"),
     # `(?<!\d)` e `(?!\d)` no lugar de `\b`. A fronteira de palavra falha ao
     # lado de sublinhado, porque para o regex `_` é letra: num anexo chamado
     # `CTPS_12345678900.pdf` o CPF passava inteiro. Achado por um subagente

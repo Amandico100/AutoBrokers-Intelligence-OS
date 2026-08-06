@@ -44,6 +44,11 @@ def _o_que_mudou(antes: str, depois: str) -> str:
     for marca in ("{CPF}", "{CNPJ}", "{TELEFONE}", "{EMAIL}", "{PLACA}",
                   "{CARTAO}", "{LINHA_DIGITAVEL}", "{PIX_FIM}", "{SEGREDO}",
                   "{CAMINHO}", "{VALOR_RS}", "{VALOR}", "{NUMERO}", "{DATA}",
+                  # {ENDERECO} e {NOME} entraram em 06/08/2026 com as regras de
+                  # logradouro em prosa e de vocativo. Sem estarem nesta lista,
+                  # o vazamento que elas pegam sairia do relatório como
+                  # "(outro)" — e o nome do vazamento é metade do achado.
+                  "{ENDERECO}", "{NOME}",
                   "{CEP}", "{APOLICE}", "{PROTOCOLO}"):
         if marca in depois and marca not in antes:
             return marca

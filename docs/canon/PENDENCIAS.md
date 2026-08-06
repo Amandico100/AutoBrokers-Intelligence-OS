@@ -1823,3 +1823,93 @@ não uma escrita. Por isso ficou de fora do escopo em vez de entrar de carona.
 - **Destrava:** 🤖 trocar por `.order("id")`, uma linha.
 - **Custa se esquecer:** o número da fila no painel erra para menos, e o modo
   de recuperação (que liga por limiar) decide com um número errado.
+
+## P-105 · 🧑 319 lotes de seguradora estão prontos e NÃO gravados
+
+Preparado em 06/08/2026. O exportador, o prompt e um lote de prova destilado
+existem; **nada foi para o banco**, porque a reindexação de 10.818 cartas estava
+rodando em produção no mesmo minuto.
+
+📊 `python backend/scripts/destilacao_max/exportar_seguradoras.py` produziu
+**27 lotes · 319 conversas · 1,69 milhão de caracteres**, e o
+`lote_016.destilado.jsonl` passou no `validar.py` com **12 conversas · 55 fatos**.
+
+- **Destrava:** 🧑 terminar a reindexação; depois 🤖 destilar os 26 lotes
+  restantes com o `PROMPT-DESTILADOR-SEGURADORA.md` e aplicar.
+- **Custa se esquecer:** é o único acervo do projeto que ensina **o que a
+  seguradora faz** em vez de o que a corretora faz, e o rótulo de seguradora
+  dele é confiável por construção — o que o acervo antigo nunca teve.
+
+### O que falta ANTES de aplicar: não existe `aplicar_seguradoras.py`
+
+`aplicar.py` escreve `summary.distilled` em **`attendance_sessions`**. Este
+acervo mora em `observed_sessions`. Aplicar com ele marcaria a sessão errada —
+ou nenhuma.
+
+E há uma decisão de verdade embutida: `aplicar.py` trata `seguradora` como
+**candidata** e re-decide fato a fato em `curadoria_cartas.seguradora_do_fato`,
+porque 📊 no acervo antigo só 32% das cartas etiquetadas citavam a própria
+seguradora. **Aqui o rótulo é confiável por construção** — a conversa É com
+aquela seguradora. Re-decidir por texto jogaria fora a única coisa que este
+acervo tem de melhor.
+
+- **Destrava:** 🧑 decidir se `insurer_key` da sessão observada vale como
+  rótulo direto do fato (recomendação: sim, com a exceção do fato que atribui a
+  regra a outra companhia); depois 🤖 escrever o aplicador.
+- **Custa se esquecer:** sem isso o material fica em disco e a sessão nunca
+  recebe a marca `distilled` — a próxima exportação refaz tudo do zero.
+
+## P-106 · 🟠 O vocativo da URA só é mascarado porque a seguradora publica menus
+
+📊 Medido em 06/08/2026 sobre as 319 sessões: **~240 ocorrências** de primeiro
+nome de segurado escritas pela própria URA, na forma `"Fulano, só mais uma
+informação:"`. Ela tem a MESMA forma de `"Guincho, borracheiro e chaveiro"`.
+
+Quatro hipóteses foram medidas e **três foram refutadas** (forma · raridade ·
+vocativo puro). A que funciona pergunta à seguradora o que ela oferece como
+opção de menu, exige que a palavra apareça como opção em **4 sessões
+distintas**, e mascara o resto.
+
+**Ela depende de um acervo grande o bastante para conter o próprio
+vocabulário.** Numa corretora nova, com 20 sessões observadas, o vocabulário de
+menu fica pobre e a regra passa a mascarar palavra de menu — perda de
+conhecimento, não vazamento.
+
+- **Destrava:** 🤖 quando o acervo observado passar de ~50 sessões por
+  seguradora, reconferir com `medir_vocabulario_de_menu`; ou 🧑 decidir semear o
+  vocabulário a partir dos mapas do Atlas, que já são globais.
+- **Custa se esquecer:** o mascarador fica silenciosamente mais guloso quanto
+  menor a corretora, e o custo aparece onde ninguém olha.
+
+## P-107 · 🟠 838 eventos observados não pertencem a sessão nenhuma
+
+📊 Medido em 06/08/2026:
+
+```sql
+select count(*) from observed_events where session_id is null;   -- 838
+```
+
+São **4,3% dos 19.421 eventos**, espalhados por 4 seguradoras, e mais 1 evento
+apontando para uma sessão que não existe. Todo exportador que parte de
+`observed_sessions` é cego para eles — inclusive o novo.
+
+- **Destrava:** 🤖 investigar se são captura anterior ao pareamento de sessão
+  ou perda de correlação no `observer_intake`, e repará-los por
+  (`observer_number`, `counterparty`, janela de tempo).
+- **Custa se esquecer:** é conhecimento capturado, pago em risco de sessão, e
+  invisível para sempre.
+
+## P-108 · 🟡 O protocolo de 12 dígitos da Porto atravessa o mascarador
+
+📊 17 ocorrências nos lotes exportados, na forma `1-122244434702`. A regra
+`{NUMERO}` do `templatize` cobre 7 a 11 dígitos; esta tem 12 e vem colada num
+prefixo `1-`. A regra `{PROTOCOLO}` exige a palavra "protocolo" ao lado, e a
+Porto imprime o número na linha **seguinte**.
+
+Não é dado de pessoa e o `validar.py` reprova qualquer carta que o contenha —
+então ele não chega ao acervo. Mas ele chega ao **lote**, e ao destilador.
+
+- **Destrava:** 🤖 estender a faixa de `{NUMERO}` ou reconhecer o padrão
+  `\d-\d{10,}`. Uma linha, com controle de que "197" e "2026" sobrevivem.
+- **Custa se esquecer:** um identificador de atendimento de um segurado real
+  fica legível num arquivo em disco.
