@@ -73,6 +73,45 @@ _JANELA_DE_ECO_SEGUNDOS = 120.0
 # Tipos que valem uma conversa mesmo sem uma palavra escrita.
 _TIPOS_SEM_TEXTO = ("audio", "image", "document", "video", "sticker")
 
+# 🔴 O BANCO SÓ ACEITA DOIS TIPOS, e foi isso que deixou o chat em branco.
+#
+# 📊 06/08/2026: `messages_type_check` é
+# `CHECK (type = ANY (ARRAY['text','voice']))`. A ponte gravava o tipo cru do
+# WhatsApp — `audio`, `image`, `document` — e o banco recusava a linha inteira.
+# Resultado medido: **51 conversas da AutoFleet com ZERO mensagens** e
+# `{"erro:APIError": 2216}` no contador. A conversa nascia e a mensagem morria.
+#
+# O `msg_type` de verdade continua no `payload`, para o dia em que a mídia for
+# tocável (P-119). O que muda aqui é só o que o CHECK aceita.
+_TIPO_NO_BANCO = {"audio": "voice", "voice": "voice", "ptt": "voice"}
+
+
+_ROTULO_DE_MIDIA = {
+    "audio": "🎤 Áudio", "voice": "🎤 Áudio", "ptt": "🎤 Áudio",
+    "image": "📷 Imagem", "video": "🎬 Vídeo",
+    "document": "📄 Documento", "sticker": "😀 Figurinha",
+}
+
+
+def _rotulo_de_midia(msg_type: str) -> str:
+    """O que a atendente lê quando a mensagem não tem texto.
+
+    `[audio]` não é uma frase — é um resto de código vazando para a tela de
+    quem trabalha. Ainda não dá para TOCAR a mídia (P-119), mas dá para dizer
+    em português o que chegou.
+    """
+    return _ROTULO_DE_MIDIA.get(str(msg_type or "").strip().lower(), "📎 Anexo")
+
+
+def _tipo_aceito(msg_type: str) -> str:
+    """Traduz o tipo do WhatsApp para o que `messages.type` aceita.
+
+    Áudio vira `voice`; todo o resto vira `text`. Não é perda de informação: o
+    tipo original vai no `payload`, e o texto da mensagem já diz `[imagem]` ou
+    `[documento]` para a atendente.
+    """
+    return _TIPO_NO_BANCO.get(str(msg_type or "").strip().lower(), "text")
+
 
 def _digitos(valor: Any) -> str:
     return "".join(ch for ch in str(valor or "") if ch.isdigit())
@@ -277,7 +316,22 @@ async def espelhar_no_chat(*, company_id: str, counterparty: str, texto: str,
                 "company_id": empresa, "channel": "whatsapp",
                 "user_id": usuario, "agent_id": None,
                 "user_phone": telefone,
-                "user_name": nome or f"WhatsApp {telefone[-4:]}",
+                # 🔴 O NÚMERO INTEIRO, e não os quatro últimos dígitos.
+                #
+                # Founder, 06/08/2026: *"esses dados não são públicos. São da
+                # corretora e não tem problema aparecer o número completo dentro
+                # do dashboard para a corretora. Não entendo por que vocês fazem
+                # isso sempre se piora a visualização."*
+                #
+                # Ele tem razão, e a distinção é a que importa em LGPD: mascarar
+                # protege quem NÃO deveria ver. A corretora é a controladora
+                # deste dado — é o cliente dela, no WhatsApp dela. Esconder ali
+                # não protege ninguém; só impede a atendente de reconhecer quem
+                # está falando.
+                #
+                # O que continua mascarado é outra coisa: telefone em LOG, em
+                # resposta de API do admin, em relatório (CLAUDE.md §13.3).
+                "user_name": nome or telefone,
                 "session_id": session_id_do_chat(empresa, telefone),
                 # 'open', nunca HUMAN_REQUESTED: aquele estado significa "uma
                 # pessoa PEDIU para assumir" e alimenta o vigia de handoff.
@@ -314,12 +368,16 @@ async def espelhar_no_chat(*, company_id: str, counterparty: str, texto: str,
             # É assim que o chat sabe de que lado desenhar o balão: o cliente
             # é 'user'; a corretora (pessoa ou agente) é 'assistant'.
             "role": "user" if direcao == "in" else "assistant",
-            "content": texto or f"[{msg_type or 'mídia'}]",
-            "type": msg_type or "text",
+            "content": texto or _rotulo_de_midia(msg_type),
+            # `messages_type_check` só aceita 'text' e 'voice' — ver `_tipo_aceito`.
+            "type": _tipo_aceito(msg_type),
             # NOT NULL no schema — valores fixos e legíveis.
             "topic": "whatsapp", "extension": "espelho",
             "payload": {"wa_message_id": message_id, "origem": "espelho",
-                        "direcao": direcao},
+                        "direcao": direcao,
+                        # O tipo de VERDADE fica aqui, para o dia em que a
+                        # mídia for tocável no chat (P-119).
+                        "wa_type": str(msg_type or "text")},
         }).execute()
 
         cliente.table("conversations").update({
@@ -451,9 +509,18 @@ async def trazer_conversas_ja_capturadas(
                 # A mesa de trabalho é do que está aberto agora. O histórico
                 # continua inteiro no acervo e no Espelho do admin.
                 .gte("wa_timestamp", desde)
-                # Mais antigas primeiro: o chat precisa da ordem da conversa,
-                # não da ordem da consulta.
-                .order("wa_timestamp", desc=False)
+                # 🔴 MAIS RECENTES PRIMEIRO — e o motivo é um defeito medido.
+                #
+                # 📊 06/08/2026: com `desc=False` + `limit`, o banco devolvia as
+                # 1.500 mensagens MAIS ANTIGAS da janela. O chat da AutoFleet
+                # parou em **04/08** e os dias 05 e 06 — os que interessavam —
+                # nunca chegaram. O limite não cortava o fim da fila; cortava o
+                # começo dela.
+                #
+                # A ordem de LEITURA e a ordem de EXIBIÇÃO são coisas
+                # diferentes: aqui se lê do mais novo para trás, e a inversão
+                # abaixo devolve a ordem da conversa.
+                .order("wa_timestamp", desc=True)
                 .limit(max(1, int(limite))).execute().data or [])
 
     try:
@@ -461,6 +528,10 @@ async def trazer_conversas_ja_capturadas(
     except Exception as erro:  # noqa: BLE001
         logger.warning("[ESPELHO] backfill não leu o acervo (%s)", type(erro).__name__)
         return {"ok": False, "motivo": type(erro).__name__}
+
+    # Lidas do mais novo para trás (ver `_ler`); gravadas na ordem da conversa.
+    # Sem esta inversão, o chat mostraria a resposta antes da pergunta.
+    linhas = list(reversed(linhas))
 
     levadas = 0
     for linha in linhas:

@@ -79,6 +79,30 @@ function Estado({ valor, falseEhBom = false }: { valor: unknown; falseEhBom?: bo
   if (valor && typeof valor === 'object') {
     const obj = valor as Record<string, unknown>;
     if ('conectado' in obj) return <Estado valor={Boolean(obj.conectado)} />;
+    // Contadores (`{conversa_nova: 40, erro:APIError: 12}`) viravam
+    // `[object Object]` — e eram justamente o que respondia "por que o chat
+    // está vazio". Um painel de diagnóstico que esconde o diagnóstico é pior
+    // que não ter painel: dá a sensação de já ter olhado.
+    const linhas = Object.entries(obj);
+    if (linhas.length === 0) {
+      return <Badge variant="outline">sem registros ainda</Badge>;
+    }
+    return (
+      <div className="flex flex-wrap justify-end gap-1">
+        {linhas.map(([chave, quanto]) => (
+          <Badge
+            key={chave}
+            className={
+              chave.startsWith('erro')
+                ? 'gap-1 bg-red-600/15 font-mono text-[10px] text-red-400 hover:bg-red-600/15'
+                : 'gap-1 bg-emerald-600/15 font-mono text-[10px] text-emerald-500 hover:bg-emerald-600/15'
+            }
+          >
+            {chave}: {String(quanto)}
+          </Badge>
+        ))}
+      </div>
+    );
   }
   // Nem todo `false` é defeito. O freio de emergência DESARMADO é o estado
   // normal — pintá-lo de vermelho ensina a pessoa a ignorar vermelho, que é

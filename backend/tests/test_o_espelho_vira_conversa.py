@@ -441,6 +441,53 @@ def teste_a_ponte_usa_a_API_QUE_EXISTE():
            f"faltando: {faltando or 'nada'}")
 
 
+def teste_a_mensagem_obedece_o_que_o_BANCO_aceita():
+    print("\n[3c] O que a ponte grava cabe nas regras do banco")
+    import asyncio
+
+    EC = _carregar_espelho()
+
+    # 🔴 O DEFEITO QUE DEIXOU O CHAT EM BRANCO — 06/08/2026.
+    #
+    # `messages_type_check` é `CHECK (type = ANY (ARRAY['text','voice']))`. A
+    # ponte gravava o tipo cru do WhatsApp (`audio`, `image`, `document`) e o
+    # banco recusava a linha inteira. 📊 Resultado: **51 conversas da AutoFleet
+    # com ZERO mensagens** e `{"erro:APIError": 2216}` no contador.
+    #
+    # O dublê do banco não valida CHECK — por isso este guarda testa a TRADUÇÃO,
+    # que é a decisão que precisa estar certa.
+    checar(EC._tipo_aceito("audio") == "voice", "áudio vira 'voice'")
+    checar(EC._tipo_aceito("text") == "text", "texto continua 'text'")
+    for bruto in ("image", "document", "video", "sticker", "unknown", ""):
+        checar(EC._tipo_aceito(bruto) in ("text", "voice"),
+               f"'{bruto or 'vazio'}' cabe no CHECK do banco",
+               EC._tipo_aceito(bruto))
+
+    # CONTROLE — o CHECK real, lido do banco em 06/08/2026. Se um dia aceitar
+    # mais tipos, este teste continua correto; se aceitar MENOS, ele avisa.
+    aceitos = {"text", "voice"}
+    checar(all(EC._tipo_aceito(t) in aceitos
+               for t in ("audio", "image", "document", "video", "sticker", "ptt", None)),
+           "CONTROLE — NENHUM tipo do WhatsApp escapa da tradução",
+           "era um tipo escapando que recusava a mensagem inteira")
+
+    # E o tipo de verdade não se perde: vai para o payload.
+    banco = BancoFalso()
+    asyncio.run(EC.espelhar_no_chat(
+        company_id="autofleet", counterparty="554799956540", texto="",
+        msg_type="image", direcao="in", message_id="IMG1",
+        quando_iso=_agora_iso(), db=banco))
+    msgs = banco.linhas("messages")
+    checar(len(msgs) == 1, "a mensagem de imagem ENTRA")
+    checar(msgs[0]["type"] == "text", "com um `type` que o banco aceita")
+    checar((msgs[0].get("payload") or {}).get("wa_type") == "image",
+           "e o tipo real preservado no payload",
+           "para o dia em que a mídia for tocável (P-119)")
+    checar("Imagem" in str(msgs[0]["content"]),
+           "e a atendente lê algo em português, não `[image]`",
+           str(msgs[0]["content"]))
+
+
 def teste_a_ponte_esta_ligada_e_nao_muda_o_silencio():
     print("\n[4] Ligada ao Observador — e o silêncio intacto")
     cmd = _comandos("backend/app/services/atlas/observer_intake.py")
@@ -624,6 +671,7 @@ def main() -> int:
     teste_a_ponte_cria_conversa_e_mensagem()
     teste_a_ponte_e_o_agente_acham_a_MESMA_conversa()
     teste_a_ponte_usa_a_API_QUE_EXISTE()
+    teste_a_mensagem_obedece_o_que_o_BANCO_aceita()
     teste_a_ponte_esta_ligada_e_nao_muda_o_silencio()
     teste_nada_disto_liga_agente_nenhum()
     teste_a_lista_do_chat_mostra_sete_dias()

@@ -36,6 +36,7 @@ interface Conversation {
   last_message_at: string | null;
   claimed_by: string | null;
   claimed_by_name: string | null;
+  agent_name?: string | null;
 }
 
 interface Message {
@@ -101,11 +102,35 @@ function ownership(c: Conversation, me: string | null) {
   if (c.claimed_by && me && c.claimed_by === me) return { tone: 'info' as StatusTone, label: 'Você está atendendo' };
   if (c.claimed_by) return { tone: 'neutral' as StatusTone, label: `${c.claimed_by_name || 'Colega'} atendendo` };
   if (c.status === 'HUMAN_REQUESTED') return { tone: 'approval' as StatusTone, label: 'Aguardando humano' };
+  // 🔴 "Atendente IA" MENTIA para toda conversa espelhada.
+  //
+  // O agente de atendimento nasce DESLIGADO e está desligado em todas as
+  // corretoras hoje. Uma conversa que a equipe humana atendeu pelo celular
+  // aparecia com o selo verde "Atendente IA" — dizendo que uma IA atendeu
+  // alguém que ela nunca atendeu.
+  //
+  // `agent_name = 'Espelho'` é como a ponte marca o que veio do WhatsApp da
+  // corretora. Quando o agente for ligado, ele passa a criar conversas com o
+  // nome dele, e o selo volta a dizer a verdade sem ninguém mexer aqui.
+  if ((c.agent_name || '').toLowerCase() === 'espelho') {
+    return { tone: 'neutral' as StatusTone, label: 'Equipe pelo WhatsApp' };
+  }
   return { tone: 'success' as StatusTone, label: 'Atendente IA' };
 }
 
 function displayName(c: Conversation) {
-  return c.user_name?.trim() || c.user_phone || 'Sem identificação';
+  // O NÚMERO INTEIRO. Founder, 06/08/2026: "esses dados não são públicos, são
+  // da corretora, e não tem problema aparecer o número completo dentro do
+  // dashboard para a corretora — esconder piora a visualização".
+  //
+  // Ele está certo, e a distinção é a que importa: mascarar protege de quem
+  // NÃO deveria ver. A corretora é a controladora do dado — é o cliente dela,
+  // no WhatsApp dela. O que continua mascarado é telefone em log, em resposta
+  // de API do admin e em relatório.
+  const nome = c.user_name?.trim();
+  const fone = c.user_phone?.trim();
+  if (nome && fone && nome !== fone) return `${nome} · ${fone}`;
+  return nome || fone || 'Sem identificação';
 }
 
 function fmtTime(iso: string | null) {

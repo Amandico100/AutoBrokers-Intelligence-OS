@@ -42,7 +42,11 @@ export async function GET(_req: NextRequest) {
   const { data, error } = await supabase
     .from('conversations')
     .select(
-      'id, session_id, channel, status, user_phone, user_name, unread_count, last_message_preview, last_message_at, claimed_by, claimed_by_name, claimed_at, created_at',
+      // `agent_name` entra para a tela saber QUEM atendeu: a ponte marca
+      // 'Espelho' no que veio do WhatsApp da corretora, e sem este campo toda
+      // conversa espelhada aparecia com o selo "Atendente IA" — dizendo que
+      // uma IA desligada atendeu alguem.
+      'id, session_id, channel, status, user_phone, user_name, unread_count, last_message_preview, last_message_at, claimed_by, claimed_by_name, claimed_at, created_at, agent_name',
     )
     .eq('company_id', ctx.companyId)
     // Central de ATENDIMENTO: só canais externos (WhatsApp). As conversas do
