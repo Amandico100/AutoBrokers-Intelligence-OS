@@ -1178,6 +1178,37 @@ async def _handle_evolution_like_inbound(
         # Mensagem MANUAL da própria corretora (fromMe) numa conversa com
         # dispatch ATIVO: registra no espelho (humano copilotando a URA).
         if normalized.get("skip_reason") == "from_me" and normalized.get("text") and normalized.get("phone"):
+            # A ATENDENTE RESPONDEU PELO CELULAR. Duas coisas acontecem aqui, e
+            # as duas ANTES de qualquer teste de agente ligado.
+            #
+            # 🔴 O bloco de captura logo abaixo roda dentro de
+            # `if not await attendance_agent_active(...)` — ou seja, só quando o
+            # agente JÁ está desligado, que é exatamente o caso em que não há
+            # nada para pausar. Com o agente LIGADO, a resposta manual da
+            # atendente não era vista, não entrava no chat e não calava ninguém:
+            # duas pessoas responderiam o mesmo cliente.
+            #
+            # 1) a mensagem dela aparece no chat do dashboard
+            # 2) o agente para NAQUELA conversa — e só nela; nas outras ele
+            #    segue trabalhando (decisão do Founder, 06/08/2026)
+            try:
+                from app.services.atlas.espelho_chat import (
+                    espelhar_no_chat, pausar_por_intervencao_humana,
+                )
+
+                _empresa = str(integration.get("company_id") or "")
+                await espelhar_no_chat(
+                    company_id=_empresa,
+                    counterparty=str(normalized["phone"]),
+                    texto=str(normalized.get("text") or ""),
+                    msg_type="text", direcao="out",
+                    message_id=str(normalized.get("message_id") or ""),
+                    quando_iso=datetime.now(timezone.utc).isoformat())
+                await pausar_por_intervencao_humana(
+                    company_id=_empresa, counterparty=str(normalized["phone"]))
+            except Exception as e:  # noqa: BLE001
+                logger.warning(f"[ESPELHO] intervenção humana não registrada: {type(e).__name__}")
+
             try:
                 from app.services.dispatch_router import note_manual_outbound
 

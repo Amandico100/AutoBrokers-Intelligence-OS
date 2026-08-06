@@ -152,7 +152,26 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
 
     const { data: newMessage, error: insertErr } = await supabase
       .from('messages')
-      .insert({ conversation_id: id, role: 'assistant', content: text, type: 'text', sender_user_id: ctx.userId })
+      .insert({
+        conversation_id: id,
+        role: 'assistant',
+        content: text,
+        type: 'text',
+        sender_user_id: ctx.userId,
+        // `origem: 'dashboard'` é o que impede a resposta de aparecer DUAS vezes.
+        //
+        // Esta mensagem vai ao WhatsApp e VOLTA pelo webhook como `fromMe`. O
+        // espelho (`espelho_chat._eco_do_dashboard`) reconhece o eco por
+        // conversa + texto + esta marca + janela de 2 minutos, e não grava de
+        // novo. A marca restringe a comparação ao que o dashboard mandou —
+        // assim a atendente que digita a mesma palavra duas vezes NO CELULAR
+        // não perde a segunda.
+        //
+        // O ideal seria comparar o id do WhatsApp, mas `send-message` devolve
+        // `{"status":"sent"}`: `whatsapp_service.send_message` retorna booleano,
+        // e fazer o id subir por aquela cadeia mexeria em caminho quente.
+        payload: { origem: 'dashboard', wa_message_id: null },
+      })
       .select()
       .single();
     if (insertErr) {

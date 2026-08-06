@@ -63,6 +63,12 @@ JANELA_DA_LISTA_DIAS = 7
 # pareamento novo não despejar meses de histórico de uma vez só.
 LIMITE_DE_RECENCIA_HORAS = 720.0  # 30 dias
 
+# Quanto tempo uma resposta enviada pelo dashboard ainda pode "voltar" pelo
+# webhook como `fromMe`. Curto: é o tempo de ida ao WhatsApp e volta, não uma
+# janela de conveniência. Longo demais engoliria a atendente repetindo a mesma
+# frase de propósito.
+_JANELA_DE_ECO_SEGUNDOS = 120.0
+
 # Tipos que valem uma conversa mesmo sem uma palavra escrita.
 _TIPOS_SEM_TEXTO = ("audio", "image", "document", "video", "sticker")
 
@@ -140,6 +146,49 @@ async def espelhar_no_chat(*, company_id: str, counterparty: str, texto: str,
         db = get_supabase_client()
     cliente = getattr(db, "client", db)
 
+    def _eco_do_dashboard(conversa_id: str) -> bool:
+        """Esta mensagem é o eco da que o dashboard acabou de enviar?
+
+        A resposta escrita no chat vai ao WhatsApp e **volta** pelo webhook como
+        `fromMe`. Sem esta guarda, cada resposta apareceria duas vezes no chat de
+        quem acabou de escrevê-la.
+
+        O caminho óbvio seria comparar o `message_id` do WhatsApp. 📊 Ele não
+        está disponível: `POST /api/webhook/send-message` devolve `{"status":
+        "sent"}` porque `whatsapp_service.send_message` devolve um booleano.
+        Fazer o id subir por essa cadeia mexeria num caminho quente usado por
+        muita coisa — risco maior que o defeito.
+
+        Então a comparação é: mesma conversa, mesmo texto, marcado como vindo do
+        dashboard, nos últimos `_JANELA_DE_ECO_SEGUNDOS`. Restrita a mensagens
+        `origem='dashboard'` de propósito — assim uma atendente que digita a
+        mesma palavra duas vezes NO CELULAR não perde a segunda.
+        """
+        texto_limpo = str(texto or "").strip()
+        if direcao != "out" or not texto_limpo:
+            return False
+        candidatas = (cliente.table("messages")
+                      .select("id, content, created_at, payload")
+                      .eq("conversation_id", conversa_id)
+                      .eq("payload->>origem", "dashboard")
+                      .order("created_at", desc=True).limit(10).execute().data or [])
+        for m in candidatas:
+            if str(m.get("content") or "").strip() != texto_limpo:
+                continue
+            quando = m.get("created_at")
+            if quando is None:
+                return True
+            try:
+                nascida = datetime.fromisoformat(str(quando).replace("Z", "+00:00"))
+            except (TypeError, ValueError):
+                return True
+            if nascida.tzinfo is None:
+                nascida = nascida.replace(tzinfo=timezone.utc)
+            idade = (datetime.now(timezone.utc) - nascida).total_seconds()
+            if 0 <= idade <= _JANELA_DE_ECO_SEGUNDOS:
+                return True
+        return False
+
     def _trabalho() -> Optional[str]:
         from app.services.integration_service import integration_service
 
@@ -184,7 +233,12 @@ async def espelhar_no_chat(*, company_id: str, counterparty: str, texto: str,
                 return None
             conversa_id = nova[0]["id"]
 
-        # 3) a mensagem
+        # 3) é o eco da resposta que o próprio dashboard mandou? Então ela já
+        #    está no chat, escrita por quem a digitou.
+        if _eco_do_dashboard(conversa_id):
+            return conversa_id
+
+        # 4) a mensagem
         cliente.table("messages").insert({
             "conversation_id": conversa_id,
             # É assim que o chat sabe de que lado desenhar o balão: o cliente
@@ -213,7 +267,63 @@ async def espelhar_no_chat(*, company_id: str, counterparty: str, texto: str,
         return None
 
 
+async def pausar_por_intervencao_humana(*, company_id: str, counterparty: str,
+                                        quem: str = "Atendente pelo celular",
+                                        db: Any = None) -> bool:
+    """Uma pessoa respondeu: o agente cala NESTA conversa, e só nesta.
+
+    Decisão do Founder, 06/08/2026:
+
+        "Ele precisa parar a conversar com aquele cliente naquele número, mas
+         ele deve continuar ligado e fazendo o trabalho dele nas outras
+         conversas. Ele só para totalmente se o agente for desligado no botão."
+
+    Por isso o UPDATE é por LINHA de conversa e **nunca** toca `agents.is_active`.
+    Duas pessoas respondendo o mesmo cliente é o defeito que isto evita; um
+    agente mudo na corretora inteira seria um defeito maior.
+
+    `closed` fica de fora: conversa encerrada não ressuscita porque alguém
+    mandou uma mensagem solta para o mesmo número.
+
+    Devolve ``True`` quando alguma conversa foi pausada. Nunca levanta — se a
+    pausa falhar, a captura e o espelho já aconteceram, e o pior caso é o
+    agente responder junto uma vez, não o produto cair.
+    """
+    telefone = _digitos(counterparty)
+    empresa = str(company_id or "").strip()
+    if not telefone or not empresa:
+        return False
+
+    if db is None:
+        from app.core.database import get_supabase_client
+
+        db = get_supabase_client()
+    cliente = getattr(db, "client", db)
+
+    def _trabalho() -> bool:
+        resposta = (cliente.table("conversations").update({
+            "status": "HUMAN_REQUESTED",
+            "claimed_by_name": quem,
+            "claimed_at": _agora_iso(),
+        }).eq("company_id", empresa).eq("channel", "whatsapp")
+          .eq("user_phone", telefone).neq("status", "closed").execute())
+        return bool(getattr(resposta, "data", None))
+
+    try:
+        pausou = await asyncio.to_thread(_trabalho)
+        if pausou:
+            # Sem o telefone no log: é a linha de trabalho de uma pessoa real
+            # e a de um segurado (CLAUDE.md §13.3). Qual corretora basta.
+            logger.info("[ESPELHO] intervenção humana pausou o agente numa conversa de %s",
+                        empresa)
+        return pausou
+    except Exception as erro:  # noqa: BLE001
+        logger.warning("[ESPELHO] não consegui pausar a conversa (%s)", type(erro).__name__)
+        return False
+
+
 __all__ = [
     "deve_espelhar", "espelhar_no_chat", "session_id_do_chat",
+    "pausar_por_intervencao_humana",
     "JANELA_DA_LISTA_DIAS", "LIMITE_DE_RECENCIA_HORAS",
 ]
