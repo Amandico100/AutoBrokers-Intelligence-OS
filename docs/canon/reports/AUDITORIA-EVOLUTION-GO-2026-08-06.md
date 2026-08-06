@@ -429,3 +429,89 @@ acervo** — e ela está bifurcada.
    com o token real no conserto do defeito #1**.
 3. Nada foi apagado. `ab-obs-04b5cdbc04-1` está intacta, com `jid` e `paired_phone_e164`
    preservados. 📊 Controle Regina verde do início ao fim.
+
+---
+
+# PARTE II — Execução do bloco de emergência (06/08/2026)
+
+Autorizada pelo Founder após a Parte I. Commits `f81e24e` (consertos) e `c6b7988`
+(pendências). **Ainda na branch** — o deploy sai da `main`.
+
+## 9. O número pareado, verificado a pedido do Founder
+
+📊 `select paired_phone_e164 from integrations where provider='evolution-go'`:
+
+| corretora | número | DDD | quem é |
+|---|---|---|---|
+| AutoFleet | `+554891759360` | 48 | Regina |
+| **Resulta** | `+554788087463` | **47** | **o telefone do Founder** |
+
+A atendente (DDD 48) pedia QR para uma linha cujo dono era outro número. Com
+`jid` preenchido o whatsmeow **reconecta** em vez de emitir QR (§3.3) — o QR não
+podia vir, em nenhuma tentativa.
+
+📊 E o acervo da Resulta **já foi destilado**: 137 das 179 sessões. As 12.933
+cartas do acervo estão todas em categoria de seguro (sinistro, cobrança, apólice,
+assistência, atendimento; ramos auto/residencial/vida). Conversa sem assunto de
+seguro não vira carta. O valor foi extraído; desconectar não apaga transcrição
+nenhuma, só encerra a captura dali em diante.
+
+⚠️ Correção de método: a primeira tentativa de separar "conversa de corretora" de
+"conversa pessoal" usou `insurer_key`. 📊 A linha de controle derrubou a
+conclusão — a AutoFleet também tem 0%, o campo não é preenchido para ninguém. A
+comparação não distinguia nada e foi descartada antes de virar afirmação.
+
+## 10. O que foi feito em produção
+
+| # | Ação | Alvo | Resultado medido |
+|---|---|---|---|
+| 1 | rotação da credencial de webhook | AutoFleet | hash gravado, prefixo `2FoWlLjm` |
+| 2 | `POST /instance/connect` completo | AutoFleet | 200 · webhook e 4 eventos gravados |
+| 3 | `POST /instance/reconnect` | AutoFleet | 200 · `LoggedIn:true` antes e depois |
+| 4 | `DELETE /instance/delete` + `create` mesmo nome/token | Resulta | 200 · `jid` agora vazio |
+| 5 | rotação da credencial + limpeza do telefone | Resulta | prefixo `s7PuR57x` · `paired_phone_e164` nulo |
+| 6 | `POST /instance/connect` completo | Resulta | 200 |
+| 7 | **`GET /instance/qr`** | **Resulta** | **200 · `state: qr_ready` · 1830 chars** |
+
+📊 Estado final do `/instance/all`:
+
+```
+ab-obs-6c9c55e22f-1   conn=True   jid=SIM   MESSAGE,CONNECTION,HISTORY_SYNC,QRCODE   webhook=SIM
+ab-obs-04b5cdbc04-1   conn=False  jid=---   MESSAGE,CONNECTION,HISTORY_SYNC,QRCODE   webhook=SIM
+```
+
+📊 Autenticação do webhook, com linha de controle:
+
+| requisição | resposta |
+|---|---|
+| token novo da AutoFleet | **200** |
+| token novo da Resulta | **200** |
+| token inventado | **401** |
+| token do AutoFleet com 1 caractere trocado | **401** |
+
+Os dois controles são o que dá mérito ao 200: o endpoint recusa o que deve
+recusar. A corrente do nosso lado está fechada.
+
+## 11. Correção a uma conclusão intermediária
+
+Durante a execução afirmei que a instância da Regina "não gerava log há 16 horas,
+logo o socket estaria morto-vivo". 📊 Errado: depois do `reconnect` — que
+certamente escreve `Starting fresh instance` — o log **continuou parado em
+05/08 23:23:55Z**. O congelado é o `GET /instance/logs/:id`, não o socket.
+
+Fica como achado de observabilidade, e é grave do seu jeito: **durante um
+incidente, o log por instância mente por omissão.** A fonte confiável de "está
+capturando" é `observed_events` no Supabase, nunca o log do provedor.
+
+## 12. O que ainda NÃO está provado
+
+- 💭 **Que a captura voltou a gravar.** No fechamento desta sessão
+  `observed_events` ainda não tinha linha nova. Isso é esperado — depende de
+  chegar mensagem real — mas **não é prova**, e não deve ser tratado como tal.
+  A verificação é a query do P-110, e ela precisa rodar de novo mais tarde.
+- 💭 Que a sessão da Regina sobreviverá ao próximo restart do provedor:
+  `CONNECT_ON_STARTUP=false` continua, e o reconector consertado só age sobre
+  quem a sonda vê caído.
+- O QR da Resulta gerado às 15:47Z **expira** (`QRCODE_MAX_COUNT=5`). A atendente
+  deve gerar um novo pela tela no momento em que for escanear — e agora ele vem,
+  porque o `jid` está vazio.
