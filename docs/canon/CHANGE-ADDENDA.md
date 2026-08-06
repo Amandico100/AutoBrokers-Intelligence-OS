@@ -1669,3 +1669,49 @@ daqui para frente. Não bloqueia a campanha.
 **Não fazer:** inferir encaminhamento por heurística de texto. Errar para o
 lado de "isto é do cliente" apaga conduta legítima da atendente; errar para o
 outro lado é o defeito que já temos. Sem o dado, o silêncio é mais honesto.
+
+---
+
+## CA-032 · `Palhoça/SC` deixava a UF vazia — ESSENCIAL
+
+**Encontrado em** 05/08/2026, durante a SPEC-063, escrevendo o guarda da
+confirmação (item 4). **Não estava no texto da SPEC.**
+
+### O problema
+
+`parse_address_br` não quebrava na **barra**. A grafia mais comum do Brasil —
+`Palhoça/SC`, `São José/SC`, `Florianópolis/SC` — produzia:
+
+```
+cidade = "Palhoça/SC"      uf = ""        ← a UF simplesmente sumia
+```
+
+### A evidência, e por que ela é maior que o guarda
+
+O guarda da confirmação encontrou o defeito porque **compara endereços**: com a
+cidade grudada na UF, ele reprovava uma confirmação legítima. Mas o estrago não
+começa nele — ele só foi o primeiro a olhar.
+
+📊 Os passos do corredor que mandam `{local_cidade}` e `{destino_uf}` para a URA
+liam o mesmo campo torto. Onde a URA pedia a UF, o corredor entregava vazio — e
+a pergunta caía no caminho adaptativo, que custa uma chamada de modelo e uma
+chance do contador de falhas. Em silêncio, e no formato de endereço mais comum
+que existe.
+
+### O que foi feito
+
+Consertado **o campo**, não o texto — CLAUDE.md §12.1: *"se o nome de um campo
+mente sobre o que ele guarda, conserte o campo"*. Aqui o campo não mentia no
+nome; mentia no conteúdo, que é a mesma doença.
+
+### Consequência declarada
+
+A UF passa a ser preenchida onde antes caía no adaptativo. Isso muda o
+comportamento do corredor em telas que já funcionavam **por acidente** — elas
+funcionavam porque o cérebro cobria o buraco. Agora respondem pelo passo
+determinístico, que é mais rápido e não gasta chance.
+
+**Autorização:** Founder autorizou a execução dos itens 3 e 4 da rodada de
+05/08/2026 com "PODE FAZER... FAZER TUDO MUITO BEM FEITO". O conserto é
+pré-requisito do item 4 aprovado — sem ele o guarda reprova endereço correto.
+Registrado aqui por ser mudança de comportamento **fora** do texto da SPEC.

@@ -39,9 +39,10 @@ capturado em `ura_maps` (status='observed', 03/08/2026). Inventar rótulo de men
 
 from __future__ import annotations
 
+import hashlib
 import re
 import unicodedata
-from typing import Any, Dict, List, Optional
+from typing import Any, Dict, List, Optional, Tuple
 
 
 # O `*` do NEGRITO do WhatsApp some ANTES do casamento de âncora.
@@ -2580,7 +2581,21 @@ def parse_address_br(text: str) -> Dict[str, str]:
     if not parts:
         return out
     # UF: token final de 2 letras válido (pode vir grudado na cidade: "Sao Jose SC").
-    tail_tokens = parts[-1].split()
+    #
+    # A BARRA SEPARA TANTO QUANTO O ESPAÇO — e ela é o formato mais comum de
+    # todos: `Palhoça/SC`, `São José/SC`, `Florianópolis/SC`.
+    #
+    # 📊 05/08/2026, achado ao auditar a conferência de confirmação: sem a barra
+    # aqui, `parse_address_br("R. das Flores, 250, Centro, Palhoça/SC")` devolvia
+    # **cidade `"Palhoça/SC"` e nenhuma UF**. Dois estragos, e o segundo é o
+    # caro: (1) a conferência comparava "Palhoça/SC" com "Palhoça" e REPROVAVA
+    # uma confirmação legítima; (2) os passos que preenchem `{local_cidade}` e
+    # `{destino_uf}` mandavam a cidade com a sigla colada para a URA, e a UF não
+    # ia nunca — o passo caía no adaptativo por falta de um dado que estava ali.
+    #
+    # `_STREET_RE` e o resto continuam quebrando só em `,` e `-`: a barra entra
+    # apenas nesta leitura de cauda, onde `100/A` (complemento) não chega.
+    tail_tokens = re.split(r"[\s/]+", parts[-1].strip())
     if tail_tokens and tail_tokens[-1].upper() in _UFS:
         out["uf"] = tail_tokens[-1].upper()
         rest = " ".join(tail_tokens[:-1]).strip()
@@ -2624,23 +2639,55 @@ def inject_address_slots(slots: Dict[str, Any]) -> Dict[str, Any]:
     return slots
 
 
+# A SEGURADORA MOSTRA O DADO MASCARADO — E MASCARADO NÃO SE COMPARA COM `==`.
+#
+# Esta regra nasceu dentro de `pick_option_by_plate` (menu de veículos, 12/07) e
+# saiu para cá porque a MESMA armadilha reaparece na conferência do resumo
+# final: `"JC#-###9" == "JCL9A59"` dá **False** e reprovaria o veículo CERTO.
+# Um segundo comparador escrito à mão ao lado deste seria a duplicação que a
+# CLAUDE.md §5 proíbe — e, pior, os dois divergiriam no primeiro caractere de
+# máscara novo que uma seguradora inventasse.
+#
+# Os quatro caracteres: `#` (Allianz/HDI/Yelum), `*`, `?` e `•`/`●` (bullets que
+# a Porto e a Azul usam para esconder dígito). `*` entra aqui apesar de ser o
+# negrito do WhatsApp: quem chama já recebeu o texto do campo, não a linha.
+_CARACTERE_DE_MASCARA = "#*?•●"
+
+
+def bate_com_mascara(mascarado: str, do_caso: str) -> Optional[bool]:
+    """True / False / **None = não comparável** — e o `None` é o mais importante.
+
+    Comprimentos diferentes NÃO são divergência: são ausência de base de
+    comparação. Os dois erros clássicos que este tipo ternário fecha:
+
+      `"JC#-###9" == "JCL9A59"`  → False  → reprovaria o veículo certo
+      `"125" in "1253"`          → True   → aprovaria o endereço errado
+
+    Pontuação e separador saem dos dois lados antes de comparar (`JC#-###9` e
+    `JCL9A59` viram `JC####9` e `JCL9A59`, ambos de 7).
+    """
+    a = re.sub(rf"[^A-Za-z0-9{re.escape(_CARACTERE_DE_MASCARA)}]", "", str(mascarado or "")).upper()
+    b = re.sub(r"[^A-Za-z0-9]", "", str(do_caso or "")).upper()
+    if not a or not b or len(a) != len(b):
+        return None
+    return all(ca in _CARACTERE_DE_MASCARA or ca == cb for ca, cb in zip(a, b))
+
+
 def pick_option_by_plate(insurer_message: str, placa: str) -> str:
     """Escolhe a opção do menu de veículos pela PLACA MASCARADA da URA.
     Ex.: '1 - 2500, placa JD#-###2 / 2 - HILUX SW4, placa JC#-###9' com placa
-    do caso JCL9A59 → '2' (prefixo JC e final 9 casam). '' = sem match seguro."""
+    do caso JCL9A59 → '2' (prefixo JC e final 9 casam). '' = sem match seguro.
+
+    A comparação em si mora em `bate_com_mascara`. Aqui ficou só o que é DESTE
+    passo: achar as opções na tela e nunca chutar veículo (`None` — comprimento
+    diferente — e `False` caem juntos no mesmo `continue`, e duas opções que
+    casam também devolvem '')."""
     case = re.sub(r"[^A-Z0-9]", "", str(placa or "").upper())
     if not case:
         return ""
     matches = []
     for opt, masked in re.findall(r"(\d+)\s*-\s*[^\n]*?placa\s+([A-Z0-9#\-]+)", str(insurer_message), re.IGNORECASE):
-        m = re.sub(r"[^A-Z0-9#]", "", masked.upper())
-        if not m or len(m) != len(case):
-            # comprimento diferente ainda pode casar se só houver # de padding;
-            # sem garantia, pula (nunca chuta veículo).
-            if len(m) != len(case):
-                continue
-        ok = all(mc == "#" or mc == cc for mc, cc in zip(m, case))
-        if ok:
+        if bate_com_mascara(masked, case) is True:
             matches.append(opt)
     return matches[0] if len(matches) == 1 else ""
 
@@ -2995,3 +3042,426 @@ def missing_slots_for_subservice(playbook: Any, subservice: str, slots: Dict[str
             if campo not in faltando and not str(slots.get(campo) or "").strip():
                 faltando.append(campo)
     return faltando
+
+
+# ===========================================================================
+# A CONFERÊNCIA DA CONFIRMAÇÃO — o único ponto irreversível do produto
+# ===========================================================================
+#
+# Todo o resto do corredor se conserta na mensagem seguinte. Esta não: depois do
+# "sim" existe um guincho na rua e uma pessoa esperando no lugar que a
+# seguradora escreveu, não no lugar onde ela está.
+#
+# 📊 Medido em 05/08/2026 contra o motor real, com `DISPATCH_FINALIZE_MODE=live`
+# (o padrão desde 04/08):
+#
+#     o caso diz .......... Rua Doutor Fúlvio Aducci, 1235
+#     o resumo da URA diz . Rua Doutor Fúlvio Aducci, 1253
+#     o motor respondeu ... "1"      ← CONFIRMOU
+#
+# Três caracteres trocados, e o guincho sai para uma casa que EXISTE, na rua
+# certa, com a pessoa errada atendendo a porta.
+#
+# A conferência já existia — como PROSA, dentro de `_AUTO_HUMAN_PHASE_GUIDANCE`:
+# *"antes de confirmar, confira (1) placa e veículo (2) o serviço (3) o endereço
+# de origem (4) o destino"*. Um modelo lendo "1253" logo abaixo de "1235"
+# concorda com facilidade. Texto no prompt é PEDIDO, não verificação.
+#
+# 📊 E o caminho principal nem é a LLM: quem responde a tela de confirmação é o
+# passo determinístico do corredor — `confirmar_atendimento` → "1",
+# `confirmar_solicitacao` → "Confirmar solicitação", `confirmar_abertura` →
+# "Sim". Um guarda que morasse dentro de `guard_human_phase_reply` (que fiscaliza
+# o RASCUNHO da LLM) não protegeria justamente quem mais dispara. Por isso o
+# bloco é PURO aqui, e o gancho fica no choke point por onde os dois passam.
+#
+# A decisão do Founder que este desenho obedece: **o agente confirma sozinho**,
+# sem aprovação humana. Então a proteção não pode ser "não confirme" — tem de
+# ser CONFERIR ANTES. É por isso que campo ausente não reprova nada (ver
+# `conferir_confirmacao`): tratar ausência como erro faria o agente nunca
+# confirmar, que é o oposto do que foi decidido.
+
+# As etiquetas com que as seguradoras escrevem cada campo do resumo.
+_ETIQUETAS_DO_RESUMO = (
+    ("placa", r"placa"),
+    ("veiculo", r"ve[ií]culo|modelo|autom[óo]vel|carro"),
+    ("servico", r"servi[çc]o|assist[êe]ncia solicitada|atendimento solicitado|tipo de atendimento"),
+    ("origem", r"origem|endere[çc]o(?: de origem| do local| atual)?|local do ve[íi]culo|"
+               r"local de atendimento|onde est[áa]"),
+    ("destino", r"destino|local de destino|para onde|oficina"),
+)
+_TODOS_OS_ROTULOS = r"|".join(p for _, p in _ETIQUETAS_DO_RESUMO)
+
+
+def ler_resumo(texto: str) -> Dict[str, str]:
+    """`{campo: valor}` do que a seguradora ESCREVEU. Campo ausente fica fora."""
+    achados: Dict[str, str] = {}
+    # UMA ETIQUETA TERMINA ONDE A PRÓXIMA COMEÇA — e não no fim da linha.
+    #
+    # 📊 Sem esta fronteira, `*Serviço:* Encanador *Origem:* Rua B, 50` devolvia
+    # servico = "Encanador Origem: Rua B, 50": o valor de um campo engolia o
+    # campo seguinte. Um serviço assim não casa palavra nenhuma da tabela, e a
+    # conferência deixava de comparar justamente o que tinha acabado de ler.
+    for linha in re.sub(r"\*", "", str(texto or "")).splitlines():
+        for campo, padrao in _ETIQUETAS_DO_RESUMO:
+            if campo in achados:
+                continue
+            m = re.search(rf"(?i)\b(?:{padrao})\s*:\s*(.+?)(?=\s+(?:{_TODOS_OS_ROTULOS})\s*:|\s*$)", linha)
+            if m and m.group(1).strip():
+                achados[campo] = m.group(1).strip()
+    return achados
+
+
+# Linha de OPÇÃO não é linha de dado: "Botão 1: Agora" tem dois-pontos e não
+# resume coisa nenhuma. 📊 Sem esta exclusão, a tela "agora ou prefere agendar"
+# da família HDI/Yelum — que não tem resumo NENHUM — era contada como um resumo
+# de 3 campos, e o corredor se declarava "resumo ilegível" na tela mais comum
+# que ele tem.
+_LINHA_DE_OPCAO = r"^\s*(?:bot[ãa]o|op[çc][ãa]o)\s*\d"
+
+
+def parece_resumo(texto: str) -> bool:
+    """Tem CARA de resumo: 3+ pares `etiqueta: valor` que não sejam opções."""
+    linhas = [l for l in re.sub(r"\*", "", str(texto or "")).splitlines()
+              if not re.search(_LINHA_DE_OPCAO, l, re.IGNORECASE)]
+    return len([l for l in linhas
+                if re.search(r"^\s*[A-Za-zÀ-ÿ][^:\n]{2,30}\s*:\s*\S", l)]) >= 3
+
+
+# ---------------------------------------------------------------------------
+# O "sim" sai das OPÇÕES DA PRÓPRIA TELA, nunca de uma lista fixa de palavras
+# ---------------------------------------------------------------------------
+#
+# "Agora" é o sim na Yelum ("precisa agora ou prefere agendar?") e não quer
+# dizer nada na Porto. Lista fixa de palavras afirmativas erra nas duas pontas.
+_ROTULO_AFIRMATIVO = (r"\bsim\b|confirm|prosseguir|continuar|correto|de acordo|isso mesmo|"
+                      r"\bagora\b|\bok\b|pode (?:seguir|abrir|enviar)")
+_ROTULO_NEGATIVO = (r"\bn[ãa]o\b|sair|cancel|reinici|alterar|mudar|corrigir|voltar|editar|agendar|"
+                    r"outro momento|desisti")
+
+
+def opcoes_da_tela(texto: str) -> List[Tuple[str, str]]:
+    """`[(tecla, rótulo)]` das opções que a tela oferece. Tecla '' = só rótulo.
+
+    Os três formatos reais: `*1 -* Sim` (Allianz), `Botão 1: Agora` (HDI/Yelum)
+    e a LISTA sem número da Porto/Azul, em que cada linha curta é uma opção e a
+    resposta válida é o rótulo inteiro (dígito é rejeitado por aquele bot)."""
+    plano = re.sub(r"\*", "", str(texto or ""))
+    achados: List[Tuple[str, str]] = []
+    for m in re.finditer(r"(?im)^\s*(?:bot[ãa]o\s*)?(\d{1,2})\s*[-:.)]\s*(.+?)\s*$", plano):
+        achados.append((m.group(1), m.group(2)))
+    for m in re.finditer(r"(?i)\b(?:bot[ãa]o|op[çc][ãa]o)\s*(\d{1,2})\s*:\s*([^\n]+)", plano):
+        achados.append((m.group(1), m.group(2).strip()))
+    if not achados:
+        for linha in plano.splitlines():
+            linha = linha.strip()
+            if linha and len(linha) <= 40 and not linha.endswith("?") and ":" not in linha:
+                achados.append(("", linha))
+    return achados
+
+
+def _sentido_do_rotulo(rotulo: str) -> Optional[bool]:
+    baixo = str(rotulo or "").lower()
+    if re.search(_ROTULO_NEGATIVO, baixo):
+        return False
+    if re.search(_ROTULO_AFIRMATIVO, baixo):
+        return True
+    return None
+
+
+def e_afirmativa(rascunho: str, tela: str) -> bool:
+    """O rascunho quer dizer SIM *nesta tela*?
+
+    Fail-closed ao contrário do habitual, e de propósito: quando não dá para
+    classificar, devolve **True**. Numa tela de confirmação, tratar o
+    desconhecido como um "sim" só faz a conferência rodar; o contrário deixaria
+    passar exatamente o caso que se quer pegar.
+    """
+    r = str(rascunho or "").strip()
+    if not r:
+        return False
+    opcoes = opcoes_da_tela(tela)
+    if re.fullmatch(r"\d{1,2}", r):
+        for tecla, rotulo in opcoes:
+            if tecla == r:
+                v = _sentido_do_rotulo(rotulo)
+                return True if v is None else v
+        return True
+    baixo = r.lower()
+    for _tecla, rotulo in opcoes:
+        rl = rotulo.lower().strip()
+        if rl and (rl in baixo or baixo in rl):
+            v = _sentido_do_rotulo(rotulo)
+            if v is not None:
+                return v
+    v = _sentido_do_rotulo(r)
+    return True if v is None else v
+
+
+# ---------------------------------------------------------------------------
+# A conferência dos quatro campos
+# ---------------------------------------------------------------------------
+_PALAVRAS_DE_SERVICO = {
+    "guincho": r"guincho|reboque|rebocar|remo[çc][ãa]o",
+    "bateria": r"bateria|carga|pane el[ée]tric",
+    "pneu": r"pneu|borrach|estepe",
+    "chaveiro": r"chave",
+    "vidros": r"vidro|para-?brisa|retrovisor|farol",
+    "eletricista": r"el[ée]tric",
+    "encanador": r"encanad|hidr[áa]ul|vazamento",
+    "desentupimento": r"desentup",
+}
+# "Rua"/"Avenida" não distinguem endereço nenhum: comparar tokens sem tirá-los
+# faria "Rua A" e "Rua B" terem interseção e passarem como o mesmo lugar.
+_RUIDO_DE_LOGRADOURO = (r"^(rua|r|av|avenida|rod|rodovia|estrada|travessa|tv|alameda|al|via|"
+                        r"praca|pra[çc]a|linha|servid[ãa]o)$")
+
+
+def _tokens_comparaveis(texto: str) -> List[str]:
+    limpo = re.sub(r"[^a-z0-9 ]", " ", _norm(texto).strip())
+    return [t for t in limpo.split() if len(t) >= 3 and not re.fullmatch(_RUIDO_DE_LOGRADOURO, t)]
+
+
+def _so_digitos(v: str) -> str:
+    return re.sub(r"\D", "", str(v or "")).lstrip("0")
+
+
+def _conferir_endereco(campo: str, do_resumo: str, do_caso: str, parser) -> List[Dict[str, str]]:
+    """Divergências componente a componente. Só compara o que existe nos DOIS.
+
+    O NÚMERO se compara por DÍGITOS EXATOS, nunca por `in`: `"125" in "1253"` é
+    True, e foi exatamente essa a família do defeito que pagou este bloco.
+    """
+    if not str(do_resumo or "").strip() or not str(do_caso or "").strip():
+        return []
+    a, b = parser(do_resumo), parser(do_caso)
+    problemas = []
+    if a.get("numero") and b.get("numero") and _so_digitos(a["numero"]) != _so_digitos(b["numero"]):
+        problemas.append({"campo": f"{campo}_numero", "resumo": a["numero"], "caso": b["numero"]})
+    for parte in ("cidade", "uf"):
+        if a.get(parte) and b.get(parte) and _norm(a[parte]).strip() != _norm(b[parte]).strip():
+            problemas.append({"campo": f"{campo}_{parte}", "resumo": a[parte], "caso": b[parte]})
+    ta, tb = set(_tokens_comparaveis(a.get("rua", ""))), set(_tokens_comparaveis(b.get("rua", "")))
+    if ta and tb and not (ta & tb):
+        problemas.append({"campo": f"{campo}_rua", "resumo": a.get("rua", ""), "caso": b.get("rua", "")})
+    return problemas
+
+
+def conferir_confirmacao(playbook: Dict[str, Any], telas: List[str], slots: Dict[str, Any],
+                         subservice: str, *, parse_address=None) -> Dict[str, Any]:
+    """A conferência dos QUATRO campos, antes de qualquer "sim".
+
+    `telas` é uma JANELA — as últimas mensagens da seguradora, da mais antiga
+    para a mais nova. São várias porque 📊 na Azul o RESUMO e a PERGUNTA vêm em
+    mensagens SEPARADAS: o resumo sozinho não casa `finalize_anchor` nenhuma, e
+    a tela que casa ("Como você quer prosseguir?") não tem dado nenhum. Olhar só
+    a mensagem atual não conferiria nada justamente ali.
+
+    Devolve `{ok, conferidos, divergencias, resumo, motivo}`.
+
+    **Campo ausente NÃO é divergência.** 📊 O resumo é quase sempre parcial, e
+    tratar ausência como erro faria o agente nunca confirmar nada — o oposto da
+    decisão do Founder. O preço disso está escrito e é honesto: quando nada é
+    comparável o veredito sai `ok` com `motivo="resumo_nao_lido"`, e é esse
+    rótulo que vira lista de trabalho de quem mantém o corredor.
+    """
+    parse_address = parse_address or (lambda s: {})
+    resumo: Dict[str, str] = {}
+    # DA MAIS NOVA PARA A MAIS ANTIGA — e esta ordem é o conserto de um defeito
+    # que anulava a escada de correção inteira.
+    #
+    # 📊 05/08/2026: com a leitura no sentido natural (mais antiga primeiro) e
+    # `setdefault`, o PRIMEIRO valor de cada campo vencia. Sequência real:
+    #
+    #     URA manda o resumo com 1253   → o guarda reprova, corrigimos
+    #     URA manda o resumo com 1235   → o guarda reprovava DE NOVO
+    #
+    # A janela ainda continha o resumo velho, e ele sombreava o novo. O agente
+    # corrigia até estourar o teto e chamava um humano — para um resumo que já
+    # estava certo. Um guarda que não sabe reconhecer o conserto que ele mesmo
+    # pediu é um guarda que só sabe dizer não.
+    #
+    # O que se confirma é o que a seguradora disse POR ÚLTIMO. `setdefault`
+    # continua sendo o mecanismo (a tela mais nova costuma ser a pergunta, sem
+    # dados; a de trás completa o que falta), mas a prioridade inverteu.
+    for tela in reversed(list(telas or [])):
+        for k, v in ler_resumo(tela).items():
+            resumo.setdefault(k, v)
+
+    conferidos: List[str] = []
+    divergencias: List[Dict[str, str]] = []
+    slots = slots or {}
+
+    # (1) PLACA — mascarada na tela, inteira no caso.
+    placa_caso = str(slots.get("veiculo_placa") or "").strip()
+    if resumo.get("placa") and placa_caso:
+        veredito = bate_com_mascara(resumo["placa"], placa_caso)
+        if veredito is not None:  # None = não comparável, e isso não reprova
+            conferidos.append("placa")
+            if not veredito:
+                divergencias.append({"campo": "placa", "resumo": resumo["placa"], "caso": placa_caso})
+
+    # (1b) VEÍCULO — descrição é apelido, e apelido não reprova sozinho.
+    # "HILUX SW4" contra "Toyota Hilux SW4 2019" tem interseção; mas a URA também
+    # escreve "SW4 4X4 SRV" e o caso "Hilux". Quando a PLACA já foi conferida,
+    # ela é a identidade — a descrição vira ruído e só é registrada.
+    if resumo.get("veiculo") and str(slots.get("veiculo_descricao") or "").strip():
+        ta = set(_tokens_comparaveis(resumo["veiculo"]))
+        tb = set(_tokens_comparaveis(str(slots["veiculo_descricao"])))
+        if ta and tb:
+            conferidos.append("veiculo")
+            if not (ta & tb) and "placa" not in conferidos:
+                divergencias.append({"campo": "veiculo", "resumo": resumo["veiculo"],
+                                     "caso": str(slots["veiculo_descricao"])})
+
+    # (2) SERVIÇO — só reprova quando o resumo nomeia OUTRO serviço conhecido.
+    # Texto que não casa nenhuma palavra da tabela ("atendimento") é ilegível,
+    # não é divergência.
+    canon = canonical_subservice(subservice)
+    if resumo.get("servico") and canon:
+        texto = _norm(resumo["servico"]).strip()
+        do_caso = _PALAVRAS_DE_SERVICO.get(canon)
+        outros = [k for k, p in _PALAVRAS_DE_SERVICO.items() if k != canon and re.search(p, texto)]
+        if do_caso and re.search(do_caso, texto):
+            conferidos.append("servico")
+        elif outros:
+            conferidos.append("servico")
+            divergencias.append({"campo": "servico", "resumo": resumo["servico"], "caso": canon})
+
+    # (3) e (4) ORIGEM e DESTINO.
+    if resumo.get("origem") and str(slots.get("local_atual") or "").strip():
+        conferidos.append("origem")
+        divergencias += _conferir_endereco("origem", resumo["origem"], str(slots["local_atual"]), parse_address)
+    if resumo.get("destino"):
+        alvo = str(slots.get("local_destino") or "").strip()
+        if alvo:
+            conferidos.append("destino")
+            divergencias += _conferir_endereco("destino", resumo["destino"], alvo, parse_address)
+        elif str(slots.get("local_atual") or "").strip():
+            # O caso não tem destino (bateria, pneu, chaveiro: o serviço é NO
+            # LOCAL). Se o resumo traz destino, ou ele repete a origem, ou a
+            # seguradora inventou para onde levar o carro — e um guincho num
+            # chamado de bateria é o serviço errado inteiro.
+            if _conferir_endereco("destino", resumo["destino"], str(slots["local_atual"]), parse_address):
+                conferidos.append("destino")
+                divergencias.append({"campo": "destino_inexistente", "resumo": resumo["destino"],
+                                     "caso": "(o caso não tem destino)"})
+
+    motivo = ""
+    if not conferidos:
+        motivo = "resumo_nao_lido" if any(parece_resumo(t) for t in telas or []) else "nada_a_conferir"
+    return {"ok": not divergencias, "conferidos": conferidos, "divergencias": divergencias,
+            "resumo": resumo, "motivo": motivo}
+
+
+# ---------------------------------------------------------------------------
+# A trava da confirmação única
+# ---------------------------------------------------------------------------
+#
+# 📊 05/08/2026: o MESMO resumo enviado duas vezes → o motor respondeu "1" DUAS
+# vezes. `_would_loop` só para na TERCEIRA, e a terceira já é tarde: dois "sim"
+# são dois prestadores, dois guinchos e duas cobranças no mesmo chamado.
+MAX_CONFIRMACOES = 2
+MAX_CORRECOES_POR_CAMPO = 2
+MAX_CORRECOES_POR_SESSAO = 3
+
+
+def digest_da_conferencia(veredito: Dict[str, Any], anchor: str = "") -> str:
+    """A identidade do que se está confirmando — a TELA mais os campos LIDOS.
+
+    NÃO é hash da mensagem. A URA reescreve espaço, emoji e negrito entre um
+    reenvio e outro, e um digest de bytes acharia que são dois pedidos
+    diferentes — que é precisamente o engano que manda o segundo guincho.
+
+    🔴 A âncora entra por um defeito medido em 05/08/2026: sem ela, toda tela
+    de confirmação SEM resumo legível colidia num único digest `"vazio"`. Duas
+    telas diferentes da mesma família — 📊 na HDI/Yelum, "precisa agora ou
+    prefere agendar?" e um "posso confirmar?" adiante — viravam o MESMO pedido,
+    e a segunda era recusada como duplicata de uma confirmação que era de outra
+    coisa. Com a âncora, tela diferente é pedido diferente; a MESMA tela
+    reenviada continua sendo o mesmo pedido, que é o que a trava existe para
+    reconhecer.
+    """
+    itens = sorted((k, _norm(v).strip()) for k, v in (veredito.get("resumo") or {}).items())
+    semente = repr((str(anchor or ""), itens))
+    return hashlib.sha256(semente.encode("utf-8")).hexdigest()[:16]
+
+
+def pode_confirmar_de_novo(session: Dict[str, Any], digest: str) -> Dict[str, str]:
+    """A segunda confirmação é duplicidade ou etapa nova? `acao` diz o que fazer.
+
+    - primeira vez              -> ok
+    - MESMO digest              -> **não confirma**; `acao=perguntar_status`
+    - digest diferente          -> etapa nova: confere de novo e confirma
+    - teto de MAX_CONFIRMACOES  -> para, com motivo escrito
+    """
+    ja = list(session.get("confirmacoes") or [])
+    if not ja:
+        return {"ok": "1", "acao": "", "motivo": ""}
+    if any(c.get("digest") == digest for c in ja):
+        return {"ok": "", "acao": "perguntar_status", "motivo": "confirmacao_repetida"}
+    if len(ja) >= MAX_CONFIRMACOES:
+        return {"ok": "", "acao": "", "motivo": "teto_de_confirmacoes"}
+    return {"ok": "1", "acao": "", "motivo": ""}
+
+
+def registrar_confirmacao(session: Dict[str, Any], digest: str, anchor: str, quando: str,
+                          *, saida_em: int = 0, tela: str = "") -> None:
+    """Grava a confirmação ANTES de emitir.
+
+    ⚠️ A chave é `confirmacoes`, e o nome importa: `snapshot_duravel` corta tudo
+    que casa `_CHAVES_PROIBIDAS` (entre elas "token"). Uma trava chamada
+    `confirm_token` sumiria do retrato durável e voltaria zerada no restart — e
+    uma trava que só mora no Redis não é trava.
+
+    `saida_em` (tamanho do transcript no instante do registro) e `tela` existem
+    para uma pergunta só, feita depois: um "sim" REALMENTE saiu? Registrar antes
+    de emitir é o certo — a trava tem de valer no instante em que o motor cai —,
+    mas registrar não é emitir, e quem confunde as duas coisas bloqueia a
+    confirmação legítima da tela seguinte.
+    """
+    session.setdefault("confirmacoes", []).append(
+        {"digest": digest, "anchor": str(anchor or "")[:120], "at": quando,
+         "saida_em": int(saida_em), "tela": str(tela or "")[-400:]})
+
+
+# ---------------------------------------------------------------------------
+# Quando o guarda recusa, ele CORRIGE — recusar não é chamar humano
+# ---------------------------------------------------------------------------
+_OPCAO_DE_CORRECAO = {
+    "origem": r"mudar localiza|alterar (?:o )?(?:local|endere)|corrigir endere|alterar dados",
+    "destino": r"alterar (?:o )?(?:local de )?destino|mudar destino",
+    "placa": r"n[ãa]o,? desejo reiniciar|reiniciar|alterar ve[íi]culo|trocar ve[íi]culo",
+    "veiculo": r"n[ãa]o,? desejo reiniciar|reiniciar|alterar ve[íi]culo",
+    "servico": r"n[ãa]o,? desejo reiniciar|reiniciar|alterar servi",
+}
+_ROTULO_DO_CAMPO = {"origem": "endereço de origem", "destino": "destino", "placa": "placa",
+                    "veiculo": "veículo", "servico": "serviço"}
+_SLOT_DO_CAMPO = {"origem": "local_atual", "destino": "local_destino",
+                  "placa": "veiculo_placa", "veiculo": "veiculo_descricao"}
+
+
+def resposta_de_correcao(divergencias: List[Dict[str, str]], tela: str,
+                         slots: Dict[str, Any]) -> Dict[str, str]:
+    """A tela OFERECE o conserto? Então o conserto é a resposta.
+
+    A escada, na ordem: (1) a opção da própria tela ("Mudar localização atual",
+    "Alterar local de destino"); (2) o valor DO CASO por texto.
+
+    `{"tipo": "opcao"|"texto"|"", "reply": ..., "campo": ...}`. Nunca inventa
+    número: o que sai vem dos slots, que já são a única fonte autorizada pelo
+    guard de dígitos que existe do outro lado.
+    """
+    if not divergencias:
+        return {"tipo": "", "reply": "", "campo": ""}
+    base = str(divergencias[0]["campo"]).split("_")[0]
+    padrao = _OPCAO_DE_CORRECAO.get(base)
+    if padrao:
+        for tecla, rotulo in opcoes_da_tela(tela):
+            if re.search(padrao, rotulo, re.IGNORECASE):
+                return {"tipo": "opcao", "reply": rotulo if not tecla else tecla, "campo": base}
+    fonte = _SLOT_DO_CAMPO.get(base)
+    valor = str((slots or {}).get(fonte) or "").strip() if fonte else ""
+    if valor:
+        return {"tipo": "texto", "campo": base,
+                "reply": f"Antes de confirmar: o {_ROTULO_DO_CAMPO.get(base, base)} é {valor}."[:400]}
+    return {"tipo": "", "reply": "", "campo": base}

@@ -75,6 +75,9 @@ _MONITOR_TTL_SECONDS = 24 * 3600  # updates da seguradora chegam por até ~1 dia
 # O limite existe porque silêncio sem teto vira a nova forma de travar: o
 # Sentinela precisa poder voltar se a seguradora seguir falando.
 _SILENCIO_S = 60
+# Teto da TELA montada a partir da rajada (ver `_tela_do_turno`). Generoso de
+# propósito: o corte é a exceção, não o caminho.
+_TETO_DA_TELA = 4000
 _memory_store: Dict[str, str] = {}  # fallback p/ testes offline
 
 # Pós-protocolo: a seguradora manda updates espontâneos (HDI: "prestador a
@@ -108,6 +111,42 @@ _MONITOR_IGNORE_RE = (
 def _norm(text: str) -> str:
     normalized = unicodedata.normalize("NFKD", str(text or ""))
     return "".join(ch for ch in normalized if not unicodedata.combining(ch)).lower()
+
+
+def _tela_do_turno(session: Dict[str, Any], texto_atual: str) -> str:
+    """A TELA INTEIRA — não o último pedaço dela.
+
+    A URA não manda uma mensagem: manda uma RAJADA. O aviso vem numa bolha, o
+    menu na seguinte, a pergunta na terceira. Quem lê no celular vê uma tela só,
+    e é sobre a tela inteira que se decide.
+
+    📊 Medido em 05/08/2026 sobre o tráfego real das seguradoras: em 34,1% dos
+    turnos chegam 2+ mensagens, e nesses turnos a pergunta está na ÚLTIMA
+    mensagem em 68,1% das vezes. Antes disto, o roteador era chamado uma vez por
+    mensagem e o modelo respondia a primeira bolha — quase sempre um "aguarde" —
+    e já tinha falado quando o menu de verdade chegou. Duas respostas para uma
+    pergunta, e a primeira sobre a tela errada.
+
+    A fonte é `pending_insurer_messages`, não a rajada crua do webhook: é a lista
+    do que a seguradora disse e nós ainda NÃO respondemos. `reply_human_phase` a
+    zera a cada resposta aceita, então ela é exatamente o turno em aberto —
+    inclusive quando o turno anterior terminou em silêncio deliberado, e aí o
+    "aguarde" calado entra junto com o menu que veio depois. É o certo: era uma
+    tela só desde o começo.
+
+    Se estourar o teto, corta pela CABEÇA e por mensagens inteiras. Cortar pelo
+    fim jogaria fora justamente a pergunta.
+    """
+    pendentes = [
+        " ".join(str(m).split())
+        for m in (session.get("pending_insurer_messages") or [])
+        if str(m or "").strip()
+    ]
+    if not pendentes:
+        return str(texto_atual or "").strip()
+    while len(pendentes) > 1 and len("\n".join(pendentes)) > _TETO_DA_TELA:
+        pendentes.pop(0)
+    return "\n".join(pendentes)[-_TETO_DA_TELA:]
 
 
 async def _support_alert_seguro(company_id: str, session: Dict[str, Any], resumo: str) -> None:
@@ -1142,6 +1181,7 @@ async def try_route_insurer_inbound(
     human_reply_provider: Optional[Callable[..., Any]] = None,
     interactive: Optional[Dict[str, Any]] = None,
     flow_sender: Optional[Callable[..., Any]] = None,
+    ainda_vem_mais: bool = False,
 ) -> bool:
     """Se o inbound vier do número da seguradora com dispatch ativo, processa
     aqui e retorna True (o webhook NÃO deve seguir para o agente).
@@ -1164,6 +1204,14 @@ async def try_route_insurer_inbound(
     provado", e o motor pausa em vez de fingir que respondeu. 📊 O build atual
     do Evolution GO não tem rota para isso: 12 rotas de envio, nenhuma responde
     interativa (ver `providers/evolution_go.py`).
+
+    ainda_vem_mais — "esta mensagem é um PEDAÇO da tela; o resto vem já".
+    O caminho determinístico continua vendo cada mensagem em ordem, porque o
+    menu pode estar na primeira e o "aguarde" na última. Mas a DELIBERAÇÃO (a
+    chamada ao modelo e o guarda) espera a rajada inteira: com `True` a mensagem
+    só se acumula em `pending_insurer_messages`; com `False` — a última do turno,
+    e o padrão para quem chama com uma mensagem só — o modelo é chamado UMA vez,
+    sobre a tela completa. Ver `_tela_do_turno`.
     """
     session = await load_active_dispatch(company_id, from_phone)
     if not session:
@@ -1192,19 +1240,44 @@ async def try_route_insurer_inbound(
         await save_active_dispatch(company_id, from_phone, session)
         return True
 
+    _saidas_antes = sum(1 for t in (session.get("transcript") or [])
+                        if isinstance(t, dict) and t.get("direction") == "out")
     session = handle_insurer_message(session, text, sender=send_to_insurer,
                                      interactive=interactive, flow_sender=flow_sender)
     state = session.get("state")
+    # O DETERMINÍSTICO JÁ FALOU NESTA BOLHA? Então o turno está respondido.
+    #
+    # O passo mapeado responde sozinho o que sabe responder — "qual o CPF",
+    # "qual a placa", o menu numerado. Quando ele responde, o modelo era chamado
+    # logo em seguida sobre o que tivesse sobrado de pendente, e saíam DUAS
+    # mensagens nossas para uma pergunta da URA. Uma resposta por turno é o que
+    # uma pessoa faz — e é o que a URA espera receber.
+    #
+    # O pendente não se perde: fica em `pending_insurer_messages` e entra na
+    # tela do próximo turno.
+    _ja_respondeu = sum(1 for t in (session.get("transcript") or [])
+                        if isinstance(t, dict) and t.get("direction") == "out") > _saidas_antes
 
     # Fase humana: LLM redige, guard fiscaliza, falha repetida pausa (fail-closed).
-    if state == "human_phase" and human_reply_provider is not None and session.get("pending_insurer_messages"):
+    #
+    # `not ainda_vem_mais` — ESPERA A TELA INTEIRA. Enquanto a rajada não
+    # terminou, a mensagem apenas se acumula. Deliberar sobre meia tela era
+    # responder à bolha errada em 2 de 3 turnos, e ainda gastava duas respostas
+    # numa pergunta só (ver `_tela_do_turno`).
+    if (state == "human_phase" and human_reply_provider is not None
+            and session.get("pending_insurer_messages")
+            and not ainda_vem_mais and not _ja_respondeu):
+        tela = _tela_do_turno(session, text)
         draft = None
         try:
-            draft = await human_reply_provider(session, text)
+            draft = await human_reply_provider(session, tela)
         except Exception as e:  # noqa: BLE001 — provider nunca derruba o roteador
             logger.error(f"[DISPATCH ROUTER] human reply provider error: {type(e).__name__}")
+        # O guarda julga a MESMA tela que o modelo leu. Se recebesse só a última
+        # bolha, um "aguarde" solto passaria por tela que não pede nada e o
+        # silêncio seria aprovado — com a pergunta duas linhas acima.
         verdict = guard_human_phase_reply(str(draft or ""), session,
-                                          insurer_message=str(text or ""))
+                                          insurer_message=tela)
         if verdict["ok"]:
             session = reply_human_phase(session, verdict["reply"], sender=send_to_insurer)
             session["human_phase_guard_fails"] = 0

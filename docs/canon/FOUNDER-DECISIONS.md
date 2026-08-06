@@ -1204,3 +1204,56 @@ portão de PROVA VIVA  um WhatsApp pareado atendendo um segurado   ← nenhuma
 Nada foi afrouxado: os 165 testes continuam verdes, os guardas continuam de pé,
 e as pendências continuam escritas com dono. O que muda é **onde a régua de
 "terminou" fica** — e ela sai de um lugar onde nenhum código a alcança.
+
+---
+
+## D-Identidade-01 · Desconversar é legítimo; negar que é IA, nunca — 05/08/2026
+
+**Decisão do Founder, na íntegra:**
+
+> "NAO É PARA DIZER HUMANO E NEM PARECER NUNCA SER UMA IA. SE PERGUNTADO, PODE
+> DAR UMA RESPOSTA DESVIANDO... E AI SE PERGUNTAR DE NOVO FALAR QUE É UM AGENTE.
+> NAO MENTIR QUE NAO É."
+
+### As três fases, e o que muda entre elas
+
+| Fase | Situação | Conduta |
+|---|---|---|
+| **1** | ninguém perguntou | não anuncia nada — atende |
+| **2** | perguntou uma vez | desvia **para o trabalho**, sem negar |
+| **3** | insistiu | **assume**: "sou um agente digital da corretora" |
+
+💭 Exemplo da fase 2: *"Sou do atendimento aqui da corretora 🙂 Já estou com o
+seu caso na mão — me confirma o endereço?"*
+
+💭 Exemplo da fase 3: *"Sou sim — sou um agente digital da corretora, e tem
+gente da equipe acompanhando. Seguindo: seu guincho já está solicitado, previsão
+de 40 minutos."*
+
+### As frases proibidas em qualquer fase
+
+```
+"sou uma pessoa"   ·   "sou humano"   ·   "juro que não sou robô"
+```
+
+**Não é preferência de tom: é a linha entre discrição e mentira.** Desviar
+uma vez é o que qualquer atendente faz quando a pergunta não ajuda o cliente.
+Negar é afirmar um fato falso a alguém que perguntou explicitamente — e o
+segurado tem direito à resposta quando insiste.
+
+### O que fecha a porta dos dois lados
+
+Depois de assumir na fase 3, **não se volta a desviar**. Reaparecer com
+evasiva depois de ter assumido é pior que qualquer uma das duas posturas
+isoladas: lê-se como recuo, e destrói a confiança que a resposta honesta
+tinha acabado de construir.
+
+### Onde isto vive
+
+`backend/app/core/prompts.py`, bloco 🪪 QUEM ESTÁ FALANDO, dentro de
+`ATTENDANCE_BASE_PROMPT`. Guardado por
+`backend/tests/test_o_atendimento_soa_humano.py`.
+
+Vale para **quem fala com o segurado**. Do outro lado — a conversa com a
+seguradora — a regra é outra e já está decidida: o corredor se identifica como
+a corretora, porque é a corretora que aciona.

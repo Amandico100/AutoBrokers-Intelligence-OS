@@ -423,11 +423,25 @@ async def process_whatsapp_message_background(
             # A URA manda RAJADAS (menu em 2-3 mensagens): o buffer junta, mas o
             # motor precisa ver CADA mensagem em ordem — a última pode ser filler
             # ("aguarde") e o menu real estar na primeira.
+            #
+            # 📊 E era só isso que acontecia: o buffer juntava a rajada e este
+            # laço a DESJUNTAVA, chamando o motor uma vez por bolha. Em 34,1% dos
+            # turnos chegam 2+ mensagens, e neles a pergunta está na ÚLTIMA em
+            # 68,1% das vezes (medido em 05/08/2026 sobre o tráfego real das
+            # seguradoras). O modelo respondia a primeira bolha — quase sempre um
+            # "aguarde" — e já tinha falado quando o menu de verdade chegou.
+            #
+            # O conserto NÃO é juntar tudo num texto só: o determinístico perderia
+            # o menu que veio na primeira. É separar os dois tempos —
+            # `ainda_vem_mais=True` deixa a mensagem passar pelo determinístico e
+            # apenas se acumular; só a ÚLTIMA do turno abre a deliberação, e aí
+            # sobre a tela inteira. Ver `dispatch_router._tela_do_turno`.
             _dispatch_texts = [m for m in (buffered_messages or []) if str(m or "").strip()]
             if not _dispatch_texts and payload.text and payload.text.message:
                 _dispatch_texts = [payload.text.message]
             handled = False
-            for _msg in _dispatch_texts or [""]:
+            _rajada = _dispatch_texts or [""]
+            for _i, _msg in enumerate(_rajada):
                 handled = await try_route_insurer_inbound(
                     company_id=str(company_id),
                     from_phone=str(payload.phone or ""),
@@ -447,6 +461,8 @@ async def process_whatsapp_message_background(
                     # É a última ponte entre "o corredor sabe" e "o corredor faz"
                     # — e é uma linha.
                     interactive=(payload_dict or {}).get("interactive"),
+                    # A tela ainda não terminou de chegar.
+                    ainda_vem_mais=(_i < len(_rajada) - 1),
                 ) or handled
                 if not handled:
                     break  # sem sessão ativa para este número — segue fluxo normal

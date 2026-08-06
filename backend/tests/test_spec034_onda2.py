@@ -243,8 +243,20 @@ def run():
           "[você]" in p_hist and "[seguradora]" in p_hist)
     check("e a propria resposta anterior esta la",
           "ABC1D23" in p_hist.split("O QUE JÁ FOI DITO")[1])
-    check("o historico vem ANTES da mensagem atual",
-          p_hist.find("O QUE JÁ FOI DITO") < p_hist.find("Mensagem da seguradora agora"))
+    # ATUALIZADO em 05/08/2026 (CLAUDE.md §9.3). O rotulo mudou de "Mensagem da
+    # seguradora agora" para "Tela da seguradora agora": o roteador passou a
+    # deliberar por TURNO, entao o que chega ali e a rajada inteira, e chamar
+    # isso de "mensagem" convidava o modelo a responder so a ultima linha.
+    #
+    # A LICAO NAO MUDOU — o historico continua tendo de vir antes da tela atual.
+    # E ficou mais forte: a versao antiga comparava dois `find()` e PASSAVA
+    # quando o bloco de historico sumia (-1 < posicao valida e verdadeiro). Um
+    # guarda da ordem que aprova a ausencia de um dos dois nao guarda ordem
+    # nenhuma. Agora os dois precisam EXISTIR.
+    _i_hist = p_hist.find("O QUE JÁ FOI DITO")
+    _i_tela = p_hist.find("Tela da seguradora agora")
+    check("o historico vem ANTES da tela atual (e os dois existem)",
+          _i_hist >= 0 and _i_tela >= 0 and _i_hist < _i_tela, (_i_hist, _i_tela))
 
     # O QUE O MOTOR CHUTOU NAO PODE SER AFIRMADO COMO FATO DO CLIENTE.
     #

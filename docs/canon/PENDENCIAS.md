@@ -1656,3 +1656,40 @@ pelo contrato, e não pela prática. Sem ele, o agente continua respondendo
 sistema tentar de novo — e, sem crédito, produzir 23 novas falhas por rodada.
 A saída correta é um estado que seja **visível e não retentável** até o saldo
 voltar. Ver `DESENHO-ATUALIZAR-SEM-ESTRAGAR.md`, §5 item A.
+
+---
+
+## P-99 · 🧑 Duas telas da InfoCap ainda devolvem 500 — e uma delas é a produção
+
+**Registrado em** 05/08/2026, durante o teste de leitura da InfoCap com
+credenciais reais das duas corretoras.
+
+📊 **O que foi medido**, com sessão autenticada e navegação somente-leitura:
+
+```
+/login              200 em 1,38s     ✅
+detalhe de apólice  200 · 113 campos ✅ (inclusive `datemi` e `ramo`)
+/producao           500              ❌
+/cliente_ligacoes   500              ❌
+```
+
+O 500 é do lado deles: a mesma sessão que abre a apólice sem erro cai nessas
+duas rotas. Não é permissão — é falha de servidor.
+
+**O que destrava:** 🧑 abrir chamado com a InfoCap citando as duas rotas. O
+contato já respondeu uma vez neste ciclo (foi assim que o login voltou), então
+o caminho está aberto.
+
+**O que custa esquecer:** `/producao` é a listagem por período — é dela que sai
+a conferência de carteira e o lastro de qualquer relatório de produção. Sem ela,
+a leitura da InfoCap funciona **por apólice** e não **por carteira**: dá para
+conferir um contrato, não dá para varrer a base. Todo trabalho que dependa de
+"quantas apólices, de quais ramos, vencendo quando" fica esperando esta rota.
+
+⚠️ **E não existe contorno bom.** Reconstruir a carteira apólice por apólice
+exige saber de antemão quais apólices existem — que é exatamente o que
+`/producao` responde. Tentar adivinhar a lista é como o sistema começa a mentir
+sobre o tamanho da própria base.
+
+**O que NÃO espera por eles:** 🤖 nada. O leitor de apólice já funciona e já é
+útil. Esta pendência não bloqueia o atendimento; bloqueia o relatório.

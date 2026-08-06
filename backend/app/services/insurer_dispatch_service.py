@@ -24,21 +24,30 @@ from typing import Any, Callable, Dict, List, Optional
 
 from app.services.corridor_playbooks import (
     _norm as _norm_corredor,
+    MAX_CORRECOES_POR_CAMPO,
+    MAX_CORRECOES_POR_SESSAO,
     auto_subservice_menu_value,
     canonical_subservice,
+    conferir_confirmacao,
     detect_finalize_anchor,
     detect_handoff_trigger,
     detect_native_flow,
     detect_referral_step,
+    digest_da_conferencia,
+    e_afirmativa,
     extract_capture_anchors,
     get_playbook,
     match_ura_step,
     missing_slots_for_subservice,
     montar_resposta_de_flow,
     native_flow,
+    parse_address_br,
+    pode_confirmar_de_novo,
+    registrar_confirmacao,
     render_opening_message,
     render_reply,
     resolve_playbook_ref,
+    resposta_de_correcao,
     subservice_referral,
 )
 
@@ -1037,6 +1046,183 @@ def _resolver_encaminhamento(session: Dict[str, Any]) -> Dict[str, Any]:
     return session
 
 
+# ===========================================================================
+# 🔴 O GUARDA DA ÚNICA DECISÃO IRREVERSÍVEL
+# ===========================================================================
+#
+# Ele mora AQUI, e não dentro de `guard_human_phase_reply`, por um motivo
+# medido: 📊 quem responde a tela de confirmação, na maioria das seguradoras,
+# não é a LLM — é o passo determinístico do corredor (`confirmar_atendimento` →
+# "1", `confirmar_solicitacao` → "Confirmar solicitação", `confirmar_abertura`
+# → "Sim"). `guard_human_phase_reply` fiscaliza o RASCUNHO da LLM e nunca vê
+# esses três. Um guarda lá dentro deixaria passar justamente quem mais dispara.
+#
+# Este é o choke point por onde os DOIS caminhos passam: logo depois de
+# `detect_finalize_anchor` e ANTES de `match_ura_step`. Um ponto só.
+
+# Quantas mensagens da seguradora entram na janela de conferência.
+#
+# 📊 Não pode ser 1: na Azul o RESUMO e a PERGUNTA são mensagens SEPARADAS — o
+# resumo não casa `finalize_anchor` nenhuma e a tela que casa não tem dado
+# nenhum. Três cobre o pior caso real (resumo, um aviso no meio, a pergunta) sem
+# arrastar dados de uma etapa antiga para dentro da conferência da etapa atual.
+_JANELA_DE_CONFERENCIA = 3
+
+# A pergunta que substitui o SEGUNDO "sim". Sem dígito nenhum de propósito: o
+# guard de números do outro lado só autoriza dígito que venha do caso, e esta
+# frase não precisa de nenhum para fazer o trabalho dela.
+_PERGUNTA_DE_STATUS = ("Só para não duplicar o chamado: essa solicitação já foi registrada? "
+                       "Se sim, pode me passar o número do atendimento?")
+
+
+def _telas_da_conferencia(session: Dict[str, Any], atual: str,
+                          quantas: int = _JANELA_DE_CONFERENCIA) -> List[str]:
+    """As últimas mensagens DA SEGURADORA, da mais antiga para a mais nova."""
+    entradas = [str(t.get("text") or "") for t in (session.get("transcript") or [])
+                if t.get("direction") == "in" and str(t.get("text") or "").strip()]
+    atual = str(atual or "")
+    # `handle_insurer_message` já registrou a mensagem atual (truncada em 2000).
+    # O `append` aqui é para quem chamar o guarda por fora desse caminho.
+    if not entradas or entradas[-1] != atual[:2000]:
+        entradas.append(atual)
+    return entradas[-max(1, int(quantas)):]
+
+
+# As saídas que ESTE código escreve e que, por construção, não são um "sim".
+#
+# A lista é de passos NOSSOS, e é por isso que ela pode existir: cada prefixo
+# aqui nomeia uma mensagem que o motor gera e sabe o que significa. Uma lista
+# dos passos que CONFIRMAM seria o contrário — teria de adivinhar o vocabulário
+# de cada seguradora e erraria para o lado caro.
+#
+# Sem ela, a própria correção ("Antes de confirmar: o endereço de origem é…")
+# seria lida como afirmativa: `e_afirmativa` casa a palavra "confirmar".
+_PASSOS_QUE_NAO_CONFIRMAM = ("correcao:", "confirmacao_repetida", "ficha:",
+                             "resumo_analista", "finalize_abort")
+
+
+def _confirmacoes_que_de_fato_sairam(session: Dict[str, Any]) -> List[Dict[str, Any]]:
+    """Descarta o registro de confirmação em que NENHUM "sim" chegou a sair.
+
+    Registrar ANTES de emitir é o certo — a trava tem de existir no instante em
+    que o motor cai, e trava gravada depois não protege esse instante. Mas
+    registrar não é emitir: um `needs_human` por slot faltando, ou uma LLM que
+    preferiu perguntar, deixam para trás a trava de uma confirmação que nunca
+    houve — e ela bloquearia o "sim" legítimo da tela seguinte.
+
+    A pergunta é MEDIDA no transcript, não deduzida: depois do índice gravado,
+    saiu alguma resposta afirmativa PARA AQUELA TELA?
+
+    E a assimetria é deliberada. `e_afirmativa` falha para o lado do "sim"
+    (texto que não dá para classificar é tratado como afirmativo), então a
+    trava tende a FICAR DE PÉ na dúvida. O preço de errar assim é uma pergunta
+    de status a mais; o preço de errar para o outro lado é um segundo guincho.
+    """
+    transcript = list(session.get("transcript") or [])
+
+    def _foi_um_sim(t: Dict[str, Any], tela: str) -> bool:
+        if t.get("direction") != "out":
+            return False
+        if str(t.get("step") or "").startswith(_PASSOS_QUE_NAO_CONFIRMAM):
+            return False
+        return e_afirmativa(str(t.get("text") or ""), tela)
+
+    vivas = [
+        c for c in list(session.get("confirmacoes") or [])
+        if any(_foi_um_sim(t, str(c.get("tela") or ""))
+               for t in transcript[int(c.get("saida_em") or 0):])
+    ]
+    session["confirmacoes"] = vivas
+    return vivas
+
+
+def _corrigir_em_vez_de_confirmar(session: Dict[str, Any], veredito: Dict[str, Any],
+                                  tela: str, *,
+                                  sender: Optional[Callable[[str], Any]] = None) -> Dict[str, Any]:
+    """Reprovar NÃO é chamar humano. A escada, na ordem:
+
+    1. a própria tela oferece o conserto ("Mudar localização atual")? responde ela;
+    2. não oferece? corrige por texto, com o valor DO CASO;
+    3. re-confere o próximo resumo (a próxima passagem por aqui);
+    4. esgotou o teto → aí sim `needs_human`, com o dossiê que já existe.
+
+    O teto existe porque o inverso de "nunca confirma" também é ruim: um
+    corredor que corrige para sempre é uma URA presa numa tela até o timeout.
+    """
+    divergencias = list(veredito.get("divergencias") or [])
+    campo = str(divergencias[0]["campo"]).split("_")[0] if divergencias else "?"
+    contas = session.setdefault("correcoes", {})
+    por_campo = int(contas.get(campo) or 0)
+    total = sum(int(v or 0) for v in contas.values())
+    proposta = resposta_de_correcao(divergencias, tela, session.get("slots") or {})
+    if (por_campo >= MAX_CORRECOES_POR_CAMPO
+            or total >= MAX_CORRECOES_POR_SESSAO
+            or not str(proposta.get("reply") or "").strip()):
+        session["state"] = "needs_human"
+        session["reason"] = f"conferencia_divergente:{campo}"
+        return session
+    contas[campo] = por_campo + 1
+    estado = session.get("state") if session.get("state") in ("ura", "human_phase") else "ura"
+    return _emit(session, proposta["reply"], sender=sender, next_state=estado,
+                 step=f"correcao:{campo}")
+
+
+def _conferir_antes_de_confirmar(session: Dict[str, Any], playbook: Dict[str, Any],
+                                 insurer_message: str, finalize: str, *,
+                                 sender: Optional[Callable[[str], Any]] = None) -> Optional[Dict[str, Any]]:
+    """Confere o resumo contra o caso. `None` = pode seguir o fluxo normal.
+
+    Devolver `None` é o caminho da APROVAÇÃO, e é assim de propósito: aprovado,
+    quem responde continua sendo quem sempre respondeu (o passo do corredor ou o
+    cérebro). O guarda não vira um segundo respondedor — ele só decide se a
+    resposta de sempre pode sair.
+    """
+    veredito = conferir_confirmacao(
+        playbook, _telas_da_conferencia(session, insurer_message),
+        session.get("slots") or {}, session.get("subservice") or "",
+        parse_address=parse_address_br,
+    )
+    digest = digest_da_conferencia(veredito, finalize)
+    # O veredito fica na sessão INTEIRO, inclusive quando aprova. É ele que
+    # responde "com base em quê o agente disse sim?" depois do fato — e é onde
+    # `resumo_nao_lido` aparece para quem mantém o corredor.
+    session["conferencia"] = {
+        "ok": bool(veredito["ok"]), "conferidos": list(veredito["conferidos"]),
+        "divergencias": list(veredito["divergencias"]), "motivo": str(veredito["motivo"]),
+        "digest": digest, "anchor": str(finalize or "")[:120], "at": _now(),
+    }
+
+    if not veredito["ok"]:
+        return _corrigir_em_vez_de_confirmar(session, veredito, insurer_message, sender=sender)
+
+    _confirmacoes_que_de_fato_sairam(session)
+    trava = pode_confirmar_de_novo(session, digest)
+    if not trava.get("ok"):
+        # 📊 Sem o `_would_loop` aqui, a mesma tela reenviada cinco vezes gerava
+        # CINCO perguntas de status idênticas — o corredor trocava um loop de
+        # "sim" por um loop de pergunta, e ninguém era chamado. Perguntar duas
+        # vezes é insistência legítima; a terceira é uma URA que não vai
+        # responder, e aí quem resolve é gente.
+        if trava.get("acao") == "perguntar_status" and not _would_loop(
+                session, _PERGUNTA_DE_STATUS, "confirmacao_repetida"):
+            estado = session.get("state") if session.get("state") in ("ura", "human_phase") else "ura"
+            return _emit(session, _PERGUNTA_DE_STATUS, sender=sender, next_state=estado,
+                         step="confirmacao_repetida")
+        session["state"] = "needs_human"
+        session["reason"] = f"confirmacao_bloqueada:{trava.get('motivo') or 'desconhecido'}"
+        return session
+
+    registrar_confirmacao(
+        session, digest, finalize, _now(),
+        saida_em=len(session.get("transcript") or []),
+        # A CAUDA da tela, e não o começo: as opções ("1 - Sim", "Confirmar
+        # solicitação") vivem no fim da mensagem, e é delas que
+        # `e_afirmativa` precisa para reconhecer o "sim" que saiu.
+        tela=str(insurer_message or "")[-400:],
+    )
+    return None
+
+
 def handle_insurer_message(
     session: Dict[str, Any],
     insurer_message: str,
@@ -1166,6 +1352,21 @@ def handle_insurer_message(
             return _emit(session, abort, sender=sender, next_state="test_aborted", step="finalize_abort")
         session["state"] = "test_aborted"
         return session
+
+    # 🔴 A CONFERÊNCIA, E ELA VEM ANTES DE `match_ura_step` DE PROPÓSITO.
+    #
+    # Chegar aqui com `finalize` significa que o modo é LIVE (o freio de teste
+    # acabou de devolver, logo acima) e que a próxima mensagem ABRE o serviço de
+    # verdade. É o último instante em que ainda dá para não mandar o guincho
+    # para o endereço errado.
+    #
+    # Uma linha depois de `match_ura_step` já seria tarde: o passo
+    # `confirmar_atendimento` teria respondido "1" e voltado com `return`.
+    if finalize:
+        guarda = _conferir_antes_de_confirmar(
+            session, playbook, insurer_message, finalize, sender=sender)
+        if guarda is not None:
+            return guarda
 
     # Âncora de URA conhecida responde ANTES dos gatilhos de handoff: menus reais
     # listam "Sinistro"/"Acidente" como OPÇÕES (Porto opção 6, Bradesco opção 2) e
@@ -1356,9 +1557,22 @@ def build_human_phase_messages(session: Dict[str, Any], insurer_message: str,
                   "NUNCA as afirme a uma pessoa como fato: se perguntarem por elas, "
                   "diga que confirma e retorna, ou responda NAO_SEI.")
     pending = session.get("pending_insurer_messages") or []
+    # A TELA ATUAL JÁ CHEGA MONTADA — e repeti-la aqui passou a mentir o rótulo.
+    #
+    # Desde que o roteador delibera por TURNO (`dispatch_router._tela_do_turno`),
+    # `insurer_message` é a rajada inteira, montada a partir desta mesma lista.
+    # Listá-la de novo sob "mensagens ANTERIORES" faria o modelo ler a pergunta
+    # de agora como pergunta velha — e ainda repetida, que é o jeito mais rápido
+    # de o modelo achar que já respondeu.
+    #
+    # Só entra o que ficou de fora da tela: o que sobrou de turnos passados.
+    _tela_atual = " ".join(str(insurer_message or "").split())
+    anteriores = [m for m in pending[-3:]
+                  if " ".join(str(m).split()) not in _tela_atual]
     contexto_pendente = (
-        "\nMensagens anteriores da seguradora ainda sem resposta:\n" + "\n".join(f"- {m}" for m in pending[-3:])
-    ) if pending else ""
+        "\nMensagens anteriores da seguradora ainda sem resposta:\n"
+        + "\n".join(f"- {m}" for m in anteriores)
+    ) if anteriores else ""
 
     # O MODELO COMEÇAVA DO ZERO A CADA TURNO. Era este o "engessado".
     #
@@ -1505,7 +1719,13 @@ def build_human_phase_messages(session: Dict[str, Any], insurer_message: str,
     user = (
         f"Dados do caso (únicos números permitidos):\n{fatos}{guia_ura}"
         f"{contexto_pendente}{contexto_historico}\n\n"
-        f"Mensagem da seguradora agora:\n{insurer_message}\n\nSua resposta:"
+        # "TELA", não "mensagem". A seguradora manda o aviso numa bolha, o menu
+        # na outra e a pergunta na terceira — e o que chega aqui é a rajada
+        # inteira. Chamar isso de "mensagem" convidava o modelo a responder a
+        # última linha; é a tela toda que decide, e a resposta é UMA.
+        f"Tela da seguradora agora (pode ter chegado em várias mensagens "
+        f"seguidas — leia INTEIRA e responda uma vez só):\n{insurer_message}"
+        f"\n\nSua resposta:"
     )
     return {"system": system, "user": user}
 
