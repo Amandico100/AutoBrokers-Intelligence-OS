@@ -2195,3 +2195,47 @@ Três caminhos, e a escolha é do Founder:
 - **Destrava:** 🧑 decisão entre os três, depois 🤖 a implementação.
 - **Custa se esquecer:** a corretora não vê o próprio atendimento, e o produto
   parece vazio para ela mesmo capturando tudo.
+
+## P-119 · 🟡 Áudio e imagem no chat da corretora aparecem, mas não tocam
+
+Decisão do Founder, 06/08/2026: fica para depois, e a mensagem precisa aparecer
+de algum jeito enquanto isso.
+
+O Bloco 1 do espelho grava mídia como `[audio]` / `[imagem]` no chat: a mensagem
+EXISTE e é visível, mas não reproduz. 📊 Não é caso raro — na primeira hora
+medida da AutoFleet havia áudio de cliente no meio das conversas de sinistro.
+
+A mídia já é baixada e guardada com o que é preciso para recuperá-la: 📊 o
+`/health` prova em duas linhas (`midia_recuperavel` e `midia_chave_escondida`),
+e `observer_intake.COORDENADAS_DE_MIDIA` grava `mediaKey`/`directPath`. Falta a
+ponta do chat — subir para o storage e devolver uma URL que o navegador toca.
+
+- **Destrava:** 🤖 reusar `webhook._upload_media_bytes` (que já faz isso no
+  pipeline do agente) a partir da ponte do espelho, e o player no
+  `ConversasClient.tsx`. Sem peça nova.
+- **Custa se esquecer:** a atendente vê `[audio]` e precisa ir ao celular para
+  ouvir — o que derrota o motivo de existir o chat no dashboard.
+
+## P-120 · ✅ DECIDIDO — o "melhor jeito de atender" é GLOBAL, não por corretora
+
+Eu sugeri que o agente aprendesse o tom de cada corretora a partir das respostas
+capturadas da equipe dela. **O Founder recusou, e a razão dele é melhor que a
+minha proposta:**
+
+> *"Não sei se pode gerar confusão. Ter a melhor forma de atender todas as
+> corretoras e todas terem o melhor seria mais valioso. Empatia, humanizada, se
+> colocar à disposição, ser educada, agir como um humano. Essa melhor forma deve
+> ser global e não só de uma corretora. Todas devem usufruir do melhor que temos
+> globalmente."*
+
+Fica registrado como decisão, não como pendência de código: o aprendizado do
+Observador alimenta a conduta **global** do produto. Uma corretora que atende mal
+não deve ensinar o agente a atender mal — nem para ela mesma.
+
+Isto NÃO impede personalização de superfície (nome do atendente, tom escolhido no
+painel, mensagem de abertura), que já existe em `Personalização → Agente de
+Atendimento` e continua sendo da corretora.
+
+- **Destrava:** nada. É decisão tomada.
+- **Custa se esquecer:** alguém reabre a ideia daqui a três meses sem saber que
+  já foi decidida, e o produto ganha uma inconsistência que ninguém pediu.

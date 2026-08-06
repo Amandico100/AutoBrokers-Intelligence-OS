@@ -99,9 +99,36 @@ verificado:** 📊 `observer_intake.py:805-827` grava no acervo dentro de
 depende. Com o agente ligado, a ponte roda igual e o evento **segue** para o
 pipeline. Nenhuma tarefa é necessária para essa regra além do ensaio do Bloco 3.
 
-**Janela de recência.** 📊 A AutoFleet tem 681 contrapartes. Espelhar tudo desde
-sempre encheria a tela com conversas mortas. A ponte só cria/reabre conversa para
-mensagem recente; o histórico continua no Espelho do admin.
+**Janela de 7 dias — na LISTA, não na gravação.** Decisão do Founder, 06/08.
+
+A distinção importa e a primeira versão do plano a errou. Mensagem ao vivo tem
+idade ~0: uma janela aplicada na gravação nunca barraria nada dela. O que a
+janela precisa filtrar é **o que aparece na lista** de conversas.
+
+Então são duas coisas:
+
+- **Lista do chat: 7 dias.** `last_message_at > agora - 7d`. 📊 A AutoFleet tem
+  681 contrapartes; sem isso a mesa de trabalho abre com conversa morta em cima
+  da de hoje.
+- **Gravação: janela larga (30 dias), e ela existe por outro motivo.** Não é
+  para esconder conversa: é para o HISTORY_SYNC de um pareamento novo não
+  despejar meses de histórico no chat de uma vez. Mensagem ao vivo passa sempre.
+
+**E abrir uma conversa mostra o histórico INTEIRO dela.** A janela some ali —
+`messages` não expira. Um sinistro que arrasta 45 dias continua legível do
+começo quando o cliente volta.
+
+**A memória do agente é outra coisa ainda, e já existe.** 📊
+`graph.py:886` chama `build_memory_context_async(max_facts=10, max_summaries=3)`:
+fatos do segurado (`user_memories`) e resumos de sessão (`session_summaries`),
+carregados **por relevância e sem prazo de validade**. É isso que faz o agente
+lembrar do sinistro de 45 dias — não a mensagem estar na tela. 📊 Hoje estão
+vazias (1 resumo, 0 fatos) porque a captura estava morta e o agente nunca rodou;
+elas se enchem sozinhas quando o Bloco 1 subir.
+
+O acervo cru do Espelho tem `ATTENDANCE_RETENTION_DAYS = 90` dias
+(`attendance_capture.py:337`) — e não precisa mudar: o que precisa durar mais que
+90 dias é o fato destilado, e o fato não expira.
 
 ## 4. Restrições globais
 
@@ -145,7 +172,8 @@ agente desligado e sem que ele faça nada.
 - Teste: `backend/tests/test_o_espelho_vira_conversa.py`
 
 **Interfaces:**
-- Produz: `def deve_espelhar(*, counterparty: str, texto: str, msg_type: str, e_grupo: bool, e_seguradora: bool, idade_horas: float, limite_horas: float = 72.0) -> bool`
+- Produz: `def deve_espelhar(*, counterparty: str, texto: str, msg_type: str, e_grupo: bool, e_seguradora: bool, idade_horas: float, limite_horas: float = 720.0) -> bool`
+- Produz: `JANELA_DA_LISTA_DIAS = 7`
 
 - [ ] **Passo 1: escrever o teste que falha**
 
@@ -170,9 +198,14 @@ def teste_o_que_vira_conversa_e_o_que_nao():
            "CONTROLE — grupo NAO vira conversa")
     checar(not EC.deve_espelhar(counterparty="554799956540", texto="oi",
                                 msg_type="text", e_grupo=False, e_seguradora=False,
-                                idade_horas=200.0),
-           "CONTROLE — conversa velha nao reabre sozinha",
-           "681 contrapartes na AutoFleet: espelhar tudo enche a tela de conversa morta")
+                                idade_horas=5000.0),
+           "CONTROLE — historico de meses nao entra de uma vez",
+           "e o HISTORY_SYNC de um pareamento novo que esta janela contem")
+    checar(EC.deve_espelhar(counterparty="554799956540", texto="oi",
+                            msg_type="text", e_grupo=False, e_seguradora=False,
+                            idade_horas=200.0),
+           "conversa de 8 dias AINDA grava — a janela de 7 dias e da LISTA",
+           "esconder na lista e diferente de nao gravar; abrir a conversa mostra tudo")
     checar(EC.deve_espelhar(counterparty="554799956540", texto="",
                             msg_type="audio", e_grupo=False, e_seguradora=False,
                             idade_horas=0.1),
@@ -193,7 +226,13 @@ Esperado: `ModuleNotFoundError` ou `AttributeError: deve_espelhar`.
 - [ ] **Passo 3: implementar o mínimo**
 
 ```python
-LIMITE_DE_RECENCIA_HORAS = 72.0
+# Quantos dias de conversa aparecem NA LISTA do chat. Decisão do Founder, 06/08.
+JANELA_DA_LISTA_DIAS = 7
+
+# Até onde uma mensagem ainda merece entrar no chat. Larga de propósito: não é
+# para esconder conversa (disso cuida a lista), é para o HISTORY_SYNC de um
+# pareamento novo não despejar meses de histórico de uma vez só.
+LIMITE_DE_RECENCIA_HORAS = 720.0  # 30 dias
 
 
 def deve_espelhar(*, counterparty: str, texto: str, msg_type: str,
@@ -205,8 +244,14 @@ def deve_espelhar(*, counterparty: str, texto: str, msg_type: str,
     (`attendance_transcripts`) guarda TUDO — inclusive seguradora, grupo e
     conversa de três meses atrás. A mesa guarda o que está aberto agora.
 
-    📊 A AutoFleet tem 681 contrapartes. Sem a janela de recência, a primeira
-    abertura da tela traria 681 conversas mortas e a de hoje ficaria no meio.
+    ⚠️ Esta janela NÃO é a que a atendente vê. Mensagem ao vivo tem idade ~0 e
+    passa sempre. Quem esconde conversa velha da mesa de trabalho é a LISTA, que
+    filtra `JANELA_DA_LISTA_DIAS`. Esta aqui existe para um caso só: o
+    HISTORY_SYNC de um pareamento novo, que chega com meses de conversa de uma
+    vez e entupiria o chat.
+
+    E abrir uma conversa mostra o histórico INTEIRO — `messages` não expira. Um
+    sinistro que arrasta 45 dias continua legível do começo.
 
     Áudio sem texto passa de propósito: a atendente precisa VER que chegou algo.
     Uma conversa que aparece vazia é melhor que uma que não aparece.
@@ -779,12 +824,14 @@ autorizar ligar o agente em uma corretora.
 - **Não liga agente nenhum.** Restrição global; a Tarefa 8 prova.
 - **Não mexe no Observador além da chamada da ponte.** A regra do silêncio é
   verificada palavra por palavra na Tarefa 3.
-- **Não traz o histórico antigo para o chat.** A janela é de 72 h. 📊 681
-  contrapartes na AutoFleet: o histórico continua no Espelho do admin, que já o
-  mostra. Trazer tudo encheria a mesa de trabalho de conversa morta.
+- **Não traz meses de histórico para o chat de uma vez.** A lista mostra 7 dias
+  (decisão do Founder) e a gravação aceita até 30. Abrir uma conversa mostra o
+  histórico inteiro dela — a janela é da lista, não do conteúdo.
+- **Não mexe na memória de longo prazo do agente.** Ela já existe, já é
+  consultada por relevância e não expira. Ver §3.
 - **Não mexe em mídia no chat.** Áudio e imagem aparecem como `[audio]` /
-  `[imagem]` — a mensagem existe e é visível. Reproduzir mídia no chat da
-  corretora é trabalho próprio, e entra em `PENDENCIAS.md` ao fim do Bloco 1.
+  `[imagem]` — a mensagem existe e é visível. Reproduzir mídia no chat é
+  trabalho próprio: registrado em `PENDENCIAS.md` P-119.
 - **Não toca no patch 0007 nem no Evolution Go.** Decisão do Founder: guardado.
 
 ## 7. Riscos conhecidos
