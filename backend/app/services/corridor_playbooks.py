@@ -2234,6 +2234,24 @@ _INSURER_ALIASES = {
     "mitsui": "mitsui", "msig": "mitsui", "mitsui sumitomo": "mitsui",
     "akad": "akad", "akad seguros": "akad",
     "caixa": "caixa", "caixa seguradora": "caixa", "caixa seguros": "caixa",
+    # 📊 Encontradas no acervo em 05/08/2026 varrendo `knowledge_cards`:
+    # 52 chaves distintas, 35 fora desta tabela. Estas são SEGURADORAS de
+    # verdade e estavam sobrevivendo pelo fallback `raw.split()[0]` — que
+    # funciona por acidente em nome de uma palavra e falha em "sul america",
+    # onde produzia a chave `sul` (duas cartas de previdência da SulAmérica
+    # arquivadas sob uma sílaba). Esta tabela é a lista de quem É seguradora:
+    # `curadoria_cartas` a usa para decidir o que pode ficar em `insurer_key`,
+    # e o que não está aqui não é companhia — é prestadora, corretora ou ruído.
+    "essor": "essor", "essor seguros": "essor",
+    "ezze": "ezze", "ezze seguros": "ezze",
+    "chubb": "chubb", "chubb seguros": "chubb",
+    "generali": "generali", "generali seguros": "generali",
+    "darwin": "darwin", "darwin seguros": "darwin",
+    "berkley": "berkley", "berkley international": "berkley",
+    "pottencial": "pottencial", "pottencial seguradora": "pottencial",
+    "sulamerica": "sulamerica", "sul america": "sulamerica",
+    "sul america seguros": "sulamerica", "sulamerica seguros": "sulamerica",
+    "unimed": "unimed",
 }
 
 

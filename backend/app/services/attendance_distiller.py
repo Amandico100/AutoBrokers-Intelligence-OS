@@ -320,39 +320,54 @@ def _card_pii_clean(text: str) -> bool:
     return templatize(text) == text
 
 
-def _chave_da_seguradora(nome: Any) -> str:
-    """A chave canônica da seguradora. Import tardio: `corridor_playbooks` não
-    depende de nada pesado, mas o destilador também é carregado por scripts
-    fora do backend e não deve arrastar o pacote inteiro no topo."""
-    try:
-        from app.services.corridor_playbooks import normalize_insurer_key
-
-        return normalize_insurer_key(str(nome or ""), para="conhecimento")
-    except Exception:  # noqa: BLE001
-        return str(nome or "").strip().lower()
+# `_chave_da_seguradora` vivia aqui e normalizava o nome da seguradora da
+# sessão para gravar direto em `insurer_key`. Ela saiu em 05/08/2026: quem
+# decide de quem é a regra passou a ser `curadoria_cartas.seguradora_do_fato`,
+# que normaliza pela MESMA `normalize_insurer_key` e ainda exige que o texto do
+# fato nomeie a companhia. Deixar as duas de pé seria manter dois caminhos para
+# a mesma pergunta, e o que ninguém chama é o que envelhece errado (§5).
 
 
 def _store_card_sync(fato: str, meta: Dict[str, Any]) -> Optional[str]:
     from app.core.database import get_supabase_client
+    from app.services.curadoria_cartas import assunto_da_carta, seguradora_do_fato
 
     db = get_supabase_client()
     text = " ".join(str(fato or "").split())
     if len(text) < 15 or len(text) > 400:
         return None
     clean = _card_pii_clean(text)
+    # A SEGURADORA É DO FATO, NÃO DA CONVERSA.
+    #
+    # Aqui chegava `meta["seguradora"]` — a companhia da SESSÃO INTEIRA — e ela
+    # era carimbada nos até oito fatos que a sessão produzia, inclusive nos
+    # genéricos. 📊 Medido em 05/08/2026 sobre as 3.354 published etiquetadas:
+    # só 32,3% citavam a própria seguradora no texto. Numa amostra de seis
+    # cartas `allianz` que não citam a Allianz, seis eram fato de mercado — uma
+    # delas de seguro PET, gravada como `allianz` / `auto`.
+    #
+    # O campo guardava "apareceu numa conversa sobre a Allianz" com o nome de
+    # "é regra da Allianz". A decisão inteira mora em `curadoria_cartas` e é a
+    # mesma para o destilador, para o script de consenso e para a limpeza do
+    # acervo — um caminho só.
+    chave, prestadora = seguradora_do_fato(
+        text, meta.get("seguradora_candidata") or meta.get("seguradora"))
+    marcas: Dict[str, Any] = {"deterministic": clean, "llm_instructed": True}
+    if prestadora:
+        # Prestadora atende VÁRIAS seguradoras. Em `insurer_key` ela faria o
+        # filtro devolver a companhia errada; jogada fora, some um fato real.
+        marcas["prestadora"] = prestadora
     row = {
         "card_hash": hashlib.md5(text.lower().encode("utf-8")).hexdigest(),
         "card_text": text,
-        "category": meta.get("category") or "processo",
+        # O ASSUNTO É CALCULADO, não herdado. `meta.get("category") or
+        # "processo"` gravava a mesma palavra em 100% das 11.640 cartas — uma
+        # coluna que existia, custava linha e não respondia nada.
+        "category": assunto_da_carta(text),
         "ramo": meta.get("ramo"),
-        # NORMALIZADA, não só em minúsculas. As conversas trazem "Tokio",
-        # "Tokio Marine", "Tókio Marine" e "tokio_marine" para a mesma
-        # seguradora; guardadas como estão, viram quatro pastas e o filtro por
-        # seguradora perde carta em três delas. Medido em 29/07/2026 no
-        # histórico da Resulta. O normalizador é o MESMO dos corredores.
-        "insurer_key": (_chave_da_seguradora(meta.get("seguradora")) or None),
+        "insurer_key": chave,
         "status": "pending_review" if clean else "rejected_pii",
-        "pii_check": {"deterministic": clean, "llm_instructed": True},
+        "pii_check": marcas,
     }
     try:
         res = db.client.table("knowledge_cards").upsert(
@@ -815,7 +830,13 @@ async def _destilar_sessao(sess: Dict[str, Any], stats: Dict[str, int],
 
         novos = rejeitados = 0
         for fato in (data.get("fatos_reutilizaveis") or [])[:8]:
-            card_meta = {"ramo": data.get("ramo"), "seguradora": data.get("seguradora")}
+            # `seguradora` aqui é CANDIDATA, não veredito: é a companhia da
+            # sessão, e a sessão produz até oito fatos, a maioria genérica.
+            # Quem decide se ela vale para ESTE fato é `_store_card_sync`, pelo
+            # texto do próprio fato. Passar o candidato é certo; gravá-lo
+            # direto era o defeito.
+            card_meta = {"ramo": data.get("ramo"),
+                         "seguradora_candidata": data.get("seguradora")}
             cid = await asyncio.to_thread(_store_card_sync, str(fato), card_meta)
             if cid:
                 if _card_pii_clean(" ".join(str(fato).split())):

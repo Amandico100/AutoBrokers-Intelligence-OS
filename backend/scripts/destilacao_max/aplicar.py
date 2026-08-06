@@ -16,8 +16,15 @@ banco pela mesma conexão do exportador. O modelo pensa; o script carrega.
 
 As regras de gravação são as de `_store_card_sync`, sem inventar nada:
 md5 do texto em minúsculas, 15 a 400 caracteres, `rejected_pii` quando o
-templatize mudaria o texto, `insurer_key` normalizada. A carta entra como
-`pending_review`; quem publica no RAG é o publicador de `distill_once`.
+templatize mudaria o texto, e a seguradora decidida por
+`curadoria_cartas.seguradora_do_fato` — a MESMA função do destilador. A carta
+entra como `pending_review`; quem publica no RAG é o publicador de
+`distill_once`.
+
+Em 05/08/2026 esta era a terceira porta pela qual a seguradora da SESSÃO virava
+rótulo do FATO. Reescrever a regra aqui teria feito o acervo divergir de si
+mesmo conforme a porta de entrada — o mesmo motivo pelo qual o mascaramento de
+PII é importado e não recopiado.
 
 Uso
 ---
@@ -35,7 +42,11 @@ import sys
 AQUI = os.path.dirname(os.path.abspath(__file__))
 sys.path.insert(0, AQUI)
 from exportar import _credenciais  # noqa: E402
-from mascarar import normalize_insurer_key, templatize  # noqa: E402
+from mascarar import _carregar_servico, templatize  # noqa: E402
+
+_CURADORIA = _carregar_servico("curadoria_cartas")
+assunto_da_carta = _CURADORIA.assunto_da_carta
+seguradora_do_fato = _CURADORIA.seguradora_do_fato
 
 MARCA = "destilacao_max_29_07_2026"
 UUID = re.compile(r"[0-9a-fA-F-]{36}")
@@ -54,22 +65,26 @@ def _distilled(d: dict) -> dict:
 
 def _cartas_de(d: dict, sessao: str = "") -> list:
     ramo = str(d.get("ramo") or "outro")
-    seg = normalize_insurer_key(str(d.get("seguradora") or ""), para="conhecimento") or None
-    if seg and not re.fullmatch(r"[a-z0-9_-]{2,40}", seg):
-        seg = None
+    candidata = str(d.get("seguradora") or "")   # da SESSÃO — candidata, não veredito
     saida = []
     for fato in (d.get("fatos_reutilizaveis") or [])[:8]:
         texto = " ".join(str(fato or "").split())
         if len(texto) < 15 or len(texto) > 400:
             continue
         limpo = templatize(texto) == texto
+        seg, prestadora = seguradora_do_fato(texto, candidata)
+        if seg and not re.fullmatch(r"[a-z0-9_-]{2,40}", seg):
+            seg = None
+        marcas = {"deterministic": limpo, "llm_instructed": True,
+                  "por": MARCA, "sessao": sessao}
+        if prestadora:
+            marcas["prestadora"] = prestadora
         saida.append({
             "card_hash": hashlib.md5(texto.lower().encode("utf-8")).hexdigest(),
-            "card_text": texto, "category": "processo", "ramo": ramo,
+            "card_text": texto, "category": assunto_da_carta(texto), "ramo": ramo,
             "insurer_key": seg,
             "status": "pending_review" if limpo else "rejected_pii",
-            "pii_check": {"deterministic": limpo, "llm_instructed": True,
-                          "por": MARCA, "sessao": sessao},
+            "pii_check": marcas,
         })
     return saida
 

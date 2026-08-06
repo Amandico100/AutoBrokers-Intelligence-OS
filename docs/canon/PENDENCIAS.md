@@ -1693,3 +1693,133 @@ sobre o tamanho da própria base.
 
 **O que NÃO espera por eles:** 🤖 nada. O leitor de apólice já funciona e já é
 útil. Esta pendência não bloqueia o atendimento; bloqueia o relatório.
+
+---
+
+## P-100 · 🤖 Nove dos dez normativos desceram sem crédito; o décimo é servidor deles
+
+**Resolvido em parte em 05/08/2026.** Dez documentos normativos estavam parados
+com o motivo gravado no banco: *"credito do Firecrawl esgotado — aguardando
+plano"*. Estavam esperando crédito para uma tarefa que um `GET` resolve — todos
+os dez já tinham no banco uma **URL de PDF direta**.
+
+📊 Medido contra as 10 URLs reais, em 05/08/2026:
+
+```
+9 de 10 baixaram por GET direto — 3.940.679 caracteres, todos com SUSEP no texto
+azul  3/3   ·   bradesco  2/2   ·   tokio  3/3   ·   hdi  1/2
+```
+
+**O que sobrou:** as **condições gerais da HDI** —
+`hdiseguros.com.br/webprog/webtxt/condicoes_gerais/condicoes_gerais_000_432_01102019_09122019.pdf`
+devolve **HTTP 500**. Não é a nossa ponta: o manual do segurado da HDI, no mesmo
+domínio-irmão, baixou sem erro no mesmo minuto.
+
+**O que destrava:** 🤖 achar a URL nova das condições gerais da HDI. O arquivo
+tem data no nome (`01102019`), então é provável que eles tenham publicado uma
+versão mais recente e derrubado esta. **Descobrir URL nova é justamente o que o
+Firecrawl faz** — este é o primeiro caso do ciclo em que o crédito faria falta
+de verdade (P-98).
+
+**O que custa esquecer:** a HDI fica com manual do segurado e **sem** condições
+gerais. O manual descreve a prática; as condições gerais são o contrato. Numa
+pergunta de cobertura, o agente responderia pela prática sem poder citar a
+cláusula — que é exatamente a distinção que o corpus normativo existe para
+sustentar.
+
+⚠️ **E a lição que fica maior que o caso:** o `fetch_error` dizia *"crédito do
+Firecrawl esgotado"* em documentos que **nunca precisaram do Firecrawl**. O
+motivo gravado descrevia a ferramenta que falhou, não o que o documento
+precisava. Nove ficaram parados oito dias por causa dessa frase.
+
+---
+
+## P-101 · 🤖 O rótulo velho continua **escrito dentro do chunk** no Qdrant
+
+Em 05/08/2026 o acervo foi reorganizado no banco: 2.582 rótulos de seguradora
+rebaixados para NULL e `category` preenchida com cinco valores. **O índice não
+foi refeito.**
+
+`publish_card_sync` grava no Qdrant o texto com o rótulo **no começo da frase**:
+
+```
+(allianz / auto / cobranca) Boleto vencido nao pode ser reemitido…
+```
+
+📊 FATO (leitura de código, `attendance_distiller.publish_card_sync`): o prefixo
+entra no `chunk`, e o `chunk` é o texto indexado — não é metadado.
+💭 INFERÊNCIA: os 10.818 pontos publicados carregam hoje o prefixo antigo.
+
+**Por que isto importa mais do que parecia.** O raciocínio de que "o rótulo
+errado é inofensivo porque não existe filtro por seguradora" vale para o
+*payload*. **Não vale para o texto.** A busca é híbrida e o BM25 casa por termo
+exato: quem pergunta "boleto da Allianz" hoje casa lexicalmente com as 746
+cartas genéricas cujo chunk começa por `(allianz …)`. O campo não filtra, mas a
+palavra pontua.
+
+- **Destrava:** 🤖 republicar as cartas publicadas — mesma função, mesmo
+  caminho, sem código novo: `despublicar_carta_sync` + `publish_card_sync`, ou
+  um passe que reescreva o ponto. Custo de embedding ≈ 650 mil tokens de
+  `text-embedding-3-small` (💭 ordem de US$ 0,01).
+- **Não foi feito agora porque:** outro agente está em `search_service.py`,
+  `rerank_service.py` e `qdrant_service.py` neste momento. Reescrever 10.818
+  pontos no meio do trabalho dele é colisão garantida.
+- **Custa se esquecer:** o banco fica honesto e a busca continua respondendo
+  pela bandeira errada — e o formato pior possível é esse, porque a auditoria
+  no banco diz que está resolvido.
+
+## P-102 · 🤖 `pii_check` virou caixa de marcação geral, e o nome mente
+
+A coluna guarda hoje `deterministic`, `llm_instructed`, `qdrant_pendente`,
+`superseded_por`, `motivo`, `por`, `sessao`, e agora `insurer_key_anterior`,
+`rebaixado_em` e `prestadora`. Só as duas primeiras têm a ver com PII.
+
+Isto é exatamente o defeito que o CLAUDE.md §12.1 manda consertar no CAMPO, não
+no texto: *um nome que mente sobre o que guarda reinfecta todo leitor seguinte*.
+Foi usada assim de propósito — é o padrão que `corrigir.py` já estabeleceu, e
+`reconciliar_indice_sync` já lê `pii_check->>qdrant_pendente` em produção —
+mas a dívida fica anotada em vez de silenciosa.
+
+- **Destrava:** 🤖 migration que renomeie para `marcas` (expand-first: coluna
+  nova, backfill, leitura dupla, corte) **e** dê coluna própria a `prestadora`,
+  que é dado de negócio e não marca de processo.
+- **Gatilho:** no dia em que alguém for FILTRAR por prestadora. Enquanto for só
+  registro, jsonb basta.
+- **Custa se esquecer:** a próxima pessoa lê `pii_check` e conclui que a carta
+  tem problema de PII quando ela só mudou de dono.
+
+## P-103 · 🤖 45 cartas publicadas sabem de quem são e continuam sem dono
+
+O trabalho de 05/08 só **rebaixou**. Promover — dar rótulo a quem não tem —
+é a operação inversa e não foi autorizada, com razão: errar para cima é o erro
+caro. Mas o material está medido e pronto.
+
+📊 Medido em 05/08/2026 com `curadoria_cartas.texto_nomeia_seguradora` sobre as
+10.818 published:
+
+```
+30 cartas SEM rótulo cujo texto nomeia exatamente UMA seguradora
+15 cartas cujo rótulo caiu e o texto nomeia OUTRA companhia — inclusive
+   `sul -> sulamerica` e `bradesco auto/fleet -> bradesco`, que são a mesma
+   empresa escrita errado
+```
+
+- **Destrava:** 🧑 decisão de que promover é aceitável, e depois 🤖 rodar o
+  mesmo `rotular_acervo.py` com o passe de promoção ligado.
+- **Custa se esquecer:** 45 fatos que TÊM dono continuam respondendo como
+  genéricos — perda menor que o erro contrário, mas perda.
+
+## P-104 · 🤖 `_fila_pendente` pagina por `started_at`, que também empata
+
+Irmã do defeito consertado em `curar_sync` no mesmo dia. 📊 Medido no acervo:
+paginar por chave que empata devolveu 11.640 linhas com 11.628 hashes distintos
+— 12 repetidas e 12 nunca vistas.
+
+`attendance_distiller._fila_pendente` faz `.order("started_at", desc=True)` com
+`.range()` sobre `attendance_sessions`. O empate ali é menos provável (sessões
+não nascem em lote como as cartas), e o dano é menor — a fila é um **contador**,
+não uma escrita. Por isso ficou de fora do escopo em vez de entrar de carona.
+
+- **Destrava:** 🤖 trocar por `.order("id")`, uma linha.
+- **Custa se esquecer:** o número da fila no painel erra para menos, e o modo
+  de recuperação (que liga por limiar) decide com um número errado.

@@ -1715,3 +1715,79 @@ determinístico, que é mais rápido e não gasta chance.
 05/08/2026 com "PODE FAZER... FAZER TUDO MUITO BEM FEITO". O conserto é
 pré-requisito do item 4 aprovado — sem ele o guarda reprova endereço correto.
 Registrado aqui por ser mudança de comportamento **fora** do texto da SPEC.
+
+---
+
+## CA-033 · O acervo tinha dois rótulos, e nenhum dizia o que o nome prometia — ESSENCIAL
+
+**Data:** 05/08/2026 · **Branch:** `feat/spec063-atendimento-canais`
+
+### O problema
+
+📊 Medido no banco `dcajcvlzcjbmyapmklil`, 05/08/2026:
+
+```
+11.640 cartas em knowledge_cards
+  category    = 'processo' em 100% delas — sem CHECK, texto livre, coluna morta
+  insurer_key preenchida em 3.760, e só 1.083 (32,3%) das published etiquetadas
+              citavam a própria seguradora no texto
+```
+
+`attendance_distiller._store_card_sync` gravava `meta.get("category") or
+"processo"` — e ninguém nunca passou `category`. E carimbava a seguradora da
+**sessão** nos até oito fatos que ela produzia, inclusive nos genéricos. O campo
+guardava *"este fato apareceu numa conversa sobre a Allianz"* com o nome de
+*"este fato é regra da Allianz"*.
+
+### O que foi feito
+
+1. **Parar de piorar.** A decisão "de quem é esta regra" virou uma função só —
+   `curadoria_cartas.seguradora_do_fato` — e as **quatro** portas de escrita
+   passam por ela: o destilador em runtime, `aplicar.py`, `aplicar_sql.py` e
+   `atribuir_seguradora.py`. O atalho `_chave_da_seguradora` foi removido.
+2. **Honestidade no que já existe.** 2.582 rótulos rebaixados para NULL, 20
+   prestadoras movidas para `pii_check.prestadora`, e as 52 chaves distintas
+   viraram 20 — todas seguradoras de verdade.
+3. **O eixo do assunto.** `category` passou a valer cinco momentos do trabalho
+   (`sinistro`, `cobranca`, `assistencia`, `apolice`, `atendimento`), calculados
+   pela `assunto_da_carta` que já existia e agora é **persistida**.
+
+### Por que é ESSENCIAL e não VALIOSA
+
+O rebaixamento é seguro por construção — `build_global_search_kwargs` aceita
+`carrier_slug` e o **descarta**, então não existe filtro por seguradora e uma
+carta sem rótulo se comporta exatamente como antes. O que não pode esperar é o
+contrário: **ligar o filtro sobre o acervo velho** faria dois terços das cartas
+responderem sob a bandeira errada, e o dia de ligar o filtro é o dia em que
+ninguém vai lembrar de conferir o acervo.
+
+### Mudanças fora do texto que precisam de registro
+
+- **`_INSURER_ALIASES` ganhou dez companhias** (`essor`, `ezze`, `chubb`,
+  `generali`, `darwin`, `berkley`, `pottencial`, `sulamerica`, `unimed`) porque
+  a tabela virou a **lista de quem é seguradora** — é ela que autoriza um valor
+  em `insurer_key`. Efeito colateral desejado: `Sul America` deixou de virar a
+  chave `sul` pelo fallback `raw.split()[0]`.
+- **Prestadora não ganhou coluna.** Autoglass, Mondial, Crawford, Hantei e Ativa
+  atendem várias seguradoras; em `insurer_key` fariam o filtro devolver a
+  errada. Foram para `pii_check.prestadora` — a caixa de marcação que
+  `corrigir.py` já usa e que `reconciliar_indice_sync` já lê em produção. Uma
+  coluna nova que ninguém lê é a mesma doença que `category` tinha. A dívida
+  está em **P-102** com o gatilho escrito: no dia em que alguém filtrar por
+  prestadora, ela ganha coluna.
+- **`curar_sync` paginava por `created_at`.** 📊 A destilação grava as até oito
+  cartas de uma sessão no mesmo instante; paginar por chave que empata devolveu
+  11.640 linhas com 11.628 hashes distintos. Trocado por `.order("id")`. Não
+  estava no pedido — foi achado medindo, e uma curadoria que não vê a carta
+  deixa a quase-cópia no RAG para sempre.
+
+### Consequência declarada
+
+O índice do Qdrant **não** foi refeito: o prefixo `(allianz / auto / cobranca)`
+continua escrito dentro do chunk publicado, e o BM25 casa por termo exato. O
+banco ficou honesto antes da busca. Registrado em **P-101** com o motivo de não
+ter sido feito agora (outro agente está em `search_service`/`qdrant_service`) e
+o custo de esquecer.
+
+**Autorização:** Founder autorizou a execução do UPDATE em massa, em duas
+etapas (previsão com amostra, depois gravação), na rodada de 05/08/2026.

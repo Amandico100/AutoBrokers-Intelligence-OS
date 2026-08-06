@@ -41,13 +41,25 @@ def _ler(*p: str) -> str:
 
 def teste_o_assunto_da_carta_e_o_que_o_corretor_digita():
     print("\n[1] Cada carta sabe de que assunto ela é")
+    # ATUALIZADO em 05/08/2026 — o caso da CNH mudou de resposta, de propósito.
+    #
+    # Ele esperava `documentos`, e `documentos` deixou de existir. Não era um
+    # assunto: era um ARTEFATO, e artefato atravessa todos os momentos — CNH
+    # aparece em sinistro, comprovante aparece em cobrança, laudo aparece em
+    # vistoria. Uma carta com as duas coisas caía na gaveta que o regex
+    # alcançasse primeiro, e a ordem do arquivo virava a decisão.
+    #
+    # A lição não morre, muda de lugar: a frase da CNH não é sobre um momento
+    # do seguro, é sobre qualidade de envio — prática de atendimento. Ela agora
+    # prova que o catch-all NOMEADO recebe o que não é momento, em vez de
+    # inventar uma gaveta de artefato para ela.
     reais = {
         "Quando a parcela do cartão não é autorizada, a seguradora gera boleto": "cobranca",
         "Não recebi o boleto, é possível reenviar por WhatsApp": "cobranca",
         "Após o prazo limite sem pagamento, a apólice entra em processo de cancelamento": "cobranca",
         "A reguladora tem até dois dias úteis para agendar vistoria após abertura de sinistro": "sinistro",
         "O prestador de guincho entra em contato direto com o motorista": "assistencia",
-        "Documentos como CNH devem ser enviados com boa qualidade de imagem": "documentos",
+        "Documentos como CNH devem ser enviados com boa qualidade de imagem": "atendimento",
     }
     for texto, esperado in reais.items():
         checar(C.assunto_da_carta(texto) == esperado,

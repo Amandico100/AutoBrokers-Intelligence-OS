@@ -27,6 +27,19 @@ verdade** — foi observado em duas companhias — e transformá-lo em regra de 
 delas seria inventar exclusividade que não existe. Nesse caso a carta fica como
 está, que é a resposta correta.
 
+E o consenso NÃO é suficiente sozinho (05/08/2026)
+--------------------------------------------------
+Consenso entre sessões prova que o fato saiu de conversas da mesma companhia.
+Não prova que o fato é **regra** dela. Cem conversas da Allianz podem produzir
+cem vezes "boleto vencido não pode ser reemitido com nova data" — que é do
+mercado, não da Allianz.
+
+Por isso o consenso passa pelo mesmo portão do destilador,
+`curadoria_cartas.seguradora_do_fato`: o texto do FATO tem de nomear a
+companhia. Sem esse portão, uma rodada deste script desfaria em minutos a
+limpeza de 2.582 rótulos feita no acervo — e desfaria em silêncio, porque o
+script relata "atribuídas", que soa como acerto.
+
 Uso
 ---
     python atribuir_seguradora.py            # relatório, não grava
@@ -45,7 +58,9 @@ import sys
 AQUI = os.path.dirname(os.path.abspath(__file__))
 sys.path.insert(0, AQUI)
 from exportar import _credenciais  # noqa: E402
-from mascarar import normalize_insurer_key  # noqa: E402
+from mascarar import _carregar_servico, normalize_insurer_key  # noqa: E402
+
+seguradora_do_fato = _carregar_servico("curadoria_cartas").seguradora_do_fato
 
 
 def main() -> int:
@@ -89,10 +104,10 @@ def main() -> int:
 
     db = create_client(url, key)
     alvos = list(unicas.items())
-    atribuidas = ja_tinham = nao_achadas = 0
+    atribuidas = ja_tinham = nao_achadas = sem_mencao = 0
     for i in range(0, len(alvos), 100):
         lote = alvos[i:i + 100]
-        atual = (db.table("knowledge_cards").select("id, card_hash, insurer_key")
+        atual = (db.table("knowledge_cards").select("id, card_hash, card_text, insurer_key")
                  .in_("card_hash", [h for h, _ in lote]).execute().data) or []
         por_hash = {r["card_hash"]: r for r in atual}
         for h, seg in lote:
@@ -103,13 +118,21 @@ def main() -> int:
             if r.get("insurer_key"):
                 ja_tinham += 1
                 continue
+            # O PORTÃO. Consenso diz de onde o fato veio; só o texto diz de
+            # quem ele é.
+            confirmada, _ = seguradora_do_fato(r.get("card_text") or "", seg)
+            if not confirmada:
+                sem_mencao += 1
+                continue
             if aplicar:
                 db.table("knowledge_cards").update(
-                    {"insurer_key": seg}).eq("id", r["id"]).execute()
+                    {"insurer_key": confirmada}).eq("id", r["id"]).execute()
             atribuidas += 1
 
     print(f"\n  {atribuidas} cartas {'ATRIBUÍDAS' if aplicar else 'atribuíveis'} "
           f"· {ja_tinham} já tinham · {nao_achadas} não estão no banco")
+    print(f"  {sem_mencao} tinham consenso mas o TEXTO não nomeia a companhia — "
+          f"ficam gerais, e é o certo")
     if not aplicar:
         print("\n  (nada gravado — rode com --aplicar)")
     return 0

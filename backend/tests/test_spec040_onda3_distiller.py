@@ -282,6 +282,14 @@ def _bootstrap():
     # A curadoria das cartas roda dentro da rodada do Destilador. Sem
     # registrar aqui, o `except` engole um ModuleNotFoundError e o teste
     # concorda com uma publicacao que nunca acontece.
+    #
+    # E a curadoria chama `corridor_playbooks` para saber QUEM E SEGURADORA
+    # (05/08/2026). A primeira rodada com a decisao nova falhou exatamente
+    # assim: `ModuleNotFoundError (app.services.corridor_playbooks)` nas tres
+    # sessoes, zero cartas gravadas — a mesma classe de 28/07/2026, e o teste
+    # pegou de novo. A tabela de apelidos e uma so, entao a dependencia e real
+    # e o lugar dela e aqui.
+    _load("app.services.corridor_playbooks", "app/services/corridor_playbooks.py")
     _load("app.services.curadoria_cartas", "app/services/curadoria_cartas.py")
     _load("app.services.knowledge_scope", "app/services/knowledge_scope.py")
     dist = _load("app.services.attendance_distiller", "app/services/attendance_distiller.py")

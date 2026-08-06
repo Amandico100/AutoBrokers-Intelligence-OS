@@ -504,8 +504,82 @@ class InsuranceCorpusService:
         return {"ok": True, "mudou": not primeira, "primeira": primeira,
                 "versao": n, "chunks": chunks, "susep": susep, "vigencia": vigencia}
 
+    async def _baixar_pdf_direto(self, url: str) -> tuple[Optional[str], Optional[str]]:
+        """PDF público é ARQUIVO. Baixar arquivo não precisa de crawler.
+
+        📊 Medido em 05/08/2026: os 10 documentos parados no corpus — HDI, Tokio,
+        Azul e dois do Bradesco — têm TODOS uma URL de PDF direta. Estavam
+        esperando crédito do Firecrawl para uma tarefa que um GET resolve. O
+        crédito faz falta para DESCOBRIR documento novo; para baixar o que já
+        foi descoberto, não.
+
+        Devolve (texto, None) no sucesso e (None, motivo) na falha — nunca
+        levanta. Quem chama já sabe cair no crawler quando isto não serve.
+        """
+        import httpx
+
+        try:
+            from PyPDF2 import PdfReader
+        except Exception:  # noqa: BLE001 — sem o extrator, o crawler ainda existe
+            return None, "sem_extrator_de_pdf"
+
+        # Cabeçalho de navegador: 📊 dois destes documentos já falharam com 408 e
+        # 500. Servidor de seguradora costuma recusar cliente sem User-Agent, e
+        # essa recusa é indistinguível de "o arquivo não existe" para quem só lê
+        # o código de status.
+        cabecalhos = {
+            "User-Agent": ("Mozilla/5.0 (Windows NT 10.0; Win64; x64) "
+                           "AppleWebKit/537.36 (KHTML, like Gecko) Chrome/126.0 Safari/537.36"),
+            "Accept": "application/pdf,*/*",
+        }
+        try:
+            async with httpx.AsyncClient(timeout=90.0, follow_redirects=True) as cli:
+                r = await cli.get(url, headers=cabecalhos)
+            if r.status_code != 200:
+                return None, f"HTTP {r.status_code}"
+            corpo = r.content or b""
+        except Exception as exc:  # noqa: BLE001
+            return None, type(exc).__name__
+
+        # Teto de tamanho: condição geral gorda tem ~5 MB. Acima de 60 MB é outra
+        # coisa (portal inteiro, vídeo, erro), e ler isso na memória do worker
+        # derruba o processo por um documento que provavelmente nem serve.
+        if len(corpo) > 60 * 1024 * 1024:
+            return None, "arquivo_grande_demais"
+        if not corpo.startswith(b"%PDF"):
+            # Não é PDF de verdade: pode ser uma página de erro com extensão
+            # .pdf na URL. Devolver isso ao crawler é o certo — ele renderiza.
+            return None, "nao_e_pdf"
+
+        try:
+            import io
+
+            leitor = PdfReader(io.BytesIO(corpo))
+            texto = "\n".join((p.extract_text() or "") for p in leitor.pages).strip()
+        except Exception as exc:  # noqa: BLE001
+            return None, f"pdf_ilegivel:{type(exc).__name__}"
+
+        # A MESMA régua do crawler, e ela existe pelo mesmo motivo: PDF escaneado
+        # extrai quase nada, e ingerir isso põe no corpus um documento que
+        # PARECE presente e não responde nada.
+        if len(texto) < 400:
+            return None, "conteudo_insuficiente"
+        return texto, None
+
     async def _buscar(self, url: str, company_id: Optional[str]
                       ) -> tuple[Optional[str], Optional[str]]:
+        # PDF DIRETO PRIMEIRO, e o crawler como segunda opção.
+        #
+        # A ordem não é preferência: é o que destrava 10 documentos sem gastar
+        # um centavo. Se o GET não servir (página HTML, arquivo protegido,
+        # escaneado), cai no crawler exatamente como antes — nada foi tirado.
+        if ".pdf" in str(url or "").lower():
+            texto, motivo = await self._baixar_pdf_direto(url)
+            if texto:
+                logger.info("[corpus] PDF baixado direto (sem crawler): %s", str(url)[:80])
+                return texto, None
+            logger.info("[corpus] GET direto nao serviu (%s) — tentando o crawler", motivo)
+
         from ..research.firecrawl import FirecrawlClient, configurado
 
         if not configurado():

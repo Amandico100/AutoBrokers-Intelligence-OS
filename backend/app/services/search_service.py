@@ -57,15 +57,157 @@ def _rescue_tokenize(text: str) -> List[str]:
     return [t for t in raw if len(t) >= 3 and t not in _RESCUE_STOPWORDS]
 
 
-# === SCORE FALLBACK (41C.1.4) ===
-# Quando o reranker (Cohere) está ausente/bypass, os resultados não trazem
-# 'rerank_score'. Antes isso virava 0 e descartava bons resultados. Aqui usamos
-# o score bruto do Qdrant como fallback observável (não inventa relevância).
-_SCORE_KEYS = ("rerank_score", "score", "similarity", "qdrant_score")
+# === SCORE FALLBACK (41C.1.4) + CONSERTO DE UNIDADE (P0 05/08/2026) ===
+#
+# A AUTÓPSIA
+# ----------
+# O 41C.1.4 corrigiu o "zero falso" (sem Cohere, `rerank_score` sumia e o score
+# virava 0) mandando usar "o primeiro score numérico disponível". A intenção,
+# escrita no próprio relatório 41C.1.3 §8, era usar o score DENSO do Qdrant.
+# O que o código passou a pegar foi o campo `score` — que na busca híbrida NÃO
+# é o denso: é o score de RRF da fusão.
+#
+# 📊 medido em produção (05/08/2026, GET /documents/rag-health + leitura de
+#    search_service/qdrant_service):
+#      reranker: {"configured": false, "provider": "none", "status": "missing_key"}
+#      busca:    FusionQuery(fusion=Fusion.RRF)  → score = Σ 1/(k + posição)
+#      melhor caso aritmético com k=60: 1/61 + 1/61 = 0,0328
+#      observado no topo das buscas reais:      ~0,02
+#      cortes aplicados a esse número:  0,50 / 0,40 / 0,30
+#
+# 0,0328 nunca alcança 0,40. O gate reprovava TUDO, sempre, e 10.818 cartas
+# ficaram intactas e invisíveis. Erro de UNIDADE, não de calibragem: os cortes
+# estavam certos para a escala da Cohere (0..1) e foram aplicados à escala do
+# RRF (0..0,033) — comparar metro com quilômetro.
+#
+# O CONSERTO QUE **NÃO** SERVIA
+# -----------------------------
+# Baixar o corte para 0,02, ou normalizar o RRF por 2/(k+1) e cortar em 0..1.
+# Os dois fazem o mesmo estrago: **o RRF não mede relevância, mede concordância
+# de posição.** Quem está em 1º nas duas listas tira ~0,0328 sendo a resposta
+# perfeita OU sendo lixo — porque alguém sempre está em 1º, mesmo quando o
+# acervo não tem a resposta. Um corte nessa escala aprova sempre, e um guarda
+# que não tem como falhar não guarda nada (CLAUDE.md §9.3).
+#
+# O CONSERTO
+# ----------
+# Separar duas perguntas que o código tratava como uma só:
+#
+#   ORDEM      — "qual vem primeiro?"  → RRF (ou o reranker). É o que a fusão
+#                faz bem: junta denso e BM25 sem precisar de unidade comum.
+#   RELEVÂNCIA — "isto responde?"      → COSSENO (ou o reranker). Escala 0..1
+#                absoluta: não depende de quem mais está na lista, então um
+#                chunk ruim continua ruim mesmo sendo o melhor da rodada.
+#
+# O cosseno já existia — morria dentro do servidor, porque a FusionQuery só
+# devolve o score fundido. `qdrant_service._dense_cosine_for_points` agora o
+# traz de volta em `dense_score`, e cada resultado declara sua unidade em
+# `score_scale`. Os cortes passaram a ser POR ESCALA: nenhum número é mais
+# comparado com outro de unidade diferente.
+_SCORE_KEYS = ("rerank_score", "dense_score", "score", "similarity", "qdrant_score")
+
+# Unidades possíveis de um score. Só as duas primeiras decidem relevância.
+SCALE_RERANK = "rerank"  # Cohere cross-encoder, 0..1
+SCALE_COSINE = "cosine"  # similaridade densa, 0..1
+SCALE_RRF = "rrf"  # rank fusion, ~0..0,033 — ordena, não afere
+SCALE_NONE = "none"  # nada pontuou
+
+# Confiabilidade da escala como medida de RELEVÂNCIA (maior = mais confiável).
+# Serve para escolher entre dois candidatos sem comparar unidades diferentes.
+_SCALE_RANK = {SCALE_RERANK: 3, SCALE_COSINE: 2, SCALE_RRF: 1, SCALE_NONE: 0}
+
+
+def _env_float(name: str, default: float) -> float:
+    """Corte calibrável por ambiente, sem deploy de código. Valor inválido → default."""
+    import os as _os
+
+    raw = (_os.getenv(name) or "").strip()
+    if not raw:
+        return default
+    try:
+        return float(raw.replace(",", "."))
+    except (TypeError, ValueError):
+        logger.warning(f"[Search] {name} inválido; usando default {default}")
+        return default
+
+
+# Cortes POR ESCALA. Cada linha só é aplicada a números da sua própria unidade.
+#
+# rerank (0..1): 📊 valores originais, calibrados para rerank-multilingual-v3.0.
+#   Preservados byte a byte — quando a COHERE_API_KEY entrar, o caminho dela
+#   volta a valer exatamente como antes, sem regressão.
+#
+# cosine (0..1): 💭 ilustrativo/inferido, NÃO medido neste acervo. Base:
+#   text-embedding-3-small devolve vetores normalizados e uma distribuição
+#   comprimida — pares sem relação ficam bem abaixo de ~0,15 e pergunta/trecho
+#   que responde costuma passar de ~0,30. 0,28 cai na banda de separação, com
+#   viés deliberado a favor de responder: o falso negativo é o P0 que estamos
+#   consertando, e o falso positivo ainda tem duas redes depois dele (o AVISO
+#   DE SISTEMA de baixa relevância e o próprio modelo, que pode recusar).
+#   ⚠️ Calibrar com dado real via POST /documents/rag-debug, que agora devolve
+#   `score_source=dense_cosine` e o cosseno em `effective_score`: rode ~10
+#   perguntas com resposta e ~10 sem, e ajuste pelas envs abaixo.
+#
+# rrf: os cortes antigos, DE PROPÓSITO. Nesta escala nada os alcança, e é o que
+#   queremos: sem cosseno e sem reranker o sistema não tem como aferir
+#   relevância, então ele NÃO afirma que achou — delega ao lexical rescue
+#   (41C.1.3), que é o comportamento que segura o produto hoje. Abstenção
+#   declarada, não guarda quebrado.
+_THRESHOLDS_BY_SCALE = {
+    SCALE_RERANK: {"hyde": 0.50, "min": 0.40, "relevance": 0.30},
+    SCALE_COSINE: {
+        "hyde": _env_float("RAG_COSINE_THRESH_HYDE", 0.45),
+        "min": _env_float("RAG_COSINE_THRESH_MIN", 0.28),
+        "relevance": _env_float("RAG_COSINE_MIN_RELEVANCE", 0.28),
+    },
+    SCALE_RRF: {"hyde": 0.50, "min": 0.40, "relevance": 0.30},
+    SCALE_NONE: {"hyde": 0.50, "min": 0.40, "relevance": 0.30},
+}
+
+
+# Faixas do rótulo de qualidade (alta, média) que vai NO PROMPT do modelo.
+# Também são por escala: um cosseno de 0,35 é resultado bom, mas seria rotulado
+# "🔴 Baixa" pela régua da Cohere — e o modelo recusaria responder por causa do
+# rótulo, não do conteúdo. A linha do rerank é a original, intocada.
+_QUALITY_BANDS = {
+    SCALE_RERANK: (0.70, 0.40),
+    SCALE_COSINE: (0.50, 0.28),
+    SCALE_RRF: (0.70, 0.40),
+    SCALE_NONE: (0.70, 0.40),
+}
+
+
+def _get_score_scale(result: Dict) -> str:
+    """
+    A unidade do score que vamos usar como RELEVÂNCIA — na mesma ordem de
+    preferência de `_get_effective_score`. Puro.
+    """
+    if not result:
+        return SCALE_NONE
+    if result.get("rerank_score") is not None:
+        return SCALE_RERANK
+    if result.get("dense_score") is not None:
+        return SCALE_COSINE
+    for key in ("score", "similarity", "qdrant_score"):
+        if result.get(key) is not None:
+            # Sem `score_scale` declarado, o histórico é busca densa (cosseno).
+            return SCALE_RRF if result.get("score_scale") == SCALE_RRF else SCALE_COSINE
+    return SCALE_NONE
+
+
+def _thresholds_for(scale: str) -> Dict[str, float]:
+    """Os cortes da unidade certa. Escala desconhecida → os cortes antigos."""
+    return _THRESHOLDS_BY_SCALE.get(scale, _THRESHOLDS_BY_SCALE[SCALE_NONE])
 
 
 def _get_effective_score(result: Dict) -> float:
-    """Primeiro score numérico disponível (rerank > qdrant > 0). Puro."""
+    """
+    Score de RELEVÂNCIA: rerank > cosseno denso > score bruto > 0. Puro.
+
+    Sempre leia junto com `_get_score_scale()`: o número só significa alguma
+    coisa dentro da sua unidade. Comparar dois destes sem conferir a escala foi
+    exatamente o defeito de 05/08/2026.
+    """
     if not result:
         return 0.0
     for key in _SCORE_KEYS:
@@ -78,15 +220,41 @@ def _get_effective_score(result: Dict) -> float:
     return 0.0
 
 
+def _get_ranking_score(result: Dict) -> float:
+    """
+    Score de ORDEM: rerank > score bruto (RRF na híbrida). Puro.
+
+    Separado de propósito do de relevância. Ordenar pelo cosseno jogaria fora o
+    BM25 que a fusão embutiu no RRF — e é o BM25 quem acha código de protocolo,
+    número de apólice e nome próprio, justo o que o denso erra.
+    """
+    if not result:
+        return 0.0
+    for key in ("rerank_score", "score", "dense_score", "similarity", "qdrant_score"):
+        val = result.get(key)
+        if val is not None:
+            try:
+                return float(val)
+            except (TypeError, ValueError):
+                continue
+    return 0.0
+
+
 def _get_score_source(result: Dict) -> str:
-    """Origem do score efetivo: 'rerank' | 'qdrant' | 'fallback_zero'."""
+    """
+    Origem do score efetivo — agora diz também a ESCALA usada, que é o que
+    faltava para enxergar o defeito no log:
+    'rerank' | 'dense_cosine' | 'qdrant_cosine' | 'qdrant_rrf' | 'fallback_zero'.
+    """
     if not result:
         return "fallback_zero"
     if result.get("rerank_score") is not None:
         return "rerank"
+    if result.get("dense_score") is not None:
+        return "dense_cosine"
     for key in ("score", "similarity", "qdrant_score"):
         if result.get(key) is not None:
-            return "qdrant"
+            return "qdrant_rrf" if result.get("score_scale") == SCALE_RRF else "qdrant_cosine"
     return "fallback_zero"
 
 
@@ -375,20 +543,33 @@ class SearchService:
         if not reranker_available:
             logger.info("[Search] Reranker bypass detected; using Qdrant score fallback")
 
-        # Configuração de Thresholds
-        THRESH_HYDE = 0.50  # Novo threshold para ativar HyDE (era 0.80)
-        THRESH_MIN = 0.40   # Threshold mínimo para considerar resultado válido
-
         # --- TENTATIVA 1: Hybrid Search ---
         logger.info(f"[Search] Tentativa 1: Híbrida para '{query}'")
         results_std = self._execute_search(company_id, query, query, agent_id=agent_id, include_global=include_global, user_id=user_id)
 
         best_score_std = _get_effective_score(results_std[0]) if results_std else 0
+
+        # Os cortes vêm DEPOIS da busca porque dependem da UNIDADE do que voltou
+        # (P0 05/08/2026). Antes eram duas constantes fixas aplicadas a qualquer
+        # número que aparecesse — inclusive ao RRF, que nunca passa de ~0,033.
+        scale_std = _get_score_scale(results_std[0]) if results_std else SCALE_NONE
+        _th_std = _thresholds_for(scale_std)
+        THRESH_HYDE = _th_std["hyde"]
+        THRESH_MIN = _th_std["min"]
+
         if results_std:
             logger.info(
                 f"[Search] Effective score source={_get_score_source(results_std[0])} "
-                f"score={best_score_std:.3f}"
+                f"score={best_score_std:.3f} | scale={scale_std} "
+                f"| cortes hyde={THRESH_HYDE:.2f} min={THRESH_MIN:.2f}"
             )
+            if scale_std == SCALE_RRF:
+                # Sem reranker E sem cosseno: não há como aferir relevância.
+                # O sistema se abstém e deixa o lexical rescue decidir.
+                logger.warning(
+                    "[Search] Sem sinal de relevância (só RRF): cosseno denso ausente. "
+                    "Decisão delegada ao lexical rescue."
+                )
 
         # Se score já é bom OU HyDE está desativado, retorna direto
         if best_score_std >= THRESH_HYDE or not is_hyde_enabled:
@@ -436,6 +617,7 @@ class SearchService:
                     "max_score": best_score_std,
                     "effective_score": best_score_std,
                     "score_source": _get_score_source(results_std[0]) if results_std else "fallback_zero",
+                    "score_scale": scale_std,
                     "reranker_available": reranker_available,
                 }
 
@@ -459,18 +641,31 @@ class SearchService:
         )
 
         best_score_hyde = _get_effective_score(results_hyde[0]) if results_hyde else 0
+        scale_hyde = _get_score_scale(results_hyde[0]) if results_hyde else SCALE_NONE
 
-        # Comparação: Quem ganhou?
-        final_results = (
-            results_hyde if best_score_hyde > best_score_std else results_std
-        )
-        final_score = max(best_score_hyde, best_score_std)
-        final_strategy = (
-            "hyde_hybrid" if best_score_hyde > best_score_std else "hybrid_fallback"
-        )
+        # Comparação: quem ganhou?
+        # 0,45 de cosseno NÃO é maior que 0,50 de reranker nem menor que 0,02 de
+        # RRF — são unidades diferentes. Só comparamos números quando a escala é
+        # a mesma; escalas distintas se decidem pela CONFIABILIDADE da medida.
+        # (Na prática as duas tentativas passam pelo mesmo pipeline e caem na
+        # mesma escala; este ramo existe para que a regra não dependa disso.)
+        if scale_std == scale_hyde:
+            hyde_venceu = best_score_hyde > best_score_std
+        else:
+            hyde_venceu = _SCALE_RANK.get(scale_hyde, 0) > _SCALE_RANK.get(scale_std, 0)
+
+        final_results = results_hyde if hyde_venceu else results_std
+        final_score = best_score_hyde if hyde_venceu else best_score_std
+        final_scale = scale_hyde if hyde_venceu else scale_std
+        final_strategy = "hyde_hybrid" if hyde_venceu else "hybrid_fallback"
+
+        # O corte final é o da escala VENCEDORA.
+        THRESH_MIN = _thresholds_for(final_scale)["min"]
 
         logger.info(
-            f"[Search] Comparação: Direct={best_score_std:.3f} vs HyDE={best_score_hyde:.3f} → Vencedor: {final_strategy}"
+            f"[Search] Comparação: Direct={best_score_std:.3f} ({scale_std}) vs "
+            f"HyDE={best_score_hyde:.3f} ({scale_hyde}) → Vencedor: {final_strategy} "
+            f"| corte min={THRESH_MIN:.2f} na escala {final_scale}"
         )
 
         # --- FILTRO FINAL ---
@@ -511,6 +706,7 @@ class SearchService:
                 "max_score": final_score,
                 "effective_score": final_score,
                 "score_source": _get_score_source(final_results[0]) if final_results else "fallback_zero",
+                "score_scale": final_scale,
                 "reranker_available": reranker_available,
             }
 
@@ -542,6 +738,7 @@ class SearchService:
                 "agent_id": res.get("agent_id"),
                 "score": round(score, 3),
                 "score_source": _get_score_source(res),
+                "score_scale": _get_score_scale(res),  # a unidade do número acima
                 "reranker_available": reranker_available,
                 "content_preview": res.get("content", "")[:200] + "...",
                 "metadata": res.get("metadata", {}),
@@ -570,31 +767,41 @@ class SearchService:
         chunks_metadata = []
         content_parts = []
 
-        MIN_RELEVANCE = 0.30
+        # Ordem pelo RANKING (reranker ou RRF), não pela relevância: o RRF já
+        # embute o BM25, que é quem acha código de protocolo e número de apólice.
+        # Reordenar pelo cosseno jogaria esse sinal fora.
+        results.sort(key=_get_ranking_score, reverse=True)
 
-        results.sort(key=_get_effective_score, reverse=True)
-
+        top_scale = _get_score_scale(results[0]) if results else SCALE_NONE
+        MIN_RELEVANCE = _thresholds_for(top_scale)["relevance"]
         top_score_source = _get_score_source(results[0]) if results else "fallback_zero"
 
         valid_chunks_count = 0
         for i, res in enumerate(results):
             score = _get_effective_score(res)
             score_source = _get_score_source(res)
+            # Cada chunk é medido com o corte da SUA unidade. Um único
+            # MIN_RELEVANCE para a lista inteira só funciona enquanto todos os
+            # resultados vierem da mesma escala — e não é garantido (merge de
+            # coleções, reranker parcial). A lição do P0 aplicada aqui também.
+            scale = _get_score_scale(res)
+            min_rel = _thresholds_for(scale)["relevance"]
             doc_name = res.get("metadata", {}).get("document_name", "Doc")
             content = res.get("content", "")
 
-            is_relevant = score >= MIN_RELEVANCE
+            is_relevant = score >= min_rel
             is_fallback = i == 0 and top_score < MIN_RELEVANCE
             force_rescue = rescue_used and i == 0  # garante o top result no contexto
 
             include_in_context = is_relevant or is_fallback or force_rescue
 
             if include_in_context:
+                _alta, _media = _QUALITY_BANDS.get(scale, _QUALITY_BANDS[SCALE_NONE])
                 quality_tag = (
                     "🟢 Alta"
-                    if score > 0.7
+                    if score > _alta
                     else "🟡 Média"
-                    if score > 0.4
+                    if score > _media
                     else "🔴 Baixa"
                 )
 
@@ -609,6 +816,7 @@ class SearchService:
                 "agent_id": res.get("agent_id"),
                 "score": round(score, 3),
                 "score_source": score_source,
+                "score_scale": scale,  # a unidade do número acima
                 "reranker_available": reranker_available,
                 "content_preview": content[:100] + "...",
                 "metadata": res.get("metadata", {}),
@@ -636,6 +844,7 @@ class SearchService:
             "max_score": top_score,
             "effective_score": top_score,
             "score_source": top_score_source,
+            "score_scale": top_scale,
             "reranker_available": reranker_available,
             "valid_chunks_count": valid_chunks_count,
             "agent_id": agent_id,

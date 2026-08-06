@@ -31,7 +31,9 @@ import sys
 AQUI = os.path.dirname(os.path.abspath(__file__))
 sys.path.insert(0, AQUI)
 from exportar import _credenciais  # noqa: E402
-from mascarar import templatize  # noqa: E402
+from mascarar import _carregar_servico, templatize  # noqa: E402
+
+assunto_da_carta = _carregar_servico("curadoria_cartas").assunto_da_carta
 
 MARCA = "organizacao_30_07_2026"
 
@@ -121,7 +123,7 @@ def main() -> int:
         if novo and templatize(novo) == novo:
             db.table("knowledge_cards").upsert([{
                 "card_hash": hashlib.md5(novo.lower().encode("utf-8")).hexdigest(),
-                "card_text": novo, "category": "processo",
+                "card_text": novo, "category": assunto_da_carta(novo),
                 "ramo": c.get("ramo") or "outro",
                 "insurer_key": c.get("insurer_key"),
                 "status": "pending_review",

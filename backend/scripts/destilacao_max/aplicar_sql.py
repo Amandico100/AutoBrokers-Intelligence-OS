@@ -35,7 +35,11 @@ import re
 import sys
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
-from mascarar import normalize_insurer_key, templatize  # noqa: E402
+from mascarar import _carregar_servico, templatize  # noqa: E402
+
+_CURADORIA = _carregar_servico("curadoria_cartas")
+assunto_da_carta = _CURADORIA.assunto_da_carta
+seguradora_do_fato = _CURADORIA.seguradora_do_fato
 
 # O Windows redireciona `>` na codepage ANSI (cp1252), não em UTF-8. Sem esta
 # linha, "apólice" e "ocorrência" saem corrompidos no arquivo .sql e entram
@@ -103,11 +107,11 @@ def main() -> int:
             sessoes += 1
 
             ramo = str(d.get("ramo") or "outro")
-            # Mesma normalização de `_store_card_sync`: "Tokio", "Tokio Marine"
-            # e "Tókio Marine" são UMA seguradora. Sem isto o subagente que
-            # escreve "tokio marine" cria uma pasta que o filtro por seguradora
-            # nunca encontra.
-            seg = normalize_insurer_key(str(d.get("seguradora") or "")) or None
+            # A seguradora da SESSÃO é candidata, não veredito — quem decide é
+            # `seguradora_do_fato`, pelo texto de cada fato, exatamente como no
+            # destilador e no `aplicar.py`. Antes daqui saía a companhia da
+            # conversa carimbada nos oito fatos.
+            candidata = str(d.get("seguradora") or "")
             for fato in (d.get("fatos_reutilizaveis") or [])[:8]:
                 texto = " ".join(str(fato or "").split())
                 if len(texto) < 15 or len(texto) > 400:
@@ -118,13 +122,16 @@ def main() -> int:
                 vistas.add(h)
                 limpo = templatize(texto) == texto
                 status = "pending_review" if limpo else "rejected_pii"
+                seg, prestadora = seguradora_do_fato(texto, candidata)
                 seg_sql = f"'{seg}'" if seg and re.fullmatch(r"[a-z0-9_-]{2,40}", seg) else "NULL"
+                extra = (f", \"prestadora\": \"{prestadora}\""
+                         if prestadora and re.fullmatch(r"[a-z0-9_-]{2,40}", prestadora) else "")
                 print(f"INSERT INTO knowledge_cards "
                       f"(card_hash, card_text, category, ramo, insurer_key, status, pii_check) "
-                      f"VALUES ('{h}', {_citar(texto)}, 'processo', "
+                      f"VALUES ('{h}', {_citar(texto)}, {_citar(assunto_da_carta(texto))}, "
                       f"{_citar(ramo)}, {seg_sql}, '{status}', "
                       f"'{{\"deterministic\": {str(limpo).lower()}, \"llm_instructed\": true, "
-                      f"\"por\": \"{MARCA}\"}}'::jsonb) "
+                      f"\"por\": \"{MARCA}\"{extra}}}'::jsonb) "
                       f"ON CONFLICT (card_hash) DO NOTHING;")
                 cartas += 1
 

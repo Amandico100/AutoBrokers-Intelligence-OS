@@ -35,6 +35,34 @@ except Exception:  # pragma: no cover
     PayloadField = None  # type: ignore
     _HAS_IS_EMPTY = False
 
+# Cosseno dos pontos já escolhidos pela fusão (ver _dense_cosine_for_points).
+# Degrada com segurança: sem HasIdCondition, a busca híbrida continua devolvendo
+# só o score de RRF — exatamente como antes deste conserto.
+try:
+    from qdrant_client.models import HasIdCondition
+
+    _HAS_HAS_ID = True
+except Exception:  # pragma: no cover
+    HasIdCondition = None  # type: ignore
+    _HAS_HAS_ID = False
+
+# === UNIDADE DO SCORE (P0 05/08/2026) ===
+# O campo `score` deste serviço NÃO tem uma unidade só, e isso derrubou o RAG:
+#
+#   - busca dense-only  → `score` é COSSENO (0..1), comparável a um threshold;
+#   - busca híbrida     → `score` é RRF (Σ 1/(k+posição)), que em produção
+#                         mede ~0,016 a ~0,033 e NÃO é comparável a nada em 0..1.
+#
+# Quem lia `score` rio abaixo não tinha como saber qual dos dois recebeu, e
+# aplicou o corte de 0,40 (calibrado para o reranker da Cohere) sobre um número
+# que nunca passa de ~0,033. Todo resultado era descartado.
+#
+# O nome do campo mentia sobre o que ele guardava (CLAUDE.md §12.1: conserte o
+# campo, não o texto). Agora todo resultado diz a própria unidade em
+# `score_scale`, e carrega `dense_score` (cosseno) sempre que ele for conhecido.
+SCALE_COSINE = "cosine"  # similaridade real 0..1 — mede RELEVÂNCIA
+SCALE_RRF = "rrf"  # concordância de posição — mede ORDEM, não relevância
+
 logger = logging.getLogger(__name__)
 
 
@@ -261,6 +289,69 @@ class QdrantService:
             logger.error(f"Erro ao inserir embeddings: {e}", exc_info=True)
             return False
 
+    def _dense_cosine_for_points(
+        self,
+        collection_name: str,
+        query_embedding: List[float],
+        point_ids: List[Any],
+        base_filter: Optional[Any] = None,
+    ) -> Dict[Any, float]:
+        """
+        Cosseno (0..1) entre a query e CADA ponto que a fusão já escolheu.
+
+        Por que existe: `query_points` com `FusionQuery` devolve só o score de
+        RRF — o cosseno de cada ramo morre dentro do servidor. Sem ele não há
+        NENHUM sinal de relevância quando o reranker está ausente, e o corte
+        de threshold vira loteria (foi o P0 de 05/08/2026).
+
+        Por que é barato: os ids já vieram da fusão, então isto é um lookup
+        filtrado por id — sem embedding novo, sem payload, sem vetor de volta.
+        Uma ida ao Qdrant, sobre no máximo `top_k` pontos.
+
+        Por que é seguro: reaproveita o MESMO `base_filter` da busca original
+        (agent_id, scope, curadoria, must_not) e só ACRESCENTA a restrição por
+        id. Nenhum ponto novo pode entrar por aqui — no máximo saem.
+
+        Falha fechada em observabilidade, não em produto: qualquer erro devolve
+        {} e a busca segue com o RRF puro, como antes.
+        """
+        if not point_ids or not _HAS_HAS_ID:
+            return {}
+
+        try:
+            id_condition = HasIdCondition(has_id=list(point_ids))
+
+            if base_filter is not None:
+                must = list(getattr(base_filter, "must", None) or [])
+                must.append(id_condition)
+                scoped_filter = Filter(
+                    must=must,
+                    should=getattr(base_filter, "should", None),
+                    must_not=getattr(base_filter, "must_not", None),
+                )
+            else:
+                scoped_filter = Filter(must=[id_condition])
+
+            points = self.client.query_points(
+                collection_name=collection_name,
+                query=query_embedding,
+                using="dense",
+                limit=len(point_ids),
+                query_filter=scoped_filter,
+                with_payload=False,
+                with_vectors=False,
+            ).points
+
+            return {p.id: float(p.score) for p in points if p.score is not None}
+
+        except Exception as e:  # noqa: BLE001
+            # Não derruba a busca: sem cosseno o serviço volta ao estado anterior.
+            logger.warning(
+                f"[Qdrant] cosseno denso indisponível ({type(e).__name__}); "
+                f"resultados seguem só com score de RRF"
+            )
+            return {}
+
     def search_similar(
         self,
         company_id: str,
@@ -277,6 +368,7 @@ class QdrantService:
         score_threshold: float = 0.0,
         sparse_embedding: Optional[Any] = None,
         collection_name: Optional[str] = None,
+        with_dense_score: bool = True,  # colhe o cosseno na busca híbrida (P0 05/08/2026)
     ) -> List[Dict[str, Any]]:
         """
         Busca chunks similares por embedding COM FILTRO POR AGENTE
@@ -423,23 +515,51 @@ class QdrantService:
                     score_threshold=score_threshold,
                 ).points
 
+            # Qual unidade este ramo produziu? (ver bloco UNIDADE DO SCORE no topo)
+            is_hybrid = sparse_embedding is not None
+            score_scale = SCALE_RRF if is_hybrid else SCALE_COSINE
+
+            # Na busca híbrida o `score` é RRF e não serve de relevância: buscamos
+            # o cosseno dos MESMOS pontos numa segunda ida barata ao Qdrant.
+            dense_by_id: Dict[Any, float] = {}
+            if is_hybrid and with_dense_score and search_results:
+                dense_by_id = self._dense_cosine_for_points(
+                    collection_name=collection_name,
+                    query_embedding=query_embedding,
+                    point_ids=[r.id for r in search_results],
+                    base_filter=query_filter,
+                )
+
             # Formatar resultados
             results = []
             for result in search_results:
-                results.append(
-                    {
-                        "score": result.score,
-                        "content": result.payload.get("content", ""),
-                        "document_id": result.payload.get("document_id", ""),
-                        "agent_id": result.payload.get(
-                            "agent_id", ""
-                        ),  # 🔥 Retorna agent_id
-                        "chunk_index": result.payload.get("chunk_index", 0),
-                        "metadata": result.payload.get("metadata", {}),
-                    }
-                )
+                # dense_score = relevância comparável a um threshold em 0..1.
+                # Na busca dense-only o próprio `score` já é o cosseno.
+                if is_hybrid:
+                    dense_score = dense_by_id.get(result.id)
+                else:
+                    dense_score = result.score
 
-            logger.info(f"[Qdrant] Found {len(results)} results for agent {agent_id}")
+                item = {
+                    "score": result.score,
+                    "score_scale": score_scale,  # a unidade de `score`, explícita
+                    "content": result.payload.get("content", ""),
+                    "document_id": result.payload.get("document_id", ""),
+                    "agent_id": result.payload.get(
+                        "agent_id", ""
+                    ),  # 🔥 Retorna agent_id
+                    "chunk_index": result.payload.get("chunk_index", 0),
+                    "metadata": result.payload.get("metadata", {}),
+                }
+                if dense_score is not None:
+                    item["dense_score"] = float(dense_score)
+                results.append(item)
+
+            _com_cosseno = sum(1 for r in results if "dense_score" in r)
+            logger.info(
+                f"[Qdrant] Found {len(results)} results for agent {agent_id} "
+                f"| score_scale={score_scale} | com cosseno={_com_cosseno}/{len(results)}"
+            )
             return results
 
         except Exception as e:
