@@ -403,13 +403,40 @@ def decidir_alarme_de_entrega(
     return {"alarmar": True, "motivo": "conectado_e_mudo", "horas": horas}
 
 
+# O ACERVO SÃO DUAS TABELAS, E OLHAR SÓ UMA FAZ O ALARME MENTIR.
+#
+# 📊 06/08/2026 23:43 UTC, projeto de produção:
+#
+#     tabela                   AutoFleet          Amandus
+#     observed_events          04/08 20:34        nunca
+#     attendance_transcripts   06/08 22:08        06/08 21:31
+#
+# A borda separa por interlocutor: conversa com SEGURADORA vai para
+# `observed_events`; conversa com SEGURADO vai para `attendance_transcripts`.
+# Uma corretora pode passar dias sem falar com seguradora e atender segurado o
+# dia inteiro — e nesse dia ela está capturando perfeitamente.
+#
+# Lendo só `observed_events`, este alarme dispararia AGORA nas duas corretoras
+# conectadas: "conectado_e_mudo" na AutoFleet (51h) e "conectado_e_nunca_
+# entregou" na Amandus. Ambos falsos.
+#
+# E o custo do falso positivo é maior do que parece: é a própria docstring de
+# `decidir_alarme_de_entrega` que diz que dois cartões para a mesma notícia
+# treinam a pessoa a fechar os dois sem ler. Um alarme que grita todo dia sem
+# motivo ensina exatamente isso — e estará gritando no dia em que for verdade.
+_ACERVOS_DE_CAPTURA = ("observed_events", "attendance_transcripts")
+
+
 async def _ultima_entrega_por_corretora(db: Any = None) -> Dict[str, Any]:
-    """Quando cada corretora gravou a última conversa. Uma query para todas.
+    """Quando cada corretora gravou a última conversa, em QUALQUER acervo.
 
     Uma consulta por corretora a cada cinco minutos seria N idas ao banco para
-    responder algo que cabe numa. E a leitura é do ACERVO (`observed_events`),
-    não de `integrations`: `last_seen_at` mede a sonda, e a sonda foi
-    exatamente o que ficou verde enquanto nada chegava.
+    responder algo que cabe em duas. E a leitura é do ACERVO, não de
+    `integrations`: `last_seen_at` mede a sonda, e a sonda foi exatamente o que
+    ficou verde enquanto nada chegava.
+
+    Devolve a data MAIS RECENTE entre as duas tabelas: capturar de um lado só
+    já é capturar, e o silêncio que interessa é o silêncio dos dois.
     """
     if db is None:
         from app.core.database import get_supabase_client
@@ -417,27 +444,61 @@ async def _ultima_entrega_por_corretora(db: Any = None) -> Dict[str, Any]:
         db = get_supabase_client()
     cliente = getattr(db, "client", db)
 
-    def _ler() -> list:
+    def _ler(tabela: str) -> list:
         # Ordena por data e pega o topo por corretora no lado do Python: o
         # cliente do Supabase não expõe GROUP BY, e inventar RPC para isto
         # criaria peça nova para uma leitura que cabe em 2.000 linhas.
-        return (cliente.table("observed_events")
+        return (cliente.table(tabela)
                 .select("company_id, created_at")
                 .order("created_at", desc=True)
                 .limit(2000).execute().data or [])
 
-    try:
-        linhas = await asyncio.to_thread(_ler)
-    except Exception as erro:  # noqa: BLE001
-        logger.warning("[ENTREGA] não consegui ler o acervo (%s)", type(erro).__name__)
-        return {}
-
     ultima: Dict[str, Any] = {}
-    for linha in linhas:
-        empresa = str(linha.get("company_id") or "")
-        if empresa and empresa not in ultima:
-            ultima[empresa] = linha.get("created_at")
+    for tabela in _ACERVOS_DE_CAPTURA:
+        try:
+            linhas = await asyncio.to_thread(_ler, tabela)
+        except Exception as erro:  # noqa: BLE001
+            # Um acervo ilegível não pode fazer o outro sumir: se `observed_events`
+            # cair, a captura de segurados continua contando como entrega.
+            logger.warning("[ENTREGA] não consegui ler %s (%s)", tabela, type(erro).__name__)
+            continue
+        for linha in linhas:
+            empresa = str(linha.get("company_id") or "")
+            if not empresa:
+                continue
+            quando = linha.get("created_at")
+            anterior = ultima.get(empresa)
+            if anterior is None or _mais_recente(quando, anterior):
+                ultima[empresa] = quando
     return ultima
+
+
+def _mais_recente(candidato: object, atual: object) -> bool:
+    """`candidato` é mais novo que `atual`? Compara datas, não texto.
+
+    Comparar ISO como string funciona por acidente enquanto as duas tiverem o
+    mesmo fuso e a mesma quantidade de casas decimais. `+00:00` e `Z` são o
+    mesmo instante e ordenam diferente como texto — e as duas formas aparecem
+    no banco. Comparar como data é o que não depende de sorte.
+    """
+    novo, velho = _quando(candidato), _quando(atual)
+    if novo is None:
+        return False
+    if velho is None:
+        return True
+    return novo > velho
+
+
+def _quando(valor: object) -> Optional[datetime]:
+    if isinstance(valor, datetime):
+        return valor if valor.tzinfo else valor.replace(tzinfo=timezone.utc)
+    if not valor:
+        return None
+    try:
+        lido = datetime.fromisoformat(str(valor).replace("Z", "+00:00"))
+    except (TypeError, ValueError):
+        return None
+    return lido if lido.tzinfo else lido.replace(tzinfo=timezone.utc)
 
 
 async def _alarme_de_entrega_padrao(integracao: dict, decisao: dict) -> None:

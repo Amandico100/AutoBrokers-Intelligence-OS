@@ -169,7 +169,7 @@ def teste_o_alarme_esta_no_laco_e_le_o_acervo():
            "o laço do heartbeat consulta a regra e alarma")
     checar('_ultima_entrega_por_corretora' in cmd,
            "e busca quando cada corretora gravou pela última vez")
-    checar('.table("observed_events")' in cmd,
+    checar('.table("observed_events")' in cmd or "_ACERVOS_DE_CAPTURA" in cmd,
            "lê o ACERVO, não `integrations`",
            "`last_seen_at` mede a sonda — e foi a sonda que ficou verde à toa")
 
@@ -278,6 +278,126 @@ def teste_o_telefone_pareado_e_gravado_para_TODAS_as_corretoras():
            "sem ele, o gravador reescreveria o mesmo telefone a cada ciclo")
 
 
+def teste_o_acervo_sao_duas_tabelas_e_ler_uma_so_faz_o_alarme_mentir():
+    """📊 06/08/2026 23:43 UTC, produção — o falso alarme, reproduzido.
+
+        tabela                   AutoFleet     Amandus
+        observed_events          04/08 20:34   nunca
+        attendance_transcripts   06/08 22:08   06/08 21:31
+
+    As duas estavam capturando. Lendo só `observed_events`, o alarme diria
+    "conectado e mudo há 51 horas" da AutoFleet e "conectado e nunca entregou"
+    da Amandus — no mesmo minuto em que as duas gravavam conversa.
+
+    O alarme que grita todo dia sem motivo ensina a fechar o cartão sem ler, e
+    estará gritando no dia em que for verdade.
+    """
+    print("\n[6] O acervo são DUAS tabelas — segurados e seguradoras")
+    import asyncio
+
+    CS = _carregar_estado()
+
+    class _Resp:
+        def __init__(self, d):
+            self.data = d
+
+    class _Q:
+        def __init__(self, banco, tabela):
+            self.b, self.t = banco, tabela
+
+        def select(self, *_a, **_k):
+            return self
+
+        def order(self, *_a, **_k):
+            return self
+
+        def limit(self, *_a, **_k):
+            return self
+
+        def execute(self):
+            if self.t not in self.b.dados:
+                raise RuntimeError(f"tabela inexistente: {self.t}")
+            return _Resp(list(self.b.dados[self.t]))
+
+    class Banco:
+        def __init__(self, dados):
+            self.dados, self.client = dados, self
+
+        def table(self, nome):
+            return _Q(self, nome)
+
+    # O estado real de produção, com os dois acervos.
+    banco = Banco({
+        "observed_events": [
+            {"company_id": "autofleet", "created_at": "2026-08-04T20:34:19+00:00"},
+        ],
+        "attendance_transcripts": [
+            {"company_id": "autofleet", "created_at": "2026-08-06T22:08:24+00:00"},
+            {"company_id": "amandus", "created_at": "2026-08-06T21:31:10+00:00"},
+        ],
+    })
+    agora = datetime(2026, 8, 6, 23, 43, tzinfo=timezone.utc)
+    ultima = asyncio.run(CS._ultima_entrega_por_corretora(banco))
+
+    fleet = CS.decidir_alarme_de_entrega(
+        estado_do_canal="connected", ultima_entrega=ultima.get("autofleet"), agora=agora)
+    checar(fleet["alarmar"] is False,
+           "AutoFleet capturou segurado há 1h — não alarma",
+           f'motivo={fleet["motivo"]} horas={fleet["horas"]}')
+
+    amandus = CS.decidir_alarme_de_entrega(
+        estado_do_canal="connected", ultima_entrega=ultima.get("amandus"), agora=agora)
+    checar(amandus["alarmar"] is False,
+           "Amandus nunca falou com seguradora — e mesmo assim não alarma",
+           f'motivo={amandus["motivo"]}')
+
+    # CONTROLE — o alarme AINDA CONSEGUE disparar. Um guarda que não tem como
+    # falhar não guarda nada (CLAUDE.md §9.3): se o conserto acima tivesse
+    # simplesmente desligado o alarme, esta linha passaria a reprovar.
+    calada = Banco({
+        "observed_events": [
+            {"company_id": "resulta", "created_at": "2026-08-03T20:19:02+00:00"},
+        ],
+        "attendance_transcripts": [
+            {"company_id": "resulta", "created_at": "2026-08-03T21:00:00+00:00"},
+        ],
+    })
+    muda = CS.decidir_alarme_de_entrega(
+        estado_do_canal="connected",
+        ultima_entrega=asyncio.run(CS._ultima_entrega_por_corretora(calada)).get("resulta"),
+        agora=agora)
+    checar(muda["alarmar"] is True and muda["motivo"] == "conectado_e_mudo",
+           "CONTROLE — quem está mudo nos DOIS acervos ainda dispara",
+           f'{muda["motivo"]} · {muda["horas"]:.0f}h')
+
+    # CONTROLE — a mais RECENTE vence, venha de qual tabela vier. Aqui é
+    # `observed_events` que salva a corretora, o inverso do caso da Amandus.
+    invertido = Banco({
+        "observed_events": [
+            {"company_id": "x", "created_at": "2026-08-06T23:00:00+00:00"},
+        ],
+        "attendance_transcripts": [
+            {"company_id": "x", "created_at": "2026-07-01T10:00:00+00:00"},
+        ],
+    })
+    lido = asyncio.run(CS._ultima_entrega_por_corretora(invertido))
+    checar(str(lido.get("x")).startswith("2026-08-06"),
+           "CONTROLE — a data mais nova vence, venha da tabela que vier",
+           str(lido.get("x")))
+
+    # Um acervo ilegível não pode apagar o outro: se `observed_events` cair, a
+    # captura de segurados continua contando como entrega.
+    meio_quebrado = Banco({
+        "attendance_transcripts": [
+            {"company_id": "y", "created_at": "2026-08-06T23:00:00+00:00"},
+        ],
+    })
+    sobrevive = asyncio.run(CS._ultima_entrega_por_corretora(meio_quebrado))
+    checar(sobrevive.get("y") is not None,
+           "acervo ilegível não apaga o que o outro registrou",
+           str(sobrevive))
+
+
 def _fonte_do_estado() -> str:
     caminho = os.path.join(RAIZ, "backend", "app", "services", "whatsapp", "channel_state.py")
     with open(caminho, encoding="utf-8") as arquivo:
@@ -293,6 +413,7 @@ def main() -> int:
     teste_a_conta_e_em_horas_e_o_limite_e_respeitado()
     teste_o_alarme_esta_no_laco_e_le_o_acervo()
     teste_o_telefone_pareado_e_gravado_para_TODAS_as_corretoras()
+    teste_o_acervo_sao_duas_tabelas_e_ler_uma_so_faz_o_alarme_mentir()
 
     print("\n" + "=" * 70)
     if _PROBLEMAS:
