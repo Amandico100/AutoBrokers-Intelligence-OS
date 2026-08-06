@@ -2032,3 +2032,67 @@ produziu **uma linha de log**.
 - **Custa se esquecer:** todo diagnóstico futuro começa por uma leitura falsa, e
   a instância zumbi (`client != nil && !IsLoggedIn()`) trava a corretora até o
   contêiner reiniciar.
+
+## P-113 · 🔴 O patch 0007 do fork NÃO foi compilado
+
+`infra/evolution-go-autobrokers/patches/0007-status-e-runtime.patch` está escrito
+e 📊 os sete patches aplicam limpo sobre o upstream `9337afc4` (`git apply
+--check` verde nos sete). Mas **não houve compilação**: não há Go nem Docker na
+máquina desta sessão.
+
+Revisão manual feita: `strings` já importado, chaves balanceadas (173/173),
+`ClearInstanceCache` está na interface `WhatsmeowService`, `LogWarn` já usado no
+arquivo, `instance` existe nos escopos tocados.
+
+Um erro descoberto NA revisão e evitado: a primeira versão aplicava o helper
+também no `ForceReconnect`, onde o `killChannel` novo já foi criado logo acima —
+`ClearInstanceCache` o fecharia antes de o `StartClient` seguinte encontrá-lo.
+Ficou de fora, com o motivo escrito no próprio helper.
+
+⚠️ **O deploy do `evolution-go-teste` derruba a AutoFleet.** `CONNECT_ON_STARTUP=false`
+significa que nenhuma instância religa sozinha depois do restart do contêiner.
+
+- **Destrava:** 🤖 `go build` (o Dockerfile já roda `go test ./pkg/instance/service`
+  antes do build, então erro de compilação **reprova o build** e a imagem antiga
+  continua no ar — o gate existe). Depois 🧑 disparar o deploy e, logo em seguida,
+  🤖 um `POST /instance/connect` completo por instância para religar e regravar
+  webhook.
+- **Custa se esquecer:** o `/instance/status` segue mentindo após cada restart e
+  a instância zumbi segue capaz de prender uma corretora até o contêiner cair.
+
+## P-114 · 🟠 O webhook das instâncias precisa ser regravado depois do deploy
+
+📊 Medido em 06/08/2026 ~16:40Z, com o `smith-api` ainda rodando o código antigo:
+`integrations.webhook_token_prefix` da Resulta era `zAkKqY_b` enquanto o campo
+`webhook` da mesma instância no provedor estava **vazio**. O banco tinha a
+credencial; o provedor não tinha a URL. É o defeito do reconector acontecendo em
+produção enquanto a correção esperava deploy.
+
+O conserto está na `main` (`f81e24e` + `b078dcf`), mas **ele não repara o estado
+que já existe**: o reconector novo só age sobre canais que a sonda vê caídos.
+
+- **Destrava:** 🤖 depois do deploy do `smith-api`, um `connect` completo por
+  instância ativa (o mesmo procedimento da Parte II §10 do relatório de
+  auditoria), e então conferir `observed_events` algumas horas depois.
+- **Custa se esquecer:** captura parada com o painel dizendo "Conectado" — a
+  falha que já custou 42 h e 67 h sem ninguém notar.
+
+## P-115 · 🟡 Cobrança e auxiliares: número separado, decisão pendente
+
+O Founder (06/08/2026): *"precisam ser números separados porque são serviços
+diferentes, mensagens diferentes... precisamos conversar sobre detalhes de parear
+a cobrança e o agente de atendimento separadamente por causa de bloqueio"*.
+
+O caminho já existe e está guardado por teste: `channel_identity` produz
+`ab-aux-{b10}-{slug}` para `purpose="auxiliary:<slug>"`, separado do número da
+corretora, e `numero_proprio()` responde quem exige QR próprio. **Nada foi
+ligado** — é só o vocabulário pronto.
+
+O que falta é decisão de produto, não código: quantos números, quem pareia, qual
+o aquecimento antes do primeiro disparo, e o que acontece quando um número é
+bloqueado no meio de uma régua de cobrança.
+
+- **Destrava:** 🧑 conversa com o Founder sobre a régua de cobrança temporária
+  via Evolution GO (antes da API Oficial da Meta), depois 🤖 a SPEC.
+- **Custa se esquecer:** cobrança sai pelo número de atendimento da corretora, e
+  um bloqueio derruba o atendimento junto — os dois serviços no mesmo risco.
