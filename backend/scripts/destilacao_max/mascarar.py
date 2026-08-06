@@ -188,6 +188,33 @@ _VOCATIVO = re.compile(
     r"^(?:(?-i:[A-ZÀ-Ú][a-zà-ú]{2,}),\s+)?"
     r"((?-i:[A-ZÀ-Ú][a-zà-ú]{2,}(?:\s+[A-ZÀ-Ú][a-zà-ú]{2,})?))(?=\s*[,!]\s*)")
 
+# O VOCATIVO DO DISPARO ATIVO — 06/08/2026.
+#
+# `_VOCATIVO` está ancorado no começo da MENSAGEM. Quando a seguradora é quem
+# inicia a conversa, ela abre com a marca dela e põe o nome duas linhas abaixo:
+#
+#     "Olá! Aqui é a Porto Seguro 👋
+#
+#      Rafael, a vistoria do seu veículo para o sinistro X está em andamento."
+#     "Eliana, os reparos do seu veículo para o sinistro X foram autorizados."
+#
+# 📊 Eu medi antes de escrever, e a medição quase matou a regra. Olhar TODA
+# linha que comece por palavra capitalizada e vírgula dá 125 casamentos nos 27
+# lotes — e **123 deles são menu**: "Guincho, técnico e chaveiro" (28),
+# "Roubo, furto, acidente" (21), "Roda, pneu e suspensão" (9), "Solicitar,
+# prorrogar ou dúvidas" (7), "Volkswagen, {PLACA}" (6). Nome de gente: dois.
+# É a hipótese "forma" sendo refutada pela quarta vez neste arquivo.
+#
+# O que separa os dois não é a vírgula — é a SEGUNDA PESSOA. Um disparo ativo
+# fala com alguém sobre a coisa dele: "do **seu** veículo", "**sua**
+# assistência". Um item de menu não tem dono. Com essa exigência, os 123 caem
+# para dois: "Elogios, … cancelar seu seguro" (protegido pelo vocabulário de
+# menu, é opção da Zurich) e "Pronto, sua assistência está em andamento"
+# (protegido pela lista de interjeição). Custo medido: zero.
+_VOCATIVO_DE_DISPARO = re.compile(
+    r"(?m)^((?-i:[A-ZÀ-Ú][a-zà-ú]{2,}(?:\s+[A-ZÀ-Ú][a-zà-ú]{2,})?))"
+    r"(?=,\s[^\n]{0,60}\b(?:seu|sua|seus|suas)\b)")
+
 # A pergunta da URA que só admite um NOME por resposta. O que vem depois dela,
 # do nosso lado, é o nome de uma pessoa — não há segunda leitura possível.
 #
@@ -197,10 +224,40 @@ _VOCATIVO = re.compile(
 # Nenhuma regra de forma alcança isso: a resposta é uma palavra capitalizada
 # solta, igual a "Guincho". Quem sabe o que ela é não é o texto dela, é a
 # pergunta que a provocou — e a pergunta está na linha de cima.
+#
+# O NEGRITO DO WHATSAPP QUEBRAVA A PERGUNTA — 06/08/2026, lote_027 l.4:
+#
+#     "Qual é o *nome completo do condutor*?"
+#     → NOS: RAFAELA LIDIA SANTOS IWAMOTO
+#
+# O padrão pedia "qual é o nome" literal e a URA da Zurich escreve o campo em
+# negrito. Um asterisco entre "o" e "nome" e a pergunta deixava de ser
+# reconhecida — a resposta, que é um nome completo e nada mais, saía inteira.
+# `\*?` em cada junta, e a lista de quem pode ser nomeado cresceu com o que o
+# acervo mostrou: condutor, motorista, passageiro.
 _PERGUNTA_POR_NOME = re.compile(
-    r"(?i)(?:qual (?:é |e )?o nome|informe o nome|nome (?:completo )?d[eoa] quem|"
+    r"(?i)(?:qual (?:é |e )?o \*?nome|informe o \*?nome|"
+    r"\*?nome (?:completo )?d[eoa] quem|"
+    r"\*?nome (?:completo )?d[oa]s? (?:condutor|motorista|passageiros?|"
+    r"respons[áa]vel|titular|segurad[oa])|"
     r"nome do respons[áa]vel|com quem (?:falo|estou falando)|"
+    r"cpf e nome completo|nome completo e cpf|"
     r"quem (?:estar[áa]|vai estar|ir[áa] estar) (?:no local|na resid[êe]ncia))")
+
+# A CONFIRMAÇÃO QUE NÃO É RESPOSTA — 06/08/2026, lote_026 l.1:
+#
+#     SEGURADORA: "Me informa o CPF e nome completo dos passageiros"
+#     NOS: "ok"
+#     NOS: "Ricardo Fernando Ferreira"
+#
+# A marca `perguntaram_nome` era consumida pela PRIMEIRA fala nossa, e a
+# primeira foi "ok". O nome vinha na segunda e passava inteiro. Estas palavras
+# não consomem a marca: elas não respondem coisa nenhuma, e mascará-las
+# apagaria a única evidência de que houve um aceite no meio da conversa.
+_SO_UM_ACEITE = re.compile(
+    r"(?i)^[\s*]*(?:ok|okay|blz|beleza|certo|sim|isso|claro|t[áa]|ta|tá bom|"
+    r"perfeito|entendi|obrigad[oa]|j[áa] vou|um momento|s[óo] um momento|"
+    r"aguarde|aguarda|pronto|agora vou|deixa eu ver)[\s.!*]*$")
 
 # INTERJEIÇÃO — a lista de quem NUNCA é nome, ainda que a seguradora não a
 # ofereça como opção de menu. 📊 Medida, não imaginada: são as 25 palavras que
@@ -378,9 +435,16 @@ def transcript_seguradora(eventos: list, vocabulario: frozenset = frozenset()) -
             txt = rx.sub("{NOME}", txt)
 
         # A resposta a uma pergunta por nome é um nome, venha na forma que vier.
+        #
+        # O ACEITE NÃO CONSOME A PERGUNTA — 06/08/2026. Ver `_SO_UM_ACEITE`:
+        # quando respondemos "ok" antes de mandar o nome, a marca era gasta no
+        # "ok" e o nome saía inteiro na mensagem seguinte. Agora o "ok"
+        # atravessa intacto e a marca continua de pé, esperando o nome.
         de_nos = e.get("direction") == "out"
         if perguntaram_nome and de_nos and txt and not txt.startswith("["):
-            txt = "{NOME}"
+            if not _SO_UM_ACEITE.match(txt):
+                txt = "{NOME}"
+                perguntaram_nome = False
         if not de_nos:
             perguntaram_nome = bool(_PERGUNTA_POR_NOME.search(txt))
         # O vocativo que a saudação NÃO denunciou: mascara-se o que a
@@ -390,8 +454,16 @@ def transcript_seguradora(eventos: list, vocabulario: frozenset = frozenset()) -
         # e "Certo Soraia," (4 ocorrências) escapavam quando a decisão era do
         # bloco: "certo" é interjeição, o bloco era poupado, e o nome ia junto
         # de carona. A interjeição protege a si mesma, não o que vem depois.
-        m = _VOCATIVO.match(txt)
-        if m:
+        #
+        # O DISPARO ATIVO entra pelo mesmo funil, com a mesma proteção. Os
+        # casamentos são aplicados do FIM para o começo, e o `_VOCATIVO` — que
+        # é sempre o da posição zero — vem por último: trocar um trecho desloca
+        # tudo que está à direita dele, e uma posição calculada antes da troca
+        # apontaria para o lugar errado.
+        for m in list(reversed(list(_VOCATIVO_DE_DISPARO.finditer(txt)))) + [
+                _VOCATIVO.match(txt)]:
+            if not m:
+                continue
             palavras = m.group(1).split()
             trocadas = ["{NOME}" if (_sem_acento(p) not in menu
                                      and _sem_acento(p) not in _INTERJEICAO)

@@ -14,6 +14,60 @@ from __future__ import annotations
 import re
 from typing import Dict, List, Optional, Tuple
 
+# ─────────────────────────────────────────────────────────────────────────────
+# O QUE UMA REGRA DE NOME NUNCA PODE ATRAVESSAR: A QUEBRA DE LINHA
+# ─────────────────────────────────────────────────────────────────────────────
+# 06/08/2026. `\s` casa `\n`, e toda regra de nome deste arquivo separava o
+# rótulo do nome com `\s+`. Resultado: o rótulo de UMA linha capturava a
+# primeira palavra da linha SEGUINTE — que num menu de URA é sempre um rótulo
+# de opção com inicial maiúscula.
+#
+# 📊 Medido nos 27 lotes de seguradora (319 sessões), com o templatize de então:
+#
+#     "Botão 2: Falar com atendente\nBotão 3: Encerrar"  →  "…\n{NOME} 3: Encerrar"
+#     "Olá!\nBotão 1: Guincho"                           →  "Olá!\n{NOME} 1: Guincho"
+#     "Bem-vindo\nVoltar ao menu"                        →  "Bem-vindo\n{NOME} ao menu"
+#     "Prezado\nConfirmar agendamento"                   →  "Prezado\n{NOME} agendamento"
+#
+# 5 ocorrências reais no acervo (lote_018 nas conversas 6,7,8,9 e lote_011 l.7)
+# contra 3.082 `Botão N` intactos — raro, e por isso perigoso: some sem rastro,
+# porque `{NOME}` parece mascaramento legítimo. E o que some é justamente o
+# rótulo do item de menu, que é a instrução de navegação que o corredor precisa.
+#
+# É a mesma família de `"Ola, quero abrir um sinistro" → "Ola, {NOME} um
+# sinistro"`: uma regra de nome comendo palavra comum capitalizada. Lá o
+# defeito era o `(?i)` valer para o padrão inteiro; aqui é o `\s` valer para o
+# `\n`. A cura é a mesma — **estreitar o que a regra tem direito de ver**.
+#
+# `_H` é espaço HORIZONTAL: espaço, tab, NBSP. Nunca quebra de linha. Toda
+# regra que ligue um rótulo ao nome que vem depois dele usa `_H`, não `\s`.
+_H = r"[^\S\n]"
+
+# O CONECTIVO DE SOBRENOME, NAS DUAS CAIXAS — `Maria de Fátima` e
+# `SONIA DE LOURDES PRASS`. Escrever só `d[aeo]s?` dentro de um `(?-i:…)` fazia
+# a repetição parar no primeiro conectivo em caixa alta, e o mascaramento saía
+# pela metade: `{NOME} DE LOURDES PRASS`. Meio nome mascarado é pior que nenhum
+# — a linha parece tratada e o sobrenome, que é o que individualiza a pessoa
+# dentro da família, segue em claro.
+_CONECTIVO = r"(?:d[aeo]s?|D[AEO]S?)" + _H + r"+"
+
+# O QUE NUNCA É NOME DE PESSOA, ainda que tenha a forma de um.
+#
+# Vale como lookahead negativo antes de CADA palavra de um nome composto, não
+# só antes da primeira: 📊 "Souza Aguiar CPF {CPF}" devolvia `{NOME} {CPF}` com
+# a sigla do documento comida junto — o rótulo do campo desaparecia e a linha
+# deixava de dizer o que aquele número era.
+#
+# A lista é curta de propósito. Ela cobre três famílias que o acervo mostrou:
+# sigla de documento, rótulo de campo e opção de menu. Marca e modelo de
+# veículo NÃO estão aqui porque não precisam estar — a regra que os pegava foi
+# a que olhava para `{PLACA}`, e ela deixou de existir.
+_NAO_E_NOME = (
+    r"(?!(?:CPF|CNPJ|RG|CNH|CRLV|Placa|PLACA|Exemplo|EXEMPLO|Voltar|VOLTAR|"
+    r"Sair|SAIR|Menu|MENU|Digite|DIGITE|Informe|INFORME|Segurado|SEGURADO|"
+    r"Segurada|SEGURADA|Cliente|CLIENTE|Titular|TITULAR|Modelo|MODELO|"
+    r"Marca|MARCA|Ano|ANO|Cor|COR|Endereco|Endereço|Telefone|TELEFONE)\b)")
+
 # NOME NA SAUDAÇÃO — a regra mora aqui fora, com nome, porque ela tem DOIS
 # leitores. O segundo é `mascarar.transcript_seguradora`, que precisa saber
 # QUEM esta regra reconheceu como nome numa sessão para mascarar as outras
@@ -55,14 +109,26 @@ from typing import Dict, List, Optional, Tuple
 # sensibilidade a maiúscula SÓ no grupo do nome: a saudação continua casando
 # "olá"/"OLÁ"/"Olá", e o nome volta a precisar de inicial maiúscula — que é a
 # única coisa que separa "Maria" de "quero".
+#
+# O separador é `_H` — 06/08/2026. Ver o bloco no topo do arquivo: com `\s+`,
+# `"Olá!\nBotão 1: Guincho"` devolvia `"Olá!\n{NOME} 1: Guincho"`. A saudação
+# de uma URA e o primeiro item do menu dela vivem em linhas diferentes, e a
+# regra não tem o direito de ligar uma na outra.
+#
+# O separador NÃO aceita aspas. Eu acrescentei `"` numa primeira escrita, por
+# causa de `Olá" Meu nome é ANDREZA` (a URA da Allianz erra a pontuação). 📊 A
+# medição contra os 27 lotes reprovou na hora: 13 ocorrências viraram
+# `Olá" {NOME} nome é {NOME}` — a palavra "Meu" comida, e a frase que ANUNCIA
+# o nome destruída junto. O nome ali já é pego pela regra de apresentação, que
+# lê "meu nome é". Uma regra a mais não protegia nada e apagava conhecimento.
 NOME_NA_SAUDACAO = re.compile(
-    r"(?i)\b(ol[áa]|oi|bem[- ]vindo[ao]?|prezad[oa])([,!]?\s+)"
+    r"(?i)\b(ol[áa]|oi|bem[- ]vindo[ao]?|prezad[oa])([,!]?" + _H + r"+)"
     r"(?!(?:digite|informe|escolha|selecione|envie|clique|aguarde|responda|"
     r"para|qual|como|quando|onde|quem|seja|bem|vamos|antes|agora|ainda|caso|"
     r"este|esta|esse|essa|isso|nossa|nosso|obrigad|tudo|aqui|sou|somos|"
     r"estamos|precisa|poderia|favor|por|deseja|voc[êe]|segue|falta|basta|"
     r"de|da|do|ao|à|a|o|senhor|senhora|novamente|cliente|segurad)\b)"
-    r"(?-i:([A-ZÀ-Ú][a-zà-ú]{2,}(?:\s+[A-ZÀ-Ú][a-zà-ú]{2,})?))")
+    r"(?-i:([A-ZÀ-Ú][a-zà-ú]{2,}(?:" + _H + r"+[A-ZÀ-Ú][a-zà-ú]{2,})?))")
 
 # LOGRADOURO EM PROSA — 06/08/2026, achado no acervo das seguradoras.
 #
@@ -91,11 +157,124 @@ NOME_NA_SAUDACAO = re.compile(
 # Flores, 123" começa com conectivo minúsculo, e exigir maiúscula logo depois
 # do tipo deixava passar todo logradouro com "da/de/do/das/dos" no nome — que
 # em português é metade deles.
+#
+# OS TIPOS QUE FALTAVAM — 06/08/2026, medidos nos 27 lotes de seguradora.
+#
+# A lista nasceu do acervo de atendimento, onde quem escreve o endereço é o
+# humano da corretora. No acervo das SEGURADORAS quem escreve é a URA, que ecoa
+# o que o Google Maps devolveu — e o Maps escreve `Estr.`, `Br-101`, `SC-281`,
+# `Unnamed Road`. Nenhum deles estava aqui, e o endereço saía inteiro:
+#
+#     "O endereço é: *Estr. Geral Coqueiros, 1963 - Angelina - SC*"   lote_001
+#     "SC-281, sertao do maruim, São José"                            lote_024
+#     "Endereço de destino: OFICINA DVA - BR-101, 205"                lote_004
+#
+# A RODOVIA por sigla (`BR-101`, `SC-281`, `RS-118`) exige o número do KM ou do
+# imóvel DEPOIS da sigla — senão "a cobertura vale na BR-101" viraria endereço,
+# e a rodovia sozinha é conhecimento (diz por onde a assistência atende).
 _LOGRADOURO = re.compile(
     r"(?i)\b(rua|r\.|av\.|avenida|alameda|al\.|travessa|rodovia|rod\.|estrada|"
-    r"pra[çc]a|servid[ãa]o|condom[íi]nio|edif[íi]cio|ed\.|residencial)\s+"
-    r"(?:(?-i:d[aeo]s?)\s+)?(?-i:[A-ZÀ-Ú0-9][^\n,;]{2,45}?)\s*,?\s*(?:n?[ºo°]?\s*)?"
-    r"\d{1,6}(?:\s*[-/]\s*\d{1,6})?\b")
+    r"estr\.|pra[çc]a|servid[ãa]o|condom[íi]nio|edif[íi]cio|ed\.|residencial|"
+    r"marginal|beco|largo|linha|loteamento|via|road|unnamed road)" + _H + r"+"
+    r"(?:(?-i:d[aeo]s?)" + _H + r"+)?(?-i:[A-ZÀ-Ú0-9][^\n,;]{2,45}?)\s*,?\s*"
+    r"(?:n?[ºo°]?\s*)?\d{1,6}(?:\s*[-/]\s*\d{1,6})?\b")
+
+# RODOVIA COM NÚMERO DE IMÓVEL — `BR-101, 205` · `SC-281, 1500`.
+# Separada do `_LOGRADOURO` porque a sigla não é uma PALAVRA de tipo: é a
+# própria identidade da via, e o que a torna endereço é o número que vem depois
+# da vírgula. Sem a vírgula-e-número, `BR-101` fica — é conhecimento de
+# cobertura, não morada de ninguém.
+_RODOVIA_COM_NUMERO = re.compile(
+    r"(?i)\b((?:BR|SC|RS|PR|SP|MG|RJ|BA|GO|MT|MS|PE|CE|PA|ES|PB|RN|AL|SE|PI|"
+    r"MA|TO|RO|AC|AP|RR|DF)\s?-\s?\d{2,3})\s*,\s*(?:n?[ºo°]?\s*)?\d{1,6}\b")
+
+# PLUS CODE DO GOOGLE — `88V9+6XW`, `W9JJ+R3G`. É coordenada: resolve para um
+# ponto de ~14 m. 📊 3 ocorrências no acervo (lote_013 l.5 e l.6, lote_022 l.8),
+# todas de zona rural, onde é a ÚNICA forma de endereço que existe — e por isso
+# a mais reveladora das três.
+#
+# O alfabeto é fechado (o Open Location Code descarta vogais e caracteres
+# ambíguos: só `23456789CFGHJMPQRVWX`), o que faz o padrão não morder sigla nem
+# fórmula: "C++", "A+B" e "2+2" não têm os quatro caracteres exigidos antes do
+# `+`.
+_PLUS_CODE = re.compile(
+    r"\b[23456789CFGHJMPQRVWX]{4,8}\+[23456789CFGHJMPQRVWX]{2,3}\b")
+
+# ENDEREÇO ANUNCIADO EM FRASE — 06/08/2026, e é o buraco mais sistemático dos
+# endereços: 📊 22 ocorrências nos 27 lotes.
+#
+# `_LABELED_VALUE` está ancorado em `^` e a lista dele é de RÓTULOS de campo. A
+# URA não escreve um campo — escreve uma frase, e o valor às vezes cai na linha
+# seguinte, entre asteriscos:
+#
+#     "O endereço é: \n\n*Estr. Geral Coqueiros, 1963 - Angelina - SC*."
+#     "*1 - Endereço da apólice:* R #### ## JUNHO;233"
+#     "Endereço de destino: OFICINA DVA - BR-101, 205"
+#
+# O "O " antes de "endereço" é o que tira a linha do alcance do `^`, e a quebra
+# de linha é o que tira o valor do alcance de qualquer regra de uma linha só.
+#
+# O DÍGITO continua sendo a regra inteira, pelo mesmo motivo de sempre:
+# "Endereço de Origem e destino (rua/av., número, bairro, cidade e estado;" é a
+# INSTRUÇÃO do formulário da seguradora — conhecimento puro — e não tem número.
+# Já "…: Rua X, 1963" tem, e só serve para uma pessoa.
+_ENDERECO_ANUNCIADO = re.compile(
+    r"(?im)^(.{0,30}?\bendere[çc]o|.{0,30}?\blocaliza[çc][ãa]o|"
+    r".{0,20}?\bponto de refer[êe]ncia)"
+    r"([^\n:]{0,25}:" + _H + r"*\*?)"
+    r"(\n{0,2}" + _H + r"*\*?)"
+    r"(?![\s*]*(?:\{|$))"
+    r"((?=[^\n]*\d)[^\n]{4,90})")
+
+# COMPLEMENTO DE ENDEREÇO — bloco, apartamento, torre, quadra, lote, sala.
+#
+# 📊 217 ocorrências nos 27 lotes (`apto 1104`, `Bloco 2`, `APTO 302`,
+# `bloco 15 ap 203`, `ap 1301`). O logradouro já era mascarado e o complemento
+# ficava na mesma linha, em claro — que é o pior dos dois estados: metade do
+# endereço protegida, metade não, e a linha PARECE tratada.
+#
+# A palavra FICA e o número sai, pelo mesmo motivo pelo qual o tipo do
+# logradouro fica: "a Porto pede bloco e apartamento" é conhecimento sobre o
+# formulário da seguradora; QUAL apartamento é a casa de uma pessoa.
+#
+# O DÍGITO é a regra inteira, de novo: "o apartamento estava vazio" e "o bloco
+# de coberturas" não têm número e passam inteiros. `\b` antes de `ap` impede
+# que a regra veja "cap 3" ou "recap 2".
+#
+# E A LINHA DE EXEMPLO DA URA FICA INTEIRA — 06/08/2026, achado pelo controle.
+# A primeira escrita desta regra comia 109 ocorrências de instrução:
+#
+#     "( Ex: Bloco 2, apartamento 24, Casa 11, em frente ao shopping )"   81x
+#     "_(Ex: em frente ao shopping, Casa 11)_"                            28x
+#
+# É a Porto ensinando o formato do complemento. O número ali não é a casa de
+# ninguém — é o exemplo. Mascarar não vaza nada e não protege nada; só apaga a
+# instrução que o corredor precisa para preencher o campo.
+#
+# Quem decide é a LINHA, não o casamento: se a linha se declara exemplo, o
+# complemento dela é ilustração. `_e_exemplo` é o mesmo julgamento que
+# `_mask_labeled` já faz com "sem dois-pontos é frase, não campo" — olhar um
+# palmo além do que casou antes de apagar.
+_COMPLEMENTO = re.compile(
+    r"(?i)\b(bloco|bl\.?|apto\.?|apartamento|ap\.?|torre|quadra|lote|"
+    r"sala|conj\.?|conjunto|casa)(" + _H + r"*:?" + _H + r"*)"
+    r"(?:n?[ºo°]" + _H + r"*)?\d{1,5}\b")
+
+_LINHA_DE_EXEMPLO = re.compile(r"(?i)\b(?:ex|exemplo|modelo de|formato)\b\s*:?")
+
+
+def _e_exemplo(m: re.Match) -> bool:
+    """A linha em que este casamento caiu se declara exemplo?"""
+    texto = m.string
+    ini = texto.rfind("\n", 0, m.start()) + 1
+    fim = texto.find("\n", m.end())
+    return bool(_LINHA_DE_EXEMPLO.search(texto[ini:fim if fim >= 0 else len(texto)]))
+
+
+def _mascara_complemento(m: re.Match) -> str:
+    if _e_exemplo(m):
+        return m.group(0)
+    return f"{m.group(1)}{m.group(2)}{{NUM}}"
 
 # Ordem importa: específico → genérico.
 _PII_PATTERNS: List[Tuple[re.Pattern, str]] = [
@@ -112,10 +291,10 @@ _PII_PATTERNS: List[Tuple[re.Pattern, str]] = [
     # nome: "Sr. Corretor", "Sra. Segurada". Errar aqui custa um papel virando
     # `{NOME}`, o que não apaga conhecimento nenhum — o papel já está dito na
     # frase inteira.
-    (re.compile(r"(?i)\b(sr|sra|srta|dr|dra|dona|senhor|senhora)(\.?\s+)"
+    (re.compile(r"(?i)\b(sr|sra|srta|dr|dra|dona|senhor|senhora)(\.?" + _H + r"+)"
                 r"(?!(?:corretor|corretora|segurad|cliente|gerente|perito|"
                 r"doutor|doutora|advogad|analista|atendente|titular)\b)"
-                r"(?-i:[A-ZÀ-Ú][a-zà-ú]{2,}(?:\s+[A-ZÀ-Ú][a-zà-ú]{2,})?)"),
+                r"(?-i:[A-ZÀ-Ú][a-zà-ú]{2,}(?:" + _H + r"+[A-ZÀ-Ú][a-zà-ú]{2,})?)"),
      r"\1\2{NOME}"),
     # NOME DEPOIS DE APRESENTAÇÃO OU DE PERGUNTA POR NOME — 06/08/2026.
     #
@@ -133,17 +312,98 @@ _PII_PATTERNS: List[Tuple[re.Pattern, str]] = [
     # Aceita CAIXA ALTA no nome ("THAIS"), que as outras regras de nome não
     # aceitam de propósito: aqui o rótulo já garantiu que o que vem é nome, e
     # atendente de central escreve o próprio nome em maiúscula o tempo todo.
+    #
+    # O NOME INTEIRO, e não só duas palavras — 06/08/2026, e é o buraco que
+    # mais enganava porque a linha PARECIA resolvida:
+    #
+    #     "Olá, meu nome é {NOME} SALES e irei realizar seu atendimento."
+    #     "meu nome é {NOME} MOURA TERRA"   ·   "{NOME} DIAS DOS SANTOS"
+    #
+    # 📊 6 ocorrências nos 27 lotes (lote_015 l.6, lote_025 l.2/8/10,
+    # lote_026 l.1). O quantificador era `(?:…)?` — uma repetição, no máximo —
+    # e nome brasileiro tem três a cinco palavras. O `{NOME}` colocado no lugar
+    # do primeiro nome dava a impressão de proteção, e o sobrenome — que é o
+    # que individualiza uma pessoa dentro de uma família — seguia em claro.
+    #
+    # O conectivo minúsculo (`de`, `da`, `dos`) entra na repetição pelo mesmo
+    # motivo que entrou no logradouro: sem ele, "DIAS DOS SANTOS" parava em
+    # "DIAS" e deixava "DOS SANTOS" para trás.
+    #
+    # O limite de 5 e o `_H` são o freio. Um nome não atravessa a quebra de
+    # linha, e a frase que segue o nome quase sempre começa por minúscula
+    # ("e irei realizar") — que é o que faz a repetição parar sozinha.
+    #
+    # A PERGUNTA DE IDENTIDADE DA PORTO entrou na mesma lista: `falando com`.
+    # 📊 33 ocorrências, 8 sessões, sempre a primeira fala da URA:
+    #
+    #     "Eu estou falando com Nair?"          →  nome do segurado
+    #     "Eu estou falando com Segurado(a)?"   →  a MESMA tela, sem nome
+    #
+    # O segundo é o controle que a própria Porto escreve: quando ela não sabe
+    # o nome, imprime o papel. `segurad` já está na exclusão, e é ele que faz a
+    # tela genérica sobreviver enquanto a personalizada é mascarada.
     (re.compile(r"(?i)\b(meu nome (?:é|e)|me chamo|nome de quem|"
                 r"quem (?:estar[áa]|est[áa]|vai estar|ir[áa] estar)[^:\n]{0,30}|"
-                r"nome do respons[áa]vel|falo com|atendente)"
-                r"(\s*:?\*?\s+)"
-                r"(?!(?:o|a|um|uma|voc[êe]|senhor|senhora|segurad|cliente)\b)"
-                r"(?-i:[A-ZÀ-Ú][A-Za-zà-ú]{2,}(?:\s+[A-ZÀ-Ú][A-Za-zà-ú]{2,})?)"),
+                r"nome do respons[áa]vel|falo com|falando com|atendente)"
+                r"(" + _H + r"*:?\*?" + _H + r"+)"
+                # `segurad` e `corretor` SEM `\b` no fim — 06/08/2026, e é o
+                # controle que a própria Porto escreve. Quando ela não sabe o
+                # nome, imprime `"Eu estou falando com Segurado(a)?"`. Com
+                # `segurad\b` a exclusão falhava (depois de "segurad" vem "o",
+                # não uma fronteira) e a tela genérica virava
+                # `"falando com {NOME}(a)?"` — 📊 6 ocorrências. Mascarar um
+                # papel apaga a tela que a URA usa para TODO mundo, que é
+                # justamente a que mais ensina.
+                r"(?!(?:segurad|corretor|cliente|titular|respons[áa]vel|"
+                r"analista|atendente|condutor|motorista)\w*\b)"
+                r"(?!(?:o|a|um|uma|voc[êe]|senhor|senhora|meu|minha|nome)\b)"
+                r"(?-i:[A-ZÀ-Ú][A-Za-zà-ú]{2,}"
+                r"(?:" + _H + r"+(?:" + _CONECTIVO + r")?"
+                + _NAO_E_NOME + r"[A-ZÀ-Ú][A-Za-zà-ú]{2,}){0,4})"),
+     r"\1\2{NOME}"),
+    # PAPEL DE PESSOA + NOME PRÓPRIO — 06/08/2026.
+    #
+    # A URA e a corretora nomeiam quem está no local, e o rótulo não é campo de
+    # formulário nenhum — é o papel dito no meio da frase:
+    #
+    #     "Motorista Allan Souza Silveira"                       lote_019 l.6
+    #     "Condutor : ANDREZZA HAUTSCH OIKAWA ROCHA"             lote_015 l.12
+    #     "conduzido por Rafaela Lídia Santo Iwamoto"            lote_027 l.4
+    #     "recebido pelo Fábio porteiro"                          lote_025 l.8
+    #
+    # DUAS palavras no mínimo. Um papel seguido de UMA palavra capitalizada é
+    # quase sempre operação, não gente — e é o que separa a regra de comer a
+    # nota de andamento que a seguradora escreve em caixa alta:
+    #
+    #     "SEGURADO VAI COMPRAR MATERIAL"   lote_007 l.3   ← precisa sobreviver
+    #     "SEGURADA, FICOU DE RETORNAR"     lote_005 l.10  ← precisa sobreviver
+    #
+    # A vírgula depois do papel também exclui: "SEGURADA, ..." é o sujeito de
+    # uma frase, não a etiqueta de um nome. `seg`/`segurado` sem dois-pontos
+    # ficam DE FORA por isso — o custo está registrado no relatório.
+    (re.compile(r"(?i)\b(motorista|condutor|conduzid[oa] por|porteir[oa]|"
+                r"propriet[áa]ri[oa]|preposto|s[óo]cio|"
+                r"segurad[oa]|titular|respons[áa]vel|benefici[áa]ri[oa])"
+                r"(" + _H + r"*:" + _H + r"*|" + _H + r"+)"
+                r"(?!(?:d[aeo]s?|que|n[ãa]o|vai|foi|est[áa]|ir[áa]|ficou|"
+                r"informou|precisa|pediu|solicitou|confirmou|autoriz|aguarda|"
+                r"ser[áa]|tem|deve|pode|principal|do|da)\b)"
+                r"(?-i:[A-ZÀ-Ú][A-Za-zà-ú]{2,}"
+                r"(?:" + _H + r"+(?:" + _CONECTIVO + r")?"
+                + _NAO_E_NOME + r"[A-ZÀ-Ú][A-Za-zà-ú]{2,}){1,4})"),
      r"\1\2{NOME}"),
     # LOGRADOURO EM PROSA — 06/08/2026. Definida acima, junto da medição.
     # Vem cedo: os padrões numéricos abaixo mordem o número da casa e deixam o
     # nome da rua exposto, que é o pior dos dois estados.
+    #
+    # As três de endereço vêm juntas e ANTES de tudo que é numérico, pelo mesmo
+    # motivo: qualquer regra de dígito morde o número da casa e deixa o nome da
+    # rua exposto.
+    (_ENDERECO_ANUNCIADO, r"\1\2\3{ENDERECO}"),
     (_LOGRADOURO, r"\1 {ENDERECO}"),
+    (_RODOVIA_COM_NUMERO, r"\1, {ENDERECO}"),
+    (_PLUS_CODE, "{ENDERECO}"),
+    (_COMPLEMENTO, _mascara_complemento),
     # `(?<!\d)` e `(?!\d)` no lugar de `\b`. A fronteira de palavra falha ao
     # lado de sublinhado, porque para o regex `_` é letra: num anexo chamado
     # `CTPS_12345678900.pdf` o CPF passava inteiro. Achado por um subagente
@@ -183,6 +443,26 @@ _PII_PATTERNS: List[Tuple[re.Pattern, str]] = [
                 r"([^\d\n]{0,20})"
                 r"(?<!\d)(?:\+?55\s?)?\(?\d{2}\)?\s?9?[\s.-]?\d{4}[\s.-]?\d{3,4}(?!\d)"),
      r"\1\2{TELEFONE}"),
+    # CNPJ COM O AGRUPAMENTO ERRADO — 06/08/2026, lote_026 l.11.
+    #
+    #     "056.087.72/0001-77"      ← foi isto que o humano digitou
+    #      05.608.772/0001-77       ← é isto que a máscara sabia reconhecer
+    #
+    # Os catorze dígitos são os mesmos; os pontos é que estão no lugar errado.
+    # A regra de baixo valida a FORMA do agrupamento, e a URA da Yelum respondeu
+    # "Sua resposta não corresponde a nenhuma opção" — ou seja, o documento nem
+    # sequer funcionou, e mesmo assim atravessou o portão inteiro em claro.
+    #
+    # A assinatura que NÃO depende do agrupamento é o rabo: barra, quatro
+    # dígitos de filial, hífen e dois de verificador. Isso não existe em
+    # protocolo, em data nem em valor — `01/2026` tem quatro dígitos mas não tem
+    # o `-99` no fim, e `R$ 1.000,00` não tem barra.
+    #
+    # 📊 1 ocorrência no acervo. Uma só, e mesmo assim vale a regra: é o número
+    # de inscrição de um condomínio segurado, e a próxima exportação traz
+    # outros — a digitação errada não é rara, o que era raro é alguém medir.
+    (re.compile(r"(?<![\d./\-])\d[\d.\s\-]{8,14}/" + _H + r"?\d{4}" + _H +
+                r"?-?" + _H + r"?\d{2}(?![\d\-])"), "{CNPJ}"),
     # O separador aceita ESPAÇO. "123 456 789 00" é como o segurado digita o
     # CPF no WhatsApp, e só a forma com ponto era reconhecida.
     (re.compile(r"(?<!\d)\d{3}[\s.]?\d{3}[\s.]?\d{3}[\s-]?\d{2}(?!\d)"), "{CPF}"),
@@ -214,7 +494,35 @@ _PII_PATTERNS: List[Tuple[re.Pattern, str]] = [
     # O `\s?` depois do 9 — é como muita gente escreve: "(51) 9 9999-8888".
     # O padrão exigia o 9 colado no resto e deixava passar o formato mais comum
     # em teclado de celular. Achado no lote 041 em 30/07/2026.
-    (re.compile(r"(?<!\d)(?:\+?55\s?)?\(?\d{2}\)?\s?9?\s?\d{4}[-\s]?\d{4}(?!\d)"), "{TELEFONE}"),
+    #
+    # O DDD COM ZERO NA FRENTE — 06/08/2026, lote_019 l.11:
+    #
+    #     "*Nome e telefone do motorista que está no local:* *Charles*
+    #      *048-99147-8922*"
+    #
+    # Duas coisas ao mesmo tempo. O `(?<!\d)` existe para impedir que a regra
+    # morda o meio de um número maior — e ele funcionava contra o próprio
+    # telefone: o motor tentava casar a partir do `48`, via o `0` à esquerda e
+    # desistia. O DDD com zero é como se disca de telefone fixo e como muita
+    # gente ainda escreve.
+    #
+    # E o rótulo estava longe demais para a regra de cima: "telefone" e o número
+    # estão separados por 44 caracteres ("do motorista que está no local:*
+    # *Charles* *"), e ela só olha 20. Aqui a forma resolve sozinha.
+    #
+    # O `0?` fica DENTRO do lookbehind negativo, não fora: `(?<!\d)0?\(?\d{2}` —
+    # o zero é parte do DDD, e é ele que precisa estar na fronteira.
+    #
+    # E o separador depois do DDD passou a aceitar HÍFEN. Era `\s?`, e a forma
+    # do lote é `048-99147-8922`: com o hífen entre DDD e número, o motor parava
+    # ali. Quem escreve o DDD com zero costuma escrever com hífen — as duas
+    # metades do mesmo defeito, e consertar só uma não muda o resultado.
+    #
+    # O primeiro bloco aceita 4 OU 5 dígitos (`99147-8922`): celular tem nove
+    # dígitos e a divisão `5-4` é a que o teclado do celular sugere.
+    (re.compile(r"(?<!\d)(?:\+?55[-\s.]?)?0?\(?\d{2}\)?[-\s.]?9?[-\s.]?"
+                r"\d{4,5}[-\s.]?\d{4}(?!\d)"),
+     "{TELEFONE}"),
     (re.compile(r"\b\d{2}/\d{2}/\d{2,4}\b"), "{DATA}"),
     # O `(?=[\w-]*\d)` exige um DÍGITO no que vem depois da palavra.
     #
@@ -288,7 +596,17 @@ _PII_PATTERNS: List[Tuple[re.Pattern, str]] = [
     #
     # O `(?<![\d{])` e o `(?![\d}])` impedem que a regra morda o interior de um
     # placeholder já colocado.
-    (re.compile(r"(?<![\d{])\d{7,11}(?![\d}])"), "{NUMERO}"),
+    #
+    # O TETO SUBIU DE 11 PARA 12 — 06/08/2026, achado ao testar o disparo ativo
+    # da Porto: `"a vistoria do seu veículo para o sinistro 531202690931"`.
+    # Doze dígitos corridos não casavam em regra nenhuma: `{NUMERO}` parava em
+    # 11 e `{CARTAO}` só começa em 13. Um vão de exatamente uma casa decimal,
+    # e o número de sinistro da Porto mora dentro dele.
+    #
+    # Treze continua sendo cartão: o menor cartão emitido tem 13 dígitos, e
+    # roubar essa faixa faria o número de cartão sair rotulado como número
+    # qualquer — proteção igual, rótulo mentiroso.
+    (re.compile(r"(?<![\d{])\d{7,12}(?![\d}])"), "{NUMERO}"),
     # NÚMERO SOZINHO NUMA LINHA, SEM RÓTULO NENHUM.
     #
     # O lote 024 trouxe seis casos assim: login do portal Bradesco em grupos de
@@ -382,6 +700,54 @@ _PII_PATTERNS: List[Tuple[re.Pattern, str]] = [
                 # "o mascarador não trata senha". Tratava — só não com hífen.
                 r"\s*(?:[:.=\-–|]|\b[ée]\b)?\s*(?=[\w@.\-/!#$%&*+=?]*\d)"
                 r"[\w@.\-!#$%&*+=?]{3,}"), r"\1 {VALOR}"),
+    # NOME COLADO A UM DOCUMENTO — 06/08/2026, e é a última regra da lista de
+    # propósito: ela lê os PLACEHOLDERS que as regras de cima acabaram de pôr.
+    #
+    # A corretora despacha a ficha do caso numa linha só, e o nome vai junto do
+    # documento porque é assim que a seguradora pede:
+    #
+    #     "{CPF} - ALTAMIRO OSMAR KOERICH {PLACA}"           lote_024 l.3
+    #     "JESSICA LUANA GRIGGIO - {CPF}"                     lote_009 l.8
+    #     "Paula walter Tavares Ferreira {CPF}"               lote_026 l.1
+    #     "{CPF}  SEG SONIA DE LOURDES PRASS"                 lote_020 l.4
+    #
+    # Aqui não é preciso decidir se aquilo é gente ou razão social: **o que está
+    # colado a um CPF é o titular daquele CPF**, e a razão social do condomínio
+    # segurado merece a mesma máscara que o nome do segurado. Quem NÃO merece é
+    # a seguradora — e ela nunca aparece encostada num documento de cliente.
+    #
+    # SÓ `{CPF}` E `{CNPJ}` — a placa ficou de fora, e essa foi a medição mais
+    # útil desta regra. 📊 Nos 27 lotes, o que encosta em cada documento é
+    # sistematicamente diferente:
+    #
+    #     junto de {CPF}/{CNPJ}   ALTAMIRO OSMAR KOERICH · JESSICA LUANA
+    #                             GRIGGIO · SONIA DE LOURDES PRASS   → gente
+    #     junto de {PLACA}        BYD SONG PLUS · MITSUBISHI OUTLANDER ·
+    #                             DOLPHIN · Voltar RAM               → carro
+    #
+    # Incluir a placa custava quatro falsos positivos e não ganhava um nome
+    # sequer que o CPF já não pegasse. O documento identifica a PESSOA; a placa
+    # identifica o VEÍCULO, e ao lado dela vem marca e modelo.
+    #
+    # A exclusão cobre o que a URA escreve com a mesma forma e precisa
+    # sobreviver — "Exemplo de CPF: {CPF}" (ensinando o formato) — e as siglas
+    # de documento, que senão entram no meio do nome: "Souza Aguiar CPF {CPF}"
+    # devolvia `{NOME} {CPF}` com o "CPF" comido junto.
+    #
+    # O `:` como separador está fora: rótulo com dois-pontos é campo, e campo é
+    # assunto do `_LABELED_VALUE`. Duas palavras no mínimo, pelo mesmo motivo da
+    # regra de papel.
+    (re.compile(r"(?-i:(\{(?:CPF|CNPJ)\}" + _H + r"*[\-–,]?" + _H + r"*)"
+                r"((?:" + _NAO_E_NOME + r"[A-ZÀ-Ú][A-Za-zà-ú]{2,})"
+                r"(?:" + _H + r"+(?:" + _CONECTIVO + r")?"
+                + _NAO_E_NOME + r"[A-ZÀ-Ú][A-Za-zà-ú]{2,}){1,5})"
+                r"(?![A-Za-zÀ-ÿ]))"),
+     r"\1{NOME}"),
+    (re.compile(r"(?-i:((?<![A-Za-zÀ-ÿ])(?:" + _NAO_E_NOME + r"[A-ZÀ-Ú][A-Za-zà-ú]{2,})"
+                r"(?:" + _H + r"+(?:" + _CONECTIVO + r")?"
+                + _NAO_E_NOME + r"[A-ZÀ-Ú][A-Za-zà-ú]{2,}){1,5})"
+                r"(" + _H + r"*[\-–,]?" + _H + r"*\{(?:CPF|CNPJ)\}))"),
+     r"{NOME}\2"),
 ]
 
 # Rótulos de campo que costumam preceder um VALOR de cliente numa linha
@@ -392,8 +758,42 @@ _PII_PATTERNS: List[Tuple[re.Pattern, str]] = [
 # 10h00 e 12h00" (Porto) não eram mascarados, e cada protocolo diferente virava
 # uma TELA diferente: 18 nós na Yelum e 10 na Porto para o que é uma tela só.
 # Mascarado o valor, o mapa volta a ter o tamanho da URA de verdade.
+#
+# O QUALIFICADOR ENTRE O RÓTULO E OS DOIS-PONTOS — 06/08/2026, e é o buraco
+# mais sistemático que este acervo tinha: 📊 71 ocorrências em 27 lotes, o
+# bloco de confirmação cadastral que a Allianz manda em toda apólice.
+#
+#     "Nome do titular da apólice: MARIELLA VALERIO MEIRA"
+#     "Nome do titular da apólice: CONDOMINIO EDIFICIO EUGENIO MULLER"
+#
+# `nome` SEMPRE esteve nesta lista. O que não estava previsto é que a
+# seguradora escreve mais quatro palavras antes dos dois-pontos — e aí o grupo
+# do rótulo terminava em "Nome ", o valor virava "do titular da apólice:
+# MARIELLA…", e a heurística do "sem dois-pontos" (que existe para não comer
+# frase) via um "do" minúsculo, concluía que aquilo era prosa e devolvia a
+# linha inteira intacta. Duas defesas certas somando um vazamento.
+#
+# 📊 A prova de que a linha vizinha funcionava: no MESMO bloco,
+# "Endereço: {VALOR}" e "Titular: {VALOR}" saíam mascarados. Só o campo com
+# qualificador escapava — o que torna a linha ainda mais enganosa, porque o
+# bloco PARECE tratado.
+#
+# O qualificador é uma lista FECHADA de palavras de ficha, não `\w+`: com
+# `\w+` qualquer frase que comece por uma das palavras-rótulo viraria campo, e
+# é exatamente o defeito de 29/07/2026 que jogou 17% das cartas fora.
+#
+# `localiza[çc][ãa]o` entrou junto (lote_011 l.7: "Localização: R. João Antônio
+# da Silveir#, ###" — o endereço do atendimento, num rótulo que ninguém tinha
+# escrito ainda).
+_QUALIFICADOR = (
+    r"(?:" + _H + r"+(?:d[aeo]s?|d[oa]\(a\)|\([oa]\)|completo|principal|"
+    r"ap[óo]lice|seguro|ve[íi]culo|carro|im[óo]vel|sinistro|contrato|"
+    r"titular|respons[áa]vel|condutor|motorista|segurad[oa]|passageiros?|"
+    r"origem|destino|local|seguradora|banc[áa]ri[oa]s?|contato)){0,4}")
+
 _LABELED_VALUE = re.compile(
     r"(?im)^(\s*[\*\-•]*\s*\*?(?:nome|modelo|placa|ve[íi]culo|cor|endere[çc]o|"
+    r"localiza[çc][ãa]o|condutor|motorista|passageiro|"
     r"cliente|segurado|cpf|cnpj|telefone|celular|marca|ano|cidade|estado|bairro|rua|"
     r"n[úu]mero|complemento|refer[êe]ncia|logradouro|"
     r"assist[êe]ncia|agendamento|protocolo|boleto|parcelas?|senha|ordem|"
@@ -410,13 +810,90 @@ _LABELED_VALUE = re.compile(
     r"favorecido|benefici[áa]rio|titular|"
     r"chamado|solicita[çc][ãa]o|atendimento|pedido|ap[óo]lice|sinistro|contrato|"
     r"data do (?:vencimento|pagamento(?: mensal)?)|"
-    r"quantidade de parcelas(?: a pagar| restantes)?)\*?\s*:?\*?\s*)(.+)$"
+    r"quantidade de parcelas(?: a pagar| restantes)?)"
+    + _QUALIFICADOR + r"\*?\s*:?\*?\s*)(.+)$"
 )
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+# O QUE É CONHECIMENTO E NENHUMA REGRA DE PII TEM O DIREITO DE TOCAR
+# ─────────────────────────────────────────────────────────────────────────────
+# 06/08/2026. Este é o erro OPOSTO ao vazamento, e é o mais caro dos dois
+# porque não deixa rastro: ninguém audita o que não existe.
+#
+# A URA da Tokio imprime o telefone da própria central numa linha só, e a linha
+# saía assim do mascarador:
+#
+#     "Para solicitar assistência para demais serviços de reparos:
+#      {NUMERO}"                                   lote_021 l.8/9/10/12, l.5
+#     "*Fale conosco / SAC:*
+#      {NUMERO}"                                   lote_021 l.8
+#     "Para solicitar assistência para demais serviços de reparos:
+#      {CPF}"                                      lote_021 l.5, lote_022 l.1
+#
+# 📊 Reproduzido no laboratório com o templatize de então: `"0800 727 2007"`
+# devolvia `{NUMERO}` e `"08007272007"` devolvia `{CPF}`. Não é vazamento — é
+# a informação de que aquele caminho da URA é TELEFÔNICO sendo apagada, e o
+# corredor deixando de descobrir que existe um canal ali.
+#
+# A separação é segura e não depende de contexto: **0300, 0500, 0800, 3003,
+# 4003, 4004 e 4090 são prefixos de serviço comercial.** A Anatel não os
+# atribui a pessoa física; não existe segurado cujo telefone comece assim. É a
+# única classe de número neste arquivo que dá para declarar conhecimento sem
+# olhar a frase em volta.
+#
+# 📊 Medido: 23 desses números já sobreviviam no acervo — os que estão no MEIO
+# de uma frase ("ligue 0800 701 2757 - demais regiões"). Só os que ocupavam a
+# linha inteira eram comidos, porque a regra "linha só com dígitos é dado de
+# alguém" não tinha como saber. Agora tem.
+#
+# COMO, e por que não por ordem de regra: nenhuma ordenação resolve, porque o
+# que morde não é uma regra só (é `{CPF}`, é `{NUMERO}`, seria `{CARTAO}`). O
+# trecho é RETIRADO do texto antes de qualquer regra rodar e devolvido idêntico
+# no fim. O marcador `\x00n\x00` não pode aparecer em texto de WhatsApp, e o
+# resultado final é byte a byte igual ao original nesses trechos — o
+# `node_hash` da tela não muda por causa disto.
+# O SEPARADOR É OBRIGATÓRIO no 0800/0300/0500, e é aqui que a regra escolhe o
+# lado seguro. Um 0800 escrito corrido (`08007272007`) tem os mesmos onze
+# dígitos de um CPF que comece por 080 — e um CPF assim existe. Sem separador
+# não há como saber qual dos dois é, então o número continua sendo tratado como
+# documento e mascarado.
+#
+# 💭 O custo: um 0800 digitado sem espaço nenhum vira `{CPF}` e o canal
+# telefônico se perde naquela linha. 📊 No acervo isso não acontece — as 23
+# ocorrências reais têm separador ("0800 701 2757", "0800-888-2532",
+# "4004 2757"), porque quem publica telefone de central publica legível.
+#
+# Os prefixos de quatro dígitos (3003/4003/4004/4090) têm oito dígitos no
+# total, longe dos onze do CPF, e por isso dispensam o separador.
+_CONHECIMENTO_INTOCAVEL = re.compile(
+    r"(?<![\d\-])(?:(?:0300|0500|0800)[\s.\-]\d{2,4}(?:[\s.\-]?\d{3,4})?"
+    r"|(?:3003|4003|4004|4090)[\s.\-]?\d{4})(?!\d)")
+
+_MARCA = "\x00%d\x00"
+
+
+def _reservar(s: str):
+    """Tira do texto o que é conhecimento e não pode ser mascarado."""
+    guardados: List[str] = []
+
+    def _troca(m: re.Match) -> str:
+        guardados.append(m.group(0))
+        return _MARCA % (len(guardados) - 1)
+
+    return _CONHECIMENTO_INTOCAVEL.sub(_troca, s), guardados
+
+
+def _devolver(s: str, guardados: List[str]) -> str:
+    for i, original in enumerate(guardados):
+        s = s.replace(_MARCA % i, original)
+    return s
 
 
 def templatize(text: str) -> str:
     """Devolve a tela com a PII trocada por placeholders. Determinístico."""
     s = str(text or "")
+    s, guardados = _reservar(s)
     for rx, repl in _PII_PATTERNS:
         s = rx.sub(repl, s)
     # "Placa: QJQ0A91" → "Placa: {VALOR}" (o valor após o rótulo é dado do cliente)
@@ -424,6 +901,18 @@ def templatize(text: str) -> str:
         val = m.group(2).strip()
         # não mascara se o "valor" já é placeholder ou é curtíssimo/opção
         if val.startswith("{") or len(val) <= 1:
+            return m.group(0)
+        # O PARÊNTESE ANTES DO PLACEHOLDER — 06/08/2026, achado pelo controle.
+        #
+        # `Telefone do responsável: ({TELEFONE}` (📊 77 ocorrências) só passou a
+        # cair aqui quando o qualificador entrou na lista de rótulos. O valor
+        # JÁ estava mascarado, e com o rótulo certo; a regra o trocava por
+        # `{VALOR}` e o campo passava a mentir por omissão — quem lê a carta
+        # deixa de saber que ali havia um telefone.
+        #
+        # CLAUDE.md §12.1: rótulo específico vence rótulo genérico. Se o que
+        # sobrou do valor é só pontuação e placeholders, não há o que mascarar.
+        if not re.sub(r"\{[A-Z_]+\}|[\s()\[\]*.,;:\-–|/]+", "", val):
             return m.group(0)
         # SEM DOIS-PONTOS, o rótulo pode ser só a primeira palavra de uma frase.
         #
@@ -454,7 +943,7 @@ def templatize(text: str) -> str:
                 return m.group(0)
         return f"{m.group(1)}{{VALOR}}"
     s = _LABELED_VALUE.sub(_mask_labeled, s)
-    return s
+    return _devolver(s, guardados)
 
 
 # Linhas que NÃO são escolha de menu (eco de dados do cliente): "Placa: {X}",

@@ -1840,7 +1840,23 @@ rodando em produção no mesmo minuto.
   seguradora faz** em vez de o que a corretora faz, e o rótulo de seguradora
   dele é confiável por construção — o que o acervo antigo nunca teve.
 
-### O que falta ANTES de aplicar: não existe `aplicar_seguradoras.py`
+### ✅ 06/08/2026 — `aplicar_seguradoras.py` existe, testado e NÃO rodado
+
+O aplicador foi escrito, provado por mutação (12 mutações, 12 pegas) e rodado
+**só em simulação**. 📊 Previsto sobre os 24 lotes destilados até então:
+**288 sessões · 1.138 cartas · 1.138 inéditas**, `select` confirmando
+`sessoes_marcadas = 0` e `cartas_do_acervo_observado = 0` no banco.
+
+A decisão de rótulo foi tomada como recomendado — `insurer_key` da sessão
+observada vale direto —, com um guarda estreito para o caso Porto→Azul. 📊 A
+medição que sustenta: 915 de 918 fatos (99,7%) nomeiam a própria seguradora,
+contra 32,3% no acervo de atendimento. Ver o cabeçalho do script.
+
+**Falta só 🧑 mandar rodar com `--aplicar`, com a reindexação parada.**
+
+O texto abaixo é o registro do que era o problema.
+
+### O que faltava ANTES de aplicar: não existia `aplicar_seguradoras.py`
 
 `aplicar.py` escreve `summary.distilled` em **`attendance_sessions`**. Este
 acervo mora em `observed_sessions`. Aplicar com ele marcaria a sessão errada —
@@ -1913,3 +1929,31 @@ então ele não chega ao acervo. Mas ele chega ao **lote**, e ao destilador.
   `\d-\d{10,}`. Uma linha, com controle de que "197" e "2026" sobrevivem.
 - **Custa se esquecer:** um identificador de atendimento de um segurado real
   fica legível num arquivo em disco.
+
+## P-109 · 🟠 `aplicar.py` marca a sessão ANTES de gravar as cartas
+
+Encontrado em 06/08/2026 ao escrever o `aplicar_seguradoras.py`, que faz o
+contrário de propósito.
+
+`aplicar.py` escreve `summary.distilled` dentro do laço, conversa a conversa, e
+só faz o `upsert` das cartas no **fim do arquivo**. As duas escritas não são uma
+transação. Se a rodada cair entre elas — rede, chave expirada, Ctrl-C — as
+sessões já marcadas ficam declaradas destiladas **sem uma carta no acervo**, e a
+marca é justamente o "não volte mais": `exportar.py` e o destilador as pulam
+para sempre.
+
+A carta é idempotente (`on_conflict=card_hash, ignore_duplicates`); a marca é
+irreversível na prática. Gravando as cartas primeiro, qualquer queda deixa
+trabalho refazível. Gravando a marca primeiro, deixa conhecimento perdido em
+silêncio — e ninguém descobre, porque o sintoma é uma sessão que parece pronta.
+
+Não entrou de carona no trabalho de 06/08 porque `aplicar.py` está em uso e
+funciona; trocar a ordem dele é uma mudança de comportamento que merece o seu
+próprio controle.
+
+- **Destrava:** 🤖 mover o `upsert` das cartas para antes do laço que marca as
+  sessões — a mesma ordem que `aplicar_seguradoras._gravar` já usa e que
+  `test_a_carta_da_seguradora_sabe_de_quem_e` já guarda nas duas direções.
+- **Custa se esquecer:** cada queda no meio de uma rodada apaga em definitivo o
+  conhecimento das conversas que estavam no arquivo naquele momento, e a perda
+  não deixa rastro nenhum.

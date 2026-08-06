@@ -183,6 +183,316 @@ def teste_logradouro_com_numero_sai_e_prosa_fica():
                templatize(frase))
 
 
+# ── 3b. os sete buracos medidos em 06/08/2026 ─────────────────────────────────
+#
+# Cada um foi achado em material real, com lote e linha, e cada um tem aqui o
+# par obrigatório: o que PRECISA ser mascarado e o que PRECISA sobreviver.
+# Um teste que só mostrasse a máscara aprovaria uma regra que apaga a conversa
+# inteira — foi o que quase aconteceu duas vezes na escrita destas regras.
+
+
+def teste_a_regra_de_nome_nao_atravessa_a_quebra_de_linha():
+    print("\n[4b] O rótulo de uma linha não captura a palavra da linha seguinte")
+    # 📊 5 ocorrências reais (lote_018 conversas 6/7/8/9, lote_011 l.7) contra
+    # 3.082 `Botão N` intactos. `\s` casa `\n`, e o separador entre rótulo e
+    # nome atravessava a linha: o item de menu virava `{NOME}` e a instrução de
+    # navegação sumia sem deixar rastro.
+    menu = ("Posso te ajudar em algo mais?\nBotão 1: Novo atendimento\n"
+            "Botão 2: Falar com atendente\nBotão 3: Encerrar")
+    checar(templatize(menu) == menu,
+           "o menu inteiro atravessa intacto — inclusive o 'Botão 3' depois de "
+           "'atendente'", templatize(menu))
+    for frase in ("Olá!\nBotão 1: Guincho\nBotão 2: Bateria",
+                  "Bem-vindo\nVoltar ao menu",
+                  "Prezado\nConfirmar agendamento",
+                  "Sr.\nAgendar vistoria"):
+        checar(templatize(frase) == frase,
+               f"CONTROLE: {frase.splitlines()[0]!r} + item de menu na linha de "
+               f"baixo sobrevive", templatize(frase))
+
+    # CONTROLE INVERSO — a regra continua viva na MESMA linha. Sem esta metade,
+    # trocar `\s` por espaço horizontal poderia ter desligado a regra inteira e
+    # os quatro casos acima passariam por motivo errado.
+    checar(templatize("atendente Fernanda") == "atendente {NOME}",
+           "e o nome na MESMA linha do rótulo continua sendo mascarado",
+           templatize("atendente Fernanda"))
+    checar(templatize("Olá, Magda!") == "Olá, {NOME}!",
+           "e a saudação com o nome ao lado também", templatize("Olá, Magda!"))
+
+
+def teste_o_bloco_de_confirmacao_cadastral_nao_sai_em_claro():
+    print("\n[4c] 'Nome do titular da apólice: FULANO' — 📊 71 ocorrências")
+    # O rótulo `nome` SEMPRE esteve na lista. O que escapava era o qualificador
+    # entre ele e os dois-pontos: o grupo terminava em "Nome ", o valor virava
+    # "do titular da apólice: MARIELLA…", e a heurística do "sem dois-pontos"
+    # via um "do" minúsculo e devolvia a linha inteira.
+    for frase in ("Nome do titular da apólice: MARIELLA VALERIO MEIRA",
+                  "Nome do titular da apólice: CONDOMINIO EDIFICIO EUGENIO MULLER",
+                  "Titular: EDUARDO NOMURA",
+                  "Nome do responsável: Carlos Augusto Nogueira",
+                  "Nome completo do condutor: ANDREZZA HAUTSCH OIKAWA"):
+        saida = templatize(frase)
+        checar("{VALOR}" in saida or "{NOME}" in saida,
+               f"{frase[:34]!r} → valor mascarado", saida)
+        checar(saida.split(":")[0] == frase.split(":")[0],
+               "e o RÓTULO fica — é ele que ensina o que a URA pede", saida)
+
+    # A razão social do CONDOMÍNIO segurado sai junto, e é de propósito: quem
+    # está no campo "titular da apólice" é o cliente, seja pessoa ou empresa.
+    checar("EUGENIO" not in templatize(
+        "Nome do titular da apólice: CONDOMINIO EDIFICIO EUGENIO MULLER"),
+        "razão social de condomínio segurado também é mascarada")
+
+    # CONTROLE — a INSTRUÇÃO com as mesmas palavras precisa sobreviver inteira.
+    # É a frase que a URA repete em toda apólice, e é o conhecimento que este
+    # acervo existe para extrair. 📊 261 ocorrências dela nos 27 lotes.
+    for frase in ("Digite o *CPF* ou *CNPJ* do(a) titular da apólice.",
+                  "Por favor digite o CPF ou CNPJ do(a) titular da apólice ou "
+                  "pressione *9* para voltar",
+                  "Confirme se os dados a seguir estão corretos, por gentileza:"):
+        checar(templatize(frase) == frase, f"CONTROLE: {frase[:38]!r} sobrevive",
+               templatize(frase))
+
+    # CONTROLE 1b — RÓTULO ESPECÍFICO VENCE RÓTULO GENÉRICO (§12.1).
+    # 📊 77 ocorrências de `Telefone do responsável: ({TELEFONE}`. Quando o
+    # qualificador entrou na lista, esta linha passou a cair no rótulo genérico
+    # e virava `{VALOR}` — proteção igual, informação a menos: quem lê a carta
+    # deixava de saber que ali havia um telefone. Se o valor que sobrou é só
+    # pontuação e placeholder, não há o que mascarar.
+    for frase in ("Telefone do responsável: ({TELEFONE}",
+                  "*Telefone principal*: ({TELEFONE}",
+                  "Endereço do local: {ENDERECO}"):
+        checar(templatize(frase) == frase,
+               f"CONTROLE: {frase[:34]!r} mantém o rótulo específico",
+               templatize(frase))
+
+    # CONTROLE 2 — a seguradora NÃO é mascarada. "Porto Seguro" e "Yelum" são
+    # empresas do mercado: conhecimento. O que separa não é uma lista de nomes
+    # de seguradora, é a POSIÇÃO — o que está depois de um rótulo de titular é
+    # o cliente; o que está solto na frase, não.
+    for frase in ("A Porto Seguro pede o CPF do titular",
+                  "Olá, seja bem-vindo ao atendimento digital da Yelum Seguradora!",
+                  "A Maxpar é a rede credenciada da Tokio Marine"):
+        checar(templatize(frase) == frase,
+               f"CONTROLE: {frase[:34]!r} sobrevive", templatize(frase))
+
+
+def teste_a_pergunta_de_identidade_da_porto():
+    print("\n[4d] 'Eu estou falando com Nair?' — 📊 33 ocorrências, 8 sessões")
+    for frase in ("Eu estou falando com Nair?",
+                  "Eu estou falando com Rivadavia?",
+                  "Boa tarde, falo com Maria Silva ?"):
+        checar("{NOME}" in templatize(frase), f"{frase[:30]!r} → nome mascarado",
+               templatize(frase))
+
+    # CONTROLE — e este a própria Porto escreve. Quando ela NÃO sabe o nome,
+    # imprime o papel na mesma tela: `"Eu estou falando com Segurado(a)?"`.
+    # É a mesma frase, e precisa sobreviver — ela é a versão genérica da tela,
+    # a que vale para todo mundo, e por isso a que mais ensina.
+    #
+    # 📊 6 ocorrências. Uma primeira escrita desta regra as comeu (a exclusão
+    # era `segurad\b`, e depois de "segurad" vem "o", não uma fronteira).
+    for frase in ("Eu estou falando com Segurado(a)?",
+                  "Falo com o corretor ou segurado?",
+                  "Estou falando com o titular da apólice?"):
+        checar(templatize(frase) == frase, f"CONTROLE: {frase[:34]!r} sobrevive",
+               templatize(frase))
+
+
+def teste_o_sobrenome_nao_sobrevive_ao_placeholder():
+    print("\n[4e] '{NOME} SALES' — meio nome mascarado é pior que nenhum")
+    # 📊 6 linhas do acervo saíram assim (lote_015 l.6, lote_025 l.2/8/10,
+    # lote_026 l.1). O quantificador aceitava UMA repetição, e nome brasileiro
+    # tem três a cinco palavras. A linha PARECIA tratada e o sobrenome — que é
+    # o que individualiza a pessoa dentro da família — seguia em claro.
+    for frase in ("Olá, meu nome é ANDREZA MOURA TERRA e irei realizar",
+                  "Olá, meu nome é Rogerio DIAS DOS SANTOS e irei realizar",
+                  "meu nome é Maria de Fatima Guimaraes Gomes",
+                  "me chamo Tereza Silva Santos"):
+        saida = templatize(frase)
+        checar("{NOME}" in saida, f"{frase[:34]!r} → mascarado", saida)
+        sobrou = [p for p in saida.replace("{NOME}", " ").split()
+                  if p.strip(",.!?:").capitalize() not in ("Olá", "Ola", "Oi")
+                  and p[:1].isupper() and len(p) > 2]
+        checar(not sobrou, "e NENHUM pedaço do nome sobra na linha", str(sobrou))
+
+    # CONTROLE — a repetição precisa PARAR. Sem freio, ela comeria a frase que
+    # vem depois do nome, que é onde a URA diz o que vai fazer.
+    saida = templatize("Olá, meu nome é ANDREZA e irei realizar seu atendimento.")
+    checar(saida == "Olá, meu nome é {NOME} e irei realizar seu atendimento.",
+           "CONTROLE: o que vem DEPOIS do nome sobrevive inteiro", saida)
+    saida = templatize("me chamo Saionara, darei continuidade em seu atendimento")
+    checar(saida.endswith(", darei continuidade em seu atendimento"),
+           "CONTROLE: a vírgula fecha o nome e a frase segue", saida)
+
+
+def teste_telefone_e_documento_com_a_forma_errada():
+    print("\n[4f] O que o humano digita não tem a forma que a regra esperava")
+    # 📊 lote_019 l.11 — DDD com zero E hífen: as duas metades do mesmo defeito.
+    for frase in ("048-99147-8922", "48 99972-2935", "(48) 99972-2935",
+                  "*Charles* *048-99147-8922*"):
+        checar("{TELEFONE}" in templatize(frase),
+               f"{frase[:26]!r} → {{TELEFONE}}", templatize(frase))
+    # 📊 lote_026 l.11 — CNPJ com os pontos no lugar errado. A URA respondeu
+    # "sua resposta não corresponde a nenhuma opção": o documento nem funcionou,
+    # e mesmo assim atravessou o portão em claro.
+    checar(templatize("056.087.72/0001-77") == "{CNPJ}",
+           "CNPJ com agrupamento errado também é documento",
+           templatize("056.087.72/0001-77"))
+    checar(templatize("05.608.772/0001-77") == "{CNPJ}",
+           "e o agrupamento certo continua sendo", templatize("05.608.772/0001-77"))
+
+    # CONTROLE — o que tem forma parecida e é conhecimento.
+    for frase in ("o prazo é de 30 dias",
+                  "a franquia é de 10% da cobertura",
+                  "a vistoria vale por 90 dias",
+                  "válido até 12/2028"):
+        checar(templatize(frase) == frase, f"CONTROLE: {frase[:30]!r} sobrevive",
+               templatize(frase))
+
+
+def teste_o_telefone_da_central_e_conhecimento():
+    print("\n[4g] 0800 da seguradora FICA; celular de segurado SAI")
+    # O erro OPOSTO ao vazamento, e o mais caro dos dois porque não deixa
+    # rastro. 📊 A URA da Tokio imprime o telefone da central numa linha só
+    # (lote_021 l.5/8/9/10/12, lote_022 l.1) e a linha saía como `{NUMERO}` ou
+    # `{CPF}` — o corredor deixando de descobrir que ali existe um canal.
+    for frase in ("0800 727 2007", "0800 701 2757", "4004 2757", "4003-2532",
+                  "0800-888-2532", "0300 313 3000"):
+        checar(templatize(frase) == frase,
+               f"CONTROLE: {frase!r} sozinho na linha sobrevive", templatize(frase))
+    checar(templatize("Para solicitar assistência:\n0800 727 2007")
+           == "Para solicitar assistência:\n0800 727 2007",
+           "e o bloco inteiro da Tokio também",
+           templatize("Para solicitar assistência:\n0800 727 2007"))
+
+    # CONTROLE INVERSO — é o que dá direito à conclusão. Um celular de segurado
+    # com a MESMA quantidade de dígitos precisa continuar sendo mascarado; se
+    # ele sobrevivesse, a proteção teria sido desligada em vez de afinada.
+    for frase in ("48 99972-2935", "(11) 98765-4321", "11987654321"):
+        checar(templatize(frase) != frase,
+               f"CONTROLE: celular {frase!r} continua mascarado", templatize(frase))
+
+    # O MECANISMO da reserva, e não só o resultado dela. O trecho protegido é
+    # retirado do texto por um marcador `\x00n\x00` antes de as regras rodarem
+    # e devolvido no fim. Se um marcador escapasse, ele iria para o RAG e para
+    # o `node_hash` da tela — e um caractere nulo no meio de uma carta é um
+    # defeito que ninguém vê até quebrar um índice.
+    #
+    # 📊 Varrido nas 40.234 linhas dos 27 lotes: zero marcadores vazados, zero
+    # linhas não idempotentes.
+    for frase in ("0800 727 2007", "ligue 0800 701 2757 ou 4004 2757",
+                  "Fale conosco / SAC:\n0800 729 1400\nSinistro: {CPF}"):
+        saida = templatize(frase)
+        checar("\x00" not in saida, "o marcador da reserva não escapa para o texto",
+               repr(saida))
+        checar(templatize(saida) == saida,
+               "e mascarar de novo dá o mesmo texto (idempotente)", repr(saida))
+    # E o 0800 escrito SEM separador nenhum é indistinguível de um CPF que
+    # comece por 080. A regra escolhe o lado seguro e mascara — o custo está
+    # registrado no relatório.
+    checar(templatize("08007272007") == "{CPF}",
+           "0800 corrido, sem separador, é tratado como documento",
+           templatize("08007272007"))
+
+
+def teste_endereco_ecoado_complemento_e_coordenada():
+    print("\n[4h] O endereço que a URA lê de volta, o apartamento e o plus-code")
+    # 📊 22 ocorrências: a URA ecoa o endereço numa FRASE, e o valor às vezes
+    # cai na linha seguinte entre asteriscos — fora do alcance de `^rótulo:`.
+    for frase in ("O endereço é: \n\n*Estr. Geral Coqueiros, 1963 - Angelina - SC*.",
+                  "O endereço é: \n\n*Br-101, 205 - Sao Jose - SC*.",
+                  "Localização: R. João Antônio da Silveira, 1500, Florianópolis",
+                  "*1 - Endereço da apólice:* RD 46-105, SÃO JOSÉ - SC"):
+        checar("{ENDERECO}" in templatize(frase) or "{VALOR}" in templatize(frase),
+               f"{frase[:36]!r} → mascarado", templatize(frase))
+    # 📊 217 ocorrências de complemento em claro. Metade do endereço protegida
+    # e metade não é o pior estado: a linha PARECE tratada.
+    for frase in ("apto 1104", "Bloco 2 apartamento 24", "Bl 15 ap 203",
+                  "ap 1301", "APTO 302"):
+        saida = templatize(frase)
+        checar("{NUM}" in saida, f"{frase!r} → complemento mascarado", saida)
+        checar(saida.split()[0].lower() == frase.split()[0].lower(),
+               "e a PALAVRA fica — 'a Porto pede bloco e apartamento' ensina",
+               saida)
+    # 📊 3 plus-codes, todos de zona rural — onde é a única forma de endereço
+    # que existe, e por isso a mais reveladora.
+    for frase in ("88V9+6XW", "W9JJ+R3G Capão Alto - SC"):
+        checar("{ENDERECO}" in templatize(frase), f"{frase[:20]!r} → coordenada",
+               templatize(frase))
+
+    # A RODOVIA POR SIGLA, sem rótulo de endereço em volta — é o único caminho
+    # que a alcança. 📊 lote_019 l.11 e lote_004 l.7. A primeira escrita deste
+    # teste usava "O endereço é: *Br-101, 205*", que quem mascara é a regra do
+    # endereço anunciado: o guarda passava com a regra da rodovia desligada, e
+    # um guarda que não tem como falhar não guarda nada (§9.3).
+    for frase in ("*Destino:* BR-101, 205 - SAO JOSE - SC",
+                  "o veículo está na SC-281, 1500"):
+        saida = templatize(frase)
+        checar("{ENDERECO}" in saida, f"{frase[:32]!r} → número do imóvel sai",
+               saida)
+        checar(frase.split(",")[0].split()[-1] in saida,
+               "e a SIGLA da rodovia fica — ela diz onde a assistência atende",
+               saida)
+    # CONTROLE: sem o número, a rodovia é cobertura, não morada.
+    for frase in ("a cobertura vale na BR-101", "atendemos toda a SC-281"):
+        checar(templatize(frase) == frase, f"CONTROLE: {frase[:30]!r} sobrevive",
+               templatize(frase))
+
+    # CONTROLE — a linha que se declara EXEMPLO é instrução, não morada.
+    # 📊 Uma primeira escrita desta regra comeu 109 ocorrências de instrução da
+    # Porto antes de a medição pegá-la.
+    for frase in ("( Ex: Bloco 2, apartamento 24, Casa 11, em frente ao shopping )",
+                  "_(Ex: em frente ao shopping, Casa 11)_",
+                  "Exemplo: Rua das Flores"):
+        checar(templatize(frase) == frase, f"CONTROLE: {frase[:40]!r} sobrevive",
+               templatize(frase))
+    # CONTROLE 2 — sem dígito não é endereço, e a instrução do formulário fica.
+    for frase in ("Endereço de Origem e destino (rua/av., número, bairro, cidade "
+                  "e estado;",
+                  "Vamos começar a preencher o endereço aproximado do ocorrido",
+                  "o apartamento estava vazio",
+                  "a cobertura vale na BR-101",
+                  "logradouro é o nome da rua, avenida, praça ou quadra"):
+        checar(templatize(frase) == frase, f"CONTROLE: {frase[:38]!r} sobrevive",
+               templatize(frase))
+
+
+def teste_nome_colado_a_documento_e_papel_de_pessoa():
+    print("\n[4i] Quem encosta num CPF é o titular dele; quem encosta na placa "
+          "é o carro")
+    # 📊 21 casamentos no acervo. A medição que decidiu a regra: junto de
+    # {CPF}/{CNPJ} aparece gente; junto de {PLACA} aparecem marca e modelo.
+    for frase in ("{CPF} - ALTAMIRO OSMAR KOERICH",
+                  "JESSICA LUANA GRIGGIO - {CPF}",
+                  "{CPF}  SEG SONIA DE LOURDES PRASS",
+                  "Motorista Allan Souza Silveira",
+                  "Condutor : ANDREZZA HAUTSCH OIKAWA ROCHA"):
+        saida = templatize(frase)
+        checar("{NOME}" in saida, f"{frase[:34]!r} → nome mascarado", saida)
+        sobrou = [p for p in saida.replace("{NOME}", " ").split()
+                  if len(p) > 2 and p[0].isupper() and not p.startswith("{")
+                  and p not in ("SEG", "Motorista", "Condutor")]
+        checar(not sobrou, "e o nome sai INTEIRO, sem sobrenome órfão", str(sobrou))
+
+    # CONTROLE — quatro linhas do acervo com a MESMA forma que são conhecimento.
+    # Incluir a placa custava estes quatro e não ganhava um nome sequer que o
+    # CPF já não pegasse.
+    for frase in ("Exemplo de CPF: {CPF}", "Exemplo de CNPJ: {CNPJ}",
+                  "Voltar RAM, {PLACA}", "DOLPHIN Placa {PLACA}",
+                  "{PLACA} - MITSUBISHI OUTLANDER"):
+        checar(templatize(frase) == frase, f"CONTROLE: {frase[:30]!r} sobrevive",
+               templatize(frase))
+    # CONTROLE 2 — a nota de andamento em caixa alta. Um papel seguido de UMA
+    # palavra é operação, não gente; e a vírgula depois do papel diz que ali
+    # começou uma frase, não uma etiqueta.
+    for frase in ("SEGURADA, FICOU DE RETORNAR",
+                  "CONDUTOR IRÁ JUNTO",
+                  "Titular da apólice deve estar presente"):
+        checar("{NOME}" not in templatize(frase),
+               f"CONTROLE: {frase[:32]!r} não vira nome", templatize(frase))
+
+
 # ── 4. o transcript diz quem é quem ───────────────────────────────────────────
 
 PORTO_MENU = ("O que você precisa?\nGuincho (reboque)\nBateria\nTroca de pneu\n"
@@ -293,6 +603,75 @@ def teste_a_resposta_a_uma_pergunta_por_nome_e_um_nome():
            "CONTROLE: a resposta à pergunta seguinte NÃO é tocada", saida[3])
 
 
+def teste_o_disparo_ativo_poe_o_nome_fora_da_primeira_linha():
+    print("\n[8b] Quando a seguradora começa a conversa, o nome não está no topo")
+    # 📊 lote_019 l.9 e lote_018 l.3. `_VOCATIVO` está ancorado no começo da
+    # MENSAGEM, e o disparo ativo abre com a marca da seguradora:
+    #
+    #     "Olá! Aqui é a Porto Seguro 👋\n\nRafael, a vistoria do seu veículo…"
+    #
+    # A medição quase matou esta regra: olhar toda linha que comece por palavra
+    # capitalizada e vírgula dá 125 casamentos nos 27 lotes, e **123 são menu**.
+    # O que separa não é a vírgula — é a SEGUNDA PESSOA: um disparo fala com
+    # alguém sobre a coisa DELE.
+    disparo = ("Olá! Aqui é a Porto Seguro 👋\n\nRafael, a vistoria do seu "
+               "veículo para o sinistro 531202690931 está em andamento.")
+    saida = M.transcript_seguradora([_ev("in", "1", disparo)], MENU)
+    checar("{NOME}, a vistoria do seu veículo" in saida,
+           "o nome do disparo ativo é mascarado mesmo fora da primeira linha",
+           saida[:120])
+    checar("Porto Seguro" in saida,
+           "e a marca da seguradora, na linha de cima, NÃO é tocada", saida[:60])
+    checar("531202690931" not in saida,
+           "o número do sinistro (12 dígitos) também sai — não casava em regra "
+           "nenhuma: {NUMERO} parava em 11 e {CARTAO} só começa em 13",
+           saida[:160])
+
+    # CONTROLE — as duas linhas do acervo que têm a MESMA forma e possessivo,
+    # e que precisam sobreviver: uma protegida pelo vocabulário de menu, outra
+    # pela lista de interjeição. Se caírem, a regra não separa nada.
+    for frase in ("Elogios, reclamações e informações de como cancelar seu seguro",
+                  "Pronto, sua assistência está em andamento!",
+                  "Guincho, técnico e chaveiro"):
+        saida = _uma_linha(frase, MENU | frozenset({"elogios"}))
+        checar("{NOME}" not in saida, f"CONTROLE: {frase[:34]!r} sobrevive", saida)
+
+
+def teste_o_ok_no_meio_nao_gasta_a_pergunta_por_nome():
+    print("\n[8c] 'ok' não é resposta — e o nome vem na mensagem seguinte")
+    # 📊 lote_026 l.1. A marca `perguntaram_nome` era consumida pela PRIMEIRA
+    # fala nossa, e a primeira foi "ok". O nome vinha na segunda e saía inteiro.
+    eventos = [
+        _ev("in", "1", "Me informa o CPF e nome completo dos passageiros"),
+        _ev("out", "2", "ok"),
+        _ev("out", "3", "Ricardo Fernando Ferreira"),
+    ]
+    saida = M.transcript_seguradora(eventos, MENU).split("\n")
+    checar(saida[1] == "NOS: ok",
+           "o aceite atravessa intacto — é a evidência de que houve um sim",
+           saida[1])
+    checar(saida[2] == "NOS: {NOME}",
+           "e a marca continuava de pé quando o nome chegou", saida[2])
+
+    # 📊 lote_027 l.4 — a mesma pergunta em NEGRITO. Um asterisco entre "o" e
+    # "nome" e a pergunta deixava de ser reconhecida.
+    eventos = [
+        _ev("in", "1", "Qual é o *nome completo do condutor*?\n\n"
+                       "*Exemplo*: Maria dos Santos"),
+        _ev("out", "2", "RAFAELA LIDIA SANTOS IWAMOTO"),
+        _ev("in", "3", "Em qual *cidade*?"),
+        _ev("out", "4", "São Paulo"),
+    ]
+    saida = M.transcript_seguradora(eventos, MENU).split("\n")
+    checar(saida[-3] == "NOS: {NOME}",
+           "a pergunta em negrito volta a ser reconhecida", saida[-3])
+    # CONTROLE: a marca é gasta pelo nome, e a resposta seguinte NÃO é tocada.
+    # Sem isto, a regra poderia estar mascarando toda resposta nossa depois de
+    # uma pergunta por nome — para sempre.
+    checar(saida[-1] == "NOS: São Paulo",
+           "CONTROLE: a resposta à pergunta SEGUINTE não é mascarada", saida[-1])
+
+
 def teste_o_vocabulario_de_menu_precisa_se_repetir_entre_sessoes():
     print("\n[9] Opção de verdade se repete; eco do cadastro aparece uma vez")
     # 📊 Sem limiar, um nome entrava no vocabulário porque a URA o ECOA dentro
@@ -361,10 +740,20 @@ def main() -> int:
                   teste_saudacao_mascara_nome_e_devolve_o_verbo,
                   teste_tratamento_mascara_nome_e_poupa_papel,
                   teste_logradouro_com_numero_sai_e_prosa_fica,
+                  teste_a_regra_de_nome_nao_atravessa_a_quebra_de_linha,
+                  teste_o_bloco_de_confirmacao_cadastral_nao_sai_em_claro,
+                  teste_a_pergunta_de_identidade_da_porto,
+                  teste_o_sobrenome_nao_sobrevive_ao_placeholder,
+                  teste_telefone_e_documento_com_a_forma_errada,
+                  teste_o_telefone_da_central_e_conhecimento,
+                  teste_endereco_ecoado_complemento_e_coordenada,
+                  teste_nome_colado_a_documento_e_papel_de_pessoa,
                   teste_o_transcript_nao_chama_a_seguradora_de_cliente,
                   teste_o_clique_sem_texto_recupera_o_rotulo,
                   teste_o_vocativo_sai_e_o_menu_fica,
                   teste_a_resposta_a_uma_pergunta_por_nome_e_um_nome,
+                  teste_o_disparo_ativo_poe_o_nome_fora_da_primeira_linha,
+                  teste_o_ok_no_meio_nao_gasta_a_pergunta_por_nome,
                   teste_o_vocabulario_de_menu_precisa_se_repetir_entre_sessoes,
                   teste_o_exportador_nao_corta_em_silencio):
         try:

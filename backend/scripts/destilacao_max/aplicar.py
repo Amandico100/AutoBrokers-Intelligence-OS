@@ -52,18 +52,35 @@ MARCA = "destilacao_max_29_07_2026"
 UUID = re.compile(r"[0-9a-fA-F-]{36}")
 
 
-def _distilled(d: dict) -> dict:
+def _distilled(d: dict, marca: str = MARCA) -> dict:
     return {
         "tipo": d.get("tipo"), "ramo": d.get("ramo"),
         "servico": d.get("servico"), "seguradora": d.get("seguradora"),
         "resumo_conduta": d.get("resumo_conduta") or [],
         "perguntas_na_ordem": d.get("perguntas_na_ordem") or [],
         "score": d.get("score"), "flags": d.get("flags") or [],
-        "at": None, "por": MARCA,
+        "at": None, "por": marca,
     }
 
 
-def _cartas_de(d: dict, sessao: str = "") -> list:
+def _dono_por_texto(texto: str, candidata: str) -> tuple:
+    """DE QUEM É A REGRA no acervo de ATENDIMENTO — a seguradora é candidata.
+
+    📊 05/08/2026: das 3.354 cartas etiquetadas, só 32,3% citavam a própria
+    seguradora. Ali a companhia da SESSÃO é palpite, e `seguradora_do_fato`
+    só a aceita quando o texto do fato a nomeia.
+
+    Isto está numa função separada por um motivo: existe um segundo acervo em
+    que a resposta é OUTRA. Em `observed_sessions` a conversa **é** com a
+    seguradora — a mesma pergunta, feita sobre uma evidência diferente, tem
+    resposta diferente. `aplicar_seguradoras.py` injeta a dele aqui em vez de
+    recopiar as regras de gravação, e as duas ficam lado a lado, visíveis.
+    """
+    seg, prestadora = seguradora_do_fato(texto, candidata)
+    return seg, ({"prestadora": prestadora} if prestadora else {})
+
+
+def _cartas_de(d: dict, sessao: str = "", marca: str = MARCA, dono=_dono_por_texto) -> list:
     ramo = str(d.get("ramo") or "outro")
     candidata = str(d.get("seguradora") or "")   # da SESSÃO — candidata, não veredito
     saida = []
@@ -72,13 +89,12 @@ def _cartas_de(d: dict, sessao: str = "") -> list:
         if len(texto) < 15 or len(texto) > 400:
             continue
         limpo = templatize(texto) == texto
-        seg, prestadora = seguradora_do_fato(texto, candidata)
+        seg, extras = dono(texto, candidata)
         if seg and not re.fullmatch(r"[a-z0-9_-]{2,40}", seg):
             seg = None
         marcas = {"deterministic": limpo, "llm_instructed": True,
-                  "por": MARCA, "sessao": sessao}
-        if prestadora:
-            marcas["prestadora"] = prestadora
+                  "por": marca, "sessao": sessao}
+        marcas.update(extras or {})
         saida.append({
             "card_hash": hashlib.md5(texto.lower().encode("utf-8")).hexdigest(),
             "card_text": texto, "category": assunto_da_carta(texto), "ramo": ramo,
