@@ -683,6 +683,31 @@ def _sinais_do_codigo() -> dict:
         sinais["create_repetido_nao_e_indisponivel"] = False
         sinais["connect_sem_webhook_recusado"] = False
         sinais["um_pareamento_por_corretora"] = False
+
+    # 5) "Conectado" deixou de bastar: existe quem note o canal verde e mudo.
+    #    📊 44 h (AutoFleet) e 68 h (Resulta) passaram sem ninguém notar porque
+    #    não havia o que olhar — o heartbeat media o cabo, e o cabo estava bom.
+    try:
+        from datetime import datetime as _dt
+        from datetime import timedelta as _td
+        from datetime import timezone as _tz
+
+        from app.services.whatsapp.channel_state import decidir_alarme_de_entrega
+
+        _agora_utc = _dt.now(_tz.utc)
+        sinais["alarme_de_canal_mudo"] = (
+            # conectado e 44 h sem gravar → alarma
+            decidir_alarme_de_entrega(
+                estado_do_canal="connected",
+                ultima_entrega=(_agora_utc - _td(hours=44)).isoformat(),
+                agora=_agora_utc)["alarmar"] is True
+            # e o par que impede o alarme de virar ruído: capturando → silêncio
+            and decidir_alarme_de_entrega(
+                estado_do_canal="connected",
+                ultima_entrega=(_agora_utc - _td(minutes=30)).isoformat(),
+                agora=_agora_utc)["alarmar"] is False)
+    except Exception:  # noqa: BLE001
+        sinais["alarme_de_canal_mudo"] = False
     return sinais
 
 

@@ -341,6 +341,127 @@ def deve_reconectar(estado_sondado: Optional[str], estado_anterior: Optional[str
     return normalizar_estado(estado_anterior) in ESTADOS_QUE_AFIRMAM
 
 
+# ---------------------------------------------------------------------------
+# O ALARME DE ENTREGA — "conectado" não é o mesmo que "chegando"
+# ---------------------------------------------------------------------------
+# 📊 06/08/2026, e é a razão exata deste bloco existir:
+#
+#     AutoFleet  channel_status='connected'  ·  último observed_event 44 h atrás
+#     Resulta    channel_status='connected'  ·  último observed_event 68 h atrás
+#
+# O painel dizia "Conectado" e estava certo sobre o cabo. O socket estava vivo —
+# 📊 provado no mesmo dia com `GET /user/privacy` respondendo 200 em 0,3 s
+# contra o WhatsApp da corretora. O que faltava era o webhook: o reconector
+# religava o canal sem URL de entrega, e o provedor despachava para lugar nenhum.
+#
+# Ninguém descobriu por três dias. Não por descuido: **não havia o que olhar.**
+# O heartbeat media o cabo, e o cabo estava bom.
+#
+# Este alarme mede a OUTRA ponta. Ele não pergunta "o canal está de pé?", e sim
+# "a corretora que diz estar conectada gravou alguma conversa recentemente?".
+# É a única pergunta cuja resposta negativa descreve o prejuízo real: o produto
+# sem matéria-prima.
+#
+# Silencioso quando o canal já se declara caído: ali a queda JÁ está sendo dita
+# por outro alarme, e repetir a mesma notícia com outro nome é como se ensina
+# alguém a ignorar as duas.
+LIMITE_SEM_ENTREGA_HORAS = 6
+
+
+def decidir_alarme_de_entrega(
+    *, estado_do_canal: object, ultima_entrega: object,
+    agora: Optional[datetime] = None, limite_horas: Optional[float] = None,
+) -> dict:
+    """PURO: esta corretora está conectada e muda? Devolve ``{alarmar, motivo, horas}``.
+
+    Três regras, e cada uma existe por um jeito diferente de errar:
+
+    1. **Só alarma quem AFIRMA estar de pé.** Canal `disconnected` já tem o seu
+       alarme; dois cartões para a mesma notícia treinam a pessoa a fechar os
+       dois sem ler.
+    2. **Nunca ter entregue conta como silêncio.** `None` não é "acabou de
+       parear" — é uma corretora que se diz conectada e nunca gravou nada, que é
+       o pior caso, não um caso a ignorar. Quem acabou de parear ainda não
+       aparece aqui porque a linha nasce `connecting`, e `connecting` não afirma.
+    3. **A conta é em horas, não em ciclos.** O heartbeat roda de 5 em 5 minutos;
+       alarmar por ciclo daria 12 avisos por hora do mesmo problema.
+    """
+    momento = agora or _agora()
+    limite = float(limite_horas if limite_horas is not None else LIMITE_SEM_ENTREGA_HORAS)
+
+    if normalizar_estado(estado_do_canal) != CONECTADO:
+        return {"alarmar": False, "motivo": "canal_nao_afirma_conexao", "horas": None}
+
+    idade = idade_em_minutos(ultima_entrega, momento)
+    if idade is None:
+        # Conectado e sem uma linha sequer no acervo. Ver regra 2.
+        return {"alarmar": True, "motivo": "conectado_e_nunca_entregou", "horas": None}
+
+    horas = idade / 60.0
+    if horas < limite:
+        return {"alarmar": False, "motivo": "entregou_recentemente", "horas": horas}
+    return {"alarmar": True, "motivo": "conectado_e_mudo", "horas": horas}
+
+
+async def _ultima_entrega_por_corretora(db: Any = None) -> Dict[str, Any]:
+    """Quando cada corretora gravou a última conversa. Uma query para todas.
+
+    Uma consulta por corretora a cada cinco minutos seria N idas ao banco para
+    responder algo que cabe numa. E a leitura é do ACERVO (`observed_events`),
+    não de `integrations`: `last_seen_at` mede a sonda, e a sonda foi
+    exatamente o que ficou verde enquanto nada chegava.
+    """
+    if db is None:
+        from app.core.database import get_supabase_client
+
+        db = get_supabase_client()
+    cliente = getattr(db, "client", db)
+
+    def _ler() -> list:
+        # Ordena por data e pega o topo por corretora no lado do Python: o
+        # cliente do Supabase não expõe GROUP BY, e inventar RPC para isto
+        # criaria peça nova para uma leitura que cabe em 2.000 linhas.
+        return (cliente.table("observed_events")
+                .select("company_id, created_at")
+                .order("created_at", desc=True)
+                .limit(2000).execute().data or [])
+
+    try:
+        linhas = await asyncio.to_thread(_ler)
+    except Exception as erro:  # noqa: BLE001
+        logger.warning("[ENTREGA] não consegui ler o acervo (%s)", type(erro).__name__)
+        return {}
+
+    ultima: Dict[str, Any] = {}
+    for linha in linhas:
+        empresa = str(linha.get("company_id") or "")
+        if empresa and empresa not in ultima:
+            ultima[empresa] = linha.get("created_at")
+    return ultima
+
+
+async def _alarme_de_entrega_padrao(integracao: dict, decisao: dict) -> None:
+    from app.services.whatsapp.alerts import alerta_de_plataforma
+
+    if decisao["horas"] is None:
+        quanto = "e nunca gravou uma conversa"
+    else:
+        quanto = f"e não grava uma conversa há {decisao['horas']:.0f} horas"
+    await alerta_de_plataforma(
+        "WhatsApp conectado, mas nada está sendo capturado",
+        (f"O canal desta corretora aparece como Conectado {quanto}. "
+         "O socket pode estar de pé e a ENTREGA desligada — foi o que aconteceu "
+         "em 06/08/2026, quando o canal religou sem endereço de webhook e duas "
+         "corretoras passaram dias sem capturar com o painel verde. "
+         "Confira o campo `webhook` da instância no provedor: vazio significa "
+         "que as mensagens estão sendo despachadas para lugar nenhum."),
+        # Chave estável por canal: um cartão que continua aberto, não 288 por dia.
+        chave=f"canal:sem_entrega:{integracao.get('id')}",
+        severidade="sev2",
+        company_id=str(integracao.get("company_id") or "") or None,
+    )
+
+
 async def _gravar_credencial_de_webhook(
     integracao: dict, hash_novo: str, prefixo_novo: str, *, db: Any = None
 ) -> bool:
@@ -534,6 +655,7 @@ async def verificar_canais(
     sonda: Optional[Callable[[dict], Awaitable[Optional[str]]]] = None,
     alarme: Optional[Callable[..., Awaitable[None]]] = None,
     reconector: Optional[Callable[..., Awaitable[Optional[str]]]] = None,
+    alarme_de_entrega: Optional[Callable[..., Awaitable[None]]] = None,
     agora: Optional[datetime] = None,
 ) -> dict:
     """A varredura. Roda no APScheduler existente; nunca levanta exceção.
@@ -564,7 +686,13 @@ async def verificar_canais(
     cliente = getattr(db, "client", db)
 
     resumo = {"ok": True, "verificados": 0, "confirmados": 0, "contestados": 0,
-              "inalterados": 0, "alarmes": 0, "erros": 0, "limite_minutos": limite}
+              "inalterados": 0, "alarmes": 0, "erros": 0, "limite_minutos": limite,
+              "mudos": 0}
+
+    # Quando cada corretora gravou a última conversa. Lido UMA vez, antes do
+    # laço: é a mesma resposta para todas as linhas do ciclo.
+    ultima_entrega = await _ultima_entrega_por_corretora(db)
+    alarmar_entrega = alarme_de_entrega or _alarme_de_entrega_padrao
 
     try:
         def _ler() -> list:
@@ -624,6 +752,31 @@ async def verificar_canais(
                         limite_minutos=limite,
                     )
 
+            # A OUTRA PONTA: o canal está de pé, mas está CHEGANDO alguma coisa?
+            #
+            # Roda antes do `continue` de propósito. O caso que este alarme
+            # existe para pegar é justamente o canal que não muda de estado —
+            # verde, confirmado, inalterado, ciclo após ciclo, e mudo. Se a
+            # checagem viesse depois, ela nunca rodaria para quem mais precisa.
+            estado_final = decisao["novo_estado"] or linha.get("channel_status")
+            entrega = decidir_alarme_de_entrega(
+                estado_do_canal=estado_final,
+                ultima_entrega=ultima_entrega.get(str(linha.get("company_id") or "")),
+                agora=momento,
+            )
+            if entrega["alarmar"]:
+                resumo["mudos"] += 1
+                logger.error(
+                    "[ENTREGA] canal %s (%s) diz CONECTADO e não grava conversa — motivo=%s horas=%s",
+                    linha.get("id"), linha.get("purpose"), entrega["motivo"],
+                    f"{entrega['horas']:.0f}" if entrega["horas"] is not None else "nunca")
+                try:
+                    await alarmar_entrega(linha, entrega)
+                except Exception as erro:  # noqa: BLE001
+                    # Um alarme que falha não pode derrubar o heartbeat: a
+                    # obrigação dele continua sendo gravar a verdade do canal.
+                    logger.error("[ENTREGA] alarme não registrado (%s)", type(erro).__name__)
+
             if decisao["novo_estado"] is None:
                 resumo["inalterados"] += 1
                 continue
@@ -662,8 +815,8 @@ async def verificar_canais(
             logger.error("[HEARTBEAT] falha ao verificar %s (%s)",
                          linha.get("id"), type(erro).__name__)
 
-    nivel = logger.error if (resumo["alarmes"] or resumo["erros"]) else logger.info
-    nivel("[HEARTBEAT] %s canais · %s confirmados · %s contestados · %s alarmes · %s erros",
+    nivel = logger.error if (resumo["alarmes"] or resumo["erros"] or resumo["mudos"]) else logger.info
+    nivel("[HEARTBEAT] %s canais · %s confirmados · %s contestados · %s alarmes · %s mudos · %s erros",
           resumo["verificados"], resumo["confirmados"], resumo["contestados"],
-          resumo["alarmes"], resumo["erros"])
+          resumo["alarmes"], resumo["mudos"], resumo["erros"])
     return resumo
