@@ -29,6 +29,7 @@ from app.services.whatsapp.channel_security import (
     corpo_do_connect,
     new_webhook_credentials,
 )
+from app.services.whatsapp.pairing_orchestrator import instancia_ja_existe
 
 logger = logging.getLogger(__name__)
 router = APIRouter()
@@ -51,8 +52,20 @@ def _evolution_platform() -> Dict[str, str]:
 
 
 def _instance_name(company_id: str, purpose: str = "attendance") -> str:
-    """S17-12 multi-número: uma instância Evolution POR PROPÓSITO por corretora.
-    'attendance' mantém o nome curto (compat); demais ganham sufixo."""
+    """Nome de instância do **Evolution v2** — NÃO do Evolution GO.
+
+    ⚠️ Não confundir com `_go_instance_name`, logo abaixo. São dois provedores
+    diferentes, dois servidores diferentes e dois espaços de nomes diferentes;
+    parecerem-se é acidente de prefixo, não parentesco.
+
+    Só o GO indexa acervo pelo nome (`observer_number` = dígitos do nome), e por
+    isso só o GO tem gerador canônico em `channel_identity`. Trazer esta função
+    para lá renomearia instâncias de um provedor que não tem esse problema — o
+    tipo de "consolidação" que cria o defeito que pretendia evitar.
+
+    S17-12 multi-número: uma instância Evolution POR PROPÓSITO por corretora.
+    'attendance' mantém o nome curto (compat); demais ganham sufixo.
+    """
     base = f"ab-{str(company_id).replace('-', '')[:12]}"
     p = str(purpose or "attendance").strip().lower()
     if p in ("", "attendance"):
@@ -115,12 +128,22 @@ def _go_env_fallback() -> Optional[Dict[str, str]]:
 
 
 def _go_instance_name(company_id: str, purpose: str) -> str:
-    base = f"ab-{str(company_id).replace('-', '')[:12]}"
-    p = str(purpose or "attendance").strip().lower()
-    if p in ("", "attendance"):
-        return base
-    suffix = "".join(ch for ch in p if ch.isalnum())[:10] or "aux"
-    return f"{base}-{suffix}"
+    """Delega para `channel_identity` — o nome nasce num lugar só.
+
+    📊 A versão anterior usava base de **12** caracteres e prefixo `ab-`, contra
+    a base de **10** e o prefixo `ab-obs-` do orquestrador. As duas rodaram, e as
+    duas instâncias existiam ao mesmo tempo para a mesma corretora:
+
+        ab-obs-04b5cdbc04-1   (orquestrador — pareada, com acervo)
+        ab-04b5cdbc04cd       (esta função — nunca pareada por ninguém)
+
+    Nome de instância é identidade de acervo: `observer_number` é `_digits()` do
+    nome. Dois nomes para uma corretora é um acervo esperando para se partir ao
+    meio.
+    """
+    from app.services.whatsapp.channel_identity import nome_da_instancia
+
+    return nome_da_instancia(company_id, purpose)
 
 
 async def _go_company_channel(company_id: str, purpose: str = "attendance") -> Optional[Dict[str, str]]:
@@ -235,11 +258,25 @@ async def _go_setup(company_id: str, payload: "ChannelSetupPayload", public_url:
                                      "rejectCall": False, "ignoreGroups": True, "ignoreStatus": True},
             },
         )
-        if cr.status_code in (409, 422):
+        if instancia_ja_existe(cr.status_code, getattr(cr, "text", "")):
             # Instância existe no GO sem linha no banco (setup interrompido).
             # AUTO-CURA: apaga e recria limpa — sem beco sem saída pro corretor.
             ghost = await _go_find_by_name(client, name)
-            if ghost and ghost.get("id"):
+            # ⚠️ SÓ casca vazia. Até 06/08/2026 esta condição era
+            # `if ghost and ghost.get("id")` — sem olhar o `jid`. Um DELETE numa
+            # instância COM telefone **despareia a corretora**: o WhatsApp perde
+            # o dispositivo vinculado, a captura morre e a atendente precisa
+            # escanear QR de novo, sem ninguém ter pedido isso.
+            #
+            # A bomba nunca explodiu por sorte de código de status: 📊 o provedor
+            # devolve 500 para nome repetido, e o `in (409, 422)` acima nunca era
+            # verdadeiro. Corrigir o status SEM corrigir a guarda teria armado o
+            # gatilho — por isso as duas mudanças andam juntas, nesta linha.
+            #
+            # Quem tem telefone e precisa trocar usa o caminho explícito:
+            # `PairingOrchestrator.liberar_para_novo_numero`, que preserva o NOME
+            # (e portanto o acervo) e é acionado por uma pessoa, não por retry.
+            if ghost and ghost.get("id") and not str(ghost.get("jid") or "").strip():
                 await client.delete(f"/instance/delete/{ghost['id']}", headers={"apikey": global_key})
                 cr = await client.post(
                     "/instance/create",
@@ -248,6 +285,14 @@ async def _go_setup(company_id: str, payload: "ChannelSetupPayload", public_url:
                           "advancedSettings": {"readMessages": False, "alwaysOnline": False,
                                                "rejectCall": False, "ignoreGroups": True, "ignoreStatus": True}},
                 )
+            elif ghost:
+                # Existe E tem telefone: é a instância CERTA desta corretora, já
+                # pareada. Não é erro — é o caso normal de quem volta à tela.
+                # Tratar como falha dava o beco sem saída de 03/08 (§6 do
+                # relatório): "Desconectado" na tela e `configuration_error` em
+                # todo retry, com o próprio código recusando a única saída.
+                logger.info(f"[WA CHANNEL GO] instancia {name} ja existe com telefone — reusando")
+                return
         if cr.status_code >= 400:
             raise HTTPException(status_code=502,
                                 detail=f"evolution_go_create_failed:http_{cr.status_code}:{(cr.text or '')[:100]}")

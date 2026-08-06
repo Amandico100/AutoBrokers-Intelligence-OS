@@ -575,12 +575,39 @@ class PairingOrchestrator:
             await asyncio.sleep(0.05)
 
     @staticmethod
+    def _escopo(purpose: str) -> str:
+        """Sob qual escopo esta tentativa vive — e é UM por pareamento.
+
+        Observador, atendimento e acionamento são funções do MESMO número da
+        corretora, e por isso da mesma linha, da mesma chave de Redis e do mesmo
+        `attempt_id`. Sem esta normalização, abrir a tela de "Atendimento &
+        Acionamentos" criaria uma segunda tentativa de pareamento, com segundo
+        lock e segundo QR, para o WhatsApp que já está pareado ao lado.
+
+        Auxiliares (cobrança) são serviço separado e mantêm escopo próprio —
+        `channel_identity.numero_proprio` é quem sabe a diferença.
+
+        Levanta `ValueError` para escopo vazio: um pareamento sem escopo não tem
+        onde ser gravado, e adivinhar seria escolher a linha de alguém.
+        """
+        from app.services.whatsapp.channel_identity import purpose_canonico
+
+        bruto = str(purpose or "observer").strip().lower()
+        if not bruto:
+            raise ValueError("invalid_pairing_scope")
+        return purpose_canonico(bruto)
+
+    @staticmethod
     def _instance_name(company_id: str, purpose: str) -> str:
-        base = str(company_id).replace("-", "")[:10]
-        if purpose == "observer":
-            return f"ab-obs-{base}-1"
-        suffix = "".join(ch for ch in purpose if ch.isalnum())[:10] or "attendance"
-        return f"ab-{base}-{suffix}"
+        """Delega para `channel_identity` — o nome nasce num lugar só.
+
+        A versão anterior morava aqui e produzia `ab-{base}-attendance` para
+        atendimento: um SEGUNDO nome, logo uma segunda instância, logo um segundo
+        QR, para o mesmo WhatsApp da corretora. Ver `channel_identity`.
+        """
+        from app.services.whatsapp.channel_identity import nome_da_instancia
+
+        return nome_da_instancia(company_id, purpose)
 
     async def _integration(self, company_id: str, purpose: str) -> Optional[Dict[str, Any]]:
         from app.core.database import get_supabase_client
@@ -1233,9 +1260,9 @@ class PairingOrchestrator:
     ) -> Dict[str, Any]:
         self._validate_config()
         company_id = str(company_id or "").strip()
-        purpose = str(purpose or "observer").strip().lower()
+        purpose = self._escopo(purpose)
         method = "phone" if method == "phone" else "qr"
-        if not company_id or purpose not in ("observer", "attendance", "dispatch"):
+        if not company_id:
             raise ValueError("invalid_pairing_scope")
         if method == "phone":
             phone_number = "".join(ch for ch in str(phone_number or "") if ch.isdigit())
@@ -1313,6 +1340,7 @@ class PairingOrchestrator:
         return public_pairing_state(state)
 
     async def get(self, company_id: str, purpose: str, attempt_id: str) -> Dict[str, Any]:
+        purpose = self._escopo(purpose)
         state = await self._load_attempt(attempt_id)
         if not state or state.get("company_id") != company_id or state.get("purpose") != purpose:
             raise PairingNotFoundError("pairing_not_found")
@@ -1356,6 +1384,7 @@ class PairingOrchestrator:
         return public_pairing_state(state)
 
     async def retry(self, company_id: str, purpose: str, attempt_id: str, correlation_id: str) -> Dict[str, Any]:
+        purpose = self._escopo(purpose)
         state = await self._load_attempt(attempt_id)
         if not state or state.get("company_id") != company_id or state.get("purpose") != purpose:
             raise PairingNotFoundError("pairing_not_found")
@@ -1371,6 +1400,7 @@ class PairingOrchestrator:
         )
 
     async def cancel(self, company_id: str, purpose: str, attempt_id: str) -> Dict[str, Any]:
+        purpose = self._escopo(purpose)
         state = await self._load_attempt(attempt_id)
         if not state or state.get("company_id") != company_id or state.get("purpose") != purpose:
             raise PairingNotFoundError("pairing_not_found")
@@ -1445,8 +1475,8 @@ class PairingOrchestrator:
 
         self._validate_config()
         company_id = str(company_id or "").strip()
-        purpose = str(purpose or "observer").strip().lower()
-        if not company_id or purpose not in ("observer", "attendance", "dispatch"):
+        purpose = self._escopo(purpose)
+        if not company_id:
             raise ValueError("invalid_pairing_scope")
 
         integration = await self._integration(company_id, purpose)

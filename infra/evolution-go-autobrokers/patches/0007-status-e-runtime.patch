@@ -1,0 +1,141 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: AutoBrokers Engineering <engineering@autobrokers.local>
+Date: Thu, 6 Aug 2026 13:20:00 -0300
+Subject: [PATCH 7/7] status honesto e runtime sem zumbi
+
+Dois defeitos medidos em 06/08/2026, ambos no mesmo arquivo.
+
+1) `/instance/status` respondia sobre o PROCESSO e era lido como se
+   respondesse sobre a SESSAO. Ele le `clientPointer`, que
+   CONNECT_ON_STARTUP=false esvazia a cada restart: toda instancia passa a
+   dizer `LoggedIn: false`, inclusive as pareadas. Quem lia isso concluia
+   "vamos parear" e pedia um QR que nao podia vir — com `Jid` preenchido o
+   whatsmeow reconecta a sessao em vez de emitir QR. Ganha `Registered` e
+   `Jid`, que leem o banco. Campos ADITIVOS: `Connected`/`LoggedIn` mantem
+   o significado de sempre.
+
+2) O `Logout` apagava `clientPointer` e deixava `myClientPointer` orfao.
+   Dai nascia a instancia zumbi: `/status` dizia "nao esta rodando" e
+   `/connect` dizia "ja esta rodando", e nenhum cliente subia. A instancia
+   ficava presa ate o conteiner reiniciar. `esquecerRuntime` limpa os dois.
+
+   `ForceReconnect` NAO usa o helper de proposito: la o `killChannel` novo
+   ja foi criado logo acima, e `ClearInstanceCache` o fecharia antes de o
+   `StartClient` seguinte encontra-lo.
+---
+ pkg/instance/service/instance_service.go | 66 ++++++++++++++++++++----
+ 1 file changed, 56 insertions(+), 10 deletions(-)
+
+diff --git a/pkg/instance/service/instance_service.go b/pkg/instance/service/instance_service.go
+index d988075..0ef10e0 100644
+--- a/pkg/instance/service/instance_service.go
++++ b/pkg/instance/service/instance_service.go
+@@ -87,6 +87,10 @@ type StatusStruct struct {
+ 	LoggedIn  bool
+ 	myJid     *types.JID
+ 	Name      string
++	// Registered/Jid descrevem a sessao PERSISTIDA; Connected/LoggedIn
++	// descrevem o processo. Sao coisas diferentes e agora dizem isso.
++	Registered bool
++	Jid        string
+ }
+ 
+ type QrcodeStruct struct {
+@@ -363,8 +367,7 @@ func (i instances) Logout(instance *instance_model.Instance) (*instance_model.In
+ 		case <-time.After(5 * time.Second):
+ 		}
+ 
+-		delete(i.clientPointer, instance.Id)
+-		delete(i.killChannel, instance.Id)
++		i.esquecerRuntime(instance)
+ 
+ 		i.loggerWrapper.GetLogger(instance.Id).LogInfo("[%s] Logout successful", instance.Id)
+ 		return instance, nil
+@@ -378,8 +381,7 @@ func (i instances) Logout(instance *instance_model.Instance) (*instance_model.In
+ 		case <-time.After(5 * time.Second):
+ 		}
+ 
+-		delete(i.clientPointer, instance.Id)
+-		delete(i.killChannel, instance.Id)
++		i.esquecerRuntime(instance)
+ 
+ 		i.loggerWrapper.GetLogger(instance.Id).LogInfo("[%s] Disconnection successful", instance.Id)
+ 		return instance, nil
+@@ -389,13 +391,55 @@ func (i instances) Logout(instance *instance_model.Instance) (*instance_model.In
+ 	return instance, fmt.Errorf("ignoring logout as it was not connected")
+ }
+ 
++// esquecerRuntime tira a instancia da memoria do processo por INTEIRO.
++//
++// Existem DOIS mapas de cliente — clientPointer (lido por Status/GetQr) e
++// myClientPointer (consultado por Connect via UpdateInstanceSettings) — e o
++// Logout apagava so o primeiro. O segundo ficava orfao, e dai nascia a
++// instancia zumbi:
++//
++//	GET  /instance/status   -> clientPointer vazio    -> "nao esta rodando"
++//	POST /instance/connect  -> myClientPointer cheio  -> "ja esta rodando"
++//
++// Com as duas respostas em desacordo, nenhum cliente subia: o connect nao
++// reiniciava (achava que ja rodava) e o GetQr nao tinha o que ler. A instancia
++// ficava presa ate o conteiner reiniciar, e toda tentativa de QR voltava 400
++// sem sequer tentar — foi o que prendeu uma corretora por dias.
++//
++// So e chamado onde a instancia esta sendo DESLIGADA. ForceReconnect nao usa
++// este helper de proposito: la o killChannel novo ja foi criado logo acima, e
++// ClearInstanceCache o fecharia antes do StartClient seguinte encontra-lo.
++func (i instances) esquecerRuntime(instance *instance_model.Instance) {
++	if err := i.whatsmeowService.ClearInstanceCache(instance.Id, instance.Token); err != nil {
++		i.loggerWrapper.GetLogger(instance.Id).LogWarn("[%s] ClearInstanceCache: %v", instance.Id, err)
++	}
++	delete(i.clientPointer, instance.Id)
++	delete(i.killChannel, instance.Id)
++}
++
+ func (i instances) Status(instance *instance_model.Instance) (*StatusStruct, error) {
+ 	client := i.clientPointer[instance.Id]
+ 
++	// Connected/LoggedIn leem o RUNTIME (clientPointer). Com
++	// CONNECT_ON_STARTUP=false, todo restart esvazia esse mapa e os dois viram
++	// false em TODA instancia — inclusive nas perfeitamente pareadas. Quem so
++	// via esses campos concluia "nao esta logada, vamos parear" e pedia um QR
++	// que nao podia vir: com Jid preenchido o whatsmeow reconecta a sessao em
++	// vez de emitir QR (whatsmeow.go, StartClient).
++	//
++	// Registered le o BANCO e sobrevive ao restart. E a unica resposta honesta
++	// para "esta instancia ja tem dono?".
++	//
++	// ADITIVO de proposito: Connected/LoggedIn mantem o significado de sempre,
++	// entao nenhum consumidor existente muda de comportamento.
++	registered := strings.TrimSpace(instance.Jid) != ""
++
+ 	if client == nil {
+ 		return &StatusStruct{
+-			Connected: false,
+-			LoggedIn:  false,
++			Connected:  false,
++			LoggedIn:   false,
++			Registered: registered,
++			Jid:        instance.Jid,
+ 		}, nil
+ 	}
+ 
+@@ -410,10 +454,12 @@ func (i instances) Status(instance *instance_model.Instance) (*StatusStruct, err
+ 	}
+ 
+ 	return &StatusStruct{
+-		Connected: isConnected,
+-		LoggedIn:  isLoggedIn,
+-		myJid:     myJid,
+-		Name:      name,
++		Connected:  isConnected,
++		LoggedIn:   isLoggedIn,
++		myJid:      myJid,
++		Name:       name,
++		Registered: registered,
++		Jid:        instance.Jid,
+ 	}, nil
+ }
+ 
+-- 
+2.52.0.windows.1
+

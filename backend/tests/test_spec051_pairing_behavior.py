@@ -18,6 +18,19 @@ ROOT = Path(__file__).resolve().parents[1]
 
 
 def _load_orchestrator():
+    # `channel_identity` é carregado DE VERDADE, não dublado: ele decide o nome
+    # da instância, e o nome é a chave de deduplicação do acervo. Um dublê aqui
+    # deixaria o teste verde enquanto o nome real mudasse — que é exatamente o
+    # tipo de verde que não protege ninguém. O módulo é puro (sem I/O, sem
+    # dependência de `app.*`), então carregá-lo não traz o `openai` do pacote.
+    if "app.services.whatsapp.channel_identity" not in sys.modules:
+        ident_path = ROOT / "app/services/whatsapp/channel_identity.py"
+        ident_spec = importlib.util.spec_from_file_location(
+            "app.services.whatsapp.channel_identity", ident_path)
+        ident = importlib.util.module_from_spec(ident_spec)
+        sys.modules[ident_spec.name] = ident
+        ident_spec.loader.exec_module(ident)
+
     path = ROOT / "app/services/whatsapp/pairing_orchestrator.py"
     spec = importlib.util.spec_from_file_location("spec051_pairing_behavior_mod", path)
     module = importlib.util.module_from_spec(spec)

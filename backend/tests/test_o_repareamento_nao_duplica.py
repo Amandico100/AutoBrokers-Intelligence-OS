@@ -568,19 +568,43 @@ def teste_o_nome_da_instancia_nao_vem_do_pedido():
     fonte = open(caminho, encoding="utf-8").read()
     comandos = "\n".join(l for l in fonte.split("\n") if not l.lstrip().startswith("#"))
 
-    checar("_instancia_de_observador_ja_existente" in comandos,
+    checar("_identidade_de_observador_ja_existente" in comandos,
            "existe uma busca pela instância já usada")
     # E ela vem ANTES do nome calculado — senão o `or` a ignora.
-    i_reuso = comandos.find("_instancia_de_observador_ja_existente(")
-    i_novo = comandos.find("_obs_instance_name(company_id, int(body.get")
+    i_reuso = comandos.find("_identidade_de_observador_ja_existente")
+    i_novo = comandos.find("_obs_instance_name(company_id)")
     checar(0 < i_reuso < i_novo,
            "o reuso vem ANTES do nome novo",
-           f"reuso={i_reuso} novo={i_novo} — depois, o `seq` do corpo voltaria a mandar")
+           f"reuso={i_reuso} novo={i_novo}")
+
+    # 06/08/2026 — a lição não morreu, ficou MAIS FORTE (CLAUDE.md §9.3).
+    #
+    # Este guarda nasceu vigiando a ORDEM (`reuso or _obs_instance_name(...,
+    # seq)`), porque o `seq` vinha do corpo da requisição e qualquer chamador
+    # podia escolhê-lo. Vigiar a ordem era o melhor possível enquanto a porta
+    # existia.
+    #
+    # A porta foi fechada: o nome nasce em `channel_identity.nome_da_instancia`,
+    # que não aceita `seq`. Agora dá para provar o FATO em vez da precaução —
+    # nenhum valor de `seq` muda o nome, porque `seq` não chega mais lá.
+    _identidade = _carregar_identidade()
+    empresa = "6c9c55e2-2f00-0000-0000-000000000000"
+    checar(_identidade.nome_da_instancia(empresa, "observer") == "ab-obs-6c9c55e22f-1",
+           "o nome canônico é EXATAMENTE o que produção já usa",
+           "📊 ab-obs-6c9c55e22f-1 — mudar isto reindexaria 86.801 linhas")
+    checar(_identidade.nome_da_instancia(empresa, "observer")
+           == _identidade.nome_da_instancia(empresa, "attendance"),
+           "observador e atendimento são o MESMO número da corretora",
+           "um pareamento serve as duas funções — D-Canal-01")
+    checar(_identidade.nome_da_instancia(empresa, "auxiliary:cobranca")
+           != _identidade.nome_da_instancia(empresa, "observer"),
+           "CONTROLE — auxiliar (cobrança) tem número SEPARADO",
+           "serviço diferente, mensagem diferente, risco de bloqueio diferente")
 
     arvore = ast.parse(fonte)
     busca = next((n for n in ast.walk(arvore)
                   if isinstance(n, (ast.FunctionDef, ast.AsyncFunctionDef))
-                  and n.name == "_instancia_de_observador_ja_existente"), None)
+                  and n.name == "_identidade_de_observador_ja_existente"), None)
     checar(busca is not None, "a busca existe como função")
     if busca is None:
         return
@@ -598,14 +622,33 @@ def teste_o_nome_da_instancia_nao_vem_do_pedido():
            "CONTROLE — mas continua filtrando corretora e propósito",
            f"filtra por {filtros} — sem isso, uma corretora herdaria o acervo de outra")
 
-    # CONTRAPROVA — o `seq` do corpo, sozinho, produz nome DIFERENTE. É o que
-    # torna este guarda necessário; se produzisse o mesmo, não haveria risco.
-    sys.path.insert(0, os.path.join(RAIZ))
-    nome1 = f"ab-obs-{'6c9c55e22f'}-1"
-    nome2 = f"ab-obs-{'6c9c55e22f'}-2"
+    # CONTRAPROVA — o sufixo importa mesmo. Se `-1` e `-2` produzissem a mesma
+    # chave, nada disso seria necessário e o guarda seria teatro.
+    nome1 = "ab-obs-6c9c55e22f-1"
+    nome2 = "ab-obs-6c9c55e22f-2"
     checar(nome1 != nome2 and _digitos_de(nome1) != _digitos_de(nome2),
-           "CONTRAPROVA — `seq` diferente muda os dígitos, e a chave com eles",
+           "CONTRAPROVA — sufixo diferente muda os dígitos, e a chave com eles",
            f"{_digitos_de(nome1)} × {_digitos_de(nome2)}")
+
+
+def _carregar_identidade():
+    """O módulo REAL que decide o nome — carregado do arquivo, nunca dublado.
+
+    Puro por construção (sem I/O, sem `app.*`), então carrega sem trazer o
+    `openai` do pacote. Um dublê aqui deixaria o teste verde enquanto o nome
+    de verdade mudasse — e o nome é a chave do acervo.
+    """
+    import importlib.util
+
+    nome = "app.services.whatsapp.channel_identity"
+    if nome in sys.modules:
+        return sys.modules[nome]
+    caminho = os.path.join(RAIZ, "app", "services", "whatsapp", "channel_identity.py")
+    spec = importlib.util.spec_from_file_location(nome, caminho)
+    modulo = importlib.util.module_from_spec(spec)
+    sys.modules[nome] = modulo
+    spec.loader.exec_module(modulo)
+    return modulo
 
 
 def _digitos_de(nome: str) -> str:

@@ -645,6 +645,44 @@ def _sinais_do_codigo() -> dict:
                                      "briefing.weekly_executive"))
     except Exception:  # noqa: BLE001
         sinais["templates_do_briefing"] = False
+
+    # OS SINAIS DO PAREAMENTO — 06/08/2026.
+    #
+    # Uma atendente passou dias sem QR e ninguém conseguia dizer, de fora, se o
+    # conserto tinha entrado. Estas quatro linhas respondem isso em uma
+    # requisição, e cada uma corresponde a um defeito medido naquele dia.
+    try:
+        from app.services.whatsapp.channel_identity import nome_da_instancia
+        from app.services.whatsapp.channel_security import corpo_do_connect
+        from app.services.whatsapp.pairing_orchestrator import (
+            instancia_ja_existe, qr_ainda_nao_disponivel)
+
+        # 1) "Please wait a moment" deixou de virar "chame o suporte" — e o
+        #    contrário também vale: outro 400 continua sendo erro de verdade.
+        sinais["qr_espera_nao_e_socorro"] = (
+            qr_ainda_nao_disponivel(400, "no QR code available. Please wait a moment")
+            and not qr_ainda_nao_disponivel(400, "instance not found"))
+        # 2) O 500 "already exists" do create deixou de virar "provedor fora".
+        sinais["create_repetido_nao_e_indisponivel"] = (
+            instancia_ja_existe(500, "instance already exists")
+            and not instancia_ja_existe(500, "database is down"))
+        # 3) Um connect sem webhookUrl apagaria a entrega do canal: é recusado.
+        try:
+            corpo_do_connect("")
+            sinais["connect_sem_webhook_recusado"] = False
+        except ValueError:
+            sinais["connect_sem_webhook_recusado"] = True
+        # 4) Um nome só por corretora: observador e atendimento são o MESMO
+        #    número, e auxiliar (cobrança) é número separado.
+        sinais["um_pareamento_por_corretora"] = (
+            nome_da_instancia("04b5cdbc-04cd-0000-0000-000000000000", "observer")
+            == nome_da_instancia("04b5cdbc-04cd-0000-0000-000000000000", "attendance")
+            != nome_da_instancia("04b5cdbc-04cd-0000-0000-000000000000", "auxiliary:cobranca"))
+    except Exception:  # noqa: BLE001
+        sinais["qr_espera_nao_e_socorro"] = False
+        sinais["create_repetido_nao_e_indisponivel"] = False
+        sinais["connect_sem_webhook_recusado"] = False
+        sinais["um_pareamento_por_corretora"] = False
     return sinais
 
 

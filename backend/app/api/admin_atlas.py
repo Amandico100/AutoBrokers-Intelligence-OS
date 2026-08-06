@@ -320,7 +320,18 @@ def _go_admin() -> Dict[str, str]:
 
 
 def _obs_instance_name(company_id: str, seq: int = 1) -> str:
-    return f"ab-obs-{str(company_id).replace('-', '')[:10]}-{seq}"
+    """Delega para `channel_identity` — o nome nasce num lugar só.
+
+    O parâmetro `seq` continua na assinatura por compatibilidade de chamada, mas
+    é **ignorado de propósito**: ele deixava qualquer chamador escolher o sufixo,
+    e `observer_number` é `_digits()` do nome. Um `seq=2` produziria `045042` em
+    vez de `045041`, a chave de deduplicação deixaria de casar, e o pareamento
+    seguinte regravaria as 69.150 transcrições. O caminho normal sempre cravou
+    `1`; agora ninguém consegue cravar outra coisa.
+    """
+    from app.services.whatsapp.channel_identity import nome_da_instancia
+
+    return nome_da_instancia(company_id, "observer")
 
 
 def _instancia_de_observador_ja_existente(company_id: str) -> Optional[str]:
@@ -336,24 +347,51 @@ def _instancia_de_observador_ja_existente(company_id: str) -> Optional[str]:
     Por isso lê linha DESLIGADA também. Desconectar é pausa, não recomeço — a
     mesma razão do `_escopo_lembrado` no orquestrador de pareamento.
     """
+    nome, _ = _identidade_de_observador_ja_existente(company_id)
+    return nome
+
+
+def _identidade_de_observador_ja_existente(
+    company_id: str,
+) -> tuple[Optional[str], Optional[str]]:
+    """(nome, token EM CLARO) da instância que esta corretora já usa, ou (None, None).
+
+    O token vem junto porque o nome sozinho não bastava: esta rota inventava um
+    `secrets.token_hex(16)` novo a cada onboarding e o gravava sobre a linha
+    existente. Nome antigo + chave nova = **401 no provedor** — o mesmo defeito
+    que `identidade_da_instancia` conserta no orquestrador de pareamento, aqui de
+    novo, num arquivo diferente.
+
+    Decifra ao ler: a coluna guarda ciphertext (188 chars). Ler o valor cru e
+    mandá-lo como `apikey` dá 401 com qualquer chave de criptografia — e foi
+    exatamente essa leitura que produziu as cinco medições iguais lidas como
+    "o ENCRYPTION_KEY está errado" (CLAUDE.md §9.2: cinco resultados do mesmo
+    defeito não são cinco evidências).
+    """
     try:
         from app.core.database import get_supabase_client
+        from app.services.whatsapp.integration_secrets import prepare_integration_for_runtime
 
         db = get_supabase_client()
-        linhas = (db.client.table("integrations").select("instance_id, created_at")
+        linhas = (db.client.table("integrations").select("instance_id, token, company_id, purpose, created_at")
                   .eq("company_id", str(company_id))
                   .eq("provider", "evolution-go").eq("purpose", "observer")
                   .order("created_at").limit(5).execute().data) or []
         for linha in linhas:
             nome = str(linha.get("instance_id") or "").strip()
-            if nome:
-                return nome
+            if not nome:
+                continue
+            # `tolerar_perda`: um token indecifrável não pode esconder o NOME, que
+            # é o que protege o acervo. Sem token, quem chama cria um novo — o que
+            # é recuperável; perder o nome não é.
+            pronta = prepare_integration_for_runtime(linha, tolerar_perda=True) or {}
+            return nome, (str(pronta.get("token") or "").strip() or None)
     except Exception as exc:  # noqa: BLE001
         # Fail-safe para o lado SEGURO: sem resposta, quem chama gera o nome
         # padrão (`-1`), que é o que o caminho normal sempre usou.
         logger.warning("[ATLAS ONBOARDING] não consegui ler a instância existente (%s)",
                        type(exc).__name__)
-    return None
+    return None, None
 
 
 @router.post("/onboarding/pair")
@@ -393,10 +431,14 @@ async def onboarding_pair(body: Dict[str, Any], _: Any = Depends(require_master_
     # O caminho normal cravava `-1` e por isso o defeito nunca apareceu. Mas a
     # porta existia, e ela é aberta por um campo que qualquer chamador escolhe.
     # Nome de instância é IDENTIDADE de acervo: quem já tem, mantém.
-    instance = await asyncio.to_thread(
-        _instancia_de_observador_ja_existente, company_id
-    ) or _obs_instance_name(company_id, int(body.get("seq") or 1))
-    inst_token = secrets.token_hex(16)
+    lembrado_nome, lembrado_token = await asyncio.to_thread(
+        _identidade_de_observador_ja_existente, company_id
+    )
+    instance = lembrado_nome or _obs_instance_name(company_id)
+    # Reusa a chave da instância que já existe no provedor. Inventar uma nova
+    # sobre um nome antigo é o beco do 401 — ver
+    # `_identidade_de_observador_ja_existente`.
+    inst_token = lembrado_token or secrets.token_hex(16)
     token, token_hash, token_prefix = new_webhook_credentials()
     webhook_url = build_webhook_url(public_url, "evolution-go", token)
 
@@ -418,6 +460,8 @@ async def onboarding_pair(body: Dict[str, Any], _: Any = Depends(require_master_
     supabase = get_supabase_client()
 
     def _upsert() -> None:
+        from app.services.whatsapp.integration_secrets import prepare_integration_for_storage
+
         record = {
             "company_id": company_id, "identifier": instance, "purpose": "observer",
             "provider": "evolution-go", "base_url": cfg["base_url"], "instance_id": instance,
@@ -425,28 +469,58 @@ async def onboarding_pair(body: Dict[str, Any], _: Any = Depends(require_master_
             "channel_status": "connecting", "is_active": True, "agent_id": None,
             "alert_target": {"label": label, "observer_scope": scope},
         }
+        # ⚠️ CIFRAR. Até 06/08/2026 esta rota gravava `inst_token` em TEXTO PURO
+        # na mesma coluna em que o orquestrador grava ciphertext de 188 chars.
+        # Duas escritas, dois formatos, uma coluna — e quem lê não tem como saber
+        # qual recebeu. Foi essa mistura que produziu os 401 lidos como "a chave
+        # de criptografia está errada" e custou meio dia de diagnóstico.
+        gravavel = prepare_integration_for_storage(record)
         existing = (supabase.client.table("integrations").select("id")
                     .eq("company_id", company_id).eq("provider", "evolution-go")
                     .eq("instance_id", instance).limit(1).execute())
         if existing.data:
-            supabase.client.table("integrations").update(record).eq("id", existing.data[0]["id"]).execute()
+            supabase.client.table("integrations").update(gravavel).eq("id", existing.data[0]["id"]).execute()
         else:
-            supabase.client.table("integrations").insert(record).execute()
+            supabase.client.table("integrations").insert(gravavel).execute()
 
     await asyncio.to_thread(_upsert)
-    return {"ok": True, "instance": instance, "next": f"/api/admin/atlas/onboarding/qr?instance={instance}"}
+    return {"ok": True, "instance": instance,
+            "next": f"/api/admin/atlas/onboarding/qr?instance={instance}&company_id={company_id}"}
 
 
 @router.get("/onboarding/qr")
-async def onboarding_qr(instance: str, _: Any = Depends(require_master_admin)) -> Dict[str, Any]:
+async def onboarding_qr(
+    instance: str, company_id: str, _: Any = Depends(require_master_admin)
+) -> Dict[str, Any]:
+    """QR do onboarding do Atlas.
+
+    `company_id` é **obrigatório** desde 06/08/2026. A busca filtrava só por
+    `instance_id`, e o backend roda com service role: RLS sem filtro no código
+    não protege nada (CLAUDE.md §7). Quem soubesse o nome de uma instância —
+    determinístico, derivado do id da corretora — recebia a chave dela.
+
+    E lê DECIFRANDO: a coluna guarda ciphertext. A leitura crua anterior mandava
+    o ciphertext como `apikey` e colhia 401 sempre, com qualquer chave.
+    """
     from app.core.database import get_supabase_client
+    from app.services.whatsapp.integration_secrets import prepare_integration_for_runtime
+
+    company_id = str(company_id or "").strip()
+    if not company_id:
+        raise HTTPException(status_code=400, detail="company_id_required")
 
     supabase = get_supabase_client()
 
     def _tok() -> Optional[str]:
-        rows = (supabase.client.table("integrations").select("token")
-                .eq("instance_id", instance).eq("purpose", "observer").limit(1).execute().data or [])
-        return rows[0]["token"] if rows else None
+        rows = (supabase.client.table("integrations")
+                .select("token, company_id, purpose, instance_id")
+                .eq("company_id", company_id)
+                .eq("instance_id", instance).eq("purpose", "observer")
+                .limit(1).execute().data or [])
+        if not rows:
+            return None
+        pronta = prepare_integration_for_runtime(rows[0]) or {}
+        return str(pronta.get("token") or "").strip() or None
 
     tok = await asyncio.to_thread(_tok)
     if not tok:
