@@ -12,7 +12,19 @@ import { StatusPill } from '@/components/patterns';
 import { WhatsAppChannelModal } from '@/components/vault/WhatsAppChannelModal';
 
 export function WhatsAppHubClient() {
-  const [status, setStatus] = useState<{ connected: boolean; instance?: string } | null>(null);
+  const [status, setStatus] = useState<{
+    connected: boolean;
+    instance?: string;
+    /**
+     * QUAL número está pareado, mascarado (`5548*****360`).
+     *
+     * Pedido do Founder, 06/08/2026: "é importante que apareça pra nunca mais
+     * gerar confusão do número que está pareado". A confusão foi real: uma
+     * corretora esteve pareada com um DDD 47 enquanto todos acreditavam ser o
+     * celular da atendente, que é DDD 48 — e nada na tela podia desmentir.
+     */
+    paired_phone?: string | null;
+  } | null>(null);
   const [modalOpen, setModalOpen] = useState(false);
   const [provaAberta, setProvaAberta] = useState(false);
   const [paraNumero, setParaNumero] = useState('');
@@ -22,7 +34,13 @@ export function WhatsAppHubClient() {
   const load = useCallback(() => {
     fetch('/api/dashboard/whatsapp-channel?action=status', { cache: 'no-store' })
       .then((r) => r.json())
-      .then((j) => setStatus({ connected: Boolean(j?.connected), instance: j?.instance }))
+      .then((j) =>
+        setStatus({
+          connected: Boolean(j?.connected),
+          instance: j?.instance,
+          paired_phone: j?.paired_phone ?? null,
+        }),
+      )
       .catch(() => setStatus(null));
   }, []);
 
@@ -51,7 +69,20 @@ export function WhatsAppHubClient() {
                   label={status.connected ? 'Conectado' : 'Aguardando conexão'}
                 />
               )}
+              {status?.paired_phone ? (
+                <span className="rounded-md border border-border bg-surface-2 px-2 py-0.5 font-mono text-[11px] text-foreground-2">
+                  {status.paired_phone}
+                </span>
+              ) : null}
             </div>
+            {status && !status.connected && status.paired_phone ? (
+              // O caso que mais confunde: a linha guarda um número mas o canal
+              // caiu. Dizer só "Aguardando conexão" faria a corretora achar que
+              // precisa parear de novo — quando o que falta é religar.
+              <p className="mt-1 text-[11px] text-muted-foreground">
+                Último número pareado nesta linha. Reconectar não exige novo QR code.
+              </p>
+            ) : null}
             <p className="mt-1 text-xs leading-relaxed text-muted-foreground">
               O número que recebe os seus segurados e aciona as seguradoras. Na fase de observação,
               a equipe humana atende por ele e o sistema aprende em silêncio — ligar o agente

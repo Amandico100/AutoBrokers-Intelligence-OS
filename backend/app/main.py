@@ -708,6 +708,31 @@ def _sinais_do_codigo() -> dict:
                 agora=_agora_utc)["alarmar"] is False)
     except Exception:  # noqa: BLE001
         sinais["alarme_de_canal_mudo"] = False
+
+    # 6) A ponte que leva a conversa capturada ao chat da corretora existe?
+    #    📊 Sem este sinal não havia como responder "o deploy do espelho
+    #    entrou?" — e a resposta importava, porque a tela ficou vazia depois de
+    #    um deploy e as duas explicações (código velho × ainda não chegou
+    #    mensagem) exigiam ações opostas.
+    try:
+        from app.services.atlas.espelho_chat import (
+            JANELA_DA_LISTA_DIAS, deve_espelhar,
+        )
+        from app.services.atlas.observer_intake import _espelhar_no_chat_da_corretora
+
+        sinais["espelho_no_chat"] = (
+            callable(_espelhar_no_chat_da_corretora)
+            and JANELA_DA_LISTA_DIAS == 7
+            # e a regra sabe dizer sim e não — um `deve_espelhar` que só diz sim
+            # encheria a tela; um que só diz não a deixaria vazia.
+            and deve_espelhar(counterparty="5547999999999", texto="oi",
+                              msg_type="text", e_grupo=False, e_seguradora=False,
+                              idade_horas=0.1) is True
+            and deve_espelhar(counterparty="5547999999999", texto="oi",
+                              msg_type="text", e_grupo=True, e_seguradora=False,
+                              idade_horas=0.1) is False)
+    except Exception:  # noqa: BLE001
+        sinais["espelho_no_chat"] = False
     return sinais
 
 

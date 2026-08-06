@@ -49,7 +49,7 @@ from __future__ import annotations
 
 import asyncio
 import logging
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 from typing import Any, Optional
 
 logger = logging.getLogger(__name__)
@@ -322,8 +322,76 @@ async def pausar_por_intervencao_humana(*, company_id: str, counterparty: str,
         return False
 
 
+async def trazer_conversas_ja_capturadas(
+    *, company_id: str, dias: int = 2, limite: int = 3000, db: Any = None
+) -> dict:
+    """Leva ao chat o que o Observador JÁ capturou. Uma vez, sob demanda.
+
+    POR QUE ISTO EXISTE
+    ===================
+    A ponte só age quando chega mensagem nova. 📊 Em 06/08/2026, no dia em que
+    ela subiu, a AutoFleet tinha **32.128 mensagens capturadas em 7 dias** e o
+    chat abriu vazio — porque a última mensagem tinha entrado 22 minutos antes
+    do deploy. A corretora estaria olhando uma tela vazia sobre um acervo cheio,
+    esperando um cliente escrever.
+
+    Não é motor paralelo: é a MESMA `espelhar_no_chat`, chamada em lote a partir
+    do acervo em vez do webhook. E é idempotente pelo `message_id`, então rodar
+    duas vezes não duplica nada.
+
+    `dias=2` por padrão porque a mesa de trabalho é do que está aberto agora;
+    quem quiser a semana inteira pede `dias=7`. `limite` existe para a chamada
+    não virar uma varredura de 32 mil linhas sem ninguém ter pedido isso.
+    """
+    empresa = str(company_id or "").strip()
+    if not empresa:
+        return {"ok": False, "motivo": "company_id_obrigatorio"}
+
+    if db is None:
+        from app.core.database import get_supabase_client
+
+        db = get_supabase_client()
+    cliente = getattr(db, "client", db)
+
+    desde = (datetime.now(timezone.utc) - timedelta(days=max(1, int(dias)))).isoformat()
+
+    def _ler() -> list:
+        return (cliente.table("attendance_transcripts")
+                .select("counterparty, direction, msg_type, text, message_id, wa_timestamp")
+                .eq("company_id", empresa)
+                .gte("created_at", desde)
+                # Mais antigas primeiro: o chat precisa da ordem da conversa,
+                # não da ordem da consulta.
+                .order("wa_timestamp", desc=False)
+                .limit(max(1, int(limite))).execute().data or [])
+
+    try:
+        linhas = await asyncio.to_thread(_ler)
+    except Exception as erro:  # noqa: BLE001
+        logger.warning("[ESPELHO] backfill não leu o acervo (%s)", type(erro).__name__)
+        return {"ok": False, "motivo": type(erro).__name__}
+
+    levadas = 0
+    for linha in linhas:
+        quando = str(linha.get("wa_timestamp") or "") or _agora_iso()
+        conversa = await espelhar_no_chat(
+            company_id=empresa,
+            counterparty=str(linha.get("counterparty") or ""),
+            texto=str(linha.get("text") or ""),
+            msg_type=str(linha.get("msg_type") or "text"),
+            direcao=str(linha.get("direction") or "in"),
+            message_id=str(linha.get("message_id") or ""),
+            quando_iso=quando, db=db)
+        if conversa:
+            levadas += 1
+
+    logger.info("[ESPELHO] backfill de %s: %s linhas lidas, %s levadas ao chat",
+                empresa, len(linhas), levadas)
+    return {"ok": True, "lidas": len(linhas), "levadas": levadas, "dias": dias}
+
+
 __all__ = [
     "deve_espelhar", "espelhar_no_chat", "session_id_do_chat",
-    "pausar_por_intervencao_humana",
+    "pausar_por_intervencao_humana", "trazer_conversas_ja_capturadas",
     "JANELA_DA_LISTA_DIAS", "LIMITE_DE_RECENCIA_HORAS",
 ]

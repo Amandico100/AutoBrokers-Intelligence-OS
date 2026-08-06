@@ -952,6 +952,45 @@ async def whatsapp_channel_disconnect(
     return {"ok": True, "instance": instance, "state": "close"}
 
 
+async def _numero_pareado_da_linha(company_id: str, purpose: str = "observer") -> Optional[str]:
+    """QUAL número está pareado nesta linha — mascarado. ``None`` se nenhum.
+
+    Pedido do Founder, 06/08/2026: *"é importante que apareça pra nunca mais
+    gerar confusão do número que está pareado"*.
+
+    A confusão foi real e cara: a linha da Resulta esteve pareada com um DDD 47
+    (o celular do Founder) enquanto todos acreditavam ser o da atendente, que é
+    DDD 48 — e passaram-se dias de investigação sem que nada na tela pudesse
+    desmentir isso. 📊 O dado já estava no banco (`paired_phone_e164`); só não
+    tinha por onde sair.
+
+    Lê a linha DESLIGADA também: quem desconectou continua tendo o direito de
+    saber qual número estava ali. Desconectar é pausa, não amnésia.
+
+    Mascarado sempre — é a linha de trabalho de uma pessoa real (CLAUDE.md
+    §13.3). Quem já conhece o número o reconhece; quem não conhece não passa a
+    conhecer.
+    """
+    from app.services.whatsapp.numero_pareado import mascarar
+
+    supabase = get_supabase_client()
+
+    def _q() -> list:
+        return (
+            supabase.client.table("integrations").select("paired_phone_e164")
+            .eq("company_id", company_id).eq("purpose", purpose)
+            .eq("provider", "evolution-go")
+            .order("last_seen_at", desc=True).limit(1).execute().data or []
+        )
+
+    try:
+        rows = await asyncio.to_thread(_q)
+    except Exception:  # noqa: BLE001 — a tela não cai por causa do número
+        return None
+    bruto = str((rows[0] if rows else {}).get("paired_phone_e164") or "").strip()
+    return mascarar(bruto) if bruto else None
+
+
 async def _channel_alert_info(company_id: str, purpose: str = "attendance") -> Dict[str, Any]:
     """Config atual do AVISO de queda (SPEC-049) — número próprio ou o mesmo
     destino do suporte humano/dossiês."""
@@ -1047,6 +1086,7 @@ async def whatsapp_channel_status(
 ) -> Dict[str, Any]:
     _require_internal_key(x_autobrokers_internal_key)
     alert = await _channel_alert_info(company_id, purpose)
+    numero = await _numero_pareado_da_linha(company_id, purpose)
     if _go_enabled():
         if str(purpose or "attendance").strip().lower() == "observer":
             company_channel = await _go_company_channel(company_id, purpose)
@@ -1058,10 +1098,12 @@ async def whatsapp_channel_status(
                     "connected": False,
                     "unpaired": True,
                     "alert": alert,
+                    "paired_phone": numero,
                 }
         cfg = await _go_resolve(company_id, purpose)
         st = await _go_status_payload(company_id, purpose)
-        return {"ok": True, "instance": cfg["instance_name"], "alert": alert, **st}
+        return {"ok": True, "instance": cfg["instance_name"], "alert": alert,
+                "paired_phone": numero, **st}
     platform = _evolution_platform()
     instance = _instance_name(company_id)
     headers = {"apikey": platform["api_key"]}
@@ -1073,6 +1115,34 @@ async def whatsapp_channel_status(
             inner = data.get("instance") if isinstance(data.get("instance"), dict) else data
             state = str(inner.get("state") or inner.get("connectionStatus") or "unknown").lower()
     return {"ok": True, "instance": instance, "state": state, "connected": state in ("open", "connected"), "alert": alert}
+
+
+@router.post("/api/whatsapp-channel/espelho/trazer-conversas")
+async def espelho_trazer_conversas(
+    company_id: str,
+    dias: int = 2,
+    limite: int = 3000,
+    x_autobrokers_internal_key: Optional[str] = Header(default=None, alias="X-AutoBrokers-Internal-Key"),
+) -> Dict[str, Any]:
+    """Leva ao chat as conversas que o Observador JÁ capturou.
+
+    A ponte do espelho só age quando chega mensagem nova. 📊 No dia em que ela
+    subiu, a AutoFleet tinha 32.128 mensagens capturadas em 7 dias e o chat
+    abriu VAZIO — a última mensagem tinha entrado 22 minutos antes do deploy. A
+    corretora ficaria olhando uma tela vazia sobre um acervo cheio, esperando um
+    cliente escrever.
+
+    Idempotente: usa a mesma `espelhar_no_chat`, que deduplica por `message_id`.
+    Rodar duas vezes não duplica nada.
+
+    ⚠️ NÃO envia nada pelo WhatsApp e NÃO liga agente nenhum. Só lê o acervo e
+    escreve no chat.
+    """
+    _require_internal_key(x_autobrokers_internal_key)
+    from app.services.atlas.espelho_chat import trazer_conversas_ja_capturadas
+
+    return await trazer_conversas_ja_capturadas(
+        company_id=company_id, dias=dias, limite=limite)
 
 
 @router.get("/api/whatsapp-channel/grupos")

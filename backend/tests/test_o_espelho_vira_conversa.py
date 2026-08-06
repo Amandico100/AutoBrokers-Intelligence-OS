@@ -96,6 +96,10 @@ class _Consulta:
         self.filtros.append(("is_null", campo, None))
         return self
 
+    def gte(self, campo, valor):
+        self.filtros.append(("gte", campo, valor))
+        return self
+
     def order(self, *_a, **_k):
         return self
 
@@ -135,6 +139,8 @@ class _Consulta:
             if tipo == "neq" and str(atual) == str(valor):
                 return False
             if tipo == "is_null" and atual is not None:
+                return False
+            if tipo == "gte" and str(atual or "") < str(valor):
                 return False
         return True
 
@@ -429,6 +435,52 @@ def teste_a_lista_do_chat_mostra_sete_dias():
            "o histórico da conversa não expira; só a lista é enxugada")
 
 
+def teste_o_acervo_ja_capturado_pode_ir_para_o_chat():
+    print("\n[7] O que já foi capturado também chega ao chat")
+    import asyncio
+
+    EC = _carregar_espelho()
+    banco = BancoFalso()
+    # Três mensagens no acervo, duas da mesma pessoa.
+    banco.semear("attendance_transcripts", [
+        {"id": "t1", "company_id": "autofleet", "counterparty": "554799956540",
+         "direction": "in", "msg_type": "text", "text": "Bom dia",
+         "message_id": "H1", "wa_timestamp": _agora_iso(),
+         "created_at": _agora_iso()},
+        {"id": "t2", "company_id": "autofleet", "counterparty": "554799956540",
+         "direction": "out", "msg_type": "text", "text": "Bom dia, pois nao",
+         "message_id": "H2", "wa_timestamp": _agora_iso(),
+         "created_at": _agora_iso()},
+        {"id": "t3", "company_id": "autofleet", "counterparty": "554788887777",
+         "direction": "in", "msg_type": "audio", "text": "",
+         "message_id": "H3", "wa_timestamp": _agora_iso(),
+         "created_at": _agora_iso()},
+    ])
+
+    r = asyncio.run(EC.trazer_conversas_ja_capturadas(
+        company_id="autofleet", dias=2, db=banco))
+    checar(r.get("ok") is True, "o backfill roda", str(r))
+    checar(len(banco.linhas("conversations")) == 2,
+           "duas pessoas viraram duas conversas")
+    checar(len(banco.linhas("messages")) == 3,
+           "e as três mensagens entraram")
+
+    # CONTROLE — rodar de novo NÃO duplica. É o que torna seguro repetir quando
+    # alguém não tem certeza se já rodou.
+    asyncio.run(EC.trazer_conversas_ja_capturadas(
+        company_id="autofleet", dias=2, db=banco))
+    checar(len(banco.linhas("messages")) == 3,
+           "CONTROLE — rodar duas vezes não duplica nada",
+           "a dedup por message_id é a mesma da ponte ao vivo")
+
+    # CONTROLE — sem corretora não faz nada. Uma varredura sem tenant seria a
+    # forma mais fácil de misturar acervo de duas corretoras (§7).
+    vazio = asyncio.run(EC.trazer_conversas_ja_capturadas(
+        company_id="", dias=2, db=banco))
+    checar(vazio.get("ok") is False,
+           "CONTROLE — sem company_id o backfill recusa")
+
+
 def main() -> int:
     print("=" * 70)
     print("A CONVERSA DO WHATSAPP APARECE NO CHAT DA CORRETORA")
@@ -439,6 +491,7 @@ def main() -> int:
     teste_a_ponte_esta_ligada_e_nao_muda_o_silencio()
     teste_nada_disto_liga_agente_nenhum()
     teste_a_lista_do_chat_mostra_sete_dias()
+    teste_o_acervo_ja_capturado_pode_ir_para_o_chat()
 
     print("\n" + "=" * 70)
     if _PROBLEMAS:
