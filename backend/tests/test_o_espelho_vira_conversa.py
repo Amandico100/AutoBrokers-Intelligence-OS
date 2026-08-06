@@ -147,11 +147,15 @@ class _Consulta:
     def execute(self):
         linhas = self.banco.dados.setdefault(self.tabela, [])
         if self._insert is not None:
+            # O banco real recusa coluna inexistente e valor fora do CHECK.
+            # O dublê passa a recusar também — ver `_COLUNAS_REAIS`.
+            _conferir_contra_o_schema(self.tabela, self._insert)
             novo = dict(self._insert)
             novo.setdefault("id", f"{self.tabela}-{len(linhas) + 1}")
             linhas.append(novo)
             return _Resposta([novo])
         if self._update is not None:
+            _conferir_contra_o_schema(self.tabela, self._update)
             tocadas = [l for l in linhas if self._casa(l)]
             for l in tocadas:
                 l.update(self._update)
@@ -160,6 +164,60 @@ class _Consulta:
         if self._limite:
             achadas = achadas[: self._limite]
         return _Resposta(achadas)
+
+
+# 🔴 O SCHEMA REAL, transcrito do banco em 06/08/2026.
+#
+#   SELECT column_name FROM information_schema.columns
+#    WHERE table_schema='public' AND table_name='messages';
+#
+# O `table_schema='public'` é a parte que eu tinha esquecido. Sem ele o Supabase
+# devolve as colunas de `realtime.messages` MISTURADAS com as nossas — e foi daí
+# que saíram `topic`, `extension`, `inserted_at` e `updated_at`, que eu passei a
+# gravar. 📊 4.059 APIError, e toda conversa com o painel vazio.
+#
+# O dublê aceitava qualquer coluna. Um banco de mentira que aceita tudo não é
+# um banco de mentira: é um saco. A partir daqui ele recusa o que o real recusa.
+_COLUNAS_REAIS = {
+    "messages": {"id", "conversation_id", "role", "content", "created_at",
+                 "type", "audio_url", "image_url", "sender_user_id", "payload"},
+    "conversations": {
+        "id", "user_id", "session_id", "title", "created_at", "updated_at",
+        "company_id", "status", "channel", "last_message_preview",
+        "unread_count", "agent_name", "status_color", "user_name",
+        "user_avatar", "user_phone", "last_message_at", "agent_id",
+        "human_handoff_reason", "claimed_by", "claimed_by_name", "claimed_at",
+        "ficha_atendimento", "resolvido_em", "resolucao_motivo"},
+}
+
+# Os CHECK que o banco impõe. Mesma razão: o dublê que ignora CHECK deixa passar
+# `type='image'`, e o banco real recusa a linha inteira.
+_VALORES_ACEITOS = {
+    ("messages", "role"): {"user", "assistant"},
+    ("messages", "type"): {"text", "voice", None},
+}
+
+
+class ColunaInexistente(Exception):
+    """O banco real diria `column "X" of relation "Y" does not exist`."""
+
+
+class ValorRecusado(Exception):
+    """O banco real diria `violates check constraint`."""
+
+
+def _conferir_contra_o_schema(tabela: str, linha: dict) -> None:
+    colunas = _COLUNAS_REAIS.get(tabela)
+    if colunas is None:
+        return
+    for campo, valor in linha.items():
+        if campo not in colunas:
+            raise ColunaInexistente(
+                f'column "{campo}" of relation "{tabela}" does not exist')
+        aceitos = _VALORES_ACEITOS.get((tabela, campo))
+        if aceitos is not None and valor not in aceitos:
+            raise ValorRecusado(
+                f'{tabela}.{campo}="{valor}" violates check constraint')
 
 
 class BancoFalso:

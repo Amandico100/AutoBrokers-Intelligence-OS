@@ -371,8 +371,20 @@ async def espelhar_no_chat(*, company_id: str, counterparty: str, texto: str,
             "content": texto or _rotulo_de_midia(msg_type),
             # `messages_type_check` só aceita 'text' e 'voice' — ver `_tipo_aceito`.
             "type": _tipo_aceito(msg_type),
-            # NOT NULL no schema — valores fixos e legíveis.
-            "topic": "whatsapp", "extension": "espelho",
+            # 🔴 `topic` e `extension` foram REMOVIDOS daqui em 06/08/2026.
+            #
+            # Elas não existem em `public.messages`. Eu as vi num
+            # `information_schema.columns WHERE table_name='messages'` **sem
+            # filtro de schema**, e o Supabase tem `realtime.messages` além da
+            # nossa: o resultado misturava as colunas das duas. O `id`
+            # aparecendo em duplicidade era o aviso, e eu passei por cima.
+            #
+            # 📊 O preço: 4.059 APIError e toda conversa aberta com o painel
+            # vazio, porque a conversa nascia e a mensagem era recusada.
+            #
+            # `payload` ficou — mas como coluna DE VERDADE, criada pela
+            # migration 20260806_01. Ela carrega o `wa_message_id`, sem o qual
+            # não há como deduplicar a reentrega do WhatsApp.
             "payload": {"wa_message_id": message_id, "origem": "espelho",
                         "direcao": direcao,
                         # O tipo de VERDADE fica aqui, para o dia em que a
