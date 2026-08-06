@@ -26,6 +26,7 @@ from pydantic import BaseModel
 from app.core.database import get_supabase_client
 from app.services.whatsapp.channel_security import (
     build_webhook_url,
+    corpo_do_connect,
     new_webhook_credentials,
 )
 
@@ -253,14 +254,15 @@ async def _go_setup(company_id: str, payload: "ChannelSetupPayload", public_url:
 
     token, token_hash, token_prefix = new_webhook_credentials()
     webhook_url = build_webhook_url(public_url, "evolution-go", token)
-    connect_body = {
-        # Eventos do GO são UPPERCASE (event_types.go) — "Message" era
-        # descartado em silêncio e a instância ficava SEM inscrição.
-        # HISTORY_SYNC: no pareamento fresco o histórico vira matéria-prima
-        # do Espelho de Atendimento (SPEC-040) e do Atlas.
-        "webhookUrl": webhook_url,
-        "subscribe": ["MESSAGE", "CONNECTION", "HISTORY_SYNC"], "immediate": True,
-    }
+    # Eventos do GO são UPPERCASE (event_types.go) — "Message" era descartado em
+    # silêncio e a instância ficava SEM inscrição. HISTORY_SYNC: no pareamento
+    # fresco o histórico vira matéria-prima do Espelho (SPEC-040) e do Atlas.
+    #
+    # A lista mora em `corpo_do_connect` porque quatro lugares a montavam e os
+    # quatro discordavam — este mandava três eventos, o orquestrador quatro, e o
+    # reconector nenhum. Divergência em corpo que o provedor GRAVA POR CIMA não é
+    # estilo: é o canal de uma corretora perdendo inscrição sem ninguém saber.
+    connect_body = corpo_do_connect(webhook_url)
 
     try:
         async with httpx.AsyncClient(timeout=_TIMEOUT, base_url=base) as client:
@@ -463,6 +465,36 @@ async def whatsapp_channel_pairing_cancel(
     try:
         return await get_pairing_orchestrator().cancel(
             payload.company_id, payload.purpose, attempt_id
+        )
+    except Exception as exc:  # noqa: BLE001
+        raise _pairing_http_error(exc) from exc
+
+
+@router.post("/api/whatsapp-channel/pairing/liberar-numero")
+async def whatsapp_channel_liberar_numero(
+    payload: PairingPayload,
+    x_autobrokers_internal_key: Optional[str] = Header(default=None, alias="X-AutoBrokers-Internal-Key"),
+) -> Dict[str, Any]:
+    """Solta a linha do telefone atual para que OUTRO possa parear.
+
+    ⚠️ Encerra a sessão do número que está pareado agora. É o "trocar número" da
+    tela, e exige confirmação lá — aqui não há como saber se o clique foi
+    consciente.
+
+    Existe porque não havia saída: 📊 nada no Evolution Go limpa o `jid` de uma
+    instância, e com `jid` preenchido o whatsmeow reconecta em vez de emitir QR.
+    A corretora ficava presa ao primeiro número que pareou, para sempre.
+
+    O nome da instância é preservado — é dele que sai o `observer_number`, metade
+    da chave de deduplicação de 69.150 transcrições. Ver
+    `PairingOrchestrator.liberar_para_novo_numero`.
+    """
+    _require_internal_key(x_autobrokers_internal_key)
+    from app.services.whatsapp.pairing_orchestrator import get_pairing_orchestrator
+
+    try:
+        return await get_pairing_orchestrator().liberar_para_novo_numero(
+            payload.company_id, payload.purpose
         )
     except Exception as exc:  # noqa: BLE001
         raise _pairing_http_error(exc) from exc

@@ -19,6 +19,20 @@ export interface PairingState {
   passkey_error?: string;
   pairing_code?: string;
   provider_version?: string;
+  /**
+   * Qual telefone está do outro lado, MASCARADO (`5547*****463`).
+   *
+   * Pedido do Founder em 06/08/2026: "mostrar o número XXXX está pareado, e aí
+   * essa dúvida sempre acaba e até a corretora sabe o número depois".
+   *
+   * A dúvida custou dias: a linha de uma corretora estava pareada com um DDD 47
+   * enquanto todos acreditavam ser o celular da atendente, que é DDD 48. Nada na
+   * tela permitia ver isso.
+   *
+   * Chega mascarado do backend e é mostrado como chega — a máscara é do
+   * servidor, nunca daqui (CLAUDE.md §13.3).
+   */
+  paired_phone?: string;
 }
 
 const TERMINAL_LABELS: Record<string, string> = {
@@ -66,9 +80,16 @@ export function PairingStateView({
 
   if (state === 'connected' || state === 'already_connected') {
     return (
-      <p className="rounded-lg border border-success/40 bg-surface-2 px-3 py-2 text-xs text-foreground-2">
-        ✅ WhatsApp conectado. O celular e o WhatsApp Web continuam funcionando normalmente.
-      </p>
+      <div className="space-y-2 rounded-lg border border-success/40 bg-surface-2 px-3 py-2">
+        <p className="text-xs text-foreground-2">
+          ✅ WhatsApp conectado. O celular e o WhatsApp Web continuam funcionando normalmente.
+        </p>
+        {pairing.paired_phone ? (
+          <p className="text-xs text-foreground-2">
+            Número pareado: <strong className="font-semibold">{pairing.paired_phone}</strong>
+          </p>
+        ) : null}
+      </div>
     );
   }
 

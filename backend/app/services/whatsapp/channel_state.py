@@ -341,8 +341,67 @@ def deve_reconectar(estado_sondado: Optional[str], estado_anterior: Optional[str
     return normalizar_estado(estado_anterior) in ESTADOS_QUE_AFIRMAM
 
 
+async def _gravar_credencial_de_webhook(
+    integracao: dict, hash_novo: str, prefixo_novo: str, *, db: Any = None
+) -> bool:
+    """Grava o hash do webhook rotacionado. ``False`` = não grave, não religue.
+
+    Devolve booleano porque o chamador tem de PARAR quando isto falha: mandar ao
+    provedor uma URL cujo hash não está no banco troca um canal mudo por um canal
+    que entrega para uma porta que recusa. Falhar em silêncio aqui seria repetir,
+    de outra forma, o defeito que esta função existe para consertar.
+
+    O filtro carrega `company_id` junto do `id` por obrigação da CLAUDE.md §7: o
+    backend usa service role, então RLS não protege contra um filtro torto no
+    código — o filtro certo é o único guarda que existe.
+    """
+    linha_id = integracao.get("id")
+    if not linha_id:
+        logger.error("[RECONECTOR] integração sem id — credencial de webhook não gravada")
+        return False
+    if db is None:
+        from app.core.database import get_supabase_client
+
+        db = get_supabase_client()
+    cliente = getattr(db, "client", db)
+
+    def _gravar() -> None:
+        consulta = (cliente.table("integrations")
+                    .update({"webhook_token_hash": hash_novo,
+                             "webhook_token_prefix": prefixo_novo})
+                    .eq("id", linha_id))
+        if integracao.get("company_id"):
+            consulta = consulta.eq("company_id", integracao["company_id"])
+        consulta.execute()
+
+    try:
+        await asyncio.to_thread(_gravar)
+        return True
+    except Exception as erro:  # noqa: BLE001
+        logger.error("[RECONECTOR] não gravei a credencial de webhook de %s (%s) — não vou religar",
+                     integracao.get("instance_id"), type(erro).__name__)
+        return False
+
+
 async def _reconectar_evolution_go(integracao: dict, agora: datetime) -> Optional[str]:
-    """Pede ao provedor que religue o socket. Nunca gera QR. Nunca levanta."""
+    """Pede ao provedor que religue o socket. Nunca gera QR. Nunca levanta.
+
+    ⚠️ RELIGAR INCLUI DIZER PARA ONDE ENTREGAR — ver `corpo_do_connect`.
+
+    Até 06/08/2026 esta função mandava só ``{"immediate": True}``, e o `Connect`
+    do Evolution Go gravava `Webhook = ""` por cima. O canal voltava mudo: 📊 três
+    das quatro instâncias com ``webhook=''``, e a captura das duas corretoras
+    parada há 42 h e 67 h com o painel dizendo "Conectado".
+
+    O token de webhook **não é recuperável**: o banco guarda só o `sha256`
+    (`new_webhook_credentials` — o plaintext nunca é gravado). Então religar é
+    necessariamente **rotacionar**: token novo, hash novo gravado, URL nova
+    entregue ao provedor, tudo na mesma tentativa. A ordem importa e está
+    invertida de propósito — grava-se o hash ANTES de mandar a URL, porque um
+    webhook que chega antes do hash é um evento que a borda recusa; o contrário
+    é uma janela de milissegundos em que o provedor ainda usa a URL velha, que
+    ainda funciona.
+    """
     # A escada de espera é conferida ANTES de qualquer import: a chamada que só
     # vai devolver "espere" não deve pagar por carregar o módulo de segredos.
     chave = str(integracao.get("instance_id") or integracao.get("id") or "")
@@ -360,15 +419,45 @@ async def _reconectar_evolution_go(integracao: dict, agora: datetime) -> Optiona
         _ULTIMA_RECONEXAO[chave] = (tentativas + 1, agora)
         return None
 
+    # Sem endereço público não há URL de entrega, e um connect sem URL APAGA a
+    # que está lá. Aqui, não fazer nada é estritamente melhor que religar.
+    publico = str(os.getenv("PUBLIC_BACKEND_URL") or "").strip().rstrip("/")
+    if not publico:
+        logger.error(
+            "[RECONECTOR] PUBLIC_BACKEND_URL ausente — canal %s NÃO religado de propósito: "
+            "um connect sem webhookUrl apagaria a entrega do canal",
+            integracao.get("instance_id"))
+        _ULTIMA_RECONEXAO[chave] = (tentativas + 1, agora)
+        return None
+
+    # Importado só AQUI, depois de todas as recusas: quem já decidiu que não vai
+    # religar não deve pagar por carregar módulo — a mesma razão que mantém o
+    # backoff acima de qualquer import.
+    from app.services.whatsapp.channel_security import (
+        build_webhook_url,
+        corpo_do_connect,
+        new_webhook_credentials,
+    )
+
+    webhook_token, webhook_hash, webhook_prefix = new_webhook_credentials()
+    if not await _gravar_credencial_de_webhook(integracao, webhook_hash, webhook_prefix):
+        _ULTIMA_RECONEXAO[chave] = (tentativas + 1, agora)
+        return None
+
     _ULTIMA_RECONEXAO[chave] = (tentativas + 1, agora)
     try:
         async with httpx.AsyncClient(timeout=TIMEOUT_SONDA_SEGUNDOS) as cliente:
-            resposta = await cliente.post(f"{base}/instance/connect",
-                                          headers={"apikey": token},
-                                          json={"immediate": True})
+            resposta = await cliente.post(
+                f"{base}/instance/connect",
+                headers={"apikey": token},
+                json=corpo_do_connect(
+                    build_webhook_url(publico, "evolution-go", webhook_token)),
+            )
         if resposta.status_code < 400:
             _ULTIMA_RECONEXAO[chave] = (0, agora)   # deu certo: zera a escada
-            logger.info("[RECONECTOR] canal %s religado sem QR", integracao.get("instance_id"))
+            # O prefixo, nunca o token (CLAUDE.md §13.3).
+            logger.info("[RECONECTOR] canal %s religado sem QR · webhook %s…",
+                        integracao.get("instance_id"), webhook_prefix)
             return "reconectado"
         logger.warning("[RECONECTOR] %s recusou religar (HTTP %s) — próxima em %ss",
                        integracao.get("instance_id"), resposta.status_code,

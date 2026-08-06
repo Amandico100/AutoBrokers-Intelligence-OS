@@ -43,8 +43,26 @@ check("instancia nomeada por corretora (ab-<company>)", "_go_instance_name" in _
 check("token proprio por instancia (secrets)", "secrets.token_hex(16)" in _ch)
 check("modo cofre no create (readMessages/alwaysOnline off)",
       '"readMessages": False' in _ch and '"ignoreGroups": True' in _ch)
+# A lição é a mesma de sempre — HISTORY_SYNC precisa estar assinado, senão o
+# Espelho não recebe o histórico do pareamento fresco. O que mudou em 06/08/2026
+# foi ONDE ela se prova.
+#
+# Este check procurava a string literal neste arquivo. Ficou vencido quando a
+# lista saiu daqui: quatro lugares montavam o corpo do `/instance/connect` e os
+# quatro discordavam — este mandava 3 eventos, o orquestrador 4, o admin_atlas 3,
+# e o reconector NENHUM. 📊 O reconector, mandando `{"immediate": True}`, fazia o
+# Evolution Go gravar `Events="MESSAGE"` e `Webhook=""` por cima: três das quatro
+# instâncias em produção estavam sem webhook e a captura das duas corretoras
+# estava parada há 42 h e 67 h.
+#
+# Agora existe um corpo só, e o guarda cobre os QUATRO chamadores em vez de um.
+# Manter a asserção antiga ensinaria a ignorar teste: ela ficaria vermelha por
+# uma consolidação correta.
+_sec = _src("app/services/whatsapp/channel_security.py", ROOT)
 check("HISTORY_SYNC assinado (Espelho no pareamento fresco)",
-      '"HISTORY_SYNC"' in _ch)
+      '"HISTORY_SYNC"' in _sec and "EVENTOS_DO_CANAL" in _sec)
+check("o canal usa o corpo unico de connect (nao monta o seu)",
+      "corpo_do_connect(webhook_url)" in _ch)
 check("env de instancia unica virou fallback legado", "_go_env_fallback" in _ch)
 check("uma funcao = um canal ativo (desativa antigos)",
       '"is_active": False}' in _ch.replace("'", '"') or '{"is_active": False}' in _ch)

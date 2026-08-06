@@ -363,7 +363,9 @@ async def onboarding_pair(body: Dict[str, Any], _: Any = Depends(require_master_
     import secrets
 
     from app.core.database import get_supabase_client
-    from app.services.whatsapp.channel_security import build_webhook_url, new_webhook_credentials
+    from app.services.whatsapp.channel_security import (
+        build_webhook_url, corpo_do_connect, new_webhook_credentials,
+    )
 
     company_id = str(body.get("company_id") or "").strip()
     if not company_id:
@@ -410,9 +412,8 @@ async def onboarding_pair(body: Dict[str, Any], _: Any = Depends(require_master_
             raise HTTPException(status_code=502, detail=f"go_create_failed:http_{cr.status_code}:{(cr.text or '')[:100]}")
         # 2) conecta + assina (webhook nosso, HISTORY_SYNC ligado)
         it = {"apikey": inst_token, "Content-Type": "application/json"}
-        await client.post("/instance/connect", headers=it, json={
-            "webhookUrl": webhook_url,
-            "subscribe": ["MESSAGE", "CONNECTION", "HISTORY_SYNC"], "immediate": True})
+        await client.post("/instance/connect", headers=it,
+                          json=corpo_do_connect(webhook_url))
 
     supabase = get_supabase_client()
 

@@ -114,6 +114,49 @@ def build_webhook_url(public_base_url: str, provider: str, token: str) -> str:
     return f"{base}/api/v1/webhook/{provider}/{token}"
 
 
+# Os eventos que o canal precisa assinar para servir ao produto: a mensagem, o
+# estado da conexão, o histórico que o pareamento traz e o QR do pareamento.
+EVENTOS_DO_CANAL: Tuple[str, ...] = ("MESSAGE", "CONNECTION", "HISTORY_SYNC", "QRCODE")
+
+
+def corpo_do_connect(webhook_url: str) -> dict:
+    """O corpo de TODO ``POST /instance/connect``. Um lugar só, e o motivo é caro.
+
+    ⚠️ O `Connect` do Evolution Go **grava por cima, sempre** — não faz merge
+    (`pkg/instance/service/instance_service.go:236-247` do nosso fork):
+
+        if len(data.Subscribe) == 0 { subscribedEvents = [MESSAGE] }
+        instance.Events  = eventString
+        instance.Webhook = data.WebhookUrl      // "" APAGA a URL gravada
+
+    Então um `connect` que omite `webhookUrl` não é um connect incompleto: é um
+    connect **destrutivo**. Ele desliga a entrega do canal sem desligar o canal.
+
+    📊 Foi o que aconteceu. Em 06/08/2026 o reconector chamava com apenas
+    ``{"immediate": True}``, e `GET /instance/all` mostrava três das quatro
+    instâncias com ``webhook=''`` e ``events='MESSAGE'`` — inclusive a única
+    corretora "conectada" do produto. O painel dizia Conectado; o acervo não
+    recebia nada há 42 horas (AutoFleet) e 67 horas (Resulta).
+
+    Um canal religado sem webhook é um canal **mudo e surdo**: o socket sobe, o
+    `last_seen_at` avança de 5 em 5 minutos, o heartbeat fica verde — e nenhuma
+    conversa chega. É a pior classe de falha que existe aqui, porque não avisa.
+
+    Por isso esta função não aceita URL vazia. Quem não tem para onde entregar
+    não tem o direito de religar.
+    """
+    url = str(webhook_url or "").strip()
+    if not url:
+        raise ValueError(
+            "connect sem webhookUrl apagaria a entrega do canal — ver corpo_do_connect"
+        )
+    return {
+        "webhookUrl": url,
+        "subscribe": list(EVENTOS_DO_CANAL),
+        "immediate": True,
+    }
+
+
 def new_webhook_credentials() -> Tuple[str, str, str]:
     """(token_plaintext, hash, prefix) — plaintext só vai para a URL, nunca pro banco."""
     token = generate_webhook_token()

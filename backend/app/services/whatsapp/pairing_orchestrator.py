@@ -134,6 +134,17 @@ _PUBLIC_FIELDS = frozenset({
     "instance",
     "created_at",
     "updated_at",
+    # Qual telefone está do outro lado — MASCARADO (`5547*****463`).
+    #
+    # Pedido do Founder em 06/08/2026: *"mostrar o número XXXX está pareado, e
+    # aí essa dúvida sempre acaba e até a corretora sabe o número depois"*. A
+    # dúvida era real e cara: 📊 a linha da Resulta estava pareada com um DDD 47
+    # enquanto se acreditava ser o celular da atendente (DDD 48), e dias de
+    # investigação se passaram sem ninguém poder ver isso na tela.
+    #
+    # Mascarado, nunca cru: é a linha de trabalho de uma pessoa (CLAUDE.md §13.3).
+    # Quem já conhece o número o reconhece; quem não conhece não passa a conhecer.
+    "paired_phone",
 })
 
 
@@ -313,6 +324,56 @@ def _safe_passkey_url(value: Any) -> Optional[str]:
     except ValueError:
         pass
     return None
+
+
+def instancia_ja_existe(status_code: int, corpo: Any = "") -> bool:
+    """O `create` recusou porque a instância JÁ EXISTE — o que não é erro.
+
+    📊 Medido em 06/08/2026 contra o provedor, com linha de controle:
+
+        create nome novo  + token novo   → HTTP 200
+        create nome REPETIDO             → HTTP 500  {"error":"instance already exists"}
+        create token REPETIDO            → HTTP 500  duplicate key ... uni_instances_token
+
+    O código esperava **409/422** e nunca os viu. Todo `create` de uma corretora
+    que já tinha instância caía direto em `raise RuntimeError("provider_http_500")`
+    → `provider_unavailable` → *"O serviço de conexão está indisponível no
+    momento."* O serviço estava de pé o tempo inteiro: 📊 `/server/ok` respondia
+    200 em 40 ms no mesmo instante.
+
+    O 409/422 continua aceito porque um upstream pode passar a devolvê-lo; o que
+    não dá é depender só dele. E o 500 sozinho não basta — 500 é o código que
+    este provedor usa para *tudo* que dá errado, então a mensagem é lida junto.
+    Um 500 genuíno (banco fora, pânico) continua sendo falha e continua subindo.
+    """
+    if status_code in (409, 422):
+        return True
+    if status_code != 500:
+        return False
+    texto = str(corpo or "").lower()
+    return "already exists" in texto or "uni_instances_token" in texto
+
+
+def qr_ainda_nao_disponivel(status_code: int, corpo: Any = "") -> bool:
+    """O provedor pediu para esperar — e nós chamávamos isso de "chame o suporte".
+
+    📊 A resposta literal, medida em 06/08/2026:
+
+        GET /instance/qr → HTTP 400
+        {"error":"no QR code available. Please wait a moment and try again"}
+
+    O handler do fork (`instance_handler.go:283-287`) devolve **400 para
+    qualquer erro** do `GetQr`, inclusive para este, que é uma condição de
+    espera. Do nosso lado todo 4xx virava `configuration_error` →
+    *"A configuração do canal precisa de ajuste pelo suporte."*
+
+    Três consumidores liam o mesmo 400 de três formas: aqui era terminal, em
+    `admin_atlas` era "ainda não tem QR" (sem erro), e em `whatsapp_channel` era
+    uma terceira coisa. A leitura certa é a que o provedor escreveu: **espere**.
+    """
+    if status_code != 400:
+        return False
+    return "no qr code available" in str(corpo or "").lower()
 
 
 def normalize_provider_state(qr_payload: Dict[str, Any], status_payload: Dict[str, Any]) -> Dict[str, Any]:
@@ -822,7 +883,7 @@ class PairingOrchestrator:
                 },
             },
         )
-        if response.status_code in (409, 422):
+        if instancia_ja_existe(response.status_code, getattr(response, "text", "")):
             listing = await client.get("/instance/all", headers={"apikey": self.global_key})
             rows = (listing.json() or {}).get("data", []) if listing.status_code < 400 else []
             ghost = next((row for row in rows if str(row.get("name") or "") == instance), None)
@@ -862,6 +923,46 @@ class PairingOrchestrator:
         if response.status_code >= 400:
             raise RuntimeError(f"provider_http_{response.status_code}")
 
+    async def _sessao_registrada(
+        self, client: httpx.AsyncClient, instance: str
+    ) -> Optional[str]:
+        """O JID que o PROVEDOR tem gravado para esta instância, ou ``None``.
+
+        ⚠️ Esta é a pergunta que `GET /instance/status` **não** responde.
+
+        📊 `instance_service.go:391-400` do nosso fork lê a memória do processo:
+
+            client := i.clientPointer[instance.Id]
+            if client == nil { return &StatusStruct{Connected:false, LoggedIn:false} }
+
+        Com `CONNECT_ON_STARTUP=false` (a config em produção), todo restart do
+        provedor esvazia esse mapa — e o `/instance/status` passa a dizer
+        `LoggedIn: false` para **todas** as instâncias, inclusive as
+        perfeitamente pareadas. 📊 Medido em 06/08/2026: a linha da Resulta
+        respondia `LoggedIn:false` enquanto tinha `jid` gravado e, minutos
+        antes, recebia mensagens reais do WhatsApp.
+
+        É essa mentira que fazia o orquestrador concluir "não está logada, vamos
+        parear" e pedir um QR que não podia existir: `whatsmeow.go:325-335`
+        decide pelo `jid`, e com `jid` preenchido ele **reconecta** a sessão em
+        vez de emitir QR. O pedido morria em 400 e virava "chame o suporte".
+
+        O `jid` do `/instance/all` é o estado DURÁVEL, no banco do provedor. É a
+        pergunta certa. Devolve ``None`` quando não deu para saber — e não saber
+        nunca vira afirmação: o fluxo segue pelo caminho normal.
+        """
+        if not self.global_key:
+            return None
+        try:
+            listing = await client.get("/instance/all", headers={"apikey": self.global_key})
+            if listing.status_code >= 400:
+                return None
+            linhas = (listing.json() or {}).get("data") or []
+        except Exception:  # noqa: BLE001 — não saber não pode travar o pareamento
+            return None
+        linha = next((r for r in linhas if str(r.get("name") or "") == instance), None)
+        return str((linha or {}).get("jid") or "").strip() or None
+
     async def _prepare_and_connect(
         self,
         state: Dict[str, Any],
@@ -869,7 +970,10 @@ class PairingOrchestrator:
         method: str,
         phone_number: Optional[str],
     ) -> Dict[str, Any]:
-        from app.services.whatsapp.channel_security import build_webhook_url, new_webhook_credentials
+        from app.services.whatsapp.channel_security import (
+            EVENTOS_DO_CANAL, build_webhook_url, corpo_do_connect, new_webhook_credentials,
+        )
+        from app.services.whatsapp.numero_pareado import mascarar, telefone_e164
 
         company_id, purpose = state["company_id"], state["purpose"]
         integration = await self._integration(company_id, purpose)
@@ -930,6 +1034,45 @@ class PairingOrchestrator:
                               or (integration or {}).get("alert_target")),
             )
 
+            # PERGUNTE AO PROVEDOR SE ESTA LINHA JÁ TEM DONO — antes de pedir QR.
+            #
+            # `LoggedIn:false` acima significa só "não há cliente na memória do
+            # provedor". Não significa "sem sessão". Quem sabe disso é o `jid`
+            # gravado (`_sessao_registrada`), e com `jid` o whatsmeow RECONECTA
+            # em vez de emitir QR — pedir QR ali é pedir o que não pode vir.
+            #
+            # 📊 Foi o que aconteceu com a Resulta por dias: a linha tinha
+            # `jid 554788087463`, a tela pedia QR, o provedor respondia "espere",
+            # e a atendente lia "chame o suporte". O canal, esse, religava — as
+            # mensagens chegavam enquanto a tela dizia que estava quebrado.
+            jid_registrado = await self._sessao_registrada(client, instance)
+            if jid_registrado:
+                telefone = telefone_e164(jid_registrado)
+                logger.info("[PAIRING] %s ja tem sessao registrada (%s) — religando sem QR",
+                            instance, mascarar(telefone))
+                # Religa (e regrava webhook/eventos, que o connect sobrescreve).
+                await client.post(
+                    "/instance/connect",
+                    headers={"apikey": instance_token, "Content-Type": "application/json"},
+                    json=corpo_do_connect(webhook_url),
+                )
+                state.update(build_pairing_state(
+                    "already_connected",
+                    attempt_id=state["attempt_id"],
+                    correlation_id=state["correlation_id"],
+                    expires_at=state["expires_at"],
+                    support_ref=state["support_ref"],
+                    instance=instance,
+                    created_at=state["created_at"],
+                ))
+                # O telefone MASCARADO vai para a tela. É o que encerra a dúvida
+                # "qual número está pareado?" — e é mascarado porque é a linha de
+                # trabalho de uma pessoa real (CLAUDE.md §13.3).
+                if telefone:
+                    state["paired_phone"] = mascarar(telefone)
+                await self._mark_connected(state, {"data": {"jid": jid_registrado}})
+                return await self._save(state)
+
             state.update(build_pairing_state(
                 "requesting_qr",
                 attempt_id=state["attempt_id"],
@@ -944,11 +1087,7 @@ class PairingOrchestrator:
             response = await client.post(
                 "/instance/connect",
                 headers={"apikey": instance_token, "Content-Type": "application/json"},
-                json={
-                    "webhookUrl": webhook_url,
-                    "subscribe": ["MESSAGE", "CONNECTION", "HISTORY_SYNC", "QRCODE"],
-                    "immediate": True,
-                },
+                json=corpo_do_connect(webhook_url),
             )
             if response.status_code >= 400:
                 raise RuntimeError(f"provider_http_{response.status_code}")
@@ -957,10 +1096,10 @@ class PairingOrchestrator:
                 pair_response = await client.post(
                     "/instance/pair",
                     headers={"apikey": instance_token, "Content-Type": "application/json"},
-                    json={
-                        "phone": phone_number,
-                        "subscribe": ["MESSAGE", "CONNECTION", "HISTORY_SYNC", "QRCODE"],
-                    },
+                    # Rota diferente do `/instance/connect`, mesma lista: parear
+                    # por código de telefone e parear por QR não podem produzir
+                    # canais com inscrições diferentes. Era a quinta cópia.
+                    json={"phone": phone_number, "subscribe": list(EVENTOS_DO_CANAL)},
                 )
                 if pair_response.status_code >= 400:
                     raise RuntimeError(f"provider_pair_http_{pair_response.status_code}")
@@ -1005,8 +1144,32 @@ class PairingOrchestrator:
             qr_json = qr_response.json() if qr_response.status_code < 400 and qr_response.content else {}
             if qr_response.status_code >= 500 or qr_response.status_code == 429:
                 raise RuntimeError("provider_unavailable")
-            if qr_response.status_code >= 400:
+            # O corpo só é lido quando há erro: no caminho feliz o QR pode ser
+            # um PNG grande, e materializá-lo em texto a cada polling é pura
+            # despesa. `getattr` porque quem responde nem sempre é um httpx.
+            corpo_do_qr = (getattr(qr_response, "text", "")
+                           if qr_response.status_code >= 400 else "")
+            aguardando_qr = qr_ainda_nao_disponivel(qr_response.status_code, corpo_do_qr)
+            if qr_response.status_code >= 400 and not aguardando_qr:
                 raise RuntimeError(f"provider_http_{qr_response.status_code}")
+
+        if aguardando_qr:
+            # "Espere um momento e tente de novo" é o que o provedor respondeu, e
+            # é o que a tela passa a dizer. Não-terminal de propósito: o polling
+            # volta, e quem encerra é o `expires_at` — não uma tradução nossa.
+            #
+            # ⚠️ Se a linha tem sessão registrada, este QR NUNCA vem (o whatsmeow
+            # reconecta em vez de parear). Quem detecta isso é `_prepare_and_connect`
+            # ANTES de chegar aqui — ver `_sessao_registrada`. Se a detecção
+            # falhar, o pior desfecho é `timed_out` com next_action=retry, e não
+            # um "chame o suporte" que não tem suporte para chamar.
+            state.update(build_pairing_state(
+                "requesting_qr",
+                attempt_id=state["attempt_id"], correlation_id=state["correlation_id"],
+                expires_at=state["expires_at"], support_ref=state["support_ref"],
+                instance=state.get("instance"), created_at=state.get("created_at"),
+            ))
+            return await self._save(state)
 
         normalized = normalize_provider_state(qr_json, status_json)
         next_state = normalized.pop("state")
@@ -1034,6 +1197,14 @@ class PairingOrchestrator:
             **{key: value for key, value in normalized.items() if key != "error_code"},
         ))
         if next_state in ("connected", "already_connected"):
+            # Quem acabou de parear tem direito de ver QUAL número pareou — é o
+            # mesmo pedido do Founder atendido no outro ramo, e a resposta vem
+            # do `/instance/status`, que depois do pareamento traz o JID.
+            from app.services.whatsapp.numero_pareado import identidade_pareada, mascarar
+
+            _, telefone = identidade_pareada(status_json)
+            if telefone:
+                state["paired_phone"] = mascarar(telefone)
             await self._mark_connected(state, status_json)
         return await self._save(state)
 
@@ -1227,6 +1398,122 @@ class PairingOrchestrator:
             return public_pairing_state(state)
         finally:
             await self._release_lock(mutation_key, mutation_value)
+
+
+    async def liberar_para_novo_numero(
+        self, company_id: str, purpose: str = "observer"
+    ) -> Dict[str, Any]:
+        """Solta a linha do telefone antigo para que OUTRO possa parear.
+
+        ⚠️ AÇÃO DESTRUTIVA E EXPLÍCITA. Encerra a sessão do número que está
+        pareado agora. Nunca é chamada automaticamente — nem pelo heartbeat, nem
+        pelo reconector, nem pelo `start`. Quem chama é uma pessoa clicando
+        "trocar número", com confirmação na tela.
+
+        POR QUE ELA PRECISA EXISTIR
+        ---------------------------
+        📊 Auditado em 06/08/2026 no código do nosso fork: **nada no Evolution Go
+        limpa o `jid` de uma instância.** `UpdateJid` é chamado em dois lugares
+        (`whatsmeow.go:294` e `:940`) e os dois GRAVAM um jid; nenhum apaga.
+
+        E `whatsmeow.go:325-335` decide pelo `jid`: preenchido → `GetDevice` e
+        **reconecta**; vazio → `NewDevice` e **emite QR**. Logo, uma instância que
+        pareou uma vez fica marcada para sempre e nunca mais mostra um QR.
+
+        Foi exatamente o beco da Resulta: a linha estava pareada com um telefone
+        (DDD 47) e a atendente (DDD 48) não tinha, pela tela, **nenhum caminho**
+        para colocar o dela. Não era falta de botão — era falta de rota no
+        provedor. Sem esta função, "trocar de número" exige console.
+
+        POR QUE O NOME É PRESERVADO — e isto não é detalhe
+        --------------------------------------------------
+        📊 `observer_number` é `_digits(NOME da instância)`, não o telefone
+        (`observer_intake._observer_number_of`): `ab-obs-04b5cdbc04-1` → `045041`.
+        Ele é **metade da chave de deduplicação** `(observer_number, message_id)`
+        de 69.150 transcrições e 17.651 eventos.
+
+        Recriar com o MESMO nome preserva a chave, e o histórico que voltar pelo
+        HISTORY_SYNC do novo pareamento é descartado como duplicata em vez de
+        regravar o acervo. Recriar com nome diferente faria o oposto — e é por
+        isso que o nome vem de `identidade_da_instancia`, e não de um parâmetro
+        que o chamador escolhe.
+
+        O token também é preservado: ele é a identidade da instância, e a linha
+        do Supabase continua apontando para ele.
+        """
+        from app.services.whatsapp.numero_pareado import mascarar, telefone_e164
+
+        self._validate_config()
+        company_id = str(company_id or "").strip()
+        purpose = str(purpose or "observer").strip().lower()
+        if not company_id or purpose not in ("observer", "attendance", "dispatch"):
+            raise ValueError("invalid_pairing_scope")
+
+        integration = await self._integration(company_id, purpose)
+        lembrada = None if integration else await self._instancia_lembrada(company_id, purpose)
+        instance, instance_token, tem_identidade = identidade_da_instancia(
+            self._instance_name(company_id, purpose), integration, lembrada
+        )
+        if not tem_identidade:
+            # Nunca teve instância: não há nada preso, e apagar seria inventar
+            # trabalho destrutivo em cima de uma corretora que só precisa parear.
+            return {"ok": True, "instance": instance, "liberada": False,
+                    "motivo": "sem_instancia_registrada"}
+
+        timeout = httpx.Timeout(NETWORK_TIMEOUT_SECONDS)
+        async with httpx.AsyncClient(timeout=timeout, base_url=self.base_url) as client:
+            listing = await client.get("/instance/all", headers={"apikey": self.global_key})
+            if listing.status_code >= 400:
+                raise RuntimeError(f"provider_http_{listing.status_code}")
+            linhas = (listing.json() or {}).get("data") or []
+            atual = next((r for r in linhas if str(r.get("name") or "") == instance), None)
+            if not atual:
+                return {"ok": True, "instance": instance, "liberada": False,
+                        "motivo": "instancia_nao_existe_no_provedor"}
+            if not str(atual.get("jid") or "").strip():
+                # Já está livre. Idempotente de propósito: dois cliques no botão
+                # não podem apagar duas vezes.
+                return {"ok": True, "instance": instance, "liberada": False,
+                        "motivo": "ja_estava_sem_numero"}
+
+            telefone = telefone_e164(str(atual.get("jid") or ""))
+            logger.warning("[PAIRING] liberando %s do numero %s a pedido da corretora",
+                           instance, mascarar(telefone))
+
+            apagar = await client.delete(f"/instance/delete/{atual.get('id')}",
+                                         headers={"apikey": self.global_key})
+            if apagar.status_code >= 400:
+                raise RuntimeError(f"provider_http_{apagar.status_code}")
+
+            # Renasce com o MESMO nome e o MESMO token — ver docstring. Agora com
+            # `jid` vazio, e por isso o próximo `/instance/qr` emite QR de novo.
+            await self._provider_create(client, instance, instance_token)
+
+        # A linha para de afirmar um telefone que não está mais pareado. Um
+        # `paired_phone_e164` órfão é pior que campo vazio: o vazio se pergunta.
+        await self._esquecer_telefone_pareado(company_id, purpose, instance)
+        return {"ok": True, "instance": instance, "liberada": True,
+                "numero_anterior": mascarar(telefone)}
+
+    async def _esquecer_telefone_pareado(
+        self, company_id: str, purpose: str, instance: str
+    ) -> None:
+        from app.core.database import get_supabase_client
+
+        db = get_supabase_client()
+
+        def _update() -> None:
+            # Filtro por company_id junto: service role ignora RLS (CLAUDE.md §7).
+            db.client.table("integrations").update({
+                "paired_phone_e164": None, "paired_jid": None, "paired_at": None,
+                "channel_status": "disconnected",
+            }).eq("company_id", company_id).eq("purpose", purpose) \
+              .eq("instance_id", instance).execute()
+
+        try:
+            await asyncio.to_thread(_update)
+        except Exception:  # noqa: BLE001 — a liberação no provedor já aconteceu
+            logger.warning("[PAIRING] telefone anterior de %s nao foi limpo na linha", instance)
 
 
 _orchestrator: Optional[PairingOrchestrator] = None
