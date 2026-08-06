@@ -503,6 +503,64 @@ def teste_o_acervo_ja_capturado_pode_ir_para_o_chat():
            "CONTROLE — sem company_id o backfill recusa")
 
 
+def teste_o_historico_de_quinze_meses_nao_entope_a_mesa():
+    print("\n[8] Um pareamento novo não despeja anos de conversa no chat")
+    import asyncio
+
+    EC = _carregar_espelho()
+    banco = BancoFalso()
+
+    # 🔴 O CASO REAL, medido em 06/08/2026.
+    #
+    # A Amandus pareou e o HISTORY_SYNC trouxe o histórico inteiro. Todas as
+    # linhas ficaram com `created_at` de HOJE — e `wa_timestamp` de até maio de
+    # 2025. Filtrando por `created_at`, a janela de "2 dias" pegava **34.072**
+    # mensagens de quinze meses. Por `wa_timestamp`, pega 127.
+    #
+    # As duas datas existem na mesma linha e significam coisas diferentes:
+    # quando foi GRAVADA × quando foi ENVIADA. Confundi-las é o tipo de engano
+    # que não dá erro nenhum — só uma mesa de trabalho inutilizável.
+    hoje = _agora_iso()
+    velha = (datetime.now(timezone.utc) - timedelta(days=450)).isoformat()
+    ontem = (datetime.now(timezone.utc) - timedelta(days=1)).isoformat()
+
+    banco.semear("attendance_transcripts", [
+        # gravada hoje, ENVIADA há 15 meses — o histórico do pareamento
+        {"id": "v1", "company_id": "amandus", "counterparty": "554711110000",
+         "direction": "in", "msg_type": "text", "text": "oi de 2025",
+         "message_id": "V1", "wa_timestamp": velha, "created_at": hoje},
+        # gravada hoje, enviada ontem — esta é trabalho de verdade
+        {"id": "n1", "company_id": "amandus", "counterparty": "554722220000",
+         "direction": "in", "msg_type": "text", "text": "preciso de guincho",
+         "message_id": "N1", "wa_timestamp": ontem, "created_at": hoje},
+    ])
+
+    r = asyncio.run(EC.trazer_conversas_ja_capturadas(
+        company_id="amandus", dias=7, db=banco))
+    checar(r.get("ok") is True, "o backfill roda", str(r))
+    checar(len(banco.linhas("conversations")) == 1,
+           "só a conversa RECENTE entra no chat",
+           "a de 15 meses fica no acervo, onde ela pertence")
+    checar(banco.linhas("conversations")[0]["user_phone"] == "554722220000",
+           "e é a certa — a de ontem, não a de 2025")
+
+    # CONTROLE — o guarda tem de conseguir reprovar. Se a leitura filtrasse por
+    # `created_at`, as DUAS entrariam (ambas foram gravadas hoje).
+    cmd = _comandos("backend/app/services/atlas/espelho_chat.py")
+    checar('.gte("wa_timestamp", desde)' in cmd,
+           "CONTROLE — o backfill filtra pela data REAL da mensagem")
+    checar('.gte("created_at", desde)' not in cmd,
+           "CONTROLE — e NÃO pela data em que ela foi gravada",
+           "gravada hoje ≠ enviada hoje; o pareamento novo prova isso")
+
+    # E a janela do sync é a MESMA da lista — um número só para lembrar.
+    checar(f"dias: int = {EC.JANELA_DA_LISTA_DIAS}" in _fonte(
+               "backend/app/services/atlas/espelho_chat.py")
+           or "dias=int(os.getenv(\"ESPELHO_SYNC_DIAS\", str(JANELA_DA_LISTA_DIAS))" in cmd,
+           "a janela do sync é a mesma da lista",
+           f"{EC.JANELA_DA_LISTA_DIAS} dias nos dois lugares")
+
+
 def main() -> int:
     print("=" * 70)
     print("A CONVERSA DO WHATSAPP APARECE NO CHAT DA CORRETORA")
@@ -514,6 +572,7 @@ def main() -> int:
     teste_nada_disto_liga_agente_nenhum()
     teste_a_lista_do_chat_mostra_sete_dias()
     teste_o_acervo_ja_capturado_pode_ir_para_o_chat()
+    teste_o_historico_de_quinze_meses_nao_entope_a_mesa()
 
     print("\n" + "=" * 70)
     if _PROBLEMAS:

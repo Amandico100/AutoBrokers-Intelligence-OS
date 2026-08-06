@@ -389,7 +389,8 @@ async def pausar_por_intervencao_humana(*, company_id: str, counterparty: str,
 
 
 async def trazer_conversas_ja_capturadas(
-    *, company_id: str, dias: int = 2, limite: int = 3000, db: Any = None
+    *, company_id: str, dias: int = JANELA_DA_LISTA_DIAS, limite: int = 3000,
+    db: Any = None
 ) -> dict:
     """Leva ao chat o que o Observador JÁ capturou. Uma vez, sob demanda.
 
@@ -425,7 +426,20 @@ async def trazer_conversas_ja_capturadas(
         return (cliente.table("attendance_transcripts")
                 .select("counterparty, direction, msg_type, text, message_id, wa_timestamp")
                 .eq("company_id", empresa)
-                .gte("created_at", desde)
+                # 🔴 `wa_timestamp` (quando a mensagem FOI ENVIADA), nunca
+                # `created_at` (quando ela foi GRAVADA). São coisas diferentes e
+                # confundi-las quase encheu o chat de conversa morta.
+                #
+                # 📊 06/08/2026, Amandus: um pareamento novo trouxe o histórico
+                # inteiro pelo HISTORY_SYNC. Todas as linhas ficaram com
+                # `created_at` de hoje — e `wa_timestamp` de até **maio de
+                # 2025**. Filtrando por `created_at`, a janela de "2 dias"
+                # pegava 34.072 mensagens de quinze meses. Filtrando por
+                # `wa_timestamp`, pega 127.
+                #
+                # A mesa de trabalho é do que está aberto agora. O histórico
+                # continua inteiro no acervo e no Espelho do admin.
+                .gte("wa_timestamp", desde)
                 # Mais antigas primeiro: o chat precisa da ordem da conversa,
                 # não da ordem da consulta.
                 .order("wa_timestamp", desc=False)
@@ -504,8 +518,12 @@ async def sincronizar_chats() -> dict:
         # Janela curta: a passada é frequente, e o que interessa é o que a
         # ponte ao vivo pode ter perdido agora há pouco. O acervo antigo já
         # entrou na primeira passada depois do deploy.
+        # A MESMA janela que a lista do chat mostra. Dois números diferentes
+        # para a mesma ideia seriam duas coisas para lembrar e uma para errar:
+        # a mesa de trabalho mostra 7 dias, então o sync leva 7 dias.
         r = await trazer_conversas_ja_capturadas(
-            company_id=empresa, dias=int(os.getenv("ESPELHO_SYNC_DIAS", "2")),
+            company_id=empresa,
+            dias=int(os.getenv("ESPELHO_SYNC_DIAS", str(JANELA_DA_LISTA_DIAS))),
             limite=int(os.getenv("ESPELHO_SYNC_LIMITE", "1500")), db=db)
         resumo["levadas"] += int(r.get("levadas") or 0)
 
