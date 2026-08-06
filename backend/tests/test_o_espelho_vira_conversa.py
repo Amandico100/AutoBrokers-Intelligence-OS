@@ -79,6 +79,7 @@ class _Consulta:
         self._insert = None
         self._update = None
         self._limite = None
+        self._ordem = None
 
     # -- leitura ----------------------------------------------------------
     def select(self, *_a, **_k):
@@ -100,7 +101,25 @@ class _Consulta:
         self.filtros.append(("gte", campo, valor))
         return self
 
-    def order(self, *_a, **_k):
+    def order(self, campo, desc=False, **_k):
+        """ORDENA DE VERDADE — e isso já custou dois defeitos hoje.
+
+        🔴 Este método era `return self`, um no-op. Consequência: `limit(N)`
+        devolvia as N linhas **primeiras inseridas**, enquanto o Postgres com
+        `order desc` devolve as N **últimas**. Comportamento invertido no ponto
+        exato de dois bugs reais:
+
+          · o backfill lia as 1.500 MAIS ANTIGAS e o chat parava em 04/08
+          · o dedup lia as 40 primeiras em vez das 40 últimas, e conversas com
+            mais de 40 mensagens duplicariam a cada ciclo de 10 minutos
+
+        Nos dois casos o teste ficou VERDE por inversão: no dublê, a linha que
+        o real deixaria de fora estava sempre dentro.
+
+        Um dublê que ignora `order` não é um banco de mentira — é um dicionário
+        com sotaque de SQL.
+        """
+        self._ordem = (campo, bool(desc))
         return self
 
     def limit(self, n):
@@ -150,6 +169,7 @@ class _Consulta:
             # O banco real recusa coluna inexistente e valor fora do CHECK.
             # O dublê passa a recusar também — ver `_COLUNAS_REAIS`.
             _conferir_contra_o_schema(self.tabela, self._insert)
+            _conferir_indice_unico(self.tabela, self._insert, linhas)
             novo = dict(self._insert)
             novo.setdefault("id", f"{self.tabela}-{len(linhas) + 1}")
             linhas.append(novo)
@@ -161,6 +181,12 @@ class _Consulta:
                 l.update(self._update)
             return _Resposta(tocadas)
         achadas = [l for l in linhas if self._casa(l)]
+        # A ORDEM vem antes do LIMITE — como no Postgres. Trocar a ordem destas
+        # duas linhas é exatamente o defeito que o dublê escondia.
+        if self._ordem:
+            campo, desc = self._ordem
+            achadas = sorted(achadas, key=lambda l: str(self._valor(l, campo) or ""),
+                             reverse=desc)
         if self._limite:
             achadas = achadas[: self._limite]
         return _Resposta(achadas)
@@ -196,6 +222,33 @@ _VALORES_ACEITOS = {
     ("messages", "role"): {"user", "assistant"},
     ("messages", "type"): {"text", "voice", None},
 }
+
+
+def _conferir_indice_unico(tabela: str, linha: dict, existentes: list) -> None:
+    """`messages_espelho_sem_duplicata_uidx` — migration 20260806_02.
+
+    UNIQUE (conversation_id, payload->>'wa_message_id') WHERE o id não é nulo.
+
+    Sem isto no dublê, o teste da conversa longa não teria como distinguir "o
+    Python deduplicou" de "o banco impediu". E é o banco que impede: a janela de
+    40 do Python não alcança conversas de 60 mensagens.
+    """
+    if tabela != "messages":
+        return
+    wa = (linha.get("payload") or {}).get("wa_message_id")
+    if not wa:
+        return
+    conversa = linha.get("conversation_id")
+    for outra in existentes:
+        if (outra.get("conversation_id") == conversa
+                and (outra.get("payload") or {}).get("wa_message_id") == wa):
+            raise ChaveDuplicada(
+                'duplicate key value violates unique constraint '
+                '"messages_espelho_sem_duplicata_uidx" (23505)')
+
+
+class ChaveDuplicada(Exception):
+    """O banco real diria `23505 duplicate key value violates unique constraint`."""
 
 
 class ColunaInexistente(Exception):
@@ -663,6 +716,62 @@ def teste_o_acervo_ja_capturado_pode_ir_para_o_chat():
            "CONTROLE — sem company_id o backfill recusa")
 
 
+def teste_conversa_longa_nao_duplica_no_ciclo_seguinte():
+    print("\n[8b] Conversa de 60 mensagens não duplica a cada 10 minutos")
+    import asyncio
+
+    EC = _carregar_espelho()
+    banco = BancoFalso()
+
+    # 🔴 A BOMBA QUE UMA AUDITORIA INDEPENDENTE ENCONTROU — 06/08/2026.
+    #
+    # O dedup em Python olha as 40 mensagens mais recentes. 📊 Já existem
+    # conversas com 60, 53, 48 e 46. O backfill grava da mais ANTIGA para a mais
+    # nova, então a mais antiga fica no fim da ordenação por `created_at desc`:
+    # fora das 40. Na rodada seguinte do sync (10 em 10 min) ela entraria de
+    # novo — e cada duplicata empurra mais mensagens para fora da janela, o que
+    # ACELERA o estrago.
+    #
+    # Este teste roda o mesmo lote DUAS vezes, como o sync faria.
+    linhas = []
+    for i in range(60):
+        linhas.append({
+            "id": f"t{i}", "company_id": "autofleet",
+            "counterparty": "554799956540", "direction": "in",
+            "msg_type": "text", "text": f"mensagem {i}",
+            "message_id": f"M{i:03d}",
+            "wa_timestamp": (datetime.now(timezone.utc)
+                             - timedelta(minutes=60 - i)).isoformat(),
+            "created_at": _agora_iso(),
+        })
+    banco.semear("attendance_transcripts", linhas)
+
+    asyncio.run(EC.trazer_conversas_ja_capturadas(
+        company_id="autofleet", dias=7, db=banco))
+    depois_da_primeira = len(banco.linhas("messages"))
+    checar(depois_da_primeira == 60,
+           "a primeira passada grava as 60 mensagens", str(depois_da_primeira))
+
+    # A SEGUNDA passada — é aqui que a bomba explodia.
+    asyncio.run(EC.trazer_conversas_ja_capturadas(
+        company_id="autofleet", dias=7, db=banco))
+    depois_da_segunda = len(banco.linhas("messages"))
+    checar(depois_da_segunda == 60,
+           "CONTROLE — a segunda passada não duplica NENHUMA",
+           f"{depois_da_segunda} mensagens (era para ser 60)")
+
+    # E a garantia de verdade não está no Python: está no índice único do banco.
+    migracao = _fonte("backend/supabase/migrations/20260806_02_espelho_sem_duplicata.sql")
+    checar("CREATE UNIQUE INDEX" in migracao
+           and "wa_message_id" in migracao,
+           "CONTROLE — e existe índice ÚNICO no banco, que não tem janela",
+           "o Postgres garante o que a janela de 40 do Python não consegue")
+    cmd = _comandos("backend/app/services/atlas/espelho_chat.py")
+    checar('"23505" in str(erro)' in cmd,
+           "CONTROLE — e a violação do índice é lida como 'já estava', não erro",
+           "contar acerto como erro faria o /health gritar à toa")
+
+
 def teste_o_historico_de_quinze_meses_nao_entope_a_mesa():
     print("\n[8] Um pareamento novo não despeja anos de conversa no chat")
     import asyncio
@@ -734,6 +843,7 @@ def main() -> int:
     teste_nada_disto_liga_agente_nenhum()
     teste_a_lista_do_chat_mostra_sete_dias()
     teste_o_acervo_ja_capturado_pode_ir_para_o_chat()
+    teste_conversa_longa_nao_duplica_no_ciclo_seguinte()
     teste_o_historico_de_quinze_meses_nao_entope_a_mesa()
 
     print("\n" + "=" * 70)

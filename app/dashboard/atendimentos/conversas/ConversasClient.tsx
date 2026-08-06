@@ -162,6 +162,7 @@ export function ConversasClient() {
   const [messages, setMessages] = useState<Message[]>([]);
   const [conversation, setConversation] = useState<Conversation | null>(null);
   const [loadingThread, setLoadingThread] = useState(false);
+  const [erroDaConversa, setErroDaConversa] = useState<string | null>(null);
   const [draft, setDraft] = useState('');
   const [sending, setSending] = useState(false);
   const [notice, setNotice] = useState('');
@@ -184,15 +185,29 @@ export function ConversasClient() {
 
   const loadThread = useCallback(async (id: string, opts?: { quiet?: boolean }) => {
     if (!opts?.quiet) setLoadingThread(true);
+    // 🔴 ESTE `catch` ERA MUDO, e foi ele que tornou o defeito indecifrável.
+    //
+    // Com `if (!res.ok) return;` e um `catch {}` silencioso, "a rota falhou" e
+    // "a conversa não tem mensagem" produziam EXATAMENTE o mesmo painel cinza.
+    // 06/08/2026: passei cinco tentativas sem conseguir distinguir uma da
+    // outra, porque a tela não dizia qual das duas era.
+    //
+    // Um sintoma que engana custa mais que o defeito (CLAUDE.md §9.1).
     try {
       const res = await fetch(`/api/dashboard/conversas/${id}`, { cache: 'no-store' });
-      if (!res.ok) return;
+      if (!res.ok) {
+        if (selectedIdRef.current === id) setErroDaConversa(`erro ${res.status} ao carregar`);
+        return;
+      }
       const j = await res.json();
       if (selectedIdRef.current !== id) return; // trocou de conversa durante o fetch
+      setErroDaConversa(null);
       setConversation(j.conversation || null);
       setMessages(j.messages || []);
-    } catch {
-      /* silencioso */
+    } catch (e) {
+      if (selectedIdRef.current === id) {
+        setErroDaConversa(e instanceof Error ? e.message : 'não consegui carregar');
+      }
     } finally {
       if (!opts?.quiet) setLoadingThread(false);
     }
@@ -449,6 +464,27 @@ export function ConversasClient() {
               {loadingThread ? (
                 <div className="flex items-center justify-center gap-2 py-8 text-sm text-muted-foreground">
                   <Loader2 className="h-4 w-4 animate-spin" /> Carregando mensagens…
+                </div>
+              ) : erroDaConversa ? (
+                // A tela DIZ que falhou, em vez de ficar cinza. Era esta linha
+                // que faltava para "não carregou" parar de se passar por
+                // "não tem mensagem".
+                <div className="mx-auto max-w-sm rounded-lg border border-red-500/40 bg-surface px-4 py-6 text-center">
+                  <p className="text-sm text-foreground">Não consegui carregar esta conversa.</p>
+                  <p className="mt-1 font-mono text-xs text-muted-foreground">{erroDaConversa}</p>
+                  <p className="mt-2 text-xs text-muted-foreground">
+                    Clique na conversa de novo para tentar outra vez.
+                  </p>
+                </div>
+              ) : messages.length === 0 ? (
+                // O estado vazio EXPLÍCITO. Sem ele, uma conversa sem mensagem
+                // é um retângulo cinza — e quem olha não sabe se o sistema
+                // falhou ou se realmente não há nada.
+                <div className="mx-auto max-w-sm px-4 py-8 text-center">
+                  <p className="text-sm text-foreground-2">Nenhuma mensagem nesta conversa ainda.</p>
+                  <p className="mt-1 text-xs text-muted-foreground">
+                    As mensagens do WhatsApp aparecem aqui em alguns minutos.
+                  </p>
                 </div>
               ) : (
                 messages.map((m, i) => {

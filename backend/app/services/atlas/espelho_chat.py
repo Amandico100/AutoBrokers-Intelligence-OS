@@ -117,6 +117,17 @@ def _digitos(valor: Any) -> str:
     return "".join(ch for ch in str(valor or "") if ch.isdigit())
 
 
+_CHAVE_TOTAL = "espelho:chat"
+_CHAVE_JANELA = "espelho:chat:{quando}"
+
+
+def _janela_atual() -> str:
+    """A janela de 10 minutos em que estamos. Alinhada ao relógio, de propósito:
+    duas leituras seguidas caem na mesma janela e são comparáveis."""
+    agora = datetime.now(timezone.utc)
+    return f"{agora:%Y%m%d%H}{agora.minute // 10}"
+
+
 async def contar(motivo: str, quantos: int = 1) -> None:
     """Conta o que aconteceu com o espelho. Agregado, nunca conteúdo.
 
@@ -135,21 +146,46 @@ async def contar(motivo: str, quantos: int = 1) -> None:
         from app.core.redis import get_async_redis_client
 
         r = await get_async_redis_client()
-        await r.hincrby("espelho:chat", motivo, int(quantos))
+        # DUAS contagens, e a segunda é a que responde "parou?".
+        #
+        # 🔴 A primeira versão só tinha o acumulado. Uma auditoria independente
+        # apontou o defeito: **um contador cumulativo sempre sobe**. Ao ver
+        # `erro:APIError` subir de 2.216 para 4.059 eu li "o conserto falhou" —
+        # quando podia ser erro de duas horas antes somado ao de agora. Sem
+        # separar as duas coisas, eu não sabia em qual conserto duvidar, e isso
+        # sozinho custou uma rodada.
+        #
+        # A janela de 10 minutos expira em 1 hora: ela responde "está errando
+        # AGORA?", que é a única pergunta útil depois de um deploy.
+        await r.hincrby(_CHAVE_TOTAL, motivo, int(quantos))
+        janela = _CHAVE_JANELA.format(quando=_janela_atual())
+        await r.hincrby(janela, motivo, int(quantos))
+        await r.expire(janela, 3600)
     except Exception:  # noqa: BLE001 — contador nunca derruba o que ele mede
         pass
 
 
 async def diagnostico() -> dict:
-    """O que o espelho fez desde que o processo subiu. Para o /health e para mim."""
+    """O que o espelho fez — sempre e AGORA.
+
+    `agora` é a resposta para "o conserto pegou?". `total` é o histórico desde o
+    primeiro boot, e ele **sempre sobe** — foi lê-lo como se fosse o presente
+    que me fez concluir errado depois de um deploy.
+    """
+    def _ler(bruto) -> dict:
+        return {(k.decode() if isinstance(k, bytes) else str(k)):
+                int(v.decode() if isinstance(v, bytes) else v)
+                for k, v in (bruto or {}).items()}
+
     try:
         from app.core.redis import get_async_redis_client
 
         r = await get_async_redis_client()
-        bruto = await r.hgetall("espelho:chat")
-        return {(k.decode() if isinstance(k, bytes) else str(k)):
-                int(v.decode() if isinstance(v, bytes) else v)
-                for k, v in (bruto or {}).items()}
+        agora = _ler(await r.hgetall(_CHAVE_JANELA.format(quando=_janela_atual())))
+        return {
+            "agora": agora or {"sem_atividade_nesta_janela": 0},
+            "total_desde_o_boot": _ler(await r.hgetall(_CHAVE_TOTAL)),
+        }
     except Exception:  # noqa: BLE001
         return {}
 
@@ -352,6 +388,15 @@ async def espelhar_no_chat(*, company_id: str, counterparty: str, texto: str,
                     .order("created_at", desc=True).limit(40).execute().data or [])
 
         # 3) esta mensagem já está no chat? (o WhatsApp reentrega em reconexão)
+        #
+        # ⚠️ Esta checagem é um ATALHO, não a garantia. Ela olha só as 40 mais
+        # recentes; conversas com 60 mensagens já existem, e a mais antiga cai
+        # fora da janela. Quem garante de verdade é o índice único parcial
+        # `messages_espelho_sem_duplicata_uidx` (migration 20260806_02) — o
+        # Postgres não tem janela.
+        #
+        # O atalho fica porque evita a ida ao banco no caso comum. O `except`
+        # do insert é que fecha a porta.
         if message_id:
             for m in recentes:
                 if (m.get("payload") or {}).get("wa_message_id") == message_id:
@@ -363,6 +408,24 @@ async def espelhar_no_chat(*, company_id: str, counterparty: str, texto: str,
             return conversa_id, "eco_do_dashboard"
 
         # 5) a mensagem
+        try:
+            _inserir_mensagem(cliente, conversa_id)
+        except Exception as erro:  # noqa: BLE001
+            # 23505 = o índice único disse "esta mensagem já está aqui". Isso é
+            # o sistema funcionando, não uma falha: significa que a janela de 40
+            # do atalho acima não a viu, e o banco viu. Contar como erro faria o
+            # /health gritar por um acerto.
+            if "23505" in str(erro) or "duplicate key" in str(erro).lower():
+                return conversa_id, "ja_estava"
+            raise
+
+        cliente.table("conversations").update({
+            "last_message_preview": (texto or _rotulo_de_midia(msg_type))[:100],
+            "last_message_at": quando_iso,
+        }).eq("id", conversa_id).eq("company_id", empresa).execute()
+        return conversa_id, ("conversa_nova" if nasceu else "mensagem_nova")
+
+    def _inserir_mensagem(cliente: Any, conversa_id: str) -> None:
         cliente.table("messages").insert({
             "conversation_id": conversa_id,
             # É assim que o chat sabe de que lado desenhar o balão: o cliente
@@ -391,12 +454,6 @@ async def espelhar_no_chat(*, company_id: str, counterparty: str, texto: str,
                         # mídia for tocável no chat (P-119).
                         "wa_type": str(msg_type or "text")},
         }).execute()
-
-        cliente.table("conversations").update({
-            "last_message_preview": (texto or f"[{msg_type or 'mídia'}]")[:100],
-            "last_message_at": quando_iso,
-        }).eq("id", conversa_id).eq("company_id", empresa).execute()
-        return conversa_id, ("conversa_nova" if nasceu else "mensagem_nova")
 
     try:
         conversa_id, motivo = await asyncio.to_thread(_trabalho)
