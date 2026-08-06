@@ -49,6 +49,7 @@ from __future__ import annotations
 
 import asyncio
 import logging
+import os
 from datetime import datetime, timedelta, timezone
 from typing import Any, Optional
 
@@ -75,6 +76,43 @@ _TIPOS_SEM_TEXTO = ("audio", "image", "document", "video", "sticker")
 
 def _digitos(valor: Any) -> str:
     return "".join(ch for ch in str(valor or "") if ch.isdigit())
+
+
+async def contar(motivo: str, quantos: int = 1) -> None:
+    """Conta o que aconteceu com o espelho. Agregado, nunca conteúdo.
+
+    🔴 EXISTE PORQUE EU FIQUEI CEGO, e o preço foi alto.
+
+    📊 06/08/2026: a ponte estava no ar (`espelho_no_chat=True` no /health),
+    13.200 mensagens entraram no acervo em três horas, e **zero** conversas
+    apareceram no chat. O `try/except` que protege a captura engolia o motivo,
+    e a única forma de saber o que falhou seria ler o log do contêiner — que o
+    Founder não tem por que abrir.
+
+    Sem contador, "não apareceu" tem cinco explicações e nenhuma forma de
+    escolher entre elas. Com contador, a resposta cabe numa linha do /health.
+    """
+    try:
+        from app.core.redis import get_async_redis_client
+
+        r = await get_async_redis_client()
+        await r.hincrby("espelho:chat", motivo, int(quantos))
+    except Exception:  # noqa: BLE001 — contador nunca derruba o que ele mede
+        pass
+
+
+async def diagnostico() -> dict:
+    """O que o espelho fez desde que o processo subiu. Para o /health e para mim."""
+    try:
+        from app.core.redis import get_async_redis_client
+
+        r = await get_async_redis_client()
+        bruto = await r.hgetall("espelho:chat")
+        return {(k.decode() if isinstance(k, bytes) else str(k)):
+                int(v.decode() if isinstance(v, bytes) else v)
+                for k, v in (bruto or {}).items()}
+    except Exception:  # noqa: BLE001
+        return {}
 
 
 def _agora_iso() -> str:
@@ -146,7 +184,7 @@ async def espelhar_no_chat(*, company_id: str, counterparty: str, texto: str,
         db = get_supabase_client()
     cliente = getattr(db, "client", db)
 
-    def _eco_do_dashboard(conversa_id: str) -> bool:
+    def _eco_do_dashboard(recentes: list) -> bool:
         """Esta mensagem é o eco da que o dashboard acabou de enviar?
 
         A resposta escrita no chat vai ao WhatsApp e **volta** pelo webhook como
@@ -167,12 +205,12 @@ async def espelhar_no_chat(*, company_id: str, counterparty: str, texto: str,
         texto_limpo = str(texto or "").strip()
         if direcao != "out" or not texto_limpo:
             return False
-        candidatas = (cliente.table("messages")
-                      .select("id, content, created_at, payload")
-                      .eq("conversation_id", conversa_id)
-                      .eq("payload->>origem", "dashboard")
-                      .order("created_at", desc=True).limit(10).execute().data or [])
-        for m in candidatas:
+        for m in recentes:
+            # A marca de origem é lida EM PYTHON, sobre linhas já carregadas.
+            # Filtrar `payload->>origem` no banco foi o que cegou o espelho —
+            # ver o comentário grande em `_trabalho`.
+            if (m.get("payload") or {}).get("origem") != "dashboard":
+                continue
             if str(m.get("content") or "").strip() != texto_limpo:
                 continue
             quando = m.get("created_at")
@@ -189,30 +227,38 @@ async def espelhar_no_chat(*, company_id: str, counterparty: str, texto: str,
                 return True
         return False
 
-    def _trabalho() -> Optional[str]:
+    def _trabalho() -> tuple:
+        """Devolve ``(conversation_id, motivo)``. O motivo vai para o contador.
+
+        🔴 A ORDEM MUDOU EM 06/08/2026, E O MOTIVO IMPORTA.
+
+        A primeira versão deduplicava ANTES de resolver a conversa, com
+        ``.eq("payload->>wa_message_id", ...)`` — um filtro JSON no PostgREST.
+        📊 O resultado medido: 13.200 mensagens entraram no acervo em três
+        horas e **nenhuma** conversa nasceu. A exceção morria no `try/except`
+        que protege a captura, e de fora só dava para ver uma tela vazia.
+
+        Agora a conversa é resolvida primeiro e a deduplicação acontece **em
+        Python**, sobre as últimas mensagens daquela conversa. Uma leitura só,
+        filtro simples, comparação no código. O que o banco faz mal, o Python
+        faz bem — e o que o Python faz, eu consigo testar.
+        """
         from app.services.integration_service import integration_service
 
-        # 1) dedup — esta mensagem já está no chat?
-        if message_id:
-            ja = (cliente.table("messages").select("id")
-                  .eq("payload->>wa_message_id", message_id)
-                  .limit(1).execute().data or [])
-            if ja:
-                return None
-
-        # 2) o MESMO usuário e a MESMA chave que o pipeline do agente usa.
+        # 1) o MESMO usuário e a MESMA chave que o pipeline do agente usa.
         #    ⚠️ A ordem é (phone, company_id, name) — conferida na assinatura
         #    real em `integration_service.py:370`. Trocar os dois primeiros
         #    criaria usuários com o id da empresa como telefone, em silêncio.
         usuario = integration_service.get_or_create_user(
             phone=telefone, company_id=empresa, name=nome)
         if not usuario:
-            return None
+            return None, "sem_usuario"
 
         linhas = (cliente.table("conversations").select("id, status")
                   .eq("company_id", empresa).eq("user_id", usuario)
                   .eq("channel", "whatsapp").is_("agent_id", "null")
                   .limit(1).execute().data or [])
+        nasceu = not linhas
         if linhas:
             conversa_id = linhas[0]["id"]
         else:
@@ -230,15 +276,28 @@ async def espelhar_no_chat(*, company_id: str, counterparty: str, texto: str,
                 "last_message_at": quando_iso,
             }).execute().data or [])
             if not nova:
-                return None
+                return None, "conversa_nao_criada"
             conversa_id = nova[0]["id"]
 
-        # 3) é o eco da resposta que o próprio dashboard mandou? Então ela já
-        #    está no chat, escrita por quem a digitou.
-        if _eco_do_dashboard(conversa_id):
-            return conversa_id
+        # 2) as últimas mensagens desta conversa — UMA leitura, e é dela que
+        #    saem as duas checagens: mensagem repetida e eco do dashboard.
+        recentes = (cliente.table("messages")
+                    .select("id, content, created_at, payload")
+                    .eq("conversation_id", conversa_id)
+                    .order("created_at", desc=True).limit(40).execute().data or [])
 
-        # 4) a mensagem
+        # 3) esta mensagem já está no chat? (o WhatsApp reentrega em reconexão)
+        if message_id:
+            for m in recentes:
+                if (m.get("payload") or {}).get("wa_message_id") == message_id:
+                    return conversa_id, "ja_estava"
+
+        # 4) é o eco da resposta que o próprio dashboard mandou? Então ela já
+        #    está no chat, escrita por quem a digitou.
+        if _eco_do_dashboard(recentes):
+            return conversa_id, "eco_do_dashboard"
+
+        # 5) a mensagem
         cliente.table("messages").insert({
             "conversation_id": conversa_id,
             # É assim que o chat sabe de que lado desenhar o balão: o cliente
@@ -256,13 +315,20 @@ async def espelhar_no_chat(*, company_id: str, counterparty: str, texto: str,
             "last_message_preview": (texto or f"[{msg_type or 'mídia'}]")[:100],
             "last_message_at": quando_iso,
         }).eq("id", conversa_id).eq("company_id", empresa).execute()
-        return conversa_id
+        return conversa_id, ("conversa_nova" if nasceu else "mensagem_nova")
 
     try:
-        return await asyncio.to_thread(_trabalho)
+        conversa_id, motivo = await asyncio.to_thread(_trabalho)
+        await contar(motivo)
+        return conversa_id
     except Exception as erro:  # noqa: BLE001
         # O espelho é um bônus; a CAPTURA é a obrigação, e ela já aconteceu
         # antes desta chamada. Falhar aqui não pode perder conversa nenhuma.
+        #
+        # Mas o MOTIVO não se perde mais: vai para o contador, e do contador
+        # para o /health. 📊 Foi por não ter isto que 13.200 mensagens entraram
+        # e ninguém conseguiu dizer por que o chat continuava vazio.
+        await contar(f"erro:{type(erro).__name__}")
         logger.warning("[ESPELHO] não consegui espelhar no chat (%s)", type(erro).__name__)
         return None
 
@@ -390,8 +456,67 @@ async def trazer_conversas_ja_capturadas(
     return {"ok": True, "lidas": len(linhas), "levadas": levadas, "dias": dias}
 
 
+async def sincronizar_chats() -> dict:
+    """Varre as corretoras ativas e leva ao chat o que ainda não chegou lá.
+
+    POR QUE ISTO É AUTOMÁTICO, e não um comando
+    ============================================
+    O Founder, 06/08/2026: *"eu não sei como fazer isso. Onde é /app? Também
+    não quero ter todo esse trabalho. Eu só quero as coisas funcionando."*
+
+    Ele está certo, e a versão anterior — um comando de console — era um
+    conserto que exigia da pessoa errada o trabalho errado. Um produto que
+    precisa de alguém abrir terminal para mostrar as conversas do dia não está
+    pronto; está esperando ajuda.
+
+    Roda no agendador que já existe (`buffer_processor`), junto do heartbeat.
+    Nenhum motor novo (CLAUDE.md §5).
+
+    É barato porque é incremental: a dedup por `message_id` faz a segunda
+    passada não escrever nada. E é a rede que pega o que a ponte ao vivo perdeu
+    — mensagem que chegou durante um deploy, erro momentâneo do banco, ou o
+    acervo que já estava lá antes de a ponte existir.
+    """
+    from app.core.database import get_supabase_client
+
+    db = get_supabase_client()
+    cliente = getattr(db, "client", db)
+
+    def _corretoras() -> list:
+        return (cliente.table("integrations").select("company_id")
+                .eq("provider", "evolution-go").eq("is_active", True)
+                .limit(200).execute().data or [])
+
+    try:
+        linhas = await asyncio.to_thread(_corretoras)
+    except Exception as erro:  # noqa: BLE001
+        logger.warning("[ESPELHO] sync não leu as corretoras (%s)", type(erro).__name__)
+        return {"ok": False, "motivo": type(erro).__name__}
+
+    vistas: set = set()
+    resumo = {"ok": True, "corretoras": 0, "levadas": 0}
+    for linha in linhas:
+        empresa = str(linha.get("company_id") or "").strip()
+        if not empresa or empresa in vistas:
+            continue
+        vistas.add(empresa)
+        resumo["corretoras"] += 1
+        # Janela curta: a passada é frequente, e o que interessa é o que a
+        # ponte ao vivo pode ter perdido agora há pouco. O acervo antigo já
+        # entrou na primeira passada depois do deploy.
+        r = await trazer_conversas_ja_capturadas(
+            company_id=empresa, dias=int(os.getenv("ESPELHO_SYNC_DIAS", "2")),
+            limite=int(os.getenv("ESPELHO_SYNC_LIMITE", "1500")), db=db)
+        resumo["levadas"] += int(r.get("levadas") or 0)
+
+    logger.info("[ESPELHO] sync: %s corretoras, %s mensagens levadas ao chat",
+                resumo["corretoras"], resumo["levadas"])
+    return resumo
+
+
 __all__ = [
     "deve_espelhar", "espelhar_no_chat", "session_id_do_chat",
     "pausar_por_intervencao_humana", "trazer_conversas_ja_capturadas",
+    "sincronizar_chats", "contar", "diagnostico",
     "JANELA_DA_LISTA_DIAS", "LIMITE_DE_RECENCIA_HORAS",
 ]

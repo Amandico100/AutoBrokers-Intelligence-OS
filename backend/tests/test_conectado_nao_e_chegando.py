@@ -57,6 +57,19 @@ def _carregar_estado():
         dublê = types.ModuleType("app.services.whatsapp.integration_secrets")
         dublê.decrypt_integration_secret = lambda v: v
         sys.modules["app.services.whatsapp.integration_secrets"] = dublê
+
+    # `numero_pareado` é carregado DE VERDADE, não dublado: é ele que decide
+    # qual telefone será gravado, e um dublê deixaria o teste verde enquanto o
+    # número real saísse errado. O módulo é puro (sem I/O), então carrega sem
+    # trazer o `openai` do pacote.
+    if "app.services.whatsapp.numero_pareado" not in sys.modules:
+        np_caminho = os.path.join(RAIZ, "backend", "app", "services", "whatsapp",
+                                  "numero_pareado.py")
+        np_spec = importlib.util.spec_from_file_location(
+            "app.services.whatsapp.numero_pareado", np_caminho)
+        np_mod = importlib.util.module_from_spec(np_spec)
+        sys.modules[np_spec.name] = np_mod
+        np_spec.loader.exec_module(np_mod)
     caminho = os.path.join(RAIZ, "backend", "app", "services", "whatsapp", "channel_state.py")
     spec = importlib.util.spec_from_file_location(nome, caminho)
     modulo = importlib.util.module_from_spec(spec)
@@ -179,6 +192,98 @@ def teste_o_alarme_esta_no_laco_e_le_o_acervo():
            "a costura é injetável, como o resto do heartbeat")
 
 
+def teste_o_telefone_pareado_e_gravado_para_TODAS_as_corretoras():
+    print("\n[5] Quem pareou fica gravado — em qualquer corretora")
+    import asyncio
+
+    CS = _carregar_estado()
+
+    class _Resp:
+        def __init__(self, d):
+            self.data = d
+
+    class _Q:
+        def __init__(self, banco, tabela):
+            self.b, self.t, self.f, self.u = banco, tabela, [], None
+
+        def update(self, campos):
+            self.u = dict(campos)
+            return self
+
+        def eq(self, campo, valor):
+            self.f.append((campo, valor))
+            return self
+
+        def execute(self):
+            linhas = self.b.dados.setdefault(self.t, [])
+            tocadas = [l for l in linhas
+                       if all(str(l.get(c)) == str(v) for c, v in self.f)]
+            for l in tocadas:
+                l.update(self.u or {})
+            return _Resp(tocadas)
+
+    class Banco:
+        def __init__(self):
+            self.dados = {"integrations": [
+                {"id": "i1", "company_id": "amandus", "paired_phone_e164": None},
+                {"id": "i2", "company_id": "autofleet", "paired_phone_e164": "+554891759360"},
+            ]}
+            self.client = self
+
+        def table(self, nome):
+            return _Q(self, nome)
+
+        def por_id(self, ident):
+            return next(l for l in self.dados["integrations"] if l["id"] == ident)
+
+    banco = Banco()
+    # O que o `/instance/status` devolve quando a linha está logada.
+    corpo = {"data": {"Connected": True, "LoggedIn": True,
+                      "jid": "554799956540:12@s.whatsapp.net", "Name": "Amandus"}}
+
+    ok = asyncio.run(CS._gravar_telefone_pareado(
+        banco.por_id("i1"), corpo, db=banco))
+    checar(ok is True, "gravou o telefone de uma corretora que não o tinha")
+    checar(banco.por_id("i1")["paired_phone_e164"] == "+554799956540",
+           "e é o número certo, em E.164",
+           banco.por_id("i1")["paired_phone_e164"])
+
+    # CONTROLE — silêncio da sonda NÃO apaga o que já está lá. Um refresh mudo
+    # não pode desfazer o que o pareamento provou.
+    antes = banco.por_id("i2")["paired_phone_e164"]
+    asyncio.run(CS._gravar_telefone_pareado(
+        banco.por_id("i2"), {"data": {"Connected": False, "LoggedIn": False}}, db=banco))
+    checar(banco.por_id("i2")["paired_phone_e164"] == antes,
+           "CONTROLE — sonda sem JID não apaga o telefone gravado")
+
+    # CONTROLE — não reescreve o que já está igual. Sem isto seria um UPDATE
+    # por corretora a cada cinco minutos, para sempre.
+    de_novo = asyncio.run(CS._gravar_telefone_pareado(
+        banco.por_id("i1"), corpo, db=banco))
+    checar(de_novo is False,
+           "CONTROLE — telefone que já está gravado não é reescrito")
+
+    # E o gravador está no caminho que passa por TODAS as corretoras.
+    fonte = _fonte_do_estado()
+    cmd = "\n".join(l for l in fonte.split("\n") if not l.lstrip().startswith("#"))
+    checar("await _gravar_telefone_pareado(integracao, corpo)" in cmd,
+           "a sonda do heartbeat grava o telefone",
+           "é o único caminho que passa por toda corretora a cada 5 min")
+    # A query do heartbeat precisa trazer `paired_phone_e164` — é com ele que o
+    # gravador compara antes de escrever. Sem o campo, seria um UPDATE por
+    # corretora a cada cinco minutos, para sempre.
+    trecho_da_query = cmd.split('.eq("is_active", True)')[0][-500:]
+    checar("paired_phone_e164" in trecho_da_query,
+           "CONTROLE — e a query traz o campo para poder comparar antes",
+           "sem ele, o gravador reescreveria o mesmo telefone a cada ciclo")
+
+
+def _fonte_do_estado() -> str:
+    caminho = os.path.join(RAIZ, "backend", "app", "services", "whatsapp", "channel_state.py")
+    with open(caminho, encoding="utf-8") as arquivo:
+        return arquivo.read()
+
+
 def main() -> int:
     print("=" * 70)
     print('"CONECTADO" NÃO É O MESMO QUE "CHEGANDO"')
@@ -187,6 +292,7 @@ def main() -> int:
     teste_nao_grita_duas_vezes_a_mesma_noticia()
     teste_a_conta_e_em_horas_e_o_limite_e_respeitado()
     teste_o_alarme_esta_no_laco_e_le_o_acervo()
+    teste_o_telefone_pareado_e_gravado_para_TODAS_as_corretoras()
 
     print("\n" + "=" * 70)
     if _PROBLEMAS:

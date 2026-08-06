@@ -368,6 +368,37 @@ def start_buffer_scheduler():
         # para de prometer atendimento. A lógica inteira mora em
         # `channel_state.py`, o dono declarado do estado do canal; aqui só se
         # registra o job no agendador que já existe.
+        # ESPELHO NO CHAT — a rede que pega o que a ponte ao vivo perdeu.
+        #
+        # A ponte (`observer_intake` → `espelho_chat`) age quando a mensagem
+        # chega. Este job varre o acervo e leva ao chat o que ainda não foi.
+        #
+        # 📊 Ele existe por duas medições do mesmo dia, 06/08/2026:
+        #   · a ponte subiu 22 min depois da última mensagem, e o chat abriu
+        #     vazio sobre 32.128 mensagens já capturadas;
+        #   · a Amandus pareou e trouxe 13.200 mensagens de histórico de uma
+        #     vez — HISTORY_SYNC não passa pela ponte ao vivo.
+        #
+        # E por uma frase do Founder: *"eu só quero as coisas funcionando"*. Um
+        # produto que precisa de alguém abrir terminal para mostrar as conversas
+        # do dia não está pronto. Nenhum motor novo: entra no agendador que já
+        # existe, ao lado do heartbeat.
+        #
+        # Barato porque é incremental — a dedup faz a segunda passada não
+        # escrever nada.
+        from app.services.atlas.espelho_chat import sincronizar_chats
+
+        scheduler.add_job(
+            sincronizar_chats,
+            "interval",
+            minutes=_env_int("ESPELHO_SYNC_INTERVAL_MINUTES", 10),
+            id="espelho_chat_sync",
+            max_instances=1,
+            # Logo após o boot: depois de um deploy, as conversas do dia
+            # aparecem em ~2 min, não no fim do primeiro intervalo.
+            next_run_time=_dt.now(_tz.utc) + _td(seconds=120),
+        )
+
         from app.services.whatsapp.channel_state import verificar_canais
 
         scheduler.add_job(

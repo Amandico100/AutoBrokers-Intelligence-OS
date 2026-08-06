@@ -733,6 +733,7 @@ def _sinais_do_codigo() -> dict:
                               idade_horas=0.1) is False)
     except Exception:  # noqa: BLE001
         sinais["espelho_no_chat"] = False
+
     return sinais
 
 
@@ -765,6 +766,23 @@ async def health_check(request: Request):
         # linha aqui e a pergunta some.
         "codigo": _sinais_do_codigo(),
     }
+
+    # O QUE O ESPELHO FEZ — não se ele existe, mas se ele AGE.
+    #
+    # 🔴 `espelho_no_chat: true` respondeu "o código subiu" e NÃO respondeu a
+    # pergunta que importava. 📊 Em 06/08/2026 ele ficou verde enquanto 13.200
+    # mensagens entravam no acervo e ZERO conversas nasciam — o motivo morria
+    # dentro do `try/except` que protege a captura, e de fora só se via uma
+    # tela vazia.
+    #
+    # Estes contadores são a diferença entre "está no ar" e "está funcionando".
+    # Fica aqui, e não em `_sinais_do_codigo`, porque ler o Redis é assíncrono.
+    try:
+        from app.services.atlas.espelho_chat import diagnostico
+
+        health_status["codigo"]["espelho_contadores"] = await diagnostico()
+    except Exception:  # noqa: BLE001
+        health_status["codigo"]["espelho_contadores"] = {}
 
     # 1. Verificar cliente async (primary - non-blocking)
     try:

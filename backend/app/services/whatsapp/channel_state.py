@@ -590,6 +590,53 @@ async def _reconectar_evolution_go(integracao: dict, agora: datetime) -> Optiona
         return "erro"
 
 
+async def _gravar_telefone_pareado(integracao: dict, corpo: object, db: Any = None) -> bool:
+    """Grava QUAL telefone está pareado, quando a sonda o revela.
+
+    Só grava quando o provedor DIZ o número. Silêncio da sonda nunca apaga o
+    que já está lá — a mesma regra de `numero_pareado.dados_de_pareamento`:
+    um refresh mudo não pode desfazer o que o pareamento provou.
+
+    Idempotente: se o telefone gravado já é este, não escreve. Um `UPDATE` a
+    cada cinco minutos por corretora seria escrita à toa num caminho quente.
+    """
+    from app.services.whatsapp.numero_pareado import identidade_pareada, mascarar
+
+    linha_id = integracao.get("id")
+    if not linha_id:
+        return False
+    jid, telefone = identidade_pareada(corpo if isinstance(corpo, dict) else {})
+    if not jid or not telefone:
+        return False
+    if str(integracao.get("paired_phone_e164") or "") == telefone:
+        return False
+
+    if db is None:
+        from app.core.database import get_supabase_client
+
+        db = get_supabase_client()
+    cliente = getattr(db, "client", db)
+
+    def _gravar() -> None:
+        consulta = (cliente.table("integrations").update({
+            "paired_jid": jid, "paired_phone_e164": telefone,
+            "paired_at": _agora().isoformat(),
+        }).eq("id", linha_id))
+        # Filtro por corretora junto do id: service role ignora RLS (§7).
+        if integracao.get("company_id"):
+            consulta = consulta.eq("company_id", integracao["company_id"])
+        consulta.execute()
+
+    try:
+        await asyncio.to_thread(_gravar)
+        # Mascarado sempre — é a linha de trabalho de uma pessoa real (§13.3).
+        logger.info("[HEARTBEAT] telefone pareado gravado: %s", mascarar(telefone))
+        return True
+    except Exception as erro:  # noqa: BLE001 — nunca derruba a sonda
+        logger.warning("[HEARTBEAT] não gravei o telefone pareado (%s)", type(erro).__name__)
+        return False
+
+
 async def _sondar_evolution_go(integracao: dict) -> Optional[str]:
     """Pergunta ao provedor. ``None`` = não consegui saber (não é veredito).
 
@@ -620,7 +667,20 @@ async def _sondar_evolution_go(integracao: dict) -> Optional[str]:
             logger.warning("[HEARTBEAT] %s respondeu HTTP %s — não é veredito sobre o canal",
                            integracao.get("id"), resposta.status_code)
             return None
-        return estado_da_sonda(resposta.json() if resposta.content else {})
+        corpo = resposta.json() if resposta.content else {}
+        # QUEM está pareado — gravado aqui porque aqui é o único caminho que
+        # passa por TODAS as corretoras, a cada cinco minutos.
+        #
+        # 📊 06/08/2026: a Amandus pareou pelo QR e ficou `connected` com
+        # `paired_phone_e164 = null`. O telefone só era gravado no fluxo do
+        # orquestrador (`_mark_connected`), e um QR escaneado conclui pelo
+        # WEBHOOK — que grava o estado e não o telefone. Resultado: o número
+        # aparecia na AutoFleet (onde o orquestrador rodou) e não na Amandus.
+        #
+        # A pergunta do Founder foi exatamente essa: *"fez tudo global ou só
+        # para uma corretora?"*. Estava global no código e furado no caminho.
+        await _gravar_telefone_pareado(integracao, corpo)
+        return estado_da_sonda(corpo)
     except Exception as erro:  # noqa: BLE001
         logger.warning("[HEARTBEAT] sonda de %s falhou (%s)",
                        integracao.get("id"), type(erro).__name__)
@@ -697,8 +757,11 @@ async def verificar_canais(
     try:
         def _ler() -> list:
             return (cliente.table("integrations")
+                    # `paired_phone_e164` entra para o gravador do telefone
+                    # poder comparar antes de escrever. Sem ele, seria um
+                    # UPDATE por corretora a cada cinco minutos, para sempre.
                     .select("id, company_id, provider, purpose, instance_id, token, "
-                            "base_url, channel_status, last_seen_at")
+                            "base_url, channel_status, last_seen_at, paired_phone_e164")
                     .eq("is_active", True)
                     .in_("provider", list(PROVEDORES_SONDAVEIS))
                     .limit(500).execute().data or [])

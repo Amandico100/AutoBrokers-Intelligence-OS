@@ -254,9 +254,21 @@ def teste_a_pausa_nunca_desliga_o_agente():
 
     checar('table("agents")' not in cmd,
            "a ponte não escreve na tabela de agentes")
-    checar('"is_active"' not in cmd,
-           "CONTROLE — e nem toca no campo que o botão controla",
-           "só o botão Ligar/Desligar agente mexe nisso")
+
+    # O guarda precisa ser PRECISO, não genérico.
+    #
+    # A primeira versão proibia a string `"is_active"` em qualquer lugar do
+    # arquivo — e reprovou quando `sincronizar_chats` passou a LER as
+    # integrações ativas com `.eq("is_active", True)`. Aquilo é filtro de
+    # leitura sobre `integrations`, não escrita sobre `agents`; um guarda que
+    # reprova o certo é um guarda que alguém vai desligar.
+    #
+    # O que não pode é `is_active` aparecer como VALOR gravado — a forma de
+    # dicionário, que é como um insert/update escreve.
+    for forma in ('"is_active": True', '"is_active": False', "'is_active':"):
+        checar(forma not in cmd,
+               f"CONTROLE — a ponte nunca GRAVA is_active ({forma})",
+               "só o botão Ligar/Desligar agente mexe nisso")
     checar('.eq("company_id"' in cmd and '.eq("user_phone"' in cmd,
            "o UPDATE é por corretora E por telefone — nunca a corretora inteira")
 

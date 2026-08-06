@@ -391,6 +391,28 @@ def teste_a_ponte_esta_ligada_e_nao_muda_o_silencio():
     cmd = _comandos("backend/app/services/atlas/observer_intake.py")
 
     checar("espelhar_no_chat(" in cmd, "o tap chama a ponte")
+
+    # A ponte tem de estar nos DOIS ramos: o do segurado e o da SEGURADORA.
+    #
+    # Decisão do Founder, 06/08/2026: *"precisa aparecer no chat conversas de
+    # seguradoras e com os segurados. Se um segurado pedir uma assistência,
+    # essa conversa precisa aparecer."*
+    #
+    # 📊 Uma mutação que removeu a chamada do ramo da seguradora passou VERDE
+    # neste arquivo — o guarda contava a existência, não os dois caminhos. Agora
+    # conta: são duas chamadas, e um `assert` de quantidade é o que separa "está
+    # lá" de "está lá nos dois lugares".
+    chamadas = cmd.count("await _espelhar_no_chat_da_corretora(")
+    checar(chamadas >= 2,
+           "a ponte é chamada no ramo do SEGURADO e no da SEGURADORA",
+           f"{chamadas} chamadas — sinistro com a seguradora também é trabalho da corretora")
+
+    # CONTROLE — e o que NÃO pode aparecer continua barrado antes.
+    checar('remote.endswith(("@g.us", "@broadcast", "@newsletter", "@call"))' in cmd,
+           "CONTROLE — grupo, status e transmissão morrem no filtro de borda",
+           'conversa pessoal ("amor, que hora te pego?") nunca chega ao chat')
+    checar("client_chat_allowed(" in cmd,
+           "CONTROLE — e a conversa com cliente ainda passa pela allowlist")
     # CONTROLE — a linha que decide o silêncio NÃO pode ter mudado. Ela é a
     # regra do Founder: o Observador não fala, e o agente só fala com o botão.
     checar('consumed = {"status": "observed"} if (is_observer and not _agente_ligado) else None' in cmd,

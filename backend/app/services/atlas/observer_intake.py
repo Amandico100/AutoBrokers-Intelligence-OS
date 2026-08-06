@@ -953,6 +953,21 @@ async def observer_tap(integration: dict, body: dict) -> Optional[dict]:
                 await enqueue_observer_media(integration, "observed_events", message, record)
             except Exception as exc:  # noqa: BLE001 - fila nunca invalida a captura
                 logger.warning("[ATLAS] fila de mídia indisponível: %s", type(exc).__name__)
+        # ESPELHO — a conversa com a SEGURADORA também vai para o chat.
+        #
+        # Decisão do Founder, 06/08/2026: *"precisa aparecer no chat conversas
+        # de seguradoras e com os segurados. Se um segurado pedir uma
+        # assistência, essa conversa precisa aparecer."*
+        #
+        # É o mesmo trabalho da corretora, do outro lado do balcão: quem abriu
+        # o sinistro precisa acompanhar o que a seguradora respondeu, e ter de
+        # trocar de tela para isso é o mesmo problema que o chat resolve.
+        #
+        # O que continua FORA é a conversa pessoal — barrada antes daqui pelo
+        # filtro de borda e por `client_chat_allowed`. "Amor, que hora te pego?"
+        # nunca chega a este ponto do código.
+        await _espelhar_no_chat_da_corretora(
+            integration, key, message, data, counterparty=counterparty)
         await _beat()
         logger.info(f"[ATLAS] observado {record['direction']} {insurer_key} tipo={msg_type}")
     except Exception as e:  # noqa: BLE001 — o TAP JAMAIS derruba o pipeline
