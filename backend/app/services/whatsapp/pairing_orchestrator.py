@@ -224,6 +224,39 @@ def _human_error(code: Optional[str]) -> Optional[str]:
     return messages.get(str(code or ""))
 
 
+def identidade_da_instancia(
+    nome_deterministico: str,
+    integration: Optional[Dict[str, Any]],
+    lembrada: Optional[tuple],
+) -> tuple:
+    """Quem é esta instância no provedor: (nome, token, tem_identidade).
+
+    🔴 06/08/2026 — o defeito que trancou o pareamento da Resulta por dias.
+
+    `_instance_name` é DETERMINÍSTICO: o nome que nasce aqui é sempre o mesmo
+    para a mesma corretora e função. Mas o token nascia de `secrets.token_hex`
+    — aleatório — sempre que não havia linha ATIVA no banco.
+
+    📊 Medido, e a coincidência é exata:
+
+        _instance_name(Resulta, "observer") ....  ab-obs-04b5cdbc04-1
+        a linha aposentada no banco ............  ab-obs-04b5cdbc04-1
+
+    Nome velho + chave nova = 401 no provedor. E o ramo que sabe consertar 401
+    exigia `integration`, que era `None` justamente porque a linha estava
+    desativada. A porta trancava por dentro.
+
+    `tem_identidade` é o que destrava: ativa OU lembrada, os dois merecem a
+    recuperação. Só quem nunca teve instância nenhuma é que cria uma do zero.
+
+    Pura de propósito — é a decisão inteira, e ela cabe num teste.
+    """
+    ativa = integration or {}
+    nome = str(ativa.get("instance_id") or (lembrada[0] if lembrada else "") or nome_deterministico)
+    token = str(ativa.get("token") or (lembrada[1] if lembrada else "") or secrets.token_hex(16))
+    return nome, token, bool(integration or lembrada)
+
+
 def build_pairing_state(
     state: str,
     *,
@@ -550,6 +583,58 @@ class PairingOrchestrator:
                 return alvo
         return None
 
+    async def _instancia_lembrada(self, company_id: str, purpose: str
+                                  ) -> Optional[tuple[str, str]]:
+        """A instância e a chave que ESTA corretora já teve — mesmo desligada.
+
+        🔴 06/08/2026. Este é o `_escopo_lembrado` de novo, no campo ao lado, e
+        eu não vi na primeira vez.
+
+        `_integration()` filtra `is_active=True`. Uma corretora que desconectou
+        perde a linha — e com ela o **nome da instância e o token**. O código
+        então inventa um token novo (`secrets.token_hex(16)`) e o usa contra um
+        nome de instância que `_instance_name` gera DETERMINISTICAMENTE, ou
+        seja: o mesmo de antes, que continua existindo no provedor com a chave
+        VELHA.
+
+        📊 Medido na Resulta em 06/08/2026, e a coincidência é exata:
+
+            _instance_name(company, "observer") ....  ab-obs-04b5cdbc04-1
+            a linha aposentada no banco ............  ab-obs-04b5cdbc04-1
+
+        O provedor devolvia 401, e o ramo que sabe consertar 401 exigia
+        `integration` — que era `None`. Todo "Gerar novo QR" morria ali, e a
+        tela dizia que o serviço estava indisponível quando ele estava de pé.
+
+        Desconectar é uma pausa, não um esquecimento — vale para o escopo e
+        vale para a identidade da instância.
+        """
+        from app.core.database import get_supabase_client
+        from app.services.whatsapp.integration_secrets import prepare_integration_for_runtime
+
+        db = get_supabase_client()
+
+        def _query() -> list:
+            return (
+                db.client.table("integrations").select("*")
+                .eq("company_id", company_id).eq("provider", "evolution-go")
+                .eq("purpose", purpose)
+                .order("created_at", desc=True).limit(5).execute().data or []
+            )
+
+        try:
+            linhas = await asyncio.to_thread(_query)
+        except Exception:  # noqa: BLE001 — sem memória o fluxo antigo ainda roda
+            return None
+        for bruta in linhas:
+            linha = prepare_integration_for_runtime(bruta) or {}
+            instancia = str(linha.get("instance_id") or "").strip()
+            token = str(linha.get("token") or "").strip()
+            # Os DOIS, ou nenhum: meia memória é o que criou este defeito.
+            if instancia and token:
+                return instancia, token
+        return None
+
     async def _persist_integration(
         self,
         *,
@@ -788,18 +873,22 @@ class PairingOrchestrator:
 
         company_id, purpose = state["company_id"], state["purpose"]
         integration = await self._integration(company_id, purpose)
-        instance = str((integration or {}).get("instance_id") or self._instance_name(company_id, purpose))
-        instance_token = str((integration or {}).get("token") or secrets.token_hex(16))
+        # SEM LINHA ATIVA, ANTES DE INVENTAR: pergunte se esta corretora já teve
+        # uma. Ver `_instancia_lembrada` e `identidade_da_instancia`.
+        lembrada = None if integration else await self._instancia_lembrada(company_id, purpose)
+        instance, instance_token, tem_identidade = identidade_da_instancia(
+            self._instance_name(company_id, purpose), integration, lembrada
+        )
         state["instance"] = instance
         await self._save(state)
 
         timeout = httpx.Timeout(NETWORK_TIMEOUT_SECONDS)
         async with httpx.AsyncClient(timeout=timeout, base_url=self.base_url) as client:
-            if not integration:
+            if not tem_identidade:
                 await self._provider_create(client, instance, instance_token)
 
             status_response = await client.get("/instance/status", headers={"apikey": instance_token})
-            if integration and status_response.status_code in (401, 404):
+            if tem_identidade and status_response.status_code in (401, 404):
                 # The database can outlive an unregistered/ghost provider
                 # instance. Recreate it once under the same deterministic name
                 # instead of trapping the UI in a permanent configuration error.
