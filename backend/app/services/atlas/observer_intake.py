@@ -554,6 +554,71 @@ def _store_event_sync(record: Dict[str, Any], events_table: str = "observed_even
 # ------------------------------------------------------------------ #
 # Entrada principal — chamada pelo webhook evolution-go
 # ------------------------------------------------------------------ #
+async def _espelhar_no_chat_da_corretora(
+    integration: dict, key: dict, message: dict, data: dict, *, counterparty: str
+) -> None:
+    """Leva ao chat da corretora a mensagem que acabou de entrar no acervo.
+
+    Isolada numa função porque o `observer_tap` já é longo e porque isto é
+    OUTRA responsabilidade: o tap decide o que capturar e o que silenciar; esta
+    função só transporta. Nunca levanta — o espelho é um bônus, e a captura,
+    que é a obrigação, já aconteceu antes desta chamada.
+    """
+    try:
+        from app.services.atlas.espelho_chat import deve_espelhar, espelhar_no_chat
+
+        msg_type, texto, _interactive, _media = _extract_content(message)
+        quando = _wa_timestamp_iso(data) or datetime.now(timezone.utc).isoformat()
+        idade_horas = _idade_em_horas(quando)
+
+        if not deve_espelhar(
+            counterparty=counterparty, texto=texto, msg_type=msg_type,
+            # Grupo e seguradora já foram barrados no filtro de borda acima;
+            # passam como False aqui e a checagem fica como rede, não como
+            # duplicação de regra.
+            e_grupo=False, e_seguradora=False, idade_horas=idade_horas,
+        ):
+            return
+
+        await espelhar_no_chat(
+            company_id=str(integration.get("company_id") or ""),
+            counterparty=counterparty, texto=texto, msg_type=msg_type,
+            direcao="out" if bool(key.get("fromMe")) else "in",
+            message_id=str(key.get("id") or ""),
+            quando_iso=quando,
+            nome=str(data.get("pushName") or "") or None,
+        )
+    except Exception:  # noqa: BLE001 — o chat nunca quebra a captura
+        logger.warning("[ESPELHO] a mensagem não chegou ao chat da corretora")
+
+
+def _wa_timestamp_iso(data: dict) -> Optional[str]:
+    """O relógio do WhatsApp para esta mensagem, em ISO. ``None`` se não vier."""
+    bruto = (data or {}).get("messageTimestamp")
+    try:
+        segundos = int(bruto)
+    except (TypeError, ValueError):
+        return None
+    if segundos <= 0:
+        return None
+    return datetime.fromtimestamp(segundos, tz=timezone.utc).isoformat()
+
+
+def _idade_em_horas(quando_iso: str) -> float:
+    """Quantas horas tem esta mensagem. ``0.0`` quando não dá para saber.
+
+    Zero, e não infinito, de propósito: não saber a idade não pode transformar
+    uma mensagem ao vivo em histórico velho e descartá-la do chat.
+    """
+    try:
+        quando = datetime.fromisoformat(str(quando_iso).replace("Z", "+00:00"))
+    except (TypeError, ValueError):
+        return 0.0
+    if quando.tzinfo is None:
+        quando = quando.replace(tzinfo=timezone.utc)
+    return max(0.0, (datetime.now(timezone.utc) - quando).total_seconds() / 3600.0)
+
+
 async def observer_tap(integration: dict, body: dict) -> Optional[dict]:
     """Captura passiva. Retorna dict (resposta ao webhook) quando a integração é
     purpose='observer' (consome SEMPRE); retorna None em modo TAP (attendance)
@@ -824,6 +889,20 @@ async def observer_tap(integration: dict, body: dict) -> Optional[dict]:
                             alternate_jid=remote_alt,
                         )
                         if stored:
+                            # ESPELHO — a mesma mensagem que entrou no acervo
+                            # entra no chat da corretora.
+                            #
+                            # 📊 Antes desta linha, a captura gravava 124
+                            # mensagens por hora e a tela `Atendimentos →
+                            # Conversas` dizia "Nenhuma conversa ainda". As duas
+                            # coisas eram verdade: faltava a ponte.
+                            #
+                            # NÃO altera `consumed`. O silêncio continua sendo
+                            # decidido lá em cima, e esta chamada não tem opinião
+                            # sobre ele — grava e devolve.
+                            await _espelhar_no_chat_da_corretora(
+                                integration, key, message, data,
+                                counterparty=counterparty)
                             return consumed
                 except Exception:  # noqa: BLE001 — Espelho NUNCA quebra a borda
                     pass

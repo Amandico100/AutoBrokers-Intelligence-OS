@@ -19,10 +19,25 @@ function internalKey(): string | null {
   return process.env.BACKEND_INTERNAL_API_KEY || process.env.ADMIN_API_KEY || null;
 }
 
+/**
+ * Quantos dias de conversa aparecem NA LISTA. Decisão do Founder, 06/08/2026.
+ *
+ * É a mesa de trabalho da atendente, não o arquivo. 📊 A AutoFleet tem 681
+ * contrapartes; sem a janela, a tela abre com conversa morta em cima da de hoje.
+ *
+ * ⚠️ A janela é da LISTA e de mais nada. Abrir uma conversa mostra o histórico
+ * INTEIRO dela — `messages` não expira. Um sinistro que arrasta 45 dias continua
+ * legível do começo quando o cliente volta a escrever, e o agente lembra dele
+ * pelos fatos em `user_memories`, que também não expiram.
+ */
+const JANELA_DIAS = 7;
+
 export async function GET(_req: NextRequest) {
   const ctx = await resolveSessionCompany();
   if (!ctx) return NextResponse.json({ error: 'Não autorizado' }, { status: 401 });
   const supabase = getSupabaseAdmin();
+
+  const desde = new Date(Date.now() - JANELA_DIAS * 24 * 60 * 60 * 1000).toISOString();
 
   const { data, error } = await supabase
     .from('conversations')
@@ -33,6 +48,7 @@ export async function GET(_req: NextRequest) {
     // Central de ATENDIMENTO: só canais externos (WhatsApp). As conversas do
     // Chat Principal (channel=web) vivem em Histórico — são outra coisa.
     .eq('channel', 'whatsapp')
+    .gte('last_message_at', desde)
     .order('last_message_at', { ascending: false, nullsFirst: false })
     .limit(200);
 
