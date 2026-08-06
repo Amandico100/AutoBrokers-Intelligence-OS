@@ -60,9 +60,77 @@ TOKENS_POR_CARTA = 120  # 💭 estimativa: carta curta + prefixo de rotulo
 
 
 def _banco():
-    from app.services.supabase_service import supabase
+    """O MESMO caminho que `aplicar.py` e `exportar.py` usam — não um segundo.
 
-    return supabase.client
+    A primeira versão deste script importava `app.services.supabase_service`,
+    que **não existe**: o nome foi inventado por analogia. Morreu em produção com
+    `ModuleNotFoundError` antes de imprimir uma linha sequer. Os scripts vizinhos
+    desta pasta sempre leram a credencial do ambiente e montaram o cliente com o
+    SDK — é esse o caminho, e ele agora é reusado em vez de reescrito.
+    """
+    sys.path.insert(0, str(AQUI.parent))
+    from exportar import _credenciais  # noqa: E402 — vizinho, não pacote
+
+    url, key = _credenciais()
+    from supabase import create_client
+
+    return create_client(url, key)
+
+
+def _diagnostico() -> int:
+    """As três portas, ANTES de gastar qualquer coisa.
+
+    Pedido certo: em produção não se descobre que falta uma variável de
+    ambiente no meio de 10.800 embeddings pagos.
+    """
+    print("== diagnóstico: as três portas ==\n")
+    falhou = False
+
+    try:
+        db = _banco()
+        n = (db.table("knowledge_cards").select("id", count="exact")
+             .eq("status", "published").limit(1).execute()).count
+        print(f"  [ok] Supabase ....... {n:,} cartas publicadas")
+    except Exception as exc:  # noqa: BLE001
+        print(f"  [X]  Supabase ....... {type(exc).__name__}: {exc}")
+        falhou = True
+
+    try:
+        from app.services.qdrant_service import get_qdrant_service
+
+        cols = get_qdrant_service().client.get_collections()
+        nomes = [c.name for c in cols.collections]
+        tem = "autobrokers_global" in nomes
+        print(f"  [{'ok' if tem else 'X'}] Qdrant ......... {len(nomes)} coleções"
+              f"{' · autobrokers_global presente' if tem else ' · SEM autobrokers_global'}")
+        falhou = falhou or not tem
+    except Exception as exc:  # noqa: BLE001
+        print(f"  [X]  Qdrant ......... {type(exc).__name__}: {exc}")
+        falhou = True
+
+    try:
+        from langchain_openai import OpenAIEmbeddings
+
+        from app.core.config import settings
+
+        v = OpenAIEmbeddings(model="text-embedding-3-small",
+                             api_key=settings.OPENAI_API_KEY).embed_documents(["teste"])
+        print(f"  [ok] OpenAI ......... embedding de {len(v[0])} dimensões")
+    except Exception as exc:  # noqa: BLE001
+        print(f"  [X]  OpenAI ......... {type(exc).__name__}: {exc}")
+        falhou = True
+
+    try:
+        from app.services.attendance_distiller import publish_card_sync  # noqa: F401
+
+        print("  [ok] publish_card_sync importa")
+    except Exception as exc:  # noqa: BLE001
+        print(f"  [X]  publish_card_sync . {type(exc).__name__}: {exc}")
+        falhou = True
+
+    print("\n" + ("ALGUMA PORTA FECHADA — não rode --aplicar." if falhou
+                  else "As três portas abertas. Pode seguir para a simulação."))
+    return 1 if falhou else 0
 
 
 def _ler_publicadas(db) -> list:
@@ -98,10 +166,15 @@ def _ja_feitas() -> set:
 
 def main() -> int:
     ap = argparse.ArgumentParser()
+    ap.add_argument("--diagnostico", action="store_true",
+                    help="so confere Supabase, Qdrant e OpenAI e sai")
     ap.add_argument("--aplicar", action="store_true", help="escreve no Qdrant")
     ap.add_argument("--sim", action="store_true", help="nao pergunta antes de gastar")
     ap.add_argument("--limite", type=int, default=0, help="para depois de N cartas (teste)")
     args = ap.parse_args()
+
+    if args.diagnostico:
+        return _diagnostico()
 
     # A recusa e deliberada: gravar metade do acervo e pior que nao gravar nada,
     # porque o indice fica com dois criterios convivendo e ninguem sabe qual
