@@ -2096,3 +2096,43 @@ bloqueado no meio de uma régua de cobrança.
   via Evolution GO (antes da API Oficial da Meta), depois 🤖 a SPEC.
 - **Custa se esquecer:** cobrança sai pelo número de atendimento da corretora, e
   um bloqueio derruba o atendimento junto — os dois serviços no mesmo risco.
+
+## P-116 · 🟡 A captura voltou a estar CONFIGURADA — falta prova de que GRAVA
+
+📊 06/08/2026 ~17:00Z, com o `smith-api` já rodando o código novo (os quatro
+sinais do pareamento respondem `True` no `/health`; `git_commit` segue
+`nao-injetado` porque o EasyPanel não passa o build-arg — e foi por prever isso
+que os sinais existem).
+
+**O que ficou provado**, conferido hash a hash entre provedor e banco:
+
+| corretora | `webhook` no provedor | hash no banco | bate |
+|---|---|---|---|
+| AutoFleet | `…/e3Yd…`→ `cb369f28…` | `cb369f28…` | ✅ |
+| Resulta | `9bcf4b49…` | `9bcf4b49…` | ✅ |
+
+📊 E o socket da AutoFleet está **vivo**: `GET /user/privacy` respondeu 200 em
+0,3 s com dados reais do WhatsApp dela, contra timeout de 30 s na Resulta (sem
+sessão) como linha de controle.
+
+📊 O reconector NOVO religou a Resulta sozinho, com webhook e os quatro eventos —
+o conserto funcionando em produção, sem intervenção manual.
+
+**O que NÃO ficou provado:** que uma conversa nova foi gravada. A AutoFleet segue
+com `observed_events` parado em 04/08 20:34Z (44 h). Isso depende de chegar
+mensagem real e **não é observável por mim**. 📊 O log da instância mostra que
+em 05/08 23:23Z ela ainda RECEBIA mensagens e as despachava para o webhook vazio
+— foram perdidas exatamente como a auditoria descreveu.
+
+- **Destrava:** 🤖 rodar a query de `observed_events` daqui a algumas horas. E
+  agora o produto avisa sozinho: `decidir_alarme_de_entrega` (e8ec78b) abre
+  incidente na Caixa do Admin quando um canal diz "conectado" e passa 6 h sem
+  gravar. 📊 A AutoFleet cai nessa condição **hoje** — o alarme dispara no
+  primeiro ciclo do heartbeat depois do próximo deploy, e essa será a primeira
+  prova de que ele funciona.
+- **Custa se esquecer:** nada — pela primeira vez, o esquecimento é coberto. Era
+  justamente a ausência disso que deixou 42 h e 67 h passarem sem ninguém notar.
+
+> **P-114 fica RESOLVIDO por esta entrada** na parte que era acionável: os
+> webhooks foram regravados e conferidos. O que resta é medição no tempo, e é o
+> que esta pendência acompanha.
