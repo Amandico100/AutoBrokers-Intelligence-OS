@@ -45,11 +45,24 @@ const EXPLICACAO: Record<string, string> = {
     'Um QR code serve o observador e o atendimento. Cobrança tem número separado.',
   alarme_de_canal_mudo:
     'Se uma corretora aparece conectada e passa 6 horas sem gravar conversa, abre um aviso sozinho.',
+  espelho_no_chat:
+    'A conversa capturada no WhatsApp chega ao chat da corretora, no dashboard.',
+  acionamento_env_aberta:
+    'O canal de acionamento das seguradoras está liberado por configuração.',
   midia_recuperavel: 'Áudios e imagens são gravados com o que é preciso para baixá-los depois.',
   midia_chave_escondida: 'E a chave de descriptografia da mídia nunca sai numa resposta de API.',
   conhecimento_sobrevive: 'O mascarador de dados pessoais não come o conhecimento das cartas.',
   pii_telefone_nao_vira_cpf: 'Um telefone anunciado como telefone não é mascarado como CPF.',
 };
+
+/**
+ * Sinais em que `false` é o estado NORMAL, não um defeito.
+ *
+ * O freio de emergência existe para ser puxado num incidente; desarmado é o
+ * dia a dia. Um painel que pinta isso de vermelho treina quem o lê a ignorar
+ * vermelho — e aí o vermelho que importa passa despercebido.
+ */
+const FALSE_EH_NORMAL = new Set(['freio_de_emergencia_armado']);
 
 const ROTULO_INFRA: Record<string, string> = {
   database_sync: 'Banco de dados',
@@ -59,7 +72,24 @@ const ROTULO_INFRA: Record<string, string> = {
   storage: 'Arquivos (MinIO)',
 };
 
-function Estado({ valor }: { valor: unknown }) {
+function Estado({ valor, falseEhBom = false }: { valor: unknown; falseEhBom?: boolean }) {
+  // A infra não devolve string: vem `{conectado: true, host: "..."}`. Sem esta
+  // leitura o painel mostrava `[object Object]` em Redis, Qdrant e MinIO —
+  // três peças que estavam FUNCIONANDO e pareciam quebradas.
+  if (valor && typeof valor === 'object') {
+    const obj = valor as Record<string, unknown>;
+    if ('conectado' in obj) return <Estado valor={Boolean(obj.conectado)} />;
+  }
+  // Nem todo `false` é defeito. O freio de emergência DESARMADO é o estado
+  // normal — pintá-lo de vermelho ensina a pessoa a ignorar vermelho, que é
+  // exatamente o que um painel de saúde não pode fazer.
+  if (falseEhBom && valor === false) {
+    return (
+      <Badge className="gap-1 bg-emerald-600/15 text-emerald-500 hover:bg-emerald-600/15">
+        <CheckCircle2 className="h-3 w-3" /> normal
+      </Badge>
+    );
+  }
   if (valor === true || valor === 'ok' || valor === 'healthy' || valor === 'connected') {
     return (
       <Badge className="gap-1 bg-emerald-600/15 text-emerald-500 hover:bg-emerald-600/15">
@@ -158,7 +188,7 @@ export default function SaudePage() {
               className="flex items-start justify-between gap-4 border-b border-border/50 pb-3 last:border-0 last:pb-0"
             >
               <p className="text-sm text-foreground-2">{EXPLICACAO[chave]}</p>
-              <Estado valor={sinais[chave]} />
+              <Estado valor={sinais[chave]} falseEhBom={FALSE_EH_NORMAL.has(chave)} />
             </div>
           ))}
         </CardContent>
@@ -187,7 +217,7 @@ export default function SaudePage() {
             {demais.map((chave) => (
               <div key={chave} className="flex items-center justify-between gap-3">
                 <span className="font-mono text-xs text-muted-foreground">{chave}</span>
-                <Estado valor={sinais[chave]} />
+                <Estado valor={sinais[chave]} falseEhBom={FALSE_EH_NORMAL.has(chave)} />
               </div>
             ))}
           </CardContent>
