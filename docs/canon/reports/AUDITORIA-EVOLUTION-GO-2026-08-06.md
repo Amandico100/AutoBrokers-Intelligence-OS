@@ -496,6 +496,9 @@ recusar. A corrente do nosso lado está fechada.
 
 ## 11. Correção a uma conclusão intermediária
 
+> ⚠️ **Esta seção foi ela própria corrigida em 06/08/2026 ~18:00Z. Leia o §13.**
+
+
 Durante a execução afirmei que a instância da Regina "não gerava log há 16 horas,
 logo o socket estaria morto-vivo". 📊 Errado: depois do `reconnect` — que
 certamente escreve `Starting fresh instance` — o log **continuou parado em
@@ -517,3 +520,30 @@ capturando" é `observed_events` no Supabase, nunca o log do provedor.
 - O QR da Resulta gerado às 15:47Z **expira** (`QRCODE_MAX_COUNT=5`). A atendente
   deve gerar um novo pela tela no momento em que for escanear — e agora ele vem,
   porque o `jid` está vazio.
+
+
+## 13. Correção da §11 — o log não estava congelado; eu estava lendo errado
+
+📊 A §11 afirmou que `GET /instance/logs/:id` estava "congelado", porque a
+resposta trazia sempre as mesmas linhas de 05/08 23:23Z por mais que houvesse
+atividade nova. **A afirmação está errada, e a medição que a derruba é simples:**
+
+```
+GET /instance/logs/{id}?start_date=2026-08-06&end_date=2026-08-06&limit=3000
+  → 3.000 linhas, de 00:12:56Z a 14:06:48Z
+```
+
+A instância loga normalmente. O que a rota faz é **paginar a partir do INÍCIO da
+janela**, e a janela padrão é de 7 dias. Sem `start_date`, as primeiras 100
+linhas dos últimos 7 dias são sempre as mesmas — e não têm nada a ver com o
+presente. Não era o provedor que estava mudo: era a consulta que olhava para
+trás.
+
+Fica o aprendizado, que é o mesmo do §9.2 noutra roupa: **"não vejo" e "não
+existe" são afirmações diferentes**, e eu tratei a primeira como a segunda. A
+linha de controle que faltava era trivial — pedir o mesmo log com um filtro de
+data — e ela existia o tempo todo.
+
+O que permanece verdadeiro da §11: a fonte de "está capturando" é o banco, e não
+o log do provedor. Mas por outro motivo — porque o banco é a única ponta que
+prova ENTREGA, não porque o log mentisse.

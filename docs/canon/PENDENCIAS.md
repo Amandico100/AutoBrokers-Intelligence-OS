@@ -2136,3 +2136,62 @@ em 05/08 23:23Z ela ainda RECEBIA mensagens e as despachava para o webhook vazio
 > **P-114 fica RESOLVIDO por esta entrada** na parte que era acionável: os
 > webhooks foram regravados e conferidos. O que resta é medição no tempo, e é o
 > que esta pendência acompanha.
+
+## P-117 · ✅ RESOLVIDO — a captura da AutoFleet voltou, e está provada
+
+📊 06/08/2026 17:42Z, `attendance_transcripts`: **124 linhas na última hora**, a
+mais recente **6 segundos** antes da consulta. `source='live'`, com sessão,
+entrada e saída, texto e áudio. Conversas reais de sinistro (perito, oficina,
+pneu, roda) — e `attendance_sessions` com 15 sessões em 2 horas.
+
+A mensagem de teste que o Founder mandou está gravada inteira:
+
+```
+17:29:38  in   "Boa tarde Regina. Tô só enviando uma msg de teste"
+17:31:16  out  "opa"
+17:31:21  out  "boa tarde"
+```
+
+**Isto encerra o P-110, o P-114 e o P-116** na parte que era acionável: o
+conserto do webhook (`f81e24e`) restaurou a captura em produção, e o reconector
+novo religou a Resulta sozinho, com webhook e os quatro eventos.
+
+⚠️ O que NÃO estava quebrado, e eu quase tratei como se estivesse:
+
+- `observed_events` parado desde 04/08 **é o comportamento correto**. Ele guarda
+  o HISTORY_SYNC, que só chega no pareamento. Conversa ao vivo vai para
+  `attendance_transcripts` — são dois acervos, não um com defeito.
+- `conversations` vazia **é o comportamento correto**. Ela nasce no pipeline do
+  agente, e `observer_tap` consome o evento enquanto o agente está desligado.
+  Com os quatro agentes `is_active=false`, a tela "Atendimentos → Conversas"
+  vazia é a decisão do Founder funcionando, não uma falha.
+
+## P-118 · 🟠 O Espelho existe, mas mora só no admin
+
+📊 As conversas capturadas da AutoFleet estão em `/admin/espelho`
+(`attendance_sessions` + `attendance_transcripts`, via
+`admin_atlas.espelho_sessoes` e `replay_atendimento`). A corretora **não** as vê:
+o dashboard dela mostra `conversations`, que é a central do AGENTE.
+
+O Founder (06/08): *"as conversas precisam ir pro dashboard pra fazer o
+atendimento dentro do chat de conversas, devem aparecer para o observador na
+central de agentes"*.
+
+⚠️ **Isto é mudança de produto, e tem um risco que precisa de decisão.** A tela
+`Atendimentos → Conversas` tem campo de resposta. Espelhar ali as conversas
+capturadas sem mais nada cria uma porta por onde alguém responde — e a mensagem
+sai pelo WhatsApp da corretora. Com todos os agentes desligados de propósito,
+essa porta não pode nascer aberta por acidente.
+
+Três caminhos, e a escolha é do Founder:
+
+1. **Espelho read-only no dashboard** (nova aba, sem campo de resposta) — mostra
+   o que a equipe conversou, sem criar caminho de envio. É o menor risco.
+2. **Conversas do observador na central de atendimento, com envio bloqueado** até
+   o botão "Ligar agente" — mais próximo do pedido, exige um guarda explícito e
+   testado no caminho de envio.
+3. **Só depois de ligar o agente** — o comportamento de hoje, sem mudança.
+
+- **Destrava:** 🧑 decisão entre os três, depois 🤖 a implementação.
+- **Custa se esquecer:** a corretora não vê o próprio atendimento, e o produto
+  parece vazio para ela mesmo capturando tudo.
