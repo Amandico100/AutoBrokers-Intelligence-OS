@@ -14,13 +14,24 @@ corretora já tem, inventar o que o material não ensina.
 
 O segundo não ganhou nada. E ele:
 
-    📊 roda a cada 3600s (`buffer_processor`, job `lapidador_check`)
-    📊 opera sobre playbooks com status ATIVO
+    📊 opera sobre playbooks com status ATIVO — os 12 que estão no ar
     📊 pedia um JSON com 8 chaves — as 3 novas não estavam entre elas
 
-**O que ele omitisse, sumiria.** Em até uma hora, os três campos novos seriam
-apagados dos playbooks no ar e os defeitos corrigidos à mão voltariam pela
-porta dos fundos — porque quem reescreve não sabia que tinham sido defeitos.
+**O que ele omitisse, sumiria.** Os defeitos corrigidos à mão nos ativos (10
+frases com espaço em branco, 1 afirmando cobertura) voltariam pela porta dos
+fundos — porque quem reescreve não sabia que tinham sido defeitos.
+
+A JANELA, MEDIDA — NÃO A QUE EU TINHA ESCRITO
+=============================================
+Escrevi primeiro que a janela era de 60 minutos, porque o job está agendado a
+cada 3.600s. Está — mas a rodada tem dois portões que eu não tinha lido: só
+entre 3h e 10h UTC, e no máximo uma vez por semana. A janela real é **a próxima
+madrugada que completar 7 dias**.
+
+📊 E 07/08/2026, nos 18 playbooks do banco: `_mudancas` em **0**. O Lapidador
+nunca rodou — os 12 ativos existem desde 29/07. Então o risco não era iminente;
+era certo e sem data. O que não muda o conserto, muda o tamanho do susto — e um
+número que eu não medi não vira urgência num commit.
 
 A CAUSA NÃO ERA O TEXTO
 =======================
@@ -152,17 +163,33 @@ def teste_o_lapidador_ainda_e_um_lapidador():
            "dois esquemas no mesmo prompt: o modelo obedece um deles")
 
 
-def teste_por_que_isto_era_urgente():
-    print("\n[4] CONTROLE — ele roda sozinho, sobre o que está no ar")
+def teste_ele_roda_sozinho_sobre_o_que_esta_no_ar():
+    print("\n[4] CONTROLE — o defeito tinha hora marcada, e qual")
     agendador = _ler(AGENDADOR)
+    lapidador = _ler(LAPIDADOR)
 
     checar("lapidador_check" in agendador,
            "CONTROLE — o Lapidador está no agendador",
            "sem isso o defeito seria teórico; com isso, tinha hora marcada")
+
+    # 🔴 A CADÊNCIA REAL — e ela NÃO é de hora em hora.
+    # O job acorda a cada 3.600s, mas a rodada tem dois portões: só entre 3h e
+    # 10h UTC, e no máximo uma vez por semana (marcador no Redis). Escrever
+    # "a janela era de 60 minutos" seria dramatizar um número que não medi.
     i = agendador.find("lapidador_check")
     checar("seconds=3600" in agendador[max(0, i - 400):i],
-           "CONTROLE — e roda de hora em hora",
-           "a janela entre o conserto e o desfazimento era de 60 minutos")
+           "o job acorda de hora em hora")
+    checar("now.hour not in range(3, 10)" in lapidador,
+           "mas só age na madrugada BRT")
+    checar("_WEEKLY_S = 7 * 86400" in lapidador and "< _WEEKLY_S" in lapidador,
+           "e no máximo uma vez por semana",
+           "a janela real é a próxima madrugada que completar 7 dias")
+
+    # CONTROLE — o alvo continua sendo o que está ATIVO. Um Lapidador que só
+    # mexesse em rascunho não justificaria pressa nenhuma.
+    checar('.eq("status", "active")' in lapidador,
+           "CONTROLE — e o alvo dele são os playbooks ATIVOS",
+           "📊 12 ativos; foi neles que as 10 frases foram corrigidas à mão")
 
 
 def main() -> int:
@@ -172,7 +199,7 @@ def main() -> int:
     teste_o_lapidador_importa_as_regras_em_vez_de_copiar()
     teste_as_regras_novas_chegam_a_quem_reescreve()
     teste_o_lapidador_ainda_e_um_lapidador()
-    teste_por_que_isto_era_urgente()
+    teste_ele_roda_sozinho_sobre_o_que_esta_no_ar()
 
     print("\n" + "=" * 70)
     if _PROBLEMAS:
