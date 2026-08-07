@@ -2282,7 +2282,7 @@ tentativas, espera exponencial, só falha transitória, última falha sobe).
 
 ---
 
-## P-121 · 30 leituras pedem mais de 1.000 linhas e recebem 1.000, em silêncio
+## P-122 · 🟠 30 leituras pedem mais de 1.000 linhas e recebem 1.000, em silêncio
 
 🤖 **Execução** · aberta em 06/08/2026
 

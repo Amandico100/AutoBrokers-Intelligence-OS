@@ -11,6 +11,7 @@
     "test:infocap-contract-capture": "python backend/tests/test_infocap_contract_capture.py",
     "test:infocap-output-guard": "python backend/tests/test_infocap_policy_output_guard.py",
     "test:rotas-montam": "node scripts/rotas-montam.test.mjs",
+    "test:saude-vermelho": "node scripts/saude-vermelho-e-do-agora.test.mjs",
     "test:provider-adapters": "node scripts/attendance-provider-adapters-homologation.test.mjs",
     "test:portal-browser-contracts": "node scripts/attendance-portal-browser-contracts.test.mjs",
     "test:portal-admin-registry": "node scripts/attendance-portal-admin-registry.test.mjs",

@@ -18,6 +18,7 @@ import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { AlertCircle, CheckCircle2, RefreshCw, XCircle } from 'lucide-react';
+import { lerContadores } from '@/lib/saude-contadores';
 
 interface Saude {
   ok: boolean;
@@ -72,6 +73,69 @@ const ROTULO_INFRA: Record<string, string> = {
   storage: 'Arquivos (MinIO)',
 };
 
+/**
+ * Os contadores do espelho, lidos como o que eles são.
+ *
+ * 🔴 O PAINEL ESTAVA PINTANDO O PASSADO DE VERMELHO.
+ *
+ * 📊 06/08/2026, 21:09: a tela mostrava `erro:ImportError: 4510` e
+ * `erro:APIError: 5612` em vermelho vivo — e os dois defeitos que produziram
+ * esses números já estavam CORRIGIDOS havia horas. O contador acumulado nunca
+ * zera: ele soma desde que o servidor ligou. A tela lia esse total como se
+ * fosse o agora.
+ *
+ * O backend já separava as duas coisas (`agora`, janela de 10 minutos que
+ * expira; `total_desde_o_boot`, que só cresce). Quem achatava era o painel.
+ *
+ * O custo desse tipo de erro é o mesmo do freio de emergência logo abaixo:
+ * vermelho que fica aceso para sempre é vermelho que se aprende a ignorar. E
+ * aí o dia em que ele significa alguma coisa, ninguém olha.
+ *
+ * Agora a regra é: **a cor vem da janela de AGORA**. O histórico aparece
+ * apagado, ao lado, dizendo que é histórico.
+ */
+function ContadoresDoEspelho({ valor }: { valor: Record<string, unknown> }) {
+  // A regra mora em `lib/saude-contadores.js` e o teste importa DE LÁ. Ela já
+  // esteve aqui dentro, com uma cópia no teste — e a prova por mutação mostrou
+  // que o teste ficava verde mesmo com a tela quebrada, porque media a cópia.
+  const { errosAgora, bonsAgora, errosNoTotal } = lerContadores(valor);
+
+  return (
+    <div className="flex flex-col items-end gap-1">
+      <div className="flex flex-wrap justify-end gap-1">
+        {errosAgora.length > 0 ? (
+          errosAgora.map(([chave, quanto]) => (
+            <Badge
+              key={chave}
+              className="gap-1 bg-red-600/15 font-mono text-[10px] text-red-400 hover:bg-red-600/15"
+            >
+              {chave}: {String(quanto)}
+            </Badge>
+          ))
+        ) : (
+          <Badge className="gap-1 bg-emerald-600/15 text-emerald-500 hover:bg-emerald-600/15">
+            <CheckCircle2 className="h-3 w-3" /> nenhum erro nos últimos 10 min
+          </Badge>
+        )}
+        {bonsAgora.map(([chave, quanto]) => (
+          <Badge
+            key={chave}
+            className="gap-1 bg-emerald-600/15 font-mono text-[10px] text-emerald-500 hover:bg-emerald-600/15"
+          >
+            {chave}: {String(quanto)}
+          </Badge>
+        ))}
+      </div>
+      {errosNoTotal.length > 0 ? (
+        <p className="text-right font-mono text-[10px] text-muted-foreground/70">
+          histórico desde que o servidor ligou (inclui erros já corrigidos):{' '}
+          {errosNoTotal.map(([k, v]) => `${k}: ${v}`).join(' · ')}
+        </p>
+      ) : null}
+    </div>
+  );
+}
+
 function Estado({ valor, falseEhBom = false }: { valor: unknown; falseEhBom?: boolean }) {
   // A infra não devolve string: vem `{conectado: true, host: "..."}`. Sem esta
   // leitura o painel mostrava `[object Object]` em Redis, Qdrant e MinIO —
@@ -83,26 +147,18 @@ function Estado({ valor, falseEhBom = false }: { valor: unknown; falseEhBom?: bo
     // `[object Object]` — e eram justamente o que respondia "por que o chat
     // está vazio". Um painel de diagnóstico que esconde o diagnóstico é pior
     // que não ter painel: dá a sensação de já ter olhado.
-    const linhas = Object.entries(obj);
-    if (linhas.length === 0) {
+    if (Object.keys(obj).length === 0) {
       return <Badge variant="outline">sem registros ainda</Badge>;
     }
-    return (
-      <div className="flex flex-wrap justify-end gap-1">
-        {linhas.map(([chave, quanto]) => (
-          <Badge
-            key={chave}
-            className={
-              chave.startsWith('erro')
-                ? 'gap-1 bg-red-600/15 font-mono text-[10px] text-red-400 hover:bg-red-600/15'
-                : 'gap-1 bg-emerald-600/15 font-mono text-[10px] text-emerald-500 hover:bg-emerald-600/15'
-            }
-          >
-            {chave}: {String(quanto)}
-          </Badge>
-        ))}
-      </div>
-    );
+    // TODO mapa de contadores passa pela regra do agora — não só o do espelho.
+    //
+    // A primeira versão deste conserto tratava `espelho_contadores` como caso
+    // especial e deixava aqui o código velho, que pintava qualquer chave
+    // `erro:*` de vermelho para sempre. O teste
+    // `saude-vermelho-e-do-agora.test.mjs` reprovou: o próximo contador que
+    // alguém adicionasse herdaria o defeito inteiro, e ninguém iria lembrar por
+    // quê. Conserto que vale para um caso não é conserto, é remendo.
+    return <ContadoresDoEspelho valor={obj} />;
   }
   // Nem todo `false` é defeito. O freio de emergência DESARMADO é o estado
   // normal — pintá-lo de vermelho ensina a pessoa a ignorar vermelho, que é
@@ -239,7 +295,14 @@ export default function SaudePage() {
           </CardHeader>
           <CardContent className="grid gap-2 sm:grid-cols-2">
             {demais.map((chave) => (
-              <div key={chave} className="flex items-center justify-between gap-3">
+              <div
+                key={chave}
+                className={
+                  chave === 'espelho_contadores'
+                    ? 'flex items-start justify-between gap-3 sm:col-span-2'
+                    : 'flex items-center justify-between gap-3'
+                }
+              >
                 <span className="font-mono text-xs text-muted-foreground">{chave}</span>
                 <Estado valor={sinais[chave]} falseEhBom={FALSE_EH_NORMAL.has(chave)} />
               </div>
