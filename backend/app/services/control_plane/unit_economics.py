@@ -36,11 +36,19 @@ from collections import defaultdict
 from datetime import datetime, timedelta, timezone
 from typing import Any, Optional
 
+
 logger = logging.getLogger(__name__)
 
-# Teto de leitura. Um mês de tráfego real de dezenas de corretoras não cabe
-# numa resposta de API, e truncar em silêncio faria o número parecer menor do
-# que é — o pior defeito possível num relatório de custo. Quando trunca, diz.
+# Teto de leitura, agora com o significado que o comentário sempre prometeu.
+#
+# Antes, `TETO = 5000` era passado a `.limit()` — e o servidor, que corta em
+# 1.000, tornava o aviso de truncamento impossível de disparar. Agora o número
+# é o teto da leitura PAGINADA: `ler_paginado` vai buscando de mil em mil até
+# acabar ou até bater aqui, e quando bate ele DIZ.
+#
+# 📊 06/08/2026: 4.406 eventos e 4.787 registros legados em 30 dias. 5.000
+# ainda cobre — e no dia em que não cobrir, o relatório vai avisar em vez de
+# mentir, que era o defeito inteiro.
 TETO = 5000
 
 
@@ -175,32 +183,52 @@ class EconomiaPorCorretora:
 
     def _ler_eventos(self, desde: str,
                      company_id: Optional[str]) -> tuple[list[dict], bool]:
-        try:
-            q = (self.db.table("usage_events")
-                 .select("company_id, provider_cost_usd, input_tokens, "
-                         "output_tokens, model, source, skill_slug, tool_name")
-                 .gte("occurred_at", desde).limit(TETO))
-            if company_id:
-                q = q.eq("company_id", str(company_id))
-            linhas = (q.execute().data) or []
-            return linhas, len(linhas) >= TETO
-        except Exception as exc:  # noqa: BLE001
-            # Uma fonte fora do ar não pode zerar o relatório inteiro — o
-            # resultado sai com a outra, e `procedencia` mostra o buraco.
-            logger.warning("[UnitEconomics] usage_events: %s", type(exc).__name__)
-            return [], False
+        # 🔴 O DETECTOR DE TRUNCAMENTO ERA DERROTADO PELO PRÓPRIO TRUNCAMENTO.
+        #
+        # A versão anterior fazia `.limit(TETO)` com `TETO = 5000` e concluía
+        # "truncou?" com `len(linhas) >= TETO`. O PostgREST devolve no máximo
+        # 1.000 linhas e ignora o `.limit()` acima disso — então a conta era
+        # sempre `1000 >= 5000`, isto é, **False**.
+        #
+        # O relatório declarava ativamente que tinha lido tudo. O aviso escrito
+        # logo acima ("O custo real do período é MAIOR que o mostrado") nunca
+        # teve como aparecer.
+        #
+        # 📊 06/08/2026, últimos 30 dias: 4.406 eventos, US$ 11,5022 reais. O
+        # relatório recebia 1.000 e mostrava uma fração — com a confiança de um
+        # total.
+        #
+        # Um detector de truncamento cujo limiar está ACIMA do teto do servidor
+        # é pior que nenhum detector: o primeiro te deixaria desconfiado; este
+        # te dava certeza errada.
+        # Import aqui dentro: `app.core.__init__` puxa `config` e `database`,
+        # e varios testes carregam este modulo isolado, sem essa cadeia.
+        from app.leitura_completa import ler_paginado
+        return ler_paginado(
+            lambda: self._filtrar(
+                self.db.table("usage_events")
+                .select("company_id, provider_cost_usd, input_tokens, "
+                        "output_tokens, model, source, skill_slug, tool_name")
+                .gte("occurred_at", desde), company_id),
+            chave_unica="id", teto=TETO, rotulo="unit_economics:usage_events")
+
+    @staticmethod
+    def _filtrar(consulta: Any, company_id: Optional[str]) -> Any:
+        return consulta.eq("company_id", str(company_id)) if company_id else consulta
 
     def _ler_legado(self, desde: str,
                     company_id: Optional[str]) -> tuple[list[dict], bool]:
         try:
-            q = (self.db.table("token_usage_logs")
-                 .select("company_id, total_cost_usd, input_tokens, "
-                         "output_tokens, model_name, service_type")
-                 .gte("created_at", desde).limit(TETO))
-            if company_id:
-                q = q.eq("company_id", str(company_id))
-            linhas = (q.execute().data) or []
-            return linhas, len(linhas) >= TETO
+            from app.leitura_completa import ler_paginado
+
+            return ler_paginado(
+                lambda: self._filtrar(
+                    self.db.table("token_usage_logs")
+                    .select("company_id, total_cost_usd, input_tokens, "
+                            "output_tokens, model_name, service_type")
+                    .gte("created_at", desde), company_id),
+                chave_unica="id", teto=TETO,
+                rotulo="unit_economics:token_usage_logs")
         except Exception as exc:  # noqa: BLE001
             logger.warning("[UnitEconomics] token_usage_logs: %s", type(exc).__name__)
             return [], False

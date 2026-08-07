@@ -14,6 +14,7 @@ from ..dedupe_service import chave_de_sinal
 from ..schemas import TIER_ANALISE, TIER_DADO_VIVO, SignalDraft, evidencia
 from . import ContextoDeDeteccao, plural, registrar
 
+
 logger = logging.getLogger(__name__)
 
 # `close` e `closed` entram porque é assim que o Evolution reporta canal caído —
@@ -288,12 +289,33 @@ def orcamento_no_limite(ctx: ContextoDeDeteccao) -> list[SignalDraft]:
 
     percentual_alerta = float(ctx.cfg("percentual_alerta", 80))
     inicio_mes = ctx.agora.replace(day=1, hour=0, minute=0, second=0, microsecond=0)
+    # 🔴 O ALERTA DE ORCAMENTO NAO TINHA COMO DISPARAR NO MAIOR CLIENTE.
+    #
+    # `.limit(5000)` parecia folgado. O PostgREST devolve no maximo 1.000 linhas
+    # e ignora o limite pedido acima disso — entao a soma era feita sobre uma
+    # fracao do mes.
+    #
+    # 📊 06/08/2026: a Resulta tem 4.267 eventos de consumo em 30 dias. O gasto
+    # lido saia pequeno, o percentual do limite saia pequeno, e o aviso que
+    # existe justamente para avisar ANTES do estouro ficava calado — no cliente
+    # que mais precisa dele. Quanto MAIS a corretora consome, mais o alerta se
+    # cala: o contrario exato do que ele existe para fazer.
     try:
-        r = (ctx.db.table("usage_events")
-             .select("provider_cost_usd")
-             .eq("company_id", ctx.company_id)
-             .gte("occurred_at", inicio_mes.isoformat()).limit(5000).execute())
-        gasto = sum(float(x.get("provider_cost_usd") or 0) for x in (r.data or []))
+        # Import aqui dentro: `app.core.__init__` puxa `config` e `database`,
+        # e varios testes carregam este modulo isolado, sem essa cadeia.
+        from app.leitura_completa import ler_paginado
+        linhas, incompleto = ler_paginado(
+            lambda: ctx.db.table("usage_events")
+            .select("provider_cost_usd")
+            .eq("company_id", ctx.company_id)
+            .gte("occurred_at", inicio_mes.isoformat()),
+            chave_unica="id", rotulo="detector:orcamento")
+        gasto = sum(float(x.get("provider_cost_usd") or 0) for x in linhas)
+        if incompleto:
+            # Leitura incompleta subestima o gasto. Num alerta de teto, errar
+            # para menos e o erro caro: e deixar de avisar.
+            logger.warning("[Detector] orcamento de %s lido incompleto — o "
+                           "gasto real e MAIOR que %s", ctx.company_id, gasto)
     except Exception as exc:  # noqa: BLE001
         logger.warning("[Detector] usage_events: %s", type(exc).__name__)
         return []

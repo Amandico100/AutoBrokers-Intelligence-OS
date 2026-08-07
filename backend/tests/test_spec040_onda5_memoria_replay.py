@@ -58,6 +58,7 @@ class _Table:
         self._order = None
         self._desc = True
         self._limit = None
+        self._faixa = None
 
     def select(self, *_a, **_k): self._mode = "select"; return self
     def insert(self, payload): self._mode = "insert"; self._payload = payload; return self
@@ -79,6 +80,15 @@ class _Table:
 
     def limit(self, n): self._limit = n; return self
 
+    # Paginacao — a memoria dos agentes le o acervo inteiro por paginas desde
+    # 06/08/2026. 📊 O motivo: o PostgREST corta em 1.000 linhas e ignora o
+    # `.limit()` pedido acima disso; o bloco "espelho de atendimento" dizia
+    # "1.000 sessoes" quando eram 1.577, e a memoria do agente e a base do que
+    # ele responde. `.range(a, b)` e INCLUSIVO nas duas pontas.
+    def range(self, inicio, fim):
+        self._faixa = (int(inicio), int(fim))
+        return self
+
     def _rows(self):
         rows = list(self.store.get(self.name, []))
         for col, val in self._eq:
@@ -89,6 +99,9 @@ class _Table:
             rows = [r for r in rows if r.get(col) in vals]
         if self._order:
             rows.sort(key=lambda r: str(r.get(self._order) or ""), reverse=self._desc)
+        if self._faixa:
+            inicio, fim = self._faixa
+            rows = rows[inicio:fim + 1]
         if self._limit:
             rows = rows[: self._limit]
         return rows
@@ -142,6 +155,12 @@ def _bootstrap():
     red.get_async_redis_client = _get_redis
     sys.modules["app.core.redis"] = red
     _load("app.core.heartbeat", "app/core/heartbeat.py")
+    # Carregado DE VERDADE, nao dublado: e o laco de paginacao que a memoria usa
+    # para ler o acervo inteiro. 📊 06/08/2026 um duble com a forma que EU
+    # imaginei escondeu um ImportError por 2.255 tentativas — um duble valida a
+    # suposicao de quem o escreve, nao a realidade. O modulo e puro, entao
+    # carregar o de verdade custa nada e prova alguma coisa.
+    _load("app.leitura_completa", "app/leitura_completa.py")
     mem = _load("app.services.agent_memory", "app/services/agent_memory.py")
     return mem, store, redis
 

@@ -18,6 +18,7 @@ import logging
 from datetime import datetime, timedelta, timezone
 from typing import Any, Dict, List, Optional
 
+
 logger = logging.getLogger(__name__)
 
 _MARKER = "agent_memory:last_run"
@@ -56,8 +57,17 @@ def _rebuild_sync() -> int:
 
     # OBSERVADOR — o que já observamos por seguradora (30d)
     try:
-        rows = (db.client.table("observed_sessions").select("insurer_key, company_id")
-                .gte("started_at", _since(30)).limit(2000).execute().data or [])
+        # O que o agente LEMBRA nao pode ser uma amostra que se diz total.
+        # `.limit(2000)` recebia 1.000 do servidor (que ignora limite acima
+        # disso), e a frase gravada dizia "Ultimos 30 dias: 1000 sessoes" como
+        # se fosse a contagem real.
+        # Import aqui dentro: `app.core.__init__` puxa `config` e `database`,
+        # e varios testes carregam este modulo isolado, sem essa cadeia.
+        from app.leitura_completa import ler_paginado
+        rows, _ = ler_paginado(
+            lambda: db.client.table("observed_sessions")
+            .select("id, insurer_key, company_id").gte("started_at", _since(30)),
+            chave_unica="id", rotulo="memoria:observador")
         by_ins: Dict[str, int] = {}
         companies = set()
         for r in rows:
@@ -103,8 +113,17 @@ def _rebuild_sync() -> int:
 
     # ESPELHO DE ATENDIMENTO — captura + destilação + serviços mais comuns
     try:
-        rows = (db.client.table("attendance_sessions").select("company_id, summary")
-                .gte("created_at", _since(30)).limit(2000).execute().data or [])
+        # 📊 06/08/2026: 1.577 sessoes de atendimento em 30 dias, e o agente
+        # "lembrava" de 1.000. A memoria dele e a base do que ele responde, do
+        # que vai para a carta e do que alimenta o RAG — uma amostra silenciosa
+        # aqui degrada tudo o que vem depois, sem nenhum sintoma visivel.
+        # Import aqui dentro: `app.core.__init__` puxa `config` e `database`,
+        # e varios testes carregam este modulo isolado, sem essa cadeia.
+        from app.leitura_completa import ler_paginado
+        rows, _ = ler_paginado(
+            lambda: db.client.table("attendance_sessions")
+            .select("id, company_id, summary").gte("created_at", _since(30)),
+            chave_unica="id", rotulo="memoria:espelho_atendimento")
         distilled = [((r.get("summary") or {}).get("distilled") or {}) for r in rows]
         distilled = [d for d in distilled if d and not d.get("skipped")]
         servicos: Dict[str, int] = {}

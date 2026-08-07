@@ -63,15 +63,42 @@ EMPRESAS = [{"id": "c1", "company_name": "Resulta Seguros"},
             {"id": "c2", "company_name": "AutoFleet"}]
 
 
+# 🔴 O DUBLE CORTA EM 1.000, COMO O SERVIDOR DE VERDADE.
+#
+# 📊 06/08/2026: o PostgREST devolve no maximo 1.000 linhas por resposta e
+# IGNORA o `.limit(N)` pedido acima disso. O `unit_economics` lia com
+# `.limit(TETO)`, TETO=5000, e decidia "truncou?" com `len(linhas) >= TETO` —
+# conta que dava sempre `1000 >= 5000`, isto e, False. O relatorio declarava
+# ativamente que tinha lido tudo, sobre 1.000 de 4.406 eventos reais.
+#
+# Este duble obedecia o `.limit()` ao pe da letra, e por isso o teste [4] ficava
+# VERDE em cima do defeito vivo: aqui vinham 5.000, em producao vinham 1.000.
+#
+# Agora ele corta como o real, e o modulo pagina. A licao do teste [4] nao
+# morreu — ela MIGROU (CLAUDE.md §9.3): continua provando que truncagem nao e
+# silenciosa, agora contra o teto que existe de verdade.
+TETO_DO_SERVIDOR = 1000
+
+
 class FakeQ:
     def __init__(self, banco, tabela):
         self.banco, self.tabela = banco, tabela
         self._eq: list[tuple] = []
+        self._faixa = None
+        self._ordem = None
 
     def select(self, *_a, **_k):
         return self
 
     def gte(self, *_a, **_k):
+        return self
+
+    def order(self, campo, desc=False, **_k):
+        self._ordem = (campo, bool(desc))
+        return self
+
+    def range(self, inicio, fim):
+        self._faixa = (int(inicio), int(fim))
         return self
 
     def limit(self, n):
@@ -88,7 +115,14 @@ class FakeQ:
         linhas = self.banco.linhas.get(self.tabela, [])
         for c, v in self._eq:
             linhas = [l for l in linhas if str(l.get(c)) == str(v)]
-        return types.SimpleNamespace(data=linhas[: getattr(self, "_limite", 10_000)])
+        if self._ordem:
+            campo, desc = self._ordem
+            linhas = sorted(linhas, key=lambda l: str(l.get(campo) or ""), reverse=desc)
+        if self._faixa:
+            inicio, fim = self._faixa
+            linhas = linhas[inicio:fim + 1]
+        linhas = linhas[: getattr(self, "_limite", 10_000)]
+        return types.SimpleNamespace(data=linhas[:TETO_DO_SERVIDOR])
 
 
 class FakeDB:

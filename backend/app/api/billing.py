@@ -305,17 +305,40 @@ async def get_usage_by_service(
             end_dt = now_br.isoformat()
             period_label = f"last_{days}_days"
 
-        # Buscar consumo da tabela token_usage_logs (ASYNC)
-        result = await db.client.table("token_usage_logs") \
-            .select("service_type, model_name, total_cost_usd, input_tokens, output_tokens") \
-            .eq("company_id", company_id) \
-            .gte("created_at", start_dt) \
-            .lte("created_at", end_dt) \
-            .execute()
+        # 🔴 ESTA LEITURA NÃO PEDIA LIMITE — E POR ISSO RECEBIA O TETO SEM SABER.
+        #
+        # O PostgREST devolve no máximo 1.000 linhas por resposta. Uma consulta
+        # sem `.limit()` não pede "tudo": ela recebe 1.000 e nunca fica sabendo
+        # que havia mais.
+        #
+        # 📊 06/08/2026, Resulta Seguros, últimos 30 dias:
+        #
+        #     no banco    4.648 registros    US$ 9,5532
+        #     chegava     1.000 registros    uma fração disso
+        #
+        # E este número não é decorativo: ele é multiplicado pela cotação do
+        # dólar e pelo multiplicador de venda, e vira o consumo que o CLIENTE vê.
+        # Um erro para MENOS aqui é dinheiro que não é cobrado, e uma conta que
+        # parece confortável sem ser.
+        #
+        # `id` como chave de paginação, nunca `created_at`: 📊 uma paginação por
+        # data neste repositório já perdeu 12 linhas e repetiu outras 12 em
+        # 11.640, porque datas empatam (`curadoria_cartas.py`).
+        # Import aqui dentro: `app.core.__init__` puxa `config` e `database`,
+        # e varios testes carregam este modulo isolado, sem essa cadeia.
+        from app.leitura_completa import ler_paginado_async
+        linhas, incompleto = await ler_paginado_async(
+            lambda: db.client.table("token_usage_logs")
+            .select("service_type, model_name, total_cost_usd, "
+                    "input_tokens, output_tokens")
+            .eq("company_id", company_id)
+            .gte("created_at", start_dt)
+            .lte("created_at", end_dt),
+            chave_unica="id", rotulo="billing:consumo_do_cliente")
 
         # Agrupar por service_type
         usage_by_service = {}
-        for row in result.data or []:
+        for row in linhas:
             service = row.get("service_type") or "unknown"
             if service not in usage_by_service:
                 usage_by_service[service] = {
@@ -368,7 +391,12 @@ async def get_usage_by_service(
         return {
             "period": period_label,
             "total_cost_brl": round(total_cost_brl, 2),
-            "by_service": by_service
+            "by_service": by_service,
+            # Um número de dinheiro que pode estar incompleto tem de DIZER que
+            # pode estar incompleto. É o oposto do defeito que esta rota tinha:
+            # ela mostrava uma fração do custo com a confiança de um total.
+            "leitura_completa": not incompleto,
+            "registros_lidos": len(linhas),
         }
 
     except Exception as e:

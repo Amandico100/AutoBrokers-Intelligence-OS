@@ -2282,43 +2282,76 @@ tentativas, espera exponencial, só falha transitória, última falha sobe).
 
 ---
 
-## P-122 · 🟠 30 leituras pedem mais de 1.000 linhas e recebem 1.000, em silêncio
+## P-122 · 🟡 O teto de 1.000 linhas: o que foi consertado e o que ficou
 
-🤖 **Execução** · aberta em 06/08/2026
+🤖 **Execução** · aberta e parcialmente resolvida em 06/08/2026
 
 O PostgREST tem um teto de linhas por resposta que **vence o `.limit()`
 pedido**. Pedir 1.500 não dá erro: devolve 1.000 e o código segue achando que
-leu tudo.
+leu tudo. Uma auditoria independente varreu o backend e achou ~28 pontos.
 
-📊 **O caso que provou:** o backfill do Espelho pedia `.limit(1500)` sobre uma
-janela de **1.570** linhas da AutoFleet. O chat ficou com **exatamente 1.000**
-mensagens, parado, e **19 conversas abertas e vazias** na lista da corretora —
-todas as de atividade mais antiga da janela. O código relia as MESMAS 1.000 a
-cada 10 minutos; as outras 570 nunca teriam vez.
+### ✅ Resolvido — o que dava dinheiro e o que afeta a conversa
 
-O número redondo era a pista, e estava na tela desde o começo.
+📊 Medido em produção (`dcajcvlzcjbmyapmklil`) em 06/08/2026 23:43 UTC:
 
-Corrigidos nesta rodada: `espelho_chat.trazer_conversas_ja_capturadas`
-(paginação com `.range()`, parando na página curta) e
-`channel_state._ultima_entrega_por_corretora` (`limit(1)` por corretora, que
-não tem teto que morda).
+| onde | no banco | chegava | o que estragava |
+|---|---|---|---|
+| `api/billing.py` | 4.648 | 1.000 | **consumo que o CLIENTE vê**, com multiplicador de venda |
+| `control_plane/unit_economics.py` (×2) | 4.406 + 4.787 | 1.000 | relatório de custo — **e o detector de truncagem, derrotado pelo próprio truncamento** |
+| `workers/billing_tasks.py` | 5.646 | 1.000 | débito de créditos em fatias, com `processed` mentindo |
+| `detectors/conexoes.py` | 4.267 | 1.000 | **alerta de orçamento que não dispara** — e se cala mais no maior cliente |
+| `services/agent_memory.py` (×2) | 1.577 | 1.000 | o que o agente lembra: base da resposta, da carta e do RAG |
+| `atlas/espelho_chat.py` | 1.570 | 1.000 | 19 conversas abertas e vazias na tela da corretora |
+| `whatsapp/channel_state.py` | — | — | alarme de canal mudo lendo a corretora errada |
 
-**Os outros 28 continuam abertos.** Por ordem de risco:
+Peça única: [`backend/app/leitura_completa.py`](../../backend/app/leitura_completa.py)
+(`ler_paginado` / `ler_paginado_async`). Mora em `app/` e não em `app/core/`
+porque `app/core/__init__` puxa a configuração inteira — 📊 com o import lá,
+quatro testes que passavam viraram `ModuleNotFoundError`.
 
-| onde | o que se perde |
-|---|---|
-| `attendance_distiller.py:209` | mensagens que viram memória e carta — destila 1.000 de N |
-| `agent_memory.py:60,107,130,142` | o que o agente lembra da corretora |
-| `intelligence/rule_engine.py` (5×) | matéria-prima dos detectores |
-| `research/*`, `admin_atlas.py`, `weekly_report.py` | relatórios e telas de admin |
+**Escolha deliberada: paginar, não criar função SQL.** Somar dentro do Postgres
+seria uma ida em vez de cinco, mas exige migration — e migration no meio de um
+lançamento é onde nasce o bug que atrasa tudo. 📊 4.648 linhas são 5 idas ao
+banco num relatório sob demanda. Se alguma leitura passar de ~20 mil, a conta se
+inverte e aí vale a função SQL; o teto de `ler_paginado` avisa quando esse dia
+chegar, em vez de truncar calado.
 
-- **Destrava:** nada — é trabalho de execução, sem dependência externa.
-- **Como consertar:** paginar com `.range()` até a página vir curta, como em
-  `trazer_conversas_ja_capturadas`. Aumentar o número **não** resolve: qualquer
-  número volta a ser pequeno quando a corretora crescer.
-- **Custa se esquecer:** silêncio. Nenhuma dessas leituras dá erro — elas
-  entregam um pedaço e dizem que é o todo. O destilador é o mais caro: memória
-  incompleta não parece defeito, parece esquecimento.
-- **Guarda:** o dublê de `test_o_espelho_vira_conversa` e o de
-  `test_conectado_nao_e_chegando` agora **cortam em 1.000**, como o servidor.
-  Teste novo que ler acervo grande reprova se não paginar.
+### 🟠 Fica pendente — 17 pedidos em 9 arquivos
+
+Nenhum erra HOJE: 📊 `intelligence_signals` = 21 linhas, `intelligence_findings`
+= 6, `research_*` praticamente vazias. Todos agregam ou contam, então passam a
+errar em silêncio no dia em que a tabela crescer.
+
+`agents/gateway_cutover.py` (1, e **ignora o parâmetro `dias` que recebe**) ·
+`api/admin_atlas.py` (1) · `api/research.py` (4) ·
+`intelligence/detectors/qualidade.py` (1) · `intelligence/feedback_service.py`
+(2) · `intelligence/rule_engine.py` (5) · `observability/sli.py` (1, com
+`.limit(50_000)` — o número é a assinatura de quem achou que estava lendo tudo)
+· `regression_sentinel.py` (1) · `research/monitor_service.py` (1)
+
+- **Destrava:** nada. Trabalho de execução, sem dependência externa.
+- **Gatilho para consertar:** quando a tabela de origem passar de ~800 linhas,
+  ou quando o número for usado para decidir dinheiro.
+- **Como:** `ler_paginado` com `chave_unica="id"`. Nunca por data: 📊 uma
+  paginação por `created_at` neste repositório perdeu 12 linhas e repetiu 12 em
+  11.640, porque datas empatam.
+- **Guarda:** [`test_ninguem_pede_mais_de_mil_linhas_de_novo.py`](../../backend/tests/test_ninguem_pede_mais_de_mil_linhas_de_novo.py)
+  varre o backend por AST e **reprova qualquer pedido NOVO**. A lista dos 17
+  está lá dentro como linha de base — e o teste também reprova se um deles for
+  consertado sem sair da lista, para ela não virar ficção.
+
+### 🔴 Achado adjacente, e não é truncamento
+
+📊 `usage_events`: **4.406 linhas, ZERO com `work_run_id`**. `custo_do_run()`
+filtra por esse campo, devolve sempre `{eventos: 0, custo: 0}`, e
+`orcamento_estourado()` **sempre responde False**. O teto de orçamento por Work
+Run (SPEC-055 §25) está escrito, testado e desligado na prática — porque o elo
+nunca é gravado. Não foi corrigido aqui: é assunto da SPEC-055, não deste teto.
+
+### 💭 Não medido
+
+Se `count="exact"` sobrevive ao teto do servidor. O código usa essa técnica em
+17 lugares com fallback, o que sugere que ninguém confirmou. Não afeta nada do
+que foi feito acima (paginação não depende disso), mas mudaria a técnica
+recomendada para os 17 pendentes: seria 1 ida em vez de N.
+

@@ -58,6 +58,7 @@ def get_supabase_client() -> Client:
 from app.workers.billing_core import BillingCore
 
 
+
 def get_billing_service() -> BillingCore:
     """Get billing service instance for worker. Uses BillingCore directly."""
     supabase = get_supabase_client()
@@ -308,14 +309,30 @@ def process_company_billing(self, company_id: str):
         supabase = get_supabase_client()
         billing_service = get_billing_service()
 
-        # Fetch unbilled logs for this company
-        result = supabase.table("token_usage_logs") \
-            .select("id, model_name, input_tokens, output_tokens, total_cost_usd, agent_id, created_at") \
-            .eq("company_id", company_id) \
-            .eq("billed", False) \
-            .execute()
-
-        todos = result.data or []
+        # 🔴 SEM LIMITE NÃO É "TUDO" — É 1.000 SEM AVISO.
+        #
+        # 📊 06/08/2026: 5.646 registros por cobrar no banco. Esta leitura
+        # recebia 1.000 e o `processed` do retorno dizia 1.000, como se fosse o
+        # total. A cobrança acontecia em fatias silenciosas, e quem lesse o
+        # resultado concluiria que o ciclo tinha zerado a fila.
+        #
+        # Não é perda de dinheiro (o que sobra continua `billed=False` e entra
+        # no ciclo seguinte), mas é um número que MENTE sobre o que foi feito —
+        # e é com ele que se decide se a cobrança está em dia.
+        # Import aqui dentro: `app.core.__init__` puxa `config` e `database`,
+        # e varios testes carregam este modulo isolado, sem essa cadeia.
+        from app.leitura_completa import ler_paginado
+        todos, incompleto = ler_paginado(
+            lambda: supabase.table("token_usage_logs")
+            .select("id, model_name, input_tokens, output_tokens, "
+                    "total_cost_usd, agent_id, created_at")
+            .eq("company_id", company_id)
+            .eq("billed", False),
+            chave_unica="id", rotulo="billing:logs_por_cobrar")
+        if incompleto:
+            logger.warning("[Billing Worker] leitura de logs por cobrar de %s "
+                           "parou no teto — o restante entra no proximo ciclo",
+                           company_id)
         logs = [l for l in todos if consumo_e_cobravel(l.get("created_at"))]
         if len(logs) < len(todos):
             logger.info("[Billing Worker] %d de %d logs de %s sao anteriores a "
