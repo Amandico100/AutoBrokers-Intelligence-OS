@@ -2355,3 +2355,97 @@ Se `count="exact"` sobrevive ao teto do servidor. O código usa essa técnica em
 que foi feito acima (paginação não depende disso), mas mudaria a técnica
 recomendada para os 17 pendentes: seria 1 ida em vez de N.
 
+
+---
+
+## P-123 · 🧑 `ramo='outro'` nunca é produzido — e 3 playbooks ativos moram nele
+
+📊 Medido em 07/08/2026. O classificador de atendimento tem uma lista fechada de
+ramos, e `outro` **não sai dela em produção**. Mesmo assim existem playbooks
+publicados nesse ramo: `outro/sinistro`, `outro/consulta` e o rascunho
+`outro/vidros`.
+
+Um playbook em `outro` é **inalcançável**: o agente nunca vai buscá-lo, porque
+nenhum atendimento é classificado assim. Eles não estão errados — estão mudos.
+
+- **Destrava:** decisão do Founder sobre o ramo empresarial. Se o produto vai
+  atender empresa (frota, condomínio, RC profissional), `outro` é o rascunho
+  desse ramo e vale esperar. Se não vai, os três saem.
+- **De quem é:** 🧑 Founder — é escopo de produto, não bug.
+- **O que custa esquecer:** três playbooks aparecem na Central de Agentes como
+  se estivessem trabalhando. Quem olhar a tela conta 12 ativos e acredita em
+  12; nove trabalham.
+
+---
+
+## P-124 · 🧑 `auto/bateria` está correto e mal lastreado
+
+📊 Medido em 07/08/2026. O texto do playbook foi corrigido (três perguntas que
+pediam placa, modelo e telefone viraram confirmação), mas o material que o
+sustenta é fraco:
+
+```
+13 sessões usadas · 8 com score 0 · nota média 27,8/100
+```
+
+Score 0 não é nota baixa: é **"não houve atendimento humano"** — robô da
+seguradora, central de prestadora, fragmento. Sobraram 5 atendimentos reais
+para ensinar conduta de bateria.
+
+Com o piso novo (`_MIN_SESSIONS_DEFAULT = 12` **úteis**), um playbook assim não
+nasceria mais. Este nasceu antes.
+
+- **Destrava:** a destilação das 1.767 sessões da fila (Bloco 5). Se ela trouxer
+  atendimentos de bateria com humano, o grupo se re-sintetiza sozinho.
+- **De quem é:** 🧑 Founder decide se ativa agora ou espera material melhor.
+- **O que custa esquecer:** ativar hoje coloca no ar conduta destilada
+  majoritariamente de robô. Esperar deixa o serviço sem playbook — o agente cai
+  no prompt genérico, que é pior em coleta e melhor em honestidade.
+
+---
+
+## P-125 · 🟡 Os 7 playbooks ativos restantes não passaram por revisão de conteúdo
+
+Nesta rodada foram corrigidas **11 frases** nos 12 playbooks ativos (10 com
+espaço em branco literal, 1 com flag `ja_temos_na_apolice` errada) e os 6
+rascunhos foram lapidados campo a campo.
+
+Mas a lapidação campo a campo — objetivo, acolhimento, ordem da ficha,
+sensibilidade — **só foi feita nos 6 rascunhos**. Os ativos receberam apenas as
+correções que os detectores automáticos apontaram.
+
+- **Destrava:** nada. É trabalho de leitura.
+- **De quem é:** 🤖 execução.
+- **O que custa esquecer:** detector pega o que sabe procurar. 📊 Dos 9 achados
+  iniciais nos rascunhos, 6 eram falso positivo do próprio regex — o que mostra
+  que a régua automática erra nos dois sentidos.
+- **Quando:** depois da destilação. Vários desses playbooks serão reescritos
+  pelo material novo, e revisar agora é revisar duas vezes.
+
+---
+
+## P-126 · ✅ RESOLVIDO — o Lapidador reescrevia com as regras de outra época
+
+Registrado por completude, porque o padrão vale mais que o caso.
+
+Duas peças escreviam o mesmo playbook: `attendance_distiller._STAGE2_SYSTEM`
+(primeira vez) e `prompt_optimizer._REFLECT_SYSTEM` (reescreve o que está
+ativo). O primeiro ganhou três campos e quatro proibições em 07/08/2026. O
+segundo não ganhou nada, e pedia um JSON de 8 chaves — **o que ele não pede,
+some do playbook que está no ar**.
+
+📊 A janela real: só entre 3h e 10h UTC, no máximo uma vez por semana. E
+`_mudancas` aparece em **0 dos 18 playbooks** — ele nunca rodou. O risco não era
+iminente; era certo e sem data.
+
+**A causa não era o texto: era existirem duas descrições da mesma coisa.** O
+conserto não foi reescrever o segundo prompt com as mesmas regras — foi fazê-lo
+`import`ar o primeiro (`REGRAS_DO_PLAYBOOK`). Regra nova já nasce valendo para
+os dois.
+
+**Onde mais isso pode estar acontecendo:** em qualquer par de peças onde uma
+escreve e outra reescreve o mesmo objeto. Não foi varrido.
+
+- **Guarda:** [`test_quem_lapida_obedece_quem_escreveu.py`](../../backend/tests/test_quem_lapida_obedece_quem_escreveu.py)
+  — lê o import por **AST**, não por busca de texto: `REGRAS_DO_PLAYBOOK` citado
+  num comentário passaria numa busca por substring e não importaria nada.
