@@ -793,19 +793,70 @@ async def _conduta_do_caso(supabase_client, mensagem: str) -> str:
     if c.get("objetivo"):
         linhas.append(f"Objetivo: {str(c['objetivo']).strip()}")
 
+    def _item(it: object) -> str:
+        """Um item da conduta, no menor texto que o modelo precisa ler.
+
+        🔴 ISTO ERA `str(it)` — E COMIA UM TERÇO DO ORÇAMENTO DE CONTEXTO.
+        =================================================================
+        Um item de `ficha_coleta` é um dicionário. `str()` num dicionário
+        devolve a sintaxe do Python inteira:
+
+            {'campo': 'Placa do veiculo', 'quando': 'na abertura', 'como_pedir':
+             'Confirma pra mim...', 'ja_temos_na_apolice': True}
+
+        📊 Medido em 07/08/2026: **163 caracteres, dos quais 67 (41%) são
+        aspas, chaves e nomes de chave** que o modelo não precisa ler. Em 12
+        itens são **804 caracteres desperdiçados** — quase um terço do
+        `_TETO_DA_CONDUTA` de 2.600.
+
+        E o que ficava de fora não era detalhe: 📊 nos SEIS playbooks em
+        rascunho, o bloco renderizado passava de 4.600 chars e a truncagem caía
+        **dentro da ficha** — `acolhimento`, `sensibilidade` e `encerramento`
+        **nunca chegavam ao prompt em nenhum deles**. Toda regra escrita só em
+        `sensibilidade` — inclusive "nunca prometa valor" — era decorativa.
+
+        `ja_temos_na_apolice` não vai no texto de propósito: ele governa COMO a
+        frase foi escrita (confirmação em vez de pergunta), e essa decisão já
+        está dentro do `como_pedir`. Repetir a flag gastaria contexto para
+        dizer ao modelo algo que a própria frase já diz.
+        """
+        if isinstance(it, dict):
+            campo = str(it.get("campo") or "").strip()
+            quando = str(it.get("quando") or "").strip()
+            frase = str(it.get("como_pedir") or "").strip()
+            partes = campo or "item"
+            if quando:
+                partes += f" — {quando}"
+            return f"{partes}: \"{frase}\"" if frase else partes
+        return str(it).strip()
+
     def _lista(chave: str, titulo: str, teto: int) -> None:
         itens = c.get(chave)
         if isinstance(itens, list) and itens:
             linhas.append(titulo)
             for it in itens[:teto]:
-                linhas.append(f"  · {str(it).strip()}")
+                linhas.append(f"  · {_item(it)}")
         elif isinstance(itens, str) and itens.strip():
             linhas.append(f"{titulo} {itens.strip()}")
 
     _lista("pre_checks", "Confira ANTES de prometer qualquer coisa:", 5)
-    _lista("ficha_coleta", "Colete de uma vez só (não peça em conta-gotas):", 12)
+    # 🔴 A ORDEM É POR CRITICIDADE, e não por ordem de leitura humana.
+    #
+    # O bloco é cortado em `_TETO_DA_CONDUTA` quando estoura, e o corte cai
+    # sempre no FIM. Então o fim tem de ser o que menos machuca perder.
+    #
+    # 📊 Antes, a ordem era ficha → acolhimento → sensibilidade → encerramento,
+    # e a ficha sozinha estourava o teto nos seis playbooks medidos: as
+    # proibições de `sensibilidade` — inclusive "nunca prometa valor" — nunca
+    # chegavam ao modelo. A regra mais importante do playbook era a primeira a
+    # ser cortada.
+    #
+    # Agora: o que CONFERIR e o que NÃO FAZER vêm antes das perguntas. Perder o
+    # fim da ficha custa uma pergunta que o modelo improvisa; perder a
+    # sensibilidade custa uma promessa que a corretora não pode cumprir.
+    _lista("sensibilidade", "Cuidado humano (vale mais que qualquer pergunta):", 3)
     _lista("acolhimento", "Como abrir:", 2)
-    _lista("sensibilidade", "Cuidado humano:", 3)
+    _lista("ficha_coleta", "Colete de uma vez só (não peça em conta-gotas):", 12)
     _lista("encerramento", "Como fechar:", 2)
 
     bloco = chr(10).join(linhas)

@@ -24,6 +24,10 @@ os.environ["DESTILADOR_TETO_POR_RODADA"] = "500"
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
+
+# Uma acima do piso de evidencia (`_MIN_SESSIONS_DEFAULT = 12`, 07/08/2026):
+# prova que o piso deixa passar quando ha material, sem esconder que ele existe.
+_SESSOES_SEMEADAS = 13
 PASS = FAIL = 0
 FAILURES = []
 
@@ -301,7 +305,20 @@ def _seed_sessions(store):
     base = datetime(2026, 7, 18, 12, 0, tzinfo=timezone.utc)
     store["attendance_sessions"] = []
     store["attendance_transcripts"] = []
-    for i in range(3):
+    # 🔴 ERAM 3 SESSOES. O PISO DE EVIDENCIA SUBIU PARA 12 EM 07/08/2026.
+    #
+    # Tres conversas nao e evidencia: e anedota com plural. 📊 Os tres
+    # rascunhos que a auditoria reprovou por defeito nomeado vinham de 2, 5 e 8
+    # atendimentos uteis — e afirmavam "padrao-ouro do Brasil".
+    #
+    # O teste ganha o material que o piso exige, em vez de baixar o piso para
+    # caber no teste. A licao migra (CLAUDE.md §9.3): ele continua provando que
+    # a sintese acontece, agora sobre material que a sintese aceita.
+    #
+    # E as sessoes precisam de `score > 0` E `resumo_conduta` nao-vazio: score
+    # 0 significa "nao houve atendimento humano" (robo da seguradora, central
+    # de prestadora) e `_load_group_summaries_sync` passou a descartar essas.
+    for i in range(_SESSOES_SEMEADAS):
         sid = f"s{i + 1}"
         store["attendance_sessions"].append({
             "id": sid, "company_id": "c1", "observer_number": "5548911112222",
@@ -328,7 +345,8 @@ def run():
     stats = asyncio.run(dist.distill_once(force=True))
 
     # 1) estagio 1: todas as sessoes destiladas com score (baseline humano)
-    check("3 sessoes destiladas", stats["sessions"] == 3, stats)
+    check(f"{_SESSOES_SEMEADAS} sessoes destiladas",
+          stats["sessions"] == _SESSOES_SEMEADAS, stats)
     d0 = (store["attendance_sessions"][0].get("summary") or {}).get("distilled") or {}
     check("summary com tipo/ramo/servico/score", d0.get("servico") == "guincho"
           and d0.get("score") == 82 and d0.get("ramo") == "auto", d0)

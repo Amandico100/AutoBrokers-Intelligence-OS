@@ -41,7 +41,30 @@ logger = logging.getLogger(__name__)
 _MARKER = "distiller:last_run"
 _RUN_WINDOW_UTC = range(3, 10)          # madrugada BRT
 _TRANSCRIPT_CAP = 7000                  # chars por sessão enviados à LLM
-_MIN_SESSIONS_DEFAULT = 3               # mínimo p/ sintetizar playbook
+# Quantos atendimentos HUMANOS (score > 0 e com conduta — ver
+# `_load_group_summaries_sync`) um grupo precisa para virar playbook.
+#
+# Era 3, e 3 nao e evidencia: e anedota com plural. 📊 07/08/2026, atendimentos
+# uteis por grupo, e o degrau que o proprio acervo desenha:
+#
+#     auto/chaveiro          2   <- playbook com placeholder no meio
+#     auto/bateria           5   <- 8 dos 13 sem atendimento humano
+#     outro/vidros           8   <- "a seguradora cobre a diferenca"
+#     vida/consulta          8
+#   ----------------------------- piso 12
+#     residencial/chaveiro  12       auto/vidros           201
+#     residencial/vidros    17       auto/consulta         220
+#     auto/pneu             19       residencial/sinistro  720
+#     residencial/eletric.  26       auto/sinistro         899
+#
+# 12 e onde o acervo tem um degrau (8 -> 12 -> 17), nao onde eu queria que
+# estivesse. Barra EXATAMENTE os tres rascunhos que a auditoria reprovou por
+# defeito nomeado, e nao barra nenhum bom: 13 dos 18 grupos seguem produzindo.
+#
+# NADA E APAGADO: playbook que existe continua onde esta. O piso so decide quem
+# GERA versao nova. O custo honesto e `vida/consulta`, hoje ativo com 8 uteis —
+# ele congela na v1 ate chegar material. Registrado, nao acidental.
+_MIN_SESSIONS_DEFAULT = 12              # minimo de atendimentos HUMANOS
 
 
 def _env_int(name: str, default: int) -> int:
@@ -534,19 +557,167 @@ def publish_card_sync(card: Dict[str, Any]) -> bool:
 # ------------------------------------------------------------------ #
 # Estágio 2 — síntese de playbook de conduta (modelo FORTE)
 # ------------------------------------------------------------------ #
+# 🔴 ESTE PROMPT PEDIA O IDEAL. AGORA ELE PEDE O OBSERVADO.
+#
+# A versao anterior abria com "Voce e o melhor treinador de atendimento de
+# corretoras de seguros do Brasil... Sintetize o MELHOR playbook — o
+# padrao-ouro". Um pedido assim nao e neutro: CONVIDA o modelo a completar com
+# conhecimento de mundo tudo o que as conversas nao ensinaram.
+#
+# 📊 Medido em 07/08/2026 sobre os 18 playbooks do banco:
+#
+#   15 frases de `como_pedir` trazem espaco em branco literal (`[modelo]`,
+#      `[xxxx]`, `R$ [valor]`, `valor X`) — e `como_pedir` NAO fica no banco:
+#      `graph._conduta_do_caso` (linha 806) injeta a ficha inteira no prompt do
+#      agente de atendimento. A pior esta em `auto/vidros`, status ATIVO:
+#        "So informar, nunca perguntar: 'Confirmei aqui: voce tem cobertura de
+#         vidros, com participacao de R$ [valor] para esse item.'"
+#      Cobertura afirmada + valor + colchete vazio + a instrucao de NAO
+#      conferir. E o `sensibilidade` do MESMO playbook manda nunca prometer
+#      valor. O sistema nao guarda as condicoes gerais de apolice nenhuma.
+#
+#   30 campos marcados `ja_temos_na_apolice=true` sao PERGUNTADOS em vez de
+#      confirmados, em 17 dos 18 playbooks — 20 deles ATIVOS. A regra existia,
+#      solta na ultima linha, longe do campo que ela governa.
+#
+#   `auto/bateria` foi escrito com 13 sessoes das quais OITO tem score 0. Score
+#      0 nao e nota baixa: e "nao houve atendimento humano" (robo da
+#      seguradora, central de prestadora, fragmento). O modelo aprendeu conduta
+#      de um bot, e nao tinha como saber — o prompt nunca mencionou `score`.
+#
+# A regua que fecha isso JA EXISTE na casa e nao tinha chegado aqui:
+# `scripts/destilacao_max/PROMPT-DESTILADOR.md` (teste do leitor cego,
+# "seguradora so quando esta escrita", "regra que e por apolice: ensine onde
+# ler", "score 0 != score baixo", guarda antifraude) e
+# `PROMPT-DESTILADOR-SEGURADORA.md` (lastro obrigatorio, teste da cauda).
+# 📊 Nenhuma das 11 regras tinha chegado ao Estagio 2. Este prompt e aquela
+# regua chegando aqui — nao uma regua nova.
+#
+# As sete chaves lidas pelo codigo nao mudaram (`playbook_gate`,
+# `prompt_optimizer`, `graph._conduta_do_caso`). As tres novas sao ignoradas
+# por quem nao as conhece.
 _STAGE2_SYSTEM = (
-    "Você é o melhor treinador de atendimento de corretoras de seguros do Brasil. "
-    "Receberá resumos de conduta de VÁRIOS atendimentos humanos reais (mascarados) do mesmo "
-    "tipo de serviço. Sintetize o MELHOR playbook de conduta — o padrão-ouro que um atendente "
-    "deve seguir nesse serviço. Responda APENAS JSON válido:\n"
-    "{\"objetivo\": \"...\", \"acolhimento\": \"como abrir com empatia\", "
-    "\"ficha_coleta\": [{\"campo\": \"...\", \"como_pedir\": \"frase natural\", "
-    "\"quando\": \"antes/depois de quê\", \"ja_temos_na_apolice\": true|false}], "
-    "\"pre_checks\": [\"verificação útil antes de acionar\"], "
-    "\"sensibilidade\": \"cuidados de tom para este serviço\", "
-    "\"encerramento\": \"como fechar bem\", \"frases_exemplo\": [\"frase natural sem dado pessoal\"]}\n"
-    "Regras: campo com ja_temos_na_apolice=true NUNCA deve ser perguntado — só confirmado; "
-    "uma pergunta por vez; nada de dado pessoal nas frases; português natural de WhatsApp."
+    "Voce le atendimentos humanos REAIS (ja mascarados) de um mesmo (ramo, "
+    "servico) numa corretora de seguros brasileira, e escreve o playbook de "
+    "conduta que ESSES atendimentos ensinam.\n"
+    "Voce e um observador, nao um treinador. O que voce sabe sobre seguros "
+    "fora destas conversas serve para ENTENDER o que leu — nunca para "
+    "preencher o que faltou. Onde o material nao ensina, o playbook DIZ que "
+    "nao ensina; ele nao completa.\n"
+    "\n"
+    "## A regua do score — leia antes de qualquer outra coisa\n"
+    "Cada atendimento traz resumo_conduta, perguntas_na_ordem, score (0-100), "
+    "flags, seguradora e tipo.\n"
+    "- 0 = NAO HOUVE atendimento humano: robo da seguradora, central de "
+    "prestadora, fragmento sem resposta. Nao conte, nao avalie, nao aprenda "
+    "conduta dele. Para este playbook ele nao existe.\n"
+    "- 1-39 = atendimento ruim. NUNCA vira regra: vai para o_que_evitar.\n"
+    "- 40-69 = mediano. Confirma o que os bons mostram; sozinho nao sustenta "
+    "regra.\n"
+    "- 70-100 = bom. E daqui que a conduta sai.\n"
+    "\n"
+    "## As dez regras\n"
+    "\n"
+    "1. O TESTE DO LASTRO. Antes de escrever qualquer linha, aponte quantos "
+    "atendimentos a sustentam. O que aparece em 1 de 12 e 'pode acontecer'; "
+    "nunca 'sempre', 'o certo e', 'o padrao e'. O que nao aparece em nenhum "
+    "nao entra.\n"
+    "\n"
+    "2. O TESTE DA CAUDA. Leia a ULTIMA oracao de cada frase que escreveu e "
+    "pergunte: qual atendimento diz isto? Se a resposta for 'nenhum, mas faz "
+    "sentido', apague a oracao. O defeito que mais machuca nao e a frase "
+    "errada de ponta a ponta — e o corpo fiel com a cauda inventada.\n"
+    "\n"
+    "3. VOCE NAO TEM AS CONDICOES GERAIS. DE APOLICE NENHUMA. E PROIBIDO "
+    "afirmar, em qualquer campo, o que a seguradora cobre, quanto paga, qual e "
+    "a franquia, em quantos dias reembolsa ou o que esta excluido — mesmo que "
+    "UMA conversa mostre um caso assim, porque isso e CONTRATADO e varia por "
+    "apolice. Onde couber cobertura, remeta a leitura.\n"
+    "   Errado: 'Confirmei aqui: voce tem cobertura de vidros' / 'a seguradora "
+    "cobre a diferenca' / 'o prazo e de 30 dias'.\n"
+    "   Certo: 'Vou confirmar na sua apolice se esse item entra e ja te "
+    "retorno — nao te dou resposta no chute.'\n"
+    "\n"
+    "4. NENHUMA FRASE PRONTA PODE TER ESPACO EM BRANCO. Tudo em como_pedir, "
+    "frases_exemplo, acolhimento e encerramento sai para o segurado COMO ESTA. "
+    "[modelo], [xxxx], R$ [valor], valor X — o segurado recebe os colchetes.\n"
+    "   Errado: 'E pro [modelo] de placa final [xxxx], confirma?'\n"
+    "   Certo: 'E do carro que esta na sua apolice, confirma?'\n"
+    "\n"
+    "5. SEGURADORA SO QUANDO ESTA ESCRITA. Nunca infira a companhia pelo "
+    "assunto. Uma regra da Porto atribuida a Allianz faz o agente mentir para "
+    "o segurado com confianca.\n"
+    "\n"
+    "6. NENHUM DADO PESSOAL, EM CAMPO NENHUM — e o validador reprova o "
+    "playbook INTEIRO. Sem nome, telefone, CPF/CNPJ, placa, endereco, e-mail, "
+    "protocolo, valor em reais, data ou numero com mais de quatro digitos. "
+    "Escreva a categoria: 'o numero da apolice'. Um unico desses derruba tudo "
+    "no gate.\n"
+    "\n"
+    "7. O QUE A CORRETORA JA TEM NAO SE PERGUNTA. A regra mora dentro da "
+    "definicao de ja_temos_na_apolice, abaixo.\n"
+    "\n"
+    "8. VOCE LEU NO MAXIMO 20 ATENDIMENTOS DE UMA CORRETORA. Nao escreva 'no "
+    "Brasil', 'o padrao do mercado', 'toda seguradora', 'padrao-ouro'. E se "
+    "dois atendimentos discordarem sem nenhum estar errado, isso e sinal de "
+    "que a coisa VARIA — diga que varia, nao escolha uma.\n"
+    "\n"
+    "9. CONDUTA QUE SO SERVE PARA BURLAR NAO VIRA PLAYBOOK. Antedatar, omitir "
+    "documento de proposito, ajustar o relato para encaixar na cobertura: vai "
+    "para o_que_evitar, descrito, sem a receita.\n"
+    "\n"
+    "10. PREFIRA A FICHA CURTA. Campo que um atendimento pediu e nenhum outro "
+    "usou nao entra. No maximo 12 campos — cada campo a mais e uma pergunta a "
+    "mais na cara de quem esta parado na chuva.\n"
+    "\n"
+    "## A resposta\n"
+    "APENAS JSON valido, sem uma palavra fora dele, cabendo em 10.000 chars:\n"
+    "{\"objetivo\": \"...\", \"acolhimento\": \"...\", \"pre_checks\": [\"...\"], "
+    "\"ficha_coleta\": [{\"campo\": \"...\", \"como_pedir\": \"...\", "
+    "\"quando\": \"...\", \"ja_temos_na_apolice\": true}], "
+    "\"sensibilidade\": \"...\", \"encerramento\": \"...\", "
+    "\"frases_exemplo\": [\"...\"], \"o_que_evitar\": [\"...\"], "
+    "\"fora_do_escopo\": [\"...\"], \"lastro\": {\"atendimentos_lidos\": 0, "
+    "\"com_atendimento_humano\": 0, \"nota_media\": 0, \"observado\": [\"...\"], "
+    "\"inferido\": [\"...\"]}}\n"
+    "\n"
+    "### Campo por campo\n"
+    "- pre_checks: o que se confere ANTES de prometer. E aqui que mora tudo que "
+    "depende da apolice (regra 3). Ate 7.\n"
+    "- ficha_coleta: ate 12 itens, na ordem em que os bons atendimentos pedem.\n"
+    "  . como_pedir: a FRASE EXATA que vai ao segurado. Portugues natural de "
+    "WhatsApp, uma pergunta por vez, sem espaco em branco (regra 4), sem "
+    "afirmar cobertura (regra 3).\n"
+    "  . ja_temos_na_apolice: TRUE quando a corretora JA TEM o dado — nome, "
+    "apolice, seguradora, placa, modelo, telefone de cadastro. Sendo true, "
+    "como_pedir NAO PODE SER PERGUNTA: tem de ser confirmacao que se responde "
+    "com sim ou nao.\n"
+    "      Errado: 'Qual a placa do veiculo?' / 'E o modelo, qual e?'\n"
+    "      Certo: 'E do carro da sua apolice, confirma?' / 'O prestador te liga "
+    "nesse numero mesmo, ou tem outro melhor agora?'\n"
+    "      Perguntar o que ja se tem faz o segurado repetir para a maquina o "
+    "que a corretora ja sabe, e e a primeira coisa que ele percebe.\n"
+    "      FALSE so quando o dado nasce do caso: o que aconteceu, onde o "
+    "veiculo esta, se ha alguem dentro.\n"
+    "- sensibilidade: o cuidado humano que ESTE servico pede, tirado do que as "
+    "conversas mostram. Nao escreva aqui nada que os outros campos "
+    "contradigam.\n"
+    "- o_que_evitar: o que os atendimentos de nota BAIXA ensinam a nao fazer. "
+    "Sem atendimento ruim no material, lista vazia.\n"
+    "- fora_do_escopo: o que estas conversas NAO ensinam e que quem ler nao "
+    "deve supor que esta aqui. E o campo que impede o proximo leitor de "
+    "confundir silencio com ausencia de problema. Vazio quase nunca e "
+    "honesto.\n"
+    "- lastro: com_atendimento_humano = quantos tem score maior que 0; "
+    "observado = afirmacoes amarradas ao material, com a contagem ('confirmar "
+    "a placa antes de abrir: visto em 9 de 14'); inferido = o que voce escreveu "
+    "e NAO esta nos atendimentos. TUDO em inferido e proibido aparecer como "
+    "afirmacao nos outros campos: se for indispensavel, vire pre_check.\n"
+    "\n"
+    "Se o material for pouco para sustentar um playbook, diga isso em "
+    "fora_do_escopo e escreva so a ficha que ele sustenta. Playbook curto e "
+    "verdadeiro vale mais que completo e inventado — e e o unico que sobrevive "
+    "ao primeiro segurado que perguntar."
 )
 
 
@@ -564,16 +735,60 @@ def _load_group_summaries_sync(ramo: str, servico: str, limit: int = 30) -> List
 
     Agora o filtro é do banco: pede as sessões DAQUELE grupo, mais recentes
     primeiro, e para quando tem o bastante.
+
+    🔴 E ENTREGA OS MELHORES, NÃO OS MAIS RECENTES — 07/08/2026.
+    ===========================================================
+    A recência escolhia mal. 📊 Medido nas 30 sessões que esta função entregava:
+
+        auto/vidros    14 das 30 com score 0   média 37,8
+        auto/guincho   12 das 30 com score 0   média 45,5
+        auto/sinistro  10 das 30 com score 0   média 47,2
+
+    E `auto/vidros` tem **148 sessões com nota ≥ 70** no acervo. O modelo mais
+    caro do sistema recebia uma amostra de média 37,8 quando existia material
+    de 69,3 ali do lado.
+
+    **Score 0 não é nota baixa: é "não houve atendimento humano"** — robô da
+    seguradora, central de prestadora, fragmento sem resposta. Essas linhas não
+    têm conduta para ensinar e ocupavam metade da amostra. 📊 `auto/bateria`
+    foi escrito com 13 sessões das quais **8 tinham score 0**: o playbook
+    aprendeu conduta de um bot, e o prompt nunca soube.
+
+    A janela continua sendo de recência — conduta de um ano atrás pode estar
+    vencida —, mas a ESCOLHA dentro dela é por nota.
+
+    E isto tem três leitores: o `playbook_gate` chama o resultado de
+    `padrao_ouro_humano` e o Lapidador de `condutas_douradas`. Os dois julgavam
+    o candidato contra uma amostra em que metade não era atendimento.
     """
     from app.core.database import get_supabase_client
 
     db = get_supabase_client()
+    # ⚠️ A ordenação NÃO pode ser feita no banco: `->>` devolve TEXTO, e "9" é
+    # maior que "70" em ordem lexicográfica. Seria uma ordenação que parece
+    # funcionar e entrega o inverso do pedido.
+    janela = max(limit * 6, 180)
     rows = (db.client.table("attendance_sessions")
             .select("summary").eq("status", "closed")
             .eq("summary->distilled->>ramo", ramo)
             .eq("summary->distilled->>servico", servico)
-            .order("started_at", desc=True).limit(limit).execute().data or [])
-    return [d for d in ((r.get("summary") or {}).get("distilled") for r in rows) if d]
+            .order("started_at", desc=True).limit(janela).execute().data or [])
+    destilados = [d for d in ((r.get("summary") or {}).get("distilled") for r in rows) if d]
+
+    def _nota(d: Dict[str, Any]) -> int:
+        try:
+            return int(d.get("score") or 0)
+        except (TypeError, ValueError):
+            return 0
+
+    # As DUAS condições, não uma: 📊 `auto/vidros` tem 155 sessões com score 0 e
+    # 193 com `resumo_conduta` vazio — os conjuntos se sobrepõem e não coincidem.
+    com_humano = [d for d in destilados
+                  if _nota(d) > 0 and (d.get("resumo_conduta") or [])]
+    # `sort` estável + entrada já em ordem de recência: empate de nota preserva
+    # o mais recente, sem precisar de chave secundária.
+    com_humano.sort(key=_nota, reverse=True)
+    return com_humano[:limit]
 
 
 def _grupos_sem_playbook_sync(limite: int) -> List[Tuple[str, str]]:
