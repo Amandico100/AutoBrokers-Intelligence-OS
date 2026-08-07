@@ -25,20 +25,52 @@ logger = logging.getLogger(__name__)
 _MARKER = "lapidador:last_run"
 _WEEKLY_S = 7 * 86400
 
+# 🔴 07/08/2026 — este prompt tinha um esquema PRÓPRIO, escrito antes dos três
+# campos novos do playbook (`o_que_evitar`, `fora_do_escopo`, `lastro`) e sem
+# nenhuma das proibições que o Estágio 2 ganhou. Como o Lapidador reescreve
+# playbooks **ativos** e roda de hora em hora, ele apagaria os três campos e
+# reintroduziria os defeitos corrigidos — sobre o que está no ar.
+#
+# A causa não era o texto: era existirem DUAS descrições do mesmo playbook.
+# Agora existe uma. As regras vêm de quem escreve o playbook pela primeira vez,
+# e aqui só se acrescenta o que muda quando se REESCREVE um que já existe.
+from app.services.attendance_distiller import REGRAS_DO_PLAYBOOK
+
 _REFLECT_SYSTEM = (
-    "Você é o Lapidador: o otimizador de playbooks de conduta de atendimento "
-    "(corretoras de seguros, WhatsApp). Receberá o playbook ATIVO, o FEEDBACK textual de "
-    "falhas reais observadas e resumos de condutas humanas bem avaliadas. "
-    "REFLITA sobre as falhas e proponha a versão MELHORADA do playbook — mantendo tudo que "
-    "funciona e corrigindo especificamente o que o feedback aponta. "
-    "Responda APENAS JSON válido no MESMO schema do playbook:\n"
-    "{\"objetivo\": \"...\", \"acolhimento\": \"...\", "
-    "\"ficha_coleta\": [{\"campo\": \"...\", \"como_pedir\": \"...\", \"quando\": \"...\", "
-    "\"ja_temos_na_apolice\": true|false}], \"pre_checks\": [\"...\"], "
-    "\"sensibilidade\": \"...\", \"encerramento\": \"...\", \"frases_exemplo\": [\"...\"], "
-    "\"_mudancas\": [\"o que mudou e por quê, 1 linha por mudança\"]}\n"
-    "Regras: campo ja_temos_na_apolice=true NUNCA vira pergunta; sem dado pessoal; "
-    "uma pergunta por vez; português natural de WhatsApp."
+    "Você é o Lapidador: recebe um playbook de conduta que JÁ ESTÁ NO AR, o "
+    "FEEDBACK textual de falhas reais observadas nele e resumos de condutas "
+    "humanas bem avaliadas — e escreve a versão melhorada.\n"
+    "\n"
+    "As regras abaixo são as mesmas de quem escreveu o playbook pela primeira "
+    "vez. Valem inteiras para você, sem exceção: reescrever não afrouxa "
+    "nenhuma delas.\n"
+    "\n"
+    + REGRAS_DO_PLAYBOOK +
+    "\n"
+    "\n"
+    "## O que muda por você estar REESCREVENDO\n"
+    "\n"
+    "a) Você tem um playbook ativo na mão. Mexa no que o FEEDBACK aponta e "
+    "deixe o resto como está. Reescrita que muda tudo não é lapidação: é um "
+    "playbook novo sem o material que o sustentaria.\n"
+    "\n"
+    "b) O feedback é o seu material de evidência, no lugar dos atendimentos "
+    "brutos. Uma falha citada uma vez é um caso; citada muitas vezes é um "
+    "padrão. Não invente correção para falha que ninguém relatou.\n"
+    "\n"
+    "c) Se o playbook ativo já traz `lastro`, PRESERVE o que ele registra "
+    "como observado — aquilo foi medido sobre atendimentos que você não está "
+    "vendo. O que VOCÊ acrescentar sem material vai em `lastro.inferido`.\n"
+    "\n"
+    "d) Se o feedback não sustenta nenhuma mudança, devolva o playbook como "
+    "está e diga isso em `_mudancas`. Mudar por mudar piora um playbook que "
+    "está funcionando.\n"
+    "\n"
+    "e) Ao JSON de resposta acrescente UM campo, e só ele:\n"
+    "   \"_mudancas\": [\"o que mudou e por que, 1 linha por mudanca, citando "
+    "o feedback que a motivou\"]\n"
+    "   Nenhum outro campo do esquema pode faltar — o que você omitir some do "
+    "playbook que está no ar."
 )
 
 

@@ -721,6 +721,18 @@ _STAGE2_SYSTEM = (
 )
 
 
+# O nome público das mesmas regras. O Lapidador (`prompt_optimizer`) reescreve
+# playbooks ATIVOS de hora em hora e escrevia com um esquema PRÓPRIO, mais
+# antigo: sem `o_que_evitar`, `fora_do_escopo` e `lastro`, e sem nenhuma das
+# proibições. Ele apagaria os três campos e reintroduziria os defeitos — em uma
+# hora, sobre os playbooks que estão no ar.
+#
+# Duas cópias de uma regra divergem: foi exatamente o que aconteceu aqui. Quem
+# lapida importa daqui, e a próxima regra escrita neste texto já nasce valendo
+# para os dois.
+REGRAS_DO_PLAYBOOK = _STAGE2_SYSTEM
+
+
 def _load_group_summaries_sync(ramo: str, servico: str, limit: int = 30) -> List[Dict[str, Any]]:
     """Os atendimentos JÁ DESTILADOS de um (ramo, serviço).
 
