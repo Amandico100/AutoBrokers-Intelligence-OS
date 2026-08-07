@@ -211,12 +211,68 @@ Consulta de apólice, base de conhecimento (da corretora e global) e handoff —
 SYSTEM_BASE_PROMPT = CORE_BASE_PROMPT
 
 
+# Os papéis que são o CORRETOR — dono da corretora, da carteira e dos dados.
+#
+# Decisão do Founder, 07/08/2026: *"quando o corretor estiver conversando com o
+# chat principal, não é pra ter nenhum filtro nunca. Os dados são dele."* Esta
+# lista existe para que essa decisão continue valendo, e só para ele.
+#
+# `""` está aqui de propósito: é o chat interno legado, que nunca mandou papel
+# e é do corretor. Tirá-lo daqui quebraria o produto sem consertar nada.
+_PAPEIS_DO_CORRETOR = frozenset({"", "core", "internal", "broker", "corretor"})
+
+
 def _select_base_prompt(agent_role: str = None) -> str:
-    """Escolhe a base por papel. Legado/sem papel = Chat Principal (Core)."""
+    """Escolhe a base por papel. **A porta abre para o lado seguro.**
+
+    🔴 O DEFAULT ERA O PROMPT PERMISSIVO.
+    =====================================
+    Era assim:
+
+        if role in ("attendance", "insured_external"):
+            return ATTENDANCE_BASE_PROMPT
+        return CORE_BASE_PROMPT      # ← qualquer outra coisa
+
+    E `CORE_BASE_PROMPT` instrui, com todas as letras, a *"repassar o CPF do
+    segurado, sem mascarar"* — o que está **certo** para o corretor: ele é o
+    dono dos dados, mesmo controlador, e o Founder decidiu que ali não há filtro
+    nenhum.
+
+    O problema nunca foi a regra: era a direção da porta. Papel vazio por bug,
+    papel escrito errado, ou um papel novo que alguém criar amanhã caíam no
+    prompt que entrega dado pessoal — sem erro, sem log, sem sintoma.
+
+    Agora só quem é reconhecidamente o corretor recebe o prompt interno.
+    Desconhecido cai no de atendimento, que é o restrito. **O corretor continua
+    sem filtro; o desconhecido deixa de herdar os poderes dele.**
+    """
     role = (agent_role or "").strip().lower()
-    if role in ("attendance", "insured_external"):
-        return ATTENDANCE_BASE_PROMPT
-    return CORE_BASE_PROMPT  # core, '' ou legado
+    if role in _PAPEIS_DO_CORRETOR:
+        return CORE_BASE_PROMPT
+    return ATTENDANCE_BASE_PROMPT
+
+
+def data_e_hora_agora() -> str:
+    """A hora, para o bloco DINÂMICO do prompt — nunca para o cacheado.
+
+    🔴 Existe porque a hora dentro do bloco cacheado custava dinheiro todo dia.
+    O cache da Anthropic casa por prefixo exato; `%H:%M` mudava o bloco a cada
+    60 segundos e o TTL é de 5 minutos. 📊 07/08/2026: só 2,3% de 4.509 chamadas
+    aproveitaram cache — pagava-se a escrita e não se colhia a leitura.
+
+    Aqui a hora vive no pedaço que nunca foi cacheado. O modelo continua sabendo
+    que horas são; o cache continua valendo entre uma pergunta e outra.
+    """
+    from datetime import datetime as _dt
+
+    try:
+        import pytz
+
+        agora = _dt.now(pytz.timezone("America/Sao_Paulo"))
+    except Exception:  # noqa: BLE001 — sem pytz, hora local
+        agora = _dt.now()
+    return ("### ⏰ AGORA\n"
+            f"São {agora.strftime('%H:%M')} (horário de Brasília).")
 
 
 def build_composite_prompt(
@@ -251,11 +307,13 @@ def build_composite_prompt(
 
         tz = pytz.timezone('America/Sao_Paulo')
         now = datetime.now(tz)
-        current_datetime = now.strftime("%d/%m/%Y %H:%M")
+        # Só a DATA entra no bloco cacheado. A hora vai no dinâmico — ver a
+        # nota grande em `composite` e `data_e_hora_agora()`.
+        hoje = now.strftime("%d/%m/%Y")
         weekday_names = ['Segunda-feira', 'Terça-feira', 'Quarta-feira', 'Quinta-feira', 'Sexta-feira', 'Sábado', 'Domingo']
         weekday = weekday_names[now.weekday()]
     except Exception:
-        current_datetime = datetime.now().strftime("%d/%m/%Y %H:%M")
+        hoje = datetime.now().strftime("%d/%m/%Y")
         weekday = ""
 
     if not client_instructions or client_instructions.strip() == "":
@@ -280,10 +338,26 @@ def build_composite_prompt(
 - NUNCA diga "da sua corretora" — diga o NOME da corretora.
 - NUNCA cite nomes internos da plataforma, de blueprints ou de sistemas ao cliente."""
 
+    # 🔴 A HORA SAIU DAQUI — ELA DESTRUÍA O CACHE A CADA 60 SEGUNDOS.
+    #
+    # Este texto inteiro é o `static_prompt`, e é o único bloco que recebe
+    # `cache_control: ephemeral` (`nodes.py:605`). O cache da Anthropic casa por
+    # prefixo EXATO: um caractere diferente e nada é reaproveitado.
+    #
+    # Com `%H:%M` aqui dentro, o bloco mudava a cada minuto — e o TTL do cache é
+    # de cinco. Resultado: pagava-se o prêmio de ESCRITA (~1,25×) em quase toda
+    # chamada e quase nunca se colhia a LEITURA (~0,1×).
+    #
+    # 📊 Medido em 07/08/2026, `token_usage_logs`, 30 dias, claude-sonnet-5:
+    # apenas **104 de 4.509 chamadas (2,3%)** tiveram `cache_read_tokens > 0`.
+    #
+    # A DATA fica (muda uma vez por dia, e o cache de 5 min não sente). A HORA
+    # vai para o `dynamic_context`, que nunca foi cacheado — ver
+    # `data_e_hora_agora()` logo abaixo e `graph.py`, onde ela é montada.
     composite = f"""{base_prompt.strip()}
 
-### 📅 DATA E HORA ATUAL
-Hoje é {weekday}, {current_datetime} (horário de Brasília).
+### 📅 DATA DE HOJE
+Hoje é {weekday}, {hoje} (horário de Brasília).
 Use esta informação para contexto temporal quando o usuário mencionar datas relativas (amanhã, próxima semana, etc).
 
 ---

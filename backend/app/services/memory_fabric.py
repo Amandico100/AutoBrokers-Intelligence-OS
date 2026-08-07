@@ -35,6 +35,20 @@ from dataclasses import dataclass
 from datetime import datetime, timedelta, timezone
 from typing import Any, Optional
 
+# A lista de formas de negar mora em `curadoria_cartas` — o modulo que cura
+# TEXTO e o dono natural do conceito. Aqui ela e so consumida.
+#
+# Uma lista so, dois usos: contradicao entre memorias da corretora (aqui) e a
+# que aposenta carta vencida no RAG (`achar_contradicoes`). Duas listas dariam,
+# no dia em que alguem acrescentasse uma forma num lado so, uma contradicao
+# detectada num lugar e invisivel no outro — e a invisivel e a que continua
+# sendo respondida ao segurado.
+#
+# A dependencia aponta para o modulo LEVE: `curadoria_cartas` importa so
+# logging/re/unicodedata/typing. O contrario quebraria os testes que carregam
+# a curadoria isolada — foi o que aconteceu ao escrever isto.
+from .curadoria_cartas import tem_negacao
+
 logger = logging.getLogger(__name__)
 
 TIMEOUT_PADRAO_MIN = 30
@@ -96,6 +110,13 @@ def contradiz(fato_a: str, fato_b: str) -> bool:
     ser semantica: pretende nunca deixar passar em silencio o caso obvio —
     "atende sabado" contra "nao atende sabado" — marcando para revisao em vez
     de sobrescrever.
+
+    ⚠️ O corte de 0,6 e alto DE PROPOSITO para memoria de corretora, onde os
+    fatos sao curtos e parecidos. 📊 Ele nao serve para carta de conhecimento:
+    no caso real da Porto (07/08/2026) a sobreposicao deu 0,30, porque a carta
+    que nega traz a explicacao inteira e a que afirma nao. Por isso
+    `curadoria_cartas` usa CONTENCAO com regua propria e reaproveita daqui so a
+    polaridade (`tem_negacao`) — a parte que e a mesma nos dois dominios.
     """
     a, b = str(fato_a or "").lower(), str(fato_b or "").lower()
     termos_a = {t for t in a.split() if len(t) > 4}
@@ -105,8 +126,7 @@ def contradiz(fato_a: str, fato_b: str) -> bool:
     sobreposicao = len(termos_a & termos_b) / max(1, min(len(termos_a), len(termos_b)))
     if sobreposicao < 0.6:
         return False
-    negacoes = ("não ", "nao ", "nunca ", "jamais ", "deixou de ")
-    return any(n in a for n in negacoes) != any(n in b for n in negacoes)
+    return tem_negacao(a) != tem_negacao(b)
 
 
 class MemoryFabric:

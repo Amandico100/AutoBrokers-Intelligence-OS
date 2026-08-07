@@ -30,7 +30,14 @@ router = APIRouter()
 
 RESUMO_SLUG = "resumo-atendimentos"
 DEFAULT_MAX_MESSAGES = 80
-DEFAULT_MODEL = "gpt-4o-mini"
+# 🔴 O FOLLOW-UP ESCREVE PARA O CLIENTE FINAL, sob proibicoes densas ("nao
+# prometa aprovacao, cobertura, indenizacao, desconto, preco ou prazo").
+# Modelo fraco + temperatura alta e a pior combinacao possivel para RESPEITAR
+# PROIBICAO em redacao livre: o texto sai fluente e passa por cima da regra.
+#
+# Haiku 4.5 obedece instrucao muito melhor que `gpt-4o-mini` e continua barato.
+# Configuravel por ambiente para trocar sem deploy.
+DEFAULT_MODEL = os.getenv("AUXILIAR_LLM_MODEL", "claude-haiku-4-5-20251001")
 RECENT_CONVERSATIONS_SCAN = 20
 
 SYSTEM_PROMPT = (

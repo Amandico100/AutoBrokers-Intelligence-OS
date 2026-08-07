@@ -61,6 +61,19 @@ DEFAULT_MEMORY_SETTINGS = {
     "whatsapp_message_threshold": 50,
     "extract_user_profile": True,
     "extract_session_summary": True,
-    "memory_llm_model": "gpt-4o-mini",
+    # 🔴 A MEMORIA NAO PODE RODAR NO MODELO MAIS FRACO DA CASA.
+    #
+    # E ela que decide QUAIS FATOS do usuario sobrevivem a conversa, e o que
+    # ela guarda alimenta todo atendimento seguinte. Erro aqui nao parece erro:
+    # parece agente que esqueceu, ou que lembrou errado.
+    #
+    # 📊 07/08/2026: 148 chamadas em 30 dias, US$ 0,0162 no total. Subir de
+    # `gpt-4o-mini` para Haiku 4.5 custa centavos por mes e melhora a extracao
+    # de fato — a melhor relacao ganho/custo do sistema inteiro.
+    #
+    # Haiku e nao Sonnet/Opus de proposito: extrair fato de um texto curto e
+    # tarefa mecanica de alto volume. Modelo caro aqui seria pagar raciocinio
+    # para uma tarefa que nao raciocina.
+    "memory_llm_model": "claude-haiku-4-5-20251001",
     "debounce_seconds": 10,
 }

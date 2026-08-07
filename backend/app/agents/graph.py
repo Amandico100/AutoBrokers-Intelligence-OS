@@ -1043,9 +1043,17 @@ async def _build_initial_state(
     )
 
     # Prompt DINÂMICO (memória) - NÃO será cacheado
-    dynamic_context = ""
+    #
+    # 🔴 A HORA MORA AQUI, e não no `static_prompt`. Ela ficava no bloco
+    # cacheado e o destruía a cada 60 segundos — o cache casa por prefixo
+    # exato e o TTL é de 5 minutos. 📊 07/08/2026: só 2,3% de 4.509 chamadas
+    # aproveitaram cache; pagava-se a escrita (~1,25×) e não se colhia a
+    # leitura (~0,1×). A DATA continua no bloco estável (muda uma vez por dia).
+    from app.core.prompts import data_e_hora_agora
+
+    dynamic_context = f"\n\n{data_e_hora_agora()}"
     if memory_context:
-        dynamic_context = f"\n\n=== 🧠 MEMÓRIA ===\n{memory_context}\n=== FIM DA MEMÓRIA ==="
+        dynamic_context += f"\n\n=== 🧠 MEMÓRIA ===\n{memory_context}\n=== FIM DA MEMÓRIA ==="
 
     options = options or {}
     allow_web = False

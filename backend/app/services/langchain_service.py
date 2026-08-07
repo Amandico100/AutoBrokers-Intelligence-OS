@@ -450,7 +450,11 @@ class LangChainService:
                 # de vision_model configurado (mesma regra do vision_service).
                 v_model = agent.get("vision_model") or (
                     "gpt-4o-mini" if os.getenv("OPENAI_API_KEY")
-                    else ("claude-3-5-sonnet-20241022" if os.getenv("ANTHROPIC_API_KEY") else None)
+                    # 🔴 Era `claude-3-5-sonnet-20241022`, RETIRADO em
+                    # 28/10/2025: devolve 404. O agente ficava cego exatamente
+                    # no caso que esta linha promete cobrir (so chave Anthropic
+                    # presente) — e o comentario acima jurava o contrario.
+                    else ("claude-haiku-4-5-20251001" if os.getenv("ANTHROPIC_API_KEY") else None)
                 )
 
                 # === SELEÇÃO DE CHAVE VISION: USAR .env ===

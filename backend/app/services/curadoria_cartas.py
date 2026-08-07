@@ -326,6 +326,130 @@ def escolher_representantes(cartas: List[Dict[str, Any]]) -> Tuple[List[str], Li
     return ficam, copias
 
 
+# Quanto duas cartas precisam falar do mesmo assunto para uma poder APOSENTAR a
+# outra. É menor que `LIMIAR` (o de quase-cópia) de propósito: a carta que nega
+# carrega palavras que a que afirma não tem ("não", "deixou", "mais"), então o
+# par contraditório é sempre MENOS parecido que o par duplicado.
+#
+# 📊 Calibrado contra o caso real da Porto (07/08/2026), que é o motivo deste
+# código existir. A medida é CONTENÇÃO — quanto da carta MENOR está na maior —
+# e não Jaccard, e isso foi medido, não escolhido:
+#
+#   par                                  contenção   jaccard
+#   ─────────────────────────────────────────────────────────
+#   nega × afirma (4 pares reais)        0,33–0,60   0,18–0,33   ← devem casar
+#   assunto diferente, mesma companhia   0,14        0,06        ← não podem
+#
+# O Jaccard punia a carta que nega por ela ser mais longa: ela traz a explicação
+# inteira ("...há cerca de 55 dias para pagar") e a que afirma não. Com Jaccard,
+# o par real ficava em 0,20 e qualquer limiar que o pegasse pegaria lixo junto.
+# Contenção não se importa com o tamanho do texto maior.
+#
+# ⚠️ O guarda contra o falso positivo não é o limiar: são QUATRO exigências ao
+# mesmo tempo — mesma seguradora, mesma categoria, contenção acima do corte e
+# polaridade oposta. Quatro coincidências, não uma.
+LIMIAR_CONTRADICAO = 0.30
+
+
+# As formas de dizer "isto nao acontece (mais)". Uma lista so, dois usos: a
+# contradicao entre cartas do RAG (aqui) e entre memorias da corretora
+# (`memory_fabric.contradiz`, que importa daqui).
+#
+# 📊 Calibrada contra o caso real da Porto: "nao e mais atualizado" e "deixou
+# de atualizar" sao as duas formas que apareceram no acervo.
+NEGACOES = ("nao ", "não ", "nunca ", "jamais ", "deixou de ", "deixaram de ",
+            "nao e mais", "não é mais", "nao ha mais", "não há mais")
+
+
+def tem_negacao(texto: str) -> bool:
+    """O texto NEGA alguma coisa? Sinal de polaridade, nao de sentido."""
+    return any(n in str(texto or "").lower() for n in NEGACOES)
+
+
+def contencao(a: frozenset, b: frozenset) -> float:
+    """Quanto do MENOR conjunto está no maior. 0..1.
+
+    Diferente de `parecidas` (Jaccard), não penaliza um texto por ser mais
+    longo que o outro — que é exatamente o que acontece quando a carta nova
+    explica a regra nova e a antiga só a afirmava.
+    """
+    return len(a & b) / max(1, min(len(a), len(b))) if a and b else 0.0
+
+
+def achar_contradicoes(
+    novas: List[Dict[str, Any]], publicadas: List[Dict[str, Any]]
+) -> List[Tuple[str, str]]:
+    """Pares `(id_publicada_a_aposentar, id_nova_que_substitui)`.
+
+    🔴 A CURADORIA SÓ OLHAVA A FILA. NUNCA O ACERVO.
+    ================================================
+    `escolher_representantes` compara a carta nova com as outras cartas novas do
+    mesmo lote. Conhecimento novo nunca desafiava conhecimento velho — e por
+    isso o RAG podia afirmar duas coisas opostas ao mesmo tempo.
+
+    📊 07/08/2026, cartas sobre boleto da Porto, TODAS publicadas:
+
+        28–29/07  "Porto Seguro emite boleto ATUALIZADO quando há parcela
+                   em aberto, com novo prazo de vencimento"
+        30/07     "Na Porto o boleto NÃO É MAIS atualizado"
+                  "A Porto DEIXOU DE atualizar boleto"
+
+    Cinco afirmavam, três negavam, zero foram aposentadas. O agente respondia
+    uma ou outra por sorte da busca — e dizer a um segurado *"peça o boleto
+    atualizado"* quando a Porto deixou de emitir faz ele perder o prazo e a
+    apólice cancelar. O dano não é uma resposta feia: é um cliente sem seguro.
+
+    O código já documentava este caso exato como motivo de existir
+    `despublicar_carta_sync`. A função foi escrita e nunca foi chamada, porque
+    só rodava por clique numa tela de admin.
+
+    O QUE IMPEDE DE APOSENTAR CARTA BOA
+    ===================================
+    Três exigências ao mesmo tempo, não uma:
+
+    1. **mesma seguradora** — regra da Porto não aposenta regra da HDI;
+    2. **mesma categoria** — cobrança não aposenta sinistro;
+    3. **polaridade oposta** — uma nega o que a outra afirma (`contradiz`).
+
+    E a mais nova ganha, sempre: a seguradora mudou a regra, e é o fato recente
+    que vale. A antiga não é apagada — vira `superseded` com o ponteiro para
+    quem a substituiu, e sai do índice. Histórico auditável, RAG limpo.
+    """
+    # A régua de "falam da mesma coisa" é desta casa: 📊 o corte de 0,6 de
+    # `memory_fabric.contradiz` não serve para carta (o par real da Porto dá
+    # 0,30), porque a carta que nega traz a explicação inteira e a que afirma
+    # não. `tem_negacao` (a polaridade) é compartilhada; a medida, não.
+    pares: List[Tuple[str, str]] = []
+    aposentadas: set = set()
+
+    # Índice por (seguradora, categoria): só se compara o que é comparável.
+    balde: Dict[Tuple[Any, Any], List[Dict[str, Any]]] = {}
+    for antiga in publicadas:
+        chave = (antiga.get("insurer_key"), antiga.get("category"))
+        balde.setdefault(chave, []).append(antiga)
+
+    for nova in novas:
+        texto_novo = str(nova.get("card_text") or "")
+        sig_nova = assinatura(texto_novo)
+        if len(sig_nova) < 3:
+            continue  # curta demais para afirmar contradição de nada
+        chave = (nova.get("insurer_key"), nova.get("category"))
+        for antiga in balde.get(chave, []):
+            if antiga["id"] in aposentadas:
+                continue
+            texto_antigo = str(antiga.get("card_text") or "")
+            if contencao(sig_nova, assinatura(texto_antigo)) < LIMIAR_CONTRADICAO:
+                continue
+            # Polaridade OPOSTA. Duas que afirmam são quase-cópias (outro
+            # tratamento); duas que negam concordam. Só o par afirma × nega é
+            # contradição — e é ele que aposenta.
+            if tem_negacao(texto_novo) == tem_negacao(texto_antigo):
+                continue
+            pares.append((antiga["id"], nova["id"]))
+            aposentadas.add(antiga["id"])
+    return pares
+
+
 def curar_sync(aplicar: bool = True) -> Dict[str, Any]:
     """Junta as quase-cópias e barra os absolutos. Sem LLM, sem custo."""
     from app.core.database import get_supabase_client
@@ -358,16 +482,94 @@ def curar_sync(aplicar: bool = True) -> Dict[str, Any]:
 
     barradas = [c["id"] for c in cartas if _ABSOLUTO.search(c.get("card_text") or "")]
     proibidos = set(barradas)
-    ficam, copias = escolher_representantes([c for c in cartas if c["id"] not in proibidos])
+    sobreviventes = [c for c in cartas if c["id"] not in proibidos]
+    ficam, copias = escolher_representantes(sobreviventes)
+
+    # 🔴 O SEGUNDO OLHO: a carta nova é comparada com o ACERVO, não só com o
+    # lote. Ver `achar_contradicoes` para o caso da Porto que motivou isto.
+    #
+    # Só as que ficaram desafiam o acervo: uma quase-cópia que já perdeu para
+    # outra do próprio lote não tem por que aposentar nada.
+    ids_que_ficam = set(ficam)
+    contradicoes = achar_contradicoes(
+        [c for c in sobreviventes if c["id"] in ids_que_ficam],
+        _acervo_publicado_sync(db),
+    )
 
     if aplicar:
         for ids, status in ((barradas, "rejected_absoluto"), (copias, "superseded")):
             for i in range(0, len(ids), 100):
                 db.client.table("knowledge_cards").update({"status": status}) \
                     .in_("id", ids[i:i + 100]).execute()
+        _aposentar_contraditas_sync(db, contradicoes)
 
     return {"lidas": len(cartas), "barradas": len(barradas),
-            "juntadas": len(copias), "ideias_distintas": len(ficam), "aplicado": aplicar}
+            "juntadas": len(copias), "ideias_distintas": len(ficam),
+            "contraditas_aposentadas": len(contradicoes), "aplicado": aplicar}
+
+
+def _acervo_publicado_sync(db: Any) -> List[Dict[str, Any]]:
+    """Todas as cartas publicadas. Paginado — o PostgREST corta em 1.000.
+
+    📊 12.071 publicadas em 07/08/2026: são 13 páginas. Vale a ida: sem o
+    acervo em mãos, a curadoria compara a carta nova só com as outras novas, e
+    foi assim que 5 cartas afirmaram e 3 negaram a mesma regra da Porto ao
+    mesmo tempo, por oito dias.
+    """
+    saida: List[Dict[str, Any]] = []
+    inicio = 0
+    while True:
+        lote = (db.client.table("knowledge_cards")
+                .select("id, card_text, insurer_key, ramo, category")
+                .eq("status", "published")
+                # `id` e não `created_at`: a destilação grava até oito cartas no
+                # mesmo instante e o Postgres não promete ordem entre iguais.
+                # 📊 Paginar por data já perdeu 12 linhas e repetiu 12 em 11.640.
+                .order("id", desc=False)
+                .range(inicio, inicio + 999).execute().data) or []
+        saida.extend(lote)
+        if len(lote) < 1000:
+            return saida
+        inicio += 1000
+        if inicio > 200_000:
+            return saida
+
+
+def _aposentar_contraditas_sync(db: Any, pares: List[Tuple[str, str]]) -> None:
+    """Aposenta a carta velha e ANOTA quem a substituiu.
+
+    A anotação não é enfeite: sem ela, ninguém consegue responder "por que esta
+    carta saiu do ar?" seis meses depois — e uma aposentadoria que não se
+    explica é indistinguível de um apagamento por engano.
+
+    Tira do índice também. Mudar o status sem apagar o vetor deixa o pior estado
+    possível: uma carta que a auditoria vê como removida e a busca continua
+    entregando.
+    """
+    from app.services.attendance_distiller import despublicar_carta_sync
+
+    for id_antiga, id_nova in pares:
+        try:
+            atual = (db.client.table("knowledge_cards").select("pii_check")
+                     .eq("id", id_antiga).limit(1).execute().data or [{}])
+            marca = dict((atual[0] or {}).get("pii_check") or {})
+            marca["substituida_por"] = id_nova
+            marca["aposentada_em"] = _agora_iso()
+            db.client.table("knowledge_cards").update(
+                {"status": "superseded", "pii_check": marca}
+            ).eq("id", id_antiga).execute()
+            despublicar_carta_sync(id_antiga)
+        except Exception as erro:  # noqa: BLE001
+            # Uma que falha não pode derrubar as outras: cada carta ainda
+            # publicada e já contradita é uma resposta errada ao segurado.
+            logger.warning("[CURADORIA] não consegui aposentar %s (%s)",
+                           id_antiga, type(erro).__name__)
+
+
+def _agora_iso() -> str:
+    from datetime import datetime, timezone
+
+    return datetime.now(timezone.utc).isoformat()
 
 
 def reconciliar_indice_sync(limite: int = 500) -> Dict[str, int]:

@@ -929,6 +929,18 @@ async def _destilar_sessao(sess: Dict[str, Any], stats: Dict[str, int],
             summary = dict(sess.get("summary") or {})
             falhas = int(summary.get("distill_falhas") or 0) + 1
             summary["distill_falhas"] = falhas
+            # 🔴 GRAVAR O MOTIVO, e não só o contador.
+            #
+            # 📊 07/08/2026: 342 sessões estavam paradas com 3 falhas e **zero**
+            # tinham motivo gravado. Todas do dia 28/07 — o dia do bug do
+            # "modelo pensa por padrão", já corrigido. Só deu para saber disso
+            # pela DATA; o registro não dizia nada.
+            #
+            # Sem o motivo, quem olha a fila parada não consegue distinguir
+            # "causa já resolvida, é só destravar" de "causa viva, destravar vai
+            # queimar dinheiro de novo". As duas exigem ações opostas.
+            summary["distill_erro"] = "resposta ilegivel do modelo"
+            summary["distill_erro_em"] = datetime.now(timezone.utc).isoformat()
             await asyncio.to_thread(_save_session_summary_sync, sess["id"], summary)
             async with trava:
                 stats["falhas_de_leitura"] = stats.get("falhas_de_leitura", 0) + 1
