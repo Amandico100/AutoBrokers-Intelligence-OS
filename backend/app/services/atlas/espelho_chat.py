@@ -560,7 +560,7 @@ async def trazer_conversas_ja_capturadas(
 
     desde = (datetime.now(timezone.utc) - timedelta(days=max(1, int(dias)))).isoformat()
 
-    def _ler() -> list:
+    def _ler(inicio: int, fim: int) -> list:
         return (cliente.table("attendance_transcripts")
                 .select("counterparty, direction, msg_type, text, message_id, wa_timestamp")
                 .eq("company_id", empresa)
@@ -590,13 +590,52 @@ async def trazer_conversas_ja_capturadas(
                 # diferentes: aqui se lê do mais novo para trás, e a inversão
                 # abaixo devolve a ordem da conversa.
                 .order("wa_timestamp", desc=True)
-                .limit(max(1, int(limite))).execute().data or [])
+                # 🔴 DESEMPATE OBRIGATÓRIO PARA PAGINAR.
+                #
+                # `wa_timestamp` tem resolução de SEGUNDO e mensagens empatam
+                # nele o tempo todo (uma pessoa manda três seguidas). Sem um
+                # segundo critério, a ordem dos empatados pode mudar entre uma
+                # página e a próxima — e aí a mesma linha aparece duas vezes
+                # enquanto outra nunca aparece. `message_id` é único, então a
+                # ordem passa a ser total e a paginação, estável.
+                .order("message_id", desc=True)
+                .range(inicio, fim).execute().data or [])
 
-    try:
-        linhas = await asyncio.to_thread(_ler)
-    except Exception as erro:  # noqa: BLE001
-        logger.warning("[ESPELHO] backfill não leu o acervo (%s)", type(erro).__name__)
-        return {"ok": False, "motivo": type(erro).__name__}
+    # 🔴 O `.limit()` PEDIA 1.500 E O SERVIDOR DEVOLVIA 1.000.
+    #
+    # 📊 06/08/2026 23:52 UTC, AutoFleet: a janela de 7 dias tem **1.570**
+    # linhas no acervo e o chat tinha **exatamente 1.000** mensagens — parado,
+    # sem crescer, com 19 conversas abertas e vazias na lista. Todas as 19 eram
+    # as de atividade mais ANTIGA da janela (03 e 04/08): o corte por
+    # `wa_timestamp desc` deixava justamente elas de fora.
+    #
+    # O número redondo era a pista. O PostgREST tem um teto de linhas por
+    # resposta (`db-max-rows`) e ele VENCE o `.limit()` que se pede: pedir 1.500
+    # não é erro, é só ignorado. O código então "lia" 1.000 linhas, achava que
+    # tinha lido a janela inteira, e repetia as MESMAS 1.000 a cada 10 minutos —
+    # para sempre. As outras 570 nunca teriam vez.
+    #
+    # A correção não é aumentar o número: qualquer número volta a ser pequeno
+    # quando a corretora crescer. É PAGINAR e parar quando a página vier curta —
+    # que é a única forma de "acabou" que não depende de adivinhar o teto.
+    _TAMANHO_DA_PAGINA = 1000
+    paginas = max(1, -(-int(limite) // _TAMANHO_DA_PAGINA))  # teto da divisão
+
+    linhas: list = []
+    for pagina in range(paginas):
+        inicio = pagina * _TAMANHO_DA_PAGINA
+        try:
+            lote = await asyncio.to_thread(
+                _ler, inicio, inicio + _TAMANHO_DA_PAGINA - 1)
+        except Exception as erro:  # noqa: BLE001
+            logger.warning("[ESPELHO] backfill não leu o acervo (%s)", type(erro).__name__)
+            if linhas:
+                break  # o que já veio ainda vale; espelhar meia janela > nenhuma
+            return {"ok": False, "motivo": type(erro).__name__}
+        linhas.extend(lote)
+        # Página curta = acabou. Não depende de saber qual é o teto do servidor.
+        if len(lote) < _TAMANHO_DA_PAGINA:
+            break
 
     # Lidas do mais novo para trás (ver `_ler`); gravadas na ordem da conversa.
     # Sem esta inversão, o chat mostraria a resposta antes da pergunta.
@@ -675,7 +714,12 @@ async def sincronizar_chats() -> dict:
         r = await trazer_conversas_ja_capturadas(
             company_id=empresa,
             dias=int(os.getenv("ESPELHO_SYNC_DIAS", str(JANELA_DA_LISTA_DIAS))),
-            limite=int(os.getenv("ESPELHO_SYNC_LIMITE", "1500")), db=db)
+            # 📊 A janela de 7 dias da AutoFleet tem 1.570 linhas (06/08/2026).
+            # 6.000 dá quase 4× de folga sobre a maior corretora de hoje, e o
+            # custo real é baixo: quem já está no chat sai pela dedup sem
+            # escrita. O teto existe para o dia em que uma corretora tiver um
+            # volume que não cabe num ciclo do agendador — não para o normal.
+            limite=int(os.getenv("ESPELHO_SYNC_LIMITE", "6000")), db=db)
         resumo["levadas"] += int(r.get("levadas") or 0)
 
     logger.info("[ESPELHO] sync: %s corretoras, %s mensagens levadas ao chat",

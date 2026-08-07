@@ -303,9 +303,13 @@ def teste_o_acervo_sao_duas_tabelas_e_ler_uma_so_faz_o_alarme_mentir():
 
     class _Q:
         def __init__(self, banco, tabela):
-            self.b, self.t = banco, tabela
+            self.b, self.t, self.f = banco, tabela, []
 
         def select(self, *_a, **_k):
+            return self
+
+        def eq(self, campo, valor):
+            self.f.append((campo, valor))
             return self
 
         def order(self, *_a, **_k):
@@ -317,7 +321,14 @@ def teste_o_acervo_sao_duas_tabelas_e_ler_uma_so_faz_o_alarme_mentir():
         def execute(self):
             if self.t not in self.b.dados:
                 raise RuntimeError(f"tabela inexistente: {self.t}")
-            return _Resp(list(self.b.dados[self.t]))
+            linhas = [l for l in self.b.dados[self.t]
+                      if all(str(l.get(c)) == str(v) for c, v in self.f)]
+            # O TETO DO SERVIDOR — 📊 o PostgREST corta em 1.000 linhas por
+            # resposta, doa a quem doer o `.limit()` pedido. Um dublê mais
+            # generoso que o servidor real esconde a classe de bug que só
+            # aparece com volume, e foi assim que o backfill do espelho passou
+            # verde no teste enquanto perdia 570 mensagens em produção.
+            return _Resp(linhas[:1000])
 
     class Banco:
         def __init__(self, dados):
@@ -337,7 +348,7 @@ def teste_o_acervo_sao_duas_tabelas_e_ler_uma_so_faz_o_alarme_mentir():
         ],
     })
     agora = datetime(2026, 8, 6, 23, 43, tzinfo=timezone.utc)
-    ultima = asyncio.run(CS._ultima_entrega_por_corretora(banco))
+    ultima = asyncio.run(CS._ultima_entrega_por_corretora(banco, {"autofleet", "amandus"}))
 
     fleet = CS.decidir_alarme_de_entrega(
         estado_do_canal="connected", ultima_entrega=ultima.get("autofleet"), agora=agora)
@@ -364,7 +375,7 @@ def teste_o_acervo_sao_duas_tabelas_e_ler_uma_so_faz_o_alarme_mentir():
     })
     muda = CS.decidir_alarme_de_entrega(
         estado_do_canal="connected",
-        ultima_entrega=asyncio.run(CS._ultima_entrega_por_corretora(calada)).get("resulta"),
+        ultima_entrega=asyncio.run(CS._ultima_entrega_por_corretora(calada, {"resulta"})).get("resulta"),
         agora=agora)
     checar(muda["alarmar"] is True and muda["motivo"] == "conectado_e_mudo",
            "CONTROLE — quem está mudo nos DOIS acervos ainda dispara",
@@ -380,7 +391,7 @@ def teste_o_acervo_sao_duas_tabelas_e_ler_uma_so_faz_o_alarme_mentir():
             {"company_id": "x", "created_at": "2026-07-01T10:00:00+00:00"},
         ],
     })
-    lido = asyncio.run(CS._ultima_entrega_por_corretora(invertido))
+    lido = asyncio.run(CS._ultima_entrega_por_corretora(invertido, {"x"}))
     checar(str(lido.get("x")).startswith("2026-08-06"),
            "CONTROLE — a data mais nova vence, venha da tabela que vier",
            str(lido.get("x")))
@@ -392,10 +403,39 @@ def teste_o_acervo_sao_duas_tabelas_e_ler_uma_so_faz_o_alarme_mentir():
             {"company_id": "y", "created_at": "2026-08-06T23:00:00+00:00"},
         ],
     })
-    sobrevive = asyncio.run(CS._ultima_entrega_por_corretora(meio_quebrado))
+    sobrevive = asyncio.run(CS._ultima_entrega_por_corretora(meio_quebrado, {"y"}))
     checar(sobrevive.get("y") is not None,
            "acervo ilegível não apaga o que o outro registrou",
            str(sobrevive))
+
+    # 🔴 UMA CORRETORA MOVIMENTADA NÃO PODE EMPURRAR A QUIETA PARA FORA.
+    #
+    # A leitura antiga era `.limit(2000)` das duas tabelas, agrupando no
+    # Python. 📊 06/08/2026 provou que o PostgREST corta em 1.000 linhas
+    # independentemente do `.limit()` pedido — e aí a corretora quieta some da
+    # resposta, vira `ultima_entrega=None`, e o alarme lê isso como "conectado
+    # e NUNCA entregou". O alarme gritaria mais alto onde há MAIS tráfego.
+    ocupada = Banco({
+        "observed_events": [],
+        "attendance_transcripts": (
+            [{"company_id": "gigante", "created_at": f"2026-08-06T23:{n % 60:02d}:00+00:00"}
+             for n in range(1500)]
+            + [{"company_id": "quieta", "created_at": "2026-08-06T22:00:00+00:00"}]
+        ),
+    })
+    lido = asyncio.run(CS._ultima_entrega_por_corretora(ocupada, {"gigante", "quieta"}))
+    # Confere o VALOR, não só a presença. A primeira versão deste guarda só
+    # perguntava `is not None` — e ficava verde com a leitura sem filtro, que
+    # devolvia a data da VIZINHA no lugar da dela. Um alarme silenciado pelo
+    # dado de outra corretora é pior que um alarme errado: parece certo.
+    checar(str(lido.get("quieta") or "").startswith("2026-08-06T22:00"),
+           "a corretora quieta não some atrás de 1.500 linhas da vizinha",
+           f'e a data é a DELA: {lido.get("quieta")}')
+    quieta = CS.decidir_alarme_de_entrega(
+        estado_do_canal="connected", ultima_entrega=lido.get("quieta"), agora=agora)
+    checar(quieta["alarmar"] is False,
+           "e por isso ela não recebe um alarme que não é dela",
+           f'motivo={quieta["motivo"]}')
 
 
 def _fonte_do_estado() -> str:

@@ -2279,3 +2279,46 @@ tentativas, espera exponencial, só falha transitória, última falha sobe).
 - **Destrava:** nada. Resolvido e guardado por teste.
 - **Custa se esquecer:** era exatamente o que já custava — funcionalidade morta
   em silêncio, com log que parecia outra coisa.
+
+---
+
+## P-121 · 30 leituras pedem mais de 1.000 linhas e recebem 1.000, em silêncio
+
+🤖 **Execução** · aberta em 06/08/2026
+
+O PostgREST tem um teto de linhas por resposta que **vence o `.limit()`
+pedido**. Pedir 1.500 não dá erro: devolve 1.000 e o código segue achando que
+leu tudo.
+
+📊 **O caso que provou:** o backfill do Espelho pedia `.limit(1500)` sobre uma
+janela de **1.570** linhas da AutoFleet. O chat ficou com **exatamente 1.000**
+mensagens, parado, e **19 conversas abertas e vazias** na lista da corretora —
+todas as de atividade mais antiga da janela. O código relia as MESMAS 1.000 a
+cada 10 minutos; as outras 570 nunca teriam vez.
+
+O número redondo era a pista, e estava na tela desde o começo.
+
+Corrigidos nesta rodada: `espelho_chat.trazer_conversas_ja_capturadas`
+(paginação com `.range()`, parando na página curta) e
+`channel_state._ultima_entrega_por_corretora` (`limit(1)` por corretora, que
+não tem teto que morda).
+
+**Os outros 28 continuam abertos.** Por ordem de risco:
+
+| onde | o que se perde |
+|---|---|
+| `attendance_distiller.py:209` | mensagens que viram memória e carta — destila 1.000 de N |
+| `agent_memory.py:60,107,130,142` | o que o agente lembra da corretora |
+| `intelligence/rule_engine.py` (5×) | matéria-prima dos detectores |
+| `research/*`, `admin_atlas.py`, `weekly_report.py` | relatórios e telas de admin |
+
+- **Destrava:** nada — é trabalho de execução, sem dependência externa.
+- **Como consertar:** paginar com `.range()` até a página vir curta, como em
+  `trazer_conversas_ja_capturadas`. Aumentar o número **não** resolve: qualquer
+  número volta a ser pequeno quando a corretora crescer.
+- **Custa se esquecer:** silêncio. Nenhuma dessas leituras dá erro — elas
+  entregam um pedaço e dizem que é o todo. O destilador é o mais caro: memória
+  incompleta não parece defeito, parece esquecimento.
+- **Guarda:** o dublê de `test_o_espelho_vira_conversa` e o de
+  `test_conectado_nao_e_chegando` agora **cortam em 1.000**, como o servidor.
+  Teste novo que ler acervo grande reprova se não paginar.

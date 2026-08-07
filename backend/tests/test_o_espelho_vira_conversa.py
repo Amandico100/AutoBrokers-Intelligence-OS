@@ -72,6 +72,11 @@ class _Resposta:
         self.data = data
 
 
+# Quantas linhas o PostgREST devolve por resposta, no máximo, doa a quem doer o
+# `.limit()`. 📊 Medido em 06/08/2026 pelo número redondo que apareceu no chat.
+_TETO_DO_SERVIDOR = 1000
+
+
 class _Consulta:
     def __init__(self, banco, tabela):
         self.banco, self.tabela = banco, tabela
@@ -79,7 +84,10 @@ class _Consulta:
         self._insert = None
         self._update = None
         self._limite = None
-        self._ordem = None
+        self._faixa = None
+        # Lista, não par: `order()` pode ser chamado duas vezes (critério de
+        # desempate), e guardar só o último apagaria o primeiro.
+        self._ordem: list = []
 
     # -- leitura ----------------------------------------------------------
     def select(self, *_a, **_k):
@@ -119,11 +127,16 @@ class _Consulta:
         Um dublê que ignora `order` não é um banco de mentira — é um dicionário
         com sotaque de SQL.
         """
-        self._ordem = (campo, bool(desc))
+        self._ordem.append((campo, bool(desc)))
         return self
 
     def limit(self, n):
         self._limite = n
+        return self
+
+    def range(self, inicio, fim):
+        """Paginação do PostgREST: `.range(a, b)` é INCLUSIVO nas duas pontas."""
+        self._faixa = (int(inicio), int(fim))
         return self
 
     # -- escrita ----------------------------------------------------------
@@ -183,13 +196,26 @@ class _Consulta:
         achadas = [l for l in linhas if self._casa(l)]
         # A ORDEM vem antes do LIMITE — como no Postgres. Trocar a ordem destas
         # duas linhas é exatamente o defeito que o dublê escondia.
-        if self._ordem:
-            campo, desc = self._ordem
+        for campo, desc in reversed(self._ordem):
             achadas = sorted(achadas, key=lambda l: str(self._valor(l, campo) or ""),
                              reverse=desc)
+        if self._faixa:
+            inicio, fim = self._faixa
+            achadas = achadas[inicio : fim + 1]
         if self._limite:
             achadas = achadas[: self._limite]
-        return _Resposta(achadas)
+        # 🔴 O TETO DO SERVIDOR, que vence qualquer `.limit()` pedido.
+        #
+        # 📊 06/08/2026: o backfill pedia `.limit(1500)` e recebia exatamente
+        # 1.000 linhas. A janela tinha 1.570 e o chat da AutoFleet ficou parado
+        # em 1.000 mensagens, com 19 conversas abertas e vazias — todas as de
+        # atividade mais antiga da janela.
+        #
+        # O dublê antigo obedecia o `.limit()` ao pé da letra e por isso NÃO
+        # tinha como reproduzir o defeito: no teste vinham 1.500, em produção
+        # vinham 1.000. Um dublê mais generoso que o servidor real esconde
+        # exatamente a classe de bug que só aparece com volume.
+        return _Resposta(achadas[:_TETO_DO_SERVIDOR])
 
 
 # 🔴 O SCHEMA REAL, transcrito do banco em 06/08/2026.
@@ -716,6 +742,97 @@ def teste_o_acervo_ja_capturado_pode_ir_para_o_chat():
            "CONTROLE — sem company_id o backfill recusa")
 
 
+def teste_a_janela_inteira_chega_ao_chat_e_nao_so_as_primeiras_mil():
+    """📊 06/08/2026 23:52 UTC — o teto de 1.000 do servidor, reproduzido.
+
+        janela de 7 dias da AutoFleet    1.570 linhas no acervo
+        mensagens no chat                1.000  (redondo, e parado)
+        conversas abertas e VAZIAS          19  (as mais antigas da janela)
+
+    O backfill pedia `.limit(1500)`. O PostgREST tem um teto de linhas por
+    resposta que vence o `.limit()` pedido: vinham 1.000. O código achava que
+    tinha lido a janela inteira e repetia as MESMAS 1.000 a cada 10 minutos.
+    As outras 570 nunca teriam vez — não por erro de dedup, por erro de leitura.
+
+    O número redondo era a pista, e ela estava na tela desde o começo.
+    """
+    print("\n[8a] A janela inteira chega ao chat — não só as primeiras mil")
+    import asyncio
+
+    EC = _carregar_espelho()
+    banco = BancoFalso()
+
+    # 1.570 linhas, como na AutoFleet real: acima do teto do servidor e abaixo
+    # do limite pedido. É exatamente a faixa em que o defeito vive.
+    TOTAL = 1570
+    base = datetime.now(timezone.utc)
+    banco.semear("attendance_transcripts", [
+        {"id": f"t{i}", "company_id": "autofleet",
+         # 12 interlocutores, para haver conversas inteiras na cauda antiga —
+         # foi assim que as 19 conversas vazias apareceram na lista.
+         "counterparty": f"55479995{6000 + (i % 12):04d}",
+         "direction": "in" if i % 2 else "out",
+         "msg_type": "text", "text": f"linha {i}",
+         "message_id": f"W{i:05d}",
+         # Mais nova primeiro na ordenação: i=0 é a mais recente.
+         "wa_timestamp": (base - timedelta(minutes=i)).isoformat(),
+         "created_at": base.isoformat()}
+        for i in range(TOTAL)
+    ])
+
+    r = asyncio.run(EC.trazer_conversas_ja_capturadas(
+        company_id="autofleet", dias=7, limite=6000, db=banco))
+    checar(r.get("ok") is True, "o backfill roda", str(r.get("lidas")))
+    checar(r.get("lidas") == TOTAL,
+           f"leu a janela INTEIRA: {TOTAL} linhas",
+           f'leu {r.get("lidas")} — o teto do servidor é {_TETO_DO_SERVIDOR}')
+    checar(len(banco.linhas("messages")) == TOTAL,
+           f"e as {TOTAL} chegaram ao chat",
+           str(len(banco.linhas("messages"))))
+
+    # Nenhuma conversa aberta e vazia: era esse o sintoma na tela do Founder.
+    vazias = [c for c in banco.linhas("conversations")
+              if not [m for m in banco.linhas("messages")
+                      if m.get("conversation_id") == c.get("id")]]
+    checar(not vazias, "nenhuma conversa fica aberta e vazia na lista",
+           f"{len(vazias)} vazia(s)")
+
+    # CONTROLE — o dublê CONSEGUE cortar em 1.000. Sem esta linha, o teste
+    # acima passaria mesmo que o teto não estivesse sendo simulado, e eu teria
+    # "provado" um conserto contra um servidor que nunca recusa nada.
+    uma_pagina = banco.client.table("attendance_transcripts").select("*") \
+        .eq("company_id", "autofleet").execute().data
+    checar(len(uma_pagina) == _TETO_DO_SERVIDOR,
+           f"CONTROLE — uma leitura sem paginar ainda para em {_TETO_DO_SERVIDOR}",
+           f"{len(uma_pagina)} linhas — é o teto que o conserto precisa vencer")
+
+    # CONTROLE — repetir não duplica, mesmo com 1.570 linhas e 2 páginas.
+    antes = len(banco.linhas("messages"))
+    asyncio.run(EC.trazer_conversas_ja_capturadas(
+        company_id="autofleet", dias=7, limite=6000, db=banco))
+    checar(len(banco.linhas("messages")) == antes,
+           "CONTROLE — segunda rodada não duplica nada",
+           f"{antes} antes, {len(banco.linhas('messages'))} depois")
+
+    # CONTROLE — o `limite` ainda LIMITA. Se o conserto tivesse virado "leia
+    # tudo sempre", uma corretora com 40 mil linhas na janela travaria o
+    # agendador, e este teste passaria alegremente.
+    outro = BancoFalso()
+    outro.semear("attendance_transcripts", [
+        {"id": f"u{i}", "company_id": "x", "counterparty": "5547999560001",
+         "direction": "in", "msg_type": "text", "text": f"l{i}",
+         "message_id": f"U{i:05d}",
+         "wa_timestamp": (base - timedelta(minutes=i)).isoformat(),
+         "created_at": base.isoformat()}
+        for i in range(2500)
+    ])
+    curto = asyncio.run(EC.trazer_conversas_ja_capturadas(
+        company_id="x", dias=7, limite=2000, db=outro))
+    checar(curto.get("lidas") == 2000,
+           "CONTROLE — o limite pedido continua valendo como teto",
+           f'leu {curto.get("lidas")} de 2.500 com limite=2000')
+
+
 def teste_conversa_longa_nao_duplica_no_ciclo_seguinte():
     print("\n[8b] Conversa de 60 mensagens não duplica a cada 10 minutos")
     import asyncio
@@ -843,6 +960,7 @@ def main() -> int:
     teste_nada_disto_liga_agente_nenhum()
     teste_a_lista_do_chat_mostra_sete_dias()
     teste_o_acervo_ja_capturado_pode_ir_para_o_chat()
+    teste_a_janela_inteira_chega_ao_chat_e_nao_so_as_primeiras_mil()
     teste_conversa_longa_nao_duplica_no_ciclo_seguinte()
     teste_o_historico_de_quinze_meses_nao_entope_a_mesa()
 

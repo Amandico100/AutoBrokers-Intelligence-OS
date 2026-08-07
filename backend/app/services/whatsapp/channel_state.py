@@ -427,16 +427,32 @@ def decidir_alarme_de_entrega(
 _ACERVOS_DE_CAPTURA = ("observed_events", "attendance_transcripts")
 
 
-async def _ultima_entrega_por_corretora(db: Any = None) -> Dict[str, Any]:
+async def _ultima_entrega_por_corretora(
+    db: Any = None, empresas: Optional[set] = None,
+) -> Dict[str, Any]:
     """Quando cada corretora gravou a última conversa, em QUALQUER acervo.
 
-    Uma consulta por corretora a cada cinco minutos seria N idas ao banco para
-    responder algo que cabe em duas. E a leitura é do ACERVO, não de
-    `integrations`: `last_seen_at` mede a sonda, e a sonda foi exatamente o que
-    ficou verde enquanto nada chegava.
+    A leitura é do ACERVO, não de `integrations`: `last_seen_at` mede a sonda, e
+    a sonda foi exatamente o que ficou verde enquanto nada chegava.
 
     Devolve a data MAIS RECENTE entre as duas tabelas: capturar de um lado só
     já é capturar, e o silêncio que interessa é o silêncio dos dois.
+
+    🔴 UMA CONSULTA POR CORRETORA, e não uma varredura das N linhas mais novas.
+    ==========================================================================
+    A versão anterior lia `.limit(2000)` das duas tabelas e agrupava no Python.
+    Parecia econômico e tinha um buraco: o PostgREST tem um teto de linhas por
+    resposta que **vence o `.limit()` pedido** — 📊 06/08/2026, o backfill do
+    espelho pediu 1.500 e recebeu 1.000, e ficou meses de conversa para trás.
+
+    Aplicado aqui, o buraco é pior que perder linhas: uma corretora movimentada
+    empurra as outras para fora das 1.000 mais recentes. A corretora que sumiu
+    da leitura vira `ultima_entrega=None` — que este alarme lê como "conectado
+    e NUNCA entregou". O alarme dispararia mais alto justamente onde há MAIS
+    tráfego, que é o contrário do que ele existe para dizer.
+
+    `limit(1)` por corretora e por tabela não tem teto que morda: são 2 idas ao
+    banco por corretora a cada cinco minutos, e a resposta é sempre exata.
     """
     if db is None:
         from app.core.database import get_supabase_client
@@ -444,29 +460,34 @@ async def _ultima_entrega_por_corretora(db: Any = None) -> Dict[str, Any]:
         db = get_supabase_client()
     cliente = getattr(db, "client", db)
 
-    def _ler(tabela: str) -> list:
-        # Ordena por data e pega o topo por corretora no lado do Python: o
-        # cliente do Supabase não expõe GROUP BY, e inventar RPC para isto
-        # criaria peça nova para uma leitura que cabe em 2.000 linhas.
+    alvos = {str(e) for e in (empresas or set()) if str(e or "").strip()}
+    if not alvos:
+        # Sem corretoras não há o que perguntar. Devolver {} aqui é seguro: o
+        # chamador só consulta este mapa por company_id que ele mesmo trouxe.
+        return {}
+
+    def _ler(tabela: str, empresa: str) -> list:
         return (cliente.table(tabela)
                 .select("company_id, created_at")
+                .eq("company_id", empresa)
                 .order("created_at", desc=True)
-                .limit(2000).execute().data or [])
+                .limit(1).execute().data or [])
 
     ultima: Dict[str, Any] = {}
-    for tabela in _ACERVOS_DE_CAPTURA:
-        try:
-            linhas = await asyncio.to_thread(_ler, tabela)
-        except Exception as erro:  # noqa: BLE001
-            # Um acervo ilegível não pode fazer o outro sumir: se `observed_events`
-            # cair, a captura de segurados continua contando como entrega.
-            logger.warning("[ENTREGA] não consegui ler %s (%s)", tabela, type(erro).__name__)
-            continue
-        for linha in linhas:
-            empresa = str(linha.get("company_id") or "")
-            if not empresa:
+    for empresa in alvos:
+        for tabela in _ACERVOS_DE_CAPTURA:
+            try:
+                linhas = await asyncio.to_thread(_ler, tabela, empresa)
+            except Exception as erro:  # noqa: BLE001
+                # Um acervo ilegível não pode fazer o outro sumir: se
+                # `observed_events` cair, a captura de segurados continua
+                # contando como entrega.
+                logger.warning("[ENTREGA] não consegui ler %s (%s)",
+                               tabela, type(erro).__name__)
                 continue
-            quando = linha.get("created_at")
+            if not linhas:
+                continue
+            quando = linhas[0].get("created_at")
             anterior = ultima.get(empresa)
             if anterior is None or _mais_recente(quando, anterior):
                 ultima[empresa] = quando
@@ -810,9 +831,6 @@ async def verificar_canais(
               "inalterados": 0, "alarmes": 0, "erros": 0, "limite_minutos": limite,
               "mudos": 0}
 
-    # Quando cada corretora gravou a última conversa. Lido UMA vez, antes do
-    # laço: é a mesma resposta para todas as linhas do ciclo.
-    ultima_entrega = await _ultima_entrega_por_corretora(db)
     alarmar_entrega = alarme_de_entrega or _alarme_de_entrega_padrao
 
     try:
@@ -831,6 +849,12 @@ async def verificar_canais(
     except Exception as erro:  # noqa: BLE001
         logger.error("[HEARTBEAT] não consegui ler integrations (%s)", type(erro).__name__)
         return {"ok": False, "motivo": type(erro).__name__, "verificados": 0}
+
+    # Quando cada corretora gravou a última conversa. Lido UMA vez, depois de
+    # saber QUAIS corretoras entram no ciclo — ver a nota em
+    # `_ultima_entrega_por_corretora` sobre por que a lista é obrigatória.
+    ultima_entrega = await _ultima_entrega_por_corretora(
+        db, empresas={str(l.get("company_id") or "") for l in linhas})
 
     for linha in linhas:
         resumo["verificados"] += 1
