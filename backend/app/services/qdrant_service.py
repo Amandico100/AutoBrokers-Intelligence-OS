@@ -352,6 +352,43 @@ class QdrantService:
             )
             return {}
 
+    def _filtro_de_seguradora(self, carrier_slug: Optional[str]):
+        """"Desta seguradora **OU** sem seguradora" — a regra que salva o RAG.
+
+        Devolve um `Filter` para entrar no `must`, ou `None` quando não há
+        seguradora no assunto (aí tudo responde, como sempre foi).
+
+        POR QUE OS DOIS BRAÇOS
+        ======================
+        📊 07/08/2026: das 12.071 cartas publicadas, **9.727 (80,6%) não têm
+        seguradora**. Não é falha de etiquetagem — é fato genérico de mercado, e
+        ele vale para qualquer companhia. Um filtro de um braço só
+        (`insurer_key = porto`) cortaria 80,6% do acervo e deixaria o agente
+        quase sem conhecimento: seria trocar "responde a seguradora errada" por
+        "não responde nada".
+
+        DEGRADAÇÃO SEGURA
+        =================
+        O braço "sem seguradora" precisa de `IsEmptyCondition`. Se a versão do
+        cliente não tiver, **o filtro inteiro é abandonado** em vez de virar um
+        filtro de um braço só. Abandonar volta ao comportamento antigo (ruim,
+        conhecido); manter um braço só criaria um comportamento novo e pior,
+        justamente na hora em que ninguém está olhando.
+        """
+        slug = (carrier_slug or "").strip().lower()
+        if not slug:
+            return None
+        if IsEmptyCondition is None or PayloadField is None:
+            logger.warning(
+                "[Qdrant] cliente sem IsEmptyCondition — filtro de seguradora "
+                "NÃO aplicado (as cartas genéricas não podem ser cortadas)"
+            )
+            return None
+        return Filter(should=[
+            FieldCondition(key="insurer_key", match=MatchValue(value=slug)),
+            IsEmptyCondition(is_empty=PayloadField(key="insurer_key")),
+        ])
+
     def search_similar(
         self,
         company_id: str,
@@ -365,6 +402,9 @@ class QdrantService:
         exclude_metadata_document_types: Optional[List[str]] = None,
         exclude_scopes: Optional[List[str]] = None,  # SPEC-044: ex. ['personal'] na busca padrão
         owner_user_id: Optional[str] = None,  # SPEC-044: docs pessoais SÓ do dono
+        # Seguradora do assunto. Ver `_filtro_de_seguradora` para a regra —
+        # "desta seguradora OU sem seguradora", nunca "só desta".
+        carrier_slug: Optional[str] = None,
         score_threshold: float = 0.0,
         sparse_embedding: Optional[Any] = None,
         collection_name: Optional[str] = None,
@@ -456,6 +496,27 @@ class QdrantService:
                 must_conditions.append(
                     FieldCondition(key="owner_user_id", match=MatchValue(value=str(owner_user_id)))
                 )
+
+            # 🔴 A REGRA DA SEGURADORA — "esta OU nenhuma", jamais "só esta".
+            #
+            # 📊 07/08/2026: 9.727 das 12.071 cartas publicadas (80,6%) NÃO têm
+            # seguradora, e isso está certo: são fato genérico de mercado
+            # ("vistoria complementar antes de liberar o complemento"). Elas
+            # respondem qualquer pergunta, de qualquer companhia.
+            #
+            # O que não podia continuar acontecendo é a carta da Allianz
+            # aparecer numa pergunta sobre a Porto. Sem filtro, as 608 da
+            # Allianz disputavam em igualdade com as 361 da Porto, e nada
+            # registrava a troca.
+            #
+            # Por isso o filtro é um `should` de dois braços dentro de um
+            # `must`: ou a carta é DESTA seguradora, ou ela não tem seguradora
+            # nenhuma. Um filtro `must` simples cortaria os 80,6% e o RAG
+            # perderia quase todo o conhecimento útil — seria trocar um defeito
+            # por outro pior.
+            filtro_seguradora = self._filtro_de_seguradora(carrier_slug)
+            if filtro_seguradora is not None:
+                must_conditions.append(filtro_seguradora)
 
             if must_conditions or should_conditions or must_not_conditions:
                 query_filter = Filter(

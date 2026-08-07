@@ -221,6 +221,31 @@ def _fechar_sessoes_vencidas_sync() -> int:
         return 0
 
 
+def _corretoras_excluidas() -> frozenset:
+    """Corretoras cujas conversas NÃO viram conhecimento. Ninguém, por padrão.
+
+    🔴 POR QUE ISTO EXISTE — 07/08/2026, decisão do Founder.
+
+    A Amandus Seguros é a corretora de TESTE. As conversas dela são ensaios,
+    respostas erradas de propósito e perguntas que ninguém faria — 📊 34.099
+    mensagens e 1.921 sessões que foram apagadas neste dia justamente por isso.
+
+    Apagar resolveu o passado. Sem esta lista, o futuro voltaria a poluir: a
+    linha continua pareada e capturando, e na próxima rodada o destilador
+    encontraria as conversas de teste na fila como se fossem trabalho real.
+
+    **Isto não desliga a captura.** A corretora de teste continua servindo para
+    testar, e o chat dela continua funcionando. O que ela deixa de fazer é
+    ensinar o RAG que todas as outras leem — porque conhecimento errado é pior
+    que conhecimento nenhum: ele não fica parado, ele responde.
+
+    Lista por variável de ambiente, `company_id` separados por vírgula, para
+    incluir ou tirar uma corretora sem deploy.
+    """
+    bruto = os.getenv("DESTILACAO_CORRETORAS_EXCLUIDAS", "") or ""
+    return frozenset(p.strip() for p in bruto.split(",") if p.strip())
+
+
 def _load_undistilled_sync(max_sessions: int) -> List[Dict[str, Any]]:
     """As próximas sessões a destilar, buscando ALÉM das já destiladas.
 
@@ -250,6 +275,7 @@ def _load_undistilled_sync(max_sessions: int) -> List[Dict[str, Any]]:
                 # conversas mais velhas para sempre no fim da fila.
                 .order("started_at", desc=False)
                 .range(inicio, inicio + 999).execute().data) or []
+        excluidas = _corretoras_excluidas()
         for r in lote:
             resumo = r.get("summary") or {}
             if resumo.get("distilled"):
@@ -258,6 +284,8 @@ def _load_undistilled_sync(max_sessions: int) -> List[Dict[str, Any]]:
             # em TODA rodada e cobra de novo pelo mesmo erro — foi assim que
             # 2.334 chamadas repetidas custaram US$ 15 em 28/07/2026.
             if int(resumo.get("distill_falhas") or 0) >= LIMITE_DE_FALHAS:
+                continue
+            if str(r.get("company_id") or "") in excluidas:
                 continue
             pendentes.append(r)
         if len(lote) < 1000:
@@ -474,8 +502,32 @@ def publish_card_sync(card: Dict[str, Any]) -> bool:
         metadata={"document_name": "Knowledge Card (Espelho de Atendimento)",
                   "source": "attendance_distiller", "chunk_type": "knowledge_card"},
         sparse_embeddings=sparse, collection_name=GLOBAL_COLLECTION, agent_id=None,
+        # 🔴 A CLASSIFICAÇÃO PRECISA CHEGAR AO ÍNDICE, NÃO SÓ AO BANCO.
+        #
+        # O sistema etiqueta as cartas muito bem — 📊 07/08/2026: `ramo` e
+        # `category` com ZERO nulos em 12.071 cartas publicadas, 20 seguradoras
+        # identificadas. E jogava tudo fora aqui: só `scope`, `curation_status`
+        # e `namespace` iam para o Qdrant.
+        #
+        # Sem `insurer_key` no payload não existe como filtrar na busca. A
+        # única defesa era o BM25 casar a palavra "porto" no prefixo do texto —
+        # probabilístico, não filtro. 📊 As 608 cartas da Allianz disputavam em
+        # igualdade qualquer pergunta sobre a Porto, e nada registrava a troca.
+        #
+        # O Founder disse a frase que descreve o defeito antes de ele ser
+        # achado: *"regras da Porto podem não servir para Bradesco ou HDI"*.
+        # A etiqueta existia; faltava ela viajar junto.
         knowledge_extras={"scope": SCOPE_GLOBAL_AUTOBROKERS, "curation_status": "published",
-                          "namespace": "cards"},
+                          "namespace": "cards",
+                          # `insurer_key` ausente = fato GENÉRICO de mercado, e
+                          # isso é 📊 80,6% do acervo. Ele não vira string vazia
+                          # de propósito: a busca precisa distinguir "sem
+                          # seguradora" de "seguradora desconhecida".
+                          **({"insurer_key": card["insurer_key"]}
+                             if card.get("insurer_key") else {}),
+                          **({"ramo": card["ramo"]} if card.get("ramo") else {}),
+                          **({"card_category": card["category"]}
+                             if card.get("category") else {})},
     ))
 
 
@@ -538,13 +590,44 @@ def _grupos_sem_playbook_sync(limite: int) -> List[Tuple[str, str]]:
 
     db = get_supabase_client()
     try:
-        existentes = {(r.get("ramo"), r.get("servico")) for r in
-                      (db.client.table("conduct_playbooks").select("ramo, servico")
-                       .execute().data or [])}
+        # 🔴 O QUE DESTRAVA A VERSÃO 2 É MATERIAL NOVO — não a ausência de
+        # playbook, e não o status dele.
+        #
+        # A regra era: existe playbook nesse par? então nunca mais sintetize.
+        # 📊 07/08/2026, o preço disso: `auto/sinistro` foi escrito com **30
+        # conversas** e existem **1.405** destiladas. Ele usa 2,1% do material e
+        # nunca usaria mais. O `playbook_gate` tem versão, juiz que não deixa
+        # regredir e rollback — faltava alguém **gerar a versão 2**.
+        #
+        # A primeira tentativa de conserto foi "só ATIVO bloqueia". Um teste
+        # existente reprovou na hora, e com razão: um rascunho que ninguém
+        # aprova faria o grupo ser re-sintetizado a CADA RODADA, no modelo mais
+        # caro, para sempre. Trocaria conhecimento congelado por dinheiro
+        # queimado.
+        #
+        # A regra certa não é sobre status, é sobre APRENDIZADO DISPONÍVEL:
+        # o grupo volta para a fila quando chegou material suficiente **depois**
+        # do último playbook. Enquanto não chegou, não há o que aprender de
+        # novo, e refazer seria pagar para reescrever a mesma coisa.
+        ultimo_playbook: Dict[Tuple[str, str], str] = {}
+        for r in (db.client.table("conduct_playbooks")
+                  .select("ramo, servico, created_at")
+                  .order("created_at", desc=True)
+                  .limit(1000).execute().data or []):
+            chave = (r.get("ramo"), r.get("servico"))
+            # Ordenado do mais novo para o mais antigo: o primeiro de cada par
+            # é o mais recente, qualquer que seja o status dele.
+            ultimo_playbook.setdefault(chave, str(r.get("created_at") or ""))
+
+        minimo_para_refazer = _env_int("DISTILLER_PLAYBOOK_REFRESH_MIN", 25)
+
+        # Conta, por grupo, o material TOTAL e o que chegou depois do playbook.
         contagem: Dict[Tuple[str, str], int] = {}
+        novas_desde: Dict[Tuple[str, str], int] = {}
         inicio = 0
         while inicio < 20000:
-            lote = (db.client.table("attendance_sessions").select("summary")
+            lote = (db.client.table("attendance_sessions")
+                    .select("summary, started_at")
                     .eq("status", "closed")
                     .range(inicio, inicio + 999).execute().data) or []
             for r in lote:
@@ -552,12 +635,28 @@ def _grupos_sem_playbook_sync(limite: int) -> List[Tuple[str, str]]:
                 ramo, servico = str(d.get("ramo") or ""), str(d.get("servico") or "")
                 if not ramo or servico in ("", "outro"):
                     continue
-                contagem[(ramo, servico)] = contagem.get((ramo, servico), 0) + 1
+                chave = (ramo, servico)
+                contagem[chave] = contagem.get(chave, 0) + 1
+                marco = ultimo_playbook.get(chave)
+                # `distilled.at` é quando o FATO foi extraído; é ele que diz se
+                # o material é novo para o playbook, não quando a conversa
+                # aconteceu — o pareamento traz passado.
+                quando = str(d.get("at") or r.get("started_at") or "")
+                if marco and quando > marco:
+                    novas_desde[chave] = novas_desde.get(chave, 0) + 1
             if len(lote) < 1000:
                 break
             inicio += 1000
+
+        def _entra(grupo: Tuple[str, str], total: int) -> bool:
+            if total < _MIN_SESSIONS_DEFAULT:
+                return False
+            if grupo not in ultimo_playbook:
+                return True                      # nunca teve playbook
+            return novas_desde.get(grupo, 0) >= minimo_para_refazer
+
         faltando = [g for g, n in sorted(contagem.items(), key=lambda x: -x[1])
-                    if g not in existentes and n >= _MIN_SESSIONS_DEFAULT]
+                    if _entra(g, n)]
         return faltando[:limite]
     except Exception as e:  # noqa: BLE001
         logger.warning("[DESTILADOR] varredura de grupos falhou: %s", type(e).__name__)
@@ -656,8 +755,27 @@ async def distill_once(force: bool = False, *, atrasado: bool = False) -> Dict[s
     #      resumo, gravar cards);
     #   3. custo concentrado: paralelizar nao gasta mais, gasta ANTES — e um
     #      erro sistematico queimaria o saldo mais rapido do que alguem nota.
-    teto = _env_int("DISTILLER_CONCURRENCY", 6)
-    vagas = asyncio.Semaphore(teto)
+    # 🔴 ESTA VARIÁVEL NÃO PODE SE CHAMAR `teto`.
+    #
+    # Ela se chamava. E como `teto` já guardava o TETO DE GASTO desde a linha
+    # 622, esta atribuição o apagava — sem erro, sem aviso. Lá embaixo,
+    # `min(teto, DISTILLER_PLAYBOOKS_PER_RUN)` deixava de ser `min(0, 3) = 0` e
+    # virava `min(6, 3) = 3`.
+    #
+    # 📊 Medido em produção, 05/08/2026, com linha de controle — a mesma rodada:
+    #
+    #     estágio 1 (Sonnet, barato)   0 sessões destiladas   ← teto obedecido
+    #     estágio 2 (Opus 5, caro)     2 playbooks gerados    ← teto furado
+    #
+    # O freio de gasto travava o cano estreito e deixava o largo aberto: o
+    # modelo MAIS CARO do sistema seguia rodando com o freio puxado, três vezes
+    # por rodada, a cada 30 minutos. É exatamente o risco que o docstring de
+    # `_teto_de_gasto()` diz ter fechado — "a trava vazaria justamente pelo cano
+    # mais largo, e em silêncio".
+    #
+    # Nome próprio, e o teto de gasto sobrevive à sua própria função.
+    concorrencia = _env_int("DISTILLER_CONCURRENCY", 6)
+    vagas = asyncio.Semaphore(concorrencia)
     trava_stats = asyncio.Lock()
 
     async def _uma_sessao(sess: Dict[str, Any]) -> None:
@@ -678,7 +796,10 @@ async def distill_once(force: bool = False, *, atrasado: bool = False) -> Dict[s
     # os grupos de uma vez. Com teto, eles saem aos poucos e o custo por
     # rodada e previsivel.
     # O playbook é a chamada mais cara do sistema (modelo forte, resposta
-    # longa). Com o teto em 0 nenhum é sintetizado — `grupos[:0]` é vazio.
+    # longa). Com o teto de GASTO em 0 nenhum é sintetizado — `grupos[:0]` é
+    # vazio. Isto voltou a ser verdade quando a concorrência ganhou nome
+    # próprio: por oito dias o comentário afirmou isto e o código fazia o
+    # contrário (ver a nota acima).
     por_rodada = min(teto, _env_int("DISTILLER_PLAYBOOKS_PER_RUN", 3))
     grupos = list(touched_groups.keys())
     for g in _grupos_sem_playbook_sync(por_rodada):

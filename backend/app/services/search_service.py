@@ -456,15 +456,25 @@ class SearchService:
         # pelo seed automático (global_knowledge_seed). Desligável via env =0.
         if include_global or _os.getenv("KNOWLEDGE_GLOBAL_SEARCH", "1").strip() == "1":
             try:
-                from .knowledge_scope import build_global_search_kwargs, merge_rag_results
+                from .knowledge_scope import (
+                    build_global_search_kwargs,
+                    merge_rag_results,
+                    seguradora_da_pergunta,
+                )
 
+                # A pergunta diz de qual companhia se trata? Então a regra de
+                # OUTRA companhia não pode responder por ela. Ver
+                # `_filtro_de_seguradora`: "desta OU sem seguradora", nunca "só
+                # desta" — 📊 80,6% das cartas são fato genérico de mercado e
+                # continuam respondendo tudo.
+                da_pergunta = seguradora_da_pergunta(original_query)
                 global_results = self.qdrant.search_similar(
                     company_id=company_id,
                     query_embedding=dense_vector,
                     sparse_embedding=sparse_vector,
                     top_k=20,
                     score_threshold=0.0,
-                    **build_global_search_kwargs(),
+                    **build_global_search_kwargs(carrier_slug=da_pergunta),
                 )
                 initial_results = merge_rag_results(initial_results, global_results)
             except Exception as e:  # noqa: BLE001

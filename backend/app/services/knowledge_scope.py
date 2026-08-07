@@ -96,6 +96,51 @@ def build_personal_search_kwargs(user_id: str) -> Dict[str, Any]:
     }
 
 
+def seguradora_da_pergunta(texto: str) -> Optional[str]:
+    """De qual seguradora esta pergunta fala? `None` quando não fala de nenhuma.
+
+    🔴 REUSA O DICIONÁRIO QUE JÁ EXISTE — de propósito.
+    ==================================================
+    `corridor_playbooks._INSURER_ALIASES` é a única lista de apelidos de
+    seguradora do sistema, e `normalize_insurer_key` é a única tradução. Um
+    segundo dicionário aqui daria, no dia em que alguém acrescentasse uma
+    companhia num só deles, uma pergunta reconhecida na indexação e ignorada na
+    busca — o pior tipo de divergência, porque não dá erro.
+
+    `None` é resposta comum e correta: *"como funciona vistoria complementar?"*
+    não fala de companhia nenhuma, e aí TODA carta responde, como sempre foi.
+
+    Conservador por escolha: na dúvida, devolve `None`. Errar para "não filtrar"
+    devolve o comportamento antigo; errar para "filtrar pela companhia errada"
+    esconde a resposta certa e o agente responde com a carta de outra.
+    """
+    alvo = str(texto or "").strip().lower()
+    if not alvo:
+        return None
+    try:
+        from app.services.corridor_playbooks import _INSURER_ALIASES
+    except Exception:  # noqa: BLE001 — sem o dicionário, não filtra
+        return None
+
+    achadas = set()
+    for apelido, chave in _INSURER_ALIASES.items():
+        apelido = str(apelido or "").strip().lower()
+        # Apelido curto ("azul", "alfa") precisa de fronteira de palavra, senão
+        # "azulejo" viraria a seguradora Azul e a pergunta sobre vidro
+        # residencial passaria a ser filtrada por uma companhia de auto.
+        if len(apelido) < 6:
+            import re as _re
+            if _re.search(rf"\b{_re.escape(apelido)}\b", alvo):
+                achadas.add(chave)
+        elif apelido in alvo:
+            achadas.add(chave)
+
+    # Duas companhias na mesma pergunta ("a Porto cobre como a HDI?") é
+    # comparação: filtrar por uma esconderia a outra. Sem filtro, as duas
+    # respondem — que é o que a pergunta pede.
+    return achadas.pop() if len(achadas) == 1 else None
+
+
 def build_global_search_kwargs(
     namespace: Optional[str] = None,
     version: Optional[str] = None,
@@ -104,15 +149,31 @@ def build_global_search_kwargs(
     """
     kwargs para buscar conhecimento GLOBAL via QdrantService.search_similar.
     Coleção global dedicada, sem agent_id, somente curadoria publicada.
-    (namespace/version/carrier reservados para filtragem fina no 41C.2C.)
+
+    🔴 `carrier_slug` ERA ACEITO E JOGADO FORA.
+    ==========================================
+    Por muito tempo esta função declarou os três parâmetros e devolveu um dict
+    sem nenhum deles — o docstring dizia *"reservados para filtragem fina"*, e
+    quem lia a assinatura concluía que a filtragem existia.
+
+    O preço, medido em 07/08/2026: as cartas guardam `insurer_key` com 📊 zero
+    nulos em `ramo` e `category`, e a busca não usava nada disso. Uma pergunta
+    sobre a Porto podia ser respondida com a regra da Allianz — 608 cartas
+    dela disputando com 361 da Porto, sem nada registrar a troca.
+
+    Agora `carrier_slug` viaja. `namespace` e `version` continuam reservados, e
+    isso está dito aqui em vez de prometido na assinatura.
     """
-    return {
+    kwargs = {
         "collection_name": GLOBAL_COLLECTION,
         "agent_id": None,
         "include_tenant_wide": False,
         "scope_match": list(GLOBAL_SCOPES),
         "curation_published_only": True,
     }
+    if (carrier_slug or "").strip():
+        kwargs["carrier_slug"] = str(carrier_slug).strip().lower()
+    return kwargs
 
 
 def merge_rag_results(

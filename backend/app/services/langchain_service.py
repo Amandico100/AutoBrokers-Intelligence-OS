@@ -644,14 +644,21 @@ class LangChainService:
                 score_threshold=score_threshold,
             )
             if include_global:
-                from .knowledge_scope import build_global_search_kwargs, merge_rag_results
+                from .knowledge_scope import (
+                    build_global_search_kwargs,
+                    merge_rag_results,
+                    seguradora_da_pergunta,
+                )
 
+                # Mesma regra do `search_service`: pergunta que nomeia UMA
+                # companhia nao pode ser respondida pela regra de outra.
                 global_results = self.qdrant.search_similar(
                     company_id=company_id,
                     query_embedding=query_embedding,
                     top_k=top_k,
                     score_threshold=score_threshold,
-                    **build_global_search_kwargs(),
+                    **build_global_search_kwargs(
+                        carrier_slug=seguradora_da_pergunta(query)),
                 )
                 results = merge_rag_results(results, global_results)
             return results

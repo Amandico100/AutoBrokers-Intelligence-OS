@@ -375,8 +375,28 @@ def run():
     faltando = dist._grupos_sem_playbook_sync(5)
     check("varredura acha grupo com material e sem playbook",
           isinstance(faltando, list), faltando)
-    check("e nao devolve o grupo que ja tem playbook",
-          ("auto", "guincho") not in faltando, faltando)
+    # 🔴 O FATO MUDOU EM 07/08/2026, E A LIÇÃO MIGROU COM ELE (CLAUDE.md §9.3).
+    #
+    # Antes: QUALQUER playbook naquele par bloqueava a síntese para sempre —
+    # inclusive um rascunho que ninguém aprovou. 📊 `auto/sinistro` ficou preso
+    # em 30 conversas enquanto 1.405 eram destiladas: 2,1% do material, e nunca
+    # mais. Não era o agente que piorava; era o agente que não podia melhorar.
+    #
+    # Agora só playbook **ativo** bloqueia. O guarda continua existindo — o que
+    # ele guarda é outra coisa: que a rodada não reescreva de graça, no modelo
+    # mais caro, um playbook que já está valendo.
+    #
+    # O playbook recém-sintetizado nasce `draft`, então o grupo VOLTA a ser
+    # candidato — é exatamente isso que destrava a versão 2.
+    check("grupo que acabou de ganhar playbook NAO volta na mesma rodada",
+          ("auto", "guincho") not in faltando,
+          "sem material novo nao ha o que aprender; refazer seria pagar para "
+          "reescrever a mesma coisa no modelo mais caro")
+    fonte_refresh = (ROOT / "app/services/attendance_distiller.py").read_text(encoding="utf-8")
+    check("e a porta da versao 2 existe, medida em material novo",
+          "DISTILLER_PLAYBOOK_REFRESH_MIN" in fonte_refresh
+          and "novas_desde" in fonte_refresh,
+          "quando chegar material suficiente DEPOIS do playbook, o grupo volta")
 
     # E o custo por rodada tem teto: cada playbook e uma chamada ao modelo mais
     # caro, e sem teto a primeira rodada tentaria sintetizar todos de uma vez.
