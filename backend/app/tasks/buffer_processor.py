@@ -195,6 +195,30 @@ def start_buffer_scheduler():
             max_instances=1,
         )
 
+        # SPEC-063 — HIGIENE E PROMOÇÃO DO MAPA DE URA.
+        #
+        # 📊 07/08/2026: zero mapas `active`, e por isso a Sentinela acima saía
+        # na terceira linha, `route_drift` = 0, `playbook_overlays` = 0 e o
+        # alerta de mudança de menu nunca chegou ao Founder. Três subsistemas
+        # prontos e inalcançáveis por um `status`.
+        #
+        # Promover à mão resolveria — e teria publicado 115 nomes de segurado e
+        # 24 marcas de corretora no acervo global. Por isso limpar é
+        # pré-condição de promover, e as duas coisas rodam juntas aqui em vez de
+        # depender de alguém lembrar a ordem.
+        #
+        # De hora em hora: é idempotente e não chama modelo nenhum (regex e
+        # escrita). Custo por rodada sem trabalho: uma consulta.
+        from app.services.ura_map_service import higienizar_e_promover
+
+        scheduler.add_job(
+            higienizar_e_promover,
+            "interval",
+            seconds=_env_int("URA_HIGIENE_SECONDS", 3600),
+            id="ura_higiene_e_promocao",
+            max_instances=1,
+        )
+
         # SPEC-051: mídias do Observador nunca bloqueiam o webhook. Um lote
         # pequeno é enriquecido separadamente e armazenado apenas em cofre.
         from app.services.atlas.observer_media import observer_media_check

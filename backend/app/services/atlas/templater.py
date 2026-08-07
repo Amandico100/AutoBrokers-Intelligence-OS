@@ -127,8 +127,106 @@ NOME_NA_SAUDACAO = re.compile(
     r"para|qual|como|quando|onde|quem|seja|bem|vamos|antes|agora|ainda|caso|"
     r"este|esta|esse|essa|isso|nossa|nosso|obrigad|tudo|aqui|sou|somos|"
     r"estamos|precisa|poderia|favor|por|deseja|voc[êe]|segue|falta|basta|"
-    r"de|da|do|ao|à|a|o|senhor|senhora|novamente|cliente|segurad)\b)"
+    r"de|da|do|ao|à|a|o|senhor|senhora|novamente|cliente|segurad|"
+    # 07/08/2026 — "Oi! Assistente virtual" virava "Oi! {NOME} virtual".
+    # A URA se apresentando é a coisa MAIS comum depois de uma saudação, e
+    # mascarar a apresentação apaga a identidade da tela, que é justamente o
+    # conhecimento que o Atlas existe para guardar. Achado ao calibrar o
+    # vocativo: o caso reprovou e o padrão culpado era este, não o novo.
+    r"assistente|atendente|consultor|especialista|virtual|rob[oô]|bot)\b)"
     r"(?-i:([A-ZÀ-Ú][a-zà-ú]{2,}(?:" + _H + r"+[A-ZÀ-Ú][a-zà-ú]{2,})?))")
+
+# NOME NO VOCATIVO, FORA DA SAUDAÇÃO — 07/08/2026.
+#
+# 📊 O que `NOME_NA_SAUDACAO` não alcança, medido nos 10 mapas de produção:
+# **115 nós** com nome próprio solto, 95 deles só na Porto. O formato é este:
+#
+#     Oi, sou assistente virtual da Porto Seguro 👋
+#
+#     Fulano, estou aqui para ajudar você
+#
+# A saudação está na PRIMEIRA linha e o nome na TERCEIRA. `NOME_NA_SAUDACAO`
+# exige que o nome venha colado na saudação, então ele passa direto.
+#
+# 📊 O que vem depois do nome, medido no acervo da Porto: "estou aqui" (44),
+# "a vistoria" (20), "os reparos" (11), "você optou" (4). **Não há pronome
+# consistente** — a tentativa de exigir "você/sua/seu" pegava só 7 dos 95.
+#
+# TRÊS TRAVAS, e cada uma existe por um falso positivo que eu produzi
+# -------------------------------------------------------------------
+# 1. **Não é palavra comum.** Sem a lista, `Digite, por favor`, `Guincho,
+#    reboque`, `Pronto, sua solicitação` e `Florianópolis, SC` viravam `{NOME}`.
+#    Apagar a instrução do menu é perder exatamente o conhecimento que este
+#    mascarador existe para preservar.
+# 2. **Não é a personagem da URA.** `Marina, assistente virtual da Tokio
+#    Marine` e `Maitê, assistente virtual da MAPFRE` são o PERSONAGEM da
+#    seguradora, não uma pessoa. Mascará-los quebraria a identidade da tela.
+# 3. **É uma frase, não item de lista.** Exigir letra minúscula e ao menos três
+#    palavras depois da vírgula separa `Fulano, estou aqui para ajudar` de
+#    `Auto, Residencial ou Vida`.
+_NAO_E_NOME_PROPRIO = (
+    r"pronto|prontinho|certo|otimo|ótimo|perfeito|obrigad\w*|desculp\w*|"
+    r"digite|informe|escolha|selecione|envie|clique|aguarde|responda|confirmad\w*|"
+    r"atencao|atenção|ola|olá|oi|entao|então|bom|boa|sim|nao|não|ok|claro|"
+    r"guincho|reboque|bateria|pneu|chaveiro|vidros|sinistro|assistencia|assistência|"
+    r"auto|residencial|vida|empresarial|veiculo|veículo|apolice|apólice|taxi|táxi|"
+    r"florian\w*|s[ãa]o|rio|belo|santa|santo|nova|novo|brasil|centro|"
+    r"segur\w*|client\w*|corretor\w*|titular|condutor|prezad\w*|senhor\w*"
+)
+# Depois da vírgula: se vier isto, quem falou foi a URA se apresentando.
+_APRESENTACAO_DA_URA = (
+    r"assistente|sou|atendente|consultor|especialista|virtual|bot|"
+    r"aqui esta|aqui está|tudo bem|como vai|obrigad"
+)
+# A QUARTA TRAVA, e é a que sustenta as outras três: **a URA tem de ter se
+# apresentado antes**.
+#
+# 🔴 Sem ela, este mascarador come português. Um teste que já existia
+# (`test_a_conversa_com_a_seguradora_nao_vaza_gente`) reprovou o conserto e
+# mostrou três frases reais que eu estava destruindo:
+#
+#     "Roubo, furto e incêndio têm franquia própria"   → "Roubo" virava {NOME}
+#     "Agora, me informe o CEP do local"               → "Agora" virava {NOME}
+#     "Elogios, reclamações e informações de como…"    → "Elogios" virava {NOME}
+#
+# Nenhuma lista de palavras cobre o português inteiro. A trava certa não é
+# lexical, é ESTRUTURAL: o nome do segurado só aparece depois que a URA se
+# apresentou, porque é a apresentação que estabelece a quem ela fala.
+#
+# 📊 Medido nos 10 mapas: das 95 telas da Porto com nome solto, **84 (88%)**
+# começam com saudação ou apresentação. E as três frases acima não têm nenhuma
+# das duas — a trava separa exatamente onde precisa.
+_URA_SE_APRESENTOU = (
+    r"[^\n]*(?:\bol[áa]\b|\boi\b|bom dia|boa tarde|boa noite|prezad|"
+    r"assistente|sou a |sou o |atendimento virtual|atendimento digital)"
+    r"[^\n]*\n[\s]*"
+)
+NOME_NO_VOCATIVO = re.compile(
+    r"(?im)\A((?:" + _URA_SE_APRESENTOU + r")+)"
+    r"(?!(?:" + _NAO_E_NOME_PROPRIO + r")\b)"
+    r"(?-i:[A-ZÀ-Ú][a-zà-ú]{2,15})"
+    r"(,[ \t]+)"
+    r"(?!(?:" + _APRESENTACAO_DA_URA + r")\b)"
+    r"(?=[a-zà-ú]\S*[ ]\S+[ ]\S+)"
+)
+
+# ASSINATURA DE ATENDENTE — `Fulana - Autofleet Seguros`.
+#
+# 📊 24 nós em 3 mapas (hdi 10, yelum 8, tokio 6). A URA da Tokio Marine é
+# white-label por corretora e ECOA a marca de volta — a raiz do mapa `tokio`
+# literalmente estampa o nome de uma corretora.
+#
+# Promover esse mapa a "ativo" publicaria a marca de um cliente dentro do
+# conhecimento que os outros consomem (CLAUDE.md §7). A estrutura da URA se
+# preserva; a identidade some.
+#
+# O `\{NOME\}` na alternativa é necessário: em vários nós a saudação JÁ
+# mascarou o nome, e sobrou `{NOME} - Autofleet Seguros`.
+ASSINATURA_DE_CORRETORA = re.compile(
+    r"(?:\{NOME\}|(?-i:[A-ZÀ-Ú][a-zà-ú]{2,15}))"
+    r"[ \t]*-[ \t]*"
+    r"(?-i:[A-ZÀ-Ú][A-Za-zà-ú]{2,15})[ \t]+Seguros\b"
+)
 
 # LOGRADOURO EM PROSA — 06/08/2026, achado no acervo das seguradoras.
 #
@@ -282,6 +380,13 @@ _PII_PATTERNS: List[Tuple[re.Pattern, str]] = [
     # com nome, porque `mascarar.transcript_seguradora` também a lê. O porquê
     # de cada pedaço dela está lá em cima, junto do padrão.
     (NOME_NA_SAUDACAO, r"\1\2{NOME}"),
+    # ASSINATURA antes do VOCATIVO: `Fulana - Autofleet Seguros` tem de virar
+    # `{NOME} - {CORRETORA}` inteira. Se o vocativo passasse primeiro, sobraria
+    # a marca da corretora solta, que é justamente o que não pode ficar.
+    (ASSINATURA_DE_CORRETORA, "{NOME} - {CORRETORA}"),
+    # NOME NO VOCATIVO, fora da saudação — a regra está definida acima, com as
+    # três travas e o porquê de cada uma.
+    (NOME_NO_VOCATIVO, r"\1{NOME}\2"),
     # NOME DEPOIS DE TRATAMENTO — 06/08/2026. "Sr. Gustavo", "Sra. Magda",
     # "Dr. Mário". É a forma que sobra depois que a saudação e o vocativo são
     # tratados: 📊 4 ocorrências nas 319 sessões de seguradora, e é a mais

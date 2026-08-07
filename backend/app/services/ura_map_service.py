@@ -26,7 +26,7 @@ import hashlib
 import logging
 import re
 import unicodedata
-from typing import Any, Dict, List, Optional
+from typing import Any, Dict, List, Optional, Tuple
 
 logger = logging.getLogger(__name__)
 
@@ -250,3 +250,122 @@ async def activate_map(map_id: str) -> bool:
     except Exception as e:  # noqa: BLE001
         logger.warning(f"[URA_MAP] activate falhou: {type(e).__name__}")
         return False
+
+
+# ===========================================================================
+# HIGIENE E PROMOÇÃO — SPEC-063, 07/08/2026
+# ===========================================================================
+# 📊 Zero mapas `active` em produção. Consequência medida, em cadeia:
+# `route_sentinel.check_insurer` sai na terceira linha (`if not active: return
+# None`), `route_drift` = 0 registros, `playbook_overlays` = 0, e o alerta
+# "a seguradora mudou o menu" nunca chega ao Founder. Três subsistemas
+# construídos, testados e inalcançáveis por causa de um `status`.
+#
+# Promover à mão resolveria — e foi o que quase fizemos. O que impediu: 📊 115
+# nós carregam nome próprio de segurado e 24 carregam marca de corretora. O
+# mapa é GLOBAL: promovê-lo assim publicaria o nome de um cliente e a marca de
+# uma corretora dentro do conhecimento que as outras leem (CLAUDE.md §7).
+#
+# Por isso as duas coisas moram juntas: **limpar é pré-condição de promover**,
+# e a ordem está no código em vez de estar na cabeça de quem clica.
+_MAX_MARCA_PARA_PROMOVER = 0
+
+
+def _renomear_nos_sync(mapa: Dict[str, Any]) -> Tuple[Dict[str, Any], int]:
+    """Reaplica o mascarador de produção sobre os nós JÁ gravados.
+
+    Usa `templatize`, o mesmo do caminho de captura — não uma segunda regra.
+    Uma cópia aqui divergiria da original no dia em que uma das duas fosse
+    corrigida, e a divergência apareceria como PII vazando de um lado só.
+    """
+    from app.services.atlas.templater import templatize
+
+    nos = (mapa or {}).get("nodes") or {}
+    if not isinstance(nos, dict):
+        return mapa, 0
+
+    tocados = 0
+    novos: Dict[str, Any] = {}
+    for chave, no in nos.items():
+        if not isinstance(no, dict):
+            novos[chave] = no
+            continue
+        texto = no.get("text")
+        if isinstance(texto, str) and texto:
+            limpo = templatize(texto)
+            if limpo != texto:
+                no = {**no, "text": limpo}
+                tocados += 1
+        novos[chave] = no
+    return {**(mapa or {}), "nodes": novos}, tocados
+
+
+def _tem_marca_de_corretora(mapa: Dict[str, Any]) -> int:
+    """Quantos nós ainda nomeiam uma corretora. Promover com isto é vazamento."""
+    import re as _re
+
+    padrao = _re.compile(r"\b(autofleet|resulta\s+seguros|amandus)\b", _re.IGNORECASE)
+    nos = (mapa or {}).get("nodes") or {}
+    if not isinstance(nos, dict):
+        return 0
+    return sum(1 for no in nos.values()
+               if isinstance(no, dict) and padrao.search(str(no.get("text") or "")))
+
+
+async def higienizar_e_promover(*, aplicar: bool = True) -> Dict[str, Any]:
+    """Remascara os mapas observados e promove os que ficarem limpos.
+
+    Idempotente: rodar de novo não muda nada num mapa já limpo, e não repromove
+    o que já está ativo. Pode viver no agendador sem custo — não chama modelo
+    nenhum, é só regex e escrita.
+
+    ⚠️ **Nunca promove mapa com marca de corretora.** Se sobrar uma, o mapa
+    continua `observed` e o relatório diz quantas — é melhor uma seguradora
+    ficar de fora da Sentinela do que a marca de um cliente entrar no acervo
+    que os outros leem.
+    """
+    from app.core.database import get_supabase_client
+
+    db = get_supabase_client()
+    resumo: Dict[str, Any] = {"lidos": 0, "limpos": 0, "nos_mascarados": 0,
+                              "promovidos": 0, "barrados_por_marca": [],
+                              "aplicado": aplicar}
+    try:
+        linhas = await asyncio.to_thread(
+            lambda: db.client.table("ura_maps")
+            .select("id, insurer_key, ramo, map, status")
+            .eq("status", "observed").limit(200).execute().data or [])
+    except Exception as erro:  # noqa: BLE001
+        logger.warning("[URA_MAP] higiene não leu os mapas (%s)", type(erro).__name__)
+        return {**resumo, "ok": False, "motivo": type(erro).__name__}
+
+    for linha in linhas:
+        resumo["lidos"] += 1
+        mapa, tocados = _renomear_nos_sync(linha.get("map") or {})
+        marcas = _tem_marca_de_corretora(mapa)
+
+        if tocados and aplicar:
+            try:
+                await asyncio.to_thread(
+                    lambda m=mapa, i=linha["id"]: db.client.table("ura_maps")
+                    .update({"map": m}).eq("id", i).execute())
+            except Exception as erro:  # noqa: BLE001
+                logger.warning("[URA_MAP] não gravei a higiene de %s (%s)",
+                               linha.get("insurer_key"), type(erro).__name__)
+                continue
+        resumo["nos_mascarados"] += tocados
+
+        if marcas > _MAX_MARCA_PARA_PROMOVER:
+            resumo["barrados_por_marca"].append(
+                {"seguradora": linha.get("insurer_key"), "nos_com_marca": marcas})
+            continue
+
+        resumo["limpos"] += 1
+        if aplicar and await activate_map(str(linha["id"])):
+            resumo["promovidos"] += 1
+
+    logger.info("[URA_MAP] higiene: %s lidos, %s nós mascarados, %s promovidos, "
+                "%s barrados por marca de corretora",
+                resumo["lidos"], resumo["nos_mascarados"], resumo["promovidos"],
+                len(resumo["barrados_por_marca"]))
+    return {**resumo, "ok": True}
