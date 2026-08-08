@@ -1613,21 +1613,57 @@ expira por volta de **27/10** (retenção de 90 dias).
 
 ---
 
-## P-98 · 🧑 O Firecrawl está sem crédito — e 23 documentos estão presos há 8 dias
+## P-98 · ✅ Os 23 documentos destravaram — mas o buraco do varredor continua
 
-📊 Medido em 05/08/2026, `normative_documents`:
+> **📊 Reconferido em 07/08/2026, e o número mudou para melhor.** Deixar o texto
+> antigo mandaria o próximo leitor caçar um problema resolvido — e o pior tipo
+> de pendência é a que já foi feita e ninguém apagou.
 
 ```
-status         n    com processo SUSEP   com data de inicio   com data de FIM
-─────────────────────────────────────────────────────────────────────────────
-fetching      23           21                   17                  0     🔴
-ingested       8            7                    3                  0
-discovered     4            1                    2                  0
+                     05/08/2026        07/08/2026
+fetching                 23      🔴         0      ✅
+ingested                  8                29   (11.409 chunks)
+discovered                4                 6
+                                    última mudança: 06/08
 ```
 
-Os 23 pararam em **26/07 02:02**, todos com `fetch_error = 'HTTP 402'` — que é
-**pagamento exigido**, não defeito. O crédito do Firecrawl acabou no meio da
-ingestão do corpus normativo.
+**O crédito voltou e a ingestão andou sozinha.** 📊 São hoje 29 documentos
+indexados — 25 de condições gerais, 5 de manual do segurado, 5 de circular
+SUSEP, cobrindo auto, residencial, vida, empresarial, condomínio e
+responsabilidade civil, de 8 seguradoras.
+
+### 🔴 O que NÃO se resolveu, e é o que valia a entrada
+
+O buraco do varredor continua aberto — ele só não está machucando **agora**:
+
+📊 `insurance_corpus.py:654-660` — a função `vencidos()`, que é a **única** que
+reencontra trabalho pendente, procura documentos em `('ingested', 'discovered',
+'unreachable')`. **`fetching` não está na lista.**
+
+`ingerir()` marca `fetching` **antes** de sair para a rede. Se a chamada falha,
+o documento fica nesse estado transitório **para sempre** — aprovado pela
+curadoria, invisível para o varredor, e sem nenhum alarme. Da próxima vez que o
+crédito acabar (e ele já acabou uma vez), acontece de novo, igual.
+
+> É a mesma lição que este repositório já aprendeu duas vezes — na reconciliação
+> de acionamento órfão e no vigia de handoff: **um estado que só é observado
+> quando nasce não é observado.**
+
+### 🟠 E uma anomalia nova, ainda não explicada
+
+📊 Dos 6 documentos em `discovered`, **quatro nunca foram conferidos**
+(`last_checked_at` nulo) e têm `next_check_at = 2026-07-25` — vencidos há 13
+dias. `vencidos()` ordena por `next_check_at` crescente, então eles deveriam ser
+os **primeiros** da fila, não os últimos.
+
+💭 Duas hipóteses, nenhuma medida: ou o varredor não roda de fato em produção
+(o portão `smith_worker.py:223` desiste sem `FIRECRAWL_API_KEY` **no worker**),
+ou existe caminho que consome o documento sem gravar `last_checked_at`. Os
+outros 2 têm erro de origem (HTTP 408 e 500 na Bradesco), que não é nosso.
+
+**O que destrava:** 🤖 o varredor de órfãos — não precisa de saldo nem de
+decisão. E 🤖 medir qual das duas hipóteses acima é a certa, antes de consertar
+a errada.
 
 ### O agravante que ninguém veria
 
@@ -1643,19 +1679,16 @@ curadoria, invisível para o varredor, e sem nenhum alarme.
 > de acionamento órfão e no vigia de handoff: **um estado que só é observado
 > quando nasce não é observado.**
 
-**O que destrava:** 🧑 crédito no Firecrawl.
-**O que NÃO espera pelo crédito:** 🤖 o varredor de órfãos. Ele não precisa de
-saldo para existir — precisa existir para que, no dia em que o saldo voltar, os
-23 sejam reencontrados sozinhos em vez de esperarem alguém lembrar deles.
-
 **O que custa esquecer:** o corpus normativo é a base para responder cobertura
-pelo contrato, e não pela prática. Sem ele, o agente continua respondendo
-"normalmente é coberto" onde poderia citar a cláusula, a versão e a data.
+pelo contrato, e não pela prática. Ele agora EXISTE — 📊 11.409 trechos
+indexados. O agente continuar dizendo "normalmente é coberto" deixou de ser
+falta de acervo e passou a ser falta de ligar o acervo ao atendimento.
 
-⚠️ **Cuidado ao destravar:** mover os 23 de volta para um estado varrido faz o
-sistema tentar de novo — e, sem crédito, produzir 23 novas falhas por rodada.
-A saída correta é um estado que seja **visível e não retentável** até o saldo
-voltar. Ver `DESENHO-ATUALIZAR-SEM-ESTRAGAR.md`, §5 item A.
+⚠️ **A lição que fica para a próxima falta de crédito:** mover documentos presos
+de volta para um estado varrido faz o sistema tentar de novo — e, sem crédito,
+produzir uma falha por documento por rodada. A saída correta é um estado
+**visível e não retentável** até o saldo voltar. Ver
+`DESENHO-ATUALIZAR-SEM-ESTRAGAR.md`, §5 item A.
 
 ---
 
