@@ -2667,3 +2667,156 @@ são o defeito duas vezes.
 - **Continua aberto · 🤖** as 1.941 cartas de 04/08 seguem com a marca errada
   no acervo. Nada foi reescrito no banco. Separá-las exige `created_at`, não o
   marcador — e é justamente essa a informação que se perdeu.
+
+
+---
+
+## P-130 · 🔴 O acervo oficial está VENCIDO — 14 de 15 documentos
+
+📊 Medido em 08/08/2026 consultando o repositório público da SUSEP, produto por
+produto, com os números de processo que temos no banco.
+
+| documento | nossa versão | vigente hoje | versões existentes |
+|---|---|---|---|
+| **Porto Condomínio** | **01/12/2012** | **11/12/2025** | 26 |
+| Bradesco Auto | 01/04/2023 | 11/07/2026 | 45 |
+| Bradesco Empresarial | 04/08/2023 | **06/08/2026** | 28 |
+| Porto Auto | 01/01/2026 | 01/07/2026 | **100** |
+| Allianz Auto | 10/12/2025 | 22/07/2026 | 72 |
+| Allianz Residencial | 01/12/2025 | 18/06/2026 | 30 |
+| Allianz Vida | 16/12/2025 | 15/07/2026 | 11 |
+| Porto Empresa | 11/04/2025 | 31/07/2026 | 25 |
+| Azul Auto | 01/05/2025 | 30/08/2025 | 83 |
+| **Porto Residência** | 05/12/2025 | 05/12/2025 | ✅ **em dia** |
+
+**Um contrato de 2012 respondendo sobre um condomínio de 2026 é pior que não
+ter documento nenhum**: ele erra com a autoridade de um documento oficial, e
+quem lê não tem como desconfiar. É a mesma classe do defeito que o RAG já
+conhece — *"o formato pior possível é esse, porque a auditoria diz que está
+resolvido"*.
+
+📊 O substituto do condomínio já foi baixado na auditoria: `200 application/pdf`,
+1.185.165 bytes.
+
+- **Destrava:** nada externo. O caminho está vivo e medido (P-131).
+- **De quem é:** 🤖 execução.
+- **O que custa esquecer:** cada resposta sobre cobertura sai de um contrato que
+  não vale mais, e o sistema não tem como saber disso — não há campo de fim de
+  vigência em documento nenhum.
+
+---
+
+## P-131 · ✅ MEDIDO — o caminho da SUSEP está vivo; o 404 tinha mudado de endereço
+
+📊 Verificado ao vivo em 08/08/2026, sem autenticação.
+
+### O 404 do P-22 não era morte, era endereço errado
+
+```
+www2.susep.gov.br/download/menuestatistica/SES/BaseCompleta.zip    404
+www2.susep.gov.br/redarq.asp?arq=BaseCompleta%2ezip                200
+   application/x-zip-compressed · 568.932.978 bytes (542,6 MB)
+   last-modified: Mon, 03 Aug 2026 · ETag presente · accept-ranges: bytes
+```
+
+O tamanho bate com o da SPEC-066. `accept-ranges` e ETag confirmam que a
+detecção por sentinela descrita nela funciona.
+
+### O repositório de produtos funciona, e a armadilha é a porta
+
+```
+GET  .../REP2/Produto.aspx              200 — mas é a tela de LOGIN (a pegadinha)
+GET  .../REP2/Produto.aspx/Consultar    200 — formulário PÚBLICO, um campo
+POST .../REP2/Produto.aspx/Consultar    200 · 72.638 bytes · 72 versões · 1,08 s
+GET  .../DownloadConsultaPublica/509527 200 application/pdf · 2.089.937 B
+```
+
+A resposta traz `Sociedade`, `RAM: 05 | AUTOMÓVEL - CASCO` e `Situação` — o
+código de ramo que a SPEC-066 usa como ponte para o SES existe mesmo.
+
+### P-22, metade resolvida
+
+📊 Baixada a documentação oficial das tabelas do SES (734.925 B):
+`sinistro_ocorrido` aparece **0 vezes**; `sinistro_retido` e `sin_dir` aparecem.
+**A tese está confirmada.** A outra metade — se `retido` está zerado desde 2013 —
+exige baixar os 542 MB e continua aberta.
+
+### 404 mapeados, para ninguém retestar às cegas
+
+`REP2/ConsultaPublica.aspx` · `REP2/Produto.aspx/ConsultarPorSociedade` ·
+`menumercado/rcorretores/pesquisa.asp` · todo o CMS antigo `susep.gov.br/menu/…`
+(migrou para `gov.br/susep`).
+
+### Varredura em massa continua impossível, e não por educação
+
+📊 O formulário público tem **um único campo** (`numeroProcesso`) e
+`ConsultarPorSociedade` dá 404. **Não existe enumeração.** A ingestão dirigida da
+SPEC-066 §A.2 não é uma escolha de bom comportamento: é a única via.
+
+---
+
+## P-132 · 🟠 39,2% das cartas com seguradora são de companhias sem contrato nenhum
+
+📊 08/08/2026, sobre as 2.454 cartas com `insurer_key`: **961 (39,2%)** são de
+seguradoras com **zero** condições gerais no acervo.
+
+| seguradora | cartas | sinistro+assistência | site próprio | SUSEP |
+|---|---:|---:|---|---|
+| **yelum** | 359 | 163 | 🔒 exige CPF e nº da apólice | ✅ 54 versões, vig. 30/04/2026 |
+| **hdi** | 267 | 119 | ⚠️ caminho antigo **morto (500)** | ✅ RCF 35 v. · Residencial 18 v. |
+| zurich | 76 | 16 | ✅ residencial e vida | ✅ 6 versões |
+| alfa | 40 | 15 | ✅ índice público com histórico | ✅ 21 versões |
+| sura | 17 | 7 | ⚠️ WAF bloqueia | ✅ 20 versões |
+
+**A Yelum é o caso que prova o método:** o site dela tem porteiro, o repositório
+da SUSEP não. 📊 Duas versões baixadas na auditoria, `200 application/pdf`.
+
+### O que NÃO vale, e é metade do valor desta entrada
+
+- **Youse** (139 cartas) — 📊 **100 são de cobrança, 7 de sinistro/assistência**.
+  Condições gerais não respondem *"por que meu boleto não chegou"*. Entra por
+  ser barato, nunca por ser importante.
+- **Itaú** (1 carta) e **Sompo** (8) — 📊 os dois **saíram do auto massificado**.
+  A Sompo vendeu o varejo à HDI em 2023; o Itaú hoje vende Porto.
+- **SES / sinistralidade** — 542 MB e responde **zero** perguntas de segurado no
+  WhatsApp. É ativo de mesa de negociação (SPEC-065/067), não deste agente.
+- **Ranking de reclamações** — 📊 a própria página declara os dados **congelados**
+  no 4º trimestre de 2025.
+- **Registro de corretores** — 📊 é uma SPA que exige JS e a API pede JWT. E este
+  agente fala com **segurados**, não com corretores.
+
+---
+
+## P-133 · 🟠 Quatro das cinco ingestões travadas são bug nosso, não fonte morta
+
+📊 Das 5 linhas em `discovered` com 0 chunks, **4 URLs respondem 200**:
+
+- **Tokio** — 403 no nosso robô, **200 com User-Agent de navegador**
+- **Bradesco Auto** — PDF de **5,7 MB**, estoura teto/timeout
+- **Azul Residencial** — URL viva (200, 337 KB)
+- **Youse** — `cdn.youse.com.br/docs/condicoes-gerais-plano-auto.pdf` (200)
+- **HDI** — 🔴 a única que morreu de verdade (500 no caminho antigo)
+
+**E um defeito de dado nosso:** 📊 os números de processo da Tokio estão gravados
+**truncados** (`15414.100335/2004`, sem o `-74`). Com os dígitos: 50 versões,
+vigente desde 14/04/2026. Truncado: **não encontrado, em silêncio**.
+
+- **Destrava:** nada. Três consertos pequenos.
+- **O que custa esquecer:** parece falta de fonte e é falta de cabeçalho HTTP.
+
+---
+
+## P-134 · 🟡 Pode ser busca, não acervo — medir antes de creditar
+
+📊 Os limites de assistência da Porto (guincho 400 km, chave reserva 100 km) **já
+estão dentro da CG140 que temos indexada**.
+
+E o prompt do agente **não proíbe** falar de cobertura: ele exige **evidência**
+(`prompts.py:201` — *"NUNCA confirme cobertura sem evidência da apólice"*).
+
+Ou seja: para a Porto, pode não faltar documento — pode faltar **recuperação**.
+Antes de creditar a documento novo uma melhora que seria de busca, medir: fazer
+a pergunta ao agente hoje e ver se o trecho certo aparece entre os 3 que chegam.
+
+⚠️ Vale duplo porque 📊 o reranker Cohere está **desligado** e, sem ele, os 3
+trechos que chegam ao modelo saem de um RRF de duas buscas não comparáveis.
