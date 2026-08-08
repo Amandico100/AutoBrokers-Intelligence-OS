@@ -114,8 +114,20 @@ def main() -> int:
             etiqueta["product_line"] = ramo
 
         if args.aplicar:
-            cli.set_payload(collection_name=GLOBAL_COLLECTION,
-                            payload=etiqueta, points_selector=alvo, wait=True)
+            # 📊 08/08/2026 — o argumento MUDOU DE NOME entre versoes do
+            # qdrant-client, e o do conteiner (1.19.0) so aceita `points`:
+            #   TypeError: set_payload() missing 1 required positional
+            #              argument: 'points'
+            #
+            # `requirements.txt` traz `qdrant-client>=1.11.0`, sem travar. Nao
+            # da para saber qual versao roda la sem perguntar a ela — entao se
+            # pergunta: tenta o nome novo, cai no antigo se ele nao existir.
+            try:
+                cli.set_payload(collection_name=GLOBAL_COLLECTION,
+                                payload=etiqueta, points=alvo, wait=True)
+            except TypeError:
+                cli.set_payload(collection_name=GLOBAL_COLLECTION,
+                                payload=etiqueta, points_selector=alvo, wait=True)
         print(f"  ok {n:>5}  {nome:<52} -> {slug}" + (f" / {ramo}" if ramo else ""))
         tocados += 1
         pontos += n
