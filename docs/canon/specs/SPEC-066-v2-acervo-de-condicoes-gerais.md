@@ -240,100 +240,174 @@ documentos exigidos · prazos previstos em norma.
 
 ---
 
-## 6. OS LOTES
+## 6. A META, E OS LOTES QUE CHEGAM NELA
 
-Critério de ordenação, explícito: **cartas de cobertura** (sinistro +
-assistência + apólice), porque é onde a condição geral responde. Cobrança é
-ruído — boleto não está no contrato. Desempate por **sessões observadas** e por
-**ter corredor ativo**.
+### 6.1 A meta é COBERTURA COMPLETA, não seleção
 
-### 📦 LOTE 1 — Yelum e HDI · *o que não existe e é mais pedido*
+> **Toda seguradora que opera no varejo brasileiro, em todos os ramos que ela
+> vende, na versão vigente.** Não é "as mais importantes primeiro e o resto
+> depois se sobrar tempo" — é **tudo**, dividido em pedaços que se disparam um
+> por vez.
 
-📊 302 cartas de cobertura somadas · corredor auto **e** residencial ·
-aparecem nas **duas** corretoras · **zero** condições gerais hoje.
+📊 **Onde estamos hoje, medido em 08/08/2026:**
 
-| seguradora | ramo | processo SUSEP | versões | vigente |
-|---|---|---|---|---|
-| yelum | auto | `15414.100331/2004-96` | 54 | 30/04/2026 |
-| yelum | carta verde | `15414.100428/2004-07` | — | — |
-| yelum | residencial | **a descobrir** | — | — |
-| hdi | RCF | `15414.900886/2016-74` | 35 | — |
-| hdi | residencial | `15414.002160/2005-11` | 18 | — |
-| hdi | auto/casco | **não achado** — o antigo `15414.001197/2004-41` não retorna | | |
+```
+seguradoras com algum documento ......  6
+seguradoras que aparecem no acervo ... 15+
+seguradoras no mercado (catálogo) .... 195
+documentos que temos ................. 24
+                       COBERTURA ..... 27% da matriz que importa
+```
 
-> **É o lote que justifica a campanha.** O site da Yelum exige CPF e número de
-> apólice; o repositório da SUSEP entrega sem porteiro.
+📊 **A matriz do que temos** — cada ❌ é uma pergunta que o agente não responde:
 
-💭 Duração estimada: 2-3 horas (6-8 documentos).
+| seguradora | auto | residencial | condomínio | empresarial | vida | fiança |
+|---|:--:|:--:|:--:|:--:|:--:|:--:|
+| **porto** | ✅ | ✅ | ⚠️ 2012 | ✅ | ✅ | ✅ |
+| **allianz** | ✅ | ✅ | ❌ | ✅ | ✅ | ❌ |
+| **mapfre** | ✅ | ✅ | ❌ | ✅ | ✅ | ❌ |
+| **bradesco** | 🔴 **❌** | ✅ | ❌ | ✅ | ✅ | ❌ |
+| **tokio** | ✅ | ❌ | ❌ | ✅ | ❌ | ❌ |
+| **azul** | ✅ | ❌ | ❌ | ❌ | ❌ | ❌ |
+| **hdi** | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ |
+| **yelum** | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ |
+| **zurich** | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ |
+| **alfa** | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ |
+| **sura** | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ |
+| **suhai** | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ |
+| **youse** | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ |
+| **sompo** | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ |
+| **caixa / santander / bb** | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ |
 
-### 📦 LOTE 2 — Atualizar Allianz e Porto · *o que temos e está vencido*
+**Quando todos os lotes terminarem, essa tabela é toda ✅.** É esse o critério
+de pronto — não "os principais estão cobertos".
 
-📊 São as duas maiores em cartas (638 e 379) e **14 de 15 documentos do acervo
-estão em versão vencida**.
+⚠️ **Por que a matriz não tem 195 linhas.** O catálogo traz 195 seguradoras,
+mas a maioria não vende ao varejo: são resseguradoras, capitalização,
+seguro-garantia de obra pública, saúde suplementar, cativas de grupo econômico.
+A meta é **quem uma corretora de varejo pode vender**. Se aparecer uma
+corretora nova com uma seguradora fora da lista, ela entra — o catálogo já
+tem os números dela.
 
-| documento | nossa versão | vigente | versões |
-|---|---|---|---|
-| **Porto Condomínio** | **2012** | 11/12/2025 | 26 |
-| Porto Auto | 01/01/2026 | 01/07/2026 | 100 |
-| Porto Empresa | 11/04/2025 | 31/07/2026 | 25 |
-| Allianz Auto | 10/12/2025 | 22/07/2026 | 72 |
-| Allianz Residencial | 01/12/2025 | 18/06/2026 | 30 |
-| Allianz Vida | 16/12/2025 | 15/07/2026 | 11 |
-| Porto Residência | 05/12/2025 | ✅ em dia | 36 |
+### 6.2 Os lotes
 
-> Um contrato de **2012** respondendo sobre um condomínio de 2026 **erra com a
-> autoridade de documento oficial**. É pior que não ter.
-
-💭 Duração: 2-3 horas.
-
-### 📦 LOTE 3 — Destravar o que é bug nosso
-
-📊 Quatro das cinco ingestões travadas **têm URL viva**. Não é fonte morta.
-
-| o que | conserto |
-|---|---|
-| Tokio (403) | mandar **User-Agent de navegador** no fetcher |
-| Bradesco Auto (5,7 MB) | subir teto de tamanho/timeout |
-| Tokio: processos gravados **truncados** | corrigir `15414.100335/2004` → `-74`; 50 versões esperando |
-| Porto auto: `15414.100.233/2004-59` | ponto a mais — regex `_RE_PROCESSO_SOLTO` aceita qualquer coisa |
-| 4 documentos nunca aprovados | `aprovar()` — `vencidos()` não os enxerga |
-
-💭 Duração: 1-2 horas. **É o lote mais barato por documento entregue.**
-
-### 📦 LOTE 4 — Zurich e Alfa
-
-📊 Zurich 21 cartas de cobertura, Alfa 17 — corredor auto ativo, zero CG.
-Zurich residencial `15414.003106/2009-17` (6 versões) · Alfa auto
-`15414.100446/2004-81` (21 versões). A Alfa tem índice público com histórico.
-
-💭 Duração: 1-2 horas.
-
-### 📦 LOTE 5 — Normas que valem para todas
-
-Circular SUSEP **621/2021** (`bnmapi.exe?router=upload/26980` — 📊 200,
-90.170 B): prazo de **30 dias** para pagar sinistro após entrega dos
-documentos; aviso de não renovação com 30 dias de antecedência.
-
-> Toca a categoria `sinistro` inteira — 📊 **5.205 cartas**. É a resposta para
-> *"mandei tudo faz 40 dias e não pagaram"*, e o prazo é **da norma**, não da
-> apólice: vale para todas as seguradoras.
-
-💭 Duração: 30 minutos. **Melhor razão valor/esforço da SPEC.**
-
-### 📦 LOTE 6 — Sura e o que sobrar
-
-Sura auto `15414.001554/2004-71` (20 versões). Baixa prioridade: 8 cartas de
-cobertura, sem corredor.
-
-### ⛔ O que fica FORA, e é decisão registrada
-
-| fora | 📊 por quê |
-|---|---|
-| **Youse** | 139 cartas, mas **100 são de cobrança e 15 de cobertura**. Contrato não explica boleto |
-| **Itaú** (1 carta) · **Sompo** (8) | os dois **saíram do auto massificado**. A Sompo vendeu o varejo à HDI em 2023; o Itaú hoje vende Porto |
-| **Suhai** | 📊 **zero** cartas de cobertura |
+Cada lote é **uma seguradora inteira, com todos os ramos que ela vende**. Não
+se divide seguradora entre lotes: metade da Allianz hoje e metade daqui a três
+semanas produz um acervo em que ninguém sabe o que já foi.
 
 ---
+
+### 📦 LOTE 0 — O CATÁLOGO · *10 minutos · destrava todos os outros*
+
+Um GET, 4,5 MB, 2 segundos. Grava os 31.871 produtos com seguradora, CNPJ,
+número de processo, ramo e subramo.
+
+**Depois dele, cada lote deixa de ser uma caçada e vira um filtro.** E os
+processos que hoje não achamos — o casco da HDI, o residencial da Yelum —
+estão lá dentro.
+
+**Entrega:** tabela `susep_produtos` no banco, com a data do dump.
+**Pode rodar hoje:** só lê e grava catálogo, não toca no acervo.
+
+---
+
+### 📦 LOTE 1 — YELUM (completo) · *2-3 h*
+
+📊 359 cartas · 174 de cobertura · corredor auto **e** residencial · nas duas
+corretoras · **zero documentos**.
+📊 O site dela exige **CPF e número de apólice**. A SUSEP não.
+
+Todos os ramos que a Yelum vende, do catálogo. Confirmados: auto-casco
+`15414.100331/2004-96` (54 versões, vigente 30/04/2026), carta verde
+`15414.100428/2004-07`. Residencial e demais: **vêm do LOTE 0**.
+
+---
+
+### 📦 LOTE 2 — HDI (completo) · *2-3 h*
+
+📊 267 cartas · 128 de cobertura · corredor auto e residencial · **zero
+documentos** · e o site próprio **morreu (HTTP 500)**.
+
+Confirmados: RCF `15414.900886/2016-74` (35 versões), residencial
+`15414.002160/2005-11` (18 versões). **O casco não foi achado à mão — está no
+LOTE 0.**
+
+---
+
+### 📦 LOTE 3 — COMPLETAR AS SEIS QUE JÁ TEMOS · *3-4 h*
+
+Fechar as lacunas da matriz acima, seguradora por seguradora:
+
+| seguradora | o que falta |
+|---|---|
+| **bradesco** | 🔴 **auto** (a maior lacuna isolada do acervo), condomínio |
+| **tokio** | residencial, vida, condomínio |
+| **azul** | residencial, vida, e o que mais vender |
+| **allianz** | condomínio |
+| **mapfre** | condomínio |
+| **porto** | 🔴 **substituir o condomínio de 2012** |
+
+📊 Inclui os consertos de B5: User-Agent de navegador (Tokio dá 403 no nosso
+robô e 200 no navegador), teto de tamanho (Bradesco auto tem 5,7 MB), e os
+números de processo gravados **truncados**.
+
+---
+
+### 📦 LOTE 4 — AS QUATRO COM CORREDOR E SEM DOCUMENTO · *2-3 h*
+
+**Zurich · Alfa · Sura · Suhai** — completas, todos os ramos.
+📊 Zurich residencial `15414.003106/2009-17`, Alfa auto
+`15414.100446/2004-81`, Sura auto `15414.001554/2004-71`. O resto vem do
+catálogo.
+
+---
+
+### 📦 LOTE 5 — AS NORMAS QUE VALEM PARA TODAS · *30 min*
+
+Circular SUSEP **621/2021** (📊 200, 90.170 B): prazo de **30 dias** para pagar
+sinistro após entrega dos documentos; aviso de não renovação com 30 dias.
+
+> Toca a categoria `sinistro` inteira — 📊 **5.205 cartas**. É a resposta para
+> *"mandei tudo faz 40 dias e não pagaram"*, e o prazo é **da norma**: vale
+> para toda seguradora, inclusive as que ainda não têm documento.
+
+Inclui varrer o catálogo por Resoluções CNSP e Circulares vigentes dos ramos
+que atendemos.
+
+---
+
+### 📦 LOTE 6 — BANCASSURANCE E DIGITAIS · *2-3 h*
+
+**Caixa · Santander · BB Seguros · Youse · Pier · Justos · Split Risk** —
+completas.
+
+📊 A Youse tem 139 cartas, mas **100 são de cobrança** — entra por completar a
+matriz, não por urgência. As bancárias não aparecem no acervo das duas
+corretoras atuais e **vão aparecer** quando entrar uma corretora que trabalha
+com banco.
+
+---
+
+### 📦 LOTE 7 — A VARREDURA FINAL · *tempo a medir*
+
+Cruzar o catálogo inteiro contra o que foi ingerido e listar **o que sobrou**.
+É o lote que responde *"acabou?"* com um número, não com uma impressão.
+
+Aqui entram também: Sompo, Itaú e qualquer seguradora que apareça no acervo
+depois de uma corretora nova parear.
+
+📊 Sompo e Itaú **saíram do auto massificado** (a Sompo vendeu o varejo à HDI
+em 2023; o Itaú hoje vende Porto) — entram pelos ramos que ainda vendem, não
+por auto.
+
+---
+
+### 6.3 O que muda quando entra corretora nova
+
+O catálogo já tem as 195 seguradoras. Quando uma corretora parear e trouxer
+uma companhia que não está na matriz, **o trabalho é um lote novo, não um
+projeto novo** — os números já estão no banco, o motor já existe, e o processo
+é o mesmo.
 
 ## 7. O processo de um lote — passo a passo
 
@@ -468,34 +542,46 @@ E a liderança:
 
 ---
 
-## 11. Ordem recomendada
+## 11. Ordem recomendada, e o critério de PRONTO
 
 ```
-LOTE 0   o catálogo           10 min   ← 31.871 produtos, um GET. Serve a TODOS
-LOTE 5   normas gerais        30 min   ← melhor razão valor/esforço
-LOTE 3   destravar bugs       1-2 h    ← mais barato por documento
-LOTE 1   Yelum e HDI          2-3 h    ← o que mais falta
-LOTE 2   atualizar vencidos   2-3 h    ← o de 2012 sai do ar
-LOTE 4   Zurich e Alfa        1-2 h
-LOTE 6   Sura                 30 min
+LOTE 0   o catálogo             10 min   ← destrava todos. Pode rodar HOJE
+LOTE 5   normas gerais          30 min   ← vale para TODA seguradora, inclusive
+                                            as que ainda não têm documento
+LOTE 3   completar as seis      3-4 h    ← tapa o buraco do Bradesco AUTO e
+                                            aposenta o condomínio de 2012
+LOTE 1   Yelum completa         2-3 h
+LOTE 2   HDI completa           2-3 h
+LOTE 4   Zurich/Alfa/Sura/Suhai 2-3 h
+LOTE 6   bancárias e digitais   2-3 h
+LOTE 7   a varredura final      a medir  ← responde "acabou?" com um número
 ```
 
-### 📦 LOTE 0 — O catálogo
+💭 **Total estimado: 13 a 18 horas de trabalho, divididas em 8 disparos.** Não
+precisam ser seguidos: cada lote fecha sozinho e o acervo fica consistente
+entre um e outro.
 
-O primeiro, o mais barato, e o que muda todos os outros. Um GET de 2 segundos
-grava 31.871 produtos com seguradora, CNPJ, processo e ramo.
+### O critério de PRONTO
 
-Depois dele, **cada lote deixa de ser uma caçada e vira um filtro**: *"me dê os
-produtos de auto-casco da Yelum"* é uma consulta, não uma pesquisa.
+A campanha acaba quando **a matriz de §6.1 está toda ✅** e o LOTE 7 confirma
+por contagem, não por impressão:
 
-E ele destrava o que a SPEC ainda não sabia responder — 📊 os processos que
-**não achamos**: o casco da HDI, o residencial da Yelum. Eles estão no
-catálogo.
+```
+para cada seguradora que uma corretora nossa pode vender:
+    para cada ramo que ela vende:
+        existe documento VIGENTE, indexado, com effective_from e
+        effective_until preenchidos, e cartas destiladas dele
+```
 
-**Antes de qualquer lote que ESCREVA:** B2 (vigência tem escritor) e a flag
-de §9. **Sem B2, o LOTE 2 grava versão nova apagando a anterior** (B3) — e o
-acervo perde a capacidade de responder pela apólice antiga, que é a razão de
-existir desta SPEC.
+**Não é "os principais estão cobertos".** É a matriz inteira.
 
-O LOTE 0 é exceção: ele só lê e grava catálogo, não toca no acervo. **Pode
-rodar hoje.**
+### Pré-requisitos de escrita
+
+**Antes de qualquer lote que ESCREVA no acervo:** B2 (vigência tem escritor) e
+a flag de §9.
+
+**Sem B2, o LOTE 3 grava versão nova apagando a anterior** (B3) — e o acervo
+perde a capacidade de responder pela apólice antiga, que é a razão de existir
+desta SPEC.
+
+**Exceção:** o LOTE 0 só lê e grava catálogo. Pode rodar hoje.
