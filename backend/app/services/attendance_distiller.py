@@ -733,6 +733,58 @@ _STAGE2_SYSTEM = (
 REGRAS_DO_PLAYBOOK = _STAGE2_SYSTEM
 
 
+# Os valores de `tipo` que servem de SERVIÇO quando o serviço veio "outro".
+#
+# `assistencia` está fora de propósito: quem procura o playbook em runtime
+# sempre nomeia o subserviço (guincho, encanador...), nunca "assistencia" — um
+# grupo com esse nome nasceria mudo. E `outro` está fora porque é o único que
+# de fato não diz nada: 📊 `outro/outro` tem 381 sessões com nota média 52,4,
+# contra 76,2 de `auto/cobranca`.
+_TIPOS_QUE_SAO_SERVICO = ("cobranca", "apolice", "renovacao", "sinistro")
+
+
+def chave_do_grupo(destilado: Dict[str, Any]) -> Tuple[str, str]:
+    """O `(ramo, servico)` do playbook que este atendimento alimenta.
+
+    `("", "")` quando ele não alimenta nenhum.
+
+    🔴 07/08/2026 — `servico == "outro"` ERA DESCARTADO, E LEVAVA O MELHOR JUNTO
+    ==========================================================================
+    Duas linhas jogavam fora todo atendimento cujo serviço viesse "outro". 📊 O
+    que elas jogavam fora:
+
+        auto/outro          2.219 sessões úteis   nota 74,4   ← maior E melhor
+        outro/outro         1.468                 nota 67,2
+        residencial/outro     166                 nota 76,3
+        vida/outro             24                 nota 72,9
+                            -----
+                            3.877 — mais da metade do material aproveitável
+
+    A regra era defensável na origem: um playbook chamado "outro" seria vago
+    demais para servir. Só que ela foi escrita quando "outro" era resto. Virou
+    o maior balde do acervo — e **a informação para desfazê-lo já estava
+    gravada ao lado**: o Estágio 1 escreve `tipo` E `servico`, e só o segundo
+    era lido.
+
+        dentro de servico='outro', o que o `tipo` diz:
+            auto/cobranca   1.904 úteis   nota 76,2   ← melhor grupo do acervo
+            outro/cobranca    986         nota 72,7
+            outro/outro       381         nota 52,4   ← o único que é ruído
+            auto/apolice       64         nota 71,8
+
+    📊 E cobrança é 2.915 das 12.063 cartas do RAG (24%): o maior bloco de
+    trabalho da corretora, sem uma linha de conduta escrita sobre ele.
+    """
+    ramo = str(destilado.get("ramo") or "").strip()
+    if not ramo:
+        return ("", "")
+    servico = str(destilado.get("servico") or "").strip()
+    if servico and servico != "outro":
+        return (ramo, servico)
+    tipo = str(destilado.get("tipo") or "").strip()
+    return (ramo, tipo) if tipo in _TIPOS_QUE_SAO_SERVICO else ("", "")
+
+
 def _load_group_summaries_sync(ramo: str, servico: str, limit: int = 30) -> List[Dict[str, Any]]:
     """Os atendimentos JÁ DESTILADOS de um (ramo, serviço).
 
@@ -780,12 +832,35 @@ def _load_group_summaries_sync(ramo: str, servico: str, limit: int = 30) -> List
     # maior que "70" em ordem lexicográfica. Seria uma ordenação que parece
     # funcionar e entrega o inverso do pedido.
     janela = max(limit * 6, 180)
-    rows = (db.client.table("attendance_sessions")
-            .select("summary").eq("status", "closed")
-            .eq("summary->distilled->>ramo", ramo)
-            .eq("summary->distilled->>servico", servico)
-            .order("started_at", desc=True).limit(janela).execute().data or [])
-    destilados = [d for d in ((r.get("summary") or {}).get("distilled") for r in rows) if d]
+
+    def _pagina(filtros) -> List[Dict[str, Any]]:
+        q = (db.client.table("attendance_sessions")
+             .select("summary").eq("status", "closed")
+             .eq("summary->distilled->>ramo", ramo))
+        for campo, valor in filtros:
+            q = q.eq(f"summary->distilled->>{campo}", valor)
+        rows = q.order("started_at", desc=True).limit(janela).execute().data or []
+        return [d for d in ((r.get("summary") or {}).get("distilled") for r in rows) if d]
+
+    destilados = _pagina([("servico", servico)])
+    # O MESMO GRUPO MORA EM DOIS FORMATOS NO BANCO — 07/08/2026.
+    #
+    # `chave_do_grupo` passou a aceitar `tipo` no lugar de `servico` quando o
+    # serviço veio "outro". Mas no banco esse material continua gravado como
+    # `servico='outro'` + `tipo='cobranca'` — pedir `servico='cobranca'` acha
+    # zero linha. 📊 `auto/cobranca`: 0 pela primeira consulta, 1.904 pela
+    # segunda.
+    #
+    # Nenhuma linha é reescrita: destilar de novo 9.196 sessões para arrumar um
+    # rótulo custaria o acervo inteiro no modelo caro. A leitura entende os dois
+    # formatos, e o formato novo nasce sozinho na próxima destilação.
+    #
+    # As duas consultas não se sobrepõem (`servico=X` contra `servico=outro`),
+    # então não há o que deduplicar — mas a concatenação embaralha a ordem de
+    # recência de que o desempate por nota depende, e por isso ela é refeita.
+    if servico in _TIPOS_QUE_SAO_SERVICO:
+        destilados.extend(_pagina([("servico", "outro"), ("tipo", servico)]))
+        destilados.sort(key=lambda d: str(d.get("at") or ""), reverse=True)
 
     def _nota(d: Dict[str, Any]) -> int:
         try:
@@ -859,10 +934,9 @@ def _grupos_sem_playbook_sync(limite: int) -> List[Tuple[str, str]]:
                     .range(inicio, inicio + 999).execute().data) or []
             for r in lote:
                 d = ((r.get("summary") or {}).get("distilled")) or {}
-                ramo, servico = str(d.get("ramo") or ""), str(d.get("servico") or "")
-                if not ramo or servico in ("", "outro"):
+                chave = chave_do_grupo(d)
+                if chave == ("", ""):
                     continue
-                chave = (ramo, servico)
                 contagem[chave] = contagem.get(chave, 0) + 1
                 marco = ultimo_playbook.get(chave)
                 # `distilled.at` é quando o FATO foi extraído; é ele que diz se
@@ -1034,6 +1108,9 @@ async def distill_once(force: bool = False, *, atrasado: bool = False) -> Dict[s
             grupos.append(g)
     for (ramo, servico) in grupos[:por_rodada]:
         try:
+            # As chaves já vêm de `chave_do_grupo`, que nunca devolve "outro"
+            # como serviço nem vazio como ramo. A guarda fica como cinto: uma
+            # chave malformada aqui viraria um playbook chamado "auto/outro".
             if servico in ("outro", "") or ramo in ("",):
                 continue
             summaries = await asyncio.to_thread(_load_group_summaries_sync, ramo, servico)
@@ -1204,14 +1281,17 @@ async def _destilar_sessao(sess: Dict[str, Any], stats: Dict[str, int],
                 else:
                     rejeitados += 1
 
-        ramo = str(data.get("ramo") or "outro")
-        servico = str(data.get("servico") or "outro")
+        # A MESMA regra de chave que `_grupos_sem_playbook_sync` usa. Enquanto
+        # eram duas contas, a fila de trás contava um grupo que a da frente
+        # descartava.
+        chave = chave_do_grupo(data)
 
         async with trava:
             stats["sessions"] += 1
             stats["cards_new"] += novos
             stats["cards_rejected_pii"] += rejeitados
-            touched_groups[(ramo, servico)] = touched_groups.get((ramo, servico), 0) + 1
+            if chave != ("", ""):
+                touched_groups[chave] = touched_groups.get(chave, 0) + 1
     except Exception as e:  # noqa: BLE001
         # Uma sessão que falha não derruba as outras cinco em voo, e a próxima
         # rodada a pega de novo: ela continua sem a marca `distilled`.

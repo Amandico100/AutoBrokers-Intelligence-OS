@@ -1223,4 +1223,31 @@ def infer_ramo_servico(labels: List[str], full_text: str) -> Tuple[str, str]:
     ramo = "residencial" if servico in _SERVICOS_SO_RESIDENCIAIS or "residenc" in blob else "auto"
     if any(t in blob for t in ("sinistro", "colisao", "colisão", "acidente")):
         servico = servico or "sinistro"
+    # 🔴 07/08/2026 — O TRABALHO QUE NÃO É ASSISTÊNCIA NEM SINISTRO.
+    #
+    # Até aqui a função sabia nomear guincho, encanador e sinistro, e mais nada.
+    # Quem escreve o playbook (o destilador) sabe nomear mais: `cobranca`,
+    # `apolice`, `renovacao`. Escrever com um vocabulário e procurar com outro
+    # é a mesma doença do Lapidador — 📊 6 dos 12 playbooks ATIVOS eram mudos
+    # porque esta função nunca produzia a chave com que foram gravados.
+    #
+    # Os nomes abaixo são os do campo `tipo` do Estágio 1, de propósito. Vêm
+    # DEPOIS da assistência e do sinistro porque são menos específicos: quem
+    # liga sobre o guincho que não chegou está falando de guincho, mesmo que
+    # cite o boleto no meio.
+    if not servico:
+        for key, terms in (
+            ("cobranca", ("boleto", "parcela", "fatura", "pagamento", "pagar",
+                          "debito em conta", "débito em conta", "cobran")),
+            ("apolice", ("apolice", "apólice", "segunda via", "2a via")),
+            ("renovacao", ("renova",)),
+        ):
+            if any(t in blob for t in terms):
+                servico = key
+                break
+    # E o ramo VIDA, que o destilador produz e esta função transformava em
+    # "auto" pelo `else` do ternário acima — sem erro e sem log.
+    if any(t in blob for t in ("seguro de vida", "beneficiario", "beneficiário",
+                               "falecim", "seguro vida")):
+        ramo = "vida"
     return ramo, servico

@@ -767,14 +767,28 @@ async def _conduta_do_caso(supabase_client, mensagem: str) -> str:
     if cli is None:
         return ""
 
-    def _q():
+    def _q(r: str):
         return (cli.table("conduct_playbooks")
                 .select("content, ramo, servico, version")
-                .eq("ramo", ramo).eq("servico", servico).eq("status", "active")
+                .eq("ramo", r).eq("servico", servico).eq("status", "active")
                 .order("version", desc=True).limit(1).execute())
 
     try:
-        res = await asyncio.to_thread(_q)
+        res = await asyncio.to_thread(_q, ramo)
+        # O RAMO `outro` É O GENÉRICO DO SERVIÇO — 07/08/2026.
+        #
+        # 📊 `outro/sinistro` foi destilado de 629 atendimentos (nota 74,5) e
+        # `outro/consulta` de 254. Ambos ATIVOS, e nenhum dos dois era lido:
+        # esta função infere o ramo por palavra no texto e nunca devolve
+        # "outro" — não existe frase que diga "meu seguro é do ramo outro".
+        #
+        # Eles não são lixo nem erro de rotulagem: são a conduta daquele
+        # serviço quando o ramo não muda o que se faz. Como segunda tentativa
+        # eles são exatamente isso — o que vale quando não há conduta do ramo
+        # específico. Nunca ANTES: `auto/sinistro` continua ganhando de
+        # `outro/sinistro` quando a conversa é de carro.
+        if not res.data and ramo != "outro":
+            res = await asyncio.to_thread(_q, "outro")
     except Exception as exc:  # noqa: BLE001
         logger.warning("[CONDUTA] leitura falhou (%s)", type(exc).__name__)
         return ""
@@ -785,8 +799,13 @@ async def _conduta_do_caso(supabase_client, mensagem: str) -> str:
     if not isinstance(c, dict):
         return ""
 
+    # O cabeçalho anuncia o playbook QUE VEIO, não o que foi procurado: com o
+    # fallback acima os dois podem diferir, e dizer "(AUTO)" sobre uma conduta
+    # gravada como genérica seria dar ao modelo uma precisão que ela não tem.
+    ramo_lido = str(res.data[0].get("ramo") or ramo)
+    rotulo = "GERAL" if ramo_lido == "outro" else ramo_lido.upper()
     linhas = [f"=== 🎧 COMO SE CONDUZ UM ATENDIMENTO DE {servico.upper()} "
-              f"({ramo.upper()}) ===",
+              f"({rotulo}) ===",
               "Destilado de atendimentos humanos reais desta corretora. "
               "Não é script: é o jeito que funciona."]
 
