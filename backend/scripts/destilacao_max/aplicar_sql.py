@@ -47,7 +47,16 @@ seguradora_do_fato = _CURADORIA.seguradora_do_fato
 if hasattr(sys.stdout, "reconfigure"):
     sys.stdout.reconfigure(encoding="utf-8")
 
-MARCA = "destilacao_max_29_07_2026"
+# A MARCA DA CAMPANHA VEM DO `aplicar.py`, e não de uma constante daqui.
+#
+# Esta linha era `MARCA = "destilacao_max_29_07_2026"`, igualzinha à do
+# `aplicar.py` — e o mesmo defeito: 📊 as 1.941 cartas de 04/08/2026 saíram
+# carimbadas com a data de 29/07. Duas cópias congeladas do mesmo valor errado
+# não é um defeito com duas faces; é o defeito duas vezes. A resposta a "qual é
+# a marca de hoje" passa a ter um dono só (CLAUDE.md §5).
+from aplicar import marca_de_hoje  # noqa: E402
+
+MARCA = marca_de_hoje()
 
 
 def _citar(txt: str) -> str:
@@ -65,16 +74,31 @@ def _citar(txt: str) -> str:
 
 
 def main() -> int:
-    if len(sys.argv) < 2:
-        print("uso: aplicar_sql.py destilado.jsonl", file=sys.stderr)
+    global MARCA
+    argumentos = sys.argv[1:]
+    if "--marca" in argumentos:
+        i = argumentos.index("--marca")
+        if i + 1 >= len(argumentos) or not argumentos[i + 1].strip():
+            print("--marca exige um valor", file=sys.stderr)
+            return 2
+        MARCA = argumentos[i + 1].strip()
+        # A bandeira sai da lista para que o arquivo continue sendo "o que
+        # sobrou", em qualquer ordem. `sys.argv[1]` fixo trataria
+        # `--marca x lote.jsonl` como um arquivo chamado `--marca`.
+        del argumentos[i:i + 2]
+    if not argumentos:
+        print("uso: aplicar_sql.py destilado.jsonl [--marca <marcador>]",
+              file=sys.stderr)
         return 2
+    entrada = argumentos[0]
 
     sessoes = cartas = puladas = 0
     vistas: set = set()
     print("-- Gerado por scripts/destilacao_max/aplicar_sql.py")
+    print(f"-- marca desta campanha: {MARCA}")
     print("BEGIN;")
 
-    with open(sys.argv[1], encoding="utf-8") as fh:
+    with open(entrada, encoding="utf-8") as fh:
         for linha in fh:
             linha = linha.strip()
             if not linha:

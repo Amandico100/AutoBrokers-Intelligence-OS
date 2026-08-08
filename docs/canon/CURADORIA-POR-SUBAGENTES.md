@@ -234,8 +234,19 @@ Durante:
 Depois:
 
 - [ ] `select count(*) from knowledge_cards where pii_check->>'por' = '<marca>'`
+
+  > 📊 **Até 08/08/2026 esta linha mentia, e mentia com um número.** `MARCA` era
+  > uma constante congelada em `aplicar.py`, então as 1.941 cartas de 04/08
+  > saíram com a marca de 29/07 e a consulta somava as duas campanhas. Hoje a
+  > marca vem do calendário (`marca_de_hoje()`) ou de `--marca`, e o
+  > `aplicar.py` a **imprime no começo da rodada** — é esse valor que vai aqui,
+  > não um lembrado de cabeça. Ver [P-129](PENDENCIAS.md).
+
 - [ ] ler 10 cartas ao acaso — elas fazem sentido isoladas?
 - [ ] rodar o publicador (o teto em zero não impede)
+- [ ] `select count(*) from knowledge_cards where status = 'rejected_fora_de_escopo'`
+      — quantas o filtro de valor barrou. Zero numa campanha inteira é sinal de
+      que ele parou de funcionar, não de que o lote veio perfeito.
 - [ ] religar a Central: `DESTILADOR_TETO_POR_RODADA=<n>`
 
 ---

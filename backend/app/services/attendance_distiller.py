@@ -1205,8 +1205,14 @@ async def distill_once(force: bool = False, *, atrasado: bool = False) -> Dict[s
             publicar_lote_sync, _env_int("CARDS_PUBLISH_PER_RUN", 1000))
         stats["cards_juntados"] = cur.get("juntadas", 0)
         stats["cards_publicados"] = pub.get("publicadas", 0)
-        logger.info("[DESTILADOR] cartas: %d juntadas, %d publicadas no RAG",
-                    cur.get("juntadas", 0), pub.get("publicadas", 0))
+        # O filtro de valor precisa APARECER na rodada. Um portão que barra em
+        # silêncio é indistinguível de um portão que não barrou nada, e é assim
+        # que se descobre tarde demais que ele estava largo (ou apertado).
+        stats["cards_fora_de_escopo"] = pub.get("fora_de_escopo", 0)
+        logger.info("[DESTILADOR] cartas: %d juntadas, %d publicadas no RAG, "
+                    "%d fora de escopo (nao sao sobre seguro)",
+                    cur.get("juntadas", 0), pub.get("publicadas", 0),
+                    pub.get("fora_de_escopo", 0))
     except Exception as e:  # noqa: BLE001 — publicar nunca derruba a destilação
         logger.error("[DESTILADOR] curadoria/publicação falhou: %s", type(e).__name__)
 

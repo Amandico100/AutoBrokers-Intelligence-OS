@@ -62,7 +62,25 @@ DESTILAR    seletivo. "Isto aumenta a inteligência do cérebro?"
 > (📊 310 cartas rejeitadas por isso). Este é outro: uma conversa pode estar
 > perfeitamente anônima **e continuar não valendo nada** para o cérebro.
 
-⚠️ **Esta peça ainda não existe.** É o primeiro item da lista de execução.
+✅ **08/08/2026 — a peça existe.** `curadoria_cartas.e_sobre_seguro`,
+determinística e sem LLM (ela roda sobre milhares de cartas por rodada; uma
+chamada de modelo aqui seria cara e, pior, não reprodutível). Ela decide sobre
+a **carta** — o fato destilado —, não sobre a conversa inteira: a carta é a
+frase que o agente vai repetir para um segurado.
+
+Chamada em `publicar_lote_sync`, que é a **única** porta em que uma carta vira
+`published` sem ninguém olhar. Carta recusada vira `rejected_fora_de_escopo` —
+achável, com texto e hash intactos, e aprovável uma a uma pelo /admin/espelho.
+
+📊 Medido contra as 12.063 `published` antes de fixar a régua: **64 (0,53%)**
+seriam recusadas, e são conduta de escritório que serviria a uma pizzaria
+(*"Reentrar no sistema (logout/login) pode resolver falhas de exibição"*).
+A tabela completa das quatro versões da regra está em [P-67](PENDENCIAS.md) —
+inclusive a que **piorou**, que é a que ensina.
+
+⚠️ O que ele **não** faz: julgar se um fato de seguro é verdadeiro. O portão é
+de assunto, não de veracidade. Isso continua sendo trabalho do humano no
+/admin/espelho.
 
 ---
 
@@ -72,7 +90,7 @@ DESTILAR    seletivo. "Isto aumenta a inteligência do cérebro?"
 |---|---|---|
 | 1 | Os WhatsApps das corretoras **pareados** e capturando | 🧑 o Founder quer conversa nova, não só o acervo velho |
 | 2 | **Zero duplicação** no repareamento | 📊 o `history_sync` reentrega tudo; sem dedupe o acervo dobra |
-| 3 | O **filtro de valor** implementado e testado | senão a noite produz milhares de cartas sem valor |
+| 3 | ✅ O **filtro de valor** implementado e testado | senão a noite produz milhares de cartas sem valor · `e_sobre_seguro` + `test_a_carta_precisa_ser_sobre_seguro.py` |
 | 4 | **Teto de gasto** declarado e visível | destilar 8.872 sessões sem teto é cheque em branco |
 | 5 | Uma **leva pequena** rodada e conferida à mão | ninguém aprova 9 mil cartas que não viu |
 

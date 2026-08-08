@@ -582,6 +582,42 @@ técnico que se explica — é um constrangimento que não se desfaz.
 > Relacionado a [P-65] (a tela não diz o que captura) e [P-66] (payload cru no
 > Redis). Os três nasceram do mesmo pareamento de 03/08.
 
+### ✅ 08/08/2026 — o item 1 está feito; 2 e 3 continuam abertos
+
+O filtro de valor existe: `curadoria_cartas.e_sobre_seguro`, determinístico,
+sem LLM, chamado em `publicar_lote_sync` — a **única** porta em que uma carta
+vira `published` sem ninguém olhar. Carta recusada não some: fica em
+`rejected_fora_de_escopo`, com texto e hash intactos, e o `/admin/espelho`
+continua podendo aprová-la uma a uma. O nome do status é próprio de propósito:
+marcá-la `rejected_pii` faria o próximo a contar vazamentos contar esta junto.
+
+📊 Medido contra as 12.063 `published` (projeto `dcajcvlzcjbmyapmklil`),
+refazendo a consulta a cada ajuste do vocabulário:
+
+    um vocabulário só, sem nomes de companhia          184  (1,53%)
+    dois níveis, sem os nomes das seguradoras          399  (3,31%)  ← PIOROU
+    + nomes de seguradora no nível forte               169  (1,40%)
+    + dinheiro repartido em seis entradas               64  (0,53%)  ← em uso
+
+O passo que piorou é o que ensina: dois níveis com vocabulário estreito recusa
+MAIS que um nível largo. O mérito é do que está em cada nível, não de haver
+dois. E as 64 que sobram são conduta de escritório que serviria a uma pizzaria
+(*"Reentrar no sistema (logout/login) pode resolver falhas de exibição"*).
+
+- **Guarda:** [`test_a_carta_precisa_ser_sobre_seguro.py`](../../backend/tests/test_a_carta_precisa_ser_sobre_seguro.py)
+  — prova as duas direções com texto REAL do acervo, e a linha de controle
+  troca UMA palavra para mostrar que o limiar de duas menções é de verdade.
+
+**Continua aberto:**
+- **item 2 · 🧑** aprovação humana para carta de origem não-seguradora. Hoje o
+  filtro é vocabular, não semântico: ele barra o que não fala de seguro, não o
+  que fala de seguro e é falso.
+- **item 3 · 🤖** as 📊 64 `published` que o filtro recusaria **continuam no
+  acervo e no Qdrant**. Nada foi escrito no banco. `reindexar_acervo.py` também
+  não consulta o filtro — reindexar hoje devolve as 64 ao índice.
+  Destrava: rodar `e_sobre_seguro` sobre as 12.063, marcar as recusadas e tirar
+  o ponto do Qdrant, com as 64 lidas à mão antes.
+
 ---
 
 ## P-68 · ⚖️ Conflito canônico: "observer nunca envia" vs. o que o código faz
@@ -1991,6 +2027,24 @@ próprio controle.
   conhecimento das conversas que estavam no arquivo naquele momento, e a perda
   não deixa rastro nenhum.
 
+### ✅ RESOLVIDO em 08/08/2026
+
+`aplicar.py` foi partido em `_planejar` (só lê) / `_gravar` (só escreve) — a
+mesma forma de `aplicar_seguradoras.py`, e é essa separação que torna a ordem
+uma escolha em vez de uma consequência: enquanto o plano era feito dentro do
+laço que já escrevia, a ordem antiga era a única possível. Agora `_gravar` faz
+o `upsert` de todas as cartas e só depois marca as sessões, com releitura
+imediatamente antes de cada marca.
+
+- **Guarda:** [`test_a_carta_e_gravada_antes_da_marca.py`](../../backend/tests/test_a_carta_e_gravada_antes_da_marca.py)
+  — a linha de controle **reconstitui a `_gravar` antiga dentro do teste** e
+  submete as duas à MESMA queda. A antiga termina com a sessão marcada e zero
+  cartas; a nova, com as cartas no acervo e a sessão ainda na fila. Sem esse
+  bloco o guarda não teria como falhar: exercitar só a ordem certa passaria
+  igual no dia em que alguém invertesse tudo de volta.
+
+> A marca congelada que estava no mesmo arquivo virou [P-129].
+
 ## P-110 · 🔴 A captura das duas corretoras está PARADA, e o painel diz "Conectado"
 
 📊 Medido em 06/08/2026 (projeto `dcajcvlzcjbmyapmklil`):
@@ -2585,3 +2639,31 @@ benefícios inverteria a tabela inteira.
   auditoria de padronização (P-128) — 📊 hoje existem **12 conjuntos distintos**
   de valores de ramo no código, e acrescentar um sexto valor a um vocabulário
   que já diverge multiplica o problema em vez de resolver.
+
+---
+
+## P-129 · ✅ RESOLVIDO — a marca da campanha era uma constante congelada
+
+`aplicar.py:51` tinha `MARCA = "destilacao_max_29_07_2026"`, escrita à mão e
+nunca trocada. 📊 As 1.941 cartas da campanha de 04/08/2026 foram gravadas com
+a marca de 29/07: pelo campo que existe justamente para separá-las, as duas
+campanhas são a mesma coisa.
+
+E `CURADORIA-POR-SUBAGENTES.md:236` manda conferir a campanha por
+`pii_check->>'por' = '<marca>'` — a conferência rodava, devolvia um número, e o
+número somava as duas. **Um passo de conferência que responde com confiança à
+pergunta errada é pior que passo nenhum: ele encerra a dúvida.**
+
+O conserto não é um valor novo — é tirar o valor de onde alguém precisa lembrar
+dele. `marca_de_hoje()` vem do calendário e `--marca` nomeia a campanha à mão,
+como `aplicar_seguradoras.py` já fazia. `aplicar_sql.py` tinha a MESMA linha
+congelada e agora **importa** a resposta em vez de manter a segunda cópia dela:
+duas cópias congeladas do mesmo valor errado não são um defeito com duas faces,
+são o defeito duas vezes.
+
+- **Guarda:** [`test_a_marca_da_campanha_nao_e_congelada.py`](../../backend/tests/test_a_marca_da_campanha_nao_e_congelada.py)
+  — controle: duas datas produzem duas marcas. Uma função que devolvesse sempre
+  a mesma string passaria em tudo o mais.
+- **Continua aberto · 🤖** as 1.941 cartas de 04/08 seguem com a marca errada
+  no acervo. Nada foi reescrito no banco. Separá-las exige `created_at`, não o
+  marcador — e é justamente essa a informação que se perdeu.

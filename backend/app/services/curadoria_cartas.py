@@ -154,6 +154,257 @@ def _sem_acento(t: str) -> str:
 
 
 # ------------------------------------------------------------------ #
+# O FILTRO DE VALOR — "isto é sobre seguro?"
+# ------------------------------------------------------------------ #
+#
+# 🔴 O CAMINHO INTEIRO EXISTIA E NINGUÉM PERGUNTAVA ISSO.
+# =======================================================
+# `conversa → transcrição → carta → RAG` estava aberto de ponta a ponta, e
+# `publicar_lote_sync` leva `pending_review → published` **sem humano nenhum**.
+# O único portão do caminho é o de PII — e ele responde OUTRA pergunta.
+#
+# 📊 `knowledge_cards` tem 320 cartas `rejected_pii`: o filtro de dado pessoal
+# existe e reprova de verdade. Mas o WhatsApp de uma corretora é um telefone de
+# gente: no meio das conversas com segurado vão existir o grupo do prédio, o
+# convite de aniversário, o cunhado pedindo dinheiro. **Uma conversa doméstica
+# sem um único CPF passa no filtro de PII sem disparar nada** — ela está
+# perfeitamente anônima e continua não valendo nada para o cérebro.
+#
+# 📊 Em 03/08/2026 o Observador capturou 630 contatos pessoais e 2.556
+# transcrições. Foi revertido a tempo e zero cartas foram geradas. Por sorte.
+#
+# POR QUE NÃO É `assunto_da_carta` COM OUTRO NOME
+# ==============================================
+# `_ASSUNTOS` responde "em que gaveta esta carta mora" e tem um catch-all que
+# garante gaveta para QUALQUER texto — inclusive para "vou renovar o contrato
+# do aluguel" (`renova` + `contrata`) e "minha vida está corrida" (`vida`).
+# É um classificador de roteamento, calibrado para nunca deixar carta sem
+# destino. Usá-lo como portão seria usar uma régua de encaixe como fechadura.
+# A pergunta é outra, então a lista é outra — no mesmo módulo, à vista.
+#
+# DOIS NÍVEIS, E A RAZÃO DE EXISTIREM DOIS
+# ========================================
+# Um nível só não resolve. 📊 Medido em 08/08/2026 contra as 12.063 published:
+# com um vocabulário único de seguro, **184 cartas (1,53%) seriam recusadas** —
+# e ao ler as 184 uma a uma, a esmagadora maioria era conhecimento REAL de
+# corretora que simplesmente não escreve a palavra "seguro":
+#
+#     "O analista pode solicitar documentos adicionais além dos padrões"
+#     "Prazo padrão de retorno de solicitações é de 5 dias úteis"
+#     "Assinaturas de herdeiros e testemunhas podem ser exigidas com firma
+#      reconhecida"
+#
+# São a regulação de um sinistro de vida ou residencial descrita pelo trabalho,
+# não pelo produto. Recusá-las é o custo que o CLAUDE.md §9.2 manda MEDIR em vez
+# de deduzir — e medido, ele é alto demais.
+#
+# Então:
+#   `_SOBRE_SEGURO`      uma menção BASTA. São palavras que só este mundo usa.
+#   `_TRABALHO`          precisa de DUAS menções DISTINTAS. Cada uma sozinha
+#                        aparece em qualquer conversa; duas juntas, não.
+#
+# 📊 O RESULTADO MEDIDO, 08/08/2026, contra as 12.063 `published`, refazendo a
+# mesma consulta a cada ajuste (o número é a linha de controle da própria
+# regra — sem ele, "ampliei o vocabulário" seria só uma afirmação):
+#
+#     um vocabulário só, sem nomes de companhia          184  (1,53%)
+#     dois níveis, sem os nomes das seguradoras          399  (3,31%)  ← pior
+#     + nomes de seguradora no nível forte               169  (1,40%)
+#     + dinheiro repartido em seis entradas               64  (0,53%)  ← esta
+#
+# O passo que PIOROU é o que ensina: dois níveis com vocabulário estreito
+# recusa mais que um nível largo. O ganho não veio de "ter dois níveis" — veio
+# de o que está em cada um.
+#
+# E o que sobra nas 64 é o que deve sobrar. Elas descrevem trabalho de
+# escritório que serviria a uma pizzaria: *"Reentrar no sistema (logout/login)
+# pode resolver falhas de exibição"*, *"Problemas de conexão via QR Code podem
+# ser resolvidos dando refresh na página"*, *"É comum informar previamente o
+# DDD do número que fará o contato"*. Nenhuma delas ensina seguro a ninguém.
+#
+# ⚠️ O que NÃO entrou em `_TRABALHO`, de propósito: `foto`, `whatsapp`,
+# `telefone`, `link`, `pdf`, `e-mail`, `mensagem`. São o vocabulário de
+# QUALQUER conversa — "manda a foto do bolo no WhatsApp" bateria duas e passaria.
+# Palavra de canal não é palavra de trabalho.
+#
+# ERRAR PARA QUAL LADO
+# ====================
+# Recusar carta boa é recuperável: ela fica em `rejected_fora_de_escopo`, com
+# texto e hash intactos, e o admin pode aprovar uma a uma pelo /admin/espelho —
+# o mesmo desenho de recuperação de `rejected_pii`. Publicar a vida particular
+# do corretor no RAG da corretora não se desfaz.
+
+# Uma menção BASTA. Sem acento: o texto é dobrado por `_sem_acento` antes.
+_SOBRE_SEGURO = re.compile(
+    r"\bsegur(?:o|os|ada|ado|adas|ados|adora|adoras|avel|aveis)\b|seguradora"
+    r"|\bcorretor(?:a|as|es)?\b|corretagem|assessoria de seguros"
+    r"|apolice|endosso|vigencia|franquia|cobertura|sinistr|susep|dpvat"
+    r"|estipulante|beneficiari|indeniza|ressarcim|sub-roga|subroga"
+    r"|regulaca|regulado|regulador|pericia|\bperito\b|salvado|perda total"
+    r"|avaria|vistoria|\blaudo\b|boletim de ocorrencia|\bb\.?o\.?\b|delegacia"
+    r"|guincho|reboque|chaveiro|pane seca|carro reserva|assistencia"
+    # `prestador` é FORTE porque neste mundo ele tem dono: é quem a seguradora
+    # manda ao local. Nenhuma conversa doméstica chama alguém assim.
+    r"|prestador|rede referenciada|credenciad|oficina|autoglass|vidraceiro|borracheiro"
+    r"|\bboleto|\bcarne\b|inadimpl|\bpremio\b|\bapolices\b"
+    r"|\bcrlv\b|\bcnh\b|detran|renavam|chassi|\batpv|\bdut\b"
+    r"|\bura\b|acionament|aviso de sinistro|central de atendimento"
+    r"|\bplaca\b|\bveiculo|para-brisa|parabrisa"
+    r"|desentup|encanador|eletricista|hidraulic|funeral|leva e traz"
+    # O sinistro descrito pelo EVENTO, não pela palavra "sinistro". Um fato de
+    # corretora fala de colisão, granizo e furto muito mais do que fala do
+    # termo técnico — e nada disso é conversa doméstica.
+    r"|colis|capotam|\bbatida\b|\broubo\b|\bfurto\b|\bfurtad|\broubad"
+    r"|granizo|alagament|vendaval|enchente|incendio|\bsucata\b|\bsalvado"
+    r"|reembols|prejuizo|\bavariad|\bterceiro envolvido|\bcotaca|\bcotacao"
+    r"|\bmulta de transito|\bpane\b|\bsegurador"
+    # Assistência residencial e automotiva pelo serviço prestado.
+    r"|\bchave reserva|carro de aluguel|\btaxi\b|\bloja de vidros?\b"
+    r"|caca-vazamento|impermeabiliza|\bmarido de aluguel\b"
+    r"|vazament|entupiment|destelham|caixa d.agua|linha branca"
+    r"|eletrodomestic|ar-condicionado|ar condicionado|\btelhad"
+    # Vidro automotivo pelo defeito, não pela palavra "vidro" (que é de casa
+    # também): trinca, estilhaço e película só aparecem num sinistro de vidros.
+    r"|\btrinca|estilhac|\bpelicula\b|\bvigia\b|sensor de chuva",
+    re.IGNORECASE)
+
+
+def _nomes_de_seguradora() -> re.Pattern:
+    """As companhias conhecidas, como um regex só. Cache de uma construção.
+
+    🔴 O NOME DA COMPANHIA É, SOZINHO, PROVA DE ASSUNTO.
+    📊 08/08/2026: sem esta peça o filtro recusava 399 das 12.063 published
+    (3,31%), e a maior parte das recusadas era o acervo OBSERVADO — a corretora
+    falando com a URA da seguradora. Essas cartas descrevem o robô do outro
+    lado ("A Yelum encerra a conversa depois da terceira resposta que ela não
+    aceita") e podem não escrever nenhuma outra palavra de seguro. Com os nomes
+    dentro, 📊 a recusa caiu para 169 (1,40%).
+
+    A tabela é a MESMA de `_formas_da_seguradora` e de
+    `aplicar_seguradoras._companhias_citadas`: `corridor_playbooks`. Uma
+    segunda lista de "quem é seguradora" envelheceria separada da primeira, e a
+    cópia que ninguém olha é sempre a que envelhece antes (CLAUDE.md §5).
+
+    `_NOME_AMBIGUO` continua valendo: 📊 `caixa` aparece 80 vezes nas published
+    e 31 delas são "caixa d'água". Aqui a palavra solta não prova assunto — e a
+    caixa d'água já é aceita pelo vocabulário de assistência, com o nome certo.
+    """
+    global _RX_SEGURADORAS
+    if _RX_SEGURADORAS is None:
+        from app.services.corridor_playbooks import _INSURER_ALIASES
+
+        formas = sorted({_sem_acento(a).lower() for a in _INSURER_ALIASES
+                         if a not in _NOME_AMBIGUO and len(a) >= 3},
+                        key=len, reverse=True)
+        _RX_SEGURADORAS = re.compile(
+            "|".join(rf"\b{re.escape(f)}\b" for f in formas))
+    return _RX_SEGURADORAS
+
+
+_RX_SEGURADORAS: Optional[re.Pattern] = None
+
+
+# Precisa de DUAS DISTINTAS. Lista, e não um regex só, porque o que importa
+# aqui é QUANTAS bateram — um `search` responderia "pelo menos uma", que é
+# exatamente a pergunta errada.
+_TRABALHO: Tuple[str, ...] = (
+    r"\banalista\b|\banalistas\b",
+    r"document",                 # documento, documentação, documental
+    r"\bprocesso\b|\bprocessos\b",
+    r"\bprazo|dias uteis|horas uteis",
+    r"formulario|\bformularios\b",
+    r"\banexo|\banexar|\banexad",
+    r"orcamento|orcamentos",
+    r"nota fiscal|notas fiscais",
+    r"comprova",                 # comprovante, comprovação, comprovar
+    r"pendencia|pendencias|pendente",
+    r"cartorio|firma reconhecida|autentica",
+    r"herdeir|inventario|obito|falecid|espolio",
+    r"reanalise|\banalise\b|reabertura|reaberto",
+    r"solicitad|solicitac|solicitar|solicita\b",
+    r"exigid|exigenc|\bexige\b|\bexigem\b",
+    r"\bsindico\b|assembleia|administradora|condominio",
+    r"procuracao|\btermo de\b|declaracao",
+    r"\breparo|conserto|\bobra\b|mao de obra|material|telhado|pedreiro",
+    r"\btecnico\b|\btecnicos\b|agendament|\bvisita\b",
+    r"cadastro|cadastros|cadastrad",
+    r"liberaca|autorizac|autorizad|aprovac|aprovad",
+    r"\bmatriz\b|\bfilial\b|\bcarteira\b|\bequipe\b|\bcentral\b",
+    r"\bcpf\b|\bcnpj\b|\brg\b|identidade|titular",
+    r"\bcliente|\bsegurado",     # `segurado` também é forte; aqui só soma
+    r"protocolo|atendiment|atendente",
+    r"\bimovel|\bresidencia|\bfachada|\bsinistrad",
+    r"\bbanco\b|\bagencia\b|\bconta\b|deposito|transferencia",
+    r"\bportal\b|\bsistema\b|\bmenu\b|\bcanal\b",
+    r"\bprova\b|\bprovas\b|\bevidencia|relatorio|monitoramento",
+    r"\bvalor\b|\bvalores\b|\bdesconto\b|\bcredito\b",
+    r"\bretirada\b|\bdevolucao\b|\breserva\b|\bremocao\b",
+    # DINHEIRO, EM SEIS ENTRADAS E NÃO EM UMA.
+    #
+    # 📊 Colapsado num balde só, este vocabulário custou a categoria `cobranca`
+    # inteira: "Cobranças alternativas costumam ter data de vencimento
+    # definida" batia UMA vez e era recusada, embora seja cobrança de prêmio de
+    # ponta a ponta. Um balde grande demais vale o mesmo que um termo — e a
+    # regra dos dois só funciona se os dois puderem ser coisas diferentes.
+    r"pagament|\bpagar\b|\bpago\b|\bpaga\b",
+    r"cobranc|\bcobrar\b|\bcobrad",
+    r"\bparcela|\bcarne\b|\bcarnes\b|recorrent",
+    r"vencimento|\bvence\b|\bvencid|data limite|\batraso\b|em aberto",
+    r"\bpix\b|qrcode|qr code|codigo de barras|linha digitavel|copia-e-cola",
+    r"\bcartao|\bcredito\b|\bdebito|\bfatura|\bjuros\b|estorno|quitac|quitad",
+    # O aviso e o terceiro — as duas palavras que o acervo usa o tempo todo
+    # sem escrever "sinistro" ao lado.
+    r"\baviso\b|\bavisos\b|\bchamado|\bocorrencia\b|\bevento\b",
+    r"\bterceiro|\bsegurada\b|\bfamilia\b|\bempresa\b",
+    # O contrato. "renovar" e "contratar" sozinhos servem para plano de
+    # celular e aluguel — por isso moram aqui, e não no nível forte.
+    r"renova|proposta|emissao|\bemitir\b|\bemitid|cancelament|cancelad"
+    r"|\bcancelar\b|rescis|contrata|\bcontrato\b",
+    # O estrago e o serviço, sem a palavra do evento.
+    r"\bdano|\bdanific|\bpeca\b|\bpecas\b|\bpintura\b|\bfunilaria\b|\bvidro",
+    r"\bprestador|\bloja\b|concessionaria|locadora|\bagenda\b|\bfila\b",
+    # O ramo do seguro. Cada um é palavra comum do português — "vida",
+    # "saúde", "auto", "pet" —, e é justamente por isso que somam em vez de
+    # decidir sozinhos.
+    r"\bvida\b|\bsaude\b|\bpet\b|\bfrota\b|\bramo\b|empresarial|\bauto\b",
+)
+
+# Quantas palavras do trabalho precisam aparecer juntas. Duas, e não uma: uma
+# só é o normal de qualquer conversa ("me manda o cadastro do salão de festas").
+MENCOES_DE_TRABALHO = 2
+
+# O status de quem foi recusada AQUI. Nome próprio, e não `rejected_pii`: a
+# carta não vazou nada de ninguém — ela simplesmente não é sobre seguro. Um
+# nome que mente sobre o que guarda reinfecta todo leitor seguinte
+# (CLAUDE.md §12.1), e sem nome próprio ninguém consegue medir este filtro
+# separado do outro depois.
+STATUS_FORA_DE_ESCOPO = "rejected_fora_de_escopo"
+
+
+def e_sobre_seguro(texto: str) -> bool:
+    """Esta CARTA pertence ao mundo de seguros? Determinístico, sem modelo.
+
+    Decide sobre a carta — o fato destilado —, não sobre a conversa inteira.
+    A conversa é longa, mistura assuntos e não é o que vai para o RAG; a carta
+    é uma frase só, e é ela que o agente vai repetir para um segurado.
+
+    Sem LLM de propósito: isto roda sobre milhares de cartas por rodada, e uma
+    chamada de modelo aqui seria cara, lenta e — pior — não reprodutível: a
+    mesma carta poderia ser aceita hoje e recusada amanhã sem nada ter mudado.
+    """
+    alvo = _sem_acento(str(texto or "")).lower()
+    if _SOBRE_SEGURO.search(alvo) or _nomes_de_seguradora().search(alvo):
+        return True
+    batidas = 0
+    for padrao in _TRABALHO:
+        if re.search(padrao, alvo):
+            batidas += 1
+            if batidas >= MENCOES_DE_TRABALHO:
+                return True
+    return False
+
+
+# ------------------------------------------------------------------ #
 # DE QUEM É A REGRA — a única resposta, usada por todos os caminhos
 # ------------------------------------------------------------------ #
 #
@@ -654,6 +905,21 @@ def publicar_lote_sync(limite: int = 300) -> Dict[str, Any]:
     Antes de publicar, reconcilia: carta errada que ficou no índice responde
     junto com a certa que a substitui, e a busca não sabe qual das duas é a boa.
     Tirar a velha primeiro é mais importante que colocar a nova.
+
+    🔴 E AQUI FICA O FILTRO DE VALOR — porque ESTA é a porta automática.
+    ==================================================================
+    Esta função é o único ponto em que uma carta vira `published` **sem que
+    ninguém tenha olhado para ela**. O portão de PII já mora dentro do
+    `publish_card_sync`; o de valor mora aqui, e não lá, por um motivo concreto:
+    `publish_card_sync` devolvendo `False` faz esta função marcar
+    `rejected_pii`, e uma carta recusada por não ser sobre seguro **não vazou
+    nada de ninguém**. Marcá-la assim seria um nome mentindo sobre o que guarda,
+    e o próximo a medir "quantas cartas vazaram PII?" contaria errado.
+
+    A aprovação manual do /admin/espelho NÃO passa por aqui de propósito: lá um
+    master admin está olhando uma carta específica e dizendo "publique esta".
+    Isso É a aprovação humana que o P-67 pede — e é por ela que uma carta
+    recusada aqui volta ao acervo, se alguém decidir que ela deve voltar.
     """
     from app.core.database import get_supabase_client
     from app.services.attendance_distiller import publish_card_sync
@@ -666,9 +932,18 @@ def publicar_lote_sync(limite: int = 300) -> Dict[str, Any]:
             .order("created_at", desc=False)
             .limit(max(1, min(int(limite or 300), 2000))).execute().data) or []
 
-    publicadas = falhas = 0
+    publicadas = falhas = fora_de_escopo = 0
     for c in alvo:
         try:
+            if not e_sobre_seguro(c.get("card_text") or ""):
+                # NÃO SOME, e não volta para a fila. Fica com status próprio,
+                # texto e hash intactos: dá para contar, listar, revisar e
+                # aprovar uma a uma. É o mesmo desenho de `rejected_pii` — o
+                # que muda é só o nome, e o nome é a informação.
+                db.client.table("knowledge_cards").update(
+                    {"status": STATUS_FORA_DE_ESCOPO}).eq("id", c["id"]).execute()
+                fora_de_escopo += 1
+                continue
             if publish_card_sync(c):
                 from datetime import datetime, timezone
 
@@ -692,5 +967,6 @@ def publicar_lote_sync(limite: int = 300) -> Dict[str, Any]:
             logger.warning("[CARTAS] publicação falhou: %s", type(exc).__name__)
 
     return {"publicadas": publicadas, "falhas": falhas, "tentadas": len(alvo),
+            "fora_de_escopo": fora_de_escopo,
             "indice_reconciliado": reconciliado.get("limpas", 0),
             "indice_pendente": reconciliado.get("falhas", 0)}
