@@ -180,9 +180,22 @@ def teste_a_curadoria_le_o_acervo_e_anota_quem_substituiu():
     checar('"substituida_por"' in cmd,
            "a carta aposentada guarda QUEM a substituiu",
            "aposentadoria que não se explica é igual a apagamento por engano")
-    checar("despublicar_carta_sync(id_antiga)" in cmd,
-           "e ela sai do ÍNDICE, não só do banco",
+    # 🔴 07/08/2026 — ESTA LINHA PROCURAVA A CHAMADA, E A CHAMADA NÃO ERA O PONTO.
+    #
+    # Ela exigia o texto `despublicar_carta_sync(id_antiga)`. Ele estava lá — e
+    # o defeito também: o retorno era **descartado**, e a função devolvia `True`
+    # com o Qdrant fora do ar. O guarda via a chamada acontecer e não via que
+    # ninguém escutava a resposta.
+    #
+    # O que importa não é chamar: é conferir. E a ordem, que era metade do
+    # defeito — o banco era marcado ANTES, então uma recusa do índice deixava
+    # exatamente o estado que esta linha existia para impedir.
+    checar("if not despublicar_carta_sync(" in cmd,
+           "e ela sai do ÍNDICE antes de o banco mudar — com o retorno conferido",
            "status mudado sem vetor apagado = auditoria vê removida e a busca entrega")
+    checar('"status": "superseded"' not in cmd,
+           "CONTROLE — e a aposentadoria não grava o status por conta própria",
+           "quem grava é o removedor, DEPOIS de o vetor sair")
     checar('"contraditas_aposentadas"' in cmd,
            "o resultado da rodada diz quantas foram aposentadas")
 

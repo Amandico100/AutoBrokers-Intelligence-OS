@@ -456,8 +456,30 @@ def despublicar_carta_sync(card_id: str, motivo: str = "superseded") -> bool:
 
     company = str(getattr(settings, "GLOBAL_KNOWLEDGE_COMPANY_ID", "")
                   or os.getenv("GLOBAL_KNOWLEDGE_COMPANY_ID") or "")
+    # 🔴 07/08/2026 — ESTA FUNÇÃO COMETIA O DEFEITO QUE O DOCSTRING ACIMA
+    # DESCREVE, E DEVOLVIA `True` DIZENDO QUE NÃO.
+    #
+    # `QdrantService.delete_document` tem o próprio `except Exception: return
+    # False` (`qdrant_service.py:665-667`). **Ele nunca levanta.** O `try` aqui
+    # esperava uma exceção que não vem, o `except` era código morto, e o
+    # retorno — a única coisa que dizia se o vetor saiu — era descartado.
+    #
+    # Então a função respondia `True` com o Qdrant fora do ar. E as três redes
+    # armadas contra exatamente isso caíam juntas, todas em silêncio:
+    #
+    #   corrigir.py:109         `pendente = not despublicar_carta_sync(...)`
+    #                           era sempre False → `qdrant_pendente` NUNCA
+    #                           era gravado
+    #   reconciliar_indice_sync filtra por essa marca → 📊 0 linhas em 12.933
+    #                           cartas; roda antes de cada publicação e nunca
+    #                           acha nada
+    #   admin_atlas.py:740      o `503 nao_saiu_do_indice` do botão "rejeitar"
+    #                           nunca disparava
+    #
+    # O `try` continua, porque `get_qdrant_service()` **pode** levantar antes
+    # de chegar ao `delete_document`. O que mudou é que agora o retorno é lido.
     try:
-        get_qdrant_service().delete_document(
+        saiu = get_qdrant_service().delete_document(
             company_id=company, document_id=f"card-{card_id}",
             collection_name=GLOBAL_COLLECTION)
     except Exception as exc:  # noqa: BLE001
@@ -466,6 +488,11 @@ def despublicar_carta_sync(card_id: str, motivo: str = "superseded") -> bool:
         logger.error("[CARTAS] não consegui tirar %s do índice: %s — status "
                      "NÃO alterado, a carta continua marcada como publicada",
                      card_id, type(exc).__name__)
+        return False
+    if not saiu:
+        logger.error("[CARTAS] o índice recusou remover %s — status NÃO "
+                     "alterado, a carta continua marcada como publicada",
+                     card_id)
         return False
 
     get_supabase_client().client.table("knowledge_cards").update(

@@ -758,6 +758,21 @@ async def _conduta_do_caso(supabase_client, mensagem: str) -> str:
         from app.services.atlas.templater import infer_ramo_servico
 
         ramo, servico = infer_ramo_servico([], texto)
+        # 🔴 O MESMO STRING, DOIS TRATAMENTOS OPOSTOS NO MESMO CHAMADOR.
+        #
+        # `infer_ramo_servico` devolve `pane_seca`; `corridor_playbooks` declara
+        # `pane_seca` como ALIAS de `guincho` e nunca cria um subserviço com
+        # esse nome. O caminho do corredor, algumas linhas acima, normaliza
+        # (`missing_slots_for_subservice` → `canonical_subservice`). A busca do
+        # playbook consultava com o valor cru — e `auto/guincho`, que está
+        # ATIVO, nunca era lido numa pane seca.
+        #
+        # A tradução tem dono e é uma só: `canonical_subservice`. Repetir o
+        # dicionário aqui seria criar a segunda descrição da mesma coisa, que é
+        # a doença que este arquivo levou o dia inteiro consertando.
+        from app.services.corridor_playbooks import canonical_subservice
+
+        servico = canonical_subservice(servico) if servico else servico
     except Exception:  # noqa: BLE001
         return ""
     if not (ramo and servico):

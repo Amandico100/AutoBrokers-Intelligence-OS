@@ -115,6 +115,16 @@ SEGURADORAS = {
     "cnseg": ("CNseg", ("cnseg.org.br",)),
 }
 
+# O regulador NÃO é uma seguradora. Ele ocupa a coluna `insurer_key` porque a
+# tabela só tem esse lugar para guardar a origem, mas 📊 os 5 documentos e 198
+# chunks marcados assim — Resoluções CNSP 484/2025, 478/2024, 464/2024,
+# 460/2023 e a Circular SUSEP 710/2024 — valem para TODAS as companhias.
+#
+# Quem filtra conhecimento por seguradora tem de tratar este valor como
+# "sem seguradora", nunca como mais uma delas: etiquetá-lo esconderia a norma
+# do regulador de toda pergunta sobre qualquer companhia.
+_REGULADOR = "susep"
+
 RAMOS = {
     "auto": ("seguro auto", "automóvel", "automovel", "veículo", "veiculo", "casco"),
     "frota": ("frota",),
@@ -259,6 +269,37 @@ def _ingerir_sync(doc: dict, conteudo: str, susep: Optional[str],
             "curation_status": "published",
             "namespace": "normative",
             "version": (susep or doc["id"])[:12],
+            # 🔴 A ETIQUETA TEM DE FICAR ONDE O FILTRO PROCURA — 07/08/2026.
+            #
+            # `insurer_key` também está em `metadata`, acima, e continua lá para
+            # quem lê o chunk. Mas `insert_embeddings` promove à RAIZ do payload
+            # apenas o que vem por `knowledge_extras` (`qdrant_service.py:250`),
+            # e `_filtro_de_seguradora` casa `insurer_key` **na raiz**
+            # (`qdrant_service.py:388`).
+            #
+            # O filtro tem um braço `IsEmptyCondition`: chave ausente na raiz
+            # significa "fato genérico de mercado", e passa em qualquer
+            # pergunta. Então 📊 11.211 chunks de condições gerais — Porto
+            # 3.089, Bradesco 2.632, Allianz 1.694, Mapfre 1.430, Tokio 1.299,
+            # Azul 1.067 — atravessavam como genéricos.
+            #
+            # E são o pior material possível para escapar: uma carta genérica é
+            # fato de mercado; uma condição geral é o CONTRATO de uma companhia.
+            # A pergunta "a Porto cobre alagamento?" recebia de volta a cláusula
+            # da Allianz, com a confiança de um documento oficial.
+            #
+            # 📊 O filtro cobria 2.340 de ~23.472 pontos do índice (10,0%).
+            #
+            # ⚠️ E `susep` NÃO é uma seguradora. 📊 São 5 documentos e 198
+            # chunks — Resoluções CNSP 484/2025, 478/2024, 464/2024, 460/2023 e
+            # a Circular SUSEP 710/2024 — e uma norma do regulador vale para
+            # TODAS as companhias. Etiquetá-la como se fosse uma delas a
+            # esconderia de toda pergunta sobre qualquer outra: seria trocar um
+            # vazamento por um apagão, e o apagão é pior porque é silencioso.
+            # Ela fica sem etiqueta, que é o que "genérico" quer dizer aqui.
+            **({"insurer_key": doc["insurer_key"]}
+               if doc.get("insurer_key") and doc["insurer_key"] != _REGULADOR else {}),
+            **({"product_line": doc["product_line"]} if doc.get("product_line") else {}),
         },
     )
     return len(chunks) if ok else 0

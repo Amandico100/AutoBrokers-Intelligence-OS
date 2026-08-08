@@ -555,10 +555,32 @@ def _aposentar_contraditas_sync(db: Any, pares: List[Tuple[str, str]]) -> None:
             marca = dict((atual[0] or {}).get("pii_check") or {})
             marca["substituida_por"] = id_nova
             marca["aposentada_em"] = _agora_iso()
+
+            # 🔴 A ORDEM ERA O INVERSO — E A ORDEM É O CONSERTO.
+            #
+            # O `update` vinha primeiro e `despublicar_carta_sync` depois, com o
+            # retorno descartado. Quando o índice recusasse, o banco já diria
+            # `superseded` e ninguém saberia: a carta some da auditoria e
+            # continua respondendo ao segurado. É o estado que o docstring
+            # acima chama de "o pior possível", produzido pela própria função.
+            #
+            # Agora o índice manda: só depois de o vetor sair é que o banco
+            # muda. Se o Qdrant recusar, a carta continua `published` — visível,
+            # errada e ACHÁVEL, que é melhor que invisível e errada. A marca
+            # `qdrant_pendente` fica para o reconciliador reencontrar.
+            if not despublicar_carta_sync(id_antiga, motivo="superseded"):
+                marca["qdrant_pendente"] = True
+                db.client.table("knowledge_cards").update(
+                    {"pii_check": marca}).eq("id", id_antiga).execute()
+                logger.error("[CURADORIA] %s NÃO saiu do índice — continua "
+                             "publicada e marcada para reconciliação", id_antiga)
+                continue
+
+            # `despublicar_carta_sync` já gravou `status`; aqui vai só a
+            # anotação de POR QUE ela saiu, que é o que ninguém consegue
+            # reconstruir seis meses depois.
             db.client.table("knowledge_cards").update(
-                {"status": "superseded", "pii_check": marca}
-            ).eq("id", id_antiga).execute()
-            despublicar_carta_sync(id_antiga)
+                {"pii_check": marca}).eq("id", id_antiga).execute()
         except Exception as erro:  # noqa: BLE001
             # Uma que falha não pode derrubar as outras: cada carta ainda
             # publicada e já contradita é uma resposta errada ao segurado.
