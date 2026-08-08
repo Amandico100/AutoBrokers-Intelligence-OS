@@ -710,6 +710,33 @@ def levantar(args, db) -> tuple[list[Produto], Any]:
     print(f"  entnome casou com: {', '.join(casaram) or '(nenhum)'}")
     print(f"  {len(produtos)} produtos de varejo "
           f"({', '.join(sorted({p.product_line for p in produtos})) or '-'})")
+    # 🔴 `--processos` — o filtro que a rodada real da Porto exigiu.
+    #
+    # 📊 O `--diagnostico` de 08/08/2026 mostrou que a Porto tem 71 produtos de
+    # varejo, dos quais 41 sao VIDA ("Vida Individual", "Capital Global",
+    # "Vida Mais Mulher"...) e varios com nome de arquivo `CG.pdf`, `cg9.pdf`.
+    # Traze-los todos encheria o indice de variacoes do mesmo produto — e o
+    # recurso escasso nao e disco, sao as vagas que chegam ao agente.
+    #
+    # E `--ramo` nao resolve: pedir `--ramo auto` traria 12 documentos, entre
+    # eles Itau Auto, Azul Auto e Mitsui, que a Porto emite como companhia.
+    # Este filtro escolhe PRODUTO, que e a unidade que o Founder decide.
+    if args.processos:
+        # A normalização é a MESMA de quem consulta o REP2, importada e não
+        # copiada: dois normalizadores divergem, e aqui divergir significa o
+        # filtro não achar um produto que existe.
+        from app.services.knowledge.susep_rep2 import normalizar_processo as _norma
+
+        def _chave(bruto: str) -> str:
+            return _norma(bruto) or "".join(c for c in str(bruto or "") if c.isdigit())
+
+        querem = {_chave(p) for p in args.processos.split(",") if p.strip()}
+        antes = len(produtos)
+        produtos = [p for p in produtos if _chave(p.susep_process) in querem]
+        achados = {_chave(p.susep_process) for p in produtos}
+        print(f"  --processos: {len(produtos)} de {antes} produtos selecionados")
+        for pedido in sorted(querem - achados):
+            print(f"    ⚠️ NAO ACHADO no catalogo: {pedido}")
     if args.limite:
         produtos = produtos[:args.limite]
         print(f"  --limite {args.limite}: consultando so os {len(produtos)} primeiros")
@@ -776,6 +803,11 @@ def main() -> int:
     ap.add_argument("--entnome", default="",
                     help="nomes de entidade separados por | — manda mais que a "
                          "tabela SEGURADORAS quando ela errar")
+    ap.add_argument("--processos", default="",
+                    help="so estes processos SUSEP, separados por virgula. "
+                         "E o filtro que escolhe PRODUTO — `--ramo auto` da "
+                         "Porto traria tambem Itau, Azul e Mitsui, que ela "
+                         "emite como companhia.")
     ap.add_argument("--limite", type=int, default=0, help="so os N primeiros produtos")
     ap.add_argument("--pausa", type=float, default=0.5,
                     help="segundos entre consultas ao REP2")
