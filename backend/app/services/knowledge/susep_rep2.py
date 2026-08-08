@@ -125,10 +125,50 @@ def _guard():
     Nenhuma chamada de rede escapa daqui: as três funções que saem
     (`consultar`, `baixar`, `carregar_catalogo`) passam por este guard.
     """
-    from app.core import egress_guard as eg
+    try:
+        from app.core import egress_guard as eg
+    except Exception:  # noqa: BLE001
+        eg = _egress_pelo_arquivo()
     politica = eg.EgressPolicy.from_iterable(
         [HOST_REP2, HOST_DADOS], max_response_bytes=TETO_RESPOSTA_BYTES)
     return eg, politica
+
+
+def _egress_pelo_arquivo():
+    """O MESMO guarda, carregado pelo caminho do arquivo. Não é um guarda menor.
+
+    `app/core/__init__.py` importa `settings` e o cliente do Supabase logo na
+    primeira linha, então `import app.core.egress_guard` exige o ambiente
+    INTEIRO — `MINIO_ROOT_USER`, `MINIO_ROOT_PASSWORD` e o resto. O
+    `egress_guard.py` em si só usa a biblioteca padrão.
+
+    O efeito prático disso era perverso: o levantamento **somente leitura** da
+    SPEC-070 §9 (catálogo + REP2, nada escrito em lugar nenhum) não rodava fora
+    do contêiner, e a conferência da §3.2.1 — a que decide se um documento
+    entra — só podia ser feita no lugar onde ela já não pode impedir nada.
+    Um controle que só roda em produção é um controle que ninguém roda antes.
+
+    🔴 Nada é afrouxado aqui: é o mesmo arquivo, a mesma `EgressPolicy` e a
+    mesma lista de hosts. Só o caminho de importação muda. Se nem por aqui ele
+    carregar, a exceção sobe — chamada de rede sem guarda não acontece.
+    """
+    import importlib.util
+
+    caminho = os.path.join(os.path.dirname(os.path.dirname(
+        os.path.dirname(os.path.abspath(__file__)))), "core", "egress_guard.py")
+    spec = importlib.util.spec_from_file_location("app.core.egress_guard", caminho)
+    if spec is None or spec.loader is None:
+        raise RuntimeError(f"egress_guard nao encontrado em {caminho}")
+    modulo = importlib.util.module_from_spec(spec)
+    # Registrar ANTES de executar: `egress_guard` declara `@dataclass`, e o
+    # `dataclasses` resolve os tipos lendo `sys.modules[cls.__module__]`. Um
+    # módulo ainda não registrado devolve `None` ali e o decorador estoura com
+    # `'NoneType' object has no attribute '__dict__'` — que não se parece nem
+    # de longe com "faltou registrar o módulo".
+    import sys as _sys
+    _sys.modules.setdefault(spec.name, modulo)
+    spec.loader.exec_module(modulo)
+    return modulo
 
 TIMEOUT_CONEXAO = 10.0
 TIMEOUT_LEITURA = 120.0     # 📊 a primeira consulta do dia levou 10,7 s

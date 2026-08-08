@@ -776,19 +776,147 @@ def montar_etiqueta(doc: dict, susep: Optional[str],
     return "[" + " · ".join(p for p in partes if p) + "]"
 
 
-def montar_pedacos(doc: dict, texto: str, susep: Optional[str],
-                   vigencia: Optional[str]) -> list[str]:
-    """O texto de um documento vira os pedaços que vão para o índice."""
+# ==========================================================================
+# A FACETA — SPEC-070 §5.1, ancorada na Circular SUSEP 621/2021
+# ==========================================================================
+#
+# São OITO valores, e não se inventa o nono: a lei obriga toda condição geral a
+# ter estas seções, e é por isso que o rótulo é reconhecível sem adivinhação.
+#
+# 🔴 A ordem desta tupla é a ordem de decisão, e ela não é alfabética. As mais
+# específicas vêm primeiro porque uma seção de franquia quase sempre também
+# fala em "limite" e uma de exclusão quase sempre também fala em "cobertura".
+# Testar `escopo` antes de `exclusao` daria `escopo` a metade das exclusões do
+# contrato — e "por que negaram?" é exatamente a pergunta que o corretor faz.
+#
+# ⚠️ Não casou nenhuma → `None`, e `None` é gravado como AUSÊNCIA de chave no
+# payload (`insert_embeddings` pula valor vazio). Chave ausente passa em todo
+# filtro e nunca elimina candidato — §5.1. Rótulo dá cota e prioridade; só
+# fato verificável (seguradora, vigência, documento) elimina.
+_FACETAS: tuple[tuple[str, tuple[str, ...]], ...] = (
+    ("franquia", ("franquia", "participacao obrigatoria", "participacao do segurado")),
+    ("carencia", ("carencia", "prazo de espera")),
+    ("exclusao", ("exclus", "riscos excluidos", "bens nao compreendidos",
+                  "nao compreendidos", "nao cobert", "prejuizos nao indeniz",
+                  "perda de direito", "perda do direito")),
+    ("documento", ("documento", "documentacao", "relacao de documentos",
+                   "aviso de sinistro")),
+    ("definicao", ("definic", "glossario", "significado dos termos")),
+    ("limite", ("limite", "limites de utilizacao", "utilizacoes", "capital segurado",
+                "importancia segurada", "verba")),
+    ("prazo", ("prazo", "vigencia", "renovacao", "liquidacao de sinistro",
+               "cancelamento", "rescisao")),
+    ("escopo", ("riscos cobert", "coberturas", "cobertura", "objeto do seguro",
+                "ambito geografico", "garantias", "assistencia", "servicos")),
+)
+
+_ACENTOS = str.maketrans("áàâãäéèêëíìîïóòôõöúùûüçÁÀÂÃÄÉÈÊËÍÌÎÏÓÒÔÕÖÚÙÛÜÇ",
+                         "aaaaaeeeeiiiiooooouuuucAAAAAEEEEIIIIOOOOOUUUUC")
+
+
+def _sem_acento(texto: str) -> str:
+    return (texto or "").translate(_ACENTOS).lower()
+
+
+def faceta_do_pedaco(caminho: list[str], corpo: str) -> Optional[str]:
+    """Qual das 8 facetas este pedaço responde. `None` quando não se reconhece.
+
+    🔴 A decisão é tomada **da folha para a raiz**, e essa direção é a regra
+    inteira. O caminho `CLÁUSULA 76R – DANOS A VIDROS > 2. Riscos Excluídos`
+    tem "vidros" (escopo) na raiz e "excluídos" na folha. Quem lê da raiz para
+    a folha rotula isso como `escopo` e o trecho que responde "por que
+    negaram?" some da faceta em que a pergunta procura.
+
+    O corpo só é consultado quando o caminho inteiro ficou mudo — e só o
+    começo dele, que é onde mora o rótulo da seção quando o PDF não o quebrou
+    numa linha própria. Varrer o corpo inteiro rotularia como `franquia` toda
+    cláusula que menciona franquia de passagem, que é quase todas.
+    """
+    for parte in reversed([p for p in (caminho or []) if p and p.strip()]):
+        alvo = _sem_acento(parte)
+        for nome, pistas in _FACETAS:
+            if any(p in alvo for p in pistas):
+                return nome
+
+    cabeca = _sem_acento((corpo or "")[:180])
+    for nome, pistas in _FACETAS:
+        if any(p in cabeca for p in pistas):
+            return nome
+    return None
+
+
+def unit_id_de(qdrant_doc_id: str, indice: int) -> str:
+    """O endereço de UM pedaço. É o que a carta destilada guarda para voltar.
+
+    🔴 Ele tem de ser **estável** e **reencontrável**, e as duas coisas saem da
+    mesma escolha: ele é derivado, não sorteado.
+
+        unit_id  = "norm-<documento>-v<n>#0042"
+        point_id = int(sha256("norm-<documento>-v<n>_42")[:16], 16)
+
+    A segunda linha é literalmente o que `QdrantService.insert_embeddings`
+    calcula (`qdrant_service.py`, "ID único: hash do document_id + chunk_index").
+    Então de um `source_unit_id` gravado em `knowledge_cards` (migration 03) se
+    chega ao ponto exato no índice **por aritmética**, sem busca e sem tabela
+    de-para. E se o índice for reconstruído do mesmo PDF, o mesmo pedaço recebe
+    o mesmo endereço — que é o que "estável" quer dizer.
+
+    ⚠️ O `#` separa e o `_` é o que o Qdrant usa. São diferentes de propósito:
+    um `unit_id` colado com `_` seria indistinguível de um `document_id` que
+    por acaso termine em número.
+    """
+    return f"{qdrant_doc_id}#{int(indice):04d}"
+
+
+def pedacos_detalhados(doc: dict, texto: str, susep: Optional[str],
+                       vigencia: Optional[str],
+                       qdrant_doc_id: Optional[str] = None) -> list[dict]:
+    """Os pedaços do documento, cada um com o que o índice e o `.jsonl` pedem.
+
+    🔴 Esta função existe para que exista **uma** enumeração, e não duas.
+    Quem indexa (`_ingerir_sync`) e quem exporta para os subagentes
+    (`scripts/acervo/coletar_seguradora.py`) precisam concordar sobre qual
+    pedaço é o de número 42 — porque é esse número que entra no `unit_id`, e é
+    pelo `unit_id` que a carta destilada volta ao trecho de origem.
+
+    Duas funções percorrendo `partir_documento` com a mesma regra de descarte
+    concordariam hoje e divergiriam no dia em que uma delas mudasse. A
+    divergência seria silenciosa e apontaria a carta para o trecho errado —
+    procedência falsa é pior que procedência ausente (migration 03).
+
+    Por isso `montar_pedacos` é um invólucro desta, e não uma irmã dela.
+    """
     etiqueta = montar_etiqueta(doc, susep, vigencia)
-    saida: list[str] = []
+    saida: list[dict] = []
+    secoes: dict[str, int] = {}
     for pedaco in partir_documento(texto):
         corpo = (pedaco["corpo"] or "").strip()
         if not corpo:
             continue
         caminho = _caminho_em_texto(pedaco["caminho"])
-        saida.append(f"{etiqueta}\n{caminho}\n{corpo}" if caminho
-                     else f"{etiqueta}\n{corpo}")
+        indice = len(saida)
+        # `parent_id` agrupa os pedaços de uma MESMA seção. É o que permite
+        # puxar os irmãos de um trecho recuperado — a cláusula inteira, quando
+        # o pedaço sozinho não basta. Numerado por ordem de aparição, e não por
+        # hash do título, porque dois anexos repetem `4.1.1` no mesmo arquivo.
+        secao = secoes.setdefault(caminho, len(secoes))
+        saida.append({
+            "indice": indice,
+            "unit_id": unit_id_de(qdrant_doc_id, indice) if qdrant_doc_id else None,
+            "parent_id": f"{qdrant_doc_id}§{secao:04d}" if qdrant_doc_id else None,
+            "caminho": caminho,
+            "faceta": faceta_do_pedaco(pedaco["caminho"], corpo),
+            "corpo": corpo,
+            "texto": f"{etiqueta}\n{caminho}\n{corpo}" if caminho
+                     else f"{etiqueta}\n{corpo}",
+        })
     return saida
+
+
+def montar_pedacos(doc: dict, texto: str, susep: Optional[str],
+                   vigencia: Optional[str]) -> list[str]:
+    """O texto de um documento vira os pedaços que vão para o índice."""
+    return [p["texto"] for p in pedacos_detalhados(doc, texto, susep, vigencia)]
 
 
 # Seguradoras que operam no Brasil, por domínio e por nome. Serve para dizer
@@ -897,6 +1025,38 @@ def classificar(titulo: str, texto: str, url: str) -> Optional[dict]:
     }
 
 
+# A URL de download do REP2 É um arquivo — só não parece um.
+#
+#     https://www2.susep.gov.br/…/Produto.aspx/DownloadConsultaPublica/508497
+#
+# Sem extensão no fim. 📊 A regra de `_buscar` era `".pdf" in url`, então a
+# fonte OFICIAL do acervo (SPEC-070 §3, decisão 3) caía no crawler — que
+# renderiza HTML e não sabe o que fazer com `application/pdf`, gasta crédito
+# do Firecrawl e devolve nada. O site da seguradora, que a §3.4 rebaixou a
+# "conferência", era o único caminho que funcionava. O guarda estava recusando
+# justamente a fonte que a SPEC manda usar.
+_PADRAO_DOWNLOAD_REP2 = ("https://www2.susep.gov.br/safe/menumercado/REP2/"
+                         "Produto.aspx/DownloadConsultaPublica")
+
+
+def _e_download_do_registro(url: Optional[str]) -> bool:
+    """A URL veio do registro oficial da SUSEP?
+
+    ⚠️ A importação é tardia e tem cópia de segurança do prefixo porque
+    `insurance_corpus` é carregado por testes que montam um pacote
+    `app.services.knowledge` falso, com `__path__ = []` — um import relativo no
+    topo do módulo derrubaria esses testes na hora de carregar o arquivo, antes
+    de qualquer asserção. `test_o_acervo_so_entra_com_a_versao_confirmada.py`
+    confere que a constante local e a do `susep_rep2` continuam iguais: cópia
+    sem guarda é a que envelhece sozinha.
+    """
+    try:
+        from .susep_rep2 import URL_DOWNLOAD as prefixo
+    except Exception:  # noqa: BLE001
+        prefixo = _PADRAO_DOWNLOAD_REP2
+    return str(url or "").startswith(prefixo)
+
+
 def _ingerir_sync(doc: dict, conteudo: str, susep: Optional[str],
                   vigencia: Optional[str]) -> int:
     """Chunk → embeddings → Qdrant global. Espelha `global_knowledge_seed`.
@@ -917,7 +1077,15 @@ def _ingerir_sync(doc: dict, conteudo: str, susep: Optional[str],
     from ..knowledge_scope import GLOBAL_COLLECTION, SCOPE_GLOBAL_AUTOBROKERS
     from ..qdrant_service import get_qdrant_service
 
-    chunks = montar_pedacos(doc, conteudo, susep, vigencia)
+    # SPEC-067 item 7 — O ID DIZ DE QUE VERSÃO SÃO OS PONTOS, e agora ele é
+    # calculado ANTES de picar: o `unit_id` de cada pedaço deriva dele.
+    #
+    # `norm-{id}` sem sufixo continua sendo o padrão de emergência porque
+    # 📊 os 11.409 pontos de hoje têm exatamente esse formato.
+    doc_id = doc.get("_qdrant_doc_id") or f"norm-{doc['id']}"
+
+    detalhados = pedacos_detalhados(doc, conteudo, susep, vigencia, doc_id)
+    chunks = [p["texto"] for p in detalhados]
     if not chunks:
         return 0
 
@@ -937,16 +1105,70 @@ def _ingerir_sync(doc: dict, conteudo: str, susep: Optional[str],
                        type(exc).__name__)
 
     qdrant = get_qdrant_service()
-    # SPEC-067 item 7 — O ID DIZ DE QUE VERSÃO SÃO OS PONTOS.
-    #
-    # Ele deixa de ser calculado aqui e passa a vir de quem sabe a versão:
-    # `ingerir()`, que consultou `normative_document_versions` ANTES de mandar
-    # indexar. `norm-{id}` sem sufixo continua sendo o padrão de emergência
-    # porque 📊 os 11.409 pontos de hoje têm exatamente esse formato.
-    doc_id = doc.get("_qdrant_doc_id") or f"norm-{doc['id']}"
     anteriores = [d for d in (doc.get("_qdrant_doc_ids_anteriores") or [])
                   if d and d != doc_id]
     company = (os.getenv("GLOBAL_KNOWLEDGE_COMPANY_ID") or "").strip() or "autobrokers-global"
+
+    # O PAYLOAD DA §5.3 — o que filtra fica na RAIZ, e o resto em `metadata`.
+    #
+    # `namespace`, `insurer_key`, `product_line`, `doc_kind`, `susep_process`,
+    # `vigente`, `effective_from`, `faceta`, `unit_id`, `parent_id`, `scope` e
+    # `curation_status`. 📊 Até 08/08/2026 seis desses doze existiam só dentro
+    # de `metadata`, que o filtro não lê, e dois (`vigente` e `faceta`) tinham
+    # índice de payload criado e **nenhum escritor** — o comentário em
+    # `qdrant_service.py` diz isso com todas as letras.
+    #
+    # ⚠️ `vigente=True` sem meio-termo: só entra no índice o que passou pela
+    # §3.2.1, e a versão anterior sai (D-Acervo-02). Não existe ponto revogado
+    # neste caminho para receber `False` — se um dia existir, ele nasce de um
+    # escritor novo, não de um `if` aqui.
+    comum = {
+        "scope": SCOPE_GLOBAL_AUTOBROKERS,
+        "curation_status": "published",
+        "namespace": "normative",
+        "version": (susep or doc["id"])[:12],
+        "vigente": True,
+        "doc_kind": doc.get("doc_kind") or "",
+        "susep_process": susep or "",
+        "effective_from": vigencia or "",
+        # 🔴 A ETIQUETA TEM DE FICAR ONDE O FILTRO PROCURA — 07/08/2026.
+        #
+        # `insurer_key` também está em `metadata`, abaixo, e continua lá para
+        # quem lê o chunk. Mas `insert_embeddings` promove à RAIZ do payload
+        # apenas o que vem por `knowledge_extras` (`qdrant_service.py:250`),
+        # e `_filtro_de_seguradora` casa `insurer_key` **na raiz**
+        # (`qdrant_service.py:388`).
+        #
+        # O filtro tem um braço `IsEmptyCondition`: chave ausente na raiz
+        # significa "fato genérico de mercado", e passa em qualquer pergunta.
+        # Então 📊 11.211 chunks de condições gerais — Porto 3.089, Bradesco
+        # 2.632, Allianz 1.694, Mapfre 1.430, Tokio 1.299, Azul 1.067 —
+        # atravessavam como genéricos.
+        #
+        # E são o pior material possível para escapar: uma carta genérica é
+        # fato de mercado; uma condição geral é o CONTRATO de uma companhia.
+        # A pergunta "a Porto cobre alagamento?" recebia de volta a cláusula
+        # da Allianz, com a confiança de um documento oficial.
+        #
+        # ⚠️ E `susep` NÃO é uma seguradora. 📊 São 5 documentos e 198 chunks
+        # — Resoluções CNSP 484/2025, 478/2024, 464/2024, 460/2023 e a
+        # Circular SUSEP 710/2024 — e uma norma do regulador vale para TODAS
+        # as companhias. Etiquetá-la como se fosse uma delas a esconderia de
+        # toda pergunta sobre qualquer outra: seria trocar um vazamento por um
+        # apagão, e o apagão é pior porque é silencioso. Ela fica sem
+        # etiqueta, que é o que "genérico" quer dizer aqui.
+        **({"insurer_key": doc["insurer_key"]}
+           if doc.get("insurer_key") and doc["insurer_key"] != _REGULADOR else {}),
+        **({"product_line": doc["product_line"]} if doc.get("product_line") else {}),
+    }
+    # E o que muda de pedaço para pedaço. `faceta=None` sai como chave AUSENTE
+    # (`insert_embeddings` pula valor vazio), que é o que a §5.1 manda: sem
+    # rótulo o pedaço passa em todo filtro, nunca é eliminado por ele.
+    extras = [
+        {**comum, "unit_id": p["unit_id"], "parent_id": p["parent_id"],
+         **({"faceta": p["faceta"]} if p["faceta"] else {})}
+        for p in detalhados
+    ]
 
     ok = qdrant.insert_embeddings(
         company_id=company,
@@ -968,43 +1190,7 @@ def _ingerir_sync(doc: dict, conteudo: str, susep: Optional[str],
         sparse_embeddings=sparse,
         collection_name=GLOBAL_COLLECTION,
         agent_id=None,
-        knowledge_extras={
-            "scope": SCOPE_GLOBAL_AUTOBROKERS,
-            "curation_status": "published",
-            "namespace": "normative",
-            "version": (susep or doc["id"])[:12],
-            # 🔴 A ETIQUETA TEM DE FICAR ONDE O FILTRO PROCURA — 07/08/2026.
-            #
-            # `insurer_key` também está em `metadata`, acima, e continua lá para
-            # quem lê o chunk. Mas `insert_embeddings` promove à RAIZ do payload
-            # apenas o que vem por `knowledge_extras` (`qdrant_service.py:250`),
-            # e `_filtro_de_seguradora` casa `insurer_key` **na raiz**
-            # (`qdrant_service.py:388`).
-            #
-            # O filtro tem um braço `IsEmptyCondition`: chave ausente na raiz
-            # significa "fato genérico de mercado", e passa em qualquer
-            # pergunta. Então 📊 11.211 chunks de condições gerais — Porto
-            # 3.089, Bradesco 2.632, Allianz 1.694, Mapfre 1.430, Tokio 1.299,
-            # Azul 1.067 — atravessavam como genéricos.
-            #
-            # E são o pior material possível para escapar: uma carta genérica é
-            # fato de mercado; uma condição geral é o CONTRATO de uma companhia.
-            # A pergunta "a Porto cobre alagamento?" recebia de volta a cláusula
-            # da Allianz, com a confiança de um documento oficial.
-            #
-            # 📊 O filtro cobria 2.340 de ~23.472 pontos do índice (10,0%).
-            #
-            # ⚠️ E `susep` NÃO é uma seguradora. 📊 São 5 documentos e 198
-            # chunks — Resoluções CNSP 484/2025, 478/2024, 464/2024, 460/2023 e
-            # a Circular SUSEP 710/2024 — e uma norma do regulador vale para
-            # TODAS as companhias. Etiquetá-la como se fosse uma delas a
-            # esconderia de toda pergunta sobre qualquer outra: seria trocar um
-            # vazamento por um apagão, e o apagão é pior porque é silencioso.
-            # Ela fica sem etiqueta, que é o que "genérico" quer dizer aqui.
-            **({"insurer_key": doc["insurer_key"]}
-               if doc.get("insurer_key") and doc["insurer_key"] != _REGULADOR else {}),
-            **({"product_line": doc["product_line"]} if doc.get("product_line") else {}),
-        },
+        knowledge_extras=extras,
     )
     if not ok:
         return 0
@@ -1531,7 +1717,7 @@ class InsuranceCorpusService:
         # A ordem não é preferência: é o que destrava 10 documentos sem gastar
         # um centavo. Se o GET não servir (página HTML, arquivo protegido,
         # escaneado), cai no crawler exatamente como antes — nada foi tirado.
-        if ".pdf" in str(url or "").lower():
+        if ".pdf" in str(url or "").lower() or _e_download_do_registro(url):
             texto, motivo = await self._baixar_pdf_direto(url)
             if texto:
                 logger.info("[corpus] PDF baixado direto (sem crawler): %s", str(url)[:80])

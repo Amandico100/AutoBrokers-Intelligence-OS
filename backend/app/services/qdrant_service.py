@@ -267,7 +267,7 @@ class QdrantService:
         agent_id: Optional[
             str
         ] = None,  # 🔥 NOVO: agent_id obrigatório para multi-agent
-        knowledge_extras: Optional[Dict[str, Any]] = None,  # scope/knowledge_class/... (SPEC-003)
+        knowledge_extras: Optional[Any] = None,  # scope/knowledge_class/... (SPEC-003)
     ) -> bool:
         """
         Insere embeddings no Qdrant (batch insert)
@@ -311,10 +311,23 @@ class QdrantService:
                     "metadata": chunk_metadata,
                 }
                 # Campos de conhecimento (scope/knowledge_class/...) — SPEC-003. Sem segredo/PII.
-                if knowledge_extras:
-                    for _k, _v in knowledge_extras.items():
-                        if _k not in payload and _v not in (None, ""):
-                            payload[_k] = _v
+                #
+                # Aceita dict (mesmo valor para todos os chunks) OU lista, um
+                # por chunk — a mesma simetria que `metadata` já tinha logo
+                # acima. A lista existe porque a SPEC-070 §5.3 pede na RAIZ do
+                # payload dois campos que MUDAM de pedaço para pedaço:
+                # `unit_id`, que é como a carta destilada volta ao trecho de
+                # origem, e `faceta`. Sem isto eles só caberiam em `metadata`,
+                # que o filtro não lê — que é exatamente o defeito que custou
+                # 📊 11.211 chunks de contrato atravessando como genéricos.
+                if isinstance(knowledge_extras, list):
+                    _extras = (knowledge_extras[idx]
+                               if idx < len(knowledge_extras) else {}) or {}
+                else:
+                    _extras = knowledge_extras or {}
+                for _k, _v in _extras.items():
+                    if _k not in payload and _v not in (None, ""):
+                        payload[_k] = _v
 
                 # ID único: hash do document_id + chunk_index
                 point_id_str = f"{document_id}_{idx}"

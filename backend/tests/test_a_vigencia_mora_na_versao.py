@@ -361,13 +361,13 @@ def teste_superseded_e_effective_until_nao_sao_a_mesma_data():
 # ── 4. a migration existe e diz o que faz ─────────────────────────────────────
 
 MIGRACOES = {
-    "20260808_01_spec067_a_vigencia_mora_na_versao.sql":
+    "20260808_01_spec070_a_vigencia_mora_na_versao.sql":
         ("normative_versao_aberta_uk", "vigencia_fonte"),
-    "20260808_02_spec067_o_indice_sabe_de_que_versao_veio.sql":
+    "20260808_02_spec070_o_indice_sabe_de_que_versao_veio.sql":
         ("qdrant_doc_id", "norm-' || v.document_id"),
-    "20260808_03_spec067_a_carta_sabe_de_que_contrato_saiu.sql":
+    "20260808_03_spec070_a_carta_sabe_de_que_contrato_saiu.sql":
         ("source_document_id", "on delete restrict"),
-    "20260808_04_spec067_o_pdf_e_o_texto_tem_endereco.sql":
+    "20260808_04_spec070_o_pdf_e_o_texto_tem_endereco.sql":
         ("text_storage_ref", "arquivado_em"),
 }
 
@@ -391,7 +391,7 @@ def teste_toda_migration_tem_apply_verify_e_rollback():
     # CONTROLE — a busca CONSEGUE não achar. Sem isto, um `in` sobre string
     # vazia (arquivo ausente lido como "") passaria em tudo acima.
     checar("normative_versao_aberta_uk" not in
-           (pasta / "20260808_04_spec067_o_pdf_e_o_texto_tem_endereco.sql")
+           (pasta / "20260808_04_spec070_o_pdf_e_o_texto_tem_endereco.sql")
            .read_text(encoding="utf-8"),
            "CONTROLE: a conferência sabe dizer NÃO — a 04 não cria o guarda da 01")
 

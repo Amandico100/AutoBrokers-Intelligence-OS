@@ -1791,3 +1791,66 @@ o custo de esquecer.
 
 **Autorização:** Founder autorizou a execução do UPDATE em massa, em duas
 etapas (previsão com amostra, depois gravação), na rodada de 05/08/2026.
+
+---
+
+## SPEC-070 LOTE 1 — o maestro do acervo (08/08/2026)
+
+`backend/scripts/acervo/coletar_seguradora.py` executa a §9 do começo ao fim
+para uma seguradora inteira. As três peças do LOTE 0 existiam e não estavam
+ligadas. Quatro mudanças saíram do texto da SPEC:
+
+### 1. ESSENCIAL — `knowledge_extras` por pedaço (`qdrant_service.py`)
+
+A §5.3 pede `unit_id` e `faceta` **na raiz** do payload, e os dois mudam de
+pedaço para pedaço. `insert_embeddings` só aceitava um dicionário igual para
+todos os chunks; `metadata` já aceitava lista. Passou a aceitar as duas formas,
+com a mesma simetria.
+
+**Sem isso** `unit_id` só caberia em `metadata`, que o filtro não lê — e o
+`unit_id` é o caminho de volta da carta destilada para o trecho de origem
+(migration 03). Uma procedência que não se resolve é procedência falsa.
+
+### 2. ESSENCIAL — a URL do registro oficial é um arquivo (`insurance_corpus.py`)
+
+`_buscar` decidia baixar direto por `".pdf" in url`. A URL do REP2 é
+`…/DownloadConsultaPublica/508497`, **sem extensão** — a fonte que a §3 declara
+oficial caía no crawler, que renderiza HTML, gasta crédito do Firecrawl e não
+devolve o PDF. O guarda estava recusando justamente a fonte que a SPEC manda
+usar. 📊 Com a correção, o CG144 baixa em 1.223 ms, 1.601.187 bytes.
+
+### 3. VALIOSA — o `egress_guard` carregável fora do contêiner (`susep_rep2.py`)
+
+`app/core/__init__.py` importa `settings` na primeira linha, então
+`import app.core.egress_guard` exigia `MINIO_ROOT_USER` e o resto do ambiente.
+O `egress_guard.py` em si só usa a stdlib. Efeito: o levantamento **somente
+leitura** da §9 (catálogo + REP2, nada escrito) não rodava fora de produção — e
+a conferência da §3.2.1, que decide se um documento entra, só podia ser feita
+no lugar onde ela já não impede nada. **Um controle que só roda em produção é
+um controle que ninguém roda antes.**
+
+Nada foi afrouxado: mesmo arquivo, mesma `EgressPolicy`, mesma lista de hosts;
+só o caminho de importação muda, e se nem por ele carregar, a exceção sobe.
+
+### 4. Dois testes atualizados (CLAUDE.md §9.3)
+
+- `test_a_vigencia_mora_na_versao.py` procurava as migrations por
+  `spec067_*`; elas foram renumeradas para `spec070_*` e o teste ficou
+  vermelho na bateria — 📊 era o único vermelho de 208 antes deste trabalho.
+- `test_o_contrato_da_allianz_nao_responde_pela_porto.py` lia os campos de raiz
+  **dentro** dos parênteses de `insert_embeddings(...)`. Eles passaram a ser
+  montados antes da chamada (mudança 1). A afirmação guardada não mudou —
+  a etiqueta na raiz e o regulador sem etiqueta —, só o lugar. A fatia lida foi
+  movida para *antes* da chamada de propósito: olhar a fatia inteira faria
+  `metadata={..., "insurer_key": ...}`, que é justamente o que **não** sobe,
+  satisfazer o teste com o defeito de volta.
+
+### Consequência declarada
+
+Nada foi indexado nem gravado. O que rodou de verdade foi o levantamento
+read-only da Porto: 📊 31.871 produtos no catálogo, 71 de varejo, **68 com
+versão vigente confirmada e 3 recusados** por formato de processo anterior a
+2004 (P-140). O `--aplicar` continua exigindo `QDRANT_HOST` e
+`OPENAI_API_KEY`, e recusa fora do contêiner.
+
+**Autorização:** execução do LOTE 1 da SPEC-070, sessão de 08/08/2026.

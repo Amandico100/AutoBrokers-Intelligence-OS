@@ -2972,3 +2972,87 @@ no bloco sem arriscar o que já funciona.
 - **Dono:** 🤖 execução (LOTE 1, se a conferência dos 10 pedaços reprovar).
 - **O que custa esquecer:** 💭 a resposta que exige cruzamento sai plausível e
   errada — que é o pior formato de erro num contrato.
+
+---
+
+## P-140 · 🟡 Três produtos da Porto usam o formato de processo anterior a 2004
+
+📊 Medido em 08/08/2026 pelo levantamento real
+(`scripts/acervo/coletar_seguradora.py --seguradora porto --diagnostico`):
+dos 71 produtos de varejo da Porto no catálogo oficial, **68 tiveram a versão
+vigente confirmada e 3 não**:
+
+```
+auto   10.003506/01-14     05 | AUTOMÓVEL - CASCO
+vida   005-00737/00        13 | VIDA (INDIVIDUAL)
+vida   10.005843/99-51     13 | VIDA (INDIVIDUAL)
+```
+
+Não é truncamento nosso — é como o **próprio catálogo da SUSEP** os publica.
+São processos anteriores ao formato de 17 dígitos, e o REP2 não os aceita: o
+script os marca `processo_malformado` e **não indexa**, que é o comportamento
+certo (§3.2.1).
+
+⚠️ Eles **não** entram na lista `PENDENCIAS_DE_REPARO` do `susep_rep2.py`: ali
+moram os que perderam dígito na nossa gravação e o catálogo recupera. Estes
+três estão íntegros na fonte — o formato é que é de outra época. Inventar
+dígito verificador para eles é o erro que aquela lista existe para impedir.
+
+- **Destrava:** descobrir se o REP2 tem endereço alternativo para processo em
+  formato antigo, ou confirmar que o produto está morto por outra via.
+- **Dono:** 🤖 execução (LOTE 1, se algum deles for um produto que se vende).
+- **O que custa esquecer:** 💭 um produto vivo fica fora do acervo para sempre,
+  e a ausência é silenciosa — ninguém pergunta pelo que não está na lista.
+
+---
+
+## P-141 · 🟡 O ramo oficial da SUSEP não tem coluna — mora em `notes`
+
+A SPEC-070 §5.2 é explícita: *"O REP2 devolve o ramo oficial numerado
+(`05 | AUTOMÓVEL - CASCO`). **Grave o código e o nome oficiais.** Criar
+vocabulário paralelo ao do regulador é divergência de graça."*
+
+`normative_documents` não tem onde. O que existe é `product_line`, que é o
+**nosso** slug (`auto`, `residencial`, `condominio`, …) e é o que a busca já
+filtra na raiz do payload. O maestro grava o ramo oficial em
+`normative_documents.notes` (`"ramo oficial SUSEP: 05 | AUTOMÓVEL - CASCO"`) e
+o repete no `.jsonl` dos subagentes.
+
+⚠️ Texto livre não é consultável. A pergunta *"quais documentos nossos são do
+ramo 05?"* continua sem resposta em SQL.
+
+- **Destrava:** uma migration com `susep_ramo_codigo` e `susep_ramo_nome` em
+  `normative_documents` — expand-first, duas colunas nulas, nenhum leitor muda.
+  Exige manifesto (CLAUDE.md §8).
+- **Dono:** 🧑 Founder autoriza o manifesto · 🤖 execução escreve.
+- **O que custa esquecer:** 💭 a divergência que a §5.2 quer evitar continua de
+  pé, só que escondida numa coluna de observações.
+
+---
+
+## P-142 · 🟢 `vigente` e `faceta` já têm escritor — falta o LEITOR
+
+📊 Até 08/08/2026 os dois campos tinham **índice de payload criado no Qdrant e
+nenhum escritor** (o comentário em `qdrant_service.py` dizia isso com todas as
+letras). O maestro da SPEC-070 fechou essa ponta: `_ingerir_sync` agora grava
+na raiz `vigente`, `faceta`, `unit_id`, `parent_id`, `doc_kind`,
+`susep_process` e `effective_from`, um jogo por pedaço.
+
+**Falta a outra ponta.** A §6 da SPEC-070 pede duas buscas com orçamento
+próprio:
+
+```
+busca 1  namespace=normative  ∧ (insurer_key=X ∨ ausente) ∧ vigente
+busca 2  namespace=cards      ∧ (insurer_key=X ∨ ausente)
+```
+
+⚠️ E o filtro de vigência tem de ser **de dois braços** (`vigente=true` OU
+chave ausente). Sem o segundo braço ele apaga as 12.063 cartas, que não têm
+essa chave e nunca terão.
+
+- **Destrava:** nada de fora — é trabalho em `search_service`/`qdrant_service`.
+- **Dono:** 🤖 execução.
+- **O que custa esquecer:** hoje nada quebra, porque a versão revogada sai do
+  índice na ingestão (D-Acervo-02). O custo aparece no dia em que uma remoção
+  falhar: 📊 `delete_document` já respondeu "removi" com o Qdrant fora do ar, e
+  aí as duas versões respondem com a mesma autoridade e nada no filtro separa.

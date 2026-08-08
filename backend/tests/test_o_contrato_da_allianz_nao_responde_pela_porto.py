@@ -82,9 +82,24 @@ def _ler(caminho: str) -> str:
 
 
 def _chamada_de_insert() -> str:
-    """O trecho da chamada a `insert_embeddings` no corpus normativo."""
+    """O trecho que MONTA e entrega o payload de raiz no corpus normativo.
+
+    ⚠️ Atualizado em 08/08/2026 (CLAUDE.md §9.3: quando o fato muda, o teste
+    muda com ele e a lição migra em vez de morrer). Até aqui os campos de raiz
+    eram um dicionário escrito **dentro** dos parênteses de
+    `insert_embeddings(...)`, e bastava olhar depois de `knowledge_extras=`.
+
+    A SPEC-070 §5.3 pede na raiz dois campos que MUDAM de pedaço para pedaço —
+    `unit_id` (por onde a carta destilada volta ao trecho) e `faceta`. Então o
+    payload virou uma LISTA construída antes da chamada: `comum` com o que vale
+    para o documento inteiro, e `extras` com uma cópia por pedaço.
+
+    A afirmação que este arquivo guarda não mudou nem um pouco: **a etiqueta de
+    seguradora tem de estar na RAIZ, e o regulador não recebe etiqueta.** Só o
+    lugar onde ela é escrita mudou. Por isso a fatia agora começa em `comum`.
+    """
     fonte = _ler(CORPUS)
-    i = fonte.index("qdrant.insert_embeddings(")
+    i = fonte.index("    comum = {")
     return fonte[i:fonte.index("\n    return len(chunks)", i)]
 
 
@@ -93,8 +108,11 @@ def teste_a_etiqueta_fica_onde_o_filtro_procura():
     print("\n[1] A condição geral deixa de passar como genérica")
     chamada = _chamada_de_insert()
 
-    i_extras = chamada.index("knowledge_extras=")
-    depois = chamada[i_extras:]
+    # 🔴 Só o que vem ANTES da chamada — que é onde `comum` e `extras` são
+    # montados. Olhar a fatia inteira seria pior que não olhar: `metadata={...}`
+    # também traz `"insurer_key": doc["insurer_key"]`, aninhado, e é justamente
+    # ele que NÃO sobe para a raiz. O teste passaria com o defeito de volta.
+    depois = chamada[:chamada.index("ok = qdrant.insert_embeddings(")]
     checar('"insurer_key": doc["insurer_key"]' in depois,
            "`insurer_key` entra por `knowledge_extras`",
            "📊 11.211 chunks de condições gerais passavam como genéricos")
@@ -102,13 +120,20 @@ def teste_a_etiqueta_fica_onde_o_filtro_procura():
            "e `product_line` também",
            "é o `ramo` do corpus — 8 valores contra 4 das cartas")
 
+    checar("knowledge_extras=extras" in chamada,
+           "e o que foi montado chega MESMO na chamada",
+           "montar o payload e não passá-lo seria o defeito de volta, mais caro")
+
     # 🔴 CONTROLE DO MECANISMO — o teste só vale se `knowledge_extras` for MESMO
     # o que sobe para a raiz. Se `insert_embeddings` mudar, este conserto vira
     # decoração e ninguém percebe.
     q = _ler(QDRANT)
-    checar("if knowledge_extras:" in q and "payload[_k] = _v" in q,
+    checar("for _k, _v in _extras.items():" in q and "payload[_k] = _v" in q,
            "CONTROLE — e é `knowledge_extras` que vai para a RAIZ do payload",
            "qdrant_service: metadata fica aninhado, extras sobe")
+    checar("isinstance(knowledge_extras, list)" in q,
+           "CONTROLE — e ele aceita um jogo de campos POR PEDAÇO",
+           "`unit_id` e `faceta` mudam de pedaço para pedaço (SPEC-070 §5.3)")
     checar('"metadata": chunk_metadata,' in q,
            "CONTROLE — enquanto `metadata` continua aninhado",
            "era por isso que a etiqueta não era vista")
