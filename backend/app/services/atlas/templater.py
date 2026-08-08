@@ -1239,7 +1239,10 @@ def infer_ramo_servico(labels: List[str], full_text: str) -> Tuple[str, str]:
         for key, terms in (
             ("cobranca", ("boleto", "parcela", "fatura", "pagamento", "pagar",
                           "debito em conta", "débito em conta", "cobran")),
-            ("apolice", ("apolice", "apólice", "segunda via", "2a via")),
+            # `consulta`, e NÃO "apolice": é o nome que o mesmo trabalho já tem
+            # do outro lado. 📊 `consulta` são 564 atendimentos úteis e quatro
+            # playbooks escritos; "apolice" seria um quinto nome para eles.
+            ("consulta", ("apolice", "apólice", "segunda via", "2a via")),
             ("renovacao", ("renova",)),
         ):
             if any(t in blob for t in terms):

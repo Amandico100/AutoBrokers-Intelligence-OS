@@ -733,14 +733,29 @@ _STAGE2_SYSTEM = (
 REGRAS_DO_PLAYBOOK = _STAGE2_SYSTEM
 
 
-# Os valores de `tipo` que servem de SERVIÇO quando o serviço veio "outro".
+# O `tipo` que serve de SERVIÇO quando o serviço veio "outro" — e com que nome.
 #
 # `assistencia` está fora de propósito: quem procura o playbook em runtime
 # sempre nomeia o subserviço (guincho, encanador...), nunca "assistencia" — um
 # grupo com esse nome nasceria mudo. E `outro` está fora porque é o único que
 # de fato não diz nada: 📊 `outro/outro` tem 381 sessões com nota média 52,4,
 # contra 76,2 de `auto/cobranca`.
-_TIPOS_QUE_SAO_SERVICO = ("cobranca", "apolice", "renovacao", "sinistro")
+#
+# 🔴 `apolice` NÃO vira um serviço chamado "apolice": vira `consulta`, que é o
+# nome que o mesmo trabalho já tem. 📊 `consulta` são 564 sessões úteis e
+# QUATRO playbooks escritos; `apolice` seriam 136 espalhadas em três ramos.
+# Criar `auto/apolice` ao lado de `auto/consulta` seria abrir dois playbooks
+# para o mesmo trabalho — exatamente o defeito que este arquivo está
+# consertando, cometido de novo na linha do conserto.
+_TIPO_COMO_SERVICO = {
+    "cobranca": "cobranca",
+    "apolice": "consulta",
+    "renovacao": "renovacao",
+    "sinistro": "sinistro",
+}
+# Os serviços que PODEM ter vindo de um `tipo` — é por eles que o carregador
+# sabe que precisa procurar também o formato antigo.
+_TIPOS_QUE_SAO_SERVICO = tuple(sorted(set(_TIPO_COMO_SERVICO.values())))
 
 
 def chave_do_grupo(destilado: Dict[str, Any]) -> Tuple[str, str]:
@@ -782,7 +797,8 @@ def chave_do_grupo(destilado: Dict[str, Any]) -> Tuple[str, str]:
     if servico and servico != "outro":
         return (ramo, servico)
     tipo = str(destilado.get("tipo") or "").strip()
-    return (ramo, tipo) if tipo in _TIPOS_QUE_SAO_SERVICO else ("", "")
+    como_servico = _TIPO_COMO_SERVICO.get(tipo)
+    return (ramo, como_servico) if como_servico else ("", "")
 
 
 def _load_group_summaries_sync(ramo: str, servico: str, limit: int = 30) -> List[Dict[str, Any]]:
@@ -858,8 +874,14 @@ def _load_group_summaries_sync(ramo: str, servico: str, limit: int = 30) -> List
     # As duas consultas não se sobrepõem (`servico=X` contra `servico=outro`),
     # então não há o que deduplicar — mas a concatenação embaralha a ordem de
     # recência de que o desempate por nota depende, e por isso ela é refeita.
+    #
+    # O mapa é invertido aqui porque `apolice` e `consulta` são o mesmo
+    # trabalho com dois nomes: quem pede `consulta` tem de receber também o que
+    # está gravado como `tipo='apolice'`.
+    for tipo, como in _TIPO_COMO_SERVICO.items():
+        if como == servico:
+            destilados.extend(_pagina([("servico", "outro"), ("tipo", tipo)]))
     if servico in _TIPOS_QUE_SAO_SERVICO:
-        destilados.extend(_pagina([("servico", "outro"), ("tipo", servico)]))
         destilados.sort(key=lambda d: str(d.get("at") or ""), reverse=True)
 
     def _nota(d: Dict[str, Any]) -> int:

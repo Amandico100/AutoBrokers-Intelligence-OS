@@ -105,7 +105,8 @@ def _chave_do_grupo():
     pedacos = []
     for no in arv.body:
         if isinstance(no, ast.Assign) and any(
-                getattr(a, "id", "") == "_TIPOS_QUE_SAO_SERVICO" for a in no.targets):
+                getattr(a, "id", "") in ("_TIPO_COMO_SERVICO", "_TIPOS_QUE_SAO_SERVICO")
+                for a in no.targets):
             pedacos.append(ast.get_source_segment(fonte, no))
         if isinstance(no, ast.FunctionDef) and no.name == "chave_do_grupo":
             pedacos.append(ast.get_source_segment(fonte, no))
@@ -123,9 +124,21 @@ def teste_o_destilador_para_de_jogar_fora_o_melhor():
     checar(chave({"ramo": "auto", "servico": "outro", "tipo": "cobranca"}) == ("auto", "cobranca"),
            "cobrança presa em 'outro' vira o grupo `auto/cobranca`",
            "📊 1.904 sessões úteis, nota 76,2 — o melhor do acervo")
-    checar(chave({"ramo": "residencial", "servico": "outro", "tipo": "apolice"})
-           == ("residencial", "apolice"),
-           "e o mesmo vale para apólice e renovação")
+    checar(chave({"ramo": "outro", "servico": "outro", "tipo": "renovacao"})
+           == ("outro", "renovacao"),
+           "e o mesmo vale para renovação")
+
+    # 🔴 `apolice` NÃO vira um serviço chamado "apolice". Este erro foi
+    # cometido na primeira versão DESTE conserto e pego antes do commit:
+    # 📊 `consulta` são 564 atendimentos úteis com QUATRO playbooks escritos;
+    # "apolice" seriam 136 espalhadas em três ramos. Criar `auto/apolice` ao
+    # lado de `auto/consulta` é abrir dois playbooks para o mesmo trabalho —
+    # exatamente o defeito que este arquivo conserta, cometido de novo na
+    # linha do conserto.
+    checar(chave({"ramo": "auto", "servico": "outro", "tipo": "apolice"})
+           == ("auto", "consulta"),
+           "`tipo=apolice` entra no `consulta` que já existe",
+           "📊 consulta: 564 úteis e 4 playbooks · apolice: 136 e nenhum")
 
     # CONTROLE — o serviço explícito continua ganhando. Se o `tipo` passasse a
     # mandar sempre, `auto/guincho` viraria `auto/assistencia` e todos os
@@ -155,7 +168,8 @@ def teste_o_runtime_procura_a_chave_que_foi_escrita():
     checar(s == "cobranca", "'boleto da parcela' → cobranca",
            "📊 sem isto, auto/cobranca nasceria mudo como os outros 6")
     _, s = infer([], "preciso da segunda via da minha apolice")
-    checar(s == "apolice", "'segunda via da apólice' → apolice")
+    checar(s == "consulta", "'segunda via da apólice' → consulta",
+           "o nome que os 4 playbooks já usam — não um quinto")
     _, s = infer([], "quero renovar o seguro que vence agora")
     checar(s == "renovacao", "'renovar' → renovacao")
 
@@ -215,12 +229,16 @@ def teste_a_leitura_entende_os_dois_formatos():
     # No banco o material está gravado como servico='outro' + tipo='cobranca'.
     # Pedir servico='cobranca' acha ZERO. Sem esta segunda consulta o conserto
     # inteiro produziria grupos vazios.
-    checar('_pagina([("servico", "outro"), ("tipo", servico)])' in fonte,
+    checar('_pagina([("servico", "outro"), ("tipo", tipo)])' in fonte,
            "o carregador busca também o formato antigo",
            "📊 auto/cobranca: 0 linhas pela 1ª consulta, 1.904 pela 2ª")
-    checar("if servico in _TIPOS_QUE_SAO_SERVICO:" in fonte,
-           "e só para os serviços que vieram de `tipo`",
-           "buscar 'servico=outro' para guincho traria conversa alheia")
+    # O mapa é INVERTIDO aqui: quem pede `consulta` tem de receber também o
+    # que está gravado como `tipo='apolice'`. Procurar `tipo='consulta'` acha
+    # zero — esse valor não existe no campo `tipo`.
+    checar("for tipo, como in _TIPO_COMO_SERVICO.items():" in fonte
+           and "if como == servico:" in fonte,
+           "e o mapa é invertido, para `consulta` achar o `tipo=apolice`",
+           "procurar tipo='consulta' acharia zero: esse valor não existe lá")
 
     # CONTROLE — a ordem de recência é refeita depois de juntar. O desempate
     # por nota depende dela, e concatenar duas listas ordenadas não devolve
