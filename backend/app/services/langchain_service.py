@@ -649,22 +649,31 @@ class LangChainService:
             )
             if include_global:
                 from .knowledge_scope import (
+                    ORCAMENTO_GLOBAL,
                     build_global_search_kwargs,
                     merge_rag_results,
                     seguradora_da_pergunta,
                 )
 
-                # Mesma regra do `search_service`: pergunta que nomeia UMA
-                # companhia nao pode ser respondida pela regra de outra.
-                global_results = self.qdrant.search_similar(
-                    company_id=company_id,
-                    query_embedding=query_embedding,
-                    top_k=top_k,
-                    score_threshold=score_threshold,
-                    **build_global_search_kwargs(
-                        carrier_slug=seguradora_da_pergunta(query)),
-                )
-                results = merge_rag_results(results, global_results)
+                # Mesma regra do `search_service`, e pelo mesmo motivo:
+                # pergunta que nomeia UMA companhia nao pode ser respondida
+                # pela regra de outra — e trecho de contrato nao disputa vaga
+                # com carta destilada (SPEC-067 §6). Uma busca por faixa, com o
+                # MESMO embedding ja gerado acima.
+                #
+                # Consertar so um dos dois caminhos globais seria deixar a
+                # metade que ninguem esta olhando com o defeito antigo.
+                carrier = seguradora_da_pergunta(query)
+                for _rotulo, faixa, _cota in ORCAMENTO_GLOBAL:
+                    global_results = self.qdrant.search_similar(
+                        company_id=company_id,
+                        query_embedding=query_embedding,
+                        top_k=top_k,
+                        score_threshold=score_threshold,
+                        **build_global_search_kwargs(
+                            carrier_slug=carrier, namespace=faixa),
+                    )
+                    results = merge_rag_results(results, global_results)
             return results
         except Exception as e:
             logger.error(f"[RAG] Error: {e}")

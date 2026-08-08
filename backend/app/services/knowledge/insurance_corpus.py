@@ -88,6 +88,662 @@ def extrair_vigencia(texto: str) -> Optional[str]:
     return None
 
 
+# ==========================================================================
+# O MOTOR QUE PICA UMA CONDIÇÃO GERAL — SPEC-067 §4
+# ==========================================================================
+#
+# O defeito que este bloco conserta, medido em 08/08/2026 sobre os PDFs reais
+# do acervo:
+#
+#   📊 57% dos pedaços terminavam no meio de uma frase
+#   📊 46% começavam no meio de uma frase
+#   📊 69% não diziam de que seção do contrato saíram
+#   📊 76% não diziam de que seguradora eram — 29 de 11.409 tinham etiqueta
+#
+# Eram quatro defeitos empilhados, e o de baixo era o extrator: o PyPDF2
+# colapsa a página inteira numa linha só. Sem linha não existe título; sem
+# título não existe seção; sem seção o corte só pode ser por contagem de
+# caracteres — que é o que corta frase no meio.
+#
+# A ordem aqui não é estética. Cada passo depende do anterior:
+#
+#   páginas (fitz)  →  limpeza  →  tabelas  →  títulos  →  seções  →  pedaços
+#
+# E o cabeçalho é montado **depois** de picar, pedaço a pedaço. Concatenar
+# antes e picar depois põe a etiqueta só no pedaço 0 — que é exatamente o que
+# o código antigo fazia, e o motivo de 11.380 pedaços de contrato circularem
+# sem dizer de quem eram.
+
+ALVO_PEDACO = 1400
+TETO_PEDACO = 2200
+MINIMO_CORPO = 180
+TETO_CAMINHO = 400
+
+# Separador de página. `\f` é whitespace para o `re.sub(r"\s+")` do `_hash`,
+# então marcar a página NÃO muda o hash de conteúdo — documento que não mudou
+# na origem continua não mudando aqui.
+MARCA_DE_PAGINA = "\f"
+
+# Um número sozinho numa linha: `4.`, `4.2`, `4.2.1.`. Exige ponto — sem essa
+# exigência o número de página (`68`) viraria "órfão" e grudaria no rodapé
+# seguinte, e aí nem a mobília nem o número de página seriam mais reconhecíveis.
+_SO_NUMERO = re.compile(r"^(\d{1,2}(?:\.\d{1,3})+\.?|\d{1,2}\.)$")
+_SO_MARCADOR = re.compile(r"^(?:[•▪◦●·*»›-]|[–—]|\(?[a-zA-Z]{1,2}\)|\d{1,2}\))$")
+_LINHA_DE_SUMARIO = re.compile(r"[.\-–—_·]{4,}\s*\d{1,4}$")
+_PURO_NUMERO = re.compile(r"^\d{1,4}$")
+
+_RE_MARKDOWN = re.compile(r"^(#{1,6})\s+(\S.*)$")
+_RE_RAIZ = re.compile(
+    r"^[►▶•\s]*(CL[ÁA]USULA|CAP[ÍI]TULO|SE[ÇC][ÃA]O|ANEXO|T[ÍI]TULO)\b[\s:.\-–—]*"
+    r"([IVXLCDM]+|\d+)?\s*([A-Z])?", re.I)
+_RE_NUMERADO = re.compile(r"^(\d{1,2}(?:\.\d{1,3}){0,3})\.?\s+(\S.*)$")
+# Peças que também são RAIZ, mas não trazem numeração. Só valem em caixa-alta e
+# em linha curta: 📊 sem essa exigência, "condições gerais do seguro
+# estabelecem…" no meio de um parágrafo abriria uma seção nova. Existem porque
+# o CG140 volta a `CONDIÇÕES GERAIS` depois das cláusulas — e sem isto o
+# caminho continuava dizendo "Cláusula 103" trinta páginas depois dela acabar.
+_RE_RAIZ_SEM_NUMERO = re.compile(
+    r"^(CONDI[ÇC][ÕO]ES\s+(GERAIS|ESPECIAIS)|DISPOSI[ÇC][ÕO]ES\s+GERAIS|GLOSS[ÁA]RIO)\b")
+_INICIO_DE_BLOCO = re.compile(
+    r"^(?:[•▪◦●·*]|[-–—]\s|\(?[a-zA-Z]{1,2}\)\s|\d{1,2}\)\s|\d{1,2}(?:\.\d{1,3})*\.\s)")
+_NOTA_DE_RODAPE = re.compile(r"^(?:\(\s*\d+\s*\)|\(?\*+\)?|\*|Obs\b|Nota|Notas|Fonte)", re.I)
+_FIM_DE_FRASE = (".", ";", ":", "!", "?", "”", '"', "»", ")")
+
+# Nível 8 da §4.3: o título de faceta que a Circular SUSEP 621/2021 obriga.
+# Só entra quando a linha é EXATAMENTE isso — não é busca de substring, senão
+# metade das frases do contrato viraria título.
+_TITULO_DE_FACETA = {
+    "riscos cobertos", "riscos excluidos", "riscos excluídos", "exclusoes",
+    "exclusões", "bens nao compreendidos", "bens não compreendidos",
+    "limites de utilizacao", "limites de utilização", "limite de utilizacao",
+    "limite de utilização", "franquia", "franquias", "carencia", "carência",
+    "prazos", "prazo de comunicacao", "prazo de comunicação", "documentos",
+    "documentacao", "documentação", "definicoes", "definições", "glossario",
+    "glossário", "reintegracao", "reintegração", "objeto do seguro",
+    "ambito geografico", "âmbito geográfico", "vigencia", "vigência",
+}
+_SECAO_DESCARTAVEL = {"sumario", "sumário", "indice", "índice",
+                      "indice remissivo", "índice remissivo"}
+
+
+def extrair_texto_de_pdf(corpo: bytes) -> tuple[Optional[str], Optional[str]]:
+    """PDF → texto com as PÁGINAS marcadas. Devolve (texto, None) ou (None, erro).
+
+    Página a página, em ordem, com `page.get_text("text")`. A marca de página
+    não é enfeite: as duas regras de limpeza que mais sujeira tiram — mobília
+    de rodapé e número de página — só funcionam se souberem onde a página
+    começa e termina. Sem isso, "linha repetida 5 vezes" apagaria
+    📊 as 27 ocorrências de "Até 2 (duas) utilizações durante a vigência" do
+    Bradesco, que são 27 assistências diferentes e não são mobília nenhuma.
+    """
+    try:
+        import fitz
+    except Exception:  # noqa: BLE001 — sem o extrator, o crawler ainda existe
+        return None, "sem_extrator_de_pdf"
+
+    documento = None
+    try:
+        documento = fitz.open(stream=corpo, filetype="pdf")
+        paginas = [pagina.get_text("text") for pagina in documento]
+    except Exception as exc:  # noqa: BLE001
+        return None, f"pdf_ilegivel:{type(exc).__name__}"
+    finally:
+        if documento is not None:
+            try:
+                documento.close()
+            except Exception:  # noqa: BLE001
+                pass
+    return MARCA_DE_PAGINA.join(paginas), None
+
+
+def _em_paginas(texto: str) -> list[list[str]]:
+    """Texto → páginas → linhas, com espaço normalizado."""
+    bruto = (texto or "").replace("\r\n", "\n").replace("\r", "\n")
+    paginas = bruto.split(MARCA_DE_PAGINA)
+    return [[re.sub(r"[ \t\xa0]+", " ", linha).strip() for linha in p.split("\n")]
+            for p in paginas]
+
+
+def _juntar_orfaos(linhas: list[str]) -> list[str]:
+    """Passo 1 da §4.2: número (ou marcador) sozinho gruda na linha seguinte.
+
+    📊 O Bradesco quebra assim: `4.2.` numa linha, `CONSERTO LINHA MARROM` na
+    outra. Separados, o primeiro é um título sem nome e o segundo é um
+    parágrafo em caixa-alta. Juntos, são a seção que distingue o limite da
+    linha marrom do limite da linha branca — a diferença entre responder certo
+    e responder uma das 27 frases idênticas do documento.
+    """
+    saida: list[str] = []
+    i, total = 0, len(linhas)
+    while i < total:
+        atual = linhas[i].strip()
+        e_numero = bool(_SO_NUMERO.match(atual))
+        e_marcador = (not e_numero) and bool(_SO_MARCADOR.match(atual))
+        if atual and (e_numero or e_marcador):
+            j = i + 1
+            while j < total and not linhas[j].strip() and j <= i + 2:
+                j += 1
+            if j < total and linhas[j].strip():
+                proxima = linhas[j].strip()
+                if e_marcador or len(proxima) <= 140:
+                    saida.append(f"{atual} {proxima}")
+                    i = j + 1
+                    continue
+        saida.append(linhas[i])
+        i += 1
+    return saida
+
+
+def _faixa_de_mobilia(pagina: list[str], topo: int = 6, rodape: int = 6) -> set[int]:
+    """As posições onde cabeçalho e rodapé moram: começo e fim da página.
+
+    📊 Seis linhas no topo, e não três, porque o cabeçalho da Mapfre tem seis:
+    título do produto, número de página, duas de endereço, site e
+    "Classificação: Uso Interno". Com uma faixa de três, as três últimas
+    sobravam e grudavam no meio da frase seguinte — o pedaço passava a começar
+    com "São Paulo/SP • CEP 04794-000".
+    """
+    cheias = [i for i, linha in enumerate(pagina) if linha.strip()]
+    return set(cheias[:topo]) | set(cheias[-rodape:])
+
+
+def _remover_mobilia(paginas: list[list[str]], minimo: int = 5) -> list[list[str]]:
+    """Passo 3 da §4.2: linha repetida em ≥5 páginas, na borda da página.
+
+    ⚠️ Linha puramente numérica fica de fora — é o passo 4 que cuida dela.
+    📊 Sem essa exceção, os valores `630` e `882` da tabela de carro reserva da
+    Porto somem do documento, e a única resposta que existe sobre carro reserva
+    sai do acervo junto.
+
+    ⚠️ E "repetida" não basta: a linha tem de repetir **na borda**. 📊 "Até 2
+    (duas) utilizações durante a vigência do seguro" aparece 27 vezes no
+    e-Residencial do Bradesco, em 27 assistências diferentes. É conteúdo, e
+    conteúdo mora no meio da página — por isso a maioria das ocorrências tem de
+    estar na faixa para a linha ser considerada mobília.
+    """
+    faixas = [_faixa_de_mobilia(p) for p in paginas]
+    contagem: dict[str, int] = {}
+    total_geral: dict[str, int] = {}
+    for pagina, faixa in zip(paginas, faixas):
+        vistas = set()
+        for i, linha in enumerate(pagina):
+            texto = linha.strip()
+            if not texto or _PURO_NUMERO.match(texto) or len(texto) > 160:
+                continue
+            total_geral[texto] = total_geral.get(texto, 0) + 1
+            if i in faixa:
+                vistas.add(texto)
+        for texto in vistas:
+            contagem[texto] = contagem.get(texto, 0) + 1
+    mobilia = {t for t, c in contagem.items()
+               if c >= minimo and c >= 0.6 * total_geral.get(t, c)}
+    if not mobilia:
+        return paginas
+    return [[linha for i, linha in enumerate(pagina)
+             if not (i in faixa and linha.strip() in mobilia)]
+            for pagina, faixa in zip(paginas, faixas)]
+
+
+def _remover_numero_de_pagina(paginas: list[list[str]],
+                              minimo: int = 8) -> list[list[str]]:
+    """Passo 4 da §4.2: número de página só sai quando ANDA DE 1 EM 1.
+
+    O deslocamento (`valor - índice da página`) tem de ser o mesmo ao longo do
+    arquivo. Um número solto numa tabela não forma progressão com nada, e por
+    isso sobrevive.
+    """
+    faixas = [_faixa_de_mobilia(p) for p in paginas]
+    votos: dict[int, int] = {}
+    for k, (pagina, faixa) in enumerate(zip(paginas, faixas)):
+        for i in faixa:
+            texto = pagina[i].strip()
+            if _PURO_NUMERO.match(texto):
+                deslocamento = int(texto) - k
+                votos[deslocamento] = votos.get(deslocamento, 0) + 1
+    if not votos:
+        return paginas
+    deslocamento, quantos = max(votos.items(), key=lambda par: par[1])
+    if quantos < minimo:
+        return paginas
+    saida = []
+    for k, (pagina, faixa) in enumerate(zip(paginas, faixas)):
+        fora = {i for i in faixa
+                if _PURO_NUMERO.match(pagina[i].strip())
+                and int(pagina[i].strip()) - k == deslocamento}
+        saida.append([linha for i, linha in enumerate(pagina) if i not in fora])
+    return saida
+
+
+def _remover_sumario(paginas: list[list[str]], minimo: int = 8,
+                     folga: int = 25) -> list[list[str]]:
+    """Passo 2 da §4.2 — e a REGIÃO inteira do sumário, não só as linhas com pontinhos.
+
+    📊 A `CLÁUSULA 76R` aparece 2× no CG140: uma no índice, outra no corpo.
+    Indexar as duas põe uma linha de sumário competindo com a cláusula de
+    verdade. Mas o índice também quebra linha: `CLÁUSULA 76 – DANOS A VIDROS E
+    RETROVISORES, LANTERNAS E FARÓIS – REDE` vem SEM pontinhos, e a linha
+    seguinte é que os tem.
+
+    🔴 E essa sobra não era ruído inofensivo. O índice cita a `CLÁUSULA 109`
+    antes de o contrato começar; a guarda de monotonicidade então recusava
+    TODA cláusula de número menor pelo resto do arquivo, e 📊 os 607 pedaços do
+    CG140 saíram com a mesma raiz falsa — "CLÁUSULA 109 – COBERTURA DA PELÍCULA
+    PPF" — inclusive os do vidro e os do pneu. Um caminho errado mente com mais
+    convicção do que caminho nenhum.
+
+    Por isso a região: onde há ≥8 linhas de índice próximas umas das outras,
+    tudo entre a primeira e a última é índice.
+    """
+    plano: list[tuple[int, int]] = []
+    for p, pagina in enumerate(paginas):
+        for i in range(len(pagina)):
+            plano.append((p, i))
+    marcas = [k for k, (p, i) in enumerate(plano)
+              if _LINHA_DE_SUMARIO.search(paginas[p][i].strip())]
+
+    apagar: set[tuple[int, int]] = set()
+    grupo: list[int] = []
+    for k in marcas + [None]:  # type: ignore[list-item]
+        if grupo and (k is None or k - grupo[-1] > folga):
+            if len(grupo) >= minimo:
+                apagar.update(plano[grupo[0]:grupo[-1] + 1])
+            grupo = []
+        if k is not None:
+            grupo.append(k)
+    apagar.update(plano[k] for k in marcas)
+
+    return [[linha for i, linha in enumerate(pagina) if (p, i) not in apagar]
+            for p, pagina in enumerate(paginas)]
+
+
+def limpar(texto: str) -> list[str]:
+    """A §4.2 inteira, **nesta ordem exata**. Devolve as linhas limpas."""
+    paginas = _em_paginas(texto)
+    paginas = [_juntar_orfaos(p) for p in paginas]
+    paginas = _remover_sumario(paginas)
+    paginas = _remover_mobilia(paginas)
+    paginas = _remover_numero_de_pagina(paginas)
+    return [linha for pagina in paginas for linha in pagina]
+
+
+def _e_caixa_alta(linha: str) -> bool:
+    letras = [c for c in linha if c.isalpha()]
+    return len(letras) >= 3 and not any(c.islower() for c in letras)
+
+
+def _titulo_curto(texto: str) -> bool:
+    """Título é rótulo, não frase. Frase que termina em ponto não é título."""
+    limpo = texto.strip()
+    return bool(limpo) and len(limpo) <= 110 and not limpo.endswith((".", ";", ","))
+
+
+def detectar_titulos(linhas: list[str]) -> dict[int, tuple[int, str]]:
+    """Os 8 níveis da §4.3, com as duas guardas que foram medidas.
+
+    ⚠️ **Duas linhas de CAIXA-ALTA seguidas são parágrafo, não título.**
+    📊 Sem essa guarda o aviso `IMPORTANTE: PARA APARELHOS COM FABRICAÇÃO
+    SUPERIOR A 5 (CINCO) ANOS...` do Bradesco vira título e empurra
+    `4.2. CONSERTO LINHA MARROM` para fora do caminho — que é justamente o que
+    distingue o limite da linha marrom do da linha branca.
+
+    ⚠️ **Número de cláusula tem de ser monotônico.** Candidato que retrocede é
+    descartado. 📊 O Allianz escreve `Cláusula 9 – …` no meio de uma frase, e
+    um detector ingênuo morde a isca e reabre a cláusula 9 dentro da 47.
+    Ânexo/Capítulo zeram o contador, porque 📊 a numeração reinicia em cada
+    anexo — existem dois `4.1.1` no mesmo arquivo.
+    """
+    cheias = [i for i, linha in enumerate(linhas) if linha.strip()]
+
+    # Quem é caixa-alta "solta" — o que ainda não foi reclamado por um padrão
+    # mais forte. É sobre este conjunto que a guarda das duas linhas roda.
+    solta: set[int] = set()
+    for i in cheias:
+        linha = linhas[i].strip()
+        if (_e_caixa_alta(linha) and len(linha) <= 160
+                and not _RE_RAIZ.match(linha) and not _RE_NUMERADO.match(linha)
+                and not _RE_MARKDOWN.match(linha)):
+            solta.add(i)
+
+    def _continua_embaixo(k: int) -> bool:
+        """A linha seguinte começa em minúscula? Então a de cima não terminou.
+
+        📊 A Mapfre numera PARÁGRAFO, não seção: `2.1. As coberturas contratadas
+        são aquelas discriminadas na apólice de seguro, respeitadas as regras` /
+        `estabelecidas nestas condições gerais…`. Sem esta guarda, o parágrafo
+        inteiro virava título, o caminho ficava com 100 caracteres de contrato
+        dentro e o corpo do pedaço começava em `estabelecidas` — 📊 70% dos
+        pedaços da Mapfre começavam no meio da frase por causa disto.
+        """
+        if k + 1 >= len(cheias):
+            return False
+        proxima = linhas[cheias[k + 1]].strip()
+        return bool(proxima) and proxima[:1].islower()
+
+    titulos: dict[int, tuple[int, str]] = {}
+    ultima_clausula = 0
+    for k, i in enumerate(cheias):
+        linha = linhas[i].strip()
+        if len(linha) > 200:
+            continue
+
+        marca = _RE_MARKDOWN.match(linha)
+        if marca:
+            titulos[i] = (min(len(marca.group(1)), 8), marca.group(2).strip())
+            continue
+
+        raiz = _RE_RAIZ.match(linha)
+        if raiz and _titulo_curto(linha):
+            palavra = raiz.group(1).upper()
+            if palavra.startswith("CL"):
+                bruto = raiz.group(2) or ""
+                if not bruto.isdigit():
+                    continue  # "CLÁUSULA" sem número não abre seção
+                numero = int(bruto)
+                if numero < ultima_clausula:
+                    continue  # a isca do meio da frase
+                ultima_clausula = numero
+            else:
+                ultima_clausula = 0  # anexo reinicia a numeração
+            titulos[i] = (1, linha)
+            continue
+
+        if (_RE_RAIZ_SEM_NUMERO.match(linha) and _e_caixa_alta(linha)
+                and len(linha) <= 60 and not _continua_embaixo(k)):
+            ultima_clausula = 0
+            titulos[i] = (1, linha)
+            continue
+
+        numerado = _RE_NUMERADO.match(linha)
+        if numerado and _titulo_curto(numerado.group(2)) and not _continua_embaixo(k):
+            profundidade = len(numerado.group(1).split("."))
+            titulos[i] = (min(3 + profundidade, 7), linha)
+            continue
+
+        if i in solta:
+            anterior = cheias[k - 1] if k else None
+            seguinte = cheias[k + 1] if k + 1 < len(cheias) else None
+            if (anterior in solta) or (seguinte in solta):
+                continue  # duas caixas-altas seguidas: é parágrafo
+            if _continua_embaixo(k):
+                continue
+            nivel = 2 if re.match(r"^ASSIST[ÊE]NCIA\b", linha, re.I) else 3
+            titulos[i] = (nivel, linha)
+            continue
+
+        chave = linha.strip(" .:–—-").lower()
+        if chave in _TITULO_DE_FACETA and len(linha) <= 60 and not _continua_embaixo(k):
+            titulos[i] = (8, linha)
+
+    return _demover_listas(linhas, titulos)
+
+
+def _demover_listas(linhas: list[str],
+                    titulos: dict[int, tuple[int, str]]) -> dict[int, tuple[int, str]]:
+    """Item de lista numerada não é seção — é corpo.
+
+    📊 A Mapfre enumera as 32 coberturas adicionais uma por linha
+    (`2.3.1. Acessórios…`, `2.3.2. Tacógrafo…`). Cada uma casa o padrão de
+    título numerado, e cada uma abriria uma seção **sem corpo** — que a §4.3
+    manda não indexar. A lista inteira sumiria do acervo.
+
+    O sinal que distingue: título de verdade tem corpo embaixo. Título sem
+    corpo nenhum, seguido de um irmão ou de alguém mais raso, é item de lista.
+    Vira corpo da seção que o contém — `2.3. Coberturas Adicionais`.
+    """
+    fronteiras = sorted(titulos)
+    for k, i in enumerate(fronteiras):
+        nivel = titulos[i][0]
+        if nivel < 4:
+            continue  # raiz e caixa-alta são estrutura, não lista
+        proxima = fronteiras[k + 1] if k + 1 < len(fronteiras) else len(linhas)
+        if any(linhas[j].strip() for j in range(i + 1, proxima)):
+            continue  # tem corpo: é seção de verdade
+        if proxima < len(linhas) and titulos[proxima][0] <= nivel:
+            titulos.pop(i)
+    return titulos
+
+
+def regioes_de_tabela(linhas: list[str], titulos: dict[int, tuple[int, str]],
+                      minimo: int = 6) -> dict[int, int]:
+    """§4.5 — a tabela é bloco ATÔMICO: não se detecta título nem se corta dentro.
+
+    Uma região de tabela é uma corrida de linhas curtas, com pelo menos três
+    bem curtas (célula, valor, código). Linha de título quebra a corrida — a
+    grade começa depois do rótulo dela, não em cima dele.
+
+    E as notas de rodapé vão junto. 📊 Sem `(1) Valores expressos em reais,
+    considerando o Limite diário R$ 90,00`, o `630` da tabela de carro reserva
+    é número sem unidade, e a resposta "quantos dias de carro reserva eu tenho"
+    deixa de existir no documento.
+    """
+    regioes: dict[int, int] = {}
+    total = len(linhas)
+    i = 0
+    while i < total:
+        if not linhas[i].strip() or i in titulos:
+            i += 1
+            continue
+        j, vazias_seguidas, corrida = i, 0, []
+        while j < total and j not in titulos:
+            texto = linhas[j].strip()
+            if not texto:
+                vazias_seguidas += 1
+                if vazias_seguidas >= 2:
+                    break
+                j += 1
+                continue
+            if len(texto) > 60:
+                break
+            vazias_seguidas = 0
+            corrida.append(texto)
+            j += 1
+        curtinhas = sum(1 for c in corrida if len(c) <= 12)
+        if len(corrida) >= minimo and curtinhas >= 3:
+            fim = j
+            while fim > i and not linhas[fim - 1].strip():
+                fim -= 1
+            regioes[i] = _absorver_notas(linhas, fim, titulos)
+            i = regioes[i]
+        else:
+            i = max(j, i + 1)
+    return regioes
+
+
+def _absorver_notas(linhas: list[str], fim: int,
+                    titulos: dict[int, tuple[int, str]], teto: int = 8) -> int:
+    """Estica a região da tabela até engolir `(1)`, `*`, `Obs.` e `Nota`."""
+    total, absorvidas = len(linhas), 0
+    i = fim
+    while i < total and absorvidas < teto:
+        while i < total and not linhas[i].strip():
+            i += 1
+        if i >= total or i in titulos or not _NOTA_DE_RODAPE.match(linhas[i].strip()):
+            break
+        # A nota inteira, incluindo as linhas em que ela continua.
+        i += 1
+        while (i < total and linhas[i].strip() and i not in titulos
+               and not linhas[i - 1].strip().endswith(_FIM_DE_FRASE)
+               and not _NOTA_DE_RODAPE.match(linhas[i].strip())):
+            i += 1
+        absorvidas += 1
+        fim = i
+    return fim
+
+
+def _blocos(linhas: list[str], inicio: int, fim: int,
+            regioes: dict[int, int]) -> list[str]:
+    """Corpo de uma seção → blocos. **Bloco nunca é dividido.**
+
+    Um bloco é um parágrafo, uma alínea, ou uma tabela inteira. O PDF quebra a
+    linha onde a página acaba, não onde a frase acaba: por isso as linhas são
+    remontadas até o fim de frase de verdade. É o que leva
+    📊 "começa no meio da frase" de 46% para perto de zero.
+    """
+    blocos: list[str] = []
+    i = inicio
+    while i < fim:
+        if i in regioes:
+            corpo = [linha.strip() for linha in linhas[i:regioes[i]] if linha.strip()]
+            if corpo:
+                blocos.append("\n".join(corpo))
+            i = regioes[i]
+            continue
+        linha = linhas[i].strip()
+        if not linha:
+            i += 1
+            continue
+        junto = [linha]
+        i += 1
+        while i < fim and i not in regioes:
+            proxima = linhas[i].strip()
+            if not proxima or _INICIO_DE_BLOCO.match(proxima):
+                break
+            if junto[-1].endswith(_FIM_DE_FRASE):
+                break
+            junto.append(proxima)
+            i += 1
+        blocos.append(" ".join(junto))
+    return blocos
+
+
+def _empacotar(blocos: list[str]) -> list[str]:
+    """§4.3 — seção pequena vira um pedaço; seção grande vira blocos inteiros."""
+    blocos = [b for b in blocos if b.strip()]
+    if not blocos:
+        return []
+    inteiro = "\n\n".join(blocos)
+    if len(inteiro) <= TETO_PEDACO:
+        return [inteiro]
+
+    pedacos: list[list[str]] = []
+    atual: list[str] = []
+    tamanho = 0
+    for bloco in blocos:
+        custo = len(bloco) + 2
+        if atual and tamanho + custo > TETO_PEDACO:
+            pedacos.append(atual)
+            atual, tamanho = [], 0
+        atual.append(bloco)
+        tamanho += custo
+        if tamanho >= ALVO_PEDACO:
+            pedacos.append(atual)
+            atual, tamanho = [], 0
+    if atual:
+        pedacos.append(atual)
+
+    # Corpo curto demais não se sustenta sozinho: funde com o vizinho.
+    juntos = ["\n\n".join(p) for p in pedacos]
+    i = 1
+    while i < len(juntos):
+        if len(juntos[i]) < MINIMO_CORPO:
+            juntos[i - 1] = juntos[i - 1] + "\n\n" + juntos[i]
+            juntos.pop(i)
+        else:
+            i += 1
+    if len(juntos) > 1 and len(juntos[0]) < MINIMO_CORPO:
+        juntos[1] = juntos[0] + "\n\n" + juntos[1]
+        juntos.pop(0)
+    return juntos
+
+
+def partir_documento(texto: str) -> list[dict]:
+    """Texto de um documento normativo → pedaços com o CAMINHO de cada um.
+
+    Devolve `[{"caminho": [...], "corpo": "..."}]`. Pedaço só-título nunca sai
+    daqui: seção sem corpo não é conhecimento, é sumário com outro nome.
+    """
+    linhas = limpar(texto)
+    if not linhas:
+        return []
+    titulos = detectar_titulos(linhas)
+    regioes = regioes_de_tabela(linhas, titulos)
+    # Título que caiu dentro de uma tabela não é título (§4.5).
+    for inicio, fim in regioes.items():
+        for i in range(inicio, fim):
+            titulos.pop(i, None)
+
+    fronteiras = sorted(titulos)
+    caminho = [""] * 9
+    saida: list[dict] = []
+
+    def fechar(trilha: list[str], inicio: int, fim: int) -> None:
+        folha = (trilha[-1] if trilha else "").strip(" .:–—-").lower()
+        if folha in _SECAO_DESCARTAVEL:
+            return
+        for corpo in _empacotar(_blocos(linhas, inicio, fim, regioes)):
+            saida.append({"caminho": list(trilha), "corpo": corpo})
+
+    inicio_do_corpo = 0
+    trilha_atual: list[str] = []
+    for k, i in enumerate(fronteiras):
+        fechar(trilha_atual, inicio_do_corpo, i)
+        nivel, texto_do_titulo = titulos[i]
+        caminho[nivel] = texto_do_titulo
+        for mais_fundo in range(nivel + 1, 9):
+            caminho[mais_fundo] = ""
+        trilha_atual = [c for c in caminho[1:] if c]
+        inicio_do_corpo = i + 1
+    fechar(trilha_atual, inicio_do_corpo, len(linhas))
+    return saida
+
+
+def _caminho_em_texto(caminho: list[str], teto: int = TETO_CAMINHO) -> str:
+    """§4.4 — o caminho, com teto. Estourou: raiz + … + folha."""
+    partes = [re.sub(r"\s+", " ", p).strip() for p in caminho if p and p.strip()]
+    if not partes:
+        return ""
+    inteiro = " > ".join(partes)
+    if len(inteiro) <= teto:
+        return inteiro
+    if len(partes) <= 2:
+        return inteiro[:teto].rstrip()
+    return f"{partes[0]} > … > {partes[-1]}"[:teto].rstrip()
+
+
+def _data_legivel(iso: Optional[str]) -> str:
+    bruto = (iso or "").strip()
+    m = re.match(r"^(\d{4})-(\d{2})-(\d{2})", bruto)
+    if m:
+        return f"{m.group(3)}/{m.group(2)}/{m.group(1)}"
+    return bruto or "não declarada"
+
+
+def montar_etiqueta(doc: dict, susep: Optional[str],
+                    vigencia: Optional[str]) -> str:
+    """A primeira linha de TODO pedaço: de quem é, de que ramo, de quando.
+
+    🔴 Montada **por pedaço**, depois de picar. Concatenar o cabeçalho antes e
+    picar depois deixa a etiqueta só no pedaço 0 — 📊 29 de 11.409 pedaços a
+    tinham, e os outros 11.380 eram frases sobre "a apólice" que qualquer
+    agente atribuiria à seguradora errada com a confiança de um documento
+    oficial.
+    """
+    partes = [str(doc.get("insurer_name") or doc.get("insurer_key") or "").strip()]
+    if doc.get("product_line"):
+        partes.append(str(doc["product_line"]))
+    if doc.get("title"):
+        partes.append(re.sub(r"\s+", " ", str(doc["title"])).strip())
+    partes.append(f"vigência {_data_legivel(vigencia)}")
+    if susep:
+        partes.append(f"SUSEP {susep}")
+    return "[" + " · ".join(p for p in partes if p) + "]"
+
+
+def montar_pedacos(doc: dict, texto: str, susep: Optional[str],
+                   vigencia: Optional[str]) -> list[str]:
+    """O texto de um documento vira os pedaços que vão para o índice."""
+    etiqueta = montar_etiqueta(doc, susep, vigencia)
+    saida: list[str] = []
+    for pedaco in partir_documento(texto):
+        corpo = (pedaco["corpo"] or "").strip()
+        if not corpo:
+            continue
+        caminho = _caminho_em_texto(pedaco["caminho"])
+        saida.append(f"{etiqueta}\n{caminho}\n{corpo}" if caminho
+                     else f"{etiqueta}\n{corpo}")
+    return saida
+
+
 # Seguradoras que operam no Brasil, por domínio e por nome. Serve para dizer
 # de quem é o documento a partir da URL ou do texto.
 SEGURADORAS = {
@@ -200,20 +856,21 @@ def _ingerir_sync(doc: dict, conteudo: str, susep: Optional[str],
 
     Roda em thread porque embedding e upsert são bloqueantes, e o worker que
     chama isto também atende trabalho do corretor.
+
+    O corte é o da SPEC-067 §4: por SEÇÃO, com o cabeçalho montado pedaço a
+    pedaço **depois** de picar. O que havia antes era um
+    `RecursiveCharacterTextSplitter` de 1.000 caracteres sobre o texto colapsado
+    do PyPDF2 — corte por régua, num texto sem linha. 📊 Resultado medido:
+    57% dos pedaços terminavam no meio de uma frase e 76% não diziam de que
+    seguradora eram.
     """
     import os
-
-    from langchain_text_splitters import RecursiveCharacterTextSplitter
 
     from ...core.config import settings
     from ..knowledge_scope import GLOBAL_COLLECTION, SCOPE_GLOBAL_AUTOBROKERS
     from ..qdrant_service import get_qdrant_service
 
-    splitter = RecursiveCharacterTextSplitter(
-        chunk_size=1000, chunk_overlap=200,
-        separators=["\n## ", "\n### ", "\n#### ", "\n\n", "\n", ". ", " "],
-    )
-    chunks = [d.page_content for d in splitter.create_documents([conteudo])]
+    chunks = montar_pedacos(doc, conteudo, susep, vigencia)
     if not chunks:
         return 0
 
@@ -233,16 +890,16 @@ def _ingerir_sync(doc: dict, conteudo: str, susep: Optional[str],
                        type(exc).__name__)
 
     qdrant = get_qdrant_service()
-    doc_id = f"norm-{doc['id']}"
+    # SPEC-067 item 7 — O ID DIZ DE QUE VERSÃO SÃO OS PONTOS.
+    #
+    # Ele deixa de ser calculado aqui e passa a vir de quem sabe a versão:
+    # `ingerir()`, que consultou `normative_document_versions` ANTES de mandar
+    # indexar. `norm-{id}` sem sufixo continua sendo o padrão de emergência
+    # porque 📊 os 11.409 pontos de hoje têm exatamente esse formato.
+    doc_id = doc.get("_qdrant_doc_id") or f"norm-{doc['id']}"
+    anteriores = [d for d in (doc.get("_qdrant_doc_ids_anteriores") or [])
+                  if d and d != doc_id]
     company = (os.getenv("GLOBAL_KNOWLEDGE_COMPANY_ID") or "").strip() or "autobrokers-global"
-
-    # Substitui a versão anterior do MESMO documento. Sem isso, a condição
-    # antiga e a nova conviveriam no índice e a busca devolveria as duas —
-    # que é exatamente como se responde cobertura errada com confiança.
-    try:
-        qdrant.delete_document(company, doc_id, collection_name=GLOBAL_COLLECTION)
-    except Exception:  # noqa: BLE001
-        pass
 
     ok = qdrant.insert_embeddings(
         company_id=company,
@@ -302,7 +959,37 @@ def _ingerir_sync(doc: dict, conteudo: str, susep: Optional[str],
             **({"product_line": doc["product_line"]} if doc.get("product_line") else {}),
         },
     )
-    return len(chunks) if ok else 0
+    if not ok:
+        return 0
+
+    # 🔴 EXPAND, DEPOIS CONTRACT — SPEC-067 item 7.
+    #
+    # A remoção da versão anterior acontece AGORA, depois de a nova estar no
+    # índice. Até 08/08/2026 era o contrário: `delete_document` rodava ANTES do
+    # upsert, sobre o MESMO id, porque todas as versões dividiam `norm-{id}`.
+    #
+    # O que isso custava, e não era só a D-Acervo-02:
+    #
+    #   · existia uma janela em que o documento tinha ZERO pontos. Se a
+    #     ingestão morresse no meio — e 📊 vinte e três documentos morreram no
+    #     meio em 05/08 — o documento sumia da busca enquanto
+    #     `normative_documents.status` continuava dizendo `ingested`.
+    #   · o defeito era SILENCIOSO. Nada distingue "não achei porque não está
+    #     no contrato" de "não achei porque o índice está vazio".
+    #
+    # Nesta ordem o pior caso vira "duas versões na busca por um ciclo" —
+    # visível, contável, e a versão certa continua lá.
+    for antigo in anteriores:
+        try:
+            qdrant.delete_document(company, antigo, collection_name=GLOBAL_COLLECTION)
+            logger.info("[corpus] versao anterior retirada do indice: %s", antigo)
+        except Exception as exc:  # noqa: BLE001
+            # O tipo E a mensagem. Um `except` que engole o motivo foi o que
+            # transformou um erro de digitação em oito dias de silêncio.
+            logger.warning("[corpus] a versao anterior %s NAO saiu do indice "
+                           "(%s: %s) — a busca pode devolver as duas ate a "
+                           "proxima rodada", antigo, type(exc).__name__, exc)
+    return len(chunks)
 
 
 class InsuranceCorpusService:
@@ -413,18 +1100,40 @@ class InsuranceCorpusService:
     # ------------------------------------------------------------------
 
     async def ingerir(self, documento_id: str, *,
-                      company_id_custeio: Optional[str] = None) -> dict:
+                      company_id_custeio: Optional[str] = None,
+                      vigencia_susep: Optional[dict] = None) -> dict:
         """Busca o documento, compara com a última versão e ingere se mudou.
 
         `company_id_custeio` só existe porque `usage_events` exige um tenant.
         O evento sai marcado como `platform_corpus`: é custo da plataforma, não
         da corretora que porventura disparou. Cobrar de uma corretora a leitura
         de um documento que serve a todas seria cobrar a primeira a chegar.
+
+        `vigencia_susep` é a vigência **já lida do registro oficial** — o que a
+        SPEC-067 §3.2 chama de "a regra sem inferência". Chaves, todas ISO ou
+        None::
+
+            effective_from    Data de Início de Comercialização
+            effective_until   Data de Fim (vazia = ainda comercializado)
+            version_label     o nome do arquivo na tabela de Versões
+            susep_version_id  o id de download
+            fim_da_anterior   a Data de Fim publicada para a versão que esta
+                              substitui — e SÓ ela fecha `effective_until` da
+                              anterior
+
+        Ausente, a vigência cai para o que o próprio documento declara, e se
+        nem isso houver, para `indeterminado`. **Nunca para um palpite.**
         """
         doc = (self.db.table("normative_documents").select("*")
                .eq("id", documento_id).maybe_single().execute()).data
         if not doc:
             return {"ok": False, "motivo": "documento_inexistente"}
+
+        # Zera o carregador de bytes ANTES de ir à rede. Sem isto, um documento
+        # cujo download falhasse herdaria o PDF do documento anterior desta
+        # mesma instância — e o acervo guardaria o arquivo errado sob o nome
+        # certo, que é a pior forma de estar errado.
+        self._pdf_baixado = None
 
         self.db.table("normative_documents").update({
             "status": "fetching", "updated_at": _agora().isoformat(),
@@ -496,7 +1205,31 @@ class InsuranceCorpusService:
             return {"ok": True, "mudou": False, "primeira": False, "chunks": 0}
 
         susep = doc.get("susep_process") or extrair_susep(texto)
-        vigencia = doc.get("effective_from") or extrair_vigencia(texto)
+        vig = self._vigencia_da_versao(doc, texto, vigencia_susep)
+        vigencia = vig["effective_from"]
+
+        # A VERSÃO É DECIDIDA ANTES DE INDEXAR — SPEC-067 item 7.
+        #
+        # Até 08/08/2026 esta consulta vinha DEPOIS da ingestão, e por isso o
+        # número da versão não podia entrar no id dos pontos. Subi-la é o que
+        # torna possível `norm-{id}-v{n}`: quem grava no índice precisa saber
+        # qual versão está gravando, e isso é um fato do banco, não do Qdrant.
+        anteriores = (self.db.table("normative_document_versions")
+                      .select("id, version, qdrant_doc_id, superseded_at")
+                      .eq("document_id", documento_id)
+                      .order("version", desc=True).execute()).data or []
+        n = int((anteriores[0].get("version") if anteriores else 0) or 0) + 1
+        primeira = n == 1
+        doc_id_novo = f"norm-{documento_id}-v{n}"
+
+        # `norm-{id}` sem sufixo é o esquema legado, e é o id REAL dos 11.409
+        # pontos de hoje — não um palpite: é o que `_ingerir_sync` calculava.
+        # Linha antiga sem `qdrant_doc_id` (o backfill da migration 02 não
+        # rodou ainda) cai nele, e a transição funciona nas duas ordens.
+        doc = dict(doc)
+        doc["_qdrant_doc_id"] = doc_id_novo
+        doc["_qdrant_doc_ids_anteriores"] = [
+            (a.get("qdrant_doc_id") or f"norm-{documento_id}") for a in anteriores]
 
         chunks = await self._ingerir_no_global(doc, texto, susep, vigencia)
         if chunks <= 0:
@@ -507,11 +1240,33 @@ class InsuranceCorpusService:
             }).eq("id", documento_id).execute()
             return {"ok": False, "motivo": "ingestao_vazia"}
 
-        proxima = (self.db.table("normative_document_versions").select("version")
-                   .eq("document_id", documento_id).order("version", desc=True)
-                   .limit(1).execute()).data
-        n = ((proxima or [{}])[0].get("version") or 0) + 1
-        primeira = n == 1
+        arquivo = await self._guardar_a_fonte(documento_id, n, texto)
+
+        # 🔴 FECHAR A ANTERIOR VEM ANTES DE ABRIR A NOVA.
+        #
+        # A ordem não é estética: `normative_versao_aberta_uk` (migration 01) é
+        # um índice único parcial sobre `document_id where superseded_at is
+        # null`. Inserir primeiro estouraria a constraint. E é essa constraint
+        # que transforma "quem fecha a anterior" de intenção em obrigação —
+        # 📊 o encadeamento existia em código desde 25/07 e `superseded_at`
+        # está preenchido em ZERO de 29, porque nada obrigava.
+        #
+        # ⚠️ `superseded_at` e `effective_until` NÃO são a mesma data.
+        #   superseded_at   = fato NOSSO: capturamos uma versão mais nova.
+        #   effective_until = fato da SUSEP: a comercialização terminou em X.
+        # Um produto some da lista do REP2 sem que exista Data de Fim
+        # publicada. Escrever `effective_until = ontem` nesse caso seria
+        # publicar como registro oficial um número que inventamos — a escada de
+        # inferência que a SPEC-067 §3.2 proíbe. Sem a data deles, fecha-se só
+        # o nosso lado.
+        if not primeira:
+            fechamento: dict[str, Any] = {"superseded_at": _agora().isoformat()}
+            if vig.get("fim_da_anterior"):
+                fechamento["effective_until"] = vig["fim_da_anterior"]
+                fechamento["vigencia_fonte"] = "susep_rep2"
+            self.db.table("normative_document_versions").update(fechamento) \
+                .eq("document_id", documento_id).lt("version", n) \
+                .is_("superseded_at", "null").execute()
 
         self.db.table("normative_document_versions").insert({
             "document_id": documento_id, "version": n, "content_hash": novo_hash,
@@ -519,19 +1274,30 @@ class InsuranceCorpusService:
             "excerpt": texto[:1500],
             "change_summary": ("primeira captura" if primeira
                                else "conteúdo alterado na origem"),
+            # onde os pedaços desta versão moram (item 7)
+            "qdrant_doc_id": doc_id_novo, "qdrant_collection": COLECAO_GLOBAL,
+            # a vigência, na versão, que é onde ela é verdade (item 6)
+            "effective_from": vig["effective_from"],
+            "effective_until": vig["effective_until"],
+            "version_label": vig["version_label"],
+            "susep_version_id": vig["susep_version_id"],
+            "vigencia_fonte": vig["fonte"],
+            # onde o original e o texto moram (item 4)
+            **{k: v for k, v in arquivo.items() if k != "erros"},
         }).execute()
-
-        if not primeira:
-            self.db.table("normative_document_versions").update({
-                "superseded_at": _agora().isoformat(),
-            }).eq("document_id", documento_id).lt("version", n) \
-              .is_("superseded_at", "null").execute()
 
         self.db.table("normative_documents").update({
             "status": "ingested", "content_hash": novo_hash,
             "byte_size": len(texto.encode("utf-8")), "chunk_count": chunks,
             "qdrant_collection": COLECAO_GLOBAL,
-            "susep_process": susep, "effective_from": vigencia,
+            "susep_process": susep,
+            # ESPELHO da versão vigente — a verdade está na linha da versão.
+            # 📊 `effective_until` e `version_label` estavam NULL em 35 de 35
+            # porque ninguém escrevia aqui. Agora escreve um só lugar, e ele é
+            # o mesmo que escreveu a versão.
+            "effective_from": vig["effective_from"],
+            "effective_until": vig["effective_until"],
+            "version_label": vig["version_label"],
             "fetch_error": None, "fetch_attempts": 0,
             "last_checked_at": _agora().isoformat(),
             "last_change_at": _agora().isoformat(),
@@ -540,10 +1306,105 @@ class InsuranceCorpusService:
             "updated_at": _agora().isoformat(),
         }).eq("id", documento_id).execute()
 
-        logger.info("[corpus] '%s' v%s ingerido — %s chunks%s",
-                    doc["title"][:60], n, chunks, "" if primeira else " (MUDOU na origem)")
+        logger.info("[corpus] '%s' v%s ingerido — %s chunks%s · vigencia %s (%s)"
+                    " · original %s",
+                    doc["title"][:60], n, chunks,
+                    "" if primeira else " (MUDOU na origem)",
+                    vig["effective_from"] or "indeterminada", vig["fonte"],
+                    "guardado" if arquivo.get("storage_ref") else "NAO guardado")
         return {"ok": True, "mudou": not primeira, "primeira": primeira,
-                "versao": n, "chunks": chunks, "susep": susep, "vigencia": vigencia}
+                "versao": n, "chunks": chunks, "susep": susep, "vigencia": vigencia,
+                "qdrant_doc_id": doc_id_novo,
+                "vigencia_fonte": vig["fonte"],
+                "arquivado": bool(arquivo.get("arquivado_em")),
+                "arquivo_erros": arquivo.get("erros") or {}}
+
+    # ------------------------------------------------------------------
+    # Vigência e arquivo — os dois escritores que faltavam
+    # ------------------------------------------------------------------
+
+    @staticmethod
+    def _vigencia_da_versao(doc: dict, texto: str,
+                            susep: Optional[dict]) -> dict:
+        """De onde saem as datas desta versão, e com que confiança.
+
+        Três degraus, e **nenhum deles infere uma data que não foi publicada**:
+
+        1. `susep_rep2` — Data de Início e Data de Fim da tabela de Versões do
+           REP2 (SPEC-067 §3.2). É registro legal, e ganha de tudo.
+        2. `texto_do_documento` — a data que o próprio PDF declara
+           (`extrair_vigencia`). Menos confiável: é o que a seguradora escreveu
+           na capa, e 📊 22 de 35 documentos têm só isso.
+        3. `indeterminado` — não sabemos. Que é o que a §3.3 manda registrar
+           quando a consulta volta vazia, e **nunca** "não mudou".
+
+        ⚠️ O terceiro degrau não é um degrau de inferência: ele não produz
+        data nenhuma. A diferença entre "não sei" e "deve ser X" é a diferença
+        entre um acervo e um chute com carimbo.
+
+        `susep` é o dicionário pronto que o parser do REP2 entrega:
+        `{effective_from, effective_until, version_label, susep_version_id,
+        fim_da_anterior}` — todos ISO ou None. Ele é montado a partir de
+        `susep_rep2.Versao` (`inicio_iso`, `fim`, `arquivo`, `download_id`), e
+        montá-lo é trabalho de quem consulta, não deste módulo: aqui a data já
+        chega pronta.
+        """
+        susep = susep or {}
+        if susep.get("effective_from") or susep.get("effective_until"):
+            return {
+                "effective_from": susep.get("effective_from"),
+                "effective_until": susep.get("effective_until"),
+                "version_label": susep.get("version_label"),
+                "susep_version_id": susep.get("susep_version_id"),
+                "fim_da_anterior": susep.get("fim_da_anterior"),
+                "fonte": "susep_rep2",
+            }
+
+        do_texto = doc.get("effective_from") or extrair_vigencia(texto)
+        return {
+            "effective_from": do_texto,
+            # 🔴 NUNCA preenchido fora da SUSEP. Uma data de fim inventada
+            # tiraria da busca um documento que ainda vale.
+            "effective_until": None,
+            "version_label": doc.get("version_label"),
+            "susep_version_id": None,
+            "fim_da_anterior": None,
+            "fonte": "texto_do_documento" if do_texto else "indeterminado",
+        }
+
+    async def _guardar_a_fonte(self, documento_id: str, versao: int,
+                               texto: str) -> dict:
+        """Põe o original e o texto no MinIO. Nunca derruba a ingestão.
+
+        📊 `storage_ref` estava preenchido em 0 de 29 e o texto-fonte do acervo
+        vivia só dentro do Qdrant, picado — o que inverte o CLAUDE.md §6.
+
+        Arquivar é guarda, não entrega: se o MinIO estiver fora, o documento
+        ainda tem de ser indexado. Mas a falha fica visível — `arquivado_em`
+        continua NULL, o motivo vai no log e no dicionário devolvido, e
+        `normative_versao_sem_arquivo_idx` continua listando esta versão.
+        """
+        import asyncio
+
+        from .acervo_arquivo import guardar_versao
+
+        # Os bytes que `_baixar_pdf_direto` capturou nesta rodada. Ausentes
+        # quando a origem não é PDF (crawler devolve markdown) — e aí só o
+        # texto é guardado, o que é diferente de falhar.
+        bruto = getattr(self, "_pdf_baixado", None) or {}
+        try:
+            return await asyncio.to_thread(
+                guardar_versao, documento_id, versao,
+                texto=texto,
+                pdf_bytes=bruto.get("bytes"),
+                media_type=bruto.get("media_type"))
+        except Exception as exc:  # noqa: BLE001
+            logger.warning("[corpus] arquivamento falhou para %s v%s: %s: %s",
+                           documento_id, versao, type(exc).__name__, exc)
+            return {"storage_ref": None, "text_storage_ref": None,
+                    "source_bytes": None, "source_media_type": None,
+                    "arquivado_em": None,
+                    "erros": {"arquivar": f"{type(exc).__name__}: {exc}"}}
 
     async def _baixar_pdf_direto(self, url: str) -> tuple[Optional[str], Optional[str]]:
         """PDF público é ARQUIVO. Baixar arquivo não precisa de crawler.
@@ -558,11 +1419,6 @@ class InsuranceCorpusService:
         levanta. Quem chama já sabe cair no crawler quando isto não serve.
         """
         import httpx
-
-        try:
-            from PyPDF2 import PdfReader
-        except Exception:  # noqa: BLE001 — sem o extrator, o crawler ainda existe
-            return None, "sem_extrator_de_pdf"
 
         # Cabeçalho de navegador: 📊 dois destes documentos já falharam com 408 e
         # 500. Servidor de seguradora costuma recusar cliente sem User-Agent, e
@@ -579,6 +1435,18 @@ class InsuranceCorpusService:
             if r.status_code != 200:
                 return None, f"HTTP {r.status_code}"
             corpo = r.content or b""
+            # 🔴 SPEC-067 item 4 — A ÚNICA LINHA QUE SALVA O ORIGINAL.
+            #
+            # Até aqui os bytes morriam nesta função: 📊 `storage_ref` NULL em
+            # 29 de 29, e o texto-fonte do acervo passou a existir só dentro do
+            # Qdrant, picado. `_guardar_a_fonte()` lê daqui e põe no MinIO.
+            #
+            # ⚠️ Se você está reescrevendo esta função (item 1, PyPDF2 →
+            # PyMuPDF): LEVE ESTA LINHA JUNTO. Sem ela o arquivamento degrada
+            # em silêncio — o texto continua sendo guardado e o PDF não, e a
+            # URL da HDI já devolve 500. `test_o_acervo_guarda_a_fonte_e_a_
+            # versao.py` confere que ela existe.
+            self._pdf_baixado = {"bytes": corpo, "media_type": "application/pdf"}
         except Exception as exc:  # noqa: BLE001
             return None, type(exc).__name__
 
@@ -592,18 +1460,20 @@ class InsuranceCorpusService:
             # .pdf na URL. Devolver isso ao crawler é o certo — ele renderiza.
             return None, "nao_e_pdf"
 
-        try:
-            import io
-
-            leitor = PdfReader(io.BytesIO(corpo))
-            texto = "\n".join((p.extract_text() or "") for p in leitor.pages).strip()
-        except Exception as exc:  # noqa: BLE001
-            return None, f"pdf_ilegivel:{type(exc).__name__}"
+        # PyMuPDF, nunca PyPDF2 — §4.1 da SPEC-067. Não é preferência de
+        # biblioteca: é a diferença entre ter e não ter estrutura de página.
+        # 📊 No mesmo CG140, PyPDF2 devolve 519 linhas e PyMuPDF 11.064; e uma
+        # auditoria anterior concluiu, com esse texto colapsado na mão, que
+        # "cortar por seção é impossível". Era o extrator, não o documento.
+        texto, erro = extrair_texto_de_pdf(corpo)
+        if erro:
+            return None, erro
 
         # A MESMA régua do crawler, e ela existe pelo mesmo motivo: PDF escaneado
         # extrai quase nada, e ingerir isso põe no corpus um documento que
-        # PARECE presente e não responde nada.
-        if len(texto) < 400:
+        # PARECE presente e não responde nada. Conta sem a marca de página:
+        # um PDF de 40 páginas em branco tem 40 marcas e nenhum conteúdo.
+        if len((texto or "").replace(MARCA_DE_PAGINA, "").strip()) < 400:
             return None, "conteudo_insuficiente"
         return texto, None
 
@@ -643,26 +1513,19 @@ class InsuranceCorpusService:
                                  susep: Optional[str], vigencia: Optional[str]) -> int:
         """Entrega ao serviço de ingestão que já existe. Nada novo aqui.
 
-        O cabeçalho de procedência vai **dentro** do texto ingerido, não só nos
-        metadados: é o que garante que qualquer trecho recuperado carregue a
-        seguradora, o produto e a vigência junto. Trecho sem essa âncora vira
-        uma frase sobre "a apólice" que o agente atribui à seguradora errada.
-        """
-        vig = vigencia or "não declarada no documento"
-        cabecalho = (
-            f"# {doc['title']}\n"
-            f"**Seguradora:** {doc['insurer_name']} · **Ramo:** {doc['product_line']}\n"
-            f"**Tipo:** {doc['doc_kind'].replace('_', ' ')}\n"
-            + (f"**Processo SUSEP:** {susep}\n" if susep else "")
-            + f"**Vigência a partir de:** {vig}\n"
-            f"**Fonte:** {doc['source_url']}\n\n"
-            "> Este texto é a condição vigente registrada nesta data. Uma apólice "
-            "emitida antes da vigência acima pode ser regida por versão anterior — "
-            "ao responder, informe a vigência e sugira conferir a apólice do cliente.\n\n"
-            "---\n\n"
-        )
-        conteudo = cabecalho + texto
+        🔴 **O cabeçalho de procedência NÃO é concatenado aqui.** Ele é montado
+        por `montar_pedacos`, pedaço a pedaço, DEPOIS do corte.
 
+        O que existia neste lugar era `conteudo = cabecalho + texto`: um bloco
+        de identificação grudado na frente do documento inteiro, e o splitter
+        picando o resultado. 📊 Custo medido em 08/08/2026: 29 pedaços de
+        11.409 carregavam a etiqueta. Os outros 11.380 eram frases sobre "a
+        apólice", sem seguradora, sem ramo e sem vigência — o material perfeito
+        para o agente responder da Porto citando a cláusula da Allianz.
+
+        A ordem certa é barata e não tem meio-termo: **picar primeiro,
+        etiquetar depois.**
+        """
         # Mesmas primitivas do seed global (global_knowledge_seed): mesma
         # coleção, mesmo escopo, mesmo serviço Qdrant. Só o `namespace` muda,
         # de 'canon' para 'normative'. Um segundo caminho de ingestão global
@@ -671,7 +1534,7 @@ class InsuranceCorpusService:
             import asyncio
 
             return await asyncio.to_thread(
-                _ingerir_sync, doc, conteudo, susep, vigencia)
+                _ingerir_sync, doc, texto, susep, vigencia)
         except Exception as exc:  # noqa: BLE001
             logger.error("[corpus] ingestao falhou: %s", type(exc).__name__)
             return 0

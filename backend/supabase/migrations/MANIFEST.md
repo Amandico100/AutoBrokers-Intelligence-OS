@@ -1,7 +1,7 @@
 ---
 > **Status:** canônico — manifesto de migrations
 > **Autoridade:** [`docs/canon/MIGRATIONS-AUTHORITY.md`](../../../docs/canon/MIGRATIONS-AUTHORITY.md) · decisão **D2**
-> **Última atualização:** 2026-07-25 (SPEC-054 Bloco A)
+> **Última atualização:** 2026-08-08 (SPEC-067 LOTE 0 item 12)
 ---
 
 # MANIFEST de migrations
@@ -62,6 +62,79 @@ Aplicada. Cria os triggers de sandbox técnico do WhatsApp, **verificados vivos*
 `20260711173923 billing_sent_log` · `20260713225053 spec034_ura_maps` · `20260713232958 spec034_broker_insights` · `20260714001905 spec034_onda4_tailor_auditor` · `20260714031357 spec036_is_technical` · `20260714173623 spec036_agent_activities` · `20260718044915 spec038_atlas_observer_tables` · `20260718045107 spec038_fix_dedupe_index` · `20260718222805 spec038_route_drift`
 
 Criadas diretamente no banco. Serão reconstruídas pelo **baseline do Bloco B**.
+
+---
+
+## SPEC-067 — o acervo de condições gerais · registrado em 2026-08-08
+
+### As tabelas do acervo — classificação medida, não deduzida
+
+📊 Consultas read-only no projeto `dcajcvlzcjbmyapmklil` em 08/08/2026.
+
+| Tabela | Versão no banco | Arquivo no repo | Classe |
+|---|---|---|---|
+| `normative_documents` | `20260725215808` `spec057_h1_normative_corpus` | **nenhum** | `SEM_ARQUIVO` |
+| `normative_document_versions` | `20260725215808` `spec057_h1_normative_corpus` | **nenhum** | `SEM_ARQUIVO` |
+| `knowledge_cards` | `20260719175618` `spec040_conduct_playbooks_cards` | `20260719_02_spec040_conduct_playbooks_cards.sql` | `APLICADA` |
+
+**DDL reconstruído a partir do banco vivo:**
+[`docs/canon/sql/reconstruidas/20260725215808_spec057_h1_normative_corpus.sql`](../../../docs/canon/sql/reconstruidas/20260725215808_spec057_h1_normative_corpus.sql)
+— material documental, **proibido aplicar** (MIGRATIONS-AUTHORITY §1).
+
+> [!WARNING]
+> **Um achado anterior sobre estas tabelas estava errado, e o erro pedia a ação
+> perigosa.** Ele afirmava que elas "não têm versão em
+> `supabase_migrations.schema_migrations`" — portanto seriam `ÓRFÃS` e
+> precisariam de uma versão nova.
+>
+> 📊 A consulta, executada em 08/08/2026:
+>
+> ```sql
+> select version, name from supabase_migrations.schema_migrations
+>  where name ilike '%normative%' or name ilike '%corpus%';
+> --  20260725215808 | spec057_h1_normative_corpus
+> ```
+>
+> A versão **existe**. O que falta é o **arquivo**. Criar migration nova para
+> objeto que já tem versão registrada duplicaria o histórico — e um histórico
+> duplicado é pior que um histórico incompleto, porque o incompleto se percebe.
+> `knowledge_cards`, no mesmo levantamento suspeita de órfã, tem arquivo **e**
+> versão: é `APLICADA`, não precisa de nada.
+
+### Migrations novas da SPEC-067 — 🔴 ESCRITAS, NÃO APLICADAS
+
+| Arquivo | Objetivo | Estado |
+|---|---|---|
+| `20260808_01_spec067_a_vigencia_mora_na_versao.sql` | vigência SUSEP por versão + espelho no documento | ⬜ **não aplicada** |
+| `20260808_02_spec067_o_indice_sabe_de_que_versao_veio.sql` | `qdrant_doc_id` por versão + backfill do esquema legado | ⬜ **não aplicada** |
+| `20260808_03_spec067_a_carta_sabe_de_que_contrato_saiu.sql` | procedência em `knowledge_cards` | ⬜ **não aplicada** |
+| `20260808_04_spec067_o_pdf_e_o_texto_tem_endereco.sql` | ponteiros do PDF e do texto no MinIO | ⬜ **não aplicada** |
+
+**Ordem de aplicação obrigatória: 01 → 02 → 03 → 04.** A 02 depende da coluna
+que a 01 não cria (são independentes no schema) mas o backfill da 02 lê
+`version`, que a 01 não altera — a ordem é por legibilidade do histórico, não
+por dependência de DDL. Cada uma é idempotente e pode rodar sozinha.
+
+Nenhuma delas foi aplicada por quem as escreveu. **Quem aplica é o Founder**,
+depois de revisar, seguindo a sequência da MIGRATIONS-AUTHORITY §9.
+
+### Duas classificações a mais, encontradas no caminho
+
+| Arquivo | Situação | Classe |
+|---|---|---|
+| `20260728_03_curadoria_das_cartas.sql` | sem versão no banco; 📊 o arquivo **não contém SQL executável** — é 100% comentário documentando um APPLY feito por `backend/scripts/curar_cartas.py` em 28/07 | `DOCUMENTAL` — proibido "aplicar", não há o que aplicar |
+| `20260725_04_spec054_a3_storage_privacy.sql` | o MANIFEST de 25/07 o marcava `PENDENTE`; 📊 hoje `20260725070738 spec054_a3_storage_privacy` **está** em `schema_migrations` | `APLICADA` — a linha acima está vencida |
+
+> **INFERÊNCIA, não fato:** um cruzamento automático nome-a-nome de todos os 92
+> versionamentos contra os 60 arquivos apontou dezenas de divergências, mas o
+> casamento por nome é pouco confiável (o arquivo
+> `20260803_01_spec063_destino_de_suporte_unico.sql` corresponde à versão
+> `spec063_01_destino_de_suporte_unico`, e nenhuma regra simples liga os dois).
+> **Não conte esse número como medição.** A reconciliação completa é trabalho da
+> SPEC-054 Bloco B. O que está afirmado como FATO acima é só o que foi
+> conferido tabela a tabela contra o catálogo do Postgres.
+
+---
 
 ## Checksums
 

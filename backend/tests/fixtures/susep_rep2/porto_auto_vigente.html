@@ -1,0 +1,1357 @@
+<!DOCTYPE html>
+<html>
+
+<head>
+    <meta http-equiv="Content-Type" content="text/html; charset=UTF-8;" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <meta http-equiv="X-UA-Compatible" content="ie=edge" />
+
+    <link rel="stylesheet" href="/assets/css/dsgov/styles.css" />
+    <link rel="stylesheet" href=""
+    <!-- Design System de Governo-->
+    <link rel="stylesheet" href="/assets/css/dsgov/dsgov-base.css" />
+    <link rel="stylesheet" href="/assets/css/dsgov/dsgov-components.css" />
+    <link rel="stylesheet" href="/assets/css/dsgov/dsgov-templates.css" />
+    <link rel="stylesheet" href="/assets/css/dsgov.css" />
+
+    <!-- Fonte Rawline-->
+    <link rel="stylesheet" href="https://cdn.dsgovserprodesign.estaleiro.serpro.gov.br/design-system/fonts/rawline/css/rawline.css" />
+    <!-- Fonte Raleway-->
+    <link rel="stylesheet" href="https://fonts.googleapis.com/css?family=Raleway:300,400,500,600,700,800,900&amp;display=swap" />
+    <!-- Fontawesome-->
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/5.11.2/css/all.min.css" />
+
+    <title>&nbsp</title>
+    <meta name="SUSEP" content="Superintend&ecirc;ncia de Seguros Privados" />
+</head>
+
+
+<body>
+    <header class="page-header" id="header">
+        <input type="hidden" id="user-loggedin-identity" />
+        <!-- Barra do governo -->
+        <div id="barra-brasil"></div>
+        <!--<div id="menu-col"></div>-->
+    </header>
+
+    
+
+
+<form action="/safe/menumercado/REP2/Produto.aspx/Consultar" class="form" enctype="multipart/form-data" method="post">    <div id="corpo" class="container" style="font-size: medium">
+        <div class="col-md-12">&nbsp;</div>
+
+        <fieldset class="form">
+            
+
+            <div class="corpoprincipal row">
+                <div class="container" id="animacao" style="text-align: center; display:none; z-index:1000; position:absolute; left:0px; top:0px; border-style:none; background:center; background-color:white; border-radius:5px; opacity:0.7; min-width:100%; min-height:1000px; max-height:1000px; overflow-y:auto">
+                    <div class="loading medium" id="anime">
+                        <!--<img alt="" src="/assets/images/loader.gif" id="anime" style="position: absolute"/>-->
+                    </div>
+                </div>
+
+
+                <div class="col-md-12">
+                    <h1>Consulta P&#250;blica de Produtos - SUSEP</h1>
+
+                    
+                    
+                    <h4 style="color:#c29517;padding-top: 17px;">Orienta&#231;&#245;es</h4>
+                    <div style="padding-top: 7px;color:#0d0609;">
+                        <div>Confira aqui se as Condições Contratuais/Regulamento do seu <b>seguro</b>, plano de <b>previdência complementar aberta</b> ou <b>título de capitalização</b> contratados são registrados na SUSEP.</div>
+                        <div style="padding-top: 7px;">A base de consulta contém todos os produtos cuja comercialização esteja liberada atualmente ou que já tenha sido liberada em algum momento.</div>
+                        <div style="padding-top: 7px;"><b>MAS, ATENÇÃO! Há produtos que precisam da aprovação prévia da SUSEP para serem comercializados e outros que não.</b></div>
+                        <div style="padding-top: 7px;"><u>Precisam de aprovação prévia</u>: os planos de previdência, os seguros de pessoas com cobertura por sobrevivência, os planos de seguro rural com subvenção do Governo Federal e os títulos de capitalização<sup>1</sup>.</div>
+                        <div style="padding-top: 7px;"><u>Não precisam de aprovação</u>: todos os tipos de seguro não citados no item anterior. Nesse caso, a comercialização pode ocorrer imediatamente após o registro, pelas Seguradoras, das suas Condições Contratuais ou Regulamento na SUSEP.</div>
+                        <div style="padding-top: 7px;">As Condições Contratuais/Regulamento são identificadas pelo número do processo SUSEP de seu registro, informado em qualquer documento contratual (apólice, certificado, bilhete, proposta, título de capitalização, condições gerais, regulamento).</div>
+                        <div style="padding-top: 7px;">Para acessá-las, digite, no campo abaixo, um dos seguintes formatos, incluindo números, ponto ("."), traço ("-") e barra ("/"), da forma como aparece. Em seguida, clique em "Buscar".</div>
+                        <div class="col-md-3">&nbsp;</div>
+                        <div class="formatoProcesso col-md-6" style="margin-left:auto; margin-right:auto; border: 1px solid #6a6a6a; text-align:center; margin-top: 18px;">
+                            <div style="color:#0d0609;">XXXXX.XXXXXX/XXXX-XX</div>
+                            <div style="color:#0d0609;border-top: 1px solid #6a6a6a;">XX.XXXXXX/XX-XX</div>
+                            <div style="color:#0d0609;border-top: 1px solid #6a6a6a;">XXX-XXXXX/XX</div>
+                            <div style="color:#0d0609;border-top: 1px solid #6a6a6a;">XXXXX.XXXXXX/XX-XX</div>
+                        </div>
+                        <div class="col-md-3">&nbsp;</div>
+                    </div>
+
+                </div>
+
+                
+
+                <div style="color:#0d0609; text-align: center" class="col-md-12">
+                    <label>N&#186; Processo:</label>
+                </div>
+                <div style="color: #0d0609; text-align: center; align-items: center;" class="col-md-12">
+                    <input class="col-md-4"  class="text-box single-line" id="numeroProcesso" name="numeroProcesso" type="text" value="15414.100233/2004-59" />
+                </div>
+                <div class="col-md-12">&nbsp;</div>
+                <div class="col-md-12">&nbsp;</div>
+
+                <div class="col-md-3" style="align-content: center; align-items: center; text-align: left;">&nbsp;</div>
+                <div class="col-md-3" style="align-content: center; align-items: center; text-align: left;">
+                    <input type="submit" value="Buscar" class="br-button primary block" />
+                </div>
+                <div class="col-md-3" style="align-content: center; align-items: center; text-align: left;">
+                    <input type="button" value="Limpar" class="br-button secondary block" onclick="location.href = '../Produto/Consultar'" />
+                </div>
+                <div class="col-md-3" style="align-content: center; align-items: center; text-align: left;">&nbsp;</div>
+
+                <div class="col-md-12">&nbsp;</div>
+                <div class="col-md-12">&nbsp;</div>
+
+                <div class="col-md-12">
+                    <b>Atenção:</b> Só podem ser obtidas neste canal as versões das Condições Contratuais/Regulamentos dos produtos existentes no Sistema de Registro Eletrônico de Produtos – REP, isto é, que ainda eram comercializados quando da criação do REP, em 2012, ou que foram criadas após essa data. Para os planos mais antigos, que não foram migrados para o REP, as versões das Condições Contratuais/Regulamentos podem ser solicitadas por meio do <a href="https://falabr.cgu.gov.br/web/login?tipo=8&amp;subtipoForm=3&amp;redirect=/v-app/manifestacao/criar?tipo=8%26subtipoForm=3" target="_blank">Serviço de Informações ao Cidadão – SIC.</a>
+                </div>
+                
+                <div class="col-md-12">&nbsp;</div>
+
+                <div class="col-md-12">
+                    [1] Os produtos padrão de capitalização protocolados sem alterações pontuais são automaticamente aprovados após o registro, por força da Carta Circular Eletrônica nº 2/2018/SUSEP/DICON, e podem ter comercialização imediata.
+                </div>
+            </div>
+            <div class="col-md-12">&nbsp;</div>
+            <div class="corpoprincipal row">
+                    <div class="col-md-12">&nbsp;</div>
+                    <div class="col-md-12">&nbsp;</div>
+                    <div class="col-md-12">
+                        <fieldset class="form">
+                            <h2>Detalhes do Produto</h2>
+                            <div><strong>CCC N&#250;mero do Processo:</strong>15414.100233/2004-59     </div>
+                            <div><strong>DDD Sociedade:</strong>PORTO SEGURO COMPANHIA DE SEGUROS GERAIS</div>
+                            <div><strong>RAM:</strong> 05 | AUTOM&#211;VEL - CASCO</div>
+                            <div><strong> Subram:</strong>VALOR DETERMINADO E VALOR DE MERCADO REFERENCIADO</div>
+                            <div><strong> Situa&#231;&#227;o do Produto:</strong>Pass&#237;vel de comercializa&#231;&#227;o</div>
+                        </fieldset>
+                    </div>
+
+
+
+
+                    <div class="col-md-12">&nbsp;</div>
+                    <div class="col-md-12">
+                        <fieldset class="form">
+                            <legend>Vers&#245;es</legend>
+
+                            <table class="table" style="width:100%;">
+                                <tr>
+                                    <th>
+                                        Regulamento/Cond. Contratuais
+                                    </th>
+                                    <th>
+                                        Data de In&#237;cio de Comercializa&#231;&#227;o
+                                    </th>
+                                    <th>
+                                        Data de Fim de Comercializa&#231;&#227;o
+                                    </th>
+                                </tr>
+
+
+                                                <tr class="item">
+                                                    <td style="font-weight:bold;">
+                                                        <span>3402 - Porto Seguro CG144_Susep.pdf</span>&nbsp;
+                                                        <a class="linkDownloadRelatorio" href="javaScript:void(0)" title="Download" onclick="location.href='/safe/menumercado/REP2/Produto.aspx/DownloadConsultaPublica/508497'"><span class="invisivel">Download</span></a>
+
+
+                                                    </td>
+                                                    <td style="font-weight:bold;">01/07/2026</td>
+                                                    <td style="font-weight:bold;"></td>
+
+                                                </tr>
+                                                <tr class="altItem">
+                                                    <td style="">
+                                                        <span>3402 - Porto Seguro CG143_Susep.pdf</span>&nbsp;
+                                                        <a class="linkDownloadRelatorio" href="javaScript:void(0)" title="Download" onclick="location.href='/safe/menumercado/REP2/Produto.aspx/DownloadConsultaPublica/507222'"><span class="invisivel">Download</span></a>
+
+
+                                                    </td>
+                                                    <td style="">30/05/2026</td>
+                                                    <td style="">30/06/2026</td>
+
+                                                </tr>
+                                                <tr class="item">
+                                                    <td style="">
+                                                        <span>3402 - Porto Seguro CG142_Susep.pdf</span>&nbsp;
+                                                        <a class="linkDownloadRelatorio" href="javaScript:void(0)" title="Download" onclick="location.href='/safe/menumercado/REP2/Produto.aspx/DownloadConsultaPublica/505472'"><span class="invisivel">Download</span></a>
+
+
+                                                    </td>
+                                                    <td style="">01/05/2026</td>
+                                                    <td style="">29/05/2026</td>
+
+                                                </tr>
+                                                <tr class="altItem">
+                                                    <td style="">
+                                                        <span>3402 - Porto Seguro CG141_Susep.pdf</span>&nbsp;
+                                                        <a class="linkDownloadRelatorio" href="javaScript:void(0)" title="Download" onclick="location.href='/safe/menumercado/REP2/Produto.aspx/DownloadConsultaPublica/504704'"><span class="invisivel">Download</span></a>
+
+
+                                                    </td>
+                                                    <td style="">15/04/2026</td>
+                                                    <td style="">30/04/2026</td>
+
+                                                </tr>
+                                                <tr class="item">
+                                                    <td style="">
+                                                        <span>3402 - Porto Seguro CG140_Susep.pdf</span>&nbsp;
+                                                        <a class="linkDownloadRelatorio" href="javaScript:void(0)" title="Download" onclick="location.href='/safe/menumercado/REP2/Produto.aspx/DownloadConsultaPublica/488660'"><span class="invisivel">Download</span></a>
+
+
+                                                    </td>
+                                                    <td style="">01/01/2026</td>
+                                                    <td style="">14/04/2026</td>
+
+                                                </tr>
+                                                <tr class="altItem">
+                                                    <td style="">
+                                                        <span>3402 - Porto Seguro CG139_Susep.pdf</span>&nbsp;
+                                                        <a class="linkDownloadRelatorio" href="javaScript:void(0)" title="Download" onclick="location.href='/safe/menumercado/REP2/Produto.aspx/DownloadConsultaPublica/483367'"><span class="invisivel">Download</span></a>
+
+
+                                                    </td>
+                                                    <td style="">09/12/2025</td>
+                                                    <td style="">31/12/2025</td>
+
+                                                </tr>
+                                                <tr class="item">
+                                                    <td style="">
+                                                        <span>3402 - Porto Seguro CG138_Susep.pdf</span>&nbsp;
+                                                        <a class="linkDownloadRelatorio" href="javaScript:void(0)" title="Download" onclick="location.href='/safe/menumercado/REP2/Produto.aspx/DownloadConsultaPublica/480193'"><span class="invisivel">Download</span></a>
+
+
+                                                    </td>
+                                                    <td style="">17/10/2025</td>
+                                                    <td style="">08/12/2025</td>
+
+                                                </tr>
+                                                <tr class="altItem">
+                                                    <td style="">
+                                                        <span>3402 - Porto Seguro CG137_Susep.pdf</span>&nbsp;
+                                                        <a class="linkDownloadRelatorio" href="javaScript:void(0)" title="Download" onclick="location.href='/safe/menumercado/REP2/Produto.aspx/DownloadConsultaPublica/479593'"><span class="invisivel">Download</span></a>
+
+
+                                                    </td>
+                                                    <td style="">01/10/2025</td>
+                                                    <td style="">16/10/2025</td>
+
+                                                </tr>
+                                                <tr class="item">
+                                                    <td style="">
+                                                        <span>3402 - Porto Seguro CG136_Susep.pdf</span>&nbsp;
+                                                        <a class="linkDownloadRelatorio" href="javaScript:void(0)" title="Download" onclick="location.href='/safe/menumercado/REP2/Produto.aspx/DownloadConsultaPublica/478064'"><span class="invisivel">Download</span></a>
+
+
+                                                    </td>
+                                                    <td style="">30/08/2025</td>
+                                                    <td style="">30/09/2025</td>
+
+                                                </tr>
+                                                <tr class="altItem">
+                                                    <td style="">
+                                                        <span>3402 - Porto Seguro CG135_Susep.pdf</span>&nbsp;
+                                                        <a class="linkDownloadRelatorio" href="javaScript:void(0)" title="Download" onclick="location.href='/safe/menumercado/REP2/Produto.aspx/DownloadConsultaPublica/474385'"><span class="invisivel">Download</span></a>
+
+
+                                                    </td>
+                                                    <td style="">01/07/2025</td>
+                                                    <td style="">29/08/2025</td>
+
+                                                </tr>
+                                                <tr class="item">
+                                                    <td style="">
+                                                        <span>Porto Seguro CG134_Susep.pdf</span>&nbsp;
+                                                        <a class="linkDownloadRelatorio" href="javaScript:void(0)" title="Download" onclick="location.href='/safe/menumercado/REP2/Produto.aspx/DownloadConsultaPublica/472533'"><span class="invisivel">Download</span></a>
+
+
+                                                    </td>
+                                                    <td style="">31/05/2025</td>
+                                                    <td style="">30/06/2025</td>
+
+                                                </tr>
+                                                <tr class="altItem">
+                                                    <td style="">
+                                                        <span>3402 - Porto Seguro CG133_Susep.pdf</span>&nbsp;
+                                                        <a class="linkDownloadRelatorio" href="javaScript:void(0)" title="Download" onclick="location.href='/safe/menumercado/REP2/Produto.aspx/DownloadConsultaPublica/470178'"><span class="invisivel">Download</span></a>
+
+
+                                                    </td>
+                                                    <td style="">01/05/2025</td>
+                                                    <td style="">30/05/2025</td>
+
+                                                </tr>
+                                                <tr class="item">
+                                                    <td style="">
+                                                        <span>3402 - Porto Seguro CG132_Susep.pdf</span>&nbsp;
+                                                        <a class="linkDownloadRelatorio" href="javaScript:void(0)" title="Download" onclick="location.href='/safe/menumercado/REP2/Produto.aspx/DownloadConsultaPublica/468060'"><span class="invisivel">Download</span></a>
+
+
+                                                    </td>
+                                                    <td style="">01/04/2025</td>
+                                                    <td style="">30/04/2025</td>
+
+                                                </tr>
+                                                <tr class="altItem">
+                                                    <td style="">
+                                                        <span>3402 - Porto Seguro CG131_Susep.pdf</span>&nbsp;
+                                                        <a class="linkDownloadRelatorio" href="javaScript:void(0)" title="Download" onclick="location.href='/safe/menumercado/REP2/Produto.aspx/DownloadConsultaPublica/455872'"><span class="invisivel">Download</span></a>
+
+
+                                                    </td>
+                                                    <td style="">01/03/2025</td>
+                                                    <td style="">31/03/2025</td>
+
+                                                </tr>
+                                                <tr class="item">
+                                                    <td style="">
+                                                        <span>3402 - Porto Seguro CG130_Susep.pdf</span>&nbsp;
+                                                        <a class="linkDownloadRelatorio" href="javaScript:void(0)" title="Download" onclick="location.href='/safe/menumercado/REP2/Produto.aspx/DownloadConsultaPublica/454264'"><span class="invisivel">Download</span></a>
+
+
+                                                    </td>
+                                                    <td style="">04/02/2025</td>
+                                                    <td style="">28/02/2025</td>
+
+                                                </tr>
+                                                <tr class="altItem">
+                                                    <td style="">
+                                                        <span>3402 - Porto Seguro CG129_Susep.pdf</span>&nbsp;
+                                                        <a class="linkDownloadRelatorio" href="javaScript:void(0)" title="Download" onclick="location.href='/safe/menumercado/REP2/Produto.aspx/DownloadConsultaPublica/452057'"><span class="invisivel">Download</span></a>
+
+
+                                                    </td>
+                                                    <td style="">31/12/2024</td>
+                                                    <td style="">03/02/2025</td>
+
+                                                </tr>
+                                                <tr class="item">
+                                                    <td style="">
+                                                        <span>3402 - Porto Seguro CG128_Susep.pdf</span>&nbsp;
+                                                        <a class="linkDownloadRelatorio" href="javaScript:void(0)" title="Download" onclick="location.href='/safe/menumercado/REP2/Produto.aspx/DownloadConsultaPublica/450267'"><span class="invisivel">Download</span></a>
+
+
+                                                    </td>
+                                                    <td style="">30/11/2024</td>
+                                                    <td style="">30/12/2024</td>
+
+                                                </tr>
+                                                <tr class="altItem">
+                                                    <td style="">
+                                                        <span>3402 - Porto Seguro CG127_Susep.pdf</span>&nbsp;
+                                                        <a class="linkDownloadRelatorio" href="javaScript:void(0)" title="Download" onclick="location.href='/safe/menumercado/REP2/Produto.aspx/DownloadConsultaPublica/446655'"><span class="invisivel">Download</span></a>
+
+
+                                                    </td>
+                                                    <td style="">01/10/2024</td>
+                                                    <td style="">29/11/2024</td>
+
+                                                </tr>
+                                                <tr class="item">
+                                                    <td style="">
+                                                        <span>3402 - Porto Seguro CG126_Susep.pdf</span>&nbsp;
+                                                        <a class="linkDownloadRelatorio" href="javaScript:void(0)" title="Download" onclick="location.href='/safe/menumercado/REP2/Produto.aspx/DownloadConsultaPublica/445416'"><span class="invisivel">Download</span></a>
+
+
+                                                    </td>
+                                                    <td style="">31/08/2024</td>
+                                                    <td style="">30/09/2024</td>
+
+                                                </tr>
+                                                <tr class="altItem">
+                                                    <td style="">
+                                                        <span>3402 - Porto Seguro CG125_Susep.pdf</span>&nbsp;
+                                                        <a class="linkDownloadRelatorio" href="javaScript:void(0)" title="Download" onclick="location.href='/safe/menumercado/REP2/Produto.aspx/DownloadConsultaPublica/444206'"><span class="invisivel">Download</span></a>
+
+
+                                                    </td>
+                                                    <td style="">01/08/2024</td>
+                                                    <td style="">30/08/2024</td>
+
+                                                </tr>
+                                                <tr class="item">
+                                                    <td style="">
+                                                        <span>3402 - Porto Seguro CG124_Susep.pdf</span>&nbsp;
+                                                        <a class="linkDownloadRelatorio" href="javaScript:void(0)" title="Download" onclick="location.href='/safe/menumercado/REP2/Produto.aspx/DownloadConsultaPublica/442658'"><span class="invisivel">Download</span></a>
+
+
+                                                    </td>
+                                                    <td style="">29/06/2024</td>
+                                                    <td style="">31/07/2024</td>
+
+                                                </tr>
+                                                <tr class="altItem">
+                                                    <td style="">
+                                                        <span>3402 - Porto Seguro CG123_Susep.pdf</span>&nbsp;
+                                                        <a class="linkDownloadRelatorio" href="javaScript:void(0)" title="Download" onclick="location.href='/safe/menumercado/REP2/Produto.aspx/DownloadConsultaPublica/441502'"><span class="invisivel">Download</span></a>
+
+
+                                                    </td>
+                                                    <td style="">07/06/2024</td>
+                                                    <td style="">28/06/2024</td>
+
+                                                </tr>
+                                                <tr class="item">
+                                                    <td style="">
+                                                        <span>3402 - Porto Seguro CG122_Susep.pdf</span>&nbsp;
+                                                        <a class="linkDownloadRelatorio" href="javaScript:void(0)" title="Download" onclick="location.href='/safe/menumercado/REP2/Produto.aspx/DownloadConsultaPublica/439658'"><span class="invisivel">Download</span></a>
+
+
+                                                    </td>
+                                                    <td style="">01/05/2024</td>
+                                                    <td style="">06/06/2024</td>
+
+                                                </tr>
+                                                <tr class="altItem">
+                                                    <td style="">
+                                                        <span>3402 - Porto Seguro CG121_Susep.pdf</span>&nbsp;
+                                                        <a class="linkDownloadRelatorio" href="javaScript:void(0)" title="Download" onclick="location.href='/safe/menumercado/REP2/Produto.aspx/DownloadConsultaPublica/438164'"><span class="invisivel">Download</span></a>
+
+
+                                                    </td>
+                                                    <td style="">02/04/2024</td>
+                                                    <td style="">30/04/2024</td>
+
+                                                </tr>
+                                                <tr class="item">
+                                                    <td style="">
+                                                        <span>3402 - Porto Seguro CG120_Susep.pdf</span>&nbsp;
+                                                        <a class="linkDownloadRelatorio" href="javaScript:void(0)" title="Download" onclick="location.href='/safe/menumercado/REP2/Produto.aspx/DownloadConsultaPublica/436677'"><span class="invisivel">Download</span></a>
+
+
+                                                    </td>
+                                                    <td style="">01/03/2024</td>
+                                                    <td style="">01/04/2024</td>
+
+                                                </tr>
+                                                <tr class="altItem">
+                                                    <td style="">
+                                                        <span>3402 - Porto Seguro CG119_Susep.pdf</span>&nbsp;
+                                                        <a class="linkDownloadRelatorio" href="javaScript:void(0)" title="Download" onclick="location.href='/safe/menumercado/REP2/Produto.aspx/DownloadConsultaPublica/435404'"><span class="invisivel">Download</span></a>
+
+
+                                                    </td>
+                                                    <td style="">01/02/2024</td>
+                                                    <td style="">29/02/2024</td>
+
+                                                </tr>
+                                                <tr class="item">
+                                                    <td style="">
+                                                        <span>3402 - Porto Seguro CG118_Vers&#227;o Susep.pdf</span>&nbsp;
+                                                        <a class="linkDownloadRelatorio" href="javaScript:void(0)" title="Download" onclick="location.href='/safe/menumercado/REP2/Produto.aspx/DownloadConsultaPublica/431837'"><span class="invisivel">Download</span></a>
+
+
+                                                    </td>
+                                                    <td style="">01/12/2023</td>
+                                                    <td style="">31/01/2024</td>
+
+                                                </tr>
+                                                <tr class="altItem">
+                                                    <td style="">
+                                                        <span>3402 - Porto Seguro CG117_Susep.pdf</span>&nbsp;
+                                                        <a class="linkDownloadRelatorio" href="javaScript:void(0)" title="Download" onclick="location.href='/safe/menumercado/REP2/Produto.aspx/DownloadConsultaPublica/426191'"><span class="invisivel">Download</span></a>
+
+
+                                                    </td>
+                                                    <td style="">01/09/2023</td>
+                                                    <td style="">30/11/2023</td>
+
+                                                </tr>
+                                                <tr class="item">
+                                                    <td style="">
+                                                        <span>3402 - Porto Seguro CG116_Susep.pdf</span>&nbsp;
+                                                        <a class="linkDownloadRelatorio" href="javaScript:void(0)" title="Download" onclick="location.href='/safe/menumercado/REP2/Produto.aspx/DownloadConsultaPublica/424560'"><span class="invisivel">Download</span></a>
+
+
+                                                    </td>
+                                                    <td style="">01/08/2023</td>
+                                                    <td style="">31/08/2023</td>
+
+                                                </tr>
+                                                <tr class="altItem">
+                                                    <td style="">
+                                                        <span>3402 - Porto Seguro CG115_Susep.pdf</span>&nbsp;
+                                                        <a class="linkDownloadRelatorio" href="javaScript:void(0)" title="Download" onclick="location.href='/safe/menumercado/REP2/Produto.aspx/DownloadConsultaPublica/423465'"><span class="invisivel">Download</span></a>
+
+
+                                                    </td>
+                                                    <td style="">01/07/2023</td>
+                                                    <td style="">31/07/2023</td>
+
+                                                </tr>
+                                                <tr class="item">
+                                                    <td style="">
+                                                        <span>3402 - Porto Seguro CG114_Susep.pdf</span>&nbsp;
+                                                        <a class="linkDownloadRelatorio" href="javaScript:void(0)" title="Download" onclick="location.href='/safe/menumercado/REP2/Produto.aspx/DownloadConsultaPublica/420843'"><span class="invisivel">Download</span></a>
+
+
+                                                    </td>
+                                                    <td style="">29/04/2023</td>
+                                                    <td style="">30/06/2023</td>
+
+                                                </tr>
+                                                <tr class="altItem">
+                                                    <td style="">
+                                                        <span>3402 - Porto Seguro CG113_Susep.pdf</span>&nbsp;
+                                                        <a class="linkDownloadRelatorio" href="javaScript:void(0)" title="Download" onclick="location.href='/safe/menumercado/REP2/Produto.aspx/DownloadConsultaPublica/419013'"><span class="invisivel">Download</span></a>
+
+
+                                                    </td>
+                                                    <td style="">01/04/2023</td>
+                                                    <td style="">28/04/2023</td>
+
+                                                </tr>
+                                                <tr class="item">
+                                                    <td style="">
+                                                        <span>3402 - Porto Seguro CG112_Susep.pdf</span>&nbsp;
+                                                        <a class="linkDownloadRelatorio" href="javaScript:void(0)" title="Download" onclick="location.href='/safe/menumercado/REP2/Produto.aspx/DownloadConsultaPublica/415581'"><span class="invisivel">Download</span></a>
+
+
+                                                    </td>
+                                                    <td style="">01/02/2023</td>
+                                                    <td style="">31/03/2023</td>
+
+                                                </tr>
+                                                <tr class="altItem">
+                                                    <td style="">
+                                                        <span>3402 - Porto Seguro CG111_Susep.pdf</span>&nbsp;
+                                                        <a class="linkDownloadRelatorio" href="javaScript:void(0)" title="Download" onclick="location.href='/safe/menumercado/REP2/Produto.aspx/DownloadConsultaPublica/411585'"><span class="invisivel">Download</span></a>
+
+
+                                                    </td>
+                                                    <td style="">01/12/2022</td>
+                                                    <td style="">31/01/2023</td>
+
+                                                </tr>
+                                                <tr class="item">
+                                                    <td style="">
+                                                        <span>3402 - Porto Seguro CG110_Prote&#231;&#227;o Combinada_Susep.pdf</span>&nbsp;
+                                                        <a class="linkDownloadRelatorio" href="javaScript:void(0)" title="Download" onclick="location.href='/safe/menumercado/REP2/Produto.aspx/DownloadConsultaPublica/408703'"><span class="invisivel">Download</span></a>
+
+
+                                                    </td>
+                                                    <td style="">01/10/2022</td>
+                                                    <td style="">30/11/2022</td>
+
+                                                </tr>
+                                                <tr class="altItem">
+                                                    <td style="">
+                                                        <span>3402 - Porto Seguro CG109_Prote&#231;&#227;o Combinada_Susep.pdf</span>&nbsp;
+                                                        <a class="linkDownloadRelatorio" href="javaScript:void(0)" title="Download" onclick="location.href='/safe/menumercado/REP2/Produto.aspx/DownloadConsultaPublica/406963'"><span class="invisivel">Download</span></a>
+
+
+                                                    </td>
+                                                    <td style="">01/09/2022</td>
+                                                    <td style="">30/09/2022</td>
+
+                                                </tr>
+                                                <tr class="item">
+                                                    <td style="">
+                                                        <span>3402 - Porto Seguro CG108_Prote&#231;&#227;o Combinada_Susep.pdf</span>&nbsp;
+                                                        <a class="linkDownloadRelatorio" href="javaScript:void(0)" title="Download" onclick="location.href='/safe/menumercado/REP2/Produto.aspx/DownloadConsultaPublica/405634'"><span class="invisivel">Download</span></a>
+
+
+                                                    </td>
+                                                    <td style="">02/08/2022</td>
+                                                    <td style="">31/08/2022</td>
+
+                                                </tr>
+                                                <tr class="altItem">
+                                                    <td style="">
+                                                        <span>3402 - Porto Seguro CG107_Prote&#231;&#227;o Combinada_Susep.pdf</span>&nbsp;
+                                                        <a class="linkDownloadRelatorio" href="javaScript:void(0)" title="Download" onclick="location.href='/safe/menumercado/REP2/Produto.aspx/DownloadConsultaPublica/404186'"><span class="invisivel">Download</span></a>
+
+
+                                                    </td>
+                                                    <td style="">01/07/2022</td>
+                                                    <td style="">01/08/2022</td>
+
+                                                </tr>
+                                                <tr class="item">
+                                                    <td style="">
+                                                        <span>3402 - Porto Seguro CG106v2_Prote&#231;&#227;o Combinada_Susep.pdf</span>&nbsp;
+                                                        <a class="linkDownloadRelatorio" href="javaScript:void(0)" title="Download" onclick="location.href='/safe/menumercado/REP2/Produto.aspx/DownloadConsultaPublica/401582'"><span class="invisivel">Download</span></a>
+
+
+                                                    </td>
+                                                    <td style="">11/05/2022</td>
+                                                    <td style="">30/06/2022</td>
+
+                                                </tr>
+                                                <tr class="altItem">
+                                                    <td style="">
+                                                        <span>3402 - Porto Seguro CG106_Prote&#231;&#227;o Combinada_Susep.pdf</span>&nbsp;
+                                                        <a class="linkDownloadRelatorio" href="javaScript:void(0)" title="Download" onclick="location.href='/safe/menumercado/REP2/Produto.aspx/DownloadConsultaPublica/400731'"><span class="invisivel">Download</span></a>
+
+
+                                                    </td>
+                                                    <td style="">30/04/2022</td>
+                                                    <td style="">10/05/2022</td>
+
+                                                </tr>
+                                                <tr class="item">
+                                                    <td style="">
+                                                        <span>3402 - Porto Seguro CG105_Susep.pdf</span>&nbsp;
+                                                        <a class="linkDownloadRelatorio" href="javaScript:void(0)" title="Download" onclick="location.href='/safe/menumercado/REP2/Produto.aspx/DownloadConsultaPublica/378266'"><span class="invisivel">Download</span></a>
+
+
+                                                    </td>
+                                                    <td style="">17/03/2022</td>
+                                                    <td style="">29/04/2022</td>
+
+                                                </tr>
+                                                <tr class="altItem">
+                                                    <td style="">
+                                                        <span>3402 - Porto Seguro CG105_Susep.pdf</span>&nbsp;
+                                                        <a class="linkDownloadRelatorio" href="javaScript:void(0)" title="Download" onclick="location.href='/safe/menumercado/REP2/Produto.aspx/DownloadConsultaPublica/377379'"><span class="invisivel">Download</span></a>
+
+
+                                                    </td>
+                                                    <td style="">27/02/2022</td>
+                                                    <td style="">16/03/2022</td>
+
+                                                </tr>
+                                                <tr class="item">
+                                                    <td style="">
+                                                        <span>CG99 Porto com QAR.pdf</span>&nbsp;
+                                                        <a class="linkDownloadRelatorio" href="javaScript:void(0)" title="Download" onclick="location.href='/safe/menumercado/REP2/Produto.aspx/DownloadConsultaPublica/346762'"><span class="invisivel">Download</span></a>
+
+
+                                                    </td>
+                                                    <td style="">31/08/2021</td>
+                                                    <td style="">26/02/2022</td>
+
+                                                </tr>
+                                                <tr class="altItem">
+                                                    <td style="">
+                                                        <span>3485 - Porto Seguro CG98_Susep com QAR.pdf</span>&nbsp;
+                                                        <a class="linkDownloadRelatorio" href="javaScript:void(0)" title="Download" onclick="location.href='/safe/menumercado/REP2/Produto.aspx/DownloadConsultaPublica/341732'"><span class="invisivel">Download</span></a>
+
+
+                                                    </td>
+                                                    <td style="">01/07/2021</td>
+                                                    <td style="">30/08/2021</td>
+
+                                                </tr>
+                                                <tr class="item">
+                                                    <td style="">
+                                                        <span>CG97 Porto Seguro com QAR.pdf</span>&nbsp;
+                                                        <a class="linkDownloadRelatorio" href="javaScript:void(0)" title="Download" onclick="location.href='/safe/menumercado/REP2/Produto.aspx/DownloadConsultaPublica/336094'"><span class="invisivel">Download</span></a>
+
+
+                                                    </td>
+                                                    <td style="">01/04/2021</td>
+                                                    <td style="">30/06/2021</td>
+
+                                                </tr>
+                                                <tr class="altItem">
+                                                    <td style="">
+                                                        <span>CG96 Porto com QAR.pdf</span>&nbsp;
+                                                        <a class="linkDownloadRelatorio" href="javaScript:void(0)" title="Download" onclick="location.href='/safe/menumercado/REP2/Produto.aspx/DownloadConsultaPublica/334379'"><span class="invisivel">Download</span></a>
+
+
+                                                    </td>
+                                                    <td style="">02/03/2021</td>
+                                                    <td style="">31/03/2021</td>
+
+                                                </tr>
+                                                <tr class="item">
+                                                    <td style="">
+                                                        <span>CG95 Porto Seguro com QAR.pdf</span>&nbsp;
+                                                        <a class="linkDownloadRelatorio" href="javaScript:void(0)" title="Download" onclick="location.href='/safe/menumercado/REP2/Produto.aspx/DownloadConsultaPublica/322849'"><span class="invisivel">Download</span></a>
+
+
+                                                    </td>
+                                                    <td style="">02/02/2021</td>
+                                                    <td style="">01/03/2021</td>
+
+                                                </tr>
+                                                <tr class="altItem">
+                                                    <td style="">
+                                                        <span>CG94 com QAR.pdf</span>&nbsp;
+                                                        <a class="linkDownloadRelatorio" href="javaScript:void(0)" title="Download" onclick="location.href='/safe/menumercado/REP2/Produto.aspx/DownloadConsultaPublica/308873'"><span class="invisivel">Download</span></a>
+
+
+                                                    </td>
+                                                    <td style="">01/12/2020</td>
+                                                    <td style="">01/02/2021</td>
+
+                                                </tr>
+                                                <tr class="item">
+                                                    <td style="">
+                                                        <span>CG93 com QAR.pdf</span>&nbsp;
+                                                        <a class="linkDownloadRelatorio" href="javaScript:void(0)" title="Download" onclick="location.href='/safe/menumercado/REP2/Produto.aspx/DownloadConsultaPublica/286983'"><span class="invisivel">Download</span></a>
+
+
+                                                    </td>
+                                                    <td style="">31/10/2020</td>
+                                                    <td style="">30/11/2020</td>
+
+                                                </tr>
+                                                <tr class="altItem">
+                                                    <td style="">
+                                                        <span>CG92 Porto_Susep com QAR.pdf</span>&nbsp;
+                                                        <a class="linkDownloadRelatorio" href="javaScript:void(0)" title="Download" onclick="location.href='/safe/menumercado/REP2/Produto.aspx/DownloadConsultaPublica/244968'"><span class="invisivel">Download</span></a>
+
+
+                                                    </td>
+                                                    <td style="">01/10/2020</td>
+                                                    <td style="">30/10/2020</td>
+
+                                                </tr>
+                                                <tr class="item">
+                                                    <td style="">
+                                                        <span>CG91 Porto Seguro com QAR.pdf</span>&nbsp;
+                                                        <a class="linkDownloadRelatorio" href="javaScript:void(0)" title="Download" onclick="location.href='/safe/menumercado/REP2/Produto.aspx/DownloadConsultaPublica/232818'"><span class="invisivel">Download</span></a>
+
+
+                                                    </td>
+                                                    <td style="">01/09/2020</td>
+                                                    <td style="">30/09/2020</td>
+
+                                                </tr>
+                                                <tr class="altItem">
+                                                    <td style="">
+                                                        <span>CG90 Porto Seguro com QAR.pdf</span>&nbsp;
+                                                        <a class="linkDownloadRelatorio" href="javaScript:void(0)" title="Download" onclick="location.href='/safe/menumercado/REP2/Produto.aspx/DownloadConsultaPublica/230860'"><span class="invisivel">Download</span></a>
+
+
+                                                    </td>
+                                                    <td style="">01/08/2020</td>
+                                                    <td style="">31/08/2020</td>
+
+                                                </tr>
+                                                <tr class="item">
+                                                    <td style="">
+                                                        <span>C89 com QAR.pdf</span>&nbsp;
+                                                        <a class="linkDownloadRelatorio" href="javaScript:void(0)" title="Download" onclick="location.href='/safe/menumercado/REP2/Produto.aspx/DownloadConsultaPublica/228724'"><span class="invisivel">Download</span></a>
+
+
+                                                    </td>
+                                                    <td style="">01/07/2020</td>
+                                                    <td style="">31/07/2020</td>
+
+                                                </tr>
+                                                <tr class="altItem">
+                                                    <td style="">
+                                                        <span>CG88 Porto Seguro com QAR.pdf</span>&nbsp;
+                                                        <a class="linkDownloadRelatorio" href="javaScript:void(0)" title="Download" onclick="location.href='/safe/menumercado/REP2/Produto.aspx/DownloadConsultaPublica/216914'"><span class="invisivel">Download</span></a>
+
+
+                                                    </td>
+                                                    <td style="">02/06/2020</td>
+                                                    <td style="">30/06/2020</td>
+
+                                                </tr>
+                                                <tr class="item">
+                                                    <td style="">
+                                                        <span>CG87 Compactada.pdf</span>&nbsp;
+                                                        <a class="linkDownloadRelatorio" href="javaScript:void(0)" title="Download" onclick="location.href='/safe/menumercado/REP2/Produto.aspx/DownloadConsultaPublica/215210'"><span class="invisivel">Download</span></a>
+
+
+                                                    </td>
+                                                    <td style="">01/05/2020</td>
+                                                    <td style="">01/06/2020</td>
+
+                                                </tr>
+                                                <tr class="altItem">
+                                                    <td style="">
+                                                        <span>Porto CG85 Mar 2020.pdf</span>&nbsp;
+                                                        <a class="linkDownloadRelatorio" href="javaScript:void(0)" title="Download" onclick="location.href='/safe/menumercado/REP2/Produto.aspx/DownloadConsultaPublica/201758'"><span class="invisivel">Download</span></a>
+
+
+                                                    </td>
+                                                    <td style="">03/03/2020</td>
+                                                    <td style="">30/04/2020</td>
+
+                                                </tr>
+                                                <tr class="item">
+                                                    <td style="">
+                                                        <span>CG84 Susep.pdf</span>&nbsp;
+                                                        <a class="linkDownloadRelatorio" href="javaScript:void(0)" title="Download" onclick="location.href='/safe/menumercado/REP2/Produto.aspx/DownloadConsultaPublica/182175'"><span class="invisivel">Download</span></a>
+
+
+                                                    </td>
+                                                    <td style="">01/10/2019</td>
+                                                    <td style="">02/03/2020</td>
+
+                                                </tr>
+                                                <tr class="altItem">
+                                                    <td style="">
+                                                        <span>Porto Seguro CG84.pdf</span>&nbsp;
+                                                        <a class="linkDownloadRelatorio" href="javaScript:void(0)" title="Download" onclick="location.href='/safe/menumercado/REP2/Produto.aspx/DownloadConsultaPublica/180697'"><span class="invisivel">Download</span></a>
+
+
+                                                    </td>
+                                                    <td style="">03/09/2019</td>
+                                                    <td style="">30/09/2019</td>
+
+                                                </tr>
+                                                <tr class="item">
+                                                    <td style="">
+                                                        <span>CG83 Auto Porto.pdf</span>&nbsp;
+                                                        <a class="linkDownloadRelatorio" href="javaScript:void(0)" title="Download" onclick="location.href='/safe/menumercado/REP2/Produto.aspx/DownloadConsultaPublica/178730'"><span class="invisivel">Download</span></a>
+
+
+                                                    </td>
+                                                    <td style="">01/08/2019</td>
+                                                    <td style="">02/09/2019</td>
+
+                                                </tr>
+                                                <tr class="altItem">
+                                                    <td style="">
+                                                        <span>Porto Seguro CG82.pdf</span>&nbsp;
+                                                        <a class="linkDownloadRelatorio" href="javaScript:void(0)" title="Download" onclick="location.href='/safe/menumercado/REP2/Produto.aspx/DownloadConsultaPublica/176976'"><span class="invisivel">Download</span></a>
+
+
+                                                    </td>
+                                                    <td style="">01/07/2019</td>
+                                                    <td style="">31/07/2019</td>
+
+                                                </tr>
+                                                <tr class="item">
+                                                    <td style="">
+                                                        <span>Porto Seguro CG81.pdf</span>&nbsp;
+                                                        <a class="linkDownloadRelatorio" href="javaScript:void(0)" title="Download" onclick="location.href='/safe/menumercado/REP2/Produto.aspx/DownloadConsultaPublica/175307'"><span class="invisivel">Download</span></a>
+
+
+                                                    </td>
+                                                    <td style="">01/06/2019</td>
+                                                    <td style="">30/06/2019</td>
+
+                                                </tr>
+                                                <tr class="altItem">
+                                                    <td style="">
+                                                        <span>Auto Porto CGs 80.pdf</span>&nbsp;
+                                                        <a class="linkDownloadRelatorio" href="javaScript:void(0)" title="Download" onclick="location.href='/safe/menumercado/REP2/Produto.aspx/DownloadConsultaPublica/173231'"><span class="invisivel">Download</span></a>
+
+
+                                                    </td>
+                                                    <td style="">01/05/2019</td>
+                                                    <td style="">31/05/2019</td>
+
+                                                </tr>
+                                                <tr class="item">
+                                                    <td style="">
+                                                        <span>Porto Seguro CG79.pdf</span>&nbsp;
+                                                        <a class="linkDownloadRelatorio" href="javaScript:void(0)" title="Download" onclick="location.href='/safe/menumercado/REP2/Produto.aspx/DownloadConsultaPublica/169294'"><span class="invisivel">Download</span></a>
+
+
+                                                    </td>
+                                                    <td style="">19/03/2019</td>
+                                                    <td style="">30/04/2019</td>
+
+                                                </tr>
+                                                <tr class="altItem">
+                                                    <td style="">
+                                                        <span>Auto Porto CG78.pdf</span>&nbsp;
+                                                        <a class="linkDownloadRelatorio" href="javaScript:void(0)" title="Download" onclick="location.href='/safe/menumercado/REP2/Produto.aspx/DownloadConsultaPublica/167893'"><span class="invisivel">Download</span></a>
+
+
+                                                    </td>
+                                                    <td style="">01/03/2019</td>
+                                                    <td style="">18/03/2019</td>
+
+                                                </tr>
+                                                <tr class="item">
+                                                    <td style="">
+                                                        <span>CG76 01 01 19.pdf</span>&nbsp;
+                                                        <a class="linkDownloadRelatorio" href="javaScript:void(0)" title="Download" onclick="location.href='/safe/menumercado/REP2/Produto.aspx/DownloadConsultaPublica/163881'"><span class="invisivel">Download</span></a>
+
+
+                                                    </td>
+                                                    <td style="">01/01/2019</td>
+                                                    <td style="">28/02/2019</td>
+
+                                                </tr>
+                                                <tr class="altItem">
+                                                    <td style="">
+                                                        <span>Porto Seguro CG75.pdf</span>&nbsp;
+                                                        <a class="linkDownloadRelatorio" href="javaScript:void(0)" title="Download" onclick="location.href='/safe/menumercado/REP2/Produto.aspx/DownloadConsultaPublica/161242'"><span class="invisivel">Download</span></a>
+
+
+                                                    </td>
+                                                    <td style="">20/11/2018</td>
+                                                    <td style="">31/12/2018</td>
+
+                                                </tr>
+                                                <tr class="item">
+                                                    <td style="">
+                                                        <span>CG74 Vers&#227;o Susep.pdf</span>&nbsp;
+                                                        <a class="linkDownloadRelatorio" href="javaScript:void(0)" title="Download" onclick="location.href='/safe/menumercado/REP2/Produto.aspx/DownloadConsultaPublica/159753'"><span class="invisivel">Download</span></a>
+
+
+                                                    </td>
+                                                    <td style="">01/11/2018</td>
+                                                    <td style="">19/11/2018</td>
+
+                                                </tr>
+                                                <tr class="altItem">
+                                                    <td style="">
+                                                        <span>CG73 Out 2018.pdf</span>&nbsp;
+                                                        <a class="linkDownloadRelatorio" href="javaScript:void(0)" title="Download" onclick="location.href='/safe/menumercado/REP2/Produto.aspx/DownloadConsultaPublica/158262'"><span class="invisivel">Download</span></a>
+
+
+                                                    </td>
+                                                    <td style="">29/09/2018</td>
+                                                    <td style="">31/10/2018</td>
+
+                                                </tr>
+                                                <tr class="item">
+                                                    <td style="">
+                                                        <span>CG72 setembro 2018.pdf</span>&nbsp;
+                                                        <a class="linkDownloadRelatorio" href="javaScript:void(0)" title="Download" onclick="location.href='/safe/menumercado/REP2/Produto.aspx/DownloadConsultaPublica/157012'"><span class="invisivel">Download</span></a>
+
+
+                                                    </td>
+                                                    <td style="">01/09/2018</td>
+                                                    <td style="">28/09/2018</td>
+
+                                                </tr>
+                                                <tr class="altItem">
+                                                    <td style="">
+                                                        <span>CG71 Auto 01082018.pdf</span>&nbsp;
+                                                        <a class="linkDownloadRelatorio" href="javaScript:void(0)" title="Download" onclick="location.href='/safe/menumercado/REP2/Produto.aspx/DownloadConsultaPublica/155480'"><span class="invisivel">Download</span></a>
+
+
+                                                    </td>
+                                                    <td style="">01/08/2018</td>
+                                                    <td style="">31/08/2018</td>
+
+                                                </tr>
+                                                <tr class="item">
+                                                    <td style="">
+                                                        <span>CG Auto jul 2018.pdf</span>&nbsp;
+                                                        <a class="linkDownloadRelatorio" href="javaScript:void(0)" title="Download" onclick="location.href='/safe/menumercado/REP2/Produto.aspx/DownloadConsultaPublica/153830'"><span class="invisivel">Download</span></a>
+
+
+                                                    </td>
+                                                    <td style="">30/06/2018</td>
+                                                    <td style="">31/07/2018</td>
+
+                                                </tr>
+                                                <tr class="altItem">
+                                                    <td style="">
+                                                        <span>3485 - CG69 110618.pdf</span>&nbsp;
+                                                        <a class="linkDownloadRelatorio" href="javaScript:void(0)" title="Download" onclick="location.href='/safe/menumercado/REP2/Produto.aspx/DownloadConsultaPublica/152596'"><span class="invisivel">Download</span></a>
+
+
+                                                    </td>
+                                                    <td style="">09/06/2018</td>
+                                                    <td style="">29/06/2018</td>
+
+                                                </tr>
+                                                <tr class="item">
+                                                    <td style="">
+                                                        <span>CG68  18 05 18.pdf</span>&nbsp;
+                                                        <a class="linkDownloadRelatorio" href="javaScript:void(0)" title="Download" onclick="location.href='/safe/menumercado/REP2/Produto.aspx/DownloadConsultaPublica/151375'"><span class="invisivel">Download</span></a>
+
+
+                                                    </td>
+                                                    <td style="">18/05/2018</td>
+                                                    <td style="">08/06/2018</td>
+
+                                                </tr>
+                                                <tr class="altItem">
+                                                    <td style="">
+                                                        <span>CG66 abril 2018.pdf</span>&nbsp;
+                                                        <a class="linkDownloadRelatorio" href="javaScript:void(0)" title="Download" onclick="location.href='/safe/menumercado/REP2/Produto.aspx/DownloadConsultaPublica/148369'"><span class="invisivel">Download</span></a>
+
+
+                                                    </td>
+                                                    <td style="">30/03/2018</td>
+                                                    <td style="">17/05/2018</td>
+
+                                                </tr>
+                                                <tr class="item">
+                                                    <td style="">
+                                                        <span>CGs Auto Mar&#231;o.pdf</span>&nbsp;
+                                                        <a class="linkDownloadRelatorio" href="javaScript:void(0)" title="Download" onclick="location.href='/safe/menumercado/REP2/Produto.aspx/DownloadConsultaPublica/146788'"><span class="invisivel">Download</span></a>
+
+
+                                                    </td>
+                                                    <td style="">01/03/2018</td>
+                                                    <td style="">29/03/2018</td>
+
+                                                </tr>
+                                                <tr class="altItem">
+                                                    <td style="">
+                                                        <span>CG64 Vers&#227;o Susep.pdf</span>&nbsp;
+                                                        <a class="linkDownloadRelatorio" href="javaScript:void(0)" title="Download" onclick="location.href='/safe/menumercado/REP2/Produto.aspx/DownloadConsultaPublica/145480'"><span class="invisivel">Download</span></a>
+
+
+                                                    </td>
+                                                    <td style="">01/02/2018</td>
+                                                    <td style="">28/02/2018</td>
+
+                                                </tr>
+                                                <tr class="item">
+                                                    <td style="">
+                                                        <span>CG63 Susep.pdf</span>&nbsp;
+                                                        <a class="linkDownloadRelatorio" href="javaScript:void(0)" title="Download" onclick="location.href='/safe/menumercado/REP2/Produto.aspx/DownloadConsultaPublica/142124'"><span class="invisivel">Download</span></a>
+
+
+                                                    </td>
+                                                    <td style="">01/12/2017</td>
+                                                    <td style="">31/01/2018</td>
+
+                                                </tr>
+                                                <tr class="altItem">
+                                                    <td style="">
+                                                        <span>CG62 Susep.pdf</span>&nbsp;
+                                                        <a class="linkDownloadRelatorio" href="javaScript:void(0)" title="Download" onclick="location.href='/safe/menumercado/REP2/Produto.aspx/DownloadConsultaPublica/140756'"><span class="invisivel">Download</span></a>
+
+
+                                                    </td>
+                                                    <td style="">01/11/2017</td>
+                                                    <td style="">30/11/2017</td>
+
+                                                </tr>
+                                                <tr class="item">
+                                                    <td style="">
+                                                        <span>CG61 Susep.pdf</span>&nbsp;
+                                                        <a class="linkDownloadRelatorio" href="javaScript:void(0)" title="Download" onclick="location.href='/safe/menumercado/REP2/Produto.aspx/DownloadConsultaPublica/138811'"><span class="invisivel">Download</span></a>
+
+
+                                                    </td>
+                                                    <td style="">30/09/2017</td>
+                                                    <td style="">31/10/2017</td>
+
+                                                </tr>
+                                                <tr class="altItem">
+                                                    <td style="">
+                                                        <span>CG60.pdf</span>&nbsp;
+                                                        <a class="linkDownloadRelatorio" href="javaScript:void(0)" title="Download" onclick="location.href='/safe/menumercado/REP2/Produto.aspx/DownloadConsultaPublica/136900'"><span class="invisivel">Download</span></a>
+
+
+                                                    </td>
+                                                    <td style="">01/09/2017</td>
+                                                    <td style="">29/09/2017</td>
+
+                                                </tr>
+                                                <tr class="item">
+                                                    <td style="">
+                                                        <span>CG58.pdf</span>&nbsp;
+                                                        <a class="linkDownloadRelatorio" href="javaScript:void(0)" title="Download" onclick="location.href='/safe/menumercado/REP2/Produto.aspx/DownloadConsultaPublica/133904'"><span class="invisivel">Download</span></a>
+
+
+                                                    </td>
+                                                    <td style="">01/07/2017</td>
+                                                    <td style="">31/08/2017</td>
+
+                                                </tr>
+                                                <tr class="altItem">
+                                                    <td style="">
+                                                        <span>CG57 Vers&#227;o Susep.pdf</span>&nbsp;
+                                                        <a class="linkDownloadRelatorio" href="javaScript:void(0)" title="Download" onclick="location.href='/safe/menumercado/REP2/Produto.aspx/DownloadConsultaPublica/131163'"><span class="invisivel">Download</span></a>
+
+
+                                                    </td>
+                                                    <td style="">29/04/2017</td>
+                                                    <td style="">30/06/2017</td>
+
+                                                </tr>
+                                                <tr class="item">
+                                                    <td style="">
+                                                        <span>CG56 com qar.pdf</span>&nbsp;
+                                                        <a class="linkDownloadRelatorio" href="javaScript:void(0)" title="Download" onclick="location.href='/safe/menumercado/REP2/Produto.aspx/DownloadConsultaPublica/128383'"><span class="invisivel">Download</span></a>
+
+
+                                                    </td>
+                                                    <td style="">25/02/2017</td>
+                                                    <td style="">28/04/2017</td>
+
+                                                </tr>
+                                                <tr class="altItem">
+                                                    <td style="">
+                                                        <span>CG55 e qar.pdf</span>&nbsp;
+                                                        <a class="linkDownloadRelatorio" href="javaScript:void(0)" title="Download" onclick="location.href='/safe/menumercado/REP2/Produto.aspx/DownloadConsultaPublica/127560'"><span class="invisivel">Download</span></a>
+
+
+                                                    </td>
+                                                    <td style="">01/02/2017</td>
+                                                    <td style="">24/02/2017</td>
+
+                                                </tr>
+                                                <tr class="item">
+                                                    <td style="">
+                                                        <span>cg p.pdf</span>&nbsp;
+                                                        <a class="linkDownloadRelatorio" href="javaScript:void(0)" title="Download" onclick="location.href='/safe/menumercado/REP2/Produto.aspx/DownloadConsultaPublica/124113'"><span class="invisivel">Download</span></a>
+
+
+                                                    </td>
+                                                    <td style="">01/12/2016</td>
+                                                    <td style="">31/01/2017</td>
+
+                                                </tr>
+                                                <tr class="altItem">
+                                                    <td style="">
+                                                        <span>CG Perfil.pdf</span>&nbsp;
+                                                        <a class="linkDownloadRelatorio" href="javaScript:void(0)" title="Download" onclick="location.href='/safe/menumercado/REP2/Produto.aspx/DownloadConsultaPublica/122128'"><span class="invisivel">Download</span></a>
+
+
+                                                    </td>
+                                                    <td style="">01/11/2016</td>
+                                                    <td style="">30/11/2016</td>
+
+                                                </tr>
+                                                <tr class="item">
+                                                    <td style="">
+                                                        <span>CG52 Perfil.pdf</span>&nbsp;
+                                                        <a class="linkDownloadRelatorio" href="javaScript:void(0)" title="Download" onclick="location.href='/safe/menumercado/REP2/Produto.aspx/DownloadConsultaPublica/118214'"><span class="invisivel">Download</span></a>
+
+
+                                                    </td>
+                                                    <td style="">01/09/2016</td>
+                                                    <td style="">31/10/2016</td>
+
+                                                </tr>
+                                                <tr class="altItem">
+                                                    <td style="">
+                                                        <span>CG51 Susepq.pdf</span>&nbsp;
+                                                        <a class="linkDownloadRelatorio" href="javaScript:void(0)" title="Download" onclick="location.href='/safe/menumercado/REP2/Produto.aspx/DownloadConsultaPublica/117406'"><span class="invisivel">Download</span></a>
+
+
+                                                    </td>
+                                                    <td style="">01/08/2016</td>
+                                                    <td style="">31/08/2016</td>
+
+                                                </tr>
+                                                <tr class="item">
+                                                    <td style="">
+                                                        <span>CG50 Susep.pdf</span>&nbsp;
+                                                        <a class="linkDownloadRelatorio" href="javaScript:void(0)" title="Download" onclick="location.href='/safe/menumercado/REP2/Produto.aspx/DownloadConsultaPublica/115631'"><span class="invisivel">Download</span></a>
+
+
+                                                    </td>
+                                                    <td style="">01/07/2016</td>
+                                                    <td style="">31/07/2016</td>
+
+                                                </tr>
+                                                <tr class="altItem">
+                                                    <td style="">
+                                                        <span>CG susep.pdf</span>&nbsp;
+                                                        <a class="linkDownloadRelatorio" href="javaScript:void(0)" title="Download" onclick="location.href='/safe/menumercado/REP2/Produto.aspx/DownloadConsultaPublica/114348'"><span class="invisivel">Download</span></a>
+
+
+                                                    </td>
+                                                    <td style="">01/06/2016</td>
+                                                    <td style="">30/06/2016</td>
+
+                                                </tr>
+                                                <tr class="item">
+                                                    <td style="">
+                                                        <span>CG48 Vers&#227;o Susep.pdf</span>&nbsp;
+                                                        <a class="linkDownloadRelatorio" href="javaScript:void(0)" title="Download" onclick="location.href='/safe/menumercado/REP2/Produto.aspx/DownloadConsultaPublica/111539'"><span class="invisivel">Download</span></a>
+
+
+                                                    </td>
+                                                    <td style="">01/04/2016</td>
+                                                    <td style="">31/05/2016</td>
+
+                                                </tr>
+                                                <tr class="altItem">
+                                                    <td style="">
+                                                        <span>CG.pdf</span>&nbsp;
+                                                        <a class="linkDownloadRelatorio" href="javaScript:void(0)" title="Download" onclick="location.href='/safe/menumercado/REP2/Produto.aspx/DownloadConsultaPublica/109892'"><span class="invisivel">Download</span></a>
+
+
+                                                    </td>
+                                                    <td style="">01/03/2016</td>
+                                                    <td style="">31/03/2016</td>
+
+                                                </tr>
+                                                <tr class="item">
+                                                    <td style="">
+                                                        <span>CG E PERF.pdf</span>&nbsp;
+                                                        <a class="linkDownloadRelatorio" href="javaScript:void(0)" title="Download" onclick="location.href='/safe/menumercado/REP2/Produto.aspx/DownloadConsultaPublica/105997'"><span class="invisivel">Download</span></a>
+
+
+                                                    </td>
+                                                    <td style="">01/12/2015</td>
+                                                    <td style="">29/02/2016</td>
+
+                                                </tr>
+                                                <tr class="altItem">
+                                                    <td style="">
+                                                        <span>CG.pdf</span>&nbsp;
+                                                        <a class="linkDownloadRelatorio" href="javaScript:void(0)" title="Download" onclick="location.href='/safe/menumercado/REP2/Produto.aspx/DownloadConsultaPublica/103254'"><span class="invisivel">Download</span></a>
+
+
+                                                    </td>
+                                                    <td style="">15/10/2015</td>
+                                                    <td style="">30/11/2015</td>
+
+                                                </tr>
+                                                <tr class="item">
+                                                    <td style="">
+                                                        <span>CG susep.pdf</span>&nbsp;
+                                                        <a class="linkDownloadRelatorio" href="javaScript:void(0)" title="Download" onclick="location.href='/safe/menumercado/REP2/Produto.aspx/DownloadConsultaPublica/100386'"><span class="invisivel">Download</span></a>
+
+
+                                                    </td>
+                                                    <td style="">21/08/2015</td>
+                                                    <td style="">14/10/2015</td>
+
+                                                </tr>
+                                                <tr class="altItem">
+                                                    <td style="">
+                                                        <span>CG44.pdf</span>&nbsp;
+                                                        <a class="linkDownloadRelatorio" href="javaScript:void(0)" title="Download" onclick="location.href='/safe/menumercado/REP2/Produto.aspx/DownloadConsultaPublica/86532'"><span class="invisivel">Download</span></a>
+
+
+                                                    </td>
+                                                    <td style="">01/05/2015</td>
+                                                    <td style="">20/08/2015</td>
+
+                                                </tr>
+                                                <tr class="item">
+                                                    <td style="">
+                                                        <span>cg43.pdf</span>&nbsp;
+                                                        <a class="linkDownloadRelatorio" href="javaScript:void(0)" title="Download" onclick="location.href='/safe/menumercado/REP2/Produto.aspx/DownloadConsultaPublica/83771'"><span class="invisivel">Download</span></a>
+
+
+                                                    </td>
+                                                    <td style="">02/04/2015</td>
+                                                    <td style="">30/04/2015</td>
+
+                                                </tr>
+                                                <tr class="altItem">
+                                                    <td style="">
+                                                        <span>CG42.pdf</span>&nbsp;
+                                                        <a class="linkDownloadRelatorio" href="javaScript:void(0)" title="Download" onclick="location.href='/safe/menumercado/REP2/Produto.aspx/DownloadConsultaPublica/67875'"><span class="invisivel">Download</span></a>
+
+
+                                                    </td>
+                                                    <td style="">27/09/2014</td>
+                                                    <td style="">01/04/2015</td>
+
+                                                </tr>
+                                                <tr class="item">
+                                                    <td style="">
+                                                        <span>CG40 2.pdf</span>&nbsp;
+                                                        <a class="linkDownloadRelatorio" href="javaScript:void(0)" title="Download" onclick="location.href='/safe/menumercado/REP2/Produto.aspx/DownloadConsultaPublica/46222'"><span class="invisivel">Download</span></a>
+
+
+                                                    </td>
+                                                    <td style="">23/05/2014</td>
+                                                    <td style="">26/09/2014</td>
+
+                                                </tr>
+                                                <tr class="altItem">
+                                                    <td style="">
+                                                        <span>CG40 2.pdf</span>&nbsp;
+                                                        <a class="linkDownloadRelatorio" href="javaScript:void(0)" title="Download" onclick="location.href='/safe/menumercado/REP2/Produto.aspx/DownloadConsultaPublica/39181'"><span class="invisivel">Download</span></a>
+
+
+                                                    </td>
+                                                    <td style="">03/04/2014</td>
+                                                    <td style="">22/05/2014</td>
+
+                                                </tr>
+
+                            </table>
+
+                        </fieldset>
+                    </div>
+
+            </div>
+
+                <div class="col-md-12">
+                    <div>
+                        <h4 style="color:#c29517;padding-top: 17px;">Orienta&#231;&#245;es</h4>
+                        <div style="padding-top: 7px;color:#0d0609;">
+                            <div>•	Na tabela de versões, constam todas as versões eletrônicas já comercializadas do plano, com as respectivas datas de início e de fim de comercialização. Caso o número formado pelos algarismos indicativos do ano de abertura do processo (ex.: XXXXX.XXXXXX/<b>2017</b>-XX) seja igual ou inferior a 2012, é possível que o produto possua versões que não existem em formato digital.</div>
+                            <div style="padding-top: 7px;">•	Selecione a vers&#227;o que estava vigente na data de contrata&#231;&#227;o ou renova&#231;&#227;o do plano, certificando-se de que o produto n&#227;o estava suspenso temporariamente nesse per&#237;odo. No caso de planos coletivos, dever&#225; ser selecionada a vers&#227;o vigente na data de emiss&#227;o ou renova&#231;&#227;o da ap&#243;lice coletiva.</div>
+                            <div style="padding-top: 7px;">•	Compare a vers&#227;o do plano que lhe foi entregue com o modelo registrado junto &#224; SUSEP.</div>
+                            <div style="padding-top: 7px;">•	A tabela do hist&#243;rico de suspens&#245;es exibe todos os per&#237;odos em que o plano esteve suspenso temporariamente desde 19/08/2019.</div>
+                            <div style="padding-top: 7px;">•	No caso de contratação de <b>plano de seguro</b> ou de <b>previdência complementar aberta</b>, chamamos sua atenção para o fato de que o material disponível neste portal corresponde à versão completa do plano. É possível, portanto, que você verifique a existência de outras coberturas, além daquelas efetivamente contratadas, uma vez que as coberturas não contratadas e as cláusulas particulares não acordadas no momento da contratação não constam do documento contratual que lhe foi entregue. Por outro lado, não podem constar do documento contratual coberturas não previstas no material disponível neste portal.</div>
+                            <div style="padding-top: 7px;">•	Entre em contato com a SUSEP, por meio do telefone<strong>&nbsp; 0800 021 84 84</strong> ou acessando o link <a href="http://www.susep.gov.br/setores-susep/seger/coate/orientacoes-para-registro-de-reclamacoes" target="_blank"><strong>&quot;Fa&#231;a aqui sua Reclama&#231;&#227;o&quot;</strong></a>, caso:</div>
+                            <div style="margin-left: 12px;">
+                                <div>- haja diverg&#234;ncia entre o produto contratado e as informa&#231;&#245;es deste portal;</div>
+                                <div>- o n&#250;mero de processo de seu interesse n&#227;o seja encontrado na base de dados;</div>
+                                <div>- a vers&#227;o de interesse n&#227;o exista em formato digital;</div>
+                                <div>- a data de contrata&#231;&#227;o ou de renova&#231;&#227;o do plano esteja compreendida num per&#237;odo em que o produto estava suspenso temporariamente.</div>
+                            </div>
+
+                        </div>
+                    </div>
+                </div>
+
+        </fieldset>
+
+    </div>
+</form>
+<script defer="defer" type="text/javascript" src="/safe/menumercado/REP2/Scripts/jquery-3.6.0.js"></script>
+<script defer="defer" type="text/javascript" src="/scripts/avaliacao.js"></script>
+
+    <div class="col-md-12">&nbsp;</div>
+    <div class="row">
+        <div class="col-md-5">&nbsp;</div>
+        <div class="col-md-2 link_href" style="text-decoration: none; background-color: transparent;">
+            <button id="botaoAvaliacao" class="br-button primary block" type="button" aria-label="Buscar" onclick="javascript:avaliar('12750', 'pvrvhzfdnkx3bbas0fm4prgr')">Avaliar o Serviço</button>
+        </div>
+        <div class="col-md-5">&nbsp;</div>
+    </div>
+    <div class="col-md-12">&nbsp;</div>
+    <div class="container" id="msgErroAvaliacao">&nbsp;</div>
+
+
+    <div class="col-md-12">
+        <footer class="br-footer">
+            <div class="container-lg">
+                <div class="d-none d-sm-block">
+                    <div class="row align-items-end justify-content-between py-5">
+                        <div class="col social-network">
+                            <a href="https://www.gov.br">
+                                <img src="/assets/images/govbr.png" alt="Image" />
+                            </a>
+                        </div>
+                        <div class="col assigns text-right">
+                            <a class="mr-4" href="http://www.acessoainformacao.gov.br">
+                                <img src="/assets/images/acesso-informacao.png" alt="Imagem" />
+                            </a>
+                            <a class="mr-4" href="http://www.brasil.gov.br">
+                                <img src="/assets/images/patria.png" alt="Imagem" />
+                            </a>
+                        </div>
+                    </div>
+                </div>
+                <div class="redes-sociais">
+                    <div class="govbr-logo"></div>
+                </div>
+            </div>
+            <span class="br-divider my-3"></span>
+            <div class="container-lg">
+                <div class="info">
+                    <!--<div class="text-down-01 text-medium pb-3">Texto destinado a exibi&ccedil;&atilde;o de informa&ccedil;&otilde;es relacionadas &agrave;&nbsp;<strong>licen&ccedil;a de uso.</strong></div>-->
+                    <div class="text-down-01 text-medium pb-3"><strong>&nbsp;</strong></div>
+                </div>
+            </div>
+        </footer>
+    </div>
+
+
+    
+
+    
+
+    
+    
+
+
+    <script defer="defer" type="text/javascript" src="/assets/css/dsgov-init.js"></script>
+
+    <script defer="defer" type="text/javascript" src="/safe/menumercado/REP2/Scripts/consultaproduto.js"></script>
+
+    <!-- Script da barra de governo -->
+    <script defer="defer" src="//barra.brasil.gov.br/barra_2.0.js" type="text/javascript"></script>
+
+    <!-- Script da barra da SUSEP -->
+    <script defer="defer" src="https://www2.susep.gov.br/safe/barra-susep/barra-susep-gov-br.js" id="script-barra-susep" type="text/javascript"></script>
+
+</body>
+
+</html>
+
+<script type="text/javascript">
+    var appHostName = 'https://www2.susep.gov.br/safe/menumercado/REP2';
+</script>

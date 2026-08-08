@@ -127,6 +127,43 @@ class MinioService:
             logger.error(f"Erro ao fazer upload do arquivo: {e}")
             raise
 
+    def put_bytes(
+        self,
+        object_name: str,
+        data: bytes,
+        content_type: str = "application/octet-stream",
+    ) -> str:
+        """Grava bytes num caminho ARBITRÁRIO do bucket.
+
+        Por que este método existe
+        --------------------------
+        `upload_file` impõe o caminho `{company_id}/{document_id}/{filename}`.
+        Isso serve para documento de corretora e não serve para mais nada — e
+        📊 quem precisava de outro formato de caminho já resolveu por fora:
+        `filesystem_search_service.py:74` chama `client.put_object` direto e
+        deixa escrito no comentário que "minio_service.upload_file() não aceita
+        object_name arbitrário". `observer_media.py` e `minio_backup.py` fazem o
+        mesmo.
+
+        Três cópias da mesma gambiarra é o sinal de que falta a primitiva, não
+        de que falta disciplina. Esta é a primitiva (CLAUDE.md §5: consolidar
+        antes de duplicar). `upload_file` continua igual e continua sendo o
+        caminho certo para documento de corretora — ele é quem sabe montar o
+        prefixo do tenant.
+
+        Devolve o `object_name` gravado, para quem precisa guardar o ponteiro.
+        """
+        corpo = BytesIO(data)
+        self.client.put_object(
+            bucket_name=self.bucket_name,
+            object_name=object_name,
+            data=corpo,
+            length=len(data),
+            content_type=content_type,
+        )
+        logger.info("[MinIO] %s gravado (%d bytes)", object_name, len(data))
+        return object_name
+
     def download_file(self, object_name: str) -> BytesIO:
         """
         Download de arquivo do MinIO

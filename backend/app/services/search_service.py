@@ -258,6 +258,15 @@ def _get_score_source(result: Dict) -> str:
     return "fallback_zero"
 
 
+def _contar_por_faixa(results: List[Dict]) -> Dict[str, int]:
+    """Quantos resultados de cada namespace — só para o log. Puro."""
+    contagem: Dict[str, int] = {}
+    for r in results or []:
+        faixa = str((r or {}).get("namespace") or "local")
+        contagem[faixa] = contagem.get(faixa, 0) + 1
+    return contagem
+
+
 def _lexical_rescue_match(query: str, results: List[Dict]) -> bool:
     """
     True quando há correspondência lexical forte entre a pergunta e o conteúdo
@@ -457,6 +466,7 @@ class SearchService:
         if include_global or _os.getenv("KNOWLEDGE_GLOBAL_SEARCH", "1").strip() == "1":
             try:
                 from .knowledge_scope import (
+                    ORCAMENTO_GLOBAL,
                     build_global_search_kwargs,
                     merge_rag_results,
                     seguradora_da_pergunta,
@@ -468,15 +478,34 @@ class SearchService:
                 # desta" — 📊 80,6% das cartas são fato genérico de mercado e
                 # continuam respondendo tudo.
                 da_pergunta = seguradora_da_pergunta(original_query)
-                global_results = self.qdrant.search_similar(
-                    company_id=company_id,
-                    query_embedding=dense_vector,
-                    sparse_embedding=sparse_vector,
-                    top_k=20,
-                    score_threshold=0.0,
-                    **build_global_search_kwargs(carrier_slug=da_pergunta),
-                )
-                initial_results = merge_rag_results(initial_results, global_results)
+
+                # 🔴 UMA BUSCA POR FAIXA — SPEC-070 §6.
+                #
+                # Era UMA busca de top_k=20 sobre o índice global inteiro. 📊 Em
+                # 08/08/2026 esse índice tem 12.063 cartas destiladas e 11.409
+                # trechos de condição geral, e as duas populações disputavam as
+                # mesmas vagas. A disputa não era justa: o BM25 normaliza por
+                # comprimento, e uma carta de 186 caracteres vence um trecho de
+                # contrato de 1.000 quase toda vez que o termo casa nos dois.
+                #
+                # Agora cada faixa tem orçamento próprio. É o MESMO embedding
+                # (gerado uma vez, acima) e o MESMO `search_similar` — só o
+                # filtro muda. Não há segundo caminho de busca: CLAUDE.md §5.
+                for rotulo, faixa, cota in ORCAMENTO_GLOBAL:
+                    faixa_results = self.qdrant.search_similar(
+                        company_id=company_id,
+                        query_embedding=dense_vector,
+                        sparse_embedding=sparse_vector,
+                        top_k=cota,
+                        score_threshold=0.0,
+                        **build_global_search_kwargs(
+                            carrier_slug=da_pergunta, namespace=faixa),
+                    )
+                    logger.info(
+                        f"[Search] faixa global '{rotulo}' ({'+'.join(faixa)}): "
+                        f"{len(faixa_results)}/{cota} candidatos"
+                    )
+                    initial_results = merge_rag_results(initial_results, faixa_results)
             except Exception as e:  # noqa: BLE001
                 logger.warning(f"[Search] global retrieval ignorado: {type(e).__name__}")
 
@@ -507,13 +536,59 @@ class SearchService:
             )
             return []
 
-        # 3. Reranking (Precision)
-        reranked = self.reranker.rerank(
+        # 3. Reranking (ORDEM) + orçamento por faixa (VAGAS) — SPEC-070 §6.
+        #
+        # 🔴 POR QUE O `top_k=3` SAIU DAQUI.
+        # =================================
+        # A linha era `top_k=3,  # Reduzido para economizar tokens` — e fazia
+        # DUAS coisas ao mesmo tempo: ordenar e cortar. Com a chave da Cohere
+        # ausente (📊 é o estado de hoje), `rerank()` vira `docs[:top_k]`:
+        # nenhuma reordenação, só truncagem dos 3 primeiros de uma fusão RRF
+        # que — como este mesmo arquivo documenta 400 linhas acima — "não mede
+        # relevância, mede concordância de posição".
+        #
+        # Então separar as buscas por namespace e continuar cortando os 3
+        # melhores de uma lista só devolveria o problema inteiro: o RRF de duas
+        # buscas distintas não é comparável, e a carta curta voltaria a ganhar
+        # todas as vagas. O orçamento tem de sobreviver ATÉ a vaga final.
+        #
+        # Agora são dois passos com nomes distintos:
+        #   rerank    ORDENA a lista inteira (com Cohere: relevância real;
+        #             sem ela: pass-through, a ordem que já veio do merge)
+        #   cota      escolhe as VAGAS respeitando o orçamento de cada faixa
+        #
+        # 📊 A CONTA DAS VAGAS (08/08/2026)
+        # --------------------------------
+        #   carta publicada  186 chars de média (n=12.063, mediana 186, p90 260)
+        #   trecho normativo até 1.000 chars (insurance_corpus.py:213)
+        #   3 vagas, pior caso (tudo carta):                    ~810 chars
+        #   `context_assembly.ORCAMENTO_TOTAL` declarado:      14.000 chars
+        #   `TETO_POR_FONTE["normativo"]` sozinho:              5.500 chars
+        #
+        # O sistema orçava 14.000 e entregava 810. As cotas atuais entregam, no
+        # pior caso, ~6.060 chars — ainda abaixo do teto declarado, e com o
+        # contrato garantido na mesa. Ajustável em `knowledge_scope.COTA_FINAL`.
+        #
+        # ⚠️ Cota governa CANDIDATURA, não inclusão: `_format_response` continua
+        # medindo cada chunk pelo corte de relevância da sua escala. Vaga
+        # reservada não promove chunk ruim — só impede que chunk bom seja
+        # espremido para fora antes de ser medido.
+        from .knowledge_scope import selecionar_com_cota
+
+        ordenados = self.reranker.rerank(
             query=original_query,
             docs=initial_results,
-            top_k=3,  # Reduzido para economizar tokens
+            top_k=len(initial_results),  # ORDENAR tudo; quem corta é a cota
         )
-        return reranked
+        escolhidos = selecionar_com_cota(ordenados)
+        logger.info(
+            f"[Search] corte final: {len(initial_results)} candidatos → "
+            f"{len(escolhidos)} vagas | faixas="
+            + ", ".join(
+                f"{k}:{v}" for k, v in sorted(_contar_por_faixa(escolhidos).items())
+            )
+        )
+        return escolhidos
 
     def smart_search(
         self,

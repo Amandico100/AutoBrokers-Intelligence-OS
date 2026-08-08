@@ -41,6 +41,12 @@ minio==7.2.3
 
 # Document Processing
 PyPDF2==3.0.1
+# PyMuPDF le condicao geral preservando a ESTRUTURA da pagina. 📊 Medido em
+# 08/08/2026 no mesmo PDF (Porto CG140): PyPDF2 devolve 519 linhas e 3
+# ocorrencias de `CLAUSULA N` em inicio de linha; PyMuPDF devolve 11.064 linhas
+# e 74 — e em 1,3s contra 15,6s. PyPDF2 colapsa a pagina inteira numa linha so,
+# e sem linha nao ha titulo, nem secao, nem corte por secao.
+PyMuPDF==1.28.0
 python-docx==1.1.0
 
 # Utils

@@ -156,6 +156,12 @@ os.environ["KNOWLEDGE_GLOBAL_SEARCH"] = "0"
 
 qdrant_service = _load("app.services.qdrant_service", "app/services/qdrant_service.py")
 rerank_service = _load("app.services.rerank_service", "app/services/rerank_service.py")
+# `knowledge_scope` e puro (so `typing`) e desde 08/08/2026 o corte final da
+# busca passa por ele: `selecionar_com_cota` da orcamento proprio a cada
+# namespace, para o trecho de contrato nao ser espremido pela carta curta
+# (SPEC-067 §6). Sem carrega-lo aqui, `_execute_search` levanta ModuleNotFound —
+# o FATO mudou, entao o duplo muda com ele.
+knowledge_scope = _load("app.services.knowledge_scope", "app/services/knowledge_scope.py")
 search_service = _load("app.services.search_service", "app/services/search_service.py")
 
 

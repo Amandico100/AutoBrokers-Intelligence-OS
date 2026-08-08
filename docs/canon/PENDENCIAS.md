@@ -2816,7 +2816,122 @@ E o prompt do agente **não proíbe** falar de cobertura: ele exige **evidência
 
 Ou seja: para a Porto, pode não faltar documento — pode faltar **recuperação**.
 Antes de creditar a documento novo uma melhora que seria de busca, medir: fazer
-a pergunta ao agente hoje e ver se o trecho certo aparece entre os 3 que chegam.
+a pergunta ao agente hoje e ver se o trecho certo aparece entre os que chegam.
 
-⚠️ Vale duplo porque 📊 o reranker Cohere está **desligado** e, sem ele, os 3
+⚠️ Vale duplo porque 📊 o reranker Cohere continua **desligado** e, sem ele, os
 trechos que chegam ao modelo saem de um RRF de duas buscas não comparáveis.
+
+> **Atualizado em 08/08/2026 — o "3" desta pendência venceu.** SPEC-070 LOTE 0
+> item 5: o corte final deixou de ser `rerank(top_k=3)` sobre uma lista única e
+> passou a ser orçamento por namespace (3 vagas de contrato + 3 de carta + 2 do
+> acervo da corretora). O trecho de contrato deixou de disputar vaga com a carta
+> curta, que o BM25 favorecia por comprimento. A medição pedida acima continua
+> valendo — e agora tem chance de dar outro resultado.
+
+---
+
+## P-135 · 🟢 O reranker Cohere: só falta a variável (e um restart)
+
+📊 Auditado em 08/08/2026. O serviço está **completo e correto**:
+
+| peça | estado |
+|---|---|
+| pacote `cohere>=5.0.0` | ✅ em `requirements.txt` |
+| campo `COHERE_API_KEY` | ✅ em `config.py` (`Optional[str] = None`) |
+| documentação | ✅ em `.env.example` |
+| `RerankService.rerank()` | ✅ chama, injeta `rerank_score`, cai para pass-through no erro |
+| cortes de relevância | ✅ 0,50/0,40/0,30 **preservados byte a byte** para a escala da Cohere |
+| teste dos dois estados | ✅ `test_o_contrato_e_a_carta_nao_disputam_a_mesma_vaga.py` §6 |
+
+**Falta a variável no ambiente.** 📊 Ela não está no repositório em lugar nenhum
+(`docker-compose.yml` só sobe infra; o backend roda pelo EasyPanel) —
+`pydantic-settings` a lê direto do ambiente, então basta declará-la lá.
+
+⚠️ **E um restart.** `get_rerank_service()` é singleton e lê `settings` uma vez:
+trocar a env com o processo de pé não liga o reranker.
+
+O que muda quando entrar: `_get_score_scale` passa a devolver `rerank` e os
+cortes migram de cosseno (0,28) para a escala calibrada da Cohere (0,40). O
+caminho já existe e está testado nos dois estados.
+
+- **Destrava:** uma chave da Cohere + restart do backend.
+- **Dono:** 🧑 Founder (segredo).
+- **O que custa esquecer:** 💭 ~US$ 2 por mil buscas. Sem ela, a ORDEM dos
+  trechos dentro de cada faixa continua saindo de RRF, que mede concordância de
+  posição, não relevância. A cota garante que o contrato **esteja na mesa**; o
+  reranker é quem escolhe **qual** trecho de contrato.
+
+---
+
+## P-136 · 🔴 Quatro migrations da SPEC-067 escritas e **não aplicadas**
+
+Escritas em 08/08/2026 pelo LOTE 0 (itens 4, 6, 7 e 8). Cada uma traz APPLY,
+VERIFY executável e ROLLBACK, e nenhuma foi aplicada — por decisão: **quem
+aplica é o Founder, depois de revisar.**
+
+| ordem | arquivo | o que destrava |
+|---|---|---|
+| 1 | `20260808_01_spec067_a_vigencia_mora_na_versao.sql` | a vigência da SUSEP passa a ter onde morar (📊 hoje NULL em 35/35) |
+| 2 | `20260808_02_spec067_o_indice_sabe_de_que_versao_veio.sql` | o backfill dos 29 endereços do esquema legado |
+| 3 | `20260808_03_spec067_a_carta_sabe_de_que_contrato_saiu.sql` | achar as cartas de um contrato substituído |
+| 4 | `20260808_04_spec067_o_pdf_e_o_texto_tem_endereco.sql` | os ponteiros do MinIO |
+
+⚠️ **O código já grava nessas colunas.** `insurance_corpus.ingerir()` escreve
+`vigencia_fonte`, `qdrant_doc_id`, `storage_ref`, `text_storage_ref` e
+`arquivado_em` na linha da versão. **Enquanto as migrations não forem
+aplicadas, o primeiro documento ingerido vai falhar no INSERT** (coluna
+inexistente). Não é degradação silenciosa — é erro alto, e isso é proposital.
+
+- **Destrava:** revisão + APPLY na ordem 01 → 02 → 03 → 04.
+- **Dono:** 🧑 Founder.
+- **O que custa esquecer:** o LOTE 1 (Porto) não roda. E o item 4 é o que fecha
+  a janela: 📊 a URL da HDI devolve 500 e a da Allianz 403 — documento não
+  guardado hoje pode não ser baixável amanhã.
+
+---
+
+## P-137 · 🟡 `normative_documents` e `..._versions` eram `SEM_ARQUIVO`, não órfãs
+
+📊 08/08/2026. As duas tabelas **não têm arquivo** em
+`backend/supabase/migrations/`, mas **têm versão** no banco:
+`20260725215808 spec057_h1_normative_corpus`.
+
+Um levantamento anterior afirmou que não tinham versão — e "órfã sem versão"
+pede migration nova, que duplicaria o histórico. O DDL foi reconstruído do
+catálogo do Postgres e registrado em
+`docs/canon/sql/reconstruidas/20260725215808_spec057_h1_normative_corpus.sql`
+(**proibido aplicar**), e o `MANIFEST.md` foi atualizado.
+
+O que **não** foi feito: a reconciliação completa dos 92 versionamentos contra
+os 60 arquivos. Um cruzamento por nome apontou dezenas de divergências, mas o
+casamento por nome é pouco confiável — `20260803_01_spec063_destino_de_suporte_unico.sql`
+corresponde à versão `spec063_01_destino_de_suporte_unico` e nenhuma regra
+simples liga os dois. **Esse número não é medição.**
+
+- **Destrava:** o baseline da SPEC-054 Bloco B, gerado do banco vivo.
+- **Dono:** 🤖 execução (SPEC-054 B).
+- **O que custa esquecer:** cada SPEC que passa acrescenta objeto sem dono
+  documental, e o baseline fica mais caro a cada semana.
+
+---
+
+## P-138 · 🟡 A costura de um byte entre o item 1 e o item 4 da SPEC-067
+
+`insurance_corpus._baixar_pdf_direto` ganhou **uma linha**:
+
+```python
+self._pdf_baixado = {"bytes": corpo, "media_type": "application/pdf"}
+```
+
+É o único ponto onde os bytes do PDF existem. `_guardar_a_fonte()` lê dali e
+põe no MinIO. A função é a mesma que o item 1 reescreve (PyPDF2 → PyMuPDF).
+
+⚠️ Se uma reescrita levar a linha embora, o arquivamento **degrada em
+silêncio**: o texto continua sendo guardado e o PDF não.
+`test_o_acervo_guarda_a_fonte_e_a_versao.py` §3 confere que ela existe, e a
+mutação M3 provou que a conferência morde.
+
+- **Destrava:** nada — está funcionando. É um aviso de fronteira.
+- **Dono:** 🤖 quem mexer em `_baixar_pdf_direto`.
+- **O que custa esquecer:** 📊 a URL da HDI já devolve 500. PDF não guardado é
+  PDF perdido.

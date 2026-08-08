@@ -65,6 +65,38 @@ SCALE_RRF = "rrf"  # concordância de posição — mede ORDEM, não relevância
 
 logger = logging.getLogger(__name__)
 
+# === ÍNDICES DE PAYLOAD (SPEC-070 LOTE 0, item 10) ===
+#
+# 📊 Até 08/08/2026 existiam TRÊS: `document_id`, `agent_id` e
+# `metadata.file_type`. E **nenhum** dos campos por onde a busca global filtra:
+#
+#   scope             `search_similar(scope_match=...)`         — todo caminho global
+#   curation_status   `search_similar(curation_published_only)` — todo caminho global
+#   insurer_key       `_filtro_de_seguradora`                   — desde 07/08/2026
+#   namespace         `_filtro_de_namespace`                    — desde 08/08/2026
+#
+# Filtro sem índice sobre 📊 23.478 pontos não é filtro: é varredura. O Qdrant
+# aceita a consulta e responde certo — só que lendo o payload de tudo. Não dá
+# erro, não aparece no log, aparece na latência.
+#
+# `vigente` e `faceta` ainda não têm escritor (SPEC-070 LOTE 0 itens 3 e 6, com
+# outro dono). O índice entra agora de propósito: criar índice de campo que
+# ainda não existe é barato e idempotente, e evita que a primeira busca
+# filtrada por vigência varra a coleção enquanto ninguém está olhando.
+_BOOL = getattr(PayloadSchemaType, "BOOL", None)  # qdrant-client antigo pode não ter
+
+_INDICES_DE_PAYLOAD = (
+    ("document_id", PayloadSchemaType.KEYWORD),      # delete e search por documento
+    ("agent_id", PayloadSchemaType.KEYWORD),         # isolamento multi-agent
+    ("metadata.file_type", PayloadSchemaType.KEYWORD),  # scroll_by_payload / CSV
+    ("scope", PayloadSchemaType.KEYWORD),            # SPEC-003 / SPEC-044
+    ("curation_status", PayloadSchemaType.KEYWORD),  # só curadoria publicada
+    ("namespace", PayloadSchemaType.KEYWORD),        # SPEC-070 §6 — contrato × carta
+    ("insurer_key", PayloadSchemaType.KEYWORD),      # a regra de uma não vale pela outra
+    ("faceta", PayloadSchemaType.KEYWORD),           # SPEC-070 §5.1
+    ("vigente", _BOOL),                              # SPEC-070 §6 — documento revogado sai
+)
+
 
 class QdrantService:
     """
@@ -105,41 +137,74 @@ class QdrantService:
         """
         Cria índices nos campos de payload para permitir filtros eficientes
         Necessário para Qdrant Cloud funcionar corretamente com delete/search por filtro
+
+        ⚠️ ESTA FUNÇÃO ENGOLE EXCEÇÃO DE PROPÓSITO — e por isso NÃO é prova.
+        ==================================================================
+        Índice que já existe devolve erro, e reaplicar em todo startup é o
+        comportamento desejado (idempotência). O efeito colateral é que uma
+        falha REAL (campo inexistente, permissão, tipo errado) desce pelo mesmo
+        ralo do "já existe" e o log diz a mesma coisa.
+
+        Quem responde "o índice existe?" é `indices_existentes()`, que lê o
+        `payload_schema` da coleção no servidor. Acrescentar campo aqui sem
+        conferir lá é repetir o padrão que fez `insurer_key`, `namespace`,
+        `scope` e `curation_status` ficarem 📊 sem índice enquanto a busca
+        global filtrava por todos eles sobre 23.478 pontos — varredura, não
+        filtro.
+        """
+        for campo, esquema in _INDICES_DE_PAYLOAD:
+            if esquema is None:
+                logger.warning(
+                    f"[Qdrant] cliente sem tipo de índice para '{campo}' — "
+                    f"índice NÃO criado em '{collection_name}'"
+                )
+                continue
+            try:
+                self.client.create_payload_index(
+                    collection_name=collection_name,
+                    field_name=campo,
+                    field_schema=esquema,
+                )
+                logger.info(f"Índice '{campo}' criado em '{collection_name}'")
+            except Exception as e:
+                # Quase sempre é "já existe". Não dá para distinguir com
+                # segurança pela mensagem — a prova está em indices_existentes().
+                logger.debug(f"Índice '{campo}' já existe ou erro: {e}")
+
+    def indices_existentes(self, collection_name: str) -> Dict[str, str]:
+        """Os índices de payload que EXISTEM no servidor. Medição, não log.
+
+        Lê `payload_schema` da coleção — a mesma coisa que o Qdrant consulta
+        para decidir se um filtro usa índice ou varre a coleção inteira.
+        Coleção ausente ou erro devolve `{}`, e quem chama trata como "não sei",
+        nunca como "não tem".
         """
         try:
-            # Índice para document_id (usado em delete e search)
-            self.client.create_payload_index(
-                collection_name=collection_name,
-                field_name="document_id",
-                field_schema=PayloadSchemaType.KEYWORD,
+            info = self.client.get_collection(collection_name=collection_name)
+            esquema = getattr(info, "payload_schema", None) or {}
+            return {
+                str(campo): str(getattr(tipo, "data_type", tipo))
+                for campo, tipo in dict(esquema).items()
+            }
+        except Exception as e:  # noqa: BLE001
+            logger.warning(
+                f"[Qdrant] payload_schema de '{collection_name}' indisponível "
+                f"({type(e).__name__})"
             )
-            logger.info(f"Índice 'document_id' criado em '{collection_name}'")
-        except Exception as e:
-            # Índice pode já existir
-            logger.debug(f"Índice 'document_id' já existe ou erro: {e}")
+            return {}
 
-        try:
-            # Índice para agent_id (usado em search multi-agent)
-            self.client.create_payload_index(
-                collection_name=collection_name,
-                field_name="agent_id",
-                field_schema=PayloadSchemaType.KEYWORD,
-            )
-            logger.info(f"Índice 'agent_id' criado em '{collection_name}'")
-        except Exception as e:
-            # Índice pode já existir
-            logger.debug(f"Índice 'agent_id' já existe ou erro: {e}")
-
-        try:
-            # Índice para metadata.file_type (usado em scroll_by_payload / CSV analytics)
-            self.client.create_payload_index(
-                collection_name=collection_name,
-                field_name="metadata.file_type",
-                field_schema=PayloadSchemaType.KEYWORD,
-            )
-            logger.info(f"Índice 'metadata.file_type' criado em '{collection_name}'")
-        except Exception as e:
-            logger.debug(f"Índice 'metadata.file_type' já existe ou erro: {e}")
+    def verificar_indices(self, collection_name: str) -> Dict[str, Any]:
+        """VERIFY dos índices: o que era para existir × o que existe de fato."""
+        presentes = self.indices_existentes(collection_name)
+        esperados = [campo for campo, _ in _INDICES_DE_PAYLOAD]
+        faltando = [campo for campo in esperados if campo not in presentes]
+        return {
+            "collection": collection_name,
+            "esperados": esperados,
+            "presentes": sorted(presentes.keys()),
+            "faltando": faltando,
+            "completo": not faltando,
+        }
 
     def create_collection(
         self, company_id: str, collection_name: Optional[str] = None
@@ -389,6 +454,64 @@ class QdrantService:
             IsEmptyCondition(is_empty=PayloadField(key="insurer_key")),
         ])
 
+    def _filtro_de_namespace(self, namespace: Optional[Any]):
+        """"Desta faixa **OU** sem faixa" — SPEC-070 §6.
+
+        Devolve um `Filter` para entrar no `must`, ou `None` quando não há faixa
+        pedida (aí a busca é sobre o índice inteiro, como sempre foi).
+
+        POR QUE ISTO EXISTE
+        ===================
+        📊 08/08/2026, `autobrokers_global`, 23.478 pontos: 12.063 cartas
+        destiladas e 11.409 trechos de condição geral disputavam as MESMAS
+        vagas finais. E o BM25 normaliza por comprimento — uma carta de 186
+        caracteres vence um trecho de contrato de 1.000 quase toda vez que o
+        termo casa nos dois. O contrato, que é a autoridade sobre *o que está
+        escrito*, vivia estruturalmente suprimido.
+
+        O conserto não é escolher um: é dar orçamento próprio a cada faixa. Um
+        embedding, duas buscas, dois filtros.
+
+        POR QUE OS DOIS BRAÇOS — a mesma lição de `_filtro_de_seguradora`
+        ================================================================
+        Um `must` puro (`namespace == "normative"`) apagaria todo ponto que não
+        tem a chave. Hoje quase tudo tem, mas "quase" não é argumento: ponto
+        antigo, ponto de outro caminho de ingestão e qualquer coisa gravada
+        antes de a chave existir sumiriam da busca sem levantar erro. O braço
+        `IsEmptyCondition` é o que garante que "sem faixa declarada" continue
+        respondendo, em vez de desaparecer.
+
+        DEGRADAÇÃO SEGURA
+        =================
+        Sem `IsEmptyCondition` no cliente, o filtro INTEIRO é abandonado — as
+        duas buscas voltam a ver o índice todo e o `merge` dedupe. Isso é o
+        comportamento antigo (ruim, conhecido). Manter um braço só criaria um
+        comportamento novo e pior, escondendo pontos justamente quando ninguém
+        está olhando.
+        """
+        faixa = [
+            str(n or "").strip().lower()
+            for n in ([namespace] if isinstance(namespace, str) else list(namespace or []))
+        ]
+        faixa = [n for n in faixa if n]
+        if not faixa:
+            return None
+        if IsEmptyCondition is None or PayloadField is None:
+            logger.warning(
+                "[Qdrant] cliente sem IsEmptyCondition — filtro de namespace "
+                "NÃO aplicado (ponto sem faixa declarada não pode sumir)"
+            )
+            return None
+        casa = (
+            FieldCondition(key="namespace", match=MatchValue(value=faixa[0]))
+            if len(faixa) == 1
+            else FieldCondition(key="namespace", match=MatchAny(any=faixa))
+        )
+        return Filter(should=[
+            casa,
+            IsEmptyCondition(is_empty=PayloadField(key="namespace")),
+        ])
+
     def search_similar(
         self,
         company_id: str,
@@ -405,6 +528,9 @@ class QdrantService:
         # Seguradora do assunto. Ver `_filtro_de_seguradora` para a regra —
         # "desta seguradora OU sem seguradora", nunca "só desta".
         carrier_slug: Optional[str] = None,
+        # Faixa de conhecimento (SPEC-070 §6): 'normative', 'cards', 'canon' —
+        # str ou lista. Ver `_filtro_de_namespace`: "desta faixa OU sem faixa".
+        namespace: Optional[Any] = None,
         score_threshold: float = 0.0,
         sparse_embedding: Optional[Any] = None,
         collection_name: Optional[str] = None,
@@ -518,6 +644,20 @@ class QdrantService:
             if filtro_seguradora is not None:
                 must_conditions.append(filtro_seguradora)
 
+            # 🔴 A FAIXA DE CONHECIMENTO — "desta OU sem faixa", jamais "só desta".
+            #
+            # 📊 08/08/2026: 12.063 cartas e 11.409 trechos de contrato dividiam
+            # as mesmas vagas, e o BM25 (que normaliza por comprimento) fazia a
+            # carta de 186 caracteres vencer o trecho de 1.000. Cada faixa passa
+            # a ter orçamento próprio — mesma busca, filtro diferente.
+            #
+            # O braço `IsEmptyCondition` existe pelo mesmo motivo do filtro de
+            # seguradora: ponto sem a chave não pode desaparecer do índice
+            # porque alguém acrescentou um filtro.
+            filtro_namespace = self._filtro_de_namespace(namespace)
+            if filtro_namespace is not None:
+                must_conditions.append(filtro_namespace)
+
             if must_conditions or should_conditions or must_not_conditions:
                 query_filter = Filter(
                     must=must_conditions or None,
@@ -611,6 +751,11 @@ class QdrantService:
                     ),  # 🔥 Retorna agent_id
                     "chunk_index": result.payload.get("chunk_index", 0),
                     "metadata": result.payload.get("metadata", {}),
+                    # A faixa viaja de volta: é ela que dá o orçamento no corte
+                    # final (`knowledge_scope.selecionar_com_cota`). Sem isto,
+                    # separar as buscas e juntar tudo na hora de cortar
+                    # devolveria o problema inteiro.
+                    "namespace": result.payload.get("namespace"),
                 }
                 if dense_score is not None:
                     item["dense_score"] = float(dense_score)
@@ -934,6 +1079,17 @@ class QdrantService:
         """
         Garante que índices existem em TODAS as collections existentes.
         Chamado uma vez no startup (singleton init).
+
+        🔴 "Verificados" passou a significar MEDIDOS.
+        ============================================
+        A versão anterior chamava `_create_indexes` e logava
+        *"✅ Índices verificados em N collections"* — sem nunca ter perguntado
+        ao servidor se algum índice existia. `_create_indexes` engole toda
+        exceção, então a linha verde era emitida com a mesma confiança tendo o
+        índice sido criado, já existido, ou falhado.
+
+        Agora o log diz o que `payload_schema` respondeu. Quando falta algo, o
+        nome do campo aparece — é a diferença entre "parece feito" e "está".
         """
         try:
             collections = self.client.get_collections().collections
@@ -941,13 +1097,31 @@ class QdrantService:
                 logger.info("[Qdrant] Nenhuma collection encontrada para indexar")
                 return
 
+            incompletas = []
             for col in collections:
                 try:
                     self._create_indexes(col.name)
                 except Exception as e:
                     logger.warning(f"[Qdrant] Erro ao criar índices em '{col.name}': {e}")
+                verificacao = self.verificar_indices(col.name)
+                if not verificacao["completo"]:
+                    incompletas.append((col.name, verificacao["faltando"]))
 
-            logger.info(f"[Qdrant] ✅ Índices verificados em {len(collections)} collections")
+            if incompletas:
+                for nome, faltando in incompletas[:10]:
+                    logger.warning(
+                        f"[Qdrant] ⚠️ '{nome}' sem índice em: {', '.join(faltando)} "
+                        f"(filtro por esses campos vira varredura)"
+                    )
+                logger.warning(
+                    f"[Qdrant] {len(incompletas)}/{len(collections)} collections com "
+                    f"índice faltando — medido em payload_schema, não no log de criação"
+                )
+            else:
+                logger.info(
+                    f"[Qdrant] ✅ Índices CONFERIDOS em {len(collections)} collections "
+                    f"({len(_INDICES_DE_PAYLOAD)} campos, lidos do payload_schema)"
+                )
         except Exception as e:
             logger.error(f"[Qdrant] Erro ao verificar índices: {e}")
 

@@ -121,3 +121,8 @@ backend/scripts/destilacao_max/lotes_autofleet/
 # lixo de teste de rede
 *.html
 !frontend/**/*.html
+# ...mas fixture de teste NAO e lixo de rede: sao as respostas REAIS do REP2 da
+# SUSEP (SPEC-070), e o teste da vigencia so tem valor porque le HTML de
+# verdade. Sem esta linha elas ficam so na maquina de quem as baixou, e o teste
+# passa aqui e explode no clone limpo — gate verde provando nada.
+!backend/tests/fixtures/**/*.html

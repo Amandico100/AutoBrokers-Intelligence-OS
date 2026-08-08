@@ -154,6 +154,7 @@ async def rag_health(_: bool = Depends(require_master_admin)):
     """Probe raso do pipeline de RAG (sem segredo): MinIO e Qdrant acessíveis."""
     minio_ok = False
     qdrant_ok = False
+    indices_global: dict = {}
     try:
         from ..services.minio_service import get_minio_service
 
@@ -162,10 +163,19 @@ async def rag_health(_: bool = Depends(require_master_admin)):
     except Exception as e:  # noqa: BLE001
         logger.warning(f"[RAG health] minio indisponível: {type(e).__name__}")
     try:
+        from ..services.knowledge_scope import GLOBAL_COLLECTION
         from ..services.qdrant_service import get_qdrant_service
 
-        get_qdrant_service().client.get_collections()
+        qdrant = get_qdrant_service()
+        qdrant.client.get_collections()
         qdrant_ok = True
+        # 🔴 ÍNDICE DE PAYLOAD MEDIDO, NÃO PRESUMIDO — SPEC-067 LOTE 0 item 10.
+        #
+        # `_create_indexes` engole toda exceção com `logger.debug`: índice que
+        # já existe e índice que falhou produzem exatamente o mesmo log. Isto
+        # aqui lê o `payload_schema` da coleção no servidor, que é o que o
+        # Qdrant consulta para decidir entre usar índice e varrer 23.478 pontos.
+        indices_global = qdrant.verificar_indices(GLOBAL_COLLECTION)
     except Exception as e:  # noqa: BLE001
         logger.warning(f"[RAG health] qdrant indisponível: {type(e).__name__}")
 
@@ -187,6 +197,9 @@ async def rag_health(_: bool = Depends(require_master_admin)):
         "documents_route": True,
         "minio": minio_ok,
         "qdrant": qdrant_ok,
+        # Índices REAIS da coleção global (esperados × presentes × faltando).
+        # Filtro sem índice não dá erro — dá varredura. Só aparece aqui.
+        "qdrant_indices_global": indices_global,
         "reranker": reranker_health,
         # Sinais estáticos de aceitação (41C.1.5) — NÃO alteram retrieval.
         "include_global_default": False,  # global continua OFF (SPEC-003 / 41C.2B)
