@@ -27,6 +27,21 @@ E o par que fecha: a mesma funcao `_buscar`, com uma URL de PDF que funciona,
 NAO pode chamar o crawler; com uma URL de pagina, tem de chamar. Sem esse par,
 um atalho quebrado passaria despercebido — o crawler cobriria o erro em
 silencio, e so a fatura contaria a verdade.
+
+O QUE MUDOU EM 08/08/2026 (SPEC-067 §4.1)
+-----------------------------------------
+O extrator deixou de ser o PyPDF2 e passou a ser o PyMuPDF. A licao deste teste
+nao mudou uma virgula — o GET resolve, o crawler continua indispensavel para o
+que ele nao resolve —, entao o que mudou aqui foi so o dublê: onde havia um
+`PyPDF2.PdfReader` de mentira, agora ha um `fitz` de mentira.
+
+O motivo da troca, medido no mesmo PDF (Porto CG140): 📊 PyPDF2 devolve 519
+linhas, PyMuPDF devolve 11.064. O PyPDF2 colapsa a pagina inteira numa linha
+so — e sem linha nao existe titulo, nem secao, nem corte por secao.
+
+E este teste ganhou um par novo por causa disso: as paginas voltam separadas
+pela MARCA DE PAGINA, porque a limpeza de rodape da §4.2 so funciona sabendo
+onde cada pagina comeca e acaba.
 """
 
 import asyncio
@@ -106,20 +121,27 @@ class _PaginaFalsa:
     def __init__(self, texto):
         self._t = texto
 
-    def extract_text(self):
+    def get_text(self, _modo="text"):
         return self._t
 
 
-class _LeitorFalso:
-    def __init__(self, fluxo):
-        bruto = fluxo.read()[len(b"%PDF-1.4\n"):].decode("utf-8")
-        self.pages = [_PaginaFalsa(t) for t in eval(bruto)]  # noqa: S307 — dado do teste
+class _DocumentoFalso:
+    def __init__(self, corpo):
+        bruto = corpo[len(b"%PDF-1.4\n"):].decode("utf-8")
+        self._paginas = [_PaginaFalsa(t) for t in eval(bruto)]  # noqa: S307 — dado do teste
+
+    def __iter__(self):
+        return iter(self._paginas)
+
+    def close(self):
+        return None
 
 
 def _instalar_leitor():
-    mod = types.ModuleType("PyPDF2")
-    mod.PdfReader = _LeitorFalso
-    sys.modules["PyPDF2"] = mod
+    """O extrator de mentira. Hoje e `fitz` (PyMuPDF); ate 08/08/2026 era PyPDF2."""
+    mod = types.ModuleType("fitz")
+    mod.open = lambda stream=None, filetype=None: _DocumentoFalso(stream)
+    sys.modules["fitz"] = mod
 
 
 def rodar():
@@ -143,9 +165,16 @@ def rodar():
     checar("mandou cabecalho de navegador (servidor de seguradora recusa sem)",
            "User-Agent" in getattr(_ClienteFalso, "ultimo_cabecalho", {}),
            getattr(_ClienteFalso, "ultimo_cabecalho", {}))
-    checar("varias paginas viram um texto so",
-           len(asyncio.run(_duas_paginas(servico, LONGO)) or "") > len(LONGO),
+    duas = asyncio.run(_duas_paginas(servico, LONGO)) or ""
+    checar("varias paginas viram um texto so", len(duas) > len(LONGO),
            "juncao de paginas")
+    # 🔴 O par novo de 08/08/2026: as paginas voltam SEPARADAS. A limpeza da
+    # §4.2 remove rodape e numero de pagina, e as duas regras precisam saber
+    # onde a pagina comeca. Se a marca sumir, elas param de funcionar em
+    # silencio — e o pedaco volta a comecar com "C.N.P.J. 61.198.164/0001-60".
+    checar("e a fronteira entre elas sobrevive",
+           duas.count(corpus.MARCA_DE_PAGINA) == 1,
+           f"marcas={duas.count(corpus.MARCA_DE_PAGINA)}")
 
     # ------------------------------------------------------------ bloco 2
     #

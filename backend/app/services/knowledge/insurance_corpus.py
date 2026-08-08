@@ -143,7 +143,15 @@ _RE_NUMERADO = re.compile(r"^(\d{1,2}(?:\.\d{1,3}){0,3})\.?\s+(\S.*)$")
 # o CG140 volta a `CONDIÇÕES GERAIS` depois das cláusulas — e sem isto o
 # caminho continuava dizendo "Cláusula 103" trinta páginas depois dela acabar.
 _RE_RAIZ_SEM_NUMERO = re.compile(
-    r"^(CONDI[ÇC][ÕO]ES\s+(GERAIS|ESPECIAIS)|DISPOSI[ÇC][ÕO]ES\s+GERAIS|GLOSS[ÁA]RIO)\b")
+    r"^[►▶\s]*(CONDI[ÇC][ÕO]ES\s+(GERAIS|ESPECIAIS)|DISPOSI[ÇC][ÕO]ES\s+GERAIS"
+    r"|GLOSS[ÁA]RIO\b)")
+# `CLÁUSULAS` no plural abre um GRUPO de cláusulas, e o nome do grupo é longo
+# por natureza: `CLÁUSULAS DE CARRO RESERVA 26 (A, B, C, E, F, G, H, I, J, K, L,
+# M, U, V, W, X)` tem 76 caracteres. Por isso ele tem régua própria — mas só
+# ele: 📊 esticar a régua de `CONDIÇÕES GERAIS` para 110 fez a raiz do limite de
+# linha marrom virar "CONDIÇÕES GERAIS, SEJAM DE RESPONSABILIDADE DA
+# ASSISTÊNCIA PET, OU AINDA", que é meia frase, não seção.
+_RE_RAIZ_GRUPO = re.compile(r"^[►▶\s]*CL[ÁA]USULAS\s")
 _INICIO_DE_BLOCO = re.compile(
     r"^(?:[•▪◦●·*]|[-–—]\s|\(?[a-zA-Z]{1,2}\)\s|\d{1,2}\)\s|\d{1,2}(?:\.\d{1,3})*\.\s)")
 _NOTA_DE_RODAPE = re.compile(r"^(?:\(\s*\d+\s*\)|\(?\*+\)?|\*|Obs\b|Nota|Notas|Fonte)", re.I)
@@ -386,11 +394,20 @@ def detectar_titulos(linhas: list[str]) -> dict[int, tuple[int, str]]:
     `4.2. CONSERTO LINHA MARROM` para fora do caminho — que é justamente o que
     distingue o limite da linha marrom do da linha branca.
 
-    ⚠️ **Número de cláusula tem de ser monotônico.** Candidato que retrocede é
-    descartado. 📊 O Allianz escreve `Cláusula 9 – …` no meio de uma frase, e
-    um detector ingênuo morde a isca e reabre a cláusula 9 dentro da 47.
-    Ânexo/Capítulo zeram o contador, porque 📊 a numeração reinicia em cada
-    anexo — existem dois `4.1.1` no mesmo arquivo.
+    ⚠️ **Número de cláusula tem de ser monotônico.** 📊 O Allianz escreve
+    `Cláusula 9 – …` no meio de uma frase, e um detector ingênuo morde a isca e
+    reabre a cláusula 9 dentro da 47. Anexo, Capítulo e `CONDIÇÕES GERAIS`
+    zeram o contador, porque 📊 a numeração reinicia em cada anexo — existem
+    dois `4.1.1` no mesmo arquivo.
+
+    🔴 Mas "descartar quem retrocede" na ordem de leitura é armadilha, e ela
+    custou caro: 📊 no CG140 há uma LISTA de coberturas que cita a
+    `CLÁUSULA 109` na página 40, mil linhas antes de o corpo das cláusulas
+    começar. Um contador simples subia para 109 ali e recusava as cláusulas 20,
+    76, 83 e 89 pelo resto do arquivo — todas as respostas de vidro e de pneu
+    ficavam com a raiz errada. Por isso o que se guarda é a **maior cadeia não
+    decrescente** do segmento: um pico isolado é descartado, e a sequência de
+    verdade sobrevive.
     """
     cheias = [i for i, linha in enumerate(linhas) if linha.strip()]
 
@@ -420,7 +437,9 @@ def detectar_titulos(linhas: list[str]) -> dict[int, tuple[int, str]]:
         return bool(proxima) and proxima[:1].islower()
 
     titulos: dict[int, tuple[int, str]] = {}
-    ultima_clausula = 0
+    # (posição na lista de cláusulas, índice da linha, número) por segmento.
+    clausulas: dict[int, list[tuple[int, int]]] = {}
+    segmento = 0
     for k, i in enumerate(cheias):
         linha = linhas[i].strip()
         if len(linha) > 200:
@@ -438,18 +457,16 @@ def detectar_titulos(linhas: list[str]) -> dict[int, tuple[int, str]]:
                 bruto = raiz.group(2) or ""
                 if not bruto.isdigit():
                     continue  # "CLÁUSULA" sem número não abre seção
-                numero = int(bruto)
-                if numero < ultima_clausula:
-                    continue  # a isca do meio da frase
-                ultima_clausula = numero
+                clausulas.setdefault(segmento, []).append((i, int(bruto)))
             else:
-                ultima_clausula = 0  # anexo reinicia a numeração
+                segmento += 1  # anexo reinicia a numeração
             titulos[i] = (1, linha)
             continue
 
-        if (_RE_RAIZ_SEM_NUMERO.match(linha) and _e_caixa_alta(linha)
-                and len(linha) <= 60 and not _continua_embaixo(k)):
-            ultima_clausula = 0
+        raiz_sem_numero = ((_RE_RAIZ_SEM_NUMERO.match(linha) and len(linha) <= 60)
+                           or (_RE_RAIZ_GRUPO.match(linha) and _titulo_curto(linha)))
+        if raiz_sem_numero and _e_caixa_alta(linha) and not _continua_embaixo(k):
+            segmento += 1
             titulos[i] = (1, linha)
             continue
 
@@ -474,7 +491,37 @@ def detectar_titulos(linhas: list[str]) -> dict[int, tuple[int, str]]:
         if chave in _TITULO_DE_FACETA and len(linha) <= 60 and not _continua_embaixo(k):
             titulos[i] = (8, linha)
 
+    for lista in clausulas.values():
+        guardar = _maior_cadeia_nao_decrescente([n for _, n in lista])
+        for pos, (i, _) in enumerate(lista):
+            if pos not in guardar:
+                titulos.pop(i, None)
+
     return _demover_listas(linhas, titulos)
+
+
+def _maior_cadeia_nao_decrescente(numeros: list[int]) -> set[int]:
+    """As posições da maior subsequência não decrescente. É a monotonicidade real.
+
+    Descartar "quem retrocede na leitura" é O(n) e está errado: basta um número
+    alto citado fora de ordem para condenar todo o resto do arquivo. O que se
+    quer é a maior sequência que sobe — o pico solto é que cai fora.
+    """
+    total = len(numeros)
+    if total <= 1:
+        return set(range(total))
+    melhor = [1] * total
+    pai = [-1] * total
+    for a in range(total):
+        for b in range(a):
+            if numeros[b] <= numeros[a] and melhor[b] + 1 > melhor[a]:
+                melhor[a], pai[a] = melhor[b] + 1, b
+    fim = max(range(total), key=lambda x: melhor[x])
+    escolhidos: set[int] = set()
+    while fim != -1:
+        escolhidos.add(fim)
+        fim = pai[fim]
+    return escolhidos
 
 
 def _demover_listas(linhas: list[str],

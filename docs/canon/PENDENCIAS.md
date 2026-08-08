@@ -2935,3 +2935,40 @@ mutação M3 provou que a conferência morde.
 - **Dono:** 🤖 quem mexer em `_baixar_pdf_direto`.
 - **O que custa esquecer:** 📊 a URL da HDI já devolve 500. PDF não guardado é
   PDF perdido.
+
+---
+
+## P-139 · 🟡 A tabela é bloco atômico, mas não foi linearizada em frases
+
+A SPEC-067 §4.5 pede duas coisas para tabela, e **só a primeira foi feita**:
+
+| pedido | estado |
+|---|---|
+| tabela é bloco atômico, com título e notas de rodapé no mesmo pedaço | ✅ feito |
+| corrigir célula girada (`odarugeS`) | ✅ não se aplica ao caminho escolhido |
+| **linearizar a grade em frases** com `pdfplumber.extract_tables()` | ⬜ **não feito** |
+
+O que existe: `regioes_de_tabela()` reconhece a corrida de linhas curtas, não
+detecta título nem corta dentro dela, e estica a região até engolir `(1)`,
+`(2)`, `*` e `Obs.`. A grade entra no pedaço como o PyMuPDF a entrega — uma
+célula por linha, em ordem de leitura.
+
+📊 Medido em 08/08/2026 no CG140: a tabela de carro reserva sai inteira, num
+pedaço só, com `630`, `882` e as duas notas (`Limite diário R$ 90,00` e
+`R$ 126,00`). A pergunta *"quantos dias de carro reserva eu tenho?"* é
+respondível por esse pedaço sozinho — o limite é em reais, e a nota é que dá a
+diária que converte reais em dias.
+
+📊 E `pdfplumber` foi testado na página real (índice 102): devolve a grade de
+24 linhas × 15 colunas, com as células giradas invertidas (`odarugeS`,
+`ortsiniS`, `oriecreT`, `enaP`) — que o PyMuPDF, esse, lê certo. Linearizar
+exigiria casar cabeçalho de dois níveis com células mescladas, e isso não cabia
+no bloco sem arriscar o que já funciona.
+
+- **Destrava:** nada urgente. Vira prioridade se aparecer uma pergunta cuja
+  resposta dependa de **cruzar** linha e coluna (ex.: "quanto vale a cláusula
+  26F para carro de porte médio?"), que a grade em ordem de leitura não entrega
+  sem o modelo inferir o alinhamento.
+- **Dono:** 🤖 execução (LOTE 1, se a conferência dos 10 pedaços reprovar).
+- **O que custa esquecer:** 💭 a resposta que exige cruzamento sai plausível e
+  errada — que é o pior formato de erro num contrato.
