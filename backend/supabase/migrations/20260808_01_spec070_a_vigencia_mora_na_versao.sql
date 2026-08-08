@@ -1,7 +1,7 @@
 -- =============================================================
 -- MIGRATION: spec067_a_vigencia_mora_na_versao
--- SPEC:      SPEC-067 — LOTE 0, item 6 (escritor de vigência)
--- AUTOR:     execução SPEC-067 LOTE 0        DATA: 2026-08-08
+-- SPEC:      SPEC-070 — LOTE 0, item 6 (escritor de vigência)
+-- AUTOR:     execução SPEC-070 LOTE 0        DATA: 2026-08-08
 -- OBJETIVO:  dar à vigência da SUSEP um lugar por VERSÃO, e transformar as
 --            colunas do documento em espelho declarado da versão vigente.
 --
@@ -36,7 +36,7 @@
 -- ----------------------------------------
 -- **A verdade mora na VERSÃO. O documento guarda um espelho da vigente.**
 --
--- O registro do REP2 (SPEC-067 §3.2) publica Data de Início e Data de Fim de
+-- O registro do REP2 (SPEC-070 §3.2) publica Data de Início e Data de Fim de
 -- Comercialização **por versão**, na tabela de Versões do produto. A data
 -- descreve a versão, não a linhagem. 📊 Um produto pode ter 100 versões — a
 -- Porto Auto tem. Guardar a vigência só no documento significaria que a
@@ -62,7 +62,7 @@
 -- `effective_until`  = fato da SUSEP  — "a comercialização terminou em X"
 -- `superseded_at`    = fato NOSSO     — "capturamos uma versão mais nova em Y"
 --
--- Confundir as duas é a escada de inferência que a SPEC-067 §3.2 proíbe. Um
+-- Confundir as duas é a escada de inferência que a SPEC-070 §3.2 proíbe. Um
 -- documento pode ser substituído no nosso acervo sem que a SUSEP tenha
 -- publicado data de fim (o produto sumiu da lista, e sumir não é uma data). Se
 -- nesse caso escrevêssemos `effective_until = ontem`, o acervo passaria a
@@ -141,13 +141,13 @@ create index if not exists normative_versao_por_data_idx
 -- o que guarda é defeito do campo, não do texto.
 comment on column public.normative_documents.effective_from is
   'ESPELHO da versão vigente (normative_document_versions.effective_from). '
-  'A verdade mora na versão — SPEC-067 LOTE 0 item 6. Escritor único: '
+  'A verdade mora na versão — SPEC-070 LOTE 0 item 6. Escritor único: '
   'insurance_corpus.ingerir(). Não escrever aqui direto.';
 
 comment on column public.normative_documents.effective_until is
   'ESPELHO da versão vigente. Preenchida só quando a SUSEP publicou Data de '
   'Fim de Comercialização; ausência NÃO significa "vigente para sempre", '
-  'significa indeterminado (SPEC-067 §3.3).';
+  'significa indeterminado (SPEC-070 §3.3).';
 
 comment on column public.normative_documents.version_label is
   'ESPELHO do rótulo da versão vigente (ex.: "CG144"). '

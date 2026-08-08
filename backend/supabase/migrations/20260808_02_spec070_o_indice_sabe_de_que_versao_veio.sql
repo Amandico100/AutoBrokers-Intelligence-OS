@@ -1,7 +1,7 @@
 -- =============================================================
 -- MIGRATION: spec067_o_indice_sabe_de_que_versao_veio
--- SPEC:      SPEC-067 — LOTE 0, item 7 (doc_id versionado no Qdrant)
--- AUTOR:     execução SPEC-067 LOTE 0        DATA: 2026-08-08
+-- SPEC:      SPEC-070 — LOTE 0, item 7 (doc_id versionado no Qdrant)
+-- AUTOR:     execução SPEC-070 LOTE 0        DATA: 2026-08-08
 -- OBJETIVO:  dar a cada versão o endereço exato dos pontos que ela pôs no
 --            índice, para que substituir a versão deixe de ser um ato cego.
 --
@@ -121,7 +121,7 @@ comment on column public.normative_document_versions.qdrant_doc_id is
   'Endereço dos pontos DESTA versão no Qdrant (payload.document_id). '
   'Esquema: norm-<document_id>-v<n>. As 29 linhas anteriores a 08/08/2026 '
   'guardam o esquema legado norm-<document_id>, sem sufixo — que é o id que '
-  'insurance_corpus.py realmente usou. SPEC-067 LOTE 0 item 7.';
+  'insurance_corpus.py realmente usou. SPEC-070 LOTE 0 item 7.';
 
 comment on column public.normative_document_versions.qdrant_collection is
   'Coleção onde esta versão foi indexada. Hoje sempre autobrokers_global.';

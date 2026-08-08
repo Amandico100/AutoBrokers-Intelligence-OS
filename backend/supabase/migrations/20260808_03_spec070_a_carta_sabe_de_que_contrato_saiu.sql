@@ -1,7 +1,7 @@
 -- =============================================================
 -- MIGRATION: spec067_a_carta_sabe_de_que_contrato_saiu
--- SPEC:      SPEC-067 — LOTE 0, item 8 (procedência em knowledge_cards)
--- AUTOR:     execução SPEC-067 LOTE 0        DATA: 2026-08-08
+-- SPEC:      SPEC-070 — LOTE 0, item 8 (procedência em knowledge_cards)
+-- AUTOR:     execução SPEC-070 LOTE 0        DATA: 2026-08-08
 -- OBJETIVO:  poder achar, quando um contrato for substituído, as cartas que
 --            saíram dele — hoje é impossível.
 --
@@ -27,7 +27,7 @@
 -- afirmando o que o contrato antigo dizia, indistinguíveis das corretas.
 --
 -- E não é um risco distante: 📊 12 de 13 documentos indexados hoje são versões
--- revogadas (SPEC-067 §1). A troca não é um evento futuro — é o backlog.
+-- revogadas (SPEC-070 §1). A troca não é um evento futuro — é o backlog.
 --
 -- O `source_count` que já existe conta QUANTAS fontes, não QUAIS. Ele responde
 -- "essa ideia apareceu 3 vezes" e nunca "essa ideia veio da cláusula 76R da
@@ -52,13 +52,13 @@
 -- saiu"**. É a verdade sobre essas 12.933, e deve continuar assim.
 --
 -- As cartas destiladas de documento a partir do LOTE 1 nascem com os três
--- campos preenchidos (SPEC-067 §10.4 traz `unit_id_origem` no JSONL do
+-- campos preenchidos (SPEC-070 §10.4 traz `unit_id_origem` no JSONL do
 -- subagente, e é ele que entra em `source_unit_id`).
 --
 --
 -- POR QUE OS NOMES NÃO SÃO `document_id` E `document_version`
 -- -----------------------------------------------------------
--- A SPEC-067 §11 item 8 os chama assim. ⚠️ Aqui eles viram
+-- A SPEC-070 §11 item 8 os chama assim. ⚠️ Aqui eles viram
 -- `source_document_id` / `source_version_id`, e o motivo é o CLAUDE.md §12.1:
 -- **nome que mente sobre o que guarda é defeito do campo.**
 --
@@ -78,7 +78,7 @@
 -- ----------------------------------------------
 -- · CASCADE apagaria conhecimento publicado porque um PDF saiu do catálogo.
 --   Carta destilada não morre com a fonte — ela vira "na prática, o
---   atendimento costuma…" (SPEC-067 §6).
+--   atendimento costuma…" (SPEC-070 §6).
 -- · SET NULL apagaria em silêncio a única coisa que esta migration cria, e
 --   recriaria o defeito de hoje sem deixar rastro.
 -- · RESTRICT diz o que é verdade: **não dá para apagar um documento que tem
@@ -177,14 +177,14 @@ comment on column public.knowledge_cards.source_document_id is
   'Documento normativo de onde a carta foi destilada. NULL = não se sabe — é '
   'o caso das 12.933 cartas anteriores a 08/08/2026, que vieram de conversas '
   'de atendimento e não de contrato. NULL nunca deve ser preenchido por '
-  'adivinhação. SPEC-067 LOTE 0 item 8.';
+  'adivinhação. SPEC-070 LOTE 0 item 8.';
 
 comment on column public.knowledge_cards.source_version_id is
   'Versão exata do documento. É ela que permite saber, quando a versão for '
   'substituída, que esta carta afirma o que o contrato ANTIGO dizia.';
 
 comment on column public.knowledge_cards.source_unit_id is
-  'unit_id do trecho de origem (SPEC-067 §10.4, campo unit_id_origem do JSONL '
+  'unit_id do trecho de origem (SPEC-070 §10.4, campo unit_id_origem do JSONL '
   'do subagente destilador). Leva da carta de volta à cláusula.';
 
 

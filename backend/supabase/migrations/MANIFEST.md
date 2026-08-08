@@ -139,3 +139,40 @@ depois de revisar, seguindo a sequência da MIGRATIONS-AUTHORITY §9.
 ## Checksums
 
 Os `sha256` de cada arquivo histórico estão registrados em [`docs/canon/MIGRATIONS-AUTHORITY.md`](../../../docs/canon/MIGRATIONS-AUTHORITY.md) §3 e servem como linha de base de integridade.
+
+---
+
+## Aplicadas em 08/08/2026 — SPEC-070 LOTE 0
+
+Aplicadas via MCP no projeto `dcajcvlzcjbmyapmklil`, uma a uma, com o VERIFY de
+cada uma rodado antes de seguir para a seguinte. Todas **aditivas**: nenhuma
+coluna existente foi alterada, nenhuma linha foi tocada.
+
+| versão | arquivo | o que acrescentou | VERIFY |
+|---|---|---|---|
+| `spec070_01_a_vigencia_mora_na_versao` | `20260808_01_spec070_…` | 5 colunas de vigência em `normative_document_versions`, 2 CHECKs, o índice único que impede duas versões abertas, e os COMMENTs que declaram as colunas do documento como espelho | ✅ 6/6 |
+| `spec070_02_o_indice_sabe_de_que_versao_veio` | `20260808_02_spec070_…` | `qdrant_doc_id` e `qdrant_collection` + backfill das 29 linhas | ✅ 5/5 |
+| `spec070_03_a_carta_sabe_de_que_contrato_saiu` | `20260808_03_spec070_…` | 3 colunas de procedência em `knowledge_cards` + 3 FKs validadas + 2 índices parciais | ✅ 4/4 |
+| `spec070_04_o_pdf_e_o_texto_tem_endereco` | `20260808_04_spec070_…` | 4 colunas de arquivo + índice das versões sem original guardado | ✅ aplicada |
+
+### 📊 O controle, medido depois de todas
+
+```
+normative_documents ....... 35    (intacto)
+normative_document_versions 29    (intacto, 29 com qdrant_doc_id transcrito)
+knowledge_cards ........... 12.933 (intacto)
+  published ............... 12.063 (intacto)
+  com procedência ......... 0      ← e é o certo
+```
+
+**Zero cartas ganharam procedência.** As 12.933 vieram de conversas de
+atendimento, não de contrato — inventar de qual documento saíram seria pior que
+admitir que não se sabe. O VERIFY da migration 03 tem uma linha que **falha** se
+alguém preencher.
+
+### O que estas quatro destravam
+
+Sem elas, o LOTE 1 (Porto) guardaria o contrato **sem saber de que versão veio**,
+sem o PDF original, e as cartas nasceriam órfãs de origem — repetindo em 2026 o
+defeito que hoje deixa 12 de 13 documentos revogados no índice sem ninguém
+perceber.

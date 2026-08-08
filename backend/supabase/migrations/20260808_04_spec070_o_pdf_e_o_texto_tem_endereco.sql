@@ -1,7 +1,7 @@
 -- =============================================================
 -- MIGRATION: spec067_o_pdf_e_o_texto_tem_endereco
--- SPEC:      SPEC-067 — LOTE 0, item 4 (guardar PDF e texto)
--- AUTOR:     execução SPEC-067 LOTE 0        DATA: 2026-08-08
+-- SPEC:      SPEC-070 — LOTE 0, item 4 (guardar PDF e texto)
+-- AUTOR:     execução SPEC-070 LOTE 0        DATA: 2026-08-08
 -- OBJETIVO:  dar ao texto-fonte do acervo um lugar fora do índice de busca.
 --
 -- APPLY:     acrescenta text_storage_ref, source_bytes, source_media_type e
@@ -78,7 +78,7 @@ create index if not exists normative_versao_sem_arquivo_idx
 
 comment on column public.normative_document_versions.storage_ref is
   'Caminho no MinIO do arquivo ORIGINAL (o PDF como veio da origem). '
-  '📊 NULL em 29 de 29 em 08/08/2026 — o PDF era descartado. SPEC-067 item 4.';
+  '📊 NULL em 29 de 29 em 08/08/2026 — o PDF era descartado. SPEC-070 item 4.';
 
 comment on column public.normative_document_versions.text_storage_ref is
   'Caminho no MinIO do texto extraído inteiro. É o que permite trocar de '
