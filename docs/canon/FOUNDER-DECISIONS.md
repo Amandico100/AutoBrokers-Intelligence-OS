@@ -1408,3 +1408,99 @@ Guarda: [`test_o_playbook_nasce_com_a_chave_que_o_agente_procura.py`](../../back
 Não foi executada e **não está descartada**: é ortogonal, e fica melhor depois
 que houver material que a justifique. 📊 Condomínio é o único dos citados com
 massa real (468 cartas). Registrado em `PENDENCIAS.md`.
+
+
+---
+
+## D-Acervo-01 · O conhecimento destilado não tem dono — 08/08/2026
+
+### A pergunta
+
+📊 `knowledge_cards` não tem coluna `company_id`. As 12.933 cartas nascem de
+conversas reais da Resulta e da AutoFleet e viram conhecimento **global**, lido
+por todas as corretoras. A única proteção é uma variável de ambiente de
+exclusão: a corretora entra por padrão e sai se alguém lembrar de editar.
+
+Um auditor levantou isso como candidato a P1 de multi-tenant.
+
+### A decisão do Founder, nas palavras dele
+
+> *"Não interessa se a conversa veio da Resulta ou da AutoFleet. O que importa
+> é o conhecimento global de seguros. (…) Cartas criadas nas memórias e
+> conhecimento vindo da SUSEP ou das seguradoras **não têm dono depois de
+> destilados**. Isso se transforma em conhecimento do AutoBrokers a serviço de
+> todas as corretoras que perguntarem."*
+
+E a razão de produto:
+
+> *"Quanto mais inteligente for o cérebro, mais valiosos ficamos no ramo dos
+> seguros e mais as corretoras vão querer usar."*
+
+### O que isto decide
+
+**O acervo destilado é global por desenho, não por omissão.** Não haverá
+`company_id` em `knowledge_cards`, não haverá filtro por corretora na busca de
+conhecimento, e a variável de exclusão deixa de ser salvaguarda de privacidade
+— ela serve só para manter corretora de **teste** fora do acervo.
+
+### 🔴 A linha que esta decisão NÃO move
+
+**Conhecimento é global; fato sobre pessoa nunca.** Nome, telefone, CPF,
+placa, endereço, número de apólice, valor em reais de um cliente — nada disso
+vira carta, e a decisão acima não abre exceção alguma.
+
+📊 A proteção existe em três camadas e funciona: 310 cartas foram rejeitadas
+por `rejected_pii`, e o `templatize` é reaplicado no momento da publicação (a
+terceira camada) — 📊 5 cartas publicadas antes falharam nessa reconferência em
+08/08/2026, o que prova que a régua ainda morde.
+
+E a segunda linha, criada em 08/08/2026: **conversa que não é sobre seguro não
+vira carta** (`e_sobre_seguro`, status `rejected_fora_de_escopo`). 📊 Calibrada
+contra as 12.063 publicadas: recusaria 64 (0,53%).
+
+> A diferença é simples: *"a Porto exige boletim de ocorrência para roubo"* é
+> conhecimento e pertence a todas. *"O João da placa ABC1D23 abriu sinistro
+> ontem"* é fato de uma pessoa e não pertence a ninguém além dela.
+
+---
+
+## D-Acervo-02 · Documento revogado sai da busca e vai para o arquivo morto — 08/08/2026
+
+### A decisão
+
+Quando uma condição geral nova entra, a anterior:
+
+```
+SAI     do índice de busca — não pode aparecer em "o que vale hoje"
+FICA    guardada no arquivo (banco + MinIO), endereçável por (produto, data)
+```
+
+### Por que não apagar de vez
+
+**Uma apólice vendida em 2024 é regida pelo contrato de 2024.** Quando esse
+segurado reclamar de uma recusa, é essa versão que vale — e é justamente ele
+quem reclama. Apagar seria perder a resposta para o caso que mais importa.
+
+### Por que não deixar na busca
+
+📊 A Porto Auto tem **100 versões** registradas na SUSEP; a Allianz Auto, 72.
+Cem versões da mesma cláusula são cem quase-duplicatas: numa pergunta sobre
+alagamento, as vagas que chegam ao agente se enchem com a mesma frase em anos
+diferentes, e ele escolhe uma sem critério de data.
+
+> O recurso escasso não é disco nem dinheiro — 📊 indexar tudo custaria US$
+> 0,29. É o número de trechos que chegam ao modelo. Manter o revogado na busca
+> não deixa o acervo mais caro: deixa **mais burro**, e em silêncio.
+
+### Como se sabe qual está vigente
+
+📊 O registro da SUSEP publica: **a versão vigente é a que tem Data de Fim de
+Comercialização vazia**, sob produto com situação "Passível de comercialização".
+Zero inferência.
+
+### O que isto evita
+
+📊 Hoje, 12 de 13 documentos indexados são versões revogadas — o condomínio da
+Porto é de dezembro de 2012 e o vigente é de dezembro de 2025. **Treze anos.**
+Um contrato revogado respondendo com a autoridade de documento oficial é pior
+que documento nenhum: o segurado age sobre a resposta.
