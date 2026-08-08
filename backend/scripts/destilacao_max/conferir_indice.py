@@ -1,6 +1,13 @@
 """Conta o que existe DENTRO do Qdrant. Nao escreve nada, em lugar nenhum.
 
-    python backend/scripts/destilacao_max/conferir_indice.py
+    NA SUA MAQUINA        python backend/scripts/destilacao_max/conferir_indice.py
+    NO CONTEINER          cd /app && python scripts/destilacao_max/conferir_indice.py
+
+⚠️ O caminho MUDA entre os dois, e a diferenca ja custou uma ida ao terminal:
+`backend/Dockerfile` faz `WORKDIR /app` + `COPY . .` a partir de `backend/`.
+O conteudo de `backend/` **vira** o `/app` — la dentro nao existe uma pasta
+chamada `backend`. Todo caminho de comando para producao neste repositorio sai
+de dentro de `backend/`, nunca da raiz.
 
 POR QUE ISTO PRECISA EXISTIR
 ----------------------------

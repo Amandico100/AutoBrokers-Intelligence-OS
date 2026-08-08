@@ -1,7 +1,17 @@
 """Reescreve no Qdrant as cartas cujo rotulo mudou no banco.
 
-    python backend/scripts/destilacao_max/reindexar_acervo.py            # so mostra
-    python backend/scripts/destilacao_max/reindexar_acervo.py --aplicar  # escreve
+    NA SUA MAQUINA (so mostra, e recusa gravar sem .env):
+        python backend/scripts/destilacao_max/reindexar_acervo.py
+
+    NO CONTEINER de producao, que e o unico lugar onde isto grava:
+        cd /app && python scripts/destilacao_max/reindexar_acervo.py
+        cd /app && python scripts/destilacao_max/reindexar_acervo.py --aplicar
+
+⚠️ O caminho MUDA entre os dois, e a diferenca ja custou uma ida ao terminal em
+08/08/2026. `backend/Dockerfile` faz `WORKDIR /app` + `COPY . .` a partir de
+`backend/`: o conteudo de `backend/` **vira** o `/app`, e la dentro nao existe
+pasta chamada `backend`. Um comando com `backend/` no meio devolve
+`No such file or directory` — que parece deploy faltando e nao e.
 
 POR QUE ISTO PRECISA EXISTIR
 ----------------------------
