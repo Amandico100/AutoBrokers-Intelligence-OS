@@ -732,8 +732,8 @@ def levantar(args, db) -> tuple[list[Produto], Any]:
 
         querem = {_chave(p) for p in args.processos.split(",") if p.strip()}
         antes = len(produtos)
-        produtos = [p for p in produtos if _chave(p.susep_process) in querem]
-        achados = {_chave(p.susep_process) for p in produtos}
+        produtos = [p for p in produtos if _chave(p.processo) in querem]
+        achados = {_chave(p.processo) for p in produtos}
         print(f"  --processos: {len(produtos)} de {antes} produtos selecionados")
         for pedido in sorted(querem - achados):
             print(f"    ⚠️ NAO ACHADO no catalogo: {pedido}")
