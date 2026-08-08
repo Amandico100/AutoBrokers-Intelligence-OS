@@ -2358,23 +2358,82 @@ recomendada para os 17 pendentes: seria 1 ida em vez de N.
 
 ---
 
-## P-123 · 🧑 `ramo='outro'` nunca é produzido — e 3 playbooks ativos moram nele
+## P-123 · 🔴 O maior grupo do acervo não gera playbook — e o eixo `outro` era o outro
 
-📊 Medido em 07/08/2026. O classificador de atendimento tem uma lista fechada de
-ramos, e `outro` **não sai dela em produção**. Mesmo assim existem playbooks
-publicados nesse ramo: `outro/sinistro`, `outro/consulta` e o rascunho
-`outro/vidros`.
+> **Esta entrada foi escrita errada e reescrita no mesmo dia.** A versão
+> original dizia: *"`ramo='outro'` nunca é produzido — 3 playbooks ativos são
+> inalcançáveis"*. **Isso é falso**, e a medição que a desmentiu está abaixo. A
+> versão errada não fica arquivada porque pendência é lista de trabalho, não
+> diário: quem ler amanhã precisa do fato certo. O erro fica registrado aqui,
+> no cabeçalho, para não se repetir — **eu tinha olhado o eixo errado.**
 
-Um playbook em `outro` é **inalcançável**: o agente nunca vai buscá-lo, porque
-nenhum atendimento é classificado assim. Eles não estão errados — estão mudos.
+📊 Medido em 07/08/2026 sobre 9.196 sessões destiladas.
 
-- **Destrava:** decisão do Founder sobre o ramo empresarial. Se o produto vai
-  atender empresa (frota, condomínio, RC profissional), `outro` é o rascunho
-  desse ramo e vale esperar. Se não vai, os três saem.
-- **De quem é:** 🧑 Founder — é escopo de produto, não bug.
-- **O que custa esquecer:** três playbooks aparecem na Central de Agentes como
-  se estivessem trabalhando. Quem olhar a tela conta 12 ativos e acredita em
-  12; nove trabalham.
+`ramo='outro'` **é produzido, e muito**: 2.905 sessões, 32% de todo o material,
+o segundo maior ramo. Os playbooks `outro/sinistro` (629 sessões úteis, nota
+74,5) e `outro/consulta` (254, nota 69,6) não são mudos — estão entre os
+maiores que existem.
+
+**O eixo descartado é o do SERVIÇO, não o do ramo.** Duas linhas jogam fora
+`servico == "outro"`:
+
+- [`attendance_distiller.py:863`](../../backend/app/services/attendance_distiller.py#L863) — `if not ramo or servico in ("", "outro"): continue`
+- [`attendance_distiller.py:1037`](../../backend/app/services/attendance_distiller.py#L1037) — `if servico in ("outro", "") or ramo in ("",): continue`
+
+E o que elas jogam fora é o melhor material do acervo:
+
+```
+grupo                sessões ÚTEIS   nota    playbook
+auto/outro                   2.219   74,4    NENHUM   ← o maior E o melhor
+outro/outro                  1.468   67,2    NENHUM
+residencial/outro              166   76,3    NENHUM
+vida/outro                      24   72,9    NENHUM
+                             -----
+                             3.877 sessões — mais da metade do aproveitável
+```
+
+### A informação nunca se perdeu — ela é ignorada
+
+O classificador grava **`tipo` E `servico`**. O playbook usa só `(ramo,
+servico)`. Quando `servico='outro'`, o `tipo` tem a resposta, ao lado, e é
+descartada:
+
+```
+dentro de servico='outro':
+  auto        / cobranca      1.904 úteis   nota 76,2   ← melhor grupo do acervo
+  outro       / cobranca        986         nota 72,7
+  outro       / outro           381         nota 52,4   ← o único que é ruído
+  residencial / assistencia     109         nota 78,5
+  auto        / sinistro        103         nota 65,4
+  auto        / apolice          64         nota 71,8
+```
+
+📊 **Cobrança é 2.890 sessões úteis com nota ~75, e 2.915 das 12.063 cartas do
+RAG (24%).** É o maior bloco de atendimento humano bom da corretora, e o
+produto não tem uma linha de conduta sobre ele.
+
+### Por que `servico='outro'` foi descartado, e por que a decisão envelheceu
+
+A regra é defensável na origem: um playbook de "outro" seria vago demais para
+servir. Só que ela foi escrita quando "outro" era resto. Hoje é o maior balde —
+e **`tipo` já o separa em grupos coerentes**. Descartar deixou de proteger e
+passou a custar.
+
+- **Destrava:** decisão de eixo (abaixo). Nada externo.
+- **De quem é:** 🧑 Founder decide o eixo · 🤖 execução implementa.
+- **O que custa esquecer:** o agente atende cobrança — 24% do trabalho — sem
+  nenhuma conduta destilada, improvisando, enquanto 2.890 atendimentos humanos
+  bons sobre exatamente isso estão gravados e não são lidos.
+
+### 💭 A opção que eu recomendo (não medida, é desenho)
+
+Deixar de tratar `outro` como valor e passar a tratá-lo como **ausência**:
+quando `servico == "outro"`, usar `tipo` no lugar. Isso não inventa ramo novo,
+não mexe no classificador e não migra dado nenhum — é uma linha de escolha de
+chave. E faz nascer `auto/cobranca` (1.904 úteis, nota 76,2) já acima do piso.
+
+Ver [`FOUNDER-DECISIONS.md`](FOUNDER-DECISIONS.md) — a decisão de eixo, com as
+alternativas e o que cada uma custa.
 
 ---
 

@@ -1257,3 +1257,98 @@ tinha acabado de construir.
 Vale para **quem fala com o segurado**. Do outro lado — a conversa com a
 seguradora — a regra é outra e já está decidida: o corredor se identifica como
 a corretora, porque é a corretora que aciona.
+
+---
+
+## D-Playbook-01 · PENDENTE: o eixo do playbook de conduta — 07/08/2026
+
+### A pergunta do Founder
+
+> *"Será que isso não é uma simplificação barata num sistema tão robusto e
+> detalhado? Será que ao invés de OUTRO, não é melhor termos playbooks com
+> nomes de ramos de verdade como condomínio, empresarial, vida?"*
+
+A intuição está certa e o eixo era outro. Medindo, o `outro` que custa caro
+não é o do ramo — é o do **serviço**.
+
+### O que foi medido — 07/08/2026, 9.196 sessões destiladas
+
+**O ramo `outro` não é um balde vazio nem um problema:** 2.905 sessões (32%),
+segundo maior. `outro/sinistro` (629 úteis, nota 74,5) e `outro/consulta` (254,
+nota 69,6) são playbooks reais e grandes.
+
+**O serviço `outro` é descartado por código**, e leva junto o melhor material:
+
+```
+auto/outro            2.219 úteis   nota 74,4   SEM PLAYBOOK  ← maior E melhor
+outro/outro           1.468         nota 67,2   SEM PLAYBOOK
+residencial/outro       166         nota 76,3   SEM PLAYBOOK
+vida/outro               24         nota 72,9   SEM PLAYBOOK
+```
+
+**E a informação para separá-los já está gravada.** O classificador escreve
+`tipo` e `servico`; o playbook lê só `(ramo, servico)`. Dentro de
+`servico='outro'`, o `tipo` diz:
+
+```
+auto/cobranca         1.904 úteis   nota 76,2   ← melhor grupo do acervo inteiro
+outro/cobranca          986         nota 72,7
+outro/outro             381         nota 52,4   ← o único que é ruído de verdade
+residencial/assist.     109         nota 78,5
+```
+
+**Os ramos que o Founder citou, contra as 12.063 cartas do RAG:**
+
+| tema | cartas | % |
+|---|---|---|
+| **cobrança** | **2.915** | **24%** |
+| condomínio | 468 | 3,9% |
+| empresarial | 80 | 0,7% |
+| frota | 74 | 0,6% |
+| responsabilidade civil | 41 | 0,3% |
+| fiança | 25 | 0,2% |
+| saúde | 6 | 0,05% |
+
+Condomínio é o único dos ramos novos com massa real. Os outros não estão no
+material porque as duas corretoras capturadas são de auto e residencial —
+**ausência de material não é prova de que o ramo não importa**, é prova de que
+estas duas corretoras não o trabalham.
+
+### Por que ramo e assunto não são o mesmo eixo
+
+O par `(ramo, serviço)` foi desenhado para **assistência**, onde funciona
+perfeitamente: guincho é auto, encanador é residencial, e o ramo determina o
+prestador, a cobertura e a pergunta.
+
+Mas há trabalho de corretora em que o ramo **não muda a conduta**. Uma conduta
+medida de cobrança, do acervo real:
+
+> *"Explicou por que não conseguia gerar o boleto: a forma de pagamento
+> contratada é débito em conta."*
+
+Isso vale igual em auto, residencial ou vida. O que muda é o sistema da
+seguradora — não o ramo. E quando a conversa é sobre boleto, o segurado nem
+menciona o ramo: diz *"não recebi o boleto"*. O classificador, sem sinal de
+ramo, escolhe `outro` — e o rótulo passa a dizer "não sei o que é isso" sobre
+uma conversa que o sistema classificou muito bem: é cobrança.
+
+### As três saídas
+
+**A. `outro` vira ausência, não valor** — quando `servico == "outro"`, usar
+`tipo` como chave. Uma linha de escolha de chave. Não inventa ramo, não mexe no
+classificador, não migra dado. Faz nascer `auto/cobranca` (1.904 úteis, nota
+76,2) já acima do piso. **Recomendada.**
+
+**B. Acrescentar os ramos citados** (condomínio, empresarial, RC, fiança,
+saúde) à lista do classificador. Resolve 620 cartas (5%) e **não toca nas 2.915
+de cobrança**. Cria cinco ramos abaixo do piso de 12 — playbooks que não
+nascem. Não é errada: é ortogonal ao problema, e fica melhor depois de A, com
+material que a justifique.
+
+**C. Não fazer nada.** O agente segue atendendo 24% do trabalho sem conduta
+destilada, com 2.890 atendimentos humanos bons sobre o assunto gravados e não
+lidos.
+
+### 🔴 Decisão pendente do Founder
+
+Registrado em [`PENDENCIAS.md`](PENDENCIAS.md) como **P-123**.
