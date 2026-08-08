@@ -51,21 +51,97 @@ evidência da apólice"*). O agente não inventa. Falta o documento.
 
 Todos medidos. Nenhum depende de terceiro.
 
-### 🔴 B1 — O gatilho está bloqueado em dois pontos independentes
+### ✅ B1 — RESOLVIDO: existe uma API pública que entrega os 31.871 produtos
 
-A v1 pressupunha *"a apólice traz o número de processo SUSEP"*. Ela mesma
-deixou o item **desmarcado**. Medido:
+> **Este bloqueio caiu em 08/08/2026, e com ele cai o desenho inteiro da v1.**
+> A v1 e a primeira redação da v2 pressupunham que o número de processo teria
+> de vir da apólice do cliente, um a um. **Não precisa.**
 
-- 📊 `infocap_connector.py` — 4.253 linhas, **zero ocorrências de `susep`**. O
-  sanitizador monta dicionário fechado sem campo de processo.
+📊 **Verificado ao vivo, sem chave e sem login:**
+
+```
+GET https://dados.susep.gov.br/olinda/servico/produtos/versao/v1/odata/DadosProdutos?$format=text/csv
+    → HTTP 200 · 4.542.087 bytes · 2,1 s · CSV com cabeçalho
+
+cabeçalho:  tipoproduto,entnome,cnpj,numeroprocesso,ramo,subramo
+```
+
+📊 O `$metadata` confirma os seis campos. **Seguradora, CNPJ, número de
+processo e ramo na mesma linha** — as quatro colunas que faltavam.
+
+📊 **A validação que dá direito à conclusão** — o processo da Yelum que já
+conhecíamos, encontrado dentro do dump:
+
+```
+numeroprocesso : 15414.100331/2004-96
+entnome        : YELUM SEGUROS S.A.
+ramo           : 05 | AUTOMÓVEL - CASCO
+subramo        : VALOR DETERMINADO E VALOR DE MERCADO REFERENCIADO
+```
+
+📊 **Cobertura:** 31.871 registros · **195 seguradoras** · 139 ramos · 1.203
+processos de 2026 (base viva, não congelada).
+
+| ramo-alvo | processos | seguradoras |
+|---|---:|---:|
+| Vida (coletivo + individual) | 776 | 96 |
+| Compreensivo Empresarial | 183 | 67 |
+| Compreensivo Residencial | 149 | 61 |
+| Automóvel – Casco | 86 | 39 |
+| Compreensivo Condomínio | 25 | 21 |
+
+**As 39 de auto incluem o mercado real inteiro:** Porto, Bradesco, Allianz,
+Tokio, HDI, Azul, Mapfre, Zurich, Sura, Caixa, Santander, Suhai, Pier, Justos,
+Split Risk.
+
+**Serviço irmão, também 200:** `.../servico/empresas/versao/v1/odata/DadosCadastrais`
+— CNPJ, código FIP, endereço e **site oficial** de cada seguradora. Chave de
+junção pronta.
+
+#### Como usar, e as armadilhas medidas
+
+📊 `$top`, `$skip`, `$select` e `$filter` devolvem **HTTP 500** — testado.
+**O único modo que funciona é o dump inteiro**, e isso é melhor: um GET traz
+tudo e o filtro é do nosso lado.
+
+⚠️ **Duas advertências, para não construir em areia:**
+
+1. 📊 O endpoint **já mudou de caminho uma vez** (`olinda-ide` → `olinda`) e o
+   host antigo caiu sem aviso. Trate a URL como frágil: monitore o 200 e
+   **guarde o último dump bom**, para que uma quebra da SUSEP não vire uma
+   quebra nossa.
+2. 📊 `$format=json` devolve 200 mesmo com o serviço degradado. **Valide a
+   contagem de registros, não o status** — 200 com 12 linhas é falha
+   silenciosa. Piso razoável: 30.000 registros.
+
+#### O que continua bloqueado, e virou irrelevante
+
+Os dois pontos abaixo eram o gatilho da v1. Continuam de pé, e **deixaram de
+importar** — ficam registrados para ninguém tentar consertá-los achando que
+destrava algo:
+
+- 📊 `infocap_connector.py` — 4.253 linhas, **zero ocorrências de `susep`**.
 - 🔴 `policy_document_evidence_service.py:168` — `_BOILERPLATE_RE` descarta
-  **toda linha que contém "susep"** como ruído institucional. Mesmo que o
-  número esteja impresso na apólice, **o extrator o elimina por desenho.**
+  **toda linha que contém "susep"**. Mesmo impresso na apólice, o extrator o
+  elimina por desenho.
 
-⚠️ **Armadilha de nome:** `billing_sent_log.apolice_susep` existe e tem 4
-linhas preenchidas — 📊 **nenhuma no formato de processo**. É alias de
-`numero_apolice` (`billing_collection.py:195`). Nome que mente sobre o conteúdo
-(CLAUDE.md §12.1).
+⚠️ **Armadilha de nome:** `billing_sent_log.apolice_susep` tem 4 linhas
+preenchidas e 📊 **nenhuma no formato de processo** — é alias de
+`numero_apolice` (`billing_collection.py:195`). Nome que mente sobre o
+conteúdo (CLAUDE.md §12.1).
+
+#### O que isto muda na campanha
+
+```
+ANTES   descobrir o processo, um por um, do PDF da apólice de um cliente
+        → alcance limitado às apólices vivas das duas corretoras
+DEPOIS  um GET de 2 segundos traz 31.871 produtos de 195 seguradoras
+        → o problema de DESCOBERTA virou problema de DOWNLOAD
+```
+
+O passo caro (POST por processo) passa a rodar **só para processos que sabemos
+existir**, escolhidos por seguradora e ramo. E a campanha deixa de depender de
+qual corretora está pareada.
 
 ### 🔴 B2 — Vigência não tem escritor
 
@@ -262,9 +338,12 @@ cobertura, sem corredor.
 ## 7. O processo de um lote — passo a passo
 
 ```
-1. DESCOBRIR   o número de processo (§8) · script + conferência humana
+0. CATALOGAR   GET no Olinda (4,5 MB, 2 s) → 31.871 produtos com seguradora,
+               CNPJ, processo e ramo. UMA VEZ por campanha, serve a todos os
+               lotes. Guardar o dump — a URL já mudou de caminho uma vez.
+1. ESCOLHER    do catálogo, os produtos do lote: filtro por `entnome` e `ramo`
 2. CONSULTAR   POST Produto.aspx/Consultar → lista de versões com data
-3. ESCOLHER    a VIGENTE, e registrar as anteriores (não baixar todas)
+3. DECIDIR     a VIGENTE, e registrar as anteriores (não baixar todas)
 4. BAIXAR      GET DownloadConsultaPublica/{id} → PDF
 5. REGISTRAR   normative_documents com susep_process, effective_from e
                effective_until (B2 precisa existir antes deste passo)
@@ -274,6 +353,13 @@ cobertura, sem corredor.
 8. VALIDAR     validar.py — vocabulário, PII, cobertura
 9. APLICAR     aplicar.py com a marca do lote
 ```
+
+**Passo 0 é novo e muda a natureza da campanha.** Antes, cada lote começava
+caçando números de processo. Agora o catálogo inteiro vem num GET, e cada lote
+é um **filtro sobre ele** — por seguradora, por ramo, ou pelos dois.
+
+⚠️ Ao gravar o catálogo, **valide a contagem, não o status**: 200 com 12 linhas
+é falha silenciosa. Piso: 30.000 registros.
 
 **Passos 1-6: sem LLM.** Passo 7: Opus 5, plano Max.
 
@@ -285,24 +371,47 @@ procedência inserido no texto.
 
 ---
 
-## 8. De onde sai o número de processo
+## 8. De onde sai o número de processo — RESOLVIDO
 
-📊 Testados seis caminhos. **Um funciona hoje**, e um segundo é o que destrava
-a escala:
+📊 Testados sete caminhos. **A API de dados abertos vence todos**, e por uma
+margem que dispensa comparação:
 
 | caminho | estado |
 |---|---|
-| Site da seguradora → PDF → regex | ✅ **é como os 28 atuais foram obtidos** |
-| **PDF da apólice → regex** | 🟡 **destrava tudo** — exige remover `susep` do `_BOILERPLATE_RE` (B1) |
+| **API Olinda de dados abertos** | ✅ **31.871 produtos, 195 seguradoras, 2 s, sem chave** |
+| Site da seguradora → PDF → regex | 🟡 funciona; é como os 28 atuais vieram. Frágil e um por vez |
+| PDF da apólice → regex | ⚪ virou desnecessário (era o plano da v1) |
 | InfoCap (JSON) | ❌ campo não existe |
-| InfoCap (record cru) | ❓ **não medido** — exige chamar a API |
+| InfoCap (record cru) | ⚪ não medido, e deixou de importar |
 | CG que já temos | ❌ circular |
-| Busca por seguradora na SUSEP | ❌ 404 |
+| Busca por seguradora no REP2 | ❌ 404 — e agora irrelevante |
 
-> **A medição nº 1 desta SPEC:** verificar se o número está impresso nos 8 PDFs
-> de apólice que temos. Ela decide se o gatilho vira automático ou continua
-> manual. 📊 Não foi possível medir daqui — o texto mora no Qdrant/MinIO e
-> `documents` não tem coluna de texto.
+📊 O formulário público do REP2 tem mesmo **um único campo**
+(`<input id="numeroProcesso">`), sem sociedade nem ramo. Confirmado. Mas a
+pergunta virou irrelevante: **o catálogo já traz a associação
+seguradora ↔ processo ↔ ramo.**
+
+### Como o caminho foi achado — vale registrar
+
+O portal `dados.gov.br` responde **401 Bearer** e exige chave. O registro
+CKAN antigo, num snapshot do Wayback de 2020, listava a URL literal do serviço
+— com o host `olinda-ide`, que hoje dá 404 em tudo. Um 301 de 2022 mostrou a
+troca para `olinda`, sem o sufixo. **Foi a troca de um sufixo que reviveu o
+endpoint.**
+
+> Registrado porque o mesmo tipo de mudança vai acontecer de novo: quando o
+> caminho quebrar, a resposta não é "a fonte morreu" — é procurar o redirect.
+> Foi exatamente o erro do P-22, que declarou 404 o que só tinha mudado de
+> endereço.
+
+### ❌ E o SES continua fora — agora com o motivo definitivo
+
+📊 Lida a documentação real das tabelas do SES (`Ses_cias`, `Ses_ramos`,
+`Ses_seguros`, `Ses_prov`, `ses_gruposramos`): **não existe tabela de produtos
+e não existe coluna de número de processo.** O SES é financeiro-estatístico por
+companhia e ramo.
+
+Seriam 568 MB baixados para não achar o que se procura.
 
 ---
 
@@ -362,15 +471,31 @@ E a liderança:
 ## 11. Ordem recomendada
 
 ```
-LOTE 5   normas gerais       30 min    ← melhor razão valor/esforço
-LOTE 3   destravar bugs      1-2 h     ← mais barato por documento
-LOTE 1   Yelum e HDI         2-3 h     ← o que mais falta
-LOTE 2   atualizar vencidos  2-3 h     ← o de 2012 sai do ar
-LOTE 4   Zurich e Alfa       1-2 h
-LOTE 6   Sura                30 min
+LOTE 0   o catálogo           10 min   ← 31.871 produtos, um GET. Serve a TODOS
+LOTE 5   normas gerais        30 min   ← melhor razão valor/esforço
+LOTE 3   destravar bugs       1-2 h    ← mais barato por documento
+LOTE 1   Yelum e HDI          2-3 h    ← o que mais falta
+LOTE 2   atualizar vencidos   2-3 h    ← o de 2012 sai do ar
+LOTE 4   Zurich e Alfa        1-2 h
+LOTE 6   Sura                 30 min
 ```
 
-**Antes de qualquer lote:** B2 (vigência tem escritor) e a flag de §9.
-**Sem B2, o LOTE 2 grava versão nova apagando a anterior** (B3) — e o acervo
-perde a capacidade de responder pela apólice antiga, que é a razão de existir
-desta SPEC.
+### 📦 LOTE 0 — O catálogo
+
+O primeiro, o mais barato, e o que muda todos os outros. Um GET de 2 segundos
+grava 31.871 produtos com seguradora, CNPJ, processo e ramo.
+
+Depois dele, **cada lote deixa de ser uma caçada e vira um filtro**: *"me dê os
+produtos de auto-casco da Yelum"* é uma consulta, não uma pesquisa.
+
+E ele destrava o que a SPEC ainda não sabia responder — 📊 os processos que
+**não achamos**: o casco da HDI, o residencial da Yelum. Eles estão no
+catálogo.
+
+**Antes de qualquer lote que ESCREVA:** B2 (vigência tem escritor) e a flag
+de §9. **Sem B2, o LOTE 2 grava versão nova apagando a anterior** (B3) — e o
+acervo perde a capacidade de responder pela apólice antiga, que é a razão de
+existir desta SPEC.
+
+O LOTE 0 é exceção: ele só lê e grava catálogo, não toca no acervo. **Pode
+rodar hoje.**
