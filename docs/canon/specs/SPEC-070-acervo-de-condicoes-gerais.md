@@ -3,10 +3,10 @@
 > **Versão:** 1.0 · **Criada em:** 08/08/2026
 > **Substitui:** SPEC-066 v1 e v2 (o método mudou; o objetivo é o mesmo)
 > **Autoridade:** CLAUDE.md · D-Acervo-01 · D-Acervo-02
-> **Branch:** `feat/spec067-acervo-condicoes-gerais`
+> **Branch:** `feat/spec070-acervo-condicoes-gerais`
 ---
 
-# SPEC-067 — O acervo de condições gerais
+# SPEC-070 — O acervo de condições gerais
 
 > **O objetivo, em uma frase:** que o AutoBrokers responda qualquer pergunta
 > sobre qualquer cobertura de qualquer seguradora, com o texto **oficial e
@@ -19,7 +19,7 @@
 O Founder abre um chat e escreve **uma frase**:
 
 ```
-Execute o LOTE N da SPEC-067.
+Execute o LOTE N da SPEC-070.
 ```
 
 O chat lê esta SPEC inteira, executa o lote, e **atualiza o placar da §7**.
@@ -92,6 +92,70 @@ Fim de Comercialização.
 > **VIGENTE = produto "Passível de comercialização" + versão com Data de Fim VAZIA.**
 
 Download: `GET .../REP2/Produto.aspx/DownloadConsultaPublica/{id}` → PDF.
+
+### 3.2.1 🔴 A REGRA QUE NÃO SE NEGOCIA — só entra o VIGENTE
+
+> **Nenhum documento revogado entra no acervo. Nunca. Por nenhum motivo.**
+
+📊 É a razão de esta SPEC existir: hoje **12 de 13 documentos indexados são
+versões revogadas**, e o agente responde a partir delas com a autoridade de um
+documento oficial.
+
+**O erro é invisível.** Um contrato revogado não parece revogado — tem o
+logotipo certo, a linguagem certa e o número de processo certo. O segurado age
+sobre a resposta e ninguém percebe.
+
+#### O que o executor TEM de fazer, em toda consulta
+
+```
+1. A situação do produto é "Passível de comercialização"?
+   NÃO → produto morto. NÃO baixe. Registre e siga.
+
+2. Na tabela de Versões, qual linha tem Data de Fim de Comercialização VAZIA?
+   ESSA é a vigente. É a única que se baixa.
+
+3. DUAS linhas com fim vazio → NÃO ESCOLHA. Pare e registre `indeterminado`.
+   Duas vigentes é defeito da fonte, não escolha sua.
+
+4. NENHUMA com fim vazio → o produto não tem versão em comercialização.
+   NÃO baixe.
+
+5. A tabela não veio → `indeterminado`. NUNCA "sem alteração".
+```
+
+#### O que é PROIBIDO
+
+| ⛔ | por quê |
+|---|---|
+| Baixar do site da seguradora "porque é mais fácil" | 📊 O site publica o que quer. A Porto mantém a CG140 revogada no ar desde janeiro; a vigente é a CG144 |
+| Escolher a versão **mais recente** da lista | Recente ≠ vigente. 📊 A vigente do Bradesco Vida é de **2014** e está correta |
+| Escolher pelo nome do arquivo ou pela data no título | 📊 O CG140 tem "010126" no nome e foi substituído em julho |
+| Assumir "não achei versão nova" = "está atualizado" | 📊 8 de 28 consultas devolveram 200 com página vazia |
+| Reaproveitar documento do acervo sem reconferir | 📊 Foi assim que os 12 revogados chegaram lá |
+
+#### A conferência obrigatória, antes de indexar
+
+O executor escreve no relatório do lote, para **cada** documento:
+
+```
+produto ........... <nome> (processo NNNNN.NNNNNN/AAAA-DD)
+situação .......... Passível de comercialização
+versão baixada .... <arquivo>
+início ............ DD/MM/AAAA
+fim ............... (vazio)   ← se não estiver vazio, PARE
+total de versões .. N
+o que tínhamos .... <versão antiga ou "nada">
+```
+
+**Se qualquer linha não puder ser preenchida com o que veio do registro oficial,
+o documento não entra.** Um lote incompleto e honesto vale mais que um acervo
+que mente com confiança.
+
+#### E a carta herda a data
+
+Toda carta destilada carrega a **vigência do documento de origem** (§10.4).
+Carta sem vigência não é publicada — no dia em que o contrato mudar, ela seria
+indistinguível das que continuam valendo.
 
 ### 3.3 As três armadilhas medidas
 
@@ -480,6 +544,7 @@ Uma linha por carta:
 | 10 | **Índices de payload:** `insurer_key`, `namespace`, `vigente`, `faceta` | 📊 hoje só existem 3, e nenhum é desses |
 | 11 | **Corrigir os 3 processos malformados** | 📊 devolvem 200 vazio |
 | 12 | **Manifesto de migration** para `normative_documents` e `..._versions` | 📊 são tabelas órfãs; o CLAUDE.md §8 exige |
+| 13 | **Ligar o reranker Cohere** | 📊 não é trabalho: é uma variável de ambiente. Sem ela, `rerank()` vira `docs[:3]` — trunca sem reordenar, pegando os 3 primeiros de uma fusão que não mede relevância |
 
 ⚠️ **O item 12 vem antes de qualquer SQL.**
 
@@ -531,5 +596,4 @@ O LOTE 14 confirma isso **por contagem**, não por impressão.
 | **Agente de auto-atualização** | Decisão do Founder: não é prioridade. O ciclo manual funciona — basta pedir a um chat que confira. |
 | **Matriz de assistência serviço × plano** | Exige leitura de layout. É o item mais caro e o que não termina. |
 | **Ficha de produto completa** | Fica com 2 campos: `coberturas_de_outro_ramo` e o mapa cláusula → unidade. |
-| **Ligar o reranker Cohere** | 📊 está desligado. Melhora a escolha dos trechos, mas não é pré-requisito. |
 | **Comparação entre seguradoras** (fan-out) | Depois que houver acervo de duas seguradoras completas para comparar. |
