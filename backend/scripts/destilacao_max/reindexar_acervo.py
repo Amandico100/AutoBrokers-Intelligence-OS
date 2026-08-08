@@ -168,10 +168,77 @@ def _ler_publicadas(db) -> list:
     return todas
 
 
-def _ja_feitas() -> set:
-    if not PROGRESSO.exists():
-        return set()
-    return {l.strip() for l in PROGRESSO.read_text(encoding="utf-8").splitlines() if l.strip()}
+def _ja_feitas(db=None) -> set:
+    """Quem ja foi reindexado — lendo o BANCO, e o arquivo so como reforco.
+
+    🔴 08/08/2026 — O PROGRESSO MORRIA NO DEPLOY, E CUSTOU 109 MINUTOS
+    ==================================================================
+    O arquivo `.reindexacao_feita.txt` mora no filesystem do contêiner. O
+    EasyPanel **recria o contêiner a cada deploy** — e o arquivo vai junto.
+
+    📊 O que aconteceu: uma rodada completa reindexou 12.058 de 12.063 cartas
+    em 6.560 segundos. Houve um deploy. A rodada seguinte, que devia retomar
+    nas 5 que faltavam, imprimiu `ja reindexadas ...... 0` e refez as 12.063
+    inteiras.
+
+    Nao foi defeito do script: ele fez exatamente o que sabia fazer. Foi o
+    lugar errado para guardar a memoria — **um arquivo dentro de algo que e
+    apagado por desenho.**
+
+    Agora a marca vive em `knowledge_cards.pii_check.reindexado_em`, no
+    Postgres, que nenhum deploy toca. O arquivo continua sendo escrito porque
+    e mais rapido de ler no meio de uma rodada, mas ele deixou de ser a
+    verdade: se sumir, o banco responde.
+    """
+    do_arquivo = set()
+    if PROGRESSO.exists():
+        do_arquivo = {l.strip() for l in
+                      PROGRESSO.read_text(encoding="utf-8").splitlines() if l.strip()}
+    if db is None:
+        return do_arquivo
+
+    do_banco, ultimo, pagina = set(), None, 1000
+    while True:
+        q = (db.table("knowledge_cards").select("id")
+             .eq("status", "published")
+             .not_.is_("pii_check->>reindexado_em", "null")
+             .order("id").limit(pagina))
+        if ultimo:
+            q = q.gt("id", ultimo)
+        linhas = q.execute().data or []
+        if not linhas:
+            break
+        do_banco.update(str(l["id"]) for l in linhas)
+        ultimo = linhas[-1]["id"]
+        if len(linhas) < pagina:
+            break
+    return do_arquivo | do_banco
+
+
+def _hoje() -> str:
+    from datetime import datetime, timezone
+    return datetime.now(timezone.utc).date().isoformat()
+
+
+def _marcar_no_banco(db, ids: list, quando: str) -> None:
+    """Grava `pii_check.reindexado_em` — a memoria que sobrevive ao deploy.
+
+    Le e reescreve `pii_check` de cada carta porque ele guarda outras marcas
+    (`deterministic`, `prestadora`, `substituida_por`) que nao podem ser
+    perdidas. Uma falha aqui nao derruba a rodada: o pior caso e reindexar
+    essas cartas de novo, que custa embedding e nao estraga nada.
+    """
+    try:
+        atuais = (db.table("knowledge_cards").select("id, pii_check")
+                  .in_("id", ids).execute().data or [])
+        for linha in atuais:
+            marca = dict(linha.get("pii_check") or {})
+            marca["reindexado_em"] = quando
+            db.table("knowledge_cards").update(
+                {"pii_check": marca}).eq("id", linha["id"]).execute()
+    except Exception as exc:  # noqa: BLE001
+        print(f"  [!] nao consegui marcar {len(ids)} no banco: {type(exc).__name__}"
+              " — elas serao reindexadas de novo na proxima rodada")
 
 
 def main() -> int:
@@ -196,7 +263,7 @@ def main() -> int:
 
     db = _banco()
     cartas = _ler_publicadas(db)
-    feitas = _ja_feitas()
+    feitas = _ja_feitas(db)
     faltam = [c for c in cartas if str(c["id"]) not in feitas]
     if args.limite:
         faltam = faltam[:args.limite]
@@ -226,6 +293,8 @@ def main() -> int:
     from app.services.attendance_distiller import publish_card_sync
 
     ok = falhou = 0
+    pendentes: list = []
+    hoje = _hoje()
     t0 = time.time()
     with PROGRESSO.open("a", encoding="utf-8") as reg:
         for i, carta in enumerate(faltam, 1):
@@ -237,6 +306,14 @@ def main() -> int:
                     # ser cobrada da OpenAI na retomada.
                     reg.write(f"{carta['id']}\n")
                     reg.flush()
+                    # E TAMBEM NO BANCO, que o deploy nao apaga. Em lote de 50
+                    # para nao dobrar o numero de idas ao Postgres: perder ate
+                    # 50 marcas numa queda custa 50 embeddings na retomada, e
+                    # perder 12.058 custou 109 minutos.
+                    pendentes.append(str(carta["id"]))
+                    if len(pendentes) >= 50:
+                        _marcar_no_banco(db, pendentes, hoje)
+                        pendentes = []
                 else:
                     falhou += 1
             except Exception as exc:  # noqa: BLE001 — uma carta ruim nao para o acervo
@@ -245,6 +322,8 @@ def main() -> int:
             if i % 250 == 0:
                 print(f"  {i:,}/{len(faltam):,}  ok={ok:,} falhou={falhou:,}  "
                       f"{time.time() - t0:.0f}s")
+    if pendentes:
+        _marcar_no_banco(db, pendentes, hoje)
 
     print(f"\nreindexadas {ok:,} · falhas {falhou:,} · {time.time() - t0:.0f}s")
     if falhou:
