@@ -2508,3 +2508,47 @@ escreve e outra reescreve o mesmo objeto. Não foi varrido.
 - **Guarda:** [`test_quem_lapida_obedece_quem_escreveu.py`](../../backend/tests/test_quem_lapida_obedece_quem_escreveu.py)
   — lê o import por **AST**, não por busca de texto: `REGRAS_DO_PLAYBOOK` citado
   num comentário passaria numa busca por substring e não importaria nada.
+
+---
+
+## P-127 · 🧑 Os ramos que existem no mercado e não existem no sistema
+
+Decisão do Founder em 07/08/2026: **fica registrado e não se executa agora** —
+a saída B de [`D-Playbook-01`](FOUNDER-DECISIONS.md).
+
+O sistema classifica em quatro ramos: `auto`, `residencial`, `vida`, `outro`.
+O mercado brasileiro tem muito mais, e o Founder perguntou por condomínio,
+empresarial, responsabilidade civil, fiança e saúde.
+
+📊 Medido em 07/08/2026 sobre as 12.063 cartas publicadas — quanto de cada tema
+já existe no acervo:
+
+| tema | cartas | % |
+|---|---|---|
+| condomínio | 468 | 3,9% |
+| empresarial / patrimonial | 80 | 0,7% |
+| frota | 74 | 0,6% |
+| responsabilidade civil | 41 | 0,3% |
+| fiança | 25 | 0,2% |
+| saúde | 6 | 0,05% |
+
+**Condomínio é o único com massa real.** Os demais quase não aparecem — e isso
+**não prova que o ramo não importa**: prova que as duas corretoras capturadas
+(Resulta e AutoFleet) trabalham auto e residencial. Uma corretora nova de
+benefícios inverteria a tabela inteira.
+
+- **Destrava:** material que justifique o ramo. O piso de evidência é 12
+  atendimentos úteis; hoje só condomínio chega perto, e nem ele foi medido em
+  ATENDIMENTOS (as 468 são cartas, não conversas).
+- **De quem é:** 🧑 Founder decide quando · 🤖 execução implementa.
+- **O momento ideal:** depois da destilação do material bruto, quando houver
+  contagem de ATENDIMENTOS por tema — não de cartas. Antes disso, acrescentar
+  cinco ramos cria cinco baldes abaixo do piso: playbooks que não nascem e
+  telas que mostram categorias vazias.
+- **O que custa esquecer:** quando entrar uma corretora de condomínio ou
+  benefícios, o material dela cai em `outro` e se mistura com o resto — e a
+  separação depois é mais cara que a classificação na origem.
+- **Pré-requisito técnico:** antes de acrescentar ramo, ler o resultado da
+  auditoria de padronização (P-128) — 📊 hoje existem **12 conjuntos distintos**
+  de valores de ramo no código, e acrescentar um sexto valor a um vocabulário
+  que já diverge multiplica o problema em vez de resolver.
