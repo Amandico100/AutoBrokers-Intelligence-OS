@@ -1260,7 +1260,12 @@ a corretora, porque é a corretora que aciona.
 
 ---
 
-## D-Playbook-01 · PENDENTE: o eixo do playbook de conduta — 07/08/2026
+## D-Playbook-01 · O eixo do playbook de conduta — `DECIDIDA E EXECUTADA — 07/08/2026`
+
+> **Decisão do Founder:** executar a saída **A** antes da destilação.
+> **Executada** em `0d6e782`. E a investigação encontrou um defeito maior no
+> caminho — o do runtime, na seção final desta entrada.
+
 
 ### A pergunta do Founder
 
@@ -1352,3 +1357,54 @@ lidos.
 ### 🔴 Decisão pendente do Founder
 
 Registrado em [`PENDENCIAS.md`](PENDENCIAS.md) como **P-123**.
+
+### 🔴 O defeito maior, achado ao verificar se a saída A funcionaria
+
+Antes de executar, fui conferir se `auto/cobranca` seria **encontrado** pelo
+agente. Não seria — e o motivo vale mais que a decisão de eixo.
+
+**Existem dois classificadores, e eles não falam a mesma língua:**
+
+| | quem **escreve** o playbook | quem **procura** em runtime |
+|---|---|---|
+| onde | `_STAGE1_SYSTEM` (LLM) | `infer_ramo_servico` (regex) |
+| ramos | auto · residencial · **vida · outro** | auto · residencial |
+| serviços | guincho… + **consulta** · sinistro | guincho… + sinistro |
+
+📊 **6 dos 12 playbooks ATIVOS eram inalcançáveis:** `auto/consulta` (253
+atendimentos), `outro/sinistro` (629), `outro/consulta` (254),
+`residencial/consulta` (48), `vida/sinistro` (122), `vida/consulta`.
+
+Escritos, versionados, exibidos no admin, pagos no modelo caro — e nunca lidos.
+**A falha é silenciosa por construção:** a busca não acha linha e devolve
+vazio. Um playbook que não existe e um playbook que não é encontrado produzem
+exatamente o mesmo resultado.
+
+É a terceira vez no mesmo dia que o padrão aparece — **duas descrições da mesma
+coisa, divergindo em silêncio** (o Lapidador foi a primeira, o eixo a segunda).
+
+### O que foi executado
+
+1. **`chave_do_grupo()`** — uma regra de chave só, usada por quem conta, quem
+   enfileira e quem sintetiza. Eram três contas: a de trás contava o grupo que
+   a da frente descartava.
+2. **`infer_ramo_servico`** ganhou `cobranca`, `apolice`, `renovacao` e o ramo
+   `vida` — que ela transformava em `auto` pelo `else` do ternário, sem log.
+   Vêm **depois** da assistência: quem liga sobre o guincho que não chegou está
+   falando de guincho, mesmo citando o boleto.
+3. **`graph._conduta_do_caso`** — sem playbook do ramo, procura o do ramo
+   `outro`. Eles não são lixo: são a conduta daquele serviço quando o ramo não
+   muda o que se faz. **Segunda** tentativa, nunca primeira.
+
+O material antigo continua legível sem reescrever uma linha do banco:
+📊 `auto/cobranca` acha 0 pela consulta nova e 1.904 pela do formato antigo.
+
+📊 5 mutações, 5 reprovaram — inclusive a sutil, de o fallback virar primeira
+tentativa e `outro/sinistro` ganhar de `auto/sinistro` numa conversa de carro.
+Guarda: [`test_o_playbook_nasce_com_a_chave_que_o_agente_procura.py`](../../backend/tests/test_o_playbook_nasce_com_a_chave_que_o_agente_procura.py).
+
+### O que a saída B (ramos novos) continua valendo
+
+Não foi executada e **não está descartada**: é ortogonal, e fica melhor depois
+que houver material que a justifique. 📊 Condomínio é o único dos citados com
+massa real (468 cartas). Registrado em `PENDENCIAS.md`.
