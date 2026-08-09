@@ -498,11 +498,42 @@ no banco e no MinIO, endereçável por (produto, data).
 
 Ver §10.
 
+### Passo 6.5 — 🔴 Conferir a ANCORAGEM (obrigatório, não pule)
+
+```bash
+python backend/scripts/acervo/conferir_ancoragem.py --pasta <dir> --auditoria
+```
+
+**O que ele confere:** se cada carta aponta para o trecho que a sustenta.
+
+Um endereço errado é **pior que endereço nenhum**. A carta continua parecendo
+certa, o agente cita com confiança, e quem for conferir não acha nada no lugar
+indicado. A causa é o corte: o título do serviço fica num pedaço e o limite no
+seguinte; a cobertura num, a exclusão no outro. Quem lê a regra inteira cita o
+começo — que é o pedaço errado.
+
+📊 **LOTE 1:** o destilador do condomínio rodou essa medição por conta própria e
+achou **20 das suas 203 cartas** citando o vizinho. Rodada nos seis ramos: 57 de
+1.121 sinalizadas, **17 com um vizinho ancorando melhor**, 0 órfãs.
+
+**E o alerta da §10.3.1 não substitui esta conferência.** Os seis destiladores
+receberam o aviso e o defeito apareceu mesmo assim. O que acha é medir, não
+avisar.
+
+O script **não reprova** por ancoragem fraca, de propósito: uma carta boa é o
+contrato reescrito em português de WhatsApp, e a sobreposição cai justamente
+porque o trabalho foi feito direito. Ele **reprova por órfã** — endereço que
+não existe, carta que ninguém consegue conferir.
+
+O `--auditoria` grava `AUDITORIA.json`. Mande **subagentes Opus 5** julgarem
+cada caso em `ok` · `mover` (com o `unit_id` certo) · `sem_lastro`. A decisão é
+de leitura, não do script.
+
 ### Passo 7 — Conferir e publicar
 
-- Rodar o validador (vocabulário, PII, cobertura)
+- `publicar_cartas.py --seguradora <chave> --seco` — confere sem gravar nada
 - **Ler 20 cartas com os olhos**, não a contagem
-- Publicar
+- `publicar_cartas.py --seguradora <chave>` — grava e indexa
 
 ### Passo 8 — Atualizar esta SPEC
 
