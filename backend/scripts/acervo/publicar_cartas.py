@@ -364,9 +364,64 @@ def main() -> int:
         if i % 50 == 0:
             print(f"    {i}/{len(aprovadas)}  banco {gravadas}  índice {indexadas}")
 
+    # ------------------------------------------------------------------ #
+    # 🔴 A CARTA CORRIGIDA ENTRA — E A ERRADA PRECISA SAIR.
+    #
+    # 📊 Achado em 09/08/2026, conferindo o banco depois de publicar: a Allianz
+    # tinha **1.967 cartas no banco e 1.938 no arquivo**. As 29 de diferença
+    # eram as versões ANTIGAS das cartas que a auditoria de fidelidade tinha
+    # reescrito — e continuavam publicadas, respondendo.
+    #
+    # A chave do upsert é `card_hash`, que é o hash do TEXTO. Reescrever a carta
+    # muda o texto, muda o hash, e a linha nova entra **ao lado** da velha em vez
+    # de por cima dela. As duas ficam no índice, com o mesmo endereço de origem,
+    # dizendo coisas diferentes — e a busca devolve uma ou outra por sorte.
+    #
+    # É o mesmo defeito que esta SPEC existe para impedir (documento revogado
+    # que continua respondendo), agora na escala da carta. E é pior aqui, porque
+    # a versão errada foi corrigida **de propósito**: alguém leu, decidiu que
+    # estava errada, e ela continuou no ar.
+    #
+    # O arquivo `*_CARTAS.jsonl` é a verdade. O que está publicado com
+    # `origem: acervo` desta seguradora e **não** está no arquivo é resto de uma
+    # rodada anterior, e sai pelo mesmo caminho que qualquer carta rejeitada —
+    # `despublicar_carta_sync`, que tira do índice ANTES de mexer no banco.
+    from app.services.attendance_distiller import despublicar_carta_sync
+
+    print("\n  procurando cartas de rodadas anteriores…")
+    try:
+        # ⚠️ `source_unit_id not null` é o filtro que separa o acervo do resto.
+        # 📊 As 12.063 cartas destiladas de CONVERSA também têm `insurer_key` e
+        # não estão neste arquivo — varrê-las daqui apagaria o acervo inteiro de
+        # atendimento. Elas não têm `source_unit_id`; só a carta de condição
+        # geral tem.
+        publicadas = (db.client.table("knowledge_cards")
+                      .select("id, card_hash, card_text")
+                      .eq("insurer_key", seguradora).eq("status", "published")
+                      .not_.is_("source_unit_id", "null")
+                      .execute().data or [])
+    except Exception as exc:  # noqa: BLE001
+        print(f"  X   não consegui listar o que está publicado: {type(exc).__name__}")
+        publicadas = []
+
+    sobrando = [c for c in publicadas if c.get("card_hash") not in vistos]
+    print(f"  cartas do acervo publicadas : {len(publicadas)}")
+    print(f"  que não estão mais no arquivo: {len(sobrando)}")
+
+    saíram = 0
+    for c in sobrando:
+        if despublicar_carta_sync(c["id"], motivo="superseded"):
+            saíram += 1
+        else:
+            falhas.append(f"não saiu do índice — {c['card_text'][:60]}")
+    if sobrando:
+        print(f"  despublicadas                      : {saíram}")
+
     print("\n" + "=" * 72)
     print(f"  gravadas no banco : {gravadas}")
     print(f"  publicadas no RAG : {indexadas}")
+    if sobrando:
+        print(f"  versões antigas retiradas : {saíram} de {len(sobrando)}")
     if falhas:
         print(f"  FALHAS            : {len(falhas)}")
         for f in falhas[:10]:

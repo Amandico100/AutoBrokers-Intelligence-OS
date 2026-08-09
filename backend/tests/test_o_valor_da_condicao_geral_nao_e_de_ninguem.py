@@ -385,6 +385,50 @@ def teste_carta_sem_acento_e_encoding_quebrado():
                "o guarda entrou depois delas; reprovar seria calibragem errada")
 
 
+def teste_a_carta_corrigida_entra_e_a_errada_sai():
+    print("\n[7] A versão antiga da carta reescrita sai do índice")
+
+    # 📊 Achado em 09/08/2026, conferindo o banco DEPOIS de publicar: a Allianz
+    # tinha 1.967 cartas publicadas e 1.938 no arquivo. As 29 de diferença eram
+    # as versões ANTIGAS das cartas que a auditoria de fidelidade reescreveu — e
+    # continuavam no ar, respondendo.
+    #
+    # A causa é a chave do upsert: `card_hash` é o hash do TEXTO. Reescrever a
+    # carta muda o texto, muda o hash, e a linha nova entra AO LADO da velha em
+    # vez de por cima. As duas ficam no índice, com o mesmo endereço de origem,
+    # dizendo coisas diferentes — e a busca devolve uma ou outra por sorte.
+    #
+    # É o defeito que a SPEC-070 existe para impedir (documento revogado que
+    # continua respondendo), agora na escala da carta. E é pior aqui: alguém
+    # leu, decidiu que estava errada, e ela continuou no ar mesmo assim.
+    with open(os.path.join(RAIZ, "scripts", "acervo", "publicar_cartas.py"),
+              encoding="utf-8") as arquivo:
+        publicador = arquivo.read()
+
+    checar("despublicar_carta_sync" in publicador,
+           "o publicador retira as cartas de rodadas anteriores",
+           "e usa o MESMO caminho de qualquer carta rejeitada")
+    checar("sobrando = [c for c in publicadas if c.get(\"card_hash\") not in vistos]"
+           in publicador,
+           "e a régua é o arquivo: o que não está nele é resto",
+           "`vistos` são os hashes das cartas desta rodada")
+
+    # 🔴 CONTROLE — a varredura NÃO pode alcançar as cartas de conversa. Elas
+    # também têm `insurer_key` e não estão neste arquivo; sem o filtro, a
+    # limpeza apagaria o acervo inteiro de atendimento.
+    checar('not_.is_("source_unit_id", "null")' in publicador,
+           "CONTROLE — só alcança quem tem `source_unit_id`",
+           "📊 as 12.063 cartas de conversa não têm, e sobreviveriam")
+
+    # 🔴 CONTROLE DE ORDEM — publicar ANTES de limpar. Ao contrário haveria um
+    # instante com a carta velha fora e a nova ainda não gravada, e uma falha no
+    # meio deixaria o ramo sem resposta nenhuma.
+    checar(publicador.index("gravando e publicando")
+           < publicador.index("procurando cartas de rodadas anteriores"),
+           "CONTROLE — publica primeiro, limpa depois",
+           "ao contrário, uma falha no meio deixa o ramo mudo")
+
+
 def teste_quem_liga_a_ressalva_e_a_procedencia():
     print("\n[5] Só a carta que veio de documento público ganha a ressalva")
 
@@ -435,6 +479,7 @@ def main() -> int:
     teste_o_que_vem_depois_do_cargo_pode_ser_o_cargo()
     teste_o_que_separa_carta_de_copia_e_o_bloco_literal()
     teste_carta_sem_acento_e_encoding_quebrado()
+    teste_a_carta_corrigida_entra_e_a_errada_sai()
     teste_quem_liga_a_ressalva_e_a_procedencia()
 
     print("\n" + "=" * 74)
