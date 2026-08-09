@@ -23,11 +23,11 @@
 
 ## 1. O placar
 
-📊 Estado em 08/08/2026, antes do LOTE 1.
+📊 Estado em 08/08/2026, **depois do LOTE 1** (a Porto).
 
 | seguradora | auto | resid. | condom. | empres. | vida | fiança | equip. | conferido em |
 |---|:--:|:--:|:--:|:--:|:--:|:--:|:--:|---|
-| **porto** | ⚠️ | ⚠️ | ⚠️ | ⚠️ | ⚠️ | ⚠️ | 🔴 | 08/08/2026 |
+| **porto** | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | 🔴 | 08/08/2026 |
 | **allianz** | ⚠️ | ⚠️ | 🔴 | ⚠️ | ⚠️ | ❔ | ❔ | 08/08/2026 |
 | **bradesco** | 🔴 | ⚠️ | 🔴 | ⚠️ | ⚠️ | ❔ | ❔ | 08/08/2026 |
 | **mapfre** | ⚠️ | ⚠️ | 🔴 | ⚠️ | ⚠️ | ❔ | ❔ | 08/08/2026 |
@@ -42,8 +42,25 @@
 | **youse** | 🔴 | ❔ | ➖ | ➖ | ❔ | ➖ | ➖ | 08/08/2026 |
 | **caixa / santander / bb** | ❔ | ❔ | ❔ | ❔ | ❔ | ❔ | ❔ | nunca |
 
-**📊 O resumo que dói:** de 13 documentos conferidos contra o registro oficial,
-**1 estava na versão vigente**.
+**📊 O resumo que doía:** de 13 documentos conferidos contra o registro oficial,
+**1 estava na versão vigente**. Depois do LOTE 1, os 6 da Porto estão.
+
+### 1.1 O que o LOTE 1 trocou na Porto
+
+📊 08/08/2026 · 6 documentos · 1.686 pedaços · 40 segundos · 0 falhos.
+
+| ramo | o que estava no ar | passou a ser | vigência oficial |
+|---|---|---|---|
+| auto | CG140 (janeiro) | **CG144** | 01/07/2026 |
+| condomínio | **o de 2012** | dezembro/2025 | 11/12/2025 |
+| empresarial | abril/2025 | julho/2026 | 31/07/2026 |
+| residencial | dezembro/2025 | dezembro/2025 | 05/12/2025 |
+| fiança | sem data | agosto/2026 | 08/08/2026 |
+| vida | 2022 | novembro/2025 | 27/11/2025 |
+
+As 6 versões antigas foram **fechadas e guardadas**, não apagadas: o
+`superseded_at` marca a data e o PDF continua no MinIO. Documento revogado sai
+da busca e vai para o arquivo morto — decisão **D-Acervo-02**.
 
 ---
 

@@ -359,7 +359,7 @@ não está no contrato.
 
 | # | seguradora | cartas cob. | corredor | estado hoje | status | executado em |
 |---|---|---:|---|---|---|---|
-| **1** | **Porto** | 196 | auto+resid | 6 docs, **5 vencidos**, condomínio de **2012** | ⬜ | — |
+| **1** | **Porto** | 196 | auto+resid | 6 docs vigentes · 1.686 pedaços · cartas destiladas | ✅ | 08/08/2026 |
 | **2** | **Allianz** | 356 | auto+resid | 4 docs, **todos vencidos**, sem condomínio | ⬜ | — |
 | **3** | **Yelum** | 174 | auto+resid | 🔴 **ZERO documentos** | ⬜ | — |
 | **4** | **HDI** | 128 | auto+resid | 🔴 **ZERO documentos** | ⬜ | — |
@@ -387,9 +387,61 @@ não está no contrato.
 *(cada lote acrescenta seu bloco aqui)*
 
 ```
-LOTE 0 — Fundação (consertos)          ⬜ não executado
-LOTE 1 — Porto                          ⬜ não executado
+LOTE 0 — Fundação (consertos)          ✅ 08/08/2026
+LOTE 1 — Porto                          ✅ 08/08/2026
 ```
+
+### LOTE 1 — Porto · 08/08/2026
+
+**Coleta** (`coletar_seguradora.py --seguradora porto --aplicar`), 40 s, 0 falhos:
+
+| ramo | pedaços | vigência oficial | o que saiu do ar |
+|---|---:|---|---|
+| auto | 484 | 01/07/2026 | CG140 (janeiro) → **CG144** |
+| condomínio | 277 | 11/12/2025 | **o de 2012** |
+| empresarial | 349 | 31/07/2026 | abril/2025 |
+| residencial | 325 | 05/12/2025 | dezembro/2025 |
+| fiança | 96 | 08/08/2026 | versão sem data |
+| vida | 155 | 27/11/2025 | 2022 |
+
+📊 **1.686 pedaços.** As 6 versões antigas ficaram fechadas e guardadas
+(`superseded_at` + PDF no MinIO), conforme **D-Acervo-02**.
+
+**Reprodução independente do corte.** Os pedaços foram gerados de novo fora do
+servidor, a partir dos mesmos `susep_version_id`, e comparados um a um:
+**idênticos nos 6 ramos** (484/277/349/96/325/155). É o que autoriza a carta a
+citar `unit_id` — o endereço que ela guarda aponta mesmo para o trecho indexado.
+
+**Destilação** — 6 subagentes Opus 5, um por ramo, com as 8 regras da §10.3.
+
+Três alertas foram acrescentados aos prompts **durante** o lote, cada um vindo
+de uma medição do subagente anterior. Eles pertencem à §10.3 daqui para a
+frente:
+
+1. **O limite mora no pedaço SEGUINTE ao título do serviço.** No residencial,
+   "limite de até 3 itens" do encanador ficou no mesmo pedaço que as exclusões
+   do eletricista. 📊 O destilador corrigiu 14 citações por causa disso, numa
+   segunda passada. Sem o alerta, a carta gruda o limite no serviço errado.
+2. **Tabela quebrada pelo OCR: não chute coluna.** Onde o cabeçalho se separou
+   dos números, a instrução é escrever a carta que ensina o EIXO da resposta e
+   manda conferir a apólice — nunca um número que não se pode afirmar.
+3. **Diga sempre se a cobertura é básica ou opcional.** Sem isso o agente
+   promete cobertura que o cliente não contratou.
+
+**O que os destiladores recusaram destilar** — e é a parte mais valiosa do
+relatório deles, porque é o que impede a carta convincente e errada:
+
+- a tabela de diárias de carro reserva e a matriz de serviços da Assistência
+  24h (auto): colunas perdidas no OCR;
+- os 54 pares de percentual de reajuste por idade (vida): não dá para afirmar
+  qual coluna é feminino linha a linha;
+- os percentuais de depreciação (residencial): três colunas embaralhadas;
+- **o regresso contra o inquilino (fiança): não existe neste contrato.** O
+  destilador registrou que a afirmação "a Porto paga e depois cobra do
+  inquilino" não está escrita ali, e ancorou a carta no que está — que o seguro
+  não isenta o locatário. É a regra 8 funcionando.
+
+---
 
 ---
 
@@ -513,6 +565,31 @@ defeito que mais machuca não é a frase errada de ponta a ponta — é o corpo
 fiel com a cauda inventada.
 
 **8. Não afirme cobertura sem o trecho.** Você tem o contrato na mão; use-o.
+
+### 10.3.1 🔴 Os três alertas — medidos no LOTE 1, obrigatórios daqui pra frente
+
+Cada um destes nasceu de uma medição de um destilador do LOTE 1 e foi
+acrescentado ao prompt do subagente seguinte. **Vão em todo prompt.**
+
+**A. O limite mora no pedaço SEGUINTE ao título do serviço.**
+📊 No residencial da Porto, *"limite de até 3 itens"* do encanador ficou no
+mesmo pedaço que as exclusões do eletricista. Uma carta montada de um pedaço só
+**gruda o limite no serviço errado** — e sai convincente. O destilador que
+recebeu o alerta corrigiu **14 citações** numa segunda passada; o que não
+recebeu não tinha como saber que precisava conferir.
+
+> *"Sempre confira o pedaço anterior e o seguinte antes de fixar um número."*
+
+**B. Tabela quebrada pelo OCR: não chute coluna.**
+Onde o cabeçalho se separou dos números, escreva a carta que ensina **o eixo da
+resposta** e manda conferir a apólice. Nunca um número que não se pode afirmar.
+📊 No LOTE 1 isso salvou quatro tabelas de virarem carta errada: diárias de
+carro reserva, matriz da Assistência 24h, depreciação e reajuste por idade.
+
+**C. Diga sempre se a cobertura é BÁSICA ou OPCIONAL.**
+Sem isso o agente afirma que algo é coberto quando o cliente nunca contratou. É
+o erro mais caro do atendimento porque cria expectativa — e em vida ele cai
+sobre uma família em luto.
 
 ### 10.4 O formato de saída
 
