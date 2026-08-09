@@ -1651,6 +1651,8 @@ class InsuranceCorpusService:
         Devolve (texto, None) no sucesso e (None, motivo) na falha — nunca
         levanta. Quem chama já sabe cair no crawler quando isto não serve.
         """
+        import asyncio
+
         import httpx
 
         # Cabeçalho de navegador: 📊 dois destes documentos já falharam com 408 e
@@ -1662,11 +1664,48 @@ class InsuranceCorpusService:
                            "AppleWebKit/537.36 (KHTML, like Gecko) Chrome/126.0 Safari/537.36"),
             "Accept": "application/pdf,*/*",
         }
-        try:
-            async with httpx.AsyncClient(timeout=90.0, follow_redirects=True) as cli:
-                r = await cli.get(url, headers=cabecalhos)
+        # 🔴 TROPEÇO DE REDE NÃO PODE CUSTAR CRÉDITO DE CRAWLER — 08/08/2026.
+        #
+        # 📊 No LOTE 2 (Allianz), 8 dos 9 documentos baixaram em 43 segundos. O
+        # nono — `CG - Allianz Empresa PME`, o empresarial que a corretora
+        # vende — falhou aqui, caiu no crawler e **esgotou o crédito do
+        # Firecrawl** (HTTP 402), derrubando junto qualquer documento seguinte.
+        #
+        # Não havia nada errado com ele. Medido no mesmo dia, fora do servidor:
+        #
+        #     download .... 1.617.853 bytes em 1.499 ms, `%PDF` na primeira linha
+        #     extração .... 148 páginas, 424.389 caracteres
+        #
+        # Foi um tropeço de rede de um segundo. O `except` capturou, devolveu o
+        # nome da exceção, e o caminho pago assumiu — para um arquivo que um GET
+        # resolve de graça.
+        #
+        # **A nova tentativa é grátis; o crawler é pago.** Três tentativas com
+        # espera crescente, e o crawler continua existindo para o que ele
+        # realmente resolve: página HTML, arquivo protegido, PDF escaneado.
+        ultimo = None
+        for tentativa in range(3):
+            if tentativa:
+                await asyncio.sleep(1.5 * tentativa)
+            try:
+                async with httpx.AsyncClient(timeout=90.0, follow_redirects=True) as cli:
+                    r = await cli.get(url, headers=cabecalhos)
+            except Exception as exc:  # noqa: BLE001 — timeout, DNS, conexão caída
+                ultimo = type(exc).__name__
+                continue
+            # 5xx é o servidor tropeçando e vale nova tentativa. 4xx é resposta:
+            # o arquivo não está ali, e insistir só gasta tempo.
+            if r.status_code >= 500:
+                ultimo = f"HTTP {r.status_code}"
+                continue
             if r.status_code != 200:
                 return None, f"HTTP {r.status_code}"
+            ultimo = None
+            break
+        if ultimo:
+            return None, f"{ultimo} (3 tentativas)"
+
+        try:
             corpo = r.content or b""
             # 🔴 SPEC-067 item 4 — A ÚNICA LINHA QUE SALVA O ORIGINAL.
             #

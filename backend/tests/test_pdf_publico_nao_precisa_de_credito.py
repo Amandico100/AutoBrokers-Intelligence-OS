@@ -191,9 +191,35 @@ def rodar():
     checar("PDF escaneado (sem texto): recusa, nao polui o corpus",
            m == "conteudo_insuficiente", m)
 
+    # ⚠️ ATUALIZADO em 08/08/2026 (CLAUDE.md §9.3: quando o fato muda, o teste
+    # muda com ele e a licao MIGRA em vez de morrer).
+    #
+    # A afirmacao guardada aqui nao mudou: servidor fora do ar devolve o motivo
+    # e NAO levanta. O que mudou e que agora ele tenta tres vezes antes de
+    # desistir, e o motivo diz isso.
+    #
+    # 📊 Por que a nova tentativa entrou: no LOTE 2 (Allianz), 8 de 9 documentos
+    # baixaram em 43s e o nono — o empresarial PME — tropecou aqui, caiu no
+    # crawler e ESGOTOU o credito do Firecrawl (HTTP 402). Nao havia nada errado
+    # com ele: medido no mesmo dia, 1.617.853 bytes em 1.499 ms e 424.389
+    # caracteres extraidos. Foi um tropeco de rede de um segundo, e ele custou
+    # o caminho pago. A nova tentativa e gratis; o crawler nao e.
     _com_resposta(500, b"")
     _, m = asyncio.run(servico._baixar_pdf_direto("https://x.com/quebrado.pdf"))
-    checar("servidor fora do ar: devolve o motivo, nao levanta", m == "HTTP 500", m)
+    checar("servidor fora do ar: devolve o motivo, nao levanta",
+           m == "HTTP 500 (3 tentativas)", m)
+    checar("e o motivo DIZ que insistiu — 5xx e tropeco, nao resposta",
+           "3 tentativas" in str(m),
+           "sem isso, quem le o log nao sabe se valeu a pena tentar de novo")
+
+    # 🔴 CONTROLE — 4xx NAO e tropeco, e uma RESPOSTA: o arquivo nao esta ali.
+    # Insistir tres vezes num 404 so gasta tempo, e o teste tem de provar que a
+    # nova tentativa sabe a diferenca. Sem este controle, "tenta de novo"
+    # viraria "tenta de novo sempre", que e o defeito oposto.
+    _com_resposta(404, b"")
+    _, m = asyncio.run(servico._baixar_pdf_direto("https://x.com/nao-existe.pdf"))
+    checar("CONTROLE — 404 desiste na primeira: e resposta, nao tropeco",
+           m == "HTTP 404", m)
 
     _com_resposta(200, b"%PDF-1.4\n" + b"x" * (61 * 1024 * 1024))
     _, m = asyncio.run(servico._baixar_pdf_direto("https://x.com/gigante.pdf"))
