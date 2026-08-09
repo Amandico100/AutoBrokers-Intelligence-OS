@@ -552,7 +552,24 @@ _PII_PATTERNS: List[Tuple[re.Pattern, str]] = [
                 r"(" + _H + r"*:" + _H + r"*|" + _H + r"+)"
                 r"(?!(?:d[aeo]s?|que|n[ãa]o|vai|foi|est[áa]|ir[áa]|ficou|"
                 r"informou|precisa|pediu|solicitou|confirmou|autoriz|aguarda|"
-                r"ser[áa]|tem|deve|pode|principal|do|da)\b)"
+                r"ser[áa]|tem|deve|pode|principal|do|da|"
+                # 🔴 O QUE VEM DEPOIS DO CARGO PODE SER O CARGO — 08/08/2026.
+                #
+                # Esta regra existe para "porteiro João Silva" → "porteiro
+                # {NOME}", e está certa: em conversa, o que segue o papel é a
+                # pessoa. Numa CONDIÇÃO GERAL o que segue é a especialização do
+                # serviço, e o serviço é o produto.
+                #
+                # 📊 Achado no ensaio seco da publicação da Porto: a carta de
+                # `PORTEIRO SUBSTITUTO` do condomínio — um serviço de
+                # assistência com regra própria, 5 dias, atestado e CID —
+                # virava `porteiro {NOME}` e era recusada na porta. 1 das 1.121.
+                #
+                # São adjetivos de função, não nomes. Ninguém se chama
+                # "Substituto". A lista fica curta de propósito: cada palavra
+                # aqui é uma pessoa a menos protegida se eu errar.
+                r"substitut[oa]s?|tempor[áa]ri[oa]s?|reserva|extra|"
+                r"noturn[oa]|diurn[oa]|adicional|efetiv[oa]|terceirizad[oa])\b)"
                 r"(?-i:[A-ZÀ-Ú][A-Za-zà-ú]{2,}"
                 r"(?:" + _H + r"+(?:" + _CONECTIVO + r")?"
                 + _NAO_E_NOME + r"[A-ZÀ-Ú][A-Za-zà-ú]{2,}){1,4})"),

@@ -69,6 +69,21 @@ FACETAS = {"escopo", "exclusao", "limite", "franquia", "prazo", "documento", "de
 MIN_CARACTERES = 40
 MAX_CARACTERES = 900
 
+# 🔴 EXCETO A LISTA DE DOCUMENTOS, QUE É LONGA PORQUE A EXIGÊNCIA É LONGA.
+#
+# 📊 Achado no ensaio seco da Porto: 2 das 1.121 cartas foram recusadas por
+# tamanho, e as duas são `documento` — o que a fiança exige para acionar danos
+# ao imóvel (940) e o que o vida exige para invalidez por acidente (952).
+#
+# O teto de 900 existe para impedir que alguém cole o pedaço do contrato e
+# chame de carta. Uma lista de documentos não é isso: é **uma** ideia — "o que
+# você precisa juntar" — e ela só serve inteira. Cortada ao meio, manda a
+# família reunir metade dos papéis e descobrir o resto na recusa.
+#
+# `documento` é a única faceta com essa natureza. `escopo` e `exclusao` longos
+# continuam sendo contrato copiado, e continuam recusados.
+MAX_CARACTERES_DOCUMENTO = 1200
+
 
 def _diretorio_das_cartas(seguradora: str) -> str:
     return os.path.join(os.path.dirname(os.path.abspath(__file__)), "cartas", seguradora)
@@ -149,12 +164,14 @@ def _conferir(carta: Dict[str, Any], versoes: Dict[str, Dict[str, Any]]) -> Opti
         return "sem texto"
     if len(texto) < MIN_CARACTERES:
         return f"curta demais ({len(texto)} caracteres)"
-    if len(texto) > MAX_CARACTERES:
-        return f"longa demais ({len(texto)} caracteres) — é pedaço de contrato, não carta"
 
     faceta = str(carta.get("faceta") or "").strip()
     if faceta not in FACETAS:
         return f"faceta desconhecida: {faceta!r}"
+
+    teto = MAX_CARACTERES_DOCUMENTO if faceta == "documento" else MAX_CARACTERES
+    if len(texto) > teto:
+        return f"longa demais ({len(texto)} caracteres) — é pedaço de contrato, não carta"
 
     unit_id = str(carta.get("unit_id_origem") or "").strip()
     if not unit_id:

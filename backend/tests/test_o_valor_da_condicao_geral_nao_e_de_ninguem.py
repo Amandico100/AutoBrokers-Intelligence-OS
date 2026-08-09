@@ -222,6 +222,68 @@ def teste_o_ramo_nao_e_um_logradouro():
                f"CONTROLE — {endereco!r} → {{ENDERECO}}", T.templatize(endereco))
 
 
+def teste_o_que_vem_depois_do_cargo_pode_ser_o_cargo():
+    print("\n[5] `porteiro substituto` é um serviço, não uma pessoa")
+
+    # 📊 Achado no ensaio seco da publicação da Porto, 08/08/2026: a carta de
+    # PORTEIRO SUBSTITUTO do condomínio — um serviço de assistência com regra
+    # própria (5 dias, atestado, CID) — virava `porteiro {NOME}` e era
+    # recusada na porta. 1 das 1.121.
+    for frase in [
+        "O serviço de PORTEIRO SUBSTITUTO do Porto Seguro Condomínio é por reembolso.",
+        "O porteiro substituto é reembolsado por até 5 dias.",
+        "A cobertura de motorista reserva vale por 30 dias.",
+        "O condutor eventual está coberto.",
+        "porteiro temporário contratado pelo condomínio",
+    ]:
+        checar(_limpo(frase), f"{frase[:46]!r} intacta", T.templatize(frase)[:58])
+
+    # 🔴 CONTROLE — a regra existe para "porteiro João Silva", e ela tem de
+    # continuar fazendo isso. Esta é a metade que protege uma pessoa, e é a que
+    # o conserto podia ter quebrado.
+    print("\n    CONTROLE — o cargo seguido de PESSOA continua mascarado")
+    for frase in [
+        "porteiro João Silva informou o ocorrido",
+        "O condutor Maria Aparecida da Silva dirigia o veículo",
+        "motorista Carlos Eduardo Souza",
+        "proprietário Roberto Lima autorizou",
+        "segurado Fernando Alves Pereira",
+        "beneficiária Ana Paula Ribeiro",
+        "responsável Marcos Antonio Ferreira",
+    ]:
+        checar("{NOME}" in T.templatize(frase),
+               f"CONTROLE — {frase[:38]!r} → {{NOME}}", T.templatize(frase)[:58])
+
+
+def teste_a_lista_de_documentos_pode_ser_longa():
+    print("\n[6] A lista de documentos é longa porque a exigência é longa")
+
+    with open(os.path.join(RAIZ, "scripts", "acervo", "publicar_cartas.py"),
+              encoding="utf-8") as arquivo:
+        publicador = arquivo.read()
+
+    # 📊 2 das 1.121 cartas da Porto foram recusadas por tamanho, e as duas são
+    # `documento`: o que a fiança exige para danos ao imóvel (940 caracteres) e
+    # o que o vida exige para invalidez por acidente (952).
+    checar("MAX_CARACTERES_DOCUMENTO = 1200" in publicador,
+           "`documento` tem teto próprio",
+           "cortada ao meio, a lista manda juntar metade dos papéis")
+    checar('teto = MAX_CARACTERES_DOCUMENTO if faceta == "documento" else MAX_CARACTERES'
+           in publicador,
+           "e o teto é escolhido PELA FACETA",
+           "uma ideia só: 'o que você precisa juntar'")
+
+    # CONTROLE — a exceção é de UMA faceta. Se o teto maior valesse para todas,
+    # o limite deixaria de impedir o que ele existe para impedir: alguém colar
+    # o pedaço do contrato e chamar de carta.
+    checar("MAX_CARACTERES = 900" in publicador,
+           "CONTROLE — e as outras facetas mantêm o teto de 900",
+           "`escopo` e `exclusao` longos continuam sendo contrato copiado")
+    checar(publicador.count("MAX_CARACTERES_DOCUMENTO") == 2,
+           "CONTROLE — a exceção é citada em UM lugar só",
+           "exceção espalhada vira regra sem ninguém decidir")
+
+
 def teste_quem_liga_a_ressalva_e_a_procedencia():
     print("\n[5] Só a carta que veio de documento público ganha a ressalva")
 
@@ -269,6 +331,8 @@ def main() -> int:
     teste_a_ressalva_nao_abriu_a_porta_para_gente()
     teste_bom_dia_tambem_e_saudacao()
     teste_o_ramo_nao_e_um_logradouro()
+    teste_o_que_vem_depois_do_cargo_pode_ser_o_cargo()
+    teste_a_lista_de_documentos_pode_ser_longa()
     teste_quem_liga_a_ressalva_e_a_procedencia()
 
     print("\n" + "=" * 74)
