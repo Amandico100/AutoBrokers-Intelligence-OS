@@ -68,25 +68,34 @@ sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspa
 
 FACETAS = {"escopo", "exclusao", "limite", "franquia", "prazo", "documento", "definicao"}
 
-# Uma carta é uma ideia. Menos que isso não afirma nada; mais que isso é o
-# pedaço do contrato copiado, e para isso já existe o namespace `normative`.
+# Uma carta é uma ideia. Menos que isso não afirma nada.
 MIN_CARACTERES = 40
-MAX_CARACTERES = 900
 
-# 🔴 EXCETO A LISTA DE DOCUMENTOS, QUE É LONGA PORQUE A EXIGÊNCIA É LONGA.
+# 🔴 O TETO MEDIA A COISA ERRADA — 09/08/2026, medido no ensaio seco da Allianz.
 #
-# 📊 Achado no ensaio seco da Porto: 2 das 1.121 cartas foram recusadas por
-# tamanho, e as duas são `documento` — o que a fiança exige para acionar danos
-# ao imóvel (940) e o que o vida exige para invalidez por acidente (952).
+# Ele existia para impedir que alguém colasse o pedaço do contrato e chamasse de
+# carta. Mas o que separa carta de cópia **não é o tamanho** — é se o texto foi
+# reescrito. E o teto de 900 estava reprovando 25 de 1.536 cartas que são
+# listas TAXATIVAS do contrato:
 #
-# O teto de 900 existe para impedir que alguém cole o pedaço do contrato e
-# chame de carta. Uma lista de documentos não é isso: é **uma** ideia — "o que
-# você precisa juntar" — e ela só serve inteira. Cortada ao meio, manda a
-# família reunir metade dos papéis e descobrir o resto na recusa.
+#     1.630 chars  as doenças que limitam a 90 diárias (LER, DORT, hérnia…)
+#     1.415 chars  a mesma lista, agora como carência de 180 dias
+#       923 chars  as peças de desgaste excluídas (fusível, relé, LED, nobreak…)
 #
-# `documento` é a única faceta com essa natureza. `escopo` e `exclusao` longos
-# continuam sendo contrato copiado, e continuam recusados.
-MAX_CARACTERES_DOCUMENTO = 1200
+# **Cortar uma lista taxativa faz a carta mentir por omissão.** O corretor lê
+# "não cobre fusível, relé, lâmpada" e conclui que bateria é coberta.
+#
+# 📊 A medição que decidiu: comparei cada uma das 25 com o pedaço de origem,
+# procurando o maior bloco literal em comum. **Nenhuma é cópia** — o maior
+# bloco foi de 105 caracteres (11% da carta). Todas foram genuinamente
+# reescritas em português de WhatsApp.
+#
+# O teto passa a ser um limite FÍSICO — o ponto em que o texto deixa de caber
+# numa mensagem — e a detecção de cópia vai para `conferir_ancoragem.py`, que
+# roda fora do servidor e **tem os pedaços na mão** para comparar. Cada guarda
+# no lugar onde ele tem a informação de que precisa.
+MAX_CARACTERES = 1800
+
 
 
 def _diretorio_das_cartas(seguradora: str) -> str:
@@ -194,9 +203,9 @@ def _conferir(carta: Dict[str, Any], versoes: Dict[str, Dict[str, Any]]) -> Opti
     if faceta not in FACETAS:
         return f"faceta desconhecida: {faceta!r}"
 
-    teto = MAX_CARACTERES_DOCUMENTO if faceta == "documento" else MAX_CARACTERES
-    if len(texto) > teto:
-        return f"longa demais ({len(texto)} caracteres) — é pedaço de contrato, não carta"
+    if len(texto) > MAX_CARACTERES:
+        return (f"longa demais ({len(texto)} caracteres) — acima do limite físico "
+                f"de uma mensagem; se for lista taxativa, quebre em duas cartas")
 
     unit_id = str(carta.get("unit_id_origem") or "").strip()
     if not unit_id:
@@ -213,13 +222,13 @@ def _conferir(carta: Dict[str, Any], versoes: Dict[str, Dict[str, Any]]) -> Opti
     # se espere nome de pessoa numa condição geral — mas porque um caminho de
     # publicação sem essa rede é um caminho por onde ela pode entrar depois.
     #
-    # `valor_e_conhecimento=True` é a ÚNICA diferença, e ela é justificada pela
+    # `documento_publico=True` é a ÚNICA diferença, e ela é justificada pela
     # origem: este script só lê PDF baixado do registro da SUSEP, onde a cifra
     # descreve o produto. 📊 Sem isso, 36 das 716 cartas da Porto (5,0%) seriam
     # recusadas — e são justamente as de `limite`, as mais consultadas.
     from app.services.attendance_distiller import _card_pii_clean
 
-    if not _card_pii_clean(texto, valor_e_conhecimento=True):
+    if not _card_pii_clean(texto, documento_publico=True):
         return "a verificação de dado pessoal recusou o texto"
     return None
 

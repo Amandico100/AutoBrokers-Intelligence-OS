@@ -364,16 +364,16 @@ def _save_session_summary_sync(session_id: str, summary: Dict[str, Any]) -> None
 # ------------------------------------------------------------------ #
 # Knowledge cards — filtro de PII em 2 camadas + fila de aprovação
 # ------------------------------------------------------------------ #
-def _card_pii_clean(text: str, *, valor_e_conhecimento: bool = False) -> bool:
+def _card_pii_clean(text: str, *, documento_publico: bool = False) -> bool:
     """Camada determinística: se o templatize mudaria o texto, tem PII.
 
-    `valor_e_conhecimento` só é ligado pelo caminho do acervo (carta destilada
+    `documento_publico` só é ligado pelo caminho do acervo (carta destilada
     de condição geral pública), onde a cifra é regra do produto e não dado de
     um segurado. Ver o comentário longo em `templater._reservar`.
     """
     from app.services.atlas.templater import templatize
 
-    return templatize(text, valor_e_conhecimento=valor_e_conhecimento) == text
+    return templatize(text, documento_publico=documento_publico) == text
 
 
 # `_chave_da_seguradora` vivia aqui e normalizava o nome da seguradora da
@@ -520,7 +520,7 @@ def publish_card_sync(card: Dict[str, Any]) -> bool:
     # não pode confiar na porta anterior. A ressalva do valor só vale para a
     # carta que traz `source_unit_id` — ou seja, que veio de documento público.
     if not text or not _card_pii_clean(
-            text, valor_e_conhecimento=bool(card.get("source_unit_id"))):
+            text, documento_publico=bool(card.get("source_unit_id"))):
         return False
     # O ASSUNTO ENTRA NO TEXTO, de propósito.
     #

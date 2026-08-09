@@ -114,9 +114,9 @@ def teste_a_cifra_da_condicao_geral_sobrevive():
         "No Porto Auto o limite de Pequenos Reparos é de 2.500,00 por vigência.",
     ]
     for carta in cartas:
-        checar(_limpo(carta, valor_e_conhecimento=True),
+        checar(_limpo(carta, documento_publico=True),
                f"passa no acervo: {carta[:46]!r}", T.templatize(
-                   carta, valor_e_conhecimento=True)[:60])
+                   carta, documento_publico=True)[:60])
 
     # 🔴 CONTROLE — a rodada que repete o cenário anterior. Sem ela, o bloco
     # acima passaria também se a regra de valor tivesse sido APAGADA do
@@ -143,9 +143,9 @@ def teste_a_ressalva_nao_abriu_a_porta_para_gente():
         ("cartão", "Cartão 4111 1111 1111 1111, cobrança de R$ 500,00."),
     ]
     for rotulo, frase in perigos:
-        checar(not _limpo(frase, valor_e_conhecimento=True),
+        checar(not _limpo(frase, documento_publico=True),
                f"CONTROLE — {rotulo} recusado mesmo com a ressalva ligada",
-               T.templatize(frase, valor_e_conhecimento=True)[:56])
+               T.templatize(frase, documento_publico=True)[:56])
 
 
 def teste_bom_dia_tambem_e_saudacao():
@@ -255,33 +255,66 @@ def teste_o_que_vem_depois_do_cargo_pode_ser_o_cargo():
                f"CONTROLE — {frase[:38]!r} → {{NOME}}", T.templatize(frase)[:58])
 
 
-def teste_a_lista_de_documentos_pode_ser_longa():
-    print("\n[6] A lista de documentos é longa porque a exigência é longa")
+def teste_o_que_separa_carta_de_copia_e_o_bloco_literal():
+    print("\n[6] Tamanho não separa carta de cópia — bloco literal separa")
 
+    # ⚠️ ATUALIZADO em 09/08/2026 (CLAUDE.md §9.3). Este bloco guardava a
+    # exceção de teto da faceta `documento`, criada ontem porque 2 cartas da
+    # Porto passavam de 900 caracteres.
+    #
+    # 📊 O ensaio seco da Allianz mostrou que a exceção resolvia o caso e não o
+    # problema: 25 cartas foram recusadas por tamanho, em SEIS facetas
+    # diferentes, e a mais longa tinha 1.630 caracteres — a lista de doenças que
+    # limita a 90 diárias. Todas eram listas TAXATIVAS do contrato, e cortar uma
+    # lista taxativa faz a carta **mentir por omissão**: o corretor lê "não
+    # cobre fusível, relé, lâmpada" e conclui que bateria é coberta.
+    #
+    # 📊 A medição que decidiu: comparei as 25 com o pedaço de origem procurando
+    # o maior bloco LITERAL em comum. Nenhuma é cópia — o maior foi 105
+    # caracteres (11%). Todas reescritas de verdade.
+    #
+    # **A afirmação que este bloco guarda não mudou:** o pedaço do contrato
+    # colado não pode entrar como carta. O que mudou é como se mede isso — e
+    # onde. Tamanho ficou sendo só um limite físico; a prova de cópia foi para
+    # `conferir_ancoragem.py`, que **tem os pedaços na mão** para comparar. O
+    # publicador roda no servidor e não tem.
     with open(os.path.join(RAIZ, "scripts", "acervo", "publicar_cartas.py"),
               encoding="utf-8") as arquivo:
         publicador = arquivo.read()
+    with open(os.path.join(RAIZ, "scripts", "acervo", "conferir_ancoragem.py"),
+              encoding="utf-8") as arquivo:
+        conferidor = arquivo.read()
 
-    # 📊 2 das 1.121 cartas da Porto foram recusadas por tamanho, e as duas são
-    # `documento`: o que a fiança exige para danos ao imóvel (940 caracteres) e
-    # o que o vida exige para invalidez por acidente (952).
-    checar("MAX_CARACTERES_DOCUMENTO = 1200" in publicador,
-           "`documento` tem teto próprio",
-           "cortada ao meio, a lista manda juntar metade dos papéis")
-    checar('teto = MAX_CARACTERES_DOCUMENTO if faceta == "documento" else MAX_CARACTERES'
-           in publicador,
-           "e o teto é escolhido PELA FACETA",
-           "uma ideia só: 'o que você precisa juntar'")
+    checar("MAX_CARACTERES = 1800" in publicador,
+           "o teto virou um limite FÍSICO, não um juízo sobre a carta",
+           "📊 a maior lista taxativa legítima tem 1.630 caracteres")
+    checar("MAX_CARACTERES_DOCUMENTO" not in publicador,
+           "e a exceção por faceta saiu",
+           "ela resolvia 2 casos da Porto e falhava em 25 da Allianz")
 
-    # CONTROLE — a exceção é de UMA faceta. Se o teto maior valesse para todas,
-    # o limite deixaria de impedir o que ele existe para impedir: alguém colar
-    # o pedaço do contrato e chamar de carta.
-    checar("MAX_CARACTERES = 900" in publicador,
-           "CONTROLE — e as outras facetas mantêm o teto de 900",
-           "`escopo` e `exclusao` longos continuam sendo contrato copiado")
-    checar(publicador.count("MAX_CARACTERES_DOCUMENTO") == 2,
-           "CONTROLE — a exceção é citada em UM lugar só",
-           "exceção espalhada vira regra sem ninguém decidir")
+    checar("def _fracao_copiada(" in conferidor,
+           "a prova de cópia mora onde os pedaços estão",
+           "o publicador roda no servidor e não tem o texto do contrato")
+    checar("BLOCO_LITERAL_DE_COPIA = 250" in conferidor
+           and "copiado > LIMIAR_DE_COPIA and bloco >= BLOCO_LITERAL_DE_COPIA" in conferidor,
+           "e ela exige as DUAS condições: fração alta E bloco longo",
+           "📊 só a fração acusou 6 cartas curtas legítimas")
+
+    # 🔴 CONTROLE — a fração sozinha pune a carta curta, que é justamente a que
+    # fez o trabalho certo. Quando a regra do contrato já é uma linha, não
+    # existe como reescrever sem repetir as palavras.
+    curta = ("O Porto Seguro Empresa se aplica somente a danos ou prejuízos "
+             "ocorridos e reclamados no Território Nacional.")
+    checar(len(curta) < 250,
+           "CONTROLE — a carta curta legítima fica abaixo do bloco de 250",
+           f"{len(curta)} caracteres: nem que fosse cópia inteira ela acusaria")
+
+    # CONTROLE — e o guarda continua sabendo acusar. Um parágrafo inteiro do
+    # contrato transplantado passa dos 250 com folga.
+    checar("CÓPIAS" in conferidor and "return 1 if (orfas_total or copias_total) else 0"
+           in conferidor,
+           "CONTROLE — e cópia REPROVA o lote, como a órfã",
+           "as duas são defeito, não sinal para leitura")
 
 
 def teste_carta_sem_acento_e_encoding_quebrado():
@@ -359,21 +392,21 @@ def teste_quem_liga_a_ressalva_e_a_procedencia():
               encoding="utf-8") as arquivo:
         distiller = arquivo.read()
 
-    checar('valor_e_conhecimento=bool(card.get("source_unit_id"))' in distiller,
+    checar('documento_publico=bool(card.get("source_unit_id"))' in distiller,
            "`publish_card_sync` liga a ressalva pela PROCEDÊNCIA",
            "`source_unit_id` só existe na carta destilada de condição geral")
 
     # CONTROLE — a carta de conversa não tem esse campo, então a ressalva fica
-    # desligada nela. Se algum caminho passasse `valor_e_conhecimento=True`
+    # desligada nela. Se algum caminho passasse `documento_publico=True`
     # fixo, o valor da parcela de um segurado entraria no RAG global.
-    checar("valor_e_conhecimento=True" not in distiller,
+    checar("documento_publico=True" not in distiller,
            "CONTROLE — e nenhum caminho do destilador a liga fixa",
            "seria o valor da parcela do segurado indo para o RAG global")
 
     with open(os.path.join(RAIZ, "scripts", "acervo", "publicar_cartas.py"),
               encoding="utf-8") as arquivo:
         publicador = arquivo.read()
-    checar("valor_e_conhecimento=True" in publicador,
+    checar("documento_publico=True" in publicador,
            "e o publicador do acervo a liga — ele só lê PDF da SUSEP",
            "é o único lugar onde a origem do texto é conhecida e pública")
 
@@ -383,10 +416,10 @@ def teste_quem_liga_a_ressalva_e_a_procedencia():
     import inspect
 
     assinatura = inspect.signature(T.templatize)
-    checar("valor_e_conhecimento" in assinatura.parameters,
+    checar("documento_publico" in assinatura.parameters,
            "CONTROLE — e `templatize` aceita mesmo o parâmetro",
            str(assinatura))
-    checar(assinatura.parameters["valor_e_conhecimento"].default is False,
+    checar(assinatura.parameters["documento_publico"].default is False,
            "CONTROLE — e o padrão é DESLIGADO",
            "quem esquecer de passar fica protegido, não exposto")
 
@@ -400,7 +433,7 @@ def main() -> int:
     teste_bom_dia_tambem_e_saudacao()
     teste_o_ramo_nao_e_um_logradouro()
     teste_o_que_vem_depois_do_cargo_pode_ser_o_cargo()
-    teste_a_lista_de_documentos_pode_ser_longa()
+    teste_o_que_separa_carta_de_copia_e_o_bloco_literal()
     teste_carta_sem_acento_e_encoding_quebrado()
     teste_quem_liga_a_ressalva_e_a_procedencia()
 

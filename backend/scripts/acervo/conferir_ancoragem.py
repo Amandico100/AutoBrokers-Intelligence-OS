@@ -56,6 +56,7 @@ import argparse
 import glob
 import json
 import os
+import difflib
 import re
 import sys
 import unicodedata
@@ -93,9 +94,35 @@ from typing import Any, Dict, List, Optional, Set
 # manda o corretor abrir o contrato no lugar errado. Com 36 acusações em 1.121
 # cartas, pagar leituras a mais para não perder 4 erros é barato.
 MARGEM_DO_VIZINHO = 0.05
+# 🔴 CÓPIA SE MEDE EM CARACTERES, NÃO EM PORCENTAGEM — e isto custou uma rodada.
+#
+# A primeira versão acusava por fração: bloco literal > 50% da carta. 📊 Ela
+# marcou 6 cartas já publicadas, e as 6 eram legítimas — todas CURTAS:
+#
+#     108 chars  "O Porto Seguro Empresa se aplica somente a danos ocorridos
+#                 e reclamados no Território Nacional."
+#     100 chars  "No Allianz Vida em Grupo, não será distribuído Excedente
+#                 Técnico em caso de cancelamento da apólice."
+#
+# **Quando a regra do contrato já é curta e direta, não existe como reescrever
+# sem repetir as mesmas palavras.** A fração pune exatamente a carta que fez o
+# trabalho certo — dizer a regra em uma linha.
+#
+# O sinal de cópia de verdade é o bloco literal LONGO em termos absolutos: um
+# parágrafo inteiro do contrato transplantado. 📊 As 25 cartas mais longas da
+# Allianz (até 1.630 caracteres, listas taxativas) têm no máximo **105** — bem
+# abaixo do corte. Exigir as duas condições mantém o guarda e solta a carta
+# curta.
+LIMIAR_DE_COPIA = 0.50
+BLOCO_LITERAL_DE_COPIA = 250
 VIZINHOS = (-2, -1, 1, 2)
 # Guardado só para informar a leitura — não filtra mais nada.
 LIMIAR_FRACO = 0.30
+
+
+def _sem_acento(texto: str) -> str:
+    return unicodedata.normalize("NFKD", str(texto or "")).encode(
+        "ascii", "ignore").decode().lower()
 
 
 def _vocabulario(texto: str) -> Set[str]:
@@ -105,9 +132,7 @@ def _vocabulario(texto: str) -> Set[str]:
     subir sem dizer nada. O acento cai porque o PDF e a carta discordam sobre
     ele com frequência — `apólice` no contrato, `apolice` na carta.
     """
-    limpo = unicodedata.normalize("NFKD", str(texto or "")).encode(
-        "ascii", "ignore").decode()
-    return set(re.findall(r"[a-z]{5,}", limpo.lower()))
+    return set(re.findall(r"[a-z]{5,}", _sem_acento(texto)))
 
 
 def _carregar_pedacos(pasta: str) -> Dict[str, Dict[str, Any]]:
@@ -165,6 +190,35 @@ def _cobertura(vocab_carta: Set[str], pedaco: Dict[str, Any]) -> float:
     return len(vocab_carta & _vocabulario(_ancora(pedaco))) / len(vocab_carta)
 
 
+def _fracao_copiada(texto: str, pedaco: Dict[str, Any]) -> tuple:
+    """Quanto da carta é um bloco LITERAL do pedaço.
+
+    🔴 A carta é o contrato REESCRITO. Se ela for o contrato COPIADO, o
+    namespace `cards` vira uma segunda cópia do `normative` — duas entradas
+    disputando as mesmas vagas na busca, dizendo a mesma coisa com as mesmas
+    palavras. A carta perde a razão de existir.
+
+    Isto substitui o teto de tamanho que havia em `publicar_cartas.py`. 📊 Em
+    09/08/2026 aquele teto reprovou 25 cartas da Allianz por terem mais de 900
+    caracteres — e a medição mostrou que **nenhuma era cópia**: o maior bloco
+    literal em comum foi de 105 caracteres (11%). Eram listas taxativas, longas
+    porque a lista do contrato é longa, e cortá-las faria a carta mentir por
+    omissão.
+
+    **Tamanho não separa carta de cópia. Bloco literal separa.** E esta
+    conferência só pode morar aqui: o publicador roda no servidor e não tem os
+    pedaços; este script roda na máquina que destilou e tem.
+    """
+    a = " ".join(_sem_acento(texto).split())
+    b = " ".join(_sem_acento(_ancora(pedaco)).split())
+    if not a:
+        return 0.0, 0
+    m = difflib.SequenceMatcher(None, a, b).find_longest_match(0, len(a), 0, len(b))
+    # Devolve (fração, tamanho em caracteres). As duas condições precisam bater
+    # para acusar cópia — ver o comentário de `BLOCO_LITERAL_DE_COPIA`.
+    return m.size / len(a), m.size
+
+
 def main() -> int:
     ap = argparse.ArgumentParser(description="Confere a ancoragem das cartas destiladas")
     ap.add_argument("--pasta", required=True,
@@ -188,11 +242,12 @@ def main() -> int:
     print(f"  {'ramo':<14} {'cartas':>7} {'órfãs':>7} {'sobrep.baixa':>13} {'SUSPEITAS':>10}")
     casos: List[Dict[str, Any]] = []
     orfas_total = 0
+    copias_total = 0
 
     for caminho in arquivos:
         nome = os.path.basename(caminho)
         ramo = nome.split("_")[0]
-        total = orfas = fracas = suspeitas = 0
+        total = orfas = fracas = suspeitas = copias = 0
 
         with open(caminho, encoding="utf-8") as arquivo:
             for numero, linha in enumerate(arquivo, 1):
@@ -210,6 +265,13 @@ def main() -> int:
                     orfas += 1
                     print(f"    X  ÓRFÃ {nome}:{numero} → {unit_id!r}")
                     continue
+
+                # 🔴 CÓPIA é defeito, não sinal — e sai com a órfã.
+                copiado, bloco = _fracao_copiada(carta.get("texto", ""), pedacos[unit_id])
+                if copiado > LIMIAR_DE_COPIA and bloco >= BLOCO_LITERAL_DE_COPIA:
+                    copias += 1
+                    print(f"    X  CÓPIA {nome}:{numero} — {copiado:.0%} da carta "
+                          f"é um bloco literal de {bloco} caracteres")
 
                 vocab = _vocabulario(carta.get("texto", ""))
                 citado = _cobertura(vocab, pedacos[unit_id])
@@ -249,13 +311,15 @@ def main() -> int:
                 })
 
         orfas_total += orfas
+        copias_total += copias
         print(f"  {ramo:<14} {total:>7} {orfas:>7} {fracas:>13} {suspeitas:>10}")
 
     suspeitas_total = sum(1 for c in casos if c["vizinho_ancora_melhor"])
     print()
     print(f"  SUSPEITAS (um vizinho ancora melhor): {len(casos)}"
           f"   ← estas vão para o auditor")
-    print(f"  ÓRFÃS                   : {orfas_total}   ← estas são defeito, não sinal")
+    print(f"  ÓRFÃS                   : {orfas_total}   ← defeito: endereço não existe")
+    print(f"  CÓPIAS                  : {copias_total}   ← defeito: a carta não reescreveu")
 
     if args.auditoria and casos:
         casos.sort(key=lambda c: (not c["vizinho_ancora_melhor"], c["cobertura_citado"]))
@@ -269,7 +333,7 @@ def main() -> int:
     # 🔴 A saída só é 1 por ÓRFÃ. Ancoragem fraca não reprova nada: reprovar
     # por ela transformaria "escreveu em português simples" em defeito, que é
     # o oposto do que a SPEC-070 §10 pede.
-    return 1 if orfas_total else 0
+    return 1 if (orfas_total or copias_total) else 0
 
 
 if __name__ == "__main__":

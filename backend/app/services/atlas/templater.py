@@ -569,7 +569,16 @@ _PII_PATTERNS: List[Tuple[re.Pattern, str]] = [
                 # "Substituto". A lista fica curta de propósito: cada palavra
                 # aqui é uma pessoa a menos protegida se eu errar.
                 r"substitut[oa]s?|tempor[áa]ri[oa]s?|reserva|extra|"
-                r"noturn[oa]|diurn[oa]|adicional|efetiv[oa]|terceirizad[oa])\b)"
+                r"noturn[oa]|diurn[oa]|adicional|efetiv[oa]|terceirizad[oa]|"
+                # 09/08/2026 — os QUALIFICADORES. `condutor MAIS JOVEM` e
+                # `Capital Segurado Múltiplo Salarial` viravam `{NOME}`: a
+                # regra leu o adjetivo que qualifica o papel como se fosse o
+                # nome de quem o ocupa. Numa condição geral o papel quase nunca
+                # é ocupado por alguém — ele é DESCRITO, e a descrição vem
+                # nestes adjetivos.
+                r"mais|menos|m[úu]ltipl[oa]|[úu]nic[oa]|global|total|parcial|"
+                r"eventual|habitual|permanente|prim[áa]ri[oa]|secund[áa]ri[oa]|"
+                r"jovem|idos[oa]|maior|menor)\b)"
                 r"(?-i:[A-ZÀ-Ú][A-Za-zà-ú]{2,}"
                 r"(?:" + _H + r"+(?:" + _CONECTIVO + r")?"
                 + _NAO_E_NOME + r"[A-ZÀ-Ú][A-Za-zà-ú]{2,}){1,4})"),
@@ -833,7 +842,7 @@ _PII_PATTERNS: List[Tuple[re.Pattern, str]] = [
     #
     # ⚠️ Estas duas regras têm nome próprio (`_VALOR_COM_RS` / `_VALOR_SEM_RS`)
     # logo abaixo da lista, porque `_reservar` precisa DESLIGÁ-LAS quando o
-    # texto é condição geral — ver `templatize(valor_e_conhecimento=True)`.
+    # texto é condição geral — ver `templatize(documento_publico=True)`.
     # Elas são referenciadas aqui por nome para que exista **uma** descrição de
     # "isto é um valor em reais", e não duas que divergem com o tempo.
     (_VALOR_COM_RS := re.compile(r"(?i)R\$\s*\d{1,3}(?:[.\s]\d{3})*(?:,\d{2})?"), "{VALOR_RS}"),
@@ -1059,10 +1068,25 @@ _CONHECIMENTO_INTOCAVEL = re.compile(
     r"(?<![\d\-])(?:(?:0300|0500|0800)[\s.\-]\d{2,4}(?:[\s.\-]?\d{3,4})?"
     r"|(?:3003|4003|4004|4090)[\s.\-]?\d{4})(?!\d)")
 
+# 🔴 DATA NUMA CONDIÇÃO GERAL NÃO É DATA DE NINGUÉM — 09/08/2026.
+#
+# A regra de data existe porque em conversa `14/05/2025` é o dia da vistoria de
+# um segurado, o vencimento de um boleto, a data do acidente. Num documento
+# público não há pessoa: a data é a **vigência do produto** ou a data da
+# **norma citada**. 📊 As duas que apareceram no ensaio seco da Allianz:
+#
+#     "exclusivamente para apólices com vigência a partir de 14/05/2025"
+#     "Norma Regulamentadora nº 13 de 08/06/78 e Portaria nº 3511 de 20/11/85"
+#
+# Mascarar a primeira apaga a fronteira que decide se a exclusão se aplica à
+# apólice do cliente. Mascarar a segunda apaga a identidade da norma — e é por
+# ela que o corretor confere se a caldeira da empresa está em dia.
+_DATA_DO_DOCUMENTO = re.compile(r"\b\d{2}/\d{2}/\d{2,4}\b")
+
 _MARCA = "\x00%d\x00"
 
 
-def _reservar(s: str, *, valor_e_conhecimento: bool = False):
+def _reservar(s: str, *, documento_publico: bool = False):
     """Tira do texto o que é conhecimento e não pode ser mascarado."""
     guardados: List[str] = []
 
@@ -1095,9 +1119,9 @@ def _reservar(s: str, *, valor_e_conhecimento: bool = False):
     # Quem liga a ressalva é o CHAMADOR, nunca o texto. Nenhuma heurística
     # decide isto sozinha, porque errar para o lado permissivo publica dado de
     # cliente. Só o caminho do acervo (`publicar_cartas.py`), que sabe que está
-    # lendo um PDF da SUSEP, passa `valor_e_conhecimento=True`.
-    if valor_e_conhecimento:
-        for _rx in (_VALOR_COM_RS, _VALOR_SEM_RS):
+    # lendo um PDF da SUSEP, passa `documento_publico=True`.
+    if documento_publico:
+        for _rx in (_VALOR_COM_RS, _VALOR_SEM_RS, _DATA_DO_DOCUMENTO):
             s = _rx.sub(_troca, s)
     return s, guardados
 
@@ -1108,19 +1132,45 @@ def _devolver(s: str, guardados: List[str]) -> str:
     return s
 
 
-def templatize(text: str, *, valor_e_conhecimento: bool = False) -> str:
+def templatize(text: str, *, documento_publico: bool = False) -> str:
     """Devolve a tela com a PII trocada por placeholders. Determinístico.
 
-    `valor_e_conhecimento=True` preserva valores em reais. Use **somente**
+    `documento_publico=True` preserva valores em reais. Use **somente**
     quando a origem do texto é documento público — condição geral, circular,
     manual do segurado — onde a cifra descreve o produto e não uma pessoa. O
     padrão é `False` e continua mascarando, porque em conversa de atendimento
     o valor é do cliente.
     """
     s = str(text or "")
-    s, guardados = _reservar(s, valor_e_conhecimento=valor_e_conhecimento)
+    s, guardados = _reservar(s, documento_publico=documento_publico)
     for rx, repl in _PII_PATTERNS:
         s = rx.sub(repl, s)
+
+    # 🔴 `_LABELED_VALUE` NASCEU PARA LER TELA, E A CARTA DO ACERVO É PROSA.
+    #
+    # Ele está ancorado em `^` porque nasceu de COMPROVANTE, onde cada campo
+    # ocupa uma linha: `Placa: QJQ0A91`. Uma carta destilada nunca é tela — é
+    # um parágrafo que começa por onde o destilador quis. 📊 Três das 1.536
+    # cartas da Allianz começavam com uma palavra que está na lista de rótulos,
+    # e a linha inteira virou `{VALOR}`:
+    #
+    #     "Assistência 24 Horas do Allianz Auto e local de difícil acesso: …"
+    #     "Condutor de 18 a 25 anos no Allianz Auto: a cláusula de ampliação…"
+    #
+    # Repare que os dois-pontos existem — só que no meio de uma frase, não
+    # depois de um rótulo. A regra não tem como distinguir os dois casos num
+    # texto corrido, e no acervo o caso do formulário simplesmente não ocorre.
+    #
+    # As regras de PII de verdade (CPF, telefone, e-mail, placa, cartão, nome)
+    # continuam todas ligadas — esta é a única desligada, e ela não protege
+    # nada sozinha: é uma rede a mais sobre um valor que já tem rótulo.
+    if not documento_publico:
+        s = _aplicar_rotulo(s)
+    return _devolver(s, guardados)
+
+
+def _aplicar_rotulo(s: str) -> str:
+    """A parte de `templatize` que depende de `_LABELED_VALUE`. Ver o chamador."""
     # "Placa: QJQ0A91" → "Placa: {VALOR}" (o valor após o rótulo é dado do cliente)
     def _mask_labeled(m: re.Match) -> str:
         val = m.group(2).strip()
@@ -1167,8 +1217,7 @@ def templatize(text: str, *, valor_e_conhecimento: bool = False) -> str:
             if not parece_valor:
                 return m.group(0)
         return f"{m.group(1)}{{VALOR}}"
-    s = _LABELED_VALUE.sub(_mask_labeled, s)
-    return _devolver(s, guardados)
+    return _LABELED_VALUE.sub(_mask_labeled, s)
 
 
 # Linhas que NÃO são escolha de menu (eco de dados do cliente): "Placa: {X}",
