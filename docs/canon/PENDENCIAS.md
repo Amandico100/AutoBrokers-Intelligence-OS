@@ -3077,13 +3077,45 @@ passa inteiro pelo primeiro:
 de âncora não vigia. E é exatamente o defeito que mais machuca: corpo fiel,
 cauda inventada.
 
+### 📊 O LOTE 2 mediu o alcance disto, e ele tem nome: **o adjetivo enxertado**
+
+Dois auditores da Allianz, em lotes diferentes e sem se falarem, acharam o mesmo
+caso — e nenhum dos três vereditos tinha casa para ele:
+
+> *"Vendaval é cobertura **OPCIONAL** do Allianz Residência."* O escopo está
+> literal no trecho citado, então o veredito é `ok`. Mas a palavra **opcional**
+> não aparece em nenhum dos cinco trechos. **Um corretor que abrir esse endereço
+> para provar "é opcional" não acha a prova.**
+
+E é a classe de palavra mais cara de errar: `opcional` × `básica` decide se o
+cliente **tem ou não** a cobertura.
+
+📊 Medido em 09/08/2026 sobre as 1.536 cartas da Allianz, com um detector de
+afirmação de contratação:
+
+```
+cartas que AFIRMAM ser básica/opcional/adicional     110
+cujo trecho citado não traz nenhuma marca disso       52   (47%)
+```
+
+⚠️ **Esses 52 não são 52 defeitos confirmados.** O detector é grosseiro e erra
+para os dois lados: a primeira versão dele acusou 182, e entre elas cartas em
+que `Facultativa` era o **nome da cobertura** (RCF-V), não uma afirmação de
+opcionalidade. O número serve para dimensionar o trabalho, não para condenar
+carta. Só leitura decide.
+
 - **Destrava:** nada de fora. É uma segunda auditoria, com outro prompt: dado o
   trecho e a carta, *a carta afirma algo que o trecho não sustenta, ou omite uma
   condição que o trecho impõe?*
 - **Dono:** 🤖 execução.
-- **Sugestão de escopo:** começar pelas cartas de `limite` e `franquia`, onde um
-  número vira afirmação e a qualificação some com mais facilidade. 📊 São 133
-  das 1.121 do LOTE 1 (11,9%).
+- **Sugestão de escopo, na ordem:** (1) as ~110 cartas que afirmam
+  básica/opcional/adicional, nas duas seguradoras — é o defeito com nome, dono e
+  consequência clara; (2) as cartas de `limite` e `franquia`, onde um número
+  vira afirmação e a qualificação some com mais facilidade.
+- **Sugestão de veredito:** os três atuais não bastam. Dois auditores propuseram
+  o mesmo quarto, com nomes diferentes (`ok_parcial`, `ok_com_enxerto`): a carta
+  está ancorada, **e** carrega uma afirmação secundária sem lastro. Hoje isso
+  passa como `ok` e não deixa rastro.
 - **O que custa esquecer:** a carta responde com um número certo e uma condição
   errada. O corretor repassa, o cliente contratou o outro plano, e a conferência
   do endereço **confirma** a carta em vez de desmenti-la.

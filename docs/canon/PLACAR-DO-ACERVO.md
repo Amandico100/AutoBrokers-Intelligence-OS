@@ -28,7 +28,7 @@
 | seguradora | auto | resid. | condom. | empres. | vida | fiança | equip. | conferido em |
 |---|:--:|:--:|:--:|:--:|:--:|:--:|:--:|---|
 | **porto** | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | 🔴 | 08/08/2026 |
-| **allianz** | ⚠️ | ⚠️ | 🔴 | ⚠️ | ⚠️ | ❔ | ❔ | 08/08/2026 |
+| **allianz** | ✅ | ✅ | ✅ | ✅ | ✅ | ➖ | ✅ | 09/08/2026 |
 | **bradesco** | 🔴 | ⚠️ | 🔴 | ⚠️ | ⚠️ | ❔ | ❔ | 08/08/2026 |
 | **mapfre** | ⚠️ | ⚠️ | 🔴 | ⚠️ | ⚠️ | ❔ | ❔ | 08/08/2026 |
 | **tokio** | ⚠️ | 🔴 | 🔴 | ⚠️ | 🔴 | ❔ | ❔ | 08/08/2026 |
@@ -145,5 +145,32 @@ esquecer.
 *(cada lote acrescenta seu bloco — quem executou, quando, o que entrou)*
 
 ```
-LOTE 1 — Porto            ⬜ não executado
+LOTE 1 — Porto            ✅ 08/08/2026 · 6 documentos · 1.686 pedaços · 1.121 cartas
+LOTE 2 — Allianz          ✅ 09/08/2026 · 8 documentos · 1.966 pedaços · 1.536 cartas
 ```
+
+### 1.2 O que o LOTE 2 trocou na Allianz
+
+📊 09/08/2026 · 8 de 9 documentos em 43 segundos (o nono entrou depois — ver
+CHANGE-ADDENDA, o tropeço de rede que caiu no crawler pago).
+
+| ramo | o que estava no ar | passou a ser |
+|---|---|---|
+| auto | dez/2025 · 482 pedaços | **22/07/2026** |
+| residencial | dez/2025 · 435 pedaços | **18/06/2026** |
+| vida individual | v10, dez/2025 · 227 pedaços | **v11, 15/07/2026** |
+| empresarial corporate | dez/2025 · 550 pedaços | 27/12/2025 |
+| **condomínio** | 🔴 **nada** | 11/12/2025 |
+| **equipamentos** | 🔴 **nada** | 27/12/2025 |
+| **vida em grupo** | 🔴 **nada** | 24/12/2025 |
+| **carta verde** | 🔴 **nada** | 03/12/2014 |
+
+📊 **1.694 pedaços estavam respondendo com redação vencida** — e o auto e o
+residencial são justamente os dois corredores ativos da Allianz.
+
+**13 dos 22 produtos de varejo ficaram DE FORA, de propósito:** 6 empresariais
+de Riscos Operacionais, Riscos Nomeados e Engenharia (grandes riscos, corretor
+especializado), garantia estendida de veículo (vendida em concessionária), os
+coletivos patrimoniais, o vida em grupo específico de condomínio e as versões
+antigas de equipamentos. Entram numa rodada própria se a corretora vender
+grandes riscos.

@@ -360,7 +360,7 @@ não está no contrato.
 | # | seguradora | cartas cob. | corredor | estado hoje | status | executado em |
 |---|---|---:|---|---|---|---|
 | **1** | **Porto** | 196 | auto+resid | 6 docs vigentes · 1.686 pedaços · cartas destiladas | ✅ | 08/08/2026 |
-| **2** | **Allianz** | 356 | auto+resid | 4 docs, **todos vencidos**, sem condomínio | ⬜ | — |
+| **2** | **Allianz** | 356 | auto+resid | 8 docs vigentes · 1.966 pedaços · 1.536 cartas | ✅ | 09/08/2026 |
 | **3** | **Yelum** | 174 | auto+resid | 🔴 **ZERO documentos** | ⬜ | — |
 | **4** | **HDI** | 128 | auto+resid | 🔴 **ZERO documentos** | ⬜ | — |
 | **5** | **Bradesco** | 66 | auto | 5 docs, 🔴 **auto não existe** | ⬜ | — |
@@ -389,6 +389,7 @@ não está no contrato.
 ```
 LOTE 0 — Fundação (consertos)          ✅ 08/08/2026
 LOTE 1 — Porto                          ✅ 08/08/2026
+LOTE 2 — Allianz                        ✅ 09/08/2026
 ```
 
 ### LOTE 1 — Porto · 08/08/2026
@@ -528,6 +529,48 @@ não existe, carta que ninguém consegue conferir.
 O `--auditoria` grava `AUDITORIA.json`. Mande **subagentes Opus 5** julgarem
 cada caso em `ok` · `mover` (com o `unit_id` certo) · `sem_lastro`. A decisão é
 de leitura, não do script.
+
+#### 6.5.1 O que oito auditores destilaram — leve tudo isto no prompt
+
+📊 LOTE 1 (Porto): 19 erros em 83 examinadas. LOTE 2 (Allianz): **13 em 1.536,
+0,85% — metade da taxa anterior**, porque os destiladores já receberam a regra.
+
+**A. O defeito não é só de lista alfabética.** A redação original falava em
+`a) b) c)`. 📊 Dois dos erros do LOTE 2 foram em **listas numeradas de
+subitens** (20.1/20.2 · 22.10.12/22.10.13). O mecanismo é o mesmo — corte entre
+cabeçalho e conteúdo — e o auditor seguinte não pode ficar procurando só letra.
+
+**B. O cabeçalho da lista vence a contagem de alíneas.** A regra mandava ancorar
+onde estão "a maioria das alíneas **E** a de abertura", e não dizia o que fazer
+quando os dois apontam para lados opostos. 📊 Aconteceu: 1 alínea + cabeçalho de
+um lado, 2 alíneas do outro. **Vence o pedaço que tem o cabeçalho** — é ele que
+o corretor precisa ver para saber de que cobertura são aquelas exclusões.
+
+**C. 🔴 O fim-de-frase promovido a cabeçalho — o caso mais traiçoeiro.**
+A regra "leia `caminho` E `corpo` juntos" (aprendida no LOTE 1) tem um caso em
+que ela **empurra para o lado errado**:
+
+> A frase começa no pedaço anterior — `"1.6. FICAM EXCLUÍDAS AS DESPESAS COM"` —
+> e o FIM dela foi promovido pelo OCR a **título** do pedaço seguinte. Resultado:
+> o `caminho` do citado repete as palavras exatas da carta, enquanto o corpo
+> fala de outro assunto. A carta *parece* perfeitamente ancorada.
+
+**Um `caminho` que casa perfeitamente com a carta enquanto o corpo não casa em
+nada é sinal de fim-de-frase promovido a cabeçalho, não de âncora boa.** Ancore
+onde a frase COMEÇA.
+
+**D. Pedaço inancorável por construção.** 📊 Em 4 dos 30 `ok` do LOTE 2, o
+vizinho era um fragmento sem cabeçalho, com `caminho` genérico e corpo abrindo
+no meio de uma frase. Mover para ele seria sempre pior, **independentemente do
+conteúdo** — e isso enviesa o veredito para `ok` por engenharia do corte, não
+por mérito. Quem audita precisa saber que esse viés existe.
+
+**E. A pergunta barata que separa melhor que a sobreposição.** 📊 O sinal
+`vizinho_ancora_melhor` veio `true` em 43 de 43 casos — ele é o filtro, então
+não discrimina nada dentro da amostra. O que separou, segundo dois auditores
+independentes, foi outra pergunta: **"onde está a primeira frase da carta?"** e
+**"o termo do título da carta aparece no corpo citado?"**. 💭 Não medi ainda —
+fica como hipótese a testar no LOTE 3, não como critério adotado.
 
 ### Passo 7 — Conferir e publicar
 
