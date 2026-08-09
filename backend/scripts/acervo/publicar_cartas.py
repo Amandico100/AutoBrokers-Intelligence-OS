@@ -57,8 +57,12 @@ import glob
 import hashlib
 import json
 import os
+import re
 import sys
 from typing import Any, Dict, List, Optional, Tuple
+
+# Qualquer letra acentuada do português. Ver `_conferir`.
+_RE_ACENTO = re.compile(r"[áàâãéêíóôõúüçÁÀÂÃÉÊÍÓÔÕÚÜÇ]")
 
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))))
 
@@ -164,6 +168,27 @@ def _conferir(carta: Dict[str, Any], versoes: Dict[str, Dict[str, Any]]) -> Opti
         return "sem texto"
     if len(texto) < MIN_CARACTERES:
         return f"curta demais ({len(texto)} caracteres)"
+
+    # 🔴 CARTA LONGA EM PORTUGUÊS SEM UM ÚNICO ACENTO É ENCODING QUEBRADO.
+    #
+    # 📊 Achado no LOTE 2 (Allianz), 09/08/2026: quatro destiladores gravaram o
+    # arquivo por heredoc de shell. O terminal deste ambiente usa cp1252, e o
+    # texto chegou assim:
+    #
+    #     "No Allianz Condominio a cobertura Basica de Incendio e obrigatoria"
+    #
+    # Ninguém percebe lendo rápido — a frase continua compreensível. Mas o RAG
+    # percebe: a busca é híbrida e o BM25 casa por TERMO EXATO. `condomínio`
+    # digitado pelo corretor não casa com `condominio` gravado na carta, e a
+    # resposta certa deixa de aparecer sem que nada acuse.
+    #
+    # A régua é o TAMANHO: uma carta de 200+ caracteres sobre seguro sempre tem
+    # `apólice`, `condomínio`, `veículo`, `indenização`, `é`, `não`, `até`.
+    # Zero acentos nesse tamanho não é estilo, é defeito. Abaixo disso pode ser
+    # uma frase curta legítima sem acento nenhum, e aí não acuso.
+    if len(texto) >= 200 and not _RE_ACENTO.search(texto):
+        return ("sem nenhum acento em %d caracteres — encoding quebrado "
+                "(grave com Write/UTF-8, não por heredoc de shell)" % len(texto))
 
     faceta = str(carta.get("faceta") or "").strip()
     if faceta not in FACETAS:

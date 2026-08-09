@@ -284,6 +284,74 @@ def teste_a_lista_de_documentos_pode_ser_longa():
            "exceção espalhada vira regra sem ninguém decidir")
 
 
+def teste_carta_sem_acento_e_encoding_quebrado():
+    print("\n[6b] Carta longa sem um único acento não entra no RAG")
+
+    import re as _re
+
+    with open(os.path.join(RAIZ, "scripts", "acervo", "publicar_cartas.py"),
+              encoding="utf-8") as arquivo:
+        publicador = arquivo.read()
+
+    checar("_RE_ACENTO = re.compile" in publicador,
+           "o publicador confere acentuação",
+           "📊 4 destiladores gravaram por heredoc de shell e perderam os acentos")
+    checar("len(texto) >= 200 and not _RE_ACENTO.search(texto)" in publicador,
+           "e a régua é o TAMANHO da carta",
+           "frase curta pode legitimamente não ter acento")
+
+    # A prova nas duas direções, com a MESMA carta. Não é um par escolhido: é o
+    # texto real que saiu do destilador do condomínio da Allianz, e a versão
+    # dele com os acentos onde deviam estar.
+    acento = _re.compile(r"[áàâãéêíóôõúüçÁÀÂÃÉÊÍÓÔÕÚÜÇ]")
+
+    def recusa(t: str) -> bool:
+        return len(t) >= 200 and not acento.search(t)
+
+    quebrada = ("No Allianz Condominio a cobertura Basica Simples de Incendio e de "
+                "contratacao obrigatoria, e junto com ela o condominio precisa "
+                "contratar uma ou mais coberturas adicionais para o predio ou para "
+                "o conteudo das areas comuns.")
+    correta = ("No Allianz Condomínio a cobertura Básica Simples de Incêndio é de "
+               "contratação obrigatória, e junto com ela o condomínio precisa "
+               "contratar uma ou mais coberturas adicionais para o prédio ou para "
+               "o conteúdo das áreas comuns.")
+    checar(recusa(quebrada), "a carta com encoding quebrado é recusada",
+           f"{len(quebrada)} caracteres, zero acentos")
+    checar(not recusa(correta),
+           "CONTROLE — a MESMA carta, com os acentos, passa",
+           "as duas têm o mesmo tamanho: o que muda é só o acento")
+
+    # 🔴 CONTROLE — o guarda não pode acusar frase curta. Uma carta de uma linha
+    # sobre "desgaste pelo uso" legitimamente não tem acento nenhum.
+    for curta in [
+        "O seguro de equipamentos da Allianz nao cobre desgaste pelo uso.",
+        "A cobertura de RC Familiar da Allianz tem limite proprio na apolice.",
+    ]:
+        checar(not recusa(curta), f"CONTROLE — {len(curta)} caracteres sem acento passa",
+               "abaixo de 200 não é evidência de encoding quebrado")
+
+    # 🔴 CONTROLE DE REGRESSÃO — o guarda entrou depois de 1.121 cartas da Porto
+    # já publicadas. Se ele reprovasse alguma delas, estaria calibrado errado.
+    porto = os.path.join(RAIZ, "scripts", "acervo", "cartas", "porto")
+    if os.path.isdir(porto):
+        import glob as _glob
+        import json as _json
+
+        total = reprovadas = 0
+        for caminho in _glob.glob(os.path.join(porto, "*_CARTAS.jsonl")):
+            with open(caminho, encoding="utf-8") as arquivo:
+                for linha in arquivo:
+                    if not linha.strip():
+                        continue
+                    total += 1
+                    if recusa(" ".join(_json.loads(linha)["texto"].split())):
+                        reprovadas += 1
+        checar(total > 1000 and reprovadas == 0,
+               f"CONTROLE — nenhuma das {total} cartas da Porto é reprovada",
+               "o guarda entrou depois delas; reprovar seria calibragem errada")
+
+
 def teste_quem_liga_a_ressalva_e_a_procedencia():
     print("\n[5] Só a carta que veio de documento público ganha a ressalva")
 
@@ -333,6 +401,7 @@ def main() -> int:
     teste_o_ramo_nao_e_um_logradouro()
     teste_o_que_vem_depois_do_cargo_pode_ser_o_cargo()
     teste_a_lista_de_documentos_pode_ser_longa()
+    teste_carta_sem_acento_e_encoding_quebrado()
     teste_quem_liga_a_ressalva_e_a_procedencia()
 
     print("\n" + "=" * 74)
