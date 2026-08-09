@@ -3284,3 +3284,61 @@ custo é 📊 medido e certo. **Reverti.**
 - ⚠️ **O que NÃO fazer:** aplicar "porque é obviamente melhor". Foi o que eu ia
   fazer, e a medição do caminho — 0 de 319 — mostrou que o obviamente melhor não
   se sustentava naquele documento. Meça o caminho antes, não só o corte.
+
+---
+
+## P-147 · 🟡 Contaminação de seção NA FONTE — nenhum guarda automático pega
+
+📊 09/08/2026, achado por um auditor de ancoragem no Allianz Empresa PME.
+
+O PDF emendou duas seções. Sob o título `14.2. Riscos Excluídos` da cobertura de
+**Quebra de Vidros** aparecem, no fim da lista alfabética, três alíneas que são
+de **Equipamentos Eletrônicos**:
+
+```
+p) Sobrecarga… capacidade normal de operação dos equipamentos segurados
+q) Negligência do segurado na utilização dos equipamentos
+r) Queda, quebra, amassamento ou arranhadura
+```
+
+Uma carta usou a alínea `p` e afirmou que a cobertura de **vidros** exclui
+sobrecarga *"dos equipamentos segurados"*. 📊 Corrigida — a oração saiu.
+
+### Por que isto é uma família nova de defeito
+
+**O endereço está CERTO.** A carta cita o pedaço que realmente contém aquele
+texto. Então:
+
+- `conferir_ancoragem.py` não acusa — não é órfã, não é cópia, o vizinho não
+  ancora melhor;
+- a auditoria de ancoragem devolve `ok`, e devolve com razão;
+- a auditoria de fidelidade (P-143) não acusa — a afirmação **tem** lastro no
+  trecho;
+- só um leitor que conheça o produto percebe que "equipamentos segurados" não
+  faz sentido numa cobertura de vidro.
+
+Foi exatamente o que aconteceu: o auditor marcou os 4 casos como `ok` — o
+veredito correto — e **relatou este defeito por fora**, na seção de observações.
+
+O mesmo auditor listou outros dois pedaços do mesmo documento com cabeçalho
+mentiroso: `#0238` tem título *"Riscos e Bens Cobertos Específicos"* e corpo
+inteiramente de exclusões; `#0211`/`#0212` estão sob *"Reembolso de honorários
+de perito Contábil"* e carregam a seção `18.3. Definições`.
+
+- **Destrava:** nada de fora. É uma terceira auditoria, com a pergunta:
+  *"o texto deste trecho pertence à cobertura que o título diz?"*
+- **Dono:** 🤖 execução.
+- **Escopo sugerido:** os pedaços onde o vocabulário do corpo destoa do título —
+  falar de `equipamentos` sob um título de `vidros`, de `veículo` sob um título
+  de `vida`. 📊 Dois destiladores já acharam isso sozinhos e não destilaram:
+  o do vida em grupo achou *"vistoria prévia no veículo"* num clausulado de
+  vida; o de equipamentos achou carência de *câncer e cesta básica* num produto
+  de morte acidental.
+- **O que custa esquecer:** a carta afirma uma exclusão que não é daquela
+  cobertura, com o endereço certo apontando para o texto certo. É o formato mais
+  difícil de desmentir — quem for conferir **acha exatamente o que a carta diz**.
+- 💭 **Hipótese barata a testar:** os destiladores acharam esses casos sozinhos
+  quando o contraste era grande (veículo × vida). O caso do PME é sutil
+  (equipamentos × vidros, ambos patrimoniais) e escapou. Talvez baste pedir no
+  prompt: *"antes de escrever, pergunte se este texto pertence mesmo à cobertura
+  do título"*.

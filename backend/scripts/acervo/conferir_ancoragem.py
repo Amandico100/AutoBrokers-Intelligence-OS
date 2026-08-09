@@ -113,7 +113,16 @@ MARGEM_DO_VIZINHO = 0.05
 # Allianz (até 1.630 caracteres, listas taxativas) têm no máximo **105** — bem
 # abaixo do corte. Exigir as duas condições mantém o guarda e solta a carta
 # curta.
-LIMIAR_DE_COPIA = 0.50
+# 📊 Recalibrado em 09/08/2026, no PME da Allianz. Com 0,50 o guarda acusou uma
+# carta que CITA 252 caracteres de uma regra taxativa — "limitada a R$ 500,00
+# por caixa registradora, guichê, caixa, atendente ou vendedor" — e acrescenta a
+# leitura: "não adianta contratar um limite alto se o dinheiro fica na gaveta".
+#
+# **Parafrasear aquela enumeração mudaria o escopo.** Citar é o certo ali, e a
+# carta ainda entrega 45% de trabalho próprio. O que separa citação de cópia não
+# é o bloco existir — é ele ser QUASE TUDO. 📊 A cópia literal montada na prova
+# de mutação mede 100%; esta mede 55%.
+LIMIAR_DE_COPIA = 0.70
 BLOCO_LITERAL_DE_COPIA = 250
 VIZINHOS = (-2, -1, 1, 2)
 # Guardado só para informar a leitura — não filtra mais nada.

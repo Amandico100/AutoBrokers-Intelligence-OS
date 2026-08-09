@@ -360,7 +360,7 @@ não está no contrato.
 | # | seguradora | cartas cob. | corredor | estado hoje | status | executado em |
 |---|---|---:|---|---|---|---|
 | **1** | **Porto** | 196 | auto+resid | 6 docs vigentes · 1.686 pedaços · cartas destiladas | ✅ | 08/08/2026 |
-| **2** | **Allianz** | 356 | auto+resid | 8 docs vigentes · 1.966 pedaços · 1.536 cartas | ✅ | 09/08/2026 |
+| **2** | **Allianz** | 356 | auto+resid | 9 docs vigentes · 2.286 pedaços · 1.938 cartas | ✅ | 09/08/2026 |
 | **3** | **Yelum** | 174 | auto+resid | 🔴 **ZERO documentos** | ⬜ | — |
 | **4** | **HDI** | 128 | auto+resid | 🔴 **ZERO documentos** | ⬜ | — |
 | **5** | **Bradesco** | 66 | auto | 5 docs, 🔴 **auto não existe** | ⬜ | — |

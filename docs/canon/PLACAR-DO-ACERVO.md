@@ -146,7 +146,7 @@ esquecer.
 
 ```
 LOTE 1 — Porto            ✅ 08/08/2026 · 6 documentos · 1.686 pedaços · 1.121 cartas
-LOTE 2 — Allianz          ✅ 09/08/2026 · 8 documentos · 1.966 pedaços · 1.536 cartas
+LOTE 2 — Allianz          ✅ 09/08/2026 · 9 documentos · 2.286 pedaços · 1.938 cartas
 ```
 
 ### 1.2 O que o LOTE 2 trocou na Allianz
@@ -164,6 +164,7 @@ CHANGE-ADDENDA, o tropeço de rede que caiu no crawler pago).
 | **equipamentos** | 🔴 **nada** | 27/12/2025 |
 | **vida em grupo** | 🔴 **nada** | 24/12/2025 |
 | **carta verde** | 🔴 **nada** | 03/12/2014 |
+| **empresa PME** | 🔴 **nada** | 30/04/2026 |
 
 📊 **1.694 pedaços estavam respondendo com redação vencida** — e o auto e o
 residencial são justamente os dois corredores ativos da Allianz.
