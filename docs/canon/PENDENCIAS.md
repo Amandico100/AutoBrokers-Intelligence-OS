@@ -3059,7 +3059,7 @@ essa chave e nunca terão.
 
 ---
 
-## P-143 · 🟡 A âncora certa não prova a afirmação certa
+## P-143 · ✅ A âncora certa não prova a afirmação certa — RESOLVIDO em 09/08/2026
 
 📊 Achado por um auditor de ancoragem em 08/08/2026, no LOTE 1.
 
@@ -3116,6 +3116,46 @@ carta. Só leitura decide.
   o mesmo quarto, com nomes diferentes (`ok_parcial`, `ok_com_enxerto`): a carta
   está ancorada, **e** carrega uma afirmação secundária sem lastro. Hoje isso
   passa como `ok` e não deixa rastro.
+
+### ✅ RESOLVIDO — 09/08/2026
+
+Três auditores leram as 129 cartas apontadas, uma a uma:
+
+```
+reescrever            72     a afirmação não tem prova em nenhum dos 5 trechos
+provado_no_vizinho    38     a prova está a um pedaço de distância
+provado               19     falso positivo do detector
+remover_carta          0
+```
+
+📊 As 72 foram reescritas e aplicadas. Conferência depois: o detector aponta 57,
+e **os 57 são exatamente os 57 já julgados como corretos** — zero pendentes.
+
+**Os 38 `provado_no_vizinho` NÃO foram movidos**, e o motivo é um aviso que um
+auditor deu antes de eu aplicar em lote:
+
+> *"Em 19 deles o **escopo** está corretamente ancorado no endereço citado e é só
+> a **natureza** que mora no vizinho. Trocar o endereço conserta a prova do
+> rótulo e **quebra a prova do escopo**."*
+
+Trocar teria sido um defeito por outro. Fica aberto o caso de a carta poder
+citar **dois** trechos — hoje o formato só aceita um.
+
+**A regra virou §10.3.1-C da SPEC**, com a redação literal que os três auditores
+convergiram. O próximo lote nasce com ela.
+
+**O que os auditores acharam de mais grave**, e que a auditoria de ancoragem
+nunca pegaria:
+- uma carta afirmava que *"a RC Condomínio exclui expressamente a
+  responsabilidade do síndico"* — **fato de contrato que não está em trecho
+  nenhum**. Vira argumento de venda errado.
+- outra dizia que a Assistência Funeral do Porto Vida *"é cobertura básica"*,
+  quando o contrato diz *"de acordo com o Plano contratado"*. É o erro na
+  direção mais cara: promete um funeral que talvez não tenha sido contratado.
+- duas do Allianz Corporate tinham o rótulo **provavelmente errado**, não só sem
+  prova: são complementares (obrigatórias) e foram chamadas de adicionais. O
+  auditor retirou o classificador em vez de trocá-lo, e 💭 marcou como inferência
+  — vale conferência humana.
 - **O que custa esquecer:** a carta responde com um número certo e uma condição
   errada. O corretor repassa, o cliente contratou o outro plano, e a conferência
   do endereço **confirma** a carta em vez de desmenti-la.
@@ -3179,3 +3219,68 @@ Um sinal que grita mais do que acerta ensina o próximo a ignorar sinal.
 - **O que custa esquecer:** alguém relê o relatório do auditor, acha a ideia
   boa — ela **é** boa em tese — e implementa de novo sem medir. Por isso o
   número fica aqui.
+
+---
+
+## P-146 · 🟡 O breadcrumb que perde o pai — investigado, MEDIDO e não aplicado
+
+📊 09/08/2026. Um auditor do P-143 achou uma causa estrutural para o "adjetivo
+enxertado" e propôs o conserto de maior alavancagem do lote:
+
+> *"O enxerto não está distribuído por ramo nem por cobertura: está distribuído
+> por **trecho de documento onde o breadcrumb do chunker quebrou**. Enquanto o
+> caminho preserva `33.2. COBERTURAS ADICIONAIS > 33.2.x`, os casos são
+> `provado`. A partir de `#0138` o caminho reinicia — e todo caso dali em diante
+> virou reescrita. **Consertar o breadcrumb converteria ~20 das 23 reescritas em
+> `provado`, sem tocar no destilador.**"*
+
+**A causa é real e eu a reproduzi.** `_RE_NUMERADO` exige que a linha comece com
+dígito, e o documento usa `►` de forma inconsistente:
+
+```
+#0135  ►33.1.3 … > 33.2. COBERTURAS ADICIONAIS > 33.2.6 PERDA DE ALUGUEL
+#0138  ►33.2.7 ALAGAMENTO                        ← o pai sumiu
+```
+
+`►33.2.7` não casa o padrão numerado, cai na regra de RAIZ e **reinicia a
+pilha**. As outras regras de título já toleram o marcador (`^[►▶\s]*`); esta
+não. O nível deveria vir da numeração, não do símbolo.
+
+### 📊 Por que NÃO foi aplicado
+
+Escrevi o conserto e medi o impacto em 6 documentos reais:
+
+```
+documento              hoje   com o conserto   veredito
+allianz condominio      319        319         IDÊNTICO
+allianz auto            391        391         IDÊNTICO
+allianz empresarial     341        341         IDÊNTICO
+porto vida              155        155         IDÊNTICO
+porto auto              484        487         MUDOU (+3)
+porto condominio        277        276         MUDOU (−1)
+```
+
+E medi o ganho onde o corte NÃO muda — que seria ganho de graça:
+
+```
+allianz condominio: 319 de 319 pedaços com o mesmo corpo
+                    0 caminhos melhorados
+```
+
+**Zero.** O conserto não alterou uma única trilha no documento onde eu conseguia
+comparar sem quebrar nada. Em compensação, mudaria o corte de 2 documentos —
+deslocando os `unit_id` de **530 cartas já publicadas e auditadas**.
+
+O ganho de ~20 cartas era 💭 inferência do auditor, tirada de um lote de 43. O
+custo é 📊 medido e certo. **Reverti.**
+
+- **Destrava:** um lote em que os documentos afetados sejam re-cortados de
+  qualquer jeito — ou seja, quando a Porto publicar versão nova de auto ou
+  condomínio. Aí o conserto entra sem custo, junto com a re-destilação que a
+  versão nova exige.
+- **Dono:** 🤖 execução.
+- **O que custa esquecer:** nada hoje. O conserto está escrito neste registro e
+  a causa está diagnosticada; quem retomar não precisa redescobrir.
+- ⚠️ **O que NÃO fazer:** aplicar "porque é obviamente melhor". Foi o que eu ia
+  fazer, e a medição do caminho — 0 de 319 — mostrou que o obviamente melhor não
+  se sustentava naquele documento. Meça o caminho antes, não só o corte.

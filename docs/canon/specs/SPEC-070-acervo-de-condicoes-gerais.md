@@ -660,10 +660,50 @@ resposta** e manda conferir a apólice. Nunca um número que não se pode afirma
 📊 No LOTE 1 isso salvou quatro tabelas de virarem carta errada: diárias de
 carro reserva, matriz da Assistência 24h, depreciação e reajuste por idade.
 
-**C. Diga sempre se a cobertura é BÁSICA ou OPCIONAL.**
-Sem isso o agente afirma que algo é coberto quando o cliente nunca contratou. É
-o erro mais caro do atendimento porque cria expectativa — e em vida ele cai
-sobre uma família em luto.
+**C. 🔴 Diga se a cobertura é BÁSICA ou OPCIONAL — **e só se o trecho disser**.**
+
+Sem essa informação o agente afirma que algo é coberto quando o cliente nunca
+contratou. É o erro mais caro do atendimento, e em vida ele cai sobre uma
+família em luto.
+
+**Mas o alerta escrito assim, sozinho, produziu um defeito novo.** 📊 Medido no
+LOTE 2 em 2.657 cartas: **129 afirmavam a natureza da cobertura sem que a
+palavra existisse no trecho citado.** Três auditores leram as 129 e **72
+precisaram ser reescritas**.
+
+> *"Vendaval é cobertura **OPCIONAL** do Allianz Residência."* O escopo está
+> literal no trecho. A palavra `opcional` não está — nem no citado, nem nos
+> quatro vizinhos. **Um corretor que abrir esse endereço para provar não acha.**
+
+A causa é mecânica e um auditor a isolou: **contaminação de cabeçalho de seção.**
+O único trecho que diz "Condições Especiais Opcionais" é um cabeçalho no começo
+da seção; o destilador leu **uma vez** e carimbou `OPCIONAL` em dez coberturas
+seguintes. O contraste prova: em `equipamentos` os rótulos estão 100% certos
+porque o cabeçalho calhou de ser o pedaço vizinho — **acerto por sorte de
+adjacência**; em `vida` estão certos porque o contrato repete *"desde que
+contratada"* dentro de cada cobertura.
+
+**A REGRA, e ela é literal:**
+
+> O classificador de natureza — **básica · complementar · adicional · opcional ·
+> acessória** — só entra na carta se a palavra estiver no `corpo` **ou** no
+> `caminho` da unidade citada, **referida à própria cobertura**. Não vale de uma
+> vizinha, não vale da seção seguinte, não vale deduzida do número do item.
+>
+> Sem isso: descreva o escopo **sem** classificador e feche com *"confira no
+> demonstrativo de coberturas da apólice se ela foi contratada"*. Se o contrato
+> disser *"mediante pagamento de prêmio adicional"* ou *"quando contratada"*,
+> **use essas palavras** — elas provam a opcionalidade sem inventar o rótulo.
+>
+> **A mesma regra vale para APONTAR outra cobertura.** Só nomeie uma segunda
+> cobertura se o nome dela estiver escrito num dos trechos. 📊 Um dos piores
+> casos do LOTE 2 mandava *"contratar à parte a cobertura de RC Danos Morais"* —
+> cobertura que nenhum dos cinco trechos menciona.
+
+📊 Onde o defeito se concentra, para quem for auditar: **79% na faceta `escopo`**
+— é a carta de escopo que precisa nomear a cobertura na primeira frase, e é aí
+que o adjetivo entra de carona. E o empresarial é o pior ramo: 📊 18 de 20 casos
+do Porto Empresa abriam com a mesma fórmula deduzida da numeração.
 
 ### 10.4 O formato de saída
 
