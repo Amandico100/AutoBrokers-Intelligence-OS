@@ -61,13 +61,41 @@ import sys
 import unicodedata
 from typing import Any, Dict, List, Optional, Set
 
-# 📊 Calibrado no LOTE 1. Abaixo de 30% do vocabulário da carta presente no
-# pedaço citado, vale olhar. Não é um veredito — ver o docstring.
-LIMIAR_FRACO = 0.30
-# E o vizinho só é suspeito se ancorar SENSIVELMENTE melhor. Sem esta margem,
-# qualquer vizinho um pouco maior viraria acusação.
-MARGEM_DO_VIZINHO = 0.15
+# 🔴 O SINAL É DIFERENCIAL, NÃO ABSOLUTO — e isto foi MEDIDO, não escolhido.
+#
+# A primeira versão sinalizava por sobreposição baixa (< 30% do vocabulário da
+# carta presente no pedaço citado). O auditor do lote 2 sugeriu trocar pelo
+# diferencial — "sinalize quando um vizinho ancorar melhor que o citado" — e
+# marcou a própria sugestão como 💭 inferência, pedindo que fosse medida antes
+# de adotar. Foi.
+#
+# 📊 08/08/2026, contra os 10 erros que dois auditores confirmaram no LOTE 1:
+#
+#     critério                       acusou   pegou   falso alarme
+#     limiar absoluto < 30%              34    6/10             28
+#     diferencial + limiar absoluto      10    6/10              4
+#     DIFERENCIAL PURO                   20   10/10             10
+#
+# ⚠️ **A comparação acima rodou sobre as 57 cartas que a primeira versão já
+# tinha sinalizado, não sobre as 1.121.** Ela mede bem o poder de separação
+# entre os três critérios, e NÃO mede quantas cartas cada um acusaria no acervo
+# inteiro — o denominador é outro. Aplicado às 1.121, o diferencial puro aponta
+# 36 (3,2%). Registro o viés porque um número medido sobre o subconjunto errado
+# vira "achado do produto" se ninguém escrever de onde ele veio (CLAUDE.md
+# §12.1).
+#
+# **O limiar absoluto perdia 4 dos 10.** Ele filtrava antes as cartas que têm
+# boa sobreposição com o citado E um vizinho ainda melhor — que é justamente a
+# lista alfabética partida, o defeito mais comum do lote.
+#
+# E os dois tipos de falha custam coisas MUITO diferentes: um falso alarme
+# custa um auditor ler uma carta boa; um erro que passa vai para produção e
+# manda o corretor abrir o contrato no lugar errado. Com 36 acusações em 1.121
+# cartas, pagar leituras a mais para não perder 4 erros é barato.
+MARGEM_DO_VIZINHO = 0.05
 VIZINHOS = (-2, -1, 1, 2)
+# Guardado só para informar a leitura — não filtra mais nada.
+LIMIAR_FRACO = 0.30
 
 
 def _vocabulario(texto: str) -> Set[str]:
@@ -157,7 +185,7 @@ def main() -> int:
         return 1
 
     print()
-    print(f"  {'ramo':<14} {'cartas':>7} {'órfãs':>7} {'fracas':>7} {'vizinho+':>9}")
+    print(f"  {'ramo':<14} {'cartas':>7} {'órfãs':>7} {'sobrep.baixa':>13} {'SUSPEITAS':>10}")
     casos: List[Dict[str, Any]] = []
     orfas_total = 0
 
@@ -185,10 +213,14 @@ def main() -> int:
 
                 vocab = _vocabulario(carta.get("texto", ""))
                 citado = _cobertura(vocab, pedacos[unit_id])
-                if citado >= LIMIAR_FRACO:
-                    continue
-                fracas += 1
+                if citado < LIMIAR_FRACO:
+                    fracas += 1
 
+                # 🔴 O TESTE É ESTE, e ele roda para TODA carta — inclusive as
+                # que ancoram bem no citado. Filtrar por sobreposição baixa
+                # antes perdia 4 dos 10 erros do LOTE 1: a lista alfabética
+                # partida deixa muito vocabulário em comum com o cabeçalho, e
+                # a carta passava direto pelo filtro com o endereço errado.
                 melhor = None
                 for passo in VIZINHOS:
                     v = _vizinho(pedacos, unit_id, passo)
@@ -198,8 +230,9 @@ def main() -> int:
                     if cob > citado + MARGEM_DO_VIZINHO and (
                             melhor is None or cob > melhor[1]):
                         melhor = (passo, cob, v)
-                if melhor:
-                    suspeitas += 1
+                if not melhor:
+                    continue
+                suspeitas += 1
 
                 casos.append({
                     "ramo": ramo, "arquivo": nome, "linha": numero,
@@ -216,12 +249,12 @@ def main() -> int:
                 })
 
         orfas_total += orfas
-        print(f"  {ramo:<14} {total:>7} {orfas:>7} {fracas:>7} {suspeitas:>9}")
+        print(f"  {ramo:<14} {total:>7} {orfas:>7} {fracas:>13} {suspeitas:>10}")
 
     suspeitas_total = sum(1 for c in casos if c["vizinho_ancora_melhor"])
     print()
-    print(f"  cartas para leitura     : {len(casos)}")
-    print(f"  destas, com vizinho melhor: {suspeitas_total}   ← o sinal forte")
+    print(f"  SUSPEITAS (um vizinho ancora melhor): {len(casos)}"
+          f"   ← estas vão para o auditor")
     print(f"  ÓRFÃS                   : {orfas_total}   ← estas são defeito, não sinal")
 
     if args.auditoria and casos:

@@ -3056,3 +3056,94 @@ essa chave e nunca terão.
   índice na ingestão (D-Acervo-02). O custo aparece no dia em que uma remoção
   falhar: 📊 `delete_document` já respondeu "removi" com o Qdrant fora do ar, e
   aí as duas versões respondem com a mesma autoridade e nada no filtro separa.
+
+---
+
+## P-143 · 🟡 A âncora certa não prova a afirmação certa
+
+📊 Achado por um auditor de ancoragem em 08/08/2026, no LOTE 1.
+
+A auditoria da §6.5 confere **de onde a carta veio**. Ela não confere **o que a
+carta acrescentou ao trecho**. São defeitos de famílias diferentes, e o segundo
+passa inteiro pelo primeiro:
+
+> `condominio_CARTAS.jsonl:185` afirma *"R$ 1.200,00 no Prata e R$ 1.800,00 no
+> Ouro"* como se fossem os tetos dos planos. No contrato os dois valores estão
+> nas cláusulas **34.6 e 34.7, ambas de LIVRE ESCOLHA** — a carta generalizou
+> uma condição. O endereço está correto; um corretor que o abrir encontra o
+> número **e a qualificação que a carta comeu**.
+
+É a regra 7 da §10.3 (*o teste da cauda*) escapando pela porta que a auditoria
+de âncora não vigia. E é exatamente o defeito que mais machuca: corpo fiel,
+cauda inventada.
+
+- **Destrava:** nada de fora. É uma segunda auditoria, com outro prompt: dado o
+  trecho e a carta, *a carta afirma algo que o trecho não sustenta, ou omite uma
+  condição que o trecho impõe?*
+- **Dono:** 🤖 execução.
+- **Sugestão de escopo:** começar pelas cartas de `limite` e `franquia`, onde um
+  número vira afirmação e a qualificação some com mais facilidade. 📊 São 133
+  das 1.121 do LOTE 1 (11,9%).
+- **O que custa esquecer:** a carta responde com um número certo e uma condição
+  errada. O corretor repassa, o cliente contratou o outro plano, e a conferência
+  do endereço **confirma** a carta em vez de desmenti-la.
+
+---
+
+## P-144 · 🟡 O vizinho gêmeo — por que a reancoragem NÃO pode ser automática
+
+📊 Achado por um auditor em 08/08/2026, antes de virar defeito.
+
+A auditoria da §6.5 sinaliza quando um pedaço vizinho ancora melhor que o
+citado. É tentador aplicar o movimento automaticamente. **Não faça.**
+
+> No condomínio, a carta das exclusões da cobertura Básica **Ampla** (33.1.2.2)
+> teve como vizinho melhor a lista da Básica **Simples** (33.1.1.1) — os textos
+> são quase idênticos, e a diferença é **exatamente a alínea que some** (danos
+> elétricos). Um movimento automático teria trocado a cobertura da carta por
+> outra, mais barata e com escopo diferente: **erro muito mais grave que o
+> original**.
+
+A regra que sai daí: **semelhança alta entre citado e vizinho é motivo para NÃO
+mover, não para mover.** Quando dois trechos são gêmeos, o diferencial mede
+ruído, não evidência — e só a leitura separa.
+
+- **Destrava:** nada. É uma trava a acrescentar ao script se algum dia alguém
+  quiser automatizar, e está registrada aqui para que a ideia não volte limpa.
+- **Dono:** 🤖 execução.
+- **O que custa esquecer:** trocar a apólice sobre a qual a carta fala, sem que
+  nada no sistema acuse.
+
+---
+
+## P-145 · 🟢 O teste da faceta foi MEDIDO e recusado — não tente de novo sem dados novos
+
+📊 08/08/2026. Um auditor sugeriu um sinal barato: *"o trecho citado contém
+material da faceta que a carta declara?"* — `prazo` deveria trazer número e
+unidade de tempo, `exclusao` deveria trazer verbo excludente. Ele viu dois casos
+em que isso apontava o erro sozinho.
+
+Implementei e medi contra os 19 erros que quatro auditores confirmaram:
+
+```
+              erros pegos     falso alarme
+exclusao         2 de 14          1 de 27
+limite           0 de  0         17 de 19
+prazo            1 de  2          0 de  3
+documento        0 de  0          1 de  2
+TOTAL            3 de 19         19 de 64
+```
+
+**Não adotado.** `limite` é ruído quase puro — a marca textual que escrevi não
+corresponde a como o contrato escreve limite. `exclusao` tem boa precisão e
+pega 14% dos erros. No acervo inteiro o teste acusaria 87 cartas de 1.121, e a
+maioria sem motivo.
+
+Um sinal que grita mais do que acerta ensina o próximo a ignorar sinal.
+
+- **Destrava:** um lote novo, com erros confirmados por auditoria, para calibrar
+  as marcas por faceta com mais de 19 exemplos.
+- **Dono:** 🤖 execução.
+- **O que custa esquecer:** alguém relê o relatório do auditor, acha a ideia
+  boa — ela **é** boa em tese — e implementa de novo sem medir. Por isso o
+  número fica aqui.
