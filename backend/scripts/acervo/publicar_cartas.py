@@ -395,11 +395,34 @@ def main() -> int:
         # não estão neste arquivo — varrê-las daqui apagaria o acervo inteiro de
         # atendimento. Elas não têm `source_unit_id`; só a carta de condição
         # geral tem.
-        publicadas = (db.client.table("knowledge_cards")
-                      .select("id, card_hash, card_text")
-                      .eq("insurer_key", seguradora).eq("status", "published")
-                      .not_.is_("source_unit_id", "null")
-                      .execute().data or [])
+        # 🔴 O TETO DE 1.000 LINHAS FEZ A LIMPEZA PERDER 12 CARTAS — 09/08/2026.
+        #
+        # A primeira versão desta consulta não paginava, e o Supabase devolve no
+        # máximo 1.000 linhas por chamada. 📊 A saída denunciou sozinha, e o
+        # número era bonito demais para ser verdade:
+        #
+        #     cartas do acervo publicadas : 1000    ← nas DUAS seguradoras
+        #
+        # Porto tinha 1.127 publicadas e o arquivo 1.121; Allianz 1.944 contra
+        # 1.938. **6 versões antigas ficaram no ar em cada uma** — e ficaram
+        # justamente porque a varredura que existe para tirá-las não as viu.
+        #
+        # Uma limpeza que só olha parte do acervo é pior que não ter limpeza:
+        # ela imprime "despublicadas: 37" e dá a impressão de que terminou.
+        publicadas: List[Dict[str, Any]] = []
+        pagina = 0
+        while True:
+            lote = (db.client.table("knowledge_cards")
+                    .select("id, card_hash, card_text")
+                    .eq("insurer_key", seguradora).eq("status", "published")
+                    .not_.is_("source_unit_id", "null")
+                    .order("id")
+                    .range(pagina * 1000, pagina * 1000 + 999)
+                    .execute().data or [])
+            publicadas.extend(lote)
+            if len(lote) < 1000:
+                break
+            pagina += 1
     except Exception as exc:  # noqa: BLE001
         print(f"  X   não consegui listar o que está publicado: {type(exc).__name__}")
         publicadas = []

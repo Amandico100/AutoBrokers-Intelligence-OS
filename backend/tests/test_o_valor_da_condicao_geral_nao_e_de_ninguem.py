@@ -428,6 +428,26 @@ def teste_a_carta_corrigida_entra_e_a_errada_sai():
            "CONTROLE — publica primeiro, limpa depois",
            "ao contrário, uma falha no meio deixa o ramo mudo")
 
+    # 🔴 CONTROLE — a varredura precisa ver o ACERVO INTEIRO.
+    #
+    # 📊 A primeira versão não paginava, e o Supabase devolve no máximo 1.000
+    # linhas. A saída denunciou sozinha, com um número bonito demais:
+    #
+    #     cartas do acervo publicadas : 1000   ← nas DUAS seguradoras
+    #
+    # Porto tinha 1.127 publicadas contra 1.121 no arquivo; Allianz 1.944 contra
+    # 1.938. Seis versões antigas ficaram no ar em cada uma — e ficaram porque a
+    # varredura que existe para tirá-las não as viu.
+    #
+    # Uma limpeza que só olha parte do acervo é PIOR que não ter limpeza: ela
+    # imprime "despublicadas: 37" e dá a impressão de que terminou.
+    checar(".range(pagina * 1000" in publicador and "if len(lote) < 1000:" in publicador,
+           "CONTROLE — a varredura pagina até o fim",
+           "📊 sem isso ela parou em 1.000 e deixou 12 cartas antigas no ar")
+    checar('.order("id")' in publicador,
+           "CONTROLE — e com ordem estável",
+           "sem ordenar, a página 2 pode repetir linhas da 1 e pular outras")
+
 
 def teste_quem_liga_a_ressalva_e_a_procedencia():
     print("\n[5] Só a carta que veio de documento público ganha a ressalva")
