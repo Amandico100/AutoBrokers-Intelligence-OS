@@ -121,8 +121,31 @@ _NAO_E_NOME = (
 # `Olá" {NOME} nome é {NOME}` — a palavra "Meu" comida, e a frase que ANUNCIA
 # o nome destruída junto. O nome ali já é pego pela regra de apresentação, que
 # lê "meu nome é". Uma regra a mais não protegia nada e apagava conhecimento.
+# 🔴 "BOM DIA" FALTAVA — 08/08/2026, achado por uma linha de controle.
+#
+# A lista de gatilhos tinha `olá`, `oi`, `bem-vindo` e `prezado`, e **não tinha
+# a saudação mais comum do português brasileiro**. 📊 Medido no dia:
+#
+#     templatize("Olá, Maria Aparecida da Silva!")     → "Olá, {NOME} da Silva!"
+#     templatize("Bom dia, Maria Aparecida da Silva!") → passa inteiro
+#
+# O furo apareceu de lado: eu testava se a ressalva do valor em reais tinha
+# aberto buraco, e o caso do nome passou. A linha de controle — o mesmo texto
+# com a ressalva DESLIGADA — mostrou que o nome já passava antes, e que era a
+# cifra que vinha salvando aquele caso **por acidente**. Sem o controle, eu
+# teria creditado o furo à mudança do dia e consertado o lugar errado (§9.2).
+#
+# 📊 Alcance real: ZERO das 12.063 cartas publicadas contêm "bom dia" — a carta
+# é um fato destilado, não transcrição. Mas `templatize` também limpa o MAPA de
+# URA (`ura_map_service.py:295`) e a TRANSCRIÇÃO que vai para o prompt do
+# destilador (`attendance_distiller.py:353`), e ali "Bom dia, Fulano" é o
+# primeiro turno de quase toda conversa.
+#
+# As travas do grupo negativo continuam valendo inteiras: `Bom dia! Digite seu
+# CPF` não é tocado porque `digite` está na lista.
 NOME_NA_SAUDACAO = re.compile(
-    r"(?i)\b(ol[áa]|oi|bem[- ]vindo[ao]?|prezad[oa])([,!]?" + _H + r"+)"
+    r"(?i)\b(ol[áa]|oi|bem[- ]vindo[ao]?|prezad[oa]"
+    r"|bom" + _H + r"+dia|boa" + _H + r"+(?:tarde|noite))([,!]?" + _H + r"+)"
     r"(?!(?:digite|informe|escolha|selecione|envie|clique|aguarde|responda|"
     r"para|qual|como|quando|onde|quem|seja|bem|vamos|antes|agora|ainda|caso|"
     r"este|esta|esse|essa|isso|nossa|nosso|obrigad|tudo|aqui|sou|somos|"
@@ -270,11 +293,48 @@ ASSINATURA_DE_CORRETORA = re.compile(
 # A RODOVIA por sigla (`BR-101`, `SC-281`, `RS-118`) exige o número do KM ou do
 # imóvel DEPOIS da sigla — senão "a cobertura vale na BR-101" viraria endereço,
 # e a rodovia sozinha é conhecimento (diz por onde a assistência atende).
+# 🔴 O MIOLO ACEITAVA QUALQUER COISA — 08/08/2026, achado nas cartas da Porto.
+#
+# O trecho entre o TIPO e o NÚMERO era `[^\n,;]{2,45}?`: tudo menos quebra de
+# linha e pontuação. Isso basta para um endereço, e é largo demais para uma
+# frase — porque **três dos tipos da lista são nomes de ramo do nosso produto**:
+# `residencial`, `condomínio` e `edifício`. Eles aparecem em quase toda carta
+# do acervo, e qualquer número mais adiante fechava o casamento:
+#
+#     "desistir do residencial da Porto em até 7 dias"  → "desistir do {ENDERECO} dias"
+#     "a garantia … da Porto é de 90 dias"              → "a garantia {ENDERECO}"
+#     "as centrais … da Porto funcionam 24 horas"       → "as centrais {ENDERECO}"
+#
+# 📊 3 das 783 cartas destiladas da Porto (0,4%) foram destruídas assim, e a
+# frase que sobra continua parecendo uma carta — é o formato pior, porque
+# ninguém percebe que a resposta foi comida.
+#
+# O CONSERTO NÃO ENCURTA A REGRA, DESCREVE MELHOR O QUE É NOME DE RUA
+# ------------------------------------------------------------------
+# Nome de logradouro é feito de palavras CAPITALIZADAS ligadas por conectivo
+# (`Rua Marechal Deodoro da Fonseca`, `Estr. Geral Coqueiros`). Uma frase tem
+# verbo e preposição em minúscula (`Porto em até`, `Porto funcionam`), e é
+# exatamente isso que o miolo passa a recusar.
+#
+# 💭 O custo teórico: um logradouro cujo nome tenha palavra minúscula que não
+# seja `da/de/do/das/dos/e` deixa de casar. 📊 Nos 27 lotes medidos não há
+# nenhum — os nomes reais são `Geral Coqueiros`, `das Flores`, `Sertão do
+# Maruim`, `Vila Nova`. O limite de 5 palavras cobre o mais longo que apareceu.
+#
+# ⚠️ O conectivo é SEPARADOR, nunca a última palavra. Escrito como alternativa
+# solta (`d[aeo]s?|e|Palavra`), o miolo aceitava terminar em conectivo — e
+# `"...da Porto é de 90 dias"` voltava a casar, porque sem acento "e de" são
+# dois conectivos seguidos de um número. Nome de rua termina em nome:
+# `Marechal Deodoro da Fonseca`, não `Marechal Deodoro da`.
+_PALAVRA_DE_NOME = r"[A-ZÀ-Ú0-9][\w'’.\-]*"
+_NOME_DE_LOGRADOURO = (
+    r"(?-i:" + _PALAVRA_DE_NOME +
+    r"(?:" + _H + r"+(?:(?:d[aeo]s?|e)" + _H + r"+)?" + _PALAVRA_DE_NOME + r"){0,4})")
 _LOGRADOURO = re.compile(
     r"(?i)\b(rua|r\.|av\.|avenida|alameda|al\.|travessa|rodovia|rod\.|estrada|"
     r"estr\.|pra[çc]a|servid[ãa]o|condom[íi]nio|edif[íi]cio|ed\.|residencial|"
     r"marginal|beco|largo|linha|loteamento|via|road|unnamed road)" + _H + r"+"
-    r"(?:(?-i:d[aeo]s?)" + _H + r"+)?(?-i:[A-ZÀ-Ú0-9][^\n,;]{2,45}?)\s*,?\s*"
+    r"(?:(?-i:d[aeo]s?)" + _H + r"+)?" + _NOME_DE_LOGRADOURO + r"\s*,?\s*"
     r"(?:n?[ºo°]?\s*)?\d{1,6}(?:\s*[-/]\s*\d{1,6})?\b")
 
 # RODOVIA COM NÚMERO DE IMÓVEL — `BR-101, 205` · `SC-281, 1500`.
@@ -753,7 +813,13 @@ _PII_PATTERNS: List[Tuple[re.Pattern, str]] = [
     # Já "a franquia é de R$ 2.480,00" só serve para uma apólice.
     #
     # Achado pelos subagentes nos lotes 007 e 008 da Resulta, em três conversas.
-    (re.compile(r"(?i)R\$\s*\d{1,3}(?:[.\s]\d{3})*(?:,\d{2})?"), "{VALOR_RS}"),
+    #
+    # ⚠️ Estas duas regras têm nome próprio (`_VALOR_COM_RS` / `_VALOR_SEM_RS`)
+    # logo abaixo da lista, porque `_reservar` precisa DESLIGÁ-LAS quando o
+    # texto é condição geral — ver `templatize(valor_e_conhecimento=True)`.
+    # Elas são referenciadas aqui por nome para que exista **uma** descrição de
+    # "isto é um valor em reais", e não duas que divergem com o tempo.
+    (_VALOR_COM_RS := re.compile(r"(?i)R\$\s*\d{1,3}(?:[.\s]\d{3})*(?:,\d{2})?"), "{VALOR_RS}"),
     # VALOR EM REAIS SEM O "R$".
     #
     # Os lotes 032 e 033 trouxeram franquia e prejuízo escritos só como
@@ -762,7 +828,8 @@ _PII_PATTERNS: List[Tuple[re.Pattern, str]] = [
     # Exige separador de milhar OU três dígitos antes da vírgula, para que
     # "1,50 metros" e "0,5%" não sejam tocados. Continua valendo que o que
     # ENSINA é percentual e prazo, não cifra.
-    (re.compile(r"(?<![\d,.])(?:\d{1,3}(?:\.\d{3})+|\d{3,}),\d{2}(?![\d])"), "{VALOR_RS}"),
+    (_VALOR_SEM_RS := re.compile(
+        r"(?<![\d,.])(?:\d{1,3}(?:\.\d{3})+|\d{3,}),\d{2}(?![\d])"), "{VALOR_RS}"),
     # RÓTULO NO MEIO DA LINHA. `_LABELED_VALUE` está ancorado em `^`, porque
     # nasceu para ler TELA de comprovante, onde cada campo ocupa uma linha. Mas
     # gente escreve num parágrafo só: "segue os dados banco 341 agencia 1234
@@ -978,7 +1045,7 @@ _CONHECIMENTO_INTOCAVEL = re.compile(
 _MARCA = "\x00%d\x00"
 
 
-def _reservar(s: str):
+def _reservar(s: str, *, valor_e_conhecimento: bool = False):
     """Tira do texto o que é conhecimento e não pode ser mascarado."""
     guardados: List[str] = []
 
@@ -986,7 +1053,36 @@ def _reservar(s: str):
         guardados.append(m.group(0))
         return _MARCA % (len(guardados) - 1)
 
-    return _CONHECIMENTO_INTOCAVEL.sub(_troca, s), guardados
+    s = _CONHECIMENTO_INTOCAVEL.sub(_troca, s)
+    # 🔴 O MESMO NÚMERO É DADO DE UMA PESSOA OU REGRA DO PRODUTO — DEPENDE DE
+    # ONDE ELE ESTÁ ESCRITO.
+    #
+    # 📊 Medido em 08/08/2026 nas 716 cartas destiladas das Condições Gerais da
+    # Porto: 36 delas (5,0%) foram RECUSADAS pela verificação de dado pessoal, e
+    # todas as 36 pelo mesmo motivo — trazem um valor em reais. Exemplos:
+    #
+    #     "Pequenos Reparos (10A e 10B): o limite é de R$ 2.500,00 por vigência"
+    #     "Troca de Para-choque (11A e 11B): o limite é de R$ 25.000,00"
+    #     "cláusula 83, só retrovisores externos: limite de R$ 2.000,00"
+    #
+    # Numa CONVERSA, "sua franquia é R$ 2.480,00" é o caso de um segurado e
+    # mascarar é ganho puro — é o que os lotes 007/008 acharam e está escrito na
+    # regra lá em cima. Numa CONDIÇÃO GERAL o mesmo número é o produto: está no
+    # contrato registrado na SUSEP, vale para toda apólice que contratou a
+    # cláusula, é público, e **é exatamente a pergunta que o corretor faz**.
+    #
+    # Sem esta ressalva, as cartas de `limite` — as mais consultadas do acervo —
+    # ou seriam recusadas na porta, ou entrariam no RAG dizendo "o limite é de
+    # {VALOR_RS}", que é pior: parece resposta e não responde nada.
+    #
+    # Quem liga a ressalva é o CHAMADOR, nunca o texto. Nenhuma heurística
+    # decide isto sozinha, porque errar para o lado permissivo publica dado de
+    # cliente. Só o caminho do acervo (`publicar_cartas.py`), que sabe que está
+    # lendo um PDF da SUSEP, passa `valor_e_conhecimento=True`.
+    if valor_e_conhecimento:
+        for _rx in (_VALOR_COM_RS, _VALOR_SEM_RS):
+            s = _rx.sub(_troca, s)
+    return s, guardados
 
 
 def _devolver(s: str, guardados: List[str]) -> str:
@@ -995,10 +1091,17 @@ def _devolver(s: str, guardados: List[str]) -> str:
     return s
 
 
-def templatize(text: str) -> str:
-    """Devolve a tela com a PII trocada por placeholders. Determinístico."""
+def templatize(text: str, *, valor_e_conhecimento: bool = False) -> str:
+    """Devolve a tela com a PII trocada por placeholders. Determinístico.
+
+    `valor_e_conhecimento=True` preserva valores em reais. Use **somente**
+    quando a origem do texto é documento público — condição geral, circular,
+    manual do segurado — onde a cifra descreve o produto e não uma pessoa. O
+    padrão é `False` e continua mascarando, porque em conversa de atendimento
+    o valor é do cliente.
+    """
     s = str(text or "")
-    s, guardados = _reservar(s)
+    s, guardados = _reservar(s, valor_e_conhecimento=valor_e_conhecimento)
     for rx, repl in _PII_PATTERNS:
         s = rx.sub(repl, s)
     # "Placa: QJQ0A91" → "Placa: {VALOR}" (o valor após o rótulo é dado do cliente)

@@ -364,11 +364,16 @@ def _save_session_summary_sync(session_id: str, summary: Dict[str, Any]) -> None
 # ------------------------------------------------------------------ #
 # Knowledge cards — filtro de PII em 2 camadas + fila de aprovação
 # ------------------------------------------------------------------ #
-def _card_pii_clean(text: str) -> bool:
-    """Camada determinística: se o templatize mudaria o texto, tem PII."""
+def _card_pii_clean(text: str, *, valor_e_conhecimento: bool = False) -> bool:
+    """Camada determinística: se o templatize mudaria o texto, tem PII.
+
+    `valor_e_conhecimento` só é ligado pelo caminho do acervo (carta destilada
+    de condição geral pública), onde a cifra é regra do produto e não dado de
+    um segurado. Ver o comentário longo em `templater._reservar`.
+    """
     from app.services.atlas.templater import templatize
 
-    return templatize(text) == text
+    return templatize(text, valor_e_conhecimento=valor_e_conhecimento) == text
 
 
 # `_chave_da_seguradora` vivia aqui e normalizava o nome da seguradora da
@@ -510,7 +515,12 @@ def publish_card_sync(card: Dict[str, Any]) -> bool:
     from app.services.qdrant_service import get_qdrant_service
 
     text = str(card.get("card_text") or "").strip()
-    if not text or not _card_pii_clean(text):
+    # A rede de PII roda DE NOVO aqui, de propósito: o banco já conferiu, mas
+    # esta função é chamada por vários caminhos e a última porta antes do índice
+    # não pode confiar na porta anterior. A ressalva do valor só vale para a
+    # carta que traz `source_unit_id` — ou seja, que veio de documento público.
+    if not text or not _card_pii_clean(
+            text, valor_e_conhecimento=bool(card.get("source_unit_id"))):
         return False
     # O ASSUNTO ENTRA NO TEXTO, de propósito.
     #
@@ -577,7 +587,28 @@ def publish_card_sync(card: Dict[str, Any]) -> bool:
                              if card.get("insurer_key") else {}),
                           **({"ramo": card["ramo"]} if card.get("ramo") else {}),
                           **({"card_category": card["category"]}
-                             if card.get("category") else {})},
+                             if card.get("category") else {}),
+                          # 🔴 A CARTA DO ACERVO PRECISA SABER VOLTAR AO CONTRATO.
+                          #
+                          # A carta destilada de conversa nasce de um monte de
+                          # atendimentos e não tem uma origem única — por isso
+                          # estes dois campos nascem vazios nela, e o `if` os
+                          # omite em vez de gravar string vazia.
+                          #
+                          # A carta destilada de CONDIÇÕES GERAIS tem origem
+                          # exata: um trecho, de uma versão, de um documento. É
+                          # o que separa "acho que a Porto não cobre" de "a
+                          # cláusula 4.4.2.d das Condições Gerais vigentes desde
+                          # 01/07/2026 diz que não cobre". Sem `unit_id` no
+                          # payload o agente tem a afirmação e perde o lastro —
+                          # e o lastro é o produto.
+                          **({"unit_id": card["source_unit_id"]}
+                             if card.get("source_unit_id") else {}),
+                          # `faceta` é a pergunta que a carta responde (escopo,
+                          # exclusao, limite, prazo…). SPEC-070 §5: é por ela
+                          # que a busca equilibra a resposta, para a cobertura
+                          # não voltar sem a exclusão que a anula.
+                          **({"faceta": card["faceta"]} if card.get("faceta") else {})},
     ))
 
 

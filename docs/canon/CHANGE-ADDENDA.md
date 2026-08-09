@@ -1854,3 +1854,116 @@ versão vigente confirmada e 3 recusados** por formato de processo anterior a
 `OPENAI_API_KEY`, e recusa fora do contêiner.
 
 **Autorização:** execução do LOTE 1 da SPEC-070, sessão de 08/08/2026.
+
+---
+
+## SPEC-070 · LOTE 1 (destilação) — 08/08/2026
+
+Os três primeiros itens são do **mascarador de dado pessoal**, não do acervo.
+Apareceram porque as 783 cartas destiladas das Condições Gerais da Porto foram
+submetidas à mesma verificação que protege as cartas de atendimento — e a
+verificação estava errada nas três frentes. Nenhum deles foi procurado: os dois
+últimos vieram de **linha de controle** (CLAUDE.md §9.2).
+
+### 1. BLOCKER — o valor do contrato era tratado como dado de uma pessoa
+
+📊 36 das 783 cartas (5,0%) foram recusadas, todas por trazerem valor em reais:
+*"Pequenos Reparos (10A/10B): o limite é de R$ 2.500,00 por vigência"*.
+
+A regra que as barrava está certa **para conversa** — "sua franquia é de
+R$ 2.480,00" é o caso de um segurado, e foi medida nos lotes 007/008. Numa
+condição geral o mesmo número é o produto: está no contrato registrado na
+SUSEP, vale para toda apólice que contratou a cláusula, é público, e **é a
+pergunta que o corretor faz**. As barradas eram justamente as de `limite`.
+
+Sem a ressalva só havia dois caminhos, e os dois perdem: recusar a carta, ou
+publicar *"o limite é de {VALOR_RS}"* — pior, porque parece resposta e não é.
+
+`templatize(valor_e_conhecimento=True)` reusa `_reservar`, o mecanismo que já
+existia para "isto é conhecimento e não pode ser mascarado". **Quem liga é o
+chamador, nunca o texto**: nenhuma heurística lê a frase e adivinha de quem é o
+R$, e errar para o lado permissivo publica dado de cliente. O padrão é
+desligado; só `publicar_cartas.py` — que sabe estar lendo um PDF da SUSEP — o
+liga, e `publish_card_sync` o deriva de `source_unit_id`, ou seja, da
+procedência.
+
+### 2. BLOCKER — `Bom dia, <nome>` não era mascarado
+
+A lista de gatilhos de saudação tinha `olá`, `oi`, `bem-vindo` e `prezado`, e
+**não tinha a saudação mais comum do português brasileiro**:
+
+    templatize("Olá, Maria Aparecida da Silva!")     → "Olá, {NOME} da Silva!"
+    templatize("Bom dia, Maria Aparecida da Silva!") → passa inteiro
+
+📊 Alcance: ZERO das 12.063 cartas publicadas contêm "bom dia" — a carta é um
+fato destilado, não transcrição. Mas `templatize` também limpa o **mapa de URA**
+(`ura_map_service.py:295`) e a **transcrição que vai para o prompt do
+destilador** (`attendance_distiller.py:353`), e ali "Bom dia, Fulano" é o
+primeiro turno de quase toda conversa.
+
+**Como apareceu:** testando se a ressalva do item 1 tinha aberto buraco, o caso
+do nome passou. A linha de controle — o mesmo texto com a ressalva DESLIGADA —
+mostrou que ele já passava antes, e que era a cifra que vinha salvando aquele
+caso **por acidente**. Sem o controle, eu teria creditado o furo à mudança do
+dia e consertado o lugar errado.
+
+### 3. BLOCKER — três nomes de ramo eram lidos como nome de rua
+
+O miolo do padrão de logradouro aceitava `[^\n,;]{2,45}` — qualquer coisa entre
+o tipo e um número. E **três dos tipos da lista são ramos do nosso produto**:
+`residencial`, `condomínio`, `edifício`.
+
+    "desistir do residencial da Porto em até 7 dias" → "desistir do {ENDERECO} dias"
+    "a garantia … da Porto é de 90 dias"            → "a garantia {ENDERECO}"
+
+📊 3 das 783 cartas destruídas assim, e a frase que sobra continua parecendo uma
+carta — o formato pior, porque ninguém percebe que a resposta foi comida.
+
+O conserto não encurta a regra: descreve melhor o que é nome de rua. Nome de
+logradouro é feito de palavras capitalizadas ligadas por conectivo
+(`Marechal Deodoro da Fonseca`), e **nunca termina em conectivo**. Uma frase tem
+verbo e preposição em minúscula, e é isso que o miolo passa a recusar.
+
+📊 CONTROLE: 17 endereços reais dos 27 lotes medidos continuam 100% mascarados.
+
+### 4. ESSENCIAL — a carta do acervo leva procedência e faceta ao índice
+
+`publish_card_sync` mandava ao Qdrant `insurer_key`, `ramo` e `card_category`.
+A carta de conversa não tem origem única e por isso nasce sem `unit_id`; a carta
+de condição geral tem origem exata. Sem `unit_id` no payload, o agente fica com
+a afirmação e perde o lastro — e o lastro é o produto: é o que separa *"acho que
+a Porto não cobre"* de *"a cláusula 4.4.2.d das Condições Gerais vigentes desde
+01/07/2026 diz que não cobre"*. `faceta` entra junto, e já tinha índice.
+
+### 5. ESSENCIAL — o título do documento carregava a versão, e mentia
+
+📊 Dois dos seis documentos da Porto: o título dizia `(CG140)` e o arquivo era o
+**CG144**; outro dizia `(abr/2025)` e a vigência era **31/07/2026**. O título é
+congelado no cadastro e não muda quando a versão troca — então carregar versão
+nele é garantir que ele envelheça errado (CLAUDE.md §12.1: conserte o campo, não
+o texto). Os três títulos afetados foram limpos; a versão vive em
+`version_label` e a vigência em `effective_from`.
+
+**Achado por um subagente destilador**, que reparou na divergência entre o
+briefing e o cabeçalho injetado nos 484 pedaços.
+
+### Prova de mutação (CLAUDE.md §9.3)
+
+`test_o_valor_da_condicao_geral_nao_e_de_ninguem.py`, 5 mutações, 5 pegas:
+
+| mutação | o teste |
+|---|---|
+| desliga a ressalva do valor | reprovou (3) |
+| tira `bom dia` da lista de saudações | reprovou (4) |
+| miolo do logradouro volta a aceitar minúscula | reprovou (5) |
+| miolo do logradouro volta a poder terminar em conectivo | reprovou (3) |
+| liga a ressalva FIXA no publicador | reprovou (2) |
+
+A quarta mutação **passou na primeira tentativa** e revelou lacuna do próprio
+teste: as frases usavam "é de" com acento, e sem acento ("e de") são dois
+conectivos seguidos de número — o casamento que comia a carta. Transcrição de
+URA chega sem acento o tempo todo; os casos foram acrescentados.
+
+📊 Bateria completa depois de tudo: **210 verdes, 0 vermelhos.**
+
+**Autorização:** execução do LOTE 1 da SPEC-070, sessão de 08/08/2026.
