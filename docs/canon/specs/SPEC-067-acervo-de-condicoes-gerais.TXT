@@ -3,10 +3,10 @@
 > **Versão:** 1.0 · **Criada em:** 08/08/2026
 > **Substitui:** SPEC-066 v1 e v2 (o método mudou; o objetivo é o mesmo)
 > **Autoridade:** CLAUDE.md · D-Acervo-01 · D-Acervo-02
-> **Branch:** `feat/spec070-acervo-condicoes-gerais`
+> **Branch:** `feat/spec067-acervo-condicoes-gerais`
 ---
 
-# SPEC-070 — O acervo de condições gerais
+# SPEC-067 — O acervo de condições gerais
 
 > **O objetivo, em uma frase:** que o AutoBrokers responda qualquer pergunta
 > sobre qualquer cobertura de qualquer seguradora, com o texto **oficial e
@@ -19,7 +19,7 @@
 O Founder abre um chat e escreve **uma frase**:
 
 ```
-Execute o LOTE N da SPEC-070.
+Execute o LOTE N da SPEC-067.
 ```
 
 O chat lê esta SPEC inteira, executa o lote, e **atualiza o placar da §7**.
@@ -92,70 +92,6 @@ Fim de Comercialização.
 > **VIGENTE = produto "Passível de comercialização" + versão com Data de Fim VAZIA.**
 
 Download: `GET .../REP2/Produto.aspx/DownloadConsultaPublica/{id}` → PDF.
-
-### 3.2.1 🔴 A REGRA QUE NÃO SE NEGOCIA — só entra o VIGENTE
-
-> **Nenhum documento revogado entra no acervo. Nunca. Por nenhum motivo.**
-
-📊 É a razão de esta SPEC existir: hoje **12 de 13 documentos indexados são
-versões revogadas**, e o agente responde a partir delas com a autoridade de um
-documento oficial.
-
-**O erro é invisível.** Um contrato revogado não parece revogado — tem o
-logotipo certo, a linguagem certa e o número de processo certo. O segurado age
-sobre a resposta e ninguém percebe.
-
-#### O que o executor TEM de fazer, em toda consulta
-
-```
-1. A situação do produto é "Passível de comercialização"?
-   NÃO → produto morto. NÃO baixe. Registre e siga.
-
-2. Na tabela de Versões, qual linha tem Data de Fim de Comercialização VAZIA?
-   ESSA é a vigente. É a única que se baixa.
-
-3. DUAS linhas com fim vazio → NÃO ESCOLHA. Pare e registre `indeterminado`.
-   Duas vigentes é defeito da fonte, não escolha sua.
-
-4. NENHUMA com fim vazio → o produto não tem versão em comercialização.
-   NÃO baixe.
-
-5. A tabela não veio → `indeterminado`. NUNCA "sem alteração".
-```
-
-#### O que é PROIBIDO
-
-| ⛔ | por quê |
-|---|---|
-| Baixar do site da seguradora "porque é mais fácil" | 📊 O site publica o que quer. A Porto mantém a CG140 revogada no ar desde janeiro; a vigente é a CG144 |
-| Escolher a versão **mais recente** da lista | Recente ≠ vigente. 📊 A vigente do Bradesco Vida é de **2014** e está correta |
-| Escolher pelo nome do arquivo ou pela data no título | 📊 O CG140 tem "010126" no nome e foi substituído em julho |
-| Assumir "não achei versão nova" = "está atualizado" | 📊 8 de 28 consultas devolveram 200 com página vazia |
-| Reaproveitar documento do acervo sem reconferir | 📊 Foi assim que os 12 revogados chegaram lá |
-
-#### A conferência obrigatória, antes de indexar
-
-O executor escreve no relatório do lote, para **cada** documento:
-
-```
-produto ........... <nome> (processo NNNNN.NNNNNN/AAAA-DD)
-situação .......... Passível de comercialização
-versão baixada .... <arquivo>
-início ............ DD/MM/AAAA
-fim ............... (vazio)   ← se não estiver vazio, PARE
-total de versões .. N
-o que tínhamos .... <versão antiga ou "nada">
-```
-
-**Se qualquer linha não puder ser preenchida com o que veio do registro oficial,
-o documento não entra.** Um lote incompleto e honesto vale mais que um acervo
-que mente com confiança.
-
-#### E a carta herda a data
-
-Toda carta destilada carrega a **vigência do documento de origem** (§10.4).
-Carta sem vigência não é publicada — no dia em que o contrato mudar, ela seria
-indistinguível das que continuam valendo.
 
 ### 3.3 As três armadilhas medidas
 
@@ -359,9 +295,9 @@ não está no contrato.
 
 | # | seguradora | cartas cob. | corredor | estado hoje | status | executado em |
 |---|---|---:|---|---|---|---|
-| **1** | **Porto** | 196 | auto+resid | 6 docs vigentes · 1.686 pedaços · cartas destiladas | ✅ | 08/08/2026 |
-| **2** | **Allianz** | 356 | auto+resid | 9 docs vigentes · 2.286 pedaços · 1.938 cartas | ✅ | 09/08/2026 |
-| **3** | **Yelum** | 174 | auto+resid | 8 docs vigentes · 2.825 pedaços · 1.361 cartas | ✅ | 10/08/2026 |
+| **1** | **Porto** | 196 | auto+resid | 6 docs, **5 vencidos**, condomínio de **2012** | ⬜ | — |
+| **2** | **Allianz** | 356 | auto+resid | 4 docs, **todos vencidos**, sem condomínio | ⬜ | — |
+| **3** | **Yelum** | 174 | auto+resid | 🔴 **ZERO documentos** | ⬜ | — |
 | **4** | **HDI** | 128 | auto+resid | 🔴 **ZERO documentos** | ⬜ | — |
 | **5** | **Bradesco** | 66 | auto | 5 docs, 🔴 **auto não existe** | ⬜ | — |
 | **6** | **Tokio** | 65 | auto | 2 docs, processo **truncado** no banco | ⬜ | — |
@@ -387,63 +323,9 @@ não está no contrato.
 *(cada lote acrescenta seu bloco aqui)*
 
 ```
-LOTE 0 — Fundação (consertos)          ✅ 08/08/2026
-LOTE 1 — Porto                          ✅ 08/08/2026
-LOTE 2 — Allianz                        ✅ 09/08/2026
-LOTE 3 — Yelum                          ✅ 10/08/2026
+LOTE 0 — Fundação (consertos)          ⬜ não executado
+LOTE 1 — Porto                          ⬜ não executado
 ```
-
-### LOTE 1 — Porto · 08/08/2026
-
-**Coleta** (`coletar_seguradora.py --seguradora porto --aplicar`), 40 s, 0 falhos:
-
-| ramo | pedaços | vigência oficial | o que saiu do ar |
-|---|---:|---|---|
-| auto | 484 | 01/07/2026 | CG140 (janeiro) → **CG144** |
-| condomínio | 277 | 11/12/2025 | **o de 2012** |
-| empresarial | 349 | 31/07/2026 | abril/2025 |
-| residencial | 325 | 05/12/2025 | dezembro/2025 |
-| fiança | 96 | 08/08/2026 | versão sem data |
-| vida | 155 | 27/11/2025 | 2022 |
-
-📊 **1.686 pedaços.** As 6 versões antigas ficaram fechadas e guardadas
-(`superseded_at` + PDF no MinIO), conforme **D-Acervo-02**.
-
-**Reprodução independente do corte.** Os pedaços foram gerados de novo fora do
-servidor, a partir dos mesmos `susep_version_id`, e comparados um a um:
-**idênticos nos 6 ramos** (484/277/349/96/325/155). É o que autoriza a carta a
-citar `unit_id` — o endereço que ela guarda aponta mesmo para o trecho indexado.
-
-**Destilação** — 6 subagentes Opus 5, um por ramo, com as 8 regras da §10.3.
-
-Três alertas foram acrescentados aos prompts **durante** o lote, cada um vindo
-de uma medição do subagente anterior. Eles pertencem à §10.3 daqui para a
-frente:
-
-1. **O limite mora no pedaço SEGUINTE ao título do serviço.** No residencial,
-   "limite de até 3 itens" do encanador ficou no mesmo pedaço que as exclusões
-   do eletricista. 📊 O destilador corrigiu 14 citações por causa disso, numa
-   segunda passada. Sem o alerta, a carta gruda o limite no serviço errado.
-2. **Tabela quebrada pelo OCR: não chute coluna.** Onde o cabeçalho se separou
-   dos números, a instrução é escrever a carta que ensina o EIXO da resposta e
-   manda conferir a apólice — nunca um número que não se pode afirmar.
-3. **Diga sempre se a cobertura é básica ou opcional.** Sem isso o agente
-   promete cobertura que o cliente não contratou.
-
-**O que os destiladores recusaram destilar** — e é a parte mais valiosa do
-relatório deles, porque é o que impede a carta convincente e errada:
-
-- a tabela de diárias de carro reserva e a matriz de serviços da Assistência
-  24h (auto): colunas perdidas no OCR;
-- os 54 pares de percentual de reajuste por idade (vida): não dá para afirmar
-  qual coluna é feminino linha a linha;
-- os percentuais de depreciação (residencial): três colunas embaralhadas;
-- **o regresso contra o inquilino (fiança): não existe neste contrato.** O
-  destilador registrou que a afirmação "a Porto paga e depois cobra do
-  inquilino" não está escrita ali, e ancorou a carta no que está — que o seguro
-  não isenta o locatário. É a regra 8 funcionando.
-
----
 
 ---
 
@@ -500,84 +382,11 @@ no banco e no MinIO, endereçável por (produto, data).
 
 Ver §10.
 
-### Passo 6.5 — 🔴 Conferir a ANCORAGEM (obrigatório, não pule)
-
-```bash
-python backend/scripts/acervo/conferir_ancoragem.py --pasta <dir> --auditoria
-```
-
-**O que ele confere:** se cada carta aponta para o trecho que a sustenta.
-
-Um endereço errado é **pior que endereço nenhum**. A carta continua parecendo
-certa, o agente cita com confiança, e quem for conferir não acha nada no lugar
-indicado. A causa é o corte: o título do serviço fica num pedaço e o limite no
-seguinte; a cobertura num, a exclusão no outro. Quem lê a regra inteira cita o
-começo — que é o pedaço errado.
-
-📊 **LOTE 1:** o destilador do condomínio rodou essa medição por conta própria e
-achou **20 das suas 203 cartas** citando o vizinho. Rodada nos seis ramos: 57 de
-1.121 sinalizadas, **17 com um vizinho ancorando melhor**, 0 órfãs.
-
-**E o alerta da §10.3.1 não substitui esta conferência.** Os seis destiladores
-receberam o aviso e o defeito apareceu mesmo assim. O que acha é medir, não
-avisar.
-
-O script **não reprova** por ancoragem fraca, de propósito: uma carta boa é o
-contrato reescrito em português de WhatsApp, e a sobreposição cai justamente
-porque o trabalho foi feito direito. Ele **reprova por órfã** — endereço que
-não existe, carta que ninguém consegue conferir.
-
-O `--auditoria` grava `AUDITORIA.json`. Mande **subagentes Opus 5** julgarem
-cada caso em `ok` · `mover` (com o `unit_id` certo) · `sem_lastro`. A decisão é
-de leitura, não do script.
-
-#### 6.5.1 O que oito auditores destilaram — leve tudo isto no prompt
-
-📊 LOTE 1 (Porto): 19 erros em 83 examinadas. LOTE 2 (Allianz): **13 em 1.536,
-0,85% — metade da taxa anterior**, porque os destiladores já receberam a regra.
-
-**A. O defeito não é só de lista alfabética.** A redação original falava em
-`a) b) c)`. 📊 Dois dos erros do LOTE 2 foram em **listas numeradas de
-subitens** (20.1/20.2 · 22.10.12/22.10.13). O mecanismo é o mesmo — corte entre
-cabeçalho e conteúdo — e o auditor seguinte não pode ficar procurando só letra.
-
-**B. O cabeçalho da lista vence a contagem de alíneas.** A regra mandava ancorar
-onde estão "a maioria das alíneas **E** a de abertura", e não dizia o que fazer
-quando os dois apontam para lados opostos. 📊 Aconteceu: 1 alínea + cabeçalho de
-um lado, 2 alíneas do outro. **Vence o pedaço que tem o cabeçalho** — é ele que
-o corretor precisa ver para saber de que cobertura são aquelas exclusões.
-
-**C. 🔴 O fim-de-frase promovido a cabeçalho — o caso mais traiçoeiro.**
-A regra "leia `caminho` E `corpo` juntos" (aprendida no LOTE 1) tem um caso em
-que ela **empurra para o lado errado**:
-
-> A frase começa no pedaço anterior — `"1.6. FICAM EXCLUÍDAS AS DESPESAS COM"` —
-> e o FIM dela foi promovido pelo OCR a **título** do pedaço seguinte. Resultado:
-> o `caminho` do citado repete as palavras exatas da carta, enquanto o corpo
-> fala de outro assunto. A carta *parece* perfeitamente ancorada.
-
-**Um `caminho` que casa perfeitamente com a carta enquanto o corpo não casa em
-nada é sinal de fim-de-frase promovido a cabeçalho, não de âncora boa.** Ancore
-onde a frase COMEÇA.
-
-**D. Pedaço inancorável por construção.** 📊 Em 4 dos 30 `ok` do LOTE 2, o
-vizinho era um fragmento sem cabeçalho, com `caminho` genérico e corpo abrindo
-no meio de uma frase. Mover para ele seria sempre pior, **independentemente do
-conteúdo** — e isso enviesa o veredito para `ok` por engenharia do corte, não
-por mérito. Quem audita precisa saber que esse viés existe.
-
-**E. A pergunta barata que separa melhor que a sobreposição.** 📊 O sinal
-`vizinho_ancora_melhor` veio `true` em 43 de 43 casos — ele é o filtro, então
-não discrimina nada dentro da amostra. O que separou, segundo dois auditores
-independentes, foi outra pergunta: **"onde está a primeira frase da carta?"** e
-**"o termo do título da carta aparece no corpo citado?"**. 💭 Não medi ainda —
-fica como hipótese a testar no LOTE 3, não como critério adotado.
-
 ### Passo 7 — Conferir e publicar
 
-- `publicar_cartas.py --seguradora <chave> --seco` — confere sem gravar nada
+- Rodar o validador (vocabulário, PII, cobertura)
 - **Ler 20 cartas com os olhos**, não a contagem
-- `publicar_cartas.py --seguradora <chave>` — grava e indexa
+- Publicar
 
 ### Passo 8 — Atualizar esta SPEC
 
@@ -641,71 +450,6 @@ fiel com a cauda inventada.
 
 **8. Não afirme cobertura sem o trecho.** Você tem o contrato na mão; use-o.
 
-### 10.3.1 🔴 Os três alertas — medidos no LOTE 1, obrigatórios daqui pra frente
-
-Cada um destes nasceu de uma medição de um destilador do LOTE 1 e foi
-acrescentado ao prompt do subagente seguinte. **Vão em todo prompt.**
-
-**A. O limite mora no pedaço SEGUINTE ao título do serviço.**
-📊 No residencial da Porto, *"limite de até 3 itens"* do encanador ficou no
-mesmo pedaço que as exclusões do eletricista. Uma carta montada de um pedaço só
-**gruda o limite no serviço errado** — e sai convincente. O destilador que
-recebeu o alerta corrigiu **14 citações** numa segunda passada; o que não
-recebeu não tinha como saber que precisava conferir.
-
-> *"Sempre confira o pedaço anterior e o seguinte antes de fixar um número."*
-
-**B. Tabela quebrada pelo OCR: não chute coluna.**
-Onde o cabeçalho se separou dos números, escreva a carta que ensina **o eixo da
-resposta** e manda conferir a apólice. Nunca um número que não se pode afirmar.
-📊 No LOTE 1 isso salvou quatro tabelas de virarem carta errada: diárias de
-carro reserva, matriz da Assistência 24h, depreciação e reajuste por idade.
-
-**C. 🔴 Diga se a cobertura é BÁSICA ou OPCIONAL — **e só se o trecho disser**.**
-
-Sem essa informação o agente afirma que algo é coberto quando o cliente nunca
-contratou. É o erro mais caro do atendimento, e em vida ele cai sobre uma
-família em luto.
-
-**Mas o alerta escrito assim, sozinho, produziu um defeito novo.** 📊 Medido no
-LOTE 2 em 2.657 cartas: **129 afirmavam a natureza da cobertura sem que a
-palavra existisse no trecho citado.** Três auditores leram as 129 e **72
-precisaram ser reescritas**.
-
-> *"Vendaval é cobertura **OPCIONAL** do Allianz Residência."* O escopo está
-> literal no trecho. A palavra `opcional` não está — nem no citado, nem nos
-> quatro vizinhos. **Um corretor que abrir esse endereço para provar não acha.**
-
-A causa é mecânica e um auditor a isolou: **contaminação de cabeçalho de seção.**
-O único trecho que diz "Condições Especiais Opcionais" é um cabeçalho no começo
-da seção; o destilador leu **uma vez** e carimbou `OPCIONAL` em dez coberturas
-seguintes. O contraste prova: em `equipamentos` os rótulos estão 100% certos
-porque o cabeçalho calhou de ser o pedaço vizinho — **acerto por sorte de
-adjacência**; em `vida` estão certos porque o contrato repete *"desde que
-contratada"* dentro de cada cobertura.
-
-**A REGRA, e ela é literal:**
-
-> O classificador de natureza — **básica · complementar · adicional · opcional ·
-> acessória** — só entra na carta se a palavra estiver no `corpo` **ou** no
-> `caminho` da unidade citada, **referida à própria cobertura**. Não vale de uma
-> vizinha, não vale da seção seguinte, não vale deduzida do número do item.
->
-> Sem isso: descreva o escopo **sem** classificador e feche com *"confira no
-> demonstrativo de coberturas da apólice se ela foi contratada"*. Se o contrato
-> disser *"mediante pagamento de prêmio adicional"* ou *"quando contratada"*,
-> **use essas palavras** — elas provam a opcionalidade sem inventar o rótulo.
->
-> **A mesma regra vale para APONTAR outra cobertura.** Só nomeie uma segunda
-> cobertura se o nome dela estiver escrito num dos trechos. 📊 Um dos piores
-> casos do LOTE 2 mandava *"contratar à parte a cobertura de RC Danos Morais"* —
-> cobertura que nenhum dos cinco trechos menciona.
-
-📊 Onde o defeito se concentra, para quem for auditar: **79% na faceta `escopo`**
-— é a carta de escopo que precisa nomear a cobertura na primeira frase, e é aí
-que o adjetivo entra de carona. E o empresarial é o pior ramo: 📊 18 de 20 casos
-do Porto Empresa abriam com a mesma fórmula deduzida da numeração.
-
 ### 10.4 O formato de saída
 
 JSONL puro. Sem vírgula entre linhas, sem array externo, sem cerca de código.
@@ -736,7 +480,6 @@ Uma linha por carta:
 | 10 | **Índices de payload:** `insurer_key`, `namespace`, `vigente`, `faceta` | 📊 hoje só existem 3, e nenhum é desses |
 | 11 | **Corrigir os 3 processos malformados** | 📊 devolvem 200 vazio |
 | 12 | **Manifesto de migration** para `normative_documents` e `..._versions` | 📊 são tabelas órfãs; o CLAUDE.md §8 exige |
-| 13 | **Ligar o reranker Cohere** | 📊 não é trabalho: é uma variável de ambiente. Sem ela, `rerank()` vira `docs[:3]` — trunca sem reordenar, pegando os 3 primeiros de uma fusão que não mede relevância |
 
 ⚠️ **O item 12 vem antes de qualquer SQL.**
 
@@ -788,4 +531,5 @@ O LOTE 14 confirma isso **por contagem**, não por impressão.
 | **Agente de auto-atualização** | Decisão do Founder: não é prioridade. O ciclo manual funciona — basta pedir a um chat que confira. |
 | **Matriz de assistência serviço × plano** | Exige leitura de layout. É o item mais caro e o que não termina. |
 | **Ficha de produto completa** | Fica com 2 campos: `coberturas_de_outro_ramo` e o mapa cláusula → unidade. |
+| **Ligar o reranker Cohere** | 📊 está desligado. Melhora a escolha dos trechos, mas não é pré-requisito. |
 | **Comparação entre seguradoras** (fan-out) | Depois que houver acervo de duas seguradoras completas para comparar. |

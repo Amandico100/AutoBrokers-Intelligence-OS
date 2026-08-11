@@ -679,7 +679,23 @@ _PII_PATTERNS: List[Tuple[re.Pattern, str]] = [
     # WhatsApp tanto quanto "ABC1D23", e a placa em minúsculas passava direto.
     # O formato é específico o bastante para não morder prosa: três letras,
     # dígito, alfanumérico, dois dígitos, sem separador de palavra em volta.
-    (re.compile(r"(?<![A-Za-z0-9])[A-Z]{3}[-\s]?\d[A-Z0-9]\d{2}(?![A-Za-z0-9])",
+# 🔴 `das 8h00` VIRAVA {PLACA} — 10/08/2026, achado no acervo da Yelum.
+#
+# O padrão está compilado com `re.I`, e a placa Mercosul tem a forma LLL-N-L-NN.
+# Com maiúsculas ignoradas e o separador opcional aceitando espaço:
+#
+#     das 8h00
+#     LLL N L NN     ← a forma bate exatamente
+#
+# 📊 Isso comeu uma carta que descrevia o horário de trabalho do porteiro
+# ("período das 8h00 às 18h00"). E **não é defeito só do acervo**: a mesma frase
+# numa conversa de atendimento perderia o horário do mesmo jeito.
+#
+# O conserto separa os dois jeitos reais de escrever placa: em CAIXA ALTA ela
+# pode ter separador (`QJQ 0A91`, `ABC-1D23`); em minúscula — que é como o
+# segurado digita no WhatsApp — ela vem colada (`qjq0a91`). Uma sequência de
+# três letras minúsculas SEPARADA por espaço do resto é frase, não placa.
+    (re.compile(r"(?<![A-Za-z0-9])(?-i:[A-Z]{3}[-\s]?\d[A-Z0-9]\d{2}|[a-z]{3}\d[a-z0-9]\d{2})(?![A-Za-z0-9])",
                 re.IGNORECASE), "{PLACA}"),
     (re.compile(r"\b\d{5}-?\d{3}\b"), "{CEP}"),
     # O `\s?` depois do 9 — é como muita gente escreve: "(51) 9 9999-8888".
@@ -1144,6 +1160,8 @@ def templatize(text: str, *, documento_publico: bool = False) -> str:
     s = str(text or "")
     s, guardados = _reservar(s, documento_publico=documento_publico)
     for rx, repl in _PII_PATTERNS:
+        if not _vale_neste_modo(rx.pattern, documento_publico):
+            continue
         s = rx.sub(repl, s)
 
     # 🔴 `_LABELED_VALUE` NASCEU PARA LER TELA, E A CARTA DO ACERVO É PROSA.
@@ -1167,6 +1185,43 @@ def templatize(text: str, *, documento_publico: bool = False) -> str:
     if not documento_publico:
         s = _aplicar_rotulo(s)
     return _devolver(s, guardados)
+
+
+# 🔴 DUAS REGRAS A MAIS QUE NÃO PERTENCEM A DOCUMENTO PÚBLICO — 10/08/2026.
+#
+# Elas entram na mesma porta do `_LABELED_VALUE`: nasceram para conversa, e numa
+# condição geral produzem só estrago. 📊 Achadas no acervo da Yelum:
+#
+#   TRATAMENTO (Sr./Sra./Dr.)  `SRA Plus` virou `{NOME}`. `SRA` ali é
+#       **Serviço de Reparo em Arranhões**, e `Plus` é o nome comercial do
+#       serviço (Martelinho de Ouro). A sigla do produto colidiu com a
+#       abreviação de "Senhora". 3 cartas comidas.
+#       Num documento público não há pessoa a quem se dirigir tratamento.
+#
+#   CAMINHO DE URL            `www.yelum.com.br/Segurado` virou
+#       `www.yelum.com.br/{CAMINHO}`. É o **endereço do portal do cliente** —
+#       exatamente o que a carta existe para informar. 2 cartas comidas.
+#       O caminho de URL numa conversa pode carregar id de sessão ou token; num
+#       contrato, é a página pública onde o segurado abre sinistro.
+#
+# As regras de PII de verdade — CPF, CNPJ, telefone, e-mail, cartão, endereço,
+# nome após cargo, nome na saudação — continuam TODAS ligadas nos dois modos.
+# Identificadas pelo REPLACEMENT, que é único em toda a lista — pelo padrão
+# seria frágil, porque `{NOME}` é produzido por várias regras diferentes.
+# Identificadas por um trecho do PRÓPRIO PADRÃO, que é único. Comparar pelo
+# replacement NÃO serve: `{NOME}` é produzido por cinco regras diferentes —
+# saudação, vocativo, cargo, assinatura e tratamento — e desligar todas abriria
+# um buraco de PII no acervo. 📊 Foi o que aconteceu na primeira tentativa:
+# `porteiro João Silva` e `Bom dia, Maria da Silva` passaram inteiros.
+_SO_EM_CONVERSA = (r"(sr|sra|srta|dr|dra|dona|senhor|senhora)",
+                   r"gov\.br|io)")
+
+
+def _vale_neste_modo(padrao: str, documento_publico: bool) -> bool:
+    """A regra se aplica? Ver `_SO_EM_CONVERSA` logo acima."""
+    if not documento_publico:
+        return True
+    return not any(marca in padrao for marca in _SO_EM_CONVERSA)
 
 
 def _aplicar_rotulo(s: str) -> str:

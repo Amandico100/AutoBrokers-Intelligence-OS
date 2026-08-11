@@ -32,8 +32,9 @@ from __future__ import annotations
 
 import asyncio
 import os
+import re
 import time
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 from typing import Any, Dict, Iterable, List, Optional
 
 BILLING_KIND = "billing_collection"
@@ -42,7 +43,35 @@ BILLING_KIND = "billing_collection"
 # alem disso e melhor terminar o relatorio e continuar na proxima execucao do
 # que segurar uma rotina viva por meio dia.
 GOVERNOR_WAIT_BUDGET_S = 3600
-DEFAULT_PORTAL_KEYS = ["allianz_corretor"]
+
+# Carencia antes de cobrar. Boleto pago nao baixa na hora: cobrar quem pagou
+# ontem queima a corretora com o proprio cliente. A journey ja aplica isso na
+# janela de busca; aqui e a segunda rede, porque um portal novo pode ignorar o
+# filtro de data e devolver a parcela de ontem assim mesmo.
+HORAS_MINIMAS_ATRASO = 48
+
+
+def _portais_que_sei_varrer() -> List[str]:
+    """Os portais com journey de cobranca — a lista vem do REGISTRO, nao daqui.
+
+    Antes esta constante era `["allianz_corretor"]` fixo, e ela decidia sozinha
+    o que a rotina varria: uma seguradora nova podia ter journey, credencial e
+    tela, e ainda assim nunca ser visitada. Agora quem responde e o registro de
+    journeys, que e o unico lugar que SABE o que o worker consegue fazer.
+
+    Fallback só existe porque o backend (smith-api) e o portal-worker sao dois
+    serviços: se o pacote do worker nao estiver no PYTHONPATH deste processo, a
+    rotina segue com o que ja era provado em vez de varrer nada.
+    """
+    try:
+        from portal_worker.journeys import portais_com_cobranca
+
+        return list(portais_com_cobranca())
+    except Exception:  # noqa: BLE001
+        return ["allianz_corretor", "hdi_corretor"]
+
+
+DEFAULT_PORTAL_KEYS = _portais_que_sei_varrer()
 # Mensagem PADRÃO TRAVADA (definida pelo founder 2026-07-11). Sem negrito/itálico,
 # com espaçamento entre as linhas. É a que aparece (read-only) no campo do
 # auxiliar no dashboard. Só o time pode editar até liberação.
@@ -57,6 +86,29 @@ DEFAULT_MESSAGE_TEMPLATE = (
     "Segue o boleto abaixo.\n"
     "Apólice: {numero_apolice}"
 )
+# Quando a parcela em atraso e DEBITO AUTOMATICO recusado, nao existe boleto
+# para mandar — e gerar um exige "Alteracoes Financeiras" no portal, que escreve
+# no contrato do segurado e por isso e proibido ao robo.
+#
+# Decisao do founder (10/08/2026): o segurado e avisado do atraso mesmo sem
+# boleto, e a conversao vira TAREFA para a atendente humana.
+#
+# A mensagem e outra de proposito. Mandar o texto padrao — que promete "segue o
+# boleto abaixo" — e depois nao mandar anexo nenhum e pior que nao avisar: o
+# segurado fica esperando um arquivo que nunca chega e liga para a corretora.
+MENSAGEM_DEBITO_SEM_BOLETO = (
+    "Olá {primeiro_nome},\n\n"
+    "Aqui é a {nome_atendente}, da {nome_corretora}, tudo bem?\n\n"
+    "A Seguradora {nome_seguradora} informou que a parcela {numero_parcela} "
+    "do seguro do {item_segurado} não foi debitada na sua conta e está em "
+    "atraso.\n\n"
+    "Como esse pagamento é por débito automático, não consigo gerar um boleto "
+    "por aqui. Já avisei nossa equipe, e alguém vai falar com você para "
+    "resolver — pra você não ficar sem cobertura, ok!?\n\n"
+    "Qualquer dúvida estou à disposição.\n"
+    "Apólice: {numero_apolice}"
+)
+
 TERMINAL_JOB_STATUSES = {"done", "needs_human", "failed"}
 TEST_LINK_TTL_SECONDS = 7 * 24 * 60 * 60
 
@@ -103,6 +155,123 @@ def _primeiro_nome(full_name: Any) -> str:
             continue
         return tok.capitalize()
     return "cliente"
+
+
+def sem_boleto_por_debito(item: Dict[str, Any]) -> bool:
+    """Esta parcela em atraso e debito automatico recusado?
+
+    Le o motivo que a journey escreveu — nao adivinha pela ausencia do boleto.
+    A diferenca importa: "nao tem boleto porque e debito" e uma regra da
+    seguradora, e o segurado precisa saber; "nao tem boleto porque o download
+    falhou" e um defeito nosso, e mandar mensagem nesse caso seria mentir.
+    """
+    motivo = _norm_txt(item.get("sem_boleto_motivo"))
+    return "debito automatico" in motivo
+
+
+def _norm_txt(value: Any) -> str:
+    import unicodedata
+
+    texto = unicodedata.normalize("NFKD", str(value or "")).encode("ascii", "ignore").decode().lower()
+    return " ".join(texto.split())
+
+
+def tarefas_para_a_equipe(items: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
+    """O que precisa de gente: converter debito em boleto no portal.
+
+    Nao cria tabela nova. A tarefa vive no relatorio da rotina e no aviso ao
+    canal de suporte humano — que sao os dois lugares onde a corretora ja olha.
+    """
+    return [
+        {
+            "portal": i.get("portal"),
+            "cliente_nome": i.get("cliente_nome"),
+            "apolice": i.get("apolice_susep") or i.get("documento"),
+            "parcela": i.get("parcela"),
+            "vencimento": i.get("vencimento"),
+            "valor": i.get("valor"),
+            "acao": "converter debito automatico em boleto no portal da seguradora",
+        }
+        for i in items or []
+        if sem_boleto_por_debito(i)
+    ]
+
+
+def _vencimento_iso(item: Dict[str, Any]) -> str:
+    """Vencimento como aaaa-mm-dd, venha ele dd/mm/aaaa (Allianz) ou já ISO (HDI).
+
+    Uma data em dois formatos ordenada como TEXTO poe 09/08/2026 antes de
+    10/07/2026 — a divida mais nova na frente da mais velha. Normalizar aqui e o
+    que faz a fila de entrega significar alguma coisa.
+    """
+    texto = str(item.get("vencimento") or "").strip()
+    if re.fullmatch(r"\d{4}-\d{2}-\d{2}", texto):
+        return texto
+    m = re.search(r"\b(\d{2})/(\d{2})/(\d{2,4})\b", texto)
+    if not m:
+        return ""
+    dia, mes, ano = m.groups()
+    if len(ano) == 2:
+        ano = f"20{ano}"
+    return f"{ano}-{mes}-{dia}"
+
+
+def vencido_ha_mais_de(item: Dict[str, Any], horas: int = HORAS_MINIMAS_ATRASO,
+                       hoje: Optional[str] = None) -> bool:
+    """A carencia, aplicada de novo do lado de ca.
+
+    A journey ja pede ao portal so o que venceu ha mais de N horas. Esta e a
+    segunda rede: portal novo pode ignorar o filtro de data e devolver a parcela
+    de ontem assim mesmo, e quem paga o preco de cobrar cedo demais e a
+    corretora, na frente do cliente dela.
+
+    Sem data de vencimento legivel -> NAO envia. Nao saber ha quanto tempo
+    venceu nunca pode virar permissao para cobrar.
+    """
+    venc = _vencimento_iso(item)
+    if not venc:
+        return False
+    corte = (datetime.now(timezone.utc) - timedelta(hours=int(horas))).strftime("%Y-%m-%d")
+    return venc <= corte
+
+
+def ordenar_para_entrega(items: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
+    """A fila: divida mais VELHA primeiro.
+
+    Nao e detalhe de estilo. Quando o teto de vazao interrompe a rodada no item
+    7 de 20, os 13 que sobram voltam amanha — e a ordem decide quem esperou. A
+    parcela mais antiga e a mais perto do cancelamento da apolice, entao e ela
+    que sai primeiro. Empate desempata por portal e recibo, para a fila ser
+    igual em duas execucoes seguidas (retomada previsivel).
+    """
+    return sorted(
+        items,
+        key=lambda i: (_vencimento_iso(i) or "9999-12-31",
+                       str(i.get("portal") or ""),
+                       str(i.get("recibo") or "")),
+    )
+
+
+def fila_de_cobranca(items: List[Dict[str, Any]], *, horas: int = HORAS_MINIMAS_ATRASO
+                     ) -> tuple:
+    """Separa quem pode ser cobrado de quem nao pode, e diz POR QUE nao pode.
+
+    Devolve `(fila_ordenada, retidos)`. Nada some: o que nao entra na fila entra
+    no relatorio com motivo. Um inadimplente que desaparece sem explicacao e
+    pior que um que nao foi cobrado — porque ninguem vai atras do que nao viu.
+    """
+    fila: List[Dict[str, Any]] = []
+    retidos: List[Dict[str, Any]] = []
+    for item in items or []:
+        if not _vencimento_iso(item):
+            retidos.append({**item, "retido_por": "sem data de vencimento legivel"})
+        elif not vencido_ha_mais_de(item, horas):
+            retidos.append({**item, "retido_por": f"vencido ha menos de {horas}h (carencia)"})
+        elif not _digits(item.get("whatsapp")):
+            retidos.append({**item, "retido_por": f"sem telefone ({item.get('contact_status') or 'nao encontrado'})"})
+        else:
+            fila.append(item)
+    return ordenar_para_entrega(fila), retidos
 
 
 def normalize_billing_config(config: Optional[Dict[str, Any]], delivery: Optional[Dict[str, Any]] = None) -> Dict[str, Any]:
@@ -157,12 +326,43 @@ def test_send_number(config: Dict[str, Any], delivery: Optional[Dict[str, Any]] 
     return number if len(number) >= 10 else ""
 
 
+# Nome que o SEGURADO le na mensagem, por portal. Antes era um `if` unico para
+# a Allianz — e qualquer seguradora nova viraria a palavra "seguradora" na
+# mensagem ao cliente, o que parece defeito de sistema para quem recebe.
+#
+# A tabela mora aqui, e nao no banco, porque e TEXTO DE MENSAGEM: precisa ser
+# revisavel em code review junto com o template, e nao mudar por baixo de uma
+# corretora sem ninguem ver.
+NOME_DA_SEGURADORA = {
+    "allianz_corretor": "ALLIANZ",
+    "hdi_corretor": "HDI SEGUROS",
+    "porto_corretor": "PORTO SEGURO",
+    "yelum_corretor": "YELUM",
+    "tokiomarine_corretor": "TOKIO MARINE",
+    "bradesco_corretor": "BRADESCO SEGUROS",
+    "mapfre_corretor": "MAPFRE",
+    "azul_corretor": "AZUL SEGUROS",
+    "alfa_corretor": "ALFA SEGURADORA",
+    "sulamerica_corretor": "SULAMERICA",
+    "sompo_corretor": "SOMPO SEGUROS",
+    "suhai_corretor": "SUHAI",
+    "sura_corretor": "SURA",
+    "zurich_corretor": "ZURICH",
+    "segurosunimed_corretor": "SEGUROS UNIMED",
+}
+
+
 def _portal_insurer_name(item: Dict[str, Any], cfg: Dict[str, Any]) -> str:
     explicit = _first_text(item.get("nome_seguradora"), item.get("seguradora"), item.get("insurer_name"))
     if explicit:
         return explicit
-    if str(item.get("portal") or "").strip().lower() == "allianz_corretor":
-        return "ALLIANZ"
+    portal = str(item.get("portal") or "").strip().lower()
+    if portal in NOME_DA_SEGURADORA:
+        return NOME_DA_SEGURADORA[portal]
+    if portal.endswith("_corretor"):
+        # Portal novo sem entrada: melhor o nome derivado da chave do que a
+        # palavra generica. `sancor_corretor` -> "SANCOR" ainda e reconhecivel.
+        return portal[: -len("_corretor")].replace("_", " ").upper()
     return _first_text(cfg.get("insurer_name"), default="seguradora")
 
 
@@ -211,6 +411,11 @@ def build_customer_message(item: Dict[str, Any], template: str, config: Optional
         "recibo": item.get("recibo") or "",
         "portal": item.get("portal") or "",
     }
+    # Debito automatico recusado nao tem boleto — e o template padrao termina
+    # com "Segue o boleto abaixo". Mandar essa frase e nao anexar nada deixa o
+    # segurado esperando um arquivo que nunca chega. Aqui o texto e outro.
+    if sem_boleto_por_debito(item):
+        return MENSAGEM_DEBITO_SEM_BOLETO.format_map(_MessageData(data))
     try:
         return template.format_map(_MessageData(data))
     except Exception:  # noqa: BLE001
@@ -487,7 +692,12 @@ def _format_test_message(item: Dict[str, Any], cfg: Dict[str, Any], boleto: Opti
         "[TESTE AutoBrokers - Auxiliar de Cobranca]",
         build_customer_message(item, cfg["message_template"], cfg),
     ]
-    if boleto_url:
+    if sem_boleto_por_debito(item):
+        # Nao e falha: e a regra da seguradora. Dizer "boleto nao baixado" aqui
+        # mandaria quem le a simulacao procurar defeito onde nao ha.
+        lines.append("Boleto: nao existe — parcela em debito automatico. "
+                     "Tarefa aberta para a atendente converter no portal.")
+    elif boleto_url:
         lines.append("Boleto: enviado como documento PDF em seguida.")
     elif boleto:
         lines.append(f"Boleto: nao anexado nesta simulacao ({boleto.get('reason') or 'sem link disponivel'}).")
@@ -539,6 +749,23 @@ async def _send_test_messages(
     cfg: Dict[str, Any],
     blockers: List[str],
 ) -> List[Dict[str, Any]]:
+    """Entrega a cobranca de CADA inadimplente elegivel, na ordem da fila.
+
+    SPEC-069 — o teto de download nao e teto de envio
+    =================================================
+    Esta funcao percorria `items[:max_boletos_por_execucao]`. Os dois numeros
+    tem nomes parecidos e significados diferentes: `max_boletos` limita quantos
+    PDFs o worker baixa do portal numa entrada; quantas MENSAGENS saem quem
+    limita e o governador de vazao, que conhece o teto do canal.
+
+    Com os dois grudados, uma corretora com 12 atrasados e `max_boletos=10`
+    perdia 2 inadimplentes **em silencio** — sem blocker, sem linha no relatorio,
+    sem nada. Eles simplesmente nao existiam. Agora a fila inteira e percorrida,
+    e quem nao couber HOJE aparece no relatorio e volta amanha de onde parou.
+
+    O que torna "parar no meio" seguro e o `billing_sent_log`: so entra nele
+    quem realmente recebeu. Nao ha fila nova nem estado novo para manter.
+    """
     number = test_send_number(cfg, routine.get("delivery"))
     if not number or not items:
         return []
@@ -555,7 +782,7 @@ async def _send_test_messages(
     sent: List[Dict[str, Any]] = []
     skipped = 0
     orcamento_s = float(GOVERNOR_WAIT_BUDGET_S)
-    a_enviar = items[: int(cfg["max_boletos_por_execucao"])]
+    a_enviar = ordenar_para_entrega(items)
     for indice, item in enumerate(a_enviar):
         recibo_key = str(item.get("recibo") or "").strip()
         if recibo_key and recibo_key in already:
@@ -687,13 +914,23 @@ def _format_report(
     blockers: List[str],
     approval_id: Optional[str],
     test_sends: List[Dict[str, Any]],
+    fila: Optional[List[Dict[str, Any]]] = None,
+    retidos: Optional[List[Dict[str, Any]]] = None,
 ) -> str:
     ok_boletos = [b for b in boletos if b.get("ok")]
     ok_test_sends = [s for s in test_sends if s.get("ok")]
+    fila = fila if fila is not None else items
+    retidos = retidos or []
+    # Quem estava na fila e nao recebeu hoje: teto de vazao, janela fechada ou
+    # ja cobrado antes. Volta na proxima execucao — mas so aparece se a gente
+    # contar, e por isso a conta esta aqui e nao na cabeca de ninguem.
+    pendentes = max(0, len(fila) - len(test_sends))
     lines = [
         f"Auxiliar de Cobranca - {routine.get('name') or 'Cobranca de boletos'}",
         f"Portais varridos: {', '.join(cfg.get('portal_keys') or [])}",
         f"Jobs: {len(jobs)} | inadimplentes: {len(items)} | boletos baixados: {len(ok_boletos)}",
+        f"Podem ser cobrados: {len(fila)} | retidos: {len(retidos)} | "
+        f"aguardando proxima execucao: {pendentes}",
     ]
     if approval_id:
         lines.append(f"Aprovacao pendente criada: {approval_id}")
@@ -706,6 +943,20 @@ def _format_report(
                 lines.append(f"Boletos anexados como PDF: {docs_sent}.")
         else:
             lines.append("Modo teste ativo: nenhum cliente real recebeu mensagem.")
+    # TAREFAS PARA GENTE. O robo avisa o segurado, mas quem converte debito em
+    # boleto e a atendente — o botao que faz isso escreve no contrato e o robo
+    # nao o toca. Sem esta secao, a conversao nunca acontece e o segurado fica
+    # esperando o contato que foi prometido na mensagem.
+    tarefas = tarefas_para_a_equipe(fila)
+    if tarefas:
+        lines.append(f"PRECISA DE VOCE - {len(tarefas)} conversao(oes) de debito em boleto:")
+        for t in tarefas[:10]:
+            lines.append(
+                f"- {t.get('cliente_nome') or 'Cliente'} | apolice {t.get('apolice') or '?'} | "
+                f"parcela {t.get('parcela') or '?'} | vcto {t.get('vencimento') or '?'} "
+                f"-> converter no portal e reenviar")
+        lines.append("  (o segurado JA foi avisado do atraso; falta o boleto)")
+
     if blockers:
         lines.append("Bloqueios/avisos:")
         lines.extend([f"- {b}" for b in blockers[:10]])
@@ -735,11 +986,24 @@ async def execute_billing_collection_routine(supabase, routine: Dict[str, Any]) 
     blockers: List[str] = []
     job_ids: List[str] = []
 
+    # NENHUMA SEGURADORA CAI EM SILENCIO.
+    #
+    # Um portal pode ficar de fora por tres motivos, e os tres viram linha no
+    # relatorio. O que nao pode e sumir: a corretora que ve "3 portais varridos"
+    # sem saber que o quarto nao rodou acha que a carteira dela esta em dia.
+    sei_varrer = set(_portais_que_sei_varrer())
     for portal_key in selected_portal_keys(cfg):
         try:
+            if portal_key not in sei_varrer:
+                blockers.append(
+                    f"portal {portal_key}: selecionado, mas ainda NAO tem automacao de cobranca "
+                    f"— nenhum inadimplente deste portal entrou nesta execucao")
+                continue
             account = await asyncio.to_thread(_portal_account, client, company_id, portal_key)
             if not account:
-                blockers.append(f"portal {portal_key}: sem credencial conectada")
+                blockers.append(
+                    f"portal {portal_key}: sem credencial conectada "
+                    f"— cadastre em Personalizacao > Conectores > Portais")
                 continue
             job_id = await asyncio.to_thread(_enqueue_job, client, routine, portal_key, account, cfg)
             if job_id:
@@ -767,13 +1031,25 @@ async def execute_billing_collection_routine(supabase, routine: Dict[str, Any]) 
         boletos.extend(_extract_boletos(job))
 
     items = await _attach_contacts(company_id, items, cfg) if items else []
+
+    # A FILA. Colher e uma coisa; poder cobrar e outra. Aqui os inadimplentes
+    # viram (a) fila ordenada do mais velho para o mais novo e (b) retidos, cada
+    # um com o motivo escrito. O relatorio mostra os dois — quem foi cobrado e
+    # quem nao foi, e por que.
+    fila, retidos = fila_de_cobranca(items, horas=int(cfg.get("horas_minimas_atraso") or HORAS_MINIMAS_ATRASO))
+    for motivo, quantos in sorted(
+        {r.get("retido_por", "?"): sum(1 for x in retidos if x.get("retido_por") == r.get("retido_por"))
+         for r in retidos}.items()
+    ):
+        blockers.append(f"{quantos} inadimplente(s) nao cobrado(s): {motivo}")
+
     approval_id = None
     wants_approval = cfg.get("send_mode") == "approval" or (cfg.get("send_mode") == "live" and cfg.get("approval_required"))
-    if items and wants_approval:
-        approval_id = await asyncio.to_thread(_create_approval_request, client, routine, items, boletos, cfg)
+    if fila and wants_approval:
+        approval_id = await asyncio.to_thread(_create_approval_request, client, routine, fila, boletos, cfg)
         if not approval_id:
             blockers.append("nao consegui criar pedido de aprovacao")
-    test_sends = await _send_test_messages(client, routine, items, boletos, cfg, blockers) if items else []
+    test_sends = await _send_test_messages(client, routine, fila, boletos, cfg, blockers) if fila else []
     if items and cfg.get("send_mode") == "approval":
         blockers.append("modo aprovacao: mensagens aguardam aprovacao antes de qualquer envio ao cliente")
     elif items and cfg.get("send_mode") == "none":
@@ -798,4 +1074,6 @@ async def execute_billing_collection_routine(supabase, routine: Dict[str, Any]) 
         blockers=blockers,
         approval_id=approval_id,
         test_sends=test_sends,
+        fila=fila,
+        retidos=retidos,
     )

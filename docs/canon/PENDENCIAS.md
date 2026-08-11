@@ -3342,3 +3342,110 @@ de perito Contábil"* e carregam a seção `18.3. Definições`.
   (equipamentos × vidros, ambos patrimoniais) e escapou. Talvez baste pedir no
   prompt: *"antes de escrever, pergunte se este texto pertence mesmo à cobertura
   do título"*.
+
+
+---
+
+# 🟠 COBRANÇA MULTI-SEGURADORA — o que ficou aberto (10/08/2026)
+
+## P-98 · 🔴 O `--headless=new` precisa ir para o worker em produção
+
+📊 Medido em 10/08/2026 contra `www.hdi.com.br/hdidigital/`, um fator por vez,
+com linha de CONTROLE repetida no início e no fim da bateria:
+
+```
+headless clássico ...............  BLOQUEADO   Access Denied (Akamai)
++ args anti-automação ...........  BLOQUEADO
++ script de stealth .............  BLOQUEADO
++ args E stealth ................  BLOQUEADO
+navegador COM janela ............  PASSOU
+--headless=new ..................  PASSOU      ← e roda sem tela
+```
+
+**Cinco variações deram o mesmo bloqueio → nenhuma delas era a causa.** O fator
+é o MODO headless: o clássico é um binário separado, com fingerprint próprio, e
+o Akamai o reconhece.
+
+📊 **Linha de controle da mudança:** a Allianz, com o modo novo, baixou **4 de 4
+boletos** (`via=api_chain`, 103193/117062/117223/117589 bytes). Não houve
+regressão — e é isso que dá direito de creditar o ganho ao modo novo.
+
+- **Destrava:** o código já está em `worker._launch_kwargs()`. Falta o deploy.
+- **Dono:** 🧑 Founder decide o merge · 🤖 já entregou.
+- **Custa se esquecer:** a HDI (e provavelmente Yelum, Porto e toda seguradora
+  atrás de Akamai) **nunca** funciona no worker atual. Não é bug da journey.
+
+## P-99 · 🟠 O Akamai da HDI também reage à FREQUÊNCIA
+
+📊 Depois de ~14 acessos em 30 minutos, o `--headless=new` que passava começou a
+receber `Access Denied` — e continuou bloqueado 12 minutos depois. **É bloqueio
+por IP, temporário, disparado por volume.**
+
+> Isso **valida** a arquitetura de duas fases: a fase COLHER entra no portal
+> **uma vez por execução** e sai. Fosse um-a-um ponta a ponta, o robô entraria
+> 20 vezes por rodada e seria bloqueado no meio.
+
+- **Destrava:** nada. É desenho, não conserto.
+- **Regra dura:** reusar `portal_sessions` sempre que possível, e nunca fazer
+  login por item.
+- **Custa se esquecer:** alguém "otimiza" o Cobrador entrando por cliente, e a
+  corretora perde o acesso ao portal dela.
+
+## P-100 · 🔴 Falta a estrutura HTML da tela de resultado da HDI
+
+A cadeia da HDI está provada até o passo 3:
+
+```
+login ...................... ✅ provado (camada visível + camada real)
+passo 1 (ponte legado) ..... ✅ HTTP 200, identidade colhida (m_cod_corretor, c_pc, l_s, n_s)
+passo 2 (tela de busca) .... ✅ HTTP 200
+passo 3 (a lista) .......... ⚠️  HTTP 200, mas o parser leu 0 linhas
+passo 4 (o boleto) ......... ⏳ não exercitado
+```
+
+📊 O passo 3 respondeu com corpo, então **ou** o `s_tipo` pedido não traz nada,
+**ou** o HTML não casa com `extrair_parcelas`. Não dá para saber sem ver o HTML,
+e o Akamai cortou a sessão antes.
+
+- **Destrava:** 🤖 uma rodada de `ver_html_parcelas.py` com o IP liberado, ou
+  🧑 o founder colando o **Response** da chamada `dsp_parcelas_view_2008.htm`
+  (aba Response do F12, não Headers).
+- **Custa se esquecer:** é o único passo que separa a HDI de funcionar.
+
+## P-101 · 🟠 Débito automático em atraso não tem boleto para enviar
+
+📊 Na captura de 10/08, a **única** parcela em atraso era débito automático, e a
+coluna `Gerar` dizia *"Parcela diferente de Boleto Bancário."* em vez de
+*"2ª via"*. Converter para boleto está atrás de **ALTERAÇÕES FINANCEIRAS**, que
+escreve no contrato do segurado — proibido.
+
+O código já marca esses casos (`sem_boleto_motivo`) e eles entram no relatório.
+**Falta a decisão de produto:** o que a corretora quer que aconteça?
+
+```
+a) só avisar o segurado que o débito não passou, sem boleto
+b) abrir tarefa para a atendente humana converter no portal
+c) não cobrar, só relatar
+```
+
+- **Dono:** 🧑 Founder — é decisão comercial, não técnica.
+
+## P-102 · 🟠 Resulta e AutoFleet continuam sem destino de handoff
+
+📊 `human_support_destinations` tem 2 linhas, **ambas da AMANDUS SEGUROS**.
+
+O cano está construído e funciona vazio: sem destino, o problema vai para o
+relatório e a rotina abre com o aviso. No dia que o grupo existir, é preencher
+um campo — nada precisa ser refeito.
+
+- **Destrava:** 🧑 criar o grupo de suporte de cada corretora.
+
+## P-103 · 🟡 A Yelum devolve 403 a cliente automatizado
+
+📊 `novomeuespacocorretor.yelumseguros.com.br` respondeu **403** tanto na raiz
+quanto em `/home`, a um cliente HTTP simples. Provavelmente o mesmo tipo de WAF
+da HDI — e provavelmente a mesma solução (`--headless=new`).
+
+- **Custa se esquecer:** quem for fazer a Yelum vai achar que a credencial está
+  errada. Não está: 📊 ela foi gravada em 10/08 e o portal recusa antes do login.
+
