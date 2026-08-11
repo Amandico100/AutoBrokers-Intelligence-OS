@@ -1,0 +1,542 @@
+{
+  "versao": "1",
+  "criado_em": "2026-08-11",
+  "perguntas": [
+    {
+      "id": "F1-01",
+      "familia": "clausula",
+      "tom": "whatsapp",
+      "controle": true,
+      "seguradora": "porto",
+      "ramo": "vida",
+      "pergunta": "Contratei o seguro de vida da Porto há 40 dias e sofri um acidente fatal. O seguro paga?",
+      "gabarito": "Sim. A carência de 90 dias da Cobertura de Morte não alcança acidente — o item 6.4 excetua expressamente os casos de acidente, e o 6.3 reforça que sinistro decorrente de acidente pessoal não tem prazo de carência (a única exceção é suicídio, com 24 meses).",
+      "fatos_necessarios": [
+        {
+          "fato": "A carência de 90 dias da Cobertura de Morte tem exceção expressa para acidente.",
+          "unit_id": "norm-8e75da85-d7d8-44b8-8345-6d3ea55ac786-v2#0035",
+          "trecho": "6.4. Haverá carência de 90 (noventa) dias, cuja contagem será a partir do início de vigência do seguro, para a Cobertura de Morte, exceto para os casos de acidente."
+        }
+      ],
+      "erro_grave_se": "disser que há carência de 90 dias para morte por acidente, ou negar a indenização porque o seguro tem menos de 90 dias de vigência"
+    },
+    {
+      "id": "F1-02",
+      "familia": "clausula",
+      "tom": "whatsapp",
+      "controle": true,
+      "seguradora": "yelum",
+      "ramo": "auto",
+      "pergunta": "Bati embriagado no Uruguai, tenho seguro na Yelum com carta verde. A vítima recebe alguma coisa?",
+      "gabarito": "Sim. A embriaguez está na lista de riscos não cobertos (letra 'k'), mas o item 4.2 manda a seguradora pagar as indenizações devidas ao terceiro e depois repetir contra o segurado, sub-rogando-se nos direitos do indenizado. A vítima recebe; quem fica devendo é o segurado.",
+      "fatos_necessarios": [
+        {
+          "fato": "Nas exclusões (i), (k) e (n) — sendo (k) a embriaguez — a seguradora paga e depois cobra do segurado, sub-rogando-se.",
+          "unit_id": "norm-02213945-4aab-4b78-8ad1-8faa34db681a-v1#0010",
+          "trecho": "4.2. Nos casos das cláusulas de exclusão das letras (i), (k) e (n), a seguradora pagará as indenizações devidas, dentro dos montantes segurados, repetindo-se pelos montantes respectivos contra os segurados e/ou todos os que civilmente sejam responsáveis pelo dano, subrogando-se em todas as ações e direitos que correspondam ao indenizado."
+        }
+      ],
+      "erro_grave_se": "disser que a vítima não recebe nada porque o condutor estava embriagado, ou omitir que a seguradora cobra o valor de volta do segurado"
+    },
+    {
+      "id": "F1-03",
+      "familia": "clausula",
+      "tom": "whatsapp",
+      "controle": true,
+      "seguradora": "allianz",
+      "ramo": "auto",
+      "pergunta": "Não avisei a Allianz que meu filho virou o condutor principal e tive sinistro. Perco a indenização?",
+      "gabarito": "Não automaticamente. A perda do pagamento da indenização só ocorre quando a omissão é dolosa e de má-fé. Sendo omissão culposa e sem má-fé, o item 18.1.4 dá à Allianz outras saídas: cancelar o seguro retendo prêmio, ou permitir a continuidade cobrando a diferença do prêmio cabível — e, havendo sinistro, deduzir essa diferença do valor a ser indenizado.",
+      "fatos_necessarios": [
+        {
+          "fato": "Omissão culposa e sem má-fé não gera perda da indenização: gera cancelamento com retenção de prêmio ou continuidade com cobrança da diferença.",
+          "unit_id": "norm-935c7fce-6eac-4a98-9430-0a3cb099fad6-v2#0317",
+          "trecho": "18.1.4 Se as inexatidões e/ou omissões a que se referem às alíneas anteriores decorrerem de descumprimento culposo e de ausência de má fé do Segurado ou seu representante, a Allianz Seguros poderá: a) Na hipótese de não ocorrência do sinistro: a.1) Cancelar o seguro, retendo do prêmio originalmente pactuado, a parcela proporcional ao tempo decorrido; ou a.2) Permitir a continuidade do seguro, cobrando a diferença do prêmio cabível."
+        }
+      ],
+      "erro_grave_se": "disser que o segurado perde a indenização automaticamente por não ter informado o condutor principal, sem distinguir má-fé de omissão culposa"
+    },
+    {
+      "id": "F1-04",
+      "familia": "clausula",
+      "tom": "chat",
+      "controle": false,
+      "seguradora": "porto",
+      "ramo": "residencial",
+      "pergunta": "Por quantos dias um imóvel segurado no residencial da Porto pode ficar desocupado sem que as coberturas mudem? E o que acontece depois desse prazo?",
+      "gabarito": "Até 90 dias as coberturas não são alteradas. Passado esse prazo, se o imóvel continuar desocupado, o segurado tem de pedir alteração da apólice para o tipo de imóvel 'desocupado', e aí a seguradora garante somente a estrutura do imóvel, nas coberturas permitidas.",
+      "fatos_necessarios": [
+        {
+          "fato": "Desocupação de até 90 dias não altera as coberturas; depois disso é preciso endossar para 'desocupado', ficando garantida só a estrutura.",
+          "unit_id": "norm-baec29a0-f45d-4672-997d-99c85fee6416-v2#0044",
+          "trecho": "As coberturas do seguro residencial não serão alteradas durante a desocupação/desabitação do imóvel, ocorrida durante a vigência da apólice, por um período de até 90 (noventa) dias. Após este período, caso o imóvel permaneça desocupado, o segurado deverá solicitar alteração na apólice para o tipo de imóvel “desocupado”, situação em que a seguradora garantirá somente a estrutura do imóvel, de acordo com as coberturas permitidas."
+        }
+      ],
+      "erro_grave_se": "responder 30 dias (que é o prazo da Allianz e da Yelum, não o da Porto), ou dizer que depois do prazo o seguro simplesmente cai por inteiro"
+    },
+    {
+      "id": "F1-05",
+      "familia": "clausula",
+      "tom": "chat",
+      "controle": false,
+      "seguradora": "yelum",
+      "ramo": "empresarial",
+      "pergunta": "No empresarial da Yelum, a partir de quantos dias com o prédio vazio a cobertura de derrame de chuveiros automáticos (sprinklers) fica suspensa?",
+      "gabarito": "Mais de 10 dias. O item 19.3 suspende as garantias quando o edifício descrito ficar vazio ou desocupado por período superior a 10 (dez) dias.",
+      "fatos_necessarios": [
+        {
+          "fato": "Prédio vazio ou desocupado por mais de 10 dias suspende a garantia de derrame de sprinklers.",
+          "unit_id": "norm-1ec5bcad-ea10-40cb-9791-4f66c09d7933-v1#0300",
+          "trecho": "c) Quando o edifício ou edifícios descritos se encontrarem vazios ou desocupados durante um período superior a 10 (dez) dias."
+        }
+      ],
+      "erro_grave_se": "responder 30 dias — que é o prazo do condomínio da Yelum e a convenção de mercado, mas não o do empresarial — ou dizer que não há prazo de vacância nessa cobertura"
+    },
+    {
+      "id": "F1-06",
+      "familia": "clausula",
+      "tom": "chat",
+      "controle": false,
+      "seguradora": "allianz",
+      "ramo": "vida",
+      "pergunta": "Cliente com vida individual da Allianz vai fazer cirurgia bariátrica. Qual a carência das Diárias por Incapacidade Temporária para esse afastamento, e a partir de que IMC ela entra?",
+      "gabarito": "Carência de 180 dias — a bariátrica está na alínea 'a' do item 7.5, cuja carência é de 180 dias, e não os 60 dias das demais doenças. Ela entra com IMC entre 35 e 39,9 kg/m² desde que haja comorbidades documentadas por exames, ou com IMC igual ou maior que 40 kg/m², com ou sem comorbidades.",
+      "fatos_necessarios": [
+        {
+          "fato": "Bariátrica é evento da alínea 'a' (carência de 180 dias, não 60) e só se enquadra nas faixas de IMC 35–39,9 com comorbidades documentadas ou IMC ≥ 40.",
+          "unit_id": "norm-8dc1ab5c-6d1b-4494-9773-0d1606d20ad9-v2#0078",
+          "trecho": "a.6 Gastroplastia (cirurgia bariátrica) por videolaparoscopia ou por via laparotômica, com Índice de Massa Corpórea (IMC) entre 35 Kg/m2 e 39,9 Kg/m2, com comorbidades documentadas com exames ou com IMC igual ou maior do que 40 Kg/m2, com ou sem comorbidades. b) 60 (sessenta) dias para eventos decorrentes de doença, exceto as previstas na alínea “a” deste item, cujo prazo de Carência será de 180 dias."
+        }
+      ],
+      "erro_grave_se": "responder 60 dias (a carência genérica de doença), ou omitir as faixas de IMC que definem se o procedimento se enquadra"
+    },
+    {
+      "id": "F2-01",
+      "familia": "situacao",
+      "tom": "whatsapp",
+      "controle": false,
+      "seguradora": "porto",
+      "ramo": "auto",
+      "pergunta": "boa tarde. o parabrisa do meu carro trincou hj de manha na estrada, pedrinha da pista. tenho seguro na porto. tem uma vidraçaria aqui perto de casa q faz na hora, posso levar la e mandar a nota pra vcs depois? e vou ter q pagar franquia?",
+      "gabarito": "Não pode levar por conta própria. Na Cláusula 76 o serviço só sai pela Central de Atendimento, que indica a oficina, e a seguradora não reembolsa em nenhuma hipótese serviço executado por terceiros. Sobre franquia: o reparo do para-brisa não tem franquia; se for troca, a franquia da apólice é devida e paga pelo segurado direto na oficina.",
+      "fatos_necessarios": [
+        {
+          "fato": "O serviço só pode ser pedido à Central de Atendimento, que indica a oficina.",
+          "unit_id": "norm-d24fa589-e261-48c6-bfee-983097b15873-v2#0279",
+          "trecho": "O segurado deverá solicitar os serviços exclusivamente à Central de Atendimento, a qual indicará a oficina que executará o trabalho."
+        },
+        {
+          "fato": "A seguradora não reembolsa serviço feito por terceiros, em nenhuma hipótese.",
+          "unit_id": "norm-d24fa589-e261-48c6-bfee-983097b15873-v2#0280",
+          "trecho": "Em nenhuma hipótese, a seguradora reembolsará gastos relativos a serviços executados por terceiros."
+        },
+        {
+          "fato": "Não há franquia para reparo do para-brisa; havendo troca, a franquia é paga direto na oficina.",
+          "unit_id": "norm-d24fa589-e261-48c6-bfee-983097b15873-v2#0278",
+          "trecho": "A franquia deverá ser paga pelo segurado diretamente à oficina que reparou o veículo."
+        }
+      ],
+      "erro_grave_se": "autorizar o cliente a usar a vidraçaria dele e pedir reembolso depois, ou dizer que a TROCA do para-brisa também é sem franquia"
+    },
+    {
+      "id": "F2-02",
+      "familia": "situacao",
+      "tom": "whatsapp",
+      "controle": false,
+      "seguradora": "porto",
+      "ramo": "auto",
+      "pergunta": "oi! bati na traseira de um cara agora a pouco, dano pequeno. ele falou q assume a culpa e me paga a franquia se eu nao acionar o seguro. tenho porto. pode ser? acho q é melhor pra mim ne",
+      "gabarito": "Não pode. O contrato manda expressamente recusar proposta de terceiro para assumir a culpa, com ou sem reembolso da franquia: esse acordo é ineficaz perante a seguradora e implica cancelamento do seguro e perda do direito à indenização. O correto é avisar imediatamente o corretor ou a Central de Atendimento e informar dia, hora, local, dados da CNH de quem dirigia, testemunhas e a dinâmica do evento.",
+      "fatos_necessarios": [
+        {
+          "fato": "Acordo com terceiro para assumir a culpa é ineficaz e implica cancelamento do seguro e perda do direito à indenização.",
+          "unit_id": "norm-d24fa589-e261-48c6-bfee-983097b15873-v2#0071",
+          "trecho": "d) recusar propostas de terceiro(s) para assumir a culpa com ou sem reembolso da franquia. Esse tipo de acordo é ineficaz perante a seguradora e implica cancelamento do seguro e perda do direito à indenização, conforme legislação vigente;"
+        },
+        {
+          "fato": "Em todo sinistro é preciso avisar imediatamente o corretor ou a Central de Atendimento.",
+          "unit_id": "norm-d24fa589-e261-48c6-bfee-983097b15873-v2#0070",
+          "trecho": "a) avisar imediatamente ao corretor e/ou à seguradora por meio da Central de Atendimento;"
+        }
+      ],
+      "erro_grave_se": "dizer que o acordo particular entre as partes é permitido ou indiferente, ou omitir que ele cancela o seguro e faz o segurado perder o direito à indenização"
+    },
+    {
+      "id": "F2-03",
+      "familia": "situacao",
+      "tom": "whatsapp",
+      "controle": false,
+      "seguradora": "porto",
+      "ramo": "condominio",
+      "pergunta": "bom dia, roubaram a bike do meu marido do bicicletario do predio de madrugada, arrombaram o cadeado. o condominio tem seguro na porto. da pra acionar?",
+      "gabarito": "Pela cobertura de Subtração de Bens de Moradores, não. Ela alcança os bens privativos dentro da unidade autônoma e exclui expressamente bens que estejam fora dela, mesmo guardados em garagens, varandas, terraços, depósitos privativos e áreas comuns — e o bicicletário é área comum. Além disso a garantia só vale para condomínio residencial vertical, com limite por apartamento igual ao total dividido pelo número de apartamentos. Caminho possível: verificar outra cobertura do condomínio, ou o seguro residencial do próprio morador.",
+      "fatos_necessarios": [
+        {
+          "fato": "Bens fora da unidade autônoma, mesmo em garagens, depósitos privativos e áreas comuns, estão excluídos.",
+          "unit_id": "norm-3ef168c3-3ed7-4097-a2a3-04e220fbeb7c-v2#0157",
+          "trecho": "f) Bens de qualquer natureza que estiverem fora da unidade autônoma residencial, mesmo quando guardados em garagens, varandas, terraços, depósitos privativos do condômino e áreas comuns do condomínio;"
+        },
+        {
+          "fato": "A cobertura alcança os bens privativos das unidades autônomas residenciais.",
+          "unit_id": "norm-3ef168c3-3ed7-4097-a2a3-04e220fbeb7c-v2#0155",
+          "trecho": "Garante, até o Limite Máximo de Indenização contratado, as perdas e danos aos bens privativos das unidades autônomas residenciais, em decorrência dos seguintes riscos:"
+        },
+        {
+          "fato": "A garantia só se aplica a condomínios residenciais verticais.",
+          "unit_id": "norm-3ef168c3-3ed7-4097-a2a3-04e220fbeb7c-v2#0156",
+          "trecho": "33.2.12.2 Importante: esta garantia aplica-se somente a condomínios residenciais verticais."
+        }
+      ],
+      "erro_grave_se": "dizer que a cobertura de Subtração de Bens de Moradores paga a bicicleta furtada de área comum do condomínio"
+    },
+    {
+      "id": "F2-04",
+      "familia": "situacao",
+      "tom": "whatsapp",
+      "controle": false,
+      "seguradora": "allianz",
+      "ramo": "residencial",
+      "pergunta": "oi tudo bem? vou passar uns 2 meses na casa da minha filha em portugal e minha casa vai ficar fechada, sem ninguem. tenho residencial allianz. continua tudo coberto normal? é a casa onde eu moro mesmo",
+      "gabarito": "Não continua tudo. Sendo Residência Habitual, se ficar desabitada ou desocupada por mais de 30 dias, ficam garantidos apenas e somente os danos causados à estrutura do imóvel (o prédio) — o conteúdo sai de cobertura. O que fazer antes de viajar: falar com a Allianz sobre a alteração da ocupação, já que 'Residência Desocupada' é um tipo de ocupação previsto no produto (imóvel não habitado, vazio, permitido apenas móveis planejados). E atenção: a cobertura de perda ou pagamento de aluguel não se aplica a imóveis desocupados e/ou desabitados.",
+      "fatos_necessarios": [
+        {
+          "fato": "Residência Habitual desabitada por mais de 30 dias fica com garantia apenas para a estrutura do imóvel.",
+          "unit_id": "norm-8fbde7c5-7b67-4af4-ba75-6fce0b074b20-v2#0043",
+          "trecho": "z) Imóvel Habitual, que estiver desabitado ou desocupado por um período superior a 30 (trinta) dias. Para imóveis nesta situação estarão garantidos apenas e somente danos causados à estrutura do imóvel (prédio), de acordo com as coberturas contratadas na apólice de seguro;"
+        },
+        {
+          "fato": "'Residência Desocupada' é um tipo de ocupação previsto no produto, o que abre caminho para endosso.",
+          "unit_id": "norm-8fbde7c5-7b67-4af4-ba75-6fce0b074b20-v2#0102",
+          "trecho": "31.8. Residência Desocupada: imóvel não habitado, vazio, permitido apenas móveis planejados."
+        },
+        {
+          "fato": "A cobertura de aluguel não se aplica a imóveis desocupados e/ou desabitados.",
+          "unit_id": "norm-8fbde7c5-7b67-4af4-ba75-6fce0b074b20-v2#0138",
+          "trecho": "1.5. A cobertura não se aplica para imóveis desocupados e/ou desabitados."
+        }
+      ],
+      "erro_grave_se": "dizer que dois meses com a casa fechada não muda nada, ou que o seguro cai por inteiro — a resposta certa é a queda PARCIAL, para estrutura apenas"
+    },
+    {
+      "id": "F2-05",
+      "familia": "situacao",
+      "tom": "whatsapp",
+      "controle": false,
+      "seguradora": "allianz",
+      "ramo": "pme",
+      "pergunta": "bom dia. sumiu uma moto de cliente aqui da minha concessionaria essa noite, tava no patio, tinha vindo pra revisao. a policia falou q foi mais de um cara mas nao arrombaram nada, nao teve estrago. tenho allianz pme com a cobertura de guarda de veiculos. cobre?",
+      "gabarito": "Muito provavelmente não, por dois motivos independentes. Primeiro: motocicletas e motonetas só estão amparadas quando acorrentadas em barras ou argolas de ferro fixadas ao solo, ou guardadas em box fechado e trancado com cadeados — moto solta no pátio não cumpre a condição. Segundo: a cobertura exclui furto qualificado 'mediante concurso de duas ou mais pessoas' quando não houve destruição ou rompimento de obstáculo, que é exatamente o que a polícia descreveu. Some-se a obrigação de guardar as chaves em local fechado e trancado fora do horário comercial.",
+      "fatos_necessarios": [
+        {
+          "fato": "Motos só são amparadas se acorrentadas a barras/argolas fixadas ao solo ou em box fechado e trancado com cadeados.",
+          "unit_id": "norm-5f2e6ae3-5848-4c52-b893-3a6f945aeed3-v1#0287",
+          "trecho": "No caso de motocicletas e motonetas, somente estarão amparados quando acorrentadas em barras ou argolas de ferro, fixadas ao solo ou guardadas em box fechado e trancado com cadeados."
+        },
+        {
+          "fato": "Furto qualificado por concurso de duas ou mais pessoas, sem rompimento de obstáculo, está excluído.",
+          "unit_id": "norm-5f2e6ae3-5848-4c52-b893-3a6f945aeed3-v1#0291",
+          "trecho": "IV - \"mediante concurso de duas ou mais pessoas\" (sem que tenha ocorrido destruição ou rompimento do obstáculo à subtração da coisa)."
+        },
+        {
+          "fato": "O segurado é obrigado a guardar as chaves em local fechado e trancado fora do horário comercial.",
+          "unit_id": "norm-5f2e6ae3-5848-4c52-b893-3a6f945aeed3-v1#0290",
+          "trecho": "O segurado deverá armazenar as chaves dos veículos em local fechado e trancado, fora do horário comercial."
+        }
+      ],
+      "erro_grave_se": "dizer que a cobertura de guarda de veículos paga a moto solta no pátio, ou tratar 'mais de um ladrão sem arrombamento' como risco coberto"
+    },
+    {
+      "id": "F2-06",
+      "familia": "situacao",
+      "tom": "whatsapp",
+      "controle": false,
+      "seguradora": "yelum",
+      "ramo": "vida",
+      "pergunta": "oi, fui demitido semana passada, sem justa causa. trabalhei 1 ano e 3 meses la, mas era meio periodo, 4h por dia. tenho o seguro de vida em grupo da yelum com a cobertura de perda de renda por desemprego. quando eu recebo?",
+      "gabarito": "Não recebe. O tempo de casa está ok (mais de 1 ano ininterrupto), mas a cobertura exige jornada mínima de 30 horas semanais, e 4h por dia dá cerca de 20 horas — ele não é elegível. Vale registrar o resto para não prometer nada: a cobertura também exclui demissão por acordo, PDV, justa causa, pedido de demissão e dispensa com admissão imediata em empresa do mesmo grupo; e, quando as indenizações somadas atingem o Capital Segurado, a cobertura é cancelada sem reintegração.",
+      "fatos_necessarios": [
+        {
+          "fato": "A PDR exige 1 ano ininterrupto no último emprego E jornada mínima de 30 horas semanais.",
+          "unit_id": "norm-c030597d-d7f8-43f9-8477-127f0c3af5ab-v1#0093",
+          "trecho": "a) O Segurado deverá ter uma permanência mínima de 1(um) ano ininterrupto no último emprego, com jornada mínima de 30 (trinta) horas semanais;"
+        },
+        {
+          "fato": "A cobertura exclui acordo, pedido de demissão, justa causa, PDV e recontratação imediata no mesmo grupo.",
+          "unit_id": "norm-c030597d-d7f8-43f9-8477-127f0c3af5ab-v1#0095",
+          "trecho": "e) Adesão do Segurado a qualquer tipo de Plano de Demissão Voluntária (PDV) ou assemelhados, incentivados pelo empregador;"
+        },
+        {
+          "fato": "Esgotado o Capital Segurado, a cobertura é cancelada sem reintegração.",
+          "unit_id": "norm-c030597d-d7f8-43f9-8477-127f0c3af5ab-v1#0094",
+          "trecho": "Quando a soma das indenizações pagas em razão dos sinistros ocorridos atingir ou ultrapassar o limite do Capital Segurado, a cobertura será automaticamente cancelada, não havendo reintegração do Capital Segurado."
+        }
+      ],
+      "erro_grave_se": "dizer que ele recebe porque tem mais de 1 ano de casa, ignorando a jornada mínima de 30 horas semanais"
+    },
+    {
+      "id": "F3-01",
+      "familia": "sintese",
+      "tom": "chat",
+      "controle": false,
+      "seguradora": "porto+allianz+yelum",
+      "ramo": "condominio",
+      "pergunta": "Preciso comparar antes de recomendar. Enxurrada entra na garagem do condomínio e danifica os carros dos moradores. Na cobertura de Alagamento, quem indeniza o carro — Porto, Allianz ou Yelum?",
+      "gabarito": "Nenhuma das três indeniza o veículo pela cobertura de Alagamento. A Porto exclui expressamente danos a veículos, seus acessórios, peças e componentes. A Allianz lista veículos entre os bens e interesses não compreendidos na própria cobertura de Alagamento. A Yelum também exclui danos a veículos próprios ou de terceiros, mas é a única das três que deixa a porta aberta — 'exceto quando contratada cobertura específica'. O que as três cobrem é o dano ao imóvel/condomínio pela entrada de água, incluindo a enxurrada por insuficiência de drenagem da via pública. Para o carro, o caminho é o seguro auto do próprio morador.",
+      "fatos_necessarios": [
+        {
+          "fato": "Porto: a cobertura de Alagamento exclui danos a veículos.",
+          "unit_id": "norm-3ef168c3-3ed7-4097-a2a3-04e220fbeb7c-v2#0139",
+          "trecho": "j) Danos a veículos, seus acessórios, peças e componentes."
+        },
+        {
+          "fato": "Allianz: veículos estão entre os bens e interesses não compreendidos na cobertura de Alagamento.",
+          "unit_id": "norm-af59b043-4322-4d75-89a9-037cf4b81e39-v1#0173",
+          "trecho": "b) Veículos, implementos agrícolas, vagões, vagonetes, aeronaves, máquinas de terraplanagem e semelhantes;"
+        },
+        {
+          "fato": "Yelum: exclui danos a veículos, mas com ressalva de cobertura específica.",
+          "unit_id": "norm-16ebf430-b39a-4913-90e9-24f342e2e589-v1#0126",
+          "trecho": "f) Danos a veículos próprios ou de terceiros, exceto quando contratada cobertura específica."
+        },
+        {
+          "fato": "Porto: o que a cobertura de Alagamento garante é o dano ao condomínio pela entrada de água, inclusive enxurrada por insuficiência de drenagem das vias públicas.",
+          "unit_id": "norm-3ef168c3-3ed7-4097-a2a3-04e220fbeb7c-v2#0138",
+          "trecho": "a) Alagamento ou alagamento decorrente de enxurrada, causado por insuficiência de drenagem das vias públicas;"
+        }
+      ],
+      "erro_grave_se": "dizer que alguma das três paga o carro do morador pela cobertura de Alagamento; ou atribuir a uma seguradora a regra de outra — por exemplo dar a ressalva de 'cobertura específica' da Yelum como se fosse da Porto"
+    },
+    {
+      "id": "F3-02",
+      "familia": "sintese",
+      "tom": "chat",
+      "controle": false,
+      "seguradora": "porto",
+      "ramo": "condominio",
+      "pergunta": "O síndico de um condomínio segurado na Porto vai modernizar os dois elevadores e reformar o hall. A cobertura adicional de Reformas atende? O que eu preciso alertar antes de a obra começar?",
+      "gabarito": "Não atende a modernização dos elevadores. A cobertura de Reformas só alcança reforma de melhoria ou manutenção NÃO estruturais e exclui expressamente instalação e modernização de elevadores, além de fundações, vigas, colunas, janelas, portas e paredes de alvenaria — e também obras que ultrapassem o LMI contratado. Se a obra valer mais que o limite, é preciso seguro de ramo específico, ficando a de Reformas como segundo risco complementar. E o alerta maior: condomínio em obra ou reforma estrutural (construção, reconstrução, demolição, ampliação) não é risco aceito pela apólice.",
+      "fatos_necessarios": [
+        {
+          "fato": "A cobertura de Reformas só vale para reforma de melhoria ou manutenção não estruturais.",
+          "unit_id": "norm-3ef168c3-3ed7-4097-a2a3-04e220fbeb7c-v2#0172",
+          "trecho": "Entende-se como Reforma: melhoria ou manutenção, não estruturais, realizadas no Condomínio para fins de aprimoramento nas instalações e estética do local."
+        },
+        {
+          "fato": "Instalação e modernização de elevadores e obras que comprometam a estrutura estão excluídas.",
+          "unit_id": "norm-3ef168c3-3ed7-4097-a2a3-04e220fbeb7c-v2#0173",
+          "trecho": "a) Reparos, reformas ou obras que comprometam a estrutura, tais como fundações, vigas, colunas, alicerces e/ou pilares, janelas, portas, instalação e modernização de elevadores, bem como construção de paredes de alvenaria;"
+        },
+        {
+          "fato": "Condomínio em obra ou reforma estrutural não é risco aceito.",
+          "unit_id": "norm-3ef168c3-3ed7-4097-a2a3-04e220fbeb7c-v2#0028",
+          "trecho": "k) Condomínios e/ou edifícios em obras e/ou reformas estruturais (construção, reconstrução, demolição e ampliação)."
+        }
+      ],
+      "erro_grave_se": "dizer que a cobertura de Reformas cobre a modernização do elevador, ou omitir que obra estrutural tira o condomínio da aceitação do risco"
+    },
+    {
+      "id": "F3-03",
+      "familia": "sintese",
+      "tom": "chat",
+      "controle": false,
+      "seguradora": "porto",
+      "ramo": "vida",
+      "pergunta": "Cliente contratou o Porto Vida há dois meses. É separado de fato da esposa há anos, vive com a companheira e nunca mexeu na indicação de beneficiário. Se ele morrer amanhã de infarto, quem recebe e quanto? E o que eu faço hoje para não dar problema?",
+      "gabarito": "Morte por doença aos dois meses cai dentro da carência de 90 dias da Cobertura de Morte — a exceção é só acidente. Não há capital a pagar, e mais: não sendo possível a continuidade do contrato pela natureza do sinistro ocorrido na carência, a Porto cancela o contrato e devolve o prêmio pago. Se a morte fosse por acidente, o capital sairia; na falta de indicação válida de beneficiário, metade vai ao cônjuge e o restante aos demais herdeiros, e por ele ser separado, ainda que de fato, a metade que caberia ao cônjuge cabe à companheira. O que fazer hoje: formalizar por escrito a substituição de beneficiário, porque sem a comunicação formal a Porto paga ao beneficiário anterior e fica exonerada.",
+      "fatos_necessarios": [
+        {
+          "fato": "Carência de 90 dias para a Cobertura de Morte, com exceção apenas para acidente.",
+          "unit_id": "norm-8e75da85-d7d8-44b8-8345-6d3ea55ac786-v2#0035",
+          "trecho": "6.4. Haverá carência de 90 (noventa) dias, cuja contagem será a partir do início de vigência do seguro, para a Cobertura de Morte, exceto para os casos de acidente."
+        },
+        {
+          "fato": "Sinistro na carência que impede a continuidade do contrato gera cancelamento com devolução do prêmio pago.",
+          "unit_id": "norm-8e75da85-d7d8-44b8-8345-6d3ea55ac786-v2#0036",
+          "trecho": "Nos casos em que não for possível a continuidade do contrato devido à natureza do sinistro ocorrido durante o período de carência, a Seguradora cancelará o contrato e devolverá o valor do prêmio pago."
+        },
+        {
+          "fato": "Sem indicação válida, metade vai ao cônjuge; sendo o segurado separado ainda que de fato, essa metade cabe ao companheiro.",
+          "unit_id": "norm-8e75da85-d7d8-44b8-8345-6d3ea55ac786-v2#0130",
+          "trecho": "Caso o segurado seja separado, ainda que de fato, caberá ao companheiro a metade que caberia ao cônjuge."
+        },
+        {
+          "fato": "A troca de beneficiário só vale se comunicada formalmente; sem isso a Porto paga ao anterior e se exonera.",
+          "unit_id": "norm-8e75da85-d7d8-44b8-8345-6d3ea55ac786-v2#0129",
+          "trecho": "18.4. Para que a Porto Seguro efetue o pagamento ao novo beneficiário, é essencial que a substituição seja formalmente comunicada, sob pena de o pagamento ser realizado ao beneficiário anterior, ficando a Porto Seguro exonerada de qualquer responsabilidade adicional."
+        }
+      ],
+      "erro_grave_se": "dizer que a companheira recebe o capital numa morte por doença dentro dos 90 dias de carência, ou tratar a carência de morte como aplicável também a acidente, ou omitir a devolução do prêmio"
+    },
+    {
+      "id": "F3-04",
+      "familia": "sintese",
+      "tom": "chat",
+      "controle": false,
+      "seguradora": "allianz",
+      "ramo": "equipamentos",
+      "pergunta": "Concessionária vai entregar uma retroescavadeira zero a um cliente a 300 km de distância. A máquina tomba quando o guindaste do caminhão está descarregando na obra. A cobertura de Acidentes de Viagem de Entrega da Allianz paga? E se pagasse, teria franquia?",
+      "gabarito": "Não paga, e por três motivos independentes. (1) A cobertura só vale dentro do território nacional e com limite de distância de 250 km — 300 km já está fora. (2) Acidente durante operação de embarque e desembarque é risco expressamente não coberto. (3) A vigência da cobertura termina quando o veículo chega ao destino final, ANTES do desembarque — no momento do tombamento a garantia já havia se extinguido. Sobre franquia, se o caso fosse coberto: o segurado participa com o valor estipulado na apólice, exceto em caso de Perda Total, quando a participação não se aplica.",
+      "fatos_necessarios": [
+        {
+          "fato": "A cobertura só vale para equipamentos novos em viagem de entrega terrestre, no território nacional, com limite de 250 km.",
+          "unit_id": "norm-f68c1b35-d3cb-4f80-a7c1-33e0b394269a-v1#0160",
+          "trecho": "transportados por via terrestres, dentro do território nacional, com limite de distância de 250km (duzentos e cinquenta quilômetros)."
+        },
+        {
+          "fato": "Acidente durante embarque e desembarque é risco não coberto.",
+          "unit_id": "norm-f68c1b35-d3cb-4f80-a7c1-33e0b394269a-v1#0161",
+          "trecho": "A) ACIDENTE DURANTE OPERAÇÃO EMBARQUE E DESEMBARQUE;"
+        },
+        {
+          "fato": "A vigência termina quando o veículo chega ao destino final, antes do desembarque.",
+          "unit_id": "norm-f68c1b35-d3cb-4f80-a7c1-33e0b394269a-v1#0162",
+          "trecho": "O término da vigência se dará quando o veículo chegar ao seu destino final, antes do desembarque."
+        },
+        {
+          "fato": "A participação obrigatória do segurado não se aplica em caso de Perda Total.",
+          "unit_id": "norm-f68c1b35-d3cb-4f80-a7c1-33e0b394269a-v1#0164",
+          "trecho": "Esta participação não será aplicada em caso de Perda Total."
+        }
+      ],
+      "erro_grave_se": "dizer que a cobertura paga o tombamento na descarga; ou parar no limite de 250 km sem notar que a vigência já havia terminado e que o desembarque é exclusão expressa"
+    },
+    {
+      "id": "F3-05",
+      "familia": "sintese",
+      "tom": "chat",
+      "controle": false,
+      "seguradora": "porto",
+      "ramo": "empresarial",
+      "pergunta": "Ótica segurada na Porto Empresa foi arrombada num domingo. Tinha R$ 12 mil em caixa guardados num cofre solto de uns 40 quilos, que os ladrões levaram inteiro. E na sexta o funcionário tinha levado R$ 30 mil ao banco sozinho, de moto, e foi assaltado no caminho. Como fica cada uma das duas pontas?",
+      "gabarito": "Antes de tudo: dinheiro só entra se a cobertura de Subtração de Valores tiver sido contratada — sem ela, dinheiro de qualquer espécie é bem não coberto. Com ela: (1) o cofre não atende. Fora do horário de expediente os valores têm de estar em cofre-forte fechado com chave e segredo, chumbado em parede ou chão, ou, quando solto, com peso mínimo de 80 quilos — e a indenização fica limitada à movimentação de valores do dia do sinistro, estendida ao dia útil anterior. (2) O transporte também está fora: acima de R$ 20.000,01 exige automóvel com no mínimo 2 portadores armados ou 1 portador acompanhado de dois seguranças, e um funcionário sozinho de moto não cumpre nada disso.",
+      "fatos_necessarios": [
+        {
+          "fato": "Dinheiro é bem não coberto, salvo se contratada a cobertura de Subtração de Valores.",
+          "unit_id": "norm-66e1f46f-60f7-4f11-ae50-e5e443a45ccd-v2#0033",
+          "trecho": "d) Dinheiro de qualquer espécie, exceto se contratada a cobertura de Subtração de Valores;"
+        },
+        {
+          "fato": "Fora do horário de expediente, cofre solto exige peso mínimo de 80 quilos.",
+          "unit_id": "norm-66e1f46f-60f7-4f11-ae50-e5e443a45ccd-v2#0173",
+          "trecho": "Os valores que permanecerem no interior do estabelecimento fora do horário de expediente deverão ser guar- dados em cofre forte fechado com chave e segredo, chumbado em paredes ou no chão ou, quando solto, deverá possuir peso mínimo de 80 quilogramas."
+        },
+        {
+          "fato": "A indenização de Subtração de Valores fica limitada à movimentação do dia do sinistro e do dia útil anterior.",
+          "unit_id": "norm-66e1f46f-60f7-4f11-ae50-e5e443a45ccd-v2#0172",
+          "trecho": "a) A indenização em cada sinistro estará limitada à movimentação de valores do dia do sinistro, estendendo-se ao dia útil imediatamente anterior à data do sinistro"
+        },
+        {
+          "fato": "Acima de R$ 20.000,01 o transporte exige 2 portadores armados ou 1 portador com dois seguranças, em automóvel.",
+          "unit_id": "norm-66e1f46f-60f7-4f11-ae50-e5e443a45ccd-v2#0174",
+          "trecho": "c) Acima de R$ 20.000,01: o transporte deverá ser realizado em automóvel, com no mínimo 2 (dois) portadores ar- mados ou 1 (um) portador acompanhado de dois seguranças."
+        }
+      ],
+      "erro_grave_se": "dizer que o dinheiro está coberto pela cobertura básica sem a de Subtração de Valores, ou que o cofre solto de 40 quilos atende à exigência, ou que o transporte de R$ 30 mil por um único portador de moto é aceito"
+    },
+    {
+      "id": "F3-06",
+      "familia": "sintese",
+      "tom": "whatsapp",
+      "controle": false,
+      "seguradora": "yelum",
+      "ramo": "empresarial",
+      "pergunta": "socorro. faltou luz aqui na rua desde ontem de manha, ja passou de 24h direto, e perdi a camara fria toda do restaurante. tenho seguro empresarial na yelum. como faço pra receber? tem umas caixas de carne q ja tinham passado da validade tbm",
+      "gabarito": "Serve, mas com condições. A cobertura de Deterioração ou Contaminação de Mercadorias em Ambientes Frigorificados exige que a falta de energia decorra de acidente nas instalações da fornecedora/concessionária e perdure 24 horas consecutivas (ou 24 horas somadas dentro de 72 horas, pelo mesmo acidente) — o caso, sendo falta de luz na rua por mais de 24 horas, se enquadra. Mas: falta de energia por acidente nas instalações do próprio segurado é excluída, e mercadoria com data de validade expirada não é indenizada, então as caixas vencidas ficam de fora. A validade da cobertura ainda está condicionada à manutenção das câmaras conforme normas técnicas, com laudos de inspeção e manutenção à disposição da seguradora. E há um documento que quase ninguém espera: carta protocolada à concessionária de energia pedindo ressarcimento, com o retorno dado por ela.",
+      "fatos_necessarios": [
+        {
+          "fato": "A cobertura exige falta de energia por acidente na concessionária, perdurando 24 horas consecutivas ou 24 horas somadas dentro de 72 horas.",
+          "unit_id": "norm-1ec5bcad-ea10-40cb-9791-4f66c09d7933-v1#0325",
+          "trecho": "i. Perdure por 24 (vinte e quatro) horas consecutivas; ii. Se, decorrente do mesmo acidente, em períodos alternados, dentro de 72 (setenta e duas) horas, perfaça um total de falta de suprimento de energia elétrica de 24 (vinte e quatro) horas."
+        },
+        {
+          "fato": "Falta de energia por acidente nas instalações do próprio segurado é excluída, e mercadoria com validade expirada não é indenizada.",
+          "unit_id": "norm-1ec5bcad-ea10-40cb-9791-4f66c09d7933-v1#0327",
+          "trecho": "c) Falta de suprimento de energia elétrica decorrente de acidente nas instalações do segurado; d) Mercadorias com data de validade expirada."
+        },
+        {
+          "fato": "A validade da cobertura está condicionada à manutenção das câmaras conforme normas técnicas, com laudos à disposição.",
+          "unit_id": "norm-1ec5bcad-ea10-40cb-9791-4f66c09d7933-v1#0326",
+          "trecho": "A validade desta cobertura fica condicionada à manutenção, conforme especificado nas Normas Técnicas, das câmaras frigoríficas, equipamentos indispensáveis ao seu uso em perfeitas condições de funcionamento, devendo ser apresentados à Seguradora, sempre que solicitados, laudos de inspeção e manutenção."
+        },
+        {
+          "fato": "É exigida carta protocolada à concessionária de energia pedindo ressarcimento, e o retorno dado por ela.",
+          "unit_id": "norm-1ec5bcad-ea10-40cb-9791-4f66c09d7933-v1#0119",
+          "trecho": "Carta protocolada à Concessionária de energia elétrica para ressarcimento dos prejuízos e retorno dado pela companhia de energia"
+        }
+      ],
+      "erro_grave_se": "prometer o pagamento integral sem citar a exigência das 24 horas, a exclusão da mercadoria vencida, a condição de manutenção ou a carta à concessionária; ou dizer que a origem da falta de energia é irrelevante"
+    },
+    {
+      "id": "F4-01",
+      "familia": "recusa",
+      "tom": "chat",
+      "controle": false,
+      "seguradora": "bradesco",
+      "ramo": "vida",
+      "pergunta": "Qual é a carência da cobertura de morte no seguro de vida do Bradesco? O cliente quer comparar com a proposta da Porto.",
+      "gabarito": "deve admitir que não tem o documento — as condições gerais de vida do Bradesco foram retiradas do índice em 11/08/2026 e não estão no acervo conferido, que hoje tem Porto, Allianz e Yelum.",
+      "fatos_necessarios": [],
+      "erro_grave_se": "responder com qualquer prazo, cobertura ou cláusula atribuída ao vida do Bradesco; ou entregar o texto da Porto, Allianz ou Yelum como se fosse do Bradesco. ARMADILHA CONHECIDA: o pedaço norm-dd53f30a-c092-4b13-b436-e7db7f722d17-v1#0071 (auto da Yelum) traz 'Bradesco' numa lista de congêneres da Central de Bônus — citar esse trecho como se fosse contrato de vida do Bradesco é o mesmo erro"
+    },
+    {
+      "id": "F4-02",
+      "familia": "recusa",
+      "tom": "chat",
+      "controle": false,
+      "seguradora": "tokio",
+      "ramo": "vida",
+      "pergunta": "Meu cliente tem vida em grupo na Tokio Marine. O que o contrato dela diz sobre doença preexistente não declarada?",
+      "gabarito": "deve admitir que não tem o documento — não há documento de vida da Tokio Marine no acervo conferido.",
+      "fatos_necessarios": [],
+      "erro_grave_se": "responder com regra de preexistência atribuída à Tokio Marine; ou copiar a cláusula de preexistência da Porto, da Allianz ou da Yelum trocando o nome da companhia. O nome 'Tokio Marine' aparece na lista de congêneres do auto da Yelum e isso não é contrato dela"
+    },
+    {
+      "id": "F4-03",
+      "familia": "recusa",
+      "tom": "chat",
+      "controle": false,
+      "seguradora": "hdi",
+      "ramo": "auto",
+      "pergunta": "Preciso da franquia e do prazo de aviso de sinistro das condições gerais do seguro auto da HDI.",
+      "gabarito": "deve admitir que não tem o documento — a HDI nunca teve condições gerais ingeridas no acervo conferido, que tem apenas Porto, Allianz e Yelum.",
+      "fatos_necessarios": [],
+      "erro_grave_se": "responder com qualquer valor de franquia ou prazo atribuído à HDI. ARMADILHA CRÍTICA: no auto da Yelum, o pedaço norm-dd53f30a-c092-4b13-b436-e7db7f722d17-v1#0073 tem `caminho` literalmente 'GLOSSÁRIO > HDI' — a lista de congêneres quebrou o cabeçalho — e o corpo dele é a cláusula 6 (Pagamento do Prêmio) DA YELUM. Responder isso como se fosse da HDI é vazamento entre seguradoras: P0"
+    },
+    {
+      "id": "F4-04",
+      "familia": "recusa",
+      "tom": "chat",
+      "controle": false,
+      "seguradora": "zurich",
+      "ramo": "residencial",
+      "pergunta": "Cliente vai renovar o residencial na Zurich. Me diz o que a apólice dela cobre de danos elétricos e qual o limite.",
+      "gabarito": "deve admitir que não tem o documento — a Zurich não está no acervo conferido.",
+      "fatos_necessarios": [],
+      "erro_grave_se": "responder com cobertura ou limite de danos elétricos atribuído à Zurich, inclusive copiando o residencial da Porto, da Allianz ou da Yelum. O nome 'Zurich' aparece no pedaço norm-dd53f30a-c092-4b13-b436-e7db7f722d17-v1#0072 (lista de congêneres do auto da Yelum) e isso não é contrato da Zurich"
+    },
+    {
+      "id": "F4-05",
+      "familia": "recusa",
+      "tom": "chat",
+      "controle": false,
+      "seguradora": "yelum",
+      "ramo": "saude",
+      "pergunta": "Qual a carência da Yelum para cirurgia no plano de saúde? O cliente está em dúvida se troca agora.",
+      "gabarito": "deve admitir que não tem o documento — não há condições gerais de plano ou seguro saúde no acervo, e saúde não é ramo da Yelum. O que a Yelum tem no acervo é auto, residencial, condomínio, empresarial, equipamentos, vida, garantia e carta verde.",
+      "fatos_necessarios": [],
+      "erro_grave_se": "responder com prazo de carência de saúde atribuído à Yelum; ou aproveitar a carência do seguro de VIDA da Yelum como se fosse plano de saúde — vida e saúde são ramos diferentes. ARMADILHA: 📊 a palavra 'saúde' aparece em 83 dos 6.797 pedaços (porto 16 · allianz 36 · yelum 31), mas sempre como palavra comum — declaração pessoal de saúde, danos à saúde humana, profissional de saúde. Só 2 pedaços a usam como nome de produto, ambos no residencial da Porto e sobre 'planos de saúde para pets'. Nenhum desses trechos é contrato de saúde, e nenhum é da Yelum"
+    },
+    {
+      "id": "F4-06",
+      "familia": "recusa",
+      "tom": "chat",
+      "controle": false,
+      "seguradora": "porto",
+      "ramo": "auto",
+      "pergunta": "Qual é a franquia da apólice do João Batista? O auto dele, na Porto.",
+      "gabarito": "deve admitir que não tem o documento — a franquia de um segurado é dado da APÓLICE dele, e o acervo só tem as condições gerais (o contrato-mestre) da Porto, que dizem como a franquia se aplica mas não trazem o valor de nenhum segurado. Para responder é preciso consultar a apólice do cliente, não o acervo normativo.",
+      "fatos_necessarios": [],
+      "erro_grave_se": "inventar um valor de franquia; ou apresentar as regras de franquia das condições gerais como se fossem a franquia contratada pelo João. Confundir contrato-mestre com apólice é o erro que o produto inteiro precisa não cometer"
+    }
+  ]
+}
