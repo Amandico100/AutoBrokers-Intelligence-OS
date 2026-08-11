@@ -127,6 +127,59 @@ def teste_a_cifra_da_condicao_geral_sobrevive():
                "a mudança é da ressalva, não da regra")
 
 
+def teste_a_reserva_do_valor_nao_e_um_esconderijo():
+    print("\n[1b] O `,00` no fim não transforma CPF em dinheiro")
+
+    # 🔴 O BURACO QUE A CONTAGEM DE REGRAS NÃO ENXERGAVA.
+    #
+    # No modo `documento_publico`, `_VALOR_SEM_RS` roda ANTES das outras 36
+    # regras e RETIRA o valor do texto. O que sai do texto não é examinado por
+    # mais ninguém. Com o padrão antigo (`\d{3,}`, sem teto), qualquer
+    # sequência longa de dígitos com `,00` era retirada como se fosse dinheiro:
+    #
+    #     "pagar 98765432100,00 ao favorecido"  →  passava INTEIRO
+    #
+    # 📊 Achado em 11/08/2026 por auditoria de método. A métrica que estava em
+    # uso — "36 de 38 regras ativas" — marcava seguro, porque nenhuma regra
+    # tinha sido desligada. O texto é que era retirado antes delas.
+    disfarcados = [
+        ("pagar 98765432100,00 ao favorecido", "CPF de 11 dígitos"),
+        ("cartão 4111111111111111,00 usado", "cartão de 16 dígitos"),
+        ("ligue 11987654321,00 hoje", "telefone de 11 dígitos"),
+    ]
+    for frase, o_que in disfarcados:
+        checar(not _limpo(frase, documento_publico=True),
+               f"{o_que} com sufixo de centavos NÃO atravessa o acervo",
+               T.templatize(frase, documento_publico=True)[:70])
+
+    # 🔴 CONTROLE — e a cifra do contrato continua passando. Sem esta metade,
+    # o bloco acima passaria também se a reserva tivesse sido simplesmente
+    # APAGADA, e as 36 cartas de limite da Porto voltariam a ser recusadas na
+    # porta — o defeito que a ressalva nasceu para consertar.
+    dinheiro_de_verdade = [
+        ("o limite é de R$ 2.500.000,00 por evento", "com R$ e separador"),
+        ("franquia de 2.480,00 por evento", "sem R$, 4 dígitos"),
+        ("indenização de 999999,00 no total", "6 dígitos, o teto da regra"),
+        ("até 1.250.000,00 por vigência", "7 dígitos COM separador"),
+    ]
+    for frase, o_que in dinheiro_de_verdade:
+        checar(_limpo(frase, documento_publico=True),
+               f"CONTROLE — valor do contrato passa ({o_que})",
+               T.templatize(frase, documento_publico=True)[:70])
+
+    # 🔴 CONTROLE 2 — na CONVERSA nada disso mudou. O `,00` nunca protegeu
+    # ninguém ali, e continua não protegendo.
+    checar("{CPF}" in T.templatize("pagar 98765432100,00 ao favorecido"),
+           "CONTROLE 2 — na conversa o CPF disfarçado já era mascarado",
+           T.templatize("pagar 98765432100,00 ao favorecido"))
+
+    # E a prova de que o teto é o mecanismo, não um acidente: o mesmo número
+    # com um dígito a menos É dinheiro plausível e passa.
+    checar(_limpo("valor de 987654,00 apurado", documento_publico=True),
+           "CONTROLE 3 — 6 dígitos é dinheiro; 11 não é",
+           T.templatize("valor de 987654,00 apurado", documento_publico=True))
+
+
 def teste_a_ressalva_nao_abriu_a_porta_para_gente():
     print("\n[2] CONTROLE — com a ressalva LIGADA, dado de pessoa continua barrado")
 
@@ -493,6 +546,7 @@ def main() -> int:
     print("O VALOR DA CONDIÇÃO GERAL NÃO É DE NINGUÉM")
     print("=" * 74)
     teste_a_cifra_da_condicao_geral_sobrevive()
+    teste_a_reserva_do_valor_nao_e_um_esconderijo()
     teste_a_ressalva_nao_abriu_a_porta_para_gente()
     teste_bom_dia_tambem_e_saudacao()
     teste_o_ramo_nao_e_um_logradouro()

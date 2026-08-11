@@ -66,7 +66,25 @@ _RE_ACENTO = re.compile(r"[áàâãéêíóôõúüçÁÀÂÃÉÊÍÓÔÕÚÜÇ]
 
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))))
 
-FACETAS = {"escopo", "exclusao", "limite", "franquia", "prazo", "documento", "definicao"}
+# 🔴 SÃO OITO, E ESTA LISTA TINHA SETE — 11/08/2026.
+#
+# `carencia` estava na SPEC-070 §5.1 e em `insurance_corpus.faceta_do_pedaco`
+# (que a atribui a partir de "carência" e "prazo de espera"), e faltava aqui.
+# Uma carta que chegasse com ela seria recusada por "faceta desconhecida" — no
+# meio de centenas de linhas de saída, e com o publicador fechando verde.
+#
+# 📊 Dano até hoje: ZERO. Nenhuma das 4.420 cartas usa `carencia` (exclusao
+# 1.428, escopo 1.328, limite 664, prazo 452, documento 316, definicao 152,
+# franquia 79). O defeito era latente, não ativo.
+#
+# ⚠️ Mas a faceta não é decoração: ela é o balde em que a pergunta procura.
+# "Já posso usar?" (carência) e "quanto tempo tenho para avisar?" (prazo) são
+# perguntas diferentes, e hoje as duas caem em `prazo`.
+#
+# A lista tem de ser a MESMA da SPEC e a MESMA do motor. Três cópias de uma
+# lista é uma divergência esperando data — e esta divergiu.
+FACETAS = {"escopo", "exclusao", "limite", "franquia", "prazo", "documento",
+           "definicao", "carencia"}
 
 # Uma carta é uma ideia. Menos que isso não afirma nada.
 MIN_CARACTERES = 40
