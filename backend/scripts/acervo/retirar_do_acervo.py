@@ -63,7 +63,7 @@ def alvos(db, seguradora: str, ramo: str, manter: int) -> List[Dict[str, Any]]:
     `manter` guarda os N com MAIOR vigencia (os mais atuais), porque quando se
     corta um ramo inteiro o que sobra tem de ser o que responde hoje.
     """
-    q = (db.table("normative_documents")
+    q = (db.client.table("normative_documents")
          .select("id, insurer_key, product_line, title, status")
          .eq("insurer_key", seguradora).eq("status", "ingested"))
     if ramo:
@@ -72,7 +72,7 @@ def alvos(db, seguradora: str, ramo: str, manter: int) -> List[Dict[str, Any]]:
     if not docs:
         return []
 
-    versoes = (db.table("normative_document_versions")
+    versoes = (db.client.table("normative_document_versions")
                .select("document_id, version, qdrant_doc_id, chunk_count, "
                        "effective_from")
                .in_("document_id", [d["id"] for d in docs])
@@ -167,10 +167,10 @@ def main() -> int:
                 continue
         # 2) fecha a versao  3) arquiva o documento
         agora = _agora()
-        db.table("normative_document_versions").update(
+        db.client.table("normative_document_versions").update(
             {"superseded_at": agora}).eq("document_id", d["id"]) \
             .is_("superseded_at", "null").execute()
-        db.table("normative_documents").update(
+        db.client.table("normative_documents").update(
             {"status": "archived", "updated_at": agora}) \
             .eq("id", d["id"]).execute()
         saiu += 1
