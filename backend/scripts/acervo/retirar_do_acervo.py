@@ -29,14 +29,14 @@ O QUE ELE FAZ, NESTA ORDEM
 --------------------------
 1. retira os pontos do Qdrant (a busca para de ver na hora)
 2. fecha a versao no Supabase com `superseded_at` (fato NOSSO: retiramos)
-3. marca o documento como `archived`
+3. marca o documento como `superseded`
 
 O PDF continua no MinIO e a linha continua no banco. **Nada e apagado** — e a
 mesma decisao D-Acervo-02 que vale para versao substituida: documento fora da
 busca vai para o arquivo morto, nao para o lixo. Voltar e re-coletar.
 
 A ORDEM IMPORTA: Qdrant primeiro. Ao contrario, uma falha no meio deixaria o
-banco dizendo "arquivado" com os pedacos ainda respondendo — o pior estado
+banco dizendo "superseded" com os pedacos ainda respondendo — o pior estado
 possivel, porque e invisivel.
 """
 from __future__ import annotations
@@ -50,6 +50,22 @@ sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.dirname(
     os.path.abspath(__file__)))))
 
 COLECAO_GLOBAL = "autobrokers_global"
+
+# 🔴 A CONSTRAINT `normative_documents_status_check` SO ACEITA ESTES SEIS.
+# 📊 11/08/2026: este script gravava `archived`, que NAO esta na lista, e o
+# banco recusou DEPOIS de os pontos ja terem saido do Qdrant — deixando o
+# documento fora da busca com o banco dizendo `ingested`.
+# `superseded` e o status que ja significa "saiu da busca, ficou no arquivo".
+STATUS_VALIDOS = ("discovered", "fetching", "ingested", "superseded",
+                  "unreachable", "rejected")
+STATUS_RETIRADO = "superseded"
+
+# A trava fecha no import, não no meio do loop. O defeito de hoje só apareceu
+# DEPOIS de o Qdrant já ter sido limpo — o pior momento possível para descobrir
+# que o valor era inválido.
+assert STATUS_RETIRADO in STATUS_VALIDOS, (
+    "%r nao esta em normative_documents_status_check %r"
+    % (STATUS_RETIRADO, STATUS_VALIDOS))
 
 
 def _agora() -> str:
@@ -171,7 +187,7 @@ def main() -> int:
             {"superseded_at": agora}).eq("document_id", d["id"]) \
             .is_("superseded_at", "null").execute()
         db.client.table("normative_documents").update(
-            {"status": "archived", "updated_at": agora}) \
+            {"status": STATUS_RETIRADO, "updated_at": agora}) \
             .eq("id", d["id"]).execute()
         saiu += 1
         print("  ✅ %-44s retirado" % (d.get("title") or "")[:44])
@@ -179,7 +195,7 @@ def main() -> int:
     print("-" * 74)
     print("retirados: %d · falharam: %d" % (saiu, falhou))
     print("O PDF continua no MinIO e a linha continua no banco (status "
-          "`archived`). Voltar = re-coletar.")
+          "`superseded`). Voltar = re-coletar.")
     return 1 if falhou else 0
 
 
