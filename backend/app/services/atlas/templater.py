@@ -870,8 +870,29 @@ _PII_PATTERNS: List[Tuple[re.Pattern, str]] = [
     # Exige separador de milhar OU três dígitos antes da vírgula, para que
     # "1,50 metros" e "0,5%" não sejam tocados. Continua valendo que o que
     # ENSINA é percentual e prazo, não cifra.
+    #
+    # 🔴 O TETO DE 6 DÍGITOS É UMA TRAVA DE PII, NÃO UM DETALHE DE FORMATO.
+    #
+    # Esta regra é a única que roda ANTES das outras 36 no modo
+    # `documento_publico`: `_reservar` a usa para TIRAR o valor do texto, e o
+    # que sai do texto não é examinado por mais ninguém. Com `\d{3,}` — sem
+    # teto — qualquer sequência longa de dígitos seguida de `,00` era retirada
+    # como se fosse dinheiro, e o que estava ali dentro nunca chegava às regras
+    # de CPF, cartão e telefone. 📊 Medido em 11/08/2026, com controle:
+    #
+    #     "pagar 98765432100,00 ao favorecido"   →  PASSAVA INTEIRO
+    #     "pagar 98765432100 ao favorecido"      →  {CPF}        ← CONTROLE
+    #
+    # O sufixo `,00` era a causa inteira: sem ele, os dois modos mascaravam. A
+    # contagem "36 de 38 regras ativas" não enxergava isto, porque nenhuma
+    # regra foi desligada — o texto é que era retirado antes delas.
+    #
+    # 6 dígitos = R$ 999.999,99 escritos sem separador, que é o limite do que
+    # alguém digita sem ponto. Acima disso o contrato usa separador de milhar,
+    # e o ramo da esquerda continua casando. CPF (11), telefone (11) e cartão
+    # (16) ficam de fora por construção, não por sorte.
     (_VALOR_SEM_RS := re.compile(
-        r"(?<![\d,.])(?:\d{1,3}(?:\.\d{3})+|\d{3,}),\d{2}(?![\d])"), "{VALOR_RS}"),
+        r"(?<![\d,.])(?:\d{1,3}(?:\.\d{3})+|\d{3,6}),\d{2}(?![\d])"), "{VALOR_RS}"),
     # RÓTULO NO MEIO DA LINHA. `_LABELED_VALUE` está ancorado em `^`, porque
     # nasceu para ler TELA de comprovante, onde cada campo ocupa uma linha. Mas
     # gente escreve num parágrafo só: "segue os dados banco 341 agencia 1234
