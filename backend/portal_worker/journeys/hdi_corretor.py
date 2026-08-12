@@ -506,6 +506,72 @@ def _urlencode(campos: Dict[str, Any]) -> str:
     return _ue({k: ("" if v is None else str(v)) for k, v in campos.items()})
 
 
+async def _diagnosticar_recusa(page, params: Dict[str, Any], evidence: Dict[str, Any]) -> None:
+    """Quando o portal recusa na porta, dizer POR QUE — e não deixar hipótese.
+
+    📊 Em 12/08/2026 o mesmo código passou aqui (IP residencial) e foi recusado
+    no worker (servidor). Duas explicações couberam no mesmo fato:
+
+        (a) o navegador subiu no modo errado
+        (b) o IP do servidor é de datacenter, e o Akamai penaliza isso
+
+    Sem medir, escolher entre as duas é chute — e cada chute custa um deploy.
+    Isto colhe as duas respostas de uma vez:
+
+        modo_navegador   o que o worker REALMENTE pediu ao Chromium
+        ip_de_saida      de onde a chamada saiu, visto de fora
+        webdriver        se o navegador ainda se denuncia como automatizado
+
+    A chamada de IP usa `page.request`, que não passa pela política de conteúdo
+    da página recusada — senão o próprio bloqueio esconderia o diagnóstico.
+    """
+    diag: Dict[str, Any] = {"modo_navegador": params.get("_launch_mode")}
+    try:
+        r = await page.request.get("https://api.ipify.org?format=json", timeout=15000)
+        diag["ip_de_saida"] = (await r.json()).get("ip")
+    except Exception as exc:  # noqa: BLE001
+        diag["ip_de_saida"] = f"nao consegui medir ({type(exc).__name__})"
+    try:
+        diag.update(await page.evaluate(
+            """() => ({
+                 webdriver: navigator.webdriver,
+                 ua: navigator.userAgent,
+                 headless_no_ua: /headless/i.test(navigator.userAgent),
+                 plugins: (navigator.plugins || []).length,
+                 idiomas: (navigator.languages || []).join(','),
+               })"""))
+    except Exception as exc:  # noqa: BLE001
+        diag["navegador"] = f"nao consegui ler ({type(exc).__name__})"
+    try:
+        texto = _clean_text(await _texto(page))
+        m = re.search(r"Reference\s*#?\s*([0-9a-f.]+)", texto, re.IGNORECASE)
+        diag["referencia_akamai"] = m.group(1) if m else ""
+    except Exception:  # noqa: BLE001
+        pass
+
+    # O TESTE QUE DECIDE. Mesmo servidor, mesmo IP, dois clientes diferentes:
+    #
+    #   o NAVEGADOR      tem impressao digital de automacao
+    #   page.request     e um cliente HTTP simples, sem fingerprint de browser
+    #
+    # Se os DOIS forem recusados, o fator e o IP — nenhum ajuste de navegador
+    # resolve, e a saida e outra (proxy, allowlist, rodar de outro lugar).
+    # Se so o navegador for recusado, o fator e ele — e ai tem conserto aqui.
+    try:
+        r = await page.request.get(HDI_LOGIN_URL, timeout=25000)
+        corpo = await r.text()
+        bloqueado = "access denied" in _norm(corpo)
+        diag["cliente_http_simples"] = {
+            "status": r.status, "bloqueado": bloqueado, "bytes": len(corpo)}
+        diag["veredito"] = ("O FATOR E O IP (os dois clientes recusados)" if bloqueado
+                            else "O FATOR E O NAVEGADOR (o cliente simples passou)")
+    except Exception as exc:  # noqa: BLE001
+        diag["cliente_http_simples"] = f"nao consegui medir ({type(exc).__name__})"
+        diag["veredito"] = "inconclusivo"
+
+    evidence["hdi_recusa"] = diag
+
+
 async def login_check(page, params: Dict[str, Any], evidence: Dict[str, Any]) -> JourneyResult:
     """Login HDI Digital com a credencial de `portal_accounts`."""
     usuario = str(params.get("username") or "").strip()
@@ -520,10 +586,14 @@ async def login_check(page, params: Dict[str, Any], evidence: Dict[str, Any]) ->
     # ISSO, e nao "campos de login nao encontrados" — que manda quem for depurar
     # procurar no lugar errado.
     if "access denied" in _norm(await _texto(page)):
+        await _diagnosticar_recusa(page, params, evidence)
+        modo = (evidence.get("hdi_recusa") or {}).get("modo_navegador") or "?"
         return JourneyResult(
             status="failed",
-            message=("portal HDI recusou o navegador (Akamai 'Access Denied') — "
-                     "o worker precisa de PORTAL_HEADLESS_MODE=new"),
+            captured={"stage": "akamai_access_denied"},
+            message=(f"portal HDI recusou o navegador na porta (Akamai 'Access Denied'). "
+                     f"Modo usado: {modo}. Ver `hdi_recusa` na evidência — ela diz "
+                     f"se foi o modo do navegador ou o IP de onde a chamada saiu."),
         )
 
     if params.get("session_loaded"):

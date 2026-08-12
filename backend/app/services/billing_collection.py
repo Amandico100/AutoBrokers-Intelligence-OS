@@ -184,25 +184,82 @@ def _norm_txt(value: Any) -> str:
     return " ".join(texto.split())
 
 
-def tarefas_para_a_equipe(items: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
-    """O que precisa de gente: converter debito em boleto no portal.
+def tarefas_para_a_equipe(items: List[Dict[str, Any]], cfg: Optional[Dict[str, Any]] = None
+                          ) -> List[Dict[str, Any]]:
+    """O que precisa de gente: converter para boleto no portal e falar com o segurado.
 
     Nao cria tabela nova. A tarefa vive no relatorio da rotina e no aviso ao
     canal de suporte humano — que sao os dois lugares onde a corretora ja olha.
+
+    Carrega TUDO que a atendente precisa para decidir sem abrir outro sistema:
+    telefone, seguradora, ramo, apolice, parcela, vencimento, valor e o motivo.
+    Faltar o telefone aqui era o que obrigava a pessoa a ir atras da informacao
+    — justamente o trabalho que o aviso existe para poupar.
     """
-    return [
-        {
+    cfg = cfg or {}
+    out: List[Dict[str, Any]] = []
+    for i in items or []:
+        if not sem_boleto_por_regra(i):
+            continue
+        motivo = str(i.get("sem_boleto_motivo") or "")
+        # "pagamento em debito - a HDI nao emite..." -> "Débito automático recusado"
+        forma = motivo.split("-")[0].replace("pagamento em", "").strip() or "forma de pagamento"
+        out.append({
             "portal": i.get("portal"),
             "cliente_nome": i.get("cliente_nome"),
-            "apolice": i.get("apolice_susep") or i.get("documento"),
+            "whatsapp": i.get("whatsapp"),
+            "nome_seguradora": _portal_insurer_name(i, cfg),
+            "item_segurado": _insured_item_name(i),
+            "apolice_susep": i.get("apolice_susep") or i.get("documento"),
             "parcela": i.get("parcela"),
             "vencimento": i.get("vencimento"),
             "valor": i.get("valor"),
-            "acao": "converter debito automatico em boleto no portal da seguradora",
-        }
-        for i in items or []
-        if sem_boleto_por_debito(i)
-    ]
+            "motivo": f"{forma.capitalize()} recusado",
+            "observacao": i.get("observacao") or "",
+            "acao": "Converter para boleto no portal e enviar ao segurado",
+        })
+    return out
+
+
+async def avisar_suporte_humano(client, company_id: str, texto: str, rotulo: str) -> bool:
+    """Manda o aviso para o grupo de suporte humano DESTA corretora.
+
+    O agente nunca sabe o nome do grupo. Ele diz "avise o suporte desta
+    corretora" e o sistema resolve em `human_support_destinations` — assim mil
+    corretoras tem mil destinos e zero codigo especifico, e trocar de grupo e
+    mexer num campo de tela.
+
+    Sem destino cadastrado NAO e erro: o aviso ja esta no relatorio da rotina,
+    e o relatorio diz que faltou destino. Falhar aqui derrubaria a colheita
+    inteira por causa de um campo em branco.
+    """
+    try:
+        def _destino():
+            res = (client.table("human_support_destinations")
+                   .select("destination_type, destination_ref, is_primary, priority_order")
+                   .eq("company_id", str(company_id)).eq("is_active", True)
+                   .order("is_primary", desc=True).order("priority_order")
+                   .limit(1).execute())
+            return (res.data or [None])[0]
+
+        destino = await asyncio.to_thread(_destino)
+        if not destino or not destino.get("destination_ref"):
+            return False
+
+        integration = await asyncio.to_thread(_find_whatsapp_integration, client, str(company_id))
+        if not integration:
+            return False
+
+        from app.services.whatsapp_service import get_whatsapp_service
+
+        ok = await asyncio.to_thread(
+            get_whatsapp_service().send_message,
+            str(destino["destination_ref"]), texto, integration)
+        return bool(ok)
+    except Exception:  # noqa: BLE001
+        # Aviso e efeito colateral da colheita, nao a colheita. Perder o aviso
+        # e ruim; derrubar o job por causa dele e pior.
+        return False
 
 
 def _vencimento_iso(item: Dict[str, Any]) -> str:
@@ -1064,6 +1121,46 @@ async def execute_billing_collection_routine(supabase, routine: Dict[str, Any]) 
         if not approval_id:
             blockers.append("nao consegui criar pedido de aprovacao")
     test_sends = await _send_test_messages(client, routine, fila, boletos, cfg, blockers) if fila else []
+
+    # OS AVISOS AO GRUPO HUMANO. Saem depois da entrega, porque o resumo precisa
+    # saber quantos sairam. Nenhum deles fala com segurado.
+    from app.services import billing_avisos as avisos
+
+    nome_corretora = str(cfg.get("brokerage_name") or "Corretora")
+    tarefas = tarefas_para_a_equipe(items, cfg)
+    if tarefas:
+        enviado = await avisar_suporte_humano(
+            client, company_id, avisos.aviso_de_tarefas(nome_corretora, tarefas), "tarefas")
+        if not enviado:
+            blockers.append(
+                f"{len(tarefas)} tarefa(s) para a equipe NAO foram avisadas no WhatsApp "
+                f"— a corretora nao tem grupo de suporte cadastrado (veja abaixo)")
+
+    # O guarda: portal que respondeu mas nao deixou ler. Vai para a EQUIPE,
+    # nunca para o segurado — ele nao tem o que fazer com essa informacao.
+    for job in jobs:
+        estagio = str(((job.get("evidence") or {}).get("captured") or {}).get("stage")
+                      or (job.get("evidence") or {}).get("stage") or "")
+        if estagio in ("lista_nao_lida", "sem_linhas_extraiveis", "inadimplentes_nao_localizado"):
+            await avisar_suporte_humano(
+                client, company_id,
+                avisos.aviso_de_portal(
+                    nome_corretora,
+                    NOME_DA_SEGURADORA.get(str(job.get("portal_key") or ""), str(job.get("portal_key") or "")),
+                    "nao consegui ler a lista de parcelas"),
+                "portal")
+
+    sem_telefone = [r for r in retidos if "sem telefone" in str(r.get("retido_por") or "")]
+    await avisar_suporte_humano(
+        client, company_id,
+        avisos.aviso_de_resumo(
+            nome_corretora,
+            seguradoras=[NOME_DA_SEGURADORA.get(p, p) for p in (cfg.get("portal_keys") or [])],
+            enviados=len([s for s in test_sends if s.get("ok")]),
+            pendentes=max(0, len(fila) - len(test_sends)),
+            tarefas=len(tarefas),
+            sem_telefone=sem_telefone),
+        "resumo")
     if items and cfg.get("send_mode") == "approval":
         blockers.append("modo aprovacao: mensagens aguardam aprovacao antes de qualquer envio ao cliente")
     elif items and cfg.get("send_mode") == "none":

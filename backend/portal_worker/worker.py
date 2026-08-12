@@ -397,6 +397,12 @@ async def _run_job(supa, job: Dict[str, Any]) -> None:
             if session_storage:
                 evidence["session_storage_restored"] = await _restore_session_storage(context, session_storage)
             page = await context.new_page()
+            # Que navegador subiu, de fato. Sem isto, um portal que recusa o
+            # acesso deixa duas explicações igualmente plausíveis — "o modo
+            # errado" e "o IP do servidor" — e nenhuma forma de separá-las
+            # sem outro deploy. A evidência tem de trazer o que foi usado.
+            params["_launch_mode"] = _launch_kwargs()
+            evidence["launch_mode"] = params["_launch_mode"]
             params["_job_id"] = str(job_id)
             params["_company_id"] = str(job.get("company_id") or "")
             params["_portal_key"] = str(job.get("portal_key") or "")

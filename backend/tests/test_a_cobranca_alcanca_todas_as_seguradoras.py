@@ -1,5 +1,10 @@
-# -*- coding: ascii -*-
+# -*- coding: utf-8 -*-
 """A Cobranca alcanca todas as seguradoras, e nenhuma cai em silencio.
+
+Este arquivo e UTF-8, e nao ASCII como os vizinhos, por um motivo: a secao [11]
+compara o TEXTO das mensagens que a equipe le no WhatsApp. Elas sao escritas
+para gente, com acento e emoji -- e um teste que so consegue afirmar sobre o
+texto sem acento nao guarda o texto que sai de verdade.
 
 O defeito que estes testes seguram
 ==================================
@@ -321,9 +326,13 @@ check("a mensagem normal continua intacta (a decisao nao estragou o envio bom)",
 tarefas = bc.tarefas_para_a_equipe([DEBITO, COM_BOLETO, FALHA_DOWNLOAD])
 check("abre UMA tarefa, so para o caso da regra da seguradora", len(tarefas) == 1, tarefas)
 check("a tarefa diz o que a atendente tem que fazer",
-      "converter debito automatico em boleto" in tarefas[0]["acao"])
-check("a tarefa carrega apolice e parcela para a atendente achar",
-      tarefas[0]["apolice"] and tarefas[0]["parcela"])
+      "Converter para boleto no portal" in tarefas[0]["acao"], tarefas[0]["acao"])
+# A tarefa antes carregava so apolice e parcela, e a atendente tinha de abrir o
+# sistema de gestao para descobrir o telefone. Agora ela leva TUDO que decide.
+for campo in ("cliente_nome", "whatsapp", "nome_seguradora", "item_segurado",
+              "apolice_susep", "parcela", "vencimento", "valor", "motivo", "acao"):
+    check("a tarefa carrega `%s` (a atendente nao vai atras)" % campo,
+          campo in tarefas[0], sorted(tarefas[0]))
 
 teste_debito = bc._format_test_message(DEBITO, cfg_msg, None, "")
 check("a rede de seguranca da simulacao diz que o segurado NAO deveria receber",
@@ -427,6 +436,111 @@ check("a mensagem diz explicitamente que NAO afirma carteira em dia",
       "NAO afirmo que a carteira esta em dia" in fonte_sweep)
 check("resposta vazia de verdade ainda pode terminar `done`",
       'status="done"' in fonte_sweep)
+
+# ---------------------------------- as mensagens do grupo de suporte humano
+print("\n[11] As mensagens que a equipe le no WhatsApp")
+
+av = _load("billing_avisos", "app/services/billing_avisos.py")
+
+TAREFA = {
+    "cliente_nome": "CONDOMINIO EXEMPLO RESIDENCIAL",
+    "whatsapp": "5547999990001",
+    "nome_seguradora": "HDI SEGUROS",
+    "item_segurado": "Condominio",
+    "apolice_susep": "01.008.119.003755.000000",
+    "parcela": "02/06",
+    "vencimento": _dias_atras(3),
+    "valor": 1006.02,
+    "motivo": "Debito automatico recusado",
+    "acao": "Converter para boleto no portal e enviar ao segurado",
+}
+msg = av.aviso_de_tarefas("Resulta Seguros", [TAREFA])
+
+check("tem TITULO proprio de cobranca", msg.startswith("\U0001F534 *COBRAN"), msg[:40])
+check("o titulo diz PRECISA DE VOCE", "PRECISA DE VOC" in msg)
+check("traz o WhatsApp EM NEGRITO (o que a atendente toca primeiro)",
+      "*(47) 99999-0001*" in msg, msg)
+check("traz a seguradora", "HDI SEGUROS" in msg)
+check("traz o ramo", "Condominio" in msg)
+check("traz a apolice inteira", "01.008.119.003755.000000" in msg)
+check("traz a parcela", "02/06" in msg)
+check("diz ha quantos dias venceu (a pessoa nao conta de cabeca)",
+      "(ha 3 dias)" in msg.replace("á", "a").replace("_", ""), msg)
+check("traz o valor em real", "R$ 1.006,02" in msg, msg)
+check("traz o motivo", "Debito automatico recusado" in msg)
+check("termina com a ACAO em negrito",
+      "*Converter para boleto no portal e enviar ao segurado*" in msg)
+check("cada informacao em SUA linha (nao e uma linha so com barras)",
+      "|" not in msg and msg.count("\n") >= 10, msg.count("\n"))
+check("NAO tem a frase do robo que o founder mandou tirar",
+      "o robo" not in _norm_ascii(msg) and "quem fala e voce" not in _norm_ascii(msg))
+check("o rodape explica sem se justificar",
+      "O contato" in msg and "seu" in msg)
+
+sem_fone = av.aviso_de_tarefas("Resulta", [{**TAREFA, "whatsapp": ""}])
+check("sem telefone, DIZ que nao tem (nao esconde a linha)",
+      "sem telefone no cadastro" in sem_fone, sem_fone)
+check("o guarda do telefone CONSEGUE falhar (com e sem dao textos diferentes)",
+      sem_fone != msg)
+
+com_obs = av.aviso_de_tarefas("Resulta", [{**TAREFA, "observacao": "3a tentativa de debito falhou"}])
+check("observacao aparece quando existe", "3a tentativa" in com_obs)
+check("e NAO aparece quando nao existe", "\U0001F4CC" not in msg)
+
+dois = av.aviso_de_tarefas("Resulta", [TAREFA, {**TAREFA, "cliente_nome": "MARIA DA SILVA"}])
+import re as _re  # noqa: E402
+
+# Casar por "*1 " solto pegava a linha de resumo ("*2 segurados em atraso...").
+# O bloco do segurado e `*N · NOME*` -- e e esse padrao que tem de estar em ordem.
+_blocos = _re.findall(r"^\*(\d+) . (.+)\*$", dois, _re.MULTILINE)
+check("numera os segurados, em ordem, um bloco por pessoa",
+      [n for n, _ in _blocos] == ["1", "2"], _blocos)
+check("cada bloco traz o nome de UM segurado diferente",
+      len({nome for _, nome in _blocos}) == 2, _blocos)
+check("concorda o plural com a quantidade",
+      "2 segurados" in dois and "1 segurado em atraso" in msg)
+
+prob = av.aviso_de_portal("Resulta Seguros", "HDI SEGUROS", "nao consegui ler a lista")
+check("o aviso de portal tem TITULO diferente do de tarefa",
+      prob.startswith("\U0001F7E0") and not prob.startswith("\U0001F534"))
+check("o guarda diz que NAO afirma carteira em dia",
+      "Não estou afirmando que a carteira está em dia" in prob, prob)
+check("o guarda manda conferir na mao", "Conferir na mão" in prob)
+check("o guarda NAO fala com segurado (nao tem telefone de cliente)",
+      "99999" not in prob)
+
+res = av.aviso_de_resumo("Resulta", seguradoras=["HDI SEGUROS", "ALLIANZ"],
+                         enviados=8, pendentes=3, tarefas=2,
+                         sem_telefone=[{"cliente_nome": "JOAO SOUZA", "apolice_susep": "01.008"}])
+check("o resumo tem o TERCEIRO titulo", res.startswith("\U0001F535"))
+check("os tres titulos sao diferentes entre si",
+      len({msg[:2], prob[:2], res[:2]}) == 3)
+check("o resumo diz quantos foram e quantos ficaram",
+      "8 boleto" in res and "3 ficam para amanh" in res)
+check("o resumo aponta para a mensagem de tarefas", "precisam de voc" in _norm_ascii(res))
+check("o resumo nomeia quem ficou sem telefone", "JOAO SOUZA" in res)
+
+vazio = av.aviso_de_resumo("Resulta", seguradoras=["HDI SEGUROS"], enviados=0,
+                           pendentes=0, tarefas=0, sem_telefone=[])
+check("rodada sem inadimplente diz isso, e nao fica muda",
+      "Nenhum inadimplente" in vazio)
+check("nenhuma tarefa nao gera mensagem vazia", av.aviso_de_tarefas("X", []) == "")
+
+check("telefone brasileiro vira formato legivel",
+      av.telefone_legivel("5547988087463") == "(47) 98808-7463",
+      av.telefone_legivel("5547988087463"))
+check("telefone fixo de 10 digitos tambem",
+      av.telefone_legivel("4733701234") == "(47) 3370-1234")
+check("numero estranho aparece como veio (melhor estranho que escondido)",
+      av.telefone_legivel("123") == "123")
+
+fonte_bc = (ROOT / "app" / "services" / "billing_collection.py").read_text(encoding="utf-8")
+check("o aviso resolve o grupo por company_id (nunca grupo fixo no codigo)",
+      "human_support_destinations" in fonte_bc and 'eq("company_id"' in fonte_bc)
+check("sem grupo cadastrado NAO derruba a colheita",
+      "return False" in fonte_bc.split("async def avisar_suporte_humano")[1][:2200])
+check("o guarda do portal avisa a EQUIPE, nao o segurado",
+      "aviso_de_portal" in fonte_bc)
 
 print("\nPASS=%d FAIL=%d" % (PASS, FAIL))
 sys.exit(1 if FAIL else 0)
