@@ -317,14 +317,42 @@ def ordenar_para_entrega(items: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
     )
 
 
-def fila_de_cobranca(items: List[Dict[str, Any]], *, horas: int = HORAS_MINIMAS_ATRASO
-                     ) -> tuple:
+def boletos_que_deram_certo(boletos: Optional[Iterable[Dict[str, Any]]]) -> set:
+    """Os recibos que TEM arquivo no bucket. Nem todo boleto tentado virou PDF."""
+    out = set()
+    for b in boletos or []:
+        if isinstance(b, dict) and b.get("ok") and str(b.get("storage_path") or "").strip():
+            recibo = str(b.get("recibo") or "").strip()
+            if recibo:
+                out.add(recibo)
+    return out
+
+
+def fila_de_cobranca(items: List[Dict[str, Any]], *, horas: int = HORAS_MINIMAS_ATRASO,
+                     boletos: Optional[Iterable[Dict[str, Any]]] = None) -> tuple:
     """Separa quem pode ser cobrado de quem nao pode, e diz POR QUE nao pode.
 
     Devolve `(fila_ordenada, retidos)`. Nada some: o que nao entra na fila entra
     no relatorio com motivo. Um inadimplente que desaparece sem explicacao e
     pior que um que nao foi cobrado — porque ninguem vai atras do que nao viu.
+
+    `boletos` — o teste que faltava
+    -------------------------------
+    📊 Descoberto em 12/08/2026, na primeira rodada de producao da Tokio: de 4
+    downloads, 3 deram PDF e 1 devolveu `ok: false`. Esse item **continuava
+    entrando na fila** — porque a unica porta que existia era
+    `sem_boleto_por_regra`, que so pega quem a SEGURADORA recusa por regra, nao
+    quem falhou na hora de baixar.
+
+    O segurado receberia a mensagem que termina em "Segue o boleto abaixo" com
+    anexo nenhum. E o comentario da propria funcao ja avisava desse desfecho —
+    so que o guarda cobria um caminho e o outro nao.
+
+    Vale para TODAS as seguradoras, nao so a Tokio. Sem a lista de boletos o
+    comportamento e o de antes (compatibilidade); com ela, o item vira tarefa
+    humana com o motivo escrito.
     """
+    com_arquivo = boletos_que_deram_certo(boletos) if boletos is not None else None
     fila: List[Dict[str, Any]] = []
     retidos: List[Dict[str, Any]] = []
     for item in items or []:
@@ -342,6 +370,10 @@ def fila_de_cobranca(items: List[Dict[str, Any]], *, horas: int = HORAS_MINIMAS_
             retidos.append({**item, "retido_por": f"vencido ha menos de {horas}h (carencia)"})
         elif not _digits(item.get("whatsapp")):
             retidos.append({**item, "retido_por": f"sem telefone ({item.get('contact_status') or 'nao encontrado'})"})
+        elif com_arquivo is not None and str(item.get("recibo") or "").strip() not in com_arquivo:
+            retidos.append({**item, "retido_por":
+                            "o boleto NAO foi baixado — tarefa para a equipe, o segurado "
+                            "NAO recebe mensagem sem o arquivo"})
         else:
             fila.append(item)
     return ordenar_para_entrega(fila), retidos
@@ -1107,7 +1139,11 @@ async def execute_billing_collection_routine(supabase, routine: Dict[str, Any]) 
     # viram (a) fila ordenada do mais velho para o mais novo e (b) retidos, cada
     # um com o motivo escrito. O relatorio mostra os dois — quem foi cobrado e
     # quem nao foi, e por que.
-    fila, retidos = fila_de_cobranca(items, horas=int(cfg.get("horas_minimas_atraso") or HORAS_MINIMAS_ATRASO))
+    fila, retidos = fila_de_cobranca(
+        items,
+        horas=int(cfg.get("horas_minimas_atraso") or HORAS_MINIMAS_ATRASO),
+        boletos=boletos,  # sem o arquivo no bucket, o segurado nao recebe nada
+    )
     for motivo, quantos in sorted(
         {r.get("retido_por", "?"): sum(1 for x in retidos if x.get("retido_por") == r.get("retido_por"))
          for r in retidos}.items()

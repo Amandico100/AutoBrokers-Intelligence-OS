@@ -522,11 +522,31 @@ async def numero_titulo_da_parcela(page, item: Dict[str, Any],
     html = r.get("text") or ""
     linhas = extrair_parcelas_do_detalhe(html)
     escolhida = escolher_parcela(linhas, item.get("parcela"))
-    evidence.setdefault("tokio_detalhes", []).append({
-        "recibo": item.get("recibo"), "status": r.get("status"),
-        "linhas": len(linhas), "achou_parcela": bool(escolhida),
-    })
+    nota = {"recibo": item.get("recibo"), "status": r.get("status"),
+            "linhas": len(linhas), "achou_parcela": bool(escolhida)}
+    if not escolhida:
+        # 🔴 "Não achei" é diagnóstico pela metade. Sem saber se a linha existe e
+        # está sem botão, ou se ela nem aparece, a hipótese fica aberta — e cada
+        # hipótese custa uma visita, num portal que trava depois de ~4.
+        # 📊 O caso que criou isto (12/08/2026): parcela 11 de uma apólice com 12
+        # linhas lidas, vencida há 26 dias. O boleto da Tokio diz
+        # "NÃO RECEBER APÓS 15 DIAS DO VENCIMENTO" — a suspeita é que o portal
+        # pare de oferecer 2ª via depois disso. Isto mede, em vez de supor.
+        # Só número de parcela e situação: nenhum dado do segurado.
+        nota["pedi_a_parcela"] = str(item.get("parcela") or "")
+        nota["dias_de_atraso"] = _dias_de_atraso(item.get("vencimento"))
+        nota["linhas_lidas"] = [{"n": l["parcela"], "situacao": l["situacao"],
+                                 "botao": l["tem_botao_boleto"]} for l in linhas]
+    evidence.setdefault("tokio_detalhes", []).append(nota)
     return escolhida or {}
+
+
+def _dias_de_atraso(vencimento_iso: Any) -> Optional[int]:
+    try:
+        venc = datetime.strptime(str(vencimento_iso)[:10], "%Y-%m-%d").replace(tzinfo=timezone.utc)
+    except (ValueError, TypeError):
+        return None
+    return (datetime.now(timezone.utc) - venc).days
 
 
 async def baixar_boleto(page, item: Dict[str, Any], params: Dict[str, Any],
@@ -891,6 +911,18 @@ async def cobranca_sweep(page, params: Dict[str, Any], evidence: Dict[str, Any])
     ok = sum(1 for b in boletos if b.get("ok"))
     evidence["boletos_download_ok"] = ok
     evidence["boletos_download_attempts"] = len(boletos)
+
+    # Quem tentou e não trouxe PDF vira tarefa humana AQUI, com o motivo do
+    # portal. Deixar só o `ok: false` no relatório fazia o item seguir para a
+    # fila de envio e o segurado receber "Segue o boleto abaixo" sem anexo.
+    falhou = {str(b.get("recibo")): str(b.get("reason") or "download nao concluido")
+              for b in boletos if not b.get("ok")}
+    for item in atrasados:
+        motivo = falhou.get(str(item.get("recibo")))
+        if motivo and not item.get("sem_boleto_motivo"):
+            item["sem_boleto_motivo"] = f"{MARCA_REGRA} — {motivo}"
+            retidos.append(item)
+    evidence["inadimplentes_sem_boleto"] = len(retidos)
 
     recado = f"Tokio: {len(atrasados)} inadimplente(s), {ok} boleto(s)"
     if retidos:

@@ -322,6 +322,41 @@ check("o retido explica que a equipe assume",
 check("o retido deixa explicito que o segurado NAO recebe mensagem do sistema",
       "NAO recebe mensagem" in (retidos_d[0].get("retido_por") or ""))
 
+# ---------------------------------------- o boleto que NAO chegou no bucket
+print("\n[8b] Boleto que falhou no download tambem nao vira mensagem")
+
+# 12/08/2026, primeira rodada de producao da Tokio: 4 downloads, 3 PDFs, 1
+# `ok: false`. Esse item continuava entrando na fila, porque a unica porta era
+# `sem_boleto_por_regra` -- que pega quem a SEGURADORA recusa, nao quem falhou
+# na hora de baixar. O segurado receberia "Segue o boleto abaixo" sem anexo.
+# Vale para as TRES seguradoras, nao so para a Tokio.
+BOLETOS_DA_RODADA = [
+    {"recibo": "B1", "ok": True, "storage_path": "c/hdi/j/boleto-B1.pdf", "bytes": 90000},
+    {"recibo": "F1", "ok": False, "reason": "nao achei a parcela na tela de detalhe"},
+]
+check("so B1 tem arquivo no bucket",
+      bc.boletos_que_deram_certo(BOLETOS_DA_RODADA) == {"B1"},
+      bc.boletos_que_deram_certo(BOLETOS_DA_RODADA))
+check("`ok: true` sem storage_path NAO conta como arquivo",
+      bc.boletos_que_deram_certo([{"recibo": "X", "ok": True}]) == set())
+
+SEM_MOTIVO = dict(FALHA_DOWNLOAD, sem_boleto_motivo="")
+fila_b, retidos_b = bc.fila_de_cobranca([COM_BOLETO, SEM_MOTIVO], boletos=BOLETOS_DA_RODADA)
+check("quem baixou o boleto entra na fila", [i["recibo"] for i in fila_b] == ["B1"],
+      [i["recibo"] for i in fila_b])
+check("quem NAO baixou fica de fora", "F1" not in [i["recibo"] for i in fila_b])
+check("e o retido explica que falta o arquivo",
+      "boleto NAO foi baixado" in (retidos_b[0].get("retido_por") or ""),
+      retidos_b[0].get("retido_por"))
+check("o guarda CONSEGUE falhar (um entra, o outro nao)",
+      len(fila_b) == 1 and len(retidos_b) == 1)
+# Sem a lista, o comportamento e o de antes -- compatibilidade provada, senao
+# "passou" poderia significar so que o argumento foi ignorado.
+fila_sem, _ = bc.fila_de_cobranca([COM_BOLETO, SEM_MOTIVO])
+check("sem a lista de boletos, os dois passam (era o buraco)",
+      sorted(i["recibo"] for i in fila_sem) == ["B1", "F1"],
+      [i["recibo"] for i in fila_sem])
+
 check("nao existe mais template de mensagem para debito",
       not hasattr(bc, "MENSAGEM_DEBITO_SEM_BOLETO"))
 check("a mensagem normal continua intacta (a decisao nao estragou o envio bom)",
