@@ -7,9 +7,9 @@
 > aqui.** Ela define o método das 5 fases e o teto de visitas. Este arquivo é o
 > mapa do território — não substitui a SPEC.
 >
-> Estado: 🟢 **FASES 1–3 FECHADAS** · journey escrita · 70 asserções verdes
-> · falta a Fase 4 (uma visita real)
-> Última medição: 12/08/2026 · HAR do corretor 67828 (AutoFleet)
+> Estado: ✅ **FASES 1–4 FECHADAS** · a cadeia inteira rodou contra o portal real
+> e trouxe boleto · 70 asserções verdes · falta a Fase 5 (fila de produção)
+> Última medição: 12/08/2026 · corretor 67828 (AutoFleet)
 
 | Marca | Significado |
 |---|---|
@@ -464,12 +464,50 @@ Santander, o banco do boleto) · `Agência` · `Conta Corrente`.
 
 ---
 
+# 6bis. FASE 4 — a visita real, medida
+
+📊 12/08/2026, corretora AutoFleet, cadeia inteira contra o portal de verdade:
+
+```
+relatorio ................ HTTP 200 · 6.857 bytes · corretor 067828
+totais (a testemunha) .... 5 clientes · 5 parcelas · R$ 3.050,30
+                           comissao nao recebida R$ 401,43
+parcelas lidas ........... 5          ← bate com a testemunha
+inadimplentes ............ 5
+retidos p/ humano ........ 1          ← o DEBITO com repique = S
+detalhe .................. recibo 36713188-4 · HTTP 200 · 4 linhas · achou a parcela
+BOLETO ................... ok · 119.259 bytes
+```
+
+📊 Os totais batem **exatamente** com o print que o Founder tirou da tela:
+`Clientes inadimplentes: 5 · Valor Total de Prêmios: R$ 3.050,30 ·
+Comissão não recebida: R$ 401,43`. Duas fontes independentes, mesmo número.
+
+## O que a Fase 4 ensinou — duas coisas que os testes não pegavam
+
+**1. O formulário de login não existe quando a página carrega.**
+📊 `portalparceiros` redireciona para um **SSO ForgeRock OpenAM**:
+`ssoportais3.tokiomarine.com.br/openam/XUI/?realm=TOKIOLFR`. Os campos são
+`#idToken1` / `#idToken2` / `#loginButton_0`, montados por JS **depois** do
+`domcontentloaded`. Preencher logo em seguida acha zero campos — e o worker
+devolve *"campos de login nao encontrados"*, como se a credencial fosse o
+problema. Espera-se o **campo**, nunca o relógio.
+
+**2. 🔴 O guarda de "estou dentro" foi enganado pela própria porta.**
+A primeira versão procurava `a[href*='/group/portal-corretor']` — e **o card
+"Corretor" do seletor é exatamente um link para essa URL**. O guarda passou na
+tela errada, a varredura seguiu achando que estava dentro, e o BFF devolveu
+vazio. Um marco de chegada não pode ser algo que a porta também tem
+(CLAUDE.md §9.3). As marcas boas estão em `MARCAS_DE_DENTRO`.
+
+---
+
 # 7. O QUE FALTA
 
 | # | O que | Quem destrava |
 |---|---|---|
-| 1 | **Fase 4** — uma visita real: login → seletor → relatório → 1 boleto | 🤖 execução |
-| 2 | O caso **CNPJ** na URL do detalhe (só CPF foi medido) | 🤖 sai na Fase 4 |
+| 1 | **Fase 5** — rodar pela fila de produção, com boleto no bucket | 🧑 redeploy do `portal-worker` |
+| 2 | O caso **CNPJ** na URL do detalhe (só CPF foi exercitado) | 🤖 sai na Fase 5 |
 | 3 | Se inadimplente de **cartão** aparece na lista principal ou só em `Débitos Pendentes` | 🤖 1 visita |
 | 4 | Se `Situação Parcela` do detalhe é **tempo real** (desempate do snapshot D-1) | 🤖 1 visita |
 | 5 | Uma corretora com **2+ códigos** de corretor | 🧑 Founder indicar |
@@ -483,4 +521,4 @@ Santander, o banco do boleto) · `Agência` · `Conta Corrente`.
 | Data | O que |
 |---|---|
 | 09/08/2026 | Reconhecimento inicial. 📊 SSO trava depois de ~4 entradas em 30 min. |
-| 12/08/2026 | Credenciais novas gravadas cifradas. **Fases 1–3 fechadas com o HAR do Founder:** BFF GraphQL + REST descoberto, cadeia de 7 passos medida com corpos reais, journey escrita, 70 asserções verdes. 🔴 Achados: o telefone do portal se contradiz entre duas telas · DÉBITO queima a troca da vigência · `Pendente` ≠ atrasada (o boleto saiu da parcela errada na captura) · aspas em entidade HTML · notação científica no GraphQL · Akamai também aqui. |
+| 12/08/2026 | Credenciais novas gravadas cifradas. **Fases 1–4 fechadas com o HAR do Founder:** BFF GraphQL + REST descoberto, cadeia de 7 passos medida com corpos reais, journey escrita, 70 asserções verdes, e a **visita real trouxe boleto de 119.259 bytes** com os totais batendo com a tela (§6bis). 🔴 Achados: o telefone do portal se contradiz entre duas telas · DÉBITO queima a troca da vigência · `Pendente` ≠ atrasada (o boleto saiu da parcela errada na captura) · aspas em entidade HTML · notação científica no GraphQL · Akamai também aqui. |

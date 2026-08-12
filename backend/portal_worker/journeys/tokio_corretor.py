@@ -434,13 +434,53 @@ Q_USUARIO = ("query BuscarUsuario {\n  buscarUsuario {\n    codigoInterno\n"
 Q_RAMOS = "query buscarRamos {\n  buscarRamos {\n    codigo\n    nome\n    grupo\n    __typename\n  }\n}\n"
 
 
+async def _codigo_na_tela(page) -> str:
+    """Reserva: o código também está escrito no topo do portal.
+
+    📊 `<span title="67828 - AUTO FLEET R CORRETORA DE SEGUROS LTDA EPP">`. Se o
+    BFF não responder, isto ainda permite pedir o relatório — e, mais
+    importante, permite dizer QUAL das duas coisas falhou.
+    """
+    for seletor in (".info-corretor span[title]", ".info-corretor span",
+                    "input#codigoInterno"):
+        try:
+            alvo = page.locator(seletor).first
+            if not await alvo.count():
+                continue
+            bruto = (await alvo.get_attribute("title")
+                     or await alvo.get_attribute("value")
+                     or await alvo.inner_text()) or ""
+            m = re.match(r"\s*(\d{3,8})", bruto.strip())
+            if m:
+                return m.group(1)
+        except Exception:  # noqa: BLE001
+            continue
+    return ""
+
+
 async def identificar_corretor(page, evidence: Dict[str, Any]) -> Dict[str, Any]:
-    dados = (await _graphql(page, "BuscarUsuario", Q_USUARIO)).get("buscarUsuario") or {}
+    resposta = await _fetch_json(page, BFF_GRAPHQL, corpo={
+        "operationName": "BuscarUsuario", "variables": {}, "query": Q_USUARIO})
+    dados = (((resposta.get("json") or {}).get("data") or {}).get("buscarUsuario")) or {}
     evidence["tokio_usuario"] = {
         "codigo_interno": dados.get("codigoInterno"),
         "tipo": dados.get("tipoUsuario"),
         "corretora": dados.get("nomeParceiroNegocioPrimario"),
     }
+    if not dados.get("codigoInterno"):
+        # Diz POR QUE falhou, em vez de deixar a hipótese aberta: HTTP recusado
+        # é uma coisa; HTTP 200 com corpo de login é outra bem diferente.
+        evidence["tokio_usuario_falhou"] = {
+            "status": resposta.get("status"),
+            "bytes": len(resposta.get("text") or ""),
+            "inicio": (resposta.get("text") or "")[:160],
+            "url_atual": str(getattr(page, "url", ""))[:160],
+        }
+        na_tela = await _codigo_na_tela(page)
+        if na_tela:
+            evidence["tokio_usuario"]["codigo_interno"] = na_tela
+            evidence["tokio_usuario"]["origem"] = "topo da tela (BFF nao respondeu)"
+            return {"codigoInterno": na_tela}
     return dados
 
 
@@ -610,28 +650,72 @@ async def _entrar_como_corretor(page, evidence: Dict[str, Any]) -> bool:
     tela para sempre, e o sintoma é "a varredura não achou ninguém" — que é
     indistinguível de carteira em dia. Por isso ela é um passo explícito.
     """
-    for seletor in ("text=/^\\s*Corretor\\s*$/", "a:has-text('Corretor')",
-                    "div:has-text('Corretor') >> visible=true"):
+    for seletor in ("a[href*='/group/portal-corretor']", "text=/^\\s*Corretor\\s*$/",
+                    "a:has-text('Corretor')"):
         try:
             alvo = page.locator(seletor).first
-            if await alvo.count():
-                await alvo.click(timeout=6000)
-                await page.wait_for_load_state("domcontentloaded", timeout=25000)
-                evidence["tokio_seletor_portais"] = seletor
+            if not await alvo.count():
+                continue
+            await alvo.click(timeout=8000)
+            # Esperar a MARCA de dentro, não o relógio: o clique dispara uma
+            # navegação que pode levar segundos e passar por redirect de SSO.
+            for marca in MARCAS_DE_DENTRO:
+                try:
+                    await page.wait_for_selector(marca, state="attached", timeout=25000)
+                    evidence["tokio_seletor_portais"] = seletor
+                    return True
+                except Exception:  # noqa: BLE001
+                    continue
+        except Exception:  # noqa: BLE001
+            continue
+    return False
+
+
+# 🔴 As marcas que SÓ existem DENTRO do portal. Nenhuma delas aparece no
+# seletor de portais nem na tela do SSO.
+#
+# 📊 A primeira versão deste guarda procurava `a[href*='/group/portal-corretor']`
+# — e passou na tela errada, porque **o card "Corretor" do seletor é justamente
+# um link para essa URL**. O guarda foi enganado pela própria coisa que ele
+# existia para pegar: a varredura seguiu adiante achando que estava dentro, e o
+# BFF devolveu vazio. Um marco de chegada não pode ser algo que a porta também
+# tem (CLAUDE.md §9.3).
+MARCAS_DE_DENTRO = (
+    "ul.listaNav a[data-page]",       # o menu de topo (PRODUTOS · FINANCEIRO · …)
+    "div.labelSelecaoCorretor",       # a caixa "Código/Corretor"
+    "input#codigoInterno",            # o campo escondido das telas internas
+)
+
+
+async def _dentro_do_portal(page) -> bool:
+    for seletor in MARCAS_DE_DENTRO:
+        try:
+            if await page.locator(seletor).count():
                 return True
         except Exception:  # noqa: BLE001
             continue
     return False
 
 
-async def _dentro_do_portal(page) -> bool:
-    """Ver o nome do usuário NÃO prova que entrou — o seletor também mostra."""
-    try:
-        if await page.locator("a[href*='/group/portal-corretor']").count():
+async def _esperar_formulario(page, timeout: int = 30000) -> bool:
+    """🔴 A tela de login é uma SPA — os campos NÃO existem no HTML inicial.
+
+    📊 `portalparceiros` redireciona para um **SSO ForgeRock OpenAM** em outro
+    host: `ssoportais3.tokiomarine.com.br/openam/XUI/?realm=TOKIOLFR`. O XUI
+    monta o formulário por JavaScript **depois** do `domcontentloaded`.
+
+    Preencher logo após o `goto` encontra zero campos — e o worker devolve
+    "campos de login nao encontrados" como se a credencial fosse o problema.
+    📊 Foi o que aconteceu na primeira visita real (12/08/2026). Esperar tempo
+    fixo também não serve: espera-se o CAMPO, não o relógio.
+    """
+    for seletor in ("input#idToken2", "input[name='callback_1']", "input[type='password']"):
+        try:
+            await page.wait_for_selector(seletor, state="visible", timeout=timeout)
             return True
-    except Exception:  # noqa: BLE001
-        pass
-    return "financeiro" in _norm(await _texto(page))
+        except Exception:  # noqa: BLE001
+            continue
+    return False
 
 
 async def login_check(page, params: Dict[str, Any], evidence: Dict[str, Any]) -> JourneyResult:
@@ -647,23 +731,29 @@ async def login_check(page, params: Dict[str, Any], evidence: Dict[str, Any]) ->
         evidence["session_reused"] = True
         return JourneyResult(status="done", captured={"logged_in": True, "portal": "tokiomarine_corretor"})
 
+    evidence["login_form_pronto"] = await _esperar_formulario(page)
+
     preenchido = 0
-    for seletor in ("input[name='j_username']", "input[name='username']", "input#username",
+    # `idToken1/2` são os ids do OpenAM XUI; `callback_0/1` são os names que ele
+    # posta. Os genéricos ficam para o dia em que a Tokio trocar de SSO.
+    for seletor in ("input#idToken1", "input[name='callback_0']",
+                    "input[name='j_username']", "input[name='username']",
                     "input[type='text']:visible"):
         try:
             alvo = page.locator(seletor).first
             if await alvo.count():
-                await alvo.fill(usuario, timeout=6000)
+                await alvo.fill(usuario, timeout=8000)
                 preenchido += 1
                 break
         except Exception:  # noqa: BLE001
             continue
-    for seletor in ("input[name='j_password']", "input[name='password']", "input#password",
+    for seletor in ("input#idToken2", "input[name='callback_1']",
+                    "input[name='j_password']", "input[name='password']",
                     "input[type='password']:visible"):
         try:
             alvo = page.locator(seletor).first
             if await alvo.count():
-                await alvo.fill(senha, timeout=6000)
+                await alvo.fill(senha, timeout=8000)
                 preenchido += 1
                 break
         except Exception:  # noqa: BLE001
@@ -672,8 +762,9 @@ async def login_check(page, params: Dict[str, Any], evidence: Dict[str, Any]) ->
     if preenchido < 2:
         return JourneyResult(status="needs_human", message="campos de login Tokio nao encontrados")
 
-    for seletor in ("button[type='submit']", "input[type='submit']",
-                    "button:has-text('Entrar')", "button:has-text('Acessar')"):
+    for seletor in ("input#loginButton_0", "input[name='callback_2']",
+                    "button[type='submit']", "input[type='submit']",
+                    "button:has-text('Entrar')"):
         try:
             alvo = page.locator(seletor).first
             if await alvo.count():
@@ -681,14 +772,26 @@ async def login_check(page, params: Dict[str, Any], evidence: Dict[str, Any]) ->
                 break
         except Exception:  # noqa: BLE001
             continue
+
+    # 🔴 Sair do SSO é o marco, não o `networkidle`. A tela do OpenAM ESCREVE
+    # "Acesse os Portais da Tokio Marine" — o mesmo título do seletor de portais
+    # que vem depois. Procurar esse texto sem antes checar o host confunde a
+    # porta com a sala e clica no lugar errado.
     try:
-        await page.wait_for_load_state("networkidle", timeout=30000)
+        await page.wait_for_url(lambda u: "ssoportais" not in str(u), timeout=45000)
+    except Exception:  # noqa: BLE001
+        pass
+    try:
+        await page.wait_for_load_state("networkidle", timeout=25000)
     except Exception:  # noqa: BLE001
         pass
     await _fechar_cookies(page)
+    evidence["url_pos_login"] = re.sub(r"(?i)(token|goto)=[^&]+", r"\1=<omitido>",
+                                       str(getattr(page, "url", "")))[:220]
 
     texto = _norm(await _texto(page))
-    if "acesse os portais" in texto or "bem-vindo" in texto:
+    no_sso = "ssoportais" in str(getattr(page, "url", ""))
+    if not no_sso and not await _dentro_do_portal(page):
         await _entrar_como_corretor(page, evidence)
         await _fechar_cookies(page)
         texto = _norm(await _texto(page))
