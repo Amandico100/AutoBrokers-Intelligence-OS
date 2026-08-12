@@ -7,8 +7,8 @@
 > aqui.** Ela define o método das 5 fases e o teto de visitas. Este arquivo é o
 > mapa do território — não substitui a SPEC.
 >
-> Estado: ✅ **FASES 1–4 FECHADAS** · a cadeia inteira rodou contra o portal real
-> e trouxe boleto · 70 asserções verdes · falta a Fase 5 (fila de produção)
+> Estado: ✅ **FECHADA** — as 5 fases. Rodou pela fila de produção, `done`, com
+> 3 boletos no bucket · 78 asserções verdes
 > Última medição: 12/08/2026 · corretor 67828 (AutoFleet)
 
 | Marca | Significado |
@@ -262,7 +262,35 @@ for, ela é o desempate, e a journey já visita essa tela de graça.
 `0531` é o ramo SUSEP de automóvel. ❓ Não sei o que é `312`. Enquanto não
 souber, nenhum dos dois decide nada, e nenhum vai para a mensagem do cliente.
 
-## 3.9 🟠 PIX é bloqueado quando há parcela anterior pendente
+## 3.9 🔴 Passado certo tempo, a Tokio PARA de emitir 2ª via
+
+📊 Medido em 12/08/2026, na **mesma apólice, no mesmo instante**:
+
+```
+parcela 11 · venceu 17/07 · 26 dias de atraso · Pendente · SEM botão de boleto
+parcela 12 · vence  19/08 · a vencer          · Pendente · COM botão
+```
+
+E as que deram certo na mesma rodada tinham **2 e 7 dias** de atraso.
+
+> 💭 A causa provável é o prazo que o próprio boleto imprime —
+> `NÃO RECEBER APÓS 15 DIAS DO VENCIMENTO`. Um ponto além do limite e outro
+> dentro **são compatíveis** com isso, mas não provam: falta um caso entre 15 e
+> 26 dias. Por isso o código diz o **fato** (vencida há N dias, sem 2ª via) e
+> **não** a hipótese.
+
+**Isso não é defeito — é a seguradora dizendo não.** E são duas ausências muito
+diferentes, que um "não achei a parcela" escondia:
+
+| O que acontece | O que significa | Quem resolve |
+|---|---|---|
+| a linha **existe sem botão** | a Tokio recusa a 2ª via | 🧑 atendente negocia com a seguradora |
+| a linha **não existe** | relatório e detalhe discordam | 🤖 é defeito nosso, alguém olha |
+
+`porque_sem_boleto()` separa as duas, e o teste [2] prova que os dois textos
+conseguem ser diferentes.
+
+## 3.10 🟠 PIX é bloqueado quando há parcela anterior pendente
 
 📊 Resposta real:
 
@@ -464,7 +492,7 @@ Santander, o banco do boleto) · `Agência` · `Conta Corrente`.
 
 ---
 
-# 6bis. FASE 4 — a visita real, medida
+# 6bis. AS FASES 4 e 5 — o que a realidade ensinou
 
 📊 12/08/2026, corretora AutoFleet, cadeia inteira contra o portal de verdade:
 
@@ -482,6 +510,33 @@ BOLETO ................... ok · 119.259 bytes
 📊 Os totais batem **exatamente** com o print que o Founder tirou da tela:
 `Clientes inadimplentes: 5 · Valor Total de Prêmios: R$ 3.050,30 ·
 Comissão não recebida: R$ 401,43`. Duas fontes independentes, mesmo número.
+
+## 📊 Fase 5 — a fila de produção, 12/08/2026 18:53 (23 segundos)
+
+```
+job bc1dfaa0 ......... done · 1 tentativa
+navegador ............ --headless=new · UA limpo · saida DIRETA (sem proxy)
+corretor ............. 67828 AUTO FLEET (veio do BFF, nao de constante)
+ramos ................ 285 lidos do portal
+relatorio ............ 200 · 6.857 bytes
+testemunha ........... 5 clientes · 5 parcelas · R$ 3.050,30 · comissao R$ 401,43
+parcelas lidas ....... 5        ← bate
+BOLETOS .............. 3 no bucket (119.259 · 131.360 · 119.322 bytes)
+retidos p/ humano .... 2
+```
+
+📊 Os totais batem **exatamente** com o print que o Founder tirou da tela. Duas
+fontes independentes, mesmo número.
+
+**Os 5, um por um** — nada some, cada um com desfecho escrito:
+
+| Parcela | Atraso | Forma | Desfecho |
+|---|---|---|---|
+| `36713188-4` | 2 d | FICHA | ✅ boleto · multa 23,84 · juros 2,78 · total 1.218,51 |
+| `36657978-8` | 7 d | FICHA | ✅ boleto · sem acréscimo |
+| `36731942-3` | 2 d | FICHA | ✅ boleto · multa 6,86 · juros 0,80 |
+| `36731739-3` | 2 d | **DÉBITO** | 🧑 retido — repique `S`, aguardar esgotar |
+| `33599379-11` | 26 d | FICHA | 🧑 retido — a Tokio não emite mais 2ª via (§3.9) |
 
 ## O que a Fase 4 ensinou — duas coisas que os testes não pegavam
 
@@ -506,8 +561,8 @@ vazio. Um marco de chegada não pode ser algo que a porta também tem
 
 | # | O que | Quem destrava |
 |---|---|---|
-| 1 | **Fase 5** — rodar pela fila de produção, com boleto no bucket | 🧑 redeploy do `portal-worker` |
-| 2 | O caso **CNPJ** na URL do detalhe (só CPF foi exercitado) | 🤖 sai na Fase 5 |
+| 1 | O caso **CNPJ** na URL do detalhe (só CPF foi exercitado até agora) | 🤖 sai na próxima rodada |
+| 2 | Onde exatamente fica o limite da 2ª via (entre 15 e 26 dias) — §3.9 | 🤖 aparece sozinho |
 | 3 | Se inadimplente de **cartão** aparece na lista principal ou só em `Débitos Pendentes` | 🤖 1 visita |
 | 4 | Se `Situação Parcela` do detalhe é **tempo real** (desempate do snapshot D-1) | 🤖 1 visita |
 | 5 | Uma corretora com **2+ códigos** de corretor | 🧑 Founder indicar |

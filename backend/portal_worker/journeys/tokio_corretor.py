@@ -345,6 +345,46 @@ def extrair_parcelas_do_detalhe(html: str) -> List[Dict[str, Any]]:
     return linhas
 
 
+def linha_da_parcela(linhas: List[Dict[str, Any]], numero_parcela: Any) -> Optional[Dict[str, Any]]:
+    """A linha, exista botão ou não. Serve para EXPLICAR a ausência."""
+    alvo = _digits(numero_parcela)
+    return next((l for l in linhas if l.get("parcela") == alvo), None)
+
+
+def porque_sem_boleto(linhas: List[Dict[str, Any]], numero_parcela: Any,
+                      dias_atraso: Optional[int]) -> str:
+    """Traduz a ausência do botão para uma frase que a atendente usa.
+
+    🔴 As duas ausências são coisas MUITO diferentes, e "não achei a parcela"
+    escondia as duas:
+
+        a linha nem existe      → a tela mudou, ou o relatório e o detalhe
+                                  discordam. É defeito nosso, e alguém precisa
+                                  olhar.
+        a linha existe sem botão → **a Tokio não emite mais 2ª via para essa
+                                  parcela**. Não é defeito: é a seguradora
+                                  dizendo não. A atendente tem de negociar.
+
+    📊 Medido em 12/08/2026, na mesma apólice, no mesmo instante:
+
+        parcela 11 · venceu 17/07 · 26 dias de atraso · Pendente · SEM botão
+        parcela 12 · vence  19/08 · a vencer          · Pendente · COM botão
+
+    💭 A causa provável é o prazo que o próprio boleto imprime —
+    `NÃO RECEBER APÓS 15 DIAS DO VENCIMENTO`. Um ponto além do limite e outro
+    dentro (7 dias, com botão) **são compatíveis** com essa explicação, mas não
+    a provam: falta um caso entre 15 e 26 dias. Por isso a frase abaixo diz o
+    FATO (dias de atraso, sem 2ª via) e não a hipótese.
+    """
+    linha = linha_da_parcela(linhas, numero_parcela)
+    if linha is None:
+        return (f"a parcela {numero_parcela} do relatorio nao aparece na tela de detalhe "
+                "— o portal precisa ser conferido")
+    quanto = f" (vencida ha {dias_atraso} dias)" if isinstance(dias_atraso, int) else ""
+    return (f"{MARCA_REGRA} — a Tokio nao oferece 2a via para a parcela "
+            f"{numero_parcela}{quanto}; a equipe precisa tratar com a seguradora")
+
+
 def escolher_parcela(linhas: List[Dict[str, Any]], numero_parcela: Any) -> Optional[Dict[str, Any]]:
     """A parcela do relatório — não "qualquer uma pendente".
 
@@ -525,20 +565,18 @@ async def numero_titulo_da_parcela(page, item: Dict[str, Any],
     nota = {"recibo": item.get("recibo"), "status": r.get("status"),
             "linhas": len(linhas), "achou_parcela": bool(escolhida)}
     if not escolhida:
-        # 🔴 "Não achei" é diagnóstico pela metade. Sem saber se a linha existe e
-        # está sem botão, ou se ela nem aparece, a hipótese fica aberta — e cada
-        # hipótese custa uma visita, num portal que trava depois de ~4.
-        # 📊 O caso que criou isto (12/08/2026): parcela 11 de uma apólice com 12
-        # linhas lidas, vencida há 26 dias. O boleto da Tokio diz
-        # "NÃO RECEBER APÓS 15 DIAS DO VENCIMENTO" — a suspeita é que o portal
-        # pare de oferecer 2ª via depois disso. Isto mede, em vez de supor.
-        # Só número de parcela e situação: nenhum dado do segurado.
+        # "Não achei" é diagnóstico pela metade — e cada hipótese custa uma
+        # visita, num portal que trava depois de ~4. Guarda só número de parcela
+        # e situação: nenhum dado do segurado.
+        dias = _dias_de_atraso(item.get("vencimento"))
         nota["pedi_a_parcela"] = str(item.get("parcela") or "")
-        nota["dias_de_atraso"] = _dias_de_atraso(item.get("vencimento"))
+        nota["dias_de_atraso"] = dias
         nota["linhas_lidas"] = [{"n": l["parcela"], "situacao": l["situacao"],
                                  "botao": l["tem_botao_boleto"]} for l in linhas]
+        evidence.setdefault("tokio_detalhes", []).append(nota)
+        return {"_porque": porque_sem_boleto(linhas, item.get("parcela"), dias)}
     evidence.setdefault("tokio_detalhes", []).append(nota)
-    return escolhida or {}
+    return escolhida
 
 
 def _dias_de_atraso(vencimento_iso: Any) -> Optional[int]:
@@ -555,7 +593,8 @@ async def baixar_boleto(page, item: Dict[str, Any], params: Dict[str, Any],
     linha = await numero_titulo_da_parcela(page, item, evidence)
     titulo = str(linha.get("numero_titulo") or "").strip()
     if not titulo:
-        return {"ok": False, "reason": "nao achei a parcela do relatorio na tela de detalhe"}
+        return {"ok": False, "reason": linha.get("_porque")
+                or "nao achei a parcela do relatorio na tela de detalhe"}
 
     r1 = await _fetch_json(page, BFF_PRORROGACAO, corpo={
         "numeroTitulo": titulo, "numeroParcela": str(item.get("parcela") or "")})
@@ -920,7 +959,9 @@ async def cobranca_sweep(page, params: Dict[str, Any], evidence: Dict[str, Any])
     for item in atrasados:
         motivo = falhou.get(str(item.get("recibo")))
         if motivo and not item.get("sem_boleto_motivo"):
-            item["sem_boleto_motivo"] = f"{MARCA_REGRA} — {motivo}"
+            # `porque_sem_boleto` já traz a marca; um erro técnico ainda não.
+            item["sem_boleto_motivo"] = (motivo if MARCA_REGRA in motivo
+                                         else f"{MARCA_REGRA} — {motivo}")
             retidos.append(item)
     evidence["inadimplentes_sem_boleto"] = len(retidos)
 

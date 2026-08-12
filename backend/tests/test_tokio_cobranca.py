@@ -115,6 +115,35 @@ check("pedir uma parcela que nao existe devolve nada",
 check("pedir uma parcela PAGA devolve nada (nao tem botao)",
       tk.escolher_parcela(linhas, "1") is None)
 
+# ---- as DUAS ausencias, que "nao achei" escondia ----
+# 12/08/2026, mesma apolice, mesmo instante:
+#   parcela 11 · venceu 17/07 · 26 dias · Pendente · SEM botao
+#   parcela 12 · vence  19/08 · a vencer · Pendente · COM botao
+# A Tokio recusa a 2a via de uma; a outra ela oferece. Nao e defeito nosso.
+SEM_BOTAO = fx.DETALHE_HTML.replace(
+    """<button class="btn btn-default btn-sm" onclick="VisaoUnicaClienteJS.carregarVencimentoPermitidoBoleto(&#39;7200000003&#39;,&#39;3&#39;,&#39;null&#39;,&#39;null&#39;,&#39;null&#39;, &#39;R$&#39;);">
+                                <i class="fa fa-file-pdf-o fa-lg"></i>
+                            </button>""", "-")
+linhas_sb = tk.extrair_parcelas_do_detalhe(SEM_BOTAO)
+check("a linha 3 continua existindo, so que sem botao",
+      tk.linha_da_parcela(linhas_sb, "3") is not None
+      and tk.linha_da_parcela(linhas_sb, "3")["tem_botao_boleto"] is False)
+check("e a 4 continua com botao (o teste consegue falhar)",
+      tk.linha_da_parcela(linhas_sb, "4")["tem_botao_boleto"] is True)
+
+motivo_sb = tk.porque_sem_boleto(linhas_sb, "3", 26)
+check("linha sem botao -> a Tokio recusou, e o motivo carrega a marca",
+      tk.MARCA_REGRA in motivo_sb, motivo_sb)
+check("o motivo diz ha quantos dias venceu", "26 dias" in motivo_sb, motivo_sb)
+check("e manda a equipe tratar com a seguradora", "equipe" in motivo_sb, motivo_sb)
+
+motivo_ausente = tk.porque_sem_boleto(linhas_sb, "99", 26)
+check("linha AUSENTE -> defeito nosso, e o texto e outro",
+      "nao aparece na tela" in motivo_ausente, motivo_ausente)
+check("e esse NAO carrega a marca de regra da seguradora",
+      tk.MARCA_REGRA not in motivo_ausente, motivo_ausente)
+check("as duas ausencias CONSEGUEM ser diferentes", motivo_sb != motivo_ausente)
+
 
 # ==========================================================================
 print("\n[3] DEBITO NUNCA VIRA BOLETO — queima a troca da vigencia")
