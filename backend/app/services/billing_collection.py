@@ -86,29 +86,23 @@ DEFAULT_MESSAGE_TEMPLATE = (
     "Segue o boleto abaixo.\n"
     "Apólice: {numero_apolice}"
 )
-# Quando a parcela em atraso e DEBITO AUTOMATICO recusado, nao existe boleto
-# para mandar — e gerar um exige "Alteracoes Financeiras" no portal, que escreve
-# no contrato do segurado e por isso e proibido ao robo.
+# Parcela em atraso SEM boleto (debito automatico ou cartao recusado).
 #
-# Decisao do founder (10/08/2026): o segurado e avisado do atraso mesmo sem
-# boleto, e a conversao vira TAREFA para a atendente humana.
+# Nao existe boleto para mandar, e gerar um exige "Alteracoes Financeiras" no
+# portal — que escreve no contrato do segurado, e por isso e proibido ao robo.
 #
-# A mensagem e outra de proposito. Mandar o texto padrao — que promete "segue o
-# boleto abaixo" — e depois nao mandar anexo nenhum e pior que nao avisar: o
-# segurado fica esperando um arquivo que nunca chega e liga para a corretora.
-MENSAGEM_DEBITO_SEM_BOLETO = (
-    "Olá {primeiro_nome},\n\n"
-    "Aqui é a {nome_atendente}, da {nome_corretora}, tudo bem?\n\n"
-    "A Seguradora {nome_seguradora} informou que a parcela {numero_parcela} "
-    "do seguro do {item_segurado} não foi debitada na sua conta e está em "
-    "atraso.\n\n"
-    "Como esse pagamento é por débito automático, não consigo gerar um boleto "
-    "por aqui. Já avisei nossa equipe, e alguém vai falar com você para "
-    "resolver — pra você não ficar sem cobertura, ok!?\n\n"
-    "Qualquer dúvida estou à disposição.\n"
-    "Apólice: {numero_apolice}"
-)
-
+# DECISAO DO FOUNDER (12/08/2026): o robo **nao fala com o segurado** nesse
+# caso. Quem fala e a atendente humana, depois de converter no portal.
+#
+# A versao anterior mandava uma mensagem dizendo "ja avisei nossa equipe e
+# alguem vai falar com voce". Duas coisas erradas nela:
+#   1. o sistema prometia, em nome de uma pessoa, um contato que a pessoa ainda
+#      nao sabia que tinha de fazer;
+#   2. se a atendente demorasse, quem ficou mal foi a corretora — por uma frase
+#      que ninguem escreveu.
+#
+# Entao: entra na lista de TAREFAS da equipe, e sai da fila de envio. O segurado
+# so recebe mensagem quando um humano decidir manda-la.
 TERMINAL_JOB_STATUSES = {"done", "needs_human", "failed"}
 TEST_LINK_TTL_SECONDS = 7 * 24 * 60 * 60
 
@@ -157,16 +151,30 @@ def _primeiro_nome(full_name: Any) -> str:
     return "cliente"
 
 
-def sem_boleto_por_debito(item: Dict[str, Any]) -> bool:
-    """Esta parcela em atraso e debito automatico recusado?
+# A frase que a journey escreve quando a SEGURADORA nao emite boleto para
+# aquela forma de pagamento (debito automatico, cartao). Contrato de texto entre
+# a journey e este servico — por isso mora numa constante, e nao espalhada.
+MARCA_REGRA_DA_SEGURADORA = "nao emite 2a via de boleto"
+
+
+def sem_boleto_por_regra(item: Dict[str, Any]) -> bool:
+    """A seguradora nao emite boleto para esta parcela?
 
     Le o motivo que a journey escreveu — nao adivinha pela ausencia do boleto.
-    A diferenca importa: "nao tem boleto porque e debito" e uma regra da
-    seguradora, e o segurado precisa saber; "nao tem boleto porque o download
-    falhou" e um defeito nosso, e mandar mensagem nesse caso seria mentir.
+    A diferenca decide o que acontece com o segurado:
+
+        regra da seguradora  ->  TAREFA para a atendente. O robo nao fala.
+        falha nossa          ->  fica no relatorio como defeito a investigar.
+
+    Confundir os dois faria o robo abrir tarefa para a equipe toda vez que um
+    download quebrasse — e a equipe pararia de ler a lista.
     """
-    motivo = _norm_txt(item.get("sem_boleto_motivo"))
-    return "debito automatico" in motivo
+    return MARCA_REGRA_DA_SEGURADORA in _norm_txt(item.get("sem_boleto_motivo"))
+
+
+# Nome antigo, mantido enquanto houver chamador. Debito automatico e um dos
+# casos, nao o unico: o Credito recusado cai exatamente aqui tambem.
+sem_boleto_por_debito = sem_boleto_por_regra
 
 
 def _norm_txt(value: Any) -> str:
@@ -263,7 +271,15 @@ def fila_de_cobranca(items: List[Dict[str, Any]], *, horas: int = HORAS_MINIMAS_
     fila: List[Dict[str, Any]] = []
     retidos: List[Dict[str, Any]] = []
     for item in items or []:
-        if not _vencimento_iso(item):
+        if sem_boleto_por_regra(item):
+            # DECISAO DO FOUNDER (12/08/2026): sem boleto, o robo NAO fala com o
+            # segurado. Vai para a lista da equipe, e um humano decide o que
+            # dizer. Manter na fila faria o robo mandar a mensagem padrao —
+            # aquela que termina em "Segue o boleto abaixo" — sem anexo nenhum.
+            retidos.append({**item, "retido_por":
+                            "sem boleto (regra da seguradora) — tarefa para a equipe, "
+                            "o segurado NAO recebe mensagem do sistema"})
+        elif not _vencimento_iso(item):
             retidos.append({**item, "retido_por": "sem data de vencimento legivel"})
         elif not vencido_ha_mais_de(item, horas):
             retidos.append({**item, "retido_por": f"vencido ha menos de {horas}h (carencia)"})
@@ -411,11 +427,6 @@ def build_customer_message(item: Dict[str, Any], template: str, config: Optional
         "recibo": item.get("recibo") or "",
         "portal": item.get("portal") or "",
     }
-    # Debito automatico recusado nao tem boleto — e o template padrao termina
-    # com "Segue o boleto abaixo". Mandar essa frase e nao anexar nada deixa o
-    # segurado esperando um arquivo que nunca chega. Aqui o texto e outro.
-    if sem_boleto_por_debito(item):
-        return MENSAGEM_DEBITO_SEM_BOLETO.format_map(_MessageData(data))
     try:
         return template.format_map(_MessageData(data))
     except Exception:  # noqa: BLE001
@@ -692,11 +703,11 @@ def _format_test_message(item: Dict[str, Any], cfg: Dict[str, Any], boleto: Opti
         "[TESTE AutoBrokers - Auxiliar de Cobranca]",
         build_customer_message(item, cfg["message_template"], cfg),
     ]
-    if sem_boleto_por_debito(item):
-        # Nao e falha: e a regra da seguradora. Dizer "boleto nao baixado" aqui
-        # mandaria quem le a simulacao procurar defeito onde nao ha.
-        lines.append("Boleto: nao existe — parcela em debito automatico. "
-                     "Tarefa aberta para a atendente converter no portal.")
+    if sem_boleto_por_regra(item):
+        # Rede de seguranca: itens assim sao RETIDOS antes de chegar aqui. Se um
+        # dia chegar, a simulacao diz a verdade em vez de prometer um anexo.
+        lines.append("Boleto: nao existe (regra da seguradora). Este segurado NAO "
+                     "deveria receber mensagem do robo — tarefa da equipe.")
     elif boleto_url:
         lines.append("Boleto: enviado como documento PDF em seguida.")
     elif boleto:
@@ -947,15 +958,18 @@ def _format_report(
     # boleto e a atendente — o botao que faz isso escreve no contrato e o robo
     # nao o toca. Sem esta secao, a conversao nunca acontece e o segurado fica
     # esperando o contato que foi prometido na mensagem.
-    tarefas = tarefas_para_a_equipe(fila)
+    # As tarefas saem de ITEMS (a colheita inteira), nao da fila: quem nao tem
+    # boleto foi RETIDO justamente para nao receber mensagem do robo, entao ele
+    # nao esta na fila — e e exatamente ele que precisa de gente.
+    tarefas = tarefas_para_a_equipe(items)
     if tarefas:
-        lines.append(f"PRECISA DE VOCE - {len(tarefas)} conversao(oes) de debito em boleto:")
+        lines.append(f"PRECISA DE VOCE - {len(tarefas)} parcela(s) em atraso SEM boleto:")
         for t in tarefas[:10]:
             lines.append(
                 f"- {t.get('cliente_nome') or 'Cliente'} | apolice {t.get('apolice') or '?'} | "
                 f"parcela {t.get('parcela') or '?'} | vcto {t.get('vencimento') or '?'} "
-                f"-> converter no portal e reenviar")
-        lines.append("  (o segurado JA foi avisado do atraso; falta o boleto)")
+                f"-> converter no portal e falar com o segurado")
+        lines.append("  (o robo NAO mandou mensagem para estes; quem fala e voce)")
 
     if blockers:
         lines.append("Bloqueios/avisos:")

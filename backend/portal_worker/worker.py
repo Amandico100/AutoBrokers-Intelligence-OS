@@ -25,6 +25,45 @@ def portal_real_enabled() -> bool:
     return str(os.getenv("PORTAL_REAL_ENABLED", "false")).strip().lower() in ("1", "true", "yes", "on")
 
 
+# Chromium: headless MODERNO, não o clássico.
+#
+# 📊 Medido em 10/08/2026 contra o portal da HDI, um fator por vez, com linha
+# de CONTROLE repetida no início e no fim da bateria::
+#
+#     headless clássico  ...................  BLOQUEADO  "Access Denied" (Akamai)
+#     + args anti-automação ................  BLOQUEADO
+#     + script de stealth ..................  BLOQUEADO
+#     + args E stealth .....................  BLOQUEADO
+#     navegador COM janela .................  PASSOU
+#     --headless=new .......................  PASSOU     ← e roda sem tela
+#
+# Cinco variações deram o mesmo bloqueio, então nenhuma delas era a causa: o
+# fator é o MODO headless. O clássico é um binário separado, com fingerprint
+# próprio, e o Akamai o reconhece. O `--headless=new` é o mesmo Chrome de
+# janela rodando sem desenhar — passa, e não precisa de Xvfb no contêiner.
+#
+# `headless=False` + `--headless=new` é como se pede o modo novo no Playwright:
+# o parâmetro precisa ficar falso para a lib não injetar o `--headless` antigo.
+#
+# A Allianz continua no mesmo navegador — e é ela a linha de controle desta
+# mudança: se ela seguir baixando os 4 boletos, o modo novo não regrediu nada.
+def _launch_kwargs() -> Dict[str, Any]:
+    modo = str(os.getenv("PORTAL_HEADLESS_MODE", "new")).strip().lower()
+    if modo == "classic":
+        return {"headless": True}
+    if modo == "headed":  # só com tela/Xvfb — último recurso
+        return {"headless": False, "args": ["--no-sandbox", "--disable-dev-shm-usage"]}
+    return {
+        "headless": False,
+        "args": [
+            "--headless=new",
+            "--no-sandbox",            # contêiner sem privilégio
+            "--disable-dev-shm-usage",  # /dev/shm pequeno derruba aba em Docker
+            "--disable-blink-features=AutomationControlled",
+        ],
+    }
+
+
 def _parse_ts(value: Any) -> datetime | None:
     """ISO tolerante (Supabase devolve '2026-07-10 04:01:46.5+00')."""
     text = str(value or "").strip().replace("Z", "+00:00")
@@ -323,7 +362,7 @@ async def _run_job(supa, job: Dict[str, Any]) -> None:
 
     try:
         async with async_playwright() as p:
-            browser = await p.chromium.launch(headless=True)
+            browser = await p.chromium.launch(**_launch_kwargs())
             # Locale/fuso do corretor real: apps legados Allianz derivam nomes
             # de atributos de strings localizadas e QUEBRAM no boot com en-US
             # (InvalidCharacterError em setAttribute — job c17fc7db).

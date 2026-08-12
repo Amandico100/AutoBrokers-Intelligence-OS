@@ -3449,3 +3449,57 @@ da HDI — e provavelmente a mesma solução (`--headless=new`).
 - **Custa se esquecer:** quem for fazer a Yelum vai achar que a credencial está
   errada. Não está: 📊 ela foi gravada em 10/08 e o portal recusa antes do login.
 
+
+
+---
+
+## ✅ P-100 RESOLVIDO em 12/08/2026 — a HDI baixa boleto
+
+📊 Prova real, uma visita ao portal:
+
+```
+status ............ done
+mensagem .......... HDI: 1 inadimplente(s), 1 boleto(s)
+boleto ............ ok=True · 27.037 bytes · via=dsp_boleto · valida como %PDF
+```
+
+**Os quatro defeitos que impediam, e o que cada um ensinou:**
+
+| # | O defeito | A lição |
+|---|---|---|
+| 1 | **A busca é assíncrona.** O 1º POST devolve *"aguarde, processando"* + um form que se reenvia em 5 s. Era essa sala de espera que eu lia como "tabela vazia" | HTTP 200 com corpo de 4 KB **não** é resultado. Só o reenvio traz a tabela |
+| 2 | **`s_tipo=1` é "A vencer"**, não "Atrasadas" — eu pedia justamente quem não interessa | 📊 O `<select>` do portal responde em 3 segundos o que eu tentei adivinhar em 5 rodadas |
+| 3 | **O boleto não é `<a href>`** — mora dentro de `onclick="window.open('dsp_boleto.htm?p=…')"` | Procurar `href` não acha nada, mesmo com a tabela lida certa |
+| 4 | **Janela máxima de 30 dias** (validação do próprio botão Buscar). Meu padrão era 365 | Varredura em blocos, sem buraco entre eles |
+
+**E duas descobertas de estrutura que valem para o parser de qualquer portal legado:**
+
+- **Uma `<table>` por documento**, não uma tabela com N linhas. E a primeira nem
+  fecha o `<tbody>` — parser que exige HTML bem formado quebra aqui.
+- **Crédito também não gera boleto**, não só Débito. A marca certa é a frase
+  *"Parcela diferente de Boleto Bancário"*, não a forma de pagamento.
+
+📊 Tudo isto está preso por **102 asserções** rodando contra uma fixture com a
+estrutura real do HTML e os dados trocados (`backend/tests/fixtures/hdi_parcelas.py`)
+— zero acesso ao portal para testar.
+
+- **O que falta para a HDI ser 100%:** rodar pelo worker (fila `portal_jobs`) com
+  o storage ligado. Isso depende do deploy (P-98), não de mais código.
+
+## P-104 · 🟡 A regra de ouro contra bloqueio, aprendida a duras penas
+
+📊 Dois portais independentes (HDI e Tokio) passaram a recusar acesso depois de
+~15 e ~4 visitas em menos de 30 minutos. **Eles reagem à frequência, não ao
+método.**
+
+```
+FASE 0 (reconhecimento) .... no máximo 2 visitas
+FASE 2 (replicar) .......... 1 visita
+FASE 3 (journey) ........... teste roda de FIXTURE, zero visita
+FASE 4 (ligar) ............. 1 rodada, com a Allianz junto como controle
+```
+
+> **O portal da corretora não é ambiente de teste.** Toda leitura repetida sai de
+> fixture salva. Foi assim que a HDI fechou: 4 defeitos corrigidos offline, uma
+> única visita para provar.
+
