@@ -415,56 +415,264 @@ idePol · cpfCnpjCliente · nmCliente · cdApoliceTmsr · cdEndosso · cdRamo
 · numOper · ideFact · linha · dddTelefone1..3 · numTelefone1..3
 ```
 
-## 5.2 RENOVAÇÃO 📋 conhecimento anotado, sem código
+## 5.2 a 5.4 — O MAPA COMPLETO DOS OUTROS SERVIÇOS
 
-📊 As URLs reais, colhidas do JSON de menu — **de graça, sem visita extra**:
+📊 **338 destinos com URL**, extraídos do `jsonMenusString` que o próprio portal
+publica no HTML da página (12/08/2026). Não é lista escrita à mão: saiu do JSON
+de menu da Tokio, então está completa e não tem erro de digitação.
 
-```
-/massificados/renovacao/#/relatorio/portal/corretor        Relatório de Renovações
-/massificados/renovacao/#/processamentoLote                Processamento Emissão Lote
-/massificados/renovacao/#/transferencia/portal/corretor    Transferir Renovações
-/massificados/renovacao/#/historico/portal/corretor        Histórico de Transferências
-/massificados/renovacao/#/propostaRenovacaoFacilitada      Renovação Facilitada
-/ems/corporate/apps/ctpj-relatorio-renovacao/#/pesquisa    Relatório Renovação (PJ)
-/sva/view/portal/renovacao/#/                              Painel de Renovação (Vida)
-```
+> **Por que isto vale mais do que parece.** Cada linha aqui é uma visita que o
+> próximo Auxiliar **não** vai precisar gastar. 📊 O teto da Tokio é ~4 entradas
+> em 30 minutos (§1.5) — descobrir estes 338 endereços clicando custaria
+> semanas. Vieram de graça, numa página que a cobrança já ia abrir.
 
-📊 E o **home já entrega um painel pronto** — "Apólices A Vencer | Não
-Renovadas", com card por segmento (Auto · Residencial e Condomínio ·
-Imobiliário · Fiança Locatícia · Produtos PJ) e faixas `HOJE:` e `7 DIAS:`.
+`~` = `https://portalparceiros.tokiomarine.com.br`
 
-> Quando o Auxiliar de Renovação existir, **esse painel e o
-> `/massificados/renovacao/#/relatorio` são a fonte** — já segmentados por prazo.
-
-## 5.3 COTAÇÃO 📋 conhecimento anotado, sem código
-
-📊 Os cotadores, por produto:
+### Cotação — o cotador de cada produto
 
 ```
-/CotadorAutoService/iniciarCotacao                       Auto individual
-/massificados/auto/frota/cotador/porta/iniciarCotacao    Auto frota
-/CotadorRDService/iniciarCotacao/Residencial             Residencial
-/CotadorRDService/iniciarCotacao/Condominio              Condomínio
-/massificados/cotador-imobiliario/iniciarCotacao         Imobiliário
-/massificados/CotadorFiancaService/iniciarCotacao        Aluguel/Fiança
-/aff/ctv/portal/cotador-vida/vida-individual/cotacao     Vida individual
-/ems/corporate/apps/ctpj-*                               PJ (cyber, RC, equip., agro)
-/ConsultaCotacoes/#/consultaWeb                          Consultar cotações (comum)
-/SSC/home/<n>                                            Solicitação com anexo
+Autom�vel › Individual › Cota��es e Propostas   Nova Cota��o                                  ~/CotadorAutoService/iniciarCotacao
+Autom�vel › Individual › Cota��es e Propostas   Consultar Cota��es                            ~/ConsultaCotacoes/#/consultaWeb
+Autom�vel › Frotas Auto › Cota��es e Propostas  Nova Cota��o                                  ~/massificados/auto/frota/cotador/porta/iniciarCotacao
+Autom�vel › Frotas Auto › Cota��es e Propostas  Consultar Cota��es                            ~/SSC/home/66
+Autom�vel › Frotas Auto › Solicitar Cota��o     Nova Cota��o - Anexar arquivo (Condi��es Esp  ~/SSC/home/1
+Autom�vel › Frotas Auto › Solicitar Cota��o     Consultar Cota��es                            ~/SSC/home/66
+Riscos Diversos - Massificados › Residencial › Cota��es e Propostas  Nova Cota��o                                  ~/CotadorRDService/iniciarCotacao/Residencial
+Riscos Diversos - Massificados › Residencial › Cota��es e Propostas  Consulta de Cota��es                          ~/ConsultaCotacoes/#/consultaWeb
+Riscos Diversos - Massificados › Residencial F�cil › Cota��es e Propostas  Consultar Cota��es Auto com Oferta de Reside  ~/massificados/cotadorrdfacilservice/pesquisar
+Riscos Diversos - Massificados › Condom�nio › Cota��es e Propostas  Nova Cota��o                                  ~/CotadorRDService/iniciarCotacao/Condominio
+Riscos Diversos - Massificados › Condom�nio › Cota��es e Propostas  Consultar Cota��es                            ~/ConsultaCotacoes/#/consultaWeb
+Riscos Diversos - Massificados › Imobili�rio › Cota��es e Propostas  Nova Cota��o                                  ~/massificados/cotador-imobiliario/iniciarCotacao
+Riscos Diversos - Massificados › Imobili�rio › Cota��es e Propostas  Consultar Cota��es                            ~/ConsultaCotacoes/#/consultaWeb
+Riscos Diversos - Massificados › Aluguel › Cota��es e Propostas  Nova Cota��o                                  ~/massificados/CotadorFiancaService/iniciarCotacao
+Riscos Diversos - Massificados › Aluguel › Cota��es e Propostas  Consultar Cota��es                            ~/ConsultaCotacoes/#/consultaWeb
+Produtos Empresariais › Empresarial › Solicitar Cota��o e Endosso  Consultar Cota��es                            ~/SSC/home/66
+Produtos Empresariais › Riscos Nomeados e Operacionais  Solicitar Cota��o                             https://ssvsso.tokiomarine.com.br/AceitacaoWeb/Solicitacao/index
+Produtos Empresariais › Riscos Nomeados e Operacionais › Solicitar Cota��o  Nova Cota��o - Anexar Arquivo                 ~/SSC/home/20
+Produtos Empresariais › Riscos Nomeados e Operacionais › Solicitar Cota��o  Consultar Cota��es                            ~/SSC/home/66
+Produtos PJ › Agro Safras                       Cota��es e Propostas                          https://ssvsso.tokiomarine.com.br/AceitacaoWeb/Solicitacao/index
+Produtos PJ › Agro Safras › Cota��es e Propostas  Nova Cota��o                                  ~/ems/corporate/apps/ctpj-agrosafra/#/iniciaCotacao/10021
+Produtos PJ › Agro Safras › Cota��es e Propostas  Consultar Cota��es                            ~/ConsultaCotacoes/#/consultaWeb
+Produtos PJ › Agro Fazenda › Cota��es e Propostas  Nova Cota��o                                  ~/ems/corporate/apps/ctpj-equipamentos/#/inicia-cotacao/10006
+Produtos PJ › Agro Fazenda › Cota��es e Propostas  Nova Cota��o - Drone                          ~/ems/corporate/apps/ctpj-equipamentos/#/inicia-cotacao/10006/modalidade/9
+Produtos PJ › Agro Fazenda › Cota��es e Propostas  Solicitar Cota��o                             ~/SSC/home/20
+Produtos PJ › Agro Fazenda › Cota��es e Propostas  Consultar Cota��es                            ~/ConsultaCotacoes/#/consultaWeb
+Produtos PJ › Agro Fazenda › Cota��es e Propostas  Nova Cota��o - Importa��o Nota Fiscal         ~/ems/corporate/apps/ctpj-equipamentos/#/inicia-cotacao-nota
+Produtos PJ › Cyber - Riscos Cibern�ticos › Cota��es e Propostas  Nova Cota��o e Renova��o                      ~/ems/corporate/apps/ctpj-cyber/#/iniciaCotacao/10001
+Produtos PJ › Cyber - Riscos Cibern�ticos › Cota��es e Propostas  Simular Cota��o                               ~/ems/corporate/apps/ctpj-cyber/#/simulador/10001
+Produtos PJ › Equipamentos › Cota��es e Propostas  Consultar Cota��es                            ~/ConsultaCotacoes/#/consultaWeb
+Produtos PJ › Equipamentos › Cota��es e Propostas  Nova Cota��o - Importa��o Nota Fiscal         ~/ems/corporate/apps/ctpj-equipamentos/#/inicia-cotacao-nota
+Produtos PJ › E&O - Demais Atividades › Cota��o  Nova Cota��o e Renova��o                      ~/ems/corporate/apps/ctpj-cyber/#/iniciaCotacao/10000
+Produtos PJ › E&O - Demais Atividades › Cota��o  Simular Cota��o                               ~/ems/corporate/apps/ctpj-cyber/#/simulador/10000
+Produtos PJ › E&O - �rea da Sa�de › Cota��o     Nova Cota��o e Renova��o                      ~/ems/corporate/apps/ctpj-cyber/#/iniciaCotacao/10019
+Produtos PJ › E&O - �rea da Sa�de › Cota��o     Simular Cota��o                               ~/ems/corporate/apps/ctpj-cyber/#/simulador/10019
+Produtos PJ › Reta › Cota��es e Propostas       Nova Cota��o                                  ~/kme19/SelecaoProdutos.aspx?CD_PRD=9701
+Produtos PJ › Reta › Cota��es e Propostas       Consultar Cota��es                            ~/ConsultaCotacoes/#/consultaWeb
+Produtos PJ › Responsabilidade Civil › Cota��es e Propostas  Consultar Cota��es                            ~/ConsultaCotacoes/#/consultaWeb
+Produtos PJ › Responsabilidade Civil › Solicitar Cota��o  Consultar Cota��es                            ~/SSC/home
+Produtos PJ › KIT RC Obras › Cota��es e Propostas  Nova Cota��o                                  ~/kme19/SelecaoProdutos.aspx?CD_PRD=5121
+Produtos PJ › KIT RC Obras › Cota��es e Propostas  Consultar Cota��es                            ~/ConsultaCotacoes/#/consultaWeb
+Produtos PJ › KIT Riscos de Engenharia › Cota��es e Propostas  Nova Cota��o                                  ~/kme19/SelecaoProdutos.aspx?CD_PRD=6709
+Produtos PJ › KIT Riscos de Engenharia › Cota��es e Propostas  Consultar Cota��es                            ~/ConsultaCotacoes/#/consultaWeb
+Produtos PJ › Transportes › Cota��es e Propostas  Nova Cota��o - Pequeno Transportador          ~/ems/corporate/apps/transportes-cotador/#/pet
+Produtos PJ › Transportes › Cota��es e Propostas  Nova Cota��o - Pequeno Embarcador             ~/SSC/home/8
+Produtos PJ › Transportes › Cota��es e Propostas  Nova Cota��o - Ap�lice Avulsa para Embarcado  ~/ems/corporate/apps/transportes-cotador/#/avulsa
+Produtos PJ › Transportes › Cota��es e Propostas  Nova Cota��o - Ap�lice Avulsa Nacional com U  ~/ems/corporate/apps/transportes-cotador/#/ocr
+Produtos PJ › Transportes › Cota��es e Propostas  Nova Cota��o - RCTR-C/RC-DC/RC-V              ~/ems/corporate/apps/transportes-cotador/#/
+Produtos PJ › Transportes › Cota��es e Propostas  Consulta Cota��es - RCTR-C/RC-DC/PET/AVULSA/  ~/ems/corporate/apps/transportes-cotador/#/consultaProposta
+Produtos PJ › Transportes › Solicitar Cota��o   Nova Cota��o - Anexar Arquivo                 ~/SSC/home/3
+Produtos PJ › Transportes › Solicitar Cota��o   Consultar Cota��es                            ~/SSC/home
+Produtos PJ › Mais Produtos PJ › Solicitar Cota��o  Nova Cota��o - Anexar Arquivo                 ~/SSC/home/20
+Produtos PJ › Mais Produtos PJ › Solicitar Cota��o  Nova Cota��o - Anexar Arquivo (Unificado)     ~/SSC/home/88
+Produtos PJ › Mais Produtos PJ › Solicitar Cota��o  Consultar Cota��es                            ~/SSC/home/66
+Vida › Vida/AP Individual/Funeral+ › Cota��es e Propostas  Nova Cota��o                                  ~/aff/ctv/portal/cotador-vida/vida-individual/cotacao
+Vida › Vida/AP Individual/Funeral+ › Cota��es e Propostas  Consultar Cota��es                            ~/ConsultaCotacoes/#/consultaWeb
+Vida › Acidentes Pessoais / Vida em Grupo › Cota��es e Propostas  Consultar Cota��es                            ~/ConsultaCotacoes/#/consultaWeb
+Vida › Acidentes Pessoais / Vida em Grupo › Solicitar Cota��o  Nova Cota��o - Anexar Arquivo                 ~/SSC/home/5
+Vida › Acidentes Pessoais / Vida em Grupo › Solicitar Cota��o  Consultar Cota��es                            ~/SSC/home/66
+Vida › Simples Vida - Capital Global › Cota��es e Propostas  Nova Cota��o                                  ~/aff/ctv/portal/vida-global/
+Vida › Simples Vida - Capital Global › Cota��es e Propostas  Consultar Cota��es                            ~/ConsultaCotacoes/#/consultaWeb
+Vida › Simples Vida - Capital Global › Solicitar Cota��o  Nova Cota��o - Anexar Arquivo                 ~/SSC/home/5
+Vida › Simples Vida - Capital Global › Solicitar Cota��o  Consultar Cota��es                            ~/SSC/home/66
+Vida › Seguro Viagem › Cota��es e Propostas     Nova Cota��o                                  ~/sva/view/digital/seguro-viagem/portalparceiros
 ```
 
-## 5.4 OUTROS SERVIÇOS mapeados
+### Renovação — onde cada produto lista o que vence
 
-📊 Sinistro (`/sin/tokio-sinistro-view/#/aviso-sinistro`, aluguel, condomínio,
-vida, terceiro, transporte) · Vistoria (`/ems/act/vistoria-previa/#/…`) ·
-Assistência 24 h (`autoatendimento.tokiomarine.com.br/portais/ui/assistencia24h`)
-· Extrato de comissão · Informe de rendimento · Simples Nacional · Manutenção de
-usuários · BrokerTech.
+```
+Produtos PJ › Cyber - Riscos Cibern�ticos › Cota��es e Propostas  Nova Cota��o e Renova��o                      ~/ems/corporate/apps/ctpj-cyber/#/iniciaCotacao/10001
+Produtos PJ › Cyber - Riscos Cibern�ticos › Consulta  Cota��es / Endossos / Renova��es              ~/SSC/home/66
+Produtos PJ › E&O - Demais Atividades › Cota��o  Nova Cota��o e Renova��o                      ~/ems/corporate/apps/ctpj-cyber/#/iniciaCotacao/10000
+Produtos PJ › E&O - Demais Atividades › Consulta  Cota��es / Endossos / Renova��es              ~/SSC/home
+Produtos PJ › E&O - �rea da Sa�de › Cota��o     Nova Cota��o e Renova��o                      ~/ems/corporate/apps/ctpj-cyber/#/iniciaCotacao/10019
+Produtos PJ › E&O - �rea da Sa�de › Consulta    Cota��es / Endossos / Renova��es              ~/SSC/home/66
+Produtos PJ › Garantia › Consulta               Cota��es / Endossos / Renova��es              ~/SSC/home/66
+Massificados                                    Relat�rio de Renova��es                       ~/massificados/renovacao/#/relatorio/portal/corretor
+Massificados                                    Transferir Renova��es                         ~/massificados/renovacao/#/transferencia/portal/corretor
+Produtos PJ                                     Relat�rio Renova��o                           ~/ems/corporate/apps/ctpj-relatorio-renovacao/#/pesquisa
+Vida                                            Painel de Renova��o                           ~/sva/view/portal/renovacao/#/
+Vida                                            Transferir Renova��es                         ~/gestaoapolice/emissao/ui/corretor/#!/transferencia
+Tutorial                                        Transfer�ncia de Renova��o                    https://portal.tokiomarine.com.br/portal_static/manuais/pdf/Tutorial_transferencia_de_Renovacao_10_2024.pdf
+Operacional › Servi�os de Emiss�o › Emiss�o Autom�vel  Transfer�ncia de Renova��o                    ~/massificados/renovacao/#/transferencia/portal/corretor
+Operacional › Servi�os de Emiss�o › Emiss�o PJ  Relat�rio de Renova��es Corporate             ~/kme19/Renovacao.aspx
+Operacional › Servi�os de Emiss�o › Emiss�o RD Massificados  Transfer�ncia de Renova��o                    ~/massificados/renovacao/#/transferencia/portal/corretor
+Operacional › Servi�os de Emiss�o › Emiss�o Vida  Transfer�ncia de Renova��o                    ~/massificados/renovacao/#/transferencia/portal/corretor
+```
 
-📊 Telefones públicos: Central `0800 31 86546` · SAC `0800 703 9000` ·
-Ouvidoria `0800 449 0000` · Disque Fraude `0800 707 6060`.
+### Endosso — 🚫 escreve no contrato, o robô nunca chama
 
----
+```
+Autom�vel › Individual › Endossos               Realizar Endosso                              ~/massificados/auto/varejo/endosso/porta/carregarPesquisa
+Autom�vel › Frotas Auto › Endossos              Realizar Endosso                              ~/SSC/home/2
+Riscos Diversos - Massificados › Residencial › Endossos  Realizar Endosso                              ~/EndossoRDService/iniciarPesquisaEndosso
+Riscos Diversos - Massificados › Condom�nio › Endossos  Realizar Endosso                              ~/EndossoRDService/iniciarPesquisaEndosso
+Riscos Diversos - Massificados › Imobili�rio › Endossos  Realizar Endosso                              ~/massificados/endosso-imobiliario/iniciarPesquisaEndosso
+Riscos Diversos - Massificados › Aluguel › Endossos  Realizar Endosso                              ~/massificados/endosso-fianca/iniciarPesquisa
+Produtos PJ › Agro Safras › Endossos            Consultar Endossos                            ~/SSC/home/
+Produtos PJ › Agro Safras › Endossos            Realizar Endosso                              ~/ems/corporate/apps/ctpj-agrosafra/#/iniciaEndosso
+Produtos PJ › Agro Fazenda › Endosso            Realizar Endosso                              ~/ems/corporate/apps/ctpj-equipamentos/#/inicia-cotacao-endosso/10005
+Produtos PJ › Agro Fazenda › Endosso            Solicitar Endosso                             ~/SSC/home/20
+Produtos PJ › Agro Fazenda › Endosso            Consultar Endossos                            ~/SSC/home/66
+Produtos PJ › Cyber - Riscos Cibern�ticos › Cota��es e Propostas  Realizar Endosso                              ~/ems/corporate/apps/ctpj-cyber/#/iniciaCotacaoEndosso/10001
+Produtos PJ › Cyber - Riscos Cibern�ticos › Consulta  Cota��es / Endossos / Renova��es              ~/SSC/home/66
+Produtos PJ › Equipamentos › Endosso            Realizar Endosso                              ~/ems/corporate/apps/ctpj-equipamentos/#/inicia-cotacao-endosso/10005
+Produtos PJ › Equipamentos › Endosso            Solicitar Endosso                             ~/SSC/home/20
+Produtos PJ › Equipamentos › Endosso            Consultar Endossos                            ~/SSC/home/66
+Produtos PJ › E&O - Demais Atividades › Cota��o  Realizar Endosso                              ~/ems/corporate/apps/ctpj-cyber/#/iniciaCotacaoEndosso/10000
+Produtos PJ › E&O - Demais Atividades › Consulta  Cota��es / Endossos / Renova��es              ~/SSC/home
+Produtos PJ › E&O - �rea da Sa�de › Cota��o     Realizar Endosso                              ~/ems/corporate/apps/ctpj-cyber/#/iniciaCotacaoEndosso/10019
+Produtos PJ › E&O - �rea da Sa�de › Consulta    Cota��es / Endossos / Renova��es              ~/SSC/home/66
+Produtos PJ › Garantia › Garantia               Solicitar Endosso                             ~/SSC/home/10
+Produtos PJ › Garantia › Consulta               Cota��es / Endossos / Renova��es              ~/SSC/home/66
+Produtos PJ › Responsabilidade Civil › Endosso  Realizar Endosso                              ~/ems/corporate/apps/ctpj-rc/#/endosso/
+Produtos PJ › Responsabilidade Civil › Endosso  Consultar Endosso                             ~/SSC/home/66
+Produtos PJ › KIT RC Obras › Endosso            Endosso de Prorroga��o de Vig�ncia            ~/ems/corporate/apps/risco-engenharia/#/inicia-cotacao
+Produtos PJ › KIT Riscos de Engenharia › Endossos  Endosso de Prorroga��o de Vig�ncia            ~/ems/corporate/apps/risco-engenharia/#/inicia-cotacao
+Vida › Vida/AP Individual/Funeral+ › Endossos   Realizar Endosso                              ~/aff/ctv/portal/cotador-vida/vida-individual/endosso
+Vida › Simples Vida - Capital Global › Endossos  Realizar Endossos                             ~/aff/ctv/portal/vida-global/#/endosso/
+Acompanhar Emiss�o e 2� Via                     Vis�o Geral do Cliente - <b>PIX, 2� Via de B  ~/portais/visao-cliente-corretor/home
+Acompanhar Emiss�o e 2� Via                     Acompanhamento de Propostas e Endossos        ~/ems/act/acompanhamento-proposta-front/
+Operacional › Servi�os de Emiss�o › Emiss�o Autom�vel  Acompanhamento de Propostas e Endossos        ~/ems/act/acompanhamento-proposta-front/
+Operacional › Servi�os de Emiss�o › Emiss�o PJ  Acompanhamento de Propostas e Endossos        ~/ems/act/acompanhamento-proposta-front/
+Operacional › Servi�os de Emiss�o › Emiss�o RD Massificados  Acompanhamento de Propostas e Endossos        ~/ems/act/acompanhamento-proposta-front/
+Operacional › Servi�os de Emiss�o › Emiss�o Transportes  Acompanhamento de Propostas e Endossos        ~/ems/act/acompanhamento-proposta-front/
+Operacional › Servi�os de Emiss�o › Emiss�o Vida  Acompanhamento de Propostas e Endossos        ~/ems/act/acompanhamento-proposta-front/
+```
+
+### Vistoria e inspeção
+
+```
+Autom�vel › Individual › Agendamentos / Vistoria  Agendar/Consultar Vistoria Pr�via             ~/ems/act/vistoria-previa/#/vistoria
+Autom�vel › Individual › Agendamentos / Vistoria  Rela��o de Vistorias Improdutivas             ~/ems/act/vistoria-previa/#/relatorio/improdutivo/corretor
+Autom�vel › Individual › Agendamentos / Vistoria  Rela��o de Postos de Vistoria                 ~/ems/act/vistoria-previa/#/posto
+Autom�vel › Frotas Auto › Agendamentos / Vistorias  Agendar/Consultar Vistoria Pr�via             ~/ems/act/vistoria-previa/#/vistoria
+Autom�vel › Frotas Auto › Agendamentos / Vistorias  Rela��o de Vistorias Improdutivas             ~/ems/act/vistoria-previa/#/relatorio/improdutivo/corretor
+Autom�vel › Frotas Auto › Agendamentos / Vistorias  Rela��o de Postos de Vistoria                 ~/ems/act/vistoria-previa/#/posto
+Riscos Diversos - Massificados › Residencial › Inspe��o de Riscos  Consultar Inspe��o de Riscos (Vistoria)       https://prtsso.tokiomarine.com.br/InspecaoInteligente/consulta/solicitacao?isWEB=true
+Riscos Diversos - Massificados › Condom�nio › Inspe��o de Riscos  Consultar Inspe��o de Riscos (Vistoria)       ~/InspecaoInteligente/prestadora/consulta/perfil
+Produtos Empresariais › Empresarial › Inspe��o de Riscos  Consultar Inspe��o de Riscos (Vistoria)       ~/ems/act/inspecao/#/consulta-solicitacao
+Operacional › Servi�os de Emiss�o › Emiss�o Autom�vel  Vistoria Pr�via                               ~/portais/ui/vistoria-previa/#/home
+Operacional › Servi�os de Emiss�o › Emiss�o PJ  Consultar Inspe��o de Riscos                  ~/ems/act/inspecao/#/consulta-solicitacao
+Operacional › Servi�os de Emiss�o › Emiss�o RD Massificados  Consultar Inspe��o de Riscos                  ~/ems/act/inspecao/#/consulta-solicitacao
+Vistorias / Inspe��o                            Rela��o de Vistorias Improdutivas             ~/ems/act/vistoria-previa/#/relatorio/improdutivo/corretor
+Vistorias / Inspe��o                            Rela��o de Postos de Vistoria                 ~/ems/act/vistoria-previa/#/posto
+Vistorias / Inspe��o                            Consultar Inspe��o de Riscos -                ~/ems/act/inspecao/#/consulta-solicitacao
+Vistorias / Inspe��o                            Recomenda��o P�s-Inspe��o                     ~/ems/act/inspecao/#/recomendacao
+Agendamentos / Consultas                        Agendar Vistoria de Sinistro Auto Segurado    ~/sin/tokio-sinistro-view/#/aviso-sinistro?Y2hlY2tlZEFjb21wYW5oYXI9UyZjb2RpZ29DYW5hbE9yaWdlbT1QT1JUQUwgQ09SUkVUT1I=
+Agendamentos / Consultas                        Agendar Vistoria de Sinistro Auto Terceiro    ~/sin/tokio-sinistro-view/#/aviso-sinistro-terceiro?Y2hlY2tlZEFjb21wYW5oYXI9UyZjb2RpZ29DYW5hbE9yaWdlbT1QT1JUQUwgQ09SUkVUT1I=
+```
+
+### Sinistro
+
+```
+Avisos                    Sinistro Aluguel                              ~/sin/AfinidadesWeb/#/aluguel
+Avisos                    Sinistro Autom�vel                            ~/sin/tokio-sinistro-view/#/aviso-sinistro?JmNvZGlnb0NhbmFsT3JpZ2VtPVBPUlRBTCBDT1JSRVRPUg==
+Avisos                    Sinistro Condom�nio                           ~/sin/tokio-sinistro-re-view/#/aviso-condominio?d=JmNvZGlnb0NhbmFsT3JpZ2VtPVBPUlRBTCBBU1NFU1NPUklBUw==
+Avisos                    Sinistro Demais Produtos                      ~/sin/aviso-web/consulta/apolice/re/demais?SistemaOrigem=Corretor
+Avisos                    Sinistro Residencial                          ~/sin/tokio-sinistro-re-view/#/aviso-residencial?d=JmNvZGlnb0NhbmFsT3JpZ2VtPVBPUlRBTCBDT1JSRVRPUg==
+Avisos                    Sinistro Transporte Automotivo                ~/sin/TWM/gourl/corretor/aviso
+Avisos                    Sinistro Terceiro Auto                        ~/sin/tokio-sinistro-view/#/aviso-sinistro-terceiro?JmNvZGlnb0NhbmFsT3JpZ2VtPVBPUlRBTCBDT1JSRVRPUg==
+Avisos                    Sinistro Vida                                 ~/sin/AfinidadesWeb/#/vida
+Agendamentos / Consultas  Agendar Vistoria de Sinistro Auto Segurado    ~/sin/tokio-sinistro-view/#/aviso-sinistro?Y2hlY2tlZEFjb21wYW5oYXI9UyZjb2RpZ29DYW5hbE9yaWdlbT1QT1JUQUwgQ09SUkVUT1I=
+Agendamentos / Consultas  Agendar Vistoria de Sinistro Auto Terceiro    ~/sin/tokio-sinistro-view/#/aviso-sinistro-terceiro?Y2hlY2tlZEFjb21wYW5oYXI9UyZjb2RpZ29DYW5hbE9yaWdlbT1QT1JUQUwgQ09SUkVUT1I=
+Agendamentos / Consultas  Acompanhar Sinistro Auto Segurado             ~/sin/tokio-sinistro-view/#/aviso-sinistro?Y2hlY2tlZEFjb21wYW5oYXI9UyZjb2RpZ29DYW5hbE9yaWdlbT1QT1JUQUwgQ09SUkVUT1I=
+Agendamentos / Consultas  Acompanhar Sinistro Auto Terceiro             ~/sin/tokio-sinistro-view/#/aviso-sinistro-terceiro?Y2hlY2tlZEFjb21wYW5oYXI9UyZjb2RpZ29DYW5hbE9yaWdlbT1QT1JUQUwgQ09SUkVUT1I=
+Agendamentos / Consultas  Acompanhar Sinistro Auto Segurado             ~/sin/aviso-web/corretor/inicio
+Agendamentos / Consultas  Acompanhar Sinistro Auto Terceiro             ~/sin/aviso-web/corretor/inicio
+Agendamentos / Consultas  Acompanhar Sinistro Condom�nio                ~/sin/tokio-sinistro-re-view/#/aviso-condominio?d=YWNvbXBhbmhhcj1TJmNvZGlnb0NhbmFsT3JpZ2VtPVBPUlRBTCBBU1NFU1NPUklBUw==
+Agendamentos / Consultas  Acompanhar Sinistros Outros Produtos          ~/sin/aviso-web/corretor/inicio
+FAQ Sinistro              FAQ Sinistro Vida                             https://portal.tokiomarine.com.br/portal_static/manuais/pdf/FAQ_Sinistro_Vida_04_2025.pdf
+```
+
+### Condições gerais, manuais e questionários (serve ao Acervo)
+
+```
+Autom�vel › Frotas Auto › Solicitar Cota��o     Nova Cota��o - Anexar arquivo (Condi��es Esp  ~/SSC/home/1
+Riscos Diversos - Massificados › Residencial › Manuais e FAQ  Condi��es Gerais                              https://www.tokiomarine.com.br/condicoes-gerais/residencial-premiado/
+Riscos Diversos - Massificados › Residencial › Manuais e FAQ  FAQ Residencial                               ~/docstore-services/rest/download/780a90fb-4bc6-4dae-a7c1-407bf0c81691
+Riscos Diversos - Massificados › Residencial › Manuais e FAQ  Manual do Corretor                            ~/docstore-services/rest/download/cfcf8263-3653-400e-ae48-360145388ee4
+Riscos Diversos - Massificados › Condom�nio › Manuais e FAQ  Condi��es Gerais                              https://www.tokiomarine.com.br/condicoes-gerais/condominio/
+Riscos Diversos - Massificados › Condom�nio › Manuais e FAQ  FAQ Condom�nio                                ~/docstore-services/rest/download/51d939e0-2522-42bf-893d-1df42f412ad5
+Riscos Diversos - Massificados › Condom�nio › Manuais e FAQ  Manual do Corretor                            ~/docstore-services/rest/download/cfcf8263-3653-400e-ae48-360145388ee4
+Riscos Diversos - Massificados › Imobili�rio › Manuais e FAQ  FAQ Imobili�rio Residencial                   https://portal.tokiomarine.com.br/portal_static/manuais/pdf/FAQ%20Imobili%e1rio%20Residencial_082025.pdf
+Riscos Diversos - Massificados › Imobili�rio › Manuais e FAQ  Manual do Corretor                            https://portal.tokiomarine.com.br/portal_static/manuais/pdf/Manual%20do%20Corretor_Imobili%e1rio%20Residencial_082025.pdf
+Riscos Diversos - Massificados › Aluguel › Manuais e FAQ  Condi��es Gerais                              https://www.tokiomarine.com.br/condicoes-gerais/aluguel/
+Riscos Diversos - Massificados › Aluguel › Manuais e FAQ  FAQ Aluguel                                   https://portal.tokiomarine.com.br/portal_static/manuais/pdf/FAQ%20aluguel_ago2025.%20v11%20(1).pdf
+Riscos Diversos - Massificados › Aluguel › Manuais e FAQ  Manual Do Corretor                            https://portal.tokiomarine.com.br/portal_static/manuais/pdf/Manual%20do%20Corretor_Aluguel-%20v17%20082025%20-%20vers%e3o%20final.pdf
+Produtos Empresariais › Empresarial › Manuais e Question�rios  FAQ - Perguntas Frequentes                    https://portal.tokiomarine.com.br/docstore-services/rest/download-anexo/fcb9a103-99d8-4492-a3d6-d990e8dc8bd7
+Produtos Empresariais › Empresarial › Manuais e Question�rios  Manual do Corretor                            https://portal.tokiomarine.com.br/docstore-services/rest/download-anexo/1a65c462-130c-44fb-a6ee-c105fae6c232
+Produtos PJ › Agro Safras › Manuais e FAQ       Tutorial para croqui                          https://youtu.be/E5spYXuWCrM
+Produtos PJ › Cyber - Riscos Cibern�ticos › Manuais  Manual do Portal                              ~/docstore-services/rest/download/d92f9c33-be1e-4c7b-9377-3eef18161944
+Produtos PJ › Cyber - Riscos Cibern�ticos › Manuais  Question�rio Completo                         ~/docstore-services/rest/download/43a53a71-55ba-4a13-b106-f5a6951abc62
+Produtos PJ › Equipamentos › Manual e Condi��es Gerais  Manual                                        ~/docstore-services/rest/download/a2e83925-b709-46f2-be5d-835a895d2db6
+Produtos PJ › Equipamentos › Manual e Condi��es Gerais  Condi��es Gerais                              https://www.tokiomarine.com.br/condicoes-gerais/equipamentos/
+Produtos PJ › E&O - Demais Atividades › Manuais  Manual do Portal                              ~/docstore-services/rest/download/416fb241-1a51-4502-9291-fadd135df0aa
+Produtos PJ › Garantia › Manuais                Tutorial Portal Tomador                       https://portal.tokiomarine.com.br/portal_static/manuais/pdf/Dep%f3sito%20Recursal%20Digital%20-%20Tutorial.pdf
+Produtos PJ › Garantia › Manuais                Tutorial Sistema                              https://portal.tokiomarine.com.br/portal_static/manuais/pdf/Garantia%20-%20Tutorial%20do%20sistema.pdf
+Produtos PJ › Transportes › Manuais             Manual do Transportador                       https://cdnpub.tokiomarine.com.br/portal_static/manuais/pdf/MANUAL_TRANSPORTADOR_revisado_27fev25.pdf
+Produtos PJ › Transportes › Manuais             Manual do Pequeno Transportador               https://cdnpub.tokiomarine.com.br/portal_static/manuais/pdf/MANUAL_PEQ_TRANSPORTADOR_revisado%2028fev25.pdf
+Produtos PJ › Transportes › Manuais             Manual do Transporte Avulsa                   https://cdnpub.tokiomarine.com.br/portal_static/manuais/pdf/MANUAL_AVULSA_revisado%2028fev25.pdf
+Produtos PJ › Transportes › Manuais             Manual de Vendas                              ~/docstore-services/rest/download/e31ed9a2-f02a-4825-9b21-d1ef2a6f30bd
+Materiais de Apoio e Tutoriais › Informativos e Tutoriais › Materiais  FAQ Link de Pagamentos                        https://portal.tokiomarine.com.br/docstore-services/rest/download-anexo/b8d01d28-9a09-4bbf-8481-2a566fa4e6dc
+FAQ Sinistro                                    FAQ Sinistro Vida                             https://portal.tokiomarine.com.br/portal_static/manuais/pdf/FAQ_Sinistro_Vida_04_2025.pdf
+Tributos                                        Manual de Tributos                            https://portal.tokiomarine.com.br/portal_static/manuais/pdf/TM%20Manual%20Tributos_VF.pdf
+```
+
+### Os três aplicativos que se repetem
+
+📊 Lendo os 338, aparecem **três motores** por trás de quase tudo:
+
+```
+~/ems/corporate/apps/ctpj-<produto>/     PJ moderno (cyber · E&O · equipamentos
+                                          · agro · RC). Angular, rota por #/
+~/massificados/<produto>/                massificados (auto · residencial ·
+                                          condomínio · imobiliário · fiança)
+~/SSC/home/<n>                            solicitação com anexo. O <n> é o TIPO
+                                          do pedido: 1 e 20 = cotação,
+                                          2 e 10 = endosso, 66 = consultar
+```
+
+> Isso importa para quem vier depois: **não são 338 integrações, são três
+> famílias.** Resolver `ctpj-*` uma vez provavelmente resolve cyber, E&O,
+> equipamentos, agro e RC juntos. ❓ Não medido — mas é por onde começar.
+
+### O que a cobrança já provou que serve para os outros
+
+A seção 1 (a porta), a 2 (a topologia), a 3 (as armadilhas) e a 4 (as travas)
+**valem para os três serviços**. Quem for fazer renovação da Tokio já herda:
+
+| Já resolvido | Onde |
+|---|---|
+| o SSO OpenAM e os campos que só nascem por JS | §1.1 e §6bis |
+| o seletor "Corretor" que engana o guarda de chegada | §1.1 e §6bis |
+| o Akamai (`--headless=new` + UA limpo) | §1.4 |
+| o teto de ~4 visitas em 30 min | §1.5 |
+| a tarja de cookies que intercepta clique | §1.6 |
+| o código do corretor lido do portal, não de constante | §1.2 |
+| que o telefone do portal não serve | §3.1 |
+
+**Só a chamada nova é trabalho novo.** Foi esse o ponto de separar um arquivo
+por seguradora.
 
 # 6. DADOS DA TELA que a cobrança NÃO usa
 
