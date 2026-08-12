@@ -57,6 +57,10 @@ JOURNEYS: Dict[str, Tuple[str, str]] = {
         "portal_worker.journeys.hdi_corretor", "login_check"),
     "hdi_corretor.cobranca_sweep": (
         "portal_worker.journeys.hdi_corretor", "cobranca_sweep"),
+    "tokiomarine_corretor.login_check": (
+        "portal_worker.journeys.tokio_corretor", "login_check"),
+    "tokiomarine_corretor.cobranca_sweep": (
+        "portal_worker.journeys.tokio_corretor", "cobranca_sweep"),
     "vidros_lanternas.login_check": (
         "portal_worker.journeys.vidros_lanternas", "login_check"),
     "vidros_lanternas.abrir_atendimento": (

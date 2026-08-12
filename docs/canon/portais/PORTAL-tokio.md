@@ -5,14 +5,15 @@
 >
 > **Leia a [SPEC-070](../specs/SPEC-070-cobranca-multi-seguradora.md) antes de mexer
 > aqui.** Ela define o método das 5 fases e o teto de visitas. Este arquivo é o
-> resultado da Fase 1 (reconhecimento) — não substitui a SPEC.
+> mapa do território — não substitui a SPEC.
 >
-> Estado: 🟡 **FASE 1 EM ANDAMENTO** · sem código · reconhecimento por prints
-> Última medição: 12/08/2026 · corretor 67828 (AutoFleet)
+> Estado: 🟢 **FASES 1–3 FECHADAS** · journey escrita · 70 asserções verdes
+> · falta a Fase 4 (uma visita real)
+> Última medição: 12/08/2026 · HAR do corretor 67828 (AutoFleet)
 
 | Marca | Significado |
 |---|---|
-| 📊 | medido — li na tela ou no print, com data |
+| 📊 | medido — li no HAR, no HTML ou na tela, com data |
 | ❓ | **não medido** — precisa de captura antes de virar código |
 | 🔴 | trava séria |
 | 🚫 | o robô nunca toca |
@@ -38,59 +39,66 @@
              Sair
 ```
 
-**Isso é um seletor de portais**, não um aviso. Um único card hoje (`Corretor`),
-mas a tela existe porque a Tokio publica mais de um portal na mesma conta. O robô
-que assume "logou = estou dentro" fica parado nessa tela para sempre.
+**É um seletor de portais**, não um aviso. Um card hoje (`Corretor`), mas a tela
+existe porque a Tokio publica mais de um portal na mesma conta.
 
-> 🔴 **Regra:** o `login_check` da Tokio só devolve `ok` depois de atravessar o
-> seletor e ver o menu `FINANCEIRO` na tela. Ver o nome "Bem-vindo" **não** prova
-> que entrou.
+> 🔴 Um robô que assume *"logou = estou dentro"* fica parado nessa tela para
+> sempre — e o sintoma é **"a varredura não achou ninguém"**, que é
+> indistinguível de carteira em dia. Por isso o `login_check` só devolve `done`
+> depois de ver o menu do portal, nunca depois de ver o nome do usuário.
 
 ## 1.2 O corretor tem CÓDIGO — e pode ter mais de um
 
-📊 No topo do portal:
+📊 No topo: `CÓDIGO/CORRETOR — 67828 - AUTO FLEET R CORRETORA…` com um `[⇄]`.
+📊 O modal `Selecione o seu corretor` abre com busca por nome, código ou CNPJ.
+Para a AutoFleet: **`Mostrando de 1 até 1 de 1 registros`** — um código só.
+
+📊 E o HTML da página diz por que:
+
+```js
+const isBloqueiaTrocaDeParceiro = eval(true);
+const permiteSelecaoParceiro    = eval(false);
+```
+
+> 🔴 **Mas a tela existe.** Uma corretora com dois códigos vê **um de cada vez**,
+> e o relatório é o do código selecionado. Varrer só o default deixaria metade
+> da carteira invisível **em silêncio** — a falha que a SPEC-070 §2 proíbe.
+>
+> A journey resolve o código pelo próprio portal (`buscarUsuario → codigoInterno`),
+> nunca por constante. ❓ Falta medir uma corretora com 2+ códigos — quando
+> aparecer, o `corretores: []` do relatório aceita lista, então é enumerar.
+
+## 1.3 Por baixo é Liferay — mas o que interessa é um BFF
+
+📊 A URL é `/group/portal-corretor#item_3` (convenção Liferay). **Porém** as
+telas de cobrança não são portlets: são aplicações que falam com um
+**BFF em JSON**, com GraphQL de um lado e REST do outro. Ver §5.1.
+
+## 1.4 🔴 Akamai também aqui
+
+📊 O HAR mostra o sensor do **Akamai Bot Manager**, com o caminho ofuscado que
+ele usa para não ser reconhecido por nome:
 
 ```
-CÓDIGO/CORRETOR
-67828 - AUTO FLEET R CORRETORA …   [⇄]
+GET  /urfection-Murthee-through-fearers-to-you-had-suc          778 KB de JS
+POST /urfection-Murthee-through-fearers-to-you-had-suc?d=portalparceiros…
 ```
 
-O `[⇄]` é um **trocador**. Uma corretora com dois códigos vê **um de cada vez** —
-e a lista de inadimplentes é a do código selecionado.
+Mesma trava da HDI. O conserto já está no worker e vale para as duas:
+`--headless=new` (impressão digital em JS) **+ User-Agent limpo** (o cabeçalho).
+Detalhe do diagnóstico em [PORTAL-hdi.md §1.4](PORTAL-hdi.md).
 
-> 🔴 **Consequência direta:** varrer só o código default pode deixar metade da
-> carteira invisível, e **em silêncio**. É exatamente a falha que a SPEC-070 §2
-> proíbe. A varredura tem de enumerar os códigos e rodar um por um.
+## 1.5 🔴 Teto de visitas — o mais baixo que já medi
 
-❓ Falta medir: quantos códigos cada corretora tem, e como o portal expõe a lista.
+📊 Em 09/08/2026 o SSO travou depois de **~4 entradas em 30 minutos**. A HDI
+aguentou ~15. Por isso a captura desta seguradora saiu **de uma sessão só**, e
+toda leitura repetida vem de fixture.
 
-## 1.3 Liferay por baixo
+## 1.6 Sem CAPTCHA visível · cookie banner atrapalha
 
-📊 A URL é `portalparceiros.tokiomarine.com.br/group/portal-corretor#item_3`.
-`/group/<site>` é a convenção do **Liferay**. Isso importa: as telas internas são
-*portlets*, endereçadas por `p_p_id` / `p_p_lifecycle` / `_<portlet>_<param>`.
-A cadeia de chamadas in-page da SPEC-033 se aplica; o formato dos parâmetros é o
-do Liferay, não um REST limpo.
-
-## 1.4 🔴 Teto de visitas — medido e severo
-
-📊 Em 09/08/2026, no reconhecimento inicial, o SSO da Tokio **travou depois de
-~4 entradas em 30 minutos**. É o teto mais baixo dos portais que já visitei
-(a HDI aguentou ~15).
-
-> Por isso a captura desta seguradora precisa sair **de uma sessão só**. Cada
-> tentativa desperdiçada custa meia hora de espera.
-
-## 1.5 Sem CAPTCHA visível
-
-📊 Nenhum dos prints mostra CAPTCHA. ❓ Não descarto — a trava pode aparecer só
-depois de N logins seguidos, como na Porto.
-
-## 1.6 Cookie banner
-
-📊 A tarja de cookies cobre a parte de baixo da tela e **fica sobre o conteúdo**
-("ENTENDI · SAIBA MAIS · ✕"). Num navegador automatizado ela intercepta cliques
-na região inferior. Fechar é o primeiro ato depois de entrar.
+📊 Nenhuma tela mostrou CAPTCHA. ❓ Não descarto depois de N logins.
+📊 A tarja de cookies fica **sobre** o conteúdo e intercepta cliques na região
+de baixo — fechar (`#agreed-cookie`) é o primeiro ato depois de entrar.
 
 ---
 
@@ -105,129 +113,166 @@ A) menu FINANCEIRO → coluna "Relatórios Clientes" → Clientes inadimplentes
 B) atalho no home  → card "PARCELAS INADIMPLENTES"
 ```
 
-📊 O menu FINANCEIRO inteiro, medido no print de 12/08/2026:
+📊 O menu FINANCEIRO inteiro, com as URLs reais (do JSON de menu do portal):
 
-| Conta Corrente | Relatórios Corretor | Consultas e Pagamentos Clientes | **Relatórios Clientes** | Materiais |
-|---|---|---|---|---|
-| Migrar Modelo | Acompanhar Emissões | Visão Geral do Cliente | **Clientes inadimplentes** ⬅ | Vídeos |
-| Consulta Saldo/Extrato | Relatório Ganhe Mais | Faturamento em Lote | Cobranças no Cartão de Crédito | Informativos e Tutoriais |
-| Transferir | Extrato Comissão *(novo)* | Faturamento em Lote *(novo)* | Débitos Pendentes | |
-| Recuperar | | Declaração Anual de Débitos | Débitos Não Autorizados | |
-| Listar Campanhas | | Restituições Pendentes | | |
+| Conta Corrente | Relatórios Corretor | Consultas e Pagamentos | **Relatórios Clientes** |
+|---|---|---|---|
+| Migrar Modelo 🚫 | Acompanhar Emissões | Visão Geral do Cliente | **Clientes inadimplentes** ⬅ |
+| Consulta Saldo/Extrato | Relatório Ganhe Mais | Faturamento em Lote | Cobranças no Cartão de Crédito |
+| Transferir 🚫 | Extrato Comissão | Declaração Anual de Débitos | Débitos Pendentes |
+| Recuperar 🚫 | | Restituições Pendentes | Débitos Não Autorizados |
+| Listar Campanhas | | | |
 
-> ⚠️ **`Clientes inadimplentes` não é a única fonte.** Existem ainda
-> `Débitos Pendentes`, `Débitos Não Autorizados` e `Cobranças no Cartão de Crédito`.
-> ❓ Falta medir se um inadimplente de cartão aparece na lista principal ou **só**
-> nessas outras telas. Se for "só", varrer uma tela só deixa gente de fora — o
-> pecado capital da SPEC-070.
-
-## 2.2 A cadeia da cobrança, tela a tela
+📊 Endereços dos três relatórios que **não** usamos ainda:
 
 ```
-login → seletor "Corretor" → home
-  → FINANCEIRO ▸ Clientes inadimplentes
-      → LISTA (n linhas, já com telefone, forma de pagamento e motivo)
-        → lupa 🔍 na linha
-          → "Visão Geral – Cliente" / Detalhes da Apólice
-            → bloco "Dados Parcela"
-              → coluna Ação: ícone 📄 na parcela Pendente
-                → modal "Atualizar ou Gerar 2ª Via de Boleto"
-                  → linha digitável + botão "Gerar Boleto"
-              → coluna PIX: ícone de QR Code
+/portais/api/v1/debitos-pendentes/pendentes
+/portais/api/v1/debitos-pendentes/naoAutorizados
+/portais/api/v1/power-bi/relatorio/<guid>/<guid>     (cartão de crédito)
 ```
+
+> ⚠️ **`Clientes inadimplentes` pode não ser a única fonte.** ❓ Falta medir se
+> um inadimplente de cartão aparece nela ou **só** nas outras. Se for "só",
+> varrer uma tela deixa gente de fora. Está em [PENDENCIAS](../PENDENCIAS.md).
+
+## 2.2 A ponte entre a lista e a apólice
+
+📊 A URL do detalhe, lida do `Referer` real do HAR:
+
+```
+/portais/visao-cliente-corretor/detalhe/apolice/00861449959/75111063?cdpn=null
+                                               └── CPF ──┘ └ idePol ┘
+```
+
+**As duas peças vêm do relatório**: `cpfCnpjCliente` (sem pontuação, com os
+zeros à esquerda) e `idePol`. Ou seja — **não é preciso clicar na lupa**. A
+ponte é aritmética, e está em `url_detalhe()`.
+
+📊 O próprio portal confirma o padrão:
+
+```json
+GET /portais/bff/v1/clientes/integracao/sistemas
+{"urlConsultaVisao": "…/portais/visao-cliente-corretor/detalhe/apolice/",
+ "urlConsultaVisaoCorporate": "…/detalhe/apolice/detalhesCorporate/"}
+```
+
+❓ `detalhesCorporate` é outro caminho, para produtos PJ. Não medido.
 
 ---
 
 # 3. AS ARMADILHAS
 
-## 3.1 🔴 O telefone da LISTA é o FIXO — não serve para WhatsApp
+## 3.1 🔴 O telefone do portal não serve — e as duas telas se contradizem
 
-**A mais perigosa, e a mais fácil de não perceber.** 📊 Comparando o mesmo
-segurado nas duas telas, 12/08/2026:
+**A mais perigosa, e a mais fácil de não perceber.** 📊 O mesmo segurado, nas
+duas fontes, no mesmo dia:
 
 ```
-LISTA de inadimplentes    Telefone ......... 48 91002403     ← 8 dígitos
-DETALHE do cliente        Tel. Fixo ........ 48 91002403     ← o mesmo
-                          Tel. Celular ..... 48 991002403    ← 9 dígitos, ESTE
+relatório (XML)     numeroTelefone1 = 99381576    numeroTelefone3 = 991314388
+tela de detalhe     Tel. Fixo       = 99381576    Tel. Celular    = 999381576
 ```
 
-A lista traz **uma** coluna "Telefone" e ela carrega o **fixo**. Mandar WhatsApp
-para o número da lista é mandar para um telefone que não recebe WhatsApp — e o
-envio some sem erro visível.
+`999381576` é literalmente **`9` + o fixo** — a tela *calcula* o celular
+prefixando um 9. E `991314388` é **outro número**. Para o mesmo cliente, as duas
+telas discordam.
 
-> 🔴 **Regra:** o telefone da lista **nunca** vira destinatário. O celular só
-> aparece no detalhe da apólice, que já visitamos para pegar o boleto. E mesmo
-> ele é fallback: a fonte primária continua sendo o sistema de gestão da
-> corretora (decisão do Founder, Q2).
+> 🔴 **Regra:** nenhum dos dois vira destinatário. A journey entrega o
+> `cpf_cnpj`, e o WhatsApp sai do **sistema de gestão da corretora** (InfoCap,
+> Quiver) — que é de onde as atendentes já tiram hoje. Os telefones do portal
+> ficam num campo chamado `telefones_portal`, só como pista para a tarefa
+> humana. O teste [7] prova que nenhum item sai com a chave `whatsapp`.
 
 ## 3.2 🔴 DÉBITO: gerar boleto QUEIMA a única troca da vigência
 
-📊 Texto literal do modal, 12/08/2026:
+📊 Texto literal do modal:
 
 > *"Se você está solicitando o boleto para uma apólice com forma de pagamento
-> débito em conta / cartão. **Esta alteração é permitida somente uma vez durante
-> a vigência do seguro.** Se desejar alterar as demais parcelas para boleto,
-> deverá ser realizado o endosso de alteração da forma de pagamento da apólice."*
+> débito em conta / cartão. Esta alteração é **permitida somente uma vez durante
+> a vigência do seguro**. Se desejar alterar as demais parcelas para boleto,
+> deverá ser realizado o **endosso** de alteração da forma de pagamento."*
 
-Isto não é um aviso decorativo. Clicar "Gerar Boleto" numa parcela de **DÉBITO**:
+Clicar ali (1) muda a forma de pagamento da parcela, (2) **consome** o direito
+de fazer isso e (3) é irreversível sem endosso. Ação transacional — SPEC-033
+manda parar antes de finalizar.
 
-1. muda a forma de pagamento **daquela parcela**;
-2. **consome** o direito de fazer isso — uma vez por vigência;
-3. e é **irreversível sem endosso**.
+> 🚫 **O robô nunca gera boleto em DÉBITO ou CARTÃO.** Vai para tarefa humana.
 
-> 🚫 **O robô nunca clica "Gerar Boleto" numa linha com Forma Pagamento = DÉBITO
-> ou CARTÃO.** Vai para tarefa humana, como já decidido para a HDI.
+## 3.3 🔴 `Repique = S` segura o envio — decisão de negócio, não técnica
 
-Isso encaixa exatamente na SPEC-033: *ação transacional → pare antes de finalizar*.
+📊 A coluna `repique` (S/N). Na linha de DÉBITO com motivo
+`DEBITO NAO EFETUADO - INSUFICIENCIA DE FUNDOS`, `repique = S`.
 
-## 3.3 🟠 "Repique = S" pode significar que a cobrança ainda vai ser tentada
+📊 **Confirmado pelo Founder com as atendentes da AutoFleet (12/08/2026):**
 
-📊 A lista tem uma coluna `Repique` (S/N). Na linha de DÉBITO com motivo
-`DEBITO NAO EFETUADO - INSUFICIENCIA DE FUNDOS`, `Repique = S`.
+> *As atendentes aguardam todas as tentativas de débito se esgotarem — na Tokio
+> e em qualquer outra seguradora. Só depois disso mandam boleto.*
 
-Repique, em cobrança, é **nova tentativa de débito**. Se a Tokio vai tentar de
-novo sozinha, cobrar o cliente hoje é constranger alguém que talvez já esteja
-resolvido amanhã.
+Cobrar hoje quem será debitado amanhã é constranger o segurado por um problema
+que talvez já não exista. `repique = S` → **retido**, com o motivo escrito.
 
-❓ **Precisa de confirmação humana** (atendentes da AutoFleet) antes de virar
-regra. Se confirmado: `Repique = S` **segura** o envio e vira tarefa humana com
-o motivo escrito.
+## 3.4 🔴 `Pendente` NÃO quer dizer atrasada
 
-## 3.4 🟠 A lista é um snapshot de ONTEM, não tempo real
+📊 O caso que produziu a regra: uma segurada tinha as parcelas **3 e 4** com
+situação `Pendente` em 12/08/2026 — a 3 vencia em 10/08 (atrasada há 2 dias) e a
+4 em 10/09 (a vencer daqui a um mês).
 
-📊 Dois lugares dizem a mesma coisa:
+E foi exatamente aí que **o boleto saiu da parcela errada**: o clique manual
+pegou a parcela 4. Pegar "a primeira pendente" acerta às vezes; "a última",
+também às vezes. Só o **número que veio do relatório** acerta sempre.
+`escolher_parcela()` casa pelo número, e o teste [2] usa as duas.
 
-```
-home ......... "ATUALIZADO EM 11/08/2026"   (print tirado em 12/08)
-lista ........ "Os dados dos clientes inadimplentes são atualizados diariamente."
-```
+## 3.5 🟠 O botão vem com as aspas em ENTIDADE HTML
 
-**Consequência:** quem pagou hoje de manhã **continua na lista**. A carência de
-48 h que já aplicamos protege parcialmente, mas o risco real é cobrar quem já
-pagou. ❓ Medir se a tela de detalhe (Dados Parcela → `Situação Parcela`) é
-tempo real. Se for, ela é o **desempate**: a lista aponta, o detalhe confirma.
+📊 Dentro do atributo `onclick`, as aspas simples chegam como `&#39;`:
 
-> Regra provável: `lista diz inadimplente` **E** `detalhe diz Pendente` → envia.
-> Só a lista → não envia.
-
-## 3.5 🟠 Dois números de "ramo" para a mesma apólice
-
-📊 Mesma apólice 36713188:
-
-```
-LISTA .......... Ramo 312
-DETALHE ........ título "(312 / 36713188)"  mas  Dados Básicos → Ramo 0531
+```html
+onclick="VisaoUnicaClienteJS.carregarVencimentoPermitidoBoleto(
+         &#39;7231787615&#39;,&#39;3&#39;,&#39;null&#39;,…)"
 ```
 
-`0531` é o ramo SUSEP de automóvel; `312` é outra coisa (código comercial?).
-❓ Não sei qual é qual. Enquanto não souber, **não uso nenhum dos dois** para
-decidir nada — e nenhum vai para a mensagem do cliente.
+Um padrão que só aceita `'` casa **zero linhas** — e o sintoma é *"não achei a
+parcela"*, que se parece com carteira em dia. 📊 Custou uma rodada de teste.
+`_ASPA` aceita as duas formas.
 
-## 3.6 🟠 O modal não abre em página nova
+## 3.6 🟠 O GraphQL devolve número em NOTAÇÃO CIENTÍFICA
 
-📊 O boleto sai de um **modal sobreposto**, não de um `window.open` como na HDI.
-❓ O download em si — se é `window.open`, `<a download>` ou POST que devolve o
-PDF — não foi medido.
+📊 A mesma apólice, nas duas saídas do mesmo portal:
+
+```
+GraphQL   "idepol": 7.5104431E7      "apolice": 3.6731739E7
+XML       <idePol>75104431</idePol>  <cdApoliceTmsr>36731739</cdApoliceTmsr>
+```
+
+São números JS (double). Cada `int(float(...))` é um lugar a mais para perder
+dígito num identificador. **Por isso a journey lê o XML, não o GraphQL** — e de
+quebra o XML traz os totais no mesmo documento (§5.1).
+
+## 3.7 🟠 A lista é um snapshot de ONTEM
+
+📊 `"ATUALIZADO EM 11/08/2026"` no home (print de 12/08) e, na própria tela,
+*"Os dados dos clientes inadimplentes são atualizados diariamente."*
+
+**Quem pagou hoje de manhã continua na lista.** A carência de 48 h protege
+parcialmente. ❓ Falta medir se `Situação Parcela` no detalhe é tempo real — se
+for, ela é o desempate, e a journey já visita essa tela de graça.
+
+## 3.8 🟠 Dois números de "ramo" para a mesma apólice
+
+📊 `cdRamo = 312` no relatório e `Ramo 0531` no detalhe da mesma apólice.
+`0531` é o ramo SUSEP de automóvel. ❓ Não sei o que é `312`. Enquanto não
+souber, nenhum dos dois decide nada, e nenhum vai para a mensagem do cliente.
+
+## 3.9 🟠 PIX é bloqueado quando há parcela anterior pendente
+
+📊 Resposta real:
+
+```json
+POST /portais/bff/v1/consulta-unica/pix/validar {"numeroTitulo":"…","tipoTitulo":"FIC"}
+{"mensagem":"Não é possivel realizar o pagamento. Parcela anterior pendente",
+ "codigo_mensagem":5, "permite_pagamento_pix":false}
+```
+
+Guardado em fixture. Quando o PIX virar canal de pagamento, a regra já está medida.
 
 ---
 
@@ -235,190 +280,201 @@ PDF — não foi medido.
 
 | Onde | O que | Por quê |
 |---|---|---|
-| Modal de boleto | **Gerar Boleto** em linha DÉBITO/CARTÃO | queima a única troca da vigência (§3.2) |
-| Modal de boleto | **DATA DO NOVO VENCIMENTO** ≠ a data já selecionada | reprogramar vencimento é decisão comercial |
-| FINANCEIRO ▸ Conta Corrente | Transferir · Recuperar · Migrar Modelo | mexe em dinheiro da corretora |
-| Lista | botão **EMAIL** | dispara e-mail de verdade para alguém |
-| Qualquer tela | endosso, alteração de forma de pagamento | contrato |
+| Modal de boleto | **Gerar Boleto** em DÉBITO/CARTÃO | queima a única troca da vigência (§3.2) |
+| Modal de boleto | data de vencimento fora da lista oferecida | reprogramar é decisão comercial |
+| Barra do relatório | botão **EMAIL** | dispara e-mail de verdade para alguém |
+| `/corp/conta-corrente-front` | Transferir · Recuperar · Migrar Modelo | mexe em dinheiro da corretora |
+| `/EndossoRDService`, `…/endosso/…` | endosso | escreve no contrato |
 
-> O botão **EMAIL** na barra da lista merece destaque: está a um clique dos
-> botões de exportar (XML/EXCEL/PDF) que **queremos** usar. Um seletor frouxo
-> acerta o errado e manda e-mail. O seletor precisa ser exato.
+> O botão **EMAIL** merece destaque: fica **colado** nos de exportar
+> (XML/EXCEL/PDF) que nós queremos. Um seletor frouxo acerta o errado e manda
+> e-mail. Como a journey chama o endpoint direto, o botão nunca é tocado — e o
+> teste [8] prova que nenhuma dessas rotas aparece no código.
 
 ---
 
 # 5. OS SERVIÇOS
 
-## 5.1 COBRANÇA 🟡 mapeada, sem código
+## 5.1 COBRANÇA 🟢 journey escrita — `portal_worker/journeys/tokio_corretor.py`
 
-### O que a LISTA já entrega — e é mais que qualquer outro portal
-
-📊 Colunas medidas em 12/08/2026:
+### A cadeia inteira, medida
 
 ```
-Segurado · CPF/CNPJ · Negócio · Ramo · Apólice · Endosso · Vigência Proporcional
-· Telefone · Vencimento · Parcela · Valor Parcela · Forma Pagamento · Motivo
-· Repique · Origem Venda · Sistema Origem · 2ª Via (🔍)
+1) POST /portais/bff/v1/clientes/graphql      {buscarUsuario}
+   → codigoInterno = 67828
+
+2) POST /portais/bff/v1/clientes/graphql      {buscarRamos}
+   → os ~280 códigos de ramo que o relatório EXIGE receber
+
+3) POST /portais/bff/v1/clientes/reports/parcelas/xml
+   {corretores:["067828"], dataInicio:"01-01-1901", dataFim:"12-08-2026",
+    parceiros:[], ramos:[…]}
+   → O RELATÓRIO INTEIRO, em XML, com a TESTEMUNHA embutida
+
+4) GET  /portais/visao-cliente-corretor/detalhe/apolice/<doc>/<idePol>?cdpn=null
+   → HTML; dele sai o `numeroTitulo` de cada parcela
+
+5) POST /portais/bff/v1/consulta-unica/financeiro/prorrogacao
+   {numeroTitulo, numeroParcela}
+   → LinhaDigitavel · ValorOriginal · ListaVencimentosProrrogacao[]
+
+6) POST /portais/bff/v1/consulta-unica/financeiro/boleto
+   {numeroTitulo, dataNovoVencimento}
+   → cUrlCSF = a URL do PDF
+
+7) GET  cUrlCSF   (outro host: portal.tokiomarine.com.br)  → o PDF
 ```
 
-E um cabeçalho de totais:
+> 📊 A Tokio é **a mais limpa das três**. Allianz e HDI obrigaram a raspar HTML;
+> aqui só o passo 4 é HTML, e mesmo ele por um `data-numerotitulo` estável.
 
-```
-Clientes inadimplentes: 5      Valor Total de Prêmios: R$ 3.050,30
-Comissão não recebida: R$ 401,43
-1ª Parcela Pendente: 0         Parcelas Pendentes: 5
-```
+### 🟢 A testemunha vem no mesmo documento
 
-> 📊 **`Total de registros: 5` é a testemunha.** Se o parser ler 4, ele **sabe**
-> que perdeu uma. É o guarda contra "carteira em dia" mentiroso que a HDI só
-> conseguiu por heurística de bytes. Aqui o portal diz o número. Usar.
-
-### 🟢 A porta boa: EXCEL / XML
-
-📊 A barra da lista tem `EMAIL · XML · EXCEL · PDF`.
-
-Se o XML ou o EXCEL devolver os mesmos registros, a cobrança da Tokio **não
-precisa de parser de HTML**. Um arquivo estruturado é mais estável que uma
-`<table>` — e imune a mudança de layout.
-
-> **Fase 2 começa por aqui**, não pelo HTML. É a diferença entre um parser que
-> quebra a cada redesign e um que não.
-
-### A questão do boleto COM e SEM juros
-
-📊 O que o modal mostra, para a parcela vencida há 2 dias:
-
-```
-Data do Vencimento Original ...... 10/08/2026
-Dias em Atraso (A) ............... 2
-Valor do Documento (B) ........... R$ 1.191,89
-Multa (C) ........................ R$ 23,84
-Juros (D) ........................ R$ 2,78
-Valor Cobrado (B + C + D) ........ R$ 1.218,51
-
-DATA DO NOVO VENCIMENTO: [ 12/08/2026 ▾ ]   → [Gerar Boleto]
-
-linha digitável: 03399.53465 54100.071866 12318.001018 9 1534000011918…
+```xml
+<quantidadeClientes>5</quantidadeClientes>
+<quantidadeParcelas>5</quantidadeParcelas>
+<valorPremios>3050.3</valorPremios>
+<comissaoNaoRecebida>401.43</comissaoNaoRecebida>
 ```
 
-📊 E a dica da própria Tokio, literal:
+**Se o parser ler 4 e o documento disser 5, ele sabe que perdeu um.** Na HDI
+isso só deu para aproximar por heurística de bytes; aqui a própria seguradora
+entrega a conferência. `_conferir_testemunha()` para a varredura e devolve
+`needs_human` — nunca "carteira em dia".
 
-> *"Não há necessidade de gerar 2ª via de boleto para pagamento de parcelas
-> vencidas. O cálculo de juros e multa é calculado automaticamente ao efetuar o
-> pagamento no seu correspondente bancário ou lotéricas."*
+### A questão do boleto COM e SEM juros — respondida
 
-**Leitura:** existem duas coisas diferentes, e as atendentes estão certas.
+📊 O que a prorrogação devolve, para parcela **ainda a vencer**:
 
-| | Boleto ORIGINAL | 2ª via REPROGRAMADA |
-|---|---|---|
-| Valor impresso | o original, **sem** multa e juros | com multa e juros **embutidos** |
-| Vencimento | o original, já passado | a data nova escolhida |
-| Quem calcula o acréscimo | o **banco**, na hora de pagar | a **Tokio**, na geração |
-| Ação nossa | ler | **escrever** — muda a data |
+```json
+{"DataVencimentoOriginal":"10/09/2026","FlagSucesso":true,
+ "LinhaDigitavel":"03399.53465 54100.072310 78760.701017 1 15650000034353",
+ "ListaVencimentosProrrogacao":[{"dataComparacao":"2026-09-10",
+   "valorJuros":0,"valorMulta":0,"valorTotalProrrogacao":343.53}],
+ "ValorOriginal":343.53}
+```
 
-> 🔴 **Nós não recalculamos juros.** Nunca. Multa e juros são o número que a
-> Tokio imprime; reproduzir a fórmula é criar um segundo motor de cálculo
-> financeiro — e errar por centavos em cobrança é pior que não mandar.
+📊 Para parcela **já vencida**, a lista traz **só datas futuras** — a data
+original, que passou, não é opção.
 
-❓ **A decisão que falta** (precisa do Founder): mandar ao segurado o boleto
-original, a 2ª via reprogramada, ou os dois? A recomendação técnica é o
-**original**, porque é leitura pura e é o que a própria Tokio recomenda.
+> 🔴 **Para quem já está em atraso, não existe boleto sem multa e sem juros no
+> portal.** O que existe é a data mais próxima, que é a de menor acréscimo. É
+> essa que `escolher_vencimento()` pega.
+>
+> E **nós não recalculamos nada**: multa e juros são o número que a Tokio
+> imprime. Reproduzir a fórmula seria criar um segundo motor de cálculo
+> financeiro, e errar centavos numa cobrança é pior do que não mandar
+> (CLAUDE.md §12.1). O teste [6] prova que nem `0.02` nem `0.116667` aparecem
+> no código.
 
-### 💡 A linha digitável é um ativo que os outros portais não deram
+📊 E o boleto impresso diz a regra, para quem precisar conferir:
+`MULTA DE 2,00% E JUROS DE 0,116667% AO DIA` · `NÃO RECEBER APÓS 15 DIAS`.
 
-📊 O modal exibe a linha digitável em texto, com botão "Copiar Código do Boleto".
-Isso permite mandar no WhatsApp **o número junto com o PDF** — e o cliente paga
-pelo app do banco sem abrir anexo.
+### 💡 A linha digitável vem de graça
 
-❓ Falta decidir se entra na mensagem. Tecnicamente é de graça: já está na tela.
+📊 `LinhaDigitavel` chega na resposta da prorrogação, e o boleto ainda devolve
+`cCodigoBarras` + os quatro blocos separados. Dá para mandar o número junto com
+o PDF e o cliente paga pelo app do banco sem abrir anexo. Já é guardado em
+`boletos[].linha_digitavel`. ❓ Entrar ou não na mensagem é decisão do Founder.
 
-### 🟢 PIX
+### O que o relatório entrega — mais que qualquer outro portal nosso
 
-📊 A coluna `PIX` no bloco Dados Parcela tem um ícone de QR Code na parcela
-pendente. ❓ Não medido o que ele devolve (imagem? copia-e-cola?). Se devolver
-o **copia-e-cola**, é a forma de pagamento com menor atrito que qualquer
-seguradora nossa oferece hoje.
+```
+idePol · cpfCnpjCliente · nmCliente · cdApoliceTmsr · cdEndosso · cdRamo
+· codModuloProduto · codigoNegocio · dtVencimento · dtVigenciaProporcional
+· formaPagto · motivo · nroParcela · premioParcela · comissaoParcela
+· repique · tipo · tipoApolice · cdCorretor · nomeCorretor · numCert
+· numOper · ideFact · linha · dddTelefone1..3 · numTelefone1..3
+```
 
 ## 5.2 RENOVAÇÃO 📋 conhecimento anotado, sem código
 
-📊 Achado de graça no reconhecimento:
-
-**Menu `RENOVAÇÕES`** existe no topo (❓ submenus não medidos).
-
-**E o home já entrega um painel pronto** — "Apólices A Vencer | Não Renovadas",
-com um card por segmento e uma faixa de prazo:
+📊 As URLs reais, colhidas do JSON de menu — **de graça, sem visita extra**:
 
 ```
-Auto  ·  Residencial e…  ·  Imobiliário  ·  Fiança  ·  Produtos PJ
-                     … · HOJE: … · 7 DIAS: …
+/massificados/renovacao/#/relatorio/portal/corretor        Relatório de Renovações
+/massificados/renovacao/#/processamentoLote                Processamento Emissão Lote
+/massificados/renovacao/#/transferencia/portal/corretor    Transferir Renovações
+/massificados/renovacao/#/historico/portal/corretor        Histórico de Transferências
+/massificados/renovacao/#/propostaRenovacaoFacilitada      Renovação Facilitada
+/ems/corporate/apps/ctpj-relatorio-renovacao/#/pesquisa    Relatório Renovação (PJ)
+/sva/view/portal/renovacao/#/                              Painel de Renovação (Vida)
 ```
 
-> Quando o Auxiliar de Renovação existir, **este painel é a fonte** — está no
-> home, não exige navegação, e já vem segmentado por prazo. Vale mais que
-> qualquer relatório que a gente montasse.
+📊 E o **home já entrega um painel pronto** — "Apólices A Vencer | Não
+Renovadas", com card por segmento (Auto · Residencial e Condomínio ·
+Imobiliário · Fiança Locatícia · Produtos PJ) e faixas `HOJE:` e `7 DIAS:`.
 
-Também no home: `PRÊMIO EMITIDO` por mês e `MEU GERENTE`.
+> Quando o Auxiliar de Renovação existir, **esse painel e o
+> `/massificados/renovacao/#/relatorio` são a fonte** — já segmentados por prazo.
 
 ## 5.3 COTAÇÃO 📋 conhecimento anotado, sem código
 
-📊 Menus do topo: `PRODUTOS` · `CONSULTAS` · `BROKERTECH`.
-📊 Card do home: `PROPOSTAS PENDENTES PARA EMISSÃO` e `PROPOSTAS CONTRATADAS`.
-📊 Rodapé: `Consultar Cotações` · `Acompanhar Emissão` · `2ª Via Boleto, Apólice e Endosso`.
+📊 Os cotadores, por produto:
 
-❓ Nada medido por dentro.
+```
+/CotadorAutoService/iniciarCotacao                       Auto individual
+/massificados/auto/frota/cotador/porta/iniciarCotacao    Auto frota
+/CotadorRDService/iniciarCotacao/Residencial             Residencial
+/CotadorRDService/iniciarCotacao/Condominio              Condomínio
+/massificados/cotador-imobiliario/iniciarCotacao         Imobiliário
+/massificados/CotadorFiancaService/iniciarCotacao        Aluguel/Fiança
+/aff/ctv/portal/cotador-vida/vida-individual/cotacao     Vida individual
+/ems/corporate/apps/ctpj-*                               PJ (cyber, RC, equip., agro)
+/ConsultaCotacoes/#/consultaWeb                          Consultar cotações (comum)
+/SSC/home/<n>                                            Solicitação com anexo
+```
 
-## 5.4 OUTROS SERVIÇOS vistos no rodapé
+## 5.4 OUTROS SERVIÇOS mapeados
 
-`Aviso de Sinistro` (Auto · Condomínio · Demais Produtos · Terceiro · Vida) ·
-`Acompanhar Sinistro` · `Agendamento de Vistoria` (Segurado e Terceiro) ·
-`Condições Gerais` · `Questionários` · `Fale Conosco/SAC`.
+📊 Sinistro (`/sin/tokio-sinistro-view/#/aviso-sinistro`, aluguel, condomínio,
+vida, terceiro, transporte) · Vistoria (`/ems/act/vistoria-previa/#/…`) ·
+Assistência 24 h (`autoatendimento.tokiomarine.com.br/portais/ui/assistencia24h`)
+· Extrato de comissão · Informe de rendimento · Simples Nacional · Manutenção de
+usuários · BrokerTech.
 
-📊 Telefones públicos do rodapé: Ouvidoria `0800 449 0000` · Disque Fraude
-`0800 707 6060` · Central (do modal) `0800 31 86546`.
+📊 Telefones públicos: Central `0800 31 86546` · SAC `0800 703 9000` ·
+Ouvidoria `0800 449 0000` · Disque Fraude `0800 707 6060`.
 
 ---
 
 # 6. DADOS DA TELA que a cobrança NÃO usa
 
-Ficam aqui porque **custaram uma visita** e outro Auxiliar vai querer:
+**Do relatório:** `codigoNegocio` · `numCert` · `numOper` · `ideFact` · `linha`
+· `nroCarga` · `tipo` · `tipoApolice` (📊 todos `ACX`) · `comissaoParcela` ·
+`primeiraParcelaPendente` (a Tokio trata a 1ª parcela como categoria própria).
 
-**Da lista:** `Negócio` (nº interno) · `Endosso` · `Vigência Proporcional` ·
-`Origem Venda` · `Sistema Origem` (📊 todas as 5 linhas = `ACX`) ·
-`Comissão não recebida` · `1ª Parcela Pendente` (separada das demais — a Tokio
-trata a primeira parcela como categoria própria).
-
-**Do detalhe do cliente:** `Código Cliente` · endereço completo (logradouro,
-número, bairro, cidade, UF, CEP) · `E-mail` · `Tel. Fixo` · `Tel. Celular`.
+**Do detalhe do cliente:** `Código Cliente` · endereço completo · `E-mail`.
 
 **Do detalhe da apólice:** `Proposta` · `Tipo Endosso` · `Data Emissão` ·
 `Início/Fim de Vigência` · `Prazo` · `Tipo de Apólice` · `Qtde. Itens` ·
-`Segmento` · `Descrição Produto` · `Parceiro de Negócio` · `Apólice Anterior`
-(📊 vazio aqui — quando preenchido, é **história de renovação**).
+`Segmento` · `Descrição Produto` · **`Apólice Anterior` + `Dt. Ini./Fim Vig.
+Apólice Anterior`** — 📊 preenchidos numa das apólices medidas. Isso é
+**história de renovação**, e o Auxiliar de Renovação vai querer.
 
-**Do bloco de pagamento:** `Forma de Pagamento` · `Banco` (📊 `000033` = Santander)
-· `Agência` · `Conta Corrente`.
+**Do bloco de pagamento:** `Forma de Pagamento` · `Banco` (📊 `000033` =
+Santander, o banco do boleto) · `Agência` · `Conta Corrente`.
 
-**Do bloco de parcelas:** `Nº Título` (📊 `7186123180` — é o identificador do
-boleto, provavelmente a chave de download) · `Situação Parcela` ·
-`Data Pagamento` · `Tipo Pagamento`.
+**Do bloco de parcelas:** `Nº Título` · `Situação` · `Data Pagamento` ·
+`Tipo Pagamento` · a coluna **PIX** com QR.
 
-> 📊 Um detalhe que só a lista completa mostra: neste segurado, as parcelas 1, 2
-> e 3 foram **todas pagas com atraso** (01/05→04/05, 10/06→15/06, 10/07→17/07).
-> Um Auxiliar de Retenção saberia o que fazer com isso. A cobrança, hoje, não usa.
+> 📊 Um detalhe que só a lista completa mostra: num dos segurados, as parcelas
+> 1, 2 e 3 foram **todas pagas com atraso**. Um Auxiliar de Retenção saberia o
+> que fazer com isso. A cobrança, hoje, não usa.
 
 ---
 
-# 7. O QUE FALTA — a lista de captura da Fase 1
+# 7. O QUE FALTA
 
-Ver a mensagem de handoff. Em resumo, tudo que está marcado ❓ acima, mais:
-
-1. a resposta de `XML` e de `EXCEL` na lista de inadimplentes;
-2. as chamadas de rede (F12 ▸ Network) da lista, do detalhe e do modal;
-3. o HTML da lista e do detalhe (`Ctrl+U` / salvar página);
-4. o que o ícone 📄 faz de fato (baixa PDF? abre modal? as duas?);
-5. o que o ícone PIX devolve;
-6. a lista de códigos de corretor de cada corretora;
-7. confirmação humana sobre `Repique = S`.
+| # | O que | Quem destrava |
+|---|---|---|
+| 1 | **Fase 4** — uma visita real: login → seletor → relatório → 1 boleto | 🤖 execução |
+| 2 | O caso **CNPJ** na URL do detalhe (só CPF foi medido) | 🤖 sai na Fase 4 |
+| 3 | Se inadimplente de **cartão** aparece na lista principal ou só em `Débitos Pendentes` | 🤖 1 visita |
+| 4 | Se `Situação Parcela` do detalhe é **tempo real** (desempate do snapshot D-1) | 🤖 1 visita |
+| 5 | Uma corretora com **2+ códigos** de corretor | 🧑 Founder indicar |
+| 6 | O que é o ramo **`312`** vs `0531` | 🧑 Founder / atendentes |
+| 7 | Se o relatório **pagina** quando há centenas de inadimplentes | 🤖 aparece sozinho |
 
 ---
 
@@ -427,4 +483,4 @@ Ver a mensagem de handoff. Em resumo, tudo que está marcado ❓ acima, mais:
 | Data | O que |
 |---|---|
 | 09/08/2026 | Reconhecimento inicial. 📊 SSO trava depois de ~4 entradas em 30 min. |
-| 12/08/2026 | Credenciais novas de Resulta e AutoFleet gravadas cifradas. Fase 1 por prints: seletor de portais, menu FINANCEIRO completo, lista de inadimplentes, detalhe da apólice, modal de 2ª via. 🔴 Achados: telefone da lista é o fixo · DÉBITO queima a troca da vigência · lista é snapshot D-1 · existe exportação XML/EXCEL. |
+| 12/08/2026 | Credenciais novas gravadas cifradas. **Fases 1–3 fechadas com o HAR do Founder:** BFF GraphQL + REST descoberto, cadeia de 7 passos medida com corpos reais, journey escrita, 70 asserções verdes. 🔴 Achados: o telefone do portal se contradiz entre duas telas · DÉBITO queima a troca da vigência · `Pendente` ≠ atrasada (o boleto saiu da parcela errada na captura) · aspas em entidade HTML · notação científica no GraphQL · Akamai também aqui. |

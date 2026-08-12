@@ -105,6 +105,10 @@ cfg_vazio = bc.normalize_billing_config({"kind": bc.BILLING_KIND})
 check("default varre TODAS as seguradoras automatizadas, nao so uma",
       len(bc.selected_portal_keys(cfg_vazio)) >= 2, bc.selected_portal_keys(cfg_vazio))
 check("default inclui HDI", "hdi_corretor" in bc.selected_portal_keys(cfg_vazio))
+# Cada seguradora nova entra aqui. Se alguem escrever a journey e esquecer o
+# registro, a lista para de crescer e este teste fica vermelho -- que e o unico
+# jeito de "a seguradora sumiu" doer antes de a corretora perceber.
+check("default inclui Tokio", "tokiomarine_corretor" in bc.selected_portal_keys(cfg_vazio))
 check("config explicita com DOIS portais e preservada",
       bc.selected_portal_keys({"portal_keys": ["allianz_corretor", "hdi_corretor"]})
       == ["allianz_corretor", "hdi_corretor"])
