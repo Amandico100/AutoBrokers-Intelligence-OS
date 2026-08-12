@@ -6,8 +6,8 @@
 > **Leia a [SPEC-070](../specs/SPEC-070-cobranca-multi-seguradora.md) antes de mexer
 > aqui.** Ela define o método das 5 fases e o teto de visitas.
 >
-> Estado: 🟢 **FASES 1–4 FECHADAS** · a journey rodou contra o portal real e
-> trouxe o boleto certo · 68 asserções verdes · falta a Fase 5 (fila de produção)
+> Estado: ✅ **FECHADA** — as 5 fases. Rodou pela fila de produção, `done`, com
+> o boleto no bucket · 68 asserções verdes
 > Última medição: 12/08/2026 · corretora **Resulta**
 
 | Marca | Significado |
@@ -317,6 +317,17 @@ Status · StatusID · PolicyNumber · IssuanceID · InstallmentID · CustomerNam
 · ExtDueDate · PaymentModality · PaymentModalityDesc · RejDate · RejReason
 ```
 
+### 📊 A Fase 5 — a fila de produção, 12/08/2026 21:03 (23 segundos)
+
+```
+job a1c10b1d ....... done · 1 tentativa · saida DIRETA (sem proxy)
+token .............. Bearer 1.758 chars, capturado no dashboard
+contador ........... 200 · Total = 1
+lista .............. 200 · declarado 1 · lidos 1 · janela 15/05 a 11/08
+documento .......... 46921059000113
+BOLETO ............. 5.908 bytes, NO BUCKET
+```
+
 ### 📊 A visita real — 12/08/2026, corretora Resulta
 
 ```
@@ -437,7 +448,6 @@ a advertência de cancelamento da apólice.
 
 | # | O que | Quem destrava |
 |---|---|---|
-| 1 | **Fase 5** — rodar pela fila de produção | 🧑 redeploy do `portal-worker` |
 | 2 | A credencial da **AutoFleet** (a da Resulta entra; a outra dá erro) | 🧑 Founder / Saionara |
 | 3 | O **teto de visitas** da Yelum — ainda não medido | 🤖 aparece com o uso |
 | 4 | Se a API aceita janela **maior que 90 dias** (a tela não aceita) | 🤖 1 chamada |

@@ -33,7 +33,7 @@ inteira. Depois abra o `PORTAL-<nome>.md` — se já existir.
 | **HDI** | [PORTAL-hdi.md](PORTAL-hdi.md) | ✅ pronta | 📋 menus mapeados | 📋 menus mapeados |
 | **Allianz** | *(a escrever — o conhecimento está na SPEC-023A)* | ✅ pronta | ⬜ | ⬜ |
 | **Tokio Marine** | [PORTAL-tokio.md](PORTAL-tokio.md) | ✅ pronta | 📋 URLs mapeadas | 📋 cotadores mapeados |
-| **Yelum** | [PORTAL-yelum.md](PORTAL-yelum.md) | 🔨 roda e traz boleto; falta a fila | 📋 URLs mapeadas | 📋 4 marcas mapeadas |
+| **Yelum** | [PORTAL-yelum.md](PORTAL-yelum.md) | ✅ pronta | 📋 URLs mapeadas | 📋 4 marcas mapeadas |
 | Porto · Azul · Bradesco · SulAmérica · MAPFRE · demais | — | ⬜ | ⬜ | ⬜ |
 
 ```

@@ -3634,3 +3634,44 @@ o **app logado**. São coisas diferentes, e a pública não é protegida.
 
 A escolha continua certa (a Yelum saiu numa tarde), mas pelo motivo certo:
 **a API é limpa** — não porque não tivesse trava.
+
+---
+
+## REGRESSÃO DAS QUATRO SEGURADORAS — 12/08/2026
+
+📊 Sete jobs pela **fila de produção**, nas duas corretoras, todos `done`:
+
+| Corretora | Seguradora | Inadimplentes | Boletos | Retidos |
+|---|---|---:|---:|---:|
+| Resulta | Allianz | 5 | **5** | 0 |
+| AutoFleet | Allianz | 5 | **5** | 0 |
+| Resulta | HDI | 1 | **1** | 0 |
+| AutoFleet | HDI | 3 | **3** | 0 |
+| Resulta | Tokio | 2 | **2** | 0 |
+| AutoFleet | Tokio | 5 | **3** | 2 |
+| Resulta | Yelum | 1 | **1** | 0 |
+| | **total** | **22** | **20** | **2** |
+
+📊 E a conferência que fecha: **20 de 20 arquivos existem no bucket
+`portal-evidence`** e **20 de 20 começam com `%PDF`** — medido baixando os 8
+primeiros bytes de cada um, não confiando no que o código disse que fez.
+
+Os 2 retidos são os dois casos de regra, e cada um chegou com o motivo escrito:
+o DÉBITO com `repique = S` e a parcela vencida há 26 dias para a qual a Tokio
+não emite mais 2ª via.
+
+### 🔴 O que AINDA falta para o ciclo completo
+
+A **colheita** está pronta de ponta a ponta. O **envio** não foi exercitado, e
+depende de duas coisas que não são código:
+
+| # | O que falta | De quem | Custa se esquecer |
+|---|---|:--:|---|
+| P-116 | `human_support_destinations` só tem **AMANDUS**. Resulta e AutoFleet não têm grupo humano cadastrado | 🧑 Founder | os itens retidos (débito, sem 2ª via, sem telefone) **não têm para onde ir** — o aviso é montado e descartado |
+| P-117 | **Nenhuma rotina de cobrança cadastrada** para Resulta nem AutoFleet | 🧑 Founder | nada roda sozinho; hoje as varreduras são enfileiradas à mão |
+| P-118 | O **envio real de WhatsApp** nunca foi testado ponta a ponta | 🧑 Founder avisar antes | é a única peça do caminho que ainda não tem uma medição própria |
+
+> **Sejamos exatos:** as quatro seguradoras entregam boleto no bucket, com o
+> documento do segurado. O que ainda não aconteceu **nem uma vez** é o sistema
+> mandar a mensagem para um cliente de verdade — e o Founder pediu para ser
+> avisado antes que isso aconteça.
