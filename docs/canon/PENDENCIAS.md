@@ -3552,3 +3552,48 @@ ligar uma variável, sem deploy de código.
   hospedagem. Um portal mais agressivo (Porto, Azul) pode barrar por ele — e a
   saída já está construída.
 
+
+---
+
+## TOKIO MARINE — fechada em 12/08/2026, e o que ela deixou
+
+📊 Job `bc1dfaa0` pela fila de produção: `done`, 3 boletos no bucket, saída
+direta (sem proxy). Detalhe em [`portais/PORTAL-tokio.md`](portais/PORTAL-tokio.md).
+
+| # | O que ficou | De quem | Custa se esquecer |
+|---|---|:--:|---|
+| P-106 | Onde exatamente fica o limite da 2ª via da Tokio — medido em 26 dias (sem) e 7 dias (com); 💭 a hipótese é o `NÃO RECEBER APÓS 15 DIAS` do próprio boleto | 🤖 | nada: o caso já vira tarefa humana com o motivo escrito. Saber o número só deixaria o aviso mais preciso |
+| P-107 | Se inadimplente de **cartão de crédito** aparece em `Clientes inadimplentes` ou **só** em `Débitos Pendentes` / `Cobranças no Cartão` | 🤖 1 visita | 🔴 se for "só", um grupo inteiro de inadimplentes fica invisível — a falha que a SPEC-070 §2 proíbe |
+| P-108 | Uma corretora com **2+ códigos de corretor** na Tokio (a AutoFleet tem 1) | 🧑 Founder indicar | 🔴 metade da carteira invisível, em silêncio |
+| P-109 | O caso **CNPJ** na URL do detalhe (só CPF foi exercitado de ponta a ponta) | 🤖 sai sozinho | a apólice PJ não baixaria boleto — mas apareceria como retido, não como silêncio |
+| P-110 | O que é o ramo **`312`** vs `0531` na mesma apólice | 🧑 atendentes | nada hoje: nenhum dos dois decide coisa alguma |
+
+### O defeito que a Tokio revelou — e que era das TRÊS seguradoras
+
+📊 Dos 4 downloads da primeira rodada, 3 viraram PDF e 1 não. Esse item
+**continuava entrando na fila de envio**: a única porta era
+`sem_boleto_por_regra`, que pega quem a *seguradora* recusa, não quem *falhou
+ao baixar*. O segurado receberia "Segue o boleto abaixo" com anexo nenhum.
+
+Corrigido em `fila_de_cobranca(boletos=…)`, e vale para Allianz, HDI e Tokio.
+
+> **A lição:** o comentário da própria função já avisava desse desfecho. Um
+> caminho estava coberto e o outro não — e só a rodada real com uma falha
+> parcial mostrou a diferença. Teste com tudo dando certo não encontra isto.
+
+## PRÓXIMA SEGURADORA — a porta das três candidatas, medida
+
+📊 12/08/2026, carga pública das telas de login (sem tentar entrar):
+
+| Portal | Peso | Travas detectadas | Veredito |
+|---|---:|---|---|
+| **Yelum** | 12 KB | **nenhuma** | ✅ **a próxima** |
+| Bradesco | 1,79 MB | 🔴 captcha **+ Akamai** | deixar por último |
+| Porto | 90 KB · 7 iframes | 🔴 captcha **+ Incapsula (Imperva)** | precisa de estratégia própria |
+
+📊 Yelum: login em `/account/login`, site em **Drupal**, com um
+`themes/custom/liberty_cohesion/js/portal_api.js` — indício de camada de API.
+Credencial já existe para as duas corretoras; ❓ a senha precisa ser confirmada.
+
+- **Custa se esquecer:** MAPFRE está travada esperando a Saionara (🧑). Yelum
+  não depende de ninguém de fora — é a única que dá para começar hoje.
