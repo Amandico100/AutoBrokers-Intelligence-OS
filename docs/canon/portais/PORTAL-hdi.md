@@ -64,11 +64,34 @@ própria. Ver `portal_worker.worker._launch_kwargs()`.
 modo que passava começou a receber `Access Denied` — e continuou bloqueado 12
 minutos depois. Bloqueio por IP, temporário, disparado por volume.
 
-⚠️ **Em aberto:** o worker no servidor (EasyPanel) foi recusado mesmo com o modo
-novo, enquanto a mesma journey passa de um IP residencial. Duas hipóteses —
-modo do navegador × IP de datacenter — e o diagnóstico que as separa está em
-`hdi_corretor._diagnosticar_recusa` (mesmo IP, dois clientes: navegador e HTTP
-simples). Ver PENDENCIAS P-105.
+### O segundo fator: o User-Agent
+
+✅ **RESOLVIDO em 12/08/2026.** O `--headless=new` conserta a impressão digital
+em **JavaScript**, mas **não** tira `HeadlessChrome` do **cabeçalho**. São dois
+fatores independentes, e o Akamai barra pelo primeiro que encontrar.
+
+📊 Medido do MESMO IP, variando só o User-Agent, com controle nas duas pontas:
+
+```
+UA limpo   (Chrome/…)           PASSOU
+UA padrão  (HeadlessChrome/…)   BLOQUEADO
+UA limpo   (Chrome/…)           PASSOU
+```
+
+> **A lição que quase custou uma assinatura de proxy:** o diagnóstico anterior
+> comparou o navegador com "um cliente HTTP simples" (`page.request`) e concluiu
+> que o fator era o IP. **O teste estava furado** — `page.request` herda o
+> User-Agent do contexto, então os dois mandaram o mesmo cabeçalho e o teste não
+> isolou o que dizia isolar. Um teste que não consegue separar o que promete
+> separar produz uma conclusão confiante e errada.
+
+**A correção:** o contexto do worker define `user_agent`, derivado do próprio
+binário (troca só `HeadlessChrome` por `Chrome`, mantendo versão e plataforma).
+Ver `portal_worker.worker.user_agent_sem_headless`.
+
+📊 **Resultado no servidor, pela fila real:** `done`, 1 boleto de 27.037 bytes
+no bucket, **saída de rede direta — sem proxy nenhum.** O IP de datacenter
+(Hostinger, AS47583) **não** era um fator para a HDI.
 
 ## 1.5 A sessão dura 30 minutos
 
@@ -387,7 +410,8 @@ g_bol(...)  ← gerador de boleto alternativo, por parâmetros soltos
 | 10/08 | ~15 visitas em 30 min → bloqueio por IP, ~horas |
 | 12/08 | Response completo capturado. **Os 4 defeitos caíram de uma vez** |
 | 12/08 | ✅ 1 boleto real de 27.037 bytes baixado, validado como `%PDF` |
-| 12/08 | ⚠️ Pelo worker no servidor: `Access Denied`. Instrumentação adicionada para separar modo × IP (P-105) |
+| 12/08 | Pelo worker no servidor: `Access Denied`. Diagnóstico apontou o IP — **e estava errado**, por culpa do próprio teste (§1.4) |
+| 12/08 | ✅ **HDI FECHADA.** UA limpo → `done` pelo worker de produção, boleto no bucket, **sem proxy**. Allianz na mesma rodada: 4 de 4 (linha de controle) |
 
 ---
 

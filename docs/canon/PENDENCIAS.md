@@ -3503,3 +3503,52 @@ FASE 4 (ligar) ............. 1 rodada, com a Allianz junto como controle
 > fixture salva. Foi assim que a HDI fechou: 4 defeitos corrigidos offline, uma
 > única visita para provar.
 
+
+
+---
+
+## ✅ P-98 e P-105 RESOLVIDOS em 12/08/2026 — a HDI fecha, e não precisou de proxy
+
+📊 **Prova pela fila real do worker de produção:**
+
+```
+HDI ....... done · 1 inadimplente · boleto de 27.037 bytes no bucket
+Allianz ... done · 4 inadimplentes · 4 boletos (LINHA DE CONTROLE)
+saida_de_rede ... "direta (IP do servidor)"   ← sem proxy nenhum
+```
+
+### O Akamai eram DOIS fatores, e nenhum era o IP
+
+| Fator | Sintoma | Correção |
+|---|---|---|
+| Impressão digital em **JavaScript** | headless clássico é outro binário | `--headless=new` |
+| **`HeadlessChrome` no cabeçalho** | filtro derruba antes de rodar JS | `user_agent_sem_headless()` |
+
+### A lição que quase custou uma assinatura de proxy
+
+O primeiro diagnóstico comparou o navegador com "um cliente HTTP simples"
+(`page.request`) e concluiu, com confiança, que **o fator era o IP**.
+
+> **O teste estava furado.** `page.request` **herda o User-Agent do contexto** —
+> os dois clientes mandaram o mesmo cabeçalho. Ele não isolou o que dizia
+> isolar, e produziu uma conclusão confiante e errada.
+
+O que decidiu foi variar **um fator por vez do mesmo IP**, com controle nas duas
+pontas: UA limpo passa, UA padrão é bloqueado, UA limpo passa.
+
+**Corolário para o método (SPEC-070):** um teste que não consegue separar o que
+promete separar é pior que teste nenhum — ele *fecha* a investigação no lugar
+errado. Antes de concluir, perguntar: *"este teste conseguiria dar o outro
+resultado?"*
+
+### O que ficou pronto e desligado
+
+`proxy_do_portal()` — saída de rede por portal (`PORTAL_PROXY_<PORTAL>` ou
+`PORTAL_PROXY_DEFAULT`). **Não é necessária hoje**, e está sem nenhuma variável
+configurada. Fica para o dia em que um portal recusar o IP de verdade — e aí é
+ligar uma variável, sem deploy de código.
+
+- **Custa se esquecer:** 📊 o IP do servidor é `AS47583 Hostinger`, faixa de
+  hospedagem. Um portal mais agressivo (Porto, Azul) pode barrar por ele — e a
+  saída já está construída.
+
