@@ -34,7 +34,8 @@ inteira. Depois abra o `PORTAL-<nome>.md` — se já existir.
 | **Allianz** | *(a escrever — o conhecimento está na SPEC-023A)* | ✅ pronta | ⬜ | ⬜ |
 | **Tokio Marine** | [PORTAL-tokio.md](PORTAL-tokio.md) | ✅ pronta | 📋 URLs mapeadas | 📋 cotadores mapeados |
 | **Yelum** | [PORTAL-yelum.md](PORTAL-yelum.md) | ✅ pronta | 📋 URLs mapeadas | 📋 4 marcas mapeadas |
-| Porto · Azul · Bradesco · SulAmérica · MAPFRE · demais | — | ⬜ | ⬜ | ⬜ |
+| **MAPFRE** | [PORTAL-mapfre.md](PORTAL-mapfre.md) | 🔨 fase 1 | 📋 card no home | ⬜ |
+| Porto · Azul · Bradesco · SulAmérica · demais | — | ⬜ | ⬜ | ⬜ |
 
 ```
 ✅ funciona   🔨 em construção   📋 conhecimento anotado, sem código   ⬜ nada ainda

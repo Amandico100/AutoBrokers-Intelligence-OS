@@ -3675,3 +3675,51 @@ depende de duas coisas que não são código:
 > documento do segurado. O que ainda não aconteceu **nem uma vez** é o sistema
 > mandar a mensagem para um cliente de verdade — e o Founder pediu para ser
 > avisado antes que isso aconteça.
+
+---
+
+## MAPFRE — fase 1, e o risco cross-tenant que deixou de ser hipótese
+
+📊 12/08/2026. Credenciais das duas corretoras gravadas, URL corrigida para
+`negocios.mapfre.com.br/acesso`, porta pública medida.
+
+### 🔴 P-119 — o mesmo login enxerga DUAS corretoras
+
+📊 Depois do login, o modal `Selecione o código interno` lista
+**RESULTA** e **AUTO FLEET** na mesma caixa, para o mesmo usuário.
+
+> Se a varredura da Resulta selecionar a AutoFleet, os inadimplentes de uma
+> entram no `company_id` da outra. É **dado atravessando tenant** — CLAUDE.md §7.
+
+**Resolvido por desenho, não por sorte:** `portal_accounts.account_label` guarda
+o nome exato da corretora que aquele login deve selecionar; a journey seleciona
+pelo rótulo, **relê a tela para conferir**, e **para** (`needs_human`) se não
+conferir. Nunca varre "o que estiver selecionado".
+
+Isto materializa a **P-108**, anotada como hipótese desde a Tokio. Lá era "uma
+corretora pode ter mais de um código"; aqui são **duas empresas** atrás do mesmo
+usuário — pior, e real.
+
+- **Custa se esquecer:** um incidente de vazamento entre clientes, que é o único
+  tipo de defeito deste sistema que não dá para consertar depois.
+
+### P-120 — a carteira MAPFRE está sem inadimplente nas duas corretoras
+
+📊 Status `Vencida`, período padrão: `Não encontrado` nas duas. O card
+`Parcelas Inadimplentes` marca `0`.
+
+**Não bloqueia.** Zero inadimplente é um estado, não uma propriedade do portal.
+📊 Na Tokio e na Yelum o boleto de parcela **A vencer** sai pelo mesmo caminho da
+vencida — então dá para provar a cadeia inteira com `Status = Todos`, e o que
+fica ❓ é só a coluna de juros/multa da linha vencida.
+
+- **Custa se esquecer:** nada hoje; no dia em que aparecer o primeiro
+  inadimplente, o último palmo se valida sozinho.
+
+### P-121 — o período padrão da MAPFRE é de QUINZE DIAS
+
+📊 `28/07/2026-12/08/2026`. É a janela mais curta das cinco seguradoras
+(HDI 30 por bloco, Yelum ~90). ❓ O alcance máximo não foi medido.
+
+- **Custa se esquecer:** dívida de dois meses não aparece — e sem uma testemunha
+  independente ninguém saberia. Medir o alcance é pré-requisito do gate.
