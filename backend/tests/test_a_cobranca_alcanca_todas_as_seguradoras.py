@@ -542,5 +542,63 @@ check("sem grupo cadastrado NAO derruba a colheita",
 check("o guarda do portal avisa a EQUIPE, nao o segurado",
       "aviso_de_portal" in fonte_bc)
 
+# ------------------------------------ o navegador que o portal aceita
+print("\n[12] O navegador nao se entrega, e tem por onde sair")
+
+import os as _os  # noqa: E402
+import importlib as _il  # noqa: E402
+
+_wk = _il.import_module("portal_worker.worker")
+
+# 📊 Medido de UM MESMO IP, com controle nas duas pontas: o `--headless=new`
+# conserta a impressao digital em JS, mas NAO tira "HeadlessChrome" do
+# cabecalho -- e um filtro que so le o header derruba antes de qualquer JS.
+check("o modo do navegador e o novo, nao o classico",
+      "--headless=new" in (_wk._launch_kwargs().get("args") or []), _wk._launch_kwargs())
+_os.environ["PORTAL_HEADLESS_MODE"] = "classic"
+check("da para voltar ao modo classico por variavel, sem deploy",
+      _wk._launch_kwargs() == {"headless": True}, _wk._launch_kwargs())
+_os.environ.pop("PORTAL_HEADLESS_MODE", None)
+check("e o padrao volta a ser o novo",
+      "--headless=new" in (_wk._launch_kwargs().get("args") or []))
+
+fonte_wk = (ROOT / "portal_worker" / "worker.py").read_text(encoding="utf-8")
+check("o contexto define User-Agent (sem isso vai HeadlessChrome no header)",
+      '"user_agent": await user_agent_sem_headless(browser)' in fonte_wk)
+check("o UA e derivado do binario, nao escrito a mao",
+      'ua.replace("HeadlessChrome", "Chrome")' in fonte_wk)
+check("a janela nao e a 800x600 do headless (tamanho que nao existe em desktop)",
+      '"viewport": {"width": 1366, "height": 768}' in fonte_wk)
+
+# --- a saida de rede, por portal
+for var in ("PORTAL_PROXY_HDI_CORRETOR", "PORTAL_PROXY_DEFAULT"):
+    _os.environ.pop(var, None)
+check("sem variavel, sai direto (nada muda para quem ja funciona)",
+      _wk.proxy_do_portal("hdi_corretor") is None)
+
+_os.environ["PORTAL_PROXY_HDI_CORRETOR"] = "http://ana%40x:se%2Fnha@proxy.exemplo.com:8080"
+p = _wk.proxy_do_portal("hdi_corretor")
+check("proxy por portal e lido", p and p.get("server") == "http://proxy.exemplo.com:8080", p)
+check("usuario e senha sao decodificados de URL",
+      p.get("username") == "ana@x" and p.get("password") == "se/nha", p)
+check("o proxy vale SO para o portal configurado",
+      _wk.proxy_do_portal("allianz_corretor") is None)
+
+_os.environ["PORTAL_PROXY_DEFAULT"] = "http://geral.exemplo.com:3128"
+check("o DEFAULT cobre os demais portais",
+      (_wk.proxy_do_portal("allianz_corretor") or {}).get("server") == "http://geral.exemplo.com:3128")
+check("mas o especifico do portal vence o default",
+      _wk.proxy_do_portal("hdi_corretor").get("server") == "http://proxy.exemplo.com:8080")
+
+_os.environ["PORTAL_PROXY_HDI_CORRETOR"] = "isto nao e uma url"
+check("proxy mal escrito NAO derruba a colheita (sai direto)",
+      _wk.proxy_do_portal("hdi_corretor") is None)
+for var in ("PORTAL_PROXY_HDI_CORRETOR", "PORTAL_PROXY_DEFAULT"):
+    _os.environ.pop(var, None)
+
+check("a evidencia guarda o HOST do proxy, nunca usuario e senha",
+      'evidence["saida_de_rede"] = proxy.get("server")' in fonte_wk
+      and "proxy.get(\"password\")" not in fonte_wk.split("evidence[\"saida_de_rede\"]")[1][:300])
+
 print("\nPASS=%d FAIL=%d" % (PASS, FAIL))
 sys.exit(1 if FAIL else 0)
