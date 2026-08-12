@@ -3597,3 +3597,40 @@ Credencial já existe para as duas corretoras; ❓ a senha precisa ser confirmad
 
 - **Custa se esquecer:** MAPFRE está travada esperando a Saionara (🧑). Yelum
   não depende de ninguém de fora — é a única que dá para começar hoje.
+
+---
+
+## YELUM — fases 1 a 4 fechadas em 12/08/2026
+
+📊 A journey rodou contra o portal real (corretora Resulta) e trouxe um boleto
+de **5.908 bytes — exatamente o tamanho do PDF que o Founder baixou à mão** no
+mesmo cliente. Detalhe em [`portais/PORTAL-yelum.md`](portais/PORTAL-yelum.md).
+
+| # | O que ficou | De quem | Custa se esquecer |
+|---|---|:--:|---|
+| P-111 | **Fase 5** da Yelum — rodar pela fila de produção | 🧑 redeploy do `portal-worker` | a Yelum só varre quando o serviço tiver a imagem nova |
+| P-112 | A credencial da **AutoFleet** na Yelum (a da Resulta entra; a outra dá erro mesmo parecendo certa) | 🧑 Founder / Saionara | metade das corretoras fica sem Yelum |
+| P-113 | O **teto de visitas** da Yelum — não medido (Tokio ~4, HDI ~15) | 🤖 | tratamos como o mais restritivo até saber |
+| P-114 | Se a API aceita janela **> 90 dias** (a tela limita) | 🤖 1 chamada | dívida antiga fica fora — mas a testemunha PEGA isso e para a varredura |
+| P-115 | Se a credencial **atravessa para a HDI** (mesmo grupo, mesma API) | 🤖 1 visita | seria uma porta a menos para manter |
+
+### 🔴 O erro que eu cometi, e o guarda que ele gera
+
+Eu afirmei ao Founder que **a Yelum não tinha trava nenhuma** — e recomendei
+começar por ela justamente por isso. Estava errado: o app logado roda **Akamai
+Bot Manager** (`sensor_data` → `{"success": true}`, script de 560 KB com `bmak`,
+mPulse).
+
+O que eu medi foi a **página pública de marketing**; o que eu afirmei foi sobre
+o **app logado**. São coisas diferentes, e a pública não é protegida.
+
+> **É a terceira vez neste projeto que o mesmo erro aparece:** medir uma coisa
+> **vizinha** da que se afirma. Antes foi o `page.request` que herdava o
+> User-Agent e "provava" que o fator era o IP; depois foi o guarda de chegada da
+> Tokio, que procurava um link que a **porta** também tinha.
+>
+> A pergunta que teria pego as três:
+> **"a coisa que eu medi é a mesma sobre a qual eu vou afirmar?"**
+
+A escolha continua certa (a Yelum saiu numa tarde), mas pelo motivo certo:
+**a API é limpa** — não porque não tivesse trava.

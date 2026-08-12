@@ -33,7 +33,8 @@ inteira. Depois abra o `PORTAL-<nome>.md` — se já existir.
 | **HDI** | [PORTAL-hdi.md](PORTAL-hdi.md) | ✅ pronta | 📋 menus mapeados | 📋 menus mapeados |
 | **Allianz** | *(a escrever — o conhecimento está na SPEC-023A)* | ✅ pronta | ⬜ | ⬜ |
 | **Tokio Marine** | [PORTAL-tokio.md](PORTAL-tokio.md) | ✅ pronta | 📋 URLs mapeadas | 📋 cotadores mapeados |
-| Yelum · Porto · Azul · Bradesco · SulAmérica · MAPFRE · demais | — | ⬜ | ⬜ | ⬜ |
+| **Yelum** | [PORTAL-yelum.md](PORTAL-yelum.md) | 🔨 roda e traz boleto; falta a fila | 📋 URLs mapeadas | 📋 4 marcas mapeadas |
+| Porto · Azul · Bradesco · SulAmérica · MAPFRE · demais | — | ⬜ | ⬜ | ⬜ |
 
 ```
 ✅ funciona   🔨 em construção   📋 conhecimento anotado, sem código   ⬜ nada ainda
@@ -79,6 +80,11 @@ guardado o menu de Renovação inteiro, sem custo nenhum.
 
 📊 Dois portais independentes (HDI e Tokio) recusaram acesso depois de ~15 e ~4
 visitas em menos de 30 minutos. Eles reagem à **frequência**, não ao método.
+
+**E a página pública não é o app.** 📊 Em 12/08/2026 eu sondei a tela de login
+da Yelum e concluí "nenhuma trava" — mas tinha carregado a página de marketing.
+O app logado roda **Akamai Bot Manager**. Antes de afirmar sobre um portal,
+perguntar: *a página que eu medi é a mesma sobre a qual eu vou afirmar?*
 
 Teto por fase, em SPEC-070 §2. Toda leitura repetida sai de **fixture salva**
 (`backend/tests/fixtures/`), com a estrutura real e os dados trocados.
