@@ -294,3 +294,78 @@ PostgREST direto → 402
 ```
 
 O 402 persiste — como esperado. É o Founder quem o remove.
+
+---
+
+## 10. Gate pós-Upgrade — 13/08/2026, 20:30–20:50 UTC
+
+O Founder fez o Upgrade para Pro. Medições com o Supabase respondendo 200.
+
+### 10.1 Infraestrutura
+
+| | |
+|---|---|
+| PostgREST · Auth · Storage | **200 · 200 · 200** |
+| API AutoBrokers | `status: healthy` · `database_sync: connected` |
+| Redis · Qdrant · MinIO | conectados |
+| Outbox dispatcher | voltou (712.971 → 714.988) |
+| portal-worker | voltou (95.135 → 95.153) |
+
+### 10.2 🔴 A prova de que a hemorragia parou
+
+📊 A consulta que causou o incidente:
+
+```
+SELECT messages.id, messages.content, messages.created_at, messages.payload ...
+calls = 771.313   >>> CONGELADA — o número exato de antes do deploy <<<
+```
+
+**Zero chamadas novas** em ~1 hora de produção com tráfego real.
+
+| | antes | agora |
+|---|---:|---:|
+| a consulta assassina | 771.313 calls · ~7.040 MB | **0 novas** |
+| custo por mensagem espelhada | ~9,5 kB | ~155 B + insert |
+| leituras por escrita | **136 : 1** | **0 : 1** no caso comum |
+| taxa total PostgREST | 📊 ≈ 238/min só do trio do Espelho | 📊 **108/min TOTAL** |
+| projeção | 📊 ~1,04 GB/dia | 💭 dezenas de MB/dia |
+
+O número de bytes/dia fica marcado como 💭: o Supabase não expõe bytes por
+consulta. O que está **medido** é que o termo dominante — a resposta de 33
+linhas × 290 B — deixou de existir, e a taxa total de chamadas caiu para menos
+da metade do que o Espelho sozinho consumia.
+
+### 10.3 WhatsApp e conversas
+
+📊 Última captura 4 min antes da medição. Última hora: **9 transcripts → 9
+mensagens no chat, um para um.**
+
+| corretora | canal | última captura | conversas 7d | mensagens | vazias |
+|---|---|---|---:|---:|---:|
+| AutoFleet | 🟢 `connected` | 13/08 20:40 | 134 | 4.984 | **0** |
+| AMANDUS | 🟢 `connected` | 13/08 20:33 | 7 | 102 | **0** |
+| Resulta | 🔴 `disconnected` | **29/07 18:27** | — | — | — |
+
+### 10.4 Invariantes — todos verdes
+
+| Invariante | Medido |
+|---|---|
+| A · mensagem nova aparece | 9 em 9 na última hora |
+| B · Observador mudo | nenhum caminho de envio; teste verde |
+| C · agente desligado continua | 2 conversas com agente — **inalteradas** |
+| H · dedup | **0 duplicatas** em toda a tabela; 0 nas 11 pós-deploy |
+| I · eco | contador sem `eco_do_dashboard` espúrio |
+| K · cross-tenant | nenhuma conversa fora da própria corretora |
+| Work Run · outbox · portal-worker | voltaram a operar |
+
+### 10.5 Achados que NÃO são deste P0
+
+- **P-126** — Resulta muda desde **29/07**, nove dias antes de o Egress subir.
+  Precisa de repareamento (ação física).
+- **P-127** — duas views com `SECURITY DEFINER` marcadas CRITICAL pelo Advisor.
+  Anteriores, não tocadas aqui.
+
+### 10.6 Pendente
+
+- **P-122** — ligar `ESPELHO_SYNC_ENABLED=true`. 📊 Custo medido do primeiro
+  ciclo: **11 linhas**. Enquanto estiver OFF, a rede de segurança não roda.
