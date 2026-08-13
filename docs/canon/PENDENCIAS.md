@@ -4092,3 +4092,29 @@ números antigos mudam — e um guarda que faça o número duplicado falhar no C
 
 **O que custa esquecer:** a lista deixa de ser endereçável, e "resolvido" passa
 a apontar para a coisa errada.
+
+---
+
+## P-153 · 🟡 O que falta DEPOIS da Zurich, para o Auxiliar de Cobrança fechar
+
+**Aberta em:** 13/08/2026 · **Dono:** 🧑 Founder + 🤖 execução, na ordem abaixo
+
+Registrada a pedido do Founder, para não depender de memória de sessão. A ordem
+é dele: **primeiro fechar as seguradoras, depois o envio.**
+
+Quando as seis seguradoras estiverem colhendo, esta é a fila:
+
+| # | O que | De quem |
+|---|---|:--:|
+| 1 | **InfoCap** — exercitar a busca do WhatsApp pelo CPF/CNPJ. 📊 Nunca foi exercitada: nenhuma das seis seguradoras entrega telefone utilizável, e é a InfoCap que fecha essa ponta | 🤖 |
+| 2 | **Qual WhatsApp envia** — decidir e ligar o número/instância que fala com o segurado | 🧑 |
+| 3 | **Grupo de suporte humano** para Resulta e AutoFleet (`human_support_destinations`) — hoje só a AMANDUS tem. Sem ele, item retido é montado e descartado | 🧑 |
+| 4 | **As regras de envio** — o Founder tem uma lista de ajustes finos ("várias coisinhas, para não deixar ponta solta"). **Precisam ser levantadas e escritas antes do primeiro envio** | 🧑 dita · 🤖 escreve |
+| 5 | **Rotina de cobrança** para as duas corretoras, com as seis seguradoras — hoje há **zero rotinas ativas** | 🤖 · horário é decisão do Founder |
+| 6 | **O primeiro envio real**, com o WhatsApp da AMANDUS, um caso só, avisando o Founder antes | 🧑 autoriza · 🤖 executa |
+| 7 | **Rotação de chaves** — as credenciais compartilhadas na execução (incluindo `PORTAL_VAULT_KEY` e as chaves de serviço) precisam ser trocadas antes de haver cliente real | 🧑 |
+
+**O que custa esquecer:** o item 4 é o mais perigoso, porque é o único que só existe
+na cabeça do Founder. Se o primeiro envio acontecer antes de essas regras estarem
+escritas, elas viram correção depois de a mensagem ter saído — e mensagem enviada
+não volta.
