@@ -3799,3 +3799,37 @@ mostra midia — logo o caso precisa ser **reescrito**, nao so reapontado.
 **O que custa esquecer:** o gate fica vermelho por um motivo que nao e o que ele
 anuncia, e a proxima regressao de verdade se esconde atras deste vermelho
 cronico — que e como um gate morre.
+
+---
+
+## P-125 · 🔴 O código do P0 está na `main` e NÃO está no ar — falta clicar Implantar
+
+**Aberta em:** 13/08/2026 · **Dono:** 🧑 Founder (ação física no EasyPanel)
+
+📊 `git push origin HEAD:main` às 16:18 UTC, quatro commits (`51b5c0f`,
+`d9d17bb`, `05fb3ae`, `3f9e0d5`). **Vinte e um minutos depois**, o contêiner
+ainda servia o código antigo.
+
+**Prova:** o commit `3f9e0d5` acrescenta a chave `espelho_sync_ligado` ao
+`/health`. Ela **não aparece** na resposta de produção. `git_commit` vem
+`nao-injetado`, então o número do commit não serve para conferir — a chave nova
+serve.
+
+**Conclusão: não há auto-deploy.** Push na `main` é condição necessária e não
+suficiente. É preciso clicar **Implantar** em `autobrokers-smith-api` (e no
+`-worker`, que compartilha o mesmo código).
+
+### 🔴 Por que a ORDEM importa mais do que parece
+
+Se o Upgrade para Pro acontecer **antes** do Implantar, o código antigo volta a
+funcionar com cota nova — e o sync retoma saturado, relendo 4.008 linhas por
+ciclo com o laço a ~50 min por volta. **O incidente recomeça no minuto em que a
+cota é restaurada**, e desta vez custando dinheiro.
+
+```
+1. Implantar  (api + worker)
+2. conferir   /health → codigo.espelho_sync_ligado == false
+3. só então   Upgrade to Pro
+```
+
+**O que custa esquecer:** repetir o incidente de 05–13/08 com plano pago.
