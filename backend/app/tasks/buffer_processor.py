@@ -408,9 +408,32 @@ def start_buffer_scheduler():
         # do dia não está pronto. Nenhum motor novo: entra no agendador que já
         # existe, ao lado do heartbeat.
         #
-        # Barato porque é incremental — a dedup faz a segunda passada não
-        # escrever nada.
-        from app.services.atlas.espelho_chat import sincronizar_chats
+        # 🔴 AQUI DIZIA "barato porque é incremental — a dedup faz a segunda
+        # passada não escrever nada". A frase estava certa sobre ESCRITAS e
+        # errada sobre LEITURAS, e a diferença derrubou o produto.
+        #
+        # 📊 13/08/2026: a implementação relia a janela de 7 dias do acervo a
+        # cada ciclo (4.008 linhas) e chamava `espelhar_no_chat` para cada uma.
+        # `pg_stat_statements`: **771.313 leituras de `messages` para 5.681
+        # mensagens escritas** — 136 leituras por escrita. Da ordem dos 6,98 GB
+        # que restringiram a organização no Supabase Free; PostgREST, Storage e
+        # Auth passaram a responder 402 e o portal-worker parou de enxergar
+        # `portal_jobs`.
+        #
+        # Deduplicar DEPOIS de ler não torna a leitura barata. Agora ele é
+        # incremental de verdade — cursor durável por corretora, no relógio de
+        # ingestão (migration 20260813_01).
+        #
+        # ⚠️ E NASCE DESLIGADO. `ESPELHO_SYNC_ENABLED` precisa dizer que sim.
+        # O job continua registrado de propósito: ele sai na primeira linha
+        # quando está OFF, e ligar passa a ser mudar uma variável — não fazer
+        # deploy. O primeiro boot depois do Upgrade para Pro é o instante mais
+        # perigoso do plano, e é justamente nele que este job não pode subir
+        # trabalhando.
+        from app.services.atlas.espelho_chat import sincronizar_chats, sync_ligado
+
+        logger.info("[ESPELHO] recovery periódico: %s",
+                    "LIGADO" if sync_ligado() else "desligado (ESPELHO_SYNC_ENABLED)")
 
         scheduler.add_job(
             sincronizar_chats,
