@@ -3872,3 +3872,64 @@ cota é restaurada**, e desta vez custando dinheiro.
 ```
 
 **O que custa esquecer:** repetir o incidente de 05–13/08 com plano pago.
+
+---
+
+## P-126 · 🔴 A Resulta nao observa WhatsApp ha 15 dias — e nao foi a pane
+
+**Aberta em:** 13/08/2026 · **Dono:** 🧑 Founder (parear de novo — QR/passkey)
+
+📊 Medido logo apos o Upgrade, com o Supabase ja respondendo 200:
+
+| corretora | `channel_status` | ultima captura | total no acervo |
+|---|---|---|---|
+| AutoFleet | `connected` | **13/08 20:40** (agora) | 46.016 |
+| AMANDUS SEGUROS | `connected` | **13/08 20:33** (agora) | 102 |
+| **Resulta Seguros** | **`disconnected`** | **29/07 18:27** | 59.168 |
+
+**Nao foi causado pelo incidente de Egress.** A Resulta parou em **29/07**; o
+Egress comecou a subir em **07/08** e a restricao 402 chegou em **12/08**. Sao
+nove dias de diferenca — a Resulta ja estava muda antes.
+
+📊 `capturou_7d = 0` para a Resulta, contra 3.887 da AutoFleet no mesmo periodo.
+
+O heartbeat do canal (SPEC-063 Bloco V) esta funcionando: `last_seen_at` de tres
+minutos atras com `channel_status = disconnected` e exatamente o vigia
+**desmentindo** a tela, que e para o que ele existe.
+
+**O que destrava:** repareamento do WhatsApp da Resulta (QR ou passkey). E acao
+fisica — ninguem pareia um WhatsApp por API.
+
+**O que custa esquecer:** a Resulta e uma das corretoras do canario e uma das
+duas contas da MAPFRE. Ha quinze dias nao ha conversa dela entrando na mesa de
+trabalho, e o `/admin/espelho` dela esta parado em 29/07. Qualquer medicao de
+atendimento que a inclua esta medindo silencio.
+
+---
+
+## P-127 · 🟠 Duas views com SECURITY DEFINER — o Advisor marca CRITICAL
+
+**Aberta em:** 13/08/2026 · **Dono:** 🤖 execucao, bloco proprio
+
+📊 O Advisor do Supabase, depois do Upgrade, aponta 2 issues CRITICAL:
+
+```
+public.vw_destinos_de_suporte_em_conflito
+public.vw_agentes_mudos
+```
+
+As duas sao views comuns (`relkind='v'`) de dono `postgres` e **sem**
+`security_invoker=true`. Sem essa opcao, a view executa com os privilegios de
+quem a CRIOU, nao de quem a CONSULTA — as policies de RLS do consumidor deixam
+de valer.
+
+**Nao e deste P0** e nao foi introduzida por ele: as duas views sao anteriores.
+Nao tocadas nesta intervencao.
+
+**O que destrava:** `ALTER VIEW ... SET (security_invoker = true)` — mas so
+depois de conferir quem consulta cada uma e se alguma depende do comportamento
+atual. Uma view de "agentes mudos" que passe a respeitar RLS pode devolver menos
+linhas para o admin, e isso precisa ser verificado, nao presumido.
+
+**O que custa esquecer:** e o unico CRITICAL aberto no Advisor. Cross-tenant por
+view e o tipo de furo que nao aparece em teste de aplicacao (CLAUDE.md §7).
