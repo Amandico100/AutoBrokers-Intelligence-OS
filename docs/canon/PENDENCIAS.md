@@ -3748,7 +3748,46 @@ one-shot — mas ninguem seria avisado de que faltou.
 
 ---
 
-## P-123 · A recuperacao da janela da pane e um ato deliberado, e ainda nao foi feito
+## P-123 · ~~A recuperacao da janela da pane~~ — **FECHADA em 13/08/2026 20:05 UTC: nao ha o que recuperar**
+
+**Aberta e fechada no mesmo dia.** Foi aberta por deducao; a medicao a desmontou.
+
+📊 Medido depois do deploy, antes do Upgrade:
+
+```
+transcripts elegiveis na janela de 7 dias ...... 3.426
+destes, FALTANDO no chat ....................... 0
+conversas afetadas ............................. 0
+```
+
+O Espelho ja tinha alcancado tudo antes da restricao. **Nao ha backfill a fazer.**
+
+E a razao pela qual nao existe "janela da pane" no acervo e mais simples do que
+eu supus: 📊 o ultimo transcript capturado e de **12/08 21:12 UTC — 22h50 antes**
+desta medicao. A captura escreve via PostgREST, e PostgREST estava em 402: o
+Observador nao capturou NADA durante a restricao. Nao ha material esperando no
+acervo porque ele nunca chegou la.
+
+**O que isso muda no plano:** o passo "one-shot de recuperacao por corretora"
+sai da sequencia pos-Upgrade. Ele existiria para copiar acervo -> chat, e nao ha
+diferenca entre os dois.
+
+**O que assume o lugar dele:** quando o Supabase voltar e o Observador
+reconectar, o WhatsApp deve reentregar por HISTORY_SYNC as ~23h que nao foram
+capturadas. Elas entram pela ponte AO VIVO (que nunca foi desligada), com
+`created_at` de agora — depois do cursor. Custo por mensagem depois da Alavanca
+A: 2 leituras pequenas + 1 insert. Mesmo um HISTORY_SYNC do tamanho do da
+Amandus (13.200 mensagens) fica na casa de poucos MB, contra os 7 GB do desenho
+antigo.
+
+**O que observar:** o contador `agora` do `/health` na primeira hora. Se
+`mensagem_nova` subir muito, e o HISTORY_SYNC entrando — esperado. Se `erro:*`
+subir, ai sim ha algo a investigar.
+
+<!-- texto original preservado abaixo, append-only -->
+
+### Registro original (13/08, antes da medicao)
+
 
 **Aberta em:** 13/08/2026 · **Dono:** 🤖 execucao, depois do Upgrade
 
