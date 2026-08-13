@@ -1967,3 +1967,122 @@ URA chega sem acento o tempo todo; os casos foram acrescentados.
 📊 Bateria completa depois de tudo: **210 verdes, 0 vermelhos.**
 
 **Autorização:** execução do LOTE 1 da SPEC-070, sessão de 08/08/2026.
+
+---
+
+## CA-034 · O recovery do Espelho virou um leitor permanente do proprio historico — **BLOCKER**
+
+**Data:** 13/08/2026 · **SPEC:** 063 · **Branch:** `fix/p0-espelho-egress`
+**Commits:** `51b5c0f` (Alavanca A) · `d9d17bb` (Alavanca B)
+
+### Problema
+
+📊 A organizacao Supabase foi restringida por Fair Use no ciclo 05/08 → 05/09:
+cota Free de 5 GB, **6,98 GB consumidos**, overage de 1,98 GB. Producao passou a
+responder **HTTP 402** em PostgREST, Storage e Auth. O portal-worker parou de
+enxergar `portal_jobs` e a conclusao da MAPFRE ficou bloqueada.
+
+### Evidencia
+
+Medido em 13/08/2026 pela Management API do Supabase (que continua respondendo
+apesar do 402 em PostgREST):
+
+| Consulta (PostgREST) | calls | linhas/call | bytes/linha | atribuido |
+|---|---:|---:|---:|---:|
+| `messages(id, content, created_at, payload) LIMIT 40` | **771.313** | 33 | 290 | **~7.040 MB** |
+| `users_v2(id, first_name, last_name)` | 776.542 | 1 | ~95 | ~70 MB |
+| `conversations(id, status)` | 776.338 | 1 | ~60 | ~44 MB |
+| `work_queue_outbox(*)` — resposta vazia | 712.971 | 0 | ~40 | ~27 MB |
+
+As tres primeiras sao **exatamente** as tres consultas de `espelhar_no_chat`, em
+contagens quase identicas: assinatura 1:1:1. A coluna `payload` **so existe
+desde 06/08** (migration `20260806_01`), logo os 771.313 calls sao todos
+posteriores ao Espelho. Primeira mensagem espelhada: **06/08 23:25 UTC**; o
+salto do grafico de Egress e **07/08**. Nenhuma outra consulta do repositorio
+usa aquele conjunto de colunas.
+
+**O numero que resume:** 771.313 leituras de `messages` produziram **5.681**
+mensagens espelhadas — **136 leituras por escrita**. 99,3% do trabalho foi
+descobrir que a mensagem ja estava la.
+
+Hipoteses **refutadas por medicao**: Realtime (zero tabelas publicadas em
+`supabase_realtime`) · Storage/midia (94 objetos, 11 MB) · banco cheio (241 MB)
+· RAG/Qdrant (servico separado, nao gera Egress Supabase).
+
+Achado que muda a correcao obvia: 776.542 calls ÷ 6,77 dias ÷ 4.008 linhas por
+ciclo = **~28,6 ciclos/dia**, ou um ciclo a cada ~50 min — nao a cada 10. Com
+`max_instances=1` o agendador ja descartava 4 de cada 5 disparos. **Aumentar o
+intervalo nao reduziria o Egress em nada**: o laco ja estava saturado.
+
+### Consequencia se nao corrigido
+
+O custo e `(linhas na janela) × (mensagens por conversa)`. As duas crescem com o
+trafego: e quadratico. Fazer o Upgrade para Pro sem corrigir apenas moveria o
+teto — e no primeiro boot pos-desbloqueio dezenas de componentes em 402 voltam
+ao mesmo tempo, com o sync retomando saturado.
+
+### Mudanca executada
+
+**Alavanca A** — a leitura de 40 mensagens servia duas perguntas e pagava o
+preco da mais cara para responder a mais barata. Dedup passa a ser
+`INSERT` + indice unico (que ja era a garantia definitiva; o Python era atalho
+declarado). Eco so e consultado quando `direcao=="out"`, com texto, e a mensagem
+tem menos de 300s — filtro por `created_at`, sem filtro JSON.
+
+**Alavanca B** — marca d'agua duravel por corretora no relogio de **ingestao**
+(`created_at, id`), com atraso de seguranca de 5 min, cursor que nao avanca
+sobre erro, e partida a frio em `now()` (nunca varredura). Kill switch
+`ESPELHO_SYNC_ENABLED`, que **nasce desligado**.
+
+**Migration `20260813_01`** — expand-only: tabela `espelho_sync_cursor` +
+indice `(company_id, created_at, id)` + seed em `now()`.
+
+### Fora de escopo, registrado aqui
+
+| Achado | Classificacao | Onde |
+|---|---|---|
+| `.select("*")` em `integrations` traz `token` pela rede a cada webhook (94.833 calls) | **ESSENCIAL** — bloco proprio, com inventario de consumidores e teste | CA-035 |
+| Polling do outbox a cada 2s com `pending=0` (712.971 calls, ~27 MB) | **VALIOSA** — backoff adaptativo com jitter | CA-036 |
+| `ix_attendance_transcripts_lookup` nao atende ao access pattern incremental | resolvido pelo indice novo; o antigo **permanece** (serve outro consumidor) | — |
+| Guarda SEC-05 aponta para tela que mudou de casa | pre-existente, sem exposicao real | P-124 |
+
+### Autorizacao
+
+Founder, 13/08/2026, apos duas rodadas de revisao independente:
+*"PODE EXECUTAR O PLANO com os guardrails acima."*
+
+Duas correcoes vieram da revisao e evitaram regressao real: o cursor por
+`wa_timestamp` (perderia 99,89% das linhas `history_sync`) e a proibicao de
+rodar codigo antigo em producao como linha de controle.
+
+---
+
+## CA-035 · `.select("*")` em `integrations` carrega segredo pela rede — **ESSENCIAL**
+
+**Data:** 13/08/2026 · **Estado:** REGISTRADA, nao executada
+
+📊 `get_integration_by_webhook_token` e mais 4 caminhos usam `.select("*")`.
+O contador registra **94.833** chamadas de `integrations(instance_id, token)` e
+**21.079** de `integrations(*)`. Cada webhook traz `token` e credenciais pela
+rede sem precisar delas.
+
+**Nao e problema de Egress** (poucos bytes) — e superficie de **seguranca**.
+
+Nao executado neste P0 por decisao do Founder: reduzir `.select("*")` parece
+trivial e pode quebrar chamadores que dependem implicitamente de um campo.
+Exige bloco proprio, com inventario de consumidores e teste.
+
+---
+
+## CA-036 · Outbox consulta o banco a cada 2s para achar zero — **VALIOSA**
+
+**Data:** 13/08/2026 · **Estado:** REGISTRADA, nao executada
+
+📊 712.971 chamadas de `work_queue_outbox(*) WHERE status='pending'`, com
+`pending_all = 0` medido no banco. ~27 MB — **0,4% do Egress do ciclo**.
+
+**Nao e a causa do P0.** E desperdicio real de requests, nao de bytes.
+
+Proposta (nao executada): backoff adaptativo quando vazio, com reset imediato ao
+surgir trabalho e jitter, preservando SLA e durabilidade. **Nao criar segunda
+fila. Nao tornar Redis fonte de verdade.**

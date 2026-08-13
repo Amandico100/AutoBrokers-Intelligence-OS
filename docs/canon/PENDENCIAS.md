@@ -3723,3 +3723,79 @@ fica ❓ é só a coluna de juros/multa da linha vencida.
 
 - **Custa se esquecer:** dívida de dois meses não aparece — e sem uma testemunha
   independente ninguém saberia. Medir o alcance é pré-requisito do gate.
+
+---
+
+## P-122 · 🔴 `ESPELHO_SYNC_ENABLED` precisa ser ligado depois do canario
+
+**Aberta em:** 13/08/2026 · **Dono:** 🧑 Founder (uma variavel no EasyPanel)
+
+O recovery periodico do Espelho **nasce desligado** (commit `d9d17bb`). Foi
+decisao de desenho: o primeiro boot depois do Upgrade para Pro e o instante mais
+perigoso do plano — dezenas de componentes em 402 voltam ao mesmo tempo — e um
+sync que sobe trabalhando nesse minuto e exatamente o que nao pode acontecer.
+
+**Enquanto estiver OFF:** a ponte AO VIVO funciona inteira. Mensagem nova
+aparece no chat normalmente. O que nao roda e a **rede de seguranca** — a
+recuperacao do que a ponte perdeu durante um deploy ou uma reconexao.
+
+**O que destrava:** `ESPELHO_SYNC_ENABLED=true` no servico `autobrokers-smith-api`,
+depois do canario one-shot medido nas tres corretoras.
+
+**O que custa esquecer:** mensagem perdida por um deploy nao seria recuperada
+automaticamente. Ela continua intacta em `attendance_transcripts` e volta com um
+one-shot — mas ninguem seria avisado de que faltou.
+
+---
+
+## P-123 · A recuperacao da janela da pane e um ato deliberado, e ainda nao foi feito
+
+**Aberta em:** 13/08/2026 · **Dono:** 🤖 execucao, depois do Upgrade
+
+O cursor foi semeado em `now()` (13/08 ~18:30 UTC) de proposito: partir do
+comeco varreria as 105.275 linhas do acervo — 26x o ciclo que causou o
+incidente, no minuto seguinte ao Founder pagar pelo Pro.
+
+Consequencia: as mensagens que chegaram **durante a restricao 402** nao entram
+pelo cursor. Elas estao inteiras em `attendance_transcripts`.
+
+**O que destrava:** depois do gate 402, chamar o endpoint que ja existe, uma
+corretora por vez, medindo entre uma e outra:
+
+```
+POST /api/whatsapp-channel/espelho/trazer-conversas?company_id=<id>&dias=3&limite=3000
+Header: X-AutoBrokers-Internal-Key
+```
+
+📊 Volume esperado (medido em 13/08): a maior corretora tem 59.168 transcripts
+no total, mas so **4.009 na janela de 7 dias**. `dias=3` cobre a pane com folga.
+
+**O que custa esquecer:** as conversas dos dias da pane nao apareceriam na mesa
+de trabalho — visiveis no acervo e no `/admin/espelho`, invisiveis para a
+atendente.
+
+---
+
+## P-124 · 🟠 SEC-05 guarda uma tela que mudou de casa — e por isso nao guarda nada
+
+**Aberta em:** 13/08/2026 · **Dono:** 🤖 execucao, bloco proprio
+
+📊 `broker_outcome_regression_pack.py` (caso SEC-05) procura a tela de conversas
+em `app/dashboard/conversas/page.tsx` e `app/admin/conversations/page.tsx`. A
+primeira **nao existe** e a segunda e um redirecionamento (pulado de proposito).
+Resultado: `tela de conversas nao encontrada em nenhum dos caminhos` — **gate
+vermelho**, e o guarda de seguranca sem alvo.
+
+A tela real e `app/dashboard/atendimentos/conversas/page.tsx` (SPEC-043/064).
+
+**Nao ha exposicao:** conferido em 13/08 — a tela real nao tem `supabase.storage`
+nem `createClient`, e nao renderiza midia. O que falta e o guarda saber onde ela
+mora. Ele tambem exige `resolveMediaUrl`, que aquela tela nao usa porque nao
+mostra midia — logo o caso precisa ser **reescrito**, nao so reapontado.
+
+**Falha pre-existente:** o P0 do Egress nao tocou um unico arquivo em `app/`
+(`git status --short -- app/` = vazio nos dois commits).
+
+**O que custa esquecer:** o gate fica vermelho por um motivo que nao e o que ele
+anuncia, e a proxima regressao de verdade se esconde atras deste vermelho
+cronico — que e como um gate morre.
