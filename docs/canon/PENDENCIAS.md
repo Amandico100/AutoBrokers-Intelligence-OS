@@ -3993,3 +3993,102 @@ Serve para responder "quanto custaria se um dia quiséssemos" com medição, e n
 com estimativa — e para dimensionar a SPEC-062 (billing) com dado real.
 
 **O que custa esquecer:** decidir preço e plano em cima de número inventado.
+
+---
+
+# MAPFRE — a quinta seguradora, e o que ela deixou aberto
+
+📊 13/08/2026. Journey escrita, 92 testes verdes, gate real com **2 de 2
+boletos no bucket** e Allianz **10 de 10** como linha de controle.
+Ver [`PORTAL-mapfre.md`](portais/PORTAL-mapfre.md).
+
+## P-148 · 🔴 A credencial da Resulta na MAPFRE é inválida
+
+**Aberta em:** 13/08/2026 · **Dono:** 🧑 Founder / Saionara
+
+📊 Testei **uma vez** e parei: o portal respondeu **"Autenticação inválida!"**
+com o CPF e a senha corretamente digitados na tela (conferido no dump antes de
+submeter). Não repeti — tentativa falha em sequência trava conta, e conta
+travada custa mais que a espera.
+
+A credencial da **AutoFleet** (o CPF do Founder) funciona e foi ela que
+exercitou o portal inteiro.
+
+**O que destrava:** alguém entrar à mão em `negocios.mapfre.com.br/acesso` com
+o CPF da Resulta e dizer se a senha ainda vale ou se o usuário está bloqueado /
+expirado. Depois é só regravar em Conectores > Portais — **nenhuma linha de
+código muda**.
+
+**O que custa esquecer:** a Resulta fica sem cobrança na MAPFRE, em silêncio —
+a varredura dela termina em `needs_human` com o motivo escrito, mas ninguém lê
+`needs_human` se não estiver esperando.
+
+---
+
+## P-149 · 🔴 O deploy do portal-worker com a journey da MAPFRE
+
+**Aberta em:** 13/08/2026 · **Dono:** 🧑 Founder
+
+O gate foi exercitado **localmente**, com as credenciais reais, o portal real e
+o bucket real. Mas a imagem que roda no EasyPanel ainda não tem
+`mapfre_corretor.py`: enquanto não for implantada, um job MAPFRE na fila termina
+com *"journey desconhecida"*.
+
+📊 E push na `main` **não** dispara build (P-125): é preciso clicar **Implantar**.
+
+**O que destrava:** merge desta branch na `main` + Implantar no serviço
+`portal-worker`.
+
+**O que custa esquecer:** achar que a MAPFRE está no ar porque os testes estão
+verdes — exatamente o defeito que a CLAUDE.md §9.1 registra.
+
+---
+
+## P-150 · 🟡 O catálogo de páginas da MAPFRE não foi mapeado
+
+**Aberta em:** 13/08/2026 · **Dono:** 🤖 execução, na SPEC de Renovação
+
+📊 `GET /api/1.0.0/config/page?path=…` devolve **HTTP 504** com os dois tokens
+quando chamado por `fetch` de dentro da página, embora o app o consuma
+normalmente. É o equivalente MAPFRE dos 338 destinos da Tokio — traz `url`,
+`name` e `codigo_permiso` de cada tela.
+
+**O que custa esquecer:** a Renovação começa às cegas e gasta uma visita de
+descoberta que já poderia estar paga.
+
+---
+
+## P-151 · 🟡 A linha vencida com juros/multa não foi exercitada
+
+**Aberta em:** 13/08/2026 · **Dono:** 🤖 execução, quando houver caso
+
+📊 A lista traz `receiptTotFinalAmn: 294.35` e o PDF emitido mostra
+**R$ 301,28**. São coisas diferentes — a parcela e o documento com encargos — e
+a journey **não** força igualdade nem inventa juros. Mas nenhum caso com a
+coluna de encargos visível na lista foi lido ainda.
+
+**O que custa esquecer:** nada hoje; no dia em que a atendente comparar os dois
+números, precisamos saber explicar qual é qual.
+
+---
+
+## P-152 · 🟡 A numeração das pendências colidiu — 21 números repetidos
+
+**Aberta em:** 13/08/2026 · **Dono:** 🤖 execução, em sessão própria
+
+📊 Hoje aparecem **duas ou três vezes** como título de seção:
+`P-22 · P-91..P-105 · P-119..P-129` — 21 números ao todo. Duas sessões
+trabalhando em paralelo numeraram por cima uma da outra.
+
+Já é ambíguo dizer *"resolvi a P-119"*: existem duas.
+
+**Por que não renumerei agora:** a correção é mecânica mas atravessa o arquivo
+inteiro, e este documento é como o Founder conversa com a execução. Renumerar no
+meio de uma SPEC em curso troca as referências que ele acabou de usar. As
+entradas novas nasceram em **P-148+**, únicas.
+
+**O que destrava:** uma passada dedicada, com o Founder ciente de que os
+números antigos mudam — e um guarda que faça o número duplicado falhar no CI.
+
+**O que custa esquecer:** a lista deixa de ser endereçável, e "resolvido" passa
+a apontar para a coisa errada.

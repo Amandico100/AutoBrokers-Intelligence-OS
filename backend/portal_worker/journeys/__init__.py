@@ -65,6 +65,10 @@ JOURNEYS: Dict[str, Tuple[str, str]] = {
         "portal_worker.journeys.yelum_corretor", "login_check"),
     "yelum_corretor.cobranca_sweep": (
         "portal_worker.journeys.yelum_corretor", "cobranca_sweep"),
+    "mapfre_corretor.login_check": (
+        "portal_worker.journeys.mapfre_corretor", "login_check"),
+    "mapfre_corretor.cobranca_sweep": (
+        "portal_worker.journeys.mapfre_corretor", "cobranca_sweep"),
     "vidros_lanternas.login_check": (
         "portal_worker.journeys.vidros_lanternas", "login_check"),
     "vidros_lanternas.abrir_atendimento": (
