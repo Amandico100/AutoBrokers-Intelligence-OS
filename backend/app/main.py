@@ -734,6 +734,23 @@ def _sinais_do_codigo() -> dict:
     except Exception:  # noqa: BLE001
         sinais["espelho_no_chat"] = False
 
+    # 🔴 O ESTADO DO RECOVERY CARO, numa palavra.
+    #
+    # 📊 13/08/2026: o sync do Espelho consumiu sozinho a ordem dos 6,98 GB que
+    # restringiram a organização no Supabase, e durante sete dias ninguém tinha
+    # onde olhar para saber se ele estava rodando. `espelho_no_chat: true`
+    # respondia "o código subiu" — não respondia "ele está trabalhando".
+    #
+    # São perguntas diferentes, e depois do Upgrade para Pro a segunda é a que
+    # importa: o recovery nasce DESLIGADO de propósito (P-122), e alguém precisa
+    # conseguir confirmar isso sem abrir o terminal do contêiner.
+    try:
+        from app.services.atlas.espelho_chat import sync_ligado
+
+        sinais["espelho_sync_ligado"] = bool(sync_ligado())
+    except Exception:  # noqa: BLE001
+        sinais["espelho_sync_ligado"] = False
+
     return sinais
 
 
