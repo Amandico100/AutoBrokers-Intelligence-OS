@@ -3933,3 +3933,63 @@ linhas para o admin, e isso precisa ser verificado, nao presumido.
 
 **O que custa esquecer:** e o unico CRITICAL aberto no Advisor. Cross-tenant por
 view e o tipo de furo que nao aparece em teste de aplicacao (CLAUDE.md §7).
+
+---
+
+## P-128 · 🔴 A ANÁLISE QUE O FOUNDER PEDIU: os acionamentos com as seguradoras
+
+**Aberta em:** 13/08/2026 · **Dono:** 🤖 execução · **Prioridade: alta, sessão própria**
+
+Pedido do Founder, palavras dele: *"quero uma análise muito detalhada sobre o
+que foi conversado com as seguradoras — acionamento na Allianz, na Porto, na
+HDI... me diga se tivemos aumento dos mapas, se tivemos análise dos cliques, dos
+cliques nos menus, nos apps dentro do WhatsApp da HDI, Yelum, Porto. Preciso
+saber se a nossa inteligência entende tudo e se os nossos atendentes vão
+conseguir fazer os acionamentos, se eles têm as informações corretas,
+completas."*
+
+### O que a análise tem de responder
+
+1. **O que foi realmente conversado** com cada seguradora nos acionamentos
+   reais — não o que o playbook diz, o que aconteceu.
+2. **Os mapas cresceram?** `ura_maps` por seguradora, antes × depois. Quantas
+   rotas novas, quantas mudaram, quantas morreram.
+3. **Os cliques foram analisados?** Menus, botões e os *apps dentro do WhatsApp*
+   (HDI, Yelum, Porto) — o formulário nativo resolvido em 03/08 é o precedente:
+   ali a resposta veio de MEDIR, não de ler.
+4. **A inteligência entende?** Uma coisa é ter o mapa; outra é o Atlas saber
+   escolher a rota certa na hora.
+5. **O atendente consegue fechar o acionamento sozinho?** Ele tem a informação
+   correta e COMPLETA — placa, apólice, endereço, o que a seguradora pede em
+   cada passo?
+
+### Por que é a peça que falta
+
+O atendimento ponta a ponta morre no acionamento. Tudo antes (captura, espelho,
+chat, RAG) serve para chegar até aí. Se o atendente trava no menu da HDI, o
+resto não importa.
+
+**O que destrava:** sessão dedicada, com medição em `ura_maps`,
+`attendance_transcripts` das conversas com seguradora (`insurer_key` não nulo),
+`route_drift` e os `playbook_overlays`.
+
+**O que custa esquecer:** ir a produção com o atendimento cego no último metro.
+
+---
+
+## P-129 · Medir o custo por sessão do destilador (teto 0 → 5, uma janela só)
+
+**Aberta em:** 13/08/2026 · **Dono:** 🤖 execução, quando o Founder pedir
+
+📊 `attendance_sessions`: **11.347 fechadas, ZERO destiladas**, atrás de
+`DESTILADOR_TETO_POR_RODADA=0`.
+
+O objetivo **não** é destilar por API — a destilação de verdade será feita pelo
+Claude Code no plano Max, com subagentes e Opus 5, sem custo marginal. O objetivo
+é **saber o número**: subir o teto para `5`, deixar UMA janela da madrugada
+rodar, medir o custo real por sessão, e voltar para `0`.
+
+Serve para responder "quanto custaria se um dia quiséssemos" com medição, e não
+com estimativa — e para dimensionar a SPEC-062 (billing) com dado real.
+
+**O que custa esquecer:** decidir preço e plano em cima de número inventado.
