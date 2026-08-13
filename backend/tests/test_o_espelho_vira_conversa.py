@@ -59,6 +59,29 @@ def _comandos(caminho_relativo: str) -> str:
                      if not l.lstrip().startswith("#"))
 
 
+def _corpo_da_funcao(nome: str, fonte: str) -> str:
+    """O corpo de UMA função, para o guarda mirar onde a regra vale.
+
+    Existe porque um guarda que proíbe uma string no arquivo inteiro envelhece
+    mal: basta a mesma string ganhar um uso legítimo noutro ponto e ele passa a
+    reprovar código correto — ou, pior, alguém o afrouxa e ele deixa de reprovar
+    o código errado. Recorta por indentação, que é o que delimita bloco em
+    Python. Devolve `""` se não achar — e há um controle para esse caso, porque
+    um recorte vazio deixaria qualquer `not in` verde por engano.
+    """
+    linhas = fonte.split("\n")
+    for i, linha in enumerate(linhas):
+        if linha.lstrip().startswith(f"def {nome}("):
+            recuo = len(linha) - len(linha.lstrip())
+            corpo = []
+            for seguinte in linhas[i + 1:]:
+                if seguinte.strip() and (len(seguinte) - len(seguinte.lstrip())) <= recuo:
+                    break
+                corpo.append(seguinte)
+            return "\n".join(corpo)
+    return ""
+
+
 def _agora_iso() -> str:
     return datetime.now(timezone.utc).isoformat()
 
@@ -932,12 +955,35 @@ def teste_o_historico_de_quinze_meses_nao_entope_a_mesa():
 
     # CONTROLE — o guarda tem de conseguir reprovar. Se a leitura filtrasse por
     # `created_at`, as DUAS entrariam (ambas foram gravadas hoje).
+    #
+    # 🔴 ESTE GUARDA MUDOU DE FORMA EM 13/08/2026, E A LIÇÃO MIGROU INTEIRA.
+    #
+    # Ele proibia a string `.gte("created_at", desde)` no ARQUIVO INTEIRO. Era
+    # suficiente enquanto `created_at` não tinha uso legítimo ali. Passou a ter
+    # dois: a janela de eco (Alavanca A) e o cursor de ingestão (Alavanca B) —
+    # e este último existe justamente porque `created_at` é o ÚNICO relógio que
+    # responde "esta linha chegou agora?". 📊 99.845 das 99.951 linhas
+    # `history_sync` chegam com mais de 15 min de atraso sobre o `wa_timestamp`;
+    # um cursor por `wa_timestamp` perderia 99,89% delas em silêncio.
+    #
+    # A regra que continua valendo é mais estreita e não venceu:
+    # **a ELEGIBILIDADE é julgada por `wa_timestamp`, nunca por `created_at`.**
+    # Por isso o guarda passou a olhar a FUNÇÃO que lê o acervo, e não o arquivo
+    # inteiro. CLAUDE.md §9.3: quando o fato muda, o teste muda com ele.
     cmd = _comandos("backend/app/services/atlas/espelho_chat.py")
-    checar('.gte("wa_timestamp", desde)' in cmd,
+    # 🔴 `_ler_pagina_do_acervo`, e não `_ler`. Havia DUAS funções `_ler` no
+    # módulo — uma dentro de `diagnostico()`, outra dentro do backfill — e o
+    # recorte pegava a primeira, deixando o guarda verde sobre a função errada.
+    # O nome ambíguo foi desfeito na origem; o controle abaixo prova o recorte.
+    leitura = _corpo_da_funcao("_ler_pagina_do_acervo", cmd)
+    checar('.gte("wa_timestamp", desde)' in leitura,
            "CONTROLE — o backfill filtra pela data REAL da mensagem")
-    checar('.gte("created_at", desde)' not in cmd,
+    checar('.gte("created_at"' not in leitura,
            "CONTROLE — e NÃO pela data em que ela foi gravada",
            "gravada hoje ≠ enviada hoje; o pareamento novo prova isso")
+    checar(leitura != "" and "attendance_transcripts" in leitura,
+           "CONTROLE — o guarda achou mesmo a função que lê o acervo",
+           "um recorte vazio deixaria os dois controles acima verdes por engano")
 
     # E a janela do sync é a MESMA da lista — um número só para lembrar.
     checar(f"dias: int = {EC.JANELA_DA_LISTA_DIAS}" in _fonte(
@@ -945,6 +991,163 @@ def teste_o_historico_de_quinze_meses_nao_entope_a_mesa():
            or "dias=int(os.getenv(\"ESPELHO_SYNC_DIAS\", str(JANELA_DA_LISTA_DIAS))" in cmd,
            "a janela do sync é a mesma da lista",
            f"{EC.JANELA_DA_LISTA_DIAS} dias nos dois lugares")
+
+
+def teste_um_ciclo_sem_novidade_nao_le_o_chat_inteiro() -> None:
+    """🔴 O TESTE QUE MEDE O QUE CUSTOU A COTA DO SUPABASE.
+
+    📊 13/08/2026, produção: o sync releu o acervo a cada ciclo e, para CADA
+    linha, carregava as 40 últimas mensagens da conversa para deduplicar. O
+    contador do Postgres registrou **771.313 chamadas** dessa consulta, com
+    ~33 linhas de 290 B cada — para produzir **5.681 mensagens**.
+
+        136 leituras de `messages` para cada mensagem escrita.
+
+    Isso sozinho é da ordem dos 6,98 GB que restringiram a organização no plano
+    Free, e o produto inteiro passou a responder 402.
+
+    O que este teste guarda é a REGRA que impede a volta: uma passada que não
+    tem nada novo para escrever não pode ler `messages` nenhuma vez. Nenhuma —
+    não "poucas". O eco é a única leitura que sobrou, e ele não pode existir
+    para mensagem antiga vinda do acervo.
+
+    Guarda comportamento, não implementação: se alguém reintroduzir QUALQUER
+    leitura por linha — outra janela, outro atalho, outro cache mal colocado —
+    o número sobe e este teste reprova.
+    """
+    import asyncio
+
+    print("\n[9] Um ciclo sem novidade não relê o chat inteiro")
+    EC = _carregar_espelho()
+    banco = BancoFalso()
+
+    # Um contador de leituras por tabela, espetado no dublê.
+    leituras: dict = {}
+    original = BancoFalso.table
+
+    def _contando(self, nome):
+        consulta = original(self, nome)
+        executar = consulta.execute
+
+        def _conta():
+            resposta = executar()
+            # Só LEITURA conta: insert/update não são o problema do Egress.
+            if consulta._insert is None and consulta._update is None:
+                leituras[nome] = leituras.get(nome, 0) + 1
+            return resposta
+
+        consulta.execute = _conta
+        return consulta
+
+    BancoFalso.table = _contando
+    try:
+        ontem = (datetime.now(timezone.utc) - timedelta(days=1)).isoformat()
+        banco.semear("attendance_transcripts", [
+            {"id": f"t{i}", "company_id": "autofleet",
+             "counterparty": f"55479995{i:04d}", "direction": "in",
+             "msg_type": "text", "text": f"mensagem {i}", "message_id": f"WA-{i}",
+             "wa_timestamp": ontem, "created_at": ontem}
+            for i in range(50)])
+
+        # 1ª passada: trabalho de verdade — 50 conversas e 50 mensagens nascem.
+        asyncio.run(EC.trazer_conversas_ja_capturadas(
+            company_id="autofleet", dias=7, db=banco))
+        primeira = dict(leituras)
+        checar(len(banco.linhas("messages")) == 50,
+               "a primeira passada grava as 50 mensagens",
+               f"{len(banco.linhas('messages'))}")
+
+        # 2ª passada: NADA é novo. É o ciclo que rodava a cada 10 minutos.
+        leituras.clear()
+        asyncio.run(EC.trazer_conversas_ja_capturadas(
+            company_id="autofleet", dias=7, db=banco))
+
+        checar(len(banco.linhas("messages")) == 50,
+               "a segunda passada não escreve nada",
+               f"{len(banco.linhas('messages'))} (era para ser 50)")
+        checar(leituras.get("messages", 0) == 0,
+               "🔴 e não lê `messages` NENHUMA vez",
+               f"{leituras.get('messages', 0)} leitura(s) — o desenho antigo fazia 50")
+        checar(leituras.get("attendance_transcripts", 0) <= 2,
+               "CONTROLE — o acervo ainda é lido (senão não haveria o que deduplicar)",
+               f"{leituras.get('attendance_transcripts', 0)} página(s)")
+        checar(primeira.get("messages", 0) == 0,
+               "CONTROLE — nem a PRIMEIRA passada lê `messages`",
+               "mensagem do cliente (direcao=in) nunca pode ser eco de nada")
+    finally:
+        BancoFalso.table = original
+
+
+def teste_o_eco_ainda_le_quando_precisa() -> None:
+    """CONTROLE do teste acima: provar que a leitura de eco NÃO morreu.
+
+    Um teste que só sabe dizer "leu zero vezes" fica verde se alguém apagar o
+    guarda de eco inteiro. Este prova o outro lado: quando a mensagem PODE ser
+    eco — saída, com texto, recém-chegada — a leitura acontece.
+
+    Sem este par, "zero leituras" seria uma vitória vazia.
+    """
+    import asyncio
+
+    print("\n[9b] CONTROLE — a leitura de eco acontece quando pode haver eco")
+    EC = _carregar_espelho()
+    banco = BancoFalso()
+    leituras: dict = {}
+    original = BancoFalso.table
+
+    def _contando(self, nome):
+        consulta = original(self, nome)
+        executar = consulta.execute
+
+        def _conta():
+            resposta = executar()
+            if consulta._insert is None and consulta._update is None:
+                leituras[nome] = leituras.get(nome, 0) + 1
+            return resposta
+
+        consulta.execute = _conta
+        return consulta
+
+    BancoFalso.table = _contando
+    try:
+        agora = datetime.now(timezone.utc)
+        banco.semear("conversations", [
+            {"id": "c1", "company_id": "autofleet",
+             "user_id": "user:autofleet:554799956540",
+             "user_phone": "554799956540", "channel": "whatsapp",
+             "agent_id": None, "status": "open"}])
+
+        # Mensagem de SAÍDA, agora: pode ser eco → tem de ler.
+        leituras.clear()
+        asyncio.run(EC.espelhar_no_chat(
+            company_id="autofleet", counterparty="554799956540", texto="pronto",
+            msg_type="text", direcao="out", message_id="WA-OUT-1",
+            quando_iso=agora.isoformat(), db=banco))
+        checar(leituras.get("messages", 0) == 1,
+               "mensagem de saída recente: o eco É consultado",
+               f"{leituras.get('messages', 0)} leitura(s)")
+
+        # Mesma mensagem de saída, mas de ONTEM: não pode ser eco → não lê.
+        leituras.clear()
+        asyncio.run(EC.espelhar_no_chat(
+            company_id="autofleet", counterparty="554799956540", texto="antiga",
+            msg_type="text", direcao="out", message_id="WA-OUT-2",
+            quando_iso=(agora - timedelta(days=1)).isoformat(), db=banco))
+        checar(leituras.get("messages", 0) == 0,
+               "CONTROLE — mensagem de saída ANTIGA não consulta o eco",
+               "eco de dois minutos não alcança mensagem de ontem")
+
+        # Mensagem de ENTRADA agora: cliente não ecoa dashboard → não lê.
+        leituras.clear()
+        asyncio.run(EC.espelhar_no_chat(
+            company_id="autofleet", counterparty="554799956540", texto="oi",
+            msg_type="text", direcao="in", message_id="WA-IN-1",
+            quando_iso=agora.isoformat(), db=banco))
+        checar(leituras.get("messages", 0) == 0,
+               "CONTROLE — mensagem do CLIENTE não consulta o eco",
+               "o eco só existe para o lado que o dashboard enviou")
+    finally:
+        BancoFalso.table = original
 
 
 def main() -> int:
@@ -963,6 +1166,8 @@ def main() -> int:
     teste_a_janela_inteira_chega_ao_chat_e_nao_so_as_primeiras_mil()
     teste_conversa_longa_nao_duplica_no_ciclo_seguinte()
     teste_o_historico_de_quinze_meses_nao_entope_a_mesa()
+    teste_um_ciclo_sem_novidade_nao_le_o_chat_inteiro()
+    teste_o_eco_ainda_le_quando_precisa()
 
     print("\n" + "=" * 70)
     if _PROBLEMAS:

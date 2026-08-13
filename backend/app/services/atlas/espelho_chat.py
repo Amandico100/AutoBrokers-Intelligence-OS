@@ -70,6 +70,30 @@ LIMITE_DE_RECENCIA_HORAS = 720.0  # 30 dias
 # frase de propósito.
 _JANELA_DE_ECO_SEGUNDOS = 120.0
 
+# 🔴 O PORTÃO que decide se vale a pena PERGUNTAR pelo eco. Mais largo que a
+# janela de comparação, de propósito.
+#
+# 📊 13/08/2026: a leitura das 40 últimas mensagens era feita para TODA mensagem
+# — inclusive as 4.008 linhas antigas que o sync reprocessava a cada ciclo. Ela
+# custou 771.313 chamadas devolvendo ~33 linhas de 290 B cada: a maior fatia
+# isolada do Egress que restringiu a organização no Supabase.
+#
+# Mas eco só EXISTE por `_JANELA_DE_ECO_SEGUNDOS`. Uma mensagem de ontem não
+# pode ser o eco de uma resposta enviada há dois minutos — logo a leitura nunca
+# deveria ter acontecido para ela.
+#
+# 300s e não 120s: o `quando_iso` vem do relógio do WhatsApp, não do nosso. Um
+# desvio de relógio de dois minutos faria o portão fechar na cara de um eco
+# legítimo, e a atendente veria a própria frase duas vezes. A margem é grátis
+# (mensagem ao vivo é caso raro) e a REGRA DE NEGÓCIO continua sendo 120s: o
+# portão decide se pergunta, `_JANELA_DE_ECO_SEGUNDOS` decide a resposta.
+_PORTAO_DE_ECO_SEGUNDOS = 300.0
+
+# Quantas mensagens recentes bastam para reconhecer um eco. O eco é a resposta
+# que a atendente acabou de enviar; se ela escreveu mais de 20 mensagens nos
+# últimos 300 segundos, a 21ª não é eco de nada — é uma pessoa digitando.
+_MENSAGENS_PARA_ECO = 20
+
 # Tipos que valem uma conversa mesmo sem uma palavra escrita.
 _TIPOS_SEM_TEXTO = ("audio", "image", "document", "video", "sticker")
 
@@ -247,11 +271,45 @@ async def espelhar_no_chat(*, company_id: str, counterparty: str, texto: str,
     Idempotente por `message_id`: a resposta enviada pelo dashboard vai ao
     WhatsApp e **volta** como `fromMe`. Sem esta guarda, cada resposta apareceria
     duas vezes no chat de quem acabou de escrevê-la.
+
+    🔴 O CONTRATO DESTA FUNÇÃO NÃO MUDA — ela devolve ``Optional[str]``, como
+    sempre devolveu. Quem precisa saber POR QUE (o cursor incremental do
+    `sincronizar_chats`, que não pode avançar sobre erro) chama
+    `_espelhar_com_desfecho`. São dois chamadores com necessidades diferentes,
+    e trocar o tipo de retorno desta aqui quebraria `observer_intake` e
+    `webhook.py` em silêncio.
+    """
+    conversa, _motivo = await _espelhar_com_desfecho(
+        company_id=company_id, counterparty=counterparty, texto=texto,
+        msg_type=msg_type, direcao=direcao, message_id=message_id,
+        quando_iso=quando_iso, nome=nome, db=db)
+    return conversa
+
+
+# Os desfechos que o cursor pode ultrapassar com segurança: todos significam
+# "esta linha foi resolvida e não há mais nada a fazer com ela". Qualquer
+# outro — inclusive `erro:*` — trava o avanço do cursor antes dela.
+DESFECHOS_DETERMINISTICOS = frozenset({
+    "conversa_nova", "mensagem_nova", "ja_estava", "eco_do_dashboard",
+    "filtrada",
+})
+
+
+async def _espelhar_com_desfecho(*, company_id: str, counterparty: str, texto: str,
+                                 msg_type: str, direcao: str, message_id: str,
+                                 quando_iso: str, nome: Optional[str] = None,
+                                 db: Any = None) -> tuple:
+    """O mesmo trabalho, devolvendo ``(conversation_id, motivo)``.
+
+    O `motivo` já existia — ele ia para o contador e era jogado fora. O cursor
+    incremental precisa dele para responder uma pergunta que o `None` não
+    responde: *"esta linha ficou de fora porque não devia entrar, ou porque o
+    banco caiu?"* Avançar sobre a segunda perderia a mensagem para sempre.
     """
     telefone = _digitos(counterparty)
     empresa = str(company_id or "").strip()
     if not telefone or not empresa:
-        return None
+        return None, "sem_telefone_ou_empresa"
 
     if db is None:
         from app.core.database import get_supabase_client
@@ -259,7 +317,30 @@ async def espelhar_no_chat(*, company_id: str, counterparty: str, texto: str,
         db = get_supabase_client()
     cliente = getattr(db, "client", db)
 
-    def _eco_do_dashboard(recentes: list) -> bool:
+    def _pode_haver_eco() -> bool:
+        """Vale a pena PERGUNTAR pelo eco? Puro, e responde quase sempre `False`.
+
+        🔴 É este portão que derruba a conta do Egress. Eco só pode existir para
+        mensagem que a corretora enviou, com texto, e recém-chegada — porque a
+        janela de comparação tem `_JANELA_DE_ECO_SEGUNDOS`. Para todo o resto
+        (mensagem do cliente, mídia sem texto, e TODA linha vinda do acervo) a
+        resposta é `False` e nenhuma leitura acontece.
+        """
+        if direcao != "out" or not str(texto or "").strip():
+            return False
+        try:
+            nascida = datetime.fromisoformat(str(quando_iso).replace("Z", "+00:00"))
+        except (TypeError, ValueError):
+            # Sem data legível, pergunta. Errar para o lado de VERIFICAR custa
+            # uma leitura pequena; errar para o outro mostra a frase em dobro
+            # para quem acabou de escrevê-la.
+            return True
+        if nascida.tzinfo is None:
+            nascida = nascida.replace(tzinfo=timezone.utc)
+        idade = (datetime.now(timezone.utc) - nascida).total_seconds()
+        return idade <= _PORTAO_DE_ECO_SEGUNDOS
+
+    def _eco_do_dashboard(conversa_id: str) -> bool:
         """Esta mensagem é o eco da que o dashboard acabou de enviar?
 
         A resposta escrita no chat vai ao WhatsApp e **volta** pelo webhook como
@@ -276,10 +357,28 @@ async def espelhar_no_chat(*, company_id: str, counterparty: str, texto: str,
         dashboard, nos últimos `_JANELA_DE_ECO_SEGUNDOS`. Restrita a mensagens
         `origem='dashboard'` de propósito — assim uma atendente que digita a
         mesma palavra duas vezes NO CELULAR não perde a segunda.
+
+        🔴 A LEITURA MUDOU EM 13/08/2026, E O FILTRO É POR `created_at`.
+        Antes: as 40 últimas mensagens da conversa, para TODA mensagem. 📊 Custo
+        medido: 771.313 chamadas × ~33 linhas × 290 B — a maior fatia isolada do
+        Egress que restringiu o Supabase. Agora: só as dos últimos
+        `_PORTAO_DE_ECO_SEGUNDOS`, e só quando `_pode_haver_eco()` deixa passar.
+        Devolve tipicamente ZERO linhas.
+
+        `created_at` é coluna comum, servida por `idx_messages_by_conversation
+        (conversation_id, created_at)`, que já existe. Nenhum filtro JSON entra
+        na consulta: a marca `origem` continua sendo lida EM PYTHON, sobre as
+        poucas linhas carregadas — exatamente como antes.
         """
         texto_limpo = str(texto or "").strip()
-        if direcao != "out" or not texto_limpo:
-            return False
+        desde = (datetime.now(timezone.utc)
+                 - timedelta(seconds=_PORTAO_DE_ECO_SEGUNDOS)).isoformat()
+        recentes = (cliente.table("messages")
+                    .select("id, content, created_at, payload")
+                    .eq("conversation_id", conversa_id)
+                    .gte("created_at", desde)
+                    .order("created_at", desc=True)
+                    .limit(_MENSAGENS_PARA_ECO).execute().data or [])
         for m in recentes:
             # A marca de origem é lida EM PYTHON, sobre linhas já carregadas.
             # Filtrar `payload->>origem` no banco foi o que cegou o espelho —
@@ -305,18 +404,21 @@ async def espelhar_no_chat(*, company_id: str, counterparty: str, texto: str,
     def _trabalho() -> tuple:
         """Devolve ``(conversation_id, motivo)``. O motivo vai para o contador.
 
-        🔴 A ORDEM MUDOU EM 06/08/2026, E O MOTIVO IMPORTA.
+        A CONVERSA É RESOLVIDA PRIMEIRO, e a dedup acontece por último.
 
-        A primeira versão deduplicava ANTES de resolver a conversa, com
-        ``.eq("payload->>wa_message_id", ...)`` — um filtro JSON no PostgREST.
-        📊 O resultado medido: 13.200 mensagens entraram no acervo em três
-        horas e **nenhuma** conversa nasceu. A exceção morria no `try/except`
-        que protege a captura, e de fora só dava para ver uma tela vazia.
+        📊 Nota factual sobre 06/08/2026, para não repetir uma atribuição que
+        nunca foi medida: a implementação daquele dia deduplicava ANTES de
+        resolver a conversa, usando um filtro JSON no PostgREST
+        (``.eq("payload->>wa_message_id", ...)``). O mesmo período apresentou
+        também 2.255 `ImportError` (P-121) e 4.059 `APIError` por escrita em
+        colunas inexistentes (`topic`, `extension`). **A causa isolada daquela
+        falha não foi medida** — três defeitos foram trocados juntos, e os
+        contadores nomeiam dois deles.
 
-        Agora a conversa é resolvida primeiro e a deduplicação acontece **em
-        Python**, sobre as últimas mensagens daquela conversa. Uma leitura só,
-        filtro simples, comparação no código. O que o banco faz mal, o Python
-        faz bem — e o que o Python faz, eu consigo testar.
+        O desenho atual abandona essa leitura prévia por um motivo próprio e
+        medido, que não depende de resolver aquela arqueologia: `insert-first` +
+        índice ÚNICO é estruturalmente mais simples e elimina a consulta
+        inteira. Ver o comentário grande no passo 3.
         """
         # 🔴 É uma FÁBRICA, não um objeto de módulo.
         #
@@ -380,40 +482,40 @@ async def espelhar_no_chat(*, company_id: str, counterparty: str, texto: str,
                 return None, "conversa_nao_criada"
             conversa_id = nova[0]["id"]
 
-        # 2) as últimas mensagens desta conversa — UMA leitura, e é dela que
-        #    saem as duas checagens: mensagem repetida e eco do dashboard.
-        recentes = (cliente.table("messages")
-                    .select("id, content, created_at, payload")
-                    .eq("conversation_id", conversa_id)
-                    .order("created_at", desc=True).limit(40).execute().data or [])
-
-        # 3) esta mensagem já está no chat? (o WhatsApp reentrega em reconexão)
-        #
-        # ⚠️ Esta checagem é um ATALHO, não a garantia. Ela olha só as 40 mais
-        # recentes; conversas com 60 mensagens já existem, e a mais antiga cai
-        # fora da janela. Quem garante de verdade é o índice único parcial
-        # `messages_espelho_sem_duplicata_uidx` (migration 20260806_02) — o
-        # Postgres não tem janela.
-        #
-        # O atalho fica porque evita a ida ao banco no caso comum. O `except`
-        # do insert é que fecha a porta.
-        if message_id:
-            for m in recentes:
-                if (m.get("payload") or {}).get("wa_message_id") == message_id:
-                    return conversa_id, "ja_estava"
-
-        # 4) é o eco da resposta que o próprio dashboard mandou? Então ela já
+        # 2) é o eco da resposta que o próprio dashboard mandou? Então ela já
         #    está no chat, escrita por quem a digitou.
-        if _eco_do_dashboard(recentes):
+        #
+        # ⚠️ Esta é a ÚNICA leitura de `messages` que sobrou, e ela quase nunca
+        # acontece: `_pode_haver_eco()` a barra para tudo que não seja uma
+        # mensagem de saída, com texto, recém-chegada.
+        if _pode_haver_eco() and _eco_do_dashboard(conversa_id):
             return conversa_id, "eco_do_dashboard"
 
-        # 5) a mensagem
+        # 3) a mensagem — TENTA GRAVAR, e deixa o banco responder se ela já
+        #    estava lá.
+        #
+        # 🔴 A PERGUNTA "esta mensagem já está no chat?" DEIXOU DE SER UMA
+        # LEITURA — 13/08/2026.
+        #
+        # Antes havia um atalho em Python sobre as 40 últimas mensagens, e o
+        # próprio comentário admitia que era só atalho: a garantia sempre foi o
+        # índice único parcial `messages_espelho_sem_duplicata_uidx` (migration
+        # 20260806_02), que não tem janela.
+        #
+        # 📊 O atalho custou 771.313 leituras para produzir 5.681 mensagens —
+        # 136 leituras por escrita, e a maior fatia isolada dos 6,98 GB que
+        # restringiram a organização no Supabase. Um atalho que custa mais que
+        # o caminho não é atalho.
+        #
+        # Agora a garantia responde sozinha: insere, e se o índice disser 23505,
+        # a mensagem já estava. Zero leitura no caminho comum, e a dedup passa a
+        # ser exatamente tão forte quanto o Postgres — nunca mais tão fraca
+        # quanto uma janela de 40 linhas.
         try:
             _inserir_mensagem(cliente, conversa_id)
         except Exception as erro:  # noqa: BLE001
             # 23505 = o índice único disse "esta mensagem já está aqui". Isso é
-            # o sistema funcionando, não uma falha: significa que a janela de 40
-            # do atalho acima não a viu, e o banco viu. Contar como erro faria o
+            # o sistema funcionando, não uma falha: contar como erro faria o
             # /health gritar por um acerto.
             if "23505" in str(erro) or "duplicate key" in str(erro).lower():
                 return conversa_id, "ja_estava"
@@ -458,7 +560,7 @@ async def espelhar_no_chat(*, company_id: str, counterparty: str, texto: str,
     try:
         conversa_id, motivo = await asyncio.to_thread(_trabalho)
         await contar(motivo)
-        return conversa_id
+        return conversa_id, motivo
     except Exception as erro:  # noqa: BLE001
         # O espelho é um bônus; a CAPTURA é a obrigação, e ela já aconteceu
         # antes desta chamada. Falhar aqui não pode perder conversa nenhuma.
@@ -466,9 +568,15 @@ async def espelhar_no_chat(*, company_id: str, counterparty: str, texto: str,
         # Mas o MOTIVO não se perde mais: vai para o contador, e do contador
         # para o /health. 📊 Foi por não ter isto que 13.200 mensagens entraram
         # e ninguém conseguiu dizer por que o chat continuava vazio.
-        await contar(f"erro:{type(erro).__name__}")
+        #
+        # 🔴 E agora o motivo tem um segundo leitor: o cursor incremental. Um
+        # `erro:*` NÃO está em `DESFECHOS_DETERMINISTICOS`, então o cursor para
+        # antes desta linha e volta nela na próxima passada. Sem isso, uma queda
+        # de rede de três segundos apagaria uma mensagem do chat para sempre.
+        motivo = f"erro:{type(erro).__name__}"
+        await contar(motivo)
         logger.warning("[ESPELHO] não consegui espelhar no chat (%s)", type(erro).__name__)
-        return None
+        return None, motivo
 
 
 async def pausar_por_intervencao_humana(*, company_id: str, counterparty: str,
@@ -560,7 +668,7 @@ async def trazer_conversas_ja_capturadas(
 
     desde = (datetime.now(timezone.utc) - timedelta(days=max(1, int(dias)))).isoformat()
 
-    def _ler(inicio: int, fim: int) -> list:
+    def _ler_pagina_do_acervo(inicio: int, fim: int) -> list:
         return (cliente.table("attendance_transcripts")
                 .select("counterparty, direction, msg_type, text, message_id, wa_timestamp")
                 .eq("company_id", empresa)
@@ -626,7 +734,7 @@ async def trazer_conversas_ja_capturadas(
         inicio = pagina * _TAMANHO_DA_PAGINA
         try:
             lote = await asyncio.to_thread(
-                _ler, inicio, inicio + _TAMANHO_DA_PAGINA - 1)
+                _ler_pagina_do_acervo, inicio, inicio + _TAMANHO_DA_PAGINA - 1)
         except Exception as erro:  # noqa: BLE001
             logger.warning("[ESPELHO] backfill não leu o acervo (%s)", type(erro).__name__)
             if linhas:
@@ -637,7 +745,7 @@ async def trazer_conversas_ja_capturadas(
         if len(lote) < _TAMANHO_DA_PAGINA:
             break
 
-    # Lidas do mais novo para trás (ver `_ler`); gravadas na ordem da conversa.
+    # Lidas do mais novo para trás (ver `_ler_pagina_do_acervo`); gravadas na ordem da conversa.
     # Sem esta inversão, o chat mostraria a resposta antes da pergunta.
     linhas = list(reversed(linhas))
 
