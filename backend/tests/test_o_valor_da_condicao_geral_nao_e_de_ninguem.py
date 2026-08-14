@@ -180,6 +180,76 @@ def teste_a_reserva_do_valor_nao_e_um_esconderijo():
            T.templatize("valor de 987654,00 apurado", documento_publico=True))
 
 
+def teste_o_numero_do_processo_susep_e_a_fonte_nao_o_cnpj():
+    print("\n[1c] O processo SUSEP é a PROVA da carta, não dado de ninguém")
+
+    # 🔴 O GUARDA BARRAVA A CARTA QUE FAZIA A COISA CERTA.
+    #
+    # 📊 Na publicação da HDI, 14/08/2026: **58 de 977 cartas recusadas**, e
+    # todas pelo mesmo motivo — o número do processo SUSEP casava com o padrão
+    # de CNPJ. Entre elas, as 54 do Sompo Imobiliário, que carregam o processo
+    # justamente porque a HDI tem QUATRO residenciais parecidos e o processo é
+    # o único desempate.
+    #
+    # A §10.3 regra 3 manda toda carta citar a fonte. Mascarar o processo apaga
+    # exatamente a prova que o corretor abre para mostrar ao cliente.
+    #
+    # A separação é ESTRUTURAL, não heurística de contexto:
+    #     SUSEP   15414.900228/2017-63    5 dígitos · UM ponto
+    #     CNPJ    12.345.678/0001-90      2 dígitos · DOIS pontos
+    for frase in (
+        "Condições Gerais do processo SUSEP 15414.900228/2017-63",
+        "No Sompo Imobiliário Residencial versão 1.6 (SUSEP 15414.900228/2017-63)",
+    ):
+        checar(_limpo(frase, documento_publico=True),
+               f"o processo SUSEP atravessa o acervo: {frase[:44]!r}",
+               T.templatize(frase, documento_publico=True)[:70])
+
+    # 🔴 CONTROLE — e o CNPJ de verdade continua barrado. Sem esta metade, a
+    # reserva poderia ter sido escrita larga demais e o teste passaria igual.
+    checar(not _limpo("a empresa 12.345.678/0001-90 contratou",
+                      documento_publico=True),
+           "CONTROLE — CNPJ de verdade continua mascarado no acervo",
+           T.templatize("a empresa 12.345.678/0001-90 contratou",
+                        documento_publico=True))
+    checar(not _limpo("o segurado 123.456.789-00 pediu", documento_publico=True),
+           "CONTROLE — e o CPF também",
+           T.templatize("o segurado 123.456.789-00 pediu", documento_publico=True))
+
+    # 🔴 CONTROLE 2 — na CONVERSA nada mudou. Um número nesse formato não tem
+    # por que existir num chat, e lá ele continua sendo mascarado.
+    checar(not _limpo("SUSEP 15414.900228/2017-63"),
+           "CONTROLE 2 — na conversa o processo continua mascarado",
+           T.templatize("SUSEP 15414.900228/2017-63"))
+
+
+def teste_motorista_amigo_e_o_nome_do_servico_nao_de_uma_pessoa():
+    print("\n[1d] `Motorista Amigo` é serviço; `motorista Allan Souza` é gente")
+
+    # 📊 A 59ª recusa da HDI. A regra leu "Motorista" como cargo e "Amigo da
+    # HDI" como a pessoa que o ocupa. Mas numa condição geral o que vem depois
+    # do papel costuma ser a MARCA do serviço — como `Carro Reserva` e
+    # `Motorista Substituto`, que já estavam na lista negativa.
+    for frase in ("O Motorista Amigo da HDI atende quando o segurado",
+                  "o Motorista Particular leva o segurado até em casa",
+                  "na rede de Oficina Credenciada do produto"):
+        checar(_limpo(frase, documento_publico=True),
+               f"nome de serviço passa: {frase[:42]!r}",
+               T.templatize(frase, documento_publico=True)[:70])
+
+    # 🔴 CONTROLE — e é aqui que a lista negativa se paga ou custa caro: cada
+    # palavra acrescentada é uma pessoa a menos protegida se eu errar. Estas
+    # três frases têm de continuar sendo mascaradas.
+    for frase, quem in (
+        ("o motorista Allan Souza Silveira dirigia", "motorista + nome"),
+        ("o condutor Maria Silva Santos declarou", "condutor + nome"),
+        ("o porteiro João Batista viu tudo", "porteiro + nome"),
+    ):
+        checar("{NOME}" in T.templatize(frase, documento_publico=True),
+               f"CONTROLE — {quem} continua mascarado",
+               T.templatize(frase, documento_publico=True))
+
+
 def teste_a_ressalva_nao_abriu_a_porta_para_gente():
     print("\n[2] CONTROLE — com a ressalva LIGADA, dado de pessoa continua barrado")
 
@@ -547,6 +617,8 @@ def main() -> int:
     print("=" * 74)
     teste_a_cifra_da_condicao_geral_sobrevive()
     teste_a_reserva_do_valor_nao_e_um_esconderijo()
+    teste_o_numero_do_processo_susep_e_a_fonte_nao_o_cnpj()
+    teste_motorista_amigo_e_o_nome_do_servico_nao_de_uma_pessoa()
     teste_a_ressalva_nao_abriu_a_porta_para_gente()
     teste_bom_dia_tambem_e_saudacao()
     teste_o_ramo_nao_e_um_logradouro()

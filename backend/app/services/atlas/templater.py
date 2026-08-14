@@ -578,7 +578,16 @@ _PII_PATTERNS: List[Tuple[re.Pattern, str]] = [
                 # nestes adjetivos.
                 r"mais|menos|m[úu]ltipl[oa]|[úu]nic[oa]|global|total|parcial|"
                 r"eventual|habitual|permanente|prim[áa]ri[oa]|secund[áa]ri[oa]|"
-                r"jovem|idos[oa]|maior|menor)\b)"
+                r"jovem|idos[oa]|maior|menor|"
+                # 14/08/2026 — o NOME COMERCIAL DO SERVIÇO. 📊 A carta do
+                # `Motorista Amigo da HDI` foi recusada na publicação: a regra
+                # leu "Motorista" como cargo e "Amigo da HDI" como a pessoa que
+                # o ocupa. Mas `Motorista Amigo` é o nome do serviço — como
+                # `Carro Reserva` e `Motorista Substituto`, que já estavam aqui.
+                # Numa condição geral, o que vem depois do papel costuma ser a
+                # marca do serviço, não gente.
+                r"amig[oa]s?|particular(?:es)?|profissional|profissionais|"
+                r"credenciad[oa]s?|referenciad[oa]s?|autorizad[oa]s?)\b)"
                 r"(?-i:[A-ZÀ-Ú][A-Za-zà-ú]{2,}"
                 r"(?:" + _H + r"+(?:" + _CONECTIVO + r")?"
                 + _NAO_E_NOME + r"[A-ZÀ-Ú][A-Za-zà-ú]{2,}){1,4})"),
@@ -1120,6 +1129,27 @@ _CONHECIMENTO_INTOCAVEL = re.compile(
 # ela que o corretor confere se a caldeira da empresa está em dia.
 _DATA_DO_DOCUMENTO = re.compile(r"\b\d{2}/\d{2}/\d{2,4}\b")
 
+# 🔴 O NÚMERO DO PROCESSO SUSEP É O CONTRÁRIO DE DADO PESSOAL — 14/08/2026.
+#
+# Ele é o identificador PÚBLICO do produto no registro oficial, e a §10.3 regra
+# 3 manda toda carta citar a fonte. Mascará-lo apaga exatamente a prova que o
+# corretor abre para mostrar ao cliente.
+#
+# 📊 O que custou: na publicação da HDI, **58 de 977 cartas foram recusadas**
+# por isto — entre elas as 54 do Sompo Imobiliário, que carregam o processo
+# justamente porque há QUATRO residenciais parecidos e o processo é o único
+# desempate. O guarda barrava a carta que fazia a coisa certa.
+#
+# POR QUE ELE CASAVA COM CNPJ, E POR QUE DÁ PARA SEPARAR
+# ------------------------------------------------------
+#     SUSEP   15414.900228/2017-63    5 dígitos · UM ponto  · ano de 4 dígitos
+#     CNPJ    12.345.678/0001-90      2 dígitos · DOIS pontos
+#
+# São formatos distintos, e a distinção é estrutural — não é heurística de
+# contexto. Por isso a reserva vale só no modo `documento_publico`: num chat, um
+# número nesse formato não tem por que existir, e continua sendo mascarado.
+_PROCESSO_SUSEP = re.compile(r"\b\d{5}\.\d{6}/\d{4}-\d{2}\b")
+
 _MARCA = "\x00%d\x00"
 
 
@@ -1158,7 +1188,8 @@ def _reservar(s: str, *, documento_publico: bool = False):
     # cliente. Só o caminho do acervo (`publicar_cartas.py`), que sabe que está
     # lendo um PDF da SUSEP, passa `documento_publico=True`.
     if documento_publico:
-        for _rx in (_VALOR_COM_RS, _VALOR_SEM_RS, _DATA_DO_DOCUMENTO):
+        for _rx in (_PROCESSO_SUSEP, _VALOR_COM_RS, _VALOR_SEM_RS,
+                    _DATA_DO_DOCUMENTO):
             s = _rx.sub(_troca, s)
     return s, guardados
 
