@@ -3449,3 +3449,277 @@ da HDI — e provavelmente a mesma solução (`--headless=new`).
 - **Custa se esquecer:** quem for fazer a Yelum vai achar que a credencial está
   errada. Não está: 📊 ela foi gravada em 10/08 e o portal recusa antes do login.
 
+
+
+---
+
+## ✅ P-100 RESOLVIDO em 12/08/2026 — a HDI baixa boleto
+
+📊 Prova real, uma visita ao portal:
+
+```
+status ............ done
+mensagem .......... HDI: 1 inadimplente(s), 1 boleto(s)
+boleto ............ ok=True · 27.037 bytes · via=dsp_boleto · valida como %PDF
+```
+
+**Os quatro defeitos que impediam, e o que cada um ensinou:**
+
+| # | O defeito | A lição |
+|---|---|---|
+| 1 | **A busca é assíncrona.** O 1º POST devolve *"aguarde, processando"* + um form que se reenvia em 5 s. Era essa sala de espera que eu lia como "tabela vazia" | HTTP 200 com corpo de 4 KB **não** é resultado. Só o reenvio traz a tabela |
+| 2 | **`s_tipo=1` é "A vencer"**, não "Atrasadas" — eu pedia justamente quem não interessa | 📊 O `<select>` do portal responde em 3 segundos o que eu tentei adivinhar em 5 rodadas |
+| 3 | **O boleto não é `<a href>`** — mora dentro de `onclick="window.open('dsp_boleto.htm?p=…')"` | Procurar `href` não acha nada, mesmo com a tabela lida certa |
+| 4 | **Janela máxima de 30 dias** (validação do próprio botão Buscar). Meu padrão era 365 | Varredura em blocos, sem buraco entre eles |
+
+**E duas descobertas de estrutura que valem para o parser de qualquer portal legado:**
+
+- **Uma `<table>` por documento**, não uma tabela com N linhas. E a primeira nem
+  fecha o `<tbody>` — parser que exige HTML bem formado quebra aqui.
+- **Crédito também não gera boleto**, não só Débito. A marca certa é a frase
+  *"Parcela diferente de Boleto Bancário"*, não a forma de pagamento.
+
+📊 Tudo isto está preso por **102 asserções** rodando contra uma fixture com a
+estrutura real do HTML e os dados trocados (`backend/tests/fixtures/hdi_parcelas.py`)
+— zero acesso ao portal para testar.
+
+- **O que falta para a HDI ser 100%:** rodar pelo worker (fila `portal_jobs`) com
+  o storage ligado. Isso depende do deploy (P-98), não de mais código.
+
+## P-104 · 🟡 A regra de ouro contra bloqueio, aprendida a duras penas
+
+📊 Dois portais independentes (HDI e Tokio) passaram a recusar acesso depois de
+~15 e ~4 visitas em menos de 30 minutos. **Eles reagem à frequência, não ao
+método.**
+
+```
+FASE 0 (reconhecimento) .... no máximo 2 visitas
+FASE 2 (replicar) .......... 1 visita
+FASE 3 (journey) ........... teste roda de FIXTURE, zero visita
+FASE 4 (ligar) ............. 1 rodada, com a Allianz junto como controle
+```
+
+> **O portal da corretora não é ambiente de teste.** Toda leitura repetida sai de
+> fixture salva. Foi assim que a HDI fechou: 4 defeitos corrigidos offline, uma
+> única visita para provar.
+
+
+
+---
+
+## ✅ P-98 e P-105 RESOLVIDOS em 12/08/2026 — a HDI fecha, e não precisou de proxy
+
+📊 **Prova pela fila real do worker de produção:**
+
+```
+HDI ....... done · 1 inadimplente · boleto de 27.037 bytes no bucket
+Allianz ... done · 4 inadimplentes · 4 boletos (LINHA DE CONTROLE)
+saida_de_rede ... "direta (IP do servidor)"   ← sem proxy nenhum
+```
+
+### O Akamai eram DOIS fatores, e nenhum era o IP
+
+| Fator | Sintoma | Correção |
+|---|---|---|
+| Impressão digital em **JavaScript** | headless clássico é outro binário | `--headless=new` |
+| **`HeadlessChrome` no cabeçalho** | filtro derruba antes de rodar JS | `user_agent_sem_headless()` |
+
+### A lição que quase custou uma assinatura de proxy
+
+O primeiro diagnóstico comparou o navegador com "um cliente HTTP simples"
+(`page.request`) e concluiu, com confiança, que **o fator era o IP**.
+
+> **O teste estava furado.** `page.request` **herda o User-Agent do contexto** —
+> os dois clientes mandaram o mesmo cabeçalho. Ele não isolou o que dizia
+> isolar, e produziu uma conclusão confiante e errada.
+
+O que decidiu foi variar **um fator por vez do mesmo IP**, com controle nas duas
+pontas: UA limpo passa, UA padrão é bloqueado, UA limpo passa.
+
+**Corolário para o método (SPEC-070):** um teste que não consegue separar o que
+promete separar é pior que teste nenhum — ele *fecha* a investigação no lugar
+errado. Antes de concluir, perguntar: *"este teste conseguiria dar o outro
+resultado?"*
+
+### O que ficou pronto e desligado
+
+`proxy_do_portal()` — saída de rede por portal (`PORTAL_PROXY_<PORTAL>` ou
+`PORTAL_PROXY_DEFAULT`). **Não é necessária hoje**, e está sem nenhuma variável
+configurada. Fica para o dia em que um portal recusar o IP de verdade — e aí é
+ligar uma variável, sem deploy de código.
+
+- **Custa se esquecer:** 📊 o IP do servidor é `AS47583 Hostinger`, faixa de
+  hospedagem. Um portal mais agressivo (Porto, Azul) pode barrar por ele — e a
+  saída já está construída.
+
+
+---
+
+## TOKIO MARINE — fechada em 12/08/2026, e o que ela deixou
+
+📊 Job `bc1dfaa0` pela fila de produção: `done`, 3 boletos no bucket, saída
+direta (sem proxy). Detalhe em [`portais/PORTAL-tokio.md`](portais/PORTAL-tokio.md).
+
+| # | O que ficou | De quem | Custa se esquecer |
+|---|---|:--:|---|
+| P-106 | Onde exatamente fica o limite da 2ª via da Tokio — medido em 26 dias (sem) e 7 dias (com); 💭 a hipótese é o `NÃO RECEBER APÓS 15 DIAS` do próprio boleto | 🤖 | nada: o caso já vira tarefa humana com o motivo escrito. Saber o número só deixaria o aviso mais preciso |
+| P-107 | Se inadimplente de **cartão de crédito** aparece em `Clientes inadimplentes` ou **só** em `Débitos Pendentes` / `Cobranças no Cartão` | 🤖 1 visita | 🔴 se for "só", um grupo inteiro de inadimplentes fica invisível — a falha que a SPEC-070 §2 proíbe |
+| P-108 | Uma corretora com **2+ códigos de corretor** na Tokio (a AutoFleet tem 1) | 🧑 Founder indicar | 🔴 metade da carteira invisível, em silêncio |
+| P-109 | O caso **CNPJ** na URL do detalhe (só CPF foi exercitado de ponta a ponta) | 🤖 sai sozinho | a apólice PJ não baixaria boleto — mas apareceria como retido, não como silêncio |
+| P-110 | O que é o ramo **`312`** vs `0531` na mesma apólice | 🧑 atendentes | nada hoje: nenhum dos dois decide coisa alguma |
+
+### O defeito que a Tokio revelou — e que era das TRÊS seguradoras
+
+📊 Dos 4 downloads da primeira rodada, 3 viraram PDF e 1 não. Esse item
+**continuava entrando na fila de envio**: a única porta era
+`sem_boleto_por_regra`, que pega quem a *seguradora* recusa, não quem *falhou
+ao baixar*. O segurado receberia "Segue o boleto abaixo" com anexo nenhum.
+
+Corrigido em `fila_de_cobranca(boletos=…)`, e vale para Allianz, HDI e Tokio.
+
+> **A lição:** o comentário da própria função já avisava desse desfecho. Um
+> caminho estava coberto e o outro não — e só a rodada real com uma falha
+> parcial mostrou a diferença. Teste com tudo dando certo não encontra isto.
+
+## PRÓXIMA SEGURADORA — a porta das três candidatas, medida
+
+📊 12/08/2026, carga pública das telas de login (sem tentar entrar):
+
+| Portal | Peso | Travas detectadas | Veredito |
+|---|---:|---|---|
+| **Yelum** | 12 KB | **nenhuma** | ✅ **a próxima** |
+| Bradesco | 1,79 MB | 🔴 captcha **+ Akamai** | deixar por último |
+| Porto | 90 KB · 7 iframes | 🔴 captcha **+ Incapsula (Imperva)** | precisa de estratégia própria |
+
+📊 Yelum: login em `/account/login`, site em **Drupal**, com um
+`themes/custom/liberty_cohesion/js/portal_api.js` — indício de camada de API.
+Credencial já existe para as duas corretoras; ❓ a senha precisa ser confirmada.
+
+- **Custa se esquecer:** MAPFRE está travada esperando a Saionara (🧑). Yelum
+  não depende de ninguém de fora — é a única que dá para começar hoje.
+
+---
+
+## YELUM — fases 1 a 4 fechadas em 12/08/2026
+
+📊 A journey rodou contra o portal real (corretora Resulta) e trouxe um boleto
+de **5.908 bytes — exatamente o tamanho do PDF que o Founder baixou à mão** no
+mesmo cliente. Detalhe em [`portais/PORTAL-yelum.md`](portais/PORTAL-yelum.md).
+
+| # | O que ficou | De quem | Custa se esquecer |
+|---|---|:--:|---|
+| P-111 | **Fase 5** da Yelum — rodar pela fila de produção | 🧑 redeploy do `portal-worker` | a Yelum só varre quando o serviço tiver a imagem nova |
+| P-112 | A credencial da **AutoFleet** na Yelum (a da Resulta entra; a outra dá erro mesmo parecendo certa) | 🧑 Founder / Saionara | metade das corretoras fica sem Yelum |
+| P-113 | O **teto de visitas** da Yelum — não medido (Tokio ~4, HDI ~15) | 🤖 | tratamos como o mais restritivo até saber |
+| P-114 | Se a API aceita janela **> 90 dias** (a tela limita) | 🤖 1 chamada | dívida antiga fica fora — mas a testemunha PEGA isso e para a varredura |
+| P-115 | Se a credencial **atravessa para a HDI** (mesmo grupo, mesma API) | 🤖 1 visita | seria uma porta a menos para manter |
+
+### 🔴 O erro que eu cometi, e o guarda que ele gera
+
+Eu afirmei ao Founder que **a Yelum não tinha trava nenhuma** — e recomendei
+começar por ela justamente por isso. Estava errado: o app logado roda **Akamai
+Bot Manager** (`sensor_data` → `{"success": true}`, script de 560 KB com `bmak`,
+mPulse).
+
+O que eu medi foi a **página pública de marketing**; o que eu afirmei foi sobre
+o **app logado**. São coisas diferentes, e a pública não é protegida.
+
+> **É a terceira vez neste projeto que o mesmo erro aparece:** medir uma coisa
+> **vizinha** da que se afirma. Antes foi o `page.request` que herdava o
+> User-Agent e "provava" que o fator era o IP; depois foi o guarda de chegada da
+> Tokio, que procurava um link que a **porta** também tinha.
+>
+> A pergunta que teria pego as três:
+> **"a coisa que eu medi é a mesma sobre a qual eu vou afirmar?"**
+
+A escolha continua certa (a Yelum saiu numa tarde), mas pelo motivo certo:
+**a API é limpa** — não porque não tivesse trava.
+
+---
+
+## REGRESSÃO DAS QUATRO SEGURADORAS — 12/08/2026
+
+📊 Sete jobs pela **fila de produção**, nas duas corretoras, todos `done`:
+
+| Corretora | Seguradora | Inadimplentes | Boletos | Retidos |
+|---|---|---:|---:|---:|
+| Resulta | Allianz | 5 | **5** | 0 |
+| AutoFleet | Allianz | 5 | **5** | 0 |
+| Resulta | HDI | 1 | **1** | 0 |
+| AutoFleet | HDI | 3 | **3** | 0 |
+| Resulta | Tokio | 2 | **2** | 0 |
+| AutoFleet | Tokio | 5 | **3** | 2 |
+| Resulta | Yelum | 1 | **1** | 0 |
+| | **total** | **22** | **20** | **2** |
+
+📊 E a conferência que fecha: **20 de 20 arquivos existem no bucket
+`portal-evidence`** e **20 de 20 começam com `%PDF`** — medido baixando os 8
+primeiros bytes de cada um, não confiando no que o código disse que fez.
+
+Os 2 retidos são os dois casos de regra, e cada um chegou com o motivo escrito:
+o DÉBITO com `repique = S` e a parcela vencida há 26 dias para a qual a Tokio
+não emite mais 2ª via.
+
+### 🔴 O que AINDA falta para o ciclo completo
+
+A **colheita** está pronta de ponta a ponta. O **envio** não foi exercitado, e
+depende de duas coisas que não são código:
+
+| # | O que falta | De quem | Custa se esquecer |
+|---|---|:--:|---|
+| P-116 | `human_support_destinations` só tem **AMANDUS**. Resulta e AutoFleet não têm grupo humano cadastrado | 🧑 Founder | os itens retidos (débito, sem 2ª via, sem telefone) **não têm para onde ir** — o aviso é montado e descartado |
+| P-117 | **Nenhuma rotina de cobrança cadastrada** para Resulta nem AutoFleet | 🧑 Founder | nada roda sozinho; hoje as varreduras são enfileiradas à mão |
+| P-118 | O **envio real de WhatsApp** nunca foi testado ponta a ponta | 🧑 Founder avisar antes | é a única peça do caminho que ainda não tem uma medição própria |
+
+> **Sejamos exatos:** as quatro seguradoras entregam boleto no bucket, com o
+> documento do segurado. O que ainda não aconteceu **nem uma vez** é o sistema
+> mandar a mensagem para um cliente de verdade — e o Founder pediu para ser
+> avisado antes que isso aconteça.
+
+---
+
+## MAPFRE — fase 1, e o risco cross-tenant que deixou de ser hipótese
+
+📊 12/08/2026. Credenciais das duas corretoras gravadas, URL corrigida para
+`negocios.mapfre.com.br/acesso`, porta pública medida.
+
+### 🔴 P-119 — o mesmo login enxerga DUAS corretoras
+
+📊 Depois do login, o modal `Selecione o código interno` lista
+**RESULTA** e **AUTO FLEET** na mesma caixa, para o mesmo usuário.
+
+> Se a varredura da Resulta selecionar a AutoFleet, os inadimplentes de uma
+> entram no `company_id` da outra. É **dado atravessando tenant** — CLAUDE.md §7.
+
+**Resolvido por desenho, não por sorte:** `portal_accounts.account_label` guarda
+o nome exato da corretora que aquele login deve selecionar; a journey seleciona
+pelo rótulo, **relê a tela para conferir**, e **para** (`needs_human`) se não
+conferir. Nunca varre "o que estiver selecionado".
+
+Isto materializa a **P-108**, anotada como hipótese desde a Tokio. Lá era "uma
+corretora pode ter mais de um código"; aqui são **duas empresas** atrás do mesmo
+usuário — pior, e real.
+
+- **Custa se esquecer:** um incidente de vazamento entre clientes, que é o único
+  tipo de defeito deste sistema que não dá para consertar depois.
+
+### P-120 — a carteira MAPFRE está sem inadimplente nas duas corretoras
+
+📊 Status `Vencida`, período padrão: `Não encontrado` nas duas. O card
+`Parcelas Inadimplentes` marca `0`.
+
+**Não bloqueia.** Zero inadimplente é um estado, não uma propriedade do portal.
+📊 Na Tokio e na Yelum o boleto de parcela **A vencer** sai pelo mesmo caminho da
+vencida — então dá para provar a cadeia inteira com `Status = Todos`, e o que
+fica ❓ é só a coluna de juros/multa da linha vencida.
+
+- **Custa se esquecer:** nada hoje; no dia em que aparecer o primeiro
+  inadimplente, o último palmo se valida sozinho.
+
+### P-121 — o período padrão da MAPFRE é de QUINZE DIAS
+
+📊 `28/07/2026-12/08/2026`. É a janela mais curta das cinco seguradoras
+(HDI 30 por bloco, Yelum ~90). ❓ O alcance máximo não foi medido.
+
+- **Custa se esquecer:** dívida de dois meses não aparece — e sem uma testemunha
+  independente ninguém saberia. Medir o alcance é pré-requisito do gate.

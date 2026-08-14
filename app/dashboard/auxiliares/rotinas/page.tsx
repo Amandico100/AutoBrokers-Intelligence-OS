@@ -36,6 +36,31 @@ interface Run {
 const DIAS = ['seg', 'ter', 'qua', 'qui', 'sex', 'sáb', 'dom'];
 const BILLING_KIND = 'billing_collection';
 
+/**
+ * SPEC-069 — os portais que a Cobrança varre vêm da CONEXÃO, não do código.
+ *
+ * Aqui existia uma caixinha só, escrita à mão, com `allianz_corretor` fixo — e
+ * marcá-la SUBSTITUÍA a lista inteira (`portal_keys: ['allianz_corretor']`).
+ * Ou seja: não havia como a corretora varrer duas seguradoras. Uma corretora
+ * que fosse forte em Bradesco simplesmente não tinha o produto.
+ *
+ * Agora a lista é a das seguradoras que a própria corretora conectou. Os que
+ * ainda não têm automação aparecem desligados e DITOS — some da tela é como
+ * seguradora cai sem ninguém perceber.
+ */
+type PortalOpcao = {
+  key: string;
+  name: string;
+  category: string;
+  conectado: boolean;
+  automatizado: boolean;
+};
+
+// Espelha `portal_worker/journeys/portais_com_cobranca()`. Ficam nos dois lados
+// de propósito: o backend recusa o que não sabe varrer, e a tela não oferece o
+// que seria recusado. O relatório da rotina é quem prova qual dos dois mandou.
+const PORTAIS_COM_COBRANCA = ['allianz_corretor', 'hdi_corretor'];
+
 function scheduleLabel(s: Routine['schedule']) {
   if (s?.kind === 'interval') return `a cada ${s.minutes} min`;
   const days = s?.weekdays?.length ? ` (${s.weekdays.map((d) => DIAS[d] ?? d).join(', ')})` : '';
@@ -51,6 +76,7 @@ export default function RotinasPage() {
   const [routines, setRoutines] = useState<Routine[] | null>(null);
   const [runs, setRuns] = useState<Run[]>([]);
   const [notice, setNotice] = useState('');
+  const [portais, setPortais] = useState<PortalOpcao[]>([]);
   // SPEC-019 B — modal de criação/edição manual (paridade Claude Rotinas)
   const [editing, setEditing] = useState<Routine | 'new' | null>(null);
   const [saving, setSaving] = useState(false);
@@ -58,6 +84,38 @@ export default function RotinasPage() {
     name: '', instructions: '', knowledge: '', kind: 'daily', time: '08:00', weekdays: '' as string,
     minutes: 60, channel: 'whatsapp', number: '', config: {} as Record<string, unknown>,
   });
+
+  // Carrega as seguradoras que ESTA corretora conectou. Uma chamada só, na
+  // montagem: a lista muda em Conectores, não aqui.
+  useEffect(() => {
+    let vivo = true;
+    (async () => {
+      try {
+        const res = await fetch('/api/dashboard/portal-credentials', { cache: 'no-store' });
+        const j = await res.json();
+        if (!vivo || !res.ok) return;
+        const comCredencial = new Set(
+          ((j.credentials || []) as { portal_key: string; has_password?: boolean }[])
+            .filter((c) => c.has_password)
+            .map((c) => c.portal_key),
+        );
+        setPortais(
+          ((j.portals || []) as { key: string; name: string; category: string; cred_kind?: string }[])
+            .filter((p) => p.category === 'corretor')
+            .map((p) => ({
+              key: p.key,
+              name: p.name,
+              category: p.category,
+              conectado: comCredencial.has(p.key) || p.cred_kind === 'public',
+              automatizado: PORTAIS_COM_COBRANCA.includes(p.key),
+            })),
+        );
+      } catch {
+        if (vivo) setPortais([]);
+      }
+    })();
+    return () => { vivo = false; };
+  }, []);
 
   const openEditor = (r: Routine | 'new') => {
     if (r === 'new') {
@@ -106,7 +164,14 @@ export default function RotinasPage() {
   const billingConfig = form.config?.kind === BILLING_KIND ? form.config : null;
   const billingPortalKeys = billingConfig && Array.isArray(billingConfig.portal_keys)
     ? billingConfig.portal_keys.map((v) => String(v))
-    : ['allianz_corretor'];
+    : PORTAIS_COM_COBRANCA;
+
+  // Liga/desliga UM portal sem mexer nos outros. A versão anterior trocava o
+  // array inteiro a cada clique — era isso que impedia marcar dois.
+  const alternarPortal = (key: string, marcado: boolean) => {
+    const semEle = billingPortalKeys.filter((k) => k !== key);
+    setBillingConfig({ portal_keys: (marcado ? [...semEle, key] : semEle).sort() });
+  };
   const billingSendMode = String(billingConfig?.send_mode || 'test');
   const billingApprovalRequired = billingConfig?.approval_required !== false;
   const billingMaxBoletos = Number(billingConfig?.max_boletos_por_execucao || 10);
@@ -363,17 +428,51 @@ export default function RotinasPage() {
                 {billingConfig && (
                   <div className="space-y-3 rounded-lg border border-border bg-surface-2 p-3">
                     <div>
-                      <label className="mb-1 block text-xs font-medium text-muted-foreground">Portais varridos</label>
-                      <label className="inline-flex items-center gap-2 text-xs text-foreground">
-                        <input
-                          type="checkbox"
-                          checked={billingPortalKeys.includes('allianz_corretor')}
-                          onChange={(e) =>
-                            setBillingConfig({ portal_keys: e.target.checked ? ['allianz_corretor'] : [] })
-                          }
-                        />
-                        Allianz
+                      <label className="mb-1 block text-xs font-medium text-muted-foreground">
+                        Seguradoras varridas
                       </label>
+                      {portais.length === 0 ? (
+                        <p className="text-[11px] text-muted-foreground">
+                          Nenhum portal conectado ainda. Conecte em Personalização → Conectores → Portais.
+                        </p>
+                      ) : (
+                        <div className="grid gap-1.5 sm:grid-cols-2">
+                          {portais.map((p) => {
+                            const disponivel = p.conectado && p.automatizado;
+                            return (
+                              <label
+                                key={p.key}
+                                className={`inline-flex items-start gap-2 text-xs ${disponivel ? 'text-foreground' : 'text-faint'}`}
+                                title={
+                                  !p.conectado
+                                    ? 'Sem login e senha desta corretora neste portal'
+                                    : !p.automatizado
+                                      ? 'A cobrança automática desta seguradora ainda não foi construída'
+                                      : undefined
+                                }
+                              >
+                                <input
+                                  type="checkbox"
+                                  className="mt-0.5"
+                                  disabled={!disponivel}
+                                  checked={disponivel && billingPortalKeys.includes(p.key)}
+                                  onChange={(e) => alternarPortal(p.key, e.target.checked)}
+                                />
+                                <span>
+                                  {p.name}
+                                  {!p.conectado && <span className="block text-[10px]">sem credencial</span>}
+                                  {p.conectado && !p.automatizado && (
+                                    <span className="block text-[10px]">em breve</span>
+                                  )}
+                                </span>
+                              </label>
+                            );
+                          })}
+                        </div>
+                      )}
+                      <p className="mt-1.5 text-[11px] text-muted-foreground">
+                        Marque quantas quiser. A rotina varre uma por vez e junta tudo num relatório só.
+                      </p>
                     </div>
                     <div className="grid gap-3 sm:grid-cols-2">
                       <div>

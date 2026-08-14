@@ -86,29 +86,23 @@ DEFAULT_MESSAGE_TEMPLATE = (
     "Segue o boleto abaixo.\n"
     "Apólice: {numero_apolice}"
 )
-# Quando a parcela em atraso e DEBITO AUTOMATICO recusado, nao existe boleto
-# para mandar — e gerar um exige "Alteracoes Financeiras" no portal, que escreve
-# no contrato do segurado e por isso e proibido ao robo.
+# Parcela em atraso SEM boleto (debito automatico ou cartao recusado).
 #
-# Decisao do founder (10/08/2026): o segurado e avisado do atraso mesmo sem
-# boleto, e a conversao vira TAREFA para a atendente humana.
+# Nao existe boleto para mandar, e gerar um exige "Alteracoes Financeiras" no
+# portal — que escreve no contrato do segurado, e por isso e proibido ao robo.
 #
-# A mensagem e outra de proposito. Mandar o texto padrao — que promete "segue o
-# boleto abaixo" — e depois nao mandar anexo nenhum e pior que nao avisar: o
-# segurado fica esperando um arquivo que nunca chega e liga para a corretora.
-MENSAGEM_DEBITO_SEM_BOLETO = (
-    "Olá {primeiro_nome},\n\n"
-    "Aqui é a {nome_atendente}, da {nome_corretora}, tudo bem?\n\n"
-    "A Seguradora {nome_seguradora} informou que a parcela {numero_parcela} "
-    "do seguro do {item_segurado} não foi debitada na sua conta e está em "
-    "atraso.\n\n"
-    "Como esse pagamento é por débito automático, não consigo gerar um boleto "
-    "por aqui. Já avisei nossa equipe, e alguém vai falar com você para "
-    "resolver — pra você não ficar sem cobertura, ok!?\n\n"
-    "Qualquer dúvida estou à disposição.\n"
-    "Apólice: {numero_apolice}"
-)
-
+# DECISAO DO FOUNDER (12/08/2026): o robo **nao fala com o segurado** nesse
+# caso. Quem fala e a atendente humana, depois de converter no portal.
+#
+# A versao anterior mandava uma mensagem dizendo "ja avisei nossa equipe e
+# alguem vai falar com voce". Duas coisas erradas nela:
+#   1. o sistema prometia, em nome de uma pessoa, um contato que a pessoa ainda
+#      nao sabia que tinha de fazer;
+#   2. se a atendente demorasse, quem ficou mal foi a corretora — por uma frase
+#      que ninguem escreveu.
+#
+# Entao: entra na lista de TAREFAS da equipe, e sai da fila de envio. O segurado
+# so recebe mensagem quando um humano decidir manda-la.
 TERMINAL_JOB_STATUSES = {"done", "needs_human", "failed"}
 TEST_LINK_TTL_SECONDS = 7 * 24 * 60 * 60
 
@@ -157,16 +151,30 @@ def _primeiro_nome(full_name: Any) -> str:
     return "cliente"
 
 
-def sem_boleto_por_debito(item: Dict[str, Any]) -> bool:
-    """Esta parcela em atraso e debito automatico recusado?
+# A frase que a journey escreve quando a SEGURADORA nao emite boleto para
+# aquela forma de pagamento (debito automatico, cartao). Contrato de texto entre
+# a journey e este servico — por isso mora numa constante, e nao espalhada.
+MARCA_REGRA_DA_SEGURADORA = "nao emite 2a via de boleto"
+
+
+def sem_boleto_por_regra(item: Dict[str, Any]) -> bool:
+    """A seguradora nao emite boleto para esta parcela?
 
     Le o motivo que a journey escreveu — nao adivinha pela ausencia do boleto.
-    A diferenca importa: "nao tem boleto porque e debito" e uma regra da
-    seguradora, e o segurado precisa saber; "nao tem boleto porque o download
-    falhou" e um defeito nosso, e mandar mensagem nesse caso seria mentir.
+    A diferenca decide o que acontece com o segurado:
+
+        regra da seguradora  ->  TAREFA para a atendente. O robo nao fala.
+        falha nossa          ->  fica no relatorio como defeito a investigar.
+
+    Confundir os dois faria o robo abrir tarefa para a equipe toda vez que um
+    download quebrasse — e a equipe pararia de ler a lista.
     """
-    motivo = _norm_txt(item.get("sem_boleto_motivo"))
-    return "debito automatico" in motivo
+    return MARCA_REGRA_DA_SEGURADORA in _norm_txt(item.get("sem_boleto_motivo"))
+
+
+# Nome antigo, mantido enquanto houver chamador. Debito automatico e um dos
+# casos, nao o unico: o Credito recusado cai exatamente aqui tambem.
+sem_boleto_por_debito = sem_boleto_por_regra
 
 
 def _norm_txt(value: Any) -> str:
@@ -176,25 +184,82 @@ def _norm_txt(value: Any) -> str:
     return " ".join(texto.split())
 
 
-def tarefas_para_a_equipe(items: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
-    """O que precisa de gente: converter debito em boleto no portal.
+def tarefas_para_a_equipe(items: List[Dict[str, Any]], cfg: Optional[Dict[str, Any]] = None
+                          ) -> List[Dict[str, Any]]:
+    """O que precisa de gente: converter para boleto no portal e falar com o segurado.
 
     Nao cria tabela nova. A tarefa vive no relatorio da rotina e no aviso ao
     canal de suporte humano — que sao os dois lugares onde a corretora ja olha.
+
+    Carrega TUDO que a atendente precisa para decidir sem abrir outro sistema:
+    telefone, seguradora, ramo, apolice, parcela, vencimento, valor e o motivo.
+    Faltar o telefone aqui era o que obrigava a pessoa a ir atras da informacao
+    — justamente o trabalho que o aviso existe para poupar.
     """
-    return [
-        {
+    cfg = cfg or {}
+    out: List[Dict[str, Any]] = []
+    for i in items or []:
+        if not sem_boleto_por_regra(i):
+            continue
+        motivo = str(i.get("sem_boleto_motivo") or "")
+        # "pagamento em debito - a HDI nao emite..." -> "Débito automático recusado"
+        forma = motivo.split("-")[0].replace("pagamento em", "").strip() or "forma de pagamento"
+        out.append({
             "portal": i.get("portal"),
             "cliente_nome": i.get("cliente_nome"),
-            "apolice": i.get("apolice_susep") or i.get("documento"),
+            "whatsapp": i.get("whatsapp"),
+            "nome_seguradora": _portal_insurer_name(i, cfg),
+            "item_segurado": _insured_item_name(i),
+            "apolice_susep": i.get("apolice_susep") or i.get("documento"),
             "parcela": i.get("parcela"),
             "vencimento": i.get("vencimento"),
             "valor": i.get("valor"),
-            "acao": "converter debito automatico em boleto no portal da seguradora",
-        }
-        for i in items or []
-        if sem_boleto_por_debito(i)
-    ]
+            "motivo": f"{forma.capitalize()} recusado",
+            "observacao": i.get("observacao") or "",
+            "acao": "Converter para boleto no portal e enviar ao segurado",
+        })
+    return out
+
+
+async def avisar_suporte_humano(client, company_id: str, texto: str, rotulo: str) -> bool:
+    """Manda o aviso para o grupo de suporte humano DESTA corretora.
+
+    O agente nunca sabe o nome do grupo. Ele diz "avise o suporte desta
+    corretora" e o sistema resolve em `human_support_destinations` — assim mil
+    corretoras tem mil destinos e zero codigo especifico, e trocar de grupo e
+    mexer num campo de tela.
+
+    Sem destino cadastrado NAO e erro: o aviso ja esta no relatorio da rotina,
+    e o relatorio diz que faltou destino. Falhar aqui derrubaria a colheita
+    inteira por causa de um campo em branco.
+    """
+    try:
+        def _destino():
+            res = (client.table("human_support_destinations")
+                   .select("destination_type, destination_ref, is_primary, priority_order")
+                   .eq("company_id", str(company_id)).eq("is_active", True)
+                   .order("is_primary", desc=True).order("priority_order")
+                   .limit(1).execute())
+            return (res.data or [None])[0]
+
+        destino = await asyncio.to_thread(_destino)
+        if not destino or not destino.get("destination_ref"):
+            return False
+
+        integration = await asyncio.to_thread(_find_whatsapp_integration, client, str(company_id))
+        if not integration:
+            return False
+
+        from app.services.whatsapp_service import get_whatsapp_service
+
+        ok = await asyncio.to_thread(
+            get_whatsapp_service().send_message,
+            str(destino["destination_ref"]), texto, integration)
+        return bool(ok)
+    except Exception:  # noqa: BLE001
+        # Aviso e efeito colateral da colheita, nao a colheita. Perder o aviso
+        # e ruim; derrubar o job por causa dele e pior.
+        return False
 
 
 def _vencimento_iso(item: Dict[str, Any]) -> str:
@@ -252,23 +317,63 @@ def ordenar_para_entrega(items: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
     )
 
 
-def fila_de_cobranca(items: List[Dict[str, Any]], *, horas: int = HORAS_MINIMAS_ATRASO
-                     ) -> tuple:
+def boletos_que_deram_certo(boletos: Optional[Iterable[Dict[str, Any]]]) -> set:
+    """Os recibos que TEM arquivo no bucket. Nem todo boleto tentado virou PDF."""
+    out = set()
+    for b in boletos or []:
+        if isinstance(b, dict) and b.get("ok") and str(b.get("storage_path") or "").strip():
+            recibo = str(b.get("recibo") or "").strip()
+            if recibo:
+                out.add(recibo)
+    return out
+
+
+def fila_de_cobranca(items: List[Dict[str, Any]], *, horas: int = HORAS_MINIMAS_ATRASO,
+                     boletos: Optional[Iterable[Dict[str, Any]]] = None) -> tuple:
     """Separa quem pode ser cobrado de quem nao pode, e diz POR QUE nao pode.
 
     Devolve `(fila_ordenada, retidos)`. Nada some: o que nao entra na fila entra
     no relatorio com motivo. Um inadimplente que desaparece sem explicacao e
     pior que um que nao foi cobrado — porque ninguem vai atras do que nao viu.
+
+    `boletos` — o teste que faltava
+    -------------------------------
+    📊 Descoberto em 12/08/2026, na primeira rodada de producao da Tokio: de 4
+    downloads, 3 deram PDF e 1 devolveu `ok: false`. Esse item **continuava
+    entrando na fila** — porque a unica porta que existia era
+    `sem_boleto_por_regra`, que so pega quem a SEGURADORA recusa por regra, nao
+    quem falhou na hora de baixar.
+
+    O segurado receberia a mensagem que termina em "Segue o boleto abaixo" com
+    anexo nenhum. E o comentario da propria funcao ja avisava desse desfecho —
+    so que o guarda cobria um caminho e o outro nao.
+
+    Vale para TODAS as seguradoras, nao so a Tokio. Sem a lista de boletos o
+    comportamento e o de antes (compatibilidade); com ela, o item vira tarefa
+    humana com o motivo escrito.
     """
+    com_arquivo = boletos_que_deram_certo(boletos) if boletos is not None else None
     fila: List[Dict[str, Any]] = []
     retidos: List[Dict[str, Any]] = []
     for item in items or []:
-        if not _vencimento_iso(item):
+        if sem_boleto_por_regra(item):
+            # DECISAO DO FOUNDER (12/08/2026): sem boleto, o robo NAO fala com o
+            # segurado. Vai para a lista da equipe, e um humano decide o que
+            # dizer. Manter na fila faria o robo mandar a mensagem padrao —
+            # aquela que termina em "Segue o boleto abaixo" — sem anexo nenhum.
+            retidos.append({**item, "retido_por":
+                            "sem boleto (regra da seguradora) — tarefa para a equipe, "
+                            "o segurado NAO recebe mensagem do sistema"})
+        elif not _vencimento_iso(item):
             retidos.append({**item, "retido_por": "sem data de vencimento legivel"})
         elif not vencido_ha_mais_de(item, horas):
             retidos.append({**item, "retido_por": f"vencido ha menos de {horas}h (carencia)"})
         elif not _digits(item.get("whatsapp")):
             retidos.append({**item, "retido_por": f"sem telefone ({item.get('contact_status') or 'nao encontrado'})"})
+        elif com_arquivo is not None and str(item.get("recibo") or "").strip() not in com_arquivo:
+            retidos.append({**item, "retido_por":
+                            "o boleto NAO foi baixado — tarefa para a equipe, o segurado "
+                            "NAO recebe mensagem sem o arquivo"})
         else:
             fila.append(item)
     return ordenar_para_entrega(fila), retidos
@@ -411,11 +516,6 @@ def build_customer_message(item: Dict[str, Any], template: str, config: Optional
         "recibo": item.get("recibo") or "",
         "portal": item.get("portal") or "",
     }
-    # Debito automatico recusado nao tem boleto — e o template padrao termina
-    # com "Segue o boleto abaixo". Mandar essa frase e nao anexar nada deixa o
-    # segurado esperando um arquivo que nunca chega. Aqui o texto e outro.
-    if sem_boleto_por_debito(item):
-        return MENSAGEM_DEBITO_SEM_BOLETO.format_map(_MessageData(data))
     try:
         return template.format_map(_MessageData(data))
     except Exception:  # noqa: BLE001
@@ -692,11 +792,11 @@ def _format_test_message(item: Dict[str, Any], cfg: Dict[str, Any], boleto: Opti
         "[TESTE AutoBrokers - Auxiliar de Cobranca]",
         build_customer_message(item, cfg["message_template"], cfg),
     ]
-    if sem_boleto_por_debito(item):
-        # Nao e falha: e a regra da seguradora. Dizer "boleto nao baixado" aqui
-        # mandaria quem le a simulacao procurar defeito onde nao ha.
-        lines.append("Boleto: nao existe — parcela em debito automatico. "
-                     "Tarefa aberta para a atendente converter no portal.")
+    if sem_boleto_por_regra(item):
+        # Rede de seguranca: itens assim sao RETIDOS antes de chegar aqui. Se um
+        # dia chegar, a simulacao diz a verdade em vez de prometer um anexo.
+        lines.append("Boleto: nao existe (regra da seguradora). Este segurado NAO "
+                     "deveria receber mensagem do robo — tarefa da equipe.")
     elif boleto_url:
         lines.append("Boleto: enviado como documento PDF em seguida.")
     elif boleto:
@@ -947,15 +1047,18 @@ def _format_report(
     # boleto e a atendente — o botao que faz isso escreve no contrato e o robo
     # nao o toca. Sem esta secao, a conversao nunca acontece e o segurado fica
     # esperando o contato que foi prometido na mensagem.
-    tarefas = tarefas_para_a_equipe(fila)
+    # As tarefas saem de ITEMS (a colheita inteira), nao da fila: quem nao tem
+    # boleto foi RETIDO justamente para nao receber mensagem do robo, entao ele
+    # nao esta na fila — e e exatamente ele que precisa de gente.
+    tarefas = tarefas_para_a_equipe(items)
     if tarefas:
-        lines.append(f"PRECISA DE VOCE - {len(tarefas)} conversao(oes) de debito em boleto:")
+        lines.append(f"PRECISA DE VOCE - {len(tarefas)} parcela(s) em atraso SEM boleto:")
         for t in tarefas[:10]:
             lines.append(
                 f"- {t.get('cliente_nome') or 'Cliente'} | apolice {t.get('apolice') or '?'} | "
                 f"parcela {t.get('parcela') or '?'} | vcto {t.get('vencimento') or '?'} "
-                f"-> converter no portal e reenviar")
-        lines.append("  (o segurado JA foi avisado do atraso; falta o boleto)")
+                f"-> converter no portal e falar com o segurado")
+        lines.append("  (o robo NAO mandou mensagem para estes; quem fala e voce)")
 
     if blockers:
         lines.append("Bloqueios/avisos:")
@@ -1036,7 +1139,11 @@ async def execute_billing_collection_routine(supabase, routine: Dict[str, Any]) 
     # viram (a) fila ordenada do mais velho para o mais novo e (b) retidos, cada
     # um com o motivo escrito. O relatorio mostra os dois — quem foi cobrado e
     # quem nao foi, e por que.
-    fila, retidos = fila_de_cobranca(items, horas=int(cfg.get("horas_minimas_atraso") or HORAS_MINIMAS_ATRASO))
+    fila, retidos = fila_de_cobranca(
+        items,
+        horas=int(cfg.get("horas_minimas_atraso") or HORAS_MINIMAS_ATRASO),
+        boletos=boletos,  # sem o arquivo no bucket, o segurado nao recebe nada
+    )
     for motivo, quantos in sorted(
         {r.get("retido_por", "?"): sum(1 for x in retidos if x.get("retido_por") == r.get("retido_por"))
          for r in retidos}.items()
@@ -1050,6 +1157,46 @@ async def execute_billing_collection_routine(supabase, routine: Dict[str, Any]) 
         if not approval_id:
             blockers.append("nao consegui criar pedido de aprovacao")
     test_sends = await _send_test_messages(client, routine, fila, boletos, cfg, blockers) if fila else []
+
+    # OS AVISOS AO GRUPO HUMANO. Saem depois da entrega, porque o resumo precisa
+    # saber quantos sairam. Nenhum deles fala com segurado.
+    from app.services import billing_avisos as avisos
+
+    nome_corretora = str(cfg.get("brokerage_name") or "Corretora")
+    tarefas = tarefas_para_a_equipe(items, cfg)
+    if tarefas:
+        enviado = await avisar_suporte_humano(
+            client, company_id, avisos.aviso_de_tarefas(nome_corretora, tarefas), "tarefas")
+        if not enviado:
+            blockers.append(
+                f"{len(tarefas)} tarefa(s) para a equipe NAO foram avisadas no WhatsApp "
+                f"— a corretora nao tem grupo de suporte cadastrado (veja abaixo)")
+
+    # O guarda: portal que respondeu mas nao deixou ler. Vai para a EQUIPE,
+    # nunca para o segurado — ele nao tem o que fazer com essa informacao.
+    for job in jobs:
+        estagio = str(((job.get("evidence") or {}).get("captured") or {}).get("stage")
+                      or (job.get("evidence") or {}).get("stage") or "")
+        if estagio in ("lista_nao_lida", "sem_linhas_extraiveis", "inadimplentes_nao_localizado"):
+            await avisar_suporte_humano(
+                client, company_id,
+                avisos.aviso_de_portal(
+                    nome_corretora,
+                    NOME_DA_SEGURADORA.get(str(job.get("portal_key") or ""), str(job.get("portal_key") or "")),
+                    "nao consegui ler a lista de parcelas"),
+                "portal")
+
+    sem_telefone = [r for r in retidos if "sem telefone" in str(r.get("retido_por") or "")]
+    await avisar_suporte_humano(
+        client, company_id,
+        avisos.aviso_de_resumo(
+            nome_corretora,
+            seguradoras=[NOME_DA_SEGURADORA.get(p, p) for p in (cfg.get("portal_keys") or [])],
+            enviados=len([s for s in test_sends if s.get("ok")]),
+            pendentes=max(0, len(fila) - len(test_sends)),
+            tarefas=len(tarefas),
+            sem_telefone=sem_telefone),
+        "resumo")
     if items and cfg.get("send_mode") == "approval":
         blockers.append("modo aprovacao: mensagens aguardam aprovacao antes de qualquer envio ao cliente")
     elif items and cfg.get("send_mode") == "none":

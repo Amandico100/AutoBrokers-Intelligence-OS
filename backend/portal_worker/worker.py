@@ -9,8 +9,10 @@ import base64
 import json
 import logging
 import os
+import re
 from datetime import datetime, timezone
 from typing import Any, Dict
+from urllib.parse import unquote, urlsplit
 
 logger = logging.getLogger("portal_worker")
 
@@ -23,6 +25,45 @@ STALE_MARGIN_SECONDS = 600
 
 def portal_real_enabled() -> bool:
     return str(os.getenv("PORTAL_REAL_ENABLED", "false")).strip().lower() in ("1", "true", "yes", "on")
+
+
+# Chromium: headless MODERNO, não o clássico.
+#
+# 📊 Medido em 10/08/2026 contra o portal da HDI, um fator por vez, com linha
+# de CONTROLE repetida no início e no fim da bateria::
+#
+#     headless clássico  ...................  BLOQUEADO  "Access Denied" (Akamai)
+#     + args anti-automação ................  BLOQUEADO
+#     + script de stealth ..................  BLOQUEADO
+#     + args E stealth .....................  BLOQUEADO
+#     navegador COM janela .................  PASSOU
+#     --headless=new .......................  PASSOU     ← e roda sem tela
+#
+# Cinco variações deram o mesmo bloqueio, então nenhuma delas era a causa: o
+# fator é o MODO headless. O clássico é um binário separado, com fingerprint
+# próprio, e o Akamai o reconhece. O `--headless=new` é o mesmo Chrome de
+# janela rodando sem desenhar — passa, e não precisa de Xvfb no contêiner.
+#
+# `headless=False` + `--headless=new` é como se pede o modo novo no Playwright:
+# o parâmetro precisa ficar falso para a lib não injetar o `--headless` antigo.
+#
+# A Allianz continua no mesmo navegador — e é ela a linha de controle desta
+# mudança: se ela seguir baixando os 4 boletos, o modo novo não regrediu nada.
+def _launch_kwargs() -> Dict[str, Any]:
+    modo = str(os.getenv("PORTAL_HEADLESS_MODE", "new")).strip().lower()
+    if modo == "classic":
+        return {"headless": True}
+    if modo == "headed":  # só com tela/Xvfb — último recurso
+        return {"headless": False, "args": ["--no-sandbox", "--disable-dev-shm-usage"]}
+    return {
+        "headless": False,
+        "args": [
+            "--headless=new",
+            "--no-sandbox",            # contêiner sem privilégio
+            "--disable-dev-shm-usage",  # /dev/shm pequeno derruba aba em Docker
+            "--disable-blink-features=AutomationControlled",
+        ],
+    }
 
 
 def _parse_ts(value: Any) -> datetime | None:
@@ -281,6 +322,87 @@ async def _capture_hitl_screenshot(page) -> str | None:
         return None
 
 
+def proxy_do_portal(portal_key: str) -> Dict[str, str] | None:
+    """A saída de rede para este portal — quando o IP do servidor não serve.
+
+    📊 Por que isto existe. Medido em 12/08/2026 e confirmado na pesquisa
+    pública: o Akamai (e o Cloudflare, e o DataDome) mantém lista de faixas de
+    datacenter. AWS, GCP, Azure e hospedagens conhecidas chegam **pré-marcadas**
+    — a recusa acontece antes da primeira requisição ser lida.
+
+    E isso não é um problema de UMA corretora: com 100 corretoras entrando pelo
+    mesmo servidor, o IP acumula reputação de robô e o bloqueio vira coletivo.
+    A saída estrutural é a chamada sair por um IP residencial, e é por isso que
+    a configuração é **por portal** — só o portal que exige paga o custo.
+
+    Desligado por padrão. Sem a variável, nada muda::
+
+        PORTAL_PROXY_HDI_CORRETOR = http://usuario:senha@host:porta
+        PORTAL_PROXY_DEFAULT      = (vale para todos os que não têm o seu)
+
+    Devolve `None` quando não há proxy — e `None` é o que o Playwright espera
+    para "saia direto".
+    """
+    chave = re.sub(r"[^A-Z0-9]", "_", str(portal_key or "").upper())
+    url = (os.getenv(f"PORTAL_PROXY_{chave}") or os.getenv("PORTAL_PROXY_DEFAULT") or "").strip()
+    if not url:
+        return None
+    try:
+        partes = urlsplit(url)
+        if not partes.hostname:
+            return None
+        destino = f"{partes.scheme or 'http'}://{partes.hostname}"
+        if partes.port:
+            destino += f":{partes.port}"
+        saida: Dict[str, str] = {"server": destino}
+        if partes.username:
+            saida["username"] = unquote(partes.username)
+        if partes.password:
+            saida["password"] = unquote(partes.password)
+        return saida
+    except Exception:  # noqa: BLE001
+        # Proxy mal escrito não pode derrubar a colheita: sai direto e o job
+        # conta a história pela evidência.
+        return None
+
+
+_UA_CACHE: Dict[str, str] = {}
+
+
+async def user_agent_sem_headless(browser) -> str:
+    """O User-Agent do navegador, sem a palavra que o entrega.
+
+    📊 Medido em 12/08/2026 contra a HDI, do MESMO IP, com CONTROLE nas duas
+    pontas — variando SÓ o User-Agent::
+
+        UA limpo (Chrome/…)          PASSOU
+        UA padrão (HeadlessChrome/…) BLOQUEADO
+        UA limpo                     PASSOU
+
+    O `--headless=new` conserta a impressão digital em JavaScript, mas **não**
+    tira `HeadlessChrome` do cabeçalho. São dois fatores independentes, e os
+    dois precisam ser corrigidos: um filtro que só lê o header derruba o
+    navegador antes de qualquer JS rodar.
+
+    Trocamos só a palavra, mantendo versão e plataforma exatamente como o
+    binário as reporta. Escrever um UA à mão criaria a inconsistência que se
+    quer evitar — um UA de Windows saindo de um contêiner Linux é mais
+    denunciador que o `Headless` original.
+    """
+    versao = str(getattr(browser, "version", "") or "")
+    if versao in _UA_CACHE:
+        return _UA_CACHE[versao]
+    ctx = await browser.new_context()
+    try:
+        page = await ctx.new_page()
+        ua = str(await page.evaluate("() => navigator.userAgent") or "")
+    finally:
+        await ctx.close()
+    limpo = ua.replace("HeadlessChrome", "Chrome")
+    _UA_CACHE[versao] = limpo
+    return limpo
+
+
 async def _run_job(supa, job: Dict[str, Any]) -> None:
     from portal_worker.journeys import get_journey
 
@@ -323,7 +445,7 @@ async def _run_job(supa, job: Dict[str, Any]) -> None:
 
     try:
         async with async_playwright() as p:
-            browser = await p.chromium.launch(headless=True)
+            browser = await p.chromium.launch(**_launch_kwargs())
             # Locale/fuso do corretor real: apps legados Allianz derivam nomes
             # de atributos de strings localizadas e QUEBRAM no boot com en-US
             # (InvalidCharacterError em setAttribute — job c17fc7db).
@@ -331,7 +453,23 @@ async def _run_job(supa, job: Dict[str, Any]) -> None:
                 "accept_downloads": True,
                 "locale": "pt-BR",
                 "timezone_id": "America/Sao_Paulo",
+                # Sem isto o navegador se anuncia como HeadlessChrome no
+                # cabeçalho, e portal com filtro de bot recusa antes de rodar
+                # uma linha de JS. Ver `user_agent_sem_headless`.
+                "user_agent": await user_agent_sem_headless(browser),
+                # Uma janela de tamanho plausível. O padrão do headless é
+                # 800x600, que praticamente não existe em desktop real.
+                "viewport": {"width": 1366, "height": 768},
             }
+            evidence["user_agent_limpo"] = "HeadlessChrome" not in context_kwargs["user_agent"]
+            proxy = proxy_do_portal(str(job.get("portal_key") or ""))
+            if proxy:
+                context_kwargs["proxy"] = proxy
+                # Só o HOST, nunca usuário e senha — credencial de proxy é
+                # segredo, e evidência é lida por gente.
+                evidence["saida_de_rede"] = proxy.get("server")
+            else:
+                evidence["saida_de_rede"] = "direta (IP do servidor)"
             session_storage: list = []
             if account_row:
                 session_bundle = _load_session_bundle(supa, job, account_row)
@@ -358,6 +496,12 @@ async def _run_job(supa, job: Dict[str, Any]) -> None:
             if session_storage:
                 evidence["session_storage_restored"] = await _restore_session_storage(context, session_storage)
             page = await context.new_page()
+            # Que navegador subiu, de fato. Sem isto, um portal que recusa o
+            # acesso deixa duas explicações igualmente plausíveis — "o modo
+            # errado" e "o IP do servidor" — e nenhuma forma de separá-las
+            # sem outro deploy. A evidência tem de trazer o que foi usado.
+            params["_launch_mode"] = _launch_kwargs()
+            evidence["launch_mode"] = params["_launch_mode"]
             params["_job_id"] = str(job_id)
             params["_company_id"] = str(job.get("company_id") or "")
             params["_portal_key"] = str(job.get("portal_key") or "")

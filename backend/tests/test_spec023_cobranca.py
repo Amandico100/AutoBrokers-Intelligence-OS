@@ -718,7 +718,15 @@ def run():
     check("rotina comum nao vira cobranca", is_billing_routine({"config": {"kind": "news"}}) is False)
 
     cfg = normalize_billing_config({"kind": BILLING_KIND})
-    check("default seleciona Allianz", selected_portal_keys(cfg) == ["allianz_corretor"], cfg)
+    # SPEC-069 / CLAUDE.md 9.3 — este check dizia "default seleciona Allianz",
+    # e era verdade enquanto a Allianz era a UNICA seguradora automatizada. O
+    # fato mudou; a licao migra em vez de morrer: a Allianz continua entrando
+    # (nao houve regressao), e agora ela nao entra SOZINHA.
+    check("default continua incluindo Allianz", "allianz_corretor" in selected_portal_keys(cfg), cfg)
+    check("default nao e mais uma seguradora so", len(selected_portal_keys(cfg)) >= 2, cfg)
+    check("selecao explicita de dois portais e respeitada",
+          selected_portal_keys({"portal_keys": ["allianz_corretor", "hdi_corretor"]})
+          == ["allianz_corretor", "hdi_corretor"])
     check("default exige aprovacao", cfg.get("approval_required") is True, cfg)
     check("default e modo teste", cfg.get("send_mode") == "test", cfg)
     check("default herda numero de teste da entrega se vazio", normalize_billing_config(
