@@ -4127,7 +4127,7 @@ não volta.
 identificado corretamente nas duas corretoras e Allianz 10/10 como linha de
 controle. Ver [`PORTAL-zurich.md`](portais/PORTAL-zurich.md).
 
-## P-154 · 🔴 O boleto da Zurich não baixa pelo robô — e baixa à mão
+## P-154 · ✅ RESOLVIDA — o boleto da Zurich baixa pela função do portal
 
 **Aberta em:** 13/08/2026 · **Dono:** 🤖 execução, numa tentativa em outro dia
 
@@ -4154,9 +4154,14 @@ parcela em 13/08 e o portal respondeu *"o boleto estará registrado e disponíve
 para pagamento no dia 14/08/2026"*. Uma segunda emissão da mesma parcela, no
 mesmo dia, pode ser recusada — e 404 é como este portal diz "agora não".
 
-**O que destrava:** uma tentativa em outro dia, ou numa parcela que nunca teve
-2ª via emitida. Se ainda assim recusar, o caminho é o clique no botão da lista
-com captura de download (fallback previsto na SPEC-033).
+**RESOLVIDA em 14/08/2026.** Não era regra de negócio nem instabilidade: era
+insistir em **reconstruir a URL**. A solução é chamar `GerarBoleto2` — a função
+do próprio portal, que mora no view model do Knockout — com um objeto montado a
+partir da lista. 📊 Baixou **107.288 bytes, `%PDF`**.
+
+A journey tenta, nesta ordem: chamada direta → `GerarBoleto2` → clique no botão.
+Os dois últimos são o fallback de navegação visual da SPEC-033 — que eu deveria
+ter usado horas antes, em vez de variar cabeçalho.
 
 **O que custa esquecer:** nada silenciosamente — a journey **retém** o item com
 o motivo escrito e ele vai para a fila humana. Mas a Zurich não fecha o ciclo
@@ -4211,3 +4216,40 @@ causas com uma medição só. A journey contorna estreitando a janela a cada 404
 📊 E o achado que importa mais que o teto: **pedir demais derruba a sessão**.
 Depois do pedido de 365 dias, nem a janela de 30 — que funcionava no início da
 mesma sessão — voltou a responder. Só a linha de controle no fim revelou isso.
+
+---
+
+## P-158 · 🟡 Acompanhamento: o segurado que não pagou continua na lista
+
+**Aberta em:** 14/08/2026 · **Dono:** 🧑 Founder decide · 🤖 executa · **3ª etapa**
+
+Registrada a pedido do Founder. É a etapa DEPOIS do envio, e não se resolve
+agora.
+
+O que a Saionara (suporte da corretora) respondeu quando perguntada como faz:
+
+> *"Eu envio o boleto e fico acompanhando se pagou. Se não pagou eu reenvio e
+> sempre lembro a data limite, para não cancelar por falta de pagamento."*
+
+Isso já dá três regras: **reenvia** · **acompanha** · **sempre cita a data
+limite**. O que falta decidir, e que hoje não existe em lugar nenhum do sistema:
+
+| # | A decisão | Por que importa |
+|---|---|---|
+| 1 | De quantos em quantos dias reenvia | a Saionara faz por sensibilidade; o robô precisa de número |
+| 2 | Quantas vezes, antes de virar tarefa humana | senão vira perseguição |
+| 3 | Horário e dias em que pode falar | comercial? sábado? |
+| 4 | Se o segurado responder, o robô para? | quase certamente sim |
+| 5 | Quem nunca recebe automático | cliente que só a atendente fala |
+| 6 | Teto por dia por corretora | para não parecer disparo em massa |
+| 7 | O texto, e o que muda quando o cancelamento está perto | é o que a Saionara faz à mão hoje |
+
+**O que falta no sistema:** não há nada que saiba *"já falei com esta pessoa,
+sobre esta parcela, há N dias, pela Kª vez"*. O `billing_sent_log` existe para
+retomada, não para cadência.
+
+> 🔴 **As regras valem para TODAS as seguradoras, não por portal.** A colheita é
+> específica de cada uma; a conversa com o segurado é do Auxiliar, e é uma só.
+
+**O que custa esquecer:** o primeiro envio real acontece sem regra escrita, e a
+correção vem depois de a mensagem ter saído. Mensagem enviada não volta.

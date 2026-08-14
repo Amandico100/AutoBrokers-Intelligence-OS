@@ -45,8 +45,26 @@ A cadeia, com os corpos reais
 
 A journey usa o da lista — que além de funcionar, não precisa abrir a apólice.
 
-❓ E O BOLETO AINDA NÃO BAIXOU PELA JOURNEY — o que já foi eliminado
-====================================================================
+🔴 O BOLETO: A CHAMADA RECONSTRUÍDA NÃO PASSA — A FUNÇÃO DA PÁGINA, SIM
+========================================================================
+📊 **Resolvido em 14/08/2026.** O download funciona chamando `GerarBoleto2`,
+que é a **função do próprio portal**, com um objeto montado a partir da lista:
+
+    ko.dataFor(document.querySelector('#inputI')).GerarBoleto2({
+        payment_no, numeroApolice, numeroEndossoSPY, ramo,
+        numeroPrestacao, numeroCertificado, dataVencimento })
+
+    -> download de 107.288 bytes, %PDF     📊 medido
+
+São os mesmos sete campos que a lista devolve. Quem monta o pedido passa a ser
+o código do portal, com o estado dele (`SearchObject.Sucursal`), e não a minha
+reconstrução da URL.
+
+**A ordem da journey é:** chamada direta → `GerarBoleto2` → clique no botão.
+A primeira é a mais barata; as outras duas são o fallback que a SPEC-033 prevê.
+
+O que foi eliminado antes de chegar aqui
+----------------------------------------
 📊 Em 13/08/2026, `GerarBoleto` devolveu **404** em toda tentativa da journey,
 enquanto a MESMA chamada funcionou na captura manual do founder. Medido com a
 lista como linha de controle (200 antes e depois, em todas as rodadas):
@@ -76,13 +94,12 @@ idênticos aos da captura — conferidos contra o código do próprio portal:
 o `/Date(…)/` e o `dataVencimentoFormated` dão **a mesma data**, `06/08/2026`.
 Nada diverge.
 
-❓ **A hipótese que sobra é regra de negócio, não técnica:** o founder emitiu a
-2ª via dessa parcela em 13/08 e o portal respondeu *"o boleto estará registrado
-e disponível para pagamento no dia 14/08/2026"*. Uma segunda emissão da MESMA
-parcela, no mesmo dia, pode ser recusada — e 404 seria como este portal diz
-"agora não" (é o mesmo código que ele usa para janela larga demais).
+**A conclusão:** não adianta reconstruir a URL — alguma coisa no estado que o
+portal monta não cabe numa query string reproduzida de fora. Chamar a função
+dele resolve, e é mais honesto: se o portal mudar os parâmetros amanhã, a
+função muda junto e a journey continua funcionando.
 
-**Enquanto isso não estiver medido, o item é RETIDO com o motivo escrito** e vai
+E o item que ainda assim não baixar é **RETIDO com o motivo escrito**, indo
 para a fila humana. Nunca some, e nunca é tratado como cobrado.
 
 🔴 O VALOR VEM COM VÍRGULA DE MILHAR **E** DE DECIMAL
@@ -604,23 +621,57 @@ async def login_check(page, params: Dict[str, Any],
             message="o formulario de login da Zurich nao apareceu em duas cargas "
                     "— o portal esta fora do ar ou muito lento")
 
-    # Por `type`, nunca por índice gerado — a lição do `ion-input-N` da MAPFRE
-    # vale para qualquer framework.
+    # 🔴 `input[type=text]:visible` + `.first` NÃO serve aqui.
+    # 📊 A página de login tem **37 inputs** — caixa de busca do topo, campos de
+    # modais escondidos, filtros. Pegar "o primeiro texto visível" acertou o
+    # campo certo por ordem de DOM, e num carregamento diferente pegou outro:
+    # o login falhou com "campos não encontrados" logo depois de ter funcionado.
+    #
+    # A âncora estável é o campo de SENHA — 📊 existe exatamente um na página.
+    # A partir dele sobe-se até o container que tem UM campo de texto, e esse é
+    # o usuário. Os dois ganham uma marca própria, e o Playwright usa a marca.
+    marcados = await page.evaluate("""() => {
+      document.querySelectorAll('[data-ab-login]').forEach(
+        e => e.removeAttribute('data-ab-login'));
+      const visivel = (e) => !!e.offsetParent;
+      const senhas = Array.from(document.querySelectorAll('input[type=password]'))
+                        .filter(visivel);
+      if (senhas.length !== 1) return {ok: false, senhas: senhas.length};
+      const pw = senhas[0];
+      let no = pw.parentElement, usuario = null;
+      while (no && no !== document.body) {
+        const textos = Array.from(no.querySelectorAll('input[type=text]'))
+                          .filter(visivel);
+        if (textos.length === 1) { usuario = textos[0]; break; }
+        if (textos.length > 1) { usuario = textos[textos.length - 1]; break; }
+        no = no.parentElement;
+      }
+      if (!usuario) return {ok: false, senhas: 1, usuario: 0};
+      usuario.setAttribute('data-ab-login', 'usuario');
+      pw.setAttribute('data-ab-login', 'senha');
+      return {ok: true, subiu_ate: no ? no.tagName : null};
+    }""")
+    evidence["zurich_login_ancora"] = marcados
+    if not marcados.get("ok"):
+        return JourneyResult(
+            status="needs_human",
+            message="nao consegui identificar o par usuario/senha na tela da Zurich "
+                    f"({marcados})")
+
     preenchidos = 0
-    for sel, valor in (("input[type=text]:visible", usuario),
-                       ("input[type=password]:visible", senha)):
+    for marca, valor in (("usuario", usuario), ("senha", senha)):
         try:
-            campo = page.locator(sel).first
-            if await campo.count():
-                await campo.click(timeout=10000)
-                await campo.fill(valor, timeout=10000)
-                preenchidos += 1
+            campo = page.locator(f"input[data-ab-login={marca}]").first
+            await campo.click(timeout=10000)
+            await campo.fill(valor, timeout=10000)
+            preenchidos += 1
         except Exception:  # noqa: BLE001
             continue
     evidence["zurich_login_campos"] = preenchidos
     if preenchidos < 2:
         return JourneyResult(status="needs_human",
-                             message="campos de login da Zurich nao encontrados")
+                             message="campos de login da Zurich nao aceitaram o "
+                                     "preenchimento")
 
     clicou = False
     for sel in ("button:has-text('Acessar')", "input[value='Acessar']",
@@ -705,6 +756,281 @@ async def cpf_do_cliente(page, item: Dict[str, Any],
     return doc
 
 
+# 🔴 A pagina tem VARIAS tabelas (select2, widgets). 📊 `table tbody tr` contou
+# 9 linhas com a busca vazia — contar assim daria "achei resultado" sem resultado.
+# A tabela boa e a que tem "Segurado" no cabecalho.
+_JS_TABELA_DO_RESULTADO = """() => {
+  for (const t of document.querySelectorAll('table')) {
+    const cab = (t.tHead ? t.tHead.innerText : '') || '';
+    if (/Segurado/i.test(cab) && /Parcela/i.test(cab)) return t;
+  }
+  return null;
+}"""
+
+_JS_LINHAS_DO_RESULTADO = """() => {
+  for (const t of document.querySelectorAll('table')) {
+    const cab = (t.tHead ? t.tHead.innerText : '') || '';
+    if (/Segurado/i.test(cab) && /Parcela/i.test(cab)) {
+      return Array.from(t.querySelectorAll('tbody tr'))
+               .filter(tr => tr.querySelectorAll('td').length > 3).length;
+    }
+  }
+  return 0;
+}"""
+
+
+async def buscar_na_tela(page, de: str, ate: str,
+                         evidence: Dict[str, Any]) -> int:
+    """Faz a busca PELA TELA, como uma pessoa faz — e devolve quantas linhas vieram.
+
+    📊 Serve a dois propósitos de uma vez:
+      1. deixa a tabela renderizada, que é o que o botão `2ªVia` precisa;
+      2. resolve o 200-com-lista-vazia sem truque: se vier zero, clica de novo
+         em **Buscar** — foi o que o founder descreveu fazendo à mão.
+
+    Os campos são `#inputI` e `#inputF` (Knockout: `SearchObject.DataInicial` /
+    `DataFinal`), com máscara `dd/mm/aaaa`.
+    """
+    try:
+        if "ParcelaVencidaCorretor" not in str(getattr(page, "url", "")):
+            await page.goto(ZURICH_PARCELAS, wait_until="domcontentloaded", timeout=60000)
+        await page.wait_for_selector("#inputI", state="visible", timeout=40000)
+    except Exception:  # noqa: BLE001
+        evidence["zurich_tela_busca"] = "formulario nao apareceu"
+        return -1
+
+    linhas = 0
+    for tentativa in (1, 2, 3):
+        try:
+            # 🔴 Preencher e SEGUIR EM FRENTE não serve: 📊 o datepicker do
+            # primeiro campo fica aberto por cima do segundo, o `fill` não pega,
+            # e a busca sai com **a data final em branco** — foi exatamente o que
+            # aconteceu, e a tela ficou vazia sem nenhum erro.
+            #
+            # Então cada campo é preenchido, o datepicker é fechado, e o valor é
+            # CONFERIDO antes de clicar em Buscar.
+            # 🔴 A MÁSCARA EMBARALHA O QUE É DIGITADO RÁPIDO.
+            # 📊 Digitando `14/08/2026` no campo final, o portal guardou
+            # `40/82/0261` — os dígitos rodados de uma posição. O primeiro campo
+            # aceitava, o segundo não; e a busca saía com data inválida,
+            # devolvendo tela vazia **sem erro nenhum**.
+            #
+            # Então o valor é posto por JS (o mask não intercepta atribuição) e
+            # depois CONFERIDO por igualdade — não por "está preenchido".
+            # 📊 Foi assim que `40/82/0261` passou: era não-vazio.
+            for seletor, valor in (("#inputI", de), ("#inputF", ate)):
+                for tentativa_campo in (1, 2, 3):
+                    if tentativa_campo == 1:
+                        await page.evaluate(
+                            """({sel, v}) => {
+                                 const e = document.querySelector(sel);
+                                 if (!e) return;
+                                 e.value = v;
+                                 e.dispatchEvent(new Event('input', {bubbles: true}));
+                                 e.dispatchEvent(new Event('change', {bubbles: true}));
+                               }""", {"sel": seletor, "v": valor})
+                        await page.wait_for_timeout(400)
+                        if (await page.input_value(seletor, timeout=5000) or "") == valor:
+                            break
+                    campo = page.locator(seletor)
+                    await campo.click(timeout=10000)
+                    await campo.fill("", timeout=8000)
+                    # devagar: o mask precisa de tempo entre as teclas
+                    await campo.type(valor, delay=140, timeout=30000)
+                    # 🔴 NUNCA `Escape` aqui. O datepicker do jQuery UI trata
+                    # Escape como "fechar SEM selecionar" e **reverte o campo ao
+                    # valor anterior** — comportamento documentado dele.
+                    # 📊 Foi o que apagou as datas: com um Escape no fim, só a
+                    # data final sumia; com um por campo, sumiam as duas. E a
+                    # busca saía sem data, devolvendo tela vazia sem erro nenhum.
+                    # Para fechar o calendário, clica-se FORA.
+                    await page.evaluate(
+                        """(sel) => {
+                             const e = document.querySelector(sel);
+                             if (!e) return;
+                             e.dispatchEvent(new Event('change', {bubbles: true}));
+                             e.blur();
+                           }""", seletor)
+                    try:
+                        await page.locator("h1, h2, .filters-form-group__title").first.click(
+                            timeout=5000)
+                    except Exception:  # noqa: BLE001
+                        pass
+                    await page.wait_for_timeout(700)
+                    if (await page.input_value(seletor, timeout=5000) or "") == valor:
+                        break
+
+            conferido = {s: (await page.input_value(s, timeout=5000) or "")
+                         for s in ("#inputI", "#inputF")}
+            evidence.setdefault("zurich_datas_na_tela", []).append(conferido)
+            # 🔴 IGUALDADE, nao "preenchido". `40/82/0261` e nao-vazio e esta errado.
+            if conferido["#inputI"] != de or conferido["#inputF"] != ate:
+                raise RuntimeError(
+                    f"o formulario nao aceitou as datas: pedi {de} a {ate}, "
+                    f"ficou {conferido['#inputI']} a {conferido['#inputF']}")
+
+            for sel in ("button:has-text('Buscar')", "a:has-text('Buscar')",
+                        "input[value='Buscar']"):
+                alvo = page.locator(sel).first
+                if await alvo.count():
+                    await alvo.click(timeout=12000)
+                    break
+            await page.wait_for_timeout(6000)
+            linhas = await page.evaluate(_JS_LINHAS_DO_RESULTADO)
+        except Exception as exc:  # noqa: BLE001
+            evidence.setdefault("zurich_busca_erro", []).append(
+                f"{type(exc).__name__}: {str(exc)[:90]}")
+            linhas = 0
+        evidence.setdefault("zurich_busca_na_tela", []).append(
+            {"tentativa": tentativa, "linhas": linhas})
+        if linhas:
+            break
+        # 🔴 zero linhas na tela = clicar em Buscar de novo. O portal e instavel
+        # e devolve vazio de vez em quando; o founder descreveu exatamente isso.
+        await page.wait_for_timeout(PAUSA_APOS_RECUSA_MS)
+    return linhas
+
+
+async def baixar_boleto_pela_pagina(page, item: Dict[str, Any],
+                                    params: Dict[str, Any],
+                                    evidence: Dict[str, Any]) -> Dict[str, Any]:
+    """Chama `GerarBoleto2` — a **função da própria página** — e pega o download.
+
+    🔴 É o caminho que faltava, e ele dispensa tudo o que estava dando errado.
+
+    📊 O botão `2ªVia` da lista faz exatamente isto: `data-bind="click:
+    GerarBoleto2"`. A função está no view model do Knockout e lê **sete campos**
+    do item que recebe:
+
+        payment_no · numeroApolice · numeroEndossoSPY · ramo
+        numeroPrestacao · numeroCertificado · dataVencimento
+
+    Todos vêm da lista que a journey já leu. Então monta-se um objeto simples e
+    chama-se a função — sem tabela renderizada, sem máscara de data, sem
+    datepicker e sem clique.
+
+    Por que isso é melhor que reproduzir a chamada:
+    📊 Reproduzir a URL à mão devolveu **404** em todas as variações testadas —
+    inclusive pelo `$.ajax` do próprio jQuery. Aqui quem monta o pedido é o
+    código do portal, com o estado dele (`SearchObject.Sucursal`), e não a
+    minha reconstrução.
+    """
+    dados = b""
+    try:
+        async with page.expect_download(timeout=90000) as espera:
+            erro_js = await page.evaluate(
+                """({item}) => {
+                  if (!window.ko) return 'sem knockout na pagina';
+                  const el = document.querySelector('#inputI');
+                  if (!el) return 'a tela de parcelas nao esta aberta';
+                  const vm = ko.dataFor(el);
+                  if (!vm || typeof vm.GerarBoleto2 !== 'function')
+                    return 'GerarBoleto2 nao existe neste view model';
+                  vm.GerarBoleto2(item);
+                  return '';
+                }""",
+                {"item": {
+                    "payment_no": item.get("payment_no"),
+                    "numeroApolice": item.get("numero_apolice"),
+                    "numeroEndossoSPY": item.get("endosso"),
+                    "ramo": item.get("ramo"),
+                    "numeroPrestacao": item.get("parcela"),
+                    "numeroCertificado": item.get("certificado"),
+                    # 🔴 `GerarBoleto2` passa este campo por `FormatDate`, que é
+                    # `moment(...).format('DD/MM/YYYY')` — e o moment entende
+                    # tanto `/Date(ms)/` quanto `dd/MM/aaaa`.
+                    "dataVencimento": item.get("vencimento_br"),
+                }})
+            if erro_js:
+                return {"ok": False, "reason": erro_js}
+        download = await espera.value
+        caminho_tmp = await download.path()
+        dados = open(caminho_tmp, "rb").read() if caminho_tmp else b""
+    except Exception as exc:  # noqa: BLE001
+        return {"ok": False,
+                "reason": f"GerarBoleto2 nao produziu download: {type(exc).__name__}: "
+                          f"{str(exc)[:120]}"}
+
+    if not dados.startswith(b"%PDF"):
+        return {"ok": False,
+                "reason": f"o download nao e um PDF (comeca com {dados[:8]!r})"}
+
+    caminho = build_boleto_storage_path(
+        company_id=str(params.get("_company_id") or "company"),
+        job_id=str(params.get("_job_id") or "job"),
+        portal_key=str(params.get("_portal_key") or "zurich_corretor"),
+        recibo=str(item.get("recibo") or ""))
+    evidence.setdefault("notas", []).append(
+        f"boleto Zurich baixado por GerarBoleto2 — {len(dados)} bytes")
+    upload = params.get("_upload_blob")
+    if callable(upload):
+        salvo = await upload(caminho, dados, "application/pdf")
+        return {"ok": bool(salvo), "storage_path": salvo or caminho,
+                "bytes": len(dados), "via": "GerarBoleto2"}
+    return {"ok": True, "storage_path": caminho, "bytes": len(dados),
+            "via": "GerarBoleto2", "not_uploaded": True}
+
+
+async def baixar_boleto_clicando(page, item: Dict[str, Any], params: Dict[str, Any],
+                                 evidence: Dict[str, Any]) -> Dict[str, Any]:
+    """O FALLBACK previsto na SPEC-033: navegação visual, depois da chamada direta.
+
+    📊 O botão da lista é o único caminho que funciona à mão:
+
+        <a class="btn btn--blue btn--small" data-bind="click: GerarBoleto2">2ªVia</a>
+
+    Ele chama a mesma URL, mas por dentro da página, com o estado do Knockout —
+    e o download nasce de um Blob (`saveByteArray`), que o navegador salva.
+    """
+    apolice = str(item.get("numero_apolice") or "")
+    parcela = str(item.get("parcela") or "")
+    try:
+        # a tabela de resultado e a que tem "Segurado" no cabecalho — ver
+        # `_JS_LINHAS_DO_RESULTADO`. Procurar em `table tbody tr` acharia linha
+        # de outro widget.
+        tabela = page.locator("table").filter(has_text="Segurado").filter(
+            has_text="Vencimento").first
+        if not await tabela.count():
+            tabela = page.locator("table").filter(has_text="2ªVia").first
+        linha = tabela.locator("tbody tr").filter(has_text=apolice).first
+        if not await linha.count():
+            return {"ok": False,
+                    "reason": f"nao achei a linha da apolice {apolice} na tela"}
+        botao = linha.locator("a:has-text('2ªVia')").first
+        if not await botao.count():
+            return {"ok": False,
+                    "reason": f"a linha da apolice {apolice} nao tem botao de 2a via "
+                              "(o portal so mostra para boleto)"}
+        async with page.expect_download(timeout=60000) as espera:
+            await botao.click(timeout=15000)
+        download = await espera.value
+        caminho_tmp = await download.path()
+        dados = open(caminho_tmp, "rb").read() if caminho_tmp else b""
+    except Exception as exc:  # noqa: BLE001
+        return {"ok": False,
+                "reason": f"o clique no 2a via falhou: {type(exc).__name__}: "
+                          f"{str(exc)[:120]}"}
+
+    if not dados.startswith(b"%PDF"):
+        return {"ok": False,
+                "reason": f"o clique baixou algo que nao e PDF ({dados[:8]!r})"}
+
+    caminho = build_boleto_storage_path(
+        company_id=str(params.get("_company_id") or "company"),
+        job_id=str(params.get("_job_id") or "job"),
+        portal_key=str(params.get("_portal_key") or "zurich_corretor"),
+        recibo=str(item.get("recibo") or ""))
+    evidence.setdefault("notas", []).append(
+        f"boleto Zurich baixado pelo CLIQUE — {len(dados)} bytes")
+    upload = params.get("_upload_blob")
+    if callable(upload):
+        salvo = await upload(caminho, dados, "application/pdf")
+        return {"ok": bool(salvo), "storage_path": salvo or caminho,
+                "bytes": len(dados), "via": "clique-2a-via", "parcela": parcela}
+    return {"ok": True, "storage_path": caminho, "bytes": len(dados),
+            "via": "clique-2a-via", "not_uploaded": True}
+
+
 async def baixar_boleto(page, item: Dict[str, Any], params: Dict[str, Any],
                         evidence: Dict[str, Any]) -> Dict[str, Any]:
     r = await _api(page, EP_BOLETO, params_do_boleto(item))
@@ -720,11 +1046,24 @@ async def baixar_boleto(page, item: Dict[str, Any], params: Dict[str, Any],
         evidence.setdefault("zurich_boleto_retentado", []).append(
             {"recibo": item.get("recibo"), "status": r.get("status")})
     if r.get("status") != 200:
-        return {"ok": False,
-                "reason": f"o portal recusou o boleto (http {r.get('status')})"}
+        # 🔴 A chamada direta não passou. SPEC-033: **navegação visual como
+        # fallback**, depois de a cadeia direta falhar — e não em vez dela.
+        evidence.setdefault("zurich_fallback", []).append(
+            {"recibo": item.get("recibo"), "http_da_chamada_direta": r.get("status")})
+        alternativa = await baixar_boleto_pela_pagina(page, item, params, evidence)
+        if alternativa.get("ok"):
+            return alternativa
+        evidence.setdefault("zurich_fallback", []).append(
+            {"recibo": item.get("recibo"), "GerarBoleto2": alternativa.get("reason")})
+        return await baixar_boleto_clicando(page, item, params, evidence)
     dados, erro = pdf_do_boleto(r.get("json"))
     if erro:
-        return {"ok": False, "reason": erro}
+        evidence.setdefault("zurich_fallback", []).append(
+            {"recibo": item.get("recibo"), "motivo": erro})
+        alternativa = await baixar_boleto_pela_pagina(page, item, params, evidence)
+        if alternativa.get("ok"):
+            return alternativa
+        return await baixar_boleto_clicando(page, item, params, evidence)
 
     aviso = str((r.get("json") or {}).get("Msg") or "").strip()
     caminho = build_boleto_storage_path(
@@ -855,8 +1194,13 @@ async def cobranca_sweep(page, params: Dict[str, Any],
                 captured={"logged_in": True, "stage": "testemunha_nao_bate"},
                 message=divergencia)
 
+    # ⚠️ `params.get(...) or 48` transformaria um **0 configurado** em 48, porque
+    # zero e falso em Python — a corretora pediria "cobra no mesmo dia" e levaria
+    # dois dias de carencia sem nenhum aviso. Config ignorada em silencio e a
+    # mesma classe de defeito que esta SPEC persegue.
+    bruto = params.get("horas_minimas_atraso")
     try:
-        horas = int(params.get("horas_minimas_atraso") or 48)
+        horas = int(bruto) if bruto is not None and str(bruto) != "" else 48
     except (TypeError, ValueError):
         horas = 48
     atrasados = [i for i in em_aberto
@@ -889,6 +1233,23 @@ async def cobranca_sweep(page, params: Dict[str, Any],
                           or params.get("max_boletos_por_execucao") or 50))
     except (TypeError, ValueError):
         teto = 50
+
+    # 📊 Deixa a TABELA renderizada antes de tentar baixar: o botão `2ªVia` só
+    # existe na tela, e é ele o caminho que funciona quando a chamada direta
+    # recusa. Fazer a busca aqui custa uma vez, não uma por boleto.
+    if a_baixar:
+        # 📊 Basta a TELA estar aberta: `GerarBoleto2` mora no view model dela e
+        # nao depende da tabela renderizada. A busca visual so e tentada como
+        # ultimo recurso, dentro de `baixar_boleto_clicando`.
+        try:
+            if "ParcelaVencidaCorretor" not in str(getattr(page, "url", "")):
+                await page.goto(ZURICH_PARCELAS, wait_until="domcontentloaded",
+                                timeout=60000)
+            await page.wait_for_selector("#inputI", state="visible", timeout=40000)
+            await page.wait_for_timeout(2500)
+            evidence["zurich_tela_parcelas"] = "aberta"
+        except Exception:  # noqa: BLE001
+            evidence["zurich_tela_parcelas"] = "nao abriu"
 
     boletos: List[Dict[str, Any]] = []
     for item in a_baixar[:teto]:

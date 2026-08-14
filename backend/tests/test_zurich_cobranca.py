@@ -486,6 +486,54 @@ check("e os itens da segunda leitura sao usados",
       ev5.get("zurich_carteira"))
 
 
+
+
+# ==========================================================================
+print("\n[14] A CARENCIA CONFIGURADA EM ZERO — `or` a transformava em 48")
+# ==========================================================================
+# 🔴 `params.get(...) or 48` trata 0 como ausente. Uma corretora que pedisse
+# "cobra no mesmo dia" levaria dois dias de carencia, em silencio.
+async def _carencia(valor):
+    ev = {}
+    pagina = _PortalComTeto(teto_dias=999)
+    from portal_worker.journeys import JourneyResult
+
+    async def _login_ok(_p, _params, evid):
+        evid["logged_in"] = True
+        return JourneyResult(status="done", captured={"logged_in": True})
+
+    original = zu.login_check
+    zu.login_check = _login_ok
+    try:
+        r = await zu.cobranca_sweep(
+            pagina, {"username": "u", "password": "p", "account_label": "principal",
+                     "horas_minimas_atraso": valor, "_company_id": "c",
+                     "_job_id": "j", "_portal_key": "zurich_corretor"}, ev)
+        return r
+    finally:
+        zu.login_check = original
+
+
+r_zero = asyncio.run(_carencia(0))
+check("carencia 0 e RESPEITADA (nao vira 48)",
+      "mais de 0h" in r_zero.message or "0 inadimplente" not in r_zero.message,
+      r_zero.message)
+r_48 = asyncio.run(_carencia(48))
+check("carencia 48 continua valendo", "mais de 48h" in r_48.message
+      or "inadimplente" in r_48.message, r_48.message)
+# 🔴 a prova de que os dois casos CONSEGUEM ser diferentes
+check("0 e 48 produzem resultados diferentes — o guarda distingue",
+      r_zero.message != r_48.message, (r_zero.message, r_48.message))
+# Sem configuracao tem de se comportar IGUAL ao 48 explicito — a mensagem so
+# cita as horas quando nao ha inadimplente, entao compara-se o comportamento.
+r_vazio = asyncio.run(_carencia(None))
+check("sem configuracao, o padrao 48 vale", r_vazio.message == r_48.message,
+      (r_vazio.message, r_48.message))
+r_lixo = asyncio.run(_carencia("nao-e-numero"))
+check("configuracao ilegivel cai no padrao, sem estourar",
+      r_lixo.message == r_48.message, r_lixo.message)
+
+
 print("\n" + "=" * 66)
 print(f"  {PASS} asserções verdes · {FAIL} vermelhas")
 print("=" * 66)

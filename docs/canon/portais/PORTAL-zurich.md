@@ -2,11 +2,9 @@
 
 > **Leia a [SPEC-070](../specs/SPEC-070-cobranca-multi-seguradora.md) antes de mexer aqui.**
 >
-> Estado: 🟡 **COLHE, MAS O BOLETO AINDA NÃO BAIXA PELO ROBÔ**
-> A journey entra, escolhe a janela sozinha, lê a carteira e identifica o
-> inadimplente certo. O download da 2ª via devolve 404 e o item é **retido com
-> o motivo escrito** — nunca some, nunca é tratado como cobrado.
-> Última medição: **13/08/2026**, sessões reais da AutoFleet e da Resulta.
+> Estado: 🟢 **COBRANÇA PRONTA** — entra, lê a carteira, identifica o
+> inadimplente e **baixa o boleto** (📊 107.288 bytes, `%PDF`, em 14/08/2026).
+> Última medição: **14/08/2026**, sessões reais da AutoFleet e da Resulta.
 
 | Marca | Significado |
 |---|---|
@@ -192,7 +190,33 @@ journey que disparava em sequência. A journey pausa **2,5 s entre chamadas**.
 
 ---
 
-# 4. ❓ O BOLETO — o que já foi eliminado
+# 4. 🟢 O BOLETO — resolvido chamando a função do próprio portal
+
+📊 **14/08/2026.** O download funciona assim:
+
+```javascript
+ko.dataFor(document.querySelector('#inputI')).GerarBoleto2({
+    payment_no, numeroApolice, numeroEndossoSPY, ramo,
+    numeroPrestacao, numeroCertificado, dataVencimento })
+```
+
+São os **mesmos sete campos que a lista já devolve**. Quem monta o pedido passa
+a ser o código do portal, com o estado dele — não uma reconstrução da URL.
+
+📊 Medido: **107.288 bytes, `%PDF`**.
+
+**A ordem que a journey segue:**
+
+```
+1) chamada direta ao endpoint      a mais barata
+2) GerarBoleto2 do view model      ← é a que funciona
+3) clique no botão 2ªVia da lista  último recurso
+```
+
+Os dois últimos são o fallback de navegação visual que a **SPEC-033** prevê
+para quando a cadeia direta não passa.
+
+## 4.1 O que foi eliminado antes de chegar aqui
 
 📊 `GerarBoleto` devolveu **404 em toda tentativa da journey**, enquanto a
 MESMA chamada funcionou na captura manual. Medido com a lista como controle
@@ -228,14 +252,10 @@ GerarBoleto2 = function (selectedItem) {
 📊 `FormatDate` é `moment(date).format('DD/MM/YYYY')`, e para o item medido o
 `/Date(…)/` e o `dataVencimentoFormated` dão **a mesma data**. Nada diverge.
 
-> ❓ **A hipótese que sobra é regra de negócio.** O founder emitiu a 2ª via
-> dessa parcela em 13/08 e o portal respondeu *"o boleto estará registrado e
-> disponível para pagamento no dia 14/08/2026"*. Uma segunda emissão da mesma
-> parcela, no mesmo dia, pode ser recusada — e 404 é como este portal diz
-> "agora não" (é o mesmo código da janela larga demais).
->
-> **O que resolve:** uma tentativa em outro dia, ou numa parcela que nunca teve
-> 2ª via emitida. Ver **P-154**.
+> **A conclusão:** não adianta reconstruir a URL. Alguma coisa no estado que o
+> portal monta não cabe numa query string refeita de fora. Chamar a função dele
+> resolve — e é mais robusto: se a Zurich mudar os parâmetros, a função muda
+> junto e a journey continua funcionando.
 
 📊 **A visibilidade do botão no portal** confirma a regra de retenção:
 
@@ -350,7 +370,7 @@ asserções verdes**, contra fixture anonimizada, sem tocar no portal.
 
 | # | O que | De quem |
 |---|---|:--:|
-| **P-154** | O download da 2ª via devolve **404** pela journey e funciona à mão. Tudo o que é técnico foi eliminado; sobra a hipótese de regra de negócio. | 🤖 uma tentativa em outro dia |
+| ~~P-154~~ | ~~O download da 2ª via devolve 404~~ — ✅ **RESOLVIDO em 14/08** chamando `GerarBoleto2` do view model. | — |
 | P-155 | Os parsers da Yelum e da MAPFRE devolvem `None` para `"1,287,99"`. Latente: aqueles portais não produzem esse formato. | 🤖 harmonizar |
 | P-156 | A carteira da **Resulta** na Zurich não pôde ser estabelecida — 200 vazio duas vezes. | 🤖 nova leitura |
 | P-157 | O teto exato da janela (entre 90 e 120 dias) e se ele é de dias ou de linhas. | 🤖 quando houver folga |
