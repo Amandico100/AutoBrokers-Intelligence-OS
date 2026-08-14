@@ -56,7 +56,7 @@ def check(nome, condicao, extra=""):
 from fixtures import mapfre_parcelas as fx           # noqa: E402
 from portal_worker.journeys import mapfre_corretor as mp  # noqa: E402
 from portal_worker.journeys import (                 # noqa: E402
-    JOURNEYS, get_journey, portais_com_cobranca, tem_cobranca)
+    JOURNEY_COBRANCA, JOURNEYS, get_journey, portais_com_cobranca, tem_cobranca)
 
 AGORA = datetime(2026, 8, 13, 12, 0, tzinfo=timezone.utc)
 
@@ -341,7 +341,17 @@ check("a MAPFRE aparece no conjunto do Cobrador", "mapfre_corretor" in portais, 
 for antigo in ("allianz_corretor", "hdi_corretor", "tokiomarine_corretor",
                "yelum_corretor"):
     check(f"{antigo} continua no conjunto", antigo in portais, portais)
-check("sao cinco seguradoras agora", len(portais) == 5, portais)
+
+# ⚠️ Este teste ja afirmou "sao cinco seguradoras" — e era verdade, ate a Zurich
+# existir. Contagem fixa envelhece e vira vermelho falso a cada seguradora nova;
+# um vermelho falso e desligado, e ai o guarda deixa de guardar (CLAUDE.md §9.3).
+# A licao MIGRA: o que importa nunca foi o numero, e sim que NINGUEM some.
+sufixo = f".{JOURNEY_COBRANCA}"
+no_mapa = sorted(k[: -len(sufixo)] for k in JOURNEYS if k.endswith(sufixo))
+check("toda journey de cobranca do mapa chega ao conjunto do Cobrador",
+      no_mapa == sorted(portais), (no_mapa, sorted(portais)))
+check("e o conjunto so cresce — nenhuma das cinco anteriores caiu",
+      len(portais) >= 5, portais)
 check("tem_cobranca reconhece a MAPFRE", tem_cobranca("mapfre_corretor"))
 check("a journey resolve pelo mapa",
       callable(get_journey("mapfre_corretor", "cobranca_sweep")))

@@ -4118,3 +4118,96 @@ Quando as seis seguradoras estiverem colhendo, esta é a fila:
 na cabeça do Founder. Se o primeiro envio acontecer antes de essas regras estarem
 escritas, elas viram correção depois de a mensagem ter saído — e mensagem enviada
 não volta.
+
+---
+
+# ZURICH — a sexta seguradora, e o palmo que falta
+
+📊 13/08/2026. Journey escrita, **111 testes verdes**, gate com o inadimplente
+identificado corretamente nas duas corretoras e Allianz 10/10 como linha de
+controle. Ver [`PORTAL-zurich.md`](portais/PORTAL-zurich.md).
+
+## P-154 · 🔴 O boleto da Zurich não baixa pelo robô — e baixa à mão
+
+**Aberta em:** 13/08/2026 · **Dono:** 🤖 execução, numa tentativa em outro dia
+
+📊 `GerarBoleto` devolveu **404 em toda tentativa da journey**, enquanto a MESMA
+chamada funcionou na captura manual do founder. Medido com a lista como linha de
+controle (200 antes e depois, em todas as rodadas):
+
+```
+fetch, cabecalho minimo ............ 200, mas devolve HTML
+fetch, cabecalho igual ao do jQuery  404
+sem o _=timestamp .................. 404
+data com %2F ....................... 404
+$.ajax DO PROPRIO jQuery da pagina . 404
+CONTROLE: a lista, no mesmo momento  200 com 33 KB   <- sessao viva
+```
+
+**Não é** cabeçalho, cliente HTTP, sessão nem ritmo. E os parâmetros são
+idênticos aos da captura — conferidos contra o código do próprio portal
+(`GerarBoleto2` em `/Scripts/Corretor/ParcelaVencida/Index.js`), incluindo o
+`FormatDate`, que dá a mesma data pelos dois campos.
+
+**A hipótese que sobra é regra de negócio:** o founder emitiu a 2ª via dessa
+parcela em 13/08 e o portal respondeu *"o boleto estará registrado e disponível
+para pagamento no dia 14/08/2026"*. Uma segunda emissão da mesma parcela, no
+mesmo dia, pode ser recusada — e 404 é como este portal diz "agora não".
+
+**O que destrava:** uma tentativa em outro dia, ou numa parcela que nunca teve
+2ª via emitida. Se ainda assim recusar, o caminho é o clique no botão da lista
+com captura de download (fallback previsto na SPEC-033).
+
+**O que custa esquecer:** nada silenciosamente — a journey **retém** o item com
+o motivo escrito e ele vai para a fila humana. Mas a Zurich não fecha o ciclo
+sozinha enquanto isto não resolver.
+
+---
+
+## P-155 · 🟡 O parser de valor da Yelum e da MAPFRE zera em "1,287,99"
+
+**Aberta em:** 13/08/2026 · **Dono:** 🤖 execução, quando houver folga
+
+📊 `_valor("1,287,99")` devolve **None** nos dois. A Zurich produz esse formato
+(vírgula de milhar E de decimal na mesma string) e ganhou parser próprio, que é
+um **superconjunto** do antigo.
+
+📊 **Latente, não ativo:** a MAPFRE manda `294.35` e a Yelum `1.672,62` —
+nenhuma das duas produz o formato hoje.
+
+**O que destrava:** trocar os dois pelo `valor_brasileiro` da Zurich e rodar as
+suítes das duas. Não foi feito agora para não mexer em journey em produção sem
+gate próprio.
+
+**O que custa esquecer:** se algum dia um daqueles portais mandar milhar com
+vírgula, a cobrança sai **sem valor** — e `None` não estoura.
+
+---
+
+## P-156 · 🟡 A carteira da Resulta na Zurich não pôde ser estabelecida
+
+**Aberta em:** 13/08/2026 · **Dono:** 🤖 nova leitura
+
+📊 A credencial **entra** (`RESULTA CORRETORA DE SEGUROS LTDA` na tela), mas a
+lista devolveu **200 com zero linhas, duas vezes seguidas**. O guarda do §3.5 do
+runbook fez o certo: terminou em `needs_human` em vez de afirmar carteira em dia.
+
+❓ Não sei se a Resulta tem mesmo zero parcelas na Zurich (é a corretora de
+outros ramos) ou se foi o aquecimento do portal.
+
+**O que custa esquecer:** se for carteira genuinamente vazia, o guarda vai
+disparar em toda varredura da Resulta — e um alerta que sempre toca é um alerta
+que ninguém lê.
+
+---
+
+## P-157 · 🟡 O teto da janela da Zurich é de DIAS ou de LINHAS?
+
+**Aberta em:** 13/08/2026 · **Dono:** 🤖 quando houver folga
+
+📊 90 dias / 53 linhas passaram; 120 dias deram 404. Não dá para separar as duas
+causas com uma medição só. A journey contorna estreitando a janela a cada 404.
+
+📊 E o achado que importa mais que o teto: **pedir demais derruba a sessão**.
+Depois do pedido de 365 dias, nem a janela de 30 — que funcionava no início da
+mesma sessão — voltou a responder. Só a linha de controle no fim revelou isso.
