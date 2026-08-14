@@ -490,11 +490,32 @@ async def process_whatsapp_message_background(
         session_id = f"whatsapp:{payload.phone}:{company_id}:{agent_suffix}"
 
         # Check de Status (Modo Humano)
+        #
+        # 🔴 ESTE PORTÃO ERA FAIL-OPEN ATÉ 14/08/2026, E ISSO ESTAVA ERRADO.
+        #
+        # 📊 Antes: o `except` só logava e `is_human_mode` continuava `False` —
+        # ou seja, **uma falha de leitura virava permissão de fala**. A IA
+        # responderia por cima da atendente que já estava conduzindo a conversa,
+        # e o segurado receberia duas vozes.
+        #
+        # E o portão irmão, 140 linhas abaixo (`_em_silencio`), sempre foi
+        # fail-closed — "assumindo SILÊNCIO". Dois portões que respondem
+        # perguntas parecidas falhavam para lados opostos, e o que protegia a
+        # atendente era justamente o frouxo.
+        #
+        # Agora: **não conseguir confirmar que a conversa está livre nunca é
+        # permissão para falar.** O custo de errar para este lado é uma
+        # mensagem não respondida, que o vigia de handoff pega. O custo de
+        # errar para o outro é a IA atropelando uma pessoa na frente do cliente.
+        #
+        # O filtro ganhou `company_id` (CLAUDE.md §7): o `session_id` já embute
+        # o tenant, mas filtro de tenant no código é obrigação, não redundância.
         is_human_mode = False
         try:
             check_status = await asyncio.to_thread(
                 lambda: supabase.client.table("conversations")
                 .select("status")
+                .eq("company_id", company_id)
                 .eq("session_id", session_id)
                 .limit(1)
                 .execute()
@@ -504,7 +525,12 @@ async def process_whatsapp_message_background(
                     is_human_mode = True
                     logger.info("[WEBHOOK] 👤 Modo Humano detectado. Pulando IA.")
         except Exception as e:
-            logger.warning(f"[WEBHOOK] Failed to check status: {e}")
+            is_human_mode = True
+            logger.error(
+                "[WEBHOOK] 🛑 não consegui confirmar o estado da conversa (%s) — "
+                "assumindo MODO HUMANO. A IA não fala sem prova de que a "
+                "conversa está livre.", type(e).__name__,
+            )
 
         # 3. Processar Conteúdo
         message_text = None
@@ -1177,9 +1203,17 @@ async def _handle_evolution_like_inbound(
     if normalized["skip"]:
         # Mensagem MANUAL da própria corretora (fromMe) numa conversa com
         # dispatch ATIVO: registra no espelho (humano copilotando a URA).
-        if normalized.get("skip_reason") == "from_me" and normalized.get("text") and normalized.get("phone"):
+        if normalized.get("skip_reason") == "from_me" and normalized.get("phone"):
             # A ATENDENTE RESPONDEU PELO CELULAR. Duas coisas acontecem aqui, e
             # as duas ANTES de qualquer teste de agente ligado.
+            #
+            # 🔴 A CONDIÇÃO EXIGIA TEXTO ATÉ 14/08/2026 — e isso era um buraco.
+            #
+            # 📊 Áudio é o formato mais comum no WhatsApp (o próprio
+            # `webhook.py:546` diz isso). A atendente que respondesse por áudio,
+            # foto ou localização não pausava a IA: ela gravava um áudio para o
+            # segurado e o agente respondia por cima, com duas vozes na mesma
+            # conversa. Agora QUALQUER `fromMe` humano pausa.
             #
             # 🔴 O bloco de captura logo abaixo roda dentro de
             # `if not await attendance_agent_active(...)` — ou seja, só quando o
@@ -1197,15 +1231,44 @@ async def _handle_evolution_like_inbound(
                 )
 
                 _empresa = str(integration.get("company_id") or "")
+                _texto = str(normalized.get("text") or "")
+                _tipo = str(normalized.get("msg_type") or "text")
+
+                # 🔴 QUEM ESCREVEU ISTO? — a pergunta que faltava.
+                #
+                # 📊 14/08/2026: este ramo tratava TODO `fromMe` como "a
+                # atendente respondeu". Mas a resposta do próprio agente volta
+                # por aqui — está medido e documentado desde 06/08
+                # (`espelho_chat`, guarda de eco). Consequência: o agente
+                # responderia UMA vez, pausaria a si mesmo e emudeceria para
+                # sempre naquela conversa, com o vigia mandando
+                # "⏳ AINDA SEM ATENDIMENTO" ao grupo 30 min depois.
+                #
+                # O produto agora anota a digital do que vai dizer antes de
+                # falar (`whatsapp_service.send_message`) e reconhece aqui.
+                # Em erro, `e_a_nossa_propria_voz` devolve False e a IA cala —
+                # a direção segura.
+                from app.services.whatsapp.voz_propria import e_a_nossa_propria_voz
+
+                _fomos_nos = e_a_nossa_propria_voz(_empresa, normalized["phone"], _texto)
+
+                # O espelho continua acontecendo nos dois casos: a mensagem
+                # apareceu no WhatsApp e tem de aparecer no chat. Quem
+                # deduplica é o índice único, não este `if`.
                 await espelhar_no_chat(
                     company_id=_empresa,
                     counterparty=str(normalized["phone"]),
-                    texto=str(normalized.get("text") or ""),
-                    msg_type="text", direcao="out",
+                    texto=_texto,
+                    msg_type=_tipo, direcao="out",
                     message_id=str(normalized.get("message_id") or ""),
                     quando_iso=datetime.now(timezone.utc).isoformat())
-                await pausar_por_intervencao_humana(
-                    company_id=_empresa, counterparty=str(normalized["phone"]))
+
+                if _fomos_nos:
+                    logger.info("[ESPELHO] eco da própria voz — a IA continua "
+                                "trabalhando nesta conversa")
+                else:
+                    await pausar_por_intervencao_humana(
+                        company_id=_empresa, counterparty=str(normalized["phone"]))
             except Exception as e:  # noqa: BLE001
                 logger.warning(f"[ESPELHO] intervenção humana não registrada: {type(e).__name__}")
 

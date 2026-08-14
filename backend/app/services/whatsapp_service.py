@@ -108,9 +108,35 @@ class WhatsappService:
             from app.services.whatsapp.registry import resolve_provider
 
             provider = resolve_provider(integration)
-            send = lambda t: provider.send_text(to_number, t)  # noqa: E731
+            _enviar = lambda t: provider.send_text(to_number, t)  # noqa: E731
         else:
-            send = lambda t: get_zapi_provider().send_text(to_number, t, integration)  # noqa: E731
+            _enviar = lambda t: get_zapi_provider().send_text(to_number, t, integration)  # noqa: E731
+
+        # 🔴 A DIGITAL DA PRÓPRIA VOZ — embrulhada no envio, e só aqui.
+        #
+        # Tudo que o produto fala com o segurado passa por este método: o
+        # agente, a atendente pelo dashboard, o acionamento, a mensagem de erro.
+        # Registrar em cada chamador seria doze lugares para esquecer um.
+        #
+        # 📊 O motivo (14/08/2026): a resposta VOLTA pelo webhook como `fromMe`,
+        # e `webhook.py:1180` lia isso como "a atendente respondeu pelo celular"
+        # e pausava a IA. O agente responderia uma vez e emudeceria para sempre.
+        # Ver `app/services/whatsapp/voz_propria.py`.
+        #
+        # 🔴 DENTRO do `send`, e não no laço abaixo, porque o laço não é o único
+        # caminho: há um retry do mesmo balão e uma divisão em PEDAÇOS quando o
+        # balão é grande. Cada pedaço é um texto diferente que volta como um
+        # `fromMe` diferente — registrar só no laço deixaria justamente o
+        # caminho de exceção sem digital, que é onde ninguém olha.
+        _empresa_da_voz = str((integration or {}).get("company_id") or "")
+
+        def send(t):
+            if _empresa_da_voz and str(t or "").strip():
+                from app.services.whatsapp.voz_propria import registrar_nossa_fala
+
+                # ANTES de enviar: o eco pode voltar antes da linha seguinte.
+                registrar_nossa_fala(_empresa_da_voz, to_number, t)
+            return _enviar(t)
 
         def _ok(result) -> bool:
             # SendResult do seam usa .ok; o provider z-api legado usa .success.

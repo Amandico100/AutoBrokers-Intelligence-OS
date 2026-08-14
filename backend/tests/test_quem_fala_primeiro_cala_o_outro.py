@@ -450,6 +450,139 @@ def teste_a_resposta_do_dashboard_nao_volta_em_dobro():
            "é a marca que o espelho procura para reconhecer o próprio eco")
 
 
+def _carregar_voz():
+    """Carrega `voz_propria` com um Redis de mentira — sem rede, sem contêiner."""
+    nome = "_teste_voz_propria"
+    if nome in sys.modules:
+        return sys.modules[nome]
+
+    class _RedisFalso:
+        def __init__(self):
+            self.chaves: dict = {}
+            self.quebrado = False
+
+        def setex(self, chave, ttl, valor):
+            if self.quebrado:
+                raise ConnectionError("redis fora do ar")
+            self.chaves[chave] = valor
+
+        def getdel(self, chave):
+            if self.quebrado:
+                raise ConnectionError("redis fora do ar")
+            return self.chaves.pop(chave, None)
+
+    falso = types.ModuleType("app.core.redis")
+    falso._banco = _RedisFalso()
+    falso.get_redis_client = lambda: falso._banco
+    sys.modules["app.core.redis"] = falso
+
+    caminho = os.path.join(RAIZ, "backend", "app", "services", "whatsapp",
+                           "voz_propria.py")
+    spec = importlib.util.spec_from_file_location(nome, caminho)
+    modulo = importlib.util.module_from_spec(spec)
+    sys.modules[nome] = modulo
+    spec.loader.exec_module(modulo)
+    modulo._redis_falso = falso._banco
+    return modulo
+
+
+def teste_a_ia_reconhece_a_propria_voz():
+    """🔴 O DEFEITO QUE TERIA MATADO O GO-LIVE.
+
+    📊 14/08/2026, conferido em `webhook.py`: o ramo `fromMe` tratava TODA
+    mensagem de saída como "a atendente respondeu pelo celular" — sem perguntar
+    quem escreveu. Mas a resposta do próprio agente VOLTA por ali (medido e
+    documentado desde 06/08). O agente responderia uma vez, pausaria a si mesmo,
+    e ficaria mudo para sempre naquela conversa — com o vigia mandando
+    "⏳ AINDA SEM ATENDIMENTO" ao grupo 30 minutos depois.
+
+    Não mordia porque o agente estava desligado. Abriria sozinho no go-live.
+    """
+    print("\n[6] A IA reconhece a própria voz e não se cala sozinha")
+    V = _carregar_voz()
+    V._redis_falso.chaves.clear()
+    V._redis_falso.quebrado = False
+
+    EMPRESA, FONE = "autofleet", "554799956540"
+
+    # O produto fala. A digital é anotada ANTES de enviar.
+    V.registrar_nossa_fala(EMPRESA, FONE, "Sinto muito! Me diga a placa, por favor")
+
+    # O eco volta pelo webhook como fromMe.
+    checar(V.e_a_nossa_propria_voz(EMPRESA, FONE,
+                                   "Sinto muito! Me diga a placa, por favor") is True,
+           "o eco da própria resposta é reconhecido",
+           "sem isto o agente responde uma vez e emudece")
+
+    # CONTROLE — a atendente digitando de verdade NÃO é reconhecida como eco.
+    checar(V.e_a_nossa_propria_voz(EMPRESA, FONE,
+                                   "Oi, aqui é a Regina, vou assumir") is False,
+           "CONTROLE — fala de pessoa NÃO é confundida com eco",
+           "se fosse, a IA nunca calaria e duas vozes falariam com o cliente")
+
+    # CONTROLE — a digital vale UMA volta. A atendente repetindo de propósito
+    # a mesma frase logo depois É uma pessoa, e tem de pausar.
+    V.registrar_nossa_fala(EMPRESA, FONE, "ok")
+    primeira = V.e_a_nossa_propria_voz(EMPRESA, FONE, "ok")
+    segunda = V.e_a_nossa_propria_voz(EMPRESA, FONE, "ok")
+    checar(primeira is True and segunda is False,
+           "CONTROLE — a digital vale UMA volta só",
+           "a 2ª vez que o texto aparece é pessoa, e pausa")
+
+    # CONTROLE — outra corretora com o MESMO telefone e o MESMO texto não
+    # aproveita a digital alheia.
+    V.registrar_nossa_fala("autofleet", FONE, "seu guincho está a caminho")
+    checar(V.e_a_nossa_propria_voz("resulta", FONE,
+                                   "seu guincho está a caminho") is False,
+           "CONTROLE — a digital NÃO atravessa corretoras",
+           "cross-tenant nem aqui")
+
+    # CONTROLE — espaço e maiúscula variam no transporte; a digital sobrevive.
+    V.registrar_nossa_fala(EMPRESA, FONE, "Vou verificar sua apólice")
+    checar(V.e_a_nossa_propria_voz(EMPRESA, FONE,
+                                   "  vou   verificar sua apólice  ") is True,
+           "CONTROLE — espaço e caixa não quebram o reconhecimento",
+           "o provedor não devolve byte a byte")
+
+    # 🔴 CONTROLE — Redis fora do ar: erra para o lado SEGURO.
+    V._redis_falso.quebrado = True
+    checar(V.e_a_nossa_propria_voz(EMPRESA, FONE, "qualquer coisa") is False,
+           "🔴 CONTROLE — Redis fora ⇒ trata como PESSOA (a IA cala)",
+           "duas vozes no mesmo cliente é pior que uma IA calada")
+    V._redis_falso.quebrado = False
+
+
+def teste_o_codigo_faz_as_tres_perguntas_certas():
+    """Os três guardas, lidos na fonte real. Guarda de fonte porque o caminho
+    do webhook depende de FastAPI e Supabase — o que dá para provar sem rede é
+    que as decisões estão escritas onde precisam estar."""
+    print("\n[7] Os três portões do atendimento monitorado")
+    wh = _comandos("backend/app/api/webhook.py")
+    ws = _comandos("backend/app/services/whatsapp_service.py")
+
+    checar("e_a_nossa_propria_voz(" in wh,
+           "o ramo fromMe pergunta QUEM escreveu",
+           "sem esta pergunta o agente se cala sozinho")
+    checar("registrar_nossa_fala(" in ws,
+           "o envio anota a digital da própria fala",
+           "e anota no ÚNICO lugar por onde todo envio passa")
+
+    # 2.2 — a condição não pode voltar a exigir texto
+    ramo = wh[wh.find('skip_reason") == "from_me"'):][:200]
+    checar('normalized.get("text")' not in ramo,
+           "áudio e foto da atendente TAMBÉM pausam a IA",
+           "áudio é o formato mais comum no WhatsApp")
+
+    # 2.3 — o portão de silêncio virou fail-closed
+    i = wh.find("is_human_mode = False")
+    trecho = wh[i:i + 1400] if i >= 0 else ""
+    checar("is_human_mode = True" in trecho.split("except")[-1],
+           "🔴 falha de leitura ⇒ a IA CALA (fail-closed)",
+           "não conseguir confirmar nunca é permissão para falar")
+    checar('.eq("company_id", company_id)' in trecho,
+           "CONTROLE — o portão filtra por corretora (CLAUDE.md §7)")
+
+
 def main() -> int:
     print("=" * 70)
     print("QUEM FALA PRIMEIRO CALA O OUTRO — NAQUELA CONVERSA")
@@ -459,6 +592,8 @@ def main() -> int:
     teste_a_pausa_nunca_desliga_o_agente()
     teste_o_agente_respeita_a_pausa()
     teste_a_resposta_do_dashboard_nao_volta_em_dobro()
+    teste_a_ia_reconhece_a_propria_voz()
+    teste_o_codigo_faz_as_tres_perguntas_certas()
 
     print("\n" + "=" * 70)
     if _PROBLEMAS:
