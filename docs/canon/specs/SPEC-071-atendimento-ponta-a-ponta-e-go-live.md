@@ -226,7 +226,95 @@ aumentando?"* — não estava porque o material nunca chegou ao Atlas.
 
 ---
 
-## 7. BLOCO 5 — D5 · O portal de vidros
+## 6-B. BLOCO 5 — A AUDITORIA DA REALIDADE
+> **O bloco mais importante desta SPEC para o futuro do projeto.**
+> Comparar o que a Regina e a Saionara **realmente fazem** com o que os mapas,
+> os playbooks e as instruções **dizem que se faz** — e corrigir só o que
+> mudou de verdade.
+>
+> Decisão do Founder, 14/08: *"não podemos regredir, nem deixar oportunidades
+> passar"*.
+
+### 6-B.1 · Por que ele existe
+
+Os mapas de URA foram construídos por observação. As URAs mudam. Um menu que
+trocou de tecla transforma um corredor que funciona num corredor que erra — e
+o erro só aparece com um segurado real esperando guincho.
+
+📊 E o material para conferir **já está no acervo**: 2.453 mensagens
+interativas, com menu, botão e passo a passo, de conversas reais.
+
+### 6-B.2 · 🔴 As quatro travas — o que impede este bloco de piorar o produto
+
+| # | Trava | Por quê |
+|---|---|---|
+| T1 | **O padrão é CONFIRMA** | O ônus da prova é de quem quer mudar. Um agente solto "melhora" o que está certo |
+| T2 | **Nunca edita no lugar** | Gera versão nova; a `active` só cai quando aprovada. Mesmo padrão do gate de playbook |
+| T3 | **Toda mudança cita a mensagem exata** | Data, hora e texto literal. Sem citação, a proposta é descartada sem discussão |
+| T4 | **O juiz entra DUAS vezes** | Ver 6-B.4 |
+
+### 6-B.3 · Os três vereditos possíveis por rota
+
+```
+CONFIRMA   o mapa bate com a conversa            → nada muda
+MUDOU      a URA mudou                           → proposta + citação obrigatória
+NOVA       apareceu rota que não tínhamos        → proposta + citação obrigatória
+```
+
+Um quarto desfecho é legítimo e deve ser dito em voz alta:
+**SEM EVIDÊNCIA** — não houve conversa suficiente para julgar aquela rota.
+Silêncio não é confirmação.
+
+### 6-B.4 · Onde o juiz crítico entra — e por que duas vezes
+
+**Juiz 1 — ANTES de escrever qualquer coisa.** *"A evidência sustenta esta
+mudança, ou o agente está vendo padrão onde não tem?"*
+É o portão mais importante do bloco. Uma conversa atípica não é mudança de URA.
+O juiz reprova a proposta e a rota volta para CONFIRMA.
+
+**Juiz 2 — DEPOIS de escrever.** *"O mapa novo responde melhor que o velho
+contra as MESMAS conversas?"* Mesma regra do gate de playbook: **empate mantém
+o antigo.** Regredir tem de ser estruturalmente impossível.
+
+### 6-B.5 · Como será executado
+
+| | |
+|---|---|
+| Motor | subagentes **Opus 5, esforço máximo**, plano Max (R5) |
+| Um subagente **por seguradora** | não misturar HDI com Yelum numa cabeça só |
+| Entrada | as conversas reais daquela seguradora + o mapa `active` + o playbook + o corredor |
+| Saída | um cartão por rota: veredito · evidência citada · proposta (se houver) |
+| Juiz | subagente separado, que **não escreveu** a proposta |
+| Tecelão | só entra depois do Juiz 1 aprovar a evidência |
+
+### 6-B.6 · Escopo — as duas frentes
+
+**Frente A · AutoFleet (Regina) — todas as seguradoras**
+📊 A Regina aciona por WhatsApp e as conversas estão todas no acervo, uma
+seguradora por número. Auditar cada uma contra o seu mapa.
+
+**Frente B · Allianz Residencial (Saionara/Resulta) — auditoria dedicada**
+Decisão do Founder, 14/08: *"é um WhatsApp importante, com bastante demanda…
+precisa ser feita uma análise bem detalhada… não pode ter erro nisso."*
+Allianz Residencial é o corredor com mais serviços (eletricista, encanador,
+chaveiro, desentupimento, eletrodomésticos) e o candidato natural ao primeiro
+teste ponta a ponta. Ganha subagente próprio e passada mais profunda.
+
+### 6-B.7 · O que sai deste bloco
+
+1. Mapas do Atlas corrigidos **só onde mudou**, com rota nova incorporada
+2. Playbooks ajustados onde a conversa real contradiz a conduta escrita
+3. Instruções de corredor conferidas contra a prática
+4. **Um relatório do que NÃO tinha evidência** — a lista do que ainda não
+   sabemos, que é tão valiosa quanto o que corrigimos
+
+### 6-B.8 · O que este bloco NÃO faz
+Não aciona nada · não escreve em WhatsApp nenhum · não ativa mapa sozinho —
+toda promoção passa pelo humano, como no gate de playbook.
+
+---
+
+## 7. BLOCO 6 — D5 · O portal de vidros
 > 📊 Prioridade alta: vidros é um dos principais serviços, e **não** vai pelo
 > WhatsApp da seguradora — vai pelo portal `abraseuatendimento.com.br`, que
 > atende **várias** seguradoras.
@@ -258,7 +346,7 @@ portal maxpar · 5.5 **quando o agente deve escolher o portal em vez do WhatsApp
 
 ---
 
-## 8. BLOCO 6 — Os testes
+## 8. BLOCO 7 — Os testes
 > R1, R2 e R3 valem em todos.
 
 ### Teste A · conversa (sem tocar em seguradora)
@@ -282,7 +370,7 @@ mecanismo funciona e que o defeito era a falta de distinção de autor.
 
 ---
 
-## 9. BLOCO 7 — A destilação *(madrugada, quando o Founder avisar)*
+## 9. BLOCO 8 — A destilação *(madrugada, quando o Founder avisar)*
 
 **Entrada:** AutoFleet histórica + AutoFleet atual + Resulta.
 **Motor:** subagentes Opus 5, esforço máximo, plano Max. Zero API (R5).
@@ -312,16 +400,36 @@ teste, conversas fictícias.
 
 ## 10. ORDEM DE EXECUÇÃO
 
+### As levas — executadas inteiras, não picotadas
+
 ```
-BLOCO 1  Resulta ........................ 10 min   sem risco
-BLOCO 2  os 3 P0 + mutações ............. ~2h      trava tudo
-BLOCO 3  travas + dossiê ................ ~1h30
-BLOCO 4  reconhecer seguradora .......... ~2h      antes da destilação
-BLOCO 5  portal de vidros ............... ~2h
-BLOCO 6  testes A e D .................. com o Founder
-         testes B e C .................. exigem R3
-BLOCO 7  destilação .................... madrugada
+LEVA 1 · A BASE SEGURA                                   ~4h · sem risco externo
+  BLOCO 1  Resulta: a mesa da Saionara ........ 10 min
+  BLOCO 2  os 3 P0 + mutações ................. ~2h     trava o "ligar agente"
+  BLOCO 3  travas + Lapidador + dossiê novo ... ~1h30
+  → ao fim: o agente pode ser ligado sem se calar; nada aciona nada
+
+LEVA 2 · A INTELIGÊNCIA DA REALIDADE                     ~5h · subagentes Opus 5
+  BLOCO 4  reconhecer seguradora .............. ~2h     habilita tudo abaixo
+  BLOCO 5  auditoria da realidade ............. ~3h     mapas × conversas reais
+           Frente A: AutoFleet, todas as seguradoras
+           Frente B: Allianz Residencial (Saionara), dedicada
+  → ao fim: os mapas dizem o que a URA realmente faz
+
+LEVA 3 · O PORTAL DE VIDROS                              ~2h
+  BLOCO 6  telas finais, franquia, link, popup novo, regra loja×link
+
+LEVA 4 · OS TESTES                                       com o Founder
+  BLOCO 7  A e D na Amandus  ·  B e C exigem R3
+
+LEVA 5 · A DESTILAÇÃO                                    madrugada, sob aviso
+  BLOCO 8  agrupar → triar → destilar → julgar → encaminhar
 ```
+
+**Dependências que não podem ser trocadas:**
+- BLOCO 5 depende do 4 (sem `insurer_key` não se sabe qual conversa é de quem)
+- BLOCO 7 depende do 2 e do 5 (mapa errado faz o teste falhar pelo motivo errado)
+- BLOCO 8 depende do 4 e do 5 (senão conversa de seguradora contamina o RAG)
 
 ---
 
