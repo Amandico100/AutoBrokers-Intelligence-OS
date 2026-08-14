@@ -65,7 +65,15 @@ from fixtures.hdi_parcelas import AGUARDE, RESULTADO, PONTE, SELECT_TIPO  # noqa
 
 RESULTADO_P = RESULTADO
 
-AGORA = datetime.now(timezone.utc)
+# 🔴 Brasilia, NAO UtC. O codigo sob teste conta os dias de atraso em
+# `America/Sao_Paulo` (billing_avisos._dias_de_atraso). Montando as datas em
+# UTC, o teste passava de dia e falhava entre 21h e a meia-noite -- quando o
+# UTC ja virou e o Brasil nao. Um vermelho que so aparece de noite e pior que
+# nenhum teste: ninguem confia nele, e ai ele deixa de guardar (CLAUDE.md 9.3).
+#
+# 📊 Visto em 13/08/2026 as 21:55 BRT (= 14/08 00:55 UTC): "3 dias atras"
+# virava "(ha 2 dias)" na mensagem, e a assercao ficava vermelha.
+AGORA = datetime.now(timezone.utc).astimezone(timezone(timedelta(hours=-3)))
 
 
 def _dias_atras(n):

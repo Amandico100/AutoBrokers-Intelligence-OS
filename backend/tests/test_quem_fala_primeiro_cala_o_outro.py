@@ -75,6 +75,7 @@ class _Consulta:
         self._insert = None
         self._update = None
         self._limite = None
+        self._ordem: list = []
 
     def select(self, *_a, **_k):
         return self
@@ -91,7 +92,37 @@ class _Consulta:
         self.filtros.append(("is_null", campo, None))
         return self
 
-    def order(self, *_a, **_k):
+    def gte(self, campo, valor):
+        """🔴 NÃO EXISTIA, e a ausência era um falso verde esperando a vez.
+
+        📊 13/08/2026: o guarda de eco passou a filtrar `created_at >= agora-300s`
+        em vez de carregar as 40 últimas mensagens. Este dublê não conhecia
+        `gte`, então a chamada estourava `AttributeError`, o `try/except` do
+        espelho engolia, e TRÊS controles de eco ficaram vermelhos de uma vez.
+
+        Deu certo por acaso: o dublê falhou barulhento. Se ele tivesse um `gte`
+        que ignorasse o filtro, os mesmos três testes teriam ficado VERDES
+        enquanto o guarda de eco lia a conversa inteira em produção.
+        """
+        self.filtros.append(("gte", campo, valor))
+        return self
+
+    def lt(self, campo, valor):
+        self.filtros.append(("lt", campo, valor))
+        return self
+
+    def order(self, campo, desc=False, **_k):
+        """ORDENA DE VERDADE — era `return self`, um no-op.
+
+        O arquivo irmão já pagou por isto: um dublê que ignora `order` devolve
+        as N linhas PRIMEIRAS inseridas onde o Postgres devolveria as N ÚLTIMAS.
+        O guarda de eco lê `order("created_at", desc=True).limit(20)`; com o
+        no-op, ele leria as 20 mensagens mais ANTIGAS da conversa — o oposto
+        exato do que precisa — e o teste ficaria verde por inversão.
+
+        Lista e não par: `order()` pode ser chamado duas vezes (desempate).
+        """
+        self._ordem.append((campo, bool(desc)))
         return self
 
     def limit(self, n):
@@ -122,11 +153,16 @@ class _Consulta:
                 return False
             if tipo == "is_null" and atual is not None:
                 return False
+            if tipo == "gte" and str(atual or "") < str(valor):
+                return False
+            if tipo == "lt" and not (str(atual or "") < str(valor)):
+                return False
         return True
 
     def execute(self):
         linhas = self.banco.dados.setdefault(self.tabela, [])
         if self._insert is not None:
+            _conferir_indice_unico(self.tabela, self._insert, linhas)
             novo = dict(self._insert)
             novo.setdefault("id", f"{self.tabela}-{len(linhas) + 1}")
             linhas.append(novo)
@@ -137,9 +173,42 @@ class _Consulta:
                 l.update(self._update)
             return _Resposta(tocadas)
         achadas = [l for l in linhas if self._casa(l)]
+        # ORDEM antes de LIMITE, como no Postgres.
+        for campo, desc in reversed(self._ordem):
+            achadas = sorted(achadas, key=lambda l: str(self._valor(l, campo) or ""),
+                             reverse=desc)
         if self._limite:
             achadas = achadas[: self._limite]
         return _Resposta(achadas)
+
+
+class ChaveDuplicada(Exception):
+    """O banco real diria `23505 duplicate key value violates unique constraint`."""
+
+
+def _conferir_indice_unico(tabela: str, linha: dict, existentes: list) -> None:
+    """`messages_espelho_sem_duplicata_uidx` — migration 20260806_02.
+
+    🔴 PASSOU A SER OBRIGATÓRIO NESTE ARQUIVO EM 13/08/2026.
+
+    Antes, a dedup era feita em Python sobre as 40 últimas mensagens, e este
+    dublê podia ignorar o índice sem consequência. Agora o espelho INSERE e
+    deixa o banco responder: sem o índice aqui, o dublê aceitaria a mensagem
+    reentregue duas vezes e o teste da reentrega ficaria verde por permissão —
+    o pior tipo de verde, porque o guarda existiria e não guardaria nada.
+    """
+    if tabela != "messages":
+        return
+    wa = (linha.get("payload") or {}).get("wa_message_id")
+    if not wa:
+        return
+    conversa = linha.get("conversation_id")
+    for outra in existentes:
+        if (outra.get("conversation_id") == conversa
+                and (outra.get("payload") or {}).get("wa_message_id") == wa):
+            raise ChaveDuplicada(
+                'duplicate key value violates unique constraint '
+                '"messages_espelho_sem_duplicata_uidx" (23505)')
 
 
 class BancoFalso:

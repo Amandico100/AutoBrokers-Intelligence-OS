@@ -11,10 +11,25 @@ LIGADO por padrão para toda corretora. 1x por semana o motor:
    e registra em broker_insights (source=sugestoes_ia) — a RESPOSTA do corretor
    cai na conversa normal e o Garimpo captura sozinho (ciclo fechado).
 
-CUSTO: 1 chamada de LLM por corretora POR SEMANA (modelo bom compensa aqui —
-env SUGESTOES_LLM_MODEL, default gpt-4o). LLM indisponível → mensagem-template
-determinística com a pergunta aberta: o motor NUNCA falha em silêncio.
+CUSTO: 1 chamada de LLM por corretora POR SEMANA. LLM indisponível → mensagem
+-template determinística com a pergunta aberta: o motor NUNCA falha em silêncio.
 Desligar (exceção): acionamento_profile.sugestoes.enabled = false.
+
+🔴 O MODELO MUDOU EM 13/08/2026, E A ANTIGA JUSTIFICATIVA NÃO SOBREVIVE À CONTA.
+O default era `gpt-4o`. Esta é a mensagem que a plataforma envia SOZINHA ao
+corretor — é a voz proativa do produto, não um classificador. Ela lê o que se
+sabe do negócio dele e propõe oportunidade, alerta e uma pergunta aberta.
+Isso é síntese e julgamento, e é o trabalho mais difícil que o sistema faz por
+semana.
+
+📊 A conta, com 3 corretoras: 1 msg/semana × 3 = ~12 chamadas/mês. A ~3k tokens
+de entrada e ~800 de saída, `claude-opus-5` custa da ordem de **US$ 0,4/mês**.
+Escolher o modelo fraco aqui economiza centavos e paga com a única mensagem que
+o corretor recebe sem ter pedido. Se ela for genérica, ele desliga o auxiliar —
+e aí o custo é o produto, não a API.
+
+Provider e modelo continuam em env (`SUGESTOES_LLM_PROVIDER`/`_MODEL`) — quem
+quiser outro troca sem deploy.
 """
 
 from __future__ import annotations
@@ -77,16 +92,38 @@ def week_key(now: Optional[datetime] = None) -> str:
 
 
 async def _llm_message(company_id: str, prompt: Dict[str, str]) -> Optional[str]:
-    try:
-        import os as _os
+    import os as _os
 
+    # 🔴 A TORNEIRA, e ela nasce FECHADA — 13/08/2026.
+    #
+    # 📊 Medido no dia: `broker_insights` com `source='sugestoes_ia'` = **0**.
+    # A chamada nunca aconteceu — e não por trava nenhuma: é que **nenhuma
+    # corretora tem WhatsApp de sugestão configurado**, então `target_whatsapp`
+    # devolve vazio e o motor sai antes. Segurança por acidente não é segurança:
+    # no dia em que alguém preencher aquele campo, isto passa a rodar toda
+    # semana sem ninguém ter decidido nada.
+    #
+    # Devolver `None` aqui NÃO cala o auxiliar: o chamador cai na
+    # `FALLBACK_TEXT`, que já traz a pergunta aberta. O corretor continua sendo
+    # ouvido; o que fica desligado é só o custo de API.
+    if str(_os.getenv("SUGESTOES_LLM", "0")).strip().lower() not in (
+        "1", "true", "yes", "on", "sim"
+    ):
+        logger.info("[SUGESTOES] LLM desligado (SUGESTOES_LLM) — usando o texto padrão")
+        return None
+
+    try:
         from langchain_core.messages import HumanMessage, SystemMessage
 
         from app.core.utils import get_api_key_for_provider
         from app.factories.llm_factory import LLMFactory
 
-        provider = _os.getenv("SUGESTOES_LLM_PROVIDER") or "openai"
-        model = _os.getenv("SUGESTOES_LLM_MODEL") or "gpt-4o"
+        # 🔴 `claude-opus-5`, e não `gpt-4o`. Ver o cabeçalho: esta é a única
+        # mensagem que o produto envia sem o corretor pedir, e ela precisa
+        # ler o negócio dele e dizer algo que ele ainda não sabia. ~US$ 0,4/mês
+        # com as 3 corretoras de hoje.
+        provider = _os.getenv("SUGESTOES_LLM_PROVIDER") or "anthropic"
+        model = _os.getenv("SUGESTOES_LLM_MODEL") or "claude-opus-5"
         llm = LLMFactory.create_llm(
             company_config={}, agent_data={"llm_provider": provider, "llm_model": model},
             api_key=get_api_key_for_provider(provider, model),

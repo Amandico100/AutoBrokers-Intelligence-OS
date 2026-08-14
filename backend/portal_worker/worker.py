@@ -505,6 +505,15 @@ async def _run_job(supa, job: Dict[str, Any]) -> None:
             params["_job_id"] = str(job_id)
             params["_company_id"] = str(job.get("company_id") or "")
             params["_portal_key"] = str(job.get("portal_key") or "")
+            # 🔴 O rótulo da conta é DADO DE TRABALHO, não enfeite de tela.
+            # Na MAPFRE, um login enxerga DUAS corretoras e o `account_label`
+            # guarda qual delas esta conta deve varrer — sem ele a journey não
+            # tem como conferir de quem é o dado, e varrer "o que estiver
+            # selecionado" é como um inadimplente de uma empresa entra no
+            # cadastro da outra (CLAUDE.md §7).
+            if account_row:
+                params.setdefault("account_label",
+                                  str(account_row.get("account_label") or ""))
             params["_upload_blob"] = lambda path, blob, content_type="application/pdf": _upload_portal_blob(
                 supa, path, blob, content_type
             )

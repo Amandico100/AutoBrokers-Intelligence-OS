@@ -6,9 +6,11 @@ dúvidas recorrentes, elogios e risco de churn → tabela `broker_insights`
 corretores estão querendo" — decisão do founder 13/07.
 
 CUSTO (decisão consciente): a captura v1 é DETERMINÍSTICA (regex de padrões de
-desejo/dor — custo ZERO por mensagem). GARIMPO v2 (SPEC-049): camada LLM barata
-LIGADA por padrão — 1 chamada/corretora/dia, entrada limitada, desligável com
-GARIMPO_LLM=0. Conversas espelhadas de seguradora (dispatch:) ficam FORA.
+desejo/dor — custo ZERO por mensagem) e continua rodando sempre. GARIMPO v2
+(SPEC-049) acrescenta uma camada de LLM — 1 chamada/corretora/dia, entrada
+limitada a 8.000 caracteres — que desde 13/08/2026 nasce **DESLIGADA**
+(`GARIMPO_LLM=1` liga, sem deploy). Conversas espelhadas de seguradora
+(`dispatch:`) ficam FORA.
 """
 
 from __future__ import annotations
@@ -105,12 +107,35 @@ async def mine_conversation(company_id: str, conversation_id: str,
 
 
 # ------------------------------------------------------------------ #
-# GARIMPO v2 (SPEC-049) — camada LLM BARATA em lote, por corretora/dia.
+# GARIMPO v2 (SPEC-049) — camada LLM em lote, por corretora/dia.
 # A regex v1 pega o óbvio; a LLM pega o resto (dúvidas de seguros,
-# necessidades implícitas, temas recorrentes). Custo controlado: 1 chamada
-# por corretora por dia, entrada limitada, modelo econômico. Desligável
-# com GARIMPO_LLM=0. Tiering da casa: Haiku aqui (volume), Sonnet no
-# destilador braçal, Opus só no estrutural (playbooks).
+# necessidades implícitas, temas recorrentes). 1 chamada por corretora por dia,
+# entrada limitada a 8.000 caracteres. Desligável com GARIMPO_LLM=0.
+#
+# 🔴 O MODELO SUBIU DE HAIKU PARA SONNET EM 13/08/2026 — e o motivo é que a
+# antiga justificativa não existia.
+#
+# O comentário dizia "Haiku aqui (volume)". 📊 Medido: são **3 corretoras
+# evolution-go ativas**, logo **3 chamadas por dia**. Não há volume. A conta,
+# a ~2,5k tokens de entrada e ~500 de saída:
+#
+#     Haiku 4.5    ~US$ 0,45/mês
+#     Sonnet 5     ~US$ 0,90/mês
+#
+# Quarenta e cinco centavos por mês separavam os dois modelos, e a diferença
+# foi decidida por uma palavra ("volume") que ninguém tinha medido.
+#
+# E a tarefa não é a que o tiering supunha. Classificar `elogio` é
+# pattern-matching; `necessidade` implícita e `risco_churn` são leitura de
+# entrelinha, e o campo `quote` exige ancoragem literal — uma citação inventada
+# não é um insight fraco, é um insight FALSO que entra na base como se fosse
+# do corretor. Sonnet 5 sustenta as duas coisas.
+#
+# Opus continua fora daqui de propósito: a saída é fechada (7 categorias, teto
+# de 8 itens) e Sonnet 5 dá qualidade próxima de Opus nesse formato. O tiering
+# da casa continua valendo — ele só perdeu a premissa de volume que não era
+# verdade: Sonnet no braçal, Opus no estrutural (playbooks) e na voz que fala
+# com o corretor (sugestões proativas).
 # ------------------------------------------------------------------ #
 _LLM_KINDS = {"desejo", "dor", "pedido_feature", "duvida_seguros", "necessidade", "elogio", "risco_churn"}
 _LLM_MAX_CHARS = 8000
@@ -132,7 +157,17 @@ async def _llm_refine_company(company_id: str, conv_ids: list) -> int:
     """Uma chamada barata por corretora: minera o que a regex não pega."""
     import os as _os
 
-    if str(_os.getenv("GARIMPO_LLM", "1")).strip().lower() in ("0", "false", "off"):
+    # 🔴 NASCE DESLIGADO desde 13/08/2026 (o default era "1").
+    #
+    # Decisão do Founder no mesmo dia: enquanto o trabalho cognitivo é feito
+    # pelo Claude Code no plano Max, nenhum job periódico gasta API sozinho.
+    # A camada de REGEX do Garimpo continua rodando e continua gravando
+    # insights — o que fica parado é só a chamada de modelo.
+    #
+    # Ligar é `GARIMPO_LLM=1`, sem deploy.
+    if str(_os.getenv("GARIMPO_LLM", "0")).strip().lower() not in (
+        "1", "true", "yes", "on", "sim"
+    ):
         return 0
     try:
         import json as _json
@@ -165,7 +200,7 @@ async def _llm_refine_company(company_id: str, conv_ids: list) -> int:
             return 0
 
         provider = _os.getenv("GARIMPO_LLM_PROVIDER") or "anthropic"
-        model = _os.getenv("GARIMPO_LLM_MODEL") or "claude-haiku-4-5-20251001"
+        model = _os.getenv("GARIMPO_LLM_MODEL") or "claude-sonnet-5"
         llm = LLMFactory.create_llm(
             company_config={}, agent_data={"llm_provider": provider, "llm_model": model},
             api_key=get_api_key_for_provider(provider, model),

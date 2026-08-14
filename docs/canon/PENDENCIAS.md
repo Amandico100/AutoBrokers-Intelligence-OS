@@ -3723,3 +3723,491 @@ fica ❓ é só a coluna de juros/multa da linha vencida.
 
 - **Custa se esquecer:** dívida de dois meses não aparece — e sem uma testemunha
   independente ninguém saberia. Medir o alcance é pré-requisito do gate.
+
+---
+
+## P-122 · 🔴 `ESPELHO_SYNC_ENABLED` precisa ser ligado depois do canario
+
+**Aberta em:** 13/08/2026 · **Dono:** 🧑 Founder (uma variavel no EasyPanel)
+
+O recovery periodico do Espelho **nasce desligado** (commit `d9d17bb`). Foi
+decisao de desenho: o primeiro boot depois do Upgrade para Pro e o instante mais
+perigoso do plano — dezenas de componentes em 402 voltam ao mesmo tempo — e um
+sync que sobe trabalhando nesse minuto e exatamente o que nao pode acontecer.
+
+**Enquanto estiver OFF:** a ponte AO VIVO funciona inteira. Mensagem nova
+aparece no chat normalmente. O que nao roda e a **rede de seguranca** — a
+recuperacao do que a ponte perdeu durante um deploy ou uma reconexao.
+
+**O que destrava:** `ESPELHO_SYNC_ENABLED=true` no servico `autobrokers-smith-api`,
+depois do canario one-shot medido nas tres corretoras.
+
+**O que custa esquecer:** mensagem perdida por um deploy nao seria recuperada
+automaticamente. Ela continua intacta em `attendance_transcripts` e volta com um
+one-shot — mas ninguem seria avisado de que faltou.
+
+---
+
+## P-123 · ~~A recuperacao da janela da pane~~ — **FECHADA em 13/08/2026 20:05 UTC: nao ha o que recuperar**
+
+**Aberta e fechada no mesmo dia.** Foi aberta por deducao; a medicao a desmontou.
+
+📊 Medido depois do deploy, antes do Upgrade:
+
+```
+transcripts elegiveis na janela de 7 dias ...... 3.426
+destes, FALTANDO no chat ....................... 0
+conversas afetadas ............................. 0
+```
+
+O Espelho ja tinha alcancado tudo antes da restricao. **Nao ha backfill a fazer.**
+
+E a razao pela qual nao existe "janela da pane" no acervo e mais simples do que
+eu supus: 📊 o ultimo transcript capturado e de **12/08 21:12 UTC — 22h50 antes**
+desta medicao. A captura escreve via PostgREST, e PostgREST estava em 402: o
+Observador nao capturou NADA durante a restricao. Nao ha material esperando no
+acervo porque ele nunca chegou la.
+
+**O que isso muda no plano:** o passo "one-shot de recuperacao por corretora"
+sai da sequencia pos-Upgrade. Ele existiria para copiar acervo -> chat, e nao ha
+diferenca entre os dois.
+
+**O que assume o lugar dele:** quando o Supabase voltar e o Observador
+reconectar, o WhatsApp deve reentregar por HISTORY_SYNC as ~23h que nao foram
+capturadas. Elas entram pela ponte AO VIVO (que nunca foi desligada), com
+`created_at` de agora — depois do cursor. Custo por mensagem depois da Alavanca
+A: 2 leituras pequenas + 1 insert. Mesmo um HISTORY_SYNC do tamanho do da
+Amandus (13.200 mensagens) fica na casa de poucos MB, contra os 7 GB do desenho
+antigo.
+
+**O que observar:** o contador `agora` do `/health` na primeira hora. Se
+`mensagem_nova` subir muito, e o HISTORY_SYNC entrando — esperado. Se `erro:*`
+subir, ai sim ha algo a investigar.
+
+<!-- texto original preservado abaixo, append-only -->
+
+### Registro original (13/08, antes da medicao)
+
+
+**Aberta em:** 13/08/2026 · **Dono:** 🤖 execucao, depois do Upgrade
+
+O cursor foi semeado em `now()` (13/08 ~18:30 UTC) de proposito: partir do
+comeco varreria as 105.275 linhas do acervo — 26x o ciclo que causou o
+incidente, no minuto seguinte ao Founder pagar pelo Pro.
+
+Consequencia: as mensagens que chegaram **durante a restricao 402** nao entram
+pelo cursor. Elas estao inteiras em `attendance_transcripts`.
+
+**O que destrava:** depois do gate 402, chamar o endpoint que ja existe, uma
+corretora por vez, medindo entre uma e outra:
+
+```
+POST /api/whatsapp-channel/espelho/trazer-conversas?company_id=<id>&dias=3&limite=3000
+Header: X-AutoBrokers-Internal-Key
+```
+
+📊 Volume esperado (medido em 13/08): a maior corretora tem 59.168 transcripts
+no total, mas so **4.009 na janela de 7 dias**. `dias=3` cobre a pane com folga.
+
+**O que custa esquecer:** as conversas dos dias da pane nao apareceriam na mesa
+de trabalho — visiveis no acervo e no `/admin/espelho`, invisiveis para a
+atendente.
+
+---
+
+## P-124 · 🟠 SEC-05 guarda uma tela que mudou de casa — e por isso nao guarda nada
+
+**Aberta em:** 13/08/2026 · **Dono:** 🤖 execucao, bloco proprio
+
+📊 `broker_outcome_regression_pack.py` (caso SEC-05) procura a tela de conversas
+em `app/dashboard/conversas/page.tsx` e `app/admin/conversations/page.tsx`. A
+primeira **nao existe** e a segunda e um redirecionamento (pulado de proposito).
+Resultado: `tela de conversas nao encontrada em nenhum dos caminhos` — **gate
+vermelho**, e o guarda de seguranca sem alvo.
+
+A tela real e `app/dashboard/atendimentos/conversas/page.tsx` (SPEC-043/064).
+
+**Nao ha exposicao:** conferido em 13/08 — a tela real nao tem `supabase.storage`
+nem `createClient`, e nao renderiza midia. O que falta e o guarda saber onde ela
+mora. Ele tambem exige `resolveMediaUrl`, que aquela tela nao usa porque nao
+mostra midia — logo o caso precisa ser **reescrito**, nao so reapontado.
+
+**Falha pre-existente:** o P0 do Egress nao tocou um unico arquivo em `app/`
+(`git status --short -- app/` = vazio nos dois commits).
+
+**O que custa esquecer:** o gate fica vermelho por um motivo que nao e o que ele
+anuncia, e a proxima regressao de verdade se esconde atras deste vermelho
+cronico — que e como um gate morre.
+
+---
+
+## P-125 · 🔴 O código do P0 está na `main` e NÃO está no ar — falta clicar Implantar
+
+**Aberta em:** 13/08/2026 · **Dono:** 🧑 Founder (ação física no EasyPanel)
+
+📊 `git push origin HEAD:main` às 16:18 UTC, quatro commits (`51b5c0f`,
+`d9d17bb`, `05fb3ae`, `3f9e0d5`). **Vinte e um minutos depois**, o contêiner
+ainda servia o código antigo.
+
+**Prova:** o commit `3f9e0d5` acrescenta a chave `espelho_sync_ligado` ao
+`/health`. Ela **não aparece** na resposta de produção. `git_commit` vem
+`nao-injetado`, então o número do commit não serve para conferir — a chave nova
+serve.
+
+**Conclusão: não há auto-deploy.** Push na `main` é condição necessária e não
+suficiente. É preciso clicar **Implantar** em `autobrokers-smith-api` (e no
+`-worker`, que compartilha o mesmo código).
+
+### 🔴 Por que a ORDEM importa mais do que parece
+
+Se o Upgrade para Pro acontecer **antes** do Implantar, o código antigo volta a
+funcionar com cota nova — e o sync retoma saturado, relendo 4.008 linhas por
+ciclo com o laço a ~50 min por volta. **O incidente recomeça no minuto em que a
+cota é restaurada**, e desta vez custando dinheiro.
+
+```
+1. Implantar  (api + worker)
+2. conferir   /health → codigo.espelho_sync_ligado == false
+3. só então   Upgrade to Pro
+```
+
+**O que custa esquecer:** repetir o incidente de 05–13/08 com plano pago.
+
+---
+
+## P-126 · 🔴 A Resulta nao observa WhatsApp ha 15 dias — e nao foi a pane
+
+**Aberta em:** 13/08/2026 · **Dono:** 🧑 Founder (parear de novo — QR/passkey)
+
+📊 Medido logo apos o Upgrade, com o Supabase ja respondendo 200:
+
+| corretora | `channel_status` | ultima captura | total no acervo |
+|---|---|---|---|
+| AutoFleet | `connected` | **13/08 20:40** (agora) | 46.016 |
+| AMANDUS SEGUROS | `connected` | **13/08 20:33** (agora) | 102 |
+| **Resulta Seguros** | **`disconnected`** | **29/07 18:27** | 59.168 |
+
+**Nao foi causado pelo incidente de Egress.** A Resulta parou em **29/07**; o
+Egress comecou a subir em **07/08** e a restricao 402 chegou em **12/08**. Sao
+nove dias de diferenca — a Resulta ja estava muda antes.
+
+📊 `capturou_7d = 0` para a Resulta, contra 3.887 da AutoFleet no mesmo periodo.
+
+O heartbeat do canal (SPEC-063 Bloco V) esta funcionando: `last_seen_at` de tres
+minutos atras com `channel_status = disconnected` e exatamente o vigia
+**desmentindo** a tela, que e para o que ele existe.
+
+**O que destrava:** repareamento do WhatsApp da Resulta (QR ou passkey). E acao
+fisica — ninguem pareia um WhatsApp por API.
+
+**O que custa esquecer:** a Resulta e uma das corretoras do canario e uma das
+duas contas da MAPFRE. Ha quinze dias nao ha conversa dela entrando na mesa de
+trabalho, e o `/admin/espelho` dela esta parado em 29/07. Qualquer medicao de
+atendimento que a inclua esta medindo silencio.
+
+---
+
+## P-127 · 🟠 Duas views com SECURITY DEFINER — o Advisor marca CRITICAL
+
+**Aberta em:** 13/08/2026 · **Dono:** 🤖 execucao, bloco proprio
+
+📊 O Advisor do Supabase, depois do Upgrade, aponta 2 issues CRITICAL:
+
+```
+public.vw_destinos_de_suporte_em_conflito
+public.vw_agentes_mudos
+```
+
+As duas sao views comuns (`relkind='v'`) de dono `postgres` e **sem**
+`security_invoker=true`. Sem essa opcao, a view executa com os privilegios de
+quem a CRIOU, nao de quem a CONSULTA — as policies de RLS do consumidor deixam
+de valer.
+
+**Nao e deste P0** e nao foi introduzida por ele: as duas views sao anteriores.
+Nao tocadas nesta intervencao.
+
+**O que destrava:** `ALTER VIEW ... SET (security_invoker = true)` — mas so
+depois de conferir quem consulta cada uma e se alguma depende do comportamento
+atual. Uma view de "agentes mudos" que passe a respeitar RLS pode devolver menos
+linhas para o admin, e isso precisa ser verificado, nao presumido.
+
+**O que custa esquecer:** e o unico CRITICAL aberto no Advisor. Cross-tenant por
+view e o tipo de furo que nao aparece em teste de aplicacao (CLAUDE.md §7).
+
+---
+
+## P-128 · 🔴 A ANÁLISE QUE O FOUNDER PEDIU: os acionamentos com as seguradoras
+
+**Aberta em:** 13/08/2026 · **Dono:** 🤖 execução · **Prioridade: alta, sessão própria**
+
+Pedido do Founder, palavras dele: *"quero uma análise muito detalhada sobre o
+que foi conversado com as seguradoras — acionamento na Allianz, na Porto, na
+HDI... me diga se tivemos aumento dos mapas, se tivemos análise dos cliques, dos
+cliques nos menus, nos apps dentro do WhatsApp da HDI, Yelum, Porto. Preciso
+saber se a nossa inteligência entende tudo e se os nossos atendentes vão
+conseguir fazer os acionamentos, se eles têm as informações corretas,
+completas."*
+
+### O que a análise tem de responder
+
+1. **O que foi realmente conversado** com cada seguradora nos acionamentos
+   reais — não o que o playbook diz, o que aconteceu.
+2. **Os mapas cresceram?** `ura_maps` por seguradora, antes × depois. Quantas
+   rotas novas, quantas mudaram, quantas morreram.
+3. **Os cliques foram analisados?** Menus, botões e os *apps dentro do WhatsApp*
+   (HDI, Yelum, Porto) — o formulário nativo resolvido em 03/08 é o precedente:
+   ali a resposta veio de MEDIR, não de ler.
+4. **A inteligência entende?** Uma coisa é ter o mapa; outra é o Atlas saber
+   escolher a rota certa na hora.
+5. **O atendente consegue fechar o acionamento sozinho?** Ele tem a informação
+   correta e COMPLETA — placa, apólice, endereço, o que a seguradora pede em
+   cada passo?
+
+### Por que é a peça que falta
+
+O atendimento ponta a ponta morre no acionamento. Tudo antes (captura, espelho,
+chat, RAG) serve para chegar até aí. Se o atendente trava no menu da HDI, o
+resto não importa.
+
+**O que destrava:** sessão dedicada, com medição em `ura_maps`,
+`attendance_transcripts` das conversas com seguradora (`insurer_key` não nulo),
+`route_drift` e os `playbook_overlays`.
+
+**O que custa esquecer:** ir a produção com o atendimento cego no último metro.
+
+---
+
+## P-129 · Medir o custo por sessão do destilador (teto 0 → 5, uma janela só)
+
+**Aberta em:** 13/08/2026 · **Dono:** 🤖 execução, quando o Founder pedir
+
+📊 `attendance_sessions`: **11.347 fechadas, ZERO destiladas**, atrás de
+`DESTILADOR_TETO_POR_RODADA=0`.
+
+O objetivo **não** é destilar por API — a destilação de verdade será feita pelo
+Claude Code no plano Max, com subagentes e Opus 5, sem custo marginal. O objetivo
+é **saber o número**: subir o teto para `5`, deixar UMA janela da madrugada
+rodar, medir o custo real por sessão, e voltar para `0`.
+
+Serve para responder "quanto custaria se um dia quiséssemos" com medição, e não
+com estimativa — e para dimensionar a SPEC-062 (billing) com dado real.
+
+**O que custa esquecer:** decidir preço e plano em cima de número inventado.
+
+---
+
+# MAPFRE — a quinta seguradora, e o que ela deixou aberto
+
+📊 13/08/2026. Journey escrita, 92 testes verdes, gate real com **2 de 2
+boletos no bucket** e Allianz **10 de 10** como linha de controle.
+Ver [`PORTAL-mapfre.md`](portais/PORTAL-mapfre.md).
+
+## P-148 · 🔴 A credencial da Resulta na MAPFRE é inválida
+
+**Aberta em:** 13/08/2026 · **Dono:** 🧑 Founder / Saionara
+
+📊 Testei **uma vez** e parei: o portal respondeu **"Autenticação inválida!"**
+com o CPF e a senha corretamente digitados na tela (conferido no dump antes de
+submeter). Não repeti — tentativa falha em sequência trava conta, e conta
+travada custa mais que a espera.
+
+A credencial da **AutoFleet** (o CPF do Founder) funciona e foi ela que
+exercitou o portal inteiro.
+
+**O que destrava:** alguém entrar à mão em `negocios.mapfre.com.br/acesso` com
+o CPF da Resulta e dizer se a senha ainda vale ou se o usuário está bloqueado /
+expirado. Depois é só regravar em Conectores > Portais — **nenhuma linha de
+código muda**.
+
+**O que custa esquecer:** a Resulta fica sem cobrança na MAPFRE, em silêncio —
+a varredura dela termina em `needs_human` com o motivo escrito, mas ninguém lê
+`needs_human` se não estiver esperando.
+
+---
+
+## P-149 · 🔴 O deploy do portal-worker com a journey da MAPFRE
+
+**Aberta em:** 13/08/2026 · **Dono:** 🧑 Founder
+
+O gate foi exercitado **localmente**, com as credenciais reais, o portal real e
+o bucket real. Mas a imagem que roda no EasyPanel ainda não tem
+`mapfre_corretor.py`: enquanto não for implantada, um job MAPFRE na fila termina
+com *"journey desconhecida"*.
+
+📊 E push na `main` **não** dispara build (P-125): é preciso clicar **Implantar**.
+
+**O que destrava:** merge desta branch na `main` + Implantar no serviço
+`portal-worker`.
+
+**O que custa esquecer:** achar que a MAPFRE está no ar porque os testes estão
+verdes — exatamente o defeito que a CLAUDE.md §9.1 registra.
+
+---
+
+## P-150 · 🟡 O catálogo de páginas da MAPFRE não foi mapeado
+
+**Aberta em:** 13/08/2026 · **Dono:** 🤖 execução, na SPEC de Renovação
+
+📊 `GET /api/1.0.0/config/page?path=…` devolve **HTTP 504** com os dois tokens
+quando chamado por `fetch` de dentro da página, embora o app o consuma
+normalmente. É o equivalente MAPFRE dos 338 destinos da Tokio — traz `url`,
+`name` e `codigo_permiso` de cada tela.
+
+**O que custa esquecer:** a Renovação começa às cegas e gasta uma visita de
+descoberta que já poderia estar paga.
+
+---
+
+## P-151 · 🟡 A linha vencida com juros/multa não foi exercitada
+
+**Aberta em:** 13/08/2026 · **Dono:** 🤖 execução, quando houver caso
+
+📊 A lista traz `receiptTotFinalAmn: 294.35` e o PDF emitido mostra
+**R$ 301,28**. São coisas diferentes — a parcela e o documento com encargos — e
+a journey **não** força igualdade nem inventa juros. Mas nenhum caso com a
+coluna de encargos visível na lista foi lido ainda.
+
+**O que custa esquecer:** nada hoje; no dia em que a atendente comparar os dois
+números, precisamos saber explicar qual é qual.
+
+---
+
+## P-152 · 🟡 A numeração das pendências colidiu — 21 números repetidos
+
+**Aberta em:** 13/08/2026 · **Dono:** 🤖 execução, em sessão própria
+
+📊 Hoje aparecem **duas ou três vezes** como título de seção:
+`P-22 · P-91..P-105 · P-119..P-129` — 21 números ao todo. Duas sessões
+trabalhando em paralelo numeraram por cima uma da outra.
+
+Já é ambíguo dizer *"resolvi a P-119"*: existem duas.
+
+**Por que não renumerei agora:** a correção é mecânica mas atravessa o arquivo
+inteiro, e este documento é como o Founder conversa com a execução. Renumerar no
+meio de uma SPEC em curso troca as referências que ele acabou de usar. As
+entradas novas nasceram em **P-148+**, únicas.
+
+**O que destrava:** uma passada dedicada, com o Founder ciente de que os
+números antigos mudam — e um guarda que faça o número duplicado falhar no CI.
+
+**O que custa esquecer:** a lista deixa de ser endereçável, e "resolvido" passa
+a apontar para a coisa errada.
+
+---
+
+## P-153 · 🟡 O que falta DEPOIS da Zurich, para o Auxiliar de Cobrança fechar
+
+**Aberta em:** 13/08/2026 · **Dono:** 🧑 Founder + 🤖 execução, na ordem abaixo
+
+Registrada a pedido do Founder, para não depender de memória de sessão. A ordem
+é dele: **primeiro fechar as seguradoras, depois o envio.**
+
+Quando as seis seguradoras estiverem colhendo, esta é a fila:
+
+| # | O que | De quem |
+|---|---|:--:|
+| 1 | **InfoCap** — exercitar a busca do WhatsApp pelo CPF/CNPJ. 📊 Nunca foi exercitada: nenhuma das seis seguradoras entrega telefone utilizável, e é a InfoCap que fecha essa ponta | 🤖 |
+| 2 | **Qual WhatsApp envia** — decidir e ligar o número/instância que fala com o segurado | 🧑 |
+| 3 | **Grupo de suporte humano** para Resulta e AutoFleet (`human_support_destinations`) — hoje só a AMANDUS tem. Sem ele, item retido é montado e descartado | 🧑 |
+| 4 | **As regras de envio** — o Founder tem uma lista de ajustes finos ("várias coisinhas, para não deixar ponta solta"). **Precisam ser levantadas e escritas antes do primeiro envio** | 🧑 dita · 🤖 escreve |
+| 5 | **Rotina de cobrança** para as duas corretoras, com as seis seguradoras — hoje há **zero rotinas ativas** | 🤖 · horário é decisão do Founder |
+| 6 | **O primeiro envio real**, com o WhatsApp da AMANDUS, um caso só, avisando o Founder antes | 🧑 autoriza · 🤖 executa |
+| 7 | **Rotação de chaves** — as credenciais compartilhadas na execução (incluindo `PORTAL_VAULT_KEY` e as chaves de serviço) precisam ser trocadas antes de haver cliente real | 🧑 |
+
+**O que custa esquecer:** o item 4 é o mais perigoso, porque é o único que só existe
+na cabeça do Founder. Se o primeiro envio acontecer antes de essas regras estarem
+escritas, elas viram correção depois de a mensagem ter saído — e mensagem enviada
+não volta.
+
+---
+
+# ZURICH — a sexta seguradora, e o palmo que falta
+
+📊 13/08/2026. Journey escrita, **111 testes verdes**, gate com o inadimplente
+identificado corretamente nas duas corretoras e Allianz 10/10 como linha de
+controle. Ver [`PORTAL-zurich.md`](portais/PORTAL-zurich.md).
+
+## P-154 · 🔴 O boleto da Zurich não baixa pelo robô — e baixa à mão
+
+**Aberta em:** 13/08/2026 · **Dono:** 🤖 execução, numa tentativa em outro dia
+
+📊 `GerarBoleto` devolveu **404 em toda tentativa da journey**, enquanto a MESMA
+chamada funcionou na captura manual do founder. Medido com a lista como linha de
+controle (200 antes e depois, em todas as rodadas):
+
+```
+fetch, cabecalho minimo ............ 200, mas devolve HTML
+fetch, cabecalho igual ao do jQuery  404
+sem o _=timestamp .................. 404
+data com %2F ....................... 404
+$.ajax DO PROPRIO jQuery da pagina . 404
+CONTROLE: a lista, no mesmo momento  200 com 33 KB   <- sessao viva
+```
+
+**Não é** cabeçalho, cliente HTTP, sessão nem ritmo. E os parâmetros são
+idênticos aos da captura — conferidos contra o código do próprio portal
+(`GerarBoleto2` em `/Scripts/Corretor/ParcelaVencida/Index.js`), incluindo o
+`FormatDate`, que dá a mesma data pelos dois campos.
+
+**A hipótese que sobra é regra de negócio:** o founder emitiu a 2ª via dessa
+parcela em 13/08 e o portal respondeu *"o boleto estará registrado e disponível
+para pagamento no dia 14/08/2026"*. Uma segunda emissão da mesma parcela, no
+mesmo dia, pode ser recusada — e 404 é como este portal diz "agora não".
+
+**O que destrava:** uma tentativa em outro dia, ou numa parcela que nunca teve
+2ª via emitida. Se ainda assim recusar, o caminho é o clique no botão da lista
+com captura de download (fallback previsto na SPEC-033).
+
+**O que custa esquecer:** nada silenciosamente — a journey **retém** o item com
+o motivo escrito e ele vai para a fila humana. Mas a Zurich não fecha o ciclo
+sozinha enquanto isto não resolver.
+
+---
+
+## P-155 · 🟡 O parser de valor da Yelum e da MAPFRE zera em "1,287,99"
+
+**Aberta em:** 13/08/2026 · **Dono:** 🤖 execução, quando houver folga
+
+📊 `_valor("1,287,99")` devolve **None** nos dois. A Zurich produz esse formato
+(vírgula de milhar E de decimal na mesma string) e ganhou parser próprio, que é
+um **superconjunto** do antigo.
+
+📊 **Latente, não ativo:** a MAPFRE manda `294.35` e a Yelum `1.672,62` —
+nenhuma das duas produz o formato hoje.
+
+**O que destrava:** trocar os dois pelo `valor_brasileiro` da Zurich e rodar as
+suítes das duas. Não foi feito agora para não mexer em journey em produção sem
+gate próprio.
+
+**O que custa esquecer:** se algum dia um daqueles portais mandar milhar com
+vírgula, a cobrança sai **sem valor** — e `None` não estoura.
+
+---
+
+## P-156 · 🟡 A carteira da Resulta na Zurich não pôde ser estabelecida
+
+**Aberta em:** 13/08/2026 · **Dono:** 🤖 nova leitura
+
+📊 A credencial **entra** (`RESULTA CORRETORA DE SEGUROS LTDA` na tela), mas a
+lista devolveu **200 com zero linhas, duas vezes seguidas**. O guarda do §3.5 do
+runbook fez o certo: terminou em `needs_human` em vez de afirmar carteira em dia.
+
+❓ Não sei se a Resulta tem mesmo zero parcelas na Zurich (é a corretora de
+outros ramos) ou se foi o aquecimento do portal.
+
+**O que custa esquecer:** se for carteira genuinamente vazia, o guarda vai
+disparar em toda varredura da Resulta — e um alerta que sempre toca é um alerta
+que ninguém lê.
+
+---
+
+## P-157 · 🟡 O teto da janela da Zurich é de DIAS ou de LINHAS?
+
+**Aberta em:** 13/08/2026 · **Dono:** 🤖 quando houver folga
+
+📊 90 dias / 53 linhas passaram; 120 dias deram 404. Não dá para separar as duas
+causas com uma medição só. A journey contorna estreitando a janela a cada 404.
+
+📊 E o achado que importa mais que o teto: **pedir demais derruba a sessão**.
+Depois do pedido de 365 dias, nem a janela de 30 — que funcionava no início da
+mesma sessão — voltou a responder. Só a linha de controle no fim revelou isso.
