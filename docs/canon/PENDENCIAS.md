@@ -4381,3 +4381,109 @@ que uma pessoa real vê na tela na segunda-feira, e essa é uma decisão sua.
 
 **O que custa esquecer:** a Regina abre a mesa na demonstração e encontra
 conversas começando no dia 06/08, sem o histórico que ela sabe que existe.
+
+---
+
+## P-162 · 🔴 CPF, CNPJ e placa de segurado gravados DENTRO dos mapas do Atlas
+
+**Aberta em:** 15/08/2026 · **Dono:** 🧑 Founder autoriza · 🤖 executa · **P1 de segurança (CLAUDE.md §10(4))**
+
+Achado por um subagente auditor no BLOCO 5, e confirmado por medição própria em
+escala maior do que ele viu: **não é só a Allianz. São os 10 mapas ativos.**
+
+📊 Medido em 15/08/2026 sobre `ura_maps` com `status IN ('active','observed')`:
+
+| seguradora | arestas | CPF | CNPJ | placa | telefone |
+|---|---:|---:|---:|---:|---:|
+| allianz | 2.019 | 53 | 14 | 20 | 5 |
+| porto | 1.028 | 36 | 6 | 5 | 12 |
+| yelum | 952 | 17 | 9 | 42 | 18 |
+| hdi | 724 | 8 | 2 | 17 | 7 |
+| zurich | 272 | 3 | 0 | 11 | 8 |
+| azul | 204 | 7 | 0 | 0 | 2 |
+| bradesco | 135 | 2 | 0 | 9 | 0 |
+| tokio | 70 | 9 | 3 | 0 | 0 |
+| alfa | 76 | 5 | 0 | 0 | 0 |
+| mapfre | 67 | 1 | 0 | 1 | 0 |
+| **TOTAL** | **5.547** | **141** | **34** | **105** | **52** |
+
+### A causa
+
+O mapa guarda a navegação como `{nó de origem}|{o que foi digitado} -> {nó de destino}`.
+Quando a URA pede o CPF, **o que foi digitado é o CPF** — e ele vira o rótulo da
+aresta. Exemplo literal do mapa ativo da Allianz:
+
+```
+5b7ca670e1f1|110.014.961-91 -> 2bd9b17f842c
+```
+
+📊 Os **nós** já são mascarados (`{TELEFONE}`, `{PLACA}`, `{CAMINHO}`). **As
+arestas não.** A sanitização foi escrita e aplicada num lado só.
+
+### O tamanho real — medido, e menor do que eu suspeitei no meio da apuração
+
+Eu cheguei a suspeitar que isso chegava a um LLM de terceiro, porque
+`webhook.py:394` e `dispatch_watchdog.py:218` passam `ura_map=` para
+`build_human_phase_messages`, cujo resultado vai para a OpenAI (`gpt-4o`).
+
+**Fui até a fonte e estava errado.** `insurer_dispatch_service.py:1684` faz
+`_ = ura_map  # ignorado de propósito`, com justificativa documentada acima da
+linha. **O mapa não entra em prompt nenhum.**
+
+Então o alcance é:
+
+| onde | alcança |
+|---|---|
+| `admin_atlas.py:235` e `:295` | devolvem o `map` INTEIRO ao painel admin |
+| `route_sentinel`, `operational_view` | leem para diff e rótulo, internos |
+| LLM / RAG / Qdrant | **não** — verificado, não estava |
+
+Não é vazamento para terceiro. **É dado pessoal de segurado real guardado num
+artefato derivado, visível no painel, e replicado em toda versão do mapa** — e
+`ura_maps` tem 238 versões `superseded`, o que multiplica o mesmo CPF.
+
+### O que destrava
+
+1. Mascarar na ORIGEM — o construtor (`atlas/weaver.py`), no mesmo ponto em que
+   já mascara os nós. Sem isso, a limpeza volta a sujar na próxima passada.
+2. Só depois, limpar o histórico. ⚠️ **T2 da SPEC-071: nunca editar mapa no
+   lugar.** Gera versão nova; a `active` só cai quando aprovada.
+
+**O que custa esquecer:** o CPF de um segurado da Resulta está num mapa GLOBAL
+por seguradora, que a AutoFleet também lê. Não é vazamento entre corretoras
+hoje porque ninguém renderiza a aresta na tela — mas a distância entre "está
+guardado no lugar errado" e "apareceu na tela errada" é uma feature de UI.
+
+---
+
+## P-163 · 🟡 O backfill histórico da Resulta rodou duas vezes — 91,7% de linhas em duplicata
+
+**Aberta em:** 15/08/2026 · **Dono:** 🤖 execução
+
+📊 Medido em `observed_events`, `insurer_key='allianz'`:
+
+```
+Resulta   10.515 linhas ·  9.644 duplicadas · 91,7%
+AutoFleet  2.537 linhas ·      0 duplicadas ·  0,0%   <- a linha de CONTROLE
+```
+
+**A AutoFleet limpa é o que dá direito à conclusão:** não é defeito do coletor
+ao vivo, é o importador de histórico da Resulta.
+
+E a dedup por `message_id` não pegou porque **o ID mudou de algoritmo entre as
+duas rodadas** — mesmo telefone, mesmo epoch, sufixos diferentes:
+
+```
+hist-551140901444-1779992641-33f60f8a9215   (12 hex)
+hist-551140901444-1779992641-9007086        (7 dígitos)
+```
+
+📊 Todos os 13.052 `message_id` são únicos. A duplicata é de LINHA, não de id.
+
+**O efeito no Atlas:** as contagens de amostra dos nós estão infladas ~1,9× no
+que veio da Resulta. **A topologia não é afetada** — aresta duplicada é a mesma
+aresta —, mas os números de `samples` **não são citáveis** e a ordenação
+relativa entre nós favorece o que a Resulta percorreu mais.
+
+**O que custa esquecer:** alguém vai citar "esta tela foi vista 171 vezes" como
+evidência de que uma rota é a principal. Metade disso não aconteceu.
