@@ -4789,3 +4789,60 @@ registraram em `flags`, e isso é o comportamento certo.
 **O que custa esquecer:** senha de portal de seguradora dá acesso à carteira
 inteira de uma corretora. E ela está hoje num campo `text` de uma tabela que 
 alimenta destilação, RAG e Atlas.
+
+---
+
+## P-170 · 🔴 As 24 melhores cartas morrem em silêncio no limite de 400 caracteres
+
+**Aberta em:** 15/08/2026 · **Dono:** 🤖 execução · **destrava:** partir em duas, não encurtar
+
+Achado pelo juiz das ondas 2 e 3, simulando o **pipeline real** de aplicação
+(`curadoria_cartas.escolher_representantes`), não uma reimplementação.
+
+📊 De 1.078 fatos da leva, **24 serão descartados por passar de 400 caracteres**
+— e são justamente as melhores:
+
+| o que se perde | onde |
+|---|---|
+| listas completas de documentos de sinistro | `L023 5e62bd66` · `L031 5f65897a` · `L025 e617d971` |
+| checklist do guincho de veículo **pesado** (14 campos) | `L040 e3f5231f` · `L071 8ce62d8e` |
+| bloco de abertura de para-brisa | `L055 0f365742` |
+
+⚠️ **O modo de falha é o pior possível: elas somem SEM LOG e SEM CONTAGEM.**
+Ninguém vê que sumiram. O acervo parece completo e a carta que resolveria o
+caso nunca chegou.
+
+E o padrão é perverso: **quanto mais completa a carta, maior a chance de ela
+morrer.** Uma lista de documentos é longa porque é completa — é o que a torna
+útil e é o que a mata.
+
+**O que destrava:** partir em duas cartas, **não encurtar**. Encurtar uma lista
+de documentos é entregar meia lista, que é pior que nenhuma. E acrescentar
+contagem no descarte: um filtro que joga fora sem contar não pode ser auditado.
+
+---
+
+## P-171 · 🟡 Três respostas incompatíveis para "o link de vistoria expirou"
+
+**Aberta em:** 15/08/2026 · **Dono:** 🧑 Founder confirma com a prestadora
+
+📊 O acervo tem **três** respostas diferentes, todas sem seguradora, todas no
+fundo comum do RAG:
+
+```
+L003 42d16362  pede-se reenvio, novo link, SEM reabrir
+L057 9fef2995  NÃO há reemissão — abre-se atendimento novo
+L044 4da5b2a6  liga-se no 0800 da companhia para nova disponibilidade
+```
+
+**O RAG vai servir uma das três no sorteio.** Duas em cada três vezes o agente
+manda o segurado fazer a coisa errada — e a errada custa um atendimento inteiro
+(abrir de novo quando bastava pedir reenvio, ou pedir reenvio quando o link
+morreu de vez).
+
+Não é contradição de destilação: as três conversas são reais e provavelmente as
+três estão certas **para prestadoras diferentes**. O acervo é que não distingue.
+
+**O que destrava:** confirmar com a Maxpar/Autoglass qual é o caminho de cada
+uma, e transformar em **uma** carta que ensine a olhar na mensagem qual é o
+caso — em vez de três que se contradizem.
