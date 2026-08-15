@@ -1,3 +1,17 @@
 lotes_v2/
 pacotes/
 lotes_seguradoras/
+
+# 🔴 OS DESTILADOS SIM, OS BRUTOS NAO — 15/08/2026.
+#
+# `lotes_v2/` inteiro fica de fora porque os lotes BRUTOS sao conversas reais
+# de clientes: nome, telefone, placa, CPF. Isso nao entra em repositorio.
+#
+# Os `.destilado.jsonl` sao outra coisa: ja saem mascarados, e um juiz critico
+# varreu os 503 fatos da onda 1 e todos os campos auxiliares -- zero CPF, zero
+# telefone, zero placa, zero valor em R$, zero nome de corretora ou atendente.
+#
+# E versiona-los e o que torna o trabalho REALMENTE duravel: sem isso eles
+# existem so no disco desta maquina, e o plano de retomada protege contra o fim
+# dos tokens mas nao contra a perda do disco.
+!lotes_v2/*.destilado.jsonl
