@@ -1200,7 +1200,8 @@ def _devolver(s: str, guardados: List[str]) -> str:
     return s
 
 
-def templatize(text: str, *, documento_publico: bool = False) -> str:
+def templatize(text: str, *, documento_publico: bool = False,
+               rotulo_de_campo: bool = True) -> str:
     """Devolve a tela com a PII trocada por placeholders. Determinístico.
 
     `documento_publico=True` preserva valores em reais. Use **somente**
@@ -1208,6 +1209,27 @@ def templatize(text: str, *, documento_publico: bool = False) -> str:
     manual do segurado — onde a cifra descreve o produto e não uma pessoa. O
     padrão é `False` e continua mascarando, porque em conversa de atendimento
     o valor é do cliente.
+
+    🔴 `rotulo_de_campo=False` DESLIGA SÓ O `_LABELED_VALUE` — 15/08/2026.
+
+    Existe uma TERCEIRA família de texto além de tela e prosa: o **título de
+    opção de menu**, que chega aqui SOZINHO, sem a linha em volta. E nele o
+    `^` do `_LABELED_VALUE` alcança a primeira palavra sempre.
+
+    📊 Medido: `"Assistência 24h"` → `"Assistência {VALOR}"` → descartado por
+    `_real_options`. Em produção isso apagou a opção que ACIONA O GUINCHO de
+    quatro mapas — zurich, mapfre, tokio e yelum —, 52 emissões da URA e zero
+    ocorrências no mapa (PENDENCIAS.md#P-164).
+
+    O controle que fecha a causa: `"Assistência a vidros"` casa o MESMO rótulo
+    e sobrevive, porque `a` não é dígito. Logo o fator não é a palavra
+    "assistência" — é **dígito logo depois dela**. E `"Acionar assistência
+    24h"` sobrevive porque o `^` não a alcança. Três medições, uma causa.
+
+    As 38 regras de PII de verdade — CPF, telefone, nome, cartão, endereço,
+    placa — continuam **todas ligadas** neste modo. Cai só a rede redundante
+    sobre valor que já vem rotulado, que é a que não distingue rótulo de
+    formulário de primeira palavra de frase.
     """
     s = str(text or "")
     s, guardados = _reservar(s, documento_publico=documento_publico)
@@ -1234,7 +1256,7 @@ def templatize(text: str, *, documento_publico: bool = False) -> str:
     # As regras de PII de verdade (CPF, telefone, e-mail, placa, cartão, nome)
     # continuam todas ligadas — esta é a única desligada, e ela não protege
     # nada sozinha: é uma rede a mais sobre um valor que já tem rótulo.
-    if not documento_publico:
+    if not documento_publico and rotulo_de_campo:
         s = _aplicar_rotulo(s)
     return _devolver(s, guardados)
 
@@ -1399,7 +1421,13 @@ def screen_node(text: str, interactive: Optional[Dict] = None) -> Dict:
         # Os títulos também passam pelo templatize: uma lista pode trazer o
         # nome do segurado num item ("Confirmar João da Silva"), e PII não
         # entra no Atlas nem como rótulo de opção.
-        options = _real_options([templatize(t) for t in estruturadas])
+        #
+        # ⚠️ `rotulo_de_campo=False` porque aqui o título chega SOZINHO — o
+        # `^` do `_LABELED_VALUE` alcança a primeira palavra de todo título, e
+        # foi assim que "Assistência 24h" virou "{VALOR}" e sumiu do mapa
+        # (P-164). As regras de PII continuam ligadas.
+        options = _real_options(
+            [templatize(t, rotulo_de_campo=False) for t in estruturadas])
     else:
         options = _real_options(parse_options(template))
 

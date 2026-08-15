@@ -213,14 +213,42 @@ def _events_to_steps(events: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
 
 
 def _choice_label(choice: Optional[Dict[str, Any]]) -> Optional[str]:
+    """O que o humano respondeu, virando rótulo — e CHAVE — da aresta.
+
+    🔴 AQUI ENTRAVAM 141 CPF NO MAPA — 15/08/2026.
+
+    📊 Medido nos 10 mapas ativos: 141 CPF, 34 CNPJ, 105 placas e 52 telefones
+    gravados como rótulo de aresta. Exemplo literal do mapa da Allianz:
+
+        aresta  5b7ca670e1f1|110.014.961-91 -> 2bd9b17f842c
+
+    A URA pediu o CPF; o segurado digitou; **o que ele digitou é a aresta**.
+
+    Os NÓS eram mascarados porque passam por `screen_node` → `templatize`. A
+    escolha do humano não passava por lugar nenhum — a sanitização foi escrita
+    e aplicada num lado só (CLAUDE.md §7 · PENDENCIAS.md#P-162).
+
+    ⚠️ A ORDEM IMPORTA: mascarar ANTES de cortar em 60. Cortar primeiro parte o
+    placeholder no meio (`{TELEFO`) e o resultado nem é mais um marcador.
+
+    ⚠️ E isto muda a CHAVE da aresta, de propósito: `A|110.014.961-91` e
+    `A|123.456.789-00` passam a colapsar em `A|{CPF}`. Era uma aresta por
+    segurado onde deveria haver uma por ROTA — o mapa media pessoas e achava
+    que media caminhos. Mapa já gravado não se conserta com isto: precisa
+    re-tecer.
+    """
     if not choice:
         return None
+    from app.services.atlas.templater import templatize
+
     it = choice.get("interactive") or {}
     for k in ("title", "selected"):
         if it.get(k):
-            return str(it[k])[:60]
+            return templatize(str(it[k]), rotulo_de_campo=False)[:60]
     txt = str(choice.get("text") or "").strip()
-    return txt[:60] or None
+    if not txt:
+        return None
+    return templatize(txt, rotulo_de_campo=False)[:60] or None
 
 
 def weave_session(map_acc: Dict[str, Any], events: List[Dict[str, Any]],
