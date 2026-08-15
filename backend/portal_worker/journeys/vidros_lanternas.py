@@ -729,6 +729,112 @@ def tem_protocolo(page_text: str) -> bool:
 
 
 # ===========================================================================
+# FRANQUIA e LINK DA VISTORIA — os outros dois numeros da tela do protocolo
+#
+# 📊 SPEC-071 BLOCO 6, telas que a Regina entregou em 14/08/2026:
+#
+#     Atendimento nº 23085997     ✅ ja era lido
+#     Franquia R$ 925,00          ❌ ZERO mencoes no portal_worker inteiro
+#     https://vistoria.mobi/...   ❌ ZERO mencoes
+#
+# Os tres saem da MESMA tela e valem coisas diferentes para o segurado: o
+# protocolo e para cobrar, a franquia e quanto ele vai PAGAR, e o link e por
+# onde ele manda as fotos. Levar so o protocolo e entregar um terco do
+# atendimento e obrigar a atendente a abrir o portal para ver o resto.
+#
+# ⚠️ POR QUE NAO DA PARA REUSAR `_frase_do_protocolo` NOS DOIS:
+#
+#   franquia  R$ 925,00 -> a virgula so sobrevive ENTRE DIGITOS, e e o que
+#             `_frase_do_protocolo` ja faz. Mas ele NAO preserva o "R$", e sem
+#             ele "925,00" e indistinguivel de qualquer outro numero da tela.
+#             Por isso a leitura e sobre o texto normalizado COM o cifrao.
+#
+#   link      `_norm` destroi URL — tira acento, baixa caixa e a pontuacao
+#             vira espaco. Uma URL normalizada nao e mais uma URL. A leitura
+#             tem de ser sobre o texto CRU, e e a unica deste arquivo que e.
+# ===========================================================================
+
+_ROTULOS_DE_FRANQUIA = (
+    "valor da franquia", "franquia a pagar", "franquia do servico",
+    "participacao obrigatoria",   # como algumas seguradoras chamam
+    "franquia",
+)
+# `R$` seguido do valor. Aceita `R$ 925,00`, `R$925,00`, `R$ 1.250,00`.
+# O grupo pega SO os digitos e os separadores — o cifrao fica fora.
+_RE_VALOR_EM_REAIS = re.compile(r"r\$\s*([0-9][0-9.,]{0,12}[0-9])")
+# 🔴 O PISO E EM REAIS, NAO EM DIGITOS — e a diferenca importa.
+#
+# A primeira versao contava digitos: `R$ 1,00` tem tres ("100") e PASSAVA. O
+# robo diria ao segurado que a franquia dele e de um real. Contar digito e
+# medir a grafia; o que decide se aquilo e uma franquia e o VALOR.
+#
+# 📊 A tela da Regina traz R$ 925,00. Franquia de vidro abaixo de dez reais nao
+# existe — o que aparece nessa faixa e "1 (um) ITEM", numero de parcela ou
+# percentual.
+_PISO_DA_FRANQUIA_EM_REAIS = 10.0
+
+
+def _valor_em_reais(bruto: str) -> float:
+    """`"1.250,00"` -> `1250.0`. Devolve 0.0 quando nao da para ler."""
+    try:
+        return float(str(bruto).replace(".", "").replace(",", "."))
+    except (TypeError, ValueError):
+        return 0.0
+
+# 📊 O dominio que a Regina mostrou. Deliberadamente ESTREITO: um regex de URL
+# generico pegaria o link do proprio portal, o da politica de privacidade e o
+# do rodape — e o robo diria ao segurado "sua vistoria e em
+# abraseuatendimento.com.br/politica", que e pior que nao dizer nada.
+_DOMINIOS_DE_VISTORIA = ("vistoria.mobi", "vistoriamobi.com.br")
+_RE_LINK = re.compile(r"https?://[^\s<>\"')\]]+", re.IGNORECASE)
+
+
+def extrair_franquia(page_text: str) -> str:
+    """PURO: o valor da franquia como a tela escreve. "" quando nao ha.
+
+    Devolve `"925,00"` — sem o `R$`, com a virgula. É o que se diz ao segurado.
+    """
+    frase = _frase_do_protocolo(page_text or "")
+    bruto = _norm(page_text or "")
+    # O `_norm` come o cifrao; a busca do valor acontece no texto com cifrao.
+    com_cifrao = " " + " ".join(str(page_text or "").lower().split()) + " "
+
+    for rotulo in _ROTULOS_DE_FRANQUIA:
+        if f" {rotulo} " not in frase and rotulo not in bruto:
+            continue
+        # A janela: do rotulo em diante. Um `R$` que aparece ANTES do rotulo e
+        # de outra coisa (o valor do servico, o do vidro) — e pegar o numero
+        # errado aqui e dizer ao segurado que ele vai pagar o que nao vai.
+        pos = com_cifrao.find(rotulo.split()[0])
+        janela = com_cifrao[pos:] if pos >= 0 else com_cifrao
+        m = _RE_VALOR_EM_REAIS.search(janela)
+        if not m:
+            continue
+        valor = m.group(1).strip(".,")
+        if _valor_em_reais(valor) >= _PISO_DA_FRANQUIA_EM_REAIS:
+            return valor
+    return ""
+
+
+def extrair_link_de_vistoria(page_text: str) -> str:
+    """PURO: o link da vistoria que a tela mostra. "" quando nao ha.
+
+    ⚠️ Le o texto CRU, sem `_norm`: normalizar destroi a URL. É a unica leitura
+    deste arquivo que nao passa pelo normalizador, e e de proposito.
+    """
+    for url in _RE_LINK.findall(str(page_text or "")):
+        limpo = url.rstrip(".,;:)")
+        if any(d in limpo.lower() for d in _DOMINIOS_DE_VISTORIA):
+            return limpo
+    return ""
+
+
+def tem_vistoria(page_text: str) -> bool:
+    """PURO: esta tela oferece vistoria por link?"""
+    return bool(extrair_link_de_vistoria(page_text))
+
+
+# ===========================================================================
 # DOMICILIO x LOJA — a escolha do passo 7, que e do SEGURADO
 #
 # 📊 A tela oferece duas saidas (mapa §7): "Agendar a domicilio" (com os selos
