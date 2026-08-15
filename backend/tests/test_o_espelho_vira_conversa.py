@@ -1422,6 +1422,180 @@ def teste_o_cursor_nao_avanca_sobre_erro() -> None:
     os.environ.pop("ESPELHO_SYNC_ENABLED", None)
 
 
+def teste_um_tropeco_de_rede_nao_derruba_o_lote() -> None:
+    """📊 O defeito medido em 15/08: 499 linhas lidas, ~45 avançadas.
+
+    Um `RemoteProtocolError` numa linha derrubava a passada inteira — e as
+    outras 455 já tinham sido LIDAS, isto é, o Egress já tinha sido pago.
+    Pagar a leitura e jogar fora é o desperdício de agosto na versão pequena.
+
+    A linha que falha para SEMPRE continua travando o cursor: isso é o que
+    impede perder mensagem, e o teste [10b] guarda. O que muda aqui é a linha
+    que falha UMA vez — a cara de uma conexão que o Supabase fechou.
+    """
+    import asyncio
+
+    print("\n[10d] Um tropeço de rede não leva as outras linhas junto")
+    EC = _carregar_espelho()
+    banco = BancoFalso()
+    _com_banco_global(banco)
+    os.environ["ESPELHO_SYNC_ENABLED"] = "1"
+
+    agora = datetime.now(timezone.utc)
+    quando = (agora - timedelta(minutes=30)).isoformat()
+    banco.semear("integrations", [
+        {"id": "i1", "company_id": "amandus", "provider": "evolution-go",
+         "is_active": True}])
+    banco.semear("espelho_sync_cursor", [
+        {"company_id": "amandus",
+         "last_created_at": (agora - timedelta(hours=2)).isoformat(),
+         "last_id": None, "updated_at": quando}])
+    banco.semear("attendance_transcripts", [
+        {"id": f"a{i}", "company_id": "amandus",
+         "counterparty": f"55470000000{i}", "direction": "in",
+         "msg_type": "text", "text": f"linha {i}", "message_id": f"M-{i}",
+         "wa_timestamp": quando, "created_at": quando, "insurer_key": None}
+        for i in range(1, 4)])
+
+    original = EC._espelhar_com_desfecho
+    tropecos = {"M-2": 1}  # falha UMA vez, depois se comporta
+
+    async def _tropeca_uma_vez(**kw):
+        alvo = kw.get("message_id")
+        if tropecos.get(alvo):
+            tropecos[alvo] -= 1
+            return None, "erro:RemoteProtocolError"
+        return await original(**kw)
+
+    EC._espelhar_com_desfecho = _tropeca_uma_vez
+    try:
+        r = asyncio.run(EC.sincronizar_chats())
+    finally:
+        EC._espelhar_com_desfecho = original
+
+    cursor = banco.linhas("espelho_sync_cursor")[0]
+    checar(int(r.get("travou_em") or 0) == 0,
+           "🔴 a passada NÃO trava por um tropeço de rede", str(r))
+    checar(int(r.get("retentadas") or 0) == 1,
+           "e o contador diz que houve exatamente 1 retentativa",
+           f"retentadas={r.get('retentadas')}")
+    checar(cursor["last_id"] == "a3",
+           "🔴 o cursor chega até o FIM do lote, não morre na linha 2",
+           f"last_id={cursor['last_id']}")
+    checar(len(banco.linhas("messages")) == 3,
+           "as três linhas entraram na mesa",
+           f"{len(banco.linhas('messages'))} mensagem(ns)")
+
+    # CONTROLE — o guarda continua guardando. Falha que NUNCA passa ainda trava.
+    banco2 = BancoFalso()
+    _com_banco_global(banco2)
+    banco2.semear("integrations", [
+        {"id": "i1", "company_id": "amandus", "provider": "evolution-go",
+         "is_active": True}])
+    banco2.semear("espelho_sync_cursor", [
+        {"company_id": "amandus",
+         "last_created_at": (agora - timedelta(hours=2)).isoformat(),
+         "last_id": None, "updated_at": quando}])
+    banco2.semear("attendance_transcripts", [
+        {"id": f"a{i}", "company_id": "amandus",
+         "counterparty": f"55470000000{i}", "direction": "in",
+         "msg_type": "text", "text": f"linha {i}", "message_id": f"M-{i}",
+         "wa_timestamp": quando, "created_at": quando, "insurer_key": None}
+        for i in range(1, 4)])
+
+    async def _falha_sempre(**kw):
+        if kw.get("message_id") == "M-2":
+            return None, "erro:RemoteProtocolError"
+        return await original(**kw)
+
+    EC._espelhar_com_desfecho = _falha_sempre
+    try:
+        rc = asyncio.run(EC.sincronizar_chats())
+    finally:
+        EC._espelhar_com_desfecho = original
+
+    checar(int(rc.get("travou_em") or 0) == 1,
+           "🔴 CONTROLE — falha que nunca passa AINDA trava o cursor", str(rc))
+    checar(banco2.linhas("espelho_sync_cursor")[0]["last_id"] == "a1",
+           "CONTROLE — e ele para antes da linha ruim, como sempre",
+           f"last_id={banco2.linhas('espelho_sync_cursor')[0]['last_id']}")
+    checar(int(rc.get("retentadas") or 0) == EC._TENTATIVAS_POR_LINHA - 1,
+           "CONTROLE — tentou o número de vezes que promete, e desistiu",
+           f"retentadas={rc.get('retentadas')} de "
+           f"{EC._TENTATIVAS_POR_LINHA} tentativas")
+
+    os.environ.pop("ESPELHO_SYNC_ENABLED", None)
+
+
+def teste_recusa_permanente_nao_prende_a_corretora() -> None:
+    """A contraparte sem dígito nenhum passava na elegibilidade e morria na
+    gravação — com um motivo que o cursor nunca ultrapassava.
+
+    `deve_espelhar` exige `counterparty.strip()`; `_espelhar_com_desfecho` exige
+    `_digitos(counterparty)`. Um `status@broadcast` satisfaz o primeiro e nunca
+    o segundo, **com o mesmo resultado toda vez**. Fora de
+    `DESFECHOS_DETERMINISTICOS`, ela prenderia a corretora INTEIRA para sempre.
+
+    📊 Zero linhas assim em 150.734 hoje. A guarda é para o dia em que houver.
+    """
+    import asyncio
+
+    print("\n[10e] Recusa permanente não prende a corretora para sempre")
+    EC = _carregar_espelho()
+
+    checar("sem_telefone_ou_empresa" in EC.DESFECHOS_DETERMINISTICOS,
+           "recusa permanente é ultrapassável")
+    checar("sem_usuario" not in EC.DESFECHOS_DETERMINISTICOS
+           and "conversa_nao_criada" not in EC.DESFECHOS_DETERMINISTICOS,
+           "🔴 CONTROLE — mas falha de BANCO continua travando",
+           "sem_usuario e conversa_nao_criada seguem fora")
+
+    banco = BancoFalso()
+    _com_banco_global(banco)
+    os.environ["ESPELHO_SYNC_ENABLED"] = "1"
+
+    agora = datetime.now(timezone.utc)
+    quando = (agora - timedelta(minutes=30)).isoformat()
+    banco.semear("integrations", [
+        {"id": "i1", "company_id": "amandus", "provider": "evolution-go",
+         "is_active": True}])
+    banco.semear("espelho_sync_cursor", [
+        {"company_id": "amandus",
+         "last_created_at": (agora - timedelta(hours=2)).isoformat(),
+         "last_id": None, "updated_at": quando}])
+    # a2 não tem UM dígito: entra pela elegibilidade, é recusada na gravação.
+    banco.semear("attendance_transcripts", [
+        {"id": "a1", "company_id": "amandus", "counterparty": "554700000001",
+         "direction": "in", "msg_type": "text", "text": "antes",
+         "message_id": "M-1", "wa_timestamp": quando, "created_at": quando,
+         "insurer_key": None},
+        {"id": "a2", "company_id": "amandus", "counterparty": "status@broadcast",
+         "direction": "in", "msg_type": "text", "text": "aviso",
+         "message_id": "M-2", "wa_timestamp": quando, "created_at": quando,
+         "insurer_key": None},
+        {"id": "a3", "company_id": "amandus", "counterparty": "554700000003",
+         "direction": "in", "msg_type": "text", "text": "depois",
+         "message_id": "M-3", "wa_timestamp": quando, "created_at": quando,
+         "insurer_key": None}])
+
+    r = asyncio.run(EC.sincronizar_chats())
+    cursor = banco.linhas("espelho_sync_cursor")[0]
+
+    checar(int(r.get("travou_em") or 0) == 0,
+           "a linha impossível não trava a passada", str(r))
+    checar(cursor["last_id"] == "a3",
+           "🔴 o cursor PASSA por ela e chega no fim",
+           f"last_id={cursor['last_id']}")
+    checar(len(banco.linhas("messages")) == 2,
+           "CONTROLE — e ela não virou mensagem; só as duas de verdade",
+           f"{len(banco.linhas('messages'))} mensagem(ns)")
+    checar(int(r.get("filtradas") or 0) == 1 and int(r.get("ja_estavam") or 0) == 0,
+           "🔴 e o contador NÃO mente: ela é 'filtrada', não 'já estava'",
+           f"filtradas={r.get('filtradas')} ja_estavam={r.get('ja_estavam')}")
+
+    os.environ.pop("ESPELHO_SYNC_ENABLED", None)
+
+
 def teste_o_interruptor_nasce_desligado() -> None:
     """O kill switch que não existia no dia do incidente.
 
@@ -1488,6 +1662,8 @@ def main() -> int:
     teste_o_eco_ainda_le_quando_precisa()
     teste_o_cursor_nunca_perde_e_nunca_varre()
     teste_o_cursor_nao_avanca_sobre_erro()
+    teste_um_tropeco_de_rede_nao_derruba_o_lote()
+    teste_recusa_permanente_nao_prende_a_corretora()
     teste_o_interruptor_nasce_desligado()
 
     print("\n" + "=" * 70)

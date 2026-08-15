@@ -289,9 +289,28 @@ async def espelhar_no_chat(*, company_id: str, counterparty: str, texto: str,
 # Os desfechos que o cursor pode ultrapassar com segurança: todos significam
 # "esta linha foi resolvida e não há mais nada a fazer com ela". Qualquer
 # outro — inclusive `erro:*` — trava o avanço do cursor antes dela.
+#
+# 🔴 `sem_telefone_ou_empresa` ENTROU AQUI EM 15/08/2026, e o motivo é que ele
+# não é um erro: é uma RECUSA PERMANENTE.
+#
+# A elegibilidade (`deve_espelhar`) exige apenas `counterparty.strip()`
+# não-vazio. A gravação (`_espelhar_com_desfecho`) exige `_digitos(...)`
+# não-vazio. Uma contraparte sem nenhum dígito — `status@broadcast`, um JID
+# `@lid` alfanumérico — passa na primeira e é recusada pela segunda, **sempre,
+# com o mesmo resultado**. Estando fora desta lista, ela travaria o cursor
+# daquela corretora para sempre: a passada seguinte lê a mesma linha, recebe a
+# mesma recusa, e para no mesmo lugar. Uma corretora inteira parada por uma
+# linha que nunca teve conserto possível.
+#
+# 📊 Medido em 15/08 antes de mexer: ZERO linhas sem dígito em 150.734, nas
+# três corretoras. O gatilho não existe hoje — a guarda é para o dia em que
+# existir, e ela custa uma palavra.
+#
+# ⚠️ `sem_usuario` e `conversa_nao_criada` continuam FORA de propósito: os dois
+# significam "o banco não respondeu agora", e ultrapassá-los perde a mensagem.
 DESFECHOS_DETERMINISTICOS = frozenset({
     "conversa_nova", "mensagem_nova", "ja_estava", "eco_do_dashboard",
-    "filtrada",
+    "filtrada", "sem_telefone_ou_empresa",
 })
 
 
@@ -839,6 +858,12 @@ _ATRASO_DE_SEGURANCA_SEGUNDOS = 300.0
 # o cursor não anda além do que foi processado, então nada se perde.
 _LOTE_DO_SYNC = 500
 
+# Quantas vezes a MESMA linha é tentada antes de a passada desistir dela. Três
+# é o número de um erro de conexão transitório: a primeira paga o descarte da
+# conexão morta, a segunda já corre na nova. Acima disso não é mais rede — é
+# defeito, e defeito tem de travar o cursor para aparecer.
+_TENTATIVAS_POR_LINHA = 3
+
 
 async def sincronizar_chats() -> dict:
     """Leva ao chat o que CHEGOU ao acervo desde a última passada. Incremental.
@@ -908,7 +933,7 @@ async def sincronizar_chats() -> dict:
 
     vistas: set = set()
     resumo = {"ok": True, "corretoras": 0, "lidas": 0, "levadas": 0,
-              "ja_estavam": 0, "filtradas": 0, "travou_em": 0}
+              "ja_estavam": 0, "filtradas": 0, "travou_em": 0, "retentadas": 0}
     for linha in linhas:
         empresa = str(linha.get("company_id") or "").strip()
         if not empresa or empresa in vistas:
@@ -916,7 +941,8 @@ async def sincronizar_chats() -> dict:
         vistas.add(empresa)
         resumo["corretoras"] += 1
         r = await _sincronizar_uma_corretora(empresa, cliente)
-        for chave in ("lidas", "levadas", "ja_estavam", "filtradas", "travou_em"):
+        for chave in ("lidas", "levadas", "ja_estavam", "filtradas",
+                      "travou_em", "retentadas"):
             resumo[chave] += int(r.get(chave) or 0)
 
     # 📊 A LINHA QUE TORNA O DESPERDÍCIO VISÍVEL.
@@ -925,14 +951,21 @@ async def sincronizar_chats() -> dict:
     # descobrir quantas novidades?". A resposta agora sai em toda passada:
     # 4.008 lidas para 3 novas é o sintoma que ninguém viu por sete dias.
     # Agregado, nunca conteúdo (CLAUDE.md §13.3).
+    #
+    # 📊 `retentadas` entrou em 15/08: sem ela, "499 lidas · 0 novas" não dizia
+    # se o lote morreu numa falha de rede ou se realmente não havia novidade.
+    # Duas causas opostas com a mesma cara — e a resposta custava um contador.
     logger.info(
         "[ESPELHO] sync: %s corretora(s) · %s lida(s) · %s nova(s) · "
-        "%s já estavam · %s filtrada(s) · %s travada(s) por erro",
+        "%s já estavam · %s filtrada(s) · %s retentada(s) · %s travada(s) por erro",
         resumo["corretoras"], resumo["lidas"], resumo["levadas"],
-        resumo["ja_estavam"], resumo["filtradas"], resumo["travou_em"])
+        resumo["ja_estavam"], resumo["filtradas"], resumo["retentadas"],
+        resumo["travou_em"])
     await contar("sync_ciclo")
     await contar("sync_linhas_lidas", resumo["lidas"])
     await contar("sync_mensagens_novas", resumo["levadas"])
+    if resumo["retentadas"]:
+        await contar("sync_linhas_retentadas", resumo["retentadas"])
     return resumo
 
 
@@ -1016,7 +1049,7 @@ async def _sincronizar_uma_corretora(empresa: str, cliente: Any) -> dict:
                              and str(n.get("id") or "") <= ultimo_id)]
 
     contagem = {"lidas": len(novidades), "levadas": 0, "ja_estavam": 0,
-                "filtradas": 0, "travou_em": 0}
+                "filtradas": 0, "travou_em": 0, "retentadas": 0}
     avancar_para: Optional[tuple] = None
 
     for item in novidades:
@@ -1043,13 +1076,40 @@ async def _sincronizar_uma_corretora(empresa: str, cliente: Any) -> dict:
             avancar_para = (str(item.get("created_at")), str(item.get("id") or ""))
             continue
 
-        _conversa, motivo = await _espelhar_com_desfecho(
-            company_id=empresa, counterparty=contraparte,
-            texto=str(item.get("text") or ""),
-            msg_type=str(item.get("msg_type") or "text"),
-            direcao=str(item.get("direction") or "in"),
-            message_id=str(item.get("message_id") or ""),
-            quando_iso=quando, db=cliente)
+        # 🔴 O ERRO DE REDE LEVAVA O LOTE INTEIRO JUNTO — 15/08/2026.
+        #
+        # 📊 Medido no /health: a passada lia **499** linhas e avançava **~45**.
+        # As outras 455 voltavam na passada seguinte, e na seguinte. O acervo da
+        # Resulta drenava a 45 linhas/min: 28.180 pendentes = ~10 horas.
+        #
+        # A causa era um `RemoteProtocolError` (o Supabase fecha uma conexão do
+        # pool que ficou parada; a primeira chamada depois disso morre e a
+        # próxima funciona). Uma linha falhava e o `break` abaixo descartava o
+        # trabalho das 455 seguintes — que já estavam LIDAS, ou seja, o Egress
+        # já tinha sido pago. Pagar a leitura e jogar fora é exatamente o
+        # desperdício que derrubou a conta em agosto, na versão pequena.
+        #
+        # A correção NÃO é ultrapassar a linha ruim: isso perderia mensagem, e é
+        # o defeito que o cursor existe para impedir. É dar à linha as chances
+        # que um erro transitório pede antes de desistir do lote.
+        motivo = ""
+        for tentativa in range(_TENTATIVAS_POR_LINHA):
+            _conversa, motivo = await _espelhar_com_desfecho(
+                company_id=empresa, counterparty=contraparte,
+                texto=str(item.get("text") or ""),
+                msg_type=str(item.get("msg_type") or "text"),
+                direcao=str(item.get("direction") or "in"),
+                message_id=str(item.get("message_id") or ""),
+                quando_iso=quando, db=cliente)
+            if motivo in DESFECHOS_DETERMINISTICOS:
+                break
+            if tentativa + 1 < _TENTATIVAS_POR_LINHA:
+                # A espera é curta e cresce: 0,4s e 0,8s. O suficiente para uma
+                # conexão nova nascer, pouco o bastante para não segurar a
+                # passada. Reinserir é seguro — o índice único responde 23505 e
+                # o desfecho vira `ja_estava`.
+                contagem["retentadas"] += 1
+                await asyncio.sleep(0.4 * (2 ** tentativa))
 
         if motivo not in DESFECHOS_DETERMINISTICOS:
             # 🔴 O CURSOR PARA AQUI, ANTES DESTA LINHA.
@@ -1066,6 +1126,11 @@ async def _sincronizar_uma_corretora(empresa: str, cliente: Any) -> dict:
 
         if motivo in ("conversa_nova", "mensagem_nova"):
             contagem["levadas"] += 1
+        elif motivo == "sem_telefone_ou_empresa":
+            # ⚠️ Contar como `ja_estavam` seria o campo MENTINDO sobre o que
+            # guarda (CLAUDE.md §12.1): esta linha não estava na mesa e nunca
+            # vai estar. Ela é uma recusa — a mesma família de `filtrada`.
+            contagem["filtradas"] += 1
         else:
             contagem["ja_estavam"] += 1
         avancar_para = (str(item.get("created_at")), str(item.get("id") or ""))
