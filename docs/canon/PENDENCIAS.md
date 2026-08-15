@@ -4640,3 +4640,53 @@ SELECT m.insurer_key, n.k,
 **O que custa esquecer:** o mapa continua parecendo completo — texto certo,
 número de nós certo — e sem a linha que aciona o guincho. É o defeito que não
 se anuncia.
+
+---
+
+## P-167 · 🔴 A higiene do mapa não alcança o `active` — e eu disse ao Founder que alcançava
+
+**Aberta em:** 15/08/2026 · **Dono:** 🤖 execução
+
+> 🔴 **Correção de uma afirmação minha.** Eu disse ao Founder: *"a higiene roda
+> de hora em hora sozinha; dentro de 1h os 141 CPF saem dos mapas já gravados"*.
+> **Medi depois e não saem.**
+
+📊 Medido em 15/08 04:11 UTC, **depois** do deploy de `6f8316f`:
+
+| status | mapas | CPF nas arestas |
+|---|---:|---:|
+| `active` | 10 | 141 |
+| `retired` | 4 | 144 |
+| `superseded` | **276** | **2.287** |
+| **`observed`** | **0** | — |
+| | | **2.572 no total** |
+
+**A causa:** `higienizar_e_promover` remascara os mapas **`observed`** e promove
+os que ficarem limpos. 📊 **Não existe nenhum mapa `observed`.** A função roda de
+hora em hora, não encontra nada, e não toca no `active`.
+
+⚠️ E o número que eu vinha citando — 141 — era só o `active`. **O total é
+2.572**, e as 276 versões `superseded` não entram em higiene nenhuma, nem hoje
+nem depois: nada no produto as relê.
+
+### A cadeia que REALMENTE limpa, e o tempo dela
+
+```
+sentinela (1×/dia) re-tece  →  nasce mapa `observed`
+higiene (1×/hora) remascara →  promove a `active`
+```
+
+Ou seja: **a limpeza depende do re-tecer**, não o contrário. O que eu descrevi
+como "automático em 1h" é automático em **até 24h**, e só para o que for tecido
+de novo.
+
+**O que destrava:**
+1. Confirmar que a sentinela rodou depois do deploy (📊 o mapa mais novo é de
+   14/08 18:37 — anterior à correção).
+2. Para o `superseded`: decidir se limpa ou se **apaga**. 2.287 CPF em 276
+   versões que ninguém lê é passivo sem contrapartida — mas apagar histórico
+   pede decisão do Founder (CLAUDE.md §13.4).
+
+**O que custa esquecer:** eu já dei este assunto por resolvido uma vez, em voz
+alta. Um problema de segurança fechado por suposição continua aberto, e ninguém
+volta a olhar porque acha que foi feito.
