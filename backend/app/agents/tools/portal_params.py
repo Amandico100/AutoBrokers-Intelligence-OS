@@ -261,9 +261,28 @@ def format_result(job: dict) -> str:
         if not recomendacao:
             recomendacao = ("Confirme com o segurado onde o servico sera feito (tecnico a domicilio "
                             "ou uma das lojas) — essa escolha e dele, e ela ainda esta em aberto.")
+        # 🔴 OS OUTROS DOIS DADOS DA MESMA TELA — SPEC-071 BLOCO 6, 15/08/2026.
+        #
+        # 📊 A tela traz TRES coisas e so o protocolo chegava ao segurado:
+        # a FRANQUIA (quanto ele paga) e o LINK DA VISTORIA (por onde ele manda
+        # as fotos) ficavam no portal, obrigando a atendente a abri-lo.
+        #
+        # ⚠️ Cada um so aparece se foi LIDO. Frase sobre franquia sem franquia
+        # lida seria o agente inventando valor — e valor inventado numa conversa
+        # de seguro e o segurado descobrindo na hora de pagar.
+        franquia = str(ev.get("franquia") or "").strip()
+        link = str(ev.get("link_vistoria") or "").strip()
+        extras = ""
+        if franquia:
+            extras += (f" A FRANQUIA e R$ {franquia} — diga o valor ao segurado ANTES "
+                       "de ele escolher onde fazer o servico, porque e ele quem paga.")
+        if link:
+            extras += (f" As fotos do veiculo vao por este link: {link} — mande-o ao "
+                       "segurado exatamente como esta, sem encurtar nem reescrever.")
         return (
             f"O atendimento FOI ABERTO na seguradora. Numero do atendimento: {protocolo}. "
-            f"DIGA ESSE NUMERO AO SEGURADO — e com ele que ele acompanha e cobra o servico. "
+            f"DIGA ESSE NUMERO AO SEGURADO — e com ele que ele acompanha e cobra o servico."
+            f"{extras} "
             f"{recomendacao} "
             "NAO peca para eu abrir de novo: o pedido ja existe e repetir criaria um segundo "
             "atendimento na seguradora, que nao se desfaz."

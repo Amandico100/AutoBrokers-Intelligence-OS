@@ -30,6 +30,8 @@ from portal_worker.journeys.vidros_lanternas import explicar_match, explicar_esp
 from portal_worker.journeys.vidros_lanternas import (
     botao_de_domicilio,
     botao_de_loja,
+    extrair_franquia,
+    extrair_link_de_vistoria,
     extrair_protocolo,
     preferencia_de_atendimento,
     tem_protocolo,
@@ -114,6 +116,54 @@ def registrar_protocolo(evidence: Dict[str, Any], page_text: str) -> str:
     return numero
 
 
+def registrar_franquia_e_vistoria(evidence: Dict[str, Any], page_text: str) -> Dict[str, str]:
+    """Grava FRANQUIA e LINK DA VISTORIA assim que aparecem, pelo mesmo motivo
+    do protocolo — e nas mesmas condições.
+
+    📊 SPEC-071 BLOCO 6: a tela que a Regina fotografou em 14/08 tem TRÊS
+    coisas, e o robô lia uma:
+
+        Atendimento nº 23085997     para o segurado COBRAR
+        Franquia R$ 925,00          quanto ele vai PAGAR
+        https://vistoria.mobi/...   por onde ele MANDA AS FOTOS
+
+    🔴 E o link não é conveniência — é a substituição de um passo manual que já
+    deu errado. 📊 No corpus de destilação (`pacotes/pacote_003.jsonl` e mais 9
+    arquivos) está a prova de que hoje quem manda esse link é uma pessoa,
+    colando à mão:
+
+        ATENDENTE: te mandei o link errado
+        ATENDENTE: segue correto
+        ATENDENTE: https://vistoria.mobi/app/#/app/intro/...
+
+    IDEMPOTENTE e no MESMO ponto do protocolo, e isso é deliberado: entre a
+    tela aparecer e o fluxo acabar cabem um teto de passos estourado, uma tela
+    travada e uma exceção do Playwright. Nos três o pedido JÁ EXISTE — e um
+    segurado com atendimento aberto, sem saber quanto paga nem por onde manda
+    as fotos, é o mesmo resultado ruim que o protocolo perdido.
+
+    ⚠️ Grava em `evidence` porque é o dicionário que o worker escreve no job em
+    TODOS os desfechos, inclusive no `except` que marca `failed`.
+    """
+    achados: Dict[str, str] = {}
+    if not isinstance(evidence, dict):
+        return achados
+
+    if not str(evidence.get("franquia") or "").strip():
+        valor = extrair_franquia(page_text)
+        if valor:
+            evidence["franquia"] = valor
+            achados["franquia"] = valor
+
+    if not str(evidence.get("link_vistoria") or "").strip():
+        link = extrair_link_de_vistoria(page_text)
+        if link:
+            evidence["link_vistoria"] = link
+            achados["link_vistoria"] = link
+
+    return achados
+
+
 def aviso_de_pedido_aberto(evidence: Dict[str, Any]) -> str:
     """PURO: o prefixo que toda PARADA depois do passo 7 precisa carregar. ""
     quando nao ha protocolo — nao se avisa sobre um pedido que nao existe.
@@ -138,7 +188,12 @@ async def registrar_protocolo_da_pagina(page, evidence: Dict[str, Any]) -> str:
         texto = await page.evaluate("() => (document.body.innerText||'').slice(0,2000)")
     except Exception:  # noqa: BLE001
         return ""
-    return registrar_protocolo(evidence, str(texto or ""))
+    bruto = str(texto or "")
+    # ⚠️ Os TRÊS na mesma leitura: eles saem da MESMA tela, e ler duas vezes
+    # abriria a janela em que a página muda entre uma leitura e a outra —
+    # gravando o protocolo de um pedido e a franquia de outro.
+    registrar_franquia_e_vistoria(evidence, bruto)
+    return registrar_protocolo(evidence, bruto)
 
 
 async def capture_state(page) -> Dict[str, Any]:

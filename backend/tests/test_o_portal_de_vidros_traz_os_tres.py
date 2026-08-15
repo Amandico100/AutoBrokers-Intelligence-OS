@@ -123,13 +123,77 @@ def teste_o_link_e_o_da_vistoria_e_nao_o_do_rodape() -> None:
            "normalizar destruiria o caminho; um link com caixa trocada não abre")
 
 
+def _format_result():
+    """A função REAL que redige o que o agente diz ao segurado, recortada.
+
+    O módulo inteiro arrasta o app (e `openai`), então recorto a função — mas
+    executo o código de produção, não uma cópia.
+    """
+    caminho = os.path.join(RAIZ, "app", "agents", "tools", "portal_params.py")
+    src = open(caminho, encoding="utf-8").read()
+    i = src.find("def format_result")
+    j = src.find("\ndef ", i + 10)
+    ns = {"Optional": object, "Dict": dict, "Any": object}
+    exec(compile(src[i:j], "format_result", "exec"), ns)  # noqa: S102
+    return ns["format_result"]
+
+
+def teste_os_tres_chegam_ao_segurado() -> None:
+    """Ler não basta: o valor tem de sair na frase que o agente diz.
+
+    📊 Antes disto, franquia e link ficavam no portal e a atendente tinha de
+    abri-lo para ver — o trabalho que o produto existe para tirar dela.
+    """
+    print("\n[4] Os três chegam à frase que o agente diz ao segurado")
+    F = _format_result()
+
+    completo = F({"status": "done", "evidence": {
+        "protocolo": "23085997", "franquia": "925,00",
+        "link_vistoria": "https://vistoria.mobi/aB3xK9"}})
+    for termo, oque in (("23085997", "o protocolo"),
+                        ("925,00", "🔴 a franquia"),
+                        ("https://vistoria.mobi/aB3xK9", "🔴 o link, inteiro")):
+        checar(termo in completo, f"{oque} sai na frase")
+
+    checar("sem encurtar nem reescrever" in completo,
+           "e o agente é instruído a NÃO reescrever o link",
+           "link encurtado por LLM não abre")
+
+    # 🔴 O CONTROLE QUE IMPEDE O PIOR DESFECHO POSSÍVEL.
+    #
+    # Uma frase sobre franquia quando nenhuma franquia foi lida seria o agente
+    # INVENTANDO um valor — e valor inventado numa conversa de seguro é o
+    # segurado descobrindo na hora de pagar. Prefiro não dizer a dizer errado.
+    so_protocolo = F({"status": "done", "evidence": {"protocolo": "23085997"}})
+    checar("23085997" in so_protocolo,
+           "CONTROLE — sem franquia, o protocolo continua saindo")
+    checar("FRANQUIA" not in so_protocolo.upper(),
+           "🔴 CONTROLE — sem franquia lida, o agente NÃO fala de franquia",
+           "valor inventado é pior que valor ausente")
+    checar("vistoria" not in so_protocolo.lower(),
+           "🔴 CONTROLE — sem link lido, o agente NÃO inventa link")
+
+    # E a costura no laço: os três saem da MESMA leitura de tela.
+    fonte = open(os.path.join(RAIZ, "portal_worker", "adaptive.py"),
+                 encoding="utf-8").read()
+    i = fonte.find("async def registrar_protocolo_da_pagina")
+    corpo = fonte[i:fonte.find("\nasync def ", i + 10)]
+    checar("registrar_franquia_e_vistoria" in corpo and "registrar_protocolo" in corpo,
+           "🔴 os três são gravados no MESMO ponto do laço",
+           "ler duas vezes abriria a janela em que a página muda entre as leituras")
+    checar(corpo.count("page.evaluate") == 1,
+           "CONTROLE — e numa ÚNICA leitura da página",
+           f"{corpo.count('page.evaluate')} leitura(s)")
+
+
 def main() -> int:
     print("=" * 74)
     print("O PORTAL DE VIDROS ENTREGA OS TRÊS: protocolo, franquia e link")
     print("=" * 74)
     for teste in (teste_a_tela_entrega_os_tres,
                   teste_a_franquia_nao_pega_o_numero_errado,
-                  teste_o_link_e_o_da_vistoria_e_nao_o_do_rodape):
+                  teste_o_link_e_o_da_vistoria_e_nao_o_do_rodape,
+                  teste_os_tres_chegam_ao_segurado):
         try:
             teste()
         except Exception as exc:  # noqa: BLE001
