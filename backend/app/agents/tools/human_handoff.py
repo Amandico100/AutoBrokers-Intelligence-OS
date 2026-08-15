@@ -46,6 +46,180 @@ logger = logging.getLogger(__name__)
 # curto o bastante para caber num WhatsApp sem virar parede de texto.
 _MSGS_NO_DOSSIE = 12
 
+# ===========================================================================
+# AS PEÇAS DO DOSSIÊ — puras, testáveis sem banco e sem rede.
+#
+# Estão fora da classe de propósito: o que decide COMO a atendente lê a
+# situação não deve precisar de um cliente de Supabase para ser provado.
+# ===========================================================================
+
+# Linguagem humana. 🔴 O dossiê antigo escrevia `assistencia.residencial.
+# encanador` para uma pessoa ler no WhatsApp — nome de chave interna vazando
+# para a tela de quem trabalha.
+_TITULOS = {
+    "guincho": ("🚗", "GUINCHO"), "pneu": ("🛞", "PNEU"),
+    "bateria": ("🔋", "BATERIA"), "chaveiro": ("🔑", "CHAVEIRO"),
+    "vidros": ("🪟", "VIDROS"), "eletricista": ("💡", "ELETRICISTA"),
+    "encanador": ("🔧", "ENCANADOR"), "desentupimento": ("🚿", "DESENTUPIMENTO"),
+    "eletrodomestico": ("🧊", "ELETRODOMÉSTICO"),
+    "sinistro": ("🚨", "SINISTRO"), "consulta": ("💬", "DÚVIDA"),
+}
+
+
+def _texto_do_caso(conversa: Dict[str, Any], motivo: str) -> str:
+    """Tudo que se sabe do caso, junto e minúsculo — para procurar palavra."""
+    ficha = conversa.get("ficha_atendimento") or {}
+    partes = [str(motivo or ""), str(conversa.get("human_handoff_reason") or ""),
+              str(conversa.get("last_message_preview") or "")]
+    if isinstance(ficha, dict):
+        partes += [str(v) for v in ficha.values() if isinstance(v, (str, int, float))]
+    return " ".join(partes).lower()
+
+
+def _titulo_humano(conversa: Dict[str, Any], motivo: str) -> str:
+    """A primeira linha. Ela tem de dizer O QUE É antes de qualquer outra coisa."""
+    texto = _texto_do_caso(conversa, motivo)
+    for chave, (emoji, nome) in _TITULOS.items():
+        if chave in texto:
+            # Sinistro e dúvida não são "assistência de alguma coisa" — são a
+            # coisa inteira. `SINISTRO · SINISTRO` é ruído que o primeiro
+            # render mostrou na cara.
+            if chave in ("sinistro", "consulta"):
+                return f"{emoji} *{'SINISTRO' if chave == 'sinistro' else 'DÚVIDA DO CLIENTE'}*"
+            return f"{emoji} *ASSISTÊNCIA · {nome}*"
+    return "🔔 *ATENDIMENTO PRECISA DE VOCÊ*"
+
+
+def _fone_bonito(bruto: Any) -> str:
+    """(47) 99627-4743 em vez de 5547996274743.
+
+    Não é enfeite: a atendente compara este número com o que está na tela do
+    celular dela, e comparar 13 dígitos colados é onde o olho erra.
+    """
+    d = "".join(ch for ch in str(bruto or "") if ch.isdigit())
+    if len(d) >= 12 and d.startswith("55"):
+        d = d[2:]
+    if len(d) == 11:
+        return f"({d[:2]}) {d[2:7]}-{d[7:]}"
+    if len(d) == 10:
+        return f"({d[:2]}) {d[2:6]}-{d[6:]}"
+    return str(bruto or "")
+
+
+def _linha_da_apolice(conversa: Dict[str, Any]) -> str:
+    """Seguradora, ramo e apólice numa linha — some inteira se não houver nada.
+
+    Linha com "(não localizada)" três vezes é pior que linha nenhuma: ocupa
+    espaço, não informa, e ensina a pular a seção.
+    """
+    ficha = conversa.get("ficha_atendimento") or {}
+    if not isinstance(ficha, dict):
+        return ""
+    seguradora = str(ficha.get("seguradora") or ficha.get("insurer") or "").strip()
+    ramo = str(ficha.get("ramo") or "").strip()
+    apolice = str(ficha.get("apolice") or ficha.get("policy") or "").strip()
+    placa = str(ficha.get("placa") or "").strip()
+
+    esquerda = " ".join(p for p in (seguradora.title() if seguradora else "", ramo.title()) if p)
+    direita = []
+    if apolice:
+        direita.append(f"apólice {apolice}")
+    if placa:
+        direita.append(f"placa {placa.upper()}")
+    partes = [p for p in (esquerda, " · ".join(direita)) if p]
+    return " · ".join(partes)
+
+
+def _narrativa(conversa: Dict[str, Any], motivo: str) -> str:
+    """O que houve, em português, na voz de quem conta um caso."""
+    ficha = conversa.get("ficha_atendimento") or {}
+    if isinstance(ficha, dict):
+        for campo in ("narrativa", "descricao", "resumo", "relato"):
+            valor = str(ficha.get(campo) or "").strip()
+            if valor:
+                return valor
+    return str(motivo or "").strip() or str(conversa.get("last_message_preview") or "").strip()
+
+
+def _o_que_falta(conversa: Dict[str, Any]) -> list:
+    """Só o que BLOQUEIA. Lista de pendência que não bloqueia vira ruído."""
+    ficha = conversa.get("ficha_atendimento") or {}
+    if not isinstance(ficha, dict):
+        return []
+    faltando = ficha.get("faltando") or ficha.get("pendencias") or []
+    if isinstance(faltando, str):
+        faltando = [faltando]
+    return [str(f).strip() for f in faltando if str(f).strip()][:4]
+
+
+def _o_que_fazer(conversa: Dict[str, Any], motivo: str) -> str:
+    """A recomendação. É a linha que a atendente lê primeiro, na prática.
+
+    O agente conduziu a conversa inteira e sabe onde parou — entregar isso
+    mastigado é a diferença entre ela agir em dez segundos e ela reler tudo.
+    """
+    ficha = conversa.get("ficha_atendimento") or {}
+    if isinstance(ficha, dict):
+        sugestao = str(ficha.get("proximo_passo") or ficha.get("sugestao") or "").strip()
+        if sugestao:
+            return sugestao
+
+    texto = _texto_do_caso(conversa, motivo)
+    if "sinistro" in texto:
+        return ("Sinistro sempre é com pessoa. Confirme os dados com o cliente e "
+                "abra o aviso na seguradora.")
+    if _o_que_falta(conversa):
+        return "Peça ao cliente o que está faltando acima e conclua o acionamento."
+    return ("Confira o que o agente coletou e siga com o atendimento. "
+            "Se estiver tudo certo, é só concluir.")
+
+
+def _linha_da_conversa(m: Dict[str, Any]) -> str:
+    """Uma linha da conversa, com hora e AUTOR DE VERDADE.
+
+    🔴 O dossiê antigo chamava todo `role='assistant'` de "*Agente*" — mas a
+    rota do dashboard grava a resposta HUMANA com o mesmo `role`, marcada só
+    em `payload.origem='dashboard'`. A atendente não tinha como saber o que a
+    IA prometeu e o que uma colega prometeu. Numa mesa com duas pessoas
+    monitorando, é o dado mais importante do dossiê.
+    """
+    quando = str(m.get("created_at") or "")
+    hora = quando[11:16] if len(quando) >= 16 else "--:--"
+    payload = m.get("payload") or {}
+    if not isinstance(payload, dict):
+        payload = {}
+    origem = str(payload.get("origem") or "")
+
+    if str(m.get("role")) == "user":
+        autor = "Cliente"
+    elif origem == "dashboard":
+        autor = f"👤 {str(payload.get('autor') or 'atendente')}"
+    elif origem == "espelho":
+        autor = "👤 celular"
+    else:
+        autor = "🤖 IA"
+
+    texto = str(m.get("content") or "").strip().replace("\n", " ")
+    return f"{hora} {autor}  {texto[:160]}"
+
+
+def _link_da_conversa(conversa: Dict[str, Any]) -> str:
+    """O link direto. Sem ele, ela procura na lista — no celular, com o
+    cliente esperando."""
+    import os as _os
+
+    base = (_os.getenv("FRONTEND_URL") or _os.getenv("APP_BASE_URL") or "").rstrip("/")
+    ident = str(conversa.get("id") or "").strip()
+    if not base or not ident:
+        return ""
+    return f"{base}/dashboard/atendimentos/conversas?c={ident}"
+
+
+def _quem_assumiu(conversa: Dict[str, Any]) -> str:
+    """Evita que duas atendentes corram para a mesma conversa."""
+    nome = str(conversa.get("claimed_by_name") or "").strip()
+    return f"_{nome} já assumiu_" if nome else "_Ninguém assumiu ainda_"
+
 
 class HumanHandoffInput(BaseModel):
     """Input schema para a HumanHandoffTool."""
@@ -94,38 +268,85 @@ class HumanHandoffTool(BaseTool):
     # o dossiê
     # ------------------------------------------------------------------ #
     def _montar_dossie(self, conversa: Dict[str, Any], motivo: str) -> str:
-        """O que o humano precisa saber para entrar sem reperguntar.
+        """O que a atendente precisa para agir SEM reler a conversa.
 
-        Quem recebe isto está no meio do dia dele. Se o dossiê não disser quem
-        é, o que a pessoa quer e o que já foi perguntado, ele recomeça do zero —
-        e o segurado repete tudo. Repetir é exatamente o que o produto existe
-        para evitar.
+        🔴 REESCRITO EM 14/08/2026 — SPEC-071 Bloco 3.4.
+
+        O dossiê anterior dizia cliente, telefone, motivo e as 12 últimas
+        mensagens. Servia para não entrar cego; não servia para **agir**. Os
+        defeitos, na ordem em que atrapalham quem está com o celular na mão:
+
+        · **não tinha link** — "Abra em Atendimentos → Conversas" e ela que
+          procure na lista, no celular, com o cliente esperando;
+        · **não separava a IA de uma colega** — tudo era "*Agente*", inclusive
+          o que outra atendente havia escrito pelo dashboard (a rota grava
+          `role='assistant'` também). Numa mesa com duas pessoas monitorando,
+          *"o que a IA já prometeu?"* é a pergunta mais importante, e não tinha
+          resposta;
+        · **não dizia o que fazer** — entregava matéria-prima e deixava a
+          decisão inteira para quem chegou agora;
+        · **não dizia se alguém já assumiu**, então duas atendentes podiam
+          correr para a mesma conversa.
+
+        Diretriz do Founder: *"ela olha a mensagem e já sabe o que fazer"* —
+        completo, mas fácil de ler; linguagem humana, nunca
+        `assistencia.residencial.encanador`; **sem protocolo e sem caso**
+        (numeração de um sistema que não existe mais).
+
+        A ordem das seções é a ordem em que a pergunta aparece na cabeça dela:
+        o que é → quem é → o que houve → o que falta → **o que fazer** → a
+        conversa → o link.
         """
-        linhas = [
-            "🔔 *ATENDIMENTO PRECISA DE VOCÊ*",
-            "",
-            f"*Cliente:* {conversa.get('user_name') or 'não identificado'}",
-            f"*WhatsApp:* {conversa.get('user_phone') or '—'}",
-            f"*Motivo:* {motivo or 'não informado pelo agente'}",
-        ]
+        titulo = _titulo_humano(conversa, motivo)
+        linhas = [titulo, "━━━━━━━━━━━━━━━━━━━━━━"]
+
+        # QUEM É — três linhas, sem rótulo: rótulo em WhatsApp é ruído.
+        quem = str(conversa.get("user_name") or "").strip()
+        fone = _fone_bonito(conversa.get("user_phone"))
+        linhas.append(" · ".join([p for p in (quem or "cliente não identificado", fone) if p]))
+
+        apolice = _linha_da_apolice(conversa)
+        if apolice:
+            linhas.append(apolice)
+
+        # O QUE ACONTECEU — narrativa, não campos soltos.
+        narrativa = _narrativa(conversa, motivo)
+        if narrativa:
+            linhas += ["", "*O QUE ACONTECEU*", narrativa]
+
+        # O QUE FALTA — some quando não falta nada. Seção vazia é ruído.
+        falta = _o_que_falta(conversa)
+        if falta:
+            linhas += ["", "*O QUE FALTA*"] + [f"⚠️ {f}" for f in falta]
+
+        # O QUE FAZER — a primeira coisa que ela lê de verdade.
+        linhas += ["", "*👉 O QUE FAZER*", _o_que_fazer(conversa, motivo)]
+
+        # A CONVERSA — com autor de verdade.
+        linhas += ["", "━━━━━━━━━━━━━━━━━━━━━━"]
         try:
             msgs = (self.supabase_client.table("messages")
-                    .select("role, content, created_at")
+                    .select("role, content, created_at, payload")
                     .eq("conversation_id", conversa["id"])
                     .order("created_at", desc=True)
                     .limit(_MSGS_NO_DOSSIE).execute().data or [])
             if msgs:
-                linhas += ["", "*Últimas mensagens:*"]
+                linhas.append(f"*CONVERSA* _(últimas {len(msgs)})_")
                 for m in reversed(msgs):
-                    quem = "Cliente" if str(m.get("role")) == "user" else "Agente"
-                    texto = str(m.get("content") or "").strip().replace("\n", " ")
-                    linhas.append(f"• _{quem}:_ {texto[:180]}")
+                    linhas.append(_linha_da_conversa(m))
         except Exception as exc:  # noqa: BLE001
-            # Dossiê sem histórico continua melhor que silêncio — mas o humano
+            # Dossiê sem histórico continua melhor que silêncio — mas quem lê
             # precisa saber que está entrando às cegas.
             logger.warning("[HumanHandoff] histórico indisponível (%s)", type(exc).__name__)
-            linhas += ["", "_(não foi possível carregar o histórico desta conversa)_"]
-        linhas += ["", "Abra em *Atendimentos → Conversas* para assumir."]
+            linhas.append("_(não consegui carregar o histórico — você entra sem ele)_")
+
+        # O LINK e o estado. `claimed_by_name` existe justamente para evitar
+        # que duas atendentes corram para a mesma conversa.
+        linhas += ["━━━━━━━━━━━━━━━━━━━━━━"]
+        link = _link_da_conversa(conversa)
+        if link:
+            linhas.append(f"▶ {link}")
+        linhas.append(_quem_assumiu(conversa))
         return "\n".join(linhas)
 
     async def _avisar_suporte(self, company_id: str, conversa: Dict[str, Any],

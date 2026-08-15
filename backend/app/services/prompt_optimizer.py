@@ -133,6 +133,30 @@ async def optimize_playbook(ramo: str, servico: str,
     )
     from app.services.playbook_gate import _load_active_sync, deterministic_checks
 
+    # 🔴 O LAPIDADOR ESCAPAVA DA TRAVA DE GASTO — 14/08/2026.
+    #
+    # 📊 Ele roda sozinho, semanal, na madrugada, com o modelo FORTE
+    # (`claude-opus-5`), e tem gatilho próprio (≥5 feedbacks novos). O teto do
+    # Destilador (`DESTILADOR_TETO_POR_RODADA=0`), fechado em 13/08, **não o
+    # alcançava**: são dois caminhos diferentes para o mesmo bolso.
+    #
+    # Eu havia garantido ao Founder que "nada está gastando". Estava errado —
+    # esta janela de madrugada dispararia Opus 5 uma vez por grupo ativo com
+    # feedback, e havia 224 scorecards e 12 playbooks ativos.
+    #
+    # Regra R5 da SPEC-071: enquanto o trabalho cognitivo é feito pelo Claude
+    # Code no plano Max, nenhum job periódico gasta API sozinho. O teto do
+    # Destilador passa a valer aqui também — quem fecha um, fecha os dois.
+    #
+    # ⚠️ `optimize_playbook` continua chamável À MÃO (pela tela ou por script)
+    # sem passar por aqui? Não: a trava é no início da função, e é de propósito.
+    # Uma rodada manual que gasta sem querer é o mesmo dinheiro.
+    from app.services.attendance_distiller import _teto_de_gasto
+
+    if _teto_de_gasto() <= 0:
+        return {"ok": False, "reason": "teto_de_gasto_fechado",
+                "note": "DESTILADOR_TETO_POR_RODADA=0 — o Lapidador não gasta API"}
+
     need = min_feedback if min_feedback is not None else _env_int("LAPIDADOR_MIN_FEEDBACK", 5)
     feedback = await asyncio.to_thread(collect_feedback_sync, ramo, servico)
     if len(feedback) < need:

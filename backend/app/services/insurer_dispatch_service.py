@@ -312,13 +312,32 @@ def dispatch_live_enabled() -> bool:
     ⚠️ Consequência operacional, e ela é real: se o ambiente de produção herdou
     `INSURER_DISPATCH_LIVE=false` do `.env.example` antigo, ligar o agente NÃO
     basta — é preciso apagar aquela linha. Está registrado em PENDENCIAS.
+
+    🔴 14/08/2026 — O PADRÃO VOLTA A SER FECHADO, E NÃO É UMA REVERSÃO.
+
+    A decisão de 04/08 (P-90) abriu o padrão com um motivo escrito logo acima:
+    *"hoje quem segura é o agente desligado"*. **É exatamente essa premissa que
+    a SPEC-071 vai derrubar** — a semana de 18/08 é a semana de LIGAR o agente,
+    com Regina e Saionara monitorando. No instante em que o agente acende, o
+    único freio que restava some, e some em silêncio.
+
+    Regra R1 do Founder, 14/08, literal: *"não pode ser enviado nada até eu
+    liberar"*. Aqui ela vira código, e não lembrança: um interruptor que
+    depende de alguém escrever uma linha no painel é um interruptor que um dia
+    ninguém escreve. Fechado por construção, aberto por decisão.
+
+    Ligar é `INSURER_DISPATCH_LIVE=true`, sem deploy — e é o Founder quem liga,
+    depois do teste de peças.
+
+    ⚠️ Este é o portão EXTERNO: "podemos falar com a seguradora?". O interno —
+    "podemos CONCLUIR o pedido?" — é `finalize_live_for` logo abaixo,
+    controlado por `DISPATCH_FINALIZE_MODE`. São dois freios em série, e os
+    dois precisam estar abertos para um guincho sair de verdade.
     """
     if freio_de_emergencia_armado():
         return False
     bruto = str(os.getenv("INSURER_DISPATCH_LIVE", "")).strip().lower()
-    if bruto in _DESLIGADO:
-        return False
-    return True
+    return bruto in ("1", "true", "yes", "on", "sim")
 
 
 def finalize_live_for(playbook_ref: str) -> bool:

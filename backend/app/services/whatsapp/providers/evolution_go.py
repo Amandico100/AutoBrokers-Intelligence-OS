@@ -50,10 +50,18 @@ mesmos campos. O que faltava era a porta de saída, e ela agora existe.
 
 O que **não** mudou: nada disso é prova de que a seguradora aceita a resposta.
 Ter a rota é ter o caminho; ter o caminho não é ter chegado. Por isso ela
-continua atrás de `EVOLUTION_GO_FLOW_REPLY_PATH`, que fica **vazio** até o teste
-de ida e volta entre dois números nossos comparar o que chegou, campo a campo,
-com o clique humano de 18/07. Ligar antes disso seria trocar uma incerteza
-conhecida por uma surpresa no meio de um atendimento real.
+🔴 ESTE PARÁGRAFO ESTAVA VENCIDO E FOI CORRIGIDO EM 14/08/2026.
+
+Ele dizia que o envio "continua atrás de `EVOLUTION_GO_FLOW_REPLY_PATH`, que
+fica vazio… **recusa por padrão**". **O código abaixo faz o contrário desde
+03/08:** sem a variável, o padrão é `/send/interactiveResponse` — a rota provada
+pelo teste de ida e volta daquele dia — e o envio **acontece**. A variável
+inverteu de papel: hoje ela só **corrige** a rota ou a **desliga**
+(`off`/`0`/`none`/`desligado` → string vazia → recusa sem tocar na rede).
+
+Era verdade vencida no arquivo que decide se uma mensagem sai para uma
+seguradora — o lugar onde o custo de acreditar no comentário é mais alto
+(CLAUDE.md §9.3). Quem lesse concluiria "está desligado" enquanto está ligado.
 
 Então este arquivo **não inventa endpoint**. Ele entrega:
 
@@ -61,11 +69,16 @@ Então este arquivo **não inventa endpoint**. Ele entrega:
   offline. A forma não é deduzida: 📊 ela é a de um evento real deste produto
   (`interactiveResponseMessage` com `body.text` + `nativeFlowResponseMessage
   {name, paramsJSON}`, 23 ocorrências no acervo do Observador).
-- :meth:`EvolutionGoProvider.send_native_flow_response` — que **recusa por
-  padrão**, sem tocar na rede, com `error="evolution_go_sem_rota_de_flow_reply"`.
-  Só tenta quando alguém DECLARAR a rota provada em
-  ``EVOLUTION_GO_FLOW_REPLY_PATH``. Declarar é um ato de evidência, não um
-  palpite: com a variável vazia (o padrão) nada sai.
+- :meth:`EvolutionGoProvider.send_native_flow_response` — que envia pela rota
+  padrão provada, e recusa sem tocar na rede quando alguém a desliga
+  explicitamente (`error="evolution_go_sem_rota_de_flow_reply"`).
+
+⚠️ E o que **continua** sem prova, apesar de o transporte funcionar: nenhuma
+seguradora recebeu uma resposta nossa. A prova de 03/08 foi entre dois números
+do próprio produto. O nome do envelope que a HDI/Yelum espera
+(`galaxy_message`?) não está entre os quatro que o parser reconhece — SPEC-071
+Bloco 7, teste B. Enquanto isso, o freio externo (`INSURER_DISPATCH_LIVE`) está
+fechado por construção.
 
 Ou seja: tudo que dá para provar sem o número pareado está pronto e provado; o
 que falta é uma rota que este build do GO não tem.
