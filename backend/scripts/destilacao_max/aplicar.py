@@ -144,6 +144,21 @@ def _cartas_de(d: dict, sessao: str = "", marca: str = MARCA, dono=_dono_por_tex
     for fato in (d.get("fatos_reutilizaveis") or [])[:8]:
         texto = " ".join(str(fato or "").split())
         if len(texto) < 15 or len(texto) > 400:
+            # 🔴 O DESCARTE PASSA A CONTAR E A DIZER O QUE PERDEU — 15/08/2026.
+            #
+            # Este `continue` era mudo. Uma carta longa demais sumia sem log,
+            # sem contagem e sem rastro, e o acervo ficava parecendo completo.
+            #
+            # 📊 E o padrão é perverso: quanto mais COMPLETA a carta, maior a
+            # chance de morrer aqui. Uma lista de documentos de sinistro é longa
+            # PORQUE é completa — é exatamente o que a torna útil e o que a mata.
+            #
+            # ⚠️ Não mexi no limite. Primeiro medir, depois decidir (§9.2): um
+            # teto que eu mudasse antes de saber o volume seria palpite com
+            # consequência no RAG. A linha abaixo é o instrumento que faltava.
+            print(f"[aplicar] DESCARTADO por tamanho ({len(texto)} ch, "
+                  f"limite 15-400) sessao={sessao[:8]} ramo={ramo}: "
+                  f"{texto[:90]}...", file=sys.stderr)
             continue
         limpo = templatize(texto) == texto
         seg, extras = dono(texto, candidata)
