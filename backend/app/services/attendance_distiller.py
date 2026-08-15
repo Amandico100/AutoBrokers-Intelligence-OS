@@ -293,6 +293,26 @@ def _load_undistilled_sync(max_sessions: int) -> List[Dict[str, Any]]:
                 .select("id, company_id, observer_number, counterparty, "
                         "started_at, summary")
                 .eq("status", "closed")
+                # 🔴 O PASSO 1 DA SPEC-071 BLOCO 8 — "SEPARAR conversa de
+                # CLIENTE × conversa de SEGURADORA" — não existia no código.
+                #
+                # 📊 Medido em 15/08/2026: **191 sessões de robô JÁ FORAM
+                # DESTILADAS** (117 na Resulta, 74 na AutoFleet). A fila de
+                # espera da MAPFRE, o menu da Maxpar, a Casas Bahia e uma
+                # clínica médica entraram no caminho do RAG como se fossem
+                # atendimento de cliente.
+                #
+                # O RAG é GLOBAL — de todas as corretoras
+                # (`docs/canon/O-ATLAS-E-UM-SO-E-E-DE-TODAS.md`). Uma carta
+                # destilada do menu de uma URA não é conhecimento de seguros:
+                # é a transcrição de um robô, e ela responderia a um segurado
+                # de outra corretora como se fosse doutrina.
+                #
+                # `insurer_key` preenchido aqui significa "a contraparte NÃO é
+                # gente" — seguradora, prestadora ou fora do domínio. O que
+                # essas conversas têm de valioso vira **mapa do Atlas**, que é
+                # o destino certo delas, e não carta.
+                .is_("insurer_key", "null")
                 # Mais antigas primeiro na recuperação: o histórico entrou de
                 # uma vez, e processar do fim para o começo deixaria as
                 # conversas mais velhas para sempre no fim da fila.
