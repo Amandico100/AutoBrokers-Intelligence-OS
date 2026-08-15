@@ -318,20 +318,160 @@ def _renomear_nos_sync(mapa: Dict[str, Any]) -> Tuple[Dict[str, Any], int]:
             if limpo != texto:
                 no = {**no, "text": limpo}
                 tocados += 1
+
+        # 🔴 O RÓTULO DA OPÇÃO TAMBÉM — 15/08/2026.
+        #
+        # Esta função prometia "reaplica o mascarador sobre os nós JÁ gravados"
+        # e limpava SÓ `no["text"]`. 📊 O rótulo da opção e o da aresta ficavam
+        # como estavam — e era exatamente ali que estavam os 141 CPF (P-162).
+        # A higiene tinha o mesmo ponto cego do Tecelão.
+        #
+        # ⚠️ `rotulo_de_campo=False` aqui pelo mesmo motivo do Tecelão: rótulo
+        # de opção chega sozinho, e com a rede ligada "Assistência 24h" viraria
+        # "{VALOR}" e a opção sumiria na limpeza (P-164). Limpar não pode
+        # apagar o guincho.
+        opcoes = no.get("options")
+        if isinstance(opcoes, list) and opcoes:
+            novas_opcoes = []
+            mudou_opcao = False
+            for opt in opcoes:
+                if not isinstance(opt, dict):
+                    novas_opcoes.append(opt)
+                    continue
+                nova = dict(opt)
+                for campo in ("label", "reply"):
+                    valor = nova.get(campo)
+                    if isinstance(valor, str) and valor:
+                        limpo_o = templatize(valor, rotulo_de_campo=False)
+                        if limpo_o != valor:
+                            nova[campo] = limpo_o
+                            mudou_opcao = True
+                novas_opcoes.append(nova)
+            if mudou_opcao:
+                no = {**no, "options": novas_opcoes}
+                tocados += 1
         novos[chave] = no
-    return {**(mapa or {}), "nodes": novos}, tocados
+
+    saida: Dict[str, Any] = {**(mapa or {}), "nodes": novos}
+
+    # 🔴 A ARESTA — onde estavam os 141 CPF, 34 CNPJ e 105 placas.
+    #
+    # ⚠️ A CHAVE da aresta é `"{no_origem}|{rótulo}"`, então limpar o rótulo
+    # obriga a REESCREVER a chave. Duas arestas que só diferiam pelo CPF
+    # colapsam numa só — e isso é o certo: era uma aresta por SEGURADO onde
+    # deveria haver uma por ROTA.
+    arestas = (mapa or {}).get("edges")
+    if isinstance(arestas, dict) and arestas:
+        novas_arestas: Dict[str, Any] = {}
+        for chave, aresta in arestas.items():
+            if not isinstance(aresta, dict):
+                novas_arestas[chave] = aresta
+                continue
+            rotulo = aresta.get("label")
+            if isinstance(rotulo, str) and rotulo:
+                limpo_a = templatize(rotulo, rotulo_de_campo=False)
+                if limpo_a != rotulo:
+                    aresta = {**aresta, "label": limpo_a}
+                    src = str(chave).split("|", 1)[0]
+                    chave = f"{src}|{limpo_a}"
+                    tocados += 1
+            # Colisão depois da limpeza = a MESMA rota vista duas vezes.
+            # Somar o que for contável preserva o peso; o resto fica com o
+            # primeiro, que é o mais antigo (as arestas vêm em ordem).
+            if chave in novas_arestas:
+                antiga = novas_arestas[chave]
+                if isinstance(antiga, dict):
+                    for campo in ("count", "samples", "observations"):
+                        if isinstance(antiga.get(campo), int) and isinstance(aresta.get(campo), int):
+                            antiga[campo] = antiga[campo] + aresta[campo]
+                continue
+            novas_arestas[chave] = aresta
+        saida["edges"] = novas_arestas
+
+    # E a trilha escrita (`paths[*].steps[*].c`), que carrega a mesma escolha.
+    trilhas = (mapa or {}).get("paths")
+    if isinstance(trilhas, list) and trilhas:
+        novas_trilhas = []
+        for trilha in trilhas:
+            if not isinstance(trilha, dict):
+                novas_trilhas.append(trilha)
+                continue
+            passos = trilha.get("steps")
+            if isinstance(passos, list):
+                novos_passos = []
+                for passo in passos:
+                    if isinstance(passo, dict) and isinstance(passo.get("c"), str) and passo["c"]:
+                        limpo_p = templatize(passo["c"], rotulo_de_campo=False)
+                        if limpo_p != passo["c"]:
+                            passo = {**passo, "c": limpo_p}
+                            tocados += 1
+                    novos_passos.append(passo)
+                trilha = {**trilha, "steps": novos_passos}
+            novas_trilhas.append(trilha)
+        saida["paths"] = novas_trilhas
+
+    return saida, tocados
 
 
 def _tem_marca_de_corretora(mapa: Dict[str, Any]) -> int:
-    """Quantos nós ainda nomeiam uma corretora. Promover com isto é vazamento."""
+    """Quantos nós ainda nomeiam uma corretora. Promover com isto é vazamento.
+
+    🔴 ESTE PORTÃO PROMETIA "nunca promove mapa com marca de corretora" E
+    DEIXOU PASSAR — 15/08/2026.
+
+    📊 Ele era uma lista de três literais: `autofleet|resulta seguros|amandus`.
+    Medido contra os quatro vazamentos reais encontrados nos mapas ativos:
+
+        "*Saionara - Resulta*, por ser um item essencial…"     -> False
+        "Olá RESULTA CORRETORA DE SEGUROS LTDA…"               -> False
+        "Olá INDYANA COMERCIO DE VEICULOS LTDA…"               -> False
+        "Olá CONDOMINIO DO CONJUNTO RESIDENCIAL…"              -> False
+
+    **Quatro `False`.** O portão não falhou por bug — falhou por não conhecer os
+    nomes. Uma lista escrita à mão envelhece no dia em que entra a quarta
+    corretora, e ninguém é avisado.
+
+    Agora ele lê `marcas_de_corretora()`, a mesma fonte que o mascarador usa —
+    `companies`. E olha os quatro lugares, não só o texto do nó: 📊 o rótulo da
+    ARESTA era onde estavam os 141 CPF, e ele nunca foi conferido aqui.
+    """
     import re as _re
 
-    padrao = _re.compile(r"\b(autofleet|resulta\s+seguros|amandus)\b", _re.IGNORECASE)
-    nos = (mapa or {}).get("nodes") or {}
-    if not isinstance(nos, dict):
-        return 0
-    return sum(1 for no in nos.values()
-               if isinstance(no, dict) and padrao.search(str(no.get("text") or "")))
+    from app.services.atlas.templater import marcas_de_corretora
+
+    marcas = [m for m in marcas_de_corretora() if len(m) >= 4]
+    if not marcas:
+        # Sem configuração legível, o portão vira o antigo — nunca vira "passa
+        # tudo". Errar para o lado de NÃO promover é o lado barato.
+        marcas = ["autofleet", "resulta", "amandus"]
+    padrao = _re.compile(
+        r"\b(" + "|".join(_re.escape(m) for m in marcas) + r")\b", _re.IGNORECASE)
+
+    mapa = mapa or {}
+    sujos = 0
+
+    nos = mapa.get("nodes") or {}
+    if isinstance(nos, dict):
+        for no in nos.values():
+            if not isinstance(no, dict):
+                continue
+            alvo = [str(no.get("text") or "")]
+            for opt in (no.get("options") or []):
+                if isinstance(opt, dict):
+                    alvo.append(str(opt.get("label") or ""))
+                    alvo.append(str(opt.get("reply") or ""))
+            if any(padrao.search(t) for t in alvo if t):
+                sujos += 1
+
+    # A aresta — o ponto cego que guardava os CPF e as razões sociais.
+    arestas = mapa.get("edges") or {}
+    if isinstance(arestas, dict):
+        for chave, aresta in arestas.items():
+            rotulo = str((aresta or {}).get("label") or "") if isinstance(aresta, dict) else ""
+            if padrao.search(str(chave)) or (rotulo and padrao.search(rotulo)):
+                sujos += 1
+
+    return sujos
 
 
 async def higienizar_e_promover(*, aplicar: bool = True) -> Dict[str, Any]:

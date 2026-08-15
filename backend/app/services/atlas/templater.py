@@ -245,10 +245,34 @@ NOME_NO_VOCATIVO = re.compile(
 #
 # O `\{NOME\}` na alternativa é necessário: em vários nós a saudação JÁ
 # mascarou o nome, e sobrou `{NOME} - Autofleet Seguros`.
+# 🔴 REESCRITA EM 15/08/2026 — ela deixava passar dois casos medidos.
+#
+# 📊 (a) NOME COMPOSTO: `"Maria Regina - Autofleet Seguros"` virava
+# `"Maria {NOME} - {CORRETORA}"` — **o primeiro nome escapava**, porque o grupo
+# do nome era UMA palavra sem repetição. É o pior estado possível: parece
+# mascarado e não está, e o próprio arquivo já registrava esse mesmo diagnóstico
+# para `{NOME} DE LOURDES PRASS`.
+#
+# 📊 (b) SUFIXO LITERAL: a regra exigia a palavra `Seguros`. Então
+# `"Saionara - Resulta"` não casava nada, e `"RESULTA CORRETORA DE SEGUROS
+# LTDA"` também não — razão social não tem a forma `X Seguros`.
+#
+# Agora o nome aceita até 4 palavras (com `de/da/dos` no meio, como o resto do
+# arquivo já faz) e o sufixo é uma alternância medida sobre o que aparece de
+# verdade. O caso sem sufixo nenhum — `"Saionara - Resulta"` — **não é curável
+# por regex** e é tratado por `marcas_de_corretora()`, mais abaixo.
+_NOME_COMPOSTO = (
+    r"(?-i:[A-ZÀ-Ú][a-zà-ú]{2,15}(?:[ \t]+(?:d[aeo]s?[ \t]+)?"
+    r"[A-ZÀ-Ú][a-zà-ú]{2,15}){0,3})"
+)
+_SUFIXO_DE_EMPRESA = (
+    r"(?:Seguros|Corretora(?:[ \t]+de[ \t]+Seguros)?|Seguros[ \t]+Ltda"
+    r"|Ltda|LTDA|ME|EIRELI|S\.?[ \t]?A\.?)"
+)
 ASSINATURA_DE_CORRETORA = re.compile(
-    r"(?:\{NOME\}|(?-i:[A-ZÀ-Ú][a-zà-ú]{2,15}))"
+    r"(?:\{NOME\}|" + _NOME_COMPOSTO + r")"
     r"[ \t]*-[ \t]*"
-    r"(?-i:[A-ZÀ-Ú][A-Za-zà-ú]{2,15})[ \t]+Seguros\b"
+    r"(?-i:[A-ZÀ-Ú][A-Za-zà-ú]{2,15})[ \t]+" + _SUFIXO_DE_EMPRESA + r"\b"
 )
 
 # LOGRADOURO EM PROSA — 06/08/2026, achado no acervo das seguradoras.
@@ -1200,6 +1224,160 @@ def _devolver(s: str, guardados: List[str]) -> str:
     return s
 
 
+# ── as marcas das corretoras vêm da CONFIGURAÇÃO, não de adivinhação ────────
+#
+# 🔴 POR QUE ESTA PEÇA EXISTE — 15/08/2026.
+#
+# 📊 Quatro literais medidos nos mapas ativos sobreviveram inteiros ao
+# `templatize`, e nenhuma regra lexical os cobre com segurança:
+#
+#     "*Saionara - Resulta*, por ser um item essencial…"
+#     "Olá RESULTA CORRETORA DE SEGUROS LTDA…"
+#     "Olá INDYANA COMERCIO DE VEICULOS LTDA…"
+#     "Olá CONDOMINIO DO CONJUNTO RESIDENCIAL RECANTO DOS PASSAROS…"
+#
+# Qualquer regra que mascare `Capitalizada - Capitalizada` sem sufixo **come
+# português** e come nome de seguradora — é o estrago que este arquivo já
+# documenta em outro ponto. Adivinhar aqui é pior que não fazer.
+#
+# Mas não é preciso adivinhar: **o sistema já sabe o nome das corretoras.** Ele
+# está em `companies`. É a aplicação inversa da doutrina do Atlas
+# (`docs/canon/O-ATLAS-E-UM-SO-E-E-DE-TODAS.md`): o que a configuração sabe
+# nomear, o mapa global sabe apagar.
+_CACHE_MARCAS: Optional[Tuple[str, ...]] = None
+
+# ⚠️ O GUARDA QUE IMPEDE O TIRO NO PÉ: uma corretora chamada "Porto Seguros"
+# não pode fazer o mascarador comer "Porto Seguro", que é SEGURADORA e é
+# conhecimento que o Atlas existe para guardar. Marca que colide com rótulo de
+# seguradora é descartada da lista, e o registro de seguradoras é quem decide.
+_PALAVRAS_QUE_NAO_VIRAM_MARCA = frozenset({
+    "seguros", "seguro", "corretora", "corretor", "ltda", "me", "eireli",
+    "sa", "s.a", "assessoria", "administradora", "de", "da", "do", "e",
+})
+
+
+def _marcas_das_seguradoras() -> frozenset:
+    """Os nomes que NUNCA podem virar `{CORRETORA}` — são as companhias."""
+    try:
+        from app.services.insurer_registry import INSURER_REGISTRY
+
+        fora = set()
+        for chave, info in INSURER_REGISTRY.items():
+            fora.add(str(chave).lower())
+            for palavra in str(info.get("label") or "").split():
+                if len(palavra) > 2:
+                    fora.add(palavra.lower())
+        return frozenset(fora)
+    except Exception:  # noqa: BLE001
+        return frozenset()
+
+
+def pode_virar_marca(nome: str, proibidas: frozenset) -> bool:
+    """Este nome de `companies` pode virar `{CORRETORA}` no mapa?
+
+    🔴 PURA E EXPOSTA DE PROPÓSITO — 15/08/2026.
+
+    A decisão estava enterrada dentro de `marcas_de_corretora`, que precisa de
+    banco para rodar. Resultado: a guarda mais importante do arquivo **não
+    tinha como ser testada**, e a mutação que a removia ficava verde.
+
+    A guarda: uma corretora chamada "Porto Seguros" NÃO pode fazer o mascarador
+    comer "Porto Seguro" — que é SEGURADORA, e é exatamente o conhecimento que o
+    Atlas existe para guardar. Perder a corretora do texto é higiene; perder a
+    seguradora é perder o produto.
+    """
+    p = str(nome or "").strip()
+    if len(p) < 4:
+        return False
+    baixo = p.lower()
+    if baixo in _PALAVRAS_QUE_NAO_VIRAM_MARCA:
+        return False
+
+    # A colisão é testada na PRIMEIRA palavra, e só nela. "Porto" e
+    # "Porto Seguros Corretora" caem os dois por aqui.
+    #
+    # ⚠️ Havia um `if baixo in proibidas` antes desta linha. Ele foi REMOVIDO
+    # por medição, não por gosto: `proibidas` guarda palavras soltas, então
+    # para nome de uma palavra `baixo` e `primeira` são o mesmo teste, e para
+    # nome composto `baixo` nunca está na lista. A mutação que apagava aquela
+    # linha ficava VERDE — cláusula que não consegue falhar sozinha não é
+    # defesa em profundidade, é código morto se fingindo de guarda.
+    primeira = baixo.split()[0] if baixo.split() else ""
+    return primeira not in proibidas
+
+
+def marcas_de_corretora(recarregar: bool = False) -> Tuple[str, ...]:
+    """As marcas das corretoras clientes, lidas de `companies`.
+
+    Em cache: `templatize` roda por mensagem, e ir ao banco a cada chamada
+    transformaria o mascarador na próxima fonte de Egress — que é exatamente o
+    incidente de 07/08/2026 (CLAUDE.md §1).
+
+    ⚠️ Sem banco (teste, script solto) devolve vazio **e o resto do mascarador
+    continua funcionando**. Falhar aqui não pode calar as 38 regras de PII.
+    """
+    global _CACHE_MARCAS
+    if _CACHE_MARCAS is not None and not recarregar:
+        return _CACHE_MARCAS
+
+    proibidas = _marcas_das_seguradoras()
+    achadas: set = set()
+    try:
+        from app.core.database import get_supabase_client
+
+        linhas = (get_supabase_client().client.table("companies")
+                  .select("company_name, legal_name").limit(500)
+                  .execute().data or [])
+        for linha in linhas:
+            for campo in ("company_name", "legal_name"):
+                bruto = str(linha.get(campo) or "").strip()
+                if not bruto:
+                    continue
+                # "Resulta Seguros" também gera "Resulta": é assim que o caso
+                # sem sufixo — o que nenhuma regex cobre — passa a ser coberto.
+                for pedaco in (bruto, bruto.split()[0] if bruto.split() else ""):
+                    if pode_virar_marca(pedaco, proibidas):
+                        achadas.add(pedaco.strip())
+    except Exception:  # noqa: BLE001
+        pass
+
+    # Maior primeiro: "Resulta Seguros" tem de ser trocado antes de "Resulta",
+    # senão sobra um " Seguros" órfão no meio da frase.
+    _CACHE_MARCAS = tuple(sorted(achadas, key=len, reverse=True))
+    return _CACHE_MARCAS
+
+
+def _apagar_marcas_de_corretora(s: str) -> str:
+    """Troca por `{CORRETORA}` o que a configuração diz ser corretora."""
+    marcas = marcas_de_corretora()
+    if not marcas:
+        return s
+    for marca in marcas:
+        s = re.sub(rf"\b{re.escape(marca)}\b", "{CORRETORA}", s,
+                   flags=re.IGNORECASE)
+    # "{CORRETORA} {CORRETORA} LTDA" vira "{CORRETORA}": razão social inteira
+    # colapsa num marcador só, senão fica um resto sem sentido para quem lê.
+    s = re.sub(r"\{CORRETORA\}(?:[ \t]+(?:\{CORRETORA\}|CORRETORA|DE|SEGUROS"
+               r"|LTDA|ME|EIRELI|S\.?A\.?))+", "{CORRETORA}", s,
+               flags=re.IGNORECASE)
+
+    # 🔴 E O NOME DA ATENDENTE, que sobrava do lado esquerdo.
+    #
+    # 📊 Medido: `"*Saionara - Resulta*"` virava `"*Saionara - {CORRETORA}*"`.
+    # A corretora saía e a PESSOA ficava — o pior dos dois mundos, porque
+    # *parece* mascarado.
+    #
+    # Aqui a inferência é segura, e é por isto que ela só corre DEPOIS da troca
+    # acima: quando o lado direito já é `{CORRETORA}`, o capitalizado do lado
+    # esquerdo é a assinatura de quem atende. Não é adivinhação sobre texto
+    # livre — é leitura de um par que a etapa anterior já identificou.
+    s = re.sub(r"(?-i:[A-ZÀ-Ú][a-zà-úA-ZÀ-Ú]{2,15}"
+               r"(?:[ \t]+(?:d[aeo]s?[ \t]+)?[A-ZÀ-Ú][a-zà-úA-ZÀ-Ú]{2,15}){0,3})"
+               r"([ \t]*-[ \t]*\{CORRETORA\})",
+               r"{NOME}\1", s)
+    return s
+
+
 def templatize(text: str, *, documento_publico: bool = False,
                rotulo_de_campo: bool = True) -> str:
     """Devolve a tela com a PII trocada por placeholders. Determinístico.
@@ -1258,6 +1436,14 @@ def templatize(text: str, *, documento_publico: bool = False,
     # nada sozinha: é uma rede a mais sobre um valor que já tem rótulo.
     if not documento_publico and rotulo_de_campo:
         s = _aplicar_rotulo(s)
+
+    # 🔴 POR ÚLTIMO, e de propósito: o que a CONFIGURAÇÃO diz ser corretora.
+    #
+    # Depois das regras lexicais, porque `ASSINATURA_DE_CORRETORA` já resolveu
+    # os casos com sufixo e deixou `{CORRETORA}` no lugar. O que chega aqui é o
+    # resto — `"Saionara - Resulta"`, razão social — que nenhuma regex cobre sem
+    # comer português.
+    s = _apagar_marcas_de_corretora(s)
     return _devolver(s, guardados)
 
 

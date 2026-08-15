@@ -257,13 +257,159 @@ def teste_o_que_o_segurado_digitou_nao_vira_aresta() -> None:
            "CONTROLE — e nenhum pedaço do CPF sobra em claro", longo)
 
 
+def teste_o_mapa_e_neutro_de_corretora() -> None:
+    """O Atlas é UM só e é de TODAS — logo não pode nomear nenhuma.
+
+    Doutrina: `docs/canon/O-ATLAS-E-UM-SO-E-E-DE-TODAS.md`. O agente de
+    atendimento é global; quem personaliza é o dashboard, com dados de
+    configuração. Um nó que já traz "Resulta" escrito dentro faz o agente da
+    próxima corretora se apresentar com o nome de outra empresa.
+
+    📊 Os quatro literais abaixo foram medidos em mapas ATIVOS em 15/08/2026.
+    """
+    print("\n[4] O mapa não nomeia corretora nem atendente")
+    T = _templater()
+
+    # A configuração — em produção vem de `companies`; aqui é injetada, porque
+    # o que está sob teste é a REGRA, não o acesso ao banco.
+    T._CACHE_MARCAS = ("Resulta Seguros", "AutoFleet", "Resulta", "Amandus")
+    try:
+        casos = [
+            ("*Saionara - Resulta*, por ser um item essencial, vou te transferir",
+             ("Saionara", "Resulta")),
+            ("Olá RESULTA CORRETORA DE SEGUROS LTDA, Nos ajude a continuar",
+             ("RESULTA",)),
+            ("Maria Regina - Autofleet Seguros", ("Maria", "Regina", "Autofleet")),
+            ("Olá Maria Regina - Autofleet Seguros, seja bem-vindo(a)",
+             ("Maria", "Regina", "Autofleet")),
+        ]
+        for bruto, proibidos in casos:
+            saida = T.templatize(bruto)
+            sobrou = [p for p in proibidos if p in saida]
+            checar(not sobrou,
+                   f"🔴 nada de '{proibidos[0]}…' sobra no mapa",
+                   f"{saida!r}" + (f" — SOBROU {sobrou}" if sobrou else ""))
+            # 🔴 E o lugar da pessoa fica MARCADO, não apagado.
+            #
+            # Medido por mutação: apagar o `{NOME}` da regra também remove o
+            # nome — o teste de vazamento passava, e a frase virava "- {CORRETORA}".
+            # Quem ler o mapa depois não saberia que ali havia uma saudação, e o
+            # corredor perderia a estrutura da tela.
+            checar("{CORRETORA}" in saida,
+                   "e o lugar da corretora fica marcado", saida)
+
+        checar("{NOME}" in T.templatize("*Saionara - Resulta*, vou te transferir"),
+               "🔴 e o lugar da ATENDENTE também fica marcado, não apagado",
+               T.templatize("*Saionara - Resulta*, vou te transferir"))
+
+        # 🔴 A GUARDA QUE IMPEDE O TIRO NO PÉ, testada isolada.
+        #
+        # Uma corretora chamada "Porto Seguros" não pode fazer o mascarador
+        # comer "Porto Seguro". Esta decisão estava enterrada dentro de uma
+        # função que precisa de banco — e por isso a mutação que a removia
+        # ficava VERDE. Agora ela é pura e tem como falhar.
+        proibidas = T._marcas_das_seguradoras()
+        checar("porto" in proibidas and "yelum" in proibidas,
+               "CONTROLE — o registro de seguradoras alimenta a lista de proibidas",
+               f"{len(proibidas)} nomes protegidos")
+        checar(not T.pode_virar_marca("Porto", proibidas),
+               "🔴 corretora com nome de SEGURADORA não vira marca")
+        checar(not T.pode_virar_marca("Porto Seguros Corretora", proibidas),
+               "🔴 nem quando a colisão está só na primeira palavra")
+        checar(T.pode_virar_marca("Resulta", proibidas),
+               "🔴 CONTROLE — e uma corretora de nome próprio VIRA marca",
+               "senão a guarda barraria tudo e não guardaria nada")
+        checar(not T.pode_virar_marca("Seguros", proibidas)
+               and not T.pode_virar_marca("Ltda", proibidas),
+               "CONTROLE — palavra genérica nunca vira marca")
+
+        # 🔴 OS CONTROLES — sem eles isto vira licença para comer o produto.
+        #
+        # O mascarador que engole conhecimento é pior que o vazamento: o
+        # vazamento se conserta, o conhecimento perdido não volta.
+        intocaveis = [
+            ("Porto Seguro", "SEGURADORA não é corretora"),
+            ("A Yelum permanece a sua disposição", "nome de seguradora fica"),
+            ("Roubo, furto e incêndio têm franquia própria", "prosa fica"),
+            ("Guincho para pane mecânica", "conhecimento de produto fica"),
+            ("Assistência a vidros", "opção de menu fica"),
+        ]
+        for texto, porque in intocaveis:
+            checar(T.templatize(texto) == texto,
+                   f"🔴 CONTROLE — {porque}",
+                   f"{texto!r} -> {T.templatize(texto)!r}")
+
+    finally:
+        T._CACHE_MARCAS = None
+
+    # 🔴 AGORA SEM A CONFIGURAÇÃO — a regex sozinha, isolada.
+    #
+    # Medido por mutação: com a lista de marcas preenchida, a regex vira
+    # REDUNDANTE — apagar a alternância de sufixo mantinha o teste verde,
+    # porque `_apagar_marcas_de_corretora` cobria o caso. Duas defesas para o
+    # mesmo caso não provam nenhuma das duas.
+    #
+    # Este bloco roda com a configuração VAZIA, que é o estado de qualquer
+    # ambiente sem banco — e é justamente onde a regex é a única defesa.
+    T._CACHE_MARCAS = ()
+    try:
+        checar(T.templatize("Maria Regina - Autofleet Seguros") == "{NOME} - {CORRETORA}",
+               "🔴 SEM configuração, a regex ainda pega nome COMPOSTO",
+               T.templatize("Maria Regina - Autofleet Seguros"))
+        checar(T.templatize("Joana - Beta Corretora") == "{NOME} - {CORRETORA}",
+               "🔴 SEM configuração, a regex pega o sufixo 'Corretora'",
+               "só a alternância de sufixo segura este caso")
+        checar(T.templatize("Paulo - Gama Ltda") == "{NOME} - {CORRETORA}",
+               "🔴 SEM configuração, a regex pega o sufixo 'Ltda'",
+               T.templatize("Paulo - Gama Ltda"))
+        checar("Porto Seguro" in T.templatize("Cotação na Porto Seguro"),
+               "CONTROLE — e continua não comendo seguradora sem configuração")
+    finally:
+        T._CACHE_MARCAS = ("Resulta Seguros", "AutoFleet", "Resulta", "Amandus")
+
+    try:
+        # E o portão de promoção precisa CONSEGUIR dizer não.
+        sujo = {"nodes": {"a": {"text": "Olá RESULTA CORRETORA DE SEGUROS LTDA"}},
+                "edges": {}}
+        limpo = {"nodes": {"a": {"text": "Olá {CORRETORA}"}}, "edges": {}}
+        UMS = _ura_map_service()
+        checar(UMS._tem_marca_de_corretora(sujo) >= 1,
+               "🔴 o portão de promoção RECONHECE razão social",
+               "antes era uma lista de 3 literais e dava False para os 4 casos")
+        checar(UMS._tem_marca_de_corretora(limpo) == 0,
+               "🔴 CONTROLE — e deixa passar o mapa limpo",
+               "um portão que barra tudo não é portão")
+
+        # A aresta, que era o ponto cego.
+        com_aresta = {"nodes": {}, "edges": {"a|Resulta Seguros": {"label": "Resulta Seguros"}}}
+        checar(UMS._tem_marca_de_corretora(com_aresta) >= 1,
+               "🔴 e o portão olha a ARESTA, não só o texto do nó",
+               "era ali que estavam os 141 CPF")
+    finally:
+        T._CACHE_MARCAS = None
+
+
+def _ura_map_service():
+    nome = "app.services.ura_map_service"
+    if nome in sys.modules:
+        return sys.modules[nome]
+    _templater()  # garante os pacotes-sombra
+    spec = importlib.util.spec_from_file_location(
+        nome, os.path.join(RAIZ, "app", "services", "ura_map_service.py"))
+    mod = importlib.util.module_from_spec(spec)
+    sys.modules[nome] = mod
+    spec.loader.exec_module(mod)
+    return mod
+
+
 def main() -> int:
     print("=" * 74)
     print("O MAPA NÃO PERDE O GUINCHO — e o CPF não vira aresta")
     print("=" * 74)
     for teste in (teste_a_opcao_do_guincho_nao_e_descartada,
                   teste_a_causa_e_o_digito_depois_do_rotulo,
-                  teste_o_que_o_segurado_digitou_nao_vira_aresta):
+                  teste_o_que_o_segurado_digitou_nao_vira_aresta,
+                  teste_o_mapa_e_neutro_de_corretora):
         try:
             teste()
         except Exception as exc:  # noqa: BLE001
