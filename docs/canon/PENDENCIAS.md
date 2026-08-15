@@ -4877,3 +4877,69 @@ três estão certas **para prestadoras diferentes**. O acervo é que não distin
 **O que destrava:** confirmar com a Maxpar/Autoglass qual é o caminho de cada
 uma, e transformar em **uma** carta que ensine a olhar na mensagem qual é o
 caso — em vez de três que se contradizem.
+
+---
+
+## P-172 · 🟡 Duas regras do mascarador comem conhecimento por vocabulário
+
+**Aberta em:** 15/08/2026 · **Dono:** 🤖 execução · **Achada** ao recalibrar o
+`pii_check` (as 320 `rejected_pii`), **não consertada** — está fora do escopo
+das duas tarefas da leva 5, e o dano deixou de ser fatal.
+
+Enquanto a rejeição era `templatize(t) != t`, estas duas regras **derrubavam a
+carta inteira**. Agora elas só mascaram e a carta segue para `pending_review`,
+então o custo caiu de "some do acervo" para "sai danificada". Continua sendo
+conhecimento destruído, e continua invisível para quem lê a carta depois.
+
+📊 As 5 ocorrências medidas nas 320, com o `templatize` de 15/08/2026:
+
+```
+templater.py PII[04]  "nome de quem (está|estará)…"  → {NOME}
+    "celular com DDD confirmado por botão"      → "celular com {NOME}"
+    "ou do WhatsApp que pediu a assistência"    → "ou do {NOME} que pediu"
+    "o telefone de quem está no local ANTES do" → "no local {NOME} do"
+
+templater.py PII[32]  "SEGREDO LONGE DO RÓTULO"      → {SEGREDO}
+    "o atendimento tem de ser feito pelo 0800." → "feito pelo {SEGREDO}."
+```
+
+`DDD`, `WhatsApp`, `ANTES` e um **0800** — nenhum é dado de pessoa. O caso do
+`{SEGREDO}` é o mais claro: a regra marca **qualquer número de 4+ dígitos numa
+linha que fale "código de acesso"**, e comeu o telefone da central, que é
+exatamente o que aquela carta existia para informar.
+
+É a mesma família de `"Ola, quero abrir um sinistro" → "Ola, {NOME} um
+sinistro"` e de `das 8h00 → {PLACA}`, ambas já consertadas no mesmo arquivo: a
+cura é **estreitar o que a regra tem direito de ver**.
+
+**O que destrava:** medir as duas regras contra o acervo inteiro (18.621
+cartas), não só contra as 320 — a amostra de 5 diz que erram, não quanto.
+⚠️ E com linha de controle (§9.2): as duas existem por PII real observada, e
+estreitá-las sem medir troca conhecimento comido por nome vazado.
+
+**Custa se esquecer:** a carta danificada **parece boa**. Ninguém lê "celular
+com {NOME}" e desconfia — parece mascaramento legítimo, e o que sumiu foi a
+instrução (`DDD`) que fazia a carta valer.
+
+## P-173 · 🟡 343 cartas em `pending_review` sem ninguém para publicá-las
+
+**Aberta em:** 15/08/2026 · **Dono:** 🤖 execução
+
+📊 Depois da leva 5, o banco tem **343** cartas em `pending_review`: as 320 que
+voltaram de `rejected_pii` e as 23 que o teto de 400 tinha matado. Nenhuma está
+no RAG — `pending_review` não é indexado.
+
+```
+published        17.635
+pending_review      343   ← nenhuma no índice
+superseded          617
+rejected_*           26
+```
+
+**O que destrava:** rodar `curadoria_cartas.publicar_lote_sync` sobre elas. Não
+foi feito nesta leva **de propósito** — o pedido era recalibrar o portão e
+devolver as cartas à fila, não publicar. Publicar 343 cartas de uma vez muda o
+que o agente responde e merece uma passada de olho antes.
+
+**Custa se esquecer:** o trabalho das duas tarefas fica meio feito. As cartas
+existem, estão limpas, estão etiquetadas — e continuam não respondendo nada.
