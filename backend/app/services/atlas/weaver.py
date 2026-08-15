@@ -1,5 +1,47 @@
 """SPEC-038 ATLAS — Tecelão/Weaver v2 (Bloco B + fidelidade de sequência).
 
+╔══════════════════════════════════════════════════════════════════════════╗
+║  O MAPA QUE ESTE ARQUIVO CONSTRÓI É UM SÓ, E É DE TODAS AS CORRETORAS.  ║
+╚══════════════════════════════════════════════════════════════════════════╝
+
+Decisão do Founder, 15/08/2026. Leia
+`docs/canon/O-ATLAS-E-UM-SO-E-E-DE-TODAS.md` antes de mexer aqui.
+
+Não existe "o mapa da Resulta" nem "o mapa da AutoFleet". Existe **o mapa**, da
+AutoBrokers, que todas as corretoras preenchem juntas. `ura_maps` não tem
+`company_id` **de propósito**: agregar entre corretoras é o produto, não um
+vazamento. A URA da Porto é a mesma para quem entrou em julho e para quem entrar
+em dezembro — quem descobre uma rota, descobre para todo mundo.
+
+O objetivo é um só: o agente **saber a pergunta antes de ela chegar**. Sabendo,
+ele já tem a resposta pronta e não trava com um segurado esperando guincho. Por
+isso **quanto mais rotas, melhor**, e por isso rota que já existe é descartada e
+rota nova entra.
+
+🔴 O QUE NUNCA PODE ENTRAR NO MAPA — e não é por privacidade:
+
+    identidade de CORRETORA ou de ATENDENTE (nome, razão social, apelido)
+
+O agente de atendimento é GLOBAL; quem personaliza é o dashboard, com dados de
+configuração, em tempo de execução. Um nó que diga "Saionara - Resulta" está
+errado por ser **específico onde tinha de ser neutro** — e faz o agente da
+corretora seguinte se apresentar com o nome de outra empresa.
+
+📊 Em 15/08/2026 havia 14 nós de mapas ativos com nome de corretora sem redação,
+e o redator era inconsistente: "Maria Regina - Autofleet" virava
+"Maria {NOME} - {CORRETORA}" (o primeiro nome escapava) e "Saionara - Resulta"
+passava inteiro. Ver PENDENCIAS.md#P-165.
+
+⚠️ Dado de segurado (CPF, CNPJ, placa, telefone) é regra SEPARADA — CLAUDE.md §7
+— e vale para os nós **e para as arestas**. 📊 Em 15/08 os nós estavam mascarados
+e as arestas não, com 141 CPF gravados como rótulo de aresta (P-162).
+
+O teste que separa os dois casos, para qualquer campo novo:
+
+    descreve a SEGURADORA?               → é do Atlas, é global, agregue
+    descreve a CORRETORA ou quem atende? → NÃO entra, vem da configuração
+
+
 Lê as sessões observadas e TECE o mapa da URA: cada tela da URA vira um nó (com
 as opções que ela oferece); a escolha do humano (evento 'out' entre duas telas)
 vira a aresta rotulada A→B. Sem a escolha capturada, cria aresta SEQUENCIAL

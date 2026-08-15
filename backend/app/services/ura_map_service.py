@@ -1,5 +1,27 @@
 """MAPA DE URA (SPEC-034 Onda 2) — o território completo dos fluxos por seguradora.
 
+╔══════════════════════════════════════════════════════════════════════════╗
+║  O MAPA É UM SÓ E É DE TODAS AS CORRETORAS — ele não tem `company_id`,  ║
+║  e a ausência é DE PROPÓSITO.                                            ║
+╚══════════════════════════════════════════════════════════════════════════╝
+
+Decisão do Founder, 15/08/2026 —
+`docs/canon/O-ATLAS-E-UM-SO-E-E-DE-TODAS.md`.
+
+Se você veio até aqui procurando o filtro por corretora que "está faltando":
+ele não está faltando. Todas as corretoras alimentam **o mesmo** mapa, e todas
+leem o mesmo. A URA de uma seguradora é a mesma para todas — quem percorre uma
+rota nova, descobre para todo mundo. É assim que o mapa se completa.
+
+O propósito é o agente **saber a pergunta antes de ela chegar**: sabendo o que a
+URA vai perguntar e qual tecla é qual, ele não adivinha e não trava.
+
+🔴 Mas o mapa é NEUTRO. Nome de corretora e de atendente não moram aqui — vêm da
+configuração do dashboard, em tempo de execução. Quem escrever leitura nova
+sobre `map` deve tratar qualquer nome próprio encontrado como **defeito a
+reportar**, não como dado a usar (PENDENCIAS.md#P-165).
+
+
 Formato do mapa (JSONB em ura_maps.map):
 {
   "root": "<node_id>",

@@ -4544,40 +4544,56 @@ tem o número certo de nós, e a única coisa errada é a linha que importa.
 
 ---
 
-## P-165 · 🔴 O mapa é GLOBAL e carrega o nome de uma corretora para dentro do mapa da outra
+## P-165 · 🔴 Nome de corretora e de atendente dentro do mapa GLOBAL
 
-**Aberta em:** 15/08/2026 · **Dono:** 🧑 Founder decide · **P1 cross-tenant (§10(4))**
+**Aberta em:** 15/08/2026 · **Reescrita no mesmo dia** · **Dono:** 🤖 execução
 
-📊 `ura_maps` **não tem `company_id`**. Duas corretoras alimentam o mesmo mapa.
-Medido: 14 nós de mapas ativos carregam o nome da outra corretora, sem redação.
+> 🔴 **A primeira versão desta pendência fazia a PERGUNTA ERRADA.**
+>
+> Eu a abri como *"P1 cross-tenant: `ura_maps` não tem `company_id`, duas
+> corretoras alimentam o mesmo mapa"* e pedi ao Founder decidir entre **mapa
+> global** e **mapa por corretora**.
+>
+> **A agregação é o produto.** Founder, 15/08: *"não é mapa da Resulta ou da
+> AutoFleet. É mapa AutoBrokers que usa inteligência de todas as corretoras que
+> parearem os celulares para irem juntas completando o mapa."*
+>
+> Como eu errei: apliquei a regra de isolamento entre corretoras (CLAUDE.md §7)
+> a um artefato que **não é dado de corretora** — é conhecimento sobre a URA de
+> uma seguradora, que é a mesma para todo mundo. A regra estava certa; o objeto
+> era outro. Parece rigor e não é: é rigor mirado no lugar errado.
+>
+> Doutrina inteira em [`O-ATLAS-E-UM-SO-E-E-DE-TODAS.md`](O-ATLAS-E-UM-SO-E-E-DE-TODAS.md).
+
+### O defeito que SOBRA, e é real
+
+Não é juntar. É **nome próprio dentro de um artefato que tem de ser neutro**.
+
+📊 Medido: **14 nós** de mapas ativos carregam identidade de corretora ou
+atendente, sem redação — porto 4 · yelum 4 · tokio 3 · hdi 2 · azul 1.
 
 ```
-porto 4 · yelum 4 · tokio 3 · hdi 2 · azul 1
+"*Saionara - Resulta*, por ser um item essencial, vou te transferir…"
+"Olá RESULTA CORRETORA DE SEGUROS LTDA, Nos ajude a continuar resolvendo!"
+"Olá CONDOMINIO DO CONJUNTO RESIDENCIAL RECANTO DOS PASSAROS…"
+"Olá INDYANA COMERCIO DE VEICULOS LTDA…"
 ```
 
-Literais:
-- `yelum/74d0dd8c2cd8`: *"**Saionara - Resulta**, por ser um item essencial, vou te transferir…"*
-- `tokio/b642129b219e`: *"Olá **RESULTA CORRETORA DE SEGUROS LTDA**, Nos ajude a continuar resolvendo!"*
-- `tokio/d0f24684c0a2`: razão social de um condomínio segurado, em claro.
+⚠️ E o redator é **inconsistente**, o que é a causa:
+`"Maria Regina - Autofleet Seguros"` → `"Maria {NOME} - {CORRETORA}"` — **o
+primeiro nome escapa** — enquanto `"Saionara - Resulta"` passa inteiro.
 
-📊 A linha de controle: `select company_id, count(*) from observed_events where
-text ilike '%Saionara%'` → **100% na Resulta, ZERO na AutoFleet.** O nome só pode
-ter chegado ao mapa que a AutoFleet lê pela agregação entre corretoras.
+### Por que importa, e não é privacidade
 
-⚠️ E o redator é **inconsistente**, o que é a causa: `"Maria Regina - Autofleet"`
-vira `"Maria {NOME} - {CORRETORA}"` (o primeiro nome escapa) e
-`"Saionara - Resulta"` não é tocado.
+O agente de atendimento é **global**. Quem personaliza é o dashboard, com dados
+de configuração, em tempo de execução. Um nó que já traz "Resulta" escrito
+dentro faz **o agente da próxima corretora se apresentar com o nome de outra
+empresa** — e o mesmo vale para playbook, corredor e prompt.
 
-**A consequência que vai além do nome:** o auditor não conseguiu medir quanto da
-estrutura do mapa da AutoFleet existe só porque a Resulta percorreu — `ura_maps`
-não guarda proveniência por nó. **Enquanto isso não existir, toda conclusão sobre
-"o mapa da AutoFleet" é, em parte, conclusão sobre o mapa da Resulta.**
+**O que destrava:** consertar o redator na origem (`weaver`/`cartographer`), e
+só depois limpar o histórico. ⚠️ T2 da SPEC-071: nunca editar mapa no lugar —
+gera versão nova; a `active` só cai quando aprovada.
 
-**O que destrava:** decidir se o mapa de URA é (a) global de propósito — a URA da
-Porto é a mesma para todo mundo, e agregar é o que o torna rico — com redação
-correta; ou (b) por corretora, mais pobre e mais isolado. **É decisão sua**, e
-tem contrapartida real dos dois lados.
+**O que custa esquecer:** não é o nome que vaza. É o agente errando de quem ele
+é.
 
-**O que custa esquecer:** hoje ninguém renderiza esses nós numa tela. A distância
-entre "está guardado no lugar errado" e "apareceu na tela errada" é uma feature
-de UI.

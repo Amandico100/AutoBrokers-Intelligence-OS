@@ -26,6 +26,7 @@ Nome oficial do agente central: **AutoBrokers**. "Jarvys/Jarvis" é metáfora ex
    · [`docs/canon/CAMADAS-DE-CONEXAO.md`](docs/canon/CAMADAS-DE-CONEXAO.md) — **quem paga, quem conecta, quem usa.** Antes de criar conector.
    · [`docs/canon/QUANDO-OFERECER-AUTOMACAO.md`](docs/canon/QUANDO-OFERECER-AUTOMACAO.md) — **quando o chat oferece automatizar, e quando fica quieto.**
    · [`docs/canon/PORTAIS-E-CORREDORES.md`](docs/canon/PORTAIS-E-CORREDORES.md) — **portal, corredor e Atlas: qual é qual.**
+   · [`docs/canon/O-ATLAS-E-UM-SO-E-E-DE-TODAS.md`](docs/canon/O-ATLAS-E-UM-SO-E-E-DE-TODAS.md) — **o Atlas é UM só, de todas as corretoras.** Antes de tocar em `ura_maps`, no Tecelão, em playbook, corredor ou prompt de atendimento.
    · [`docs/canon/PENDENCIAS.md`](docs/canon/PENDENCIAS.md) — **o que ficou pendente, e o que destrava cada coisa.**
 4. [`docs/canon/README.md`](docs/canon/README.md) — índice canônico.
 5. A SPEC da etapa atual + **SPEC-052** e **SPEC-053**, sempre.
