@@ -261,3 +261,51 @@ repetir a receita.** Foi exatamente o comportamento certo — a regra 11 do
 briefing existe para isso, e ela funcionou sem ninguém supervisionando.
 
 ⚠️ **É decisão do Founder, não minha.** Registro o fato medido e paro aqui.
+
+
+---
+
+# ✅ OS 72 LOTES ESTÃO DESTILADOS — 15/08/2026
+
+```
+lotes ........... 72 de 72
+conversas ....... 1.780
+FATOS ........... 1.581
+devolveram [] ... 933  (52%)
+com seguradora .. 173  (9%)   <- era 62% de atribuição espúria na onda 1
+PROBLEMAS ....... 0
+```
+
+📊 **A correção ② funcionou e dá para medir:** na onda 1, 62% dos fatos
+atribuídos a uma companhia eram regra de mercado. Nas ondas 2 e 3, com a regra
+explícita no prompt, `seguradora` caiu para **9% das conversas** — e os
+destiladores passaram a escrever o escopo dentro do texto do fato
+(*"a locadora parceira"*, *"a rede de reparo parceira"*).
+
+## Distribuição
+
+```
+tipo:  sinistro 637 · assistencia 160 · apolice 28 · renovacao 12 · cobranca 4
+ramo:  auto 823 · outro 16 · residencial 7 · vida 1
+```
+
+Assistência subiu de ~poucos para **160** — o Founder tinha razão: os lotes mais
+recentes trazem mais assistência, e o que importava era classificar certo.
+
+## O QUE FALTA — a passada de poda, e só ela
+
+**Nada foi aplicado no banco.** O `aplicar.py` é o próximo passo, e antes dele:
+
+1. Aplicar a **lista de cortes do juiz** (está escrita neste arquivo, acima):
+   a contradição auto×residencial, o fato inventado de `4399abd9`, a regra plana
+   de dias parados, 4 fracos e ~25 duplicatas.
+2. Rodar o **juiz sobre as ondas 2 e 3** (ele só auditou a onda 1).
+3. `conferir_indice.py` → `aplicar.py`.
+
+## Buracos de taxonomia que os destiladores acharam
+
+Três pediram o mesmo, independentemente:
+- **`carro_reserva`** não existe em `servico` — e é um dos temas mais frequentes
+  do acervo (18 conversas num lote só). Hoje cai em `outro`, junto com coisas
+  sem relação, e são "as cartas mais difíceis de achar".
+- **funilaria leve** (para-lama via rede de reparo rápido) idem.
