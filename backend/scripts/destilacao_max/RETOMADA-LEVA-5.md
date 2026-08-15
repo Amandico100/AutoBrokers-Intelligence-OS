@@ -9,6 +9,15 @@
 ```bash
 cd backend/scripts/destilacao_max
 
+# ⚠️ ANTES DE TUDO — NORMALIZE O NOME. Os subagentes gravam
+#    `lote_004.jsonl.destilado.jsonl` (com o .jsonl no meio) e o laço abaixo
+#    procura `lote_004.destilado.jsonl`. Sem esta linha ele reporta trabalho
+#    PRONTO como pendente e manda refazer. Aconteceu na onda 1.
+for f in lotes_v2/lote_*.jsonl.destilado.jsonl; do
+  [ -e "$f" ] || continue
+  mv -n "$f" "${f%.jsonl.destilado.jsonl}.destilado.jsonl"
+done
+
 # O QUE FALTA (a fila de trabalho, sempre atual):
 for f in lotes_v2/lote_*.jsonl; do
   case "$f" in *destilado*) continue;; esac
@@ -26,7 +35,8 @@ há estado em lugar nenhum além disso — de propósito.
 
 ```
 lotes brutos em lotes_v2/ ......... 72
-já destilados ...................... 0
+já destilados ..................... 16   (ONDA 1 — lotes 001, 004-018)
+pendentes ......................... 56   (002, 003 e 019-072)
 sessões de cliente pendentes ... 2.568   (1.314 Resulta + 1.254 AutoFleet)
 cartas no RAG hoje ............. 18.400   (17.458 publicadas)
 ```
