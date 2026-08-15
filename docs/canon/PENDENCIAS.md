@@ -3726,7 +3726,55 @@ fica ❓ é só a coluna de juros/multa da linha vencida.
 
 ---
 
-## P-122 · 🔴 `ESPELHO_SYNC_ENABLED` precisa ser ligado depois do canario
+## P-122 (bis) · ~~`ESPELHO_SYNC_ENABLED` precisa ser ligado~~ — **FECHADA em 15/08/2026: já está ligado**
+
+> ⚠️ **Este número está duplicado.** Existe outra P-122 acima (o teto de 1.000
+> linhas do PostgREST). Ver P-161 — são 17 números repetidos no arquivo.
+
+📊 **Medido em 15/08/2026 00:44 UTC**, lendo `/health` do serviço em produção
+`autobrokers-intelligence-os-autobrokers-smith-api.golhpm.easypanel.host`:
+
+```
+espelho_sync_ligado : true
+sync_ciclo          : 161 ciclos rodados
+sync_linhas_lidas   : 19.217
+sync_mensagens_novas: 1.910
+```
+
+O Founder ligou a variável e a pendência não foi fechada. **Fechar o documento
+faz parte de executar** — enquanto ela ficou aberta, ela mentia sobre o estado
+do produto, e eu passei uma hora investigando um sync "desligado" que estava
+trabalhando havia horas. Documento desatualizado custa tempo de gente.
+
+O que a pendência dizia continua verdade e vira registro: o recovery nasce
+desligado de propósito, e a ponte AO VIVO nunca dependeu dele.
+
+---
+
+## P-161 · 🟡 Dezessete números de pendência estão duplicados
+
+**Aberta em:** 15/08/2026 · **Dono:** 🤖 execução, quando houver folga
+
+📊 `grep -oE "^## P-[0-9]+" PENDENCIAS.md | sort | uniq -d` devolve **17**:
+P-91 · P-92 · P-93 · P-98 · P-99 · P-100 · P-101 · P-102 · P-103 · P-104 ·
+P-122 · P-123 · P-124 · P-125 · P-126 · P-127 · P-129.
+
+Cada um desses números aponta para **duas pendências diferentes**. "Ver P-124"
+não identifica nada — e eu já citei P-124 e P-126 em relatório para o Founder
+achando que eram únicas.
+
+**O que destrava:** renumerar as segundas ocorrências para a faixa livre (P-162
+em diante) e varrer o repositório atrás de referências às antigas. Não fiz agora
+porque renumerar sem conferir quem aponta para elas troca uma ambiguidade por
+uma referência quebrada — que é pior, porque não avisa.
+
+**O que custa esquecer:** a lista de pendências é o lugar onde o que não coube
+fica guardado. Um índice que não identifica o item começa a ser ignorado, e aí
+ele para de guardar qualquer coisa.
+
+---
+
+## P-122 (original) · 🔴 `ESPELHO_SYNC_ENABLED` precisa ser ligado depois do canario
 
 **Aberta em:** 13/08/2026 · **Dono:** 🧑 Founder (uma variavel no EasyPanel)
 
