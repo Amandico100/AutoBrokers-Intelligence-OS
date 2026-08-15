@@ -219,3 +219,45 @@ esconde informação; se filtra por seguradora, preencher mente.
 
 É o mesmo problema do escopo por fato, por outro ângulo — e reforça a
 recomendação do juiz de ter `prestadora` como escopo próprio.
+
+---
+
+# 🔴 DOIS ACHADOS QUE NÃO SÃO SOBRE DESTILAÇÃO
+
+Vieram dos destiladores da onda 2 e são mais importantes que qualquer carta.
+
+## 1 · Uma senha de portal de seguradora, em texto claro
+
+`lote_021` `63d8e8cb` — o transcript **já mascarado** contém uma senha de
+acesso a portal de seguradora, legível.
+
+**O mascarador não pega credencial.** Ele conhece CPF, telefone, placa, e-mail e
+valor — senha não tem forma reconhecível, então passa inteira.
+
+O destilador fez a coisa certa: não reproduziu e registrou em `flags`.
+
+⚠️ Isto vale para todo o acervo, não só para este lote: `attendance_transcripts`
+tem 150.734 linhas que passaram pelo mesmo mascarador. **Uma varredura por
+credencial nunca foi feita.**
+
+## 2 · Quatro conversas encadeadas combinando fraude
+
+`lote_022` `5bab2017`, `627dd638`, `e33d16d8` e `lote_021` `b19e3c5e` — é um
+caso só, em quatro pedaços:
+
+```
+emitir a apólice DEPOIS do evento
+esperar dias para abrir "pra não dar muito na cara"
+pôr data diferente da ocorrência
+não enviar o B.O. de propósito, porque "essa seguradora não tá
+muito exigente ultimamente"
+```
+
+E uma quinta em versão suave (`5cebb6b8`): reunir danos de datas diferentes sob
+uma data só.
+
+**O destilador devolveu tudo vazio, com score 10 e o motivo em `flags`, sem
+repetir a receita.** Foi exatamente o comportamento certo — a regra 11 do
+briefing existe para isso, e ela funcionou sem ninguém supervisionando.
+
+⚠️ **É decisão do Founder, não minha.** Registro o fato medido e paro aqui.
