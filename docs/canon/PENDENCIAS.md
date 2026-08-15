@@ -4487,3 +4487,97 @@ relativa entre nós favorece o que a Resulta percorreu mais.
 
 **O que custa esquecer:** alguém vai citar "esta tela foi vista 171 vezes" como
 evidência de que uma rota é a principal. Metade disso não aconteceu.
+
+---
+
+## P-164 · 🔴 O mapa do Atlas perde justamente a opção que aciona o GUINCHO
+
+**Aberta em:** 15/08/2026 · **Dono:** 🤖 execução · **destrava:** ler quem monta `options[]` a partir de `interactive`
+
+Achado pelo auditor da Frente A. Verifiquei nó a nó: **procede, e o padrão é
+sempre o mesmo — a opção perdida é a PRIMEIRA da lista.**
+
+📊 Medido em `ura_maps` com `status='active'`, comparando o `text` do nó (que
+mostra o menu como a URA o emitiu) contra o `options[]` do MESMO nó:
+
+| nó | o texto do nó mostra | o `options[]` começa em |
+|---|---|---|
+| `zurich/a8087cb9567d` | `Assistência {VALOR}` | *Assistência a vidros* |
+| `mapfre/e3bc3dfdca75` | `Assistência {VALOR}` | *Sinistro* |
+| `tokio/b1b457af6ca6` | `Assistência {VALOR}` | *Informações de sinistro* |
+| `yelum/f372a91db870` | `Botão 1: ASSISTENCIA 24H` | *ACOMPANHAR SINISTRO* (2 de 3) |
+
+📊 Ocorrências observadas na URA real contra ocorrências no mapa:
+`Assistência 24h` — **52 vezes emitida, 0 vezes no `options[]` desses nós.**
+
+### Por que isto é o achado mais caro do BLOCO 5
+
+**Um corredor que leia `options[1]` desse nó aperta "Assistência a vidros"
+achando que apertou "Assistência 24h".** É o erro que só aparece com um segurado
+parado na estrada esperando guincho.
+
+E são quatro seguradoras com **um** defeito, não quatro achados: consertar o
+pipeline conserta as quatro de uma vez.
+
+### O que eu NÃO sei, e não vou fingir que sei
+
+💭 A hipótese é que o mascaramento de PII transforma `24h` em `{VALOR}` e o
+`options[]` descarta a linha que contém o marcador. `cartographer.py:639` chama
+`parse_options(text)` sobre o texto **já mascarado**, o que torna a hipótese
+plausível.
+
+**Mas ela não fecha.** Dois contraexemplos derrubam a versão simples:
+`tokio/"Guincho/Assist.24h"` e `zurich/"Acionar assistência 24h"` **sobreviveram**
+no `options[]`. E o caso da Yelum não tem mascaramento nenhum no texto — são três
+botões literais e o mapa gravou dois.
+
+⚠️ Registro isto porque quase o publiquei como causa. O efeito está **medido**;
+a causa está **inferida** e os contraexemplos são meus, não de outra pessoa.
+
+**O que destrava:** ler o código que monta `options[]` para mensagem
+`interactive` — `weaver.py:520` diz explicitamente que esse caminho *"não passa
+por `parse_options`"*, então há um segundo construtor que eu não li. A diferença
+entre os casos que sobrevivem e os que somem está lá, não no banco.
+
+**O que custa esquecer:** o mapa parece completo. Ele tem o texto certo do menu,
+tem o número certo de nós, e a única coisa errada é a linha que importa.
+
+---
+
+## P-165 · 🔴 O mapa é GLOBAL e carrega o nome de uma corretora para dentro do mapa da outra
+
+**Aberta em:** 15/08/2026 · **Dono:** 🧑 Founder decide · **P1 cross-tenant (§10(4))**
+
+📊 `ura_maps` **não tem `company_id`**. Duas corretoras alimentam o mesmo mapa.
+Medido: 14 nós de mapas ativos carregam o nome da outra corretora, sem redação.
+
+```
+porto 4 · yelum 4 · tokio 3 · hdi 2 · azul 1
+```
+
+Literais:
+- `yelum/74d0dd8c2cd8`: *"**Saionara - Resulta**, por ser um item essencial, vou te transferir…"*
+- `tokio/b642129b219e`: *"Olá **RESULTA CORRETORA DE SEGUROS LTDA**, Nos ajude a continuar resolvendo!"*
+- `tokio/d0f24684c0a2`: razão social de um condomínio segurado, em claro.
+
+📊 A linha de controle: `select company_id, count(*) from observed_events where
+text ilike '%Saionara%'` → **100% na Resulta, ZERO na AutoFleet.** O nome só pode
+ter chegado ao mapa que a AutoFleet lê pela agregação entre corretoras.
+
+⚠️ E o redator é **inconsistente**, o que é a causa: `"Maria Regina - Autofleet"`
+vira `"Maria {NOME} - {CORRETORA}"` (o primeiro nome escapa) e
+`"Saionara - Resulta"` não é tocado.
+
+**A consequência que vai além do nome:** o auditor não conseguiu medir quanto da
+estrutura do mapa da AutoFleet existe só porque a Resulta percorreu — `ura_maps`
+não guarda proveniência por nó. **Enquanto isso não existir, toda conclusão sobre
+"o mapa da AutoFleet" é, em parte, conclusão sobre o mapa da Resulta.**
+
+**O que destrava:** decidir se o mapa de URA é (a) global de propósito — a URA da
+Porto é a mesma para todo mundo, e agregar é o que o torna rico — com redação
+correta; ou (b) por corretora, mais pobre e mais isolado. **É decisão sua**, e
+tem contrapartida real dos dois lados.
+
+**O que custa esquecer:** hoje ninguém renderiza esses nós numa tela. A distância
+entre "está guardado no lugar errado" e "apareceu na tela errada" é uma feature
+de UI.
