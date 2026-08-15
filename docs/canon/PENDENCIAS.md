@@ -4256,43 +4256,56 @@ correção vem depois de a mensagem ter saído. Mensagem enviada não volta.
 
 ---
 
-## P-159 · 🔴 O cursor do espelho parou de andar — e a mesa só enche por empurrão
+## P-159 · 🟡 O sync do espelho rasteja: perde ~90% de cada passada num erro de rede
 
-**Aberta em:** 14/08/2026 · **Dono:** 🤖 execução · **destrava:** medir o log do worker
+**Aberta em:** 14/08/2026 · **Corrigida a leitura em:** 15/08/2026 00:46 · **Dono:** 🤖 execução
 
-📊 Medido em 15/08/2026 00:21 UTC, na tabela `espelho_sync_cursor`:
+> 🔴 **A primeira versão desta pendência estava ERRADA em três pontos.** Fica
+> registrada a correção, e não o texto original, porque quem ler depois precisa
+> do que é verdade — mas o erro fica dito, porque ele ensina o método.
 
-| Corretora | cursor em | escreveu pela última vez | linhas atrás do cursor | dessas, elegíveis |
-|---|---|---|---|---|
-| Resulta | 14/08 18:40:51 | **8 min atrás** | 29.301 | 1.365 |
-| AutoFleet | 14/08 22:33:53 | **1h38 atrás** | 6 | 6 |
-| Amandus | 14/08 21:04:04 | **3h08 atrás** | 0 | 0 |
+| Eu escrevi | O que a medição mostrou |
+|---|---|
+| "o cursor parou" | **anda** — 1.121 linhas em 25 min |
+| "não consigo ler `/health`" | a URL **está** no repo (`RUNBOOKS.md:135`); usei o nome curto do serviço |
+| "não sei se o sync está ligado" | `espelho_sync_ligado: true` |
 
-O que torna isso um achado e não uma leitura: a AutoFleet tem **6 linhas** atrás
-do cursor, todas já fora do atraso de segurança de 5 minutos. Uma passada do
-sync as processaria e moveria o cursor. **Não moveu em 1h38.**
+📊 O erro de leitura tem causa e ela é banal: medi o cursor **duas vezes com 8
+minutos de intervalo** e vi o mesmo valor. Concluí "parado" de duas amostras
+próximas demais para o fenômeno. Uma terceira, 25 minutos depois, derrubou a
+conclusão. **Duas medições não são uma série.**
 
-E o caso da Resulta é mais estranho ainda: o cursor **foi escrito** às 00:13 e
-`last_created_at` **continuou no mesmo valor** de 18:40:51. Só existe um escritor
-dessa tabela (`espelho_chat.py:1075`) e ele só escreve quando `avancar_para` foi
-preenchido — o que exige ter processado uma linha. Descartei a explicação por
-lote: medi, e há **uma única** linha naquele instante exato, e ela já passou.
+### O que está medido (15/08/2026 00:46 UTC)
 
-> 🔴 **Não tenho a causa medida.** Tenho o sintoma medido e a hipótese não
-> confirmada. Registrar como "provavelmente o sync está desligado" seria
-> exatamente o defeito do §12.1 — e eu não consegui ler `/health` porque o host
-> `smith-api.golhpm.easypanel.host` responde 404: a URL da API em produção não
-> está em lugar nenhum do repositório.
+```
+espelho_sync_ligado : true
+janela agora        : sync_ciclo 1 · 499 lidas · 0 novas · erro:RemoteProtocolError 13
+desde sempre        : 161 ciclos · 19.217 lidas · 1.910 novas
+Resulta             : cursor andou 1.121 linhas em 25 min (~45/min)
+                      28.180 ainda atrás → drena em ~10 h
+```
 
-**O que destrava:** (1) a URL de produção da API, para ler `espelho_sync_ligado`;
-(2) o log do worker na linha `[ESPELHO] sync:` — ela já imprime lidas/novas/
-travadas por passada, e a coluna `travou_em` responde a pergunta de uma vez.
+> ⚠️ `erro:ImportError: 4510` e `erro:APIError: 23854` são contadores
+> **acumulados**, não da janela atual. O ImportError é o de 06/08, já corrigido.
+> Quase caí nele como se fosse defeito de hoje.
 
-**O que custa esquecer:** o espelho ao vivo (webhook → `espelhar_no_chat`) não
-depende disso e continua funcionando. Quem depende é **o acervo do observador** —
-as conversas que o Observer captura e que só chegam à mesa pelo sync. Se ele
-estiver parado na segunda-feira, a Regina e a Saionara veem uma mesa que parou
-de crescer sozinha, e ninguém saberá dizer desde quando.
+### O defeito que sobra — real, e não é o que eu disse
+
+Cada passada lê **500** linhas e avança **~45**. As outras 455 são relidas na
+passada seguinte. A causa provável — 💭 **inferida**, não medida — é o `break` de
+`espelho_chat.py:1065`: um `RemoteProtocolError` numa linha derruba **a passada
+inteira**, não só aquela linha. O erro é transitório (conexão que o Supabase
+fechou), mas o preço é o resto do lote.
+
+A recusa em ultrapassar a linha com erro está **certa** — é o que impede perder
+mensagem. O que está errado é ela derrubar as 455 seguintes junto.
+
+**O que destrava:** tentar a linha de novo (2 ou 3 vezes) antes de desistir da
+passada. Não mexer na regra de não ultrapassar.
+
+**O que custa esquecer:** não é perda de dado e não é o Egress de agosto — relê
+500, não 100 mil. É **lentidão**: uma descarga nova de acervo demora ~10 h para
+chegar à mesa, e o que chegar depois espera atrás dela.
 
 ---
 
