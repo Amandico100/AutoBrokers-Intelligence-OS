@@ -4753,3 +4753,39 @@ antecipar — e não inventei um, porque o job existe e funciona.
 CPF. Nada no produto as relê e nada as limpa. São passivo puro. **Decisão do
 Founder:** limpar (custa 276 reescritas de jsonb) ou apagar (§13.4 exige decisão
 explícita — não apago histórico sem ela).
+
+---
+
+## P-169 · 🔐 Senhas circulando no WhatsApp — o mascarador não as vê
+
+**Aberta em:** 15/08/2026 · **Dono:** 🧑 Founder decide · **P1**
+
+📊 Três destiladores independentes acharam credenciais em texto claro dentro de
+transcripts **já mascarados**:
+
+| onde | o que é |
+|---|---|
+| `lote_021` `63d8e8cb` | senha de portal de seguradora |
+| `lote_047` `3b3436b1` | pedido de senha de portal **entre colegas** |
+| `lote_050` `63e92ce5` | **a segurada** enviando a senha do PDF do boleto no chat |
+
+**A causa:** o mascarador conhece CPF, CNPJ, telefone, placa, e-mail, endereço e
+valor — todos têm **forma reconhecível**. Senha não tem. `Youmba2013@@` e
+`resulta123` não casam com padrão nenhum, então atravessam inteiras.
+
+⚠️ **O alcance é o acervo todo.** `attendance_transcripts` tem 150.734 linhas
+que passaram pelo mesmo mascarador, e **uma varredura por credencial nunca foi
+feita**. Os três casos acima saíram de ~1.400 conversas destiladas — a taxa
+sugere dezenas no acervo inteiro.
+
+E o terceiro caso é de outra natureza: **é a segurada mandando a senha dela**,
+não a equipe. Isso não se resolve com treinamento interno.
+
+**O que destrava:** uma varredura por CONTEXTO, não por forma — procurar
+`senha`, `login`, `acesso`, `credencial`, `usuário` a até ~40 caracteres de uma
+sequência sem espaços. Nenhum destilador reproduziu as senhas; todos
+registraram em `flags`, e isso é o comportamento certo.
+
+**O que custa esquecer:** senha de portal de seguradora dá acesso à carteira
+inteira de uma corretora. E ela está hoje num campo `text` de uma tabela que 
+alimenta destilação, RAG e Atlas.
