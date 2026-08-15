@@ -175,3 +175,47 @@ quase mudo em tudo o mais. Não é culpa dos destiladores: é o que o acervo tem
 - os **30 dias** são para liquidar a indenização, **não** prazo de conserto
 - trinca menor que uma **moeda de 1 real** repara sem trocar o vidro e **sem
   franquia**
+
+---
+
+# ESTADO EM 15/08/2026 — fim da janela desta sessão
+
+```
+lotes prontos ....... 34 de 72      (ondas 1 e 2)
+conversas ........... 1.170
+fatos escritos ...... 1.075
+devolveram [] ....... 605  (51%)
+PROBLEMAS ........... 0
+```
+
+Todos os 34 estão **versionados no git** (exceção no `.gitignore`), não só no
+disco. Os lotes brutos continuam fora, e devem continuar.
+
+## Os 38 que faltam
+`lote_021`, `lote_035` a `lote_072`. O laço no topo deste arquivo os lista.
+
+## 🔴 DOIS CASOS QUE O FOUNDER PRECISA OLHAR — não são defeito de destilação
+
+Um destilador os encontrou e fez a coisa certa: **não destilou a parte
+problemática e destilou o caminho honesto da mesma conversa.** Ficam aqui porque
+são decisão de gente, não de máquina.
+
+| onde | o que a conversa mostra |
+|---|---|
+| `lote_027` `d55f38f0` | a equipe diz textualmente ter *"burlado o sistema"* para contornar a analista de sinistro |
+| `lote_028` `def99167` | **a própria central da seguradora** orientou preencher o cadastro de um terceiro estrangeiro **com os dados do segurado** |
+
+O segundo é o mais grave e não é da corretora: é orientação da seguradora. O
+destilador escreveu a regra pela via honesta — *terceiro sem CPF tem de ser
+aberto por telefone* — e deixou a orientação irregular de fora.
+
+## A pergunta que três destiladores fizeram e continua aberta
+
+Conversas com a **Maxpar/Autoglass** trazem "porto seguro" ou "tokio" digitados
+no transcript — mas só porque o robô pediu o nome para localizar o caso. **As
+regras são da PRESTADORA.** Dois destiladores deixaram `seguradora: ""`; um
+preencheu. Se o RAG filtrasse por rede prestadora, a escolha conservadora
+esconde informação; se filtra por seguradora, preencher mente.
+
+É o mesmo problema do escopo por fato, por outro ângulo — e reforça a
+recomendação do juiz de ter `prestadora` como escopo próprio.
