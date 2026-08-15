@@ -4597,3 +4597,46 @@ gera versão nova; a `active` só cai quando aprovada.
 **O que custa esquecer:** não é o nome que vaza. É o agente errando de quem ele
 é.
 
+
+---
+
+## P-166 · 🟡 Re-tecer os 4 mapas para a opção do guincho voltar ao histórico
+
+**Aberta em:** 15/08/2026 · **Dono:** 🤖 execução, depois do deploy de `6f8316f`
+
+O conserto do `options[]` (P-164) e o da redação (P-162, P-165) valem para o que
+for tecido **de agora em diante**. O que já está gravado precisa de duas coisas
+diferentes, e elas não são a mesma:
+
+| o quê | quem faz | quando |
+|---|---|---|
+| tirar CPF e nome de corretora do mapa já gravado | `higienizar_e_promover` | ✅ **sozinho, de hora em hora** (`buffer_processor.py:214`) |
+| **devolver** a opção "Assistência 24h" que sumiu | `weave_insurer` | ⚠️ **precisa de gatilho** |
+
+⚠️ **A higiene NÃO devolve a opção.** Ela só remascara o que existe — e o que
+existe é um `options[]` de 9 onde a URA emitiu 10. A décima só volta relendo
+`observed_events`, que é o que `weave_insurer` faz.
+
+**O que destrava:** `POST /api/admin/atlas/tecer` (`admin_atlas.py:104`) para
+`zurich`, `mapfre`, `tokio` e `yelum` — ou a passada do `route_sentinel`.
+
+⚠️ **T2 da SPEC-071:** re-tecer gera versão nova; a `active` só cai quando
+aprovada. Não editar no lugar.
+
+📊 **Como verificar que funcionou** — a query que hoje devolve 4 linhas e depois
+deve devolver 0:
+
+```sql
+SELECT m.insurer_key, n.k,
+       (SELECT string_agg(op->>'label', ' / ')
+          FROM jsonb_array_elements(n.v->'options') op) AS opcoes
+  FROM ura_maps m, jsonb_each(m.map->'nodes') n(k,v)
+ WHERE m.status='active'
+   AND n.v->>'text' ILIKE '%ssist%'
+   AND NOT EXISTS (SELECT 1 FROM jsonb_array_elements(n.v->'options') o
+                    WHERE o->>'label' ILIKE '%ssist%24%');
+```
+
+**O que custa esquecer:** o mapa continua parecendo completo — texto certo,
+número de nós certo — e sem a linha que aciona o guincho. É o defeito que não
+se anuncia.
