@@ -4253,3 +4253,70 @@ retomada, não para cadência.
 
 **O que custa esquecer:** o primeiro envio real acontece sem regra escrita, e a
 correção vem depois de a mensagem ter saído. Mensagem enviada não volta.
+
+---
+
+## P-159 · 🔴 O cursor do espelho parou de andar — e a mesa só enche por empurrão
+
+**Aberta em:** 14/08/2026 · **Dono:** 🤖 execução · **destrava:** medir o log do worker
+
+📊 Medido em 15/08/2026 00:21 UTC, na tabela `espelho_sync_cursor`:
+
+| Corretora | cursor em | escreveu pela última vez | linhas atrás do cursor | dessas, elegíveis |
+|---|---|---|---|---|
+| Resulta | 14/08 18:40:51 | **8 min atrás** | 29.301 | 1.365 |
+| AutoFleet | 14/08 22:33:53 | **1h38 atrás** | 6 | 6 |
+| Amandus | 14/08 21:04:04 | **3h08 atrás** | 0 | 0 |
+
+O que torna isso um achado e não uma leitura: a AutoFleet tem **6 linhas** atrás
+do cursor, todas já fora do atraso de segurança de 5 minutos. Uma passada do
+sync as processaria e moveria o cursor. **Não moveu em 1h38.**
+
+E o caso da Resulta é mais estranho ainda: o cursor **foi escrito** às 00:13 e
+`last_created_at` **continuou no mesmo valor** de 18:40:51. Só existe um escritor
+dessa tabela (`espelho_chat.py:1075`) e ele só escreve quando `avancar_para` foi
+preenchido — o que exige ter processado uma linha. Descartei a explicação por
+lote: medi, e há **uma única** linha naquele instante exato, e ela já passou.
+
+> 🔴 **Não tenho a causa medida.** Tenho o sintoma medido e a hipótese não
+> confirmada. Registrar como "provavelmente o sync está desligado" seria
+> exatamente o defeito do §12.1 — e eu não consegui ler `/health` porque o host
+> `smith-api.golhpm.easypanel.host` responde 404: a URL da API em produção não
+> está em lugar nenhum do repositório.
+
+**O que destrava:** (1) a URL de produção da API, para ler `espelho_sync_ligado`;
+(2) o log do worker na linha `[ESPELHO] sync:` — ela já imprime lidas/novas/
+travadas por passada, e a coluna `travou_em` responde a pergunta de uma vez.
+
+**O que custa esquecer:** o espelho ao vivo (webhook → `espelhar_no_chat`) não
+depende disso e continua funcionando. Quem depende é **o acervo do observador** —
+as conversas que o Observer captura e que só chegam à mesa pelo sync. Se ele
+estiver parado na segunda-feira, a Regina e a Saionara veem uma mesa que parou
+de crescer sozinha, e ninguém saberá dizer desde quando.
+
+---
+
+## P-160 · 🟡 A mesa da AutoFleet pode ter buraco anterior ao cursor
+
+**Aberta em:** 14/08/2026 · **Dono:** 🧑 Founder libera · 🤖 executa
+
+📊 AutoFleet, janela de 30 dias: **9.602** linhas no acervo, das quais **8.168**
+são de cliente e têm texto, em **330** contrapartes. Na mesa: **6.287** mensagens
+em **190** conversas. A primeira espelhada é de **06/08** — e o cursor nasceu
+`now()` na migration de 13/08, por decisão deliberada.
+
+Então o que falta **não está atrás do cursor** (só 6 linhas estão): está **antes**
+dele, no trecho que a recuperação inicial nunca varreu. A AutoFleet é a corretora
+da Regina — a que assiste à demonstração.
+
+⚠️ Os dois números não são diretamente comparáveis: 8.168 conta linhas do acervo
+(a mesma mensagem pode aparecer duas vezes) e 6.287 conta mensagens já
+deduplicadas na mesa. A lacuna é **direcional, não medida**.
+
+**O que destrava:** autorização para rodar o mesmo one-shot que rodou na Resulta
+(`espelho/trazer-conversas`), que é leitura do acervo e escrita na mesa — **não
+toca no WhatsApp da AutoFleet** e não fere a R2. Não rodei sozinho porque muda o
+que uma pessoa real vê na tela na segunda-feira, e essa é uma decisão sua.
+
+**O que custa esquecer:** a Regina abre a mesa na demonstração e encontra
+conversas começando no dia 06/08, sem o histórico que ela sabe que existe.
