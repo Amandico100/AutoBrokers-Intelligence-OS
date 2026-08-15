@@ -53,6 +53,11 @@ import os
 from datetime import datetime, timedelta, timezone
 from typing import Any, Optional
 
+from app.services.atlas.canais_observados import (
+    NATUREZAS_QUE_NAO_SAO_CLIENTE,
+    natureza_da_contraparte,
+)
+
 logger = logging.getLogger(__name__)
 
 # Quantos dias de conversa aparecem NA LISTA do chat. Decisão do Founder,
@@ -234,7 +239,8 @@ def session_id_do_chat(company_id: str, telefone: str) -> str:
 
 def deve_espelhar(*, counterparty: str, texto: str, msg_type: str,
                   e_grupo: bool, e_seguradora: bool, idade_horas: float,
-                  limite_horas: float = LIMITE_DE_RECENCIA_HORAS) -> bool:
+                  limite_horas: float = LIMITE_DE_RECENCIA_HORAS,
+                  company_id: str = "") -> bool:
     """Esta mensagem capturada merece uma conversa no chat da corretora? PURO.
 
     O chat é a mesa de trabalho da corretora; o acervo
@@ -253,6 +259,38 @@ def deve_espelhar(*, counterparty: str, texto: str, msg_type: str,
         return False
     if e_grupo or e_seguradora:
         return False
+
+    # 🔴 O PORTÃO ACIMA EXISTIA E NUNCA DISPAROU — 15/08/2026.
+    #
+    # 📊 `e_seguradora` vem de `bool(linha.get("insurer_key"))`, e `insurer_key`
+    # estava NULO em 100% das 150.734 linhas do acervo. `bool(None)` é False
+    # sempre: a linha 254 tem teste, tem comentário, e nunca barrou uma
+    # mensagem sequer neste caminho.
+    #
+    # 📊 O que passava por ela: 10,9% da mesa da Saionara e 6,8% da mesa da
+    # Regina são robôs de seguradora — 714 e 652 mensagens que não são cliente
+    # nenhum. A fila de espera da MAPFRE no meio de quem precisa dela.
+    #
+    # A pergunta certa não é "tem chave de seguradora?", é **"isto é gente?"**.
+    # Uma conversa com a Localiza sobre carro reserva não tem `insurer_key` — e
+    # não deve ter, porque a Localiza atende HDI e Tokio — mas também não é
+    # cliente, e não pertence à mesa.
+    #
+    # ⚠️ Fail-open de propósito: `natureza_da_contraparte` devolve None tanto
+    # para "é uma pessoa" quanto para "ainda não sabemos", e as duas continuam
+    # na mesa. Mostrar uma conversa a mais custa um clique; esconder um cliente
+    # de verdade custa o cliente.
+    #
+    # 🔴 O import é NO TOPO do módulo, e não aqui dentro com `try/except`.
+    # Minha primeira versão embrulhou esta chamada num `except Exception: pass`
+    # — que é PRECISAMENTE o defeito narrado no cabeçalho deste arquivo: um
+    # ImportError engolido deixou o chat vazio 2.255 vezes com o /health
+    # dizendo `espelho_no_chat: true`. Guarda que não consegue falhar não
+    # guarda nada; se o catálogo sumir, é para quebrar alto.
+    if natureza_da_contraparte(counterparty, company_id or "") in (
+            NATUREZAS_QUE_NAO_SAO_CLIENTE):
+        return False
+
     if float(idade_horas) > float(limite_horas):
         return False
     return bool(str(texto or "").strip()) or str(msg_type or "") in _TIPOS_SEM_TEXTO
@@ -788,6 +826,7 @@ async def trazer_conversas_ja_capturadas(
             e_grupo=False,
             e_seguradora=bool(linha.get("insurer_key")),
             idade_horas=_idade_em_horas(quando),
+            company_id=empresa,
         ):
             continue
         conversa = await espelhar_no_chat(
@@ -1066,6 +1105,7 @@ async def _sincronizar_uma_corretora(empresa: str, cliente: Any) -> dict:
             e_grupo=False,
             e_seguradora=bool(item.get("insurer_key")),
             idade_horas=_idade_em_horas(quando),
+            company_id=empresa,
         ):
             # 🔴 A ELEGIBILIDADE VOLTOU A SER A MESMA NOS DOIS CAMINHOS.
             # O backfill antigo NÃO chamava `deve_espelhar`: mensagem que chegava

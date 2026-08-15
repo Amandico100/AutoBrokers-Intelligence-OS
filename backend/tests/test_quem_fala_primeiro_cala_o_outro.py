@@ -246,6 +246,27 @@ def _carregar_espelho():
         # produção acumulava 2.255 ImportError e o chat ficava vazio.
         falso.get_integration_service = lambda *_a, **_k: _Servico()
         sys.modules["app.services.integration_service"] = falso
+
+    # 🔴 O catálogo de canais entra REAL — 15/08/2026.
+    #
+    # `espelho_chat` passou a importar `canais_observados` NO TOPO, de propósito:
+    # a versão anterior tinha o import dentro da função, embrulhado num
+    # `except Exception: pass`, e isso é o defeito de 2.255 ImportError narrado
+    # logo acima — a guarda vira no-op silencioso e o /health diz que está tudo
+    # bem. Como o import agora é de topo, este carregador precisa registrar o
+    # módulo, senão ele quebra alto. **Quebrar alto é o comportamento certo.**
+    if "app.services.atlas.canais_observados" not in sys.modules:
+        for _pkg in ("app", "app.services", "app.services.atlas"):
+            if _pkg not in sys.modules:
+                sys.modules[_pkg] = types.ModuleType(_pkg)
+        _cam = os.path.join(RAIZ, "backend", "app", "services", "atlas",
+                            "canais_observados.py")
+        _sp = importlib.util.spec_from_file_location(
+            "app.services.atlas.canais_observados", _cam)
+        _mod = importlib.util.module_from_spec(_sp)
+        sys.modules["app.services.atlas.canais_observados"] = _mod
+        _sp.loader.exec_module(_mod)
+
     caminho = os.path.join(RAIZ, "backend", "app", "services", "atlas", "espelho_chat.py")
     spec = importlib.util.spec_from_file_location(nome, caminho)
     modulo = importlib.util.module_from_spec(spec)

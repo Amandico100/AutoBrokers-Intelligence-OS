@@ -409,6 +409,28 @@ def _carregar_espelho():
         falso.get_integration_service = lambda *_a, **_k: _Servico()
         sys.modules["app.services.integration_service"] = falso
 
+    # 🔴 O catálogo de canais entra REAL, não dublado.
+    #
+    # `espelho_chat` importa `canais_observados` no topo, e é dele que sai a
+    # resposta "isto é gente?". Dublar seria testar a minha suposição sobre quem
+    # é a MAPFRE — que é exatamente o erro documentado logo acima, o dublê de
+    # `integration_service` que ficou verde por 2.255 ImportError.
+    #
+    # O `integration_service` continua dublado porque ele faz I/O e não está sob
+    # teste. Este está.
+    if "app.services.atlas.canais_observados" not in sys.modules:
+        _cam_cat = os.path.join(RAIZ, "backend", "app", "services", "atlas",
+                                "canais_observados.py")
+        _spec_cat = importlib.util.spec_from_file_location(
+            "app.services.atlas.canais_observados", _cam_cat)
+        _cat = importlib.util.module_from_spec(_spec_cat)
+        sys.modules["app.services.atlas.canais_observados"] = _cat
+        # Os pacotes-pai precisam existir para o `from ... import` resolver.
+        for _pkg in ("app", "app.services", "app.services.atlas"):
+            if _pkg not in sys.modules:
+                sys.modules[_pkg] = types.ModuleType(_pkg)
+        _spec_cat.loader.exec_module(_cat)
+
     caminho = os.path.join(RAIZ, "backend", "app", "services", "atlas", "espelho_chat.py")
     spec = importlib.util.spec_from_file_location(nome, caminho)
     modulo = importlib.util.module_from_spec(spec)
@@ -1422,6 +1444,197 @@ def teste_o_cursor_nao_avanca_sobre_erro() -> None:
     os.environ.pop("ESPELHO_SYNC_ENABLED", None)
 
 
+def teste_robo_de_seguradora_sai_da_mesa_e_cliente_fica() -> None:
+    """SPEC-071 BLOCO 4.6 — o portão que existia e nunca disparou.
+
+    📊 `e_seguradora` vinha de `bool(insurer_key)`, e a coluna estava NULA em
+    100% das 150.734 linhas. `bool(None)` é False sempre: o portão tinha teste,
+    tinha comentário, e nunca barrou uma mensagem neste caminho. 10,9% da mesa
+    da Saionara e 6,8% da mesa da Regina eram robô.
+
+    O que este teste guarda é a assimetria: robô sai, **gente fica** — inclusive
+    a gente que o catálogo não conhece.
+    """
+    print("\n[11] Robô de seguradora sai da mesa, e o cliente fica")
+    EC = _carregar_espelho()
+    from app.services.atlas import canais_observados as CO
+
+    RESULTA = "04b5cdbc-04cd-4ddf-8e4b-f43efb062fab"
+    AUTOFLEET = "6c9c55e2-2f30-4ca2-a1ef-4ef464ed1b4a"
+
+    def espelha(fone, empresa=""):
+        return EC.deve_espelhar(counterparty=fone, texto="Bom dia",
+                                msg_type="text", e_grupo=False,
+                                e_seguradora=False, idade_horas=1.0,
+                                company_id=empresa)
+
+    # ---- o que TEM de sair ----
+    checar(not espelha("551140029000", AUTOFLEET),
+           "🔴 a MAPFRE sai da mesa (2.197 msgs)")
+    checar(not espelha("552733204114", AUTOFLEET),
+           "a Maxpar sai — prestadora também não é cliente (1.516 msgs)")
+    checar(not espelha("133912835686649", RESULTA),
+           "a Casas Bahia sai — nem seguro é")
+
+    # ---- o que TEM de FICAR: os controles que dão direito à conclusão ----
+    checar(espelha("554799956540", AUTOFLEET),
+           "🔴 CONTROLE — um cliente de verdade FICA na mesa")
+    checar(espelha("551130030319", RESULTA),
+           "🔴 CONTROLE — o canal SEM EVIDÊNCIA fica na mesa",
+           "não sabemos quem é; esconder seria pior que mostrar")
+    checar(espelha("5511975669867", RESULTA),
+           "CONTROLE — o número com perfil de CORRETORA fica",
+           "o juiz avisou: se for a 2ª linha de um tenant, esconder some "
+           "com conversa de cliente")
+
+    # ---- o escopo do @lid não atravessa corretora (CLAUDE.md §7) ----
+    checar(not espelha("29377626669274", RESULTA),
+           "o @lid da Bradesco sai na corretora que o viu")
+    checar(espelha("29377626669274", AUTOFLEET),
+           "🔴 CONTROLE — e o MESMO @lid FICA na outra corretora",
+           "@lid é opaco: o que a Resulta viu não diz nada sobre a AutoFleet")
+
+    # ---- prestadora NÃO recebe insurer_key (regra R1 do juiz) ----
+    checar(CO.seguradora_observada("551140029000") == "mapfre",
+           "seguradora devolve a chave")
+    checar(CO.seguradora_observada("552733204114") is None,
+           "🔴 CONTROLE — prestadora devolve None, não a companhia",
+           "a Localiza atende HDI e Tokio com o mesmo roteiro: gravar 'hdi' "
+           "faria a regra da Localiza virar regra da HDI")
+    checar(CO.natureza_da_contraparte("552733204114") == CO.PRESTADORA,
+           "mas ela É reconhecida como prestadora")
+
+    # ---- prestadora COM chave preenchida continua devolvendo None ----
+    #
+    # 🔴 Este caso existe porque a primeira versão do teste NÃO PEGOU a mutação
+    # que removia `canal["natureza"] != SEGURADORA` de `seguradora_observada`.
+    # Motivo: toda prestadora do catálogo tem `insurer_key` vazio, então o
+    # `or None` do fim devolvia None de qualquer jeito. O guarda passava por
+    # coincidência dos dados, não por mérito da regra.
+    #
+    # Aqui a coincidência é removida de propósito: uma prestadora com a chave
+    # PREENCHIDA. Se a regra da natureza cair, isto vira "hdi" e reprova.
+    CO.CANAIS_OBSERVADOS.append(dict(
+        kind=CO.TELEFONE, valor="559999999999", natureza=CO.PRESTADORA,
+        insurer_key="hdi", prestadora_key="localiza", insurer_contexto="hdi",
+        proposito="carro_reserva", company_id="",
+        evidencia="SINTÉTICO — só do teste, para a regra da natureza ter como falhar"))
+    CO._CACHE = None
+    try:
+        checar(CO.seguradora_observada("559999999999") is None,
+               "🔴 prestadora NÃO devolve seguradora nem com a chave preenchida",
+               "é a natureza que manda, não o campo estar cheio")
+        checar(CO.natureza_da_contraparte("559999999999") == CO.PRESTADORA,
+               "CONTROLE — e ela continua sendo reconhecida como prestadora")
+    finally:
+        CO.CANAIS_OBSERVADOS.pop()
+        CO._CACHE = None
+
+    # ---- a allowlist do produto, EXECUTADA de verdade ----
+    #
+    # 🔴 A primeira versão só conferia se as palavras "CANAIS_OBSERVADOS" e
+    # "SEGURADORA" APARECIAM no texto da função. Duas mutações passaram por
+    # baixo: trocar o laço por `for canal in []` e apagar o filtro de natureza
+    # deixam as duas palavras de pé — elas estão na linha do `import`. Guarda
+    # que confere string não guarda comportamento (CLAUDE.md §9.3).
+    #
+    # Agora o código real roda. `observer_intake` inteiro não carrega neste
+    # ambiente (arrasta o app), então recortam-se as três funções que fazem o
+    # trabalho e executam-se com o registro REAL e o catálogo REAL.
+    fonte_intake = open(
+        os.path.join(RAIZ, "backend", "app", "services", "atlas",
+                     "observer_intake.py"), encoding="utf-8").read()
+
+    if "app.services.insurer_registry" not in sys.modules:
+        _cam_reg = os.path.join(RAIZ, "backend", "app", "services",
+                                "insurer_registry.py")
+        _spec_reg = importlib.util.spec_from_file_location(
+            "app.services.insurer_registry", _cam_reg)
+        _reg = importlib.util.module_from_spec(_spec_reg)
+        sys.modules["app.services.insurer_registry"] = _reg
+        _spec_reg.loader.exec_module(_reg)
+
+    _ns = {"os": os, "Dict": dict, "Any": object, "Set": set}
+    for _fn in ("_digits", "_br_variants", "insurer_allowlist"):
+        _corpo = _corpo_da_funcao(_fn, fonte_intake)
+        checar(len(_corpo) > 40,
+               f"CONTROLE — recortei o corpo real de `{_fn}`",
+               f"{len(_corpo)} caracteres")
+        _assinatura = [l for l in fonte_intake.split("\n")
+                       if l.startswith(f"def {_fn}(")][0]
+        exec(_assinatura + "\n" + _corpo, _ns)  # noqa: S102
+
+    # 🔴 DUAS ISCAS, e elas existem por um motivo medido.
+    #
+    # O filtro da allowlist tem quatro cláusulas, e sobre os dados REAIS duas
+    # delas são redundantes: prestadora já é barrada por ter `insurer_key`
+    # vazio, e `@lid` já é barrado por ter `company_id`. Apagar qualquer uma das
+    # duas mantinha o teste VERDE — provado por mutação, não suposto.
+    #
+    # Cada isca é o caso que só UMA cláusula segura. Se a cláusula cair, a isca
+    # entra na allowlist e o teste reprova. É o que dá a esses guardas o direito
+    # de existir (CLAUDE.md §9.3: prove que conseguem ser diferentes).
+    CO.CANAIS_OBSERVADOS.extend([
+        # só a cláusula da NATUREZA segura esta: é telefone, é global, tem chave
+        dict(kind=CO.TELEFONE, valor="558888888888", natureza=CO.PRESTADORA,
+             insurer_key="hdi", prestadora_key="localiza", insurer_contexto="",
+             proposito="", company_id="", evidencia="ISCA do teste"),
+        # só a cláusula do KIND segura esta: é seguradora, é global, tem chave
+        dict(kind=CO.LID, valor="777777777777777", natureza=CO.SEGURADORA,
+             insurer_key="tokio", prestadora_key="", insurer_contexto="",
+             proposito="", company_id="", evidencia="ISCA do teste"),
+        # só a cláusula do COMPANY_ID segura esta: telefone, seguradora, com
+        # chave — e ESCOPADA numa corretora. Hoje o catálogo não tem nenhum
+        # telefone escopado, e por isso a cláusula não tinha como falhar. Vai
+        # ter no dia em que uma corretora usar um canal que só ela vê, e aí
+        # entregá-lo à allowlist global vazaria o fato comercial de um tenant
+        # para os outros (CLAUDE.md §7).
+        dict(kind=CO.TELEFONE, valor="556666666666", natureza=CO.SEGURADORA,
+             insurer_key="azul", prestadora_key="", insurer_contexto="",
+             proposito="", company_id="6c9c55e2-2f30-4ca2-a1ef-4ef464ed1b4a",
+             evidencia="ISCA do teste"),
+    ])
+    CO._CACHE = None
+    try:
+        _iscas = _ns["insurer_allowlist"]()
+    finally:
+        del CO.CANAIS_OBSERVADOS[-3:]
+        CO._CACHE = None
+    checar("558888888888" not in _iscas,
+           "🔴 ISCA — prestadora com chave preenchida NÃO entra na allowlist",
+           "só a cláusula da natureza segura este caso")
+    checar("777777777777777" not in _iscas,
+           "🔴 ISCA — @lid global de seguradora NÃO entra na allowlist",
+           "só a cláusula do kind segura este caso; @lid não é telefone")
+    checar("556666666666" not in _iscas,
+           "🔴 ISCA — telefone ESCOPADO numa corretora não entra na global",
+           "só a cláusula do company_id segura este caso; entregá-lo aqui "
+           "vazaria de qual seguradora uma corretora é cliente")
+
+    lista = _ns["insurer_allowlist"]()
+    checar(lista.get("551140029000") == "mapfre",
+           "🔴 a allowlist REAL passa a reconhecer a MAPFRE que a Regina usa",
+           "antes só existia 551140040101, que é o número de ASSISTÊNCIA")
+    checar(lista.get("551132061515") == "yelum",
+           "e o terceiro número da Yelum, o canal do corretor")
+    checar("552733204114" not in lista,
+           "🔴 CONTROLE — a prestadora NÃO entra na allowlist de seguradora",
+           "senão a regra da Maxpar viraria regra de alguma companhia")
+    checar("29377626669274" not in lista,
+           "🔴 CONTROLE — e nenhum @lid entra: é escopado por corretora, e "
+           "esta função não recebe company_id")
+    checar(lista.get("551140040101") == "mapfre",
+           "CONTROLE — e o registro antigo continua valendo",
+           "ampliar não pode apagar o que já funcionava")
+
+    # ---- o que ficou de fora está ESCRITO, não esquecido ----
+    checar(len(CO.SEM_EVIDENCIA) >= 10,
+           "os canais sem prova estão listados com o motivo",
+           f"{len(CO.SEM_EVIDENCIA)} registrados")
+    checar(all(v.strip() for v in CO.SEM_EVIDENCIA.values()),
+           "CONTROLE — e nenhum deles tem motivo em branco")
+
+
 def teste_um_tropeco_de_rede_nao_derruba_o_lote() -> None:
     """📊 O defeito medido em 15/08: 499 linhas lidas, ~45 avançadas.
 
@@ -1662,6 +1875,7 @@ def main() -> int:
     teste_o_eco_ainda_le_quando_precisa()
     teste_o_cursor_nunca_perde_e_nunca_varre()
     teste_o_cursor_nao_avanca_sobre_erro()
+    teste_robo_de_seguradora_sai_da_mesa_e_cliente_fica()
     teste_um_tropeco_de_rede_nao_derruba_o_lote()
     teste_recusa_permanente_nao_prende_a_corretora()
     teste_o_interruptor_nasce_desligado()

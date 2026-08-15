@@ -123,6 +123,40 @@ def insurer_allowlist() -> Dict[str, str]:
         for field in ("whatsapp", "whatsapp_alternativo"):
             for v in _br_variants(str(info.get(field) or "")):
                 mapping.setdefault(v, key)
+
+    # 🔴 OS CANAIS OBSERVADOS — 15/08/2026.
+    #
+    # 📊 O registro acima é o catálogo de ASSISTÊNCIA 24h: um número por
+    # seguradora, o que se liga para pedir guincho. Medido no acervo, o que as
+    # corretoras realmente usam é outro conjunto — atendimento ao corretor,
+    # sinistro, financeiro. O MAPFRE catalogado é `551140040101`; o que aparece
+    # 2.197 vezes é `551140029000`. Por isso a allowlist não reconhecia NADA:
+    # ela procurava os números certos da pergunta errada.
+    #
+    # Entram aqui, e não num resolvedor novo, porque este é o único ponto do
+    # produto que responde "este telefone é seguradora" — cinco chamadores já
+    # dependem dele (CLAUDE.md §5).
+    #
+    # ⚠️ SÓ os globais (telefone). `@lid` é opaco e escopado por corretora, e
+    # esta função não recebe `company_id` — devolver um `@lid` de um tenant aqui
+    # o entregaria a todos. Quem precisa do escopado chama
+    # `canais_observados.canal_observado(valor, company_id)` direto.
+    #
+    # ⚠️ E SÓ os de natureza `seguradora`. Prestadora (Localiza, Maxpar, a
+    # reguladora VIX) fica de fora de propósito: ela atende VÁRIAS seguradoras,
+    # e `curadoria_cartas` já registra que pôr prestadora em `insurer_key` faz
+    # o filtro devolver a companhia errada.
+    from app.services.atlas.canais_observados import (
+        CANAIS_OBSERVADOS, SEGURADORA, TELEFONE,
+    )
+
+    for canal in CANAIS_OBSERVADOS:
+        if (canal["kind"] != TELEFONE or canal["natureza"] != SEGURADORA
+                or canal["company_id"] or not canal["insurer_key"]):
+            continue
+        for v in _br_variants(canal["valor"]):
+            mapping.setdefault(v, canal["insurer_key"])
+
     for env_key, env_val in os.environ.items():
         if env_key.startswith("INSURER_CONTACT_") and env_val.strip():
             key = env_key.removeprefix("INSURER_CONTACT_").removesuffix("_ASSISTENCIA")
@@ -577,6 +611,7 @@ async def _espelhar_no_chat_da_corretora(
             # passam como False aqui e a checagem fica como rede, não como
             # duplicação de regra.
             e_grupo=False, e_seguradora=False, idade_horas=idade_horas,
+            company_id=str(integration.get("company_id") or ""),
         ):
             return
 
