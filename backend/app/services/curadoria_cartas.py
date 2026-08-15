@@ -54,6 +54,142 @@ logger = logging.getLogger(__name__)
 
 LIMIAR = 0.47
 
+# ─────────────────────────────────────────────────────────────────────────────
+# 🔴 A RÉGUA DE UMA CARTA MORA AQUI, E É UMA SÓ — 15/08/2026
+# ─────────────────────────────────────────────────────────────────────────────
+# `knowledge_cards` tinha DUAS réguas de tamanho, e a tabela é a mesma.
+#
+#     15–400    escrito à mão em QUATRO lugares (attendance_distiller,
+#               aplicar.py, aplicar_sql.py, atribuir_seguradora.py)
+#     40–1800   acervo de condições gerais (`publicar_cartas.py`)
+#
+# 📊 O custo medido do 400, na leva de 15/08/2026: das 1.527 cartas destiladas,
+# **23 morreram — todas por passar de 400, nenhuma por ficar abaixo de 15.**
+# O piso nunca descartou nada, em lugar nenhum: 📊 das 18.598 cartas já
+# gravadas, **uma** tem menos de 40 caracteres (39 ch: "Pode ser solicitado RG
+# e CPF do síndico"), e ZERO têm menos de 15.
+#
+# O padrão do que o teto matava é perverso: quanto mais COMPLETA a carta, maior
+# a chance de morrer. Lista de documentos de indenização integral, relação de
+# documentos de colisão com terceiro, o conjunto fechado do reembolso de
+# franquia — são longas PORQUE são completas, que é o que as torna úteis.
+# E 3 das 23 eram inéditas (Jaccard < 0,22 contra as 18.400 do acervo).
+#
+# O teto certo é o FÍSICO, e ele já estava medido e justificado em
+# `publicar_cartas.py`: 1.800 é onde o texto deixa de caber numa mensagem.
+# Cortar uma lista taxativa faz a carta mentir por omissão.
+#
+# Quatro literais iguais não são uma regra — são quatro chances de divergir.
+# Aqui é o dono das regras de carta (assunto, seguradora, contradição), então é
+# aqui que a régua mora. Quem ingere IMPORTA; ninguém mais escreve o número.
+MIN_CARACTERES = 40
+MAX_CARACTERES = 1800
+
+
+def fora_do_tamanho(texto: str) -> Optional[str]:
+    """O MOTIVO da recusa por tamanho, ou None se a carta cabe.
+
+    Devolve texto e não booleano de propósito: 🔴 um filtro que joga fora sem
+    dizer o que perdeu não pode ser auditado, e foi assim que as 23 sumiram
+    sem deixar rastro. Todo chamador registra o motivo antes de descartar.
+    """
+    n = len(texto or "")
+    if n < MIN_CARACTERES:
+        return f"curta demais ({n} ch, mínimo {MIN_CARACTERES})"
+    if n > MAX_CARACTERES:
+        return f"longa demais ({n} ch, máximo {MAX_CARACTERES})"
+    return None
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+# 🔴 O `pii_check` ESTAVA CALIBRADO NO EIXO ERRADO — 15/08/2026
+# ─────────────────────────────────────────────────────────────────────────────
+# A regra era `rejected_pii` quando `templatize(texto) != texto` — ou seja,
+# **qualquer coisa que o mascarador tocaria** derrubava a carta, mesmo quando o
+# que ele tocaria era uma palavra comum.
+#
+# 📊 As 320 cartas em `rejected_pii` passaram por todos os detectores:
+# **ZERO têm CPF, CNPJ, telefone, placa, e-mail ou nome de pessoa.** E medido
+# hoje contra o `templatize` de hoje, **315 das 320 não são tocadas por regra
+# nenhuma**: as regras que as derrubaram já foram consertadas desde então, e a
+# rejeição — gravada uma vez, nunca reavaliada — ficou de pé sozinha.
+#
+# As 5 que ainda são tocadas são o retrato do defeito:
+#
+#     "celular com DDD confirmado por botão"      → "celular com {NOME}"
+#     "ou do WhatsApp que pediu a assistência"    → "ou do {NOME} que pediu"
+#     "o telefone de quem está no local ANTES do" → "no local {NOME} do"
+#     "atendimento tem de ser feito pelo 0800."   → "feito pelo {SEGREDO}."
+#
+# `DDD`, `WhatsApp`, `ANTES` e um `0800` — vocabulário de contexto, não dado de
+# ninguém. É o eixo errado: o portão perguntava "o mascarador encostaria aqui?"
+# quando a pergunta é "sobrou dado pessoal no que vai ser guardado?".
+#
+# O EIXO CERTO: MASCARAR SEMPRE, REJEITAR SÓ IDENTIFICADOR
+# --------------------------------------------------------
+# O que é guardado é o texto MASCARADO — sempre, os dois caminhos. Então nenhum
+# dado pessoal entra no acervo, aconteça o que acontecer com a classificação.
+# Isso é o que permite parar de rejeitar por heurística.
+#
+# `PII_QUE_REJEITA` são os identificadores de FORMA determinística: CPF, CNPJ,
+# telefone, placa, e-mail, cartão, CEP, chassi, endereço, instrumento de
+# pagamento — e a marca de CORRETORA, que é vazamento entre tenants (§7) e não
+# some no mascaramento, porque a carta passaria a ser sobre aquela corretora.
+# Uma carta que contém um desses não é conhecimento: é o caso de uma pessoa, e
+# a presença do identificador é sinal de que a destilação falhou.
+#
+# `PII_QUE_SO_MASCARA` são as regras LEXICAIS — as que leem contexto e adivinham.
+# Elas erram, está medido acima e está documentado em meia dúzia de blocos do
+# próprio `templater.py`. Rejeitar por elas custa conhecimento real; mascarar
+# por elas não custa nada, porque o nome — se houver nome — já saiu do texto.
+#
+# ⚠️ O que isto NÃO afrouxa: as 38 regras continuam TODAS ligadas e TODAS
+# mascarando. O que muda é só o que a carta tocada por uma delas vira —
+# `pending_review` mascarada, em vez de `rejected_pii` com o texto cru guardado.
+PII_QUE_REJEITA = frozenset({
+    "{CPF}", "{CNPJ}", "{TELEFONE}", "{PLACA}", "{EMAIL}", "{CARTAO}",
+    "{VALIDADE}", "{CEP}", "{CHASSI}", "{ENDERECO}", "{LINHA_DIGITAVEL}",
+    "{PIX_COPIA_E_COLA}", "{PIX_FIM}", "{CORRETORA}",
+})
+PII_QUE_SO_MASCARA = frozenset({
+    "{NOME}", "{NUM}", "{NUMERO}", "{VALOR}", "{VALOR_RS}", "{CAMINHO}",
+    "{DATA}", "{PROTOCOLO}", "{SEGREDO}",
+})
+
+_PLACEHOLDER = re.compile(r"\{[A-Z_]+\}")
+
+
+def veredito_de_pii(texto: str, *,
+                    documento_publico: bool = False) -> Tuple[str, List[str]]:
+    """(texto a GUARDAR, identificadores encontrados). Determinístico.
+
+    O texto devolvido é sempre o mascarado — guarde ESTE, nunca o cru. Se a
+    lista voltar vazia, a carta é `pending_review`; se vier com algo, é
+    `rejected_pii` e a lista diz o quê, para o `pii_check` poder ser auditado.
+
+    ⚠️ `rotulo_de_campo=False` é obrigatório aqui e não é afrouxamento.
+    `_LABELED_VALUE` nasceu para ler TELA, onde cada campo ocupa uma linha, e
+    está ancorado em `^`. Uma carta é PROSA, e o `^` alcança a primeira palavra
+    dela sempre. 📊 Foi o que comeu 4 das 320:
+
+        "CORRECAO DE ACERVO: encerramento do canal…"  → "COR{VALOR}"
+        "Veículo 100% elétrico na Yelum não muda…"    → "Veículo {VALOR}"
+        "Assistencia 24h retirada na renovacao…"      → "Assistencia {VALOR}"
+
+    O próprio `templater.templatize` já documenta essa causa e já expõe o
+    parâmetro para desligá-la. As 38 regras de PII de verdade continuam ligadas.
+    """
+    from app.services.atlas.templater import templatize
+
+    cru = str(texto or "")
+    mascarado = templatize(cru, documento_publico=documento_publico,
+                           rotulo_de_campo=False)
+    antes = _PLACEHOLDER.findall(cru)
+    depois = _PLACEHOLDER.findall(mascarado)
+    achados = sorted({p for p in depois
+                      if depois.count(p) > antes.count(p) and p in PII_QUE_REJEITA})
+    return mascarado, achados
+
 _VAZIAS = {
     "as", "os", "das", "dos", "ele", "ela", "com", "sem", "que", "ser", "sao",
     "tem", "uma", "uns", "umas", "para", "por", "nao", "sim", "seu", "sua",

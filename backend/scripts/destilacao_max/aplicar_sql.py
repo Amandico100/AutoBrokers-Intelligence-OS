@@ -4,8 +4,9 @@ Este script não inventa regra nenhuma. Ele espelha `_store_card_sync` linha por
 linha, de propósito:
 
   * `card_hash` = md5 do texto em minúsculas  → a mesma carta nunca duplica
-  * texto entre 15 e 400 caracteres           → o mesmo corte
-  * `status` = pending_review, ou rejected_pii se o templatize mudaria o texto
+  * tamanho pela régua de `curadoria_cartas`  → o mesmo corte (40–1800)
+  * `status` por `curadoria_cartas.veredito_de_pii` — rejeita IDENTIFICADOR,
+    mascara heurística; o que é gravado é sempre o texto mascarado
   * `insurer_key` em minúsculas, vazio vira NULL
 
 Se alguma dessas regras mudar em produção, ela precisa mudar aqui no mesmo
@@ -35,11 +36,16 @@ import re
 import sys
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
-from mascarar import _carregar_servico, templatize  # noqa: E402
+from mascarar import _carregar_servico  # noqa: E402
 
 _CURADORIA = _carregar_servico("curadoria_cartas")
 assunto_da_carta = _CURADORIA.assunto_da_carta
 seguradora_do_fato = _CURADORIA.seguradora_do_fato
+# Régua de tamanho e veredito de PII: os MESMOS de `aplicar.py` e do destilador,
+# importados de `curadoria_cartas` — ver o bloco de lá. Aqui havia `15`/`400`
+# escritos à mão e um `templatize(t) == t`, que é o eixo errado (15/08/2026).
+fora_do_tamanho = _CURADORIA.fora_do_tamanho
+veredito_de_pii = _CURADORIA.veredito_de_pii
 
 # O Windows redireciona `>` na codepage ANSI (cp1252), não em UTF-8. Sem esta
 # linha, "apólice" e "ocorrência" saem corrompidos no arquivo .sql e entram
@@ -92,7 +98,7 @@ def main() -> int:
         return 2
     entrada = argumentos[0]
 
-    sessoes = cartas = puladas = 0
+    sessoes = cartas = puladas = descartadas = 0
     vistas: set = set()
     print("-- Gerado por scripts/destilacao_max/aplicar_sql.py")
     print(f"-- marca desta campanha: {MARCA}")
@@ -137,19 +143,36 @@ def main() -> int:
             # conversa carimbada nos oito fatos.
             candidata = str(d.get("seguradora") or "")
             for fato in (d.get("fatos_reutilizaveis") or [])[:8]:
-                texto = " ".join(str(fato or "").split())
-                if len(texto) < 15 or len(texto) > 400:
+                bruto = " ".join(str(fato or "").split())
+                # 🔴 O DESCARTE CONTA E DIZ O QUE PERDEU — 15/08/2026. Era um
+                # `continue` mudo com `15`/`400` escritos à mão, e foi assim que
+                # 📊 23 das 1.527 cartas da leva sumiram sem rastro nenhum.
+                motivo = fora_do_tamanho(bruto)
+                if motivo:
+                    print(f"[aplicar_sql] DESCARTADO por tamanho — {motivo} "
+                          f"sessao={sid[:8]} ramo={ramo}: {bruto[:90]}...",
+                          file=sys.stderr)
+                    descartadas += 1
                     continue
+                # O que vai para a tabela é o MASCARADO, e a rejeição é por
+                # identificador — não por "o mascarador encostaria". Ver
+                # `curadoria_cartas.veredito_de_pii`.
+                texto, achados = veredito_de_pii(bruto)
                 h = hashlib.md5(texto.lower().encode("utf-8")).hexdigest()
                 if h in vistas:
                     continue
                 vistas.add(h)
-                limpo = templatize(texto) == texto
-                status = "pending_review" if limpo else "rejected_pii"
+                limpo = not achados
+                status = "rejected_pii" if achados else "pending_review"
                 seg, prestadora = seguradora_do_fato(texto, candidata)
                 seg_sql = f"'{seg}'" if seg and re.fullmatch(r"[a-z0-9_-]{2,40}", seg) else "NULL"
                 extra = (f", \"prestadora\": \"{prestadora}\""
                          if prestadora and re.fullmatch(r"[a-z0-9_-]{2,40}", prestadora) else "")
+                if achados:
+                    extra += ", \"pii_achada\": [%s]" % ", ".join(
+                        f'"{a}"' for a in achados)
+                if texto != bruto:
+                    extra += ", \"mascarado\": true"
                 print(f"INSERT INTO knowledge_cards "
                       f"(card_hash, card_text, category, ramo, insurer_key, status, pii_check) "
                       f"VALUES ('{h}', {_citar(texto)}, {_citar(assunto_da_carta(texto))}, "
@@ -160,7 +183,8 @@ def main() -> int:
                 cartas += 1
 
     print("COMMIT;")
-    print(f"[aplicar_sql] {sessoes} sessões · {cartas} cartas · {puladas} linhas inválidas",
+    print(f"[aplicar_sql] {sessoes} sessões · {cartas} cartas · {puladas} linhas inválidas"
+          f" · {descartadas} descartadas por tamanho",
           file=sys.stderr)
     return 0
 

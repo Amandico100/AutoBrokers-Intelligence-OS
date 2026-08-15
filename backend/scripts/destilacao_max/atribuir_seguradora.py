@@ -60,7 +60,14 @@ sys.path.insert(0, AQUI)
 from exportar import _credenciais  # noqa: E402
 from mascarar import _carregar_servico, normalize_insurer_key  # noqa: E402
 
-seguradora_do_fato = _carregar_servico("curadoria_cartas").seguradora_do_fato
+_CURADORIA = _carregar_servico("curadoria_cartas")
+seguradora_do_fato = _CURADORIA.seguradora_do_fato
+# 🔴 A RÉGUA DE TAMANHO TEM DE SER A MESMA DA GRAVAÇÃO, senão este script não
+# acha a carta — 15/08/2026. Aqui havia `15`/`400` escritos à mão, a quarta
+# cópia do mesmo par. O hash é calculado a partir do texto, e quem usa uma régua
+# diferente da de `aplicar.py` simplesmente deixa de gerar o hash que existe no
+# banco: o sintoma seria "carta não encontrada", que soa como dado faltando.
+fora_do_tamanho = _CURADORIA.fora_do_tamanho
 
 
 def main() -> int:
@@ -68,7 +75,7 @@ def main() -> int:
 
     # hash da carta -> conjunto de seguradoras que a produziram
     de_quem: dict = collections.defaultdict(set)
-    linhas = 0
+    linhas = descartadas = 0
     for pasta in ("lotes", "lotes_autofleet"):
         for caminho in sorted(glob.glob(os.path.join(AQUI, pasta, "*.destilado.jsonl"))):
             with open(caminho, encoding="utf-8") as fh:
@@ -87,14 +94,21 @@ def main() -> int:
                         continue
                     for fato in (d.get("fatos_reutilizaveis") or [])[:8]:
                         texto = " ".join(str(fato or "").split())
-                        if len(texto) < 15 or len(texto) > 400:
+                        motivo = fora_do_tamanho(texto)
+                        if motivo:
+                            # O descarte CONTA. Um filtro mudo aqui não perde
+                            # carta, mas perde a LIGAÇÃO entre carta e sessão —
+                            # e o relatório diria "sem seguradora rastreável"
+                            # sem que ninguém soubesse que foi o corte.
+                            descartadas += 1
+                            print(f"  [descartado por tamanho] {motivo}: {texto[:80]}...")
                             continue
                         h = hashlib.md5(texto.lower().encode("utf-8")).hexdigest()
                         de_quem[h].add(seg)
 
     unicas = {h: list(s)[0] for h, s in de_quem.items() if len(s) == 1}
     ambiguas = sum(1 for s in de_quem.values() if len(s) > 1)
-    print(f"  {linhas} sessões lidas em disco")
+    print(f"  {linhas} sessões lidas em disco · {descartadas} fatos descartados por tamanho")
     print(f"  {len(de_quem)} cartas com seguradora rastreável")
     print(f"  {len(unicas)} com seguradora ÚNICA · {ambiguas} vistas em mais de uma "
           f"(ficam gerais, e é o certo)")

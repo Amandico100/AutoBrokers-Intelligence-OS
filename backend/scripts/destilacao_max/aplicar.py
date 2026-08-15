@@ -15,8 +15,9 @@ banco pela mesma conexão do exportador. O modelo pensa; o script carrega.
 à mão — é o caminho que só depende do MCP.
 
 As regras de gravação são as de `_store_card_sync`, sem inventar nada:
-md5 do texto em minúsculas, 15 a 400 caracteres, `rejected_pii` quando o
-templatize mudaria o texto, e a seguradora decidida por
+md5 do texto em minúsculas, tamanho e veredito de PII por `curadoria_cartas`
+(40 a 1.800 caracteres; `rejected_pii` só quando há IDENTIFICADOR, e o que se
+grava é sempre o texto mascarado), e a seguradora decidida por
 `curadoria_cartas.seguradora_do_fato` — a MESMA função do destilador. A carta
 entra como `pending_review`; quem publica no RAG é o publicador de
 `distill_once`.
@@ -78,11 +79,16 @@ import sys
 AQUI = os.path.dirname(os.path.abspath(__file__))
 sys.path.insert(0, AQUI)
 from exportar import _credenciais  # noqa: E402
-from mascarar import _carregar_servico, templatize  # noqa: E402
+from mascarar import _carregar_servico  # noqa: E402
 
 _CURADORIA = _carregar_servico("curadoria_cartas")
 assunto_da_carta = _CURADORIA.assunto_da_carta
 seguradora_do_fato = _CURADORIA.seguradora_do_fato
+# A RÉGUA DE TAMANHO E O VEREDITO DE PII VÊM DE LÁ — 15/08/2026. Eram dois
+# literais escritos à mão aqui (`15` e `400`) e um `templatize(t) == t`. Ver o
+# bloco de `curadoria_cartas`: quatro cópias do mesmo número não são uma regra.
+fora_do_tamanho = _CURADORIA.fora_do_tamanho
+veredito_de_pii = _CURADORIA.veredito_de_pii
 
 PREFIXO_MARCA = "destilacao_max"
 UUID = re.compile(r"[0-9a-fA-F-]{36}")
@@ -137,43 +143,71 @@ def _dono_por_texto(texto: str, candidata: str) -> tuple:
     return seg, ({"prestadora": prestadora} if prestadora else {})
 
 
-def _cartas_de(d: dict, sessao: str = "", marca: str = MARCA, dono=_dono_por_texto) -> list:
+def _cartas_de(d: dict, sessao: str = "", marca: str = MARCA, dono=_dono_por_texto,
+               temas_por_fato=None) -> list:
     ramo = str(d.get("ramo") or "outro")
     candidata = str(d.get("seguradora") or "")   # da SESSÃO — candidata, não veredito
+    temas_por_fato = (d.get("temas_por_fato") if temas_por_fato is None
+                      else temas_por_fato) or []
     saida = []
-    for fato in (d.get("fatos_reutilizaveis") or [])[:8]:
-        texto = " ".join(str(fato or "").split())
-        if len(texto) < 15 or len(texto) > 400:
-            # 🔴 O DESCARTE PASSA A CONTAR E A DIZER O QUE PERDEU — 15/08/2026.
-            #
-            # Este `continue` era mudo. Uma carta longa demais sumia sem log,
-            # sem contagem e sem rastro, e o acervo ficava parecendo completo.
-            #
-            # 📊 E o padrão é perverso: quanto mais COMPLETA a carta, maior a
-            # chance de morrer aqui. Uma lista de documentos de sinistro é longa
-            # PORQUE é completa — é exatamente o que a torna útil e o que a mata.
-            #
-            # ⚠️ Não mexi no limite. Primeiro medir, depois decidir (§9.2): um
-            # teto que eu mudasse antes de saber o volume seria palpite com
-            # consequência no RAG. A linha abaixo é o instrumento que faltava.
-            print(f"[aplicar] DESCARTADO por tamanho ({len(texto)} ch, "
-                  f"limite 15-400) sessao={sessao[:8]} ramo={ramo}: "
-                  f"{texto[:90]}...", file=sys.stderr)
+    for i, fato in enumerate((d.get("fatos_reutilizaveis") or [])[:8]):
+        bruto = " ".join(str(fato or "").split())
+        # 🔴 O DESCARTE CONTA E DIZ O QUE PERDEU — 15/08/2026.
+        #
+        # Este `continue` era mudo. Uma carta longa demais sumia sem log, sem
+        # contagem e sem rastro, e o acervo ficava parecendo completo.
+        #
+        # 📊 E o padrão é perverso: quanto mais COMPLETA a carta, maior a chance
+        # de morrer aqui. Uma lista de documentos de sinistro é longa PORQUE é
+        # completa — é exatamente o que a torna útil e o que a matava.
+        #
+        # O limite deixou de ser literal daqui: 📊 medido em 15/08/2026, o `15`
+        # nunca descartou nada (das 18.598 cartas do acervo, ZERO abaixo de 15)
+        # e o `400` matou 23 de 1.527 nesta leva, três delas inéditas. A régua
+        # agora é a de `curadoria_cartas`, 40–1800, a mesma do acervo.
+        motivo = fora_do_tamanho(bruto)
+        if motivo:
+            print(f"[aplicar] DESCARTADO por tamanho — {motivo} "
+                  f"sessao={sessao[:8]} ramo={ramo}: {bruto[:90]}...",
+                  file=sys.stderr)
             continue
-        limpo = templatize(texto) == texto
+        # O QUE VAI PARA A TABELA É O MASCARADO. Ver `curadoria_cartas`:
+        # rejeita identificador, mascara heurística. Não reescrevo a regra aqui
+        # — seria a quarta cópia dela, e a que ninguém olha é a que envelhece.
+        texto, achados = veredito_de_pii(bruto)
         seg, extras = dono(texto, candidata)
         if seg and not re.fullmatch(r"[a-z0-9_-]{2,40}", seg):
             seg = None
-        marcas = {"deterministic": limpo, "llm_instructed": True,
+        marcas = {"deterministic": not achados, "llm_instructed": True,
                   "por": marca, "sessao": sessao}
+        if achados:
+            marcas["pii_achada"] = achados
+        if texto != bruto:
+            marcas["mascarado"] = True
         marcas.update(extras or {})
-        saida.append({
+        linha = {
             "card_hash": hashlib.md5(texto.lower().encode("utf-8")).hexdigest(),
             "card_text": texto, "category": assunto_da_carta(texto), "ramo": ramo,
             "insurer_key": seg,
-            "status": "pending_review" if limpo else "rejected_pii",
+            "status": "rejected_pii" if achados else "pending_review",
             "pii_check": marcas,
-        })
+        }
+        # `temas` é `text[]` e vem do destilador por FATO, não por sessão — o
+        # subagente já disse de que trata cada um. Sem isto a carta nasce sem
+        # tema e depende de o backfill lexical adivinhar depois.
+        #
+        # ⚠️ E NÃO CAI PARA O `temas` DA SESSÃO quando o fato vem com lista
+        # vazia. 📊 Dois dos 23 fatos longos da leva 5 têm `temas_por_fato[i]`
+        # explicitamente `[]` com a sessão etiquetada: a carta da calibração de
+        # ADAS está numa sessão de `franquia`, e o tema da sessão descreve a
+        # CONVERSA, não este fato. Um tema errado é pior que nenhum, porque o
+        # filtro do RAG confia nele — é a mesma razão pela qual a seguradora da
+        # sessão é candidata e não veredito (§12.1: campo que mente sobre o que
+        # guarda). Vazio é uma resposta; palpite não é.
+        tema = temas_por_fato[i] if i < len(temas_por_fato) else None
+        if tema:
+            linha["temas"] = list(tema)
+        saida.append(linha)
     return saida
 
 

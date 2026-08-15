@@ -385,15 +385,26 @@ def _save_session_summary_sync(session_id: str, summary: Dict[str, Any]) -> None
 # Knowledge cards — filtro de PII em 2 camadas + fila de aprovação
 # ------------------------------------------------------------------ #
 def _card_pii_clean(text: str, *, documento_publico: bool = False) -> bool:
-    """Camada determinística: se o templatize mudaria o texto, tem PII.
+    """A carta pode ser guardada/publicada como está? Delega a régua única.
 
-    `documento_publico` só é ligado pelo caminho do acervo (carta destilada
-    de condição geral pública), onde a cifra é regra do produto e não dado de
-    um segurado. Ver o comentário longo em `templater._reservar`.
+    🔴 ISTO ERA `templatize(text) == text` — 15/08/2026, e era o eixo errado.
+    Qualquer coisa que o mascarador ENCOSTASSE reprovava a carta, e o mascarador
+    encosta em vocabulário de contexto. 📊 As 320 `rejected_pii` do acervo não
+    têm um CPF, um telefone, uma placa nem um nome entre elas.
+
+    A régua e o porquê inteiro moram em `curadoria_cartas.veredito_de_pii`.
+    Aqui ficou só a fachada booleana, para os chamadores que só querem o
+    veredito — quem vai GRAVAR chama `veredito_de_pii` direto, porque precisa do
+    texto mascarado, que é o que deve ir para a tabela.
+
+    `documento_publico` só é ligado pelo caminho do acervo (carta destilada de
+    condição geral pública), onde a cifra é regra do produto e não dado de um
+    segurado. Ver o comentário longo em `templater._reservar`.
     """
-    from app.services.atlas.templater import templatize
+    from app.services.curadoria_cartas import veredito_de_pii
 
-    return templatize(text, documento_publico=documento_publico) == text
+    _, achados = veredito_de_pii(text, documento_publico=documento_publico)
+    return not achados
 
 
 # `_chave_da_seguradora` vivia aqui e normalizava o nome da seguradora da
@@ -406,13 +417,23 @@ def _card_pii_clean(text: str, *, documento_publico: bool = False) -> bool:
 
 def _store_card_sync(fato: str, meta: Dict[str, Any]) -> Optional[str]:
     from app.core.database import get_supabase_client
-    from app.services.curadoria_cartas import assunto_da_carta, seguradora_do_fato
+    from app.services.curadoria_cartas import (assunto_da_carta, fora_do_tamanho,
+                                               seguradora_do_fato, veredito_de_pii)
 
     db = get_supabase_client()
-    text = " ".join(str(fato or "").split())
-    if len(text) < 15 or len(text) > 400:
+    bruto = " ".join(str(fato or "").split())
+    # 🔴 O DESCARTE CONTA E DIZ O QUE PERDEU — 15/08/2026. O `return None` era
+    # mudo: uma carta longa demais sumia sem log, sem contagem e sem rastro, e o
+    # acervo ficava parecendo completo. A régua é a de `curadoria_cartas`, a
+    # mesma dos outros três pontos de ingestão e a do acervo (40–1800).
+    motivo = fora_do_tamanho(bruto)
+    if motivo:
+        logger.warning("[carta] DESCARTADA por tamanho — %s: %s…", motivo, bruto[:90])
         return None
-    clean = _card_pii_clean(text)
+    # O QUE VAI PARA A TABELA É O TEXTO MASCARADO, sempre. Ver `veredito_de_pii`:
+    # com o mascarado guardado, nenhum dado pessoal entra no acervo por nenhum
+    # dos dois caminhos, e é isso que permite parar de rejeitar por heurística.
+    text, achados = veredito_de_pii(bruto)
     # A SEGURADORA É DO FATO, NÃO DA CONVERSA.
     #
     # Aqui chegava `meta["seguradora"]` — a companhia da SESSÃO INTEIRA — e ela
@@ -428,7 +449,14 @@ def _store_card_sync(fato: str, meta: Dict[str, Any]) -> Optional[str]:
     # acervo — um caminho só.
     chave, prestadora = seguradora_do_fato(
         text, meta.get("seguradora_candidata") or meta.get("seguradora"))
-    marcas: Dict[str, Any] = {"deterministic": clean, "llm_instructed": True}
+    marcas: Dict[str, Any] = {"deterministic": not achados, "llm_instructed": True}
+    if achados:
+        # QUAIS identificadores, não só "sujo". Sem isto a rejeição não pode ser
+        # auditada — foi por não guardar o motivo que as 320 ficaram de pé
+        # sozinhas depois que as regras que as derrubaram foram consertadas.
+        marcas["pii_achada"] = achados
+    if text != bruto:
+        marcas["mascarado"] = True
     if prestadora:
         # Prestadora atende VÁRIAS seguradoras. Em `insurer_key` ela faria o
         # filtro devolver a companhia errada; jogada fora, some um fato real.
@@ -442,7 +470,7 @@ def _store_card_sync(fato: str, meta: Dict[str, Any]) -> Optional[str]:
         "category": assunto_da_carta(text),
         "ramo": meta.get("ramo"),
         "insurer_key": chave,
-        "status": "pending_review" if clean else "rejected_pii",
+        "status": "rejected_pii" if achados else "pending_review",
         "pii_check": marcas,
     }
     try:

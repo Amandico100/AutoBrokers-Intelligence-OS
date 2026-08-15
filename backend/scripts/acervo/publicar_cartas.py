@@ -86,8 +86,20 @@ sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspa
 FACETAS = {"escopo", "exclusao", "limite", "franquia", "prazo", "documento",
            "definicao", "carencia"}
 
+# 🔴 A RÉGUA DEIXOU DE MORAR AQUI — 15/08/2026, e é o mesmo defeito que este
+# arquivo já tinha diagnosticado uma vez.
+#
+# Estes dois números estavam certos e eram os únicos certos: 📊 o caminho de
+# conversa usava 15–400 em QUATRO lugares, escritos à mão, na MESMA tabela.
+# Duas réguas para `knowledge_cards`, e a que matava era a outra — 23 cartas de
+# 1.527 na leva de 15/08, todas por passar de 400.
+#
+# Então o valor não mudou; mudou o DONO. Ele vive em `curadoria_cartas`, que já
+# era o dono das regras de carta, e os cinco pontos de ingestão importam de lá.
+# Os comentários abaixo continuam sendo a medição que JUSTIFICA cada número —
+# é daqui que ela veio, e é aqui que ela fica.
+#
 # Uma carta é uma ideia. Menos que isso não afirma nada.
-MIN_CARACTERES = 40
 
 # 🔴 O TETO MEDIA A COISA ERRADA — 09/08/2026, medido no ensaio seco da Allianz.
 #
@@ -112,7 +124,8 @@ MIN_CARACTERES = 40
 # numa mensagem — e a detecção de cópia vai para `conferir_ancoragem.py`, que
 # roda fora do servidor e **tem os pedaços na mão** para comparar. Cada guarda
 # no lugar onde ele tem a informação de que precisa.
-MAX_CARACTERES = 1800
+from app.services.curadoria_cartas import (  # noqa: E402
+    MAX_CARACTERES, MIN_CARACTERES)
 
 
 
