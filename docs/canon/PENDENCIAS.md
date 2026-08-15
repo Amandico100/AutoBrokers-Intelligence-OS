@@ -4820,6 +4820,37 @@ morrer.** Uma lista de documentos é longa porque é completa — é o que a tor
 de documentos é entregar meia lista, que é pior que nenhuma. E acrescentar
 contagem no descarte: um filtro que joga fora sem contar não pode ser auditado.
 
+### 📊 15/08/2026 — a conta fechada da leva inteira, com o instrumento ligado
+
+A contagem que faltava existe desde `aplicar.py:147`. Rodada sobre os **72
+lotes** (1.780 conversas, 1.527 fatos), ela mede o que antes era estimativa:
+
+```
+fatos vistos                    1.527
+descartados por tamanho            23   (1,5%)
+  por passar de 400 chars          23   ← TODOS. nenhum por ser curto demais
+  sobre lista de documentos         8
+```
+
+⚠️ **O piso é 15 e não descartou nada.** Em 1.527 fatos, zero ficaram abaixo
+dele — o limite inferior não está protegendo de nada que exista. Todo o
+descarte vem do teto, e a faixa "15–400" é, na prática, só o 400.
+
+E o recorte que importa para o acervo: das 23, **3 eram inéditas** — nenhuma
+outra carta das 18.400 chega perto delas (Jaccard < 0,22). Não é redundância
+que morreu no teto; é conhecimento que o acervo não tem por nenhuma outra via:
+
+| ineditismo | o que se perdeu |
+|---|---|
+| 0,22 | a sequência inteira do atendimento por mensagem automática da prestadora de vidros — número da solicitação, link de vistoria, pré-agendamento, agenda própria |
+| 0,17 | **quais seguradoras cobrem a calibração do ADAS** depois da troca do para-brisa (Zurich, Mapfre e HDI cobriam em março/2026; nas demais entra como custo à parte) |
+| 0,20 | caminhão que a empresa opera todo dia pode estar **em nome da locadora** e ficar fora da apólice de frota — conferir o proprietário no documento antes de abrir |
+
+As outras 20 têm equivalente no acervo (mediana de Jaccard 0,285), então o custo
+real do teto nesta leva são **3 cartas**, não 23. ⚠️ Isso não absolve o limite:
+absolve **esta** leva. As 20 cobertas continuam sendo as versões mais completas
+do mesmo fato, e é a versão pobre que ficou no RAG.
+
 ---
 
 ## P-171 · 🟡 Três respostas incompatíveis para "o link de vistoria expirou"

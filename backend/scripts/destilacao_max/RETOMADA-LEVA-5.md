@@ -292,15 +292,96 @@ ramo:  auto 823 · outro 16 · residencial 7 · vida 1
 Assistência subiu de ~poucos para **160** — o Founder tinha razão: os lotes mais
 recentes trazem mais assistência, e o que importava era classificar certo.
 
-## O QUE FALTA — a passada de poda, e só ela
+## ~~O QUE FALTA — a passada de poda, e só ela~~ · FEITO em 15/08/2026
 
-**Nada foi aplicado no banco.** O `aplicar.py` é o próximo passo, e antes dele:
+~~**Nada foi aplicado no banco.**~~ Os cortes do juiz foram aplicados (54), o
+juiz rodou sobre as três ondas, e a gravação aconteceu — **parcial de
+propósito**. Ver a seção final.
 
-1. Aplicar a **lista de cortes do juiz** (está escrita neste arquivo, acima):
-   a contradição auto×residencial, o fato inventado de `4399abd9`, a regra plana
-   de dias parados, 4 fracos e ~25 duplicatas.
-2. Rodar o **juiz sobre as ondas 2 e 3** (ele só auditou a onda 1).
-3. `conferir_indice.py` → `aplicar.py`.
+# ✅ LEVA 5 FECHADA — 198 cartas inéditas, 15/08/2026
+
+Estas 1.780 conversas **já tinham sido destiladas** em 29/07/2026, e as 1.934
+cartas daquela rodada estão publicadas. A pergunta desta noite não era "gravar
+ou não" — era **substituir ou somar**.
+
+## Por que NÃO substituir
+
+📊 Medido pelo juiz comparativo, e por três juízes cegos de qualidade:
+
+```
+substituir  ->  +336 inéditas  −596 sem equivalente  =  −260 cartas
+qualidade cega (3 juízes):  antiga 16 × nova 9
+```
+
+Trocar o acervo perderia 260 cartas líquidas e a redação preferida em 16 de 25
+pares. **Decisão do Founder: gravar só as inéditas.** As 1.934 antigas ficam
+publicadas e intocadas.
+
+## E o "336" não sobreviveu à medição
+
+📊 O 336 saiu de uma comparação contra as **1.934** cartas destas mesmas
+conversas. Refeito contra o acervo **inteiro** — 18.400 cartas, todos os status,
+incluindo as vindas das condições gerais:
+
+```
+candidatas (regras de _cartas_de)                    1.504
+  já cobertas (Jaccard >= 0,22)                      1.306   87%
+  INÉDITAS   (Jaccard <  0,22)                         198   13%
+```
+
+⚠️ **138 das "336 inéditas" não eram inéditas.** Duas coisas mudaram entre um
+número e outro — o alvo e o método —, então variei **uma por vez, com linha de
+controle** (§9.2). A linha A repete a medição herdada e tinha de devolver 336:
+
+| | alvo | método | inéditas |
+|---|---|---|---|
+| **A** · controle | 1.934 | top-1 (o do juiz) | **336** ✔ reproduz |
+| **B** | 1.934 | exato | 251 |
+| **C** | 18.400 | top-1 | 318 |
+| **D** · o gravado | 18.400 | exato | **198** |
+
+📊 **O método pesou mais que o alvo.** Só trocar top-1 por exato derruba 85
+(A→B); só trocar 1.934 por 18.400 derruba 18 (A→C). O top-1 escolhia UM
+candidato por soma de IDF e media o Jaccard só contra ele — e com 18.400 alvos
+o vizinho mais parecido quase nunca é esse, o que faz o corpo maior parecer
+inútil (−18) quando ele na verdade vale −53 (B→D).
+
+Controles do método exato: força bruta numa amostra de 40 discordou de 1, e o
+top-300 derrubou 7 das 205 do top-30. O D não usa heurística nenhuma — o índice
+invertido conta a interseção completa contra as 18.400.
+
+## O que ficou gravado
+
+```
+marca ......... destilacao_max_15_08_2026_ineditas   (marca própria)
+status ........ pending_review, 198 de 198           NÃO publicadas
+com temas ..... 139                                  coluna temas text[]
+com seguradora  8                                    bradesco 2 · hdi 2 · tokio · yelum · porto · mapfre
+ramos ......... auto 196 · vida 1 · residencial 1
+```
+
+⚠️ **`summary->'distilled'` das 1.780 sessões NÃO foi tocado.** Elas seguem
+marcadas `destilacao_max_29_07_2026` — 1.780 de 1.780, conferido depois da
+gravação. Sobrescrever apagaria o histórico daquela rodada, e a marca é o "não
+volte mais".
+
+A gravação é idempotente por construção (`on_conflict=card_hash,
+ignore_duplicates`) e isso foi **provado rodando duas vezes**: 198 antes, 198
+depois.
+
+## O que morreu no teto de 400 caracteres → P-170
+
+📊 Dos 1.527 fatos, **23 foram descartados por tamanho** — todos os 23 por
+passarem de 400 caracteres, **nenhum** por ficar abaixo de 15. Oito eram listas
+de documentos.
+
+⚠️ **3 dessas 23 eram inéditas** e não entraram no acervo por nenhuma via:
+a sequência do atendimento por mensagem automática da prestadora de vidros;
+**quais seguradoras cobrem a calibração do ADAS** depois da troca do para-brisa;
+e o caminhão em nome da locadora que fica fora da apólice de frota.
+
+O limite não foi tocado — medir primeiro, decidir depois. A conta completa e o
+que destrava estão em `docs/canon/PENDENCIAS.md` § P-170.
 
 ## Buracos de taxonomia que os destiladores acharam
 
