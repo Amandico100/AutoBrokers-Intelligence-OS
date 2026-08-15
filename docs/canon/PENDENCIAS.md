@@ -4690,3 +4690,66 @@ de novo.
 **O que custa esquecer:** eu já dei este assunto por resolvido uma vez, em voz
 alta. Um problema de segurança fechado por suposição continua aberto, e ninguém
 volta a olhar porque acha que foi feito.
+
+---
+
+## P-168 · 🔴 `INSURER_DISPATCH_LIVE=true` no ambiente contradiz a regra R1
+
+**Aberta em:** 15/08/2026 · **Dono:** 🧑 Founder decide
+
+📊 Lido no bloco de variáveis de `autobrokers-smith-api` / `smith-worker`:
+
+```
+INSURER_DISPATCH_LIVE=true
+```
+
+Em 14/08 eu fechei o **padrão** dessa variável no código (`2abe35b`), citando o
+Founder: *"não pode ser enviado nada até eu liberar"*. Mas **padrão de código não
+vence variável de ambiente** — e o ambiente diz `true`.
+
+⚠️ Registro sem afirmar a consequência: **não medi** o que exatamente esse `true`
+libera hoje, nem se algum caminho vivo chega a enviar. O que sei é que a intenção
+escrita e o estado do ambiente **discordam**, e discordância entre os dois é
+precisamente o tipo de coisa que ninguém descobre até sair uma mensagem.
+
+**O que destrava:** decidir qual dos dois é a verdade. Se a regra vale, a
+variável sai do EasyPanel. Se o envio já pode acontecer, o comentário no código
+está vencido e vira mentira para o próximo leitor (CLAUDE.md §9.3).
+
+**O que custa esquecer:** o freio que eu descrevi ao Founder como "fechado por
+construção" não está fechado no ambiente onde ele importa.
+
+---
+
+## P-167 (atualização) · A limpeza dos CPF foi DESTRAVADA — falta a promoção
+
+**15/08/2026 04:46 UTC.** Executei o re-tecer das **10 seguradoras** pelo
+endpoint `/api/admin/atlas/weave`. Resultado medido:
+
+| status | mapas | CPF | nomes de corretora |
+|---|---:|---:|---:|
+| **`observed`** (tecidos agora) | **10** | **0** | **0** |
+| `active` (os antigos) | 10 | 141 | 12 |
+| `retired` | 4 | 144 | 20 |
+| `superseded` | 276 | 2.287 | 234 |
+
+📊 **A correção funciona ponta a ponta em produção:** o tecido novo sai com zero
+CPF, zero nomes, e com os placeholders no lugar (`{CPF}`, `{TELEFONE}`).
+
+E a opção do guincho voltou:
+
+| | antes | depois |
+|---|---:|---:|
+| zurich | 1 | **4** |
+| tokio | 2 | **5** |
+| mapfre | 0 | **1** |
+| yelum | 0 | **1** |
+
+**O que falta, e é automático:** `higienizar_e_promover` roda de hora em hora,
+encontra os 10 `observed` limpos e os promove a `active`. Não há endpoint para
+antecipar — e não inventei um, porque o job existe e funciona.
+
+⚠️ **O que NÃO se resolve sozinho:** as **276 versões `superseded`** com 2.287
+CPF. Nada no produto as relê e nada as limpa. São passivo puro. **Decisão do
+Founder:** limpar (custa 276 reescritas de jsonb) ou apagar (§13.4 exige decisão
+explícita — não apago histórico sem ela).
