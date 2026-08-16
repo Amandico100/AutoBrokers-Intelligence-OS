@@ -177,6 +177,68 @@ def diagnosticar(job: Dict[str, Any], agora: Optional[datetime] = None) -> Optio
     if ev.get("entregue_ao_agente"):
         return None
 
+    # ----------------------------------------------------------------------
+    # SPEC-074 — o ESTADO DE NEGÓCIO decide o que dizer, antes do técnico.
+    #
+    # 🔴 O defeito que isto corrige: um job pode terminar `failed` com o pedido
+    # JÁ ABERTO na seguradora — o navegador caiu depois do clique que cria. O
+    # ramo `failed` abaixo diria ao segurado *"tentei e não consegui"*, sobre um
+    # atendimento que existe e vai receber visita de vidraceiro.
+    #
+    # É a pior frase possível: ela convida o segurado a pedir de novo.
+    # ----------------------------------------------------------------------
+    est = ev.get("vidros_estado") if isinstance(ev.get("vidros_estado"), dict) else {}
+    numero = str(est.get("codigo_atendimento") or ev.get("protocolo") or "").strip()
+
+    if est.get("estado") == "aguardando_escolha_do_segurado":
+        # 99%: o pedido nasceu e falta o segurado escolher loja ou domicílio.
+        # Isso NÃO é incidente — é o fluxo funcionando. Alertar suporte aqui
+        # treinaria a equipe a ignorar o Vigia.
+        return {
+            "motivo": "aguardando_escolha_do_segurado",
+            "para_o_segurado": (
+                f"Oi! {assunto.capitalize()} já está aberto na seguradora"
+                + (f" (nº {numero})" if numero else "")
+                + ". Falta só você escolher onde prefere fazer o serviço: "
+                  "um técnico vai até você, ou você leva numa loja credenciada. "
+                  "Qual fica melhor?"),
+            "para_o_suporte": (
+                f"🟢 VIGIA DO PORTAL: pedido ABERTO aguardando escolha do segurado "
+                f"(loja × domicílio). Nao e falha. Pedido: {assunto}"
+                + (f" · nº {numero}" if numero else "")),
+        }
+
+    if est.get("existe_algo_na_seguradora") and status in ("failed", "needs_human"):
+        return {
+            "motivo": "falhou_depois_de_abrir",
+            "para_o_segurado": (
+                f"Oi! {assunto.capitalize()} FOI aberto na seguradora"
+                + (f" — o número é {numero}. " if numero else ". ")
+                + "Só não consegui concluir a última etapa por aqui. Já passei "
+                  "para nossa equipe finalizar. Seu pedido está registrado. 🙏"),
+            "para_o_suporte": (
+                f"🟠 VIGIA DO PORTAL: o pedido EXISTE na seguradora e o job "
+                f"terminou `{status}`. NAO reexecute — reabrir cria um segundo "
+                f"atendimento. Pedido: {assunto}"
+                + (f" · nº {numero}" if numero else " · numero NAO lido")
+                + f"\nestado={est.get('estado')} "
+                  f"safe_to_retry={est.get('safe_to_retry_open')}\n"
+                + _dossie(job)).strip(),
+        }
+
+    if est.get("precisa_reconciliar"):
+        return {
+            "motivo": "maybe_committed",
+            "para_o_segurado": (
+                f"Oi! Estou confirmando com a seguradora se {assunto} foi aberto. "
+                "Te aviso em seguida — não precisa pedir de novo. 🙏"),
+            "para_o_suporte": (
+                f"🔴 VIGIA DO PORTAL: MAYBE_COMMITTED. A operacao pode ter "
+                f"acontecido no portal e a resposta se perdeu. NAO reexecute: "
+                f"consulte o atendimento antes. Pedido: {assunto}\n"
+                + _dossie(job)).strip(),
+        }
+
     if status == "done":
         return {
             "motivo": "concluiu_e_ninguem_soube",

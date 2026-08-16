@@ -255,6 +255,34 @@ def format_result(job: dict) -> str:
     status = str((job or {}).get("status") or "")
     ev = (job or {}).get("evidence") or {}
     protocolo = str(ev.get("protocolo") or "").strip()
+
+    # ----------------------------------------------------------------------
+    # SPEC-074 — o ESTADO DE NEGÓCIO vem antes do estado técnico.
+    #
+    # 🔴 O caminho API-first cria o pedido em DUAS fronteiras, e a segunda
+    # produz o `CodigoAtendimento` — que é o número que a tela mostra e que o
+    # extrator de texto grava em `evidence.protocolo`. Quando a journey roda
+    # pela API, o número chega em `evidence.vidros_estado`, não pelo texto.
+    #
+    # Sem esta ponte, um job que criou o pedido pela API e falhou depois cairia
+    # no ramo `failed` e diria "não consegui abrir" — exatamente o defeito que a
+    # SPEC-074 P1 descreve, e o pior que se pode dizer a alguém cujo pedido
+    # existe.
+    #
+    # A regra "o número vem primeiro" é preservada: este bloco só ACRESCENTA
+    # uma segunda fonte para o mesmo número, nunca desloca a checagem original.
+    # ----------------------------------------------------------------------
+    est = ev.get("vidros_estado") if isinstance(ev.get("vidros_estado"), dict) else {}
+    if not protocolo and est.get("tem_codigo_atendimento"):
+        protocolo = str(est.get("codigo_atendimento") or "").strip()
+    if not protocolo and est.get("existe_algo_na_seguradora"):
+        # Existe pedido e não temos o número: dizer "não abriu" seria mentira, e
+        # inventar um número seria pior. A frase fala a verdade incômoda.
+        return ("O pedido FOI aberto no portal, mas não consegui ler o número do "
+                "atendimento. NÃO reexecute — reabrir criaria um segundo pedido. "
+                "Avise o segurado que a solicitação existe e que o número virá "
+                "em seguida, e encaminhe para conferência humana.")
+
     if protocolo:
         passo7 = ev.get("passo7") if isinstance(ev.get("passo7"), dict) else {}
         recomendacao = str(passo7.get("recomendacao") or "").strip()
