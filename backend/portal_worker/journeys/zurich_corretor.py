@@ -700,15 +700,37 @@ async def login_check(page, params: Dict[str, Any],
         corretora = await _corretora_na_tela(page)
         evidence["zurich_corretora_na_tela"] = corretora or "(nao identificada)"
         rotulo = str(params.get("account_label") or "").strip()
-        # `principal` é o rótulo genérico das contas de login único: não há o
-        # que conferir. Um rótulo com nome de corretora, sim.
-        if corretora and rotulo and _norm(rotulo) not in ("principal", "default"):
-            if _norm(rotulo) != _norm(corretora):
-                return JourneyResult(
-                    status="needs_human",
-                    captured={"logged_in": True, "stage": "corretora_nao_confere"},
-                    message=(f"entrei na Zurich e a tela diz '{corretora}', mas esta "
-                             f"conta é de '{rotulo}' — NAO varro dado de outra empresa"))
+        # 🔴 SPEC-073 — a versão anterior tinha DOIS fail-opens, e o segundo era
+        # invisível:
+        #
+        #   1. `if corretora and ...` — não conseguir LER a corretora da tela
+        #      pulava a conferência e devolvia `done`. Falha de leitura virava
+        #      permissão, e é exatamente quando não se sabe que não se deve
+        #      seguir.
+        #   2. `principal` pulava a checagem. A premissa era "rótulo genérico =
+        #      login único", mas 📊 `principal` é o DEFAULT que o dashboard
+        #      grava (`portal-credentials/route.ts:67`) — ou seja, toda conta
+        #      criada pela tela nascia com a revalidação desligada, e 14 das 16
+        #      contas medidas estão assim.
+        #
+        # Agora: rótulo genérico continua sem ter o que comparar (é honesto),
+        # mas isso fica REGISTRADO como não-verificado em vez de passar por
+        # verificado. E rótulo nomeado com tela ilegível para.
+        from portal_worker.identidade import (
+            conferir_corretora_da_sessao, rotulo_e_generico,
+        )
+
+        erro_id = conferir_corretora_da_sessao(corretora, rotulo, portal="zurich")
+        evidence["identidade_corretora"] = {
+            "lida": bool(corretora),
+            "esperado_nomeado": not rotulo_e_generico(rotulo),
+            "verificado": not erro_id and not rotulo_e_generico(rotulo),
+        }
+        if erro_id:
+            return JourneyResult(
+                status="needs_human",
+                captured={"logged_in": True, "stage": "corretora_nao_confere"},
+                message=erro_id)
         return JourneyResult(status="done",
                              captured={"logged_in": True, "portal": "zurich_corretor",
                                        "corretora": corretora})

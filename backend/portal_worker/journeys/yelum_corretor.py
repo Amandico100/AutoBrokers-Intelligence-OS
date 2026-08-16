@@ -568,6 +568,36 @@ async def cobranca_sweep(page, params: Dict[str, Any], evidence: Dict[str, Any])
                       "contador": total_portal, "lidos": len(itens)},
             message=divergencia)
 
+    # ----------------------------------------------------------------------
+    # 🔴 GATE DE IDENTIDADE DE CORRETORA — SPEC-073.
+    #
+    # A busca acima usa `{"brokerlist": []}`, que é "sem filtro de corretora".
+    # Isso é o oposto do que a MAPFRE faz, e a MAPFRE só faz porque já mediu o
+    # estrago: 59 parcelas de uma empresa e 8 de outra na mesma leitura.
+    #
+    # Cada linha da Yelum traz `BrokerName`, e o extrator já o guarda em
+    # `corretora` — o dado para conferir estava na mão e era jogado fora.
+    #
+    # Não trocamos `brokerlist: []` por um id filtrado aqui: isso mudaria a
+    # consulta que hoje funciona, sem uma medição que prove o formato aceito.
+    # A tranca é a de saída, que é a mais forte de qualquer modo — ela confere o
+    # que VOLTOU, não o que foi pedido.
+    # ----------------------------------------------------------------------
+    from portal_worker.identidade import (
+        conferir_itens_da_corretora, marca_de_identidade,
+    )
+
+    rotulo = str(params.get("account_label") or "")
+    fora = conferir_itens_da_corretora(itens, campo="corretora",
+                                       esperado=rotulo, portal="yelum")
+    evidence["identidade_corretora"] = marca_de_identidade(
+        campo="corretora", itens=itens, esperado=rotulo, verificado=not fora)
+    if fora:
+        return JourneyResult(
+            status="needs_human",
+            captured={"logged_in": True, "stage": "corretora_divergente"},
+            message=fora)
+
     try:
         horas = int(params.get("horas_minimas_atraso") or 48)
     except (TypeError, ValueError):

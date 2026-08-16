@@ -880,6 +880,29 @@ async def cobranca_sweep(page, params: Dict[str, Any], evidence: Dict[str, Any])
             status="needs_human", captured={"logged_in": True, "stage": "sem_codigo_corretor"},
             message="entrei na Tokio mas o portal nao devolveu o codigo do corretor")
 
+    # 🔴 GATE DE IDENTIDADE — SPEC-073.
+    # `nomeParceiroNegocioPrimario` já era capturado em `evidence` e nunca
+    # comparado com o `account_label`: o dado para fechar o gate estava na mão,
+    # de graça, desde sempre. Conferir depois do login e antes de baixar
+    # qualquer relatório é o momento mais barato de descobrir que se entrou na
+    # empresa errada.
+    from portal_worker.identidade import conferir_corretora_da_sessao, rotulo_e_generico
+
+    rotulo_tk = str(params.get("account_label") or "")
+    lida_tk = str(usuario.get("nomeParceiroNegocioPrimario")
+                  or (evidence.get("tokio_usuario") or {}).get("corretora") or "")
+    erro_id = conferir_corretora_da_sessao(lida_tk, rotulo_tk, portal="tokio")
+    evidence["identidade_corretora"] = {
+        "lida": bool(lida_tk),
+        "esperado_nomeado": not rotulo_e_generico(rotulo_tk),
+        "verificado": not erro_id and not rotulo_e_generico(rotulo_tk),
+    }
+    if erro_id:
+        return JourneyResult(
+            status="needs_human",
+            captured={"logged_in": True, "stage": "corretora_divergente"},
+            message=erro_id)
+
     ramos = await listar_ramos(page, evidence)
     if not ramos:
         return JourneyResult(

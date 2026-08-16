@@ -25,16 +25,31 @@ export async function GET() {
   if (!ctx) return NextResponse.json({ error: 'Não autorizado' }, { status: 401 });
   const base = getBackendUrl();
   try {
-    const [pRes, cRes] = await Promise.all([
+    // SPEC-073 (Q3): a capacidade de cobranca vem DERIVADA do backend, nunca de
+    // um array literal na tela. `operacional` ja e a intersecao entre o que o
+    // registry sabe fazer e o que a imagem no ar realmente carrega -- entao um
+    // portal so aparece pronto quando esta pronto de verdade.
+    const [pRes, cRes, capRes] = await Promise.all([
       fetch(`${base}/api/portal/portals`, { headers: backendHeaders(), cache: 'no-store' }),
       fetch(`${base}/api/portal/credentials?company_id=${encodeURIComponent(ctx.companyId)}`, {
         headers: backendHeaders(),
         cache: 'no-store',
       }),
+      fetch(`${base}/api/portal/cobranca-capabilities`, {
+        headers: backendHeaders(),
+        cache: 'no-store',
+      }).catch(() => null),
     ]);
     const portals = (await pRes.json().catch(() => ({}))).portals || [];
     const credentials = (await cRes.json().catch(() => ({}))).credentials || [];
-    return NextResponse.json({ portals, credentials });
+    const cobranca = capRes
+      ? await capRes.json().catch(() => null)
+      : null;
+    return NextResponse.json({
+      portals,
+      credentials,
+      cobranca: cobranca || { operacional: [], degraded: true, degraded_reason: 'backend indisponivel' },
+    });
   } catch {
     return NextResponse.json({ error: 'Backend indisponível' }, { status: 502 });
   }

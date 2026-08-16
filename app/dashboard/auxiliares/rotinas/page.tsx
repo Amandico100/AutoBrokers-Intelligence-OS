@@ -56,10 +56,20 @@ type PortalOpcao = {
   automatizado: boolean;
 };
 
-// Espelha `portal_worker/journeys/portais_com_cobranca()`. Ficam nos dois lados
-// de propósito: o backend recusa o que não sabe varrer, e a tela não oferece o
-// que seria recusado. O relatório da rotina é quem prova qual dos dois mandou.
-const PORTAIS_COM_COBRANCA = ['allianz_corretor', 'hdi_corretor'];
+// 🔴 SPEC-073 (Q3) — aqui existia um array literal espelhando
+// `portais_com_cobranca()`. A intenção era boa e o resultado, não: o registry
+// cresceu para SEIS portais e esta cópia ficou em DOIS. Tokio, Yelum, MAPFRE e
+// Zurich tinham journey completa e testada, e a corretora via "não
+// automatizado". Capacidade construída, paga e invisível — e nenhum teste
+// guardava a sincronia, porque ninguém compara um array TS com uma função
+// Python.
+//
+// A correção não foi acrescentar quatro nomes. Foi **apagar a lista** e derivar
+// de `/api/dashboard/portal-credentials`, que devolve a interseção entre o que
+// o registry sabe fazer e o que a imagem no ar realmente carrega.
+//
+// Duas listas que precisam concordar sempre acabam discordando um dia. Uma só
+// não tem com quem discordar.
 
 function scheduleLabel(s: Routine['schedule']) {
   if (s?.kind === 'interval') return `a cada ${s.minutes} min`;
@@ -77,6 +87,9 @@ export default function RotinasPage() {
   const [runs, setRuns] = useState<Run[]>([]);
   const [notice, setNotice] = useState('');
   const [portais, setPortais] = useState<PortalOpcao[]>([]);
+  // O backend não conseguiu confirmar contra o runtime implantado. A tela avisa
+  // em vez de fingir que sabe.
+  const [cobrancaDegradada, setCobrancaDegradada] = useState(false);
   // SPEC-019 B — modal de criação/edição manual (paridade Claude Rotinas)
   const [editing, setEditing] = useState<Routine | 'new' | null>(null);
   const [saving, setSaving] = useState(false);
@@ -99,6 +112,14 @@ export default function RotinasPage() {
             .filter((c) => c.has_password)
             .map((c) => c.portal_key),
         );
+        // A capacidade vem do backend já resolvida contra o runtime implantado.
+        // Se o backend não conseguiu confirmar (`degraded`), nenhum portal é
+        // marcado como automatizado: dizer "não consegui confirmar" custa uma
+        // tentativa, dizer "está pronto" sem estar custa um job que morre.
+        const operacional = new Set<string>(
+          Array.isArray(j.cobranca?.operacional) ? j.cobranca.operacional.map(String) : [],
+        );
+        setCobrancaDegradada(Boolean(j.cobranca?.degraded));
         setPortais(
           ((j.portals || []) as { key: string; name: string; category: string; cred_kind?: string }[])
             .filter((p) => p.category === 'corretor')
@@ -107,7 +128,7 @@ export default function RotinasPage() {
               name: p.name,
               category: p.category,
               conectado: comCredencial.has(p.key) || p.cred_kind === 'public',
-              automatizado: PORTAIS_COM_COBRANCA.includes(p.key),
+              automatizado: operacional.has(p.key),
             })),
         );
       } catch {
@@ -162,9 +183,13 @@ export default function RotinasPage() {
   };
 
   const billingConfig = form.config?.kind === BILLING_KIND ? form.config : null;
+  // Rotina nova nasce marcando o que é operacional HOJE — derivado, não
+  // decorado. Rotina existente mantém exatamente o que a corretora escolheu:
+  // uma seguradora nova entrando no registry não pode ligar sozinha a cobrança
+  // de ninguém.
   const billingPortalKeys = billingConfig && Array.isArray(billingConfig.portal_keys)
     ? billingConfig.portal_keys.map((v) => String(v))
-    : PORTAIS_COM_COBRANCA;
+    : portais.filter((p) => p.automatizado && p.conectado).map((p) => p.key);
 
   // Liga/desliga UM portal sem mexer nos outros. A versão anterior trocava o
   // array inteiro a cada clique — era isso que impedia marcar dois.
@@ -431,6 +456,14 @@ export default function RotinasPage() {
                       <label className="mb-1 block text-xs font-medium text-muted-foreground">
                         Seguradoras varridas
                       </label>
+                      {cobrancaDegradada && (
+                        <p className="mb-2 rounded-md border border-amber-500/40 bg-amber-500/10 px-2 py-1.5 text-[11px] text-amber-600 dark:text-amber-400">
+                          Não foi possível confirmar quais seguradoras estão automatizadas
+                          no serviço em execução. Nenhuma aparece como pronta até a
+                          confirmação — isto é proposital: marcar como pronta sem conferir
+                          é o que faz um job morrer em produção.
+                        </p>
+                      )}
                       {portais.length === 0 ? (
                         <p className="text-[11px] text-muted-foreground">
                           Nenhum portal conectado ainda. Conecte em Personalização → Conectores → Portais.

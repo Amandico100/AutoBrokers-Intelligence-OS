@@ -484,6 +484,31 @@ def _sinais_do_codigo() -> dict:
     import os as _os
 
     sinais: dict = {"git_commit": _os.getenv("GIT_COMMIT") or "nao-injetado"}
+
+    # ----------------------------------------------------------------------
+    # SPEC-073 Bloco I — o modo do Tool Gateway precisa ser CONFERÍVEL.
+    #
+    # 📊 Medido em 16/08/2026: `TOOL_GATEWAY_MODE` não é definido em lugar
+    # nenhum do repositório — nem no `.env.example`, nem em compose, nem em
+    # manifesto. O valor vive só no painel do EasyPanel. Para descobrir se o
+    # Gateway estava em `shadow` ou em `off` foi preciso contar linhas de
+    # `tool_gateway_shadow_diffs` no banco de produção (51, entre 15/08 23:27 e
+    # 16/08 02:54) — uma consulta ao Supabase para responder "o que está ligado".
+    #
+    # Isso é caro e é frágil: em `off` a tabela não recebe nada, e "tabela vazia"
+    # tem duas explicações opostas — desligado, ou ligado e sem tráfego.
+    # Uma requisição ao /health passa a responder direto.
+    #
+    # 🔴 Só o MODO. Nenhum segredo, nenhuma decisão, nenhum conteúdo de diff.
+    # E esta SPEC não muda o modo nem faz cutover: o Gateway continua exatamente
+    # onde está, e a virada pertence à SPEC-075, depois dos gates dela.
+    # ----------------------------------------------------------------------
+    try:
+        from app.agents.gateway_cutover import modo_atual as _gw_modo
+
+        sinais["tool_gateway_modo"] = _gw_modo()
+    except Exception:  # noqa: BLE001
+        sinais["tool_gateway_modo"] = "indisponivel"
     try:
         from app.services import attendance_distiller as _d
 

@@ -2,7 +2,12 @@ import { NextRequest, NextResponse } from 'next/server';
 
 import { resolveSessionCompany, getSupabaseAdmin } from '@/lib/vault/server';
 import { assertSameOrigin } from '@/lib/admin/admin-auth';
-import { buildPortalJobRetryPatch, isRetryableHitlJob, sanitizePortalJob } from '@/lib/portal/hitl';
+import {
+  buildPortalJobRetryPatch,
+  isRetryableHitlJob,
+  motivoDeRecusaDeRetry,
+  sanitizePortalJob,
+} from '@/lib/portal/hitl';
 
 export const dynamic = 'force-dynamic';
 
@@ -95,7 +100,12 @@ export async function POST(req: NextRequest) {
   }
 
   if (!isRetryableHitlJob(row, ctx.companyId)) {
-    return NextResponse.json({ error: 'job_not_retryable' }, { status: 409 });
+    // O codigo seco sozinho fazia o operador tentar de novo por outro caminho.
+    // Quando a recusa e "o pedido ja existe", dizer isso E a informacao util.
+    return NextResponse.json(
+      { error: 'job_not_retryable', motivo: motivoDeRecusaDeRetry(row, ctx.companyId) },
+      { status: 409 },
+    );
   }
 
   const patch = buildPortalJobRetryPatch(new Date().toISOString(), row.evidence || {});

@@ -36,6 +36,88 @@ async def list_portals(x_key: Optional[str] = Header(default=None, alias="X-Auto
     return {"portals": res.data or []}
 
 
+@router.get("/cobranca-capabilities")
+async def cobranca_capabilities(
+    x_key: Optional[str] = Header(default=None, alias="X-AutoBrokers-Internal-Key"),
+):
+    """Quais portais a Cobrança SABE varrer — derivado, nunca decorado.
+
+    🔴 O defeito que isto corrige, medido em 16/08/2026:
+
+        registry (`portais_com_cobranca()`) ...... 6 portais
+        tela (`page.tsx:62` PORTAIS_COM_COBRANCA)  2 portais
+
+    Tokio, Yelum, MAPFRE e Zurich tinham journey completa e testada, e apareciam
+    como "não automatizado" para a corretora. Capacidade construída, paga e
+    invisível — e nenhum teste guardava a sincronia, porque a tela era um array
+    literal em TypeScript que ninguém comparava com o Python.
+
+    A correção não é atualizar o array. É **apagar o array** e derivar.
+
+    Duas verdades diferentes, e a distinção importa
+    ===============================================
+        `registry`  o que o CÓDIGO sabe fazer
+        `deployed`  o que a IMAGEM NO AR sabe fazer
+
+    Elas divergem de verdade: 📊 a P-149 registra a journey da MAPFRE existindo
+    no repositório e **não** na imagem implantada — um job dela terminava em
+    "journey desconhecida" com todos os testes verdes. Marcar a MAPFRE como
+    pronta por causa do registry seria repetir a mentira em outro lugar.
+
+    Por isso `operacional` é a INTERSEÇÃO, e é ela que a tela usa.
+
+    Sem conseguir falar com o portal-worker, devolve `degraded` e **nenhum**
+    portal como operacional. Preferir o silêncio ao otimismo: dizer "não
+    consegui confirmar" custa uma tentativa; dizer "está pronto" sem estar custa
+    um job que morre em produção.
+    """
+    _require_internal_key(x_key)
+
+    registry: list[str] = []
+    try:
+        from portal_worker.journeys import portais_com_cobranca
+
+        registry = list(portais_com_cobranca())
+    except Exception as e:  # noqa: BLE001
+        logger.warning("[PORTAL] registry indisponivel nesta imagem: %s", type(e).__name__)
+
+    deployed: Optional[list[str]] = None
+    degraded_reason = ""
+    base = (os.getenv("PORTAL_WORKER_URL") or "").strip().rstrip("/")
+    if base:
+        try:
+            import httpx
+
+            async with httpx.AsyncClient(timeout=4.0) as cli:
+                r = await cli.get(f"{base}/health")
+            if r.status_code == 200:
+                corpo = r.json() if r.content else {}
+                bruto = corpo.get("portais_com_cobranca")
+                if isinstance(bruto, list):
+                    deployed = [str(x) for x in bruto]
+                else:
+                    degraded_reason = "portal-worker antigo: /health sem portais_com_cobranca"
+            else:
+                degraded_reason = f"portal-worker respondeu {r.status_code}"
+        except Exception as e:  # noqa: BLE001
+            degraded_reason = f"portal-worker inacessivel ({type(e).__name__})"
+    else:
+        degraded_reason = "PORTAL_WORKER_URL nao configurada"
+
+    if deployed is None:
+        operacional: list[str] = []
+    else:
+        operacional = sorted(set(registry) & set(deployed))
+
+    return {
+        "registry": sorted(registry),
+        "deployed": sorted(deployed) if deployed is not None else None,
+        "operacional": operacional,
+        "degraded": deployed is None,
+        "degraded_reason": degraded_reason,
+    }
+
+
 @router.get("/credentials")
 async def list_credentials(
     company_id: str,
