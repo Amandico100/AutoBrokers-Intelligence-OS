@@ -5569,6 +5569,25 @@ janela autorizada. Depois: deploy com `PORTAL_DISCOVERY_MODE=false`,
 **O que custa esquecer:** declarar a SPEC-073 "provada em produção" sem ter
 tocado em produção — exatamente o defeito que a CLAUDE.md §9.1 registra.
 
+### ✅ 16/08/2026 — EXECUTADO. E achou um defeito que o offline não acharia
+
+O Founder implantou, a janela abriu e o canário rodou na Yelum, read-only, sem
+enviar WhatsApp. 📊 104 requests relevantes observados pelo profiler.
+
+**O canário pagou o próprio custo na primeira execução.** Ele encontrou o
+redator comendo o campo `recibo`: eu havia embrulhado o `evidence` inteiro em
+`redigir()`, e `recibo` virava `<redacted:cartao>-3`. Como `recibo` é a chave
+anti-duplicação do `billing_sent_log`, **toda execução concluiria que nada foi
+enviado** — e o segurado receberia o mesmo WhatsApp de novo, indefinidamente.
+Nenhum dano ocorreu porque a rotina estava inativa. Corrigido com
+`redigir_envelope()`, que sanitiza só as superfícies de diagnóstico e deixa o
+trabalho passar intacto.
+
+Esse defeito **não era achável offline**: as fixtures não tinham `recibo`, e o
+teste do redator provava que ele mascara — que era exatamente o problema.
+
+Achado secundário: zero candidatos de API nomeados → virou a [P-187](#p-187).
+
 ---
 
 ## P-187 · 🟡 O profiler não nomeia candidatos de API fora do portal de vidros
@@ -5596,3 +5615,140 @@ proteção.
 
 📊 Em vidros o mapa está correto (`abraseuatendimento.com.br`), que é onde a
 SPEC-074 precisa dele.
+
+---
+
+## P-188 · 🔴 Não existe teto de entradas por portal por janela de tempo
+
+**Aberta em:** 16/08/2026 · **Dono:** 🤖 execução (SPEC-075) · **Origem:** preocupação explícita do Founder
+
+> *"o cuidado com o número de entradas dentro dos portais das seguradoras para
+> não sermos bloqueados"*
+
+A SPEC-074 pôs tetos, e eles são reais — mas são **por sessão**:
+
+| Teto | Onde | Escopo |
+|---|---|---|
+| `MAX_CHAMADAS = 150` | `vidros_sessao.py` | uma sessão |
+| `MAX_RODADAS = 12` | `vidros_questionario.py` | um questionário |
+| idempotência `v2` | `portal_params.py` | impede o pedido repetido |
+
+**O que falta:** nenhum deles conta entradas **por portal, por corretora, por
+hora**. Dez jobs simultâneos da mesma corretora são dez sessões, cada uma com
+seu teto de 150 — 1.500 requisições que nenhum contador vê. Também não há
+backoff coordenado: se o portal começar a responder 429, cada job descobre
+sozinho, e os outros nove continuam batendo.
+
+📊 O risco não é hipotético neste projeto: o bloqueio Akamai medido em 10/08 é o
+que obrigou o `--headless=new`, e o User-Agent com `HeadlessChrome` medido em
+12/08 é a mesma família de problema. Bloqueio de portal é a falha que tira **a
+corretora inteira** do ar, não um job.
+
+**O que destrava:** 🤖 um contador em Redis com chave `(portal, company_id,
+janela)` e um lease que o worker precisa adquirir antes de abrir sessão — a
+infraestrutura de lock/lease já existe no Redis, não é motor novo. Mais backoff
+exponencial compartilhado ao ver 429/403.
+**O que custa esquecer:** ser bloqueado numa seguradora derruba todo o
+acionamento daquela corretora naquele portal, e a religação depende da
+seguradora, não de nós. É o único item da 074 que pode causar dano sem bug.
+
+---
+
+## P-189 · 🟠 Nenhum serviço injeta o SHA do build — deploy não é verificável
+
+**Aberta em:** 16/08/2026 · **Dono:** 🤖 execução
+
+📊 Medido em 16/08, depois de disparar os três deploys da SPEC-074:
+
+```
+portal-worker /health  ->  "build_sha": "unknown"
+smith-api     /health  ->  "git_commit": "nao-injetado"
+```
+
+O `Dockerfile` do portal-worker tem o estágio `gitinfo` e copia
+`build_sha.txt` — mas o valor chega `unknown`, então o estágio não enxerga o
+`.git` no contexto de build do EasyPanel.
+
+**Por que isso importa mais do que parece:** a SPEC-073 pediu explicitamente
+"build/git SHA real e verificável" no `/health`, e o que existe hoje **não é
+verificável**. Sem SHA, a única prova de que o deploy trocou é o `build_time`
+do portal-worker — e o `smith-api` não tem nem isso. A CLAUDE.md §9.1 nasceu de
+1h40 fora do ar porque um gate parou antes de ligar o servidor; não saber qual
+código está no ar é a mesma classe de cegueira.
+
+**O que destrava:** 🤖 passar o SHA como build-arg (`--build-arg
+GIT_SHA=$(git rev-parse HEAD)`) em vez de depender do `.git` no contexto, e
+acrescentar `build_time` ao `/health` do `smith-api`. Se o EasyPanel não
+permitir build-arg, gravar o SHA num arquivo versionado no próprio commit.
+**O que custa esquecer:** todo relatório futuro que disser "implantado e
+verificado" estará afirmando algo que ninguém pode conferir.
+
+---
+
+## P-190 · 🧑 O canário real do portal de vidros — não há como fazê-lo read-only
+
+**Aberta em:** 16/08/2026 · **Dono:** 🧑 Founder
+
+A SPEC-074 foi provada por **replay offline** contra fixtures extraídas de 58 MB
+de HAR real (`SessaoDeQuestionarioFalsa` roda a sequência medida da Porto até o
+`204`), mais 6 mutações dirigidas. Isso prova o contrato.
+
+**O que não prova:** que o portal hoje responde como respondia na captura.
+
+E aqui a 074 é diferente de todas as SPECs anteriores: **não existe canário
+read-only da fronteira material**. O preflight de apólice é read-only e já roda,
+mas ele não exercita o que precisa de prova. Exercitar de verdade significa
+`POST /atendimentos` — abrir um atendimento de vidro **no nome de um segurado**,
+num portal que **cobra por atendimento**. Não existe homologação do Maxpar
+disponível.
+
+**O que destrava:** 🧑 uma de duas coisas — (a) um caso real que o segurado
+realmente queira abrir, acompanhado ao vivo, comparando o `CodigoAtendimento`
+devolvido com o que a tela mostra; ou (b) credencial de homologação obtida junto
+à Maxpar/Autoglass.
+**O que custa esquecer:** o caminho DOM continua funcionando e é o que roda hoje,
+então o custo é de **confiança**, não de operação: sem isso, o caminho API-first
+não pode ser ligado com honestidade. Ver [P-191](#p-191).
+
+---
+
+## P-191 · 🟡 O caminho API-first nunca tocou o portal real, e por isso nasce desligado
+
+**Aberta em:** 16/08/2026 · **Dono:** 🧑 Founder (autorizar a janela) + 🤖 execução
+
+`PORTAL_VIDROS_API_FIRST` **nasce desligada** e foi testada em 10 valores de
+entrada: só `1|true|yes|on` ligam; `false`, `0`, vazio, `nao` e `maybe` deixam
+desligado. Com a flag off, `abrir_atendimento` é o mesmo código de sempre — o
+bloco novo é um `if` que não entra, e um `except` largo garante que erro no
+caminho novo nunca custe o acionamento.
+
+📊 O que o caminho API-first oferece, medido no HAR: descobrir a **ausência de
+cobertura num 400, antes de escrever qualquer coisa**, e uma chamada REST no
+lugar de uma navegação de tela inteira com todos os assets — o que ataca
+diretamente a [P-188](#p-188).
+
+**O que destrava:** o canário da [P-190](#p-190). Depois: ligar em **uma**
+corretora só, um caso acompanhado, e conferir se o `CodigoAtendimento` devolvido
+bate com o que a tela do portal mostra.
+**O que custa esquecer:** 258 linhas prontas e inertes. Não quebra nada parado —
+só não entrega o ganho.
+
+---
+
+## P-192 · 🟡 `tipo_atendimento_para()` só conhece a Porto, e isso é o que a evidência suporta
+
+**Aberta em:** 16/08/2026 · **Dono:** 🤖 execução, quando houver HAR de outra seguradora
+
+Eu havia relatado que `TipoAtendimento` era null em 100% dos casos — "fato
+negativo". 📊 Era generalização de dado parcial: o HAR da Yelum tinha só null, e o
+da Porto mostrou `1` e `2`. A SPEC estava certa e eu estava errado.
+
+A função hoje só devolve valor para a Porto, que é o alcance da medição. Para as
+demais seguradoras devolve `None`, que é o comportamento observado — mas
+"observado em uma captura" não é o mesmo que "é assim".
+
+**O que destrava:** 🤖 uma captura de HAR por seguradora no fluxo de vidros, lida
+com o mesmo método. O profiler já registra o suficiente.
+**O que custa esquecer:** se outra seguradora exigir `TipoAtendimento` e
+recebermos `None`, o pedido é recusado na fronteira 1 — falha limpa e visível, não
+silenciosa. Risco baixo, mas é dívida de medição, não decisão de projeto.

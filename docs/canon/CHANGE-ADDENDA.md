@@ -2656,3 +2656,129 @@ tentativa; dizer "está pronto" sem estar custa um job que morre em produção.
 Rotina já existente mantém exatamente os portais que a corretora escolheu — uma
 seguradora nova entrando no registry não liga a cobrança de ninguém sozinha.
 `tsc --noEmit` limpo.
+
+---
+
+## CA-043 · O roteador de canal de vidros saiu de quatro lugares para um — **ESSENCIAL**
+
+**SPEC-074** · 16/08/2026 · autorizado pela SPEC-074 §9 (fluxo ponta a ponta)
+
+### Problema
+
+A decisão *"isto vai para o portal de vidros ou é sinistro?"* estava escrita em
+quatro lugares independentes: o prompt de atendimento, o `insurer_dispatch_tool`,
+o `portal_tool` e o playbook. Quatro autores, quatro critérios, nenhum
+verificável.
+
+📊 O caso que expõe: *"quebrei o vidro na colisão"* contém as duas palavras.
+Quem inclui antes de excluir manda ao portal de vidros um caso que precisa de
+regulação de sinistro.
+
+### Decisão
+
+`services/vidros_flow.resolver_canal()` passa a ser a regra única, e a **exclusão
+vem antes da inclusão**. A SPEC-074 pedia o fluxo ponta a ponta; consolidar a
+decisão em vez de escrever a quinta cópia é o que a CLAUDE.md §5 exige.
+
+### Custo e risco
+
+Não remove os textos dos quatro lugares — remove a **decisão** deles. Os
+chamadores passam a perguntar à função. Provado pela mutação M4: mandar tudo ao
+portal acende 2 vermelhas, e o controle prova que os dois vereditos diferem.
+
+---
+
+## CA-044 · Um pedido por lateralidade: `separar_itens` é conservador de propósito — **ESSENCIAL**
+
+**SPEC-074** · 16/08/2026
+
+### Problema
+
+O portal diz, em texto presente em todas as telas, que permite *"apenas a SELEÇÃO
+DE 1 (UM) ITEM POR ATENDIMENTO"*, e no passo 1 que *"se o item possuir
+lateralidade será necessário abrir uma nova solicitação"*. Quem quebrou os dois
+vidros precisa de **dois** pedidos.
+
+### Decisão
+
+`separar_itens()` separa quando a lateralidade é **explícita** ("motorista e
+carona") e **não separa** em plural vago ("quebraram os vidros"), devolvendo um
+item e deixando a pergunta para o atendente.
+
+### Por que conservador, e não esperto
+
+Cada atendimento é cobrado. Errar para mais abre um pedido que o segurado não
+pediu, no nome dele, com custo. Errar para menos gera uma pergunta. As duas
+pontas estão testadas, inclusive o controle do plural vago.
+
+### Custo e risco
+
+Uma conversa a mais em casos ambíguos. É o lado barato de errar.
+
+---
+
+## CA-045 · A frase de resultado passa a ler estado de negócio, não status técnico — **BLOCKER**
+
+**SPEC-074** · 16/08/2026
+
+### Problema
+
+`format_result` decidia o que dizer olhando o status técnico do job. Com o
+caminho API-first, o número do pedido chega em `evidence.vidros_estado`, não no
+texto raspado da tela. Sem a ponte, um job que **criou o pedido** e caiu depois
+diria *"não consegui abrir"* — a pior frase possível para alguém cujo pedido
+existe, porque convida a pedir de novo, e o portal cobra por atendimento.
+
+### Decisão
+
+`format_result` lê `evidence["vidros_estado"]` **antes** do switch de status
+técnico, e o Vigia ganhou três ramos de estado de negócio antes dos ramos
+`done`/`failed`.
+
+Quando o pedido existe mas o número não foi lido, a frase diz a verdade
+incômoda: *"FOI aberto, mas não consegui ler o número. NÃO reexecute."* Não
+inventa número — o teste prova que não há dígito algum na saída.
+
+### Fail-closed, e o controle
+
+Job sem `vidros_estado` cai no ramo antigo, idêntico. Protocolo lido do texto
+continua tendo prioridade. Sem pedido nenhum, a frase honesta de falha
+permanece. Os três controles estão na matriz (V06, V07).
+
+### Custo e risco
+
+Classificado BLOCKER porque a alternativa não é uma frase feia: é o segurado
+abrindo o segundo pedido pago.
+
+---
+
+## CA-046 · O caminho API-first entra desligado — **VALIOSA**
+
+**SPEC-074** · 16/08/2026 · previsto na SPEC-074 §27
+
+### Problema
+
+📊 A mineração de 58 MB de HAR mostrou que o portal é API-first nativo: 34
+endpoints REST sob o AngularJS. A API devolve estruturado o que a tela obriga a
+adivinhar — catálogo de peças, causas por peça, próxima pergunta, franquia e,
+principalmente, a **ausência de cobertura num 400, antes de qualquer escrita**.
+
+### Decisão
+
+O caminho existe, atrás de `PORTAL_VIDROS_API_FIRST`, **desligada por padrão**.
+Devolver `None` é resposta legítima: o que a API não resolver com certeza cai
+para o navegador, que continua sendo a autoridade de último recurso. Um `except`
+largo garante que erro no caminho novo nunca custe o acionamento de alguém com o
+carro parado.
+
+### Por que não ligar agora
+
+Não existe canário read-only de fronteira material neste portal — exercitar de
+verdade significa abrir um pedido pago no nome de um segurado. Ligar sem isso
+seria afirmar em produção o que só foi provado em replay. Ver P-190 e P-191.
+
+### Custo e risco
+
+258 linhas inertes. Não quebram nada paradas; só não entregam o ganho. A mutação
+M6 (flag nascendo ligada) acende vermelha, então "nasce desligada" é propriedade
+testada, não convenção.
