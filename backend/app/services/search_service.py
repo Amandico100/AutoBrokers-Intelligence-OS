@@ -468,10 +468,8 @@ class SearchService:
                 from .knowledge_scope import (
                     ORCAMENTO_GLOBAL,
                     build_global_search_kwargs,
-                    faceta_da_pergunta,
                     merge_rag_results,
                     seguradora_da_pergunta,
-                    temas_da_pergunta,
                 )
 
                 # A pergunta diz de qual companhia se trata? Então a regra de
@@ -481,18 +479,42 @@ class SearchService:
                 # continuam respondendo tudo.
                 da_pergunta = seguradora_da_pergunta(original_query)
 
-                # E a pergunta pede uma FACETA ou um TEMA? SPEC-072 Bloco 1,
-                # fechando P-142 e P-177: os dois rótulos tinham escritor e
-                # nenhum leitor. Mesma regra de dois braços — 📊 12.534 cartas
-                # não têm faceta e 4.083 não têm tema, e nenhuma pode sumir.
+                # 🔴 A FACETA E O TEMA NÃO ENTRAM AQUI COMO `must` — 15/08/2026
+                # =============================================================
+                # O leitor existe (`_filtro_de_faceta`, `_filtro_de_temas`), com
+                # dois braços e testado. O que NÃO pode existir é ele NARROW.
                 #
-                # ⚠️ As duas são conservadoras de propósito e reconhecem UM valor
-                # cada (`documento` / `documentacao`). O porquê está em
-                # `knowledge_scope._APELIDOS_DE_FACETA`, e resume-se a isto:
-                # `escopo` e `exclusao` são um PAR, e filtrar por um esconde o
-                # outro — que é o oposto do que a faceta existe para fazer.
-                faceta_pedida = faceta_da_pergunta(original_query)
-                temas_pedidos = temas_da_pergunta(original_query)
+                # SPEC-070 §5.1:304 é explícita, e é o canon:
+                #
+                #     "E `null` passa em todo filtro, NUNCA ELIMINA. Rótulo dá
+                #      COTA E PRIORIDADE; só fato verificável (seguradora,
+                #      vigência, documento) elimina candidato."
+                #
+                # Um `must` faz o rótulo eliminar. 📊 E a medição mostra o
+                # tamanho do estrago, porque o braço "OU ausente" não protege
+                # quem TEM outro rótulo:
+                #
+                #   0 de 5.396 cartas do acervo têm faceta ausente — lá o
+                #     segundo braço não resgata ninguém, e `faceta='documento'`
+                #     vira um corte duro que esconde as outras 5.016
+                #   201 de 380 (53%) das cartas com `faceta='documento'` têm o
+                #     tema `documentacao` — passar os dois no mesmo `must` é um
+                #     AND sobre rótulos que discordam em 47%
+                #
+                # O caso concreto que fecha o argumento: a carta da Porto que
+                # diz "não há cobertura se quem dirigia estava com a CNH
+                # suspensa, cassada ou vencida" tem `faceta='exclusao'`. Ela é
+                # exatamente o que o segurado precisa ouvir ao perguntar sobre
+                # documentos — e um filtro `faceta='documento'` a esconde.
+                #
+                # A FORMA CERTA, e ela é a que o canon já descreve: uma TERCEIRA
+                # linha de `ORCAMENTO_GLOBAL` com cota própria para a faceta
+                # pedida — que ACRESCENTA cartas de documento sem REMOVER
+                # nenhuma. Está proposto no relatório do Bloco 1 e depende de
+                # decisão do Founder (CLAUDE.md §10.3 — conflito canônico).
+                #
+                # Até lá, os dois ficam desligados aqui de propósito. A
+                # infraestrutura fica pronta e inerte; ninguém perde carta.
 
                 # 🔴 UMA BUSCA POR FAIXA — SPEC-070 §6.
                 #
@@ -514,8 +536,7 @@ class SearchService:
                         top_k=cota,
                         score_threshold=0.0,
                         **build_global_search_kwargs(
-                            carrier_slug=da_pergunta, namespace=faixa,
-                            faceta=faceta_pedida, temas=temas_pedidos),
+                            carrier_slug=da_pergunta, namespace=faixa),
                     )
                     logger.info(
                         f"[Search] faixa global '{rotulo}' ({'+'.join(faixa)}): "

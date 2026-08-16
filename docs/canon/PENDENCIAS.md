@@ -5200,3 +5200,62 @@ O escritor usa `if card.get("temas")`, que é falso para `[]`. Há teste para is
 
 📊 Efeito medido do segundo braço: **4.083 cartas sem tema + 6.797 trechos de
 contrato** (que nunca terão tema) continuam respondendo.
+
+---
+
+## P-178 · 🔴 O leitor de faceta existe, está testado e está DESLIGADO — falta a forma certa
+
+**Aberta em:** 15/08/2026 · **Dono:** 🧑 **Founder decide** · 🤖 execução implementa
+**Origem:** juiz crítico do SPEC-072 Bloco 1. Conflito canônico — CLAUDE.md §10.3.
+
+O filtro de faceta e o de temas foram construídos, testados com mutação, e a
+**fiação foi revertida antes de qualquer deploy**. O motivo:
+
+**SPEC-070 §5.1:304** — *"`null` passa em todo filtro, **nunca elimina**. Rótulo
+dá **cota e prioridade**; só fato verificável elimina candidato."*
+
+Um `must` faz o rótulo eliminar. E 📊 **0 de 5.396 cartas do acervo têm faceta
+ausente** — o braço "OU ausente" protege quem não tem rótulo, e no acervo todo
+mundo tem. Lá o filtro esconde 5.016 cartas, incluindo a da Porto que diz *"não
+há cobertura se quem dirigia estava com a CNH suspensa, cassada ou vencida"* —
+exatamente o que o segurado precisa ouvir ao perguntar sobre documentos.
+
+**A forma certa, já proposta:** uma terceira linha de `ORCAMENTO_GLOBAL` com cota
+própria, que **acrescenta** cartas de documento sem **remover** nenhuma. O
+detalhe está no addendo de CA-040 em `CHANGE-ADDENDA.md`.
+
+**O que destrava:** decisão de arquitetura de busca. Custa um `search_similar` a
+mais por pergunta documental (mesmo embedding) e um balde novo em `COTA_FINAL`.
+
+⚠️ **E ela tem um pré-requisito medido:** 📊 `faceta` e `temas` discordam em
+**47%** (só 201 das 380 cartas com `faceta='documento'` têm o tema
+`documentacao`). Ligar os dois juntos, de qualquer forma, antes de reconciliar,
+acha 53% do que deveria. A reconciliação é o primeiro item do Bloco 6.
+
+**O que custa esquecer:** a infraestrutura fica pronta e inerte. Não quebra nada
+— e não entrega nada. As 380 cartas de documento continuam dependendo do BM25
+casar a palavra por sorte, que é o problema que a SPEC-072 existe para resolver.
+
+---
+
+## P-179 · 🟢 O `COMMENT` da coluna `temas` não conhece `documentacao`
+
+**Aberta em:** 15/08/2026 · **Dono:** 🤖 execução
+
+`20260815_02_a_carta_ganha_tema.sql` documenta os valores da coluna e lista
+**13**: reparo_oficina, vistoria, pecas, terceiro, franquia, carro_reserva,
+indenizacao, reembolso, perda_total, boletim_ocorrencia, funilaria, regulacao,
+endosso.
+
+📊 `documentacao` **não está lá** — e tem **2.786 cartas publicadas**, é o tema
+que a SPEC-072 inteira usa, e está em `backfill_temas.py:35`. Medi 24 temas
+vivos no banco; o COMMENT conhece 13.
+
+⚠️ **Não se conserta editando a migration:** ela já foi aplicada, e
+`MIGRATIONS-AUTHORITY.md` §8.8 proíbe alterar migration aplicada — *"corrigir
+sempre com migration nova"*. Vai junto com a migration do Bloco 6, que já toca
+`knowledge_cards`.
+
+**O que custa esquecer:** quem for conferir a documentação autoritativa da coluna
+conclui que o único tema que a SPEC-072 filtra é ilegal. É um `COMMENT` que
+mente, e §12.1 manda consertar o campo, não o texto.

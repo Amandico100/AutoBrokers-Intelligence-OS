@@ -365,7 +365,11 @@ def main() -> int:
         try:
             res = (db.client.table("knowledge_cards")
                    .upsert(linha, on_conflict="card_hash").execute())
-            card_id = (res.data or [{}])[0].get("id")
+            # A LINHA INTEIRA, não só o id. O PostgREST devolve a representação
+            # completa no upsert, e é de lá que sai o `temas` — ele NÃO está em
+            # `linha`, que é o dict de escrita. Ver o comentário abaixo.
+            gravada = (res.data or [{}])[0]
+            card_id = gravada.get("id")
         except Exception as exc:  # noqa: BLE001
             falhas.append(f"banco: {type(exc).__name__} — {linha['card_text'][:60]}")
             continue
@@ -378,11 +382,29 @@ def main() -> int:
         # falha no banco deixaria o vetor no Qdrant sem dono — impossível de
         # despublicar depois, porque `despublicar_carta_sync` procura por
         # `card-<id>` e não haveria id.
+        # 🔴 ESTE DICT E A LISTA DO QUE SOBREVIVE — 15/08/2026 (SPEC-072).
+        # `insert_embeddings` faz upsert de PONTO INTEIRO, nao `set_payload`, e
+        # este script republica TODA carta aprovada em TODA rodada (nao ha "pula
+        # se ja publicada"). Entao o que nao esta aqui e apagado do indice.
+        #
+        # ⚠️ `temas` faltava, e sem resgate: a `faceta` sobrevive porque tambem
+        # mora em `pii_check` e `publish_card_sync` a le de la; `temas` nao tem
+        # segunda casa. Uma rodada deste script apagaria o tema das 5.394 cartas
+        # de acervo. E o dict e montado A MAO, entao ele nao herda o conserto
+        # dos selects dos outros tres republicadores — foi o quarto escritor,
+        # esquecido justamente por nao ter select.
+        #
+        # ⚠️ E ele vem de `gravada`, NAO de `linha`: `linha` e o dict de ESCRITA
+        # e nunca teve `temas` — lê-lo de la daria `None` sempre, e o conserto
+        # seria so aparencia. As cartas do acervo recebem tema por backfill
+        # DEPOIS da primeira publicacao, entao na primeira rodada e `None` mesmo
+        # (chave omitida, que e o certo) e nas seguintes vem preenchido.
         ok = publish_card_sync({"id": card_id, "card_text": linha["card_text"],
                                 "insurer_key": linha["insurer_key"], "ramo": linha["ramo"],
                                 "category": linha["category"],
                                 "source_unit_id": linha["source_unit_id"],
-                                "faceta": faceta})
+                                "faceta": faceta,
+                                "temas": gravada.get("temas")})
         if ok:
             indexadas += 1
         else:

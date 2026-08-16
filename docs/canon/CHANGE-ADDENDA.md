@@ -2390,3 +2390,106 @@ sobre os filtros irmaos seguem verdes.
 **ROLLBACK:** `git revert`. Os filtros sao aditivos e so entram quando a pergunta
 pede; `faceta=None`/`temas=None` devolve exatamente o comportamento anterior — e
 ha teste de controle provando isso.
+
+### 🔴 15/08/2026 — O JUIZ DERRUBOU A FIACAO. O `must` CONFLITA COM O CANON.
+
+O CA-040 acima foi submetido a juiz adversarial e **a parte que ligava o filtro
+na busca global nao sobreviveu**. A entrega foi revertida na mesma sessao, antes
+de qualquer deploy. Registrado aqui porque o erro e de PROJETO, nao de codigo, e
+o proximo a ler precisa do motivo.
+
+**O conflito, literal.** SPEC-070 §5.1:304-305:
+
+    "Nao casou nenhuma -> `faceta = null`. E `null` passa em todo filtro, NUNCA
+     ELIMINA. Rotulo da COTA E PRIORIDADE; so fato verificavel (seguradora,
+     vigencia, documento) elimina candidato."
+
+Um `must` faz o rotulo **eliminar**. Eu li o aviso de P-142 sobre os dois bracos,
+implementei os dois bracos, e conclui que estava protegido. Estava protegido
+contra o caso ERRADO.
+
+**📊 O que a medicao mostrou, e ela e devastadora para o desenho:**
+
+```
+faceta AUSENTE nas 5.396 cartas do acervo ........ 0   (ZERO)
+```
+
+O braco `IsEmptyCondition` protege quem **nao tem** rotulo. No acervo — que e a
+populacao inteira desta SPEC — **todo mundo tem**. La o filtro vira um
+`faceta == 'documento'` duro que esconde as outras 5.016 cartas.
+
+O caso concreto que fecha o argumento, medido em `porto/auto_CARTAS.jsonl`,
+`faceta='exclusao'`:
+
+    "nao ha cobertura se quem dirigia estava sem habilitacao legal, ou com a
+     CNH suspensa, cassada, vencida"
+
+E exatamente o que o segurado precisa ouvir ao perguntar sobre documentos. Um
+filtro `faceta='documento'` a esconde.
+
+**E o segundo defeito, que e meu e da SPEC ao mesmo tempo:** os dois rotulos
+entravam no MESMO `must`, virando um AND. 📊 `faceta` e `temas` discordam em
+**47%** — so 201 das 380 cartas com `faceta='documento'` tem o tema
+`documentacao`. A propria SPEC-072 §7 lista isso como risco aberto e o §Bloco 6
+manda "reconciliar ANTES do backfill". **Eu liguei o AND antes da reconciliacao
+que a minha propria SPEC exige.**
+
+⚠️ E o teste nao pegava, porque a FIXTURE correlacionava os dois rotulos em
+100%. Corrigida para discordar, ela agora mede o estrago e o teste o afirma.
+
+### O que ficou, e o que saiu
+
+```
+FICA   _filtro_de_faceta / _filtro_de_temas    corretos, dois bracos, testados
+FICA   params em search_similar                aditivos, so agem se pedidos
+FICA   ("temas", KEYWORD) no indice
+FICA   ESCRITOR de temas                       + o 4o escritor, publicar_cartas.py
+FICA   faceta_da_pergunta / temas_da_pergunta
+SAI    a fiacao em search_service e langchain_service
+```
+
+A infraestrutura fica **pronta e inerte**. Ninguem perde carta, e nada precisa
+ser reescrito quando a forma certa for decidida.
+
+### A FORMA CERTA — proposta, nao executada (🧑 decisao do Founder)
+
+O canon ja descreve o mecanismo: **cota e prioridade**. E a arquitetura ja tem
+onde — `ORCAMENTO_GLOBAL` roda uma busca por faixa com orcamento proprio.
+
+    ORCAMENTO_GLOBAL = (
+        ("normativo", ["normative"], 12),
+        ("cartas",    ["cards", "canon"], 12),
+        ("documento", ["normative", "cards"], 6),   <- NOVA, so quando a
+    )                                                  pergunta pede faceta
+
+Uma terceira linha, com `faceta=<pedida>` e cota propria, **ACRESCENTA** cartas
+de documento sem **REMOVER** nenhuma. O `merge_rag_results` dedupe, e
+`selecionar_com_cota` ja sabe dividir vagas por balde.
+
+⚠️ Custa um `search_similar` a mais por pergunta documental (mesmo embedding),
+e exige um balde novo em `COTA_FINAL`. Nao executei: e mudanca de arquitetura de
+busca, e a CLAUDE.md §10.3 manda parar e registrar em conflito canonico.
+
+### O resto do veredito do juiz, aceito e corrigido
+
+- **`publicar_cartas.py:381`** era um QUARTO escritor, esquecido por nao ter
+  select: monta o dict a mao e nao passava `temas`. E republica toda carta em
+  toda rodada. Corrigido — e o valor vem de `res.data[0]` (a linha que o
+  PostgREST devolve), nao de `linha`, que e o dict de ESCRITA e nunca teve
+  `temas`. Ler de `linha` daria `None` sempre e o conserto seria so aparencia.
+- **Comentario falso** em `_filtro_de_temas`: eu afirmei que `IsEmptyCondition`
+  nao alcanca `[]`. Alcanca — a doc do Qdrant diz "does not exist, or has `null`
+  or `[]` value". O proprio teste ja contradizia. Corrigido, com o motivo real.
+- **Duas guardas mortas** em `knowledge_scope`: o ramo `len(apelido) < 6` nunca
+  executa (o menor apelido tem 9 chars) e `len(achadas) == 1` nunca desempata
+  (todos os valores mapeiam para um so). Ficam — a segunda faceta as acorda —
+  mas a docstring passou a dizer que estao INERTES, em vez de vende-las como
+  garantia.
+- **Uma tautologia no teste** (`len(juntos) <= min(...)`, impossivel de falhar
+  com `must` = `all()`) trocada pela medicao do AND.
+- **Nomes que mentiam:** `apagados_faceta`/`apagados_tema` contavam
+  SOBREVIVENTES, e o print afirmava o oposto. Renomeados para `salvos_*`.
+- **`_casa()` ignorava `must_not`**, ficando mais permissivo que o Qdrant.
+  Corrigido.
+
+**VERIFY apos as correcoes:** 203 verdes / 18 vermelhos, lista identica.

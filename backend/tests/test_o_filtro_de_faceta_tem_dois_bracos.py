@@ -130,9 +130,15 @@ def _casa(cond, ponto: dict) -> bool:
     if nome == "Filter":
         must = list(getattr(cond, "must", None) or [])
         should = list(getattr(cond, "should", None) or [])
+        # `must_not` não é usado pelos filtros desta SPEC, mas ignorá-lo deixaria
+        # esta simulação MAIS PERMISSIVA que o Qdrant — e um filtro futuro que o
+        # usasse passaria aqui sem ser avaliado.
+        nao = list(getattr(cond, "must_not", None) or [])
         if must and not all(_casa(c, ponto) for c in must):
             return False
         if should and not any(_casa(c, ponto) for c in should):
+            return False
+        if nao and any(_casa(c, ponto) for c in nao):
             return False
         return True
     if nome == "FieldCondition":
@@ -201,7 +207,22 @@ def _acervo() -> list:
         if i >= SEM_FACETA:
             p["faceta"] = "documento" if i % 3 == 0 else "exclusao"
         if i >= SEM_TEMAS:
-            p["temas"] = ["documentacao"] if i % 3 == 0 else ["cobranca_boleto"]
+            # 🔴 OS DOIS RÓTULOS TÊM DE DISCORDAR — 15/08/2026.
+            #
+            # A primeira versão desta fixture usava `i % 3 == 0` para os DOIS,
+            # e com isso `faceta` e `temas` concordavam em **100%** dos pontos.
+            # Um juiz crítico pegou: 📊 na produção eles discordam em **47%**
+            # (só 201 das 380 cartas com `faceta='documento'` têm o tema
+            # `documentacao` — SPEC-072 §7 lista isso como risco aberto).
+            #
+            # Com a fixture concordante, um `must` de `faceta AND temas` passava
+            # no teste e perderia metade das cartas na produção. **A fixture
+            # escondia exatamente o defeito que o teste existia para pegar.**
+            doc = i % 3 == 0
+            if doc and i % 7 in (0, 1, 2):        # ~43% dos documentais discordam
+                p["temas"] = ["reparo_oficina"]   # faceta=documento, tema OUTRO
+            else:
+                p["temas"] = ["documentacao"] if doc else ["cobranca_boleto"]
         pontos.append(p)
     for i in range(PEDACOS):
         p = {"namespace": "normative", "curation_status": "published",
@@ -290,13 +311,25 @@ def teste_quem_nao_tem_o_rotulo_sobrevive() -> None:
                for p in so_temas),
            "e nenhuma de OUTRO tema passa")
 
+    # 🔴 E O CUSTO DE PASSAR OS DOIS JUNTOS — a medição que desligou a fiação.
+    #
+    # ⚠️ A versão anterior afirmava aqui `len(juntos) <= min(...)`. Isso é
+    # TAUTOLOGIA: `must` é `all()`, então é impossível falhar. Testava teoria dos
+    # conjuntos, não o produto (CLAUDE.md §9.3).
     juntos = _sobrevivem(_filtro_montado(faceta="documento",
                                          temas=["documentacao"]), ACERVO)
-    checar(len(juntos) <= min(len(so_faceta), len(so_temas)),
-           "os dois juntos são um AND — nunca devolvem mais que cada um sozinho",
-           f"{len(juntos):,} vs faceta={len(so_faceta):,} temas={len(so_temas):,}")
-    checar(any(p.get("faceta") == "documento" for p in juntos),
-           "e as cartas de documento continuam lá")
+    docs_faceta = [p for p in ACERVO if p.get("faceta") == "documento"]
+    docs_juntos = [p for p in juntos if p.get("faceta") == "documento"]
+    achados = 100 * len(docs_juntos) / max(1, len(docs_faceta))
+    print(f"      cartas com faceta='documento': {len(docs_faceta):,}")
+    print(f"      que o AND (faceta E tema) acha: {len(docs_juntos):,}  ({achados:.0f}%)")
+    checar(len(docs_juntos) < len(docs_faceta),
+           "o AND de faceta+tema PERDE cartas de documento — é por isso que a "
+           "fiação está desligada",
+           "se não perdesse, a fixture voltou a correlacionar os dois rótulos")
+    checar(achados < 80,
+           f"e perde MUITO: acha {achados:.0f}% delas",
+           "📊 na produção são 53% — SPEC-072 §7, risco aberto")
 
 
 def teste_controle_sem_pedido_nao_ha_filtro() -> None:
@@ -329,26 +362,31 @@ def teste_a_mutacao_apaga_o_indice() -> None:
            "nem nenhum sem tema")
 
     # UM FATOR POR VEZ, para o número ter dono.
+    #
+    # ⚠️ Estas variáveis já se chamaram `apagados_*` e contavam SOBREVIVENTES —
+    # o print dizia "só o filtro de tema apagaria: 10.880" afirmando o oposto da
+    # verdade. Nome que mente sobre o que guarda é o defeito que a CLAUDE.md
+    # §12.1 manda consertar no CAMPO, não no texto.
     so_faceta = _filtro_montado(faceta="documento")
-    apagados_faceta = len([p for p in _sobrevivem(so_faceta, ACERVO)
-                           if "faceta" not in p])
-    print(f"      só o filtro de faceta apagaria: {apagados_faceta:,}")
-    checar(apagados_faceta == SEM_FACETA + PEDACOS_SEM_FACETA,
+    salvos_faceta = len([p for p in _sobrevivem(so_faceta, ACERVO)
+                         if "faceta" not in p])
+    print(f"      o braço de ausência da FACETA salva: {salvos_faceta:,}")
+    checar(salvos_faceta == SEM_FACETA + PEDACOS_SEM_FACETA,
            f"o braço da FACETA sozinho salva {SEM_FACETA:,} cartas + "
            f"{PEDACOS_SEM_FACETA:,} trechos de contrato",
-           f"contei {apagados_faceta:,}")
+           f"contei {salvos_faceta:,}")
     checar(not any("faceta" not in p
                    for p in _sobrevivem(_um_braco_so(so_faceta), ACERVO)),
            "e sem ele os mesmos somem, todos")
 
     so_tema = _filtro_montado(temas=["documentacao"])
-    apagados_tema = len([p for p in _sobrevivem(so_tema, ACERVO)
-                         if "temas" not in p])
-    print(f"      só o filtro de tema apagaria:   {apagados_tema:,}")
-    checar(apagados_tema == SEM_TEMAS + PEDACOS,
+    salvos_tema = len([p for p in _sobrevivem(so_tema, ACERVO)
+                       if "temas" not in p])
+    print(f"      o braço de ausência do TEMA salva:   {salvos_tema:,}")
+    checar(salvos_tema == SEM_TEMAS + PEDACOS,
            f"o braço do TEMA sozinho salva {SEM_TEMAS:,} cartas + "
            f"{PEDACOS:,} trechos de contrato (que nunca terão tema)",
-           f"contei {apagados_tema:,}")
+           f"contei {salvos_tema:,}")
 
 
 def teste_a_degradacao_e_segura() -> None:
@@ -391,25 +429,45 @@ def teste_a_pergunta_vira_pedido() -> None:
            f"veio {set(KS._APELIDOS_DE_FACETA.values())}")
 
 
-def teste_os_dois_caminhos_globais_tem_a_regra() -> None:
-    print("\n[7] os DOIS caminhos globais passam faceta e temas")
+def teste_o_filtro_nao_narrowa_a_busca_global() -> None:
+    """🔴 A DECISÃO QUE ESTE BLOCO CONGELA — e ela é o inverso da primeira versão.
+
+    O leitor existe, tem dois braços e está testado. O que ele **não** pode
+    fazer é NARROW, e isso não é opinião — é o canon:
+
+        SPEC-070 §5.1:304  "E `null` passa em todo filtro, NUNCA ELIMINA.
+                            Rótulo dá COTA E PRIORIDADE; só fato verificável
+                            (seguradora, vigência, documento) elimina candidato."
+
+    📊 E a medição mostra por quê o segundo braço não basta: **0 de 5.396 cartas
+    do acervo têm faceta ausente.** Lá o braço `IsEmptyCondition` não resgata
+    ninguém, e `faceta='documento'` vira corte duro sobre as outras 5.016 —
+    incluindo a carta da Porto, `faceta='exclusao'`, que diz *"não há cobertura
+    se quem dirigia estava com a CNH suspensa, cassada ou vencida"*. É
+    exatamente o que o segurado precisa ouvir ao perguntar sobre documentos.
+    """
+    print("\n[7] os dois caminhos globais NÃO estreitam a busca")
     for arq in ("search_service.py", "langchain_service.py"):
         with open(os.path.join(RAIZ, "app", "services", arq), encoding="utf-8") as fh:
-            codigo = fh.read()
-        codigo = "\n".join(l for l in codigo.split("\n")
+            bruto = fh.read()
+        codigo = "\n".join(l for l in bruto.split("\n")
                            if not l.strip().startswith("#"))
-        checar("faceta_da_pergunta(" in codigo, f"{arq} chama faceta_da_pergunta")
-        checar("temas_da_pergunta(" in codigo, f"{arq} chama temas_da_pergunta")
-        checar(re.search(r"faceta=\w+", codigo) is not None,
-               f"{arq} repassa faceta= ao build_global_search_kwargs")
-        checar(re.search(r"temas=\w+", codigo) is not None,
-               f"{arq} repassa temas=")
+        checar(re.search(r"faceta=\w+", codigo) is None,
+               f"{arq}: NÃO passa faceta= ao build_global_search_kwargs",
+               "um `must` de faceta esconde 5.016 cartas do acervo")
+        checar(re.search(r"temas=\w+", codigo) is None,
+               f"{arq}: NÃO passa temas=",
+               "e o AND dos dois acha 53% das cartas de documento")
+        checar("SPEC-070 §5.1" in bruto or "SPEC-070 §5.1:304" in bruto,
+               f"{arq}: e o motivo canônico está escrito ali",
+               "desligar sem dizer por quê convida a religar amanhã")
 
     with open(os.path.join(RAIZ, "app", "services", "knowledge_scope.py"),
               encoding="utf-8") as fh:
         ks = fh.read()
     checar('kwargs["faceta"]' in ks and 'kwargs["temas"]' in ks,
-           "build_global_search_kwargs monta as duas chaves")
+           "mas build_global_search_kwargs CONTINUA sabendo montar as chaves",
+           "a infraestrutura fica pronta e inerte, não removida")
     checar(("temas", "keyword") in [(c, str(s).lower()) for c, s in QS._INDICES_DE_PAYLOAD]
            or any(c == "temas" for c, _ in QS._INDICES_DE_PAYLOAD),
            "`temas` tem índice de payload — filtro sem índice é varredura")
@@ -433,7 +491,7 @@ def main() -> int:
     teste_a_mutacao_apaga_o_indice()
     teste_a_degradacao_e_segura()
     teste_a_pergunta_vira_pedido()
-    teste_os_dois_caminhos_globais_tem_a_regra()
+    teste_o_filtro_nao_narrowa_a_busca_global()
 
     print("\n" + "=" * 70)
     if FALHAS:

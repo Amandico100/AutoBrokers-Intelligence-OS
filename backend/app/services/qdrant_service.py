@@ -603,11 +603,16 @@ class QdrantService:
         `_filtro_de_namespace` carrega — e ali ele existe porque `namespace` é
         escalar dos dois lados, o que não é o caso aqui.
 
-        ⚠️ A chave tem de estar AUSENTE quando não há tema, nunca `[]`. A regra
-        de promoção de payload (`insert_embeddings`) só pula `None` e `""`: uma
-        lista vazia seria GRAVADA, e aí o braço `IsEmptyCondition` não a
-        alcançaria. Quem escreve omite com `if card.get("temas")`, que é falso
-        para `[]`.
+        ⚠️ A chave fica AUSENTE quando não há tema, e não `[]` — mas **não** pelo
+        motivo que este comentário dizia até 15/08/2026. A versão anterior
+        afirmava que *"o braço `IsEmptyCondition` não alcançaria uma lista
+        vazia"*, e isso é **falso**: a doc do Qdrant diz que `is_empty` casa
+        quando o campo não existe, é `null` **ou é `[]`**. Um juiz crítico pegou
+        a afirmação, e o próprio teste deste repositório já a contradizia.
+        O motivo real de omitir é mais simples: `[]` no payload é ruído — ocupa
+        espaço, aparece no diagnóstico e não significa nada que a ausência já não
+        signifique. Quem escreve usa `if card.get("temas")`, que é falso para
+        `[]`, e assim os dois casos viram um só.
 
         DEGRADAÇÃO SEGURA
         =================

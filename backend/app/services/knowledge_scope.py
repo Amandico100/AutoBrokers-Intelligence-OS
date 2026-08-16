@@ -218,6 +218,18 @@ def faceta_da_pergunta(texto: str) -> Optional[str]:
 
     ⚠️ Reconhece **uma** das oito facetas. O porquê está no comentário longo
     acima de `_APELIDOS_DE_FACETA`, e ele é a parte importante desta função.
+
+    ⚠️ E DUAS PROTEÇÕES DAQUI ESTÃO INERTES HOJE — dizer isso importa.
+    O ramo `len(apelido) < 6` (fronteira de palavra) **nunca executa**: o menor
+    apelido tem 9 caracteres. E `len(achadas) == 1` **nunca desempata**, porque
+    todos os valores mapeiam para `"documento"`, então o conjunto tem 0 ou 1
+    elemento. As duas ficam porque a segunda faceta as acorda no mesmo dia — mas
+    vendê-las como garantia ativa seria mentir sobre o que o código faz.
+
+    ⚠️ E a limitação que nenhuma das duas cobre: o gatilho é `in`, uma
+    SUBSTRING. *"qual o prazo para mandar os documentos?"* devolve `documento`,
+    embora a pergunta seja de prazo. É mais um motivo para o chamador usar isto
+    para dar COTA, nunca para eliminar (SPEC-070 §5.1).
     """
     alvo = str(texto or "").strip().lower()
     if not alvo:
@@ -257,6 +269,12 @@ def temas_da_pergunta(texto: str) -> Optional[List[str]]:
     uma pergunta pode legitimamente pedir dois assuntos. Ambiguidade aqui não é
     problema como na seguradora: pedir dois temas AMPLIA o braço positivo, não
     esconde nada.
+
+    ⚠️ Mesmas duas proteções inertes de `faceta_da_pergunta`, e a mesma
+    limitação de substring. E um risco a mais, que é o que desligou a fiação em
+    15/08: 📊 `faceta` e `temas` **discordam em 47%** (só 201 das 380 cartas com
+    `faceta='documento'` têm o tema `documentacao`). Passar os dois no mesmo
+    `must` é um AND sobre rótulos que não concordam — e acha 53% do que deveria.
     """
     alvo = str(texto or "").strip().lower()
     if not alvo:
