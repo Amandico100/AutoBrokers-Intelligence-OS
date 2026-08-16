@@ -198,35 +198,28 @@ def ler_estado_do_agregado(atendimento: Any,
     return est
 
 
-def idempotencia_da_operacao(*, company_id: Any, operacao: str,
-                             placa: Any = "", data_sinistro: Any = "",
-                             item: Any = "", lado: Any = "",
-                             protocolo: Any = "") -> str:
-    """Chave de idempotência derivada do NEGÓCIO, nunca de um UUID aleatório.
+def idempotencia_de_continuacao(*, company_id: Any, protocolo: Any,
+                                operacao: str) -> str:
+    """A chave de uma operação SOBRE UM PEDIDO QUE JÁ EXISTE.
 
-    🔴 A lateralidade entra na chave, e isso não é detalhe. O portal diz, em
-    texto na tela: *"se o item possuir lateralidade será necessário abrir uma
-    nova solicitação para o outro lado"*. Dois vidros quebrados são dois
-    pedidos legítimos — e sem o lado na chave o segundo seria barrado como
-    repetição, e o segurado descobriria quando o vidraceiro consertasse um só.
+    🔴 Ela é deliberadamente OUTRA função, e não um parâmetro da chave de
+    criação. A SPEC-074 L6 exige isso, e o motivo é que "criar" e "continuar"
+    produzem efeitos opostos com a mesma aparência de sucesso: reaproveitar a
+    chave de criação para uma continuação faria o guarda achar que o pedido já
+    existe (e recusar a continuação legítima) ou que não existe (e criar um
+    segundo). As duas saídas são erradas.
 
-    Para operações de CONTINUAÇÃO a chave é outra: ela identifica
-    `empresa + protocolo + operação`, nunca reaproveita a chave de criação. A
-    SPEC-074 L6 é explícita, e o motivo é que "continuar" e "criar" produzem
-    efeitos opostos com a mesma aparência de sucesso.
+    A chave de CRIAÇÃO tem um dono só: `portal_params.chave_de_idempotencia`.
+    Duas funções para a mesma pergunta é o que este projeto não faz — mas estas
+    duas respondem perguntas diferentes.
+
+    Identifica `empresa + protocolo + operação`. Sem protocolo não há
+    continuação a identificar, e a chave é vazia (fail-open, como a de criação).
     """
-    op = _norm(operacao)
-    if protocolo:
-        partes = ["v2", _norm(company_id), "cont", _norm(protocolo), op]
-    else:
-        partes = ["v2", _norm(company_id), op, _norm(placa),
-                  _norm(data_sinistro), _norm(item), _norm(lado)]
-    crua = "|".join(p for p in partes)
-    # Sem os três dados que identificam o pedido, não há chave — e chave vazia
-    # vira NULL no banco, que o índice parcial ignora. Fail-OPEN de propósito:
-    # o guarda nunca pode ser o motivo de um acionamento legítimo não acontecer.
-    if not protocolo and not (_norm(placa) and _norm(data_sinistro) and _norm(item)):
+    prot = _norm(protocolo)
+    if not prot or not _norm(company_id):
         return ""
+    crua = "|".join(["cont1", _norm(company_id), prot, _norm(operacao)])
     return hashlib.sha256(crua.encode("utf-8", "ignore")).hexdigest()[:32]
 
 

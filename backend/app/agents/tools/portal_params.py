@@ -417,7 +417,36 @@ def chave_de_idempotencia(params: Optional[dict], company_id: Optional[str] = No
     if not (empresa and placa and data):
         return ""
     peca = normalizar_peca((params.get("dano") or {}).get("peca"))
-    return f"{_CHAVE_VERSAO}:{empresa}:{placa}:{data}:{peca}"
+
+    # 🔴 O LADO ENTRA NA CHAVE — SPEC-074, fechando a P-79.
+    #
+    # 📊 O portal diz, em texto na tela: *"se o item possuir lateralidade será
+    # necessário abrir uma nova solicitação para o outro lado"*. Dois vidros
+    # quebrados são DOIS pedidos legítimos.
+    #
+    # Sem o lado aqui, o segundo era barrado como repetição — e o segurado só
+    # descobria quando o vidraceiro trocasse um vidro e fosse embora. A frase de
+    # "já existe" ensinava a saída (*descreva a peça com o lado*), mas depender
+    # de o modelo escrever a frase certa é exatamente o que esta SPEC desfaz.
+    #
+    # Só entra quando o lado NÃO está na peça: `normalizar_peca` já preserva
+    # qualificadores (`esquerdo`, `motorista`, `dianteira`), então repetir aqui
+    # criaria duas chaves para o mesmo pedido descrito de dois jeitos.
+    lado = ""
+    especificos = params.get("especificos")
+    if isinstance(especificos, dict):
+        bruto = str(especificos.get("lado_motorista_ou_carona") or "").strip()
+        if bruto:
+            marca = "motorista" if "motorista" in _fold(bruto) else (
+                "carona" if "carona" in _fold(bruto) else _fold(bruto)[:16])
+            if marca and marca not in peca:
+                lado = marca
+
+    # A versão sobe para `v2` porque a chave mudou de significado para peças com
+    # lateralidade. As chaves `v1` históricas deixam de casar — e isso é o
+    # desfecho desejado: 📊 são 34 jobs de julho, nenhum concluído, e um deles
+    # bloquear um pedido legítimo de hoje é o defeito, não a proteção.
+    return f"v2:{empresa}:{placa}:{data}:{peca}" + (f":{lado}" if lado else "")
 
 
 def frase_de_pedido_ja_existente(job: Optional[dict]) -> str:

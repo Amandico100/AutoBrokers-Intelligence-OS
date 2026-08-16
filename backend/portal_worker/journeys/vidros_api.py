@@ -36,6 +36,7 @@ from __future__ import annotations
 import re
 import unicodedata
 from typing import Any, Dict, Optional, Tuple
+from urllib.parse import urlsplit
 
 # --------------------------------------------------------------------------
 # Hosts — allowlist fechada (SPEC-073 G2 / SPEC-075 §25.5)
@@ -58,9 +59,32 @@ HEADER_TOKEN = "token_autorizacao"
 
 
 def host_permitido(url: Any) -> bool:
-    """Allowlist fechada. Descoberta não vira cliente HTTP de URL livre."""
-    u = str(url or "").lower()
-    return any(f"//{h}" in u or f".{h}" in u for h in HOSTS_PERMITIDOS)
+    """Allowlist fechada. Descoberta não vira cliente HTTP de URL livre.
+
+    🔴 A primeira versão fazia `f"//{h}" in url`, e isso é um furo clássico:
+
+        https://api.autoglass.com.br.evil.com/x
+
+    contém `//api.autoglass.com.br` como prefixo e **passava**. Um atacante que
+    controlasse `evil.com` receberia o `token_autorizacao` da sessão.
+
+    Pegou no teste, não em produção — mas só porque escrevi o caso adversarial.
+    A lição é que allowlist por substring nunca é allowlist; é sugestão.
+
+    Agora o host é EXTRAÍDO e comparado por igualdade ou por sufixo de ponto
+    (`app.maxpar…` casa `maxpar…`; `maxpar….evil.com` não casa nada).
+    """
+    try:
+        host = (urlsplit(str(url or "")).hostname or "").strip().lower()
+    except ValueError:
+        return False
+    if not host:
+        return False
+    for h in HOSTS_PERMITIDOS:
+        alvo = h.split("/")[0].strip().lower()   # ignora path em entradas compostas
+        if host == alvo or host.endswith("." + alvo):
+            return True
+    return False
 
 
 # --------------------------------------------------------------------------

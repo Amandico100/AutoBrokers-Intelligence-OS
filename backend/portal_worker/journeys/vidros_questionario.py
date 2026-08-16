@@ -129,7 +129,9 @@ def escolher_resposta(pergunta: Pergunta,
     dentro** — e é isso que vira a pergunta que o atendente faz ao segurado. A
     alternativa (chutar) foi o que a SPEC-073 removeu do `_FORCE_CHOOSE`.
     """
-    from portal_worker.journeys.vidros_lanternas import explicar_especifico
+    from portal_worker.journeys.vidros_lanternas import (
+        explicar_especifico, explicar_match,
+    )
 
     opcoes = pergunta.textos_das_opcoes
     if not opcoes:
@@ -147,7 +149,29 @@ def escolher_resposta(pergunta: Pergunta,
 
     for cand in candidatos:
         veredito = explicar_especifico(cand, opcoes, pergunta.texto)
-        escolha = veredito.get("escolha") if isinstance(veredito, dict) else None
+        if not isinstance(veredito, dict):
+            veredito = {}
+
+        # 🔴 O PROTOCOLO DE COEXISTÊNCIA DOS DOIS VOCABULÁRIOS.
+        #
+        # `explicar_especifico` sabe de ATRIBUTO: lado, dianteira/traseira,
+        # película, tamanho, posição do trincado, sim/não. Quando ele devolve
+        # `dominio == "nenhum"`, está dizendo *"esta lista não é minha"* — e a
+        # resposta certa NÃO é insistir, é cair no vocabulário de PEÇA
+        # (`explicar_match`), que tem placar próprio e veto de peça diferente.
+        #
+        # 📊 O teste `test_o_80_por_cento_sabe_o_que_pergunta.py:354`
+        # (`teste_o_vocabulario_do_80_nao_invade_a_tela_da_peca`) existe
+        # exatamente para guardar esta fronteira. Sem esta ramificação, uma
+        # pergunta de peça vinda do motor cairia no casador errado — que a
+        # recusaria por não reconhecer o domínio — e o robô pararia num campo
+        # que ele sabia responder.
+        if str(veredito.get("dominio") or "") == "nenhum":
+            veredito = explicar_match(cand, opcoes)
+            if not isinstance(veredito, dict):
+                veredito = {}
+
+        escolha = veredito.get("escolha")
         if escolha:
             cod = pergunta.codigo_da_opcao(escolha)
             if cod is None:
