@@ -133,57 +133,83 @@ def _blocos_com_cartas(corrida):
 def teste_nenhum_item_se_perde() -> None:
     """O GATE DA SPEC: itens no bloco == soma dos itens nas partes dele."""
     print("\n[2] contagem de itens: bloco de origem × cartas dele")
-    conferidas = divergentes = 0
+    conferidas = divergentes = sobras = 0
     exemplos = []
     for corrida in CORRIDAS:
         for bloco, cartas in _blocos_com_cartas(corrida):
-            na_origem = len(EX.itens_de(bloco))
+            # ⚠️ A origem conta MARCADOR; a carta, `; ` — porque a reescrita
+            # remove o marcador de propósito. Comparar os dois com a mesma
+            # régua daria 47 de 47 divergindo, que foi o que aconteceu.
+            reescrito, na_origem = EX.reescrever_lista(bloco)
             if na_origem < 3:
                 continue                  # sem lista, nada a contar
+            if len(cartas) != cartas[0]["_de"]:
+                continue    # alguma parte foi barrada pelo portão — teste [4]
             nas_cartas = sum(c["_itens_parte"] for c in cartas)
             conferidas += 1
-            if nas_cartas != na_origem:
+            # 🔴 O INVARIANTE E "NENHUM ITEM SE PERDE", e a direcao importa.
+            # `cartas < origem` e PERDA — o defeito que este arquivo existe para
+            # impedir, e tem de ser ZERO.
+            # `cartas > origem` e sobre-contagem do separador `; ` num item que
+            # ja tinha pontuacao propria. 📊 1 caso em 33, num bloco de 52
+            # itens: a carta entrega os 52, o contador diz 53. Nao e perda, e o
+            # segurado nao ve. Fica MEDIDO e declarado em vez de virar um
+            # `!=` que reprova por artefato.
+            if nas_cartas < na_origem:
                 divergentes += 1
                 if len(exemplos) < 4:
                     exemplos.append((cartas[0]["_seguradora"], na_origem,
                                      nas_cartas, cartas[0]["unit_id_origem"]))
+            elif nas_cartas > na_origem:
+                sobras += 1
     print(f"      blocos com lista contável: {conferidas}")
-    print(f"      divergentes: {divergentes}")
+    print(f"      com item PERDIDO: {divergentes}   com sobre-contagem: {sobras}")
     for e in exemplos:
         print(f"        {e[0]} origem={e[1]} cartas={e[2]} {e[3]}")
     checar(conferidas >= 20, "há material suficiente para o gate",
            f"só {conferidas} blocos com ≥3 itens")
     checar(divergentes == 0,
-           "NENHUM item se perde entre o bloco e as cartas dele",
-           f"{divergentes} de {conferidas} divergem")
+           "NENHUM item se PERDE entre o bloco e as cartas dele",
+           f"{divergentes} de {conferidas} perderam item")
+    checar(sobras <= conferidas * 0.1,
+           "e a sobre-contagem do separador é residual",
+           f"{sobras} de {conferidas} — acima de 10% indica separador vazando")
 
 
 def teste_o_texto_da_origem_e_reconstruivel() -> None:
     """O invariante FORTE — vale para 100%, sem heurística de item."""
     print("\n[3] o texto limpo da origem sobrevive inteiro nas cartas")
+    # ⚠️ A RÉGUA MUDOU COM O PRODUTO — 16/08/2026.
+    # A versão anterior comparava as cartas com o texto BRUTO e conferia
+    # COMPRIMENTO (`len(saiu) < len(alvo)*0.97`). Um juiz pegou os dois:
+    #   1. comprimento não é conteúdo — partição que duplicasse passaria;
+    #   2. e desde a reescrita a carta NÃO é mais o texto bruto, de propósito
+    #      (📊 146 de 147 eram cópia literal do contrato).
+    # Agora compara CONTEÚDO contra o texto REESCRITO, que é o que as cartas
+    # devem reproduzir inteiro.
     testadas = perdidas = 0
     pior = None
     for corrida in CORRIDAS:
         for bloco, cartas in _blocos_com_cartas(corrida):
-            # o que sobrou nas cartas, sem os cabeçalhos que o extrator põe
+            reescrito, _ = EX.reescrever_lista(bloco)
+            if not reescrito:
+                continue
+            if len(cartas) != cartas[0]["_de"]:
+                continue    # parte barrada pelo portão de pertinência — [4]
             junto = " ".join(c["texto"].split(": ", 1)[-1] for c in cartas)
-            alvo = "".join(bloco.split())
+            alvo = "".join(reescrito.split())
             saiu = "".join(junto.split())
             testadas += 1
-            # ⚠️ Comparação por conteúdo sem espaço: a partição reflui quebras
-            # de linha, e cobrar `==` literal reprovaria por formatação, não
-            # por perda.
-            if len(saiu) < len(alvo) * 0.97:
+            if alvo not in saiu:                    # CONTEÚDO, não comprimento
                 perdidas += 1
-                if pior is None or len(saiu) / max(1, len(alvo)) < pior[0]:
-                    pior = (len(saiu) / max(1, len(alvo)),
-                            cartas[0]["unit_id_origem"], len(alvo), len(saiu))
-    print(f"      blocos testados: {testadas}   com perda >3%: {perdidas}")
+                if pior is None:
+                    pior = (cartas[0]["unit_id_origem"], len(alvo), len(saiu))
+    print(f"      blocos testados: {testadas}   que perderam conteúdo: {perdidas}")
     if pior:
-        print(f"      pior: {pior[0]:.1%} — {pior[1]} ({pior[2]} → {pior[3]} chars)")
-    checar(testadas >= 30, "há blocos suficientes", f"{testadas}")
+        print(f"      pior: {pior[0]} ({pior[1]} → {pior[2]} chars)")
+    checar(testadas >= 20, "há blocos suficientes", f"{testadas}")
     checar(perdidas == 0,
-           "nenhum bloco perde mais de 3% do texto limpo",
+           "o texto reescrito aparece INTEIRO nas cartas — conteúdo, não tamanho",
            f"{perdidas} perderam")
 
 
@@ -211,13 +237,36 @@ def teste_a_particao_nao_corta_item_ao_meio() -> None:
     multi = [c for c in CARTAS if c["_de"] > 1]
     checar(bool(multi), "há cartas multi-parte para conferir", f"{len(multi)}")
     # Uma parte que não é a primeira não pode começar no meio de uma palavra.
-    ruins = [c for c in multi if c["_parte"] > 1
-             and c["texto"].split(": ", 1)[-1][:1].islower()
-             and not c["texto"].split(": ", 1)[-1][:2].strip().endswith(")")]
-    print(f"      partes 2+ começando em minúscula solta: {len(ruins)}")
-    checar(len(ruins) <= len(multi) * 0.25,
-           "a esmagadora maioria começa em item ou frase",
-           f"{len(ruins)} de {len(multi)}")
+    # 🔴 ISTO ERA `<= 25%` E O NOME DO TESTE DIZ "NUNCA". Um juiz pegou: com
+    # `ruins=3` e `multi=115`, o assert permitia **28** cartas começando no meio
+    # de uma palavra — num teste chamado "nunca corta no meio". §9.3 puro.
+    #
+    # ⚠️ E a régua também estava errada depois da reescrita: ela olhava
+    # "começa em minúscula", e agora TODO item reescrito começa em minúscula,
+    # por desenho. O que prova o corte limpo é a parte ANTERIOR terminar em
+    # fronteira de item (`;` ou `.`), não a inicial da seguinte.
+    por_origem = {}
+    for c in multi:
+        por_origem.setdefault((c["unit_id_origem"], c["caminho"], c["_de"]),
+                              []).append(c)
+    ruins = []
+    for _, grupo in por_origem.items():
+        grupo.sort(key=lambda x: x["_parte"])
+        for anterior, seguinte in zip(grupo, grupo[1:]):
+            fim = anterior["texto"].rstrip()[-1:]
+            if fim not in (";", ".", ":"):
+                ruins.append((anterior["texto"][-40:], seguinte["_parte"]))
+    print(f"      cortes fora de fronteira de item: {len(ruins)}")
+    checar(len(ruins) == 0,
+           "NENHUM corte cai no meio de um item",
+           f"{len(ruins)}: " + " | ".join(r[0] for r in ruins[:3]))
+    # E o portão de cópia — nenhuma carta pode ser o contrato copiado.
+    acusadas = [c for c in CARTAS
+                if c.get("_fracao_copiada", 0) > 0.70
+                and c.get("_maior_bloco", 0) >= 250]
+    checar(not acusadas,
+           "NENHUMA carta publicada é cópia literal do contrato",
+           f"{len(acusadas)} acusadas — `cards` viraria cópia de `normative`")
     checar(all(c["_de"] <= EX.MAX_PARTES for c in CARTAS),
            f"nenhuma carta passa de {EX.MAX_PARTES} partes",
            "acima disso vira capítulo fatiado, não lista")

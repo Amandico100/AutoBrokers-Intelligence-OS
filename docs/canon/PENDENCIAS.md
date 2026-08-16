@@ -5408,3 +5408,48 @@ ver é pior que guarda nenhum, porque emite laudo de aprovação.
 **O que custa esquecer:** publicar as 147 põe 146 cópias do contrato no
 namespace `cards`, competindo com o `normative` pelas mesmas vagas e dizendo a
 mesma coisa com as mesmas palavras. O agente passaria a ver tudo em dobro.
+
+### ✅ 16/08/2026 — FECHADA: reescritas, e o guarda passou a ser o portão
+
+Decisão tomada por nota, a pedido do Founder:
+
+```
+reescrever preservando o item ....  88   ← executada
+isenção + namespace próprio .....  45   (namespace novo = motor paralelo, §5)
+não publicar ....................  20   (o Bloco 2 vira arquivo)
+```
+
+**O conserto:** `reescrever_lista()` tira o marcador (`a)`, `bb)`, `1)`), tira o
+juridiquês de forma (*"Cópia da"*, *"Original do"*), minúscula a inicial e junta
+com `; `. O que a destilação em prosa perdia era **item**, não formatação — então
+o item fica inteiro e a forma muda. 📊 O maior bloco literal em comum cai para o
+tamanho de **um item**.
+
+```
+                              antes    depois
+substring literal inteira ...  146/147     0
+acusadas de cópia ...........   79        0
+cartas publicáveis ..........  147       70
+p50 .........................  1.397   1.466
+```
+
+⚠️ **De 147 para 70, e isso é qualidade, não perda.** Três portões novos, todos
+com o número declarado:
+
+- **52 blocos sem lista delimitada** (152.393 chars) — a Yelum é tabela achatada
+  e reescrever exigiria inventar fronteira. A heurística de maiúscula erra
+  **107%** na mediana. Registrados, não publicados. **R7: qualidade sobre volume.**
+- **10 cartas barradas pelo portão de cópia** — o próprio limiar de
+  `conferir_ancoragem` (>70% num bloco de 250+), agora rodando ANTES de gravar e
+  contra a âncora honesta (a corrida inteira, não o primeiro pedaço).
+- **97 blocos/partes** sem ≥2 nomes de documento — o portão agora é **por
+  carta**, não por bloco, que era o achado do juiz.
+
+**Os outros cinco achados, todos consertados:** os 28 cortes cegos (`partir()`
+agora corta em `; `, e o teste prova **0** fora de fronteira); as 5 corridas
+`escopo` invisíveis (o censo as resgata quando nomeiam ≥4 documentos); os 4
+falsos negativos de vocabulário (`Carta Aviso`, `carteira de habilitação`,
+`Documento Pessoal`, `Comprovante de Propriedade`, e `declaração de` com a
+preposição); o cabeçalho *"para sinistro"* (usa o título da cobertura); e **as
+duas asserções frouxas do meu próprio teste** — `[5]` era `<= 25%` num teste
+chamado *"nunca"*, e `[3]` comparava comprimento em vez de conteúdo.

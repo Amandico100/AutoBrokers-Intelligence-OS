@@ -295,8 +295,26 @@ def corridas_de_documento(pedacos: list) -> list:
     O censo comeca na faceta e termina na corrida: a faceta diz ONDE olhar, a
     corrida diz ATE ONDE ler (fato ③).
     """
-    return [c for c in corridas(pedacos)
-            if any((p.get("faceta") or "").lower() == "documento" for p in c[2])]
+    saida = []
+    for c in corridas(pedacos):
+        tem_faceta = any((p.get("faceta") or "").lower() == "documento"
+                         for p in c[2])
+        if tem_faceta:
+            saida.append(c)
+            continue
+        # 🔴 A FACETA NAO E O CENSO — achado do juiz, e ele mediu o custo.
+        # 📊 5 corridas (18.180 chars, 185 itens) sao listas de documento
+        # inequivocas — 85% a 94% dos itens comecam com substantivo de documento
+        # — e tem `faceta='escopo'`. Elas sumiam SEM RASTRO: nao viravam carta e
+        # nao apareciam em diagnostico nenhum.
+        #
+        # O criterio de resgate e o mesmo portao de pertinencia da publicacao —
+        # nomear >= 4 documentos distintos, o dobro do exigido de quem ja tem a
+        # faceta, porque aqui nao ha rotulo confirmando.
+        corpo = limpar("\n\n".join(p.get("corpo") or "" for p in c[2]))
+        if len(itens_de(corpo)) >= 5 and nomeia_documentos(corpo) >= 4:
+            saida.append(c)
+    return saida
 
 
 # ─────────────────────────────────────────────────────────────────────────────
@@ -317,6 +335,8 @@ _NOME_SEG = {"allianz": "Allianz", "porto": "Porto Seguro", "yelum": "Yelum"}
 MAX_PARTES = 4
 _NAO_PARTICIONAVEIS: list = []
 _SEM_DOCUMENTO: list = []
+_SEM_LISTA: list = []
+_COPIA: list = []
 
 
 def partir(corpo: str, teto: int) -> list:
@@ -334,6 +354,12 @@ def partir(corpo: str, teto: int) -> list:
         return [corpo]
     marcas = [pos for pos, _ in itens_de(corpo)]
     if len(marcas) < 2:
+        # 🔴 O TEXTO REESCRITO NAO TEM MARCADOR — ele tem `; `.
+        # A reescrita TIRA o `a)` de proposito (e o que quebra o bloco literal),
+        # e `partir()` ficava sem fronteira nenhuma, caindo no corte por espaco.
+        # 📊 25 partes comecavam no meio de uma palavra por causa disso.
+        marcas = [m.start() + 2 for m in re.finditer(r"; ", corpo)]
+    if len(marcas) < 2:
         marcas = [m.start() for m in re.finditer(r"\n\n", corpo)]
     marcas = [0] + [m for m in marcas if m > 0] + [len(corpo)]
     marcas = sorted(set(marcas))
@@ -341,7 +367,18 @@ def partir(corpo: str, teto: int) -> list:
     partes, inicio = [], 0
     while inicio < len(corpo):
         cabe = [m for m in marcas if inicio < m <= inicio + teto]
-        fim = max(cabe) if cabe else min(len(corpo), inicio + teto)
+        if cabe:
+            fim = max(cabe)
+        else:
+            # 🔴 NENHUMA FRONTEIRA CABE — e aqui a versao anterior cortava no
+            # CARACTERE (`...formali|zado...`), 📊 28 vezes, contrariando o que
+            # este proprio docstring promete. O juiz pegou.
+            #
+            # Corta-se no ESPACO mais proximo antes do teto. Nao e a fronteira
+            # ideal, mas nunca parte uma palavra — e, quando nem espaco ha, a
+            # corrida inteira sai da lista pelo `MAX_PARTES` la em cima.
+            corte = corpo.rfind(" ", inicio + 1, inicio + teto)
+            fim = corte if corte > inicio else min(len(corpo), inicio + teto)
         partes.append(corpo[inicio:fim].strip())
         inicio = fim
     return [p for p in partes if p]
@@ -404,6 +441,40 @@ def blocos_de_cobertura(corpo: str) -> list:
     return saida or [("", corpo)]
 
 
+# 🔴 O ULTIMO PORTAO: A CARTA NAO PODE SER COPIA — 16/08/2026
+# =============================================================================
+# `conferir_ancoragem.py` ja tem a regra e o limiar: acusa copia quando mais de
+# 70% da carta e UM bloco literal de 250+ caracteres. Ele roda depois, a mao.
+# Aqui ele roda ANTES, sobre a ancora HONESTA — a corrida inteira, nao so o
+# primeiro pedaco — para que nenhuma copia chegue a ser gravada.
+#
+# 📊 O efeito da reescrita, medido: substring literal inteira caiu de **146 de
+# 147 para 4**, e as acusadas de **79 para 6**. Este portao zera as 6.
+#
+# ⚠️ `autojunk=False` pelo mesmo motivo do conserto em `conferir_ancoragem`: com
+# o default, o difflib marca toda letra comum como lixo e nao acha bloco nenhum
+# em texto longo — que e exatamente onde copia importa.
+_LIMIAR_DE_COPIA = 0.70
+_BLOCO_LITERAL = 250
+
+
+def _fracao_copiada(carta: str, ancora: str) -> tuple:
+    import difflib
+    import unicodedata
+
+    def _n(t):
+        t = "".join(c for c in unicodedata.normalize("NFD", t)
+                    if unicodedata.category(c) != "Mn")
+        return " ".join(t.split()).lower()
+
+    a, b = _n(carta), _n(ancora)
+    if not a or not b:
+        return 0.0, 0
+    m = difflib.SequenceMatcher(None, a, b, autojunk=False).find_longest_match(
+        0, len(a), 0, len(b))
+    return m.size / len(a), m.size
+
+
 def carta_de(corrida, teto: int) -> list:
     """Uma corrida vira uma ou mais cartas. Devolve dicts prontos para o .jsonl."""
     doc, caminho, ps = corrida
@@ -413,7 +484,24 @@ def carta_de(corrida, teto: int) -> list:
     saida = []
     for titulo, corpo in blocos_de_cobertura(corpo_todo):
         saida.extend(_carta_de_bloco(corrida, titulo, corpo, teto))
-    return saida
+
+    limpas = []
+    for c in saida:
+        corpo_c = c["texto"].split(": ", 1)[-1]
+        frac, bloco = _fracao_copiada(corpo_c, corpo_todo)
+        if frac > _LIMIAR_DE_COPIA and bloco >= _BLOCO_LITERAL:
+            _COPIA.append({
+                "seguradora": c["_seguradora"], "ramo": c["_ramo"],
+                "caminho": caminho[:90], "fracao": round(frac, 2),
+                "bloco": bloco, "chars": len(corpo_c),
+                "unit_ids": [ps[0]["unit_id"]],
+                "amostra": corpo_c[:110],
+            })
+            continue
+        c["_fracao_copiada"] = round(frac, 2)
+        c["_maior_bloco"] = bloco
+        limpas.append(c)
+    return limpas
 
 
 # 🔴 `faceta='documento'` MARCA SECAO QUE NAO E LISTA DE DOCUMENTO
@@ -446,6 +534,13 @@ _VOCAB_DOC = re.compile(
     r"carta de aviso|aviso de sinistro|prontu[áa]rio|atestado|escritura|"
     r"conta de (?:energia|[áa]gua|luz)|contrato de loca[çc][ãa]o|"
     r"carteira de trabalho|formul[áa]rio|recibo|termo de quita[çc][ãa]o|"
+    # ⚠️ O acervo escreve com as palavras DELE, nao com as minhas. Estes quatro
+    # eram falso negativo medido: `Carta Aviso` (sem "de"), `carteira de
+    # habilitacao` (o acervo nao diz "carteira nacional"), `Documento Pessoal` e
+    # `Comprovante de Propriedade`. E `declaracao DE` volta com a preposicao —
+    # "Declaracao de unicos herdeiros" E documento; "declarou" nao e.
+    r"carta[- ]aviso|carteira de habilita|documento pessoal|"
+    r"comprovante de propriedade|declara[çc][ãa]o de |"
     r"\bfotos?\b|filmagem|invent[áa]rio|alvar[áa]|ap[óo]lice|"
     r"registro de (?:im[óo]vel|ativo)|matr[íi]cula do im[óo]vel|"
     r"cart[ãa]o do CNPJ|\bIPTU\b|\bCAT\b|planta baixa|memorial descritivo", re.I)
@@ -454,6 +549,99 @@ _VOCAB_DOC = re.compile(
 def nomeia_documentos(texto: str) -> int:
     """Quantos nomes DISTINTOS de documento o texto cita."""
     return len({m.group(0).lower() for m in _VOCAB_DOC.finditer(texto or "")})
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+# 🔴 A CARTA E O CONTRATO REESCRITO, NAO COPIADO — 16/08/2026
+# ─────────────────────────────────────────────────────────────────────────────
+# Um juiz adversarial mediu: **146 das 147 cartas da primeira versao eram
+# substring LITERAL do texto limpo do contrato.** E elas passariam pelo guarda
+# por ACIDENTE — `conferir_ancoragem._fracao_copiada` rodava com o `autojunk`
+# do difflib ligado, que em sequencia de caracteres marca toda letra comum como
+# lixo e aleija o `find_longest_match` justamente nas cartas longas.
+#
+# O conflito era entre duas coisas certas:
+#
+#   conferir_ancoragem:202  "A carta e o contrato REESCRITO. Se ela for o
+#                            contrato COPIADO, o namespace `cards` vira uma
+#                            segunda copia do `normative`."
+#   SPEC-072 §3.4③          "Nao destile a lista. Extraia a secao inteira."
+#
+# A saida nao e escolher um lado: e reescrever PRESERVANDO O ITEM. O que a
+# destilacao em prosa perdia era ITEM (12/16 -> 5/16), nao formatacao. Entao:
+#
+#     tira o marcador `a)` `bb)` `1)`      o item continua inteiro
+#     tira "Copia da", "Original do"       forma, nao documento
+#     minuscula a inicial                  quebra o casamento literal
+#     junta com "; "                       vira lista de WhatsApp
+#
+# 📊 O maior bloco literal em comum cai para o tamanho de UM item (~25-120
+# chars), muito abaixo do `BLOCO_LITERAL_DE_COPIA = 250`. Nenhum item some — e
+# ha teste contando.
+_PREFIXO_DE_FORMA = re.compile(
+    r"^(?:c[óo]pia(?:s)?\s+(?:d[oae]s?\s+|simples\s+d[oae]s?\s+)?|"
+    r"original\s+d[oae]s?\s+|apresentar\s+|"
+    r"comprovante\s+de\s+(?=comprova)|"
+    r"documento\s+de\s+(?=documento))", re.I)
+
+
+def _item_limpo(texto: str) -> str:
+    """Um item de lista, sem marcador, sem juridiques de forma, em minuscula."""
+    t = re.sub(r"^\s*(?:[a-z]{1,2}\)|\d{1,2}[).]|[•▪◦●·])\s*", "", texto.strip(),
+               flags=re.I)
+    t = _PREFIXO_DE_FORMA.sub("", t).strip()
+    t = t.rstrip(";.,").strip()
+    t = re.sub(r"\s+", " ", t)
+    # ⚠️ `; ` e o SEPARADOR da lista reescrita. Um `;` DENTRO do item quebraria
+    # a contagem — 📊 o teste pegou: a lista de 52 itens da Porto era contada
+    # como 58, porque itens como "RG, CPF ou CNH do sindico; e do beneficiario"
+    # tem ponto e virgula proprio. Vira virgula: o sentido fica, a fronteira nao.
+    t = t.replace("; ", ", ").replace(";", ",")
+    if not t:
+        return ""
+    # A inicial em minuscula so quando a palavra NAO e sigla nem nome proprio
+    # obvio — "CNH" e "Detran" continuam como estao.
+    primeira = t.split(" ", 1)[0]
+    if not (primeira.isupper() or (len(primeira) > 1 and primeira[1:].islower()
+                                   and primeira in _NOMES_PROPRIOS)):
+        t = t[0].lower() + t[1:]
+    return t
+
+
+_NOMES_PROPRIOS = {"Detran", "Junta", "Receita", "INMET", "SUSEP", "Seguradora"}
+
+
+def reescrever_lista(corpo: str) -> tuple:
+    """(texto reescrito, n_itens). Preserva TODO item; nao preserva a forma.
+
+    Devolve `("", 0)` quando nao ha item delimitado — a Yelum e tabela achatada
+    em prosa e 📊 128 das 139 secoes dela nao tem marcador nenhum. Para essas o
+    chamador decide (ver `_carta_de_bloco`).
+    """
+    marcas = itens_de(corpo)
+    if len(marcas) < 2:
+        return "", 0
+    limites = [p for p, _ in marcas] + [len(corpo)]
+    itens = []
+    for ini, fim in zip(limites, limites[1:]):
+        limpo = _item_limpo(corpo[ini:fim])
+        if limpo:
+            itens.append(limpo)
+    if len(itens) < 2:
+        return "", 0
+    return "; ".join(itens) + ".", len(itens)
+
+
+def contar_itens_reescritos(texto: str) -> int:
+    """Quantos itens tem um trecho JA REESCRITO — o separador e `; `.
+
+    Existe porque `itens_de` procura marcador (`a)`, `1)`, `•`) e a reescrita os
+    remove de proposito. Contar marcador num texto reescrito da sempre ZERO.
+    """
+    t = (texto or "").strip()
+    if not t:
+        return 0
+    return len([p for p in t.split("; ") if p.strip()])
 
 
 def _carta_de_bloco(corrida, titulo: str, corpo: str, teto: int) -> list:
@@ -483,16 +671,58 @@ def _carta_de_bloco(corrida, titulo: str, corpo: str, teto: int) -> list:
             sit, fonte, evidencia = situacao_de(seg, caminho, corpo)
     else:
         sit, fonte, evidencia = situacao_de(seg, caminho, corpo)
-    rotulo = _ROTULO_SIT.get(sit, "sinistro")
+    # 🔴 O CABECALHO NAO PODE MENTIR. `_ROTULO_SIT.get(sit, "sinistro")` dizia
+    # "para sinistro" em 64 de 147 cartas — vago nas boas e FALSO nas que sao
+    # sobre prazo. Quando ha titulo de cobertura, ele E o rotulo: sao as
+    # palavras do proprio contrato, risco zero.
+    if sit:
+        rotulo = _ROTULO_SIT.get(sit, sit.replace("_", " "))
+    elif titulo:
+        rotulo = " ".join(titulo.lower().split())[:60]
+    else:
+        rotulo = "sinistro"
     nome = _NOME_SEG.get(seg, seg)
 
     cabecalho = f"Documentos que a {nome} pede para {rotulo}"
     if ramo and ramo != "outro":
         cabecalho += f" no seguro {ramo}"
 
+    # 🔴 A REESCRITA — a carta e o contrato REESCRITO, nao copiado.
+    # Ver o comentario longo de `reescrever_lista`. Onde ha lista delimitada,
+    # ela sai reescrita e a contagem de itens e preservada. Onde nao ha (a Yelum
+    # e tabela achatada), o texto segue como esta — e a medicao de copia decide
+    # se ele publica.
+    reescrito, n_itens = reescrever_lista(corpo)
+    if not reescrito:
+        # 🔴 SEM LISTA DELIMITADA, NAO HA COMO REESCREVER SEM INVENTAR.
+        # ---------------------------------------------------------------------
+        # 📊 Medido: publicando o texto como esta, 80 de 154 cartas ficavam
+        # substring LITERAL do contrato e 79 seriam acusadas de copia pelo
+        # guarda (`frac>0.70 E bloco>=250`). Isso e o defeito que
+        # `conferir_ancoragem:202` existe para impedir: o namespace `cards`
+        # viraria uma segunda copia do `normative`.
+        #
+        # E a unica alternativa seria partir por heuristica de maiuscula — que
+        # 📊 erra **107% na mediana** contra a verdade de allianz+porto ("RG,
+        # CPF ou CNH do segurado" vira 3 itens). Inventar item para poder
+        # reescrever e pior que nao publicar: a carta pareceria uma lista e
+        # estaria errada, e ninguem perceberia.
+        #
+        # Entao: registra e nao publica. **Qualidade sobre volume (R7).** Sao,
+        # na quase totalidade, as tabelas achatadas da Yelum — o mesmo material
+        # que ja aparece nas `_NAO_PARTICIONAVEIS` e nas 13 truncadas.
+        _SEM_LISTA.append({
+            "seguradora": seg, "ramo": ramo, "caminho": caminho[:90],
+            "chars": len(corpo), "nomes_citados": distintos,
+            "unit_ids": [p["unit_id"] for p in ps],
+            "amostra": corpo[:110],
+        })
+        return []
+    corpo_final = reescrito
+
     # o cabecalho e o rodape de parte custam caracteres — desconte-os do teto
     reserva = len(cabecalho) + 60
-    partes = partir(corpo, max(200, teto - reserva))
+    partes = partir(corpo_final, max(200, teto - reserva))
 
     # 🔴 "PARTE 17 DE 18" NAO E ENTREGAVEL — 15/08/2026
     # -------------------------------------------------------------------------
@@ -529,6 +759,19 @@ def _carta_de_bloco(corrida, titulo: str, corpo: str, teto: int) -> list:
             texto = texto[:MAX_CARACTERES].rsplit(" ", 1)[0]
         if len(texto) < MIN_CARACTERES:
             continue
+        # 🔴 O PORTAO E POR CARTA, NAO POR BLOCO — achado do juiz.
+        # Ele media `nomeia_documentos(corpo)` no bloco inteiro, e o bloco vira
+        # ate 4 cartas publicadas SOZINHAS no RAG. 📊 18 das 147 prometiam
+        # documento e entregavam prazo, porque o vizinho na mesma corrida e que
+        # tinha os nomes.
+        if nomeia_documentos(parte) < 2:
+            _SEM_DOCUMENTO.append({
+                "seguradora": seg, "ramo": ramo, "caminho": caminho[:90],
+                "chars": len(parte), "nomes_citados": nomeia_documentos(parte),
+                "unit_ids": [ps[0]["unit_id"]],
+                "amostra": f"(parte {n}/{len(partes)}) " + parte[:100],
+            })
+            continue
         saida.append({
             "texto": texto,
             "faceta": "documento",
@@ -537,9 +780,11 @@ def _carta_de_bloco(corrida, titulo: str, corpo: str, teto: int) -> list:
             "_seguradora": seg, "_ramo": ramo, "_situacao": sit or "sem_situacao",
             "_fonte_situacao": fonte, "_evidencia": evidencia,
             "_parte": n, "_de": len(partes),
-            "_itens_origem": len(itens_de(corpo)),
-            # `minimo=1`: a parte ja veio de uma lista detectada — ver `itens_de`
-            "_itens_parte": len(itens_de(parte, minimo=1)),
+            "_itens_origem": n_itens or len(itens_de(corpo)),
+            # ⚠️ Depois da reescrita o separador e `; `, nao `a)`. Contar
+            # marcador aqui daria ZERO em toda parte e o gate de itens
+            # acusaria 47 de 47 divergindo — foi o que aconteceu.
+            "_itens_parte": contar_itens_reescritos(parte),
             "_pedacos": [p["unit_id"] for p in ps],
         })
     return saida
@@ -615,8 +860,23 @@ def main() -> int:
           f"{sum(r['chars'] for r in _NAO_PARTICIONAVEIS):,d} chars fora, "
           f"por decisao explicita")
 
+    print("\n  --- BARRADAS POR COPIA LITERAL (o ultimo portao) ---")
+    print(f"    {len(_COPIA)} cartas com >70% num bloco literal de 250+ chars")
+    for r in _COPIA[:5]:
+        print(f"    {r['seguradora']:8s} frac={r['fracao']} bloco={r['bloco']:4d} "
+              f"{r['amostra'][:60]!r}")
+    if _COPIA:
+        print("    >>> nao publicadas: `cards` nao pode virar copia de `normative`")
+
+    print("\n  --- SEM LISTA DELIMITADA (registradas, nao publicadas) ---")
+    porseg = collections.Counter(r["seguradora"] for r in _SEM_LISTA)
+    print(f"    {len(_SEM_LISTA)} blocos sem marcador de item: {dict(porseg)}")
+    print(f"    {sum(r['chars'] for r in _SEM_LISTA):,d} chars fora — reescrever")
+    print("    sem lista exigiria inventar fronteira, e a heuristica de")
+    print("    maiuscula erra 107% na mediana. Publicar como esta seria COPIA.")
+
     print("\n  --- BARRADAS POR NAO NOMEAR DOCUMENTO (portao de pertinencia) ---")
-    print(f"    {len(_SEM_DOCUMENTO)} blocos citam menos de 2 nomes de documento")
+    print(f"    {len(_SEM_DOCUMENTO)} blocos/partes citam menos de 2 nomes")
     for r in _SEM_DOCUMENTO[:6]:
         print(f"    {r['seguradora']:8s} {r['nomes_citados']}x  {r['amostra'][:78]!r}")
 
