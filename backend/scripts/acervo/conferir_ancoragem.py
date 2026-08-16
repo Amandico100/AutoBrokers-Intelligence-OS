@@ -222,7 +222,24 @@ def _fracao_copiada(texto: str, pedaco: Dict[str, Any]) -> tuple:
     b = " ".join(_sem_acento(_ancora(pedaco)).split())
     if not a:
         return 0.0, 0
-    m = difflib.SequenceMatcher(None, a, b).find_longest_match(0, len(a), 0, len(b))
+    # 🔴 `autojunk=False` NAO E DETALHE — SEM ELE O DETECTOR NAO DETECTA.
+    # -------------------------------------------------------------------------
+    # 16/08/2026, achado por juiz critico. O default de `SequenceMatcher` e
+    # `autojunk=True`: em sequencia com `len(b) >= 200`, ele marca como LIXO todo
+    # elemento que aparece em mais de 1% de `b` — e num texto de CARACTERES isso
+    # e **toda letra comum do portugues**. O `find_longest_match` fica aleijado
+    # exatamente nas cartas longas, que sao as unicas onde copia importa.
+    #
+    # 📊 Medido sobre 147 cartas extraidas de condicoes gerais: a fracao copiada
+    # p50 salta de **0,04 para 0,37** so desligando o autojunk contra o mesmo
+    # pedaco — e para **0,92** contra a corrida inteira. O detector acusava 42;
+    # o numero real e 117.
+    #
+    # Este e um defeito do GUARDA, nao da SPEC-072: ele vale para toda carta ja
+    # conferida por este script desde que existe. Um guarda calibrado para nao
+    # ver e pior que guarda nenhum, porque emite laudo de aprovacao.
+    m = difflib.SequenceMatcher(None, a, b, autojunk=False).find_longest_match(
+        0, len(a), 0, len(b))
     # Devolve (fração, tamanho em caracteres). As duas condições precisam bater
     # para acusar cópia — ver o comentário de `BLOCO_LITERAL_DE_COPIA`.
     return m.size / len(a), m.size

@@ -5314,3 +5314,97 @@ existirem. Está declarado aqui em vez de contornado.
 **O que custa esquecer:** o B.O. é a maior objeção medida do acervo — *"precisa
 de BO mesmo assim?"*, *"nem dão andamento"*. A conduta certa é a da atendente:
 não argumentar, mandar o link do estado certo.
+
+---
+
+## P-181 · 🔴 As 147 cartas do Bloco 2 são CÓPIA LITERAL — não publicar
+
+**Aberta em:** 16/08/2026 · **Dono:** 🧑 **Founder decide** · 🤖 execução aplica
+**Origem:** juiz crítico adversarial do SPEC-072 Bloco 2. **Bloqueia a publicação.**
+
+🔴 **NÃO RODAR `publicar_cartas.py` PARA AS CARTAS NOVAS.** Elas estão gravadas
+em `.jsonl` e versionadas; **nenhuma foi publicada**, e nenhuma deve ser até
+esta pendência fechar.
+
+📊 **146 das 147 cartas são substring LITERAL do texto limpo do contrato.**
+Medido com acento removido e espaços colapsados. Fração copiada, por âncora:
+
+```
+1º pedaço, autojunk=True   (como o guarda rodava)   42/147 acusadas
+1º pedaço, autojunk=False                           53/147
+corrida inteira, autojunk=False  (a âncora honesta) 117/147
+```
+
+**Elas passariam pelo gate por acidente**, e o acidente já foi consertado —
+ver abaixo.
+
+### O conflito, e ele é entre duas coisas que estão certas
+
+`conferir_ancoragem.py:202-219` diz, e está certo:
+
+> *"A carta é o contrato REESCRITO. Se ela for o contrato COPIADO, o namespace
+> `cards` vira uma segunda cópia do `normative` — duas entradas disputando as
+> mesmas vagas na busca, dizendo a mesma coisa com as mesmas palavras. A carta
+> perde a razão de existir."*
+
+E a SPEC-072 §3.4③ diz, e também está certo:
+
+> *"Não destile a lista. Extraia a seção inteira."* — 📊 destilar em prosa levou
+> o núcleo comum de documentos de 12/16 para 5/16.
+
+**Linha de controle que fecha o argumento:** as 5.396 cartas de acervo já
+publicadas têm p50=444 e max=1.667 — são reescritas. Estas 147 têm p50=1.397 e
+são verbatim. **São objetos de natureza diferente entrando no mesmo namespace.**
+
+### As três saídas, e a minha recomendação
+
+1. 🟢 **Reescrever preservando o item** — cada item vira o NOME do documento sem
+   o juridiquês (*"a) Boletim de Ocorrência Policial nos casos de Incêndio e
+   Explosão, Impacto de Veículos, Roubo de Bens..."* → *"boletim de ocorrência
+   (incêndio, explosão, impacto de veículo, roubo)"*). Preserva a contagem, que
+   é o gate, e quebra o bloco literal. **É o que eu recomendo** — resolve os dois
+   lados sem isentar ninguém.
+2. 🟡 **Isenção explícita e registrada** para `faceta='documento'`: lista
+   taxativa é o único conteúdo em que reescrever é o próprio dano. Exige decisão
+   do Founder e um `namespace` próprio, senão a busca passa a ter duas cópias.
+3. 🔴 **Não publicar.** O Bloco 2 vira arquivo e não produto.
+
+### O que JÁ foi consertado — e vale além desta SPEC
+
+`conferir_ancoragem._fracao_copiada` chamava `difflib.SequenceMatcher(None, a, b)`
+com `autojunk` no default `True`. Em sequência de CARACTERES com `len(b) ≥ 200`,
+o autojunk marca como lixo todo elemento presente em mais de 1% de `b` — em
+português, **toda letra comum**. O `find_longest_match` ficava aleijado
+exatamente nas cartas longas, que são as únicas onde cópia importa.
+
+📊 Só desligando o autojunk, a fração p50 vai de **0,04 para 0,37**.
+
+⚠️ **É defeito do GUARDA, não da SPEC-072.** Ele vale para toda carta já
+conferida por esse script desde que ele existe — e um guarda calibrado para não
+ver é pior que guarda nenhum, porque emite laudo de aprovação.
+
+### Os outros achados do juiz, para o mesmo bloco
+
+- 🟠 **18 das 147 citam menos de 2 documentos no próprio texto** (8 citam zero).
+  O portão mede o BLOCO e a publicação é por CARTA. Conserto de uma linha:
+  reaplicar `nomeia_documentos(parte)` dentro do laço que monta as partes.
+- 🟠 **5 corridas, 18.180 chars, 185 itens** de lista de documentos legítima
+  somem **sem rastro**: `corridas_de_documento` exige ao menos um pedaço
+  `faceta='documento'`, e essas são só `escopo`. Não entram nem no diagnóstico.
+- 🟠 **28 cortes cegos** em `partir()`: quando nenhuma fronteira cabe, corta no
+  caractere (`...formali|zado...`). O docstring promete que isso nunca acontece.
+- 🟠 **O teste está VERDE com tudo isso de pé.** O guarda [5] chama-se *"nunca
+  corta no meio"* e aceita até 25% das cartas começando no meio; o [3] chama-se
+  *"o texto sobrevive inteiro"* e compara COMPRIMENTO, não conteúdo. **É o §9.3
+  em estado puro, e no meu próprio teste.**
+- 🟡 3 falsos negativos no vocabulário: o acervo escreve *"Carta Aviso"*,
+  *"carteira de habilitação"*, *"Documento Pessoal"*, *"Comprovante de
+  Propriedade"* — e `_VOCAB_DOC` não tem nenhum. E `declaração` foi removido
+  demais: *"Declaração de únicos herdeiros"* é documento. `declaração de` (com a
+  preposição) mantém o documento e derruba o verbo.
+- 🟢 **PII sobrevive:** 1 recusada em 147 (uma tag `{EMAIL}`), zero CPF, zero
+  CNPJ, zero placa. A fonte é condição geral, não caso concreto.
+
+**O que custa esquecer:** publicar as 147 põe 146 cópias do contrato no
+namespace `cards`, competindo com o `normative` pelas mesmas vagas e dizendo a
+mesma coisa com as mesmas palavras. O agente passaria a ver tudo em dobro.
