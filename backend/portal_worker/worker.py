@@ -41,9 +41,14 @@ from portal_worker.runtime import (                  # noqa: E402
 
 
 def _redigir(bloco: Any) -> Any:
-    """Nada sai deste worker para o banco sem passar pelo redator único."""
+    """Sanitiza a evidencia ANTES do banco — so as superficies de diagnostico.
+
+    🔴 Ver `redaction.redigir_envelope`: envolver a evidencia INTEIRA quebrava a
+    chave anti-duplicacao da cobranca. O payload de trabalho da journey sai
+    intacto; profiler/trace/log/discovery passam pelo redator.
+    """
     try:
-        return _R.redigir(bloco)
+        return _R.redigir_envelope(bloco)
     except Exception:  # noqa: BLE001
         # Redator quebrado não pode virar perda de evidência — mas também não
         # pode virar vazamento. Sem saber sanitizar, não grava o conteúdo.
