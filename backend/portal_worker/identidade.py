@@ -158,17 +158,82 @@ def conferir_corretora_da_sessao(lida: Any, esperada: Any, *, portal: str = "") 
             f"parar aqui e o certo{f' [{portal}]' if portal else ''}")
 
 
-def marca_de_identidade(*, campo: str, itens: Sequence[Any],
-                        esperado: Any, verificado: bool) -> Dict[str, Any]:
-    """O bloco de evidência que prova que a conferência aconteceu.
+# --------------------------------------------------------------------------
+# Os estados de identidade — SPEC-073, correção do Founder de 16/08/2026
+#
+# 🔴 A primeira versão deste módulo gravava `verificado: True` sempre que a
+# leitura passava. Com `account_label='principal'` — que é o caso de 14 das 16
+# contas — isso significava marcar como verificada uma identidade que ninguém
+# conferiu, só porque apareceu **uma** corretora.
+#
+# O Founder cravou a distinção, e ela é exata:
+#
+#     "o portal retornou somente uma corretora" prova UNICIDADE,
+#     não necessariamente IDENTIDADE.
+#
+# Unicidade responde *"eu misturei dados de duas empresas?"* — e é a pergunta
+# que impede o vazamento. Identidade responde *"esta é a empresa certa?"* — e é
+# a que impede trabalhar na empresa errada com dados coerentes. São defeitos
+# diferentes, e chamar o primeiro de segundo é o tipo de mentira que só aparece
+# no dia do incidente.
+# --------------------------------------------------------------------------
+VERIFICADO = "verified"                              # rótulo nomeado casou
+UNICO_NAO_VERIFICADO = "unique_context_unverified"   # um contexto, nada a comparar
+ILEGIVEL = "unreadable"                              # não consegui observar
+BLOQUEADO = "blocked"                                # divergiu ou veio mais de um
 
-    Sem isso, "não vazou" e "não conferi" ficam indistinguíveis no artefato —
-    e um guarda que não deixa rastro não é auditável depois do incidente.
+
+def marca_de_identidade(*, campo: str, itens: Sequence[Any],
+                        esperado: Any, bloqueado: bool) -> Dict[str, Any]:
+    """O bloco de evidência que diz o que foi conferido — e o que NÃO foi.
+
+    Sem isso, "não vazou", "não conferi" e "conferi e bate" ficam
+    indistinguíveis no artefato. Um guarda que não deixa rastro não é auditável
+    depois do incidente; um que deixa rastro **otimista demais** é pior, porque
+    dá a alguém a confiança para pular a próxima checagem.
     """
     vistos = sorted({v for v in _valores(itens, campo)})
+    nomeado = not rotulo_e_generico(esperado)
+
+    if bloqueado:
+        estado = BLOQUEADO
+    elif not vistos:
+        estado = ILEGIVEL
+    elif nomeado:
+        estado = VERIFICADO
+    else:
+        estado = UNICO_NAO_VERIFICADO
+
     return {
         "campo": campo,
-        "corretoras_na_leitura": len(vistos),
-        "esperado_nomeado": not rotulo_e_generico(esperado),
-        "verificado": bool(verificado),
+        "estado": estado,
+        "contextos_na_leitura": len(vistos),
+        # O que o portal DECLAROU ser. Só entra quando há exatamente um: com
+        # dois, o valor já está na mensagem de bloqueio, e repetir aqui só
+        # duplicaria a exposição.
+        "contexto_observado": vistos[0] if len(vistos) == 1 else "",
+        "esperado_nomeado": nomeado,
+        # `verificado` continua existindo por compatibilidade de leitura, mas
+        # agora só é True quando a identidade foi PROVADA de verdade.
+        "verificado": estado == VERIFICADO,
+    }
+
+
+def marca_de_identidade_da_sessao(*, lida: Any, esperado: Any,
+                                  bloqueado: bool) -> Dict[str, Any]:
+    """A mesma honestidade, para o gate pós-login (Tokio/Zurich)."""
+    nomeado = not rotulo_e_generico(esperado)
+    if bloqueado:
+        estado = BLOQUEADO
+    elif not str(lida or "").strip():
+        estado = ILEGIVEL
+    elif nomeado:
+        estado = VERIFICADO
+    else:
+        estado = UNICO_NAO_VERIFICADO
+    return {
+        "estado": estado,
+        "contexto_observado": str(lida or "")[:120],
+        "esperado_nomeado": nomeado,
+        "verificado": estado == VERIFICADO,
     }

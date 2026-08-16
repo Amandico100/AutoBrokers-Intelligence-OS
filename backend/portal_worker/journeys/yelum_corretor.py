@@ -590,8 +590,14 @@ async def cobranca_sweep(page, params: Dict[str, Any], evidence: Dict[str, Any])
     rotulo = str(params.get("account_label") or "")
     fora = conferir_itens_da_corretora(itens, campo="corretora",
                                        esperado=rotulo, portal="yelum")
+    # 🔴 `estado` distingue o que foi PROVADO do que apenas não deu errado.
+    # 📊 Hoje as duas contas Yelum têm `account_label='principal'`, então o
+    # desfecho normal aqui é `unique_context_unverified`: uma corretora só na
+    # leitura (não misturou), mas nada contra o que comparar (não provei que é
+    # a certa). Marcar isso como `verified` seria vender unicidade como
+    # identidade.
     evidence["identidade_corretora"] = marca_de_identidade(
-        campo="corretora", itens=itens, esperado=rotulo, verificado=not fora)
+        campo="corretora", itens=itens, esperado=rotulo, bloqueado=bool(fora))
     if fora:
         return JourneyResult(
             status="needs_human",

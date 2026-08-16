@@ -717,15 +717,20 @@ async def login_check(page, params: Dict[str, Any],
         # mas isso fica REGISTRADO como não-verificado em vez de passar por
         # verificado. E rótulo nomeado com tela ilegível para.
         from portal_worker.identidade import (
-            conferir_corretora_da_sessao, rotulo_e_generico,
+            conferir_corretora_da_sessao, marca_de_identidade_da_sessao,
         )
 
         erro_id = conferir_corretora_da_sessao(corretora, rotulo, portal="zurich")
-        evidence["identidade_corretora"] = {
-            "lida": bool(corretora),
-            "esperado_nomeado": not rotulo_e_generico(rotulo),
-            "verificado": not erro_id and not rotulo_e_generico(rotulo),
-        }
+        marca = marca_de_identidade_da_sessao(lida=corretora, esperado=rotulo,
+                                              bloqueado=bool(erro_id))
+        # 🔴 Este e o sinal MAIS FRACO dos tres: um regex sobre o innerText da
+        # pagina procurando algo que pareca razao social. Ele denuncia
+        # credencial trocada no cadastro, que ja e util -- mas pode casar com o
+        # nome de um cliente que contenha "SEGUROS". Registrar a fonte impede
+        # que alguem leia `verified` daqui com a mesma confianca que le do
+        # `brokerId` da MAPFRE, que vem de um endpoint estruturado.
+        marca["fonte"] = "regex_sobre_texto_da_pagina"
+        evidence["identidade_corretora"] = marca
         if erro_id:
             return JourneyResult(
                 status="needs_human",

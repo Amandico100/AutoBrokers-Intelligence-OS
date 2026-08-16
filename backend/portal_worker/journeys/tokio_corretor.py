@@ -886,17 +886,23 @@ async def cobranca_sweep(page, params: Dict[str, Any], evidence: Dict[str, Any])
     # de graça, desde sempre. Conferir depois do login e antes de baixar
     # qualquer relatório é o momento mais barato de descobrir que se entrou na
     # empresa errada.
-    from portal_worker.identidade import conferir_corretora_da_sessao, rotulo_e_generico
+    from portal_worker.identidade import (
+        conferir_corretora_da_sessao, marca_de_identidade_da_sessao)
 
     rotulo_tk = str(params.get("account_label") or "")
     lida_tk = str(usuario.get("nomeParceiroNegocioPrimario")
                   or (evidence.get("tokio_usuario") or {}).get("corretora") or "")
     erro_id = conferir_corretora_da_sessao(lida_tk, rotulo_tk, portal="tokio")
-    evidence["identidade_corretora"] = {
-        "lida": bool(lida_tk),
-        "esperado_nomeado": not rotulo_e_generico(rotulo_tk),
-        "verificado": not erro_id and not rotulo_e_generico(rotulo_tk),
-    }
+    marca = marca_de_identidade_da_sessao(lida=lida_tk, esperado=rotulo_tk,
+                                          bloqueado=bool(erro_id))
+    # 🔴 O identificador que REALMENTE escopa o dado aqui e o `codigoInterno`:
+    # e ele que vai em `baixar_relatorio(page, corretor, ...)`, entao e ele que
+    # decide de quem e a carteira que volta. O nome e so a etiqueta legivel.
+    # Gravar o codigo ao lado do estado deixa a proxima execucao comparar --
+    # 📊 e o proprio campo se chama `nomeParceiroNegocioPrimario`, cujo
+    # "Primario" sugere que pode haver outros. Nao foi medido; fica registrado.
+    marca["codigo_que_escopa_a_leitura"] = str(usuario.get("codigoInterno") or "")
+    evidence["identidade_corretora"] = marca
     if erro_id:
         return JourneyResult(
             status="needs_human",

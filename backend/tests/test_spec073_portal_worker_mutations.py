@@ -393,6 +393,42 @@ check("M23: sessao ilegivel com rotulo nomeado BLOQUEIA (fail-closed)",
 check("M23 CONTROLE: silencio (campo ausente) NAO bloqueia",
       not ID.conferir_itens_da_corretora([{"x": 1}], campo="corretora", esperado="p"))
 
+# 🔴 UNICIDADE NAO E IDENTIDADE — correcao do Founder em 16/08/2026.
+# A primeira versao gravava `verificado: True` sempre que a leitura passava.
+# Com `account_label='principal'` (14 das 16 contas medidas) isso marcava como
+# verificada uma identidade que ninguem conferiu, so porque apareceu UMA
+# corretora. "Nao misturei duas empresas" e "estou na empresa certa" sao
+# perguntas diferentes, e chamar a primeira de segunda so aparece no incidente.
+m_gen = ID.marca_de_identidade(campo="corretora", itens=uma,
+                               esperado="principal", bloqueado=False)
+m_nom = ID.marca_de_identidade(campo="corretora", itens=uma,
+                               esperado="RESULTA CORRETORA DE SEGUROS L", bloqueado=False)
+m_blq = ID.marca_de_identidade(campo="corretora", itens=duas,
+                               esperado="principal", bloqueado=True)
+m_ilg = ID.marca_de_identidade(campo="corretora", itens=[{"x": 1}],
+                               esperado="principal", bloqueado=False)
+check("M25: uma corretora + rotulo generico NAO e `verified`",
+      m_gen["estado"] == ID.UNICO_NAO_VERIFICADO, m_gen)
+check("M25: e o campo `verificado` acompanha a verdade", m_gen["verificado"] is False)
+check("M25 CONTROLE: rotulo NOMEADO que casa E `verified`",
+      m_nom["estado"] == ID.VERIFICADO and m_nom["verificado"] is True, m_nom)
+check("M25: bloqueio vira estado `blocked`", m_blq["estado"] == ID.BLOQUEADO)
+check("M25: identidade ilegivel vira `unreadable`", m_ilg["estado"] == ID.ILEGIVEL)
+check("M25 CONTROLE: os quatro estados sao DISTINTOS",
+      len({m_gen["estado"], m_nom["estado"], m_blq["estado"], m_ilg["estado"]}) == 4)
+check("M25: o contexto observado fica registrado para comparacao futura",
+      m_gen["contexto_observado"] == "RESULTA CORRETORA DE SEGUROS LTDA")
+check("M25: com dois contextos o valor NAO e duplicado na marca",
+      m_blq["contexto_observado"] == "")
+
+s_gen = ID.marca_de_identidade_da_sessao(lida="AUTO FLEET R CORRETORA",
+                                         esperado="principal", bloqueado=False)
+s_nom = ID.marca_de_identidade_da_sessao(lida="AUTO FLEET R CORRETORA",
+                                         esperado="AUTO FLEET R CORRETORA DE SEGU",
+                                         bloqueado=False)
+check("M25: o gate de SESSAO segue a mesma regra",
+      s_gen["estado"] == ID.UNICO_NAO_VERIFICADO and s_nom["estado"] == ID.VERIFICADO)
+
 # ==========================================================================
 print("\n[M24-extra] o kill switch alcanca o worker Python")
 # ==========================================================================
