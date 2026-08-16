@@ -254,6 +254,38 @@ v_sem = P.validar_acao({"action": "click", "target": "Confirmar"}, TELA,
                        guard=guard(acao_material_esperada=""), origem="journey")
 check("M11+: sem a journey NOMEAR a acao, nenhum material passa", not v_sem.ok)
 
+# 🔴 O TEXTO REAL DA TELA, COM CEDILHA — e o defeito que ele pegou.
+#
+# A primeira versao comparava as strings cruas: a journey declarava `avancar` e
+# o botao do portal chama-se `Avançar`. `"avancar" in "avançar"` e **False**, e
+# o guard recusava o clique legitimo do 80%. Com `confirm=True` o pedido de
+# vidros nunca nasceria.
+#
+# Meus fixtures diziam "Avancar" sem acento, entao a matriz ficou verde e o
+# defeito passou. Quem pegou foi `test_o_protocolo_volta_para_o_segurado`, que
+# usa o texto que o portal manda de verdade.
+TELA_80 = {"url": "https://p/passo6", "heading": "Confirme a peca danificada",
+           "buttons": [{"text": "Avançar"}, {"text": "Voltar"}]}
+g_80 = guard(acao_material_esperada="avancar|confirmar")
+v_acento = P.validar_acao({"action": "click", "target": "Avançar"}, TELA_80,
+                          guard=g_80, origem="journey", tela_material=True)
+check("M11+: `Avançar` COM CEDILHA casa com `avancar` declarado",
+      v_acento.ok, v_acento.motivo)
+check("M11+: e o mesmo botao pela VISAO continua recusado",
+      not P.validar_acao({"action": "click", "target": "Avançar"}, TELA_80,
+                         guard=g_80, origem=P.L4_VISAO, tela_material=True).ok)
+check("M11+ CONTROLE: `Voltar` na tela material continua passando",
+      P.validar_acao({"action": "click", "target": "Voltar"}, TELA_80,
+                     guard=g_80, origem="journey", tela_material=True).ok)
+check("M11+ CONTROLE: botao NAO declarado continua recusado mesmo sem acento",
+      not P.validar_acao({"action": "click", "target": "Cancelar atendimento"},
+                         TELA_80 | {"buttons": [{"text": "Cancelar atendimento"}]},
+                         guard=g_80, origem="journey", tela_material=True).ok)
+check("M11+: acento tambem tolerado no lado DECLARADO",
+      G.PortalActionGuard(material_liberado=True,
+                          acao_material_esperada="Avançar")
+      .acao_material_permitida("avancar")[0])
+
 # ==========================================================================
 print("\n[M12/M13] nenhuma regra generica manda escolher a PRIMEIRA opcao")
 # ==========================================================================
