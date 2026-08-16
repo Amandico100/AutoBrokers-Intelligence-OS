@@ -53,6 +53,12 @@ from portal_worker.journeys import vidros_questionario as Q  # noqa: E402
 PASS = FAIL = 0
 
 
+def _sem_acento_teste(txt):
+    import unicodedata
+    s = unicodedata.normalize("NFKD", str(txt or ""))
+    return "".join(c for c in s if not unicodedata.combining(c)).lower()
+
+
 def check(nome, condicao, extra=""):
     global PASS, FAIL
     if condicao:
@@ -242,6 +248,50 @@ check("V13: e o guard e chamado antes do POST",
       -1 < src_af.find("guard.before") < i_post)
 check("V13: falha do POST vira DESCONHECIDO, nao retry",
       "FASE_UNKNOWN" in src_af or "incerto" in src_af)
+
+# ==========================================================================
+print("\n[V14] sem checkpoint duravel NAO existe fronteira material")
+# ==========================================================================
+# Este bloco nasceu de um defeito que a inspecao de fonte do V13 NAO pegou:
+# `_guard_do` devolvia um guard com `material_liberado=confirm` quando o
+# runtime nao vinha. Guard solto nao tem checkpoint (`_gravar` so persiste
+# `if self._checkpoint is not None`), entao o POST sairia sem `phase=armed` no
+# banco -- maybe_committed sem ninguem para reconciliar.
+#
+# ⚠️ E a primeira versao DESTE bloco tambem estava errada: eu so chamava
+# `acao_material_permitida` num guard solto, que recusa de qualquer jeito
+# porque `acao_material_esperada` nasce vazia. A assercao passava pelo motivo
+# errado, e a mutacao que devolvia o fail-open NAO acendeu vermelha.
+# Por isso o teste agora DA AO GUARD TODA CHANCE de permitir -- nomeia a acao
+# esperada -- para que a unica coisa capaz de recusar seja `material_liberado`.
+#
+# ⚠️ E o portao certo importa: `acao_material_permitida` so confere o ROTULO
+# ("pode ser ESTE botao?"). Quem confere a liberacao e `avaliar()`, que
+# `before()` chama primeiro. Minha primeira versao mirou no portao errado e
+# passava por acidente.
+g_solto = AF._guard_do({"confirm": True})
+g_solto.acao_material_esperada = E.FRONTEIRA_ABRIR  # toda chance de permitir
+ok, motivo = g_solto.avaliar(G.MATERIAL_SIDE_EFFECT)
+check("V14: com confirm=True e SEM runtime, efeito material e recusado", not ok)
+check("V14: e o motivo e a falta de liberacao, nao o rotulo da acao",
+      "liberacao" in _sem_acento_teste(motivo), motivo)
+check("V14: o guard solto realmente nao tem checkpoint (a causa raiz)",
+      getattr(g_solto, "_checkpoint", None) is None)
+check("V14: e por isso `armar` nao teria onde gravar phase=armed",
+      g_solto.material_liberado is False)
+
+
+class _RuntimeFalso:
+    def __init__(self, guard):
+        self.guard = guard
+
+
+g_bom = G.PortalActionGuard(material_liberado=True,
+                            acao_material_esperada=E.FRONTEIRA_ABRIR)
+check("V14 CONTROLE: com runtime injetado, o guard DELE e usado",
+      AF._guard_do({"confirm": True, "_runtime": _RuntimeFalso(g_bom)}) is g_bom)
+check("V14 CONTROLE: e esse guard PERMITE a fronteira -- os dois casos diferem",
+      g_bom.acao_material_permitida(E.FRONTEIRA_ABRIR)[0])
 
 # ==========================================================================
 print("\n[LINHA DE CONTROLE] a 074 nao virou 'nega tudo'")

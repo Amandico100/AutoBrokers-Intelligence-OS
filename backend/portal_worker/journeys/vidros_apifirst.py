@@ -54,14 +54,33 @@ def api_first_habilitado() -> bool:
 
 
 def _guard_do(params: Dict[str, Any]):
-    """O guard da SPEC-073, ou um local equivalente em teste offline."""
+    """O guard da SPEC-073 — e, sem ele, uma porta FECHADA.
+
+    🔴 A versão anterior desta função devolvia
+    `PortalActionGuard(material_liberado=bool(params.get("confirm")))` quando o
+    runtime não vinha nos params. Isso era fail-OPEN, e abria justamente o
+    buraco que a SPEC-073 existe para fechar:
+
+    `guard.armar()` só persiste `phase=armed` se tiver um checkpoint durável
+    (`_gravar` faz `if self._checkpoint is not None`). Um guard construído solto
+    não tem nenhum. Então, com `confirm=True` e sem runtime, o `POST
+    /atendimentos` saía **sem que o banco soubesse que havia um POST em curso**
+    -- e uma queda logo depois deixaria um atendimento existindo na seguradora
+    sem uma linha de evidência. É o `maybe_committed` sem ninguém para
+    reconciliar.
+
+    Em produção o worker sempre injeta `params["_runtime"]`. Mas "sempre" é uma
+    suposição sobre outro módulo, e fronteira material não se apoia em
+    suposição: se a injeção quebrar um dia, o certo é o pedido NÃO sair.
+    """
     rt = params.get("_runtime")
     g = getattr(rt, "guard", None)
     if g is not None:
         return g
     from portal_worker.guardrails import PortalActionGuard
 
-    return PortalActionGuard(material_liberado=bool(params.get("confirm")))
+    # Sem checkpoint durável não há fronteira material. Leitura continua livre.
+    return PortalActionGuard(material_liberado=False)
 
 
 async def _checkpoint(params: Dict[str, Any], patch: Dict[str, Any]) -> None:
