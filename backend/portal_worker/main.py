@@ -16,8 +16,19 @@ app = FastAPI(title="AutoBrokers Portal Worker")
 
 
 def build_info() -> dict:
-    """SHA/hora gravados no build (Dockerfile stage gitinfo) — prova qual versão
-    está no ar. Sem os arquivos (ex.: dev local) devolve 'unknown', nunca quebra."""
+    """Qual versão está no ar — e, desde a P-189, de um jeito que dá para conferir.
+
+    📊 `build_sha` vinha `"unknown"` em produção: o estágio `gitinfo` do
+    Dockerfile lê `.git/HEAD`, e o EasyPanel exporta a árvore de arquivos **sem
+    o `.git`**. O campo continua aqui porque ele funciona em construtores que
+    mandam o `.git` — mas ele não podia seguir sendo a única resposta.
+
+    `code_fingerprint` é a resposta que não depende do construtor: o hash dos
+    `.py` que ESTE processo tem em disco. Rode `impressao_do_diretorio()` sobre
+    `backend/portal_worker` no repositório e compare — se bater, o código no ar é
+    o código que você escreveu; se não bater, o deploy não trocou, por mais verde
+    que o painel esteja.
+    """
     info = {}
     here = Path(__file__).resolve().parent
     for key, fname in (("build_sha", "build_sha.txt"), ("build_time", "build_time.txt")):
@@ -25,6 +36,12 @@ def build_info() -> dict:
             info[key] = (here / fname).read_text(encoding="ascii").strip() or "unknown"
         except Exception:  # noqa: BLE001
             info[key] = "unknown"
+
+    from portal_worker.impressao import impressao_do_processo
+
+    digital, quantos = impressao_do_processo()
+    info["code_fingerprint"] = digital
+    info["code_files"] = quantos
     return info
 
 
