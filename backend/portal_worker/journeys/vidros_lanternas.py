@@ -1114,6 +1114,38 @@ async def abrir_atendimento(page, params: Dict[str, Any], evidence: Dict[str, An
     params: insurer_name, cpf_cnpj, placa, data_dano, solicitante{relacao,email,
     nome,cpf_cnpj,telefone}, dano{peca,como,onde,descricao}, local{estado,cidade,
     cep}, especificos{pergunta->resposta}, confirm."""
+    # ----------------------------------------------------------------------
+    # SPEC-074 — caminho API-first, ATRÁS DE FLAG (`PORTAL_VIDROS_API_FIRST`).
+    #
+    # 🔴 Nasce DESLIGADA. Com a flag off, tudo abaixo roda exatamente como
+    # rodava — este bloco é um `if` que retorna cedo, nada mais.
+    #
+    # 📊 O motivo de existir: a mineração de 58 MB de HAR mostrou que o portal é
+    # API-first nativo (34 endpoints REST sob o AngularJS), e que a API responde
+    # com dado estruturado o que a tela obriga a adivinhar — catálogo de peças,
+    # causas por peça, próxima pergunta, franquia e, principalmente, a AUSÊNCIA
+    # de cobertura, que vem num 400 antes de qualquer escrita.
+    #
+    # Devolver `None` é resposta legítima e frequente: qualquer coisa que a API
+    # não resolva com certeza cai para o navegador logo abaixo, que continua
+    # sendo a autoridade de último recurso.
+    # ----------------------------------------------------------------------
+    try:
+        from portal_worker.journeys.vidros_apifirst import (
+            abrir_atendimento_api, api_first_habilitado,
+        )
+
+        if api_first_habilitado():
+            _r = await abrir_atendimento_api(page, params, evidence)
+            if _r is not None:
+                return _r
+            evidence.setdefault("api_first", {"usado": False,
+                                              "motivo": "caiu para o caminho DOM"})
+    except Exception as _e:  # noqa: BLE001
+        # Um erro no caminho novo NUNCA pode custar o acionamento: o caminho
+        # provado está logo abaixo e assume.
+        evidence["api_first_falhou"] = type(_e).__name__
+
     insurer = str(params.get("insurer_name") or "").strip()
     cpf = str(params.get("cpf_cnpj") or "").strip()
     placa = str(params.get("placa") or "").strip()
