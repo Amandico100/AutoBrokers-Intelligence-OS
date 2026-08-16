@@ -543,6 +543,40 @@ class SearchService:
                         f"{len(faixa_results)}/{cota} candidatos"
                     )
                     initial_results = merge_rag_results(initial_results, faixa_results)
+
+                # 🔴 A COTA DA FACETA — uma busca A MAIS, nunca um corte.
+                #
+                # Ela roda DEPOIS das faixas e SOMA ao que elas acharam. Se a
+                # pergunta não pede faceta, `faceta_da_pergunta` devolve `None` e
+                # nada acontece — o caminho é idêntico ao de ontem.
+                #
+                # O motivo de ser assim e não um `must` está em
+                # `knowledge_scope.COTA_DE_FACETA`, e resume-se a isto: 📊 0 de
+                # 5.396 cartas do acervo têm faceta ausente, então filtrar por
+                # `faceta='documento'` esconderia 5.016 delas — incluindo a
+                # exclusão de CNH vencida, que é o que o segurado precisa ouvir
+                # ao perguntar sobre documentos.
+                from .knowledge_scope import (COTA_DE_FACETA, FAIXAS_DA_FACETA,
+                                              faceta_da_pergunta)
+
+                faceta_pedida = faceta_da_pergunta(original_query)
+                if faceta_pedida:
+                    extra = self.qdrant.search_similar(
+                        company_id=company_id,
+                        query_embedding=dense_vector,
+                        sparse_embedding=sparse_vector,
+                        top_k=COTA_DE_FACETA,
+                        score_threshold=0.0,
+                        **build_global_search_kwargs(
+                            carrier_slug=da_pergunta,
+                            namespace=FAIXAS_DA_FACETA,
+                            faceta=faceta_pedida),
+                    )
+                    logger.info(
+                        f"[Search] cota de faceta '{faceta_pedida}': "
+                        f"{len(extra)}/{COTA_DE_FACETA} candidatos SOMADOS"
+                    )
+                    initial_results = merge_rag_results(initial_results, extra)
             except Exception as e:  # noqa: BLE001
                 logger.warning(f"[Search] global retrieval ignorado: {type(e).__name__}")
 

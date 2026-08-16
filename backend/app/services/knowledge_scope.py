@@ -290,6 +290,29 @@ def temas_da_pergunta(texto: str) -> Optional[List[str]]:
     return sorted(achados) or None
 
 
+# 🔴 A BUSCA EXTRA DA FACETA — COTA, NUNCA CORTE
+# =============================================================================
+# SPEC-070 §5.1:304: *"`null` passa em todo filtro, NUNCA ELIMINA. Rótulo dá
+# COTA E PRIORIDADE."*
+#
+# Em 15/08/2026 eu implementei o filtro de faceta como `must` na busca global e
+# tive de reverter: 📊 **0 de 5.396 cartas do acervo têm faceta ausente**, então
+# o braço "OU ausente" não protegia ninguém ali e `faceta='documento'` escondia
+# as outras 5.016 — inclusive a carta da Porto que diz *"não há cobertura se
+# quem dirigia estava com a CNH suspensa, cassada, vencida"*, que é exatamente o
+# que o segurado precisa ouvir ao perguntar sobre documentos.
+#
+# A forma certa é esta: quando a pergunta pede uma faceta, roda-se UMA busca a
+# mais, com orçamento próprio, e o resultado é SOMADO. Nada é removido — o pior
+# caso é a busca extra não achar nada e tudo continuar como estava.
+#
+# ⚠️ Fica FORA de `ORCAMENTO_GLOBAL` de propósito: aquela tupla é desempacotada
+# em três (`for rotulo, faixa, cota in ...`) e um teste afirma essa forma. Um
+# quarto elemento quebraria o guarda de outra SPEC para caber um desta.
+COTA_DE_FACETA = 6
+FAIXAS_DA_FACETA = ["normative", "cards"]
+
+
 def build_global_search_kwargs(
     namespace: Optional[Any] = None,
     version: Optional[str] = None,

@@ -5259,3 +5259,28 @@ sempre com migration nova"*. Vai junto com a migration do Bloco 6, que já toca
 **O que custa esquecer:** quem for conferir a documentação autoritativa da coluna
 conclui que o único tema que a SPEC-072 filtra é ilegal. É um `COMMENT` que
 mente, e §12.1 manda consertar o campo, não o texto.
+
+### ✅ 16/08/2026 — FECHADA: a cota entrou, e é cota mesmo
+
+Decisão do Founder: *"a terceira linha do ORCAMENTO_GLOBAL logo depois do Bloco
+2, como parte do gate dele — a carta nova tem de ser recuperável, senão o bloco
+entrega arquivo e não produto."* E a correção dele sobre a ordem estava certa:
+**as cartas do Bloco 2 nascem com `faceta` e `temas` corretos por construção**,
+porque somos nós que as escrevemos — a discordância de 47% é do legado.
+
+Implementado em `knowledge_scope.COTA_DE_FACETA` (6 vagas) + uma busca extra nos
+**dois** caminhos globais, que **SOMA** ao que as faixas acharam:
+
+```
+o laço de ORCAMENTO_GLOBAL   NÃO recebe faceta   ← nada é escondido
+a busca extra                roda só quando a pergunta pede
+o resultado                  merge_rag_results   ← soma, nunca substitui
+```
+
+⚠️ Fica **fora** da tupla `ORCAMENTO_GLOBAL` de propósito: ela é desempacotada
+em três (`for rotulo, faixa, cota in ...`) e um teste de outra SPEC afirma essa
+forma. Quebrar o guarda de uma SPEC para caber o desta seria o oposto do que
+esta pendência ensinou.
+
+Guardado por `test_o_filtro_de_faceta_tem_dois_bracos.py`, bloco [7], que agora
+afirma o par certo: **o laço não recebe faceta** E **a busca extra soma**.

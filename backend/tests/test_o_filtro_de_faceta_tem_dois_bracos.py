@@ -446,21 +446,30 @@ def teste_o_filtro_nao_narrowa_a_busca_global() -> None:
     se quem dirigia estava com a CNH suspensa, cassada ou vencida"*. É
     exatamente o que o segurado precisa ouvir ao perguntar sobre documentos.
     """
-    print("\n[7] os dois caminhos globais NÃO estreitam a busca")
+    print("\n[7] a faceta SOMA uma busca, e não estreita as outras")
     for arq in ("search_service.py", "langchain_service.py"):
         with open(os.path.join(RAIZ, "app", "services", arq), encoding="utf-8") as fh:
             bruto = fh.read()
         codigo = "\n".join(l for l in bruto.split("\n")
                            if not l.strip().startswith("#"))
-        checar(re.search(r"faceta=\w+", codigo) is None,
-               f"{arq}: NÃO passa faceta= ao build_global_search_kwargs",
-               "um `must` de faceta esconde 5.016 cartas do acervo")
-        checar(re.search(r"temas=\w+", codigo) is None,
-               f"{arq}: NÃO passa temas=",
-               "e o AND dos dois acha 53% das cartas de documento")
-        checar("SPEC-070 §5.1" in bruto or "SPEC-070 §5.1:304" in bruto,
+
+        # 🔴 O LAÇO DAS FAIXAS não pode receber faceta. É ele que decide o que
+        # o agente vê em TODA pergunta; um `must` ali esconde 5.016 cartas.
+        laco = codigo.split("ORCAMENTO_GLOBAL:", 1)[-1].split("merge_rag_results", 1)[0]
+        checar("faceta=" not in laco,
+               f"{arq}: o laço de ORCAMENTO_GLOBAL NÃO recebe faceta",
+               "um `must` ali esconde 5.016 cartas do acervo")
+        checar("temas=" not in laco, f"{arq}: nem temas=")
+
+        # E a busca EXTRA tem de existir, senão a faceta continua sem uso.
+        checar("COTA_DE_FACETA" in codigo,
+               f"{arq}: existe a busca extra com cota própria")
+        checar("merge_rag_results" in codigo.split("COTA_DE_FACETA", 1)[-1],
+               f"{arq}: e o resultado dela é SOMADO, não substituído",
+               "cota que substitui não é cota, é corte com outro nome")
+        checar("SPEC-070 §5.1" in bruto,
                f"{arq}: e o motivo canônico está escrito ali",
-               "desligar sem dizer por quê convida a religar amanhã")
+               "sem o porquê, o próximo religa o `must` amanhã")
 
     with open(os.path.join(RAIZ, "app", "services", "knowledge_scope.py"),
               encoding="utf-8") as fh:

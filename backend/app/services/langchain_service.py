@@ -681,6 +681,27 @@ class LangChainService:
                             carrier_slug=carrier, namespace=faixa),
                     )
                     results = merge_rag_results(results, global_results)
+
+                # A COTA DA FACETA — uma busca A MAIS, nunca um corte. Espelho
+                # exato de `search_service`: consertar so um dos dois caminhos
+                # globais deixa a metade que ninguem olha com o defeito antigo.
+                # O porque de ser cota e nao `must` esta em
+                # `knowledge_scope.COTA_DE_FACETA`.
+                from .knowledge_scope import (COTA_DE_FACETA, FAIXAS_DA_FACETA,
+                                              faceta_da_pergunta)
+
+                faceta_pedida = faceta_da_pergunta(query)
+                if faceta_pedida:
+                    extra = self.qdrant.search_similar(
+                        company_id=company_id,
+                        query_embedding=query_embedding,
+                        top_k=COTA_DE_FACETA,
+                        score_threshold=score_threshold,
+                        **build_global_search_kwargs(
+                            carrier_slug=carrier, namespace=FAIXAS_DA_FACETA,
+                            faceta=faceta_pedida),
+                    )
+                    results = merge_rag_results(results, extra)
             return results
         except Exception as e:
             logger.error(f"[RAG] Error: {e}")
