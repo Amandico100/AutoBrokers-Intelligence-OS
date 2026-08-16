@@ -212,7 +212,73 @@ vermelhos preexistentes registrados um a um.
 
 ---
 
-## 7. O que NÃO foi feito, e por quê
+## 7. Fechamento em produção — 16/08/2026
+
+### Deploy
+
+`portal-worker` · `smith-api` · `smith-web`, nesta ordem, mais
+`PORTAL_WORKER_URL` no smith-api. Depois da correção do redator, um segundo
+deploy só do `portal-worker` (build `19:40:38Z`).
+
+### Health, medido
+
+```
+portal-worker : registry_entries 14 · portais_com_cobranca 6 (com MAPFRE)
+                kill_switch false · discovery false · profiler true · vision false
+smith-api     : tool_gateway_modo SHADOW  (inalterado, como a SPEC exige)
+smith-web     : HTTP 200
+ponte         : /cobranca-capabilities degraded=false, operacional = 6
+```
+
+📊 **P-149 resolvida:** a journey da MAPFRE está na imagem implantada.
+
+### P-186 — o canário achou uma regressão, e era minha
+
+Rodada 1: `cobranca_sweep` read-only em Allianz (controle, 65s, 10 itens) e
+Yelum (identity gate alterado, 23s, 1 item). Ambos `done`, sem `critical_effect`.
+
+O identity gate funcionou e foi honesto:
+
+```
+estado               unique_context_unverified
+verificado           false
+contextos_na_leitura 1
+contexto_observado   RESULTA CORRETORA DE SEGUROS LTDA
+```
+
+Job da Resulta, leitura da Resulta. **Zero cross-tenant.**
+
+Mas a evidência gravada mostrou `inadimplentes[0].recibo` como
+`<redacted:cartao>-3`. `recibo` é a chave anti-duplicação de `billing_sent_log`
+e o nome do PDF no bucket — mascarado, toda execução concluiria que nada foi
+enviado, e o segurado receberia a mesma cobrança de novo.
+
+Causa: envolvi a evidência inteira em `redigir()`. Corrigido com
+`redigir_envelope()`, que sanitiza só as superfícies de diagnóstico e deixa o
+payload de trabalho intacto.
+
+Rodada 2, após o redeploy — 📊 medido no banco:
+
+```
+recibo_intacto true · apolice_intacta true · cpf_intacto true · nome_intacto true
+identidade     unique_context_unverified · 1 corretora
+critical_effect null · vazou_segredo false
+profiler       104 requests observados
+```
+
+### Critério de conclusão
+
+| Item | Estado |
+|---|---|
+| Código em main | ✅ `575bbdf` |
+| Três serviços no runtime | ✅ |
+| Healths verdes | ✅ |
+| P-186 verde | ✅ (2 rodadas, defeito corrigido entre elas) |
+| Zero regressão nova | ✅ 385 asserções · 17 vermelhos preexistentes |
+| Cobrança preservada | ✅ leitura real intacta nos dois portais |
+| Zero cross-tenant | ✅ 1 corretora por leitura, tenant correto |
+
+## 8. O que NÃO foi feito, e por quê
 
 **Nenhum deploy, nenhum canário live.** Dois motivos, ambos legítimos:
 
@@ -221,8 +287,7 @@ vermelhos preexistentes registrados um a um.
 2. 📊 A MAPFRE está na P-149: a journey existe no código e **não** na imagem. Um
    canário dela mediria o deploy, não a SPEC.
 
-Tudo que não depende de rede real foi provado offline. Registrado em **P-186**
-com o procedimento exato para quando a janela abrir.
+Tudo que não depende de rede real foi provado offline. **Executado em 16/08/2026** — ver §7.
 
 📊 Conferido ao final: a API de produção respondia 200 e a reindexação seguia
 intacta. Nenhuma escrita em `knowledge_cards`, Qdrant ou produção.

@@ -5568,3 +5568,31 @@ janela autorizada. Depois: deploy com `PORTAL_DISCOVERY_MODE=false`,
 `/health` e rodar cobrança read-only sem enviar WhatsApp.
 **O que custa esquecer:** declarar a SPEC-073 "provada em produção" sem ter
 tocado em produção — exatamente o defeito que a CLAUDE.md §9.1 registra.
+
+---
+
+## P-187 · 🟡 O profiler não nomeia candidatos de API fora do portal de vidros
+
+**Aberta em:** 16/08/2026 · **Dono:** 🤖 execução, quando cada portal for medido
+
+📊 Medido no canário P-186 (Yelum, 16/08): o profiler observou **104 requests
+relevantes** e nomeou **zero candidatos de API**.
+
+Não é defeito de captura — é calibração. `_HOSTS_DE_PORTAL` no `worker.py` mapeia
+`yelum_corretor → yelumseguradora.com.br`, e a API real do Novo MEC responde em
+outro host. Sem bater o host, `classificar_origem()` marca tudo como
+`third_party`, e o nomeador de candidatos só considera `first_party`.
+
+**Por que não corrigi agora:** adivinhar o host de cada um dos sete portais é
+exatamente o que este projeto proíbe. O host certo sai de uma medição — e a
+medição sai de graça, do próprio profiler, na primeira execução de cada portal.
+
+**O que destrava:** 🤖 ler `evidence.profiler` de um job real por portal e
+preencher o mapa com o host observado. Sete linhas, uma medição cada.
+**O que custa esquecer:** o profiler continua registrando trajetória e drift
+normalmente; só a sugestão de "esta chamada parece a fonte estruturada desta
+tela" fica silenciosa fora de vidros. É perda de aceleração futura, não de
+proteção.
+
+📊 Em vidros o mapa está correto (`abraseuatendimento.com.br`), que é onde a
+SPEC-074 precisa dele.
