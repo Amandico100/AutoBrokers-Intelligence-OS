@@ -5,10 +5,10 @@
 | | |
 |---|---|
 | Commit base | `ffd1cd9` (head da SPEC-073) |
-| Commit final | `57bff1a` |
-| `origin/main` | `57bff1a` — fast-forward, 6 commits, 0 atrás |
-| Commits | 6 (5 de feature + 1 merge da correção da cedilha da 073) |
-| Diff | 17 arquivos · +3.248 / −1 |
+| Commit final | `190bc2d` |
+| `origin/main` | `190bc2d` — fast-forward, 8 commits, 0 atrás |
+| Commits | 8 (feature + docs + 1 merge da correção da cedilha da 073) |
+| Diff | 20 files changed, 3944 insertions(+), 1 deletion(-) |
 | Migrations | **nenhuma** |
 
 ---
@@ -174,14 +174,14 @@ na V10).
 
 ---
 
-## 9. Testes — 192 asserções novas
+## 9. Testes — 198 asserções novas
 
 | Suite | Asserções |
 |---|---|
 | `test_spec074_vidros_api.py` | 87 |
 | `test_spec074_vidros_fluxo.py` | 49 |
-| `test_spec074_vidros_mutations.py` | 56 |
-| **total 074** | **192** |
+| `test_spec074_vidros_mutations.py` | 62 |
+| **total 074** | **198** |
 | SPEC-073 (mantidas verdes) | 390 |
 
 ### 9.1 As seis mutações
@@ -196,6 +196,7 @@ na V10).
 | M4 | roteador manda tudo ao portal (colisão junto) | 2 |
 | M5 | chave de idempotência ignora o **lado** (P-79) | 1 |
 | M6 | a flag API-first nasce **ligada** | 1 |
+| M7 | guard sem checkpoint volta a ser **fail-open** | 3 |
 | — | restaurado | **0** |
 
 ### 9.2 Cada bloco prova três coisas, não duas
@@ -217,7 +218,7 @@ questionário completo ainda chega ao 204.
 ## 10. Gates
 
 ```
-192/0   asserções da SPEC-074
+198/0   asserções da SPEC-074
 390/0   asserções da SPEC-073, revalidadas depois de tudo
 214     suites verdes no backend
  17     suites vermelhas — as MESMAS já provadas pré-existentes no
@@ -252,6 +253,36 @@ acentuado de verdade na matriz.
 reprovava `"não consegui"` sem olhar o sentido — mas *"FOI aberto, só não conclui
 a última etapa"* é honesto. Eu procurava a palavra que **eu** teria escrito, não a
 que o produto escreveu. As duas passaram a checar sentido.
+
+**Um fail-open que meu próprio teste declarou seguro.** O achado mais sério da
+SPEC, e eu o encontrei **lendo a sequência real**, não pelo teste.
+
+`_guard_do` devolvia, quando o runtime não vinha nos params,
+`PortalActionGuard(material_liberado=bool(confirm))`. Guard construído solto não
+tem checkpoint — e `_gravar` só persiste `if self._checkpoint is not None`. Logo,
+com `confirm=True` e sem runtime, o `POST /atendimentos` sairia **sem que o banco
+soubesse que havia um POST em curso**. Uma queda logo depois deixaria um
+atendimento existindo na seguradora sem uma linha de evidência: `maybe_committed`
+sem ninguém para reconciliar — o buraco exato que a SPEC-073 existe para fechar.
+
+Em produção o worker sempre injeta `_runtime`. Mas *"sempre"* é uma suposição
+sobre outro módulo, e fronteira material não se apoia em suposição.
+
+**Por que meu bloco V13 não pegou:** ele provava a integração por **inspeção de
+fonte** — *"o guard é chamado antes do POST"*. Verdade, e insuficiente: não dizia
+nada sobre **o que esse guard responde**.
+
+**E o teste que escrevi para cobri-lo estava errado duas vezes.** Na primeira,
+chamei `acao_material_permitida` num guard solto — que recusa de qualquer jeito,
+porque `acao_material_esperada` nasce vazia. A asserção passava pelo motivo
+errado, e a mutação que devolvia o fail-open deu **61/0, verde**. Guarda que não
+tem como falhar não guarda nada (CLAUDE.md §9.3). Na segunda, mirei no portão
+errado: `acao_material_permitida` confere só o **rótulo**; quem confere a
+liberação é `avaliar()`, que `before()` chama primeiro.
+
+O teste final dá ao guard **toda chance de permitir** — nomeia a ação esperada —
+para que a única coisa capaz de recusar seja `material_liberado`, e confere o
+**motivo** da recusa, não só o booleano. M7 acende 3 vermelhas.
 
 **O `git diff` que não provou nada.** Mutei `api_first_habilitado()` num arquivo
 **untracked**, restaurei à mão e conferi com `git diff --quiet`, que respondeu
@@ -328,7 +359,7 @@ journeys entram no `JOURNEYS` existente. O guard é o da SPEC-073, reusado.
 
 ## 16. FATO · INFERÊNCIA · RECOMENDAÇÃO
 
-**FATO** — 192 asserções novas verdes; 6 mutações detectadas e restauradas;
+**FATO** — 198 asserções novas verdes; 7 mutações detectadas e restauradas;
 390 asserções da 073 revalidadas; 214 suites verdes e 17 vermelhas pré-existentes;
 `tsc --noEmit` exit 0; `origin/main` em `57bff1a`; três deploys disparados com
 HTTP 200; a flag nasce desligada em 10 valores de entrada testados; 0 CPF e 0 CNPJ
