@@ -5752,3 +5752,99 @@ com o mesmo método. O profiler já registra o suficiente.
 **O que custa esquecer:** se outra seguradora exigir `TipoAtendimento` e
 recebermos `None`, o pedido é recusado na fronteira 1 — falha limpa e visível, não
 silenciosa. Risco baixo, mas é dívida de medição, não decisão de projeto.
+
+---
+
+## P-193 · 🟡 O caminho API-first nasceu MORTO, e nenhum teste de texto viu
+
+**Aberta e FECHADA em:** 16/08/2026 · **Dono:** 🤖 execução · registro de lição
+
+Fica aqui não porque esteja pendente, mas porque a **causa** é reutilizável.
+
+`abrir_atendimento_api` lia `params["_seguradora_slug"]` e `params["_data_iso"]`.
+📊 `grep` em todo o repositório: **ninguém escrevia esses campos**. A função
+devolvia `None` em 100% das chamadas. Um caminho inteiro — 258 linhas, duas
+fronteiras materiais, guard, checkpoint — inerte por construção.
+
+**Nenhum teste podia ver**, porque todos os testes daquele caminho eram
+`inspect.getsource()` + substring: *"a palavra `guard.before` aparece antes da
+palavra `criar_atendimento`"*. Estava tudo lá, na ordem certa. O código era
+perfeito e não fazia nada.
+
+Quem viu foi o **primeiro teste executável** — na primeira execução, no primeiro
+bloco: `buscar_apolice` nunca era chamado.
+
+**O que isso ensina, e vale para toda SPEC futura:** teste de inspeção de fonte
+prova que um texto existe num arquivo. Ele nunca prova que o código roda, e nunca
+prova que roda com os dados que a produção entrega. Onde houver fronteira
+material, tem de haver pelo menos um teste que EXECUTA e conta quantas vezes o
+POST saiu.
+
+**Consertado:** a função deriva `slug_da_seguradora(insurer_name)` e
+`data_iso(data_dano)` do que a journey de fato recebe. Lista de slugs FECHADA —
+seguradora não medida devolve `""`, o preflight desiste e o DOM assume.
+
+---
+
+## P-194 · 🔴 `failed` deixou de significar "nada aconteceu" — e o dedup dependia disso
+
+**Aberta e FECHADA em:** 16/08/2026 · **Dono:** 🤖 execução · achado por juiz crítico
+
+O defeito mais perigoso da SPEC-074, e ele não estava em código novo.
+
+A SPEC-065 §7.2 estabeleceu `failed` como a válvula de escape do dedup:
+`portal_tool._buscar_pedido_vivo` filtrava com `.neq("status","failed")`, e o
+índice único parcial `idx_portal_jobs_pedido_vivo` usava o **mesmo** predicado.
+Era correto — enquanto `failed` só acontecesse **antes** de qualquer escrita.
+
+A SPEC-074 quebrou a premissa. O `worker.py` gravava `status="failed"` no handler
+de exceção **mesmo sabendo** que houve efeito material — o bloco logo acima já
+rebaixava a fase para `unknown` justamente porque sabia. Resultado: um job que
+criou o atendimento e caiu depois virava `failed`, sumia do dedup, e o próximo
+`portal_action` com a mesma chave abria **o segundo atendimento, pago, no nome do
+mesmo segurado**.
+
+Três consertos, em profundidade:
+
+| Camada | O que mudou |
+|---|---|
+| `worker.py` | com prova de efeito, grava `needs_human`, não `failed` |
+| `portal_tool.py` | `failed` **com** prova de efeito é tratado como pedido VIVO |
+| `vidros_apifirst.py` | grava `evidence["protocolo"]` já na fronteira A |
+
+O terceiro é o que fecha de verdade: `tem_prova_de_efeito` procura
+`evidence["protocolo"]`, e o caminho API só escrevia essa chave **depois** da
+fronteira B. Entre A e B havia uma janela em que o pedido **já existia na
+seguradora** e a evidência dizia que não havia prova de nada.
+
+**O teste que guardava a regra antiga foi MIGRADO, não apagado** (CLAUDE.md §9.3):
+ele agora exige a regra mais forte — a exclusão olha a evidência, não o rótulo —
+e ganhou o par executável que prova que os dois casos conseguem diferir.
+
+**O que custa esquecer:** nada, está fechado. Mas a lição fica: quando uma SPEC
+introduz efeito material num fluxo, **todo lugar que trata status como prova de
+ausência de efeito vira um defeito** — mesmo os que ela não tocou.
+
+---
+
+## P-195 · 🟢 Deploy verificável entrou; o `build_sha` continua `unknown`
+
+**Aberta em:** 16/08/2026 · **Dono:** 🤖 execução, quando alguém puder mexer no EasyPanel
+
+A [P-189](#p-189) foi resolvida por outro caminho: `code_fingerprint` no
+`/health`, o hash dos `.py` que o processo tem em disco. Não depende de git nem
+de build-arg, e `backend/scripts/conferir_o_que_esta_no_ar.py` responde em duas
+linhas se o deploy trocou o código.
+
+📊 Já provou o próprio valor na estreia: com três deploys respondendo HTTP 200
+`Deploying...`, o script disse `VEREDITO: a versao no ar e ANTERIOR` — e estava
+certo.
+
+**O que continua faltando:** `build_sha` segue `"unknown"` e `git_commit` segue
+`"nao-injetado"`. A digital diz *"é o mesmo código"*; ela não diz *"é o commit
+`abc1234`"*. Para auditoria histórica — "o que estava no ar no dia X?" — o SHA
+ainda seria melhor.
+
+**O que destrava:** 🤖 build-arg `GIT_SHA` no EasyPanel, ou gravar o SHA num
+arquivo versionado. Baixa prioridade: a pergunta operacional já tem resposta.
+**O que custa esquecer:** pouco. É conforto de auditoria, não segurança.

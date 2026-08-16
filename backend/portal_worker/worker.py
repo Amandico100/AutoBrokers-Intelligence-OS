@@ -695,8 +695,28 @@ async def _run_job(supa, job: Dict[str, Any]) -> None:
             ef["reason"] = f"excecao apos armar o efeito: {type(e).__name__}"
             evidence[_G.CHAVE_EFEITO] = ef
         evidence.update(runtime.selar_evidencia())
+
+        # 🔴 `failed` NÃO é um status neutro: é a válvula de escape do dedup.
+        # `portal_tool._buscar_pedido_vivo` filtra com `.neq("status","failed")`,
+        # e o índice único parcial `idx_portal_jobs_pedido_vivo` usa o MESMO
+        # predicado. Ou seja: gravar `failed` aqui APAGA a chave de idempotência
+        # deste pedido, e o próximo `portal_action` com a mesma chave entra.
+        #
+        # Isso era correto enquanto `failed` só acontecia antes de qualquer
+        # escrita — a premissa que a SPEC-065 §7.2 escreveu. A SPEC-074 quebrou
+        # essa premissa: agora existe efeito material dentro da journey, e o
+        # bloco logo acima já rebaixou a fase para `unknown` justamente porque
+        # SABE que houve. Gravar `failed` sabendo disso é liberar o segundo
+        # pedido, pago, no nome do mesmo segurado.
+        #
+        # `needs_human` mantém o pedido VIVO para o dedup e é o único status que
+        # o botão de retry do dashboard aceita — onde `pode_retentar_pelo_
+        # dashboard` já faz a conferência de efeito antes de deixar repetir.
+        houve_efeito = not _G.pode_repetir_com_seguranca(evidence)
+        status_final = "needs_human" if houve_efeito else "failed"
+
         supa.table("portal_jobs").update({
-            "status": "failed",
+            "status": status_final,
             "error": f"{type(e).__name__}: {str(e)[:300]}",
             "evidence": _redigir(evidence),
             "finished_at": _now(),

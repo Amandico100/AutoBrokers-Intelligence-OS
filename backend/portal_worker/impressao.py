@@ -35,7 +35,7 @@ from __future__ import annotations
 
 import hashlib
 from pathlib import Path
-from typing import Optional, Tuple
+from typing import Dict, Optional, Tuple
 
 # Calcular a cada `/health` seria desperdício, e o disco não muda sob o processo.
 _CACHE: Optional[Tuple[str, int]] = None
@@ -73,6 +73,28 @@ def impressao_do_diretorio(raiz: Path) -> Tuple[str, int]:
         somador.update(_hash_do_arquivo(p).encode("ascii"))
         somador.update(b"\n")
     return somador.hexdigest()[:16], len(arquivos)
+
+
+_CACHE_POR_RAIZ: Dict[str, Tuple[str, int]] = {}
+
+
+def impressao_cacheada(raiz: Path) -> Tuple[str, int]:
+    """`impressao_do_diretorio` memoizada por caminho.
+
+    O `/health` do smith-api cobre 319 arquivos. Hashear tudo a cada chamada
+    seria pagar, em toda checagem de saúde, por uma resposta que não muda
+    enquanto o processo vive — e `/health` é justamente o endpoint que precisa
+    responder rápido quando alguém está apurando uma queda.
+
+    Nunca levanta: disco ilegível vira `("indisponivel", 0)`.
+    """
+    chave = str(Path(raiz).resolve())
+    if chave not in _CACHE_POR_RAIZ:
+        try:
+            _CACHE_POR_RAIZ[chave] = impressao_do_diretorio(Path(raiz))
+        except Exception:  # noqa: BLE001
+            _CACHE_POR_RAIZ[chave] = ("indisponivel", 0)
+    return _CACHE_POR_RAIZ[chave]
 
 
 def impressao_do_processo() -> Tuple[str, int]:

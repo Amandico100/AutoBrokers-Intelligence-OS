@@ -61,6 +61,37 @@ STATUS_MORTO = "failed"
 STATUS_EM_CURSO = ("queued", "running")
 
 
+def _tem_prova_de_efeito(evidence) -> bool:
+    """Existe prova de que o pedido nasceu na seguradora?
+
+    A autoridade é `portal_worker.guardrails.tem_prova_de_efeito` — a mesma que
+    o worker e o dashboard usam. Uma segunda definição de "houve efeito" seria
+    exatamente o motor paralelo que a CLAUDE.md §5 proíbe.
+
+    O fallback existe porque este módulo roda no `smith-api`, e um import que
+    falhe não pode virar "não houve efeito" — a resposta cara é liberar o
+    segundo pedido. Então o fallback repete só a parte que não pode errar:
+    protocolo presente, ou fase que não seja explicitamente inofensiva.
+    """
+    if not isinstance(evidence, dict):
+        return False
+    try:
+        from portal_worker.guardrails import tem_prova_de_efeito
+
+        return bool(tem_prova_de_efeito(evidence))
+    except Exception:  # noqa: BLE001
+        if str(evidence.get("protocolo") or "").strip():
+            return True
+        estado = evidence.get("vidros_estado")
+        if isinstance(estado, dict) and estado.get("existe_algo_na_seguradora"):
+            return True
+        efeito = evidence.get("critical_effect")
+        if isinstance(efeito, dict):
+            return str(efeito.get("phase") or "") in ("armed", "submitted",
+                                                      "confirmed", "unknown")
+        return False
+
+
 class PortalActionInput(BaseModel):
     cpf_cnpj: str = Field(description="CPF/CNPJ do segurado (titular da apolice) — da conversa")
     data_dano: str = Field(description="Data do dano DD/MM/AAAA")
@@ -235,14 +266,36 @@ class PortalActionTool(BaseTool):
         if not chave:
             return None
         try:
+            # 🔴 SPEC-074 — defesa em profundidade: `failed` deixou de ser prova
+            # de que nada aconteceu.
+            #
+            # A premissa da SPEC-065 §7.2 era que `failed` só acontecia ANTES de
+            # qualquer escrita. Com efeito material dentro da journey, um job
+            # pode terminar `failed` COM o protocolo dentro do evidence. Se a
+            # leitura confiar só no status, o pedido some do dedup e o próximo
+            # `portal_action` abre o segundo atendimento, pago, no nome do mesmo
+            # segurado.
+            #
+            # O `worker.py` já grava `needs_human` nesse caso — esta é a segunda
+            # rede, para jobs gravados por versões anteriores e para qualquer
+            # outro caminho que ainda escreva `failed`. Por isso a consulta traz
+            # TODOS os status e a exclusão passa a ser feita aqui, olhando a
+            # evidência em vez do rótulo.
             r = (self._client().table("portal_jobs")
                  .select("id, status, evidence, error, created_at")
                  .eq("company_id", self.company_id)
                  .eq("idempotency_key", chave)
-                 .neq("status", STATUS_MORTO)
                  .order("created_at", desc=True)
-                 .limit(1).execute())
-            return dict(r.data[0]) if r.data else None
+                 .limit(5).execute())
+            for linha in (r.data or []):
+                job = dict(linha)
+                if str(job.get("status")) != STATUS_MORTO:
+                    return job
+                if _tem_prova_de_efeito(job.get("evidence")):
+                    # `failed` com prova de efeito é um pedido VIVO disfarçado.
+                    job["_ressuscitado_por_evidencia"] = True
+                    return job
+            return None
         except Exception:  # noqa: BLE001
             logger.warning("[PortalAction] busca de pedido vivo indisponivel — seguindo para o insert")
             return None

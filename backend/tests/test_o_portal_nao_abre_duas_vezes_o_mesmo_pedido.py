@@ -327,8 +327,50 @@ def teste_a_tool_procura_antes_de_inserir():
     checar("a busca filtra por corretora",
            'eq("company_id", self.company_id)' in corpo_busca,
            "sem isto, a chave de uma corretora poderia casar com o job de outra")
-    checar("a busca exclui só o que está morto",
-           'neq("status", STATUS_MORTO)' in corpo_busca, corpo_busca[:160])
+    # ⚠️ 16/08/2026 — esta asserção MUDOU, e a lição migrou junto.
+    #
+    # Ela exigia `neq("status", STATUS_MORTO)` na própria query. Era verdade
+    # enquanto `failed` significava "nada aconteceu no portal" — a premissa que
+    # a SPEC-065 §7.2 escreveu, e que valia porque `failed` só acontecia antes
+    # de qualquer escrita.
+    #
+    # A SPEC-074 quebrou a premissa: agora existe efeito material dentro da
+    # journey, e um job pode terminar `failed` COM o protocolo dentro. Se a
+    # exclusão continuasse sendo feita pelo RÓTULO, o pedido sumiria do dedup e
+    # o próximo `portal_action` abriria o segundo atendimento, pago, no nome do
+    # mesmo segurado.
+    #
+    # Então a exclusão saiu da query e virou decisão sobre a EVIDÊNCIA. O que o
+    # teste guarda continua sendo o mesmo: `failed` não pode liberar um pedido
+    # que existe. Só que agora ele exige a regra mais forte, não a mais fraca.
+    checar("a busca ainda conhece o status morto",
+           "STATUS_MORTO" in corpo_busca, corpo_busca[:200])
+    checar("mas a exclusão olha a EVIDÊNCIA, não só o rótulo",
+           "_tem_prova_de_efeito" in corpo_busca, corpo_busca[:200])
+    checar("e um `failed` com prova de efeito é tratado como VIVO",
+           "_ressuscitado_por_evidencia" in corpo_busca, corpo_busca[:200])
+
+    # E a prova EXECUTÁVEL de que a regra consegue distinguir os dois casos —
+    # sem ela, um `_tem_prova_de_efeito` que devolvesse sempre False passaria
+    # nas três asserções de texto acima.
+    import importlib.util as _iu
+    _spec = _iu.spec_from_file_location(
+        "_pt_regra", RAIZ_BACKEND / "app" / "agents" / "tools" / "portal_tool.py")
+    try:
+        _mod = _iu.module_from_spec(_spec)
+        _spec.loader.exec_module(_mod)
+        _prova = _mod._tem_prova_de_efeito
+    except Exception:  # noqa: BLE001
+        # O módulo puxa dependências pesadas; se não carregar aqui, a regra é
+        # exercida no teste dedicado da SPEC-074. Não invente um verde.
+        _prova = None
+    if _prova is not None:
+        checar("um job failed COM protocolo conta como efeito",
+               _prova({"protocolo": "1234567890123456"}) is True)
+        checar("CONTROLE — um job failed SEM nada não conta",
+               _prova({}) is False)
+        checar("CONTROLE — e os dois casos realmente diferem",
+               _prova({"protocolo": "123"}) != _prova({}))
     checar("CONTROLE — a fatia lida é o corpo do método, não o arquivo inteiro",
            0 < len(corpo_busca) < len(fonte) and "def _arun" not in corpo_busca,
            f"{len(corpo_busca)} de {len(fonte)} caracteres")

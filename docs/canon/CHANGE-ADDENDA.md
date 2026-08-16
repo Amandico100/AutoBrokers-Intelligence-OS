@@ -2782,3 +2782,111 @@ seria afirmar em produção o que só foi provado em replay. Ver P-190 e P-191.
 258 linhas inertes. Não quebram nada paradas; só não entregam o ganho. A mutação
 M6 (flag nascendo ligada) acende vermelha, então "nasce desligada" é propriedade
 testada, não convenção.
+
+---
+
+## CA-047 · `failed` deixa de liberar um pedido que existe — **BLOCKER**
+
+**SPEC-074** · 16/08/2026 · achado por juiz crítico adversarial, verificado no código
+
+### Problema
+
+`portal_tool._buscar_pedido_vivo` excluía jobs `failed` do dedup, e o
+`worker.py` gravava `failed` no handler de exceção **mesmo sabendo** que houve
+efeito material — o bloco imediatamente acima já rebaixava a fase para `unknown`
+justamente porque sabia.
+
+Um job que criou o atendimento e caiu depois virava `failed`, sumia do dedup, e o
+próximo `portal_action` com a mesma chave abria o **segundo atendimento, pago, no
+nome do mesmo segurado**.
+
+Nenhuma entrada maliciosa é necessária: basta um timeout do Supabase ao gravar o
+checkpoint, ou um crash do Playwright no `browser.close()` depois de a journey já
+ter retornado `done`.
+
+### Decisão
+
+Defesa em três camadas, porque nenhuma delas sozinha fecha:
+
+1. `worker.py` grava `needs_human` — não `failed` — quando há prova de efeito;
+2. `portal_tool` trata `failed` **com prova de efeito** como pedido vivo, para
+   jobs gravados por versões anteriores e qualquer outro caminho;
+3. `vidros_apifirst` grava `evidence["protocolo"]` já na **fronteira A**.
+
+O terceiro é o que fecha de verdade. `tem_prova_de_efeito` procura
+`evidence["protocolo"]`, e o caminho API só escrevia essa chave depois da
+fronteira B — havia uma janela em que o pedido já existia na seguradora e a
+evidência dizia que não havia prova de nada.
+
+### Por que isso é BLOCKER e não ESSENCIAL
+
+A alternativa não é um relatório ruim: é o segurado com dois atendimentos pagos
+abertos no nome dele, e a corretora descobrindo pela fatura.
+
+### Custo e risco
+
+`needs_human` mantém o pedido vivo para o dedup e é o único status que o botão de
+retry do dashboard aceita — onde `pode_retentar_pelo_dashboard` já confere efeito
+antes de deixar repetir. O caminho de retry legítimo continua existindo, agora
+com conferência.
+
+---
+
+## CA-048 · O fallback API→DOM passa a ser um portão, não um corredor — **BLOCKER**
+
+**SPEC-074** · 16/08/2026
+
+### Problema
+
+Eu escrevi, no bloco da flag em `vidros_lanternas`:
+
+```
+# Um erro no caminho novo NUNCA pode custar o acionamento
+```
+
+Está certo **antes** da fronteira A e é um desastre **depois** dela. `POST
+/atendimentos` devolve ok, a gravação seguinte falha, a exceção sobe, e o
+`except` cai para o DOM com `confirm=True` — `run_adaptive` preenche o formulário
+de novo e submete.
+
+### Decisão
+
+Só cai para o DOM quem consegue **provar** que nada material aconteceu
+(`pode_repetir_com_seguranca`). Com prova de efeito, devolve `needs_human` com a
+frase que o segurado precisa ouvir: *"o pedido FOI aberto, não peça para eu abrir
+de novo"*.
+
+### Custo e risco
+
+Um acionamento a menos completado automaticamente, em troca de zero pedidos
+duplicados. Ausência de informação não é prova de ausência de efeito.
+
+---
+
+## CA-049 · Teste de inspeção de fonte deixa de valer como prova de comportamento — **ESSENCIAL**
+
+**SPEC-074** · 16/08/2026 · regra de método
+
+### Problema
+
+📊 Medido: a matriz de 62 asserções ficava **62/0 verde** com o caminho API-first
+completamente inerte — bastava trocar `return _r` por `pass`. E o caminho já
+estava inerte de outro jeito, por exigir dois campos que ninguém escrevia.
+
+Os blocos V12 e V13 provavam a orquestração por `inspect.getsource()`: *"a
+palavra `guard.before` aparece antes da palavra `criar_atendimento`"*. Isso prova
+que um texto existe num arquivo.
+
+### Decisão
+
+Onde houver **fronteira material**, tem de haver ao menos um teste que EXECUTA e
+**conta quantas vezes o POST saiu**. A checagem de texto pode ficar, como
+documentação — nunca como prova única.
+
+`test_spec074_a_fronteira_material_executada.py`: 29 asserções, sessão falsa que
+conta chamadas, seis mutações detectadas.
+
+### Custo e risco
+
+Mais trabalho para escrever o teste. O primeiro deles achou dois defeitos na
+estreia — o caminho morto e a janela sem prova de protocolo.

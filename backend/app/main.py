@@ -486,6 +486,34 @@ def _sinais_do_codigo() -> dict:
     sinais: dict = {"git_commit": _os.getenv("GIT_COMMIT") or "nao-injetado"}
 
     # ----------------------------------------------------------------------
+    # P-189 — o marcador de versão que NÃO depende do construtor.
+    #
+    # 📊 `GIT_COMMIT` chega `"nao-injetado"` em produção porque o EasyPanel não
+    # define a variável e o contexto de build não traz `.git`. O bloco de sinais
+    # abaixo resolve isso por PEÇA ("a peça existe, logo o commit está no ar"),
+    # e resolve bem — mas exige uma linha nova a cada entrega, e quem esquece a
+    # linha não descobre que esqueceu.
+    #
+    # A digital é o complemento automático: hash dos `.py` que ESTE processo tem
+    # em disco. Uma entrega que mude qualquer arquivo muda a digital, sem
+    # ninguém precisar lembrar de nada. Rodar
+    # `python backend/scripts/conferir_o_que_esta_no_ar.py` compara com o
+    # repositório e diz, em uma linha, se o deploy realmente trocou o código.
+    try:
+        from pathlib import Path as _Path
+
+        from portal_worker.impressao import impressao_cacheada as _digital
+
+        _raiz_app = _Path(__file__).resolve().parent
+        _d, _n = _digital(_raiz_app)
+        sinais["code_fingerprint"] = _d
+        sinais["code_files"] = _n
+    except Exception:  # noqa: BLE001
+        # Um `/health` que quebra por causa do próprio marcador de versão seria
+        # pior do que não ter marcador.
+        sinais["code_fingerprint"] = "indisponivel"
+
+    # ----------------------------------------------------------------------
     # SPEC-073 Bloco I — o modo do Tool Gateway precisa ser CONFERÍVEL.
     #
     # 📊 Medido em 16/08/2026: `TOOL_GATEWAY_MODE` não é definido em lugar

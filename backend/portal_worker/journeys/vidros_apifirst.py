@@ -37,7 +37,10 @@ from __future__ import annotations
 
 import logging
 import os
-from typing import Any, Dict, Optional
+import re
+import unicodedata
+from datetime import datetime
+from typing import Any, Dict, Optional, Tuple
 
 from portal_worker.journeys import JourneyResult
 from portal_worker.journeys import vidros_api as API
@@ -51,6 +54,56 @@ logger = logging.getLogger(__name__)
 def api_first_habilitado() -> bool:
     """A flag nasce DESLIGADA. So um `true`/`1` explicito liga."""
     return str(os.getenv("PORTAL_VIDROS_API_FIRST", "") or "").strip().lower() in ("1", "true", "yes", "on")
+
+
+def data_iso(valor: Any) -> str:
+    """`DD/MM/AAAA` (o formato que a conversa produz) → `AAAA-MM-DD`.
+
+    Devolve `""` para qualquer coisa que não seja uma data reconhecível — e o
+    vazio faz o preflight desistir e cair para o DOM, que é o comportamento
+    certo: adivinhar a data do dano é escolher a data errada.
+    """
+    txt = str(valor or "").strip()
+    if not txt:
+        return ""
+    if re.fullmatch(r"\d{4}-\d{2}-\d{2}", txt):
+        return txt
+    m = re.fullmatch(r"(\d{1,2})[/\-.](\d{1,2})[/\-.](\d{4})", txt)
+    if not m:
+        return ""
+    d, mes, ano = m.groups()
+    try:
+        datetime(int(ano), int(mes), int(d))
+    except ValueError:
+        return ""  # 31/02 não é data; melhor cair para o DOM do que mentir
+    return f"{ano}-{int(mes):02d}-{int(d):02d}"
+
+
+def slug_da_seguradora(nome: Any) -> str:
+    """Nome como o corretor escreve → o slug que a API do portal usa.
+
+    A lista é FECHADA de propósito. Um nome desconhecido devolve `""`, o
+    preflight desiste e o DOM assume — que é o caminho que sabe navegar a tela
+    de seleção. Chutar um slug faria o portal responder sobre a seguradora
+    errada, e o preflight é justamente o que decide se pode escrever.
+    """
+    txt = unicodedata.normalize("NFKD", str(nome or ""))
+    txt = "".join(c for c in txt if not unicodedata.combining(c)).strip().lower()
+    if not txt:
+        return ""
+    for slug, marcas in SLUGS_DE_SEGURADORA:
+        if any(m in txt for m in marcas):
+            return slug
+    return ""
+
+
+# Fechada por construção: só entra aqui seguradora cujo comportamento no portal
+# foi MEDIDO. `tipo_atendimento_para` já depende do slug para decidir cobertura.
+SLUGS_DE_SEGURADORA: Tuple[Tuple[str, Tuple[str, ...]], ...] = (
+    ("PORTO", ("porto",)),
+    ("AZUL", ("azul",)),
+    ("ITAU", ("itau",)),
+)
 
 
 def _guard_do(params: Dict[str, Any]):
@@ -103,13 +156,30 @@ async def abrir_atendimento_api(page, params: Dict[str, Any],
     # A journey NOMEIA a única ação material que espera — SPEC-073.
     guard.acao_material_esperada = ST.FRONTEIRA_ABRIR
 
-    seguradora = str(params.get("_seguradora_slug") or "").strip().upper()
+    # 🔴 Estes dois campos são DERIVADOS aqui, não exigidos do chamador.
+    #
+    # A primeira versão lia `params["_seguradora_slug"]` e `params["_data_iso"]`
+    # — e **ninguém no repositório escrevia esses campos**. A função devolvia
+    # `None` em 100% das chamadas: um caminho inteiro morto por construção, que
+    # nenhum teste de inspeção de fonte podia detectar, porque o código estava
+    # todo lá, na ordem certa. Foi o primeiro teste EXECUTÁVEL que percebeu.
+    #
+    # O contrato correto é o que a journey de fato recebe: `insurer_name` e
+    # `data_dano` em DD/MM/AAAA. Se um dia o chamador quiser passar o valor já
+    # normalizado, os campos `_` continuam tendo precedência.
+    seguradora = (str(params.get("_seguradora_slug") or "").strip().upper()
+                  or slug_da_seguradora(params.get("insurer_name")))
     cpf = str(params.get("cpf_cnpj") or "").strip()
     placa = str(params.get("placa") or "").strip().upper()
-    data = str(params.get("_data_iso") or "").strip()
+    data = (str(params.get("_data_iso") or "").strip()
+            or data_iso(params.get("data_dano")))
     if not (seguradora and cpf and placa and data):
-        evidence["api_first"] = {"usado": False,
-                                 "motivo": "faltam dados para o preflight"}
+        evidence["api_first"] = {
+            "usado": False,
+            "motivo": "faltam dados para o preflight",
+            "faltou": [n for n, v in (("seguradora", seguradora), ("cpf", cpf),
+                                      ("placa", placa), ("data", data)) if not v],
+        }
         return None
 
     # ---- PREFLIGHT — read-only, e o único portão para a fronteira A --------
@@ -190,8 +260,24 @@ async def abrir_atendimento_api(page, params: Dict[str, Any],
     await guard.submetido(receipt=protocolo)
     # Grava AGORA, antes do próximo passo. Se cair daqui em diante, o recovery
     # precisa saber que já existe registro.
+    #
+    # 🔴 `evidence["protocolo"]` é escrito AQUI, e não só no fim.
+    # `guardrails.tem_prova_de_efeito` procura exatamente esta chave — é o que a
+    # journey DOM sempre gravou, e é o que o `portal_tool` consulta para decidir
+    # se um job `failed` esconde um pedido vivo. Escrever só depois da fronteira
+    # B deixava uma janela em que o pedido JÁ EXISTIA na seguradora e a evidência
+    # dizia que não havia prova de nada — a janela exata em que um retry abriria
+    # o segundo atendimento, pago, no nome do mesmo segurado.
+    #
+    # Aqui entra o número de 16 dígitos (interno). Depois da fronteira B ele é
+    # SOBRESCRITO pelo `CodigoAtendimento` de 8 dígitos, que é o que a tela
+    # mostra e o que o segurado repete no telefone. Prova melhor vence prova
+    # anterior; o que não pode é a janela ficar sem prova nenhuma.
+    if protocolo:
+        evidence["protocolo"] = protocolo
     evidence["vidros_estado"] = estado.para_evidencia()
-    await _checkpoint(params, {"vidros_estado": estado.para_evidencia()})
+    await _checkpoint(params, {"vidros_estado": estado.para_evidencia(),
+                               "protocolo": protocolo})
 
     # ---- questionário: LEITURA, entre as duas fronteiras -------------------
     resultado = await QZ.rodar_questionario(

@@ -1142,9 +1142,33 @@ async def abrir_atendimento(page, params: Dict[str, Any], evidence: Dict[str, An
             evidence.setdefault("api_first", {"usado": False,
                                               "motivo": "caiu para o caminho DOM"})
     except Exception as _e:  # noqa: BLE001
-        # Um erro no caminho novo NUNCA pode custar o acionamento: o caminho
-        # provado está logo abaixo e assume.
         evidence["api_first_falhou"] = type(_e).__name__
+        # 🔴 A versão anterior deste bloco dizia "um erro no caminho novo NUNCA
+        # pode custar o acionamento" e caía direto para o DOM. Isso está certo
+        # ANTES da fronteira A e é um desastre DEPOIS dela.
+        #
+        # O caminho de dano, todo com peças normais de produção: `POST
+        # /atendimentos` devolve `ok` — o pedido já existe na seguradora — e a
+        # gravação do checkpoint seguinte falha (timeout do Supabase, 5xx
+        # transitório). A exceção sobe até aqui. Caindo para o DOM com
+        # `confirm=True`, `run_adaptive` preenche o formulário de novo e
+        # submete: **um segundo atendimento, pago, no nome do mesmo segurado**.
+        #
+        # Ausência de informação não é prova de ausência de efeito. Só cai para
+        # o DOM quem consegue PROVAR que nada material aconteceu.
+        from portal_worker import guardrails as _G
+
+        if not _G.pode_repetir_com_seguranca(evidence):
+            return JourneyResult(
+                status="needs_human",
+                message=(
+                    "O pedido FOI aberto na seguradora, mas eu caí antes de "
+                    "concluir. NÃO peça para eu abrir de novo — seria um segundo "
+                    "atendimento no seu nome. O atendimento vai conferir e te "
+                    "devolver o número."
+                ),
+                captured={"vidros_estado": (evidence.get("vidros_estado") or {})},
+            )
 
     insurer = str(params.get("insurer_name") or "").strip()
     cpf = str(params.get("cpf_cnpj") or "").strip()

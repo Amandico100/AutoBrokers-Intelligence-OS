@@ -174,14 +174,16 @@ na V10).
 
 ---
 
-## 9. Testes — 198 asserções novas
+## 9. Testes — 243 asserções novas
 
 | Suite | Asserções |
 |---|---|
 | `test_spec074_vidros_api.py` | 87 |
 | `test_spec074_vidros_fluxo.py` | 49 |
 | `test_spec074_vidros_mutations.py` | 62 |
-| **total 074** | **198** |
+| `test_spec074_a_fronteira_material_executada.py` | 29 |
+| `test_o_que_esta_no_ar_e_conferivel.py` | 16 |
+| **total 074** | **243** |
 | SPEC-073 (mantidas verdes) | 390 |
 
 ### 9.1 As seis mutações
@@ -215,10 +217,44 @@ questionário completo ainda chega ao 204.
 
 ---
 
+## 9.4 Os juízes críticos, e o que eles acharam
+
+Dois juízes adversariais rodaram sobre o código pronto e a bateria verde. Os dois
+acharam defeito real. **Nenhum dos dois pôde medir** — um rodou sem shell — então
+verifiquei cada achado no código antes de tocar em qualquer coisa.
+
+**O juiz dos testes** apontou que os blocos V12 e V13 provavam a orquestração por
+`inspect.getsource()`. 📊 Medi a mutação que ele propôs — trocar `return _r` por
+`pass`, deixando a flag ligada e inerte — e a matriz ficou **62/0, verde**. Ele
+estava certo.
+
+**O juiz de efeito material** apontou dois caminhos para o segundo pedido pago.
+Verifiquei os dois no código; os dois existiam. Viraram [CA-047](../CHANGE-ADDENDA.md)
+e [CA-048](../CHANGE-ADDENDA.md).
+
+**E o primeiro teste executável achou um terceiro**, que nenhum juiz viu: o
+caminho API-first exigia `params["_seguradora_slug"]` e `params["_data_iso"]`, e
+📊 `grep` no repositório inteiro mostra que **ninguém escrevia esses campos**. A
+função devolvia `None` em 100% das chamadas. O caminho inteiro estava morto por
+construção — e nenhum teste de texto podia ver, porque o código estava todo lá,
+na ordem certa.
+
+| # | Mutação | Vermelhas |
+|---|---|---|
+| J1 | flag ligada mas inerte (resultado descartado) | 2 |
+| J3 | guard volta a ser fail-open sem runtime | 1 |
+| J4 | ramo de `coverage_absent` removido | 2 |
+| J5 | `protocolo` gravado só depois da fronteira B | 1 |
+| J6 | fallback DOM sem o guarda de efeito | 1 |
+| J7 | volta a exigir `_seguradora_slug` (caminho morto) | 12 |
+| — | restaurado | **0** |
+
+---
+
 ## 10. Gates
 
 ```
-198/0   asserções da SPEC-074
+243/0   asserções da SPEC-074
 390/0   asserções da SPEC-073, revalidadas depois de tudo
 214     suites verdes no backend
  17     suites vermelhas — as MESMAS já provadas pré-existentes no
@@ -359,7 +395,7 @@ journeys entram no `JOURNEYS` existente. O guard é o da SPEC-073, reusado.
 
 ## 16. FATO · INFERÊNCIA · RECOMENDAÇÃO
 
-**FATO** — 198 asserções novas verdes; 7 mutações detectadas e restauradas;
+**FATO** — 243 asserções novas verdes; 13 mutações detectadas e restauradas;
 390 asserções da 073 revalidadas; 214 suites verdes e 17 vermelhas pré-existentes;
 `tsc --noEmit` exit 0; `origin/main` em `57bff1a`; três deploys disparados com
 HTTP 200; a flag nasce desligada em 10 valores de entrada testados; 0 CPF e 0 CNPJ
