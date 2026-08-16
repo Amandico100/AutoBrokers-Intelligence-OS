@@ -468,8 +468,10 @@ class SearchService:
                 from .knowledge_scope import (
                     ORCAMENTO_GLOBAL,
                     build_global_search_kwargs,
+                    faceta_da_pergunta,
                     merge_rag_results,
                     seguradora_da_pergunta,
+                    temas_da_pergunta,
                 )
 
                 # A pergunta diz de qual companhia se trata? Então a regra de
@@ -478,6 +480,19 @@ class SearchService:
                 # desta" — 📊 80,6% das cartas são fato genérico de mercado e
                 # continuam respondendo tudo.
                 da_pergunta = seguradora_da_pergunta(original_query)
+
+                # E a pergunta pede uma FACETA ou um TEMA? SPEC-072 Bloco 1,
+                # fechando P-142 e P-177: os dois rótulos tinham escritor e
+                # nenhum leitor. Mesma regra de dois braços — 📊 12.534 cartas
+                # não têm faceta e 4.083 não têm tema, e nenhuma pode sumir.
+                #
+                # ⚠️ As duas são conservadoras de propósito e reconhecem UM valor
+                # cada (`documento` / `documentacao`). O porquê está em
+                # `knowledge_scope._APELIDOS_DE_FACETA`, e resume-se a isto:
+                # `escopo` e `exclusao` são um PAR, e filtrar por um esconde o
+                # outro — que é o oposto do que a faceta existe para fazer.
+                faceta_pedida = faceta_da_pergunta(original_query)
+                temas_pedidos = temas_da_pergunta(original_query)
 
                 # 🔴 UMA BUSCA POR FAIXA — SPEC-070 §6.
                 #
@@ -499,7 +514,8 @@ class SearchService:
                         top_k=cota,
                         score_threshold=0.0,
                         **build_global_search_kwargs(
-                            carrier_slug=da_pergunta, namespace=faixa),
+                            carrier_slug=da_pergunta, namespace=faixa,
+                            faceta=faceta_pedida, temas=temas_pedidos),
                     )
                     logger.info(
                         f"[Search] faixa global '{rotulo}' ({'+'.join(faixa)}): "

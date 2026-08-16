@@ -651,8 +651,10 @@ class LangChainService:
                 from .knowledge_scope import (
                     ORCAMENTO_GLOBAL,
                     build_global_search_kwargs,
+                    faceta_da_pergunta,
                     merge_rag_results,
                     seguradora_da_pergunta,
+                    temas_da_pergunta,
                 )
 
                 # Mesma regra do `search_service`, e pelo mesmo motivo:
@@ -664,6 +666,11 @@ class LangChainService:
                 # Consertar so um dos dois caminhos globais seria deixar a
                 # metade que ninguem esta olhando com o defeito antigo.
                 carrier = seguradora_da_pergunta(query)
+                # E a faceta e o tema, pela mesma razao: consertar so um dos dois
+                # caminhos globais deixaria a metade que ninguem olha com o
+                # defeito antigo. SPEC-072 Bloco 1 — P-142 e P-177.
+                faceta = faceta_da_pergunta(query)
+                temas = temas_da_pergunta(query)
                 for _rotulo, faixa, _cota in ORCAMENTO_GLOBAL:
                     global_results = self.qdrant.search_similar(
                         company_id=company_id,
@@ -671,7 +678,8 @@ class LangChainService:
                         top_k=top_k,
                         score_threshold=score_threshold,
                         **build_global_search_kwargs(
-                            carrier_slug=carrier, namespace=faixa),
+                            carrier_slug=carrier, namespace=faixa,
+                            faceta=faceta, temas=temas),
                     )
                     results = merge_rag_results(results, global_results)
             return results

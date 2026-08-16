@@ -1072,7 +1072,7 @@ def publicar_lote_sync(limite: int = 300) -> Dict[str, Any]:
     # `reindexar_acervo.py:157`, mesma correcao.
     alvo = (db.client.table("knowledge_cards")
             .select("id, card_text, insurer_key, ramo, category, "
-                    "source_unit_id, pii_check")
+                    "source_unit_id, pii_check, temas")
             .eq("status", "pending_review")
             .order("created_at", desc=False)
             .limit(max(1, min(int(limite or 300), 2000))).execute().data) or []

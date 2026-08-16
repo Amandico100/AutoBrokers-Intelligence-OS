@@ -94,6 +94,7 @@ _INDICES_DE_PAYLOAD = (
     ("namespace", PayloadSchemaType.KEYWORD),        # SPEC-070 §6 — contrato × carta
     ("insurer_key", PayloadSchemaType.KEYWORD),      # a regra de uma não vale pela outra
     ("faceta", PayloadSchemaType.KEYWORD),           # SPEC-070 §5.1
+    ("temas", PayloadSchemaType.KEYWORD),            # SPEC-072 §Bloco 1 — P-177
     ("vigente", _BOOL),                              # SPEC-070 §6 — documento revogado sai
 )
 
@@ -525,6 +526,111 @@ class QdrantService:
             IsEmptyCondition(is_empty=PayloadField(key="namespace")),
         ])
 
+    def _filtro_de_faceta(self, faceta: Optional[str]):
+        """"Desta faceta **OU** sem faceta" — SPEC-072 Bloco 1, fecha a P-142.
+
+        Devolve um `Filter` para entrar no `must`, ou `None` quando a pergunta
+        não pede faceta nenhuma (aí tudo responde, como sempre foi).
+
+        POR QUE ISTO EXISTE
+        ===================
+        📊 A `faceta` tem escritor desde 08/08/2026 (`insurance_corpus.py:1169`,
+        `attendance_distiller.py:686`) e **índice de payload** desde antes
+        (`_INDICES_DE_PAYLOAD`, KEYWORD). O que faltava era o LEITOR: não havia
+        como pedir "só as cartas de documento desta seguradora", e a busca
+        dependia de o BM25 casar a palavra por sorte.
+
+        POR QUE OS DOIS BRAÇOS — e aqui o custo de errar é o maior dos três
+        ==================================================================
+        📊 Medido em 15/08/2026: **12.534 das 17.928 cartas publicadas** nascem
+        de conversa e **nunca terão faceta** — a chave é omitida de propósito
+        quando não há rótulo. E **1.139 dos 6.797 pedaços de contrato (16,8%)**
+        têm `faceta=None`, também omitida (`insurance_corpus.py:1167`).
+
+        Um `must` puro (`faceta == "documento"`) apagaria os dois conjuntos de
+        uma vez: **70% do índice**. A P-142 já tinha escrito o aviso para o
+        campo irmão — *"sem o segundo braço ele apaga as 12.063 cartas, que não
+        têm essa chave e nunca terão"* — e ele vale igual aqui.
+
+        DEGRADAÇÃO SEGURA
+        =================
+        Sem `IsEmptyCondition` no cliente, o filtro INTEIRO é abandonado. Voltar
+        ao comportamento antigo é ruim e conhecido; um braço só seria novo e
+        pior, escondendo 70% do acervo sem levantar erro.
+        """
+        alvo = str(faceta or "").strip().lower()
+        if not alvo:
+            return None
+        if IsEmptyCondition is None or PayloadField is None:
+            logger.warning(
+                "[Qdrant] cliente sem IsEmptyCondition — filtro de faceta "
+                "NÃO aplicado (carta sem faceta não pode sumir)"
+            )
+            return None
+        return Filter(should=[
+            FieldCondition(key="faceta", match=MatchValue(value=alvo)),
+            IsEmptyCondition(is_empty=PayloadField(key="faceta")),
+        ])
+
+    def _filtro_de_temas(self, temas: Optional[Any]):
+        """"Com este tema **OU** sem tema" — SPEC-072 Bloco 1, fecha a P-177.
+
+        Devolve um `Filter` para entrar no `must`, ou `None` quando a pergunta
+        não pede tema nenhum.
+
+        POR QUE ISTO EXISTE
+        ===================
+        📊 O commit `3f6d1b4` rotulou **14.264 cartas** com tema e a migration
+        `20260815_02` criou a coluna `temas text[]` com índice GIN no Postgres.
+        E o índice de busca não sabia de nada disso: até 15/08/2026 `temas` não
+        aparecia em `knowledge_extras`, em select de republicador nenhum, nem
+        como índice de payload. **O rótulo existia no banco e a busca nunca o
+        lia** — que é o mesmo defeito da `faceta`, uma camada antes.
+
+        POR QUE OS DOIS BRAÇOS
+        ======================
+        📊 **4.083 das 17.928 cartas publicadas (22,8%) têm `temas` nulo.** Um
+        braço só apagaria um quinto do índice.
+
+        POR QUE `MatchAny` E NÃO `MatchValue`
+        =====================================
+        ⚠️ **Não é porque `MatchValue` não casaria com lista** — casaria: o Qdrant
+        compara valor contra campo-array elemento a elemento, e é por isso que os
+        filtros irmãos usam `MatchValue` sem se preocupar. O motivo é o outro
+        lado: quem PERGUNTA pode pedir mais de um tema ("documentos e prazo"), e
+        `temas_da_pergunta` devolve LISTA. `MatchAny` cobre um e vários com o
+        mesmo código; `MatchValue` precisaria do `if len(...) == 1` que
+        `_filtro_de_namespace` carrega — e ali ele existe porque `namespace` é
+        escalar dos dois lados, o que não é o caso aqui.
+
+        ⚠️ A chave tem de estar AUSENTE quando não há tema, nunca `[]`. A regra
+        de promoção de payload (`insert_embeddings`) só pula `None` e `""`: uma
+        lista vazia seria GRAVADA, e aí o braço `IsEmptyCondition` não a
+        alcançaria. Quem escreve omite com `if card.get("temas")`, que é falso
+        para `[]`.
+
+        DEGRADAÇÃO SEGURA
+        =================
+        A mesma dos irmãos: sem `IsEmptyCondition`, o filtro inteiro cai.
+        """
+        pedidos = [
+            str(t or "").strip().lower()
+            for t in ([temas] if isinstance(temas, str) else list(temas or []))
+        ]
+        pedidos = [t for t in pedidos if t]
+        if not pedidos:
+            return None
+        if IsEmptyCondition is None or PayloadField is None:
+            logger.warning(
+                "[Qdrant] cliente sem IsEmptyCondition — filtro de temas "
+                "NÃO aplicado (carta sem tema não pode sumir)"
+            )
+            return None
+        return Filter(should=[
+            FieldCondition(key="temas", match=MatchAny(any=pedidos)),
+            IsEmptyCondition(is_empty=PayloadField(key="temas")),
+        ])
+
     def search_similar(
         self,
         company_id: str,
@@ -544,6 +650,12 @@ class QdrantService:
         # Faixa de conhecimento (SPEC-070 §6): 'normative', 'cards', 'canon' —
         # str ou lista. Ver `_filtro_de_namespace`: "desta faixa OU sem faixa".
         namespace: Optional[Any] = None,
+        # Qual das 8 perguntas do contrato (SPEC-072 Bloco 1 / P-142). Ver
+        # `_filtro_de_faceta`: "desta faceta OU sem faceta", jamais "só desta".
+        faceta: Optional[str] = None,
+        # Assunto do atendimento (SPEC-072 Bloco 1 / P-177) — str ou lista. Ver
+        # `_filtro_de_temas`: "com este tema OU sem tema".
+        temas: Optional[Any] = None,
         score_threshold: float = 0.0,
         sparse_embedding: Optional[Any] = None,
         collection_name: Optional[str] = None,
@@ -670,6 +782,23 @@ class QdrantService:
             filtro_namespace = self._filtro_de_namespace(namespace)
             if filtro_namespace is not None:
                 must_conditions.append(filtro_namespace)
+
+            # 🔴 A PERGUNTA QUE A CARTA RESPONDE, E O ASSUNTO DELA — SPEC-072.
+            #
+            # Os dois rótulos existiam, tinham escritor e não tinham leitor:
+            # 📊 `faceta` classificava 380 cartas de documento e 6.797 pedaços de
+            # contrato; `temas` rotulava 14.264 cartas. Nenhum dos dois filtrava
+            # nada — P-142 e P-177.
+            #
+            # Os dois braços aqui não são zelo: um `must` puro apagaria 12.534
+            # cartas de conversa (sem faceta) e 4.083 (sem tema).
+            filtro_faceta = self._filtro_de_faceta(faceta)
+            if filtro_faceta is not None:
+                must_conditions.append(filtro_faceta)
+
+            filtro_temas = self._filtro_de_temas(temas)
+            if filtro_temas is not None:
+                must_conditions.append(filtro_temas)
 
             if must_conditions or should_conditions or must_not_conditions:
                 query_filter = Filter(

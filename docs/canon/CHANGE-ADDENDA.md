@@ -2287,3 +2287,106 @@ ontem devolvia faz os guardas reprovarem).
 
 **Com isto, "republicar nao apaga o lastro" vale para os cinco chamadores de
 `publish_card_sync` E para o Postgres.**
+
+---
+
+## CA-040 · Dois rotulos com escritor e sem leitor ganham filtro — **ESSENCIAL**
+
+**Data:** 15/08/2026 · **SPEC:** SPEC-072 Bloco 1 · **Estado:** EXECUTADA
+**Autorizacao:** decisao do Founder — *"P-177 SOBE PARA DENTRO DO BLOCO 1. Nao
+abra bloco novo. O Bloco 1 ja constroi o filtro; ele passa a cobrir DOIS campos."*
+
+⚠️ **CA-037 e CA-038 seguem reservados** para a excecao documental no prompt e
+para a regra de uso de carta no `ATTENDANCE_BASE_PROMPT` (Bloco 4).
+
+### Problema
+
+`faceta` e `temas` eram **write-only**, e por motivos diferentes:
+
+```
+faceta   escritor desde 08/08 (insurance_corpus:1169, attendance_distiller:686)
+         indice de payload KEYWORD ja existia
+         LEITOR: nenhum. Sem _filtro_de_faceta, sem param em search_similar,
+         sem kwarg em build_global_search_kwargs.                      (P-142)
+
+temas    14.264 cartas rotuladas em 15/08, coluna text[] + indice GIN criados
+         na mesma noite
+         ESCRITOR de payload: nenhum. INDICE no Qdrant: nenhum. LEITOR: nenhum.
+         `grep temas search_service.py qdrant_service.py` -> ZERO       (P-177)
+```
+
+O `temas` era o mais grave dos dois: a `faceta` ao menos **chegava** ao indice.
+
+### Evidencia
+
+📊 `backend/tests/test_o_filtro_de_faceta_tem_dois_bracos.py`, saida real:
+
+```
+so o filtro de FACETA salva  12.534 cartas + 1.139 trechos de contrato
+so o filtro de TEMA   salva   4.083 cartas + 6.797 trechos de contrato
+CONTROLE: sem pedido          nenhum ponto some (24.725 de 24.725)
+
+MUTACAO — tirar o braco "OU ausente":
+    dois bracos  11.252 pontos
+    um braco so   1.798 pontos
+    APAGADOS      9.454
+```
+
+### Mudanca
+
+1. `_filtro_de_faceta` e `_filtro_de_temas` em `qdrant_service.py`, **espelhados
+   literalmente** nos dois irmaos. ⚠️ Nao generalizados num helper de proposito:
+   tres testes afirmam substrings sobre o corpo de `_filtro_de_seguradora` e
+   `_filtro_de_namespace` (`"should=["`, `"IsEmptyCondition"`, `"if not slug:"`,
+   `count("return None") >= 2`), e um refactor generico os derrubaria. Repetir e
+   o certo aqui: o guarda mora na forma.
+2. Params `faceta`/`temas` em `search_similar`, aplicados em `must_conditions`.
+3. `("temas", PayloadSchemaType.KEYWORD)` em `_INDICES_DE_PAYLOAD` — filtro sem
+   indice nao e filtro, e varredura.
+4. **Escritor** de `temas` em `publish_card_sync`, e `temas` nos selects dos dois
+   republicadores.
+5. `faceta_da_pergunta()` e `temas_da_pergunta()` em `knowledge_scope.py`.
+6. `build_global_search_kwargs` monta as duas chaves, e os **DOIS** caminhos
+   globais passam a chamar (`search_service.py` e `langchain_service.py`).
+
+⚠️ Os itens 2 e 5 tinham de entrar no MESMO commit: o retorno de
+`build_global_search_kwargs` e splatado com `**`, e um kwarg sem parametro vira
+`TypeError` — que os dois services ENGOLEM num `except Exception`, matando
+**todos** os resultados globais em silencio.
+
+### A decisao de projeto, e ela e a parte que merece revisao
+
+📊 `faceta_da_pergunta` reconhece **1 das 8 facetas**; `temas_da_pergunta`, **1
+dos 24 temas**. Nao e provisorio por preguica:
+
+**`escopo` e `exclusao` sao um PAR.** O proprio payload documenta a intencao —
+*"e por ela que a busca EQUILIBRA a resposta, para a cobertura nao voltar sem a
+exclusao que a anula"*. Filtrar *"a apolice cobre vidro?"* por `faceta='escopo'`
+esconderia a clausula que a anula: seria usar o rotulo para ESTREITAR quando ele
+existe para EQUILIBRAR, e o defeito seria invisivel — a busca devolve resultado,
+so que meio.
+
+`documento` entra porque e a unica pergunta fechada: nao existe clausula que
+anule uma lista de documentos.
+
+As outras sete "provavelmente" servem, e "provavelmente" e o que a **P-145**
+proibe: la um sinal por faceta foi implementado, MEDIDO contra 19 erros
+confirmados e recusado (3 acertos, 19 falsos alarmes). *"Um sinal que grita mais
+do que acerta ensina o proximo a ignorar sinal."* Sem dados novos, `None` — que
+e o comportamento de hoje e nao esconde nada.
+
+**O que destrava as outras sete:** medir, por faceta, quantas respostas melhoram
+e quantas pioram, com linha de controle.
+
+### Custo e risco
+
+Nenhuma migration. Nenhum dado tocado. Nenhum motor novo — o filtro entra no
+`search_similar` que ja existia, ao lado dos dois irmaos.
+
+**VERIFY:** suite **203 verdes / 18 vermelhos**, contra 202/18 antes (o +1 e o
+teste novo). Vermelhos NOVOS: **nenhum**. Os tres testes que afirmam substrings
+sobre os filtros irmaos seguem verdes.
+
+**ROLLBACK:** `git revert`. Os filtros sao aditivos e so entram quando a pergunta
+pede; `faceta=None`/`temas=None` devolve exatamente o comportamento anterior — e
+ha teste de controle provando isso.

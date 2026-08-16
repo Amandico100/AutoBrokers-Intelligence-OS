@@ -188,7 +188,7 @@ def _ler_publicadas(db) -> list:
     while True:
         q = (db.table("knowledge_cards")
              .select("id, card_text, insurer_key, ramo, category, "
-                     "source_unit_id, pii_check")
+                     "source_unit_id, pii_check, temas")
              .eq("status", "published").order("id").limit(pagina))
         if ultimo:
             q = q.gt("id", ultimo)

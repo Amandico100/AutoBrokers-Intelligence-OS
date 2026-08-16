@@ -683,7 +683,21 @@ def publish_card_sync(card: Dict[str, Any]) -> bool:
                           # Vem de `faceta` resolvida acima — topo OU `pii_check` —
                           # e não mais de `card["faceta"]`, que só existe na
                           # primeira publicação e nunca numa republicação.
-                          **({"faceta": faceta} if faceta else {})},
+                          **({"faceta": faceta} if faceta else {}),
+                          # 🔴 `temas` — o rótulo que existia no banco e a busca
+                          # nunca lia (P-177). 📊 14.264 cartas foram rotuladas
+                          # em 15/08/2026, a coluna `text[]` e o índice GIN foram
+                          # criados na mesma noite, e até aqui NADA disso chegava
+                          # ao Qdrant: sem chave no payload, sem índice, sem
+                          # filtro. O rótulo mais caro do acervo era write-only.
+                          #
+                          # ⚠️ `if card.get("temas")` e não `is not None`: lista
+                          # VAZIA tem de ser omitida. `insert_embeddings` só pula
+                          # `None` e `""` (`qdrant_service.py:329`), então um `[]`
+                          # seria GRAVADO — e aí o braço `IsEmptyCondition` do
+                          # `_filtro_de_temas` não alcançaria o ponto, que sumiria
+                          # de toda busca com tema. Ausente, nunca vazio.
+                          **({"temas": card["temas"]} if card.get("temas") else {})},
     ))
 
 

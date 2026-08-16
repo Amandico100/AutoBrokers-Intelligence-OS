@@ -3057,6 +3057,25 @@ essa chave e nunca terão.
   falhar: 📊 `delete_document` já respondeu "removi" com o Qdrant fora do ar, e
   aí as duas versões respondem com a mesma autoridade e nada no filtro separa.
 
+
+### ✅ 15/08/2026 — FECHADA pela SPEC-072 Bloco 1
+
+O leitor existe. `_filtro_de_faceta` em `qdrant_service.py`, com os **dois
+braços** que esta pendência exigia — e o segundo braço tem número:
+
+```
+só o filtro de faceta salva  12.534 cartas de conversa + 1.139 trechos de contrato
+mutação (um braço só)         os mesmos 13.673 somem, e o teste FALHA
+```
+
+⚠️ E o aviso desta pendência valeu para um campo que ela não previa: `temas`
+tinha o **mesmo** defeito uma camada antes (P-177), e 22,8% das cartas não o
+têm. Os dois filtros nasceram juntos, com o mesmo desenho.
+
+Teste: `backend/tests/test_o_filtro_de_faceta_tem_dois_bracos.py` — ele
+**executa** o filtro contra um acervo de mentira, em vez de afirmar que a string
+`IsEmptyCondition` aparece no código.
+
 ---
 
 ## P-143 · ✅ A âncora certa não prova a afirmação certa — RESOLVIDO em 09/08/2026
@@ -5161,3 +5180,23 @@ source_version_id`; a substituta herda as três e a `faceta`; `origem` fica de
 fora porque descreve a rodada de origem, e a substituta veio desta correção.
 Teste: `backend/tests/test_corrigir_nao_perde_a_procedencia.py`, com linha de
 controle e mutação. Registro em CHANGE-ADDENDA, addendo de CA-039.
+
+### ✅ 15/08/2026 — FECHADA pela SPEC-072 Bloco 1, junto com a P-142
+
+`temas` deixou de ser write-only nos quatro pontos que faltavam:
+
+```
+escritor    attendance_distiller.publish_card_sync  -> knowledge_extras
+selects     reindexar_acervo + publicar_lote_sync   -> carregam `temas`
+índice      qdrant_service._INDICES_DE_PAYLOAD      -> ("temas", KEYWORD)
+leitor      _filtro_de_temas, dois braços           -> MatchAny + IsEmpty
+```
+
+⚠️ **A armadilha que quase passou:** a chave tem de ficar AUSENTE quando não há
+tema, nunca `[]`. A regra de promoção de payload só pula `None` e `""`
+(`qdrant_service.py:329`) — uma lista vazia seria GRAVADA, e aí o braço
+`IsEmptyCondition` não alcançaria o ponto, que sumiria de toda busca com tema.
+O escritor usa `if card.get("temas")`, que é falso para `[]`. Há teste para isso.
+
+📊 Efeito medido do segundo braço: **4.083 cartas sem tema + 6.797 trechos de
+contrato** (que nunca terão tema) continuam respondendo.

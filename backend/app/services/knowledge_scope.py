@@ -160,10 +160,124 @@ def seguradora_da_pergunta(texto: str) -> Optional[str]:
     return achadas.pop() if len(achadas) == 1 else None
 
 
+# 🔴 SÓ UMA DAS OITO FACETAS FILTRA — E ESSA É A DECISÃO DE PROJETO
+# =============================================================================
+# `faceta` tem oito valores (`publicar_cartas.py:86`). Este dicionário reconhece
+# UM. Não é preguiça — é o que a própria SPEC-070 §5 pede, lido com atenção:
+#
+#     "`faceta` é a pergunta que a carta responde… é por ela que a busca
+#      EQUILIBRA a resposta, para a cobertura não voltar sem a exclusão que a
+#      anula."                       (`attendance_distiller.py`, o comentário do payload)
+#
+# ⚠️ **`escopo` e `exclusao` são um PAR.** Filtrar uma pergunta de cobertura por
+# `faceta='escopo'` esconderia justamente a cláusula de exclusão que a anula — o
+# agente responderia "cobre" com a carta que diz que cobre, sem a que diz quando
+# não cobre. Seria usar o rótulo para NARROW quando ele existe para BALANCE, e o
+# defeito seria invisível: a busca devolve resultado, só que meio.
+#
+# `limite`, `franquia`, `prazo`, `carencia` e `definicao` provavelmente são
+# seguras — e "provavelmente" é exatamente o que a **P-145** proíbe:
+#
+#     "Um sinal que grita mais do que acerta ensina o próximo a ignorar sinal."
+#
+# Lá, um teste por faceta foi implementado, MEDIDO contra 19 erros confirmados e
+# **recusado** (3 acertos, 19 falsos alarmes). A pendência fecha com "não tente
+# de novo sem dados novos". Não tenho dados novos para as outras sete.
+#
+# `documento` entra porque é a única em que a pergunta é fechada: *"quais
+# documentos preciso mandar"* não tem contrapeso — não existe uma cláusula que
+# anule uma lista de documentos. E é a que a SPEC-072 existe para servir.
+#
+# **O que destrava as outras sete:** medir, por faceta, quantas respostas melhoram
+# e quantas pioram — com linha de controle. Até lá, elas devolvem `None`, que é o
+# comportamento de hoje e não esconde nada.
+_APELIDOS_DE_FACETA = {
+    "documento": "documento",
+    "documentos": "documento",
+    "documentacao": "documento",
+    "documentação": "documento",
+    "quais papeis": "documento",
+    "quais papéis": "documento",
+    "o que precisa enviar": "documento",
+    "o que preciso enviar": "documento",
+    "o que devo enviar": "documento",
+    "lista de documento": "documento",
+    "relacao de documento": "documento",
+    "relação de documento": "documento",
+}
+
+
+def faceta_da_pergunta(texto: str) -> Optional[str]:
+    """Qual faceta esta pergunta pede? `None` quando não pede nenhuma.
+
+    Molde de `seguradora_da_pergunta`, e pelos mesmos motivos: casamento de
+    vocabulário, fronteira de palavra no apelido curto, **ambiguidade devolve
+    `None`**, e conservador por escolha — errar para "não filtrar" devolve o
+    comportamento de hoje; errar para "filtrar pela faceta errada" esconde a
+    resposta certa e o agente responde com outra coisa.
+
+    ⚠️ Reconhece **uma** das oito facetas. O porquê está no comentário longo
+    acima de `_APELIDOS_DE_FACETA`, e ele é a parte importante desta função.
+    """
+    alvo = str(texto or "").strip().lower()
+    if not alvo:
+        return None
+    achadas = set()
+    for apelido, chave in _APELIDOS_DE_FACETA.items():
+        if len(apelido) < 6:
+            import re as _re
+            if _re.search(rf"\b{_re.escape(apelido)}\b", alvo):
+                achadas.add(chave)
+        elif apelido in alvo:
+            achadas.add(chave)
+    return achadas.pop() if len(achadas) == 1 else None
+
+
+# O mesmo critério, para o outro rótulo. A taxonomia tem 📊 24 temas vivos; este
+# dicionário reconhece UM, pela mesma razão: `documentacao` é o único que a
+# SPEC-072 precisa e o único cujo pedido é fechado. Um tema como `franquia` ou
+# `regulacao` filtraria fora a carta que explica por que a regra existe.
+_APELIDOS_DE_TEMA = {
+    "documento": "documentacao",
+    "documentos": "documentacao",
+    "documentacao": "documentacao",
+    "documentação": "documentacao",
+    "o que precisa enviar": "documentacao",
+    "o que preciso enviar": "documentacao",
+    "lista de documento": "documentacao",
+    "relacao de documento": "documentacao",
+    "relação de documento": "documentacao",
+}
+
+
+def temas_da_pergunta(texto: str) -> Optional[List[str]]:
+    """Quais temas esta pergunta pede? `None` quando não pede nenhum.
+
+    Devolve LISTA porque `temas` é `text[]` e o filtro casa por `MatchAny` —
+    uma pergunta pode legitimamente pedir dois assuntos. Ambiguidade aqui não é
+    problema como na seguradora: pedir dois temas AMPLIA o braço positivo, não
+    esconde nada.
+    """
+    alvo = str(texto or "").strip().lower()
+    if not alvo:
+        return None
+    achados = set()
+    for apelido, chave in _APELIDOS_DE_TEMA.items():
+        if len(apelido) < 6:
+            import re as _re
+            if _re.search(rf"\b{_re.escape(apelido)}\b", alvo):
+                achados.add(chave)
+        elif apelido in alvo:
+            achados.add(chave)
+    return sorted(achados) or None
+
+
 def build_global_search_kwargs(
     namespace: Optional[Any] = None,
     version: Optional[str] = None,
     carrier_slug: Optional[str] = None,
+    faceta: Optional[str] = None,
+    temas: Optional[Any] = None,
 ) -> Dict[str, Any]:
     """
     kwargs para buscar conhecimento GLOBAL via QdrantService.search_similar.
@@ -211,6 +325,16 @@ def build_global_search_kwargs(
     faixa = _normalizar_namespaces(namespace)
     if faixa:
         kwargs["namespace"] = faixa
+    # ⚠️ Estes dois SÓ podem entrar aqui no mesmo commit que os parâmetros de
+    # `search_similar`. O retorno é splatado com `**`, e um kwarg sem parâmetro
+    # correspondente vira `TypeError` — que `search_service.py` e
+    # `langchain_service.py` ENGOLEM num `except Exception`, matando TODOS os
+    # resultados globais em silêncio. O agente responderia sem RAG nenhum e o
+    # log diria só o nome da exceção.
+    if (faceta or "").strip():
+        kwargs["faceta"] = str(faceta).strip().lower()
+    if temas:
+        kwargs["temas"] = temas
     return kwargs
 
 

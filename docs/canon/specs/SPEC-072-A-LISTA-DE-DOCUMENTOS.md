@@ -333,7 +333,7 @@ herdado consertado. Mutação na fonte (`source_unit_id` fora do select):
 
 ---
 
-### BLOCO 1 · O LEITOR — a faceta passa a filtrar *(o primeiro bloco de valor)*
+### BLOCO 1 · O LEITOR — faceta e temas passam a filtrar — ✅ FEITO em 15/08/2026
 
 > **🔴 Este bloco trocou de lugar com a coluna do Postgres, e o motivo é o
 > achado que mais mudou esta SPEC.**
@@ -376,12 +376,42 @@ de payload no Qdrant. Sem isto, **o AND da §4 não tem como rodar.**
 ⚠️ Mesmo cuidado dos dois braços: `temas` é nulo em 📊 **4.083 das 17.928
 publicadas (22,8%)**.
 
-**Gate:** uma busca com `faceta='documento'` devolve as cartas de documento **e**
-continua devolvendo as sem faceta.
-🔴 **Mutação obrigatória:** remover o braço "OU ausente" tem de apagar as 12.534
-cartas e os 1.139 trechos — **e o teste TEM de falhar.**
+**Gate — saída real, `test_o_filtro_de_faceta_tem_dois_bracos.py`:**
 
-**Esforço:** 4h.
+```
+só o filtro de FACETA salva ... 12.534 cartas + 1.139 trechos de contrato
+só o filtro de TEMA   salva ...  4.083 cartas + 6.797 trechos de contrato
+CONTROLE: sem pedido .......... nenhum ponto some (24.725 de 24.725)
+
+MUTAÇÃO — tirar o braço "OU ausente":
+    dois braços  11.252 pontos
+    um braço só   1.798 pontos
+    APAGADOS      9.454      ← e o teste FALHA, como tem de falhar
+```
+
+O teste não olha a forma do filtro: ele **executa** o `Filter` que
+`search_similar` monta de verdade contra um acervo de mentira com as proporções
+medidas. ⚠️ Monkeypatchar `IsEmptyCondition = None` **não** serviria de mutação —
+produz `None` (filtro abandonado, degradação segura), não um braço só.
+
+**E uma decisão de projeto que o gate congela:** 📊 `faceta_da_pergunta`
+reconhece **1 das 8 facetas**, e `temas_da_pergunta` **1 dos 24 temas**. O motivo
+está escrito no código e é o seguinte: **`escopo` e `exclusao` são um PAR.**
+Filtrar *"a apólice cobre vidro?"* por `faceta='escopo'` esconderia a cláusula de
+exclusão que a anula — usar o rótulo para **estreitar** quando ele existe para
+**equilibrar**, e o defeito seria invisível (a busca devolve resultado, só que
+meio). `documento` entra porque é a única pergunta fechada: não existe cláusula
+que anule uma lista de documentos.
+
+As outras sete "provavelmente" servem — e "provavelmente" é o que a **P-145**
+proíbe: lá, um sinal por faceta foi implementado, medido contra 19 erros
+confirmados e **recusado** (3 acertos, 19 falsos alarmes). *"Um sinal que grita
+mais do que acerta ensina o próximo a ignorar sinal."* Sem dados novos, elas
+devolvem `None` — que é o comportamento de hoje e não esconde nada.
+
+**Registro:** CHANGE-ADDENDA **CA-040**. Fecha **P-142** e **P-177**.
+
+**Esforço real:** ~4h.
 
 ---
 
