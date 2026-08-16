@@ -2493,3 +2493,76 @@ busca, e a CLAUDE.md §10.3 manda parar e registrar em conflito canonico.
   Corrigido.
 
 **VERIFY apos as correcoes:** 203 verdes / 18 vermelhos, lista identica.
+
+---
+
+## CA-037 · A excecao documental no prompt de atendimento — **ESSENCIAL**
+
+**Data:** 16/08/2026 · **SPEC:** SPEC-072 Bloco 4 · **Estado:** EXECUTADA
+**Autorizacao:** decisao do Founder, 15/08/2026 — *"AUTORIZADO registrar e
+executar dentro da SPEC. E atualize o teste do 'Maximo 4', que afirma o
+literal."*
+
+### Problema
+
+`prompts.py:95-100` manda *"peca num bloco de ate 4 itens, numerados… Maximo 4
+itens… pergunta DELICADA (…, documento pessoal) NUNCA entra em bloco"*.
+
+📊 A medicao diz o contrario para o caso documental: o pedido padrao da atendente
+tem **5 itens** e o segurado responde; a **CNH entra em bloco em 100%** dos casos
+observados; e **numerar e o que as humanas NAO fazem** (0,2%).
+
+A regra e defensavel para PERGUNTA e errada para LISTA DE DOCUMENTOS. Uma lista
+partida em blocos de 4 e meia lista, e 📊 o proprio acervo registra o custo: *"sem
+isso o segurado vai ao orgao, volta sem o papel certo e o processo perde dias a
+cada ida."*
+
+### Mudanca
+
+Excecao NOMEADA, nao revogacao. `### 📄 A EXCECAO DOCUMENTAL` entra logo abaixo
+da regra geral e diz cinco coisas: a lista vai INTEIRA numa mensagem; documento
+pessoal ENTRA nela; os dificeis vem com ONDE PEGAR; fecha com O QUE TRAVA; e ao
+receber, o agente ECOA o que chegou e o que falta. E `documento pessoal` saiu da
+lista de perguntas delicadas do bloco geral — manter nos dois lugares deixaria o
+modelo escolher qual obedecer.
+
+⚠️ **O teste tinha de mudar junto com o fato.** Ele passava IGUAL antes e depois
+da excecao existir, porque afirmava so a palavra `DELICADA`. Um guarda que nao
+distingue os dois estados do produto nao e guarda (CLAUDE.md §9.3). Agora afirma
+as cinco clausulas, e a mutacao (tirar "CNH ENTRA na lista") o derruba.
+
+---
+
+## CA-038 · O atendimento nao sabia o que e uma carta de conhecimento — **ESSENCIAL**
+
+**Data:** 16/08/2026 · **SPEC:** SPEC-072 Bloco 4 · **Estado:** EXECUTADA
+**Autorizacao:** decisao do Founder — *"AUTORIZADO, e sobe para dentro do BLOCO
+4. Voce tem razao: e maior que os Blocos 3 e 4 somados."*
+
+### Problema
+
+📊 `ATTENDANCE_BASE_PROMPT` (prompts.py:83-208) RECEBE as cartas do RAG global
+(`graph.py:1220-1231`, sob `=== 📚 CONTEXTO RECUPERADO ===`) e **nao tinha
+nenhuma instrucao sobre elas**. A regra *"nunca copie o texto da carta; carta e o
+que costuma acontecer, nao garantia contratual"* existia so no
+`CORE_BASE_PROMPT:30-31` — o do CORRETOR.
+
+O unico papel que fala com o SEGURADO era o unico sem a regra. Entregar a lista
+perfeita a um prompt que nao sabe disso e otimizar o abastecimento de um cano
+solto.
+
+### Mudanca
+
+Uma linha SOMADA ao bloco `🛡️ LIMITES INEGOCIAVEIS`, ao lado da regra que ja
+proibia confirmar cobertura sem evidencia — **nao um bloco novo**. A ressalva do
+juiz era essa: `:201` ja existia, e duplicar teria criado duas regras vizinhas
+sobre o mesmo assunto.
+
+Diz quatro coisas: a carta NAO e a apolice dele; serve para ORIENTAR e nunca para
+AFIRMAR cobertura/valor/franquia; nao se copia o texto; e **discordando, a
+APOLICE vence**.
+
+### Custo e risco
+
+Texto de prompt, revertivel por `git revert`. **VERIFY:** 204 verdes / 18
+vermelhos, lista identica. Mutacao: EXIT=1 mutado, EXIT=0 restaurado.

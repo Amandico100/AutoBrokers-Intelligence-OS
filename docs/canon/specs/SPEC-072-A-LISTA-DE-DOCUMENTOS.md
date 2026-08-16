@@ -415,7 +415,23 @@ devolvem `None` — que é o comportamento de hoje e não esconde nada.
 
 ---
 
-### BLOCO 2 · Recuperar as 253 seções do bruto *(o coração)*
+### BLOCO 2 · Recuperar as 253 seções do bruto — ✅ FEITO em 16/08/2026
+
+> **🔴 Cinco fatos do bruto invalidaram premissas desta seção.** Medidos antes de
+> escrever uma linha do extrator, e cada um mudava o desenho:
+>
+> | | a SPEC supunha | o bruto é |
+> |---|---|---|
+> | ramo | vem do `caminho` | vem do cabeçalho de `texto` — **100%** de cobertura; pelo caminho seriam 19% |
+> | unidade | o pedaço | o chunker **parte listas ao meio**; a unidade é a **corrida** `(doc, caminho, índice consecutivo)`. 253 pedaços → 127 corridas |
+> | censo | `faceta='documento'` | **incompleto**: +58 pedaços ao costurar vizinhos. A matriz da Allianz Auto está em `faceta=None` |
+> | situação | o `caminho` | **na Yelum ele mente**: 0 concordâncias, 12 discordâncias. Diz `DESMORONAMENTO` onde o corpo diz `QUEBRA DE VIDROS` |
+> | itens | dá para contar | **128 das 139 seções Yelum têm zero marcador**. A heurística de maiúscula erra **107%** na mediana |
+>
+> E o corolário do último: o gate de contagem vale onde há marcador (23% das
+> seções). Onde não há, o invariante é outro e mais forte — **o texto limpo da
+> origem é reconstruível a partir das cartas**. Inventar um contador para as
+> outras 77% seria fabricar o gate.
 
 **Problema:** 📊 **307.729 caracteres em 253 seções** de listas alfabéticas
 completas (`a)` … `hh)`), organizadas por cobertura e por evento, estão em
@@ -440,15 +456,45 @@ preservado (§3.3); entra quando a condição geral aparecer.
   produz as 13 truncadas, na outra ponta: boilerplate virando seção. 77 chunks
   quase idênticos disputando BM25 é ruído puro
 
-**Gate:** para cada par (seguradora × situação) coberto, a carta gerada contém
-**todos** os documentos que a seção bruta lista. Teste: escolher 5 seções ao
-acaso, contar os itens na origem e na carta. **Divergência = falha.**
-**Mutação:** apagar 1 item de uma carta gerada tem de fazer o teste falhar.
+**Gate — saída real, 16/08/2026:**
 
-**Ganho:** é o único bloco que **adiciona conhecimento novo** ao produto, e não
-depende de nenhuma fonte nova.
+```
+                       cartas    p50    >1.000   >1.800
+GERADAS ..........       147   1.397     74%       0
+base: do acervo ..              443
+base: tema doc ...              225
+```
 
-**Esforço:** 1,5–2 dias.
+📊 **p50 = 1.397 contra 443** — 3,2× a mediana da carta de acervo de hoje e 6,2×
+a do tema `documentacao`. O alvo desta SPEC era ~1.100; a **mediana** passou
+dele. Das 380 cartas com `faceta='documento'` que já existem, **onze** passam de
+1.000 caracteres; destas 147, passam **109**.
+
+`test_a_lista_de_documentos_nao_perde_item.py`:
+
+```
+itens: bloco de origem × cartas dele ....  0 de 32 divergem
+texto limpo perdido ..................... 0 de 76 blocos (>3%)
+MUTAÇÃO: regex de item com UMA letra .... 8 itens viram 3, e o teste FALHA
+```
+
+⚠️ **E o teste pegou dois defeitos reais** — é para isso que ele existe:
+`blocos_de_cobertura` **descartava** trecho abaixo de 40 caracteres (um bloco
+perdia 88% do texto), e `itens_de` exigia ≥2 marcadores, o que fazia a última
+parte com um item só contar zero. Os dois consertados; a régua do próprio teste
+também estava errada e passou a comparar **por bloco**, que é a unidade honesta
+— o portão de pertinência descarta bloco de propósito.
+
+**Escopo real: 3 seguradoras.** A HDI fica fora, declaradamente — não há bruto.
+
+**O que ficou registrado e NÃO publicado:**
+- 📊 **8 corridas, 106.984 caracteres**, que exigiriam de 5 a 18 cartas cada.
+  *"Parte 17 de 18"* não é entregável: P-170 manda partir em vez de encurtar e
+  está certa, mas 26.000 caracteres em 18 cartas entregam um capítulo fatiado,
+  não uma lista. Ficam com os `unit_id`, para seccionamento manual.
+- 📊 **74 blocos barrados** por não nomear ≥2 documentos distintos.
+
+**Esforço real:** ~1 dia.
 
 ---
 

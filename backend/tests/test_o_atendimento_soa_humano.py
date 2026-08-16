@@ -502,6 +502,59 @@ def teste_a_coleta_distingue_entender_de_executar() -> None:
            "e pergunta delicada nunca entra em bloco",
            "perguntar de vítimas no meio de uma lista numerada é violência")
 
+    # ─────────────────────────────────────────────────────────────────────
+    # 🔴 A EXCEÇÃO DOCUMENTAL — SPEC-072 Bloco 4, CA-037. 16/08/2026.
+    #
+    # A regra dos 4 itens é defensável para PERGUNTA e errada para LISTA DE
+    # DOCUMENTOS, e a medição diz por quê: 📊 o pedido padrão da atendente tem
+    # 5 itens e o segurado responde; a CNH entra em bloco em 100% dos casos
+    # observados; e numerar é justamente o que as humanas NÃO fazem (0,2%).
+    #
+    # ⚠️ E o teste tinha de mudar junto com o fato, senão não guarda nada: até
+    # aqui ele passava IGUAL antes e depois da exceção existir, porque afirmava
+    # só a palavra `DELICADA`. Um guarda que não distingue os dois estados do
+    # produto não é guarda (CLAUDE.md §9.3).
+    docs = _bloco("### 📄 A EXCEÇÃO DOCUMENTAL")
+    checar(bool(docs), "a exceção documental existe no prompt",
+           "sem ela o agente parte a lista em blocos de 4 e o cliente "
+           "responde pela metade")
+    checar("COMPLETA" in docs and "uma vez" in docs,
+           "a lista vai INTEIRA, numa mensagem só")
+    checar("CNH" in docs and "ENTRA" in docs,
+           "documento pessoal ENTRA na lista",
+           "📊 a CNH entra em bloco em 100% dos casos observados")
+    checar("documento pessoal" not in bloco,
+           "e saiu da lista de perguntas delicadas do bloco geral",
+           "manter nos dois lugares deixa o modelo escolher qual obedecer")
+    checar("ONDE PEGAR" in docs and "delegacia virtual" in docs,
+           "os difíceis vêm com onde pegar, na mesma mensagem",
+           "📊 só ~1% das conversas traz essa instrução — é o valor que o "
+           "agente adiciona")
+    checar("TRAVA" in docs,
+           "e a lista fecha dizendo o que trava se faltar",
+           "📊 2,8% das mensagens humanas trazem isso, e é o que faz o "
+           "cliente providenciar")
+    checar("ECOE" in docs or "eco" in docs.lower(),
+           "e o agente ECOA o que recebeu e o que falta",
+           "📊 'já mandei, não recebeu?' é o 2º maior travamento e é o único "
+           "que se resolve por UX, não por conhecimento")
+
+    # 🔴 CA-038 — a regra de USO DA CARTA, que vivia só no prompt do corretor.
+    # O atendimento RECEBE as cartas do RAG (graph.py:1220) e não tinha nenhuma
+    # instrução sobre elas. Entregar a lista perfeita a um prompt que não sabe
+    # que "carta é o que costuma acontecer, não garantia contratual" é otimizar
+    # o abastecimento de um cano solto.
+    checar("CARTA DE CONHECIMENTO" in ATENDENTE,
+           "o atendimento sabe o que é uma carta de conhecimento")
+    checar("não é garantia contratual" in ATENDENTE
+           or "NÃO É A APÓLICE" in ATENDENTE,
+           "e que ela não vale como a apólice do cliente")
+    checar("nunca copie o texto da carta" in ATENDENTE.lower(),
+           "e que não se copia o texto dela")
+    checar("APÓLICE vence" in ATENDENTE,
+           "e que, discordando, a apólice vence",
+           "sem isso o agente afirma cobertura com base em carta genérica")
+
     # O prompt não pode continuar mandando o contrário em outro lugar.
     checar("Uma pergunta por vez." not in ATENDENTE,
            "a ordem antiga 'UMA pergunta por vez' sumiu do resto do prompt",
