@@ -207,6 +207,26 @@ check("M13: ele proibe explicitamente escolher por POSICAO",
 check("M13 CONTROLE: nomeia os campos criticos que nao se chuta",
       all(c in txt_force for c in ("peca", "lado", "cobertura", "horario")))
 
+# 🔴 Estas quatro asserções nasceram de uma mutação que NÃO foi detectada.
+# Ao quebrar de propósito o `_valor_conhecido` do validador, a matriz continuou
+# 103/103 verde: eu testava o TEXTO do prompt e o campo não-crítico, e nunca
+# tinha afirmado que um campo crítico com valor inventado é recusado. O prompt
+# proibia, o código impedia, e o teste não olhava — que é como uma proteção
+# real morre num refactor sem ninguém perceber.
+v_inv = P.validar_acao({"action": "fill", "target": "peca", "value": "para-brisa"},
+                       TELA, collected=DADOS, guard=guard())
+v_lastro = P.validar_acao({"action": "fill", "target": "peca", "value": "vidro da porta"},
+                          TELA, collected=DADOS, guard=guard())
+check("M13: campo CRITICO com valor sem lastro no relato e recusado",
+      not v_inv.ok, v_inv.motivo)
+check("M13 CONTROLE: o mesmo campo com valor que o segurado disse passa",
+      v_lastro.ok, v_lastro.motivo)
+check("M13 CONTROLE: os dois vereditos diferem", v_inv.ok != v_lastro.ok)
+v_chk = P.validar_acao({"action": "check", "target": "Desejo receber atualizacoes no WhatsApp"},
+                       TELA, collected=DADOS, guard=guard())
+check("M13: checkbox de consentimento/canal nunca e marcada por modelo",
+      not v_chk.ok, v_chk.motivo)
+
 # ==========================================================================
 print("\n[M14] tres acoes sem progresso ESCALAM em vez de ir ate o teto")
 # ==========================================================================

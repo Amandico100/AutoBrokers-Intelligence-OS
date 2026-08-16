@@ -63,11 +63,27 @@ _RE_NUMERO = re.compile(r"\b\d{2,}\b")
 
 
 def normalizar_path(path: str) -> str:
-    """`/atendimento/9f2a-.../passo5` → `/atendimento/{uuid}/passo{n}`.
+    """`/atendimento/9f2a-.../passo5` → `/atendimento/{uuid}/passo5`.
 
     Sem isso, cada execução produz uma assinatura nova e o profiler nunca
     consegue dizer "esta tela é a mesma de ontem" — que é a única pergunta que
     ele precisa responder bem.
+
+    🔴 A distinção que parece detalhe e não é: **número colado em palavra fica;
+    número sozinho no segmento vira `{n}`.**
+
+        /atendimento/{uuid}/passo5   `passo5` PRESERVADO
+        /pedidos/12345               vira `/pedidos/{n}`
+
+    O motivo é que os dois números querem dizer coisas opostas. `passo5`
+    IDENTIFICA a tela — o passo 5 e o passo 6 do portal de vidros são telas
+    diferentes, com perguntas diferentes, e achatá-los faria o detector de drift
+    dizer "nada mudou" enquanto o robô anda pelo fluxo inteiro. Já `12345` é o
+    id do registro: muda a cada execução e não descreve tela nenhuma.
+
+    Quem faz a separação é o `\\b` do padrão: entre `o` e `5` não há fronteira de
+    palavra, então `passo5` não casa. É sutil o bastante para alguém "consertar"
+    achando que é bug — daí este parágrafo.
     """
     p = str(path or "")
     p = _RE_UUID.sub("{uuid}", p)
@@ -125,9 +141,9 @@ def screen_fingerprint(state: Dict[str, Any]) -> str:
     """
     if not isinstance(state, dict):
         return ""
-    partes: List[str] = []
-    partes.append(normalizar_path(_path_de(state.get("url") or "")))
-    partes.append(str(state.get("heading") or "").strip().lower()[:120])
+    rota = normalizar_path(_path_de(state.get("url") or ""))
+    heading = str(state.get("heading") or "").strip().lower()[:120]
+    partes: List[str] = [rota, heading]
 
     def _rotulos(chave: str, campo: str = "label") -> List[str]:
         itens = state.get(chave) or []
@@ -141,10 +157,20 @@ def screen_fingerprint(state: Dict[str, Any]) -> str:
                         out.append(v[:60])
         return sorted(set(out))
 
-    partes.extend(_rotulos("inputs"))
-    partes.extend(_rotulos("selects"))
-    partes.extend(_rotulos("mdselects"))
-    partes.extend(_rotulos("buttons", "text"))
+    semanticas: List[str] = []
+    semanticas.extend(_rotulos("inputs"))
+    semanticas.extend(_rotulos("selects"))
+    semanticas.extend(_rotulos("mdselects"))
+    semanticas.extend(_rotulos("buttons", "text"))
+    partes.extend(semanticas)
+
+    # 🔴 Sem heading e sem um único elemento de sentido, não há tela para
+    # assinar — só uma rota. Devolver um hash aqui seria pior que devolver
+    # nada: `classificar_drift` compararia duas telas em branco e diria
+    # "none", ou seja, "conferi e está tudo igual". Assinatura vazia vira
+    # `unknown`, que é a verdade: eu não consegui caracterizar esta tela.
+    if not heading and not semanticas:
+        return ""
 
     crua = "|".join(p for p in partes if p)
     return R.digest(crua) if crua else ""
