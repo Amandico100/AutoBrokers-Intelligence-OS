@@ -356,14 +356,54 @@ verdadeiro que o segurado realmente queira abrir, ou de credencial de homologaç
 
 Os três gatilhos foram disparados e responderam `Deploying...` (HTTP 200).
 
-⚠️ **A verificação por SHA é impossível hoje**: `portal-worker` reporta
-`build_sha: "unknown"` e `smith-api` reporta `git_commit: "nao-injetado"`. O
-marcador utilizável é `build_time` no `/health` do portal-worker. Isso é um
-defeito de observabilidade e vai para PENDÊNCIAS — a SPEC-073 pediu "build/git
-SHA real e verificável" e o que existe hoje não é verificável.
+### 13.1 O deploy passou a ser verificável — e a ferramenta se provou na estreia
 
-**A flag `PORTAL_VIDROS_API_FIRST` nasce desligada.** Nada do caminho novo executa
-em produção até alguém ligar. O caminho DOM provado roda byte-a-byte como rodava.
+📊 Medido em 16/08: `portal-worker` reportava `build_sha: "unknown"` e `smith-api`
+reportava `git_commit: "nao-injetado"`. A causa não é bug do Dockerfile — o
+estágio `gitinfo` lê `.git/HEAD`, e o EasyPanel exporta a árvore de arquivos
+**sem o `.git`**. A SPEC-073 pediu "build/git SHA real e verificável"; o que
+existia não era verificável.
+
+A saída não foi injetar o SHA via build-arg, que mora no painel do EasyPanel —
+fora do repositório, invisível ao revisor, fácil de perder num redeploy. Prova de
+versão que mora fora do código não é prova.
+
+`code_fingerprint` é o hash dos `.py` que o **processo** tem em disco. Sem git,
+sem build-arg, e reproduzível — `backend/scripts/conferir_o_que_esta_no_ar.py`
+roda a mesma função sobre o repositório e compara.
+
+**Ela pagou o próprio custo antes de terminar de ser escrita.** Com os três
+deploys respondendo `Deploying...` HTTP 200:
+
+```
+repositorio : d2544fba3fda5fce  (25 arquivos .py)
+no ar       : ausente
+VEREDITO    : a versao no ar e ANTERIOR
+```
+
+O painel dizia verde; o conteúdo dizia outra coisa. O portal-worker só trocou às
+`22:35:34Z`, e a troca foi confirmada **por conteúdo**, não por promessa.
+
+📊 A digital sobrevive à diferença CRLF/LF entre o Windows do repositório e o
+Linux do contêiner — 16 asserções provam que ela muda com conteúdo, com nome de
+arquivo e com arquivo a mais, e **não** muda com fim de linha nem `__pycache__`.
+Um marcador que sempre diverge é um alarme que ninguém escuta.
+
+### 13.2 O que está ligado
+
+**A flag `PORTAL_VIDROS_API_FIRST` nasce desligada**, testada em 10 valores de
+entrada. Nada do caminho API-first executa em produção até alguém ligar, e o
+caminho DOM roda como rodava.
+
+**O que NÃO está atrás de flag, e já vale hoje:** os três consertos de duplicidade
+([CA-047](../CHANGE-ADDENDA.md), [CA-048](../CHANGE-ADDENDA.md)). `worker.py`
+gravando `needs_human` em vez de `failed` quando há prova de efeito, e o
+`portal_tool` tratando `failed` com prova como pedido vivo, protegem **todas as
+journeys materiais**, não só vidros — inclusive as que já rodam.
+
+Esse é o único ganho da SPEC-074 que entra em produção com a flag desligada. É
+também o mais importante: ele fecha um caminho para o segundo pedido pago que
+existia **antes** desta SPEC e que ninguém tinha visto.
 
 ---
 
@@ -410,3 +450,99 @@ caso real acompanhado ao vivo, e comparar o `CodigoAtendimento` devolvido com o
 que a tela do portal mostra. Se bater, é o caminho que reduz entradas no portal e
 descobre ausência de cobertura sem escrever nada. Se não bater, a flag volta a
 `false` e nada foi perdido.
+
+---
+
+## 17. Checklist Regina — o que só o Founder pode destravar
+
+Cada linha diz **o que é preciso**, **por quê** e **o que custa esquecer**.
+
+### 🔴 1 — Decisão sobre o teto de entradas por portal por hora
+
+**Preciso de:** uma decisão sobre limitar entradas por portal/corretora/janela.
+
+**Por quê:** os tetos que a 074 pôs são reais mas são **por sessão** —
+`MAX_CHAMADAS=150` e `MAX_RODADAS=12`. Dez jobs simultâneos da mesma corretora
+são dez sessões, 1.500 requisições que nenhum contador vê. Não há backoff
+coordenado: se o portal começar a responder 429, cada job descobre sozinho e os
+outros nove continuam batendo.
+
+**O que custa esquecer:** 📊 o bloqueio Akamai medido em 10/08 não é hipótese.
+Ser bloqueado numa seguradora **derrama a corretora inteira** naquele portal, e
+a religação depende da seguradora, não de nós. É o único item da SPEC que pode
+causar dano **sem bug**. → [P-188](../PENDENCIAS.md)
+
+### 🔴 2 — Um caso real de vidro, acompanhado ao vivo
+
+**Preciso de:** um atendimento que o segurado realmente queira abrir — ou
+credencial de homologação da Maxpar/Autoglass.
+
+**Por quê:** esta é a única SPEC em que **não existe canário read-only da
+fronteira material**. O preflight de apólice é read-only e já roda, mas não
+exercita o que precisa de prova. Exercitar de verdade é `POST /atendimentos` —
+abrir um pedido **pago, no nome de um segurado**.
+
+**O que custa esquecer:** o caminho DOM continua funcionando, então o custo é de
+**confiança**, não de operação. Sem isso, o API-first não pode ser ligado com
+honestidade. → [P-190](../PENDENCIAS.md)
+
+### 🟡 3 — Autorização para ligar a flag em UMA corretora
+
+**Preciso de:** permissão para `PORTAL_VIDROS_API_FIRST=true` num tenant só,
+depois do item 2.
+
+**Por quê:** o ganho medido no HAR é descobrir a **ausência de cobertura num 400,
+antes de escrever qualquer coisa**, e trocar uma navegação de tela inteira por
+uma chamada REST — o que ataca diretamente o item 1.
+
+**Conferência:** o `CodigoAtendimento` devolvido tem de bater com o que a tela do
+portal mostra. Se não bater, a flag volta a `false` e nada foi perdido.
+→ [P-191](../PENDENCIAS.md)
+
+### 🟢 4 — HAR de vidros de outra seguradora
+
+**Preciso de:** uma captura do fluxo de vidros que não seja Porto nem Yelum.
+
+**Por quê:** `tipo_atendimento_para()` só conhece a Porto, e a lista de slugs tem
+três entradas. É o alcance do que foi **medido** — e eu já errei uma vez
+generalizando de HAR parcial.
+
+**O que custa esquecer:** pouco. Seguradora desconhecida devolve `""`, o preflight
+desiste e o DOM assume. Falha limpa, não silenciosa. → [P-192](../PENDENCIAS.md)
+
+### 🟢 5 — Build-arg `GIT_SHA` no EasyPanel (se possível)
+
+**Preciso de:** saber se o painel permite build-arg.
+
+**Por quê:** a pergunta operacional — *"o processo no ar tem o código que
+escrevi?"* — **já tem resposta** via `code_fingerprint`. O que falta é a pergunta
+de auditoria histórica: *"o que estava no ar no dia X?"*.
+
+**O que custa esquecer:** conforto de auditoria, não segurança.
+→ [P-195](../PENDENCIAS.md)
+
+---
+
+## 18. Declaração de gate
+
+📊 Medido em 16/08/2026, commit `4275c46`:
+
+```
+243/0   asserções da SPEC-074
+216     suites verdes no backend
+ 17     vermelhas — as MESMAS provadas pré-existentes no baseline 5cac02f
+  0     tsc --noEmit
+ 13     mutações dirigidas, 13 detectadas, baseline restaurado
+200     /health do app na árvore do contêiner (15 módulos importam,
+        registry com 14 journeys)
+```
+
+**Nenhuma migration.** Nenhum motor paralelo criado.
+
+**Gate técnico: VERDE.**
+
+**Gate de produção: VERDE COM RESSALVA NOMEADA.** O que entra ligado é o conjunto
+de proteções contra pedido duplicado, que vale para todas as journeys materiais.
+O caminho API-first entra desligado e assim permanece até o canário do item 2 do
+checklist acima. Isso não é uma pendência esquecida — é a única postura honesta
+para uma fronteira material que só foi provada em replay.
