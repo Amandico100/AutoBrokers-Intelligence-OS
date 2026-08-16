@@ -1118,7 +1118,11 @@ async def run_adaptive(page, goal: str, collected: Dict[str, Any], evidence: Dic
     # atendimento" -- que convivem na mesma tela do passo 7 -- sejam clicados
     # por uma decisao de modelo bem-intencionada.
     if not getattr(_guard, "acao_material_esperada", ""):
-        _guard.acao_material_esperada = "confirmar"
+        # 📊 No Maxpar o clique que CRIA o pedido e o `Avancar` do passo 6 --
+        # o mesmo texto inofensivo dos passos 1 a 5. Declarar os dois rotulos
+        # nao afrouxa nada: o que protege e a lista ser FECHADA, combinada com
+        # `tela_material`, que so liga na tela do 80%.
+        _guard.acao_material_esperada = "avancar|confirmar"
     _escada = getattr(runtime, "escada", None) or _P.EscadaDePercepcao()
     _rejeitadas = 0
     for _ in range(max_steps):
@@ -1213,7 +1217,10 @@ async def run_adaptive(page, goal: str, collected: Dict[str, Any], evidence: Dic
         # prompt. Tres superficies com um terco do rigor da quarta.
         # ------------------------------------------------------------------
         _v = _P.validar_acao(action, state, collected=collected, historico=history,
-                             guard=_guard, origem=_P.L3_TEXTO)
+                             guard=_guard, origem=_P.L3_TEXTO,
+                             # A tela do 80% E a fronteira do efeito: dela em
+                             # diante, `Avancar` cria o pedido na seguradora.
+                             tela_material=is_confirm_screen(state))
         if not _v.ok:
             _rejeitadas += 1
             _escada.rejeitar(action, _v, camada=_P.L3_TEXTO)

@@ -327,13 +327,20 @@ class PortalActionGuard:
         Esta função responde *"pode ser ESTE"* — e as duas perguntas são
         diferentes. A segunda é a que impede o clique certo na hora errada.
         """
-        esperada = str(self.acao_material_esperada or "").strip().lower()
-        if not esperada:
+        bruto = str(self.acao_material_esperada or "").strip().lower()
+        if not bruto:
             return False, ("a journey nao declarou qual acao material espera; "
                            "clique material recusado por construcao")
+        # Alternativas separadas por `|`: o MESMO efeito tem rótulo diferente
+        # entre seguradoras que dividem o mesmo portal (no Maxpar o clique que
+        # cria o pedido é `Avançar`; noutras telas do ciclo é `Confirmar`).
+        # Declarar as duas não afrouxa nada — o que protege é a lista ser
+        # FECHADA e escrita pela journey, não o tamanho dela.
+        aceitas = [p.strip() for p in bruto.split("|") if p.strip()]
         alvo = str(rotulo or "").strip().lower()
-        if esperada in alvo or alvo in esperada:
-            return True, ""
+        for esperada in aceitas:
+            if esperada in alvo or alvo in esperada:
+                return True, ""
         return False, (f"acao material {rotulo!r} diferente da esperada pela "
                        f"journey ({self.acao_material_esperada!r})")
 

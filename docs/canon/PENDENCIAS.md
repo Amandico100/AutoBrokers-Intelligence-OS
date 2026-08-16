@@ -5453,3 +5453,118 @@ falsos negativos de vocabulário (`Carta Aviso`, `carteira de habilitação`,
 preposição); o cabeçalho *"para sinistro"* (usa o título da cobertura); e **as
 duas asserções frouxas do meu próprio teste** — `[5]` era `<= 25%` num teste
 chamado *"nunca"*, e `[3]` comparava comprimento em vez de conteúdo.
+
+---
+
+## P-182 · 🟠 `PORTAL_VAULT_KEY` é uma chave única e global, sem rotação
+
+**Aberta em:** 16/08/2026 · **Dono:** 🧑 Founder decide, 🤖 execução implementa
+
+📊 `portal_vault.py:13-19` e `portal_worker/vault.py:8-14` fazem
+`Fernet(os.getenv("PORTAL_VAULT_KEY"))`. **Uma** chave, compartilhada entre
+smith-api e portal-worker, sem key-id no ciphertext e sem caminho de rotação no
+repositório. Comprometer essa env decifra as senhas de **todas** as corretoras.
+
+Fernet carrega timestamp mas não identificador de chave, então hoje não há como
+saber com qual chave um segredo foi cifrado — o que é exatamente o que uma
+rotação precisa saber.
+
+**O que destrava:** 🤖 `MultiFernet` com lista de chaves (decifra com qualquer
+uma, cifra sempre com a primeira) + recifragem em lote + procedimento escrito.
+**O que custa esquecer:** nada hoje. No dia de um vazamento de env, a
+alternativa a ter rotação é pedir a 16 contas que troquem a senha no portal.
+
+Fora do escopo da SPEC-073 por decisão do Founder (CA-041).
+
+---
+
+## P-183 · 🟠 `portal_jobs.evidence` acumula PII de segurado sem retenção
+
+**Aberta em:** 16/08/2026 · **Dono:** 🤖 execução, na SPEC de segurança/LGPD
+
+📊 `worker.py` funde `result.captured` dentro de `evidence`, e a lista de
+inadimplentes carrega nome, CPF/CNPJ, apólice, vencimento e valor. `grep` por
+retenção/purga em `portal_jobs`: **zero**. `routine_runs` tem 90 dias;
+`portal_jobs` acumula indefinidamente.
+
+A SPEC-073 acrescentou o redator único, e ele **passa em todo o caminho novo** —
+profiler, trace, envelope, log. Mas a PII que a journey grava como **dado de
+trabalho** (o serviço a lê de volta em `_extract_items`) é legítima enquanto o
+job está vivo, e vira passivo depois.
+
+**O que destrava:** 🧑 Founder — definir a janela (30/60/90 dias). 🤖 depois:
+job de purga que zera `evidence` de job terminal, preservando status e contadores.
+**O que custa esquecer:** o volume só cresce, e a conversa com a LGPD fica mais
+cara a cada mês.
+
+---
+
+## P-184 · 🟡 A pilha TypeScript de portal tem guardas que nada chama
+
+**Aberta em:** 16/08/2026 · **Dono:** 🤖 execução, provavelmente na SPEC-075
+
+📊 `portal-company-scope.ts`, `portal-tenant-canary-authorization.ts`,
+`portal-session-vault.ts` e `portal-supabase-vault.ts` têm **zero call sites de
+produção** — só `scripts/*.test.mjs` e `package.json`. As rotas que os aplicariam
+(`app/api/admin/portal-browser/`) **não existem**.
+
+São funções puras corretas, com boa cobertura de teste, e nenhuma delas está no
+caminho de execução. O pior dos mundos: a suíte verde sugere uma proteção que o
+runtime não tem.
+
+Elas também contêm disciplina que o caminho vivo Python **não** tem: TTL de
+sessão, `revoked`/`expired`/`challenge_required`.
+
+**O que destrava:** 🤖 decidir entre cabear no caminho real ou remover — e, se
+remover, portar o TTL de sessão para o Python antes.
+**O que custa esquecer:** alguém lê a cobertura e conclui que o escopo está
+protegido.
+
+---
+
+## P-185 · 🟡 `backend/app/api/portal.py` aceita `company_id` livre atrás de um segredo estático
+
+**Aberta em:** 16/08/2026 · **Dono:** 🤖 execução
+
+📊 Os quatro endpoints exigem `X-AutoBrokers-Internal-Key` e falham fechado sem
+ela — isso está certo. Mas o `company_id` vem do corpo/query, não de um token
+que o carregue. Com a chave em mãos,
+`GET /api/portal/credentials?company_id=<qualquer>` devolve `username` e
+`has_password` de qualquer corretora.
+
+Não é alcançável hoje: o único chamador é o proxy Next, que injeta
+`ctx.companyId` da sessão. É defesa em profundidade que falta, não porta aberta.
+
+**O que destrava:** 🤖 token que carregue o tenant, ou assinatura por requisição.
+Sem rate-limit nem log de auditoria hoje.
+**O que custa esquecer:** o dia em que a chave interna vazar, o raio do estrago
+é a plataforma inteira em vez de uma corretora.
+
+---
+
+## P-186 · 🟡 O canário live read-only da SPEC-073 não foi executado
+
+**Aberta em:** 16/08/2026 · **Dono:** 🧑 Founder (liberar a janela)
+
+A SPEC-073 §K2 pede um canário somente-leitura por classe de portal — Allianz
+(controle histórico), HDI (anti-bot), Yelum ou Tokio (SPA/API), MAPFRE
+(multiempresa), Zurich (journey nova).
+
+**Não foi executado nesta SPEC**, por dois motivos legítimos e nenhum técnico:
+
+1. havia uma reindexação de 17.928 cartas rodando dentro do `smith-api`, e o
+   Founder determinou não implantar nem reiniciar nada até ela terminar;
+2. 📊 a MAPFRE continua na P-149 — a journey existe no código e não na imagem,
+   então o canário dela terminaria em *"journey desconhecida"* e mediria o
+   deploy, não a SPEC.
+
+Tudo que **não** depende de rede real foi provado offline: 363 asserções novas,
+211 verdes no backend inteiro e 17 vermelhos individualmente medidos como
+já-vermelhos na baseline.
+
+**O que destrava:** 🧑 reindexação terminada + Implantar o `portal-worker` +
+janela autorizada. Depois: deploy com `PORTAL_DISCOVERY_MODE=false`,
+`PORTAL_VISION_ENABLED=false`, `PORTAL_PROFILER_ENABLED=true`, conferir
+`/health` e rodar cobrança read-only sem enviar WhatsApp.
+**O que custa esquecer:** declarar a SPEC-073 "provada em produção" sem ter
+tocado em produção — exatamente o defeito que a CLAUDE.md §9.1 registra.

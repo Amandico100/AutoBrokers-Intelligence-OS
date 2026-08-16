@@ -2566,3 +2566,93 @@ APOLICE vence**.
 
 Texto de prompt, revertivel por `git revert`. **VERIFY:** 204 verdes / 18
 vermelhos, lista identica. Mutacao: EXIT=1 mutado, EXIT=0 restaurado.
+
+---
+
+## CA-041 · Os seis P1 de segurança do Portal Worker — **ESSENCIAL**
+
+**SPEC-073 · autorizado pelo Founder em 16/08/2026 (resposta Q2)**
+
+### Problema
+
+A auditoria de readiness da SPEC-073 mediu seis defeitos de segurança
+operacional que **não estavam no texto da SPEC**. Todos com a mesma assinatura:
+uma proteção que existe em um lugar e falta no lugar irmão.
+
+| # | Achado | Evidência |
+|---|---|---|
+| 1 | Yelum busca com `{"brokerlist": []}` e descarta o `BrokerName` de cada linha | `yelum_corretor.py:542`, `:227`; zero `account_label` no arquivo |
+| 2 | Tokio captura `nomeParceiroNegocioPrimario` e nunca compara | `tokio_corretor.py:501-509` |
+| 3 | Zurich pula a revalidação quando o rótulo é `principal` — o default do dashboard | `zurich_corretor.py:705` × `portal-credentials/route.ts:67` |
+| 4 | `account_id` buscado só por `id`; o `company_id` vinha no SELECT e nunca era comparado | `worker.py:424-430` |
+| 5 | `stale_running_patch` e o botão de retry do dashboard reexecutam job pós-efeito | `worker.py:83-101`, `hitl.ts:58` |
+| 6 | `GLOBAL_KILL_SWITCH` lido só pelo Next.js | `grep -rn GLOBAL_KILL_SWITCH backend/` → vazio |
+
+### Autorização
+
+O Founder aprovou incluí-los na SPEC-073, com a regra: *"corrigir agora tudo que
+possa gerar cross-tenant, duplicidade, side effect incorreto ou incapacidade de
+parar a execução"* — e **não** transformar a SPEC numa limpeza geral de
+segurança.
+
+### O que ficou de FORA, deliberadamente
+
+Rotação de `PORTAL_VAULT_KEY` (chave única global, sem key-id) · retenção LGPD
+de `portal_jobs.evidence` · remoção da pilha TypeScript morta · rate-limit e
+tenant-binding do endpoint interno. Registrados em PENDENCIAS P-182 a P-185.
+
+### Custo e risco
+
+MAPFRE **não** foi tocada: é o único guarda cross-tenant provado, tem teste com
+duas carteiras disjuntas, e reescrevê-la para "unificar" trocaria certeza por
+elegância. A generalização foi extraída para `identidade.py` e aplicada às três
+que não tinham nada.
+
+**VERIFY:** 211 verdes / 17 vermelhos no backend inteiro; os mesmos 17 medidos
+como já-vermelhos na baseline `5cac02f`, um a um. Mutação: 6 guardas quebrados
+de propósito, 5 detectados de imediato, o 6º expôs uma lacuna do próprio teste,
+corrigida.
+
+---
+
+## CA-042 · A tela escondia quatro seguradoras prontas — **ESSENCIAL**
+
+**SPEC-073 · autorizado pelo Founder em 16/08/2026 (resposta Q3)**
+
+### Problema
+
+📊 `app/dashboard/auxiliares/rotinas/page.tsx:62` mantinha
+`PORTAIS_COM_COBRANCA = ['allianz_corretor', 'hdi_corretor']` enquanto
+`portais_com_cobranca()` já derivava SEIS do registry. Tokio, Yelum, MAPFRE e
+Zurich tinham journey completa, testada e **invisível** para a corretora.
+
+O comentário no código admitia a duplicação como deliberada. A intenção era boa;
+o resultado não: duas listas que precisam concordar sempre acabam discordando.
+
+### Decisão
+
+Não acrescentar quatro nomes ao array — **apagar o array**.
+
+A disponibilidade passa a vir de `/api/portal/cobranca-capabilities`, que
+devolve a **interseção** entre o que o registry sabe fazer (`registry`) e o que
+a imagem no ar realmente carrega (`deployed`, lido do `/health` do
+portal-worker).
+
+### Por que a interseção, e não só o registry
+
+📊 A P-149 registra a journey da MAPFRE existindo no repositório e **não** na
+imagem implantada — um job dela termina em *"journey desconhecida"* com todos os
+testes verdes. Marcar a MAPFRE como pronta por causa do registry seria repetir a
+mentira em outro lugar. Ela só aparece quando a P-149 for implantada.
+
+### Fail-closed
+
+Sem conseguir falar com o portal-worker: `degraded=true`, nenhum portal
+operacional, e a tela **diz por quê**. Dizer "não consegui confirmar" custa uma
+tentativa; dizer "está pronto" sem estar custa um job que morre em produção.
+
+### Custo e risco
+
+Rotina já existente mantém exatamente os portais que a corretora escolheu — uma
+seguradora nova entrando no registry não liga a cobrança de ninguém sozinha.
+`tsc --noEmit` limpo.

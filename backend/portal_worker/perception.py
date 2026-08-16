@@ -104,12 +104,33 @@ CHECKBOXES_PROIBIDAS: Tuple[str, ...] = (
 )
 
 
+# Sair de uma tela nunca criou nada em seguradora nenhuma. Esta lista existe
+# para que a fronteira contextual (`tela_material`) não prenda o robô: sem ela,
+# estando no 80%, nem `Voltar` passaria — e um robô que não consegue recuar de
+# uma tela perigosa é pior que um que avança demais, porque perde o caminho de
+# saída.
+BOTOES_DE_VOLTA: Tuple[str, ...] = ("voltar", "anterior", "fechar", "sair", "corrigir")
+
+
 def e_botao_material(texto: Any) -> bool:
     """O texto do botão indica efeito material?"""
     t = _norm(texto)
     if not t:
         return False
     return any(m in t for m in BOTOES_MATERIAIS)
+
+
+def e_botao_de_volta(texto: Any) -> bool:
+    """Recuar/fechar — inofensivo mesmo na tela que é fronteira de efeito.
+
+    🔴 A lista explícita de materiais VENCE esta: `Cancelar atendimento` contém
+    a ideia de sair e mesmo assim cancela um pedido de verdade na seguradora.
+    Por isso quem chama pergunta `e_botao_material()` primeiro.
+    """
+    t = _norm(texto)
+    if not t or e_botao_material(t):
+        return False
+    return any(v in t for v in BOTOES_DE_VOLTA)
 
 
 def e_campo_critico(rotulo: Any) -> bool:
@@ -230,7 +251,8 @@ def validar_acao(acao: Dict[str, Any],
                  collected: Optional[Dict[str, Any]] = None,
                  historico: Optional[Sequence[Any]] = None,
                  guard: Optional[G.PortalActionGuard] = None,
-                 origem: str = L3_TEXTO) -> Veredito:
+                 origem: str = L3_TEXTO,
+                 tela_material: bool = False) -> Veredito:
     """O funil por onde TODA ação proposta por modelo passa antes de acontecer.
 
     Vale igual para `fill`, `select`, `click` e `check` — que é a correção
@@ -266,7 +288,20 @@ def validar_acao(acao: Dict[str, Any],
     # (6) botão material exige autorização determinística
     if nome == "click":
         rotulo = _melhor_rotulo(target, state, "buttons") or str(target)
-        if e_botao_material(rotulo) or e_botao_material(target):
+        # 🔴 Um botão é material por DUAS razões independentes, e a segunda é a
+        # que a lista de rótulos jamais pegaria:
+        #
+        #   1. o rótulo diz o que ele faz ("Cancelar atendimento")
+        #   2. a TELA é a fronteira do efeito
+        #
+        # No portal de vidros o clique que cria o pedido é `Avançar` — o mesmo
+        # texto inofensivo dos passos 1 a 5. O que muda é estar no 80%, e quem
+        # sabe disso é `is_confirm_screen()`, que é determinístico e já existia.
+        # Sem este segundo caminho, uma blocklist de rótulos daria a falsa
+        # sensação de cobertura e deixaria passar justamente o clique caro.
+        explicito = e_botao_material(rotulo) or e_botao_material(target)
+        por_contexto = tela_material and not e_botao_de_volta(rotulo)
+        if explicito or por_contexto:
             if guard is None:
                 return Veredito(False,
                                 f"botao material {rotulo!r} sem guard: "
