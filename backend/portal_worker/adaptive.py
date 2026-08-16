@@ -296,11 +296,28 @@ _SYSTEM = (
 )
 
 
+# 🔴 SPEC-073 F1/F2 — este override JA MANDOU "escolha a 1a opcao valida".
+#
+# A intencao era boa e o efeito, nao: o cerebro tende a "perguntar por educacao"
+# em select/radio que ele conseguiria responder, e o override existia para
+# empurra-lo a agir. So que a licenca de pegar a primeira opcao nao distingue
+# "campo de formato, tanto faz" de "lado do vidro quebrado" — e num portal de
+# vidros a primeira opcao da lista de LADO e `Motorista`. Escolher por POSICAO
+# um campo cujo valor errado manda o vidraceiro trocar a porta errada nao e
+# antitravamento, e chute com aparencia de decisao.
+#
+# O empurrao contra a pergunta desnecessaria FICA. A licenca de chutar SAI.
+# Quando nao ha base, o desfecho correto e dizer QUAL dado falta -- e isso e
+# util, porque vira a pergunta que o atendente faz ao segurado.
 _FORCE_CHOOSE = (
-    " OVERRIDE: proibido ask_human agora. Esta tela tem select/radio/campo que VOCE consegue "
-    "responder. Escolha a opcao mais coerente com o relato do dano; se nao houver relato claro, "
-    "escolha a 1a opcao valida (nao 'Selecione'). NUNCA pergunte tipo/causa/local/preferencia. "
-    "Devolva uma acao fill/select/check/click AGORA."
+    " ATENCAO: nao use ask_human para algo que a TELA ja responde ou que os "
+    "dados fornecidos ja contem. Se houver relato/dado que case com uma opcao "
+    "REAL da lista, escolha essa opcao e devolva fill/select/check/click. "
+    "PROIBIDO escolher por posicao ('a primeira', 'a mais provavel') qualquer "
+    "campo de peca, causa, lado, posicao, tamanho, cobertura, local, loja, "
+    "data, horario ou pagamento. Sem base real para escolher, devolva "
+    "ask_human dizendo EXATAMENTE qual dado falta — essa frase vira a pergunta "
+    "que o atendente faz ao segurado."
 )
 
 
@@ -1078,9 +1095,32 @@ async def preencher_o_que_e_fato(page, state: Dict[str, Any], collected: Dict[st
 
 
 async def run_adaptive(page, goal: str, collected: Dict[str, Any], evidence: Dict[str, Any],
-                       max_steps: int = MAX_STEPS, confirm: bool = False) -> JourneyResult:
-    """Loop agentico: preenche o que e FATO -> enxerga -> cerebro decide o resto."""
+                       max_steps: int = MAX_STEPS, confirm: bool = False,
+                       runtime: Any = None) -> JourneyResult:
+    """Loop agentico: preenche o que e FATO -> enxerga -> cerebro decide o resto.
+
+    `runtime` e OPCIONAL (SPEC-073 R3). Sem ele, o laco roda exatamente como
+    rodava; com ele, cada acao proposta pelo modelo passa pelo validador
+    deterministico antes de tocar a pagina, e o profiler observa a tela.
+    """
+    from portal_worker import perception as _P
+
     history: List[Dict[str, Any]] = []
+    # Guard local quando a journey nao passou runtime: `confirm` continua sendo
+    # a autoridade, e o validador precisa de alguem a quem perguntar.
+    _guard = getattr(runtime, "guard", None)
+    if _guard is None:
+        from portal_worker.guardrails import PortalActionGuard as _PAG
+
+        _guard = _PAG(material_liberado=bool(confirm))
+    # A journey de vidros so tem UM botao material legitimo: o que confirma o
+    # pedido no 80%. Nomear aqui impede que "Agendar a domicilio" ou "Cancelar
+    # atendimento" -- que convivem na mesma tela do passo 7 -- sejam clicados
+    # por uma decisao de modelo bem-intencionada.
+    if not getattr(_guard, "acao_material_esperada", ""):
+        _guard.acao_material_esperada = "confirmar"
+    _escada = getattr(runtime, "escada", None) or _P.EscadaDePercepcao()
+    _rejeitadas = 0
     for _ in range(max_steps):
         state = await capture_state(page)
         # Antes de gastar um passo com o modelo: o que ja sabemos, escrevemos.
@@ -1088,8 +1128,15 @@ async def run_adaptive(page, goal: str, collected: Dict[str, Any], evidence: Dic
         # uma decisao, e transcricao.
         preenchidos = await preencher_o_que_e_fato(page, state, collected)
         if preenchidos:
+            # L0 resolveu: fato conhecido nao passa por modelo (R6).
+            _escada.registrar(_P.L0_FATO)
             evidence.setdefault("preenchidos_por_fato", []).extend(preenchidos)
             state = await capture_state(page)
+        # O profiler e passivo e barato: registra a assinatura da tela para que
+        # "esta tela mudou desde ontem?" tenha resposta sem abrir o portal.
+        _prof = getattr(runtime, "profiler", None)
+        if _prof is not None:
+            _prof.registrar_tela(state)
         if has_protocol(state):
             # O pedido JA EXISTE na seguradora. A PRIMEIRA coisa a fazer, antes
             # de decidir qualquer outra, e gravar o numero: dai em diante nada
@@ -1121,6 +1168,7 @@ async def run_adaptive(page, goal: str, collected: Dict[str, Any], evidence: Dic
             return JourneyResult(status="needs_human", captured={"stage": "confirme_80"},
                                  message="cheguei na confirmacao (80%) — aprove para enviar")
         action = await decide_next_action(state, goal, collected, history)
+        _escada.registrar(_P.L3_TEXTO)
         history.append(action)
         if action["action"] == "done":
             # SEGURANCA: com confirm=False nunca finalizamos sozinhos. "done" = o cerebro
@@ -1154,6 +1202,44 @@ async def run_adaptive(page, goal: str, collected: Dict[str, Any], evidence: Dic
                 return JourneyResult(status="needs_human", captured={"pergunta": action.get("value")},
                                      message=aviso_de_pedido_aberto(evidence)
                                      + f"preciso de: {action.get('value')}")
+        # ------------------------------------------------------------------
+        # 🔴 O FUNIL — SPEC-073 E4. Nenhuma acao proposta por modelo toca a
+        # pagina sem passar por aqui.
+        #
+        # Antes desta SPEC, `select` tinha validacao forte (le opcoes reais,
+        # exige match confiante) e `fill`/`click`/`check` NAO tinham nenhuma:
+        # `fill` escrevia o valor cru num input casado por substring, e a
+        # proibicao de clicar "Agendar a domicilio" existia so como frase no
+        # prompt. Tres superficies com um terco do rigor da quarta.
+        # ------------------------------------------------------------------
+        _v = _P.validar_acao(action, state, collected=collected, historico=history,
+                             guard=_guard, origem=_P.L3_TEXTO)
+        if not _v.ok:
+            _rejeitadas += 1
+            _escada.rejeitar(action, _v, camada=_P.L3_TEXTO)
+            evidence.setdefault("acoes_recusadas", []).append({
+                "acao": str(action.get("action") or "")[:16],
+                "alvo": str(action.get("target") or "")[:80],
+                "motivo": _v.motivo[:200],
+            })
+            # Escalada do F4: 1o tropeco relê a tela (ela pode ter mudado
+            # sozinha); 2o tenta o degrau de cima; 3o para com dossiê. O que NAO
+            # acontece mais e gastar 22 passos repetindo a mesma recusa.
+            if _rejeitadas >= 3:
+                estado_final = await _estado_seguro(page)
+                registrar_protocolo(evidence, estado_final.get("text", ""))
+                _registrar_parada(evidence, estado_final, collected,
+                                  campo=str(action.get("target") or ""),
+                                  pergunta=f"acao recusada pelo validador: {_v.motivo}"[:200])
+                return JourneyResult(
+                    status="needs_human",
+                    captured={"stage": "acao_recusada", "motivo": _v.motivo[:200]},
+                    message=aviso_de_pedido_aberto(evidence)
+                    + f"parei por seguranca: {_v.motivo}")
+            history[-1] = {**action, "resultado": f"RECUSADO: {_v.motivo[:160]}"}
+            await page.wait_for_timeout(600)
+            continue
+
         applied = await apply_action(page, action)
         # 🔴 A JANELA MAIS CARA DO FLUXO INTEIRO. E um clique que CRIA o pedido, e
         # entre ele e a proxima leitura completa da tela cabem uma excecao do

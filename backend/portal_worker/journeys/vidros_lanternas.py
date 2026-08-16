@@ -1168,7 +1168,12 @@ async def abrir_atendimento(page, params: Dict[str, Any], evidence: Dict[str, An
         "local": params.get("local") or {},
         "especificos": params.get("especificos") or {},
     }
-    return await run_adaptive(page, goal, collected, evidence, confirm=bool(params.get("confirm")))
+    # `_runtime` e injetado pelo worker (SPEC-073 R3) e e OPCIONAL: em teste
+    # offline ele nao existe, e o laco monta um guard local a partir do
+    # `confirm`. A journey nao muda de contrato por causa disso.
+    return await run_adaptive(page, goal, collected, evidence,
+                              confirm=bool(params.get("confirm")),
+                              runtime=params.get("_runtime"))
 
 
 async def login_check(page, params: Dict[str, Any], evidence: Dict[str, Any]) -> JourneyResult:
