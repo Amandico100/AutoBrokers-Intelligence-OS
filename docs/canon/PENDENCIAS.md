@@ -5284,3 +5284,33 @@ esta pendência ensinou.
 
 Guardado por `test_o_filtro_de_faceta_tem_dois_bracos.py`, bloco [7], que agora
 afirma o par certo: **o laço não recebe faceta** E **a busca extra soma**.
+
+---
+
+## P-180 · 🧑 As 27 URLs de Delegacia Virtual — o que falta no "onde pegar"
+
+**Aberta em:** 16/08/2026 · **Dono:** 🧑 Founder confirma · 🤖 execução aplica
+
+O Bloco 3 da SPEC-072 entregou as 10 cartas de "onde pegar", e o **B.O. é o
+único documento cujo endereço muda por ESTADO** — é o que o Founder nomeou:
+*"o agente deve enviar na lista o link do boletim de ocorrência online pra fazer
+na hora, igual a Regina sempre faz."*
+
+⚠️ **Não inventei nenhuma URL.** Cada Polícia Civil tem endereço próprio, e um
+link errado é pior que nenhum: manda o segurado a uma página que não existe e
+ele volta sem o B.O. e sem confiança. A carta entregue diz o **caminho** — o
+nome oficial do serviço ("Delegacia Virtual" + sigla do estado), o login gov.br,
+quais ocorrências são aceitas online e que o protocolo já serve para abrir o
+aviso. Isso é verdadeiro nos 26 estados e no DF, e resolve.
+
+**O que destrava:** as 27 URLs verificadas, uma por UF. Com elas o agente manda o
+link e resolve mais rápido; sem elas manda o caminho e resolve. **Nenhum dos dois
+mente** — e essa é a diferença que fez a carta sair assim.
+
+⚠️ E o gate original da SPEC (*"pedir a lista para um sinistro em SC e em SP
+devolve links diferentes"*) **não pode ser declarado verde** enquanto as URLs não
+existirem. Está declarado aqui em vez de contornado.
+
+**O que custa esquecer:** o B.O. é a maior objeção medida do acervo — *"precisa
+de BO mesmo assim?"*, *"nem dão andamento"*. A conduta certa é a da atendente:
+não argumentar, mandar o link do estado certo.
