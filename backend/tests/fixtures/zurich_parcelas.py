@@ -16,22 +16,47 @@ O que cada peca guarda
     DETALHE_SEGURADO ...... onde mora o CPF/CNPJ
 
 📊 O portal ja calcula `diasAtraso`. Os itens abaixo mantem a coerencia entre
-`dataVencimentoFormated` e `diasAtraso` para a data-base 13/08/2026 — senao o
-teste da testemunha nao guardaria nada.
+`dataVencimentoFormated` e `diasAtraso` — senao o teste da testemunha nao
+guardaria nada.
+
+🔴 A coerencia era ancorada na data da captura (13/08/2026), escrita a mao em
+cada item. Em 16/08/2026 a suite ficou vermelha em 7 asserçoes: o fixture dizia
+`diasAtraso=7` para `06/08`, e a conta do dia dava 10. **O guarda estava certo e
+o fixture e que tinha envelhecido** — exatamente o defeito que a CLAUDE.md §9.3
+descreve. Agora `venc` DERIVA de `dias`: as duas contas nao tem como divergir
+por passagem de tempo, e o que o teste protege continua sendo protegido. O caso
+`mente` (60 dias) segue provando que elas CONSEGUEM divergir.
 """
 from __future__ import annotations
+
+from datetime import datetime, timedelta, timezone
+
+
+def venc_de(dias: int) -> str:
+    """`dd/mm/aaaa` de `dias` atras, em UTC — o vencimento coerente com `diasAtraso`.
+
+    Publica de proposito: o teste que confere o payload do boleto precisa da
+    mesma data que o fixture gerou, e le daqui em vez de repetir um literal.
+    """
+    return (datetime.now(timezone.utc).date() - timedelta(days=int(dias))).strftime("%d/%m/%Y")
+
 
 # --------------------------------------------------------------------------
 # GET /ParcelaVencidaCorretor/ListarParcelaVencida?dataInicial=&dataFinal=
 # --------------------------------------------------------------------------
-def _item(*, apolice, parcela, valor, venc, dias, situacao, tipo,
-          payment_no, nosso_numero="TIA00000001", obs=None, nome="CLIENTE DE TESTE",
+def _item(*, apolice, parcela, valor, dias, situacao, tipo,
+          payment_no, venc=None, nosso_numero="TIA00000001", obs=None,
+          nome="CLIENTE DE TESTE",
           ramo="31", ramo_desc="AUTOMOVEL", endosso=0, certificado=0):
     """Um item no formato exato que a Zurich devolve.
 
     `dataVencimento` vem no formato do ASP.NET (`/Date(ms)/`) e SEMPRE junto do
     `dataVencimentoFormated` — a journey le o segundo, que nao depende de fuso.
+
+    `venc` omitido deriva de `dias`. Passar os dois so faz sentido para montar
+    de proposito um item incoerente.
     """
+    venc = venc or venc_de(dias)
     return {
         "numeroApolice": apolice,
         "numeroCertificado": certificado,
@@ -70,20 +95,20 @@ def _item(*, apolice, parcela, valor, venc, dias, situacao, tipo,
 LISTA = {
     "corretor": [
         # o inadimplente de verdade: era debito, o debito falhou, virou boleto
-        _item(apolice=10001, parcela=8, valor="638,95", venc="06/08/2026", dias=7,
+        _item(apolice=10001, parcela=8, valor="638,95", dias=7,
               situacao="Parcela pendente", tipo="Boleto", payment_no=900000001,
               nosso_numero="0060000000001", obs="Débito não autorizado",
               nome="EMPRESA DE TESTE LTDA"),
         # pendente mas em DEBITO e vencendo hoje: nao e inadimplente, e nao tem boleto
-        _item(apolice=10002, parcela=6, valor="680,21", venc="13/08/2026", dias=0,
+        _item(apolice=10002, parcela=6, valor="680,21", dias=0,
               situacao="Parcela pendente", tipo="Débito", payment_no=900000002,
               nosso_numero=None, obs="Débito agendado", nome="CLIENTE DOIS"),
         # "Aprovado" = em processamento. NAO e inadimplente.
-        _item(apolice=10003, parcela=7, valor="1,287,99", venc="13/08/2026", dias=0,
+        _item(apolice=10003, parcela=7, valor="1,287,99", dias=0,
               situacao="Aprovado", tipo="Cartão de Crédito", payment_no=900000003,
               nome="CLIENTE TRES"),
         # pago
-        _item(apolice=10004, parcela=10, valor="209,50", venc="26/07/2026", dias=18,
+        _item(apolice=10004, parcela=10, valor="209,50", dias=18,
               situacao="Pago", tipo="Cartão de Crédito", payment_no=900000004,
               nome="CLIENTE QUATRO"),
     ],
@@ -94,7 +119,7 @@ LISTA = {
 #    📊 `_valor("1,287,99")` devolve None nos parsers da Yelum e da MAPFRE.
 LISTA_VALOR_QUEBRADO = {
     "corretor": [
-        _item(apolice=99001, parcela=3, valor="1,287,99", venc="01/08/2026", dias=12,
+        _item(apolice=99001, parcela=3, valor="1,287,99", dias=12,
               situacao="Parcela pendente", tipo="Boleto", payment_no=111111111,
               nosso_numero="0061000000001", nome="CLIENTE DO VALOR GRANDE"),
     ],
@@ -106,10 +131,10 @@ LISTA_VALOR_QUEBRADO = {
 #    · 4 Pix · 5 Carne. Só tres apareceram nos dados. Por isso: lista de PERMISSAO.
 LISTA_FORMA_DESCONHECIDA = {
     "corretor": [
-        _item(apolice=99002, parcela=2, valor="500,00", venc="01/08/2026", dias=12,
+        _item(apolice=99002, parcela=2, valor="500,00", dias=12,
               situacao="Parcela pendente", tipo="Pix", payment_no=222222222,
               nome="CLIENTE DO PIX"),
-        _item(apolice=99003, parcela=2, valor="500,00", venc="01/08/2026", dias=12,
+        _item(apolice=99003, parcela=2, valor="500,00", dias=12,
               situacao="Parcela pendente", tipo="Carnê", payment_no=333333333,
               nome="CLIENTE DO CARNE"),
     ],

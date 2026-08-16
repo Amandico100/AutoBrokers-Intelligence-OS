@@ -233,7 +233,7 @@ check("leva a apolice", p["numeroApolice"] == "10001", p)
 check("leva a parcela", p["NumParcela"] == "8", p)
 check("codigoCarteira recebe o RAMO (31), nao o CodigoCarteira da apolice",
       p["codigoCarteira"] == "31", p)
-check("a data vai em dd/mm/aaaa", p["dataVencimento"] == "06/08/2026", p)
+check("a data vai em dd/mm/aaaa", p["dataVencimento"] == fx.venc_de(7), p)
 check("codSucursal vai vazio, como o portal manda", p["codSucursal"] == "")
 check("nenhuma chave do boleto ficou vazia por engano",
       all(p[k] for k in ("paymentNO", "numeroApolice", "NumParcela",
