@@ -27,6 +27,46 @@ def portal_real_enabled() -> bool:
     return str(os.getenv("PORTAL_REAL_ENABLED", "false")).strip().lower() in ("1", "true", "yes", "on")
 
 
+# --------------------------------------------------------------------------
+# Pontes para a infraestrutura da SPEC-073. Import tardio dentro das funções
+# NÃO serve aqui: estes módulos são puros (sem Playwright, sem rede), e o
+# worker precisa deles antes de abrir o browser.
+# --------------------------------------------------------------------------
+from portal_worker import guardrails as _G           # noqa: E402
+from portal_worker import redaction as _R            # noqa: E402
+from portal_worker.runtime import (                  # noqa: E402
+    kill_switch_ativo,
+    montar_runtime as _montar_runtime,
+)
+
+
+def _redigir(bloco: Any) -> Any:
+    """Nada sai deste worker para o banco sem passar pelo redator único."""
+    try:
+        return _R.redigir(bloco)
+    except Exception:  # noqa: BLE001
+        # Redator quebrado não pode virar perda de evidência — mas também não
+        # pode virar vazamento. Sem saber sanitizar, não grava o conteúdo.
+        return {"redaction_falhou": True}
+
+
+# Host de cada portal, para o profiler saber o que é primeira parte. Só isso —
+# a URL de trabalho continua morando na journey, que é quem conhece o portal.
+_HOSTS_DE_PORTAL: Dict[str, str] = {
+    "vidros_lanternas": "abraseuatendimento.com.br",
+    "allianz_corretor": "allianznet.com.br",
+    "hdi_corretor": "hdi.com.br",
+    "tokiomarine_corretor": "tokiomarine.com.br",
+    "yelum_corretor": "yelumseguradora.com.br",
+    "mapfre_corretor": "mapfre.com.br",
+    "zurich_corretor": "zurich.com.br",
+}
+
+
+def _host_do_portal(portal_key: str) -> str:
+    return _HOSTS_DE_PORTAL.get(str(portal_key or "").strip().lower(), "")
+
+
 # Chromium: headless MODERNO, não o clássico.
 #
 # 📊 Medido em 10/08/2026 contra o portal da HDI, um fator por vez, com linha
@@ -82,29 +122,47 @@ def _parse_ts(value: Any) -> datetime | None:
 
 def stale_running_patch(job: Dict[str, Any], now: datetime | None = None) -> Dict[str, Any] | None:
     """Patch de recuperação p/ job 'running' órfão; None = deixar em paz.
-    1ª ocorrência → volta pra fila (nova tentativa); reincidente → failed.
-    (Um job vidros ficou 3 dias preso em running após restart do worker.)"""
+
+    1ª ocorrência → volta pra fila; reincidente → failed.
+    (Um job vidros ficou 3 dias preso em running após restart do worker.)
+
+    🔴 CORRIGIDO NA SPEC-073 (Bloco B5). A versão anterior decidia olhando
+    APENAS idade e tentativas — o SELECT nem trazia `evidence`. Consequência
+    medida em 16/08/2026: um job que morresse **depois** de o portal criar o
+    atendimento, com o protocolo já gravado, voltava para `queued` e recomeçava
+    do passo 1. O portal de vidros diz em texto que cada solicitação é um pedido
+    novo; recomeçar não conserta nada, **cria um segundo atendimento na
+    seguradora** — e o segurado descobre quando dois vidraceiros aparecem.
+
+    Agora a evidência manda. A regra e o CONTROLE que a mantém honesta:
+
+        sem efeito material ............ comportamento antigo, intacto
+        efeito confirmado/incerto ...... needs_human, NUNCA de volta para a fila
+
+    O controle é a primeira linha: um job read-only órfão continua sendo
+    recuperado exatamente como antes. Sem ele, esta função poderia ter virado
+    "nunca recupera nada" e ninguém perceberia.
+    """
     started = _parse_ts(job.get("started_at")) or _parse_ts(job.get("created_at"))
     if started is None:
         return None
     now = now or datetime.now(timezone.utc)
     age = (now - started).total_seconds()
-    if age < JOB_TIMEOUT_SECONDS + STALE_MARGIN_SECONDS:
-        return None
-    attempts = int(job.get("attempts") or 0)
-    if attempts < 2:
-        return {"status": "queued", "error": "requeue: worker reiniciou durante a execucao anterior"}
-    return {
-        "status": "failed",
-        "error": f"job orfao apos {attempts} tentativa(s): worker interrompido durante a execucao",
-        "finished_at": _now(),
-    }
+    return _G.decidir_recuperacao(
+        job,
+        idade_segundos=age,
+        limite_segundos=JOB_TIMEOUT_SECONDS + STALE_MARGIN_SECONDS,
+    )
 
 
 async def recover_stale_jobs(supa) -> int:
     """Roda a cada tick: destrava jobs órfãos sem intervenção humana."""
     try:
-        res = supa.table("portal_jobs").select("id, started_at, created_at, attempts").eq("status", "running").execute()
+        # `evidence` entra no SELECT porque é ela que responde a única pergunta
+        # que importa aqui: alguma coisa já aconteceu no mundo lá fora?
+        res = (supa.table("portal_jobs")
+               .select("id, started_at, created_at, attempts, evidence")
+               .eq("status", "running").execute())
     except Exception as e:  # noqa: BLE001
         logger.warning("[PORTAL] recover_stale_jobs indisponivel: %s", type(e).__name__)
         return 0
@@ -424,23 +482,102 @@ async def _run_job(supa, job: Dict[str, Any]) -> None:
         acc = (
             supa.table("portal_accounts")
             .select("username, secret_encrypted, account_label, portal_key, company_id")
+            # 🔴 Defesa em profundidade (SPEC-073 §6.2). A busca era só por `id`,
+            # e o `company_id` da conta vinha no SELECT e NUNCA era comparado com
+            # o do job. O banco também não impede o cruzamento: a FK de
+            # `20260706_03_spec020_portal.sql:48` é simples, não composta.
+            # Filtrar aqui faz o mismatch devolver zero linhas em vez de devolver
+            # a credencial da outra corretora.
             .eq("id", account_id)
+            .eq("company_id", str(job.get("company_id") or ""))
             .limit(1)
             .execute()
         )
-        if acc.data:
-            account_row = dict(acc.data[0] or {})
-            from portal_worker import vault
+        if not acc.data:
+            # Fail-closed ANTES do browser e ANTES de decifrar qualquer segredo.
+            # Sem esta porta, um job da corretora A apontando para a conta da B
+            # abriria o portal como B — e `_session_identity` gravaria a sessão
+            # autenticada de B sob o `company_id` de A, transformando um erro
+            # pontual em acesso persistente.
+            logger.error("[PORTAL] job %s: conta %s nao pertence a company %s",
+                         job_id, account_id, job.get("company_id"))
+            supa.table("portal_jobs").update({
+                "status": "failed",
+                "error": "tenant_or_portal_mismatch: conta de portal nao pertence "
+                         "a esta corretora — credencial NAO foi usada",
+                "evidence": {"security_stop": {
+                    "classe": "tenant_or_portal_mismatch",
+                    "checou": ["job.company_id == account.company_id"],
+                    "browser_aberto": False,
+                    "credencial_usada": False,
+                }},
+                "finished_at": _now(),
+            }).eq("id", job_id).execute()
+            return
 
-            params.setdefault("username", account_row.get("username") or "")
-            enc = account_row.get("secret_encrypted")
-            if enc:
-                try:
-                    params["password"] = vault.decrypt(enc)
-                except Exception:  # noqa: BLE001
-                    logger.error("[PORTAL] falha ao decifrar credencial da conta")
+        account_row = dict(acc.data[0] or {})
+
+        # Segunda tranca: o portal do job tem de ser o portal da conta. Uma conta
+        # da Allianz não abre a HDI, mesmo sendo da corretora certa.
+        if str(account_row.get("portal_key") or "") != str(job.get("portal_key") or ""):
+            logger.error("[PORTAL] job %s: conta %s e do portal %s, job pede %s",
+                         job_id, account_id, account_row.get("portal_key"),
+                         job.get("portal_key"))
+            supa.table("portal_jobs").update({
+                "status": "failed",
+                "error": "tenant_or_portal_mismatch: conta pertence a outro portal "
+                         "— credencial NAO foi usada",
+                "evidence": {"security_stop": {
+                    "classe": "tenant_or_portal_mismatch",
+                    "checou": ["job.portal_key == account.portal_key"],
+                    "browser_aberto": False,
+                    "credencial_usada": False,
+                }},
+                "finished_at": _now(),
+            }).eq("id", job_id).execute()
+            return
+
+        from portal_worker import vault
+
+        params.setdefault("username", account_row.get("username") or "")
+        enc = account_row.get("secret_encrypted")
+        if enc:
+            try:
+                params["password"] = vault.decrypt(enc)
+            except Exception:  # noqa: BLE001
+                logger.error("[PORTAL] falha ao decifrar credencial da conta")
 
     evidence: Dict[str, Any] = {}
+
+    # ----------------------------------------------------------------------
+    # Runtime da SPEC-073 — ADITIVO. Journey antiga nunca lê `_runtime` e segue
+    # funcionando igual; journey nova pega guard/profiler/checkpoint sem que a
+    # assinatura `journey_fn(page, params, evidence)` mude uma vírgula.
+    # ----------------------------------------------------------------------
+    async def _gravar_checkpoint(patch: Dict[str, Any]) -> None:
+        """Escreve em `portal_jobs.evidence` NO MEIO da execução.
+
+        🔴 É o ponto do Bloco B6: o que a perda causa repetição material precisa
+        estar no banco antes do próximo clique perigoso. Esperar o
+        `JourneyResult` é o que transforma uma queda em um segundo atendimento.
+        """
+        atual = {**evidence, **(patch or {})}
+        await asyncio.to_thread(
+            lambda: supa.table("portal_jobs")
+            .update({"evidence": _redigir(atual)})
+            .eq("id", job_id).execute()
+        )
+
+    runtime = _montar_runtime(
+        job,
+        account_label=str((account_row or {}).get("account_label") or ""),
+        account_id=str(account_id) if account_id else None,
+        evidence=evidence,
+        checkpoint=_gravar_checkpoint,
+        host_portal=_host_do_portal(str(job.get("portal_key") or "")),
+    )
+    params["_runtime"] = runtime
+
     from playwright.async_api import async_playwright
 
     try:
@@ -496,6 +633,11 @@ async def _run_job(supa, job: Dict[str, Any]) -> None:
             if session_storage:
                 evidence["session_storage_restored"] = await _restore_session_storage(context, session_storage)
             page = await context.new_page()
+            # Profiler PASSIVO: só escuta eventos. Não intercepta, não altera,
+            # não repete request — se ele quebrasse tráfego, o dia em que uma
+            # cobrança falhasse ninguém suspeitaria do observador.
+            if runtime.profiler is not None:
+                runtime.profiler.attach(page)
             # Que navegador subiu, de fato. Sem isto, um portal que recusa o
             # acesso deixa duas explicações igualmente plausíveis — "o modo
             # errado" e "o IP do servidor" — e nenhuma forma de separá-las
@@ -538,22 +680,43 @@ async def _run_job(supa, job: Dict[str, Any]) -> None:
                 evidence = _augment_hitl_evidence(result, evidence)
             await browser.close()
     except Exception as e:  # noqa: BLE001
+        # 🔴 Falhar DEPOIS de um efeito material não é a mesma coisa que falhar
+        # antes. Se a journey armou um efeito e o processo caiu no meio, o
+        # desfecho honesto é "não sei", e `unknown` é o estado que impede o
+        # recovery de recomeçar do passo 1.
+        if _G.fase_do_efeito(evidence) in (_G.FASE_ARMED, _G.FASE_SUBMITTED):
+            ef = dict(_G.efeito_critico(evidence) or {})
+            ef["phase"] = _G.FASE_UNKNOWN
+            ef["reason"] = f"excecao apos armar o efeito: {type(e).__name__}"
+            evidence[_G.CHAVE_EFEITO] = ef
+        evidence.update(runtime.selar_evidencia())
         supa.table("portal_jobs").update({
             "status": "failed",
             "error": f"{type(e).__name__}: {str(e)[:300]}",
-            "evidence": evidence,
+            "evidence": _redigir(evidence),
             "finished_at": _now(),
         }).eq("id", job_id).execute()
         return
 
+    # O envelope da SPEC-073 H1 é ADITIVO: journey antiga continua gravando a
+    # evidência menor que sempre gravou, e ganha `runtime`/`execution` por cima.
+    evidence.update(runtime.selar_evidencia())
+    final = (evidence if result.status == "needs_human"
+             else {**evidence, **(result.captured or {}), "message": result.message})
     supa.table("portal_jobs").update({
         "status": result.status,
-        "evidence": evidence if result.status == "needs_human" else {**evidence, **(result.captured or {}), "message": result.message},
+        "evidence": _redigir(final),
         "screenshots": screenshots,
         "error": None,  # limpa nota de requeue de tentativa anterior
         "finished_at": _now(),
     }).eq("id", job_id).execute()
-    logger.info(f"[PORTAL] job {job_id} -> {result.status}")
+    logger.info("[PORTAL] %s", _R.linha_de_log(
+        job=job_id, portal=job.get("portal_key"), journey=job.get("journey"),
+        status=result.status,
+        layer=runtime.escada.resumo().get("layer_final") or "dom",
+        fallback=runtime.escada.resumo().get("fallback_count"),
+        efeito=_G.fase_do_efeito(evidence) or None,
+    ))
 
 
 async def run_once(supa) -> int:
@@ -580,6 +743,19 @@ async def poll_loop() -> None:
     logger.info("[PORTAL] worker iniciado (poll %ss)", POLL_SECONDS)
     while True:
         try:
+            # 🔴 O freio que não estava ligado na roda (SPEC-073, achado de
+            # auditoria). `GLOBAL_KILL_SWITCH` existia, estava `true` no
+            # ambiente e era lido SÓ pelo Next.js — `grep GLOBAL_KILL_SWITCH
+            # backend/` devolvia vazio. Quem apertasse numa emergência veria a
+            # tela dizer "parado" com o worker ainda entrando em portal.
+            #
+            # Ele é checado DENTRO do laço, não na entrada: um freio que só vale
+            # no boot obriga a reiniciar o serviço para frear, e é justamente na
+            # emergência que ninguém quer reiniciar nada.
+            if kill_switch_ativo():
+                logger.warning("[PORTAL] GLOBAL_KILL_SWITCH ativo — nenhum job sera pego")
+                await asyncio.sleep(POLL_SECONDS)
+                continue
             supa = _supabase()
             await recover_stale_jobs(supa)
             n = await run_once(supa)
