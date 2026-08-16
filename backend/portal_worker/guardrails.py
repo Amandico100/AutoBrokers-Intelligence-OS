@@ -41,9 +41,23 @@ reconciliação depois.
 from __future__ import annotations
 
 import hashlib
+import re
+import unicodedata
 from dataclasses import dataclass, field
 from datetime import datetime, timezone
 from typing import Any, Awaitable, Callable, Dict, Optional, Tuple
+
+
+def _sem_acento(txt: Any) -> str:
+    """minúsculas, sem acento, espaço colapsado.
+
+    🔴 Comparar rótulo de botão sem isto é uma armadilha: o português do portal
+    tem `Avançar`, `Confirmação`, `Não`, e o código costuma declarar a versão
+    ASCII. Uma diferença invisível a olho nu vira uma recusa em produção.
+    """
+    s = unicodedata.normalize("NFKD", str(txt or ""))
+    s = "".join(c for c in s if not unicodedata.combining(c))
+    return re.sub(r"\s+", " ", s).strip().lower()
 
 # --------------------------------------------------------------------------
 # Classes de efeito
@@ -327,7 +341,7 @@ class PortalActionGuard:
         Esta função responde *"pode ser ESTE"* — e as duas perguntas são
         diferentes. A segunda é a que impede o clique certo na hora errada.
         """
-        bruto = str(self.acao_material_esperada or "").strip().lower()
+        bruto = _sem_acento(self.acao_material_esperada)
         if not bruto:
             return False, ("a journey nao declarou qual acao material espera; "
                            "clique material recusado por construcao")
@@ -336,8 +350,22 @@ class PortalActionGuard:
         # cria o pedido é `Avançar`; noutras telas do ciclo é `Confirmar`).
         # Declarar as duas não afrouxa nada — o que protege é a lista ser
         # FECHADA e escrita pela journey, não o tamanho dela.
+        #
+        # 🔴 A comparação IGNORA ACENTO, e isso não é cosmético.
+        #
+        # 📊 A primeira versão comparava as strings cruas em minúsculas. O botão
+        # do portal chama-se `Avançar`, com cedilha; a journey declarava
+        # `avancar`, sem. `"avancar" in "avançar"` é **False** — e o guard
+        # recusava o clique legítimo do 80%. Com `confirm=True`, o pedido de
+        # vidros nunca nasceria, e o desfecho seria "parei por segurança" num
+        # fluxo que estava autorizado.
+        #
+        # Passou pelos meus testes porque eu escrevi `"Avancar"` sem acento nos
+        # fixtures. Quem pegou foi `test_o_protocolo_volta_para_o_segurado`, que
+        # usa o texto REAL da tela. É a diferença entre testar o que eu imaginei
+        # e testar o que o portal manda.
         aceitas = [p.strip() for p in bruto.split("|") if p.strip()]
-        alvo = str(rotulo or "").strip().lower()
+        alvo = _sem_acento(rotulo)
         for esperada in aceitas:
             if esperada in alvo or alvo in esperada:
                 return True, ""

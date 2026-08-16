@@ -162,6 +162,69 @@ check("shape_of descreve a forma sem um dado real",
       R.shape_of({"cpf": "12345678901"}) == {"cpf": "<string:11>"})
 
 # ==========================================================================
+print("\n[M26] o redator NAO pode comer o payload de trabalho da cobranca")
+# ==========================================================================
+# 🔴 Esta secao existe por causa de uma REGRESSAO REAL, achada pelo canario
+# P-186 rodando contra a Yelum em producao, em 16/08/2026.
+#
+# A primeira versao envolvia a evidencia INTEIRA em `redigir()`. Medido no job
+# real: `inadimplentes[0].recibo` virou `<redacted:...>`.
+#
+# `recibo` e a chave estavel do item na fila, o nome do PDF no bucket
+# (`boleto-{recibo}.pdf`) e a chave anti-duplicacao em `billing_sent_log`.
+# Mascarado, TODA execucao concluiria que nada foi enviado -- e o segurado
+# receberia a mesma cobranca de novo. A protecao teria produzido o pior
+# desfecho do sistema.
+#
+# Nenhum dano ocorreu porque a rotina estava inativa. O canario pegou antes.
+TRABALHO = {
+    "inadimplentes": [{
+        "recibo": "12345678-202608-3",          # formato Yelum: digitos com hifen
+        "cpf_cnpj": "12345678901",
+        "apolice_susep": "0553012345678",
+        "numero_apolice": "0553012345678",
+        "cliente_nome": "CLIENTE DE TESTE",
+        "valor": 1825.34,
+    }],
+    "boletos": [{"recibo": "12345678-202608-3", "ok": True,
+                 "storage_path": "c/p/j/boleto-12345678-202608-3.pdf"}],
+    "login_fields_found": {"password": True, "username": True},
+    # superficies de diagnostico — estas SIM tem de ser redigidas
+    "profiler": {"trace": [{"v": "segurado 123.456.789-01 placa ABC1D23"}]},
+    "discovery": {"recommendation": "o campo pediu 123.456.789-01"},
+    "runtime": {"account_label": "principal"},
+}
+env = R.redigir_envelope(TRABALHO)
+item = env["inadimplentes"][0]
+for campo in ("recibo", "cpf_cnpj", "apolice_susep", "numero_apolice", "cliente_nome"):
+    check(f"M26: `inadimplentes[].{campo}` passa INTACTO",
+          item[campo] == TRABALHO["inadimplentes"][0][campo], item[campo])
+check("M26: o recibo do BOLETO tambem passa intacto",
+      env["boletos"][0]["recibo"] == "12345678-202608-3")
+check("M26: e o storage_path, que aponta para o PDF no bucket",
+      "<redacted" not in env["boletos"][0]["storage_path"])
+check("M26: booleano sob chave sensivel nao e mascarado (nao carrega segredo)",
+      env["login_fields_found"]["password"] is True)
+
+# CONTROLE — o redator continua fazendo o trabalho dele nas superficies certas.
+# Sem estas quatro, "nao quebrou a cobranca" e "nao redige mais nada" ficariam
+# indistinguiveis, e a correcao teria desligado a protecao inteira.
+check("M26 CONTROLE: o profiler CONTINUA sendo redigido",
+      not R.tem_vazamento(env["profiler"]), env["profiler"])
+check("M26 CONTROLE: o discovery CONTINUA sendo redigido",
+      not R.tem_vazamento(env["discovery"]), env["discovery"])
+check("M26 CONTROLE: e o PII de dentro deles some de verdade",
+      "123.456.789-01" not in str(env["profiler"]) + str(env["discovery"]))
+check("M26 CONTROLE: chave sensivel com valor STRING continua mascarada",
+      R.redigir_envelope({"runtime": {"authorization": "Bearer abc"}})
+      ["runtime"]["authorization"].startswith("<redacted"))
+
+# E a prova de que o worker usa o envelope, nao o redator largo.
+src_red = inspect.getsource(W._redigir)
+check("M26: o worker chama `redigir_envelope`, nao `redigir` cru",
+      "redigir_envelope" in src_red, src_red)
+
+# ==========================================================================
 print("\n[M10] visao propondo opcao INEXISTENTE nao e executada")
 # ==========================================================================
 v_falsa = P.validar_acao({"action": "select", "target": "Lado", "value": "Traseiro"},
@@ -190,6 +253,38 @@ check("M11+: 'Cancelar atendimento' e recusado", not v_cancel.ok)
 v_sem = P.validar_acao({"action": "click", "target": "Confirmar"}, TELA,
                        guard=guard(acao_material_esperada=""), origem="journey")
 check("M11+: sem a journey NOMEAR a acao, nenhum material passa", not v_sem.ok)
+
+# 🔴 O TEXTO REAL DA TELA, COM CEDILHA — e o defeito que ele pegou.
+#
+# A primeira versao comparava as strings cruas: a journey declarava `avancar` e
+# o botao do portal chama-se `Avançar`. `"avancar" in "avançar"` e **False**, e
+# o guard recusava o clique legitimo do 80%. Com `confirm=True` o pedido de
+# vidros nunca nasceria.
+#
+# Meus fixtures diziam "Avancar" sem acento, entao a matriz ficou verde e o
+# defeito passou. Quem pegou foi `test_o_protocolo_volta_para_o_segurado`, que
+# usa o texto que o portal manda de verdade.
+TELA_80 = {"url": "https://p/passo6", "heading": "Confirme a peca danificada",
+           "buttons": [{"text": "Avançar"}, {"text": "Voltar"}]}
+g_80 = guard(acao_material_esperada="avancar|confirmar")
+v_acento = P.validar_acao({"action": "click", "target": "Avançar"}, TELA_80,
+                          guard=g_80, origem="journey", tela_material=True)
+check("M11+: `Avançar` COM CEDILHA casa com `avancar` declarado",
+      v_acento.ok, v_acento.motivo)
+check("M11+: e o mesmo botao pela VISAO continua recusado",
+      not P.validar_acao({"action": "click", "target": "Avançar"}, TELA_80,
+                         guard=g_80, origem=P.L4_VISAO, tela_material=True).ok)
+check("M11+ CONTROLE: `Voltar` na tela material continua passando",
+      P.validar_acao({"action": "click", "target": "Voltar"}, TELA_80,
+                     guard=g_80, origem="journey", tela_material=True).ok)
+check("M11+ CONTROLE: botao NAO declarado continua recusado mesmo sem acento",
+      not P.validar_acao({"action": "click", "target": "Cancelar atendimento"},
+                         TELA_80 | {"buttons": [{"text": "Cancelar atendimento"}]},
+                         guard=g_80, origem="journey", tela_material=True).ok)
+check("M11+: acento tambem tolerado no lado DECLARADO",
+      G.PortalActionGuard(material_liberado=True,
+                          acao_material_esperada="Avançar")
+      .acao_material_permitida("avancar")[0])
 
 # ==========================================================================
 print("\n[M12/M13] nenhuma regra generica manda escolher a PRIMEIRA opcao")

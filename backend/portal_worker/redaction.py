@@ -149,7 +149,12 @@ def redigir(valor: Any, *, com_hash: bool = False, _prof: int = 0) -> Any:
     if isinstance(valor, dict):
         saida: Dict[str, Any] = {}
         for k, v in valor.items():
-            if chave_e_sensivel(k):
+            # 🔴 Booleano não carrega segredo. `{"password": true}` é um
+            # diagnóstico ("o campo de senha existe na tela"), não uma senha —
+            # e mascará-lo custava informação sem proteger nada. Medido no
+            # canário P-186: `login_fields_found.password` virou
+            # `<redacted:password>` e o operador perdeu o diagnóstico.
+            if chave_e_sensivel(k) and not isinstance(v, bool):
                 saida[str(k)] = MARCA.format(str(k).strip().lower())
             else:
                 saida[str(k)] = redigir(v, com_hash=com_hash, _prof=_prof + 1)
@@ -235,6 +240,64 @@ def tem_vazamento(valor: Any) -> List[str]:
 
     _anda(valor)
     return sorted(set(achados))
+
+
+# --------------------------------------------------------------------------
+# O envelope da evidência — SPEC-073 H1/H2
+# --------------------------------------------------------------------------
+# 🔴 Esta separação nasceu de uma REGRESSÃO REAL, achada pelo canário P-186 em
+# 16/08/2026, e vale escrever por extenso porque a lição não é óbvia.
+#
+# A primeira versão do worker envolvia a evidência INTEIRA em `redigir()`. O
+# resultado, medido em produção:
+#
+#     inadimplentes[0].recibo         -> "<redacted:...>"
+#     inadimplentes[0].apolice_susep  -> "<redacted:...>"
+#     inadimplentes[0].cpf_cnpj       -> "<redacted:...>"
+#
+# `recibo` é a chave estável do item na fila, o nome do PDF no bucket
+# (`boleto-{recibo}.pdf`) e a chave anti-duplicação em `billing_sent_log`.
+# Mascará-lo faria TODA execução concluir que nada foi enviado — e o segurado
+# receberia a mesma cobrança de novo, e de novo.
+#
+# A proteção teria produzido o pior desfecho do sistema.
+#
+# A distinção que faltava:
+#
+#     PAYLOAD DE TRABALHO   o que a journey capturou e o serviço CONSOME.
+#                           É o dado da corretora, sobre o cliente dela, que ela
+#                           tem direito e necessidade de processar. Sai intacto.
+#
+#     SUPERFÍCIE DE         profiler, trace, log, discovery, bloqueios — tudo
+#     DIAGNÓSTICO           que existe para ALGUÉM LER, e que a SPEC-073 criou.
+#                           Passa pelo redator.
+#
+# A SPEC-073 H2 sempre disse "um único sanitizador para profiler/logs". Eu é que
+# apliquei largo demais.
+# --------------------------------------------------------------------------
+CHAVES_DE_DIAGNOSTICO: tuple[str, ...] = (
+    "runtime", "execution", "profiler", "discovery", "blocked_actions",
+    "acoes_recusadas", "trace", "debug_dom", "mdselect_overlay",
+    "security_stop", "recovery", "final_state",
+)
+
+
+def redigir_envelope(evidence: Any) -> Any:
+    """Sanitiza SÓ as superfícies de diagnóstico. O trabalho passa intacto.
+
+    Usada no caminho de escrita do worker. O que a journey capturou para o
+    serviço consumir continua exatamente como ela escreveu — inclusive antes
+    desta SPEC existir, que é o que torna a mudança zero-regressão.
+    """
+    if not isinstance(evidence, dict):
+        return evidence
+    saida: Dict[str, Any] = {}
+    for k, v in evidence.items():
+        if str(k) in CHAVES_DE_DIAGNOSTICO:
+            saida[str(k)] = redigir(v)
+        else:
+            saida[str(k)] = v
+    return saida
 
 
 def linha_de_log(**campos: Any) -> str:
