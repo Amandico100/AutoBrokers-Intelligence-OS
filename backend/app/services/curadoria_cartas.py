@@ -1062,8 +1062,17 @@ def publicar_lote_sync(limite: int = 300) -> Dict[str, Any]:
 
     db = get_supabase_client()
     reconciliado = reconciliar_indice_sync()
+    # 🔴 O SELECT E A LISTA DO QUE SOBREVIVE — 15/08/2026 (SPEC-072).
+    # Este caminho roda SOZINHO a cada rodada do Destilador, e pedia quatro
+    # colunas. `publish_card_sync` grava no Qdrant o que recebe, e `category`,
+    # `source_unit_id` e a `faceta` (que mora em `pii_check`) nao vinham — logo
+    # nao chegavam ao indice. Pior, sem `source_unit_id` a rede de PII roda
+    # apertada numa carta de documento publico e a recusa vira `rejected_pii`,
+    # que e um nome mentindo sobre o que aconteceu. Mesmo defeito de
+    # `reindexar_acervo.py:157`, mesma correcao.
     alvo = (db.client.table("knowledge_cards")
-            .select("id, card_text, insurer_key, ramo")
+            .select("id, card_text, insurer_key, ramo, category, "
+                    "source_unit_id, pii_check")
             .eq("status", "pending_review")
             .order("created_at", desc=False)
             .limit(max(1, min(int(limite or 300), 2000))).execute().data) or []

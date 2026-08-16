@@ -150,11 +150,45 @@ def _ler_publicadas(db) -> list:
     varias cartas nasciam no mesmo instante — 11.640 lidas, 11.628 distintas.
     Uma carta que a varredura nao ve e a que fica no indice com o rotulo velho
     para sempre, que e justamente o que este script existe para impedir.
+
+    🔴 O SELECT E A LISTA DO QUE SOBREVIVE — 15/08/2026 (SPEC-072)
+    ==============================================================
+    Ate hoje ele pedia `id, card_text, insurer_key, ramo, category`, e o que
+    nao entra no select some do indice, porque `insert_embeddings` faz `upsert`
+    de PONTO INTEIRO (`qdrant_service.py:355`), nao `set_payload`. Reescrever
+    uma carta com menos payload nao acrescenta: substitui.
+
+    Duas colunas faltavam, e cada uma causava um dano diferente:
+
+      source_unit_id   `publish_card_sync:571` faz
+                       `documento_publico=bool(card.get("source_unit_id"))`.
+                       Ausente => False => a rede de PII roda APERTADA numa
+                       carta de condicao geral publica. 📊 Medido sobre as
+                       5.394 cartas de acervo: **57 seriam RECUSADAS**, todas
+                       da HDI, todas por `{CNPJ}` — e o `{CNPJ}` e o numero de
+                       processo SUSEP (`15414.900228/2017-63`), que so parece
+                       CNPJ para quem nao sabe que o documento e publico. O
+                       script conta isso como `falhou` e segue: regressao de
+                       PII silenciosa, com o nome errado.
+
+      pii_check        e onde a `faceta` mora, porque `knowledge_cards` nao tem
+                       coluna para ela. Sem ela no select, as 5.337 cartas
+                       restantes voltam ao indice sem faceta e sem unit_id.
+
+    📊 Alvo de um `--aplicar` antes do conserto: 100% das 5.394 cartas de acervo
+    — 5.337 reescritas sem lastro + 57 falhas silenciosas.
+
+    ⚠️ **O comando que produz estes numeros esta versionado ao lado**, porque
+    numero medido sem base de prova preservada vira folclore no lote seguinte
+    (`pedacos/README.md`) e a CLAUDE.md §12.1 exige a query junto:
+
+        python backend/scripts/destilacao_max/medir_o_lastro.py
     """
     todas, ultimo, pagina = [], "", 1000
     while True:
         q = (db.table("knowledge_cards")
-             .select("id, card_text, insurer_key, ramo, category")
+             .select("id, card_text, insurer_key, ramo, category, "
+                     "source_unit_id, pii_check")
              .eq("status", "published").order("id").limit(pagina))
         if ultimo:
             q = q.gt("id", ultimo)

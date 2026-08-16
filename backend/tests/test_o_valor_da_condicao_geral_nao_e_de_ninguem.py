@@ -66,8 +66,18 @@ from __future__ import annotations
 
 import importlib.util
 import os
+import re
 import sys
 import types
+
+# O console do Windows abre em cp1252 e as setas/📊 deste arquivo não cabem nele.
+# 🔴 Sem esta linha o teste MORRE de UnicodeEncodeError no bloco [3], ANTES de
+# chegar ao [6] — e um teste que explode ao imprimir um caso que passou é
+# indistinguível de um teste que reprovou. Os dois irmãos deste diretório já
+# tinham a linha (`test_a_regua_da_carta_e_uma_so.py:73`); este não, e por isso
+# um conserto no bloco [6] só era observável com `PYTHONIOENCODING=utf-8` na mão.
+if hasattr(sys.stdout, "reconfigure"):
+    sys.stdout.reconfigure(encoding="utf-8", errors="replace")
 
 RAIZ = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 _PROBLEMAS: list = []
@@ -92,6 +102,23 @@ def _templater():
     spec = importlib.util.spec_from_file_location("app.services.atlas.templater", caminho)
     mod = importlib.util.module_from_spec(spec)
     sys.modules["app.services.atlas.templater"] = mod
+    spec.loader.exec_module(mod)
+    return mod
+
+
+def _curadoria():
+    """O DONO da régua, carregado de verdade — não lido como texto.
+
+    🔴 A diferença não é estilo. `"MAX_CARACTERES = 1800" in fonte` é satisfeito
+    por um COMENTÁRIO, e este arquivo tem centenas de linhas de comentário que
+    citam a régua. `C.MAX_CARACTERES == 1800` afirma o valor que o produto usa.
+    """
+    _templater()  # `veredito_de_pii` importa o mascarador lá dentro
+    caminho = os.path.join(RAIZ, "app", "services", "curadoria_cartas.py")
+    spec = importlib.util.spec_from_file_location("app.services.curadoria_cartas",
+                                                  caminho)
+    mod = importlib.util.module_from_spec(spec)
+    sys.modules["app.services.curadoria_cartas"] = mod
     spec.loader.exec_module(mod)
     return mod
 
@@ -407,10 +434,58 @@ def teste_o_que_separa_carta_de_copia_e_o_bloco_literal():
     with open(os.path.join(RAIZ, "scripts", "acervo", "conferir_ancoragem.py"),
               encoding="utf-8") as arquivo:
         conferidor = arquivo.read()
+    # 🔴 ESTA AFIRMAÇÃO MUDOU DE ENDEREÇO EM 15/08/2026 — E O TESTE MUDOU COM ELA.
+    #
+    # Ele checava `"MAX_CARACTERES = 1800" in publicador`. Era verdade até a
+    # régua sair daqui: 📊 o caminho de conversa usava 15–400 escrito à mão em
+    # QUATRO lugares (`attendance_distiller`, `aplicar.py`, `aplicar_sql.py`,
+    # `atribuir_seguradora.py`), na MESMA tabela, e a que matava era a outra.
+    # O valor não mudou — mudou o DONO, para `curadoria_cartas`, e os CINCO
+    # pontos de ingestão passaram a importar de lá.
+    #
+    # Manter a afirmação vencida deixava o arquivo VERMELHO por um conserto que
+    # ele mesmo pedia, e isso ensina a ignorar teste (CLAUDE.md §9.3).
+    #
+    # ⚠️ E a primeira tentativa de migrar a lição saiu ERRADA, de dois jeitos que
+    # valem mais registrados do que apagados:
+    #
+    #   1. varria só `publicar_cartas.py` atrás do literal escrito à mão — e o
+    #      publicador NUNCA foi uma das quatro cópias: ele era o que estava
+    #      CERTO (40–1800). O guarda não tinha como pegar o defeito que dizia
+    #      estar pegando. Agora varre os CINCO.
+    #   2. afirmava `"MAX_CARACTERES = 1800" in dona_da_regua` — substring num
+    #      arquivo de mil linhas denso em comentários, que **um comentário
+    #      satisfaz**. Agora afirma o VALOR carregado do módulo.
+    C = _curadoria()
+    checar(C.MAX_CARACTERES == 1800,
+           "o teto é um limite FÍSICO e vale 1800, lido do módulo",
+           f"📊 a maior lista taxativa legítima tem 1.630 — veio {C.MAX_CARACTERES}")
+    checar(C.MIN_CARACTERES == 40,
+           "e o piso vale 40", f"veio {C.MIN_CARACTERES}")
 
-    checar("MAX_CARACTERES = 1800" in publicador,
-           "o teto virou um limite FÍSICO, não um juízo sobre a carta",
-           "📊 a maior lista taxativa legítima tem 1.630 caracteres")
+    # O defeito original: quatro literais iguais não são uma regra — são quatro
+    # chances de divergir. O guarda é "ninguém, em ponto de ingestão nenhum,
+    # escreve o número de novo".
+    _RE_A_MAO = re.compile(r"^\s*(?:MAX|MIN)_CARACTERES\s*(?::[^=]+)?=\s*\d", re.M)
+    PONTOS_DE_INGESTAO = (
+        ("scripts", "acervo", "publicar_cartas.py"),
+        ("app", "services", "attendance_distiller.py"),
+        ("scripts", "destilacao_max", "aplicar.py"),
+        ("scripts", "destilacao_max", "aplicar_sql.py"),
+        ("scripts", "destilacao_max", "atribuir_seguradora.py"),
+    )
+    a_mao = []
+    for partes in PONTOS_DE_INGESTAO:
+        with open(os.path.join(RAIZ, *partes), encoding="utf-8") as arquivo:
+            achados = _RE_A_MAO.findall(arquivo.read())
+        if achados:
+            a_mao.append(partes[-1])
+    checar(not a_mao,
+           "nenhum dos 5 pontos de ingestão reescreve a régua — só o dono a define",
+           f"o defeito das quatro cópias voltou em: {a_mao}")
+    checar("from app.services.curadoria_cartas import" in publicador
+           and "MAX_CARACTERES" in publicador,
+           "e o publicador IMPORTA a régua, explicitamente")
     checar("MAX_CARACTERES_DOCUMENTO" not in publicador,
            "e a exceção por faceta saiu",
            "ela resolvia 2 casos da Porto e falhava em 25 da Allianz")

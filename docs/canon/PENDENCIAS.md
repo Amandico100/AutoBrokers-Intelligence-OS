@@ -4943,3 +4943,203 @@ que o agente responde e merece uma passada de olho antes.
 
 **Custa se esquecer:** o trabalho das duas tarefas fica meio feito. As cartas
 existem, estão limpas, estão etiquetadas — e continuam não respondendo nada.
+
+### 📊 15/08/2026 — ela FECHOU SOZINHA, e não do jeito que a pendência pedia
+
+Medido na auditoria da SPEC-072, com `Prefer: count=exact`:
+
+```
+GET /rest/v1/knowledge_cards?select=id&status=eq.pending_review   →      0
+GET /rest/v1/knowledge_cards?select=id&status=eq.published        → 17.928  (era 17.635)
+GET /rest/v1/knowledge_cards?select=id&status=eq.superseded       →    653  (era 617)
+GET /rest/v1/knowledge_cards?select=id&status=like.rejected*      →     40  (era 26)
+```
+
+**As 343 entraram no RAG.** Não por decisão de ninguém: `publicar_lote_sync`
+roda sozinho a cada rodada do Destilador, e levou `pending_review → published`
+sem humano nenhum — que é exatamente o que `curadoria_cartas.py:299` já
+documentava e o que esta pendência queria evitar.
+
+> **A pendência pedia "uma passada de olho antes". O sistema não tem onde
+> encaixar essa passada de olho, e por isso ela não aconteceu.**
+
+⚠️ **Isto não é uma pendência resolvida — é uma pendência atropelada.** O que
+ficou aberto mudou de forma:
+
+- ✅ as 343 respondem, que era o objetivo
+- ❌ ninguém olhou, e não há registro de quem publicou nem quando
+- ❌ **o mecanismo continua de pé**: a próxima leva que cair em `pending_review`
+  será publicada do mesmo jeito, sem revisão e sem aviso
+
+**O que destrava agora:** decidir se `publicar_lote_sync` automático é o desenho
+certo. Se for, a pendência morre e a P-67 (filtro de pertinência) fica sendo a
+única guarda. Se não for, precisa de um portão — e ele não existe hoje.
+
+**Dono:** 🧑 Founder decide o desenho · 🤖 execução implementa.
+
+---
+
+## P-174 · 🟡 `published_at` é nulo em 5.364 cartas publicadas
+
+**Aberta em:** 15/08/2026 · **Dono:** 🤖 execução
+**Achada** na auditoria da SPEC-072, **não consertada** — está fora do escopo
+dela.
+
+📊 Medido em 15/08/2026:
+
+```
+status='published'                          17.928
+published_at não nulo                       12.564
+                                            ------
+publicadas sem data de publicação            5.364   (29,9%)
+```
+
+O número quase coincide com as 5.394 cartas de acervo, e a causa é essa:
+`backend/scripts/acervo/publicar_cartas.py:326` grava `status="published"` e
+**nunca preenche `published_at`**. Os dois caminhos que preenchem são
+`admin_atlas.py:752` e `curadoria_cartas.py:1086` — e o acervo não passa por
+nenhum dos dois.
+
+**O que custa esquecer:** toda pergunta com recorte de tempo sobre o RAG
+responde errado e **em silêncio**. "Quantas cartas entraram desde a leva 5",
+"o que foi publicado antes da correção do portão de PII", qualquer ordenação por
+data de publicação — todas descartam ou ignoram 30% do acervo, e nenhuma acusa.
+Uma coluna nula não dá erro: dá resposta menor.
+
+**O que destrava:** uma linha em `publicar_cartas.py` para as próximas, e um
+backfill para as 5.364 usando `created_at` como aproximação **declarada** — ou a
+decisão de que `created_at` já basta e a coluna sai. As duas servem; ter as duas
+sem escolher é o que não serve.
+
+---
+
+## P-175 · 🟡 `faceta` e `acervo` não existem no GLOSSÁRIO — e `faceta` já é coluna
+
+**Aberta em:** 15/08/2026 · **Dono:** 🤖 execução
+
+O `GLOSSARIO.md` abre dizendo: *"Um termo tem UMA definição. Se dois documentos
+discordarem, **este vence** e o outro se corrige."* Sobre `faceta`, ele está mudo
+— e o termo já tem, em produção:
+
+```
+escritor           insurance_corpus.py:908 · attendance_distiller.py:659
+índice de payload  qdrant_service.py:96  (KEYWORD)
+valores válidos    publicar_cartas.py:86  (8 facetas)
+portador no banco  pii_check['faceta']    (porque não há coluna)
+pendências         P-142 (falta o leitor) · P-145 (teste medido e recusado)
+coluna proposta    SPEC-072 Bloco 6
+```
+
+**`acervo` está no mesmo caso:** dá nome a 3 SPECs e a 6 pendências, sem
+definição. `destilador` idem.
+
+⚠️ **O risco não é estético, é de colisão.** `20260815_02_a_carta_ganha_tema.sql`
+já precisou escrever no `COMMENT` que `temas` *"difere de `ramo` e de
+`category`"* — e nada diz como `faceta` difere de `temas`. 📊 A prova de que a
+confusão já existe: das 380 cartas com `faceta='documento'`, só **201 (53%)**
+têm o tema `documentacao`, e **673** cartas de acervo têm o tema sem ter a
+faceta. Dois rótulos para perguntas diferentes, discordando em quase metade dos
+casos, e nenhum dos dois definido.
+
+**O que destrava:** três entradas no `GLOSSARIO.md`, escritas junto com o Bloco 6
+da SPEC-072 — que é quando a coluna nasce e é a última hora de acertar o nome
+antes de ele virar schema.
+
+**O que custa esquecer:** o próximo a ler vai inferir a definição do código, e o
+código tem duas. Foi assim que `insurer_key` passou a guardar "apareceu numa
+conversa sobre a Allianz" prometendo "é regra da Allianz" — 📊 e custou uma
+correção de 3.760 para 1.158 cartas.
+
+---
+
+## P-176 · 🟡 `corrigir.py` apaga `pii_check` — e a carta substituta nasce sem procedência
+
+**Aberta em:** 15/08/2026 · **Dono:** 🤖 execução
+**Achada** pelo juiz crítico do BLOCO 0 da SPEC-072. **Não consertada de
+propósito** — é a mesma família do defeito do bloco, mas em arquivo e mecanismo
+diferentes, e o Founder pediu para anotar e seguir em vez de alargar o escopo.
+
+`backend/scripts/destilacao_max/corrigir.py:85` faz
+`.select("id, card_text, ramo, insurer_key, status")` — **sem `pii_check`**. E
+em `:114`:
+
+```python
+marca = {**(c.get("pii_check") or {}), "superseded_por": MARCA, "motivo": motivo}
+```
+
+`c` nunca traz `pii_check`, então o spread é **sempre vazio**, e o `update` de
+`:118-120` substitui a coluna inteira por duas ou três chaves.
+
+**Duas metades, e elas não têm a mesma gravidade — a distinção importa:**
+
+🟢 **A metade menor.** A carta cujo `pii_check` é apagado está sendo
+**aposentada** no mesmo `update` (`status='superseded'`). Ela sai do índice de
+qualquer jeito. O que se perde é o rastro de auditoria — `faceta`, `origem`,
+`reindexado_em` — de uma carta que já morreu. Ruim, não urgente.
+
+🔴 **A metade grave, e é outra.** A carta **substituta**, inserida em `:124-132`,
+nasce **sem `source_unit_id` e sem `faceta` no `pii_check`**. Ela é a versão
+corrigida de uma carta de condição geral — e passa a existir sem nenhum caminho
+de volta ao contrato de onde a original veio. Duas consequências:
+
+1. **o lastro é o produto** (`attendance_distiller.py:639-652`): sem `unit_id`
+   ela vira "acho que a Porto não cobre" onde antes era "a cláusula 4.4.2.d das
+   Condições Gerais vigentes desde 01/07/2026 diz que não cobre";
+2. ela entra em `publicar_lote_sync` com `documento_publico=False` — **o caso
+   exato que o BLOCO 0 fechou**, reaberto por outra porta.
+
+**O que destrava:** acrescentar `pii_check, source_unit_id` ao select de `:85`, e
+propagar `source_unit_id` (e a `faceta`) para o `upsert` de `:124`. Uma linha e
+duas chaves. ⚠️ Precisa de teste com **linha de controle**: a carta corrigida tem
+de manter o mesmo `source_unit_id` da original, e a mutação que remove a
+propagação tem de derrubar o teste.
+
+**O que custa esquecer:** `corrigir.py` é rodado à mão, então isto não acontece
+sozinho — mas quando acontecer, a carta *melhor* é a que perde a procedência.
+O conserto de conteúdo destrói a prova. Ninguém vai desconfiar: a carta nova
+está mais certa que a velha.
+
+---
+
+## P-177 · 🔴 `temas` não chega ao índice — 14.264 cartas rotuladas para nada
+
+**Aberta em:** 15/08/2026 · **Dono:** 🤖 execução
+**Achada** pelo juiz crítico do BLOCO 0 da SPEC-072.
+
+O commit `3f6d1b4` rotulou **14.264 cartas** com tema. A migration
+`20260815_02_a_carta_ganha_tema.sql:76` criou `knowledge_cards.temas text[]` com
+índice **GIN**. 📊 Hoje, `temas` não aparece em nenhum ponto do caminho do RAG:
+
+```
+knowledge_extras de publish_card_sync   attendance_distiller.py:648-683   ausente
+select de reindexar_acervo              _ler_publicadas                    ausente
+select de publicar_lote_sync            curadoria_cartas.py                ausente
+search_service.py · qdrant_service.py   grep "temas"                       ZERO
+índice de payload no Qdrant             qdrant_service.py:88-98            não existe
+```
+
+**O rótulo existe no Postgres e o índice não sabe dele.** É o mesmo defeito que
+a SPEC-072 diagnosticou para `faceta` — *"o rótulo é produzido e nenhum leitor o
+alcança"* — só que uma camada antes: a `faceta` ao menos **chega** ao payload do
+Qdrant e tem índice lá; `temas` não chega a lugar nenhum.
+
+⚠️ **E isso torna inexecutável uma promessa da própria SPEC-072.** A §4 diz que
+a entrega é *"achável por `faceta='documento'` + `insurer_key` + `temas`"*.
+Como o runtime não lê o Postgres (§3.4①), **esse AND não tem como rodar hoje** —
+o terceiro termo não existe do lado que a busca enxerga.
+
+**O que destrava:** `temas` entra em `knowledge_extras` (2 linhas), nos selects
+dos republicadores (uma palavra em cada) e ganha índice de payload KEYWORD ao
+lado de `faceta` em `qdrant_service.py:96`. ⚠️ **E o mesmo filtro de dois braços
+de P-142**: `temas` é nulo em 📊 **4.083 das 17.928 cartas publicadas (22,8%)**
+— um braço só apagaria um quinto do índice.
+
+**Por que não foi feito junto com o BLOCO 0:** o bloco existia para impedir que
+a republicação **apagasse** o que já estava no índice. Levar um rótulo **novo**
+para lá é outra decisão, e ela pertence ao BLOCO 1 (o leitor), onde o filtro é
+desenhado. Registrado para não se perder entre os dois.
+
+**O que custa esquecer:** 14.264 cartas rotuladas numa noite inteira de trabalho
+continuam respondendo como se não tivessem rótulo, e ninguém vê — porque a busca
+devolve resultado, só que o errado. É o mesmo formato de defeito das 📊 11.211
+cartas de contrato que atravessavam como genéricas até 08/08.

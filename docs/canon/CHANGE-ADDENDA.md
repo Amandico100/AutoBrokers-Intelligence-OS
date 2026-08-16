@@ -2086,3 +2086,169 @@ Exige bloco proprio, com inventario de consumidores e teste.
 Proposta (nao executada): backoff adaptativo quando vazio, com reset imediato ao
 surgir trabalho e jitter, preservando SLA e durabilidade. **Nao criar segunda
 fila. Nao tornar Redis fonte de verdade.**
+
+---
+
+## CA-039 · Republicar uma carta apagava o lastro dela — **BLOCKER**
+
+**Data:** 15/08/2026 · **SPEC:** SPEC-072 Bloco 0 · **Estado:** EXECUTADA
+**Autorizacao:** decisao do Founder, item 1 da ordem de execucao da SPEC-072
+(*"20 MINUTOS, ANTES DE TUDO"*), apos auditoria + juiz critico independente.
+
+⚠️ **CA-037 e CA-038 estao reservados** pelas decisoes 3 e 4 do Founder (excecao
+documental no prompt · regra de uso de carta no `ATTENDANCE_BASE_PROMPT`), ambas
+do Bloco 4. Este registro toma o numero seguinte para nao ocupar os dois.
+
+### Problema
+
+`insert_embeddings` faz `client.upsert` de **ponto inteiro**
+(`backend/app/services/qdrant_service.py:355`), nao `set_payload`. Republicar uma
+carta com menos payload nao acrescenta: **substitui**. Logo o `select` de quem
+republica e a lista do que sobrevive — e duas colunas nao estavam nela.
+
+Tres caminhos chamam `publish_card_sync`, e dois liam a carta incompleta:
+
+```
+reindexar_acervo.py:157    id, card_text, insurer_key, ramo, category
+curadoria_cartas.py:1066   id, card_text, insurer_key, ramo      ← roda SOZINHO
+admin_atlas.py:724         select("*")                           ← completo
+```
+
+E a `faceta` se perdia nos **tres**, inclusive no que usa `select("*")`:
+`knowledge_cards` nao tem coluna `faceta`, entao `publicar_cartas.py:332` a grava
+dentro do jsonb `pii_check` — e `publish_card_sync:659` lia `card["faceta"]`, uma
+chave de topo que so existe na primeira publicacao.
+
+### Evidencia
+
+📊 Medido em 15/08/2026 sobre as 5.394 cartas de acervo `published`, rodando a
+rede de PII real (`curadoria_cartas.veredito_de_pii`), nao uma reimplementacao:
+
+```
+RECUSADAS com documento_publico=False (o que rodava)   57
+RECUSADAS com documento_publico=True  (o correto)       0
+                                                       --
+regressao silenciosa                                    57 cartas
+```
+
+As 57 sao **todas da HDI** e **todas por `{CNPJ}`** — e o `{CNPJ}` e o numero de
+**processo SUSEP** (`15414.900228/2017-63`), que so parece CNPJ para quem nao sabe
+que o documento e publico. `publish_card_sync:571` decide isso com
+`documento_publico=bool(card.get("source_unit_id"))`, e a coluna nao vinha no
+select.
+
+E as outras **5.337** voltariam ao indice sem `unit_id` e sem `faceta`. Alvo de
+um `--aplicar`: **100% das 5.394**.
+
+### Consequencia de nao fazer
+
+O Bloco 2 da SPEC-072 produz cartas de documento com lastro. A rodada seguinte
+do reindexador as desmontaria — e `publicar_lote_sync`, que roda sozinho a cada
+rodada do Destilador, faria o mesmo sem ninguem pedir. O indice de payload
+`faceta` (`qdrant_service.py:96`) ficaria apontando para nada.
+
+O modo de falha e o pior: o script conta as 57 como `falhou` e segue. O nome no
+relatorio seria `rejected_pii` — que **mente**: nao vazou dado de ninguem.
+
+### Mudanca
+
+1. `attendance_distiller.publish_card_sync` resolve a faceta de `card["faceta"]`
+   **ou** de `card["pii_check"]["faceta"]`. Um lugar conserta os tres chamadores
+   em vez de repetir a linha em cada um (CLAUDE.md §5 — consolidar, nao duplicar).
+2. `reindexar_acervo._ler_publicadas` e `curadoria_cartas.publicar_lote_sync`
+   passam a pedir `source_unit_id, pii_check` (e o segundo recupera `category`,
+   que tambem faltava).
+3. `backend/tests/test_a_republicacao_nao_apaga_o_lastro.py` — comportamental,
+   com linha de controle em cada caso (§9.2) e prova de mutacao (§9.3).
+4. `test_o_valor_da_condicao_geral_nao_e_de_ninguem.py:411` estava **vermelho
+   desde `0a8282a`**: afirmava `"MAX_CARACTERES = 1800" in publicador`, e a regua
+   mudou de dono para `curadoria_cartas`. A licao migrou e ficou mais forte —
+   agora guarda que **existe um dono e ninguem mais escreve o numero**.
+
+### Custo e risco
+
+Nenhuma migration, nenhum dado tocado, nenhum motor novo. Risco de egresso: o
+`select` passa a trazer `pii_check` por carta — jsonb pequeno, e o reindexador
+roda sob demanda, nao em laco.
+
+**VERIFY (saida real):**
+
+```
+suite baseline (worktree isolado no HEAD)   197 verdes · 21 vermelhos
+suite depois                                201 verdes · 18 vermelhos
+vermelhos NOVOS                             NENHUM
+vermelho herdado consertado                 test_o_valor_da_condicao_geral_*
+
+mutacao (source_unit_id fora do select)     EXIT=1   ← o guarda falha
+restaurado da copia                         EXIT=0
+```
+
+**ROLLBACK:** `git revert` dos quatro arquivos. Nada de banco foi alterado, e o
+valor da faceta continua gravado em `pii_check` como sempre esteve.
+
+### 📊 Addendo do juiz critico — o que ele derrubou, e o que sobrou
+
+O conserto acima passou por juiz adversarial (instruido a REFUTAR, nao a
+aprovar). Ele confirmou o defeito e a correcao, e **derrubou o conserto do teste
+herdado**. Registrado porque o erro e instrutivo:
+
+**REFUTADO — a licao tinha migrado para o arquivo errado.** A guarda nova varria
+`publicar_cartas.py` atras do literal escrito a mao. Mas 📊
+`test_a_regua_da_carta_e_uma_so.py:8-11` diz textualmente que as quatro copias
+viviam em `attendance_distiller`, `aplicar.py`, `aplicar_sql.py` e
+`atribuir_seguradora.py` — e que **`publicar_cartas.py` usava 40–1800, ou seja,
+era o que estava CERTO**. A guarda nao tinha como pegar o defeito que dizia estar
+pegando. Agora varre os **cinco** pontos de ingestao, com regex que tambem pega
+`MAX_CARACTERES=400` sem espaco e `MAX_CARACTERES: int = 400`.
+
+**REFUTADO — substring nao e valor.** `"MAX_CARACTERES = 1800" in fonte` e
+satisfeito por um **comentario**, e o arquivo tem centenas de linhas que citam a
+regua. Agora o teste carrega o modulo e afirma `C.MAX_CARACTERES == 1800`.
+
+**REFUTADO — o conserto nao era observavel.** `test_o_valor_da_condicao_geral_*`
+nao tinha `sys.stdout.reconfigure`, que os dois irmaos do diretorio tem. Em
+console cp1252 ele morre de `UnicodeEncodeError: '\u2192'` no bloco **[3]**,
+antes de chegar ao **[6]**, que e o bloco editado. Verde so com
+`PYTHONIOENCODING=utf-8` na mao. **Um conserto que nao pode ser observado nao
+foi observado.** A linha entrou.
+
+**Prova de mutacao dos guardas novos** (com copia de arquivo, nunca
+`git checkout`):
+
+```
+teto 1800 -> 1500 em curadoria_cartas.py         EXIT=1  <- o guarda falha
+MAX_CARACTERES=400 (sem espaco) em aplicar.py    EXIT=1  <- o guarda falha
+restaurado                                        EXIT=0
+```
+
+**REFUTADO — os 📊 nao eram reproduziveis.** Os cinco numeros sairam de um script
+que morava so no `%TEMP%` da sessao. Mesma critica que esta SPEC fez aos numeros
+antigos dela. Corrigido: **`backend/scripts/destilacao_max/medir_o_lastro.py`**,
+versionado, somente leitura, reproduz os cinco a partir do repositorio.
+
+**Dois reparos no teste novo:** (1) `"faceta" not in (c or {})` era satisfeito
+quando a carta era RECUSADA — agora `c is not None` vem primeiro; (2) a ancora do
+select de `reindexar_acervo` pegava o primeiro `.select(` do arquivo e acertava
+por acidente (ha quatro; o de `_diagnostico` so escapava por ter `count=`
+quebrando o regex) — agora ancora na funcao, como a outra.
+
+**Limite declarado, nao escondido:** o teste afere os **kwargs** entregues a
+`insert_embeddings`, nao o payload final montado em `qdrant_service.py:306-330`.
+A regra de promocao de `:329` fica inexercitada. Um guarda dela pertence a um
+teste de `qdrant_service`.
+
+### ⚠️ A ressalva desta entrega
+
+**"Republicar nao apaga mais o lastro" vale para os cinco chamadores de
+`publish_card_sync`. NAO vale para o Postgres.**
+
+`scripts/destilacao_max/corrigir.py:85` tem o mesmo defeito uma camada abaixo, e
+la a autoridade e **duravel**: o `select` sem `pii_check` faz o `update` de
+`:118-120` substituir a coluna inteira. E a carta **substituta** (`:124-132`)
+nasce sem `source_unit_id`. **Nao consertado nesta entrega, por decisao de
+escopo do Founder** — registrado em **P-176**, com as duas metades separadas por
+gravidade.
+
+E **P-177**: `temas` nao chega ao indice em caminho nenhum, o que torna
+inexecutavel a promessa da §4 da SPEC ("achavel por faceta + insurer_key +
+temas"). Pertence ao Bloco 1 (o leitor), e esta escrito la.

@@ -570,6 +570,29 @@ def publish_card_sync(card: Dict[str, Any]) -> bool:
     if not text or not _card_pii_clean(
             text, documento_publico=bool(card.get("source_unit_id"))):
         return False
+    # 🔴 A FACETA MORA EM DOIS LUGARES E SÓ UM SOBREVIVE À REPUBLICAÇÃO — 15/08/2026
+    # ---------------------------------------------------------------------------
+    # `publicar_cartas.py` passa `faceta` de topo na PRIMEIRA publicação (:385) e
+    # grava o mesmo valor em `pii_check["faceta"]` (:332), porque `knowledge_cards`
+    # não tem coluna para ele. Quem REPUBLICA lê a carta do banco — e do banco a
+    # chave de topo nunca vem.
+    #
+    # 📊 Medido em 15/08/2026: os três republicadores reescrevem o mesmo ponto
+    # `card-<id>` sem faceta, e `insert_embeddings` faz `upsert` de PONTO INTEIRO
+    # (`qdrant_service.py:355`), não `set_payload` — a substituição é total. Uma
+    # rodada de `reindexar_acervo.py --aplicar` apagaria a faceta das 5.394 cartas
+    # de acervo, e o índice de payload `faceta` (`qdrant_service.py:96`) ficaria
+    # apontando para nada.
+    #
+    # O comando que mede isso está versionado:
+    #     python backend/scripts/destilacao_max/medir_o_lastro.py
+    #
+    # Resolver aqui conserta os três de uma vez, em vez de repetir a mesma linha em
+    # cada um (CLAUDE.md §5: consolidar, não duplicar ao lado).
+    marcas = card.get("pii_check")
+    faceta = card.get("faceta")
+    if not faceta and isinstance(marcas, dict):
+        faceta = marcas.get("faceta")
     # O ASSUNTO ENTRA NO TEXTO, de propósito.
     #
     # A busca é híbrida e o BM25 casa por palavra exata. Sem "cobrança" escrito
@@ -656,7 +679,11 @@ def publish_card_sync(card: Dict[str, Any]) -> bool:
                           # exclusao, limite, prazo…). SPEC-070 §5: é por ela
                           # que a busca equilibra a resposta, para a cobertura
                           # não voltar sem a exclusão que a anula.
-                          **({"faceta": card["faceta"]} if card.get("faceta") else {})},
+                          #
+                          # Vem de `faceta` resolvida acima — topo OU `pii_check` —
+                          # e não mais de `card["faceta"]`, que só existe na
+                          # primeira publicação e nunca numa republicação.
+                          **({"faceta": faceta} if faceta else {})},
     ))
 
 
