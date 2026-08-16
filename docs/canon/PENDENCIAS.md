@@ -5143,3 +5143,21 @@ desenhado. Registrado para não se perder entre os dois.
 continuam respondendo como se não tivessem rótulo, e ninguém vê — porque a busca
 devolve resultado, só que o errado. É o mesmo formato de defeito das 📊 11.211
 cartas de contrato que atravessavam como genéricas até 08/08.
+
+### ✅ 15/08/2026 — CONSERTADA, por decisão do Founder
+
+Decidido consertar dentro da SPEC-072 em vez de adiar: sem isso, o título do
+commit do BLOCO 0 seria falso — "republicar não apaga o lastro" valeria para o
+índice e não para o Postgres, que é o durável.
+
+⚠️ **E a pendência subestimava o conserto.** Ela dizia "uma linha e duas chaves,
+propagar `source_unit_id`". São **três** colunas: `20260808_03` criou a FK
+composta `knowledge_cards_procedencia_coerente_fk (source_version_id,
+source_document_id)`. Propagar só o `unit_id` daria uma carta com endereço e sem
+documento.
+
+Feito: `corrigir.py:85` pede `pii_check, source_unit_id, source_document_id,
+source_version_id`; a substituta herda as três e a `faceta`; `origem` fica de
+fora porque descreve a rodada de origem, e a substituta veio desta correção.
+Teste: `backend/tests/test_corrigir_nao_perde_a_procedencia.py`, com linha de
+controle e mutação. Registro em CHANGE-ADDENDA, addendo de CA-039.

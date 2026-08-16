@@ -2252,3 +2252,38 @@ gravidade.
 E **P-177**: `temas` nao chega ao indice em caminho nenhum, o que torna
 inexecutavel a promessa da §4 da SPEC ("achavel por faceta + insurer_key +
 temas"). Pertence ao Bloco 1 (o leitor), e esta escrito la.
+
+### ✅ 15/08/2026 — a ressalva CAIU: P-176 consertada por decisao do Founder
+
+> *"1 linha, mesma familia, e sem ela o titulo do seu commit e falso: 'republicar
+> nao apaga o lastro' valeria para o indice e nao para o Postgres, que e o
+> duravel."* — decisao do Founder, 15/08/2026.
+
+⚠️ Este arquivo e **append-only** (§2.1): a ressalva acima nao foi editada nem
+removida. Ela fica como registro do que era verdade quando foi escrita, e esta
+nota diz o que mudou — que e a mesma disciplina do CLAUDE.md §9.3 aplicada a
+documento em vez de a teste.
+
+**O conserto**, em `backend/scripts/destilacao_max/corrigir.py`:
+
+- o `select` de `:85` passa a pedir `pii_check, source_unit_id,
+  source_document_id, source_version_id`
+- a carta **substituta** herda as tres colunas de procedencia e a `faceta`
+
+⚠️ **Sao TRES colunas, nao uma** — e isso nao estava na P-176. `20260808_03_
+spec070_a_carta_sabe_de_que_contrato_saiu.sql:154-159` criou a FK composta
+`knowledge_cards_procedencia_coerente_fk (source_version_id,
+source_document_id)`. Propagar so o `unit_id`, como a pendencia sugeria, daria
+uma carta com **endereco e sem documento** — coerente na aparencia, incoerente no
+schema.
+
+`origem` fica de fora de proposito: ela descreve de que RODADA a carta veio, e a
+substituta veio desta correcao, nao daquela.
+
+**Teste:** `backend/tests/test_corrigir_nao_perde_a_procedencia.py` — dubla o
+Supabase e afere o que o script GRAVA, com linha de controle (a mesma carta sem
+procedencia: a nova nao inventa nenhuma) e mutacao (a linha que o `select` de
+ontem devolvia faz os guardas reprovarem).
+
+**Com isto, "republicar nao apaga o lastro" vale para os cinco chamadores de
+`publish_card_sync` E para o Postgres.**

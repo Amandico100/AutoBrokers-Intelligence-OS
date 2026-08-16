@@ -81,8 +81,33 @@ def main() -> int:
 
     trocadas = inseridas = 0
     for cid, (motivo, novo) in TROCAS.items():
+        # 🔴 O SELECT E A LISTA DO QUE SOBREVIVE — 15/08/2026 (SPEC-072, P-176)
+        # ---------------------------------------------------------------------
+        # Ele pedia cinco colunas, e faltavam as que carregam a PROCEDENCIA. Dois
+        # danos diferentes saiam disso, e valem separados porque a gravidade e
+        # outra:
+        #
+        #  🟢 sem `pii_check`, o `marca = {**(c.get("pii_check") or {}), …}` de
+        #     baixo espalhava um dict SEMPRE VAZIO, e o `update` substituia a
+        #     coluna inteira por duas chaves — matando `faceta`, `origem` e
+        #     `reindexado_em`. Menor porque essa carta esta sendo APOSENTADA no
+        #     mesmo update: o que se perde e o rastro de auditoria de uma carta
+        #     que ja saiu do indice.
+        #
+        #  🔴 sem `source_unit_id` (e as duas irmas), a carta SUBSTITUTA nascia
+        #     sem caminho de volta ao contrato. Essa e a grave: o lastro E o
+        #     produto — sem ele, "a clausula 4.4.2.d diz que nao cobre" vira
+        #     "acho que nao cobre". E ela entraria em `publicar_lote_sync` com
+        #     `documento_publico=False`, que e o caso que o BLOCO 0 fechou,
+        #     reaberto por outra porta.
+        #
+        # ⚠️ Sao TRES colunas de procedencia, nao uma. `knowledge_cards` tem a FK
+        # composta `knowledge_cards_procedencia_coerente_fk (source_version_id,
+        # source_document_id)` desde `20260808_03`: propagar so o `unit_id`
+        # deixaria a carta com endereco e sem documento.
         atual = (db.table("knowledge_cards")
-                 .select("id, card_text, ramo, insurer_key, status")
+                 .select("id, card_text, ramo, insurer_key, status, pii_check, "
+                         "source_unit_id, source_document_id, source_version_id")
                  .eq("id", cid).limit(1).execute().data or [])
         if not atual:
             print(f"  {cid[:8]} não existe — pulando")
@@ -121,16 +146,36 @@ def main() -> int:
         trocadas += 1
 
         if novo and templatize(novo) == novo:
+            # A CARTA CORRIGIDA HERDA A PROCEDENCIA DA QUE ELA CORRIGE.
+            #
+            # Ela e a MESMA afirmacao, escrita direito — nao um fato novo. Herdar
+            # `source_*` e a `faceta` e o que a mantem citavel: sem isso, corrigir
+            # o conteudo DESTROI a prova, e o pior e que ninguem desconfia, porque
+            # a carta nova esta mais certa que a velha.
+            #
+            # `origem` fica de fora de proposito: ela descreve de que RODADA a
+            # carta veio, e esta veio desta correcao, nao daquela.
+            marcas_antigas = c.get("pii_check")
+            if not isinstance(marcas_antigas, dict):
+                marcas_antigas = {}
+            procedencia = {k: c.get(k) for k in
+                           ("source_unit_id", "source_document_id", "source_version_id")
+                           if c.get(k)}
             db.table("knowledge_cards").upsert([{
                 "card_hash": hashlib.md5(novo.lower().encode("utf-8")).hexdigest(),
                 "card_text": novo, "category": assunto_da_carta(novo),
                 "ramo": c.get("ramo") or "outro",
                 "insurer_key": c.get("insurer_key"),
                 "status": "pending_review",
+                **procedencia,
                 "pii_check": {"deterministic": True, "llm_instructed": True,
-                              "por": MARCA, "corrige": cid},
+                              "por": MARCA, "corrige": cid,
+                              **({"faceta": marcas_antigas["faceta"]}
+                                 if marcas_antigas.get("faceta") else {})},
             }], on_conflict="card_hash", ignore_duplicates=True).execute()
             inseridas += 1
+            if procedencia:
+                print(f"  procedencia herdada: {procedencia.get('source_unit_id')}")
 
     if aplicar:
         print(f"\n  {trocadas} despublicadas · {inseridas} corrigidas entram como pending_review")
