@@ -518,6 +518,106 @@ check("P3 CONTROLE: vocabulario de negocio VIRA exemplo — senao o schema "
 check("P3 CONTROLE: e numero tambem", I._seguro_para_exemplo(195) == 195)
 
 
+# ==========================================================================
+print("[J1] PII SEM FORMA — o que nenhum detector de regex pode achar")
+# ==========================================================================
+# 🔴 Este bloco existe porque eu declarei "0 PII bloqueante" com DOIS
+# detectores independentes concordando, e estava errado.
+#
+# Os dois sao de FORMA: CPF tem 11 digitos e DV, chassi tem 17 caracteres sem
+# I/O/Q, e-mail tem arroba. **Nome proprio e endereco nao tem forma nenhuma** —
+# nenhum regex pega "ALVARO MILLEN DA SILVEIRA NETO" sem pegar "VIDRO DE PORTA"
+# junto.
+#
+# 📊 Achado por juiz critico adversarial em 17/08/2026, lendo os artefatos com
+# os olhos. Estavam em JSON que eu tinha acabado de commitar — inclusive o MESMO
+# segurado em dois arquivos de seguradoras diferentes, correlacionavel.
+for _campo in ("NomeSegurado", "nomeCliente", "cNome", "firstSurname",
+               "secondSurname", "nomeParceiroNegocioPrimario", "NomeContato",
+               "NomeCorretor", "EnderecoSegurado", "EnderecoCobranca",
+               "cEndereco", "logradouro", "municipalityDesc", "Bairro",
+               "Ddd", "Numero", "Telefone", "email"):
+    check(f"J1: `{_campo}` nao vira exemplo (o NOME ja declara)",
+          I.campo_e_de_pessoa(_campo))
+
+# 🔴 O par que da direito a conclusao. Sem ele, um `campo_e_de_pessoa` que
+# devolvesse sempre True passaria nas 18 assercoes acima — e o schema perderia
+# justamente o vocabulario de negocio que o torna util.
+for _campo in ("Codigo", "Descricao", "TipoAtendimento", "Status", "Mes",
+               "Dias", "DataSinistro", "Valor", "Quantidade"):
+    check(f"J1 CONTROLE: `{_campo}` CONTINUA virando exemplo",
+          not I.campo_e_de_pessoa(_campo))
+
+# E a prova executavel sobre o caso que motivou tudo: o telefone PARTIDO.
+# `{"Ddd": "47", "Numero": "996274743"}` — nenhum detector de forma pega, porque
+# 9 digitos sozinhos nao sao telefone. Juntos, sao um celular discavel.
+_f_tel = I.Forma()
+for _a in ({"Ddd": "47", "Numero": "996274743"},
+           {"Ddd": "48", "Numero": "988887777"}):
+    _f_tel.vista_em += 1
+    _f_tel.de_um_total_de += 1
+    I.acumular(_f_tel, _a)
+_esq_tel = I.para_json_schema(_f_tel)
+_txt_tel = json.dumps(_esq_tel)
+check("J1: o telefone PARTIDO em dois campos nao sobrevive",
+      "996274743" not in _txt_tel and "47" not in str(
+          _esq_tel.get("properties", {}).get("Ddd", {}).get("examples", "")),
+      _txt_tel[:150])
+
+# E o caso do nome dentro de LISTA: `Segurados: [{...}]` — o item herda o nome.
+_f_lista = I.Forma()
+for _a in ({"NomeSegurado": ["FULANO DE TAL SILVA"]},
+           {"NomeSegurado": ["BELTRANO DE TAL SOUZA"]}):
+    _f_lista.vista_em += 1
+    _f_lista.de_um_total_de += 1
+    I.acumular(_f_lista, _a)
+check("J1: nome dentro de LISTA tambem e barrado (o item herda o campo)",
+      "FULANO" not in json.dumps(I.para_json_schema(_f_lista)))
+
+# ==========================================================================
+print("[J2] query param opcional NAO pode sair como obrigatorio")
+# ==========================================================================
+# 🔴 Segundo achado do juiz. `vista_em` e `de_um_total_de` subiam JUNTOS, so
+# quando a chave aparecia — entao eram sempre iguais, e todo param visto 2+
+# vezes saia `required: true`.
+#
+# Nao e cosmetico: `ciclo.comparar_operacao` trata obrigatorio NOVO na
+# requisicao como QUEBRA_REQUISICAO, que FECHA a capacidade. Inferidor que
+# inventa obrigatoriedade faz o detector de drift gritar em evolucao normal.
+_tr_q = T.Trafego(chamadas=[
+    T.Chamada(metodo="GET", url="https://api.x.com/a?sempre=1&asvezes=2",
+              status=200, content_type_resp="application/json",
+              corpo_resp='{"ok":1}'),
+    # 🔴 `asvezes` aparece em DUAS de tres — e este e o caso que distingue as
+    # duas implementacoes. A primeira versao deste bloco usava um param
+    # presente em UMA de tres, e ai as duas concordam (denominador 1 reprova
+    # pela regra `de_um_total_de > 1`). A mutacao passava VERDE.
+    T.Chamada(metodo="GET", url="https://api.x.com/a?sempre=3&asvezes=9",
+              status=200, content_type_resp="application/json",
+              corpo_resp='{"ok":2}'),
+    T.Chamada(metodo="GET", url="https://api.x.com/a?sempre=4",
+              status=200, content_type_resp="application/json",
+              corpo_resp='{"ok":3}'),
+], rotulo="q", host_portal="x.com")
+_eps_q = I.agrupar(_tr_q)
+_ep_q = _eps_q["GET /a"]
+check("J2: param presente em TODAS as chamadas e obrigatorio",
+      _ep_q.query_params["sempre"].obrigatoria)
+check("J2: 🔴 param presente em UMA de tres NAO e obrigatorio",
+      not _ep_q.query_params["asvezes"].obrigatoria,
+      (_ep_q.query_params["asvezes"].vista_em,
+       _ep_q.query_params["asvezes"].de_um_total_de))
+check("J2 CONTROLE: os dois casos DIFEREM",
+      _ep_q.query_params["sempre"].obrigatoria
+      != _ep_q.query_params["asvezes"].obrigatoria)
+
+_doc_q = I.openapi_candidato(_tr_q)
+_params_q = {p["name"]: p["required"]
+             for p in _doc_q["paths"]["/a"]["get"].get("parameters", [])}
+check("J2: e o OpenAPI reflete isso", _params_q.get("sempre") is True
+      and _params_q.get("asvezes") is False, _params_q)
+
+
 print("\n" + "=" * 70)
 print(f"  {PASS} asserções verdes · {FAIL} vermelhas · {SKIP} puladas")
 print("=" * 70)

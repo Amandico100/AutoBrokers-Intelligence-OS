@@ -166,10 +166,10 @@ também é recusado: é allowlist, não blacklist.
 
 | | |
 |---|---|
-| `test_spec077_portal_lab.py` | **108 asserções** |
-| Mutações dirigidas | **13**, todas detectadas |
+| `test_spec077_portal_lab.py` | **141 asserções** |
+| Mutações dirigidas | **16**, todas detectadas |
 
-### As 13 mutações
+### As 16 mutações
 
 | # | Mutação | Vermelhas |
 |---|---|---|
@@ -186,7 +186,49 @@ também é recusado: é allowlist, não blacklist.
 | M11 | `OPTIONS` de CORS volta a virar endpoint | 1 |
 | M12 | host: telemetria volta a contar | 1 |
 | M13 | um método de ação entra na allowlist | 1 |
+| M14 | deny-list por nome de campo desligada | 20 |
+| M15 | `required` volta a subir só quando presente | 3 |
+| M16 | item de lista deixa de herdar o nome do campo | 1 |
 | — | restaurado | **0** |
+
+## 6.1 🔴 O juiz achou o que nenhum detector meu podia achar
+
+Eu consertei três vazamentos, verifiquei com **dois detectores independentes** e
+declarei *"0 PII bloqueante"*. Estava errado.
+
+Um juiz crítico leu os arquivos com os olhos e achou, legíveis, em JSON que eu
+tinha acabado de commitar: **nomes completos de segurados**, **endereços com
+número de apartamento**, e o **mesmo segurado em dois arquivos de seguradoras
+diferentes** — correlacionável por quem clonasse o repositório.
+
+**Por que meus detectores não podiam achar:** os dois são de FORMA. CPF tem 11
+dígitos e dígito verificador; chassi tem 17 caracteres sem I/O/Q; e-mail tem
+arroba. **Nome próprio e endereço não têm forma nenhuma.** Nenhum regex pega
+`"ALVARO MILLEN DA SILVEIRA NETO"` sem pegar `"VIDRO DE PORTA"` junto.
+
+E o caso que fecha o argumento: o telefone do Maxpar chega **partido** em
+`{"Ddd": "47", "Numero": "996274743"}`. Nenhum detector de forma pega — nove
+dígitos sozinhos não são telefone. Juntos, são um celular discável.
+
+**Dois consertos, e o segundo é o que importa:**
+
+1. Deny-list pelo **nome do campo**. Um campo chamado `NomeSegurado` não precisa
+   ser analisado — ele se declara. Cinco grafias do mesmo conceito em quatro
+   portais.
+
+2. 🔴 **Os artefatos deixaram de ser versionados.** `docs/generated/portal-lab/`
+   foi para o `.gitignore` e removido de todo o histórico da branch (que não
+   tinha sido empurrada — `origin/main` seguia em `daeda65`). A entrada já era
+   ignorada por PII; **o que se deriva de PII só pode ser versionado se for
+   possível PROVAR que está limpo** — e provamos o contrário. A deny-list fecha
+   o buraco *conhecido*; enumeração nunca prova ausência, e essa é a diferença
+   entre "não achei" e "não tem".
+
+**O segundo achado do juiz:** `vista_em` e `de_um_total_de` subiam juntos nos
+query params, então todo param visto 2+ vezes saía `required: true`. Não é
+cosmético: `comparar_operacao` trata obrigatório novo como `QUEBRA_REQUISICAO`,
+que **fecha a capacidade** — um inferidor que inventa obrigatoriedade faz o
+detector de drift gritar em evolução normal do portal.
 
 ### Duas mutações me ensinaram algo
 
@@ -195,6 +237,14 @@ também é recusado: é allowlist, não blacklist.
 casa) — que é o campo que alimenta `classificar_origem`. Com ele errado, o
 portal real vira `third_party` e o rastreador vira a casa. O buraco foi fechado
 com o par que exercita o HAR sem documento nenhum.
+
+**A M15 também não foi detectada** — e a culpa era do meu teste. Ele usava um
+param presente em **uma** de três chamadas, e nesse caso as duas implementações
+concordam: o denominador 1 reprova pela regra `> 1` de qualquer jeito. O caso
+que distingue é um param em **duas** de três. Corrigido, a mutação acende 3
+vermelhas.
+
+É a terceira vez nesta operação que escrevo um guarda que não tinha como falhar.
 
 **A M9 travou o teste** na primeira tentativa — mas a culpa foi da mutação, não
 do teste: meu recorte engoliu constantes e o módulo nem importou. Refeita
@@ -205,13 +255,13 @@ corretamente, acende 9 vermelhas.
 ## 7. Gates
 
 ```
-108/0  asserções da SPEC-077
+141/0  asserções da SPEC-077
 218    suites verdes no backend
  17    vermelhas — as MESMAS pré-existentes no baseline daeda65
   0    tsc --noEmit
- 13    mutações dirigidas, 13 detectadas
+ 16    mutações dirigidas, 16 detectadas
   0    erros no `portal_factory audit` e `validate`
-  0    PII bloqueante nos 5 artefatos gerados
+  0    PII nos artefatos — e eles deixaram de ser versionados
   0    dependências novas · 0 migrations · 0 runtimes novos
 ```
 
@@ -244,7 +294,7 @@ browser, CDP, shell ou chave de terceiro.
 
 ## 10. FATO · INFERÊNCIA · RECOMENDAÇÃO
 
-**FATO** — 108 asserções verdes; 13 mutações detectadas; 218 endpoints
+**FATO** — 141 asserções verdes; 16 mutações detectadas; 218 endpoints
 descobertos em 5 seguradoras com 0 PII bloqueante; os 4 endpoints que a
 SPEC-076 declara desconhecidos foram encontrados; `audit` e `validate` verdes;
 218 suites verdes e 17 vermelhas pré-existentes; `tsc` exit 0.
