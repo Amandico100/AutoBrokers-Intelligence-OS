@@ -16,8 +16,21 @@
 //
 // Nada aqui é motor novo: são cinco leituras das tabelas que já existem,
 // normalizadas numa forma comum. Não há tabela de "entrega".
+//
+// SPEC-078 Bloco F — e agora TUDO que a lista mostra tem para onde ir.
+//
+// 📊 17/08/2026, o que o Founder descreveu como "não consigo acessar as coisas
+// que ficam prontas", medido linha a linha:
+//
+//     36 artifacts        href: null       não existia rota de visualização
+//     77 briefings        href errado      levavam ao CARTÃO do Auxiliar
+//    135 agent_activities href: null       nenhum destino
+//
+// Uma lista de entregas em que a entrega não abre não é uma lista de entregas:
+// é um aviso de que alguma coisa aconteceu em algum lugar.
 import { NextRequest, NextResponse } from 'next/server';
 import { requireCompanyMember } from '@/lib/admin/admin-auth';
+import { ondeAbrirAuxiliar } from '@/lib/auxiliaries/catalog';
 
 export const dynamic = 'force-dynamic';
 
@@ -37,6 +50,42 @@ interface Entrega {
 }
 
 const LIMITE_POR_FONTE = 120;
+
+/**
+ * O Auxiliar dono de cada tipo de briefing.
+ *
+ * 📊 17/08/2026: os dois tipos que existem em `briefing_publications`
+ * (`daily_operational`, 65 linhas; `weekly_executive`, 12) são produzidos pelo
+ * mesmo Auxiliar. O mapa existe para que o terceiro tipo, quando nascer, seja
+ * uma linha aqui — e não um `if` escondido no meio do laço.
+ */
+const AUXILIAR_DO_BRIEFING: Record<string, string> = {
+  daily_operational: 'checklist-6h',
+  weekly_executive: 'checklist-6h',
+};
+
+const AUXILIAR_PADRAO_DO_BRIEFING = 'checklist-6h';
+
+/**
+ * Para onde vai o clique numa atividade de agente.
+ *
+ * `agent_activities` só tem `category`, `title` e `detail` — não guarda o id da
+ * coisa sobre a qual fala. Então o destino honesto é a TELA do assunto, não um
+ * registro específico: quem clica em "varredura de qualidade concluída" quer
+ * ver as conversas auditadas.
+ *
+ * 📊 17/08/2026, as categorias que existem no banco:
+ *   atendimentos 108 · qualidade 26 · auxiliares 1  → 135 de 135 com destino.
+ *
+ * Categoria nova, sem entrada aqui, devolve null de propósito — e a lista
+ * mostra a linha SEM cara de clicável (EntregasClient), em vez de oferecer um
+ * clique que não leva a lugar nenhum.
+ */
+const DESTINO_DA_ATIVIDADE: Record<string, string> = {
+  atendimentos: '/dashboard/atendimentos/conversas',
+  qualidade: '/dashboard/atendimentos/conversas',
+  auxiliares: '/dashboard/auxiliares',
+};
 
 /**
  * O estado da entrega, em português — e só quando ele não é o esperado.
@@ -77,7 +126,10 @@ export async function GET(_req: NextRequest) {
       .order('created_at', { ascending: false }).limit(LIMITE_POR_FONTE),
 
     supabase.from('briefing_publications')
-      .select('id, headline, summary_text, briefing_type, published_at, created_at, delivery_status')
+      // `artifact_id` entra aqui porque 📊 36 das 77 publicações JÁ TÊM o
+      // relatório renderizado. Para essas, o destino certo é o documento
+      // daquele dia — não a tela "de hoje", que mostra outro conteúdo.
+      .select('id, headline, summary_text, briefing_type, published_at, created_at, delivery_status, artifact_id')
       .eq('company_id', empresa)
       .order('created_at', { ascending: false }).limit(LIMITE_POR_FONTE),
 
@@ -117,12 +169,17 @@ export async function GET(_req: NextRequest) {
       titulo: a.title || 'Documento sem título',
       detalhe: a.subtitle ?? null,
       quando: a.created_at,
-      href: null, // o visualizador de artifact é da SPEC-057; ainda não há rota de tenant
+      // 📊 17/08/2026: aqui havia `href: null` com o comentário "ainda não há
+      // rota de tenant". A rota agora existe — `/dashboard/entregas/[artifactId]`,
+      // com filtro por company_id no repositório (CLAUDE.md §7).
+      href: `/dashboard/entregas/${a.id}`,
       origem: a.kind ?? null,
     });
   }
 
   for (const b of briefings.data ?? []) {
+    const slugDoBriefing =
+      AUXILIAR_DO_BRIEFING[b.briefing_type as string] ?? AUXILIAR_PADRAO_DO_BRIEFING;
     itens.push({
       id: `briefing:${b.id}`,
       tipo: 'documento',
@@ -133,7 +190,19 @@ export async function GET(_req: NextRequest) {
       // lista parecer saudável enquanto um canal está quebrado.
       detalhe: estadoDaEntrega(b.delivery_status) ?? b.summary_text ?? null,
       quando: b.published_at || b.created_at,
-      href: '/dashboard/auxiliares/checklist-6h',
+      // 📊 17/08/2026: o href era a string `/dashboard/auxiliares/checklist-6h`,
+      // montada à mão. Esse endereço cai na rota `[slug]`, que renderiza o
+      // cartão descritivo do Auxiliar — o corretor clicava no briefing de
+      // quinta-feira e recebia a propaganda do Auxiliar. Eram 26 briefings da
+      // AutoFleet apontando para a descrição do trabalho em vez do trabalho.
+      //
+      // Agora são dois destinos, nesta ordem:
+      //   1. o RELATÓRIO daquele dia, quando ele foi renderizado (36 de 77);
+      //   2. a tela de execução do Auxiliar dono, lida do mapa único em
+      //      lib/auxiliaries/catalog.ts — nunca concatenada aqui.
+      href: b.artifact_id
+        ? `/dashboard/entregas/${b.artifact_id}`
+        : ondeAbrirAuxiliar(slugDoBriefing),
       origem: 'Checklist das 6h',
     });
   }
@@ -148,7 +217,10 @@ export async function GET(_req: NextRequest) {
         ? (e.error_message || 'Falhou')
         : (e.run_type === 'manual' ? 'Execução manual' : null),
       quando: e.finished_at || e.started_at || e.created_at,
-      href: aux ? `/dashboard/auxiliares/${aux.slug}` : null,
+      // Mesma fonte única do briefing: quem tem tela de execução abre nela.
+      // Uma execução do `checklist-6h` levava ao cartão; agora leva ao que ele
+      // produziu.
+      href: ondeAbrirAuxiliar(aux?.slug),
       origem: aux?.nome ?? null,
     });
   }
@@ -174,7 +246,9 @@ export async function GET(_req: NextRequest) {
       titulo: a.title || 'Atividade',
       detalhe: a.detail ?? null,
       quando: a.created_at,
-      href: null,
+      // 📊 17/08/2026: era `href: null` fixo — 135 linhas sem destino, e com a
+      // mesma aparência de linha clicável das outras.
+      href: DESTINO_DA_ATIVIDADE[a.category ?? ''] ?? null,
       origem: a.category ?? null,
     });
   }

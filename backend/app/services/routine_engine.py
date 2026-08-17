@@ -214,7 +214,16 @@ async def _deliver(routine: Dict[str, Any], output: str) -> Tuple[bool, str]:
                 .eq("is_active", True)
                 .execute()
             )
-            rows = [r for r in (res.data or []) if IntegrationService.pode_enviar(r)]
+            # `para=auxiliar` (SPEC-078 B.2): quem está enviando aqui é o
+            # trabalhador da corretora, não o atendimento. Com essa intenção
+            # declarada, um número pareado como observador PODE ser o canal —
+            # mas só se a corretora tiver autorizado explicitamente aquele
+            # número (`integrations.permite_envio_de_auxiliar`). Sem a
+            # autorização, continua calado, exatamente como antes.
+            rows = [
+                r for r in (res.data or [])
+                if IntegrationService.pode_enviar(r, para=IntegrationService.ENVIO_DE_AUXILIAR)
+            ]
             # S17-12: número dedicado a auxiliares tem PRIORIDADE p/ rotinas
             # (isola o outreach do número de atendimento); senão, qualquer ativo.
             _rank = {"auxiliary": 0, "attendance": 1}
@@ -230,10 +239,11 @@ async def _deliver(routine: Dict[str, Any], output: str) -> Tuple[bool, str]:
             # Dizer só "sem canal ativo" mandaria ele procurar um defeito de
             # conexão que não existe: o número ESTÁ conectado, ele é que está
             # pareado como observador, e observador não envia.
-            return False, ("corretora sem canal WhatsApp que possa ENVIAR — um número "
-                           "pareado como observador (purpose=observer) fica calado por "
-                           "definição (SPEC-063 D). Conecte um número de auxiliares em "
-                           "Personalização > Conectores > WhatsApp")
+            return False, ("corretora sem canal WhatsApp que possa ENVIAR. Se o número "
+                           "está pareado como observador, ele fica calado por definição "
+                           "(SPEC-063 D) — autorize-o a enviar pelos Auxiliares em "
+                           "Personalização > Conectores > WhatsApp, ou conecte um número "
+                           "dedicado a auxiliares.")
         ok = await asyncio.to_thread(get_whatsapp_service().send_message, number, output, integration)
         return bool(ok), "enviado no WhatsApp" if ok else "falha no envio WhatsApp"
     return False, f"canal de entrega desconhecido: {channel}"
@@ -330,6 +340,55 @@ async def _execute_routine(supabase, routine: Dict[str, Any]) -> None:
             pass
 
 
+#: Os estados de `tenant_auxiliaries.status` em que o trabalhador TRABALHA.
+#:
+#: 📊 O CHECK do banco aceita: inactive · active · paused · disabled · archived.
+#: Só `active` roda. `inactive` e `paused` são "instalado e parado" — e é
+#: justamente parado que a corretora configura antes de ligar.
+#:
+#: 🔴 Lista de PERMISSÃO, não de proibição. Um estado novo que alguém
+#: acrescente ao CHECK amanhã cai no silêncio por padrão, não no trabalho.
+#: Errar para o lado de não executar é barato; errar para o outro entra em
+#: portal de seguradora e fala com segurado.
+AUXILIAR_TRABALHA_QUANDO = frozenset({"active"})
+
+
+async def _auxiliares_que_podem_trabalhar(supabase, rotinas: List[Dict[str, Any]]) -> set:
+    """Dos donos destas rotinas, quais estão LIGADOS. Uma consulta só.
+
+    Devolve o conjunto de `tenant_auxiliaries.id` em estado de trabalho. Rotina
+    cujo dono não está aqui não executa neste tick.
+
+    ⚠️ FALHA FECHADA. Se a consulta quebrar, devolve conjunto VAZIO — nenhuma
+    rotina roda. É o mesmo critério de `attendance_agent_active`
+    (`attendance_capture.py:266`): não conseguir confirmar que pode não é
+    permissão para agir. Uma rodada perdida se recupera no tick seguinte; uma
+    varredura de portal com o Auxiliar desligado, não.
+    """
+    ids = {str(r.get("tenant_auxiliary_id")) for r in rotinas if r.get("tenant_auxiliary_id")}
+    if not ids:
+        return set()
+    try:
+        res = await asyncio.to_thread(
+            lambda: supabase.client.table("tenant_auxiliaries")
+            .select("id, status")
+            .in_("id", sorted(ids))
+            .execute()
+        )
+    except Exception as e:  # noqa: BLE001
+        logger.error(
+            "[ROUTINES] nao consegui ler o estado dos Auxiliares (%s) — NENHUMA rotina "
+            "roda neste tick. Falha fechada por decisao (SPEC-078 A.3).",
+            type(e).__name__,
+        )
+        return set()
+    return {
+        str(l.get("id"))
+        for l in (res.data or [])
+        if str(l.get("status") or "").strip().lower() in AUXILIAR_TRABALHA_QUANDO
+    }
+
+
 async def run_due_routines(supabase) -> int:
     """Executa as rotinas vencidas (claim atômico por next_run_at). Retorna nº executadas."""
     now_iso = datetime.now(timezone.utc).isoformat()
@@ -348,7 +407,54 @@ async def run_due_routines(supabase) -> int:
     res = await asyncio.to_thread(_fetch)
     due: List[Dict[str, Any]] = res.data or []
     ran = 0
+
+    # 🔴 SPEC-078 A.3 — DESLIGAR O AUXILIAR DESLIGA O ROBÔ DELE.
+    #
+    # 📊 Medido em 17/08/2026: `tenant_auxiliaries` não aparecia UMA VEZ neste
+    # arquivo nem em `billing_collection.py`. Eram dois interruptores sem
+    # nenhum fio entre eles — o Auxiliar governava só o rótulo do card, e a
+    # rotina rodava com o Auxiliar `paused`, `inactive` ou desinstalado.
+    #
+    # O Founder viveu exatamente isso: criou a rotina, desligou o Auxiliar, e
+    # a varredura de portal aconteceria mesmo assim. Foi ele ter pausado a
+    # rotina à mão que impediu — não o interruptor que ele achava que era o
+    # principal.
+    #
+    # Uma consulta em lote, não uma por rotina: o laço pega no máximo 5 por
+    # tick, mas 5 idas ao banco por minuto para responder a mesma pergunta é
+    # desperdício que vira hábito.
+    donos_ligados = await _auxiliares_que_podem_trabalhar(supabase, due)
+
     for routine in due:
+        dono_id = str(routine.get("tenant_auxiliary_id") or "")
+        if dono_id and dono_id not in donos_ligados:
+            # Avança o relógio SEM executar e SEM marcar `last_run_at`.
+            #
+            # Pular sem avançar faria a rotina reaparecer a cada 60 s para ser
+            # pulada de novo — log infinito, e o claim de outro worker nunca
+            # sossega. Avançar sem executar é o que "hoje esse trabalhador está
+            # de folga" significa.
+            nxt_folga = compute_next_run(
+                routine.get("schedule") or {}, routine.get("timezone") or "America/Sao_Paulo"
+            )
+            try:
+                await asyncio.to_thread(
+                    lambda: supabase.client.table("routines")
+                    .update({"next_run_at": nxt_folga.isoformat()})
+                    .eq("id", routine["id"])
+                    .eq("next_run_at", routine.get("next_run_at"))
+                    .execute()
+                )
+            except Exception as e:  # noqa: BLE001
+                logger.error("[ROUTINES] nao consegui adiar rotina de Auxiliar desligado: %s",
+                             type(e).__name__)
+            logger.info(
+                "[ROUTINES] rotina %s NAO executada: o Auxiliar dono esta desligado "
+                "(SPEC-078 A.3). Ligue o Auxiliar para ela voltar a rodar.",
+                routine.get("id"),
+            )
+            continue
+
         nxt = compute_next_run(routine.get("schedule") or {}, routine.get("timezone") or "America/Sao_Paulo")
 
         def _claim():

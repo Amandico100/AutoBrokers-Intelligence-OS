@@ -803,6 +803,21 @@ class PairingOrchestrator:
             # nulo por ausência é diferente de nulo por desenho.
             "agent_id": _resolver_agente_de_atendimento(company_id) if purpose == "attendance" else None,
             "last_seen_at": _iso(_utcnow()),
+            # 🔴 SPEC-078 B — `permite_envio_de_auxiliar` NÃO está neste dict, e a
+            # ausência é a decisão.
+            #
+            # No INSERT (pareamento novo) a coluna cai no `default false`: número
+            # recém-pareado nasce sem canal de saída de Auxiliar, como a SPEC-063 D
+            # manda. No UPDATE (reconexão — QR vencido, telefone desligado, troca de
+            # aparelho) a coluna não é tocada, então a autorização SOBREVIVE.
+            #
+            # Isso é o mesmo raciocínio de `_escopo_lembrado` logo acima: reconectar
+            # é uma pausa, não um esquecimento. Uma corretora que autorizou a
+            # cobrança em agosto não pode perder o canal porque o celular ficou sem
+            # bateria — ela nem saberia que perdeu, e o boleto simplesmente não sai.
+            #
+            # O que ZERA a autorização é trocar de NÚMERO — ver
+            # `_esquecer_telefone_pareado`, onde a razão está escrita.
         })
 
         def _upsert() -> None:
@@ -1528,22 +1543,56 @@ class PairingOrchestrator:
     async def _esquecer_telefone_pareado(
         self, company_id: str, purpose: str, instance: str
     ) -> None:
+        """Apaga o telefone anterior da linha — e, com ele, a autorização de envio.
+
+        🔴 SPEC-078 B — `permite_envio_de_auxiliar` volta a `false` aqui, e só aqui.
+
+        A autorização que a corretora dá na tela é sobre **um número**: "pode
+        mandar cobrança por ESTE WhatsApp". `liberar_para_novo_numero` é a única
+        rota que troca o número mantendo a linha (mesmo `instance_id`, mesmo
+        token — ver a docstring dela, que explica por que o nome é preservado).
+
+        Se a autorização sobrevivesse à troca, o telefone NOVO herdaria em
+        silêncio um consentimento que ninguém deu por ele. Foi o caso concreto da
+        Resulta: a linha pareada era de um DDD 47 e quem ia parear era a
+        atendente, de um DDD 48 — outra pessoa, outro aparelho. O boleto sairia
+        do celular dela sem que ela tivesse dito sim.
+
+        Reconectar o MESMO número não passa por aqui e preserva a autorização
+        (ver `_persist_integration`). Trocar de número exige clicar de novo — é
+        um clique, e ele compra a diferença entre consentimento e herança.
+        """
         from app.core.database import get_supabase_client
 
         db = get_supabase_client()
 
-        def _update() -> None:
+        base = {
+            "paired_phone_e164": None, "paired_jid": None, "paired_at": None,
+            "channel_status": "disconnected",
+        }
+
+        def _update(campos: Dict[str, Any]) -> None:
             # Filtro por company_id junto: service role ignora RLS (CLAUDE.md §7).
-            db.client.table("integrations").update({
-                "paired_phone_e164": None, "paired_jid": None, "paired_at": None,
-                "channel_status": "disconnected",
-            }).eq("company_id", company_id).eq("purpose", purpose) \
+            db.client.table("integrations").update(campos) \
+              .eq("company_id", company_id).eq("purpose", purpose) \
               .eq("instance_id", instance).execute()
 
         try:
-            await asyncio.to_thread(_update)
-        except Exception:  # noqa: BLE001 — a liberação no provedor já aconteceu
-            logger.warning("[PAIRING] telefone anterior de %s nao foi limpo na linha", instance)
+            await asyncio.to_thread(_update, {**base, "permite_envio_de_auxiliar": False})
+        except Exception:  # noqa: BLE001
+            # Expand-first tem uma janela: código novo pode subir antes de a
+            # migration da coluna ser aplicada, e aí o PostgREST recusa o UPDATE
+            # INTEIRO (PGRST204) — o telefone antigo ficaria na linha afirmando um
+            # pareamento que não existe mais, que é o defeito que esta função
+            # existe para evitar. Segunda tentativa sem a coluna nova: limpar o
+            # telefone é o trabalho principal, e ele não pode depender do acessório.
+            try:
+                await asyncio.to_thread(_update, base)
+                logger.warning("[PAIRING] %s: coluna permite_envio_de_auxiliar ausente "
+                               "(migration 20260817_02 nao aplicada?) — telefone "
+                               "limpo, autorizacao NAO foi zerada", instance)
+            except Exception:  # noqa: BLE001 — a liberação no provedor já aconteceu
+                logger.warning("[PAIRING] telefone anterior de %s nao foi limpo na linha", instance)
 
 
 _orchestrator: Optional[PairingOrchestrator] = None

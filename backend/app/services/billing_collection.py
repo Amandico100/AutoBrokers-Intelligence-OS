@@ -792,11 +792,29 @@ def _find_whatsapp_integration(client, company_id: str) -> Optional[Dict[str, An
     # inclusive `observer`. Com `return rows[0] if rows else None`, a corretora
     # que só tem o observador ativo mandava COBRANÇA pelo número que existe
     # para ficar calado. 📊 Amandus e AutoFleet estavam exatamente assim.
+    #
+    # 🔴 SPEC-078 B — este é o ÚNICO lugar (até aqui) que pede `para="auxiliar"`.
+    #
+    # A cobrança é trabalho que a corretora instalou, nomeou e ligou. Se ela
+    # ainda por cima autorizou o número pareado a ser o canal de saída
+    # (`permite_envio_de_auxiliar`), o observador entra na lista — e SÓ nesse
+    # caso. Sem a autorização, `pode_enviar` devolve False como sempre devolveu,
+    # e a corretora continua sem canal: 📊 em 17/08/2026 as duas únicas
+    # integrações ativas do banco são `observer`, e nenhuma está autorizada.
+    #
+    # O observador continua em ÚLTIMO na ordenação (cai no `2` do `rank.get`):
+    # existindo um número de Auxiliar de verdade ou o de atendimento, é por ele
+    # que a cobrança sai. A autorização abre uma porta de emergência, não vira
+    # a primeira escolha.
     from app.services.integration_service import IntegrationService
 
-    rows = [dict(r) for r in (res.data or []) if IntegrationService.pode_enviar(r)]
+    rows = [dict(r) for r in (res.data or [])
+            if IntegrationService.pode_enviar(r, para=IntegrationService.ENVIO_DE_AUXILIAR)]
     rank = {"auxiliary": 0, "attendance": 1}
-    rows.sort(key=lambda r: rank.get(str(r.get("purpose") or ""), 2))
+    # `.strip().lower()` porque `purpose` é texto livre — 📊 não existe CHECK
+    # nesta coluna (medido em 17/08/2026 em `pg_constraint`). Um `"Auxiliary "`
+    # gravado à mão cairia no fallback 2 e perderia a preferência em silêncio.
+    rows.sort(key=lambda r: rank.get(str(r.get("purpose") or "").strip().lower(), 2))
     return rows[0] if rows else None
 
 

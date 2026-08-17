@@ -5,6 +5,19 @@
 // Um lugar só para a pergunta "o que já aconteceu aqui?". Antes eram três
 // itens de menu (Atividades, Histórico, Pesquisas) e dois produtores sem tela
 // nenhuma (artifacts e execuções de auxiliar).
+//
+// SPEC-078 F.6 — 📊 17/08/2026, dois defeitos medidos aqui:
+//
+//   1. `?tipo=` era IGNORADO. `/dashboard/historico` redireciona para
+//      `/dashboard/entregas?tipo=conversa` e `/dashboard/auxiliares/execucoes`
+//      para `?tipo=trabalho` — os dois links funcionavam e a tela abria em
+//      "Tudo". Quem vinha do Histórico caía numa lista com artifacts,
+//      briefings e atividades no meio, e concluía que o Histórico sumiu.
+//
+//   2. Linha sem destino tinha a MESMA aparência de linha com destino:
+//      mesma borda, mesmo fundo, mesmo tamanho. Só o clique revelava a
+//      diferença — e clique que não faz nada é o que ensina o corretor a
+//      parar de clicar.
 
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import Link from 'next/link';
@@ -32,6 +45,15 @@ const TIPOS: { chave: Tipo | 'tudo'; rotulo: string; Icone?: typeof FileText }[]
   { chave: 'trabalho', rotulo: 'Trabalhos', Icone: Cog },
   { chave: 'pesquisa', rotulo: 'Pesquisas', Icone: Search },
 ];
+
+/**
+ * Os valores de `?tipo=` que a URL pode pedir.
+ *
+ * `pesquisa` fica FORA: ele existe em TIPOS como porta para a tela própria de
+ * Pesquisas, não como filtro desta lista — aceitá-lo aqui abriria a tela numa
+ * seleção que nunca tem resultado.
+ */
+const FILTROS_DA_URL: string[] = ['tudo', 'documento', 'conversa', 'trabalho'];
 
 const COR: Record<Tipo, string> = {
   documento: 'text-primary',
@@ -72,15 +94,35 @@ function Linha({ item }: { item: Entrega }) {
     </>
   );
 
-  const classe =
-    'flex items-start gap-3 rounded-lg border border-border bg-surface px-3 py-2.5';
+  const classe = 'flex items-start gap-3 rounded-lg border px-3 py-2.5';
 
-  return item.href ? (
-    <Link href={item.href} className={`${classe} transition-colors hover:border-primary/40`}>
+  if (item.href) {
+    return (
+      <Link
+        href={item.href}
+        className={`${classe} border-border bg-surface transition-colors hover:border-primary/40`}
+      >
+        {corpo}
+      </Link>
+    );
+  }
+
+  // SPEC-078 F.6b — a linha sem destino PARECE sem destino.
+  //
+  // Devolver um <div> com a aparência do <Link> não bastava: o corretor clicava
+  // e nada acontecia, o que é pior do que uma linha que se anuncia como
+  // registro. Borda tracejada, fundo recuado e `cursor-default` dizem "isto é
+  // um registro, não uma porta" antes do clique.
+  //
+  // O certo continua sendo dar destino — este ramo é para o que ainda não tem
+  // (categoria de atividade nova, execução de auxiliar já desinstalado).
+  return (
+    <div
+      className={`${classe} cursor-default border-dashed border-border/60 bg-surface/40`}
+      title="Este registro não tem tela para abrir"
+    >
       {corpo}
-    </Link>
-  ) : (
-    <div className={classe}>{corpo}</div>
+    </div>
   );
 }
 
@@ -111,6 +153,30 @@ export default function EntregasClient() {
   useEffect(() => {
     carregar();
   }, [carregar]);
+
+  // SPEC-078 F.6 — `?tipo=` passa a valer.
+  //
+  // 📊 17/08/2026 este estado nascia em 'tudo' e nunca olhava a URL, enquanto
+  // DOIS redirects permanentes já mandavam o filtro:
+  //     /dashboard/historico            → /dashboard/entregas?tipo=conversa
+  //     /dashboard/auxiliares/execucoes → /dashboard/entregas?tipo=trabalho
+  //
+  // Lido em `useEffect` e não em `useState(() => …)` de propósito: o
+  // inicializador rodaria no cliente com uma URL que o servidor não viu, e a
+  // hidratação acusaria diferença nas classes dos botões. É o mesmo padrão que
+  // já funciona em app/dashboard/auxiliares/rotinas/page.tsx.
+  useEffect(() => {
+    try {
+      const t = new URLSearchParams(window.location.search).get('tipo');
+      // Só valor que FILTRA alguma coisa entra. `?tipo=lixo` deixaria a lista
+      // vazia e o corretor sem entender por quê; `?tipo=pesquisa` faria o
+      // mesmo, porque pesquisa não é um tipo desta lista — é a porta para a
+      // tela própria (ver o botão mais abaixo).
+      if (t && FILTROS_DA_URL.includes(t)) setFiltro(t as Tipo | 'tudo');
+    } catch {
+      /* sem query — abre em "Tudo", que é o padrão */
+    }
+  }, []);
 
   const filtrados = useMemo(() => {
     if (!itens) return [];
@@ -154,11 +220,36 @@ export default function EntregasClient() {
             //
             // Sem este link a tela ficaria órfã: foi exatamente o que o
             // test_navegacao_sem_pagina_orfa pegou quando eu a movi.
+            //
+            // ── SPEC-078 F.6, decisão registrada (regra 0–100 do §14) ──
+            //
+            // 📊 17/08/2026: `contagem['pesquisa']` é PROVADAMENTE zero — ela é
+            // derivada de `itens`, e nenhuma das cinco fontes da rota produz
+            // `tipo: 'pesquisa'`. O `(${n})` aqui era código morto que fingia
+            // ser um contador.
+            //
+            //   A) dar fonte: ler research_* como sexta fonte ............ 55
+            //      Duplicaria a pesquisa em dois lugares e a linha de timeline
+            //      não comporta procedência nem fontes — que é exatamente a
+            //      razão de a tela própria existir. Mais uma consulta por
+            //      carga para mostrar de novo o que já tem tela melhor.
+            //   B) remover o botão ...................................... 30
+            //      Deixa /dashboard/entregas/pesquisas órfã. Já aconteceu uma
+            //      vez e o guarda de página órfã pegou.
+            //   C) assumir que é PORTA, não filtro: tirar o contador morto
+            //      e marcar que o clique sai daqui .................... 85
+            //      Nada mente, nada fica órfão, nenhuma consulta a mais.
+            //
+            // Executada a C.
             if (t.chave === 'pesquisa') {
               return (
-                <Link key={t.chave} href="/dashboard/entregas/pesquisas" className={classe}>
-                  {t.rotulo}
-                  {n > 0 ? ` (${n})` : ''}
+                <Link
+                  key={t.chave}
+                  href="/dashboard/entregas/pesquisas"
+                  className={classe}
+                  title="As pesquisas têm tela própria, com as fontes de cada afirmação"
+                >
+                  {t.rotulo} ↗
                 </Link>
               );
             }

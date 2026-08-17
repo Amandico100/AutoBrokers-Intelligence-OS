@@ -191,12 +191,69 @@ class IntegrationService:
     # Última prioridade não protege. Só a proibição protege.
     PROPOSITOS_QUE_NUNCA_ENVIAM = frozenset({"observer"})
 
+    # SPEC-078 Bloco B — a coluna que transforma o envio numa DECISÃO da corretora.
+    #
+    # 🔴 POR QUE ESTA COLUNA EXISTE, e por que ela NÃO desfaz a SPEC-063 D.
+    #
+    # 📊 Medido em 17/08/2026: o dashboard pareia o WhatsApp da corretora com
+    # `purpose='observer'` (`app/api/dashboard/whatsapp-channel/route.ts`), e
+    # `observer` está na proibição acima. Consequência prática: **o número que a
+    # corretora pareou literalmente não conseguia enviar o boleto.** Era essa a
+    # causa de o Auxiliar de Cobrança nunca ter fechado o ciclo.
+    #
+    # Releia o motivo da proibição, dez linhas acima: ele fala de **surpresa** —
+    # "o segurado receberia mensagem de um número que nunca falou com ele, e a
+    # corretora perderia o silêncio que pediu ao parear". Não fala de envio.
+    #
+    # Aqui não há surpresa: a corretora clica num botão que descreve exatamente
+    # o que vai sair por ali. O que continua proibido — e continua proibido POR
+    # OMISSÃO, que é a parte que importa — é o sistema escolher sozinho.
+    #
+    # Desenhos considerados:
+    #   • segunda linha `purpose='auxiliary'` para o mesmo número .... nota 45
+    #     📊 `integrations_provider_identifier_key UNIQUE (provider, identifier)`
+    #     e `identifier` é o NOME DA INSTÂNCIA. Duas linhas exigiriam o mesmo
+    #     identifier (é a mesma instância) e bateriam na unique; derivar um novo
+    #     seria gravar o nome de uma instância que não existe no Evolution.
+    #   • afrouxar a proibição do observer ........................... nota 8
+    #     é desfazer a SPEC-063 D. Não.
+    #   • opt-in explícito por número (este) ......................... nota 88
+    #     uma linha, uma verdade, proibição continua padrão, e quem decide é a
+    #     corretora.
+    COLUNA_AUTORIZACAO_AUXILIAR = "permite_envio_de_auxiliar"
+
+    # Os dois usos que existem para um canal de saída. `plataforma` é tudo o que
+    # o produto manda por conta própria (alerta do Vigia, follow-up, sugestão) e
+    # segue exatamente como sempre foi. `auxiliar` é trabalho que a corretora
+    # instalou e ligou — cobrança, relatório — e só ele enxerga a autorização.
+    ENVIO_DE_PLATAFORMA = "plataforma"
+    ENVIO_DE_AUXILIAR = "auxiliar"
+
     @classmethod
-    def pode_enviar(cls, integracao: Optional[Dict]) -> bool:
-        """Esta integração pode ser canal de SAÍDA?"""
+    def pode_enviar(cls, integracao: Optional[Dict], *,
+                    para: str = ENVIO_DE_PLATAFORMA) -> bool:
+        """Esta integração pode ser canal de SAÍDA — para QUAL uso?
+
+        `para` é keyword-only e tem default. Isso não é estilo: é o que garante
+        que **todo chamador que existia antes da SPEC-078 continua com o
+        comportamento antigo, sem ser editado**. Omitir o argumento é pedir o
+        regime de plataforma, onde o observador segue proibido, autorizado ou
+        não. Afrouxar por omissão seria o defeito exato que a SPEC-063 D
+        corrigiu — e é a asserção mais importante de
+        `scripts/canal-auxiliary-nao-contamina-atendimento.test.mjs`.
+        """
         if not integracao:
             return False
-        return str(integracao.get("purpose") or "").strip().lower()             not in cls.PROPOSITOS_QUE_NUNCA_ENVIAM
+        purpose = str(integracao.get("purpose") or "").strip().lower()
+        if purpose not in cls.PROPOSITOS_QUE_NUNCA_ENVIAM:
+            return True
+        # Daqui para baixo, a integração é um observador.
+        if str(para or "").strip().lower() != cls.ENVIO_DE_AUXILIAR:
+            return False
+        # `is True` de propósito, e não um `bool(...)`: coluna ausente (banco sem
+        # a migration), `None`, `"false"` ou `0` têm de cair para o lado do
+        # silêncio. Só o booleano verdadeiro que a corretora gravou autoriza.
+        return integracao.get(cls.COLUNA_AUTORIZACAO_AUXILIAR) is True
 
     def get_platform_whatsapp_integration(self, company_id: str):
         """Integração p/ envios DE PLATAFORMA (alertas do Vigia, follow-ups,
@@ -206,6 +263,13 @@ class IntegrationService:
         corretoras com integração vinculada a agente (caso Resulta/Even) ficavam
         SEM canal de alerta — o Vigia falhava em silêncio. Aqui: tenta a global
         (agent_id NULL) e, se não houver, usa a integração ativa da corretora.
+
+        🔴 SPEC-078 B — esta função **não** passa `para="auxiliar"`, e a omissão
+        é a decisão. Alerta do Vigia, follow-up e sugestão são o produto falando
+        por conta própria: é exatamente a "surpresa" que a SPEC-063 D proíbe. A
+        autorização que a corretora dá é para o trabalho que ELA instalou e
+        ligou (cobrança, relatório), não para tudo. Um teste guarda esta linha:
+        `scripts/canal-auxiliary-nao-contamina-atendimento.test.mjs`.
         """
         integ = self.get_whatsapp_integration(company_id)
         if integ and self.pode_enviar(integ):

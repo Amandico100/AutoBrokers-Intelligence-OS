@@ -66,6 +66,7 @@ class _Tabela:
         self._modo = None
         self._payload = None
         self._eq: List = []
+        self._in: List = []
 
     def select(self, *_a, **_k):
         self._modo = "select"
@@ -88,6 +89,14 @@ class _Tabela:
     def neq(self, *_a):
         return self
 
+    def in_(self, col, valores):
+        # SPEC-078 A.3 usa `.in_()` para ler o estado dos Auxiliares donos numa
+        # consulta só. O dublê não tinha o método e devolvia AttributeError —
+        # que a função (corretamente) tratava como falha e fechava. O teste
+        # passava pelo caminho de erro em vez do caminho real.
+        self._in.append((col, {str(v) for v in valores}))
+        return self
+
     def gte(self, *_a):
         return self
 
@@ -104,6 +113,8 @@ class _Tabela:
         linhas = list(self.banco.dados.get(self.nome, []))
         for col, val in self._eq:
             linhas = [r for r in linhas if str(r.get(col)) == str(val)]
+        for col, vals in self._in:
+            linhas = [r for r in linhas if str(r.get(col)) in vals]
         return linhas
 
     def execute(self):
@@ -530,6 +541,73 @@ for rel in ("app/api/admin/sandbox/bootstrap-tenant/route.ts",
     check(f"{rel}: TODO `agent_enabled: true` do nascimento avisa que não liga nada",
           len(trechos) > 1 and all("não liga" in t[-400:].lower() for t in trechos[:-1]),
           f"{len(trechos) - 1} ocorrência(s)")
+
+# ===========================================================================
+print("\n[A.3] DESLIGAR O AUXILIAR DESLIGA O ROBO DELE")
+# ===========================================================================
+#
+# 📊 Este é o defeito que o Founder VIU acontecer em 17/08/2026: criou a rotina
+# de cobrança, deixou o Auxiliar desligado, e a varredura de portal aconteceria
+# no dia seguinte às 09:00. Foi ele ter pausado a rotina à mão que impediu — o
+# interruptor que ele achava ser o principal não desligava nada, porque
+# `routine_engine` nunca consultava `tenant_auxiliaries`.
+
+
+def _rotina(rid: str, dono: str, quando: str = "2020-01-01T00:00:00+00:00") -> Dict[str, Any]:
+    return {
+        "id": rid, "company_id": "c1", "tenant_auxiliary_id": dono,
+        "name": f"rotina {rid}", "is_active": True, "next_run_at": quando,
+        "schedule": {"kind": "daily", "time": "09:00"},
+        "delivery": {"channel": "none"}, "timezone": "America/Sao_Paulo",
+        "config": {}, "consecutive_failures": 0,
+    }
+
+
+banco_r.dados["tenant_auxiliaries"] = [
+    {"id": "aux-ligado", "company_id": "c1", "slug": "cobranca-feita", "status": "active"},
+    {"id": "aux-pausado", "company_id": "c1", "slug": "cobranca-feita", "status": "paused"},
+    {"id": "aux-inativo", "company_id": "c1", "slug": "cobranca-feita", "status": "inactive"},
+    {"id": "aux-arquivado", "company_id": "c1", "slug": "cobranca-feita", "status": "archived"},
+]
+
+todas = [_rotina("r-ligado", "aux-ligado"), _rotina("r-pausado", "aux-pausado"),
+         _rotina("r-inativo", "aux-inativo"), _rotina("r-arquivado", "aux-arquivado")]
+podem = rodar(RE._auxiliares_que_podem_trabalhar(banco_r, todas))
+
+check("Auxiliar ATIVO pode trabalhar", "aux-ligado" in podem, sorted(podem))
+check("Auxiliar PAUSADO nao trabalha", "aux-pausado" not in podem, sorted(podem))
+check("Auxiliar INATIVO nao trabalha", "aux-inativo" not in podem, sorted(podem))
+check("Auxiliar ARQUIVADO nao trabalha", "aux-arquivado" not in podem, sorted(podem))
+check("CONTROLE: a funcao CONSEGUE devolver ligado e desligado ao mesmo tempo "
+      "(se devolvesse sempre vazio, as tres linhas acima passariam por engano)",
+      len(podem) == 1, sorted(podem))
+
+# 🔴 Estado que ninguem previu cai no SILENCIO, nao no trabalho. Lista de
+# permissao, nao de proibicao.
+banco_r.dados["tenant_auxiliaries"].append(
+    {"id": "aux-futuro", "company_id": "c1", "slug": "x", "status": "estado_inventado_amanha"})
+podem2 = rodar(RE._auxiliares_que_podem_trabalhar(banco_r, todas + [_rotina("r-f", "aux-futuro")]))
+check("estado desconhecido NAO trabalha (lista de permissao)",
+      "aux-futuro" not in podem2, sorted(podem2))
+
+# Falha de leitura fecha, como o interruptor do atendimento.
+_tabela_boa = banco_r.table
+
+
+def _tabela_quebrada(nome):
+    if nome == "tenant_auxiliaries":
+        raise RuntimeError("banco fora do ar")
+    return _tabela_boa(nome)
+
+
+banco_r.table = _tabela_quebrada
+try:
+    podem3 = rodar(RE._auxiliares_que_podem_trabalhar(banco_r, todas))
+finally:
+    banco_r.table = _tabela_boa
+check("leitura falhando -> NENHUMA rotina roda (falha fechada)", podem3 == set(), podem3)
+check("CONTROLE: com o banco de volta, volta a devolver o ligado",
+      "aux-ligado" in rodar(RE._auxiliares_que_podem_trabalhar(banco_r, todas)))
 
 print("\n" + "=" * 70)
 print(f"  {PASS} asserções verdes · {FAIL} vermelhas")

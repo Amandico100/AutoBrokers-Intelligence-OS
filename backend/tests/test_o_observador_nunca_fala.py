@@ -82,12 +82,12 @@ def teste_a_busca_de_plataforma_respeita():
 def teste_a_cobranca_respeita():
     print("\n[D3] A cobrança nunca sai pelo observador")
     codigo = _sem_comentario(_ler("backend", "app", "services", "billing_collection.py"))
-    checar("IntegrationService.pode_enviar(r)" in codigo,
+    checar("IntegrationService.pode_enviar(r" in codigo,
            "o observador sai da lista ANTES da ordenação",
            "ordenar não basta: o último da fila é o escolhido quando é o único")
 
     # A ordem importa: filtrar depois de ordenar não resolveria nada.
-    pos_filtro = codigo.find("pode_enviar(r)")
+    pos_filtro = codigo.find("pode_enviar(r")
     pos_sort = codigo.find("rows.sort(")
     checar(pos_filtro != -1 and pos_sort != -1 and pos_filtro < pos_sort,
            "o filtro vem antes do sort")

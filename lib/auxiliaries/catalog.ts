@@ -92,11 +92,41 @@ export interface ItemDoCatalogo {
  *
  * As outras duas ainda moram sob `galeria/` e o port é dívida registrada.
  */
-const TELA_DE_EXECUCAO: Record<string, string> = {
+export const TELA_DE_EXECUCAO: Record<string, string> = {
   'checklist-6h': '/dashboard/auxiliares/checklist-6h/hoje',
   'follow-up-whatsapp': '/dashboard/auxiliares/galeria/follow-up-whatsapp',
   'resumo-atendimentos': '/dashboard/auxiliares/galeria/resumo-atendimentos',
 };
+
+/**
+ * SPEC-078 F.2 — a tela de execução deste Auxiliar, quando ele tem uma.
+ *
+ * 📊 17/08/2026: Entregas montava o href do briefing À MÃO, como
+ * `/dashboard/auxiliares/checklist-6h`. Esse endereço é capturado pela rota
+ * `[slug]`, que renderiza o CARTÃO DESCRITIVO do Auxiliar — não o briefing.
+ * São 26 briefings da AutoFleet que levavam à descrição do trabalho em vez do
+ * trabalho. O endereço certo já estava escrito no mapa acima e não era lido.
+ *
+ * Por isso este leitor existe: quem precisa de um endereço de Auxiliar
+ * PERGUNTA aqui, em vez de concatenar strings. O próximo Auxiliar que ganhar
+ * tela própria passa a funcionar de graça em toda tela que use estas funções.
+ */
+export function telaDeExecucao(slug: string | null | undefined): string | null {
+  if (!slug) return null;
+  return TELA_DE_EXECUCAO[slug] ?? null;
+}
+
+/**
+ * Onde abrir este Auxiliar: a tela onde ele é OPERADO, e só na falta dela o
+ * cartão descritivo.
+ *
+ * A ordem importa. O cartão é a resposta para "o que este Auxiliar faz?"; quem
+ * clica numa entrega já sabe o que ele faz e quer ver o que ele FEZ.
+ */
+export function ondeAbrirAuxiliar(slug: string | null | undefined): string | null {
+  if (!slug) return null;
+  return telaDeExecucao(slug) ?? `/dashboard/auxiliares/${slug}`;
+}
 
 export const CATEGORIAS: Record<string, { rotulo: string; emoji: string }> = {
   dinheiro_que_volta: { rotulo: 'Dinheiro que volta', emoji: '💰' },
