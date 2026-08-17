@@ -79,14 +79,47 @@ def kill_switch_ativo() -> bool:
     apertasse em uma emergência veria a tela dizer "parado" enquanto o worker
     continuava entrando em portal.
 
-    Aqui ele passa a valer de verdade. Semântica preservada do lado TS: a
-    variável é considerada ATIVA por padrão e só `"false"` a desliga — então um
-    ambiente que perdeu a variável falha fechado, não aberto.
+    Aqui ele passa a valer de verdade — mas **não** exatamente como o lado TS.
+
+    🔴 CORREÇÃO DE UMA MENTIRA MINHA, 17/08/2026. Esta docstring dizia "um
+    ambiente que perdeu a variável falha fechado, não aberto". O código logo
+    abaixo faz o OPOSTO: ausente devolve `False`, ou seja, freio SOLTO. Eu
+    escrevi a intenção e implementei o contrário, e a frase errada sobreviveu à
+    revisão da SPEC-073 inteira. Documento que mente sobre o código é pior que
+    documento nenhum: ele desliga a desconfiança de quem lê.
+
+    A divergência real, medida:
+
+        TypeScript (`production-gates.ts:27`)   ausente → ATIVO   (fecha)
+        Python     (aqui)                       ausente → INATIVO (abre)
+
+    **A mesma variável significa coisas opostas em dois processos.** Isso é
+    pior do que qualquer uma das duas escolhas isoladas.
+
+    Por que NÃO unifiquei em fail-closed agora: se a variável não estiver
+    definida no ambiente do portal-worker, fechar por padrão faria o worker
+    parar de pegar job no próximo deploy — derrubando exatamente a Cobrança que
+    estamos colocando de pé, e com um sintoma mudo ("nenhum job roda"). Trocar
+    um freio solto por uma parada silenciosa não é ganho de segurança.
+
+    O que faço em vez disso: torno a AUSÊNCIA VISÍVEL (`kill_switch_presente`
+    no `/health` e um aviso no log). Com a medição na mão, virar o default é um
+    commit de uma linha e sem susto. Registrado em PENDENCIAS.md.
     """
     bruto = os.getenv("GLOBAL_KILL_SWITCH")
     if bruto is None:
-        return False  # variável ausente = comportamento historico do worker
+        return False  # ⚠️ FALHA ABERTO — de propósito e por ora. Ver acima.
     return str(bruto).strip().lower() != "false"
+
+
+def kill_switch_presente() -> bool:
+    """A variável existe no ambiente deste processo?
+
+    Sem isto, `kill_switch_ativo: false` no `/health` tem DOIS significados —
+    "alguém desligou o freio de propósito" e "o freio nem está ligado na roda"
+    — e quem está de plantão não tem como saber qual dos dois está vendo.
+    """
+    return os.getenv("GLOBAL_KILL_SWITCH") is not None
 
 
 @dataclass

@@ -106,7 +106,8 @@ async def health() -> dict:
     """
     from portal_worker.journeys import JOURNEYS, portais_com_cobranca
     from portal_worker.runtime import (
-        discovery_mode, kill_switch_ativo, profiler_enabled, raw_trace_enabled,
+        discovery_mode, kill_switch_ativo, kill_switch_presente,
+        profiler_enabled, raw_trace_enabled,
     )
     from portal_worker.perception import visao_habilitada, provider_de_visao
     from portal_worker.worker import JOB_TIMEOUT_SECONDS, POLL_SECONDS
@@ -118,6 +119,10 @@ async def health() -> dict:
         # processo nesta SPEC, e quem aperta o freio precisa conseguir CONFERIR
         # que ele pegou, sem abrir log de contêiner.
         "kill_switch_ativo": kill_switch_ativo(),
+        # E se o freio está de fato ligado na roda. `ativo: false` sozinho tem
+        # DOIS significados — "desligado de propósito" e "a variável não existe
+        # neste processo" — e quem está de plantão não consegue distinguir.
+        "kill_switch_presente": kill_switch_presente(),
         "discovery_mode": discovery_mode(),
         "profiler_enabled": profiler_enabled(),
         "raw_trace_enabled": raw_trace_enabled(),

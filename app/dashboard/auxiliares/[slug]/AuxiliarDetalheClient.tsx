@@ -83,6 +83,15 @@ export default function AuxiliarDetalheClient({ item, podeLigar }: Props) {
   }
 
   const ligado = item.estado === 'ligado';
+  // Instalado ≠ ligado. Um Auxiliar PAUSADO continua dono das rotinas dele, e
+  // é justamente pausado que a corretora quer configurar antes de ligar.
+  //
+  // 📊 Medido em 17/08/2026: a Resulta tem a Cobrança Feita instalada com
+  // status `inactive` (= "pausado" na tela) e UMA rotina de cobrança com o
+  // número de teste e a mensagem já gravados. Com a seção presa em `ligado`,
+  // essa rotina era invisível pela interface — existia no banco e em lugar
+  // nenhum na tela.
+  const instalado = ligado || item.estado === 'pausado';
 
   return (
     <div className="space-y-8">
@@ -266,7 +275,7 @@ export default function AuxiliarDetalheClient({ item, podeLigar }: Props) {
       )}
 
       {/* 8 · ROTINAS DESTE AUXILIAR */}
-      {ligado && (
+      {instalado && (
         <Secao titulo="Rotinas deste Auxiliar">
           {item.rotinas > 0 ? (
             <Link

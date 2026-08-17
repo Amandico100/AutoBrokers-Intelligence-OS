@@ -36,6 +36,7 @@ from portal_worker import guardrails as _G           # noqa: E402
 from portal_worker import redaction as _R            # noqa: E402
 from portal_worker.runtime import (                  # noqa: E402
     kill_switch_ativo,
+    kill_switch_presente,
     montar_runtime as _montar_runtime,
 )
 
@@ -976,6 +977,16 @@ async def poll_loop() -> None:
         logger.info("[PORTAL] standby (PORTAL_REAL_ENABLED=false) — não executa jobs")
         return
     logger.info("[PORTAL] worker iniciado (poll %ss)", POLL_SECONDS)
+    # 🔴 Dito UMA vez, no boot, e não a cada volta: se a variável não existe
+    # neste processo, o freio de emergência não está ligado na roda. Sem esta
+    # linha a ausência é indistinguível de "desligado de propósito" — ver
+    # `runtime.kill_switch_ativo`.
+    if not kill_switch_presente():
+        logger.warning(
+            "[PORTAL] GLOBAL_KILL_SWITCH AUSENTE do ambiente — o freio de "
+            "emergencia NAO alcanca este worker. Defina a variavel (mesmo que "
+            "como 'false') para que apertar o freio funcione."
+        )
     while True:
         try:
             # 🔴 O freio que não estava ligado na roda (SPEC-073, achado de

@@ -58,13 +58,33 @@ os.environ["PORTAL_PROFILER_ENABLED"] = "false"
 check("profiler pode ser desligado (rollback do Bloco L)", RT.profiler_enabled() is False)
 os.environ.pop("PORTAL_PROFILER_ENABLED", None)
 
-# 🔴 Semantica preservada do lado TS: so `"false"` desliga. Um ambiente que
-# perdeu a variavel para um deploy mal feito falha FECHADO.
+# 🔴 CORRIGIDO EM 17/08/2026. Este comentario dizia "um ambiente que perdeu a
+# variavel falha FECHADO" — copiando a docstring, que mentia. E o laco abaixo
+# nunca chegava a testar o caso AUSENTE: fazia `pop` e seguia adiante. Ou seja,
+# o teste afirmava em portugues exatamente aquilo que ele nao verificava.
+#
+# CLAUDE.md 9.3: quando o fato muda, o teste muda com ele. O fato aqui e que
+# o Python falha ABERTO quando a variavel some, e o TypeScript falha FECHADO.
+# Agora as duas coisas estao ESCRITAS e VERIFICADAS.
 for valor, esperado in (("true", True), ("TRUE", True), ("1", True),
                         ("false", False), ("FALSE", False),
                         ("", True), ("qualquer coisa", True)):
     os.environ["GLOBAL_KILL_SWITCH"] = valor
     check(f"kill switch com {valor!r} -> {esperado}", RT.kill_switch_ativo() is esperado)
+    check(f"e {valor!r} conta como PRESENTE", RT.kill_switch_presente() is True)
+
+os.environ.pop("GLOBAL_KILL_SWITCH", None)
+check("AUSENTE -> o freio NAO fecha (falha aberto, de proposito por ora)",
+      RT.kill_switch_ativo() is False)
+check("AUSENTE -> e isso e visivel como ausencia",
+      RT.kill_switch_presente() is False)
+
+# 🔴 CONTROLE (CLAUDE.md 9.2). `presente` so vale alguma coisa se ele CONSEGUIR
+# discordar de `ativo`. Se as duas funcoes devolvessem sempre o mesmo, as
+# assercoes acima passariam e o `/health` nao teria ganhado informacao nenhuma.
+os.environ["GLOBAL_KILL_SWITCH"] = "false"
+check("CONTROLE: 'false' e o caso onde as duas DIVERGEM (ausente=False/False)",
+      RT.kill_switch_ativo() is False and RT.kill_switch_presente() is True)
 os.environ.pop("GLOBAL_KILL_SWITCH", None)
 
 # ==========================================================================

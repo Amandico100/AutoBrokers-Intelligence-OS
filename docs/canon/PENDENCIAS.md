@@ -6130,3 +6130,96 @@ Mudança dessas se faz com medição sobre evidência real, não no fim de uma S
 acrescentar.
 **O que custa esquecer:** chassi de segurado permanece legível na evidência.
 Risco moderado: a tabela é de acesso controlado, não vai para o Git.
+
+---
+
+## P-207 · 🔴 O freio de emergência significa coisas opostas em dois processos
+
+**Aberta em:** 17/08/2026 · **Dono:** 🧑 Founder (uma variável) → 🤖 execução (uma linha)
+
+📊 Medido em 17/08/2026, lendo os dois códigos:
+
+| Processo | `GLOBAL_KILL_SWITCH` ausente | Efeito |
+|---|---|---|
+| `lib/security/production-gates.ts:27` | **ATIVO** | falha fechado |
+| `backend/portal_worker/runtime.py:86` | **INATIVO** | falha aberto |
+
+A mesma variável, dois significados opostos. Pior do que qualquer uma das duas
+escolhas isoladas: quem aperta o freio não sabe o que acontece.
+
+E a docstring do Python **afirmava** falhar fechado enquanto o código falhava
+aberto — mentira minha, escrita na SPEC-073 e corrigida em 17/08/2026. O teste
+`test_spec073_runtime.py` repetia a mesma frase e **nunca testava o caso
+ausente**. Ambos consertados.
+
+**Por que não unifiquei já:** se a variável não existir no ambiente do
+portal-worker, fechar por padrão faria o worker parar de pegar job no próximo
+deploy — derrubando a Cobrança em silêncio. Trocar freio solto por parada muda
+não é ganho.
+
+**O que destrava:**
+1. 🤖 (feito) `/health` do portal-worker agora expõe `kill_switch_presente`, e
+   o worker avisa no boot quando a variável falta.
+2. 🧑 Founder: definir `GLOBAL_KILL_SWITCH=false` **explicitamente** no serviço
+   `portal-worker` do EasyPanel — mesmo valor de hoje, só que existindo.
+3. 🤖 com `kill_switch_presente: true` medido, trocar `return False` por
+   `return True` no caso ausente. Uma linha, sem susto.
+
+**O que custa esquecer:** o freio de emergência do produto continua sendo um
+botão que pode não estar ligado na roda, sem ninguém saber qual dos dois casos
+está vendo.
+
+---
+
+## P-208 · 🟡 Nada no banco liga um Auxiliar ao modelo de Rotina dele
+
+**Aberta em:** 17/08/2026 · **Dono:** 🤖 execução
+
+📊 Medido: `auxiliary_templates` não tem coluna apontando para
+`routine_templates`. Pior, os dois usam **nomes diferentes para os mesmos
+campos**:
+
+| `auxiliary_templates.default_config` | `routines.config` (o que o motor lê) |
+|---|---|
+| `portais` | `portal_keys` |
+| `exige_aprovacao_para_enviar` | `approval_required` |
+
+Copiar um no outro faz a seleção de seguradoras cair no default **em silêncio**
+— `billing_collection.py:385,394` lê os nomes da direita.
+
+Por isso o mapa `ROTINA_DO_AUXILIAR` vive em TypeScript
+(`app/dashboard/auxiliares/rotinas/page.tsx`). Enquanto ele existir, **um
+Auxiliar novo com rotina própria precisa de uma linha lá**.
+
+**O que destrava:** 🤖 coluna `routine_template_id` em `auxiliary_templates`
+(expand-first, idempotente), e unificar os nomes dos campos numa das duas
+direções — com backfill, porque há linha semeada em produção usando os nomes
+antigos.
+**O que custa esquecer:** o próximo Auxiliar com rotina nasce sem porta, do
+mesmo jeito que a Cobrança Feita ficou entre 02/08 e 17/08/2026.
+
+---
+
+## P-209 · 🟡 AMANDUS SEGUROS não tem nenhuma conta de portal
+
+**Aberta em:** 17/08/2026 · **Dono:** 🧑 Founder
+
+📊 Medido em 17/08/2026:
+
+| Corretora | Portais saudáveis | WhatsApp | Cobrança Feita | Rotinas |
+|---|---|---|---|---|
+| AMANDUS SEGUROS | **0** | evolution-go | — | 0 |
+| AutoFleet | 8 | evolution-go | — | 0 |
+| Resulta Seguros | 8 | evolution-go | `inactive` | 1 |
+| AutoBrokers Blueprint Studio | 0 | — | — | 0 |
+| AutoBrokers Global Knowledge | 0 | — | — | 0 |
+
+A AMANDUS é a corretora de teste do Founder, e é a única das três "de verdade"
+que **não pode** instalar a Cobrança Feita — o conector `insurance_portal` é
+satisfeito por ter conta de portal saudável, e ela não tem nenhuma.
+
+**O que destrava:** 🧑 ou cadastrar credencial de seguradora na AMANDUS, ou
+fazer os testes na **Resulta**, que já tem os 8 portais, a Cobrança instalada e
+a rotina com número de teste e mensagem gravados.
+**O que custa esquecer:** o Founder tenta testar na corretora errada e conclui
+que o produto não funciona — foi exatamente o que aconteceu com a AutoFleet.
