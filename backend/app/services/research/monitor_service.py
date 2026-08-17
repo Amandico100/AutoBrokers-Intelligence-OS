@@ -221,17 +221,35 @@ class MonitorService:
                   else {"kind": "daily", "time": "07:00"}
                   if cadencia == "daily"
                   else {"kind": "daily", "time": "07:00", "weekdays": [0]})
+        # 🔴 SPEC-078 C.3 — o Monitor também dá dono à rotina dele.
+        from ..dono_da_rotina import resolver_dono
+
+        dono_id = resolver_dono(self.db, company_id)
+        if not dono_id:
+            logger.error("[Monitor] rotina nao criada: corretora %s sem Auxiliar dono",
+                         company_id)
+            return None
+
         try:
             proximo = compute_next_run(agenda, "America/Sao_Paulo")
             r = self.db.table("routines").insert({
                 "company_id": company_id,
+                "tenant_auxiliary_id": dono_id,
                 "name": f"Monitor · {nome}"[:200],
                 "instructions": ("Verificar as fontes deste monitor e registrar "
                                  "mudanças relevantes."),
                 "schedule": agenda,
                 "delivery": {"channel": "none"},
                 "timezone": "America/Sao_Paulo",
-                "is_active": True,
+                # 🔴 Nasce PAUSADA, não ligada.
+                #
+                # 📊 Este era o único dos quatro escritores que criava rotina
+                # `is_active=True` sem nenhum gesto humano — o Monitor instala,
+                # e no ciclo seguinte o motor já executa. Um trabalhador que
+                # começa a trabalhar sem ninguém mandar é exatamente o que o
+                # Founder pediu para não acontecer (SPEC-078 I1/I4).
+                # Ligar passa a ser um clique, como em todo o resto.
+                "is_active": False,
                 "next_run_at": proximo.isoformat(),
                 "created_by": user_id,
             }).execute()

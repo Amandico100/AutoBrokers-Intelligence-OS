@@ -99,9 +99,26 @@ class CreateRoutineTool(BaseTool):
         # personal — só ele vê/gerencia/recebe). O user_id chega POR EXECUÇÃO
         # (injetado pelo tool_node; o grafo é cacheado — nunca do construtor).
         effective_user = str(kwargs.get("user_id") or self.user_id or "") or None
+
+        # 🔴 SPEC-078 C.3 — toda rotina nasce com dono, inclusive a pedida no chat.
+        #
+        # Esta é a rotina "ad-hoc": "todo dia às 8h me manda um resumo". Ela não
+        # é trabalhador de catálogo, e transformá-la num Auxiliar quebraria a
+        # ontologia. O dono dela é o Auxiliar de plataforma `tarefas-agendadas`,
+        # que existe exatamente para isto — ver `dono_da_rotina.py`.
+        client = getattr(self.supabase_client, "client", self.supabase_client)
+        from app.services.dono_da_rotina import resolver_dono
+
+        dono_id = resolver_dono(client, self.company_id, config=None)
+        if not dono_id:
+            return {"content": ("Não consegui identificar onde guardar esta rotina "
+                                "nesta corretora. Avise o suporte — é configuração, "
+                                "não é culpa do seu pedido.")}
+
         record = {
             "company_id": self.company_id,
             "created_by": effective_user,
+            "tenant_auxiliary_id": dono_id,
             "visibility": "personal" if effective_user else "company",
             "name": str(kwargs.get("name") or "Rotina")[:120],
             "instructions": instructions,
@@ -115,7 +132,6 @@ class CreateRoutineTool(BaseTool):
         if knowledge:
             record["knowledge"] = knowledge
         try:
-            client = getattr(self.supabase_client, "client", self.supabase_client)
             res = client.table("routines").insert(record).execute()
             rid = res.data[0]["id"] if res.data else "?"
         except Exception as e:  # noqa: BLE001

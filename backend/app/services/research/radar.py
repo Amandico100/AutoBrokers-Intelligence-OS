@@ -139,19 +139,41 @@ class RadarDeMercado:
         from ..routine_engine import compute_next_run
 
         agenda = {"kind": "daily", "time": "07:30", "weekdays": [0]}
+        # 🔴 SPEC-078 C.3 — o dono sai do JSONB e vira COLUNA.
+        #
+        # Este escritor era o caso mais claro do CLAUDE.md §12.1: ele SABIA quem
+        # era o dono e gravava no lugar errado — `config.auxiliar`, uma string
+        # dentro de um JSONB, sem foreign key, sem índice, invisível para toda
+        # consulta. `lib/auxiliaries/catalog.ts:240` conta por
+        # `tenant_auxiliary_id`, então a rotina do Radar nunca aparecia no card
+        # do Radar.
+        #
+        # "Se o nome de um campo mente sobre o que ele guarda, conserte o campo."
+        from ..dono_da_rotina import resolver_dono
+
+        dono_id = resolver_dono(self.db, company_id, slug_pedido=SLUG)
+        if not dono_id:
+            logger.error("[Radar] rotina de fechamento não criada: corretora %s "
+                         "sem o Auxiliar %s", company_id, SLUG)
+            return None
+
         try:
             proximo = compute_next_run(agenda, "America/Sao_Paulo")
             r = self.db.table("routines").insert({
                 "company_id": company_id,
+                "tenant_auxiliary_id": dono_id,
                 "name": "Radar · fechamento semanal",
                 "instructions": ("Consolidar as mudanças da semana nas fontes "
                                  "oficiais e entregar o radar regulatório."),
                 "schedule": agenda,
                 "delivery": {"channel": "none"},
                 "timezone": "America/Sao_Paulo",
+                # `auxiliar` sai do config: a coluna acima é a verdade agora.
+                # `dono_da_rotina.slugs_candidatos` ainda LÊ a chave antiga, para
+                # não perder as linhas de quem já a gravou — mas ninguém mais a
+                # escreve.
                 "config": {"workflow": "research.radar_weekly",
-                           "params": {"dias": 7},
-                           "auxiliar": SLUG},
+                           "params": {"dias": 7}},
                 "is_active": True,
                 "next_run_at": proximo.isoformat(),
                 "created_by": user_id,

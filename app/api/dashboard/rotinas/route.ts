@@ -36,6 +36,115 @@ function normalizeRoutineConfig(value: unknown): Record<string, unknown> {
 }
 
 /**
+ * Qual Auxiliar é dono desta rotina — SPEC-078 C.3.
+ *
+ * A ordem é a mesma do backfill da migration `20260817_03`, e ela importa:
+ * jogar tudo em `tarefas-agendadas` seria rápido e erraria. Uma rotina de
+ * cobrança pertence ao Auxiliar de Cobrança, que é onde o corretor procura por
+ * ela. `tarefas-agendadas` é o destino de quem NÃO tem dono natural — não é
+ * depósito de quem tem.
+ *
+ * 1. o slug que a tela mandou (a tela do Auxiliar sempre manda o dela)
+ * 2. o `kind` da config — `billing_collection` → `cobranca-feita`
+ * 3. `tarefas-agendadas`, o Auxiliar de plataforma
+ */
+const AUXILIAR_POR_KIND: Record<string, string> = {
+  [BILLING_KIND]: 'cobranca-feita',
+};
+const AUXILIAR_DE_TAREFAS_SOLTAS = 'tarefas-agendadas';
+
+type Dono =
+  | { ok: true; id: string; slug: string }
+  | { ok: false; error: string; details: string[] };
+
+async function resolverDono(
+  supabase: ReturnType<typeof getSupabaseAdmin>,
+  companyId: string,
+  slugPedido: unknown,
+  config: Record<string, unknown>,
+): Promise<Dono> {
+  const candidatos = [
+    String(slugPedido || '').trim(),
+    AUXILIAR_POR_KIND[String(config.kind || '')] || '',
+    AUXILIAR_DE_TAREFAS_SOLTAS,
+  ].filter(Boolean);
+
+  // 🔴 O filtro por `company_id` é obrigatório e não é decorativo: o backend usa
+  // service role, então RLS sozinho não protege (CLAUDE.md §7). Sem ele, uma
+  // rotina poderia nascer apontando para o Auxiliar de outra corretora.
+  const { data, error } = await supabase
+    .from('tenant_auxiliaries')
+    .select('id, slug, status')
+    .eq('company_id', companyId)
+    .in('slug', candidatos);
+
+  if (error) {
+    return { ok: false, error: 'Não foi possível identificar o Auxiliar dono.', details: [error.message] };
+  }
+
+  const porSlug = new Map((data ?? []).map((r) => [String(r.slug), r]));
+  for (const slug of candidatos) {
+    const achado = porSlug.get(slug);
+    // Um Auxiliar arquivado/desinstalado não pode receber rotina nova — ele saiu
+    // de cena. Os demais estados (inclusive `inactive` e `paused`) recebem: é
+    // justamente pausado que a corretora configura antes de ligar.
+    if (achado && achado.status !== 'archived') {
+      return { ok: true, id: String(achado.id), slug };
+    }
+  }
+
+  // Chegar aqui significa que nem o `tarefas-agendadas` existe nesta corretora —
+  // a migration `20260817_03` instala em todas, então isso é corretora criada
+  // depois dela sem passar pelo provisionamento. Falha explícita, não silenciosa.
+  return {
+    ok: false,
+    error: 'Esta corretora ainda não tem um Auxiliar que possa ser dono desta rotina.',
+    details: [`nenhum de: ${candidatos.join(', ')}`],
+  };
+}
+
+/**
+ * Quando a rotina roda pela primeira vez.
+ *
+ * 🔴 SPEC-078 D.6. A versão anterior calculava só "hoje ou amanhã no horário" e
+ * **ignorava os dias da semana escolhidos**. Uma rotina "só segunda" criada num
+ * sábado disparava no domingo — e só a partir da SEGUNDA execução o Python
+ * (`routine_engine.compute_next_run`) passava a respeitar os dias.
+ *
+ * Aqui a regra é a mesma do motor, inclusive a convenção: `weekdays` usa
+ * `datetime.weekday()` do Python, **0 = segunda … 6 = domingo**. O JavaScript
+ * usa `getDay()` com 0 = domingo, então a conversão abaixo NÃO é decorativa —
+ * sem ela a semana inteira anda um dia.
+ */
+function proximaExecucao(schedule: { kind?: string; time?: string; minutes?: number; weekdays?: number[] }): Date {
+  if (String(schedule.kind || '').toLowerCase() === 'interval') {
+    return new Date(Date.now() + Number(schedule.minutes) * 60000);
+  }
+  const [hh, mm] = String(schedule.time).split(':').map(Number);
+  const dias = Array.isArray(schedule.weekdays) ? schedule.weekdays.map(Number).filter((d) => d >= 0 && d <= 6) : [];
+
+  // America/Sao_Paulo é UTC-3 o ano inteiro desde o fim do horário de verão.
+  // O motor Python usa ZoneInfo de verdade; aqui só o PRIMEIRO disparo é
+  // calculado, e ele é recalculado com precisão logo depois.
+  const agoraSp = new Date(Date.now() - 3 * 3600000);
+  const alvo = new Date(Date.UTC(agoraSp.getUTCFullYear(), agoraSp.getUTCMonth(), agoraSp.getUTCDate(), hh + 3, mm));
+
+  // Até 8 tentativas: cobre a semana inteira mais o caso de o horário de hoje
+  // já ter passado. O mesmo laço de `routine_engine.py:125`.
+  for (let i = 0; i < 8; i++) {
+    if (alvo > new Date()) {
+      if (!dias.length) return alvo;
+      // getDay(): 0=domingo. weekday() do Python: 0=segunda. A conversão.
+      const diaSp = new Date(alvo.getTime() - 3 * 3600000).getUTCDay();
+      const comoPython = (diaSp + 6) % 7;
+      if (dias.includes(comoPython)) return alvo;
+    }
+    alvo.setUTCDate(alvo.getUTCDate() + 1);
+  }
+  return alvo;
+}
+
+/**
  * Rotinas agendadas (F2) — escopo da corretora logada.
  * GET  → { routines: [...], runs: [...] }  (últimas 30 execuções)
  * POST → { id, action: 'pause' | 'activate' | 'delete' }
@@ -142,33 +251,48 @@ export async function POST(req: NextRequest) {
       if (!portals.length) return NextResponse.json({ error: 'Selecione ao menos um portal para a cobranca.' }, { status: 400 });
     }
 
-    // Próxima execução: agora + intervalo, ou hoje/amanhã no horário (aprox.
-    // em UTC-3; o motor recalcula com precisão a cada execução).
-    let nextRun = new Date();
-    if (kind === 'interval') {
-      nextRun = new Date(Date.now() + (schedule.minutes as number) * 60000);
-    } else {
-      const [hh, mm] = String(schedule.time).split(':').map(Number);
-      const nowSp = new Date(Date.now() - 3 * 3600000);
-      const target = new Date(Date.UTC(nowSp.getUTCFullYear(), nowSp.getUTCMonth(), nowSp.getUTCDate(), hh + 3, mm));
-      if (target <= new Date()) target.setUTCDate(target.getUTCDate() + 1);
-      nextRun = target;
-    }
+    const nextRun = proximaExecucao(schedule);
 
     if (action === 'create') {
       if (name.length < 3 || instructions.length < 10) {
         return NextResponse.json({ error: 'Nome e instruções são obrigatórios' }, { status: 400 });
       }
+
+      // 🔴 SPEC-078 C.3 — TODA ROTINA NASCE COM DONO.
+      //
+      // 📊 Medido em 17/08/2026: o repositório inteiro tem 42 linhas
+      // mencionando `tenant_auxiliary_id`, e NENHUMA delas escrevia a coluna em
+      // `routines`. Não era descuido de um caso — não existia caminho de código
+      // no produto que desse dono a uma rotina nova. A rotina criada às 13:01
+      // daquele dia nasceu órfã na mesma corretora onde `cobranca-feita` está
+      // instalada, e o card do Auxiliar dizia "Nenhuma rotina ainda".
+      //
+      // Agora o banco também recusa (migration 20260817_03), mas a recusa lá é
+      // a rede de baixo. Aqui é onde o dono é ESCOLHIDO — e escolher certo
+      // importa: rotina de cobrança pertence ao Auxiliar de Cobrança, que é
+      // onde o corretor espera vê-la.
+      const dono = await resolverDono(supabase, ctx.companyId, body.auxiliar, config);
+      if (!dono.ok) {
+        return NextResponse.json({ error: dono.error, details: dono.details }, { status: 400 });
+      }
+
       const { error } = await supabase.from('routines').insert({
         company_id: ctx.companyId,
         created_by: ctx.userId,
+        tenant_auxiliary_id: dono.id,
         name, instructions, schedule, delivery, config,
         timezone: 'America/Sao_Paulo',
         is_active: true,
         next_run_at: nextRun.toISOString(),
         ...(knowledge ? { knowledge } : {}),
       });
-      if (error) return NextResponse.json({ error: 'Erro ao criar rotina' }, { status: 500 });
+      if (error) {
+        // A mensagem do banco vai no `details` e a tela precisa lê-la. Devolver
+        // só "Erro ao criar rotina" é o mesmo defeito do `install_failed` de
+        // 17/08: duas telas de distância entre o sintoma e a causa.
+        console.error('[ROTINA create]', ctx.companyId, error.message);
+        return NextResponse.json({ error: 'Erro ao criar rotina', details: [error.message] }, { status: 500 });
+      }
       return NextResponse.json({ ok: true });
     }
     // update

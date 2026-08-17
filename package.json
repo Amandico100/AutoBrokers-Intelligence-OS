@@ -12,6 +12,8 @@
     "test:infocap-output-guard": "python backend/tests/test_infocap_policy_output_guard.py",
     "test:rotas-montam": "node scripts/rotas-montam.test.mjs",
     "test:auxiliares-instalacao": "node scripts/auxiliares-instalacao-bate-com-o-banco.test.mjs",
+    "test:ontologia": "python backend/tests/test_ontologia_e_unica.py",
+    "test:ontologia-gate": "node scripts/ontologia-gate.mjs",
     "test:saude-vermelho": "node scripts/saude-vermelho-e-do-agora.test.mjs",
     "test:provider-adapters": "node scripts/attendance-provider-adapters-homologation.test.mjs",
     "test:portal-browser-contracts": "node scripts/attendance-portal-browser-contracts.test.mjs",
@@ -35,7 +37,9 @@
     "test:agent-blueprints-canonical": "node scripts/admin-agent-blueprints-canonical.test.mjs",
     "test:agent-health": "node scripts/agent-health.test.mjs",
     "test:atendimento-estados": "node scripts/atendimento-estados.test.mjs",
-    "test:finops-usage-context": "node scripts/admin-finops-usage-context.test.mjs"
+    "test:finops-usage-context": "node scripts/admin-finops-usage-context.test.mjs",
+    "test:canal-auxiliary": "node scripts/canal-auxiliary-nao-contamina-atendimento.test.mjs",
+    "test:entregas-abrem": "node scripts/entregas-tudo-abre.test.mjs"
   },
   "dependencies": {
     "@hookform/resolvers": "^3.9.0",

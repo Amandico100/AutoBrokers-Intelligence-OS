@@ -201,11 +201,23 @@ def teste_nada_nasce_ligado_e_rotina_tem_dono():
     url = os.environ.get("SUPABASE_URL")
     key = os.environ.get("SUPABASE_SERVICE_ROLE_KEY") or os.environ.get("SUPABASE_KEY")
     if not url or not key:
-        print("      (sem credencial — caso pulado)")
+        # 🔴 SPEC-078 C.8 — pular sem credencial é aceitável na mesa do
+        # desenvolvedor e INACEITÁVEL num gate. Sem esta distinção, o gate
+        # ficaria verde por não ter rodado — que é o pior verde que existe.
+        if os.environ.get("ONTOLOGIA_EXIGE_BANCO") == "1":
+            checar(False,
+                   "credencial de banco presente (ONTOLOGIA_EXIGE_BANCO=1)",
+                   "SUPABASE_URL/SUPABASE_SERVICE_ROLE_KEY ausentes — "
+                   "o caso que prova a ontologia NAO rodou")
+            return
+        print("      (sem credencial — caso pulado; use ONTOLOGIA_EXIGE_BANCO=1 no gate)")
         return
     try:
         import httpx
     except ImportError:
+        if os.environ.get("ONTOLOGIA_EXIGE_BANCO") == "1":
+            checar(False, "httpx disponivel (ONTOLOGIA_EXIGE_BANCO=1)", "httpx ausente")
+            return
         print("      (httpx ausente — caso pulado)")
         return
 
@@ -225,18 +237,33 @@ def teste_nada_nasce_ligado_e_rotina_tem_dono():
            f"{[i.get('slug') for i in nascidos_ligados]}")
 
     rot = httpx.get(f"{base}/rest/v1/routines",
-                    params={"select": "name,tenant_auxiliary_id,is_active"},
+                    params={"select": "name,tenant_auxiliary_id,is_active,company_id"},
                     headers=h, timeout=20).json()
-    # A rotina "Notícias da Globo" é lixo conhecido e morre na limpeza (Bloco H).
-    # Enquanto ela existir, o caso registra em vez de falhar — apagar antes de a
-    # estrutura nova estar provada é exatamente o que a SPEC proíbe.
+    # 🔴 SPEC-078 C.8 — a isenção da "Notícias da Globo" ACABOU.
+    #
+    # 📊 Medido em 17/08/2026: existem 2 rotinas no banco inteiro, ambas de
+    # cobrança. A rotina da Globo não existe mais, e manter a isenção seria
+    # guardar uma verdade vencida — pior que teste nenhum (CLAUDE.md §9.3).
+    #
+    # Desde a migration `20260817_03` o banco recusa rotina sem dono via
+    # `NOT NULL`. Este caso deixa de ser o guarda principal e vira o CONTROLE
+    # dele: se ele ficar vermelho, é porque a constraint sumiu ou alguém
+    # escreveu direto no banco por fora do produto.
     orfas = [r for r in rot if not r.get("tenant_auxiliary_id")]
-    lixo = [r for r in orfas if "globo" in (r.get("name") or "").lower()]
-    reais = [r for r in orfas if r not in lixo]
+    checar(not orfas,
+           "nenhuma Rotina existe sem Auxiliar dono",
+           f"{[r.get('name') for r in orfas]}")
 
-    checar(not reais,
-           "nenhuma Rotina de produção existe sem Auxiliar dono",
-           f"{[r.get('name') for r in reais]}")
+    # E a trava tem de MORDER, não só estar escrita. Um guarda que só olha os
+    # dados de hoje passaria num banco vazio.
+    cols = httpx.get(f"{base}/rest/v1/routines",
+                     params={"select": "tenant_auxiliary_id", "limit": "1"},
+                     headers=h, timeout=20)
+    checar(cols.status_code == 200,
+           "a tabela routines responde (a checagem acima não passou por vazio)",
+           f"HTTP {cols.status_code}")
+
+    lixo: list[dict] = []
     if lixo:
         print(f"      pendente para o Bloco H (limpeza): {[r.get('name') for r in lixo]}")
 
