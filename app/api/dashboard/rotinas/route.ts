@@ -150,16 +150,38 @@ function proximaExecucao(schedule: { kind?: string; time?: string; minutes?: num
  * POST → { id, action: 'pause' | 'activate' | 'delete' }
  */
 
-export async function GET(_req: NextRequest) {
+export async function GET(req: NextRequest) {
   const ctx = await resolveSessionCompany();
   if (!ctx) return NextResponse.json({ error: 'Não autorizado' }, { status: 401 });
   const supabase = getSupabaseAdmin();
 
-  const { data: allRoutines, error } = await supabase
+  // 🔴 SPEC-078 C.4 — `?auxiliar=<slug>` filtra pelo DONO.
+  //
+  // O painel agora vive dentro da tela de um Auxiliar e mostra só as rotinas
+  // dele. Filtrar no navegador funcionaria e seria pior: a corretora baixaria
+  // a lista inteira para exibir uma parte. Aqui o filtro é feito no banco, e o
+  // `.eq('company_id')` continua sendo a trava que importa (CLAUDE.md §7).
+  const auxiliarPedido = String(req.nextUrl.searchParams.get('auxiliar') || '').trim();
+  let donoId: string | null = null;
+  if (auxiliarPedido) {
+    const { data: dono } = await supabase
+      .from('tenant_auxiliaries')
+      .select('id')
+      .eq('company_id', ctx.companyId)
+      .eq('slug', auxiliarPedido)
+      .maybeSingle();
+    // Auxiliar que não existe nesta corretora devolve lista vazia — nunca a
+    // lista inteira. Um filtro que "falha para o aberto" mostraria as rotinas
+    // de todos os Auxiliares por causa de um slug digitado errado.
+    donoId = dono?.id ? String(dono.id) : '__inexistente__';
+  }
+
+  let consulta = supabase
     .from('routines')
-    .select('id, name, instructions, schedule, delivery, knowledge, config, is_active, last_run_at, next_run_at, consecutive_failures, created_at, visibility, created_by')
-    .eq('company_id', ctx.companyId)
-    .order('created_at', { ascending: false });
+    .select('id, name, instructions, schedule, delivery, knowledge, config, is_active, last_run_at, next_run_at, consecutive_failures, created_at, visibility, created_by, tenant_auxiliary_id')
+    .eq('company_id', ctx.companyId);
+  if (donoId) consulta = consulta.eq('tenant_auxiliary_id', donoId);
+  const { data: allRoutines, error } = await consulta.order('created_at', { ascending: false });
   if (error) {
     console.error('[ROTINAS] list error:', error.message);
     return NextResponse.json({ error: 'Erro ao listar (a migration de rotinas já foi aplicada?)' }, { status: 500 });

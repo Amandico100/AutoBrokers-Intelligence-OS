@@ -56,10 +56,13 @@ const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 const AUXILIAR_DO_TEMPLATE: Record<string, string> = {
   'briefing.daily_operational': 'checklist-6h',
   'briefing.weekly_executive': 'checklist-6h',
+  // SPEC-078 F.5 — a Cobrança passou a produzir peça. Uma linha, como previsto.
+  'financial.billing_collection': 'cobranca-feita',
 };
 
 const NOME_DO_AUXILIAR: Record<string, string> = {
   'checklist-6h': 'Checklist das 6h',
+  'cobranca-feita': 'Cobrança Feita',
 };
 
 /** O tipo do documento em português. `kind` é a palavra do banco, não do corretor. */

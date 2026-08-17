@@ -14,6 +14,7 @@ import Link from 'next/link';
 import { Loader2, Plug, Power, PauseCircle } from 'lucide-react';
 
 import { CATEGORIAS, type ItemDoCatalogo } from '@/lib/auxiliaries/catalog';
+import PainelDeRotinas from '@/components/auxiliares/PainelDeRotinas';
 
 interface Props {
   item: ItemDoCatalogo;
@@ -274,36 +275,22 @@ export default function AuxiliarDetalheClient({ item, podeLigar }: Props) {
         </Secao>
       )}
 
-      {/* 8 · ROTINAS DESTE AUXILIAR */}
+      {/* 8 · ROTINAS DESTE AUXILIAR
+          🔴 SPEC-078 C.4 — o painel de configuração MORA AQUI agora.
+          Antes isto era um LINK para `/dashboard/auxiliares/rotinas`, uma
+          página autônoma que listava as rotinas de toda a corretora e tinha um
+          botão "Nova rotina" sem dono. Era a quarta das quatro rotas que a
+          SPEC-064 §B.3 mandou absorver, e a única que não tinha sido — e o
+          botão dela foi o que produziu a rotina órfã de 17/08 às 13:01.
+          O possessivo do título já estava certo desde o começo. Agora o
+          conteúdo corresponde a ele. */}
       {instalado && (
         <Secao titulo="Rotinas deste Auxiliar">
-          {item.rotinas > 0 ? (
-            <Link
-              href={`/dashboard/auxiliares/rotinas?auxiliar=${item.slug}`}
-              className="inline-flex items-center gap-1.5 rounded-lg border border-border bg-surface px-3 py-2 text-sm text-foreground transition-colors hover:border-primary/40"
-            >
-              {item.rotinas} {item.rotinas === 1 ? 'rotina configurada' : 'rotinas configuradas'} →
-            </Link>
-          ) : (
-            // 🔴 Aqui morava um beco sem saída. Este texto era a única coisa
-            // que o corretor via, e a tela de configuração — horário,
-            // frequência, número de teste, mensagem — só era alcançável pelo
-            // link ACIMA, que exige `rotinas > 0`. Não havia como criar a
-            // primeira. 📊 Medido em 17/08/2026: zero rotinas em todo o banco.
-            <div className="space-y-2">
-              <Link
-                href={`/dashboard/auxiliares/rotinas?auxiliar=${item.slug}`}
-                className="inline-flex items-center gap-1.5 rounded-lg border border-border bg-surface px-3 py-2 text-sm text-foreground transition-colors hover:border-primary/40"
-              >
-                Configurar a primeira rotina →
-              </Link>
-              <p className="text-[11px] text-faint">
-                Você escolhe o horário, com que frequência roda, as seguradoras
-                e a mensagem enviada. Enquanto isso, este Auxiliar também roda
-                quando você pedir no chat.
-              </p>
-            </div>
-          )}
+          <PainelDeRotinas
+            auxiliarSlug={item.slug}
+            auxiliarNome={item.nome}
+            auxiliarLigado={ligado}
+          />
         </Secao>
       )}
 

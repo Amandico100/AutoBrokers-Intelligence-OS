@@ -742,6 +742,46 @@ RELATORIO_DE_MUDANCA = Template(
 )
 
 
+COBRANCA = Template(
+    key="financial.billing_collection",
+    name="Cobrança do Dia",
+    description="O que foi cobrado, o que ficou retido e quem precisa de uma pessoa.",
+    category="financial", narrative_shape="action_led", audience="internal",
+    visual_style="aurora", page_format="web",
+    composition=[
+        {"block": "cover", "props": {"eyebrow": "Cobrança"}},
+        {"block": "kpis", "props": {"title": "A varredura de hoje"}},
+        {"block": "callout", "props": {}},
+        {"block": "actions", "props": {"eyebrow": "Precisa de você",
+                                       "title": "Parcelas em atraso SEM boleto"}},
+        {"block": "table", "props": {"eyebrow": "Carteira",
+                                     "title": "Inadimplentes encontrados"}},
+        {"block": "prose", "props": {"eyebrow": "Transparência",
+                                     "title": "O que não saiu, e por quê"}},
+        {"block": "sources", "props": {}},
+        {"block": "footer", "props": {}},
+    ],
+    data_contract={
+        "portals": _campo("array", "portais varridos nesta execução"),
+        "found": _campo("array", "inadimplentes consolidados"),
+        "queue": _campo("array", "quem podia ser cobrado"),
+        "held": _campo("array", "quem ficou retido, com o motivo"),
+        "human_tasks": _campo("array", "parcelas sem boleto: só uma pessoa resolve", False),
+        "blockers": _campo("array", "portais que não rodaram e por quê", False),
+    },
+    instruction_md=(
+        "🔴 ESTA PEÇA NÃO CARREGA CPF/CNPJ NEM TELEFONE. O relatório integral, "
+        "com os dois, fica em `routine_runs.output_full` e só abre pela página "
+        "tenant-scoped da execução. Um artefato pode virar link público de 30 "
+        "dias (`artifact_shares`) — documento de segurado com CPF atrás de um "
+        "token de URL é vazamento com prazo, não entrega.\n\n"
+        "Abra pelo que exige ação: quem não recebeu cobrança e por quê. Quantos "
+        "boletos foram baixados é resultado; quem ficou de fora é trabalho.\n\n"
+        "Portal que não rodou tem de aparecer. A corretora que lê '3 portais "
+        "varridos' sem saber que o quarto falhou acha que a carteira está em dia."),
+)
+
+
 CATALOGO: tuple[Template, ...] = (
     PANORAMA, COMISSOES, FUNIL, PESQUISA,
     DOSSIE_CLIENTE, RENOVACOES, SINISTROS, BRIEFING,
@@ -749,6 +789,7 @@ CATALOGO: tuple[Template, ...] = (
     DOSSIE_OPORTUNIDADE, RADAR_DE_DEMANDA,
     EVIDENCE_PACK, MATRIZ_CONCORRENTES, AUDITORIA_SITE,
     RADAR_REGULATORIO, PLANILHA_EMPRESAS, RELATORIO_DE_MUDANCA,
+    COBRANCA,
 )
 
 POR_CHAVE: dict[str, Template] = {t.key: t for t in CATALOGO}

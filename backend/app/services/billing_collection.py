@@ -1140,6 +1140,331 @@ def _format_report(
     return "\n".join(lines)[:4000]
 
 
+# ==========================================================================
+# SPEC-078 F.5 — o trabalho da cobrança vira um Artifact de primeira classe
+# ==========================================================================
+#
+# 📊 MEDIDO EM 17/08/2026, antes de escrever esta seção:
+#
+#     ocorrências de "artifact" neste arquivo        0
+#     work_runs com source_type='routine'            0
+#     artifacts produzidos pelo Checklist das 6h    36  (kind='report')
+#
+# O Checklist das 6h produz peça desde julho; a Cobrança — que varre portal de
+# seguradora, baixa boleto e monta fila de atendimento — devolvia uma STRING.
+# String não se abre, não se guarda com marca da corretora, não se manda para
+# ninguém e some do histórico junto com a linha de `routine_runs`.
+#
+# 🔴 NENHUM PUBLISHER NOVO (CLAUDE.md §5). O caminho é o mesmo do Checklist,
+# lido em `intelligence/workflows.py:131-157`:
+#
+#     ArtifactService.criar(...) → renderizar(version_id) → publicar(version_id)
+#
+# `criar` aceita `work_run_id=None`, então F.5 NÃO exige criar Work Run — que
+# seria o segundo motor que a SPEC proíbe.
+#
+# ⚠️ O QUE ESTA PEÇA NÃO CARREGA, E POR QUÊ
+#
+# Sem CPF/CNPJ e sem telefone. Um artifact pode virar `artifact_shares` — link
+# público com validade de 30 dias — e documento com CPF atrás de um token de
+# URL é vazamento com prazo, não entrega. O relatório integral, com os dois,
+# fica em `routine_runs.output_full` (F.4), atrás de sessão e de
+# `.eq('company_id')`. Duas peças, dois níveis de exposição, de propósito.
+
+
+def _mascarar_documento(valor: Any) -> str:
+    """CPF/CNPJ reduzido aos últimos dígitos. Serve para conferir, não para usar.
+
+    O corretor precisa distinguir dois "João Silva" na mesma lista; para isso
+    bastam quatro dígitos. O documento inteiro só existe no relatório integral.
+    """
+    d = _digits(valor)
+    return f"...{d[-4:]}" if len(d) >= 4 else ""
+
+
+def compor_peca_da_cobranca(
+    *,
+    routine: Dict[str, Any],
+    cfg: Dict[str, Any],
+    items: List[Dict[str, Any]],
+    boletos: List[Dict[str, Any]],
+    fila: List[Dict[str, Any]],
+    retidos: List[Dict[str, Any]],
+    tarefas: List[Dict[str, Any]],
+    blockers: List[str],
+    test_sends: List[Dict[str, Any]],
+) -> List[Dict[str, Any]]:
+    """Execução da cobrança → blocos do Artifact Hub. Pura, e não recalcula nada.
+
+    Todo número aqui já foi contado por `execute_billing_collection_routine`. Se
+    esta função contasse qualquer coisa por conta própria, a peça poderia
+    divergir do relatório de texto da mesma execução — e o corretor descobriria
+    isso comparando os dois na frente de alguém.
+    """
+    portais = [NOME_DA_SEGURADORA.get(p, p) for p in (cfg.get("portal_keys") or [])]
+    ok_boletos = [b for b in boletos if b.get("ok")]
+    enviados = [s for s in test_sends if s.get("ok")]
+    pendentes = max(0, len(fila) - len(test_sends))
+    hoje = datetime.now(timezone.utc).strftime("%d/%m/%Y")
+
+    blocos: List[Dict[str, Any]] = [{
+        "block": "cover",
+        "props": {
+            "eyebrow": "Cobrança",
+            "title": str(routine.get("name") or "Cobrança de boletos atrasados"),
+            "period": hoje,
+            "verdict": (
+                f"{len(items)} parcela(s) em atraso na varredura de "
+                f"{', '.join(portais) or 'nenhum portal'}."),
+            "headline_label": "precisam de uma pessoa",
+            "headline_value": str(len(tarefas)),
+        },
+    }]
+
+    indicadores = [
+        {"label": "Inadimplentes", "value": str(len(items))},
+        {"label": "Boletos baixados", "value": str(len(ok_boletos))},
+        {"label": "Podem ser cobrados", "value": str(len(fila))},
+        {"label": "Retidos", "value": str(len(retidos))},
+        {"label": "Aguardando a próxima", "value": str(pendentes)},
+    ]
+    if tarefas:
+        # Primeiro cartão: é o único número que não se resolve sozinho amanhã.
+        indicadores.insert(0, {"label": "Precisa de você", "value": str(len(tarefas))})
+    blocos.append({"block": "kpis", "props": {"title": "A varredura de hoje",
+                                              "items": indicadores}})
+
+    modo = str(cfg.get("send_mode") or "none")
+    if modo == "test":
+        blocos.append({"block": "callout", "props": {
+            "tone": "info", "title": "Modo teste",
+            "text": (f"{len(enviados)} simulação(ões) enviada(s) para o número de "
+                     f"teste. Nenhum cliente real recebeu mensagem."),
+        }})
+    elif modo == "none":
+        blocos.append({"block": "callout", "props": {
+            "tone": "info", "title": "Somente relatório",
+            "text": "Nenhuma mensagem foi enviada ao cliente nesta execução.",
+        }})
+
+    if tarefas:
+        blocos.append({"block": "actions", "props": {
+            "eyebrow": "Precisa de você",
+            "title": "Parcelas em atraso SEM boleto",
+            "items": [{
+                "title": str(t.get("cliente_nome") or "Cliente"),
+                "detail": (f"apólice {t.get('apolice') or '?'} · parcela "
+                           f"{t.get('parcela') or '?'} — converter no portal e "
+                           f"falar com o segurado"),
+                "due": str(t.get("vencimento") or ""),
+                "impact": "o robô não falou com este",
+            } for t in tarefas[:8]],
+        }})
+
+    if items:
+        blocos.append({"block": "table", "props": {
+            "eyebrow": "Carteira",
+            "title": "Inadimplentes encontrados",
+            "columns": [
+                {"key": "cliente", "label": "Cliente"},
+                {"key": "doc", "label": "CPF/CNPJ"},
+                {"key": "seguradora", "label": "Seguradora"},
+                {"key": "vencimento", "label": "Vencimento"},
+                {"key": "valor", "label": "Valor", "align": "right", "format": "currency"},
+                {"key": "situacao", "label": "Situação", "pill": True},
+            ],
+            # 🔴 `doc` é MASCARADO. Ver o comentário do bloco desta seção.
+            "rows": [{
+                "cliente": str(i.get("cliente_nome") or "Cliente"),
+                "doc": _mascarar_documento(i.get("cpf_cnpj")),
+                "seguradora": _portal_insurer_name(i, cfg),
+                "vencimento": str(i.get("vencimento") or "?"),
+                "valor": i.get("valor"),
+                "situacao": str(i.get("retido_por") or "na fila de cobrança"),
+                "situacao_tone": "warning" if i.get("retido_por") else "positive",
+            } for i in (retidos + fila)[:40]],
+        }})
+
+    if blockers:
+        blocos.append({"block": "prose", "props": {
+            "eyebrow": "Transparência",
+            "title": "O que não saiu, e por quê",
+            # Portal que ficou de fora tem de aparecer: a corretora que lê
+            # "3 portais varridos" sem saber que o quarto falhou acha que a
+            # carteira está em dia.
+            "text": "\n".join(f"- {b}" for b in blockers[:12]),
+        }})
+
+    blocos.append({"block": "sources", "props": {"items": [
+        {"label": "Portais de seguradora",
+         "detail": ", ".join(portais) or "nenhum",
+         "as_of_label": hoje},
+        {"label": "Contatos",
+         "detail": f"sistema de gestão ({cfg.get('management_provider') or 'n/d'})",
+         "as_of_label": hoje},
+    ]}})
+    blocos.append({"block": "footer", "props": {
+        "disclaimer": "Documento interno. Não contém CPF/CNPJ nem telefone de segurado.",
+    }})
+    return blocos
+
+
+def _gerar_artefato_da_cobranca(supabase, company_id: str, routine: Dict[str, Any],
+                                titulo: str, subtitulo: str, resumo: str,
+                                payload: Dict[str, Any],
+                                blocos: List[Dict[str, Any]]) -> Optional[str]:
+    """Cria, renderiza e publica a peça. Devolve o id, ou None.
+
+    Roda em thread porque `ArtifactService` é síncrono — é o mesmo cliente
+    Supabase bloqueante que o resto deste arquivo já usa via `asyncio.to_thread`.
+    """
+    from app.services.artifacts.service import ArtifactService
+
+    servico = ArtifactService(supabase)
+    r = servico.criar(
+        company_id=company_id,
+        title=titulo,
+        template_key="financial.billing_collection",
+        payload=payload,
+        composition=blocos,
+        subtitle=subtitulo,
+        summary=resumo,
+        kind="report",
+        origin="routine",
+        # `work_run_id=None`: a cobrança não roda dentro de um Work Run hoje
+        # (📊 zero `work_runs` com source_type='routine'). O Hub aceita, e
+        # inventar um Work Run só para preencher a coluna seria o segundo motor
+        # que a SPEC-078 e o CLAUDE.md §5 proíbem.
+        work_run_id=None,
+        subject_ref={"kind": "routine", "id": str(routine.get("id") or "")},
+    )
+    versao = (r.get("version") or {}).get("id")
+    if versao:
+        servico.renderizar(company_id=company_id, version_id=versao)
+        servico.publicar(company_id=company_id, version_id=versao)
+    return ((r.get("artifact") or {}).get("id")) or None
+
+
+# ==========================================================================
+# SPEC-078 F.7 — os boletos guardados ganham prazo (escrito e DESLIGADO)
+# ==========================================================================
+#
+# 📊 MEDIDO EM 17/08/2026 em `storage.objects`:
+#
+#     portal-evidence   62 objetos · 5977 kB · mais antigo 11/07/2026
+#                       5 com mais de 30 dias · 0 com mais de 60 · 0 com 90
+#
+# São boletos de terceiros — dado financeiro de segurado — guardados desde
+# julho sem NENHUMA rotina de descarte. `20260708_01` criou o bucket privado e
+# parou ali: privado resolve quem lê, não resolve por quanto tempo existe.
+#
+# 🔴 ESTA SPEC NÃO APAGA NADA (§15). A purga nasce escrita e DESLIGADA. Ligar é
+# decisão do Founder, com o prazo definido por ele — registrado em
+# PENDENCIAS.md com dono 🧑. É a regra do CLAUDE.md §11.1: deixar pronto e
+# desligado é aceitável; deixar pronto e não anotado, não.
+#
+# A política, escrita para caber numa decisão de uma linha:
+#
+#     O QUE      PDFs de boleto e evidências de portal em `portal-evidence`
+#     CAMINHO    {company_id}/{portal_key}/{job_id}/boleto-*.pdf
+#     PARA QUÊ   provar ao segurado o que foi cobrado e anexar o boleto
+#     PRAZO      PORTAL_EVIDENCE_RETENTION_DAYS, padrão 90 dias
+#     POR QUÊ 90 o boleto vence em ~30 e a discussão sobre uma cobrança morre
+#                em ~60; 90 dá folga sem virar arquivo morto
+#     LIGADO?    NÃO — PORTAL_EVIDENCE_PURGE_ENABLED começa em false
+
+PORTAL_EVIDENCE_BUCKET = "portal-evidence"
+PORTAL_EVIDENCE_RETENTION_DAYS = int(os.getenv("PORTAL_EVIDENCE_RETENTION_DAYS", "90"))
+
+
+def evidence_purge_enabled(env: Optional[Dict[str, str]] = None) -> bool:
+    """A purga só roda se alguém a LIGAR. Ausência de variável é 'não'.
+
+    Lista de permissão, não de proibição: uma variável escrita errada
+    ('sim', 'True ', '1x') deixa a purga desligada. Errar para o lado de não
+    apagar boleto de segurado é grátis; errar para o outro não tem volta.
+    """
+    fonte = env if env is not None else os.environ
+    return str(fonte.get("PORTAL_EVIDENCE_PURGE_ENABLED", "")).strip().lower() in {"1", "true", "yes", "on"}
+
+
+def contar_evidencias_por_idade(supabase, dias: Optional[int] = None) -> List[Dict[str, Any]]:
+    """Quantos boletos cada corretora tem guardados, e quantos passaram do prazo.
+
+    SOMENTE LEITURA. Chama `public.portal_evidence_por_idade(dias)` (migration
+    20260817_04), que agrupa pela primeira pasta do caminho — que é o
+    `company_id`. Uma política de retenção que não sabe de quem é o arquivo não
+    é política, é faxina.
+    """
+    prazo = int(dias if dias is not None else PORTAL_EVIDENCE_RETENTION_DAYS)
+    client = _client(supabase)
+    try:
+        res = client.rpc("portal_evidence_por_idade", {"dias": prazo}).execute()
+        return list(res.data or [])
+    except Exception as e:  # noqa: BLE001
+        logger.warning("[EVIDENCE] contagem por idade indisponivel: %s", type(e).__name__)
+        return []
+
+
+def purgar_evidencias_antigas(supabase, *, dias: Optional[int] = None,
+                              company_id: Optional[str] = None,
+                              dry_run: bool = True) -> Dict[str, Any]:
+    """Apaga do bucket os objetos mais velhos que o prazo. NASCE DESLIGADA.
+
+    Três travas, e as três precisam ceder ao mesmo tempo:
+
+        1. `PORTAL_EVIDENCE_PURGE_ENABLED` ligado (padrão: desligado)
+        2. `dry_run=False` explícito (padrão: True — só conta)
+        3. prazo positivo
+
+    Sem as três, a função devolve o que APAGARIA e não toca em nada. É a mesma
+    forma do §11.1: pronto e desligado.
+    """
+    prazo = int(dias if dias is not None else PORTAL_EVIDENCE_RETENTION_DAYS)
+    client = _client(supabase)
+    ligada = evidence_purge_enabled()
+    corte = (datetime.now(timezone.utc) - timedelta(days=max(prazo, 1))).isoformat()
+
+    resultado: Dict[str, Any] = {
+        "bucket": PORTAL_EVIDENCE_BUCKET, "prazo_dias": prazo, "corte": corte,
+        "habilitada": ligada, "dry_run": dry_run or not ligada,
+        "candidatos": 0, "apagados": 0, "alvos": [],
+    }
+
+    try:
+        q = (client.table("objects").schema("storage")
+             .select("name, created_at")
+             .eq("bucket_id", PORTAL_EVIDENCE_BUCKET)
+             .lt("created_at", corte))
+        if company_id:
+            # O caminho começa pelo dono. Purgar por corretora é o que permite
+            # ligar isto para uma e não para todas.
+            q = q.like("name", f"{company_id}/%")
+        alvos = [str(o.get("name") or "") for o in ((q.execute()).data or []) if o.get("name")]
+    except Exception as e:  # noqa: BLE001
+        logger.warning("[EVIDENCE] nao consegui listar candidatos: %s", type(e).__name__)
+        return resultado
+
+    resultado["candidatos"] = len(alvos)
+    resultado["alvos"] = alvos[:20]
+
+    if not ligada or dry_run or not alvos:
+        # O caminho normal HOJE. Nada é apagado, e o número fica registrado.
+        logger.info("[EVIDENCE] purga NAO executada (habilitada=%s, dry_run=%s): "
+                    "%s objeto(s) passariam do prazo de %s dias",
+                    ligada, dry_run, len(alvos), prazo)
+        return resultado
+
+    try:
+        client.storage.from_(PORTAL_EVIDENCE_BUCKET).remove(alvos)
+        resultado["apagados"] = len(alvos)
+        logger.info("[EVIDENCE] purga executada: %s objeto(s) apagados (>%s dias)",
+                    len(alvos), prazo)
+    except Exception as e:  # noqa: BLE001
+        logger.error("[EVIDENCE] purga falhou: %s", type(e).__name__)
+    return resultado
+
+
 async def execute_billing_collection_routine(supabase, routine: Dict[str, Any]) -> str:
     client = _client(supabase)
     company_id = str(routine.get("company_id") or "")
@@ -1273,6 +1598,48 @@ async def execute_billing_collection_routine(supabase, routine: Dict[str, Any]) 
         # janela, freio) e registro em platform_sends. Nunca por send_message
         # direto: e o send_message direto que ignora as tres.
         blockers.append("envio direto ao cliente permanece desativado nesta fase de homologacao")
+
+    # SPEC-078 F.5 — a execução vira Artifact ANTES de devolver o texto.
+    #
+    # Em `try` mudo de propósito: o relatório de texto é o que o routine_engine
+    # entrega e o que o corretor recebe no WhatsApp. Se o Artifact Hub estiver
+    # fora do ar, a cobrança do dia não pode deixar de ser entregue por causa da
+    # peça bonita. É a mesma decisão que o Checklist das 6h já toma
+    # (`workflows.py:123` — "peça não gerada", warning, segue).
+    try:
+        # `tarefas` já foi contado acima, para o aviso ao grupo humano. Contar de
+        # novo abriria a porta para a peça e o relatório discordarem sobre
+        # quantas pessoas precisam ser chamadas.
+        artifact_id = await asyncio.to_thread(
+            _gerar_artefato_da_cobranca,
+            supabase,
+            company_id,
+            routine,
+            f"Cobrança de {datetime.now(timezone.utc).strftime('%d/%m/%Y')}",
+            ", ".join(NOME_DA_SEGURADORA.get(p, p) for p in (cfg.get("portal_keys") or [])),
+            (f"{len(items)} parcela(s) em atraso · {len(fila)} na fila · "
+             f"{len(tarefas)} precisam de uma pessoa"),
+            # ⚠️ O payload é a MESMA lista mascarada que já vai para o pedido de
+            # aprovação, menos o documento. `_safe_items_for_payload` guarda
+            # `cpf_cnpj` e `whatsapp` inteiros — e o payload de um artifact é
+            # legível por qualquer leitor do artefato, inclusive por um link
+            # compartilhado. Aqui só entram contagens e nomes.
+            {
+                "portals": list(cfg.get("portal_keys") or []),
+                "found": len(items), "queue": len(fila), "held": len(retidos),
+                "human_tasks": len(tarefas), "blockers": blockers[:12],
+                "send_mode": cfg.get("send_mode"),
+            },
+            compor_peca_da_cobranca(
+                routine=routine, cfg=cfg, items=items, boletos=boletos,
+                fila=fila, retidos=retidos, tarefas=tarefas,
+                blockers=blockers, test_sends=test_sends),
+        )
+        if artifact_id:
+            logger.info("[COBRANCA] peca publicada no Artifact Hub: %s", artifact_id)
+    except Exception as exc:  # noqa: BLE001
+        # Sem PII no log — nem o nome da corretora. Só o tipo do erro.
+        logger.warning("[COBRANCA] peca nao gerada: %s", type(exc).__name__)
 
     return _format_report(
         routine=routine,

@@ -40,7 +40,9 @@
     "test:atendimento-estados": "node scripts/atendimento-estados.test.mjs",
     "test:finops-usage-context": "node scripts/admin-finops-usage-context.test.mjs",
     "test:canal-auxiliary": "node scripts/canal-auxiliary-nao-contamina-atendimento.test.mjs",
-    "test:entregas-abrem": "node scripts/entregas-tudo-abre.test.mjs"
+    "test:entregas-abrem": "node scripts/entregas-tudo-abre.test.mjs",
+    "test:entregas-historico": "node scripts/entregas-mostra-o-historico.test.mjs",
+    "test:rotina-no-auxiliar": "node scripts/rotina-mora-no-auxiliar.test.mjs"
   },
   "dependencies": {
     "@hookform/resolvers": "^3.9.0",

@@ -252,7 +252,24 @@ async def _deliver(routine: Dict[str, Any], output: str) -> Tuple[bool, str]:
 async def _execute_routine(supabase, routine: Dict[str, Any]) -> None:
     """Roda UMA rotina (já claimada) e registra o resultado."""
     routine_id = routine["id"]
-    run_row = {"routine_id": routine_id, "status": "running"}
+    # SPEC-078 F.3 — a execução nasce sabendo DE QUEM ELA É.
+    #
+    # 📊 17/08/2026: `routine_runs` tinha 32 linhas e nenhuma coluna de
+    # corretora. A rota de Entregas filtra TODA fonte por
+    # `.eq('company_id', empresa)` — o backend usa service role e é o filtro no
+    # código, não a policy, que protege (CLAUDE.md §7). Sem esta coluna as 32
+    # execuções não tinham como entrar na lista, e o único lugar que as mostrava
+    # era a página de Rotinas, que a SPEC-078 C.4 absorve.
+    #
+    # A trigger `trg_routine_runs_herda_empresa` (migration 20260817_04) cobre
+    # quem esquecer. Escrever aqui também não é redundância inútil: é o que faz
+    # a leitura deste arquivo dizer a verdade sem depender de eu lembrar da
+    # trigger — e o que mantém a linha correta se a trigger cair num rollback.
+    run_row = {
+        "routine_id": routine_id,
+        "status": "running",
+        "company_id": str(routine["company_id"]),
+    }
     try:
         ins = await asyncio.to_thread(
             lambda: supabase.client.table("routine_runs").insert(run_row).execute()
@@ -261,7 +278,20 @@ async def _execute_routine(supabase, routine: Dict[str, Any]) -> None:
     except Exception:  # noqa: BLE001
         run_id = None
 
-    status, output_preview, error = "ok", "", ""
+    # SPEC-078 F.4 — o relatório INTEIRO fica guardado, não os primeiros 500.
+    #
+    # 📊 17/08/2026: das 32 execuções gravadas, 29 tinham `output_preview` com
+    # EXATAMENTE 500 caracteres — o teto. Ou seja, 91% foram cortadas. O
+    # relatório da cobrança chega a 4000 caracteres e as duas seções que exigem
+    # ação humana ("PRECISA DE VOCE" e "Clientes encontrados") só começam
+    # depois do caractere 500 quando há inadimplente. O produto fazia o trabalho
+    # e jogava fora a parte acionável.
+    #
+    # `output_preview` continua existindo e continua sendo escrito: ele é a
+    # coluna barata que a lista de Entregas lê. Derivá-lo na leitura obrigaria a
+    # rota a trazer 4 KB por linha, 120 por fonte, para cortar 500 na memória.
+    # Os dois saem da MESMA string, no mesmo `update` — não têm como divergir.
+    status, output_preview, output_full, error = "ok", "", "", ""
     try:
         from app.services.billing_collection import execute_billing_collection_routine, is_billing_routine
 
@@ -295,10 +325,16 @@ async def _execute_routine(supabase, routine: Dict[str, Any]) -> None:
         output = str(output or "").strip()
         if not output:
             raise RuntimeError("agente devolveu resposta vazia")
+        # ANTES da entrega, de propósito. Entrega que falha é exatamente o caso
+        # em que o corretor mais precisa ler o que foi produzido: o trabalho
+        # ACONTECEU — varreu portal, baixou boleto, montou a fila — e só o
+        # WhatsApp não saiu. Guardar o texto só no caminho feliz apagaria o
+        # resultado do trabalho por causa do último passo dele.
+        output_full = output
+        output_preview = output[:500]
         delivered, detail = await _deliver(routine, output)
         if not delivered:
             raise RuntimeError(f"entrega falhou: {detail}")
-        output_preview = output[:500]
         logger.info(f"[ROUTINES] ✅ rotina {routine_id} ok ({detail})")
     except Exception as e:  # noqa: BLE001
         status, error = "error", f"{type(e).__name__}: {str(e)[:300]}"
@@ -309,6 +345,12 @@ async def _execute_routine(supabase, routine: Dict[str, Any]) -> None:
             supabase.client.table("routine_runs").update({
                 "finished_at": datetime.now(timezone.utc).isoformat(),
                 "status": status,
+                # ⚠️ `output_full` contém CPF/CNPJ e telefone de segurado em
+                # texto claro. Ele é GRAVADO aqui e lido só pela página
+                # tenant-scoped /dashboard/entregas/rotina/[runId]. Nunca vai
+                # para log, para RAG ou para artifact compartilhável — e por
+                # isso nenhum `logger` desta função recebe o texto.
+                "output_full": output_full or None,
                 "output_preview": output_preview or None,
                 "error": error or None,
             }).eq("id", run_id).execute()
