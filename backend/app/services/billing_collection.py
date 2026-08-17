@@ -953,7 +953,22 @@ async def _send_test_messages(
     from app.services.whatsapp_service import get_whatsapp_service
 
     company_id = str(routine["company_id"])
-    already = await asyncio.to_thread(_already_sent_recibos, client, company_id, "test")
+    # 🔴 EM MODO TESTE NAO HA DEDUPLICACAO. Decisao de 17/08/2026, nota 88.
+    #
+    # A dedup existe para o SEGURADO nao receber o mesmo boleto duas vezes.
+    # Em teste o destino e o numero da propria corretora, e a coisa que se
+    # quer e justamente REPETIR — testar de novo amanha, testar com outro
+    # numero, testar depois de mexer em alguma coisa.
+    #
+    # 📊 E a chave `(company_id, recibo, send_mode)` NAO inclui o destino:
+    # trocar o numero de teste nao destravaria os mesmos boletos. O Founder
+    # pediu explicitamente que funcione "para qualquer um dos WhatsApps que eu
+    # colocar como destino" — com a chave atual, nao funcionaria.
+    #
+    # `live` continua deduplicando integralmente. A alternativa (incluir o
+    # destino na chave) resolveria a troca de numero e nao resolveria repetir
+    # no mesmo numero, que e o caso mais comum de teste.
+    already: set = set()
     by_recibo = _boletos_by_recibo(boletos)
     sent: List[Dict[str, Any]] = []
     skipped = 0
@@ -1027,7 +1042,16 @@ async def _send_test_messages(
                     entry["link_fallback"] = False
                 blockers.append("modo teste: envio do PDF como documento falhou; usei link temporario como fallback")
         if entry["ok"]:
-            await asyncio.to_thread(_record_sent, client, company_id, item, "test", bool(entry.get("document_sent")))
+            # 🔴 NAO grava dedup em modo teste — ver o comentario em `already`.
+            # Gravar aqui e ler acima sao as duas metades da mesma regra; mexer
+            # numa sem a outra deixaria a tabela crescendo com linhas que
+            # ninguem consulta, e o proximo a ler o codigo acharia que a dedup
+            # de teste existe.
+            #
+            # O registro de VAZAO (`platform_sends`, logo abaixo) continua —
+            # ele conta mensagens para os tetos, e uma mensagem de teste ocupa
+            # o canal exatamente como qualquer outra.
+            pass
             # O contador de vazao vive em `platform_sends`, e ele so conta o
             # que foi registrado. Sem esta linha o governador espacaria as
             # mensagens e continuaria achando que o dia esta zerado — o teto
