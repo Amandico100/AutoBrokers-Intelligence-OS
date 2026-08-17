@@ -5848,3 +5848,151 @@ ainda seria melhor.
 **O que destrava:** 🤖 build-arg `GIT_SHA` no EasyPanel, ou gravar o SHA num
 arquivo versionado. Baixa prioridade: a pergunta operacional já tem resposta.
 **O que custa esquecer:** pouco. É conforto de auditoria, não segurança.
+
+---
+
+## P-196 · 🧑 As duas migrations da SPEC-075 estão escritas e NÃO aplicadas
+
+**Aberta em:** 16/08/2026 · **Dono:** 🧑 Founder (janela)
+
+```
+20260816_02_spec075_portal_job_lineage_priority.sql   6 colunas + 3 índices
+20260816_03_spec075_tools_de_portal.sql               3 tools + 3 releases
+```
+
+As duas são **expand-only**, idempotentes, com APPLY / VERIFY / ROLLBACK
+escritos antes. Nenhuma toca coluna existente. Nenhuma toca o índice único
+parcial `idx_portal_jobs_pedido_vivo`, que é a proteção anti-duplicidade da
+SPEC-065.
+
+**O código funciona sem elas.** `billing_collection` e `portal_tool` tentam o
+insert com `operation_key` e repetem sem a coluna se o banco recusar; o worker
+tenta ordenar por prioridade e cai para a ordenação de sempre. Isso não é
+gentileza: o `smith-api` sobe com a imagem nova assim que o deploy roda, e a
+migration é aplicada por outra mão, em outro momento.
+
+**O que destrava:** 🧑 janela + `MIGRATIONS-AUTHORITY` §9 (registrar commit,
+aplicar, rodar o VERIFY, guardar a saída).
+**O que custa esquecer:** a linhagem não é gravada, e `portal_jobs` continua
+órfão. Nada quebra — só não melhora.
+
+---
+
+## P-197 · 🟡 A ponte está em `legacy` e a sombra ainda não acumulou diffs
+
+**Aberta em:** 16/08/2026 · **Dono:** 🤖 execução, depois de 🧑 ligar `shadow`
+
+`PORTAL_EXECUTION_GATEWAY_MODE` nasce `legacy`. Em `shadow` a ponte resolve em
+paralelo e grava o diff em `portal_jobs.evidence.gateway_sombra`; em `on` ela
+executa.
+
+📊 O desenho é o mesmo do `TOOL_GATEWAY_MODE`, que já pagou por si nesta casa:
+51 diffs em sombra na madrugada de 15→16/08 sem afetar nenhuma execução.
+
+**O que destrava:** 🧑 `PORTAL_EXECUTION_GATEWAY_MODE=shadow` no EasyPanel.
+Depois: 🤖 ler os diffs de alguns dias de cobrança real e conferir que
+`concorda=true` em 100% deles. **Só então** `on`, e só para
+`billing.overdue.list`, que é read-only.
+**O que custa esquecer:** a ponte inteira fica inerte. Não quebra nada parada.
+
+---
+
+## P-198 · 🟠 O lease foi provado contra um Redis FALSO, não contra um real
+
+**Aberta em:** 16/08/2026 · **Dono:** 🤖 execução, quando houver Redis no worker
+
+📊 As asserções do Bloco N rodam contra um duplo em memória que implementa
+`SET NX EX`, `GET` e `EVAL`. Elas provam a LÓGICA: só o dono renova, só o dono
+libera, contas diferentes rodam em paralelo, Redis fora rebaixa para 1.
+
+🔴 O que elas **não** provam: que o `redis-py` real se comporta como o duplo, que
+o `EVAL` roda no Redis do EasyPanel, que a latência cabe no heartbeat de 30s, e
+que `REDIS_URL` está sequer definida no ambiente do portal-worker.
+
+E há um detalhe que só um Redis real revela: `redis>=5.0` acabou de entrar no
+`requirements.txt` do worker. **A biblioteca não está na imagem que está no ar.**
+Enquanto não houver deploy, `redis_disponivel()` devolve `False` e a
+concorrência fica em 1 — que é o comportamento seguro, mas não é o pretendido.
+
+**O que destrava:** 🤖 deploy do portal-worker (traz a biblioteca) +
+🧑 confirmar `REDIS_URL` no ambiente dele. Depois conferir em `/health`:
+`redis_para_lease: true`.
+**O que custa esquecer:** `PORTAL_WORKER_CONCURRENCY` maior que 1 não terá
+efeito nenhum — e `/health` diz isso na cara, com `concurrency: 1` ao lado de
+`concurrency_configurada: 4`.
+
+---
+
+## P-199 · 🟡 Seis portais declaram host como constante, sem allowlist fechada
+
+**Aberta em:** 16/08/2026 · **Dono:** 🤖 execução · achado pelo `portal_factory audit`
+
+📊 Medido em 16/08: Allianz, HDI, MAPFRE, Tokio, Yelum e Zurich declaram o
+endereço do portal como constante (`ZURICH_BASE = "https://..."`). Isso
+**documenta** para onde se pretende ir; não **impede** ir a outro lugar.
+
+Só o portal de vidros tem `HOSTS_PERMITIDOS` com recusa por chamada — e ele só
+tem porque a SPEC-074 encontrou um buraco de substring lá (`api.autoglass.com.br`
+casava com `api.autoglass.com.br.evil.com`).
+
+**O que destrava:** 🤖 uma função `host_permitido()` por portal, no modelo do
+`vidros_api.host_permitido` — extração real de hostname, comparação por sufixo
+de ponto, lista fechada.
+**O que custa esquecer:** hoje nenhuma journey é redirecionada, então o risco é
+teórico. Ele deixa de ser teórico no dia em que um portal responder um `302`
+para outro domínio, ou em que uma URL vier de dado.
+
+---
+
+## P-200 · 🟡 A Allianz é o único portal sem fixture nenhuma
+
+**Aberta em:** 16/08/2026 · **Dono:** 🤖 execução · achado pelo `portal_factory audit`
+
+📊 Os outros seis têm: `zurich_parcelas.py`, `hdi_parcelas.py`,
+`mapfre_parcelas.py`, `tokio_inadimplentes.py`, `yelum_parcelas.py`,
+`fixtures/vidros/*`. As duas journeys da Allianz só podem ser conferidas contra
+o portal real, com credencial e rede.
+
+🔴 A Allianz é a **primeira** seguradora que a Cobrança Feita atendeu. É a que
+tem mais histórico em produção e a única sem rede de segurança offline.
+
+**O que destrava:** 🤖 capturar uma resposta real da tela de inadimplentes e
+sanitizá-la no padrão das irmãs (📊 0 CPF, 0 CNPJ, nomes trocados).
+**O que custa esquecer:** qualquer mudança na journey da Allianz só é conferida
+em produção, contra dinheiro de corretora.
+
+---
+
+## P-201 · 🟡 9 das 30 mutações da SPEC-075 foram executadas
+
+**Aberta em:** 16/08/2026 · **Dono:** 🤖 execução, quando houver infraestrutura
+
+A §34 pede 30 mutações. Foram rodadas **9**, e as 9 foram detectadas.
+
+As 21 restantes cobrem caminhos que **não existem sem infraestrutura real**:
+lease contra Redis de verdade, corrida entre dois workers, `23505` do índice
+único vindo do Postgres, `tool_invocation` real, Work Run real ponta a ponta.
+Simulá-las com duplo provaria o duplo, não o sistema.
+
+**O que destrava:** 🤖 as migrations aplicadas ([P-196](#p-196)) + Redis no
+worker ([P-198](#p-198)) + um ambiente onde dois workers possam subir.
+**O que custa esquecer:** as proteções de concorrência e de corrida de banco
+estão escritas e não estão provadas contra o que elas protegem.
+
+---
+
+## P-202 · 🟢 Divergência de vocabulário entre a SPEC-075 §16.1 e o código
+
+**Aberta em:** 16/08/2026 · **Dono:** 🧑 Founder (decisão de canon) · achada pelo Bloco J
+
+A §16.1 escreve os estados como `success | business_blocked | needs_connection`.
+O `contracts.py` implementou `ok | portal_blocked | no_connection`.
+
+O `replay.py` aceita os dois e traduz. Quatro estados da SPEC não têm
+equivalente implementado — `auth_expired`, `rate_limited`, `portal_changed`,
+`transient_failure` — e o módulo deixa `""` para eles em vez de inventar um par.
+
+**O que destrava:** 🧑 escolher um vocabulário e registrar em
+`FOUNDER-DECISIONS.md`; depois 🤖 alinhar o código ou a SPEC.
+**O que custa esquecer:** uma tabela de tradução que ninguém sabe que existe.
+Baixo risco hoje, confusão garantida no primeiro leitor novo.

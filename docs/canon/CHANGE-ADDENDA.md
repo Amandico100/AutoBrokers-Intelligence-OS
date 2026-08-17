@@ -2890,3 +2890,137 @@ conta chamadas, seis mutações detectadas.
 
 Mais trabalho para escrever o teste. O primeiro deles achou dois defeitos na
 estreia — o caminho morto e a janela sem prova de protocolo.
+
+---
+
+## CA-050 · O registro enriquece sem duplicar: a definição finge ser tupla — **ESSENCIAL**
+
+**SPEC-075** · 16/08/2026 · previsto pela SPEC-075 §9.1
+
+### Problema
+
+`JOURNEYS` mapeava `chave → (módulo, função)`. A SPEC-075 precisa que o registro
+diga a operação de negócio e a classe de efeito — e proíbe, no mesmo parágrafo,
+criar um `journey_registry_v2`.
+
+Enriquecer o valor quebraria todo código que faz `modulo, funcao = JOURNEYS[k]`.
+Criar um mapa paralelo seria o segundo registry proibido.
+
+### Decisão
+
+`JourneyDefinition` implementa `__iter__`, `__getitem__` e `__len__`. O
+desempacotamento antigo funciona byte por byte; o acesso novo (`d.effect_class`)
+existe ao lado.
+
+### Custo e risco
+
+Um dataclass que se comporta como tupla é incomum, e por isso está documentado no
+próprio arquivo. 📊 A prova de que a compatibilidade é real: as 11 suítes que leem
+o registry passaram sem uma linha alterada.
+
+---
+
+## CA-051 · Três tools estreitas em vez de uma `portal.execute` — **ESSENCIAL**
+
+**SPEC-075** · 16/08/2026
+
+### Problema
+
+📊 `portal.execute` existia em **um** lugar do repositório: o mapa de nomes do
+`gateway_cutover`. Não havia linha em `tool_definitions`.
+
+Uma tool única "executa portal" obriga o modelo a dizer **qual journey** rodar —
+proibido pela §10.4 — e carrega um `side_effect_class` só, então autorizar
+leitura de cobrança passaria a autorizar abertura de atendimento pago.
+
+### Decisão
+
+`portal.billing_read` (read), `portal.policy_read` (read),
+`portal.assistance_request` (write_external, `requires_approval`, risco alto).
+
+🔴 Nenhum dos três `input_schema` menciona `journey`, `module`, `function`,
+`portal_key`, `account_id`, `cookie`, `token` ou `password`. O `VERIFY` da
+migration inclui uma consulta que devolve **zero linhas** se algum mencionar.
+
+### O que NÃO se fez
+
+Tool por seguradora. `billing.overdue.list` vale para as seis — e uma seguradora
+nova entra no registry do portal-worker e passa a ser atendida pela mesma tool,
+sem migration, sem release nova, sem Auxiliar novo.
+
+---
+
+## CA-052 · `failed` do worker deixa de ser status neutro — **BLOCKER**
+
+**SPEC-075** · 16/08/2026 · continuação do CA-047 da SPEC-074
+
+### Problema
+
+Ver CA-047. A SPEC-075 acrescenta a peça que faltava do outro lado: o
+`billing_collection` e o `portal_tool` agora gravam `operation_key`, e o insert
+podia **derrubar a operação inteira** se a coluna ainda não existisse no banco.
+
+### Decisão
+
+Tenta com a coluna; se o banco recusar, repete sem. É o que "expand-first"
+significa do lado do **código** — o `smith-api` sobe com a imagem nova antes de
+a migration rodar, e entre os dois instantes o código tem de funcionar dos dois
+jeitos.
+
+### Custo e risco
+
+Um `except` a mais em dois lugares. A alternativa era a varredura de cobrança
+inteira parar por causa de uma coluna que nem é usada ainda.
+
+---
+
+## CA-053 · Concorrência por CONTA, e o lease mudou de contêiner — **ESSENCIAL**
+
+**SPEC-075** · 16/08/2026
+
+### Problema
+
+📊 O worker é globalmente serial: um job por vez, `ORDER BY created_at`. Uma
+varredura de 200 apólices enfileirada às 3h fica na frente do acionamento de um
+segurado com o carro parado às 9h.
+
+### Decisão
+
+`run_lote` roda até N jobs, **um por conta**. Contas diferentes em paralelo; a
+mesma conta nunca — cada conta tem sessão de navegador persistida, e duas em
+paralelo se sobrescrevem e derrubam a corretora do portal.
+
+`run_once` ficou **idêntica** ao baseline: é o caminho de `concurrency=1`, e o
+Gate D exige que ele não mude.
+
+### O erro que quase passou
+
+🔴 O lease nasceu em `app/services/portals/leases.py`. O `Dockerfile` do
+portal-worker copia **só** `backend/portal_worker`. Um lease que importa
+`app.core.redis` não existe no processo que precisa dele — teria falhado em
+produção com todos os testes verdes. Movido, com cliente próprio.
+
+### Custo e risco
+
+`redis>=5.0` entrou no `requirements` do worker; enquanto não houver deploy, a
+biblioteca não está na imagem e a concorrência efetiva fica em 1 — que `/health`
+informa explicitamente.
+
+---
+
+## CA-054 · Score de prontidão ANULA em vez de subtrair — **VALIOSA**
+
+**SPEC-075** · 16/08/2026 · §21.3
+
+### Decisão
+
+Hard blocker não tira pontos: zera. A medição fica em `score_bruto`; o campo que
+telas e ordenações leem é `score`.
+
+### Por que subtrair seria errado
+
+Três razões, e a terceira é a que fecha: subtrair implica que evidência boa
+**compra** ausência de isolamento de tenant; põe "proibido" e "inacabado" na
+mesma régua, de modo que ordenar por score recomendaria subir a mais perigosa;
+e é negociável — no dia em que faltarem 3 pontos, alguém mexe no peso. Zero não
+tem peso para mexer.
