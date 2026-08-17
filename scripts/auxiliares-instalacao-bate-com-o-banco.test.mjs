@@ -227,21 +227,31 @@ conferir(
 // ---------------------------------------------------------------------------
 console.log('\n4 · Existe caminho até a tela de configuração');
 
+// 🔴 ESTE BLOCO FOI REESCRITO EM 17/08/2026, e a lição MIGROU (CLAUDE.md §9.3).
+//
+// Ele provava que existia um LINK do Auxiliar para uma página de rotinas — e
+// isso era verdade até a SPEC-078 C.4 absorver aquela página. O link não existe
+// mais porque o painel de configuração passou a morar DENTRO da tela do
+// Auxiliar. Manter a afirmação antiga ensinaria a ignorar teste vermelho.
+//
+// A pergunta que importa é a mesma de antes, e continua sendo feita: **o
+// corretor consegue chegar na configuração?** Só que agora a resposta certa é
+// "sim, sem sair da página", e é isso que se verifica.
 const fonteRotinas = ler(ROTINAS);
 conferir(
-  'a tela do Auxiliar linka a configuração mesmo com ZERO rotinas',
-  /Configurar a primeira rotina/.test(fonteTela),
-  'sem rotina não há link, e sem link não há como criar a primeira — beco sem saída',
+  'a rota solta virou stub de redirect (SPEC-078 C.4)',
+  /redirect\(/.test(fonteRotinas) && fonteRotinas.split('\n').length < 60,
+  `${fonteRotinas.split('\n').length} linhas — deveria ser um stub`,
 );
 conferir(
-  'a tela de rotinas entende `?auxiliar=`',
-  /get\('auxiliar'\)|get\("auxiliar"\)/.test(fonteRotinas),
-  'o link existe mas a página ignora o parâmetro: o corretor chega numa lista vazia',
+  'a configuração mora DENTRO da tela do Auxiliar',
+  /<PainelDeRotinas/.test(fonteTela),
+  'sem o painel embutido, o corretor volta a não ter onde configurar',
 );
 conferir(
-  'e resolve o modelo pelo kind, não por uuid',
-  /config_default\?\.kind/.test(fonteRotinas),
-  'resolver por uuid quebra o link quando o seed do template é reaplicado',
+  'e o painel sabe de qual Auxiliar é (a rotina nasce com dono)',
+  /auxiliarSlug=\{item\.slug\}/.test(fonteTela),
+  'ONTOLOGIA:51 — Rotina nunca existe sozinha',
 );
 
 // ---------------------------------------------------------------------------

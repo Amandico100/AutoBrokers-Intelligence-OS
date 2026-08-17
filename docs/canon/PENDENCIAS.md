@@ -6223,3 +6223,82 @@ fazer os testes na **Resulta**, que já tem os 8 portais, a Cobrança instalada 
 a rotina com número de teste e mensagem gravados.
 **O que custa esquecer:** o Founder tenta testar na corretora errada e conclui
 que o produto não funciona — foi exatamente o que aconteceu com a AutoFleet.
+
+---
+
+## P-210 · ✅ RESOLVIDAS pela SPEC-078 — registro do que saiu da lista
+
+**Fechadas em:** 17/08/2026
+
+| | O que era | Como ficou |
+|---|---|---|
+| P-207 | O freio de emergência significava coisas opostas em dois processos | A ausência ficou **visível** (`kill_switch_presente` no `/health`); e a porta que realmente faltava — `send_to_client_guarded` sem leitura do interruptor — foi fechada no Bloco A.1 |
+| P-208 | Nada no banco ligava um Auxiliar ao modelo de Rotina | `routines.tenant_auxiliary_id` é **NOT NULL** com FK composta por corretora. Os quatro escritores passam a preencher |
+
+**P-207 continua com uma parte 🧑 do Founder:** definir `GLOBAL_KILL_SWITCH=false`
+**explicitamente** no serviço `portal-worker` do EasyPanel. 📊 Medido em
+17/08/2026: `kill_switch_presente: false` — a variável não existe no processo.
+Com ela definida, virar o padrão para fail-closed é um commit de uma linha.
+
+---
+
+## P-211 · 🟡 `live` e `approval` existem no banco e não no seletor
+
+**Aberta em:** 17/08/2026 · **Dono:** 🤖 execução (SPEC-079)
+
+📊 Medido: nenhum dos dois tem motor.
+
+- `approval` — a string `send_billing_whatsapp` aparece **uma vez** em todo o
+  repositório: no próprio `insert` que cria o pedido. O endpoint de execução
+  (`app/api/vault/approvals/[id]/execute`) tem allowlist e ela não está nela; e
+  ele lê `to_number`/`message` escalares, não o array `items` de N segurados.
+- `live` — `billing_collection.py:1206-1213` tem dois ramos e os dois só
+  acrescentam texto ao relatório. Não existe `else` que envie.
+
+A SPEC-078 tirou os dois do seletor (E.1). Os **valores continuam válidos** no
+banco e no normalizador — nada quebra se uma linha antiga os tiver.
+
+**O que destrava:** 🤖 SPEC-079 — o fio entre `billing_collection` e
+`platform_outbound.send_to_client_guarded`, que já existe e já é governado
+(espaçamento 4–8 min, teto 12/h e **20/dia** para canal novo, janela 08:00–20:00,
+domingo bloqueado, freio por corretora, Redis mudo = não envia). 📊 Os 5
+inadimplentes/dia da Resulta cabem com folga.
+**O que custa esquecer:** a corretora continua sem poder cobrar de verdade — e
+é o que ela compra.
+
+---
+
+## P-212 · 🟡 `get_platform_whatsapp_integration` escolhe sem ranquear
+
+**Aberta em:** 17/08/2026 · **Dono:** 🤖 execução
+
+📊 Achado durante o Bloco B: entre duas integrações elegíveis, ela devolve
+`valid[0]` — a ordem que o PostgREST entregar. `routine_engine` e
+`billing_collection` ranqueiam (`{"auxiliary": 0, "attendance": 1}`); esta não.
+
+Hoje não morde porque nenhuma corretora tem duas elegíveis ao mesmo tempo. Vai
+morder quando alguém autorizar o canal `auxiliary` numa corretora que também
+tenha `attendance` ativo: o alerta do Vigia pode sair pelo número de cobrança.
+
+**O que destrava:** 🤖 uma linha de `sort` com o mesmo rank.
+**O que custa esquecer:** alerta de plataforma saindo pelo número errado, sem
+erro nenhum no log — o pior tipo de defeito.
+
+---
+
+## P-213 · 🟢 `notFound()` devolve 200 em página dinâmica
+
+**Aberta em:** 17/08/2026 · **Dono:** 🤖 execução, sem pressa
+
+📊 Medido com `next start` real: `/dashboard/entregas/<id-invalido>` devolve
+**200** com o corpo da página 404, em vez de status 404. Controle rodado antes
+de atribuir a culpa: `/dashboard/auxiliares/<invalido>`, página que já existia,
+se comporta **igual**. É o streaming de Server Component com `force-dynamic` no
+Next 15.5.9 — quando o corpo já começou a sair, o status não muda mais.
+
+**Não é vazamento:** o corpo é a página 404, sem título, sem conteúdo, sem link.
+E a rota que entrega os **bytes** do artifact não é streamed — devolve 404 de
+verdade.
+
+**O que custa esquecer:** confunde monitoração e SEO. Afeta a app inteira, não
+só as rotas novas.

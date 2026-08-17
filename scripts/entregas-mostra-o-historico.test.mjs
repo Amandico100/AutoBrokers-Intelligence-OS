@@ -290,8 +290,17 @@ const TABELAS_DA_PAGINA = ['routine_runs', 'routines', 'tenant_auxiliaries'];
 
 function guardaPaginaDaExecucao(fonte, nome) {
   const problemas = [];
-  if (!/output_full/.test(fonte)) {
-    problemas.push(`${nome}: nao le output_full — o relatorio completo continua inacessivel`);
+  // 🔴 Procurar `output_full` na fonte INTEIRA nao serve, e isto foi medido: a
+  // primeira versao deste guarda passou numa mutacao que tirou a coluna do
+  // `select` e do JSX, porque o comentario de cabecalho da pagina cita
+  // `output_full` em prosa. Um guarda que a documentacao satisfaz nao guarda
+  // nada. Agora sao as DUAS pontas do caminho: a coluna e pedida ao banco, e o
+  // valor lido chega na tela.
+  if (!/\.select\([^)]*output_full/.test(fonte)) {
+    problemas.push(`${nome}: o select nao pede output_full — o relatorio completo nem sai do banco`);
+  }
+  if (!/execucao\.output_full/.test(fonte)) {
+    problemas.push(`${nome}: o valor de output_full nao e usado — a coluna vem e e descartada`);
   }
   let achou = 0;
   for (const tabela of TABELAS_DA_PAGINA) {

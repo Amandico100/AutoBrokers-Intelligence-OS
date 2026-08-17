@@ -313,7 +313,7 @@ export async function GET(_req: NextRequest) {
       // existem se chamam a mesma coisa ("Cobranca de boletos atrasados"),
       // então o nome da rotina sozinho não distinguiria nada.
       titulo: aux ? `${aux.nome} rodou` : `${rot?.nome ?? 'Rotina'} rodou`,
-      detalhe: e.output_preview,
+      detalhe: detalheDaExecucao(e.status, e.error, e.output_preview),
       quando: e.finished_at || e.started_at,
       href: `/dashboard/entregas/rotina/${e.id}`,
       origem: aux?.nome ?? rot?.nome ?? null,
