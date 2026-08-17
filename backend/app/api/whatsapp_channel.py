@@ -248,7 +248,28 @@ async def _go_setup(company_id: str, payload: "ChannelSetupPayload", public_url:
                 return row
         return None
 
-    async def _go_create(client: httpx.AsyncClient, name: str, tok: str) -> None:
+    async def _go_create(client: httpx.AsyncClient, name: str, tok: str) -> Optional[str]:
+        """Cria a instância. Devolve o token REAL se reusou uma que já existia.
+
+        🔴 O DEFEITO QUE ISTO CONSERTA — medido em 17/08/2026.
+
+        Quando a instância já existe COM telefone, este método (corretamente)
+        não recria: apagar despareia a corretora. Mas ele devolvia `None`, e
+        quem chamou seguia gravando no banco o `tok` que acabara de sortear —
+        um token que **a instância nunca conheceu**.
+
+        📊 A consequência, medida na Resulta: `integrations.token` tinha um
+        valor e o Evolution GO tinha outro. Todo envio devolvia **HTTP 401**.
+        O Auxiliar de Cobrança baixou 3 boletos reais três vezes seguidas e
+        não conseguiu mandar nenhum. A tela de "Buscar grupos" falhava pelo
+        mesmo motivo — mesma chave, mesmo 401.
+
+        E o defeito é invisível pelo caminho normal: o INBOUND autentica pelo
+        NOSSO webhook token, não por este. O canal parece "conectado", recebe
+        mensagem, espelha conversa — e não consegue falar. Só quem tenta
+        ENVIAR descobre, e até hoje ninguém tinha tentado (o agente de
+        atendimento nunca foi ligado).
+        """
         cr = await client.post(
             "/instance/create",
             headers={"apikey": global_key, "Content-Type": "application/json"},
@@ -291,11 +312,29 @@ async def _go_setup(company_id: str, payload: "ChannelSetupPayload", public_url:
                 # Tratar como falha dava o beco sem saída de 03/08 (§6 do
                 # relatório): "Desconectado" na tela e `configuration_error` em
                 # todo retry, com o próprio código recusando a única saída.
-                logger.info(f"[WA CHANNEL GO] instancia {name} ja existe com telefone — reusando")
-                return
+                #
+                # 🔴 E o TOKEN DELA VOLTA JUNTO. Reusar a instância e gravar um
+                # token novo no banco é o que produzia o HTTP 401 em todo envio
+                # (ver a docstring). O token da instância é a única chave que o
+                # Evolution aceita; gerar outro não a substitui, só a perde.
+                token_real = str(ghost.get("token") or "").strip()
+                if token_real:
+                    logger.info("[WA CHANNEL GO] instancia %s reusada — adotando o "
+                                "token DELA (o gerado aqui seria recusado)", name)
+                    return token_real
+                # Sem o token na resposta do provedor não há como falar com ela.
+                # Falhar aqui é melhor que gravar uma chave que não abre nada e
+                # descobrir três semanas depois, no primeiro envio.
+                logger.error("[WA CHANNEL GO] instancia %s existe mas o provedor nao "
+                             "devolveu o token dela — o canal ficaria mudo", name)
+                raise HTTPException(
+                    status_code=502,
+                    detail="evolution_go_instancia_sem_token:"
+                           "a instancia ja existe e o provedor nao devolveu a chave dela")
         if cr.status_code >= 400:
             raise HTTPException(status_code=502,
                                 detail=f"evolution_go_create_failed:http_{cr.status_code}:{(cr.text or '')[:100]}")
+        return None
 
     token, token_hash, token_prefix = new_webhook_credentials()
     webhook_url = build_webhook_url(public_url, "evolution-go", token)
@@ -316,7 +355,12 @@ async def _go_setup(company_id: str, payload: "ChannelSetupPayload", public_url:
             elif global_key:
                 instance = _go_instance_name(company_id, purpose)
                 inst_token = secrets.token_hex(16)
-                await _go_create(client, instance, inst_token)
+                # 🔴 Se a instancia ja existia, o token DELA volta aqui e
+                # substitui o que sorteamos. Gravar o sorteado seria gravar
+                # uma chave que o Evolution recusa (HTTP 401 em todo envio).
+                _token_da_instancia = await _go_create(client, instance, inst_token)
+                if _token_da_instancia:
+                    inst_token = _token_da_instancia
             else:
                 # 🔴 SPEC-065 — aqui o attendance caía na instância GLOBAL do
                 # ambiente e, logo abaixo, esse nome era GRAVADO na linha da
@@ -340,7 +384,12 @@ async def _go_setup(company_id: str, payload: "ChannelSetupPayload", public_url:
                 # AUTO-CURA: recria com token novo e reconecta.
                 logger.warning(f"[WA CHANNEL GO] linha zumbi (instance={instance}) — recriando")
                 inst_token = secrets.token_hex(16)
-                await _go_create(client, instance, inst_token)
+                # 🔴 Se a instancia ja existia, o token DELA volta aqui e
+                # substitui o que sorteamos. Gravar o sorteado seria gravar
+                # uma chave que o Evolution recusa (HTTP 401 em todo envio).
+                _token_da_instancia = await _go_create(client, instance, inst_token)
+                if _token_da_instancia:
+                    inst_token = _token_da_instancia
                 res = await client.post("/instance/connect",
                                         headers={"apikey": inst_token, "Content-Type": "application/json"},
                                         json=connect_body)
@@ -1162,3 +1211,104 @@ async def whatsapp_channel_grupos(
     from app.services.whatsapp.grupos import listar_grupos
 
     return await listar_grupos(company_id)
+
+
+@router.post("/api/whatsapp-channel/reparar-token")
+async def whatsapp_channel_reparar_token(
+    company_id: str,
+    purpose: str = "observer",
+    x_autobrokers_internal_key: Optional[str] = Header(default=None, alias="X-AutoBrokers-Internal-Key"),
+) -> Dict[str, Any]:
+    """Adota o token REAL da instância do Evolution GO — o reparo do HTTP 401.
+
+    🔴 POR QUE ESTA ROTA EXISTE, e por que ela não deveria precisar existir.
+
+    📊 Medido em 17/08/2026 na Resulta Seguros: `integrations.token` guardava um
+    valor que a instância do Evolution nunca conheceu. Todo envio devolvia
+    **HTTP 401**. O Auxiliar de Cobrança entrou no portal da Allianz três vezes,
+    baixou 3 boletos reais em cada, e não conseguiu mandar nenhum.
+
+    A causa está em `_go_create`: quando a instância JÁ EXISTE com telefone, o
+    código (corretamente) não a recria — apagar despareia a corretora. Só que
+    ele seguia gravando no banco um token recém-sorteado, e a instância
+    continuava com o dela. Duas chaves, uma fechadura.
+
+    O defeito é INVISÍVEL pelo caminho normal: o inbound autentica pelo NOSSO
+    webhook token, não por este. O canal aparece "conectado", recebe mensagem,
+    espelha conversa — e é mudo. Só quem tenta ENVIAR descobre.
+
+    `_go_create` já foi consertado e adota o token certo dos pareamentos daqui
+    em diante. Esta rota conserta quem já está no banco com a chave errada, sem
+    despareamento e sem QR novo.
+
+    Idempotente: se o token já bate, não escreve nada e diz isso.
+    """
+    _require_internal_key(x_autobrokers_internal_key)
+
+    global_key = os.getenv("EVOLUTION_GO_GLOBAL_KEY") or ""
+    if not global_key:
+        return {"ok": False, "motivo": "sem_chave_global",
+                "frase": "EVOLUTION_GO_GLOBAL_KEY não está configurada no backend."}
+
+    supabase = get_supabase_client()
+    alvo = str(purpose or "observer").strip().lower()
+
+    def _linha() -> Optional[Dict[str, Any]]:
+        r = (supabase.client.table("integrations")
+             .select("id, instance_id, token")
+             .eq("company_id", company_id).eq("provider", "evolution-go")
+             .eq("purpose", alvo).eq("is_active", True)
+             .order("last_seen_at", desc=True).limit(1).execute().data or [])
+        return r[0] if r else None
+
+    linha = await asyncio.to_thread(_linha)
+    if not linha:
+        return {"ok": False, "motivo": "sem_linha",
+                "frase": f"Nenhuma integração evolution-go ativa com purpose={alvo}."}
+
+    nome = str(linha.get("instance_id") or "")
+    try:
+        async with httpx.AsyncClient(timeout=_TIMEOUT, base_url=_go_base()) as client:
+            r = await client.get("/instance/all", headers={"apikey": global_key})
+            if r.status_code >= 400:
+                return {"ok": False, "motivo": f"http_{r.status_code}",
+                        "frase": f"O Evolution recusou listar as instâncias (HTTP {r.status_code})."}
+            achada = next((row for row in (r.json() or {}).get("data", [])
+                           if str(row.get("name") or "") == nome), None)
+    except Exception as exc:  # noqa: BLE001
+        logger.error("[REPARAR TOKEN] falha ao falar com o GO: %s", type(exc).__name__)
+        return {"ok": False, "motivo": type(exc).__name__,
+                "frase": f"Não consegui falar com o Evolution ({type(exc).__name__})."}
+
+    if not achada:
+        return {"ok": False, "motivo": "instancia_nao_encontrada",
+                "frase": f"A instância '{nome}' não existe no Evolution GO."}
+
+    token_real = str(achada.get("token") or "").strip()
+    if not token_real:
+        return {"ok": False, "motivo": "provedor_sem_token",
+                "frase": "O Evolution não devolveu o token desta instância."}
+
+    # Compara o DECIFRADO, nunca o cru — senão a comparação diria "diferente"
+    # sempre, e a rota reescreveria o token a cada chamada.
+    from app.services.whatsapp.integration_secrets import (
+        encrypt_integration_secret,
+        prepare_integration_for_runtime,
+    )
+
+    atual = (prepare_integration_for_runtime(dict(linha), tolerar_perda=True) or {}).get("token")
+    if atual and str(atual) == token_real:
+        return {"ok": True, "mudou": False, "instancia": nome,
+                "frase": "O token já era o certo. Nada foi alterado."}
+
+    def _gravar() -> None:
+        supabase.client.table("integrations").update({
+            "token": encrypt_integration_secret(token_real),
+            "updated_at": datetime.now(timezone.utc).isoformat(),
+        }).eq("id", linha["id"]).execute()
+
+    await asyncio.to_thread(_gravar)
+    logger.info("[REPARAR TOKEN] instancia %s: token adotado do provedor", nome)
+    return {"ok": True, "mudou": True, "instancia": nome,
+            "frase": "Token corrigido — o canal volta a poder enviar. "
+                     "Nenhum despareamento, nenhum QR novo."}
