@@ -278,14 +278,45 @@ async def record_platform_send(company_id: str, phone: str, kind: str, summary: 
 # governador que só se prova em produção não se prova.
 
 
-def intervalo_entre_frias(sorteio=None) -> int:
+#: Espaçamento quando o destino é o PRÓPRIO NÚMERO DE TESTE da corretora.
+#:
+#: 🔴 Por que existe, e por que é seguro — SPEC-078, 17/08/2026.
+#:
+#: O espaçamento de 4–8 min protege contra UMA coisa: falar com muitos números
+#: DIFERENTES em pouco tempo. É isso que o WhatsApp lê como disparo em massa e
+#: é isso que derruba o número da corretora.
+#:
+#: Em modo teste o destino é **um só**, e é da própria corretora. Não há base
+#: de clientes sendo varrida; há uma pessoa conferindo o próprio celular. O
+#: risco que o intervalo longo evita simplesmente não está presente.
+#:
+#: 📊 O custo do intervalo longo aqui é real e foi medido: com 3 boletos, o
+#: Founder esperava de 8 a 16 minutos só de espaçamento para conferir se o
+#: produto funciona. Testar ficou caro a ponto de não se testar.
+#:
+#: 25–55s continua sendo CADÊNCIA, não rajada — três mensagens em ~2 minutos,
+#: com intervalo irregular. Os tetos de hora e dia, a janela e o freio de
+#: emergência continuam valendo integralmente: isto muda o ritmo, não as
+#: travas.
+_INTERVALO_TESTE_MIN_S = 25
+_INTERVALO_TESTE_MAX_S = 55
+
+
+def intervalo_entre_frias(sorteio=None, *, para_numero_de_teste: bool = False) -> int:
     """Segundos até a próxima mensagem fria. 4–8 min, nunca em minuto redondo.
 
     `sorteio` existe para o teste fixar o dado. Em produção é `random.randint`.
+
+    `para_numero_de_teste` encurta para 25–55s. Ver `_INTERVALO_TESTE_MIN_S`:
+    o destino é o próprio número da corretora, e o risco que o intervalo longo
+    evita — falar com muitos números diferentes — não existe ali.
     """
     escolher = sorteio or random.randint
-    s = int(escolher(_INTERVALO_MIN_S, _INTERVALO_MAX_S))
-    s = max(_INTERVALO_MIN_S, min(_INTERVALO_MAX_S, s))
+    piso, teto = ((_INTERVALO_TESTE_MIN_S, _INTERVALO_TESTE_MAX_S)
+                  if para_numero_de_teste
+                  else (_INTERVALO_MIN_S, _INTERVALO_MAX_S))
+    s = int(escolher(piso, teto))
+    s = max(piso, min(teto, s))
     if s % 30 == 0:
         # 270, 300, 330 … caem aqui. +7 nunca estoura o teto (450+7 = 457).
         s += 7
@@ -587,7 +618,8 @@ async def historico_de_envios(company_id: str, agora_utc: Optional[datetime] = N
 async def governar_envio(company_id: str, *, temperatura: str = FRIA,
                          agora_utc: Optional[datetime] = None,
                          tz_nome: Optional[str] = None,
-                         reservar: bool = True) -> Veredito:
+                         reservar: bool = True,
+                         para_numero_de_teste: bool = False) -> Veredito:
     """A pergunta que todo envio frio faz antes de sair: **posso agora?**
 
     Quando devolve `pode=True` com `reservar=True`, o slot **já foi
@@ -623,7 +655,7 @@ async def governar_envio(company_id: str, *, temperatura: str = FRIA,
     if not previa.pode:
         return previa
 
-    intervalo = intervalo_entre_frias()
+    intervalo = intervalo_entre_frias(para_numero_de_teste=para_numero_de_teste)
     if not reservar:
         return avaliar_vazao(agora_utc=agora, na_hora=h["na_hora"], no_dia=h["no_dia"],
                              maturidade=maturidade, tz_nome=tz_nome, gate_livre=True)

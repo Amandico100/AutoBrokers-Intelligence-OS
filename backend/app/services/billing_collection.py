@@ -332,7 +332,8 @@ def boletos_que_deram_certo(boletos: Optional[Iterable[Dict[str, Any]]]) -> set:
 
 
 def fila_de_cobranca(items: List[Dict[str, Any]], *, horas: int = HORAS_MINIMAS_ATRASO,
-                     boletos: Optional[Iterable[Dict[str, Any]]] = None) -> tuple:
+                     boletos: Optional[Iterable[Dict[str, Any]]] = None,
+                     modo_teste: bool = False) -> tuple:
     """Separa quem pode ser cobrado de quem nao pode, e diz POR QUE nao pode.
 
     Devolve `(fila_ordenada, retidos)`. Nada some: o que nao entra na fila entra
@@ -371,7 +372,20 @@ def fila_de_cobranca(items: List[Dict[str, Any]], *, horas: int = HORAS_MINIMAS_
             retidos.append({**item, "retido_por": "sem data de vencimento legivel"})
         elif not vencido_ha_mais_de(item, horas):
             retidos.append({**item, "retido_por": f"vencido ha menos de {horas}h (carencia)"})
-        elif not _digits(item.get("whatsapp")):
+        elif not modo_teste and not _digits(item.get("whatsapp")):
+            # 🔴 EM MODO TESTE O TELEFONE DO SEGURADO NAO E USADO.
+            #
+            # 📊 Medido em 17/08/2026: a Allianz e a HDI devolveram 5
+            # inadimplentes com 5 boletos baixados, e TRES foram retidos por
+            # "sem telefone" — um telefone que, em modo teste, o codigo nem
+            # consulta. `_send_test_messages` manda tudo para `test_number`
+            # (`billing_collection.py:869`), que e o unico destino possivel
+            # naquele modo.
+            #
+            # Ou seja: o teste do Founder foi de 5 boletos para 2 por causa de
+            # uma regra que so faz sentido no envio REAL. A busca do telefone
+            # na InfoCap e assunto da SPEC-079, quando a mensagem passar a ir
+            # para o segurado. Ate la, ela nao pode reduzir o que se testa.
             retidos.append({**item, "retido_por": f"sem telefone ({item.get('contact_status') or 'nao encontrado'})"})
         elif com_arquivo is not None and str(item.get("recibo") or "").strip() not in com_arquivo:
             retidos.append({**item, "retido_por":
@@ -952,7 +966,12 @@ async def _send_test_messages(
             continue
 
         # SPEC-063 Bloco C — o portao de vazao, UMA vez por segurado.
-        liberado, motivo, esperou = await _esperar_o_governador(company_id, orcamento_s)
+        # 🔴 O destino aqui e SEMPRE o `test_number` da propria corretora — um
+        # numero so, dela. O espacamento de 4-8 min protege contra falar com
+        # muitos numeros DIFERENTES; esse risco nao existe neste caminho.
+        # Ver `_INTERVALO_TESTE_MIN_S` em `platform_outbound`.
+        liberado, motivo, esperou = await _esperar_o_governador(
+            company_id, orcamento_s, para_numero_de_teste=True)
         orcamento_s -= esperou
         if not liberado:
             pendentes = len(a_enviar) - indice
@@ -1020,7 +1039,8 @@ async def _send_test_messages(
     return sent
 
 
-async def _esperar_o_governador(company_id: str, orcamento_s: float) -> tuple:
+async def _esperar_o_governador(company_id: str, orcamento_s: float, *,
+                                para_numero_de_teste: bool = False) -> tuple:
     """Pergunta ao governador se pode enviar. `(liberado, motivo, esperou_s)`.
 
     Tres respostas possiveis:
@@ -1043,7 +1063,8 @@ async def _esperar_o_governador(company_id: str, orcamento_s: float) -> tuple:
     esperou = 0.0
     while True:
         try:
-            veredito = await governar_envio(str(company_id))
+            veredito = await governar_envio(
+                str(company_id), para_numero_de_teste=para_numero_de_teste)
         except Exception as e:  # noqa: BLE001
             return False, f"governador nao respondeu ({type(e).__name__})", esperou
         if veredito.pode:
@@ -1538,6 +1559,9 @@ async def execute_billing_collection_routine(supabase, routine: Dict[str, Any]) 
         items,
         horas=int(cfg.get("horas_minimas_atraso") or HORAS_MINIMAS_ATRASO),
         boletos=boletos,  # sem o arquivo no bucket, o segurado nao recebe nada
+        # Em teste o destino e SEMPRE o `test_number`; o telefone do segurado
+        # nao entra na conta. Ver o comentario em `fila_de_cobranca`.
+        modo_teste=(str(cfg.get("send_mode") or "") == "test"),
     )
     for motivo, quantos in sorted(
         {r.get("retido_por", "?"): sum(1 for x in retidos if x.get("retido_por") == r.get("retido_por"))
