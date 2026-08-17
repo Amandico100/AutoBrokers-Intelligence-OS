@@ -552,7 +552,25 @@ async def _run_job(supa, job: Dict[str, Any]) -> None:
             except Exception:  # noqa: BLE001
                 logger.error("[PORTAL] falha ao decifrar credencial da conta")
 
-    evidence: Dict[str, Any] = {}
+    # 🔴 Começa do que JÁ ESTÁ no banco, não do vazio.
+    #
+    # `update({"evidence": ...})` substitui a coluna `jsonb` inteira — não
+    # mescla. Começar em `{}` significa apagar tudo que foi gravado ali antes de
+    # o worker pegar o job. E a SPEC-075 passou a gravar coisas ali antes:
+    #
+    #   `gateway.linhagem` / `gateway_fingerprint`  no insert do Gateway
+    #   `gateway_sombra`                            logo após o insert legado
+    #
+    # O estrago seria silencioso e no pior lugar: o diff de sombra existe para
+    # decidir o cutover, e sumiria exatamente dos jobs CONCLUÍDOS — os únicos
+    # que interessa avaliar. E `gateway_fingerprint` some, o que faz
+    # `IdempotencyRecord.conflita_com` tratar como "nunca conflita" (impressão
+    # vazia) qualquer job que já passou pelo worker — desligando a conferência
+    # do Stripe justamente para o histórico.
+    #
+    # 📊 Achado por juiz crítico em 16/08/2026, e confirmado no código.
+    evidence: Dict[str, Any] = dict(job.get("evidence") or {}) \
+        if isinstance(job.get("evidence"), dict) else {}
 
     # ----------------------------------------------------------------------
     # Runtime da SPEC-073 — ADITIVO. Journey antiga nunca lê `_runtime` e segue
@@ -744,6 +762,32 @@ async def _run_job(supa, job: Dict[str, Any]) -> None:
     ))
 
 
+def _marcar_lease_perdida(supa, job: dict) -> None:
+    """O job foi abortado por perda de posse da conta. Ele NÃO volta para a fila.
+
+    🔴 `queued` seria a resposta errada e a mais tentadora: o job "não terminou",
+    então parece natural devolvê-lo. Mas ele foi cancelado no meio, e ninguém
+    sabe onde — pode ter clicado, pode não ter. Requeue de um job que talvez
+    tenha tocado o portal é o mesmo defeito que a SPEC-074 fechou: a segunda
+    operação, no nome do mesmo segurado.
+
+    `needs_human` mantém o pedido vivo para o dedup de idempotência e é o único
+    status que o botão de retry do dashboard aceita — onde
+    `pode_retentar_pelo_dashboard` confere a evidência antes de deixar repetir.
+    """
+    try:
+        supa.table("portal_jobs").update({
+            "status": "needs_human",
+            "error": ("lease da conta perdida durante a execucao: outro worker "
+                      "pode ter assumido a mesma sessao. NAO reexecute sem "
+                      "conferir o que ficou no portal."),
+            "finished_at": _now(),
+        }).eq("id", job["id"]).execute()
+    except Exception:  # noqa: BLE001
+        logger.error("[PORTAL] nao consegui marcar o job %s como lease perdida",
+                     job.get("id"))
+
+
 def _candidatos_da_fila(supa, limite: int) -> list:
     """Os próximos jobs da fila, na melhor ordem que o schema permitir.
 
@@ -862,6 +906,7 @@ async def run_lote(supa, concorrencia: int) -> int:
         # conta seria liberada no meio do trabalho e um segundo worker entraria
         # na mesma sessão — exatamente o que a lease existe para impedir.
         parar = asyncio.Event()
+        perdeu_a_posse = asyncio.Event()
 
         async def _bater():
             while not parar.is_set():
@@ -869,14 +914,55 @@ async def run_lote(supa, concorrencia: int) -> int:
                     await asyncio.wait_for(parar.wait(),
                                            timeout=_L.HEARTBEAT_INTERVALO_SEGUNDOS)
                 except asyncio.TimeoutError:
-                    lease.renovar(chave, dono, _L.LEASE_DURACAO_SEGUNDOS)
+                    # 🔴 O RETORNO IMPORTA, e a primeira versão deste bloco o
+                    # descartava.
+                    #
+                    # `renovar()` devolve `False` quando a lease já **não é
+                    # mais desta** worker: ela venceu e outro processo assumiu
+                    # a conta. Ignorar esse `False` deixa este job continuar
+                    # clicando numa sessão que outro worker já tomou — que é
+                    # exatamente a colisão que o Bloco N foi escrito para
+                    # impedir, agora com dois navegadores sobrescrevendo o
+                    # mesmo `portal_sessions.storage_state_encrypted`.
+                    #
+                    # E o cenário não é exótico: a lease dura 120s e o job pode
+                    # levar 1200s. Basta o event loop ficar sem ceder controle
+                    # por mais que o TTL — uma etapa síncrona longa, um GC
+                    # pause, contenção de CPU no contêiner — para a chave
+                    # expirar com o job vivo.
+                    if not lease.renovar(chave, dono, _L.LEASE_DURACAO_SEGUNDOS):
+                        logger.error(
+                            "[PORTAL] perdi a lease da conta durante o job %s "
+                            "— abortando para nao colidir com outro worker",
+                            job.get("id"))
+                        perdeu_a_posse.set()
+                        return
 
         batida = asyncio.create_task(_bater())
+        tarefa = asyncio.create_task(_run_job(supa, job))
         try:
-            await _run_job(supa, job)
+            aguardar_perda = asyncio.create_task(perdeu_a_posse.wait())
+            feito, _pendentes = await asyncio.wait(
+                {tarefa, aguardar_perda}, return_when=asyncio.FIRST_COMPLETED)
+            if tarefa not in feito:
+                # Perdemos a conta antes de o job terminar. Cancelar é a única
+                # saída segura — mas o job pode já ter tocado o portal, então
+                # ele NÃO volta para `queued`: vai para `needs_human` com a
+                # fase de efeito preservada, e quem decide é gente.
+                tarefa.cancel()
+                try:
+                    await tarefa
+                except (asyncio.CancelledError, Exception):  # noqa: BLE001
+                    pass
+                _marcar_lease_perdida(supa, job)
+            else:
+                aguardar_perda.cancel()
+                await tarefa  # propaga exceção, se houver
         finally:
             parar.set()
             batida.cancel()
+            # Só libera se ainda formos donos — `liberar` já confere por dentro,
+            # e liberar lease de outro é o bug clássico do lock distribuído.
             lease.liberar(chave, dono)
 
     await asyncio.gather(*[_rodar(j, c) for j, c in escolhidos],

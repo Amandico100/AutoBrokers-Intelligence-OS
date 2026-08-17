@@ -153,6 +153,27 @@ momento em que precisasse funcionar.
 agentes diferentes e não se conheciam. Sem a costura, a matriz publicava 14
 journeys com score 0 — correto e inútil.
 
+**Um juiz crítico achou dois defeitos no que eu tinha acabado de escrever.**
+O primeiro é crítico e é meu: `_bater()` chamava `lease.renovar()` e
+**descartava o retorno**. `renovar` devolve `False` quando a lease já não é mais
+desta worker — e ignorar isso deixa o job continuar clicando numa sessão que
+outro worker já tomou. É a colisão exata que o Bloco N foi escrito para
+impedir, agora com dois navegadores sobrescrevendo a mesma sessão. Lease de
+120s, job de até 1200s: basta o event loop ficar sem ceder controle por mais que
+o TTL.
+
+O segundo é anterior à 075, e a 075 o transforma em perda de dado:
+`update({"evidence": ...})` substitui a coluna `jsonb` **inteira**, e o worker
+começava em `{}`. Ao terminar, apagava `gateway.linhagem`,
+`gateway_fingerprint` e `gateway_sombra`. O estrago seria silencioso e no pior
+lugar: o diff de sombra existe para decidir o cutover, e sumiria justamente dos
+jobs **concluídos** — os únicos que interessa avaliar. E sem
+`gateway_fingerprint`, `IdempotencyRecord.conflita_com` trata como "nunca
+conflita" qualquer job já processado, desligando a conferência do Stripe para
+todo o histórico.
+
+Os dois consertados, com asserção executável e mutação que prova a detecção.
+
 **E uma mutação me ensinou algo novo:** a M9 não acendeu vermelha na primeira
 rodada, ela **pendurou** o teste (exit 124). O bloco construía o gateway sem
 relógio injetado, então a mutação caía no `sleep` real de 150s. 🔴 Teste que
@@ -165,11 +186,11 @@ lenta.
 
 | Suite | Asserções |
 |---|---|
-| `test_spec075_contrato_da_factory.py` | **141** |
+| `test_spec075_contrato_da_factory.py` | **151** |
 | SPEC-074 (mantidas) | 243 |
 | SPEC-073 (mantidas) | 390 |
 
-### As 9 mutações
+### As 12 mutações
 
 | # | Mutação | Vermelhas |
 |---|---|---|
@@ -182,9 +203,12 @@ lenta.
 | M7 | conta de outra corretora é aceita | 1 |
 | M8 | banco fora do ar vira fail-**open** | 2 |
 | M9 | gateway executa mesmo em `legacy`/`shadow` | 6 |
+| M10 | heartbeat volta a ignorar a perda de posse | 1 |
+| M11 | worker volta a apagar o `evidence` do banco | 2 |
+| M12 | job com lease perdida volta para a fila | 2 |
 | — | restaurado | **0** |
 
-⚠️ São **9**, não as 30 que a §34 pede. As 21 restantes cobrem caminhos que só
+⚠️ São **12**, não as 30 que a §34 pede. As 18 restantes cobrem caminhos que só
 existem com infraestrutura (Redis real, Supabase real, canário live) — ver
 [P-201](../PENDENCIAS.md).
 
@@ -205,10 +229,10 @@ que reprova por motivo legítimo ensina a equipe a ignorá-lo.
 ## 7. Gates
 
 ```
-141/0   asserções da SPEC-075
-216     suites verdes no backend
+151/0   asserções da SPEC-075
+217     suites verdes no backend
  17     vermelhas — as MESMAS pré-existentes no baseline 7a4ca95
-  9     mutações dirigidas, 9 detectadas, baseline restaurado
+  12    mutações dirigidas, 12 detectadas, baseline restaurado
   0     erros no `portal_factory validate`
   0     erros no `portal_factory audit` (19 avisos, dívida visível)
 200     /health na árvore do contêiner, com os módulos novos
@@ -245,7 +269,7 @@ Redis para **lock**, não para fila.
 
 ## 10. FATO · INFERÊNCIA · RECOMENDAÇÃO
 
-**FATO** — 141 asserções novas verdes; 9 mutações detectadas e restauradas; 216
+**FATO** — 151 asserções novas verdes; 12 mutações detectadas e restauradas; 216
 suites verdes e 17 vermelhas pré-existentes; `validate` 0 erros; a ponte nasce
 em `legacy` e foi provada não-executante em `legacy` e `shadow`; nenhum segredo
 atravessa o contrato (provado por asserção sobre os campos do dataclass).

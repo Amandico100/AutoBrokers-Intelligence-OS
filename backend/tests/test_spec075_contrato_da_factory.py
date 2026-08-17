@@ -676,6 +676,67 @@ diff3 = S.observar(banco_ruim, job_id=None, company_id="c1",
                    portal_key_legado="hdi_corretor", journey_legada="cobranca_sweep")
 check("U1: banco quebrado nao levanta para o chamador", isinstance(diff3, dict))
 
+# ==========================================================================
+print("[N3] perder a lease no meio do job ABORTA — nao continua clicando")
+# ==========================================================================
+# 🔴 Achado por juiz critico em 16/08/2026: `_bater()` chamava `lease.renovar()`
+# e DESCARTAVA o retorno. `renovar` devolve False quando a lease ja nao e mais
+# desta worker — ela venceu e outro processo assumiu a conta. Ignorar isso deixa
+# o job continuar clicando numa sessao que outro worker ja tomou: a colisao
+# exata que o Bloco N existe para impedir.
+#
+# O cenario nao e exotico: lease de 120s, job de ate 1200s. Basta o event loop
+# ficar sem ceder controle por mais que o TTL.
+import inspect as _insp  # noqa: E402
+
+import portal_worker.worker as W  # noqa: E402
+
+_src_rodar = _insp.getsource(W.run_lote)
+check("N3: o retorno de `renovar` e testado, nao descartado",
+      "if not lease.renovar(" in _src_rodar)
+check("N3: e a perda de posse tem um sinal proprio",
+      "perdeu_a_posse" in _src_rodar)
+check("N3: o job e CANCELADO quando a posse se perde",
+      "tarefa.cancel()" in _src_rodar)
+
+# E a prova EXECUTAVEL do desfecho. Sem ela, as tres de texto acima passariam
+# com um `pass` no lugar do tratamento.
+_banco_lease = BancoFalso({"portal_jobs": [
+    {"id": "j9", "company_id": "c1", "status": "running", "evidence": {}}]})
+W._marcar_lease_perdida(_banco_lease, {"id": "j9"})
+_j9 = _banco_lease.linhas["portal_jobs"][0]
+check("N3: o job abortado vira `needs_human`, NAO `queued`",
+      _j9["status"] == "needs_human", _j9["status"])
+check("N3 CONTROLE: `queued` seria o valor tentador e errado",
+      _j9["status"] != "queued")
+check("N3: e o erro ensina o que NAO fazer",
+      "NAO reexecute" in str(_j9.get("error") or ""), _j9.get("error"))
+
+# ==========================================================================
+print("[Q1] o worker NAO apaga o que o gateway e a sombra gravaram")
+# ==========================================================================
+# 🔴 Segundo achado do juiz: `update({"evidence": ...})` substitui a coluna
+# jsonb INTEIRA. O worker comecava em `{}` e, ao terminar, apagava
+# `gateway.linhagem`, `gateway_fingerprint` e `gateway_sombra`.
+#
+# O estrago seria silencioso e no pior lugar: o diff de sombra existe para
+# decidir o cutover, e sumiria justamente dos jobs CONCLUIDOS.
+_src_run = _insp.getsource(W._run_job)
+_i_ev = _src_run.find("evidence: Dict[str, Any]")
+check("Q1: o worker parte do evidence que JA esta no banco",
+      _i_ev > 0 and 'job.get("evidence")' in _src_run[_i_ev:_i_ev + 300])
+check("Q1 CONTROLE: e nao parte do vazio",
+      "evidence: Dict[str, Any] = {}" not in _src_run)
+
+# A prova executavel da CONSEQUENCIA de apagar: impressao vazia nunca conflita.
+_req_q1 = C.PortalExecutionRequest(company_id="c1", operation_key="x",
+                                   business_input={"a": 1})
+check("Q1: registro SEM impressao nunca conflita (o custo de apagar)",
+      not C.IdempotencyRecord("k", "").conflita_com(_req_q1))
+check("Q1 CONTROLE: registro COM impressao de outro pedido conflita",
+      C.IdempotencyRecord("k", "impressao-de-outro").conflita_com(_req_q1))
+
+
 print("\n" + "=" * 70)
 print(f"  {PASS} asserções verdes · {FAIL} vermelhas")
 print("=" * 70)
