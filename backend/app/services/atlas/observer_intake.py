@@ -589,7 +589,8 @@ def _store_event_sync(record: Dict[str, Any], events_table: str = "observed_even
 # Entrada principal — chamada pelo webhook evolution-go
 # ------------------------------------------------------------------ #
 async def _espelhar_no_chat_da_corretora(
-    integration: dict, key: dict, message: dict, data: dict, *, counterparty: str
+    integration: dict, key: dict, message: dict, data: dict, *, counterparty: str,
+    agente_ligado: bool = False,
 ) -> None:
     """Leva ao chat da corretora a mensagem que acabou de entrar no acervo.
 
@@ -604,6 +605,35 @@ async def _espelhar_no_chat_da_corretora(
         msg_type, texto, _interactive, _media = _extract_content(message)
         quando = _wa_timestamp_iso(data) or datetime.now(timezone.utc).isoformat()
         idade_horas = _idade_em_horas(quando)
+
+        # 🔴 QUANDO A ATENDENTE ESTA LIGADA, O ESPELHO NAO GRAVA O QUE ENTRA.
+        #
+        # 📊 Medido em 17/08/2026, no primeiro teste real de atendimento da
+        # Resulta: TODA mensagem do segurado aparecia DUAS vezes na conversa,
+        # com ~10s de diferenca --
+        #
+        #     22:32:47  origem='espelho'  wa_id=A55384CB...
+        #     22:32:57  origem=null       wa_id=null
+        #
+        # Dois escritores para a mesma mensagem. O espelho grava na hora; o
+        # pipeline de atendimento grava depois que o buffer fecha. O espelho
+        # deduplica por `wa_message_id`, e o pipeline NAO grava esse campo --
+        # entao as duas copias nunca se reconhecem.
+        #
+        # O preco nao e cosmetico: o modelo LE cada mensagem do segurado duas
+        # vezes. Foi isso que fez a atendente responder tres coisas de uma vez
+        # e perder o fio da conversa.
+        #
+        # A divisao correta e por RESPONSABILIDADE, nao por dedup:
+        #   agente DESLIGADO -> quem atende e a equipe pelo celular, e o espelho
+        #                       e a unica testemunha. Ele grava tudo.
+        #   agente LIGADO    -> o pipeline ve, responde e registra o que entra.
+        #                       O espelho sai do caminho do inbound.
+        #
+        # O que SAI (`fromMe`) continua espelhado nos dois casos: e a fala da
+        # equipe pelo celular, e o pipeline nao a conhece.
+        if agente_ligado and not bool(key.get("fromMe")):
+            return
 
         if not deve_espelhar(
             counterparty=counterparty, texto=texto, msg_type=msg_type,
@@ -937,7 +967,8 @@ async def observer_tap(integration: dict, body: dict) -> Optional[dict]:
                             # sobre ele — grava e devolve.
                             await _espelhar_no_chat_da_corretora(
                                 integration, key, message, data,
-                                counterparty=counterparty)
+                                counterparty=counterparty,
+                                agente_ligado=_agente_ligado)
                             return consumed
                 except Exception:  # noqa: BLE001 — Espelho NUNCA quebra a borda
                     pass
@@ -1002,7 +1033,8 @@ async def observer_tap(integration: dict, body: dict) -> Optional[dict]:
         # filtro de borda e por `client_chat_allowed`. "Amor, que hora te pego?"
         # nunca chega a este ponto do código.
         await _espelhar_no_chat_da_corretora(
-            integration, key, message, data, counterparty=counterparty)
+            integration, key, message, data, counterparty=counterparty,
+            agente_ligado=_agente_ligado)
         await _beat()
         logger.info(f"[ATLAS] observado {record['direction']} {insurer_key} tipo={msg_type}")
     except Exception as e:  # noqa: BLE001 — o TAP JAMAIS derruba o pipeline

@@ -43,7 +43,8 @@
     "test:entregas-abrem": "node scripts/entregas-tudo-abre.test.mjs",
     "test:entregas-historico": "node scripts/entregas-mostra-o-historico.test.mjs",
     "test:rotina-no-auxiliar": "node scripts/rotina-mora-no-auxiliar.test.mjs",
-    "test:work-run-entrada": "python backend/tests/test_o_work_run_recebe_a_entrada.py"
+    "test:work-run-entrada": "python backend/tests/test_o_work_run_recebe_a_entrada.py",
+    "test:midia-chega": "python backend/tests/test_a_midia_chega_ao_agente.py"
   },
   "dependencies": {
     "@hookform/resolvers": "^3.9.0",

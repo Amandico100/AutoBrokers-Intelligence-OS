@@ -179,6 +179,46 @@ async def get_or_create_conversation(
 
 
 # ===== HELPER: PROCESS IMAGE (VISION) =====
+# ---------------------------------------------------------------------------
+# 🔴 URL DE MIDIA QUE REALMENTE ABRE — consertado em 17/08/2026.
+#
+# 📊 O defeito, medido no primeiro teste de atendimento da Resulta: o segurado
+# mandou uma foto, o arquivo SUBIU certinho para `chat-media` (esta no bucket,
+# 22:54:20), e a atendente respondeu *"essa imagem nao chegou ate mim com
+# conteudo visivel"*.
+#
+# A causa: `chat-media`, `chat-docs` e `voice-messages` sao buckets PRIVADOS
+# (`storage.buckets.public = false`, conferido no banco), e o codigo pedia
+# `get_public_url()`. Isso devolve um endereco bem-formado que responde 400.
+#
+# Dai em diante tudo falha em silencio:
+#   1. `process_image_for_vision` BAIXA a URL que acabou de criar -> 400 ->
+#      `raise_for_status` -> devolve None
+#   2. sem URL, o bloco de visao nem roda
+#   3. e o modelo, que recebe a imagem COMO URL (`vision_service.py:107`),
+#      tambem nao conseguiria busca-la
+#
+# Uma linha errada, tres caminhos mortos, nenhuma mensagem de erro para quem
+# estava testando.
+#
+# 7 dias e o mesmo prazo do boleto assinado (`billing_collection.TEST_LINK_TTL`)
+# — a conversa precisa continuar abrindo a foto depois, no painel.
+_TTL_MIDIA_S = 7 * 24 * 60 * 60
+
+
+def _url_de_midia(client, bucket: str, file_path: str) -> Optional[str]:
+    """URL assinada. Cai para a publica so em bucket realmente publico."""
+    try:
+        assinada = client.storage.from_(bucket).create_signed_url(file_path, _TTL_MIDIA_S)
+        url = (assinada or {}).get("signedURL") or (assinada or {}).get("signedUrl")
+        if url:
+            return url if url.startswith("http") else f"{settings.SUPABASE_URL}/storage/v1{url}"
+    except Exception as e:  # noqa: BLE001
+        logger.warning("[MIDIA] assinatura falhou em %s (%s) — tentando publica",
+                       bucket, type(e).__name__)
+    return client.storage.from_(bucket).get_public_url(file_path)
+
+
 async def process_image_for_vision(
     image_url: str, company_id: str, supabase_client
 ) -> Optional[str]:
@@ -209,7 +249,7 @@ async def process_image_for_vision(
         )
 
         # URL pública
-        public_url = supabase_client.storage.from_("chat-media").get_public_url(file_path)
+        public_url = _url_de_midia(supabase_client, "chat-media", file_path)
         logger.info(f"[VISION] Uploaded image: {public_url}")
         return public_url
 
@@ -242,7 +282,7 @@ async def process_audio_for_storage(
             )
         )
 
-        public_url = supabase_client.storage.from_("voice-messages").get_public_url(file_path)
+        public_url = _url_de_midia(supabase_client, "voice-messages", file_path)
         logger.info(f"[AUDIO STORAGE] Saved audio: {public_url}")
         return public_url
 
@@ -1079,7 +1119,7 @@ async def _upload_media_bytes(company_id: str, blob: bytes, mime: str, ext: str,
                 file_path, blob, {"content-type": mime or "application/octet-stream", "cache-control": "3600"}
             )
         )
-        return supabase.client.storage.from_(bucket).get_public_url(file_path)
+        return _url_de_midia(supabase.client, bucket, file_path)
     except Exception as e:  # noqa: BLE001
         logger.error(f"[WEBHOOK EVOLUTION] media upload failed: {type(e).__name__}")
         return None
