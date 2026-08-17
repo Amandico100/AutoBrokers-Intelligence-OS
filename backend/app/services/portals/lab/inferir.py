@@ -47,6 +47,137 @@ from typing import Any, Dict, List, Optional, Sequence, Set, Tuple
 
 from app.services.portals.lab.trafego import Chamada, Trafego, hosts_de_api
 
+# Teto de tamanho para qualquer valor que sobreviva à redação e vire exemplo.
+# 📊 Sem ele o candidato do Maxpar saiu com 2,1 MB — um documento que ninguém
+# abre não é documentação.
+MAX_TAMANHO_DE_EXEMPLO = 60
+
+
+# 🔴 Campos cujo NOME já declara que o valor é de uma pessoa.
+#
+# Esta lista existe porque os dois detectores de PII do projeto são de FORMA —
+# eles acham CPF, CNPJ, chassi, placa, e-mail, JWT, telefone e CEP, que têm
+# gramática. **Nome próprio e endereço não têm forma nenhuma.**
+#
+# 📊 Achado por juiz crítico em 17/08/2026, depois de eu ter consertado três
+# vazamentos e declarado "0 PII bloqueante". Estavam nos artefatos, legíveis:
+#
+#     NomeSegurado    "ALVARO MILLEN DA SILVEIRA NETO"
+#     nomeCliente     "EVANDRO COSTA PINTO LANDEIRO"
+#     firstSurname    "LACAU DA SILVEIRA"      ← o MESMO segurado em dois
+#     NomeSegurado    "RAFAEL LACAU DA SILVEIRA" ← arquivos de seguradoras
+#                                                  diferentes: correlacionável
+#     EnderecoSegurado "Av senador Atílio Fontana 2085 apto 802"
+#     cEndereco        "RUA DOMINGOS PEDRO HERMES 555 AP 43 CD GERANI"
+#
+# A lição é maior que a lista: **detector de forma não substitui juízo sobre o
+# nome do campo.** Um campo chamado `NomeSegurado` não precisa ser analisado —
+# ele se declara.
+#
+# A lista é por SUBSTRING e em minúsculas, de propósito: `NomeSegurado`,
+# `nomeCliente`, `cNome`, `nomeParceiroNegocioPrimario` e `firstSurname` são
+# cinco grafias do mesmo conceito em quatro portais diferentes, e virão outras.
+CAMPOS_QUE_NAO_VIRAM_EXEMPLO: Tuple[str, ...] = (
+    # pessoa
+    "nome", "name", "surname", "sobrenome", "apelido", "razaosocial",
+    "razao_social", "contato", "segurado", "cliente", "titular", "proprietario",
+    "condutor", "beneficiario", "corretor", "solicitante", "responsavel",
+    # onde ela mora
+    "endereco", "address", "logradouro", "rua", "avenida", "bairro",
+    "complemento", "numero", "cep", "municipio", "cidade", "uf", "estado",
+    # 📊 As variantes em ingles entraram depois: a MAPFRE devolve
+    # `municipalityDesc: "INGLESES DO RIO VERMELHO"` — um bairro de
+    # Florianopolis, pedaco do endereco de alguem. A lista em portugues nao
+    # pegava, e o portal nao tem obrigacao de falar portugues.
+    "municipality", "city", "district", "neighborhood", "street",
+    "zip", "postal", "province", "country", "pais",
+    # como se fala com ela
+    "email", "mail", "telefone", "celular", "fone", "ddd", "whatsapp",
+    # documento
+    "cpf", "cnpj", "documento", "rg", "identidade", "placa", "chassi",
+    "apolice", "policy", "protocolo",
+)
+
+
+def campo_e_de_pessoa(nome_do_campo: Any) -> bool:
+    """O NOME do campo já diz que o valor é de alguém?
+
+    🔴 `numero` e `cidade` na lista parecem exagero e não são. `Numero` é o
+    número da casa; `Cidade` compõe endereço. E o custo de errar para mais é um
+    schema sem exemplo naquele campo — o custo de errar para menos é o endereço
+    de um segurado num commit.
+
+    E há o caso que só se vê medindo: o telefone do Maxpar chega **partido** em
+    `{"Ddd": "47", "Numero": "996274743"}`. Nenhum detector de forma pega,
+    porque `996274743` sozinho tem 9 dígitos e não casa com padrão de telefone.
+    Junto, é um celular discável. O nome do campo pega os dois pedaços.
+    """
+    n = str(nome_do_campo or "").strip().lower()
+    if not n:
+        return False
+    return any(marca in n for marca in CAMPOS_QUE_NAO_VIRAM_EXEMPLO)
+
+
+def _seguro_para_exemplo(v: Any) -> Optional[Any]:
+    """O valor pode virar `example` no documento gerado? Redige ANTES de guardar.
+
+    🔴 Este guarda nasceu de um vazamento meu, medido. A primeira versão
+    guardava o valor cru em `Forma.exemplos` e o emitia como `examples`. Rodando
+    sobre os HAR reais do Maxpar, o artefato gerado saiu com **410 achados de
+    PII**: 340 chassis, 16 placas, 4 CPFs, 2 e-mails e 47 tokens.
+
+    E o pior: o documento ia para `docs/generated/`, que **é versionado** — ao
+    contrário do `docs/intake/`, que está no `.gitignore` justamente por isso.
+    O pipeline inteiro foi desenhado para impedir esse caminho, e eu abri uma
+    porta lateral pelo campo mais inocente do schema.
+
+    A correção é estrutural, e é a mesma regra dos cabeçalhos em `trafego.py`:
+    **redigir na coleta, não na emissão**. Valor redigido é indistinguível de
+    valor limpo para quem lê o schema — e o que nunca entrou não pode vazar por
+    um `print` de depuração.
+    """
+    if v is None or isinstance(v, (dict, list)):
+        return None
+    if isinstance(v, bool) or isinstance(v, (int, float)):
+        return v
+    texto = str(v)
+    if len(texto) > MAX_TAMANHO_DE_EXEMPLO:
+        return None
+    # 🔴 O detector MAIS ESTRITO disponível, sempre — e são dois, porque eles
+    # sabem coisas diferentes.
+    #
+    # 📊 Medido depois do primeiro conserto: o `redigir_texto` da SPEC-073 **não
+    # conhece chassi**, e por isso dois VIN reais (`98867513WJKH74022`,
+    # `KNAPC817BF7716416`) atravessaram e foram parar em `x-enum-observado` do
+    # documento gerado. O `varredura_de_pii` da SPEC-075 conhece — ele valida a
+    # estrutura do VIN (sem I, O, Q) e foi escrito justamente para guardar
+    # fixture que vai para o Git, que é exatamente o destino deste artefato.
+    #
+    # Usar o mais estrito não é redundância: é reconhecer que os dois guardas
+    # nasceram para contextos diferentes e que aqui vale a soma.
+    try:
+        from app.services.portals.replay import varredura_de_pii
+
+        if varredura_de_pii(texto):
+            return None
+    except Exception:  # noqa: BLE001
+        pass  # o guarda abaixo ainda roda
+
+    try:
+        from portal_worker.redaction import redigir_texto, tem_vazamento
+
+        limpo = redigir_texto(texto)
+        if limpo != texto:
+            return None          # tinha PII: não vira exemplo, nem redigido
+        if tem_vazamento({"v": texto}):
+            return None
+        return texto
+    except Exception:  # noqa: BLE001
+        # 🔴 Sem redator NENHUM disponível, nenhum valor vira exemplo. Falha
+        # fechada: a alternativa seria publicar o valor cru porque um import
+        # falhou.
+        return None
+
 # --------------------------------------------------------------------------
 # Estados do endpoint — SPEC-077 §11.3
 # --------------------------------------------------------------------------
@@ -159,7 +290,8 @@ MAX_VALORES_PARA_ENUM = 8
 MIN_OCORRENCIAS_PARA_ENUM = 3
 
 
-def acumular(forma: Forma, valor: Any, *, profundidade: int = 0) -> None:
+def acumular(forma: Forma, valor: Any, *, profundidade: int = 0,
+             nome_do_campo: str = "") -> None:
     """Funde mais uma amostra na forma. Recursivo, com teto de profundidade.
 
     O teto existe porque JSON de portal às vezes traz árvore de menu inteira
@@ -170,10 +302,15 @@ def acumular(forma: Forma, valor: Any, *, profundidade: int = 0) -> None:
     if f:
         forma.formatos.add(f)
 
-    if isinstance(valor, str) and 0 < len(valor) <= 40:
-        forma.valores[valor] += 1
-    if len(forma.exemplos) < 3 and valor is not None and not isinstance(valor, (dict, list)):
-        forma.exemplos.append(valor)
+    # 🔴 Redação na COLETA, em dois portões: o NOME do campo e a FORMA do valor.
+    #
+    # O nome vem primeiro porque é o que pega o que a forma não pega — nome
+    # próprio e endereço não têm gramática. Ver `campo_e_de_pessoa`.
+    seguro = None if campo_e_de_pessoa(nome_do_campo) else _seguro_para_exemplo(valor)
+    if isinstance(seguro, str) and 0 < len(seguro) <= 40:
+        forma.valores[seguro] += 1
+    if len(forma.exemplos) < 3 and seguro is not None:
+        forma.exemplos.append(seguro)
 
     if profundidade >= 8:
         return
@@ -182,7 +319,8 @@ def acumular(forma: Forma, valor: Any, *, profundidade: int = 0) -> None:
         for k in valor:
             filho = forma.filhos.setdefault(str(k), Forma())
             filho.vista_em += 1
-            acumular(filho, valor[k], profundidade=profundidade + 1)
+            acumular(filho, valor[k], profundidade=profundidade + 1,
+                     nome_do_campo=str(k))
         # Toda chave conhecida ganha +1 no denominador, tenha aparecido ou não.
         for k, filho in forma.filhos.items():
             filho.de_um_total_de += 1
@@ -192,7 +330,10 @@ def acumular(forma: Forma, valor: Any, *, profundidade: int = 0) -> None:
         for v in valor[:50]:  # 50 itens bastam para a forma; o resto é repetição
             forma.item.vista_em += 1
             forma.item.de_um_total_de += 1
-            acumular(forma.item, v, profundidade=profundidade + 1)
+            # O item HERDA o nome do campo: uma lista chamada `Segurados` é uma
+            # lista de segurados, e cada item dela é tão sensível quanto o todo.
+            acumular(forma.item, v, profundidade=profundidade + 1,
+                     nome_do_campo=nome_do_campo)
 
 
 def para_json_schema(forma: Forma) -> Dict[str, Any]:
@@ -272,6 +413,41 @@ class Endpoint:
         return self.metodo in ("POST", "PUT", "PATCH", "DELETE")
 
 
+def _segmento_e_pii(seg: str) -> bool:
+    """Este pedaço de caminho é identificador de uma PESSOA?
+
+    🔴 Nasceu de um vazamento medido. A API da MAPFRE tem caminhos assim:
+
+        /api/1.0.0/client/12097137725_1/interactions
+
+    O `normalizar_path` da SPEC-073 **preserva** número colado em palavra, e
+    faz isso por um motivo bom: `passo5` e `passo6` são telas diferentes, e
+    achatá-las cegaria o detector de drift. Só que `12097137725_1` obedece à
+    mesma forma — e é o CPF de alguém.
+
+    A regra da 073 continua certa para o que ela protege. O que muda aqui é o
+    destino: o documento gerado vai para `docs/generated/`, que é **versionado**.
+    Um CPF numa chave de path viraria commit.
+    """
+    # 🔴 A primeira versão exigia que o segmento fosse EXATAMENTE 11 ou 14
+    # dígitos depois de limpo. Errado, e medido: o segmento real da MAPFRE é
+    # `12097137725_1`, que limpo dá **12** dígitos — o CPF mais o sufixo `_1`.
+    # A checagem falhava e o CPF passava. Pergunta certa não é "este segmento É
+    # um CPF?", é "este segmento CONTÉM um?".
+    texto = str(seg or "")
+    if sum(ch.isdigit() for ch in texto) < 11:
+        return False
+    try:
+        from app.services.portals.replay import varredura_de_pii
+
+        return bool(varredura_de_pii(texto))
+    except Exception:  # noqa: BLE001
+        # Sem o detector, 11+ dígitos num segmento de path é suspeito o
+        # bastante para virar parâmetro. Perder granularidade custa um nome
+        # feio no relatório; acertar errado custa um CPF no Git.
+        return True
+
+
 def _normalizar(caminho: str) -> str:
     """Usa o normalizador da SPEC-073. É o mesmo que o profiler usa.
 
@@ -283,9 +459,13 @@ def _normalizar(caminho: str) -> str:
     try:
         from portal_worker.profiler import normalizar_path
 
-        return normalizar_path(caminho)
+        base = normalizar_path(caminho)
     except Exception:  # noqa: BLE001
-        return caminho
+        base = caminho
+
+    # Segunda passada, só do Lab: segmento que identifica pessoa vira `{id}`.
+    partes = base.split("/")
+    return "/".join("{id}" if _segmento_e_pii(p) else p for p in partes)
 
 
 def agrupar(trafego: Trafego, *, hosts: Optional[Sequence[str]] = None,
@@ -342,11 +522,31 @@ def agrupar(trafego: Trafego, *, hosts: Optional[Sequence[str]] = None,
         for nome in c.nomes_de_header_req:
             ep.headers_vistos[nome.lower()] += 1
 
+        # 🔴 O denominador dos query params sobe UMA VEZ POR CHAMADA, para
+        # todos os params conhecidos — não só para os presentes.
+        #
+        # 📊 Achado por juiz crítico: a versão anterior incrementava `vista_em`
+        # e `de_um_total_de` juntos, só quando a chave aparecia. Como
+        # `obrigatoria` compara os dois, eles eram SEMPRE iguais, e todo param
+        # visto 2+ vezes saía `required: true` — mesmo estando ausente em todas
+        # as outras chamadas.
+        #
+        # E isso não é cosmético: `ciclo.comparar_operacao` trata campo
+        # obrigatório NOVO na requisição como `QUEBRA_REQUISICAO`, que fecha a
+        # capacidade. Um inferidor que inventa obrigatoriedade faz o detector de
+        # drift gritar em evolução normal do portal.
+        #
+        # É o mesmo contabilidade-do-pai que `acumular` já faz para dicionário,
+        # e que o bloco T3 do teste prova. Aqui estava faltando.
+        vistos_nesta_chamada = set()
         for k, v in c.query.items():
             f = ep.query_params.setdefault(k, Forma())
             f.vista_em += 1
-            f.de_um_total_de += 1
-            acumular(f, v)
+            vistos_nesta_chamada.add(k)
+            acumular(f, v, nome_do_campo=k)
+        if c.query or ep.query_params:
+            for k, f in ep.query_params.items():
+                f.de_um_total_de += 1
 
         if c.corpo_req and "json" in (c.content_type_req or "").lower():
             ep.content_type_req = c.content_type_req

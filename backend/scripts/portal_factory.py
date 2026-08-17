@@ -21,18 +21,30 @@ alguém escreveu à mão, o diff sai grande demais para alguém ler de verdade �
 registro é justamente o arquivo onde uma linha errada faz o worker chamar a
 função errada em produção. Imprimir custa um `Ctrl+V`. Reescrever custa confiança.
 
-Os cinco comandos
-=================
+Os comandos
+===========
     audit       o registro bate com o código, os fixtures e os testes?
     matrix      o que a casa sabe fazer, por operação de negócio
     validate    o registro é COERENTE consigo mesmo?
     scaffold-portal    esqueleto de um portal novo
     scaffold-journey   esqueleto de uma capacidade nova em portal conhecido
 
-`audit` e `validate` saem com código **diferente de zero** quando encontram
-problema real. Um comando de auditoria que sempre sai 0 não é gate: é enfeite —
-ele passa a fazer parte do CI como uma linha verde que nunca teve como ficar
-vermelha (CLAUDE.md §9.3: um guarda que não tem como falhar não guarda nada).
+    lab har         o que tem dentro de um HAR capturado
+    lab api-infer   HAR(s) → contrato OpenAPI CANDIDATO + relatório de cobertura
+    lab drift       o contrato aprovado ainda descreve o portal?
+    lab promote     este endpoint pode subir um degrau da escada?
+
+`audit`, `validate`, `lab drift` e `lab promote` saem com código **diferente de
+zero** quando encontram problema real. Um comando de auditoria que sempre sai 0
+não é gate: é enfeite — ele passa a fazer parte do CI como uma linha verde que
+nunca teve como ficar vermelha (CLAUDE.md §9.3: um guarda que não tem como
+falhar não guarda nada).
+
+Os quatro `lab` são a linha de comando do Portal Intelligence Lab (SPEC-077).
+Eles são **offline**: leem tráfego já capturado, não abrem browser, não fazem
+login e não tocam em portal nenhum. E `lab` **não promove nada de verdade**:
+`promote` calcula o veredito da escada e imprime; quem registra a promoção é o
+caminho governado, não esta CLI.
 
 A diferença entre ERRO e AVISO, escrita antes de ser usada
 ==========================================================
@@ -65,6 +77,14 @@ USO
         --operation OP [--journey-key J] [--effect-class C] [--write]
     python backend/scripts/portal_factory.py scaffold-journey --portal-key K \\
         --journey-key J --operation OP [--effect-class C] [--write]
+    python backend/scripts/portal_factory.py lab har --arquivo X.har \\
+        [--host-portal H] [--json]
+    python backend/scripts/portal_factory.py lab api-infer --arquivo A.har \\
+        [--arquivo B.har ...] [--host H] [--saida DIR]
+    python backend/scripts/portal_factory.py lab drift --aprovado A.json \\
+        --candidato B.json
+    python backend/scripts/portal_factory.py lab promote --estado OBSERVED \\
+        --para CANDIDATE [--evidencia revisado_por_humano=1 ...]
 """
 from __future__ import annotations
 
@@ -1773,6 +1793,700 @@ def cmd_scaffold_journey(args: argparse.Namespace) -> int:
 
 
 # ==========================================================================
+# lab — o Portal Intelligence Lab (SPEC-077) na linha de comando
+#
+# Os quatro comandos abaixo NÃO abrem browser, não fazem login e não falam com
+# portal nenhum. Eles leem tráfego que já foi capturado (HAR do navegador, hoje;
+# DeepTrace do worker, depois) e devolvem contrato candidato, cobertura, drift e
+# veredito de promoção.
+#
+# 🔴 CANDIDATO nunca é CONTRATO, e esta CLI não promove nada. `lab promote`
+# calcula o veredito da escada e imprime; ele não escreve estado em lugar nenhum
+# — não há banco aqui. Um comando de linha que gravasse `APPROVED_MATERIAL`
+# seria exatamente o caminho automático que o `ciclo.py` existe para não ter.
+# ==========================================================================
+_LAB_PKGS = (
+    ("app", "app"),
+    ("app.services", "app/services"),
+    ("app.services.portals", "app/services/portals"),
+)
+
+
+def _carregar_lab() -> Tuple[Any, Any, Any]:
+    """`(trafego, inferir, ciclo)` — sem acordar o backend inteiro.
+
+    🔴 Um `import app.services.portals.lab.trafego` normal executa
+    `app/services/__init__.py`, que reexporta o backend inteiro — Supabase,
+    MinIO, Qdrant, LangChain e `openai`. Medido em 16/08/2026 nesta máquina:
+
+        ModuleNotFoundError: No module named 'openai'
+
+    O Lab é offline e não depende de nada disso. Em vez de instalar meia
+    aplicação para ler um HAR, montamos só a CADEIA de pacotes: `app`,
+    `app.services` e `app.services.portals` entram no `sys.modules` como
+    pacotes-casca com `__path__` apontando para o diretório real, e o `lab`
+    (que é um `__init__` sem import nenhum) resolve por baixo deles.
+
+    A casca é local ao processo desta CLI e não muda nada em produção — lá o
+    `smith-api` importa o pacote de verdade, com as dependências instaladas.
+    """
+    _preparar_import()
+    import types
+
+    for nome, sub in _LAB_PKGS:
+        atual = sys.modules.get(nome)
+        if atual is not None and getattr(atual, "__path__", None):
+            continue
+        casca = types.ModuleType(nome)
+        casca.__path__ = [str(_backend() / sub)]  # type: ignore[attr-defined]
+        sys.modules[nome] = casca
+
+    from app.services.portals.lab import ciclo, inferir, trafego  # noqa: E402
+    return trafego, inferir, ciclo
+
+
+def _yaml():
+    """PyYAML se ele existir; `None` se não. **Nenhuma dependência nova.**
+
+    Escrever um serializador YAML à mão aqui seria pior que não escrever: um
+    caractere mal escapado produz um arquivo que ABRE e diz outra coisa — e o
+    erro só aparece quando alguém gerar cliente a partir dele. JSON o comando
+    sempre entrega; YAML é conveniência, e conveniência não justifica um
+    formato silenciosamente errado.
+    """
+    try:
+        import yaml  # type: ignore
+
+        return yaml
+    except Exception:  # noqa: BLE001
+        return None
+
+
+def _tamanho(n: float) -> str:
+    for unidade in ("B", "KB", "MB", "GB"):
+        if n < 1024 or unidade == "GB":
+            return f"{n:.0f} {unidade}" if unidade == "B" else f"{n:.1f} {unidade}"
+        n /= 1024.0
+    return f"{n:.1f} GB"
+
+
+def _sem_ruido(T: Any, bruto: Any) -> Any:
+    """O mesmo filtro que `importar_har(incluir_ruido=False)` aplica.
+
+    A importação é feita COM ruído de propósito: é a única forma de dizer
+    quanto do arquivo era telemetria sem abrir o HAR duas vezes — e esse número
+    é o que explica um relatório curto vindo de um arquivo de 30 MB.
+    """
+    limpo = [c for c in bruto.chamadas if c.origem not in ("telemetry", "asset")]
+    return T.Trafego(chamadas=limpo, fonte=bruto.fonte, rotulo=bruto.rotulo,
+                     host_portal=bruto.host_portal)
+
+
+_TEXTO_HAR_SEM_CORPO = (
+    "Nenhuma resposta JSON deste HAR veio com corpo. Sem corpo não há forma a "
+    "inferir: o relatório sai vazio e a ferramenta parece quebrada, quando o "
+    "que faltou foi conteúdo no arquivo.")
+
+_COMO_CAPTURAR = (
+    "    Como capturar de novo, na aba Network do DevTools:",
+    "      1. ligue `Preserve log` ANTES de navegar (sem ele, cada troca de",
+    "         página apaga o que veio antes — e o login some do arquivo)",
+    "      2. faça o fluxo inteiro, do login até a tela final",
+    "      3. botão direito na lista de requisições → `Save all as HAR with",
+    "         content`. O ícone de download da barra pode exportar SEM os",
+    "         corpos, e é assim que se captura um arquivo grande e inútil",
+    "    Outras duas causas, bem mais raras: corpo acima de 2 MB (o importador",
+    "    corta, para um HTML de 20 MB não entrar por engano) e resposta que o",
+    "    servidor não marcou como JSON no `Content-Type`.",
+)
+
+
+def _resumo_de_har(T: Any, I: Any, caminho: Path,
+                   host_portal: str) -> Dict[str, Any]:
+    """Os números de um HAR. Uma leitura do arquivo, todos os totais."""
+    bruto = T.importar_har(caminho, host_portal=host_portal, incluir_ruido=True)
+    limpo = _sem_ruido(T, bruto)
+
+    ruido: Dict[str, int] = {}
+    for c in bruto.chamadas:
+        if c.origem in ("telemetry", "asset"):
+            ruido[c.origem] = ruido.get(c.origem, 0) + 1
+
+    respostas_json = [c for c in limpo.chamadas if c.e_json]
+    com_corpo = [c for c in respostas_json if c.corpo_resp]
+    hosts = T.hosts_de_api(limpo, minimo=1)
+    endpoints = I.agrupar(limpo)
+    escrita = [ep for ep in endpoints.values() if ep.escreve]
+    com_forma = [ep for ep in endpoints.values()
+                 if ep.formas_resp or ep.forma_req is not None]
+
+    return {
+        "arquivo": str(caminho),
+        "rotulo": caminho.name,
+        "bytes": caminho.stat().st_size if caminho.exists() else 0,
+        "chamadas_no_arquivo": len(bruto),
+        "chamadas_uteis": len(limpo),
+        "ruido": ruido,
+        "host_que_navega": limpo.host_portal,
+        "hosts_de_api": [{"host": h, "json": n} for h, n in hosts],
+        "respostas_json": len(respostas_json),
+        "respostas_json_com_corpo": len(com_corpo),
+        "har_sem_corpos": bool(respostas_json) and not com_corpo,
+        "endpoints": len(endpoints),
+        "endpoints_de_escrita": len(escrita),
+        # 🔴 O número que decide se o arquivo SERVE. Endpoint contado não é
+        # endpoint com contrato: sem nenhum corpo capturado, o agrupador ainda
+        # devolve linhas (ele conta chamadas), e sair 0 por causa delas seria
+        # dar verde a um HAR do qual não sai um único schema.
+        "endpoints_com_forma": len(com_forma),
+    }
+
+
+def cmd_lab_har(args: argparse.Namespace) -> int:
+    T, I, _C = _carregar_lab()
+
+    caminho = Path(args.arquivo)
+    if not caminho.is_file():
+        print(f"\n  🔴 `{caminho}` não é um arquivo que dê para ler.")
+        return 2
+    try:
+        r = _resumo_de_har(T, I, caminho, str(args.host_portal or ""))
+    except json.JSONDecodeError as e:
+        print(f"\n  🔴 `{caminho.name}` não é JSON válido ({e}). HAR truncado "
+              "costuma vir de exportação interrompida — refaça a captura.")
+        return 2
+
+    util = bool(r["endpoints_com_forma"])
+
+    if args.json:
+        print(json.dumps(r, ensure_ascii=False, indent=2))
+        return 0 if util else 1
+
+    print()
+    print("=" * 78)
+    print("  LAB · HAR — o que este arquivo tem dentro")
+    print(f"  {caminho.name}  ·  {_tamanho(r['bytes'])}")
+    print("=" * 78)
+    print()
+    print(f"  {r['chamadas_no_arquivo']} chamada(s) no arquivo · "
+          f"{r['chamadas_uteis']} depois de descartar ruído")
+    if r["ruido"]:
+        print("    descartado: " + " · ".join(
+            f"{n} {tipo}" for tipo, n in sorted(r["ruido"].items())))
+    print()
+    print(f"  host que NAVEGA (a casa): {r['host_que_navega'] or '(não identificado)'}")
+    if not args.host_portal:
+        print("    heurística: o primeiro `document` em ordem cronológica. Se")
+        print("    aparecer um rastreador aí, sobreponha com `--host-portal` —")
+        print("    com a casa errada o portal de verdade vira `third_party` e o")
+        print("    filtro passa a proteger o pixel.")
+    print()
+    if r["hosts_de_api"]:
+        print("  hosts que SERVEM API (respostas JSON com corpo):")
+        for h in r["hosts_de_api"]:
+            marca = "   ← 1 só: o inferidor ignora (provável passageiro)" \
+                if h["json"] < 2 else ""
+            print(f"    {h['json']:>5}  {h['host']}{marca}")
+        print()
+        print("    🔴 O host da API quase nunca é o host do portal. É esta")
+        print("       lista que o inferidor persegue, não a origem `first_party`.")
+    else:
+        print("  hosts que SERVEM API: nenhum.")
+        print("    Sem host de API identificado o agrupador não filtra por")
+        print("    host: a contagem abaixo inclui tudo que não é ruído.")
+    print()
+    print(f"  endpoints distintos: {r['endpoints']}   ·   "
+          f"de ESCRITA: {r['endpoints_de_escrita']}   ·   "
+          f"com forma inferível: {r['endpoints_com_forma']}")
+    print(f"  respostas JSON: {r['respostas_json']} · "
+          f"com corpo capturado: {r['respostas_json_com_corpo']}")
+
+    if not util:
+        print()
+        _alerta_sem_corpo(bool(r["respostas_json"]))
+
+    print()
+    if util:
+        print("  Próximo passo — o contrato candidato e o que falta exercitar:")
+        print(f"    portal_factory.py lab api-infer --arquivo \"{caminho}\" "
+              "--saida <dir>")
+    else:
+        print("  🔴 Não há contrato a inferir deste arquivo: `api-infer` sairia")
+        print("     com endpoints sem um único schema.")
+    print()
+    return 0 if util else 1
+
+
+def _alerta_sem_corpo(havia_json: bool) -> None:
+    """O aviso que evita a conclusão errada — e ele distingue as duas causas.
+
+    🔴 Um relatório vazio sem explicação faz a pessoa concluir que a ferramenta
+    não funciona, refazer a captura do mesmo jeito e chegar ao mesmo nada. As
+    duas causas pedem ações opostas: `HAR with content` conserta a primeira, e
+    nada conserta a segunda — se o portal renderiza HTML no servidor, não há
+    API a inferir e a journey é de navegação mesmo.
+    """
+    print("  " + "!" * 74)
+    if havia_json:
+        print("  🔴 HAR SEM CORPO DE RESPOSTA — É O ERRO Nº 1 DE CAPTURA")
+        print("  " + "!" * 74)
+        for linha in _quebrar(_TEXTO_HAR_SEM_CORPO, 72):
+            print(f"    {linha}")
+        print()
+        for linha in _COMO_CAPTURAR:
+            print(linha)
+        return
+    print("  🔴 NENHUMA RESPOSTA JSON NESTE TRÁFEGO")
+    print("  " + "!" * 74)
+    print("    Duas hipóteses, e elas pedem coisas opostas:")
+    print()
+    print("      1. a captura saiu sem conteúdo — refaça como abaixo;")
+    print("      2. o portal não é API-first. Se ele entrega HTML renderizado")
+    print("         no servidor, não existe contrato a inferir, e a journey é")
+    print("         de navegação mesmo. Nenhuma captura melhor muda isso.")
+    print()
+    for linha in _COMO_CAPTURAR:
+        print(linha)
+
+
+# --------------------------------------------------------------------------
+# api-infer
+# --------------------------------------------------------------------------
+def _vazamentos(*valores: Any) -> List[str]:
+    """O redator canônico ainda acha PII no que está prestes a ir para o disco?
+
+    🔴 Esta é a checagem de FRONTEIRA, não a proteção. A proteção mora onde tem
+    de morar: `inferir._seguro_para_exemplo()` redige na COLETA, e valor com PII
+    nunca chega a virar `example`. Aqui a CLI só confere o que ela mesma vai
+    gravar — porque é ela que escolhe o diretório de saída, e `--saida` pode
+    apontar para dentro do repositório versionado.
+
+    Ela existe justamente para poder FALHAR: se a redação da coleta regredir, o
+    aviso sai antes de o arquivo existir, em vez de num `git log` depois.
+
+    📊 Medido em 16/08/2026 sobre `abraseuatendimento.com.br.har`: com a coleta
+    redigindo, `tem_vazamento()` no documento inteiro devolve `[]`. Antes dessa
+    correção, o mesmo documento devolvia `cartao, cep, cpf, email, placa,
+    telefone` — a linha de controle que dá direito a esta afirmação.
+
+    Vazio não prova limpeza: prova que os padrões conhecidos não casaram.
+
+    🔴 A checagem é por PADRÃO no TEXTO, nunca por nome de chave — e a diferença
+    decide se o guarda serve. `tem_vazamento()` num dicionário também reprova
+    uma CHAVE sensível com valor não redigido; num OpenAPI a chave é o nome da
+    propriedade, então um portal com um campo chamado `token` seria acusado de
+    vazar por causa do `{"type": "string"}` que ele guarda. O documento nunca
+    mais poderia ser gravado, por um defeito que não existe. Por isso o
+    documento é achatado em STRINGS antes de conferir: nome de campo continua
+    sendo conferido como texto, e um CPF de verdade não escapa.
+    """
+    try:
+        from portal_worker.redaction import tem_vazamento
+    except Exception:  # noqa: BLE001
+        return []
+    return sorted(set(tem_vazamento(_todas_as_strings(list(valores)))))
+
+
+def _todas_as_strings(no: Any, _prof: int = 0) -> List[str]:
+    """Todo texto do documento — valores E nomes de chave — numa lista plana."""
+    if _prof > 24:
+        return []
+    if isinstance(no, dict):
+        saida: List[str] = []
+        for k, v in no.items():
+            saida.append(str(k))
+            saida.extend(_todas_as_strings(v, _prof + 1))
+        return saida
+    if isinstance(no, (list, tuple)):
+        saida = []
+        for v in no:
+            saida.extend(_todas_as_strings(v, _prof + 1))
+        return saida
+    if isinstance(no, str):
+        return [no]
+    return []
+
+
+def cmd_lab_api_infer(args: argparse.Namespace) -> int:
+    T, I, _C = _carregar_lab()
+
+    caminhos = [Path(a) for a in (args.arquivo or [])]
+    faltando = [p for p in caminhos if not p.is_file()]
+    if faltando:
+        print("\n  🔴 arquivo(s) que não dá para ler:")
+        for p in faltando:
+            print(f"     {p}")
+        return 2
+
+    print()
+    print("=" * 78)
+    print(f"  LAB · API-INFER — contrato CANDIDATO a partir de "
+          f"{len(caminhos)} HAR")
+    print("=" * 78)
+    print()
+
+    # Vários arquivos, um só tráfego. O Maxpar tem o mesmo fluxo partido em três
+    # capturas; inferir cada uma isolada daria três contratos pobres em vez de
+    # um com amostras suficientes para distinguir campo opcional de obrigatório.
+    #
+    # 🔴 A classificação de origem é feita ARQUIVO A ARQUIVO, antes da junção:
+    # cada HAR tem a sua própria casa, e um `host_portal` único aplicado ao
+    # conjunto transformaria o portal de um deles em terceiro.
+    chamadas: List[Any] = []
+    rotulos: List[str] = []
+    host_portal = ""
+    for p in caminhos:
+        try:
+            bruto = T.importar_har(p, incluir_ruido=True)
+        except json.JSONDecodeError as e:
+            print(f"  🔴 `{p.name}` não é JSON válido ({e}).")
+            return 2
+        limpo = _sem_ruido(T, bruto)
+        chamadas.extend(limpo.chamadas)
+        rotulos.append(p.name)
+        host_portal = host_portal or limpo.host_portal
+        print(f"    +  {p.name:<44} {len(bruto):>5} chamadas → "
+              f"{len(limpo):>5} úteis   (casa: {limpo.host_portal or '?'})")
+
+    trafego = T.Trafego(chamadas=chamadas, fonte="har",
+                        rotulo=" + ".join(rotulos), host_portal=host_portal)
+
+    hosts = [str(h).lower() for h in (args.host or [])] or None
+    print()
+    if hosts:
+        print(f"  hosts de API (declarados em `--host`): {', '.join(hosts)}")
+    else:
+        descobertos = T.hosts_de_api(trafego, minimo=2)
+        print("  hosts de API (descobertos por resposta JSON):")
+        for h, n in descobertos[:8]:
+            print(f"    {n:>5}  {h}")
+        if not descobertos:
+            print("    nenhum host com 2+ respostas JSON.")
+
+    endpoints = I.agrupar(trafego, hosts=hosts)
+    # 🔴 Endpoint contado não é endpoint com contrato. Sem nenhum corpo
+    # capturado o agrupador ainda devolve linhas — ele conta chamadas — e
+    # gravar um `openapi-candidate.json` de 35 operações sem um único schema
+    # seria entregar um arquivo que parece resultado e não descreve nada.
+    com_forma = [ep for ep in endpoints.values()
+                 if ep.formas_resp or ep.forma_req is not None]
+    if not com_forma:
+        print()
+        _alerta_sem_corpo(any(c.e_json for c in trafego))
+        print()
+        print(f"    ({len(endpoints)} endpoint(s) agrupados, nenhum com forma "
+              "inferível — nada foi gravado.)")
+        print()
+        return 1
+
+    avaliados = [(ep, I.avaliar(ep)) for ep in endpoints.values()]
+    avaliados.sort(key=lambda par: (-par[1].nota, par[0].chave))
+    escrita = [(ep, c) for ep, c in avaliados if ep.escreve]
+    media = round(sum(c.nota for _, c in avaliados) / len(avaliados))
+
+    print()
+    print(f"  {len(trafego)} chamadas · {len(endpoints)} endpoints · "
+          f"{len(escrita)} de escrita · confiança média {media}/100")
+    print()
+    # 🔴 O caminho vai INTEIRO, mesmo que a linha passe de 78 colunas. Cortar
+    # em N caracteres produziu duas linhas idênticas para
+    # `…/apolices/itens-cobertos` e `…/apolices/itens-cobertos/{n}` — um
+    # relatório que faz dois endpoints diferentes parecerem o mesmo é pior que
+    # um relatório largo.
+    print("  os 10 com mais evidência:")
+    print(f"    {'amostras':>8} {'conf':>5}   endpoint")
+    print("    " + "-" * 68)
+    for ep, conf in avaliados[:10]:
+        print(f"    {ep.amostras:>8} {conf.nota:>5}   {ep.chave}")
+
+    if escrita:
+        print()
+        print("  " + "=" * 74)
+        print("  🔴 ENDPOINTS DE ESCRITA OBSERVADOS — cada um destes PODE criar")
+        print("     coisa no mundo, no nome de um segurado real")
+        print("  " + "=" * 74)
+        for ep, conf in escrita:
+            st = ", ".join(str(s) for s in sorted(ep.status_vistos))
+            print(f"    {ep.chave}")
+            print(f"        {ep.amostras} amostra(s) · status {st} · "
+                  f"confiança {conf.nota} · corpo de requisição "
+                  f"{'capturado' if ep.forma_req is not None else 'AUSENTE'}")
+        print()
+        print("     🔴 Verbo não é semântica: `POST /questionarios/perguntas`")
+        print("        do Maxpar LÊ a próxima pergunta. Esta lista é de")
+        print("        candidatos a material, não de fatos — quem classifica é")
+        print("        uma pessoa, e idempotência não se infere de tráfego.")
+        print("     🔴 Nenhum deles está aprovado para nada: todos nascem")
+        print("        `OBSERVED`, e subir degrau é `lab promote` + gate humano.")
+
+    doc = I.openapi_candidato(trafego, titulo=args.titulo or "", hosts=hosts)
+    cobertura = I.relatorio_de_cobertura(trafego, hosts=hosts)
+
+    vazou = _vazamentos(doc, cobertura)
+    if vazou:
+        print()
+        print("  " + "!" * 74)
+        print("  🔴 PII NO QUE SERIA GRAVADO: " + ", ".join(vazou))
+        print("  " + "!" * 74)
+        print("     A redação da coleta (`inferir._seguro_para_exemplo`) devia")
+        print("     ter impedido isto. NADA foi gravado: `--saida` pode apontar")
+        print("     para dentro do repositório versionado, e o HAR de origem")
+        print("     está no `.gitignore` exatamente para este arquivo não")
+        print("     existir. Conserte a redação na coleta antes de rodar de novo.")
+        print()
+        return 1
+
+    if not args.saida:
+        print()
+        print("  Nada foi gravado — passe `--saida <dir>` para gerar")
+        print("  `openapi-candidate.json`, `.yaml` e `coverage.md`.")
+        print()
+        return 0
+
+    destino = Path(args.saida)
+    try:
+        destino.mkdir(parents=True, exist_ok=True)
+    except OSError as e:  # noqa: BLE001
+        print(f"\n  🔴 não deu para criar `{destino}`: {e}")
+        return 2
+
+    escritos: List[Tuple[str, int]] = []
+    alvo_json = destino / "openapi-candidate.json"
+    corpo = json.dumps(doc, ensure_ascii=False, indent=2) + "\n"
+    alvo_json.write_text(corpo, encoding="utf-8")
+    escritos.append((alvo_json.name, len(corpo.encode("utf-8"))))
+
+    yaml = _yaml()
+    if yaml is not None:
+        alvo_yaml = destino / "openapi-candidate.yaml"
+        texto = yaml.safe_dump(doc, allow_unicode=True, sort_keys=False,
+                               default_flow_style=False)
+        alvo_yaml.write_text(texto, encoding="utf-8")
+        escritos.append((alvo_yaml.name, len(texto.encode("utf-8"))))
+
+    alvo_md = destino / "coverage.md"
+    alvo_md.write_text(cobertura, encoding="utf-8")
+    escritos.append((alvo_md.name, len(cobertura.encode("utf-8"))))
+
+    print()
+    print("-" * 78)
+    print(f"  GRAVADO em {destino}")
+    print("-" * 78)
+    for nome, n in escritos:
+        print(f"    +  {nome:<28} {_tamanho(n)}")
+    if yaml is None:
+        print("    -  openapi-candidate.yaml     NÃO gerado: PyYAML não está")
+        print("       instalado neste ambiente, e o Lab não acrescenta")
+        print("       dependência para gerar um formato de conveniência. O")
+        print("       `.json` acima tem exatamente o mesmo conteúdo.")
+    print()
+    print("  Estes arquivos são DERIVADOS: rodar de novo sobrescreve os três.")
+    print("  Nada aqui é contrato. Todo endpoint saiu marcado `x-estado:")
+    print("  OBSERVED`, com `x-confianca` e `x-lacunas` — a lista de lacunas é")
+    print("  a resposta a \"que captura ainda falta?\", que antes era uma")
+    print("  pergunta feita a uma pessoa.")
+    print()
+    print("  O QUE ESTE COMANDO NÃO FEZ")
+    print("    · não abriu browser, não fez login, não chamou endpoint nenhum")
+    print("    · não registrou journey, não publicou Tool, não comitou nada")
+    print("    · não aprovou um único endpoint para uso")
+    print()
+    return 0
+
+
+# --------------------------------------------------------------------------
+# drift
+# --------------------------------------------------------------------------
+def _ler_openapi(caminho: Path, rotulo: str) -> Tuple[Optional[Dict[str, Any]], str]:
+    if not caminho.is_file():
+        return None, f"`--{rotulo} {caminho}` não é um arquivo que dê para ler."
+    try:
+        dados = json.loads(caminho.read_text(encoding="utf-8", errors="replace"))
+    except (OSError, json.JSONDecodeError) as e:  # noqa: BLE001
+        return None, f"`--{rotulo} {caminho.name}` não é JSON válido: {e}"
+    if not isinstance(dados, dict):
+        return None, f"`--{rotulo} {caminho.name}` não é um documento OpenAPI."
+    return dados, ""
+
+
+def _quantos_endpoints(doc: Dict[str, Any]) -> int:
+    return sum(len(v or {}) for v in (doc.get("paths") or {}).values())
+
+
+def cmd_lab_drift(args: argparse.Namespace) -> int:
+    _T, _I, C = _carregar_lab()
+
+    aprovado, erro_a = _ler_openapi(Path(args.aprovado), "aprovado")
+    candidato, erro_b = _ler_openapi(Path(args.candidato), "candidato")
+    for erro in (erro_a, erro_b):
+        if erro:
+            print(f"\n  🔴 {erro}")
+    if aprovado is None or candidato is None:
+        return 2
+
+    n_a, n_b = _quantos_endpoints(aprovado), _quantos_endpoints(candidato)
+
+    print()
+    print("=" * 78)
+    print("  LAB · DRIFT — o contrato aprovado ainda descreve o portal?")
+    print(f"  aprovado:  {Path(args.aprovado).name}  ({n_a} endpoint(s))")
+    print(f"  candidato: {Path(args.candidato).name}  ({n_b} endpoint(s))")
+    print("=" * 78)
+
+    # 🔴 CLAUDE.md §9.3 — um guarda que não tem como falhar não guarda nada.
+    # Comparar contra um contrato SEM endpoints não pode reprovar: todo endpoint
+    # do candidato entraria como aditivo e o comando sairia verde sobre um
+    # arquivo vazio. Isso é pior que não rodar, porque vira linha verde no CI.
+    if not n_a:
+        print()
+        print("  🔴 o contrato APROVADO não tem endpoint nenhum.")
+        print("     Esta comparação não teria como reprovar — todo endpoint do")
+        print("     candidato entraria como aditivo e o gate sairia verde sobre")
+        print("     um arquivo vazio. Aponte `--aprovado` para o contrato de")
+        print("     verdade.")
+        print()
+        return 2
+
+    drifts = C.comparar_contratos(aprovado, candidato)
+    classe, frase = C.veredito_de_drift(drifts)
+
+    quebram = [d for d in drifts if d.quebra]
+    aditivos = [d for d in drifts if d.classe == C.ADITIVA]
+    iguais = [d for d in drifts if d.classe == C.SEM_MUDANCA]
+
+    if quebram:
+        print(f"\n  🔴 {len(quebram)} mudança(s) que QUEBRAM — fecham a "
+              "capacidade até revisão\n")
+        for d in quebram:
+            print(f"    X  [{d.classe}] {d.endpoint}")
+            for det in d.detalhes:
+                for linha in _quebrar(det, 66):
+                    print(f"          {linha}")
+    if aditivos:
+        print(f"\n  {len(aditivos)} mudança(s) aditiva(s) — pode seguir\n")
+        for d in aditivos:
+            print(f"    +  {d.endpoint}")
+            for det in d.detalhes[:3]:
+                for linha in _quebrar(det, 66):
+                    print(f"          {linha}")
+    if iguais:
+        print(f"\n  {len(iguais)} endpoint(s) sem mudança.")
+
+    if not n_b:
+        print()
+        print("  ⚠️ o candidato está VAZIO: por fail-closed, todo endpoint")
+        print("     aprovado consta como sumido. Antes de fechar a capacidade,")
+        print("     confira se a captura simplesmente não passou por eles —")
+        print("     sumir do trace não é sumir do portal.")
+
+    print()
+    print("  " + "-" * 74)
+    print(f"  veredito: [{classe}] {frase}")
+    print("  " + "-" * 74)
+    print()
+    if quebram:
+        print("  🔴 Fail-closed: UM drift que quebra fecha a capacidade, por")
+        print("     mais aditivos que sejam os outros. Média de gravidade seria")
+        print("     a forma elegante de ignorar o único que importa.")
+        print()
+    return 1 if quebram else 0
+
+
+# --------------------------------------------------------------------------
+# promote
+# --------------------------------------------------------------------------
+def _evidencias(pares: Sequence[str]) -> Tuple[Dict[str, Any], List[str]]:
+    """`chave=valor` → dict. Sem `=`, a presença já vale `True`."""
+    falsos = {"0", "false", "nao", "não", "no", "off", ""}
+    saida: Dict[str, Any] = {}
+    vazias: List[str] = []
+    for bruto in pares or ():
+        texto = str(bruto)
+        chave, _, valor = texto.partition("=")
+        chave = chave.strip()
+        if not chave:
+            continue
+        ligada = valor.strip().lower() not in falsos if "=" in texto else True
+        saida[chave] = ligada
+        if not ligada:
+            vazias.append(chave)
+    return saida, vazias
+
+
+def cmd_lab_promote(args: argparse.Namespace) -> int:
+    _T, _I, C = _carregar_lab()
+
+    estado = str(args.estado or "").strip().upper()
+    para = str(args.para or "").strip().upper()
+    evid, desligadas = _evidencias(args.evidencia or [])
+
+    print()
+    print("=" * 78)
+    print(f"  LAB · PROMOTE — de `{estado}` para `{para}`")
+    print("=" * 78)
+    print()
+    print("  a escada (SPEC-077 §11.3):")
+    print("    " + " → ".join(C.ESCADA))
+    print()
+
+    if estado not in C.ESCADA or para not in C.ESCADA:
+        print("  🔴 estado desconhecido. Só existem os cinco degraus acima —")
+        print("     e um endpoint que não se sabe classificar não se usa.")
+        print()
+        return 2
+
+    conhecidas = set()
+    for exigidas in C.EXIGENCIAS.values():
+        conhecidas.update(exigidas)
+    desconhecidas = sorted(set(evid) - conhecidas)
+    if desconhecidas:
+        print(f"  ⚠️ evidência(s) que degrau nenhum pede: "
+              f"{', '.join(desconhecidas)}")
+        print("     Provável erro de digitação — e um nome errado não vira")
+        print("     recusa barulhenta, vira \"faltou evidência\" mais adiante.")
+        print("     as que existem:")
+        for linha in _quebrar(", ".join(sorted(conhecidas)), 66):
+            print(f"       {linha}")
+        print()
+    if desligadas:
+        print(f"  evidência(s) apresentada(s) como FALSAS: "
+              f"{', '.join(desligadas)} (contam como ausentes)")
+        print()
+
+    p = C.promover(estado, para, evid)
+
+    exigidas = C.EXIGENCIAS.get(para, ())
+    if exigidas:
+        print(f"  o que `{para}` exige:")
+        for e in exigidas:
+            print(f"    {'[ok]' if evid.get(e) else '[  ]'}  {e}")
+        print()
+
+    if p.permitida:
+        print(f"  ✔ PODE: {p.motivo}")
+        print()
+        print("  🔴 E esta CLI NÃO promoveu nada. Ela calcula o veredito e")
+        print("     imprime; não existe banco aqui, e um comando de linha que")
+        print("     gravasse `APPROVED_*` seria o caminho automático que o")
+        print("     `ciclo.py` existe para não ter. Quem registra a promoção é")
+        print("     o caminho governado, com a pessoa que decidiu no registro.")
+        print()
+        return 0
+
+    print(f"  🔴 NÃO PODE: {p.motivo}")
+    if p.faltam:
+        print()
+        print("  falta(m):")
+        for f in p.faltam:
+            print(f"    ·  {f}")
+        print()
+        print("  Ausência de evidência conta como NÃO PROVADO, nunca como")
+        print("  \"provavelmente ok\". É a mesma regra da prontidão da SPEC-075.")
+    print()
+    return 1
+
+
+# ==========================================================================
 # CLI
 # ==========================================================================
 _CLASSES = ("read_only", "reversible_ui", "material_side_effect")
@@ -1785,9 +2499,9 @@ def _parser() -> argparse.ArgumentParser:
                      "registro de journeys e gera esqueleto. Não executa "
                      "journey, não publica nada, não edita o registro."),
         formatter_class=argparse.RawDescriptionHelpFormatter,
-        epilog=("`audit` e `validate` saem com código != 0 quando encontram "
-                "problema real:\nsão gates, e um gate que sempre sai 0 é "
-                "enfeite."))
+        epilog=("`audit`, `validate`, `lab drift` e `lab promote` saem com "
+                "código != 0 quando\nencontram problema real: são gates, e um "
+                "gate que sempre sai 0 é enfeite."))
     sub = p.add_subparsers(dest="comando", required=True)
 
     a = sub.add_parser("audit", help="o registro bate com código, fixtures e testes?")
@@ -1832,7 +2546,71 @@ def _parser() -> argparse.ArgumentParser:
     sj.add_argument("--write", action="store_true",
                     help="grava os arquivos; nunca sobrescreve")
     sj.set_defaults(func=cmd_scaffold_journey)
+
+    _parser_lab(sub)
     return p
+
+
+def _parser_lab(sub: Any) -> None:
+    """Os quatro comandos do Portal Intelligence Lab (SPEC-077).
+
+    Eles ficam sob `lab` — e não soltos ao lado de `audit` — porque são de outra
+    natureza: `audit`/`matrix`/`validate` falam do REGISTRO desta casa; `lab`
+    fala de TRÁFEGO capturado de um portal de terceiro. Misturar os dois no
+    mesmo nível faria a ajuda sugerir que `har` audita alguma coisa nossa.
+    """
+    lab = sub.add_parser(
+        "lab",
+        help="Portal Intelligence Lab (SPEC-077): HAR → contrato candidato",
+        formatter_class=argparse.RawDescriptionHelpFormatter,
+        description=("Análise OFFLINE de tráfego já capturado. Não abre "
+                     "browser, não faz login, não chama endpoint, não promove "
+                     "nada de verdade."),
+        epilog=("🔴 CANDIDATO nunca é CONTRATO. Todo endpoint inferido nasce "
+                "`OBSERVED`;\nsubir degrau é decisão humana com evidência — "
+                "`lab promote` só calcula o veredito."))
+    sublab = lab.add_subparsers(dest="subcomando", required=True)
+
+    h = sublab.add_parser("har", help="o que tem dentro de um HAR capturado")
+    h.add_argument("--arquivo", required=True, help="caminho do `.har`")
+    h.add_argument("--host-portal", default="",
+                   help="sobrepõe a heurística de qual host é a casa")
+    h.add_argument("--json", action="store_true",
+                   help="o mesmo resumo em JSON, para consumo de máquina")
+    h.set_defaults(func=cmd_lab_har)
+
+    ai = sublab.add_parser(
+        "api-infer",
+        help="HAR(s) → OpenAPI candidato + relatório de cobertura")
+    ai.add_argument("--arquivo", action="append", required=True,
+                    help="repita para juntar vários HAR do MESMO fluxo "
+                         "(o Maxpar tem 3): mais amostras é o que distingue "
+                         "campo opcional de obrigatório")
+    ai.add_argument("--host", action="append", default=[],
+                    help="limita a inferência a este host de API; sem ele, os "
+                         "hosts são descobertos por resposta JSON")
+    ai.add_argument("--saida", default="",
+                    help="diretório onde gravar `openapi-candidate.json`, "
+                         "`.yaml` e `coverage.md`; sem ele, nada é gravado")
+    ai.add_argument("--titulo", default="", help="título do documento gerado")
+    ai.set_defaults(func=cmd_lab_api_infer)
+
+    d = sublab.add_parser("drift",
+                          help="o contrato aprovado ainda descreve o portal?")
+    d.add_argument("--aprovado", required=True,
+                   help="o OpenAPI que já foi aprovado")
+    d.add_argument("--candidato", required=True,
+                   help="o OpenAPI recém-inferido (saída de `api-infer`)")
+    d.set_defaults(func=cmd_lab_drift)
+
+    pr = sublab.add_parser("promote",
+                           help="este endpoint pode subir um degrau da escada?")
+    pr.add_argument("--estado", required=True, help="o estado ATUAL do endpoint")
+    pr.add_argument("--para", required=True, help="o degrau pretendido")
+    pr.add_argument("--evidencia", action="append", default=[],
+                    metavar="CHAVE=1",
+                    help="repita por evidência; sem `=`, a presença vale True")
+    pr.set_defaults(func=cmd_lab_promote)
 
 
 def main(argv: Optional[Sequence[str]] = None) -> int:

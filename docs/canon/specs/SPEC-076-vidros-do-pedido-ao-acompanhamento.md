@@ -71,6 +71,44 @@ seção 3.
 | `abandonado` | ⚠️ idem |
 | `desconhecido` (maybe_committed) | ✅ |
 
+## 2.1-bis ⚠️ ATUALIZAÇÃO DE 17/08/2026 — parte disto já é conhecido
+
+Esta seção foi escrita afirmando que os endpoints de escolha de loja e de
+agendamento eram **desconhecidos** e exigiam captura manual. **Não eram.**
+
+📊 O inferidor da [SPEC-077](SPEC-077-browser-intelligence-lab-browserbase-skills.md),
+rodando sobre os MESMOS HAR que já estavam em `docs/intake/` desde a SPEC-074,
+encontrou:
+
+```
+GET  agendamentos/opcoes-disponiveis    DisponibilizarAgendamento,
+                                        PermiteVistoriaMobile, ExibirAvisoVistoria
+GET  agendamentos/datas-disponiveis     {"Mes":8,"Dias":[15,17,18,19,20,...]}
+GET  agendamentos/horarios-disponiveis  TempoPermanencia:90, TempoServico:75, Blocos
+POST lojas/consultar-distancias         {"Distancia":"9,2 km","TempoDuracao":"13 minutos"}
+GET  atendimentos/livres-escolhas/validar  ValorFranquiaCredenciado: 195
+```
+
+Eu li 58 MB de HAR com os olhos e parei no motor de perguntas. A máquina não
+para — e é exatamente por isso que a 077 existe.
+
+**O que isso muda no protocolo de captura (§3):**
+
+| Item | Antes | Agora |
+|---|---|---|
+| endpoint de escolha de loja | 🧑 capturar | ✅ conhecido, falta **exercitar** |
+| endpoint de agendamento | 🧑 capturar | ✅ conhecido, falta **exercitar** |
+| tela final / número do atendimento | 🧑 capturar | 🧑 **continua sendo necessário** |
+| consulta dias depois (§3.3) | 🧑 capturar | 🧑 **continua impossível sem ela** |
+| conversa do WhatsApp (§3.4) | 🧑 capturar | 🧑 **continua sendo necessário** |
+
+🔴 **A quarta captura (§3.3) segue sendo obrigatória e insubstituível.** Nenhum
+HAR existente mostra como se consulta um atendimento depois que a sessão morreu
+— porque ninguém voltou ao portal dias depois com o F12 aberto. Descoberta
+automática só acha o que alguém já navegou.
+
+---
+
 ## 2.2 As quatro fronteiras materiais
 
 ```python

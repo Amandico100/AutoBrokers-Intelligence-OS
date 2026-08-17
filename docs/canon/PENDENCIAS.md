@@ -5996,3 +5996,89 @@ equivalente implementado — `auth_expired`, `rate_limited`, `portal_changed`,
 `FOUNDER-DECISIONS.md`; depois 🤖 alinhar o código ou a SPEC.
 **O que custa esquecer:** uma tabela de tradução que ninguém sabe que existe.
 Baixo risco hoje, confusão garantida no primeiro leitor novo.
+
+---
+
+## P-203 · 🟢 AutoBrowse fica fora da 077, com gatilho nomeado
+
+**Aberta em:** 17/08/2026 · **Dono:** 🤖 execução, quando o gatilho disparar
+
+A SPEC-077 §13 propõe um laço de auto-melhoria: executa → lê trace → uma
+hipótese → repete → juiz decide manter ou reverter.
+
+**Por que ficou fora:** ele exige `ANTHROPIC_API_KEY`, o `browse` CLI (fonte não
+auditável — ver [P-205](#p-205)) e scaffolds Stagehand. E, mais importante: 📊 o
+loop **já é o que fazemos** nesta operação, com subagentes e juízes críticos, e
+com julgamento humano no meio. O gargalo medido não é iterar rápido; é descobrir
+o contrato — e isso o `browser-to-api` resolveu.
+
+**O gatilho:** quando existir uma journey que quebre repetidamente por drift de
+DOM e o `lab api-infer` **não** resolver — aí o laço passa a valer. Antes disso é
+automatizar o que já não é o gargalo.
+**O que custa esquecer:** nada hoje. A capacidade de descoberta, que era o
+objetivo, já entrou.
+
+---
+
+## P-204 · 🟢 Browserbase Remote: nenhum portal medido exige browser remoto
+
+**Aberta em:** 17/08/2026 · **Dono:** 🧑 Founder, se o gatilho disparar
+
+A 077 §17 propõe `BrowserProvider` com `LocalPlaywright` e `BrowserbaseRemote`.
+
+🔴 **Não há um único portal medido que precise disso.** O bloqueio anti-bot da
+Allianz foi resolvido com `--headless=new` (📊 10/08) e User-Agent limpo (📊
+12/08). Construir a abstração "para o caso de" é arquitetura especulativa — e
+envolveria PII de segurado indo para terceiro, com DPA, retenção e custo.
+
+**O gatilho:** um portal que o Chromium local não consiga acessar **depois** de
+esgotados `--headless=new`, User-Agent e proxy. Aí a decisão terá evidência.
+**O que custa esquecer:** nada. A abstração custa pouco para adiar e muito para
+desfazer errada.
+
+---
+
+## P-205 · 🟠 O `browse` CLI do Browserbase tem fonte inauditável
+
+**Aberta em:** 17/08/2026 · **Dono:** 🤖 registro permanente
+
+📊 Medido em 16/08/2026: `browse@0.9.6` no npm declara MIT, mas o `repository`
+do `package.json` aponta para `github.com/browserbase/stagehand/packages/cli` →
+**404**, e o ponteiro anterior `github.com/browserbase/cli` → **404**. O
+`packages/` do Stagehand não contém `cli`.
+
+Cinco das oito skills do upstream dependem dele, e justamente as duas
+capacidades interessantes — abrir CDP e capturar corpos — moram nele.
+
+**Decisão tomada e registrada:** o AutoBrokers **não usa** o `browse` CLI, nem
+em laboratório com dado real. O Playwright já faz tudo (📊 confirmado:
+`new_cdp_session`, `context.route`, `CDPSession.send`).
+
+**O que destrava:** nada — é registro de decisão, não pendência de trabalho.
+**O que custa esquecer:** alguém tentar `npx skills add browserbase/skills` no
+futuro achando que é atalho.
+
+---
+
+## P-206 · 🟡 O redator canônico não conhece chassi
+
+**Aberta em:** 17/08/2026 · **Dono:** 🤖 execução, com medição antes
+
+📊 Medido na 077: `redaction.redigir_texto` (SPEC-073) mascara boleto, JWT,
+cartão, CNPJ, CPF, e-mail, telefone, placa e CEP — **não chassi**. Dois VIN
+reais atravessaram o primeiro conserto do inferidor e só foram pegos pelo
+`varredura_de_pii` da SPEC-075, que valida a estrutura do VIN.
+
+O Lab já usa o detector estrito. **Mas `portal_jobs.evidence` continua sendo
+redigido pelo redator canônico** — e chassi é dado de segurado que fica no banco.
+
+**Por que não consertei agora:** acrescentar um padrão ao redator de runtime
+muda a redação de **toda** evidência de **todos** os portais. Um padrão de 17
+caracteres alfanuméricos pode ter falso positivo em id de protocolo ou hash.
+Mudança dessas se faz com medição sobre evidência real, não no fim de uma SPEC.
+
+**O que destrava:** 🤖 rodar o padrão do `varredura_de_pii` sobre uma amostra de
+`portal_jobs.evidence` real e medir a taxa de falso positivo. Se for zero,
+acrescentar.
+**O que custa esquecer:** chassi de segurado permanece legível na evidência.
+Risco moderado: a tabela é de acesso controlado, não vai para o Git.

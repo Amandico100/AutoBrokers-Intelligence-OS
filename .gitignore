@@ -126,3 +126,22 @@ backend/scripts/destilacao_max/lotes_autofleet/
 # verdade. Sem esta linha elas ficam so na maquina de quem as baixou, e o teste
 # passa aqui e explode no clone limpo — gate verde provando nada.
 !backend/tests/fixtures/**/*.html
+
+# SPEC-077 — os candidatos de OpenAPI gerados pelo Portal Intelligence Lab.
+#
+# 🔴 Eles NAO sao versionados, e a razao e uma medicao, nao cautela abstrata.
+#
+# A entrada deles (`docs/intake/`, os HAR) ja e ignorada porque contem PII de
+# segurado. O que se deriva de PII so pode ser versionado se for possivel PROVAR
+# que esta limpo — e em 17/08/2026 provamos o contrario: um juiz critico achou
+# nomes completos de segurados, enderecos com numero de apartamento e o mesmo
+# segurado correlacionavel entre dois arquivos de seguradoras diferentes.
+#
+# Os dois detectores do projeto sao de FORMA (CPF, CNPJ, chassi, placa, e-mail).
+# Nome proprio e endereco nao tem forma. A deny-list por nome de campo fechou o
+# buraco conhecido, mas enumeracao nunca prova ausencia — e essa e a diferenca
+# entre "nao achei" e "nao tem".
+#
+# Regenerar custa segundos:
+#     python backend/scripts/portal_factory.py lab api-infer --arquivo <har>
+docs/generated/portal-lab/

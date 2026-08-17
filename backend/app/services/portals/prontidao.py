@@ -716,8 +716,15 @@ def matriz_markdown(sinais_por_chave: Optional[Dict[str, Dict[str, Any]]] = None
     ]
 
     for a in linhas:
+        # 🔴 A chave canonica (`portal.journey`) vai NA CELULA do portal, junto.
+        #
+        # 📊 O `portal_factory audit` reprovou este documento: ele procura a
+        # chave canonica e a matriz publicava portal e journey em colunas
+        # separadas. O audit estava certo — duas formas de nomear a mesma coisa
+        # fazem qualquer conferencia automatica falhar, e uma matriz que nao
+        # pode ser conferida contra o registro nao serve como fonte unica.
         fora.append("| " + " | ".join([
-            _celula(a["portal_key"]),
+            _celula(f'{a["portal_key"]}<br><code>{a["chave"]}</code>'),
             _celula(a["journey_key"]),
             _celula(a["business_operation"]),
             _celula(a["effect_class"]),

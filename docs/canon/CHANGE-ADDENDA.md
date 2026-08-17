@@ -3024,3 +3024,82 @@ Três razões, e a terceira é a que fecha: subtrair implica que evidência boa
 mesma régua, de modo que ordenar por score recomendaria subir a mais perigosa;
 e é negociável — no dia em que faltarem 3 pontos, alguém mexe no peso. Zero não
 tem peso para mexer.
+
+---
+
+## CA-055 · A SPEC-077 executada é metade do que ela pedia — **ESSENCIAL**
+
+**SPEC-077** · 17/08/2026 · autorizado pela própria SPEC §4.3 (melhoria técnica)
+
+### Problema
+
+A SPEC-077 foi escrita antes de a SPEC-075 ser executada e contra um upstream
+que a auditoria mostrou ser diferente do imaginado. Executá-la como escrita
+duplicaria sete capacidades e traria uma dependência inauditável.
+
+### Decisão
+
+Escopo reordenado por valor e risco. Entrou: `HarImporter`, `browser-to-api`,
+ciclo de vida do endpoint, drift, injeção de erro, DeepTrace com CDP nativo,
+comandos `lab`. Saiu: `browse` CLI, AutoBrowse, Browserbase Remote,
+`webmcp-gen`, Functions.
+
+📊 O corte não é conservadorismo: das oito skills, **três não têm uma linha de
+código** (são prompts) e **cinco dependem de um binário com fonte 404**.
+
+### Custo e risco
+
+A SPEC não é entregue "inteira" segundo a letra. É entregue inteira segundo o
+objetivo declarado no §51 dela: *"quanto menos trabalho humano é necessário para
+descobrir uma nova capacidade de portal"*. 📊 218 endpoints descobertos em 5
+seguradoras, incluindo 4 que estavam declarados desconhecidos.
+
+---
+
+## CA-056 · Redação na COLETA, não na emissão — **BLOCKER**
+
+**SPEC-077** · 17/08/2026
+
+### Problema
+
+📊 O inferidor guardava valor cru em `Forma.exemplos` e o emitia como
+`examples`. O artefato gerado saiu com **410 achados de PII** — 340 chassis, 16
+placas, 4 CPFs — e o destino dele é `docs/generated/`, **versionado**.
+
+### Decisão
+
+Valor passa pelo detector **antes** de entrar na estrutura. O que nunca entrou
+não vaza por `print` de depuração, por traceback nem por `json.dumps` de
+diagnóstico.
+
+E o detector usado é o **mais estrito disponível**: o `varredura_de_pii` da 075
+(que conhece chassi) além do `redigir_texto` da 073 (que não conhece). Os dois
+guardas nasceram para contextos diferentes; aqui vale a soma.
+
+### Custo e risco
+
+Classificado BLOCKER porque a alternativa é PII de segurado em commit — que é
+permanente e público no repositório.
+
+---
+
+## CA-057 · O caminho da URL também é PII — **BLOCKER**
+
+**SPEC-077** · 17/08/2026
+
+### Problema
+
+A API da MAPFRE tem `/api/1.0.0/client/12097137725_1/interactions`. O
+`normalizar_path` da SPEC-073 preserva número colado em palavra — a regra
+**certa** (distingue `passo5` de `passo6`) aplicada a um caso que ela não previu.
+
+### Decisão
+
+Segunda passada, **só no Lab**: segmento que contém CPF/CNPJ vira `{id}`. A
+regra da 073 continua intacta para o que ela protege.
+
+### O erro dentro do conserto
+
+A primeira versão exigia **exatamente** 11 ou 14 dígitos. O segmento real limpo
+dá **12** — CPF mais o sufixo `_1`. A pergunta certa não é *"este segmento É um
+CPF?"*, é *"este segmento CONTÉM um?"*.
