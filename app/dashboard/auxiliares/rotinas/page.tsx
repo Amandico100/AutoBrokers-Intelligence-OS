@@ -37,6 +37,30 @@ const DIAS = ['seg', 'ter', 'qua', 'qui', 'sex', 'sáb', 'dom'];
 const BILLING_KIND = 'billing_collection';
 
 /**
+ * Qual modelo de rotina cada Auxiliar configura.
+ *
+ * 📊 Medido em 17/08/2026: em 02/08/2026 os commits `2ef6750` e `965efff`
+ * (SPEC-064) removeram os DOIS únicos links que chegavam nesta tela. A tela
+ * nunca foi apagada — ficou sem porta. E o único link que sobrou
+ * (`AuxiliarDetalheClient.tsx`) só aparece quando o Auxiliar já tem rotina,
+ * o que é impossível se não há como criar a primeira. Beco sem saída fechado
+ * dos dois lados.
+ *
+ * Este mapa é a porta de volta. Ele existe em TypeScript porque **não há
+ * coluna no banco ligando `auxiliary_templates` a `routine_templates`** —
+ * `auxiliary_templates.default_config` nem sequer tem `kind`, e usa nomes
+ * DIFERENTES para os mesmos campos (`portais` vs `portal_keys`,
+ * `exige_aprovacao_para_enviar` vs `approval_required`). Copiar um no outro
+ * faria a seleção de seguradoras cair no default sem avisar ninguém.
+ *
+ * ⚠️ Enquanto essa coluna não existir, um Auxiliar novo com rotina própria
+ * precisa de uma linha aqui. Registrado em PENDENCIAS.md.
+ */
+const ROTINA_DO_AUXILIAR: Record<string, string> = {
+  'cobranca-feita': BILLING_KIND,
+};
+
+/**
  * SPEC-069 — os portais que a Cobrança varre vêm da CONEXÃO, não do código.
  *
  * Aqui existia uma caixinha só, escrita à mão, com `allianz_corretor` fixo — e
@@ -271,14 +295,27 @@ export default function RotinasPage() {
 
   // SPEC-019 C — chegou de "Usar modelo" (?template=<id>): abre a Nova rotina
   // pré-preenchida. Lê via window para não exigir Suspense do useSearchParams.
+  //
+  // 🔴 E agora também `?auxiliar=<slug>`, que é o caminho que a tela do
+  // Auxiliar usa. Ele já existia no link, mas a página o IGNORAVA — o corretor
+  // chegava aqui e via a lista vazia, sem entender o que fazer. Resolver o
+  // modelo pelo `kind` (e não pelo id) é o que faz o link não quebrar quando o
+  // seed do template é reaplicado com uuid novo.
   useEffect(() => {
-    const tid = new URLSearchParams(window.location.search).get('template');
-    if (!tid) return;
+    const qs = new URLSearchParams(window.location.search);
+    const tid = qs.get('template');
+    const auxiliar = qs.get('auxiliar');
+    const kindDoAuxiliar = auxiliar ? ROTINA_DO_AUXILIAR[auxiliar] : undefined;
+    if (!tid && !kindDoAuxiliar) return;
     (async () => {
       try {
         const res = await fetch('/api/dashboard/routine-templates', { cache: 'no-store' });
         const j = await res.json();
-        const t = (j.templates || []).find((x: { id: string }) => x.id === tid);
+        type Modelo = Parameters<typeof openEditorFromTemplate>[0] & { id: string };
+        const lista = (j.templates || []) as Modelo[];
+        const t = tid
+          ? lista.find((x) => x.id === tid)
+          : lista.find((x) => String(x.config_default?.kind || '') === kindDoAuxiliar);
         if (t) openEditorFromTemplate(t);
       } catch {
         /* ignora — o corretor pode criar do zero */

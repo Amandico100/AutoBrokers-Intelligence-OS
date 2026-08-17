@@ -50,9 +50,25 @@ export default function AuxiliarDetalheClient({ item, podeLigar }: Props) {
         // O servidor recusa por dois motivos, e os dois têm texto próprio:
         // "em breve" e "falta conectar". Repassar o motivo é o que evita o
         // corretor achar que o produto está quebrado.
+        //
+        // 🔴 E quando o motivo NÃO tem texto próprio, o servidor manda a causa
+        // real em `details` — e esta tela a descartava.
+        //
+        // 📊 Medido em 17/08/2026: o Founder viu `install_failed` na tela, sem
+        // mais nada. A resposta HTTP trazia, em `details[0]`, a mensagem exata
+        // do banco ("Could not find the 'display_name' column…"). Duas telas de
+        // distância entre o sintoma e a causa, por uma linha que não lia um
+        // campo que já vinha pronto.
+        //
+        // O detalhe técnico não é bonito para o corretor, mas é honesto — e a
+        // alternativa medida foi pior: um slug em inglês que não explica nada.
+        const tecnico = Array.isArray(j?.details)
+          ? String(j.details[0] || '').trim()
+          : '';
         setErro(
           j?.detalhe ||
             (j?.faltando ? `Conecte antes: ${j.faltando.join(', ')}.` : null) ||
+            (tecnico ? `Não foi possível concluir — ${tecnico}` : null) ||
             j?.error ||
             'Não foi possível concluir.',
         );
@@ -260,9 +276,24 @@ export default function AuxiliarDetalheClient({ item, podeLigar }: Props) {
               {item.rotinas} {item.rotinas === 1 ? 'rotina configurada' : 'rotinas configuradas'} →
             </Link>
           ) : (
-            <p className="text-sm text-muted-foreground">
-              Nenhuma rotina ainda. Este Auxiliar roda quando você pedir no chat.
-            </p>
+            // 🔴 Aqui morava um beco sem saída. Este texto era a única coisa
+            // que o corretor via, e a tela de configuração — horário,
+            // frequência, número de teste, mensagem — só era alcançável pelo
+            // link ACIMA, que exige `rotinas > 0`. Não havia como criar a
+            // primeira. 📊 Medido em 17/08/2026: zero rotinas em todo o banco.
+            <div className="space-y-2">
+              <Link
+                href={`/dashboard/auxiliares/rotinas?auxiliar=${item.slug}`}
+                className="inline-flex items-center gap-1.5 rounded-lg border border-border bg-surface px-3 py-2 text-sm text-foreground transition-colors hover:border-primary/40"
+              >
+                Configurar a primeira rotina →
+              </Link>
+              <p className="text-[11px] text-faint">
+                Você escolhe o horário, com que frequência roda, as seguradoras
+                e a mensagem enviada. Enquanto isso, este Auxiliar também roda
+                quando você pedir no chat.
+              </p>
+            </div>
           )}
         </Secao>
       )}
