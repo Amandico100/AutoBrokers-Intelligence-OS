@@ -2926,8 +2926,16 @@ o registry passaram sem uma linha alterada.
 
 ### Problema
 
-📊 `portal.execute` existia em **um** lugar do repositório: o mapa de nomes do
-`gateway_cutover`. Não havia linha em `tool_definitions`.
+⚠️ **CORRIGIDO em 17/08/2026.** O texto original dizia que não havia linha em
+`tool_definitions`. 📊 O banco vivo mostrou que `portal.execute`,
+`portal.billing_read` e `portal.policy_read` **já existiam** — com
+`input_schema = {}` e provider antigo. Eu havia inferido o estado de produção a
+partir do `grep` no repositório, que a `MIGRATIONS-AUTHORITY` §4 avisa não ser a
+fonte completa.
+
+O problema real, então, não era ausência de tool: era **tool sem schema**. Uma
+tool com `input_schema = {}` não valida nada — o modelo pode mandar qualquer
+coisa, inclusive os campos que a §10.4 proíbe.
 
 Uma tool única "executa portal" obriga o modelo a dizer **qual journey** rodar —
 proibido pela §10.4 — e carrega um `side_effect_class` só, então autorizar

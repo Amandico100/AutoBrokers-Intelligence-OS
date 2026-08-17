@@ -90,8 +90,27 @@ O contrato de entrada **não tem** `journey`, `module`, `function`, `portal_key`
 de o contrato existir.
 
 ### Bloco C — três tools estreitas, não uma `portal.execute`
-📊 `portal.execute` aparecia em **um** lugar do repositório: o mapa de nomes do
-cutover. Não havia linha em `tool_definitions`.
+
+⚠️ **CORREÇÃO de 17/08/2026.** Este parágrafo dizia: *"`portal.execute` aparecia
+em um lugar do repositório… não havia linha em `tool_definitions`"*. Estava
+certo sobre o **repositório** e **errado sobre o banco**.
+
+📊 Lido no banco vivo em 17/08, na hora de aplicar a migration:
+`portal.billing_read`, `portal.policy_read` e `portal.execute` **já existiam**,
+com release `1.0.0` publicada, `input_schema = {}` e
+`execution_manifest.provider = portal_browser`. São das 9 versões aplicadas sem
+arquivo que a `MIGRATIONS-AUTHORITY` §4 registra — nenhum `grep` no repositório
+podia achá-las.
+
+O erro de método é o que importa: **eu inferi o estado de produção a partir do
+repositório.** A própria `MIGRATIONS-AUTHORITY` abre dizendo que o repo não é a
+fonte completa do schema, e eu li o repo como se fosse.
+
+A conclusão do bloco **não muda** — as tools existiam vazias, sem schema e
+apontando para o provider antigo, o que é quase o mesmo que não existirem para
+quem precisa validar entrada. Mas o caminho mudou: em vez de criar, foi preciso
+**publicar a release `1.1.0`** com schema real, porque release publicada é
+imutável (SPEC-056). Ver `20260817_01_spec075_tools_de_portal_schemas_reais.sql`.
 
 Uma tool única obriga o modelo a dizer *qual journey* rodar — que a §10.4 proíbe
 — e tem um `side_effect_class` só, então autorizar leitura de cobrança passaria a

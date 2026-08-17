@@ -5,9 +5,16 @@
 -- OBJETIVO:  `portal_jobs` deixa de ser órfão: passa a saber de que Work Run,
 --            de que Tool e de que operação de negócio ele nasceu.
 --
--- APPLY:     6 colunas novas em `portal_jobs`, todas NULL-áveis, mais 3 índices.
+-- APPLY:     ✅ APLICADA em 17/08/2026, projeto dcajcvlzcjbmyapmklil.
+--            6 colunas novas em `portal_jobs`, todas NULL-áveis, mais 3 índices.
 --            Nenhuma coluna existente é tocada. Nenhum dado é reescrito.
--- VERIFY:    ver bloco VERIFY ao final — SQL executável, não texto.
+-- VERIFY:    ✅ rodado. 📊 Saida real:
+--              colunas novas .................. 6 de 6
+--              indices novos .................. 3 de 3
+--              jobs fora do default ........... 0  (nenhum job existente mudou)
+--              idx_portal_jobs_queued ......... preservado (expand-first)
+--              idx_portal_jobs_pedido_vivo .... INTOCADO (guarda da SPEC-065)
+--              total de jobs .................. 109 (nenhum perdido)
 -- ROLLBACK:  ver bloco ROLLBACK ao final. Preferir deixar as colunas INERTES
 --            (rollback só do código) a derrubá-las — ver a nota lá embaixo.
 --

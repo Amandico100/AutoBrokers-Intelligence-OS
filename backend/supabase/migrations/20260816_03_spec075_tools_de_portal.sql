@@ -1,4 +1,22 @@
 -- =============================================================
+-- 🔴 SUPERADA — NAO APLICAR. Ver 20260817_01_spec075_tools_de_portal_schemas_reais.sql
+--
+-- Esta migration nunca foi aplicada e nao deve ser. Dois erros, e os dois so
+-- apareceram quando o banco vivo foi lido:
+--
+-- 1. Ela SUPOE que as tools nao existem. 📊 Elas existem desde antes, com
+--    release 1.0.0 publicada e input_schema {} — sao das 9 versoes aplicadas
+--    sem arquivo que a MIGRATIONS-AUTHORITY §4 registra. O `on conflict do
+--    nothing` faria a migration passar sem fazer nada.
+--
+-- 2. Ela usa side_effect_class = `write_external`, que eu inventei. O
+--    constraint ck_tool_side_effect recusa. O valor certo e
+--    `external_commitment`.
+--
+-- Mantida no repositorio como registro. A que vale e a de 20260817_01.
+-- =============================================================
+
+-- =============================================================
 -- MIGRATION: spec075_tools_de_portal
 -- SPEC:      SPEC-075 — Bloco C (completar o Tool Gateway de portal)
 -- AUTOR:     Claude Opus 5 (execução SPEC-075)   DATA: 2026-08-16

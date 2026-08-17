@@ -5876,6 +5876,38 @@ aplicar, rodar o VERIFY, guardar a saída).
 **O que custa esquecer:** a linhagem não é gravada, e `portal_jobs` continua
 órfão. Nada quebra — só não melhora.
 
+### ✅ 17/08/2026 — APLICADAS. E o banco corrigiu duas coisas que eu supunha
+
+Aplicadas por acesso direto ao Supabase (`dcajcvlzcjbmyapmklil`), em janela com
+**zero jobs na fila**. 📊 VERIFY completo:
+
+```
+colunas novas ............. 6 de 6      indices novos ......... 3 de 3
+jobs fora do default ...... 0           idx_portal_jobs_queued  preservado
+idx_portal_jobs_pedido_vivo INTOCADO    total de jobs ......... 109
+```
+
+🔴 **A segunda migration estava errada, e só o banco vivo mostrou.** Duas coisas:
+
+1. Eu supunha que as tools de portal **não existiam**, porque `grep` no
+   repositório não as achava. Elas existiam — `portal.billing_read`,
+   `portal.policy_read` e `portal.execute`, com release `1.0.0` publicada,
+   `input_schema = {}` e provider antigo. São das 9 versões aplicadas sem
+   arquivo que a §4 desta mesma autoridade registra. **Eu li o repositório como
+   se fosse a fonte do schema, e ela abre dizendo que não é.**
+
+2. Eu inventei `side_effect_class = 'write_external'`. O constraint
+   `ck_tool_side_effect` recusou; o valor certo é `external_commitment` — que é
+   melhor nome, porque descreve um compromisso com terceiro.
+
+A migration foi reescrita como `20260817_01_..._schemas_reais.sql`: em vez de
+criar, **publica a release `1.1.0`** com schema real (release publicada é
+imutável, SPEC-056). A `20260816_03` ficou no repositório marcada SUPERADA.
+
+⚠️ E uma lição operacional: `apply_migration` **não foi transacional**. Duas
+linhas do INSERT entraram e a terceira falhou. Migration que conta com rollback
+automático não pode ser escrita assim.
+
 ---
 
 ## P-197 · 🟡 A ponte está em `legacy` e a sombra ainda não acumulou diffs
@@ -5917,6 +5949,22 @@ concorrência fica em 1 — que é o comportamento seguro, mas não é o pretend
 **O que destrava:** 🤖 deploy do portal-worker (traz a biblioteca) +
 🧑 confirmar `REDIS_URL` no ambiente dele. Depois conferir em `/health`:
 `redis_para_lease: true`.
+
+### 📊 17/08/2026 — a URL EXISTE, e o valor está achado
+
+O `smith-api` tem, no ambiente dele:
+
+```
+REDIS_URL=redis://default:<senha>@autobrokers_intelligence_os_autobrokers-smith-redis:6379
+```
+
+É o mesmo Redis que o Work OS usa. O `portal-worker` simplesmente **não tem a
+variável** — o ambiente dele tem cinco linhas. Colar a mesma URL lá resolve.
+
+🔴 E a biblioteca já subiu: o deploy da SPEC-075 levou `redis>=5.0` para a
+imagem. Falta só a variável. Depois dela, `/health` deve mostrar
+`redis_para_lease: true`, e só então `PORTAL_WORKER_CONCURRENCY` maior que 1
+passa a ter efeito.
 **O que custa esquecer:** `PORTAL_WORKER_CONCURRENCY` maior que 1 não terá
 efeito nenhum — e `/health` diz isso na cara, com `concurrency: 1` ao lado de
 `concurrency_configurada: 4`.
