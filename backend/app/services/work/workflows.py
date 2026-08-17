@@ -358,6 +358,29 @@ async def bridge_rotina(ctx: dict) -> str:
         ctx, step_key="executar_rotina", ordinal=1, nome="Executar rotina",
         step_type="routine", fn=_executar,
     )
+
+    # 🔴 FECHA a linha `delegated` que o motor abriu ao delegar.
+    #
+    # 📊 Medido em 17/08/2026: `routine_engine._criar_work_run_para_rotina`
+    # insere um `routine_runs` com `status='delegated'` e
+    # `output_preview='executando como Work Run'` — e NINGUÉM a fechava. A tela
+    # do Auxiliar mostrava "executando como Work Run" para sempre, mesmo com o
+    # Work Run já `completed`. O Founder ficou 15 minutos olhando uma execução
+    # que tinha terminado.
+    #
+    # A execução de verdade grava a PRÓPRIA linha (dentro de
+    # `_execute_routine`), com o relatório. Esta aqui é só o bilhete de
+    # entrega, e bilhete de entrega precisa ser carimbado na chegada.
+    try:
+        db.table("routine_runs").update({
+            "finished_at": _agora_iso(),
+            "status": "ok",
+            "output_preview": "entregue ao motor de trabalhos e concluído",
+        }).eq("work_run_id", ctx["run_id"]).eq("status", "delegated").execute()
+    except Exception as exc:  # noqa: BLE001
+        logger.warning("[Bridge] nao consegui fechar o routine_run delegado: %s",
+                       type(exc).__name__)
+
     return f"Rotina '{nome}' executada."
 
 

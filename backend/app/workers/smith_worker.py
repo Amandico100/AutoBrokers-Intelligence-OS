@@ -325,15 +325,43 @@ class SmithWorker:
         self.runs.evento(company_id, run_id, "run.started", "Trabalho iniciado", actor_type="worker",
                          actor_id=self.worker_id)
 
+        # 🔴 O `input_payload` do banco é lido SEMPRE, não só quando falta o
+        # `workflow_key`.
+        #
+        # 📊 MEDIDO EM 17/08/2026, e este foi o defeito que impediu a Cobrança
+        # de rodar. A mensagem que o outbox publica na fila é MÍNIMA por
+        # desenho (`work_queue_outbox.payload_minimal`, `queue.py:191-197`):
+        #
+        #     {"run_id": …, "company_id": …, "workflow_key": "bridge.routine.execute"}
+        #
+        # O `routine_id` NÃO vai nela — ele mora em `work_runs.input_payload`.
+        # E a leitura do banco estava dentro de `if not workflow_key:`, um ramo
+        # que nunca executa quando a chave vem na mensagem (ou seja: sempre).
+        #
+        # Resultado medido no Work Run `ca6bb47e`: o handler recebeu um pacote
+        # sem identificador, devolveu "Rotina sem identificador — nada a
+        # executar" e o run terminou `completed` em 1 segundo. Verde no painel,
+        # zero trabalho feito — o pior tipo de falha, porque nem parece falha.
+        #
+        # A ordem do merge importa: o do BANCO por baixo, o da FILA por cima.
+        # A fila carrega o roteamento (prioridade, run_id) e é a mais recente;
+        # o banco carrega a entrada do trabalho.
         workflow_key = payload.get("workflow_key")
-        if not workflow_key:
-            try:
-                res = (self.db.client.table("work_runs").select("workflow_key, input_payload")
-                       .eq("id", run_id).maybe_single().execute())
-                workflow_key = (res.data or {}).get("workflow_key")
-                payload = {**payload, **((res.data or {}).get("input_payload") or {})}
-            except Exception:  # noqa: BLE001
-                pass
+        try:
+            res = (self.db.client.table("work_runs").select("workflow_key, input_payload")
+                   .eq("id", run_id).maybe_single().execute())
+            linha = res.data or {}
+            workflow_key = workflow_key or linha.get("workflow_key")
+            payload = {**(linha.get("input_payload") or {}), **payload}
+        except Exception as exc:  # noqa: BLE001
+            # Sem a entrada do banco, o handler quase certamente não tem o que
+            # precisa. Falhar aqui é melhor que rodar vazio e reportar sucesso.
+            logger.error("[SmithWorker] nao consegui ler input_payload de %s: %s",
+                         run_id, type(exc).__name__)
+            self.runs.falhar(run_id, company_id, "entrada_indisponivel",
+                             "Não consegui ler a entrada deste trabalho no banco.",
+                             retryable=True)
+            return
 
         handler = resolver_workflow(workflow_key)
         if handler is None:
