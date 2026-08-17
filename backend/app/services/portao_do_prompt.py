@@ -208,10 +208,27 @@ class ResultadoDaConferencia:
         return f"ResultadoDaConferencia(ok={self.ok}, chars={self.chars}, reason={self.reason!r})"
 
 
-#: Como se desliga cada tabela que guarda um prompt. A tabela `companies` é a
-#: camada LEGADA (`backend/app/api/agent_config.py`), ainda lida pelo runtime em
-#: `backend/app/agents/nodes.py:438` — desligar lá é `agent_enabled`, porque
-#: `is_active` de uma empresa significa outra coisa (a corretora existir).
+#: Como se desliga cada tabela que guarda um prompt.
+#:
+#: 🔴 CORRIGIDO EM 17/08/2026 (SPEC-078 A.4). Este comentário dizia que
+#: `companies` era "ainda lida pelo runtime em `backend/app/agents/nodes.py:438`".
+#: 📊 `grep agent_enabled backend/app/agents/nodes.py` → **ZERO ocorrências**.
+#: A linha 438 daquele arquivo monta o system prompt e não olha coluna nenhuma
+#: de liga/desliga. O comentário mandava o próximo leitor conferir um
+#: interruptor que não existe — e é assim que se ganha um segundo interruptor
+#: por engano, onde a SPEC-045 estabeleceu que há UM só.
+#:
+#: A VERDADE MEDIDA: `agent_enabled` (em `companies` e em `agents`) é coluna
+#: **LEGADA, sem leitor no runtime**. Quem decide se o agente responde é
+#: `agents.is_active` do papel `attendance`, lido por
+#: `attendance_capture.attendance_agent_active()`. É por isso que os quatro
+#: agentes desligados do produto estão com `agent_enabled = true` sem
+#: contradição nenhuma: esse `true` não liga nada.
+#:
+#: Continuo escrevendo `agent_enabled: False` aqui de propósito — desligar uma
+#: coluna morta não custa nada, e no dia em que alguém a ressuscitar ela já
+#: nasce do lado seguro. `is_active` de `companies` NÃO serve para isso: numa
+#: empresa ela significa outra coisa (a corretora existir).
 _DESLIGA_POR_TABELA: Dict[str, Dict[str, Any]] = {
     "agents": {"is_active": False, "agent_enabled": False},
     "companies": {"agent_enabled": False},

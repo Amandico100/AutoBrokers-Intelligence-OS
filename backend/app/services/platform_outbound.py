@@ -670,7 +670,58 @@ async def send_to_client_guarded(company_id: str, phone: str, text: str,
     `temperatura` tem padrão **FRIA** de propósito. Quem esquecer de declarar
     cai no caminho governado — o único jeito de sair rápido é dizer, em
     palavras, que há um segurado esperando (`temperatura=QUENTE`).
+
+    E **nada** sai daqui com o agente de atendimento desligado — ver o bloco
+    abaixo, que é a primeira coisa que esta função faz.
     """
+    # 🔴 O INTERRUPTOR DO ATENDIMENTO, LIDO NA FUNÇÃO QUE ENVIA (SPEC-078 A.1).
+    #
+    # 📊 Medido em 17/08/2026: `check_platform_queue` roda a cada 10 min, para
+    # TODAS as corretoras, e chegava até aqui sem nunca perguntar se o agente
+    # daquela corretora está ligado. Não mordia por três acidentes — fila
+    # vazia, `platform_sends` com 0 linhas e canal recusado por ser observer.
+    # Pelo critério escrito no próprio repositório (`webhook.py:578`):
+    # "não é trava: é sorte". Um dos três acidentes acabando (e o canal
+    # `auxiliary` do Bloco B acaba com o terceiro) põe mensagem na rua de uma
+    # corretora que pediu silêncio.
+    #
+    # POR QUE AQUI, E NÃO NO DRENADOR: o guarda tem de ficar na função que
+    # ENVIA. No drenador ele protegeria só o drenador; aqui, todo chamador
+    # futuro herda a proteção sem saber que ela existe.
+    #
+    # POR QUE ANTES DO ATALHO `QUENTE`, e não só no ramo frio: 📊 conferi os
+    # quatro chamadores em 17/08/2026 e **todos falam com SEGURADO** — nenhum
+    # fala com seguradora. `dispatch_followup.py:282` manda para
+    # `client_phone` (o segurado do acionamento, não o telefone da seguradora,
+    # que é só a chave da sessão); a cobrança manda para o segurado da
+    # parcela; e `delivery_executor._whatsapp` manda o briefing para
+    # `recipient_refs["whatsapp"]` do perfil de distribuição — chave que
+    # 📊 nenhum escritor do repositório preenche (os três únicos gravadores
+    # usam `{"email": [...]}`), então `_telefones` volta vazio e o briefing
+    # nunca chega nesta linha. Não havendo caminho legítimo com quem não seja
+    # segurado, o guarda pode ficar no topo — o único lugar que também cobre o
+    # atalho quente.
+    #
+    # FALHA FECHADA nas duas metades: `attendance_agent_active` já devolve
+    # False quando não consegue confirmar, e o import entra no mesmo `try`
+    # porque um interruptor que sumiu não é permissão para falar — é o mesmo
+    # padrão de guarda-por-import de `delivery_executor._whatsapp`.
+    try:
+        from app.services.atlas.attendance_capture import attendance_agent_active
+
+        agente_ligado = await attendance_agent_active(str(company_id))
+    except Exception as exc:  # noqa: BLE001
+        logger.error("[PLATFORM SEND] não deu para confirmar se o agente de %s "
+                     "está ligado (%s) — assumindo DESLIGADO", company_id,
+                     type(exc).__name__)
+        agente_ligado = False
+    if not agente_ligado:
+        # `queued: False` explícito: quem drena a fila decide pelo par
+        # (ok, queued), e omitir a chave faria uma recusa parecer entrega.
+        logger.info("[PLATFORM SEND] bloqueado: agente de atendimento de %s "
+                    "está desligado (kind=%s)", company_id, kind)
+        return {"ok": False, "queued": False, "reason": "agente_desligado"}
+
     if str(temperatura) == QUENTE:
         # Sem fila de cortesia e sem governador: a conversa em andamento É o
         # motivo de estar enviando. Adiar aqui seria deixar a pessoa no vácuo.

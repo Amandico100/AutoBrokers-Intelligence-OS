@@ -2177,6 +2177,9 @@ export function AgentConfigModal({ companyId, agentId, open, onOpenChange }: Pro
                     llm_top_k: topK,
                     llm_frequency_penalty: frequencyPenalty,
                     llm_presence_penalty: presencePenalty,
+                    // 📊 17/08/2026 (SPEC-078 A.4): `agent_enabled` é coluna
+                    // legada e este `true` não liga o agente. O interruptor é
+                    // `agents.is_active` (o `is_active` alguns campos acima).
                     agent_enabled: true,
                     use_langchain: true,
                     allow_web_search: allowWebSearch,

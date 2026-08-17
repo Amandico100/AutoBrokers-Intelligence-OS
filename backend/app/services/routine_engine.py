@@ -179,9 +179,33 @@ async def _deliver(routine: Dict[str, Any], output: str) -> Tuple[bool, str]:
         from app.core.database import get_supabase_client
         from app.services.whatsapp_service import get_whatsapp_service
 
-        # Qualquer canal WhatsApp ATIVO da corretora serve para entregar rotina
-        # (a busca "estrita" por agente é regra do atendimento, não daqui).
+        # Canal WhatsApp ATIVO **e que pode enviar** — nem todo ativo pode.
+        # (A busca "estrita" por agente é regra do atendimento, não daqui.)
+        #
+        # 🔴 O OBSERVER NÃO É CANAL DE SAÍDA (SPEC-063 D, refeito na SPEC-078 A.2).
+        #
+        # 📊 Medido em 17/08/2026: este seletor filtrava só por `is_active` e
+        # ordenava por rank, deixando o observer em ÚLTIMO. "Último" vira "o
+        # escolhido" quando é o único ativo — e era exatamente o caso de
+        # AutoFleet e AMANDUS, que só têm integração `observer` ativa. O
+        # relatório da rotina de cobrança leva CPF/CNPJ e telefone de segurado
+        # em texto claro (`billing_collection.py:1066-1075`): trocar a entrega
+        # para WhatsApp faria esse conteúdo sair pelo número que a corretora
+        # pareou justamente para ficar CALADO.
+        #
+        # A correção da SPEC-063 D entrou no `billing_collection` e não aqui.
+        # Agora quem decide é `IntegrationService.pode_enviar()` — autoridade
+        # ÚNICA sobre "este canal pode falar?" (`integration_service.py:191`).
+        # Duplicar a lista de propósitos proibidos aqui seria criar uma segunda
+        # regra que envelhece sozinha (CLAUDE.md §5).
+        #
+        # O rank continua, mas mudou de papel: era o que "protegia" (e não
+        # protegia); agora é só PREFERÊNCIA entre as que já passaram na
+        # proibição — número dedicado a auxiliares antes do de atendimento,
+        # para isolar o outreach.
         def _find_integration():
+            from app.services.integration_service import IntegrationService
+
             supa = get_supabase_client()
             res = (
                 supa.client.table("integrations")
@@ -190,7 +214,7 @@ async def _deliver(routine: Dict[str, Any], output: str) -> Tuple[bool, str]:
                 .eq("is_active", True)
                 .execute()
             )
-            rows = res.data or []
+            rows = [r for r in (res.data or []) if IntegrationService.pode_enviar(r)]
             # S17-12: número dedicado a auxiliares tem PRIORIDADE p/ rotinas
             # (isola o outreach do número de atendimento); senão, qualquer ativo.
             _rank = {"auxiliary": 0, "attendance": 1}
@@ -199,7 +223,17 @@ async def _deliver(routine: Dict[str, Any], output: str) -> Tuple[bool, str]:
 
         integration = await asyncio.to_thread(_find_integration)
         if not integration:
-            return False, "corretora sem canal WhatsApp ativo — conecte em Personalização > Conectores > WhatsApp"
+            # O MOTIVO NÃO PODE SER ENGOLIDO. Este texto sobe como
+            # `RuntimeError("entrega falhou: …")` em `_execute_routine` e é o
+            # que fica gravado em `routine_runs.error` — é a única coisa que o
+            # corretor vai ler para entender por que o relatório não chegou.
+            # Dizer só "sem canal ativo" mandaria ele procurar um defeito de
+            # conexão que não existe: o número ESTÁ conectado, ele é que está
+            # pareado como observador, e observador não envia.
+            return False, ("corretora sem canal WhatsApp que possa ENVIAR — um número "
+                           "pareado como observador (purpose=observer) fica calado por "
+                           "definição (SPEC-063 D). Conecte um número de auxiliares em "
+                           "Personalização > Conectores > WhatsApp")
         ok = await asyncio.to_thread(get_whatsapp_service().send_message, number, output, integration)
         return bool(ok), "enviado no WhatsApp" if ok else "falha no envio WhatsApp"
     return False, f"canal de entrega desconhecido: {channel}"

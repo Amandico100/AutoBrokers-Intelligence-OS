@@ -33,6 +33,9 @@ function sourceAgentPayload(studioId: string, bp: CanonicalBlueprint) {
     name: bp.brand_locked_name ?? bp.default_display_name,
     slug: SOURCE_SLUG[bp.blueprint_key] ?? bp.blueprint_key,
     is_active: false,            // Source Agent é de AUTORIA, não opera com clientes
+    // 📊 17/08/2026 (SPEC-078 A.4): `agent_enabled` é coluna LEGADA e este
+    // `true` não liga nada — não há leitor dela no runtime. O interruptor de
+    // verdade é o `is_active` da linha acima (papel `attendance`).
     agent_enabled: true,
     llm_provider: bp.default_llm_provider,
     llm_model: bp.default_llm_model,
@@ -164,6 +167,8 @@ export async function createSourceAuxiliary(supabase: SupabaseClient, input: { n
     name,
     slug,
     is_active: false,            // autoria, não operacional
+    // 📊 17/08/2026 (SPEC-078 A.4): coluna legada, sem leitor no runtime —
+    // este `true` não liga nada. Quem liga/desliga é o `is_active` acima.
     agent_enabled: true,
     agent_role: 'subagent',
     is_subagent: true,

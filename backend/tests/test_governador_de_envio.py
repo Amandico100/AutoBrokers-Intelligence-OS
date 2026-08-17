@@ -225,6 +225,26 @@ def montar(agora=None):
     obs._br_variants = lambda p: {"".join(c for c in str(p) if c.isdigit())}
     sys.modules["app.services.atlas.observer_intake"] = obs
 
+    # 🔴 O AGENTE DE ATENDIMENTO LIGADO, porque este teste é sobre VAZÃO.
+    #
+    # SPEC-078 A.1: `send_to_client_guarded` passou a ler o interruptor
+    # (`agents.is_active` do papel `attendance`) antes de qualquer outra coisa —
+    # era a única porta automática, periódica e endereçada a segurado que não o
+    # consultava. Sem este dublê, os 4 envios deste teste são recusados com
+    # `agente_desligado` e o arquivo inteiro fica vermelho pelo motivo errado.
+    #
+    # CLAUDE.md §9.3: quando o fato muda, o teste muda com ele. Este continua
+    # provando o que sempre provou — espaçamento, tetos, janela, fila. Quem
+    # prova o guarda NOVO, com linha de controle, é
+    # `test_spec078_bloco_a_seguranca.py`.
+    cap = types.ModuleType("app.services.atlas.attendance_capture")
+
+    async def _agente_ligado(_c):
+        return True
+
+    cap.attendance_agent_active = _agente_ligado
+    sys.modules["app.services.atlas.attendance_capture"] = cap
+
     dr = types.ModuleType("app.services.dispatch_router")
 
     async def _sem_acionamento(_c):

@@ -12,6 +12,7 @@
     "test:infocap-output-guard": "python backend/tests/test_infocap_policy_output_guard.py",
     "test:rotas-montam": "node scripts/rotas-montam.test.mjs",
     "test:auxiliares-instalacao": "node scripts/auxiliares-instalacao-bate-com-o-banco.test.mjs",
+    "test:spec078-seguranca": "python backend/tests/test_spec078_bloco_a_seguranca.py",
     "test:ontologia": "python backend/tests/test_ontologia_e_unica.py",
     "test:ontologia-gate": "node scripts/ontologia-gate.mjs",
     "test:saude-vermelho": "node scripts/saude-vermelho-e-do-agora.test.mjs",

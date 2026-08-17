@@ -104,6 +104,9 @@ export async function POST(request: NextRequest) {
       llm_frequency_penalty: 0,
       llm_presence_penalty: 0,
       agent_system_prompt: SANDBOX_AGENT_PROMPT,
+      // 📊 17/08/2026 (SPEC-078 A.4): este `true` NÃO liga nada. `agent_enabled`
+      // é coluna legada, sem nenhum leitor no runtime. Quem decide se o agente
+      // responde é `agents.is_active` do papel `attendance`.
       agent_enabled: true,
       use_langchain: true,
       allow_web_search: false,

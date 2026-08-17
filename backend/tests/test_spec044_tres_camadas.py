@@ -157,6 +157,21 @@ def run():
     eng._tz = lambda name: _dt.timezone.utc
     sys.modules["app.services.routine_engine"] = eng
 
+    # 🔴 SPEC-078 C.3 — o FATO mudou, e o dublê muda com ele (CLAUDE.md §9.3).
+    #
+    # Rotina criada no chat passou a nascer com dono: o Auxiliar de plataforma
+    # `tarefas-agendadas`. `app.services` aqui é um ModuleType vazio, então o
+    # import real de `dono_da_rotina` não resolve — precisa de stub, como os
+    # outros já têm.
+    #
+    # E a lição MIGRA em vez de morrer: o teste não só deixa de explodir, ele
+    # passa a AFIRMAR que a rotina nasceu com dono. Um stub que só cala o erro
+    # ensinaria a ignorar o erro.
+    dono = types.ModuleType("app.services.dono_da_rotina")
+    dono.AUXILIAR_DE_TAREFAS_SOLTAS = "tarefas-agendadas"
+    dono.resolver_dono = lambda client, company_id, slug_pedido=None, config=None: "ta-tarefas-agendadas"
+    sys.modules["app.services.dono_da_rotina"] = dono
+
     rt = _load("app.agents.tools.routine_tools", "app/agents/tools/routine_tools.py")
     store = {"integrations": [{"id": "i1", "company_id": "c1", "is_active": True}]}
     db = _Supabase(store)
@@ -170,6 +185,23 @@ def run():
     check("rotina criada NO CHAT e PESSOAL do autor",
           r["visibility"] == "personal" and r["created_by"] == "u-joao", r)
     check("criacao confirma em linguagem humana", "Rotina criada" in out["content"])
+    # SPEC-078 C.3 — `ONTOLOGIA:51` "Rotina nunca existe sozinha".
+    check("e ela NASCE COM DONO (ONTOLOGIA:51)",
+          r.get("tenant_auxiliary_id") == "ta-tarefas-agendadas",
+          r.get("tenant_auxiliary_id"))
+
+    # CONTROLE: sem Auxiliar dono possivel, a rotina NAO e criada. Sem esta
+    # linha, um `resolver_dono` que devolvesse qualquer coisa passaria igual.
+    dono.resolver_dono = lambda client, company_id, slug_pedido=None, config=None: None
+    quantas_antes = len(store["routines"])
+    recusa = create._run(name="Rotina sem dono possivel", instructions="Isto nao deve ser criado",
+                         schedule_kind="daily", time_of_day="08:00",
+                         delivery_channel="none", user_id="u-joao")
+    check("CONTROLE: sem dono possivel, a rotina NAO e gravada",
+          len(store["routines"]) == quantas_antes, len(store["routines"]))
+    check("CONTROLE: e o corretor recebe explicacao, nao stack trace",
+          "suporte" in str(recusa.get("content", "")).lower(), recusa)
+    dono.resolver_dono = lambda client, company_id, slug_pedido=None, config=None: "ta-tarefas-agendadas"
 
     store["routines"].append({"id": "r-comp", "company_id": "c1", "name": "Cobranca da corretora",
                               "visibility": "company", "created_by": "u-maria", "is_active": True,
