@@ -977,7 +977,13 @@ async def _send_test_messages(
             entry["ok"] = bool(ok)
         except Exception as e:  # noqa: BLE001
             entry["error"] = type(e).__name__
-            blockers.append(f"modo teste: falha ao enviar simulacao para ...{number[-4:]} ({type(e).__name__})")
+            # 🔴 `type(e).__name__` virava a palavra "Exception" — o relatorio
+            # dizia que falhou e nao dizia por que. O texto da excecao carrega
+            # o status HTTP do provedor (ver `whatsapp_service.send_message`).
+            # Quem le o relatorio nao tem acesso ao log do conteiner; se o
+            # motivo nao vier aqui, ele nao existe para essa pessoa.
+            _motivo = str(e).strip() or type(e).__name__
+            blockers.append(f"modo teste: falha ao enviar simulacao para ...{number[-4:]} — {_motivo[:220]}")
         # Boleto como DOCUMENTO PDF (decisão de produto 2026-07-10): o cliente
         # recebe o arquivo, não um link que expira. Link assinado é só fallback.
         if entry["ok"] and boleto_url:

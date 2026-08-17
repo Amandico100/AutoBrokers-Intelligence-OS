@@ -12,7 +12,7 @@ export const dynamic = 'force-dynamic';
 
 // Um pouco mais que o prazo do backend (8s), para que o erro que chega seja o
 // DELE — com a frase explicando o que fazer — e não um timeout genérico daqui.
-const PRAZO_MS = 11_000;
+const PRAZO_MS = 28_000;
 
 export async function GET(_req: NextRequest) {
   const ctx = await resolveSessionCompany();

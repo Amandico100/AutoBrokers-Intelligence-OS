@@ -25,8 +25,29 @@ Ao testar contra a instância DESCONECTADA, `/group/list` devolveu 500 e
 corretor chamasse isso sem prazo, ela congelaria — e o corretor não tem como
 saber que o culpado é o WhatsApp desligado, não o AutoBrokers.
 
-Por isso: prazo de 8 segundos, e a falha vira uma frase que explica o que
-fazer, nunca uma tela travada.
+Por isso: prazo curto, e a falha vira uma frase que explica o que fazer, nunca
+uma tela travada.
+
+🔴 CORRIGIDO EM 17/08/2026 — o prazo era CURTO DEMAIS, e o erro mentia
+------------------------------------------------------------------------
+📊 O Founder clicou "Buscar grupos" na Resulta e leu *"Não consegui falar com o
+WhatsApp agora"*. Concluiu, razoavelmente, que o provedor estava errado — que
+ali havia um Evolution API antigo em vez do GO.
+
+Não era. O caminho `/group/list` responde 401 sem chave (existe e está no ar);
+`/group/fetchAllGroups`, `/groups` e `/chat/list` respondem 404. O endereço
+sempre esteve certo.
+
+Duas coisas estavam erradas ao mesmo tempo:
+
+1. **8 segundos não bastam** para um WhatsApp recém-pareado enumerar grupos.
+2. **O tratador de timeout nunca era alcançado**: `httpx` levanta
+   `httpx.TimeoutException`, e o `except` capturava `asyncio.TimeoutError` —
+   tipo diferente. O timeout caía no genérico, com a frase errada.
+
+Erro rotulado errado manda a pessoa procurar no lugar errado. Custou uma
+investigação inteira para descobrir que não havia nada de errado com o
+provedor.
 """
 
 from __future__ import annotations
@@ -37,9 +58,9 @@ from typing import Any, Optional
 
 logger = logging.getLogger(__name__)
 
-# Oito segundos. Mais que isso, o corretor acha que travou; menos, um WhatsApp
-# com muitos grupos não termina de responder.
-PRAZO_S = 8.0
+# 25 segundos. O anterior (8s) nao bastava para um WhatsApp recem-pareado
+# enumerar os grupos, e o timeout caia no tratador errado. Ver o topo.
+PRAZO_S = 25.0
 
 
 def _jid_de_grupo(valor: Any) -> str:
@@ -143,20 +164,40 @@ async def listar_grupos(company_id: str) -> dict:
         async with httpx.AsyncClient(timeout=PRAZO_S) as cliente:
             r = await cliente.get(f"{base}/group/list", headers={"apikey": token})
             if r.status_code >= 400:
-                logger.warning("[Grupos] evolution devolveu %s", r.status_code)
+                logger.warning("[Grupos] evolution devolveu %s: %s",
+                               r.status_code, r.text[:200])
+                # O status vai na FRASE. Sem ele, "não consegui" cobre desde
+                # credencial errada (401) até serviço fora do ar (502) — e
+                # quem lê não tem como saber qual, nem acesso ao log.
                 return {"ok": False, "grupos": [], "motivo": f"http_{r.status_code}",
-                        "frase": "Não consegui ler os grupos agora. Se o "
-                                 "WhatsApp acabou de conectar, espere um minuto "
-                                 "e tente de novo."}
+                        "frase": (f"O WhatsApp recusou a listagem (HTTP "
+                                  f"{r.status_code}). Se acabou de conectar, "
+                                  f"espere um minuto e tente de novo; se "
+                                  f"persistir, cole o ID do grupo manualmente.")}
             bruto = r.json() if r.content else []
-    except asyncio.TimeoutError:
+    # 🔴 `httpx` NÃO levanta `asyncio.TimeoutError` — ele levanta
+    # `httpx.TimeoutException` (ConnectTimeout/ReadTimeout).
+    #
+    # 📊 Medido em 17/08/2026: o Founder clicou "Buscar grupos", viu
+    # "Não consegui falar com o WhatsApp agora" e concluiu que o provedor
+    # estava errado (Evolution API em vez do GO). Não era: o caminho
+    # `/group/list` responde 401 sem chave — existe e está no ar. O que
+    # acontecia era TIMEOUT caindo no tratador genérico, com a frase errada.
+    #
+    # Erro rotulado errado manda a pessoa procurar no lugar errado. Custou
+    # uma investigação inteira.
+    except (asyncio.TimeoutError, httpx.TimeoutException):
         return {"ok": False, "grupos": [], "motivo": "demorou",
-                "frase": "O WhatsApp demorou demais para responder. Tente "
-                         "novamente em instantes."}
+                "frase": "O WhatsApp demorou demais para listar os grupos. "
+                         "Isso é comum logo depois de conectar — espere um "
+                         "minuto e tente de novo, ou cole o ID do grupo "
+                         "manualmente no campo abaixo."}
     except Exception as exc:  # noqa: BLE001
-        logger.warning("[Grupos] falha: %s", type(exc).__name__)
+        logger.warning("[Grupos] falha: %s: %s", type(exc).__name__, str(exc)[:200])
         return {"ok": False, "grupos": [], "motivo": type(exc).__name__,
-                "frase": "Não consegui falar com o WhatsApp agora."}
+                "frase": f"Não consegui falar com o WhatsApp agora "
+                         f"({type(exc).__name__}). Você pode colar o ID do "
+                         f"grupo manualmente no campo abaixo."}
 
     grupos: list[dict] = []
     for item in _lista_de(bruto):

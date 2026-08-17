@@ -170,7 +170,22 @@ class WhatsappService:
                 if all(_ok(send(p)) for p in pieces if p):
                     logger.warning(f"[WA SEND] balão {i + 1} entregue em 2 pedaços após falha")
                     continue
-            raise Exception("Failed to send WhatsApp message")
+            # 🔴 O MOTIVO VAI JUNTO. Antes esta exceção era só "Failed to send
+            # WhatsApp message", e quem a capturava gravava `type(e).__name__`
+            # — literalmente a palavra "Exception".
+            #
+            # 📊 Medido em 17/08/2026: o Auxiliar de Cobrança baixou 5 boletos
+            # reais, tentou enviar 2 e falhou. O relatório dizia
+            # "modo teste: falha ao enviar simulacao para ...7463 (Exception)".
+            # O `SendResult` SABIA o status HTTP; ele morria aqui. Sem acesso
+            # ao log do contêiner, isso custou uma rodada inteira de 15 minutos
+            # para descobrir o que já estava na memória do processo.
+            #
+            # Erro que não diz o que houve obriga a reproduzir para diagnosticar
+            # — e reproduzir custa 15 minutos e uma entrada a mais no portal.
+            raise Exception(
+                f"Falha ao enviar pelo WhatsApp ({provider_label}): {str(detail)[:200]}"
+            )
         return True
 
     def send_audio(self, to_number: str, audio_url: str, integration: Dict[str, Any]) -> bool:
