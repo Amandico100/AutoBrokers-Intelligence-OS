@@ -43,7 +43,13 @@ _BASE = {
     "DescricaoRelacaoTitular": "Corretor",
     "Placa": "Q***A91",
     "Apolice": "055309999999999",
-    "Chassi": "9BWZZZ377VT004251",
+    # Mascarado igual ao `maxpar_apolices.py`, que e a fixture irma. O valor
+    # anterior era o VIN de exemplo publico da Wikipedia -- sintetico, nao era
+    # chassi de ninguem -- mas um padrao de 17 caracteres numa fixture dispara
+    # qualquer varredor de PII, e duas fixtures do mesmo diretorio tratando o
+    # mesmo campo de formas diferentes ensina que a mascara e opcional.
+    # 📊 Achado em 16/08/2026 pelo detector do Bloco J da SPEC-075.
+    "Chassi": "9BW*******T004251",
     "DescricaoVeiculo": "COMPASS LIMITED 2.0 4X2 16V AUT.",
     "DataSinistro": "2026-08-14 00:00:00",
     "DescricaoItemDanificado": "VIDRO DE PORTA",

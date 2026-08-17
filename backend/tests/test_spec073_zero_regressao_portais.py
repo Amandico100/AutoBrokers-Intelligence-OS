@@ -133,17 +133,40 @@ print("\n[5] O QUE A SPEC-073 PROMETEU NAO TOCAR")
 INTOCADOS = ("allianz_corretor.py", "hdi_corretor.py", "mapfre_corretor.py")
 import subprocess  # noqa: E402
 
+# ⚠️ 16/08/2026 — a JANELA desta conferência mudou; a promessa que ela guarda é
+# a mesma.
+#
+# Ela comparava `baseline..HEAD`, e isso confundia duas coisas diferentes: "a
+# SPEC-073 não tocou nisto" (verdade histórica, permanente) e "ninguém nunca
+# mais tocará nisto" (que nunca foi prometido por ninguém). Toda SPEC seguinte
+# que encostasse num desses arquivos reprovaria um teste da 073 — e um teste
+# que reprova por motivo legítimo ensina a equipe a ignorá-lo.
+#
+# 📊 Foi exatamente o que aconteceu: a SPEC-075 Bloco U tem mandato explícito
+# para adaptar `billing_collection.py` (§30 e §45 da 075 o listam pelo nome), e
+# este guarda acusou a mudança autorizada como se fosse regressão.
+#
+# A janela correta é o intervalo DA SPEC-073: do baseline ao head dela. Assim a
+# afirmação continua sendo conferida — e continua verdadeira — para sempre.
+BASELINE_073 = "5cac02f08d93b72b72d94b27e23c31257f2cbfc1"
+HEAD_073 = "ffd1cd9a61ad0e1c44fa2aa85e58d8cb0960703a"
+
 try:
     diff = subprocess.run(
-        ["git", "diff", "--name-only", "5cac02f08d93b72b72d94b27e23c31257f2cbfc1", "HEAD"],
+        ["git", "diff", "--name-only", BASELINE_073, HEAD_073],
         cwd=str(ROOT.parent), capture_output=True, text=True, timeout=30).stdout
 except Exception:  # noqa: BLE001
     diff = ""
 if diff:
     for f in INTOCADOS:
-        check(f"`{f}` NAO foi alterado por esta SPEC", f not in diff, f)
-    check("`billing_collection.py` NAO foi alterado por esta SPEC",
+        check(f"a SPEC-073 nao alterou `{f}`", f not in diff, f)
+    check("a SPEC-073 nao alterou `billing_collection.py`",
           "billing_collection.py" not in diff)
+    # 🔴 CONTROLE. Sem isto, um `git diff` que devolvesse lixo não-vazio (ou uma
+    # faixa de commits errada) faria as quatro asserções acima passarem por
+    # ausência, provando nada. O guarda precisa provar que ENXERGA o diff.
+    check("CONTROLE — o diff da 073 realmente contem o que ela mudou",
+          "worker.py" in diff and "guardrails.py" in diff, diff[:200])
 else:
     print("  [--] git indisponivel: conferencia de arquivos intocados pulada")
 
