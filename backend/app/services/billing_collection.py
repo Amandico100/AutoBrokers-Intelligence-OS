@@ -1432,15 +1432,17 @@ def purgar_evidencias_antigas(supabase, *, dias: Optional[int] = None,
     }
 
     try:
-        q = (client.table("objects").schema("storage")
-             .select("name, created_at")
-             .eq("bucket_id", PORTAL_EVIDENCE_BUCKET)
-             .lt("created_at", corte))
-        if company_id:
-            # O caminho começa pelo dono. Purgar por corretora é o que permite
-            # ligar isto para uma e não para todas.
-            q = q.like("name", f"{company_id}/%")
-        alvos = [str(o.get("name") or "") for o in ((q.execute()).data or []) if o.get("name")]
+        # Pela RPC, e não por `.schema("storage").table("objects")`: 📊
+        # `storage` não está entre os schemas expostos pelo PostgREST, e a
+        # leitura direta devolveria 404 — a purga passaria a "não achar nada"
+        # em silêncio, que é a pior forma de uma retenção falhar.
+        #
+        # `empresa` existe porque o caminho começa pelo dono
+        # (`{company_id}/{portal_key}/{job_id}/…`): dá para ligar a purga para
+        # uma corretora e não para todas.
+        res = client.rpc("portal_evidence_vencidas",
+                         {"dias": max(prazo, 1), "empresa": company_id}).execute()
+        alvos = [str(o.get("name") or "") for o in (res.data or []) if o.get("name")]
     except Exception as e:  # noqa: BLE001
         logger.warning("[EVIDENCE] nao consegui listar candidatos: %s", type(e).__name__)
         return resultado

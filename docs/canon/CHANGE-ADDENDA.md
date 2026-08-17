@@ -3111,3 +3111,100 @@ regra da 073 continua intacta para o que ela protege.
 A primeira versão exigia **exatamente** 11 ou 14 dígitos. O segmento real limpo
 dá **12** — CPF mais o sufixo `_1`. A pergunta certa não é *"este segmento É um
 CPF?"*, é *"este segmento CONTÉM um?"*.
+
+---
+
+## CA-058 · `routine_runs` ganha `company_id` denormalizado — **ESSENCIAL**
+
+**SPEC-078 F.3** · 17/08/2026 · autonomia da §14 (nota 0–100)
+
+### Problema
+
+📊 `routine_runs` tinha 32 linhas e **nenhuma coluna de corretora**. A rota de
+Entregas filtra toda fonte por `.eq('company_id', empresa)` — o backend usa
+service role e é o filtro no código, não a policy, que protege (CLAUDE.md §7).
+Sem a coluna, a sexta fonte não tinha como existir.
+
+### As opções, com nota
+
+| Opção | Nota | Por quê |
+|---|---|---|
+| **Coluna `company_id` denormalizada + backfill + trigger** | **92** | a leitura fica idêntica às outras cinco fontes; a regra continua verificável por leitura; o índice `(company_id, started_at desc)` serve à consulta real |
+| Duas consultas: ids das rotinas da empresa, depois `in('routine_id', …)` | 60 | sem migration, mas o escopo vira indireto — o próximo a copiar o padrão perde o filtro sem perceber, e a lista de ids cresce |
+| Join embutido `routines!inner` com `.eq('routines.company_id')` | 70 | uma consulta só, mas a segurança passa a depender de o `!inner` estar lá; alguém tirando o `!inner` transforma filtro em vazamento silencioso |
+
+### A trigger, e por que ela existe
+
+📊 `routine_runs` tem **dois** escritores (`routine_engine.py:255` e `:553`), e
+esta rodada só autorizava tocar num deles. `NOT NULL` quebraria o outro na hora.
+Expand-first: coluna nullable + `trg_routine_runs_herda_empresa`, que copia o
+dono da rotina quando o escritor esquece. O `NOT NULL` fica para uma migration
+de endurecimento, depois de o banco provar que não há nulos.
+
+---
+
+## CA-059 · O relatório completo mora em coluna, não em artifact — **ESSENCIAL**
+
+**SPEC-078 F.4** · 17/08/2026
+
+### Problema
+
+📊 Das 32 execuções gravadas, **29 tinham `output_preview` com exatamente 500
+caracteres** — o teto de `output[:500]`. 91% truncadas, e o corte cai justamente
+antes de "PRECISA DE VOCÊ" e "Clientes encontrados".
+
+### Onde guardar o texto inteiro — as opções, com nota
+
+| Opção | Nota | Por quê |
+|---|---|---|
+| **Coluna nova `routine_runs.output_full`** | **88** | mesma linha, mesma retenção (a purga de 90 dias leva o texto junto), mesmo escopo de tenant; a página lê com um `.eq('company_id')` |
+| Artifact | 75 | o artifact é o entregável **compartilhável** — e é por isso que ele **não pode** carregar o CPF. São perguntas diferentes: o artifact é o que se manda; `output_full` é o que aconteceu |
+| Objeto no Storage | 45 | acrescenta rede no caminho de leitura e uma segunda política de retenção para 4 KB de texto |
+
+### `output_preview` fica, e ganha papel declarado
+
+Nota 85 contra 60 de derivá-lo na leitura: derivar obrigaria a lista de Entregas
+a trazer 4 KB por linha, 120 por fonte, para cortar 500 na memória. Os dois saem
+da **mesma string, no mesmo `update`** — não têm como divergir.
+
+### Sem backfill, de propósito
+
+Copiar os 500 caracteres truncados para `output_full` apresentaria o corte como
+se fosse o relatório. A página diz, para as 32 antigas, que são anteriores ao
+registro completo. Mentir por conveniência de schema é pior que a lacuna.
+
+---
+
+## CA-060 · A peça da Cobrança sai SEM CPF, e o texto integral fica atrás da sessão — **BLOCKER**
+
+**SPEC-078 F.5** · 17/08/2026
+
+### Problema
+
+Um artifact pode virar `artifact_shares`: link público com validade de 30 dias,
+autenticado só pelo token da URL. O relatório da cobrança carrega **CPF/CNPJ e
+telefone de segurado em texto claro** (`billing_collection.py:1069-1140`).
+
+### Decisão
+
+Dois níveis de exposição, deliberadamente diferentes:
+
+```text
+routine_runs.output_full   texto integral, com CPF   sessão + .eq('company_id')
+artifact                   contagens, nomes, ...9901  pode virar link público
+```
+
+`_mascarar_documento` reduz o documento aos quatro últimos dígitos — o bastante
+para distinguir dois "João Silva" na mesma lista, insuficiente para usar.
+
+📊 Render real conferido: 8 blocos, `{'desconhecidos': [], 'falhas': []}`,
+23.714 bytes de HTML, com `Precisa de você`, `Inadimplentes encontrados` e o
+portal que falhou presentes — e zero ocorrências do CPF inteiro ou do telefone.
+
+### Nenhum motor paralelo
+
+O caminho é o do Checklist das 6h, lido em `intelligence/workflows.py:131-157`:
+`ArtifactService.criar → renderizar → publicar`. `criar` aceita
+`work_run_id=None`, então F.5 **não** exigiu criar Work Run — que seria o
+segundo motor que a SPEC-078 e o CLAUDE.md §5 proíbem. O guarda do teste recusa
+escrita direta em `artifacts`, `artifact_versions` ou `artifact_renders`.

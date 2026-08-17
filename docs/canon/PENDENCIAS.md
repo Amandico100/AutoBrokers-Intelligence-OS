@@ -6302,3 +6302,53 @@ verdade.
 
 **O que custa esquecer:** confunde monitoração e SEO. Afeta a app inteira, não
 só as rotas novas.
+
+---
+
+## P-214 · 🟠 Os boletos no Storage estão prontos para purgar, e a purga está DESLIGADA
+
+**Aberta em:** 17/08/2026 · **Dono:** 🧑 Founder (o prazo é decisão dele)
+
+📊 Medido em 17/08/2026 (`storage.objects`, projeto dcajcvlzcjbmyapmklil):
+
+```text
+portal-evidence   62 objetos · 5977 kB · mais antigo 11/07/2026
+                  5 com mais de 30 dias · 0 com mais de 60 · 0 com 90
+chat-docs         30 objetos · 26 com mais de 30 dias    (fora do escopo desta SPEC)
+chat-media        26 objetos · 24 com mais de 30 dias    (idem)
+```
+
+São **boletos de terceiros** — dado financeiro de segurado — guardados desde
+julho **sem nenhuma rotina de descarte**. A migration `20260708_01` criou o
+bucket privado e parou ali: privado resolve *quem lê*, não resolve *por quanto
+tempo existe*.
+
+A SPEC-078 F.7 **não apagou nada** (§15). Ficou pronto e desligado:
+
+| Peça | Onde | Estado |
+|---|---|---|
+| Política escrita | `billing_collection.py`, cabeçalho da seção F.7 | ✅ |
+| Contagem por idade, por corretora | `public.portal_evidence_por_idade(dias)` — migration `20260817_04` | ✅ (só leitura) |
+| Leitor em Python | `billing_collection.contar_evidencias_por_idade()` | ✅ |
+| Purga | `billing_collection.purgar_evidencias_antigas()` | ✅ escrita, **DESLIGADA** |
+
+Três travas, e as três precisam ceder ao mesmo tempo para um único byte sair:
+`PORTAL_EVIDENCE_PURGE_ENABLED` ligado (padrão: ausente = não) · `dry_run=False`
+explícito (padrão: `True`) · prazo positivo. Sem as três, a função devolve
+**o que apagaria** e não toca em nada.
+
+**O que destrava:** 🧑 duas decisões do Founder, nesta ordem:
+1. **o prazo.** A sugestão escrita é 90 dias — o boleto vence em ~30 e a
+   discussão sobre uma cobrança morre em ~60; 90 dá folga sem virar arquivo
+   morto. Ajustável por `PORTAL_EVIDENCE_RETENTION_DAYS`.
+2. **ligar**, com `PORTAL_EVIDENCE_PURGE_ENABLED=true`, e chamar a purga de
+   algum lugar — 📊 hoje **ninguém a chama**, nem desligada. Ela não tem
+   agendador: é função, não rotina. Pendura-se no tick de retenção que já existe
+   em `routine_engine.routine_scheduler_loop` (o mesmo que apaga `routine_runs`
+   com mais de 90 dias, 1x/dia) ou numa rotina de plataforma.
+
+**O que custa esquecer:** dado financeiro de terceiro acumulando sem prazo de
+descarte, num bucket que só cresce. Não é um risco de vazamento — é um risco de
+**guarda indevida**: quando alguém perguntar por que a corretora ainda tem o
+boleto de um segurado que saiu da carteira em julho, a resposta hoje é "porque
+ninguém apagou".

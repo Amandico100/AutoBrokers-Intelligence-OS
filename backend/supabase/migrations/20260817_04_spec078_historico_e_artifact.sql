@@ -224,6 +224,44 @@ revoke all on function public.portal_evidence_por_idade(integer) from public, an
 grant execute on function public.portal_evidence_por_idade(integer) to service_role;
 
 
+-- A lista de candidatos da purga — TAMBÉM só leitura.
+--
+-- Por que existe uma função e não uma consulta do cliente: `storage.objects`
+-- 📊 não está entre os schemas expostos pelo PostgREST (só `public` e
+-- `graphql_public`). Uma leitura direta de `.schema("storage").table("objects")`
+-- devolveria 404 — e a purga passaria a "não achar nada" em silêncio, que é a
+-- pior forma de uma política de retenção falhar: parece que não há o que
+-- apagar.
+--
+-- Ela DEVOLVE nomes. Não apaga. Quem apaga é a Storage API, atrás das três
+-- travas de `purgar_evidencias_antigas`.
+
+create or replace function public.portal_evidence_vencidas(
+  dias integer default 90,
+  empresa text default null
+)
+returns table (name text, created_at timestamptz)
+language sql
+stable
+security definer
+set search_path = storage, public
+as $$
+  select o.name, o.created_at
+    from storage.objects o
+   where o.bucket_id = 'portal-evidence'
+     and o.created_at < now() - make_interval(days => greatest(dias, 1))
+     and (empresa is null or o.name like empresa || '/%')
+   order by o.created_at;
+$$;
+
+comment on function public.portal_evidence_vencidas(integer, text) is
+  'SPEC-078 F.7: os objetos de portal-evidence que passaram do prazo, opcionalmente '
+  'de uma corretora só. SOMENTE LEITURA — devolve nomes, não apaga nada.';
+
+revoke all on function public.portal_evidence_vencidas(integer, text) from public, anon;
+grant execute on function public.portal_evidence_vencidas(integer, text) to service_role;
+
+
 -- =============================================================
 -- VERIFY — rodar DEPOIS de aplicar. Saída esperada ao lado.
 -- =============================================================
@@ -261,9 +299,26 @@ grant execute on function public.portal_evidence_por_idade(integer) to service_r
 -- 6) a contagem por idade responde
 --
 -- select * from public.portal_evidence_por_idade(30);
---    → 1 linha: 04b5cdbc-… | 62 | 5 | ~6120000 | 2026-07-11 07:13:25+00
---      (📊 medido em 17/08/2026 pela consulta equivalente direta em
---       storage.objects — ver o cabeçalho do bloco 6)
+--    → 📊 DUAS linhas, medidas em 17/08/2026 rodando o CORPO da função direto
+--      em storage.objects (a função ainda não existia; o corpo, sim):
+--
+--      04b5cdbc-04cd-4ddf-8e4b-f43efb062fab | 26 | 5 | 2367496 | 2026-07-11 07:13:25+00
+--      6c9c55e2-2f30-4ca2-a1ef-4ef464ed1b4a | 36 | 0 | 3752970 | 2026-08-12 18:53:48+00
+--
+--      ⚠️ São DUAS corretoras, não uma. Eu havia escrito "1 linha" aqui por
+--      dedução — os 62 objetos do cabeçalho são a soma das duas, e o `group by`
+--      as separa. A medição corrigiu o texto (CLAUDE.md §9.2: medir vence
+--      deduzir). E é justamente essa separação que faz a política de retenção
+--      poder ser ligada para uma corretora e não para a outra.
+--
+-- 7) a lista de vencidas responde, e respeita o recorte por corretora
+--
+-- select count(*) from public.portal_evidence_vencidas(30);
+--    → 5
+-- select count(*) from public.portal_evidence_vencidas(30, '04b5cdbc-04cd-4ddf-8e4b-f43efb062fab');
+--    → 5   (📊 medido: as cinco vencidas são todas desta corretora)
+-- select count(*) from public.portal_evidence_vencidas(30, '6c9c55e2-2f30-4ca2-a1ef-4ef464ed1b4a');
+--    → 0
 --
 -- =============================================================
 -- ROLLBACK — reversível. Perde-se o `output_full` gravado no intervalo.
@@ -272,6 +327,7 @@ grant execute on function public.portal_evidence_por_idade(integer) to service_r
 -- drop trigger if exists trg_routine_runs_herda_empresa on public.routine_runs;
 -- drop function if exists public.routine_runs_herda_empresa();
 -- drop function if exists public.portal_evidence_por_idade(integer);
+-- drop function if exists public.portal_evidence_vencidas(integer, text);
 -- drop index if exists public.idx_routine_runs_company;
 -- alter table public.routine_runs drop column if exists output_full;
 -- alter table public.routine_runs drop column if exists company_id;
