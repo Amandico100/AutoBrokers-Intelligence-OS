@@ -44,11 +44,19 @@ MAX_REQUESTS = 200
 TRUNCAR_EM = 200
 
 # Hosts que só servem métrica/anúncio. Não são o portal e poluem o candidato.
+#
+# 📊 Os quatro últimos entraram em 16/08/2026, medidos sobre os HAR reais de
+# `docs/intake/MATERIAIS` (SPEC-077). O caso que obrigou: o HAR da MAPFRE tem
+# **299 chamadas para `bf67246skn.bf.dynatrace.com`** contra **18 para o portal
+# de verdade**. Sem reconhecer o APM, qualquer heurística que ordene hosts por
+# volume elege a telemetria como sendo "a casa" — e aí o portal real passa a
+# ser classificado como terceiro.
 _TELEMETRIA = (
     "google-analytics", "googletagmanager", "doubleclick", "facebook",
     "hotjar", "clarity.ms", "newrelic", "sentry.io", "datadoghq",
     "segment.io", "mixpanel", "amplitude", "intercom", "zendesk",
     "cloudflareinsights", "bing.com", "linkedin.com", "adservice",
+    "dynatrace.com", "go-mpulse.net", "akstat.io", "nr-data.net",
 )
 
 _ASSET_TYPES = ("image", "stylesheet", "font", "media", "manifest", "other")
