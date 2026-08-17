@@ -376,9 +376,28 @@ def teste_a_tool_procura_antes_de_inserir():
            f"{len(corpo_busca)} de {len(fonte)} caracteres")
 
     # O insert grava o que a migration criou.
-    bloco_insert = fonte[i_insert:i_insert + 700]
+    #
+    # ⚠️ 16/08/2026 — o MECANISMO desta checagem mudou; a verdade que ela guarda
+    # é a mesma. Ela lia uma janela de 700 caracteres depois do literal
+    # `insert(`, o que só funcionava enquanto o dicionário fosse escrito inline.
+    # A SPEC-075 extraiu as colunas para uma variável `_linha` (para poder
+    # tentar o insert COM `operation_key` e repetir SEM ela, caso a migration
+    # ainda não tenha rodado) — e a janela passou a olhar para o `except`.
+    #
+    # O teste falhou, e falhou CERTO: ele avisou que parou de ver o que dizia
+    # ver. A correção é olhar o corpo do método inteiro, que é onde a afirmação
+    # "o insert grava estas colunas" realmente vive.
+    corpo_arun = fonte[fonte.find("async def _arun"):]
     for coluna in ('"idempotency_key"', '"session_id"', '"agent_id"'):
-        checar(f"o insert grava {coluna}", coluna in bloco_insert, bloco_insert[:200])
+        checar(f"o insert grava {coluna}", coluna in corpo_arun, corpo_arun[:200])
+    checar("CONTROLE — a fatia é o corpo do método, não o arquivo inteiro",
+           0 < len(corpo_arun) < len(fonte) and "def _buscar_pedido_vivo" not in corpo_arun,
+           f"{len(corpo_arun)} de {len(fonte)} caracteres")
+    # 🔴 E o par que prova que a checagem CONSEGUE reprovar: uma coluna que
+    # ninguém grava não pode passar. Sem isto, `coluna in corpo_arun` sobre um
+    # corpo grande passaria para quase qualquer string.
+    checar("CONTROLE — uma coluna inexistente NÃO é encontrada",
+           '"coluna_que_ninguem_grava"' not in corpo_arun)
 
     checar("a corrida (23505) é tratada", "_e_chave_duplicada" in fonte and "23505" in fonte)
     i_23505 = fonte.find("if not self._e_chave_duplicada(e)")

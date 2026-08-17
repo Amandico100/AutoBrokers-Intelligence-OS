@@ -31,11 +31,14 @@ existia e o que torna "parar no meio" seguro.
 from __future__ import annotations
 
 import asyncio
+import logging
 import os
 import re
 import time
 from datetime import datetime, timedelta, timezone
 from typing import Any, Dict, Iterable, List, Optional
+
+logger = logging.getLogger(__name__)
 
 BILLING_KIND = "billing_collection"
 # Quanto tempo uma execucao da rotina aceita ficar esperando o governador
@@ -550,7 +553,7 @@ def _company_name(client, company_id: str) -> str:
 
 
 def _enqueue_job(client, routine: Dict[str, Any], portal_key: str, account: Dict[str, Any], cfg: Dict[str, Any]) -> Optional[str]:
-    ins = client.table("portal_jobs").insert({
+    linha = {
         "company_id": str(routine["company_id"]),
         "portal_key": portal_key,
         "journey": "cobranca_sweep",
@@ -563,8 +566,49 @@ def _enqueue_job(client, routine: Dict[str, Any], portal_key: str, account: Dict
             "routine_id": str(routine.get("id") or ""),
         },
         "status": "queued",
-    }).execute()
-    return str(ins.data[0]["id"]) if ins.data else None
+    }
+
+    # 🔴 SPEC-075 Bloco D — a linhagem entra SEM poder derrubar a cobrança.
+    #
+    # `operation_key` é coluna nova. O `smith-api` sobe com a imagem nova
+    # assim que o deploy roda; a migration é aplicada por outra mão, em outro
+    # momento. Entre os dois instantes, um insert que exige a coluna falha —
+    # e o que falha aqui não é um recurso novo, é a varredura de cobrança
+    # inteira da corretora.
+    #
+    # Por isso: tenta com, e se o banco recusar, repete sem. É o mesmo
+    # raciocínio do `_candidatos_da_fila` no worker, e é o que "expand-first"
+    # significa do lado do código, não só do lado do schema.
+    ins = None
+    try:
+        ins = client.table("portal_jobs").insert(
+            {**linha, "operation_key": "billing.overdue.list"}).execute()
+    except Exception as e:  # noqa: BLE001
+        logger.warning(
+            "[billing] insert com operation_key falhou (%s); repetindo sem a "
+            "coluna — a migration da SPEC-075 provavelmente ainda nao rodou",
+            type(e).__name__)
+        ins = client.table("portal_jobs").insert(linha).execute()
+
+    job_id = str(ins.data[0]["id"]) if ins and ins.data else None
+
+    # SPEC-075 Bloco U — sombra. O caminho legado JÁ executou (o insert acima);
+    # isto só registra o que a ponte teria escolhido. Nunca cria job, nunca
+    # chama portal, e um erro aqui não pode custar a varredura.
+    if job_id:
+        try:
+            from app.services.portals.sombra import observar, sombra_ligada
+
+            if sombra_ligada():
+                observar(client, job_id=job_id,
+                         company_id=str(routine["company_id"]),
+                         operation_key="billing.overdue.list",
+                         portal_key_hint=portal_key,
+                         portal_key_legado=portal_key,
+                         journey_legada="cobranca_sweep")
+        except Exception:  # noqa: BLE001
+            pass
+    return job_id
 
 
 async def _poll_job(client, job_id: str, timeout_seconds: int) -> Dict[str, Any]:

@@ -402,7 +402,7 @@ class PortalActionTool(BaseTool):
         # 4) Enfileira o job para o portal-worker — so quando nao havia um vivo.
         if not reaproveitado:
             try:
-                ins = self._client().table("portal_jobs").insert({
+                _linha = {
                     "company_id": self.company_id,
                     "portal_key": "vidros_lanternas",
                     "journey": "abrir_atendimento",
@@ -411,7 +411,25 @@ class PortalActionTool(BaseTool):
                     "idempotency_key": chave or None,  # "" nunca vai para o banco
                     "session_id": session_id or None,  # o caminho de volta a conversa
                     "agent_id": agent_id,
-                }).execute()
+                }
+                # 🔴 SPEC-075 Bloco D — `operation_key` entra sem poder derrubar
+                # o acionamento. A coluna é nova; o smith-api sobe com a imagem
+                # nova antes de a migration rodar. E o `except` logo abaixo só
+                # sabe tratar violação de chave única: qualquer outro erro vira
+                # "Nao consegui enfileirar o acionamento" para um segurado com o
+                # carro parado. Então a tentativa com a coluna é isolada aqui.
+                try:
+                    ins = self._client().table("portal_jobs").insert(
+                        {**_linha, "operation_key": "assistance.glass.request"}
+                    ).execute()
+                except Exception as _e_col:  # noqa: BLE001
+                    if self._e_chave_duplicada(_e_col):
+                        raise
+                    logger.warning(
+                        "[PortalAction] insert com operation_key falhou (%s); "
+                        "repetindo sem a coluna — a migration da SPEC-075 "
+                        "provavelmente ainda nao rodou", type(_e_col).__name__)
+                    ins = self._client().table("portal_jobs").insert(_linha).execute()
                 job_id = ins.data[0]["id"] if ins.data else None
             except Exception as e:  # noqa: BLE001
                 if not self._e_chave_duplicada(e):
