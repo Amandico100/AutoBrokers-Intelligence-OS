@@ -251,7 +251,90 @@ class EvolutionGoProvider:
         self._base_url: Optional[str] = (cfg.get("base_url") or "").rstrip("/") or None
         self._token: Optional[str] = cfg.get("token")  # token DA INSTÂNCIA (header apikey)
         self._instance_id: Optional[str] = cfg.get("instance_id")
+        # Guardados só para a auto-cura de 401 — ver `_recuperar_token_da_instancia`.
+        self._integration_id: Optional[str] = cfg.get("id")
+        self._company_id: Optional[str] = cfg.get("company_id")
+        self._ja_tentou_curar = False
         self.validate_config()
+
+    def _recuperar_token_da_instancia(self) -> bool:
+        """No 401, adota o token REAL da instância e grava. `True` se mudou.
+
+        🔴 POR QUE ISTO EXISTE — medido em 17/08/2026, Resulta Seguros.
+
+        `integrations.token` guardava um valor que a instância do Evolution
+        nunca conheceu, e por isso TODO envio devolvia HTTP 401. O Auxiliar de
+        Cobrança entrou no portal da Allianz três vezes, baixou 3 boletos reais
+        em cada, e não conseguiu mandar nenhum.
+
+        A origem está em `whatsapp_channel._go_create`: quando a instância já
+        existe COM telefone, ele (corretamente) não a recria — apagar despareia
+        a corretora — mas o chamador seguia gravando um token recém-sorteado.
+        Duas chaves, uma fechadura. Isso já foi consertado lá para os
+        pareamentos novos.
+
+        Esta função é a rede de baixo, e ela importa por um motivo específico:
+        **o defeito é invisível até alguém tentar enviar.** O inbound autentica
+        pelo NOSSO webhook token; o outbound, por este. Um canal pode ficar
+        "conectado", receber mensagem e espelhar milhares de conversas por
+        semanas sem nunca ter provado que consegue falar.
+
+        Curar aqui vale mais que uma rota de reparo: quem descobre o problema é
+        exatamente quem tem o poder de corrigi-lo, no momento em que descobre.
+        Uma vez por instância de provider — `_ja_tentou_curar` impede laço.
+        """
+        if self._ja_tentou_curar or not self._instance_id:
+            return False
+        self._ja_tentou_curar = True
+
+        chave_global = os.getenv("EVOLUTION_GO_GLOBAL_KEY") or ""
+        if not chave_global:
+            logger.error("[EVOLUTION-GO] 401 e sem EVOLUTION_GO_GLOBAL_KEY — "
+                         "nao ha como conferir o token da instancia %s", self._instance_id)
+            return False
+
+        try:
+            r = requests.get(f"{self._base_url}/instance/all",
+                             headers={"apikey": chave_global}, timeout=20)
+            if r.status_code >= 400:
+                logger.error("[EVOLUTION-GO] /instance/all recusou (HTTP %s) na cura de %s",
+                             r.status_code, self._instance_id)
+                return False
+            linhas = (r.json() or {}).get("data") or []
+        except Exception as exc:  # noqa: BLE001
+            logger.error("[EVOLUTION-GO] cura falhou ao listar instancias: %s", type(exc).__name__)
+            return False
+
+        real = next((str(x.get("token") or "") for x in linhas
+                     if str(x.get("name") or "") == str(self._instance_id)), "")
+        if not real or real == (self._token or ""):
+            logger.error("[EVOLUTION-GO] 401 na instancia %s e o token do provedor %s",
+                         self._instance_id,
+                         "e o MESMO que ja usamos" if real else "nao veio na resposta")
+            return False
+
+        self._token = real
+        # Grava, para a próxima execução não repetir a descoberta. Falhar aqui
+        # não impede o envio de agora: o token já está em memória.
+        try:
+            from app.core.database import get_supabase_client
+            from app.services.whatsapp.integration_secrets import encrypt_integration_secret
+
+            db = get_supabase_client()
+            alvo = db.client.table("integrations").update(
+                {"token": encrypt_integration_secret(real)})
+            if self._integration_id:
+                alvo.eq("id", self._integration_id).execute()
+            else:
+                (alvo.eq("company_id", str(self._company_id or ""))
+                     .eq("instance_id", str(self._instance_id)).execute())
+            logger.info("[EVOLUTION-GO] token da instancia %s adotado e gravado "
+                        "(era divergente — causava HTTP 401 em todo envio)",
+                        self._instance_id)
+        except Exception as exc:  # noqa: BLE001
+            logger.error("[EVOLUTION-GO] token curado em memoria mas NAO gravado: %s",
+                         type(exc).__name__)
+        return True
 
     @property
     def capabilities(self) -> ProviderCapabilities:
@@ -314,9 +397,18 @@ class EvolutionGoProvider:
         if status == 429 or 500 <= status <= 599:
             logger.warning("[EVOLUTION-GO] Retryable HTTP %s: %s", status, response.text[:200])
             raise WhatsappRetryableError(f"HTTP {status} from Evolution GO")
+
+        # 🔴 401 = a chave que temos não é a que a instância aceita. Isso é
+        # recuperável SEM humano: o provedor sabe qual é a chave dela.
+        # Ver `_recuperar_token_da_instancia` para a história completa.
+        if status == 401 and self._recuperar_token_da_instancia():
+            logger.info("[EVOLUTION-GO] token corrigido — repetindo %s", path)
+            response = requests.post(url, json=payload, headers=self._headers(), timeout=30)
+            status = response.status_code
+
         if not 200 <= status < 300:
             logger.error("[EVOLUTION-GO] HTTP %s error: %s", status, response.text[:200])
-            return SendResult(ok=False, error=f"HTTP {status}")
+            return SendResult(ok=False, error=f"HTTP {status}: {response.text[:120]}")
         return SendResult(ok=True)
 
     def send_text(self, to: str, text: str) -> SendResult:
