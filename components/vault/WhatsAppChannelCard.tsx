@@ -25,6 +25,8 @@ interface StatusResponse {
   detail?: string;
   error?: string;
   alert?: { mode: 'number' | 'support' | null; number: string | null };
+  /** SPEC-078 B.3 — este número está autorizado a enviar pelos Auxiliares? */
+  permite_envio_de_auxiliar?: boolean;
 }
 
 const POLL_MS = 5000;
@@ -50,6 +52,48 @@ export function WhatsAppChannelCard() {
   const [alertBusy, setAlertBusy] = useState(false);
   const [alertMsg, setAlertMsg] = useState('');
 
+  // 🔴 SPEC-078 B.3 — A AUTORIZAÇÃO QUE NÃO TINHA TELA.
+  //
+  // 📊 Medido em 17/08/2026: o Bloco B entregou a coluna
+  // `integrations.permite_envio_de_auxiliar`, o `pode_enviar(..., para=)` e a
+  // rota `set-auxiliary-authorization`. A API ficou pronta e **este card nunca
+  // foi ligado nela** — o Founder procurou onde autorizar, não achou, e
+  // concluiu que tinha autorizado quando o banco dizia `false`.
+  //
+  // Sem esta autorização o número pareado NÃO envia: `observer` é proibido
+  // como canal de saída desde a SPEC-063 D, e a proibição continua sendo o
+  // padrão. Esta caixa é o único lugar onde a corretora abre a exceção — e
+  // ela é sobre ESTE número, não sobre a corretora inteira.
+  const [enviaPorAuxiliar, setEnviaPorAuxiliar] = useState(false);
+  const [autorizacaoBusy, setAutorizacaoBusy] = useState(false);
+  const [autorizacaoMsg, setAutorizacaoMsg] = useState('');
+  const autorizacaoCarregadaRef = useRef(false);
+
+  const alternarAutorizacao = async (permitir: boolean) => {
+    setAutorizacaoBusy(true);
+    setAutorizacaoMsg('');
+    try {
+      const res = await fetch('/api/dashboard/whatsapp-channel', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ action: 'set-auxiliary-authorization', permitir }),
+      });
+      const json = await res.json().catch(() => ({}));
+      if (!res.ok || json.ok === false) {
+        setAutorizacaoMsg(String(json.error || json.detail || 'Não foi possível salvar.'));
+        return;
+      }
+      setEnviaPorAuxiliar(permitir);
+      setAutorizacaoMsg(permitir
+        ? 'Autorizado. Seus Auxiliares passam a enviar por este número.'
+        : 'Autorização retirada. Este número volta a só observar.');
+    } catch {
+      setAutorizacaoMsg('Falha de comunicação com o servidor.');
+    } finally {
+      setAutorizacaoBusy(false);
+    }
+  };
+
   const pollRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const statusInFlightRef = useRef(false);
   const alertLoadedRef = useRef(false);
@@ -74,6 +118,12 @@ export function WhatsAppChannelCard() {
       setState((s as ChannelState) || 'unknown');
       // Config do aviso salva no servidor — carrega UMA vez (não sobrescreve
       // o que a pessoa está digitando a cada poll).
+      // A autorização vem do servidor, e é lida UMA vez — o poll de 5s não
+      // pode desmarcar a caixa embaixo do dedo de quem acabou de marcar.
+      if (!autorizacaoCarregadaRef.current && typeof json.permite_envio_de_auxiliar === 'boolean') {
+        autorizacaoCarregadaRef.current = true;
+        setEnviaPorAuxiliar(json.permite_envio_de_auxiliar);
+      }
       if (!alertLoadedRef.current && json.alert) {
         alertLoadedRef.current = true;
         setAlertSaved(json.alert);
@@ -227,6 +277,57 @@ export function WhatsAppChannelCard() {
                 {busy ? 'Desconectando…' : confirmDisconnect ? 'Confirmar desconexão' : 'Desconectar'}
               </Button>
             </div>
+          </div>
+        )}
+
+        {/* ---------- OS AUXILIARES PODEM ENVIAR POR ESTE NÚMERO? ----------
+            🔴 SPEC-078 B.3. Sem esta autorização o número pareado NÃO envia:
+            `observer` é proibido como canal de saída desde a SPEC-063 D, cuja
+            razão está escrita no código — "cobrança, follow-up e alerta
+            sairiam pelo número que existe para ficar calado". A proibição
+            continua sendo o padrão; esta caixa é onde a corretora abre a
+            exceção, com os olhos abertos, para ESTE número. */}
+        {connected && (
+          <div className="rounded-lg border border-border bg-surface p-3">
+            <p className="text-xs font-semibold text-foreground">
+              Seus Auxiliares podem enviar por este número?
+            </p>
+            <p className="mt-1 text-[11px] leading-relaxed text-muted-foreground">
+              Hoje este número <strong>observa</strong> as conversas e aprende — ele não
+              responde ninguém sozinho. Marque abaixo se você também quer que os
+              Auxiliares (cobrança, relatórios) <strong>enviem</strong> por ele.
+              Isso <strong>não</strong> faz o agente responder segurado: para isso existe
+              outro botão, o &ldquo;Ligar agente&rdquo; em Personalização.
+            </p>
+            <label className="mt-2.5 flex cursor-pointer items-start gap-2.5 rounded-md border border-border bg-surface-2 px-3 py-2.5">
+              <input
+                type="checkbox"
+                checked={enviaPorAuxiliar}
+                disabled={autorizacaoBusy}
+                onChange={(e) => alternarAutorizacao(e.target.checked)}
+                className="mt-0.5 h-4 w-4 shrink-0 accent-emerald-600"
+              />
+              <span className="text-xs text-foreground">
+                Autorizo os Auxiliares desta corretora a enviar mensagens por este número.
+                {enviaPorAuxiliar && (
+                  <span className="ml-1 font-medium text-emerald-600 dark:text-emerald-400">
+                    Autorizado.
+                  </span>
+                )}
+              </span>
+            </label>
+            {autorizacaoBusy && (
+              <p className="mt-1.5 text-[11px] text-muted-foreground">Salvando…</p>
+            )}
+            {autorizacaoMsg && !autorizacaoBusy && (
+              <p className="mt-1.5 text-[11px] text-muted-foreground">{autorizacaoMsg}</p>
+            )}
+            {!enviaPorAuxiliar && (
+              <p className="mt-1.5 text-[11px] text-amber-600 dark:text-amber-400">
+                Enquanto não estiver marcado, o Auxiliar de Cobrança não consegue
+                enviar nada — nem para o seu número de teste.
+              </p>
+            )}
           </div>
         )}
 

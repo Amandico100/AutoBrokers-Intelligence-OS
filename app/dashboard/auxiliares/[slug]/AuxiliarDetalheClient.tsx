@@ -212,53 +212,50 @@ export default function AuxiliarDetalheClient({ item, podeLigar }: Props) {
         </Secao>
       )}
 
-      {/* 6 · LIGAR / CONFIGURAR */}
-      <Secao titulo={ligado ? 'Controle' : 'Ligar'}>
-        {erro && <p className="text-sm text-danger">{erro}</p>}
-
-        {item.estado_catalogo === 'coming_soon' ? (
-          <div className="rounded-lg border border-border bg-surface-2 px-3 py-3">
-            <p className="text-sm font-medium text-foreground">Ainda não está pronto</p>
-            {item.falta_para_existir && (
-              <p className="mt-1 text-xs text-muted-foreground">{item.falta_para_existir}</p>
-            )}
-            <button
-              disabled
-              className="mt-3 cursor-not-allowed rounded-md border border-border bg-surface px-3 py-2 text-sm text-faint"
-            >
-              Em breve
-            </button>
-          </div>
-        ) : ligado ? (
-          <div className="flex flex-wrap items-center gap-2">
-            <button
-              onClick={() => agir('pause')}
-              disabled={ocupado}
-              className="inline-flex items-center gap-1.5 rounded-md border border-border bg-surface px-3 py-2 text-sm font-medium text-foreground transition-colors hover:border-primary/40 disabled:opacity-60"
-            >
-              {ocupado ? <Loader2 className="h-4 w-4 animate-spin" /> : <PauseCircle className="h-4 w-4" />}
-              Desligar
-            </button>
-            <span className="text-xs text-muted-foreground">
-              Desligar não apaga nada. O histórico e a configuração ficam.
-            </span>
-          </div>
-        ) : (
-          <div className="space-y-2">
-            <button
-              onClick={() => agir(item.instalado ? 'resume' : 'install')}
-              disabled={ocupado || !podeLigar.pode}
-              className="inline-flex items-center gap-1.5 rounded-md bg-primary px-3 py-2 text-sm font-medium text-primary-foreground transition-opacity hover:opacity-90 disabled:cursor-not-allowed disabled:opacity-50"
-            >
-              {ocupado ? <Loader2 className="h-4 w-4 animate-spin" /> : <Power className="h-4 w-4" />}
-              Ligar este Auxiliar
-            </button>
-            {!podeLigar.pode && podeLigar.motivo && (
-              <p className="text-xs text-amber-600">{podeLigar.motivo}</p>
-            )}
-          </div>
-        )}
-      </Secao>
+      {/* 6 · INSTALAR — o PRIMEIRO passo, e só ele.
+          🔴 SPEC-078, ajuste de 17/08/2026 pedido pelo Founder: "ligar o
+          Auxiliar precisa ser o ÚLTIMO passo. Depois de fazer todas as
+          personalizações, ativar a rotina, aí sim vem o botão de ligar."
+          Ele está certo, e o motivo é de produto: ligar antes de configurar
+          coloca um trabalhador para trabalhar com as instruções em branco.
+          Instalar e ligar eram o mesmo botão; agora são dois momentos. */}
+      {!item.instalado && (
+        <Secao titulo="Instalar">
+          {erro && <p className="text-sm text-danger">{erro}</p>}
+          {item.estado_catalogo === 'coming_soon' ? (
+            <div className="rounded-lg border border-border bg-surface-2 px-3 py-3">
+              <p className="text-sm font-medium text-foreground">Ainda não está pronto</p>
+              {item.falta_para_existir && (
+                <p className="mt-1 text-xs text-muted-foreground">{item.falta_para_existir}</p>
+              )}
+              <button
+                disabled
+                className="mt-3 cursor-not-allowed rounded-md border border-border bg-surface px-3 py-2 text-sm text-faint"
+              >
+                Em breve
+              </button>
+            </div>
+          ) : (
+            <div className="space-y-2">
+              <button
+                onClick={() => agir('install')}
+                disabled={ocupado || !podeLigar.pode}
+                className="inline-flex items-center gap-1.5 rounded-md bg-primary px-3 py-2 text-sm font-medium text-primary-foreground transition-opacity hover:opacity-90 disabled:cursor-not-allowed disabled:opacity-50"
+              >
+                {ocupado ? <Loader2 className="h-4 w-4 animate-spin" /> : <Plug className="h-4 w-4" />}
+                Instalar este Auxiliar
+              </button>
+              <p className="text-[11px] text-faint">
+                Instalar não liga nada. Depois de instalar, você configura a rotina —
+                e ligar é o último passo.
+              </p>
+              {!podeLigar.pode && podeLigar.motivo && (
+                <p className="text-xs text-amber-600">{podeLigar.motivo}</p>
+              )}
+            </div>
+          )}
+        </Secao>
+      )}
 
       {/* 7 · EXECUTAR AGORA — para os que têm tela própria de execução */}
       {item.tela_de_execucao && item.estado_catalogo === 'available' && (
@@ -291,6 +288,57 @@ export default function AuxiliarDetalheClient({ item, podeLigar }: Props) {
             auxiliarNome={item.nome}
             auxiliarLigado={ligado}
           />
+        </Secao>
+      )}
+
+      {/* 8.5 · LIGAR — O ÚLTIMO PASSO, e ele parece o último passo.
+          Verde e grande porque é a decisão que faz o trabalhador começar a
+          trabalhar; tudo acima é preparação. Antes ele era um botão comum,
+          na metade da página, ANTES da configuração — e ligar antes de
+          configurar coloca o robô para rodar com o formulário em branco. */}
+      {instalado && item.estado_catalogo === 'available' && (
+        <Secao titulo={ligado ? 'Este Auxiliar está trabalhando' : 'Último passo — ligar'}>
+          {erro && <p className="mb-2 text-sm text-danger">{erro}</p>}
+          {ligado ? (
+            <div className="space-y-2">
+              <div className="flex flex-wrap items-center gap-2 rounded-lg border border-emerald-600/40 bg-emerald-600/10 px-3 py-2.5">
+                <span className="inline-flex h-2 w-2 shrink-0 rounded-full bg-emerald-500" />
+                <span className="text-sm font-medium text-emerald-700 dark:text-emerald-400">
+                  Ligado — as rotinas ativas acima vão rodar no horário configurado.
+                </span>
+              </div>
+              <button
+                onClick={() => agir('pause')}
+                disabled={ocupado}
+                className="inline-flex items-center gap-1.5 rounded-md border border-border bg-surface px-3 py-2 text-sm font-medium text-foreground transition-colors hover:border-danger/40 disabled:opacity-60"
+              >
+                {ocupado ? <Loader2 className="h-4 w-4 animate-spin" /> : <PauseCircle className="h-4 w-4" />}
+                Desligar este Auxiliar
+              </button>
+              <p className="text-[11px] text-faint">
+                Desligar não apaga nada — a configuração, as rotinas e o histórico ficam.
+                Ele simplesmente para de trabalhar até você ligar de novo.
+              </p>
+            </div>
+          ) : (
+            <div className="space-y-2">
+              <button
+                onClick={() => agir('resume')}
+                disabled={ocupado || !podeLigar.pode}
+                className="inline-flex w-full items-center justify-center gap-2 rounded-lg bg-emerald-600 px-4 py-3 text-base font-semibold text-white shadow-sm transition-colors hover:bg-emerald-700 disabled:cursor-not-allowed disabled:opacity-50 sm:w-auto"
+              >
+                {ocupado ? <Loader2 className="h-5 w-5 animate-spin" /> : <Power className="h-5 w-5" />}
+                Ligar este Auxiliar
+              </button>
+              <p className="text-[11px] text-faint">
+                A partir daqui ele começa a trabalhar sozinho, nos horários das rotinas
+                que você configurou acima. Confira a configuração antes.
+              </p>
+              {!podeLigar.pode && podeLigar.motivo && (
+                <p className="text-xs text-amber-600">{podeLigar.motivo}</p>
+              )}
+            </div>
+          )}
         </Secao>
       )}
 
