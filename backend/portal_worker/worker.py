@@ -744,20 +744,144 @@ async def _run_job(supa, job: Dict[str, Any]) -> None:
     ))
 
 
+def _candidatos_da_fila(supa, limite: int) -> list:
+    """Os próximos jobs da fila, na melhor ordem que o schema permitir.
+
+    🔴 Esta função tem de funcionar ANTES e DEPOIS da migration da SPEC-075.
+    O portal-worker é um serviço separado que sobe com a imagem nova enquanto o
+    banco ainda pode não ter as colunas novas — é o desalinhamento que a
+    CLAUDE.md §9.1 registra como causa real de queda. Então: tenta a ordenação
+    por prioridade; se o banco recusar (coluna inexistente), cai para a
+    ordenação de sempre e segue trabalhando.
+
+    A ordem nova é `priority ASC, created_at ASC`, e `available_at` no passado
+    ou nulo. 📊 Hoje o worker é FIFO puro, o que significa que uma varredura de
+    cobrança de 200 apólices enfileirada às 3h fica na frente do acionamento de
+    um segurado com o carro parado às 9h.
+    """
+    agora = _now()
+    try:
+        r = (supa.table("portal_jobs").select("*")
+             .eq("status", "queued")
+             .or_(f"available_at.is.null,available_at.lte.{agora}")
+             .order("priority").order("created_at")
+             .limit(limite).execute())
+        return list(r.data or [])
+    except Exception:  # noqa: BLE001
+        # Banco ainda sem as colunas da 075. Comportamento de ontem, intacto.
+        r = (supa.table("portal_jobs").select("*")
+             .eq("status", "queued").order("created_at")
+             .limit(limite).execute())
+        return list(r.data or [])
+
+
+def _tentar_claim(supa, job: dict) -> bool:
+    """Claim atômico `queued -> running`. `False` = outro worker levou."""
+    claim = supa.table("portal_jobs").update({
+        "status": "running", "started_at": _now(),
+        "attempts": int(job.get("attempts") or 0) + 1,
+    }).eq("id", job["id"]).eq("status", "queued").execute()
+    return bool(claim.data)
+
+
 async def run_once(supa) -> int:
-    """Pega 1 job queued (claim atômico queued->running) e roda. Retorna 0 ou 1."""
-    res = supa.table("portal_jobs").select("*").eq("status", "queued").order("created_at").limit(1).execute()
-    jobs = res.data or []
+    """Pega 1 job queued (claim atômico queued->running) e roda. Retorna 0 ou 1.
+
+    Mantida com o mesmo nome e o mesmo contrato: é o caminho de
+    `concurrency=1`, e Gate D da SPEC-075 exige que ele continue **idêntico**
+    ao baseline. Quem quer paralelismo chama `run_lote`.
+    """
+    jobs = _candidatos_da_fila(supa, 1)
     if not jobs:
         return 0
     job = jobs[0]
-    claim = supa.table("portal_jobs").update({
-        "status": "running", "started_at": _now(), "attempts": int(job.get("attempts") or 0) + 1,
-    }).eq("id", job["id"]).eq("status", "queued").execute()
-    if not claim.data:
+    if not _tentar_claim(supa, job):
         return 0  # outro worker levou
     await _run_job(supa, job)
     return 1
+
+
+async def run_lote(supa, concorrencia: int) -> int:
+    """Roda até `concorrencia` jobs em paralelo, um por conta.
+
+    🔴 A regra que não pode ser afrouxada: **a mesma conta nunca roda duas
+    vezes ao mesmo tempo.** Cada conta tem uma sessão de navegador persistida
+    (`portal_sessions.storage_state_encrypted`); dois jobs da mesma conta em
+    paralelo se sobrescrevem, e o resultado é uma sessão corrompida que derruba
+    a corretora do portal — não um job perdido.
+
+    Contas DIFERENTES podem rodar juntas, e é daí que vem o ganho: seis
+    seguradoras varridas em paralelo em vez de em fila.
+
+    Sem Redis não há lease, e sem lease não há como garantir a regra acima
+    entre processos. Nesse caso a concorrência **cai para 1** e o `UPDATE`
+    condicional do Supabase volta a ser suficiente — ver
+    `leases.politica_com_redis_fora`. Redis fora nunca vira paralelismo sem
+    trava.
+    """
+    from portal_worker import leases as _L
+
+    efetiva, motivo = _L.politica_com_redis_fora(concorrencia) \
+        if not _L.redis_disponivel() else (concorrencia, "")
+    if motivo:
+        logger.warning("[PORTAL] %s", motivo)
+    if efetiva <= 1:
+        return await run_once(supa)
+
+    # Busca mais candidatos que slots: alguns vão cair no lease de conta.
+    candidatos = _candidatos_da_fila(supa, efetiva * 3)
+    if not candidatos:
+        return 0
+
+    lease = _L.LeaseDePortal()
+    dono = _L.identidade_do_worker()
+    escolhidos: list = []
+    contas_tomadas: list = []
+
+    for job in candidatos:
+        if len(escolhidos) >= efetiva:
+            break
+        chave = _L.chave_de_conta(job.get("company_id"), job.get("portal_key"),
+                                  job.get("account_id") or "")
+        if chave in contas_tomadas:
+            continue  # já peguei um job desta conta neste lote
+        if not lease.adquirir(chave, dono, _L.LEASE_DURACAO_SEGUNDOS):
+            continue  # outro worker está nesta conta
+        if not _tentar_claim(supa, job):
+            lease.liberar(chave, dono)  # perdi a corrida do claim; devolvo a conta
+            continue
+        escolhidos.append((job, chave))
+        contas_tomadas.append(chave)
+
+    if not escolhidos:
+        return 0
+
+    async def _rodar(job: dict, chave: str) -> None:
+        # A renovação corre em paralelo: um job pode levar até
+        # JOB_TIMEOUT_SECONDS (1200s) e a lease dura 120s. Sem heartbeat, a
+        # conta seria liberada no meio do trabalho e um segundo worker entraria
+        # na mesma sessão — exatamente o que a lease existe para impedir.
+        parar = asyncio.Event()
+
+        async def _bater():
+            while not parar.is_set():
+                try:
+                    await asyncio.wait_for(parar.wait(),
+                                           timeout=_L.HEARTBEAT_INTERVALO_SEGUNDOS)
+                except asyncio.TimeoutError:
+                    lease.renovar(chave, dono, _L.LEASE_DURACAO_SEGUNDOS)
+
+        batida = asyncio.create_task(_bater())
+        try:
+            await _run_job(supa, job)
+        finally:
+            parar.set()
+            batida.cancel()
+            lease.liberar(chave, dono)
+
+    await asyncio.gather(*[_rodar(j, c) for j, c in escolhidos],
+                         return_exceptions=True)
+    return len(escolhidos)
 
 
 async def poll_loop() -> None:
@@ -783,7 +907,13 @@ async def poll_loop() -> None:
                 continue
             supa = _supabase()
             await recover_stale_jobs(supa)
-            n = await run_once(supa)
+            # SPEC-075 Bloco N. `concorrencia_configurada()` é lida A CADA VOLTA,
+            # não no boot: subir a concorrência numa emergência não pode exigir
+            # reiniciar o serviço, pela mesma razão que o kill switch é lido
+            # aqui dentro e não na entrada.
+            from portal_worker.leases import concorrencia_configurada
+
+            n = await run_lote(supa, concorrencia_configurada())
             if n:
                 logger.info(f"[PORTAL] processou {n} job(s)")
         except Exception as e:  # noqa: BLE001

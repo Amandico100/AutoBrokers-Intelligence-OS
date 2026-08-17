@@ -448,6 +448,105 @@ async def bridge_portal(ctx: dict) -> str:
     return f"Job de portal finalizado com status '{status}'."
 
 
+@registrar_workflow("portal.operation")
+async def portal_operation(ctx: dict) -> str:
+    """Executa uma OPERAÇÃO DE NEGÓCIO num portal, sob Work Run — SPEC-075 §13.
+
+    A diferença para `bridge.portal.job` é onde o job nasce.
+
+    📊 `bridge.portal.job` só ACOMPANHA um `portal_job_id` que o chamador já
+    tem. Censo de 16/08/2026: nenhum código do repositório preenche
+    `payload["portal_job_id"]`, e `grep -rn "bridge.portal.job"` só encontra a
+    própria definição. A ponte foi construída e nunca foi ligada, porque
+    faltava quem criasse o job com linhagem — e criar job com linhagem era
+    justamente o que não existia.
+
+    Este workflow fecha o circuito: recebe `operation_key` + `business_input`,
+    e o `PortalExecutionGateway` resolve portal, conta e journey, cria o
+    `portal_job` **já apontando para este Work Run**, e devolve o resultado
+    canônico.
+
+    🔴 O que este workflow NÃO faz: escolher journey, escolher conta, ler
+    credencial. Ele passa o pedido de negócio adiante. Quem decide é o
+    registro e o resolver — nunca o payload, que pode ter vindo de conversa.
+
+    Por que a linhagem importa mais do que parece
+    ---------------------------------------------
+    Sem ela, um acionamento que deu errado não tem história: não dá para
+    perguntar de que conversa veio, que rotina disparou, nem qual tool
+    autorizou. Com ela, o `work_run_id` no `portal_job` responde as três — e é
+    o mesmo id que a timeline do Work Run mostra ao corretor.
+    """
+    from app.services.portals import contracts as _C
+    from app.services.portals.gateway import PortalExecutionGateway
+
+    payload = ctx["payload"] or {}
+    operation_key = str(payload.get("operation_key") or "").strip()
+    if not operation_key:
+        return "Pedido de portal sem operação de negócio."
+
+    db = getattr(ctx["db"], "client", ctx["db"])
+
+    async def _executar() -> str:
+        req = _C.PortalExecutionRequest(
+            company_id=str(ctx["company_id"]),
+            operation_key=operation_key,
+            business_input=dict(payload.get("business_input") or {}),
+            # A linhagem vem do RUNTIME, não do payload. Se viesse do payload,
+            # um chamador poderia atribuir o próprio trabalho a outro Work Run.
+            work_run_id=str(ctx.get("run_id") or "") or None,
+            skill_release_id=payload.get("skill_release_id"),
+            tool_release_id=payload.get("tool_release_id"),
+            agent_id=payload.get("agent_id"),
+            user_id=payload.get("user_id"),
+            session_id=payload.get("session_id"),
+            insurer_key=payload.get("insurer_key"),
+            portal_key_hint=payload.get("portal_key_hint"),
+            account_id_hint=payload.get("account_id_hint"),
+            # 🔴 `True` porque este workflow só é alcançável pelo SmithWorker,
+            # que roda server-side. O payload de um Work Run é montado por
+            # código, não digitado por modelo. Se um dia uma rota expuser
+            # criação de Work Run com payload livre, esta linha vira o buraco —
+            # e o teste de contrato existe para acender nesse dia.
+            origem_confiavel=True,
+            idempotency_key=payload.get("idempotency_key"),
+            effect_class_autorizada=payload.get("effect_class_autorizada"),
+            wait_mode=str(payload.get("wait_mode") or _C.ESPERA_AGUARDAR),
+        )
+
+        gw = PortalExecutionGateway(db)
+        resultado = gw.executar(req)
+
+        # Guarda o resultado canônico no contexto, para o passo seguinte e para
+        # quem ler a timeline depois.
+        ctx.setdefault("resultados", {})["portal"] = resultado.para_dict()
+
+        if resultado.business_state == _C.NEGOCIO_PRECISA_HUMANO:
+            ctx["runs"]._transicionar(ctx["run_id"], "waiting_approval", {})
+            ctx["runs"].evento(ctx["company_id"], ctx["run_id"],
+                               "approval.requested",
+                               resultado.message or
+                               "O portal precisa de uma ação sua para continuar.")
+        elif resultado.business_state == _C.NEGOCIO_TALVEZ_COMMITADO:
+            # 🔴 Nunca vira retry. O Work Run precisa PARAR aqui e chamar gente:
+            # pode existir um pedido pago no nome do segurado, e a única coisa
+            # pior que não terminar é terminar duas vezes.
+            ctx["runs"].evento(ctx["company_id"], ctx["run_id"],
+                               "effect.uncertain",
+                               "A operação pode ter acontecido no portal. "
+                               "Reconcilie antes de qualquer nova tentativa.")
+
+        return resultado.business_state
+
+    estado = await executar_passo(
+        ctx, step_key=f"portal:{operation_key}", ordinal=1,
+        nome=f"Executar `{operation_key}` no portal",
+        step_type="portal", fn=_executar,
+        capability_key="tenant.portal.execute", risk_level="high")
+
+    return f"Operação `{operation_key}` no portal terminou como `{estado}`."
+
+
 @registrar_workflow("system.healthcheck")
 async def workflow_healthcheck(ctx: dict) -> str:
     """Workflow trivial para validar o pipeline ponta a ponta.

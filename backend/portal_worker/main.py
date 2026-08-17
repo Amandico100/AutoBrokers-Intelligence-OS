@@ -45,6 +45,48 @@ def build_info() -> dict:
     return info
 
 
+def _concorrencia_configurada() -> int:
+    """O que a variável pediu. Nunca levanta — `/health` não pode cair."""
+    try:
+        from portal_worker.leases import concorrencia_configurada
+
+        return concorrencia_configurada()
+    except Exception:  # noqa: BLE001
+        return 1
+
+
+def _redis_para_lease() -> bool:
+    try:
+        from portal_worker.leases import redis_disponivel
+
+        return bool(redis_disponivel())
+    except Exception:  # noqa: BLE001
+        return False
+
+
+def _concorrencia_efetiva() -> int:
+    """O que o processo REALMENTE vai fazer.
+
+    🔴 Pode ser menor que a configurada, e a diferença é o que importa: sem
+    Redis não há lease, e sem lease a mesma conta poderia rodar duas vezes em
+    paralelo — uma sessão de navegador sobrescrevendo a outra. Nesse caso a
+    concorrência cai para 1 sozinha. Quem olha só a variável de ambiente
+    concluiria que há paralelismo onde não há.
+    """
+    pedida = _concorrencia_configurada()
+    if pedida <= 1:
+        return 1
+    try:
+        from portal_worker.leases import politica_com_redis_fora, redis_disponivel
+
+        if redis_disponivel():
+            return pedida
+        efetiva, _ = politica_com_redis_fora(pedida)
+        return efetiva
+    except Exception:  # noqa: BLE001
+        return 1
+
+
 @app.on_event("startup")
 async def _startup() -> None:
     asyncio.create_task(poll_loop())
@@ -83,6 +125,15 @@ async def health() -> dict:
         "vision_provider": provider_de_visao() if visao_habilitada() else None,
         "job_timeout_seconds": JOB_TIMEOUT_SECONDS,
         "poll_seconds": POLL_SECONDS,
+        # SPEC-075 Bloco Q. A pergunta que este endpoint responde numa
+        # emergência é "quantos jobs esta imagem consegue rodar ao mesmo
+        # tempo, AGORA?" — e ela não tem resposta em lugar nenhum hoje. O
+        # painel do EasyPanel diz o que foi CONFIGURADO; aqui diz o que o
+        # processo leu, que é outra coisa quando a variável tem erro de
+        # digitação ou quando o Redis está fora.
+        "concurrency": _concorrencia_efetiva(),
+        "concurrency_configurada": _concorrencia_configurada(),
+        "redis_para_lease": _redis_para_lease(),
         # Prova de que a imagem no ar tem as journeys que o banco vai pedir.
         # 📊 P-149 existe justamente porque a MAPFRE estava no código e não na
         # imagem: um job dela terminava em "journey desconhecida" com todos os
