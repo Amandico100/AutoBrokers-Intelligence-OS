@@ -263,6 +263,67 @@ _SEM_A_CHAMADA = chr(10).join([
 check("CONTROLE: o detector nao acha a chamada num comentario",
       not _derivador_esta_ligado(_SEM_A_CHAMADA))
 # ==========================================================================
+print(chr(10) + "[6] O FIM: protocolo, senha e QUANDO O TECNICO VEM")
+# ==========================================================================
+#
+# 🔴 O Founder pediu, textualmente: "depois venha me avisar que o acionamento
+# foi feito e QUE HORAS vai ser feito e que o prestador vai chegar".
+#
+# 📊 A ancora `schedule` que existia espera "agendado para o dia X, entre Yh
+# e Zh" -- e o fluxo de eletrodomestico NUNCA diz isso. A data e escolhida
+# num menu, muito antes, e o desfecho so traz o protocolo. Sem a ancora nova,
+# o segurado receberia o numero do chamado e NAO saberia quando o tecnico vem
+# -- que e a unica coisa que ele quer saber.
+
+import re as _re3
+
+ANC = PB["capture_anchors"]
+
+FIM_PROTOCOLO = ("Sua assistência foi solicitada com sucesso! O número de protocolo "
+                 "é *51022010* É necessário um responsável maior de 18 anos.")
+FIM_SENHA = ("O telefone registrado nesse atendimento é *+55 (48) 99107-2089*. "
+             "Sua senha será os 4 últimos dígitos desse telefone *2089*")
+RESUMO_AGENDADO = ("*RESUMO* *Serviço:* Conserto de Eletrodoméstico "
+                   "*Quando:* Quarta-feira, 31/12/2025 "
+                   "*Período:* manhã das 09:00 às 13:00  Podemos confirmar?")
+RESUMO_VARIANTE = ("*RESUMO* *Protocolo N.°:* 51014008 "
+                   "*Agendamento para:* Terça-feira, 06/01/2026 "
+                   "*Período:* 13:00 às 18:00 (tarde)  ")
+REDACAO_ANTIGA = "Seu atendimento foi agendado para o dia 12/08, entre 9h e 13h."
+
+
+def _captura(chave, texto):
+    m = _re3.search(ANC[chave], CP._norm(texto), _re3.IGNORECASE)
+    return m.groups() if m else None
+
+
+check("o PROTOCOLO e capturado do desfecho real",
+      _captura("protocol", FIM_PROTOCOLO) == ("51022010",),
+      _captura("protocol", FIM_PROTOCOLO))
+check("a SENHA de acesso e capturada", _captura("password", FIM_SENHA) == ("2089",))
+
+ag = _captura("schedule_agendado", RESUMO_AGENDADO)
+check("o QUANDO e capturado do RESUMO", ag is not None, ag)
+if ag:
+    check("    ... com a data", "31/12/2025" in ag[0], ag[0])
+    check("    ... e com o periodo", "09:00" in ag[1] and "13:00" in ag[1], ag[1])
+
+ag2 = _captura("schedule_agendado", RESUMO_VARIANTE)
+check("a segunda redacao do RESUMO tambem e capturada", ag2 is not None, ag2)
+check("e o protocolo dentro do RESUMO tambem",
+      _captura("protocol", RESUMO_VARIANTE) == ("51014008",))
+
+# 🔴 CONTROLE: a ancora ANTIGA nao pode ter sido quebrada. Ela serve o
+# eletricista e o encanador, que dizem "agendado para o dia X entre Yh e Zh".
+check("CONTROLE: a redacao ANTIGA continua sendo capturada",
+      _captura("schedule", REDACAO_ANTIGA) == ("12/08", "9h", "13h"),
+      _captura("schedule", REDACAO_ANTIGA))
+check("CONTROLE: e a ancora nova NAO rouba a redacao antiga",
+      _captura("schedule_agendado", REDACAO_ANTIGA) is None)
+check("CONTROLE: texto sem agendamento nao captura nada",
+      _captura("schedule_agendado", "Bom dia, tudo bem?") is None)
+
+# ==========================================================================
 
 # `app/services/__init__.py` importa EAGER a arvore inteira (openai, docx,
 # fastembed). Registrar um modulo LEVE com o `__path__` certo deixa os

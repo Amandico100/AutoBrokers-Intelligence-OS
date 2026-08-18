@@ -666,6 +666,27 @@ ALLIANZ_RESIDENCIAL_WHATSAPP_V1: Dict[str, Any] = {
         "protocol": _ANCORA_DE_PROTOCOLO,
         "password": r"senha (?:de acesso|ser[áa]).*?(\d{4})",
         "schedule": r"agendad[ao] para o dia\s*(\d{1,2}(?:/\d{1,2}(?:/\d{2,4})?)?)\s*,?\s*entre\s*(\d{1,2}\s?h)\s*e\s*(\d{1,2}\s?h)",
+        # 🔴 O AGENDAMENTO DO ELETRODOMESTICO — SPEC-082, 18/08/2026.
+        #
+        # A ancora acima espera "agendado para o dia X, entre Yh e Zh". 📊 O
+        # fluxo de eletrodomestico NUNCA diz isso: a data e escolhida num menu
+        # de sete dias uteis, muito antes, e o desfecho so traz o protocolo.
+        #
+        # Sem esta segunda ancora o segurado receberia o numero do chamado e
+        # NAO SABERIA QUANDO O TECNICO VEM — que e a unica coisa que ele
+        # realmente quer saber.
+        #
+        # 📊 A fonte certa e o RESUMO, porque e o que a propria seguradora
+        # confirma antes de abrir. Duas redacoes medidas, na mesma sessao:
+        #
+        #   *Quando:* Quarta-feira, 31/12/2025
+        #   *Periodo:* manha das 09:00 as 13:00
+        #
+        #   *Agendamento para:* Terca-feira, 06/01/2026
+        #   *Periodo:* 13:00 as 18:00 (tarde)
+        "schedule_agendado": (
+            r"(?:quando|agendamento para):\s*(.{0,40}?)\s*"
+            r"(?:periodo|per[ií]odo):\s*(.{3,45}?)\s{2,}"),
     },
     # Resumo estruturado ao ESPECIALISTA humano (fluxo real 01/04/2026: a URA
     # transfere emergenciais ao analista — a operadora abre com o caso mastigado).
