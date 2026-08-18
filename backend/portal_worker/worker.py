@@ -468,7 +468,7 @@ async def user_agent_sem_headless(browser) -> str:
 
 
 async def _run_job(supa, job: Dict[str, Any]) -> None:
-    from portal_worker.journeys import get_journey
+    from portal_worker.journeys import get_journey, motivo_para_barrar
 
     job_id = job["id"]
     journey_fn = get_journey(str(job.get("portal_key")), str(job.get("journey")))
@@ -476,6 +476,26 @@ async def _run_job(supa, job: Dict[str, Any]) -> None:
         supa.table("portal_jobs").update({
             "status": "failed",
             "error": f"journey desconhecida: {job.get('portal_key')}.{job.get('journey')}",
+            "finished_at": _now(),
+        }).eq("id", job_id).execute()
+        return
+
+    # 🔴 O FREIO POR CLASSE DE EFEITO — 18/08/2026.
+    #
+    # Aqui, e não no `poll_loop`, porque a pergunta é sobre ESTE job: uma
+    # varredura de cobrança (READ_ONLY) tem de rodar enquanto um pedido de
+    # vidro (MATERIAL_SIDE_EFFECT) fica barrado. Parar o laço inteiro,
+    # que foi a primeira ideia, derrubava a cobrança junto.
+    #
+    # E aqui além do ponto de criação: job já enfileirado antes de alguém
+    # apertar o freio não pode rodar depois. Freio que só vale para o que
+    # ainda não entrou na fila não freia nada numa emergência.
+    barrado = motivo_para_barrar(str(job.get("portal_key")), str(job.get("journey")))
+    if barrado:
+        logger.warning("[PORTAL] job %s barrado — %s", job_id, barrado)
+        supa.table("portal_jobs").update({
+            "status": "failed",
+            "error": f"barrado pelo freio de efeito material: {barrado}",
             "finished_at": _now(),
         }).eq("id", job_id).execute()
         return

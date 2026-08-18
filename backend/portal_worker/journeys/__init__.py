@@ -260,6 +260,68 @@ JOURNEY_COBRANCA = "cobranca_sweep"
 
 
 # --------------------------------------------------------------------------
+# O freio que separa BAIXAR BOLETO de ABRIR CHAMADO
+# --------------------------------------------------------------------------
+#
+# 🔴 Acrescentado em 18/08/2026, depois de uma recomendação minha que teria
+# derrubado o Auxiliar de Cobrança.
+#
+# O problema real: soltar o freio de emergência para testar o acionamento de
+# ELETRICISTA no WhatsApp armava, no mesmo segundo, o portal de VIDROS — que
+# não lê nenhuma das variáveis de acionamento (`portal_tool.py:224` consulta
+# só "agente ligado + freio solto").
+#
+# A primeira ideia foi `PORTAL_REAL_ENABLED=false`. Estava errada, e o Founder
+# desconfiou antes de aplicar: `poll_loop` (worker.py:975) devolve ANTES do
+# laço quando esse gate está off. Não é "o portal de vidros para" — é o
+# portal-worker inteiro em standby, e o Auxiliar de Cobrança enfileira
+# `portal_jobs` exatamente como os vidros (`billing_collection.py:568`).
+# Desligaria a cobrança da manhã seguinte junto.
+#
+# A linha certa já estava desenhada no registro acima, e não precisava de
+# variável nova para ser descoberta:
+#
+#     cobranca_sweep ................ READ_ONLY            (lê a carteira)
+#     login_check ................... READ_ONLY            (confere senha)
+#     vidros.abrir_atendimento ...... MATERIAL_SIDE_EFFECT (abre chamado PAGO)
+#
+# Então o freio é por CLASSE DE EFEITO, não por serviço. Journey que só lê
+# continua rodando; journey que cria fato no mundo precisa de autorização
+# explícita. Vale para as que ainda não existem: nascem barradas.
+_ENV_EFEITO_MATERIAL = "PORTAL_EFEITO_MATERIAL_LIBERADO"
+
+
+def efeito_material_liberado() -> bool:
+    """Journeys que criam fato no mundo estão autorizadas?
+
+    Default FALSE — ausência da variável é o estado seguro, como em
+    `portal_real_enabled`. Uma trava que precisa ser lembrada não é trava.
+    """
+    import os as _os
+
+    return str(_os.getenv(_ENV_EFEITO_MATERIAL, "false")).strip().lower() in (
+        "1", "true", "yes", "on")
+
+
+def motivo_para_barrar(portal_key: str, journey: str) -> str:
+    """Por que esta journey NÃO pode rodar agora. String vazia = pode.
+
+    Devolve texto em vez de booleano de propósito: quem barra tem de conseguir
+    gravar no job POR QUE barrou. `status=failed` sem motivo legível manda
+    alguém abrir o código para descobrir o que já era sabido aqui.
+    """
+    alvo = get_definition(portal_key, journey)
+    if alvo is None:
+        return ""  # journey desconhecida — quem chama já trata, com outro erro
+    if alvo.effect_class != MATERIAL_SIDE_EFFECT:
+        return ""
+    if efeito_material_liberado():
+        return ""
+    return (f"journey `{portal_key}.{journey}` cria efeito material e "
+            f"{_ENV_EFEITO_MATERIAL} está desligado")
+
+
+# --------------------------------------------------------------------------
 # Introspecção — funções PURAS sobre o registro (SPEC-075 §9.4)
 # --------------------------------------------------------------------------
 def get_definition(portal_key: str, journey: str) -> Optional[JourneyDefinition]:

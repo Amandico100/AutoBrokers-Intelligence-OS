@@ -218,8 +218,26 @@ class PortalActionTool(BaseTool):
         desfaz (o Nº nasce no passo 7, antes do fim do fluxo).
         """
         try:
+            from portal_worker.journeys import motivo_para_barrar
+
             from app.services.atlas.attendance_capture import attendance_agent_active
             from app.services.insurer_dispatch_service import acionamento_liberado
+
+            # 🔴 A TERCEIRA CONDICAO — 18/08/2026.
+            #
+            # As duas de cima ("agente ligado" + "freio de emergencia solto")
+            # sao as MESMAS do corredor de WhatsApp. Era esse o defeito: soltar
+            # o freio para testar um eletricista armava o portal de vidros no
+            # mesmo segundo, sem ninguem pedir. Nao existia jeito de liberar um
+            # sem liberar o outro.
+            #
+            # `PORTAL_EFEITO_MATERIAL_LIBERADO` e o interruptor que faltava. E
+            # e por CLASSE DE EFEITO, nao por portal: barrar "vidros" pelo nome
+            # deixaria a proxima journey material nascer solta.
+            barrado = motivo_para_barrar("vidros_lanternas", "abrir_atendimento")
+            if barrado:
+                logger.info("[PortalAction] pedido para no 80%% — %s", barrado)
+                return False
 
             return acionamento_liberado(await attendance_agent_active(self.company_id))
         except Exception as exc:  # noqa: BLE001
