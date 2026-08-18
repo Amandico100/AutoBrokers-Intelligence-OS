@@ -39,7 +39,17 @@ export async function GET() {
     // material em 28/07/2026.
     (async () => {
       const tudo: any[] = [];
-      for (let inicio = 0; inicio < 20000; inicio += 1000) {
+      // 🔴 O TETO SUBIU -- 18/08/2026.
+      //
+      // Era 20.000, escrito quando havia 926 cartas. 📊 Hoje sao 17.995 --
+      // 90% do teto. Faltavam duas mil para o cerebro parar de crescer na
+      // tela SEM NINGUEM NOTAR, que e exatamente o silencio que este mesmo
+      // bloco de codigo foi escrito para evitar.
+      //
+      // Numero de guarda que o dado alcanca deixa de ser guarda e vira
+      // limite. 200.000 da folga de uma ordem de grandeza; o `break` abaixo
+      // continua sendo quem realmente encerra o laco.
+      for (let inicio = 0; inicio < 200000; inicio += 1000) {
         const lote = await safe<any[]>(
           // `in_` e não `neq`: existem QUATRO status e só dois são
           // conhecimento vivo. `superseded` são quase-cópias que a curadoria

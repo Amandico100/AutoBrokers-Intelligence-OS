@@ -77,31 +77,60 @@ def _ler(*partes: str) -> str:
         return fh.read()
 
 
+# 🔴 SEIS, e nao cinco -- 18/08/2026, EXCECAO AUTORIZADA E TEMPORARIA.
+#
+# Este teste dizia "cinco pilares", e o numero estava certo ate o Founder
+# pedir Memorias no menu para a apresentacao de 19/08.
+#
+# CLAUDE.md §9.3: "teste que guarda verdade vencida e pior que teste nenhum.
+# Quando um fato muda, o teste muda com ele, e a licao migra em vez de
+# morrer." A licao aqui NAO e o numero cinco -- e **o menu nao cresce por
+# acidente**. Ela migra assim: o conjunto continua fechado e escrito, e
+# `briefing` e `pesquisas` continuam proibidos pelos mesmos motivos.
+#
+# O que muda e que `memorias` sai da lista de proibidos e entra na de
+# esperados, COM DATA DE VALIDADE. A decisao de manter ou tirar e do Founder,
+# depois da apresentacao -- e enquanto ela nao vier, o teste guarda o estado
+# real em vez de fingir que ele nao existe.
+_PILARES_ESPERADOS = {
+    "autobrokers", "atendimentos", "auxiliares",
+    "memorias",  # TEMPORARIO (18/08/2026). Ver lib/navigation.ts.
+    "entregas", "personalizacao",
+}
+
+
 def teste_cinco_pilares():
-    print("\n[1] O menu tem exatamente cinco pilares")
+    print(chr(10) + "[1] O menu tem exatamente os pilares decididos")
     fonte = _ler("lib", "navigation.ts")
 
     bloco = fonte.split("export const PILLARS", 1)[1].split("];", 1)[0]
     pilares = re.findall(r"key:\s*'([a-z0-9-]+)'", bloco)
-    checar(len(pilares) == 5, "cinco pilares", f"{len(pilares)}: {pilares}")
+    checar(len(pilares) == len(_PILARES_ESPERADOS),
+           f"{len(_PILARES_ESPERADOS)} pilares", f"{len(pilares)}: {pilares}")
 
-    esperados = {"autobrokers", "atendimentos", "auxiliares", "entregas", "personalizacao"}
-    checar(set(pilares) == esperados,
-           "os pilares são os cinco decididos",
+    checar(set(pilares) == _PILARES_ESPERADOS,
+           "os pilares sao os decididos",
            f"achado={sorted(pilares)}")
 
-    # Os dois que voltariam se alguém esquecesse a regra.
+    # 🔴 O item temporario tem de estar MARCADO no codigo. Sem esta linha, a
+    # excecao vira permanente por esquecimento -- que e exatamente como os
+    # outros dois entraram.
+    if "memorias" in _PILARES_ESPERADOS:
+        checar("TEMPOR" in fonte.upper() and "QUANDO TIRAR" in fonte.upper(),
+               "o pilar temporario esta marcado como temporario no codigo",
+               "excecao sem data de validade vira regra por esquecimento")
+
+    # Os que voltariam se alguem esquecesse a regra.
     for proibido, porque in (
-        ("briefing", "é um Auxiliar — o Checklist das 6h"),
-        ("pesquisas", "é uma Skill do chat; o resultado vai para Entregas"),
-        ("memorias", "é configuração — mora em Personalização"),
+        ("briefing", "e um Auxiliar -- o Checklist das 6h"),
+        ("pesquisas", "e uma Skill do chat; o resultado vai para Entregas"),
     ):
-        checar(proibido not in pilares, f"'{proibido}' não é pilar — {porque}")
+        checar(proibido not in pilares, f"'{proibido}' nao e pilar -- {porque}")
 
-    checar("MENU_NAO_CRESCE = 5" in fonte,
-           "o número faz parte do contrato do arquivo",
-           "sem constante, o teste vira opinião contra o código")
-
+    # 🔴 CONTROLE -- o detector CONSEGUE achar. Sem isto, um regex que nao
+    # casasse nada devolveria lista vazia e o bloco inteiro passaria em falso.
+    checar(len(pilares) >= 5, "CONTROLE: o regex realmente achou os pilares",
+           f"achou {len(pilares)} -- se for 0, este teste nao mede nada")
 
 def teste_nenhuma_rota_antiga_some():
     print("\n[2] Toda rota antiga continua existindo e redireciona")
@@ -126,11 +155,36 @@ def teste_o_destino_tem_conteudo():
             checar(False, f"{caminho} existe",
                    "redirecionar para tela inexistente é trocar um 404 por outro")
             continue
-        linhas = len(_ler(*caminho.split("/")).split("\n"))
+        # 🔴 MEDE SUBSTANCIA, NAO LINHAS -- 18/08/2026.
+        #
+        # A regua era "o arquivo tem ao menos N linhas", e a licao e boa:
+        # redirecionar para uma casca e trocar um 404 por outro.
+        #
+        # Mas a regua reprovou uma tela INTEIRA. `memorias/page.tsx` virou 19
+        # linhas que importam e renderizam um componente de 387 -- porque a
+        # mesma tela passou a ser servida por duas rotas, e duplicar 387
+        # linhas seria pior. A tela esta la; ela so nao mora mais no arquivo.
+        #
+        # A licao migra: se o arquivo e curto E importa um componente, o
+        # tamanho que vale e o DO COMPONENTE. Casca que nao renderiza nada
+        # continua reprovando.
+        fonte_tela = _ler(*caminho.split(chr(47)))
+        linhas = len(fonte_tela.split(chr(10)))
+        onde = caminho
+        if linhas < minimo:
+            padrao = "from" + chr(92) + "s+'@/(components/[^']+)'"
+            for alvo_imp in re.findall(padrao, fonte_tela):
+                for ext in (".tsx", ".ts"):
+                    rel = alvo_imp + ext
+                    if os.path.isfile(os.path.join(RAIZ, rel)):
+                        n = len(_ler(*rel.split(chr(47))).split(chr(10)))
+                        if n > linhas:
+                            linhas, onde = n, rel
         checar(linhas >= minimo,
-               f"{caminho} tem a tela inteira",
-               f"{linhas} linhas, esperado ao menos {minimo} — "
-               "casca no lugar da tela é pior que redirect")
+               f"{caminho} tem a tela inteira"
+               + (f" (em {onde})" if onde != caminho else ""),
+               f"{linhas} linhas, esperado ao menos {minimo} -- "
+               "casca no lugar da tela e pior que redirect")
 
 
 def teste_a_duplicata_de_conversas_sumiu_sem_sobra():

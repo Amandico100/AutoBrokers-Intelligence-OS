@@ -29,6 +29,24 @@ export const PILLARS: NavItem[] = [
   { key: 'autobrokers', label: 'AutoBrokers', href: '/dashboard', icon: 'autobrokers' },
   { key: 'atendimentos', label: 'Atendimentos', href: '/dashboard/atendimentos', icon: 'atendimentos' },
   { key: 'auxiliares', label: 'Auxiliares', href: '/dashboard/auxiliares', icon: 'auxiliares' },
+  // 🔴 SEXTO PILAR, TEMPORARIO — pedido do Founder em 18/08/2026, para a
+  // apresentacao do dia 19.
+  //
+  // A regra abaixo diz que o menu nao cresce, e ela continua certa. Esta linha
+  // e uma EXCECAO CONSCIENTE, autorizada, com data de validade — nao uma
+  // revogacao da regra.
+  //
+  // O motivo: a tela do Segundo Cerebro existe, esta pronta e mostra 📊 17.995
+  // cartas de conhecimento, 29 mapas de URA e 18 playbooks de conduta. Ela
+  // vivia em `/dashboard/personalizacao/memorias`, dois cliques fundo, dentro
+  // do pilar de CONFIGURACAO — e memoria da corretora nao e configuracao, e
+  // patrimonio. Ninguem que nao soubesse o endereco a encontrava.
+  //
+  // QUANDO TIRAR: depois da apresentacao, a decisao certa e uma das duas --
+  // ou Memorias vira pilar de verdade (e a regra de cinco muda por escrito),
+  // ou volta para dentro de um pilar existente com um caminho visivel ate ela.
+  // Ficar aqui sem decisao e a pior das tres.
+  { key: 'memorias', label: 'Memórias', href: '/dashboard/memorias', icon: 'conhecimento' },
   { key: 'entregas', label: 'Entregas', href: '/dashboard/entregas', icon: 'success' },
   { key: 'personalizacao', label: 'Personalização', short: 'Config', href: '/dashboard/personalizacao', icon: 'personalizacao' },
 ];

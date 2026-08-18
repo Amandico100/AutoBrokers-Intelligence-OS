@@ -1,16 +1,18 @@
-// SPEC-064 Bloco B — redirecionamento permanente.
+// A tela mora em `components/memorias/CerebroDeMemorias.tsx` e e servida por
+// DUAS rotas, de proposito:
 //
-// Memoria e configuracao de como o sistema lembra de voce — personalizacao,
-// nao pilar.
+//   /dashboard/memorias                 o pilar do menu (SPEC-081, temporario)
+//   /dashboard/personalizacao/memorias  o endereco canonico da SPEC-064
 //
-// A TELA NAO SUMIU: mudou de endereco, inteira.
+// Antes a primeira era um `redirect()` para a segunda. Vira renderizacao
+// direta porque o item de menu precisa de um endereco PROPRIO: com o
+// redirecionamento, o corretor clicava em Memorias e o realce acendia em
+// Personalizacao -- `isActiveRoute` casa por prefixo, e
+// `/dashboard/personalizacao/memorias` comeca com `/dashboard/personalizacao`.
 //
-// O arquivo continua existindo, e so redireciona, porque link salvo nao some
-// quando a rota muda: favorito, e-mail antigo, documentacao velha, uma LLM
-// lendo uma SPEC de tres semanas atras. Apagar transformaria cada um deles
-// num 404.
-import { redirect } from 'next/navigation';
+// Nenhum link antigo quebra: as duas rotas respondem, com a mesma tela.
+import CerebroDeMemorias from '@/components/memorias/CerebroDeMemorias';
 
-export default function Redireciona() {
-  redirect('/dashboard/personalizacao/memorias');
+export default function Pagina() {
+  return <CerebroDeMemorias />;
 }
