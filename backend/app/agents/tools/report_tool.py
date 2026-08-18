@@ -23,7 +23,7 @@ cliente.
 from __future__ import annotations
 
 import logging
-from typing import Any, Optional, Type
+from typing import Any, ClassVar, Optional, Type
 
 from langchain_core.tools import BaseTool
 from pydantic import BaseModel, Field
@@ -181,13 +181,37 @@ def _compor(dados: RelatorioIn) -> list[dict]:
 
 
 class GerarRelatorioTool(BaseTool):
+    # 🔴 A DECLARACAO QUE FALTAVA — SPEC-081 Bloco H, 18/08/2026.
+    #
+    # 📊 Esta ferramenta NUNCA produziu um artifact: `select origin, count(*)
+    # from artifacts` devolvia `routine: 40`, `chat: 0`, e a unica invocacao
+    # registrada tem `output` de 65 caracteres -- exatamente o tamanho do
+    # bilhete do `_run` abaixo.
+    #
+    # Mesmo defeito do handoff, consertado hoje de manha: o executor decidia
+    # o caminho async por uma LISTA de nomes, e esta nao estava nela.
+    # `nodes.py:1084` ja le esta declaracao.
+    exige_async: ClassVar[bool] = True
+
     name: str = "gerar_relatorio"
     description: str = (
         "Gera um relatório profissional com a identidade visual da corretora e devolve "
-        "o link. Use quando o corretor pedir um relatório, panorama, dossiê, briefing ou "
-        "análise para apresentar. Você fornece o CONTEÚDO (título, veredito, indicadores, "
-        "seções, ações, fontes) — o sistema cuida do layout. "
-        "O campo 'fontes' é obrigatório: todo número precisa dizer de onde veio."
+        "o link, a partir de conteúdo que VOCÊ escreve. Use para panorama, dossiê, "
+        "briefing ou análise que você monta a partir da conversa. "
+        "Você fornece o CONTEÚDO (título, veredito, indicadores, seções, ações, "
+        "fontes) — o sistema cuida do layout. "
+        "O campo 'fontes' é obrigatório: todo número precisa dizer de onde veio. "
+        # 🔴 A FRONTEIRA, escrita na descricao — SPEC-081.
+        #
+        # Esta tool pede ao MODELO que invente o conteudo. As duas comerciais
+        # buscam o dado real na InfoCap e calculam em codigo. Se esta roubar a
+        # chamada de "raio-x comercial" ou "radar de renovacoes", o corretor
+        # recebe uma peca bonita com numero inventado — que e pior que peca
+        # nenhuma, porque parece certa.
+        "NÃO use para: produtividade de vendedores, ranking de vendas, comissão "
+        "por vendedor, raio-x comercial, radar de renovações, o que vence, "
+        "carteira a vencer — para esses existem `raio_x_comercial` e "
+        "`radar_de_renovacoes`, que buscam o dado real na InfoCap."
     )
     args_schema: Type[BaseModel] = RelatorioIn
 
@@ -200,7 +224,19 @@ class GerarRelatorioTool(BaseTool):
         arbitrary_types_allowed = True
 
     def _run(self, **_: Any) -> str:
-        return "Esta ferramenta é assíncrona; o runtime deve chamá-la por `arun`."
+        # 🔴 LEVANTA, nao devolve texto.
+        #
+        # Devolver a string fazia o modelo receber jargao de encanamento COMO
+        # SE FOSSE RESULTADO, sem instrucao de fala -- e o `registro.ok()` do
+        # tool_node ainda marcava a invocacao como `succeeded`. 📊 Foi assim
+        # que a unica invocacao desta tool ficou registrada como sucesso tendo
+        # produzido zero artifacts.
+        #
+        # Levantando, o `except` de `nodes.py` converte em mensagem com
+        # instrucao, e a auditoria registra a falha como falha.
+        raise RuntimeError(
+            "GerarRelatorioTool exige execucao assincrona. Quem chamou "
+            "ignorou `exige_async=True` -- o executor precisa aguardar `_arun`.")
 
     async def _arun(self, **kwargs: Any) -> str:
         import os
