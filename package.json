@@ -50,7 +50,8 @@
     "test:freio-vidros-nao-mata-cobranca": "python backend/tests/test_o_freio_de_vidros_nao_mata_a_cobranca.py",
     "test:atendente-nao-mente": "python backend/tests/test_a_atendente_nao_mente_sobre_transferir.py",
     "test:cobranca-intacta": "python backend/tests/test_a_cobranca_esta_como_estava.py",
-    "test:sentinela-tem-canal": "python backend/tests/test_o_sentinela_responde_pelo_canal_da_conversa.py"
+    "test:sentinela-tem-canal": "python backend/tests/test_o_sentinela_responde_pelo_canal_da_conversa.py",
+    "test:fonte-comercial": "python backend/tests/test_a_fonte_comercial_bate_com_a_infocap.py"
   },
   "dependencies": {
     "@hookform/resolvers": "^3.9.0",
