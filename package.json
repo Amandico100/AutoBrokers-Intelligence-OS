@@ -48,7 +48,8 @@
     "test:corredor-residencial": "python backend/tests/test_o_corredor_residencial_nao_trava.py",
     "test:dossie-inteiro": "python backend/tests/test_o_dossie_chega_inteiro.py",
     "test:freio-vidros-nao-mata-cobranca": "python backend/tests/test_o_freio_de_vidros_nao_mata_a_cobranca.py",
-    "test:atendente-nao-mente": "python backend/tests/test_a_atendente_nao_mente_sobre_transferir.py"
+    "test:atendente-nao-mente": "python backend/tests/test_a_atendente_nao_mente_sobre_transferir.py",
+    "test:cobranca-intacta": "python backend/tests/test_a_cobranca_esta_como_estava.py"
   },
   "dependencies": {
     "@hookform/resolvers": "^3.9.0",
