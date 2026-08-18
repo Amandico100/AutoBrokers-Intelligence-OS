@@ -36,7 +36,7 @@ O QUE ESTE ARQUIVO GUARDA
     3  a paleta que o script grava renderiza     (+ CONTROLE sem typography)
     4  a peca REAL da Cobranca sai inteira       (+ CONTROLE com marca antiga)
     5  visual_style e 'aurora' -- senao a Cobranca troca de tema em silencio
-    6  o --dry-run nao escreve
+    6  o modo --emit-sql nao abre conexao nem escreve
     7  o UNDO desliga `is_published` e so apaga o que e dele
 
 As asseroes de banco (8) so rodam onde houver credencial; sem ela sao contadas
@@ -337,9 +337,14 @@ check("o SQL emitido grava a paleta com typography",
 
 
 # ==========================================================================
-# 6. O --dry-run nao escreve
+# 6. O modo sem credencial nao escreve
+#
+# O exercitado aqui e `--emit-sql`, e nao `--dry-run`: o `--dry-run` LE o banco
+# de proposito (imprime o ANTES antes de decidir se escreve), entao ele nao
+# roda em maquina sem credencial. Chamar esta secao de "--dry-run" seria dar a
+# ela um nome que ela nao cumpre.
 # ==========================================================================
-print("\n6. O --dry-run NAO ESCREVE")
+print("\n6. O MODO SEM CREDENCIAL (--emit-sql) NAO ESCREVE")
 
 
 class _BancoQueRecusaEscrita:
@@ -350,7 +355,7 @@ class _BancoQueRecusaEscrita:
 
     def table(self, nome):
         self.escritas.append(nome)
-        raise AssertionError("o dry-run tocou na tabela " + nome)
+        raise AssertionError("o modo sem escrita tocou na tabela " + nome)
 
 
 _argv = sys.argv[:]
