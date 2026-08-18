@@ -222,6 +222,27 @@ cliente = create_client(SUPA_URL, SUPA_KEY)
 antes = _conta_artifacts_chat()
 print(f"  (artifacts com origin='chat' antes: {antes})")
 
+# 🔴 Um `app.services` LEVE, registrado ANTES de qualquer import.
+#
+# 📊 `app/services/__init__.py` importa EAGER toda a arvore: `audio_service`
+# puxa o SDK da OpenAI, `document_service` puxa `python-docx`,
+# `ingestion_service` puxa `fastembed` (que arrasta a stack de ML inteira).
+# Numa maquina de teste isso e impraticavel.
+#
+# O truque registra um modulo vazio com o `__path__` certo: os SUBMODULOS
+# reais continuam sendo encontrados e executados — `artifacts/service.py`,
+# `render.py`, `blocks.py`, `charts.py` sao os de producao, linha por linha.
+# So o `__init__` agregador nao roda, e ele nao contem logica nenhuma.
+#
+# Nao e stub do que esta sendo testado. E stub do que esta no CAMINHO.
+import types as _types
+
+if 'app.services' not in sys.modules:
+    import app as _app  # noqa: F401
+    _leve = _types.ModuleType('app.services')
+    _leve.__path__ = [os.path.join(RAIZ, 'app', 'services')]
+    sys.modules['app.services'] = _leve
+
 # 🔴 Carrega o modulo POR CAMINHO. `import app.agents.tools...` dispara o
 # `app/agents/__init__.py`, que importa `graph.py`, que importa `langgraph` —
 # ausente nesta maquina. O modulo em si so precisa de `langchain_core`, que
@@ -248,6 +269,56 @@ check("e devolveu um link", "/dashboard/entregas/" in resp2, resp2[:200])
 depois = _conta_artifacts_chat()
 check("nasceram DOIS artifacts com origin='chat' (a linha que nunca existiu)",
       depois - antes == 2, f"antes {antes}, depois {depois}")
+
+# ==========================================================================
+print("\n[6] A PECA RENDERIZADA esta correta, e nao vazou nada")
+# ==========================================================================
+#
+# 🔴 Nao basta o artifact existir. Uma peca que nasce vazia, sem grafico, ou
+# com o telefone do segurado dentro, e pior que peca nenhuma -- porque
+# PARECE pronta e vai para a tela de uma apresentacao.
+
+import urllib.parse as _up
+
+def _html_das_ultimas(n=2):
+    q = (f'{SUPA_URL}/rest/v1/artifacts?select=title,artifact_versions'
+         f'(artifact_renders(inline_content))&origin=eq.chat'
+         f'&company_id=eq.{EMPRESA}&order=created_at.desc&limit={n}')
+    req = urllib.request.Request(q, headers={'apikey': SUPA_KEY,
+                                             'Authorization': f'Bearer {SUPA_KEY}'})
+    with urllib.request.urlopen(req, timeout=60) as r:
+        linhas = json.loads(r.read())
+    saida = []
+    for x in linhas:
+        for v in (x.get('artifact_versions') or []):
+            for rr in (v.get('artifact_renders') or []):
+                saida.append((x.get('title'), rr.get('inline_content') or ''))
+    return saida
+
+import re as _re2
+for _titulo, _html in _html_das_ultimas(2):
+    rot = str(_titulo)[:26]
+    check(f'{rot}: a peca tem corpo (>15 KB)', len(_html) > 15000, len(_html))
+    check(f'{rot}: tem grafico SVG renderizado', '<svg' in _html)
+    check(f'{rot}: traz o nome da corretora', 'Resulta' in _html)
+    check(f'{rot}: traz a hora da consulta', 'consultado em' in _html)
+    # 🔴 PII: procura o PADRAO, nao a palavra. O rodape honesto diz
+    # 'Nao contem CPF/CNPJ' e casaria uma busca por texto.
+    check(f'{rot}: ZERO CPF formatado',
+          not _re2.search(r'\d{3}[.]\d{3}[.]\d{3}-\d{2}', _html))
+    check(f'{rot}: ZERO telefone formatado',
+          not _re2.search(r'\(\d{2}\)\s?9?\d{4}-\d{4}', _html))
+    # CONTROLE: o detector de PII CONSEGUE achar quando ha.
+    check(f'{rot}: CONTROLE: o detector acha CPF num texto que tem um',
+          bool(_re2.search(r'\d{3}[.]\d{3}[.]\d{3}-\d{2}', 'cpf 123.456.789-00 aqui')))
+
+_raio = [h for t, h in _html_das_ultimas(2) if 'Raio-X' in str(t)]
+if _raio:
+    check('o Raio-X imprime a COBERTURA em numero',
+          '80,6' in _raio[0] or '80.6' in _raio[0],
+          'relatorio que soma parte e se diz o todo mente por omissao')
+    check('e traz o insight do ticket alto (MARCOS TONIOLO)',
+          'TONIOLO' in _raio[0])
 
 print("\n" + "=" * 68)
 print(f"  {PASS} assercoes verdes - {FAIL} vermelhas")
