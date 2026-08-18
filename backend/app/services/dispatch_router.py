@@ -1419,17 +1419,26 @@ async def try_route_insurer_inbound(
                 v2 = guard_human_phase_reply(str(draft2 or ""), session,
                                              insurer_message=tela)
                 if v2.get("ok"):
+                    # 🔴 NAO devolve aqui. A funcao devolve `bool`, e sair por
+                    # este ponto pularia o resto do turno -- o registro, o
+                    # espelho e a gravacao no fim. Foi um defeito MEU, pego
+                    # relendo o proprio conserto: `return session` num lugar
+                    # que promete `-> bool` e verdadeiro por acidente, e por
+                    # isso nao apareceria em teste nenhum de tipo.
+                    #
+                    # A resposta JA FOI ENVIADA por `reply_human_phase`. O
+                    # fluxo segue normalmente daqui, igual ao acerto de
+                    # primeira.
                     session = reply_human_phase(session, v2["reply"],
                                                 sender=send_to_insurer)
                     session["human_phase_guard_fails"] = 0
                     logger.info("[DISPATCH ROUTER] retentativa ACEITA")
-                    await save_active_dispatch(company_id, from_phone, session)
-                    return session
-                # A retentativa também falhou: agora sim conta como recusa.
-                fails = int(session.get("human_phase_guard_fails") or 0) + 1
-                session["human_phase_guard_fails"] = fails
-                logger.error("[DISPATCH ROUTER] retentativa TAMBEM recusada (%s) "
-                             "— %s/2", v2.get("reason"), fails)
+                else:
+                    # A retentativa também falhou: agora sim conta como recusa.
+                    fails = int(session.get("human_phase_guard_fails") or 0) + 1
+                    session["human_phase_guard_fails"] = fails
+                    logger.error("[DISPATCH ROUTER] retentativa TAMBEM recusada "
+                                 "(%s) — %s/2", v2.get("reason"), fails)
             else:
                 # A MARCA NÃO SE APAGA AQUI. Este era um defeito meu, pego pelo
                 # teste: zerar `retentou_redacao` na FALHA fazia o ciclo se
