@@ -385,6 +385,61 @@ def _now() -> str:
     return datetime.now(timezone.utc).isoformat()
 
 
+def _derivar_teclas_do_caso(slots: dict) -> None:
+    """Traduz o que o segurado disse para as teclas que a URA espera.
+
+    Muda `slots` no lugar, e só preenche o que ainda está vazio — quem já
+    tem valor (do subserviço ou da atendente) manda.
+
+    🔴 Cada derivação tem um DEFAULT, e isso é deliberado. A alternativa é o
+    silêncio, e 📊 o silêncio custou 2 minutos e 22 segundos e um clique
+    manual no teste de 18/08. Menu de seguradora com a tecla mais provável é
+    corrigível; menu sem resposta nenhuma trava o acionamento inteiro.
+    """
+    from app.services.corridor_playbooks import _norm
+
+    texto = _norm(" ".join(str(slots.get(c) or "") for c in
+                               ("problema_descricao", "problema_relato",
+                                "descricao", "servico_texto")))
+
+    # ---- "O que aconteceu?" (eletricista) ----------------------------
+    # 📊 A tela real: "1 - Casa inteira ou parcial sem energia
+    #                  2 - Curto circuito ou mau funcionamento das tomadas,
+    #                      interruptores, disjuntores"
+    if not str(slots.get("problema_eletrico_opcao") or "").strip():
+        curto = any(p in texto for p in (
+            "curto", "curto circuito", "tomada", "interruptor", "disjuntor",
+            "chuveiro", "mau funcionamento", "nao funciona", "queimou a tomada",
+            "faisca na tomada", "esquentando"))
+        # `1` é o default: 📊 "sem energia" é o motivo dominante de chamado
+        # de eletricista residencial, e foi o caso do teste ("Parte da casa
+        # sem luz").
+        slots["problema_eletrico_opcao"] = "2" if curto else "1"
+
+    # ---- A DATA do agendamento (eletrodoméstico) ---------------------
+    # 📊 "Os agendamentos estão disponíveis de segunda a sexta, para os
+    #     próximos 7 dias. Escolha qual data: 1- ... 7- ..."
+    #
+    # As datas são DINÂMICAS — mudam a cada dia. Por isso a resposta é a
+    # POSIÇÃO, e `1` é sempre a mais próxima. Quem tem a máquina de lavar
+    # parada quer o técnico o quanto antes; adiar é a decisão que o segurado
+    # tomaria explicitamente, nunca a que o sistema toma por ele.
+    if not str(slots.get("data_agendamento_opcao") or "").strip():
+        slots["data_agendamento_opcao"] = "1"
+
+    # ---- O PERÍODO do agendamento -------------------------------------
+    # 📊 "manhã das 09h às 13h e tarde, das 13h às 18h" — 1 e 2.
+    #
+    # ⚠️ A própria URA declara: agendamento para o DIA SEGUINTE é
+    # obrigatoriamente à TARDE, e feito no fim de semana vai para o próximo
+    # dia útil à tarde. Por isso `tarde` é o default: é a opção que a URA
+    # aceita em mais situações, e escolher `manhã` num dia em que ela não é
+    # permitida devolveria "Opção inválida".
+    if not str(slots.get("periodo_agendamento_opcao") or "").strip():
+        pref = _norm(str(slots.get("periodo_preferido") or ""))
+        slots["periodo_agendamento_opcao"] = "1" if "manha" in pref else "2"
+
+
 def new_dispatch_session(
     *,
     case_id: str,
@@ -430,6 +485,24 @@ def new_dispatch_session(
     # Default seguro: sem telefone extra => usa o registrado (opção 2).
     if not str(merged_slots.get("telefone_adicionar_opcao") or "").strip():
         merged_slots["telefone_adicionar_opcao"] = "1" if merged_slots.get("telefone_contato") else "2"
+
+    # 🔴 AS TECLAS QUE SAEM DO QUE O SEGURADO JÁ DISSE — SPEC-082, 18/08/2026.
+    #
+    # 📊 O DEFEITO QUE ISTO CONSERTA, medido no teste real do Founder:
+    #
+    #     12:23:43  a URA manda "O que aconteceu? 1-Casa sem energia 2-Curto"
+    #               ⟵ 2 minutos e 22 segundos de SILÊNCIO ⟶
+    #     12:26:05  o Founder clicou "1" do próprio celular
+    #
+    # O passo `o_que_aconteceu` exigia o slot `problema_eletrico_opcao`, e
+    # NADA no produto preenchia esse slot. Um passo que exige um slot que
+    # ninguém preenche não responde e não avisa: fica calado.
+    #
+    # A saída errada seria uma constante — a tela escolhe o TIPO DE DEFEITO,
+    # e tecla errada abre chamado errado. A saída certa é TRADUZIR o que o
+    # segurado já contou: ele descreve com as palavras dele, e o corredor
+    # converte para a tecla da seguradora. É o trabalho do corredor.
+    _derivar_teclas_do_caso(merged_slots)
 
     # Os campos que o MOTOR preencheu, e que o cliente nunca confirmou.
     # Ver o comentário logo abaixo, no bloco AUTO.

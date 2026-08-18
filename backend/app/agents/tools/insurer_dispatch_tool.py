@@ -159,7 +159,16 @@ def telefone_br_valido(valor) -> bool:
 
 class InsurerDispatchInput(BaseModel):
     subservice: str = Field(description=(
-        "Subserviço. Residencial: eletricista | chaveiro | encanador | eletrodomesticos. "
+        "Subserviço. Residencial: eletricista | chaveiro | encanador | "
+        "desentupimento | maquina_de_lavar | eletrodomesticos. "
+        # 🔴 SPEC-082: `maquina_de_lavar` e um subservico PROPRIO, e nao um
+        # `eletrodomesticos` generico. Motivo medido: a URA pede a tecla do
+        # aparelho numa lista de quinze, e o generico responde "15 - Outros".
+        # Com o subservico especifico a tecla e `14`, e o chamado nasce com
+        # o aparelho certo escrito nele.
+        "Use `maquina_de_lavar` quando o segurado falar em maquina de lavar, "
+        "lavadora, lava-roupas ou lava-e-seca. Para OUTRO eletrodomestico "
+        "(geladeira, fogao, micro-ondas, ar-condicionado) use `eletrodomesticos`. "
         "AUTO: guincho | bateria | pneu | chaveiro."))
     insurer_key: Optional[str] = Field(default=None, description=(
         "Seguradora da apólice (allianz | porto | hdi | yelum | tokio | alfa | azul | bradesco | mapfre | zurich). "
@@ -170,6 +179,19 @@ class InsurerDispatchInput(BaseModel):
     line_kind: Optional[str] = Field(default=None, description="Linha: auto | residencial. Para carro use 'auto'.")
     titular_cpf: Optional[str] = Field(default=None, description="CPF do titular da apólice (somente dígitos)")
     # --- Residencial ---
+    # 🔴 SPEC-082 — a URA pergunta marca e modelo em telas SEPARADAS:
+    # "Qual a marca ?" e depois "E o modelo completo?". Um campo so, com os
+    # dois juntos, responderia a primeira tela com o texto da segunda.
+    #
+    # 📊 Respostas reais da sessao que gerou o protocolo 51022010:
+    #   marca  -> "Eletrolux"
+    #   modelo -> "Turbo capacidade 15kg"   (nao precisa ser exato)
+    aparelho_marca: Optional[str] = Field(default=None, description=(
+        "[eletrodomestico] Marca do aparelho (Brastemp, Electrolux, Consul...). "
+        "Pergunte ao segurado; ele nao precisa saber o modelo exato."))
+    aparelho_modelo: Optional[str] = Field(default=None, description=(
+        "[eletrodomestico] Modelo ou descricao do aparelho (ex.: 'Turbo 15kg'). "
+        "Aproximado serve — a seguradora aceita descricao livre."))
     endereco_numero: Optional[str] = Field(default=None, description="[residencial] Número da residência do endereço da apólice")
     periodo_preferido: Optional[str] = Field(default=None, description="[residencial] Período: manha | tarde")
     risco_confirmado_sem_fumaca: Optional[str] = Field(default=None, description="[residencial elétrica] 'sim' se NÃO há fumaça/faísca/cheiro de queimado")

@@ -229,6 +229,147 @@ ALLIANZ_RESIDENCIAL_WHATSAPP_V1: Dict[str, Any] = {
                      "eletrodomésticos *3 -* Outros serviços'",
         },
         {
+            # ==============================================================
+            # O CAMINHO DO ELETRODOMESTICO — SPEC-082, 18/08/2026
+            # ==============================================================
+            #
+            # 📊 Mapeado de uma sessao REAL que terminou com protocolo
+            # 51022010 (`observed_events`, sessao b2bf40e7, 28/07/2026). A
+            # ordem abaixo e a ordem que a URA usou, turno a turno.
+            #
+            #   'Informe o tipo de servico'          -> 2  (eletrodomesticos)
+            #   'Qual eletrodomestico? 1-Linha Branca' -> 1
+            #   'devera ser AGENDADO. 1-Continuar'   -> 1
+            #   'Escolha qual data' (7 dias uteis)   -> data
+            #   'periodos manha 9-13 / tarde 13-18'  -> periodo
+            #   '*Importante:* fora da garantia'     -> 1
+            #   'Selecione o eletrodomestico'        -> 14 (Maquina de Lavar)
+            #   'Qual problema/defeito apresentado?' -> texto
+            #   'Qual a marca ?'                     -> texto
+            #   'E o modelo completo?'               -> texto
+            #   RESUMO                               -> 1
+            #   'protocolo *51022010*'
+            #
+            # 🔴 A DIFERENCA QUE MUDA TUDO: eletrodomestico e AGENDADO, nao
+            # e "agora". O eletricista pergunta "para quando? 1-Agora"; aqui
+            # a URA escolhe DATA numa lista de sete dias uteis e depois o
+            # PERIODO. Um passo que respondesse "1-Agora" aqui nao existe.
+            #
+            # A PRIMEIRA tela de aparelho — a CATEGORIA, nao o aparelho.
+            # Ancora `qual eletrodom` para nao colidir com a segunda tela,
+            # que comeca com `selecione o eletrodom`.
+            "step": "menu_categoria_eletrodomestico",
+            "anchor": r"qual eletrodom[ée]stico precisa de conserto",
+            "reply": "{eletrodomestico_categoria_opcao}",
+            "requires": ["eletrodomestico_categoria_opcao"],
+            "notes": "📊 14 ocorrencias. 1-Linha Branca (inclui Maquina de Lavar "
+                     "e secar roupas) 2-Ar Condicionado 3-Geladeira/Freezer 4-Voltar",
+        },
+        {
+            # "Certo! O servico de *Conserto para eletrodomestico* devera ser
+            # agendado. 1-Continuar 2-Voltar"
+            #
+            # 📊 7 ocorrencias, e ha a variante com "(Ar condicionado)" no
+            # meio — por isso a ancora nao exige o texto entre as palavras.
+            "step": "confirmar_que_sera_agendado",
+            "anchor": r"conserto para eletrodom[ée]stico.{0,30}dever[áa] ser agendado",
+            "reply": "1",
+            "notes": "1-Continuar 2-Voltar. Quem pediu conserto quer continuar.",
+        },
+        {
+            # 🔴 A DATA. 📊 6 ocorrencias:
+            #   "Os agendamentos estao disponiveis de *segunda-feira* a
+            #    *sexta-feira*, para os proximos *7 dias*. Escolha qual data
+            #    deseja agendar: *1 -* 31/12/2025 (Quarta) ... *7 -* ..."
+            #
+            # As datas sao DINAMICAS — mudam a cada dia. Por isso a resposta e
+            # o NUMERO da posicao, nunca a data. `1` e sempre a mais proxima.
+            "step": "escolher_data_agendamento",
+            "anchor": r"escolha qual data deseja agendar",
+            "reply": "{data_agendamento_opcao}",
+            "requires": ["data_agendamento_opcao"],
+            "notes": "1..7, do mais proximo ao mais distante. Somente dias uteis.",
+        },
+        {
+            # 🔴 O PERIODO. 📊 Tres redacoes diferentes da mesma pergunta, 47
+            # ocorrencias somadas — por isso a ancora e larga:
+            #   "O agendamento e por periodo, a partir do proximo dia util.
+            #    Manha das 09h as 13h e tarde, das 13h as 18h." (16x)
+            #   "E quanto aos horarios de agendamento, sao por *periodos
+            #    (manha* - das 9:00 as 13:00 ou *tarde* ...)" (14x)
+            #   "O agendamento e feito em intervalo de 2 horas..." (17x)
+            "step": "escolher_periodo_agendamento",
+            "anchor": (r"agendamento (?:[ée] por per[íi]odo|[ée] feito em intervalo)"
+                       r"|hor[áa]rios de agendamento"),
+            "reply": "{periodo_agendamento_opcao}",
+            "requires": ["periodo_agendamento_opcao"],
+            "notes": "1-manha (09-13) 2-tarde (13-18). 📊 Agendamento para o dia "
+                     "seguinte e obrigatoriamente TARDE; no fim de semana, "
+                     "proximo dia util a tarde.",
+        },
+        {
+            # 🔴 O AVISO QUE PEDE RESPOSTA — e por isso NAO pode cair no
+            # `avisos_informativos`, que e noop.
+            #
+            # 📊 "*Importante:* O servico e destinado a aparelhos/equipamentos
+            # de uso domestico que estejam fora da garantia do fabricante e que
+            # pertencam a residencia segurada. *Dica:* Antes d..." -> a URA
+            # espera "1".
+            #
+            # A palavra `*Dica:*` esta na ancora do noop que eu escrevi em
+            # 18/08. Este passo vem ANTES dele na lista, e por isso vence —
+            # `match_ura_step` percorre em ordem. Mexer na ordem quebra isto.
+            "step": "aviso_fora_da_garantia",
+            "anchor": r"fora da garantia do fabricante",
+            "reply": "1",
+            "notes": "📊 O aparelho precisa estar FORA da garantia do fabricante "
+                     "e pertencer a residencia segurada.",
+        },
+        {
+            # 🔴 O APARELHO. Maquina de Lavar roupas = 14.
+            #
+            # 📊 "Selecione o eletrodomestico que precisa de conserto ?
+            #  1-Geladeira 2-Freezer 3-Frigobar 4-Adega 5-Micro-ondas 6-Fogao
+            #  7-Forno 8-Cooktop 9-Filtro/Purificador 10-Lavadora de loucas
+            #  11-Coifa/depurador 12-Exaustor 13-Secadora de roupas
+            #  14-Maquina de Lavar roupas  15-Outros"
+            #
+            # 🔴 ATENCAO A DIFERENCA: 10 e lavadora de LOUCAS, 13 e SECADORA,
+            # 14 e maquina de lavar ROUPAS. Tecla errada abre chamado para o
+            # aparelho errado, e o tecnico chega para consertar outra coisa.
+            "step": "menu_aparelho",
+            "anchor": r"selecione o eletrodom[ée]stico que precisa de conserto",
+            "reply": "{eletrodomestico_opcao}",
+            "requires": ["eletrodomestico_opcao"],
+            "notes": "10=lava-loucas 13=secadora 14=MAQUINA DE LAVAR ROUPAS 15=outros",
+        },
+        {
+            # "Para finalizar a abertura do atendimento, vamos precisar de mais
+            #  algumas informacoes. Qual problema/defeito apresentado?"
+            #
+            # 📊 Resposta real da sessao 51022010: "Lava mais nao joga a agua
+            # fora". Texto livre, do proprio segurado.
+            "step": "problema_do_aparelho",
+            "anchor": r"qual problema/?defeito apresentado",
+            "reply": "{problema_descricao}",
+            "notes": "texto livre; a atendente ja coleta este slot",
+        },
+        {
+            "step": "aparelho_marca",
+            "anchor": r"^\s*qual a marca\s*\??\s*$|qual a marca do (?:aparelho|equipamento)",
+            "reply": "{aparelho_marca}",
+            "requires": ["aparelho_marca"],
+            "notes": "📊 6 ocorrencias, pergunta seca: 'Qual a marca ?'",
+        },
+        {
+            "step": "aparelho_modelo",
+            "anchor": r"e o modelo completo|qual o modelo",
+            "reply": "{aparelho_modelo}",
+            "requires": ["aparelho_modelo"],
+            "notes": "📊 4 ocorrencias: 'E o modelo completo?'. Resposta real: "
+                     "'Turbo capacidade 15kg' — nao precisa ser exato.",
+        },
+        {
             # 🔴 O SEGUNDO MENU — o que escolhe o PROFISSIONAL de verdade.
             #
             # 📊 04/08/2026, `observed_events` insurer_key='allianz': 13
@@ -398,6 +539,38 @@ ALLIANZ_RESIDENCIAL_WHATSAPP_V1: Dict[str, Any] = {
             "profissional_opcao": "1",
             "required_slots": ["titular_cpf", "endereco_numero", "telefone_contato", "problema_descricao", "periodo_preferido", "risco_confirmado_sem_fumaca"],
         },
+        # ==================================================================
+        # MAQUINA DE LAVAR ROUPAS — SPEC-082, 18/08/2026
+        # ==================================================================
+        #
+        # 🔴 OUTRO GALHO DA URA, nao uma variacao do eletricista.
+        #
+        #   eletricista        tipo_servico_opcao = "1"  (Emergenciais)
+        #   maquina de lavar   tipo_servico_opcao = "2"  (Eletrodomesticos)
+        #
+        # E o desfecho e diferente: emergencial e "agora"; eletrodomestico e
+        # AGENDADO, com data escolhida numa lista de sete dias uteis.
+        #
+        # 📊 As regras que a propria URA declara, e que a atendente precisa
+        # dizer ao segurado ANTES de acionar:
+        #   · aparelho com ate 10 anos de idade
+        #   · FORA da garantia do fabricante
+        #   · 2 utilizacoes por vigencia (Linha Branca e Ar-Condicionado
+        #     contam separado, 1 evento cada)
+        #   · o tecnico PODE levar o aparelho para a base
+        #   · mao de obra coberta; PECAS sao do cliente
+        #   · reembolso de prestador proprio: R$ 150 por evento, R$ 300 por
+        #     vigencia
+        "maquina_de_lavar": {
+            "tipo_servico_opcao": "2",
+            "eletrodomestico_categoria_opcao": "1",
+            "eletrodomestico_opcao": "14",
+            "required_slots": [
+                "titular_cpf", "endereco_numero", "telefone_contato",
+                "problema_descricao", "aparelho_marca", "aparelho_modelo",
+                "periodo_preferido",
+            ],
+        },
         "chaveiro": {
             "tipo_servico_opcao": "1",
             "profissional_opcao": "4",
@@ -446,7 +619,29 @@ ALLIANZ_RESIDENCIAL_WHATSAPP_V1: Dict[str, Any] = {
             # não aparece nesse ramo. Declarar uma tecla que a URA não mostra é o
             # defeito que manda o segurado para a opção errada.
             "tipo_servico_opcao": "2",
-            "required_slots": ["titular_cpf", "endereco_numero", "telefone_contato", "aparelho_marca_modelo", "aparelho_idade", "problema_descricao", "periodo_preferido"],
+            # 🔴 AS DUAS TECLAS QUE FALTAVAM — SPEC-082, 18/08/2026.
+            #
+            # Este subserviço existia com UMA tecla só, e travaria em DOIS
+            # menus que a URA mostra logo depois: "Qual eletrodoméstico?"
+            # (categoria) e "Selecione o eletrodoméstico" (o aparelho).
+            #
+            # 📊 É o mesmo defeito que travou o teste do eletricista em
+            # 18/08: um passo que exige um slot que ninguém preenche fica
+            # em silêncio, e alguém tem de clicar do celular.
+            #
+            # `1` é Linha Branca — a categoria que contém máquina de lavar,
+            # fogão, micro-ondas, lava-louças. `15` é "Outros": o genérico
+            # não sabe QUAL aparelho é, e "Outros" é a única tecla honesta.
+            # Quem sabe o aparelho usa um subserviço específico, como
+            # `maquina_de_lavar`.
+            "eletrodomestico_categoria_opcao": "1",
+            "eletrodomestico_opcao": "15",
+            # 📊 A URA pergunta marca e modelo em telas SEPARADAS ("Qual a
+            # marca ?" e depois "E o modelo completo?"). Um slot só, com os
+            # dois juntos, responderia a primeira tela com o texto da segunda.
+            "required_slots": ["titular_cpf", "endereco_numero", "telefone_contato",
+                               "aparelho_marca", "aparelho_modelo",
+                               "problema_descricao", "periodo_preferido"],
         },
     },
     # Fase humana da seguradora: orientação para a LLM (guardada) responder.
@@ -486,6 +681,7 @@ ALLIANZ_RESIDENCIAL_WHATSAPP_V1: Dict[str, Any] = {
         "eletricista": "eletricista", "chaveiro": "chaveiro",
         "encanador": "encanador", "desentupimento": "desentupimento",
         "eletrodomesticos": "reparo de eletrodomestico",
+        "maquina_de_lavar": "conserto da maquina de lavar",
     },
     # Regras fixas a repassar ao cliente junto do agendamento.
     "client_instructions": [
@@ -591,6 +787,22 @@ _SUBSERVICE_ALIASES = {
     # residencial: um nome por trabalho. A Porto chama de "elétrica" e
     # "hidráulica" o que a Allianz e a HDI chamam de eletricista e encanador.
     "eletrodomestico": "eletrodomesticos", "eletrica": "eletricista",
+    # 🔴 Como o segurado FALA — SPEC-082. Ele nunca diz "maquina_de_lavar":
+    # diz "minha máquina de lavar parou", "a lavadora não centrifuga",
+    # "lava roupa quebrada". Sem estes apelidos, `canonical_subservice`
+    # devolve o proprio texto, `subservices` nao acha, e o acionamento morre
+    # antes de comecar.
+    "maquina de lavar": "maquina_de_lavar",
+    "maquina de lavar roupa": "maquina_de_lavar",
+    "maquina de lavar roupas": "maquina_de_lavar",
+    "maquina lavar": "maquina_de_lavar",
+    "lavadora": "maquina_de_lavar",
+    "lavadora de roupa": "maquina_de_lavar",
+    "lavadora de roupas": "maquina_de_lavar",
+    "lava roupa": "maquina_de_lavar",
+    "lava roupas": "maquina_de_lavar",
+    "lava e seca": "maquina_de_lavar",
+    "maquina de lavar e secar": "maquina_de_lavar",
     "hidraulica": "encanador", "encanamento": "encanador",
     "desentupidor": "desentupimento",
 }

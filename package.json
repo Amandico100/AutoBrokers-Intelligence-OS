@@ -54,7 +54,8 @@
     "test:sentinela-tem-canal": "python backend/tests/test_o_sentinela_responde_pelo_canal_da_conversa.py",
     "test:fonte-comercial": "python backend/tests/test_a_fonte_comercial_bate_com_a_infocap.py",
     "test:calculos-comerciais": "python backend/tests/test_os_calculos_comerciais.py",
-    "test:ferramentas-comerciais": "python backend/tests/test_as_ferramentas_de_relatorio_comercial.py"
+    "test:ferramentas-comerciais": "python backend/tests/test_as_ferramentas_de_relatorio_comercial.py",
+    "test:maquina-de-lavar": "python backend/tests/test_a_maquina_de_lavar_vai_ate_o_fim.py"
   },
   "dependencies": {
     "@hookform/resolvers": "^3.9.0",
