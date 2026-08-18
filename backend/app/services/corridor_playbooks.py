@@ -156,7 +156,10 @@ ALLIANZ_RESIDENCIAL_WHATSAPP_V1: Dict[str, Any] = {
         },
         {
             "step": "menu_qual_seguro",
-            "anchor": r"qual o seguro que deseja utilizar",
+            # 🔴 "qual O seguro QUE deseja" -> a URA de 2026 escreve "Qual
+            # seguro deseja utilizar?". Duas palavras a menos, e a ancora
+            # deixou de casar. 📊 A tela passou a cair no cerebro em 18/08.
+            "anchor": r"qual (?:o )?seguro (?:que )?deseja utilizar",
             "reply": "1",
             "notes": "1-Residência/Condomínio/Empresa 2-Auto com serviços residenciais",
         },
@@ -165,7 +168,12 @@ ALLIANZ_RESIDENCIAL_WHATSAPP_V1: Dict[str, Any] = {
             # atende N clientes) — SEMPRE re-identificar para nunca acionar na
             # apólice do cliente anterior.
             "step": "cpf_anterior",
-            "anchor": r"em nossa [úu]ltima conversa,? utilizamos o cpf",
+            # 🔴 A URA de 2026 escreve "Que bom que voltou! Gostaria de
+            # continuar com o CPF/CNPJ 030.###?". A frase antiga sumiu.
+            # 📊 Em 18/08 so o cerebro salvou esta tela, por sorte.
+            "anchor": (r"em nossa [úu]ltima conversa,? utilizamos o cpf"
+                       r"|que bom que voltou.{0,80}cpf"
+                       r"|continuar com o cpf"),
             "reply": "2",
             "notes": "1-Sim (continuar com o CPF anterior) 2-Não, inserir outro CPF/CNPJ",
         },
@@ -276,6 +284,63 @@ ALLIANZ_RESIDENCIAL_WHATSAPP_V1: Dict[str, Any] = {
                      "corredor: quem escreve para a corretora quer agora.",
         },
         {
+            # 🔴 A TELA QUE TRAVOU O TESTE DE 18/08/2026.
+            #
+            # Texto real, do banco (`observed_events`, 01:51:33 e 01:59:07):
+            #
+            #   *Importante:* Esse servico de eletricista esta disponivel
+            #   apenas para reparos eletricos na residencia
+            #   *1 -* Preciso de reparo eletrico para residencia
+            #   *2 -* Preciso de reparos eletricos em aparelhos ou
+            #         eletrodomesticos.
+            #
+            # 📊 O Atlas ja tinha VISTO esta tela OITO VEZES desde 28/07. Ela
+            # nunca virou passo, porque a ponte entre "o Atlas sabe" e "o
+            # corredor sabe" so existe para drift cosmetico -- tela nova de
+            # menu e classificada `structural` e vai para alerta, nao para o
+            # Alfaiate. `playbook_overlays` tem ZERO linhas, em todas as
+            # corretoras.
+            #
+            # Sem passo, a tela ia ao cerebro, que respondeu 459 tokens de
+            # prosa numa tela de dois botoes -- reprovado por uma regua de 400
+            # caracteres que o prompt nunca lhe contou. A Allianz esperou 248
+            # segundos e encerrou por inatividade.
+            #
+            # A corretora aciona para a CASA do segurado. Eletrodomestico e
+            # outro servico, e a propria tela avisa que nao esta disponivel.
+            "step": "tipo_de_reparo_eletrico",
+            "anchor": r"apenas para reparos el[ée]tricos|reparo el[ée]trico para resid[êe]ncia",
+            "reply": "1",
+            "notes": "1-reparo na residencia 2-aparelhos/eletrodomesticos. "
+                     "📊 8 ocorrencias no acervo desde 28/07/2026.",
+        },
+        {
+            # A tela seguinte, também medida no acervo. Vem logo depois do
+            # `tipo_de_reparo_eletrico` e também não existia.
+            #
+            #   O que aconteceu?
+            #   *1 -* Casa inteira ou parcial sem energia
+            #   *2 -* Curto circuito ...
+            #
+            # 🔴 SEM `reply` FIXO. Esta escolhe o TIPO DE DEFEITO: tecla errada
+            # abre chamado errado. Vai como slot, preenchido do caso — igual a
+            # `profissional_opcao`. Uma constante aqui seria pior que o
+            # silencio que ela conserta.
+            "step": "o_que_aconteceu",
+            "anchor": r"o que aconteceu\?",
+            "reply": "{problema_eletrico_opcao}",
+            "requires": ["problema_eletrico_opcao"],
+            "notes": "1-Casa inteira/parcial sem energia 2-Curto circuito 3-outros. "
+                     "Vem do caso, nunca fixo.",
+        },
+        {
+            # "E para finalizar: descreva detalhadamente o que aconteceu"
+            "step": "descricao_detalhada",
+            "anchor": r"descreva detalhadamente",
+            "reply": "{problema_descricao}",
+            "notes": "texto livre; o slot ja e coletado pela atendente",
+        },
+        {
             "step": "complemento_referencia",
             "anchor": r"informe o complemento do endere[çc]o",
             "reply": "{ponto_referencia}",
@@ -313,7 +378,7 @@ ALLIANZ_RESIDENCIAL_WHATSAPP_V1: Dict[str, Any] = {
             "anchor": (r"termo de privacidade|dicas importantes para conseguir te atender|"
                        r"fique tranquilo, vamos te ajudar|vale lembrar:|voc[êe] sabia\?|"
                        r"op[çc][ãa]o inv[áa]lida|vamos tentar novamente|"
-                       r"oferece diversos tipos de seguro|"
+                       r"oferece diversos tipos de seguro|disjuntor est[áa] na posi[çc][ãa]o|\*dica:\*|"
                        r"precisando estamos por aqui|agradece o seu contato"),
             "reply": "",
             "noop": True,

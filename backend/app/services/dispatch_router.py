@@ -194,6 +194,23 @@ async def _support_alert_seguro(company_id: str, session: Dict[str, Any], resumo
         logger.warning("[DISPATCH ROUTER] alerta de falha de aviso nao saiu")
 
 
+# 🔴 A régua que o prompt nunca contou ao modelo.
+#
+# `guard_human_phase_reply` reprova acima de 400 caracteres
+# (`insurer_dispatch_service.py:1843`). O prompt do cérebro nunca mencionou
+# esse teto. 📊 Em 18/08 o modelo devolveu 459 e 297 tokens de prosa numa tela
+# de menu de dois botões — resposta CERTA no conteúdo, reprovada na forma, por
+# uma regra que ele não tinha como conhecer.
+#
+# Régua secreta não é rigor: é armadilha. Esta frase entra na retentativa.
+_PEDIDO_DE_ENCURTAR = (
+    "ATENCAO: sua resposta anterior foi RECUSADA por ser longa demais. "
+    "A URA espera o NUMERO da opcao ou o rotulo curto do botao. "
+    "Responda com no maximo 200 caracteres. Nao explique sua escolha, "
+    "nao cumprimente, nao justifique — so a resposta."
+)
+
+
 async def _registrar_fala_ao_cliente(company_id: str, client_phone: str,
                                      kind: str, resumo: str) -> None:
     """Deixa RASTRO de tudo que o motor diz ao segurado.
@@ -1352,8 +1369,44 @@ async def try_route_insurer_inbound(
             retentou = bool(session.get("retentou_redacao"))
             if motivo in MOTIVOS_DE_REDACAO and not retentou:
                 session["retentou_redacao"] = True
+                # 🔴 A RETENTATIVA AGORA ACONTECE — 18/08/2026.
+                #
+                # Este bloco marcava a bandeira, escrevia no log "uma nova
+                # tentativa" e NÃO CHAMAVA NADA. O turno terminava em silêncio.
+                # O modelo só voltaria a falar quando chegasse mensagem nova —
+                # ou 30s depois, pelo Sentinela.
+                #
+                # 📊 Foi o que produziu o "travou" de 18/08: o cérebro
+                # respondeu 459 tokens de prosa, o guarda reprovou por
+                # `too_long` (régua de 400 caracteres), o log prometeu uma
+                # nova tentativa, e a Allianz esperou 248 segundos até
+                # encerrar por inatividade.
+                #
+                # Promessa em log é a forma mais barata de mentir para quem
+                # investiga: parece que o sistema tentou.
                 logger.info("[DISPATCH ROUTER] recusa de REDACAO (%s) — "
-                            "uma nova tentativa, sem gastar chance", motivo)
+                            "REFAZENDO a resposta neste mesmo turno", motivo)
+                try:
+                    draft2 = await human_reply_provider(
+                        session, tela + chr(10) * 2 + _PEDIDO_DE_ENCURTAR)
+                except Exception as e:  # noqa: BLE001
+                    logger.error("[DISPATCH ROUTER] retentativa falhou: %s",
+                                 type(e).__name__)
+                    draft2 = None
+                v2 = guard_human_phase_reply(str(draft2 or ""), session,
+                                             insurer_message=tela)
+                if v2.get("ok"):
+                    session = reply_human_phase(session, v2["reply"],
+                                                sender=send_to_insurer)
+                    session["human_phase_guard_fails"] = 0
+                    logger.info("[DISPATCH ROUTER] retentativa ACEITA")
+                    await save_active_dispatch(company_id, from_phone, session)
+                    return session
+                # A retentativa também falhou: agora sim conta como recusa.
+                fails = int(session.get("human_phase_guard_fails") or 0) + 1
+                session["human_phase_guard_fails"] = fails
+                logger.error("[DISPATCH ROUTER] retentativa TAMBEM recusada (%s) "
+                             "— %s/2", v2.get("reason"), fails)
             else:
                 # A MARCA NÃO SE APAGA AQUI. Este era um defeito meu, pego pelo
                 # teste: zerar `retentou_redacao` na FALHA fazia o ciclo se

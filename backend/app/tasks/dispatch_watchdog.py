@@ -134,17 +134,36 @@ def diagnose(session: Dict[str, Any]) -> Optional[str]:
     return None
 
 
-async def _support_alert(company_id: str, text: str, wa, integration) -> None:
+async def _support_alert(company_id: str, text: str, wa, integration) -> bool:
+    """Avisa o suporte. Devolve SE o aviso saiu — não presume que saiu.
+
+    🔴 Devolvia `None` e engolia tudo. Quem chamava gravava `dossier_sent=True`
+    logo depois, incondicionalmente, e o feed da corretora anunciava "Dossiê
+    entregue à equipe". 📊 Às 02:01:25 de 18/08 foi exatamente isso: dossiê que
+    ninguém recebeu, anunciado como entregue.
+
+    O `try/except` continua — alerta que falha não pode derrubar o Vigia. O que
+    muda é que a falha agora tem quem a conte.
+    """
     try:
         from app.services.dispatch_router import _support_contact
 
         contact = await _support_contact(company_id)
-        if contact and integration:
-            wa.send_message(contact, text, integration)
-        else:
-            logger.warning(f"[VIGIA] sem contato de suporte p/ company {company_id}: {text[:120]}")
+        if not contact:
+            logger.warning("[VIGIA] sem contato de suporte p/ company %s: %s",
+                           company_id, text[:120])
+            return False
+        if not integration:
+            logger.error(
+                "[VIGIA] ❌ contato de suporte existe mas NAO ha canal de saida "
+                "para a empresa %s — o aviso NAO foi entregue: %s",
+                company_id, text[:120])
+            return False
+        wa.send_message(contact, text, integration)
+        return True
     except Exception as e:  # noqa: BLE001
-        logger.error(f"[VIGIA] alerta falhou: {type(e).__name__}")
+        logger.error("[VIGIA] ❌ alerta falhou (%s) — NAO entregue", type(e).__name__)
+        return False
 
 
 async def _sentinela_recover(
@@ -163,17 +182,62 @@ async def _sentinela_recover(
 
     if attempts < MAX_SENTINELA_ATTEMPTS:
         reply = await _adaptive_reply(company_id, session, insurer_text)
-        verdict = guard_human_phase_reply(reply or "", session) if reply else {"ok": False}
+
+        # 🔴 O GUARDA PRECISA VER A TELA — 18/08/2026.
+        #
+        # Era `guard_human_phase_reply(reply or "", session)`, SEM
+        # `insurer_message`. O parâmetro nasceu no commit f408390, que atualizou
+        # o roteador (`dispatch_router.py:1294`) e esqueceu este ponto de
+        # chamada. Nenhum teste comparava os dois.
+        #
+        # A própria docstring do guarda avisa: sem a tela, o silêncio é
+        # recusado — falha fechada. Resultado medido: o cérebro quis (com
+        # razão) calar diante de "A Allianz agradece o seu contato", e o guarda
+        # foi obrigado a tratar isso como recusa. O `needs_human` das 02:01 era
+        # FALSO.
+        verdict = (guard_human_phase_reply(reply or "", session,
+                                           insurer_message=insurer_text)
+                   if reply else {"ok": False})
         if reply and verdict.get("ok", False):
+            # 🔴 ENVIAR PRIMEIRO, GRAVAR DEPOIS — 18/08/2026.
+            #
+            # 📊 A ordem invertida produziu o pior tipo de mentira que este
+            # produto sabe contar. Às 01:52:21 o Sentinela escreveu no
+            # transcript que respondeu "1" à Allianz. A resposta estava CERTA.
+            # O envio caiu em `integration=None`, a exceção foi engolida pelo
+            # `except` abaixo, e a função devolveu "recovered".
+            #
+            # O painel dizia "respondi 1". A Allianz encerrou por inatividade
+            # 248 segundos depois, jurando que ninguém falou. As duas coisas
+            # eram verdade.
+            #
+            # Transcript é registro do que ACONTECEU, não do que se pretendia.
+            if integration is None:
+                # Falhar ALTO. Antes isto era indistinguível de sucesso.
+                logger.error(
+                    "[SENTINELA] ❌ sem canal de saída para a empresa %s — a "
+                    "resposta %r NÃO foi enviada. A corretora não tem "
+                    "integração de plataforma ativa (só o observador, que por "
+                    "regra não envia).", company_id, reply[:40])
+                session["sentinela_attempts"] = attempts + 1
+                session["ultimo_erro_de_envio"] = "sem_canal_de_saida"
+                return "sem_canal"
+            try:
+                wa.send_message(insurer_phone, reply, integration)
+            except Exception as e:  # noqa: BLE001
+                # 📊 Antes: `logger.error` e seguia devolvendo "recovered".
+                logger.error("[SENTINELA] ❌ envio falhou (%s) — a resposta %r "
+                             "NAO foi para a seguradora", type(e).__name__, reply[:40])
+                session["sentinela_attempts"] = attempts + 1
+                session["ultimo_erro_de_envio"] = type(e).__name__
+                return "envio_falhou"
+
+            # Só agora é verdade.
             session["sentinela_attempts"] = attempts + 1
             session.setdefault("transcript", []).append(
                 {"direction": "out", "text": reply, "at": datetime.now(timezone.utc).isoformat(),
                  "via": "sentinela"}
             )
-            try:
-                wa.send_message(insurer_phone, reply, integration)
-            except Exception as e:  # noqa: BLE001
-                logger.error(f"[SENTINELA] envio falhou: {type(e).__name__}")
             logger.info(f"[SENTINELA] recuperação {attempts + 1}/{MAX_SENTINELA_ATTEMPTS} "
                         f"case={session.get('case_id')}")
             return "recovered"
@@ -183,8 +247,16 @@ async def _sentinela_recover(
     session["state"] = "needs_human"
     session["reason"] = "sentinela_stall"
     dossier = build_handoff_dossier(session, reason="Travou na URA e a recuperação automática esgotou")
-    await _support_alert(company_id, dossier, wa, integration)
-    session["dossier_sent"] = True
+    # 🔴 `dossier_sent = True` era INCONDICIONAL — 18/08/2026.
+    #
+    # `_support_alert` engole a própria exceção e loga. Com `integration=None`
+    # o dossiê não saía, a flag dizia que saiu, e o feed de Atividades da
+    # corretora anunciava "Dossiê entregue à equipe". 📊 Foi o que apareceu às
+    # 02:01:25 para um dossiê que ninguém recebeu.
+    #
+    # Flag que mente é pior que flag ausente: ela encerra a investigação.
+    session["dossier_sent"] = bool(
+        await _support_alert(company_id, dossier, wa, integration))
     # SPEC-050 (auditoria): a ação mais importante do Vigia agora aparece no
     # feed de Atividades da corretora (antes era invisível fora dos logs).
     try:
