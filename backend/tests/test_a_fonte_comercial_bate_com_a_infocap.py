@@ -57,7 +57,7 @@ def check(nome, cond, extra=""):
 # `app.services.__init__`, que importa o SDK da OpenAI.
 _spec = importlib.util.spec_from_file_location(
     "fonte_infocap_isolada",
-    os.path.join(RAIZ, "app", "services", "comercial", "fonte_infocap.py"))
+    os.path.join(RAIZ, "app", "comercial", "fonte_infocap.py"))
 F = importlib.util.module_from_spec(_spec)
 sys.modules[_spec.name] = F
 _spec.loader.exec_module(F)

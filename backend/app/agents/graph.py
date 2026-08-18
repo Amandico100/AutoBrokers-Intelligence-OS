@@ -533,6 +533,28 @@ async def create_agent_graph(
         except Exception as e:  # noqa: BLE001
             logger.warning(f"[Graph] ⚠️ ferramenta de relatório não anexada: {e}")
 
+        # === SPEC-081 — o Raio-X Comercial e o Radar por vendedor ===
+        #
+        # Dentro do MESMO `if` fechado por papel: 📊 `_agent_role in (core, "",
+        # core(legado))`. O agente de ATENDIMENTO nunca recebe estas duas, e
+        # isso importa — elas leem a carteira inteira da corretora, e o
+        # atendimento fala com o segurado.
+        #
+        # 🔴 A inversão que as diferencia da `gerar_relatorio` acima: o modelo
+        # escolhe O QUE fazer e o PERÍODO; busca, cruzamento, cálculo e
+        # composição são código determinístico. 📊 A `gerar_relatorio` pede ao
+        # LLM que invente o conteúdo, e por isso nunca produziu um artifact:
+        # `select origin, count(*) from artifacts` → routine 40, chat ZERO.
+        #
+        # `try/except` como as demais: tool nova que quebre ao carregar vira
+        # aviso no log, não chat derrubado.
+        try:
+            from .tools.relatorios_comerciais import ferramentas_comerciais
+            tools.extend(ferramentas_comerciais(
+                company_id=str(company_id), supabase=supabase_client))
+        except Exception as e:  # noqa: BLE001
+            logger.warning(f"[Graph] ⚠️ relatórios comerciais não anexados: {e}")
+
         # SPEC-058 — a Factory pelo chat. "Queria que alguém acompanhasse os
         # boletos" devolve uma PROPOSTA do formato certo, nunca uma criação:
         # Auxiliar criado no meio de uma conversa vira coisa que ninguém pediu

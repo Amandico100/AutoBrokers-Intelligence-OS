@@ -39,7 +39,7 @@ def check(nome, cond, extra=""):
 
 _spec = importlib.util.spec_from_file_location(
     "calculos_isolado",
-    os.path.join(RAIZ, "app", "services", "comercial", "calculos.py"))
+    os.path.join(RAIZ, "app", "comercial", "calculos.py"))
 C = importlib.util.module_from_spec(_spec)
 sys.modules[_spec.name] = C
 _spec.loader.exec_module(C)
