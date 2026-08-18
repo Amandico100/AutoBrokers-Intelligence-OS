@@ -76,6 +76,30 @@ def _comercial():
 # `service.py:187` resolve `pedido || marca.visual_style || template`, e
 # forçar um tema aqui seria a mesma armadilha que trocaria o visual das peças
 # da Cobrança pelo outro lado.
+# 🔴 OS NOMES DE PROPRIEDADE SAO DO RENDERIZADOR, NAO MEUS.
+#
+# 📊 A primeira versao publicou tres pecas com SETE caixas escritas
+# "Sem dado no periodo" e ZERO barras -- capa sem o numero, linha do mes a
+# mes vazia, ranking vazio, tres roscas vazias. Todos os numeros estavam
+# calculados e corretos; eram descartados na renderizacao.
+#
+# A causa e que `blocks.py` e `charts.py` misturam idiomas, e eu passei
+# ingles em tudo:
+#
+#   cover    headline_value / headline_label   (nao `highlight`)
+#   kpis     item.since                        (nao `base`)
+#   chart    props.labels + series[].values    (nao `points` [{x,y}])
+#   ranking  items[].{rotulo, valor}           (nao `label`/`value`)
+#   donut    props.slices[].{rotulo, valor}    (nao `items`)
+#
+# 📊 A Cobranca acerta (`billing_collection.py:1262`) -- entao o contrato e
+# real e conhecido, so nao estava escrito em lugar nenhum.
+#
+# 🔴 E 32 assercoes verdes NAO pegaram: o teste conferia que o NOME do bloco
+# existia em `blocks.py`, nunca as propriedades dentro dele. Nome de bloco
+# certo com propriedade errada renderiza uma caixa vazia, e uma caixa vazia
+# num projetor e pior que bloco nenhum.
+
 _TEMPLATE_RAIO_X = "commercial.pipeline"
 _TEMPLATE_RADAR = "renewals.radar"
 
@@ -368,22 +392,23 @@ class RaioXComercialTool(BaseTool):
             {"block": "cover", "props": {
                 "eyebrow": "Raio-X Comercial",
                 "title": f"Produção e produtividade · {p.rotulo}",
-                "highlight": _reais(comp["comissao_atual"]),
-                "highlight_label": "comissão no período",
+                "headline_value": _reais(comp["comissao_atual"]),
+                "headline_label": "comissão no período",
+                "period": p.rotulo,
             }},
             {"block": "kpis", "props": {"title": "O período em seis números", "items": [
                 {"label": "Comissão", "value": _reais(comp["comissao_atual"]),
                  "delta": round(comp["comissao_delta_pct"], 1),
-                 "direction": seta, "base": f"contra {_reais(comp['comissao_anterior'])}"},
+                 "direction": seta, "since": f"contra {_reais(comp['comissao_anterior'])}"},
                 {"label": "Prêmio emitido", "value": _reais(comp["premio_atual"]),
                  "delta": round(comp["premio_delta_pct"], 1), "direction": seta},
                 {"label": "Apólices", "value": f"{cob.apolices_total}",
-                 "base": f"{int(comp['apolices_anterior'])} no período anterior"},
+                 "since": f"{int(comp['apolices_anterior'])} no período anterior"},
                 {"label": "Vendedores", "value": f"{len(ranking)}"},
                 {"label": "Negócio novo", "value": f"{nr['novo'][0]}",
-                 "base": _reais(nr["novo"][1])},
+                 "since": _reais(nr["novo"][1])},
                 {"label": "Renovação", "value": f"{nr['renovacao'][0]}",
-                 "base": _reais(nr["renovacao"][1])},
+                 "since": _reais(nr["renovacao"][1])},
             ]}},
         ]
 
@@ -397,8 +422,9 @@ class RaioXComercialTool(BaseTool):
         if len(serie) >= 2:
             blocos.append({"block": "chart", "props": {
                 "eyebrow": "Ritmo", "title": "Comissão mês a mês",
+                "labels": [m for m, _n, _c in serie],
                 "series": [{"name": "Comissão",
-                            "points": [{"x": m, "y": round(c, 2)} for m, _n, c in serie]}],
+                            "values": [round(c, 2) for _m, _n, c in serie]}],
                 "value_type": "currency_short",
             }})
 
@@ -406,7 +432,8 @@ class RaioXComercialTool(BaseTool):
             blocos.append({"block": "ranking", "props": {
                 "eyebrow": "Quem vende", "title": "Vendedores por comissão gerada",
                 "value_type": "currency_short",
-                "items": [{"label": x.nome, "value": round(x.comissao, 2)}
+                "items": [{"rotulo": _encurtar(x.nome, 22),
+                           "valor": round(x.comissao, 2)}
                           for x in ranking[:12]],
             }})
 
@@ -434,15 +461,15 @@ class RaioXComercialTool(BaseTool):
         if por_ramo:
             direita = [{"block": "donut", "props": {
                 "title": "Comissão por ramo", "value_type": "currency_short",
-                "items": [{"label": r, "value": round(c, 2)} for r, _n, c in por_ramo],
+                "slices": [{"rotulo": r, "valor": round(c, 2)} for r, _n, c in por_ramo],
             }}]
         if direita:
             blocos.append({"block": "split", "props": {
                 "left": [{"block": "donut", "props": {
                     "title": "Novo contra renovação", "value_type": "currency_short",
-                    "items": [
-                        {"label": "Negócio novo", "value": round(nr["novo"][1], 2)},
-                        {"label": "Renovação", "value": round(nr["renovacao"][1], 2)},
+                    "slices": [
+                        {"rotulo": "Negócio novo", "valor": round(nr["novo"][1], 2)},
+                        {"rotulo": "Renovação", "valor": round(nr["renovacao"][1], 2)},
                     ]}}],
                 "right": direita,
             }})
@@ -620,14 +647,15 @@ class RadarDeRenovacoesTool(BaseTool):
             {"block": "cover", "props": {
                 "eyebrow": "Radar de Renovações",
                 "title": f"O que vence · {p.rotulo}",
-                "highlight": _reais(total),
-                "highlight_label": f"{len(venc)} apólices em risco",
+                "headline_value": _reais(total),
+                "headline_label": f"{len(venc)} apólices em risco",
+                "period": p.rotulo,
             }},
             {"block": "kpis", "props": {"title": "A janela", "items": [
                 {"label": "Prêmio em risco", "value": _reais(total)},
                 {"label": "Apólices", "value": f"{len(venc)}"},
                 {"label": "Vencem em 30 dias", "value": f"{len(urgentes)}",
-                 "base": _reais(sum(v.premio for v in urgentes))},
+                 "since": _reais(sum(v.premio for v in urgentes))},
                 {"label": "Vendedores envolvidos", "value": f"{len(por_vend)}"},
             ]}},
         ]
@@ -658,22 +686,23 @@ class RadarDeRenovacoesTool(BaseTool):
             blocos.append({"block": "ranking", "props": {
                 "eyebrow": "Concentração", "title": "Prêmio a vencer por vendedor",
                 "value_type": "currency_short",
-                "items": [{"label": _encurtar(n, 22), "value": round(pr, 2)}
+                "items": [{"rotulo": _encurtar(n, 22), "valor": round(pr, 2)}
                           for n, _a, pr, _d in por_vend[:12]],
             }})
 
         if faixas:
             blocos.append({"block": "chart", "props": {
                 "eyebrow": "Urgência", "title": "Prêmio por janela de vencimento",
+                "labels": [f for f, _n, _pr in faixas],
                 "series": [{"name": "Prêmio",
-                            "points": [{"x": f, "y": round(pr, 2)} for f, _n, pr in faixas]}],
+                            "values": [round(pr, 2) for _f, _n, pr in faixas]}],
                 "value_type": "currency_short",
             }})
 
         if por_ramo:
             blocos.append({"block": "donut", "props": {
                 "title": "A vencer por ramo", "value_type": "currency_short",
-                "items": [{"label": r, "value": round(c, 2)} for r, _n, c in por_ramo],
+                "slices": [{"rotulo": r, "valor": round(c, 2)} for r, _n, c in por_ramo],
             }})
 
         proximos = sorted(venc, key=lambda v: v.dias_a_vencer)[:15]

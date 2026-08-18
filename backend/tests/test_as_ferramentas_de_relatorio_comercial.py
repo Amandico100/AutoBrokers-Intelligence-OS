@@ -300,6 +300,42 @@ for _titulo, _html in _html_das_ultimas(2):
     rot = str(_titulo)[:26]
     check(f'{rot}: a peca tem corpo (>15 KB)', len(_html) > 15000, len(_html))
     check(f'{rot}: tem grafico SVG renderizado', '<svg' in _html)
+
+    # 🔴 A ASSERCAO QUE FALTAVA, e que teria poupado tres pecas publicadas.
+    #
+    # 📊 A primeira versao saiu com SETE caixas 'Sem dado no periodo' e ZERO
+    # barras. Todos os numeros estavam calculados e certos; morriam na
+    # renderizacao, porque eu passava `highlight` onde o bloco le
+    # `headline_value`, `points` onde ele le `values`, `label/value` onde ele
+    # le `rotulo/valor`.
+    #
+    # E 32 assercoes verdes nao pegaram: elas conferiam que o NOME do bloco
+    # existia em `blocks.py`, nunca as propriedades DENTRO dele. Nome certo com
+    # propriedade errada renderiza uma caixa vazia -- e caixa vazia num
+    # projetor e pior que bloco nenhum.
+    _vazias = _html.count('Sem dado')
+    check(f'{rot}: ZERO caixas "Sem dado no periodo"', _vazias == 0, _vazias)
+
+    # Geometria de verdade: barra de ranking (`rect`) ou fatia de rosca
+    # (`path` com `d=`). Contar `<svg` nao basta -- a caixa vazia tambem tem
+    # um `<svg` de icone dentro.
+    # Cada elemento com o SEU detector. `<svg` sozinho nao basta: a caixa
+    # 'Sem dado' tambem tem um `<svg` de icone dentro.
+    _ranking = _html.count('ab-rank-row')      # o ranking e HTML+CSS
+    _rosca = _html.count('stroke-dasharray')   # a rosca e SVG
+    _kpi = _html.count('ab-kpi')
+    _tabela = _html.count('<tr')
+    check(f'{rot}: o RANKING tem linhas', _ranking >= 5, _ranking)
+    check(f'{rot}: a ROSCA tem fatias', _rosca >= 2, _rosca)
+    check(f'{rot}: os CARTOES de KPI existem', _kpi >= 4, _kpi)
+    check(f'{rot}: as TABELAS tem linhas', _tabela >= 5, _tabela)
+    check(f'{rot}: a CAPA traz o numero de destaque',
+          ' mi' in _html or ' mil' in _html,
+          'headline_value vazio deixa a capa sem o numero')
+
+    # CONTROLE: o contador de caixas vazias CONSEGUE contar.
+    check(f'{rot}: CONTROLE: o detector de caixa vazia funciona',
+          'x Sem dado y'.count('Sem dado') == 1)
     check(f'{rot}: traz o nome da corretora', 'Resulta' in _html)
     check(f'{rot}: traz a hora da consulta', 'consultado em' in _html)
     # 🔴 PII: procura o PADRAO, nao a palavra. O rodape honesto diz
