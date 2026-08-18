@@ -176,8 +176,16 @@ def cobertura(apolices: Sequence, mapa: Dict[str, object]) -> Cobertura:
     return Cobertura(total, com, ct, ca)
 
 
-def por_dimensao(apolices: Sequence, campo: str, teto: int = 0) -> List[Tuple[str, int, float]]:
-    """Agrupa por seguradora ou ramo. Devolve `(rótulo, apólices, comissão)`.
+def por_dimensao(apolices: Sequence, campo: str, teto: int = 0,
+                 campo_valor: str = "comissao") -> List[Tuple[str, int, float]]:
+    """Agrupa por seguradora ou ramo. Devolve `(rótulo, itens, valor)`.
+
+    🔴 `campo_valor` existe porque as duas coisas que passam por aqui somam
+    grandezas diferentes: a produção soma COMISSÃO, o radar de vencimentos
+    soma PRÊMIO. 📊 A primeira versão fixava `.comissao` e explodiu com
+    `AttributeError: Vencimento object has no attribute comissao` — no
+    primeiro Radar de verdade, porque o teste unitário só tinha exercitado a
+    forma da apólice.
 
     🔴 Normaliza o rótulo. 📊 A base tem `Allianz`, `allianz`, `ALLIANZ` e
     `Allianz Seguros` contando separado — 56 valores crus que viram ~30. Uma
@@ -193,7 +201,7 @@ def por_dimensao(apolices: Sequence, campo: str, teto: int = 0) -> List[Tuple[st
         rotulo_bonito.setdefault(chave, cru)
         linha = acc.setdefault(chave, [0.0, 0.0])
         linha[0] += 1
-        linha[1] += a.comissao
+        linha[1] += float(getattr(a, campo_valor, 0.0) or 0.0)
     saida = [(rotulo_bonito[k], int(v[0]), v[1]) for k, v in acc.items()]
     saida.sort(key=lambda x: (-x[2], x[0]))
     return saida[:teto] if teto else saida

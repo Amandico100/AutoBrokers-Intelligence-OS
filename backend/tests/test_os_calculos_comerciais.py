@@ -155,6 +155,37 @@ check("campo vazio vira um rotulo visivel, nao some",
 check("CONTROLE: e o rotulo sai com acento, como se exibe",
       _vazio[0][0] == "(não informado)", _vazio[0][0])
 
+# 🔴 A LACUNA QUE O PRIMEIRO RADAR DE VERDADE EXPOS.
+#
+# Este bloco so exercitava `Ap`, que tem `.comissao`. O `Vencimento` tem
+# `.premio` — e `por_dimensao` fixava o nome do campo. Estourou com
+# `AttributeError` no primeiro Radar real, depois de 78 assercoes verdes.
+#
+# Teste que so conhece uma forma de entrada nao cobre a segunda.
+_venc = [Ve("1", 1000, 5, "ANA"), Ve("2", 3000, 9, "BRUNO")]
+for _v in _venc:
+    object.__setattr__(_v, "ramo", "RESI") if False else None
+
+
+@dataclass(frozen=True)
+class VeComRamo:
+    nosnum: str
+    premio: float
+    dias_a_vencer: int
+    produtor: str
+    ramo: str = "RESI"
+
+
+_vr = [VeComRamo("1", 1000, 5, "ANA"), VeComRamo("2", 3000, 9, "B", ramo="AUTO")]
+_d2 = C.por_dimensao(_vr, "ramo", campo_valor="premio")
+check("por_dimensao soma PREMIO quando pedido (a forma do Vencimento)",
+      sorted(x[2] for x in _d2) == [1000.0, 3000.0], _d2)
+check("CONTROLE: e continua somando COMISSAO por padrao (a forma da Apolice)",
+      C.por_dimensao(apolices, "ramo")[0][2] == 5000.0,
+      C.por_dimensao(apolices, "ramo"))
+check("CONTROLE: campo que nao existe vira zero, nao AttributeError",
+      C.por_dimensao(_vr, "ramo", campo_valor="nao_existe")[0][2] == 0.0)
+
 # ==========================================================================
 print("\n[4] Novo x renovacao, serie e projecao")
 # ==========================================================================

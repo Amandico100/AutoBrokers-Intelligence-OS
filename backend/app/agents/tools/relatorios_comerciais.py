@@ -582,7 +582,7 @@ class RadarDeRenovacoesTool(BaseTool):
 
         por_vend = calc.por_vendedor_no_radar(venc)
         faixas = calc.faixas_de_urgencia(venc)
-        por_ramo = calc.por_dimensao(venc, "ramo", teto=8)
+        por_ramo = calc.por_dimensao(venc, "ramo", teto=8, campo_valor="premio")
         total = sum(v.premio for v in venc)
         agora = datetime.now().strftime("%d/%m/%Y às %H:%M")
 
