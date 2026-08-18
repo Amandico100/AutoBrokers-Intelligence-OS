@@ -6352,3 +6352,139 @@ descarte, num bucket que só cresce. Não é um risco de vazamento — é um ris
 **guarda indevida**: quando alguém perguntar por que a corretora ainda tem o
 boleto de um segurado que saiu da carteira em julho, a resposta hoje é "porque
 ninguém apagou".
+
+---
+
+## P-215 · 🔴 `editar()` grava uma paleta que DERRUBA o render, e ninguém viu
+
+**Aberta em:** 18/08/2026 (SPEC-081 §Bloco E) · **Dono:** 🤖 execução
+**Contornada no dado, NÃO corrigida no código.**
+
+📊 Medido nesta máquina, antes de qualquer escrita em produção:
+
+```text
+render_html(brand=<paleta como capture.editar() a grava>)
+    -> KeyError: 'typography'
+```
+
+A cadeia, arquivo por arquivo:
+
+```text
+capture.py:508-513   editar() grava a paleta com SEIS chaves:
+                     primary · accent · scales · themes · audit · origin
+render.py:41-42      if paleta.get("themes"): return paleta   <- verbatim
+system.py:298        for chave, valor in sistema["typography"].items()
+```
+
+`_sistema_da_marca` documenta o contrato: *"o snapshot já traz o sistema
+pronto"*. Quem o descumpre é `editar()` — e `_propor_visual` (capture.py:335),
+que monta a mesma paleta de seis chaves na captura automática.
+
+**Por que nunca apareceu:** 📊 até 18/08 os 40 artifacts em produção eram
+`is_fallback=true`, e o ramo de fallback (`capture.py:556`) devolve
+`"palette": sistema` — a saída INTEIRA de `build_design_system`, com
+`typography`. **O defeito só é alcançável por uma corretora que tem marca, e
+não havia nenhuma.** A primeira a ter foi a Resulta, na véspera de uma
+apresentação do Auxiliar de Cobrança.
+
+**O contorno aplicado:** `backend/scripts/instalar_marca_resulta.py` grava a
+paleta com as SETE chaves. O dado no banco está correto hoje.
+
+**Por que continua pendente:** o contorno é do dado, não do código. 🔴 **Uma
+chamada a `capture.editar()` ou a `capture.capturar()` pela tela da corretora
+regrava a paleta de seis chaves e volta a derrubar o render de todas as peças
+daquela corretora.** `capture.py` está congelado pela SPEC-081 §G.1 até a
+apresentação; depois dela, o conserto é de uma linha em `capture.py:508-513`
+(acrescentar `"typography": sistema["typography"]`), com o mesmo acréscimo em
+`_propor_visual`.
+
+**O que destrava:** 🤖 passada a apresentação, descongelar `capture.py` e pôr a
+sétima chave nos dois lugares. Guardado por
+`npm run test:resulta-tem-marca` (asserção "_paleta_completa inclui
+'typography'" + o CONTROLE que prova o `KeyError`).
+
+**O que custa esquecer:** a próxima corretora que montar a identidade pela tela
+recebe todas as peças quebradas, com exceção, e o defeito parecerá vir do
+Artifact Hub — que está certo.
+
+---
+
+## P-216 · 🟡 O painel de marca salvou seis campos VAZIOS e os congelou
+
+**Aberta em:** 18/08/2026 · **Dono:** 🤖 execução
+
+📊 Medido em 18/08/2026 (produção, Resulta):
+
+```sql
+select field_path, human_edited, source_detail from brand_field_provenance
+ where company_id = '04b5cdbc-04cd-4ddf-8e4b-f43efb062fab';
+-- 11 linhas human_edited=true, "editado no painel da corretora", 17/08
+-- entre elas: tagline · legal_name · susep_code · mission · about_md ·
+--             service_area
+```
+
+E os valores desses seis campos em `brand_profiles` são **NULL ou vazios**.
+
+A corretora abriu a tela em 17/08 e salvou o formulário em branco.
+`capture.editar()` (capture.py:521-533) grava procedência `human_edited=true`
+para **todo** campo do patch, sem olhar se veio valor — e `_protegidos`
+(capture.py:118) faz a recaptura **pular** todo campo assim marcado.
+
+**Resultado:** aqueles seis campos estão permanentemente invisíveis para a
+captura automática. O site da Resulta pode ter tagline e SUSEP; o robô nunca
+mais vai buscá-los.
+
+**O que destrava:** 🤖 `editar()` só deve marcar `human_edited` para campo com
+valor não vazio — "apaguei de propósito" é uma decisão diferente de "não
+preenchi", e hoje as duas gravam a mesma linha. Enquanto não, dá para soltar
+caso a caso apagando a linha de procedência.
+
+**O que custa esquecer:** a corretora nunca entende por que a captura "não acha
+nada" justamente nos campos que ela deixou em branco esperando que o robô
+preenchesse.
+
+---
+
+## P-217 · 🟢 A logo mora em `storage_ref`, que promete um caminho de bucket
+
+**Aberta em:** 18/08/2026 (SPEC-081 §E.2, D9) · **Dono:** 🤖 execução, sem pressa
+
+📊 `brand_assets.storage_ref` é `text NOT NULL` e o comentário da migration
+(`20260725_05:43`) diz *"caminho canônico bucket/path (SPEC-054)"*. O que está
+gravado lá para a Resulta é um data URI de 6.282 caracteres.
+
+**A coluna já não guardava o que o nome promete antes desta SPEC:** 📊 nenhum
+código do repositório sobe logo para o MinIO, e `capture.py:300` grava ali a
+URL externa do site com o comentário *"reescrito ao subir p/ storage"* — uma
+reescrita nunca implementada. `render.py:70` aceita os três formatos
+(`data_uri` → `public_url` → `storage_ref`), então tudo funciona.
+
+**O que destrava:** 🤖 subir o asset ao bucket e passar a gravar
+`bucket/path`, OU renomear a coluna para o que ela de fato guarda. O
+CLAUDE.md §12.1 manda consertar o campo, não o texto.
+
+**O que custa esquecer:** 4,6 KB por corretora dentro de uma coluna de texto
+que entra em todo `select *` de perfil de marca. Hoje é irrelevante; com
+centenas de corretoras, não.
+
+---
+
+## P-218 · 🟡 SUSEP, razão social e tagline da Resulta seguem em branco de propósito
+
+**Aberta em:** 18/08/2026 (SPEC-081 §Bloco E) · **Dono:** 🧑 Founder
+
+📊 `backend/tools/gerar_visual_acceptance_pack.py:62-96` traz
+`susep_code="20.2185.4"`, `legal_name="Resulta Corretora de Seguros Ltda."` e
+uma tagline. 💭 São valores de um pack de **aceite visual** — nunca foram
+conferidos com a corretora.
+
+O §Bloco E **não os gravou**. 📊 `blocks.py:382-383` imprime o SUSEP no rodapé
+de **toda** peça: um número de registro não conferido, impresso num documento
+que vai ao cliente, é pior que rodapé sem SUSEP. O bloco é guardado por `if`,
+então o rodapé simplesmente omite.
+
+**O que destrava:** 🧑 o Founder confirmar os três valores com a Resulta. Depois
+disso é uma chamada de `editar()` ou três linhas no painel.
+
+**O que custa esquecer:** as peças saem com a marca certa e sem o registro
+profissional que dá autoridade ao documento.

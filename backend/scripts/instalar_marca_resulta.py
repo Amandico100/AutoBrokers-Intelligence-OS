@@ -163,6 +163,17 @@ LOGO_PADRAO = BACKEND / "tools" / "_resulta_logo.png"
 # `service.py:187` e sem avisar quem cuida do Auxiliar de Cobrança.
 VISUAL_STYLE = "aurora"
 
+# A assinatura que este script deixa em `brand_field_provenance.source_detail`,
+# e o único critério pelo qual o UNDO reconhece o que É dele.
+#
+# ⚠️ Isto não é enfeite. 📊 Em 18/08/2026, ANTES desta instalação, a Resulta já
+# tinha ONZE linhas de procedência `human_edited=true` gravadas em 17/08 pelo
+# painel da corretora ("editado no painel da corretora") — entre elas
+# `display_name`, `tagline`, `susep_code` e `legal_name`. Um UNDO que apagasse
+# por `field_path` apagaria decisões de uma pessoa que este script nunca viu.
+# Desfazer o próprio trabalho é obrigação; desfazer o dos outros é estrago.
+ASSINATURA = "instalar_marca_resulta.py -- cor medida na area de tinta do arquivo"
+
 # Campos que o `--undo` restaura. 📊 Lidos do banco de produção em 18/08/2026,
 # antes da primeira execução deste script:
 #   select capture_status, captured_at, completeness, is_published
@@ -473,6 +484,20 @@ def instalar(db, company_id: str, medida: dict, capture, system) -> None:
         print("    paleta completada com 'typography' "
               "(sem ela o render levanta KeyError)")
 
+    # `editar()` carimba `source_detail = 'editado no painel da corretora'`,
+    # que é verdade quando a edição vem da tela e mentira quando vem daqui.
+    # Reescrever com a ASSINATURA faz duas coisas: conta a origem certa a quem
+    # for auditar, e é o que permite ao UNDO reconhecer as SUAS linhas sem
+    # encostar nas onze que a corretora gravou pelo painel em 17/08.
+    (db.table("brand_field_provenance")
+     .update({"source_detail": ASSINATURA})
+     .eq("brand_profile_id", perfil["id"])
+     # Só os três que são desta instalação. `display_name`, quando entra, é
+     # cópia do cadastro da empresa e o UNDO não o desfaz — carimbá-lo daria
+     # ao UNDO permissão para apagar uma linha que ele não deve apagar.
+     .in_("field_path", ["palette", "logo_asset_id", "visual_style"])
+     .execute())
+
     # Estes três não são campos de marca, são estado da captura — por isso não
     # passam pelo `editar()`, que criaria linha de procedência para eles.
     # 📊 `capture_status` estava em `'capturing'` desde uma captura que nunca
@@ -502,17 +527,18 @@ def desinstalar(db, company_id: str) -> None:
     (db.table("brand_assets").update({"is_current": False})
      .eq("company_id", company_id).eq("kind", "logo_primary").execute())
 
-    # 🔴 A parte que o UNDO da SPEC esquecia. `editar()` marcou `palette`,
+    # 🔴 A parte que o UNDO da SPEC esquecia. A instalação marcou `palette`,
     # `logo_asset_id` e `visual_style` como `human_edited=True`, e
     # `capture.py:_protegidos` faz a recaptura PULAR todo campo assim marcado.
     # Sem apagar estas linhas, o UNDO deixaria a corretora num estado pior que
-    # o original: sem marca E incapaz de capturar uma.
+    # o original: sem marca E impedida de capturar uma.
+    #
+    # O filtro é por `source_detail = ASSINATURA`, nunca por `field_path`: só
+    # sai o que ESTE script escreveu. Ver o comentário de ASSINATURA.
     if pid:
         (db.table("brand_field_provenance").delete()
          .eq("brand_profile_id", pid)
-         .in_("field_path", ["palette", "logo_asset_id", "visual_style",
-                             "typography", "display_name"])
-         .eq("human_edited", True).execute())
+         .eq("source_detail", ASSINATURA).execute())
 
 
 # --------------------------------------------------------------------------
@@ -607,7 +633,7 @@ insert into public.brand_field_provenance
   (company_id, brand_profile_id, field_path, source_kind, source_detail,
    confidence, human_edited, human_edited_at, human_edited_by, captured_at)
 select {c}, bp.id, f.campo, 'human',
-       'instalar_marca_resulta.py -- cor medida na area de tinta do arquivo',
+       {_lit(ASSINATURA)},
        1.0, true, now(), null, now()
   from public.brand_profiles bp,
        (values ('palette'), ('logo_asset_id'), ('visual_style')) as f(campo)
@@ -673,10 +699,11 @@ update public.brand_assets set is_current = false
 --    `capture.py:_protegidos` PULAR o campo na recaptura. Sem isto o UNDO
 --    deixaria a corretora pior que no comeco: sem marca E impedida de
 --    capturar uma.
+--    O filtro e pela ASSINATURA e nao por `field_path`: 📊 a Resulta ja tinha
+--    11 linhas `human_edited` gravadas pelo painel em 17/08, e apagar por
+--    nome de campo levaria junto decisoes que nao sao deste script.
 delete from public.brand_field_provenance
- where human_edited = true
-   and field_path in ('palette', 'logo_asset_id', 'visual_style',
-                      'typography', 'display_name')
+ where source_detail = {_lit(ASSINATURA)}
    and brand_profile_id in (select id from public.brand_profiles
                              where company_id = {c});
 """
