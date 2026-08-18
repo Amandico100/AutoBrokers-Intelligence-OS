@@ -742,6 +742,18 @@ def ferramentas_comerciais(*, company_id: Optional[str], supabase: Any) -> List[
     """As duas tools, ou lista vazia. Nunca levanta na montagem do grafo."""
     if not company_id or supabase is None:
         return []
+    # 🔴 DESEMBRULHA POR CONTA PROPRIA — 18/08/2026.
+    #
+    # O grafo ja faz esse unwrap na linha 266 e passa o cliente certo. Isto
+    # aqui e cinto e suspensorio: 📊 a primeira versao recebeu o INVOLUCRO e
+    # morreu com `AttributeError: no attribute table` na frente do Founder,
+    # depois de 67 assercoes verdes — porque o teste construia o cliente com
+    # `create_client()`, que ja vem desembrulhado. O teste exercitava uma
+    # forma que o grafo NUNCA passa.
+    #
+    # Uma linha aqui faz a tool funcionar com qualquer um dos dois, e tira do
+    # proximo chamador a obrigacao de saber disso.
+    supabase = getattr(supabase, "client", supabase)
     return [
         RaioXComercialTool(company_id=str(company_id), supabase=supabase),
         RadarDeRenovacoesTool(company_id=str(company_id), supabase=supabase),

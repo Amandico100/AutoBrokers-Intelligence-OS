@@ -321,5 +321,8 @@ def ferramenta_de_relatorio(*, company_id: Optional[str], supabase: Any,
                             work_run_id: Optional[str] = None) -> list[BaseTool]:
     if not company_id or supabase is None:
         return []
+    # 🔴 Mesmo cinto e suspensorio das ferramentas comerciais: o grafo passa
+    # um INVOLUCRO com `.client` dentro, e as tools usam `.table()` direto.
+    supabase = getattr(supabase, "client", supabase)
     return [GerarRelatorioTool(company_id=company_id, supabase=supabase,
                                user_id=user_id, work_run_id=work_run_id)]

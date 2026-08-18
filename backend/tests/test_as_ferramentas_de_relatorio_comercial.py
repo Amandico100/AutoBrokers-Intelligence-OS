@@ -255,6 +255,44 @@ _sp.loader.exec_module(_rc)
 RaioXComercialTool = _rc.RaioXComercialTool
 RadarDeRenovacoesTool = _rc.RadarDeRenovacoesTool
 
+# 🔴 O DEFEITO QUE ESTE TESTE NAO PEGOU, E AGORA PEGA — 18/08/2026.
+#
+# As tools falharam na frente do Founder com
+#   AttributeError: 'SupabaseClient' object has no attribute 'table'
+# depois de 67 assercoes verdes.
+#
+# 📊 `graph.py:266` faz `real = getattr(supabase_client, 'client',
+# supabase_client)` e o comentario dele diz "tools usam .table()
+# diretamente" — ou seja, o que chega no grafo e um INVOLUCRO. Eu passei o
+# involucro para as tools.
+#
+# E o teste nao viu porque construia o cliente com `create_client()`, que ja
+# vem DESEMBRULHADO. Ele exercitava uma forma que o grafo nunca passa.
+#
+# Agora exercita AS DUAS.
+
+class _Involucro:
+    """O que o grafo realmente entrega: um objeto com `.client` dentro."""
+
+    def __init__(self, real):
+        self.client = real
+
+
+for _rotulo, _cli in (('desembrulhado', cliente), ('INVOLUCRO (o do grafo)', _Involucro(cliente))):
+    _tools = _rc.ferramentas_comerciais(company_id=EMPRESA, supabase=_cli)
+    check(f'a fabrica devolve as duas tools com o cliente {_rotulo}',
+          len(_tools) == 2, len(_tools))
+    for _t in _tools:
+        check(f'{_t.name} sabe usar .table() com o cliente {_rotulo}',
+              hasattr(_t.supabase, 'table'),
+              'sem isto: AttributeError no primeiro uso real')
+
+# CONTROLE: o involucro REALMENTE nao tem `.table` — senao o teste acima
+# passaria sem provar nada.
+check('CONTROLE: o involucro cru nao tem .table (o defeito era real)',
+      not hasattr(_Involucro(cliente), 'table'))
+check('CONTROLE: e o cliente de dentro tem', hasattr(cliente, 'table'))
+
 raio = RaioXComercialTool(company_id=EMPRESA, supabase=cliente)
 resp = asyncio.run(raio._arun(periodo="2025"))
 check("o Raio-X devolveu RELATORIO_PRONTO", "RELATORIO_PRONTO" in resp, resp[:200])

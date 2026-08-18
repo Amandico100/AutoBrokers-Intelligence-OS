@@ -528,8 +528,18 @@ async def create_agent_graph(
     if company_id and supabase_client and str(_agent_role or "core").strip().lower() in ("core", "", "core(legado)"):
         try:
             from .tools.report_tool import ferramenta_de_relatorio
+            # 🔴 `real_supabase_client`, nao `supabase_client`. O que chega
+            # aqui e um INVOLUCRO com `.client` dentro — o unwrap da linha
+            # 266 existe exatamente por isso, e o comentario dele diz:
+            # "tools usam .table() diretamente".
+            #
+            # 📊 18/08/2026: passar o involucro produz
+            # `AttributeError: 'SupabaseClient' object has no attribute
+            # 'table'` no primeiro uso real. A `gerar_relatorio` carregava
+            # esse defeito desde sempre e ninguem viu, porque ela nunca
+            # chegou a executar (o `exige_async` faltava).
             tools.extend(ferramenta_de_relatorio(
-                company_id=str(company_id), supabase=supabase_client))
+                company_id=str(company_id), supabase=real_supabase_client))
         except Exception as e:  # noqa: BLE001
             logger.warning(f"[Graph] ⚠️ ferramenta de relatório não anexada: {e}")
 
@@ -551,7 +561,7 @@ async def create_agent_graph(
         try:
             from .tools.relatorios_comerciais import ferramentas_comerciais
             tools.extend(ferramentas_comerciais(
-                company_id=str(company_id), supabase=supabase_client))
+                company_id=str(company_id), supabase=real_supabase_client))
         except Exception as e:  # noqa: BLE001
             logger.warning(f"[Graph] ⚠️ relatórios comerciais não anexados: {e}")
 
