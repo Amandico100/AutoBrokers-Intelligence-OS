@@ -248,6 +248,34 @@ ALLIANZ_RESIDENCIAL_WHATSAPP_V1: Dict[str, Any] = {
             "notes": "📊 13 ocorrências: 1-Eletricista 2-Encanador 3-Desentupimento 4-Chaveiro 5-Voltar",
         },
         {
+            # 🔴 O PASSO QUE FALTAVA — acrescentado em 18/08/2026.
+            #
+            # 📊 Medido no acervo: a URA residencial manda esta tela DEZ vezes
+            # nas 24 sessões Allianz reais --
+            #
+            #     "E para quando precisa do *Encanador*?
+            #      *1 -* Agora  *2 -* Quero agendar  *3 -* Voltar"
+            #
+            # O passo existia SÓ no playbook de automóvel, e a âncora de lá
+            # (reboque|guincho|serviço|profissional) nao casa "*Eletricista*"
+            # nem "*Encanador*" — sao os nomes que a URA usa no residencial.
+            #
+            # Sem este passo a tela caia no cerebro adaptativo, que em modo
+            # TESTE recebe a regra "se a seguradora for CONFIRMAR/ABRIR o
+            # servico (agendar, ...), responda NAO_SEI". Ele lia a palavra
+            # "agendar" na propria tela e travava. Duas recusas e a sessao ia
+            # para `needs_human`.
+            #
+            # Ou seja: o teste falhava POR SER TESTE, num passo que em modo
+            # real passaria. A ancora agora aceita qualquer profissional.
+            "step": "quando",
+            "anchor": r"para quando precisa (?:do|da)\s*\*?(?:eletricista|encanador|chaveiro|"
+                      r"desentupimento|desentupidor|profissional|servi[çc]o|t[ée]cnico)",
+            "reply": "1",
+            "notes": "1-Agora 2-Quero agendar 3-Voltar. Urgencia e o default do "
+                     "corredor: quem escreve para a corretora quer agora.",
+        },
+        {
             "step": "complemento_referencia",
             "anchor": r"informe o complemento do endere[çc]o",
             "reply": "{ponto_referencia}",
@@ -260,6 +288,36 @@ ALLIANZ_RESIDENCIAL_WHATSAPP_V1: Dict[str, Any] = {
             "anchor": r"podemos confirmar o atendimento",
             "reply": "1",
             "notes": "1-Sim 2-Não, reiniciar 3/0-Sair",
+        },
+        {
+            # 🔴 TELAS QUE NAO PEDEM NADA — acrescentado em 18/08/2026.
+            #
+            # O playbook de AUTO ja tinha este passo, com o motivo escrito:
+            # "o adaptativo respondia 'Ciente, pode prosseguir' e quebrava o
+            # menu". O residencial nao tinha, e leva as MESMAS telas.
+            #
+            # 📊 Medido no acervo das 24 sessoes Allianz residenciais:
+            #     Termo de Privacidade ................. 31x
+            #     "Tenho algumas dicas importantes" .... 15x
+            #     "a Allianz oferece diversos tipos" ... 19x
+            #     "Opcao invalida." ....................  6x
+            #     "Vamos tentar novamente." ............  6x
+            #
+            # Nenhuma pede resposta. Responder qualquer coisa nelas empurra o
+            # menu para um estado que o corredor nao sabe ler.
+            #
+            # Fica DEPOIS da confirmacao final de proposito: `match_ura_step`
+            # percorre na ordem, e uma ancora larga como esta antes dela
+            # poderia engolir a tela que importa.
+            "step": "avisos_informativos",
+            "anchor": (r"termo de privacidade|dicas importantes para conseguir te atender|"
+                       r"fique tranquilo, vamos te ajudar|vale lembrar:|voc[êe] sabia\?|"
+                       r"op[çc][ãa]o inv[áa]lida|vamos tentar novamente|"
+                       r"oferece diversos tipos de seguro|"
+                       r"precisando estamos por aqui|agradece o seu contato"),
+            "reply": "",
+            "noop": True,
+            "notes": "mensagens informativas/erro da URA — NUNCA responder",
         },
     ],
     # Subserviços -> slots mínimos (do caso) antes de iniciar o acionamento.
