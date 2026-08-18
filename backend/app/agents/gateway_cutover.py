@@ -90,6 +90,12 @@ NOME_PARA_CHAVE = {
     "document_read": "research.document_read",
     "csv_analytics": "analytics.csv",
     "analisar_csv": "analytics.csv",
+    # 🔴 O nome REAL da tool no runtime e `request_human_agent` (human_handoff.py).
+    # Sem esta linha, `tool_invocations` ficava CEGA justamente para a
+    # ferramenta que mais precisava ser auditada: em 17/08 a consulta "zero
+    # entradas de handoff" nao provava nada, porque a tabela nunca conseguiria
+    # ter uma. Instrumento cego transforma medicao em palpite.
+    "request_human_agent": "support.human_handoff",
     "human_handoff": "support.human_handoff",
     "transferir_para_humano": "support.human_handoff",
     "control_plane_read": "operations.control_plane_read",

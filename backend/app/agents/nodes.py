@@ -27,6 +27,17 @@ logger = logging.getLogger(__name__)
 from app.core.constants import AGENT_CONTEXT_WINDOW_SIZE
 
 
+from app.agents.honestidade_do_handoff import (
+    FALHA_DO_HANDOFF,
+    _TOOLS_DE_HANDOFF,
+    guardar_a_verdade_do_handoff,
+)
+
+# As async-only de antes da declaracao `exige_async`. Nao viram uma lista
+# nova: sao as que ainda nao declararam, e a lista nao cresce mais.
+_TOOLS_SEMPRE_ASYNC = ("delegate_to_subagent", "infocap_policy_lookup",
+                       "insurer_dispatch", "portal_action")
+
 _INFOCAP_GENERIC_ERROR_MARKERS = (
     "erro tecnico",
     "erro técnico",
@@ -733,6 +744,27 @@ async def agent_node(state: AgentState, config: RunnableConfig, llm_with_tools,
             response = AIMessage(content=guarded)
         guarded_final = guarded or candidate
 
+    # 🔴 O FISCAL DA TRANSFERÊNCIA — 18/08/2026.
+    #
+    # Mesmo ponto e mesma forma do fiscal do InfoCap logo acima: determinístico,
+    # depois do modelo, só reescreve quando a resposta extrapola o que a
+    # ferramenta autorizou. Não é motor novo — é a segunda instância de um
+    # padrão que o produto já tem.
+    #
+    # 📊 Em 17/08 a atendente disse QUATRO vezes que tinha encaminhado o caso.
+    # Nenhuma vez encaminhou. `prompts.py:203` já proibia isso em português e
+    # já tinha falhado — prosa não conserta prosa. A frase agora só sobrevive
+    # se existir um `HANDOFF_OK` vindo da própria ferramenta.
+    if not has_tool_calls:
+        _texto_final = extract_text_from_content(getattr(response, "content", "") or "")
+        _honesto = guardar_a_verdade_do_handoff(_texto_final, state.get("messages") or [])
+        if _honesto.strip() != (_texto_final or "").strip():
+            logger.error("[Agent Node] 🛡️ resposta afirmava transferência sem handoff "
+                         "confirmado — reescrita")
+            response = AIMessage(content=_honesto)
+            if guarded_final:
+                guarded_final = _honesto
+
     result_update = {
         "messages": [response],
         "rag_chunks": state.get("rag_chunks", []),
@@ -1023,7 +1055,34 @@ async def tool_node(state: AgentState, tools: list) -> dict:
                     with registro:
                         # Tools async-only (caminho assíncrono real). InfoCap (SPEC-014 C-FIX-1)
                         # precisa do _arun: o _run é apenas um stub que sinaliza uso async.
-                        if tool_name in ("delegate_to_subagent", "infocap_policy_lookup", "insurer_dispatch", "portal_action") and hasattr(tool, "_arun"):
+                        #
+                        # 🔴 A LISTA ERA O DEFEITO — 18/08/2026.
+                        #
+                        # `request_human_agent` não estava nela. Caía no `else`,
+                        # chamava `_run`, e o `_run` da HumanHandoffTool levanta
+                        # RuntimeError de propósito — com uma docstring que
+                        # afirmava "o tool_node já força _arun". Nenhuma linha
+                        # de código fazia isso. Era um invariante escrito em
+                        # comentário e nunca implementado.
+                        #
+                        # 📊 Custou quatro transferências falsas numa tarde: a
+                        # atendente disse ao segurado "já encaminhei seu caso"
+                        # quatro vezes, e o suporte nunca foi avisado. A exceção
+                        # voltava ao modelo como `Erro: … o tool_node já força
+                        # _arun.` — jargão de encanamento, que o modelo descarta
+                        # antes de narrar o que o prompt mandou fazer.
+                        #
+                        # A autoridade agora é da FERRAMENTA, não desta lista: a
+                        # tool declara `exige_async` e o executor obedece. Uma
+                        # lista literal já esqueceu uma; ia esquecer a próxima.
+                        #
+                        # `hasattr(tool, "_arun")` NÃO serve de critério: o
+                        # `BaseTool` do LangChain sempre tem `_arun` (o default
+                        # delega para `_run` numa thread), então a condição
+                        # seria sempre verdadeira e mudaria todas as tools de
+                        # uma vez.
+                        if (getattr(tool, "exige_async", False)
+                                or tool_name in _TOOLS_SEMPRE_ASYNC) and hasattr(tool, "_arun"):
                             result = await tool._arun(**tool_args)
                         else:
                             # Execução via executor para não bloquear o event loop do FastAPI
@@ -1110,9 +1169,22 @@ async def tool_node(state: AgentState, tools: list) -> dict:
 
                 except Exception as e:
                     logger.error(f"[Tool Node] Erro na tool {tool_name}: {e}")
+                    # 🔴 Erro de ferramenta que o segurado ESTÁ ESPERANDO tem de
+                    # falar a língua do atendimento, não a do encanamento.
+                    #
+                    # `Erro: HumanHandoffTool exige execução assíncrona (_arun)`
+                    # foi o texto que o modelo recebeu quatro vezes em 17/08 —
+                    # e quatro vezes ele o descartou e disse ao cliente que
+                    # tinha encaminhado. Uma mensagem que não diz o que NÃO
+                    # aconteceu vira permissão para inventar que aconteceu.
+                    conteudo_do_erro = (
+                        FALHA_DO_HANDOFF.format(motivo=str(e)[:200])
+                        if tool_name in _TOOLS_DE_HANDOFF
+                        else f"Erro: {str(e)}"
+                    )
                     tool_results.append(
                         ToolMessage(
-                            content=f"Erro: {str(e)}",
+                            content=conteudo_do_erro,
                             tool_call_id=tool_call_id,
                             name=tool_name,
                         )

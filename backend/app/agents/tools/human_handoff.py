@@ -34,10 +34,13 @@ O que ela faz agora
 
 from __future__ import annotations
 
+import asyncio
 import logging
-from typing import Any, Dict, Optional, Type
+from typing import Any, ClassVar, Dict, Optional, Type
 
 from langchain_core.tools import BaseTool
+
+from app.agents.honestidade_do_handoff import FALHA_DO_HANDOFF, SUCESSO_DO_HANDOFF
 from pydantic import BaseModel, Field
 
 logger = logging.getLogger(__name__)
@@ -278,6 +281,18 @@ class HumanHandoffTool(BaseTool):
     A ferramenta avisa o suporte da corretora com um resumo do caso.
     """
 
+    # 🔴 A DECLARAÇÃO QUE FALTAVA — 18/08/2026.
+    #
+    # `_run` desta tool levanta RuntimeError de propósito, e a docstring dele
+    # afirmava "o tool_node já força _arun". Nenhuma linha fazia isso: a lista
+    # literal em `nodes.py` não continha `request_human_agent`, então toda
+    # chamada caía no caminho síncrono e estourava. 📊 Quatro transferências
+    # falsas numa tarde.
+    #
+    # Agora quem declara é a ferramenta, e o executor obedece. Uma lista no
+    # executor já esqueceu uma tool; ia esquecer a próxima.
+    exige_async: ClassVar[bool] = True
+
     name: str = "request_human_agent"
     description: str = """
     Transfere a conversa para um atendente humano da corretora e avisa o suporte
@@ -407,15 +422,26 @@ class HumanHandoffTool(BaseTool):
             from app.services.integration_service import get_integration_service
             from app.services.whatsapp_service import get_whatsapp_service
 
-            integ = get_integration_service(self.supabase_client).get_whatsapp_integration(company_id)
+            integ = await asyncio.to_thread(
+                get_integration_service(self.supabase_client).get_whatsapp_integration,
+                company_id)
             if not integ:
                 return {"avisado": False,
                         "motivo": "a corretora não tem canal de WhatsApp conectado para avisar"}
+
             # 🔴 `bloco_unico=True` -- o dossie e DOCUMENTO, nao conversa.
             # Sem isto ele passava pela humanizacao da atendente e chegava
             # picotado em cinco baloes (grupo TESTE SUPORTE HUMANO, 18/08).
-            get_whatsapp_service().send_message(
-                destino, self._montar_dossie(conversa, motivo), integ, bloco_unico=True)
+            #
+            # 🔴 E em THREAD: `_montar_dossie` lê `messages` do Supabase e
+            # `send_message` faz HTTP, os dois síncronos. Direto no event loop
+            # isso trava o FastAPI por alguns segundos a cada transferência.
+            def _montar_e_enviar():
+                get_whatsapp_service().send_message(
+                    destino, self._montar_dossie(conversa, motivo), integ,
+                    bloco_unico=True)
+
+            await asyncio.to_thread(_montar_e_enviar)
             logger.info("[HumanHandoff] dossiê enviado | empresa=%s | fonte=%s",
                         company_id, alvo.get("fonte"))
             return {"avisado": True, "motivo": ""}
@@ -437,13 +463,11 @@ class HumanHandoffTool(BaseTool):
             # não dá para transferir uma conversa que não sabemos qual é.
             logger.error("[HumanHandoff] faltou %s",
                          "session_id" if not session_id else "company_id")
-            return ("Não consegui transferir esta conversa agora. "
-                    "Vou continuar te ajudando por aqui — me diga o que precisa.")
+            return FALHA_DO_HANDOFF.format(motivo="sessao ou empresa ausente na chamada")
 
         if not self.supabase_client:
             logger.error("[HumanHandoff] supabase_client não configurado")
-            return ("Não consegui transferir esta conversa agora. "
-                    "Vou continuar te ajudando por aqui.")
+            return FALHA_DO_HANDOFF.format(motivo="banco indisponivel")
 
         # 1) marcar a conversa — SEMPRE com company_id (CLAUDE.md §7)
         conversa: Optional[Dict[str, Any]] = None
@@ -451,11 +475,25 @@ class HumanHandoffTool(BaseTool):
             dados: Dict[str, Any] = {"status": "HUMAN_REQUESTED"}
             if motivo:
                 dados["human_handoff_reason"] = motivo
-            res = (self.supabase_client.table("conversations")
-                   .update(dados)
-                   .eq("company_id", company_id)
-                   .eq("session_id", session_id)
-                   .execute())
+
+            # 🔴 EM THREAD — 18/08/2026, junto com o conserto do `exige_async`.
+            #
+            # Até hoje esta tool NUNCA rodava por `_arun` (o executor a mandava
+            # para `_run`, que estourava), então o I/O síncrono aqui dentro
+            # nunca chegou a tocar o event loop. Consertar o despacho SEM
+            # consertar isto trocaria "handoff não funciona" por "handoff
+            # congela o FastAPI inteiro por alguns segundos" — todas as
+            # conversas de todas as corretoras paradas junto.
+            #
+            # O cliente do Supabase é síncrono; `to_thread` é o que existe.
+            def _marcar():
+                return (self.supabase_client.table("conversations")
+                        .update(dados)
+                        .eq("company_id", company_id)
+                        .eq("session_id", session_id)
+                        .execute())
+
+            res = await asyncio.to_thread(_marcar)
             if res.data:
                 conversa = res.data[0]
         except Exception as exc:  # noqa: BLE001
@@ -468,24 +506,26 @@ class HumanHandoffTool(BaseTool):
             logger.error("[HumanHandoff] ❌ conversa não encontrada/atualizada | "
                          "empresa=%s | sessao=%s — NADA foi prometido ao cliente",
                          company_id, session_id)
-            return ("Não consegui abrir a transferência agora. "
-                    "Me passe seu telefone e o melhor horário que eu registro o pedido "
-                    "para a equipe retornar.")
+            return FALHA_DO_HANDOFF.format(motivo="conversa nao encontrada para marcar")
 
         # 2) avisar o humano de verdade
         aviso = await self._avisar_suporte(company_id, conversa, motivo)
 
         if aviso["avisado"]:
-            return ("Já chamei um atendente da equipe e passei o resumo do seu caso — "
-                    "ele entra aqui na conversa em instantes. Pode aguardar por aqui.")
+            return SUCESSO_DO_HANDOFF
 
         # Marcou mas não avisou: a conversa aparece na Fila do painel, então
         # alguém PODE ver — só não foi empurrado. A resposta diz a verdade sem
         # jogar o problema interno no colo do segurado.
+        # 🔴 Isto ERA "Registrei seu pedido e ele já está na fila da equipe".
+        # Tecnicamente verdadeiro — a conversa entra na Fila do painel. Mas
+        # depois de o modelo reescrever no tom da Saionara, "já está na fila da
+        # equipe" e "já passei para a equipe" viram a mesma frase no ouvido do
+        # segurado. Retorno que o modelo consegue confundir com sucesso é o
+        # mesmo defeito com outra roupa.
         logger.error("[HumanHandoff] ⚠️ conversa marcada mas SUPORTE NÃO AVISADO | "
                      "empresa=%s | motivo=%s", company_id, aviso["motivo"])
-        return ("Registrei seu pedido de atendimento humano e ele já está na fila da equipe. "
-                "Se for urgente, me diga — enquanto isso eu sigo aqui com você.")
+        return FALHA_DO_HANDOFF.format(motivo=aviso["motivo"] or "desconhecido")
 
     def _run(self, reason: Optional[str] = None, session_id: Optional[str] = None,
              company_id: Optional[str] = None, **kwargs) -> str:
@@ -495,7 +535,12 @@ class HumanHandoffTool(BaseTool):
         versão síncrona que só marcasse a conversa seria exatamente o defeito
         que esta correção desfez: parece que funcionou, e ninguém é avisado.
         """
+        # 🔴 A frase "o tool_node já força _arun" ficou aqui por meses SEM
+        # SER VERDADE — era um invariante escrito em comentário e nunca
+        # implementado. Agora é `exige_async` lá em cima, que o executor lê.
+        # O texto do erro mudou junto: se alguém chegar aqui de novo, a
+        # mensagem tem de dizer o que fazer, não repetir a promessa quebrada.
         raise RuntimeError(
-            "HumanHandoffTool exige execução assíncrona (_arun): o aviso ao "
-            "suporte humano faz I/O. O tool_node já força _arun."
+            "HumanHandoffTool exige execução assíncrona (_arun). Quem chamou "
+            "ignorou `exige_async=True` — o executor precisa aguardar `_arun`."
         )
