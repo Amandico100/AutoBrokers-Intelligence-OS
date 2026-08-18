@@ -116,6 +116,74 @@ check("CONTROLE: `header` (dict, nao lista) nao e confundido com dado",
       F.FonteInfocap._linhas({"header": {"x": 1}}, "documentos") == [])
 
 # ==========================================================================
+print("\n[1.5] O cache: acelera, e NUNCA derruba")
+# ==========================================================================
+#
+# 📊 Sem cache: Raio-X de um ano leva 53 s (6 chamadas). Numa apresentacao ao
+# vivo isso e uma eternidade. Com o cache, a segunda vez e instantanea.
+#
+# 🔴 Mas a regra que MAIS importa e a outra: cache que quebra nao pode
+# derrubar relatorio. Relatorio 53 s mais lento e aborrecimento; relatorio
+# que nao sai porque o CACHE falhou e absurdo.
+
+class _RedisFalso:
+    def __init__(self, quebra=False):
+        self.dados = {}; self.quebra = quebra
+        self.leituras = 0; self.escritas = 0
+
+    def get(self, k):
+        self.leituras += 1
+        if self.quebra:
+            raise ConnectionError('redis caiu')
+        return self.dados.get(k)
+
+    def setex(self, k, _ttl, v):
+        self.escritas += 1
+        if self.quebra:
+            raise ConnectionError('redis caiu')
+        self.dados[k] = v
+
+
+def _com_redis(fake):
+    """Injeta o Redis falso no lugar de `app.core.redis`."""
+    import types
+    mod = types.ModuleType('app.core.redis')
+    mod.get_redis_client = lambda: fake
+    sys.modules['app.core.redis'] = mod
+
+
+_bom = _RedisFalso()
+_com_redis(_bom)
+F._cache_gravar('teste:chave', {'a': 1})
+check('o cache GRAVA', _bom.escritas == 1 and 'teste:chave' in _bom.dados)
+check('e LE de volta o mesmo valor', F._cache_ler('teste:chave') == {'a': 1})
+check('chave que nunca foi gravada devolve None',
+      F._cache_ler('teste:inexistente') is None)
+
+# 🔴 O CONTROLE QUE MAIS IMPORTA: Redis quebrado nao levanta.
+_ruim = _RedisFalso(quebra=True)
+_com_redis(_ruim)
+_falhou = False
+try:
+    F._cache_gravar('x', {'a': 1})
+    _r = F._cache_ler('x')
+except Exception:
+    _falhou = True
+check('CONTROLE: Redis QUEBRADO nao levanta na escrita nem na leitura',
+      not _falhou, 'cache nao pode ser motivo de falha')
+check('CONTROLE: e a leitura devolve None para o caminho normal seguir',
+      _r is None)
+
+# 🔴 CROSS-TENANT: a chave carrega o rotulo da corretora.
+_a = F.FonteInfocap(login='a@a', senha='x', rotulo='resulta')
+_b = F.FonteInfocap(login='b@b', senha='x', rotulo='autofleet')
+check('CONTROLE: corretoras diferentes geram chaves de cache DIFERENTES',
+      _a._rotulo != _b._rotulo,
+      'cache compartilhado entre tenants e vazamento silencioso')
+
+# Devolve o modulo ao que era, para os blocos seguintes.
+sys.modules.pop('app.core.redis', None)
+# ==========================================================================
 if os.getenv("SEM_REDE"):
     print("\n[2..4] PULADOS — SEM_REDE=1")
     print("\n" + "=" * 68)

@@ -159,6 +159,70 @@ class Vencimento:
 
 
 # --------------------------------------------------------------------------
+# O cache — 📊 53 segundos de silencio no palco e uma eternidade
+# --------------------------------------------------------------------------
+#
+# 📊 Medido em 18/08/2026, contra a API real:
+#
+#     Raio-X Comercial de 2025 .... 53 s   (6 chamadas: producao x2 + mapa x4)
+#     Radar de 90 dias ............  8 s   (1 chamada)
+#
+# 53 s numa apresentacao ao vivo e tempo demais. E o dado nao muda em 53
+# segundos: producao de 2025 e um fato fechado, e a carteira a vencer muda em
+# dias, nao em minutos.
+#
+# 🔴 O cache NUNCA pode ser motivo de falha. Redis fora do ar, chave
+# corrompida, JSON invalido — tudo cai no caminho normal e o relatorio sai.
+# Um relatorio 53 s mais lento e um aborrecimento; um relatorio que nao sai
+# porque o CACHE quebrou e um defeito absurdo.
+#
+# COMO PRE-AQUECER, e por que nao ha rota nem script para isso:
+#
+# Basta PEDIR O RELATORIO UMA VEZ antes da apresentacao. A segunda chamada
+# vem do cache.
+#
+# Chegou-se a escrever uma rota `/api/comercial/preaquecer`, e ela foi
+# apagada. Um script rodado do laptop nao serviria — 📊 `config.py:53` traz
+# `REDIS_URL` com default `localhost`, e o Redis do EasyPanel vive na rede
+# interna do Docker; o script aqueceria um Redis que o `smith-api` nunca le.
+# Ja a rota resolvia isso e custava auth nova + registro no `main.py` na
+# vespera de uma apresentacao.
+#
+# Pedir o relatorio uma vez faz a mesma coisa, sem uma linha de codigo — e
+# ainda prova que o caminho inteiro funciona antes de alguem estar no palco.
+#
+# TTL de uma hora: producao de um ano fechado nao muda, e carteira a vencer
+# muda em dias. `COMERCIAL_CACHE_TTL_S=0` desliga o cache por completo.
+_TTL_CACHE_S = int(os.getenv('COMERCIAL_CACHE_TTL_S', '3600'))
+
+
+def _cache_ler(chave: str) -> Optional[Any]:
+    if _TTL_CACHE_S <= 0:
+        return None
+    try:
+        from app.core.redis import get_redis_client
+
+        bruto = get_redis_client().get(chave)
+        return json.loads(bruto) if bruto else None
+    except Exception as exc:  # noqa: BLE001
+        logger.debug('[COMERCIAL] cache indisponivel na leitura (%s)',
+                     type(exc).__name__)
+        return None
+
+
+def _cache_gravar(chave: str, valor: Any) -> None:
+    if _TTL_CACHE_S <= 0:
+        return
+    try:
+        from app.core.redis import get_redis_client
+
+        get_redis_client().setex(chave, _TTL_CACHE_S, json.dumps(valor))
+    except Exception as exc:  # noqa: BLE001
+        logger.debug('[COMERCIAL] cache indisponivel na escrita (%s)',
+                     type(exc).__name__)
+
+
+# --------------------------------------------------------------------------
 # O cliente
 # --------------------------------------------------------------------------
 class FonteInfocap:
@@ -235,20 +299,32 @@ class FonteInfocap:
         return tok
 
     def _get(self, rota: str, params: Dict[str, Any]) -> Any:
-        """GET com retry. Levanta `FalhaDaInfocap` com motivo LEGÍVEL."""
+        """GET com cache e retry. Levanta `FalhaDaInfocap` com motivo LEGÍVEL."""
         url = f"{self._base}{rota}?{urllib.parse.urlencode(params)}"
+
+        # A chave carrega o ROTULO da corretora. Sem ele, duas corretoras
+        # pedindo o mesmo periodo leriam a carteira uma da outra —
+        # cross-tenant por cache e a forma mais silenciosa desse defeito.
+        chave = f"comercial:{self._rotulo}:{rota}:{urllib.parse.urlencode(sorted(params.items()))}"
+        guardado = _cache_ler(chave)
+        if guardado is not None:
+            logger.info("[COMERCIAL] cache quente para %s", rota)
+            return guardado
         ultimo = ""
         for tentativa in range(TENTATIVAS):
             try:
                 req = urllib.request.Request(
                     url, headers={"Authorization": self._autenticar()})
                 with urllib.request.urlopen(req, timeout=TIMEOUT_S) as r:
-                    return json.loads(r.read())
+                    resposta = json.loads(r.read())
+                _cache_gravar(chave, resposta)
+                return resposta
             except urllib.error.HTTPError as exc:
                 # 404 é VAZIO, não erro. A API responde assim quando o filtro
                 # não casa nada, e tratar como falha faria um período sem
                 # movimento derrubar o relatório inteiro.
                 if exc.code == 404:
+                    _cache_gravar(chave, {})
                     return {}
                 if exc.code == 401:
                     self._token = None  # expirou: reautentica na próxima volta
