@@ -84,24 +84,80 @@ def _dormir(segundos: float) -> None:
     _t.sleep(segundos)
 
 
+# Teto real de uma mensagem de texto do WhatsApp. Ficamos abaixo de proposito:
+# alguns provedores acrescentam prefixo, e a margem custa nada.
+_TETO_DE_UMA_MENSAGEM = 3500
+
+
+def _fatiar_documento(texto: str) -> list:
+    """Um documento vai INTEIRO. So parte se nao couber -- e nunca no meio de
+    uma linha.
+
+    Contraste com `split_whatsapp_balloons`, que parte de proposito a cada
+    ~300 caracteres para imitar quem digita. Aqui e o oposto: partir e o
+    fracasso, nao o objetivo.
+    """
+    bruto = str(texto or "").strip()
+    if not bruto:
+        return []
+    if len(bruto) <= _TETO_DE_UMA_MENSAGEM:
+        return [bruto]
+
+    pedacos, atual = [], ""
+    for linha in bruto.splitlines():
+        candidato = atual + chr(10) + linha if atual else linha
+        if len(candidato) <= _TETO_DE_UMA_MENSAGEM:
+            atual = candidato
+            continue
+        if atual:
+            pedacos.append(atual)
+        # Linha unica maior que o teto (colagem sem quebra): corta na marra,
+        # senao ela nunca sai.
+        while len(linha) > _TETO_DE_UMA_MENSAGEM:
+            pedacos.append(linha[:_TETO_DE_UMA_MENSAGEM])
+            linha = linha[_TETO_DE_UMA_MENSAGEM:]
+        atual = linha
+    if atual:
+        pedacos.append(atual)
+    return pedacos
+
+
 class WhatsappService:
     """Compat: delega o envio Z-API para o ZApiProvider."""
 
     def __init__(self):
         logger.info("WhatsApp service initialized (delegates to ZApiProvider)")
 
-    def send_message(self, to_number: str, text: str, integration: Dict[str, Any]) -> bool:
+    def send_message(self, to_number: str, text: str, integration: Dict[str, Any],
+                     *, bloco_unico: bool = False) -> bool:
         """Envia texto. Retorna True em sucesso; levanta exceção em falha (contrato legado).
 
         SPEC-017 P1.2: provider != z-api envia pelo seam multi-provider
         (Evolution/uazapi); z-api mantém o caminho legado.
         S17-9: resposta longa vira balões curtos (humanização).
+
+        🔴 `bloco_unico=True` DESLIGA a humanização — acrescentado em
+        18/08/2026, quando o dossiê de suporte humano chegou picotado em
+        cinco balões no grupo TESTE SUPORTE HUMANO.
+
+        Os balões existem por um motivo bom: a ATENDENTE falando com o
+        SEGURADO tem de soar gente, e gente manda blocos curtos. Mas o dossiê
+        não é uma conversa — é um DOCUMENTO que outra pessoa lê para decidir
+        o que fazer. Cinco balões destroem exatamente o que ele promete:
+        cabeçalho num, "o que aconteceu" noutro, e a atendente rolando a tela
+        para juntar o caso na cabeça com o cliente esperando.
+
+        Vale para tudo que for documento e não fala: dossiê, relatório,
+        resumo de acionamento.
         """
         import time
 
         from app.services.whatsapp.balloons import split_whatsapp_balloons
 
-        balloons = split_whatsapp_balloons(text) or [str(text or "")]
+        if bloco_unico:
+            balloons = _fatiar_documento(text)
+        else:
+            balloons = split_whatsapp_balloons(text) or [str(text or "")]
         provider_label = str((integration or {}).get("provider") or "z-api").strip().lower()
 
         if provider_label not in ("z-api", "zapi", ""):

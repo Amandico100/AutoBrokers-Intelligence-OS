@@ -45,7 +45,8 @@
     "test:rotina-no-auxiliar": "node scripts/rotina-mora-no-auxiliar.test.mjs",
     "test:work-run-entrada": "python backend/tests/test_o_work_run_recebe_a_entrada.py",
     "test:midia-chega": "python backend/tests/test_a_midia_chega_ao_agente.py",
-    "test:corredor-residencial": "python backend/tests/test_o_corredor_residencial_nao_trava.py"
+    "test:corredor-residencial": "python backend/tests/test_o_corredor_residencial_nao_trava.py",
+    "test:dossie-inteiro": "python backend/tests/test_o_dossie_chega_inteiro.py"
   },
   "dependencies": {
     "@hookform/resolvers": "^3.9.0",

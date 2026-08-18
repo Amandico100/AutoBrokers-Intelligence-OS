@@ -90,6 +90,16 @@ def _titulo_humano(conversa: Dict[str, Any], motivo: str) -> str:
     return "🔔 *ATENDIMENTO PRECISA DE VOCÊ*"
 
 
+# 🔴 DEZ caracteres, nao 22 -- 18/08/2026.
+#
+# 📊 O separador de 22 nao cabia na largura do balao no celular e quebrava em
+# DUAS linhas, deixando um traco longo seguido de um toco. Na foto do grupo
+# TESTE SUPORTE HUMANO aparecem tres desses tocos.
+#
+# Separador que precisa de duas linhas nao separa nada: vira sujeira.
+_TRACO = "━━━━━━━━━━"
+
+
 def _fone_bonito(bruto: Any) -> str:
     """(47) 99627-4743 em vez de 5547996274743.
 
@@ -174,6 +184,23 @@ def _o_que_fazer(conversa: Dict[str, Any], motivo: str) -> str:
             "Se estiver tudo certo, é só concluir.")
 
 
+def _hora_de_brasilia(bruto: Any) -> str:
+    """HH:MM no fuso da corretora. `--:--` quando nao da para saber."""
+    from datetime import datetime, timedelta, timezone
+
+    texto = str(bruto or "").strip()
+    if not texto:
+        return "--:--"
+    try:
+        limpo = texto.replace("Z", "+00:00")
+        quando = datetime.fromisoformat(limpo)
+        if quando.tzinfo is None:
+            quando = quando.replace(tzinfo=timezone.utc)
+        return quando.astimezone(timezone(timedelta(hours=-3))).strftime("%H:%M")
+    except Exception:  # noqa: BLE001
+        return texto[11:16] if len(texto) >= 16 else "--:--"
+
+
 def _linha_da_conversa(m: Dict[str, Any]) -> str:
     """Uma linha da conversa, com hora e AUTOR DE VERDADE.
 
@@ -183,8 +210,14 @@ def _linha_da_conversa(m: Dict[str, Any]) -> str:
     IA prometeu e o que uma colega prometeu. Numa mesa com duas pessoas
     monitorando, é o dado mais importante do dossiê.
     """
-    quando = str(m.get("created_at") or "")
-    hora = quando[11:16] if len(quando) >= 16 else "--:--"
+    # 🔴 A hora e de BRASILIA, nao UTC -- 18/08/2026.
+    #
+    # `created_at` vem em UTC. Fatiar a string em [11:16] entregava a hora
+    # crua: um caso das 21h aparecia como 00:00 do dia seguinte (foi o que a
+    # foto do grupo mostrou). A atendente compara essa hora com o relogio dela
+    # para saber ha quanto tempo o cliente espera -- errar em 3 horas e pior
+    # que nao mostrar hora nenhuma.
+    hora = _hora_de_brasilia(m.get("created_at"))
     payload = m.get("payload") or {}
     if not isinstance(payload, dict):
         payload = {}
@@ -298,11 +331,19 @@ class HumanHandoffTool(BaseTool):
         conversa → o link.
         """
         titulo = _titulo_humano(conversa, motivo)
-        linhas = [titulo, "━━━━━━━━━━━━━━━━━━━━━━"]
+        linhas = [titulo, _TRACO]
 
         # QUEM É — três linhas, sem rótulo: rótulo em WhatsApp é ruído.
         quem = str(conversa.get("user_name") or "").strip()
         fone = _fone_bonito(conversa.get("user_phone"))
+        # 🔴 `138847853768811 · 138847853768811` -- foi o que saiu no grupo em
+        # 18/08/2026. Quando o WhatsApp nao manda `pushName`, o `user_name`
+        # nasce igual ao identificador, e o dossie imprimia o MESMO numero duas
+        # vezes com um ponto no meio. Nao informa e ainda parece defeito -- que
+        # e o que era. So dizemos os dois quando forem coisas diferentes.
+        so_digitos = "".join(ch for ch in quem if ch.isdigit())
+        if quem and so_digitos == quem:
+            quem = ""
         linhas.append(" · ".join([p for p in (quem or "cliente não identificado", fone) if p]))
 
         apolice = _linha_da_apolice(conversa)
@@ -323,7 +364,7 @@ class HumanHandoffTool(BaseTool):
         linhas += ["", "*👉 O QUE FAZER*", _o_que_fazer(conversa, motivo)]
 
         # A CONVERSA — com autor de verdade.
-        linhas += ["", "━━━━━━━━━━━━━━━━━━━━━━"]
+        linhas += ["", _TRACO]
         try:
             msgs = (self.supabase_client.table("messages")
                     .select("role, content, created_at, payload")
@@ -342,7 +383,7 @@ class HumanHandoffTool(BaseTool):
 
         # O LINK e o estado. `claimed_by_name` existe justamente para evitar
         # que duas atendentes corram para a mesma conversa.
-        linhas += ["━━━━━━━━━━━━━━━━━━━━━━"]
+        linhas += [_TRACO]
         link = _link_da_conversa(conversa)
         if link:
             linhas.append(f"▶ {link}")
@@ -370,7 +411,11 @@ class HumanHandoffTool(BaseTool):
             if not integ:
                 return {"avisado": False,
                         "motivo": "a corretora não tem canal de WhatsApp conectado para avisar"}
-            get_whatsapp_service().send_message(destino, self._montar_dossie(conversa, motivo), integ)
+            # 🔴 `bloco_unico=True` -- o dossie e DOCUMENTO, nao conversa.
+            # Sem isto ele passava pela humanizacao da atendente e chegava
+            # picotado em cinco baloes (grupo TESTE SUPORTE HUMANO, 18/08).
+            get_whatsapp_service().send_message(
+                destino, self._montar_dossie(conversa, motivo), integ, bloco_unico=True)
             logger.info("[HumanHandoff] dossiê enviado | empresa=%s | fonte=%s",
                         company_id, alvo.get("fonte"))
             return {"avisado": True, "motivo": ""}
