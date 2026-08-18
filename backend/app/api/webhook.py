@@ -492,6 +492,10 @@ async def process_whatsapp_message_background(
                     # A ponte entre "o corredor sabe responder" e "o corredor
                     # responde". Era sempre None, e por isso nenhum formulário
                     # nativo jamais foi respondido em produção.
+                    # 🔴 O canal por onde a conversa entrou vai JUNTO.
+                    # Sem ele, quem retomar a conversa depois (o Sentinela, no
+                    # relogio) nao tem por onde falar. Ver dispatch_router.
+                    integration_id=str((integration or {}).get("id") or ""),
                     flow_sender=_responder_formulario_nativo,
                     # SPEC-063 — o `interactive` precisa ATRAVESSAR.
                     #

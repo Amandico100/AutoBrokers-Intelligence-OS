@@ -134,6 +134,58 @@ def diagnose(session: Dict[str, Any]) -> Optional[str]:
     return None
 
 
+def _canal_da_conversa(integrations, company_id: str, session: Dict[str, Any]):
+    """Por onde esta conversa entrou. Só depois, o canal de plataforma.
+
+    🔴 O DEFEITO QUE ISTO CONSERTA, medido em 18/08/2026.
+
+    O Sentinela respondeu `"1"` a uma tela da Allianz. A resposta estava
+    CERTA. Ela não saiu. Ele roda no relógio (APScheduler), sem inbound, e
+    pedia `get_platform_whatsapp_integration` — que devolve `None` para a
+    Resulta.
+
+    📊 Por quê: a corretora tem quatro conexões e só uma ativa, o Observador.
+    E `observer` está em `PROPOSITOS_QUE_NUNCA_ENVIAM`. A regra é boa e fica:
+    ela existe para o segurado não receber mensagem de um número que jurou
+    ficar calado. 📊 E não adianta esperar que o pareamento resolva — o
+    dashboard pareia o WhatsApp da corretora COMO observador
+    (`app/api/dashboard/whatsapp-channel/route.ts`), então religar o canal
+    amanhã não muda nada.
+
+    Mas RESPONDER NÃO É SURPREENDER. O corredor já mandou dezenas de mensagens
+    para a URA por este mesmo canal, no mesmo minuto. O Sentinela não está
+    abrindo conversa com ninguém — está terminando a frase de uma conversa que
+    já existe, com a SEGURADORA, que não é segurado de ninguém.
+
+    Por isso a ordem é esta, e não a inversa:
+
+        1. o canal por onde a conversa entrou   (gravado pelo roteador)
+        2. o canal de plataforma da corretora   (o de sempre)
+
+    O passo 2 continua existindo para quem tem canal próprio, e continua
+    obedecendo `pode_enviar`. O passo 1 não afrouxa nada: ele só devolve um
+    canal que JÁ está falando com este mesmo número.
+    """
+    ident = str((session or {}).get("integration_id") or "")
+    if ident:
+        try:
+            achado = (integrations.supabase.table("integrations")
+                      .select("*").eq("id", ident)
+                      .eq("company_id", str(company_id))  # CLAUDE.md §7
+                      .limit(1).execute().data or [])
+            if achado:
+                from app.services.whatsapp.integration_secrets import (
+                    prepare_integration_for_runtime,
+                )
+
+                logger.info("[VIGIA] respondendo pelo canal da conversa (%s)", ident[:8])
+                return prepare_integration_for_runtime(achado[0])
+        except Exception as exc:  # noqa: BLE001
+            logger.warning("[VIGIA] canal da conversa indisponível (%s) — "
+                           "tentando o canal de plataforma", type(exc).__name__)
+    return integrations.get_platform_whatsapp_integration(company_id) if company_id else None
+
+
 async def _support_alert(company_id: str, text: str, wa, integration) -> bool:
     """Avisa o suporte. Devolve SE o aviso saiu — não presume que saiu.
 
@@ -345,7 +397,7 @@ async def check_dispatch_watchdog() -> int:
             parts = k.split(":")
             company_id = parts[2] if len(parts) >= 4 else ""
             insurer_phone = parts[3] if len(parts) >= 4 else ""
-            integration = integrations.get_platform_whatsapp_integration(company_id) if company_id else None
+            integration = _canal_da_conversa(integrations, company_id, session)
             case = session.get("case_id")
             label = str(session.get("playbook_ref") or "?")
 

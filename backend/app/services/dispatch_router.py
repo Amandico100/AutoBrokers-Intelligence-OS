@@ -1214,6 +1214,9 @@ async def try_route_insurer_inbound(
     interactive: Optional[Dict[str, Any]] = None,
     flow_sender: Optional[Callable[..., Any]] = None,
     ainda_vem_mais: bool = False,
+    # 🔴 O canal por onde o inbound chegou. Opcional: nenhum chamador antigo
+    # quebra, e sem ele o comportamento e o de sempre.
+    integration_id: Optional[str] = None,
 ) -> bool:
     """Se o inbound vier do número da seguradora com dispatch ativo, processa
     aqui e retorna True (o webhook NÃO deve seguir para o agente).
@@ -1248,6 +1251,26 @@ async def try_route_insurer_inbound(
     session = await load_active_dispatch(company_id, from_phone)
     if not session:
         return False
+
+    # 🔴 A SESSAO LEMBRA POR ONDE A CONVERSA ENTROU — 18/08/2026.
+    #
+    # 📊 O defeito, medido: o Sentinela respondeu "1" a uma tela da Allianz, a
+    # resposta estava CERTA, e nao saiu. Ele roda no relogio (APScheduler), sem
+    # inbound, e pedia uma "integracao de plataforma". A Resulta nao tem
+    # nenhuma: o dashboard pareia o WhatsApp da corretora como `observer`, e
+    # observador nunca envia — regra boa, que existe para o segurado nao
+    # receber mensagem de um numero que jurou ficar calado.
+    #
+    # Mas RESPONDER NAO E SURPREENDER. O corredor ja mandou dezenas de
+    # mensagens para a URA por este mesmo canal. O Sentinela nao esta abrindo
+    # conversa com ninguem: esta terminando a frase de uma conversa que ja
+    # existe, com a seguradora, que nao e segurado de ninguem.
+    #
+    # A proibicao do observador continua inteira para tudo que e iniciativa
+    # propria — cobranca, relatorio, sugestao. Muda so o significado de
+    # "responder".
+    if integration_id:
+        session["integration_id"] = str(integration_id)
 
     # TEST_ABORTED = sessão ENCERRADA: nunca mais responder à seguradora
     # (teste Allianz 12/07: a URA mandou nova saudação após o cancelamento e a
