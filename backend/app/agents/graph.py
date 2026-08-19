@@ -1050,6 +1050,48 @@ async def _build_initial_state(
     except Exception as e:  # noqa: BLE001 — nunca pode quebrar o chat
         logger.warning(f"[ContextPackage] erro ignorado: {type(e).__name__}")
 
+    # === COMO CONDUZIR UM ACIONAMENTO (SPEC-082, 19/08/2026) ===
+    #
+    # 🔴 O DEFEITO: 📊 medido em 19/08, os SETE agentes cadastrados no produto
+    # têm prompt entre 636 e 7.914 caracteres, e **nenhum** contém as palavras
+    # "eletrodoméstico" ou "máquina de lavar". O da atendente da Resulta tem
+    # 1.539 caracteres, é ótimo em segurança, e não diz o que coletar nem que
+    # conserto de eletrodoméstico é AGENDADO.
+    #
+    # O conhecimento existia espalhado — descrição dos parâmetros da
+    # ferramenta, comentários de código, telas mapeadas — e não chegava à
+    # conversa. A atendente descobria o que faltava DEPOIS de chamar a
+    # ferramenta e receber `missing_data`. Na frente de um cliente, isso
+    # parece hesitação; e no meio de um acionamento, custa minutos que a URA
+    # da seguradora não dá.
+    #
+    # 🔴 GERADO, não escrito. `conhecimento_de_assistencia` monta o texto a
+    # partir dos próprios corredores: `required_slots`, `client_instructions`,
+    # `regras_para_o_cliente`, `expectativa_do_desfecho`. Um texto fixo aqui
+    # seria uma segunda fonte de verdade sobre o que cada rota exige — e no
+    # dia em que um `required_slots` mudasse, o prompt continuaria ensinando a
+    # versão velha, sem nada ficar vermelho. Foi exatamente o que aconteceu em
+    # 18/08, quando `aparelho_marca_modelo` virou dois campos.
+    #
+    # 🔴 SÓ PARA QUEM TEM A FERRAMENTA. O gate é o MESMO da linha 439, que
+    # anexa `InsurerDispatchTool` só para `attendance`. Ensinar a acionar quem
+    # não pode acionar é prometer ao cliente o que o agente não alcança.
+    try:
+        _papel = str((real_agent_data or {}).get("agent_role") or "").strip().lower()
+        if _papel == "attendance":
+            from app.services.corridor_playbooks import (
+                _PLAYBOOKS,
+                conhecimento_de_assistencia,
+            )
+
+            _bloco = conhecimento_de_assistencia(sorted(_PLAYBOOKS))
+            if _bloco:
+                base_instructions = f"{base_instructions}\n\n{_bloco}"
+                logger.info("[Assistencia] conhecimento de acionamento no prompt "
+                            "(%d chars, %d corredores)", len(_bloco), len(_PLAYBOOKS))
+    except Exception as e:  # noqa: BLE001 — nunca pode quebrar o chat
+        logger.warning("[Assistencia] bloco nao anexado: %s", type(e).__name__)
+
     # === HTTP TOOLS ===
     allowed_http_tools = []
     if agent_id and supabase_client:

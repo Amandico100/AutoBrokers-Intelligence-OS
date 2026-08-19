@@ -42,7 +42,7 @@ from __future__ import annotations
 import hashlib
 import re
 import unicodedata
-from typing import Any, Dict, List, Optional, Tuple
+from typing import Any, Dict, List, Optional, Sequence, Tuple
 
 
 # O `*` do NEGRITO do WhatsApp some ANTES do casamento de âncora.
@@ -719,6 +719,66 @@ ALLIANZ_RESIDENCIAL_WHATSAPP_V1: Dict[str, Any] = {
         "É necessário haver um maior de 18 anos no local para receber o prestador.",
         "O prestador vai pedir uma senha de acesso: são os 4 últimos números do telefone informado.",
     ],
+    # ======================================================================
+    # AS REGRAS DE COBERTURA QUE A PRÓPRIA URA DECLARA — 19/08/2026
+    # ======================================================================
+    #
+    # 🔴 Elas existiam só em COMENTÁRIO de código, dentro do subserviço
+    # `maquina_de_lavar`. Comentário não chega a lugar nenhum: nem ao prompt
+    # do atendente, nem ao cliente. O resultado prático é a atendente abrir um
+    # chamado para um aparelho de doze anos sem avisar ninguém, e a recusa
+    # acontecer com o técnico já na porta.
+    #
+    # 📊 Cada linha é texto lido nas telas reais da URA da Allianz, na sessão
+    # que terminou com o protocolo 51022010 (28/07/2026). Nada aqui é
+    # inferência.
+    #
+    # Ficam por subserviço porque não valem para todos: um eletricista
+    # emergencial não tem regra de idade de aparelho.
+    # 🔴 NOME PRÓPRIO, e não `coverage_guardrails` — 19/08/2026.
+    #
+    # `coverage_guardrails` JÁ EXISTE em três corredores (hdi, porto, yelum
+    # residenciais) e ali é uma LISTA de observações internas, marcadas 📊,
+    # escritas para quem MANTÉM o corredor. Reaproveitar o nome com outro
+    # formato criaria duas coisas com um nome só — e o leitor teria de
+    # adivinhar qual delas está lendo (CLAUDE.md §6: um termo, uma definição).
+    #
+    # Este campo é outra coisa: texto que a ATENDENTE fala com o CLIENTE,
+    # recortado por subserviço. Nome diferente porque significado diferente.
+    "regras_para_o_cliente": {
+        "eletrodomesticos": [
+            "O aparelho precisa ter até 10 anos de fabricação.",
+            "Precisa estar FORA da garantia do fabricante e pertencer à residência segurada.",
+            "A mão de obra é coberta; as PEÇAS são por conta do cliente.",
+            "São 2 utilizações por vigência (Linha Branca e Ar-Condicionado contam separado).",
+            "O técnico pode precisar levar o aparelho para a base dele.",
+        ],
+        "maquina_de_lavar": [
+            "O aparelho precisa ter até 10 anos de fabricação.",
+            "Precisa estar FORA da garantia do fabricante e pertencer à residência segurada.",
+            "A mão de obra é coberta; as PEÇAS são por conta do cliente.",
+            "São 2 utilizações por vigência (Linha Branca e Ar-Condicionado contam separado).",
+            "O técnico pode precisar levar o aparelho para a base dele.",
+        ],
+    },
+    # 🔴 O QUE MUDA NO DESFECHO, por subserviço. O atendente precisa dizer
+    # isto ANTES, porque muda a expectativa do cliente na hora.
+    #
+    # 📊 Emergencial é "agora"; eletrodoméstico é AGENDADO — a URA escolhe uma
+    # data numa lista de sete dias úteis e depois o período. Um cliente que
+    # ouviu "vou acionar" e esperava alguém em uma hora liga de volta bravo.
+    "expectativa_do_desfecho": {
+        "eletricista": "atendimento emergencial: o prestador vai HOJE, sem agendamento.",
+        "encanador": "atendimento emergencial: o prestador vai HOJE, sem agendamento.",
+        "chaveiro": "atendimento emergencial: o prestador vai HOJE, sem agendamento.",
+        "desentupimento": "atendimento emergencial: o prestador vai HOJE, sem agendamento.",
+        "eletrodomesticos": ("conserto AGENDADO: escolhe-se uma data entre os próximos "
+                             "7 dias úteis e um período (manhã 9h-13h ou tarde 13h-18h). "
+                             "Não é hoje."),
+        "maquina_de_lavar": ("conserto AGENDADO: escolhe-se uma data entre os próximos "
+                             "7 dias úteis e um período (manhã 9h-13h ou tarde 13h-18h). "
+                             "Não é hoje."),
+    },
     # Fail-safe.
     "handoff_triggers": [r"sinistro", r"n[ãa]o localizamos", r"cpf.*inv[áa]lido", r"n[ãa]o foi poss[íi]vel"],
     "unknown_step_policy": "pause_and_handoff",  # nunca responder às cegas
@@ -3860,3 +3920,239 @@ def resposta_de_correcao(divergencias: List[Dict[str, str]], tela: str,
         return {"tipo": "texto", "campo": base,
                 "reply": f"Antes de confirmar: o {_ROTULO_DO_CAMPO.get(base, base)} é {valor}."[:400]}
     return {"tipo": "", "reply": "", "campo": base}
+
+
+# ===========================================================================
+# O QUE A ATENDENTE PRECISA SABER ANTES DE ACIONAR — SPEC-082, 19/08/2026
+# ===========================================================================
+#
+# 🔴 POR QUE ISTO EXISTE.
+#
+# 📊 Medido em 19/08/2026: o `agent_system_prompt` da atendente da Resulta tem
+# 1.539 caracteres e é bom em segurança — mas não contém as palavras
+# "eletrodoméstico" nem "máquina de lavar", nem diz o que coletar, nem que
+# conserto de eletrodoméstico é AGENDADO. O mesmo vale para os outros seis
+# agentes cadastrados.
+#
+# O conhecimento existia — espalhado entre a descrição dos parâmetros da
+# ferramenta, comentários de código e as telas mapeadas — e não chegava à
+# conversa. A atendente descobria o que faltava só DEPOIS de chamar a
+# ferramenta e receber `missing_data`, o que na frente do cliente parece
+# hesitação.
+#
+# 🔴 E POR QUE ELE É GERADO, E NÃO ESCRITO À MÃO (CLAUDE.md §5).
+#
+# Um texto fixo seria uma SEGUNDA fonte de verdade sobre o que cada rota
+# exige. No dia em que um `required_slots` mudasse, o prompt continuaria
+# ensinando a versão antiga — e ninguém veria, porque prompt não tem teste de
+# compilação. Aqui tudo sai do próprio playbook: mudou o corredor, mudou o que
+# a atendente sabe, no mesmo commit.
+#
+# Foi exatamente esse o defeito de 18/08: `aparelho_marca_modelo` virou dois
+# campos e o resto do produto não soube.
+
+#: Como cada slot é dito para uma pessoa. Chave interna nunca vai para a tela
+#: de quem trabalha — a lição do dossiê que escrevia `assistencia.residencial.
+#: encanador` para um humano ler no WhatsApp.
+_COMO_PERGUNTAR = {
+    "titular_cpf": "o CPF do titular da apólice",
+    "titular_nome": "o nome do titular",
+    "endereco_numero": "o número da residência",
+    "telefone_contato": "o telefone de quem vai receber o prestador no local",
+    "pessoa_no_local": "quem estará no local para receber o prestador",
+    "problema_descricao": "o que está acontecendo (com as palavras do cliente)",
+    "periodo_preferido": "o período preferido — manhã (9h-13h) ou tarde (13h-18h)",
+    "aparelho_marca": "a marca do aparelho (Brastemp, Electrolux, Consul...)",
+    "aparelho_modelo": "o modelo ou uma descrição do aparelho — aproximado serve",
+    "aparelho_idade": "há quantos anos o aparelho foi fabricado",
+    "risco_confirmado_sem_fumaca": "se NÃO há fumaça, faísca ou cheiro de queimado",
+    "risco_confirmado_registro_fechado": "se o registro de água já foi fechado",
+    "vazamento_local": "onde é o vazamento",
+    "agua_escorrendo": "se a água ainda está escorrendo",
+    "veiculo_placa": "a placa do veículo",
+    "local_atual": "onde o veículo está agora",
+    "local_destino": "para onde o veículo deve ser levado",
+    "quando": "se precisa agora ou prefere agendar",
+    "titular_nascimento": "a data de nascimento do titular (a Mapfre confere a identidade com ela)",
+    "aparelho_marca_modelo": "a marca e o modelo do aparelho",
+    "ponto_referencia": "um ponto de referencia proximo",
+    "servico_texto": "qual servico o cliente precisa, em uma frase",
+}
+
+#: Slots que o MOTOR preenche sozinho. Pedi-los ao cliente seria perguntar o
+#: número de uma tecla de menu que ele nunca viu.
+_NAO_SE_PERGUNTA = {
+    "tipo_servico_opcao", "servico_opcao", "telefone_adicionar_opcao",
+    "problema_eletrico_opcao", "data_agendamento_opcao",
+    "periodo_agendamento_opcao", "eletrodomestico_opcao",
+    "eletrodomestico_categoria_opcao", "profissional_opcao", "veiculo_opcao",
+    "dados_confirmados",
+}
+
+
+def conhecimento_de_assistencia(playbook_refs: Sequence[str]) -> str:
+    """O bloco que ensina a atendente a conduzir um acionamento.
+
+    Recebe os corredores que ESTA corretora pode usar e devolve texto para o
+    prompt. Corretora sem corredor recebe string vazia — e um agente que não
+    pode acionar não deve ler instruções sobre acionar.
+    """
+    refs = [r for r in (playbook_refs or []) if get_playbook(r)]
+    if not refs:
+        return ""
+
+    linhas: List[str] = [
+        "=== ASSISTÊNCIA 24H: COMO CONDUZIR UM ACIONAMENTO ===",
+        "",
+        "Você tem a ferramenta `insurer_dispatch`. Ela fala com o WhatsApp da "
+        "seguradora no seu lugar, do início até o protocolo. Ela só trabalha "
+        "com o levantamento COMPLETO — por isso colete tudo antes de chamá-la, "
+        "uma pergunta por vez, com as palavras do cliente.",
+        "",
+        "O QUE COLETAR, por tipo de pedido:",
+    ]
+
+    # 🔴 AGRUPADO POR ROTA, NÃO POR SEGURADORA.
+    #
+    # 📊 Uma linha por (corredor × rota) dava 7.763 caracteres para os 14
+    # corredores — cinco vezes o prompt inteiro da atendente, repetindo "peça
+    # o CPF" catorze vezes. Prompt que enterra a instrução importante debaixo
+    # de repetição não ensina: dilui.
+    #
+    # E é como uma pessoa pensa: "para máquina de lavar eu pergunto X" vale
+    # para qualquer seguradora. O que varia entre elas são as TECLAS da URA, e
+    # dessas quem cuida é o corredor — a atendente nunca as vê.
+    #
+    # A união dos slots é deliberada: se UMA seguradora exige o período, é
+    # melhor a atendente perguntar sempre do que descobrir que faltou depois
+    # de já ter dito ao cliente que ia acionar.
+    por_rota: Dict[str, Dict[str, Any]] = {}
+    for ref in refs:
+        pb = get_playbook(ref) or {}
+        rotulos = pb.get("subservice_labels") or {}
+        seguradora = str(pb.get("insurer_key") or "").upper()
+        for rota, sub in sorted((pb.get("subservices") or {}).items()):
+            pedir = [s for s in (sub.get("required_slots") or [])
+                     if s not in _NAO_SE_PERGUNTA]
+            if not pedir:
+                continue
+            reg = por_rota.setdefault(
+                rota, {"nome": str(rotulos.get(rota) or rota).replace("_", " "),
+                       "slots": [], "cias": []})
+            for s in pedir:
+                if s not in reg["slots"]:
+                    reg["slots"].append(s)
+            if seguradora and seguradora not in reg["cias"]:
+                reg["cias"].append(seguradora)
+
+    for rota in sorted(por_rota):
+        reg = por_rota[rota]
+        itens = "; ".join(_COMO_PERGUNTAR.get(s, s.replace("_", " "))
+                          for s in reg["slots"])
+        linhas.append(f"  · {reg['nome']}: {itens}")
+
+    # O que muda a EXPECTATIVA do cliente. Dito depois, vira reclamação.
+    # 🔴 AGRUPAR PRIMEIRO, DEDUPLICAR DEPOIS.
+    #
+    # A primeira versão fazia o contrário: descartava o par cujo TEXTO já
+    # tinha aparecido, e só então agrupava. Como os quatro emergenciais
+    # compartilham a mesma frase, sobrava um só — o primeiro em ordem
+    # alfabética. 📊 O bloco gerado dizia "chaveiro — vai HOJE" e ficava
+    # calado sobre eletricista, encanador e desentupimento; e dizia
+    # "eletrodomesticos — é agendado" sem citar a máquina de lavar, que é
+    # justamente a rota do teste de hoje.
+    #
+    # Uma rota que some da lista não vira erro: vira silêncio, que é pior.
+    agrupado: Dict[str, List[str]] = {}
+    for ref in refs:
+        pb = get_playbook(ref) or {}
+        for rota, texto in sorted((pb.get("expectativa_do_desfecho") or {}).items()):
+            nomes = agrupado.setdefault(str(texto), [])
+            legivel = rota.replace("_", " ")
+            if legivel not in nomes:
+                nomes.append(legivel)
+    if agrupado:
+        linhas += ["", "O QUE ACONTECE DEPOIS (avise o cliente ANTES de acionar):"]
+        for texto, rotas in sorted(agrupado.items(), key=lambda kv: kv[1]):
+            linhas.append(f"  · {', '.join(sorted(rotas))} — {texto}")
+
+    # As regras que a seguradora declara na própria tela.
+    regras = []
+    for ref in refs:
+        pb = get_playbook(ref) or {}
+        for _rota, lista in sorted((pb.get("regras_para_o_cliente") or {}).items()):
+            for r in lista or []:
+                if r not in regras:
+                    regras.append(r)
+    if regras:
+        linhas += ["", "REGRAS DA SEGURADORA que o cliente precisa ouvir ANTES "
+                       "(elas podem fazer o chamado ser recusado no local):"]
+        linhas += [f"  · {r}" for r in regras]
+
+    # O que o cliente tem de saber para receber o prestador.
+    # 🔴 DUAS PENEIRAS, e as duas foram medidas na primeira geracao do bloco.
+    #
+    # (a) 📊 no comeco da linha marca OBSERVACAO INTERNA (CLAUDE.md §12.1), e
+    #     duas delas vazaram inteiras para o texto que a atendente falaria com
+    #     o cliente -- com o proprio emoji de medicao no meio da frase.
+    # (b) "maior de 18 anos no local" aparecia TRES vezes, em tres redacoes,
+    #     porque tres corredores dizem a mesma coisa com palavras diferentes.
+    #     Repeticao em prompt nao reforca: ocupa espaco e ensina que a lista
+    #     pode ser lida na diagonal.
+    instrucoes: List[str] = []
+    assinaturas: set = set()
+    _por_assinatura: Dict[Any, str] = {}
+    for ref in refs:
+        pb = get_playbook(ref) or {}
+        for i in pb.get("client_instructions") or []:
+            texto = str(i).strip()
+            if not texto or texto.startswith("📊"):
+                continue
+            # assinatura = as palavras que carregam o sentido, sem a redacao
+            assinatura = frozenset(
+                w for w in _norm(texto).split()
+                if len(w) > 3 and w not in ("para", "pelo", "pela", "esta",
+                                            "sera", "deve", "necessario",
+                                            "precisa", "sobre", "and"))
+            if assinatura in assinaturas:
+                continue
+            # sobreposicao alta com algo que ja entrou = mesma regra
+            #
+            # 🔴 E quando colidem, fica a redacao GENERICA. A primeira versao
+            # ficava com a primeira que chegasse, e o que sobrou foi "maior de
+            # 18 anos no local para acompanhar o GUINCHO" — dito a um cliente
+            # de maquina de lavar. A regra vale para os dois; a palavra
+            # "guincho" so vale para um. Frase que cita o servico errado faz o
+            # cliente achar que a atendente se perdeu.
+            _ESPECIFICAS = ("guincho", "reboque", "veiculo", "chaves", "carro")
+            colidiu = next(
+                (a for a in assinaturas
+                 if len(assinatura & a) >= max(3, int(len(assinatura) * 0.6))),
+                None)
+            if colidiu is not None:
+                nova_e_generica = not any(p in _norm(texto) for p in _ESPECIFICAS)
+                velha = _por_assinatura.get(colidiu, "")
+                velha_e_generica = not any(p in _norm(velha) for p in _ESPECIFICAS)
+                if nova_e_generica and not velha_e_generica:
+                    instrucoes[instrucoes.index(velha)] = texto
+                    _por_assinatura[colidiu] = texto
+                continue
+            assinaturas.add(assinatura)
+            _por_assinatura[assinatura] = texto
+            instrucoes.append(texto)
+    if instrucoes:
+        linhas += ["", "AVISE TAMBÉM, ao confirmar o acionamento:"]
+        linhas += [f"  · {i}" for i in instrucoes]
+
+    linhas += [
+        "",
+        "COMO TERMINA:",
+        "  · A ferramenta devolve o RESULTADO. Se vier um protocolo, passe-o ao "
+        "cliente junto do dia e do período combinados.",
+        "  · Se o retorno indicar simulação, teste ou pendência, NÃO diga que "
+        "acionou. Diga o que de fato aconteceu.",
+        "  · Nunca invente protocolo, prazo ou nome de prestador.",
+        "  · Se faltar um dado, a ferramenta diz qual. Pergunte ao cliente e "
+        "chame de novo — não desista do caso nem improvise o dado.",
+    ]
+    return "\n".join(linhas)
