@@ -374,10 +374,28 @@ def teste_o_que_o_corredor_se_recusa_a_prometer():
     checar(PB.detect_handoff_trigger(hdi, "Ela não possui mais utilizações de encanador") is not None,
            "enquanto na HDI ele existe e dispara")
 
-    # O que cobre a lacuna nao e uma lista de frases: e a politica de tela
-    # desconhecida. Uma tela que o corredor nao conhece PARA o acionamento.
-    checar(yelum.get("unknown_step_policy") == "pause_and_handoff",
-           "quem cobre a lacuna e `pause_and_handoff`, nao um palpite")
+    # 🔴 ESTA ASSERCAO MUDOU EM 19/08/2026 — e a licao migrou com ela.
+    #
+    # Ela afirmava `unknown_step_policy == "pause_and_handoff"`. 📊 Medido:
+    # essa chave estava declarada em 14 corredores e **nenhuma linha de codigo
+    # a lia** (`grep -rn unknown_step_policy app/` so achava as declaracoes).
+    # Era configuracao decorativa, e este teste a abencoava — dando a quem
+    # lesse a impressao de uma protecao que nao existia.
+    #
+    # A protecao REAL contra "responder as cegas" e outra, e essa existe:
+    # `finalize_anchors` alimenta `pergunta_de_decisao`, que segura o motor em
+    # toda tela que ABRE SERVICO. Tela reversivel o cerebro resolve; tela
+    # irreversivel para. E isso que se afirma agora.
+    checar(len(yelum.get("finalize_anchors") or []) > 0,
+           "o corredor declara finalize_anchors — a protecao que o produto LE",
+           "sem elas, `pergunta_de_decisao` nao teria como segurar este corredor")
+    _decisao = PB.detect_finalize_anchor(
+        yelum, "Podemos confirmar a abertura do atendimento?")
+    checar(bool(_decisao),
+           "e uma tela de CONFIRMACAO e reconhecida como irreversivel")
+    checar(not PB.detect_finalize_anchor(yelum, "Qual o servico que voce precisa?"),
+           "CONTROLE: e um MENU nao e — senao o discriminador diria 'sim' "
+           "para tudo e a afirmacao acima nao mediria nada")
     desconhecida = "Segurada tem somente 2 utilizacoes de encanador nessa apolice"
     checar(PB.match_ura_step(yelum, desconhecida, subservice="encanador") is None,
            "a tela de limite nao casa passo nenhum — e por isso o caso pausa",

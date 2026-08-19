@@ -34,7 +34,6 @@ agendador.
 from __future__ import annotations
 
 import logging
-import os
 from datetime import datetime, timedelta, timezone
 from typing import Any, Dict
 
@@ -45,36 +44,39 @@ _REALERTA_HORAS_PADRAO = 6          # e a cadência do lembrete depois disso
 _MAX_POR_PASSADA = 50               # trabalho limitado por varredura
 
 
+# 🔴 UMA DEFINIÇÃO, DOIS DONOS — 19/08/2026.
+#
+# `_env_int` e o marcador de Redis moram agora em `human_handoff`, e este
+# módulo os importa. Antes o marcador era uma cópia literal daqui, e a partir
+# de 18/08 passaram a existir DOIS avisadores da mesma conversa: esta
+# varredura e a própria ferramenta (que até então nunca rodava). Duas cópias
+# do marcador seriam duas chaves diferentes no Redis, cada uma silenciando só
+# a si mesma — e o grupo receberia o dobro dos alertas, que é exatamente o
+# problema que o marcador existe para resolver.
+#
+# A direção do import já existia: este arquivo importa `HumanHandoffTool`
+# daquele módulo desde que foi escrito.
+#
+# ⚠️ TARDIO, e não no topo. `human_handoff` puxa `langchain_core.tools`; um
+# import de módulo aqui carregaria o LangChain no boot de uma tarefa de
+# varredura e abriria caminho para ciclo de import. O resto deste arquivo já
+# importa daquele módulo dentro da função, pelo mesmo motivo.
 def _env_int(nome: str, padrao: int, minimo: int = 1) -> int:
-    try:
-        return max(minimo, int(os.getenv(nome, str(padrao))))
-    except (TypeError, ValueError):
-        return padrao
+    from app.agents.tools.human_handoff import _env_int as _impl
+
+    return _impl(nome, padrao, minimo)
 
 
 async def _ja_avisado_recentemente(conversa_id: str, horas: int) -> bool:
-    """Marcador em Redis: o lembrete é periódico, não uma metralhadora.
+    from app.agents.tools.human_handoff import reivindicar_o_aviso
 
-    Sem ele, uma conversa esquecida geraria um WhatsApp ao suporte a cada
-    passada — e alerta que chega demais é alerta que se aprende a ignorar, que é
-    exatamente como este estado ficou 730 horas sem ninguém olhar.
+    return await reivindicar_o_aviso(conversa_id, horas)
 
-    Redis fora do ar devolve False: **avisar de novo é melhor que calar.** O
-    defeito que se está consertando aqui é o silêncio, não a repetição.
-    """
-    try:
-        from app.core.redis import get_async_redis_client
 
-        r = await get_async_redis_client()
-        # `nx=True` é o próprio teste-e-marca, atômico: quem consegue gravar é
-        # quem manda o aviso. Dois workers na mesma passada não avisam em dobro.
-        gravou = await r.set(f"handoff_realerta:{conversa_id}", "1",
-                             ex=horas * 3600, nx=True)
-        return not gravou
-    except Exception as exc:  # noqa: BLE001
-        logger.warning("[HandoffWatchdog] marcador indisponível (%s) — vai avisar",
-                       type(exc).__name__)
-        return False
+async def _devolver_a_vez(conversa_id: str) -> None:
+    from app.agents.tools.human_handoff import devolver_a_vez
+
+    await devolver_a_vez(conversa_id)
 
 
 def _parado_ha_ms(conversa: Dict[str, Any], agora: datetime) -> float:
@@ -167,6 +169,12 @@ async def varrer_handoffs_parados() -> None:
                 logger.error("[HandoffWatchdog] ❌ conversa parada há %s e o suporte "
                              "NÃO foi avisado | empresa=%s | motivo=%s",
                              espera, company_id, aviso.get("motivo"))
+                # 🔴 DEVOLVE A VEZ. A linha acima reservou o direito de avisar
+                # e o aviso não saiu; manter a reserva calaria a próxima
+                # varredura pelas horas inteiras do marcador, justamente no
+                # caso em que ninguém ficou sabendo.
+                await _devolver_a_vez(conversa_id)
         except Exception as exc:  # noqa: BLE001
             logger.error("[HandoffWatchdog] falha ao re-alertar (%s) | empresa=%s",
                          type(exc).__name__, company_id)
+            await _devolver_a_vez(conversa_id)

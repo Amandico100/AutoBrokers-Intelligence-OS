@@ -613,11 +613,26 @@ def teste_o_portao_de_envio_real_nao_afrouxou():
     try:
         for k in _antes:
             os.environ.pop(k, None)
-        # CONTROLE — sem nada armado, os dois nascem ABERTOS. É o que muda em
-        # relação a ontem, e é o que dá direito às três asserções seguintes.
+        # 🔴 ATUALIZADO EM 19/08/2026 (§9.3) — este controle guardava a verdade
+        # de 04/08 (P-90), quando o padrão do portão de envio era ABERTO.
+        #
+        # 📊 Em 14/08 ele voltou a ser FECHADO, e não por reversão: a semana de
+        # 18/08 é a de LIGAR o agente, e a premissa de 04/08 era justamente
+        # "quem segura é o agente desligado". Regra R1 do Founder, literal:
+        # "não pode ser enviado nada até eu liberar". Está na docstring de
+        # `dispatch_live_enabled`.
+        #
+        # O controle continua fazendo o que controle faz — provar que a função
+        # CONSEGUE dizer as duas coisas —, só que agora o "sim" exige a
+        # variável escrita à mão.
+        checar(MOTOR.dispatch_live_enabled() is False,
+               "sem nada armado, o envio real nasce FECHADO",
+               "regra R1 do Founder, 14/08: fechado por construção, aberto por decisão")
+        os.environ["INSURER_DISPATCH_LIVE"] = "true"
         checar(MOTOR.dispatch_live_enabled() is True,
-               "CONTROLE: sem nada armado, o envio real nasce ABERTO",
-               "quem segura agora é o agente desligado, não a ausência de um env")
+               "CONTROLE: e com `INSURER_DISPATCH_LIVE=true` ele ABRE",
+               "sem esta linha, um portão travado em False passaria em tudo")
+        os.environ.pop("INSURER_DISPATCH_LIVE", None)
         checar(MOTOR.finalize_live_for("hdi-auto-whatsapp@v1") is True,
                "CONTROLE: e o freio de finalização nasce SOLTO")
 

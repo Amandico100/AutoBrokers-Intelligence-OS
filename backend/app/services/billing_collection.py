@@ -474,6 +474,28 @@ NOME_DA_SEGURADORA = {
 }
 
 
+# O que o GRUPO HUMANO da corretora lê quando um portal responde mas não
+# entrega a lista de parcelas.
+#
+# ⚠️ 18/08/2026: três estágios diferentes recebiam a MESMA frase — "não
+# consegui ler a lista de parcelas". Naquele dia a Allianz caiu por SESSÃO
+# MORTA (o portal devolveu o navegador ao provedor de identidade e nenhuma tela
+# renderizou); o grupo leu "não consegui ler a lista" e o Founder foi investigar
+# leitura de tabela. É o defeito do CLAUDE.md §12.1: o rótulo mentiu sobre o que
+# aconteceu, e o leitor seguinte gastou o tempo dele no lugar errado.
+#
+# Regra desta tabela: uma frase por estágio, todas diferentes entre si, todas em
+# português de gente — quem lê é atendimento de corretora, não quem escreveu o
+# worker. Estágio que não estiver aqui NÃO gera aviso (não inventamos frase para
+# um estado que ninguém descreveu).
+O_QUE_HOUVE_POR_ESTAGIO = {
+    "lista_nao_lida": "abri a tela de cobrança, mas não consegui entender a tabela de parcelas",
+    "sem_linhas_extraiveis": "abri a tela de cobrança e ela não trouxe nenhuma parcela que eu conseguisse aproveitar",
+    "inadimplentes_nao_localizado": "entrei no portal, mas não achei a tela de parcelas em atraso",
+    "sessao_caiu_no_portal": "o portal encerrou minha sessão e me mandou de volta para a tela de entrada; tentei entrar de novo e ainda assim não cheguei nas parcelas",
+}
+
+
 def _portal_insurer_name(item: Dict[str, Any], cfg: Dict[str, Any]) -> str:
     explicit = _first_text(item.get("nome_seguradora"), item.get("seguradora"), item.get("insurer_name"))
     if explicit:
@@ -899,7 +921,17 @@ def _already_sent_recibos(client, company_id: str, send_mode: str) -> set:
         return set()
 
 
-def _record_sent(client, company_id: str, item: Dict[str, Any], send_mode: str, doc_sent: bool) -> None:
+def _record_sent(client, company_id: str, item: Dict[str, Any], send_mode: str, doc_sent: bool) -> bool:
+    """Grava que ESTE recibo já foi entregue. Devolve se gravou de verdade.
+
+    🔴 Esta função tinha `except Exception: pass`. É exatamente o desenho que
+    produz "acha que registrou e não registrou": a entrega segue, ninguém vê
+    nada, e amanhã o mesmo segurado recebe o mesmo boleto — porque a linha que
+    impediria isso nunca chegou ao banco. A falha agora aparece no log e volta
+    como `False` para quem chamou escrever no relatório. O que ela continua NÃO
+    fazendo é derrubar a entrega: o boleto já saiu, e fingir que não saiu seria
+    pior.
+    """
     try:
         client.table("billing_sent_log").upsert(
             {
@@ -913,8 +945,38 @@ def _record_sent(client, company_id: str, item: Dict[str, Any], send_mode: str, 
             },
             on_conflict="company_id,recibo,send_mode",
         ).execute()
-    except Exception:  # noqa: BLE001
-        pass
+        return True
+    except Exception as exc:  # noqa: BLE001
+        # Sem PII no log: nem recibo, nem nome, nem company_id.
+        logger.error("[COBRANCA] falhei ao registrar entrega em billing_sent_log: %s: %s",
+                     type(exc).__name__, str(exc)[:200])
+        return False
+
+
+# A dedup de entrega mora aqui, num lugar só, com nome — e não espalhada em
+# `if send_mode == ...` pelo caminho de entrega.
+#
+# 📊 A chave do índice único é `(company_id, recibo, send_mode)`; ela NÃO inclui
+# o destino. Foi por isso que o Founder decidiu em 17/08/2026 (nota 88) que o
+# modo TESTE não deduplica: em teste o destino é o número da própria corretora e
+# o que se quer é justamente REPETIR — testar amanhã, testar com outro número,
+# testar depois de mexer em alguma coisa. Com a chave atual, trocar o número de
+# teste não destravaria os mesmos boletos.
+#
+# 19/08/2026: o Founder pediu que o registro de entrega saia do papel ("cada
+# parcela em atraso é enviada 1x"). O mecanismo agora existe e é exercido — o
+# padrão do modo teste continua o de 17/08 para não apagar a decisão anterior
+# num dia de demonstração. `BILLING_DEDUP_TEST_ENABLED=1` liga sem tocar em
+# código. Ver `docs/canon/PENDENCIAS.md`.
+FLAG_DEDUP_TESTE = "BILLING_DEDUP_TEST_ENABLED"
+
+
+def dedup_de_envio_ativa(send_mode: Any, env: Optional[Dict[str, str]] = None) -> bool:
+    """`live` e `approval` nunca reenviam a mesma parcela. `test` só se ligado."""
+    modo = str(send_mode or "").strip().lower()
+    if modo != "test":
+        return True
+    return _truthy((env if env is not None else os.environ).get(FLAG_DEDUP_TESTE))
 
 
 async def _send_test_messages(
@@ -953,22 +1015,18 @@ async def _send_test_messages(
     from app.services.whatsapp_service import get_whatsapp_service
 
     company_id = str(routine["company_id"])
-    # 🔴 EM MODO TESTE NAO HA DEDUPLICACAO. Decisao de 17/08/2026, nota 88.
-    #
-    # A dedup existe para o SEGURADO nao receber o mesmo boleto duas vezes.
-    # Em teste o destino e o numero da propria corretora, e a coisa que se
-    # quer e justamente REPETIR — testar de novo amanha, testar com outro
-    # numero, testar depois de mexer em alguma coisa.
-    #
-    # 📊 E a chave `(company_id, recibo, send_mode)` NAO inclui o destino:
-    # trocar o numero de teste nao destravaria os mesmos boletos. O Founder
-    # pediu explicitamente que funcione "para qualquer um dos WhatsApps que eu
-    # colocar como destino" — com a chave atual, nao funcionaria.
-    #
-    # `live` continua deduplicando integralmente. A alternativa (incluir o
-    # destino na chave) resolveria a troca de numero e nao resolveria repetir
-    # no mesmo numero, que e o caso mais comum de teste.
-    already: set = set()
+    # A DEDUP DE ENTREGA — as duas metades da mesma regra, no mesmo lugar:
+    # ler `billing_sent_log` antes de enfileirar, gravar depois de entregar.
+    # Quem decide se ela vale neste modo e `dedup_de_envio_ativa` (a nota 88 de
+    # 17/08/2026 esta escrita la). Mexer numa metade sem a outra deixa a tabela
+    # crescendo com linhas que ninguem consulta, ou a regra existindo so no
+    # papel — que foi o estado em que estas duas funcoes ficaram ate 19/08.
+    send_mode = str(cfg.get("send_mode") or "test").strip().lower()
+    dedup = dedup_de_envio_ativa(send_mode)
+    already: set = (
+        await asyncio.to_thread(_already_sent_recibos, client, company_id, send_mode)
+        if dedup else set()
+    )
     by_recibo = _boletos_by_recibo(boletos)
     sent: List[Dict[str, Any]] = []
     skipped = 0
@@ -1042,16 +1100,23 @@ async def _send_test_messages(
                     entry["link_fallback"] = False
                 blockers.append("modo teste: envio do PDF como documento falhou; usei link temporario como fallback")
         if entry["ok"]:
-            # 🔴 NAO grava dedup em modo teste — ver o comentario em `already`.
-            # Gravar aqui e ler acima sao as duas metades da mesma regra; mexer
-            # numa sem a outra deixaria a tabela crescendo com linhas que
-            # ninguem consulta, e o proximo a ler o codigo acharia que a dedup
-            # de teste existe.
-            #
-            # O registro de VAZAO (`platform_sends`, logo abaixo) continua —
+            # A OUTRA METADE DA DEDUP: so entra em `billing_sent_log` quem
+            # realmente recebeu. E o que torna "parar no meio" seguro — quem nao
+            # saiu hoje nao foi marcado, e volta amanha de onde parou.
+            if dedup:
+                gravou = await asyncio.to_thread(
+                    _record_sent, client, company_id, item, send_mode, bool(entry.get("document_sent")))
+                entry["registrado"] = bool(gravou)
+                if not gravou:
+                    # 🔴 Registro que falha em silencio = mesmo boleto amanha.
+                    # Quem le o relatorio nao tem acesso ao log do conteiner.
+                    blockers.append(
+                        f"entrega feita mas NAO registrada em billing_sent_log "
+                        f"(recibo ...{recibo_key[-4:] or '?'}): este boleto pode sair de novo na proxima execucao")
+            # O registro de VAZAO (`platform_sends`, logo abaixo) e outra coisa:
             # ele conta mensagens para os tetos, e uma mensagem de teste ocupa
             # o canal exatamente como qualquer outra.
-            pass
+            #
             # O contador de vazao vive em `platform_sends`, e ele so conta o
             # que foi registrado. Sem esta linha o governador espacaria as
             # mensagens e continuaria achando que o dia esta zerado — o teto
@@ -1620,13 +1685,14 @@ async def execute_billing_collection_routine(supabase, routine: Dict[str, Any]) 
     for job in jobs:
         estagio = str(((job.get("evidence") or {}).get("captured") or {}).get("stage")
                       or (job.get("evidence") or {}).get("stage") or "")
-        if estagio in ("lista_nao_lida", "sem_linhas_extraiveis", "inadimplentes_nao_localizado"):
+        o_que_houve = O_QUE_HOUVE_POR_ESTAGIO.get(estagio)
+        if o_que_houve:
             await avisar_suporte_humano(
                 client, company_id,
                 avisos.aviso_de_portal(
                     nome_corretora,
                     NOME_DA_SEGURADORA.get(str(job.get("portal_key") or ""), str(job.get("portal_key") or "")),
-                    "nao consegui ler a lista de parcelas"),
+                    o_que_houve),
                 "portal")
 
     sem_telefone = [r for r in retidos if "sem telefone" in str(r.get("retido_por") or "")]

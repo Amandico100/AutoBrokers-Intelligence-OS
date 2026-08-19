@@ -399,11 +399,22 @@ def teste_o_portao_e_o_freio_nao_afrouxaram():
     try:
         for k in _antes:
             os.environ.pop(k, None)
-        # CONTROLE: sem nada armado os dois abrem. Sem esta linha, as duas
-        # asserções seguintes passariam mesmo num portao que so sabe dizer nao.
-        checar(DISPATCH.dispatch_live_enabled() is True
-               and DISPATCH.finalize_live_for("hdi-auto-whatsapp@v1") is True,
-               "CONTROLE: sem nada armado, portao e freio nascem ABERTOS")
+        # 🔴 ATUALIZADO EM 19/08/2026 (§9.3). Guardava a verdade de 04/08, em
+        # que o portao de ENVIO nascia aberto. 📊 Em 14/08 ele voltou a nascer
+        # FECHADO (regra R1 do Founder: "nao pode ser enviado nada ate eu
+        # liberar"). O freio de FINALIZACAO continua nascendo solto — sao dois
+        # portoes distintos, e so um deles mudou.
+        checar(DISPATCH.dispatch_live_enabled() is False,
+               "sem nada armado, o portao de ENVIO nasce fechado")
+        checar(DISPATCH.finalize_live_for("hdi-auto-whatsapp@v1") is True,
+               "e o freio de FINALIZACAO continua nascendo solto",
+               "sao dois portoes em serie; so o de envio mudou de padrao")
+        os.environ["INSURER_DISPATCH_LIVE"] = "true"
+        checar(DISPATCH.dispatch_live_enabled() is True,
+               "CONTROLE: com a variavel escrita, o portao de envio ABRE",
+               "sem esta linha as asseroes seguintes passariam num portao "
+               "que so sabe dizer nao")
+        os.environ.pop("INSURER_DISPATCH_LIVE", None)
         os.environ[DISPATCH.FREIO_DE_EMERGENCIA] = "true"
         checar(DISPATCH.dispatch_live_enabled() is False,
                "o freio de emergencia continua FECHANDO o portao de envio")

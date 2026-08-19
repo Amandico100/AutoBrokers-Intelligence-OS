@@ -66,6 +66,7 @@ def carregar(rotulo, caminho):
 
 J = carregar("journeys_cob", "portal_worker/journeys/__init__.py")
 BAL = carregar("balloons_cob", "app/services/whatsapp/balloons.py")
+BILL = carregar("billing_cob", "app/services/billing_collection.py")
 
 with open(os.path.join(RAIZ, "app/services/whatsapp_service.py"), encoding="utf-8") as fh:
     FONTE_WS = fh.read()
@@ -201,8 +202,17 @@ print("\n[4] O modo TESTE do Founder continua inteiro")
 check("modo teste ainda existe", "modo_teste" in FONTE_BILLING)
 check("o intervalo curto do governador continua",
       "para_numero_de_teste" in FONTE_BILLING)
-check("a dedup nao volta no modo teste (o boleto reenviado amanha)",
-      "already" in FONTE_BILLING and "_record_sent" in FONTE_BILLING)
+# 19/08/2026 -- CLAUDE.md 9.3: este guarda afirmava a coisa certa e nao tinha
+# como falhar. Ele checava `"already" in FONTE_BILLING and "_record_sent" in
+# FONTE_BILLING`: as duas palavras existem no arquivo com a dedup ligada OU
+# desligada, entao ele passava dos dois jeitos. A dedup saiu do papel nesse dia
+# (`billing_sent_log` finalmente e lido e escrito); o que continua valendo e o
+# PADRAO do modo teste, decidido em 17/08 -- e agora isso e perguntado a
+# funcao, que consegue responder as duas coisas.
+check("a dedup continua DESLIGADA por padrao no modo teste (o boleto reenviado amanha)",
+      BILL.dedup_de_envio_ativa("test", env={}) is False)
+check("CONTROLE: e o mecanismo existe de verdade -- live deduplica",
+      BILL.dedup_de_envio_ativa("live", env={}) is True)
 check("o erro ainda carrega o motivo real, nao so o tipo",
       "_motivo[:220]" in FONTE_BILLING or "str(e)" in FONTE_BILLING)
 check("o PDF ainda e anexado", "send_document" in FONTE_BILLING)

@@ -60,6 +60,40 @@ SUCESSO_DO_HANDOFF = (
     "Você pode dizer ao cliente que encaminhou e que alguém entra em contato."
 )
 
+# 🔴 O TERCEIRO ESTADO — 19/08/2026. Ele existe porque faltava, e a falta
+# virou spam.
+#
+# 📊 Até 18/08 esta ferramenta nunca rodava: o executor a mandava para `_run`,
+# que estourava. Consertado o despacho, ela passou a rodar — e a rodar TODA
+# VEZ. `_arun` marcava a conversa e chamava `_avisar_suporte` sem nunca
+# perguntar se aquela conversa JÁ estava com a equipe. Cada nova mensagem do
+# cliente numa conversa já transferida virava um WhatsApp novo no grupo.
+#
+# O Founder viu "ATENDIMENTO PRECISA DE VOCÊ" repetido e não entendeu nada —
+# com razão: as mensagens eram todas verdadeiras e todas inúteis.
+#
+# 🔴 Ele carrega `HANDOFF_OK` DE PROPÓSITO. O fiscal lá embaixo ancora nesse
+# literal, e a transferência de fato aconteceu — só que antes. Negar o carimbo
+# aqui obrigaria a atendente a esconder do cliente uma coisa que é verdade.
+#
+# E a instrução final é o que separa este estado do de cima: a equipe está com
+# o caso (verdade), mas não foi AGORA que ele foi passado (também verdade).
+# 🔴 E, como o de cima, SEM VERBO EM PRIMEIRA PESSOA NO PASSADO.
+#
+# 📊 A primeira redação dizia "Não avisei de novo" — e `avisei` casa a
+# alternativa (a) do detector, que procura `avis` + `ei`. O próprio texto do
+# estado se auto-reescreveria se algum dia vazasse para a resposta. Foi o
+# guarda deste arquivo que apontou isso, na primeira execução; nenhuma leitura
+# teria apontado.
+JA_ESTAVA_COM_A_EQUIPE = (
+    "HANDOFF_OK · este caso JÁ estava com a equipe, e o alerta a ela JÁ tinha "
+    "saído antes desta mensagem. O aviso ao grupo NÃO foi repetido agora, de "
+    "propósito, para não duplicar o mesmo alerta. "
+    "Você pode dizer ao cliente que o caso está em mãos da equipe e que alguém "
+    "retorna. É PROIBIDO dar a entender que a transferência acabou de "
+    "acontecer neste momento: ela é anterior."
+)
+
 # 🔴 Escrito em INFINITIVO de proposito. Uma proibicao que contem a propria
 # frase proibida ("e proibido dizer que voce encaminhou") seria reescrita pelo
 # detector se algum dia vazasse para a resposta -- e pior, ensina o modelo a

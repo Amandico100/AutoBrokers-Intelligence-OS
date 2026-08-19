@@ -36,14 +36,88 @@ from __future__ import annotations
 
 import asyncio
 import logging
+import os
 from typing import Any, ClassVar, Dict, Optional, Type
 
 from langchain_core.tools import BaseTool
 
-from app.agents.honestidade_do_handoff import FALHA_DO_HANDOFF, SUCESSO_DO_HANDOFF
+from app.agents.honestidade_do_handoff import (
+    FALHA_DO_HANDOFF,
+    JA_ESTAVA_COM_A_EQUIPE,
+    SUCESSO_DO_HANDOFF,
+)
 from pydantic import BaseModel, Field
 
 logger = logging.getLogger(__name__)
+
+# ===========================================================================
+# O MARCADOR DE "JÁ AVISAMOS" — UMA definição, dois donos
+# ===========================================================================
+#
+# 🔴 Ele mora aqui, e não no Vigia, porque agora são DOIS os que avisam o
+# grupo sobre a mesma conversa:
+#
+#   esta ferramenta          quando a atendente pede um humano
+#   handoff_watchdog         quando ninguém respondeu depois de um tempo
+#
+# Duas cópias do mesmo marcador seriam duas chaves diferentes no Redis, e cada
+# um silenciaria só a si mesmo — o grupo receberia o dobro. É o mesmo defeito
+# que o próprio código já registra sobre normalizador copiado
+# (`insurer_dispatch_service._norm_text`): "cópia é onde o conserto de um lado
+# deixa o outro quebrado".
+#
+# O Vigia importa daqui. A direção já existe: ele importa `HumanHandoffTool`
+# deste módulo desde que foi escrito.
+_CHAVE_DO_MARCADOR = "handoff_realerta:{}"
+HORAS_ENTRE_AVISOS_PADRAO = 6
+
+
+def _env_int(nome: str, padrao: int, minimo: int = 1) -> int:
+    try:
+        return max(minimo, int(os.getenv(nome, str(padrao))))
+    except (TypeError, ValueError):
+        return padrao
+
+
+async def reivindicar_o_aviso(conversa_id: str, horas: int) -> bool:
+    """Alguém já avisou o grupo sobre esta conversa nas últimas `horas`?
+
+    `True` = já avisaram, **fique quieto**. `False` = a vez é sua, e este
+    retorno JÁ RESERVOU o direito — é teste-e-marca atômico (`nx=True`), para
+    que dois workers na mesma passada não avisem em dobro.
+
+    🔴 Redis fora do ar devolve `False`: **avisar demais é melhor que calar.**
+    O defeito grave é o silêncio; a repetição é só incômodo.
+    """
+    try:
+        from app.core.redis import get_async_redis_client
+
+        r = await get_async_redis_client()
+        gravou = await r.set(_CHAVE_DO_MARCADOR.format(conversa_id), "1",
+                             ex=max(1, int(horas)) * 3600, nx=True)
+        return not gravou
+    except Exception as exc:  # noqa: BLE001
+        logger.warning("[Handoff] marcador indisponível (%s) — vai avisar",
+                       type(exc).__name__)
+        return False
+
+
+async def devolver_a_vez(conversa_id: str) -> None:
+    """Libera o marcador. Chamado quando o aviso RESERVADO não saiu.
+
+    🔴 Sem isto, uma falha de envio silenciaria o grupo pelas horas inteiras
+    do marcador: quem reservou não avisou, e ninguém mais pode. Reserva que
+    não virou aviso tem de ser devolvida — é o mesmo princípio de "flag que
+    mente é pior que flag ausente", aplicado a uma reserva.
+    """
+    try:
+        from app.core.redis import get_async_redis_client
+
+        r = await get_async_redis_client()
+        await r.delete(_CHAVE_DO_MARCADOR.format(conversa_id))
+    except Exception as exc:  # noqa: BLE001
+        logger.warning("[Handoff] não consegui devolver o marcador (%s)",
+                       type(exc).__name__)
 
 # Quantas mensagens vão no dossiê. Suficiente para o humano entrar sabendo,
 # curto o bastante para caber num WhatsApp sem virar parede de texto.
@@ -471,6 +545,32 @@ class HumanHandoffTool(BaseTool):
 
         # 1) marcar a conversa — SEMPRE com company_id (CLAUDE.md §7)
         conversa: Optional[Dict[str, Any]] = None
+        # 🔴 O ESTADO DE ANTES, LIDO ANTES — 19/08/2026.
+        #
+        # O `update` abaixo devolve a linha JÁ ATUALIZADA, então depois dele
+        # toda conversa parece ter acabado de virar `HUMAN_REQUESTED`. Sem
+        # esta leitura não há como distinguir "primeiro pedido" de "o cliente
+        # escreveu de novo numa conversa que já está com a equipe" — e foi
+        # essa indistinção que encheu o grupo de alertas repetidos.
+        ja_estava_com_a_equipe = False
+        try:
+            def _estado_anterior():
+                return (self.supabase_client.table("conversations")
+                        .select("status")
+                        .eq("company_id", company_id)
+                        .eq("session_id", session_id)
+                        .limit(1).execute())
+
+            antes = await asyncio.to_thread(_estado_anterior)
+            ja_estava_com_a_equipe = bool(
+                (antes.data or []) and
+                str((antes.data[0] or {}).get("status") or "") == "HUMAN_REQUESTED")
+        except Exception as exc:  # noqa: BLE001
+            # Não sabemos o estado anterior. Trata como PRIMEIRO pedido: o
+            # caminho que avisa. Falhar para o lado de avisar demais.
+            logger.warning("[HumanHandoff] não li o estado anterior (%s) — "
+                           "vou tratar como primeiro pedido", type(exc).__name__)
+
         try:
             dados: Dict[str, Any] = {"status": "HUMAN_REQUESTED"}
             if motivo:
@@ -508,11 +608,34 @@ class HumanHandoffTool(BaseTool):
                          company_id, session_id)
             return FALHA_DO_HANDOFF.format(motivo="conversa nao encontrada para marcar")
 
-        # 2) avisar o humano de verdade
+        # 2) avisar o humano de verdade — UMA vez por conversa, não por turno
+        #
+        # A reserva vem antes do envio e é atômica. Três desfechos:
+        #
+        #   reserva livre                    → avisa (e a reserva fica de pé)
+        #   reservada + já era da equipe     → CALA. A equipe já sabe.
+        #   reservada + conversa voltou      → avisa. É pedido novo.
+        #
+        # O terceiro caso é o que impede a trava de virar mordaça: se a equipe
+        # resolveu, a conversa saiu de `HUMAN_REQUESTED`, e um pedido novo
+        # merece um alerta novo mesmo dentro da janela.
+        horas = _env_int("HANDOFF_REALERTA_HORAS", HORAS_ENTRE_AVISOS_PADRAO)
+        conversa_id = str(conversa.get("id") or session_id)
+        avisado_ha_pouco = await reivindicar_o_aviso(conversa_id, horas)
+
+        if avisado_ha_pouco and ja_estava_com_a_equipe:
+            logger.info("[HumanHandoff] conversa %s JÁ estava com a equipe e já "
+                        "foi avisada — não repeti o alerta", conversa_id[:8])
+            return JA_ESTAVA_COM_A_EQUIPE
+
         aviso = await self._avisar_suporte(company_id, conversa, motivo)
 
         if aviso["avisado"]:
             return SUCESSO_DO_HANDOFF
+
+        # Reservou e não avisou: devolve a vez, senão o Vigia fica mudo pelas
+        # horas inteiras do marcador justamente no caso em que ninguém soube.
+        await devolver_a_vez(conversa_id)
 
         # Marcou mas não avisou: a conversa aparece na Fila do painel, então
         # alguém PODE ver — só não foi empurrado. A resposta diz a verdade sem

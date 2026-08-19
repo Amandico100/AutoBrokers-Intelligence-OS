@@ -347,8 +347,16 @@ def gold_002_faisca_e_cheiro_de_queimado():
     playbook = PB.get_playbook(REF)
     checar(any("sinistro" in g for g in playbook["handoff_triggers"]),
            "e o playbook devolve o caso ao humano se a seguradora falar em sinistro")
-    checar(playbook["unknown_step_policy"] == "pause_and_handoff",
-           "passo desconhecido pausa e chama humano — nunca responde às cegas")
+    # 🔴 MUDOU EM 19/08/2026. Afirmava `unknown_step_policy` — 📊 uma chave
+    # declarada em 14 corredores e lida por NENHUMA linha de código. O teste
+    # abençoava uma proteção decorativa.
+    #
+    # A proteção real: `finalize_anchors` → `pergunta_de_decisao` segura toda
+    # tela que ABRE SERVIÇO. Tela reversível o cérebro resolve; irreversível
+    # para. A lição ("nunca responder às cegas onde dói") sobrevive; o que
+    # morreu foi a afirmação errada sobre QUEM a cumpria.
+    checar(len(playbook.get("finalize_anchors") or []) > 0,
+           "o playbook declara finalize_anchors — a proteção que o produto LÊ")
 
     lacuna("GOLD-ELEC-002", "reconhecer as palavras na fala do cliente e chamar o handoff",
            "as palavras estão no prompt e a ferramenta existe; a decisão de usá-la "
@@ -387,14 +395,29 @@ def gold_003_a_rua_inteira_sem_energia():
         os.environ[DS.FREIO_DE_EMERGENCIA] = "true"
         checar(DS.dispatch_live_enabled() is False,
                "e o freio de emergência fecha mesmo sem `INSURER_DISPATCH_LIVE`")
-        # CONTROLE: sem nada armado, o portão ABRE. Sem esta linha, um
-        # `dispatch_live_enabled` que só soubesse dizer False passaria nas duas
-        # asserções acima sem guardar coisa nenhuma.
+        # 🔴 ESTE CONTROLE MUDOU DE SINAL EM 19/08/2026 — e a lição migrou.
+        #
+        # Ele afirmava "com nada armado o portão ABRE", verdade escrita em
+        # 04/08 (P-90). 📊 Em 14/08 o padrão VOLTOU a ser fechado, por decisão
+        # literal do Founder ("não pode ser enviado nada até eu liberar") — e
+        # está no código e na docstring de `dispatch_live_enabled`. O teste
+        # continuava afirmando a verdade de dez dias antes.
+        #
+        # O que o controle precisa provar continua igual: que a função
+        # CONSEGUE dizer as duas coisas. Só que agora o "sim" exige a variável
+        # escrita à mão, que é justamente a decisão que o Founder guardou para
+        # si. Sem esta linha, um `dispatch_live_enabled` travado em False
+        # passaria nas duas asserções acima sem guardar coisa nenhuma.
         os.environ.pop(DS.FREIO_DE_EMERGENCIA, None)
+        checar(DS.dispatch_live_enabled() is False,
+               "com nada armado o portão fica FECHADO — fechado por construção",
+               "regra R1 do Founder, 14/08: 'não pode ser enviado nada até eu liberar'")
+        os.environ["INSURER_DISPATCH_LIVE"] = "true"
         checar(DS.dispatch_live_enabled() is True,
-               "CONTROLE: com nada armado o portão ABRE — quem segura é o agente",
-               "se este caso desse False junto com os outros dois, os outros dois "
-               "não estariam medindo o portão, só a incapacidade de abri-lo")
+               "CONTROLE: e com `INSURER_DISPATCH_LIVE=true` ele ABRE",
+               "se este caso desse False junto com os outros, os outros não "
+               "estariam medindo o portão, só a incapacidade de abri-lo")
+        os.environ.pop("INSURER_DISPATCH_LIVE", None)
     finally:
         os.environ.pop(DS.FREIO_DE_EMERGENCIA, None)
         os.environ.pop("INSURER_DISPATCH_LIVE", None)
@@ -439,11 +462,35 @@ def gold_004_a_geladeira_parou():
            f"eletrodoméstico={subs['eletrodomesticos']['tipo_servico_opcao']} · "
            f"eletricista={subs['eletricista']['tipo_servico_opcao']}")
 
+    # 🔴 ATUALIZADO EM 19/08/2026 (§9.3). Afirmava
+    # `{aparelho_marca_modelo, aparelho_idade}`.
+    #
+    # 📊 Em 18/08 a URA real da Allianz mostrou que ela pergunta a marca e o
+    # modelo em DUAS telas separadas ("Qual a marca ?" e depois "E o modelo
+    # completo?"), então o slot único virou dois. E a idade saiu da lista de
+    # obrigatórios porque a URA observada nunca a pergunta.
+    #
+    # ⚠️ A idade AINDA IMPORTA para a cobertura — a própria Allianz declara
+    # "aparelhos com até 10 anos de fabricação". Ela deixou de ser bloqueio de
+    # coleta, não deixou de existir. Registrado em PENDENCIAS (P-220).
+    #
+    # O que este caso guarda continua sendo o mesmo, e é o que importa: **as
+    # rotas não se borram.** Os slots de um eletricista não completam um
+    # chamado de eletrodoméstico.
     r = _acionar(subservice="eletrodomesticos", line_kind="residencial", **SLOTS_COMPLETOS)
     checar(r["status"] == "missing_data"
-           and set(r["missing"]) == {"aparelho_marca_modelo", "aparelho_idade"},
-           "a rota de eletrodoméstico exige marca/modelo e idade do aparelho",
-           "os slots do eletricista NÃO servem para ela — as rotas não se borram")
+           and set(r["missing"]) == {"aparelho_marca", "aparelho_modelo"},
+           "a rota de eletrodoméstico exige marca E modelo do aparelho",
+           f"os slots do eletricista NÃO servem para ela — as rotas não se "
+           f"borram. Faltou: {sorted(r.get('missing') or [])}")
+    # CONTROLE: e o inverso também. Um caso de eletrodoméstico completo NÃO
+    # deve ficar preso pedindo dados que só o eletricista tem — foi esse
+    # vazamento, na direção contrária, que quebrou 15 asserções deste arquivo
+    # em 19/08 (os passos de aparelho eram cobrados de TODAS as rotas).
+    r_inv = _acionar(subservice="eletricista", line_kind="residencial", **SLOTS_COMPLETOS)
+    checar("aparelho_marca" not in set(r_inv.get("missing") or []),
+           "CONTROLE: e a rota do eletricista NÃO pede dados de aparelho",
+           f"faltou nela: {sorted(r_inv.get('missing') or [])}")
     checar("risco_confirmado_sem_fumaca" not in subs["eletrodomesticos"]["required_slots"],
            "e ela não pede confirmação de risco elétrico",
            "cada rota faz as perguntas do problema que ela resolve")

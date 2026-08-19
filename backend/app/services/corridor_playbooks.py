@@ -259,6 +259,7 @@ ALLIANZ_RESIDENCIAL_WHATSAPP_V1: Dict[str, Any] = {
             # Ancora `qual eletrodom` para nao colidir com a segunda tela,
             # que comeca com `selecione o eletrodom`.
             "step": "menu_categoria_eletrodomestico",
+            "only_subservices": ["eletrodomesticos", "maquina_de_lavar"],
             "anchor": r"qual eletrodom[ée]stico precisa de conserto",
             "reply": "{eletrodomestico_categoria_opcao}",
             "requires": ["eletrodomestico_categoria_opcao"],
@@ -272,6 +273,7 @@ ALLIANZ_RESIDENCIAL_WHATSAPP_V1: Dict[str, Any] = {
             # 📊 7 ocorrencias, e ha a variante com "(Ar condicionado)" no
             # meio — por isso a ancora nao exige o texto entre as palavras.
             "step": "confirmar_que_sera_agendado",
+            "only_subservices": ["eletrodomesticos", "maquina_de_lavar"],
             "anchor": r"conserto para eletrodom[ée]stico.{0,30}dever[áa] ser agendado",
             "reply": "1",
             "notes": "1-Continuar 2-Voltar. Quem pediu conserto quer continuar.",
@@ -285,6 +287,7 @@ ALLIANZ_RESIDENCIAL_WHATSAPP_V1: Dict[str, Any] = {
             # As datas sao DINAMICAS — mudam a cada dia. Por isso a resposta e
             # o NUMERO da posicao, nunca a data. `1` e sempre a mais proxima.
             "step": "escolher_data_agendamento",
+            "only_subservices": ["eletrodomesticos", "maquina_de_lavar"],
             "anchor": r"escolha qual data deseja agendar",
             "reply": "{data_agendamento_opcao}",
             "requires": ["data_agendamento_opcao"],
@@ -299,6 +302,7 @@ ALLIANZ_RESIDENCIAL_WHATSAPP_V1: Dict[str, Any] = {
             #    (manha* - das 9:00 as 13:00 ou *tarde* ...)" (14x)
             #   "O agendamento e feito em intervalo de 2 horas..." (17x)
             "step": "escolher_periodo_agendamento",
+            "only_subservices": ["eletrodomesticos", "maquina_de_lavar"],
             "anchor": (r"agendamento (?:[ée] por per[íi]odo|[ée] feito em intervalo)"
                        r"|hor[áa]rios de agendamento"),
             "reply": "{periodo_agendamento_opcao}",
@@ -320,6 +324,7 @@ ALLIANZ_RESIDENCIAL_WHATSAPP_V1: Dict[str, Any] = {
             # 18/08. Este passo vem ANTES dele na lista, e por isso vence —
             # `match_ura_step` percorre em ordem. Mexer na ordem quebra isto.
             "step": "aviso_fora_da_garantia",
+            "only_subservices": ["eletrodomesticos", "maquina_de_lavar"],
             "anchor": r"fora da garantia do fabricante",
             "reply": "1",
             "notes": "📊 O aparelho precisa estar FORA da garantia do fabricante "
@@ -338,6 +343,7 @@ ALLIANZ_RESIDENCIAL_WHATSAPP_V1: Dict[str, Any] = {
             # 14 e maquina de lavar ROUPAS. Tecla errada abre chamado para o
             # aparelho errado, e o tecnico chega para consertar outra coisa.
             "step": "menu_aparelho",
+            "only_subservices": ["eletrodomesticos", "maquina_de_lavar"],
             "anchor": r"selecione o eletrodom[ée]stico que precisa de conserto",
             "reply": "{eletrodomestico_opcao}",
             "requires": ["eletrodomestico_opcao"],
@@ -350,12 +356,14 @@ ALLIANZ_RESIDENCIAL_WHATSAPP_V1: Dict[str, Any] = {
             # 📊 Resposta real da sessao 51022010: "Lava mais nao joga a agua
             # fora". Texto livre, do proprio segurado.
             "step": "problema_do_aparelho",
+            "only_subservices": ["eletrodomesticos", "maquina_de_lavar"],
             "anchor": r"qual problema/?defeito apresentado",
             "reply": "{problema_descricao}",
             "notes": "texto livre; a atendente ja coleta este slot",
         },
         {
             "step": "aparelho_marca",
+            "only_subservices": ["eletrodomesticos", "maquina_de_lavar"],
             "anchor": r"^\s*qual a marca\s*\??\s*$|qual a marca do (?:aparelho|equipamento)",
             "reply": "{aparelho_marca}",
             "requires": ["aparelho_marca"],
@@ -363,6 +371,7 @@ ALLIANZ_RESIDENCIAL_WHATSAPP_V1: Dict[str, Any] = {
         },
         {
             "step": "aparelho_modelo",
+            "only_subservices": ["eletrodomesticos", "maquina_de_lavar"],
             "anchor": r"e o modelo completo|qual o modelo",
             "reply": "{aparelho_modelo}",
             "requires": ["aparelho_modelo"],
@@ -468,6 +477,7 @@ ALLIANZ_RESIDENCIAL_WHATSAPP_V1: Dict[str, Any] = {
             # `profissional_opcao`. Uma constante aqui seria pior que o
             # silencio que ela conserta.
             "step": "o_que_aconteceu",
+            "only_subservices": ["eletricista"],
             "anchor": r"o que aconteceu\?",
             "reply": "{problema_eletrico_opcao}",
             "requires": ["problema_eletrico_opcao"],
@@ -1854,6 +1864,17 @@ ZURICH_AUTO_WHATSAPP_V1 = _auto_playbook(
          "notes": "1-Sim 2-Não; default Não"},
         {"step": "endereco_livre", "anchor": r"compartilhe sua localiza[çc][ãa]o fixa ou me diga o endere[çc]o",
          "reply": "{local_atual}", "requires": ["local_atual"],
+         # 🔴 19/08/2026: sem este filtro, um caso completo de VIDROS ficava
+         # preso pedindo `local_atual` — 📊 medido:
+         # `missing_slots_for_subservice(zurich, "vidros", caso_completo)`
+         # devolvia `['servico_texto', 'local_atual']`.
+         #
+         # Vidros não pede o local do veículo porque o reparo é agendado numa
+         # oficina, e por isso `local_atual` não está no `required_slots` dela.
+         # Mas o gate recolhe `requires` de TODO passo sem filtro, então este
+         # passo cobrava de todo mundo. Mesma classe do defeito de
+         # eletrodoméstico no residencial da Allianz, achado no mesmo dia.
+         "only_subservices": ["guincho", "pneu", "bateria", "chaveiro"],
          "notes": "aceita endereço em texto livre (Ex: Rua Sergipe, 1440 - Belo Horizonte)"},
         {"step": "endereco_detalhado", "anchor": r"digitar os dados do endere[çc]o de forma mais detalhada", "reply": "1",
          "notes": "fallback quando a localização/endereço não geocodifica; CEP/rua/nº pelo adaptativo"},

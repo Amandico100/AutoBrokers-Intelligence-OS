@@ -174,10 +174,29 @@ def o_agendador_nao_cai_por_causa_deste_job() -> None:
            "o agendador importa o modulo LEVE, nunca `app.agents`",
            "e por isso que a varredura nao mora em human_handoff.py")
 
-    # E o import pesado esta DENTRO da funcao, nao no topo do modulo.
-    topo = vig[:vig.index("async def varrer_handoffs_parados")]
-    checar("from app.agents" not in topo,
-           "e o modulo do vigia tambem nao importa `app.agents` no topo")
+    # E o import pesado esta DENTRO de uma funcao, nunca em nivel de MODULO.
+    #
+    # 🔴 ATUALIZADO EM 19/08/2026. Antes recortava tudo ANTES de
+    # `varrer_handoffs_parados` e exigia que `from app.agents` nao aparecesse
+    # ali. O recorte mudou de sentido quando o vigia ganhou tres funcoes
+    # auxiliares (`_env_int`, `_ja_avisado_recentemente`, `_devolver_a_vez`)
+    # que ficam ANTES da varredura e importam de `app.agents` — cada uma
+    # DENTRO do proprio corpo, que e exatamente o que a licao pede.
+    #
+    # A licao nao mudou: nada de `app.agents` em nivel de modulo, porque
+    # `start_buffer_scheduler()` e chamado sem `try` no startup e um
+    # ImportError ali derruba a aplicacao inteira (CLAUDE.md §9.1). O que
+    # mudou foi COMO se verifica — agora por indentacao, que e o que
+    # "nivel de modulo" quer dizer de verdade.
+    linhas_de_modulo = [ln for ln in vig.splitlines()
+                        if ln.startswith("from ") or ln.startswith("import ")]
+    checar(not any("app.agents" in ln for ln in linhas_de_modulo),
+           "e o modulo do vigia nao importa `app.agents` em nivel de MODULO",
+           f"importes de topo: {[ln for ln in linhas_de_modulo if 'app.' in ln]}")
+    checar(any("app.agents" in ln for ln in vig.splitlines()
+               if ln.startswith("    ") and ln.strip().startswith("from ")),
+           "CONTROLE: e ele IMPORTA de app.agents, so que dentro das funcoes",
+           "sem isto, um vigia que nao importasse nada passaria na linha acima")
     corpo = vig[vig.index("async def varrer_handoffs_parados"):]
     checar("from app.agents.tools.human_handoff import HumanHandoffTool" in corpo,
            "o import pesado acontece POR EXECUCAO, dentro da funcao")
@@ -208,14 +227,35 @@ def a_varredura_nao_vira_metralhadora() -> None:
     exatamente como este estado ficou 730 horas sem ninguem olhar."""
     vig = (RAIZ / "app/tasks/handoff_watchdog.py").read_text(encoding="utf-8")
     checar("_ja_avisado_recentemente" in vig, "ha marcador de re-alerta")
-    checar("nx=True" in vig,
+
+    # 🔴 O MARCADOR MUDOU DE CASA EM 19/08/2026 — e a licao veio junto.
+    #
+    # Ele morava aqui. 📊 Naquele dia descobriu-se que a `HumanHandoffTool`,
+    # consertada em 18/08, passou a avisar o grupo em TODA chamada — entao os
+    # avisadores da mesma conversa viraram DOIS. Duas copias do marcador
+    # seriam duas chaves diferentes no Redis, cada uma silenciando so a si
+    # mesma, e o grupo receberia o dobro: o defeito que o marcador existe para
+    # resolver, agora em dose dupla.
+    #
+    # Uma definicao, dois donos. Ela vive em `human_handoff.py` e o vigia
+    # delega. As tres exigencias abaixo continuam iguais; mudou o arquivo onde
+    # se confere — e conferir no arquivo errado seria dar verde a um marcador
+    # que nao existe mais.
+    marc = (RAIZ / "app/agents/tools/human_handoff.py").read_text(encoding="utf-8")
+    checar("reivindicar_o_aviso" in vig,
+           "e o vigia usa o marcador COMPARTILHADO, nao uma copia dele",
+           "copia e onde o conserto de um lado deixa o outro quebrado")
+    checar("nx=True" in marc,
            "gravado com `nx` — teste-e-marca atomico, sem aviso em dobro",
            "dois workers na mesma passada avisariam duas vezes")
-    checar("ex=horas * 3600" in vig, "e com TTL: o lembrete VOLTA, nao morre")
+    checar("* 3600" in marc, "e com TTL: o lembrete VOLTA, nao morre")
+    checar("nx=True" not in vig,
+           "CONTROLE: e o marcador NAO existe mais em duas casas",
+           "se as duas tivessem `nx=True`, seriam duas chaves e dois avisos")
 
     # E o fail-open: Redis fora do ar tem de AVISAR, nao calar.
-    i = vig.index("async def _ja_avisado_recentemente")
-    corpo = vig[i:vig.index("def _parado_ha_ms")]
+    i = marc.index("async def reivindicar_o_aviso")
+    corpo = marc[i:marc.index("async def devolver_a_vez")]
     checar("return False" in corpo.split("except")[-1],
            "Redis indisponivel => avisa de novo (o defeito e o silencio)",
            "fail-closed aqui reproduziria exatamente o bug que se esta consertando")

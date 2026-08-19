@@ -684,9 +684,31 @@ def _sinais_do_codigo() -> dict:
 
         sinais["acionamento_env_aberta"] = bool(dispatch_live_enabled())
         sinais["freio_de_emergencia_armado"] = bool(freio_de_emergencia_armado())
+
+        # 🔴 QUAIS CORREDORES ABREM SERVIÇO DE VERDADE — 19/08/2026.
+        #
+        # `acionamento_env_aberta` é o portão de ENVIAR MENSAGEM. Ele diz
+        # `true` mesmo quando toda finalização está travada em modo de teste —
+        # são coisas diferentes, e ler uma pela outra foi exatamente o que
+        # aconteceu: antes de um acionamento real ninguém conseguia responder
+        # "este corredor vai abrir o chamado ou vai cancelar no fim?" sem
+        # abrir o painel do EasyPanel e ler a variável na mão.
+        #
+        # Não expõe segredo nenhum: é o nome dos corredores e um modo de
+        # operação, os dois já visíveis para quem opera (CLAUDE.md §13.3 fala
+        # de segredo, e nada aqui é).
+        from app.services.corridor_playbooks import _PLAYBOOKS
+        from app.services.insurer_dispatch_service import finalize_live_for
+
+        sinais["finalize_modo"] = str(
+            os.getenv("DISPATCH_FINALIZE_MODE", "live")).strip().lower()
+        sinais["finalize_abre_de_verdade"] = sorted(
+            ref for ref in _PLAYBOOKS if finalize_live_for(ref))
     except Exception:  # noqa: BLE001
         sinais["acionamento_env_aberta"] = None
         sinais["freio_de_emergencia_armado"] = None
+        sinais["finalize_modo"] = None
+        sinais["finalize_abre_de_verdade"] = None
 
     # O template do briefing existe no catálogo? Sem ele, o artefato morre em
     # chave estrangeira e o briefing fica em `pending` sem ninguém saber.

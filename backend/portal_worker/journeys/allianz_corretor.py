@@ -2478,6 +2478,145 @@ async def _semantic_navigation_review(page, goal: str, params: Dict[str, Any], e
         return JourneyResult(status="needs_human", message=f"navegacao adaptativa falhou: {type(e).__name__}")
 
 
+# ==========================================================================
+# SESSÃO MORTA DO LADO DO SERVIDOR — job de 18/08/2026 10:35
+# ==========================================================================
+# 📊 A evidência daquele job, campo por campo:
+#
+#     logged_in: true                 session_reused: true
+#     epac_token_before: {expired: false, mins_to_exp: 472}
+#     navegação: /private/home -> /private/application/static -> blank
+#                -> /drbl13/SEAServlet -> /idp/
+#     body_text: VAZIO                profiler.screens: 0
+#     acoes_recusadas: "Gestão", "Consultas", "Início" — alvo não existe
+#
+# O relógio do token LOCAL dizia que faltavam 7h48. O servidor discordava: o
+# portal devolveu o navegador ao provedor de identidade (`/idp/`) e nenhuma
+# tela renderizou. O único gatilho de relogin era `expired is True` — não
+# disparou, e o grupo da corretora recebeu "não consegui ler a lista".
+#
+# ⚠️ O conserto NÃO pode ser "sempre religar": forçar login fresco em sessão
+# SAUDÁVEL quebrou o acesso a inadimplentes (job a9733bb5). Por isso o
+# diagnóstico abaixo exige EVIDÊNCIA POSITIVA de morte. A ausência da tela de
+# inadimplentes, sozinha, não conta — é o que quem pergunta já sabia.
+
+# Itens que existem no shell de QUALQUER tela autenticada do AllianzNet. Se o
+# adaptativo tentou clicar neles e o alvo "não existe", não é a tela que mudou:
+# é o portal que não está mais lá.
+_MENU_DO_SHELL = ("gestao", "consultas", "inicio", "vendas", "cobranca")
+
+
+def _url_no_provedor_de_identidade(url: Any) -> bool:
+    """`/idp/` é o provedor de identidade da Allianz. Chegar nele com uma
+    sessão que deveria estar viva significa que o servidor a descartou."""
+    low = _norm(url)
+    if not low:
+        return False
+    return low.rstrip("/").endswith("/idp") or "/idp/" in low or "/idp?" in low
+
+
+def _url_de_repique_de_sessao(url: Any) -> bool:
+    """`/drbl13/SEAServlet` re-carimba a sessão do AllianzNet. Aparece no trace
+    do job que falhou E em navegação saudável — por isso é sinal REGISTRADO,
+    nunca sinal SUFICIENTE. Fator que não muda o resultado não é a causa."""
+    return "drbl13/seaservlet" in _norm(url)
+
+
+def _alvos_de_menu_recusados(acoes_recusadas: Iterable[Dict[str, Any]]) -> int:
+    total = 0
+    for acao in acoes_recusadas or []:
+        alvo = _norm((acao or {}).get("alvo"))
+        if alvo and any(item in alvo for item in _MENU_DO_SHELL):
+            total += 1
+    return total
+
+
+def diagnosticar_sessao_morta(
+    *,
+    url_atual: Any = "",
+    urls_vistas: Iterable[Any] = (),
+    body_text: str = "",
+    acoes_recusadas: Iterable[Dict[str, Any]] = (),
+) -> Dict[str, Any]:
+    """Sessão morta do lado do servidor? Só olha o que a PÁGINA mostra.
+
+    De propósito NÃO consulta o relógio do token EPAC: foi exatamente ele que
+    disse "faltam 7h48" enquanto o portal já tinha descartado a sessão.
+    """
+    texto = _norm(body_text)
+    urls = [u for u in ([url_atual] + list(urls_vistas or [])) if u]
+    recusados = _alvos_de_menu_recusados(acoes_recusadas)
+    sinais = {
+        "url_final_no_idp": _url_no_provedor_de_identidade(url_atual),
+        "trace_passou_por_idp": any(_url_no_provedor_de_identidade(u) for u in urls),
+        "trace_passou_por_seaservlet": any(_url_de_repique_de_sessao(u) for u in urls),
+        "tela_de_login_visivel": _login_form_present(body_text),
+        "tela_vazia": len(texto.strip()) < 40,
+        "menu_ausente": not any(sinal in texto for sinal in _DASHBOARD_SIGNALS),
+        "alvos_de_menu_recusados": recusados,
+    }
+    motivos: List[str] = []
+    if sinais["url_final_no_idp"]:
+        motivos.append("o portal devolveu o navegador para a tela de identidade (/idp/)")
+    if sinais["tela_de_login_visivel"]:
+        motivos.append("a tela de login do AllianzNet apareceu de novo")
+    if sinais["menu_ausente"] and sinais["tela_vazia"]:
+        motivos.append("a pagina veio sem texto nenhum e sem o menu do portal")
+    if sinais["menu_ausente"] and sinais["trace_passou_por_idp"] and not sinais["url_final_no_idp"]:
+        motivos.append("a navegacao passou pela tela de identidade e o menu do portal sumiu")
+    if sinais["menu_ausente"] and recusados >= 2:
+        motivos.append(f"{recusados} itens do menu do portal nao existiam na tela")
+    return {"morta": bool(motivos), "motivo": "; ".join(motivos)[:300], "sinais": sinais}
+
+
+async def _diagnosticar_sessao_na_pagina(page, evidence: Dict[str, Any]) -> Dict[str, Any]:
+    """Coleta na página o que o diagnóstico precisa. Nunca levanta."""
+    try:
+        url_atual = str(getattr(page, "url", "") or "")
+    except Exception:  # noqa: BLE001
+        url_atual = ""
+    urls: List[str] = []
+    for frame in (getattr(page, "frames", None) or []):
+        try:
+            endereco = str(getattr(frame, "url", "") or "")
+            if endereco:
+                urls.append(endereco)
+        except Exception:  # noqa: BLE001
+            continue
+    try:
+        vistas = await page.evaluate(
+            r"""() => {
+              const out = [];
+              try {
+                for (const n of (performance.getEntriesByType('navigation') || [])) {
+                  if (n && n.name) out.push(String(n.name));
+                }
+              } catch (e) {}
+              try {
+                for (const r of (performance.getEntriesByType('resource') || [])) {
+                  const n = r && r.name ? String(r.name) : '';
+                  if (/\/idp\/|SEAServlet/i.test(n)) out.push(n);
+                }
+              } catch (e) {}
+              return out.slice(-12);
+            }"""
+        )
+        for endereco in (vistas or []):
+            urls.append(str(endereco))
+    except Exception:  # noqa: BLE001
+        pass
+    texto = await _all_body_text(page)
+    diagnostico = diagnosticar_sessao_morta(
+        url_atual=url_atual,
+        urls_vistas=urls,
+        body_text=texto,
+        acoes_recusadas=evidence.get("acoes_recusadas") or [],
+    )
+    # URLs saneadas: o trace vai para `portal_jobs.evidence` e não pode levar token.
+    diagnostico["urls"] = [_sanitize_trace_url(u) for u in ([url_atual] + urls) if u][:8]
+    return diagnostico
+
+
 async def _ensure_inadimplentes_page(page, params: Dict[str, Any], evidence: Dict[str, Any]) -> bool:
     await _wait_for_inadimplencias_entry(page, timeout_ms=10000)
     text = _norm(await _all_body_text(page))
@@ -2606,7 +2745,8 @@ async def _open_receipts_for_item(page, item: Dict[str, Any], params: Dict[str, 
     evidence.setdefault("download_notes", []).append("nao abriu listagem de recibos para item")
     return False
 
-async def _relogin_fresh(page, params: Dict[str, Any], evidence: Dict[str, Any]) -> bool:
+async def _relogin_fresh(page, params: Dict[str, Any], evidence: Dict[str, Any],
+                         *, motivo: str = "busca vazia") -> bool:
     """Aprendizado 2026-07-10 (job b693d9de): TODAS as runs de cobrança rodaram
     com sessão RESTAURADA e a busca global devolveu vazio até para cliente que
     comprovadamente existe — enquanto o mesmo fluxo manual (login fresco do
@@ -2640,8 +2780,12 @@ async def _relogin_fresh(page, params: Dict[str, Any], evidence: Dict[str, Any])
         except Exception:  # noqa: BLE001
             pass
     evidence["fresh_login_after_empty_search"] = bool(ok)
+    # 📊 §12.1: o motivo entra na nota porque a mesma função serve dois casos
+    # (busca degradada e sessão morta) e quem lê a evidência depois precisa
+    # saber qual deles disparou este login.
     evidence.setdefault("download_notes", []).append(
-        "relogin fresco apos busca vazia: " + ("ok" if ok else f"falhou ({_clean_text(getattr(result, 'message', ''))[:80]})")
+        f"relogin fresco ({motivo}): "
+        + ("ok" if ok else f"falhou ({_clean_text(getattr(result, 'message', ''))[:80]})")
     )
     return ok
 
@@ -3636,17 +3780,46 @@ async def cobranca_sweep(page, params: Dict[str, Any], evidence: Dict[str, Any])
     _install_api_capture(page, api_capture)
 
     if not await _ensure_inadimplentes_page(page, params, evidence):
-        try:
-            from portal_worker.adaptive import _dump_dom
+        # A sessão pode ter morrido DO LADO DO SERVIDOR sem o relógio do token
+        # local perceber (job 18/08/2026 10:35). Antes de mandar para humano,
+        # perguntamos à página se ela ainda é uma página do portal.
+        diagnostico = await _diagnosticar_sessao_na_pagina(page, evidence)
+        evidence["sessao_morta_detectada"] = diagnostico
+        religou = False
+        chegou = False
+        if diagnostico.get("morta"):
+            # 🔴 UMA retentativa. Nunca laço: entrada repetida em portal é o que
+            # faz o portal bloquear a corretora.
+            religou = await _relogin_fresh(page, params, evidence, motivo="sessao morta no servidor")
+            evidence["relogin_por_sessao_morta"] = bool(religou)
+            if religou:
+                chegou = await _ensure_inadimplentes_page(page, params, evidence)
+            evidence["inadimplentes_apos_relogin"] = bool(chegou)
+        if not chegou:
+            try:
+                from portal_worker.adaptive import _dump_dom
 
-            evidence["debug_dom"] = await _dump_dom(page)
-        except Exception:  # noqa: BLE001
-            evidence["body_text"] = (await _body_text(page))[:1200]
-        return JourneyResult(
-            status="needs_human",
-            captured={"logged_in": True, "stage": "inadimplentes_nao_localizado"},
-            message="nao consegui localizar a area de parcelas inadimplentes Allianz",
-        )
+                evidence["debug_dom"] = await _dump_dom(page)
+            except Exception:  # noqa: BLE001
+                evidence["body_text"] = (await _body_text(page))[:1200]
+            if diagnostico.get("morta"):
+                # O estágio diz o que houve DE VERDADE. Ver a nota em
+                # `billing_collection.O_QUE_HOUVE_POR_ESTAGIO`: o rótulo é o que
+                # o grupo humano lê, e um rótulo errado manda gente investigar
+                # a coisa errada.
+                detalhe = str(diagnostico.get("motivo") or "sem detalhe")
+                fim = ("refiz o login uma vez e mesmo assim nao cheguei na tela de parcelas inadimplentes"
+                       if religou else "e o novo login nao completou")
+                return JourneyResult(
+                    status="needs_human",
+                    captured={"logged_in": True, "stage": "sessao_caiu_no_portal", "motivo": detalhe},
+                    message=f"a sessao no portal Allianz tinha caido ({detalhe}); {fim}",
+                )
+            return JourneyResult(
+                status="needs_human",
+                captured={"logged_in": True, "stage": "inadimplentes_nao_localizado"},
+                message="nao consegui localizar a area de parcelas inadimplentes Allianz",
+            )
 
     try:
         max_expand = max(1, int(params.get("max_boletos") or params.get("max_boletos_por_execucao") or 10))

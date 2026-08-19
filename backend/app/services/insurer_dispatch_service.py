@@ -17,6 +17,7 @@ dispatch fica no caso (metadata) — este módulo não fala com banco.
 
 from __future__ import annotations
 
+import logging
 import os
 import re
 from datetime import datetime, timezone
@@ -50,6 +51,8 @@ from app.services.corridor_playbooks import (
     resposta_de_correcao,
     subservice_referral,
 )
+
+logger = logging.getLogger(__name__)
 
 DISPATCH_STATES = (
     "preparing",
@@ -581,7 +584,27 @@ def build_dry_run_plan(playbook_ref: str, subservice: str, slots: Dict[str, Any]
     # Abertura CURTA ("Olá") — é assim que a operadora real inicia; a URA não lê
     # texto longo. O resumo estruturado vai ao ANALISTA humano (fase humana).
     steps: List[Dict[str, str]] = [{"step": "abertura", "reply": "Olá"}]
+    # 🔴 SÓ OS PASSOS DESTA ROTA — 19/08/2026.
+    #
+    # O laço percorria `ura_steps` inteiro. 📊 Depois que o corredor
+    # residencial da Allianz ganhou os nove passos de eletrodoméstico, o plano
+    # de um chamado de ELETRICISTA passou a listar `aparelho_marca` e
+    # `aparelho_modelo` como `[PENDENTE: ...]` — dados que um eletricista
+    # nunca vai ter.
+    #
+    # E o plano não é enfeite: é o que o atendente lê antes de acionar e o
+    # que a revisão humana aprova. Um passo `[PENDENTE:]` ali é a promessa de
+    # uma resposta em branco na URA da seguradora.
+    #
+    # `only_subservices` já é o filtro que `missing_slots_for_subservice` usa
+    # para a mesma pergunta. Usar o mesmo aqui é o que impede as duas
+    # respostas de divergirem — foi a divergência entre elas que produziu o
+    # defeito.
+    rota = canonical_subservice(session.get("subservice") or subservice)
     for step in playbook.get("ura_steps") or []:
+        only = step.get("only_subservices")
+        if only and str(rota or "").lower() not in [str(x).lower() for x in only]:
+            continue
         rendered = render_reply(step, session["slots"])
         steps.append({
             "step": str(step.get("step")),
@@ -1496,16 +1519,89 @@ def handle_insurer_message(
         rendered = render_reply(effective, session.get("slots") or {})
         if step.get("dynamic") == "vehicle_by_plate" and not (rendered.get("reply") or "").strip():
             rendered = {"ok": False, "missing": ["veiculo_opcao"], "reply": None}
-        if not rendered["ok"] and step.get("fallback_adaptive"):
-            # Slot não deduzido (ex.: parser de endereço não achou o bairro) em
-            # passo marcado fallback_adaptive → o cérebro adaptativo assume este
-            # passo (ele tem o endereço completo do caso). Nunca chuta.
-            pass
-        elif not rendered["ok"]:
-            session["state"] = "needs_human"
-            session["reason"] = f"missing_slots:{','.join(rendered['missing'])}"
-            session["missing_slots"] = rendered["missing"]
-            return session
+        if not rendered["ok"]:
+            # ==============================================================
+            # 🔴 A TELA CONHECIDA COM DADO FALTANDO — 19/08/2026
+            # ==============================================================
+            #
+            # ESTE ERA O TRAVAMENTO. Não a tela desconhecida: a CONHECIDA.
+            #
+            # 📊 Medido no acervo de corredores em 19/08: `fallback_adaptive`
+            # existia em 29 de ~250 passos, e em **0 de 29** no
+            # `allianz-residencial`. Ou seja: naquele corredor, QUALQUER tela
+            # reconhecida cujo slot não estivesse preenchido virava
+            # `needs_human` no mesmo instante — e `needs_human` está dentro de
+            # `_TERMINAL_STATES` do Vigia, que começa com
+            # `if state in _TERMINAL_STATES: return None`.
+            #
+            # O cérebro estava a três linhas daqui e nunca era consultado.
+            # Ninguém tentava de novo. Nunca. 📊 Foi o que produziu os 2min22
+            # e o clique manual do Founder em 18/08: a tela `o_que_aconteceu`
+            # exigia `problema_eletrico_opcao`, nada preenchia, e o motor
+            # parou de vez.
+            #
+            # O DISCRIMINADOR NÃO É NOVO, e isso é de propósito (CLAUDE.md §5).
+            # `detect_finalize_anchor` já é a autoridade do produto sobre "esta
+            # tela ABRE O SERVIÇO de verdade": é a lista `finalize_anchors` do
+            # próprio corredor, a mesma que arma o freio de finalização.
+            # Reusá-la significa que uma âncora nova protege este ponto no
+            # MESMO commit, sem ninguém lembrar de vir aqui.
+            #
+            #   tela REVERSÍVEL (menu, pedido de dado)  → o cérebro pensa
+            #   tela IRREVERSÍVEL (confirmar, abrir)    → para, como antes
+            #
+            # Errar num menu custa uma tela e um "Voltar". Errar na
+            # confirmação manda um técnico ao endereço errado. Não é a mesma
+            # aposta, e por isso não é a mesma regra.
+            #
+            # 🔴 NÃO É `pergunta_de_decisao`, e a diferença foi MEDIDA.
+            #
+            # A primeira versão deste bloco usava `pergunta_de_decisao`, que
+            # parece a escolha óbvia pelo nome. 📊 Rodando as duas contra as
+            # telas reais dos corredores residenciais, ela marca como
+            # "decisão" três MENUS: "Qual o serviço que você precisa?",
+            # "Informe o tipo de serviço" e — o pior — "Escolha qual data
+            # deseja agendar", que é um passo do fluxo da máquina de lavar.
+            # Ela é larga porque serve a outro propósito (decidir se o
+            # silêncio é legítimo), e com ela o motor pararia exatamente onde
+            # precisa pensar. `detect_finalize_anchor` não marca nenhum menu.
+            #
+            # ⚠️ RESIDUAL ANOTADO: uma tela de confirmação que o corredor
+            # ainda não mapeou não é pega aqui. A segunda camada existe e é o
+            # próprio prompt do cérebro (`finalize_rule`), que em modo de
+            # teste manda responder NAO_SEI diante de qualquer confirmação.
+            # Duas camadas, nenhuma perfeita sozinha.
+            decisao = detect_finalize_anchor(playbook, insurer_message)
+            if step.get("fallback_adaptive") or not decisao:
+                # O cérebro assume. Ele recebe o caso inteiro, a intenção de
+                # cada passo do playbook e os últimos turnos — e agora também
+                # O QUE FALTOU, abaixo, que é a informação que mais o ajuda.
+                session["falta_para_a_ura"] = {
+                    "campo": step_name,
+                    "slot": ",".join(rendered["missing"]),
+                    "rotulo": (f"{', '.join(rendered['missing'])} "
+                               f"(a tela `{step_name}` pede isso)"),
+                }
+                session["ultimo_passo_sem_dado"] = {
+                    "step": step_name,
+                    "faltou": list(rendered["missing"]),
+                    "notes": str(step.get("notes") or ""),
+                }
+                logger.info(
+                    "[DISPATCH] passo %r sem %s — REVERSÍVEL, o cérebro assume "
+                    "(antes isto era needs_human terminal)",
+                    step_name, rendered["missing"])
+            else:
+                # Irreversível. Continua parando — e agora o motivo diz por quê.
+                session["state"] = "needs_human"
+                session["reason"] = f"missing_slots:{','.join(rendered['missing'])}"
+                session["missing_slots"] = rendered["missing"]
+                session["parou_em_decisao"] = decisao
+                logger.warning(
+                    "[DISPATCH] 🔴 passo %r sem %s numa tela IRREVERSÍVEL (%s) "
+                    "— parando, como deve ser", step_name, rendered["missing"],
+                    decisao)
+                return session
         else:
             # LOOP GUARD: nunca enviar a MESMA resposta À MESMA PERGUNTA 3x
             # (teste Yelum 2026-07-10: CPF repetido 4x até derrubar a conversa).
@@ -1808,8 +1904,35 @@ def build_human_phase_messages(session: Dict[str, Any], insurer_message: str,
     # atual, porque é assim que uma conversa se lê: o que já foi dito, e então
     # o que acabaram de dizer. Colocá-lo no topo faria a cauda competir com os
     # dados do caso — que são a única fonte de número autorizada.
+    # 🔴 O PONTO EXATO ONDE O MOTOR EMPACOU — 19/08/2026.
+    #
+    # Quando um passo MAPEADO fica sem o dado que ele exige, o motor agora
+    # passa a bola para cá em vez de morrer (ver o bloco em
+    # `handle_insurer_message`). Mas passar a bola calado desperdiça a melhor
+    # informação que existe: o corredor SABE qual tela é, SABE qual dado
+    # faltou, e frequentemente carrega no `notes` a lista de opções da tela.
+    #
+    # Sem este bloco o modelo veria só a tela crua e teria de redescobrir
+    # sozinho o que o produto já sabia. Com ele, a pergunta deixa de ser
+    # "o que é isto?" e vira "qual destas opções serve para este caso?" —
+    # que é uma pergunta muito mais fácil de acertar.
+    empacou = session.get("ultimo_passo_sem_dado") or {}
+    ajuda_do_passo = ""
+    if empacou.get("step"):
+        ajuda_do_passo = (
+            "\n\n🔴 ONDE O AUTOMÁTICO EMPACOU (é por isso que você foi chamado):\n"
+            f"- a tela foi reconhecida como o passo `{empacou['step']}`\n"
+            f"- faltou preencher: {', '.join(empacou.get('faltou') or []) or '?'}\n"
+            + (f"- o que se sabe desta tela: {empacou['notes']}\n"
+               if empacou.get("notes") else "")
+            + "Decida a resposta desta tela usando os dados do caso. Se a tela "
+              "for um menu, escolha a opção coerente com o problema relatado. "
+              "Se realmente não der para deduzir, responda NAO_SEI."
+        )
+
     user = (
         f"Dados do caso (únicos números permitidos):\n{fatos}{guia_ura}"
+        f"{ajuda_do_passo}"
         f"{contexto_pendente}{contexto_historico}\n\n"
         # "TELA", não "mensagem". A seguradora manda o aviso numa bolha, o menu
         # na outra e a pergunta na terceira — e o que chega aqui é a rajada
@@ -1933,6 +2056,12 @@ def reply_human_phase(
     """Emite a resposta GUARDADA na fase humana e limpa as pendências."""
     session = _emit(session, reply, sender=sender, next_state="human_phase")
     session["pending_insurer_messages"] = []
+    # 🔴 O empaque foi resolvido: some com ele. Deixá-lo gravado faria o
+    # prompt do PRÓXIMO turno anunciar um travamento que já passou — e o
+    # modelo tentaria responder de novo uma tela que já respondeu. É a mesma
+    # razão de `pending_insurer_messages` ser zerado na linha acima.
+    session.pop("ultimo_passo_sem_dado", None)
+    session.pop("falta_para_a_ura", None)
     return session
 
 

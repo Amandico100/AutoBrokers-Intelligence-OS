@@ -6488,3 +6488,105 @@ disso é uma chamada de `editar()` ou três linhas no painel.
 
 **O que custa esquecer:** as peças saem com a marca certa e sem o registro
 profissional que dá autoridade ao documento.
+
+---
+
+## P-219 · 🟡 A dedup de entrega existe e está DESLIGADA no modo teste
+
+**Aberta em:** 19/08/2026 (SPEC-078, T3) · **Dono:** 🧑 Founder
+
+📊 Até hoje `billing_sent_log` estava vazia e `_record_sent` /
+`_already_sent_recibos` estavam **definidas e nunca chamadas**
+(`backend/app/services/billing_collection.py`). A regra *"cada parcela em atraso
+é enviada 1x"* não existia na prática.
+
+Agora as duas metades estão ligadas no caminho de entrega e a decisão mora num
+lugar só: `dedup_de_envio_ativa(send_mode)`. `live` e `approval` deduplicam
+sempre. **`test` não deduplica por padrão** — é a decisão de 17/08/2026 (nota
+88, registrada no próprio código): em teste o destino é o número da própria
+corretora e o que se quer é repetir. 📊 E a chave do índice único
+(`company_id, recibo, send_mode`) não inclui o destino, então trocar o número de
+teste não destravaria os mesmos boletos.
+
+⚠️ Hoje o **único** caminho de entrega que roda é o do modo teste — `live` está
+barrado por `customer_send_allowed` e por blocker explícito. Enquanto isso não
+mudar, `billing_sent_log` continua vazia com o padrão atual.
+
+**O que destrava:** 🧑 o Founder decidir se o modo teste passa a deduplicar.
+`BILLING_DEDUP_TEST_ENABLED=1` liga sem tocar em código, e há teste dos dois
+lados (`backend/tests/test_a_sessao_caida_volta_e_o_aviso_diz_a_verdade.py`,
+bloco [4]).
+
+**O que custa esquecer:** com a flag **ligada**, uma segunda execução no mesmo
+dia não entrega nada — o que quebra uma demonstração feita depois da execução
+agendada. Com ela **desligada**, a corretora recebe os mesmos boletos todo dia,
+e no dia em que `live` for homologado o segurado passa a receber também.
+
+---
+
+## P-220 · A idade do aparelho saiu da coleta, e a cobertura depende dela
+**Quem:** 🤖 execução · **Aberta em:** 19/08/2026
+
+📊 Até 18/08 o subserviço `eletrodomesticos` da Allianz residencial exigia
+`aparelho_marca_modelo` e `aparelho_idade`. Ao mapear a URA real da máquina de
+lavar, o slot único virou dois (`aparelho_marca` + `aparelho_modelo`, porque a
+URA pergunta em duas telas) — e **a idade saiu da lista**, porque a URA
+observada nunca a pergunta.
+
+🔴 Mas a idade não deixou de importar: a própria Allianz declara na tela que o
+serviço vale para *"aparelhos/equipamentos com até 10 anos de fabricação"*. Sem
+coletá-la, a atendente não tem como avisar o segurado de que o chamado pode ser
+recusado no local — e quem descobre é o técnico, na casa dele.
+
+**O que destrava:** 🤖 decidir se `aparelho_idade` volta como slot **de aviso**
+(coletado e mostrado, sem bloquear) em vez de slot obrigatório. Obrigatório
+bloquearia acionamentos por um dado que a URA não pede.
+
+**O que custa esquecer:** um chamado aberto para um aparelho de 12 anos, técnico
+deslocado, recusa no local, e a corretora explicando o que o sistema sabia.
+
+---
+
+## P-221 · `unknown_step_policy` é configuração morta em 14 corredores
+**Quem:** 🤖 execução · **Aberta em:** 19/08/2026
+
+📊 A chave está declarada em 14 playbooks (`pause_and_handoff` nos residenciais,
+`adaptive_then_handoff` nos de auto) e **nenhuma linha de código a lê** —
+`grep -rn unknown_step_policy app/` só acha as declarações.
+
+Ela enganou a própria investigação de 19/08: a divisão limpa entre auto e
+residencial parecia explicar por que os corredores residenciais travavam. Não
+era ela. E **dois testes a abençoavam** (`test_corredor_residencial_yelum`,
+`test_golden_do_eletricista`), dando a quem lesse a impressão de uma proteção
+que não existia. As duas asserções já foram migradas para o que o produto
+realmente lê (`finalize_anchors` → `detect_finalize_anchor`).
+
+**O que destrava:** 🤖 remover a chave dos 14 playbooks, ou dar-lhe leitor. A
+remoção é mecânica; foi adiada para não misturar diff cosmético com os consertos
+de 19/08 no mesmo commit.
+
+**O que custa esquecer:** o próximo a ler o arquivo confia nela de novo.
+
+---
+
+## P-222 · Tela de confirmação não mapeada não é pega pelo filtro de reversível
+**Quem:** 🤖 execução · **Aberta em:** 19/08/2026
+
+O conserto de 19/08 faz o cérebro assumir toda tela **reversível** cujo dado
+falta, e parar nas **irreversíveis**. O discriminador é `detect_finalize_anchor`,
+que lê os `finalize_anchors` do próprio corredor.
+
+⚠️ Consequência: uma tela de confirmação que aquele corredor **ainda não mapeou**
+não é reconhecida como irreversível, e o cérebro assume. A segunda camada existe
+— o `finalize_rule` do prompt manda responder `NAO_SEI` diante de qualquer
+confirmação quando o modo é teste — mas ela é do modelo, não determinística.
+
+📊 Exemplo real já visível: o RESUMO do fluxo de eletrodoméstico da Allianz
+termina em *"Podemos confirmar?"*, e a âncora daquele corredor é
+`podemos confirmar o atendimento` — mais específica. Ela **não casa**.
+
+**O que destrava:** 🤖 acrescentar `podemos confirmar\??$` (ou equivalente) aos
+`finalize_anchors` da família Allianz, medindo contra o acervo antes.
+
+**O que custa esquecer:** o freio de finalização também depende dessa mesma
+âncora — se ela não casa, quem segura o "abrir de verdade" é só o prompt.
