@@ -102,6 +102,39 @@ async def reivindicar_o_aviso(conversa_id: str, horas: int) -> bool:
         return False
 
 
+#: Quantas vezes o Vigia lembra a equipe da MESMA conversa antes de parar.
+#: 📊 Com a cadência de 6h, quatro lembretes cobrem 24 horas. Depois disso o
+#: problema não é mais falta de aviso — é falta de gente, e mais mensagem não
+#: resolve, só ensina a ignorar o grupo.
+MAX_LEMBRETES_POR_CONVERSA = 4
+
+
+async def contar_lembrete(conversa_id: str) -> int:
+    """Soma 1 ao contador de lembretes desta conversa e devolve o total.
+
+    🔴 Sem teto, uma conversa esquecida vira um alarme a cada 6 horas, para
+    sempre. E alarme que chega para sempre deixa de ser alarme: 📊 foi
+    exatamente assim que uma conversa ficou 730 horas sem ninguém olhar — não
+    por falta de aviso, mas por excesso.
+
+    Erro de Redis devolve 0: **na dúvida, avisa.** O contador é um freio
+    contra repetição, e freio quebrado não pode virar mordaça.
+    """
+    try:
+        from app.core.redis import get_async_redis_client
+
+        r = await get_async_redis_client()
+        chave = f"handoff_lembretes:{conversa_id}"
+        n = await r.incr(chave)
+        # 7 dias: mais que isso e a conversa ja nao e a mesma historia.
+        await r.expire(chave, 7 * 24 * 3600)
+        return int(n or 0)
+    except Exception as exc:  # noqa: BLE001
+        logger.warning("[Handoff] contador de lembretes indisponível (%s) — "
+                       "não vou usar o teto", type(exc).__name__)
+        return 0
+
+
 async def devolver_a_vez(conversa_id: str) -> None:
     """Libera o marcador. Chamado quando o aviso RESERVADO não saiu.
 

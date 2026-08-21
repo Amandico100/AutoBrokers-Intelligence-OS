@@ -79,6 +79,18 @@ async def _devolver_a_vez(conversa_id: str) -> None:
     await devolver_a_vez(conversa_id)
 
 
+async def _contar_lembrete(conversa_id: str) -> int:
+    from app.agents.tools.human_handoff import contar_lembrete
+
+    return await contar_lembrete(conversa_id)
+
+
+def _max_lembretes() -> int:
+    from app.agents.tools.human_handoff import MAX_LEMBRETES_POR_CONVERSA
+
+    return _env_int("HANDOFF_MAX_LEMBRETES", MAX_LEMBRETES_POR_CONVERSA)
+
+
 def _parado_ha_ms(conversa: Dict[str, Any], agora: datetime) -> float:
     try:
         visto = datetime.fromisoformat(
@@ -94,6 +106,7 @@ async def varrer_handoffs_parados() -> None:
     """Conversa parada em `HUMAN_REQUESTED` → re-alerta o suporte + telemetria."""
     espera_min = _env_int("HANDOFF_ALERTA_MINUTOS", _ESPERA_ALERTA_MIN_PADRAO)
     realerta_h = _env_int("HANDOFF_REALERTA_HORAS", _REALERTA_HORAS_PADRAO)
+    _MAX_LEMBRETES = _max_lembretes()
     agora = datetime.now(timezone.utc)
     limite = (agora - timedelta(minutes=espera_min)).isoformat()
 
@@ -118,6 +131,66 @@ async def varrer_handoffs_parados() -> None:
 
     if not paradas:
         return
+
+    # =====================================================================
+    # 🔴 SÓ AVISA QUEM TEM ALGUÉM ESPERANDO — 21/08/2026
+    # =====================================================================
+    #
+    # 📊 O Founder recebeu DEZENAS de "ATENDIMENTO PRECISA DE VOCÊ" no grupo
+    # da Resulta, e a frase dele foi: *"não tem coisa pra resolver"*. Tinha
+    # razão. As quatro conversas em `HUMAN_REQUESTED` naquele dia terminavam
+    # assim:
+    #
+    #     "Tá bom, obrigado"
+    #     "Olha o site desse vídeo. Vai rolando e o carro vai andando."
+    #     "Vixi... tô indo então"
+    #     "Tem muito passo que ainda não é feito pelo agente"
+    #
+    # São conversas da própria equipe, capturadas pelo observador. Em TODAS a
+    # última mensagem era do lado da corretora — ninguém aguardava resposta.
+    #
+    # `status = HUMAN_REQUESTED` diz que alguém PEDIU um humano em algum
+    # momento. Não diz que alguém ainda espera. A marca é do passado; a
+    # pergunta é do presente, e é outra: **a última palavra foi do cliente?**
+    #
+    # Se foi da corretora, o caso está com a gente, não com ele. Cobrar a
+    # equipe nesse estado é o que ensina a ignorar o grupo — e aí, no dia em
+    # que um segurado de verdade esperar, ninguém olha. É esse o custo real:
+    # não é incômodo, é o alarme perdendo o significado.
+    ids = [str(c.get("id")) for c in paradas if c.get("id")]
+    esperando: set = set(ids)  # sem leitura possível, mantém o comportamento antigo
+    try:
+        ultimas = (db.table("messages")
+                   .select("conversation_id, role, created_at")
+                   .in_("conversation_id", ids)
+                   .order("created_at", desc=True)
+                   .limit(max(200, len(ids) * 30)).execute().data or [])
+        vista: Dict[str, str] = {}
+        for m in ultimas:  # já vem do mais novo para o mais antigo
+            cid = str(m.get("conversation_id") or "")
+            if cid and cid not in vista:
+                vista[cid] = str(m.get("role") or "")
+        if vista:
+            # Conversa sem mensagem nenhuma continua elegível: não há motivo
+            # para calar sobre um caso que nunca chegou a ter transcrição.
+            esperando = {c for c in ids
+                         if vista.get(c, "user") == "user"}
+    except Exception as exc:  # noqa: BLE001
+        # Falha de leitura NÃO pode virar silêncio. Sem saber quem espera,
+        # avisa todos — é o comportamento de antes, e o defeito grave aqui
+        # sempre foi calar, nunca repetir.
+        logger.warning("[HandoffWatchdog] não li quem está esperando (%s) — "
+                       "vou tratar todas como pendentes", type(exc).__name__)
+
+    calados = [c for c in paradas if str(c.get("id")) not in esperando]
+    if calados:
+        logger.info("[HandoffWatchdog] %d conversa(s) em HUMAN_REQUESTED sem "
+                    "ninguém esperando (última palavra foi da corretora) — "
+                    "não vou cobrar a equipe por elas", len(calados))
+    paradas = [c for c in paradas if str(c.get("id")) in esperando]
+    if not paradas:
+        return
+
     logger.info("[HandoffWatchdog] %d conversa(s) em HUMAN_REQUESTED há mais de %dmin",
                 len(paradas), espera_min)
 
@@ -154,10 +227,28 @@ async def varrer_handoffs_parados() -> None:
         if await _ja_avisado_recentemente(conversa_id, realerta_h):
             continue
 
+        # 🔴 O TETO — e ele avisa que vai calar, em vez de sumir.
+        #
+        # Quatro lembretes a cada 6h cobrem 24 horas. Passado isso, mais
+        # mensagem não resolve: o que falta é gente, não aviso. E repetir para
+        # sempre é o jeito mais rápido de a equipe aprender a rolar o grupo
+        # sem ler — que é o defeito que este vigia existe para evitar.
+        #
+        # A ÚLTIMA mensagem diz que é a última. Parar em silêncio seria
+        # trocar um defeito por outro pior.
+        _n = await _contar_lembrete(conversa_id)
+        if _n > _MAX_LEMBRETES:
+            continue
+        _ultimo = _n == _MAX_LEMBRETES
+
         horas = parada_ms / 3_600_000
         espera = f"{horas:.0f}h" if horas >= 1 else f"{parada_ms / 60000:.0f}min"
         motivo = (f"⏳ AINDA SEM ATENDIMENTO há {espera} — "
                   f"{conversa.get('human_handoff_reason') or 'motivo não registrado'}")
+        if _ultimo:
+            motivo += ("\n\n🔕 Este é o ÚLTIMO lembrete automático desta "
+                       "conversa. Ela continua na Fila do painel — de lá "
+                       "ninguém a tira sozinho.")
         try:
             aviso = await HumanHandoffTool(db)._avisar_suporte(company_id, conversa, motivo)
             if aviso.get("avisado"):

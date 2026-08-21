@@ -254,8 +254,19 @@ def a_varredura_nao_vira_metralhadora() -> None:
            "se as duas tivessem `nx=True`, seriam duas chaves e dois avisos")
 
     # E o fail-open: Redis fora do ar tem de AVISAR, nao calar.
+    # 🔴 O RECORTE VAI ATE A PROXIMA FUNCAO, QUALQUER QUE ELA SEJA.
+    #
+    # Antes ia ate `devolver_a_vez` pelo nome. Em 21/08 nasceu
+    # `contar_lembrete` ENTRE as duas, e a fatia passou a conter duas funcoes:
+    # o `except` que o teste inspecionava virou o da funcao errada (que
+    # devolve 0, nao False) e o guarda ficou vermelho sem nenhum defeito real.
+    #
+    # Ancorar num vizinho e ancorar em algo que nao e o alvo. Agora o corte e
+    # estrutural: acaba onde a funcao acaba.
+    import re as _re
     i = marc.index("async def reivindicar_o_aviso")
-    corpo = marc[i:marc.index("async def devolver_a_vez")]
+    _prox = _re.search(r"\n(?:async )?def ", marc[i + 10:])
+    corpo = marc[i:i + 10 + _prox.start()] if _prox else marc[i:]
     checar("return False" in corpo.split("except")[-1],
            "Redis indisponivel => avisa de novo (o defeito e o silencio)",
            "fail-closed aqui reproduziria exatamente o bug que se esta consertando")
