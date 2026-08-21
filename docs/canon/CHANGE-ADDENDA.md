@@ -3208,3 +3208,514 @@ O caminho é o do Checklist das 6h, lido em `intelligence/workflows.py:131-157`:
 `work_run_id=None`, então F.5 **não** exigiu criar Work Run — que seria o
 segundo motor que a SPEC-078 e o CLAUDE.md §5 proíbem. O guarda do teste recusa
 escrita direta em `artifacts`, `artifact_versions` ou `artifact_renders`.
+
+---
+
+## CA-061 · O GLOSSÁRIO não define `rota` — e a SPEC-083 manda conferir contra ele — **ESSENCIAL**
+
+> Registrado em 21/08/2026, durante a execução da SPEC-083, Bloco A.
+> Autorização: o Founder, ao liberar a execução — *"registre em CHANGE-ADDENDA.md,
+> não invente definição, e siga. Não pare por isso."*
+
+### Problema
+
+A SPEC-083 §0 obriga, antes da primeira linha de código:
+
+> *"`docs/canon/GLOSSARIO.md` — conferir **termo a termo**: `corredor`,
+> `subcorredor`, `rota`, `playbook`, `âncora`, `passo`, `subserviço`. Se esta SPEC
+> divergir, **o glossário vence** e a SPEC é corrigida antes de executar."*
+
+📊 Conferência feita em 21/08/2026 contra `docs/canon/GLOSSARIO.md`
+(`grep -ci "<termo>" docs/canon/GLOSSARIO.md`):
+
+| termo | ocorrências | está definido? |
+|---|---:|---|
+| `corredor` | 5 | ✅ sim — linha 58: *"o roteiro para acionar assistência \| a **URA** da seguradora \| `corridor_playbooks.py`"* |
+| `playbook` | 1 | ⚠️ citado, não definido |
+| `passo` | 1 | ⚠️ citado, não definido |
+| **`rota`** | **0** | 🔴 **AUSENTE** |
+| `subcorredor` | 0 | 🔴 AUSENTE |
+| `âncora` / `ancora` | 0 | 🔴 AUSENTE |
+| `subserviço` / `subservico` | 0 | 🔴 AUSENTE |
+
+🔴 **`rota` é a unidade de trabalho da SPEC-084 inteira** — *"levar as 62 rotas ao
+nível da máquina de lavar"* — e é o sujeito de cada linha da rubrica da SPEC-083.
+O CLAUDE.md §2 diz *"um termo, uma definição. Se dois documentos discordarem,
+este vence"*. Não há o que vencer: o termo não existe lá.
+
+### Decisão
+
+🔴 **Não inventar definição.** Um glossário é autoridade justamente porque não é
+escrito de passagem por quem precisa do termo — é o mesmo defeito que produziu o
+`numero_residencia` (âncora escrita de cabeça, ZERO ocorrências em 28.096
+eventos), um nível acima.
+
+**O que fica registrado, e é o que a SPEC-083 usa operacionalmente** (§1.4, §2.1):
+
+```text
+rota  =  seguradora × ramo × serviço
+         a unidade que recebe nota na rubrica
+         📊 62 delas, medidas como a soma dos `subservices` dos 14 playbooks
+```
+
+**A execução segue** com essa leitura. A escrita canônica no GLOSSARIO fica como
+pendência com dono 🧑 Founder — ver `PENDENCIAS.md`, entrada do Bloco E.
+
+### Nenhum motor paralelo
+
+Nenhuma definição nova foi criada em documento nenhum. Esta entrada **registra a
+ausência**; não a preenche.
+
+---
+
+## CA-062 · `templatize` MATA a captura de senha — a exceção da SPEC-083 §6.4 não está implementada — **BLOCKER**
+
+> Registrado em 21/08/2026, SPEC-083 Bloco A, antes de gerar uma linha de corpus.
+
+### Problema
+
+A SPEC-083 §6.4 é literal ao definir a higiene do corpus:
+
+> *"telefone → `+55 (##) #####-####`
+> **EXCEÇÃO: preservar os 4 últimos se eles reaparecerem como senha**
+> (📊 tela #27 de `7ac3c101`) — **senão a âncora de senha perde o alvo**."*
+
+E a SPEC-084 §2.5.1.3 afirma, sobre o mesmo caso, que só o VALOR se perde e que a
+âncora sobrevive:
+
+> *"✅ a ÂNCORA sobrevive — o passo casa por PROSA, e a prosa está intacta
+> (conferido: a regex do passo ainda casa)"*
+
+📊 **Medido em 21/08/2026, com o CONTROLE VERDE**
+(`marcas_de_corretora(recarregar=True)` → **8 marcas**, banco ligado):
+
+```
+tela #27 CRU
+  "Sua senha sera os 4 ultimos digitos desse telefone *4743*"
+  extract_capture_anchors(PB, tela)  ->  {'password': '4743'}   OK
+
+tela #27 DEPOIS de templatize()
+  "Sua senha sera os 4 ultimos digitos desse telefone *{SEGREDO}*"
+  extract_capture_anchors(PB, tela)  ->  {}                     A CAPTURA MORRE
+```
+
+🔴 **A afirmação da SPEC-084 mede a coisa errada.** `match_ura_step` devolve
+`None` para a tela #27 **nos dois casos** — ela não é um passo, é uma tela de
+captura. O que importa ali é `capture_anchors["password"]`, e ele **para de
+capturar**. Um teste que verifique *"o corredor capturou a senha"* passaria a
+não ter como verificar nada — e a perda apareceria só como um número menor.
+
+📊 **E as outras duas telas de telefone SOBREVIVEM** — o dano é cirúrgico, não geral:
+
+```
+"Registramos o telefone *{TELEFONE}*. Deseja adicionar outro numero?"
+   -> match_ura_step = confirmar_telefone           OK
+"Obrigada! Anotei seu numero *{TELEFONE}*. Esta correto?"
+   -> match_ura_step = confirmar_telefone_anotado   OK
+```
+
+### Decisão
+
+A exceção da §6.4 é **implementada no gerador de corpus**, não no `templatize`:
+
+1. antes de mascarar, roda `extract_capture_anchors(pb, texto_cru)`
+2. se veio `password`, guarda o valor
+3. mascara com `templatize(...)`
+4. **reinjeta** o valor da senha no lugar do marcador
+5. 🔴 **CONTROLE nos dois sentidos, obrigatório no teste:**
+   · a tela #27 do corpus **capturada** devolve a senha → senão o corpus perdeu um passo
+   · uma tela com telefone **que não é senha** continua mascarada → senão a exceção
+     virou um buraco de PII
+
+🔴 **Não se toca em `templatize`.** Ele tem 📊 8 consumidores de produção — o
+Tecelão entre eles, que escreve `ura_maps`, e o Atlas é UM SÓ e é de todas as
+corretoras. Mudá-lo para atender ao corpus mudaria o que o Tecelão grava
+(CLAUDE.md §5, e `O-ATLAS-E-UM-SO-E-E-DE-TODAS.md`).
+
+### Nenhum motor paralelo
+
+O mascarador continua sendo **um só**: `templatize`. O gerador de corpus o
+**chama** e aplica uma exceção declarada pela SPEC-083 §6.4 sobre a saída dele.
+Nenhum segundo mascarador foi escrito.
+
+---
+
+## CA-063 · O "buraco real" do mascarador não reproduz — está mascarado — **ESSENCIAL**
+
+> Registrado em 21/08/2026, SPEC-083 Bloco A. Entrada de MEDIÇÃO: ela não muda
+> comportamento, corrige um fato que a SPEC-084 vai herdar.
+
+### Problema
+
+A SPEC-084 §2.5.1.3 registra, depois de refazer a medição com o banco ligado:
+
+```
+templatize("Saionara - Resulta")  ->  Saionara - Resulta     BURACO REAL
+```
+
+e conclui: *"a marca gravada é `Resulta Seguros`; a yelum escreve só `Resulta`.
+Essa é uma das 66 telas do §2.5.1.3, e entraria no corpus com nome de atendente e
+razão social em claro."*
+
+📊 **Medido em 21/08/2026, com o CONTROLE VERDE**
+(`marcas_de_corretora(recarregar=True)` → **8 marcas**):
+
+```
+'Christian - AutoFleet'          ->  '{NOME} - {CORRETORA}'          OK
+'Saionara - Resulta Seguros'     ->  '{NOME} - {CORRETORA}'          OK
+'Saionara - Resulta'             ->  '{NOME} - {CORRETORA}'          NAO REPRODUZ
+'SGA Corretora de Seguros Ltda'  ->  'SGA Corretora de Seguros Ltda' reproduz
+```
+
+**A causa está no próprio código, comentada** (`templater.py:1337`):
+
+> *"'Resulta Seguros' também gera 'Resulta': é assim que o caso sem sufixo — o que
+> nenhuma regex cobre — passa a ser coberto."*
+
+📊 `marcas_de_corretora()` deriva **duas** marcas por linha de `companies` (a razão
+social inteira e a primeira palavra), e ordena por comprimento decrescente para
+que `Resulta Seguros` seja trocado antes de `Resulta`. Com 5 linhas em
+`companies`, isso produz as **8 marcas** medidas — e `Resulta` é uma delas.
+
+### Decisão
+
+**O buraco ① da SPEC-084 §2.5.1.3 é dado como NÃO REPRODUZIDO** e não gera
+trabalho. A SPEC-084 herda esta entrada e corrige o texto quando chegar ao seu
+BLOCO 0.
+
+⚠️ **O que CONTINUA de pé, e é outra classe:** `SGA Corretora de Seguros Ltda`
+segue inalterada — a SGA não é corretora cliente e não está em `companies`. Ela é
+coberta pela regra **genérica de razão social** da SPEC-083 §6.4, e o gate de PII
+do Bloco A a persegue. 📊 4 eventos na porto, numa tela que traz também telefone e
+e-mail de terceiro.
+
+### O que esta entrada ensina, e por que ela está aqui
+
+A medição que produziu o "buraco real" foi feita **com o banco ligado** e mesmo
+assim envelheceu: entre ela e hoje, a lista de marcas mudou. 🔴 **Medição sobre
+estado vivo carrega data ou não carrega nada** — é a §12.1 do CLAUDE.md aplicada
+ao próprio instrumento de medida.
+
+---
+
+## CA-064 · O nome no vocativo vaza — e a trava é ESTRUTURAL, não lexical — **BLOCKER**
+
+> Registrado em 21/08/2026, SPEC-083 Bloco A.
+
+### Problema
+
+📊 A SPEC-083 §6.4 manda mascarar `nome → {NOME}`, e §8 (VERIFY) é literal:
+*"Um primeiro nome no início da tela passaria a auditoria inteira — e é exatamente
+o vazamento que `O-ATLAS-E-UM-SO-E-E-DE-TODAS.md` nomeia como o real."*
+
+Medido, com o CONTROLE verde (`marcas_de_corretora()` = 8):
+
+```
+templatize("Rafael, escolha a opcao desejada: Cartao de Credito")
+  -> "Rafael, escolha a opcao desejada: Cartao de Credito"     INALTERADO
+```
+
+📊 A escala: **425 eventos em 154 sessões, 9 seguradoras**, com a forma
+`<Palavra>, <resto>` no início de tela `direction='in'`.
+
+### A regra que NÃO se pode escrever
+
+`templatize` **já tem** `NOME_NO_VOCATIVO`, e ela exige — de propósito — que a URA
+tenha se apresentado **na linha anterior**. O próprio arquivo registra por quê:
+
+> *"Sem ela, este mascarador come português. Um teste que já existia reprovou o
+> conserto e mostrou três frases reais que eu estava destruindo:
+> `"Roubo, furto e incêndio têm franquia própria"`, `"Agora, me informe o CEP do
+> local"`, `"Elogios, reclamações e informações de como…"`. Nenhuma lista de
+> palavras cobre o português inteiro."*
+
+🔴 **A ideia óbvia — um `^Palavra,` genérico — já foi tentada e derrubada por
+medição.** Repeti-la seria escrever de cabeça o que o acervo já refutou.
+
+### Decisão — o discriminador estrutural
+
+> ## Um NOME varia sobre o mesmo esqueleto. Um abridor de frase é sempre a MESMA palavra.
+
+📊 Medido sobre os 16.242 eventos `direction='in'`, agrupando pelo texto que vem
+DEPOIS do vocativo (60 chars, dígitos neutralizados):
+
+```
+esqueletos com 1 cabeça só ....... 352   (2.090 eventos)   LINGUA — não se toca
+esqueletos com >=3 cabeças .......   7   (  137 eventos)   DADO  — mascara
+                                                           102 sessões, 5 seguradoras
+```
+
+🔴 **CONTROLE, nos dois sentidos:**
+
+```
+as 7 famílias marcadas como DADO — todas vocativo real:
+  "X, é você que está no local para acompanhar o serviço?"   15 cabeças / 19 ses
+  "X, agora preciso saber se o veículo está em uma rodovia"   7 cabeças / 34 ses
+  "X, escolha a opção desejada: seguro auto…"                11 cabeças / 15 ses
+  "X, qual a placa do veículo?…"                              4 cabeças / 17 ses
+  "X, escolha a opção desejada: cartão de crédito…"           5 cabeças /  9 ses
+  "X, além do guincho, você precisa também solicitar táxi"    4 cabeças /  5 ses
+  "X, localizei o seu *seguro auto*…"                         3 cabeças /  3 ses
+
+as palavras de LÍNGUA, que EXISTEM em massa e NÃO são marcadas:
+  "certo"   565 ocorrências ·  66 esqueletos · max_cabeças = 1
+  "agora"   341 ocorrências ·  24 esqueletos · max_cabeças = 1
+  "pronto"   68 ocorrências ·   9 esqueletos · max_cabeças = 1
+```
+
+**974 ocorrências de abridores de frase: o discriminador os VÊ e não os marca.**
+
+⚠️ A faixa de **exatamente 2 cabeças** (8 esqueletos, 37 eventos) **não** é
+mascarada automaticamente — vai para `INDICE.md` como `NOME_DUVIDOSO`, com a
+contagem, para leitura humana. 🔴 Truncar calado lê-se como "cobrimos tudo".
+
+### Nenhum motor paralelo
+
+`templatize` continua sendo **o** mascarador, com as 38 regras de PII. O corpus
+aplica, sobre a saída dele, uma regra derivada do próprio acervo — do mesmo jeito
+que a exceção da senha (CA-062). **`templater.py` não foi tocado**, e os seus 8
+consumidores de produção — o Tecelão entre eles — não mudaram.
+
+---
+
+## CA-065 · Os padrões foram medidos em SQL e aplicados em Python — e `.` não casa `\n` — **BLOCKER**
+
+> Registrado em 21/08/2026, SPEC-083 Bloco A, quando o CONTROLE obrigatório da
+> sessão `7ac3c101` falhou.
+
+### Problema
+
+A SPEC-083 §8 exige, como controle do passo 0:
+
+> *"`7ac3c101` classifica como residencial PELO NÍVEL 2 — e a saída DIZ qual nível
+> decidiu."*
+
+📊 Primeira execução do classificador: **`indefinido`**. A régua não classificava a
+própria sessão que a validou — o cenário que a SPEC nomeia como *"a SPEC falharia
+no Bloco A, medindo a si mesma"*.
+
+**A causa, isolada:** a tela 3 daquela sessão é
+
+```
+qual seguro deseja utilizar?
+<linha em branco>
+1 - residencial: para sua casa ou apartamento individual
+```
+
+e o padrão é `qual seguro deseja utilizar\?.{0,40}resid[ea]ncial`.
+
+```
+Python  re.search(p, tela)                -> False     ← `.` NÃO casa \n
+Python  re.search(p, tela, re.DOTALL)     -> True
+Postgres  text ~ p                        -> true      ← `.` casa \n por padrão
+```
+
+> ## As tabelas foram MEDIDAS em SQL e APLICADAS em Python. Todo padrão multilinha perdia tudo, em silêncio.
+
+📊 O estrago, medido alternativa a alternativa:
+
+```
+alternativa                                                sem DOTALL   com DOTALL
+qual seguro deseja utilizar ... residencial     (allianz)       0           37
+escolha a opcao desejada ... servico para resid (porto)         0           26
+qual o servico que voce precisa ... encanador   (hdi)           0            4
+idem                                            (yelum)         0            3
+```
+
+### Decisão
+
+1. `padroes_de_ramo._compilar()` passa a usar `re.DOTALL`.
+2. A dependência vai para o **docstring**, com a medição.
+3. 🔴 Nasce `test_a_tabela_de_ramo_exige_dotall`, e ele é o guarda que importa:
+   **o motor do produto (`corridor_playbooks`) compila as âncoras dele SEM
+   `DOTALL`.** Quem copiar uma destas quatro para um `ura_step` ganha o
+   `numero_residencia` de volta — âncora que não casa nada, e ninguém vê.
+
+📊 Efeito medido: `7ac3c101` passa a classificar `residencial / nivel-2-texto`; as
+colisões `ambos` da porto caem de 20 para 2; o nível 1 da porto sobe de 7 para 29.
+
+### A lição, que é maior que o conserto
+
+**Motor de regex tem dialeto.** Um número medido com um motor e aplicado com outro
+é um número sobre outra coisa. Vale para `.`/`\n`, para `\b` em Unicode, para
+classes POSIX. 📊 E a SPEC-083 já tinha o irmão disto registrado — `unaccent` não
+existe no banco, então `_norm` não pode ser reescrito em SQL.
+
+---
+
+## CA-066 · O corpus da SPEC-083 é `zona='URA'`, não `direction='in'` — **ESSENCIAL**
+
+> Registrado em 21/08/2026, SPEC-083 Bloco A. **Ampliação de escopo, nunca redução**
+> (CLAUDE.md §11, D5).
+
+### Problema
+
+A SPEC-083 §6.3 exige apenas *"só `direction='in'`"*. A separação URA/HUMANO é
+§2.5 da SPEC-084. Mas o corpus da 083 alimenta o replay (eixo B, 35 pontos) e a
+pergunta do JUIZ 1 — *"alguma tela do corpus não casa passo nenhum e pede algo?"*.
+
+📊 Medido na Allianz: telas distintas que PEDEM algo — **zona humana 472 · zona
+URA 126 (3,7×)**. Com a zona humana dentro, **472 reprovações automáticas,
+permanentes e insanáveis**: nenhuma rota da Allianz seria liberada.
+
+### Decisão, com as notas do método (§4 do handoff do Founder)
+
+| opção | objetivo | medida | guarda fica vermelho | motor paralelo | nota |
+|---|---|---|---|---|---|
+| A · só `direction='in'` (literal da 083) | ✗ 472 órfãs insanáveis | ✓ | ✗ passa 100% num corpus 29% humano | ✓ | **35** |
+| **B · zona URA** | ✓✓ | ✓ medida nas 10 | ✓ semeia-se linha humana | ✓ um módulo só | **92** |
+| C · gerar os dois corpora | ~ dois divergem | ✓ | ~ | ✗ | **40** |
+
+**Escolhida a B.** O módulo `zonas_do_acervo.py` serve às duas SPECs; a 084 o
+herda em vez de criar.
+
+📊 Zonas medidas: **10.498 URA · 5.250 HUMANO (32,3%) · 493 ORFAO**.
+
+---
+
+## CA-067 · `ANCORA_SUSPEITA` revisado — e o bradesco é um estado NOVO — **ESSENCIAL**
+
+> Registrado em 21/08/2026. **Esta entrada corrige um achado do próprio executor.**
+
+### Problema
+
+A SPEC-083 §3.2 classifica 13 rotas como `ANCORA_SUSPEITA` apoiada em:
+
+> *"📊 Zurich e Bradesco nunca escrevem 'protocolo' — escrevem **'ordem de serviço'**
+> (zurich 25 ocorrências, bradesco 10)."*
+
+📊 **A segunda metade não existe:** `ordem de servi` = **0** em zurich e bradesco.
+No acervo INTEIRO são **7 telas** — tokio 3, hdi 2, porto 2. O par "25/10" não
+corresponde a nenhuma seguradora.
+
+🔴 **E a primeira conclusão do executor sobre isso também estava errada.** Ele
+mediu `(sucesso|solicitad|abert|registrad) [^0-9]{0,40}[0-9]{5,}` → 0 de 14 na
+zurich, e propôs `SEM_DESFECHO_NO_ACERVO` para as 9 rotas. **A query tinha um
+espaço literal depois do grupo.** Sem ele: **3 de 14**. Um minerador derrubou o
+achado, e a derrubada foi reproduzida antes de aceita.
+
+### Decisão — três estados, não um
+
+| seguradora | rotas | estado | evidência medida |
+|---|---:|---|---|
+| **zurich** | 5 | 🟠 `ANCORA_SUSPEITA` | o desfecho EXISTE: `*Número da solicitação:* *NNNNNNNN*` e `*Número do processo:* 31.26.NNNNNN.01`. Âncora a ampliar: `n[uú]mero d[ao] (solicita[çc][ãa]o\|processo)` → **4 de 14** |
+| **bradesco** | 4 | 🔵 **`DESFECHO_SEM_NUMERO`** — estado novo | 📊 a URA **não emite número nenhum** neste canal: fecha com URL — *"o agendamento tá confirmado! para acompanhar… é só entrar no link"* → 3 de 22. **Não é âncora incompleta: é uma URA que não dá protocolo.** |
+| **mapfre** | 4 | ⚫ `SEM_DESFECHO_NO_ACERVO` | 📊 **0 de 13 sessões abriram assistência.** Ninguém escolheu "Assistência 24H". Não é âncora faltando — é acionamento que nunca aconteceu |
+
+🔴 **E o `DESFECHO_SEM_NUMERO` é achado de PRODUTO, não de classificação:** hoje a
+atendente promete ao segurado um número que a seguradora **não dá**. A
+`expectativa_do_desfecho` do bradesco tem de dizer que o acompanhamento é pelo
+link. Entrega da SPEC-084.
+
+---
+
+## CA-068 · A demanda contava o CARDÁPIO, não a ESCOLHA — e o ranking inverte — **BLOCKER**
+
+> Registrado em 21/08/2026. 🔴 **Esta entrada muda a ORDEM DE EXECUÇÃO da SPEC-084.**
+
+### Problema
+
+A coluna DEMANDA ordena a SPEC-084 inteira. Ela vinha contando as sessões em que a
+palavra do serviço aparece em **qualquer** evento `direction='in'` — o que inclui a
+tela que **LISTA** os serviços.
+
+📊 Medido em 21/08/2026, com a cascata de dois níveis aplicada ao serviço:
+
+```
+serviço                ESCOLHIDO   (cardápio)   💭 a SPEC-083 §10.2 dizia
+guincho / reboque          72         197            ~205
+bateria                    16         106            ~113
+encanador                  14         132            ~152
+eletricista                12         109            ~176
+troca de pneu              10         101            ~105
+eletrodoméstico             9         102            ~105
+socorro mecânico            7          70             ~91
+chaveiro                    5         210            ~213
+vidro / para-brisa          1          77             ~79
+telhado                     0          51              —
+carro reserva               0          75              —
+martelinho de ouro          0          57              —
+```
+
+> ## `chaveiro` cai de 1º (210) para 8º (5). `guincho` vira líder isolado, 4,5× o segundo.
+
+🔴 **`carro reserva` e `martelinho` aparecem em 75 e 57 sessões de cardápio e em
+ZERO escolhas no acervo inteiro.**
+
+**Ordenar a SPEC-084 pela coluna do cardápio mandaria construir chaveiro e vidro
+primeiro — 5 e 1 pedidos reais em 573 sessões.**
+
+### Por que aconteceu — quatro causas medidas
+
+1. **Uma tela lista tudo.** 📊 azul: guincho = chaveiro = vidro = martelinho =
+   carro reserva = **16 sessões, e nas 3 numeradas os quatro estão no MESMO
+   EVENTO**. zurich: cinco serviços com 9 cada. alfa: quatro com 5 cada.
+2. **A corretora responde com NÚMERO.** 📊 allianz: `chaveiro`, `eletrodoméstico`,
+   `telhado`, `reboque` e `vidro` têm **0 ocorrências** em `direction='out'`.
+3. **O caminho dominante da allianz é FUGA, não escolha.** 📊 `3` (outros) → `7`
+   (outros) → transferência para humano em **39 de 39 sessões** (27% do acervo).
+   É a explicação medida do colapso 210 → 5.
+4. **937 respostas de botão têm texto VAZIO e são irrecuperáveis** — ver CA-069.
+
+### Decisão
+
+A mesma cascata de dois níveis que a §8 já usa para o RAMO, estendida ao SERVIÇO:
+
+```
+NÍVEL 1a · PADRÃO-OURO   a seguradora nomeia o serviço na tela de RESUMO
+                         📊 existe em 6 das 10 (allianz 37 · yelum 26 · porto 20
+                         · hdi 15 · azul 11 · alfa 3)
+NÍVEL 1b · A RESPOSTA    a tecla/rótulo, decodificado CONTRA AQUELA TELA
+NÍVEL 2  · O TEXTO       `direction='out'` obrigatório, como reserva
+```
+
+⚠️ 🔴 **E a regex do padrão-ouro que a SPEC-083 §10 publica NÃO REPRODUZ:**
+`\nservi[çc]o:` devolve **1 sessão**, não 37. O separador não é quebra de linha —
+é o **asterisco de negrito**: o texto real é `*Serviço:* *encanador*;`. A regex que
+reproduz os 37 e os 19 rótulos é `\*servi[çc]o\*?:\*?[ ]*\*?([^*;\n]{1,55})`.
+
+🔴 **A REGRA DO EMPATE, que pega o que o teste dos 80% deixa passar:** dois
+serviços com **exatamente a mesma contagem** de sessões na mesma seguradora são
+**uma tela**, não dois sinais. 📊 O teste dos 80% só reprova a azul (88,9%); o do
+empate pega azul, zurich, alfa e tokio.
+
+---
+
+## CA-069 · 937 respostas de botão estão vazias e são irrecuperáveis — **ESSENCIAL**
+
+> Registrado em 21/08/2026. Achado pelo JUIZ 2 e reproduzido pelo executor.
+
+### Problema
+
+📊 Medido em `observed_events`:
+
+```
+seguradora   button_reply   com `text` VAZIO   recuperável por interactive->>'title'
+yelum             887             370                        0
+hdi               540             263                        0
+porto             361             167                        0
+bradesco          129              62                        0
+azul              110              54                        0
+mapfre · zurich · tokio            21                        0
+                                 ────
+                                  937                        0
+```
+
+`interactive` guardou apenas as **chaves** (`selectedButtonID` entre elas) — sem os
+valores. **A escolha do segurado não está no banco.**
+
+### Consequência, e ela é grande
+
+É a maior causa isolada de perda do **nível 1** das duas cascatas (ramo e serviço).
+📊 A yelum tem 13 sessões longas indefinidas hoje; 370 dos seus botões estão em
+branco. O corpus e a régua medem uma URA cujas respostas foram apagadas na
+ingestão.
+
+### Decisão
+
+- **Não se conserta a ingestão nesta SPEC** — é fora do escopo da 083.
+- `regua_motor.eventos_observados()` passa a selecionar `msg_type` e `interactive`,
+  para que um consumidor possa ao menos **ver** que a resposta existiu.
+- Vai para `PENDENCIAS.md` com dono 🤖 e o que destrava: gravar `selectedButtonID`
+  no ingestor. 🔴 **E com o controle que prova o conserto:** as 13 sessões longas
+  indefinidas da yelum têm de cair depois dele.
