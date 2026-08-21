@@ -2,7 +2,7 @@
 
 > **O que é uma rota pronta, como se prova sem opinião, e a ferramenta que dá a nota sozinha.**
 >
-> Autor: execução · **v6, 21/08/2026** · Commit base: `95b0d21`
+> Autor: execução · **v7, 21/08/2026** · Commit base: `95b0d21`
 > Branch: `feat/spec083-a-regua-do-corredor`
 > Antecede e habilita: **SPEC-084 (A Fábrica de Rotas)**
 
@@ -1102,8 +1102,28 @@ hdi     "Automovel" (4 + 4 com emoji)
 > **1. RESPOSTA** -- o primeiro `out` depois de uma tela que lista os dois
 > ramos, casado contra `RESPOSTAS_DE_RAMO[(seguradora, ramo)]`.
 >
-> **2. TEXTO** -- a tabela `PADROES_DE_RAMO` abaixo, quando a sessao nao tem
-> `out` nenhum.
+> **2. TEXTO** -- a tabela `PADROES_DE_RAMO` abaixo, sempre que o
+> **NIVEL 1 NAO DECIDIU**.
+
+🔴 **E CASCATA, nao alternativa exclusiva.** O gatilho nao e "falta `out`" --
+e "o nivel 1 nao resolveu".
+
+📊 Medido: com o gatilho amarrado a ausencia de `out`, o nivel 2 **nunca roda**
+nas seguradoras que dependem dele, porque quase toda sessao tem alguma resposta.
+Porto, Yelum e HDI sao classificadas quase inteiramente pelo TEXTO -- 59, 50 e
+25 sessoes:
+
+```
+                  gatilho ERRADO          gatilho CERTO (cascata)
+                  (falta `out`)           (nivel 1 nao decidiu)
+    allianz         4% longas  OK              2% OK
+    porto          31% longas  FALHA           8% OK
+    hdi            44% longas  FALHA           7% OK
+    yelum          24% longas                  2% OK
+```
+
+A sessao sem `out` continua sendo o caso que o nivel 2 EXISTE para cobrir
+(📊 `7ac3c101`) -- mas e **um caso dele, nao a condicao dele**.
 
 🔴 **O nivel 2 NAO e opcional, e o motivo e a propria regua.** 📊 A sessao
 `7ac3c101` tem **29 eventos `in` e ZERO `out`** — as respostas do acionamento ao
@@ -1118,9 +1138,28 @@ identidade da atendente gravada em git. Mas o **CLASSIFICADOR** le
 **Sao dois trabalhos diferentes sobre a mesma tabela.** O `out` classifica e e
 descartado; nunca chega ao `.jsonl`.
 
+🔴 **E a tela de cardapio precisa ser RECONHECIVEL** -- o nivel 1 diz "o
+primeiro `out` depois de uma tela que lista os dois ramos", e os padroes que a
+identificavam foram removidos ao matar o `AMBOS`. Nada os substituiu, e sem isso
+o nivel 1 nao e executavel.
+
+```python
+TELAS_DE_CARDAPIO = {
+    # A tela que LISTA os dois ramos. Ela NAO classifica -- ela ancora a
+    # resposta que classifica. E o unico uso legitimo do cardapio.
+    "allianz":   r"assist[ea]ncia 24h para qual seguro",
+    "_generico": r"(autom[oo]vel|ve[ii]culo|carro).{0,80}(resid[ea]ncia|casa|im[oo]vel)",
+}
+# 📊 Com este reconhecedor: allianz 114 de 140 sessoes decididas no nivel 1;
+#    porto 9 - yelum 24 - hdi 9. O resto cai na cascata para o nivel 2.
+```
+
 ```python
 RESPOSTAS_DE_RAMO = {
-    # o primeiro `out` depois do cardapio. Casado sobre `_norm`.
+    # o primeiro `out` depois do cardapio. Casado sobre `_norm(texto).strip()`.
+    # 🔴 `_norm` NAO remove espaco -- e seis destas oito entradas sao
+    #    ancoradas em `^...$`. Sem o `.strip()`, um espaco final derruba
+    #    a classificacao e a sessao cai em `indefinido` sem motivo.
     ("allianz",  "residencial"): r"^2$",                       # 77
     ("allianz",  "auto"):        r"^1$",                       # 39
     ("porto",    "residencial"): r"servi[cc]o para resid[ei]ncia",
@@ -1135,7 +1174,10 @@ RESPOSTAS_DE_RAMO = {
 📊 **CONTROLE do passo 0, e ele tem tres linhas obrigatorias:**
 
 ```
-- a Allianz cai para <30% em `indefinido`   (com a tabela so-texto: 54%)
+- 📊 depois da cascata: allianz **2%** - porto **8%** - yelum **2%** -
+  hdi **7%** de sessoes LONGAS em `indefinido`.
+  🔴 Se alguma passar de 30%, a cascata foi implementada como
+  alternativa exclusiva -- e nao como cascata.
 - `7ac3c101` classifica como residencial PELO NIVEL 2 -- e a saida DIZ qual
   nivel decidiu. Se disser "nivel 1", a regra leu um `out` que nao existe.
 - nenhum `out` chega ao `.jsonl`: o corpus gerado tem 100% `direction='in'`
