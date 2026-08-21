@@ -2,7 +2,7 @@
 
 > **Levar as 62 rotas ao nível da máquina de lavar — uma de cada vez, na ordem que a árvore da URA impõe, e nenhuma liberada sem o juiz.**
 >
-> Autor: execução · **v2, 21/08/2026** · Commit base: `bae33ea`
+> Autor: execução · **v3, 21/08/2026** · Commit base: `bae33ea`
 > Branch: `feat/spec084-a-fabrica-de-rotas`
 > Depende de: **SPEC-083 (A Régua)** — sem a régua, esta SPEC não tem como saber se terminou
 
@@ -21,7 +21,9 @@ git status --short                 # LIMPO ao iniciar
 
 ```bash
 python backend/scripts/medir_rota.py --seguradora allianz --ramo residencial --servico maquina_de_lavar
-# tem de responder com a nota e os 3 itens que faltam. Se não responder, PARE.
+# tem de responder com a nota e a lista INTEIRAMENTE NOMEÁVEL do que falta
+# (📊 hoje são CINCO — §4.4; a v1 desta SPEC fixou em três e o gate virou
+# aritmeticamente impossível). Se não responder, PARE.
 ```
 
 Leitura obrigatória, além do `CLAUDE.md` inteiro:
@@ -72,7 +74,7 @@ A intuição natural é tratar cada rota como uma coisa separada: "a rota do gui
 | `Qual seguro deseja utilizar? *1 - Residencial* …` | **5** | 37 | 19/08/2026 |
 | `Por favor, confirme o endereço para atendimento:` | **4** | 79 | 19/08/2026 |
 | `Agora, me confirme o número da residência.` | **4** | 72 | 19/08/2026 |
-| `Vou transferir seu caso para um especialista…` | **5** | 98 | 03/08/2026 |
+| ~~`Vou transferir seu caso para um especialista…`~~ 🔴 **FRONTEIRA — não é nó** | — | 98 | 03/08/2026 |
 
 *(os cinco serviços: eletricista · eletrodoméstico · encanador · guincho · outros)*
 
@@ -154,7 +156,7 @@ transfere o caso, quem escreve `in` é o **atendente humano da seguradora**.
 
 ```
 eventos `in` depois da tela de transferência .....  4.696 / 16.242 = 28,9 %
-sessões afetadas .................................    136 / 527
+sessões afetadas .................................    137 / 527
 
 ALLIANZ  — 38 % do acervo, e a PRIMEIRA do BLOCO 1:
    eventos pós-transferência .....................  3.737 / 7.513 = 49,7 %
@@ -167,6 +169,7 @@ fossem a mesma coisa, os percentuais seriam parecidos:
 ```
 zona                        eventos    texto único (1 sessão)   texto em 10+ sessões
 A_POS  (humano)               4.674            44,8 %                  35,3 %
+        (4.696 eventos ao todo; 4.674 com texto não-vazio, que é o recorte deste controle)
 B_PRE  (URA)      CONTROLE    3.509            11,7 %                  68,5 %
 C_sem_transferência CONTROLE  8.031            21,6 %                  44,8 %
 ```
@@ -200,31 +203,137 @@ Allianz jamais é liberada: todas batem o teto de 3 voltas e viram
 `PRECISA_DE_HUMANO`. A SPEC não falharia com erro — falharia **reprovando tudo**,
 e o executor procuraria o defeito no corredor a vida inteira.
 
-### 2.5.1 A separação, e ela é obrigatória em toda consulta desta SPEC
+### 2.5.1 🔴 A marca é POR SEGURADORA — uma regex só carimba nove de dez
 
-```sql
-create or replace view v_telas_ura as
-with marca as (
-  select session_id, min(wa_timestamp) as t_transf
-  from observed_events
-  where direction='in' and text ~* '(vou (precisar )?transferir'
-     || '|transferir (seu caso|o seu atendimento|sua conversa)'
-     || '|necessário falar com um de nossos especialistas'
-     || '|aguarde.{0,20}(um|nosso) (especialista|atendente|analista))'
-  group by 1)
-select e.*, m.t_transf,
-       case when m.t_transf is not null and e.wa_timestamp > m.t_transf
-            then 'HUMANO' else 'URA' end as zona
-from observed_events e
-left join marca m using (session_id)
-where e.direction='in';
+📊 A v2 desta SPEC trazia **uma** regex, escrita a partir do vocabulário da
+Allianz. Medido em 21/08/2026, o que ela remove por seguradora:
+
+```
+allianz  3.737 removidos      hdi     169        bradesco   0
+porto      459                azul     21        tokio      0
+yelum      278                zurich   10        mapfre     0        alfa  0
 ```
 
-> 🔴 **O corpus, a árvore, o retorno e os três juízes usam `zona='URA'`.**
+🔴 **E o `case` declarava `zona='URA'` tudo que ela não pegasse.** Quatro
+seguradoras entrariam na fábrica com selo de limpeza que **nenhuma medição
+sustenta** — e o gate ① da §2.5.2 passaria nelas com 100%.
+
+📊 O que sobrou dentro da "zona URA" da mapfre — 100% dela, porque removidos = 0:
+
+```
+"olá bom dia tudo bem? como posso te chamar?"          ← humano, e PEDE
+"me informa seu código e cpf por gentileza?"           ← humano, e PEDE
+"posso te auxiliar em mais alguma coisa ?"             ← humano, e PEDE
+"peço um momento por gentileza, irei verificar"        ← humano
+"perfeito, que bom" · "que bom falar com você!" · "certo"
+```
+
+⚠️ **Isto é PIOR que a v1.** A v1 não separava, e o executor sabia. A v2 separa,
+**carimba**, e o §5.1① manda o corpus ser essa zona. Selo falso é pior que selo
+nenhum.
+
+**A tabela, publicada como código, uma entrada por seguradora, cada padrão com
+📊 sessões medidas ao lado:**
+
+```python
+FRONTEIRAS = {   # 🔴 toda entrada carrega a contagem medida e a data
+  "allianz":  [r"vou transferir seu caso para um especialista"],            # 📊 98 ses
+  "hdi":      [r"necessario falar com um de nossos especialistas",          # 📊 7
+               r"conversa foi encerrada pelo atendente",                    # 📊 8
+               r"atendimento prestado pelo nosso analista",                 # 📊 8
+               r"(vou|irei) (te )?(precisar )?transferir",                  # 📊 3
+               r"vamos te direcionar para um de nossos especialistas"],     # 📊 1
+  "mapfre":   [r"vou te direcionar para a pessoa que vai dar continuidade", # 📊 3
+               r"passando seu caso para eles"],                             # 📊 1
+  "porto":    [r"vou (precisar )?transferir (o )?seu atendimento",          # 📊 15
+               r"irei te transferir para a central"],                       # 📊 1
+  "yelum":    [r"necessario falar com um de nossos especialistas",          # 📊 11
+               r"conversa foi encerrada pelo atendente"],                   # 📊 12
+  "azul":     [r"vou precisar transferir o seu atendimento"],               # 📊 2
+  "zurich":   [],   # 🔴 NENHUMA achada — quem decide é o gate ④
+  "bradesco": [],   # 🔴 idem
+  "tokio":    [],   # ⚠️ provável URA pura — o gate ④ decide, não esta tabela
+  "alfa":     [],   # ✅ URA pura
+}
+```
+
+> 🔴 **Lista vazia NÃO significa seguradora limpa.** Significa uma de duas coisas
+> — ela não transfere, ou a marca não foi achada. **Quem separa as duas é o gate
+> ④ da §2.5.2, nunca quem escreveu a tabela.**
+
+### 2.5.1.1 🔴 A zona é calculada em PYTHON, no mesmo lugar que a árvore
+
+A v2 escreveu a zona como **view SQL** e a §3.3 da mesma versão provou, três
+seções adiante, que esse SQL não pode existir:
+
+```
+§3.3 prova:  `unaccent` NÃO existe neste banco
+             📊 pg_extension = {pg_stat_statements, pgcrypto, plpgsql,
+                                supabase_vault, uuid-ossp}
+§3.3 prova:  normalizar em SQL é PROIBIDO -- seria um segundo normalizador
+             ao lado do `_norm` (CLAUDE.md §5), e os dois divergem no dia
+             em que um for corrigido
+§2.5.1 v2:   era SQL, casava `~*` sobre `text` CRU, e trazia `necessário`
+             COM ACENTO -- uma normalização implícita que o banco não faz
+```
+
+📊 E o acervo tem as duas grafias: eventos `in` escrevem `transferencia` e
+`necessario` **sem acento** — inclusive a marca de fronteira da mapfre
+(*"já realizo a transferencia"*), que por isso **nunca casaria**, mesmo estando
+na tabela.
+
+```python
+# medir_rota.py --exportar-arvore, antes de qualquer contagem:
+def zonas(eventos_da_sessao, seguradora):
+    t_transf = None
+    for e in ordenados_por_wa_timestamp(eventos_da_sessao):
+        if e.session_id is None:                 # 📊 493 eventos (3,0%)
+            yield e, "ORFAO"; continue
+        n = _norm(e.text or "")                  # o _norm de verdade, importado
+        if _cita_corretora(n):                   # 📊 75 eventos, 32 sessões
+            yield e, "CORRETORA"; continue
+        if t_transf is None and any(re.search(p, n)
+                                    for p in FRONTEIRAS[seguradora]):
+            t_transf = e.wa_timestamp
+            yield e, "URA"                       # a própria fronteira ainda é URA
+            continue
+        yield e, ("HUMANO" if t_transf else "URA")
+```
+
+⚠️ **Nenhuma view SQL.** A da v2 não faz o que promete.
+
+### 2.5.1.2 🔴 A zona tem QUATRO valores, não dois
+
+| zona | o que é | 📊 hoje | destino |
+|---|---|---:|---|
+| **URA** | a seguradora falando por robô | — | **o corpus** |
+| **HUMANO** | atendente da seguradora digitando | 4.696 | preservada; insumo do BLOCO 4 |
+| **ORFAO** | `session_id is null` | **493** (3,0%) | fora do corpus + `PENDENCIAS.md` |
+| **CORRETORA** | a **nossa** ponta escrevendo | **75** (32 ses) | fora do corpus + higiene |
+
+🔴 **`ORFAO` existe porque sem sessão não há "antes/depois da transferência"** — e
+o `left join` da v2 devolvia `NULL`, o `case` caía no `else`, e os 493 entravam
+como **URA**. 📊 E há fala humana entre eles: *"maria, não é nesta central, irei te
+transferir para a central frota…"* (porto) tem `session_id` nulo — **é uma marca
+de fronteira que a v2 classificava como URA**. Nenhum dos três gates pegava: eles
+carregavam o carimbo, e as linhas semeadas do gate ③ teriam `session_id`.
+
+3% do acervo sem sessão é **defeito de ingestão**, e vai para `PENDENCIAS.md` com
+dono 🤖.
+
+🔴 **`CORRETORA` é a terceira zona, e nem a v1 nem a v2 a enxergavam.** 📊 75
+eventos `in` em 32 sessões citam `Resulta Seguros` ou `AutoFleet` — 💭 por
+exemplo, na hdi: *"saionara - resulta seguros, como sua assistência já está em
+andamento…"*. Não é URA, não é atendente da seguradora: **é a nossa própria
+atendente**. E a SPEC-083 §6.4 diz que a tabela de identidade cobre exatamente
+*"nome de atendente e razão social da corretora"* — ou seja, **isso é dado de
+identidade indo para dentro do corpus versionado em git**.
+
+> 🔴 **O corpus, a árvore, o retorno e os três juízes usam `zona='URA'` — e só.**
 >
-> A zona `HUMANO` **não é lixo e não se apaga**. Ela é preservada e serve para
-> exatamente uma coisa: descobrir **o que a URA não resolve** — insumo do BLOCO 4.
-> Ela **nunca** vira passo de corredor.
+> `HUMANO` **não é lixo e não se apaga**: serve para descobrir **o que a URA não
+> resolve**, insumo do BLOCO 4. `ORFAO` e `CORRETORA` ficam fora de tudo.
+> Nenhuma das três vira passo de corredor.
 
 ### 2.5.2 🔴 E o guarda de corpus tem de PODER FICAR VERMELHO
 
@@ -232,16 +341,70 @@ A SPEC-083 §6.3 exige que o `.jsonl` seja 100% `direction='in'`. 📊 **Esse co
 passa com 100% num corpus 29% humano** — ele mede a direção, e o problema é o
 emissor. Guarda que não tem como falhar não guarda nada (CLAUDE.md §9.3).
 
-O gate de corpus desta SPEC exige as três coisas:
+O gate de corpus desta SPEC exige **cinco** coisas:
 
 ```
 ① 100 % das linhas com `zona='URA'`
 ② ZERO linhas casando ^(ok|um momento|com quem falo|mais um momento|
-   ajudo em algo mais)\b
+   ajudo em algo mais|certo|perfeito|bom dia tudo bem)\b
 ③ 🔴 A PROVA DO GUARDA: a mesma verificação roda sobre um corpus semeado
    com 10 linhas da zona HUMANO e TEM de ficar VERMELHA.
    Se ficar verde, o guarda é enfeite e o bloco não fecha.
+④ 🔴 O CONTROLE POR SEGURADORA -- ver abaixo
+⑤ ZERO linhas com `zona='ORFAO'` ou `zona='CORRETORA'`
 ```
+
+### 2.5.2.1 🔴 O gate ④: cada uma das dez tem de provar a sua própria limpeza
+
+**A métrica:** dentro da `zona='URA'` daquela seguradora, o **percentual de
+EVENTOS cujo texto aparece em uma única sessão**. URA se repete; gente não.
+
+```
+  ≤ 15 %    ✅ passa
+  15 - 25 % ⚠️ o relatório NOMEIA as falas suspeitas, e um humano decide
+  > 25 %    🔴 VERMELHO: a marca daquela seguradora está incompleta.
+            A seguradora NÃO entra na fábrica.
+```
+
+📊 Medido hoje, com a marca única da v2 (por isso quatro seguradoras estão em 0
+removidos):
+
+```
+   allianz  9,4 %  ✅      tokio    19,2 % ⚠️      hdi      26,5 % 🔴
+   alfa    10,5 %  ✅      yelum    20,1 % ⚠️      porto    29,0 % 🔴
+   azul    14,1 %  ✅      bradesco 21,2 % ⚠️      zurich   53,3 % 🔴
+                                                   mapfre   57,4 % 🔴
+```
+
+🔴 **mapfre e zurich, DEPOIS da separação, estão mais sujas que a zona humana da
+Allianz (44,8%).** Este gate reprovaria 4 das 10 hoje — **e é para reprovar
+mesmo.** Ele fecha quando a `FRONTEIRAS` de cada uma estiver completa.
+
+> ## ⚠️ E o limiar só vale preso à MÉTRICA que o produziu
+>
+> 📊 A mesma medição, refeita com `lower()` em vez de `_norm`, dá **os mesmos
+> eventos por zona** (3.776 · 2.257 · 1.532 · 418 · 148 — idênticos) e
+> **percentuais 1 a 6 pontos acima**:
+>
+> ```
+>                 _norm      lower()
+>    allianz       9,4 %     12,6 %
+>    tokio        19,2 %     26,0 %   ← ⚠️ passa numa, REPROVA na outra
+>    porto        29,0 %     32,3 %
+> ```
+>
+> 🔴 **Um limiar cujo número depende de quem normaliza não é limiar.** Por isso:
+>
+> · a métrica é calculada **dentro de `medir_rota.py`**, sobre o `_norm` real —
+>   nunca ad-hoc, nunca em SQL
+> · e o relatório imprime **dois pontos de referência medidos pelo mesmo código**,
+>   em toda rodada: a Allianz já limpa (o piso) e a zona HUMANO da Allianz (o
+>   teto). Se os dois se moverem, o limiar se move junto — e fica visível.
+>
+> Sem as duas âncoras, o número 25 é opinião com aparência de medida.
+
+🔴 **Um guarda calibrado numa seguradora não guarda as outras nove.** Foi assim
+que a v2 quase entrou limpando 38% do acervo e carimbando os outros 62%.
 
 ---
 
@@ -348,7 +511,7 @@ python backend/scripts/medir_rota.py --exportar-arvore --seguradora <SEG>
 O que ele faz, e é só isto:
 
 ```python
-# 1. lê a view v_telas_ura (§2.5) -- SÓ zona='URA'
+# 1. marca as zonas com `zonas()` (§2.5.1.1) e fica SÓ com zona='URA'
 # 2. tela = _norm(text)                     ← o _norm de verdade, importado
 # 3. serviço de cada SESSÃO: PADROES_DE_SERVICO (SPEC-083 §5.5), aplicado
 #    evento a evento e reduzido por sessão com OR -- uma sessão pode ver
@@ -406,7 +569,9 @@ ONDA 3 · As FOLHAS, por demanda medida      ← paga por uma
 retorno(nó) = (nº de rotas que passam por ele) × (nº de sessões em que aparece)
 ```
 
-📊 Exemplo, Allianz: a tela do CPF (5 serviços × 78 sessões = 390) vem antes da tela de complemento de endereço (4 × 71 = 284).
+📊 Exemplo, Allianz: a tela do CPF (5 serviços × 78 sessões = 390) vem antes da tela do número da residência (4 × 72 = 288).
+
+⚠️ A v1 e a v2 diziam *"complemento de endereço (4 × 71 = 284)"* — 📊 `71` não aparece em lugar nenhum da tabela §2.2, que traz 79 e 72. Número herdado que sobreviveu ao conserto da tabela ao lado dele.
 
 E entre seguradoras, na Onda 1, o desempate é o tamanho do acervo:
 
@@ -473,7 +638,7 @@ SPEC-083 v1. Não fizemos a soma da nossa própria lista.
 
 📊 **Socorro mecânico** aparece em **38 sessões** do acervo (yelum 21, zurich 9, hdi 8) e `subservice_supported()` devolve `False`. Não existe `socorro_mecanico` em nenhum `subservices` nem em `_SUBSERVICE_ALIASES`.
 
-**Estamos recusando um serviço que os clientes pedem e que a URA atende.** Entra logo depois dos três buracos da régua.
+**Estamos recusando um serviço que os clientes pedem e que a URA atende.** Entra logo depois dos **cinco itens** da régua (§4.4).
 
 📊 **Medição refeita e confirmada em 21/08/2026: yelum 21 · zurich 9 · hdi 8 = 38 sessões.** O número está firme.
 
@@ -571,7 +736,10 @@ por construção, e um gate impossível reprova trabalho bom.
 
 ⑤ MEDIR
    `python backend/scripts/medir_rota.py --seguradora X --ramo Y --servico Z`
-   Meta: ≥95.
+   Meta: **95% do denominador REAL da rota**, exibido com o denominador ao
+   lado — `AAA(90)`, `quase(100)` (§4.6). Nunca reescalar para /100.
+   ⚠️ E `≥95` só é **gate** depois que os cinco itens de §4.4 fecharem
+   (§4.4 e BLOCO 0). Antes disso, o gate é ≥70 com a lista nomeável.
 
 ⑥ JULGAR
    Os três juízes de §6. **A liberação é deles, nunca do executor.**
@@ -639,7 +807,7 @@ JUÍZES     recebem o resultado e o corpus
 
 🔴 **Quem observa não escreve.** Se o mesmo agente colhe e escreve, ele escreve o que gostaria de ter visto. A separação é o que torna o corpus uma prova, e não uma justificativa.
 
-**Paralelismo permitido:** um COLETOR por seguradora, em paralelo. **Um ESCRITOR por rota, em série dentro da seguradora** — porque duas rotas da mesma seguradora tocam os mesmos arquivos.
+**Paralelismo permitido — mas SÓ DEPOIS que o BLOCO 0 fechar:** um COLETOR por seguradora, em paralelo. **Um ESCRITOR por rota, em série dentro da seguradora** — porque duas rotas da mesma seguradora tocam os mesmos arquivos.
 
 ---
 
@@ -849,9 +1017,15 @@ MESMA TELA, TEXTO FIXO DIFERENTE  →  ACHADO. Duas hipóteses:
 **Entregas — sete, e nenhuma exige coleta nova:**
 
 ```
-1. §2.5  a view `v_telas_ura` (zona URA × HUMANO)
-         + o gate de corpus com a PROVA DO GUARDA (semear 10 linhas humanas
-           e exigir vermelho)
+1. §2.5  a marcação de zona em PYTHON (não view SQL), com:
+         · `FRONTEIRAS` por seguradora, cada padrão com 📊 sessões medidas
+         · as QUATRO zonas: URA · HUMANO · ORFAO · CORRETORA
+         · o gate de corpus com CINCO exigências, incluindo:
+             ③ a PROVA DO GUARDA (semear 10 linhas humanas → vermelho)
+             ④ o CONTROLE POR SEGURADORA (📊 hoje reprova hdi, porto,
+               zurich e mapfre — e é para reprovar)
+         · e o limiar do ④ preso ao `_norm`, com as DUAS âncoras impressas
+           em toda rodada
 2. §3.3  `medir_rota.py --exportar-arvore`, em Python, reusando o `_norm`
          e o `PADROES_DE_SERVICO` reais. Rodado de verdade, saída colada.
 3. §2.2 e §4.3 refeitas com `zona='URA'` -- a ORDEM DE EXECUÇÃO da SPEC
@@ -977,7 +1151,7 @@ Entrega: um relatório por SPEC, a partir do diff dos commits dela, com o que fo
 
 | risco | fechamento |
 |---|---|
-| 🔴 **O corpus mistura tela de URA com fala de atendente humano** | §2.5: a view `v_telas_ura` + o gate de corpus **que fica vermelho** com 10 linhas semeadas da zona humana. 📊 Sem isso são 472 reprovações insanáveis só na Allianz |
+| 🔴 **O corpus mistura tela de URA com fala de gente** | §2.5: `FRONTEIRAS` **por seguradora** + as 4 zonas + o gate de 5 exigências, com o ③ (semear humano → vermelho) e o ④ (controle por seguradora, 📊 reprova 4 das 10 hoje). Sem isso são 472 reprovações insanáveis só na Allianz — e nove seguradoras com selo falso |
 | **Consertar o tronco quebra rota que estava boa** | R3 + `--salvar-linha-de-base` / `--comparar-com` (§5.2), construídos no BLOCO 0 — e o comparador é **provado regredindo uma âncora de propósito** |
 | **O executor declara pronto sem o juiz** | A liberação é do juiz, e o inventário só aceita rota com os três vistos |
 | **O laço não converge e trava a fábrica** | Teto de 3 voltas → `PRECISA_DE_HUMANO` com dossiê |
