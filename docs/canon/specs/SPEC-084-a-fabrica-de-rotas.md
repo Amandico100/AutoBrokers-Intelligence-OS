@@ -2,7 +2,7 @@
 
 > **Levar as 62 rotas ao nível da máquina de lavar — uma de cada vez, na ordem que a árvore da URA impõe, e nenhuma liberada sem o juiz.**
 >
-> Autor: execução · **v4, 21/08/2026** · Commit base: `bae33ea`
+> Autor: execução · **v5, 21/08/2026** · Commit base: `bae33ea`
 > Branch: `feat/spec084-a-fabrica-de-rotas`
 > Depende de: **SPEC-083 (A Régua)** — sem a régua, esta SPEC não tem como saber se terminou
 
@@ -417,10 +417,82 @@ hdi perdem a tela que pergunta o serviço.
 **"🔴 Higiene: MASCARAR, não recusar"**. A v3 recusava.
 
 ```python
-# a tela FICA; a identidade sai. No mesmo lugar da higiene da 083 §6.4.
-n = _mascarar_identidade(e.text)   # razão social, nome de atendente, e-mail
-                                   # → "<CORRETORA>" / "<ATENDENTE>"
+from app.services.atlas.templater import templatize   # 🔴 o mascarador do Atlas
+n = _norm(templatize(e.text))                         #    NUNCA um segundo
 ```
+
+📊 `templatize()` existe em `backend/app/services/atlas/templater.py:1381`, com
+`marcas_de_corretora()` (l.1309) e `_apagar_marcas_de_corretora()` (l.1350). **É o
+mascarador cuja saída a própria SPEC-083 §6.4 cita** (*"o endereço já vem
+mascarado pelo Atlas: `R. ### ##TEVES J#####`"*) sem nomeá-lo.
+
+🔴 **Escrever um `_mascarar_identidade` novo seria um SEGUNDO mascarador ao lado
+de um que existe** — a mesma violação do CLAUDE.md §5 que esta SPEC recusou
+corretamente para o `_norm` em SQL (§2.5.1.1). O argumento vale inteiro aqui.
+
+### 🔴 E o `templatize` de hoje tem TRÊS buracos para este uso — medidos, rodando
+
+📊 Executado em 21/08/2026 sobre as telas reais:
+
+```
+templatize("Christian - AutoFleet Seguros")   → {NOME} - {CORRETORA}        ✅
+templatize("Saionara - Resulta Seguros")      → {NOME} - {CORRETORA}        ✅
+
+templatize("Saionara - Resulta")              → Saionara - Resulta          🔴
+templatize("Christian - AutoFleet")           → Christian - AutoFleet       🔴
+templatize("SGA Corretora de Seguros Ltda")   → SGA Corretora de Seguros…   🔴
+marcas_de_corretora()                         → 0 entradas (lê do banco)    🔴
+```
+
+**① Ele exige a palavra literal `Seguros` depois da marca.** 📊 E a yelum escreve
+`"Saionara - Resulta, estamos prontos para seguir…"` — **sem** `Seguros`. Essa
+tela entraria no corpus com nome de atendente e razão social em claro.
+
+**② `marcas_de_corretora()` devolveu ZERO** no ambiente de teste (lê do banco).
+Se a geração do corpus rodar sem essa carga, sobra só o padrão embutido — o que
+exige `Seguros`.
+
+**③ A razão social pura passa** (`SGA Corretora de Seguros Ltda`, 📊 4 eventos na
+porto, numa tela que traz também telefone e e-mail de terceiro).
+
+🔴 **E o gate ⑤ herdaria o mesmo ponto cego:** se ele perguntar *"sobrou
+identidade?"* usando a mesma lista do mascarador, **fica VERDE sobre o que o
+mascarador não viu**. Guarda e mascarador com o mesmo ponto cego não é guarda.
+
+> **Entrega do BLOCO 0:** ampliar o `templatize` **no lugar** — nunca ao lado —
+> para cobrir marca sem `Seguros` e razão social pura; e o gate ⑤ verifica por
+> uma **lista independente**, não pela do mascarador.
+
+### 🔴 E a exceção da senha: `templatize` NÃO cumpre o que a 083 §6.4 exige
+
+📊 A SPEC-083 §6.4 é literal: *"preservar os 4 últimos se eles reaparecerem como
+senha (tela #27 de `7ac3c101`) — **senão a âncora de senha perde o alvo**"*.
+
+📊 Rodado sobre a tela real da Allianz (9 sessões):
+
+```
+antes:   "Sua senha será os 4 últimos dígitos desse telefone *4743*"
+depois:  "Sua senha será os 4 últimos dígitos desse telefone *{SEGREDO}*"
+```
+
+**Os dois lados do resultado, e eles não são o mesmo:**
+
+```
+✅ a ÂNCORA sobrevive   — o passo casa por PROSA, e a prosa está intacta
+                          (conferido: a regex do passo ainda casa)
+🔴 o VALOR não          — teste que verifique "o corredor capturou 4743"
+                          não tem como verificar nada
+```
+
+> **Teste obrigatório antes do BLOCO 0 fechar:** rodar `templatize` sobre a tela
+> #27 e exigir que a âncora **case**. 📊 Hoje ela casa. Se um dia deixar de casar,
+> o replay perde três passos da régua (#10, #12, #27) e **ninguém vê**, porque a
+> perda vira só um número menor.
+
+> **Segundo teste:** rodar sobre as **235 linhas que citam corretora** (§2.5.1.3)
+> e exigir que **as 66 telas continuem no corpus** — a tela do CPF da tokio e a
+> tela do serviço da yelum/hdi entre elas, agora com `{CORRETORA}` no lugar do
+> nome. 📊 Hoje a da tokio passa e **a da yelum não é mascarada** — buraco ①.
 
 ⚠️ 🔴 **E mascarar ANTES de `_norm`** — senão a mesma tela vira várias, uma por
 nome de atendente (📊 `saionara`, `christian`, `maria regina`), e a contagem de
@@ -502,70 +574,113 @@ EVENTOS cujo texto aparece em uma única sessão**. URA se repete; gente não.
 
 ## 🔴 E ela NÃO TEM LIMIAR FIXO, porque depende do TAMANHO DA AMOSTRA
 
-📊 **CONTROLE, medido em 21/08/2026 — e é o controle que faltava.** Peguei a
-Allianz **já limpa** (a mesma que dá 9,4% inteira) e fatiei em 10 blocos de ~14
-sessões — o tamanho de amostra da mapfre (13) e da zurich (14):
+🔴 **Um limiar fixo de 25% reprovaria 8 dos 10 recortes da seguradora que este
+mesmo gate usa como piso.** 📊 A Allianz **já limpa**, fatiada em 10 blocos de ~14
+sessões, dá `24,0 · 22,3 · 44,4 · 26,0 · 27,6 · 27,4 · 31,8 · 31,7 · 27,4 · 32,4`
+— contra **12,6%** quando as 137 sessões entram juntas.
+
+⚠️ **E isso mostrou que as duas âncoras da v3 não bastavam.** Elas travavam o
+confundidor **menor** e deixavam o **maior** de pé:
 
 ```
-bloco     1     2     3     4     5     6     7     8     9    10
-%      24,0  22,3  44,4  26,0  27,6  27,4  31,8  31,7  27,4  32,4     (lower)
-%      21,7  18,5  41,8  22,5  23,0  22,6  27,6  28,4  23,1  30,4     (_norm)
-
-           mediana ~27 %   ·   MÁXIMO 44,4 %
-           a MESMA Allianz, 137 sessões juntas:  9,4 % (_norm) / 12,6 % (lower)
-```
-
-🔴 **A mesma seguradora, os mesmos dados limpos: 9,4% ou 44,4% dependendo só de
-quantas sessões entram na conta. Mais de 30 pontos de variação.**
-
-🔴 **Um limiar fixo de 25% reprovaria 8 dos 10 blocos da seguradora que este
-mesmo gate usa como piso.**
-
-⚠️ **E isso mostra que as duas âncoras da v3 não bastavam.** Elas corrigiam o
-confundidor **menor** e deixavam o **maior** intacto:
-
-```
-variação por NORMALIZADOR (_norm × lower) .....   1 a 6 pontos   ← a v3 corrigiu
+variação por NORMALIZADOR (_norm × lower) .....   1 a 6 pontos   ← a v3 travou
 variação por TAMANHO DE AMOSTRA ...............  mais de 30      ← ficou de pé
 ```
 
-As âncoras são medidas na Allianz **inteira** (137 e 98 sessões). Compará-las com
-a mapfre de **13** é comparar coisas que a própria medição diz não serem
-comparáveis.
+## 📊 A CURVA DE REFERÊNCIA — método, não adjetivo
 
-> ## A comparação é contra a CURVA, no MESMO tamanho de amostra
->
-> `medir_rota.py` gera, em toda rodada, a **curva de referência** a partir da
-> Allianz limpa — um ponto por tamanho `n`, por reamostragem — e compara cada
-> seguradora com o ponto `n` **dela**:
+🔴 **E o método NÃO é o fatiamento acima.** `ntile` agrupa por `session_id`, e
+sessões vizinhas no id são vizinhas **no tempo e na corretora**: ele mede
+**agrupamento**, não variância amostral.
+
+📊 **A prova de que o `ntile` infla:** o bloco 3 deu **41,8%** (`_norm`) / 44,4%
+(`lower`) — **acima do máximo de 60 sorteios aleatórios no mesmo `n`, que é
+40,0%**. Um recorte contíguo não pode exceder o máximo de 60 sorteios se for
+amostra aleatória. Logo **não é** — e usá-lo como teto **absolvia a hdi**.
+
+**O método, escrito para ser executado:** Allianz limpa · **sorteio sem
+reposição** · **60 reamostragens por `n`** · semente estável
+`md5(session_id||rep||n)` — 🔴 **reproduzível; `random()` não é** · `_norm` real,
+dentro do `medir_rota.py`.
+
+```
+  n      p50    p95    p99    desvio
+ 13     27,2   35,8   37,0    6,5
+ 14     25,2   36,3   38,2    6,0
+ 18     24,4   31,8   33,3    4,7
+ 22     22,9   28,6   28,8    3,8
+ 41     16,6   19,3   21,6    1,9
+ 46     16,0   19,4   20,8    2,3
+ 92     11,8   13,2   13,6    1,1
+134      9,9   10,2   10,3    0,2
+```
+
+> ## A comparação é contra a CURVA, no MESMO `n` — e o teto é PERCENTIL
 >
 > ```
->   ≤ teto(n)                ✅ passa
->   teto(n) .. teto(n)+10    ⚠️ o relatório NOMEIA as falas suspeitas
->   > teto(n)+10             🔴 VERMELHO: a `FRONTEIRAS` daquela seguradora
->                               está incompleta. Ela NÃO entra na fábrica.
+>   ≤ p95(n)      ✅ passa
+>   > p95(n)      ⚠️ o relatório NOMEIA as falas suspeitas
+>   > p99(n)      🔴 VERMELHO: a `FRONTEIRAS` daquela seguradora está
+>                    incompleta. Ela NÃO entra na fábrica.
 > ```
+>
+> 🔴 **Nunca o máximo.** 📊 Em `n=14` a distância `p95 → max` é 3,7 pontos e é
+> quase toda cauda de 60 sorteios. `p95` e `p99` são estáveis; o máximo não é.
 
-📊 **Aplicado hoje** (teto(≈14) = 41,8 % · teto(≈134) ≈ 9,4 %, ambos `_norm`):
+⚠️ 🔴 **E o `teto(n)+10` da v4 saiu de ninguém.** Eu escrevi o `10` sem medir — o
+defeito exato que esta SPEC cobra. Ele morre aqui, e o substituto **sai da própria
+distribuição**, que já contém a margem. **Número que não sai de medição não entra
+no gate — inclusive quando quem o deu foi o juiz.**
 
-| seguradora | % | sessões | veredito |
-|---|---:|---:|---|
-| **porto** | 29,0 % | 134 | 🔴 **+19,6 acima da referência do tamanho dela** |
-| mapfre | 57,4 % | 13 | 🔴 +15,6 |
-| zurich | 53,3 % | 14 | 🔴 +11,5 |
-| hdi | 26,5 % | 41 | ✅ **dentro da faixa de amostra pequena — não é evidência** |
-| tokio | 19,2 % | 46 | ✅ |
-| bradesco | 21,2 % | 22 | ✅ |
-| azul · alfa · yelum · allianz | | | ✅ |
+📊 **Aplicado hoje, cada uma contra o `n` DELA:**
 
-🔴 **A porto é o achado que o limiar fixo escondia.** 134 sessões — amostra
-grande, onde o ruído já assentou — e 29% onde a referência é 9,4%. **É a mais
-anômala das dez**, e o limiar de 25 quase a deixava passar enquanto barrava a hdi
-por ruído de amostra.
+| seguradora | % | n | p95(n) | p99(n) | veredito |
+|---|---:|---:|---:|---:|---|
+| **mapfre** | 57,4 | 13 | 35,8 | 37,0 | 🔴 **+20,4** |
+| **porto** | 29,0 | 134 | 10,2 | 10,3 | 🔴 **+18,7** — amostra grande, ruído assentado |
+| **zurich** | 53,3 | 14 | 36,3 | 38,2 | 🔴 +15,1 |
+| **yelum** | 20,1 | 92 | 13,2 | 13,6 | 🔴 +6,5 |
+| **hdi** | 26,5 | 41 | 19,3 | 21,6 | 🔴 +4,9 |
+| tokio | 19,2 | 46 | 19,4 | 20,8 | ⚠️ na linha do p95 |
+| bradesco | 21,2 | 22 | 28,6 | 28,8 | ✅ |
+| azul | 14,1 | 18 | 31,8 | 33,3 | ✅ |
+| alfa | 10,5 | 9 | ~>37 | | ✅ |
+| allianz | 9,4 | 137 | — | — | ✅ é a referência |
 
-⚠️ E a leitura *"mapfre e zurich estão mais sujas que a zona humana da Allianz
-(44,8%)"* continua verdadeira, mas **a margem cai pela metade** quando o teto
-correto é 41,8% e não 25%. O sinal é real; o tamanho dele, menor do que parecia.
+🔴 **São CINCO vermelhas, não três.** A v3 e a v4 **absolviam a hdi e a yelum**,
+com `teto(n)+10` sobre um teto inflado pelo `ntile`.
+
+📊 E a condenação bate com o que a §2.5.1 já dizia **por outro caminho**: a hdi
+tem **cinco** padrões de fronteira e a marca única removia só 169 eventos; a
+yelum tem **dois** e removia 278. Handoff conhecido + remoção incompleta =
+resíduo. **A SPEC afirmava, em duas seções, coisas opostas sobre a mesma
+seguradora.**
+
+🔴 **A porto é o achado que o limiar fixo escondia** — 134 sessões, onde o ruído
+já assentou, e 29% onde a referência do tamanho dela é 10,2%.
+
+> ## 📊 O CONTROLE QUE DÁ DIREITO A ESTA MÉTRICA
+>
+> A classificação abaixo foi feita por **outro método** — leitura do texto,
+> procurando marca de transferência — **antes de a curva existir**:
+>
+> ```
+> SEM transferência no fio   (alfa · azul · bradesco · tokio)
+>      → as quatro ficaram ≤ p95(n)          ZERO falso positivo
+> COM transferência no fio   (porto · hdi · yelum · zurich · mapfre)
+>      → as cinco ficaram  > p99(n)          ZERO falso negativo
+> ```
+>
+> **Separação perfeita, com o rótulo vindo de FORA da métrica.** É isto que dá
+> direito à conclusão — sem ele, a curva é um número bonito.
+
+⚠️ 🔴 **E o limite desta métrica, declarado:** a curva vem da **Allianz**. Uma
+seguradora com URA genuinamente mais diversa teria hapax maior no mesmo `n`
+**sem estar suja**. O controle acima dá conforto, **não elimina o confundidor**.
+
+**Portanto: exceder a curva é evidência para INVESTIGAR, não prova.** O que tira
+o vermelho é a `FRONTEIRAS` daquela seguradora ficar completa — **nunca o número
+sozinho**.
 
 🔴 **E a curva vai no relatório de TODA rodada.** Limiar que não mostra a curva
 que o produziu é opinião com aparência de medida — **inclusive quando quem deu o
@@ -580,19 +695,18 @@ número foi o juiz.**
 > ```
 >                 _norm      lower()
 >    allianz       9,4 %     12,6 %
->    tokio        19,2 %     26,0 %   ← ⚠️ passa numa, REPROVA na outra
+>    tokio        19,2 %     26,0 %
 >    porto        29,0 %     32,3 %
 > ```
 >
-> 🔴 **Um limiar cujo número depende de quem normaliza não é limiar.** Por isso:
+> 🔴 **Por isso a métrica é calculada dentro de `medir_rota.py`, sobre o `_norm`
+> real** — nunca ad-hoc, nunca em SQL. A curva e a medida têm de sair do **mesmo
+> código**, senão comparam coisas diferentes.
 >
-> · a métrica é calculada **dentro de `medir_rota.py`**, sobre o `_norm` real —
->   nunca ad-hoc, nunca em SQL
-> · e o relatório imprime **dois pontos de referência medidos pelo mesmo código**,
->   em toda rodada: a Allianz já limpa (o piso) e a zona HUMANO da Allianz (o
->   teto). Se os dois se moverem, o limiar se move junto — e fica visível.
->
-> Sem as duas âncoras, o número 25 é opinião com aparência de medida.
+> ⚠️ **A v3 propunha travar isto com "duas âncoras" — a Allianz limpa (piso) e a
+> zona HUMANO da Allianz (teto, 44,8%).** 📊 Ficou errado por medição: `p99(14)`
+> é **38,2%**, então 44,8% como teto **deixa passar contaminação em amostra
+> pequena**. As âncoras foram substituídas pela curva inteira.
 
 🔴 **Um guarda calibrado numa seguradora não guarda as outras nove.** Foi assim
 que a v2 quase entrou limpando 38% do acervo e carimbando os outros 62%.
@@ -1220,9 +1334,17 @@ MESMA TELA, TEXTO FIXO DIFERENTE  →  ACHADO. Duas hipóteses:
                de amostra (📊 hoje reprova porto, mapfre e zurich —
                e ABSOLVE a hdi, que o limiar fixo barrava por ruído)
              ⑤ zero ORFAO + zero identidade não mascarada
-         · a CURVA de referência, gerada da Allianz limpa por reamostragem,
-           impressa no relatório de TODA rodada
-         · e a métrica presa ao `_norm` (o confundidor menor)
+         · a CURVA de referência: Allianz limpa · sorteio SEM reposição ·
+           60 reamostragens por `n` · semente `md5(session_id||rep||n)` ·
+           p95=⚠️ p99=🔴 · impressa no relatório de TODA rodada
+           🔴 NUNCA `ntile` (agrupa) e NUNCA o máximo (instável)
+         · a métrica presa ao `_norm` (o confundidor menor)
+         · a LINHA DE CONTROLE da métrica: as 4 sem-transferência abaixo do
+           p95 e as 5 com-transferência acima do p99, com o rótulo vindo de
+           FORA da métrica
+         · `templatize()` do Atlas AMPLIADO NO LUGAR (marca sem "Seguros" +
+           razão social pura), com os dois testes: a âncora de senha casa ·
+           as 66 telas do §2.5.1.3 sobrevivem
 2. §3.3  `medir_rota.py --exportar-arvore`, em Python, reusando o `_norm`
          e o `PADROES_DE_SERVICO` reais. Rodado de verdade, saída colada.
 3. §2.2 e §4.3 refeitas com `zona='URA'` -- a ORDEM DE EXECUÇÃO da SPEC
