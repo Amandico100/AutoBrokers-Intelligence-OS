@@ -2,7 +2,7 @@
 
 > **Levar as 62 rotas ao nível da máquina de lavar — uma de cada vez, na ordem que a árvore da URA impõe, e nenhuma liberada sem o juiz.**
 >
-> Autor: execução · **v6, 21/08/2026** · Commit base: `bae33ea`
+> Autor: execução · **v7, 21/08/2026** · Commit base: `bae33ea`
 > Branch: `feat/spec084-a-fabrica-de-rotas`
 > Depende de: **SPEC-083 (A Régua)** — sem a régua, esta SPEC não tem como saber se terminou
 
@@ -758,14 +758,90 @@ nunca foi a prova. Foi a fila.**
 >
 > ```
 > ① o hapax por seguradora ORDENA a fila de conferência — não reprova ninguém
-> ② para cada uma, o relatório NOMEIA as 15 falas menos repetidas da zona
->    URA (≤3 sessões) e as 10 mais curtas
+> ② a fila é o POOL INTEIRO, pré-filtrado — 🔴 NUNCA um top-15
 > ③ 🔴 UM HUMANO LÊ e decide: é tela de URA, ou é gente?
 > ④ o que ele marcar como gente vira entrada da `FRONTEIRAS` ou do filtro ②,
 >    com a contagem medida ao lado
-> ⑤ VERMELHO = a lista nomeada AINDA TEM GENTE.
+> ⑤ VERMELHO = a fila AINDA TEM GENTE.
 >    🔴 Nunca "o número passou de X".
 > ```
+
+### 🔴 Por que o pool inteiro, e não um top-15
+
+📊 O pool — zona URA, telas vistas em **≤3 sessões** — é grande:
+
+```
+seguradora   telas URA   pool ≤3 ses   um top-15 cobriria
+porto            758         679             2,2 %
+allianz          551         476             3,2 %
+yelum            564         450             3,3 %
+hdi              493         416             3,6 %
+zurich           234         221             6,8 %
+azul             140         107            14,0 %
+bradesco         109          91            16,5 %
+mapfre            96          90            16,7 %
+tokio             78          64            23,4 %
+alfa              51          44            34,1 %
+              ------      ------
+               2.974       2.638
+```
+
+🔴 **Um top-15 lê 2,2% da porto.** Nomear 15 falas e declarar a fila limpa é
+**o guarda que quase não pode falhar** — o defeito da v2 voltando pela porta da
+triagem.
+
+**O pré-filtro que torna a fila tratável, medido:**
+
+```
+pool bruto ....................................... 2.638 telas
+  com MARCA DE URA (botão · `*` · "opção" · "digite" ·
+     "selecione" · numeração · "menu") ............ 1.386  (53 %)  descarte automático
+  longa (≥90 char) sem marca ......................   554  (21 %)  TIER 2: amostra de 50
+  🔴 curta (<90) sem marca ........................   698  (26 %)  TIER 1: LIDA INTEIRA
+```
+
+> ### 📊 O CONTROLE DO PRÉ-FILTRO — e ele traz a própria taxa de erro
+>
+> Rodado na Allianz, contra as **duas zonas conhecidas**:
+>
+> ```
+> do HUMANO conhecido, entra na fila ..... 53,7 %   ← sensibilidade
+> da URA    conhecida, entra na fila .....  6,8 %   ← falso positivo
+>                                  enriquecimento 7,9×
+> ```
+>
+> ✅ **Especificidade boa:** descarta 93,2% da URA — quase nenhuma leitura
+> desperdiçada.
+> 🔴 **Sensibilidade 53,7%:** quase metade do humano **não** entra na fila.
+
+## 🔴 E isto obriga a SPEC a admitir: A TRIAGEM NÃO PROVA LIMPEZA
+
+Com sensibilidade de 53,7%, **~46% do humano remanescente não passa pela fila**.
+Ler a fila inteira **não** prova ausência de gente, e o gate **não pode afirmar
+que prova**.
+
+**A rede que pega o resto são os TRÊS JUÍZES por rota (§6.2).** O JUIZ 1 CÉTICO
+pergunta *"alguma tela do corpus não casa passo nenhum e pede algo?"* — e uma
+fala humana sobrevivente aparece **ali**, na rota específica, com o executor
+olhando. **Captura em segunda instância**, e está escrito porque a primeira não
+basta.
+
+⚠️ 🔴 **E o PRÉ-FILTRO É CÓDIGO, fixado como a `FRONTEIRAS` — não uma regex que
+cada um escreve.** 📊 Duas implementações do mesmo critério deram fila de **486**
+e de **698**. É o mesmo defeito do `_norm` × `lower()`: **o número se move com a
+implementação**, e um gate de completude (`len(fila) == len(vereditos)`) sobre um
+denominador que muda não guarda nada.
+
+```python
+MARCAS_DE_URA = [           # 📊 descarta 53% do pool · falso positivo 6,8%
+    r"\*",                  # negrito do WhatsApp — a URA usa, gente quase não
+    r"op[çc][ãa]o|digite|responda|selecione|menu",
+    r"^[0-9]+ ?[-.)]",      # item numerado
+]
+LIMITE_TIER_1 = 90          # caracteres. 📊 acima disso, 554 telas → amostra
+```
+📊 Mudar qualquer um destes valores **muda a fila e o gate G1**. Por isso eles
+vivem no código, versionados, com a contagem do dia ao lado.
 >
 > ### 🔴 O único uso numérico que sobrevive: INTRA-seguradora
 >
@@ -1436,19 +1512,25 @@ MESMA TELA, TEXTO FIXO DIFERENTE  →  ACHADO. Duas hipóteses:
            ZERO cruzamento com `FRONTEIRAS`
          · o gate de corpus com CINCO exigências, incluindo:
              ③ a PROVA DO GUARDA (semear 10 linhas humanas → vermelho)
-             ④ o CONTROLE POR SEGURADORA, contra a CURVA por tamanho
-               de amostra (📊 hoje reprova porto, mapfre e zurich —
-               e ABSOLVE a hdi, que o limiar fixo barrava por ruído)
+             ④ a TRIAGEM por seguradora (📊 hoje põe porto, mapfre e
+               zurich no TOPO da fila — 🔴 posição, não veredito)
              ⑤ zero ORFAO + zero identidade não mascarada
          · a CURVA de referência: Allianz limpa · sorteio SEM reposição ·
            60 reamostragens por `n` · semente `md5(session_id||rep||n)` ·
            p95=⚠️ p99=🔴 · impressa no relatório de TODA rodada
            🔴 NUNCA `ntile` (agrupa) e NUNCA o máximo (instável)
          · a métrica presa ao `_norm` (o confundidor menor)
-         · 🔴 o gate ④ é TRIAGEM: ordena a fila e NOMEIA 15+10 falas por
-           seguradora. QUEM REPROVA É A LEITURA HUMANA, nunca o número
+         · 🔴 o gate ④ é TRIAGEM: ordena a fila, e a fila é o POOL INTEIRO
+           pré-filtrado — 📊 698 telas de TIER 1 + amostra de 50 do TIER 2.
+           🔴 NUNCA um top-15: ele leria 2,2% da porto.
+           QUEM REPROVA É A LEITURA HUMANA, nunca o número
            (📊 31 pontos de dispersão entre corpora limpos; a mapfre cabe
             no p95 da tokio limpa)
+         · o PRÉ-FILTRO versionado como código (`MARCAS_DE_URA`,
+           `LIMITE_TIER_1`), com o controle que traz a taxa de erro dele:
+           📊 53,7% de sensibilidade · 6,8% de falso positivo
+           🔴 e a admissão de que a triagem NÃO prova limpeza — o JUIZ 1
+           por rota é a segunda instância
          · o único uso numérico: INTRA-seguradora — ampliar a `FRONTEIRAS`
            de uma tem de DERRUBAR o hapax dela (📊 a Allianz: ~50% → 9,4%)
          · `templatize(..., corpus_de_ura=True)` — TERCEIRO MODO pelo
@@ -1467,18 +1549,70 @@ MESMA TELA, TEXTO FIXO DIFERENTE  →  ACHADO. Duas hipóteses:
          + a prova do comparador (regredir uma âncora e exigir exit != 0)
 ```
 
-**Gate — e é o da SPEC-083 §4.3, não um inventado aqui:**
+## GATE DO BLOCO 0 — duas metades, e a primeira é 100% automática
+
+🔴 **Esta metade existe porque o gate ④ virou triagem, e triagem não é gate.**
+CLAUDE.md §9: *"Gates internos são automáticos: aplicar → VERIFY → testes →
+verde → avançar."* **"Alguém leu e decidiu" não é isso.**
+
+E há algo binário aqui — só não é *"o corpus está limpo"*, que nenhuma medição
+sustenta. É que **a triagem foi feita, é completa sobre a fila definida, e é
+internamente consistente**:
+
+### A · O CORPUS — cinco checagens binárias, nenhuma opinativa
+
+```
+G1 COMPLETUDE      toda fala do TIER 1 (📊 698) e da amostra do TIER 2 (50)
+                   tem veredito registrado em `vereditos_de_triagem.json`
+                   → len(fila) == len(vereditos)          exit != 0 se não
+                   🔴 a fila vem do pré-filtro VERSIONADO (§2.5.2.1) — se ele
+                     mudar, o denominador muda e o gate tem de ser refeito
+
+G2 CONSISTÊNCIA +  toda fala com veredito GENTE é casada por algum padrão de
+                   `FRONTEIRAS` ou pelo filtro ②          exit != 0 se sobrar
+
+G3 CONSISTÊNCIA −  NENHUMA fala com veredito URA é casada por `FRONTEIRAS`
+                   (é o `NAO_E_FRONTEIRA` da §2.5.1.4, generalizado à fila)
+
+G4 QUEDA MEDIDA    toda seguradora que ganhou padrão novo tem o hapax DELA
+                   antes e depois — e ele CAIU
+                   📊 referência de queda real: Allianz ~50% → 9,4%
+                   🔴 é INTRA-seguradora: o confundidor da diversidade cancela
+
+G5 OS GUARDAS      ① zona · ② `^…$` · ③ prova nos DOIS sentidos (semeado
+                   vermelho / Allianz limpa verde) · ⑤ zero ORFAO + zero
+                   identidade não mascarada · `marcas_de_corretora() > 0`
+```
+
+> 🔴 **O que este gate AFIRMA:** a triagem está completa e coerente.
+>
+> 🔴 **O que ele NÃO afirma:** que o corpus está limpo. 📊 O pré-filtro tem
+> sensibilidade de **53,7%** — a limpeza residual é **risco declarado**, não
+> resolvido, e quem o pega é o JUIZ 1 por rota (§6.2).
+>
+> **Guarda que promete mais do que mede é o mesmo defeito de sempre, do outro
+> lado.**
+
+### B · A RÉGUA — o gate da SPEC-083 §4.3, inalterado
 
 ```
 · `medir_rota --seguradora allianz --ramo residencial --servico maquina_de_lavar`
   roda, e a lista "O QUE FALTA PARA 95" é INTEIRAMENTE NOMEÁVEL
 · a nota entra no relatório com a SAÍDA REAL colada, nas duas leituras (/90 e /100)
-· os dois guardas novos ficam VERMELHOS quando devem (corpus semeado · âncora regredida)
+· o comparador de regressão fica VERMELHO com a âncora regredida de propósito
 · os três juízes liberam
 ```
 
 ⚠️ **≥95 só vira gate depois** que os cinco itens de §4.4 fecharem. Exigi-lo antes
 é exigir 98 pontos de uma soma que dá 92 — o defeito da v1.
+
+### ⏱️ E o PASSO HUMANO, declarado com o custo
+
+📊 **698 falas do tier 1 + 50 da amostra do tier 2 = 748 leituras, uma passada,
+dez seguradoras.** 💭 A ~5 s cada, cerca de uma hora.
+
+🔴 **Está escrito porque §9 diz que nenhum outro bloco começa antes deste** — e um
+bloco bloqueante com passo humano não declarado é uma parada que ninguém orçou.
 
 🔴 Enquanto este bloco não fechar, **nenhum outro começa** — e nenhum coletor roda
 em paralelo (§5.3).
