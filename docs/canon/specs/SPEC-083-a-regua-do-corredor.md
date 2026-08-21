@@ -2,7 +2,7 @@
 
 > **O que é uma rota pronta, como se prova sem opinião, e a ferramenta que dá a nota sozinha.**
 >
-> Autor: execução · **v8, 21/08/2026** · Commit base: `95b0d21`
+> Autor: execução · **v9, 21/08/2026** · Commit base: `95b0d21`
 > Branch: `feat/spec083-a-regua-do-corredor`
 > Antecede e habilita: **SPEC-084 (A Fábrica de Rotas)**
 
@@ -202,7 +202,7 @@ A causa é estrutural e está medida:
 
 | campo | por que era grátis | 📊 |
 |---|---|---|
-| `_COMO_PERGUNTAR` | **nenhum** dos 29 slots do produto fica sem redação | item sem como falhar em nenhuma das 62 rotas |
+| `_COMO_PERGUNTAR` | **nenhum** slot que se PERGUNTA ao cliente fica sem redação (🔴 ver §3.5) | item sem como falhar em nenhuma das 62 rotas |
 | `finalize_anchors` | `_ALLIANZ_FAMILY_FINALIZE` / `_YELUM_FAMILY_FINALIZE` são copiados | 14/14 corredores têm ≥1 |
 | `handoff_triggers` | `_AUTO_HANDOFF_TRIGGERS` copiado | 14/14 têm ≥1 |
 | apelidos | `_SUBSERVICE_ALIASES` é **global e cego à seguradora** | `chaveiro`/`bateria`/`pneu` têm **0** apelidos, em todas |
@@ -324,7 +324,39 @@ A v1 dizia: *"eixo A = 0 → a rota não pode receber nota nenhuma"*, e mandava 
 | **bradesco** | 22 | 3 | **0** | 4 |
 | **zurich** | 15 | 4 | **0** | 5 |
 
-📊 Zurich e Bradesco **nunca escrevem "protocolo"** — escrevem **"ordem de serviço"** (zurich 25 ocorrências, bradesco 10).
+🔴 **A v8 afirmava aqui, com marca 📊:** *"Zurich e Bradesco nunca escrevem
+'protocolo' — escrevem **'ordem de serviço'** (zurich 25 ocorrências, bradesco
+10)."*
+
+📊 **A primeira metade reproduz. A segunda NÃO EXISTE.** Medido em 21/08/2026:
+
+```sql
+select insurer_key,
+  count(*) filter (where text ~* 'protocolo')      as protocolo,
+  count(*) filter (where text ~* 'ordem de servi') as ordem_de_servico,
+  count(*) filter (where text ~* 'o\.s\.')         as os_abreviado
+from observed_events where direction='in' group by 1;
+```
+```
+bradesco   protocolo 0 ✅    ordem de serviço 0 🔴    o.s. 0 🔴
+zurich     protocolo 0 ✅    ordem de serviço 0 🔴    o.s. 0 🔴
+mapfre     protocolo 3       ordem de serviço 0 🔴    o.s. 0 🔴
+```
+
+⚠️ **E não há rótulo alternativo:** 📊 sessões com `(sucesso|solicitad|abert|
+registrad)` seguido de número ≥5 dígitos → **zurich 0 de 14 · bradesco 0 de 22 ·
+mapfre 0 de 13**.
+
+🔴 **Esse `📊` foi escrito e sobreviveu oito rodadas de juiz.** É exatamente o
+defeito do CLAUDE.md §12.1 — número sem query, dentro da SPEC que existe para
+combatê-lo. **Quem o achou foi o executor, rodando a query no aquecimento.**
+
+⚠️ **E a consequência é material:** a regra abaixo mandava **9 rotas** (zurich 5 +
+bradesco 4) para `ANCORA_SUSPEITA` — *"ampliar a âncora, não coletar"* — apoiada
+numa frase que ninguém escreveu. **Ampliar para "ordem de serviço" casaria zero, e
+as 9 ficariam presas: nem coletadas, nem consertáveis.** É o erro da v1
+invertido — ela mandava 13 rotas para coleta com o acervo cheio; esta mantinha 9
+fora da coleta sem motivo.
 
 **A regra que a v1 escreveu mandaria inventar exatamente onde a SPEC diz que inventar é o pior desfecho possível.**
 
@@ -342,7 +374,18 @@ from observed_events group by 1;
 | resultado | estado | ação |
 |---|---|---|
 | ≥1 sessão casa | normal | rubrica roda |
-| **0 casam** e a seguradora tem **≥10 sessões** | 🟠 **`ANCORA_SUSPEITA`** | é **defeito da âncora**, não ausência de fonte. Vai para a SPEC-084 como "ampliar a âncora de desfecho", não para a lista de coleta |
+| **0 casam**, a seguradora tem **≥10 sessões**, **e existe rótulo alternativo no acervo** | 🟠 **`ANCORA_SUSPEITA`** | é **defeito da âncora**. Vai para a SPEC-084 como "ampliar a âncora", não para coleta |
+| **0 casam**, **≥10 sessões**, e 🔴 **NENHUM rótulo alternativo é achado** | ⚫ **`SEM_DESFECHO_NO_ACERVO`** | 🔴 **vai para COLETA DIRIGIDA.** Não há o que ampliar: o acervo não contém nenhum acionamento que chegou ao fim |
+
+🔴 **O terceiro braço existe porque a v8 não o tinha, e sem ele 9 rotas ficariam
+presas.** 📊 Hoje ele classifica **zurich (5 rotas) e bradesco (4)** como
+`SEM_DESFECHO_NO_ACERVO` — nenhuma das duas tem, no acervo, um acionamento que
+tenha chegado a qualquer desfecho nomeado.
+
+> **A busca por rótulo alternativo é obrigatória e vai no relatório**, com a
+> query e o resultado. 📊 A da v9 procurou `protocolo` · `ordem de serviço` ·
+> `o.s.` · `(sucesso|solicitad|abert|registrad)` + número ≥5 dígitos. **Achar
+> zero é um resultado, e ele muda o estado da rota.**
 | 0 casam e <10 sessões | 🔴 `SEM_FONTE` | vai para coleta |
 
 > **Confundir "a seguradora escreve diferente" com "nunca vimos esta rota" manda a SPEC-084 coletar o que já está coletado.**
@@ -419,7 +462,7 @@ A verificação faz o trabalho que o prefixo faria — e é a mesma disciplina d
 
 #### ⚠️ Todo ponto que depende do corpus carrega a amostra
 
-📊 O corpus é capado em 5 sessões (§6.5), e isso governa **50 dos 100 pontos**. Exemplo do risco: o gatilho `sinistro` está em 23 das 137 sessões da Allianz (17%) — se as 5 escolhidas não o contiverem, o eixo C perde 3 pontos **por amostragem**, não por defeito.
+📊 O corpus cobre **1 sessão por serviço + até 5** (§6.5), e isso governa **50 dos 100 pontos**. Exemplo do risco: o gatilho `sinistro` está em 23 das 137 sessões da Allianz (17%) — se as 5 escolhidas não o contiverem, o eixo C perde 3 pontos **por amostragem**, não por defeito.
 
 **A ferramenta imprime `AMOSTRA: 5 de 137 sessões` ao lado de todo item que dependa do corpus.** Sem isso, ruído de amostra lê-se como defeito de rota.
 
@@ -494,7 +537,28 @@ SAI DO DENOMINADOR — nunca 0, que seria punir a rota pela falta da fonte.
 
 #### 🔴 `_COMO_PERGUNTAR` saiu da rubrica
 
-📊 Dos 29 slots distintos do produto, **zero** ficam sem redação. Era um item que **não tinha como falhar** em nenhuma das 62 rotas — 5 pontos de graça. Continua sendo obrigação (a SPEC-084 cobra ao criar slot novo), mas não pontua.
+🔴 **A v8 dizia aqui:** *"dos 29 slots distintos do produto, **zero** ficam sem
+redação"*. 📊 **Falso, e medido em 21/08/2026:** contando `requires` dos passos
+mais `required_slots` dos subserviços contra as chaves de `_COMO_PERGUNTAR`,
+**nove slots não têm redação**:
+
+```
+tipo_servico_opcao · profissional_opcao · servico_opcao · data_agendamento_opcao
+periodo_agendamento_opcao · eletrodomestico_opcao · eletrodomestico_categoria_opcao
+problema_eletrico_opcao · telefone_adicionar_opcao
+```
+
+⚠️ **O argumento sobrevive; a frase, não.** 📊 Os nove terminam **todos** em
+`_opcao` — são teclas de menu da URA, e `missing_slots_for_subservice` já impede
+que sejam cobradas do segurado. **Ninguém pergunta a tecla ao cliente.**
+
+📊 **A frase correta:** dos slots que se **pergunta ao cliente**, zero ficam sem
+redação. Era um item que **não tinha como falhar** — 5 pontos de graça. Continua
+sendo obrigação (a SPEC-084 cobra ao criar slot novo), mas **não pontua**.
+
+🔴 **Por que a frase precisava ser corrigida, e não só o raciocínio:** uma
+ferramenta que a implementasse literalmente sobre os 29 acharia **nove buracos** e
+reprovaria rotas que estão certas.
 
 #### ⚠️ A assimetria arquitetural que a rubrica precisa declarar
 
@@ -1004,7 +1068,25 @@ b2bf40e7   350 eventos · 202 `in` ·  63 textos distintos
 
 **As regras:**
 - dedup por `(session_id, _norm(text))` — **o timestamp não entra**. 📊 Metade dos eventos de `9cb09e20` é repetição do mesmo texto
-- no máximo **5 sessões** por (seguradora, ramo): a mais recente **com desfecho** + as 4 mais distintas por conjunto de telas
+- 🔴 **cobertura primeiro, diversidade depois:** **pelo menos 1 sessão por
+  SERVIÇO presente** naquele (seguradora, ramo) — e só então completar até **5**
+  com as mais distintas por conjunto de telas, começando pela mais recente **com
+  desfecho**.
+
+  ⚠️ **O teto sobe para o número de serviços quando ele passa de 5.**
+  📊 `allianz-residencial` tem **6** subserviços; `hdi-residencial`,
+  `yelum-residencial`, `porto-auto`, `azul-auto` e `zurich-auto` têm **5**.
+
+  🔴 **Por que a regra mudou:** a v8 capava em 5 e escolhia por diversidade de
+  telas, **sem garantir cobertura por serviço**. Uma rota podia receber **zero**
+  sessões e sair `SEM_CORPUS` — e a SPEC-084 §7.2 manda `SEM_CORPUS` **para a
+  lista de coleta**, que é exatamente o desfecho que ela proíbe (*"mandar para
+  coleta uma rota cujo acervo está cheio"*). 📊 E não é ruído: o corpus governa
+  **B(35) + C(11) + D(4) = 50 dos 100 pontos**.
+
+  📊 **CONTROLE:** o corpus gerado tem **≥1 sessão para cada serviço** declarado
+  em `subservices`. Serviço com zero sessões é `SEM_CORPUS` **por ausência**, e o
+  relatório diz isso com a contagem — nunca por amostragem.
 - teto de **500 KB por arquivo**, verificado no gate
 - sessão que sai do corpus fica registrada em `INDICE.md` com `session_id` e motivo — **some do arquivo, não do registro**
 
@@ -1752,6 +1834,20 @@ eventos.
 | `7ac3c101` | **19/08/2026** | **52955490** | 29 | 29 | 29 |
 
 ⚠️ 📊 O comentário em `corridor_playbooks.py:254` diz *"sessao b2bf40e7, **28/07/2026**"* — **28/07 é a data de ingestão**, não da conversa. A sessão é de **30/12/2025**. É a única citação de sessão do arquivo, e está errada.
+
+---
+
+## 10.9 🔴 O ACERVO É VIVO — todo número desta SPEC tem validade
+
+📊 Entre a redação da v7 e a auditoria de aquecimento, o acervo foi de **28.094
+para 28.096 eventos**; as sessões com `sinistro`, de **23 para 25**; a zurich, de
+**15 para 14** sessões (e a própria §10.1 já dizia 12+2=14 — 🔴 **a SPEC discordava
+de si mesma em duas seções**).
+
+> **Todo bloco desta SPEC carimba, no relatório: commit, data/hora UTC, total de
+> eventos e total de sessões no momento em que rodou.** Sem o carimbo, o alvo se
+> move durante a execução — que é o defeito nomeado da SPEC-084 v7, e vale igual
+> aqui.
 
 ---
 
