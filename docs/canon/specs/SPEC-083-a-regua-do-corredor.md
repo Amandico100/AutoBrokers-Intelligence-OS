@@ -2,7 +2,7 @@
 
 > **O que é uma rota pronta, como se prova sem opinião, e a ferramenta que dá a nota sozinha.**
 >
-> Autor: execução · **v3, 21/08/2026** · Commit base: `95b0d21`
+> Autor: execução · **v4, 21/08/2026** · Commit base: `95b0d21`
 > Branch: `feat/spec083-a-regua-do-corredor`
 > Antecede e habilita: **SPEC-084 (A Fábrica de Rotas)**
 
@@ -277,11 +277,22 @@ azul (19 sessões)   bateria 11 · guincho 16 · chaveiro 16 · pneu 3
 
 ```
 DECIDE: #1 — a sessão chega ao fim (motor) E o replay dessa sessão
-responde ≥1 passo cujo `requires` cita uma tecla EXCLUSIVA daquela rota
-— o `<x>_opcao` que só ela declara no `subservices`.
+responde ≥1 passo com uma MARCA DA ROTA, procurada NESTA ORDEM:
+
+  1. a chave `<x>_opcao` do `subservices` cujo par (chave, valor) é
+     ÚNICO no playbook      → é o caso dos 4 corredores residenciais
+  2. o valor de `subservice_menu_map[rota]`, se único no playbook
+                            → é o caso da maior parte dos 10 de auto
+  3. um passo com `only_subservices` que cite a rota
 
 Menu que LISTA o serviço não é prova de que o serviço foi PERCORRIDO.
 ```
+
+🔴 **Por que três níveis, e não só o `_opcao`.** 📊 Medido: `_AUTO_SUBSERVICES` **não tem nenhuma chave `_opcao`** — os 10 corredores de auto recebem `{k: dict(v) for k, v in _AUTO_SUBSERVICES.items()}` e a tecla do menu mora em `subservice_menu_map`, chave separada.
+
+Exigir o `_opcao` tornaria o item **insatisfazível para as 40 rotas de auto**: um guincho que chegou ao protocolo pontuaria **0** nos 12 pontos, e o eixo A cairia para 4/20 por **onde o código mora**.
+
+⚠️ **E quando nenhum dos três distingue:** 📊 `mapfre` mapeia os quatro serviços para `"Assistência 24H"`; `bradesco` dá `"1"` para guincho **e** bateria. São **7 rotas** em que a marca não existe. A ferramenta devolve **`ROTA_INDISTINGUIVEL`** e o item **sai do denominador** — nunca 0. Criar a marca é entrega da SPEC-084.
 
 #### ⚠️ `SEM_FABRICA` vale para o eixo A também
 
@@ -368,11 +379,14 @@ Que é literalmente a segunda metade da §2.1 — *"e o segurado sabe o número 
 ```
 DECIDE: `client_summary_from_capture(session)` — que recebe a SESSÃO,
 não a captura — sobre a sessão reconstruída pelo replay devolve texto
-que contém o protocolo capturado. E, quando o desfecho da rota é
-AGENDADO (`expectativa_do_desfecho` diz "agendado"), também a data e o
-período.
+que contém o protocolo capturado. E, quando a CAPTURA daquela sessão trouxe `schedule`, também a data e
+o período.
 
-Rota de desfecho imediato (guincho, eletricista): só o protocolo.
+🔴 O sinal é a CAPTURA, não `expectativa_do_desfecho`. 📊 Aquele campo
+existe em 1 de 14 playbooks e é texto livre — 56 rotas nunca diriam
+"agendado", e os 5 pontos virariam grátis. `schedule` é auto-consistente:
+se a URA marcou dia e período, o cliente tem de sabê-los; se não marcou,
+o protocolo basta.
 ```
 
 Os 5 pontos saem do item de `notes`, que cai de 7 para 2 — 📊 `notes` mede **higiene de documentação**; este mede **o que o segurado recebe**.
@@ -488,7 +502,7 @@ Sem declarar isso, 13 corredores perdem 6 dos 10 pontos do eixo D por uma razão
 
 | item | pts | `DECIDE:` |
 |---|---:|---|
-| existe teste que nomeia a rota **e chama o motor** | **6** | ver a regra por-arquivo abaixo |
+| existe teste que nomeia a rota, **chama o motor** e toca **≥3 telas do corpus dela** | **6** | ver a regra por-arquivo abaixo. 🔴 As telas são comparadas por `_norm` contra o `.jsonl` de §6.1 — teste que chama o motor sobre texto INVENTADO prova o motor, não a rota. 📊 É a mesma lição do `numero_residencia`: âncora escrita de cabeça tem ZERO ocorrências em 28.094 eventos |
 | ≥1 linha de **CONTROLE** explícita | **3** | rótulo de asserção contendo `CONTROLE` |
 | a mutação **fica vermelha quando executada** | **6** | `medir_rota --verificar-mutacoes` aplica, roda, exige vermelho, restaura |
 
@@ -498,30 +512,53 @@ Sem declarar isso, 13 corredores perdem 6 dos 10 pontos do eixo D por uma razão
 O eixo E é avaliado POR ARQUIVO, e a nota da rota é a do MELHOR arquivo
 que a nomeia.
 
-🔴 A DISTINÇÃO É A POSIÇÃO DO ARGUMENTO. Não é "sobre" — é qual argumento.
+🔴 A DISTINÇÃO É A POSIÇÃO DO ARGUMENTO — e ela exige PROPAGAÇÃO LOCAL.
 
-Um arquivo é DESQUALIFICADO (contribui 0) quando o valor lido de
-`playbook["capture_anchors"|"finalize_anchors"|"handoff_triggers"]` ou
-`step["anchor"]` é passado como ARGUMENTO 0 — o PADRÃO — de
-`.search` / `.match` / `.fullmatch`, por qualquer alias de `re`, e
-NENHUMA função do motor é chamada no mesmo `def`.
+`Call.args[0]` comparado com `playbook["capture_anchors"][...]` NÃO
+alcança. 📊 Medido: os dois casos reais do repositório passam a âncora
+por VARIÁVEL INTERMEDIÁRIA, e um deles usa `.get("anchor")`, que nem é
+subscrito:
 
-É LEGÍTIMO quando a âncora é o ARGUMENTO 1 — o TEXTO EXAMINADO. Aí a
-agulha virou palheiro: o regex inspeciona a FORMA da declaração, não
-substitui o motor.
+    PASSOS = PB["ura_steps"]                    # linha 61
+        anc = p.get("anchor")                   # linha 67
+        re.search(anc, CP._norm(texto), ...)    # linha 68  → args[0] = Name('anc')
 
-📊 Conferido nos três casos reais do repositório:
+    ANC = PB["capture_anchors"]                 # linha 280
+        _re3.search(ANC[chave], ...)            # linha 296  → args[0] = Subscript(Name('ANC'))
 
-    ILEGÍTIMO (arg 0 — a âncora é o padrão)
-      re.search(anc, CP._norm(texto), re.IGNORECASE)        ← passo_de:68
-      _re3.search(ANC[chave], CP._norm(texto), ...)         ← _captura:296
+Um detector literal devolveria ZERO desqualificações no arquivo que esta
+SPEC nomeia como o exemplar do defeito. Fecharia o furo dizendo que fechou.
 
-    LEGÍTIMO (arg 1 — a âncora é o texto)
-      _re.search(r"\\\*(?!\?)", a)      ← test_a_regua_nao_tem_furo.py:193
+A REGRA, COM TAINT LOCAL (≈15 linhas de AST):
 
-A conferência é por AST, sobre `Call.args[0]`. NÃO é grep — grep não
-sabe a posição do argumento, e foi essa imprecisão que deixou a regra
-indecidível na versão anterior.
+  1. SEMENTES — qualquer expressão que leia âncora:
+       <x>["capture_anchors"|"finalize_anchors"|"handoff_triggers"|"ura_steps"]
+       <x>["anchor"]  ·  <x>.get("anchor")  ·  <x>.get("capture_anchors")
+
+  2. PROPAGAR dentro do módulo:
+       nome atribuído a semente          vira semente
+       subscrito/atributo de semente     vira semente
+       alvo de `for` sobre semente       vira semente
+
+       PASSOS = PB["ura_steps"]    → PASSOS semente
+       for p in PASSOS             → p      semente
+       anc = p.get("anchor")       → anc    semente
+       ANC[chave]                  → semente
+
+  3. DESQUALIFICA quando uma semente está em `args[0]` de
+     `.search/.match/.fullmatch` (qualquer alias de `re`) e NENHUMA
+     função do motor é chamada no mesmo `def`.
+
+  4. NÃO desqualifica quando a semente está em `args[1]` — a agulha
+     virou palheiro, e o regex inspeciona a FORMA da declaração.
+
+📊 CONTROLE OBRIGATÓRIO — sem ele o eixo E é decorativo:
+     `passo_de:68`                          → DESQUALIFICA (via PASSOS→p→anc)
+     `_captura:296`                         → DESQUALIFICA (via ANC)
+     `test_a_regua_nao_tem_furo.py:193`     → NÃO desqualifica (args[1])
+
+🔴 Se os dois primeiros passarem, o detector está cego. Este controle é
+o que dá direito a confiar na nota.
 ```
 
 #### 🔴 A mutação é executada, nunca lida
@@ -573,6 +610,17 @@ ESTADO DA FONTE    🟢 COMPLETA          sessão(ões) chegaram ao fim
 > ## Nenhuma rota recebe pontos de A, C, D ou E enquanto **B < 8**.
 > `B < 8` → devolve **`NAO_RESPONDE`**, não nota.
 
+#### 🔴 E o portão distingue DUAS coisas opostas
+
+```
+corpus com ZERO telas para (seguradora, ramo)  →  🔵 SEM_CORPUS
+corpus com telas, e B < 8                      →  🔴 NAO_RESPONDE
+```
+
+São **estados opostos, com ações opostas**: `SEM_CORPUS` é trabalho do Bloco A (a tabela de ramo, a coleta); `NAO_RESPONDE` é trabalho da SPEC-084 (escrever passos).
+
+🔴 **Fundir os dois faria a 084 reescrever corredores que já funcionam** — é o mesmo erro que a v1 cometeu ao mandar 13 rotas para coleta com o acervo cheio.
+
 **Por que ele existe.** Mesmo depois de a rubrica passar a cobrar contra o corpus, o juiz refez a receita da rota vazia com `alfa × auto × bateria` e ela **ainda funcionava**:
 
 | eixo | pts | por quê passava |
@@ -590,7 +638,29 @@ O eixo A foi consertado acima (a rota, não a sessão). Mas C e E continuam alca
 
 ⚠️ **8 é o corte, e não é arbitrário:** é a faixa de "≥3 órfãs funcionais" (0 pontos de cobertura) somada a menos de 70% de determinismo. Uma rota abaixo disso não conversa com aquela URA.
 
-### 3.9 Os patamares
+### 3.9 Itens fora do denominador — como a nota se lê
+
+A rubrica cria quatro exclusões: `SEM_FABRICA` (eixo A, 4 pts), `SEM_FABRICA`
+(eixo D, 6 pts), `SEM_ESPELHO` (eixo D, 4 pts) e `ROTA_INDISTINGUIVEL`
+(eixo A, 12 pts). Sem uma regra, ninguém sabe o que acontece com a nota.
+
+> **Item excluído NÃO é renormalizado.** A nota é sempre sobre o denominador
+> real, e o excluído aparece explícito:
+>
+> ```
+> PRONTIDÃO  61/86   (14 pts fora: SEM_FABRICA 10 · SEM_ESPELHO 4)
+> ```
+
+🔴 **Nunca reescalar para /100.** 61/86 = 71% pareceria melhor que uma rota
+que ganhou 65 de 100 disputando tudo. Os patamares da §3.10 só valem para rotas
+com denominador 100; as outras entram na tabela **com o denominador ao lado** e
+ficam **fora da média**.
+
+É a mesma armadilha que esta SPEC identificou corretamente para `SEM_FONTE` na
+v1 — *"a média mistura 'está mal feito' com 'nunca vimos'"* — aplicada um nível
+abaixo.
+
+### 3.10 Os patamares
 
 ```
  95-100   AAA          pronto. O juiz aprova.
@@ -617,10 +687,10 @@ Com a rubrica **v3**, 💭 a estimativa é uma **faixa**, não um número — e 
 | B | 18 | 23 | 🔴 **1 órfã funcional** (−10) · o item novo do cliente (protocolo+dia+período) depende do replay · `notes` recontado |
 | C | 17 | 20 | ⚠️ 📊 dos 4 `handoff_triggers` da rota, **só `sinistro` casa o acervo** (23 de 137 sessões). Os outros três — `não localizamos`, `cpf inválido`, `não foi possível` — têm **0 ocorrências**. Com o corpus capado em 5, os 3 pontos viram amostragem |
 | D | 7 | 10 | ⚠️ `regras_para_o_cliente`: os bullets do comentário têm ~30 caracteres e a regra exige trecho de ≥40 que case o corpus |
-| E | 9 | 15 | ⚠️ **não existe bloco `MUTACOES`** em `test_a_regua_nao_tem_furo.py` — sem ele, 6 pontos a menos |
-| | **67** | **84** | |
+| E | 15 | 15 | ✅ o bloco `MUTACOES` é entrega do Bloco C item 6 — no momento do gate ele existe |
+| | **73** | **84** | |
 
-🔴 **O piso é 67, e o gate é ≥75.** Ele **pode falhar** — e falharia por itens que a própria SPEC não entrega, não por qualidade da rota. **Por isso o Bloco C passa a entregá-los** (o `MUTACOES`), e por isso a §3.3 recontou o `notes` em vez de exigir formato.
+🔴 **O piso é 73, e por isso o gate é ≥70.** Ele **pode falhar** — e falharia por itens que a própria SPEC não entrega, não por qualidade da rota. **Por isso o Bloco C passa a entregá-los** (o `MUTACOES`), e por isso a §3.3 recontou o `notes` em vez de exigir formato.
 
 💭 A faixa é estimativa até o Bloco C rodar. **O valor medido substitui este parágrafo no relatório final.**
 
@@ -647,7 +717,10 @@ A v1 exigia ≥95 e era impossível. O gate v2:
 
 ```
 BLOCO C · GATE
-  a régua tira ≥75 com a rubrica v3                       ← hoje
+  a régua tira ≥70 com a rubrica v3                       ← hoje
+  💭 faixa esperada 73–84 · 📊 o piso de 73 JÁ SUPÕE o `MUTACOES`
+     entregue no Bloco C item 6. Os 11 pontos de oscilação são
+     C-handoff (3), D-regras (3) e B-cliente (5), todos nomeados em §4.1
   e TODO ponto que falta é NOMEÁVEL — cada um vira entrada da SPEC-084
   e nenhum deles é "não sei por quê"
 
@@ -683,7 +756,7 @@ python backend/scripts/medir_rota.py --conferir-ancoras-de-desfecho
 ```
 allianz × residencial × maquina_de_lavar
 ─────────────────────────────────────────────────────────────────
-PRONTIDÃO  67-84/100   🟢 testado 19/08/2026 (protocolo 52955490)
+PRONTIDÃO  73/100      🟢 testado 19/08/2026 (protocolo 52955490)
 FONTE      🟢 COMPLETA  3 sessões · mais recente 19/08/2026
 
 A EVIDÊNCIA          16/20
@@ -927,15 +1000,84 @@ b2bf40e7   350 eventos · 202 `in` ·  63 textos distintos
 **Passo 0 — 🔴 INFERIR O RAMO, e registrar como.**
 📊 `observed_events` não tem coluna `ramo`; `observed_sessions.ramo` é NULL nas **573** linhas. A v1 mandava ler "por ramo inferido" sem dizer como.
 
-```
-residencial  a sessão contém "Residência, Condomínio ou Empresa"
-             ou "Qual seguro deseja utilizar" seguido de "Residencial"
-auto         a sessão contém "Automóvel, Moto ou Caminhão", ou pede placa
-ambíguo      nenhuma das duas → <seguradora>-indefinido.jsonl,
-             NÃO alimenta replay de rota nenhuma, com linha no relatório
+🔴 **A primeira versão usava DUAS FRASES DA ALLIANZ, e só isso.** 📊 Medido contra o acervo inteiro:
+
+| seguradora | sessões `in` | `"Residência, Condomínio ou Empresa"` | `"Automóvel, Moto ou Caminhão"` | cairia em `indefinido` |
+|---|---:|---:|---:|---:|
+| allianz | 137 | 108 | 123 | 13 |
+| **porto** | 134 | **0** | **0** | **70** |
+| **yelum** | 92 | **0** | **0** | **34** |
+| **tokio** | 46 | **0** | **0** | **44** |
+| **hdi** | 41 | **0** | **0** | **12** |
+| **mapfre** | 13 | **0** | **0** | **12** |
+| demais | 64 | 1 | 1 | 28 |
+| | | | | **214 de 528 (41%)** |
+
+**Não existia nenhuma regra residencial que disparasse fora da Allianz.** Consequência direta: `porto-residencial`, `hdi-residencial` e `yelum-residencial` receberiam corpus **vazio** → B = 0 → **`NAO_RESPONDE`**. **Três dos quatro corredores residenciais do produto declarados "não conversa com esta URA"** — por defeito do classificador.
+
+**A inferência é uma TABELA POR SEGURADORA**, em `backend/scripts/padroes_de_ramo.py`, **minerada do acervo** (📊 21/08/2026, contagens em sessões distintas):
+
+```python
+PADROES_DE_RAMO = {
+    # (seguradora, ramo): padrão sobre `_norm` do texto
+    ("allianz", "residencial"):
+        r"assist[êe]ncia para:?\s*\*?1\s*-\*?\s*resid[êe]ncia"      # 15
+        r"|qual seguro deseja utilizar\?.{0,40}resid[êe]ncial"       # 37
+        r"|assist[êe]ncia 24h para qual seguro",                     # 59
+    ("hdi", "residencial"):
+        r"assist[êe]ncia para seu \*?autom[óo]vel\*? ou \*?resid[êe]ncia"  # 13
+        r"|qual o servi[çc]o que voc[êe] precisa\?.{0,90}encanador",       # 4
+    ("yelum", "residencial"):
+        r"assist[êe]ncia para seu \*?autom[óo]vel\*? ou \*?resid[êe]ncia"  # 8+7+4
+        r"|solicitar ou acompanhar servi[çc]os de assist[êe]ncia",
+    ("porto", "residencial"):
+        r"prote[çc][ãa]o combinada|seguro para seu carro e sua casa",      # 4
+    ("mapfre", "residencial"):
+        r"sobre qual \*?seguro\*? voc[êe] quer falar.{0,60}im[óo]veis",    # 4
+    ("tokio", "residencial"):
+        # 🔴 "REIDENCIAL", com o erro de digitação DA URA. Escrever
+        # "RESIDENCIAL" aqui nunca casaria — 📊 é a mesma lição do
+        # `numero_residencia`, aparecendo sozinha no acervo.
+        r"assist[êe]ncia re[si]?idencial 24h"                              # 4
+        r"|menu de servi[çc]os do seguro \*?residencial",                  # 4
+    ("bradesco", "residencial"):
+        r"assistente virtual da bradesco.{0,60}assist[êe]ncia pa",         # 12
+    ("zurich", "residencial"):
+        r"para qual dos assuntos voc[êe] precisa de atendimento",          # 10
+
+    # AUTO: a tela de escolha, ou o pedido de placa (o sinal universal)
+    ("allianz", "auto"):   r"autom[óo]vel, moto ou caminh[ãa]o|placa do seu ve[íi]culo",
+    ("porto",   "auto"):   r"servi[çc]os para ve[íi]culo|o que voc[êe] precisa\?.{0,40}guincho",
+    ("yelum",   "auto"):   r"solicita[çc][ãa]o de guincho, socorro mec|placa",
+    ("hdi",     "auto"):   r"servi[çc]o de \*?guincho\*?|placa",
+    ("azul",    "auto"):   r"assist[êe]ncia emergencial.{0,40}guincho|placa",
+    ("porto",   "auto"):   r"servi[çc]os para ve[íi]culo|placa",
+    ("tokio",   "auto"):   r"menu de servi[çc]os do \*?seguro autom[óo]vel|placa",
+    ("zurich",  "auto"):   r"carro e moto|reboque, socorro mec[âa]nico|placa",
+    ("alfa",    "auto"):   r"canal exclusivo de servi[çc]os emergencia|placa",
+    ("bradesco","auto"):   r"vamos enviar um reboque|placa",
+    ("mapfre",  "auto"):   r"carro e moto|placa",
+}
 ```
 
-📊 **CONTROLE obrigatório:** a sessão `7ac3c101` tem de sair `residencial`, e uma sessão de guincho da Yelum tem de sair `auto`. **As duas no mesmo balde = a inferência não está inferindo.**
+```
+Sem entrada na tabela para aquela seguradora → `indefinido`, com linha no
+relatório NOMEANDO a seguradora e o ramo que faltou. Nunca em silêncio.
+```
+
+📊 **CONTROLE AMPLIADO** — o da versão anterior só provava a Allianz, e era esse o furo:
+
+```
+· `7ac3c101` (allianz)                → residencial
+· ≥1 sessão de guincho da yelum       → auto
+· ≥1 sessão de encanador da hdi       → residencial   ← o que a v3 perdia
+· ≥1 sessão da porto com "Proteção Combinada" → residencial
+· nenhuma seguradora com ≥10 sessões pode ter >30% em `indefinido`.
+  Se tiver, é a TABELA que está incompleta: a ferramenta acusa
+  `RAMO_NAO_CLASSIFICA` ANTES de qualquer nota ser calculada.
+```
+
+⚠️ Uma seguradora pode ter **só auto** legitimamente (📊 azul e alfa não têm playbook residencial). A ausência da entrada residencial é declarada na tabela, com um comentário — nunca deixada implícita.
 
 **Passo 1** — ler `observed_events` filtrando `direction='in'` (§6.3).
 **Passo 2** — dedup por `(session_id, _norm(text))` (§6.5).
@@ -960,6 +1102,13 @@ A versão anterior mandava escolher *"a mais recente **com desfecho** + as 4 mai
 muda entre execuções faz a nota mudar sem nada mudar na rota.
 ```
 
+⚠️ **Um efeito colateral que a ferramenta precisa DECLARAR, não esconder:** a
+seleção **garante** que a mais recente com desfecho entre no corpus — e o eixo A
+depois pergunta se alguma sessão do corpus teve desfecho. **A amostra é escolhida
+para passar no item que ela alimenta.** Não é errado (é a sessão certa a guardar),
+mas a saída imprime `A#1 satisfeito pela sessão que a seleção garantiu`, para
+ninguém ler como descoberta independente.
+
 **Passo 5** — gravar ordenado por `wa_timestamp`.
 
 **Passo 6 — 🔴 CONFERIR O PRÓPRIO `PADROES_DE_SERVICO`.**
@@ -980,7 +1129,21 @@ python backend/scripts/gerar_corpus_de_telas.py --todas --dry-run
 python backend/scripts/gerar_corpus_de_telas.py --auditar-pii
 # telefone BR com separadores: \+?55[\s(]*\d{2}[\s)-]*9?\d{4}[\s-]*\d{4}
 # CPF com pontuação:           \d{3}[.\s]\d{3}[.\s]\d{3}[-\s]\d{2}
+# NOME PRÓPRIO: o `slots.titular_nome` da sessão, e o nome de atendente,
+#               conferidos contra o texto da tela
 ```
+
+🔴 **O nome faltava, e a §6.4 manda mascará-lo.** 📊 Telas reais da Porto:
+
+```
+"Rafael, escolha a opção desejada: Cartão de Crédito · Proteção Combinada …"
+"Marisa, escolha a opção desejada: …"
+```
+
+Um primeiro nome no início da tela passaria a auditoria inteira — e é exatamente
+o vazamento que `O-ATLAS-E-UM-SO-E-E-DE-TODAS.md` (linhas 73-95) nomeia como o
+real. **CONTROLE:** uma linha com `"Rafael, escolha"` tem de ser **acusada**;
+`"{NOME}, escolha"` tem de **passar**.
 
 🔴 **A v1 usava `grep -cE '[0-9]{11}'`.** Ele **não casa** `+55 (47) 99627-4743` — a maior sequência de dígitos ali tem **cinco**. Devolvia 0 com quatro telefones no arquivo. *"Um guarda que não tem como falhar não guarda nada"* (CLAUDE.md §9.3).
 
@@ -1245,5 +1408,22 @@ Registrado porque a SPEC-084 vai reusar a mesma disciplina.
 | **D10** | Multi-tenant nunca decidido; `out` no corpus | §6.2 e §6.3 |
 | **D11** | Corpus sem teto | §6.5 |
 | **D12** | 11 números errados | corrigidos ao longo do texto |
+
+### A terceira rodada — 84/100, e dois erros INVISÍVEIS
+
+| # | defeito na v3 | correção na v4 |
+|---|---|---|
+| **K1** | 🔴 A regra AST **não pegava nenhum dos dois casos reais** — ambos passam a âncora por variável intermediária, e um usa `.get("anchor")`. O detector fecharia o furo **dizendo que fechou** | taint local com propagação + os 3 CONTROLEs nomeados (§3.6) |
+| **K2** | 🔴 O `DECIDE:` #1 era **insatisfazível para as 40 rotas de auto** — 📊 `_AUTO_SUBSERVICES` não tem nenhuma chave `_opcao` | marca da rota em 3 níveis + `ROTA_INDISTINGUIVEL` (§3.2) |
+| **K3** | 🔴 A inferência de ramo usava **frases só da Allianz**. 📊 214 de 528 sessões (41%) em `indefinido`, e **3 dos 4 corredores residenciais** condenados a `NAO_RESPONDE` pelo classificador | `padroes_de_ramo.py` minerado das 10 seguradoras + `SEM_CORPUS` separado de `NAO_RESPONDE` |
+| **K4** | Quatro "sai do denominador" e nenhuma regra de renormalização | §3.9 |
+| **K5** | O piso no momento do gate era 73, e o gate era ≥75 | gate ≥70, piso declarado |
+| **K6** | `--auditar-pii` não auditava **nome**, e a §6.4 manda mascarar | regra de nome + CONTROLE |
+| **K7** | O item do cliente dependia de `expectativa_do_desfecho` — 📊 1 de 14 playbooks. Eixo E sem exigir tela do corpus | usa a captura `schedule` · eixo E exige ≥3 telas do corpus |
+
+📊 **E um presente do acervo, achado ao minerar a tabela de ramo:** a URA da
+Tokio escreve **`ASSISTÊNCIA REIDENCIAL 24H`** — com erro de digitação. Uma
+âncora escrita de cabeça diria "RESIDENCIAL" e **nunca casaria**. É a lição desta
+SPEC aparecendo sozinha, sem ninguém procurar.
 
 **O que o juiz aprovou e não deve ser mexido:** §1.3 (o diagnóstico da causa raiz — ele **confirmou** as linhas 64 e 295), o replay como gate (**a única medida que reproduziu**), a linha de controle do chaveiro, o teste ao vivo virando selo, `SEM_FONTE` em coluna própria, a proibição de reimplementar o motor (📊 6 das 7 funções conferidas com nome e assinatura exatos), e o anexo §10.1 (**16 linhas conferidas, todas batem**).
