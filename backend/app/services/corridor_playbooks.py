@@ -196,10 +196,27 @@ ALLIANZ_RESIDENCIAL_WHATSAPP_V1: Dict[str, Any] = {
             "notes": "Opção 1 = endereço da apólice. Divergência de endereço → handoff.",
         },
         {
+            # 🔴 A ÂNCORA NUNCA CASOU. NEM UMA VEZ — 21/08/2026.
+            #
+            # Ela exigia "informe o número da residência". 📊 Essa frase aparece
+            # **ZERO vezes** em 28.092 eventos do acervo. O que a URA escreve, e
+            # escreveu de novo no acionamento validado de 19/08 às 16:36, é:
+            #
+            #     "Agora, me CONFIRME o número da residência."
+            #     📊 180 mensagens · 72 sessões · a mais recente é a da régua
+            #
+            # A tela caía no cérebro toda vez. Funcionava — e custava ~14s numa
+            # URA que 📊 encerra por inatividade a partir de 103s. Foi essa a
+            # tela que travou o eletricista por 2min22 em 18/08.
+            #
+            # O verbo é opcional agora. A redação antiga continua casando: é o
+            # que o CONTROLE do teste prova, e é por isso que ampliar uma
+            # âncora é seguro e trocá-la não é.
             "step": "numero_residencia",
-            "anchor": r"informe o n[úu]mero da resid[êe]ncia",
+            "anchor": r"(?:informe|confirme) o n[úu]mero da resid[êe]ncia",
             "reply": "{endereco_numero}",
             "requires": ["endereco_numero"],
+            "notes": "📊 'Agora, me confirme o número da residência.' — 180x, 72 sessões",
         },
         {
             "step": "confirmar_telefone",
@@ -529,7 +546,23 @@ ALLIANZ_RESIDENCIAL_WHATSAPP_V1: Dict[str, Any] = {
             "anchor": (r"termo de privacidade|dicas importantes para conseguir te atender|"
                        r"fique tranquilo, vamos te ajudar|vale lembrar:|voc[êe] sabia\?|"
                        r"op[çc][ãa]o inv[áa]lida|vamos tentar novamente|"
-                       r"oferece diversos tipos de seguro|disjuntor est[áa] na posi[çc][ãa]o|\*dica:\*|"
+                       r"oferece diversos tipos de seguro|disjuntor est[áa] na posi[çc][ãa]o|"
+                       # 🔴 `\*dica:\*` SAIU EM 21/08/2026 — âncora morta.
+                       #
+                       # `match_ura_step` normaliza o texto com `_norm`, que
+                       # **remove os asteriscos** antes de comparar. Uma
+                       # alternativa que EXIGE `*` literal nunca casa — nem uma
+                       # vez, em nenhuma tela, desde que entrou (commit 8aa15be,
+                       # 17/08).
+                       #
+                       # Era inócua na prática, porque `aviso_fora_da_garantia`
+                       # pega aquela tela antes. Mas deixava o guarda
+                       # `test_o_negrito_da_seguradora_nao_emudece_o_corredor`
+                       # VERMELHO em produção — e guarda vermelho que todo mundo
+                       # aprende a ignorar é pior que guarda nenhum.
+                       #
+                       # A palavra "dica" já é coberta por `dicas importantes
+                       # para conseguir te atender`, logo acima.
                        r"precisando estamos por aqui|agradece o seu contato"),
             "reply": "",
             "noop": True,
@@ -665,6 +698,23 @@ ALLIANZ_RESIDENCIAL_WHATSAPP_V1: Dict[str, Any] = {
     # protocolo — sem estas âncoras a LLM confirmaria um serviço real no teste.
     "finalize_anchors": [
         r"podemos confirmar o atendimento", r"posso confirmar", r"deseja confirmar",
+        # 🔴 O FURO DO FREIO — 21/08/2026.
+        #
+        # `allianz-auto` tem esta âncora desde sempre (`_ALLIANZ_FAMILY_FINALIZE`).
+        # O residencial não tinha. E a tela existe, com este texto exato:
+        #
+        #   "Antes de prosseguirmos, poderia me confirmar se os DADOS A SEGUIR
+        #    ESTÃO CORRETOS, por gentileza?"
+        #   📊 154 mensagens · 64 sessões
+        #
+        # São 64 sessões que passaram pela conferência **sem freio nenhum**. E o
+        # freio não é só o "cancela no teste": é ele que arma
+        # `_conferir_antes_de_confirmar`, a última porta antes de mandar um
+        # prestador ao endereço errado.
+        #
+        # Duas seguradoras da MESMA família com listas diferentes é o defeito
+        # que ninguém vê, porque cada uma parece completa sozinha.
+        r"dados a seguir est[ãa]o corretos",
     ],
     "finalize_abort_reply": "SAIR",  # a URA aceita SAIR a qualquer momento
     # Âncoras de captura no retorno da seguradora (formatos 2024 E 2026).
@@ -694,9 +744,32 @@ ALLIANZ_RESIDENCIAL_WHATSAPP_V1: Dict[str, Any] = {
         #
         #   *Agendamento para:* Terca-feira, 06/01/2026
         #   *Periodo:* 13:00 as 18:00 (tarde)
+        # 🔴 AMPLIADA EM 21/08/2026 — ela cobria UMA das três redações reais,
+        # e justamente não a do acionamento validado.
+        #
+        # A versão anterior exigia `periodo:` COM dois-pontos e dois espaços no
+        # fim. 📊 A tela que apareceu em 19/08 às 16:39, um minuto antes do
+        # protocolo da Clarissa, escreve assim:
+        #
+        #   "Agendamento para: *Quinta-feira 20/08/2026*, *período da tarde
+        #    das 13:00 às 18:00* Podemos continuar ?"
+        #
+        # Sem dois-pontos depois de "período", e terminando em "Podemos". A
+        # âncora não casou, o `schedule` não foi capturado, e a mensagem que
+        # saiu ao cliente foi "Prontinho! ✅ Sua assistência foi aberta" — sem
+        # data e sem período.
+        #
+        # As três redações medidas no acervo, todas cobertas agora:
+        #   "agendamento para: quinta-feira 20/08/2026, periodo da tarde das…"
+        #   "agendamento para: terca-feira 03/03/2026, periodo da tarde das…"
+        #   "quando: quarta-feira, 31/12/2025  periodo: manha das 09:00 as…"
+        #
+        # O fim é `podemos` OU dois espaços OU fim de texto — porque a URA às
+        # vezes emenda a pergunta na mesma bolha e às vezes não.
         "schedule_agendado": (
-            r"(?:quando|agendamento para):\s*(.{0,40}?)\s*"
-            r"(?:periodo|per[ií]odo):\s*(.{3,45}?)\s{2,}"),
+            r"(?:quando|agendamento para):\s*(.{0,45}?)\s*,?\s*"
+            r"(?:per[ií]odo)(?::)?\s*(?:d[ao]\s*)?(.{3,50}?)\s*"
+            r"(?:podemos|\s{2,}|$)"),
     },
     # Resumo estruturado ao ESPECIALISTA humano (fluxo real 01/04/2026: a URA
     # transfere emergenciais ao analista — a operadora abre com o caso mastigado).
@@ -3414,6 +3487,24 @@ def extract_capture_anchors(playbook: Dict[str, Any], insurer_message: str) -> D
     m = re.search(anchors.get("eta") or r"$^", text, re.IGNORECASE)
     if m:
         out["eta_minutes"] = m.group(1)
+    # 🔴 O AGENDAMENTO ERA DECLARADO E NUNCA LIDO — 21/08/2026.
+    #
+    # `schedule_agendado` existe no corredor residencial desde 18/08, com duas
+    # redações medidas e um teste de 72 asserções em volta. E esta função lia
+    # cinco chaves — `protocol`, `password`, `eta`, `schedule`, `tracking_link`
+    # — e **nunca essa**.
+    #
+    # O teste passava porque chamava o regex direto, com helper próprio, sem
+    # passar pelo motor. É o corolário do §9.3 que faltava escrever:
+    # **teste de corredor tem de chamar o MOTOR; teste que chama o regex não
+    # guarda nada.**
+    #
+    # 📊 O custo, no acionamento validado de 19/08: a Clarissa recebeu
+    # "Prontinho! ✅ Sua assistência foi aberta" — sem data e sem período.
+    # Exatamente o sintoma que o comentário da âncora diz evitar.
+    #
+    # A ordem importa: `schedule` primeiro (auto), e a residencial só entra se
+    # a de auto não casou — assim nenhum corredor de auto muda de comportamento.
     sched = anchors.get("schedule")
     if sched:
         m = re.search(sched, text, re.IGNORECASE)
@@ -3423,6 +3514,16 @@ def extract_capture_anchors(playbook: Dict[str, Any], insurer_message: str) -> D
                 out["schedule"] = {"day": m.group(1), "from": m.group(2), "to": m.group(3)}
             else:  # âncora de auto: dia (+ hora opcional)
                 out["schedule"] = {"day": m.group(1), "at": (m.group(2) if len(groups) >= 2 else None)}
+    if "schedule" not in out:
+        agendado = anchors.get("schedule_agendado")
+        if agendado:
+            m = re.search(agendado, text, re.IGNORECASE)
+            if m:
+                g = m.groups()
+                out["schedule"] = {
+                    "day": (g[0] or "").strip(" ,.-*"),
+                    "periodo": ((g[1] if len(g) >= 2 else "") or "").strip(" ,.-*"),
+                }
     link = anchors.get("tracking_link")
     if link:
         m = re.search(link, insurer_message, re.IGNORECASE)  # texto ORIGINAL (URL preserva caixa)
