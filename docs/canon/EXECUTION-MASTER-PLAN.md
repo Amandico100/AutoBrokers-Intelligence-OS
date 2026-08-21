@@ -2,7 +2,12 @@
 > **Status:** canônico — plano mestre vivo
 > **Versão:** 1.0 · **Criado em:** 25/07/2026
 > **Commit base auditado:** `3c8c75279d802af0a734b7e7447cc18d469e4f85`
-> **Worktree de execução:** `AutoBrokers-Opus-Exec`
+> **Worktree de execução:** 🔴 **`AutoBrokers-FIX`** — atualizado em 21/08/2026.
+> 📊 `AutoBrokers-FIX` está sincronizada com a `main` (0 commits à frente);
+> `AutoBrokers-Opus-Exec` está **98 commits atrás**, numa branch antiga
+> (`feat/spec072-lista-de-documentos`), e **não contém as SPECs 083 e 084**.
+> ⚠️ O ponteiro anterior dizia `AutoBrokers-Opus-Exec` e estava vencido — achado
+> pelo executor na auditoria de aquecimento, e este é o item nº1 do bootstrap.
 > **Função:** responder, em segundos e para qualquer sessão futura, **onde estamos** e **o que vem a seguir**
 ---
 
