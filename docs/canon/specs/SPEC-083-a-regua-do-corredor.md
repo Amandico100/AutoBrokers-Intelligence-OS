@@ -2,7 +2,7 @@
 
 > **O que é uma rota pronta, como se prova sem opinião, e a ferramenta que dá a nota sozinha.**
 >
-> Autor: execução · **v5, 21/08/2026** · Commit base: `95b0d21`
+> Autor: execução · **v6, 21/08/2026** · Commit base: `95b0d21`
 > Branch: `feat/spec083-a-regua-do-corredor`
 > Antecede e habilita: **SPEC-084 (A Fábrica de Rotas)**
 
@@ -661,6 +661,25 @@ A rubrica cria quatro exclusões: `SEM_FABRICA` (eixo A, 4 pts), `SEM_FABRICA`
 
 🔴 **Sem a banda por fração, NENHUMA rota de auto pode ser AAA.** Com `SEM_FABRICA` no eixo A (4) e no D (6), o denominador delas é **90** — e o patamar AAA começa em 95. Seriam ~40 das 62 rotas **estruturalmente impedidas de chegar ao topo por onde o código mora**, que é exatamente o que o `SEM_FABRICA` existe para NÃO fazer.
 
+🔴 **E o patamar CARREGA o denominador: `AAA(90)`, `quase(100)`.**
+
+Sem isso, `86/90 = 95,6%` vira AAA e `94/100 = 94%` nao vira — e a rota de auto
+foi **dispensada** de `regras_para_o_cliente`, de `expectativa_do_desfecho` e da
+transcricao. "AAA" passaria a significar coisas diferentes na mesma tabela.
+
+⚠️ **E `AAA` com denominador <100 e PROVISORIO**, porque `SEM_FABRICA` e
+temporario: a §3.5 delega a SPEC-084 a decisao de criar a fabrica. **No dia em
+que criar, os 10 pontos voltam ao denominador e a rota "AAA" cai para
+86/100 = "quase".** O relatorio diz isso na hora:
+
+```
+AAA(90) -- 10 pontos fora por SEM_FABRICA. Quando a SPEC-084 criar a
+fabrica, esta rota precisa de +9 para manter o patamar.
+```
+
+🔴 Selo que se desfaz sozinho quando o produto melhora ensina a nao confiar
+no selo.
+
 ⚠️ Banda por fração **não é** a renormalização proibida: o proibido é SOMAR 61/86 e 65/100 numa média. Comparar frações para classificar é o que torna as duas leituras honestas.
 
 🔴 **Nunca reescalar a EXIBIÇÃO para /100.** 61/86 = 71% pareceria melhor que uma rota
@@ -1046,6 +1065,82 @@ Com tres saidas (residencial / auto / indefinido) e a leitura conservadora
 `allianz-residencial` ficaria com corpus vazio, e a regua **nao teria nota para o
 gate do Bloco C**. A SPEC falharia no Bloco A, medindo a si mesma.
 
+🔴 **E remover o cardapio trocou um erro por outro.** 📊 Medido com a tabela
+sem cardapio: o `AMBOS` da Allianz foi de **123 para 0** — a regra funcionou. Mas
+o `indefinido` dela subiu de **10% para 54%**, e **55 dessas 74 sessoes sao
+LONGAS**: percorreram a URA inteira e a tabela nao sabe dizer para que ramo.
+Sob o controle dos 30%, isso e `RAMO_NAO_CLASSIFICA` e **o Bloco A para na
+seguradora da regua**.
+
+### 🔴 A escolha existe. Ela so nao esta na TELA -- esta na RESPOSTA a tela.
+
+📊 Minerado: o `out` imediatamente seguinte a tela de cardapio da Allianz.
+
+```
+"2"  ->  residencial ......... 77 sessoes
+"1"  ->  auto ................ 39 sessoes
+ruido ("5", um CPF, "1,") ....  4 sessoes
+                               ----------
+                               116 de 137     (a tabela de texto cobre 63)
+```
+
+**Zero ambiguidade.** E um digito, e a decisao do segurado, e e literalmente o
+que a regra acima pede: *a tela em que o segurado JA decidiu*. A decisao
+acontece na resposta, nao numa tela posterior.
+
+📊 E generaliza, com rotulos ainda mais limpos:
+
+```
+porto   "Atendimento para veiculo" (5) - "Servicos para veiculo" (2)
+        "Servico para residencia" (2)
+yelum   "Automovel" (13 + 9 com emoji) - "Residencia" (2 com emoji)
+hdi     "Automovel" (4 + 4 com emoji)
+```
+
+> ## DOIS NIVEIS, nesta ordem:
+>
+> **1. RESPOSTA** -- o primeiro `out` depois de uma tela que lista os dois
+> ramos, casado contra `RESPOSTAS_DE_RAMO[(seguradora, ramo)]`.
+>
+> **2. TEXTO** -- a tabela `PADROES_DE_RAMO` abaixo, quando a sessao nao tem
+> `out` nenhum.
+
+🔴 **O nivel 2 NAO e opcional, e o motivo e a propria regua.** 📊 A sessao
+`7ac3c101` tem **29 eventos `in` e ZERO `out`** — as respostas do acionamento ao
+vivo vivem no **Espelho**, nao no Atlas. Com so a regra da resposta, **a rota
+validada do produto ficaria sem ramo e sem corpus**, e a SPEC falharia medindo a
+si mesma pela terceira vez.
+
+⚠️ **E a permissao que precisa estar escrita, porque parece contradicao:** a
+§6.3 proibe `out` no **CORPUS** — e continua proibindo, porque ali ele e a
+identidade da atendente gravada em git. Mas o **CLASSIFICADOR** le
+`observed_events` direto, em tempo de geracao, e ali o `out` esta disponivel.
+**Sao dois trabalhos diferentes sobre a mesma tabela.** O `out` classifica e e
+descartado; nunca chega ao `.jsonl`.
+
+```python
+RESPOSTAS_DE_RAMO = {
+    # o primeiro `out` depois do cardapio. Casado sobre `_norm`.
+    ("allianz",  "residencial"): r"^2$",                       # 77
+    ("allianz",  "auto"):        r"^1$",                       # 39
+    ("porto",    "residencial"): r"servi[cc]o para resid[ei]ncia",
+    ("porto",    "auto"):        r"(atendimento|servi[cc]os) para ve[ii]culo",
+    ("yelum",    "residencial"): r"^\W*resid[ei]ncia$",
+    ("yelum",    "auto"):        r"^\W*autom[oo]vel$",
+    ("hdi",      "residencial"): r"^\W*resid[ei]ncia$",
+    ("hdi",      "auto"):        r"^\W*autom[oo]vel$",
+}
+```
+
+📊 **CONTROLE do passo 0, e ele tem tres linhas obrigatorias:**
+
+```
+- a Allianz cai para <30% em `indefinido`   (com a tabela so-texto: 54%)
+- `7ac3c101` classifica como residencial PELO NIVEL 2 -- e a saida DIZ qual
+  nivel decidiu. Se disser "nivel 1", a regra leu um `out` que nao existe.
+- nenhum `out` chega ao `.jsonl`: o corpus gerado tem 100% `direction='in'`
+```
+
 > ## A REGRA: o padrao de ramo so pode citar a tela de **ESCOLHA** -- aquela em que o segurado JA decidiu. **Nunca a de cardapio. Cardapio nao classifica.**
 
 **E sao QUATRO saidas, nao tres:**
@@ -1060,6 +1155,10 @@ resid OK  auto OK   ->  AMBOS -- a sessao percorreu os dois ramos, OU um dos
                         ferramenta acusa `PADRAO_DE_CARDAPIO` NOMEANDO os dois
                         padroes que colidiram.
 ```
+
+⚠️ **Estes padroes pressupoem `_norm`** — as classes nao trazem a
+alternativa acentuada (`[ea]`, nao `[êe]`) porque `_norm` ja tirou o acento.
+Aplica-los a texto cru nao casa acento nenhum.
 
 **A tabela**, em `backend/scripts/padroes_de_ramo.py`, minerada do acervo
 (📊 21/08/2026, contagens em sessoes distintas), **sem nenhuma alternativa de
@@ -1110,8 +1209,11 @@ PADROES_DE_RAMO = {
 
     # AUSENCIAS DECLARADAS, nunca implicitas:
     #   azul, alfa, mapfre, bradesco, zurich -> sem playbook residencial.
-    #   porto e tokio residenciais existem no codigo mas tem pouquissima
-    #   evidencia no acervo -- a SPEC-084 decide se coleta.
+    #   porto residencial existe no codigo mas tem pouquissima evidencia
+    #   no acervo -- a SPEC-084 decide se coleta.
+    #   TOKIO-RESIDENCIAL NAO EXISTE no codigo: os quatro residenciais
+    #   sao allianz, hdi, porto e yelum. A entrada gera corpus sem
+    #   consumidor -- inofensivo, e util para a 084 decidir se cria.
 }
 ```
 
@@ -1133,11 +1235,11 @@ executor minerar uma tela que a sessao nunca viu.
 ```
 >30% em `indefinido` -> a ferramenta reporta, e SEPARA:
 
-  `RAMO_NAO_CLASSIFICA`   a seguradora TEM sessoes longas (>=20 eventos) que
+  `RAMO_NAO_CLASSIFICA`   a seguradora TEM sessoes longas (>=20 eventos `in`) que
                           nao classificam -> a TABELA esta incompleta.
                           O Bloco A PARA e mina.
 
-  `SESSOES_CURTAS`        as sessoes indefinidas tem <20 eventos -> nunca
+  `SESSOES_CURTAS`        as sessoes indefinidas tem <20 eventos `direction='in'` -> nunca
                           escolheram. Nao e defeito. Vai para o relatorio com a
                           contagem, e o Bloco A SEGUE.
 
