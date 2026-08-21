@@ -170,6 +170,64 @@ Manter a afirmação vencida só ensinaria a ignorar teste.
 **Corolário:** um guarda que não tem como falhar não guarda nada. Quando o teste
 comparar duas coisas, prove que elas **conseguem** ser diferentes.
 
+
+### 9.4 Teste de corredor chama o motor — teste que chama o regex guarda o regex
+
+> Acrescentado em 21/08/2026, depois que **72 asserções verdes** conviveram com um
+> agendamento que nunca chegava ao cliente.
+
+A rota da máquina de lavar tinha teste dedicado, 401 linhas, 72 asserções e linhas
+de controle de verdade. A âncora `schedule_agendado` estava correta. E o segurado
+recebeu *"sua assistência foi aberta"* sem data e sem período — porque
+`extract_capture_anchors` lia cinco chaves e **nunca aquela**.
+
+📊 O arquivo tinha **zero** chamadas ao motor. Dois helpers próprios rodavam regex
+direto: um sobre `capture_anchors`, outro **reimplementando** `match_ura_step`.
+Provavam que os regexes casavam. Não provavam que alguém os usava.
+
+```
+✅  CP.extract_capture_anchors(playbook, tela_real)
+❌  re.search(playbook["capture_anchors"]["schedule"], tela_real)
+```
+
+**Vale para toda peça declarativa:** âncora, passo, gatilho, slot, tecla. O que se
+afirma é o comportamento do **MOTOR** sobre o texto **REAL**.
+
+**Exceção:** regex sobre a âncora **como texto**, para conferir a FORMA da
+declaração (ex.: *"nenhuma âncora exige `*` literal"*), é legítimo — o alvo é a
+captura que substitui o motor, não a inspeção da declaração.
+
+**E o texto da tela vem do acervo, não da imaginação.** 📊 O passo
+`numero_residencia` exigiu por semanas uma frase com ZERO ocorrências em 28.096
+eventos.
+
+#### 🔴 O corolário que a execução da SPEC-083 acrescentou: MOTOR DE REGEX TEM DIALETO
+
+O helper trocado pelo motor foi só metade. A outra metade apareceu três vezes na
+mesma execução, sempre igual: **um padrão medido com um motor e aplicado com
+outro é um padrão sobre outra coisa.**
+
+```
+📊 medido em SQL, aplicado em Python
+   `.` casa `
+` no Postgres e NÃO casa em Python.
+   Quatro padrões de ramo caíam de 37/26/4/3 sessões para ZERO, em silêncio —
+   e a régua não classificava a própria sessão que a validou.
+
+📊 medido em texto CRU, aplicado em texto NORMALIZADO
+   `_norm` remove o `*` do negrito. O padrão-ouro `\*servi[çc]o\*?:` caía de
+   112 sessões para ZERO.
+
+📊 medido com acento, aplicado depois do `_norm`
+   `necess[áa]rio` funciona; `necessário` sozinho perde metade do acervo.
+```
+
+**Antes de confiar num número que veio de outra ferramenta, rode-o na ferramenta
+que vai usá-lo.** E o guarda que fecha a porta: um teste que exija **ZERO** para o
+padrão sem a flag — porque é assim que se descobre que a flag era o que o fazia
+funcionar.
+
+
 ## 10. Condições legítimas de parada
 
 Pare e registre **somente** por: (1) risco de perda de dados · (2) decisão comercial ou de precificação · (3) conflito canônico · (4) P0/P1 de segurança ou cross-tenant · (5) ação física do Founder (QR, passkey, acesso, pagamento) · (6) mudança material de escopo · (7) custo extraordinário · (8) falta de acesso indispensável.

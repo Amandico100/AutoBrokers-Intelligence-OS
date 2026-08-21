@@ -61,13 +61,31 @@ PB = CP.ALLIANZ_RESIDENCIAL_WHATSAPP_V1
 PASSOS = PB["ura_steps"]
 
 
+# ---------------------------------------------------------------------------
+# 21/08/2026 - SPEC-083, Bloco C item 5. ESTE HELPER CHAMAVA O REGEX.
+#
+# A versao anterior era:
+#
+#     def passo_de(texto):
+#         for p in PASSOS:                          # PASSOS = PB["ura_steps"]
+#             anc = p.get("anchor")
+#             if anc and re.search(anc, CP._norm(texto), re.IGNORECASE):
+#                 return p
+#
+# Ela REIMPLEMENTAVA `match_ura_step`, e por isso este arquivo tinha ZERO
+# chamadas ao motor em 401 linhas com 72 assercoes verdes -- enquanto o
+# agendamento nunca chegava ao cliente (SPEC-083 §1.3).
+#
+# 🔴 A DIFERENCA NAO E COSMETICA: `passo_de` percorria os passos SEM aplicar
+#    `only_subservices` nem `subservice`. `match_ura_step` aplica os dois.
+#    Assercao que mude de resultado depois desta troca e ACHADO, nao regressao --
+#    e NAO se toca no corredor para devolver o verde.
+SUBSERVICO = "maquina_de_lavar"
+
+
 def passo_de(texto: str):
-    """O primeiro passo cuja ancora casa -- a mesma ordem de `match_ura_step`."""
-    for p in PASSOS:
-        anc = p.get("anchor")
-        if anc and re.search(anc, CP._norm(texto), re.IGNORECASE):
-            return p
-    return None
+    """O MOTOR do produto, com o subservico da rota. Nada de regex aqui."""
+    return CP.match_ura_step(PB, texto, subservice=SUBSERVICO)
 
 
 # 📊 AS TELAS REAIS DA URA, do acervo (`observed_events`, insurer_key='allianz').
@@ -163,8 +181,29 @@ check("CONTROLE: e as duas casam ALGUM passo (nenhuma ficou orfa)",
 print("\n[3] Nada do ELETRICISTA foi engolido pelos passos novos")
 # ==========================================================================
 
+# 🔴 ACHADO da troca de 21/08/2026 (SPEC-083 Bloco C item 5).
+#
+# Esta assercao ficou VERMELHA quando `passo_de` passou a chamar o motor, e o
+# motivo e que ela PASSAVA PELO MOTIVO ERRADO.
+#
+# 📊 O passo `o_que_aconteceu` tem `only_subservices=['eletricista']`. O helper
+#    antigo percorria `PB["ura_steps"]` na ordem e NAO aplicava esse filtro --
+#    entao devolvia o passo para QUALQUER subservico, inclusive maquina_de_lavar.
+#    Ele provava que a ANCORA casava; nao provava que `only_subservices` valia.
+#
+# 🔴 O motor, perguntado com o subservico que o proprio NOME da assercao cita,
+#    responde certo:
+#        match_ura_step(PB, tela, subservice="eletricista")     -> o_que_aconteceu
+#        match_ura_step(PB, tela, subservice="maquina_de_lavar") -> None
+#
+# Nenhum corredor foi tocado. A assercao passou a perguntar o que ela dizia
+# perguntar -- e agora ela GUARDA o `only_subservices`, que antes era invisivel.
 check("'O que aconteceu?' continua sendo do eletricista",
-      (passo_de(TELA_O_QUE_ACONTECEU) or {}).get("step") == "o_que_aconteceu")
+      (CP.match_ura_step(PB, TELA_O_QUE_ACONTECEU,
+                         subservice="eletricista") or {}).get("step") == "o_que_aconteceu")
+check("CONTROLE: e ele NAO vale para a maquina de lavar (only_subservices)",
+      CP.match_ura_step(PB, TELA_O_QUE_ACONTECEU,
+                        subservice="maquina_de_lavar") is None)
 check("'para quando precisa do Eletricista' continua sendo `quando`",
       (passo_de(TELA_QUANDO_ELETRICISTA) or {}).get("step") == "quando")
 check("o RESUMO continua sendo a confirmacao final",
@@ -292,9 +331,40 @@ RESUMO_VARIANTE = ("*RESUMO* *Protocolo N.°:* 51014008 "
 REDACAO_ANTIGA = "Seu atendimento foi agendado para o dia 12/08, entre 9h e 13h."
 
 
+# ---------------------------------------------------------------------------
+# 21/08/2026 - SPEC-083, Bloco C item 5. ESTE HELPER TAMBEM CHAMAVA O REGEX.
+#
+#     def _captura(chave, texto):
+#         m = _re3.search(ANC[chave], CP._norm(texto), _re3.IGNORECASE)
+#         return m.groups() if m else None
+#
+# 🔴 Ele lia `capture_anchors` DIRETO. Foi assim que `schedule_agendado` ficou
+#    "verde" por semanas enquanto `extract_capture_anchors` lia cinco chaves e
+#    NUNCA aquela -- e a cliente recebeu "sua assistencia foi aberta" sem data e
+#    sem periodo (o furo n.3 da SPEC-083 §1.2).
+#
+# O motor devolve um DICT; o formato de tupla e mantido para nao reescrever as
+# 11 assercoes que dependem dele.
 def _captura(chave, texto):
-    m = _re3.search(ANC[chave], CP._norm(texto), _re3.IGNORECASE)
-    return m.groups() if m else None
+    """`extract_capture_anchors` -- o MOTOR -- adaptado ao formato das assercoes.
+
+    🔴 O que se afirma daqui em diante e o comportamento do MOTOR sobre o texto,
+    nunca o de um regex lido a parte.
+    """
+    fora = CP.extract_capture_anchors(PB, texto)
+    if chave in ("protocol", "password", "eta", "tracking_link"):
+        v = fora.get(chave)
+        return (v,) if v is not None else None
+    if chave in ("schedule", "schedule_agendado"):
+        s = fora.get("schedule")
+        if not s:
+            return None
+        if "from" in s:
+            return (s.get("day"), s.get("from"), s.get("to"))
+        if "periodo" in s:
+            return (s.get("day"), s.get("periodo"))
+        return (s.get("day"), s.get("at"))
+    raise KeyError(f"chave de captura desconhecida: {chave}")
 
 
 check("o PROTOCOLO e capturado do desfecho real",
@@ -318,8 +388,35 @@ check("e o protocolo dentro do RESUMO tambem",
 check("CONTROLE: a redacao ANTIGA continua sendo capturada",
       _captura("schedule", REDACAO_ANTIGA) == ("12/08", "9h", "13h"),
       _captura("schedule", REDACAO_ANTIGA))
-check("CONTROLE: e a ancora nova NAO rouba a redacao antiga",
-      _captura("schedule_agendado", REDACAO_ANTIGA) is None)
+# 🔴 ACHADO da troca de 21/08/2026, e este e mais fundo que o primeiro.
+#
+# A assercao original perguntava: `_captura("schedule_agendado", REDACAO_ANTIGA)`
+# e `None`? Ela lia a ancora `schedule_agendado` DIRETO e conferia que ela nao
+# casava a redacao antiga.
+#
+# 🔴 PELO MOTOR, ESSA PERGUNTA NAO PODE SER FEITA. `extract_capture_anchors`
+#    FUNDE as duas ancoras numa chave so: tenta `schedule` primeiro e, se nao
+#    casar, tenta `schedule_agendado` -- e grava as duas em `out["schedule"]`.
+#    Perguntar "qual das duas casou" e perguntar algo que o motor nao responde,
+#    e que o CLIENTE nunca vai saber.
+#
+# CLAUDE.md §9.3: *"quando um fato muda, o teste muda com ele, e a licao migra
+# em vez de morrer"*. A licao aqui e que as duas redacoes produzem FORMAS
+# DIFERENTES, e e a forma que o cliente recebe:
+#
+#     redacao ANTIGA ("agendado para o dia 12/08, entre 9h e 13h")
+#        -> {"day": "12/08", "from": "9h", "to": "13h"}        3 campos
+#     redacao NOVA   ("Agendamento para: Quinta-feira ..., periodo da tarde")
+#        -> {"day": ..., "periodo": ...}                       2 campos
+#
+# O guarda continua provando que uma nao vira a outra -- agora pelo motor.
+_ag_antiga = CP.extract_capture_anchors(PB, REDACAO_ANTIGA).get("schedule") or {}
+check("CONTROLE: a redacao ANTIGA produz a forma ANTIGA (from/to), nao a nova",
+      set(_ag_antiga) == {"day", "from", "to"}, _ag_antiga)
+check("CONTROLE: e a redacao NOVA produz a forma NOVA (periodo), nao a antiga",
+      "periodo" in (CP.extract_capture_anchors(PB, RESUMO_AGENDADO).get("schedule") or
+                    CP.extract_capture_anchors(PB, RESUMO_VARIANTE).get("schedule") or {}),
+      CP.extract_capture_anchors(PB, RESUMO_VARIANTE).get("schedule"))
 check("CONTROLE: texto sem agendamento nao captura nada",
       _captura("schedule_agendado", "Bom dia, tudo bem?") is None)
 

@@ -127,27 +127,64 @@ def _mascarar_vocativo(texto: str, esqueletos_dado: set) -> Tuple[str, bool]:
 
 
 # ── a exceção da senha (CA-062 · SPEC-083 §6.4) ──────────────────────────────
-_RX_MARCADOR_DE_SEGREDO = re.compile(r"\{SEGREDO\}|\{TELEFONE\}|\{NUM\}|\{VALOR\}")
+# ⚠️ `{CEP}` entra na lista por medicao: 📊 o protocolo `52955490` tem oito
+#    digitos e o mascarador o le como CEP.
+_RX_MARCADOR_DE_SEGREDO = re.compile(
+    r"\{SEGREDO\}|\{TELEFONE\}|\{NUM\}|\{VALOR\}|\{CEP\}|\{PROTOCOLO\}|\{NUMERO\}")
 
 
-def _preservar_senha(playbook: Dict[str, Any], cru: str, mascarado: str) -> Tuple[str, bool]:
-    """Reinjeta os 4 dígitos da senha que o `templatize` apagou.
+def _preservar_capturas(playbook: Dict[str, Any], cru: str,
+                        mascarado: str) -> Tuple[str, bool]:
+    """Reinjeta o que o MOTOR capturava e o `templatize` apagou.
 
-    🔴 A condição é ESTREITA de propósito: só reinjeta se o MOTOR capturou uma
-    senha no texto CRU. Não é "todo número de 4 dígitos volta" — isso seria um
-    buraco de PII disfarçado de exceção.
+    🔴 A condição é ESTREITA de propósito: só reinjeta um valor que
+    `extract_capture_anchors` **capturou no texto CRU**. Não é "todo número
+    volta" — isso seria um buraco de PII disfarçado de exceção. E cada reinjeção
+    é **verificada pelo motor** antes de ser aceita.
 
-    📊 CA-062: sem isto, `extract_capture_anchors` sobre a tela #27 de
-    `7ac3c101` devolve `{}` em vez de `{'password': '4743'}`, e o replay da rota
-    de referência perde um passo sem que ninguém veja.
+    ═══════════════════════════════════════════════════════════════════════════
+    ⚠️ ESTA FUNÇÃO NASCEU CUIDANDO SÓ DA SENHA, E A MEDIÇÃO A OBRIGOU A CRESCER.
+    ═══════════════════════════════════════════════════════════════════════════
+
+    CA-062 tratava a exceção da §6.4 como sendo sobre a senha, porque é o
+    exemplo que a SPEC dá (*"preservar os 4 últimos se eles reaparecerem como
+    senha — senão a âncora de senha perde o alvo"*).
+
+    🔴 **O PROTOCOLO morre do mesmo jeito, e vale muito mais.** 📊 Medido em
+    21/08/2026, com o CONTROLE verde:
+
+    ```
+    "...o numero de protocolo e 52955490"
+       cru       -> {'protocol': '52955490'}
+       mascarado -> {}                                    A CAPTURA MORRE
+
+    "*RESUMO* *Protocolo N.deg:* 52955490 *Agendamento para:* ..."
+       mascarado -> "*Protocolo N.deg:* {CEP} ..."        oito digitos viram CEP
+    ```
+
+    **E o protocolo é o `DECIDE:` #1 da rubrica inteira** — os 12 pontos de
+    *"a ROTA foi percorrida até o fim"*, mais os 5 de *"o cliente recebe
+    protocolo + dia + período"*, mais o helper `sessao_chegou_ao_fim`.
+
+    > ## Sem esta generalização, o eixo A daria ZERO para as 62 rotas — e o
+    > ## motivo não seria qualidade de rota nenhuma. Seria o mascarador.
+
+    ⚠️ **E o protocolo não é PII.** A SPEC-083 §6.4 lista o que se mascara:
+    telefone, CPF/CNPJ, nome, corretora. Número de chamado da seguradora não
+    está lá — e é justamente o que o corpus existe para provar.
     """
-    cap = M.extract_capture_anchors(playbook, cru)
-    senha = cap.get("password")
-    if not senha:
+    cap_cru = M.extract_capture_anchors(playbook, cru)
+    # 🔴 só valores ESCALARES que o motor capturou. `schedule` e um dict e vem
+    #    da PROSA da tela, que o mascarador nao toca.
+    alvos = {k: v for k, v in cap_cru.items()
+             if k in ("protocol", "password", "eta", "tracking_link")
+             and isinstance(v, str) and v}
+    if not alvos:
         return mascarado, False
-    # já sobreviveu (o mascarador não a comeu)? então não se mexe.
-    if M.extract_capture_anchors(playbook, mascarado).get("password") == senha:
-        return mascarado, False
+    perdidos = {k: v for k, v in alvos.items()
+                if M.extract_capture_anchors(playbook, mascarado).get(k) != v}
+    if not perdidos:
+        return mascarado, False   # ja sobreviveu; nao se mexe
 
     # 🔴 UM MARCADOR POR VEZ, E O MOTOR DECIDE QUAL.
     #
@@ -166,11 +203,14 @@ def _preservar_senha(playbook: Dict[str, Any], cru: str, mascarado: str) -> Tupl
     # 🔴 A correção não escolhe o marcador por posição nem por nome: ela **tenta
     #    cada um e pergunta ao MOTOR** qual devolve a senha. É a mesma disciplina
     #    da §1.3 — quem decide é `extract_capture_anchors`, não uma heurística.
-    for m in _RX_MARCADOR_DE_SEGREDO.finditer(mascarado):
-        tentativa = mascarado[:m.start()] + str(senha) + mascarado[m.end():]
-        if M.extract_capture_anchors(playbook, tentativa).get("password") == senha:
-            return tentativa, True
-    return mascarado, False
+    houve = False
+    for chave, valor in perdidos.items():
+        for m in _RX_MARCADOR_DE_SEGREDO.finditer(mascarado):
+            tentativa = mascarado[:m.start()] + valor + mascarado[m.end():]
+            if M.extract_capture_anchors(playbook, tentativa).get(chave) == valor:
+                mascarado, houve = tentativa, True
+                break
+    return mascarado, houve
 
 
 # ── a auditoria de PII (SPEC-083 Bloco A, VERIFY) ────────────────────────────
@@ -274,6 +314,6 @@ def higienizar(playbook: Dict[str, Any], cru: str, esqueletos_dado: set) -> Tupl
     em silêncio.
     """
     mascarado = M.templatize(cru)
-    mascarado, houve_senha = _preservar_senha(playbook, cru, mascarado)
+    mascarado, houve_senha = _preservar_capturas(playbook, cru, mascarado)
     mascarado, houve_vocativo = _mascarar_vocativo(mascarado, esqueletos_dado)
     return mascarado, {"senha_preservada": houve_senha, "vocativo_mascarado": houve_vocativo}

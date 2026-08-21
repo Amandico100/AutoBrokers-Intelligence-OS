@@ -38,8 +38,13 @@ sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 
 import higiene_do_corpus as H          # noqa: E402
 import padroes_de_ramo as PR           # noqa: E402
+import padroes_de_servico as PSV       # noqa: E402
 import regua_motor as M                # noqa: E402
 import zonas_do_acervo as Z            # noqa: E402
+
+# 🔴 o resolvedor de nomes de subservico e o DO PRODUTO, injetado aqui
+#    para nao criar import circular nem tabela paralela.
+PSV.ligar_resolvedor(M.canonical_subservice)
 
 RAIZ = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 DESTINO = os.path.join(RAIZ, "tests", "corpus", "telas_reais")
@@ -149,25 +154,36 @@ def escolher_sessoes(
     escolhidas: List[Any] = []
     vistas: Dict[Any, Set[str]] = {}
 
-    # 1 · cobertura por serviço
+    # 1 · A MAIS RECENTE COM DESFECHO, POR SERVIÇO — e ela vem PRIMEIRO.
+    #
+    # 🔴 ORDEM CORRIGIDA EM 21/08/2026, e o defeito era grave: com a cobertura
+    #    por serviço rodando antes, ela encheu os 6 slots de
+    #    `allianz-residencial` com 6 serviços e **EXPULSOU `7ac3c101`** — a
+    #    sessão do único acionamento validado em produção. A rota de referência
+    #    saiu `SEM_CORPUS`.
+    #
+    #    A SPEC-083 §8 (passo 4) é clara sobre a ordem: *"a 1ª: a mais recente
+    #    com `sessao_chegou_ao_fim = True`"*. A cobertura por serviço (decisão A3
+    #    do Founder) **acrescenta** um critério; não desloca o primeiro.
     ja_coberto: Set[str] = set()
+    com_fim = [c for c in porrecencia if c[3]]
+    for sid, _ts, telas, _fim, servico in com_fim:
+        if len(escolhidas) >= teto:
+            break
+        if servico in ja_coberto:
+            continue
+        escolhidas.append(sid)
+        vistas[sid] = telas
+        ja_coberto.add(servico)
+        notas.append(f"COM DESFECHO + servico {servico or '(tronco)'} -> {str(sid)[:8]}")
+
+    # 2 · cobertura dos serviços que ainda faltam, mesmo sem desfecho
     for sid, _ts, telas, _fim, servico in porrecencia:
         if servico and servico not in ja_coberto and len(escolhidas) < teto:
             escolhidas.append(sid)
             vistas[sid] = telas
             ja_coberto.add(servico)
-            notas.append(f"cobertura de servico: {servico} -> {str(sid)[:8]}")
-
-    # 2 · a mais recente com desfecho
-    com_fim = [c for c in porrecencia if c[3]]
-    if com_fim and com_fim[0][0] not in escolhidas and len(escolhidas) < teto:
-        sid = com_fim[0][0]
-        escolhidas.append(sid)
-        vistas[sid] = com_fim[0][2]
-        notas.append(f"mais recente COM DESFECHO -> {str(sid)[:8]}")
-    elif com_fim:
-        notas.append(f"A#1 satisfeito pela sessao que a selecao garantiu "
-                     f"({str(com_fim[0][0])[:8]})")
+            notas.append(f"cobertura de servico (sem desfecho): {servico} -> {str(sid)[:8]}")
 
     # 3 · diversidade gulosa
     restantes = [c for c in porrecencia if c[0] not in escolhidas]
@@ -264,6 +280,18 @@ def gerar(seguradoras: List[str], *, dry_run: bool = False) -> Dict[str, Any]:
                 contagem["ORFAO_sessao"] += 1
                 continue
             ordenados = sorted(eventos, key=lambda x: x.get("wa_timestamp") or "")
+
+            # 🔴 PASSO 0b · a sessao e TODA humana? Entao ela sai INTEIRA.
+            #    📊 O JUIZ DE TRIAGEM leu 22 sessoes e achou duas que sao conversa
+            #    humana do primeiro turno ao ultimo -- sem apresentacao e sem
+            #    anuncio de transferencia. Nao ha onde cortar.
+            toda_humana = Z.sessao_e_toda_humana(seg, ordenados)
+            if toda_humana:
+                contagem["SESSAO_TODA_HUMANA"] += 1
+                rel["avisos"].append(
+                    f"SESSAO_TODA_HUMANA {seg}/{str(sid)[:8]}: {toda_humana!r}")
+                continue
+
             pares = [(e.get("direction"), Z.norm_para_classificar(e.get("text") or ""))
                      for e in ordenados]
 
@@ -343,11 +371,22 @@ def gerar(seguradoras: List[str], *, dry_run: bool = False) -> Dict[str, Any]:
 
             if not linhas:
                 continue
+
+            # 🔴 QUAL SERVICO esta sessao percorreu -- pela cascata de tres
+            #    niveis (padrao-ouro -> resposta ao cardapio -> texto do `out`).
+            #    Sem isto o replay roda o corpus INTEIRO de (seguradora, ramo)
+            #    contra UMA rota, e as telas do eletricista viram orfas da maquina
+            #    de lavar: 📊 20 orfas onde a SPEC-083 §4.1 espera 1.
+            servico, nivel_srv = PSV.servico_da_sessao(seg, pares, pb_por_ramo.get(ramo))
+            for l in linhas:
+                l["servico"] = servico
+                l["servico_nivel"] = nivel_srv
+            contagem[f"servico:{nivel_srv.split('-')[0] if servico else 'indefinido'}"] += 1
             pb = pb_por_ramo.get(ramo)
             fim = sessao_chegou_ao_fim(pb, [l["text"] for l in linhas]) if pb else False
             por_ramo[ramo].append(
                 (sid, max(l["wa_timestamp"] or "" for l in linhas),
-                 {l["text"] for l in linhas}, fim, None, linhas))
+                 {l["text"] for l in linhas}, fim, servico, linhas))
 
         rel["por_seguradora"][seg] = dict(contagem)
 

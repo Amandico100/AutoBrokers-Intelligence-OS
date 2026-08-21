@@ -74,6 +74,49 @@ def certo(condicao, rotulo, detalhe=""):
 PB = CP._PLAYBOOKS["allianz-residencial-whatsapp@v1"]
 
 # ===========================================================================
+# 🔴 MUTACOES — SPEC-083 §3.6, Bloco C item 7.
+#
+# A v1 da SPEC dava 3 pontos por um COMENTARIO dizendo que a mutacao ficou
+# vermelha. **Comentario nao fica vermelho.**
+#
+# Cada linha abaixo e um dos quatro furos que este arquivo conserta, escrito ao
+# contrario: o texto que RECRIA o furo, e o rotulo da assercao que TEM de cair
+# quando ele volta. `medir_rota.py --verificar-mutacoes` aplica, roda, exige o
+# vermelho, e restaura POR COPIA (nunca `git checkout` -- ele apaga trabalho nao
+# commitado, e `git diff --quiet` nem ve arquivo untracked) conferindo por HASH.
+#
+# 🔴 Mutacao declarada que NAO produz vermelho vale ZERO e vira linha no
+#    relatorio. E a diferenca entre um guarda e um enfeite.
+# ===========================================================================
+MUTACOES = [
+    # (arquivo, texto_de, texto_para, rotulo_da_assercao_que_deve_cair)
+
+    # FURO 1 — a ancora que nunca casou. 📊 "informe o numero da residencia"
+    # tem ZERO ocorrencias em 28.096 eventos; a URA escreve "me CONFIRME".
+    ("app/services/corridor_playbooks.py",
+     r'"anchor": r"(?:informe|confirme) o n[úu]mero da resid[êe]ncia"',
+     r'"anchor": r"informe o n[úu]mero da resid[êe]ncia"',
+     "🔴 'me CONFIRME o número da residência' casa o passo"),
+
+    # FURO 2 — o freio da conferencia. 📊 156 mensagens / 65 sessoes passaram
+    # pela conferencia sem verificacao nenhuma. O allianz-auto ja tinha a ancora.
+    ("app/services/corridor_playbooks.py",
+     '        r"dados a seguir est[ãa]o corretos",',
+     '        r"ZZ_ANCORA_DESLIGADA_PELA_MUTACAO_ZZ",',
+     "🔴 'dados a seguir estão corretos' ARMA o freio no residencial"),
+
+    # FURO 3 — a declaracao que o motor nao lia. 📊 `schedule_agendado` existia
+    # no corredor e `extract_capture_anchors` lia cinco chaves, nunca aquela.
+    # A cliente recebeu "Prontinho! Sua assistencia foi aberta" SEM data e SEM
+    # periodo. Mutar a chave e recriar exatamente esse estado.
+    ("app/services/corridor_playbooks.py",
+     '"schedule_agendado": (',
+     '"schedule_agendado_DESLIGADO": (',
+     "🔴 a tela real de 19/08 16:39 devolve `schedule` pelo MOTOR"),
+]
+
+
+# ===========================================================================
 # TEXTO REAL, COPIADO DO BANCO. Nenhuma linha aqui foi escrita por mim.
 # Query: select text from observed_events where insurer_key='allianz' …
 # ===========================================================================

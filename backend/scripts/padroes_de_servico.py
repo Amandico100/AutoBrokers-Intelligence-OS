@@ -69,13 +69,54 @@ from typing import Any, Dict, List, Optional, Tuple
 #    disclaimer de cobertura — *"está coberto apenas a mão de obra necessária para
 #    o serviço:"*, *"o serviço não será prestado em aparelhos…"*. Puro ruído.
 # ─────────────────────────────────────────────────────────────────────────────
+# 🔴 A ÂNCORA É O INÍCIO DE LINHA, NÃO O ASTERISCO — e a diferença é entre
+#    112 sessões e ZERO.
+#
+# ⚠️ **Terceira ocorrência da mesma família de defeito nesta execução** — as
+#    outras duas foram o `re.DOTALL` e as classes de acento. O padrão foi medido
+#    sobre o texto **CRU**, onde o negrito do WhatsApp existe
+#    (`*Serviço:* *encanador*`). A cascata roda sobre o texto **NORMALIZADO**, e
+#    `_norm` **remove o `*`**.
+#
+# 📊 Medido em 21/08/2026 sobre `norm_para_classificar` do acervo inteiro:
+#
+# ```
+#   regex                             sessões   casa o disclaimer?
+#   \*servi[çc]o\*?:   (o publicado)        0   —              MORTO
+#   (?m)^servi[cç]o\s*:   (este)          112   NAO   ✅
+#   servi[cç]o\s*:   (sem âncora)         158   SIM   🔴   envenenado
+# ```
+#
+# 🔴 O CONTROLE que dá o direito: o disclaimer que a própria SPEC-083 §10 avisa
+#    que polui — *"está coberto apenas a mão de obra necessária para o serviço:"*
+#    — **não casa** o padrão ancorado em linha, e **casa** o largo.
 PADRAO_OURO = (
-    # o resumo da URA — 📊 allianz 37 (26,1%) · yelum 26 · porto 20 · hdi 15 ·
-    #                      azul 11 (55,0%) · alfa 3 (30,0%)
-    re.compile(r"\*servi[çc]o\*?:\*?[ ]*\*?([^*;\n]{1,55})", re.IGNORECASE),
+    # o resumo da URA — 📊 112 sessões em 10 seguradoras, sobre texto normalizado
+    re.compile(r"(?m)^servi[çc]o\s*:\s*([^\n;]{1,55})", re.IGNORECASE),
     # a confirmação de abertura — 📊 hdi e yelum
-    re.compile(r"sua solicita[çc][ãa]o de \*([^*]{2,40})\* foi aberta", re.IGNORECASE),
+    re.compile(r"sua solicita[çc][ãa]o de ([^*\n]{2,40}) foi aberta", re.IGNORECASE),
 )
+
+# 🔴 O DESEMPATE, e ele resolve um caso que a SPEC não previa.
+#
+# 📊 A URA da Allianz **não nomeia "máquina de lavar" no campo `Serviço:`** — ela
+#    escreve `Serviço: conserto de eletrodoméstico` e põe o aparelho na linha
+#    seguinte: `Problema: máquina de lavar roupas`.
+#
+#    E o corredor `allianz-residencial` tem `maquina_de_lavar` **E**
+#    `eletrodomesticos` como **rotas separadas**. Sem este desempate, a rota de
+#    referência do produto sai `SEM_CORPUS` — ela existe no acervo e o filtro não
+#    a encontra.
+#
+# ⚠️ 📊 O campo é texto livre e só a allianz o usa (16 sessões, `maquina de lavar
+#    roupas` em 5). Por isso ele **refina**, nunca decide sozinho: só troca o
+#    rótulo genérico por um subserviço que o **PRÓPRIO PLAYBOOK** declara —
+#    nunca inventa serviço que o corredor não tem.
+CAMPO_PROBLEMA = re.compile(r"(?m)^problema\s*:\s*([^\n;]{1,60})", re.IGNORECASE)
+
+# os rótulos genéricos que pedem desempate — 📊 medidos no acervo
+SERVICOS_GENERICOS = frozenset({"eletrodomesticos", "eletrodomestico",
+                                "conserto residencial", "assistencia"})
 
 # 🔴 As 4 seguradoras SEM padrão-ouro, declaradas — nunca implícitas:
 #    `tokio` · `bradesco` · `zurich` · `mapfre` não têm nenhuma tela em que a
@@ -280,12 +321,71 @@ def _norm_rotulo(s: str) -> str:
     return re.sub(r"\s+", " ", s.replace("*", "").lower()).strip()
 
 
+def _canonizar(chave: Optional[str], playbook: Optional[Dict[str, Any]] = None) -> Optional[str]:
+    """Traduz o rótulo da cascata para o nome do subserviço NO CORREDOR.
+
+    🔴 **A autoridade é `canonical_subservice`, do produto — nunca uma tabela nova.**
+
+    ⚠️ 📊 Achado por medição: a cascata devolvia `eletrodomestico` e o corredor
+    chama a rota de `eletrodomesticos` (plural) e de `maquina_de_lavar`. Com as
+    duas taxonomias soltas, a rota de referência saiu **`SEM_CORPUS`** — ela
+    existia no acervo e o filtro não a encontrava.
+
+    E quando o playbook é conhecido, o nome dele vence: 📊 `allianz-residencial`
+    tem **`maquina_de_lavar` E `eletrodomesticos` como rotas separadas**, e a
+    cascata não distingue as duas sozinha — quem distingue é o texto do rótulo.
+    """
+    if not chave:
+        return None
+    try:
+        canon = M_CANONICAL(chave)
+    except Exception:  # noqa: BLE001
+        canon = chave
+    if playbook is None:
+        return canon
+    subs = playbook.get("subservices") or {}
+    if canon in subs:
+        return canon
+    if chave in subs:
+        return chave
+    return canon
+
+
+M_CANONICAL = None   # injetado por `medir_rota`/`gerar_corpus` para evitar
+                     # import circular; ver `ligar_resolvedor()`
+
+
+def ligar_resolvedor(fn) -> None:
+    """Recebe `canonical_subservice` do motor. 🔴 Sem tabela paralela."""
+    global M_CANONICAL
+    M_CANONICAL = fn
+
+
 def servico_da_sessao(seguradora: str,
-                      pares: List[Tuple[str, str]]) -> Tuple[Optional[str], str]:
+                      pares: List[Tuple[str, str]],
+                      playbook: Optional[Dict[str, Any]] = None) -> Tuple[Optional[str], str]:
     """`[(direction, texto_normalizado), ...]` -> `(servico, nivel_que_decidiu)`.
 
     A cascata inteira: padrão-ouro → resposta ao cardápio → texto da corretora.
     """
+    # ── NÍVEL 1a-bis · o DESEMPATE pelo campo `problema:` ────────────────────
+    #    Só roda quando o padrão-ouro deu um rótulo GENÉRICO e o playbook tem um
+    #    subserviço mais específico. Nunca inventa serviço que o corredor não tem.
+    def _desempatar(servico_generico: str) -> Optional[str]:
+        if not playbook or servico_generico not in SERVICOS_GENERICOS:
+            return None
+        subs = [x for x in (playbook.get("subservices") or {})
+                if x != servico_generico]
+        for _direcao, texto in pares:
+            m = CAMPO_PROBLEMA.search(texto)
+            if not m:
+                continue
+            problema = m.group(1).lower()
+            for sub in sorted(subs, key=len, reverse=True):
+                if re.search(re.escape(sub.replace("_", " ")), problema):
+                    return sub
+        return None
+
     # ── NÍVEL 1a · o padrão-ouro ─────────────────────────────────────────────
     for direcao, texto in pares:
         if direcao != "in":
@@ -294,9 +394,23 @@ def servico_da_sessao(seguradora: str,
             m = rx.search(texto)
             if m:
                 rotulo = _norm_rotulo(m.group(1))
+                # 🔴 O rotulo LITERAL da seguradora primeiro: e ele que
+                #    distingue `maquina de lavar` de `eletrodomesticos` na
+                #    allianz, onde as duas sao rotas separadas.
+                if playbook:
+                    for sub in (playbook.get("subservices") or {}):
+                        if re.search(re.escape(sub.replace("_", " ")), rotulo):
+                            return sub, "nivel-1a-padrao-ouro"
                 for chave, padrao in PADROES_DE_SERVICO_TEXTO.items():
                     if re.search(padrao, rotulo):
-                        return chave, "nivel-1a-padrao-ouro"
+                        achado = _canonizar(chave, playbook)
+                        fino = _desempatar(achado or "")
+                        if fino:
+                            return fino, "nivel-1a-ouro+problema"
+                        return achado, "nivel-1a-padrao-ouro"
+                # 🔴 rotulo que a seguradora nomeia e o CODIGO nao tem: e achado
+                #    para a SPEC-084, nao ruido. 📊 `consulta veterinaria`,
+                #    `pet assistance`, `limpeza de caixa d agua`.
                 return f"?{rotulo[:30]}", "nivel-1a-rotulo-desconhecido"
 
     # ── NÍVEL 1b · a resposta ao cardápio, decodificada CONTRA AQUELA TELA ───
@@ -320,16 +434,20 @@ def servico_da_sessao(seguradora: str,
                             alvo = srv
                             break
                 if alvo:
-                    return alvo, "nivel-1b-resposta"
+                    return _canonizar(alvo, playbook), "nivel-1b-resposta"
                 break   # o PRIMEIRO `out` é a resposta
 
     # ── NÍVEL 2 · o texto da corretora — só `out`, nunca `in` ────────────────
     for direcao, texto in pares:
         if direcao != "out":
             continue
+        if playbook:
+            for sub in (playbook.get("subservices") or {}):
+                if re.search(re.escape(sub.replace("_", " ")), texto):
+                    return sub, "nivel-2-texto"
         for chave, padrao in PADROES_DE_SERVICO_TEXTO.items():
             if re.search(padrao, texto):
-                return chave, "nivel-2-texto"
+                return _canonizar(chave, playbook), "nivel-2-texto"
     return None, "-"
 
 

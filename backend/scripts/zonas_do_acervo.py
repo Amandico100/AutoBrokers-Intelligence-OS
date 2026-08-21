@@ -236,6 +236,51 @@ APRESENTACAO_HUMANA = [
 #      hdi        8 · yelum 11 · tokio 6 · mapfre 5
 #
 # **O robô também se apresenta.** E ele se apresenta MAIS que a gente.
+MARCAS_DE_SESSAO_HUMANA: Dict[str, List[str]] = {
+    # 🔴 ESTAS NÃO SÃO FRONTEIRAS, E A DIFERENÇA DECIDE O QUE FAZER COM ELAS.
+    #
+    # ⚠️ Uma FRONTEIRA marca **onde** o humano entra: tudo depois dela é humano,
+    #    tudo antes é URA. Estas marcas são de **FECHO** — o humano se despedindo.
+    #    Usá-las como fronteira cortaria só a cauda e deixaria a conversa inteira
+    #    dentro do corpus.
+    #
+    # 📊 Mineradas pelo JUIZ DE TRIAGEM em 21/08/2026, lendo 22 sessões uma a uma,
+    #    **cada uma com CONTROLE ZERO contra as 13 que ele julgou `URA_LIMPA`**:
+    #
+    # ```
+    #   allianz  "assistencia 24 horas, permanece a disposicao"   91/138   controle 0
+    #            "ajudo em algo mais"                             68/138   controle 0
+    #            "com quem (eu )?falo"                            66/138   controle 0
+    #   porto    "darei continuidade (em|ao) seu atendimento"      13/135   controle 0
+    #            "consultora de relacionamento"                     1/135   controle 0
+    # ```
+    #
+    # 🔴 **E a marca que importa é a de FECHO, não a de abertura.** 📊 A
+    #    apresentação (`sou da assistência 24 horas e estou aqui para te ajudar`)
+    #    é a marca óbvia — e falha exatamente nas duas sessões que motivaram esta
+    #    auditoria (`d2e3174b` e `44ff2017`, que começam já no meio do diálogo
+    #    humano). **`permanece a disposicao` pega as duas.**
+    #
+    # 🔴 **A REGRA, e ela é conservadora de propósito:**
+    #
+    # > ## Sessão com marca de fala humana e SEM fronteira identificável sai INTEIRA do corpus.
+    #
+    #    Porque não há onde cortar: o humano não anunciou entrada, e a URA não
+    #    anunciou saída. Perder uma sessão inteira custa amostra; deixar uma
+    #    conversa humana no corpus custa a rubrica das rotas daquela seguradora
+    #    (📊 na allianz, 472 órfãs insanáveis contra 126).
+    "allianz": [
+        r"assist[ea]ncia 24 horas, permanece a disposi[cç][ao]o",
+        r"ajudo em algo mais",
+        r"com quem (eu )?falo",
+    ],
+    "porto": [
+        r"darei continuidade (em|ao) seu atendimento",
+        r"consultora de relacionamento",
+        r"ficarei responsavel pelo seu atendimento",
+    ],
+}
+
 APRESENTACAO_DO_ROBO = [
     r"assistente virtual|atendente virtual|assistente digital",
     r"atendimento (virtual|digital)",
@@ -465,6 +510,52 @@ def zonas(eventos_da_sessao: Iterable[Dict[str, Any]],
                 yield e, "URA", motivo
                 continue
         yield e, ("HUMANO" if t_fronteira else "URA"), None
+
+
+def sessao_tem_fala_humana(seguradora: str, eventos) -> Optional[str]:
+    """A sessão contém fala humana? Devolve a marca que a denuncia, ou `None`.
+
+    🔴 Diferente de `e_fronteira`: aqui não se pergunta ONDE o humano entra, e sim
+    SE ele esteve na conversa. 📊 O JUIZ DE TRIAGEM leu 22 sessões e achou duas
+    (`d2e3174b`, `44ff2017`) que são humanas **do primeiro turno ao último**, sem
+    apresentação e sem anúncio de transferência: não há onde cortar.
+    """
+    marcas = MARCAS_DE_SESSAO_HUMANA.get(seguradora)
+    if not marcas:
+        return None
+    rx = re.compile("|".join(f"(?:{m})" for m in marcas), re.DOTALL)
+    for e in eventos:
+        if e.get("direction") != "in":
+            continue
+        m = rx.search(norm_para_classificar(e.get("text") or ""))
+        if m:
+            return m.group(0)[:48]
+    return None
+
+
+def sessao_tem_fronteira(seguradora: str, eventos) -> bool:
+    """A URA anunciou a transferência em algum ponto?"""
+    for e in eventos:
+        if e.get("direction") != "in":
+            continue
+        if e_fronteira(seguradora, norm_para_classificar(e.get("text") or "")):
+            return True
+    return False
+
+
+def sessao_e_toda_humana(seguradora: str, eventos) -> Optional[str]:
+    """🔴 A regra conservadora: fala humana + sem fronteira = SAI INTEIRA.
+
+    Devolve o motivo (a marca achada) quando a sessão deve ser descartada.
+
+    ⚠️ **Custo declarado:** perde-se a amostra inteira. 📊 O custo do outro lado
+    é maior — a sessão `44ff2017` sozinha contribuía **10 das 21 órfãs funcionais**
+    da rota de referência, e cada órfã funcional vale 10 pontos do eixo B.
+    """
+    marca = sessao_tem_fala_humana(seguradora, eventos)
+    if marca and not sessao_tem_fronteira(seguradora, eventos):
+        return marca
+    return None
 
 
 def guarda_de_completude_da_fronteira(

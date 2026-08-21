@@ -6590,3 +6590,227 @@ termina em *"Podemos confirmar?"*, e a âncora daquele corredor é
 
 **O que custa esquecer:** o freio de finalização também depende dessa mesma
 âncora — se ela não casa, quem segura o "abrir de verdade" é só o prompt.
+
+---
+
+## SPEC-083 — A RÉGUA DO CORREDOR · pendências abertas em 21/08/2026
+
+> Cada entrada diz **o que destrava**, **de quem é** (🧑 Founder ou 🤖 execução) e
+> **o que custa esquecer**. Nada sai desta lista sem estar feito ou sem uma
+> decisão registrada.
+
+### 🔴 P-083-1 · O corpus de 5 sessões não cobre 4–6 serviços por corredor · 🤖
+
+📊 **Este é o número que governa o inventário inteiro.** Rodada a régua nas 62
+rotas em 21/08/2026: **4 pontuam · 12 `SEM_CORPUS` · 46 `NAO_RESPONDE`**.
+
+A causa não é qualidade de corredor. É amostra: o corpus guarda **5 sessões por
+`(seguradora, ramo)`** e cada corredor tem **4 a 6 serviços**. Depois do filtro
+por serviço (SPEC-084 §5.1①), a maioria das rotas fica com **0 ou 1 sessão** — e
+com uma sessão não há telas suficientes para o eixo B passar do portão (8).
+
+📊 Exemplo medido: `allianz × residencial × maquina_de_lavar` tira **64/96** com
+`AMOSTRA: 1 de 140 sessões`. Os 2 pontos de *"≥2 sessões distintas"* e os 3 de
+*"o handoff casa tela real"* são perdidos **por amostragem**, não por defeito.
+
+**O que destrava:** subir o teto de sessões por `(seguradora, ramo)` até que cada
+serviço com evidência no acervo tenha ≥2 sessões próprias, respeitando o teto de
+500 KB por arquivo. 🔴 **É decisão da SPEC-084**, porque muda o denominador de
+todas as notas — e a 084 é quem precisa das rotas medidas.
+
+**O que custa esquecer:** a 084 leria 46 `NAO_RESPONDE` como *"46 corredores a
+reescrever"* quando boa parte é *"46 rotas sem amostra"*. São trabalhos opostos.
+
+### 🔴 P-083-2 · 937 respostas de botão estão vazias e são irrecuperáveis · 🤖
+
+📊 Medido: `msg_type='button_reply'` com `text` vazio — yelum 370 · hdi 263 ·
+porto 167 · bradesco 62 · azul 54 · mapfre 8 · zurich 8 · tokio 5.
+`interactive` guardou só as **chaves** (`selectedButtonID` entre elas), sem os
+valores: **`recuperavel_por_title` = 0 em todas as dez.**
+
+**A escolha do segurado não está no banco.** É a maior causa isolada de perda do
+nível 1 das duas cascatas (ramo e serviço).
+
+**O que destrava:** corrigir o ingestor para gravar `selectedButtonID`.
+🔴 **E o controle que prova o conserto:** a yelum tem 13 sessões longas
+indefinidas hoje — o número tem de cair depois dele.
+
+**O que custa esquecer:** toda medição de demanda e de ramo roda sobre uma URA
+cujas respostas foram apagadas na ingestão.
+
+### 🔴 P-083-3 · `templatize` mata a captura, e o conserto mora no corpus · 🤖
+
+📊 Medido com o CONTROLE verde (`marcas_de_corretora()` = 8):
+
+```
+"...o numero de protocolo e 52955490"   ->  {CEP}       a captura MORRE
+"...os 4 ultimos digitos ... *4743*"    ->  {SEGREDO}   a captura MORRE
+```
+
+O gerador de corpus reinjeta o valor **verificando pelo motor** (CA-062). Mas o
+`templatize` continua matando a captura para **todos os outros consumidores** —
+o Tecelão entre eles, que escreve `ura_maps`.
+
+**O que destrava:** o terceiro modo `templatize(..., corpus_de_ura=True)` pelo
+`_vale_neste_modo` que já existe (SPEC-084 §2.5.1.3). 🔴 **Não foi feito nesta
+SPEC** porque `templatize` tem 📊 8 consumidores de produção e ~140 asserções, e
+a SPEC-083 não altera o mascarador do Atlas.
+
+**O que custa esquecer:** `ura_maps` pode estar gravando `{CEP}` onde havia
+protocolo, e ninguém veria — vira só um mapa com menos informação.
+
+### 🔴 P-083-4 · O `_norm` do motor não remove caracteres invisíveis · 🤖
+
+📊 `combustí<U+00AD>vel` (soft hyphen) faz `combust[íi]vel` **falhar**. 3 eventos /
+2 sessões / 1 seguradora (zurich); mais 4 eventos com `U+200B`.
+
+O gerador de corpus os limpa **antes** de chamar o `_norm`. O motor, não.
+
+**O que destrava:** acrescentar `U+00AD`, `U+200B`, `U+200C`, `U+200D`, `U+FEFF`
+e `U+2060` ao `_norm` de `corridor_playbooks.py`. 🔴 **Fora do escopo da SPEC-083**
+— ela não altera corredor. Entrega da SPEC-084.
+
+**O que custa esquecer:** uma âncora de pane seca perde 2 das 14 sessões da
+zurich em silêncio, e a perda vira só um número menor.
+
+### ⚠️ P-083-5 · Três padrões de ramo da allianz casavam ZERO · 🤖 (CORRIGIDO, registrado)
+
+📊 `placa do seu ve[íi]culo`, `identifiquei em seu cadastro a placa` e
+`guincho consegue acessar` → **0 sessões cada**. Os textos reais são
+`placa do veículo` e `o REBOQUE consegue acessar`.
+
+Substituídos por `confirme o ve[ii]culo para atendimento` — 📊 39 sessões, **36 de
+38** de recall em auto, **0 de 76** de falso positivo em residencial.
+
+**Fica registrado** porque é a terceira geração do defeito `numero_residencia`:
+âncora escrita de cabeça, três vezes na mesma linha.
+
+### ⚠️ P-083-6 · A tokio tem um TERCEIRO ramo: CONDOMÍNIO · 🧑 Founder
+
+📊 `menu de serviços do seguro CONDOMÍNIO 🏘️` — 2 sessões. Não há playbook
+`tokio-condominio`; o corpus foi gerado (16 telas) e **não tem consumidor**.
+
+**O que destrava:** decisão do Founder — vira ramo do produto, ou fica fora?
+🔴 Não construído: é ramo novo, fora do escopo das duas SPECs.
+
+**O que custa esquecer:** 2 sessões caem em `indefinido` por tabela incompleta,
+e ninguém sabe se é defeito ou escopo.
+
+### ⚠️ P-083-7 · Serviços que a URA nomeia e o código não tem · 🧑 Founder
+
+📊 Achados pelo padrão-ouro, com o rótulo literal da seguradora:
+`consulta veterinária` · `pet assistance` · `limpeza de caixa d'água` · `limpeza`
+· `dedetização` · `ar condicionado` · `telhado` · `chuveiro`.
+
+E o maior de todos: 📊 **socorro mecânico em 38 sessões** (yelum 21 · zurich 9 ·
+hdi 8) e `subservice_supported()` devolve **False**.
+
+**O que destrava:** decisão de escopo — quais viram subserviço.
+**O que custa esquecer:** o produto recusa um serviço que os clientes pedem e a
+URA atende.
+
+### ⚠️ P-083-8 · As 8 rotas indistinguíveis — 2 resolvidas, 6 em aberto · 🤖
+
+```
+bradesco  guincho × bateria   ✅ RESOLVIDA  "me conta o que aconteceu:
+                                 1 - estacionado e nao liga (BATERIA)
+                                 2 - andando e parou (GUINCHO)"   📊 4 sessoes
+zurich    guincho × bateria   ⚠️ IDENTIFICADA, NAO ESTABELECIDA — a tela
+                                 "O que houve? *1* - Problema de Bateria" existe
+                                 em 📊 **1 sessao**. Precisa de >=1 acionamento
+                                 observado para confirmar.
+mapfre    4 rotas             🔴 SEM SINAL NA URA — 📊 ninguem escolheu
+                                 "Assistencia 24H" em 13 sessoes. A tela
+                                 posterior a escolha NAO EXISTE no acervo.
+```
+
+**O que destrava:** coleta dirigida — 1 acionamento de bateria na zurich, 1 de
+Assistência 24H na mapfre.
+**O que custa esquecer:** escrever a rota do guincho nessas 6 **abre o chamado
+errado**. O corredor não trava: responde com confiança a coisa errada.
+
+### ⚠️ P-083-9 · Duplicatas exatas na ingestão · 🤖
+
+📊 tokio: **36,3% dos eventos são duplicatas exatas** (144 excedentes em 397, 27
+sessões). E `90951801` (allianz) tem **100%** dos eventos duplicados;
+`eade0321` (allianz) idem.
+
+O corpus deduplica por `(session_id, _norm(text))`, então o `.jsonl` está limpo.
+🔴 **Mas o corte "≥20 eventos `in`" que separa `SESSOES_CURTAS` de
+`RAMO_NAO_CLASSIFICA` roda sobre a contagem BRUTA** — e ela está inflada ~2× em
+boa parte do acervo.
+
+**O que destrava:** achar a causa (reingestão? webhook duplo? a tabela
+`observed_events_copias_removidas_20260728` mal aplicada?).
+**O que custa esquecer:** o corte peneira sessões de 10 telas reais como se
+fossem de 20.
+
+### ⚠️ P-083-10 · 7 sessões da hdi com `direction` invertida · 🤖
+
+📊 7 sessões / 16 eventos com `direction='in'` começando por
+`{NOME} - resulta seguros` ou `{NOME} - autofleet seguros` — mensagem assinada
+**pela corretora**, rotulada como vinda **da seguradora**.
+
+Excluídas do corpus por `Z.direcao_invertida()`. 🔴 **Não é a zona `CORRETORA`**
+(que foi eliminada por medição) — é **dado errado**.
+
+⚠️ E o cuidado que a regra carrega: a URA da tokio **saúda a corretora pelo nome**
+(`"olá, {NOME} - {CORRETORA} seguros! digite o cpf"`) e aquilo **É tela de URA** —
+📊 a tela do CPF de 8 sessões. O que distingue é a mensagem ser **só** a
+assinatura, sem tela em volta.
+
+### ⚠️ P-083-11 · 493 eventos `in` sem `session_id` · 🤖
+
+📊 3,0% do acervo `in` (allianz 296 · porto 116 · hdi 72 · zurich 1) — mais 359
+eventos `out`. **Sem sessão não há "antes/depois da transferência"**, então eles
+ficam fora de toda classificação.
+
+📊 E há fala humana entre eles: uma marca de fronteira da porto tem `session_id`
+nulo. Sem a zona `ORFAO`, ela entraria como URA.
+
+**O que custa esquecer:** os 520 eventos órfãos da allianz explicam o
+off-by-one sistemático que apareceu em seis números da SPEC-083 (16→15, 38→37,
+77→76, 39→38).
+
+### ⚠️ P-083-12 · O GLOSSÁRIO não define `rota` · 🧑 Founder
+
+📊 `grep -ci "rota" docs/canon/GLOSSARIO.md` → **0**. E `subcorredor`, `âncora` e
+`subserviço` também não estão lá. A SPEC-083 §0 manda conferir os sete termo a
+termo, com o glossário vencendo.
+
+**O que destrava:** a escrita canônica — e ela é do Founder, não da execução
+(CA-061: *"um glossário é autoridade justamente porque não é escrito de passagem
+por quem precisa do termo"*).
+
+### ⚠️ P-083-13 · A fronteira não é monotônica · 🤖
+
+📊 Achado pelo JUIZ DE TRIAGEM: em **4 de 9** sessões sujas a URA **volta** depois
+do humano — a pesquisa NPS da porto, o `Termo de Privacidade` da allianz.
+
+A regra atual (*"tudo depois da fronteira é HUMANO"*) é conservadora e **joga
+fora telas de URA legítimas** — inclusive as duas telas de NPS da porto, que não
+estão mapeadas em lugar nenhum.
+
+**O que destrava:** uma marca de RETORNO à URA, minerada com controle.
+**O que custa esquecer:** perde-se amostra de URA sem que ninguém veja — e o
+custo aparece como nota mais baixa, não como defeito.
+
+### 🔴 P-083-14 · A órfã funcional de `7ac3c101` pode ser DUAS, não uma · 🤖
+
+📊 O JUIZ DE TRIAGEM, lendo o `ura_maps` ativo (mapa `80b6a5d6`, `status=active`),
+achou **dois** nós com 100% das opções em `gap` na sessão da régua:
+
+```
+c650769dae3f   2 de 2 opcoes sem destino   "Agendamento para: *Quinta-feira {DATA}*…"
+addf8cfd3605  15 de 15 opcoes sem destino   "Selecione o eletrodomestico que precisa
+                                             de conserto? *1 -* Geladeira … *15 -* Outros"
+```
+
+A SPEC-083 §4.2 nomeia só o primeiro. O replay desta SPEC também acha só um —
+porque o segundo **casa um passo** (`match_ura_step` responde), e o critério do
+`ura_maps` é outro (opções sem destino).
+
+⚠️ **São dois critérios diferentes de "órfã", e os dois são legítimos.**
+**O que destrava:** a SPEC-084 decidir qual dos dois governa o mapeamento.
+**O que custa esquecer:** mapear só `c650769dae3f` deixa a rota quebrada no passo
+seguinte — 15 opções de eletrodoméstico sem destino.
