@@ -2,7 +2,7 @@
 
 > **O que é uma rota pronta, como se prova sem opinião, e a ferramenta que dá a nota sozinha.**
 >
-> Autor: execução · **v7, 21/08/2026** · Commit base: `95b0d21`
+> Autor: execução · **v8, 21/08/2026** · Commit base: `95b0d21`
 > Branch: `feat/spec083-a-regua-do-corredor`
 > Antecede e habilita: **SPEC-084 (A Fábrica de Rotas)**
 
@@ -48,6 +48,12 @@ Leitura obrigatória antes da primeira linha de código:
 ⚠️ **Consertar teste não é consertar corredor.** O `test_a_maquina_de_lavar_vai_ate_o_fim.py` tem 📊 **zero chamadas ao motor em 401 linhas** — consertá-lo é escopo **desta** SPEC (Bloco C), e sem isso o gate não fecha.
 
 ---
+
+> ## 🔴 E LEIA A §7.5 ANTES DE COMEÇAR
+>
+> Ela diz **como** esta SPEC é executada: os três papéis (minerador ·
+> ferramenteiro · juízes), as três lentes de julgamento, e o **laço que só para
+> quando o juiz libera**. 🔴 **O executor não libera o próprio trabalho.**
 
 ## 1. POR QUE ESTA SPEC EXISTE
 
@@ -1019,6 +1025,146 @@ b2bf40e7   350 eventos · 202 `in` ·  63 textos distintos
 - 🔴 **Nunca pula em silêncio.** Truncar calado lê-se como "cobrimos tudo"
 
 ⚠️ **Exceção temporária, registrada:** enquanto a órfã funcional da régua (§4.2) não for fechada pela SPEC-084, ela consta numa lista `ORFAS_CONHECIDAS` no topo do teste, **com o motivo, a data e a SPEC que a fecha**. Lista que ganhar uma entrada sem esses três campos torna o gate inútil.
+
+---
+
+## 7.5 🔴 COMO ESTA SPEC É EXECUTADA — subagentes e juízes
+
+> **Esta seção nasceu de uma falha desta própria SPEC.** 📊 Até a v7, ela
+> mencionava "juiz" 14 vezes e **todas as 14 eram retrospectivas** — contavam as
+> rodadas de revisão que produziram o documento. **Nenhuma instruía o executor.**
+> A SPEC-084 tinha a divisão de trabalho completa; esta não tinha nada.
+>
+> E o que ela manda fazer não é pouco: escrever uma ferramenta de medição, gerar
+> corpus de dez seguradoras e mexer no mascarador que o Atlas usa. **Fazer isso
+> sozinho, sem crítico, é como esta SPEC nasceu — e ela levou sete rodadas de
+> juiz para sair de 54 para 98.**
+
+### 7.5.1 A divisão do trabalho — três papéis, e eles não se misturam
+
+```
+🔍 MINERADOR   lê o acervo e extrai os padrões: PADROES_DE_RAMO,
+               RESPOSTAS_DE_RAMO, TELAS_DE_CARDAPIO, PADROES_DE_SERVICO
+               🔴 NÃO escreve a ferramenta. Entrega tabela + a query que a
+                  produziu + a contagem de cada linha.
+
+🔧 FERRAMENTEIRO  escreve `medir_rota.py` e os testes
+               🔴 NÃO inventa padrão. Recebe as tabelas do minerador e as usa
+                  como estão. Padrão que ele precisar e não existir volta ao
+                  minerador — nunca é escrito de cabeça.
+
+⚖️ JUÍZES      as três lentes de §7.5.2. 🔴 A liberação é deles, nunca do
+               executor.
+```
+
+🔴 **Por que separar minerador de ferramenteiro:** quem escreve a ferramenta tem
+interesse em que ela passe. 📊 Foi assim que o `numero_residencia` sobreviveu
+semanas com uma âncora que tem **ZERO ocorrências em 28.096 eventos** — quem a
+escreveu não foi ao acervo conferir.
+
+⚠️ **Paralelismo:** um minerador por seguradora pode rodar em paralelo. **O
+ferramenteiro é um só**, em série — duas mãos no mesmo `medir_rota.py` produzem
+um arquivo que ninguém entende.
+
+### 7.5.2 As três lentes — e cada uma pergunta uma coisa diferente
+
+#### 🔍 JUIZ 1 — O CÉTICO DA MEDIDA
+*Tenta provar que a nota mente.*
+
+- Dá para tirar nota alta **sem responder uma tela real**? 📊 A v1 dava **49/100**
+  para uma rota vazia — chamando `_auto_playbook`, escrevendo um teste com uma
+  chamada ao motor e quatro comentários com a palavra CONTROLE.
+- Algum eixo pode ser preenchido **escrevendo campo** em vez de responder tela?
+- O replay do `medir_rota` bate com o replay feito à mão na mesma rota?
+- 📊 A rota de referência (`allianz × residencial × maquina_de_lavar`) tira **73**?
+  Um número diferente disso é a ferramenta discordando da SPEC.
+
+**Reprova se:** qualquer resposta acima for sim, ou se o 73 não sair.
+
+#### 🛡️ JUIZ 2 — O CÉTICO DO CORPUS
+*O corpus é o que ele diz que é?*
+
+- 100% das linhas do `.jsonl` são `direction='in'`?
+- Sobrou **identidade não mascarada** — razão social, nome de atendente, e-mail?
+  📊 `marcas_de_corretora()` devolveu mais de zero **antes** da geração? Se
+  devolveu zero, a geração rodou sem banco e o corpus **não está mascarado**.
+- A âncora de senha da tela #27 **ainda casa** depois do mascaramento?
+- 📊 Alguma tela do corpus é **fala de gente** e não tela de URA?
+
+**Reprova se:** qualquer uma delas.
+
+#### 🚧 JUIZ 3 — O CÉTICO DO GATE
+*Cada guarda consegue ficar vermelho?*
+
+- Cada guarda foi **provado nos dois sentidos** — vermelho quando deve, verde
+  quando deve? 📊 Nesta série, um guarda nunca ficava vermelho e o seguinte nunca
+  ficaria verde. **Os dois passaram por revisão de leitura.**
+- Todo teste tem **mutação declarada** e ela foi executada?
+- Todo número 📊 do relatório tem **a query colada**?
+- O comparador de regressão acusa quando uma âncora é regredida de propósito?
+
+**Reprova se:** qualquer guarda passar sem ter sido provado que **pode** falhar.
+
+### 7.5.3 🔴 O LAÇO — e ele não acaba até o juiz liberar
+
+> *"O juiz falar, o executor fazer os ajustes e o juiz conferir de novo… até
+> liberar de verdade. Não pode ser feito o juiz fala, executa e acabou."*
+> — o Founder
+
+```
+① o executor entrega o bloco
+② o juiz da lente correspondente julga, e ENTREGA A MEDIÇÃO junto
+③ o executor conserta
+④ 🔴 O MESMO JUIZ julga DE NOVO — não é uma passada, é um laço
+⑤ repete até ele liberar
+
+TETO: 3 voltas por bloco.
+   Bateu 3 sem liberar → o bloco vira `PRECISA_DE_HUMANO`, com o dossiê:
+   o que o juiz cobra, o que o executor tentou, e o que falta decidir.
+   🔴 NUNCA um verde forçado.
+
+⚠️ Reprovação sem motivo acionável NÃO conta como volta.
+```
+
+🔴 **A liberação é do juiz. O executor não libera o próprio trabalho.**
+
+### 7.5.4 🔴 A REGRA QUE VALE PARA O JUIZ TAMBÉM
+
+📊 Nas quinze rodadas de juiz que produziram esta SPEC e a SPEC-084, os defeitos
+trocaram de dono quatro vezes:
+
+```
+a SPEC afirmando sem medir ......... a árvore · o gate de 95 · os "3 itens"
+o JUIZ prescrevendo sem medir ...... o limiar 25 · o `+10` · o teto · o hapax
+o desenho novo sem custo somado .... a triagem que lia 2,4% da fila
+o gate cujo alvo se movia .......... 2.638 → 2.589 conforme o trabalho anda
+```
+
+**Quatro prescrições de juiz foram derrubadas pela query seguinte.**
+
+> ## 🔴 NENHUMA REGRA ENTRA SEM A QUERY QUE A PRODUZIU E O CONTROLE QUE PODE REPROVÁ-LA
+> ## — INCLUSIVE AS QUE O JUIZ ESCREVER.
+>
+> Quando o juiz mandar consertar, ele entrega junto: **a medição, a query, e a
+> linha de controle.** Prescrição sem medição o executor **reproduz antes de
+> aplicar** — e se não reproduzir, devolve com o número.
+>
+> 📊 Foi assim que três correções de juiz foram corrigidas nesta série: o
+> `marcas_de_corretora() → 0` que transformou três buracos em um, o `lower()` que
+> **endureceu** o achado em vez de suavizá-lo, e o `unaccent` que não existe no
+> banco e derrubava o conserto inteiro.
+
+### 7.5.5 O que o executor faz sozinho, sem juiz
+
+Nem tudo precisa de laço. **Vai direto:**
+
+- rodar `medir_rota.py` e colar a saída
+- aplicar migration com APPLY/VERIFY/ROLLBACK escritos antes
+- rodar a suíte de testes
+- 🔴 **e o `grep` de resíduo depois de cada reescrita** — 📊 em seis versões
+  seguidas da SPEC-084, o resíduo estava sempre no **resumo da versão anterior**
+  (caixa de encerramento, título, lista de entregas), e **nenhum foi achado
+  lendo**. `grep` por conceito, não releitura.
 
 ---
 
