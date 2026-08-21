@@ -2,7 +2,7 @@
 
 > **Levar as 62 rotas ao nível da máquina de lavar — uma de cada vez, na ordem que a árvore da URA impõe, e nenhuma liberada sem o juiz.**
 >
-> Autor: execução · **v5, 21/08/2026** · Commit base: `bae33ea`
+> Autor: execução · **v6, 21/08/2026** · Commit base: `bae33ea`
 > Branch: `feat/spec084-a-fabrica-de-rotas`
 > Depende de: **SPEC-083 (A Régua)** — sem a régua, esta SPEC não tem como saber se terminou
 
@@ -430,38 +430,93 @@ mascarado pelo Atlas: `R. ### ##TEVES J#####`"*) sem nomeá-lo.
 de um que existe** — a mesma violação do CLAUDE.md §5 que esta SPEC recusou
 corretamente para o `_norm` em SQL (§2.5.1.1). O argumento vale inteiro aqui.
 
-### 🔴 E o `templatize` de hoje tem TRÊS buracos para este uso — medidos, rodando
+### 🔴 E o `templatize` tem UM buraco para este uso — não três
 
-📊 Executado em 21/08/2026 sobre as telas reais:
+⚠️ **Esta seção é o registro de uma medição que quase virou prescrição errada.**
+
+📊 A primeira rodada, feita **sem banco**, devolveu:
 
 ```
-templatize("Christian - AutoFleet Seguros")   → {NOME} - {CORRETORA}        ✅
-templatize("Saionara - Resulta Seguros")      → {NOME} - {CORRETORA}        ✅
-
-templatize("Saionara - Resulta")              → Saionara - Resulta          🔴
-templatize("Christian - AutoFleet")           → Christian - AutoFleet       🔴
-templatize("SGA Corretora de Seguros Ltda")   → SGA Corretora de Seguros…   🔴
-marcas_de_corretora()                         → 0 entradas (lê do banco)    🔴
+templatize("Saionara - Resulta")     → inalterado         🔴 "buraco"
+templatize("Christian - AutoFleet")  → inalterado         🔴 "buraco"
+templatize("SGA Corretora … Ltda")   → inalterado         🔴 "buraco"
+marcas_de_corretora()                → 0 entradas         ← ISTO EXPLICA AQUILO
 ```
 
-**① Ele exige a palavra literal `Seguros` depois da marca.** 📊 E a yelum escreve
-`"Saionara - Resulta, estamos prontos para seguir…"` — **sem** `Seguros`. Essa
-tela entraria no corpus com nome de atendente e razão social em claro.
+🔴 **A quarta linha era o CONTROLE das três primeiras, e não foi lida como tal.**
+📊 `marcas_de_corretora()` (`templater.py:1309`) lê a tabela `companies`, e o
+docstring dela é literal: *"Sem banco (teste, script solto) devolve vazio"*.
+📊 E `companies` **não está vazia**: `Resulta Seguros` · `AutoFleet` · `AMANDUS
+SEGUROS` · dois internos.
 
-**② `marcas_de_corretora()` devolveu ZERO** no ambiente de teste (lê do banco).
-Se a geração do corpus rodar sem essa carga, sobra só o padrão embutido — o que
-exige `Seguros`.
+📊 **Refeita com as marcas reais carregadas:**
 
-**③ A razão social pura passa** (`SGA Corretora de Seguros Ltda`, 📊 4 eventos na
-porto, numa tela que traz também telefone e e-mail de terceiro).
+```
+templatize("Christian - AutoFleet")          → {NOME} - {CORRETORA}   ✅ ARTEFATO do run offline
+templatize("Saionara - Resulta Seguros")     → {NOME} - {CORRETORA}   ✅
+templatize("Saionara - Resulta")             → Saionara - Resulta     🔴 BURACO REAL
+templatize("SGA Corretora de Seguros Ltda")  → inalterado             ⚠️ OUTRA CLASSE
+```
 
-🔴 **E o gate ⑤ herdaria o mesmo ponto cego:** se ele perguntar *"sobrou
-identidade?"* usando a mesma lista do mascarador, **fica VERDE sobre o que o
-mascarador não viu**. Guarda e mascarador com o mesmo ponto cego não é guarda.
+**O buraco que sobrevive ao controle é UM:** 📊 a marca gravada é
+`Resulta Seguros`; a yelum escreve `"Saionara - Resulta, estamos prontos para
+seguir…"` — **só `Resulta`**. Essa é uma das 66 telas do §2.5.1.3, e entraria no
+corpus com nome de atendente e razão social em claro.
 
-> **Entrega do BLOCO 0:** ampliar o `templatize` **no lugar** — nunca ao lado —
-> para cobrir marca sem `Seguros` e razão social pura; e o gate ⑤ verifica por
-> uma **lista independente**, não pela do mascarador.
+⚠️ **`SGA Corretora de Seguros Ltda` é outra classe:** a SGA não é corretora
+cliente e não está em `companies`. Ela cai na regra **genérica de razão social**
+da SPEC-083 §6.4, não na lista de marcas. 📊 4 eventos na porto, numa tela que
+traz também telefone e e-mail de terceiro.
+
+> ```
+> CONTROLE OBRIGATÓRIO de qualquer medição sobre o mascarador:
+>     assert len(marcas_de_corretora(recarregar=True)) > 0
+> Se falhar, a medição é INVÁLIDA e não autoriza ampliação nenhuma.
+> ```
+
+🔴 **E o gate ⑤ não pode herdar a lista do mascarador.** Se ele perguntar
+*"sobrou identidade?"* com a mesma lista, **fica verde sobre o que o mascarador
+não viu**. Guarda e mascarador com o mesmo ponto cego não é guarda.
+
+### 🔴 A ampliação é um MODO, nunca global — e há 8 consumidores
+
+📊 Medido: `templatize` tem **8 consumidores de produção** e **~140 asserções de
+teste**, 74 delas num arquivo só:
+
+```
+services/atlas/weaver.py:242            🔴 o TECELÃO — escreve `ura_maps`
+services/attendance_distiller.py:358    o destilador (já gravou o acervo)
+services/curadoria_cartas.py:182        o veredito de PII das cartas
+services/ura_map_service.py:303,440     o Atlas
+api/admin_atlas.py:1006 · playbook_gate.py:60 · main.py:550
+
+test_a_conversa_com_a_seguradora_nao_vaza_gente.py ....... 74 asserções
+```
+
+**Mudar `templatize` globalmente muda o que o Tecelão grava em `ura_maps`** — e o
+Atlas é UM SÓ e é de todas as corretoras.
+
+📊 **E o mecanismo de modo já existe:** `_vale_neste_modo(padrao,
+documento_publico)` em `templater.py:1480`. O corpus entra como **terceiro modo**:
+
+```python
+templatize(text, *, documento_publico=False, corpus_de_ura=False)
+#                                            ^^^^^^^^^^^^^^^^^^^
+# pelo mesmo `_vale_neste_modo`. ZERO mudança para os 8 consumidores
+# atuais e para as 74 asserções.
+```
+
+🔴 **Isto NÃO é criar motor paralelo** (CLAUDE.md §5): é usar o mecanismo de modo
+que a peça já oferece, dentro dela.
+
+> ## 🔴 P1 SEPARADO — e não é desta SPEC
+>
+> Se `marcas_de_corretora()` devolver **0 em produção**, o **Tecelão está
+> gravando `ura_maps` sem apagar marca de corretora** — vazamento de identidade
+> dentro do Atlas, que é UM SÓ e de todas.
+>
+> **Vai para `PENDENCIAS.md` com dono 🤖 e verificação imediata**, independente
+> desta SPEC avançar ou não.
 
 ### 🔴 E a exceção da senha: `templatize` NÃO cumpre o que a 083 §6.4 exige
 
@@ -618,11 +673,16 @@ dentro do `medir_rota.py`.
 > ## A comparação é contra a CURVA, no MESMO `n` — e o teto é PERCENTIL
 >
 > ```
->   ≤ p95(n)      ✅ passa
->   > p95(n)      ⚠️ o relatório NOMEIA as falas suspeitas
->   > p99(n)      🔴 VERMELHO: a `FRONTEIRAS` daquela seguradora está
->                    incompleta. Ela NÃO entra na fábrica.
+>   ≤ p95(n)      posição baixa na fila de conferência
+>   > p95(n)      posição alta
+>   > p99(n)      🔎 PRIMEIRA da fila
 > ```
+>
+> 🔴 **E isso é POSIÇÃO NA FILA, não veredito.** A versão anterior desta caixa
+> dizia *"> p99(n) 🔴 VERMELHO: a seguradora NÃO entra na fábrica"* — e a
+> medição da §2.5.2.1 abaixo mostra que **o número não sustenta isso**
+> (📊 31 pontos de dispersão entre corpora limpos). **Quem reprova é a leitura
+> humana.**
 >
 > 🔴 **Nunca o máximo.** 📊 Em `n=14` a distância `p95 → max` é 3,7 pontos e é
 > quase toda cauda de 60 sorteios. `p95` e `p99` são estáveis; o máximo não é.
@@ -632,59 +692,105 @@ defeito exato que esta SPEC cobra. Ele morre aqui, e o substituto **sai da próp
 distribuição**, que já contém a margem. **Número que não sai de medição não entra
 no gate — inclusive quando quem o deu foi o juiz.**
 
-📊 **Aplicado hoje, cada uma contra o `n` DELA:**
+## 🔴 E AQUI A MÉTRICA PERDE O PODER DE REPROVAR — está medido
 
-| seguradora | % | n | p95(n) | p99(n) | veredito |
-|---|---:|---:|---:|---:|---|
-| **mapfre** | 57,4 | 13 | 35,8 | 37,0 | 🔴 **+20,4** |
-| **porto** | 29,0 | 134 | 10,2 | 10,3 | 🔴 **+18,7** — amostra grande, ruído assentado |
-| **zurich** | 53,3 | 14 | 36,3 | 38,2 | 🔴 +15,1 |
-| **yelum** | 20,1 | 92 | 13,2 | 13,6 | 🔴 +6,5 |
-| **hdi** | 26,5 | 41 | 19,3 | 21,6 | 🔴 +4,9 |
-| tokio | 19,2 | 46 | 19,4 | 20,8 | ⚠️ na linha do p95 |
-| bradesco | 21,2 | 22 | 28,6 | 28,8 | ✅ |
-| azul | 14,1 | 18 | 31,8 | 33,3 | ✅ |
-| alfa | 10,5 | 9 | ~>37 | | ✅ |
-| allianz | 9,4 | 137 | — | — | ✅ é a referência |
+A v3, a v4 e a v5 usaram o hapax para condenar seguradora. 📊 **A medição que
+faltava mostra que ele não sustenta isso.**
 
-🔴 **São CINCO vermelhas, não três.** A v3 e a v4 **absolviam a hdi e a yelum**,
-com `teto(n)+10` sobre um teto inflado pelo `ntile`.
+📊 **CONTROLE, 21/08/2026 — a curva de CADA seguradora LIMPA** (as quatro com
+`FRONTEIRAS` vazia por classificação independente), no mesmo `n`, 60
+reamostragens:
 
-📊 E a condenação bate com o que a §2.5.1 já dizia **por outro caminho**: a hdi
-tem **cinco** padrões de fronteira e a marca única removia só 169 eventos; a
-yelum tem **dois** e removia 278. Handoff conhecido + remoção incompleta =
-resíduo. **A SPEC afirmava, em duas seções, coisas opostas sobre a mesma
-seguradora.**
+```
+   n = 13            p50      p95
+   alfa             10,5     10,5
+   azul             20,6     24,6
+   ALLIANZ          27,2     35,8      ← a referência que vínhamos usando
+   bradesco         34,7     48,4
+   tokio            41,7     66,7
+```
 
-🔴 **A porto é o achado que o limiar fixo escondia** — 134 sessões, onde o ruído
-já assentou, e 29% onde a referência do tamanho dela é 10,2%.
+🔴 **Trinta e um pontos de dispersão entre corpora que sabemos estarem LIMPOS.**
+📊 A mapfre, com 57,4%, **cabe dentro do p95 da tokio limpa (66,7%)**.
 
-> ## 📊 O CONTROLE QUE DÁ DIREITO A ESTA MÉTRICA
->
-> A classificação abaixo foi feita por **outro método** — leitura do texto,
-> procurando marca de transferência — **antes de a curva existir**:
+### 📊 E o confundidor tem nome e número: o TAMANHO DA SESSÃO
+
+```
+   allianz  53,7 telas/sessão   ← a referência da curva
+   hdi      39,6                     mediana das dez ≈ 20
+   zurich   30,6
+   azul     26,6
+   yelum    25,0
+   porto    20,0
+   alfa     16,9
+   mapfre   11,4
+   bradesco 11,0
+   tokio     6,7                ← OITO VEZES menos que a Allianz
+```
+
+**Sessão longa repete o tronco dezenas de vezes** — termo de privacidade, CPF,
+endereço — e o hapax despenca. **Sessão curta é quase toda tela única.** Não é
+sujeira: é a forma da URA.
+
+🔴 **E isso condena a escolha da referência:** a Allianz é o **outlier extremo**
+desse eixo (53,7 contra mediana 20). **Era a pior referência possível**, e foi a
+que quatro versões usaram.
+
+### O que sobrevive, e o que cai
+
+| seguradora | medido | n | veredito v5 | veredito CORRETO |
+|---|---:|---:|:---:|---|
+| **porto** | 29,0 | 134 | 🔴 | 🔴 **sobrevive** — margem 18,7 com n=134 (desvio 0,2) **+** fronteira parcial (459 de 2.716) |
+| mapfre | 57,4 | 13 | 🔴 | ⚠️ **não estabelecido** — cabe no p95 da tokio limpa |
+| zurich | 53,3 | 14 | 🔴 | ⚠️ **não estabelecido** — idem |
+| hdi | 26,5 | 41 | 🔴 | ⚠️ **não estabelecido** — curva própria desconhecida |
+| yelum | 20,1 | 92 | 🔴 | ⚠️ **não estabelecido** — idem |
+
+🔴 **E o erro corre nos DOIS sentidos.** Uma seguradora com URA **repetitiva** e
+contaminada fica **abaixo** da curva da Allianz e passa. O gate não era só severo
+demais — era **cego assimétrico**.
+
+📊 **E note como a contaminação da mapfre foi realmente achada:** não pelos
+57,4%. Foi **lendo** `"olá bom dia tudo bem? como posso te chamar?"`. **O número
+nunca foi a prova. Foi a fila.**
+
+> ## O gate ④ é TRIAGEM: ordena a fila, e quem reprova é a LEITURA
 >
 > ```
-> SEM transferência no fio   (alfa · azul · bradesco · tokio)
->      → as quatro ficaram ≤ p95(n)          ZERO falso positivo
-> COM transferência no fio   (porto · hdi · yelum · zurich · mapfre)
->      → as cinco ficaram  > p99(n)          ZERO falso negativo
+> ① o hapax por seguradora ORDENA a fila de conferência — não reprova ninguém
+> ② para cada uma, o relatório NOMEIA as 15 falas menos repetidas da zona
+>    URA (≤3 sessões) e as 10 mais curtas
+> ③ 🔴 UM HUMANO LÊ e decide: é tela de URA, ou é gente?
+> ④ o que ele marcar como gente vira entrada da `FRONTEIRAS` ou do filtro ②,
+>    com a contagem medida ao lado
+> ⑤ VERMELHO = a lista nomeada AINDA TEM GENTE.
+>    🔴 Nunca "o número passou de X".
 > ```
 >
-> **Separação perfeita, com o rótulo vindo de FORA da métrica.** É isto que dá
-> direito à conclusão — sem ele, a curva é um número bonito.
+> ### 🔴 O único uso numérico que sobrevive: INTRA-seguradora
+>
+> Depois de ampliar a `FRONTEIRAS` de uma seguradora, **o hapax DELA tem de
+> CAIR**. É a comparação dela com ela mesma, e o confundidor da diversidade
+> **se cancela**.
+>
+> 📊 Referência do que é uma queda real: a Allianz foi de ~50% (bruto) para
+> **9,4%** quando a fronteira dela entrou. **Ampliação que não derruba o
+> número não achou nada.**
 
-⚠️ 🔴 **E o limite desta métrica, declarado:** a curva vem da **Allianz**. Uma
-seguradora com URA genuinamente mais diversa teria hapax maior no mesmo `n`
-**sem estar suja**. O controle acima dá conforto, **não elimina o confundidor**.
+📊 **A linha de controle da v5 continua válida — e prova menos do que dizia.**
+As 4 limpas ficaram abaixo e as 5 sujas acima da curva da Allianz; isso é
+verdade. Mas com as curvas próprias medidas, sabemos que **bradesco e tokio
+ficaram abaixo APESAR de terem URA mais diversa que a Allianz** — o que
+**fortalece** a conclusão delas — enquanto **hdi e yelum ficaram acima sem que se
+conheça a curva delas**.
 
-**Portanto: exceder a curva é evidência para INVESTIGAR, não prova.** O que tira
-o vermelho é a `FRONTEIRAS` daquela seguradora ficar completa — **nunca o número
-sozinho**.
+> **O controle separa bem os extremos e não separa o meio.** É o que ele prova, e
+> é só isso que a SPEC pode afirmar com ele.
 
-🔴 **E a curva vai no relatório de TODA rodada.** Limiar que não mostra a curva
-que o produziu é opinião com aparência de medida — **inclusive quando quem deu o
-número foi o juiz.**
+🔴 **E a curva continua indo no relatório de toda rodada** — agora como **ordem
+de conferência**, não como veredito. Limiar que não mostra a curva que o produziu
+é opinião com aparência de medida — **inclusive quando quem deu o número foi o
+juiz. Quatro vezes nesta SPEC, foi.**
 
 > ## ⚠️ E o CONFUNDIDOR MENOR, que também precisa de trava: o normalizador
 >
@@ -1339,12 +1445,17 @@ MESMA TELA, TEXTO FIXO DIFERENTE  →  ACHADO. Duas hipóteses:
            p95=⚠️ p99=🔴 · impressa no relatório de TODA rodada
            🔴 NUNCA `ntile` (agrupa) e NUNCA o máximo (instável)
          · a métrica presa ao `_norm` (o confundidor menor)
-         · a LINHA DE CONTROLE da métrica: as 4 sem-transferência abaixo do
-           p95 e as 5 com-transferência acima do p99, com o rótulo vindo de
-           FORA da métrica
-         · `templatize()` do Atlas AMPLIADO NO LUGAR (marca sem "Seguros" +
-           razão social pura), com os dois testes: a âncora de senha casa ·
-           as 66 telas do §2.5.1.3 sobrevivem
+         · 🔴 o gate ④ é TRIAGEM: ordena a fila e NOMEIA 15+10 falas por
+           seguradora. QUEM REPROVA É A LEITURA HUMANA, nunca o número
+           (📊 31 pontos de dispersão entre corpora limpos; a mapfre cabe
+            no p95 da tokio limpa)
+         · o único uso numérico: INTRA-seguradora — ampliar a `FRONTEIRAS`
+           de uma tem de DERRUBAR o hapax dela (📊 a Allianz: ~50% → 9,4%)
+         · `templatize(..., corpus_de_ura=True)` — TERCEIRO MODO pelo
+           `_vale_neste_modo` que já existe, NUNCA mudança global
+           (📊 8 consumidores de produção, ~140 asserções, o Tecelão entre eles)
+         · e os testes: `marcas_de_corretora() > 0` antes de medir · a âncora
+           de senha casa · as 66 telas do §2.5.1.3 sobrevivem
 2. §3.3  `medir_rota.py --exportar-arvore`, em Python, reusando o `_norm`
          e o `PADROES_DE_SERVICO` reais. Rodado de verdade, saída colada.
 3. §2.2 e §4.3 refeitas com `zona='URA'` -- a ORDEM DE EXECUÇÃO da SPEC
