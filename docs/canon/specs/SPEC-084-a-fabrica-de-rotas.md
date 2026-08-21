@@ -2,7 +2,7 @@
 
 > **Levar as 62 rotas ao nível da máquina de lavar — uma de cada vez, na ordem que a árvore da URA impõe, e nenhuma liberada sem o juiz.**
 >
-> Autor: execução · **v7, 21/08/2026** · Commit base: `bae33ea`
+> Autor: execução · **v8, 21/08/2026** · Commit base: `bae33ea`
 > Branch: `feat/spec084-a-fabrica-de-rotas`
 > Depende de: **SPEC-083 (A Régua)** — sem a régua, esta SPEC não tem como saber se terminou
 
@@ -805,18 +805,23 @@ pool bruto ....................................... 2.638 telas
 > Rodado na Allianz, contra as **duas zonas conhecidas**:
 >
 > ```
-> do HUMANO conhecido, entra na fila ..... 53,7 %   ← sensibilidade
+> do HUMANO conhecido, entra na fila ..... 54,9 %   ← sensibilidade
 > da URA    conhecida, entra na fila .....  6,8 %   ← falso positivo
->                                  enriquecimento 7,9×
+>                                  enriquecimento 8,1×
 > ```
+>
+> ⚠️ 📊 **Os números são do pré-filtro VERSIONADO acima** — `MARCAS_DE_URA` +
+> `LIMITE_TIER_1`. Uma variante descartada durante a redação dava **53,7%** de
+> sensibilidade com o mesmo 6,8% de falso positivo: diferença imaterial (1,2 pp),
+> **mas o número tem de pertencer ao filtro que o documento manda usar.**
 >
 > ✅ **Especificidade boa:** descarta 93,2% da URA — quase nenhuma leitura
 > desperdiçada.
-> 🔴 **Sensibilidade 53,7%:** quase metade do humano **não** entra na fila.
+> 🔴 **Sensibilidade 54,9%:** quase metade do humano **não** entra na fila.
 
 ## 🔴 E isto obriga a SPEC a admitir: A TRIAGEM NÃO PROVA LIMPEZA
 
-Com sensibilidade de 53,7%, **~46% do humano remanescente não passa pela fila**.
+Com sensibilidade de 54,9%, **~45% do humano remanescente não passa pela fila**.
 Ler a fila inteira **não** prova ausência de gente, e o gate **não pode afirmar
 que prova**.
 
@@ -1528,7 +1533,7 @@ MESMA TELA, TEXTO FIXO DIFERENTE  →  ACHADO. Duas hipóteses:
             no p95 da tokio limpa)
          · o PRÉ-FILTRO versionado como código (`MARCAS_DE_URA`,
            `LIMITE_TIER_1`), com o controle que traz a taxa de erro dele:
-           📊 53,7% de sensibilidade · 6,8% de falso positivo
+           📊 54,9% de sensibilidade · 6,8% de falso positivo
            🔴 e a admissão de que a triagem NÃO prova limpeza — o JUIZ 1
            por rota é a segunda instância
          · o único uso numérico: INTRA-seguradora — ampliar a `FRONTEIRAS`
@@ -1536,6 +1541,10 @@ MESMA TELA, TEXTO FIXO DIFERENTE  →  ACHADO. Duas hipóteses:
          · `templatize(..., corpus_de_ura=True)` — TERCEIRO MODO pelo
            `_vale_neste_modo` que já existe, NUNCA mudança global
            (📊 8 consumidores de produção, ~140 asserções, o Tecelão entre eles)
+         · 🔴 o G1 por PONTO FIXO: repetir gerar-fila → triar até nenhuma
+           fala nova, teto de 5 voltas, com o tamanho da fila de cada volta
+           no relatório (📊 o pool encolhe conforme a `FRONTEIRAS` cresce:
+           2.638 → 2.634 → 2.589 nas três versões medidas)
          · e os testes: `marcas_de_corretora() > 0` antes de medir · a âncora
            de senha casa · as 66 telas do §2.5.1.3 sobrevivem
 2. §3.3  `medir_rota.py --exportar-arvore`, em Python, reusando o `_norm`
@@ -1562,11 +1571,7 @@ internamente consistente**:
 ### A · O CORPUS — cinco checagens binárias, nenhuma opinativa
 
 ```
-G1 COMPLETUDE      toda fala do TIER 1 (📊 698) e da amostra do TIER 2 (50)
-                   tem veredito registrado em `vereditos_de_triagem.json`
-                   → len(fila) == len(vereditos)          exit != 0 se não
-                   🔴 a fila vem do pré-filtro VERSIONADO (§2.5.2.1) — se ele
-                     mudar, o denominador muda e o gate tem de ser refeito
+G1 COMPLETUDE  — 🔴 por PONTO FIXO, não por igualdade única
 
 G2 CONSISTÊNCIA +  toda fala com veredito GENTE é casada por algum padrão de
                    `FRONTEIRAS` ou pelo filtro ②          exit != 0 se sobrar
@@ -1584,10 +1589,62 @@ G5 OS GUARDAS      ① zona · ② `^…$` · ③ prova nos DOIS sentidos (semea
                    identidade não mascarada · `marcas_de_corretora() > 0`
 ```
 
+### 🔴 G1 em detalhe: o denominador ENCOLHE enquanto o trabalho anda
+
+📊 A fila não é um número fixo. Ela depende de `FRONTEIRAS` — e **ampliar a
+`FRONTEIRAS` é exatamente o que este bloco faz**. Toda marca nova move eventos de
+`URA` para `HUMANO`, a zona URA encolhe, e **o pool encolhe junto**. Medido em
+21/08/2026, o mesmo pool com três versões da tabela:
+
+```
+FRONTEIRAS com 1 conjunto de padrões  →  pool 2.638   tier 1  698
+           com +2 marcas (hdi)        →  pool 2.634   tier 1  696
+           com +3 marcas (hdi·mapfre·zurich) → pool 2.589   tier 1  673
+```
+
+🔴 **Logo `len(fila) == len(vereditos)` verde na primeira volta não diz nada
+sobre a fila que a própria volta criou:**
+
+```
+1. gera a fila (698)                     4. as falas GENTE viram padrões
+2. tria as 698                              novos de FRONTEIRAS (o G2 exige)
+3. G1 verde ✅                           5. a fila agora seria OUTRA — menor,
+                                            e com falas que nunca estiveram nela
+                                         6. ninguém regera. O gate já fechou.
+```
+
+**É um guarda que se fecha antes de o trabalho terminar** — a mesma família de
+todos os defeitos desta série, na última peça.
+
+⚠️ **E versionar o pré-filtro não bastou:** o pool depende de **quatro** coisas —
+`FRONTEIRAS` · `MARCAS_DE_URA` · `LIMITE_TIER_1` · o corte `≤3 sessões`. A v7
+travou as duas do meio e deixou solta justamente a que o bloco modifica.
+
+> ## O gate é a CONVERGÊNCIA
+>
+> ```
+> repetir:
+>     fila  = gerar_fila(FRONTEIRAS, MARCAS_DE_URA, LIMITE_TIER_1, corte=3)
+>     novas = [f for f in fila if f not in vereditos]
+>     se novas == []:  → VERDE, e o laço parou SOZINHO
+>     senão:           → triar `novas`; os padrões novos entram; repetir
+> até len(novas) == 0
+> ```
+>
+> 🔴 **É binário, é automático, e não pode ser satisfeito cedo demais:** enquanto
+> uma ampliação criar fala sem veredito, o bloco não fecha.
+>
+> ⚠️ **Teto de 5 voltas.** Não convergir é sinal de `FRONTEIRAS` **oscilando** —
+> um padrão novo reabrindo fala que outro fechou. Isso vai para `PENDENCIAS.md`
+> com as cinco filas anexadas, 🔴 **nunca para um verde forçado**.
+>
+> 📊 **E o registro de convergência vai no relatório:** o tamanho da fila em cada
+> volta. **Uma sequência que não decresce é defeito, não trabalho.**
+
 > 🔴 **O que este gate AFIRMA:** a triagem está completa e coerente.
 >
 > 🔴 **O que ele NÃO afirma:** que o corpus está limpo. 📊 O pré-filtro tem
-> sensibilidade de **53,7%** — a limpeza residual é **risco declarado**, não
+> sensibilidade de **54,9%** — a limpeza residual é **risco declarado**, não
 > resolvido, e quem o pega é o JUIZ 1 por rota (§6.2).
 >
 > **Guarda que promete mais do que mede é o mesmo defeito de sempre, do outro
