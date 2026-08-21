@@ -2,7 +2,7 @@
 
 > **O que é uma rota pronta, como se prova sem opinião, e a ferramenta que dá a nota sozinha.**
 >
-> Autor: execução · **v2, 21/08/2026** · Commit base: `95b0d21`
+> Autor: execução · **v3, 21/08/2026** · Commit base: `95b0d21`
 > Branch: `feat/spec083-a-regua-do-corredor`
 > Antecede e habilita: **SPEC-084 (A Fábrica de Rotas)**
 
@@ -139,18 +139,24 @@ tokio-auto   / guincho                   respondidas= 0  órfãs=29
 
 O acervo real, por seguradora:
 
-| seguradora | sessões | eventos | mais recente |
-|---|---:|---:|---|
-| allianz | 141 | 13.154 | 19/08/2026 |
-| porto | 138 | 4.510 | 11/08/2026 |
-| yelum | 100 | 4.604 | 19/08/2026 |
-| tokio | 47 | 409 | 20/08/2026 |
-| hdi | 44 | 2.974 | 29/07/2026 |
-| bradesco | 22 | 477 | 23/07/2026 |
-| azul | 19 | 829 | 28/07/2026 |
-| zurich | 15 | 646 | **21/08/2026** |
-| **mapfre** | **13** | **226** | **21/08/2026 10:04** |
-| alfa | 9 | 264 | 15/07/2026 |
+> ⚠️ **Esta tabela é AGREGAÇÃO da §10.1, não uma medição independente.** A v2
+> trazia as duas com marca 📊 e elas discordavam em seis linhas — o cenário que
+> a CLAUDE.md §12.1 existe para impedir. Agora a §10.1 é a fonte, e esta é
+> derivada dela; a soma tem de bater, e o Bloco D confere.
+
+| seguradora | sessões | mais recente |
+|---|---:|---|
+| allianz | 140 | 19/08/2026 |
+| porto | 137 | 11/08/2026 |
+| yelum | 100 | 19/08/2026 |
+| tokio | 46 | 20/08/2026 |
+| hdi | 43 | 29/07/2026 |
+| bradesco | 22 | 23/07/2026 |
+| azul | 19 | 28/07/2026 |
+| zurich | 14 | **21/08/2026** |
+| **mapfre** | **13** | **21/08/2026 10:04** |
+| alfa | 9 | 15/07/2026 |
+| *(insurer_key NULL)* | 1 | 09/09/2025 |
 
 **A mapfre — a "sem sessões" — tem evento de hoje.**
 
@@ -213,7 +219,7 @@ A v1 abria dizendo "verificável por código, sem opinião" e quatro delas não 
 | 7 | O freio **casa tela real** | `detect_finalize_anchor(pb, tela)` casa ≥1 tela do corpus daquela seguradora+ramo |
 | 8 | O handoff **casa tela real** | idem, com `detect_handoff_trigger` |
 | 9 | Teste chama **o motor**, e a mutação **fica vermelha** | ver §3.6 — a mutação é **executada**, não lida |
-| 10 | O cliente recebe protocolo + dia + período | `client_summary_from_capture` sobre a captura real da sessão contém os três |
+| 10 | O cliente recebe protocolo + dia + período | `client_summary_from_capture(session)` — recebe a SESSÃO, não a captura — sobre a sessão do replay contém os três |
 
 ### 2.5 🔴 O que NÃO entra na régua
 
@@ -249,10 +255,45 @@ E · PROVA       mutação executada, não comentada           15
 
 | item | pts | `DECIDE:` |
 |---|---:|---|
-| a sessão chegou ao **fim** | **12** | §2.4/#1 — pelo **motor**, nunca por regex do script |
-| está **transcrita** no bloco | **4** | §2.4/#2 |
+| **a ROTA foi percorrida até o fim** | **12** | §2.4/#1 — pelo **motor**, nunca por regex do script |
+| está **transcrita** no bloco | **4** | §2.4/#2 · ⚠️ `SEM_FABRICA` sai do denominador |
 | ≥2 sessões distintas da rota | **2** | contagem |
 | a mais recente tem <180 dias | **2** | `max(wa_timestamp)` |
+
+#### 🔴 "A ROTA foi percorrida", não "a sessão chegou ao fim"
+
+A primeira versão perguntava se **a sessão** terminou em protocolo. 📊 Medido, isso dá 12 pontos a rotas que ninguém nunca trilhou:
+
+```
+alfa (9 sessões)    bateria 5 · guincho 5 · chaveiro 5 · pneu 5
+                    os quatro juntos na MESMA sessão .......... 5
+azul (19 sessões)   bateria 11 · guincho 16 · chaveiro 16 · pneu 3
+                    os quatro juntos .......................... 3
+```
+
+**As quatro rotas da alfa aparecem exatamente nas mesmas 5 sessões** — porque a tela de menu lista os quatro serviços de uma vez. Uma sessão de guincho que chegou ao protocolo daria 12 pontos às quatro, inclusive às três nunca percorridas.
+
+`PADROES_DE_SERVICO` sobre o texto da sessão inteira **não separa "o serviço foi escolhido" de "o serviço estava no cardápio"**.
+
+```
+DECIDE: #1 — a sessão chega ao fim (motor) E o replay dessa sessão
+responde ≥1 passo cujo `requires` cita uma tecla EXCLUSIVA daquela rota
+— o `<x>_opcao` que só ela declara no `subservices`.
+
+Menu que LISTA o serviço não é prova de que o serviço foi PERCORRIDO.
+```
+
+#### ⚠️ `SEM_FABRICA` vale para o eixo A também
+
+📊 Os 4 corredores residenciais são dicts literais — há onde escrever `📊 sessão 7ac3c101`. Os 10 de auto vêm de `_auto_playbook`, e o subserviço é uma atribuição de uma linha:
+
+```python
+ALFA_AUTO_WHATSAPP_V1["subservice_menu_map"] = {"guincho": "3", "bateria": "1", ...}
+```
+
+**Não existe "o bloco do subserviço"** onde pôr a transcrição. ~40 rotas perderiam 4 pontos **por onde o código mora**, não por qualidade.
+
+É a mesma assimetria já declarada no eixo D (§3.5). Tratamento igual: o item **sai do denominador**, a rota é marcada `SEM_FABRICA` no relatório, e **a decisão de criar a fábrica é da SPEC-084**.
 
 #### 🔴 A correção mais importante do eixo A
 
@@ -309,15 +350,56 @@ NOOP            casou um passo `noop`                        ✅
 | 2 órfãs funcionais | 4 |
 | ≥3 | 0 |
 | ≥85% determinístico | **8** (4 se 70–85%) |
-| `notes` com contagem **daquela seguradora** — **pro-rata** | **7** × (passos respondidos com contagem própria ÷ passos respondidos) |
+| 🔴 **o cliente recebe protocolo + dia + período** | **5** |
+| `notes` com contagem que **reproduz** — pro-rata | **2** |
 
-#### 🔴 O `notes` não pode premiar medição emprestada
+#### 🔴 O item que faltava — e é a segunda metade da definição de rota AAA
 
-📊 Medido: das 24 `notes` com contagem no produto inteiro, **16 estão no `yelum-residencial`** — e foram copiadas dali para a família. 📊 `_YELUM_FAMILY_STEPS` (35 passos) alimenta `hdi-auto` e `yelum-auto`; `_ALLIANZ_FAMILY_AUTO_STEPS` (23) alimenta `allianz-auto` e `alfa-auto`. **58 assinaturas de passo aparecem em mais de um playbook.**
+A primeira versão tinha dez conferências (§2.4) e a **#10 não valia ponto nenhum**. Ela é:
 
-Um passo da HDI ganharia pontos exibindo uma contagem **medida no acervo da Yelum**.
+> *"O cliente recebe protocolo + dia + período"*
 
-`DECIDE:` a `notes` traz a seguradora explícita — `📊 hdi: 12 ocorrências`. Contagem sem seguradora, em passo que veio de família, vale **zero**.
+Que é literalmente a segunda metade da §2.1 — *"e o segurado sabe o número do chamado, o dia e o período em que o técnico vem"* — **e é o furo nº 3 da §1.2, o que originou esta SPEC**.
+
+📊 Uma rota podia tirar 100 e mandar *"Prontinho! ✅ Sua assistência foi aberta"* sem data e sem período — exatamente o que a cliente Clarissa recebeu em 19/08.
+
+> **A rubrica que nasceu do furo "a cliente não recebeu a data" não dava um ponto por o cliente receber a data.**
+
+```
+DECIDE: `client_summary_from_capture(session)` — que recebe a SESSÃO,
+não a captura — sobre a sessão reconstruída pelo replay devolve texto
+que contém o protocolo capturado. E, quando o desfecho da rota é
+AGENDADO (`expectativa_do_desfecho` diz "agendado"), também a data e o
+período.
+
+Rota de desfecho imediato (guincho, eletricista): só o protocolo.
+```
+
+Os 5 pontos saem do item de `notes`, que cai de 7 para 2 — 📊 `notes` mede **higiene de documentação**; este mede **o que o segurado recebe**.
+
+#### 🔴 O `notes` verifica, não exige formato
+
+📊 A regra anterior exigia o prefixo `📊 <seguradora>:`. Medido: das **176** `notes` do produto, **nenhuma** tem esse formato. O formato real é `"📊 64 ocorrências: 'Vamos lá!...'"`.
+
+Era o defeito espelhado do `_COMO_PERGUNTAR`: aquele **não tinha como falhar**; este **não tinha como passar**.
+
+```
+DECIDE: a `notes` contém `📊 <n> ocorrências` E a ferramenta RECONTA
+`<n>` rodando a âncora daquele passo contra o corpus DAQUELA
+seguradora, com tolerância de ±20%.
+
+Contagem que não reproduz vale 0 e vira `NOTES_NAO_REPRODUZ` no relatório.
+```
+
+**Isso resolve o empréstimo de família sem exigir reescrever 176 notes.** 📊 `_YELUM_FAMILY_STEPS` (35 passos) alimenta `hdi-auto` e `yelum-auto`; **58 assinaturas de passo aparecem em mais de um playbook**. Uma `notes` da HDI que traz um número medido na Yelum **simplesmente não reproduz** contra o corpus da HDI.
+
+A verificação faz o trabalho que o prefixo faria — e é a mesma disciplina do §9.2: **medir vence declarar**.
+
+#### ⚠️ Todo ponto que depende do corpus carrega a amostra
+
+📊 O corpus é capado em 5 sessões (§6.5), e isso governa **50 dos 100 pontos**. Exemplo do risco: o gatilho `sinistro` está em 23 das 137 sessões da Allianz (17%) — se as 5 escolhidas não o contiverem, o eixo C perde 3 pontos **por amostragem**, não por defeito.
+
+**A ferramenta imprime `AMOSTRA: 5 de 137 sessões` ao lado de todo item que dependa do corpus.** Sem isso, ruído de amostra lê-se como defeito de rota.
 
 #### O discriminador é o do produto, nunca um novo
 
@@ -359,9 +441,34 @@ As três fontes:
 
 | item | pts | `DECIDE:` |
 |---|---:|---|
-| apelidos que **aparecem no corpus daquela seguradora** | **4** | ≥3 apelidos resolvem por `canonical_subservice` **e** cada um casa ≥1 tela ou resposta do corpus. Apelido só global: máximo **1** ponto |
+| apelidos do jeito **real** de o cliente falar | **4** | ver abaixo — a fonte é o **Espelho**, não o corpus |
 | `expectativa_do_desfecho` existe para a rota | **3** | chave presente e não-vazia |
-| `regras_para_o_cliente` **com trecho que casa o corpus** | **3** | lista não-vazia **e** o comentário nas 20 linhas acima da chave contém `📊` seguido de trecho de ≥40 caracteres que `_norm`-casa alguma tela do corpus daquela seguradora+ramo |
+| `regras_para_o_cliente` **com trecho que casa o corpus** | **3** | lista não-vazia **e** o comentário nas 20 linhas acima da chave contém `📊` seguido de trecho contíguo de ≥40 caracteres cujo `_norm` é substring do `_norm` de alguma tela do corpus. **Janela deslizante**, não o comentário inteiro |
+
+#### 🔴 Os apelidos vêm do ESPELHO, não do corpus de telas
+
+A primeira versão mandava conferir o apelido *"no corpus daquela seguradora"*. **Duas coisas erradas:**
+
+1. **Contradiz a §6.3.** O corpus só guarda `direction='in'` — as telas da URA. As respostas foram removidas de propósito.
+2. **Mede a coisa errada.** 📊 `observed_events` é a conversa **corretora ↔ URA**. As palavras do **segurado** não estão lá; vivem no Espelho (`conversations`/`messages`).
+
+📊 E o falso positivo que isso produz, medido no corpus `in` da Allianz:
+
+```
+"maquina de lavar" 27 · "lavadora" 23 · "maquina de lavar e secar" 15
+"maquina lavar"     0 · "lava roupa"  0
+```
+
+**`lavadora` marca 23 porque a URA escreve "Lavadora de louças" no menu Linha Branca — outro eletrodoméstico.** O item daria 4 pontos por coincidência de vocabulário da seguradora.
+
+```
+DECIDE: ≥3 apelidos resolvem por `canonical_subservice` E cada um
+aparece ≥1 vez em `messages` (o Espelho), no texto do CLIENTE, daquela
+corretora.
+
+⚠️ Sem acesso ao Espelho (modo offline), o item devolve `SEM_ESPELHO` e
+SAI DO DENOMINADOR — nunca 0, que seria punir a rota pela falta da fonte.
+```
 
 #### 🔴 `_COMO_PERGUNTAR` saiu da rubrica
 
@@ -391,16 +498,30 @@ Sem declarar isso, 13 corredores perdem 6 dos 10 pontos do eixo D por uma razão
 O eixo E é avaliado POR ARQUIVO, e a nota da rota é a do MELHOR arquivo
 que a nomeia.
 
-Um arquivo é DESQUALIFICADO (contribui 0) quando aplica `.search(` /
-`.match(` / `.fullmatch(` — por qualquer alias de `re` — sobre um valor
-lido de `playbook["capture_anchors"]`, `["finalize_anchors"]`,
-`["handoff_triggers"]` ou `step["anchor"]`, e NÃO chama nenhuma função do
-motor no mesmo `def`.
+🔴 A DISTINÇÃO É A POSIÇÃO DO ARGUMENTO. Não é "sobre" — é qual argumento.
 
-NÃO é desqualificação: regex sobre a âncora COMO TEXTO, para conferir a
-FORMA da declaração — por exemplo `_re.search(r"\\\*(?!\?)", anchor)`, a
-conferência de asterisco literal de `test_a_regua_nao_tem_furo.py:193`.
-O alvo é a captura que SUBSTITUI o motor, não a inspeção da declaração.
+Um arquivo é DESQUALIFICADO (contribui 0) quando o valor lido de
+`playbook["capture_anchors"|"finalize_anchors"|"handoff_triggers"]` ou
+`step["anchor"]` é passado como ARGUMENTO 0 — o PADRÃO — de
+`.search` / `.match` / `.fullmatch`, por qualquer alias de `re`, e
+NENHUMA função do motor é chamada no mesmo `def`.
+
+É LEGÍTIMO quando a âncora é o ARGUMENTO 1 — o TEXTO EXAMINADO. Aí a
+agulha virou palheiro: o regex inspeciona a FORMA da declaração, não
+substitui o motor.
+
+📊 Conferido nos três casos reais do repositório:
+
+    ILEGÍTIMO (arg 0 — a âncora é o padrão)
+      re.search(anc, CP._norm(texto), re.IGNORECASE)        ← passo_de:68
+      _re3.search(ANC[chave], CP._norm(texto), ...)         ← _captura:296
+
+    LEGÍTIMO (arg 1 — a âncora é o texto)
+      _re.search(r"\\\*(?!\?)", a)      ← test_a_regua_nao_tem_furo.py:193
+
+A conferência é por AST, sobre `Call.args[0]`. NÃO é grep — grep não
+sabe a posição do argumento, e foi essa imprecisão que deixou a regra
+indecidível na versão anterior.
 ```
 
 #### 🔴 A mutação é executada, nunca lida
@@ -447,7 +568,29 @@ ESTADO DA FONTE    🟢 COMPLETA          sessão(ões) chegaram ao fim
 > `allianz × residencial × maquina_de_lavar` — **79/100** · 🟢 testado 19/08 · 🟢 fonte completa
 > *falta: transcrição (4) · 1 órfã funcional (10) · notes pro-rata (5)*
 
-### 3.8 Os patamares
+### 3.8 🔴 O PORTÃO DO EIXO B — nenhuma rota pontua sem responder tela
+
+> ## Nenhuma rota recebe pontos de A, C, D ou E enquanto **B < 8**.
+> `B < 8` → devolve **`NAO_RESPONDE`**, não nota.
+
+**Por que ele existe.** Mesmo depois de a rubrica passar a cobrar contra o corpus, o juiz refez a receita da rota vazia com `alfa × auto × bateria` e ela **ainda funcionava**:
+
+| eixo | pts | por quê passava |
+|---|---:|---|
+| A | 16 | 📊 alfa tem 3 sessões que casam a âncora — e o item perguntava pela **sessão**, não pela rota |
+| B | **0** | ✅ o eixo B funciona. Era o único |
+| C | 14–20 | freio e handoff **de família**, copiados, casam o corpus da família |
+| D | 0 | ✅ a correção funcionou aqui — `bateria` tem 0 apelidos |
+| E | 0–15 | um teste de dez linhas com 1 chamada ao motor e 1 mutação trivial |
+| | **30–45** | **sem responder uma única tela** |
+
+O eixo A foi consertado acima (a rota, não a sessão). Mas C e E continuam alcançáveis por herança e por teste simbólico — e é isso que o portão fecha.
+
+**É o mesmo raciocínio do `SEM_FONTE`, aplicado ao eixo que de fato mede comportamento:** um corredor que não responde à URA não tem qualidade parcial. Não tem qualidade.
+
+⚠️ **8 é o corte, e não é arbitrário:** é a faixa de "≥3 órfãs funcionais" (0 pontos de cobertura) somada a menos de 70% de determinismo. Uma rota abaixo disso não conversa com aquela URA.
+
+### 3.9 Os patamares
 
 ```
  95-100   AAA          pronto. O juiz aprova.
@@ -466,18 +609,20 @@ ESTADO DA FONTE    🟢 COMPLETA          sessão(ões) chegaram ao fim
 
 A v1 afirmava que a régua tiraria 98 e transformava isso em gate. O juiz calculou eixo por eixo, lendo o código, e chegou a **63** com a rubrica v1.
 
-Com a rubrica **v2**, 💭 a estimativa é **~79**:
+Com a rubrica **v3**, 💭 a estimativa é uma **faixa**, não um número — e a faixa é honesta porque três itens dependem de qual corpus o Bloco A vai gerar:
 
-| eixo | pts | o que falta |
-|---|---:|---|
-| A | 16/20 | 🔴 **não há transcrição** da sessão no bloco (−4) |
-| B | ~18/35 | 🔴 **1 órfã funcional** (−10) · `notes` pro-rata 7/26 (−5) |
-| C | 20/20 | ✅ |
-| D | 10/10 | ✅ |
-| E | 15/15 | ✅ **depois** do conserto do teste, que é escopo desta SPEC |
-| | **~79** | |
+| eixo | 💭 piso | 💭 teto | o que falta / o que oscila |
+|---|---:|---:|---|
+| A | 16 | 16 | 🔴 **não há transcrição** da sessão no bloco (−4) |
+| B | 18 | 23 | 🔴 **1 órfã funcional** (−10) · o item novo do cliente (protocolo+dia+período) depende do replay · `notes` recontado |
+| C | 17 | 20 | ⚠️ 📊 dos 4 `handoff_triggers` da rota, **só `sinistro` casa o acervo** (23 de 137 sessões). Os outros três — `não localizamos`, `cpf inválido`, `não foi possível` — têm **0 ocorrências**. Com o corpus capado em 5, os 3 pontos viram amostragem |
+| D | 7 | 10 | ⚠️ `regras_para_o_cliente`: os bullets do comentário têm ~30 caracteres e a regra exige trecho de ≥40 que case o corpus |
+| E | 9 | 15 | ⚠️ **não existe bloco `MUTACOES`** em `test_a_regua_nao_tem_furo.py` — sem ele, 6 pontos a menos |
+| | **67** | **84** | |
 
-💭 O número é estimativa até o Bloco C rodar. **O valor medido substitui este parágrafo no relatório final.**
+🔴 **O piso é 67, e o gate é ≥75.** Ele **pode falhar** — e falharia por itens que a própria SPEC não entrega, não por qualidade da rota. **Por isso o Bloco C passa a entregá-los** (o `MUTACOES`), e por isso a §3.3 recontou o `notes` em vez de exigir formato.
+
+💭 A faixa é estimativa até o Bloco C rodar. **O valor medido substitui este parágrafo no relatório final.**
 
 ### 4.2 🔴 A órfã funcional da régua
 
@@ -502,13 +647,15 @@ A v1 exigia ≥95 e era impossível. O gate v2:
 
 ```
 BLOCO C · GATE
-  a régua tira ≥75 com a rubrica v2                      ← hoje
-  e a lista do que falta nela tem exatamente 3 itens      ← nomeáveis
-  e esses 3 itens são as três PRIMEIRAS entregas da 084
+  a régua tira ≥75 com a rubrica v3                       ← hoje
+  e TODO ponto que falta é NOMEÁVEL — cada um vira entrada da SPEC-084
+  e nenhum deles é "não sei por quê"
 
-Depois que a 084 fechar os três:
+Depois que a 084 fechar a lista:
   a régua tira ≥95, e ESSE vira o gate permanente
 ```
+
+⚠️ **O gate NÃO exige "exatamente 3 itens".** A versão anterior exigia, e o próprio conserto da rubrica levou a lista para 4–5 — um gate que quebra quando a SPEC melhora não é gate, é armadilha. **O que se exige é que a lista seja inteiramente nomeável**, não o seu tamanho.
 
 > **Por que isto é a melhor notícia da SPEC:** a régua tinha três buracos que ninguém via, e a rubrica os achou **antes** de 61 rotas serem construídas contra eles. O gate da v1 — *"se a régua não tirar 98, a rubrica está errada"* — funcionou: aplicado, ele reprovou a si mesmo. É o que um gate deve fazer.
 
@@ -536,7 +683,7 @@ python backend/scripts/medir_rota.py --conferir-ancoras-de-desfecho
 ```
 allianz × residencial × maquina_de_lavar
 ─────────────────────────────────────────────────────────────────
-PRONTIDÃO  79/100      🟢 testado 19/08/2026 (protocolo 52955490)
+PRONTIDÃO  67-84/100   🟢 testado 19/08/2026 (protocolo 52955490)
 FONTE      🟢 COMPLETA  3 sessões · mais recente 19/08/2026
 
 A EVIDÊNCIA          16/20
@@ -548,7 +695,7 @@ A EVIDÊNCIA          16/20
 B COBERTURA          18/35
   ⚠️ 10  1 órfã funcional: "Agendamento para: … Podemos continuar ?"  ← falta 10
   ✅  8  95% determinístico (19 de 20 telas que pedem algo)
-  ⚠️  2  notes com contagem própria: 7 de 26 passos                   ← falta 5
+  ⚠️  0  notes que RECONTAM contra o corpus da allianz: 0 de 26      ← falta 2
 
 C SEGURANÇA          20/20
 D CONHECIMENTO       10/10
@@ -557,13 +704,15 @@ E PROVA              15/15
          extract_capture_anchors e detect_finalize_anchor
          ⚠️ test_a_maquina_de_lavar_vai_ate_o_fim.py DESQUALIFICADO
             (0 chamadas ao motor; `passo_de:64` e `_captura:295`)
-  ✅  3  17 rótulos com CONTROLE
+  ✅  3  8 rótulos de asserção com CONTROLE
   ✅  6  3 mutações EXECUTADAS: 1, 2 e 6 asserções vermelhas
 
-O QUE FALTA PARA 95  (as três primeiras entregas da SPEC-084)
+O QUE FALTA PARA 95  (cada item vira entrada da SPEC-084)
   1. transcrever a sessão 7ac3c101 no bloco do subserviço        (+4)
   2. mapear "Agendamento para: … Podemos continuar ?"            (+10)
-  3. pôr contagem própria no `notes` de 19 passos                (+5)
+  3. pôr contagem que RECONTA no `notes` de 26 passos            (+2)
+  4. o item novo: protocolo + dia + periodo ao cliente           (+5)
+  5. o bloco MUTACOES de test_a_regua_nao_tem_furo.py            (+6)
 ```
 
 ### 5.3 A saída com `--todas`
@@ -661,9 +810,42 @@ Cada linha:
 | porto | 2.004 · 38 | 2.506 · 99 |
 | yelum | 1.056 · 18 | 3.548 · 82 |
 
-**Decisão:** o corpus é **global por seguradora+ramo**, sob a decisão já registrada em `O-ATLAS-E-UM-SO-E-E-DE-TODAS.md`: *a URA é a mesma para todas as corretoras*. Cada linha guarda `company_id` **como metadado**, para auditar proveniência; o replay o ignora.
+**Decisão do Founder, registrada:** *a seguradora faz a **mesma pergunta** para todas as corretoras. O que muda entre elas são os **DADOS** — a apólice, o endereço, o telefone, as datas oferecidas no menu.*
 
-⚠️ **Se duas corretoras mostrarem a mesma tela com textos diferentes no mesmo período**, isso significa que a seguradora as trata diferente — e é achado, não ruído. A ferramenta reporta `DIVERGENCIA_ENTRE_CORRETORAS` com as duas versões, e **a SPEC-084 para e pergunta ao Founder**. Não escolhe sozinha.
+Coerente com `O-ATLAS-E-UM-SO-E-E-DE-TODAS.md`. Por isso o corpus é **global por seguradora+ramo**; `company_id` fica como metadado de proveniência e o replay o ignora.
+
+#### 🔴 E é por isso que a comparação é sobre o ESQUELETO, nunca sobre o texto
+
+📊 Quase toda tela carrega dado. Da sessão validada:
+
+```
+tela  7  "*1 -* R. ### ##TEVES J#####, ### - AP 1101 BLOCO A …"   ← DADO
+tela 10  "Registramos o telefone *+55 (47) 99627-4743* …"          ← DADO
+tela 16  "*1 -* 20/08/2026 (Quinta) *2 -* 21/08/2026 …"            ← DADO, e muda TODO DIA
+tela 25  "*RESUMO* … *Quando:* Quinta-feira, 20/08/2026 …"         ← DADO
+```
+
+**Um comparador de texto cru acusaria divergência em todas elas, todos os dias** — e o achado de verdade afogaria no ruído.
+
+A comparação usa o **esqueleto**: o texto depois de
+- aplicar as máscaras de §6.4 (telefone, CPF, nome, corretora)
+- substituir `{DATA}`, `{HORA}`, `{ENDERECO}`, `{PROTOCOLO}`, `{PLACA}`
+- `_norm`
+
+```
+ESQUELETOS IGUAIS, dados diferentes   →  ✅ ESPERADO. Não é achado.
+                                          É a seguradora funcionando.
+
+ESQUELETOS DIFERENTES                 →  🟠 ACHADO. Duas hipóteses, e a
+                                          DATA distingue:
+     datas afastadas ................... a URA mudou de redação → R5:
+                                          amplia a âncora, registra as duas
+     mesmo período, corretoras difer. ... `DIVERGENCIA_DE_ESQUELETO`
+                                          🔴 a SPEC-084 PARA e pergunta ao
+                                          Founder. Não escolhe sozinha.
+```
+
+📊 **CONTROLE obrigatório:** duas sessões da **mesma** corretora com endereços diferentes têm de produzir esqueleto **igual**. Se derem diferente, a normalização não está normalizando — e o detector vira gerador de ruído em vez de achado.
 
 ### 6.3 Só `direction = 'in'`
 
@@ -758,8 +940,39 @@ ambíguo      nenhuma das duas → <seguradora>-indefinido.jsonl,
 **Passo 1** — ler `observed_events` filtrando `direction='in'` (§6.3).
 **Passo 2** — dedup por `(session_id, _norm(text))` (§6.5).
 **Passo 3** — mascarar (§6.4). Recusar só o que sobrar; registrar em `INDICE.md`.
-**Passo 4** — aplicar o teto de 5 sessões e 500 KB.
+
+**Passo 4 — 🔴 A ESCOLHA DAS 5 SESSÕES, SEM AMBIGUIDADE.**
+
+A versão anterior mandava escolher *"a mais recente **com desfecho** + as 4 mais distintas"* — e criou **uma circularidade nova, no mesmo lugar de onde a antiga saiu**: "com desfecho" é o `DECIDE:` #1, que o Bloco **C** entrega. E *"as 4 mais distintas"* não tinha métrica: dois executores gerariam dois corpora, e o corpus governa **B (35), C (11) e D (4)** — metade da nota.
+
+```
+⚠️ O helper `sessao_chegou_ao_fim(pb, telas) -> bool` nasce AQUI, no
+   Bloco A, e o Bloco C o IMPORTA. Ele é o `DECIDE:` #1 e nada mais.
+
+1. ordenar por `wa_timestamp` decrescente
+2. a 1ª: a mais recente com `sessao_chegou_ao_fim = True`
+3. as outras 4: guloso por JACCARD sobre o conjunto de `_norm(text)`,
+   escolhendo a cada passo a sessão de MENOR similaridade máxima contra
+   as já escolhidas
+4. empate → a mais recente vence (determinístico, nunca sorteio)
+
+📊 CONTROLE: rodar duas vezes tem de dar o MESMO conjunto. Corpus que
+muda entre execuções faz a nota mudar sem nada mudar na rota.
+```
+
 **Passo 5** — gravar ordenado por `wa_timestamp`.
+
+**Passo 6 — 🔴 CONFERIR O PRÓPRIO `PADROES_DE_SERVICO`.**
+
+📊 O padrão da `alfa` casa os quatro serviços nas **mesmas 5 sessões** — porque a tela de menu lista os quatro. Um padrão assim não classifica: marca tudo.
+
+```
+Um padrão que marca >80% das sessões de uma seguradora devolve
+`PADRAO_INDISCRIMINADO`, com a contagem, e NÃO alimenta a coluna DEMANDA.
+
+Sem isso, a DEMANDA — que ordena a SPEC-084 inteira — ordena por ruído
+de cardápio.
+```
 
 **VERIFY — e ele consegue falhar:**
 ```bash
@@ -802,7 +1015,18 @@ python backend/scripts/gerar_corpus_de_telas.py --auditar-pii
 3. `--verificar-mutacoes`
 4. `--conferir-ancoras-de-desfecho` (§3.2)
 5. 🔴 **o conserto de `test_a_maquina_de_lavar_vai_ate_o_fim.py`** — trocar `passo_de:64` por `match_ura_step` e `_captura:295` por `extract_capture_anchors`. **É conserto de teste, não de corredor** (§0), e sem ele o gate não fecha
-6. `test_a_rubrica_e_honesta.py`
+
+   > 🔴 **A troca MUDA resultados, e o executor precisa saber disso antes.**
+   > 📊 `passo_de` percorre os passos na ordem **sem aplicar `only_subservices` nem `subservice`**. `match_ura_step(PB, tela, subservice="maquina_de_lavar")` aplica os dois. **Algumas das 72 asserções vão mudar de resultado.**
+   >
+   > Asserção que ficar vermelha depois da troca é **ACHADO, não regressão**. Vira `xfail` com o motivo escrito e o número do item na SPEC-084.
+   >
+   > 🔴 **NÃO se toca no corredor para devolver o verde.** Foi exatamente assim que o `_captura` nasceu: alguém precisou de verde e escreveu um caminho ao lado do motor. Repetir isso um nível acima é o único jeito de esta SPEC falhar por dentro.
+   >
+   > **VERIFY:** o relatório lista **toda** asserção que mudou de resultado, com o valor antes e depois. **Zero mudanças também é achado** — significa que a cobertura do teste não tocava o que o motor filtra.
+
+6. 🔴 **o bloco `MUTACOES` de `test_a_regua_nao_tem_furo.py`** — 📊 ele não existe, e o eixo E dá 6 pontos por ele. Sem esta entrega a régua perde 6 pontos por algo que a própria SPEC deixou de entregar
+7. `test_a_rubrica_e_honesta.py`
 
 **VERIFY — o gate central:**
 ```bash
@@ -925,7 +1149,7 @@ eventos.
 | AutoFleet | zurich | 458 | 12 | **21/08 11:47** |
 | Resulta | tokio | 276 | 22 | 11/08 12:00 |
 | AutoFleet | alfa | 264 | 9 | 15/07 14:04 |
-| AutoFleet | mapfre | 224 | 12 | **21/08 10:04** |
+| AutoFleet | mapfre | 226 | 13 | **21/08 10:04** |
 | Resulta | zurich | 188 | 2 | 06/03 12:22 |
 | AutoFleet | tokio | 133 | 24 | 20/08 16:00 |
 | AutoFleet | *(NULL)* | 1 | 1 | 09/09/2025 |
