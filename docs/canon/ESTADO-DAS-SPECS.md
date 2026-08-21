@@ -83,8 +83,8 @@
 
 | SPEC | assunto | estado |
 |---|---|---|
-| **083** | **A régua do corredor** — o que é uma rota AAA e a ferramenta que dá a nota | ✍️ escrita, aguardando execução |
-| **084** | A fábrica de rotas — as 62 unidades até 98+ | a escrever |
+| **083** | **A régua do corredor** — o que é uma rota AAA e a ferramenta que dá a nota | ✅ **v7 LIBERADA pelo juíz** (21/08, commit `4415928`) — 7 rodadas: 54→78→84→88→92→liberada. Aguardando execução |
+| **084** | A fábrica de rotas — as 62 unidades até 98+ | ✍️ v1 escrita, **reprovada 58/100** — em reescrita sobre a 083 v7 |
 | **085** | Travar em silêncio deixa de ser possível — Vigia/Sentinela/Cérebro | a escrever |
 | **086** | O Suporte Humano diz a verdade | a escrever |
 | **087** | O laço de auto-atualização (absorve a SPEC-080) | a escrever |

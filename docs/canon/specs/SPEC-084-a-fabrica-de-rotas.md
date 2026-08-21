@@ -2,7 +2,7 @@
 
 > **Levar as 62 rotas ao nível da máquina de lavar — uma de cada vez, na ordem que a árvore da URA impõe, e nenhuma liberada sem o juiz.**
 >
-> Autor: execução · **v1, 21/08/2026** · Commit base: `bae33ea`
+> Autor: execução · **v2, 21/08/2026** · Commit base: `bae33ea`
 > Branch: `feat/spec084-a-fabrica-de-rotas`
 > Depende de: **SPEC-083 (A Régua)** — sem a régua, esta SPEC não tem como saber se terminou
 
@@ -46,7 +46,7 @@ mapfre-auto  / guincho                   respondidas= 0   órfãs=29
 tokio-auto   / guincho                   respondidas= 0   órfãs=29
 ```
 
-📊 E o material para consertar existe: **28.094 eventos · 544 sessões · 17 pares corretora×seguradora · 13 meses**. A mapfre — que uma auditoria chamou de "sem sessões" — tem 13 sessões e evento de **21/08/2026 às 10:04**.
+📊 E o material para consertar existe (medido 21/08/2026): **28.096 eventos · 16.242 telas `direction='in'` · 544 sessões · 16 pares corretora×seguradora · 10 seguradoras · 13 meses**. A mapfre — que uma auditoria chamou de "sem sessões" — tem 13 sessões e evento de **21/08/2026 às 10:04**.
 
 **Esta SPEC transforma esse material em rotas AAA.**
 
@@ -75,6 +75,27 @@ A intuição natural é tratar cada rota como uma coisa separada: "a rota do gui
 | `Vou transferir seu caso para um especialista…` | **5** | 98 | 03/08/2026 |
 
 *(os cinco serviços: eletricista · eletrodoméstico · encanador · guincho · outros)*
+
+🔴 **E a linha `Vou transferir seu caso para um especialista` NÃO é nó de tronco.
+É a FRONTEIRA da árvore.**
+
+📊 Pela fórmula de retorno desta própria SPEC (§4.3), ela é **5 × 98 = 490** — o
+**maior** da tabela, maior que a tela do CPF (5 × 78 = 390) que a SPEC elege como
+prioridade #1. Escrita como está, a regra manda o executor transformar em passo,
+antes de tudo, **a tela que entrega o atendimento ao humano**.
+
+> **Regra:** a tela de transferência de cada seguradora é catalogada como
+> `FRONTEIRA`, vira gatilho de `pausar_e_chamar` — e **tudo o que vem depois dela
+> numa sessão sai do corpus** (§2.5).
+
+🔴 **E `outros` NUNCA conta em `count(distinct servico)`.** É balde de
+não-classificado: contá-lo faz a regra `serviços ≥ 3 → TRONCO` disparar com dois
+serviços reais mais ruído. Tela que só alcança 3 **com** `outros` é **GALHO**, e o
+relatório diz quantas caíram nesse caso.
+
+⚠️ **As contagens da tabela acima ainda incluem a zona humana** (📊 22 · 18 · 6 ·
+13 · 16 sessões, linha a linha). **A tabela só vale depois de refeita com
+`zona='URA'`** — e quem a refaz, para as 10 seguradoras, é o BLOCO 0.
 
 **Uma tela vista por cinco serviços não pertence a nenhum deles. Pertence à seguradora.**
 
@@ -117,6 +138,110 @@ Uma tela vista **hoje** numa sessão de guincho está atualizada **para todo mun
 
 **(c) Consertar uma folha paga por uma rota só.**
 E é por isso que folha vem depois de tronco, sempre.
+
+---
+
+## 2.5 🔴 NEM TODA MENSAGEM `direction='in'` É TELA DE URA
+
+**Esta seção vem antes das regras de atualidade porque decide QUAIS mensagens
+entram na árvore.** Errar aqui não erra um número: contamina o corpus, a
+classificação tronco/folha, a ordem do trabalho e os três juízes de uma vez.
+
+`direction='in'` é a **direção** da mensagem, não o **emissor**. Depois que a URA
+transfere o caso, quem escreve `in` é o **atendente humano da seguradora**.
+
+📊 Medido em 21/08/2026:
+
+```
+eventos `in` depois da tela de transferência .....  4.696 / 16.242 = 28,9 %
+sessões afetadas .................................    136 / 527
+
+ALLIANZ  — 38 % do acervo, e a PRIMEIRA do BLOCO 1:
+   eventos pós-transferência .....................  3.737 / 7.513 = 49,7 %
+   telas distintas que só existem ali ............  1.149 / 1.412 = 81,4 %
+```
+
+📊 **CONTROLE que prova que as duas zonas são qualitativamente diferentes** — se
+fossem a mesma coisa, os percentuais seriam parecidos:
+
+```
+zona                        eventos    texto único (1 sessão)   texto em 10+ sessões
+A_POS  (humano)               4.674            44,8 %                  35,3 %
+B_PRE  (URA)      CONTROLE    3.509            11,7 %                  68,5 %
+C_sem_transferência CONTROLE  8.031            21,6 %                  44,8 %
+```
+
+Texto que aparece **numa única sessão** é 11,7% da zona URA e 44,8% da zona
+humana — **3,8×**. URA se repete; gente não.
+
+🔴 **E o que a regra do §3.3 classificaria como TRONCO da Allianz, sem esta
+separação:**
+
+```
+"com quem falo?" ............................... 55 sessões
+"ajudo em algo mais? mais alguma dúvida?" ...... 52
+"ok" ........................................... 31
+"mais um momento por favor." ................... 18
+"tem algum ponto de referência do endereço?" ... 18   ← e esta PEDE resposta
+"um momento" ................................... 17
+```
+
+**E o efeito nos juízes é o que mata a SPEC.** O JUIZ 1 CÉTICO (§6.2) pergunta:
+*"alguma tela do corpus não casa passo nenhum e pede algo?"*
+
+```
+Allianz — telas distintas que PEDEM algo:
+   zona humana .......... 472
+   zona URA  CONTROLE ... 126      ← 3,7× menos
+```
+
+📊 **472 reprovações automáticas, permanentes e insanáveis.** Nenhuma rota da
+Allianz jamais é liberada: todas batem o teto de 3 voltas e viram
+`PRECISA_DE_HUMANO`. A SPEC não falharia com erro — falharia **reprovando tudo**,
+e o executor procuraria o defeito no corredor a vida inteira.
+
+### 2.5.1 A separação, e ela é obrigatória em toda consulta desta SPEC
+
+```sql
+create or replace view v_telas_ura as
+with marca as (
+  select session_id, min(wa_timestamp) as t_transf
+  from observed_events
+  where direction='in' and text ~* '(vou (precisar )?transferir'
+     || '|transferir (seu caso|o seu atendimento|sua conversa)'
+     || '|necessário falar com um de nossos especialistas'
+     || '|aguarde.{0,20}(um|nosso) (especialista|atendente|analista))'
+  group by 1)
+select e.*, m.t_transf,
+       case when m.t_transf is not null and e.wa_timestamp > m.t_transf
+            then 'HUMANO' else 'URA' end as zona
+from observed_events e
+left join marca m using (session_id)
+where e.direction='in';
+```
+
+> 🔴 **O corpus, a árvore, o retorno e os três juízes usam `zona='URA'`.**
+>
+> A zona `HUMANO` **não é lixo e não se apaga**. Ela é preservada e serve para
+> exatamente uma coisa: descobrir **o que a URA não resolve** — insumo do BLOCO 4.
+> Ela **nunca** vira passo de corredor.
+
+### 2.5.2 🔴 E o guarda de corpus tem de PODER FICAR VERMELHO
+
+A SPEC-083 §6.3 exige que o `.jsonl` seja 100% `direction='in'`. 📊 **Esse controle
+passa com 100% num corpus 29% humano** — ele mede a direção, e o problema é o
+emissor. Guarda que não tem como falhar não guarda nada (CLAUDE.md §9.3).
+
+O gate de corpus desta SPEC exige as três coisas:
+
+```
+① 100 % das linhas com `zona='URA'`
+② ZERO linhas casando ^(ok|um momento|com quem falo|mais um momento|
+   ajudo em algo mais)\b
+③ 🔴 A PROVA DO GUARDA: a mesma verificação roda sobre um corpus semeado
+   com 10 linhas da zona HUMANO e TEM de ficar VERMELHA.
+   Se ficar verde, o guarda é enfeite e o bloco não fecha.
+```
 
 ---
 
@@ -187,21 +312,56 @@ R5 · DUAS REDAÇÕES DA MESMA TELA = A NOVA VENCE, A ANTIGA SOBREVIVE
 
 ### 3.3 🔴 Como o agente decide o que é tronco e o que é folha
 
-**Não por intuição. Por medição, com esta consulta:**
+🔴 **Não por intuição. Por medição — e a medição é em PYTHON, não em SQL.**
 
-```sql
--- Para uma seguradora, quantos SERVIÇOS distintos veem cada tela.
-with s as (
-  select session_id, <CLASSIFICADOR_DE_SERVICO> as servico
-  from observed_events where insurer_key = '<SEG>' group by 1
-)
-select _norm(e.text) as tela,
-       count(distinct s.servico) as servicos,
-       count(distinct e.session_id) as sessoes,
-       max(e.wa_timestamp) as visto_por_ultimo
-from observed_events e join s using (session_id)
-where e.insurer_key='<SEG>' and e.direction='in'
-group by 1;
+📊 A consulta SQL da v1 não roda. Os dois erros, reproduzidos:
+
+```
+select _norm('teste');
+→ ERROR 42883: function _norm(unknown) does not exist
+
+with s as (select session_id, <classificador sobre `text`> ... group by 1)
+→ ERROR 42803: column "observed_events.text" must appear in the GROUP BY clause
+```
+
+`_norm` é função **Python** (SPEC-083 §5.4) e a SPEC-083 §5.4 manda **reusá-la** —
+o que por si só já diz que ela não é SQL. E sem `_norm`, o agrupamento cai no
+texto cru: 📊 **1.527 linhas** devolvidas para a Allianz, para uma URA de ~25
+telas.
+
+⚠️ **E reescrever a query em SQL também não resolve**: a normalização exige
+`unaccent`, e 📊 medido em 21/08/2026, **`unaccent` não está instalado** neste
+banco (`select extname from pg_extension where extname='unaccent'` → vazio).
+
+🔴 **Reimplementar `_norm` em SQL é proibido** — seria um segundo normalizador ao
+lado do que já existe, exatamente o que o CLAUDE.md §5 veda. Dois normalizadores
+divergem no dia em que um for corrigido, e o corpus passa a discordar do motor
+que ele mede.
+
+**Portanto: a árvore é gerada por `medir_rota.py`, reusando o `_norm` real e o
+`PADROES_DE_SERVICO` real.** É entrega do BLOCO 0:
+
+```bash
+python backend/scripts/medir_rota.py --exportar-arvore --seguradora <SEG>
+```
+
+O que ele faz, e é só isto:
+
+```python
+# 1. lê a view v_telas_ura (§2.5) -- SÓ zona='URA'
+# 2. tela = _norm(text)                     ← o _norm de verdade, importado
+# 3. serviço de cada SESSÃO: PADROES_DE_SERVICO (SPEC-083 §5.5), aplicado
+#    evento a evento e reduzido por sessão com OR -- uma sessão pode ver
+#    mais de um serviço, e `outros` NÃO entra na contagem (§2.2)
+# 4. por tela: nº de serviços distintos, nº de sessões, visto por último
+# 5. descarta tela vista em 1 só sessão, salvo se for anterior à primeira
+#    escolha de serviço (o viés declarado abaixo)
+```
+
+Saída, uma linha por tela:
+
+```
+tela | servicos | sessoes | visto_por_ultimo | classe
 ```
 
 ```
@@ -210,7 +370,7 @@ servicos = 2  →  GALHO        paga por duas
 servicos = 1  →  FOLHA        paga por uma
 ```
 
-⚠️ `<CLASSIFICADOR_DE_SERVICO>` é o `PADROES_DE_SERVICO` entregue pela SPEC-083 §5.5. **Não invente outro.**
+⚠️ O classificador é o `PADROES_DE_SERVICO` entregue pela SPEC-083 §5.5. **Não invente outro** — e não o reescreva em SQL.
 
 ⚠️ E há um viés a declarar: uma tela que só apareceu numa sessão parece folha mesmo sendo tronco. Por isso a classificação **também** olha a posição: tela que aparece antes da primeira escolha de serviço é tronco **por construção**, mesmo com `servicos = 1`.
 
@@ -232,7 +392,7 @@ ONDA 3 · As FOLHAS, por demanda medida      ← paga por uma
 
 ### 4.2 Por que é essa, e não outra
 
-**Por seguradora inteira** — faria o executor escrever a folha do chaveiro da Allianz antes do tronco da Porto. 📊 O tronco da Porto é visto por 138 sessões; a folha do chaveiro da Allianz, por poucas.
+**Por seguradora inteira** — faria o executor escrever a folha do chaveiro da Allianz antes do tronco da Porto. 📊 A Porto tem **137 sessões** no acervo (134 com tela `in`) — seu tronco é visto por até esse tanto; a folha do chaveiro da Allianz, por poucas. ⚠️ O número exato do tronco só existe depois do BLOCO 0: a v1 dizia *"138 sessões"* com 📊, e 138 é **mais sessões do que a Porto tem**.
 
 **Por ramo** — quebra a árvore no lugar errado: 📊 `Termo de Privacidade` e `CPF` são vistos por auto **e** residencial.
 
@@ -250,22 +410,64 @@ retorno(nó) = (nº de rotas que passam por ele) × (nº de sessões em que apar
 
 E entre seguradoras, na Onda 1, o desempate é o tamanho do acervo:
 
+📊 Medido em 21/08/2026 (`count(distinct session_id)` por `insurer_key`):
+
 ```
-allianz 141 sessões · porto 138 · yelum 100 · tokio 47 · hdi 44
-bradesco 22 · azul 19 · zurich 15 · mapfre 13 · alfa 9
+allianz 140 · porto 137 · yelum 100 · tokio 46 · hdi 43
+bradesco 22 · azul 19 · zurich 14 · mapfre 13 · alfa 9        soma 543 + 1 sem chave = 544
 ```
 
-### 4.4 🔴 A exceção que vem antes de tudo
+🔴 A v1 trazia `141 · 138 · 100 · 47 · 44 · 22 · 19 · 15 · 13 · 9` **com marca
+📊** — errado em 5 dos 10, sempre para mais, e **somando 548 num universo de
+544**. A ordem relativa não mudou; a lição, sim: tabela que soma mais que o
+universo não vai para produção com 📊 (CLAUDE.md §12.1).
 
-**Os três buracos da própria régua.** A SPEC-083 os mediu e eles são as **três primeiras entregas** desta SPEC:
+⚠️ **E esta ordem é 💭 provisória.** Os dois fatores do retorno — serviços e
+sessões — mudam quando a zona humana sai (📊 −49,7% dos eventos da Allianz).
+**O BLOCO 0 regera a ordem com `zona='URA'`, e a versão medida substitui esta.**
 
-| # | o quê | +pts |
-|---|---|---:|
-| 1 | transcrever a sessão `7ac3c101` no bloco do subserviço `maquina_de_lavar` | +4 |
-| 2 | mapear a órfã funcional `"Agendamento para: … Podemos continuar ?"` | +10 |
-| 3 | pôr contagem própria no `notes` dos passos respondidos | +5 |
+### 4.4 🔴 A exceção que vem antes de tudo: a régua fecha a si mesma
 
-**Razão:** enquanto a régua não tirar ≥95, ela não é régua — é aspiração. E 61 rotas seriam medidas contra ela.
+📊 A SPEC-083 v7 §4.1 mediu a rota de referência: **piso 73 · teto 84 · gate ≥70**.
+
+🔴 **E os pontos que faltam não são três. São cinco** — todos nomeados pela
+própria SPEC-083:
+
+| # | o quê | eixo | +pts | fonte |
+|---|---|:---:|---:|---|
+| 1 | transcrever a sessão `7ac3c101` no bloco do subserviço `maquina_de_lavar` | A | +4 | 083 §4.1 |
+| 2 | mapear a órfã funcional `"Agendamento para: … Podemos continuar ?"` | B | +10 | 083 §4.2 |
+| 3 | contagem própria no `notes` dos passos respondidos | B | +5 | 083 §3.3 |
+| 4 | **`handoff_triggers`: 3 dos 4 casam ZERO no acervo** | C | +3 | 083 §4.1 |
+| 5 | **`regras_para_o_cliente` com trecho ≥40 char que case o corpus** | D | +3 | 083 §4.1 |
+| | **73 + 25 = 98** | | | |
+
+🔴 **Com só os três primeiros o teto é 92, e o gate de 95 é impossível por
+aritmética.** A v1 desta SPEC listava três itens somando +19 sobre um piso de 73,
+exigia ≥95, e faltavam **3 pontos que não existiam em lugar nenhum** — enquanto
+§9 diz *"enquanto este bloco não fechar, nenhum outro começa"*. A SPEC inteira
+parava no primeiro bloco.
+
+⚠️ É **exatamente** o defeito que a §6.4 desta SPEC se gaba de ter achado na
+SPEC-083 v1. Não fizemos a soma da nossa própria lista.
+
+**E a SPEC-083 v7 §4.3 já tinha avisado, literalmente:**
+
+> *"⚠️ **O gate NÃO exige 'exatamente 3 itens'.** A versão anterior exigia, e o
+> próprio conserto da rubrica levou a lista para 4–5 — um gate que quebra quando
+> a SPEC melhora não é gate, é armadilha."*
+
+> ## GATE DO BLOCO 0 — é o da SPEC-083 §4.3, não um novo
+>
+> · `medir_rota` roda e a lista **"O QUE FALTA PARA 95" é inteiramente
+>   nomeável** — nenhum item é *"não sei por quê"*
+> · a nota medida entra no relatório **com a saída real colada**
+> · **≥95 só vira gate depois** que os cinco itens acima estiverem fechados
+>
+> 🔴 **Nunca maquiar a rota para calar a régua** (083 §4.3).
+
+**Razão de tudo isso vir antes:** enquanto a régua não fechar a si mesma, ela não
+é régua — é aspiração. E 61 rotas seriam medidas contra ela.
 
 ### 4.5 A segunda exceção: o serviço que já funciona e está desligado
 
@@ -273,7 +475,51 @@ bradesco 22 · azul 19 · zurich 15 · mapfre 13 · alfa 9
 
 **Estamos recusando um serviço que os clientes pedem e que a URA atende.** Entra logo depois dos três buracos da régua.
 
-⚠️ A afirmação anterior de "6 sessões com protocolo, 2 ao vivo" **não reproduziu** e está sob `ANCORA_SUSPEITA` (zurich não escreve "protocolo"). **Refazer a medição citando as `session_id` antes de decidir a prioridade final.**
+📊 **Medição refeita e confirmada em 21/08/2026: yelum 21 · zurich 9 · hdi 8 = 38 sessões.** O número está firme.
+
+⚠️ O que continua **não** reproduzindo é a afirmação separada de *"6 sessões com protocolo, 2 ao vivo"* — ela segue sob `ANCORA_SUSPEITA`, porque a zurich não escreve *"protocolo"*. As 38 sessões não dependem dela.
+
+---
+
+### 4.6 🔴 A DECISÃO QUE A SPEC-083 DELEGOU A ESTA SPEC: a fábrica de espelhos
+
+📊 A SPEC-083 nomeia a SPEC-084 em **20 linhas** e delega decisões por nome. 📊 A
+v1 desta SPEC não continha uma única ocorrência de `SEM_FABRICA`, `SEM_ESPELHO`,
+`denominador`, `espelho` nem `banda por fração`. **Recebemos uma delegação e não
+soubemos que ela existia.**
+
+📊 SPEC-083 §3.5/§3.9: **13 corredores** perdem 6 dos 10 pontos do eixo D por
+razão **arquitetural** — não por descuido — e ~40 das 62 rotas de auto ficam com
+**denominador 90** sob a dispensa `SEM_FABRICA`.
+
+> **A decisão desta SPEC, e ela vem ANTES do BLOCO 1:**
+>
+> `[ ] criar a fábrica` · `[ ] preencher uma a uma` · `[ ] manter a dispensa`
+
+🔴 **E a consequência tem de estar escrita, seja qual for a escolha.** A
+SPEC-083 v7 já a declarou:
+
+> *"⚠️ E `AAA` com denominador <100 é PROVISÓRIO… **No dia em que criar [a
+> fábrica], os 10 pontos voltam ao denominador e a rota "AAA" cai para
+> 86/100 = "quase".**"*
+
+📊 A rota que cai é `allianz × residencial × maquina_de_lavar` — **a mesma que é o
+gate do BLOCO 0**. Ou seja: o BLOCO 0 se mede contra uma régua que o próprio
+BLOCO 0 pode mudar.
+
+**Como isso se resolve, e não é adiando:**
+
+```
+· O BLOCO 0 registra as DUAS leituras da rota de referência: /90 e /100
+· O gate é sobre /100 -- a leitura que sobrevive à decisão
+· Isso NÃO é regressão. É a régua ficando honesta, e o relatório diz isso
+  com essas palavras.
+```
+
+🔴 **E todo `≥95` desta SPEC significa 95% do DENOMINADOR REAL daquela rota**,
+sempre exibido com o denominador ao lado (083 §3.9) — `AAA(90)`, `quase(100)`.
+**Nunca reescalar para /100**: contra denominador 90, "95 pontos" é impossível
+por construção, e um gate impossível reprova trabalho bom.
 
 ---
 
@@ -290,8 +536,12 @@ bradesco 22 · azul 19 · zurich 15 · mapfre 13 · alfa 9
    MAIS RECENTE em que ela apareceu — em qualquer sessão, de qualquer
    serviço (R1).
 
-   Zero sessões e zero telas → PARA. Devolve `SEM_FONTE` com o roteiro de
-   coleta. NÃO escreve passo nenhum.
+   🔴 O corpus é `zona='URA'` (§2.5). Tela da zona humana NUNCA entra.
+
+   Zero telas de URA → PARA. Devolve `SEM_CORPUS` com o roteiro de coleta,
+   e NÃO escreve passo nenhum.
+   🔴 `SEM_CORPUS` NÃO é o mesmo que `NAO_RESPONDE` — ver §7.2. Confundir os
+   dois manda para coleta uma rota cujo acervo está cheio.
    🔴 Inventar rótulo de menu manda o segurado para a opção errada — e o
    corredor não trava, ele RESPONDE COM CONFIANÇA a coisa errada.
 
@@ -310,8 +560,14 @@ bradesco 22 · azul 19 · zurich 15 · mapfre 13 · alfa 9
    pede resposta vai ANTES de qualquer `noop` largo.
 
 ④ PROVAR
-   Teste que chama o MOTOR (CLAUDE.md §9.4), com `MUTACOES` declaradas e
-   executadas por `medir_rota --verificar-mutacoes`.
+   Teste que chama o MOTOR, com `MUTACOES` declaradas e executadas por
+   `medir_rota --verificar-mutacoes`.
+
+   ⚠️ A regra é a `CLAUDE.md §9.4` — que 📊 **ainda não existe** no arquivo
+   (hoje há §9.1, §9.2, §9.3). Ela é a **Entrega 1 da SPEC-083** (§8.1), e a
+   SPEC-083 fecha antes desta. Se o executor abrir o CLAUDE.md e não achar
+   a §9.4, a SPEC-083 não foi executada — PARE e execute-a primeiro.
+   O critério, enquanto isso, é a regra por-arquivo da SPEC-083 §3.7.
 
 ⑤ MEDIR
    `python backend/scripts/medir_rota.py --seguradora X --ramo Y --servico Z`
@@ -328,15 +584,47 @@ bradesco 22 · azul 19 · zurich 15 · mapfre 13 · alfa 9
 
 ### 5.2 🔴 Depois de CADA rota: o replay de regressão
 
+⚠️ **As flags `--todas-as-rotas-dela` e `--antes-e-depois` não existem.** 📊 A
+SPEC-083 entrega `--seguradora/--ramo/--servico`, `--replay-detalhado`,
+`--verificar-mutacoes` e `--todas` (tabela global) — **nenhuma filtra por
+seguradora, e nenhuma persiste linha de base**. Escrito como estava, o VERIFY do
+BLOCO 1 simplesmente não roda, e o risco #1 desta SPEC fica sem fechamento.
+
+🔴 **Construir as duas é entrega do BLOCO 0**, dentro do `medir_rota.py` — nunca
+um script paralelo (CLAUDE.md §5):
+
 ```bash
-python backend/scripts/medir_rota.py --seguradora <SEG> --todas-as-rotas-dela
+# grava a linha de base ANTES de tocar na seguradora
+python backend/scripts/medir_rota.py --todas --seguradora <SEG> \
+       --salvar-linha-de-base .baseline/<SEG>-<commit>.json
+
+# depois de cada rota, compara
+python backend/scripts/medir_rota.py --todas --seguradora <SEG> \
+       --comparar-com .baseline/<SEG>-<commit>.json
+# uma linha por rota: respondidas ANTES → DEPOIS
+# exit != 0 se QUALQUER rota perdeu respondidas (R3)
 ```
 
-**Nenhuma rota daquela seguradora pode ter perdido respondidas** (R3). Uma que caia é regressão, e o trabalho volta antes de seguir.
+**Nenhuma rota daquela seguradora pode ter perdido respondidas.** Uma que caia é
+regressão, e o trabalho volta antes de seguir.
 
-📊 Razão: 58 assinaturas de passo aparecem em mais de um playbook, e `_YELUM_FAMILY_STEPS` alimenta `hdi-auto` **e** `yelum-auto`. Mexer num passo de família mexe em dois corredores.
+🔴 **E o comparador tem de PODER ACUSAR.** Antes de confiar nele, o BLOCO 0
+**regride uma âncora de propósito** e exige `exit != 0`. Comparador que nunca
+acusa não é gate — é enfeite (CLAUDE.md §9.3).
+
+📊 **Razão de existir:** contado em `corridor_playbooks.py` em 21/08/2026, **41
+nomes de passo** (chave `"step"`) aparecem em mais de um lugar — 207 ocorrências,
+146 distintas — e **19 âncoras** se repetem. E `_YELUM_FAMILY_STEPS` alimenta
+`hdi-auto` **e** `yelum-auto`. Mexer num passo de família mexe em dois corredores.
+
+⚠️ A v1 dizia *"58 assinaturas"* com marca 📊 e **não foi possível reproduzir 58
+por método nenhum**. A direção da afirmação se sustenta com 41; o número, não.
 
 ### 5.3 Como os subagentes se dividem
+
+🔴 **Nenhum coletor roda em paralelo antes do BLOCO 0 fechar.** Com a zona
+(§2.5) ainda não implementada, dez coletores produzem **dez corpora
+contaminados ao mesmo tempo** — e o retrabalho é dez vezes maior que a espera.
 
 ```
 COLETOR    lê o acervo, monta o corpus da rota, classifica tronco/galho/folha
@@ -383,6 +671,7 @@ Lentes **diferentes** de propósito — três agentes idênticos encontram o mes
 *Tenta refutar que a rota está pronta.*
 
 - Alguma tela do corpus **não casa** passo nenhum e **pede** algo?
+  🔴 **"Corpus" aqui é `zona='URA'` (§2.5), sempre.** 📊 Sobre o corpus bruto esta pergunta devolve **472 telas** na Allianz contra **126** no corpus limpo — 3,7× — e nenhuma rota da seguradora seria liberada jamais.
 - Alguma âncora casa **zero** vezes no acervo? (o defeito do `numero_residencia`)
 - Alguma âncora é **larga demais** e rouba a tela de outro passo?
 - A transcrição bate com a sessão que ela cita?
@@ -455,16 +744,56 @@ O mesmo laço vale para os documentos: **esta SPEC** foi ao juiz, será corrigid
 
 🔴 **Um corredor que para e avisa é infinitamente melhor que um que responde chutando.** Chutar não trava — abre o chamado errado.
 
-### 7.2 Os três estados de fonte, e o que cada um permite
+### 7.2 Os SEIS estados de fonte, e o que cada um permite
 
-| estado | o que o executor pode fazer |
-|---|---|
-| 🟢 **COMPLETA** | rota inteira, meta ≥95 |
-| 🟡 **PARCIAL** | até onde há tela; `pausar_e_chamar` no resto; meta = a nota máxima possível com a evidência que existe, e ela é **declarada** |
-| 🟠 **ANCORA_SUSPEITA** | 🔴 **NÃO é ausência de fonte.** Primeiro amplia a âncora de desfecho daquela seguradora, e só então mede |
-| 🔴 **SEM_FONTE** | nada. Vai para a lista de coleta |
+| estado | o que significa | o que o executor faz |
+|---|---|---|
+| 🟢 **COMPLETA** | o corpus cobre a rota ponta a ponta | rota inteira; meta = 95% do denominador real |
+| 🟡 **PARCIAL** | o corpus acaba no meio | até a última tela; `pausar_e_chamar` no resto; meta **declarada** |
+| 🟠 **ANCORA_SUSPEITA** | 🔴 **NÃO é ausência de fonte** | amplia a âncora de desfecho daquela seguradora, **depois** mede |
+| 🔵 **NAO_RESPONDE** | 📊 **há corpus** e o corredor não casa | 🔴 **É TRABALHO DESTA SPEC: escrever passos.** Nunca vai para coleta |
+| 🔴 **SEM_CORPUS** | zero telas com `zona='URA'` desta rota | só a lista de coleta. Não escreve passo |
+| ⚫ **ROTA_INDISTINGUIVEL** | a URA não separa este serviço de outro | §7.3. 🔴 **NÃO escrever antes de criar a marca** |
 
-📊 O estado `ANCORA_SUSPEITA` cobre hoje **13 rotas**: mapfre (4), bradesco (4), zurich (5) — porque zurich e bradesco escrevem *"ordem de serviço"*, não *"protocolo"*, e mapfre casa zero em 13 sessões.
+🔴 **`SEM_FONTE` foi ELIMINADO.** Ele fundia dois estados **opostos, com ações
+opostas** — e a SPEC-083 v7 proíbe a fusão por nome:
+
+> *"São **estados opostos, com ações opostas**: `SEM_CORPUS` é trabalho do Bloco
+> A; `NAO_RESPONDE` é trabalho da SPEC-084 (escrever passos). 🔴 **Fundir os dois
+> faria a 084 reescrever corredores que já funcionam** — é o mesmo erro que a v1
+> cometeu ao mandar 13 rotas para coleta com o acervo cheio."*
+
+📊 `ANCORA_SUSPEITA` cobre hoje **13 rotas**: mapfre (4), bradesco (4), zurich (5)
+— porque zurich e bradesco escrevem *"ordem de serviço"*, não *"protocolo"*, e
+mapfre casa zero em 13 sessões.
+
+### 7.3 🔴 As 8 rotas em que a URA NÃO DISTINGUE o serviço
+
+📊 SPEC-083 §3.4, literal:
+
+> *"`mapfre` mapeia os quatro serviços para `"Assistência 24H"`; `bradesco` dá
+> `"1"` para guincho **e** bateria; `zurich` dá `"4"` para guincho e bateria. São
+> **8 rotas** em que a marca não existe… **Criar a marca é entrega da SPEC-084**."*
+
+🔴 **É PROIBIDO escrever a rota do guincho nessas 8 antes de criar a marca.**
+
+Sem ela o corredor **não erra o menu**: ele acerta o menu e **abre o chamado
+errado**. O segurado pede guincho e recebe bateria. E o JUIZ 2 (§6.2) pergunta
+*"a tecla escolhida é a certa?"* — na zurich, `4` é as duas. **A pergunta não tem
+resposta**, então o juiz não pode nem aprovar nem reprovar.
+
+**Criar a marca** = achar, no corpus `zona='URA'`, a tela **posterior** à tecla
+comum que separa os dois serviços — 💭 por exemplo *"o veículo está em local
+seguro?"*, se ela só aparecer em guincho — e usá-la como discriminador.
+
+```
+tela discriminadora existe   →  vira o passo que separa, e a rota segue
+NÃO existe                   →  `PRECISA_DE_HUMANO`, direto, SEM as 3 voltas
+```
+
+🔴 **O segundo caso não é falha do executor: é ausência de sinal na URA.** Ele vai
+para `PENDENCIAS.md` dizendo exatamente isso, e o que destravaria (uma coleta
+dirigida, ou um canal diferente na seguradora).
 
 ---
 
@@ -515,31 +844,66 @@ MESMA TELA, TEXTO FIXO DIFERENTE  →  ACHADO. Duas hipóteses:
 
 ## 9. OS BLOCOS DE EXECUÇÃO
 
-### BLOCO 0 — A régua fecha a si mesma
+### BLOCO 0 — A régua fecha a si mesma, e o corpus fica limpo
 
-**Entrega:** os três buracos de §4.4 + o replay de regressão da Allianz residencial.
+**Entregas — sete, e nenhuma exige coleta nova:**
 
-**Gate:** `medir_rota --seguradora allianz --ramo residencial --servico maquina_de_lavar` ≥ **95**.
-**+ os três juízes liberam.**
+```
+1. §2.5  a view `v_telas_ura` (zona URA × HUMANO)
+         + o gate de corpus com a PROVA DO GUARDA (semear 10 linhas humanas
+           e exigir vermelho)
+2. §3.3  `medir_rota.py --exportar-arvore`, em Python, reusando o `_norm`
+         e o `PADROES_DE_SERVICO` reais. Rodado de verdade, saída colada.
+3. §2.2 e §4.3 refeitas com `zona='URA'` -- a ORDEM DE EXECUÇÃO da SPEC
+         inteira é regerada aqui, e a versão medida substitui a provisória
+4. §4.4  os CINCO itens da régua (73 + 25 = 98)
+5. §4.6  a decisão `SEM_FABRICA`, com as duas leituras /90 e /100
+6. §7.2 e §7.3  os seis estados de fonte e as 8 rotas indistinguíveis
+7. §5.2  `--salvar-linha-de-base` e `--comparar-com`
+         + a prova do comparador (regredir uma âncora e exigir exit != 0)
+```
 
-🔴 Enquanto este bloco não fechar, **nenhum outro começa**.
+**Gate — e é o da SPEC-083 §4.3, não um inventado aqui:**
+
+```
+· `medir_rota --seguradora allianz --ramo residencial --servico maquina_de_lavar`
+  roda, e a lista "O QUE FALTA PARA 95" é INTEIRAMENTE NOMEÁVEL
+· a nota entra no relatório com a SAÍDA REAL colada, nas duas leituras (/90 e /100)
+· os dois guardas novos ficam VERMELHOS quando devem (corpus semeado · âncora regredida)
+· os três juízes liberam
+```
+
+⚠️ **≥95 só vira gate depois** que os cinco itens de §4.4 fecharem. Exigi-lo antes
+é exigir 98 pontos de uma soma que dá 92 — o defeito da v1.
+
+🔴 Enquanto este bloco não fechar, **nenhum outro começa** — e nenhum coletor roda
+em paralelo (§5.3).
 
 ---
 
 ### BLOCO 1 — O tronco de cada seguradora
 
-**Ordem:** allianz → porto → yelum → tokio → hdi → bradesco → azul → zurich → mapfre → alfa.
+**Ordem** (💭 provisória — 📊 o BLOCO 0 a regera com `zona='URA'`, §4.3):
+allianz → porto → yelum → tokio → hdi → bradesco → azul → zurich → mapfre → alfa.
+
+⚠️ **A Allianz é a primeira e é a mais contaminada** — 📊 49,7% dos seus eventos e 81,4% das suas telas distintas estão na zona humana. Sem o BLOCO 0, é ela que quebra primeiro e pior.
 
 **Por seguradora:**
-1. Classificar as telas em tronco / galho / folha (§3.3)
+1. Classificar as telas em tronco / galho / folha (§3.3), sobre `zona='URA'`
 2. Para cada tela de tronco, na ordem de retorno (§4.3): a versão **mais recente** vira/atualiza passo
 3. Replay de **todas** as rotas daquela seguradora — nenhuma perde respondidas (R3)
 4. Os três juízes
 
-**VERIFY por seguradora:**
+**VERIFY por seguradora** — com as flags que o BLOCO 0 constrói (§5.2):
 ```bash
-python backend/scripts/medir_rota.py --seguradora <SEG> --todas-as-rotas-dela --antes-e-depois
-# esperado: TODAS as rotas sobem ou empatam. Uma que caia = regressão.
+# ANTES de tocar na seguradora
+python backend/scripts/medir_rota.py --todas --seguradora <SEG> \
+       --salvar-linha-de-base .baseline/<SEG>-<commit>.json
+
+# DEPOIS de cada rota
+python backend/scripts/medir_rota.py --todas --seguradora <SEG> \
+       --comparar-com .baseline/<SEG>-<commit>.json
+# esperado: TODAS as rotas sobem ou empatam. Uma que caia = regressão, exit != 0.
 ```
 
 **O que se espera medir:** 💭 o tronco é ~40% das telas de uma sessão típica. Fechá-lo deve levar as rotas daquela seguradora de "toco" para "parcial" **sem tocar em nenhuma folha**.
@@ -565,6 +929,8 @@ bateria ~113 · pneu ~105 · eletrodoméstico ~105 · mecânico ~91 · vidros ~7
 
 **Uma rota por vez, os sete passos de §5.1, os três juízes em cada uma.**
 
+🔴 **Exceção obrigatória:** nas folhas de **mapfre, bradesco e zurich**, a marca de §7.3 vem **antes** da rota. 📊 São 8 rotas em que a URA dá a mesma tecla para serviços diferentes — escrever a rota do guincho ali abre o chamado da bateria, e nenhum dos três juízes tem pergunta que detecte isso.
+
 ---
 
 ### BLOCO 4 — Os serviços que existem na URA e não no código
@@ -583,7 +949,9 @@ bateria ~113 · pneu ~105 · eletrodoméstico ~105 · mecânico ~91 · vidros ~7
 
 ### BLOCO 5 — O inventário e as pendências
 
-**Entrega:** `INVENTARIO-DE-ROTAS.md` regenerado · `PENDENCIAS.md` com todas as lacunas · a **lista de coleta** com o roteiro de cada rota `SEM_FONTE`.
+**Entrega:** `INVENTARIO-DE-ROTAS.md` regenerado · `PENDENCIAS.md` com todas as lacunas · a **lista de coleta** com o roteiro de cada rota `SEM_CORPUS`.
+
+🔴 **`SEM_CORPUS`, não `NAO_RESPONDE`** (§7.2). Mandar para coleta uma rota cujo acervo está cheio é o erro que a SPEC-083 nomeia: 13 rotas para coleta com o material já no banco.
 
 **O roteiro de coleta**, por rota, no formato que já funcionou com a Yelum:
 1. o número da assistência da seguradora
@@ -599,7 +967,9 @@ bateria ~113 · pneu ~105 · eletrodoméstico ~105 · mecânico ~91 · vidros ~7
 
 Entrega: um relatório por SPEC, a partir do diff dos commits dela, com o que foi feito e o que ficou de fora.
 
-⚠️ Bloco separado e **último** de propósito: é dívida, não é rota. Se o tempo apertar, ele é o que se corta — e cortá-lo fica **registrado**, não silencioso.
+⚠️ Bloco separado e **último** de propósito: é dívida documental, não é rota. Se o tempo apertar, ele é o que se corta — e cortá-lo fica **registrado**, não silencioso.
+
+🔴 **E ele entra em `PENDENCIAS.md` no dia em que esta SPEC começar**, com dono e com o que destrava (CLAUDE.md §11.1) — não fica dependendo de sobrar tempo no fim. Dívida que só existe dentro de um bloco cortável é dívida que some quando o bloco é cortado.
 
 ---
 
@@ -607,10 +977,11 @@ Entrega: um relatório por SPEC, a partir do diff dos commits dela, com o que fo
 
 | risco | fechamento |
 |---|---|
-| **Consertar o tronco quebra rota que estava boa** | R3 + o replay de regressão em toda seguradora, com `--antes-e-depois` |
+| 🔴 **O corpus mistura tela de URA com fala de atendente humano** | §2.5: a view `v_telas_ura` + o gate de corpus **que fica vermelho** com 10 linhas semeadas da zona humana. 📊 Sem isso são 472 reprovações insanáveis só na Allianz |
+| **Consertar o tronco quebra rota que estava boa** | R3 + `--salvar-linha-de-base` / `--comparar-com` (§5.2), construídos no BLOCO 0 — e o comparador é **provado regredindo uma âncora de propósito** |
 | **O executor declara pronto sem o juiz** | A liberação é do juiz, e o inventário só aceita rota com os três vistos |
 | **O laço não converge e trava a fábrica** | Teto de 3 voltas → `PRECISA_DE_HUMANO` com dossiê |
-| **Escrever passo sem evidência** | ① do processo: zero sessões → PARA. E o juiz CÉTICO confere a transcrição contra a sessão citada |
+| **Escrever passo sem evidência** | ① do processo: zero telas com `zona='URA'` → PARA. E o juiz CÉTICO confere a transcrição contra a sessão citada |
 | **Família de passos: mexer num muda dois corredores** | Coluna FAMÍLIA no inventário + o replay de regressão pega |
 | **Duas corretoras divergem e o agente escolhe** | §8.3: no caso (b) a rota PARA e o Founder decide |
 | **A ordem por profundidade atrasa a rota de maior demanda** | É deliberado: 📊 `chaveiro` é folha de 10 seguradoras; sem o tronco de cada uma, ela não fecha em nenhuma |
