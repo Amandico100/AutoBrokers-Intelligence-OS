@@ -2,7 +2,7 @@
 
 > **O que é uma rota pronta, como se prova sem opinião, e a ferramenta que dá a nota sozinha.**
 >
-> Autor: execução · **v4, 21/08/2026** · Commit base: `95b0d21`
+> Autor: execução · **v5, 21/08/2026** · Commit base: `95b0d21`
 > Branch: `feat/spec083-a-regua-do-corredor`
 > Antecede e habilita: **SPEC-084 (A Fábrica de Rotas)**
 
@@ -292,7 +292,9 @@ Menu que LISTA o serviço não é prova de que o serviço foi PERCORRIDO.
 
 Exigir o `_opcao` tornaria o item **insatisfazível para as 40 rotas de auto**: um guincho que chegou ao protocolo pontuaria **0** nos 12 pontos, e o eixo A cairia para 4/20 por **onde o código mora**.
 
-⚠️ **E quando nenhum dos três distingue:** 📊 `mapfre` mapeia os quatro serviços para `"Assistência 24H"`; `bradesco` dá `"1"` para guincho **e** bateria. São **7 rotas** em que a marca não existe. A ferramenta devolve **`ROTA_INDISTINGUIVEL`** e o item **sai do denominador** — nunca 0. Criar a marca é entrega da SPEC-084.
+🔴 **E o nível 2 exige RENDERIZAR, não basta olhar o `requires`.** 📊 Os passos de auto declaram `"reply": "{servico_opcao}"` com `"requires": ["servico_opcao"]` — **o mesmo nome de slot para as quatro rotas**. A marca está no VALOR, não no nome. O replay injeta `servico_opcao = auto_subservice_menu_value(pb, rota)`, chama `render_reply(step, slots)` e compara o texto renderizado.
+
+⚠️ **E quando nenhum dos três distingue:** 📊 `mapfre` mapeia os quatro serviços para `"Assistência 24H"`; `bradesco` dá `"1"` para guincho **e** bateria; **`zurich` dá `"4"` para guincho e bateria**. São **8 rotas** em que a marca não existe — não 7, como a versão anterior dizia. A ferramenta devolve **`ROTA_INDISTINGUIVEL`** e o item **sai do denominador** — nunca 0. Criar a marca é entrega da SPEC-084.
 
 #### ⚠️ `SEM_FABRICA` vale para o eixo A também
 
@@ -529,6 +531,10 @@ subscrito:
 Um detector literal devolveria ZERO desqualificações no arquivo que esta
 SPEC nomeia como o exemplar do defeito. Fecharia o furo dizendo que fechou.
 
+⚠️ E a varredura cobre o arquivo de teste **E todo módulo que ele importe de
+`backend/tests/`**. Um helper em `conftest.py` é o esconderijo óbvio da
+próxima geração deste defeito — foi um helper local que criou os dois atuais.
+
 A REGRA, COM TAINT LOCAL (≈15 linhas de AST):
 
   1. SEMENTES — qualquer expressão que leia âncora:
@@ -651,7 +657,13 @@ A rubrica cria quatro exclusões: `SEM_FABRICA` (eixo A, 4 pts), `SEM_FABRICA`
 > PRONTIDÃO  61/86   (14 pts fora: SEM_FABRICA 10 · SEM_ESPELHO 4)
 > ```
 
-🔴 **Nunca reescalar para /100.** 61/86 = 71% pareceria melhor que uma rota
+> **ORDENA e classifica pela FRAÇÃO do denominador real**, e a média só entre rotas de mesmo denominador. Nunca uma média só.
+
+🔴 **Sem a banda por fração, NENHUMA rota de auto pode ser AAA.** Com `SEM_FABRICA` no eixo A (4) e no D (6), o denominador delas é **90** — e o patamar AAA começa em 95. Seriam ~40 das 62 rotas **estruturalmente impedidas de chegar ao topo por onde o código mora**, que é exatamente o que o `SEM_FABRICA` existe para NÃO fazer.
+
+⚠️ Banda por fração **não é** a renormalização proibida: o proibido é SOMAR 61/86 e 65/100 numa média. Comparar frações para classificar é o que torna as duas leituras honestas.
+
+🔴 **Nunca reescalar a EXIBIÇÃO para /100.** 61/86 = 71% pareceria melhor que uma rota
 que ganhou 65 de 100 disputando tudo. Os patamares da §3.10 só valem para rotas
 com denominador 100; as outras entram na tabela **com o denominador ao lado** e
 ficam **fora da média**.
@@ -1015,66 +1027,145 @@ b2bf40e7   350 eventos · 202 `in` ·  63 textos distintos
 
 **Não existia nenhuma regra residencial que disparasse fora da Allianz.** Consequência direta: `porto-residencial`, `hdi-residencial` e `yelum-residencial` receberiam corpus **vazio** → B = 0 → **`NAO_RESPONDE`**. **Três dos quatro corredores residenciais do produto declarados "não conversa com esta URA"** — por defeito do classificador.
 
-**A inferência é uma TABELA POR SEGURADORA**, em `backend/scripts/padroes_de_ramo.py`, **minerada do acervo** (📊 21/08/2026, contagens em sessões distintas):
+🔴 **E ha um segundo furo, mais fundo, que a tabela sozinha nao resolve: o
+menu de abertura LISTA OS DOIS RAMOS.**
+
+📊 Medido na Allianz: `"assistencia 24h para qual seguro"` (padrao residencial)
+e `"automovel, moto ou caminhao"` (padrao auto) sao **a mesma tela** -- 124 de 138
+sessoes cada. **123 de 137 sessoes casam os dois padroes.**
+
+E a tela 2 da sessao validada:
+
+```
+"Voce precisa de Assistencia 24h para qual seguro?
+ *1 -* Automovel, Moto ou Caminhao   *2 -* Residencia, Condominio ou Empresa"
+```
+
+Com tres saidas (residencial / auto / indefinido) e a leitura conservadora
+"casou os dois -> indefinido", **a Allianz perderia 123 de 137 sessoes**, a
+`allianz-residencial` ficaria com corpus vazio, e a regua **nao teria nota para o
+gate do Bloco C**. A SPEC falharia no Bloco A, medindo a si mesma.
+
+> ## A REGRA: o padrao de ramo so pode citar a tela de **ESCOLHA** -- aquela em que o segurado JA decidiu. **Nunca a de cardapio. Cardapio nao classifica.**
+
+**E sao QUATRO saidas, nao tres:**
+
+```
+resid OK  auto NAO  ->  residencial
+resid NAO auto OK   ->  auto
+resid NAO auto NAO  ->  indefinido, com linha no relatorio
+resid OK  auto OK   ->  AMBOS -- a sessao percorreu os dois ramos, OU um dos
+                        padroes cita cardapio. Vai para
+                        `<seguradora>-ambos.jsonl`, NAO alimenta replay, e a
+                        ferramenta acusa `PADRAO_DE_CARDAPIO` NOMEANDO os dois
+                        padroes que colidiram.
+```
+
+**A tabela**, em `backend/scripts/padroes_de_ramo.py`, minerada do acervo
+(📊 21/08/2026, contagens em sessoes distintas), **sem nenhuma alternativa de
+cardapio**:
 
 ```python
 PADROES_DE_RAMO = {
-    # (seguradora, ramo): padrão sobre `_norm` do texto
+    # A tela de ESCOLHA. Quem lista os dois ramos foi REMOVIDO.
     ("allianz", "residencial"):
-        r"assist[êe]ncia para:?\s*\*?1\s*-\*?\s*resid[êe]ncia"      # 15
-        r"|qual seguro deseja utilizar\?.{0,40}resid[êe]ncial"       # 37
-        r"|assist[êe]ncia 24h para qual seguro",                     # 59
+        r"assist[ea]ncia para:?\s*\*?1\s*-\*?\s*resid[ea]ncia"            # 16
+        r"|qual seguro deseja utilizar\?.{0,40}resid[ea]ncial",             # 38
+    ("allianz", "auto"):
+        r"placa do seu ve[ii]culo|identifiquei em seu cadastro a placa"
+        r"|reboque para pane|guincho consegue acessar",
     ("hdi", "residencial"):
-        r"assist[êe]ncia para seu \*?autom[óo]vel\*? ou \*?resid[êe]ncia"  # 13
-        r"|qual o servi[çc]o que voc[êe] precisa\?.{0,90}encanador",       # 4
+        r"qual o servi[cc]o que voc[ee] precisa\?.{0,90}encanador"          # 4
+        r"|casa ou fica em um condom[ii]nio",                               # 5
+    ("hdi", "auto"):
+        r"servi[cc]o de \*?guincho\*? para atend|placa",
     ("yelum", "residencial"):
-        r"assist[êe]ncia para seu \*?autom[óo]vel\*? ou \*?resid[êe]ncia"  # 8+7+4
-        r"|solicitar ou acompanhar servi[çc]os de assist[êe]ncia",
+        r"qual o servi[cc]o que voc[ee] precisa\?.{0,90}encanador"
+        r"|casa ou fica em um condom[ii]nio|linha branca",
+    ("yelum", "auto"):
+        r"solicita[cc][ao]o de guincho, socorro mec|tipo da carroceria|placa",
     ("porto", "residencial"):
-        r"prote[çc][ãa]o combinada|seguro para seu carro e sua casa",      # 4
-    ("mapfre", "residencial"):
-        r"sobre qual \*?seguro\*? voc[êe] quer falar.{0,60}im[óo]veis",    # 4
+        r"prote[cc][ao]o combinada",                                        # 4
+    ("porto", "auto"):
+        r"o que voc[ee] precisa\?.{0,60}guincho \(reboque\)"
+        r"|cor do ve[ii]culo|placa",
     ("tokio", "residencial"):
-        # 🔴 "REIDENCIAL", com o erro de digitação DA URA. Escrever
-        # "RESIDENCIAL" aqui nunca casaria — 📊 é a mesma lição do
-        # `numero_residencia`, aparecendo sozinha no acervo.
-        r"assist[êe]ncia re[si]?idencial 24h"                              # 4
-        r"|menu de servi[çc]os do seguro \*?residencial",                  # 4
-    ("bradesco", "residencial"):
-        r"assistente virtual da bradesco.{0,60}assist[êe]ncia pa",         # 12
-    ("zurich", "residencial"):
-        r"para qual dos assuntos voc[êe] precisa de atendimento",          # 10
+        # A URA escreve "REIDENCIAL", com erro de digitacao. 8 ocorrencias em
+        # 4 sessoes, contra 23 de "RESIDENCIAL". Escrever so a grafia certa
+        # perderia metade -- e a licao do `numero_residencia`, sozinha no acervo.
+        r"menu de servi[cc]os do seguro \*?residencial"                      # 4
+        r"|assist[ea]ncia re[si]?idencial 24h",                             # 4
+    ("tokio", "auto"):
+        r"menu de servi[cc]os do \*?seguro autom[oo]vel",                    # 5
+    ("bradesco", "auto"):
+        r"placa do ve[ii]culo|problema com o seu carro|vamos enviar um reboque",
+    ("azul", "auto"):
+        r"assist[ea]ncia emergencial.{0,40}guincho|remo[cc][ao]o de ve[ii]culo|placa",
+    ("zurich", "auto"):
+        r"reboque, socorro mec[aa]nico|carro e moto",
+    ("alfa", "auto"):
+        r"canal exclusivo de servi[cc]os emergencia|pane el[ee]trica, recarga",
+    ("mapfre", "auto"):
+        r"carro e moto",
 
-    # AUTO: a tela de escolha, ou o pedido de placa (o sinal universal)
-    ("allianz", "auto"):   r"autom[óo]vel, moto ou caminh[ãa]o|placa do seu ve[íi]culo",
-    ("porto",   "auto"):   r"servi[çc]os para ve[íi]culo|o que voc[êe] precisa\?.{0,40}guincho",
-    ("yelum",   "auto"):   r"solicita[çc][ãa]o de guincho, socorro mec|placa",
-    ("hdi",     "auto"):   r"servi[çc]o de \*?guincho\*?|placa",
-    ("azul",    "auto"):   r"assist[êe]ncia emergencial.{0,40}guincho|placa",
-    ("porto",   "auto"):   r"servi[çc]os para ve[íi]culo|placa",
-    ("tokio",   "auto"):   r"menu de servi[çc]os do \*?seguro autom[óo]vel|placa",
-    ("zurich",  "auto"):   r"carro e moto|reboque, socorro mec[âa]nico|placa",
-    ("alfa",    "auto"):   r"canal exclusivo de servi[çc]os emergencia|placa",
-    ("bradesco","auto"):   r"vamos enviar um reboque|placa",
-    ("mapfre",  "auto"):   r"carro e moto|placa",
+    # AUSENCIAS DECLARADAS, nunca implicitas:
+    #   azul, alfa, mapfre, bradesco, zurich -> sem playbook residencial.
+    #   porto e tokio residenciais existem no codigo mas tem pouquissima
+    #   evidencia no acervo -- a SPEC-084 decide se coleta.
 }
 ```
 
+### 🔴 O controle dos 30% precisa distinguir DUAS causas
+
+📊 Rodando a tabela anterior, quatro seguradoras estouravam: tokio **72%**,
+mapfre **54%**, porto **50%**, bradesco **41%** em `indefinido`. Minerando o
+acervo delas, a causa **nao e tabela incompleta**:
+
 ```
-Sem entrada na tabela para aquela seguradora → `indefinido`, com linha no
-relatório NOMEANDO a seguradora e o ramo que faltou. Nunca em silêncio.
+tokio     46 sessoes / 409 eventos  =  ~9 eventos por sessao
+mapfre    13 sessoes / 226 eventos  =  ~17
 ```
 
-📊 **CONTROLE AMPLIADO** — o da versão anterior só provava a Allianz, e era esse o furo:
+**Sao sessoes curtas, que nunca chegaram a escolher ramo.** Uma sessao que nao
+escolheu **nao tem ramo** -- e chama-la de defeito da tabela seria mandar o
+executor minerar uma tela que a sessao nunca viu.
 
 ```
-· `7ac3c101` (allianz)                → residencial
-· ≥1 sessão de guincho da yelum       → auto
-· ≥1 sessão de encanador da hdi       → residencial   ← o que a v3 perdia
-· ≥1 sessão da porto com "Proteção Combinada" → residencial
-· nenhuma seguradora com ≥10 sessões pode ter >30% em `indefinido`.
-  Se tiver, é a TABELA que está incompleta: a ferramenta acusa
-  `RAMO_NAO_CLASSIFICA` ANTES de qualquer nota ser calculada.
+>30% em `indefinido` -> a ferramenta reporta, e SEPARA:
+
+  `RAMO_NAO_CLASSIFICA`   a seguradora TEM sessoes longas (>=20 eventos) que
+                          nao classificam -> a TABELA esta incompleta.
+                          O Bloco A PARA e mina.
+
+  `SESSOES_CURTAS`        as sessoes indefinidas tem <20 eventos -> nunca
+                          escolheram. Nao e defeito. Vai para o relatorio com a
+                          contagem, e o Bloco A SEGUE.
+
+🔴 Confundir os dois manda o executor procurar tela que ninguem viu -- e
+inventar tela e o defeito que esta SPEC inteira existe para impedir.
+```
+
+📊 **CONTROLE do proprio dicionario, e ele ja pegou um defeito:**
+
+```
+assert len(PADROES_DE_RAMO) == len(chaves_literais_escritas)
+```
+
+🔴 A versao anterior tinha `("porto","auto")` **duas vezes**. Python mantem a
+ultima e descarta a primeira **em silencio** -- sem erro, sem aviso, sem log. Numa
+SPEC cujo tema e *"declaracao que o motor nao le"*, era a versao literal do
+defeito.
+
+📊 **CONTROLE AMPLIADO** -- o da versao anterior so provava a Allianz:
+
+```
+- `7ac3c101` (allianz)                          -> residencial
+- >=1 sessao de guincho da yelum                -> auto
+- >=1 sessao de encanador da hdi                -> residencial
+- >=1 sessao da porto com "Protecao Combinada"  -> residencial
+- a tela "Assistencia 24h para qual seguro?"    -> NAO classifica sozinha
+   (e cardapio; se classificar, o padrao esta errado)
+- nenhuma seguradora com >=10 sessoes LONGAS pode ter >30% em `indefinido`
 ```
 
 ⚠️ Uma seguradora pode ter **só auto** legitimamente (📊 azul e alfa não têm playbook residencial). A ausência da entrada residencial é declarada na tabela, com um comentário — nunca deixada implícita.
@@ -1188,8 +1279,9 @@ real. **CONTROLE:** uma linha com `"Rafael, escolha"` tem de ser **acusada**;
    >
    > **VERIFY:** o relatório lista **toda** asserção que mudou de resultado, com o valor antes e depois. **Zero mudanças também é achado** — significa que a cobertura do teste não tocava o que o motor filtra.
 
-6. 🔴 **o bloco `MUTACOES` de `test_a_regua_nao_tem_furo.py`** — 📊 ele não existe, e o eixo E dá 6 pontos por ele. Sem esta entrega a régua perde 6 pontos por algo que a própria SPEC deixou de entregar
-7. `test_a_rubrica_e_honesta.py`
+6. ⚠️ **conferir, e AJUSTAR se preciso, que ≥3 telas de `test_a_regua_nao_tem_furo.py` sejam `_norm`-idênticas a linhas do corpus gerado pelo Bloco A.** Elas foram copiadas do banco à mão; copiar e gerar podem divergir por um caractere — e **6 pontos do piso dependem disso**
+7. 🔴 **o bloco `MUTACOES` de `test_a_regua_nao_tem_furo.py`** — 📊 ele não existe, e o eixo E dá 6 pontos por ele. Sem esta entrega a régua perde 6 pontos por algo que a própria SPEC deixou de entregar
+8. `test_a_rubrica_e_honesta.py`
 
 **VERIFY — o gate central:**
 ```bash
