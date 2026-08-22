@@ -228,6 +228,52 @@ padrão sem a flag — porque é assim que se descobre que a flag era o que o fa
 funcionar.
 
 
+### 9.5 Casar a tela não é responder certo — e a régua não via a diferença
+
+> Acrescentado em 22/08/2026, depois que **oito** passos que respondiam ERRADO
+> atravessaram uma SPEC inteira com todos os gates verdes.
+
+O comparador de regressão perguntava *"alguma rota parou de responder?"*. Os oito
+defeitos **respondiam**. Nenhum apareceu como perda, e a árvore os mostrava
+verdes — porque a fila de trabalho ordena telas **órfãs**, e nenhum deles era
+órfão.
+
+```
+o corredor digitava a tecla do ELETRICISTA na tela do ENCANADOR
+afirmava a idade do aparelho numa tela que PERGUNTAVA a idade
+mandava todo condomínio para a apólice RESIDENCIAL
+encerrava o caso de vidros entregando a legenda do MENU como resposta
+prometia protocolo numa seguradora que só entrega LINK
+entregava o CEP do destino como se fosse o número do chamado
+```
+
+Nenhum travava. **Um passo que trava é barulhento; um passo que responde errado
+é silencioso e chega ao cliente.**
+
+**Toda régua de corredor precisa de duas perguntas, não uma:**
+
+```
+o passo CASOU a tela?          <- o que já se media
+e a RESPOSTA está confirmada?  <- o que faltava
+```
+
+E a segunda se decompõe em três, porque cada uma pega o que as outras não pegam:
+
+| | pergunta | o defeito que só ela vê |
+|---|---|---|
+| **A** | o slot tem origem? | passo que fica **calado** — 2min22 medidos |
+| **B** | a constante está na tela? | rótulo que a URA rejeita · tecla que **decide pelo cliente** |
+| **C** | o passo é do ofício da tela? | passo de um ofício respondendo a tela de outro |
+
+🔴 **E o guarda precisa ficar VERMELHO com um defeito histórico reintroduzido.**
+Sem isso ele não é guarda, é carimbo — e nesta mesma SPEC ele ficou verde por
+engano **duas vezes**, as duas por detalhe de mutação, não de regra.
+
+**O corolário que fecha a porta:** uma constante que escolhe entre alternativas
+de conteúdo precisa dizer **por que** está certa, escrito ao lado dela. Navegar
+(`Continuar`, `Voltar`, `Sair`) e decidir (`Até 10 anos`, `Condomínio`) têm a
+mesma forma no código — e resultados opostos na vida do segurado.
+
 ## 10. Condições legítimas de parada
 
 Pare e registre **somente** por: (1) risco de perda de dados · (2) decisão comercial ou de precificação · (3) conflito canônico · (4) P0/P1 de segurança ou cross-tenant · (5) ação física do Founder (QR, passkey, acesso, pagamento) · (6) mudança material de escopo · (7) custo extraordinário · (8) falta de acesso indispensável.
