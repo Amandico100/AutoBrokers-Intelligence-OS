@@ -2,7 +2,7 @@
 
 > **O protocolo que leva cada uma das 73 rotas ao nível da máquina de lavar — não o de 19/08, mas o de depois do que aprendemos com ela.**
 >
-> Autor: execução · **v3, 22/08/2026** · base `10abc94` · branch da SPEC-084
+> Autor: execução · **v4, 22/08/2026** · ✅ LIBERADA pelo juíz · base `10abc94` · branch da SPEC-084
 > Precondição: SPEC-083 ✅ · SPEC-084 blocos 0–5 ✅
 
 ---
@@ -177,8 +177,11 @@ as `notes`, e elas moram no playbook**, que o gate da §2.2 exige LIMPO.
 GATE DA FASE 0
 · C1, C3, C4 e C5 em UM commit que não toca nenhum playbook
     🔴 `git status backend/app/services/corridor_playbooks.py` LIMPO
-    ⚠️ C2 e C6 são em `insurer_dispatch_service.py` e `medir_rota.py` — motor e
-       ferramenta, não corredor. Commit próprio cada um, com mutação.
+    ⚠️ C2 é em `insurer_dispatch_service.py` — motor, não corredor. Commit
+       próprio, com mutação.
+    🔴 O C6 NÃO entra aqui: ele é a FASE 0.5 (§2.3). A v3 criou a fase e
+       deixou este gate agendando o C6 dentro da Fase 0 — o gate e a fase
+       nova se contradiziam.
 · `--todas --salvar-linha-de-base .baseline/fase0-<commit>.json` — 🔴 a v1 dizia
   *"é a LINHA DE BASE"* sem dizer como gravá-la. A flag existe (`medir_rota.py`).
 · ⚠️ e as `MUTACOES` moram em `tests/test_a_regua_nao_tem_furo.py`, que
@@ -274,7 +277,10 @@ não é rodar a varredura — ela já está limpa.** É o relatório e o gate de
    elas cobrem TODAS as constantes que decidem.
 2. 🔴 o GATE DE CEGUEIRA: reintroduza um dos 8 defeitos históricos.
    Se a ferramenta ficar VERDE, ela está cega e a fase não fecha.
-3. e a LINHA DE BASE das 257 telas `noop`-sobre-pergunta (E13), gravada.
+3. e a LINHA DE BASE do E13 gravada: 📊 **122 TELAS DISTINTAS** (257 ocorrências)
+   em 39 rotas, cada uma com **a ONDA que a paga**. Tela sem onda é entrada
+   inválida. 🔴 A v3 corrigiu a unidade na E13 e deixou 257 aqui — no lugar
+   onde o arquivo é efetivamente produzido.
 ```
 
 🔴 **Diga isto ao executor**, senão ele procura trabalho que não existe.
@@ -454,8 +460,18 @@ paga por isso."*
 > Se decide — idade, ramo, endereço, quantidade, aceitar custo — **ela não é constante.**
 > Ou vira coleta, ou vira derivação com default honesto, ou vira handoff.
 
-**Controle:** o relatório lista **toda** constante da rota e, ao lado, a
-`constante_justificada` ou a fonte que a substituiu. **Constante sem uma das duas reprova.**
+**Controle:** o relatório lista, da rota, **as três coisas que decidem sem perguntar**:
+
+```
+toda CONSTANTE          → `constante_justificada` ou a fonte que a substituiu
+todo `noop` sobre tela  → `noop_justificado`                          (E13)
+   que PEDE algo
+todo HANDOFF            → `handoff_justificado`                       (E14)
+```
+
+🔴 **Qualquer um dos três sem justificativa reprova.** ⚠️ A v3 criou o `noop_justificado` e
+o `handoff_justificado` e deixou este controle — **o único inventário de justificativas da
+SPEC** — conhecendo só o irmão mais velho.
 
 ---
 
@@ -887,16 +903,20 @@ resposta da allianz são de **auto**.
 ### 6.1 As ondas
 
 ```
-FASE 0    a régua                                      ~70 min   ← antes de tudo
+FASE 0    a régua (C1·C3·C4·C5 + C2)                  ~70 min   ← antes de tudo
+FASE 0.5  o leitor do Espelho (C6)                              ← destrava a E8;
+                                                                  sem ela os apelidos
+                                                                  ficam SEM_ESPELHO
 FASE 1    a varredura de segurança nas 73              ~2 h      ← antes de qualquer rota
 ONDA A    allianz × residencial   (9)      ─┐
 ONDA B    allianz × auto          (4)       │  🔴 as 31 PRIORITÁRIAS
 ONDA C    hdi × auto              (5)       │  📊 hoje 4 chegam a 60
 ONDA D    yelum × auto            (5)       │     e 6 delas são SEM_CORPUS
 ONDA E    porto × auto            (8)      ─┘
-ONDA F    o resto que pontua (16) + 🔴 TODA rota com dívida de linha
-          de base fora de A–E (§E13) — 📊 59 telas em rotas como
-          porto × residencial × encanador (23), a maior do produto
+ONDA F    as 16 fora de A–E que pontuam
+          🔴 e 15 das 16 são OBRIGATÓRIAS: carregam as 59 telas da dívida
+             do E13. A única opcional é yelum × residencial × eletrodomesticos.
+             📊 "o resto" deixou de ser resto.
 ONDA G    as 26 SEM_CORPUS fora de A–E              só lista de coleta
 ```
 
@@ -1122,7 +1142,11 @@ acionável é o JUIZ, não o executor**, que se beneficiaria da decisão.
 derrubadas pela query seguinte**.
 
 > **Nenhuma regra entra sem a query que a produziu e o controle que pode reprová-la —
-> inclusive as que o juiz escrever.** Prescrição sem medição, o executor **reproduz antes de
+> inclusive as que o juiz escrever.**
+>
+> 🔴 **E a quinta derrubada registra POR QUE ele errou:** o juiz mediu com a âncora
+> `\*resumo\*` e **o `_norm` remove o `*`**. Ele caiu na armadilha nº 2 da §E3 — *dentro da
+> SPEC que a documenta*. **O juiz também roda o padrão na ferramenta que vai usá-lo.** Prescrição sem medição, o executor **reproduz antes de
 > aplicar**; e se não reproduzir, devolve com o número.
 
 ---
@@ -1131,9 +1155,11 @@ derrubadas pela query seguinte**.
 
 ```
 · FASE 0 fechada, em commit separado, sem tocar playbook
+· FASE 0.5 fechada — **ou** a E8 declarada `SEM_ESPELHO` nas 73, nunca omitida
 · FASE 1 devolve ZERO, e a ferramenta fica VERMELHA com um defeito reintroduzido
 · toda rota trabalhada passou pelas **14** estações — 🔴 **E13 e E14 inclusas** —
-  e pelos 3 juízes
+  e pelas **3 lentes por rota** (§7.1). 🔴 São **4 lentes ao todo**: o JUIZ 0
+  governa a FASE 0, a 0.5 e a FASE 1, que também estão neste gate.
 · 🔴 FASE 0 e FASE 1 liberadas pelo **JUIZ 0** (§7.0), nunca pelo executor
 · a LINHA DE BASE do E13 gravada, com a ONDA que paga cada tela declarada
 · `--comparar-com` verde em TODAS: nenhuma rota perdeu respondidas
@@ -1158,6 +1184,8 @@ que ficou de fora nomeado com o que destrava.**
 | mascarar nome no `templatize` do Atlas (hdi/yelum) | precisa re-tecer os mapas | PENDENCIAS 🔴 antes da ONDA C/D |
 | as **32** rotas `SEM_CORPUS` — 📊 **26 fora de A–E + 6 dentro** (§6.1) | precisam de acionamento real | LISTA-DE-COLETA |
 | mapa do Atlas por ramo | hoje os 10 são `ramo='todos'` | PENDENCIAS |
+| 🔴 o acesso ao Espelho, se a FASE 0.5 não for feita | sem `--com-espelho` a E8 fica `SEM_ESPELHO` nas 73 e os 4 pts dos apelidos são inalcançáveis | PENDENCIAS 🧑 |
+| `maquina_de_lavar` e `vidro`/`vidros` sem chave em `DEMANDA_MEDIDA` | defeito de chave, não ausência de demanda (§6.1) | PENDENCIAS 🤖 |
 
 ---
 
@@ -1165,9 +1193,29 @@ que ficou de fora nomeado com o que destrava.**
 
 Além do template padrão:
 
+⚠️ 📊 **Esta seção era byte-idêntica à v1 até a v4** — três versões de correção, e a
+seção que **registra** o trabalho nunca se moveu. É a mesma família de defeito que os dois
+blockers da v3: *a cura entra e não sobe para onde é cobrada.*
+
 ```
 · a tabela das 73: nota ANTES · nota DEPOIS · estação que produziu o ganho
-· quanto subiu SÓ pela FASE 0 (o conserto da régua), separado do resto
+
+· 🔴 o DELTA DA FASE 0 — COM SINAL e POR CONSERTO, nunca "quanto subiu":
+     C1+C2 · C3 · C4 (📊 NEGATIVO: −3 em 7 rotas) · C5 · FASE 0.5 (C6)
+     ⚠️ "quanto subiu" era um nome que mente sobre o que guarda — a Fase 0
+        tem um conserto que SUBTRAI de propósito (CLAUDE.md §12.1)
+
+· 🔴 o veredito do JUIZ 0, POR CONSERTO, com a IDENTIDADE DE CONJUNTO:
+     para cada Cᵢ, as rotas que mudaram × as que a §2.1 declara.
+     Conjunto diferente reprova, mesmo com o delta global certo.
+
+· 🔴 a LINHA DE BASE do E13: quantas das 122 telas distintas foram pagas,
+     por qual onda, e quantas restam    📊 63 em A–E · 59 na ONDA F
+
+· 🔴 o inventário das TRÊS justificativas: quantos `constante_justificada`,
+     `noop_justificado` e `handoff_justificado` a execução criou, e quantas
+     telas cada um cobre
+
 · quantas constantes viraram coleta ou derivação na FASE 1
 · as rotas que bateram o teto de 3 voltas, com o dossiê
 · 📊 e a lista do que trava cada rota de chegar a 96, com o que destrava
