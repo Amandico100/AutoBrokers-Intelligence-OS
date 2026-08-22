@@ -4999,6 +4999,91 @@ for _pb_resid in (HDI_RESIDENCIAL_WHATSAPP_V1, YELUM_RESIDENCIAL_WHATSAPP_V1):
         if "tipo_imovel" not in (sub.get("required_slots") or []):
             sub["required_slots"] = list(sub.get("required_slots") or []) + ["tipo_imovel"]
 
+
+# ==========================================================================
+# BLOCO 4 · parte 3 — o menu `Outros serviços` da allianz, e o técnico da azul
+# ==========================================================================
+#
+# 📊 O menu que nomeia estes trabalhos tem **2 telas / 21 sessões**:
+#   "*1 -* Dedetização *2 -* Limpeza do Imóvel *3 -* Limpeza de Caixa d'Água
+#    *4 -* Substituição de Telhas *5 -* Cobertura Provisória de Telhado
+#    *6 -* Consulta Veterinária *7 -* Outros *8 -* Voltar"
+#
+# 🔴 Dos oito, DOIS têm fluxo medido até o PROTOCOLO. Os outros ficam em
+#    PENDENCIAS com o que destrava — e é essa a diferença entre "declarar por
+#    rótulo avistado" e "declarar por conversa clara".
+#
+#   📊 limpeza_caixa_dagua   4 sessões · 1 chega ao protocolo   -> 🟢 LIGA
+#   📊 consulta_veterinaria  1 sessão  · 1 chega ao protocolo   -> 🟢 LIGA
+#   📊 telhado               1 sessão  · 0 chegam               -> ⏸️ PENDENCIAS
+#   📊 pet assistance        1 sessão  · 1 chega                -> ⏸️ outra linha de produto
+#   📊 dedetização / limpeza do imóvel                          -> ⏸️ sem sessão
+ALLIANZ_RESIDENCIAL_WHATSAPP_V1["subservices"]["limpeza_caixa_dagua"] = {
+    "tipo_servico_opcao": "2",
+    "outro_servico_opcao": "3",
+    "required_slots": [
+        "titular_cpf", "endereco_numero", "telefone_contato", "problema_descricao",
+        "periodo_preferido", "qual_seguro_opcao", "caixas_dagua_quantidade_opcao",
+    ],
+}
+ALLIANZ_RESIDENCIAL_WHATSAPP_V1["subservices"]["consulta_veterinaria"] = {
+    "tipo_servico_opcao": "2",
+    "outro_servico_opcao": "6",
+    "required_slots": [
+        "titular_cpf", "telefone_contato", "problema_descricao", "qual_seguro_opcao",
+    ],
+}
+ALLIANZ_RESIDENCIAL_WHATSAPP_V1.setdefault("subservice_labels", {}).update({
+    "limpeza_caixa_dagua": "limpeza de caixa d'agua",
+    "consulta_veterinaria": "consulta veterinaria",
+})
+_SUBSERVICE_ALIASES.update({
+    "limpeza de caixa d agua": "limpeza_caixa_dagua",
+    "limpeza de caixa dagua": "limpeza_caixa_dagua",
+    "caixa d agua": "limpeza_caixa_dagua", "caixa dagua": "limpeza_caixa_dagua",
+    "limpar caixa": "limpeza_caixa_dagua",
+    "consulta veterinaria": "consulta_veterinaria",
+    "veterinario": "consulta_veterinaria", "veterinaria": "consulta_veterinaria",
+    "pet": "consulta_veterinaria",
+})
+
+ALLIANZ_RESIDENCIAL_WHATSAPP_V1["ura_steps"] = list(
+    ALLIANZ_RESIDENCIAL_WHATSAPP_V1["ura_steps"]) + [
+    {"step": "caixa_dagua_agendar",
+     "anchor": r"limpeza de caixa d.?[áa]gua\*? dever[áa] ser agendado",
+     "reply": "1", "only_subservices": ["limpeza_caixa_dagua"],
+     "constante_justificada": (
+         "📊 2 sessões. 1-Continuar 2-Voltar. Quem pediu a limpeza quer continuar — "
+         "é navegação, não escolha de conteúdo."),
+     "notes": "📊 2 telas / 2 sessões."},
+    {"step": "caixa_dagua_quantas",
+     "anchor": r"quantas caixas d.?[áa]gua precisam do servi[çc]o",
+     "reply": "{caixas_dagua_quantidade_opcao}",
+     "requires": ["caixas_dagua_quantidade_opcao"], "fallback_adaptive": True,
+     "only_subservices": ["limpeza_caixa_dagua"],
+     "notes": "📊 2 telas / 2 sessões. 1-uma unidade 2-duas unidades. "
+              "🔴 Vem do caso: o número de caixas muda o preço e o tempo do serviço."},
+]
+
+# --------------------------------------------------------------------------
+# AZUL · auto · TÉCNICO — ⚠️ IDENTIFICADA, NÃO ESTABELECIDA
+# --------------------------------------------------------------------------
+# 📊 1 sessão (d70ced75), 33 telas, e **não chega ao protocolo**. Os quatro
+#    passos do galho já estão escritos (`tecnico_agendamento`, `tecnico_data`,
+#    `tecnico_periodo`, `tecnico_horario`) e casavam no vazio, porque
+#    `subservice_supported` devolvia False.
+#
+# 🔴 E o desfecho é OUTRO: AGENDADO por faixa de 30 minutos, não "hoje em até
+#    60 minutos". Se um dia o pneu da azul entrar por aqui — é o candidato
+#    medido — a `expectativa_do_desfecho` muda junto.
+_ativar_subservico(
+    AZUL_AUTO_WHATSAPP_V1, "tecnico",
+    menu_value="Técnico",
+    required_slots=_AUTO_SLOTS_COMMON + ["data_agendamento"],
+    label="técnico (reparo no local, AGENDADO)",
+    espera_no_local=True,
+)
+
 _PLAYBOOKS: Dict[str, Dict[str, Any]] = {
     f"{p['playbook_id']}@v{p['version']}": p
     for p in (

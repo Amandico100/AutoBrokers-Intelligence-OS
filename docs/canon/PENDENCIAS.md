@@ -7029,3 +7029,108 @@ da tokio **não aparecem como ganho** — e eram os piores defeitos do bloco.
 📊 Herdada da SPEC-083 e reconfirmada: o ingestor não grava `selectedButtonID`.
 Em várias sessões a tecla apertada não está no banco — o caminho só se prova pela
 tela SEGUINTE. **O que destrava:** gravar `selectedButtonID` no ingestor.
+
+---
+
+## SPEC-084 BLOCOS 2 a 5 — o que ficou aberto
+
+> Escritas em 22/08/2026. Continuam a numeração de P-084-1..15.
+
+### P-084-16 🔴 `carro_reserva` — 8 sessões, e não é assistência · 🧑
+
+📊 O terceiro serviço mais presente no acervo entre os não-declarados:
+**yelum 5 sessões (84 linhas) · tokio 2 (21) · mapfre 1 (14)**. E o Founder o
+listou 5º em demanda medida (16 escolhas).
+
+🔴 **Mas ele não é assistência 24h.** 📊 Na yelum, as 16 telas pertencem a
+**outro bot** — o canal de sinistro/carro reserva, que atende três marcas
+(YELUM/ALIRO/INDIANA), tem menu numerado em vez de botões, horário comercial
+(09–17h) e **redireciona para o canal de assistência por link**.
+
+Hoje essas sessões **inflam a contagem de órfãs da `yelum-auto` em 13%** e
+puxam a régua para baixo por trabalho que o produto não faz.
+
+**As opções, e nenhuma é executável sem decisão:**
+1. corredor próprio `yelum-sinistro-whatsapp`
+2. excluir essas sessões do corpus de `yelum-auto`
+3. deixar como está e aceitar o viés
+
+**O que destrava:** decisão comercial — a corretora atende carro reserva?
+**O que custa esquecer:** a régua da yelum-auto mede um bot que não é o dela.
+
+### P-084-17 Os serviços do menu `Outros serviços` que ficaram de fora · 🧑
+
+📊 O menu tem **2 telas / 21 sessões** e nomeia oito trabalhos. Dois foram
+ligados (limpeza de caixa d'água, consulta veterinária, os que têm fluxo até o
+protocolo). Os outros:
+
+| serviço | evidência | por que não entrou |
+|---|---|---|
+| Substituição de Telhas | 1 sessão, **0 chegam ao protocolo** | fluxo incompleto |
+| Cobertura Provisória de Telhado | rótulo, 0 sessões | sem fluxo |
+| Dedetização | rótulo, 0 sessões | sem fluxo |
+| Limpeza do Imóvel | 1 sessão, 0 protocolo | fluxo incompleto |
+| Pet Assistance | 1 sessão, 1 protocolo | 🔴 **outra linha de produto** — não é assistência residencial |
+
+**O que destrava:** 1 acionamento completo de cada, ou a decisão de que
+`pet assistance` é produto separado.
+
+### P-084-18 `tecnico` da azul — identificada, não estabelecida · 🧑
+
+📊 1 sessão (`d70ced75`), **33 telas**, e **não chega ao protocolo**. Os quatro
+passos do galho existem e o subserviço foi declarado — com o desfecho AGENDADO
+por faixa de 30 minutos, que é diferente de todo o resto do auto.
+
+⚠️ E ele é o candidato medido para onde o **pneu** da azul entrou em 2026
+(ver P-084-1). **Zero evidência** — não se declara por dedução.
+
+### P-084-19 O `?` do classificador escondia rota com acervo cheio · 🤖 ✅ feito
+
+📊 `?tecnico` tinha **109 linhas** (azul 33 + porto 76) e as rotas apareciam
+`SEM_CORPUS`. O `?` é o balde de não-classificado: o rótulo era LIDO da tela e
+não tinha para onde ir.
+
+🔴 Mandar essas rotas para coleta é o erro que a SPEC-084 §7.2 nomeia —
+**coletar o que já está coletado**. Consertado: o classificador aprendeu
+`tecnico`, `bateria_nova`, `limpeza_caixa_dagua` e `consulta_veterinaria`.
+
+⚠️ E a primeira versão do padrão de `tecnico` custou um falso positivo:
+`assistência de um técnico` casava no NÍVEL 2, que lê **o que a corretora
+escreveu**, e uma sessão de encanador da allianz virou `tecnico` porque a
+atendente usou a palavra. **A palavra da corretora não é o nome do serviço.**
+O padrão agora exige o início da string — é rótulo de menu, não prosa.
+
+**Fica como regra:** todo padrão novo em `PADROES_DE_SERVICO_TEXTO` precisa ser
+testado contra o NÍVEL 2 antes de entrar, porque ali ele lê texto livre.
+
+### P-084-20 O corpus tem de ser REGERADO quando o classificador muda · 🤖
+
+⚠️ Os `.jsonl` versionados carregam a classificação de serviço do dia em que
+foram gerados. Mudar `padroes_de_servico.py` sem rodar
+`gerar_corpus_de_telas.py --todas` deixa a régua medindo com o rótulo velho —
+e nada avisa.
+**O que destrava:** um guarda que compare o `servico` gravado no corpus com o
+que o classificador devolveria hoje. Não existe.
+
+### P-084-21 O conferidor de respostas tem 69 achados AMARELOS · 🤖
+
+📊 Slots sem origem que **não travam** porque o passo tem `fallback_adaptive` —
+o cérebro lê a tela e responde. Não é o defeito dos 2min22, mas também não é o
+corredor sabendo a resposta.
+
+Os maiores: `condominio_hora_inicial`/`final` (3+3) · `destino_logradouro` (2) ·
+`veiculo_cor_rotulo` (2) · `meio_transporte_opcao` (2) · `periodo_preferido` (2)
+· `titular_cpf_3_ultimos` (2) · `servico_texto` (2).
+
+⚠️ E há 13 achados `B` que **não dá para confirmar daqui**: a tela não expõe
+opção nenhuma no `text`, porque o ingestor não grava `selectedButtonID`
+(P-084-15). Acusar ali seria acusar o corpus, não o corredor.
+
+### P-084-22 `_PLAYBOOKS_AUTO_COM_PNEU` é uma lista escrita à mão · 🤖
+
+⚠️ Ela enumera os 10 playbooks de auto para acrescentar os slots de cobertura.
+**É exatamente o tipo de lista paralela que já mentiu três vezes neste
+repositório** (`DERIVADOS`, `TETO_DE_INDEFINIDO`, `schedule_agendado`). Uma
+seguradora de auto nova não entra nela sozinha.
+**O que destrava:** derivá-la de `_PLAYBOOKS` filtrando por `line_kind == auto`,
+depois que `_PLAYBOOKS` passar a ser montado antes dos ajustes.

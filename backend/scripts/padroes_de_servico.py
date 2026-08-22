@@ -279,6 +279,27 @@ PADROES_DE_SERVICO_TEXTO: Dict[str, str] = {
     "telhado":          r"telhado|telha",
     "taxi":             r"t[áa]xi",
     "carro_reserva":    r"carro reserva",
+    # 🔴 OS QUE A REGUA CHAMAVA DE SEM_CORPUS COM O ACERVO CHEIO — 22/08/2026.
+    #
+    # 📊 `?tecnico` tinha **109 linhas** (azul 33 + porto 76) e a rota aparecia
+    #    SEM_CORPUS. O `?` e o balde de nao-classificado: o rotulo era LIDO da
+    #    tela e nao tinha para onde ir. Mandar essa rota para coleta e o erro
+    #    que a SPEC-084 §7.2 nomeia — coletar o que ja esta coletado.
+    #
+    # ⚠️ `t[ée]cnico` sozinho seria largo demais: "visita tecnica" aparece no
+    #    fluxo de eletrodomestico e de bateria nova. Por isso ele exige a forma
+    #    do ROTULO DE MENU, e nao a palavra solta.
+    # ⚠️ E ELE E ANCORADO NO INICIO, de proposito -- 22/08/2026.
+    #    A primeira versao aceitava `assist[ê]ncia de um técnico` em qualquer
+    #    lugar do texto, e o NIVEL 2 le o que a CORRETORA escreveu. 📊 Uma
+    #    sessao de encanador da allianz virou `tecnico` porque a atendente
+    #    escreveu a palavra na conversa.
+    #    🔴 A palavra da corretora NAO e o nome do servico. Este padrao so
+    #    vale como ROTULO DE MENU, e por isso exige o inicio da string.
+    "tecnico":              r"^t[ée]cnico$|^t[ée]cnico para ",
+    "bateria_nova":         r"bateria nova|nova bateria",
+    "limpeza_caixa_dagua":  r"limpeza de caixa d.?[áa]gua|limpeza da caixa",
+    "consulta_veterinaria": r"consulta veterin[áa]ria|veterin[áa]ri",
 }
 
 # ⚠️ `eletricista` RESIDENCIAL não é "parte elétrica" de AUTO — a SPEC-083 §5.5
