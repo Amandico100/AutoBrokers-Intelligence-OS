@@ -7134,3 +7134,31 @@ repositório** (`DERIVADOS`, `TETO_DE_INDEFINIDO`, `schedule_agendado`). Uma
 seguradora de auto nova não entra nela sozinha.
 **O que destrava:** derivá-la de `_PLAYBOOKS` filtrando por `line_kind == auto`,
 depois que `_PLAYBOOKS` passar a ser montado antes dos ajustes.
+
+### P-084-23 🔴 A ZURICH NÃO É 89% VAZIA — 129 das 137 órfãs são de OUTRAS URAs · 🤖
+
+📊 Medido de forma independente em 22/08/2026, atribuindo cada tela órfã à
+sessão em que ela aparece **exclusivamente**:
+
+```
+963f4097   105 telas exclusivas   -> SINISTRO DE COLISÃO
+4118ba36    15 telas exclusivas   -> CONSULTAR PAGAMENTOS
+d5ce1862     9 telas exclusivas   -> ACOMPANHAR PROCESSO
+                                     ─────
+                                     129 de 137
+```
+
+🔴 **A dívida real do corredor de assistência da zurich é de 8 telas**, não 137.
+E `sinistro` e `colisão` já são `handoff_triggers` — o corredor nem deveria
+chegar lá.
+
+⚠️ **O efeito na régua é real e não é da zurich sozinha:** a rota
+`zurich × auto × guincho` pontua 23/96, e boa parte do que a puxa para baixo é
+trabalho que o produto **não faz**. O mesmo vale para `yelum × auto`, onde
+📊 16 telas de `carro_reserva` são de outro bot (P-084-16).
+
+**O que destrava:** a régua saber separar "tela de outra URA" de "tela órfã do
+corredor". Hoje ela conta as duas juntas, e o número de órfãs mede o acervo, não
+o corredor.
+**O que custa esquecer:** trabalho de coleta e de corredor pedido para telas que
+ninguém vai responder — e uma nota baixa que não diz o que parece dizer.
