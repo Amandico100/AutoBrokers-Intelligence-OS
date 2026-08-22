@@ -23,6 +23,7 @@ import collections
 import datetime as dt
 import json
 import os
+import re
 import subprocess
 import sys
 from typing import Any, Dict, List, Optional, Tuple
@@ -61,6 +62,35 @@ def _sessoes_por_seguradora() -> Dict[str, int]:
 # ═════════════════════════════════════════════════════════════════════════════
 # --conferir-ancoras-de-desfecho  (§3.2)
 # ═════════════════════════════════════════════════════════════════════════════
+# 🔴 A FRASE DO DESFECHO COM O NUMERO MASCARADO — P-084-7.
+#
+# 📊 As formas medidas, uma por seguradora afetada:
+#     azul/porto  "Aqui esta seu protocolo de atendimento 1-{NUMERO}"
+#     tokio       "Seu protocolo de atendimento e {CEP}"
+#     mapfre      "O numero de protocolo para este atendimento e: {CARTAO}"
+#     hdi/yelum   "*Assistencia:* {NUMERO}"
+#
+# ⚠️ O marcador varia porque o mascarador escolhe pelo FORMATO do que apagou —
+#    um numero de 8 digitos vira `{CEP}`, um de 12 vira `{CARTAO}`. Por isso a
+#    expressao aceita qualquer `{MAIUSCULAS}` logo depois da frase, e nao uma
+#    lista de marcadores que envelheceria.
+_RX_DESFECHO_MASCARADO = re.compile(
+    r"(?:protocolo(?:\s+de\s+atendimento)?|n[uú]mero\s+d[oa]\s+(?:sua\s+)?"
+    r"(?:solicita[cç][aã]o|assist[eê]ncia|ordem)|\*?assist[eê]ncia\*?\s*:)"
+    # 🔴 DUAS ARMADILHAS, as duas medidas:
+    #    · `_norm` deixa TUDO MINUSCULO -> `{NUMERO}` vira `{numero}`. Exigir
+    #      `[A-Z_]` casava ZERO, e o guarda ficava mudo justamente na tela que
+    #      ele existe para ver.
+    #    · a URA quebra linha entre a frase e o numero ("...atendimento" +
+    #      duas quebras + "1-{numero}"), entao `[^\n]` bloqueava.
+    #      `[\s\S]` e obrigatorio aqui, como em toda ancora deste projeto
+    #      que roda FORA do `match_ura_step` -- o unico com DOTALL.
+    r"[\s\S]{0,32}\{[A-Za-z_]{3,12}\}",  # 32, nao 24: a mapfre escreve
+    #   "protocolo PARA ESTE ATENDIMENTO e: {CARTAO}" -- 25 caracteres no meio
+    re.IGNORECASE,
+)
+
+
 def conferir_ancoras_de_desfecho() -> str:
     """A seguradora tem desfecho no acervo, e a âncora o alcança?
 
@@ -95,8 +125,48 @@ def conferir_ancoras_de_desfecho() -> str:
                if M.extract_capture_anchors(pb, l["text"]).get("protocol")]
         ses_total = len({l["session_id"] for l in linhas})
         ses_com = len({l["session_id"] for l in com})
-        if ses_com:
+        # =============================================================
+        # 🔴 O QUARTO ESTADO — P-084-7, 22/08/2026
+        # =============================================================
+        #
+        # ⚠️ DOIS coletores independentes, medindo de formas diferentes,
+        #    acharam a mesma coisa: **a régua chamava de "âncora quebrada" o
+        #    que é MÁSCARA DE CORPUS.**
+        #
+        # 📊 A azul: `conferir-ancoras-de-desfecho` dava `0 c/ protocolo · 0/9
+        #    · 🟠`. A MESMA âncora, rodada sobre o acervo CRU: **11 msgs em 10
+        #    de 19 sessões ✅**. O desfecho é
+        #        "Aqui está seu protocolo de atendimento 👇 1-128312189741"
+        #    e o gerador de corpus mascara o número → sobra `1-{NUMERO}`, que
+        #    não tem dígitos para capturar. O grupo exige 6+ caracteres e sobra
+        #    só o `1-`.
+        #
+        # 🔴 Isso atingia CINCO linhas de uma vez (azul, hdi-residencial,
+        #    mapfre, porto-auto, porto-residencial) e mandava para COLETA rotas
+        #    cujo acervo está cheio — que é exatamente o erro que esta função
+        #    existe para impedir.
+        #
+        # A pergunta certa não é "a âncora casou?", é **"havia número para
+        # casar?"**. Quando a tela tem a FRASE do desfecho mas o número virou
+        # marcador, o estado honesto é 🔵 DESFECHO_MASCARADO: a fonte existe, a
+        # âncora não pôde ser provada AQUI, e nada disso é trabalho de coleta.
+        mascaradas = [l for l in linhas if _RX_DESFECHO_MASCARADO.search(M._norm(l["text"]))]
+        ses_masc = len({l["session_id"] for l in mascaradas})
+        # ⚪ CORREDOR QUE ENCAMINHA NAO TEM PROTOCOLO -- e isso e DESENHO.
+        #    📊 A tokio entrega um LINK de autoatendimento e encerra; os 4
+        #    subservicos dela sao `OUTCOME_ENCAMINHA` desde 22/08/2026. Cobrar
+        #    protocolo de quem nao abre chamado e medir a coisa errada -- e foi
+        #    exatamente assim que ela apareceu 🟠 ate agora.
+        subs = (pb.get("subservices") or {}).values()
+        so_encaminha = bool(subs) and all(
+            (sub or {}).get("outcome") == "encaminha" for sub in subs)
+        if so_encaminha:
+            estado = "⚪ NAO ABRE NESTE CANAL (encaminha por link) — sem protocolo por DESENHO"
+        elif ses_com:
             estado = "normal"
+        elif ses_masc:
+            estado = (f"🔵 DESFECHO_MASCARADO ({ses_masc} ses tem a FRASE do "
+                      f"desfecho; o NUMERO foi mascarado) — conferir no acervo cru")
         elif ses_total >= 3:
             estado = "🟠 ANCORA_SUSPEITA (defeito da ancora, NAO falta de fonte)"
         else:

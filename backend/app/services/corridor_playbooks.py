@@ -173,6 +173,35 @@ _ANCORA_DE_PROTOCOLO = (
 )
 
 
+# 🔴 O AGENDAMENTO DA PORTO NUNCA ERA CAPTURADO — P-084-8, 22/08/2026.
+#
+# Este **não** é artefato de máscara. Testado com texto REAL, pelo motor:
+#
+#   "...deve chegar ao seu endereço no dia 25/08/2026, entre 13h00 e 14h00"  -> {} 🔴
+#   "...previsto para ser realizado no dia 25/08/2026, entre 14h00 e 14h30"  -> {} 🔴
+#   "...previsto para ser realizado *hoje*, em até 60 minutos"   -> {eta_minutes} ✅
+#
+# `capture_anchors.schedule` exige a data **colada** em "para"
+# (`prevista? para (?:o dia )?<data>`). A porto escreve TRÊS palavras no
+# meio — "previsto para SER REALIZADO no dia X" — e o `schedule_agendado`
+# da Allianz exige `Quando:` / `Agendamento para:`, que a porto não usa.
+#
+# 📊 Alcance medido: 5 telas residenciais (4 sessões) e 1 auto — e **todas
+#    são a ÚLTIMA mensagem útil do acionamento**. Hoje o segurado recebe o
+#    protocolo e NÃO SABE QUANDO O PRESTADOR VEM, que é a única coisa que
+#    ele quer saber. É literalmente o defeito que o comentário de
+#    `schedule_agendado` diz ter consertado na Allianz, aberto na porto.
+#
+# ⚠️ E `extract_capture_anchors` roda **sem DOTALL**: `[^\n]` é
+#    obrigatório aqui. Um `.` casaria zero, porque estas telas têm quebra.
+_ANCORA_DE_AGENDAMENTO_PORTO = (
+    r"(?:previsto para ser realizado|deve chegar ao seu endere[çc]o|"
+    r"agendamento\s*:)"
+    r"[^\n]{0,24}?(hoje|\d{1,2}/\d{1,2}/\d{2,4})"
+    r"[^\n]{0,24}?entre\s*(\d{1,2}h\d{0,2})\s*e\s*(\d{1,2}h\d{0,2})"
+)
+
+
 # ---------------------------------------------------------------------------
 # Seed: Allianz Residencial WhatsApp v1
 # ---------------------------------------------------------------------------
@@ -5487,6 +5516,18 @@ def extract_capture_anchors(playbook: Dict[str, Any], insurer_message: str) -> D
             else:  # âncora de auto: dia (+ hora opcional)
                 out["schedule"] = {"day": m.group(1), "at": (m.group(2) if len(groups) >= 2 else None)}
     if "schedule" not in out:
+        # 🔴 A JANELA DA PORTO — P-084-8. Ela traz DIA e FAIXA DE HORA, e é a
+        #    última mensagem útil do acionamento. Sem este leitor, a chave
+        #    `schedule_porto` seria mais uma declarada e nunca lida — o defeito
+        #    que este arquivo já pagou com `schedule_agendado` e com
+        #    `ticket_de_entrada`. O leitor nasce junto com a chave.
+        porto = anchors.get("schedule_porto")
+        if porto:
+            m = re.search(porto, text, re.IGNORECASE)
+            if m:
+                out["schedule"] = {"day": m.group(1), "from": m.group(2),
+                                   "to": m.group(3)}
+    if "schedule" not in out:
         agendado = anchors.get("schedule_agendado")
         if agendado:
             m = re.search(agendado, text, re.IGNORECASE)
@@ -6229,3 +6270,15 @@ def conhecimento_de_assistencia(playbook_refs: Sequence[str]) -> str:
         "chame de novo — não desista do caso nem improvise o dado.",
     ]
     return "\n".join(linhas)
+
+# 🔴 P-084-8 — a porto passa a entregar o QUANDO, não só o protocolo.
+PORTO_AUTO_WHATSAPP_V1["capture_anchors"] = {
+    **PORTO_AUTO_WHATSAPP_V1["capture_anchors"],
+    "schedule_porto": _ANCORA_DE_AGENDAMENTO_PORTO,
+}
+
+# 🔴 P-084-8 — a porto passa a entregar o QUANDO, não só o protocolo.
+PORTO_RESIDENCIAL_WHATSAPP_V1["capture_anchors"] = {
+    **PORTO_RESIDENCIAL_WHATSAPP_V1["capture_anchors"],
+    "schedule_porto": _ANCORA_DE_AGENDAMENTO_PORTO,
+}
