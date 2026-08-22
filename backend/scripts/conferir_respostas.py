@@ -167,6 +167,32 @@ def e_navegacao(rotulo: str) -> bool:
 # ═════════════════════════════════════════════════════════════════════════════
 # A · DE ONDE UM SLOT PODE VIR
 # ═════════════════════════════════════════════════════════════════════════════
+def decide_pelo_cliente(texto: str, reply: str):
+    """🔴 A PERGUNTA UNICA: esta resposta AFIRMA UM FATO sobre o segurado?
+
+    Devolve o motivo, ou `None` se ela apenas NAVEGA.
+
+    ⚠️ **Uma definicao so, e este e o motivo.** O relatorio das constantes
+    reimplementou esta pergunta e chegou a `61 decidem, ZERO sem justificativa`
+    enquanto a varredura acusava 15. Era o defeito C3 de novo -- a regua
+    reimplementando a origem do slot. 📊 Medido em 22/08/2026.
+    """
+    ops = opcoes_da_tela(texto)
+    if reply.strip().isdigit():
+        rotulo = ops.get(reply.strip())
+        if not rotulo or e_navegacao(rotulo):
+            return None
+        subst = [v for v in ops.values() if not e_navegacao(v)]
+        return (f"a tecla `{reply.strip()}` escolhe '{rotulo[:44]}' entre "
+                f"{len(subst)} ALTERNATIVAS DE CONTEUDO") if len(subst) >= 2 else None
+    if M._norm(reply) not in M._norm(texto) or e_navegacao(reply):
+        return None
+    rotulos = list(ops.values()) or opcoes_em_lista(texto)
+    subst = [x for x in rotulos if not e_navegacao(x)]
+    return (f"o rotulo '{reply[:34]}' escolhe entre {len(subst)} "
+            f"ALTERNATIVAS DE CONTEUDO") if len(subst) >= 2 else None
+
+
 def _slots_derivados() -> Set[str]:
     """Os slots que `_derivar_teclas_do_caso` REALMENTE escreve.
 
@@ -415,6 +441,36 @@ def conferir(seguradora: str, ramo: str, derivados: Set[str]) -> List[Achado]:
                     #    nao gravou -- 📊 e sao 937 respostas de botao vazias.
                     #    Chamar isso de vermelho seria acusar o corpus, nao o
                     #    corredor.
+                    # ==================================================
+                    # 🔴 A ASSIMETRIA QUE DEIXAVA 32 CONSTANTES PASSAREM
+                    # ==================================================
+                    #
+                    # Para DIGITO esta regra pergunta *"esta tecla decide entre
+                    # alternativas de conteudo?"*. Para ROTULO ela perguntava
+                    # so *"o rotulo esta na tela?"* -- e parava ai.
+                    #
+                    # 📊 Medido em 22/08/2026 pelo relatorio da FASE 1: **32
+                    #    constantes escolhem por ROTULO entre alternativas de
+                    #    conteudo** e passavam por esta porta. Entre elas
+                    #    `situacao_risco -> "Nenhuma das anteriores"` e
+                    #    `via_local_rodovia -> "Via local"`, que mudam o
+                    #    EQUIPAMENTO que a seguradora manda.
+                    #
+                    # 🔴 Navegar e decidir tem a mesma forma no codigo. O tipo
+                    #    do dado -- digito ou rotulo -- nao muda isso.
+                    if (M._norm(reply) in n
+                            and not e_navegacao(reply)
+                            and not passo.get("constante_justificada")):
+                        rotulos = list(ops.values()) or opcoes_em_lista(texto)
+                        subst = [x for x in rotulos if not e_navegacao(x)]
+                        if len(subst) >= 2:
+                            fora.append(Achado(
+                                True, "B", seguradora, ramo, nome,
+                                f"o rotulo '{reply[:34]}' escolhe entre "
+                                f"{len(subst)} ALTERNATIVAS DE CONTEUDO -- o "
+                                f"corredor decide pelo cliente. Falta "
+                                f"`constante_justificada`",
+                                " ".join(texto.split())))
                     if M._norm(reply) not in n:
                         em_lista = opcoes_em_lista(texto)
                         tem_opcoes = bool(ops) or bool(em_lista)

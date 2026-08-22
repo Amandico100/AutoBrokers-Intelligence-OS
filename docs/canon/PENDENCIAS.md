@@ -7186,3 +7186,105 @@ está certa, e isso quem prova é `conferir_respostas.py`, não a bancada.
 se o passo antigo tinha achado grave naquela tela e o novo não tem, é conserto.
 **O que custa esquecer:** ou se ignora a coluna (e o próximo roubo de verdade
 passa), ou se trata todo conserto como regressão.
+
+### P-084-25 🔴 Doze constantes DECIDEM em nome do segurado, e nenhuma é justificada · 🧑 + 🤖
+
+📊 Medido em 22/08/2026 pela FASE 1 da SPEC-084.1, depois de a regra B do
+`conferir_respostas.py` deixar de tratar dígito e rótulo de formas diferentes:
+**55 achados** — dos quais 40 eram identidade da rota (já justificados) e
+**15 são o corredor afirmando um fato sobre a situação do segurado.**
+
+Quatro famílias, e as duas primeiras têm consequência física:
+
+```
+🔴 situacao_risco     → "Nenhuma das anteriores"   hdi, yelum        (2)
+     a tela oferece "Via com pouca iluminação" e "Via com pouco movimento".
+     O corredor jura que o segurado NÃO está em nenhuma das duas.
+
+🔴 via_local_rodovia  → "Via local"                bradesco          (3)
+     e a própria tela avisa: "se você está em uma Rodovia pedagiada, contate
+     a concessionária". Responder "Via local" por quem está na rodovia manda
+     guincho para onde ele não pode entrar.
+
+🔴 bateria_submenu    → "Recarga de bateria"       azul, porto       (2)
+     recarga ≠ bateria nova ≠ troca ≠ na garantia. Quatro trabalhos.
+   taxi_passageiros   → "1 a 4"                    porto             (1)
+     cinco pessoas ficam na estrada.
+
+⚠️ quando_agora/menu_quando/agendamento_dia → "Agora"/"Hoje"/"urgência"  (7)
+     e para esta o dado JÁ EXISTE: `quando` é slot de `_AUTO_SLOTS_COMMON`,
+     e o C2 desta mesma SPEC ligou `schedule["periodo"]` no resumo do cliente.
+```
+
+**O que destrava:** as sete do `quando` são derivação — mesmo padrão dos 10
+`_opcao` já escritos. 🧑 As oito primeiras precisam de decisão: o atendimento
+passa a PERGUNTAR (via/rodovia, situação de risco, tipo de bateria, passageiros)?
+Isso muda o chat, não só o corredor — por isso não foi feito sozinho.
+**O que custa esquecer:** é exatamente a forma dos oito defeitos da §9.5 —
+*"apareciam verdes em toda medição"*.
+
+### P-084-26 🔴 A régua NÃO LÊ `constante_justificada` — decidir se o eixo C penaliza · 🧑
+
+📊 `grep -c constante_justificada backend/scripts/rubrica.py` → **0**.
+
+A régua consulta `conferir_respostas` só para a **origem do slot** (eixo A).
+A regra B — o corredor decidindo pelo cliente — **não vale ponto nenhum**.
+
+🔴 Uma rota com as 12 constantes de P-084-25 intactas pode tirar 95/100.
+É literalmente *"uma rota em 95 com furo invisível"*, que a regra do Founder
+diz **não ser entrega**.
+
+**O que destrava:** 🧑 decidir se o item entra no eixo C agora. ⚠️ **Este é o
+momento mais barato**: as ONDAS ainda não começaram, então nenhum delta fica
+incomparável. Depois da ONDA A, mudar a régua invalida a base que o JUIZ 0
+certificou na FASE 0.
+**O que custa esquecer:** a régua continua assinando embaixo do furo que a
+varredura já sabe nomear.
+
+### P-084-27 Setenta e oito telas com `noop` sobre pedido, nenhuma justificada (E13) · 🤖
+
+📊 A linha de base gravada em [`reports/BASE-DO-E13.md`](reports/BASE-DO-E13.md):
+**78 telas distintas · 95 ocorrências · 73 rotas · 33 em A–E · 45 na ONDA F** —
+e as 78 sem `noop_justificado`.
+
+⚠️ Os números declarados na SPEC (122 telas / 257 ocorrências / 39 rotas /
+63 A–E) foram medidos antes dos BLOCOS 1–5, que mataram 315 telas órfãs e
+escreveram tronco/galho/folha para 10 seguradoras. A direção bate; o alcance
+declarado, não.
+
+📊 E duas correções de instrumento entraram na medição:
+- a heurística *"a tela pede"* aceitava `"por favor"` e `"quando"` soltos, e
+  trazia 61 telas que são **avisos** (`"Por favor, aguarde"`, `"Verifique se o
+  disjuntor está ligado"`). Em aviso o `noop` é CERTO.
+- a unidade era `rota × tela`, e multiplicava a mesma tela pelas 9 rotas do
+  mesmo corredor: **2.030**. A unidade honesta é a linha de corpus: **95**.
+
+**O que destrava:** cada onda justifica ou responde as telas da coluna dela.
+**O que custa esquecer:** o corredor calado na hora do pedido — a URA espera,
+o segurado espera, e nenhuma medição mostra.
+
+### P-084-28 O item de MUTAÇÃO do eixo E não sobrevive à cirurgia de arquivo · 🤖
+
+⚠️ Limitação de protocolo do JUIZ 0, medida na FASE 0. `MUTACOES` faz parte da
+régua (eixo E, 6 pontos). Quando o isolamento troca arquivos para medir um
+conserto sozinho e **não restaura o arquivo de teste**, o item zera — e o
+resultado é um fantasma de −6 em toda medição isolada, com um +6 falso
+creditado ao conserto seguinte. Foi o que aconteceu com o C2 antes de a base
+ser recapturada de `0f54761`.
+
+**O que destrava:** o isolamento restaurar TAMBÉM o arquivo de teste, e a base
+`C0` de patch-identidade medida pela mesma maquinaria continuar obrigatória.
+**O que custa esquecer:** um conserto ganha crédito pelo defeito do instrumento.
+
+### P-084-29 O alcance declarado de C3 e C4 não bate com o medido · 🤖
+
+📊 FASE 0, isolamento um conserto por vez (SPEC §7.0):
+
+| conserto | a SPEC declara | 📊 medido |
+|---|---|---|
+| C3 | 16 rotas | **27** |
+| C4 | "9 recebem, 2 têm regra, −3 em 7 rotas" | 9 recebem, **ZERO** têm regra própria, −3 em **6** |
+
+Direção e magnitude batem nos dois; só o alcance declarado não.
+**O que destrava:** nada — é registro. **O que custa esquecer:** alguém
+usa o número da SPEC como medição e a §12.1 é violada de novo.

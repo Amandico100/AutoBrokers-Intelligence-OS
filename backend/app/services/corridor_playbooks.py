@@ -1541,7 +1541,9 @@ PORTO_AUTO_WHATSAPP_V1 = _auto_playbook(
          "notes": "menu raiz: se JÁ digitamos o CPF nesta sessão o cliente exibido é o nosso → Seguro Auto direto; senão re-identifica (nunca acionar no CPF lembrado do cliente anterior)"},
         {"step": "pedir_cpf", "anchor": r"(?:informe|digite) o (?:seu )?\*?cpf ou cnpj\*?", "reply": "{titular_cpf}",
          "requires": ["titular_cpf"], "notes": "2026: 'digite o seu *CPF ou CNPJ*'"},
-        {"step": "menu_como_ajudar", "anchor": r"como eu posso te ajudar\?.*servi[çc]os para ve[íi]culo",
+        {"step": "menu_como_ajudar",
+         "constante_justificada": (
+             "📊 `Servicos para veiculo` entre 6, e a alternativa vizinha e **`Sinistro de automovel`**. 🔴 A regra do Founder e explicita: SINISTRO -> handoff, SEMPRE. Escolher a assistencia aqui nao decide pelo cliente: e recusar-se a abrir sinistro por ele."), "anchor": r"como eu posso te ajudar\?.*servi[çc]os para ve[íi]culo",
          "reply": "Serviços para veículo", "notes": "lista: Serviços para veículo / residência / Sinistro / ..."},
         {"step": "confirmar_veiculo", "anchor": r"quer atendimento para o ve[íi]culo", "reply": "Sim",
         "constante_justificada": (
@@ -1716,13 +1718,17 @@ _YELUM_FAMILY_STEPS = [
      "anchor": r"informe \*?apenas um dos dados|informe \*?um dos dados abaixo|informe somente o \*?cpf ou cnpj\*? do t[íi]tular",
      "reply": "{titular_cpf}", "requires": ["titular_cpf"],
      "notes": "entrada: CPF/CNPJ do segurado OU placa (frota usa CNPJ)"},
-    {"step": "continuar_com_placa", "anchor": r"identifiquei em seu cadastro a placa", "reply": "Automóvel",
+    {"step": "continuar_com_placa",
+     "constante_justificada": (
+         "📊 A tela e `Automovel` x `Residencial` DEPOIS de a URA identificar a placa do cadastro. O corredor e o de auto e o veiculo e o da apolice: o ramo nao e escolha aberta aqui, e a identidade da rota."), "anchor": r"identifiquei em seu cadastro a placa", "reply": "Automóvel",
      "notes": "após CPF, a URA acha a placa e pergunta veículo ou residencial"},
     {"step": "informar_nome", "anchor": r"informe o seu nome ou como gostaria de ser chamad", "reply": "Atendimento",
      "notes": "nome de quem opera o canal (a corretora)"},
     {"step": "informar_placa", "anchor": r"qual a placa do ve[íi]culo", "reply": "{veiculo_placa}",
      "requires": ["veiculo_placa"]},
-    {"step": "perfil", "anchor": r"em qual dessas op[çc][õo]es voc[êe] se enquadra", "reply": "Sou corretor(a)",
+    {"step": "perfil",
+     "constante_justificada": (
+         "🔴 `Sou segurado(a)` x `Sou corretor(a)` x `Outro`. Quem esta operando a URA E a corretora, em nome do segurado. `Sou corretor(a)` e o unico VERDADEIRO -- dizer `Sou segurado(a)` seria a afirmacao falsa."), "anchor": r"em qual dessas op[çc][õo]es voc[êe] se enquadra", "reply": "Sou corretor(a)",
      "notes": "agimos em nome da corretora"},
     {"step": "pessoa_no_local", "anchor": r"[ée] a pessoa que est[áa] (?:no )?local para acompanhar", "reply": "Não"},
     {"step": "nome_pessoa_local", "anchor": r"qual [ée] o nome da pessoa que est[áa] no local",
@@ -1805,7 +1811,9 @@ _YELUM_FAMILY_STEPS = [
      "notes": "se o caso indicar risco real, o adaptativo assume"},
     {"step": "ocupantes", "anchor": r"ocupantes tem alguma das particularidades|algu[ée]m da lista abaixo no local",
      "reply": "Nenhuma das anteriores"},
-    {"step": "destino_como", "anchor": r"para onde devemos levar o ve[íi]culo", "reply": "Digitar endereço",
+    {"step": "destino_como",
+     "constante_justificada": (
+         "⚠️ `Digitar endereco` x `Informar o CEP` NAO decide nada sobre o cliente: sao dois METODOS DE ENTRADA DO MESMO DADO. O endereco em si vem do slot logo depois, e e ele que carrega o fato."), "anchor": r"para onde devemos levar o ve[íi]culo", "reply": "Digitar endereço",
      "notes": "guincho: informar o destino do caso (rua/nº/bairro/cidade/UF do parser)"},
     {"step": "deseja_continuar", "anchor": r"deseja continuar (?:este|com o) atendimento", "reply": "Sim"},
     {"step": "falar_analista", "anchor": r"gostaria de falar com um de nossos analistas", "reply": "Sim",
@@ -2067,6 +2075,8 @@ HDI_AUTO_WHATSAPP_V1 = _auto_playbook(
     "hdi", "hdi_assistencia_24h",
     ura_steps=[
         {"step": "menu_auto_ou_resid",
+         "constante_justificada": (
+             "🔴 A tela pergunta o RAMO, e o ramo e a IDENTIDADE DA ROTA: este passo so existe dentro de um playbook de auto ou de residencial. A tecla nao escolhe nada sobre o segurado -- ela repete o que o caso ja decidiu antes de o corredor abrir."),
          "anchor": r"assist[êe]ncia para seu \*?autom[óo]vel\*? ou \*?resid[êe]ncia|para seu \*?autom[óo]vel\*? ou \*?resid[êe]ncia",
          "reply": "🚗 Automóvel", "notes": "botões com emoji: '🚗 Automóvel' / '🏠 Residência'"},
     ] + [dict(s) for s in _YELUM_FAMILY_STEPS],
@@ -2099,6 +2109,8 @@ YELUM_AUTO_WHATSAPP_V1 = _auto_playbook(
     "yelum", "yelum_assistencia_24h",
     ura_steps=[
         {"step": "menu_auto_ou_resid",
+         "constante_justificada": (
+             "🔴 A tela pergunta o RAMO, e o ramo e a IDENTIDADE DA ROTA: este passo so existe dentro de um playbook de auto ou de residencial. A tecla nao escolhe nada sobre o segurado -- ela repete o que o caso ja decidiu antes de o corredor abrir."),
          "anchor": r"assist[êe]ncia para (?:o )?(?:seu|sua) \*?(?:autom[óo]vel|casa)\*? ou \*?resid[êe]ncia\*?|sua \*?casa\*? ou \*?carro\*?",
          "reply": "Automóvel", "notes": "variante antiga usa botões Casa/Carro"},
     ] + [dict(s) for s in _YELUM_FAMILY_STEPS] + [
@@ -2463,7 +2475,9 @@ AZUL_AUTO_WHATSAPP_V1["finalize_abort_reply"] = "Sair e não agendar"
 BRADESCO_AUTO_WHATSAPP_V1 = _auto_playbook(
     "bradesco", "bradesco_assistencia_24h",
     ura_steps=[
-        {"step": "menu_inicial", "anchor": r"voc[êe] quer assist[êe]ncia para", "reply": "Veículo",
+        {"step": "menu_inicial",
+         "constante_justificada": (
+             "📊 `Veiculo` x `Residencia`. O ramo e a identidade da rota -- este playbook so roda para caso de auto."), "anchor": r"voc[êe] quer assist[êe]ncia para", "reply": "Veículo",
          "notes": "Botão 1: Veículo / Botão 2: Residência (responder o rótulo)"},
         {"step": "informar_placa", "anchor": r"informa a \*?placa do ve[íi]culo", "reply": "{veiculo_placa}",
          "requires": ["veiculo_placa"], "notes": "sem espaço/traço (formato estrito)"},
@@ -2572,7 +2586,9 @@ MAPFRE_AUTO_WHATSAPP_V1 = _auto_playbook(
         {"step": "nascimento", "anchor": r"data de nascimento da pessoa titular", "reply": "{titular_nascimento}",
          "requires": ["titular_nascimento"],
          "notes": "Mapfre valida identidade com dt. nascimento — coletar ANTES de acionar"},
-        {"step": "menu_seguro", "anchor": r"sobre qual \*?seguro\*? voc[êe] quer falar", "reply": "Carro e moto"},
+        {"step": "menu_seguro",
+         "constante_justificada": (
+             "📊 `Carro e Moto` entre Imoveis/Vida/Agro/Previdencia/Demais. Todos sao RAMOS, e o ramo e a identidade da rota."), "anchor": r"sobre qual \*?seguro\*? voc[êe] quer falar", "reply": "Carro e moto"},
         {"step": "informar_placa", "anchor": r"informe o n[úu]mero da \*?placa do seu ve[íi]culo", "reply": "{veiculo_placa}",
          "requires": ["veiculo_placa"]},
     ],
@@ -2592,7 +2608,9 @@ MAPFRE_AUTO_WHATSAPP_V1["subservices"] = {
 ZURICH_AUTO_WHATSAPP_V1 = _auto_playbook(
     "zurich", "zurich_assistencia_24h",
     ura_steps=[
-        {"step": "menu_assunto", "anchor": r"para qual dos assuntos voc[êe] precisa", "reply": "Carro e moto"},
+        {"step": "menu_assunto",
+         "constante_justificada": (
+             "📊 `Carro e moto` entre 12 assuntos, e os outros 11 sao ramos e temas que NAO abrem por este corredor. O ramo do caso ja esta decidido."), "anchor": r"para qual dos assuntos voc[êe] precisa", "reply": "Carro e moto"},
         {"step": "menu_servicos", "anchor": r"escolha um dos servi[çc]os para continuar", "reply": "Assistência 24h"},
         {"step": "acionar_assistencia", "anchor": r"acionar a assist[êe]ncia 24h\*? ou \*?acionar o seguro", "reply": "Acionar assistência 24h",
          "notes": "colisão/roubo é SINISTRO (handoff), não assistência"},
@@ -2889,6 +2907,8 @@ HDI_RESIDENCIAL_WHATSAPP_V1: Dict[str, Any] = {
                   "Desentupimento (desentupimento residencial) / Eletricista / Chaveiro / "
                   "Linha branca / Ar condicionado — responder o RÓTULO, que vem do subserviço"},
         {"step": "servico_ja_aberto",
+         "constante_justificada": (
+             "📊 `Acompanhar` x `Novo servico`. O corredor abre acionamento; ACOMPANHAR e outro outcome, que nao passa por aqui. ⚠️ E o limite escrito: o corredor NAO sabe acompanhar servico existente -- esse pedido tem de virar handoff no atendimento, nao tecla aqui."),
          "anchor": r"localizamos o servi[çc]o de .{0,80}?deseja acompanhar",
          "reply": "Novo serviço",
          "notes": "📊 'Para esse CPF localizamos o serviço de *ENCANADOR*. Deseja acompanhar? "
@@ -3015,6 +3035,8 @@ PORTO_RESIDENCIAL_WHATSAPP_V1: Dict[str, Any] = {
         # ⚠️ Este passo vem ANTES do `menu_raiz`, e a âncora dele exige a marca
         #    que só a tela de serviço-aberto tem.
         {"step": "servico_ja_aberto_menu",
+         "constante_justificada": (
+             "📊 `Falar sobre <servico aberto>` x `Outro assunto`. Mesmo caso do `servico_ja_aberto`: o corredor abre acionamento NOVO. Falar sobre o que ja existe e acompanhamento, e acompanhamento e handoff."),
          "anchor": (r"localizei (?:o seguinte|os seguintes) servi[çc]os?"
                     r"[\s\S]{0,400}outro assunto"),
          "reply": "Outro assunto",
@@ -3188,6 +3210,8 @@ YELUM_RESIDENCIAL_WHATSAPP_V1: Dict[str, Any] = {
          "notes": "📊 'Olá, seja bem-vindo ao atendimento digital de *Assistência 24 horas* da "
                   "*Yelum Seguradora!*' (6 de 6 sessões) — saudação e dicas de uso não se respondem"},
         {"step": "menu_auto_ou_resid",
+         "constante_justificada": (
+             "🔴 A tela pergunta o RAMO, e o ramo e a IDENTIDADE DA ROTA: este passo so existe dentro de um playbook de auto ou de residencial. A tecla nao escolhe nada sobre o segurado -- ela repete o que o caso ja decidiu antes de o corredor abrir."),
          "anchor": (r"assist[êe]ncia para seu \*?autom[óo]vel\*? ou \*?resid[êe]ncia|"
                     r"servi[çc]os de assist[êe]ncia para seu \*?autom[óo]vel\*? ou \*?resid[êe]ncia"),
          "reply": "🏠 Residência",
@@ -3219,6 +3243,8 @@ YELUM_RESIDENCIAL_WHATSAPP_V1: Dict[str, Any] = {
                   "família de auto exigia 'informe O SEU nome' e não casava. A resposta é a MESMA "
                   "do corredor de auto: quem opera o canal é a corretora"},
         {"step": "perfil",
+         "constante_justificada": (
+             "🔴 `Sou segurado(a)` x `Sou corretor(a)` x `Outro`. Quem esta operando a URA E a corretora, em nome do segurado. `Sou corretor(a)` e o unico VERDADEIRO -- dizer `Sou segurado(a)` seria a afirmacao falsa."),
          "anchor": (r"escolha a op[çc][ãa]o que melhor te representa|"
                     r"em qual dessas op[çc][õo]es voc[êe] se enquadra"),
          "reply": "Sou corretor(a)",
@@ -3275,6 +3301,8 @@ YELUM_RESIDENCIAL_WHATSAPP_V1: Dict[str, Any] = {
                   "referência no caso, o adaptativo responde o que a corretora respondeu de fato "
                   "('sem referencia')"},
         {"step": "servico_ja_aberto",
+         "constante_justificada": (
+             "📊 `Acompanhar` x `Novo servico`. O corredor abre acionamento; ACOMPANHAR e outro outcome, que nao passa por aqui. ⚠️ E o limite escrito: o corredor NAO sabe acompanhar servico existente -- esse pedido tem de virar handoff no atendimento, nao tecla aqui."),
          "anchor": r"localizamos (?:o servi[çc]o de|algumas assist[êe]ncias).{0,80}?deseja acompanhar",
          "reply": "Novo serviço",
          "notes": "📊 DUAS redações: 'localizamos o serviço de *CHAVEIRO RESIDENCIAL*' e "
@@ -4405,6 +4433,8 @@ _MAPFRE_TRONCO = [
      "notes": "📊 1/1. 🔴 SLOT NOVO, e é PENDÊNCIA DE CONFIGURAÇÃO da corretora, não de "
               "coleta do segurado. Sem ele o canal do corretor não abre."},
     {"step": "perfil_segurado",
+     "constante_justificada": (
+         "🔴 `Segurado` x `Terceiro`. O corredor so abre acionamento na apolice do PROPRIO segurado da corretora: e por isso que ele tem o CPF do titular. Terceiro e outro fluxo, e cai em sinistro -- que e handoff."),
      "anchor": r"voc[êe] [ée] segurado ou terceiro|em qual perfil voc[êe] se encaixa",
      "reply": "Segurado", "notes": "📊 2 telas / 2 sessões."},
     {"step": "protocolo_agiliza", "anchor": r"voc[êe] j[áa] possui um protocolo aberto pelo",
