@@ -419,6 +419,50 @@ def _derivar_teclas_do_caso(slots: dict) -> None:
         # sem luz").
         slots["problema_eletrico_opcao"] = "2" if curto else "1"
 
+    # ---- "Selecione a opção que condiz com a pane" (yelum/hdi) -------
+    # 📊 O menu real, NOVE opções:
+    #   1-Problemas elétricos 2-Luzes do painel 3-Vazamento
+    #   4-Superaquecimento 5-Problemas no motor 6-Embreagem 7-Câmbio
+    #   8-Não sei 9-Mais opções
+    #
+    # 🔴 Até 22/08/2026 o passo respondia "Problemas no motor", CONSTANTE, nas
+    #    nove. E é esta tecla que a URA usa para separar REBOQUE de MECÂNICO NO
+    #    LOCAL: 📊 a sessão real de socorro mecânico da HDI (71caf82f,
+    #    01/06/2026, protocolo 9662631) apertou "Problemas elétricos".
+    #
+    # ⚠️ "Não sei" (8) é uma opção HONESTA da própria URA, e é o default quando
+    #    o relato não diz nada — melhor que afirmar um defeito que ninguém viu.
+    if not str(slots.get("pane_detalhe_opcao") or "").strip():
+        if any(p in texto for p in ("eletric", "eletrico", "bateria", "alternador",
+                                    "nao liga", "nao pega", "nao da partida",
+                                    "descarregad", "injec", "ignic")):
+            slots["pane_detalhe_opcao"] = "1"
+        elif any(p in texto for p in ("luz do painel", "luzes do painel", "painel aceso",
+                                      "luz acesa", "lampada do painel")):
+            slots["pane_detalhe_opcao"] = "2"
+        elif any(p in texto for p in ("vazando", "vazamento", "oleo no chao",
+                                      "perdendo oleo", "perdendo agua")):
+            slots["pane_detalhe_opcao"] = "3"
+        elif any(p in texto for p in ("superaquec", "esquentando", "fervendo",
+                                      "temperatura alta", "radiador")):
+            slots["pane_detalhe_opcao"] = "4"
+        elif any(p in texto for p in ("motor", "fundiu", "batendo pino", "morreu andando")):
+            slots["pane_detalhe_opcao"] = "5"
+        # 🔴 A ORDEM AQUI É REGRA, E ELA CUSTOU UM CONTROLE VERMELHO.
+        #    A primeira versão testava embreagem antes e punha "nao entra marcha"
+        #    na lista dela. 📊 O relato "Não entra marcha, problema no câmbio"
+        #    dava **6 (embreagem)** -- o segurado nomeou a peça e o corredor
+        #    escolheu outra.
+        #    A peça NOMEADA vence o sintoma. "nao entra marcha" sozinho é
+        #    vocabulário de câmbio, e por isso desceu para o ramo 7.
+        elif any(p in texto for p in ("embreagem", "pedal da embreagem", "patinando")):
+            slots["pane_detalhe_opcao"] = "6"
+        elif any(p in texto for p in ("cambio", "transmiss", "marcha", "engatar")):
+            slots["pane_detalhe_opcao"] = "7"
+        else:
+            # 🔴 "Não sei" é opção da URA, e é a resposta honesta de quem não sabe.
+            slots["pane_detalhe_opcao"] = "8"
+
     # ---- "O que aconteceu?" (ENCANADOR) ------------------------------
     # 📊 A tela real, allianz-residencial, 4 sessões:
     #   "1 - Vazamento em dispositivo como sifões, rabichos, torneiras e válvulas

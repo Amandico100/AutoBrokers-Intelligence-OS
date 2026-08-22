@@ -1485,7 +1485,18 @@ PORTO_AUTO_WHATSAPP_V1 = _auto_playbook(
         {"step": "endereco_livre", "anchor": r"digite o endere[çc]o completo do local", "reply": "{local_atual}",
          "reply_repeat": "{local_destino}", "requires": ["local_atual"], "fallback_adaptive": True,
          "notes": "Porto aceita endereço em texto livre; 1ª vez = origem, 2ª = destino do guincho"},
-        {"step": "endereco_correto", "anchor": r"est[áa] correto\s*\?", "reply": "Sim",
+        # 🔴 ESTA ÂNCORA ROUBAVA A TELA DO TELEFONE — 22/08/2026.
+        #    📊 `est[áa] correto\s*\?` casa **7** telas: 6 do endereço e
+        #       **"O número está correto? {TELEFONE} *1* - Sim *2* - Não"**.
+        #       Responder "Sim" ali confirma um telefone que ninguém conferiu —
+        #       e é para esse número que o prestador liga quando não acha a casa.
+        #    🔴 CONTROLE: com `^`, casa exatamente 6. `match_ura_step` compila
+        #       com IGNORECASE|DOTALL e **sem** MULTILINE, então `^` é o início
+        #       da mensagem inteira — que é onde a tela do endereço começa e a
+        #       do telefone não.
+        {"step": "numero_correto", "anchor": r"^o n[úu]mero est[áa] correto", "reply": "1",
+         "notes": "📊 1 tela / 1 sessão. Vem ANTES de `endereco_correto` de propósito."},
+        {"step": "endereco_correto", "anchor": r"^est[áa] correto\s*\?", "reply": "Sim",
          "notes": "confirma o geocode do endereço QUE NÓS digitamos"},
         {"step": "confirmar_solicitacao", "anchor": r"como voc[êe] quer prosseguir|posso confirmar sua solicita[çc][ãa]o",
          "reply": "Confirmar solicitação",
@@ -1606,8 +1617,25 @@ _YELUM_FAMILY_STEPS = [
     {"step": "o_que_aconteceu", "anchor": r"pode me dizer o que aconteceu", "reply": "{servico_opcao}",
      "requires": ["servico_opcao"],
      "notes": "guincho→Pane ou Defeito · bateria→Recarga de bateria · pneu→Pneu Furado · chaveiro→Problema com a chave · colisão=SINISTRO (handoff antes)"},
-    {"step": "pane_detalhe", "anchor": r"selecione a op[çc][ãa]o que condiz com a pane", "reply": "Problemas no motor",
-     "notes": "guincho por pane: leva direto ao Guincho (fluxo real 16/03/2026)"},
+    # 🔴 UMA CONSTANTE ESCOLHIA A PANE DO SEGURADO POR ELE — 22/08/2026.
+    #
+    # 📊 O menu tem NOVE opções: Problemas elétricos · Luzes do painel ·
+    #    Vazamento · Superaquecimento · Problemas no motor · Embreagem ·
+    #    Câmbio · Não sei · Mais opções. O passo respondia "Problemas no motor",
+    #    fixo, nas nove.
+    #
+    # 🔴 E é essa escolha que a URA usa para separar REBOQUE de MECÂNICO NO
+    #    LOCAL. A sessão real de socorro mecânico da HDI (71caf82f, 01/06/2026,
+    #    protocolo 9662631) apertou **"Problemas elétricos"** — e recebeu um
+    #    mecânico. Com a constante, ela teria pedido um guincho.
+    #
+    # A tradução do relato é o trabalho do corredor: o segurado descreve com as
+    # palavras dele, e o corredor converte para a tecla da seguradora.
+    {"step": "pane_detalhe", "anchor": r"selecione a op[çc][ãa]o que condiz com a pane",
+     "reply": "{pane_detalhe_opcao}", "requires": ["pane_detalhe_opcao"],
+     "fallback_adaptive": True,
+     "notes": "📊 9 opções. Vem do RELATO, nunca fixo — a tecla decide reboque x "
+              "mecânico no local. Sem relato utilizável, o adaptativo lê a tela."},
     {"step": "endereco_como", "anchor": r"op[çc][õo]es para informar o endere[çc]o onde o ve[íi]culo est[áa]",
      "reply": "Digitar endereço", "notes": "variante jan/2026: Digitar endereço / Compartilhar / Informar o CEP / Não sei"},
     {"step": "endereco_direto_2026",
@@ -1955,15 +1983,124 @@ YELUM_AUTO_WHATSAPP_V1["finalize_abort_reply"] = "Sair"  # 'Digite Sair para enc
 # MESMO objeto do corredor da HDI (mesmo bot, mesmo flow_id). `is`, não `==`.
 YELUM_AUTO_WHATSAPP_V1["native_flows"] = _NATIVE_FLOWS_FAMILIA_HDI_YELUM
 
+# ==========================================================================
+# 🔴 TOKIO — A SEGURADORA QUE NÃO ABRE NADA NESTE CANAL — 22/08/2026
+# ==========================================================================
+#
+# 📊 O corredor tinha UM passo, e ele casava **0 de 28** telas em auto e
+#    **0 de 17** em residencial: a tela "você é segurado, prestador ou
+#    corretor" não existe em nenhuma das 45 telas do corpus.
+#    CONTROLE: uma âncora que sabemos casar ("digite o cpf/cnpj") casa 1 —
+#    o teste CONSEGUE dar ≥1, então o zero é do passo, não do método.
+#
+# 🔴 E o defeito de fundo é maior que o corredor vazio. O fluxo real, IDÊNTICO
+#    nas 7 sessões de auto e nas 4 de residencial:
+#
+#      1. "Digite o CPF/CNPJ do titular do Seguro."
+#      2. "Consegui identificar seu Seguro!"
+#      3. "Seu protocolo de atendimento é 68977599"     <- turno 3 de 8 a 11
+#      4. menu de serviços do Seguro Automóvel
+#      5. "Clique no link abaixo para solicitar ASSISTÊNCIA AUTOMÓVEL 24H E
+#          GUINCHO: https://autoatendimento.tokiomarine.com.br/..."   <- O FIM
+#
+#    A tokio **entrega um LINK e encerra**. Os 4 subserviços herdam
+#    `_AUTO_SUBSERVICES` sem `outcome`, isto é `OUTCOME_ABRE` — "vai até o
+#    protocolo". Ele nunca vai.
+#
+# 🔴 PIOR: `_ANCORA_DE_PROTOCOLO` colhe o CARIMBO DE ENTRADA (7 de 7 sessões,
+#    turno 3, antes de qualquer escolha de serviço) e o corredor encerra
+#    entregando "assistência aberta, protocolo 68977599" — enquanto **nada
+#    foi aberto**. É o número do chat, não do chamado.
+#    Corroborado de fora: `zonas_do_acervo.FRONTEIRAS["tokio"]` está VAZIO,
+#    com a nota já escrita "a tokio sai por link ou telefone, não transfere
+#    no fio". Duas medições independentes, a mesma conclusão.
+_TOKIO_REFERRAL = {
+    "kind": "orientacao",
+    "closes_as": "resolvido_por_encaminhamento",
+    "link_capture": "tracking_link",
+    "client_message": (
+        "A Tokio Marine NÃO abre guincho, chaveiro, pane nem pneu pelo WhatsApp: ela "
+        "entrega um LINK de autoatendimento e encerra. Repasse ao segurado o link que "
+        "a seguradora mandou NESTA conversa — nunca um endereço de memória. "
+        "🔴 E avise que o número recebido no início é PROTOCOLO DE ATENDIMENTO DO CHAT, "
+        "não número de serviço: não há chamado aberto até ele usar o link."
+    ),
+}
 TOKIO_AUTO_WHATSAPP_V1 = _auto_playbook(
     "tokio", "tokio_assistencia_24h",
     ura_steps=[
-        {"step": "perfil", "anchor": r"voc[êe] [ée] segurado, prestador ou corretor", "reply": "Corretor",
-         "notes": "responder Corretor (botão)"},
+        {"step": "pedir_cpf",
+         "anchor": (r"digite o cpf/cnpj do titular do seguro|"
+                    r"me informe o cpf/cnpj para come[çc]armos"),
+         "reply": "{titular_cpf}", "requires": ["titular_cpf"],
+         "notes": "📊 7 de 7 sessões, 2 redações. É a porta de entrada obrigatória."},
+        {"step": "menu_servicos_auto",
+         "anchor": r"menu de servi[çc]os do (?:seguro )?autom[óo]vel",
+         "reply": "Guincho/Assist.24h",
+         "notes": "📊 7 de 7 sessões. LISTA — responde-se o RÓTULO; dígito é rejeitado. "
+                  "⚠️ É a MESMA tecla para guincho, bateria, pneu e chaveiro: a tokio "
+                  "não separa os quatro neste menu."},
+        {"step": "encaminha_assistencia",
+         "anchor": r"para solicitar (?:ou acompanhar )?\*?assist[êe]ncia (?:autom[óo]vel|auto)",
+         "reply": "", "noop": True,
+         "notes": "📊 3 sessões. É o FIM da rota. Sem este passo o corredor fica "
+                  "'monitorando' um protocolo que não vem."},
+        {"step": "sinistro_em_andamento",
+         "anchor": r"possui um processo de sinistro em andamento",
+         "reply": "", "noop": True,
+         "notes": "📊 2 telas / 3 sessões. INFORMATIVA: a URA segue para o menu logo "
+                  "depois. 🔴 Vem ANTES de qualquer leitura de handoff — ver a nota "
+                  "do `handoff_triggers` abaixo."},
+        {"step": "algo_mais", "anchor": r"posso te ajudar em algo mais",
+         "reply": "Encerrar atendimento",
+         "notes": "📊 7 de 7 sessões. ⚠️ Na MAPFRE a mesma pergunta tem outros rótulos "
+                  "(lá é 'Não'). Duas seguradoras, duas respostas."},
+        # 🔴 O noop vai por ÚLTIMO: `match_ura_step` devolve o primeiro que casa,
+        #    e uma alternativa larga na frente emudece menu que o corredor sabe ler.
+        {"step": "avisos_informativos",
+         "anchor": (r"consegui identificar seu seguro|vou iniciar seu atendimento|"
+                    r"voc[êe] ainda est[áa] comigo|estou finalizando este atendimento|"
+                    r"conhe[çc]a o super app da tokio|em uma escala de 0 a 10|"
+                    r"seu protocolo de atendimento [ée]|"
+                    r"n[ãa]o entendi, selecione uma op[çc][ãa]o"),
+         "reply": "", "noop": True,
+         "notes": "📊 14 telas distintas / 7 sessões. NENHUMA pede resposta. "
+                  "🔴 'seu protocolo de atendimento é' entra AQUI como noop — e isso "
+                  "NÃO impede a captura: quem colhe é `capture_anchors`, e é lá que o "
+                  "carimbo ganhou nome próprio (`ticket_de_entrada`)."},
     ],
     finalize_anchors=[r"posso confirmar", r"deseja confirmar", r"confirmar? (?:o|a) (?:agendamento|abertura)"],
 )
-TOKIO_AUTO_WHATSAPP_V1["subservice_menu_map"] = {"guincho": "Guincho", "bateria": "Bateria", "pneu": "Troca de pneu", "chaveiro": "Chaveiro"}
+TOKIO_AUTO_WHATSAPP_V1["subservice_menu_map"] = {"guincho": "Guincho/Assist.24h", "bateria": "Guincho/Assist.24h", "pneu": "Guincho/Assist.24h", "chaveiro": "Guincho/Assist.24h"}
+
+# 🔴 OS QUATRO PASSAM A ENCAMINHAR. Hoje os quatro diziam OUTCOME_ABRE.
+for _sv in ("guincho", "bateria", "pneu", "chaveiro"):
+    TOKIO_AUTO_WHATSAPP_V1["subservices"][_sv]["outcome"] = OUTCOME_ENCAMINHA
+    TOKIO_AUTO_WHATSAPP_V1["subservices"][_sv]["referral"] = dict(_TOKIO_REFERRAL)
+
+# 🔴 O CARIMBO DE ENTRADA GANHA NOME PRÓPRIO, e sai de `protocol`.
+#    📊 7 de 7 sessões trazem "Seu protocolo de atendimento é NNNNNNNN" no turno 3,
+#    ANTES de qualquer escolha. Encerrar um caso com esse número é prometer um
+#    chamado que não existe.
+TOKIO_AUTO_WHATSAPP_V1["capture_anchors"] = {
+    **TOKIO_AUTO_WHATSAPP_V1["capture_anchors"],
+    "protocol": (r"(?:ordem\s+de\s+servi[çc]o|\bo\.?s\.?#?(?=\d))\s*#?\s*(\d{5,12})"),
+    "ticket_de_entrada": r"(?:o\s+)?seu\s+protocolo\s+de\s+atendimento\s+[ée]\s*(\d{6,12})",
+    "tracking_link": r"(https?://autoatendimento\.tokiomarine\.com\.br/\S+)",
+}
+
+# 🔴 O GATILHO `sinistro` CRU DERRUBAVA MAIS DA METADE DAS SESSÕES BOAS.
+#    📊 A palavra aparece em 14 dos 70 eventos do corpus, em 5 de 7 sessões —
+#    incluindo as 3 que terminaram bem. A tela "Verifiquei que você possui um
+#    processo de *sinistro em andamento*, já vou deixar aqui onde acompanhar"
+#    é INFORMATIVA: a URA continua o menu logo depois.
+#    Aqui `sinistro` só é handoff quando a tela PEDE alguma coisa sobre ele.
+TOKIO_AUTO_WHATSAPP_V1["handoff_triggers"] = [
+    t for t in TOKIO_AUTO_WHATSAPP_V1["handoff_triggers"] if t != r"sinistro"
+] + [
+    r"abrir (?:um )?sinistro", r"comunicar (?:o )?sinistro",
+    r"qual [ée] o n[úu]mero do processo",
+]
 
 # --- ALFA (URA gêmea da Allianz — mesmo fornecedor; fluxo REAL 03/02/2026) --------
 ALFA_AUTO_WHATSAPP_V1 = _auto_playbook(
@@ -2111,7 +2248,18 @@ AZUL_AUTO_WHATSAPP_V1 = _auto_playbook(
         # "está correto?" e as duas são menus NUMERADOS. Responder "Sim" a um
         # menu numerado é resposta inválida; responder "1" a esta lista de
         # botões também. `match_ura_step` devolve o PRIMEIRO que casa.
-        {"step": "endereco_correto", "anchor": r"est[áa] correto\s*\?", "reply": "Sim",
+        # 🔴 ESTA ÂNCORA ROUBAVA A TELA DO TELEFONE — 22/08/2026.
+        #    📊 `est[áa] correto\s*\?` casa **7** telas: 6 do endereço e
+        #       **"O número está correto? {TELEFONE} *1* - Sim *2* - Não"**.
+        #       Responder "Sim" ali confirma um telefone que ninguém conferiu —
+        #       e é para esse número que o prestador liga quando não acha a casa.
+        #    🔴 CONTROLE: com `^`, casa exatamente 6. `match_ura_step` compila
+        #       com IGNORECASE|DOTALL e **sem** MULTILINE, então `^` é o início
+        #       da mensagem inteira — que é onde a tela do endereço começa e a
+        #       do telefone não.
+        {"step": "numero_correto", "anchor": r"^o n[úu]mero est[áa] correto", "reply": "1",
+         "notes": "📊 1 tela / 1 sessão. Vem ANTES de `endereco_correto` de propósito."},
+        {"step": "endereco_correto", "anchor": r"^est[áa] correto\s*\?", "reply": "Sim",
          "notes": "confirma o geocode do endereço que NÓS digitamos (botões Sim/Não). "
                   "Passo GENÉRICO — precisa ficar depois dos específicos"},
     ],
@@ -2123,7 +2271,32 @@ AZUL_AUTO_WHATSAPP_V1 = _auto_playbook(
         r"tudo est[áa] correto", r"posso confirmar", r"confirmar o agendamento",
     ],
 )
-AZUL_AUTO_WHATSAPP_V1["subservice_menu_map"] = {"guincho": "1", "bateria": "2", "pneu": "3", "chaveiro": "4"}
+# 🔴 O MENU DA AZUL MIGROU EM 07/04/2026, E O MAPA FICOU NO BOT ANTIGO.
+#
+# 📊 As duas variantes NÃO competem — elas se sucederam, e o corte é o MESMO dia
+#    em TRÊS telas independentes (o que prova migração de bot, não ambiguidade):
+#
+#      "O que você precisa?" NUMERADA (1-8)   3 msgs · 17/09/2025 a 26/12/2025
+#      "O que você precisa?" LISTA            8 msgs · 07/04/2026 a 28/07/2026
+#
+# 📊 E na variante VIVA (8 de 11 sessões) as opções são:
+#      Guincho (reboque) · Bateria · Chaveiro para veículo · Técnico · Táxi
+#    🔴 NÃO EXISTE "Troca de pneu" e NÃO EXISTE "vidro".
+#
+#    · `pneu` mandava "3" numa lista de RÓTULOS — rejeitado. Onde o pneu entra
+#      em 2026 **não está estabelecido** (candidato: "Técnico", zero evidência).
+#    · `vidros` mandava "5" — tecla morta desde 26/12/2025. Em 2026 vidro está
+#      no menu RAIZ ("Vidros e faróis", 23 msgs / 16 sessões), não neste.
+#
+# 🔴 Sem rótulo observado, o correto é NÃO declarar a tecla: `subservice_supported`
+#    devolve False e o caso vai a handoff. É a regra que `_ativar_vidros` já
+#    escreve — "inventar rótulo de menu é o defeito que manda o segurado para a
+#    opção errada" — aplicada aqui.
+AZUL_AUTO_WHATSAPP_V1["subservice_menu_map"] = {
+    "guincho": "Guincho (reboque)", "bateria": "Bateria",
+    "chaveiro": "Chaveiro para veículo",
+    # 🔴 `pneu` NÃO entra: nenhum rótulo dele existe no menu vivo.
+}
 # O CANCELAMENTO PRECISA SER ACEITÁVEL PELA TELA QUE ESTÁ NA FRENTE.
 #
 # Era "4", de "*4* - Sair e não agendar" do RESUMO numerado. 📊 Essa tela teve 2
@@ -2174,15 +2347,54 @@ BRADESCO_AUTO_WHATSAPP_V1 = _auto_playbook(
          "notes": "v1: destino do caso; oferecer as referenciadas ao cliente é evolução da Faixa 6"},
         {"step": "destino_rodovia", "anchor": r"pra onde voc[êe] quer levar seu ve[íi]culo, se encontra em uma \*?rodovia", "reply": "Nao",
          "notes": "destino em rodovia? default não"},
-        {"step": "confirmar_abertura", "anchor": r"posso confirmar a abertura", "reply": "Sim",
-         "notes": "confirmação FINAL. Só alcançada em modo LIVE — no teste o freio cancela antes."},
+        # 🔴 ESTE PASSO NUNCA ERA ALCANÇADO — o freio casava a MESMA frase e
+        #    cancelava em cima dele. Com o freio movido para o resumo final,
+        #    ele volta a ser o que sempre foi: a confirmação do ENDEREÇO.
+        {"step": "confirmar_abertura",
+         "anchor": r"posso confirmar a abertura da assist[êe]ncia para este local",
+         "reply": "Sim",
+         "notes": "📊 3 sessões, turnos 20/28, 24/33 e 22/32. É confirmação de LOCAL: "
+                  "a URA ainda pede agendamento, resumo e confirmação depois dela."},
+        {"step": "tecnico_confirma", "anchor": r"resolver com a assist[êe]ncia de um t[ée]cnico",
+         "reply": "Sim", "only_subservices": ["bateria"],
+         "notes": "📊 1 sessão, turno 10/15. É o desfecho da tecla '1 - estacionado e não "
+                  "liga': a URA decide TÉCNICO, não reboque. 🔴 Esta tela também disparava "
+                  "o freio (`posso confirmar`), matando a rota bateria no meio."},
     ],
     finalize_anchors=[
-        # Freio REAL: revisão final "Origem/Destino ... Posso confirmar a abertura
-        # da assistência?" ('enviar agora ou prefere agendar' é COLETA, não freio!)
-        r"posso confirmar a abertura",
-        r"as informa[çc][õo]es est[ãa]o corretas",
-        r"posso confirmar", r"deseja confirmar",
+        # ==================================================================
+        # 🔴 O FREIO DISPARAVA 7 A 11 TURNOS CEDO DEMAIS — medido 22/08/2026
+        # ==================================================================
+        #
+        # 📊 Rodando os `finalize_anchors` contra as 6 sessões, marcando o turno:
+        #
+        #   72af1ae1  turno 20/28  [posso confirmar a abertura]  ← a tela do ENDEREÇO
+        #   0d5284f3  turno 24/33  [posso confirmar a abertura]  ← idem
+        #   bc2cfead  turno 22/32  [posso confirmar a abertura]  ← idem
+        #   2c05415b  turno 10/15  [posso confirmar]             ← a tela do TÉCNICO
+        #   72af1ae1  turno 25/28  [posso confirmar a abertura]  ← ESTE é o freio
+        #   0d5284f3  turno 31/33  [posso confirmar]             ← ESTE é o freio
+        #   bc2cfead  turno 29/32  [posso confirmar]             ← ESTE é o freio
+        #   72af1ae1  turno 28/28  [as informações estão corretas] ← REENTRADA
+        #
+        # 🔴 "Posso confirmar a abertura da assistência **PARA ESTE LOCAL**?" é
+        #    confirmação de ENDEREÇO, não o resumo final. Em 3 de 4 sessões
+        #    longas o freio cancelava 7 a 11 turnos antes de o serviço existir.
+        #    E `as informações estão corretas` pegava a tela de REENTRADA
+        #    ("Vi que você já identificou o veículo"), que também não é freio.
+        #
+        # ⚠️ É a MESMA família de defeito que o comentário antigo já corrigira
+        #    uma vez ("'enviar agora ou prefere agendar' é COLETA, não freio!"),
+        #    reaparecida numa tela vizinha. Freio largo demais não trava por
+        #    excesso de zelo: cancela o trabalho antes de ele acontecer.
+        #
+        # 🔴 CONTROLE, os três, medidos:
+        #    (a) as 3 telas de resumo final casam?  -> 3/3 ✅
+        #    (b) casa a tela do ENDEREÇO?           -> 0 ✅  (antes: 3)
+        #    (c) casa a tela de REENTRADA?          -> 0 ✅  (antes: 1)
+        r"confira as informa[çc][õo]es que voc[êe] me forneceu",
+        r"posso confirmar o agendamento da assist[êe]ncia",
+        r"s[óo] vamos confirmar as informa[çc][õo]es",
     ],
 )
 BRADESCO_AUTO_WHATSAPP_V1["subservice_menu_map"] = {"guincho": "1", "bateria": "1", "pneu": "3", "chaveiro": "4"}
@@ -2371,7 +2583,13 @@ _VIDROS_REFERRAL_ZURICH = {
         "enviou nesta conversa — sem completar com prazo, valor ou franquia que ela não disse."
     ),
 }
-_ativar_vidros(AZUL_AUTO_WHATSAPP_V1, menu_value="5", outcome=OUTCOME_ABRE)
+# 🔴 DESLIGADO EM 22/08/2026: `menu_value="5"` aponta para uma tecla que morreu
+#    com a URA numerada em 26/12/2025. 📊 Na variante viva não há opção de vidro
+#    neste menu — ele está no menu RAIZ ("Vidros e faróis"), cujo fluxo NÃO foi
+#    observado. Ligar `vidros` com a tecla velha manda "5" e a URA rejeita.
+#    Com a chamada removida, `subservice_supported(azul, "vidros")` devolve
+#    False e o caso vai a handoff — que é o estado honesto até haver captura.
+# _ativar_vidros(AZUL_AUTO_WHATSAPP_V1, menu_value="5", outcome=OUTCOME_ABRE)
 _ativar_vidros(PORTO_AUTO_WHATSAPP_V1, menu_value="Conserto de vidro",
                outcome=OUTCOME_ENCAMINHA, referral=_VIDROS_REFERRAL_PORTO)
 _ativar_vidros(ZURICH_AUTO_WHATSAPP_V1, menu_value="Assistência a vidros",
@@ -2579,26 +2797,59 @@ PORTO_RESIDENCIAL_WHATSAPP_V1: Dict[str, Any] = {
     "insurer_contact_ref": "porto_assistencia_24h",
     "description": "Assistência RESIDENCIAL Porto via WhatsApp (elétrica/hidráulica/eletrodomésticos).",
     "ura_steps": [
+        # 🔴 O LAÇO: ESTE PASSO RE-IDENTIFICAVA PARA SEMPRE — 22/08/2026.
+        #
+        # 📊 `menu_raiz` casa 13 vezes em 8 sessões do corpus residencial, e
+        #    respondia "Informar outro CPF/CNPJ" **as 13**. O corredor de AUTO
+        #    resolve o mesmo padrão com `reply_if_step_done` desde sempre; o
+        #    residencial não tinha, e por isso nunca chegava à linha residencial.
+        #
+        # ⚠️ E os dois passos seguintes (`menu_tipo_atendimento`,
+        #    `menu_como_ajudar_resid`) casam **ZERO** telas em 210 — eles são
+        #    órfãos de USO, não só de texto: a URA nunca chega neles.
+        #
+        # A nota antiga dizia "o rótulo residencial da 2ª volta não foi
+        # observado, e chutar manda o caso para a rota errada". Era verdade
+        # quando foi escrita. 📊 Agora foi observado, 8 de 8 ocorrências:
+        #
+        #    "{NOME}, escolha a opção desejada:
+        #     Seguro Auto | **Serviço para residência** | Serviços Particulares
+        #     | Sinistro de terceiro | Contrate a Porto | Informar outro CPF/CNPJ"
+        #
+        # 🔴 "Serviço para residência" — **SINGULAR**, sem o "s" em Serviço.
+        #    `menu_tipo_atendimento` responde "ServiçoS para residência", que
+        #    não existe em nenhuma das 8 telas.
         {"step": "menu_raiz", "anchor": r"escolha a op[çc][ãa]o desejada",
          "reply": "Informar outro CPF/CNPJ",
-         "notes": "âncora REUSADA do corredor de auto da Porto: a URA lembra o CPF do ÚLTIMO "
-                  "atendimento (o WhatsApp é da corretora e atende N clientes) — re-identificar "
-                  "SEMPRE. Sem `reply_repeat`: o rótulo residencial da 2ª volta não foi observado, "
-                  "e chutar aqui manda o caso para a rota errada"},
+         "reply_if_step_done": {"step": "pedir_cpf", "reply": "Serviço para residência"},
+         "notes": "📊 13 msgs / 8 sessões. Na 1ª volta re-identifica (o CPF lembrado é o do "
+                  "cliente ANTERIOR); depois do nosso CPF, entra na linha residencial pelo "
+                  "rótulo medido — SINGULAR, 8 de 8 ocorrências."},
         {"step": "pedir_cpf", "anchor": r"(?:informe|digite) o (?:seu )?\*?cpf ou cnpj\*?",
          "reply": "{titular_cpf}", "requires": ["titular_cpf"],
          "notes": "âncora REUSADA do corredor de auto da Porto (mesma porta de identificação)"},
-        {"step": "menu_tipo_atendimento",
-         "anchor": r"qual tipo de atendimento voc[êe] precisa",
-         "reply": "Serviços para residência",
-         "notes": "📊 lista real 03/08/2026: 'Serviços para veículo / Serviços para residência / "
-                  "Consultar apólice / Voltar', com a linha residencial descrita como "
-                  "'Assistência de elétrica, hidráulica e conserto de elet[rodomésticos]'"},
-        {"step": "menu_como_ajudar_resid",
-         "anchor": r"como eu posso te ajudar\?.*servi[çc]os para resid[êe]ncia",
-         "reply": "Serviços para residência",
-         "notes": "variante do MESMO menu observada no corredor de auto ('como eu posso te "
-                  "ajudar?'), respondida aqui pelo rótulo residencial"},
+        # 🔴 OS DOIS PASSOS QUE CASAVAM ZERO EM 210 TELAS — medidos 22/08/2026.
+        #
+        #   menu_raiz               msgs=13  ses=8
+        #   pedir_cpf               msgs= 5  ses=5
+        #   menu_tipo_atendimento   msgs= 0  ses=0   🔴
+        #   menu_como_ajudar_resid  msgs= 0  ses=0   🔴
+        #
+        # "qual tipo de atendimento você precisa" e "como eu posso te ajudar? …
+        # serviços para residência" não existem no corpus residencial da porto,
+        # nem ampliando `.` para `[\s\S]`. A URA residencial nunca escreve
+        # essas frases. Ficam como ALTERNATIVA do passo que casa a tela real —
+        # não custam nada e cobrem a redação do corredor de auto, se ela vier.
+        {"step": "menu_produto_residencia",
+         "anchor": (r"(?:escolha|informe) a op[çc][ãa]o desejada[\s\S]{0,600}"
+                    r"servi[çc]o para resid[êe]ncia|"
+                    r"qual tipo de atendimento voc[êe] precisa|"
+                    r"como eu posso te ajudar\?[\s\S]{0,300}servi[çc]os? para resid[êe]ncia"),
+         "reply": "Serviço para residência",
+         "notes": "📊 8 msgs / 8 sessões. 🔴 O rótulo é SINGULAR ('Serviço para residência') "
+                  "em 8 de 8 telas. ⚠️ Vem DEPOIS de `menu_raiz` na lista: na 1ª volta quem "
+                  "responde é o menu_raiz (re-identificando); este pega a 2ª, e a variante "
+                  "'localizei o seu Seguro Auto e o seu Cartão' que traz a mesma linha."},
         {"step": "aguarde",
          "anchor": (r"aguarde um momento|que bom ter voc[êe] de volta|aguarde enquanto solicito|"
                     r"falta pouco para finalizarmos"),
@@ -2953,6 +3204,35 @@ YELUM_RESIDENCIAL_WHATSAPP_V1: Dict[str, Any] = {
         "improvisar. Destrava quando uma sessão da Yelum trouxer o texto.",
     ],
 }
+
+
+# ==========================================================================
+# 🔴 META PASSO: A ÂNCORA QUE SÓ FREIA E NUNCA RESPONDE — 22/08/2026
+# ==========================================================================
+#
+# `_HDI_FAMILY_AGORA_OU_AGENDAR` está declarada nos `finalize_anchors` dos DOIS
+# corredores residenciais da família — e em NENHUM deles existe um `ura_step`
+# para ela. O corredor de AUTO da mesma família tem o passo desde sempre
+# (`quando_agora`, na lista `_YELUM_FAMILY_STEPS`).
+#
+# 📊 A tela: "Você precisa do atendimento agora ou prefere agendar para outro
+#    momento? Botão 1: Agora  Botão 2: Agendar  Botão 3: Voltar"
+#    yelum-residencial 4 sessões · hdi-residencial 1 sessão.
+#
+# 🔴 O EFEITO É DIFERENTE EM CADA MODO, E ISSO ESCONDIA O DEFEITO:
+#      · em TESTE, o freio dispara e a sessão encerra limpa — parece correto.
+#      · em LIVE, o corredor **emudece exatamente na tela que ABRE o serviço**.
+#    Uma âncora que só freia e nunca responde é meio passo. E o meio que falta
+#    é justamente o ponto de não-retorno do acionamento.
+#
+# ⚠️ O passo NÃO tira o freio: os dois convivem, como já convivem no auto.
+for _pb_resid in (HDI_RESIDENCIAL_WHATSAPP_V1, YELUM_RESIDENCIAL_WHATSAPP_V1):
+    _pb_resid["ura_steps"] = [
+        {"step": "quando_agora", "anchor": _HDI_FAMILY_AGORA_OU_AGENDAR,
+         "reply": "Agora",
+         "notes": "📊 yelum-resid 4 sessões · hdi-resid 1. O MESMO objeto de âncora que "
+                  "o freio usa — uma definição, dois leitores. Responder ABRE o serviço."},
+    ] + list(_pb_resid["ura_steps"])
 
 
 _PLAYBOOKS: Dict[str, Dict[str, Any]] = {
@@ -3782,6 +4062,20 @@ def extract_capture_anchors(playbook: Dict[str, Any], insurer_message: str) -> D
     m = re.search(anchors.get("eta") or r"$^", text, re.IGNORECASE)
     if m:
         out["eta_minutes"] = m.group(1)
+    # 🔴 O CARIMBO DE ENTRADA — 22/08/2026, e ele É LIDO AQUI de propósito.
+    #
+    # 📊 A tokio manda "Seu protocolo de atendimento é 68977599" no turno 3
+    #    de 8 a 11, ANTES de qualquer escolha de serviço, em 7 de 7 sessões. Isso
+    #    é o número do CHAT, não do chamado — e `_ANCORA_DE_PROTOCOLO` o colhia
+    #    como `protocol`, fazendo o corredor encerrar com "assistência aberta,
+    #    protocolo 68977599" enquanto **nada foi aberto**.
+    #
+    # ⚠️ Declarar `ticket_de_entrada` no corredor e não lê-lo aqui seria repetir,
+    #    na mesma função, o defeito descrito logo abaixo. Por isso o leitor nasce
+    #    junto com a chave, e o teste que o guarda chama o MOTOR.
+    m = re.search(anchors.get("ticket_de_entrada") or r"$^", text, re.IGNORECASE)
+    if m:
+        out["ticket_de_entrada"] = m.group(1)
     # 🔴 O AGENDAMENTO ERA DECLARADO E NUNCA LIDO — 21/08/2026.
     #
     # `schedule_agendado` existe no corredor residencial desde 18/08, com duas
