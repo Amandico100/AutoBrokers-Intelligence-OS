@@ -286,7 +286,31 @@ def eixo_b(rota, r: RP.Replay) -> List[Item]:
     captura: Dict[str, Any] = {}
     for t in r.telas:
         captura.update(M.extract_capture_anchors(pb, t.texto))
-    sessao_falsa = {"capture": captura, "captures": captura, **captura}
+    # ======================================================================
+    # 🔴 C1 — A RÉGUA MONTAVA A CHAVE ERRADA, E O ITEM DAVA 0 EM 73 DE 73
+    # ======================================================================
+    #
+    # 📊 Medido em 22/08/2026, com a captura real da rota de referência:
+    #
+    #   session['capture']   -> None      <- o que a régua montava
+    #   session['captures']  -> None      <- e a segunda tentativa dela
+    #   session['captured']  -> "Prontinho! ✅ Sua assistência foi agendada
+    #                            para o dia terca-feira, 06/01/2026..."
+    #
+    # `client_summary_from_capture` lê `session.get("captured")`
+    # (`insurer_dispatch_service.py:2378`). As duas chaves que a régua montava
+    # não existem para ele — e `captured.get("protocol")` num dicionário vazio
+    # é falsy, então a função devolvia `None` **sempre**.
+    #
+    # 🔴 O item não media rota nenhuma: media um bug da própria régua. E ele
+    #    ficou escondido porque `resumo = ... or ""` transformava o `None` em
+    #    string vazia, e "vazio" parece "a rota não entrega" — não "eu não
+    #    perguntei direito".
+    #
+    # ⚠️ `**captura` continua na base para o caso de algum consumidor futuro
+    #    ler as chaves soltas; o que muda é que agora existe a chave CERTA.
+    sessao_falsa = {"captured": captura,
+                    "capture": captura, "captures": captura, **captura}
     try:
         resumo = M.client_summary_from_capture(sessao_falsa) or ""
     except Exception as e:                       # noqa: BLE001
@@ -360,17 +384,52 @@ def eixo_c(rota, r: RP.Replay) -> List[Item]:
     # 📊 Vale 6 porque tecla errada NÃO trava — abre o chamado errado. `14` é
     #    máquina de lavar; `10` é lava-louças; `13` é secadora. O erro só aparece
     #    quando o técnico chega.
+    # ======================================================================
+    # 🔴 C3 — A RÉGUA REIMPLEMENTAVA A ORIGEM, E DIVERGIA NOS DOIS SENTIDOS
+    # ======================================================================
+    #
+    # É o MOTOR PARALELO que o CLAUDE.md §5 proíbe, dentro da régua. E ele
+    # errava para os dois lados AO MESMO TEMPO:
+    #
+    #   FROUXA   `re.search('"chave"', fonte_inteira)` aceitava a chave citada
+    #            em QUALQUER lugar do arquivo — inclusive num COMENTÁRIO
+    #   ESTRITA  não conhecia `required_slots` (coleta) nem
+    #            `_slots_com_padrao_do_motor` — duas das quatro origens que o
+    #            produto usa, e que a própria §E4 desta SPEC lista
+    #
+    # E havia um terceiro erro, mais simples: `exigidas` juntava as `requires`
+    # de TODOS os passos do corredor, inclusive os de outros ofícios. Uma rota
+    # de `eletricista` era cobrada pela tecla do `chaveiro`.
+    #
+    # 📊 Medido na rota de referência: as 5 "teclas órfãs" TÊM origem, e quem
+    #    sabe é o produto —
+    #      caixa_litros_opcao ............. ['coleta']
+    #      caixas_dagua_quantidade_opcao .. ['coleta']
+    #      idade_aparelho_opcao ........... ['coleta']
+    #      profissional_opcao ............. ['constante-por-subservico']
+    #      qual_seguro_opcao .............. ['coleta']
+    #
+    # 📊 E o efeito de cada metade, medido nas 41 rotas com corpus:
+    #      régua de hoje ............. 9/41 zeram o item
+    #      + só o filtro ............ 25/41
+    #      + só origens_do_slot ..... 23/41
+    #      + os dois ................ 36/41   <- os dois juntos, e é o certo
+    #
+    # 🔴 O conserto NÃO é escrever um filtro melhor: é PARAR DE REIMPLEMENTAR e
+    #    perguntar ao produto, que já responde isso em `conferir_respostas`.
+    import conferir_respostas as CR
+    _derivados = CR._slots_derivados()
     exigidas: Set[str] = set()
     for p in pb.get("ura_steps") or []:
+        # ⚠️ SÓ os passos que ESTA rota percorre. Cobrar de `eletricista` a
+        #    tecla do `chaveiro` é medir a rota errada.
+        if p.get("only_subservices") and rota.servico not in p["only_subservices"]:
+            continue
         for req in p.get("requires") or []:
             if req.endswith("_opcao"):
                 exigidas.add(req)
-    do_subservico = set((pb.get("subservices") or {}).get(rota.servico) or {})
-    fonte = (os.path.join(RAIZ, "app", "services", "insurer_dispatch_service.py"))
-    with open(fonte, encoding="utf-8") as fh:
-        ids = fh.read()
-    derivadas = {k for k in exigidas if re.search(r'["\']' + re.escape(k) + r'["\']', ids)}
-    orfas = exigidas - do_subservico - derivadas - TECLAS_INLINE
+    orfas = {k for k in exigidas
+             if not CR.origens_do_slot(pb, k, _derivados)} - TECLAS_INLINE
     itens.append(Item("C", "toda tecla _opcao tem origem (3 fontes)",
                       6 if not orfas else 0, 6,
                       f"{len(exigidas)} teclas exigidas; sem origem: "
@@ -433,20 +492,60 @@ def eixo_d(rota, r: RP.Replay, *, tem_espelho: bool = False) -> List[Item]:
                           f"{str(exp)[:70] if exp else '(ausente)'}"))
 
     # ── 3 · `regras_para_o_cliente` com trecho que CASA o corpus ───────────
-    regras = sub.get("regras_para_o_cliente") or pb.get("regras_para_o_cliente")
+    # ======================================================================
+    # 🔴 C4 — O FALLBACK CREDITAVA A REGRA DO CORREDOR A TODA ROTA DELE
+    # ======================================================================
+    #
+    # `sub.get(...) or pb.get(...)`: bastava UMA regra escrita no nível do
+    # corredor para que TODAS as rotas dele marcassem o ponto.
+    #
+    # 📊 Medido: **9 rotas recebiam o crédito · 2 têm regra própria.**
+    #    O item diz "regras_para_o_cliente casam o corpus" — e o que ele passou
+    #    a medir foi "existe alguma regra em algum lugar deste corredor".
+    #
+    # ⚠️ ESTE CONSERTO SUBTRAI, DE PROPÓSITO: 7 rotas perdem 3 pontos porque
+    #    paravam de receber crédito indevido. **Queda declarada é aprovação.**
+    #    Uma régua que só sobe não é régua.
+    #
+    # 🔴 E ele NÃO afrouxa nem endurece a regra: a regra sempre foi "a rota tem
+    #    a sua regra". O que mudou é que agora ela é lida onde estava escrita.
+    regras = sub.get("regras_para_o_cliente")
     if not tem_fabrica:
         itens.append(Item("D", "regras_para_o_cliente casam o corpus", 0, 3,
                           "sem bloco literal onde declarar", excluido=SEM_FABRICA))
     else:
+        # ==================================================================
+        # 🔴 C5 — PROCURAVA A PROVA NO COMENTÁRIO, NÃO NA REGRA
+        # ==================================================================
+        #
+        # A janela de 40 caracteres era buscada em QUALQUER linha do bloco que
+        # tivesse `📊` — ou seja, em qualquer COMENTÁRIO. 📊 Efeito medido: uma
+        # `regras_para_o_cliente` **inventada** tirava 3/3, desde que existisse
+        # em algum lugar do bloco um comentário citando o corpus.
+        #
+        # 🔴 O item promete "regras_para_o_cliente casam o corpus". Ele media
+        #    "algum comentário deste bloco casa o corpus" — e as duas coisas só
+        #    coincidem por acaso.
+        #
+        # A prova tem de sair de DENTRO do que a atendente vai ler.
         casa = False
         trecho = ""
-        bloco = _fonte_do_bloco(rota.servico) or ""
         corpus_norm = [M._norm(t.texto) for t in r.telas]
-        # janela deslizante de >=40 caracteres — NUNCA o comentário inteiro
-        for linha in bloco.splitlines():
-            if "📊" not in linha:
-                continue
-            texto = M._norm(linha.split("📊", 1)[1])
+
+        def _textos(v):
+            """As frases de `regras_para_o_cliente`, seja lista, dict ou str."""
+            if isinstance(v, str):
+                return [v]
+            if isinstance(v, (list, tuple)):
+                return [x for i in v for x in _textos(i)]
+            if isinstance(v, dict):
+                return [x for i in v.values() for x in _textos(i)]
+            return []
+
+        # janela deslizante de >=40 caracteres — NUNCA a frase inteira, e NUNCA
+        # um comentário: só o texto que vai ao cliente.
+        for frase in _textos(regras):
+            texto = M._norm(frase)
             for i in range(0, max(1, len(texto) - 40)):
                 jan = texto[i:i + 40]
                 if len(jan) >= 40 and any(jan in c for c in corpus_norm):

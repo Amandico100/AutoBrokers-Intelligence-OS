@@ -154,40 +154,77 @@ def test_o_determinismo_da_regua_nao_cai():
 #    coisa"*: mexer numa peça move **aquele** item, e o total cai **exatamente**
 #    o que aquele item vale.
 # ═════════════════════════════════════════════════════════════════════════════
-def test_zerar_regras_para_o_cliente_faz_D_cair_EXATAMENTE_3():
-    """⚠️ **Esta mutação nasceu errada e a medição a corrigiu.**
+def test_a_regra_do_SUBSERVICO_move_D_e_a_do_corredor_NAO():
+    """🔴 O C4 mudou o DONO deste item, e a mutação mudou de lugar com ele.
 
-    A primeira versão zerava `subservices[rota]["regras_para_o_cliente"]` e a
-    nota **não se movia**. Medido:
+    ⚠️ **Esta mutação nasceu errada DUAS vezes, e a medição corrigiu as duas.**
+
+    **1ª:** zerava `subservices[rota]["regras_para_o_cliente"]` e a nota não se
+    movia — 📊 o campo não existia em subserviço nenhum do produto (0 de 62).
+
+    **2ª:** passou a zerar o campo no NÍVEL PLAYBOOK, e funcionava — porque a
+    régua tinha `sub.get(...) **or** pb.get(...)`. 📊 Esse fallback creditava a
+    regra do CORREDOR a **9 rotas**, das quais **0** tinham regra própria.
+    O item promete *"regras_para_o_cliente casam o corpus"* e media *"existe
+    alguma regra em algum lugar deste corredor"*.
+
+    🔴 O C4 tirou o fallback. Agora zerar o playbook **não move nada** — e isso
+    é o CERTO, não uma regressão. A lição migra para a forma que prova a
+    leitura nova:
 
     ```
-    📊 playbooks com `regras_para_o_cliente` no NIVEL PLAYBOOK : 1 de 14
-    📊 subservicos com regras PROPRIAS                         : 0 de 62
+    regra no SUBSERVIÇO, com frase REAL do corpus  ->  +3   (o item tem dono)
+    regra no SUBSERVIÇO, com frase INVENTADA       ->   0   (o C5: a prova
+                                                             sai da REGRA, não
+                                                             de um comentário)
+    regra só no CORREDOR                           ->   0   (o C4)
     ```
 
-    🔴 **O campo não existe em subserviço nenhum do produto.** Zerá-lo ali era
-    apagar algo que não estava lá.
-
-    ⚠️ E o que isso significa para a rubrica, declarado em vez de escondido: as
-    **6 rotas** de `allianz-residencial` dividem **uma** declaração. O item tem
-    dono — o playbook —, mas o dono é compartilhado. É a assimetria que a
-    SPEC-083 §3.5 nomeia e trata com `SEM_FABRICA`: *"13 corredores perdem 6 dos
-    10 pontos do eixo D por uma razão ARQUITETURAL, não de qualidade"*.
+    ⚠️ A segunda linha é o que separa este teste de um carimbo. Sem ela,
+    qualquer texto passaria e o item voltaria a medir presença, não conteúdo.
     """
     rota = _rota()
     pb = M.get_playbook(rota.ref)
-    assert not (pb["subservices"][rota.servico] or {}).get("regras_para_o_cliente"), \
-        ("o campo passou a existir no subservico -- a mutacao precisa mudar de "
-         "lugar, e a heranca declarada acima deixou de valer")
-    guardado = copy.deepcopy(pb.get("regras_para_o_cliente"))
-    antes = _nota()
+    sub = pb["subservices"][rota.servico]
+
+    # 📊 Frase LITERAL do corpus desta rota — a mesma que a régua já reconhece
+    #    hoje no nível playbook. Se ela deixar de casar, este teste avisa.
+    REAL = ("Seguro Automotivo com serviços residenciais e assistência 24 horas "
+            "para a sua casa")
+    INVENTADA = ("Esta regra foi escrita agora e nao existe em tela nenhuma do "
+                 "acervo, e por isso NAO pode valer ponto nenhum na rubrica.")
+
+    guardado_sub = copy.deepcopy(sub.get("regras_para_o_cliente"))
+    guardado_pb = copy.deepcopy(pb.get("regras_para_o_cliente"))
+    assert not guardado_sub, (
+        "o subservico ja tem regra propria -- a mutacao precisa mudar de lugar")
+
     try:
-        pb["regras_para_o_cliente"] = []
-        depois = _nota()
+        # ── o C4: com regra SÓ no corredor, a rota NÃO pontua ────────────
+        sub.pop("regras_para_o_cliente", None)
+        so_corredor = _nota().por_eixo()["D"][0]
+
+        # ── o C4, outro lado: regra PRÓPRIA com frase real SOBE 3 ────────
+        sub["regras_para_o_cliente"] = [REAL]
+        com_regra_real = _nota().por_eixo()["D"][0]
+
+        # ── o C5: regra PRÓPRIA com frase inventada NÃO sobe ─────────────
+        sub["regras_para_o_cliente"] = [INVENTADA]
+        com_regra_falsa = _nota().por_eixo()["D"][0]
     finally:
-        pb["regras_para_o_cliente"] = guardado
-    assert antes.por_eixo()["D"][0] - depois.por_eixo()["D"][0] == 3, \
-        (antes.por_eixo()["D"], depois.por_eixo()["D"])
+        if guardado_sub:
+            sub["regras_para_o_cliente"] = guardado_sub
+        else:
+            sub.pop("regras_para_o_cliente", None)
+        pb["regras_para_o_cliente"] = guardado_pb
+
+    assert com_regra_real - so_corredor == 3, (
+        "🔴 C4: regra PROPRIA com frase real do corpus tem de valer +3. "
+        f"so_corredor={so_corredor} com_regra_real={com_regra_real}")
+    assert com_regra_falsa == so_corredor, (
+        "🔴 C5: regra INVENTADA nao pode valer ponto -- a prova sai da REGRA, "
+        f"nao de um comentario. so_corredor={so_corredor} "
+        f"com_regra_falsa={com_regra_falsa}")
 
 
 def test_remover_o_freio_faz_C_cair_EXATAMENTE_8():
@@ -229,17 +266,54 @@ def test_SEM_CORPUS_e_NAO_RESPONDE_sao_estados_OPOSTOS():
     `SEM_CORPUS` é trabalho de **coleta**; `NAO_RESPONDE` é trabalho de
     **escrever passos**. 📊 Fundir os dois faria a SPEC-084 mandar para coleta
     rotas cujo acervo está cheio — o erro que a v1 cometeu com 13 rotas.
+
+    ⚠️ **ESTE TESTE DEPENDIA DE A PRODUÇÃO ESTAR QUEBRADA — §9.3, 22/08/2026.**
+
+    A versão anterior exigia `sem_corpus and nao_responde`: ela só passava
+    enquanto existisse, no produto, **alguma rota muda**. 📊 A SPEC-084 fechou
+    as duas últimas, `NAO_RESPONDE` foi a **zero**, e o guarda caiu — *por ter
+    dado certo*.
+
+    > 🔴 Um guarda que depende de a produção estar quebrada para de guardar no
+    > instante em que ela é consertada.
+
+    **A lição migra para onde ela é estável:** o que precisa ser provado é que
+    a rubrica **sabe distinguir** os dois estados, e isso se prova com um caso
+    CONSTRUÍDO — não com o acidente de haver uma rota ruim no ar.
     """
     notas = [RB.medir(r, mutacoes_ok=(3, 3)) for r in M.rotas()]
     sem_corpus = [n for n in notas if n.estado == "SEM_CORPUS"]
-    nao_responde = [n for n in notas if n.estado == "NAO_RESPONDE"]
-    assert sem_corpus and nao_responde, \
-        "a rubrica deixou de distinguir os dois estados"
-    # 🔴 e o que os separa é MEDIDO, não declarado:
+
+    # ── o que ainda é fato da produção ───────────────────────────────────
+    assert sem_corpus, "nenhuma rota SEM_CORPUS -- o estado sumiu da rubrica"
     for n in sem_corpus:
         assert not n.replay.telas, f"{n.rota} e SEM_CORPUS com telas no corpus"
-    for n in nao_responde:
-        assert n.replay.telas, f"{n.rota} e NAO_RESPONDE sem corpus nenhum"
+
+    # ── 🔴 E O QUE SEPARA OS DOIS, PROVADO POR CONSTRUÇÃO ────────────────
+    #
+    # Pego uma rota que HOJE responde e desligo o corredor dela. Se a rubrica
+    # continuar chamando isso de `SEM_CORPUS`, ela fundiu os estados — e a
+    # SPEC-084 voltaria a mandar para coleta um acervo cheio.
+    rota = _rota()
+    pb = M.get_playbook(rota.ref)
+    guardado = list(pb.get("ura_steps") or [])
+    try:
+        pb["ura_steps"] = []
+        muda = RB.medir(rota, mutacoes_ok=(3, 3))
+    finally:
+        pb["ura_steps"] = guardado
+
+    assert muda.estado == "NAO_RESPONDE", (
+        "🔴 uma rota COM corpus e SEM passos tem de ser NAO_RESPONDE, nunca "
+        f"SEM_CORPUS -- a rubrica devolveu {muda.estado!r}")
+    assert muda.replay.telas, (
+        "o caso construido perdeu o corpus -- a prova deixou de valer")
+
+    # 🔴 CONTROLE: a MESMA rota, intacta, NAO e nenhum dos dois estados.
+    #    Sem esta linha, um bug que devolvesse NAO_RESPONDE para tudo passaria.
+    intacta = RB.medir(rota, mutacoes_ok=(3, 3))
+    assert intacta.estado not in ("NAO_RESPONDE", "SEM_CORPUS"), (
+        f"CONTROLE: a rota intacta virou {intacta.estado!r}")
 
 
 def test_o_portao_do_eixo_B_zera_A_C_D_E():
@@ -248,13 +322,38 @@ def test_o_portao_do_eixo_B_zera_A_C_D_E():
     📊 O portão existe porque a receita da rota vazia sobrevivia ao primeiro
     conserto: `alfa × auto × bateria` tirava 30–45 por herança de família (C) e
     teste simbólico (E), **sem responder uma tela**.
+
+    ⚠️ **MESMA MIGRAÇÃO DO TESTE ACIMA, E PELA MESMA RAZÃO.** A versão anterior
+    procurava uma rota barrada ENTRE AS 73 e falhava com *"o portão virou
+    enfeite"* quando não achava nenhuma. 📊 Depois da SPEC-084 não há mais
+    nenhuma — e o portão não virou enfeite: **ele ficou sem clientes.**
+
+    🔴 A diferença importa: *"não há rota barrada"* e *"o portão não barra"* são
+    coisas opostas, e a versão anterior não sabia distingui-las.
     """
-    barradas = [n for n in (RB.medir(r, mutacoes_ok=(3, 3)) for r in M.rotas())
-                if n.estado == "NAO_RESPONDE"]
-    assert barradas, "nenhuma rota barrada -- o portao virou enfeite"
-    for n in barradas:
-        assert all(i.eixo == "B" for i in n.itens), \
-            f"{n.rota} foi barrada e mesmo assim ganhou pontos fora do eixo B"
+    # 🔴 O portão é provado onde ele age: numa rota que TEM corpus e cujo
+    #    corredor foi desligado. É o mesmo caso construído acima.
+    rota = _rota()
+    pb = M.get_playbook(rota.ref)
+    guardado = list(pb.get("ura_steps") or [])
+    try:
+        pb["ura_steps"] = []
+        barrada = RB.medir(rota, mutacoes_ok=(3, 3))
+    finally:
+        pb["ura_steps"] = guardado
+
+    assert barrada.estado == "NAO_RESPONDE", (
+        f"o portao nao barrou uma rota sem passo nenhum: {barrada.estado!r}")
+    assert all(i.eixo == "B" for i in barrada.itens), (
+        "🔴 a rota foi barrada e MESMO ASSIM ganhou pontos fora do eixo B: "
+        f"{sorted({i.eixo for i in barrada.itens})}")
+
+    # 🔴 CONTROLE: e a rota intacta CONTINUA ganhando pontos fora do B.
+    #    Sem isto, um portao que barrasse TODA rota passaria neste teste.
+    intacta = RB.medir(rota, mutacoes_ok=(3, 3))
+    assert {i.eixo for i in intacta.itens} - {"B"}, (
+        "CONTROLE: a rota intacta so tem itens do eixo B -- o portao esta "
+        "barrando quem nao devia")
 
 
 # ═════════════════════════════════════════════════════════════════════════════
