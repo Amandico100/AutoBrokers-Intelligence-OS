@@ -2,7 +2,7 @@
 
 > **O protocolo que leva cada uma das 73 rotas ao nível da máquina de lavar — não o de 19/08, mas o de depois do que aprendemos com ela.**
 >
-> Autor: execução · **v2, 22/08/2026** · base `10abc94` · branch da SPEC-084
+> Autor: execução · **v3, 22/08/2026** · base `10abc94` · branch da SPEC-084
 > Precondição: SPEC-083 ✅ · SPEC-084 blocos 0–5 ✅
 
 ---
@@ -70,7 +70,7 @@ item dos apelidos (4 pts) sai **sempre** como `SEM_ESPELHO`. Ver G5/C6.
 próprio código: *"Sem estes apelidos, `canonical_subservice` devolve o próprio texto,
 `subservices` não acha, e o acionamento morre antes de começar."*
 
-### 1.2 O teto é 96/96, e nada falta de evidência
+### 1.2 O teto é 96/96 — 94 pela régua + rota, e os 2 finais pela E2
 
 📊 Simulado em memória com a rubrica real, na rota de referência:
 
@@ -83,6 +83,7 @@ dos 36 pontos que faltam:
 60/96  hoje
 83/96  só com trabalho de ROTA        (+23)
 94/96  + consertos da RÉGUA           (+11)   📊 C1+C2 = +5 · C3 = +6
+96/96  + as `notes` recontadas (E2)   (+2)    ⚠️ é trabalho de ROTA, não de régua
 ```
 
 ---
@@ -91,7 +92,7 @@ dos 36 pontos que faltam:
 
 **Antes de tocar em qualquer rota.** 📊 Dois itens da rubrica falham em **73 de 73** — não porque ninguém fez, mas porque **a ferramenta não consegue passar**. São o defeito que a SPEC-083 §3.3 nomeia, dentro da própria régua.
 
-### 2.1 Os quatro consertos
+### 2.1 Os SEIS consertos
 
 ⚠️ **Nomeados `C1..C4`, não `R1..R4`** — 📊 `--comparar-com` já imprime *"🔴 R3 violada"*
 para outra coisa (*"nenhuma rota perdeu respondidas"*). Dois `R3` no mesmo relatório é
@@ -102,7 +103,9 @@ armadilha.
 | **C1** | `rubrica.py:289` | monta a chave `"capture"`; `client_summary_from_capture` lê `session["captured"]` (`insurer_dispatch_service.py:2378`) → devolve `None` **sempre** | 0/5 → 5/5 em **21 rotas** |
 | **C2** | `insurer_dispatch_service.py:2384-2390` | lê `schedule["from"/"to"/"at"/"day"]` e **nunca** `schedule["periodo"]`. A captura tem `'periodo': 'tarde das 13:00 as 18:00'` e ele é descartado | (junto com C1) |
 | **C3** | `rubrica.py:363-377` | 🔴 **reimplementa** a origem de tecla e diverge nas DUAS direções | 9/41 → **36/41** zeram o item |
-| **C4** | `rubrica.py:436` | `sub.get(...) or pb.get(...)` — o fallback credita a regra do CORREDOR a **toda rota dele** | 9 recebem, **2 têm regra** |
+| **C4** | `rubrica.py:436` | `sub.get(...) or pb.get(...)` — o fallback credita a regra do CORREDOR a **toda rota dele** | 9 recebem, **2 têm regra**. 🔴 **SUBTRAI −3 em 7 rotas** |
+| **C5** | `rubrica.py:441-455` | procura os 40 chars em **qualquer** comentário 📊 do bloco, não dentro de `regras_para_o_cliente` → 📊 regra inventada tira 3/3 | 3 pts que hoje são falsos |
+| **C6** | `medir_rota.py` | não existe `--com-espelho`; 📊 ninguém passa `tem_espelho=True` → os 4 pts ficam `SEM_ESPELHO` **para sempre** | destrava a E8 nas 73 · ⚠️ **é FERRAMENTA NOVA, ver §2.3** |
 
 🔴 **C2 é o furo nº 3 da Clarissa, ainda aberto.** É por ele que ela recebeu *"Prontinho! ✅
 Sua assistência foi aberta"* **sem data e sem período** — e depois ficou escondido atrás de
@@ -190,8 +193,27 @@ GATE DA FASE 0
 ```
 
 ⚠️ **E o que NÃO é permitido na Fase 0:** afrouxar limiar, remover item, renormalizar
-nota. Os quatro são bugs de leitura — se algum exigir mudar a régua para passar, **não é
+nota. **C1–C5 são bugs de leitura** — se algum exigir mudar a régua para passar, **não é
 Fase 0**, é mudança de rubrica e vai para o juiz.
+
+### 2.3 🔴 FASE 0.5 — o C6 não é conserto, é ferramenta nova
+
+**C1–C5 são bugs de leitura em linhas conhecidas.** O C6 é *"criar `--com-espelho` lendo o
+Supabase" — construir um leitor que não existe.*
+
+📊 O orçamento da Fase 0 é ~70 min, e a §2.2 fecha com *"se algum exigir mudar a régua para
+passar, não é Fase 0"*. **Construir leitor novo é mais que isso.**
+
+```
+FASE 0.5 — o leitor do Espelho
+   entrega:  `medir_rota.py --com-espelho`
+   gate:     roda nas 73 e o item dos apelidos DEIXA de sair SEM_ESPELHO
+   🔴 e o JUIZ 0 confere: nenhuma rota mudou de nota EXCETO pelos apelidos
+```
+
+🔴 **E ele tem duas travas que não são negociáveis** (ver §E8): o filtro de `company_id`
+e a **exclusão nomeada da Amandus**. Sem elas, o C6 semeia `_SUBSERVICE_ALIASES` com
+vocabulário de **conversas fictícias** — e a E8 contaria isso como prova.
 
 ---
 
@@ -261,9 +283,14 @@ não é rodar a varredura — ela já está limpa.** É o relatório e o gate de
 
 ---
 
-## 4. 🔴 O PROTOCOLO — as 12 estações, uma rota por vez
+## 4. 🔴 O PROTOCOLO — as 14 estações, uma rota por vez
 
-**Toda rota passa pelas 12. Sem exceção, sem "esta é simples".**
+**Toda rota passa pelas 14 — E13 e E14 inclusas. Sem exceção, sem "esta é simples".**
+
+🔴 **E13 e E14 nasceram na v2 e o gate da v2 continuou certificando "as 12".** Um
+executor cumpriria 12, pularia a E13, plantaria o `noop` largo, tiraria 80/96, e
+`--comparar-com`, `conferir_respostas` e o freio passariam todos — **com o gate
+assinando embaixo.** A cura tem de estar no gate, não só no texto.
 
 Cada estação diz: **o que fazer · onde está a evidência · o controle que prova · a armadilha medida.**
 
@@ -506,13 +533,31 @@ negativo**: o apelido não pode casar o nome de **outro** serviço do mesmo menu
 `medir_rota.py`. Os 4 pontos ficam permanentemente `SEM_ESPELHO`, e `medir_rota.py:511`
 classifica o item como 🧑 **Founder**, enquanto esta estação o entrega ao executor.
 
+```sql
+-- ENTREGA DA FASE 0.5 (C6): `medir_rota.py --com-espelho`
+-- as mensagens do SEGURADO anteriores ao primeiro acionamento da sessão
+select m.content
+  from messages m
+  join conversations c on c.id = m.conversation_id
+ where m.role = 'user'
+   and c.company_id = :company_id          -- 🔴 TENANT, sempre
+   and c.company_id <> :amandus_id         -- 🔴 A EXCLUSÃO NOMEADA
+   and m.created_at < :primeiro_acionamento_da_sessao;
 ```
-ENTREGA DA FASE 0 (C6):
-   `medir_rota.py --com-espelho`, lendo `conversations`/`messages`
-   E a SPEC diz a query: as mensagens do SEGURADO anteriores ao primeiro
-   acionamento da sessão, agrupadas por serviço identificado depois.
-   🔴 Sem esta flag, a E8 não tem como fechar e o item fica 🧑, não 🤖.
-```
+
+🔴 **As duas travas não são negociáveis, e o precedente está escrito no código**
+(`canais_observados.py:111`):
+
+> *"a guarda que o juiz exigiu contra a AMANDUS: … se aprendesse do acervo sozinho,
+> ingeriria os ensaios da corretora de teste como se fossem prova sobre seguradora real —
+> **e a env var que exclui a Amandus é do destilador e não cobriria isto**."*
+
+**O C6 é exatamente outro leitor.** Minerar apelidos sem excluir a Amandus semeia
+`_SUBSERVICE_ALIASES` com vocabulário de **conversas fictícias**, e a E8 contaria isso como
+prova. 📊 Toda leitura real dessas tabelas no produto já filtra `company_id`
+(`human_handoff.py:593`, `admin_atlas.py:964`).
+
+🔴 **Sem a flag, a E8 não tem como fechar e o item fica 🧑, não 🤖.**
 
 ---
 
@@ -694,7 +739,7 @@ exatamente onde a §E4 mediu 2min22 de silêncio.**
 > **Um `noop` sobre uma tela que PEDE ALGO é silêncio comprado, não cobertura.**
 
 **Controle:** para cada tela classificada `NOOP`, rodar
-`_tela_pede_alguma_coisa(pb, texto)`. Se `True`, o passo exige um **`noop_justificado`**
+`tela_pede_alguma_coisa(pb, texto)` (`regua_motor.py:71` — 🔴 **sem** underscore; `_tela_pede_alguma_coisa` é o nome privado do produto). Se `True`, o passo exige um **`noop_justificado`**
 escrito — o mesmo padrão de `constante_justificada`.
 
 ⚠️ 🔴 **E ele NÃO nasce como gate absoluto.** 📊 Medido nas 73: **257 de 1.066 telas hoje
@@ -702,9 +747,29 @@ classificadas `NOOP` já pedem algo.** Ligá-lo como gate reprovaria tudo no pri
 
 ```
 NASCE COMO LINHA DE BASE CONGELADA:
-   grave a lista das 257 no BLOCO 0 desta SPEC
-   o guarda falha só em `noop`-sobre-pergunta NOVO
-   e cada uma das 257 sai da lista quando a rota dela passar pela E13
+   📊 122 TELAS DISTINTAS (257 ocorrências) em 39 rotas.
+      🔴 A unidade é a TELA, como manda a §6.2. A v2 escreveu 257 e foi a
+         PRIMEIRA REINCIDENTE da regra que ela mesma acabara de criar.
+   o guarda falha só em `noop`-sobre-pergunta NOVO.
+
+🔴 ISTO NÃO É REGRESSÃO DA E13. É defeito PRÉ-EXISTENTE que ela revela.
+   Sem ela, os 122 seguiriam invisíveis — e o 123º seria comprado de graça.
+
+🔴 E A DÍVIDA PRECISA DE DONO, senão o guarda CONGELA em vez de consertar:
+   📊  63 telas caem em A–E   → saem quando a rota passar pela E13
+   📊  59 telas caem FORA     → sem onda, sem pagador  (48%)
+
+   as maiores devedoras estão fora de toda onda nomeada:
+      porto × residencial × encanador   23   ← a MAIOR do produto
+      azul  × auto × guincho            18   ← azul não está em onda nenhuma
+      azul  × auto × bateria            10
+      hdi   × residencial × eletricista  8   ← a ONDA C é hdi × AUTO
+      yelum × residencial × encanador    8   ← a ONDA D é yelum × AUTO
+
+   → 🔴 A ONDA F deixa de ser "o resto que pontua" e passa a ser
+     "o resto que pontua + TODA rota com dívida de linha de base".
+   → e o arquivo da linha de base carrega, POR TELA, a ONDA que a paga.
+     Tela sem onda no arquivo é entrada inválida.
 
 📊 CONTROLE POSITIVO: com o `noop`-compra plantado, o guarda acende em
    6 telas → VERMELHO. Ele pega.
@@ -737,6 +802,14 @@ respondidas.**
 📊 **A boa notícia, medida:** *"responder `3` (Voltar)"* e *"noop + referral + ENCAMINHA"*
 dão **o mesmo 83/96, 0 órfãs, 100% determinismo**. **A escolha certa e a que pontua são a
 mesma.** Não há tensão.
+
+⚠️ **Duas ressalvas, e a primeira é a E13 valendo aqui também:** o `noop` desta saída **é
+sobre uma tela que pede algo** — ele exige `noop_justificado` como qualquer outro. O que o
+autoriza é o `referral` + `ENCAMINHA` ao lado, não o `noop` sozinho.
+
+⚠️ E o `83/96` desta medição contra o `80/96` da §6.2 para o mesmo `n=0`: 📊 a diferença são
+os **3 pontos do handoff** (§E7), que a simulação da E14 já tinha ligado. **Não são duas
+medições do mesmo estado.**
 
 ---
 
@@ -821,7 +894,9 @@ ONDA B    allianz × auto          (4)       │  🔴 as 31 PRIORITÁRIAS
 ONDA C    hdi × auto              (5)       │  📊 hoje 4 chegam a 60
 ONDA D    yelum × auto            (5)       │     e 6 delas são SEM_CORPUS
 ONDA E    porto × auto            (8)      ─┘
-ONDA F    o resto que pontua               (16)
+ONDA F    o resto que pontua (16) + 🔴 TODA rota com dívida de linha
+          de base fora de A–E (§E13) — 📊 59 telas em rotas como
+          porto × residencial × encanador (23), a maior do produto
 ONDA G    as 26 SEM_CORPUS fora de A–E              só lista de coleta
 ```
 
@@ -875,7 +950,21 @@ vai para `PENDENCIAS`.
 ```
 guincho 72 · bateria 16 · encanador 14 · eletricista 12 · pneu 10
 eletrodoméstico 9 · socorro mecânico 7 · chaveiro 5 · vidros 1 · carro reserva 0
+   e a cauda, que a ONDA A precisa:
+ar_condicionado 2 · limpeza_caixa_dagua 2 · pet 2 · desentupimento 1
 ```
+
+🔴 **E a ONDA A — a PRIMEIRA — não tem ordem para 5 das suas 9 rotas.** 📊
+`maquina_de_lavar` **não tem chave própria em `DEMANDA_MEDIDA`**: ela está diluída dentro de
+`eletrodomestico 9`. **A rota de referência desta SPEC inteira não tem entrada de demanda.**
+
+⚠️ Vai para `PENDENCIAS` junto com o `vidro`/`vidros`: são os dois defeitos de **chave** do
+`padroes_de_servico.py`, e nenhum é ausência de demanda.
+
+**Enquanto isso, a ordem da ONDA A é:** `encanador 14 · eletricista 12 · eletrodoméstico 9
+(inclui máquina de lavar) · chaveiro 5 · desentupimento 1 · ar_condicionado 2 ·
+limpeza_caixa_dagua 2` — 🔴 **e a máquina de lavar vai PRIMEIRO de todas**, porque é a rota
+de referência e o executor precisa dela fechada para ter contra o que comparar.
 
 ### 6.2 🔴 Tudo ou quase nada
 
@@ -900,11 +989,21 @@ escrever as três telas        →  n = 0  →  20 pts  →  80/96
 qualquer que NÃO seja o RESUMO** mede `60/96` — **ganho zero**, porque o penhasco `≥3 → 0`
 engole o conserto. Ele vai achar que a régua está quebrada, e ela não está.
 
-⚠️ **Esta SPEC usa "órfã" para duas grandezas:** a rubrica conta **ocorrências** (4); o
-trabalho do executor são **telas distintas** (3). **Toda vez que ela disser "órfã", diz
-qual das duas.**
+⚠️ **Esta SPEC usa "órfã" para duas grandezas, e nomeá-las é obrigatório:**
 
-> **O protocolo exige o GALHO INTEIRO.** Rota que passa por 8 das 12 estações não é
+```
+4  OCORRÊNCIAS       o que a rubrica conta
+4  TEXTOS DISTINTOS  os dois RESUMOs diferem (terça/13h-18h vs sexta/9h-13h,
+                     primeira diferença no char 124)
+3  CLASSES DE ÂNCORA o que o executor escreve  ← 🔴 esta é a unidade do trabalho
+```
+
+🔴 **"3 telas distintas" seria o nome que mente** — e o `CLAUDE.md` §12.1 manda consertar o
+nome, não o texto. São **3 classes de âncora**, e uma delas casa dois textos.
+
+**Toda vez que esta SPEC disser "órfã", ela diz qual das três.**
+
+> **O protocolo exige o GALHO INTEIRO.** Rota que passa por 8 das 14 estações não é
 > 66% pronta — é uma rota com furo coberto, que é o que esta SPEC existe para não produzir.
 
 ### 6.3 O paralelismo
@@ -950,15 +1049,41 @@ remover item, renormalizar"*) seria **só uma frase, sem teste que a detecte**.
    e o conserto tem MUTAÇÃO, executada e vermelha?
 ```
 
-**Controle:** o Juiz 0 reintroduz um dos consertos ao contrário e exige que a diferença
-apareça. Se as 73 derem o mesmo número com a régua velha e a nova, **o conserto não fez
-nada** — e isso também é reprovação.
+**Controle — e ele é POR CONSERTO, não por Fase 0.** 🔴 A v2 dizia *"reintroduz **um dos**
+consertos"*: testa 1 e passa com 5 não verificados.
+
+```
+para CADA Cᵢ dos SEIS, um de cada vez:
+
+  ① guarde a régua velha, executável:
+     git show <commit-base>:backend/scripts/rubrica.py > /tmp/rubrica_v0.py
+     🔴 sem isto o Juiz 0 não tem contra o que comparar — a Fase 0
+        SUBSTITUI a régua num commit
+
+  ② reverta SÓ o Cᵢ e rode as 73 com as duas réguas
+
+  ③ 🔴 IDENTIDADE DE CONJUNTO — e é aqui que o teste global falha:
+     o conjunto de rotas que muda tem de ser EXATAMENTE o que a §2.1
+     declara para o Cᵢ.  📊 C1+C2 = 21 · C3 = 16 · C4 = 7 · C5 e C6 = o
+     número medido de cada um.
+     Uma rota a mais ou a menos REPROVA.
+     ⚠️ Delta global ≠ 0 NÃO BASTA: um conserto que sobe 21 rotas e
+        derruba 21 outras dá delta e está errado.
+
+  ④ e a DIREÇÃO tem de bater. 🔴 O C4 SUBTRAI de propósito: 7 rotas caem
+     −3 porque paravam de receber crédito indevido.
+     Queda declarada é aprovação. Queda NÃO declarada é reprovação —
+     e a v2 não tinha regra para rota que cai.
+
+🔴 Um Cᵢ não testado é um Cᵢ REPROVADO. Não existe "amostra de conserto".
+```
 
 ### 7.1 As três lentes, por rota
 
 ```
 🔍 JUIZ 1 · O CÉTICO DA COBERTURA
-   as 12 estações foram TODAS cumpridas, ou alguma foi pulada por ser "óbvia"?
+   as 14 estações foram TODAS cumpridas, ou alguma foi pulada por ser "óbvia"?
+   🔴 a E13 rodou? alguma tela virou `noop` sem `noop_justificado`?
    alguma âncora nova casa ZERO no corpus?
    o replay ainda acha órfã funcional?
    📊 e o número subiu por trabalho, ou por afrouxamento?
@@ -993,7 +1118,7 @@ acionável é o JUIZ, não o executor**, que se beneficiaria da decisão.
 
 ### 7.3 A regra que vale para o juiz também
 
-📊 Nas quinze rodadas que produziram a SPEC-083 e a 084, **quatro prescrições de juiz foram
+📊 Nas rodadas que produziram a SPEC-083, a SPEC-084 e esta, **CINCO prescrições de juiz foram
 derrubadas pela query seguinte**.
 
 > **Nenhuma regra entra sem a query que a produziu e o controle que pode reprová-la —
@@ -1007,14 +1132,17 @@ derrubadas pela query seguinte**.
 ```
 · FASE 0 fechada, em commit separado, sem tocar playbook
 · FASE 1 devolve ZERO, e a ferramenta fica VERMELHA com um defeito reintroduzido
-· toda rota trabalhada passou pelas 12 estações e pelos 3 juízes
+· toda rota trabalhada passou pelas **14** estações — 🔴 **E13 e E14 inclusas** —
+  e pelos 3 juízes
+· 🔴 FASE 0 e FASE 1 liberadas pelo **JUIZ 0** (§7.0), nunca pelo executor
+· a LINHA DE BASE do E13 gravada, com a ONDA que paga cada tela declarada
 · `--comparar-com` verde em TODAS: nenhuma rota perdeu respondidas
 · o INVENTARIO regenerado, com carimbo de commit e hora
 · 🔴 e o relatório diz, por rota: a nota ANTES, a nota DEPOIS, e QUAL ESTAÇÃO
      produziu cada ganho
 ```
 
-⚠️ **A nota final de cada rota não é o gate.** 📊 O gate é: **as 12 estações cumpridas, e o
+⚠️ **A nota final de cada rota não é o gate.** 📊 O gate é: **as 14 estações cumpridas, e o
 que ficou de fora nomeado com o que destrava.**
 
 > **Uma rota em 51 com o bloqueio nomeado é ENTREGA. Uma rota em 95 com furo invisível não é.**
@@ -1028,7 +1156,7 @@ que ficou de fora nomeado com o que destrava.**
 | a senha que chega 1 s tarde | é do motor de acionamento, não da rota | SPEC-085 |
 | o `_norm` sem `strip()` e sem U+00AD | é do motor, e esta SPEC não muda motor sem mutação própria | PENDENCIAS |
 | mascarar nome no `templatize` do Atlas (hdi/yelum) | precisa re-tecer os mapas | PENDENCIAS 🔴 antes da ONDA C/D |
-| as 32 rotas `SEM_CORPUS` | precisam de acionamento real | LISTA-DE-COLETA |
+| as **32** rotas `SEM_CORPUS` — 📊 **26 fora de A–E + 6 dentro** (§6.1) | precisam de acionamento real | LISTA-DE-COLETA |
 | mapa do Atlas por ramo | hoje os 10 são `ramo='todos'` | PENDENCIAS |
 
 ---
