@@ -419,6 +419,23 @@ def _derivar_teclas_do_caso(slots: dict) -> None:
         # sem luz").
         slots["problema_eletrico_opcao"] = "2" if curto else "1"
 
+    # ---- O VAZAMENTO ESTA APARENTE? ----------------------------------
+    # 📊 "O vazamento esta aparente, sabe informar o local exato e o tipo de
+    #    tubulacao? *1 -* Sim *2 -* Nao" -- 3 sessoes.
+    #
+    # 🔴 E PERGUNTA DE COBERTURA disfarcada: vazamento NAO aparente e
+    #    CACA-VAZAMENTO, e o texto da propria allianz diz que caca-vazamento e
+    #    vazamento interno (paredes, teto, pisos) NAO sao cobertos.
+    #    Responder "1" no escuro abre um chamado que o prestador nega no local.
+    #
+    # A traducao le o que o segurado ja descreveu: cano na parede, piso, teto ou
+    # "nao sei de onde vem" e NAO aparente.
+    if not str(slots.get("vazamento_aparente_opcao") or "").strip():
+        escondido = any(p in texto for p in (
+            "parede", "piso", "teto", "embutid", "enterrad", "nao sei de onde",
+            "nao sei onde", "infiltra", "mancha", "subsolo", "laje"))
+        slots["vazamento_aparente_opcao"] = "2" if escondido else "1"
+
     # ---- QUANTOS PNEUS -----------------------------------------------
     # 📊 Duas telas, duas seguradoras, a mesma pergunta:
     #     yelum/hdi "Quantos pneus foram furados/danificados?

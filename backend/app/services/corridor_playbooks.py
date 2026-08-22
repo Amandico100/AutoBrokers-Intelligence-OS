@@ -5024,6 +5024,9 @@ ALLIANZ_RESIDENCIAL_WHATSAPP_V1["subservices"]["limpeza_caixa_dagua"] = {
     "required_slots": [
         "titular_cpf", "endereco_numero", "telefone_contato", "problema_descricao",
         "periodo_preferido", "qual_seguro_opcao", "caixas_dagua_quantidade_opcao",
+        # 🔴 SO O CLIENTE SABE, e decide o EQUIPAMENTO: ate 2.500 litros x
+        #    acima. Nenhum relato de vazamento diz o volume da caixa d agua.
+        "caixa_litros_opcao",
     ],
 }
 ALLIANZ_RESIDENCIAL_WHATSAPP_V1["subservices"]["consulta_veterinaria"] = {
@@ -5233,6 +5236,231 @@ PORTO_RESIDENCIAL_WHATSAPP_V1["ura_steps"] = (
 )
 # 📊 O `complemento` e o `alterar_informacao_botao` do tronco também servem o
 #    galho de AUTO — e as duas listas já os têm. Aqui só o que é do residencial.
+
+
+# ==========================================================================
+# BLOCO 3 · PORTO auto — as folhas (guincho 72 · bateria 18 · vidros 2)
+# ==========================================================================
+_PORTO_AUTO_FOLHAS = [
+    # ---- 🔴 O ACHADO DESTA FOLHA: a tela que É o prompt do destino --------
+    # 📊 Na sessão c5cafa8b a URA **não repete** "Digite o endereço completo"
+    #    para o destino. Ela manda só "Agora, vamos falar sobre o *endereço de
+    #    destino*." e a mensagem seguinte já é "Localizei o endereço Rua ...".
+    #    Ou seja: **essa tela É o prompt do destino**, e ela ficava órfã em 5
+    #    sessões.
+    #
+    # ⚠️ COLISÃO DECLARADA: `endereco_livre` usa `reply_repeat: "{local_destino}"`
+    #    supondo que a SEGUNDA ocorrência de "Digite o endereço completo" seria o
+    #    destino. Com este passo respondendo o destino, o `reply_repeat` mandaria
+    #    o destino DUAS vezes.
+    # 🔴 A escolha: este passo NÃO responde — ele marca o estado e deixa o
+    #    `reply_repeat` fazer o trabalho, que é o mecanismo que já está provado.
+    #    Responder aqui exigiria desligar o outro, e desligar mecanismo provado
+    #    para ligar mecanismo novo é troca, não ganho.
+    {"step": "destino_endereco_anuncio",
+     "anchor": r"vamos falar sobre o\s*[\s\S]{0,3}endere[çc]o de destino",
+     "reply": "", "noop": True, "only_subservices": ["guincho", "taxi"],
+     "notes": "📊 5 msgs / 5 sessões. É ANÚNCIO do destino. ⚠️ Quem responde o "
+              "destino é o `reply_repeat` do `endereco_livre` — ver PENDENCIAS: "
+              "os dois mecanismos não podem conviver respondendo."},
+
+    # ---- o taxi oferecido DEPOIS do guincho -------------------------------
+    {"step": "taxi_oferta", "anchor": r"voc[êe] tamb[ée]m precisa solicitar um t[áa]xi",
+     "reply": "Não", "only_subservices": ["guincho"],
+     "constante_justificada": (
+         "📊 5 msgs / 5 sessões. 🔴 É um BENEFÍCIO COBERTO sendo recusado em nome "
+         "do segurado — e é defensável porque ninguém pediu táxi: 'Sim' abre um "
+         "SEGUNDO serviço no nome dele. ⚠️ Mas é decisão de PRODUTO, não de "
+         "coleta, e está em PENDENCIAS. Quem quer táxi entra pela rota `taxi`, "
+         "que existe desde o BLOCO 4."),
+     "notes": "📊 5 msgs / 5 sessões."},
+
+    {"step": "tecnico_agendamento_porto",
+     "anchor": r"vou te ajudar com o agendamento de um t[ée]cnico",
+     "reply": "", "noop": True, "notes": "📊 2 msgs / 2 sessões."},
+    {"step": "autoatendimento_digital",
+     "anchor": r"voc[êe] pode utilizar o\s*[\s\S]{0,3}autoatendimento digital",
+     "reply": "1",
+     "constante_justificada": (
+         "📊 2 msgs / 2 sessões. 1-Continuar por aqui. 🔴 A alternativa é sair do "
+         "WhatsApp para o app — e o corredor não consegue seguir o segurado para "
+         "lá. Continuar no canal é a única opção que ele pode percorrer."),
+     "notes": "📊 2/2."},
+    {"step": "resumo_confira_auto",
+     "anchor": r"antes de confirmar a solicita[çc][ãa]o, confira as informa[çc][õo]es",
+     "reply": "", "noop": True,
+     "notes": "📊 3 msgs / 3 sessões. CARDÁPIO: a escolha vem na bolha seguinte."},
+    {"step": "pode_ligar_qualquer",
+     "anchor": r"posso te ligar (?:no n[úu]mero abaixo|em qualquer um deles)",
+     "reply": "1",
+     "constante_justificada": (
+         "📊 2 msgs / 2 sessões. 1-Sim, em qualquer um. O prestador ligando para "
+         "MAIS números é o que aumenta a chance de achar o segurado — e a URA já "
+         "só oferece números que o próprio segurado deu."),
+     "notes": "📊 2/2."},
+    {"step": "oficina_fechada", "anchor": r"a oficina pode estar fechada",
+     "reply": "", "noop": True, "only_subservices": ["guincho"],
+     "notes": "📊 2 msgs / 2 sessões. 🔴 REGRA AO CLIENTE: fora do horário "
+              "comercial o guincho pode levar o veículo à base, e um SEGUNDO "
+              "guincho leva à oficina no próximo dia útil."},
+    {"step": "link_de_acompanhamento_url",
+     "anchor": r"^https?://(?:www\.)?(?:contatoassistencia|porto)\.",
+     "reply": "", "noop": True,
+     "notes": "📊 3 msgs / 3 sessões. A URL sozinha numa bolha. Quem a colhe é "
+              "`capture_anchors.tracking_link`; o passo existe para o motor não "
+              "responder a um link."},
+
+    # ---- endereço manual, quando o geocode falha --------------------------
+    {"step": "pedir_cep_porto",
+     "anchor": r"vamos tentar de outra forma\. pode, por favor, informar o cep",
+     "reply": "{endereco_cep}", "fallback_adaptive": True, "notes": "📊 2/2."},
+    {"step": "pedir_numero_porto",
+     "anchor": (r"digite o n[úu]mero do pr[ée]dio, condom[íi]nio, casa ou km|"
+                r"^qual [ée] o n[úu]mero\?\s*$"),
+     "reply": "{endereco_numero}", "fallback_adaptive": True, "notes": "📊 2/2."},
+
+    # ---- o galho dos VIDROS (demanda 2, mas o desfecho é ENCAMINHA) -------
+    {"step": "vidros_retirar_veiculo",
+     "anchor": r"antes da gente come[çc]ar a falar sobre o conserto",
+     "reply": "2", "only_subservices": ["vidros"],
+     "constante_justificada": (
+         "📊 1 msg / 1 sessão. 2-Não preciso de ajuda para retirar o veículo. "
+         "🔴 'Sim' abriria um GUINCHO dentro do fluxo de vidros — dois serviços "
+         "num acionamento que pediu um."),
+     "notes": "📊 1/1."},
+    {"step": "vidros_bonus", "anchor": r"n[ãa]o ir[áa] afetar a sua classe de b[ôo]nus",
+     "reply": "", "noop": True, "only_subservices": ["vidros"],
+     "notes": "📊 1/1. 🔴 REGRA AO CLIENTE, e das que ele mais quer ouvir: "
+              "acionar vidro NÃO mexe no bônus."},
+    {"step": "vidros_link_pedido", "anchor": r"caso voc[êe] j[áa] tenha um pedido em andamento",
+     "reply": "", "noop": True, "only_subservices": ["vidros"], "notes": "📊 1/1."},
+]
+PORTO_AUTO_WHATSAPP_V1["ura_steps"] = (
+    list(PORTO_AUTO_WHATSAPP_V1["ura_steps"]) + [dict(p) for p in _PORTO_AUTO_FOLHAS]
+)
+
+# ==========================================================================
+# BLOCO 3 · ALLIANZ residencial — as folhas (encanador 18 · eletricista 13)
+# ==========================================================================
+_ALLIANZ_RESID_FOLHAS = [
+    # ---- 🔴 A TELA DO SERVIÇO JÁ ABERTO, e ela decide se o caso EXISTE ----
+    # 📊 "Selecione a opção que deseja para visualizar mais informações:
+    #     *1 -* *CONSERTO RESIDENCIAL*  *2 -* Abrir um novo atendimento"
+    #    4 telas / 4 sessões (o rótulo do serviço muda: CONSERTO RESIDENCIAL,
+    #    ENCANADOR, ...).
+    # 🔴 "1" mostra o chamado ANTIGO. O corredor existe para ABRIR — e ficar
+    #    preso no detalhe de um chamado velho é o caso morrer sem acionamento.
+    {"step": "servico_aberto_ver_ou_abrir",
+     "anchor": (r"selecione a op[çc][ãa]o que deseja para visualizar mais "
+                r"informa[çc][õo]es"),
+     "reply": "2",
+     "constante_justificada": (
+         "📊 4 telas / 4 sessões. 1-ver o chamado ANTIGO · 2-Abrir um novo "
+         "atendimento. O corredor só roda quando a corretora pediu um acionamento "
+         "NOVO; '1' o deixaria preso no detalhe de um chamado que já existe."),
+     "notes": "📊 4 telas / 4 sessões."},
+
+    # ---- o galho do ELETRICISTA ------------------------------------------
+    {"step": "energia_da_vizinhanca",
+     "anchor": r"verifique se o problema de energia [ée]/?foi em sua vizinhan[çc]a",
+     "reply": "", "noop": True, "only_subservices": ["eletricista"],
+     "notes": "📊 4 msgs / 4 sessões. 🔴 EXCLUSÃO DE COBERTURA: falta de energia "
+              "na RUA é da concessionária, não da assistência. Vai a "
+              "`regras_para_o_cliente` — o segurado precisa conferir ANTES, ou o "
+              "prestador vem e não tem o que fazer."},
+
+    # ---- o galho do ENCANADOR --------------------------------------------
+    {"step": "vazamento_aparente",
+     "anchor": r"o vazamento est[áa] aparente, sabe informar o local exato",
+     "reply": "{vazamento_aparente_opcao}", "requires": ["vazamento_aparente_opcao"],
+     "fallback_adaptive": True, "only_subservices": ["encanador", "desentupimento"],
+     "notes": "📊 3 msgs / 3 sessões. 1-Sim 2-Não 3-... 🔴 Vem do caso: vazamento "
+              "NÃO aparente é caça-vazamento, que costuma estar FORA da cobertura."},
+    {"step": "quebra_de_alvenaria",
+     "anchor": r"caso seja necess[áa]ria a quebra da alvenaria",
+     "reply": "", "noop": True, "only_subservices": ["encanador", "desentupimento"],
+     "notes": "📊 3 msgs / 3 sessões. 🔴 REGRA AO CLIENTE, e das que doem: o "
+              "fechamento é feito no RÚSTICO — acabamento (azulejo, pintura) é "
+              "por conta do segurado."},
+    # 🔴 DINHEIRO — e esta tela é `noop` porque não pede resposta, mas o texto
+    #    vai ao cliente ANTES do acionamento.
+    {"step": "mao_de_obra_coberta_pecas_nao",
+     "anchor": r"os custos de m[ãa]o de obra ser[ãa]o cobertos integralmente",
+     "reply": "", "noop": True,
+     "notes": "📊 3 msgs / 3 sessões. 🔴 A mão de obra é coberta; as PEÇAS são do "
+              "segurado. É a regra que mais gera reclamação depois do serviço."},
+
+    # ---- o galho da LIMPEZA DE CAIXA D'ÁGUA -------------------------------
+    {"step": "caixa_dagua_limite_duas",
+     "anchor": r"limitada a 0?2 \(duas\) unidades|limpeza e higieniza[çc][ãa]o da caixa",
+     "reply": "", "noop": True, "only_subservices": ["limpeza_caixa_dagua"],
+     "notes": "📊 2 msgs / 2 sessões. 🔴 LIMITE DE COBERTURA: duas caixas por "
+              "acionamento."},
+    {"step": "caixa_dagua_litros", "anchor": r"quantos litros tem cada caixa d.?[áa]gua",
+     "reply": "{caixa_litros_opcao}", "requires": ["caixa_litros_opcao"],
+     "fallback_adaptive": True, "only_subservices": ["limpeza_caixa_dagua"],
+     "notes": "📊 2 msgs / 2 sessões. 1-Até 2.500 litros 2-Acima. 🔴 Vem do caso: "
+              "o volume muda o equipamento e o tempo do serviço."},
+
+    # ---- o galho do ELETRODOMÉSTICO ---------------------------------------
+    {"step": "desgaste_natural_ou_nao",
+     "anchor": r"o profissional ir[áa] verificar se o defeito [ée] desgaste natural",
+     "reply": "", "noop": True,
+     "only_subservices": ["eletrodomesticos", "maquina_de_lavar", "ar_condicionado"],
+     "notes": "📊 2 msgs / 2 sessões. 🔴 EXCLUSÃO: mau uso e desgaste que não seja "
+              "de componente NÃO são cobertos — e quem decide é o técnico, no local."},
+
+    # ---- agendamento e desfecho -------------------------------------------
+    {"step": "agendamento_para_confirma",
+     "anchor": r"agendamento para:\s*[\s\S]{0,80}podemos continuar",
+     "reply": "1",
+     "constante_justificada": (
+         "📊 2 msgs / 2 sessões. 1-Sim 2-Voltar. É a confirmação da data que o "
+         "PRÓPRIO corredor escolheu no passo anterior — confirmar é confirmar o "
+         "próprio dado."),
+     "notes": "📊 2/2."},
+    {"step": "protocolo_com_sucesso",
+     "anchor": r"sua assist[êe]ncia foi solicitada com sucesso",
+     "reply": "", "noop": True,
+     "notes": "📊 É o DESFECHO. Quem lê o número é `capture_anchors.protocol`; o "
+              "passo existe para o motor ficar calado enquanto a captura acontece."},
+
+    # ---- 🔴 A LISTA COM MAIS DE UM ENDEREÇO -------------------------------
+    # ⚠️ O `escolher_endereco_da_lista` do BLOCO 1 exige `2 - Voltar 3 - Sair`.
+    #    📊 Estas telas têm DOIS ENDEREÇOS ("*1 -* R. ... *2 -* AV ..."), e ali
+    #    "1" não é "o endereço da apólice": é o PRIMEIRO de dois.
+    # 🔴 Escolher fixo manda o prestador para a casa errada. Vem do caso.
+    {"step": "escolher_entre_dois_enderecos",
+     "anchor": (r"^\*?1\s*-\*?\s*(?:r\.|av|rua|es |rod|tv)[\s\S]{0,200}"
+                r"\*?2\s*-\*?\s*(?:r\.|av|rua|es |rod|tv)"),
+     "reply": "{endereco_opcao}",
+     # 🔴 SEM `requires` DE PROPOSITO -- e a ausencia e o achado.
+     #
+     #    Nenhuma das quatro origens serve aqui: nao e constante (a lista muda),
+     #    nao se deriva (o relato nao diz "opcao 1"), nao se coleta (a corretora
+     #    nao viu a tela para saber o que e a opcao 1) e o motor nao tem, para
+     #    endereco, o equivalente do `pick_option_by_plate`.
+     #
+     #    A tela PRECISA ser lida. `fallback_adaptive` e o unico caminho honesto,
+     #    e se o cerebro nao decidir, e handoff -- nunca posicao fixa, porque
+     #    escolher errado manda o prestador para a casa de outra pessoa.
+     #    Registrado em P-084-6 e P-084-9.
+     "fallback_adaptive": True,
+     "notes": "📊 3 telas / 4 sessões. 🔴 DOIS endereços de verdade, não endereço "
+              "+ Voltar. Vem do caso; sem match seguro, o cérebro lê a tela e, "
+              "falhando, é handoff — nunca posição fixa."},
+]
+ALLIANZ_RESIDENCIAL_WHATSAPP_V1["ura_steps"] = (
+    list(ALLIANZ_RESIDENCIAL_WHATSAPP_V1["ura_steps"])
+    + [dict(p) for p in _ALLIANZ_RESID_FOLHAS]
+)
+# 📊 "Apólice não encontrada com *CPF* ou *CNPJ* informado." — 1 sessão. Não é
+#    passo: é o fim da linha. `_RESID_HANDOFF_TRIGGERS` já tem
+#    `n[ãa]o localizamos`, que NÃO casa esta redação.
+ALLIANZ_RESIDENCIAL_WHATSAPP_V1["handoff_triggers"] = (
+    list(ALLIANZ_RESIDENCIAL_WHATSAPP_V1["handoff_triggers"])
+    + [r"ap[óo]lice n[ãa]o encontrada"]
+)
 
 _PLAYBOOKS: Dict[str, Dict[str, Any]] = {
     f"{p['playbook_id']}@v{p['version']}": p
