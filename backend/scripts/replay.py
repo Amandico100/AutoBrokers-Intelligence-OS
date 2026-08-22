@@ -108,11 +108,29 @@ def replay(rota, *, sessoes_no_acervo: Optional[int] = None) -> Replay:
     # dela. 📊 Medido: 20 orfas para `maquina_de_lavar` onde a SPEC-083 §4.1
     # espera **1**, porque `allianz-residencial` tem SEIS servicos num corpus.
     #
-    # ⚠️ E a sessao SEM servico determinado FICA: ela e tronco (Termo, CPF,
-    # endereco) e vale para todas as rotas daquele ramo. Descarta-la perderia
-    # justamente as telas que a §2.4 da 084 chama de "as que pagam por todas".
-    linhas = [l for l in todas
-              if l.get("servico") in (None, rota.servico)]
+    # 🔴 A SESSAO SEM SERVICO NAO E TRONCO -- e nao-classificada. E a diferenca
+    #    custou a nota da rota de referencia.
+    #
+    # ⚠️ A primeira versao incluia `servico=None` em TODA rota, presumindo que
+    #    fossem as telas de tronco (Termo, CPF, endereco) que valem para todas.
+    #    📊 Medido em `allianz-residencial`, depois do teto por rota:
+    #
+    # ```
+    #    maquina_de_lavar   4 sessoes / 102 telas   (as dela)
+    #    None               5 sessoes /  61 telas   (a cascata NAO classificou)
+    #    juntas           163 telas -> 26 ORFAS FUNCIONAIS -> NAO_RESPONDE
+    # ```
+    #
+    #    A rota de referencia caiu de **64/96 para `NAO_RESPONDE`** por incluir
+    #    sessoes de servico desconhecido. Nao-classificado nao e tronco: e uma
+    #    sessao inteira de OUTRO servico que a cascata nao soube nomear.
+    #
+    # ⚠️ **E o tronco de verdade ainda esta por vir:** a SPEC-084 §3.3 manda
+    #    classificar TELA a tela em tronco/galho/folha (`--exportar-arvore`).
+    #    Quando a arvore existir, as telas de TRONCO das sessoes nao classificadas
+    #    voltam para todas as rotas -- que e o que a §2.4 chama de *"as que pagam
+    #    por todas"*. Ate la, o filtro e por sessao, e a medida e honesta.
+    linhas = [l for l in todas if l.get("servico") == rota.servico]
     telas: List[Tela] = []
     for l in linhas:
         texto = l["text"]

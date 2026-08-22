@@ -145,3 +145,4 @@ backend/scripts/destilacao_max/lotes_autofleet/
 # Regenerar custa segundos:
 #     python backend/scripts/portal_factory.py lab api-infer --arquivo <har>
 docs/generated/portal-lab/
+.baseline/

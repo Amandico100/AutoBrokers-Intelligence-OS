@@ -49,18 +49,44 @@ PSV.ligar_resolvedor(M.canonical_subservice)
 RAIZ = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 DESTINO = os.path.join(RAIZ, "tests", "corpus", "telas_reais")
 
-# 🔴 O teto de sessões, com a correção do Founder (decisão A3, 21/08/2026).
+# =============================================================================
+# 🔴 P-083-1 - O TETO E POR **ROTA**, NAO POR (seguradora, ramo).
+# =============================================================================
 #
-# ⚠️ O problema medido: a SPEC-083 §6.5 fixava **5 sessões por (seguradora,
-#    ramo)** — e `allianz-residencial` tem **6 subserviços**. A escolha gulosa por
-#    diversidade Jaccard não garante cobertura por serviço, então uma rota podia
-#    receber ZERO sessões e sair `SEM_CORPUS` **por amostragem, não por ausência**
-#    — o desfecho que a SPEC-084 §7.2 proíbe por nome.
+# Decisao do Founder, 21/08/2026, pelo metodo de nota:
 #
-# **A decisão:** 1 sessão por serviço primeiro, depois diversidade. O teto sobe
-# quando os serviços passam de 5.
+# ```
+#   manter 5 por (seguradora, ramo)          30   46 rotas sem amostra, e elas
+#                                                 PARECEM ruins. Mede errado.
+#   5 por ROTA (seguradora x ramo x servico) 90   a unidade de medida da regua
+#                                                 E a rota. O corpus segue a
+#                                                 unidade de medida.
+#   sem teto                                 45   544 sessoes em git, irrevisavel
+# ```
+#
+# 📊 **O numero que a decisao existe para produzir:** a regua mediu, com o teto
+# antigo, **4 rotas pontuando · 12 SEM_CORPUS · 46 NAO_RESPONDE**. A causa nao
+# era qualidade de corredor - era amostra: 5 sessoes nao cobrem 4 a 6 servicos.
+#
+# > ## "46 corredores a reescrever" e "46 rotas sem amostra" sao trabalhos OPOSTOS.
+# > ## A diferenca sai de uma regeracao, nao de opiniao.
+#
+# ⚠️ E capar por rota **nao inventa sessao**: o crescimento e limitado pelo que
+# existe. 📊 `guincho` tem 65 escolhas em 10 seguradoras (~6 por rota - o corpus
+# enche); `chaveiro` tem 12 em 10 (~1 por rota - e essas ficam honestamente
+# magras, o que e a informacao certa).
+TETO_POR_ROTA = 5
 TETO_BASE_DE_SESSOES = 5
 TETO_DE_BYTES_POR_ARQUIVO = 500 * 1024
+
+# 🔴 REGRA DE ESCOPO - decisao do Founder, 21/08/2026:
+#    *"Nesse momento, condominio e outros ramos que nao sejam auto e residencial
+#    nao entram em corredores. Apenas AUTO e RESIDENCIAL. Tudo que for outro ramo
+#    e que for SINISTRO deve ser feito o HANDOFF para o suporte humano."*
+#
+# ⚠️ 📊 O que sai: `tokio-condominio` (2 sessoes) e `tokio-residencial` (4 sessoes,
+#    e nao ha playbook). Vao para PENDENCIAS.md com dono do Founder.
+RAMOS_EM_ESCOPO = ("auto", "residencial")
 
 # 🔴 O FILTRO ② DA SPEC-084 §2.5.2 — a fala humana que a fronteira não pega.
 #
@@ -131,82 +157,71 @@ def _jaccard(a: Set[str], b: Set[str]) -> float:
 
 def escolher_sessoes(
     candidatas: List[Tuple[Any, str, Set[str], bool, Optional[str]]],
-    teto: int,
+    teto_por_rota: int = TETO_POR_ROTA,
 ) -> Tuple[List[Any], List[str]]:
     """`[(sid, wa_ts, telas_norm, chegou_ao_fim, servico)]` -> `(escolhidas, notas)`.
 
-    A ordem, e cada passo existe por um motivo medido:
+    🔴 **A COTA E POR ROTA** (P-083-1). Cada servico presente no acervo daquele
+    `(seguradora, ramo)` recebe ate `teto_por_rota` sessoes proprias.
+
+    Dentro da cota de cada servico, a ordem e a da SPEC-083 §8 passo 4:
 
     ```
-    1. COBERTURA POR SERVIÇO — a mais recente de CADA serviço presente.
-       ⚠️ Sem isto, uma rota sai `SEM_CORPUS` por amostragem (decisão A3).
-    2. a mais recente COM DESFECHO, se ainda não entrou
-    3. o resto: guloso por JACCARD sobre o conjunto de telas, escolhendo a cada
-       passo a sessão de MENOR similaridade máxima contra as já escolhidas
-    4. empate -> a mais recente vence (determinístico, NUNCA sorteio)
+    1. as que CHEGARAM AO FIM, mais recentes primeiro
+    2. o resto: guloso por JACCARD, escolhendo a de MENOR similaridade maxima
+    3. empate -> a mais recente vence (deterministico, NUNCA sorteio)
     ```
 
-    📊 **CONTROLE:** rodar duas vezes tem de dar o MESMO conjunto. Corpus que muda
-    entre execuções faz a nota mudar sem nada mudar na rota.
+    ⚠️ O efeito colateral que a ferramenta DECLARA em vez de esconder: o eixo A #1
+    pergunta se alguma sessao do corpus teve desfecho, e a selecao GARANTE que
+    sim. Nao e errado - e a sessao certa a guardar - mas a saida diz isso, para
+    ninguem ler como descoberta independente.
+
+    ⚠️ As sessoes **sem servico determinado** (tronco: Termo, CPF, endereco) tem
+    cota propria - elas valem para **todas** as rotas daquele ramo, e sao as que a
+    SPEC-084 §2.4 chama de *"as que pagam por todas"*.
+
+    📊 **CONTROLE:** rodar duas vezes tem de dar o MESMO conjunto.
     """
     notas: List[str] = []
-    porrecencia = sorted(candidatas, key=lambda c: (c[1], str(c[0])), reverse=True)
     escolhidas: List[Any] = []
-    vistas: Dict[Any, Set[str]] = {}
 
-    # 1 · A MAIS RECENTE COM DESFECHO, POR SERVIÇO — e ela vem PRIMEIRO.
-    #
-    # 🔴 ORDEM CORRIGIDA EM 21/08/2026, e o defeito era grave: com a cobertura
-    #    por serviço rodando antes, ela encheu os 6 slots de
-    #    `allianz-residencial` com 6 serviços e **EXPULSOU `7ac3c101`** — a
-    #    sessão do único acionamento validado em produção. A rota de referência
-    #    saiu `SEM_CORPUS`.
-    #
-    #    A SPEC-083 §8 (passo 4) é clara sobre a ordem: *"a 1ª: a mais recente
-    #    com `sessao_chegou_ao_fim = True`"*. A cobertura por serviço (decisão A3
-    #    do Founder) **acrescenta** um critério; não desloca o primeiro.
-    ja_coberto: Set[str] = set()
-    com_fim = [c for c in porrecencia if c[3]]
-    for sid, _ts, telas, _fim, servico in com_fim:
-        if len(escolhidas) >= teto:
-            break
-        if servico in ja_coberto:
-            continue
-        escolhidas.append(sid)
-        vistas[sid] = telas
-        ja_coberto.add(servico)
-        notas.append(f"COM DESFECHO + servico {servico or '(tronco)'} -> {str(sid)[:8]}")
+    por_servico: Dict[Optional[str], List] = collections.defaultdict(list)
+    for c in candidatas:
+        por_servico[c[4]].append(c)
 
-    # 2 · cobertura dos serviços que ainda faltam, mesmo sem desfecho
-    for sid, _ts, telas, _fim, servico in porrecencia:
-        if servico and servico not in ja_coberto and len(escolhidas) < teto:
-            escolhidas.append(sid)
-            vistas[sid] = telas
-            ja_coberto.add(servico)
-            notas.append(f"cobertura de servico (sem desfecho): {servico} -> {str(sid)[:8]}")
+    for servico in sorted(por_servico, key=lambda x: (x is None, str(x))):
+        grupo = sorted(por_servico[servico], key=lambda c: (c[1], str(c[0])), reverse=True)
+        cota: List[Any] = []
+        vistas: Dict[Any, Set[str]] = {}
+        rot = servico or "(tronco)"
 
-    # 3 · diversidade gulosa
-    restantes = [c for c in porrecencia if c[0] not in escolhidas]
-    while restantes and len(escolhidas) < teto:
-        melhor = None
-        melhor_sim = 2.0
-        for c in restantes:
-            sim = max((_jaccard(c[2], v) for v in vistas.values()), default=0.0)
-            # 4 · empate -> a mais recente vence. `restantes` já está por
-            #     recência decrescente, e `<` (não `<=`) preserva a primeira.
-            if sim < melhor_sim:
-                melhor_sim, melhor = sim, c
-        if melhor is None:
-            break
-        escolhidas.append(melhor[0])
-        vistas[melhor[0]] = melhor[2]
-        restantes.remove(melhor)
-        notas.append(f"diversidade (jaccard max {melhor_sim:.2f}) -> {str(melhor[0])[:8]}")
+        for sid, _ts, telas, fim, _s in grupo:
+            if fim and len(cota) < teto_por_rota:
+                cota.append(sid)
+                vistas[sid] = telas
+                notas.append("[%s] COM DESFECHO -> %s" % (rot, str(sid)[:8]))
 
-    # ⚠️ O efeito colateral que a ferramenta DECLARA, em vez de esconder: a
-    #    seleção GARANTE que a mais recente com desfecho entre no corpus, e o
-    #    eixo A depois pergunta se alguma sessão do corpus teve desfecho.
-    #    A amostra é escolhida para passar no item que ela alimenta.
+        restantes = [c for c in grupo if c[0] not in cota]
+        while restantes and len(cota) < teto_por_rota:
+            melhor, melhor_sim = None, 2.0
+            for c in restantes:
+                sim = max((_jaccard(c[2], v) for v in vistas.values()), default=0.0)
+                if sim < melhor_sim:
+                    melhor_sim, melhor = sim, c
+            if melhor is None:
+                break
+            cota.append(melhor[0])
+            vistas[melhor[0]] = melhor[2]
+            restantes.remove(melhor)
+            notas.append("[%s] diversidade (jaccard %.2f) -> %s"
+                         % (rot, melhor_sim, str(melhor[0])[:8]))
+
+        if len(grupo) > len(cota):
+            notas.append("[%s] AVISO: %d sessao(oes) FORA do corpus pelo teto de %d por rota"
+                         % (rot, len(grupo) - len(cota), teto_por_rota))
+        escolhidas.extend(cota)
+
     return escolhidas, notas
 
 
@@ -281,17 +296,6 @@ def gerar(seguradoras: List[str], *, dry_run: bool = False) -> Dict[str, Any]:
                 continue
             ordenados = sorted(eventos, key=lambda x: x.get("wa_timestamp") or "")
 
-            # 🔴 PASSO 0b · a sessao e TODA humana? Entao ela sai INTEIRA.
-            #    📊 O JUIZ DE TRIAGEM leu 22 sessoes e achou duas que sao conversa
-            #    humana do primeiro turno ao ultimo -- sem apresentacao e sem
-            #    anuncio de transferencia. Nao ha onde cortar.
-            toda_humana = Z.sessao_e_toda_humana(seg, ordenados)
-            if toda_humana:
-                contagem["SESSAO_TODA_HUMANA"] += 1
-                rel["avisos"].append(
-                    f"SESSAO_TODA_HUMANA {seg}/{str(sid)[:8]}: {toda_humana!r}")
-                continue
-
             pares = [(e.get("direction"), Z.norm_para_classificar(e.get("text") or ""))
                      for e in ordenados]
 
@@ -304,6 +308,17 @@ def gerar(seguradoras: List[str], *, dry_run: bool = False) -> Dict[str, Any]:
             #    `ambos`        colisão -> algum padrão cita cardápio (PADRAO_DE_CARDAPIO)
             #    `sem_escolha`  a sessão é longa e legítima, mas NÃO É DE ASSISTÊNCIA
             #                   (📊 cartão de crédito, sinistro RE, contratação)
+            # 🔴 REGRA DE ESCOPO DO FOUNDER, 21/08/2026:
+            #    *"Condominio e outros ramos que nao sejam auto e residencial NAO
+            #    entram em corredores neste momento. Tudo que for outro ramo, e
+            #    tudo que for SINISTRO, deve ser HANDOFF para o suporte humano."*
+            #
+            # ⚠️ O corpus do ramo fora de escopo NAO e gerado - mas a contagem
+            #    dele VAI para o relatorio, porque PENDENCIAS.md precisa saber
+            #    quantas sessoes ficaram de fora e de que ramo.
+            if ramo not in RAMOS_EM_ESCOPO and ramo not in ("indefinido", "ambos", "sem_escolha"):
+                contagem["FORA_DE_ESCOPO:" + ramo] += 1
+                continue
             if ramo in ("indefinido", "ambos", "sem_escolha"):
                 if ramo == "ambos":
                     rel["avisos"].append(
@@ -394,9 +409,9 @@ def gerar(seguradoras: List[str], *, dry_run: bool = False) -> Dict[str, Any]:
         for ramo, candidatas in por_ramo.items():
             pb = pb_por_ramo.get(ramo)
             n_servicos = len((pb or {}).get("subservices") or {})
-            teto = max(TETO_BASE_DE_SESSOES, n_servicos)
+            teto = TETO_POR_ROTA
             escolhidas, notas = escolher_sessoes(
-                [(c[0], c[1], c[2], c[3], c[4]) for c in candidatas], teto)
+                [(c[0], c[1], c[2], c[3], c[4]) for c in candidatas])
             mapa = {c[0]: c[5] for c in candidatas}
             linhas = [l for sid in escolhidas for l in mapa[sid]]
             linhas.sort(key=lambda l: (l["wa_timestamp"] or "", l["session_id"]))

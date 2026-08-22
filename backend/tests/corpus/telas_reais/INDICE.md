@@ -1,6 +1,6 @@
 # Corpus de telas reais — ÍNDICE
 
-> Gerado em **2026-08-21T23:35:29+00:00** · commit `608db03`
+> Gerado em **2026-08-22T00:50:47+00:00** · commit `d7fca07`
 > 📊 `marcas_de_corretora()` = **8** (o CONTROLE da SPEC-084 §2.5.1.3 — se fosse 0, a geração teria rodado sem banco e o corpus **não estaria mascarado**)
 
 🔴 Este arquivo existe porque a SPEC-083 §7 proíbe pular em silêncio: *"truncar calado lê-se como 'cobrimos tudo'"*.
@@ -9,133 +9,256 @@
 
 | arquivo | linhas | KB | sessões no corpus | candidatas | teto | subserviços | c/ desfecho |
 |---|---:|---:|---|---:|---:|---:|---:|
-| `alfa-auto.jsonl` | 72 | 22 | 1b13140b f25d07b1 5872a774 0c085fc5 fa39ff38 | 8 | 5 | 4 | 3 |
-| `allianz-auto.jsonl` | 133 | 40 | d2edf0dd 4971b50b cea36de4 d6b1d83f b60d9359 | 40 | 5 | 4 | 14 |
-| `allianz-residencial.jsonl` | 141 | 48 | 7ac3c101 0b244572 987572a4 bb6e16d4 bb97ea04 c58a171a | 81 | 6 | 6 | 17 |
-| `azul-auto.jsonl` | 160 | 47 | b012d3cd 4c821851 d70ced75 2f0cd86a fdec3edf | 11 | 5 | 5 | 10 |
-| `bradesco-auto.jsonl` | 79 | 27 | bc2cfead 72af1ae1 9daeeccb d557d3c7 8f7f1d68 | 12 | 5 | 4 | 5 |
-| `hdi-auto.jsonl` | 153 | 51 | 3dc92fcf 697abd09 71caf82f e476dc68 886066e5 | 28 | 5 | 4 | 15 |
-| `hdi-residencial.jsonl` | 93 | 31 | 26c0546f 13379965 0a7c24ef a1ba53b9 1c8d0849 | 8 | 5 | 5 | 1 |
-| `mapfre-auto.jsonl` | 58 | 19 | a68aa770 9fae42e2 f6f2ec11 1684d4a8 d857d4de | 7 | 5 | 4 | 0 |
-| `porto-auto.jsonl` | 155 | 46 | d6f1f8d3 e3b1561f d0d64bfc e5318468 0c1e8e3e | 60 | 5 | 5 | 17 |
-| `porto-residencial.jsonl` | 116 | 36 | 3854b4a2 5bcf0792 565cb39a 897c42ff 0e97bfa8 | 9 | 5 | 3 | 0 |
-| `tokio-auto.jsonl` | 48 | 17 | c1a67b4a d99a47a1 641420c8 fa8127ef ca52ff75 | 7 | 5 | 4 | 7 |
-| `tokio-condominio.jsonl` | 16 | 5 | cd4b5ba7 c99dd4bb | 2 | 5 | 0 | 0 |
+| `alfa-auto.jsonl` | 121 | 37 | f25d07b1 665b5bad 0c085fc5 47c3a1d8 1b13140b fa39ff38 5872a774 406462dd | 8 | 5 | 4 | 3 |
+| `allianz-auto.jsonl` | 377 | 112 | cea36de4 b11fdfe0 d2edf0dd b60d9359 4971b50b f94275d4 1e123686 dc6c0345 5d34bab2 d6b1d83f 298e0c49 c6fff008 037f8cf2 0aeaae0b e0efb326 e504c2d7 879eedb0 5e866ea4 06fa6ea3 | 40 | 5 | 4 | 14 |
+| `allianz-residencial.jsonl` | 781 | 258 | 75d9671f b2946306 c58a171a 987572a4 bb6e16d4 bb97ea04 88eb97a9 6d6164de 448c6aae 3d6a8467 287619f2 920385e3 e70dfcaa aa2e0a68 2540f42f 8ad1d251 96f220ca 267eb82f acc3e885 b084a429 bf5fbbeb c63026a5 21610390 eb7c521e 7c22675f 0b244572 9694992d e3a53c71 ed379849 be8e3f8d eade0321 382cbdb7 c6b63f95 7ac3c101 b2bf40e7 db469d05 c69826a2 5d7a1a35 44ff2017 232d7eec 5250ab35 b40d7d09 1716d033 | 82 | 5 | 6 | 18 |
+| `azul-auto.jsonl` | 321 | 93 | d70ced75 4c821851 0189f34b fdec3edf b012d3cd 1cec8452 14398ee8 a1a6a0d4 6c5280df | 11 | 5 | 5 | 10 |
+| `bradesco-auto.jsonl` | 135 | 45 | 72af1ae1 bc2cfead 0d5284f3 2c05415b a10d095d b4e4ef95 | 12 | 5 | 4 | 5 |
+| `hdi-auto.jsonl` | 375 | 120 | 697abd09 3dc92fcf 68f511d9 bb5b0f11 2e6df205 21a53457 886066e5 71caf82f e476dc68 d8b852de 17ccacad 794a9d2c 334a4892 | 28 | 5 | 4 | 15 |
+| `hdi-residencial.jsonl` | 164 | 55 | 0a7c24ef 13379965 1c8d0849 ed46a953 b638adcd 834cc238 26c0546f a1ba53b9 | 8 | 5 | 5 | 1 |
+| `mapfre-auto.jsonl` | 75 | 24 | a68aa770 9fae42e2 f6f2ec11 1684d4a8 d857d4de b03a6b30 | 7 | 5 | 4 | 0 |
+| `porto-auto.jsonl` | 521 | 155 | 4830574a e5318468 b1ff65f2 e3b1561f f4838bb3 c470d13d 67296ad9 d0d64bfc d6f1f8d3 697561ab d801cbd8 ca755794 c5cafa8b 0c1e8e3e 1f2582fc 90a47771 cdcc7125 8c490e96 e17f4b74 | 61 | 5 | 5 | 17 |
+| `porto-residencial.jsonl` | 210 | 66 | 565cb39a 3854b4a2 5bcf0792 0fe42179 84187509 897c42ff 0e97bfa8 e3b9dfd6 4631b3ed | 9 | 5 | 3 | 0 |
+| `tokio-auto.jsonl` | 70 | 24 | c1a67b4a b7e75c66 d99a47a1 fa8127ef ca52ff75 641420c8 d8a81c33 | 7 | 5 | 4 | 7 |
 | `tokio-residencial.jsonl` | 43 | 15 | 66c9dd9b 8d9b8672 f8b83a35 e0383feb | 4 | 5 | 0 | 0 |
-| `yelum-auto.jsonl` | 162 | 53 | a1c18e1c 935c4076 e6a07317 8a6040a7 e8efabc0 | 56 | 5 | 4 | 24 |
-| `yelum-residencial.jsonl` | 92 | 32 | 6376f868 9cb09e20 bb573c0a 70571f37 81c8ba13 | 9 | 5 | 5 | 4 |
-| `zurich-auto.jsonl` | 206 | 68 | 8e5fb8c0 963f4097 e1349860 4118ba36 d5ce1862 | 10 | 5 | 5 | 3 |
+| `yelum-auto.jsonl` | 607 | 198 | 69816f6b e8efabc0 39e395bb 20d9d87c 4d5bd779 870ab018 a1c18e1c 8a0d25a4 c54f4a98 350492ce 9d2655e2 8a6040a7 8ce9f29d 935c4076 8ac461dc 927d8cea ba475989 86769bd5 e6a07317 b73ccd15 859d185c dc1a0808 db2270c8 | 56 | 5 | 4 | 24 |
+| `yelum-residencial.jsonl` | 186 | 63 | 9cb09e20 315f0681 bb573c0a 6376f868 01e31e80 70571f37 81c8ba13 6a414121 af3b817e | 9 | 5 | 5 | 4 |
+| `zurich-auto.jsonl` | 253 | 82 | 8e5fb8c0 963f4097 9f7dbd91 e1349860 4118ba36 d5ce1862 | 10 | 5 | 5 | 3 |
 
 ## Por que cada sessão entrou
 
 **`alfa-auto.jsonl`**
-- COM DESFECHO + servico pneu -> 1b13140b
-- COM DESFECHO + servico guincho -> f25d07b1
-- diversidade (jaccard max 0.08) -> 5872a774
-- diversidade (jaccard max 0.30) -> 0c085fc5
-- diversidade (jaccard max 0.36) -> fa39ff38
+- [guincho] COM DESFECHO -> f25d07b1
+- [guincho] COM DESFECHO -> 665b5bad
+- [guincho] diversidade (jaccard 0.21) -> 0c085fc5
+- [guincho] diversidade (jaccard 0.40) -> 47c3a1d8
+- [pneu] COM DESFECHO -> 1b13140b
+- [(tronco)] diversidade (jaccard 0.00) -> fa39ff38
+- [(tronco)] diversidade (jaccard 0.33) -> 5872a774
+- [(tronco)] diversidade (jaccard 0.75) -> 406462dd
 
 **`allianz-auto.jsonl`**
-- COM DESFECHO + servico eletricista -> d2edf0dd
-- COM DESFECHO + servico guincho -> 4971b50b
-- COM DESFECHO + servico bateria -> cea36de4
-- COM DESFECHO + servico pneu -> d6b1d83f
-- cobertura de servico (sem desfecho): encanador -> b60d9359
+- [bateria] COM DESFECHO -> cea36de4
+- [bateria] diversidade (jaccard 0.24) -> b11fdfe0
+- [eletricista] COM DESFECHO -> d2edf0dd
+- [encanador] diversidade (jaccard 0.00) -> b60d9359
+- [guincho] COM DESFECHO -> 4971b50b
+- [guincho] COM DESFECHO -> f94275d4
+- [guincho] COM DESFECHO -> 1e123686
+- [guincho] COM DESFECHO -> dc6c0345
+- [guincho] COM DESFECHO -> 5d34bab2
+- [guincho] AVISO: 21 sessao(oes) FORA do corpus pelo teto de 5 por rota
+- [pneu] COM DESFECHO -> d6b1d83f
+- [pneu] COM DESFECHO -> 298e0c49
+- [pneu] COM DESFECHO -> c6fff008
+- [socorro_mecanico] diversidade (jaccard 0.00) -> 037f8cf2
+- [taxi] diversidade (jaccard 0.00) -> 0aeaae0b
+- [(tronco)] diversidade (jaccard 0.00) -> e0efb326
+- [(tronco)] diversidade (jaccard 0.23) -> e504c2d7
+- [(tronco)] diversidade (jaccard 0.32) -> 879eedb0
+- [(tronco)] diversidade (jaccard 0.50) -> 5e866ea4
+- [(tronco)] diversidade (jaccard 0.64) -> 06fa6ea3
 
 **`allianz-residencial.jsonl`**
-- COM DESFECHO + servico maquina_de_lavar -> 7ac3c101
-- COM DESFECHO + servico encanador -> 0b244572
-- COM DESFECHO + servico ?limpeza -> 987572a4
-- COM DESFECHO + servico ?limpeza de caixa d'agua -> bb6e16d4
-- COM DESFECHO + servico ?pet assistance -> bb97ea04
-- COM DESFECHO + servico ?consulta veterinaria -> c58a171a
+- [?check-up lar] diversidade (jaccard 0.00) -> 75d9671f
+- [?conserto residencial] COM DESFECHO -> b2946306
+- [?consulta veterinaria] COM DESFECHO -> c58a171a
+- [?limpeza] COM DESFECHO -> 987572a4
+- [?limpeza de caixa d'agua] COM DESFECHO -> bb6e16d4
+- [?pet assistance] COM DESFECHO -> bb97ea04
+- [?reembolso - qualidade] COM DESFECHO -> 88eb97a9
+- [?retorno em garantia] diversidade (jaccard 0.00) -> 6d6164de
+- [ar_condicionado] COM DESFECHO -> 448c6aae
+- [ar_condicionado] diversidade (jaccard 0.27) -> 3d6a8467
+- [ar_condicionado] diversidade (jaccard 0.65) -> 287619f2
+- [ar_condicionado] diversidade (jaccard 0.75) -> 920385e3
+- [chaveiro] COM DESFECHO -> e70dfcaa
+- [chaveiro] diversidade (jaccard 0.47) -> aa2e0a68
+- [desentupimento] diversidade (jaccard 0.00) -> 2540f42f
+- [desentupimento] diversidade (jaccard 0.47) -> 8ad1d251
+- [desentupimento] diversidade (jaccard 0.80) -> 96f220ca
+- [eletricista] COM DESFECHO -> 267eb82f
+- [eletricista] COM DESFECHO -> acc3e885
+- [eletricista] diversidade (jaccard 0.41) -> b084a429
+- [eletricista] diversidade (jaccard 0.41) -> bf5fbbeb
+- [eletricista] diversidade (jaccard 0.50) -> c63026a5
+- [eletrodomesticos] diversidade (jaccard 0.00) -> 21610390
+- [eletrodomesticos] diversidade (jaccard 0.38) -> eb7c521e
+- [eletrodomesticos] diversidade (jaccard 0.43) -> 7c22675f
+- [encanador] COM DESFECHO -> 0b244572
+- [encanador] COM DESFECHO -> 9694992d
+- [encanador] COM DESFECHO -> e3a53c71
+- [encanador] COM DESFECHO -> ed379849
+- [encanador] COM DESFECHO -> be8e3f8d
+- [encanador] AVISO: 7 sessao(oes) FORA do corpus pelo teto de 5 por rota
+- [limpeza_caixa_dagua] diversidade (jaccard 0.00) -> eade0321
+- [limpeza_caixa_dagua] diversidade (jaccard 0.13) -> 382cbdb7
+- [limpeza_caixa_dagua] diversidade (jaccard 0.87) -> c6b63f95
+- [maquina_de_lavar] COM DESFECHO -> 7ac3c101
+- [maquina_de_lavar] COM DESFECHO -> b2bf40e7
+- [maquina_de_lavar] diversidade (jaccard 0.24) -> db469d05
+- [maquina_de_lavar] diversidade (jaccard 0.53) -> c69826a2
+- [telhado] diversidade (jaccard 0.00) -> 5d7a1a35
+- [(tronco)] COM DESFECHO -> 44ff2017
+- [(tronco)] diversidade (jaccard 0.00) -> 232d7eec
+- [(tronco)] diversidade (jaccard 0.10) -> 5250ab35
+- [(tronco)] diversidade (jaccard 0.12) -> b40d7d09
+- [(tronco)] diversidade (jaccard 0.33) -> 1716d033
+- [(tronco)] AVISO: 32 sessao(oes) FORA do corpus pelo teto de 5 por rota
 
 **`azul-auto.jsonl`**
-- COM DESFECHO + servico guincho -> b012d3cd
-- COM DESFECHO + servico bateria -> 4c821851
-- COM DESFECHO + servico ?tecnico -> d70ced75
-- diversidade (jaccard max 0.31) -> 2f0cd86a
-- diversidade (jaccard max 0.47) -> fdec3edf
+- [?tecnico] COM DESFECHO -> d70ced75
+- [bateria] COM DESFECHO -> 4c821851
+- [bateria] COM DESFECHO -> 0189f34b
+- [bateria] COM DESFECHO -> fdec3edf
+- [guincho] COM DESFECHO -> b012d3cd
+- [guincho] COM DESFECHO -> 1cec8452
+- [guincho] COM DESFECHO -> 14398ee8
+- [guincho] COM DESFECHO -> a1a6a0d4
+- [guincho] COM DESFECHO -> 6c5280df
+- [guincho] AVISO: 2 sessao(oes) FORA do corpus pelo teto de 5 por rota
 
 **`bradesco-auto.jsonl`**
-- COM DESFECHO + servico (tronco) -> bc2cfead
-- COM DESFECHO + servico acidente -> 72af1ae1
-- diversidade (jaccard max 0.03) -> 9daeeccb
-- diversidade (jaccard max 0.09) -> d557d3c7
-- diversidade (jaccard max 0.17) -> 8f7f1d68
+- [acidente] COM DESFECHO -> 72af1ae1
+- [(tronco)] COM DESFECHO -> bc2cfead
+- [(tronco)] COM DESFECHO -> 0d5284f3
+- [(tronco)] COM DESFECHO -> 2c05415b
+- [(tronco)] COM DESFECHO -> a10d095d
+- [(tronco)] diversidade (jaccard 0.08) -> b4e4ef95
+- [(tronco)] AVISO: 6 sessao(oes) FORA do corpus pelo teto de 5 por rota
 
 **`hdi-auto.jsonl`**
-- COM DESFECHO + servico guincho -> 3dc92fcf
-- COM DESFECHO + servico chaveiro -> 697abd09
-- COM DESFECHO + servico socorro_mecanico -> 71caf82f
-- COM DESFECHO + servico (tronco) -> e476dc68
-- COM DESFECHO + servico pneu -> 886066e5
+- [chaveiro] COM DESFECHO -> 697abd09
+- [guincho] COM DESFECHO -> 3dc92fcf
+- [guincho] COM DESFECHO -> 68f511d9
+- [guincho] COM DESFECHO -> bb5b0f11
+- [guincho] COM DESFECHO -> 2e6df205
+- [guincho] COM DESFECHO -> 21a53457
+- [guincho] AVISO: 7 sessao(oes) FORA do corpus pelo teto de 5 por rota
+- [pneu] COM DESFECHO -> 886066e5
+- [socorro_mecanico] COM DESFECHO -> 71caf82f
+- [(tronco)] COM DESFECHO -> e476dc68
+- [(tronco)] diversidade (jaccard 0.00) -> d8b852de
+- [(tronco)] diversidade (jaccard 0.00) -> 17ccacad
+- [(tronco)] diversidade (jaccard 0.00) -> 794a9d2c
+- [(tronco)] diversidade (jaccard 0.03) -> 334a4892
+- [(tronco)] AVISO: 8 sessao(oes) FORA do corpus pelo teto de 5 por rota
 
 **`hdi-residencial.jsonl`**
-- COM DESFECHO + servico encanador -> 26c0546f
-- cobertura de servico (sem desfecho): eletricista -> 13379965
-- cobertura de servico (sem desfecho): chaveiro -> 0a7c24ef
-- diversidade (jaccard max 0.06) -> a1ba53b9
-- diversidade (jaccard max 0.39) -> 1c8d0849
+- [chaveiro] diversidade (jaccard 0.00) -> 0a7c24ef
+- [eletricista] diversidade (jaccard 0.00) -> 13379965
+- [eletricista] diversidade (jaccard 0.06) -> 1c8d0849
+- [eletricista] diversidade (jaccard 0.42) -> ed46a953
+- [eletricista] diversidade (jaccard 0.70) -> b638adcd
+- [eletricista] diversidade (jaccard 0.82) -> 834cc238
+- [encanador] COM DESFECHO -> 26c0546f
+- [encanador] diversidade (jaccard 0.04) -> a1ba53b9
 
 **`mapfre-auto.jsonl`**
-- cobertura de servico (sem desfecho): carro_reserva -> a68aa770
-- diversidade (jaccard max 0.00) -> 9fae42e2
-- diversidade (jaccard max 0.00) -> f6f2ec11
-- diversidade (jaccard max 0.22) -> 1684d4a8
-- diversidade (jaccard max 0.35) -> d857d4de
+- [carro_reserva] diversidade (jaccard 0.00) -> a68aa770
+- [(tronco)] diversidade (jaccard 0.00) -> 9fae42e2
+- [(tronco)] diversidade (jaccard 0.00) -> f6f2ec11
+- [(tronco)] diversidade (jaccard 0.00) -> 1684d4a8
+- [(tronco)] diversidade (jaccard 0.35) -> d857d4de
+- [(tronco)] diversidade (jaccard 0.44) -> b03a6b30
+- [(tronco)] AVISO: 1 sessao(oes) FORA do corpus pelo teto de 5 por rota
 
 **`porto-auto.jsonl`**
-- COM DESFECHO + servico guincho -> d6f1f8d3
-- COM DESFECHO + servico bateria -> e3b1561f
-- COM DESFECHO + servico chaveiro -> d0d64bfc
-- COM DESFECHO + servico ?tecnico -> e5318468
-- cobertura de servico (sem desfecho): vidros -> 0c1e8e3e
+- [?4145720 - 26] diversidade (jaccard 0.00) -> 4830574a
+- [?tecnico] COM DESFECHO -> e5318468
+- [?tecnico] COM DESFECHO -> b1ff65f2
+- [bateria] COM DESFECHO -> e3b1561f
+- [bateria] COM DESFECHO -> f4838bb3
+- [bateria] COM DESFECHO -> c470d13d
+- [bateria] COM DESFECHO -> 67296ad9
+- [chaveiro] COM DESFECHO -> d0d64bfc
+- [guincho] COM DESFECHO -> d6f1f8d3
+- [guincho] COM DESFECHO -> 697561ab
+- [guincho] COM DESFECHO -> d801cbd8
+- [guincho] COM DESFECHO -> ca755794
+- [guincho] COM DESFECHO -> c5cafa8b
+- [guincho] AVISO: 17 sessao(oes) FORA do corpus pelo teto de 5 por rota
+- [vidros] diversidade (jaccard 0.00) -> 0c1e8e3e
+- [(tronco)] diversidade (jaccard 0.00) -> 1f2582fc
+- [(tronco)] diversidade (jaccard 0.00) -> 90a47771
+- [(tronco)] diversidade (jaccard 0.00) -> cdcc7125
+- [(tronco)] diversidade (jaccard 0.00) -> 8c490e96
+- [(tronco)] diversidade (jaccard 0.00) -> e17f4b74
+- [(tronco)] AVISO: 25 sessao(oes) FORA do corpus pelo teto de 5 por rota
 
 **`porto-residencial.jsonl`**
-- cobertura de servico (sem desfecho): eletrodomesticos -> 3854b4a2
-- cobertura de servico (sem desfecho): encanador -> 5bcf0792
-- cobertura de servico (sem desfecho): chaveiro -> 565cb39a
-- diversidade (jaccard max 0.06) -> 897c42ff
-- diversidade (jaccard max 0.09) -> 0e97bfa8
+- [chaveiro] diversidade (jaccard 0.00) -> 565cb39a
+- [eletrodomesticos] diversidade (jaccard 0.00) -> 3854b4a2
+- [encanador] diversidade (jaccard 0.00) -> 5bcf0792
+- [encanador] diversidade (jaccard 0.29) -> 0fe42179
+- [encanador] diversidade (jaccard 0.56) -> 84187509
+- [(tronco)] diversidade (jaccard 0.00) -> 897c42ff
+- [(tronco)] diversidade (jaccard 0.05) -> 0e97bfa8
+- [(tronco)] diversidade (jaccard 0.15) -> e3b9dfd6
+- [(tronco)] diversidade (jaccard 0.45) -> 4631b3ed
 
 **`tokio-auto.jsonl`**
-- COM DESFECHO + servico carro_reserva -> c1a67b4a
-- COM DESFECHO + servico guincho -> d99a47a1
-- COM DESFECHO + servico (tronco) -> 641420c8
-- diversidade (jaccard max 0.36) -> fa8127ef
-- diversidade (jaccard max 0.55) -> ca52ff75
-
-**`tokio-condominio.jsonl`**
-- diversidade (jaccard max 0.00) -> cd4b5ba7
-- diversidade (jaccard max 0.14) -> c99dd4bb
+- [carro_reserva] COM DESFECHO -> c1a67b4a
+- [carro_reserva] COM DESFECHO -> b7e75c66
+- [guincho] COM DESFECHO -> d99a47a1
+- [guincho] COM DESFECHO -> fa8127ef
+- [guincho] COM DESFECHO -> ca52ff75
+- [(tronco)] COM DESFECHO -> 641420c8
+- [(tronco)] COM DESFECHO -> d8a81c33
 
 **`tokio-residencial.jsonl`**
-- diversidade (jaccard max 0.00) -> 66c9dd9b
-- diversidade (jaccard max 0.69) -> 8d9b8672
-- diversidade (jaccard max 0.73) -> f8b83a35
-- diversidade (jaccard max 0.82) -> e0383feb
+- [(tronco)] diversidade (jaccard 0.00) -> 66c9dd9b
+- [(tronco)] diversidade (jaccard 0.69) -> 8d9b8672
+- [(tronco)] diversidade (jaccard 0.73) -> f8b83a35
+- [(tronco)] diversidade (jaccard 0.82) -> e0383feb
 
 **`yelum-auto.jsonl`**
-- COM DESFECHO + servico guincho -> a1c18e1c
-- COM DESFECHO + servico socorro_mecanico -> 935c4076
-- COM DESFECHO + servico (tronco) -> e6a07317
-- COM DESFECHO + servico pneu -> 8a6040a7
-- cobertura de servico (sem desfecho): carro_reserva -> e8efabc0
+- [bateria] diversidade (jaccard 0.00) -> 69816f6b
+- [carro_reserva] diversidade (jaccard 0.00) -> e8efabc0
+- [carro_reserva] diversidade (jaccard 0.52) -> 39e395bb
+- [carro_reserva] diversidade (jaccard 0.67) -> 20d9d87c
+- [carro_reserva] diversidade (jaccard 0.84) -> 4d5bd779
+- [carro_reserva] diversidade (jaccard 0.94) -> 870ab018
+- [carro_reserva] AVISO: 2 sessao(oes) FORA do corpus pelo teto de 5 por rota
+- [guincho] COM DESFECHO -> a1c18e1c
+- [guincho] COM DESFECHO -> 8a0d25a4
+- [guincho] COM DESFECHO -> c54f4a98
+- [guincho] COM DESFECHO -> 350492ce
+- [guincho] COM DESFECHO -> 9d2655e2
+- [guincho] AVISO: 18 sessao(oes) FORA do corpus pelo teto de 5 por rota
+- [pneu] COM DESFECHO -> 8a6040a7
+- [pneu] COM DESFECHO -> 8ce9f29d
+- [socorro_mecanico] COM DESFECHO -> 935c4076
+- [socorro_mecanico] COM DESFECHO -> 8ac461dc
+- [socorro_mecanico] COM DESFECHO -> 927d8cea
+- [socorro_mecanico] COM DESFECHO -> ba475989
+- [socorro_mecanico] COM DESFECHO -> 86769bd5
+- [(tronco)] COM DESFECHO -> e6a07317
+- [(tronco)] diversidade (jaccard 0.00) -> b73ccd15
+- [(tronco)] diversidade (jaccard 0.03) -> 859d185c
+- [(tronco)] diversidade (jaccard 0.11) -> dc1a0808
+- [(tronco)] diversidade (jaccard 0.12) -> db2270c8
+- [(tronco)] AVISO: 13 sessao(oes) FORA do corpus pelo teto de 5 por rota
 
 **`yelum-residencial.jsonl`**
-- COM DESFECHO + servico encanador -> 6376f868
-- COM DESFECHO + servico eletricista -> 9cb09e20
-- cobertura de servico (sem desfecho): eletrodomesticos -> bb573c0a
-- diversidade (jaccard max 0.00) -> 70571f37
-- diversidade (jaccard max 0.13) -> 81c8ba13
+- [eletricista] COM DESFECHO -> 9cb09e20
+- [eletricista] COM DESFECHO -> 315f0681
+- [eletrodomesticos] diversidade (jaccard 0.00) -> bb573c0a
+- [encanador] COM DESFECHO -> 6376f868
+- [encanador] COM DESFECHO -> 01e31e80
+- [encanador] diversidade (jaccard 0.00) -> 70571f37
+- [encanador] diversidade (jaccard 0.13) -> 81c8ba13
+- [encanador] diversidade (jaccard 0.40) -> 6a414121
+- [(tronco)] diversidade (jaccard 0.00) -> af3b817e
 
 **`zurich-auto.jsonl`**
-- COM DESFECHO + servico guincho -> 8e5fb8c0
-- COM DESFECHO + servico (tronco) -> 963f4097
-- diversidade (jaccard max 0.03) -> e1349860
-- diversidade (jaccard max 0.04) -> 4118ba36
-- diversidade (jaccard max 0.08) -> d5ce1862
+- [guincho] COM DESFECHO -> 8e5fb8c0
+- [(tronco)] COM DESFECHO -> 963f4097
+- [(tronco)] COM DESFECHO -> 9f7dbd91
+- [(tronco)] diversidade (jaccard 0.01) -> e1349860
+- [(tronco)] diversidade (jaccard 0.04) -> 4118ba36
+- [(tronco)] diversidade (jaccard 0.07) -> d5ce1862
+- [(tronco)] AVISO: 4 sessao(oes) FORA do corpus pelo teto de 5 por rota
 
 ## Linhas RECUSADAS — sujeira que sobrou depois da máscara
 
@@ -143,29 +266,23 @@ _nenhuma_
 
 ## Contagens por seguradora
 
-| seguradora | ORFAO_sessao | SESSAO_TODA_HUMANA | dedup | nivel:- | nivel:colisao | nivel:nivel-1-resposta | nivel:nivel-2-texto | nivel:sem-escolha-de-ramo | ramo:ambos | ramo:auto | ramo:condominio | ramo:indefinido | ramo:residencial | ramo:sem_escolha | senha_preservada | servico:indefinido | servico:nivel | vocativo_mascarado | zona:HUMANO | zona:URA |
-|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|
-| alfa | 0 | 0 | 30 | 1 | 0 | 0 | 8 | 0 | 0 | 8 | 0 | 1 | 0 | 0 | 3 | 3 | 5 | 0 | 0 | 151 |
-| allianz | 1 | 5 | 1382 | 13 | 1 | 114 | 7 | 0 | 1 | 40 | 0 | 13 | 81 | 0 | 43 | 41 | 80 | 0 | 3791 | 3317 |
-| azul | 0 | 0 | 68 | 3 | 0 | 0 | 11 | 5 | 0 | 11 | 0 | 3 | 0 | 5 | 0 | 0 | 11 | 10 | 22 | 450 |
-| bradesco | 0 | 0 | 12 | 10 | 0 | 0 | 12 | 0 | 0 | 12 | 0 | 10 | 0 | 0 | 1 | 11 | 1 | 0 | 0 | 182 |
-| hdi | 1 | 0 | 229 | 6 | 1 | 8 | 28 | 0 | 1 | 28 | 0 | 6 | 8 | 0 | 29 | 13 | 23 | 22 | 405 | 1165 |
-| mapfre | 1 | 0 | 19 | 6 | 0 | 0 | 7 | 0 | 0 | 7 | 0 | 6 | 0 | 0 | 0 | 6 | 1 | 0 | 38 | 101 |
-| porto | 1 | 1 | 520 | 52 | 0 | 29 | 40 | 15 | 0 | 60 | 0 | 52 | 9 | 15 | 0 | 34 | 35 | 39 | 368 | 1755 |
-| tokio | 1 | 0 | 94 | 33 | 0 | 0 | 13 | 0 | 0 | 7 | 2 | 33 | 4 | 0 | 7 | 8 | 5 | 0 | 0 | 223 |
-| yelum | 0 | 0 | 441 | 34 | 0 | 32 | 33 | 1 | 0 | 56 | 0 | 34 | 9 | 1 | 49 | 19 | 46 | 30 | 403 | 2014 |
-| zurich | 1 | 0 | 70 | 4 | 0 | 0 | 10 | 0 | 0 | 10 | 0 | 4 | 0 | 0 | 4 | 9 | 1 | 0 | 39 | 384 |
+| seguradora | FALA_DE_GENTE | FORA_DE_ESCOPO:condominio | ORFAO_sessao | dedup | nivel:- | nivel:colisao | nivel:nivel-1-resposta | nivel:nivel-2-texto | nivel:sem-escolha-de-ramo | ramo:ambos | ramo:auto | ramo:condominio | ramo:indefinido | ramo:residencial | ramo:sem_escolha | senha_preservada | servico:indefinido | servico:nivel | vocativo_mascarado | zona:HUMANO | zona:URA |
+|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|
+| alfa | 0 | 0 | 0 | 30 | 1 | 0 | 0 | 8 | 0 | 0 | 8 | 0 | 1 | 0 | 0 | 3 | 3 | 5 | 0 | 0 | 151 |
+| allianz | 1 | 0 | 1 | 1382 | 17 | 1 | 114 | 8 | 0 | 1 | 40 | 0 | 17 | 82 | 0 | 44 | 42 | 80 | 0 | 3791 | 3338 |
+| azul | 0 | 0 | 0 | 68 | 3 | 0 | 0 | 11 | 5 | 0 | 11 | 0 | 3 | 0 | 5 | 0 | 0 | 11 | 10 | 22 | 450 |
+| bradesco | 0 | 0 | 0 | 12 | 10 | 0 | 0 | 12 | 0 | 0 | 12 | 0 | 10 | 0 | 0 | 1 | 11 | 1 | 0 | 0 | 182 |
+| hdi | 0 | 0 | 1 | 229 | 6 | 1 | 8 | 28 | 0 | 1 | 28 | 0 | 6 | 8 | 0 | 29 | 13 | 23 | 22 | 405 | 1165 |
+| mapfre | 0 | 0 | 1 | 19 | 6 | 0 | 0 | 7 | 0 | 0 | 7 | 0 | 6 | 0 | 0 | 0 | 6 | 1 | 0 | 38 | 101 |
+| porto | 0 | 0 | 1 | 520 | 52 | 0 | 29 | 41 | 15 | 0 | 61 | 0 | 52 | 9 | 15 | 0 | 34 | 36 | 39 | 384 | 1764 |
+| tokio | 0 | 2 | 1 | 86 | 33 | 0 | 0 | 13 | 0 | 0 | 7 | 2 | 33 | 4 | 0 | 7 | 6 | 5 | 0 | 0 | 199 |
+| yelum | 0 | 0 | 0 | 441 | 34 | 0 | 32 | 33 | 1 | 0 | 56 | 0 | 34 | 9 | 1 | 49 | 19 | 46 | 30 | 403 | 2014 |
+| zurich | 0 | 0 | 1 | 70 | 4 | 0 | 0 | 10 | 0 | 0 | 10 | 0 | 4 | 0 | 0 | 4 | 9 | 1 | 0 | 39 | 384 |
 
 ## Avisos
 
-- SESSAO_TODA_HUMANA allianz/44ff2017: 'ajudo em algo mais'
-- SESSAO_TODA_HUMANA allianz/d2e3174b: 'ajudo em algo mais'
-- SESSAO_TODA_HUMANA allianz/efa74707: 'assistencia 24 horas, permanece a disposicao'
-- SESSAO_TODA_HUMANA allianz/b6e9961b: 'assistencia 24 horas, permanece a disposicao'
 - PADRAO_DE_CARDAPIO allianz/b8df5a82: colisao:auto+residencial
-- SESSAO_TODA_HUMANA allianz/309e1e5c: 'assistencia 24 horas, permanece a disposicao'
 - PADRAO_DE_CARDAPIO hdi/e0b0c73d: colisao:auto+residencial
-- SESSAO_TODA_HUMANA porto/4830574a: 'consultora de relacionamento'
 
 ## Vocativos
 

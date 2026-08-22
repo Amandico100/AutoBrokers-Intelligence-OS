@@ -216,6 +216,79 @@ def familia_de(rota) -> str:
     return "+".join(r.split("-")[0] for r in refs)
 
 
+# ═════════════════════════════════════════════════════════════════════════════
+# O COMPARADOR DE REGRESSÃO — SPEC-084 §5.2 e R3.
+#
+# 🔴 *"Depois de qualquer mudança, o replay de TODAS as rotas daquela seguradora
+#    tem de manter ou aumentar as respondidas. Uma que caia é regressão, e o
+#    bloco não fecha."*
+#
+# 📊 A razão de existir, contada em `corridor_playbooks.py`: **41 nomes de passo**
+# aparecem em mais de um lugar (📊 no runtime são **74**, porque as famílias são
+# compartilhadas POR REFERÊNCIA) e `_YELUM_FAMILY_STEPS` alimenta `hdi-auto` **e**
+# `yelum-auto`. **Mexer num passo de família mexe em dois corredores.**
+#
+# 🔴 E o comparador tem de PODER ACUSAR. Antes de confiar nele, o BLOCO 0 regride
+#    uma âncora de propósito e exige `exit != 0`. Comparador que nunca acusa não é
+#    gate — é enfeite.
+# ═════════════════════════════════════════════════════════════════════════════
+def _linha_de_base(seguradora: Optional[str]) -> Dict[str, Any]:
+    rotas = [r for r in M.rotas() if not seguradora or r.seguradora == seguradora]
+    fora: Dict[str, Any] = {"commit": _commit(),
+                            "gerado_em": dt.datetime.now(dt.timezone.utc).isoformat(),
+                            "rotas": {}}
+    for r in rotas:
+        rp = RP.replay(r)
+        fora["rotas"][str(r)] = {
+            "respondidas": rp.respondidas,
+            "orfas_funcionais": len(rp.orfas_funcionais),
+            "telas": len(rp.telas),
+        }
+    return fora
+
+
+def _salvar_linha_de_base(arq: str, seguradora: Optional[str]) -> int:
+    base = _linha_de_base(seguradora)
+    os.makedirs(os.path.dirname(os.path.abspath(arq)) or ".", exist_ok=True)
+    with open(arq, "w", encoding="utf-8") as fh:
+        json.dump(base, fh, ensure_ascii=False, indent=1)
+    print(f"linha de base salva: {arq}  ({len(base['rotas'])} rotas, commit {base['commit']})")
+    return 0
+
+
+def _comparar_com(arq: str, seguradora: Optional[str]) -> int:
+    with open(arq, encoding="utf-8") as fh:
+        base = json.load(fh)
+    agora = _linha_de_base(seguradora)
+    print(f"=== --comparar-com {os.path.basename(arq)} "
+          f"(base: commit {base.get('commit')}) ===")
+    print(f"  {'rota':52s} {'respondidas':>22s} {'orfas func.':>18s}")
+    caiu = []
+    for nome, a in sorted(agora["rotas"].items()):
+        b = base["rotas"].get(nome)
+        if b is None:
+            print(f"  {nome:52s} {'(nova)':>22s}")
+            continue
+        d_resp = a["respondidas"] - b["respondidas"]
+        d_orfa = len(str(a["orfas_funcionais"])) and a["orfas_funcionais"] - b["orfas_funcionais"]
+        if d_resp or d_orfa:
+            marca = "🔴 REGRESSAO" if d_resp < 0 else ("⬆" if d_resp > 0 else " ")
+            print(f"  {nome:52s} {b['respondidas']:8d} -> {a['respondidas']:<8d} "
+                  f"{d_resp:+4d} {b['orfas_funcionais']:5d} -> {a['orfas_funcionais']:<5d} "
+                  f"{d_orfa:+3d}  {marca}")
+        if d_resp < 0:
+            caiu.append((nome, b["respondidas"], a["respondidas"]))
+    if caiu:
+        print()
+        print(f"  🔴 {len(caiu)} rota(s) PERDERAM respondidas -- R3 violada:")
+        for n, x, y in caiu:
+            print(f"     {n}: {x} -> {y}")
+        return 1
+    print()
+    print("  OK nenhuma rota perdeu respondidas (R3 satisfeita)")
+    return 0
+
+
 def main(argv: Optional[List[str]] = None) -> int:
     ap = argparse.ArgumentParser(description="A regua do corredor (SPEC-083)")
     ap.add_argument("--seguradora")
@@ -226,6 +299,10 @@ def main(argv: Optional[List[str]] = None) -> int:
     ap.add_argument("--replay-detalhado", action="store_true")
     ap.add_argument("--verificar-mutacoes", action="store_true")
     ap.add_argument("--conferir-ancoras-de-desfecho", action="store_true")
+    ap.add_argument("--exportar-arvore", action="store_true")
+    ap.add_argument("--salvar-linha-de-base", metavar="ARQ")
+    ap.add_argument("--comparar-com", metavar="ARQ")
+    ap.add_argument("--so-orfas", action="store_true")
     a = ap.parse_args(argv)
 
     if a.verificar_mutacoes:
@@ -236,6 +313,24 @@ def main(argv: Optional[List[str]] = None) -> int:
     if a.conferir_ancoras_de_desfecho:
         print(conferir_ancoras_de_desfecho())
         return 0
+
+    if a.exportar_arvore:
+        import arvore as AR
+        segs = [a.seguradora] if a.seguradora else M.seguradoras()
+        for seg in segs:
+            for ramo in (["auto", "residencial"] if not a.ramo else [a.ramo]):
+                nos = AR.montar(seg, ramo)
+                if not nos:
+                    continue
+                print()
+                print(f"=== {seg} x {ramo} ===")
+                print(AR.imprimir(nos, so_orfas=a.so_orfas))
+        return 0
+
+    if a.salvar_linha_de_base:
+        return _salvar_linha_de_base(a.salvar_linha_de_base, a.seguradora)
+    if a.comparar_com:
+        return _comparar_com(a.comparar_com, a.seguradora)
 
     acervo = _sessoes_por_seguradora()
     demanda = {s: e for s, e, _c in PS.DEMANDA_MEDIDA}

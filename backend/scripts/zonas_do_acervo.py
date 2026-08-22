@@ -64,7 +64,9 @@ FRONTEIRAS: Dict[str, List[str]] = {
         #    📊 `voce esta na fila para atendimento` casa EXATAMENTE as 19 que
         #    têm apresentação humana — cobertura 100%, contra 79% da anterior.
         #    Eventos removidos: 436 → 506.
-        r"voce esta na fila para atendimento",                    # 📊 19 sessões (+4)
+        # ⚠️ `voce esta na fila para atendimento` SAIU daqui e virou
+        #    `AVISO_DE_ESPERA`, que vale para as 10 — 📊 ela aparece em 40
+        #    sessoes de 4 seguradoras, nao so na porto.
         r"seu analista ja vai falar com voce",                    # 📊 2 sessões
     ],
     "hdi": [
@@ -236,50 +238,99 @@ APRESENTACAO_HUMANA = [
 #      hdi        8 · yelum 11 · tokio 6 · mapfre 5
 #
 # **O robô também se apresenta.** E ele se apresenta MAIS que a gente.
-MARCAS_DE_SESSAO_HUMANA: Dict[str, List[str]] = {
-    # 🔴 ESTAS NÃO SÃO FRONTEIRAS, E A DIFERENÇA DECIDE O QUE FAZER COM ELAS.
-    #
-    # ⚠️ Uma FRONTEIRA marca **onde** o humano entra: tudo depois dela é humano,
-    #    tudo antes é URA. Estas marcas são de **FECHO** — o humano se despedindo.
-    #    Usá-las como fronteira cortaria só a cauda e deixaria a conversa inteira
-    #    dentro do corpus.
-    #
-    # 📊 Mineradas pelo JUIZ DE TRIAGEM em 21/08/2026, lendo 22 sessões uma a uma,
-    #    **cada uma com CONTROLE ZERO contra as 13 que ele julgou `URA_LIMPA`**:
-    #
-    # ```
-    #   allianz  "assistencia 24 horas, permanece a disposicao"   91/138   controle 0
-    #            "ajudo em algo mais"                             68/138   controle 0
-    #            "com quem (eu )?falo"                            66/138   controle 0
-    #   porto    "darei continuidade (em|ao) seu atendimento"      13/135   controle 0
-    #            "consultora de relacionamento"                     1/135   controle 0
-    # ```
-    #
-    # 🔴 **E a marca que importa é a de FECHO, não a de abertura.** 📊 A
-    #    apresentação (`sou da assistência 24 horas e estou aqui para te ajudar`)
-    #    é a marca óbvia — e falha exatamente nas duas sessões que motivaram esta
-    #    auditoria (`d2e3174b` e `44ff2017`, que começam já no meio do diálogo
-    #    humano). **`permanece a disposicao` pega as duas.**
-    #
-    # 🔴 **A REGRA, e ela é conservadora de propósito:**
-    #
-    # > ## Sessão com marca de fala humana e SEM fronteira identificável sai INTEIRA do corpus.
-    #
-    #    Porque não há onde cortar: o humano não anunciou entrada, e a URA não
-    #    anunciou saída. Perder uma sessão inteira custa amostra; deixar uma
-    #    conversa humana no corpus custa a rubrica das rotas daquela seguradora
-    #    (📊 na allianz, 472 órfãs insanáveis contra 126).
-    "allianz": [
-        r"assist[ea]ncia 24 horas, permanece a disposi[cç][ao]o",
-        r"ajudo em algo mais",
-        r"com quem (eu )?falo",
-    ],
-    "porto": [
-        r"darei continuidade (em|ao) seu atendimento",
-        r"consultora de relacionamento",
-        r"ficarei responsavel pelo seu atendimento",
-    ],
-}
+# ═════════════════════════════════════════════════════════════════════════════
+# 🔴 `MARCAS_DE_SESSAO_HUMANA` FOI REMOVIDA — e o motivo e o achado da rodada.
+# ═════════════════════════════════════════════════════════════════════════════
+#
+# Ela existiu por meio dia. O JUIZ DE TRIAGEM leu 22 sessoes e marcou 9 como
+# contendo fala humana; a regra descartava do corpus as 6 que nao tinham
+# fronteira identificavel. Parecia conservadora e correta.
+#
+# 🔴 **O veredito do Founder sobre a amostra de 30 falas foi ZERO de 30.**
+#    *"Toda a lista e URA, nenhuma de humano. Quando um humano assume,
+#    normalmente e BEM CLARO."*
+#
+# E a reconferencia da sessao que motivou a regra — `44ff2017` — mostrou o
+# tamanho do erro. Lida INTEIRA, ela e um **acionamento completo**:
+#
+# ```
+#   "A apolice tem cobertura para tres servicos que ficam separados..."
+#   "Qual servico deseja acionar?"              -> "Vamos colocar como troca de resistencia"
+#   "Para esse atendimento o seguro arca apenas com a mao de obra do prestador"
+#   "Segue as exclusoes: Chuveiros que nao sejam eletricos; Chuveiros blindados..."
+#   "O agendamento e feito em intervalo de 2 horas..."
+#   "Pode informar o nome e telefone do responsavel?"
+#   "O prestador precisa levar escada? Se sim, qual altura?"
+#   "O agendamento fica para 20/01 das 10hs as 12hs"
+#   "Vou deixar registrado o telefone ... A senha para..."
+# ```
+#
+# > ## E o ROTEIRO COMPLETO de `troca de resistencia de chuveiro` — um servico que o produto NAO TEM.
+#
+# Com as regras de cobertura, as exclusoes, a janela de agendamento, os dados
+# coletados e a senha. **Descarta-la era jogar fora exatamente o que a SPEC-084
+# precisa para escrever a rota** — e o Founder pediu isso por escrito:
+#
+# > *"o ideal e que consiga encontrar os atendimentos feitos pelos humanos da
+# > corretora e transformar em subservicos para serem feitos pelos agentes de
+# > atendimento, sem precisar de humano."*
+#
+# ⚠️ E as marcas que a regra usava (`ajudo em algo mais`, `assistencia 24 horas
+# permanece a disposicao`) sao **linhas de fecho do canal de assistencia** — o
+# robo e a gente usam as duas. Elas nao distinguem emissor.
+#
+# 🔴 A fronteira volta a ser **so a marca de transferencia** (`FRONTEIRAS`), que
+#    e a que o Founder descreve: *"quando um humano assume, e BEM CLARO"*.
+#
+# ⚠️ E o guarda de completude (`guarda_de_completude_da_fronteira`) FICA: ele
+#    continua sendo a rede que avisa se a tabela perdeu alguem.
+
+
+# ═════════════════════════════════════════════════════════════════════════════
+# 🔴 `AVISO_DE_ESPERA` — a classe que o Founder nomeou, e ela NAO e fronteira.
+# ═════════════════════════════════════════════════════════════════════════════
+#
+# > *"Nao e humano. E um robo avisando que foi chamado um humano e que esta
+# > demorando. Mas ainda e o robo falando."* — o Founder, sobre a linha 16
+# > da amostra de triagem.
+#
+# 📊 O texto, da porto: *"Antes de continuar, so um aviso: estamos com um alto
+#    volume de atendimento no momento. Peco a sua paciencia..."*
+#
+# 🔴 **E URA — a LINHA fica no corpus.** O Founder esta certo: quem fala ali e o
+#    robo, e a tela e tela de URA legitima.
+#
+# ⚠️ **E ela É fronteira — as duas coisas sao verdade e nao se contradizem.**
+#    📊 Medido em 21/08/2026, contando quantas sessoes tem apresentacao humana
+#    DEPOIS da marca:
+#
+# ```
+#   voce esta na fila para atendimento              40 sessoes ->  38  (95%)
+#   isso pode levar alguns instantes, ja ja...      48         ->  47  (98%)
+#   estamos com um alto volume de atendimento        8         ->   8 (100%)
+#   aguarde alguns instantes enquanto procuramos     2         ->   2
+#   peco a sua paciencia                             1         ->   1
+#                                                   ---            ---
+#                                                    99             96
+# ```
+#
+# > ## Em 96 de 99 sessoes, o humano chega logo depois. A linha e do robo; o que vem depois, nao.
+#
+# 🔴 E o desenho de `zonas()` ja resolve isso sem escolher um lado: a tela da
+#    fronteira e devolvida como **URA** (*"e a URA anunciando"*), e o corte vale
+#    do evento SEGUINTE em diante. A linha fica no corpus; a conversa humana, nao.
+#
+# ⚠️ Foi por medicao que esta lista mudou de lugar. A primeira leitura da nota do
+#    Founder a pos em `NAO_E_FRONTEIRA` — e ai `voce esta na fila` (a marca que o
+#    minerador mediu cobrindo 19 de 19 acionamentos humanos da porto) teria sido
+#    DESLIGADA. **Uma leitura sem medicao teria desfeito o melhor achado da porto.**
+AVISO_DE_ESPERA = [
+    r"estamos com um alto volume de atendimento",
+    r"pe[cç]o a sua paci[ee]ncia",
+    r"aguarde alguns instantes enquanto procuramos um atendente",
+    r"isso pode levar alguns instantes, mas ja ja voce sera atendido",
+    r"voce esta na fila para atendimento",
+]
 
 APRESENTACAO_DO_ROBO = [
     r"assistente virtual|atendente virtual|assistente digital",
@@ -432,12 +483,23 @@ def _tem_sessao(sid: Any) -> bool:
     return sid not in _SEM_SESSAO
 
 
+def _fronteira_de(seguradora: str) -> List[str]:
+    """`FRONTEIRAS` da seguradora + o `AVISO_DE_ESPERA`, que vale para todas.
+
+    📊 O aviso de espera vale para TODAS porque a medicao e transversal: 96 de 99
+    sessoes com ele tem apresentacao humana depois, em 4 seguradoras diferentes.
+    Uma marca que se comporta igual em quatro nao precisa de entrada por
+    seguradora.
+    """
+    return list(FRONTEIRAS.get(seguradora, [])) + AVISO_DE_ESPERA
+
+
 def _compilados(seguradora: str):
     if seguradora not in _CACHE:
         def _ou(lista):
             return re.compile("|".join(f"(?:{p})" for p in lista), re.DOTALL) if lista else None
         _CACHE[seguradora] = (
-            _ou(FRONTEIRAS.get(seguradora, [])),
+            _ou(_fronteira_de(seguradora)),
             _ou(NAO_E_FRONTEIRA.get(seguradora, [])),
             _ou(APRESENTACAO_HUMANA),
             _ou(APRESENTACAO_DO_ROBO),
@@ -512,27 +574,6 @@ def zonas(eventos_da_sessao: Iterable[Dict[str, Any]],
         yield e, ("HUMANO" if t_fronteira else "URA"), None
 
 
-def sessao_tem_fala_humana(seguradora: str, eventos) -> Optional[str]:
-    """A sessão contém fala humana? Devolve a marca que a denuncia, ou `None`.
-
-    🔴 Diferente de `e_fronteira`: aqui não se pergunta ONDE o humano entra, e sim
-    SE ele esteve na conversa. 📊 O JUIZ DE TRIAGEM leu 22 sessões e achou duas
-    (`d2e3174b`, `44ff2017`) que são humanas **do primeiro turno ao último**, sem
-    apresentação e sem anúncio de transferência: não há onde cortar.
-    """
-    marcas = MARCAS_DE_SESSAO_HUMANA.get(seguradora)
-    if not marcas:
-        return None
-    rx = re.compile("|".join(f"(?:{m})" for m in marcas), re.DOTALL)
-    for e in eventos:
-        if e.get("direction") != "in":
-            continue
-        m = rx.search(norm_para_classificar(e.get("text") or ""))
-        if m:
-            return m.group(0)[:48]
-    return None
-
-
 def sessao_tem_fronteira(seguradora: str, eventos) -> bool:
     """A URA anunciou a transferência em algum ponto?"""
     for e in eventos:
@@ -541,21 +582,6 @@ def sessao_tem_fronteira(seguradora: str, eventos) -> bool:
         if e_fronteira(seguradora, norm_para_classificar(e.get("text") or "")):
             return True
     return False
-
-
-def sessao_e_toda_humana(seguradora: str, eventos) -> Optional[str]:
-    """🔴 A regra conservadora: fala humana + sem fronteira = SAI INTEIRA.
-
-    Devolve o motivo (a marca achada) quando a sessão deve ser descartada.
-
-    ⚠️ **Custo declarado:** perde-se a amostra inteira. 📊 O custo do outro lado
-    é maior — a sessão `44ff2017` sozinha contribuía **10 das 21 órfãs funcionais**
-    da rota de referência, e cada órfã funcional vale 10 pontos do eixo B.
-    """
-    marca = sessao_tem_fala_humana(seguradora, eventos)
-    if marca and not sessao_tem_fronteira(seguradora, eventos):
-        return marca
-    return None
 
 
 def guarda_de_completude_da_fronteira(
