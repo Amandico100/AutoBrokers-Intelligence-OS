@@ -5462,6 +5462,95 @@ ALLIANZ_RESIDENCIAL_WHATSAPP_V1["handoff_triggers"] = (
     + [r"ap[óo]lice n[ãa]o encontrada"]
 )
 
+
+# ==========================================================================
+# As DUAS rotas que ainda diziam NAO_RESPONDE (SPEC-084, 22/08/2026)
+# ==========================================================================
+#
+# 🔴 `NAO_RESPONDE` é pior que `SEM_CORPUS`: significa que a seguradora tem
+#    conversa no acervo e o corredor fica mudo nela.
+
+# --------------------------------------------------------------------------
+# PORTO · residencial · ELETRODOMÉSTICOS — 5 órfãs, e a URA não NUMERA
+# --------------------------------------------------------------------------
+PORTO_RESIDENCIAL_WHATSAPP_V1["ura_steps"] = list(
+    PORTO_RESIDENCIAL_WHATSAPP_V1["ura_steps"]) + [
+    {"step": "eletro_familia",
+     "anchor": r"o que voc[êe] precisa\?[\s\S]{0,120}convers[ãa]o de g[áa]s",
+     "reply": "Conserto ou reparo",
+     "only_subservices": ["eletrodomesticos", "maquina_de_lavar"],
+     "constante_justificada": (
+         "📊 1 msg / 1 sessão. As opções são 'Conserto ou reparo' · 'Conversão de "
+         "gás' · 'Contratar instalação' · 'Não encontrei'. 🔴 Conversão de gás e "
+         "contratar instalação são VENDA PARTICULAR, não apólice — e o corredor "
+         "existe para acionar cobertura."),
+     "notes": "📊 1 msg / 1 sessão."},
+
+    # 🔴 O `^` É O QUE SEPARA DUAS PERGUNTAS IDÊNTICAS — controle do coletor:
+    #    sem ele, a âncora casa 4 telas: as 3 de APARELHO e mais
+    #    "Entendi. O conserto ou reparo é para o quê? Novo serviço / Retorno do
+    #     prestador / Acompanhar um serviço" — que é outra decisão inteira.
+    #    Com `^`, casa exatamente as 3.
+    {"step": "eletro_categoria", "anchor": r"^o conserto ou reparo [ée] para o qu[êe]\s*\?",
+     "reply": "{eletrodomestico_rotulo}", "fallback_adaptive": True,
+     "only_subservices": ["eletrodomesticos", "maquina_de_lavar"],
+     "notes": "📊 3 telas / 1 sessão. 🔴 A porto NÃO NUMERA os aparelhos — "
+              "diferente da Allianz, onde 14 = Máquina de Lavar roupas. Aqui é "
+              "RÓTULO, e ele é 'Máquina de lavar roupa' (SINGULAR)."},
+    {"step": "conserto_novo_ou_retorno",
+     "anchor": r"^entendi\. o conserto ou reparo [ée] para o qu[êe]",
+     "reply": "Novo serviço",
+     "constante_justificada": (
+         "📊 1 msg / 1 sessão. 'Novo serviço' x 'Retorno do prestador' x "
+         "'Acompanhar'. O corredor existe para ABRIR. ⚠️ Vem ANTES do "
+         "`eletro_categoria` na lista porque as duas perguntas são a MESMA frase."),
+     "notes": "📊 1/1."},
+
+    # ⚠️ "Mais serviços" — 6 rótulos, ZERO fluxos. Não vira tecla: vira handoff.
+    {"step": "mais_opcoes_lista",
+     "anchor": (r"o que voc[êe] precisa\?[\s\S]{0,200}"
+                r"(?:port[ãa]o de a[çc]o|telefonia e interfone)"),
+     "reply": "", "noop": True,
+     "notes": "📊 1 msg / 1 sessão. Portão de aço · Instalação de ventilador · "
+              "Antenas · Telefonia e interfone · Mudança de mobiliário · Reparo em "
+              "móveis. 🔴 SEIS rótulos e NENHUM fluxo observado — declarar tecla "
+              "aqui é o defeito que `_ativar_vidros` proíbe. Ver PENDENCIAS."},
+]
+
+# --------------------------------------------------------------------------
+# ALLIANZ · residencial · CONSULTA VETERINÁRIA — 8 órfãs, e o Pet tem ficha
+# --------------------------------------------------------------------------
+# 📊 1 sessão (c58a171a), e ela chega ao PROTOCOLO. O galho pede a ficha do
+#    animal, e nenhum desses dados existe no produto hoje.
+ALLIANZ_RESIDENCIAL_WHATSAPP_V1["subservices"]["consulta_veterinaria"][
+    "required_slots"] = list(
+    ALLIANZ_RESIDENCIAL_WHATSAPP_V1["subservices"]["consulta_veterinaria"][
+        "required_slots"]) + ["pet_nome", "pet_raca", "pet_idade"]
+
+ALLIANZ_RESIDENCIAL_WHATSAPP_V1["ura_steps"] = list(
+    ALLIANZ_RESIDENCIAL_WHATSAPP_V1["ura_steps"]) + [
+    {"step": "pet_especie", "anchor": r"atendimento para qual animal dom[ée]stico",
+     "reply": "{pet_especie_opcao}", "requires": ["pet_especie_opcao"],
+     "fallback_adaptive": True, "only_subservices": ["consulta_veterinaria"],
+     "notes": "📊 1/1. 1-Cachorro 2-Gato 3-Outros."},
+    {"step": "pet_nome", "anchor": r"qual o nome do pet",
+     "reply": "{pet_nome}", "requires": ["pet_nome"], "fallback_adaptive": True,
+     "only_subservices": ["consulta_veterinaria"], "notes": "📊 1/1."},
+    {"step": "pet_raca", "anchor": r"^qual ra[çc]a\s*\?",
+     "reply": "{pet_raca}", "requires": ["pet_raca"], "fallback_adaptive": True,
+     "only_subservices": ["consulta_veterinaria"], "notes": "📊 1/1."},
+    {"step": "pet_idade", "anchor": r"^qual a idade\s*\?",
+     "reply": "{pet_idade}", "requires": ["pet_idade"], "fallback_adaptive": True,
+     "only_subservices": ["consulta_veterinaria"],
+     "notes": "📊 1/1. ⚠️ O `^` separa da idade do APARELHO, que é outra tela e "
+              "outro subserviço."},
+    {"step": "menu_outros_assuntos_sinistro",
+     "anchor": r"precisando avisar ou acompanhar um sinistro",
+     "reply": "", "noop": True,
+     "notes": "📊 1 msg / 1 sessão. CARDÁPIO de outros assuntos (sinistro, "
+              "carteirinha, apólice, pagamentos). Nenhum é assistência."},
+]
+
 _PLAYBOOKS: Dict[str, Dict[str, Any]] = {
     f"{p['playbook_id']}@v{p['version']}": p
     for p in (

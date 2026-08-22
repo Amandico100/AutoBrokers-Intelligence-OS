@@ -419,6 +419,23 @@ def _derivar_teclas_do_caso(slots: dict) -> None:
         # sem luz").
         slots["problema_eletrico_opcao"] = "2" if curto else "1"
 
+    # ---- QUAL ANIMAL DOMESTICO (consulta veterinaria) ----------------
+    # 📊 "Atendimento para qual animal domestico? *1 -* Cachorro
+    #    *2 -* Gato *3 -* Outros" -- 1 sessao (c58a171a), que chega ao protocolo.
+    #
+    # ⚠️ Esta e das poucas em que o relato SEMPRE diz: ninguem pede consulta
+    #    veterinaria sem dizer de que bicho se trata. O default e "3 - Outros",
+    #    que e opcao da propria URA -- nunca "Cachorro", que inventaria a especie.
+    if not str(slots.get("pet_especie_opcao") or "").strip():
+        if any(p in texto for p in ("cachorro", "cao", "cadela", "dog", "filhote de "
+                                    "cachorro", "pitbull", "poodle", "vira-lata",
+                                    "vira lata")):
+            slots["pet_especie_opcao"] = "1"
+        elif any(p in texto for p in ("gato", "gata", "felino")):
+            slots["pet_especie_opcao"] = "2"
+        else:
+            slots["pet_especie_opcao"] = "3"
+
     # ---- O VAZAMENTO ESTA APARENTE? ----------------------------------
     # 📊 "O vazamento esta aparente, sabe informar o local exato e o tipo de
     #    tubulacao? *1 -* Sim *2 -* Nao" -- 3 sessoes.

@@ -73,38 +73,67 @@ def test_a_regua_pontua_e_nao_bate_no_portao():
                                  "outra coisa e a comparacao historica quebrou")
 
 
-def test_a_orfa_que_a_spec_nomeia_continua_orfa():
-    """📊 A SPEC-083 §4.2 nomeia UMA órfã funcional — e o corpus cresceu desde então.
+def test_a_orfa_que_a_spec_nomeia_foi_MAPEADA_e_o_replay_ainda_acha_orfas():
+    """📊 A SPEC-083 §4.2 nomeia UMA órfã funcional — e ela **deixou de ser órfã**.
 
-    ⚠️ **ESTE TESTE MUDOU DE FORMA, E O CLAUDE.md §9.3 EXIGE QUE ELE MUDE.**
+    ⚠️ **ESTE TESTE MUDOU DE FORMA DUAS VEZES, E AS DUAS PELO §9.3.**
 
-    A primeira versão exigia `len(orfas_funcionais) == 1`, que era verdade quando
-    o corpus tinha **uma** sessão desta rota. Depois da decisão P-083-1 (teto de 5
-    sessões **por rota**), ela tem **quatro** — e são **15 órfãs**.
+    **Primeira vez:** exigia `len(orfas_funcionais) == 1`, que era verdade num
+    corpus de UMA sessão. Com o teto de 5 por rota (P-083-1) viraram quatro
+    sessões e 15 órfãs, e o `1` passou a guardar uma verdade vencida.
+    A lição migrou para: *a órfã que a SPEC NOMEIA continua órfã — se sumir sem
+    passo, a medida afrouxou.*
 
-    📊 O que apareceu com as três sessões novas não é ruído: é um **fluxo inteiro**
-    que o corredor não cobre —
+    **Segunda vez (22/08/2026):** o BLOCO 3 **escreveu o passo**
+    (`agendamento_para_confirma`), e a tela
 
     ```
-    "Identifiquei que temos uma solicitacao de servico feita.
-     O que deseja? *1 -* Ver detalhes *2 -* Alterar..."
+    "Agendamento para: *Sexta-feira {DATA}*, *período da manhã das 09:00 às
+     13:00*  Podemos continuar ? *1 -* ..."
     ```
 
-    o ramo de **ACOMPANHAR / ALTERAR** solicitação, que responde por 11 das 15.
+    passou a ser RESPONDIDA. O teste ficou vermelho — e ficou certo em ficar:
+    ele acusou uma mudança de fato, que é exatamente o que ele existe para
+    fazer.
 
-    🔴 *"Teste que guarda verdade vencida é pior que teste nenhum."* O número `1`
-    era a verdade de um corpus de uma sessão. **A lição migra:** o que este teste
-    guarda é que a órfã que a SPEC NOMEIA continua sendo órfã — se ela sumir sem
-    alguém escrever o passo, é porque a medida afrouxou.
+    🔴 **A lição migra de novo, e agora ela tem DUAS metades, porque a antiga
+    fazia as duas ao mesmo tempo:**
+
+    ```
+    1. a tela que a SPEC nomeia agora TEM PASSO      <- o ganho, provado
+    2. e o replay CONTINUA achando órfãs             <- a medida não afrouxou
+    ```
+
+    Sem a metade 2, mapear tudo faria o teste passar por vacuidade — e um teste
+    que fica verde quando não há nada para medir não guarda nada.
     """
     r = RP.replay(_rota())
-    assert r.orfas_funcionais, "nenhuma orfa -- a §4.2 nomeia uma, e ela nao foi mapeada"
-    nomeada = [t for t in r.orfas_funcionais
-               if "agendamento para" in M._norm(t.texto)
-               and "podemos continuar" in M._norm(t.texto)]
-    assert nomeada, ("a orfa que a SPEC-083 §4.2 nomeia sumiu do replay sem que um "
-                     "passo a mapeasse -- ou a medida afrouxou, ou o corpus perdeu "
-                     f"a sessao. orfas atuais: {[t.texto[:40] for t in r.orfas_funcionais[:5]]}")
+
+    # ---- metade 1: a tela que a SPEC nomeia foi MAPEADA -----------------
+    ainda_orfa = [t for t in r.orfas_funcionais
+                  if "agendamento para" in M._norm(t.texto)
+                  and "podemos continuar" in M._norm(t.texto)]
+    assert not ainda_orfa, (
+        "a orfa que a SPEC-083 §4.2 nomeia VOLTOU a ser orfa -- o passo "
+        "`agendamento_para_confirma` do BLOCO 3 parou de casar. "
+        f"texto: {ainda_orfa[0].texto[:80] if ainda_orfa else ''}")
+
+    # 🔴 E o CONTROLE POSITIVO: ela nao sumiu do corpus; ela e RESPONDIDA.
+    #    Sem isto, apagar a sessao do corpus faria a metade 1 passar.
+    pb = M.get_playbook(_rota().ref)
+    tela = ("Agendamento para: *Sexta-feira 05/09/2025*, *periodo da manha das "
+            "09:00 as 13:00*\n\nPodemos continuar ? *1 -* Sim *2 -* Voltar")
+    passo = M.match_ura_step(pb, tela, subservice="encanador")
+    assert passo and passo.get("step") == "agendamento_para_confirma", (
+        "a tela da SPEC nao e respondida pelo passo que o BLOCO 3 escreveu -- "
+        f"casou: {(passo or {}).get('step')}")
+
+    # ---- metade 2: o replay CONTINUA achando orfas ----------------------
+    # ⚠️ Sem esta linha, mapear TUDO faria a metade 1 passar por vacuidade.
+    assert r.orfas_funcionais, (
+        "o replay nao acha NENHUMA orfa funcional. Ou o corredor ficou perfeito "
+        "-- e ai esta assercao precisa ser reescrita com a prova disso -- ou a "
+        "MEDIDA AFROUXOU e ninguem viu.")
 
 
 def test_o_determinismo_da_regua_nao_cai():
