@@ -4610,9 +4610,36 @@ def subservice_supported(playbook: Dict[str, Any], subservice: str) -> bool:
 
     False = não há evidência (📊 vidros em allianz/tokio/mapfre/yelum/hdi/alfa/
     bradesco, por exemplo) → o caso vira handoff humano com o motivo escrito.
-    Nunca é convite para improvisar um menu."""
+    Nunca é convite para improvisar um menu.
+
+    🔴 E DECLARAR O SUBSERVIÇO NÃO BASTA: SE O CORREDOR USA MENU, PRECISA DA
+       TECLA — 22/08/2026.
+
+    Esta função lia só `subservices`. 📊 Quando o menu da AZUL migrou em
+    07/04/2026, "Troca de pneu" deixou de existir na tela e o
+    `subservice_menu_map` ficou apontando `"3"` — uma tecla morta. Tirar a
+    tecla errada, sozinho, deixaria o pior dos dois mundos: `pneu` seguiria
+    "suportado", o corredor chegaria ao menu e **não teria o que digitar**.
+
+    ⚠️ Antes ele digitava algo que a URA rejeita; depois, nada. Os dois são
+       ruins, e nenhum é handoff — que é a resposta honesta quando não há
+       rótulo observado.
+
+    🔴 CONTROLE, medido sobre os 14 corredores antes de apertar a regra:
+       exatamente **1** subserviço declarado ficaria sem tecla (`azul x pneu`).
+       Os corredores residenciais de allianz/hdi/porto/yelum **não usam**
+       `subservice_menu_map` — para eles a regra não se aplica, e a condição
+       `if not mapa` é o que garante isso.
+    """
     subs = playbook.get("subservices") or {}
-    return canonical_subservice(subservice) in subs
+    alvo = canonical_subservice(subservice)
+    if alvo not in subs:
+        return False
+    mapa = playbook.get("subservice_menu_map") or {}
+    if not mapa:
+        # corredor sem menu de serviço: a rota se escolhe por outro caminho
+        return True
+    return alvo in mapa
 
 
 def subservice_outcome(playbook: Dict[str, Any], subservice: str) -> str:

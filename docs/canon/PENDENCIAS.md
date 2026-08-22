@@ -6814,3 +6814,218 @@ porque o segundo **casa um passo** (`match_ura_step` responde), e o critério do
 **O que destrava:** a SPEC-084 decidir qual dos dois governa o mapeamento.
 **O que custa esquecer:** mapear só `c650769dae3f` deixa a rota quebrada no passo
 seguinte — 15 opções de eletrodoméstico sem destino.
+
+---
+
+## SPEC-084 BLOCO 1 — o que ficou pronto e desligado, e o que ficou aberto
+
+> Escritas em 22/08/2026, ao fim do BLOCO 1. Cada uma diz **o que destrava**,
+> **de quem é** e **o que custa esquecer**.
+
+### P-084-1 🔴 `azul × pneu` e `azul × vidros` — teclas mortas desde 26/12/2025 · 🧑
+
+📊 O menu da azul migrou em **07/04/2026** (o corte é o mesmo dia em três telas
+independentes — é migração de bot, não ambiguidade). Na variante viva as opções
+são `Guincho (reboque) · Bateria · Chaveiro para veículo · Técnico · Táxi`.
+**Não existe "Troca de pneu" e não existe "vidro".**
+
+- `pneu` mandava `"3"` numa lista de rótulos → rejeitado.
+- `_ativar_vidros(azul, menu_value="5")` apontava para tecla morta.
+
+Os dois foram **desligados**: `subservice_supported` devolve `False` e o caso vai
+a handoff. 🔴 **O total de rotas caiu de 62 para 61** — não é redução silenciosa
+de escopo: é uma rota que a seguradora deixou de oferecer neste menu.
+
+**O que destrava:** uma captura de onde pneu e vidro entram na azul de 2026.
+Candidato medido para pneu: a tecla `Técnico`. **Zero evidência** — não se declara.
+**O que custa esquecer:** o segurado pede troca de pneu na azul e recebe handoff
+sem ninguém saber que existia uma tecla certa.
+
+### P-084-2 🔴 MAPFRE — são DOIS bots, e o rótulo da tecla é diferente · 🧑
+
+```
+BOT DO SEGURADO  ->  a tecla se chama "Assistência 24H"
+BOT DO CORRETOR  ->  a tecla se chama "Assistência"   (entra por código de corretor)
+```
+
+📊 `subservice_menu_map` declara o primeiro para as 4 rotas. **Para qual dos dois
+a corretora escreve não está no acervo.** E 📊 **0 de 6 sessões** da mapfre
+abriram assistência: todas foram sinistro, carro reserva ou timeout.
+
+E falta a tela que separa guincho de bateria/pneu/chaveiro — 📊 ela **não existe
+no acervo**, e sem ela as 4 rotas mapeiam para um rótulo só.
+
+**O que destrava:** 1 acionamento real no bot que a corretora usa, escolhendo
+"Assistência 24H" e seguindo até o fim. Destrava 4 rotas de uma vez.
+**O que custa esquecer:** 4 rotas indistinguíveis, e `regras_para_o_cliente` /
+`expectativa_do_desfecho` vazios (não escritos de propósito — 💭 seria inventar).
+
+### P-084-3 🔴 MAPFRE — `codigo_corretor` é slot de CONFIGURAÇÃO, não de coleta · 🧑
+
+📊 "Para continuar, digite o seu *código de corretor*. *Lembrando:* … 2 até 6
+números." Sem ele o canal do corretor não abre. **Não é dado do segurado** — é da
+corretora, e precisa de um lugar na configuração do tenant.
+
+### P-084-4 `nao_entendi` da porto — noop é o menos pior, não o certo · 🤖
+
+📊 10 msgs / 6 sessões. Na porto, "Não entendi a sua resposta" é a URA
+**esperando**: silêncio vira timeout. O certo é **reenviar a última resposta**, e
+isso é comportamento de **MOTOR**, não de âncora — não existe hoje.
+Mesma família: `resposta_recusada` da yelum/hdi ("Sua resposta está diferente do
+que solicitamos" = a NOSSA resposta foi recusada) precisa de **contador**: duas
+seguidas → `needs_human`.
+**O que custa esquecer:** o corredor espera calado até o timeout, e o run fica
+aberto para sempre.
+
+### P-084-5 🔴 `encerrada_por_inatividade` precisa de ESTADO, não de `noop` · 🤖
+
+📊 yelum 2 telas / 7 sessões · hdi 1 / 2. **A URA DESLIGOU.** Um corredor que
+trata isso como "mensagem informativa" fica *monitorando* uma conversa que não
+existe mais — é a família dos `corridor_runs` abandonados.
+**O que destrava:** um `terminal: True` no contrato de `ura_steps`, ou entrada em
+`handoff_triggers`. É **mudança de contrato**, e não se faz de passagem.
+
+### P-084-6 `escolher_veiculo` / `escolher_endereco` — a lista com entradas duplicadas · 🤖
+
+📊 porto: 3 telas, e **as três têm entradas duplicadas** (mesmo modelo, ano e
+placa MASCARADA em posições diferentes). Posição fixa é impossível; casar por
+placa é ambíguo com máscara. Ficou `fallback_adaptive` + handoff.
+📊 Mesmo problema no endereço: 6 telas, uma com dois endereços quase idênticos
+(`SL 330 CAMP A` × `Sl 330 Camp A`).
+**O que destrava:** uma captura NÃO mascarada dessa tela, ou uma regra do produto
+sobre placas repetidas na apólice.
+
+### P-084-7 🔴 A régua chama `ANCORA_SUSPEITA` o que é MÁSCARA DE CORPUS · 🤖
+
+**Dois coletores independentes acharam o mesmo, medindo de formas diferentes.**
+
+📊 A azul: `--conferir-ancoras-de-desfecho` diz `0 c/ protocolo · 0/9 · 🟠`.
+A MESMA âncora, sobre o acervo CRU: **11 msgs · 10 de 19 sessões ✅**.
+O desfecho é `"Aqui está seu protocolo de atendimento 👇 1-128312189741"`, e o
+gerador de corpus mascara o número → sobra `1-{NUMERO}`, que não tem dígitos para
+capturar. 📊 Idem porto: o grupo exige 6+ caracteres e sobra só o `1-`.
+
+🔴 **Atinge as CINCO linhas 🟠 de uma vez** (azul, hdi-residencial, mapfre,
+porto-auto, porto-residencial). Enquanto durar, `ANCORA_SUSPEITA` não separa
+"âncora quebrada" de "número mascarado".
+**O que destrava:** ou o mascarador preserva um protocolo sintético com o mesmo
+formato, ou `conferir_ancoras_de_desfecho` reporta um quarto estado —
+🔵 `DESFECHO_MASCARADO`.
+**O que custa esquecer:** cinco "defeitos de âncora" na fila que são defeito do
+MEDIDOR, e trabalho de coleta pedido sem necessidade.
+
+### P-084-8 🔴 O AGENDAMENTO DA PORTO NUNCA É CAPTURADO · 🤖
+
+Este **não** é artefato de máscara. Testado com texto real, pelo motor:
+
+```
+"...deve chegar ao seu endereço no dia 25/08/2026, entre 13h00 e 14h00..."  -> {} 🔴
+"...previsto para ser realizado no dia 25/08/2026, entre 14h00 e 14h30..."  -> {} 🔴
+"...previsto para ser realizado *hoje*, em até 60 minutos."   -> {eta_minutes: 60} ✅
+```
+
+`capture_anchors.schedule` exige a data **colada** em "para"; a porto escreve três
+palavras no meio. 📊 5 telas residenciais (4 sessões) + 1 auto — **todas são a
+última mensagem útil do acionamento**. Hoje o segurado recebe o protocolo **sem
+saber quando o prestador vem**, que é a única coisa que ele quer saber.
+É literalmente o defeito que o comentário de `schedule_agendado` diz ter
+consertado na Allianz, aberto na porto.
+⚠️ E `extract_capture_anchors` roda **sem DOTALL**: a âncora nova precisa de
+`[^\n]{0,20}`, nunca `.{0,20}`.
+
+### P-084-9 A LISTA DE OPÇÕES CHEGA EM BOLHAS SEPARADAS · 🤖
+
+📊 yelum: `"Encontramos mais de uma apólice…"` seguida, **em mensagens separadas**,
+de `"*Automóvel* 1 - {PLACA}"` e `"*Residencial* 2 - …"`.
+📊 azul: `endereco_digite` (a MESMA bolha) serve ORIGEM e DESTINO na mesma sessão;
+a única marca que separa é a bolha `"Agora, vamos falar sobre o *endereço de
+destino*"` que precede a segunda — **e isso exige ESTADO**, enquanto
+`match_ura_step` decide por mensagem.
+**O que destrava:** o motor saber montar a lista a partir de bolhas separadas, e
+saber que um passo já foi visto. Nenhum dos dois existe.
+
+### P-084-10 Os SERVIÇOS que a URA oferece e o código não tem · 🧑
+
+📊 Medidos, com rótulo capturado e **zero** fluxo observado depois dele:
+
+| seguradora | serviço | evidência |
+|---|---|---|
+| porto auto | **Táxi** | rótulo em 13/13 menus · 37 msgs · 13 ses · fluxo completo em 2 |
+| porto auto | **Técnico** | rótulo em 10/13 · **2 sessões inteiras até o protocolo** |
+| porto auto | **Bateria nova** | submenu em 5 ses · 1 completa · 🔴 tem PREÇO ao cliente |
+| porto resid | **Chaveiro residencial** | 4/4 menus · **1 sessão COMPLETA até o protocolo** |
+| porto resid | Chuveiro · Kit instalação · Reparo em telha · Limpeza de calhas | rótulo em 4/4, **0 entradas** |
+| allianz resid | Dedetização · Limpeza do Imóvel · Caixa de água · Telhas · Cobertura provisória · Consulta veterinária | 📊 2 telas / **21 sessões** |
+| yelum/hdi | **socorro_mecanico** | 📊 7 escolhido / 70 no cardápio · 6 sessões com protocolo |
+
+🔴 **`porto × residencial × chaveiro` é o mais gritante:** existe uma rota-ouro
+inteira, com dois submenus mapeados, regra de cobertura própria e desfecho com
+protocolo — e `subservice_supported()` devolve **False**. É o caso do
+`desentupimento` da Allianz outra vez: *"um mesmo trabalho existir num corredor e
+não no outro não é escopo: é esquecimento."*
+
+⚠️ E `socorro_mecanico` **não é botão de menu** — é o nome que a URA dá ao
+DESFECHO quando decide mandar mecânico em vez de reboque. Ligar exige uma função
+por seguradora (molde do `_ativar_vidros`), nunca em `_AUTO_SUBSERVICES`, que
+copia para as **onze**.
+
+**O que custa esquecer:** trabalho que a seguradora faz, o cliente pede, e o
+produto recusa por não ter uma linha declarada.
+
+### P-084-11 `bateria` e `socorro_mecanico` são o mesmo trabalho? · 🧑
+
+📊 Nas 6 sessões medidas os dois chegam pelo MESMO caminho
+(`Pane ou Defeito` → `pane_detalhe` → `descreva_situacao`) e recebem a MESMA tela
+("recarga da sua bateria"). O que os separa é o rótulo que a URA escreve no
+resumo. **Ou são um só subserviço com dois desfechos, ou `bateria` é caso
+particular de `socorro_mecanico`.** Decisão de produto.
+
+### P-084-12 🔴 A TELA QUE PEDE DINHEIRO precisa de trava própria · 🧑🤖
+
+Medidas, e a maioria é `noop` hoje porque não tem botão:
+
+- yelum/hdi auto: *"Caso seja necessário a compra de uma nova bateria, o segurado
+  será responsável pela negociação diretamente com o prestador."*
+- yelum/hdi resid: *"Custos acima do limite de cobertura serão pagos pelo cliente…
+  Caso o técnico constate que o equipamento tem mais de 10 anos, o reparo será
+  negado **e a visita contará como utilizada**."* 🔴 duas penalidades numa frase.
+- azul: *"a distância é superior ao limite… o prestador poderá cobrar pelo
+  excedente"* + **"Gostaria de continuar o agendamento? 1: Sim 2: Não"** <- BOTÃO
+- zurich: *"Franquia: R$ 18.189,16"* + **"Podemos continuar com o serviço?"** <- BOTÃO
+
+🔴 **As duas últimas TÊM botão, e foram para `handoff_triggers`.** A regra:
+**tela que pede DINHEIRO nunca é respondida por passo, nem pelo adaptativo.**
+Aceitar um custo em nome do segurado é decisão comercial **dele**.
+
+⚠️ E um gatilho genérico de custo (`valor excedente|será pago pelo segurado|R\$\s?\d`)
+foi proposto e **NÃO ligado**: 📊 ele casa **ZERO** telas nos 4 corpora da família
+yelum/hdi. É âncora viva contra o banco e morta contra o corpus — precisa ser
+conferida contra `observed_events` antes de entrar.
+💭 Contexto útil do acervo: numa conversa a corretora escreve *"a cláusula é sem
+limites — 37E Assist. sem Limite de KM"*. **O limite depende da apólice, e a URA
+nem sempre conhece o certo.** Mais uma razão para não responder sozinho.
+
+### P-084-13 A árvore conta como órfã toda tela que JÁ é handoff · 🤖
+
+⚠️ Viés do medidor, dito em voz alta: `arvore.py` só consulta `match_ura_step`,
+nunca `detect_handoff_trigger`. 📊 Na allianz a órfã **nº 1 das duas rotas** é
+*"Vou transferir seu caso para um especialista"* — retorno **496** no residencial.
+Ela é FRONTEIRA, já tem destino, e a `arvore` a exclui; a bancada de controle não.
+**O que custa esquecer:** a fila de trabalho manda escrever um corredor para a
+tela que ENTREGA o atendimento ao humano.
+
+### P-084-14 O comparador de respondidas não vê resposta ERRADA · 🤖
+
+🔴 **Limite estrutural, e ele escondeu sete defeitos nesta SPEC.** `--comparar-com`
+conta CASAMENTOS: um passo que responde errado conta igual a um que responde
+certo. O laço da porto, o condomínio da allianz, o cardápio da zurich e o carimbo
+da tokio **não aparecem como ganho** — e eram os piores defeitos do bloco.
+**O que destrava:** uma coluna de "resposta mudou" no comparador, além de
+"casou/não casou". A bancada de controle desta SPEC já tem a metade disso
+(a coluna ROUBOU).
+
+### P-084-15 937 respostas de botão vazias, e a lista de opções em `text` vazio · 🤖
+
+📊 Herdada da SPEC-083 e reconfirmada: o ingestor não grava `selectedButtonID`.
+Em várias sessões a tecla apertada não está no banco — o caminho só se prova pela
+tela SEGUINTE. **O que destrava:** gravar `selectedButtonID` no ingestor.
