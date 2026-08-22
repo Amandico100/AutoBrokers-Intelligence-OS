@@ -388,6 +388,15 @@ def main(argv: Optional[List[str]] = None) -> int:
     ap.add_argument("--conferir-ancoras-de-desfecho", action="store_true")
     ap.add_argument("--exportar-arvore", action="store_true")
     ap.add_argument("--salvar-linha-de-base", metavar="ARQ")
+    # 🔴 C6 — SPEC-084.1 FASE 0.5. Sem esta flag ninguem no repositorio
+    #    passava `tem_espelho=True`, e os 4 pontos dos apelidos saiam
+    #    `SEM_ESPELHO` PARA SEMPRE -- num item que `medir_rota.py:511`
+    #    classificava como 🧑 Founder, enquanto a E8 o entrega ao executor.
+    #
+    # ⚠️ Ela LE o banco (`conversations`/`messages`), com as duas travas do
+    #    leitor: filtro de tenant e a EXCLUSAO NOMEADA da Amandus.
+    ap.add_argument("--com-espelho", action="store_true",
+                    help="confere os apelidos contra o ESPELHO (le o banco)")
     ap.add_argument("--comparar-com", metavar="ARQ")
     ap.add_argument("--so-orfas", action="store_true")
     a = ap.parse_args(argv)
@@ -438,6 +447,7 @@ def main(argv: Optional[List[str]] = None) -> int:
 
     if a.todas:
         notas = [RB.medir(r, sessoes_no_acervo=acervo.get(r.seguradora),
+                              tem_espelho=a.com_espelho,
                           mutacoes_ok=mut_ok) for r in M.rotas()]
         if a.formato == "markdown":
             print(markdown(notas, demanda, acervo))
@@ -449,7 +459,8 @@ def main(argv: Optional[List[str]] = None) -> int:
     if rota is None:
         print(f"rota inexistente: {a.seguradora} x {a.ramo} x {a.servico}")
         return 2
-    n = RB.medir(rota, sessoes_no_acervo=acervo.get(rota.seguradora), mutacoes_ok=mut_ok)
+    n = RB.medir(rota, sessoes_no_acervo=acervo.get(rota.seguradora),
+                 tem_espelho=a.com_espelho, mutacoes_ok=mut_ok)
     print(imprimir_nota(n))
     return 0
 

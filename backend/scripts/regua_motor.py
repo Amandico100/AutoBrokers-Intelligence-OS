@@ -233,6 +233,123 @@ def eventos_observados(
         inicio += pagina
 
 
+
+# ═════════════════════════════════════════════════════════════════════════════
+# C6 · O ESPELHO — as palavras que o SEGURADO escreveu
+# ═════════════════════════════════════════════════════════════════════════════
+#
+# 🔴 **Os apelidos vêm do ESPELHO, nunca do corpus da URA.** O corpus só guarda
+#    `direction='in'` — as telas da seguradora. As palavras do cliente vivem em
+#    `conversations`/`messages`.
+#
+# 📊 E o falso positivo que a leitura pelo corpus produzia: *"lavadora"* marca
+#    23 vezes no corpus da Allianz porque **a URA** escreve "Lavadora de louças"
+#    no menu Linha Branca — outro eletrodoméstico. Contar isso como "o cliente
+#    fala assim" é ler a seguradora e chamar de cliente.
+#
+# ── AS DUAS TRAVAS, E NENHUMA É NEGOCIÁVEL ───────────────────────────────────
+#
+# 1 · `company_id` SEMPRE. Toda leitura real destas tabelas no produto já
+#     filtra tenant (`human_handoff.py:593`, `admin_atlas.py:964`).
+#
+# 2 · 🔴 A EXCLUSÃO NOMEADA DA AMANDUS. Ela é a corretora de TESTE, e as
+#     conversas dela são ficção. Semear `_SUBSERVICE_ALIASES` com vocabulário
+#     inventado e depois contá-lo como prova é a pior forma de furo coberto:
+#     a régua ficaria verde citando um cliente que não existe.
+#
+#     ⚠️ 📊 E MEDIDO EM 22/08/2026, o motivo de a trava ser NOMEADA e não
+#        derivada: **a AMANDUS está marcada `is_technical = False` no banco.**
+#        Filtrar só as corretoras técnicas NÃO a excluiria. É o mesmo alerta que
+#        `canais_observados.py` já registra: *"a env var que exclui a Amandus é
+#        do destilador e não cobriria isto"*.
+_AMANDUS_COMPANY_ID = "3aa75902-a3d5-4c5d-ac4b-66cbfbc782fe"
+
+_ESPELHO_CACHE: Optional[List[str]] = None
+
+
+def vocabulario_do_espelho(*, recarregar: bool = False) -> List[str]:
+    """As mensagens do SEGURADO, normalizadas, das corretoras REAIS.
+
+    📊 Medido em 22/08/2026: 642 conversas no total — AutoFleet 373 · Resulta
+    260 · **AMANDUS 9**. Depois das duas travas: **633 conversas · 10.457
+    mensagens** do cliente.
+
+    ⚠️ Devolve o texto normalizado pelo mesmo `_norm` do motor, para que a
+    conferência de apelido não tropece em acento ou caixa — a armadilha nº 2 da
+    §E3, que já derrubou uma prescrição de juiz dentro desta SPEC.
+    """
+    global _ESPELHO_CACHE
+    if _ESPELHO_CACHE is not None and not recarregar:
+        return _ESPELHO_CACHE
+    if not tem_banco():
+        _ESPELHO_CACHE = []
+        return _ESPELHO_CACHE
+    cli = supabase()
+
+    # trava 1: só corretora real — e a 2 é a linha do meio, nomeada
+    tecnicas = {c["id"] for c in
+                cli.table("companies").select("id,is_technical").execute().data
+                if c.get("is_technical")}
+    excluidas = tecnicas | {_AMANDUS_COMPANY_ID}
+
+    conversas = {c["id"] for c in
+                 cli.table("conversations").select("id,company_id")
+                 .limit(50000).execute().data
+                 if c.get("company_id") not in excluidas}
+
+    fora: List[str] = []
+    inicio = 0
+    while True:
+        pagina = (cli.table("messages").select("conversation_id,role,content")
+                  .eq("role", "user").range(inicio, inicio + 999).execute().data)
+        if not pagina:
+            break
+        fora += [_norm(m.get("content") or "") for m in pagina
+                 if m.get("conversation_id") in conversas]
+        if len(pagina) < 1000:
+            break
+        inicio += 1000
+    _ESPELHO_CACHE = fora
+    return fora
+
+
+def apelidos_conferidos(servico: str, apelidos: List[str]) -> Dict[str, int]:
+    """`{apelido: quantas mensagens do cliente o contêm}`.
+
+    🔴 A pergunta que a E8 faz não é *"o apelido está declarado?"* — é **"o
+    cliente escreve assim?"**. Sem esta função o item valeria 4 pontos por ter
+    três strings no código.
+    """
+    textos = vocabulario_do_espelho()
+    return {a: sum(1 for t in textos if _norm(a) in t) for a in apelidos}
+
+
+def apelido_colide(apelido: str, servico: str, playbook: Dict[str, Any]) -> Optional[str]:
+    """🔴 O CONTROLE NEGATIVO da E8: o apelido casa o nome de OUTRO serviço?
+
+    📊 O caso que a SPEC nomeia: `lavadora` x **"Lavadora de louças"**, que é
+    outro eletrodoméstico do MESMO menu. Um apelido que serve dois trabalhos
+    não identifica nenhum — e `canonical_subservice` devolveria o primeiro que
+    casar.
+
+    Devolve o serviço que colide, ou `None`.
+    """
+    alvo = _norm(apelido)
+    if not alvo:
+        return servico
+    for outro in (playbook.get("subservices") or {}):
+        if outro == servico:
+            continue
+        # o nome canônico do outro serviço, escrito como gente fala
+        if alvo == _norm(outro.replace("_", " ")):
+            return outro
+        # e os apelidos DELE
+        for ap, dest in (CP._SUBSERVICE_ALIASES or {}).items():
+            if dest == outro and _norm(ap) == alvo:
+                return outro
+    return None
+
+
 __all__ = [
     "CP", "IDS", "TPL", "RAIZ_BACKEND",
     "_norm", "match_ura_step", "extract_capture_anchors", "detect_finalize_anchor",
@@ -243,4 +360,5 @@ __all__ = [
     "templatize", "marcas_de_corretora", "PLAYBOOKS",
     "Rota", "rotas", "rota_de", "seguradoras",
     "tem_banco", "supabase", "controle_do_mascarador", "eventos_observados",
+    "vocabulario_do_espelho", "apelidos_conferidos", "apelido_colide",
 ]

@@ -476,9 +476,31 @@ def eixo_d(rota, r: RP.Replay, *, tem_espelho: bool = False) -> List[Item]:
                           f"sem acesso ao Espelho para conferir o uso real",
                           excluido=SEM_ESPELHO))
     else:
+        # ==================================================================
+        # 🔴 C6 — E AQUI O ITEM PASSOU A CONFERIR, EM VEZ DE CONTAR
+        # ==================================================================
+        #
+        # ⚠️ A versao anterior deste ramo dava 4 pontos por
+        # `len(apelidos) >= 3` — ou seja, **por existirem tres strings no
+        # codigo**. Ligar a flag sem mudar isto teria dado os 4 pontos a 35
+        # rotas sem que ninguem conferisse uma palavra de cliente: seria o
+        # afrouxamento que a §2.2 proibe, disfarcado de ferramenta nova.
+        #
+        # A E8 pede DUAS provas, e as duas rodam aqui:
+        #   1. cada apelido CONFERIDO no Espelho, com a contagem
+        #   2. 🔴 o CONTROLE NEGATIVO: o apelido nao pode casar o nome de
+        #      OUTRO servico do mesmo menu (`lavadora` x "Lavadora de loucas")
+        conferidos = M.apelidos_conferidos(rota.servico, apelidos)
+        vivos = {a: n for a, n in conferidos.items() if n > 0}
+        colisoes = {a: c for a in apelidos
+                    if (c := M.apelido_colide(a, rota.servico, pb))}
+        ok = len(vivos) >= 3 and not colisoes
+        detalhe = (f"{len(apelidos)} declarados, {len(vivos)} CONFERIDOS no "
+                   f"Espelho: {sorted(vivos.items(), key=lambda kv: -kv[1])[:4]}")
+        if colisoes:
+            detalhe += f" | 🔴 COLIDEM com outro servico: {colisoes}"
         itens.append(Item("D", "apelidos do jeito que o cliente fala",
-                          4 if len(apelidos) >= 3 else 0, 4,
-                          f"{len(apelidos)} apelidos: {apelidos[:6]}"))
+                          4 if ok else 0, 4, detalhe))
 
     # ── 3 · `expectativa_do_desfecho` ──────────────────────────────────────
     sub = (pb.get("subservices") or {}).get(rota.servico) or {}
