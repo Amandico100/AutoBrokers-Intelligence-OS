@@ -419,6 +419,48 @@ def _derivar_teclas_do_caso(slots: dict) -> None:
         # sem luz").
         slots["problema_eletrico_opcao"] = "2" if curto else "1"
 
+    # ---- "O que aconteceu?" (ENCANADOR) ------------------------------
+    # 📊 A tela real, allianz-residencial, 4 sessões:
+    #   "1 - Vazamento em dispositivo como sifões, rabichos, torneiras e válvulas
+    #    2 - Vazamento em tubulação de água ou esgoto"
+    #
+    # 🔴 A pergunta é a MESMA do eletricista ("O que aconteceu?") e as opções são
+    #    outras. Até 22/08/2026 a âncora era seca e o passo do eletricista
+    #    respondia a tecla do problema ELÉTRICO nesta tela. Agora cada ofício tem
+    #    o seu — e cada um precisa da sua tradução.
+    #
+    # A resposta muda a árvore inteira que vem depois, então ela vem do RELATO,
+    # nunca de constante. `1` é o default porque 📊 o vazamento em dispositivo
+    # (torneira, sifão, descarga) é o motivo dominante de chamado de encanador
+    # residencial; tubulação exige a palavra do segurado.
+    if not str(slots.get("problema_vazamento_opcao") or "").strip():
+        tubulacao = any(p in texto for p in (
+            "tubulacao", "tubulaç", "cano", "encanamento", "esgoto", "coluna",
+            "parede", "piso", "enterrad", "embutid", "ramal", "prumada"))
+        slots["problema_vazamento_opcao"] = "2" if tubulacao else "1"
+
+    # ---- "O que aconteceu?" (CHAVEIRO) -------------------------------
+    # 📊 A tela real, allianz-residencial, 2 sessões:
+    #   "1 - Perda ou quebra das chaves
+    #    2 - Roubo ou furto das chaves
+    #    3 - Arrombamento, roubo ou furto da residência"
+    #
+    # ⚠️ Uma das duas sessões MORREU aqui: `aa2e0a68`, 03/07/2026 —
+    #    "Opção inválida" → "Vamos tentar novamente" → transferência ao
+    #    especialista, sem protocolo. Era a tela sem passo.
+    #
+    # 🔴 A ORDEM DOS TESTES IMPORTA: "arrombaram e levaram as chaves" é
+    #    arrombamento (3), não roubo (2). O caso mais grave é testado primeiro.
+    if not str(slots.get("problema_chave_opcao") or "").strip():
+        if any(p in texto for p in ("arromb", "invadir", "invadiram", "invasao",
+                                    "forcaram a porta", "arrombar")):
+            slots["problema_chave_opcao"] = "3"
+        elif any(p in texto for p in ("roub", "furt", "assalt", "levaram")):
+            slots["problema_chave_opcao"] = "2"
+        else:
+            # perdi / quebrou / trancou dentro — o caso comum
+            slots["problema_chave_opcao"] = "1"
+
     # ---- A DATA do agendamento (eletrodoméstico) ---------------------
     # 📊 "Os agendamentos estão disponíveis de segunda a sexta, para os
     #     próximos 7 dias. Escolha qual data: 1- ... 7- ..."

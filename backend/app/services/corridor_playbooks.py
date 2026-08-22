@@ -118,12 +118,58 @@ def _norm(text: str) -> str:
 # impede o falso positivo óbvio: "Assistência 24 horas" (o nome do serviço, que
 # aparece na saudação de toda sessão da família) não tem dois-pontos e continua
 # não casando.
+# 🔴 A ÂNCORA QUE CAPTURAVA CEP, CPF E TELEFONE COMO SE FOSSEM PROTOCOLO
+#
+# 📊 Medida sobre as 16.214 mensagens IN do acervo inteiro, 22/08/2026:
+#
+#   a alternativa `o\.?s\.?`  -> 39 mensagens capturadas, **ZERO corretas**.
+#   As 39 são a sequência "os" DENTRO de palavra portuguesa comum —
+#   "traç[os.]", "Sant[os] Iwamoto", "solicitaçã[o s]inistro", "serviç[os]" —
+#   e o `[^\d]{0,24}` de folga então colhia o primeiro número à frente:
+#     · CEP de origem/destino  ×9   (allianz, yelum, hdi, bradesco)
+#     · número de SINISTRO     ×7   (porto, bradesco)
+#     · um 0800                ×3   (tokio)
+#     · telefone do segurado   ×4   · CPF ×1 · CNPJ de exemplo ×1 · CEP de exemplo ×1
+#
+# 🔴 O caso que mostra o tamanho: no bradesco o "protocolo" entregue ao segurado
+#    era **o CEP do destino do guincho** — `"...areias, sao jose - sc, 88113-600"`,
+#    onde o `os` casado é o de "jos[e]"... não: é o de "sao jos[e]", e o número
+#    colhido é o CEP. A seguradora nem emite protocolo neste canal.
+#
+# E `para a assist[êe]ncia` com 24 de folga deixava caber um `é ` inteiro:
+#   📊 zurich, "Seu telefone de contato para a assistência é 48984381978?"
+#      -> capturava o TELEFONE. 4 vezes. Mas a mesma alternativa faz 16 capturas
+#      CERTAS na hdi/yelum ("para a assistência *9070162*"), então ela não sai:
+#      a folga cai de 24 para 2, que é o que `" *"` ocupa e `" é "` não.
+#
+# 📊 CONTROLE, o acervo inteiro, antes x depois:
+#      ATUAL     368 capturas   ·   PROPOSTA  328   ·   perde 43, ganha 0
+#      As 43 foram lidas uma a uma: 40 são falso positivo. As 3 que mereciam
+#      ficar são da tokio (`"ordem de serviço OS7082326 - REBOQUE PESADO"`) —
+#      e é por elas que entram `ordem de servi[çc]o` e `o\.?s\.?#?(?=\d)`.
+#
+# 🔴 A regra que sobra: `os` só é etiqueta de Ordem de Serviço quando vem
+#    **colado** no número (OS1234567) ou pontuado (O.S.). Com espaço, é artigo.
+#
+# ⚠️ E ELA TEM DE TER **UM** GRUPO DE CAPTURA, NÃO DOIS.
+#    `extract_capture_anchors` lê `m.group(1)` (linha ~3637). A primeira versão
+#    desta correção pôs a folga curta numa segunda alternativa de topo — e isso
+#    criava um `group(2)`. As 16 capturas certas da hdi/yelum passariam a cair
+#    no grupo 2 e `group(1)` devolveria `None`: o conserto teria APAGADO os
+#    acertos que ele existe para preservar. A alternância vive no SEPARADOR;
+#    o número é colhido uma vez só, no fim.
 _ANCORA_DE_PROTOCOLO = (
-    r"(?:protocolo(?:\s+de\s+atendimento)?|"
-    r"n[úu]mero\s+da\s+(?:sua\s+)?(?:ordem|os|solicita[çc][ãa]o|assist[êe]ncia)|"
-    r"para a assist[êe]ncia|sobre sua assist[êe]ncia|o\.?s\.?|"
+    r"(?:"
+    r"(?:protocolo(?:\s+de\s+atendimento)?|ordem\s+de\s+servi[çc]o|"
+    r"n[úu]mero\s+d[oa]\s+(?:sua\s+)?(?:ordem(?:\s+de\s+servi[çc]o)?|"
+    r"solicita[çc][ãa]o|assist[êe]ncia|chamado)|"
+    r"o\.?s\.?#?(?=\d)|"
     r"\*?assist[êe]ncia\*?(?=\*?\s*:))"
-    r"[^\d]{0,24}(\d[\d-]{4,18}\d)"
+    r"[^\d]{0,24}"
+    # 🔴 folga de 2, nao 24 — ver o telefone da zurich acima
+    r"|(?:para a assist[êe]ncia|sobre sua assist[êe]ncia)[^\d]{0,2}"
+    r")"
+    r"(\d[\d-]{4,18}\d)"
 )
 
 
@@ -159,9 +205,50 @@ ALLIANZ_RESIDENCIAL_WHATSAPP_V1: Dict[str, Any] = {
             # 🔴 "qual O seguro QUE deseja" -> a URA de 2026 escreve "Qual
             # seguro deseja utilizar?". Duas palavras a menos, e a ancora
             # deixou de casar. 📊 A tela passou a cair no cerebro em 18/08.
-            "anchor": r"qual (?:o )?seguro (?:que )?deseja utilizar",
+            #
+            # 🔴 E DUAS TELAS DIFERENTES CASAM ESTA MESMA ÂNCORA — 21/08/2026:
+            #
+            #   A) "...qual o seguro que deseja utilizar?
+            #       *1 -* Seguro Residência, Condomínio ou Empresa
+            #       *2 -* Seguro Automotivo com serviços residenciais"      "1" certo
+            #
+            #   B) "Qual seguro deseja utilizar?
+            #       *1 - Residencial:* casa ou apartamento individual
+            #       *2 - Condomínio:*  áreas comuns e estrutura
+            #       *3 - Empresarial:* proteger seu negócio"                "1" ERRADO
+            #
+            # 📊 A rota de condomínio EXISTE e está medida: **5 sessões** passam por
+            #    `Digite o *CNPJ* do titular ... exclusivamente a serviços nas áreas
+            #    comuns` — e só se chega lá respondendo **2** na tela B.
+            #
+            # 🔴 Com "1" fixo, **todo condomínio ia para a apólice residencial** — e
+            #    o chamado é recusado no local, porque o serviço não cobre unidade
+            #    individual. O corredor não travava: acertava a tecla e abria o
+            #    chamado errado.
+            #
+            # A âncora agora exige as DUAS primeiras opções da tela A. A tela B ganha
+            # passo próprio, logo abaixo, com a tecla vindo do caso.
+            "anchor": r"qual (?:o )?seguro (?:que )?deseja utilizar"
+                      r"[\s\S]{0,80}resid[êe]ncia, condom[íi]nio ou empresa",
             "reply": "1",
-            "notes": "1-Residência/Condomínio/Empresa 2-Auto com serviços residenciais",
+            "notes": "📊 1-Residencia/Condominio/Empresa 2-Auto com servicos "
+                     "residenciais. A ancora exige a 1a opcao: a tela de TRES "
+                     "opcoes (Residencial/Condominio/Empresarial) e outra, e '1' "
+                     "nela mandaria todo condominio para a apolice errada.",
+        },
+        {
+            # 🔴 A TELA DE TRÊS OPÇÕES — 📊 37 sessões, e ela decide a APÓLICE.
+            "step": "menu_qual_seguro_tres_opcoes",
+            "anchor": r"qual seguro deseja utilizar\?[\s\S]{0,60}"
+                      r"\*?1\s*-\s*resid[êe]ncial",
+            "reply": "{qual_seguro_opcao}",
+            "requires": ["qual_seguro_opcao"],
+            "fallback_adaptive": True,
+            "notes": "📊 1-Residencial (casa ou apartamento individual) "
+                     "2-Condominio (areas comuns e estrutura) 3-Empresarial. "
+                     "🔴 Vem do caso, NUNCA fixo: '1' num condominio abre um "
+                     "chamado que sera recusado no local, porque o servico nao "
+                     "cobre unidade individual. 📊 5 sessoes de condominio no acervo.",
         },
         {
             # A URA lembra o CPF do ÚLTIMO atendimento (o WhatsApp é da corretora,
@@ -340,12 +427,49 @@ ALLIANZ_RESIDENCIAL_WHATSAPP_V1: Dict[str, Any] = {
             # A palavra `*Dica:*` esta na ancora do noop que eu escrevi em
             # 18/08. Este passo vem ANTES dele na lista, e por isso vence —
             # `match_ura_step` percorre em ordem. Mexer na ordem quebra isto.
+            # 🔴 A PERGUNTA DE COBERTURA, E ELA VEM ANTES DO AVISO — 21/08/2026.
+            #
+            # 📊 A URA manda o aviso e a pergunta NA MESMA BOLHA:
+            #
+            #   "*Importante:* O serviço é destinado a aparelhos que estejam FORA
+            #    da garantia do fabricante e que pertençam à residência segurada.
+            #    (...)
+            #    Qual a idade de fabricação do aparelho/equipamento?
+            #    *1 -* Até 10 anos   *2 -* Mais de 10 anos de fabricação"
+            #
+            # 🔴 `aviso_fora_da_garantia` respondia **"1"** a essa tela. E "1" ali
+            #    **não é "continuar" — é "Até 10 anos"**. O corredor AFIRMAVA a
+            #    idade do aparelho sem ninguém ter perguntado.
+            #
+            # ⚠️ E o `regras_para_o_cliente` deste playbook já diz que o aparelho
+            #    precisa ter até 10 anos. **A regra existia, e a tela que a verifica
+            #    era respondida no automático.** É a coincidência de numeração — na
+            #    variante sem a pergunta, "1" É "Continuar" — que escondia o defeito.
+            #
+            # 🔴 Por isso este passo vem ANTES: quando a pergunta está na tela, quem
+            #    responde é o caso, não o corredor.
+            "step": "idade_de_fabricacao",
+            "only_subservices": ["eletrodomesticos", "maquina_de_lavar",
+                                 "ar_condicionado"],
+            "anchor": r"qual a idade de fabrica[çc][ãa]o do aparelho",
+            "reply": "{idade_aparelho_opcao}",
+            "requires": ["idade_aparelho_opcao"],
+            "fallback_adaptive": True,
+            "notes": "📊 2 telas, 3 sessoes. 1-Ate 10 anos 2-Mais de 10 anos. "
+                     "🔴 E pergunta de COBERTURA: '2' e recusa. Responder '1' fixo "
+                     "abre um chamado que sera negado quando o tecnico chegar.",
+        },
+        {
             "step": "aviso_fora_da_garantia",
-            "only_subservices": ["eletrodomesticos", "maquina_de_lavar"],
+            "only_subservices": ["eletrodomesticos", "maquina_de_lavar",
+                                 "ar_condicionado"],
             "anchor": r"fora da garantia do fabricante",
             "reply": "1",
             "notes": "📊 O aparelho precisa estar FORA da garantia do fabricante "
-                     "e pertencer a residencia segurada.",
+                     "e pertencer a residencia segurada. "
+                     "⚠️ Aqui '1' e 'Continuar'. Quando a MESMA bolha traz a "
+                     "pergunta da idade, quem responde e `idade_de_fabricacao`, "
+                     "que vem ANTES nesta lista.",
         },
         {
             # 🔴 O APARELHO. Maquina de Lavar roupas = 14.
@@ -493,13 +617,58 @@ ALLIANZ_RESIDENCIAL_WHATSAPP_V1: Dict[str, Any] = {
             # abre chamado errado. Vai como slot, preenchido do caso — igual a
             # `profissional_opcao`. Uma constante aqui seria pior que o
             # silencio que ela conserta.
+            # 🔴 A MESMA PERGUNTA, TRÊS OFÍCIOS, TRÊS LISTAS DE OPÇÕES — 21/08/2026.
+            #
+            # A âncora era `o que aconteceu\?`, seca. 📊 Rodado no motor, o efeito
+            # real era este:
+            #
+            #   tela do ENCANADOR  x subservice=encanador   -> None
+            #                      x subservice=eletricista -> o_que_aconteceu, "{problema_eletrico_opcao}"
+            #   tela do CHAVEIRO   x subservice=chaveiro    -> None
+            #                      x subservice=eletricista -> o_que_aconteceu, "{problema_eletrico_opcao}"
+            #
+            # **As duas metades são defeito.** Num caso de eletricista o corredor
+            # digitava a tecla do vazamento; num caso de encanador ou chaveiro ele
+            # emudecia. A URA escreve a mesma frase e muda as opções embaixo.
+            #
+            # 🔴 A âncora agora exige a PRIMEIRA OPÇÃO, não só a pergunta. É o que
+            #    separa as três — e é o mesmo princípio do `PADRAO_DE_CARDAPIO`:
+            #    o que distingue não está na pergunta, está na lista.
             "step": "o_que_aconteceu",
             "only_subservices": ["eletricista"],
-            "anchor": r"o que aconteceu\?",
+            "anchor": r"o que aconteceu\?[\s\S]{0,60}casa inteira ou parcial sem energia",
             "reply": "{problema_eletrico_opcao}",
             "requires": ["problema_eletrico_opcao"],
-            "notes": "1-Casa inteira/parcial sem energia 2-Curto circuito 3-outros. "
-                     "Vem do caso, nunca fixo.",
+            "notes": "📊 1-Casa inteira/parcial sem energia 2-Curto circuito 3-outros. "
+                     "Vem do caso, nunca fixo. A ancora exige a 1a opcao porque o "
+                     "encanador e o chaveiro usam a MESMA pergunta.",
+        },
+        {
+            # 🔴 MESMA PERGUNTA, OUTRO OFÍCIO — 📊 2 redações, 4 sessões.
+            #    "1-Vazamento em dispositivo (sifões, rabichos, torneiras, válvulas)
+            #     2-Vazamento em tubulação de água ou esgoto"
+            "step": "o_que_aconteceu_encanador",
+            "only_subservices": ["encanador"],
+            "anchor": r"o que aconteceu\?[\s\S]{0,60}vazamento em",
+            "reply": "{problema_vazamento_opcao}",
+            "requires": ["problema_vazamento_opcao"],
+            "fallback_adaptive": True,
+            "notes": "📊 4 sessoes. 1-Vazamento em dispositivo 2-Vazamento em tubulacao. "
+                     "A resposta muda a arvore inteira que vem depois.",
+        },
+        {
+            # 🔴 MESMA PERGUNTA, TERCEIRO OFÍCIO — 📊 2 sessões, e uma delas MORREU
+            #    aqui: `aa2e0a68`, 03/07/2026, "Opção inválida" -> "Vamos tentar
+            #    novamente" -> transferência ao especialista. Sem protocolo.
+            "step": "o_que_aconteceu_chaveiro",
+            "only_subservices": ["chaveiro"],
+            "anchor": r"o que aconteceu\?[\s\S]{0,80}"
+                      r"(?:perda ou quebra das chaves|roubo ou furto das chaves)",
+            "reply": "{problema_chave_opcao}",
+            "requires": ["problema_chave_opcao"],
+            "fallback_adaptive": True,
+            "notes": "📊 2 sessoes. 1-Perda ou quebra das chaves 2-Roubo ou furto "
+                     "3-Arrombamento, roubo ou furto da residencia.",
         },
         {
             # "E para finalizar: descreva detalhadamente o que aconteceu"
@@ -580,7 +749,8 @@ ALLIANZ_RESIDENCIAL_WHATSAPP_V1: Dict[str, Any] = {
         "eletricista": {
             "tipo_servico_opcao": "1",
             "profissional_opcao": "1",
-            "required_slots": ["titular_cpf", "endereco_numero", "telefone_contato", "problema_descricao", "periodo_preferido", "risco_confirmado_sem_fumaca"],
+            "required_slots": ["titular_cpf", "endereco_numero", "telefone_contato", "problema_descricao", "periodo_preferido", "risco_confirmado_sem_fumaca",
+                               "qual_seguro_opcao"],
         },
         # ==================================================================
         # MAQUINA DE LAVAR ROUPAS — SPEC-082, 18/08/2026
@@ -612,12 +782,23 @@ ALLIANZ_RESIDENCIAL_WHATSAPP_V1: Dict[str, Any] = {
                 "titular_cpf", "endereco_numero", "telefone_contato",
                 "problema_descricao", "aparelho_marca", "aparelho_modelo",
                 "periodo_preferido",
+                # 🔴 A IDADE DO APARELHO É PERGUNTA DE COBERTURA, E ELA VEM DO
+                #    CLIENTE — nunca de derivação e nunca de constante.
+                #    📊 A URA pergunta "Qual a idade de fabricação do aparelho?
+                #    1-Até 10 anos 2-Mais de 10 anos", e `2` é RECUSA. A regra
+                #    logo acima já diz "aparelho com até 10 anos"; o que faltava
+                #    era o corredor PERGUNTAR em vez de afirmar.
+                #    ⚠️ Nenhuma palavra do relato do segurado diz a idade de
+                #    fabricação. Derivar aqui seria inventar o fato que decide
+                #    a cobertura — por isso ele é coletado, não traduzido.
+                "idade_aparelho_opcao",
             ],
         },
         "chaveiro": {
             "tipo_servico_opcao": "1",
             "profissional_opcao": "4",
-            "required_slots": ["titular_cpf", "endereco_numero", "telefone_contato", "problema_descricao", "periodo_preferido"],
+            "required_slots": ["titular_cpf", "endereco_numero", "telefone_contato", "problema_descricao", "periodo_preferido",
+                               "qual_seguro_opcao"],
         },
         # ENCANADOR (SPEC-063, 03/08/2026): mesma espinha do eletricista — mesma
         # opção de URA ("1 - casa"), mesmos dados de apólice/contato — e os slots
@@ -1125,8 +1306,22 @@ def _auto_playbook(insurer_key: str, contact_ref: str, ura_steps, finalize_ancho
 # --- Allianz auto (fluxo REAL 05/03/2026 minerado por completo) --------------------
 _ALLIANZ_FAMILY_AUTO_STEPS = [
     # Família Allianz/Alfa (mesmo fornecedor de bot): URA numerada.
-    {"step": "cpf_anterior", "anchor": r"em nossa [úu]ltima conversa,? utilizamos o cpf", "reply": "2",
-     "notes": "URA lembra o CPF do último atendimento — SEMPRE re-identificar (2=inserir outro)"},
+    # 🔴 DUAS CÓPIAS DA MESMA VERDADE, UMA CORRIGIDA E OUTRA VENCIDA — 22/08/2026.
+    #
+    # O `cpf_anterior` do ALLIANZ_RESIDENCIAL foi consertado em 18/08 (a URA de 2026
+    # escreve "Que bom que voltou! ... com o CPF/CNPJ 030.###?"). A correção **nunca
+    # chegou aqui**, e esta lista é a que alfa e allianz-auto leem.
+    # 📊 A âncora antiga casa ZERO no acervo; a nova casa 1 tela na alfa e 2 na allianz.
+    #
+    # ⚠️ E a resposta "2" é a mesma pela mesma razão: o WhatsApp é da CORRETORA e
+    #    atende N clientes. O CPF lembrado é o do atendimento ANTERIOR — aceitar
+    #    aciona a apólice de outra pessoa.
+    {"step": "cpf_anterior",
+     "anchor": (r"em nossa [úu]ltima conversa,? utilizamos o cpf|"
+                r"que bom que voltou.{0,80}cpf|continuar nossa conversa com o cpf"),
+     "reply": "2",
+     "notes": "URA lembra o CPF do último atendimento — SEMPRE re-identificar "
+              "(2=inserir outro). 📊 A redação de 2026 é 'Que bom que voltou!'."},
     {"step": "atendimento_recente", "anchor": r"atendimento realizado recentemente", "reply": "2",
      "notes": "1-mesmo atendimento 2-abrir novo serviço"},
     {"step": "pedir_cpf", "anchor": r"digite o \*?cpf\*? ou \*?cnpj\*? do\(a\)? titular", "reply": "{titular_cpf}",
@@ -1146,7 +1341,18 @@ _ALLIANZ_FAMILY_AUTO_STEPS = [
     {"step": "menu_servico_auto", "anchor": r"o que voc[êe] precisa\??\s*\|?\s*\*?1", "reply": "{servico_opcao}",
      "requires": ["servico_opcao"],
      "notes": "1-pane elétrica/bateria 3-guincho pane mecânica 4-guincho sinistro 6-pneu 7-chaveiro"},
-    {"step": "quando", "anchor": r"para quando precisa do \*?(?:reboque|guincho|servi[çc]o|profissional)", "reply": "1",
+    # 🔴 A ÂNCORA SÓ CONHECIA QUATRO OFÍCIOS, E A URA NOMEIA O SERVIÇO NA TELA.
+    #    📊 telas "para quando precisa d..." no acervo, com o passo que casava ANTES:
+    #         allianz [quando] "...do *reboque para pane mecânica*"        3 ses  ✅
+    #         allianz [quando] "...do profissional para *recarga*"         2 ses  ✅
+    #         allianz [ORFA]   "...do *borracheiro para troca de pneu*"    3 ses  🔴
+    #         allianz [ORFA]   "E para quando precisa do *Eletricista*?"   1 ses  🔴
+    #         alfa    [ORFA]   "...do *borracheiro para troca de pneu*"    1 ses  🔴
+    #    🔴 CONTROLE POSITIVO (a linha que dá direito à conclusão): as 3 telas que já
+    #       casavam continuam casando. Ampliar é seguro; trocar não é.
+    {"step": "quando",
+     "anchor": (r"para quando precisa d[oa] \*?(?:reboque|guincho|servi[çc]o|profissional|"
+                r"borracheiro|chaveiro|t[ée]cnico|socorro|eletricista|encanador)"), "reply": "1",
      "notes": "1-Agora 2-Agendar; urgência é o default do corredor"},
     {"step": "oferta_mecanico", "anchor": r"continuar com a solicita[çc][ãa]o do guincho", "reply": "2",
      "notes": "URA oferece mecânico no lugar do guincho — o serviço é o que o CLIENTE pediu (2=continuar guincho)"},
@@ -1379,7 +1585,19 @@ _YELUM_FAMILY_STEPS = [
      "notes": "quem acompanha o servico NO LOCAL. Vidro nao entra: o reparo e agendado, ninguem espera na rua."},
     {"step": "telefone_local", "anchor": r"n[úu]mero de (?:celular|telefone)\*? com ddd da pessoa que est[áa] no local",
      "reply": "{telefone_contato}", "requires": ["telefone_contato"]},
-    {"step": "telefone_confirma", "anchor": r"o n[úu]mero de telefone \d+ est[áa] correto", "reply": "Sim"},
+    # 🔴 A ÂNCORA QUE EXIGIA DÍGITOS DE UM NÚMERO QUE VEM MASCARADO.
+    #    📊 `o n[úu]mero de telefone \d+ est[áa] correto` casa **ZERO** telas nos
+    #       QUATRO corpora da família (yelum-auto, hdi-auto, yelum-resid, hdi-resid).
+    #       A tela existe em todos: "O número de telefone {TELEFONE} está correto?"
+    #       — 31 ocorrências-sessão somadas. O `\d+` casaria em produção, onde há
+    #       dígitos; no corpus versionado, não. E um passo que só funciona fora do
+    #       teste é um passo que ninguém pode provar.
+    #    🔴 CONTROLE: a redação ampliada casa as duas formas (mascarada e com
+    #       dígitos) e nada além delas — `.{0,24}` não atravessa a frase.
+    {"step": "telefone_confirma", "anchor": r"o n[úu]mero de telefone .{0,24}est[áa] correto",
+     "reply": "Sim",
+     "notes": "📊 4 corredores da família · 31 ocorrências-sessão. Ampliar contém a "
+              "antiga; trocar não conteria."},
     {"step": "cor_menu", "anchor": r"informar a cor do ve[íi]culo de placa", "reply": "Outros"},
     {"step": "cor_texto", "anchor": r"qual a cor do ve[íi]culo de placa", "reply": "{veiculo_cor}",
      "notes": "campo livre; default 'não sei'"},
@@ -1768,17 +1986,50 @@ ALFA_AUTO_WHATSAPP_V1["handoff_triggers"] = ALFA_AUTO_WHATSAPP_V1["handoff_trigg
 AZUL_AUTO_WHATSAPP_V1 = _auto_playbook(
     "azul", "azul_assistencia_24h",
     ura_steps=[
-        {"step": "menu_inicial_num",
-         "anchor": r"como eu posso te ajudar\?.*\*?1\W{0,5}assist[êe]ncia 24h para o ve[íi]culo",
-         "reply": "1", "notes": "variante NUMERADA antiga: 1-Assistência 24h para o veículo"},
-        {"step": "menu_inicial",
-         "anchor": r"como eu posso te ajudar\?.*assist[êe]ncia (?:24h para o ve[íi]culo|emergencial)",
+        # 🔴 O MENU-RAIZ DA AZUL, E OS DOIS PASSOS QUE CASAVAM **ZERO** — 22/08/2026
+        #
+        # As duas âncoras antigas exigiam a pergunta E a opção na MESMA mensagem.
+        # 📊 A URA manda TRÊS bolhas separadas, e nesta ordem:
+        #
+        #   1. "Olá, sou a atendente virtual da Azul Seguros 👋"       20 msgs / 16 ses
+        #   2. "Selecione uma opção, por favor.
+        #       Assistência emergencial | Guincho, técnico e chaveiro
+        #       Sinistro | Vidros e faróis | Martelinho de ouro | …"   23 msgs / 16 ses
+        #   3. "Como eu posso te ajudar?"                             21 msgs / 16 ses
+        #
+        # 🔴 A pergunta vem numa bolha SEPARADA e **DEPOIS** do menu. E `.` não
+        #    atravessa `\n` em Python, então nem o `.*` salvaria.
+        #    📊 `menu_inicial` casa 0 telas. `menu_inicial_num` idem — a frase
+        #    "Como eu posso te ajudar? 1 - Assistência 24h" tem 0 ocorrências no
+        #    acervo INTEIRO. **A porta de entrada da azul nunca abriu por passo.**
+        #
+        # A âncora nova mora na bolha que traz as OPÇÕES, que é onde a escolha é feita.
+        {"step": "menu_inicial_lista",
+         "anchor": r"selecione uma op[çc][ãa]o, por favor[\s\S]{0,60}assist[êe]ncia emergencial",
          "reply": "Assistência emergencial",
-         "notes": "lista 2025/26: 'Assistência emergencial — Guincho, técnico e chaveiro' (responder rótulo)"},
+         "notes": "📊 23 msgs · 16 de 19 sessões · 22/08/2025 a 28/07/2026. É LISTA: "
+                  "responde-se o RÓTULO. O [\\s\\S]{0,60} existe porque `.` não cruza "
+                  "quebra de linha — a versão com `.*` casava ZERO."},
+        {"step": "como_posso_ajudar", "anchor": r"^como eu posso te ajudar\?\s*$",
+         "reply": "", "noop": True,
+         "notes": "📊 21 msgs / 16 ses. É a pergunta SOZINHA, e chega DEPOIS do menu. "
+                  "Cardápio, não escolha."},
+        {"step": "saudacao_atendente", "anchor": r"sou a atendente virtual da azul",
+         "reply": "", "noop": True, "notes": "📊 20 msgs / 16 sessões."},
         {"step": "pedir_cpf", "anchor": r"informe o \*?cpf ou cnpj\*? do\(a\)? segurad", "reply": "{titular_cpf}",
          "requires": ["titular_cpf"]},
-        {"step": "cor_menu", "anchor": r"informe a cor do ve[íi]culo", "reply": "Outra cor",
-         "notes": "lista de cores; 'Outra cor' abre texto livre"},
+        # 🔴 AQUI A ÂNCORA **E** A RESPOSTA ESTAVAM ERRADAS — 22/08/2026.
+        #    📊 "INFORME a cor do veículo"   -> 1 sessão  (lista de 2025)
+        #    📊 "SELECIONE a cor do veículo" -> 6 sessões (lista de 2026)  <- órfã
+        #    🔴 E `reply: "Outra cor"` só existe na lista de 2025. A de 2026 termina
+        #       em "Mais opções | *Não sei a cor*" — e foi "Não sei a cor" que a
+        #       sessão real respondeu. Mandar rótulo que não está na tela não trava:
+        #       a URA devolve "Não entendi sua resposta" e o turno se perde.
+        {"step": "cor_menu", "anchor": r"(?:selecione|informe)(?: agora)? a cor do ve[íi]culo",
+         "reply": "{veiculo_cor_rotulo}", "fallback_adaptive": True,
+         "notes": "📊 2 telas / 7 sessões. Vem do caso. Sem cor no caso, a tecla honesta "
+                  "da lista de 2026 é Não sei a cor; na de 2025 ela NÃO EXISTE e o "
+                  "caminho é Outra cor, que abre texto livre (`cor_texto`)."},
         {"step": "cor_texto", "anchor": r"escreva qual a cor", "reply": "{veiculo_cor}",
          "notes": "default 'não sei'"},
         {"step": "menu_atendimento", "anchor": r"de que atendimento voc[êe] precisa", "reply": "1",
@@ -1792,15 +2043,26 @@ AZUL_AUTO_WHATSAPP_V1 = _auto_playbook(
          "reply": "Recarga de bateria", "notes": "submenu da bateria: Recarga / Bateria nova / Na garantia"},
         {"step": "quando", "anchor": r"para quando voc[êe] precisa que esse servi[çc]o", "reply": "1",
          "notes": "1-Tenho urgência (a frase 'confirmada somente após a finalização' faz parte desta COLETA)"},
-        {"step": "no_local", "anchor": r"[ée] voc[êe] que estar[áa] no local para acompanhar", "reply": "2",
-         "notes": "1-Sim 2-Não (informamos quem estará)"},
+        # 🔴 ANCORADO NA REDAÇÃO RARA — 1 sessão, enquanto a viva tem 10.
+        #    📊 "é você que estARÁ no local"  ->  1 sessão  (2025)
+        #    📊 "é você que ESTÁ no local"    -> 10 sessões (2026)  <- órfã até aqui
+        #    Ampliar CONTÉM a antiga; trocar não conteria. É a lição que migra.
+        {"step": "no_local", "anchor": r"[ée] voc[êe] que est[áa](?:r[áa])? no local para acompanhar", "reply": "2",
+         "notes": "1-Sim 2-Não (informamos quem estará). 📊 11 msgs / 11 sessões."},
         {"step": "nome_no_local", "anchor": r"qual [ée] o nome de quem estar[áa] no local", "reply": "{pessoa_no_local}",
          "requires": ["pessoa_no_local"],
          "only_subservices": _SUBSERVICOS_COM_ALGUEM_NO_LOCAL,
          "notes": "quem acompanha o servico NO LOCAL. Vidro nao entra: o reparo e agendado, ninguem espera na rua."},
-        {"step": "telefone_contato", "anchor": r"informe um n[úu]mero de contato\. digite no formato",
+        # 🔴 Mesma família de defeito: 1 sessão contra 8.
+        #    📊 "informe um número de contato. digite no formato" -> 1 sessão (2025)
+        #    📊 "informe um *número de celular* com DDD"          -> 8 sessões (2026)
+        {"step": "telefone_contato",
+         "anchor": (r"informe um n[úu]mero de contato\. digite no formato|"
+                    r"informe um \*?n[úu]mero de celular\*? com ddd|"
+                    r"e qual [ée] o n[úu]mero de quem est[áa] no local"),
          "reply": "{telefone_contato}", "requires": ["telefone_contato"], "format": "phone_br",
-         "notes": "formato ESTRITO '(dd) 99999-9999' — o motor formata os dígitos"},
+         "notes": "📊 3 telas / 9 sessões. A redação de 2025 pede formato ESTRITO "
+                  "(dd) 99999-9999; a de 2026 aceita dígitos com DDD. O motor formata."},
         {"step": "telefone_correto", "anchor": r"o n[úu]mero est[áa] correto", "reply": "1"},
         {"step": "ponto_referencia",
          "anchor": r"(?:o local tem|pode me informar) algum \*?ponto de refer[êe]ncia",
@@ -1978,11 +2240,44 @@ ZURICH_AUTO_WHATSAPP_V1 = _auto_playbook(
         # 📊 "*Assistência a vidros*: encontre informações sobre como pedir o
         # reparo ou a troca de vidros, para-brisa, faróis e retrovi[sores]" —
         # a Zurich ORIENTA; não abre chamado neste fluxo.
+        # 🔴 O CARDÁPIO NÃO É A ESCOLHA — e este passo tomava um pelo outro.
+        #
+        # 📊 A âncora antiga (`assistência a vidros: encontre informações`) casava
+        #    **8 mensagens em 7 das 15 sessões** do acervo, e as 8 eram a MESMA
+        #    tela: o cardápio que a URA manda na 2ª mensagem depois de "Carro e
+        #    moto" — ANTES do CPF, da placa, de escolher qualquer coisa:
+        #
+        #      "Aqui você pode de forma rápida e fácil:
+        #       • *Assistência 24h*: solicite serviços de emergência…
+        #       • *Assistência a vidros*: encontre informações sobre como pedir o
+        #         reparo ou a troca de vidros, para-brisa, faróis…
+        #       • *Sinistro*: …  • *Carro reserva*: …"
+        #
+        # 🔴 Com `outcome=OUTCOME_ENCAMINHA`, um caso de vidros na zurich
+        #    **encerrava ali como `resolvido_por_encaminhamento`**, entregando ao
+        #    segurado a legenda do menu como se fosse a resposta. A tela chega em
+        #    7 de 15 sessões, sempre no começo: o encerramento era garantido.
+        #
+        # ⚠️ A tela de ORIENTAÇÃO de vidros — a que a URA manda para quem *escolhe*
+        #    vidros — tem ZERO ocorrências no acervo: ninguém nunca escolheu. A
+        #    âncora foi escrita a partir do cardápio, tomando a legenda pela
+        #    resposta. A nova exige a marca que só a orientação tem (`acesse`,
+        #    `clique`, `link`) e por isso fica DESLIGADA até haver fonte — o que é
+        #    o estado honesto: handoff, e não um encerramento falso.
+        {"step": "cardapio_carro_e_moto",
+         "anchor": r"aqui voc[êe] pode de forma r[áa]pida e f[áa]cil",
+         "reply": "", "noop": True,
+         "notes": "📊 11 msgs · 9 de 15 sessões. CARDÁPIO, não escolha. A escolha é a "
+                  "tela seguinte (Agora escolha um dos serviços), que tem `menu_servicos`. "
+                  "🔴 PRECEDE `vidros_orientacao` de propósito: `match_ura_step` devolve "
+                  "o PRIMEIRO que casa, e era o de vidros que a pegava."},
         {"step": "vidros_orientacao",
-         "anchor": (r"assist[êe]ncia a vidros\*?\s*:?\s*encontre informa[çc][õo]es|"
-                    r"como pedir o reparo ou a troca de vidros"),
+         "anchor": (r"acionar a assist[êe]ncia para vidros|"
+                    r"assist[êe]ncia a vidros[\s\S]{0,40}(?:acesse|clique|link)"),
          "reply": "", "noop": True, "referral": True, "outcome": OUTCOME_ENCAMINHA,
-         "notes": "não responder à URA: entregar a orientação ao segurado e encerrar"},
+         "notes": "🔴 IDENTIFICADA, NÃO ESTABELECIDA: 0 telas no acervo. A âncora exige "
+                  "acesse|clique|link, que o cardápio não tem — é o que impede a volta "
+                  "do defeito. Sem fonte, o caso de vidros vai a handoff, e isso é o certo."},
         {"step": "pedir_cpf", "anchor": r"qual o seu \*?cpf/?cnpj", "reply": "{titular_cpf}", "requires": ["titular_cpf"]},
         {"step": "pedir_placa", "anchor": r"qual a \*?placa do ve[íi]culo", "reply": "{veiculo_placa}",
          "requires": ["veiculo_placa"]},
@@ -2494,7 +2789,7 @@ YELUM_RESIDENCIAL_WHATSAPP_V1: Dict[str, Any] = {
          "notes": "âncora REUSADA da família (casa palavra por palavra: 6 de 6 sessões). 📊 A URA "
                   "recusa telefone mal formatado e repete a MESMA pergunta — a âncora pega as duas"},
         {"step": "telefone_confirma",
-         "anchor": r"o n[úu]mero de telefone \d+ est[áa] correto", "reply": "Sim",
+         "anchor": r"o n[úu]mero de telefone .{0,24}est[áa] correto", "reply": "Sim",
          "notes": "âncora REUSADA da família (6 ocorrências medidas no residencial da Yelum)"},
         {"step": "endereco_da_apolice",
          "anchor": (r"localizamos o seguinte endere[çc]o|"

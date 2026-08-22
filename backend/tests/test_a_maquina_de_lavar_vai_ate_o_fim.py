@@ -251,14 +251,53 @@ for p in PASSOS:
 
 DERIVADOS = {"problema_eletrico_opcao", "data_agendamento_opcao",
              "periodo_agendamento_opcao", "telefone_adicionar_opcao",
-             "servico_opcao", "veiculo_opcao"}
+             "servico_opcao", "veiculo_opcao",
+             # 🔴 22/08/2026 — as duas telas que a SPEC-084 separou. Ate aqui a
+             #    pergunta "O que aconteceu?" era ancorada seca, e o passo do
+             #    ELETRICISTA respondia a tecla do problema eletrico na tela do
+             #    encanador e na do chaveiro. Cada oficio ganhou o seu passo, e
+             #    cada passo precisa da sua traducao.
+             "problema_vazamento_opcao", "problema_chave_opcao"}
+
+# 🔴 A TERCEIRA ORIGEM, QUE ESTE GUARDA NAO ENXERGAVA — 22/08/2026.
+#
+# Ele conhecia duas: constante declarada no subservico (`slot in sub`) e
+# derivacao do relato (`DERIVADOS`). Falta a que o produto usa o tempo todo:
+# **perguntar ao cliente**, via `required_slots`.
+#
+# 🔴 E existe slot que SO pode vir dai. `idade_aparelho_opcao` responde
+#    "Qual a idade de fabricacao do aparelho? 1-Ate 10 anos 2-Mais de 10 anos",
+#    que e pergunta de COBERTURA: `2` e recusa. Nenhuma palavra do relato do
+#    segurado diz a idade de fabricacao -- derivar seria inventar o fato que
+#    decide se o chamado existe. Constante foi o defeito que a SPEC-084
+#    consertou (o corredor respondia "1", afirmando a idade sem perguntar).
+#    Sobra uma origem honesta, e e coletar.
+def _coletado_do_cliente(slot):
+    return [n for n, sub in SUB.items() if slot in (sub.get("required_slots") or [])]
+
 for slot in sorted(exigidos):
     origens = [n for n, sub in SUB.items() if slot in sub]
-    check(f"`{slot}` tem origem (subservico ou derivacao)",
-          bool(origens) or slot in DERIVADOS,
+    coletado = _coletado_do_cliente(slot)
+    check(f"`{slot}` tem origem (constante, derivacao ou coleta)",
+          bool(origens) or slot in DERIVADOS or bool(coletado),
           "passo que exige slot sem origem fica CALADO -- 2min22 no teste real")
 
 check("CONTROLE: a varredura achou slots de verdade", len(exigidos) >= 4, sorted(exigidos))
+
+# 🔴 E O CONTROLE QUE DA DIREITO A CONCLUSAO: o guarda ampliado ainda CONSEGUE
+#    ficar vermelho. Um guarda que aceita tudo nao guarda nada -- e este acabou
+#    de ganhar uma terceira porta.
+_slot_fantasma = "slot_que_ninguem_preenche_opcao"
+check("CONTROLE NEGATIVO: um slot sem NENHUMA das tres origens reprova",
+      not (bool([n for n, sub in SUB.items() if _slot_fantasma in sub])
+           or _slot_fantasma in DERIVADOS
+           or bool(_coletado_do_cliente(_slot_fantasma))),
+      "se esta assercao ficar verde por engano, o guarda virou carimbo")
+
+# 🔴 E a coleta so vale se ela realmente encontra o slot onde ele foi escrito.
+check("CONTROLE POSITIVO: `idade_aparelho_opcao` e achado pela via da COLETA",
+      "maquina_de_lavar" in _coletado_do_cliente("idade_aparelho_opcao"),
+      _coletado_do_cliente("idade_aparelho_opcao"))
 
 # ==========================================================================
 print("\n[5] O derivador traduz o que o segurado disse")
@@ -492,6 +531,60 @@ if derivar:
           and s8["data_agendamento_opcao"] == "9",
           "o subservico e a atendente mandam mais que a derivacao")
 
+
+    # ======================================================================
+    # 🔴 AS DUAS TRADUCOES QUE A SPEC-084 ACRESCENTOU -- 22/08/2026
+    # ======================================================================
+    #
+    # Ate aqui a pergunta "O que aconteceu?" tinha ancora SECA, e o passo do
+    # ELETRICISTA respondia a tecla do problema eletrico na tela do ENCANADOR
+    # e na do CHAVEIRO -- 📊 medido no motor:
+    #
+    #   tela do encanador x subservice=eletricista -> "{problema_eletrico_opcao}"
+    #   tela do encanador x subservice=encanador   -> None   (mudo)
+    #
+    # As duas metades eram defeito. Cada oficio ganhou o seu passo, e cada
+    # passo precisa da sua traducao -- provada NOS DOIS SENTIDOS.
+    for _relato, _esperado, _porque in [
+        ("A torneira da cozinha esta vazando sem parar", "1", "dispositivo"),
+        ("Estourou o cano dentro da parede do banheiro", "2", "tubulacao"),
+        ("Vazamento no sifao da pia",                    "1", "dispositivo"),
+        ("Ha um vazamento no esgoto do predio",          "2", "tubulacao"),
+    ]:
+        _sv = {"problema_descricao": _relato}
+        derivar(_sv)
+        check("vazamento: " + _porque + " -> " + _esperado + "  (" + _relato[:32] + ")",
+              _sv.get("problema_vazamento_opcao") == _esperado,
+              _sv.get("problema_vazamento_opcao"))
+
+    # 📊 A tela do chaveiro, allianz-residencial, 2 sessoes -- e uma delas
+    #    MORREU aqui: `aa2e0a68`, 03/07/2026, "Opcao invalida" -> transferencia
+    #    ao especialista, sem protocolo. Era a tela sem passo.
+    for _relato, _esperado, _porque in [
+        ("Perdi a chave de casa",                    "1", "perda"),
+        ("A chave quebrou dentro da fechadura",      "1", "quebra"),
+        ("Roubaram minha bolsa com as chaves",       "2", "roubo"),
+        ("Arrombaram a porta da minha casa",         "3", "arrombamento"),
+        # 🔴 A LINHA QUE PROVA A ORDEM DOS TESTES: aqui ha as DUAS palavras.
+        #    "Arrombaram e levaram as chaves" e ARROMBAMENTO (3), nao roubo (2).
+        #    Se o teste de roubo viesse primeiro, esta daria 2 e o chamado
+        #    sairia na cobertura errada. A ordem e a regra, e ela e testada.
+        ("Arrombaram e levaram as chaves",           "3", "arrombamento vence roubo"),
+    ]:
+        _sc = {"problema_descricao": _relato}
+        derivar(_sc)
+        check("chave: " + _porque + " -> " + _esperado + "  (" + _relato[:32] + ")",
+              _sc.get("problema_chave_opcao") == _esperado,
+              _sc.get("problema_chave_opcao"))
+
+    # 🔴 CONTROLE: as duas novas tambem NAO sobrescrevem o que ja existe.
+    _sx = {"problema_vazamento_opcao": "9", "problema_chave_opcao": "9",
+           "problema_descricao": "arrombaram e estourou o cano"}
+    derivar(_sx)
+    check("CONTROLE: o derivador nao sobrescreve vazamento ja preenchido",
+          _sx["problema_vazamento_opcao"] == "9")
+    check("CONTROLE: o derivador nao sobrescreve chave ja preenchida",
+          _sx["problema_chave_opcao"] == "9")
 print("\n" + "=" * 68)
 print(f"  {PASS} assercoes verdes - {FAIL} vermelhas")
 print("=" * 68)
