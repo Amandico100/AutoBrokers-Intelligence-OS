@@ -137,7 +137,11 @@ def _norm(text: str) -> str:
 #    colhido é o CEP. A seguradora nem emite protocolo neste canal.
 #
 # E `para a assist[êe]ncia` com 24 de folga deixava caber um `é ` inteiro:
-#   📊 zurich, "Seu telefone de contato para a assistência é 48984381978?"
+#   📊 zurich, "Seu telefone de contato para a assistência é 4898#####78?"
+#      ⚠️ MASCARADO AQUI DE PROPOSITO. O numero real esta no acervo, e este
+#         arquivo e versionado -- CLAUDE.md §13.3: nunca exibir dado pessoal,
+#         apenas presenca/ausencia. O que a evidencia precisa mostrar e o
+#         FORMATO (11 digitos, telefone), nao o numero de ninguem.
 #      -> capturava o TELEFONE. 4 vezes. Mas a mesma alternativa faz 16 capturas
 #      CERTAS na hdi/yelum ("para a assistência *9070162*"), então ela não sai:
 #      a folga cai de 24 para 2, que é o que `" *"` ocupa e `" é "` não.
