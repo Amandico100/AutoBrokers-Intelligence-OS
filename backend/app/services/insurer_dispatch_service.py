@@ -679,6 +679,149 @@ def _derivar_teclas_do_caso(slots: dict) -> None:
         pref = _norm(str(slots.get("periodo_preferido") or ""))
         slots["periodo_agendamento_opcao"] = "1" if "manha" in pref else "2"
 
+    # =====================================================================
+    # 🔴 O QUANDO — sete constantes que decidiam "Agora" pelo cliente
+    # =====================================================================
+    #
+    # 📊 FASE 1 da SPEC-084.1: `quando_agora`, `menu_quando` e
+    #    `agendamento_dia` respondiam `Agora` / `Tenho urgência` / `Hoje`
+    #    fixos, em 7 lugares. O dado JÁ EXISTE: `quando` está em
+    #    `_AUTO_SLOTS_COMMON`, e o C2 desta SPEC ligou `schedule["periodo"]`
+    #    no resumo do cliente.
+    #
+    # ⚠️ Estas SETE têm default, e as quatro do `sem_chute` não. A diferença é
+    #    que aqui o default é VERDADEIRO na esmagadora maioria: um pedido de
+    #    assistência sem data dita é um pedido para AGORA — foi assim que o
+    #    segurado abriu a conversa. Nas quatro, o default afirma um fato que
+    #    ninguém disse.
+    _q = _norm(str(slots.get("quando") or ""))
+    # 🔴 A ORDEM IMPORTA: "hoje mais tarde" contém "hoje" E "mais tarde".
+    #    Quem pede "amanhã de manhã" NÃO quer agora, e o teste prova a ordem.
+    _agendar = any(p in _q for p in (
+        "amanha", "depois de amanha", "segunda", "terca", "quarta", "quinta",
+        "sexta", "sabado", "domingo", "semana que vem", "proxima semana",
+        "agendar", "agendamento", "marcar para", "outro dia"))
+    if not str(slots.get("quando_agora_opcao") or "").strip():
+        slots["quando_agora_opcao"] = "Agendar" if _agendar else "Agora"
+    if not str(slots.get("menu_quando_opcao") or "").strip():
+        slots["menu_quando_opcao"] = ("Agendar data e hora" if _agendar
+                                      else "Tenho urgência")
+    if not str(slots.get("agendamento_dia_opcao") or "").strip():
+        # ⚠️ Três opções, não duas: Hoje / Amanhã / Outro Dia.
+        if "amanha" in _q and "depois de amanha" not in _q:
+            slots["agendamento_dia_opcao"] = "Amanhã"
+        elif _agendar:
+            slots["agendamento_dia_opcao"] = "Outro Dia"
+        else:
+            slots["agendamento_dia_opcao"] = "Hoje"
+
+    # =====================================================================
+    # 🔴 AS QUATRO SEM DEFAULT — a exceção da E4
+    # =====================================================================
+    #
+    # 🔴 **DERIVA PRIMEIRO, PERGUNTA SÓ O QUE O RELATO NÃO DEU, E NUNCA
+    #    CHUTA.** Se o relato responde, o segurado não é perguntado de novo.
+    #    Se não responde, o slot fica VAZIO de propósito — e o passo, marcado
+    #    `sem_chute`, manda para handoff em vez de inventar.
+    #
+    # ⚠️ Nenhum destes quatro blocos tem `else`. **A ausência do `else` É o
+    #    mecanismo:** escrever um seria recriar o default que a regra proíbe.
+
+    # ---- VIA LOCAL ou RODOVIA (bradesco) ------------------------------
+    # 📊 A própria tela avisa: *"se você está em uma Rodovia pedagiada,
+    #    contate a concessionária para mover seu veículo"*. Responder
+    #    "Via local" por quem está na rodovia manda o guincho a um lugar
+    #    onde ele não pode entrar.
+    if not str(slots.get("via_ou_rodovia_opcao") or "").strip():
+        _onde = _norm(" ".join(str(slots.get(c) or "") for c in
+                               ("local_atual", "problema_descricao",
+                                "problema_relato", "descricao")))
+        if any(p in _onde for p in (
+                "rodovia", "br-", "sp-", "mg-", "rs-", "pr-", "sc-",
+                "estrada", "pedagio", "pedagiada", "acostamento", "km ",
+                "marginal", "anhanguera", "bandeirantes", "dutra",
+                "regis bittencourt", "fernao dias", "castelo branco")):
+            slots["via_ou_rodovia_opcao"] = "Rodovia"
+        elif any(p in _onde for p in (
+                "rua ", "avenida", "av. ", "travessa", "alameda", "praca",
+                "dentro da cidade", "no bairro", "em casa", "na garagem",
+                "estacionamento", "shopping", "condominio")):
+            slots["via_ou_rodovia_opcao"] = "Via local"
+
+    # ---- SITUAÇÃO DE RISCO (hdi, yelum) -------------------------------
+    # 📊 "Você se encontra em uma das situações de risco abaixo? Via com pouca
+    #    iluminação / Via com pouco movimento / Nenhuma das anteriores".
+    #    🔴 O corredor jurava a TERCEIRA.
+    #
+    # ⚠️ E o "não" explícito conta: quem escreve "estou num lugar seguro,
+    #    movimentado" RESPONDEU a pergunta — e não precisa ouvi-la de novo.
+    if not str(slots.get("situacao_risco_opcao") or "").strip():
+        _sit = _norm(" ".join(str(slots.get(c) or "") for c in
+                              ("local_atual", "problema_descricao",
+                               "problema_relato", "situacao_risco",
+                               "descricao")))
+        if any(p in _sit for p in (
+                "pouca iluminacao", "sem iluminacao", "mal iluminad",
+                # ⚠️ RADICAL, nao a palavra: `_norm` tira acento mas nao
+                #    flexiona. "escuro" nao casava "a rua esta escura" -- e
+                #    a rua escura e justamente o caso que a pergunta existe
+                #    para nao errar.
+                "escur", "sem luz na rua", "breu")):
+            slots["situacao_risco_opcao"] = "Via com pouca iluminação"
+        elif any(p in _sit for p in (
+                "pouco movimento", "sem movimento", "deserto", "desert",
+                "nao passa ninguem", "lugar ermo", "ermo", "isolad")):
+            slots["situacao_risco_opcao"] = "Via com pouco movimento"
+        elif any(p in _sit for p in (
+                "lugar seguro", "local seguro", "bem iluminad", "movimentad",
+                "em casa", "na garagem", "no estacionamento",
+                "posto de gasolina", "dentro do posto", "shopping")):
+            slots["situacao_risco_opcao"] = "Nenhuma das anteriores"
+
+    # ---- QUAL BATERIA (porto, azul) -----------------------------------
+    # 📊 "Recarga de bateria / Bateria nova / Troca de bateria / Na garantia"
+    #    — QUATRO trabalhos diferentes, e o corredor dizia "Recarga" sempre.
+    #
+    # ⚠️ A primeira fonte é o SUBSERVIÇO, não o texto: quando o caso já foi
+    #    aberto como `bateria_nova`, a pergunta está respondida.
+    if not str(slots.get("bateria_tipo_opcao") or "").strip():
+        _sub = _norm(str(slots.get("subservico") or slots.get("servico") or ""))
+        _bat = _norm(" ".join(str(slots.get(c) or "") for c in
+                              ("problema_descricao", "problema_relato",
+                               "descricao", "servico_texto")))
+        if "bateria nova" in _sub.replace("_", " ") or "bateria nova" in _bat:
+            slots["bateria_tipo_opcao"] = "Bateria nova"
+        elif any(p in _bat for p in ("na garantia", "esta na garantia",
+                                     "dentro da garantia")):
+            slots["bateria_tipo_opcao"] = "Na garantia"
+        elif any(p in _bat for p in ("trocar a bateria", "troca de bateria",
+                                     "substituir a bateria", "bateria arriada",
+                                     "bateria viciada",
+                                     "bateria nao segura carga")):
+            slots["bateria_tipo_opcao"] = "Troca de bateria"
+        elif any(p in _bat for p in ("recarga", "recarregar", "chupeta",
+                                     "carga na bateria", "so uma carga",
+                                     "arrancar com cabo")):
+            slots["bateria_tipo_opcao"] = "Recarga de bateria"
+
+    # ---- QUANTOS PASSAGEIROS (porto/taxi) -----------------------------
+    # 📊 "São quantos passageiros? 1 a 4 / Mais de 4". 🔴 O corredor dizia
+    #    "1 a 4", e cinco pessoas ficariam na estrada.
+    if not str(slots.get("taxi_passageiros_opcao") or "").strip():
+        _pax = _norm(" ".join(str(slots.get(c) or "") for c in
+                              ("passageiros", "problema_descricao",
+                               "problema_relato", "descricao")))
+        _m = re.search(r"(\d+)\s*(?:pessoa|passageiro|ocupante|adulto)", _pax)
+        if _m:
+            slots["taxi_passageiros_opcao"] = ("1 a 4" if int(_m.group(1)) <= 4
+                                               else "Mais de 4")
+        elif any(p in _pax for p in ("estou sozinh", "sozinho", "sozinha",
+                                     "so eu", "somente eu", "apenas eu")):
+            slots["taxi_passageiros_opcao"] = "1 a 4"
+        elif any(p in _pax for p in ("mais de 4", "mais de quatro", "cinco",
+                                     "seis", "sete", "lotado", "van cheia")):
+            slots["taxi_passageiros_opcao"] = "Mais de 4"
+
 
 def new_dispatch_session(
     *,
@@ -1809,6 +1952,47 @@ def handle_insurer_message(
             # teste manda responder NAO_SEI diante de qualquer confirmação.
             # Duas camadas, nenhuma perfeita sozinha.
             decisao = detect_finalize_anchor(playbook, insurer_message)
+
+            # ==============================================================
+            # 🔴 `sem_chute` — A EXCEÇÃO DA E4, E ELA É NOMEADA
+            # ==============================================================
+            #
+            # A regra geral acima é boa e foi medida: numa tela REVERSÍVEL, o
+            # cérebro assume, porque errar num menu custa um "Voltar" e o
+            # silêncio custou 2min22 e um clique manual em 18/08.
+            #
+            # 🔴 **Mas para quatro perguntas não existe chute honesto**, e o
+            #    default É o erro:
+            #
+            #    `situacao_risco`      afirmar que o segurado NÃO está em via
+            #                          escura, sem que ele tenha dito
+            #    `via_ou_rodovia`      "via local" para quem está na rodovia
+            #                          manda guincho aonde ele não pode entrar
+            #    `bateria_tipo`        recarga != bateria nova != troca
+            #    `taxi_passageiros`    cinco pessoas ficam na estrada
+            #
+            # Nenhuma delas é reversível na VIDA do segurado, ainda que a TELA
+            # seja. `detect_finalize_anchor` mede a tela; `sem_chute` mede a
+            # consequência — e é por isso que os dois têm de existir.
+            #
+            # ⚠️ E o cérebro NÃO é convidado a opinar aqui. Ele receberia a
+            #    tela, veria opções plausíveis e escolheria uma: seria o mesmo
+            #    default de antes, agora com um parágrafo de justificativa.
+            if step.get("sem_chute"):
+                session["state"] = "needs_human"
+                session["reason"] = f"sem_chute:{','.join(rendered['missing'])}"
+                session["missing_slots"] = rendered["missing"]
+                session["ultimo_passo_sem_dado"] = {
+                    "step": step_name,
+                    "faltou": list(rendered["missing"]),
+                    "notes": str(step.get("notes") or ""),
+                }
+                logger.warning(
+                    "[DISPATCH] 🔴 passo %r sem %s e marcado `sem_chute` — "
+                    "handoff, porque para este dado nao existe default honesto",
+                    step_name, rendered["missing"])
+                return session
+
             if step.get("fallback_adaptive") or not decisao:
                 # O cérebro assume. Ele recebe o caso inteiro, a intenção de
                 # cada passo do playbook e os últimos turnos — e agora também

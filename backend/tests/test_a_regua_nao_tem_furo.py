@@ -385,15 +385,40 @@ def _item_c7(seg, ramo, serv):
     return None
 
 
-_suja = _item_c7("hdi", "auto", "guincho")
+# ⚠️ ESTA ASSERCAO MIGROU, e o motivo e o §9.3 do CLAUDE.md.
+#
+#    A 1a versao media `hdi/auto/guincho`, que naquele dia tinha
+#    `situacao_risco` e `quando_agora` respondendo pelo cliente. 📊 Horas
+#    depois, a decisao 2 do Founder converteu as quatro em pergunta e as sete
+#    do `quando` em derivacao -- e **nao sobrou UMA rota suja no produto**.
+#
+#    🔴 Um guarda que dependesse de existir defeito no codigo morre no dia
+#    em que o defeito e consertado. A pergunta que ele protege continua viva:
+#    *"a regua ZERA o item quando a constante decide sem justificativa?"*
+#    Entao o caso passa a ser CONSTRUIDO: tira-se a justificativa de um passo
+#    que decide, mede-se, e devolve-se.
+_REF = "allianz-residencial-whatsapp@v1"
+_PASSO = "menu_tipo_seguro"
+_pb_c7 = _RB.M.get_playbook(_REF)
+_alvo_c7 = [p for p in _pb_c7["ura_steps"] if p.get("step") == _PASSO][0]
+_guardada = _alvo_c7.pop("constante_justificada", None)
+certo(_guardada is not None,
+      f"📊 o passo `{_PASSO}` TEM justificativa hoje (senao o teste e vacuo)")
+try:
+    _suja = _item_c7("allianz", "residencial", "maquina_de_lavar")
+finally:
+    if _guardada is not None:
+        _alvo_c7["constante_justificada"] = _guardada
+
 _limpa = _item_c7("allianz", "residencial", "maquina_de_lavar")
 
 certo(_suja is not None and _suja.pontos == 0,
       "🔴 a regua LE `constante_justificada` -- nao so o documento",
-      f"hdi/auto/guincho -> {_suja.pontos if _suja else '?'} pontos")
+      f"sem a justificativa de `{_PASSO}` o item deu "
+      f"{_suja.pontos if _suja else '?'} pontos")
 certo(_limpa is not None and _limpa.pontos == _limpa.maximo,
-      "🔴 CONTROLE: a rota LIMPA RECEBE os 6 -- o item nao reprova todo mundo",
-      f"allianz/residencial/maquina_de_lavar: "
+      "🔴 CONTROLE: devolvida a justificativa, a MESMA rota recebe os 6 -- "
+      "o item nao reprova todo mundo, e a restauracao funcionou",
       f"{(_limpa.pontos if _limpa else '?')}/{(_limpa.maximo if _limpa else '?')}")
 
 print()

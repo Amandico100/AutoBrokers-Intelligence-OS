@@ -7288,3 +7288,64 @@ ser recapturada de `0f54761`.
 Direção e magnitude batem nos dois; só o alcance declarado não.
 **O que destrava:** nada — é registro. **O que custa esquecer:** alguém
 usa o número da SPEC como medição e a §12.1 é violada de novo.
+
+### P-084-30 🔴 A régua PUNE o escopo `only_subservices` — o réplay não sabe o que a rota alcança · 🤖
+
+📊 Medido em 22/08/2026, decisão 2. `bateria_submenu` ganhou
+`only_subservices: ["bateria", "bateria_nova"]` — a regra 1 do Founder
+(*"pergunta só o que aquela rota precisa"*). Efeito em `azul/auto/tecnico`:
+
+```
+eixo C  +6   o C7 pagou: nenhuma constante decide pelo cliente
+eixo B  −4   `>=85% determinístico` caiu — a tela do submenu de bateria
+             virou ÓRFÃ FUNCIONAL para a rota de `tecnico`
+        ────
+        +2   em vez de +6
+```
+
+🔴 **A rota de `tecnico` nunca vê aquela tela ao vivo.** O submenu só aparece
+depois de escolher "Bateria" no menu anterior. Mas o corpus é por
+`(seguradora, ramo)`, e `replay()` alimenta TODA rota com TODAS as telas do
+corredor — então "tela que esta rota não alcança" e "tela que esta rota falha
+em responder" contam igual.
+
+⚠️ O efeito é perverso: **escopar corretamente derruba a nota.** Um executor
+que otimizasse pela régua removeria `only_subservices` e ganharia 4 pontos —
+recriando exatamente o defeito que a regra 1 conserta.
+
+**O que destrava:** `replay()` filtrar por ALCANCE, não só por casamento —
+uma tela cujo passo tem `only_subservices` que não inclui a rota não deveria
+entrar em `orfas_funcionais` dela. ⚠️ Não foi feito agora porque muda
+`determinismo` em todas as 41 rotas pontuadas, e mereceria o mesmo protocolo
+de declaração + JUIZ 0 do C7.
+**O que custa esquecer:** a régua ensina o contrário do que a SPEC manda.
+
+### P-084-31 Mutação por string crua ganha ponto cego a cada linha nova · 🤖
+
+📊 22/08/2026, terceira lição do mesmo bloco. `_mut_a` fazia
+`fonte.replace('"idade_aparelho_opcao"', '')` no arquivo inteiro. Quando
+`_COMO_PERGUNTAR` ganhou a chave `"idade_aparelho_opcao": "a idade do
+aparelho..."`, o replace arrancou a **chave**, deixando `: "texto"` solto:
+
+```
+SyntaxError: invalid syntax, corridor_playbooks.py:7053
+```
+
+🔴 O guarda não ficou vermelho — ele **derrubou o import**, e o próximo leitor
+veria um traceback em vez de um defeito. Corrigido com lookahead
+`(?!\s*:)`: a mutação agora diz ONDE, e nunca toca chave de dicionário.
+
+**O que destrava:** nada — está feito. **O que custa esquecer:** as outras
+mutações por string crua têm o mesmo risco, e ele cresce com o arquivo.
+
+### P-084-32 `azul/auto/quando` continua constante, com justificativa que pede a própria conversão · 🤖
+
+A constante diz, na própria justificativa: *"⚠️ Se um dia existir rota de
+AGENDAMENTO, esta constante vira slot."* A decisão 2 fez exatamente isso para
+`quando_agora` (hdi/yelum), `menu_quando` (porto) e `agendamento_dia`
+(bradesco) — e deixou `azul` de fora, porque a varredura não a acusa: ela
+**tem** justificativa.
+
+**O que destrava:** ONDA F (azul), aplicando `{quando_agora_opcao}`, que já
+existe e já é derivado. **O que custa esquecer:** um corredor decide o "quando"
+pelo cliente enquanto os outros quatro perguntam.

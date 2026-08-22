@@ -125,8 +125,20 @@ def _mut_a(fonte: str) -> str:
     #    subservicos, entao basta UM declarar para o slot ter origem.
     #    📊 Em 22/08 o BLOCO 4 declarou `ar_condicionado` com o MESMO slot, a
     #    mutacao removia so metade, e este guarda ficou VERDE por engano.
-    fonte = fonte.replace('\"idade_aparelho_opcao\",', '')
-    return fonte.replace('\"idade_aparelho_opcao\"', '')
+    # 🔴 E A MUTACAO CEGA POR SER LARGA DEMAIS -- terceira licao do mesmo
+    #    bloco. 📊 Em 22/08 `_COMO_PERGUNTAR` ganhou a chave
+    #    `"idade_aparelho_opcao": "a idade do aparelho..."`, e o replace geral
+    #    arrancava a CHAVE, deixando `: "texto"` solto:
+    #        SyntaxError: invalid syntax, corridor_playbooks.py:7053
+    #    O guarda nao ficava vermelho -- ele DERRUBAVA o import, e o proximo
+    #    leitor veria um traceback em vez de um defeito.
+    #
+    #    ⚠️ Mutacao por string crua ganha ponto cego a cada linha nova do
+    #    arquivo. A cura e a mutacao dizer ONDE: aqui, so onde o slot e
+    #    DECLARADO numa lista -- nunca onde ele e CHAVE de dicionario, que a
+    #    lookahead `(?!\s*:)` exclui.
+    import re as _re
+    return _re.sub(r'"idade_aparelho_opcao",?(?!\s*:)', '', fonte)
 
 
 MUTACOES: List[Tuple[str, str, Callable[[str], str], Callable[[list], bool]]] = [

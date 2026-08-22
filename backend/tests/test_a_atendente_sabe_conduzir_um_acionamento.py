@@ -100,7 +100,12 @@ print("  2. O CASO DE HOJE — maquina de lavar da Allianz residencial")
 print("=" * 74)
 
 req = CP._PLAYBOOKS["allianz-residencial-whatsapp@v1"]["subservices"]["maquina_de_lavar"]["required_slots"]
-certo(len(req) == 7, f"a rota exige 7 dados ({len(req)})", str(req))
+# ⚠️ ERA 7. A rota passou a exigir `idade_aparelho_opcao` -- e ela e
+#    pergunta de COBERTURA: "mais de 10 anos" e RECUSA da seguradora.
+#    🔴 O numero mudou porque o FATO mudou; manter o 7 ensinaria a ignorar
+#    o teste (CLAUDE.md §9.3). O que o guarda protege nao e o numero: e que
+#    TODO slot exigido tenha redação, e isso e a assercao do laço abaixo.
+certo(len(req) == 8, f"a rota exige 8 dados ({len(req)})", str(req))
 for slot in req:
     if slot in CP._NAO_SE_PERGUNTA:
         continue

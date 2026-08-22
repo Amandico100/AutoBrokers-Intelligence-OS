@@ -1561,8 +1561,9 @@ PORTO_AUTO_WHATSAPP_V1 = _auto_playbook(
                   "Troca de pneu / Conserto de vidro (Inclui retrovisor, farol ou lanterna) / "
                   "Chaveiro para o veículo / Táxi"},
         {"step": "bateria_submenu", "anchor": r"entendi\. o que voc[êe] precisa",
-         "reply": "Recarga de bateria",
-         "notes": "submenu após 'Bateria' (teste real 12/07: Recarga de bateria / Bateria nova / Na garantia — travava aqui)"},
+         "reply": "{bateria_tipo_opcao}", "requires": ["bateria_tipo_opcao"],
+         "sem_chute": True, "only_subservices": ["bateria", "bateria_nova"],
+         "notes": "🔴 Recarga / Bateria nova / Troca / Na garantia são QUATRO TRABALHOS, e o corredor dizia 'Recarga' sempre. ⚠️ `only_subservices` é a regra 1 (pergunta só o que a rota precisa): sem ele o passo alcançava as 8 rotas de porto/auto, inclusive guincho e vidros, que nunca veem esta tela."},
         # VIDROS na Porto NÃO abre chamado aqui — DESFECHO = encaminha.
         # 📊 URA real 03/08/2026, três mensagens seguidas:
         #   "Certo. Para conserto ou reparo de vidro, retrovisor, farol ou
@@ -1583,7 +1584,8 @@ PORTO_AUTO_WHATSAPP_V1 = _auto_playbook(
         {"step": "necessidade_guincho", "anchor": r"op[çc][ãa]o que descreve melhor a sua necessidade",
          "reply": "Remoção de veículo",
          "notes": "Remoção de veículo (pane) · 'Envolvimento em acidente' = sinistro → handoff antes de chegar aqui"},
-        {"step": "menu_quando", "anchor": r"para quando voc[êe] precisa que esse servi[çc]o", "reply": "Tenho urgência",
+        {"step": "menu_quando", "anchor": r"para quando voc[êe] precisa que esse servi[çc]o",
+         "reply": "{menu_quando_opcao}", "requires": ["menu_quando_opcao"],
          "notes": "botões: Tenho urgência / Agendar. A frase 'confirmada somente após a finalização' é COLETA."},
         {"step": "complemento", "anchor": r"digite ent[ãa]o um \*?complemento", "reply": "não tem",
          "notes": "complemento do endereço; sem complemento = 'não tem'"},
@@ -1807,8 +1809,10 @@ _YELUM_FAMILY_STEPS = [
      "notes": "default Não; travado de verdade → adaptativo"},
     {"step": "eletrico_hibrido", "anchor": r"el[ée]trico ou h[íi]brido", "reply": "Não"},
     {"step": "rebaixado", "anchor": r"o ve[íi]culo [ée] rebaixado", "reply": "Não"},
-    {"step": "situacao_risco", "anchor": r"situa[çc][õo]es de risco", "reply": "Nenhuma das anteriores",
-     "notes": "se o caso indicar risco real, o adaptativo assume"},
+    {"step": "situacao_risco", "anchor": r"situa[çc][õo]es de risco",
+     "reply": "{situacao_risco_opcao}", "requires": ["situacao_risco_opcao"],
+     "sem_chute": True,
+     "notes": "🔴 'Via com pouca iluminação / Via com pouco movimento / Nenhuma das anteriores'. O corredor jurava a TERCEIRA -- afirmava que o segurado NÃO estava em via escura nem deserta, sem que ele tivesse dito. ⚠️ `sem_chute`: aqui o default É o erro."},
     {"step": "ocupantes", "anchor": r"ocupantes tem alguma das particularidades|algu[ée]m da lista abaixo no local",
      "reply": "Nenhuma das anteriores"},
     {"step": "destino_como",
@@ -1818,7 +1822,8 @@ _YELUM_FAMILY_STEPS = [
     {"step": "deseja_continuar", "anchor": r"deseja continuar (?:este|com o) atendimento", "reply": "Sim"},
     {"step": "falar_analista", "anchor": r"gostaria de falar com um de nossos analistas", "reply": "Sim",
      "notes": "72h/pós-atendimento (teste real 12/07): SIM → fila → analista humano recebe o resumo do caso e abre a nova solicitação"},
-    {"step": "quando_agora", "anchor": _HDI_FAMILY_AGORA_OU_AGENDAR, "reply": "Agora",
+    {"step": "quando_agora", "anchor": _HDI_FAMILY_AGORA_OU_AGENDAR,
+     "reply": "{quando_agora_opcao}", "requires": ["quando_agora_opcao"],
      "notes": "PONTO DE NÃO-RETORNO (abre na hora). Só alcançado em modo LIVE — no teste o freio cancela antes."},
     {"step": "aguarde_fila",
      "anchor": (r"ainda n[ãa]o identificamos a sua resposta|voc[êe] est[áa] na fila|alto volume de atendimentos|"
@@ -2328,7 +2333,9 @@ AZUL_AUTO_WHATSAPP_V1 = _auto_playbook(
                   "4-Chaveiro para o veículo 5-Conserto ou troca de vidro, retrovisor... "
                   "— na Azul vidro é TECLA, e o fluxo segue normal até o protocolo"},
         {"step": "bateria_submenu", "anchor": r"entendi\. o que voc[êe] precisa\?.*recarga de bateria",
-         "reply": "Recarga de bateria", "notes": "submenu da bateria: Recarga / Bateria nova / Na garantia"},
+         "reply": "{bateria_tipo_opcao}", "requires": ["bateria_tipo_opcao"],
+         "sem_chute": True, "only_subservices": ["bateria", "bateria_nova"],
+         "notes": "🔴 Mesmo caso do porto: quatro trabalhos, uma constante."},
         {"step": "quando", "anchor": r"para quando voc[êe] precisa que esse servi[çc]o", "reply": "1",
         "constante_justificada": (
             "📊 'Agora' x 'Agendar'. O corredor só é acionado quando a corretora abriu um caso de assistência — que é, por definição, agora. ⚠️ Se um dia existir rota de AGENDAMENTO, esta constante vira slot."),
@@ -2511,8 +2518,10 @@ BRADESCO_AUTO_WHATSAPP_V1 = _auto_playbook(
         "constante_justificada": (
             "📊 'Agora' x 'Agendar'. O corredor só é acionado quando a corretora abriu um caso de assistência — que é, por definição, agora. ⚠️ Se um dia existir rota de AGENDAMENTO, esta constante vira slot."),
          "notes": "passo de COLETA no MEIO do fluxo (era FALSO freio) — urgência é o default"},
-        {"step": "via_local_rodovia", "anchor": r"\*?via local\*? ou \*?rodovia", "reply": "Via local",
-         "notes": "default via local; rodovia real → adaptativo (orientação de concessionária)"},
+        {"step": "via_local_rodovia", "anchor": r"\*?via local\*? ou \*?rodovia",
+         "reply": "{via_ou_rodovia_opcao}", "requires": ["via_ou_rodovia_opcao"],
+         "sem_chute": True,
+         "notes": "🔴 A PROPRIA TELA AVISA: *'se você está em uma Rodovia pedagiada, contate a concessionária para mover seu veículo'*. Responder 'Via local' por quem está na rodovia manda o guincho a um lugar onde ele NÃO PODE ENTRAR. ⚠️ Era `reply` fixo até 22/08/2026."},
         {"step": "levar_oficina", "anchor": r"quer levar o ve[íi]culo at[ée] uma oficina", "reply": "Sim",
          "notes": "guincho com destino conhecido"},
         {"step": "oficinas_referenciadas", "anchor": r"op[çc][õo]es de oficinas referenciadas", "reply": "Não quero",
@@ -3471,7 +3480,7 @@ YELUM_RESIDENCIAL_WHATSAPP_V1: Dict[str, Any] = {
 for _pb_resid in (HDI_RESIDENCIAL_WHATSAPP_V1, YELUM_RESIDENCIAL_WHATSAPP_V1):
     _pb_resid["ura_steps"] = [
         {"step": "quando_agora", "anchor": _HDI_FAMILY_AGORA_OU_AGENDAR,
-         "reply": "Agora",
+         "reply": "{quando_agora_opcao}", "requires": ["quando_agora_opcao"],
          "notes": "📊 yelum-resid 4 sessões · hdi-resid 1. O MESMO objeto de âncora que "
                   "o freio usa — uma definição, dois leitores. Responder ABRE o serviço."},
     ] + list(_pb_resid["ura_steps"])
@@ -4340,7 +4349,7 @@ _BRADESCO_ENDERECO = [
 _BRADESCO_TRONCO = [
     # ---- agendamento: ANTES do noop, porque a 2a redacao comeca com "Nao entendi!"
     {"step": "agendamento_dia", "anchor": r"qual dia voc[êe] prefere fazer o agendamento",
-     "reply": "Hoje",
+     "reply": "{agendamento_dia_opcao}", "requires": ["agendamento_dia_opcao"],
      "notes": "📊 2 telas / 2 ses. 🔴 TEM de vir ANTES do noop: a 2ª redação começa com "
               "'Não entendi!', que o noop também casa. Se o noop viesse antes, o corredor "
               "ficaria MUDO diante de um menu que sabe responder, e a URA encerraria por "
@@ -4721,8 +4730,9 @@ _ativar_subservico(
 PORTO_AUTO_WHATSAPP_V1["ura_steps"] = list(PORTO_AUTO_WHATSAPP_V1["ura_steps"]) + [
     {"step": "taxi_passageiros",
      "anchor": r"eu vou chamar um t[áa]xi para voc[êe]\. s[ãa]o quantos passageiros",
-     "reply": "1 a 4", "fallback_adaptive": True, "only_subservices": ["taxi"],
-     "notes": "📊 1/1."},
+     "reply": "{taxi_passageiros_opcao}", "requires": ["taxi_passageiros_opcao"],
+     "sem_chute": True, "only_subservices": ["taxi"],
+     "notes": "🔴 '1 a 4' x 'Mais de 4'. O corredor dizia '1 a 4' e CINCO PESSOAS FICARIAM NA ESTRADA. ⚠️ `fallback_adaptive` saiu: ele mandava o cérebro escolher, que é o mesmo default com um parágrafo de justificativa. 📊 1/1."},
     {"step": "taxi_cadeirinha",
      "anchor": r"caso o t[áa]xi tenha que transportar alguma crian[çc]a",
      "reply": "", "noop": True, "only_subservices": ["taxi"],
@@ -7034,6 +7044,37 @@ def resposta_de_correcao(divergencias: List[Dict[str, str]], tela: str,
 #: de quem trabalha — a lição do dossiê que escrevia `assistencia.residencial.
 #: encanador` para um humano ler no WhatsApp.
 _COMO_PERGUNTAR = {
+    # 🔴 AS QUATRO SEM DEFAULT (SPEC-084.1, decisão 2 do Founder).
+    #    A redação é a do CLIENTE, não a da URA: ninguém responde "situação de
+    #    risco", mas todo mundo sabe dizer se a rua está escura.
+    # ⚠️ `idade_aparelho_opcao` era slot OBRIGATORIO e nao tinha redação:
+    #    `test_a_atendente_sabe_conduzir_um_acionamento` quebrava com KeyError.
+    #    🔴 E ela e pergunta de COBERTURA -- "Mais de 10 anos" e RECUSA da
+    #    seguradora. O corretor precisa ouvir isso do cliente ANTES de prometer.
+    "idade_aparelho_opcao": "a idade do aparelho — mais de 10 anos a seguradora recusa",
+    # 📊 E estes SETE tambem nunca tiveram redação -- o levantamento
+    #    completo, feito de uma vez em 22/08/2026, e nao seis por rodada.
+    "tipo_imovel": "se é casa, apartamento ou condomínio",
+    "data_agendamento": "para que dia ele quer o agendamento",
+    "veiculo_cor": "a cor do veículo",
+    "taxi_passageiros": "quantas pessoas vão no táxi",
+    "pet_nome": "o nome do animal",
+    "pet_raca": "a raça do animal",
+    "pet_idade": "a idade do animal",
+    "qual_seguro_opcao": "de que seguro ele fala — o da residência",
+    "caixas_dagua_quantidade_opcao": "quantas caixas d’água tem no imóvel",
+    "caixa_litros_opcao": "quantos litros tem a caixa d’água",
+    # ⚠️ Estas quatro eram slot OBRIGATÓRIO **sem redação nenhuma**: o
+    #    corretor tinha de perguntar e o bloco nunca ensinou como. Buraco
+    #    pré-existente, achado pelo próprio guarda em 22/08/2026.
+    "local_seguro": "se ele está num lugar seguro para esperar",
+    "estepe_situacao": "se o estepe está cheio e em condições de uso",
+    "ferramentas_no_veiculo": "se macaco e chave de roda estão no carro",
+    "equipamentos_troca_opcao": "se tem macaco, chave de roda e estepe",
+    "situacao_risco_opcao": "se a rua está escura ou deserta",
+    "via_ou_rodovia_opcao": "se está em rua da cidade ou em rodovia",
+    "bateria_tipo_opcao": "se é recarga, bateria nova, troca ou garantia",
+    "taxi_passageiros_opcao": "quantas pessoas vão no táxi",
     "titular_cpf": "o CPF do titular da apólice",
     "titular_nome": "o nome do titular",
     "endereco_numero": "o número da residência",
@@ -7124,11 +7165,44 @@ def conhecimento_de_assistencia(playbook_refs: Sequence[str]) -> str:
             if seguradora and seguradora not in reg["cias"]:
                 reg["cias"].append(seguradora)
 
+    # ═════════════════════════════════════════════════════════════════════
+    # 🔴 O QUE TODA ROTA PEDE VAI UMA VEZ — e o resto, por rota
+    # ═════════════════════════════════════════════════════════════════════
+    #
+    # 📊 22/08/2026: as quatro perguntas novas da SPEC-084.1 (situação de
+    # risco, via/rodovia, tipo de bateria, passageiros) mais sete redações que
+    # NUNCA existiram levaram o bloco de ~6.900 para **8.298 caracteres** —
+    # acima do teto de 7.000 que este arquivo já respeitava.
+    #
+    # ⚠️ **A saída não é subir o teto.** O teto existe porque o prompt tem
+    # orçamento, e a instrução importante compete com a repetição: o CPF do
+    # titular era escrito por extenso em toda linha de rota.
+    #
+    # A compressão não perde nada: o que é pedido em TODAS as rotas sai uma
+    # vez, no topo, e cada rota lista só o que tem A MAIS. É como uma pessoa
+    # ensinaria — *"sempre peça isto; para máquina de lavar, também isto"*.
+    todas = [set(por_rota[r]["slots"]) for r in por_rota]
+    comuns = set.intersection(*todas) if todas else set()
+    # ⚠️ Só vale hoistar o que aparece em mais de uma rota; com uma rota só,
+    #    "comum a todas" seria a rota inteira e o bloco viraria um cabeçalho.
+    if len(por_rota) < 2:
+        comuns = set()
+    if comuns:
+        ordem = [s for s in por_rota[sorted(por_rota)[0]]["slots"] if s in comuns]
+        linhas.append("  · SEMPRE, em qualquer pedido: " + "; ".join(
+            _COMO_PERGUNTAR.get(s, s.replace("_", " ")) for s in ordem))
+
     for rota in sorted(por_rota):
         reg = por_rota[rota]
+        extras = [s for s in reg["slots"] if s not in comuns]
+        if not extras:
+            # 🔴 A rota que não pede NADA a mais precisa aparecer assim mesmo:
+            #    o silêncio aqui leria como "esta rota não existe".
+            linhas.append(f"  · {reg['nome']}: só o de sempre")
+            continue
         itens = "; ".join(_COMO_PERGUNTAR.get(s, s.replace("_", " "))
-                          for s in reg["slots"])
-        linhas.append(f"  · {reg['nome']}: {itens}")
+                          for s in extras)
+        linhas.append(f"  · {reg['nome']}: além do de sempre — {itens}")
 
     # O que muda a EXPECTATIVA do cliente. Dito depois, vira reclamação.
     # 🔴 AGRUPAR PRIMEIRO, DEDUPLICAR DEPOIS.
