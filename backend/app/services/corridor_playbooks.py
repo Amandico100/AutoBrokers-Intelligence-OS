@@ -5084,6 +5084,156 @@ _ativar_subservico(
     espera_no_local=True,
 )
 
+
+# ==========================================================================
+# PORTO · residencial — O GALHO (SPEC-084 BLOCO 2, 22/08/2026)
+# ==========================================================================
+#
+# 📊 3 rotas em `NAO_RESPONDE`, 28 órfãs funcionais, determinismo 50%. O BLOCO 1
+#    escreveu o TRONCO da porto e parou — e o tronco sozinho não fecha um
+#    acionamento: ele identifica o cliente e emudece na primeira pergunta do
+#    trabalho.
+_PORTO_RESID_GALHO = [
+    # ---- o menu de atendimento: TRES listas, um rotulo estavel -----------
+    # 🔴 📊 Em duas variantes o rótulo é "Novo serviço"; na terceira é
+    #    "SOLICITAR novo serviço", e essa é numerada (aceita "1"). A opção 1 é a
+    #    mesma nas três.
+    # ⚠️ E a opção 3 é CANCELAR SERVIÇO: tecla errada aqui cancela um chamado
+    #    que já existe.
+    {"step": "menu_atendimento_resid", "anchor": r"de que atendimento voc[êe] precisa",
+     "reply": "Novo serviço", "fallback_adaptive": True,
+     "constante_justificada": (
+         "📊 5 msgs / 5 sessões, TRÊS listas. O corredor existe para ABRIR — "
+         "acompanhar, cancelar e consultar saldo são outros trabalhos. "
+         "🔴 E 'Cancelar serviço' está na mesma lista: com `fallback_adaptive`, "
+         "se o rótulo não bater, o cérebro lê a tela em vez de arriscar."),
+     "notes": "📊 5 msgs / 5 sessões."},
+
+    # ---- o endereco -------------------------------------------------------
+    # ⚠️ 📊 6 telas, e UMA mostra DOIS endereços quase idênticos
+    #    (`SL 330 CAMP A` × `Sl 330 Camp A`). "Endereço 1" fixo funciona em 5 de
+    #    6 e escolhe às cegas na sexta — por isso `fallback_adaptive`.
+    {"step": "escolher_endereco_resid", "anchor": r"o servi[çc]o [ée] para qual endere[çc]o",
+     "reply": "Endereço 1", "fallback_adaptive": True,
+     "constante_justificada": (
+         "📊 6 telas / 6 sessões. 'Endereço 1' é o da apólice. Em 1 das 6 há dois "
+         "endereços quase idênticos — ali o adaptativo assume, porque escolher às "
+         "cegas manda o prestador para a casa errada."),
+     "notes": "📊 6 msgs / 6 sessões."},
+    {"step": "ponto_referencia_resid",
+     "anchor": r"pode me informar algum\s*[\s\S]{0,3}ponto de refer[êe]ncia",
+     "reply": "{ponto_referencia}", "fallback_adaptive": True,
+     "notes": "📊 7 msgs / 7 sessões."},
+
+    # ---- o agendamento ----------------------------------------------------
+    {"step": "seguir_agendamento", "anchor": r"posso continuar (?:o|com o) agendamento",
+     "reply": "Sim",
+     "constante_justificada": (
+         "📊 5 msgs / 4 sessões. 1-Sim 2-Não, e o corredor está aqui justamente "
+         "para continuar. Parar seria abandonar o acionamento no meio."),
+     "notes": "📊 5 msgs / 4 sessões."},
+    {"step": "menu_quando_resid", "anchor": r"para quando voc[êe] precisa que esse servi[çc]o",
+     "reply": "Tenho urgência",
+     "constante_justificada": (
+         "📊 4 msgs / 4 sessões. O corredor só roda para acionamento aberto agora. "
+         "⚠️ E a URA avisa na MESMA tela que 'a solicitação será confirmada somente "
+         "após a finalização' — o texto vai ao cliente, não muda a tecla."),
+     "notes": "📊 4 msgs / 4 sessões."},
+    {"step": "data_agendamento_resid",
+     "anchor": r"informe para quando voc[êe] (?:quer|quiser) agendar o servi[çc]o",
+     "reply": "{data_agendamento}", "fallback_adaptive": True,
+     "notes": "📊 resid 3/3 · auto 1/1."},
+    # 🔴 DUAS listas: manhã/tarde/noite/Voltar (encanador) e
+    #    manhã/tarde/noite/MADRUGADA/Voltar (chaveiro). As TRÊS primeiras teclas
+    #    coincidem; a quarta não. Um mapa até 3 é seguro; acima disso não é.
+    {"step": "periodo_agendamento_resid", "anchor": r"qual per[íi]odo voc[êe] prefere",
+     "reply": "{periodo_agendamento_opcao}", "fallback_adaptive": True,
+     "notes": "📊 resid 3/3 · auto 1/1. DUAS listas, e só as 3 primeiras teclas "
+              "coincidem entre elas."},
+    {"step": "horario_agendamento_resid",
+     "anchor": r"^e qual hor[áa]rio\?|os hor[áa]rios mais pr[óo]ximos que eu tenho aqui",
+     "reply": "{horario_opcao}", "fallback_adaptive": True,
+     "notes": "📊 resid 5/4 · auto 1/1."},
+    {"step": "novo_agendamento", "anchor": r"deseja realizar o agendamento de um novo servi[çc]o",
+     "reply": "Não",
+     "constante_justificada": (
+         "📊 3 msgs / 3 sessões. Um acionamento por vez: o corredor abre O QUE a "
+         "corretora pediu. Um segundo serviço é outro caso."),
+     "notes": "📊 3/3."},
+
+    # ---- quem recebe o prestador ------------------------------------------
+    # 🔴 A âncora do `no_local` da porto exigia "acompanhar|aguardar"; a tela
+    #    residencial diz "RECEBER o prestador", e por isso ficava órfã em 4
+    #    sessões — inclusive nas duas do fluxo-ouro (0fe42179, 565cb39a).
+    {"step": "no_local_resid",
+     "anchor": r"[ée] voc[êe] que est(?:[áa]|ar[áa]) no local para receber",
+     "reply": "Não",
+     "constante_justificada": (
+         "📊 4 sessões. Mesma razão do `confirma_titular`: o WhatsApp é da "
+         "CORRETORA, e quem espera na residência é o segurado. 'Sim' colocaria a "
+         "corretora como responsável no local."),
+     "notes": "📊 4 msgs / 4 sessões — a tela obrigatória do fluxo-ouro."},
+    {"step": "descrever_necessidade",
+     "anchor": r"(?:me )?explique em poucas palavras o que voc[êe] precisa",
+     "reply": "{problema_descricao}", "requires": ["problema_descricao"],
+     "notes": "📊 4 msgs / 3 sessões."},
+    {"step": "vamos_seguir_solicitacao", "anchor": r"agora, vamos seguir com a sua solicita[çc][ãa]o",
+     "reply": "", "noop": True, "notes": "📊 3/3."},
+    {"step": "tudo_esta_correto", "anchor": r"tudo est[áa] correto\?", "reply": "1",
+     "constante_justificada": (
+         "📊 1 msg / 1 sessão. Confirmação do que NÓS enviamos — confirmar é "
+         "confirmar o próprio dado."),
+     "notes": "📊 1/1."},
+
+    # ---- o pos-servico, que NAO e acionamento novo ------------------------
+    # ⚠️ Estas telas são de retorno por peça, garantia e reagendamento. Não
+    #    pertencem a um acionamento novo, e responder qualquer coisa nelas
+    #    empurra o menu para um estado que o corredor não sabe ler.
+    {"step": "menu_acompanhar_servico", "anchor": r"^certo, o que voc[êe] deseja\?",
+     "reply": "", "noop": True,
+     "notes": "📊 5 msgs / 4 sessões. 1-Agendar retorno por peça 2-Retorno por "
+              "garantia. É PÓS-SERVIÇO."},
+    {"step": "pecas_no_local",
+     "anchor": r"servi[çc]o ser[áa] realizado somente se as pe[çc]as solicitadas",
+     "reply": "Sim",
+     "constante_justificada": (
+         "📊 1 msg / 1 sessão. A URA está confirmando uma CONDIÇÃO que o segurado "
+         "já cumpriu ao pedir o retorno. 🔴 O texto vai a `regras_para_o_cliente`: "
+         "sem as peças no local, o prestador vem e volta."),
+     "notes": "📊 1/1."},
+    {"step": "servico_realizado_qual", "anchor": r"localizei que voc[êe] tem um servi[çc]o realizado",
+     "reply": "", "noop": True, "notes": "📊 1/1."},
+    {"step": "outros_horarios_outra_data",
+     "anchor": r"para ver outros hor[áa]rios, voc[êe] precisa escolher uma data",
+     "reply": "", "noop": True, "notes": "📊 1/1."},
+    {"step": "reagendamento_motivo", "anchor": r"qual o motivo do reagendamento",
+     "reply": "{motivo_reagendamento}", "fallback_adaptive": True, "notes": "📊 1/1."},
+
+    # ---- venda, e nao assistencia ------------------------------------------
+    {"step": "renovacao_apolice", "anchor": r"seguro est[áa] perto de expirar", "reply": "Não",
+     "constante_justificada": (
+         "📊 1 msg / 1 sessão. É OFERTA COMERCIAL no meio do acionamento. Aceitar "
+         "em nome do segurado é decisão de compra — e ela é dele."),
+     "notes": "📊 1/1."},
+    {"step": "cotacao_particular", "anchor": r"voc[êe] tem interesse em realizar uma cota[çc][ãa]o",
+     "reply": "2",
+     "constante_justificada": (
+         "📊 1 msg / 1 sessão. 1-Sim 2-Não. Mesma razão: cotação é venda, não "
+         "assistência."),
+     "notes": "📊 1/1."},
+    {"step": "menu_assunto_resid", "anchor": r"sobre qual assunto voc[êe] quer falar", "reply": "1",
+     "constante_justificada": (
+         "📊 1 msg / 1 sessão. 1 = Serviços de assistência, que é a razão de o "
+         "corredor existir."),
+     "notes": "📊 1/1."},
+]
+PORTO_RESIDENCIAL_WHATSAPP_V1["ura_steps"] = (
+    list(PORTO_RESIDENCIAL_WHATSAPP_V1["ura_steps"])
+    + [dict(p) for p in _PORTO_RESID_GALHO]
+)
+# 📊 O `complemento` e o `alterar_informacao_botao` do tronco também servem o
+#    galho de AUTO — e as duas listas já os têm. Aqui só o que é do residencial.
+
 _PLAYBOOKS: Dict[str, Dict[str, Any]] = {
     f"{p['playbook_id']}@v{p['version']}": p
     for p in (

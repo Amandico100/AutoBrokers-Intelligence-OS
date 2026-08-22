@@ -523,7 +523,11 @@ def markdown(notas: List[RB.Nota], demanda: Dict[str, int],
     carimbo é inventário que ninguém sabe se está velho.**
     """
     agora = dt.datetime.now(dt.timezone.utc).isoformat(timespec="seconds")
-    L = ["# Inventário de rotas — a régua aplicada às 62\n",
+    # ⚠️ O NUMERO VEM DA CONTAGEM, nao de um literal. 22/08/2026: o titulo
+    #    dizia "as 62" enquanto o BLOCO 4 ja tinha levado a 73 -- numero velho
+    #    num documento gerado, que e a mesma familia do "0 sessoes" de horas
+    #    atras. Documento gerado nao guarda numero escrito a mao.
+    L = [f"# Inventário de rotas — a régua aplicada às {len(notas)}\n",
          f"> Gerado em **{agora}** · commit `{_commit()}`",
          # 🔴 SEM BANCO, A LINHA DIZ QUE NAO MEDIU -- e nao "0".
          #
