@@ -438,8 +438,23 @@ def markdown(notas: List[RB.Nota], demanda: Dict[str, int],
     agora = dt.datetime.now(dt.timezone.utc).isoformat(timespec="seconds")
     L = ["# Inventário de rotas — a régua aplicada às 62\n",
          f"> Gerado em **{agora}** · commit `{_commit()}`",
-         f"> 📊 acervo no momento da geração: "
-         f"**{sum(acervo.values())} sessões** em {len(acervo)} seguradoras\n"]
+         # 🔴 SEM BANCO, A LINHA DIZ QUE NAO MEDIU -- e nao "0".
+         #
+         # ⚠️ 22/08/2026: este inventario foi gerado uma vez da RAIZ do repo,
+         #    onde `tem_banco()` nao acha o `backend/.env`.
+         #    `_sessoes_por_seguradora` devolve `{}` e o cabecalho imprimia
+         #    **"0 sessoes em 0 seguradoras"** -- um 📊 FALSO num documento
+         #    gerado, que e exatamente o que a §12.1 do CLAUDE.md proibe.
+         #    Zero MEDIDO e zero NAO MEDIDO nao sao a mesma coisa, e so um
+         #    deles e um fato. 📊 De dentro de `backend/` a mesma geracao da
+         #    543 sessoes em 10 seguradoras.
+         (f"> 📊 acervo no momento da geração: "
+          f"**{sum(acervo.values())} sessões** em {len(acervo)} seguradoras\n"
+          if acervo else
+          "> ⚠️ acervo **NÃO MEDIDO** nesta geração (banco inalcançável "
+          "daqui). As notas abaixo vêm do CORPUS versionado e continuam "
+          "válidas — só o carimbo do acervo está ausente. "
+          "🔴 Rode de dentro de `backend/`, onde o `.env` mora.\n")]
     L.append("🔴 A nota é sempre sobre o **denominador real**. Item dispensado sai do")
     L.append("denominador e aparece explícito — **nunca é renormalizado**, e a")
     L.append("exibição **nunca é reescalada para /100**: `61/86 = 71%` pareceria")
