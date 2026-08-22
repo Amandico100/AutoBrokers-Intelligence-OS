@@ -286,7 +286,24 @@ def _comparar_com(arq: str, seguradora: Optional[str]) -> int:
         return 1
     print()
     print("  OK nenhuma rota perdeu respondidas (R3 satisfeita)")
-    return 0
+
+    # =====================================================================
+    # 🔴 E A SEGUNDA METADE, QUE FALTAVA -- P-084-14
+    # =====================================================================
+    #
+    # "Nenhuma rota perdeu respondidas" nunca foi suficiente, e os SETE defeitos
+    # do BLOCO 1 provaram: todos casavam a tela, e por isso nenhum apareceu
+    # aqui. O comparador media se o corredor CONTINUA FALANDO, nunca se ele
+    # continua falando CERTO.
+    #
+    # 🔴 Um passo que responde errado conta igual a um que responde certo.
+    #    Agora as duas metades rodam juntas, e o exit code so e 0 se as duas
+    #    passarem.
+    import conferir_respostas as CR
+    print()
+    texto, quantos = CR.relatorio()
+    print(texto)
+    return 1 if quantos else 0
 
 
 def main(argv: Optional[List[str]] = None) -> int:

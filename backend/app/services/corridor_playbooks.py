@@ -190,18 +190,24 @@ ALLIANZ_RESIDENCIAL_WHATSAPP_V1: Dict[str, Any] = {
     "ura_steps": [
         {
             "step": "menu_tipo_seguro",
+            "constante_justificada": (
+                "📊 A ROTA JÁ DIZ o ramo. `menu_tipo_seguro` só existe dentro de um playbook de auto ou de residencial — a tecla não escolhe nada que o caso não tenha decidido antes de o corredor abrir."),
             "anchor": r"assist[êe]ncia 24h para qual seguro",
             "reply": "2",
             "notes": "1-Auto 2-Residência/Empresa/Condomínio 3-Vida 4-Viagem 5-Outros",
         },
         {
             "step": "menu_solicitar_para",
+            "constante_justificada": (
+                "📊 1-Residência 2-Veículo. O playbook é o residencial: o ramo não é uma escolha aberta aqui, é a identidade da rota."),
             "anchor": r"solicitar servi[çc]os de assist[êe]ncia para:",
             "reply": "1",
             "notes": "URA 2026: 1-Residência 2-Condomínio 3-Empresa",
         },
         {
             "step": "menu_qual_seguro",
+            "constante_justificada": (
+                "📊 Tela de DUAS opções: 1-Seguro Residência/Condomínio/Empresa · 2-Seguro Automotivo com serviços residenciais. Este playbook É o residencial, então 1 é a apólice certa por construção. 🔴 A tela de TRÊS opções (Residencial/Condomínio/Empresarial) é OUTRA, tem passo próprio (`menu_qual_seguro_tres_opcoes`) e ali a tecla vem do caso — foi o defeito nº 3 do BLOCO 1."),
             # 🔴 "qual O seguro QUE deseja" -> a URA de 2026 escreve "Qual
             # seguro deseja utilizar?". Duas palavras a menos, e a ancora
             # deixou de casar. 📊 A tela passou a cair no cerebro em 18/08.
@@ -459,17 +465,48 @@ ALLIANZ_RESIDENCIAL_WHATSAPP_V1: Dict[str, Any] = {
                      "🔴 E pergunta de COBERTURA: '2' e recusa. Responder '1' fixo "
                      "abre um chamado que sera negado quando o tecnico chegar.",
         },
+        # ==================================================================
+        # 🔴 O OITAVO DEFEITO DA MESMA FAMÍLIA — 22/08/2026
+        # ==================================================================
+        #
+        # Achado pelo COMPARADOR CONSERTADO (P-084-14), na primeira vez que ele
+        # rodou. Eu tinha consertado sete no BLOCO 1 e **perdido este**, porque
+        # a régua antiga contava casamento e ele casava.
+        #
+        # 📊 A âncora `fora da garantia do fabricante` casa DUAS telas, e eu
+        #    supus uma terceira que **não existe no corpus**:
+        #
+        #   A) "...fora da garantia... Você precisa de:
+        #       *1 -* Conserto do ar condicionado
+        #       *2 -* Limpeza do ar condicionado"          <- o galho do AR
+        #
+        #   B) "...fora da garantia... Qual a idade de fabricação?
+        #       *1 -* Até 10 anos  *2 -* Mais de 10 anos"  <- `idade_de_fabricacao`
+        #
+        #   C) "...fora da garantia... *1 -* Continuar"     <- 🔴 EU INVENTEI. 0 telas.
+        #
+        # 🔴 Ou seja: `reply: "1"` estava errado em **100% das telas que o passo
+        #    casava**. Num caso de MÁQUINA DE LAVAR, o corredor digitava
+        #    "Conserto do ar condicionado" — e abria um serviço inteiramente outro.
+        #
+        # ⚠️ E a lição sobre a lição: no BLOCO 1 escrevi na `notes` que "aqui '1'
+        #    é Continuar". **Escrevi uma variante que eu não tinha medido.** O
+        #    comentário parecia evidência e era suposição — o defeito que a §12.1
+        #    do CLAUDE.md nomeia, cometido dentro do conserto dele mesmo.
         {
-            "step": "aviso_fora_da_garantia",
-            "only_subservices": ["eletrodomesticos", "maquina_de_lavar",
-                                 "ar_condicionado"],
-            "anchor": r"fora da garantia do fabricante",
-            "reply": "1",
-            "notes": "📊 O aparelho precisa estar FORA da garantia do fabricante "
-                     "e pertencer a residencia segurada. "
-                     "⚠️ Aqui '1' e 'Continuar'. Quando a MESMA bolha traz a "
-                     "pergunta da idade, quem responde e `idade_de_fabricacao`, "
-                     "que vem ANTES nesta lista.",
+            "step": "ar_condicionado_servico",
+            "only_subservices": ["ar_condicionado"],
+            "anchor": (r"fora da garantia do fabricante[\s\S]{0,120}"
+                       r"conserto do ar condicionado"),
+            "reply": "{ar_condicionado_servico_opcao}",
+            "requires": ["ar_condicionado_servico_opcao"],
+            "fallback_adaptive": True,
+            "notes": "📊 1 tela. 1-Conserto do ar condicionado 2-Limpeza do ar "
+                     "condicionado. 🔴 São TRABALHOS DIFERENTES: conserto é defeito, "
+                     "limpeza é manutenção — e a limpeza costuma nem ser coberta. "
+                     "Vem do relato, nunca fixo. "
+                     "⚠️ `only_subservices` fecha a porta que estava aberta: um caso "
+                     "de máquina de lavar não tem o que fazer nesta tela.",
         },
         {
             # 🔴 O APARELHO. Maquina de Lavar roupas = 14.
@@ -568,6 +605,8 @@ ALLIANZ_RESIDENCIAL_WHATSAPP_V1: Dict[str, Any] = {
             # Ou seja: o teste falhava POR SER TESTE, num passo que em modo
             # real passaria. A ancora agora aceita qualquer profissional.
             "step": "quando",
+            "constante_justificada": (
+                "📊 'Agora' x 'Agendar'. O corredor só é acionado quando a corretora abriu um caso de assistência — que é, por definição, agora. ⚠️ Se um dia existir rota de AGENDAMENTO, esta constante vira slot."),
             "anchor": r"para quando precisa (?:do|da)\s*\*?(?:eletricista|encanador|chaveiro|"
                       r"desentupimento|desentupidor|profissional|servi[çc]o|t[ée]cnico)",
             "reply": "1",
@@ -600,6 +639,8 @@ ALLIANZ_RESIDENCIAL_WHATSAPP_V1: Dict[str, Any] = {
             # A corretora aciona para a CASA do segurado. Eletrodomestico e
             # outro servico, e a propria tela avisa que nao esta disponivel.
             "step": "tipo_de_reparo_eletrico",
+            "constante_justificada": (
+                "📊 'Preciso de reparo elétrico para residência' x as outras. O playbook é o residencial."),
             "anchor": r"apenas para reparos el[ée]tricos|reparo el[ée]trico para resid[êe]ncia",
             "reply": "1",
             "notes": "1-reparo na residencia 2-aparelhos/eletrodomesticos. "
@@ -1086,6 +1127,31 @@ _AUTO_SUBSERVICES = {
 # `pane_seca` entra: é o guincho por outro nome, e o motor já canonicaliza.
 _SUBSERVICOS_COM_ALGUEM_NO_LOCAL = ["guincho", "bateria", "pneu", "chaveiro"]
 
+# 🔴 E QUEM ESPERA NA RUA PRECISA TER NOME -- 22/08/2026.
+#
+# 📊 Achado pelo conferidor de respostas (P-084-14): **9 passos em 6
+#    corredores** exigem `pessoa_no_local`, e NADA preenchia esse slot. Nem
+#    constante de subservico, nem derivacao, nem coleta, nem padrao do motor.
+#
+# 🔴 E o par de telas mostra o tamanho do buraco:
+#
+#      URA: "E a pessoa que esta no local para acompanhar?"
+#      NOS: "Nao"                                    <- passo `pessoa_no_local`
+#      URA: "Qual e o nome de quem estara no local?"
+#      NOS: <SILENCIO>                               <- o slot nao existe
+#
+#    O corredor diz "nao sou eu" e emudece quando perguntam quem e. E a mesma
+#    familia dos 2min22 de 19/08 -- passo que exige slot sem origem fica CALADO.
+#
+# ⚠️ A resposta "Nao" esta CERTA e nao muda: o WhatsApp e da CORRETORA, e
+#    quem espera na rua e o segurado. O que faltava era a corretora dizer QUEM.
+#
+# ⚠️ E `vidros` continua de fora, pela razao ja escrita acima: o reparo de
+#    vidro e AGENDADO, e ninguem fica esperando na rua.
+for _sv_local in _SUBSERVICOS_COM_ALGUEM_NO_LOCAL:
+    _AUTO_SUBSERVICES[_sv_local]["required_slots"] = (
+        list(_AUTO_SUBSERVICES[_sv_local]["required_slots"]) + ["pessoa_no_local"])
+
 # ---------------------------------------------------------------------------
 # DESFECHO do corredor (SPEC-063, 03/08/2026)
 # ---------------------------------------------------------------------------
@@ -1329,6 +1395,8 @@ _ALLIANZ_FAMILY_AUTO_STEPS = [
     {"step": "pedir_placa", "anchor": r"preciso da \*?placa\*? do ve[íi]culo", "reply": "{veiculo_placa}",
      "requires": ["veiculo_placa"]},
     {"step": "confirmar_veiculo", "anchor": r"confirme o ve[íi]culo para atendimento", "reply": "1",
+    "constante_justificada": (
+        "📊 A tela ECOA o veículo que a própria URA encontrou pela placa que NÓS enviamos. Confirmar é confirmar o que mandamos. ⚠️ Quando há MAIS DE UM veículo na apólice a tela é outra, e ali o passo é `escolher_veiculo`, com `dynamic: vehicle_by_plate`."),
      "dynamic": "vehicle_by_plate", "fallback_adaptive": True,
      "notes": "escolhe a opção cuja placa mascarada casa com a placa do caso (JC#-###9 ↔ JCL9A59); sem match → adaptativo"},
     {"step": "confirmar_telefone", "anchor": r"deseja adicionar outro n[úu]mero", "reply": "{telefone_adicionar_opcao}",
@@ -1337,6 +1405,8 @@ _ALLIANZ_FAMILY_AUTO_STEPS = [
      "reply": "{telefone_contato}", "requires": ["telefone_contato"]},
     {"step": "telefone_anotado", "anchor": r"anotei seu n[úu]mero", "reply": "1"},
     {"step": "tipo_veiculo", "anchor": r"seu ve[íi]culo [ée]:\s*\|?\s*\*?1\s*-\s*automotor", "reply": "1",
+    "constante_justificada": (
+        "📊 1-Automotor (gasolina/etanol/diesel) ou híbrido · 2-Elétrico. 🔴 IDENTIFICADA, NÃO RESOLVIDA: a frota elétrica existe e o corredor não sabe distinguir. Registrado em PENDENCIAS — hoje '1' cobre a maioria medida, e errar aqui muda o EQUIPAMENTO de reboque."),
      "notes": "1-automotor(combustão/híbrido) 2-elétrico. Default 1; caso elétrico, adaptativo"},
     {"step": "menu_servico_auto", "anchor": r"o que voc[êe] precisa\??\s*\|?\s*\*?1", "reply": "{servico_opcao}",
      "requires": ["servico_opcao"],
@@ -1351,6 +1421,8 @@ _ALLIANZ_FAMILY_AUTO_STEPS = [
     #    🔴 CONTROLE POSITIVO (a linha que dá direito à conclusão): as 3 telas que já
     #       casavam continuam casando. Ampliar é seguro; trocar não é.
     {"step": "quando",
+    "constante_justificada": (
+        "📊 'Agora' x 'Agendar'. O corredor só é acionado quando a corretora abriu um caso de assistência — que é, por definição, agora. ⚠️ Se um dia existir rota de AGENDAMENTO, esta constante vira slot."),
      "anchor": (r"para quando precisa d[oa] \*?(?:reboque|guincho|servi[çc]o|profissional|"
                 r"borracheiro|chaveiro|t[ée]cnico|socorro|eletricista|encanador)"), "reply": "1",
      "notes": "1-Agora 2-Agendar; urgência é o default do corredor"},
@@ -1405,9 +1477,13 @@ ALLIANZ_AUTO_WHATSAPP_V1 = _auto_playbook(
     "allianz", "allianz_assistencia_24h",
     ura_steps=[
         {"step": "menu_tipo_seguro", "anchor": r"assist[êe]ncia 24h para qual seguro", "reply": "1",
+        "constante_justificada": (
+            "📊 A ROTA JÁ DIZ o ramo. `menu_tipo_seguro` só existe dentro de um playbook de auto ou de residencial — a tecla não escolhe nada que o caso não tenha decidido antes de o corredor abrir."),
          "notes": "1-Auto/Moto/Caminhão 2-Residência 3-Vida 4-Viagem 5-Outros → Auto"},
     ] + [dict(s) for s in _ALLIANZ_FAMILY_AUTO_STEPS] + [
         {"step": "endereco_origem_menu", "anchor": r"selecione o endere[çc]o onde est[áa] o ve[íi]culo", "reply": "3",
+        "constante_justificada": (
+            "📊 1-Informar endereço manual x compartilhar localização. O corredor NÃO manda pin nativo do WhatsApp — digitar é o único caminho que ele consegue percorrer."),
          "notes": "Allianz 2026: 1-endereço da apólice 2-compartilhar localização 3-informar manual "
                   "(Alfa NÃO tem a opção 3 — lá o adaptativo decide)"},
     ],
@@ -1435,10 +1511,14 @@ PORTO_AUTO_WHATSAPP_V1 = _auto_playbook(
         {"step": "menu_como_ajudar", "anchor": r"como eu posso te ajudar\?.*servi[çc]os para ve[íi]culo",
          "reply": "Serviços para veículo", "notes": "lista: Serviços para veículo / residência / Sinistro / ..."},
         {"step": "confirmar_veiculo", "anchor": r"quer atendimento para o ve[íi]culo", "reply": "Sim",
+        "constante_justificada": (
+            "📊 A tela ECOA o veículo que a própria URA encontrou pela placa que NÓS enviamos. Confirmar é confirmar o que mandamos. ⚠️ Quando há MAIS DE UM veículo na apólice a tela é outra, e ali o passo é `escolher_veiculo`, com `dynamic: vehicle_by_plate`."),
          "notes": "URA mostra o veículo da apólice (botões Sim/Não/Voltar)"},
         {"step": "menu_seguro_auto", "anchor": r"localizei o seu \*?seguro auto", "reply": "1",
          "notes": "variante antiga numerada — manter"},
         {"step": "menu_atendimento", "anchor": r"de que atendimento voc[êe] precisa", "reply": "Novo serviço",
+        "constante_justificada": (
+            "📊 'Novo serviço' entre acompanhar/cancelar/consultar. O corredor existe para ABRIR — acompanhar e cancelar são outros trabalhos, e 'Cancelar serviço' é a opção 1 em uma das variantes: tecla errada aqui CANCELA um serviço já aberto."),
          "notes": "lista: Novo serviço / Acompanhar / Cancelar / ..."},
         {"step": "menu_servico", "anchor": r"o que voc[êe] precisa\?.*guincho", "reply": "{servico_texto}",
          "requires": ["servico_texto"],
@@ -1498,9 +1578,31 @@ PORTO_AUTO_WHATSAPP_V1 = _auto_playbook(
          "notes": "📊 1 tela / 1 sessão. Vem ANTES de `endereco_correto` de propósito."},
         {"step": "endereco_correto", "anchor": r"^est[áa] correto\s*\?", "reply": "Sim",
          "notes": "confirma o geocode do endereço QUE NÓS digitamos"},
-        {"step": "confirmar_solicitacao", "anchor": r"como voc[êe] quer prosseguir|posso confirmar sua solicita[çc][ãa]o",
+        # 🔴 UMA ANCORA, DUAS TELAS, DOIS ROTULOS -- achado do conferidor de
+        #    respostas em 22/08/2026.
+        #
+        # 📊 "Como voce quer prosseguir?"   -> Confirmar solicitacao / Mudar
+        #                                        localizacao / ...       ✅ o rotulo existe
+        # 📊 "Posso confirmar sua solicitacao?"
+        #        Sim
+        #        Nao, alterar endereco
+        #        Sair e nao agendar                                  🔴 "Confirmar
+        #                                                              solicitacao" NAO
+        #                                                              esta entre as tres
+        #
+        # ⚠️ E a URA nao trava: ela REJEITA. A confirmacao nao acontece, o
+        #    acionamento fica pendurado do lado da seguradora, e o nosso lado
+        #    acha que confirmou. E a mesma familia do "Sair e nao agendar" da
+        #    azul, ja documentada -- a segunda vez que o MESMO erro aparece por
+        #    uma ancora que serve duas telas.
+        {"step": "confirmar_solicitacao_sim",
+         "anchor": r"posso confirmar sua solicita[çc][ãa]o", "reply": "Sim",
+         "notes": "📊 A tela lista Sim / Nao, alterar endereco / Sair e nao agendar."},
+        {"step": "confirmar_solicitacao", "anchor": r"como voc[êe] quer prosseguir",
          "reply": "Confirmar solicitação",
-         "notes": "confirmação FINAL. Só alcançada em modo LIVE — no teste o freio cancela antes."},
+         "notes": "confirmação FINAL. Só alcançada em modo LIVE — no teste o freio cancela antes. "
+                  "⚠️ A tela de 'Posso confirmar sua solicitacao?' tem OUTROS rotulos e "
+                  "passo proprio, logo acima."},
         # NOOP POR ÚLTIMO — mesma regra da família Allianz.
         #
         # 📊 A âncora deste noop inclui "falta pouco para finalizarmos", e o
@@ -2107,6 +2209,8 @@ ALFA_AUTO_WHATSAPP_V1 = _auto_playbook(
     "alfa", "alfa_assistencia_24h",
     ura_steps=[
         {"step": "menu_tipo_seguro", "anchor": r"assist[êe]ncia 24h para qual seguro", "reply": "1",
+        "constante_justificada": (
+            "📊 A ROTA JÁ DIZ o ramo. `menu_tipo_seguro` só existe dentro de um playbook de auto ou de residencial — a tecla não escolhe nada que o caso não tenha decidido antes de o corredor abrir."),
          "notes": "1-Automóvel/Moto 2-Residencial 3-Outros → Auto"},
     ] + [dict(s) for s in _ALLIANZ_FAMILY_AUTO_STEPS],
     finalize_anchors=list(_ALLIANZ_FAMILY_FINALIZE),
@@ -2170,6 +2274,8 @@ AZUL_AUTO_WHATSAPP_V1 = _auto_playbook(
         {"step": "cor_texto", "anchor": r"escreva qual a cor", "reply": "{veiculo_cor}",
          "notes": "default 'não sei'"},
         {"step": "menu_atendimento", "anchor": r"de que atendimento voc[êe] precisa", "reply": "1",
+        "constante_justificada": (
+            "📊 'Novo serviço' entre acompanhar/cancelar/consultar. O corredor existe para ABRIR — acompanhar e cancelar são outros trabalhos, e 'Cancelar serviço' é a opção 1 em uma das variantes: tecla errada aqui CANCELA um serviço já aberto."),
          "notes": "1-Novo serviço"},
         {"step": "menu_servico", "anchor": r"o que voc[êe] precisa\?\s*\|?\s*\*?1\*?\s*-\s*guincho", "reply": "{servico_opcao}",
          "requires": ["servico_opcao"],
@@ -2179,6 +2285,8 @@ AZUL_AUTO_WHATSAPP_V1 = _auto_playbook(
         {"step": "bateria_submenu", "anchor": r"entendi\. o que voc[êe] precisa\?.*recarga de bateria",
          "reply": "Recarga de bateria", "notes": "submenu da bateria: Recarga / Bateria nova / Na garantia"},
         {"step": "quando", "anchor": r"para quando voc[êe] precisa que esse servi[çc]o", "reply": "1",
+        "constante_justificada": (
+            "📊 'Agora' x 'Agendar'. O corredor só é acionado quando a corretora abriu um caso de assistência — que é, por definição, agora. ⚠️ Se um dia existir rota de AGENDAMENTO, esta constante vira slot."),
          "notes": "1-Tenho urgência (a frase 'confirmada somente após a finalização' faz parte desta COLETA)"},
         # 🔴 ANCORADO NA REDAÇÃO RARA — 1 sessão, enquanto a viva tem 10.
         #    📊 "é você que estARÁ no local"  ->  1 sessão  (2025)
@@ -2205,6 +2313,15 @@ AZUL_AUTO_WHATSAPP_V1 = _auto_playbook(
          "anchor": r"(?:o local tem|pode me informar) algum \*?ponto de refer[êe]ncia",
          "reply": "{ponto_referencia}",
          "notes": "só a PERGUNTA (o RESUMO também contém 'Ponto de referência:'); se não houver, 'não tem'"},
+        # 🔴 A LARGA ROUBA A ESTREITA -- e por isso a estreita vem PRIMEIRO.
+        #    📊 "Posso te ajudar com algo mais? Botao 1: Novo atendimento
+        #        Botao 2: Falar com atendente  Botao 3: Encerrar"
+        #    "Nao" NAO e opcao dessa tela, e "Falar com atendente" e a tecla que
+        #    joga o caso no humano da SEGURADORA -- o oposto do que a SPEC quer.
+        {"step": "algo_mais_3botoes",
+         "anchor": r"posso te ajudar com algo mais\?[\s\S]{0,80}novo atendimento",
+         "reply": "Encerrar",
+         "notes": "📊 1 tela. Mesma dupla que a porto ja tem resolvida."},
         {"step": "algo_mais", "anchor": r"posso te ajudar com algo mais", "reply": "Não",
          "notes": "pós-protocolo: encerrar com educação"},
         # 🔴 O RESUMO. Informativo, e por isso NOOP — mas noop com motivo.
@@ -2321,14 +2438,20 @@ BRADESCO_AUTO_WHATSAPP_V1 = _auto_playbook(
          "requires": ["titular_cpf"],
          "notes": "fallback quando a placa não é localizada"},
         {"step": "confirmar_veiculo", "anchor": r"podemos seguir o atendimento para este ve[íi]culo", "reply": "Sim",
+        "constante_justificada": (
+            "📊 A tela ECOA o veículo que a própria URA encontrou pela placa que NÓS enviamos. Confirmar é confirmar o que mandamos. ⚠️ Quando há MAIS DE UM veículo na apólice a tela é outra, e ali o passo é `escolher_veiculo`, com `dynamic: vehicle_by_plate`."),
          "notes": "URA mostra placa+modelo achados"},
         {"step": "problema", "anchor": r"qual o problema com o seu carro", "reply": "{servico_opcao}",
          "requires": ["servico_opcao"],
          "notes": "1-Pane(bateria/motor) 2-Acidente 3-Pneus 4-Chave 5-Combustível — o serviço deriva do problema"},
         {"step": "pane_detalhe_guincho", "anchor": r"me conta o que aconteceu:", "reply": "2",
+        "constante_justificada": (
+            "📊 2-O veículo estava andando e parou de funcionar. Tecla do GUINCHO, com `only_subservices: [guincho]`. As duas juntas são a marca que distingue guincho de bateria no bradesco."),
          "only_subservices": ["guincho"],
          "notes": "guincho: 2-andando e parou (leva ao reboque)"},
         {"step": "pane_detalhe_bateria", "anchor": r"me conta o que aconteceu:", "reply": "1",
+        "constante_justificada": (
+            "📊 1-O veículo estava estacionado e não liga. É a tecla do BATERIA, e o passo é `only_subservices: [bateria]` — quem separa as duas rotas nesta tela é o subserviço, não o acaso."),
          "only_subservices": ["bateria"],
          "notes": "bateria: 1-estacionado e não liga (leva ao técnico/bateria)"},
         {"step": "hibrido_eletrico", "anchor": r"h[íi]brido/?el[ée]trico", "reply": "Não",
@@ -2338,6 +2461,8 @@ BRADESCO_AUTO_WHATSAPP_V1 = _auto_playbook(
         {"step": "necessidades_especiais", "anchor": r"necessidades especiais ou mobilidade reduzida", "reply": "Não",
          "notes": "default Não; se houver no caso, adaptativo assume"},
         {"step": "quando", "anchor": r"envie a assist[êe]ncia agora ou prefere agendar", "reply": "Enviar agora",
+        "constante_justificada": (
+            "📊 'Agora' x 'Agendar'. O corredor só é acionado quando a corretora abriu um caso de assistência — que é, por definição, agora. ⚠️ Se um dia existir rota de AGENDAMENTO, esta constante vira slot."),
          "notes": "passo de COLETA no MEIO do fluxo (era FALSO freio) — urgência é o default"},
         {"step": "via_local_rodovia", "anchor": r"\*?via local\*? ou \*?rodovia", "reply": "Via local",
          "notes": "default via local; rodovia real → adaptativo (orientação de concessionária)"},
@@ -2494,6 +2619,8 @@ ZURICH_AUTO_WHATSAPP_V1 = _auto_playbook(
         {"step": "pedir_placa", "anchor": r"qual a \*?placa do ve[íi]culo", "reply": "{veiculo_placa}",
          "requires": ["veiculo_placa"]},
         {"step": "confirmar_veiculo", "anchor": r"esse [ée] o ve[íi]culo que precisa de assist[êe]ncia", "reply": "1",
+        "constante_justificada": (
+            "📊 A tela ECOA o veículo que a própria URA encontrou pela placa que NÓS enviamos. Confirmar é confirmar o que mandamos. ⚠️ Quando há MAIS DE UM veículo na apólice a tela é outra, e ali o passo é `escolher_veiculo`, com `dynamic: vehicle_by_plate`."),
          "notes": "1-Sim (veículo achado pela placa do caso)"},
         {"step": "o_que_aconteceu", "anchor": r"me conte o que aconteceu", "reply": "{servico_opcao}",
          "requires": ["servico_opcao"],
@@ -2517,12 +2644,16 @@ ZURICH_AUTO_WHATSAPP_V1 = _auto_playbook(
          "only_subservices": ["guincho", "pneu", "bateria", "chaveiro"],
          "notes": "aceita endereço em texto livre (Ex: Rua Sergipe, 1440 - Belo Horizonte)"},
         {"step": "endereco_detalhado", "anchor": r"digitar os dados do endere[çc]o de forma mais detalhada", "reply": "1",
+        "constante_justificada": (
+            "📊 Digitar detalhadamente x compartilhar localização. Mesma razão: o corredor não manda pin."),
          "notes": "fallback quando a localização/endereço não geocodifica; CEP/rua/nº pelo adaptativo"},
         {"step": "ref_opcional", "anchor": r"algum ponto de refer[êe]ncia que gostaria de informar", "reply": "2",
          "notes": "1-Sim 2-Não (menu NUMERADO — texto livre é rejeitado aqui)"},
         {"step": "endereco_correto", "anchor": r"os dados est[ãa]o corretos", "reply": "1",
          "notes": "confirma o resumo do ENDEREÇO (meio do fluxo — não é o freio)"},
         {"step": "tipo_assistencia", "anchor": r"qual o tipo de assist[êe]ncia voc[êe] gostaria", "reply": "1",
+        "constante_justificada": (
+            "📊 1-Imediata 2-Agendada. Mesma razão do `quando`: o corredor só roda para acionamento aberto agora."),
          "notes": "1-Imediata 2-Agendada"},
         {"step": "destino_livre", "anchor": r"para onde devemos levar seu ve[íi]culo", "reply": "{local_destino}",
          "notes": "guincho: destino em texto livre"},
@@ -2652,7 +2783,22 @@ _RESID_SLOTS_POR_TRABALHO = {
 
 
 def _resid_slots(trabalho: str) -> List[str]:
-    return list(_RESID_SLOTS_BASE) + list(_RESID_SLOTS_POR_TRABALHO.get(trabalho) or [])
+    # 🔴 `pessoa_no_local` E OBRIGATORIO NO RESIDENCIAL -- 22/08/2026.
+    #
+    # 📊 O conferidor de respostas achou 5 passos em 3 corredores
+    #    (hdi, porto, yelum) exigindo o slot sem que nada o preenchesse. As
+    #    telas, literais:
+    #      "Por favor, informe o nome da pessoa que estara na residencia para
+    #       receber o tecnico."
+    #      "Nesse caso, qual e o nome de quem estara na residencia? Lembrando
+    #       que e necessario ter mais de 18 anos de idade para acompanhar."
+    #
+    # ⚠️ A propria URA diz por que o dado importa: sem alguem maior de 18 no
+    #    local, o prestador aguarda 15 minutos e vai embora. O corredor sabia a
+    #    regra (esta em `client_instructions`) e nao coletava o nome.
+    return (list(_RESID_SLOTS_BASE)
+            + list(_RESID_SLOTS_POR_TRABALHO.get(trabalho) or [])
+            + ["pessoa_no_local"])
 
 
 # --- HDI residencial (📊 o corredor residencial mais bem observado do acervo) ---
@@ -2819,12 +2965,36 @@ PORTO_RESIDENCIAL_WHATSAPP_V1: Dict[str, Any] = {
         # 🔴 "Serviço para residência" — **SINGULAR**, sem o "s" em Serviço.
         #    `menu_tipo_atendimento` responde "ServiçoS para residência", que
         #    não existe em nenhuma das 8 telas.
+        # 🔴 A MESMA FRASE ABRE DUAS TELAS DIFERENTES — achado do conferidor de
+        #    respostas em 22/08/2026, e o `menu_raiz` respondia a errada.
+        #
+        # 📊 "escolha a opção desejada" casa TAMBÉM as telas de serviço já aberto:
+        #
+        #   "Carlos, localizei o seguinte serviço realizado. Por favor, escolha a
+        #    opção desejada.
+        #      Falar sobre 1-{NUMERO}-Hidráulica, realizado em {DATA}
+        #      Outro assunto"
+        #
+        # 🔴 Responder "Informar outro CPF/CNPJ" ali manda um rótulo que **não
+        #    está entre as opções** — a URA rejeita e o turno se perde. E quem
+        #    quer abrir um serviço NOVO precisa de "Outro assunto".
+        #
+        # ⚠️ Este passo vem ANTES do `menu_raiz`, e a âncora dele exige a marca
+        #    que só a tela de serviço-aberto tem.
+        {"step": "servico_ja_aberto_menu",
+         "anchor": (r"localizei (?:o seguinte|os seguintes) servi[çc]os?"
+                    r"[\s\S]{0,400}outro assunto"),
+         "reply": "Outro assunto",
+         "notes": "📊 4 telas / 4 sessões. 🔴 O corredor existe para ABRIR: 'Falar "
+                  "sobre <serviço já feito>' é acompanhamento, que é outro trabalho."},
         {"step": "menu_raiz", "anchor": r"escolha a op[çc][ãa]o desejada",
          "reply": "Informar outro CPF/CNPJ",
          "reply_if_step_done": {"step": "pedir_cpf", "reply": "Serviço para residência"},
          "notes": "📊 13 msgs / 8 sessões. Na 1ª volta re-identifica (o CPF lembrado é o do "
                   "cliente ANTERIOR); depois do nosso CPF, entra na linha residencial pelo "
-                  "rótulo medido — SINGULAR, 8 de 8 ocorrências."},
+                  "rótulo medido — SINGULAR, 8 de 8 ocorrências. "
+                  "⚠️ Vem DEPOIS de `servico_ja_aberto_menu`: a mesma frase abre as duas "
+                  "telas, e só a de serviço-aberto tem 'Outro assunto'."},
         {"step": "pedir_cpf", "anchor": r"(?:informe|digite) o (?:seu )?\*?cpf ou cnpj\*?",
          "reply": "{titular_cpf}", "requires": ["titular_cpf"],
          "notes": "âncora REUSADA do corredor de auto da Porto (mesma porta de identificação)"},
@@ -3100,9 +3270,20 @@ YELUM_RESIDENCIAL_WHATSAPP_V1: Dict[str, Any] = {
                   "Chuveiro / Válvulas de descarga / Registro / Mais opções / Voltar' — e a "
                   "variante 'Certo! E onde é o vazamento?' com a MESMA lista. Encaixa no slot "
                   "`vazamento_local`, que já existia porque é pergunta do TRABALHO"},
-        {"step": "comodo_do_vazamento",
+        {# 🔴 O CHUVEIRO É TRABALHO DO ELETRICISTA, E ESTE PASSO É DO ENCANADOR.
+    #
+    # 📊 O conferidor achou (regra C, 2 sessões): a tela "Selecione em qual
+    #    ambiente está o CHUVEIRO — Suíte / Banheiro social / Área" só aparece em
+    #    sessões de ELETRICISTA, e era respondida por um passo restrito a
+    #    `encanador`.
+    #
+    # ⚠️ E a cobertura confirma: o texto do eletricista da família yelum/hdi diz
+    #    "troca de chuveiros ou resistências de chuveiros ou torneiras elétricas".
+    #    Chuveiro elétrico é elétrica; cano de chuveiro é hidráulica. A URA
+    #    pergunta o CÔMODO nos dois casos, com a mesma frase.
+    "step": "comodo_do_vazamento",
          "anchor": r"em qual c[ôo]modo|selecione em qual ambiente est[áa] o chuveiro",
-         "reply": "", "fallback_adaptive": True, "only_subservices": ["encanador"],
+         "reply": "", "fallback_adaptive": True, "only_subservices": ["encanador", "eletricista"],
          "notes": "📊 'Em qual cômodo? Cozinha / Banheiro / Lavanderia' e 'Selecione em qual "
                   "ambiente está o chuveiro: Suíte / Banheiro social / Área externa'. Rótulos "
                   "DIFERENTES por caminho — sem resposta fixa, quem escolhe é o adaptativo, "
@@ -3853,6 +4034,12 @@ _AZUL_TRONCO = [
               "'Sim' reabre conversa encerrada). O passo não vê o run — ver PENDENCIAS."},
     {"step": "avaliacao_convite", "anchor": r"a sua opini[ãa]o [ée] muito importante",
      "reply": "", "noop": True, "notes": "📊 2 telas / 8 msgs / 7 sessões."},
+    # 🔴 "Não" NÃO É OPÇÃO DESTA TELA — 22/08/2026.
+    #    📊 "Posso te ajudar com algo mais? Botão 1: Novo atendimento
+    #        Botão 2: Falar com atendente  Botão 3: Encerrar"
+    #    ⚠️ E "Falar com atendente" é a tecla que joga o caso no humano da
+    #       SEGURADORA — o oposto do que esta SPEC quer. É o mesmo par de telas
+    #       que a porto tem, e lá já está resolvido com dois passos.
     {"step": "encerrar_conversa_azul",
      "anchor": r"vou encerrar a conversa|quando precisar,? [ée] s[óo] chamar",
      "reply": "", "noop": True, "notes": "📊 7 telas -> 1 passo · 11 msgs / 11 sessões."},
@@ -4246,8 +4433,21 @@ MAPFRE_AUTO_WHATSAPP_V1["ura_steps"] = (
 #    mesma edição.** Escrevê-los na alfa cria a segunda cópia — e é assim que
 #    nasce o `cpf_anterior` corrigido de um lado e vencido do outro.
 _ALFA_ALLIANZ_FAMILIA = [
+    # ⚠️ A URA NÃO NUMERA A PRIMEIRA OPÇÃO, e o conferidor pegou isso:
+    #    📊 "Ok, agora selecione o endereço onde está o veículo:
+    #        *{ENDERECO}
+    #        *2 -* Outra localização. *Compartilhar via Whatsapp*"
+    #    Só o `2` aparece marcado. O `1` é o endereço da apólice, escrito sem
+    #    número — e responder "1" é o que a sessão real fez, com sucesso.
+    #    🔴 É formatação quebrada DA SEGURADORA, não do corredor. Fica declarado
+    #       para que ninguém "conserte" isto trocando por "2".
     {"step": "selecionar_endereco_veiculo", "anchor": r"selecione o endere[çc]o onde est[áa] o ve[íi]culo",
      "reply": "1", "fallback_adaptive": True,
+     "constante_justificada": (
+         "📊 A URA escreve a opção 1 SEM número (só o endereço, com asterisco) e "
+         "numera apenas a 2. '1' é o endereço da apólice, e foi o que as 3 sessões "
+         "medidas responderam. Com `fallback_adaptive`, se o local do caso for outro, "
+         "o cérebro assume."),
      "notes": "📊 3 sessões. 1 = o endereço da apólice; 2 = outra localização. Se o local "
               "do caso for outro, o adaptativo assume."},
     {"step": "endereco_confirma_alfa", "anchor": r"o endere[çc]o [ée]:[\s\S]{0,140}confirma",

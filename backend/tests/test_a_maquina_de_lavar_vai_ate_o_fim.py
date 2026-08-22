@@ -109,9 +109,17 @@ TELA_PERIODO_B = ("E quanto aos horários de agendamento, são por *períodos (m
                   "13:00 ou *tarde* - das 13:00 às 18:00).")
 TELA_PERIODO_C = ("O agendamento é feito em intervalo de 2 horas, por exemplo das 09h às 11, "
                   "das 11h às 13h e assim por diante. Quando você prefere?")
+# 🔴 A TELA COMPLETA, COMO A URA MANDA -- 22/08/2026.
+#
+# A versao antiga deste literal parava em "*Dica:* Antes de continuar..." e por
+# isso escondia a PERGUNTA que vem no fim. 📊 A tela real, do corpus:
 TELA_GARANTIA = ("*Importante:* O serviço é destinado a aparelhos/equipamentos de uso doméstico "
                  "que estejam fora da garantia do fabricante e que pertençam a residência "
-                 "segurada. *Dica:* Antes de continuar...")
+                 "segurada.\n\n*Dica:* Antes de continuar, verifique se o equipamento está "
+                 "ligado. Se não estiver ligando, faça o teste em outra tomada com a mesma "
+                 "voltagem.\n\nQual a idade de fabricação do aparelho/equipamento?\n\n"
+                 "*1 -* Até 10 anos\n*2 -* Mais de 10 anos de fabricação")
+
 TELA_APARELHO = ("Selecione o eletrodoméstico que precisa de conserto ? *1 -* Geladeira "
                  "*2 -* Freezer *3 -* Frigobar *4 -* Adega *5 -* Micro-ondas *6 -* Fogão "
                  "*7 -* Forno *8 -* Cooktop *9 -* Filtro/Purificador de água *10 -* Lavadora "
@@ -141,7 +149,7 @@ CAMINHO = [
     (TELA_SERA_AGENDADO, "confirmar_que_sera_agendado", "1"),
     (TELA_DATA, "escolher_data_agendamento", "{data_agendamento_opcao}"),
     (TELA_PERIODO_A, "escolher_periodo_agendamento", "{periodo_agendamento_opcao}"),
-    (TELA_GARANTIA, "aviso_fora_da_garantia", "1"),
+    (TELA_GARANTIA, "idade_de_fabricacao", "{idade_aparelho_opcao}"),
     (TELA_APARELHO, "menu_aparelho", "{eletrodomestico_opcao}"),
     (TELA_DEFEITO, "problema_do_aparelho", "{problema_descricao}"),
     (TELA_MARCA, "aparelho_marca", "{aparelho_marca}"),
@@ -211,10 +219,25 @@ check("o RESUMO continua sendo a confirmacao final",
 
 # 🔴 O aviso da garantia PEDE resposta. Ele contem "*Dica:*", que esta na
 # ancora do `avisos_informativos` (noop). A ordem da lista e o que o protege.
+#
+# ⚠️ E A ASSERCAO MUDOU EM 22/08/2026, porque o FATO mudou.
+#
+#    Ela dizia `reply == "1"`. E "1" nessa tela **e "Ate 10 anos"** -- o
+#    corredor afirmava a idade do aparelho sem ninguem ter perguntado, e este
+#    teste guardava esse comportamento como se fosse o certo.
+#
+#    A licao NAO morre, ela migra: a tela continua tendo de RESPONDER (e nao
+#    virar noop pelo "*Dica:*"), e o que se exige agora e que a resposta venha
+#    do CASO. Manter a afirmacao vencida so ensinaria a ignorar o teste.
 p_gar = passo_de(TELA_GARANTIA)
 check("o aviso da garantia RESPONDE, nao e noop",
-      bool(p_gar) and not p_gar.get("noop") and p_gar.get("reply") == "1",
+      bool(p_gar) and not p_gar.get("noop"),
       f"{(p_gar or {}).get('step')} noop={(p_gar or {}).get('noop')}")
+check("🔴 e a resposta vem do CASO, nao de uma constante",
+      bool(p_gar) and str(p_gar.get("reply") or "").startswith("{"),
+      (p_gar or {}).get("reply"))
+check("CONTROLE: a tecla '1' desta tela e mesmo 'Ate 10 anos'",
+      "*1 -* Até 10 anos" in TELA_GARANTIA)
 check("CONTROLE: e o noop AINDA existe e pega o que deve pegar",
       (passo_de("Termo de Privacidade: ao prosseguir...") or {}).get("noop") is True)
 
@@ -249,19 +272,28 @@ for p in PASSOS:
         if str(r).endswith("_opcao"):
             exigidos.add(r)
 
-DERIVADOS = {"problema_eletrico_opcao", "data_agendamento_opcao",
-             "periodo_agendamento_opcao", "telefone_adicionar_opcao",
-             "servico_opcao", "veiculo_opcao",
-             # 🔴 22/08/2026 — as duas telas que a SPEC-084 separou. Ate aqui a
-             #    pergunta "O que aconteceu?" era ancorada seca, e o passo do
-             #    ELETRICISTA respondia a tecla do problema eletrico na tela do
-             #    encanador e na do chaveiro. Cada oficio ganhou o seu passo, e
-             #    cada passo precisa da sua traducao.
-             "problema_vazamento_opcao", "problema_chave_opcao",
-             # 🔴 SPEC-084 BLOCO 1: os menus que a allianz mostra e o produto
-             #    nao declarava. Cada um traduz o que o segurado pediu.
-             "outro_servico_opcao", "solicitacao_existente_opcao",
-             "pane_detalhe_opcao"}
+# 🔴 A LISTA ESCRITA A MAO MENTIA -- 22/08/2026.
+#
+# 📊 Ate hoje esta era uma lista literal, e o conferidor de respostas
+#    (P-084-14) provou que TRES dos seus nomes nao existiam:
+#
+#      servico_opcao             declarado DERIVADO, nada deriva
+#      telefone_adicionar_opcao  declarado DERIVADO, nada deriva
+#      veiculo_opcao             declarado DERIVADO, nada deriva
+#
+#    Os tres tem origem de verdade -- `_slots_com_padrao_do_motor` preenche os
+#    dois primeiros e `pick_option_by_plate` escolhe o terceiro pela placa --
+#    mas a lista dizia a coisa errada, e o guarda PASSAVA por causa dela.
+#
+# 🔴 Uma lista paralela escrita a mao envelhece calada. E a terceira vez que
+#    este repositorio paga por isso (`TETO_DE_INDEFINIDO` declarado e nunca
+#    lido, `schedule_agendado` sem leitor, e agora esta). Agora ela e LIDA DA
+#    FONTE, por AST, do mesmo lugar que o motor le.
+sys.path.insert(0, os.path.join(RAIZ, "scripts"))
+import conferir_respostas as _CR
+
+DERIVADOS = _CR._slots_derivados() | _CR._ESCOLHIDOS_PELO_MOTOR | set(
+    _CR._PADRAO_DO_MOTOR.get("residencial", set()))
 
 # 🔴 A TERCEIRA ORIGEM, QUE ESTE GUARDA NAO ENXERGAVA — 22/08/2026.
 #

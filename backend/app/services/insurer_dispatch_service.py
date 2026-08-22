@@ -419,6 +419,25 @@ def _derivar_teclas_do_caso(slots: dict) -> None:
         # sem luz").
         slots["problema_eletrico_opcao"] = "2" if curto else "1"
 
+    # ---- "Conserto do ar condicionado" x "Limpeza do ar condicionado" -
+    # 📊 A tela, literal (allianz residencial):
+    #   "O servico e destinado ao conserto de aparelhos/equipamentos de uso
+    #    domestico que estejam fora da garantia do fabricante e que pertencam a
+    #    residencia segurada. Voce precisa de:
+    #    *1 -* Conserto do ar condicionado
+    #    *2 -* Limpeza do ar condicionado"
+    #
+    # 🔴 SAO TRABALHOS DIFERENTES, e a diferenca chega na conta do segurado:
+    #    conserto e defeito (coberto); limpeza e manutencao preventiva, que
+    #    costuma NAO ser coberta pela apolice. Ate 22/08/2026 o corredor
+    #    respondia "1" fixo nesta tela -- inclusive para casos de MAQUINA DE
+    #    LAVAR, que nao tem o que fazer aqui.
+    if not str(slots.get("ar_condicionado_servico_opcao") or "").strip():
+        limpeza = any(p in texto for p in (
+            "limpeza", "limpar", "higieniz", "sujo", "mau cheiro", "cheiro ruim",
+            "manutencao preventiva", "filtro sujo"))
+        slots["ar_condicionado_servico_opcao"] = "2" if limpeza else "1"
+
     # ---- "Identifiquei que temos uma solicitação de serviço feita" ------
     # 📊 A tela, literal (allianz auto E residencial, 3 + 10 sessões):
     #   "O que deseja? *1 -* Ver detalhes *2 -* Abrir novo atendimento"
