@@ -7162,3 +7162,27 @@ corredor". Hoje ela conta as duas juntas, e o número de órfãs mede o acervo, 
 o corredor.
 **O que custa esquecer:** trabalho de coleta e de corredor pedido para telas que
 ninguém vai responder — e uma nota baixa que não diz o que parece dizer.
+
+### P-084-24 A coluna ROUBOU não distingue "tomou e responde CERTO" de "tomou e responde ERRADO" · 🤖
+
+📊 Ao fim da SPEC-084, três passos aparecem como "roubo" na bancada de
+controle — e os três são conserto deliberado de uma resposta ERRADA:
+
+```
+servico_ja_aberto_menu    <- menu_raiz             (porto respondia "Informar outro CPF/CNPJ"
+                                                    à tela de serviço já aberto)
+ar_condicionado_servico   <- aviso_fora_da_garantia (o OITAVO defeito: digitava
+                                                    "Conserto do ar condicionado"
+                                                    para máquina de lavar)
+confirmar_solicitacao_sim <- confirmar_solicitacao  (mandava um rótulo que não está
+                                                    entre as três opções da tela)
+```
+
+⚠️ A bancada acusa os três igualmente, e está certa em acusar — **especialização
+e usurpação têm a mesma forma**. O que separa uma da outra é se a resposta NOVA
+está certa, e isso quem prova é `conferir_respostas.py`, não a bancada.
+
+**O que destrava:** a bancada consultar o conferidor antes de chamar de roubo —
+se o passo antigo tinha achado grave naquela tela e o novo não tem, é conserto.
+**O que custa esquecer:** ou se ignora a coluna (e o próximo roubo de verdade
+passa), ou se trata todo conserto como regressão.
