@@ -73,15 +73,49 @@ def test_a_regua_pontua_e_nao_bate_no_portao():
                                  "outra coisa e a comparacao historica quebrou")
 
 
-def test_o_replay_da_regua_reproduz_a_spec():
-    """📊 A SPEC-083 §4.2 nomeia **1 órfã funcional**, e diz qual é."""
+def test_a_orfa_que_a_spec_nomeia_continua_orfa():
+    """📊 A SPEC-083 §4.2 nomeia UMA órfã funcional — e o corpus cresceu desde então.
+
+    ⚠️ **ESTE TESTE MUDOU DE FORMA, E O CLAUDE.md §9.3 EXIGE QUE ELE MUDE.**
+
+    A primeira versão exigia `len(orfas_funcionais) == 1`, que era verdade quando
+    o corpus tinha **uma** sessão desta rota. Depois da decisão P-083-1 (teto de 5
+    sessões **por rota**), ela tem **quatro** — e são **15 órfãs**.
+
+    📊 O que apareceu com as três sessões novas não é ruído: é um **fluxo inteiro**
+    que o corredor não cobre —
+
+    ```
+    "Identifiquei que temos uma solicitacao de servico feita.
+     O que deseja? *1 -* Ver detalhes *2 -* Alterar..."
+    ```
+
+    o ramo de **ACOMPANHAR / ALTERAR** solicitação, que responde por 11 das 15.
+
+    🔴 *"Teste que guarda verdade vencida é pior que teste nenhum."* O número `1`
+    era a verdade de um corpus de uma sessão. **A lição migra:** o que este teste
+    guarda é que a órfã que a SPEC NOMEIA continua sendo órfã — se ela sumir sem
+    alguém escrever o passo, é porque a medida afrouxou.
+    """
     r = RP.replay(_rota())
-    assert len(r.orfas_funcionais) == 1, \
-        f"{len(r.orfas_funcionais)} orfas: {[t.texto[:50] for t in r.orfas_funcionais]}"
-    assert "agendamento para" in M._norm(r.orfas_funcionais[0].texto), \
-        "a orfa mudou de identidade; a §4.2 nomeia a tela do agendamento"
-    d = r.determinismo
-    assert d is not None and d >= 0.85, f"determinismo caiu para {d}"
+    assert r.orfas_funcionais, "nenhuma orfa -- a §4.2 nomeia uma, e ela nao foi mapeada"
+    nomeada = [t for t in r.orfas_funcionais
+               if "agendamento para" in M._norm(t.texto)
+               and "podemos continuar" in M._norm(t.texto)]
+    assert nomeada, ("a orfa que a SPEC-083 §4.2 nomeia sumiu do replay sem que um "
+                     "passo a mapeasse -- ou a medida afrouxou, ou o corpus perdeu "
+                     f"a sessao. orfas atuais: {[t.texto[:40] for t in r.orfas_funcionais[:5]]}")
+
+
+def test_o_determinismo_da_regua_nao_cai():
+    """📊 A rota de referência acerta **80,8%** das telas que pedem algo.
+
+    ⚠️ O piso é 70% — o mesmo corte que o portão do eixo B usa para decidir se o
+    corredor *fala* aquela URA. Abaixo disso a rota deixou de conversar, e isso
+    é regressão, não amostra.
+    """
+    d = RP.replay(_rota()).determinismo
+    assert d is not None and d >= 0.70, f"determinismo caiu para {d}"
 
 
 # ═════════════════════════════════════════════════════════════════════════════

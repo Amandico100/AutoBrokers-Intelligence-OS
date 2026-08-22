@@ -367,6 +367,66 @@ def main(argv: Optional[List[str]] = None) -> int:
     return 0
 
 
+def _o_que_falta(n: RB.Nota) -> str:
+    """A coluna 2 do inventário: o que falta para o nível da máquina de lavar."""
+    if n.estado == "SEM_CORPUS":
+        return "não há uma linha desta rota no corpus"
+    if n.estado == "NAO_RESPONDE":
+        r = n.replay
+        d = r.determinismo if r else None
+        return (f"o corredor não fala esta URA: {len(r.orfas_funcionais)} órfãs "
+                f"funcionais e determinismo "
+                f"{'—' if d is None else f'{100*d:.0f}%'}") if r else "eixo B zerado"
+    faltam = sorted((i for i in n.itens if i.conta and i.pontos < i.maximo),
+                    key=lambda x: x.maximo - x.pontos, reverse=True)
+    return " · ".join(f"{i.nome} (+{i.maximo - i.pontos})"
+                      for i in faltam[:4]) or "nada — está no nível"
+
+
+def _o_que_destrava(n: RB.Nota) -> str:
+    """A coluna 3: o que DESTRAVA cada uma.
+
+    🔴 Regra do Founder, 21/08/2026:
+
+    > *"Não é obrigatório termos todos os corredores 100%. O ideal é o máximo
+    > possível... Mas devemos ter LISTADO o que trava de ter o nível da máquina
+    > de lavar, para completarmos quando pudermos."*
+
+    E o que não fecha vira **handoff limpo**, nunca chute.
+    """
+    if n.estado == "SEM_CORPUS":
+        return "🧑 coleta dirigida: 1 acionamento observado desta rota"
+    r = n.replay
+    if n.estado == "NAO_RESPONDE":
+        return (f"🤖 escrever passos para {len(r.orfas_funcionais)} tela(s) órfã(s) "
+                f"em {r.sessoes_no_corpus} sessão(ões)") if r else "🤖 escrever passos"
+    pend: List[str] = []
+    for i in n.itens:
+        if not i.conta or i.pontos == i.maximo:
+            continue
+        if "orfas" in i.nome:
+            pend.append(f"🤖 mapear {len(r.orfas_funcionais)} tela(s)")
+        elif "transcrita" in i.nome:
+            pend.append("🤖 transcrever a sessão no bloco")
+        elif "handoff" in i.nome:
+            pend.append("🤖 ampliar handoff_triggers contra o corpus")
+        elif "notes" in i.nome:
+            pend.append("🤖 recontar as notes")
+        elif "cliente recebe" in i.nome:
+            pend.append("🤖 client_summary com dia + período")
+        elif "tecla" in i.nome:
+            pend.append("🤖 dar origem às teclas órfãs")
+        elif "sessoes distintas" in i.nome:
+            pend.append("🧑 coleta: +1 sessão desta rota")
+        elif "deterministico" in i.nome:
+            pend.append("🤖 subir o determinismo acima de 85%")
+        elif "apelidos" in i.nome:
+            pend.append("🧑 acesso ao Espelho para conferir os apelidos")
+        elif "expectativa" in i.nome or "regras" in i.nome:
+            pend.append("🤖 escrever as regras que a URA diz ao segurado")
+    return " · ".join(dict.fromkeys(pend)) or "nada"
+
+
 def markdown(notas: List[RB.Nota], demanda: Dict[str, int],
              acervo: Dict[str, int]) -> str:
     """O `INVENTARIO-DE-ROTAS.md` do Bloco D.
@@ -384,15 +444,31 @@ def markdown(notas: List[RB.Nota], demanda: Dict[str, int],
     L.append("denominador e aparece explícito — **nunca é renormalizado**, e a")
     L.append("exibição **nunca é reescalada para /100**: `61/86 = 71%` pareceria")
     L.append("melhor que uma rota que ganhou 65 de 100 disputando tudo.\n")
-    L.append("| seguradora | ramo | serviço | prontidão | A | B | C | D | E | patamar | família | demanda |")
-    L.append("|---|---|---|---:|---:|---:|---:|---:|---:|---|---|---:|")
+    L.append("## A regra do Founder que governa este inventário\n")
+    L.append("> *\"Não é obrigatório termos todos os corredores 100%. O ideal é o máximo")
+    L.append("> possível. O que não for possível ter no nível da Allianz residencial máquina")
+    L.append("> de lavar deve ser feito o mais confiável e completo possível, ajudar os agentes")
+    L.append("> a executar, e quando não conseguirem, vai para handoff. **Mas devemos ter")
+    L.append("> LISTADO o que trava de ter o nível da máquina de lavar, para completarmos")
+    L.append("> quando pudermos.**\"*\n")
+    L.append("🔴 **Uma rota em 60 com o bloqueio nomeado é ENTREGA. Uma rota em 95 com furo")
+    L.append("invisível não é.** É por isso que este inventário tem três colunas, e não uma.\n")
+    L.append("| seguradora | ramo | serviço | nota | patamar | 🔴 o que FALTA para o nível da máquina de lavar | 🔴 o que DESTRAVA | dem |")
+    L.append("|---|---|---|---:|---|---|---|---:|")
+    for n in sorted(notas, key=lambda x: (-x.fracao, str(x.rota))):
+        pr = n.estado or f"{n.pontos}/{n.denominador}"
+        L.append(f"| {n.rota.seguradora} | {n.rota.ramo} | {n.rota.servico} | **{pr}** | "
+                 f"{n.patamar} | {_o_que_falta(n)} | {_o_que_destrava(n)} | "
+                 f"{demanda.get(n.rota.servico, 0)} |")
+    L.append("\n## Os eixos, para quem quiser a decomposição\n")
+    L.append("| seguradora | ramo | serviço | A | B | C | D | E | família |")
+    L.append("|---|---|---|---:|---:|---:|---:|---:|---|")
     for n in sorted(notas, key=lambda x: (-x.fracao, str(x.rota))):
         e = n.por_eixo()
         g = lambda k: (str(e[k][0]) if k in e else "—")   # noqa: E731
-        pr = n.estado or f"{n.pontos}/{n.denominador}"
-        L.append(f"| {n.rota.seguradora} | {n.rota.ramo} | {n.rota.servico} | **{pr}** | "
-                 f"{g('A')} | {g('B')} | {g('C')} | {g('D')} | {g('E')} | {n.patamar} | "
-                 f"{familia_de(n.rota)} | {demanda.get(n.rota.servico, 0)} |")
+        L.append(f"| {n.rota.seguradora} | {n.rota.ramo} | {n.rota.servico} | "
+                 f"{g('A')} | {g('B')} | {g('C')} | {g('D')} | {g('E')} | "
+                 f"{familia_de(n.rota)} |")
     return "\n".join(L)
 
 

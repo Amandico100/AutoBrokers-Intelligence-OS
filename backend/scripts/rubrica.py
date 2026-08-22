@@ -540,7 +540,29 @@ def medir(rota, *, sessoes_no_acervo: Optional[int] = None,
     #    ⚠️ 8 não é arbitrário: é a faixa de ">=3 órfãs funcionais" (0 de cobertura)
     #    somada a menos de 70% de determinismo. Uma rota abaixo disso não conversa
     #    com aquela URA.
-    if pontos_b < 8:
+    # ⚠️ **A LEITURA LITERAL DESSE `8` ESTAVA ERRADA, E A MEDIÇÃO MOSTROU.**
+    #
+    # 📊 Medido depois que o corpus passou a ser por rota (P-083-1):
+    #
+    # ```
+    #   allianz x residencial x maquina_de_lavar
+    #     63 respondidas · 15 orfas funcionais · determinismo 80,8%
+    #     B = 0 (orfas) + 4 (determinismo) + 0 + 0 = 4   ->   NAO_RESPONDE
+    # ```
+    #
+    # 🔴 **Uma rota que responde 63 telas e acerta 80,8% CONVERSA com aquela URA.**
+    #    O item de órfãs é tudo-ou-nada (`>=3 -> 0`), e essa escala foi desenhada
+    #    para um corpus de ~30 telas. Com 100+ telas por rota, `>=3 órfãs` é quase
+    #    garantido — e o portão passou a barrar justamente as rotas com **MAIS**
+    #    evidência.
+    #
+    # > ## O portão existe para pegar "o corredor não fala esta língua", não "o corpus cresceu".
+    #
+    # O corte passa a ser o que a §3.8 **diz que ele significa**, com as duas
+    # condições valendo JUNTAS, como no texto: `>=3 órfãs` **E** `< 70%`.
+    d = r.determinismo
+    nao_conversa = len(r.orfas_funcionais) >= 3 and (d is None or d < 0.70)
+    if nao_conversa or pontos_b == 0:
         return Nota(rota, b, "NAO_RESPONDE", r)
 
     itens = (eixo_a(rota, r) + b + eixo_c(rota, r)
