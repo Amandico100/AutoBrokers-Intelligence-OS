@@ -167,6 +167,35 @@ def e_navegacao(rotulo: str) -> bool:
 # ═════════════════════════════════════════════════════════════════════════════
 # A · DE ONDE UM SLOT PODE VIR
 # ═════════════════════════════════════════════════════════════════════════════
+def constantes_sem_justificativa(playbook, servico, textos):
+    """Os passos DESTA ROTA cuja constante decide pelo cliente sem justificativa.
+
+    `[(passo, reply, motivo), ...]`
+
+    🔴 Existe porque o `Achado` nao carrega o SERVICO -- ele e por
+    (seguradora, ramo). A regua precisa da pergunta **por rota**, e a resposta
+    tem de vir da mesma `decide_pelo_cliente()` que a varredura usa. Reescreve-la
+    aqui seria o C3 pela terceira vez.
+    """
+    fora = []
+    vistos = set()
+    for t in textos:
+        p = M.match_ura_step(playbook, t, subservice=servico)
+        if not p or p.get("noop") or p.get("constante_justificada"):
+            continue
+        reply = str(p.get("reply") or "")
+        if not reply or "{" in reply:
+            continue
+        passo = str(p.get("step") or "?")
+        if passo in vistos:
+            continue
+        motivo = decide_pelo_cliente(t, reply)
+        if motivo:
+            vistos.add(passo)
+            fora.append((passo, reply, motivo))
+    return fora
+
+
 def decide_pelo_cliente(texto: str, reply: str):
     """🔴 A PERGUNTA UNICA: esta resposta AFIRMA UM FATO sobre o segurado?
 

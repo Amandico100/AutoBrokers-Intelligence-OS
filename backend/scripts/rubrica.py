@@ -3,7 +3,7 @@
 ```
 A · EVIDÊNCIA    a rota foi percorrida até o fim?           20
 B · COBERTURA    as telas viraram passos?                   35   ← o peso está aqui
-C · SEGURANÇA    o freio casa tela REAL?                    20
+C · SEGURANÇA    o freio casa tela REAL?                    26  (C7: +6)
 D · CONHECIMENTO medido contra o acervo                     10
 E · PROVA        mutação executada, não comentada           15
                                                          ─────
@@ -434,6 +434,36 @@ def eixo_c(rota, r: RP.Replay) -> List[Item]:
                       6 if not orfas else 0, 6,
                       f"{len(exigidas)} teclas exigidas; sem origem: "
                       f"{sorted(orfas) or 'nenhuma'}"))
+
+    # ── 6 · C7 · nenhuma CONSTANTE decide pelo cliente sem justificativa ───
+    # ======================================================================
+    # 🔴 C7 — "DECLARADO E NUNCA LIDO", O DEFEITO QUE ESTE REPO JA PAGOU 3x
+    # ======================================================================
+    #
+    # 📊 Medido em 22/08/2026: `grep -c constante_justificada rubrica.py` -> **0**.
+    #    A regua consultava `conferir_respostas` SO para a origem do slot. A
+    #    regra B -- o corredor afirmando um fato sobre o segurado -- nao valia
+    #    ponto nenhum. Uma rota com 12 constantes decidindo por conta propria
+    #    tirava 95/100.
+    #
+    # 🔴 **Uma regra que so existe no documento nao e regra. E intencao.**
+    #    Mesmo defeito de `TETO_DE_INDEFINIDO`, `schedule_agendado` e
+    #    `ticket_de_entrada`.
+    #
+    # **Por que 6, e nao outro numero:** e o mesmo peso e o MESMO MODO DE FALHA
+    # do item vizinho de origem de tecla -- *"tecla errada NAO trava: abre o
+    # chamado errado, e o erro so aparece quando o tecnico chega"*.
+    # `situacao_risco -> "Nenhuma das anteriores"` falha exatamente assim.
+    #
+    # ⚠️ A pergunta e a MESMA `decide_pelo_cliente()` da varredura, chamada --
+    #    nao reescrita. Reimplementa-la aqui seria o C3 pela terceira vez.
+    textos_do_corredor = [l["text"] for l in
+                          RP.carregar_corpus(rota.seguradora, rota.ramo)]
+    decidem = CR.constantes_sem_justificativa(pb, rota.servico, textos_do_corredor)
+    itens.append(Item("C", "nenhuma constante decide pelo cliente",
+                      6 if not decidem else 0, 6,
+                      f"{len(decidem)} constante(s) decidem sem justificativa: "
+                      + (", ".join(f"{p}->{r}" for p, r, _ in decidem) or "nenhuma")))
 
     # ── 3 · o handoff casa ≥1 tela REAL ────────────────────────────────────
     hand = [t for t in r.telas if M.detect_handoff_trigger(pb, t.texto)]

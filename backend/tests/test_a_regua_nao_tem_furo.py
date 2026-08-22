@@ -91,6 +91,15 @@ PB = CP._PLAYBOOKS["allianz-residencial-whatsapp@v1"]
 MUTACOES = [
     # (arquivo, texto_de, texto_para, rotulo_da_assercao_que_deve_cair)
 
+    # FURO 7 (C7) - A REGRA QUE SO EXISTIA NO DOCUMENTO.
+    # 📊 22/08/2026: `grep -c constante_justificada scripts/rubrica.py` -> 0.
+    #    A regua nunca leu o campo. Uma rota com 12 constantes decidindo pelo
+    #    cliente tirava 95/100. 🔴 Desligar a leitura tem de derrubar o item.
+    ("scripts/rubrica.py",
+     "decidem = CR.constantes_sem_justificativa(pb, rota.servico, textos_do_corredor)",
+     "decidem = []  # DESLIGADO PELA MUTACAO",
+     "🔴 a regua LE `constante_justificada` -- nao so o documento"),
+
     # FURO 1 — a ancora que nunca casou. 📊 "informe o numero da residencia"
     # tem ZERO ocorrencias em 28.096 eventos; a URA escreve "me CONFIRME".
     ("app/services/corridor_playbooks.py",
@@ -337,6 +346,55 @@ for tela, esperado in CAMINHO:
     p = CP.match_ura_step(PB, tela, subservice="maquina_de_lavar")
     certo(p is not None and p.get("step") == esperado,
           f"{esperado}", f"casou: {(p or {}).get('step')}")
+
+
+# =============================================================================
+# 🔴 C7 - A REGUA LE `constante_justificada`, NAO SO O DOCUMENTO
+# =============================================================================
+#
+# 📊 22/08/2026: `grep -c constante_justificada scripts/rubrica.py` -> **0**.
+#    A regua consultava `conferir_respostas` so para a ORIGEM DO SLOT. A regra
+#    B -- o corredor afirmando um fato sobre o segurado -- nao valia ponto.
+#    Uma rota com 12 constantes decidindo por conta propria tirava 95/100.
+#
+# 🔴 **Uma regra que so existe no documento nao e regra. E intencao.**
+#
+# ⚠️ O guarda precisa das DUAS metades, senao ele passa por vacuidade: uma
+#    rota SUJA que zera o item, e uma LIMPA que o recebe. So a segunda provaria
+#    apenas que o item existe; so a primeira, apenas que ele sabe reprovar.
+print()
+print("=" * 74)
+print("[C7] a regua LE a justificativa da constante")
+print("=" * 74)
+
+import importlib.util as _ilu
+_e = _ilu.spec_from_file_location(
+    "_rb_c7", os.path.join(os.path.dirname(os.path.dirname(
+        os.path.abspath(__file__))), "scripts", "rubrica.py"))
+_RB = _ilu.module_from_spec(_e)
+sys.modules["_rb_c7"] = _RB
+_e.loader.exec_module(_RB)
+
+
+def _item_c7(seg, ramo, serv):
+    for r in _RB.M.rotas():
+        if (r.seguradora, r.ramo, r.servico) == (seg, ramo, serv):
+            for it in _RB.eixo_c(r, _RB.RP.replay(r)):
+                if "constante decide" in it.nome:
+                    return it
+    return None
+
+
+_suja = _item_c7("hdi", "auto", "guincho")
+_limpa = _item_c7("allianz", "residencial", "maquina_de_lavar")
+
+certo(_suja is not None and _suja.pontos == 0,
+      "🔴 a regua LE `constante_justificada` -- nao so o documento",
+      f"hdi/auto/guincho -> {_suja.pontos if _suja else '?'} pontos")
+certo(_limpa is not None and _limpa.pontos == _limpa.maximo,
+      "🔴 CONTROLE: a rota LIMPA RECEBE os 6 -- o item nao reprova todo mundo",
+      f"allianz/residencial/maquina_de_lavar: "
+      f"{(_limpa.pontos if _limpa else '?')}/{(_limpa.maximo if _limpa else '?')}")
 
 print()
 print("=" * 74)
