@@ -3235,6 +3235,1162 @@ for _pb_resid in (HDI_RESIDENCIAL_WHATSAPP_V1, YELUM_RESIDENCIAL_WHATSAPP_V1):
     ] + list(_pb_resid["ura_steps"])
 
 
+
+# ==========================================================================
+# PORTO — TRONCO e GALHO (SPEC-084 BLOCO 1, 22/08/2026)
+# ==========================================================================
+#
+# 📊 A coleta cobriu 220 das 239 telas orfas (92%) e retorno 779 de 806 (96%).
+#    As 19 restantes: 16 sao a fase HUMANA de uma sessao so (viram FRONTEIRA,
+#    nao passo), 2 sao URLs ja capturadas por `tracking_link`, 1 ja e
+#    `handoff_trigger` declarado.
+#
+# ⚠️ VIES DO MEDIDOR, dito em voz alta: a arvore so consulta `match_ura_step`,
+#    nunca `detect_handoff_trigger`. Toda tela que JA e handoff conta como orfa
+#    na fila de trabalho. Nao e divida do corredor.
+_PORTO_TRONCO = [
+    # ---- os que precisam vir ANTES de qualquer noop largo ----------------
+    # 🔴 A LARGA ROUBA A ESTREITA: medido, `ajudar_mais_sim_nao` sozinha casa
+    #    as 3 telas de tres botoes. A ordem aqui e obrigatoria.
+    {"step": "ajudar_mais_3botoes",
+     "anchor": r"posso te ajudar com algo mais\?[\s\S]{0,80}novo atendimento",
+     "reply": "Encerrar",
+     "notes": "📊 3 msgs / 3 sessões. ⚠️ 'Falar com atendente' é a tecla que joga o caso "
+              "no humano da seguradora — o oposto do que a SPEC quer."},
+    {"step": "ajudar_mais_sim_nao", "anchor": r"posso te ajudar com algo mais\?",
+     "reply": "Não", "notes": "📊 9 msgs / 9 sessões."},
+
+    # ---- identificacao ---------------------------------------------------
+    # 🔴 A RESPOSTA É "NÃO", E A RAZÃO É A MESMA DO `cpf_anterior`: o WhatsApp é
+    #    da CORRETORA e atende N clientes. O nome exibido é o do ÚLTIMO
+    #    atendimento. 📊 E as duas saídas foram medidas:
+    #       'Sim' -> "digite os 3 ÚLTIMOS DÍGITOS do seu CPF"  (sessão 0fe42179)
+    #       'Não' -> "digite o seu *CPF ou CNPJ*"              (sessão 3854b4a2)
+    #    Só a segunda re-identifica de verdade.
+    {"step": "confirma_titular", "anchor": r"eu estou falando com", "reply": "Não",
+     "notes": "📊 auto 8/8 · residencial 4/4. 'Sim' aciona na apólice do cliente anterior."},
+    {"step": "tres_ultimos_digitos", "anchor": r"digite os 3 [úu]ltimos d[íi]gitos do seu cpf",
+     "reply": "{titular_cpf_3_ultimos}", "requires": ["titular_cpf_3_ultimos"],
+     "fallback_adaptive": True, "notes": "📊 auto 1/1 · residencial 1/1."},
+    # ⚠️ ANTES de `nao_entendi`: a 2ª redação começa com "Desculpe, não entendi".
+    {"step": "cpf_invalido",
+     "anchor": r"^desculpe, n[ãa]o entendi a sua resposta[\s\S]{0,60}cpf ou cnpj v[áa]lido",
+     "reply": "{titular_cpf}", "requires": ["titular_cpf"],
+     "notes": "📊 1/1 auto · 1/1 resid. 🔴 UMA repetição, não duas: a 2ª falha leva a "
+              "'Por este canal não podemos seguir', que é handoff."},
+
+    # ---- contato ---------------------------------------------------------
+    # 🔴 A PROVA DA ARMADILHA DO `_norm`, MEDIDA NESTA ÂNCORA:
+    #    📊 cru = 1 tela · normalizado = 9. Oito das nove só casam DEPOIS do
+    #    `_norm`, porque o `*` do negrito está exatamente entre "um " e "número".
+    {"step": "informar_celular", "anchor": r"informe um\s*[\s\S]{0,3}n[úu]mero de celular",
+     "reply": "{telefone_contato}", "requires": ["telefone_contato"],
+     "notes": "📊 auto 9/9 · residencial 3/3."},
+    {"step": "telefone_invalido", "anchor": r"esse telefone n[ãa]o [ée] v[áa]lido",
+     "reply": "{telefone_contato}", "requires": ["telefone_contato"], "notes": "📊 1/1."},
+    {"step": "dois_telefones", "anchor": r"identifiquei dois telefones para contato",
+     "reply": "", "noop": True, "notes": "📊 auto 2/2 · resid 1/1."},
+    {"step": "nome_no_local",
+     "anchor": r"qual [ée] o nome de quem estar[áa] (?:no local|na resid[êe]ncia)",
+     "reply": "{pessoa_no_local}", "requires": ["pessoa_no_local"],
+     "notes": "📊 auto 6/6 · residencial 3/3."},
+
+    # ---- veiculo ---------------------------------------------------------
+    {"step": "cor_do_veiculo", "anchor": r"(?:selecione|informe) a cor do ve[íi]culo",
+     "reply": "{veiculo_cor}", "fallback_adaptive": True,
+     "notes": "📊 11 msgs / 11 sessões, DUAS listas. 🔴 A ESCAPATÓRIA É DIFERENTE: na "
+              "lista A a tecla honesta sem cor é 'Não sei a cor'; na B ela NÃO EXISTE — "
+              "'Outra cor' abre texto livre (`cor_do_veiculo_livre`)."},
+    {"step": "cor_do_veiculo_livre", "anchor": r"ent[ãa]o escreva qual a cor",
+     "reply": "{veiculo_cor}", "fallback_adaptive": True, "notes": "📊 3 msgs / 3 sessões."},
+    {"step": "mais_de_um_veiculo", "anchor": r"identifiquei mais de um ve[íi]culo nesse (?:cpf|cnpj)",
+     "reply": "", "noop": True, "notes": "📊 3/3. É CARDÁPIO: a escolha é a tela seguinte."},
+    # 🔴 IDENTIFICADA, NÃO RESOLVIDA — ver PENDENCIAS. 📊 As 3 telas trazem entradas
+    #    DUPLICADAS (mesmo modelo, ano e placa MASCARADA em posições diferentes).
+    #    Posição fixa é impossível; casar por placa é ambíguo com máscara.
+    {"step": "escolher_veiculo", "anchor": r"^qual o ve[íi]culo\?",
+     "reply": "{veiculo_opcao}", "fallback_adaptive": True,
+     "notes": "📊 3 telas / 3 sessões. 🔴 Sem match seguro pela placa, o adaptativo "
+              "decide e, falhando, é handoff — nunca posição fixa."},
+
+    # ---- endereco --------------------------------------------------------
+    {"step": "aviso_onde_o_veiculo_estara",
+     "anchor": (r"voc[êe] vai precisar informar\s*[\s\S]{0,10}onde o ve[íi]culo|"
+                r"preciso saber\s*[\s\S]{0,10}onde o ve[íi]culo est"),
+     "reply": "", "noop": True,
+     "notes": "📊 12 msgs / 12 sessões, TRÊS redações. É ANÚNCIO: a pergunta vem depois "
+              "('Digite o endereço completo'), e quem responde é `endereco_livre`. "
+              "O `[\\s\\S]{0,10}` existe porque o `*` do negrito some no `_norm` e "
+              "sobra o espaço."},
+    {"step": "selecionar_botao_formulario", "anchor": r"^\s*selecione o bot[ãa]o\s*:\s*$",
+     "reply": "", "noop": True,
+     "notes": "📊 12 msgs / 12 sessões. É o rótulo do botão do FORMULÁRIO nativo. "
+              "🔴 O `^...$` sem MULTILINE é o que impede roubar 'Não entendi sua "
+              "resposta. Selecione o botão abaixo para escolher uma das opções.'"},
+    {"step": "endereco_nao_localizado", "anchor": r"n[ãa]o consegui localizar o endere[çc]o",
+     "reply": "", "noop": True, "notes": "📊 2/2."},
+    {"step": "localizacao_atual",
+     "anchor": r"caso voc[êe] esteja no mesmo local, compartilhe a sua localiza[çc][ãa]o",
+     "reply": "", "noop": True,
+     "notes": "📊 2/2. A URA pede o PIN nativo do WhatsApp; o corredor não manda pin."},
+    {"step": "complemento", "anchor": r"digite (?:ent[ãa]o )?um\s*[\s\S]{0,3}complemento",
+     "reply": "{local_complemento}", "fallback_adaptive": True,
+     "notes": "📊 auto 6/6 · resid 3/3. A própria URA dá o default: 'não tem'."},
+
+    # ---- avisos e regras que vao ao CLIENTE, nunca respondidos ------------
+    {"step": "aviso_maior_de_18", "anchor": r"necess[áa]rio ter algu[ée]m maior de 18 anos",
+     "reply": "", "noop": True,
+     "notes": "📊 auto 11/11 · residencial 4/4 — a tela mais universal do corredor. "
+              "O texto vive em `client_instructions`."},
+    {"step": "garantia_90_dias", "anchor": r"garantia de\s*[\s\S]{0,3}90 dias",
+     "reply": "", "noop": True, "notes": "📊 5 msgs / 4 sessões."},
+    {"step": "recado_peca_20_dias", "anchor": r"voc[êe] tem at[ée]\s*[\s\S]{0,3}20 dias corridos",
+     "reply": "", "noop": True, "notes": "📊 4/4."},
+    {"step": "saldo_de_servicos",
+     "anchor": r"voc[êe] tem dispon[íi]vel\s*[\s\S]{0,6}servi[çc]os? de assist[êe]ncia para sua casa",
+     "reply": "", "noop": True,
+     "notes": "📊 3/3. 🔴 CONTROLE (c): cru = 0, normalizado = 3 — só casa depois do "
+              "`_norm`, porque a URA escreve '*02* *serviços*'."},
+    {"step": "servico_sai_do_seguro_auto", "anchor": r"ser[áa] solicitado no seguro do ve[íi]culo",
+     "reply": "", "noop": True,
+     "notes": "📊 3/3. Não é erro: é como a Porto amarra a assistência residencial ao "
+              "seguro do veículo. Vai ao cliente para ele não estranhar."},
+
+    # ---- desfecho --------------------------------------------------------
+    {"step": "resumo_confira", "anchor": r"confira o resumo da sua solicita[çc][ãa]o",
+     "reply": "", "noop": True, "notes": "📊 5 msgs / 4 sessões. CARDÁPIO: a escolha vem depois."},
+    {"step": "protocolo_recebido", "anchor": r"aqui est[áa] (?:o )?seu protocolo de atendimento",
+     "reply": "", "noop": True,
+     "notes": "📊 auto 11/11 · residencial 5/4. É o DESFECHO. Quem lê o número é "
+              "`capture_anchors.protocol`; o passo existe para o motor ficar calado "
+              "enquanto a captura acontece."},
+    {"step": "desfecho_agendado", "anchor": r"tudo certo com o seu (?:agendamento|reagendamento)",
+     "reply": "", "noop": True,
+     "notes": "📊 auto 11/11 · residencial 5/4. 🔴 TRÊS redações e só UMA é capturada "
+              "hoje ('em até 60 minutos' -> eta). As duas com 'no dia X, entre Yh e Zh' "
+              "não são — ver `schedule_porto` em PENDENCIAS."},
+    {"step": "link_acompanhamento",
+     "anchor": r"acompanhar o andamento desse servi[çc]o\s*[\s\S]{0,3} no link abaixo",
+     "reply": "", "noop": True, "notes": "📊 resid 4/4 · auto 2/2."},
+    {"step": "avaliacao_nps",
+     "anchor": (r"a sua opini[ãa]o [ée] muito importante|"
+                r"clique em \"?avaliar atendimento\"?|agrade[çc]o sua avalia[çc][ãa]o"),
+     "reply": "", "noop": True,
+     "notes": "📊 14 msgs / 11 sessões. Pós-desfecho. 🔴 Responder pesquisa de satisfação "
+              "em nome do segurado é escrever opinião que não é nossa. "
+              "⚠️ Vem ANTES de `nao_entendi`, que também casaria 'Não entendi o que você "
+              "digitou. Por favor, clique em *Avaliar atendimento*'."},
+
+    # ---- fim de conversa e erro (o noop largo, POR ULTIMO) ----------------
+    {"step": "continuar_atendimento", "anchor": r"voc[êe] ainda quer continuar o seu atendimento",
+     "reply": "Sim",
+     "notes": "📊 auto 5/5 · resid 4/4. É sonda de inatividade. 'Sim' mantém viva a "
+              "sessão que importa e só prolonga a que já acabou; 'Não' mata as duas."},
+    {"step": "alterar_informacao_botao", "anchor": r"gostaria de alterar alguma informa[çc][ãa]o",
+     "reply": "Não, está tudo correto", "notes": "📊 resid 4/4 · auto 2/2."},
+    {"step": "saudacao_de_volta", "anchor": r"bom ter voc[êe] de volta", "reply": "", "noop": True,
+     "notes": "📊 auto 5 · resid 5. 🔴 A âncora do `aguarde` exige 'QUE bom ter você de "
+              "volta'; 8 telas escrevem 'Olá! {NOME} BOM ter você de volta', sem o 'que'. "
+              "Tirar a palavra recupera as 8 e não perde as que já casavam."},
+    {"step": "mudar_de_opcao_voltar",
+     "anchor": r"se quiser mudar de op[çc][ãa]o, digite\s*[\s\S]{0,3}voltar",
+     "reply": "", "noop": True,
+     "notes": "📊 auto 5/5 · resid 7/7. DUAS grafias: 'digite *voltar*' e 'digite voltar'."},
+    {"step": "encerrar_conversa",
+     "anchor": (r"vou encerrar a conversa|quando precisar,? [ée] s[óo] chamar|"
+                r"quando quiser falar sobre a porto|agrade[çc]o o seu contato|"
+                r"se quiser encerrar o atendimento, [ée] s[óo] digitar sair|"
+                r"como voc[êe] n[ãa]o respondeu eu vou encerrar"),
+     "reply": "", "noop": True, "notes": "📊 auto 17/13 · resid 6/6."},
+    # 🔴 POR ÚLTIMO, e é decisão que ficou em aberto: ver PENDENCIAS.
+    #    Na porto "Não entendi a sua resposta" é a URA ESPERANDO — silêncio vira
+    #    timeout. O certo parece ser REENVIAR a última resposta, e isso é
+    #    comportamento de MOTOR, não de âncora. Não existe hoje, e não se inventa.
+    {"step": "nao_entendi",
+     "anchor": (r"n[ãa]o entendi (?:o que voc[êe] digitou|a sua resposta|sua resposta)|"
+                r"ainda n[ãa]o consegui entender|op[çc][ãa]o inv[áa]lida|"
+                r"n[ãa]o consegui te entender"),
+     "reply": "", "noop": True,
+     "notes": "📊 auto 10/6 · resid 2/2. 🔴 noop é o menos pior, não o certo — a URA "
+              "está esperando. Registrado em PENDENCIAS como decisão de motor."},
+    {"step": "cliente_personalizado", "anchor": r"grupo de clientes com atendimento personalizado",
+     "reply": "", "noop": True, "notes": "📊 2/2."},
+    {"step": "aviso_automatico", "anchor": r"a mensagem que voc[êe] recebeu [ée] um aviso autom[áa]tico",
+     "reply": "", "noop": True, "notes": "📊 2/2."},
+]
+
+# 🔴 NOTIFICAÇÃO ATIVA DE SINISTRO — 11 das 143 órfãs, e NENHUMA é trabalho de
+#    corredor. 📊 12 msgs / 4 sessões: a porto NOTIFICA a corretora sobre etapa de
+#    sinistro (Check-in, Reparos iniciados, Veículo entregue, vistoria agendada).
+#    Chegam sem que ninguém tenha aberto conversa.
+_PORTO_AVISO_SINISTRO = {
+    "step": "aviso_sinistro_proativo",
+    "anchor": (r"assistente virtual da porto[\s\S]{0,200}"
+               r"(?:sinistro de n[úu]mero|para o sinistro|vistoria do seu ve[íi]culo)"),
+    "reply": "", "noop": True,
+    "notes": "📊 12 msgs / 4 sessões, 11 telas distintas. NÃO é URA de acionamento.",
+}
+
+PORTO_AUTO_WHATSAPP_V1["ura_steps"] = (
+    list(PORTO_AUTO_WHATSAPP_V1["ura_steps"])
+    + [dict(p) for p in _PORTO_TRONCO] + [dict(_PORTO_AVISO_SINISTRO)]
+)
+PORTO_RESIDENCIAL_WHATSAPP_V1["ura_steps"] = (
+    list(PORTO_RESIDENCIAL_WHATSAPP_V1["ura_steps"]) + [dict(p) for p in _PORTO_TRONCO]
+)
+
+# 🔴 A PORTO OFERECE UM SEGUNDO WHATSAPP QUANDO A APÓLICE É ITAÚ.
+#    📊 8 msgs / 2 sessões. E o produto tem `_OPERADO_POR = {'itau': 'porto'}`,
+#    que resolve a direção CONTRÁRIA. Aqui a porto RECUSA a apólice.
+#    ⚠️ Como é `handoff_trigger`, NÃO TEM DOTALL: o `[\s\S]` é obrigatório.
+PORTO_AUTO_WHATSAPP_V1["handoff_triggers"] = PORTO_AUTO_WHATSAPP_V1["handoff_triggers"] + [
+    r"n[ãa]o localizei as suas informa[çc][õo]es na porto",
+    r"o atendimento [ée] no\s*[\s\S]{0,3}whatsapp da ita[úu]",
+    r"porto\.vc/(?:wpp-)?itau",
+    # 📊 `_AUTO_HANDOFF_TRIGGERS` tem `sinistro|colisão|acidente` mas NÃO tem
+    #    `furto` nem `roubo`, e a porto oferece "Relatar furto ou roubo" no menu.
+    r"relatar furto ou roubo",
+]
+
+
+# ==========================================================================
+# YELUM + HDI — A FAMILIA RESIDENCIAL (SPEC-084 BLOCO 1, 22/08/2026)
+# ==========================================================================
+#
+# 🔴 O PIOR CASO DO PRODUTO, e ele estava escondido numa combinação:
+#
+#      📊 hdi-residencial: 70 telas distintas · 64 SEM PASSO · 6 ura_steps
+#      📊 unknown_step_policy = "pause_and_handoff"
+#
+#    Nos corredores de AUTO a política é `adaptive_then_handoff`: tela órfã cai
+#    no cérebro e o fluxo continua. Aqui é `pause_and_handoff`: **cada uma das
+#    64 telas órfãs PARA o acionamento e chama um humano.** Um corredor com 6
+#    passos e 64 paradas não é um corredor incompleto — é um corredor que
+#    GARANTE handoff.
+#
+# 🔴 E a medição que reordena o trabalho: **35 dessas 64 já são respondidas,
+#    palavra por palavra, pelo corredor `YELUM_RESIDENCIAL_WHATSAPP_V1`.**
+#    Rodado com o motor real, o controle inverso deu ZERO nas outras três
+#    direções (yelum-resid <- hdi-resid = 0; e auto <-> auto = 0 porque auto
+#    JÁ compartilha `_YELUM_FAMILY_STEPS` por referência).
+#
+#    A hdi-residencial não precisa de 64 passos novos. Precisa de UMA LISTA.
+#
+# ⚠️ E o que NÃO pode ser compartilhado — a medição diz por quê:
+#
+#      `utilizacoes_restantes` e o gatilho "não possui mais utilizações"
+#          📊 "utilizações": HDI 4 ocorrências, **Yelum ZERO em 3.026 eventos**
+#      `menu_servico_residencial` (o rótulo)
+#          📊 a Yelum escreve "Linha branca"; a HDI escreve "Eletrodoméstico".
+#          🔴 RÓTULO DE MENU NUNCA É FAMÍLIA.
+#      `desambiguacao_veiculo_ou_residencial` (a resposta)
+#          a tela é igual; o corredor de AUTO responde "Automóvel" na MESMA tela.
+#
+#    Os três já existem no corredor da HDI, e a lista da família entra DEPOIS —
+#    `match_ura_step` devolve o primeiro que casa, então o específico vence.
+HDI_RESIDENCIAL_WHATSAPP_V1["ura_steps"] = (
+    list(HDI_RESIDENCIAL_WHATSAPP_V1["ura_steps"])
+    + [dict(p) for p in YELUM_RESIDENCIAL_WHATSAPP_V1["ura_steps"]]
+)
+
+# ==========================================================================
+# YELUM + HDI — TRONCO e GALHO
+# ==========================================================================
+_FAMILIA_YH_TRONCO = [
+    # ---- o ECO do endereco: e a tela ANTES da confirmacao ----------------
+    # 🔴 A prova de que é noop veio da SEQUÊNCIA, não do texto: em 3 sessões
+    #    medidas (8ce9f29d, 86769bd5, 71caf82f) a tela vem IMEDIATAMENTE antes
+    #    de "Você confirma o endereço?", que já tem passo. Responder aqui
+    #    adianta a resposta para a tela errada.
+    {"step": "endereco_geocodificado",
+     "anchor": (r"esse foi o endere[çc]o mais pr[óo]ximo que encontramos|"
+                r"o endere[çc]o pode variar alguns metros"),
+     "reply": "", "noop": True, "notes": "📊 6 telas / 25 ocorrências-sessão."},
+
+    # ---- o endereco partido em TRES telas (a URA de 2026) ----------------
+    # 🔴 O passo `complemento_ref` existente (`quais são o complemento e/ou
+    #    referência`) é da URA ANTIGA. A de 2026 partiu a pergunta em DUAS
+    #    telas — um slot só respondendo as duas manda o complemento na tela
+    #    da referência.
+    {"step": "falta_pouco", "anchor": r"falta pouco para finalizarmos essa etapa",
+     "reply": "", "noop": True, "notes": "📊 yelum 9 ses · hdi 5 ses."},
+    {"step": "complemento_endereco", "anchor": r"digite um \*?complemento\*?",
+     "reply": "{local_complemento}", "fallback_adaptive": True,
+     "notes": "📊 yelum 9 ses · hdi 5 ses. A própria URA dá o default: 'não tem'."},
+    {"step": "ponto_referencia_auto", "anchor": r"digite um ponto de \*?refer[êe]ncia",
+     "reply": "{ponto_referencia}", "fallback_adaptive": True,
+     "notes": "📊 yelum 9 ses · hdi 5 ses."},
+
+    # ---- o DESFECHO: 47 telas distintas colapsam em TRES passos ----------
+    # 🔴 A árvore conta TEXTO DISTINTO, e cada protocolo cria um texto novo —
+    #    então 47 telas de desfecho aparecem como 47 FOLHAS de retorno 1.
+    #    São TRÊS passos.
+    {"step": "resumo_da_solicitacao", "anchor": r"\*?resumo da solicita[çc][ãa]o\*?",
+     "reply": "", "noop": True,
+     "notes": "📊 22 telas. ⚠️ É aqui que `_ANCORA_DE_PROTOCOLO` dispara "
+              "('*Assistência:* 9666474'); o passo ser noop é o que garante que o "
+              "corredor fique calado enquanto a captura acontece."},
+    {"step": "finalizamos_a_abertura", "anchor": r"finalizamos a abertura do\(s\) pedido\(s\)",
+     "reply": "", "noop": True, "notes": "📊 18 telas."},
+    {"step": "notificacao_do_prestador",
+     "anchor": (r"estamos buscando o prestador|encontramos o prestador que realizar[áa]|"
+                r"n[ãa]o encontramos o prestador para a assist|"
+                r"est[áa] a caminho e faltam aproximadamente|"
+                r"a previs[ãa]o de chegada informada para o servi[çc]o|"
+                r"chegar[áa] para te atender entre"),
+     "reply": "", "noop": True, "notes": "📊 7 telas (hdi-auto)."},
+
+    # ---- pesquisa de satisfacao: opiniao que nao e nossa ------------------
+    # 🔴 O corredor RESIDENCIAL da Yelum já tem esta regra escrita; o de AUTO
+    #    não tinha. Um mesmo bot, duas decisões: é esquecimento, não escopo.
+    {"step": "pesquisa_satisfacao",
+     "anchor": (r"gostaria de saber o que voc[êe] achou dest|"
+                r"o qu[ãa]o satisfeito voc[êe] est[áa]|"
+                r"muito obrigada por ter respondido"),
+     "reply": "", "noop": True, "notes": "📊 yelum 3 telas / 22 ses · hdi 3 / 14."},
+
+    # ---- fim de conversa: tres telas, tres significados -------------------
+    # 🔴 `encerrada_por_inatividade` NÃO é um noop qualquer: a URA DESLIGOU. Um
+    #    corredor que trata isso como "mensagem informativa" fica monitorando uma
+    #    conversa que não existe mais — a família dos `corridor_runs` abandonados.
+    #    ⚠️ O sinal terminal que ele precisa (`terminal: True` ou entrada em
+    #    handoff) é MUDANÇA DE CONTRATO de `ura_steps`, e está em PENDENCIAS.
+    {"step": "encerrada_por_inatividade",
+     "anchor": (r"por falta de intera[çc][ãa]o esta conversa foi encerrada|"
+                r"tempo maximo de espera para este atendimento foi excedido|"
+                r"esta conversa ser[áa] encerrada"),
+     "reply": "", "noop": True,
+     "notes": "📊 yelum 2 telas / 7 ses · hdi 1 / 2. 🔴 A URA DESLIGOU — noop é o "
+              "menos pior, não o certo. Ver PENDENCIAS."},
+    {"step": "seguimos_a_disposicao", "anchor": r"seguimos [àa] disposi[çc][ãa]o",
+     "reply": "", "noop": True, "notes": "📊 yelum 6 ses · hdi 5 ses."},
+    # 🔴 "Sua resposta está diferente do que solicitamos" significa que a NOSSA
+    #    última resposta foi RECUSADA. Noop puro faz o corredor esperar em
+    #    silêncio até o timeout. A trava (contador -> needs_human) é de MOTOR.
+    {"step": "resposta_recusada",
+     "anchor": (r"sua resposta est[áa] diferente do que solicitamos|"
+                r"precisamos que siga [àa]s orienta[çc][õo]es anteriores"),
+     "reply": "", "noop": True,
+     "notes": "📊 yelum 6 ses · hdi 1 ses. 🔴 É recusa da NOSSA resposta, não aviso. "
+              "Ver PENDENCIAS."},
+
+    # ---- avisos com regra de DINHEIRO -------------------------------------
+    {"step": "aviso_recarga_bateria",
+     "anchor": r"enviaremos um prestador para realizar a \*?recarga da sua bateria",
+     "reply": "", "noop": True,
+     "notes": "📊 7 ocorrências-sessão. 🔴 Contém regra de DINHEIRO: 'caso seja "
+              "necessário a compra de uma nova bateria, o segurado será responsável "
+              "pela negociação diretamente com o prestador'. Vai a `regras_para_o_cliente`."},
+
+    # ---- pos-protocolo ----------------------------------------------------
+    {"step": "assistencia_solicitada",
+     "anchor": r"assist[êe]ncia solicitada. sua solicita[çc][ãa]o est[áa] em andamento",
+     "reply": "", "noop": True, "notes": "📊 yelum 5 ses · hdi 2 ses."},
+    {"step": "deu_tudo_certo",
+     "anchor": r"deu tudo certo com a sua solicita[çc][ãa]o ou ainda precisa de ajuda",
+     "reply": "Tudo certo", "fallback_adaptive": True,
+     "notes": "📊 yelum 5 ses · hdi 2 ses. 🔴 A resposta certa depende de um FATO do "
+              "run (o protocolo foi capturado?), e o passo não vê o run. Com "
+              "`fallback_adaptive`, sem protocolo o cérebro decide. Ver PENDENCIAS."},
+
+    # ---- agendamento -------------------------------------------------------
+    {"step": "agendamento_data", "anchor": r"para qual data deseja fazer o agendamento",
+     "reply": "{data_agendamento}", "fallback_adaptive": True, "notes": "📊 yelum 2 · hdi 1."},
+    # 🔴 O `^` é OBRIGATÓRIO: sem ele a alternativa roubaria as telas de horário
+    #    de condomínio do residencial. `match_ura_step` usa IGNORECASE|DOTALL
+    #    SEM MULTILINE, então `^` é o início da mensagem inteira.
+    {"step": "agendamento_hora", "anchor": r"^em qual hor[áa]rio",
+     "reply": "{hora_agendamento}", "fallback_adaptive": True, "notes": "📊 yelum 2 · hdi 1."},
+
+    # ---- CONDOMINIO: sem os dois horarios, o prestador nao entra no predio --
+    # 🔴 A URA ERRA A PRÓPRIA GRAFIA: "condoNÍmio". Nas duas seguradoras, nas
+    #    duas redações. A âncora TEM de copiar o erro — `condom[íi]nio` casaria ZERO.
+    {"step": "condominio_preambulo", "anchor": r"regras de condon[íi]mio preciso que informe",
+     "reply": "", "noop": True, "notes": "📊 hdi 5 ses · yelum 1 ses."},
+    {"step": "condominio_hora_inicial",
+     "anchor": (r"hor[áa]rio inicial permitido para entrada do prestador|"
+                r"a partir de qual hor[áa]rio o prestador de servi[çc]o pode entrar"),
+     "reply": "{condominio_hora_inicial}", "fallback_adaptive": True,
+     "notes": "📊 hdi 5 ses · yelum 1 ses."},
+    {"step": "condominio_hora_final",
+     "anchor": (r"hor[áa]rio final permitido para entrada do prestador|"
+                r"at[ée] qual hor[áa]rio o prestador de servi[çc]o pode entrar"),
+     "reply": "{condominio_hora_final}", "fallback_adaptive": True,
+     "notes": "📊 hdi 5 ses · yelum 1 ses."},
+
+    # ---- a chegada do prestador, e as orientacoes -------------------------
+    # 🔴 ORDEM OBRIGATÓRIA: `chegada_prevista` vem ANTES de `senha_e_orientacoes`.
+    #    Medido: a alternativa `pessoa maior de 18 anos` casa TAMBÉM a tela de
+    #    chegada, que carrega DATA e PERÍODO. Âncora larga na frente = a tela que
+    #    importa vira noop e o segurado não sabe quando o técnico vem.
+    {"step": "chegada_prevista", "anchor": r"a chegada do prestador est[áa] (?:agendado|prevista)",
+     "reply": "", "noop": True,
+     "notes": "📊 1 tela em cada. 🔴 É a ÚNICA fonte de data/período no residencial "
+              "da família. Vem ANTES de `senha_e_orientacoes` de propósito."},
+    {"step": "senha_e_orientacoes",
+     "anchor": (r"4 [úu]ltimos digitos do n[úu]mero informado|"
+                r"senha para a visita t[ée]cnica corresponde|"
+                r"4 d[íi]gitos finais\*? do n[úu]mero|pessoa maior de 18 anos"),
+     "reply": "", "noop": True, "notes": "📊 yelum 5 telas / 11 ses · hdi 3 / 6."},
+    {"step": "resumo_endereco_residencial",
+     "anchor": (r"estamos prontos para seguir com a sua solicita[çc][ãa]o de "
+                r"assist[êe]ncia 24 horas para o endere[çc]o"),
+     "reply": "", "noop": True, "notes": "📊 yelum 3/3 · hdi 1/4."},
+    {"step": "cardapio_de_servicos",
+     "anchor": (r"voc[êe] consegue \*?solicitar ou acompanhar\*? os seguintes servi[çc]os|"
+                r"voc[êe] pode solicitar ou acompanhar seus servi[çc]os conforme sua cobertura|"
+                r"voc[êe] pode \*?acompanhar\*? todas as suas assist[êe]ncias"),
+     "reply": "", "noop": True,
+     "notes": "📊 hdi 3 telas / 6 ses · yelum 1 / 5. 🔴 O cardápio lista Ar condicionado, "
+              "Dedetização e Eletroeletrônico — trabalhos SEM subserviço canônico. É "
+              "informativo; declarar rótulo aqui seria criar tecla sem trabalho."},
+    {"step": "telefone_invalido_familia", "anchor": r"o telefone informado n[ãa]o [ée] v[áa]lido",
+     "reply": "{telefone_contato}", "requires": ["telefone_contato"],
+     "notes": "📊 yelum 1/1 · hdi 1/2."},
+]
+
+# ---- o galho do PNEU: SEIS telas, e NENHUMA aceita resposta fixa ----------
+# 🔴 Cada uma decide COBERTURA ou EQUIPAMENTO. "Mais de um pneu" muda o serviço
+#    para GUINCHO; "sem estepe" idem; "lugar seguro" mexe na PRIORIDADE.
+_FAMILIA_YH_PNEU = [
+    {"step": "pneu_quantos", "anchor": r"quantos pneus foram furados",
+     "reply": "{pneus_quantidade_opcao}", "requires": ["pneus_quantidade_opcao"],
+     "fallback_adaptive": True, "only_subservices": ["pneu"],
+     "notes": "📊 1-Apenas um 2-Mais de um. 🔴 'Mais de um pneu' muda o serviço para "
+              "GUINCHO. Constante aqui manda borracheiro para carro que precisa de reboque."},
+    {"step": "pneu_estepe", "anchor": r"voc[êe] possui um estepe",
+     "reply": "{estepe_situacao}", "requires": ["estepe_situacao"],
+     "fallback_adaptive": True, "only_subservices": ["pneu"],
+     "notes": "📊 TRÊS opções, e NENHUMA é 'Sim': 1-Em condições 2-Sem condições 3-Não. "
+              "As duas últimas levam a guincho."},
+    {"step": "pneu_chave_macaco", "anchor": r"possui chave de roda e macaco",
+     "reply": "{ferramentas_no_veiculo}", "requires": ["ferramentas_no_veiculo"],
+     "fallback_adaptive": True, "only_subservices": ["pneu"], "notes": "📊 1/1 em cada."},
+    {"step": "preambulo_lugar_seguro",
+     "anchor": r"precisamos saber se voc[êe] est[áa] em um lugar seguro",
+     "reply": "", "noop": True, "notes": "📊 é o ANÚNCIO; a pergunta vem depois."},
+    {"step": "lugar_seguro",
+     "anchor": (r"voc[êe] est[áa] em um lugar seguro\?|"
+                r"o ve[íi]culo est[áa] em um local seguro"),
+     "reply": "{local_seguro}", "requires": ["local_seguro"], "fallback_adaptive": True,
+     "notes": "📊 2 telas em cada. 🔴 SEM reply fixo — a mesma razão escrita em "
+              "`rb_InformacoesLocal`: responder 'Sim' por preguiça rebaixa, no escuro, "
+              "a prioridade de quem está em perigo."},
+    {"step": "pneu_regra_rodovia",
+     "anchor": r"n[ãa]o conseguimos enviar o servi[çc]o de troca de pneus para rodovias",
+     "reply": "", "noop": True, "only_subservices": ["pneu"],
+     "notes": "📊 1/1. 🔴 É EXCLUSÃO, não aviso: em rodovia/marginal o pneu NÃO EXISTE "
+              "nesta seguradora — é guincho. Vai a `regras_para_o_cliente`."},
+]
+
+# ---- o galho do GUINCHO ---------------------------------------------------
+_FAMILIA_YH_GUINCHO = [
+    {"step": "meio_de_transporte", "anchor": r"deseja solicitar o servi[çc]o de meio de transporte",
+     "reply": "{meio_transporte_opcao}", "requires": ["meio_transporte_opcao"],
+     "fallback_adaptive": True, "only_subservices": ["guincho"],
+     "notes": "📊 yelum 4 ses · hdi 5 ses. 🔴 'Sim' ABRE UM SEGUNDO SERVIÇO (táxi) que "
+              "o segurado não pediu — mas ele PODE ter direito e não saber. Vem do caso."},
+    {"step": "destino_ja_tem", "anchor": r"j[áa] possui o endere[çc]o para onde devemos levar",
+     "reply": "{tem_destino}", "fallback_adaptive": True, "only_subservices": ["guincho"],
+     "notes": "📊 1+1 ses."},
+    {"step": "destino_patio", "anchor": r"ser[áa] removido para o p[áa]tio do guincheiro",
+     "reply": "", "noop": True, "only_subservices": ["guincho"],
+     "notes": "🔴 O caso NÃO termina no protocolo: sobram 24 HORAS ÚTEIS para informar o "
+              "destino, ou o carro fica no pátio. Vai a `expectativa_do_desfecho`."},
+    {"step": "destino_cep", "anchor": r"para qual \*?cep\*? devemos levar o ve[íi]culo",
+     "reply": "{destino_cep}", "fallback_adaptive": True, "notes": "📊 2+4 ses."},
+    {"step": "origem_cep", "anchor": r"em qual \*?cep\*? o ve[íi]culo est[áa]",
+     "reply": "{local_cep}", "fallback_adaptive": True, "notes": "📊 1+1 ses."},
+    {"step": "endereco_livre_digitado",
+     "anchor": (r"digite o endere[çc]o seguindo o exemplo|"
+                r"me informe o \*?endere[çc]o completo\*?, seguindo o exemplo"),
+     "reply": "{local_atual}", "fallback_adaptive": True, "notes": "📊 medido nas duas."},
+    # 🔴 "confimar" — o erro de digitação é DA URA. Copiado do corpus.
+    {"step": "confirmar_endereco_digitado",
+     "anchor": r"poderia confimar o endere[çc]o|o endere[çc]o est[áa] correto\?",
+     "reply": "Sim", "notes": "📊 hdi 2 telas. A URA escreve 'confimar', sem o R."},
+    {"step": "compartilhe_localizacao", "anchor": r"compartilhe aqui sua localiza[çc][ãa]o",
+     "reply": "", "noop": True,
+     "notes": "📊 yelum 1. A URA pede o PIN nativo; o corredor não manda pin. A tela "
+              "seguinte medida é 'Não foi possível localizar o endereço'."},
+    {"step": "endereco_nao_localizado_familia", "anchor": r"n[ãa]o foi poss[íi]vel localizar o endere[çc]o",
+     "reply": "", "noop": True, "notes": "📊 medido."},
+]
+
+# ---- o galho do CHAVEIRO (auto) -------------------------------------------
+_FAMILIA_YH_CHAVEIRO = [
+    {"step": "chave_o_que_aconteceu", "anchor": r"o que aconteceu com a chave",
+     "reply": "{chave_problema}", "requires": ["chave_problema"], "fallback_adaptive": True,
+     "only_subservices": ["chaveiro"],
+     "notes": "📊 yelum 1 · hdi 1. Opções: Dentro do veículo / Perda / Quebrou / Outros."},
+    {"step": "veiculo_trancado", "anchor": r"o ve[íi]culo est[áa] trancado",
+     "reply": "{veiculo_trancado}", "fallback_adaptive": True, "only_subservices": ["chaveiro"],
+     "notes": "📊 yelum 1."},
+]
+
+_FAMILIA_YH = (_FAMILIA_YH_TRONCO + _FAMILIA_YH_PNEU
+               + _FAMILIA_YH_GUINCHO + _FAMILIA_YH_CHAVEIRO)
+
+for _pb_yh in (YELUM_AUTO_WHATSAPP_V1, HDI_AUTO_WHATSAPP_V1,
+               YELUM_RESIDENCIAL_WHATSAPP_V1, HDI_RESIDENCIAL_WHATSAPP_V1):
+    _pb_yh["ura_steps"] = list(_pb_yh["ura_steps"]) + [dict(p) for p in _FAMILIA_YH]
+
+# 🔴 AS DUAS TELAS QUE NUNCA PODEM VIRAR PASSO.
+#    📊 yelum 2 telas / 2 ses · hdi 2 telas / 6 ses:
+#       "Houve vítimas no local? Botão 1: Sim Botão 2: Não"
+#       "A polícia foi acionada? Botão 1: Sim Botão 2: Não"
+#    Elas só aparecem depois de "Houve uma colisão" — que é SINISTRO. E
+#    `handoff_triggers` já tem `sinistro`, mas ele NÃO casa estas duas.
+#    Um corredor que responde "Não" a "Houve vítimas?" com base num slot que
+#    ninguém preencheu é a pior linha que este produto pode escrever.
+#
+#    E o RAMO DO CAMINHÃO (📊 8 telas / 2 sessões): tipo de caminhão, carroceria,
+#    eixos, para-choque, acessórios, altura, comprimento. Esses oito campos
+#    escolhem o EQUIPAMENTO DE REBOQUE (prancha, munck, cegonha) e o produto não
+#    tem nenhum deles — nem a InfoCap tem altura de carroceria. Mesma regra do
+#    `rb_NivelDaRua`: campo que escolhe equipamento não recebe chute.
+for _pb_yh in (YELUM_AUTO_WHATSAPP_V1, HDI_AUTO_WHATSAPP_V1):
+    _pb_yh["handoff_triggers"] = _pb_yh["handoff_triggers"] + [
+        r"houve v[íi]timas no local", r"a pol[íi]cia foi acionada",
+        r"tipo do caminh[ãa]o", r"tipo da carroceria", r"quantos eixos o caminh[ãa]o",
+        r"tipo do para-?choque", r"altura\*? do caminh[ãa]o",
+        r"comprimento\*? do caminh[ãa]o",
+    ]
+
+
+# ==========================================================================
+# AZUL — TRONCO e GALHO (SPEC-084 BLOCO 1, 22/08/2026)
+# ==========================================================================
+#
+# 🔴 A LIÇÃO QUE ORGANIZA ESTE BLOCO: **duas telas com contagem idêntica na
+#    mesma seguradora não são dois sinais — são UMA tela.**
+#    📊 O empate de 16 sessões (84,2%) medido na triagem — guincho = chaveiro =
+#    vidro = martelinho = carro reserva — são os RÓTULOS do menu-raiz
+#    "Selecione uma opção, por favor". Uma tela. Um sinal.
+#    Por isso metade dos passos abaixo é `noop`: são CARDÁPIO, e a ESCOLHA vem
+#    na bolha seguinte.
+_AZUL_TRONCO = [
+    {"step": "veiculo_por_placa", "anchor": r"voc[êe] quer atendimento para qual ve[íi]culo",
+     "dynamic": "vehicle_by_plate", "reply": "{veiculo_opcao}", "fallback_adaptive": True,
+     "notes": "📊 7 telas / 12 msgs / 11 sessões. Escolhe pela PLACA — '1' fixo pegou o "
+              "carro ERRADO numa apólice com 2 veículos (teste Allianz 12/07)."},
+
+    # ---- endereco: CINCO bolhas, UMA escolha ------------------------------
+    {"step": "endereco_intro", "anchor": r"para informar o endere[çc]o, voc[êe] tem essas op[çc][õo]es",
+     "reply": "", "noop": True, "notes": "📊 13 msgs / 8 sessões."},
+    {"step": "endereco_compartilhe",
+     "anchor": r"compartilhe a sua localiza[çc][ãa]o, selecionando o [íi]cone",
+     "reply": "", "noop": True, "notes": "📊 13 msgs / 8 ses. A URA pede o PIN nativo."},
+    {"step": "endereco_formulario", "anchor": r"se preferir, preencha o formul[áa]rio abaixo",
+     "reply": "", "noop": True, "notes": "📊 18 msgs / 11 sessões."},
+    {"step": "selecione_o_botao", "anchor": r"^selecione o bot[ãa]o:\s*$",
+     "reply": "", "noop": True, "notes": "📊 18 msgs / 11 ses. Rótulo do botão do formulário."},
+    # 🔴 O caso mais didático de CARDÁPIO x ESCOLHA da azul: 13 telas "distintas"
+    #    na árvore que são UMA tela (muda só o endereço). A ESCOLHA é a bolha
+    #    seguinte, "Está correto?", que `endereco_correto` já responde.
+    #    Responder à primeira é responder à confirmação um passo antes dela.
+    {"step": "localizei_o_endereco", "anchor": r"^localizei o endere[çc]o",
+     "reply": "", "noop": True, "notes": "📊 13 telas -> 1 passo · 13 msgs / 7 sessões."},
+    {"step": "falta_pouco_complemento", "anchor": r"falta pouco para finalizarmos essa etapa",
+     "reply": "", "noop": True, "notes": "📊 12 msgs / 7 sessões."},
+    {"step": "se_quiser_mudar_de_opcao", "anchor": r"se quiser mudar de op[çc][ãa]o, digite",
+     "reply": "", "noop": True, "notes": "📊 14 msgs / 7 sessões."},
+    {"step": "pedir_complemento", "anchor": r"digite ent[ãa]o um \*?complemento",
+     "reply": "{endereco_complemento}", "fallback_adaptive": True,
+     "notes": "📊 7 msgs / 7 ses. Default da própria URA: 'não tem'."},
+
+    # ---- o guincho: destino, e o taxi que chega DEPOIS do protocolo -------
+    {"step": "necessidade_guincho_lista",
+     "anchor": r"selecione a op[çc][ãa]o que descreve melhor a sua necessidade",
+     "reply": "Remoção de veículo", "only_subservices": ["guincho"],
+     "notes": "📊 5 msgs / 5 ses. ⚠️ A 2ª opção é 'Envolvimento em acidente' — isso é "
+              "SINISTRO, já coberto por `_AUTO_HANDOFF_TRIGGERS`. Quem pediu guincho "
+              "por colisão não sai por esta porta."},
+    {"step": "endereco_destino_intro", "anchor": r"vamos falar sobre o \*?endere[çc]o de destino",
+     "reply": "", "noop": True, "only_subservices": ["guincho"],
+     "notes": "📊 5 msgs / 5 ses. 🔴 É MARCA DE ESTADO: a bolha 'Digite o endereço "
+              "completo' aparece DUAS vezes na mesma sessão (origem e destino), e esta "
+              "é a única coisa que as separa. Ver PENDENCIAS."},
+    {"step": "sabe_destino_guincho", "anchor": r"voc[êe] j[áa] sabe onde o guincho deve levar",
+     "reply": "{tem_destino}", "fallback_adaptive": True, "only_subservices": ["guincho"],
+     "notes": "📊 5 msgs / 5 sessões."},
+    # 🔴 CHEGA DEPOIS DO PROTOCOLO: 📊 na sessão de 28/07/2026 o protocolo saiu às
+    #    19:13:42 e o táxi às 19:13:44. "Sim" abre um SEGUNDO serviço no nome do
+    #    segurado. "Não" é a única resposta segura sem pedido explícito.
+    {"step": "taxi_junto",
+     "anchor": (r"voc[êe] tamb[ée]m precisa solicitar um t[áa]xi|"
+                r"voc[êe] precisa tamb[ée]m solicitar um t[áa]xi"),
+     "reply": "Não", "notes": "📊 2 telas / 8 msgs / 7 sessões."},
+
+    # ---- o galho do TECNICO: AGENDADO, nao "agora" ------------------------
+    # 🔴 `tecnico` NÃO é subserviço declarado — `subservice_supported` devolve
+    #    False e o caso vai a handoff. Os passos ficam registrados, não ligados.
+    {"step": "tecnico_agendamento", "anchor": r"vou te ajudar com o agendamento de um t[ée]cnico",
+     "reply": "", "noop": True, "notes": "📊 1 msg / 1 sessão. NÃO ESTABELECIDA."},
+    {"step": "tecnico_data", "anchor": r"informe para quando voc[êe] quer agendar o servi[çc]o",
+     "reply": "{data_agendamento}", "fallback_adaptive": True, "notes": "📊 1/1."},
+    {"step": "tecnico_periodo", "anchor": r"qual per[íi]odo voc[êe] prefere",
+     "reply": "{periodo_opcao}", "fallback_adaptive": True, "notes": "📊 1/1."},
+    {"step": "tecnico_horario", "anchor": r"^e qual hor[áa]rio\?",
+     "reply": "{horario_rotulo}", "fallback_adaptive": True, "notes": "📊 1/1."},
+
+    # ---- DINHEIRO: nunca respondido automaticamente ------------------------
+    # 🔴 O gêmeo azul da franquia da zurich. 📊 3 de 19 sessões chegaram aqui.
+    {"step": "excedente_de_km", "anchor": r"superior ao limite de \d+ quil[ôo]metros",
+     "reply": "", "noop": True,
+     "notes": "📊 3 msgs / 3 sessões. 'o prestador poderá cobrar pelo excedente'. O "
+              "texto vai ao dossiê; a tela seguinte ('Gostaria de continuar o "
+              "agendamento?') é APROVAÇÃO, e está em `handoff_triggers`."},
+
+    # ---- avisos e fim -----------------------------------------------------
+    {"step": "aguarde_solicitando", "anchor": r"aguarde enquanto solicito o (?:seu )?servi[çc]o",
+     "reply": "", "noop": True, "notes": "📊 2 telas / 11 msgs / 11 sessões."},
+    {"step": "importante_18_anos", "anchor": r"[ée] necess[áa]rio ter algu[ée]m maior de 18 anos",
+     "reply": "", "noop": True, "notes": "📊 3 telas / 10 msgs / 10 sessões."},
+    {"step": "ainda_quer_continuar", "anchor": r"voc[êe] ainda quer continuar o seu atendimento",
+     "reply": "Sim",
+     "notes": "📊 8 msgs / 8 ses. 🔴 A resposta certa depende do run (com protocolo, "
+              "'Sim' reabre conversa encerrada). O passo não vê o run — ver PENDENCIAS."},
+    {"step": "avaliacao_convite", "anchor": r"a sua opini[ãa]o [ée] muito importante",
+     "reply": "", "noop": True, "notes": "📊 2 telas / 8 msgs / 7 sessões."},
+    {"step": "encerrar_conversa_azul",
+     "anchor": r"vou encerrar a conversa|quando precisar,? [ée] s[óo] chamar",
+     "reply": "", "noop": True, "notes": "📊 7 telas -> 1 passo · 11 msgs / 11 sessões."},
+    # 🔴 POR ULTIMO: alternativa larga emudece menu que o corredor sabe ler.
+    {"step": "nao_entendi_azul",
+     "anchor": (r"n[ãa]o entendi sua resposta|n[ãa]o entendi o que voc[êe] digitou|"
+                r"ainda n[ãa]o consegui entender|"
+                r"n[ãa]o entendi\. por favor, preciso que digite no formato"),
+     "reply": "", "noop": True, "notes": "📊 5 telas / 7 msgs / 3 sessões."},
+]
+AZUL_AUTO_WHATSAPP_V1["ura_steps"] = (
+    list(AZUL_AUTO_WHATSAPP_V1["ura_steps"]) + [dict(p) for p in _AZUL_TRONCO]
+)
+AZUL_AUTO_WHATSAPP_V1["handoff_triggers"] = AZUL_AUTO_WHATSAPP_V1["handoff_triggers"] + [
+    r"n[ãa]o consegui localizar o servi[çc]o sobre o qual",
+    # 🔴 DINHEIRO: quem decide gastar o dinheiro do segurado é o segurado.
+    r"gostaria de continuar o agendamento",
+]
+
+# ==========================================================================
+# ZURICH — TRONCO, GALHO e FOLHA (SPEC-084 BLOCO 1, 22/08/2026)
+# ==========================================================================
+#
+# 🔴 O ACHADO QUE REESCREVE O ENUNCIADO: a zurich NÃO é 89% vazia.
+#    📊 Atribuindo cada tela órfã à sessão em que apareceu:
+#       963f4097  107 telas EXCLUSIVAS -> SINISTRO DE COLISÃO
+#       4118ba36   19 telas EXCLUSIVAS -> CONSULTAR PAGAMENTOS
+#       d5ce1862   12 telas EXCLUSIVAS -> ACOMPANHAR PROCESSO
+#       9f7dbd91 + 8e5fb8c0 -> ASSISTÊNCIA 24h  <- o corredor
+#    **127 das 186 órfãs (68%) pertencem a três URAs que o corredor não faz.**
+#    `sinistro` e `colisão` já são `handoff_triggers`; pagamento e
+#    acompanhamento de processo não são subserviços.
+#    📊 O buraco real da zurich é 59 telas, não 186.
+_ZURICH_TRONCO = [
+    {"step": "rodape_tirar_duvidas", "anchor": r"clique no bot[ãa]o \*?tirar d[úu]vidas",
+     "reply": "", "noop": True, "notes": "📊 11 msgs / 9 sessões. Rodapé do cardápio."},
+    {"step": "saudacao_laiz", "anchor": r"assistente virtual da zurich", "reply": "", "noop": True,
+     "notes": "📊 2 telas / 9 msgs / 8 ses. 🔴 A redação estreita ('sou a assistente "
+              "virtual') perderia a 2ª variante ('Eu sou a Laiz, assistente virtual')."},
+    {"step": "optin_comunicacoes", "anchor": r"aceita receber comunica[çc][õo]es da zurich por esse canal",
+     "reply": "Sim", "notes": "📊 1/1."},
+    {"step": "optin_assistente", "anchor": r"deseja ser atendido pela laiz", "reply": "Sim",
+     "notes": "📊 1/1."},
+    {"step": "direcionar_menu", "anchor": r"vou direcionar voc[êe] para nosso menu principal",
+     "reply": "", "noop": True, "notes": "📊 1/1."},
+    {"step": "aviso_seguranca", "anchor": r"nunca compartilhe informa[çc][õo]es pessoais",
+     "reply": "", "noop": True, "notes": "📊 6 msgs / 4 sessões."},
+    {"step": "aviso_escopo_assist24h", "anchor": r"aqui voc[êe] vai \*?acionar a assist[êe]ncia 24h",
+     "reply": "", "noop": True,
+     "notes": "📊 5 msgs / 4 ses. CARDÁPIO: descreve o escopo. A escolha é 'Você deseja "
+              "acionar a assistência 24h ou acionar o seguro?', que já tem passo."},
+    {"step": "aviso_5_minutos", "anchor": r"responda a mensagem em at[ée] 5 minutos",
+     "reply": "", "noop": True, "notes": "📊 2 msgs / 1 sessão."},
+    {"step": "ainda_esta_por_ai", "anchor": r"voc[êe] ainda est[áa] por a[íi]", "reply": "Sim",
+     "notes": "📊 2 telas / 6 msgs / 6 ses. 🔴 Mesma ressalva do `ainda_quer_continuar` "
+              "da azul: sem ver o run, 'Sim' depois do protocolo reabre conversa "
+              "encerrada. Ver PENDENCIAS."},
+
+    # ---- o CARDAPIO do veiculo, e a ORDEM que se INVERTE -------------------
+    # 🔴 📊 A ordem das duas telas SE INVERTE entre as sessões:
+    #      9f7dbd91: pergunta -> lista      8e5fb8c0: lista -> pergunta
+    #    Sem `noop` na lista, metade das sessões responde à tela errada.
+    {"step": "lista_de_veiculos", "anchor": r"o ve[íi]culo encontrado com a placa digitada",
+     "reply": "", "noop": True,
+     "notes": "📊 3 msgs / 2 ses. CARDÁPIO. A escolha é 'Esse é o veículo que precisa "
+              "de assistência? 1-Sim 2-Não'."},
+
+    # ---- a arvore das PANES: onde guincho e bateria se separam ------------
+    # 🔴 IDENTIFICADA, NÃO ESTABELECIDA (n = 1, sessão 9f7dbd91, 23/02/2026).
+    #    Escrita mesmo assim porque o texto é literal e a alternativa é o cérebro
+    #    adivinhar numa tela que escolhe EQUIPAMENTO.
+    {"step": "sabe_o_que_ocorreu", "anchor": r"voc[êe] sabe o que ocorreu com o ve[íi]culo",
+     "reply": "2", "only_subservices": ["guincho", "bateria"],
+     "notes": "📊 1/1. 1-Não (PULA a desambiguação) 2-Sim. O corredor SABE — a atendente "
+              "coletou `problema_descricao`. Responder 1 jogaria fora a informação que "
+              "separa bateria de guincho."},
+    {"step": "o_que_houve_panes",
+     "anchor": r"o que houve\?[\s\S]{0,12}1\W{0,4}problema de bateria",
+     "reply": "{pane_opcao}", "requires": ["pane_opcao"], "fallback_adaptive": True,
+     "only_subservices": ["guincho", "bateria"],
+     "notes": "📊 1/1. 1=BATERIA 2=partida 4=câmbio 6=motor 10=alternador. 🔴 SEM reply "
+              "fixo: `subservice_menu_map` manda 4 (Panes) para guincho E bateria; é "
+              "ESTA tela que separa. ⚠️ `[\\s\\S]{0,12}` e não `.{0,12}` — a URA quebra "
+              "linha depois do '?'."},
+    {"step": "tipo_cambio", "anchor": r"qual [ée] o tipo de c[âa]mbio",
+     "reply": "{cambio_opcao}", "requires": ["cambio_opcao"], "fallback_adaptive": True,
+     "notes": "📊 1/1. 1-Manual 2-Automático. SEM default: automático travado exige "
+              "PRANCHA, manual não."},
+    {"step": "alavanca_travada", "anchor": r"a alavanca est[áa] travada",
+     "reply": "{alavanca_travada_opcao}", "requires": ["alavanca_travada_opcao"],
+     "fallback_adaptive": True, "notes": "📊 1/1. SEM default: decide o EQUIPAMENTO."},
+
+    # ---- o galho do PNEU ---------------------------------------------------
+    {"step": "veiculo_blindado", "anchor": r"o ve[íi]culo [ée] blindado", "reply": "2",
+     "fallback_adaptive": True, "notes": "📊 1/1. Default Não; blindado muda o guincho."},
+    {"step": "mais_de_um_pneu", "anchor": r"mais de 1 pneu est[áa] danificado",
+     "reply": "{pneus_danificados_opcao}", "requires": ["pneus_danificados_opcao"],
+     "fallback_adaptive": True, "only_subservices": ["pneu"],
+     "notes": "📊 1/1. 🔴 SEM default: 'Sim' vira guincho, 'Não' vira borracheiro."},
+    {"step": "tem_estepe", "anchor": r"possui estepe, macaco e chave de rodas",
+     "reply": "{estepe_opcao}", "requires": ["estepe_opcao"], "fallback_adaptive": True,
+     "only_subservices": ["pneu"],
+     "notes": "📊 1/1. 🔴 SEM default: sem estepe não há troca, há reboque."},
+    {"step": "lugar_seguro_zurich", "anchor": r"voc[êe] est[áa] em um lugar seguro",
+     "reply": "{local_seguro_opcao}", "requires": ["local_seguro_opcao"],
+     "fallback_adaptive": True,
+     "notes": "📊 1/1. 🔴 SEM default — responder 'seguro' por preguiça rebaixa, no "
+              "escuro, a prioridade de quem está parado num lugar perigoso."},
+
+    # ---- o endereco MANUAL (quando o geocode falha): 9 elos ---------------
+    # 🔴 `endereco_detalhado` já responde "1" para ENTRAR neste ramo, e nenhum dos
+    #    8 passos seguintes existia. Cada elo sem passo custa ~14s numa URA que
+    #    declara encerrar por inatividade em 5 minutos.
+    {"step": "endereco_nao_identificado",
+     "anchor": r"n[ãa]o identifiquei um endere[çc]o a partir da sua localiza[çc][ãa]o",
+     "reply": "", "noop": True, "notes": "📊 1/1."},
+    {"step": "preciso_de_informacoes", "anchor": r"okay! preciso de algumas informa[çc][õo]es",
+     "reply": "", "noop": True, "notes": "📊 1/1."},
+    {"step": "pedir_cep_zurich", "anchor": r"me informe seu cep",
+     "reply": "{endereco_cep}", "fallback_adaptive": True, "notes": "📊 1/1."},
+    {"step": "pedir_rua", "anchor": r"qual o nome da rua",
+     "reply": "{endereco_rua}", "fallback_adaptive": True, "notes": "📊 1/1."},
+    {"step": "pedir_numero_endereco", "anchor": r"qual o n[úu]mero do endere[çc]o que voc[êe] est[áa]",
+     "reply": "{endereco_numero}", "fallback_adaptive": True, "notes": "📊 1/1."},
+    # 🔴 `^` OBRIGATÓRIO: sem ele `qual o bairro` casaria "Em qual *bairro*
+    #    ocorreu?" do fluxo de SINISTRO, que vive no mesmo playbook.
+    #    Medido: com `^`, 1 tela cada; sem `^`, 2.
+    {"step": "pedir_bairro", "anchor": r"^\s*qual o bairro",
+     "reply": "{endereco_bairro}", "fallback_adaptive": True, "notes": "📊 1/1."},
+    {"step": "pedir_cidade", "anchor": r"e a cidade, qual [ée]",
+     "reply": "{endereco_cidade}", "fallback_adaptive": True, "notes": "📊 1/1."},
+    {"step": "pedir_estado", "anchor": r"^\s*qual o estado",
+     "reply": "{endereco_uf}", "fallback_adaptive": True, "notes": "📊 1/1."},
+    {"step": "resumo_do_endereco", "anchor": r"segue o resumo dos dados informados",
+     "reply": "", "noop": True,
+     "notes": "📊 1/1. CARDÁPIO: a escolha é 'Os dados estão corretos?', que já tem passo."},
+
+    # ---- o DESFECHO --------------------------------------------------------
+    {"step": "endereco_para_solicitar", "anchor": r"vamos solicitar sua assistencia para o endere[çc]o",
+     "reply": "", "noop": True,
+     "notes": "📊 2 telas / 2 ses. CARDÁPIO: a escolha é 'Podemos confirmar a "
+              "solicitação? 1-Sim 2-Alterar endereço'."},
+    {"step": "aguarde_finalizando", "anchor": r"estamos finalizando sua solicita[çc][ãa]o",
+     "reply": "", "noop": True, "notes": "📊 2/2."},
+    {"step": "assistencia_solicitada_zurich", "anchor": r"sua assist[êe]ncia foi solicitada",
+     "reply": "", "noop": True, "notes": "📊 2/2. É o DESFECHO; quem lê o número é `protocol`."},
+    {"step": "chegada_prevista_zurich", "anchor": r"chegada do profissional prevista para o dia",
+     "reply": "", "noop": True,
+     "notes": "📊 2/2. 🔴 A zurich promete DATA e HORA ('prevista para o dia DD/MM às "
+              "HH:MM'), não 'em N minutos'. Vai a `expectativa_do_desfecho`."},
+    {"step": "telefones_acompanhamento", "anchor": r"para acompanhar o status da assist[êe]ncia 24h",
+     "reply": "", "noop": True, "notes": "📊 2/2. 0800 729 1400 · +55 11 4133 6932."},
+    {"step": "como_continuar_agora", "anchor": r"como voc[êe] quer continuar agora",
+     "reply": "Encerrar atendimento", "notes": "📊 2/2."},
+    {"step": "pesquisa_convite", "anchor": r"responda a pesquisa a seguir", "reply": "", "noop": True,
+     "notes": "📊 5 msgs / 3 sessões."},
+    {"step": "pesquisa_nps", "anchor": r"o quanto voc[êe] recomenda o chat da zurich",
+     "reply": "", "noop": True, "notes": "📊 8 msgs / 3 sessões."},
+    {"step": "encerramento_zurich",
+     "anchor": r"vou encerrar (?:nosso|seu) atendimento|encerro seu atendimento por aqui",
+     "reply": "", "noop": True, "notes": "📊 2 telas / 10 msgs / 9 sessões."},
+    {"step": "nao_entendi_opcao",
+     "anchor": (r"n[ãa]o entendi a op[çc][ãa]o escolhida|"
+                r"ainda n[ãa]o entendi o que voc[êe] (?:digitou|escolheu)|"
+                r"poxa, n[ãa]o entendi"),
+     "reply": "", "noop": True, "notes": "📊 4 telas / 7 msgs / 5 sessões."},
+]
+ZURICH_AUTO_WHATSAPP_V1["ura_steps"] = (
+    list(ZURICH_AUTO_WHATSAPP_V1["ura_steps"]) + [dict(p) for p in _ZURICH_TRONCO]
+)
+
+# 🔴 O QUE **NÃO** VIRA PASSO NA ZURICH — e a razão de cada um.
+ZURICH_AUTO_WHATSAPP_V1["handoff_triggers"] = ZURICH_AUTO_WHATSAPP_V1["handoff_triggers"] + [
+    # 📊 2 telas / 4 msgs / 3 sessões. Quando a URA chega aqui o corredor já
+    #    errou TRÊS respostas. Responder mais uma vez é insistir.
+    r"continuo sem entender",
+    # 📊 4 msgs / 3 sessões. É a porta do fluxo de SINISTRO.
+    r"escolha o servi[çc]o que deseja acessar",
+    # 🔴 DINHEIRO. 📊 "*Franquia*: R$ 18.189,16" seguida de "Podemos continuar com
+    #    o serviço?". Aceitar um custo em nome do segurado é decisão comercial
+    #    DELE. A parada tem de ser explícita, e o valor vai ao dossiê.
+    r"verifique as informa[çc][õo]es do seguro[\s\S]{0,80}franquia",
+]
+
+# 🔴 O NÚMERO DO PROCESSO NÃO É PROTOCOLO DE ASSISTÊNCIA.
+#    📊 "*Número do processo:* 31.26.333122.01" é o número do SINISTRO. Pô-lo em
+#    `protocol` faria o corredor de assistência encerrar um caso com o número de
+#    um processo de colisão. Âncora própria, usada só no dossiê do handoff.
+#    CONTROLE: o grupo aceita PONTO — que é o que uma âncora de dígitos
+#    contíguos perderia — e NÃO casa "Qual é o número do processo?" (sem dígitos).
+ZURICH_AUTO_WHATSAPP_V1["capture_anchors"] = {
+    **ZURICH_AUTO_WHATSAPP_V1["capture_anchors"],
+    "processo_sinistro": r"n[úu]mero do processo:?\s*\*?(\d{2}\.\d{2}\.\d{4,8}\.\d{2})",
+}
+
+
+# ==========================================================================
+# BRADESCO — a ESCADA DE ENDERECO, e ela e pedida DUAS vezes
+# ==========================================================================
+#
+# 📊 A URA do bradesco não aceita endereço livre: pede degrau a degrau, e pede
+#    DUAS escadas (origem e destino). O par CIDADE parecia inseparável e não é —
+#    🔴 **a vírgula depois de "Agora" separa as duas com 100% de precisão**:
+#
+#      origem : "AGORA, o nome da *cidade*. Exemplos:..."     (com vírgula)
+#      destino: "Ok, AGORA o nome da *cidade*. Exemplo:..."   (sem vírgula)
+#
+#    As duas âncoras são DISJUNTAS, e por isso não dependem da ordem da lista.
+#
+# ⚠️ `inject_address_slots` já deriva `local_uf/cidade/rua/numero` e `destino_*`
+#    de `local_atual`/`local_destino`. **Nenhum slot novo é preciso.**
+_BRADESCO_ENDERECO = [
+    {"step": "local_uf", "anchor": r"nome do estado, onde seu ve[íi]culo est[áa]",
+     "reply": "{local_uf}", "fallback_adaptive": True, "notes": "📊 1 tela / 3 sessões."},
+    {"step": "local_cidade", "anchor": r"agora, o nome da cidade",
+     "reply": "{local_cidade}", "fallback_adaptive": True,
+     "notes": "📊 1 tela / 3 ses. 🔴 A VÍRGULA É A ÂNCORA."},
+    {"step": "local_rua", "anchor": r"agora preciso do nome da rua",
+     "reply": "{local_rua}", "fallback_adaptive": True, "notes": "📊 1 tela / 4 sessões."},
+    {"step": "local_numero", "anchor": r"n[úu]mero mais pr[óo]ximo, de onde seu ve[íi]culo",
+     "reply": "{local_numero}", "fallback_adaptive": True,
+     "notes": "📊 2 telas / 3 ses — cobre 'vai estar?' e 'está' com uma âncora só."},
+    {"step": "ponto_referencia_bradesco", "anchor": r"me informa um ponto de refer[êe]ncia",
+     "reply": "{ponto_referencia}", "fallback_adaptive": True,
+     "notes": "📊 1 tela / 4 ses. Se não houver, 'não tem'."},
+    {"step": "destino_uf", "anchor": r"nome do estado, pra onde voc[êe] quer levar",
+     "reply": "{destino_uf}", "fallback_adaptive": True, "only_subservices": ["guincho"],
+     "notes": "📊 1 tela / 4 sessões."},
+    {"step": "destino_cidade", "anchor": r"ok, agora o nome da cidade",
+     "reply": "{destino_cidade}", "fallback_adaptive": True, "only_subservices": ["guincho"],
+     "notes": "📊 1 tela / 4 ses. 🔴 SEM vírgula depois de 'agora' — é o destino."},
+    {"step": "destino_numero", "anchor": r"informa o n[úu]mero,\s*de onde voc[êe] quer levar",
+     "reply": "{destino_numero}", "fallback_adaptive": True, "only_subservices": ["guincho"],
+     "notes": "📊 1 tela / 4 ses. A VÍRGULA de novo: 'o *número*,' (destino) vs "
+              "'o *número* mais próximo' (origem). `\\s*` porque `_norm` não colapsa espaço."},
+]
+_BRADESCO_TRONCO = [
+    # ---- agendamento: ANTES do noop, porque a 2a redacao comeca com "Nao entendi!"
+    {"step": "agendamento_dia", "anchor": r"qual dia voc[êe] prefere fazer o agendamento",
+     "reply": "Hoje",
+     "notes": "📊 2 telas / 2 ses. 🔴 TEM de vir ANTES do noop: a 2ª redação começa com "
+              "'Não entendi!', que o noop também casa. Se o noop viesse antes, o corredor "
+              "ficaria MUDO diante de um menu que sabe responder, e a URA encerraria por "
+              "inatividade."},
+    {"step": "agendamento_hora_bradesco", "anchor": r"qual o melhor hor[áa]rio",
+     "reply": "{hora_agendamento}", "fallback_adaptive": True,
+     "notes": "📊 1 tela / 2 ses. Formato ESTRITO HH:MM 24h."},
+    {"step": "agendamento_confirma", "anchor": r"quer agendar a assist[êe]ncia pra",
+     "reply": "Confirmar",
+     "notes": "📊 2 telas / 2 ses. 🔴 A âncora para ANTES da hora, que é dinâmica — uma "
+              "âncora com '14h00' casaria 1 tela e morreria amanhã."},
+    {"step": "agendamento_minimo_2h", "anchor": r"agendamento para um per[íi]odo inferior a duas horas",
+     "reply": "Sim",
+     "notes": "📊 1/1. 🔴 REGRA DA SEGURADORA: agendamento mínimo 2h de antecedência. "
+              "Vai a `regras_para_o_cliente` — o cliente precisa ouvir isso ANTES."},
+
+    # ---- veiculo e endereco -----------------------------------------------
+    {"step": "endereco_confirma_bradesco",
+     "anchor": r"j[áa] consegui te localizar[\s\S]{0,120}endere[çc]o est[áa] correto",
+     "reply": "Sim",
+     "notes": "📊 1/1. ⚠️ `[\\s\\S]{0,120}` — a tela tem 3 quebras e `.` não casa `\\n`."},
+    {"step": "rodas_travadas", "anchor": r"rodas est[ãa]o travadas", "reply": "Não",
+     "notes": "📊 1 tela / 2 ses. ⚠️ A âncora da família Allianz (`rodas? travadas?`) é "
+              "larga demais para importar: casaria a tela da HDI que lista várias "
+              "condições ao mesmo tempo."},
+    {"step": "placa_nao_encontrada", "anchor": r"n[ãa]o encontrei esta placa no meu sistema",
+     "reply": "{veiculo_placa}", "requires": ["veiculo_placa"],
+     "notes": "📊 1/1. 🔴 UMA repetição, não duas: a 2ª falha leva a 'Por este canal não "
+              "podemos seguir', que é handoff."},
+    {"step": "reentrada_confirma_veiculo",
+     "anchor": (r"vou continuar seu atendimento aqui no whatsapp[\s\S]{0,200}"
+                r"as informa[çc][õo]es est[ãa]o corretas"),
+     "reply": "Sim", "dynamic": "vehicle_by_plate", "fallback_adaptive": True,
+     "notes": "📊 1/1. 🔴 Esta tela DISPARAVA o freio (`as informações estão corretas`) "
+              "no turno 28/28 — e ela é REENTRADA, não confirmação final."},
+    {"step": "desfecho_sem_numero",
+     "anchor": (r"o agendamento t[áa] confirmado|"
+                r"logo mais, a sua assist[êe]ncia j[áa] ser[áa] acionada"),
+     "reply": "", "noop": True,
+     "notes": "📊 2 telas / 3 sessões. 🔴 A ARMADILHA CONFIRMADA: `app.europ.com.br` "
+              "sozinho casaria 4 telas em 4 sessões e só 2 são desfecho — as outras são "
+              "'Por este canal não podemos seguir' e 'encerrando por falta de interação'. "
+              "A âncora NÃO usa o domínio."},
+
+    # ---- o noop largo, POR ULTIMO ------------------------------------------
+    # ⚠️ A tela "1. Toque em Enviar Localização. 2. Escolha..." tem "1." e "2." e
+    #    NÃO é menu. Só o noop impede o cérebro de responder "1".
+    {"step": "avisos_informativos_bradesco",
+     "anchor": (r"cad[êe] voc[êe]\? vou encerrar seu atendimento|ainda n[ãa]o entendi|"
+                r"n[ãa]o entendi!|obrigado por entrar em contato conosco|"
+                r"aguarde um momento enquanto aciono meu sistema|"
+                r"ainda n[ãa]o consegui te localizar|toque em enviar localiza[çc][ãa]o|"
+                r"jeito mais f[áa]cil de me ajudar a te encontrar|como foi o servi[çc]o de"),
+     "reply": "", "noop": True, "notes": "📊 12 telas / 5 sessões."},
+]
+BRADESCO_AUTO_WHATSAPP_V1["ura_steps"] = (
+    list(BRADESCO_AUTO_WHATSAPP_V1["ura_steps"])
+    + [dict(p) for p in _BRADESCO_ENDERECO + _BRADESCO_TRONCO]
+)
+# 📊 3 sessões de 6. O gatilho declarado hoje pega só a primeira das três.
+BRADESCO_AUTO_WHATSAPP_V1["handoff_triggers"] = BRADESCO_AUTO_WHATSAPP_V1["handoff_triggers"] + [
+    r"estamos com problemas para continuar seu atendimento",
+    r"encerrando este atendimento por falta de intera[çc][ãa]o",
+]
+
+# ==========================================================================
+# MAPFRE — 📊 ZERO de 6 sessoes abriram assistencia
+# ==========================================================================
+#
+# 🔴 E o achado estrutural: **são DOIS bots, não um.**
+#      BOT DO SEGURADO  -> a tecla se chama "Assistência 24H"
+#      BOT DO CORRETOR  -> a tecla se chama "Assistência"   (entra por código)
+#    `subservice_menu_map` declara o primeiro para as 4 rotas. Para qual dos
+#    dois a corretora escreve **não está no acervo** — ver PENDENCIAS.
+_MAPFRE_TRONCO = [
+    # 🔴 O CONTROLE QUE IMPORTA: a âncora ingênua `sobre qual assunto você quer
+    #    falar` casava 2 telas — roubava o menu do CORRETOR, que tem OUTRAS
+    #    opções. `[\s\S]{0,60}` porque `.` NÃO casa `\n` em Python.
+    {"step": "menu_assunto_veiculo",
+     "anchor": r"no atendimento de seguros para ve[íi]culos[\s\S]{0,60}sobre qual assunto",
+     "reply": "{assunto_opcao}", "requires": ["assunto_opcao"], "fallback_adaptive": True,
+     "notes": "📊 1 tela / 3 sessões. LISTA (rótulo). ⚠️ A máscara do corpus comeu o "
+              "'24H' do rótulo — conferir a grafia na tela real antes de fixar."},
+    {"step": "menu_assunto_corretor", "anchor": r"escolher sobre qual assunto voc[êe] quer falar",
+     "reply": "Assistência",
+     "notes": "📊 1 tela / 1 sessão. Canal do CORRETOR. 🔴 Rótulo DIFERENTE do bot do "
+              "segurado — SEM '24H'. Tecla errada = assunto errado."},
+    {"step": "codigo_corretor", "anchor": r"digite o seu c[óo]digo de corretor",
+     "reply": "{codigo_corretor}", "requires": ["codigo_corretor"], "fallback_adaptive": True,
+     "notes": "📊 1/1. 🔴 SLOT NOVO, e é PENDÊNCIA DE CONFIGURAÇÃO da corretora, não de "
+              "coleta do segurado. Sem ele o canal do corretor não abre."},
+    {"step": "perfil_segurado",
+     "anchor": r"voc[êe] [ée] segurado ou terceiro|em qual perfil voc[êe] se encaixa",
+     "reply": "Segurado", "notes": "📊 2 telas / 2 sessões."},
+    {"step": "protocolo_agiliza", "anchor": r"voc[êe] j[áa] possui um protocolo aberto pelo",
+     "reply": "Não", "notes": "📊 1/1."},
+    {"step": "algo_mais_mapfre", "anchor": r"posso te ajudar em algo mais", "reply": "Não",
+     "notes": "📊 1 tela / 2 ses. ⚠️ Na TOKIO a MESMA pergunta tem outros rótulos "
+              "('Outro serviço/Menu inicial/Encerrar'). Duas seguradoras, duas respostas."},
+    {"step": "deflexao_portal",
+     "anchor": (r"portal do cliente mapfre|clique no link e fale com nosso agente conversacional|"
+                r"preencher o formul[áa]rio pelo link|por qual canal voc[êe] deseja seguir|"
+                r"comunique seu sinistro de forma r[áa]pida"),
+     "reply": "", "noop": True,
+     "notes": "📊 5 telas. Todas do galho SINISTRO: a mapfre deflexiona sinistro para o "
+              "portal. É DESFECHO_NEGATIVO deste canal, não assistência."},
+    {"step": "pesquisa_satisfacao_mapfre",
+     "anchor": (r"grau de satisfa[çc][ãa]o com o atendimento|"
+                r"principal motivo para voc[êe] dar essa nota|"
+                r"acompanhamento da sua solicita[çc][ãa]o est[áa] sendo satisfat[óo]rio|"
+                r"voc[êe] conseguiu fazer o que precisava|"
+                r"voc[êe] conseguiu comunicar o seu sinistro"),
+     "reply": "", "noop": True, "notes": "📊 5 telas / 2 sessões."},
+    # 🔴 O noop largo, POR ÚLTIMO — e o que EU TIREI dele, medido:
+    #    a alternativa `voc[êe] est[áa] no atendimento de` ROUBAVA o menu de
+    #    assunto (a tela que abre as 4 rotas). Removida.
+    #    **Prova de que "noop por último" não basta sozinho: uma alternativa
+    #    larga demais precisa SAIR, não só descer na lista.**
+    {"step": "avisos_informativos_mapfre",
+     "anchor": (r"respeita e cumpre as exig[êe]ncias previstas na|"
+                r"l[íi]ngua brasileira de sinais|"
+                r"pode digitar sair (?:a qualquer momento )?para encerrar|"
+                r"aguardo sua reposta para continuar|"
+                r"nossa conversa ser[áa] encerrada em alguns minutos|"
+                r"agradece o seu contato|vamos seguir com o seu atendimento agora|"
+                r"obrigado pelas informa[çc][õo]es|que bom falar com voc[êe]|"
+                r"estou aqui pra te ajudar|pronto, voc[êe] est[áa] na [áa]rea de|"
+                r"em at[ée] 24 horas [úu]teis seu sinistro|"
+                r"em caso de d[úu]vidas voc[êe] pode entrar em contato|"
+                r"a vistoria no ve[íi]culo|obrigada pela confirma[çc][ãa]o|"
+                r"quando precisar de ajuda sobre seu processo|"
+                r"basta iniciar uma conversa e selecionar|"
+                r"estamos sempre [àa] disposi[çc][ãa]o|"
+                r"o n[úu]mero de protocolo para este atendimento"),
+     "reply": "", "noop": True,
+     "notes": "📊 15 telas / 5 sessões. ⚠️ 'O número de protocolo para este atendimento' "
+              "é do CARRO RESERVA e vem antes da transferência humana — é carimbo de "
+              "atendimento, não número de serviço."},
+]
+MAPFRE_AUTO_WHATSAPP_V1["ura_steps"] = (
+    list(MAPFRE_AUTO_WHATSAPP_V1["ura_steps"]) + [dict(p) for p in _MAPFRE_TRONCO]
+)
+
+# ==========================================================================
+# ALFA — 🔴 10 das 18 orfas sao telas da ALLIANZ, PALAVRA POR PALAVRA
+# ==========================================================================
+#
+# `ALFA_AUTO_WHATSAPP_V1` faz `[dict(s) for s in _ALLIANZ_FAMILY_AUTO_STEPS]`.
+# 📊 Comparando `_norm` de toda tela alfa contra toda tela allianz: 10 das 18
+#    órfãs são idênticas. **Escrever esses 10 na FAMÍLIA paga alfa e allianz na
+#    mesma edição.** Escrevê-los na alfa cria a segunda cópia — e é assim que
+#    nasce o `cpf_anterior` corrigido de um lado e vencido do outro.
+_ALFA_ALLIANZ_FAMILIA = [
+    {"step": "selecionar_endereco_veiculo", "anchor": r"selecione o endere[çc]o onde est[áa] o ve[íi]culo",
+     "reply": "1", "fallback_adaptive": True,
+     "notes": "📊 3 sessões. 1 = o endereço da apólice; 2 = outra localização. Se o local "
+              "do caso for outro, o adaptativo assume."},
+    {"step": "endereco_confirma_alfa", "anchor": r"o endere[çc]o [ée]:[\s\S]{0,140}confirma",
+     "reply": "1",
+     "notes": "📊 2 telas / 2 ses. ⚠️ `[\\s\\S]{0,140}` porque `.` não casa `\\n` e o "
+              "endereço fica entre as duas frases. ⚠️ A ALLIANZ tem uma 3ª variante "
+              "('*3 -* Alterar número') — o passo tolera sem responder '3'."},
+    {"step": "servico_complementar", "anchor": r"precisa de algum servi[çc]o complementar",
+     "reply": "2",
+     "notes": "📊 2 sessões. 2 = Não. O corredor abre O QUE o cliente pediu, um por vez."},
+    {"step": "confirmar_numero_endereco", "anchor": r"precisamos confirmar o n[úu]mero do endere[çc]o",
+     "reply": "{local_numero}", "fallback_adaptive": True, "notes": "📊 1 sessão."},
+    # ---- o galho do PNEU: as duas telas que decidem COBERTURA -------------
+    {"step": "pneus_furados", "anchor": r"quantos pneus furaram",
+     "reply": "{pneus_furados_opcao}", "requires": ["pneus_furados_opcao"],
+     "fallback_adaptive": True, "only_subservices": ["pneu"],
+     "notes": "📊 1/1. 🔴 SEM reply fixo — a tecla errada abre o chamado errado."},
+    {"step": "equipamentos_troca", "anchor": r"equipamentos para troca \(chave de roda",
+     "reply": "{equipamentos_troca_opcao}", "requires": ["equipamentos_troca_opcao"],
+     "fallback_adaptive": True, "only_subservices": ["pneu"],
+     "notes": "📊 1/1. 🔴 TAMBÉM sem reply fixo: '2' (não tem step) muda o serviço de "
+              "borracheiro para REBOQUE. É pergunta de cobertura disfarçada de sim/não."},
+    # ---- desfecho e avisos -------------------------------------------------
+    {"step": "desfecho_protocolo_alfa", "anchor": r"protocolo:\s*\d|receber[áa] um link por sms",
+     "reply": "", "noop": True,
+     "notes": "📊 3 telas / 3 sessões. `_ANCORA_DE_PROTOCOLO` já captura os três "
+              "(50274607, 51314713, 52675121); o passo é só para o motor não responder."},
+    # 🔴 UM DESFECHO_NEGATIVO NÃO PODE DIVIDIR PASSO COM "aguarde em local seguro":
+    #    um encerra o caso, o outro manda ficar calado. Por isso ele é separado.
+    {"step": "central_sem_atendimento", "anchor": r"no momento eu n[ãa]o consigo te ajudar",
+     "reply": "", "noop": True,
+     "notes": "📊 1 tela / 3 sessões, todas de guincho. Já é `handoff_trigger` declarado; "
+              "o passo existe porque handoff e passo são mecanismos separados e a tela "
+              "continuava órfã. 📊 `zonas_do_acervo` registra o mesmo, de outra medição: "
+              "'NÃO é fronteira: é ABANDONO PARA TELEFONE — um DESFECHO_NEGATIVO'."},
+    {"step": "avisos_informativos_familia",
+     "anchor": (r"faremos o poss[íi]vel para que o profissional chegue|"
+                r"respons[áa]vel maior de 18 anos esteja no local|"
+                r"sua assist[êe]ncia foi confirmada|"
+                r"siga o passo a passo a seguir de acordo com seu aparelho|"
+                r"obrigado por entrar em contato!"),
+     "reply": "", "noop": True, "notes": "📊 5 telas / 4 sessões."},
+]
+# 🔴 NA FAMÍLIA, não na alfa: paga as duas seguradoras de uma vez.
+_ALLIANZ_FAMILY_AUTO_STEPS.extend(dict(p) for p in _ALFA_ALLIANZ_FAMILIA)
+for _pb_fam in (ALFA_AUTO_WHATSAPP_V1, ALLIANZ_AUTO_WHATSAPP_V1):
+    _pb_fam["ura_steps"] = list(_pb_fam["ura_steps"]) + [dict(p) for p in _ALFA_ALLIANZ_FAMILIA]
+
+
+# ==========================================================================
+# ALLIANZ — TRONCO e GALHO (SPEC-084 BLOCO 1, 22/08/2026)
+# ==========================================================================
+#
+# ⚠️ A ÓRFÃ Nº 1 DAS DUAS ROTAS **NÃO ENTRA AQUI**, e é a de maior retorno:
+#    📊 "Vou transferir seu caso para um especialista" — retorno 496 no
+#    residencial (31 sessões) e 66 no auto (11). Ela é **FRONTEIRA**: já é
+#    `pausar_e_chamar`, e transformá-la em passo seria escrever um corredor
+#    para a tela que ENTREGA o atendimento ao humano.
+#    A `arvore.py` já a exclui da fila; a bancada de controle não, porque só
+#    consulta `match_ura_step`. É viés do medidor, não dívida do corredor.
+_ALLIANZ_RESID_TRONCO = [
+    # ---- 🔴 O MENU QUE NOMEIA OS SERVICOS QUE O CODIGO NAO TEM -----------
+    # 📊 2 telas / 21 sessões — a maior órfã REAL do residencial.
+    #    "*1 -* Dedetização *2 -* Limpeza do Imóvel *3 -* Limpeza de Caixa
+    #     d'Água *4 -* Ar-condicionado *5 -* Consulta veterinária ..."
+    # ⚠️ A resposta vem do CASO. Fixar uma tecla aqui escolheria o serviço
+    #    do segurado por ele — o mesmo defeito do `menu_qual_seguro`.
+    {"step": "menu_outros_servicos_residencia", "anchor": r"qual desses servi[çc]os,? voc[êe] precisa",
+     "reply": "{outro_servico_opcao}", "requires": ["outro_servico_opcao"],
+     "fallback_adaptive": True,
+     "notes": "📊 2 telas / 21 sessões. 🔴 É o menu que NOMEIA os serviços que o produto "
+              "ainda não declara (dedetização, limpeza de caixa d'água, ar-condicionado, "
+              "consulta veterinária). Ver PENDENCIAS: cada um precisa de subserviço "
+              "canônico antes de virar rota."},
+
+    # ---- 🔴 A MAIOR FAMILIA ORFA: a lista de enderecos da apolice --------
+    # 📊 17 telas distintas / 34 sessões. São 17 textos porque o ENDEREÇO muda;
+    #    é UM passo. A forma é sempre "*1 -* <endereço> *2 -* Voltar *3 -* Sair".
+    # 🔴 CONTROLE: a âncora exige as TRÊS marcas (o `1 -` no início, o `2 - Voltar`
+    #    e o `3 - Sair`). Medido: 17 telas, e ROUBA ZERO de outro passo.
+    {"step": "escolher_endereco_da_lista",
+     "anchor": r"^\*?1\s*-\*?\s[\s\S]{0,180}\*?2\s*-\*?\s*voltar[\s\S]{0,24}\*?3\s*-\*?\s*sair",
+     "reply": "1", "fallback_adaptive": True,
+     "notes": "📊 17 telas / 34 sessões — a maior família órfã do corredor. '1' é o "
+              "endereço da apólice. ⚠️ Se o caso trouxer outro endereço, o adaptativo "
+              "assume: escolher às cegas manda o prestador para a casa errada."},
+
+    # ---- o galho do CONDOMINIO: 5 sessoes, e o produto nao o conhecia -----
+    # 🔴 Só se chega aqui respondendo **2** em `menu_qual_seguro_tres_opcoes` —
+    #    a tela que até 22/08/2026 era respondida com "1" fixo. Consertada ela,
+    #    este galho passa a existir de verdade.
+    {"step": "cnpj_condominio", "anchor": r"digite o \*?cnpj\*? do titular",
+     "reply": "{titular_cnpj}", "requires": ["titular_cnpj"], "fallback_adaptive": True,
+     "notes": "📊 1 tela / 5 sessões. A porta do galho condomínio."},
+    {"step": "aviso_areas_comuns", "anchor": r"exclusivamente destinados [àa]s [áa]reas comuns",
+     "reply": "", "noop": True,
+     "notes": "📊 1 tela / 5 ses. 🔴 REGRA DE COBERTURA: o serviço NÃO cobre unidade "
+              "individual. Vai a `regras_para_o_cliente` — é o que o cliente precisa "
+              "ouvir ANTES, para não receber uma recusa no local."},
+    {"step": "numero_condominio", "anchor": r"me confirme o n[úu]mero do condom[íi]nio",
+     "reply": "{endereco_numero}", "fallback_adaptive": True, "notes": "📊 1 tela / 5 sessões."},
+
+    # ---- coleta e desfecho ------------------------------------------------
+    {"step": "referencias_do_local", "anchor": r"informe \*?refer[êe]ncias do local",
+     "reply": "{ponto_referencia}", "fallback_adaptive": True, "notes": "📊 1 tela / 5 sessões."},
+    {"step": "senha_do_telefone", "anchor": r"o telefone registrado nesse atendimento",
+     "reply": "", "noop": True,
+     "notes": "📊 3 telas / 10 sessões. Traz a SENHA da visita (4 últimos dígitos). Quem "
+              "a colhe é `capture_anchors.password`; o passo existe para o motor ficar "
+              "calado enquanto a captura acontece."},
+    {"step": "link_por_sms", "anchor": r"receber[áa] um link por \*?sms\*? para acompanhar",
+     "reply": "", "noop": True,
+     "notes": "📊 1 tela / 10 sessões. ⚠️ SÓ no residencial: medido, no corredor de AUTO "
+              "esta âncora ROUBA 7 telas que `desfecho_protocolo_alfa` já responde."},
+    {"step": "link_acompanha", "anchor": r"acompanhar a chegada do nosso parceiro pelo link",
+     "reply": "", "noop": True, "notes": "📊 2 telas / 7 sessões."},
+]
+
+_ALLIANZ_AMBOS = [
+    # 🔴 A tela do ACOMPANHAR/ALTERAR — 📊 auto 3 ses · residencial 10 ses.
+    #    Não é acionamento novo: é pós-serviço. A resposta vem do caso, porque
+    #    "2 - Abrir novo" e "1 - Ver detalhes" são trabalhos diferentes.
+    {"step": "solicitacao_ja_feita",
+     "anchor": r"identifiquei que temos uma solicita[çc][ãa]o de servi[çc]o feita",
+     "reply": "{solicitacao_existente_opcao}", "requires": ["solicitacao_existente_opcao"],
+     "fallback_adaptive": True,
+     "notes": "📊 auto 3 ses · resid 10 ses. 1-Ver detalhes 2-Abrir novo. 🔴 Vem do caso: "
+              "quem ligou por um problema NOVO não quer ver o chamado antigo, e "
+              "vice-versa."},
+    {"step": "uf_do_local", "anchor": r"informe a \*?uf\*? \(sigla do estado\) do local",
+     "reply": "{local_uf}", "fallback_adaptive": True, "notes": "📊 1 tela / 4 sessões."},
+    {"step": "profissional_a_caminho", "anchor": r"o profissional chegar[áa] o mais r[áa]pido poss[íi]vel",
+     "reply": "", "noop": True, "notes": "📊 1 tela / 2 sessões."},
+]
+
+ALLIANZ_RESIDENCIAL_WHATSAPP_V1["ura_steps"] = (
+    list(ALLIANZ_RESIDENCIAL_WHATSAPP_V1["ura_steps"])
+    + [dict(p) for p in _ALLIANZ_RESID_TRONCO + _ALLIANZ_AMBOS]
+)
+ALLIANZ_AUTO_WHATSAPP_V1["ura_steps"] = (
+    list(ALLIANZ_AUTO_WHATSAPP_V1["ura_steps"]) + [dict(p) for p in _ALLIANZ_AMBOS]
+)
+
 _PLAYBOOKS: Dict[str, Dict[str, Any]] = {
     f"{p['playbook_id']}@v{p['version']}": p
     for p in (

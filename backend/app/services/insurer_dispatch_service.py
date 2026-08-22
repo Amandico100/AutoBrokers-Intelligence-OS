@@ -419,6 +419,62 @@ def _derivar_teclas_do_caso(slots: dict) -> None:
         # sem luz").
         slots["problema_eletrico_opcao"] = "2" if curto else "1"
 
+    # ---- "Identifiquei que temos uma solicitação de serviço feita" ------
+    # 📊 A tela, literal (allianz auto E residencial, 3 + 10 sessões):
+    #   "O que deseja? *1 -* Ver detalhes *2 -* Abrir novo atendimento"
+    #
+    # 🔴 A resposta é "2", e a razão não é preferencia -- é o que o corredor
+    #    ESTÁ FAZENDO ALI. Ele só roda quando a corretora pediu um acionamento
+    #    NOVO; "Ver detalhes" abriria o chamado antigo e o trabalho pedido nunca
+    #    aconteceria. Quem quer acompanhar um chamado existente não passa por
+    #    este corredor.
+    #
+    # ⚠️ E fica derivável, não constante, porque o dia em que existir uma rota
+    #    de ACOMPANHAMENTO ela precisa poder dizer "1" -- e aí basta preencher
+    #    o slot, sem tocar no passo.
+    if not str(slots.get("solicitacao_existente_opcao") or "").strip():
+        acompanhar = any(p in texto for p in (
+            "acompanhar", "ver detalhes", "status do chamado", "como esta o chamado",
+            "andamento do servico", "ja abri"))
+        slots["solicitacao_existente_opcao"] = "1" if acompanhar else "2"
+
+    # ---- "Qual desses serviços, você precisa?" (allianz residencial) ------
+    # 📊 A tela, literal, 2 telas / 21 sessões:
+    #   "*1 -* Dedetização  *2 -* Limpeza do Imóvel  *3 -* Limpeza de Caixa
+    #    d'Água  *4 -* Substituição de Telhas  *5 -* Cobertura Provisória de
+    #    Telhado  *6 -* Consulta Veterinária  *7 -* Outros  *8 -* Voltar"
+    #
+    # 🔴 SEIS trabalhos que o produto não declara como subserviço. Enquanto
+    #    não declarar, a tradução lê o que o segurado pediu e escolhe a tecla;
+    #    não havendo palavra reconhecível, a resposta honesta é **"7 - Outros"**,
+    #    que é opção da própria URA -- nunca "1", que abriria uma dedetização.
+    if not str(slots.get("outro_servico_opcao") or "").strip():
+        if any(p in texto for p in ("dedetiz", "barata", "formiga", "cupim", "rato",
+                                    "escorpi", "praga", "inseto")):
+            slots["outro_servico_opcao"] = "1"
+        elif any(p in texto for p in ("limpeza do imovel", "faxina", "limpeza pos",
+                                      "limpar a casa")):
+            slots["outro_servico_opcao"] = "2"
+        elif any(p in texto for p in ("caixa d agua", "caixa dagua", "caixa de agua",
+                                      "reservatorio")):
+            slots["outro_servico_opcao"] = "3"
+        # 🔴 A ORDEM DE NOVO, e a mesma armadilha do cambio x embreagem:
+        #    **"telhado" CONTÉM "telha"**. Se a substituição de telha viesse antes,
+        #    "o vento destelhou parte do telhado" abriria uma troca de telhas em
+        #    vez da cobertura provisória de emergência -- e a cobertura provisória
+        #    é a que impede a casa de encher de água na mesma noite.
+        elif any(p in texto for p in ("cobertura provisoria", "lona", "destelh",
+                                      "telhado voou", "sem telhado", "telhado arranc")):
+            slots["outro_servico_opcao"] = "5"
+        elif "telha" in texto:
+            slots["outro_servico_opcao"] = "4"
+        elif any(p in texto for p in ("veterinar", "pet", "cachorro", "gato", "animal")):
+            slots["outro_servico_opcao"] = "6"
+        else:
+            # 🔴 "Outros" e opcao da URA, e e a resposta honesta de quem nao
+            #    reconheceu o pedido. "1" abriria uma dedetizacao que ninguem pediu.
+            slots["outro_servico_opcao"] = "7"
+
     # ---- "Selecione a opção que condiz com a pane" (yelum/hdi) -------
     # 📊 O menu real, NOVE opções:
     #   1-Problemas elétricos 2-Luzes do painel 3-Vazamento

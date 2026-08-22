@@ -257,7 +257,11 @@ DERIVADOS = {"problema_eletrico_opcao", "data_agendamento_opcao",
              #    ELETRICISTA respondia a tecla do problema eletrico na tela do
              #    encanador e na do chaveiro. Cada oficio ganhou o seu passo, e
              #    cada passo precisa da sua traducao.
-             "problema_vazamento_opcao", "problema_chave_opcao"}
+             "problema_vazamento_opcao", "problema_chave_opcao",
+             # 🔴 SPEC-084 BLOCO 1: os menus que a allianz mostra e o produto
+             #    nao declarava. Cada um traduz o que o segurado pediu.
+             "outro_servico_opcao", "solicitacao_existente_opcao",
+             "pane_detalhe_opcao"}
 
 # 🔴 A TERCEIRA ORIGEM, QUE ESTE GUARDA NAO ENXERGAVA — 22/08/2026.
 #
@@ -576,6 +580,34 @@ if derivar:
         check("chave: " + _porque + " -> " + _esperado + "  (" + _relato[:32] + ")",
               _sc.get("problema_chave_opcao") == _esperado,
               _sc.get("problema_chave_opcao"))
+
+    # ======================================================================
+    # 🔴 AS REGRAS DE ORDEM -- e cada uma custou um controle vermelho
+    # ======================================================================
+    #
+    # Tres vezes, na mesma sessao, a primeira versao de uma traducao errou por
+    # ORDEM: um sintoma testado antes da peca nomeada, ou uma palavra que esta
+    # DENTRO de outra. As tres viraram teste, porque a ordem E a regra -- e sem
+    # teste ela volta na proxima edicao.
+    for _relato, _slot, _esperado, _porque in [
+        # 1) a peca NOMEADA vence o sintoma
+        ("A embreagem nao engata mais",          "pane_detalhe_opcao", "6", "embreagem nomeada"),
+        ("Nao entra marcha, problema no cambio", "pane_detalhe_opcao", "7", "cambio vence sintoma"),
+        # 2) "telhado" CONTEM "telha" -- e a cobertura provisoria e a que impede
+        #    a casa de encher de agua na mesma noite
+        ("Uma telha quebrou com o vento",      "outro_servico_opcao", "4", "telha = substituicao"),
+        ("O vento destelhou parte do telhado", "outro_servico_opcao", "5", "telhado = cobertura"),
+        # 3) o default e a opcao HONESTA da propria URA, nunca a primeira tecla
+        ("Preciso de um servico ai",   "outro_servico_opcao", "7", "Outros, nao Dedetizacao"),
+        ("O carro parou e eu nao sei", "pane_detalhe_opcao",  "8", "Nao sei, nao Motor"),
+        # 4) o corredor so roda para acionamento NOVO
+        ("Quero abrir um chamado de encanador",    "solicitacao_existente_opcao", "2", "novo"),
+        ("Quero acompanhar o chamado que ja abri", "solicitacao_existente_opcao", "1", "acompanhar"),
+    ]:
+        _so = {"problema_descricao": _relato}
+        derivar(_so)
+        check("ordem: " + _porque + " -> " + _esperado + "  (" + _relato[:30] + ")",
+              _so.get(_slot) == _esperado, _so.get(_slot))
 
     # 🔴 CONTROLE: as duas novas tambem NAO sobrescrevem o que ja existe.
     _sx = {"problema_vazamento_opcao": "9", "problema_chave_opcao": "9",
