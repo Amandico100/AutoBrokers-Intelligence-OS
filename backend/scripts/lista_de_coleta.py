@@ -93,7 +93,8 @@ def _caminho_ate_o_menu(pb: Dict[str, Any]) -> List[str]:
 
 
 def _linha_de_controle(seguradora: str, servico_pedido: str,
-                       notas: List[Any]) -> Optional[Tuple[str, int]]:
+                       notas: List[Any], ramo: Optional[str] = None
+                       ) -> Optional[Tuple[str, int]]:
     """🔴 O serviço da MESMA seguradora cuja rota já pontua — e a nota dele.
 
     É com ele que a segunda rodada é feita. Se ele der o mesmo desfecho de
@@ -105,6 +106,7 @@ def _linha_de_controle(seguradora: str, servico_pedido: str,
         for n in notas
         if n.rota.seguradora == seguradora
         and n.rota.servico != servico_pedido
+        and (ramo is None or n.rota.ramo == ramo)
         and n.patamar not in ("SEM_CORPUS", "NAO_RESPONDE")
     ]
     if not candidatos:
@@ -125,15 +127,27 @@ def gerar() -> str:
 
     sem_corpus = [n for n in notas if n.patamar == "SEM_CORPUS"]
     por_seg: Dict[str, List[Any]] = collections.defaultdict(list)
+    # ⚠️ AGRUPA POR (SEGURADORA x RAMO), nao por seguradora -- 22/08/2026.
+    #
+    # 🔴 A primeira versao usava so a seguradora, e pegava UM playbook para
+    #    todas as rotas dela. Na porto, que tem auto E residencial, isso fazia a
+    #    lista dizer que `porto/auto/taxi` "nao tem rotulo de menu" -- quando o
+    #    rotulo esta declarado, no playbook de AUTO, que ela nao estava olhando.
+    #    E o "caminho de telas" saia misturado: passos do residencial para uma
+    #    lista que inclui rotas de auto.
+    #
+    #    Um pedido de coleta com o caminho errado faz a corretora percorrer a
+    #    URA errada -- e o acionamento de coleta e caro, porque entrada demais
+    #    nos portais nos bloqueia.
     for n in sem_corpus:
-        por_seg[n.rota.seguradora].append(n)
+        por_seg[(n.rota.seguradora, n.rota.ramo)].append(n)
 
     falsos: List[str] = []
     pedidos = 0
 
-    for seg in sorted(por_seg):
+    for seg, ramo_g in sorted(por_seg):
         no_acervo = _servicos_no_acervo(seg)
-        rotas = sorted(por_seg[seg], key=lambda n: (n.rota.ramo, n.rota.servico))
+        rotas = sorted(por_seg[(seg, ramo_g)], key=lambda n: n.rota.servico)
         # separa o que é coleta de verdade do que é defeito do classificador
         reais = sorted([n for n in rotas if n.rota.servico not in no_acervo],
                        key=lambda n: -_DEMANDA.get(n.rota.servico, 0))
@@ -155,7 +169,7 @@ def gerar() -> str:
         L.append(f"  -> [ AQUI: escolher o serviço ]")
         L.append("```\n")
 
-        ctrl = _linha_de_controle(seg, reais[0].rota.servico, notas)
+        ctrl = _linha_de_controle(seg, reais[0].rota.servico, notas, ramo_g)
         if ctrl:
             L.append(f"**3 · 🔴 A LINHA DE CONTROLE:** repetir a rodada com "
                      f"**`{ctrl[0]}`**, que hoje pontua **{ctrl[1]}/96**.\n")

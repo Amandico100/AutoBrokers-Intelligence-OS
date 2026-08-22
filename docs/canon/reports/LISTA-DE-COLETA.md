@@ -1,28 +1,6 @@
-<unknown>:36: SyntaxWarning: "\*" is an invalid escape sequence. Such sequences will not work in the future. Did you mean "\\*"? A raw string is also an option.
-<unknown>:36: SyntaxWarning: "\*" is an invalid escape sequence. Such sequences will not work in the future. Did you mean "\\*"? A raw string is also an option.
-<unknown>:36: SyntaxWarning: "\*" is an invalid escape sequence. Such sequences will not work in the future. Did you mean "\\*"? A raw string is also an option.
-<unknown>:36: SyntaxWarning: "\*" is an invalid escape sequence. Such sequences will not work in the future. Did you mean "\\*"? A raw string is also an option.
-<unknown>:36: SyntaxWarning: "\*" is an invalid escape sequence. Such sequences will not work in the future. Did you mean "\\*"? A raw string is also an option.
-<unknown>:36: SyntaxWarning: "\*" is an invalid escape sequence. Such sequences will not work in the future. Did you mean "\\*"? A raw string is also an option.
-<unknown>:36: SyntaxWarning: "\*" is an invalid escape sequence. Such sequences will not work in the future. Did you mean "\\*"? A raw string is also an option.
-<unknown>:36: SyntaxWarning: "\*" is an invalid escape sequence. Such sequences will not work in the future. Did you mean "\\*"? A raw string is also an option.
-<unknown>:36: SyntaxWarning: "\*" is an invalid escape sequence. Such sequences will not work in the future. Did you mean "\\*"? A raw string is also an option.
-<unknown>:36: SyntaxWarning: "\*" is an invalid escape sequence. Such sequences will not work in the future. Did you mean "\\*"? A raw string is also an option.
-<unknown>:36: SyntaxWarning: "\*" is an invalid escape sequence. Such sequences will not work in the future. Did you mean "\\*"? A raw string is also an option.
-<unknown>:36: SyntaxWarning: "\*" is an invalid escape sequence. Such sequences will not work in the future. Did you mean "\\*"? A raw string is also an option.
-<unknown>:36: SyntaxWarning: "\*" is an invalid escape sequence. Such sequences will not work in the future. Did you mean "\\*"? A raw string is also an option.
-<unknown>:36: SyntaxWarning: "\*" is an invalid escape sequence. Such sequences will not work in the future. Did you mean "\\*"? A raw string is also an option.
-<unknown>:36: SyntaxWarning: "\*" is an invalid escape sequence. Such sequences will not work in the future. Did you mean "\\*"? A raw string is also an option.
-<unknown>:36: SyntaxWarning: "\*" is an invalid escape sequence. Such sequences will not work in the future. Did you mean "\\*"? A raw string is also an option.
-<unknown>:36: SyntaxWarning: "\*" is an invalid escape sequence. Such sequences will not work in the future. Did you mean "\\*"? A raw string is also an option.
-<unknown>:36: SyntaxWarning: "\*" is an invalid escape sequence. Such sequences will not work in the future. Did you mean "\\*"? A raw string is also an option.
-<unknown>:36: SyntaxWarning: "\*" is an invalid escape sequence. Such sequences will not work in the future. Did you mean "\\*"? A raw string is also an option.
-<unknown>:36: SyntaxWarning: "\*" is an invalid escape sequence. Such sequences will not work in the future. Did you mean "\\*"? A raw string is also an option.
-<unknown>:36: SyntaxWarning: "\*" is an invalid escape sequence. Such sequences will not work in the future. Did you mean "\\*"? A raw string is also an option.
-<unknown>:36: SyntaxWarning: "\*" is an invalid escape sequence. Such sequences will not work in the future. Did you mean "\\*"? A raw string is also an option.
 # A lista de coleta — SPEC-084 BLOCO 5
 
-> Gerado do corpus e do corredor · commit `8e598e6`
+> Gerado do corpus e do corredor · commit `52c225a`
 
 🔴 **Uma rota só entra aqui se o CORPUS está vazio E o ACERVO da
 seguradora também não a tem.** Se o acervo tem e o corpus não, o
@@ -128,6 +106,30 @@ quase virou pedido de coleta com o material já no banco.
 | ramo | serviço | demanda | o que falta ver |
 |---|---|---:|---|
 | auto | bateria | 16 | a tela SEGUINTE ao clique no menu — é ela que separa este serviço dos outros |
+
+## HDI
+
+**1 · O número:** `insurer_contact_ref = 'hdi_assistencia_24h'` — ⚠️ o número real vem da configuração da corretora, não do código.
+
+**2 · O caminho até o ponto desconhecido:**
+
+```
+  identificacao_dado
+  -> menu_servico_residencial
+  -> abertura
+  -> informar_nome
+  -> perfil
+  -> [ AQUI: escolher o serviço ]
+```
+
+**3 · 🔴 A LINHA DE CONTROLE:** repetir a rodada com **`chaveiro`**, que hoje pontua **33/96**.
+
+   Se `chaveiro` der o mesmo desfecho de hoje, o que a primeira rodada mostrar é do SERVIÇO. Se der diferente, a URA mudou — e nenhuma das duas conclusões vale.
+
+**4 · O que se espera aprender, por rota:**
+
+| ramo | serviço | demanda | o que falta ver |
+|---|---|---:|---|
 | residencial | desentupimento | 1 | 🔴 o RÓTULO do menu, que o corredor ainda não tem |
 | residencial | eletrodomesticos | 0 | 🔴 o RÓTULO do menu, que o corredor ainda não tem |
 
@@ -163,9 +165,11 @@ quase virou pedido de coleta com o material já no banco.
 ```
   menu_raiz
   -> pedir_cpf
+  -> menu_como_ajudar
+  -> confirmar_veiculo
+  -> menu_atendimento
+  -> menu_servico
   -> saudacao_de_volta
-  -> menu_servico_resid
-  -> menu_atendimento_resid
   -> [ AQUI: escolher o serviço ]
 ```
 
@@ -177,11 +181,35 @@ quase virou pedido de coleta com o material já no banco.
 
 | ramo | serviço | demanda | o que falta ver |
 |---|---|---:|---|
+| auto | pneu | 10 | a tela SEGUINTE ao clique no menu — é ela que separa este serviço dos outros |
+| auto | taxi | 1 | a tela SEGUINTE ao clique no menu — é ela que separa este serviço dos outros |
+| auto | bateria_nova | 0 | a tela SEGUINTE ao clique no menu — é ela que separa este serviço dos outros |
+
+## PORTO
+
+**1 · O número:** `insurer_contact_ref = 'porto_assistencia_24h'` — ⚠️ o número real vem da configuração da corretora, não do código.
+
+**2 · O caminho até o ponto desconhecido:**
+
+```
+  menu_raiz
+  -> pedir_cpf
+  -> saudacao_de_volta
+  -> menu_servico_resid
+  -> menu_atendimento_resid
+  -> [ AQUI: escolher o serviço ]
+```
+
+**3 · 🔴 A LINHA DE CONTROLE:** repetir a rodada com **`chaveiro`**, que hoje pontua **43/96**.
+
+   Se `chaveiro` der o mesmo desfecho de hoje, o que a primeira rodada mostrar é do SERVIÇO. Se der diferente, a URA mudou — e nenhuma das duas conclusões vale.
+
+**4 · O que se espera aprender, por rota:**
+
+| ramo | serviço | demanda | o que falta ver |
+|---|---|---:|---|
 | residencial | eletricista | 12 | 🔴 o RÓTULO do menu, que o corredor ainda não tem |
-| auto | pneu | 10 | 🔴 o RÓTULO do menu, que o corredor ainda não tem |
-| auto | taxi | 1 | 🔴 o RÓTULO do menu, que o corredor ainda não tem |
 | residencial | desentupimento | 1 | 🔴 o RÓTULO do menu, que o corredor ainda não tem |
-| auto | bateria_nova | 0 | 🔴 o RÓTULO do menu, que o corredor ainda não tem |
 
 ## TOKIO
 
@@ -230,7 +258,31 @@ quase virou pedido de coleta com o material já no banco.
 | ramo | serviço | demanda | o que falta ver |
 |---|---|---:|---|
 | auto | chaveiro | 5 | a tela SEGUINTE ao clique no menu — é ela que separa este serviço dos outros |
-| residencial | chaveiro | 5 | a tela SEGUINTE ao clique no menu — é ela que separa este serviço dos outros |
+
+## YELUM
+
+**1 · O número:** `insurer_contact_ref = 'yelum_assistencia_24h'` — ⚠️ o número real vem da configuração da corretora, não do código.
+
+**2 · O caminho até o ponto desconhecido:**
+
+```
+  abertura
+  -> identificacao_dado
+  -> informar_nome
+  -> perfil
+  -> menu_servico_residencial
+  -> [ AQUI: escolher o serviço ]
+```
+
+**3 · 🔴 A LINHA DE CONTROLE:** repetir a rodada com **`eletricista`**, que hoje pontua **46/96**.
+
+   Se `eletricista` der o mesmo desfecho de hoje, o que a primeira rodada mostrar é do SERVIÇO. Se der diferente, a URA mudou — e nenhuma das duas conclusões vale.
+
+**4 · O que se espera aprender, por rota:**
+
+| ramo | serviço | demanda | o que falta ver |
+|---|---|---:|---|
+| residencial | chaveiro | 5 | 🔴 o RÓTULO do menu, que o corredor ainda não tem |
 | residencial | desentupimento | 1 | 🔴 o RÓTULO do menu, que o corredor ainda não tem |
 
 ## ZURICH
