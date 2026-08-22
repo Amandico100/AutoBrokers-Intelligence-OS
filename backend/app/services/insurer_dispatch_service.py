@@ -2385,6 +2385,43 @@ def client_summary_from_capture(session: Dict[str, Any]) -> Optional[str]:
         lines.append(
             f"Prontinho! ✅ Sua assistência foi agendada para o dia {schedule.get('day')}, entre {schedule.get('from')} e {schedule.get('to')}."
         )
+    # ======================================================================
+    # 🔴 C2 — O PERÍODO ESTAVA NA CAPTURA E ERA JOGADO FORA
+    # ======================================================================
+    #
+    # 📊 Medido em 22/08/2026, com o texto real do RESUMO da allianz:
+    #
+    #   captura   {'protocol': '52955490',
+    #              'schedule': {'day': 'terca-feira, 06/01/2026',
+    #                           'periodo': 'tarde das 13:00 as 18:00'}}
+    #   mensagem  "Prontinho! ✅ Sua assistência foi agendada para o dia
+    #              terca-feira, 06/01/2026."
+    #                                        ^ e o período MORREU aqui
+    #
+    # 🔴 É O FURO Nº 3 DO ACIONAMENTO DE 19/08. A cliente recebeu
+    #    "Sua assistência foi aberta" **sem data e sem período** — e o furo
+    #    ficou escondido atrás de um item da régua que nem sabia medi-lo
+    #    (ver C1).
+    #
+    # ⚠️ A ORDEM DOS RAMOS É A REGRA, e ela vai do MAIS ESPECÍFICO ao menos:
+    #      from/to  -> "entre 13h00 e 14h00"     (janela fechada)
+    #      periodo  -> "período da tarde..."     (janela aberta)   <- ESTE faltava
+    #      at       -> "às 14:00"                (hora cravada)
+    #      day      -> só o dia
+    #    Pôr `periodo` depois de `day` o tornaria inalcançável — que é
+    #    exatamente o defeito de hoje, só que escrito de outro jeito.
+    elif schedule and schedule.get("periodo"):
+        lines.append(
+            # ⚠️ "no {periodo}" quebra o portugues, e esta mensagem o CLIENTE LE.
+            #    📊 As DUAS formas medidas no corpus inteiro:
+            #        13x  "tarde das 13:00 as 18:00"     <- comeca pela palavra
+            #         5x  "13:00 as 18:00 (tarde)"       <- comeca pela hora
+            #    "no tarde das..." e "no 13:00 as..." estao errados nos dois.
+            #    "no periodo: <valor>" serve aos dois E nao reescreve a palavra
+            #    da seguradora -- que e o que o segurado vai ouvir dela depois.
+            f"Prontinho! ✅ Sua assistência foi agendada para {schedule.get('day')}, "
+            f"no período: {schedule.get('periodo')}."
+        )
     elif schedule and schedule.get("day"):
         quando = f" às {schedule.get('at')}" if schedule.get("at") else ""
         lines.append(f"Prontinho! ✅ Sua assistência foi agendada para o dia {schedule.get('day')}{quando}.")

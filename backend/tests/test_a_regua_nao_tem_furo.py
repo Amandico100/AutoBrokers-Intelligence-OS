@@ -113,6 +113,15 @@ MUTACOES = [
      '"schedule_agendado": (',
      '"schedule_agendado_DESLIGADO": (',
      "🔴 a tela real de 19/08 16:39 devolve `schedule` pelo MOTOR"),
+
+    # FURO 3, SEGUNDA METADE — C2. 📊 `client_summary_from_capture` capturava o
+    # periodo e nao o entregava: lia from/day/at, nunca `periodo`. Desligar o
+    # ramo recria exatamente a mensagem que a cliente recebeu em 19/08 --
+    # protocolo e dia, sem o periodo.
+    ("app/services/insurer_dispatch_service.py",
+     'elif schedule and schedule.get("periodo"):',
+     'elif schedule and schedule.get("ZZ_PERIODO_DESLIGADO_PELA_MUTACAO"):',
+     "🔴 o cliente recebe o PERÍODO — a metade que faltava"),
 ]
 
 
@@ -252,6 +261,70 @@ print("  5. O CAMINHO INTEIRO DA RÉGUA CONTINUA DE PÉ")
 print("=" * 74)
 
 # As telas do acionamento validado, na ordem, pelo motor.
+# ===========================================================================
+# 🔴 O FURO Nº 3 TINHA UMA SEGUNDA METADE, E ELA FICOU ABERTA — C2, 22/08/2026
+# ===========================================================================
+#
+# O bloco acima prova que `extract_capture_anchors` **CAPTURA** o período. Isso
+# consertou metade do furo.
+#
+# 📊 A outra metade: `client_summary_from_capture` lia `schedule["from"]`,
+#    `["day"]` e `["at"]` — e **nunca** `["periodo"]`. A captura chegava
+#    completa e a mensagem ao cliente saía sem o período:
+#
+#      captura   {'schedule': {'day': 'terca-feira, 06/01/2026',
+#                              'periodo': 'tarde das 13:00 as 18:00'}}
+#      cliente   "Sua assistência foi agendada para o dia terca-feira,
+#                 06/01/2026."
+#                                                   ^ e o período morria aqui
+#
+# 🔴 Capturar sem entregar não é entregar. A cliente de 19/08 recebeu o
+#    protocolo e **não soube quando o técnico vinha** — que é a única coisa que
+#    ela queria saber.
+# ⚠️ O motor pesado nao carrega com o shim leve deste arquivo (fastembed).
+#    Carregado por caminho, como `regua_motor` faz -- e o teste continua
+#    chamando o MOTOR, nunca uma copia da funcao (CLAUDE.md §9.4).
+import importlib.util as _ilu  # noqa: E402
+_sp_ids = _ilu.spec_from_file_location(
+    "app.services.insurer_dispatch_service",
+    os.path.join(_RAIZ, "app", "services", "insurer_dispatch_service.py"))
+IDS = _ilu.module_from_spec(_sp_ids)
+sys.modules[_sp_ids.name] = IDS
+_sp_ids.loader.exec_module(IDS)
+
+RESUMO_PERIODO = IDS.client_summary_from_capture({
+    "captured": {"protocol": "52955490",
+                 "schedule": {"day": "terca-feira, 06/01/2026",
+                              "periodo": "tarde das 13:00 as 18:00"}},
+    "playbook_ref": "allianz-residencial-whatsapp@v1",
+}) or ""
+certo("52955490" in RESUMO_PERIODO,
+      "🔴 o cliente recebe o PROTOCOLO", RESUMO_PERIODO[:60])
+certo("06/01/2026" in RESUMO_PERIODO,
+      "🔴 o cliente recebe o DIA", RESUMO_PERIODO[:60])
+certo("tarde das 13:00" in RESUMO_PERIODO,
+      "🔴 o cliente recebe o PERÍODO — a metade que faltava",
+      RESUMO_PERIODO.split(chr(10))[0])
+
+# 🔴 E OS CONTROLES QUE IMPEDEM O RAMO NOVO DE ROUBAR OS OUTROS.
+#    A ordem vai do mais específico ao menos: from/to · periodo · at · day.
+#    Pôr `periodo` no lugar errado o tornaria inalcançável — que é o defeito de
+#    hoje escrito de outro jeito.
+_JANELA = IDS.client_summary_from_capture({
+    "captured": {"protocol": "1",
+                 "schedule": {"day": "25/08/2026", "from": "13h00", "to": "14h00"}},
+    "playbook_ref": "allianz-residencial-whatsapp@v1"}) or ""
+certo("entre 13h00 e 14h00" in _JANELA,
+      "🔴 CONTROLE: a janela FECHADA (from/to) continua vencendo o periodo",
+      _JANELA.split(chr(10))[0])
+_SO_DIA = IDS.client_summary_from_capture({
+    "captured": {"protocol": "1", "schedule": {"day": "25/08/2026"}},
+    "playbook_ref": "allianz-residencial-whatsapp@v1"}) or ""
+certo("25/08/2026" in _SO_DIA and "período" not in _SO_DIA,
+      "🔴 CONTROLE: schedule SEM periodo nao inventa periodo",
+      _SO_DIA.split(chr(10))[0])
+
+
 CAMINHO = [
     ("Informe o tipo de serviço", "menu_tipo_servico"),
     ("Qual eletrodoméstico precisa de conserto", "menu_categoria_eletrodomestico"),
