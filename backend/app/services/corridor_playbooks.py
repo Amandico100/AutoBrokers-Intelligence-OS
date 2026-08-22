@@ -4620,6 +4620,385 @@ ALLIANZ_AUTO_WHATSAPP_V1["ura_steps"] = (
     list(ALLIANZ_AUTO_WHATSAPP_V1["ura_steps"]) + [dict(p) for p in _ALLIANZ_AMBOS]
 )
 
+
+# ==========================================================================
+# BLOCO 4 — OS SERVIÇOS QUE A URA OFERECE E O PRODUTO RECUSAVA
+# ==========================================================================
+#
+# 🔴 A regra que autoriza cada um destes, e ela é a mesma do `desentupimento`
+#    da Allianz: *"um mesmo trabalho existir num corredor e não no outro não é
+#    escopo: é esquecimento."*
+#
+# Nenhum entra por rótulo avistado. Cada um tem, medido no acervo:
+#   · o rótulo do menu, com a grafia exata
+#   · o fluxo depois dele, tela a tela
+#   · e — nos quatro que o Founder liberou — **uma sessão completa até o
+#     protocolo**
+#
+# ⚠️ E a porta continua fechada para quem não tem isso: `Motorista da vez`,
+#    `Martelinho de ouro`, `Assistência Mercosul`, `Kit instalação`,
+#    `Reparo em telha` e `Limpeza de calhas` têm rótulo capturado e **ZERO**
+#    sessões que entraram. Declarar tecla sem fluxo é o defeito que
+#    `_ativar_vidros` proíbe por escrito. Eles ficam em PENDENCIAS.
+
+
+def _ativar_subservico(playbook, nome, *, menu_value, required_slots,
+                       label, outcome=OUTCOME_ABRE, referral=None,
+                       espera_no_local=False):
+    """Liga um subserviço NUMA seguradora — nunca em `_AUTO_SUBSERVICES`.
+
+    🔴 `_auto_playbook` copia `_AUTO_SUBSERVICES` para as ONZE seguradoras de
+    auto. Acrescentar ali ligaria `táxi` na mapfre, na zurich e na azul sem uma
+    única tela observada — que é exatamente o erro que este produto já nomeou.
+
+    Chamar esta função é uma AFIRMAÇÃO DE EVIDÊNCIA: existe menu capturado, ele
+    diz exatamente `menu_value`, e existe fluxo medido depois dele.
+    """
+    playbook.setdefault("subservices", {})[nome] = {
+        "required_slots": list(required_slots),
+        **({"outcome": outcome} if outcome != OUTCOME_ABRE else {}),
+        **({"referral": dict(referral)} if referral else {}),
+    }
+    if menu_value is not None:
+        playbook.setdefault("subservice_menu_map", {})[nome] = menu_value
+    playbook.setdefault("subservice_labels", {})[nome] = label
+    if espera_no_local and nome not in _SUBSERVICOS_COM_ALGUEM_NO_LOCAL:
+        _SUBSERVICOS_COM_ALGUEM_NO_LOCAL.append(nome)
+
+
+# --------------------------------------------------------------------------
+# PORTO · auto · TÁXI
+# --------------------------------------------------------------------------
+# 📊 rótulo em **13 de 13** menus · 37 msgs · 13 sessões · sub-fluxo completo em
+#    2 sessões (c5cafa8b, c470d13d), a última chegando a
+#    "Posso confirmar sua solicitação? Sim / Não, alterar endereço / Sair".
+#
+# ⚠️ E a ambiguidade que fica registrada: o corpus mostra os DOIS caminhos —
+#    táxi oferecido DEPOIS do guincho ("Você também precisa solicitar um
+#    táxi?") e táxi aberto SOZINHO. Declarar como subserviço resolve o segundo;
+#    o primeiro precisa de um conceito de "serviço encadeado" que não existe.
+_ativar_subservico(
+    PORTO_AUTO_WHATSAPP_V1, "taxi",
+    menu_value="Táxi",
+    required_slots=_AUTO_SLOTS_COMMON + ["local_destino", "taxi_passageiros"],
+    label="táxi (meio de transporte)",
+    espera_no_local=True,
+)
+PORTO_AUTO_WHATSAPP_V1["ura_steps"] = list(PORTO_AUTO_WHATSAPP_V1["ura_steps"]) + [
+    {"step": "taxi_passageiros",
+     "anchor": r"eu vou chamar um t[áa]xi para voc[êe]\. s[ãa]o quantos passageiros",
+     "reply": "1 a 4", "fallback_adaptive": True, "only_subservices": ["taxi"],
+     "notes": "📊 1/1."},
+    {"step": "taxi_cadeirinha",
+     "anchor": r"caso o t[áa]xi tenha que transportar alguma crian[çc]a",
+     "reply": "", "noop": True, "only_subservices": ["taxi"],
+     "notes": "📊 1/1. 🔴 REGRA AO CLIENTE: criança de até 7 anos exige que VOCÊ "
+              "disponibilize bebê conforto/cadeirinha."},
+    {"step": "taxi_mesmo_endereco",
+     "anchor": (r"o t[áa]xi deve ir para o mesmo endere[çc]o|"
+                r"o endere[çc]o [ée] o mesmo de destino do guincho"),
+     "reply": "Sim", "only_subservices": ["taxi"],
+     "constante_justificada": (
+         "📊 2 sessões. O táxi da porto só é oferecido no encadeamento do guincho, e "
+         "nas duas o destino é o mesmo. Se o caso trouxer `local_destino` diferente, "
+         "é outro trabalho — e o corredor não tem como saber disso nesta tela."),
+     "notes": "📊 2/2."},
+    {"step": "taxi_destino_sabe", "anchor": r"voc[êe] j[áa] sabe (?:a)?onde o t[áa]xi dever[áa] te levar",
+     "reply": "Sim", "only_subservices": ["taxi"],
+     "constante_justificada": "📊 1 sessão. O corredor só abre táxi com `local_destino` no caso.",
+     "notes": "📊 1/1."},
+    {"step": "taxi_sem_paradas", "anchor": r"o t[áa]xi ir[áa] at[ée] o endere[çc]o de destino",
+     "reply": "", "noop": True, "only_subservices": ["taxi"],
+     "notes": "📊 1/1. 🔴 REGRA AO CLIENTE: o táxi vai SEM FAZER PARADAS no caminho."},
+]
+
+# --------------------------------------------------------------------------
+# PORTO · auto · TÉCNICO  (o "socorro mecânico" da porto)
+# --------------------------------------------------------------------------
+# 📊 rótulo em 10 de 13 menus · 27 msgs · 12 sessões · **2 sessões inteiras até
+#    o protocolo** (b1ff65f2 com 42 telas, e5318468 com 34).
+#
+# 🔴 É a maior evidência não-codificada da porto. E o desfecho é OUTRO: o
+#    técnico é AGENDADO por janela de meia hora ("Entre 14h00 e 14h30"),
+#    enquanto guincho/bateria/pneu/chaveiro prometem "hoje, em até 60 minutos".
+#    Sem `local_destino`: não há para onde levar.
+_ativar_subservico(
+    PORTO_AUTO_WHATSAPP_V1, "tecnico",
+    menu_value="Técnico",
+    required_slots=_AUTO_SLOTS_COMMON + ["veiculo_cor"],
+    label="técnico (reparo no local)",
+    espera_no_local=True,
+)
+PORTO_AUTO_WHATSAPP_V1["ura_steps"] = list(PORTO_AUTO_WHATSAPP_V1["ura_steps"]) + [
+    {"step": "tecnico_pode_virar_guincho",
+     "anchor": r"caso o t[ée]cnico avalie que o ve[íi]culo precisa",
+     "reply": "", "noop": True, "only_subservices": ["tecnico"],
+     "notes": "📊 1/1. 🔴 REGRA AO CLIENTE: a própria URA avisa que o caso pode "
+              "virar guincho — e aí é OUTRO acionamento."},
+]
+
+# --------------------------------------------------------------------------
+# PORTO · auto · BATERIA NOVA
+# --------------------------------------------------------------------------
+# 📊 submenu em 5 sessões · 1 sessão completa até o resumo (f4838bb3).
+#
+# 🔴 NÃO é variação de `bateria`: é outro trabalho, com outro desfecho e com
+#    DINHEIRO DO CLIENTE. "Para solicitar a nova bateria, precisamos agendar a
+#    *visita técnica de um prestador da Porto*" — agendado, e o valor da
+#    bateria é do segurado.
+#    Hoje `bateria` responde "Recarga de bateria" fixo: quem precisa de bateria
+#    nova recebe recarga.
+_ativar_subservico(
+    PORTO_AUTO_WHATSAPP_V1, "bateria_nova",
+    menu_value="Bateria nova",
+    required_slots=_AUTO_SLOTS_COMMON + ["data_agendamento"],
+    label="bateria nova (visita técnica agendada)",
+    espera_no_local=True,
+)
+PORTO_AUTO_WHATSAPP_V1["ura_steps"] = list(PORTO_AUTO_WHATSAPP_V1["ura_steps"]) + [
+    {"step": "bateria_nova_visita",
+     "anchor": r"precisamos agendar a\s*[\s\S]{0,3}visita t[ée]cnica de um prestador",
+     "reply": "", "noop": True, "only_subservices": ["bateria_nova"],
+     "notes": "📊 1/1."},
+    {"step": "bateria_nova_preco",
+     "anchor": r"prestador fornecer[áa] as informa[çc][õo]es sobre a marca, descarte",
+     "reply": "", "noop": True, "only_subservices": ["bateria_nova"],
+     "notes": "📊 1/1. 🔴 A tela traz PREÇO ao cliente. Ela é `noop` porque não pede "
+              "resposta — mas o texto vai a `regras_para_o_cliente`, e o segurado "
+              "precisa ouvir isso ANTES."},
+]
+
+# --------------------------------------------------------------------------
+# PORTO · residencial · CHAVEIRO  (🔴 o mais gritante dos quatro)
+# --------------------------------------------------------------------------
+# 📊 rótulo em 4 de 4 menus · 10 msgs · 6 sessões · **1 sessão COMPLETA até o
+#    protocolo** (565cb39a, 37 telas), com DOIS submenus mapeados e regra de
+#    cobertura própria.
+#
+# 🔴 Existe uma rota-ouro inteira no acervo, e `subservice_supported()` devolvia
+#    **False**. É o `desentupimento` da Allianz outra vez.
+#
+# ⚠️ E os rótulos divergem entre as duas variantes do menu: "Chaveiro
+#    residencial" (A) x "Chaveiro" (B). Por isso o mapa recebe o rótulo da
+#    variante VIVA e o corredor tem `unknown_step_policy` para a outra.
+PORTO_RESIDENCIAL_WHATSAPP_V1.setdefault("subservices", {})["chaveiro"] = {
+    "required_slots": _resid_slots("chaveiro"),
+}
+PORTO_RESIDENCIAL_WHATSAPP_V1.setdefault("subservice_labels", {})["chaveiro"] = (
+    "assistencia de chaveiro")
+PORTO_RESIDENCIAL_WHATSAPP_V1.setdefault("subservices", {})["desentupimento"] = {
+    "required_slots": _resid_slots("desentupimento"),
+}
+PORTO_RESIDENCIAL_WHATSAPP_V1.setdefault("subservice_labels", {})["desentupimento"] = (
+    "desentupimento")
+
+PORTO_RESIDENCIAL_WHATSAPP_V1["ura_steps"] = list(
+    PORTO_RESIDENCIAL_WHATSAPP_V1["ura_steps"]) + [
+    # ---- o menu de serviço residencial (as DUAS variantes) ---------------
+    # 🔴 SETE dos nove rótulos MUDAM entre as variantes A e B (singular/plural,
+    #    "Chaveiro residencial" x "Chaveiro", "Chuveiro" x "Técnico para
+    #    chuveiro", "Limpeza de calhas" x "Limpeza de calha"). Só "Encanador
+    #    (Hidráulica)" e "Eletricista" são idênticos nas duas.
+    #    Por isso a resposta vem do CASO e não de um rótulo fixo por subserviço:
+    #    um mapa com um rótulo só erra em uma das duas variantes para 7 dos 9.
+    {"step": "menu_servico_resid",
+     "anchor": (r"o que voc[êe] precisa\?[\s\S]{0,300}"
+                r"(?:encanador \(hidr[áa]ulica\)|eletrodom[ée]stic)"),
+     "reply": "{servico_texto}", "fallback_adaptive": True,
+     "notes": "📊 4 msgs / 4 sessões, DUAS variantes com listas DIFERENTES."},
+    # ---- chaveiro: os dois submenus da rota-ouro -------------------------
+    {"step": "chaveiro_sem_instalacao", "anchor": r"n[ãa]o realizamos instala[çc][ãa]o de fechaduras",
+     "reply": "", "noop": True, "only_subservices": ["chaveiro"],
+     "notes": "📊 1/1. 🔴 EXCLUSÃO DE COBERTURA: a Porto faz REPARO e ABERTURA, "
+              "não instalação."},
+    {"step": "chaveiro_submenu", "anchor": r"voc[êe] precisa do chaveiro para o qu[êe]",
+     "reply": "{chaveiro_alvo_opcao}", "requires": ["chaveiro_alvo_opcao"],
+     "fallback_adaptive": True, "only_subservices": ["chaveiro"],
+     "notes": "📊 1/1. 1-Porta ou janela 2-Portão 3-Fechadura 4-Não encontrei 5-Voltar."},
+    {"step": "chaveiro_tipo_fechadura", "anchor": r"qual tipo de fechadura precisa de reparo",
+     "reply": "{fechadura_tipo_opcao}", "requires": ["fechadura_tipo_opcao"],
+     "fallback_adaptive": True, "only_subservices": ["chaveiro"],
+     "notes": "📊 1/1. 1-Comum 2-Tetra 3-Eletrônica/Digital 4-Não encontrei 5-Voltar."},
+    # ---- encanador: o submenu que contém o DESENTUPIMENTO ----------------
+    # 📊 "*1* - Desentupimento *2* - Vazamento *3* - Reparo *4* - Assistência
+    #    para Chuveiro *5* - Instalações *6* - Voltar"
+    # 🔴 `desentupimento` não tem rótulo no menu principal: entra por
+    #    "Encanador (Hidráulica)" e depois pela tecla 1. É uma rota de DUAS
+    #    teclas, e as duas estão medidas.
+    {"step": "encanador_submenu",
+     "anchor": r"para qual tipo de servi[çc]o\?[\s\S]{0,120}desentupimento",
+     "reply": "{encanador_tipo_opcao}", "requires": ["encanador_tipo_opcao"],
+     "fallback_adaptive": True, "only_subservices": ["encanador", "desentupimento"],
+     "notes": "📊 1/1."},
+    {"step": "encanador_instalacao", "anchor": r"o que precisa de instala[çc][ãa]o\?",
+     "reply": "{encanador_instalacao_opcao}", "requires": ["encanador_instalacao_opcao"],
+     "fallback_adaptive": True, "only_subservices": ["encanador"],
+     "notes": "📊 1/1. 1-Filtro/Purificador 2-Torneira 3-Ducha higiênica."},
+    {"step": "encanador_recados",
+     "anchor": r"n[ãa]o faz reparo de equipamentos de pressuriza[çc][ãa]o",
+     "reply": "", "noop": True, "only_subservices": ["encanador", "desentupimento"],
+     "notes": "📊 1/1. 🔴 DUAS EXCLUSÕES numa frase: não faz pressurização, e não faz "
+              "o reparo se precisar interromper a água de TERCEIROS."},
+]
+
+
+# ==========================================================================
+# 🔴 SOCORRO MECÂNICO — 2º EM DEMANDA MEDIDA, E O PRODUTO RECUSAVA
+# ==========================================================================
+#
+# 📊 `DEMANDA_MEDIDA`: 7 escolhido / 70 no cardápio. E `subservice_supported`
+#    devolvia **False** em todas as seguradoras: `_AUTO_SUBSERVICES` tem
+#    guincho/bateria/pneu/chaveiro e mais nada.
+#
+# 🔴 E O MOTIVO DE ELE NÃO EXISTIR NO CÓDIGO É QUE **ELE NÃO É UM BOTÃO DO
+#    MENU.** O menu real, transcrito inteiro:
+#
+#      "Pode me dizer o que aconteceu? Para isso *selecione* uma das opções.
+#       Pane ou Defeito · Recarga de bateria · Houve uma colisão ·
+#       Pneu Furado · Problema com a chave · Falta de combustível · Voltar"
+#
+#    Não há "Socorro mecânico". **"Socorro Mecânico" é o nome que a URA dá ao
+#    DESFECHO** — o que ela escreve em `*Resumo da solicitação* *Serviço:*`
+#    quando decide mandar um mecânico ao local em vez de um reboque.
+#
+# 📊 O fluxo, medido turno a turno na sessão 71caf82f (hdi-auto, 01/06/2026,
+#    protocolo 9662631, 100% bot, ponta a ponta):
+#
+#      identificacao_dado -> continuar_com_placa -> informar_nome -> perfil
+#      -> pessoa_no_local -> nome_pessoa_local -> telefone_local
+#      -> telefone_confirma -> cor -> rodovia
+#      -> o_que_aconteceu = "Pane ou Defeito"
+#      -> pane_detalhe    = "Problemas elétricos"     🔴 e o corredor respondia
+#                                                        "Problemas no motor" FIXO
+#      -> descreva_situacao -> aviso_recarga_bateria
+#      -> endereço -> situacao_risco -> ocupantes
+#      -> quando_agora = "Agora"                      <- PONTO DE NÃO-RETORNO
+#      -> *Serviço:* Socorro Mecânico  *Assistência:* 9662631
+#
+#    📊 Mais 4 sessões na yelum-auto (927d8cea, 8ac461dc, 935c4076, 86769bd5),
+#       protocolos 9755758 · 9874835 · 9904302 · 9423652, mesmo caminho.
+#
+# 🔴 A TECLA É A MESMA DO GUINCHO ("Pane ou Defeito"). Quem separa os dois é a
+#    tela SEGUINTE — `pane_detalhe` —, e é por isso que a constante
+#    "Problemas no motor" que existia ali era grave: ela decidia a pane do
+#    segurado, e a pane é o que a URA usa para escolher entre reboque e
+#    mecânico no local.
+#
+# ⚠️ SEM `local_destino`: não há para onde levar. Um mecânico vai ATÉ o veículo.
+#
+# 🔴 E ele é ligado APENAS onde o fluxo foi observado. `_auto_playbook` copia
+#    `_AUTO_SUBSERVICES` para as ONZE seguradoras — acrescentar lá ligaria
+#    socorro mecânico na porto, na azul e na mapfre sem uma tela vista.
+for _pb_sm in (HDI_AUTO_WHATSAPP_V1, YELUM_AUTO_WHATSAPP_V1, ZURICH_AUTO_WHATSAPP_V1):
+    _ativar_subservico(
+        _pb_sm, "socorro_mecanico",
+        menu_value=(_pb_sm.get("subservice_menu_map") or {}).get("guincho"),
+        required_slots=[x for x in _AUTO_SLOTS_COMMON if x != "local_destino"],
+        label="socorro mecânico (reparo no local)",
+        espera_no_local=True,
+    )
+
+# 🔴 E O SEGURADO NÃO DIZ "socorro mecânico" — ele diz o que está acontecendo.
+_SUBSERVICE_ALIASES.update({
+    "socorro mecanico": "socorro_mecanico", "socorro_mecanico": "socorro_mecanico",
+    "mecanico": "socorro_mecanico", "pane": "socorro_mecanico",
+    "pane eletrica": "socorro_mecanico", "pane mecanica": "socorro_mecanico",
+    "carro nao liga": "socorro_mecanico", "nao pega": "socorro_mecanico",
+    "motor falhando": "socorro_mecanico", "defeito": "socorro_mecanico",
+})
+
+# ==========================================================================
+# AR CONDICIONADO — allianz residencial
+# ==========================================================================
+# 📊 O menu `menu_outros_servicos_residencia` (2 telas / 21 sessões) nomeia o
+#    trabalho, e a tela do galho ("*1 -* Conserto do ar condicionado *2 -*
+#    Limpeza") tem passo desde o conserto do OITAVO defeito.
+#
+# ⚠️ IDENTIFICADA, NÃO ESTABELECIDA: nenhuma sessão chegou ao protocolo por
+#    aqui. O subserviço é declarado com `pause_and_handoff` herdado do corredor
+#    — a tecla é comprovada, o resto pausa. É melhor que recusar um trabalho
+#    que a seguradora faz.
+ALLIANZ_RESIDENCIAL_WHATSAPP_V1["subservices"]["ar_condicionado"] = {
+    "tipo_servico_opcao": "2",
+    "eletrodomestico_categoria_opcao": "2",
+    "required_slots": [
+        "titular_cpf", "endereco_numero", "telefone_contato", "problema_descricao",
+        "aparelho_marca", "aparelho_modelo", "periodo_preferido",
+        "idade_aparelho_opcao", "qual_seguro_opcao",
+    ],
+}
+ALLIANZ_RESIDENCIAL_WHATSAPP_V1.setdefault("subservice_labels", {})["ar_condicionado"] = (
+    "conserto de ar condicionado")
+_SUBSERVICE_ALIASES.update({
+    "ar condicionado": "ar_condicionado", "ar-condicionado": "ar_condicionado",
+    "arcondicionado": "ar_condicionado", "split": "ar_condicionado",
+    "ar nao gela": "ar_condicionado",
+})
+
+_PLAYBOOKS_AUTO_COM_PNEU = [
+    pb for pb in (ALLIANZ_AUTO_WHATSAPP_V1, ALFA_AUTO_WHATSAPP_V1,
+                  AZUL_AUTO_WHATSAPP_V1, PORTO_AUTO_WHATSAPP_V1,
+                  YELUM_AUTO_WHATSAPP_V1, HDI_AUTO_WHATSAPP_V1,
+                  ZURICH_AUTO_WHATSAPP_V1, BRADESCO_AUTO_WHATSAPP_V1,
+                  MAPFRE_AUTO_WHATSAPP_V1, TOKIO_AUTO_WHATSAPP_V1)
+    if pb is not None
+]
+
+
+# ==========================================================================
+# 🔴 OS SLOTS QUE DECIDEM COBERTURA — E QUE NINGUÉM PODE ADIVINHAR
+# ==========================================================================
+#
+# 📊 Achados pelo conferidor de respostas: eram respondidos pelo cérebro
+#    (`fallback_adaptive`), e o cérebro está lendo a tela — não sabendo o fato.
+#
+# A regra que separa estes dos derivados:
+#
+# ```
+# DERIVA   o que o segurado JA DISSE   ("furei dois pneus" -> 2)
+# COLETA   o que so ele sabe E que decide COBERTURA
+# ```
+#
+# 🔴 Um estepe furado não está no relato de ninguém. E responder "tenho estepe"
+#    por preguiça manda um BORRACHEIRO para um carro que precisa de REBOQUE: o
+#    prestador chega, olha, e vai embora — e o acionamento conta como usado.
+#
+# 🔴 Pior é `local_seguro`. Responder "sim" no escuro **rebaixa a prioridade de
+#    quem está parado num lugar perigoso**. É a mesma regra já escrita em
+#    `rb_InformacoesLocal` do flow nativo, aplicada aos passos.
+_SLOTS_DE_COBERTURA_AUTO = [
+    "estepe_situacao",          # 📊 "Em condições / Sem condições / Não" -- e
+                                #    NENHUMA das três é "Sim". Duas levam a guincho.
+    "ferramentas_no_veiculo",   # 📊 "Possui chave de roda e macaco em boas condições?"
+    "equipamentos_troca_opcao",  # 📊 alfa: chave de roda, macaco E step, juntos
+    "local_seguro",             # 🔴 decide PRIORIDADE, não cobertura
+]
+for _sv_pneu in ("pneu",):
+    for _pb_cob in _PLAYBOOKS_AUTO_COM_PNEU:
+        sub = (_pb_cob.get("subservices") or {}).get(_sv_pneu)
+        if sub is not None:
+            sub["required_slots"] = list(sub["required_slots"]) + [
+                x for x in _SLOTS_DE_COBERTURA_AUTO
+                if x not in sub["required_slots"]]
+
+# `local_seguro` vale para TODO subserviço de auto: o segurado pode estar na
+# rua em qualquer um deles. 📊 A URA pergunta em guincho, bateria e pneu.
+for _pb_cob in _PLAYBOOKS_AUTO_COM_PNEU:
+    for _nome_sv, sub in (_pb_cob.get("subservices") or {}).items():
+        if _nome_sv == "vidros":
+            continue  # 📊 vidro é agendado; ninguém espera na rua
+        if "local_seguro" not in sub.get("required_slots", []):
+            sub["required_slots"] = list(sub.get("required_slots") or []) + ["local_seguro"]
+
+# 🔴 E o RESIDENCIAL tem o seu: casa ou condomínio decide se a URA vai pedir os
+#    dois horários de entrada do prestador. 📊 Sem eles, o prestador não entra
+#    no prédio — e a corretora sabe o tipo do imóvel, o segurado não precisa
+#    ser perguntado duas vezes.
+for _pb_resid in (HDI_RESIDENCIAL_WHATSAPP_V1, YELUM_RESIDENCIAL_WHATSAPP_V1):
+    for sub in (_pb_resid.get("subservices") or {}).values():
+        if "tipo_imovel" not in (sub.get("required_slots") or []):
+            sub["required_slots"] = list(sub.get("required_slots") or []) + ["tipo_imovel"]
+
 _PLAYBOOKS: Dict[str, Dict[str, Any]] = {
     f"{p['playbook_id']}@v{p['version']}": p
     for p in (

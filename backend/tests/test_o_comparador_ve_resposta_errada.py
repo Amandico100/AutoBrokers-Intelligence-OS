@@ -106,12 +106,27 @@ def _mut_a(fonte: str) -> str:
     📊 2min22 de silêncio medidos em 19/08/2026, até o Founder clicar "1" do
     próprio celular.
     """
-    fonte = fonte.replace('"idade_aparelho_opcao",\n            ],', '],', 1)
-    return fonte.replace('''            "reply": "{idade_aparelho_opcao}",
+    # ⚠️ TODAS as ocorrencias, nao a primeira: `origens_do_slot` usa `any()`
+    #    sobre os subservicos, entao basta UM declarar para o slot ter origem.
+    #    📊 Em 22/08 o BLOCO 4 declarou `ar_condicionado` com o MESMO slot, a
+    #    mutacao passou a remover so metade, e este guarda ficou VERDE por
+    #    engano -- provando de novo que mutacao sem controle nao guarda nada.
+    # ⚠️ A ORDEM IMPORTA, e ela ja me enganou uma vez: tirar o SLOT primeiro
+    #    fazia a terceira troca nao achar mais o texto, o `fallback_adaptive`
+    #    ficava, e o achado saia AMARELO em vez de vermelho. O guarda passava
+    #    a mentir sobre si mesmo.
+    #    Primeiro o fallback (para o passo poder ficar CALADO), depois o slot.
+    fonte = fonte.replace('''            "reply": "{idade_aparelho_opcao}",
             "requires": ["idade_aparelho_opcao"],
             "fallback_adaptive": True,''',
-                         '''            "reply": "{idade_aparelho_opcao}",
+                          '''            "reply": "{idade_aparelho_opcao}",
             "requires": ["idade_aparelho_opcao"],''', 1)
+    # ⚠️ TODAS as ocorrencias: `origens_do_slot` usa `any()` sobre os
+    #    subservicos, entao basta UM declarar para o slot ter origem.
+    #    📊 Em 22/08 o BLOCO 4 declarou `ar_condicionado` com o MESMO slot, a
+    #    mutacao removia so metade, e este guarda ficou VERDE por engano.
+    fonte = fonte.replace('\"idade_aparelho_opcao\",', '')
+    return fonte.replace('\"idade_aparelho_opcao\"', '')
 
 
 MUTACOES: List[Tuple[str, str, Callable[[str], str], Callable[[list], bool]]] = [

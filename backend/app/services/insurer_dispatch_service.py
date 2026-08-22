@@ -419,6 +419,48 @@ def _derivar_teclas_do_caso(slots: dict) -> None:
         # sem luz").
         slots["problema_eletrico_opcao"] = "2" if curto else "1"
 
+    # ---- QUANTOS PNEUS -----------------------------------------------
+    # 📊 Duas telas, duas seguradoras, a mesma pergunta:
+    #     yelum/hdi "Quantos pneus foram furados/danificados?
+    #                1-Apenas um pneu  2-Mais de um pneu"
+    #     alfa      "Quantos pneus furaram? 1-Apenas um  2-Dois ou mais"
+    #
+    # 🔴 "Mais de um pneu" MUDA O SERVICO para GUINCHO: um borracheiro leva um
+    #    estepe, nao dois. Constante aqui manda borracheiro para carro que
+    #    precisa de reboque -- e o prestador chega, olha, e vai embora.
+    if not str(slots.get("pneus_quantidade_opcao") or "").strip():
+        varios = any(p in texto for p in (
+            "dois pneus", "2 pneus", "tres pneus", "3 pneus", "quatro pneus",
+            "4 pneus", "mais de um pneu", "varios pneus", "dois furos",
+            "os dois", "ambos os pneus"))
+        slots["pneus_quantidade_opcao"] = "2" if varios else "1"
+    # a alfa usa outro nome para a MESMA pergunta
+    if not str(slots.get("pneus_furados_opcao") or "").strip():
+        slots["pneus_furados_opcao"] = slots["pneus_quantidade_opcao"]
+
+    # ---- O QUE ACONTECEU COM A CHAVE (auto) --------------------------
+    # 📊 yelum/hdi: "O que aconteceu com a chave? Dentro do veiculo (chave
+    #    trancada dentro) / Perda / Quebrou / Outros"
+    # 🔴 Sao ROTULOS, nao numeros -- e "Dentro do veiculo" e o caso mais comum
+    #    de chaveiro de auto: a chave ficou trancada. Mas so o relato diz.
+    if not str(slots.get("chave_problema") or "").strip():
+        if any(p in texto for p in ("trancad", "dentro do carro", "dentro do veiculo",
+                                    "fechou com a chave dentro", "chave dentro")):
+            slots["chave_problema"] = "Dentro do veiculo"
+        elif any(p in texto for p in ("quebrou", "quebrad", "partiu", "torceu")):
+            slots["chave_problema"] = "Quebrou"
+        elif any(p in texto for p in ("perdi", "perdeu", "perda", "sumiu", "extraviad")):
+            slots["chave_problema"] = "Perda"
+        else:
+            slots["chave_problema"] = "Outros"
+
+    # ---- JA SABE O DESTINO? (guincho) --------------------------------
+    # 🔴 Esta NAO sai do relato: sai do PROPRIO CASO. Se a corretora informou
+    #    `local_destino`, o destino e conhecido; se nao informou, nao e. Deduzir
+    #    isso de palavras seria adivinhar o que o formulario ja responde.
+    if not str(slots.get("tem_destino") or "").strip():
+        slots["tem_destino"] = "Sim" if str(slots.get("local_destino") or "").strip() else "Nao"
+
     # ---- "Conserto do ar condicionado" x "Limpeza do ar condicionado" -
     # 📊 A tela, literal (allianz residencial):
     #   "O servico e destinado ao conserto de aparelhos/equipamentos de uso
