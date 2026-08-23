@@ -185,9 +185,30 @@ else:
           "🔴 declarar NÃO é conferir: há apelidos no código que o cliente "
           "NUNCA escreveu",
           f"{len(apelidos)} declarados, {len(vivos)} conferidos")
-    certo(len(vivos) >= 3,
-          "📊 e a rota de referência tem >=3 apelidos CONFERIDOS",
-          sorted(vivos.items(), key=lambda kv: -kv[1]))
+    # ⚠️ 🔴 ESTA AFIRMAÇÃO VENCEU EM 23/08/2026, E A LIÇÃO MIGROU (§9.3).
+    #
+    # Ela dizia `len(vivos) >= 3` — *"a rota de referência tem 3 apelidos
+    # conferidos"*. Era verdade até o filtro de eco do C13b entrar. 📊 Dos 5
+    # apelidos da `maquina_de_lavar`, TRÊS só apareciam em texto que não era
+    # do cliente — dois menus de URA e um RESUMO colado no chat.
+    #
+    # 🔴 Os 4 pontos que a rota perdeu **nunca foram reais**: estavam sendo
+    #    pagos por tela de seguradora. Manter a afirmação vencida ensinaria a
+    #    ignorar teste vermelho, que é pior que não ter teste.
+    #
+    # A lição que ela carregava — *"o item CONFERE, não CONTA"* — não morre:
+    # ela vira a asserção abaixo, que é mais forte, porque afirma a DIREÇÃO
+    # em vez de um número. Se alguém reinflar a contagem com eco, `vivos`
+    # volta a 5, `declarados == vivos`, e ISTO fica vermelho.
+    certo(0 < len(vivos) < len(apelidos),
+          "🔴 o veredito segue o ESPELHO, não a declaração: parte dos "
+          "apelidos vive e parte não — nem tudo, nem nada",
+          f"{len(apelidos)} declarados, {len(vivos)} vivos: "
+          f"{sorted(vivos.items(), key=lambda kv: -kv[1])}")
+    # 🔴 CONTROLE: e os que vivem vivem com contagem REAL, não com 1 de sobra.
+    certo(max(vivos.values()) >= 3,
+          "🔴 CONTROLE: o apelido que sobrou é USADO — não é resto de ruído",
+          f"maior contagem: {max(vivos.items(), key=lambda kv: kv[1])}")
 
     # 🔴 CONTROLE NEGATIVO: um apelido inventado NÃO pode ser conferido.
     inventado = "trambolho que lava roupa do capiroto"

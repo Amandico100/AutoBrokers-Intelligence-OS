@@ -99,7 +99,17 @@ for _t, _oq in (
         ("so para confirmar antes de acionar, eduardo: - apolice allianz (auto) "
          "- servico: guincho",
          "🔴 o PROPRIO AutoBrokers -- o resumo que o agente escreve ao "
-         "corretor volta como `role='user'`")):
+         "corretor volta como `role='user'`"),
+        # 🔴 C15 -- a QUARTA fonte: o PORTAL da seguradora colado no chat.
+        #    Nao e a URA do WhatsApp; e a tela do site.
+        ("por favor, selecione a opcao que descreve melhor a sua necessidade. "
+         "remocao de veiculo preciso de reboque para remover o veiculo do local",
+         "🔴 menu do PORTAL colado -- era o unico lugar onde `reboque` aparecia"),
+        ("aqui voce pode de forma rapida e facil: assistencia 24h: solicite "
+         "servicos de emergencia como reboque, chaveiro, troca de pneus ou "
+         "socorro mecanico",
+         "🔴 CARDAPIO DE COBERTURA -- cita quatro servicos numa frase e "
+         "creditaria apelido para QUATRO rotas de uma vez")):
     certo(M._e_eco(M._norm(_t)), f"🔴 reconhece: {_oq}", _t[:56])
 
 CLIENTE = [
@@ -110,6 +120,11 @@ CLIENTE = [
     # 🔴 CONTROLE do padrao de menu: cliente que ESCREVE numero nao e menu.
     "furei o pneu na br-101, tem 2 pneus furados",
     "bom dia, 1 - ja mandei o cpf",
+    # 🔴 CONTROLE do C15: o filtro e por PROCEDENCIA, nao por assunto.
+    #    Um cliente que pede reboque com as proprias palavras SOBREVIVE --
+    #    se este caisse, o marcador estaria censurando vocabulario.
+    "preciso de um reboque, meu carro nao sai do lugar",
+    "prrcisa de troca de pneu",
 ]
 for texto in CLIENTE:
     certo(not M._e_eco(M._norm(texto)),

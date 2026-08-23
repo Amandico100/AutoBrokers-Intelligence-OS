@@ -310,6 +310,33 @@ _MARCAS_DE_ECO = (
     #       (auto) - servico: guincho..."
     "so para confirmar antes de acionar",
     "neste caso, enviaremos um prestador",   # texto da URA colado
+
+    # 🔴 E A QUARTA FONTE, achada ao conferir os apelidos de `allianz/auto`
+    #    em 23/08/2026: **o PORTAL da seguradora colado no chat**.
+    #
+    #    Não é a URA do WhatsApp — é a tela do site, que o corretor copia para
+    #    o chat quando pede ajuda. 📊 Dois textos, e os dois eram os ÚNICOS
+    #    lugares onde `reboque` e `remocao de veiculo` apareciam:
+    #
+    #      "por favor, selecione a opcao que descreve melhor a sua
+    #       necessidade. REMOCAO DE VEICULO preciso de REBOQUE para remover
+    #       o veiculo do local | ENVOLVIMENTO EM ACIDENTE ..."
+    #
+    #      "aqui voce pode de forma rapida e facil: - assistencia 24h:
+    #       solicite servicos de emergencia como REBOQUE, CHAVEIRO, TROCA DE
+    #       PNEUS ou socorro mecanico..."
+    #
+    # ⚠️ O segundo é pior que menu: é um CARDÁPIO DE COBERTURA. Ele cita
+    #    quatro serviços numa frase só, então crédita apelido para quatro
+    #    rotas de uma vez — e nenhuma delas foi pedida por ninguém ali.
+    #
+    # 📊 O que este conserto CUSTA, medido antes de escrever: de 22 apelidos
+    #    declarados hoje, **5 perdem exatamente 1 confirmação** (`mecanico`
+    #    18→17, `para-brisa` 21→20, `retrovisor` 15→14, `socorro mecanico`
+    #    8→7, `vidro` 50→49) e **NENHUM chega a zero**. Nota de nenhuma das
+    #    73 rotas muda. É guarda, não é queda.
+    "selecione a opcao que descreve melhor a sua necessidade",
+    "solicite servicos de emergencia como",
 )
 
 # ⚠️ 🔴 O MARCADOR QUE NÃO TINHA COMO DISPARAR — 23/08/2026.
