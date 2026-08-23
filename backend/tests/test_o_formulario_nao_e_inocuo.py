@@ -68,7 +68,13 @@ for rota in M.rotas():
     if rp.formularios:
         com_flow[str(rota)] = rp
 
-certo(len(com_flow) == 2,
+# ATUALIZADO em 23/08/2026 -- SPEC-084.2 C4. Eram DUAS rotas; o registro do
+#    SEGUNDO formulario da familia fez a regua enxergar mais tres, que ja
+#    batiam nele e ninguem via: hdi/auto/chaveiro, yelum/auto/pneu e
+#    yelum/auto/socorro_mecanico -- esta ultima uma rota 88/88.
+# O numero nao e fixado a mao: ele sai do corpus, e cresce sozinho quando um
+#    formulario novo for registrado.
+certo(len(com_flow) >= 5,
       "\U0001F4CA duas rotas têm formulário nativo no corpus",
       str(sorted(com_flow)))
 
@@ -110,19 +116,28 @@ certo(nomes and all(n.startswith("flow:") for n in nomes),
 
 # 🔴 CONTROLE: e a outra forma da evidência CONSEGUE aparecer. Sem esta
 #    metade, o ramo `flow_falta:` poderia ter sido apagado e ninguém veria.
+#
+# ⚠️ Os campos saem do PRÓPRIO schema, não de uma lista escrita aqui. 📊 A
+#    primeira redação fixava os três do formulário V2 — e quando o C4
+#    registrou o SEGUNDO formulário, que tem dois campos, o controle passou a
+#    cobrar campos que aquele formulário não mostra. Guarda que reprova por
+#    olhar a lista errada ensina a desligar guarda.
 _pb_ctrl = M.get_playbook("hdi-auto-whatsapp@v1") or {}
-_fl_ctrl = None
-for _t in next(iter(com_flow.values())).telas:
-    if str(_t.passo or "").startswith("flow"):
-        _fl_ctrl = M.detect_native_flow(_pb_ctrl, _t.texto)
-        break
-_vazio = M.montar_resposta_de_flow(_fl_ctrl, {}) if _fl_ctrl else {}
-for campo in ("rb_EmGaragemOuEstacionamento", "rb_NivelDaRua",
-              "rb_InformacoesLocal"):
-    certo(campo in (_vazio.get("missing") or []),
-          f"🔴 CONTROLE: sem slot nenhum, o motor ainda ACUSA `{campo}` "
-          "— a classificação de órfã não virou letra morta",
-          str(_vazio.get("missing")))
+_flows = (_pb_ctrl.get("native_flows") or {})
+certo(len(_flows) >= 2,
+      "📊 o produto conhece pelo menos dois formulários da família",
+      str(sorted(_flows)))
+
+for _fid, _schema in sorted(_flows.items()):
+    _obrig = [str(c.get("name") or "")
+              for _t, c in M.flow_components(_schema)
+              if c.get("required") and c.get("default") is None]
+    _vazio = M.montar_resposta_de_flow(_schema, {})
+    certo(_obrig and set(_obrig) <= set(_vazio.get("missing") or []),
+          f"🔴 CONTROLE: sem slot nenhum, o formulário {_fid} ACUSA "
+          f"os {len(_obrig)} campos dele — a classificação de órfã não virou "
+          "letra morta",
+          f"obrigatorios={_obrig} missing={_vazio.get('missing')}")
 
 print()
 print("=" * 74)

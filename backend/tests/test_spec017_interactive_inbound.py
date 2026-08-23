@@ -192,9 +192,47 @@ def run():
     # o caso que importa guardar: sem o gatilho, ele escorregava para a fase
     # humana em silêncio. Agora pausa com motivo. O que protege deixou de ser uma
     # lista no playbook e passou a ser o motor.
-    check("E2E: FLOW nativo DESCONHECIDO -> pausa com motivo, nao escorrega",
-          s["state"] == "needs_human" and s.get("reason") == "formulario_nativo_desconhecido",
+    # 🔴 ATUALIZADO em 23/08/2026 — SPEC-084.2 C4, CLAUDE.md §9.3.
+    #
+    #    Este check exigia `formulario_nativo_desconhecido`. Era verdade: o
+    #    texto da fixture e o do SEGUNDO formulario da familia HDI/Yelum, e ele
+    #    NAO estava registrado. O C4 o registrou -- entao a mensagem passa a
+    #    ser reconhecida, e o motor pausa por FALTAR DADO, nao por faltar
+    #    schema. Manter a afirmacao vencida ensinaria a ignorar teste.
+    #
+    # 🔴 A LICAO CONTINUA A MESMA: formulario NAO ESCORREGA. Ele pausa, com
+    #    motivo escrito. O que mudou foi QUAL motivo -- e o novo e melhor,
+    #    porque nomeia o campo que falta em vez de dizer "nao conheco isto".
+    check("E2E: FLOW nativo CONHECIDO -> pausa nomeando o campo que falta",
+          s["state"] == "needs_human"
+          and str(s.get("reason") or "").startswith("formulario_incompleto:"),
           (s.get("state"), s.get("reason")))
+
+    # 🔴 E O FAIL-CLOSED CONTINUA VIVO, com um formulario que de verdade nao
+    #    existe. Sem esta metade, o C4 teria APAGADO o guarda em vez de
+    #    registrar um formulario -- e ninguem veria.
+    #
+    # ⚠️ O texto tem de nao casar ancora NENHUMA: o 4o formulario real da
+    #    yelum ("informar endereco") NAO serve como controle, porque seu texto
+    #    casa o passo `destino_como` e `match_ura_step` roda antes.
+    desconhecido = inbound.normalize_evolution_inbound(_payload({
+        "interactiveMessage": {
+            "body": {"text": "Preencha o formulário abaixo para concluir a "
+                             "vistoria prévia do veículo."},
+            "nativeFlowMessage": {"buttons": [
+                {"name": "flow", "buttonParamsJson": "{\"flow_cta\":\"Vistoria\",\"flow_token\":\"tok999\",\"flow_id\":\"111222333\"}"},
+            ]},
+        }
+    }, msg_id="MSG7"))
+    s2 = dispatch.new_dispatch_session(case_id="i2", company_id="co",
+                                       playbook_ref="yelum-auto-whatsapp@v3",
+                                       subservice="guincho", slots=dict(SLOTS))
+    s2 = dispatch.start_dispatch(s2)
+    s2 = dispatch.handle_insurer_message(s2, desconhecido["text"])
+    check("E2E: CONTROLE — formulario REALMENTE desconhecido segue fail-closed",
+          s2["state"] == "needs_human"
+          and s2.get("reason") == "formulario_nativo_desconhecido",
+          (s2.get("state"), s2.get("reason")))
 
     print(f"\n== Resumo: {PASS} passaram, {FAIL} falharam ==")
     if FAILURES:

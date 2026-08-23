@@ -2844,8 +2844,90 @@ _FLOW_CONDICOES_VEICULO_V2: Dict[str, Any] = {
 
 # O registro. Um objeto, indexado por flow_id — os dois playbooks apontam para
 # ELE, não para cópias dele.
+# ==========================================================================
+# 🔴 O SEGUNDO FORMULÁRIO DA FAMÍLIA — SPEC-084.2 C4
+# ==========================================================================
+#
+# 📊 A yelum usa DOIS formulários, não um — e o acervo tem QUATRO `flow_id`.
+#    Varredura dos 28.096 eventos de `observed_events` em 23/08/2026:
+#
+#      857030507196739   (veículo, local e ocupantes) V2   hdi   18/07   ✅ registrado
+#      2887131368288279  (local e ocupantes)               yelum 07/08 e 17/08
+#      3206000179602236  (veículo, local e ocupantes) V2   yelum 19/08
+#      1579547063352571  Informar endereço V2              yelum 03/08   ⏸️ ver PENDENCIAS
+#
+#    Só o primeiro estava no produto.
+#
+# 🔴 E ELE É O ÚLTIMO PORTÃO ANTES DO DESFECHO: na sessão `8ac461dc`, o clique
+#    humano às 11:25:29 é seguido, dez segundos depois, de *"agora ou prefere
+#    agendar"* e, aos 11:26, de *"Sua solicitação foi aberta com sucesso"*.
+#    Sem responder este formulário, o acionamento não chega ao protocolo.
+#
+# ⚠️ 📊 E O `flow_id` NUNCA CHEGA. O marcador `[FORMULARIO NATIVO]` aparece
+#    **0 vezes em 28.096 eventos**: o botão da HDI/Yelum se chama
+#    `galaxy_message` (o rótulo LEGADO da Meta) e não está entre os quatro
+#    nomes que o parser de interativas reconhece. **A âncora de texto é o
+#    único canal de detecção que funciona hoje** — registrar só por `flow_id`
+#    seria registrar um formulário que nunca chega. Ver PENDENCIAS.
+NATIVE_FLOW_LOCAL_E_OCUPANTES = "2887131368288279"
+
+# ⚠️ O MESMO formulário V2, com o id da YELUM. 📊 Sessão `a1c18e1c`, 19/08 —
+#    nome idêntico, schema idêntico, id diferente. Ids de flow são por conta da
+#    Meta, e cada seguradora publica o seu.
+NATIVE_FLOW_CONDICOES_VEICULO_YELUM = "3206000179602236"
+
+# Âncora da mensagem que ABRE o formulário novo.
+#
+# 📊 ESPECIFICIDADE MEDIDA: ela casa 5 telas do corpus (hdi 1, yelum 4), e
+#    **nenhuma delas casa também a âncora do V2**. As duas não se cruzam.
+NATIVE_FLOW_LOCAL_PROMPT_ANCHOR = r"precisamos entender onde o ve[íi]culo est[áa] parado"
+
+# 🔴 AS TELAS SÃO AS MESMAS DO V2, POR REFERÊNCIA — e isso foi decidido por nota.
+#
+#    (A) reusar o V2 inteiro, apontando o id novo para ele: **12/100**.
+#        📊 Medido: `montar_resposta_de_flow(V2, {só os dois slots})` devolve
+#        `ok=False, missing=[rb_EmGaragemOuEstacionamento, rb_NivelDaRua]` —
+#        dois campos que ESTE formulário não mostra, um deles o que escolhe o
+#        EQUIPAMENTO. Seria `formulario_incompleto` em 100% dos casos, para
+#        sempre: trocar um handoff mudo por um handoff falante.
+#
+#    (B) registro PRÓPRIO reusando as telas por referência: **94/100**. ✅
+#        📊 Extraído do payload real (evento `flow_reply` da yelum, 07/08, e
+#        confirmado no de 17/08): os campos são `rb_InformacoesLocal` e
+#        `rb_Ocupantes`, com os MESMOS ids de opção do V2 —
+#        `6=Local Seguro`, `2=Local escuro ou mal iluminado`,
+#        `3=Área com pouca circulação de pessoas`. É um SUBCONJUNTO ESTRITO.
+#
+# ⚠️ Copiar as telas criaria dois donos para a mesma verdade, e no dia em que a
+#    HDI mudar uma opção só um dos dois seria consertado. É a mesma regra que
+#    já governa este registro ("um objeto, duas referências"), um nível abaixo.
+_FLOW_LOCAL_E_OCUPANTES: Dict[str, Any] = {
+    "flow_id": NATIVE_FLOW_LOCAL_E_OCUPANTES,
+    "flow_name": ("Automóvel - Detalhes do atendimento (local e ocupantes) "
+                  "[Redução de perguntas]"),
+    "insurer_family": ("hdi", "yelum"),
+    "prompt_anchor": NATIVE_FLOW_LOCAL_PROMPT_ANCHOR,
+    "observed": {
+        "source": "observed_events.interactive → NativeFlowResponseMessage",
+        "insurer_key": "yelum",
+        "msg_type": "flow_reply",
+        "wa_timestamp": "2026-08-07T11:25:29Z",
+        "confirmado_em": "2026-08-17T11:30:42Z",
+        "flow_cta": "Detalhes do local",
+        "resposta_humana": {"rb_InformacoesLocal": "6", "rb_Ocupantes": "1"},
+    },
+    "screens": [_tela for _tela in _FLOW_CONDICOES_VEICULO_V2["screens"]
+                if _tela.get("id") in ("scr_InformacoesLocal",
+                                       "scr_IdentificacaoOcupantes")],
+}
+
 _NATIVE_FLOWS_FAMILIA_HDI_YELUM: Dict[str, Dict[str, Any]] = {
     NATIVE_FLOW_CONDICOES_VEICULO: _FLOW_CONDICOES_VEICULO_V2,
+    # ⚠️ O mesmo objeto, sob o id que a YELUM publica. Sem esta linha,
+    #    `native_flow(pb, "3206000179602236")` devolveria None para um
+    #    formulário que o produto conhece inteiro.
+    NATIVE_FLOW_CONDICOES_VEICULO_YELUM: _FLOW_CONDICOES_VEICULO_V2,
+    NATIVE_FLOW_LOCAL_E_OCUPANTES: _FLOW_LOCAL_E_OCUPANTES,
 }
 
 
@@ -10434,6 +10516,36 @@ for _pb_flow in (HDI_AUTO_WHATSAPP_V1, YELUM_AUTO_WHATSAPP_V1):
         _req_flow = list(_sub_flow.get("required_slots") or [])
         _sub_flow["required_slots"] = _req_flow + [
             x for x in _SLOTS_DO_FORMULARIO_NATIVO_HDI_YELUM if x not in _req_flow]
+
+# ══════════════════════════════════════════════════════════════════════════
+# 🔴 E O SEGUNDO FORMULÁRIO ALCANÇA MAIS TRÊS SUBSERVIÇOS — SPEC-084.2 C4
+# ══════════════════════════════════════════════════════════════════════════
+#
+# 📊 O bloco acima ficou em `guincho` porque as 6 telas do formulário V2 são
+#    todas de reboque. Ao REGISTRAR o segundo formulário, a régua passou a
+#    enxergar telas que antes não casavam nada — e elas aparecem em
+#    `pneu`, `chaveiro` e `socorro_mecanico`:
+#
+#      hdi/auto/chaveiro          1 tela   →  era invisível
+#      yelum/auto/pneu            1 tela   →  era invisível
+#      yelum/auto/socorro_mecanico 3 telas  →  era invisível (rota 88/88!)
+#
+# ⚠️ **É a medição que muda o escopo, não a preferência.** O recorte anterior
+#    estava certo para o que se enxergava então; enxergar mais obriga a
+#    recortar de novo.
+#
+# 🔴 E aqui basta UM slot, não três: este formulário tem só duas telas, e
+#    `rb_Ocupantes` já tem default medido (`"1"`, a mesma resposta que o passo
+#    de texto `ocupantes` dava). 📊 Custo no bloco da atendente: 6.534 → 6.753
+#    caracteres, teto de 7.000. Os três slots nas seis rotas estourariam.
+for _pb_f2 in (HDI_AUTO_WHATSAPP_V1, YELUM_AUTO_WHATSAPP_V1):
+    for _sv_f2 in ("pneu", "chaveiro", "socorro_mecanico"):
+        _sub_f2 = (_pb_f2.get("subservices") or {}).get(_sv_f2)
+        if _sub_f2 is None:
+            continue
+        _req_f2 = list(_sub_f2.get("required_slots") or [])
+        if "local_situacao" not in _req_f2:
+            _sub_f2["required_slots"] = _req_f2 + ["local_situacao"]
 
 
 # ══════════════════════════════════════════════════════════════════════════

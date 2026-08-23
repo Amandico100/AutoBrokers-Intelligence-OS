@@ -769,8 +769,10 @@ for _rota_f in _RB.M.rotas():
     if _rp_f.formularios:
         _com_flow[str(_rota_f)] = _rp_f
 
-certo(len(_com_flow) == 2,
-      "📊 duas rotas tem formulario nativo no corpus",
+# ATUALIZADO -- SPEC-084.2 C4: o registro do segundo formulario da familia
+#    revelou tres rotas a mais que ja batiam nele.
+certo(len(_com_flow) >= 5,
+      "📊 cinco rotas ou mais tem formulario nativo no corpus",
       str(sorted(_com_flow)))
 
 _telas_flow = [t for rp in _com_flow.values() for t in rp.telas
