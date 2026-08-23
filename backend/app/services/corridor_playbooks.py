@@ -475,7 +475,19 @@ ALLIANZ_RESIDENCIAL_WHATSAPP_V1: Dict[str, Any] = {
             # As datas sao DINAMICAS — mudam a cada dia. Por isso a resposta e
             # o NUMERO da posicao, nunca a data. `1` e sempre a mais proxima.
             "step": "escolher_data_agendamento",
-            "only_subservices": ["eletrodomesticos", "maquina_de_lavar"],
+            # ⚠️ 🔴 O ESCOPO ESTAVA ESTREITO DEMAIS, e nao por descuido: estes
+            #    passos nasceram para o eletrodomestico. 📊 Medido em
+            #    22/08/2026, a MESMA tela aparece em `ar_condicionado` (2x) e
+            #    `limpeza_caixa_dagua` (4x), e o corredor ficava mudo nelas.
+            #
+            # ⚠️ E `chaveiro` fica DE FORA de proposito: ele tem OUTRO fluxo
+            #    de agendamento, e a propria URA escreve nele *"se precisa do
+            #    atendimento para hoje, escolha um horario daqui a pelo menos
+            #    2 horas. Caso contrario, solicite para agora"*. Chaveiro e
+            #    emergencial: casar a tela dele com este passo agendaria para
+            #    outro dia quem esta trancado do lado de fora.
+            "only_subservices": ["eletrodomesticos", "maquina_de_lavar",
+                                 "ar_condicionado", "limpeza_caixa_dagua"],
             "anchor": r"escolha qual data deseja agendar",
             "reply": "{data_agendamento_opcao}",
             "requires": ["data_agendamento_opcao"],
@@ -490,7 +502,19 @@ ALLIANZ_RESIDENCIAL_WHATSAPP_V1: Dict[str, Any] = {
             #    (manha* - das 9:00 as 13:00 ou *tarde* ...)" (14x)
             #   "O agendamento e feito em intervalo de 2 horas..." (17x)
             "step": "escolher_periodo_agendamento",
-            "only_subservices": ["eletrodomesticos", "maquina_de_lavar"],
+            # ⚠️ 🔴 O ESCOPO ESTAVA ESTREITO DEMAIS, e nao por descuido: estes
+            #    passos nasceram para o eletrodomestico. 📊 Medido em
+            #    22/08/2026, a MESMA tela aparece em `ar_condicionado` (2x) e
+            #    `limpeza_caixa_dagua` (4x), e o corredor ficava mudo nelas.
+            #
+            # ⚠️ E `chaveiro` fica DE FORA de proposito: ele tem OUTRO fluxo
+            #    de agendamento, e a propria URA escreve nele *"se precisa do
+            #    atendimento para hoje, escolha um horario daqui a pelo menos
+            #    2 horas. Caso contrario, solicite para agora"*. Chaveiro e
+            #    emergencial: casar a tela dele com este passo agendaria para
+            #    outro dia quem esta trancado do lado de fora.
+            "only_subservices": ["eletrodomesticos", "maquina_de_lavar",
+                                 "ar_condicionado", "limpeza_caixa_dagua"],
             "anchor": (r"agendamento (?:[ée] por per[íi]odo|[ée] feito em intervalo)"
                        r"|hor[áa]rios de agendamento"),
             "reply": "{periodo_agendamento_opcao}",
