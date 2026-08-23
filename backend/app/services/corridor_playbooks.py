@@ -1540,10 +1540,51 @@ _AUTO_SUBSERVICE_LABELS = {
 
 # Slots mínimos por subserviço auto. placa/veículo vêm da InfoCap (server-side).
 _AUTO_SLOTS_COMMON = ["titular_cpf", "veiculo_placa", "local_atual", "problema_descricao", "quando", "telefone_contato"]
+# ⚠️ 🔴 ESTES QUATRO SÃO ONE-LINERS, E A JANELA DO C14 É A LINHA + OS
+#    COMENTÁRIOS COLADOS ACIMA DELA. Uma linha em branco fecha a janela: é o
+#    que impede a transcrição de uma rota de creditar a vizinha. Por isso os
+#    blocos abaixo não têm linha em branco entre o comentário e a chave.
+#
+# ⚠️ E o que está escrito aqui vale para a seguradora cuja SESSÃO é citada: o
+#    item confere `sessão XXXXXXXX` contra o corpus DAQUELA rota. A alfa não
+#    ganha nada com a sessão da allianz, e é assim que tem de ser.
 _AUTO_SUBSERVICES = {
+    # 📊 GUINCHO — sessão dc6c0345 (allianz/auto), protocolo 52440449, 34 telas.
+    #    CPF → placa → confirma veículo (FIORINO, 1) → telefone → "O que você
+    #    precisa?" → 3 (reboque para pane mecânica) → "para quando" = Agora →
+    #    "Você sabia? o mecânico pode reparar no local" = 2 (continuar com o
+    #    guincho) → acesso do reboque = 1 → endereço de ORIGEM (manual) →
+    #    referência → PCD = 2 → endereço de DESTINO (UF, cidade, logradouro,
+    #    número) → RESUMO → confirma → protocolo.
+    #    🔴 É a rota que tem DOIS endereços, e é o que a distingue das outras
+    #    três: `local_destino` só existe aqui.
     "guincho": {"required_slots": _AUTO_SLOTS_COMMON + ["local_destino"]},
+    # 📊 BATERIA — sessão cea36de4 (allianz/auto), protocolo 52459590, 36 telas.
+    #    CPF → confirma veículo (X1, 1) → telefone → tipo do veículo = 1 →
+    #    "O que você precisa?" → 1 (pane elétrica / recarga de bateria) →
+    #    "para quando" = Agora → aviso da GARANTIA DE FÁBRICA → endereço →
+    #    confirma → referência → PCD = 2 → RESUMO → "Tem certeza? você
+    #    precisará refazer" = 2 → confirmada → protocolo.
+    #    🔴 A tela do "Tem certeza?" é a razão do passo
+    #    `reiniciar_solicitacao_confirma`: o "1" ali apaga a solicitação inteira.
     "bateria": {"required_slots": _AUTO_SLOTS_COMMON},
+    # 📊 PNEU — sessão c6fff008 (allianz/auto), protocolo 51018559, 33 telas.
+    #    CPF → confirma veículo (COMPASS, 1) → telefone (recusado duas vezes,
+    #    a URA seguiu assim mesmo) → tipo = 1 → "O que você precisa?" → 6
+    #    (borracheiro para troca de pneu) → "para quando" = Agora → "Quantos
+    #    pneus furaram?" → "os equipamentos (chave de roda, macaco e step)
+    #    estão no veículo?" = 2 → "Neste caso, o guincho levará o veículo
+    #    até a borracharia" → acesso do reboque → endereço → PCD → RESUMO →
+    #    protocolo.
+    #    🔴 Sem estepe, a troca de pneu VIRA REBOQUE. É a expectativa que mais
+    #    muda o desfecho, e o segurado precisa ouvi-la antes.
+    #    ⚠️ E a sessão 298e0c49 mostra o outro galho: MOTO, com a pergunta da
+    #    cilindrada que ninguém respondia.
     "pneu": {"required_slots": _AUTO_SLOTS_COMMON},
+    # ⚠️ CHAVEIRO — sem transcrição de AUTO aqui de propósito: 📊 a tecla 7 do
+    #    menu foi apresentada 25 vezes e pressionada ZERO. Não há sessão de
+    #    `allianz/auto/chaveiro` para transcrever, e inventar uma seria pior
+    #    que a lacuna. É trabalho de COLETA, e está em PENDENCIAS.
     "chaveiro": {"required_slots": _AUTO_SLOTS_COMMON},
 }
 
@@ -1775,10 +1816,46 @@ _AUTO_CLIENT_INSTRUCTIONS_LOCAL = [
     "É preciso alguém maior de 18 anos no local para acompanhar o serviço.",
 ]
 
+# 🔴 CANCELAR, ALTERAR E REAGENDAR SÃO DECISÕES DE GENTE — 23/08/2026, ONDA B.
+#
+# 📊 As nove órfãs funcionais de `allianz/auto/bateria` (5) e `guincho` (4) são
+#    todas do MESMO galho, e é o galho onde a URA oferece desfazer o que já
+#    está feito:
+#
+#      "Como podemos ajudar?  *1 -* Alterar atendimento  *0 -* Sair"
+#      "E o que deseja fazer? *1 -* Cancelar *2 -* Reagendar *9 -* Voltar"
+#      "Tem certeza que deseja cancelar? *1 -* Sim *2 -* Não *9 -* Voltar"
+#      "Seu atendimento foi cancelado! O que deseja fazer agora?"
+#      "Importante: Esta opção *permite alterar apenas* data e horário..."
+#      "Certo! Seu atendimento não foi reagendado."
+#
+# 🔴 O produto ABRE assistência. Ele não cancela nem remarca a de ninguém: um
+#    guincho cancelado por engano deixa uma pessoa parada na estrada, e não há
+#    resposta reversível para "Tem certeza que deseja cancelar? 1-Sim 2-Não" —
+#    o "2" devolve ao menu e o "1" destrói. Quem decide isso é o segurado, pela
+#    corretora. Por isso o galho inteiro é **handoff**, e não um passo.
+#
+# ⚠️ Entra na lista COMPARTILHADA de auto, não na da Allianz, e a razão é
+#    medida: 📊 no corpus inteiro (4.247 telas, 16 arquivos) estes seis padrões
+#    casam **9 telas, todas em `allianz-auto`**. Nenhuma outra seguradora perde
+#    nada; e se amanhã outra escrever a mesma frase, ela já está protegida.
+#
+# 🔴 A linha de CONTROLE que dá direito a essa conclusão: `podemos confirmar o
+#    atendimento`, medido na mesma rodada, casa **24 telas em 13 rotas**. O
+#    corpus TEM frases que atravessam seguradoras — estas seis não são.
+_CANCELAR_E_HUMANO = [
+    r"alterar atendimento",
+    r"o que deseja fazer\?[\s\S]{0,40}1 -\s*cancelar",
+    r"tem certeza que deseja cancelar",
+    r"seu atendimento foi cancelado",
+    r"permite alterar apenas[\s\S]{0,25}data e hor[áa]rio",
+    r"n[ãa]o foi reagendado",
+]
+
 _AUTO_HANDOFF_TRIGGERS = [
     r"sinistro", r"colis[ãa]o", r"acidente", r"n[ãa]o localizamos", r"n[ãa]o encontrei .* ap[óo]lice",
     r"ap[óo]lice .* (?:vencid|cancelad|inativ)", r"sem cobertura", r"n[ãa]o (?:tem|possui) cobertura",
-]
+] + list(_CANCELAR_E_HUMANO)
 
 
 def _auto_playbook(insurer_key: str, contact_ref: str, ura_steps, finalize_anchors, *, version: int = 1) -> Dict[str, Any]:
@@ -1880,8 +1957,30 @@ _ALLIANZ_FAMILY_AUTO_STEPS = [
      "notes": "URA oferece mecânico no lugar do guincho — o serviço é o que o CLIENTE pediu (2=continuar guincho)"},
     {"step": "rodas_travadas", "anchor": r"rodas? travadas?", "reply": "2",
      "notes": "default Não (2); se o caso indicar roda travada, o adaptativo assume"},
-    {"step": "acesso_reboque", "anchor": r"local que o reboque consegue acessar", "reply": "1",
-     "notes": "1-Sim; se o caso indicar acesso difícil, o adaptativo assume"},
+    # ⚠️ 🔴 "local **OU GARAGEM** que o reboque consegue acessar" — a URA tem as
+    #    duas redações e a âncora só previa uma. 📊 Medido em 23/08/2026 no
+    #    corpus inteiro: a antiga casa 8 telas, a nova casa 9 — a que faltava
+    #    era a órfã funcional nº 2 de `allianz/auto/pneu`, sessão 298e0c49.
+    #    Zero colateral: as outras 8 são as mesmas de antes.
+    # 🔴 A MOTO GRANDE NÃO SOBE NA RAMPA DA PEQUENA — e a recíproca é falsa.
+    #    📊 Órfã funcional nº 1 de `allianz/auto/pneu`, sessão 298e0c49 (uma
+    #    TIGER): "Qual a cilindrada da moto? *1 -* Menos de 300 cilindradas
+    #    *2 -* Mais de 300 cilindradas". Sem passo, o cérebro chuta — e o erro
+    #    não é simétrico: pedir o reboque de moto grande e mandar uma pequena
+    #    ainda funciona; o contrário deixa a moto na rua.
+    # ⚠️ NÃO entra em `required_slots`: a tela só aparece para MOTO, e exigir o
+    #    dado bloquearia toda troca de pneu de carro.
+    {"step": "cilindrada_moto", "anchor": r"qual a cilindrada da moto", "reply": "2",
+     "constante_justificada": (
+         "🔴 O erro nao e simetrico. `2 - Mais de 300` manda o reboque que "
+         "carrega QUALQUER moto; `1 - Menos de 300` manda um que nao carrega a "
+         "grande, e o segurado fica na rua esperando um segundo acionamento. "
+         "Sem o dado no caso, a resposta conservadora e a que atende os dois."),
+     "notes": "📊 1 tela / 1 sessão (298e0c49, uma TIGER)."},
+    {"step": "acesso_reboque",
+     "anchor": r"local(?: ou garagem)? que o reboque consegue acessar", "reply": "1",
+     "notes": "📊 9 telas / 6 sessões (alfa 2 · allianz 4). 1-Sim; se o caso indicar "
+              "acesso difícil, o adaptativo assume"},
     {"step": "pcd_criancas", "anchor": r"pessoa com defici[êe]ncia, crian[çc]a, gestante ou idoso", "reply": "2",
      "notes": "default Não; se houver no caso, o adaptativo assume"},
     {"step": "referencia_local", "anchor": r"informe uma refer[êe]ncia do local", "reply": "{ponto_referencia}",
@@ -1943,6 +2042,81 @@ ALLIANZ_AUTO_WHATSAPP_V1["subservice_menu_map"] = {
     "guincho": "3", "bateria": "1", "pneu": "6", "chaveiro": "7",
 }
 ALLIANZ_AUTO_WHATSAPP_V1["finalize_abort_reply"] = "SAIR"  # URA aceita SAIR a qualquer momento
+
+# ══════════════════════════════════════════════════════════════════════════
+# 🔴 O QUE O SEGURADO PRECISA OUVIR ANTES DE "VOU ACIONAR" — allianz/auto
+# ══════════════════════════════════════════════════════════════════════════
+#
+# ⚠️ Cada linha ABRE com frase que a Allianz escreve na URA, conferida contra
+#    o corpus versionado DESTA rota em 23/08/2026.
+#
+# 🔴 E ISTO NÃO PODE SER ESCRITO EM `_AUTO_SUBSERVICES`: aquele dicionário é
+#    copiado para as ONZE seguradoras de auto pela `_auto_playbook`, e o texto
+#    vai para o prompt da atendente. A regra da garantia de fábrica é da
+#    Allianz; escrevê-la lá faria a Porto prometer a mesma coisa.
+for _sv_al, _regras_al, _expect_al in (
+    ("guincho", [
+        "O guincho realizará a remoção do veículo conforme a distância "
+        "prevista no seu plano. Se for necessário um segundo guincho para o "
+        "mesmo atendimento devido a pane, será disponibilizado um novo "
+        "guincho com um limite de até 100 km — 🔴 a franquia de KM é do "
+        "PLANO, e é a reclamação nº 1 depois do serviço.",
+
+        "Na maioria dos casos de pane, o nosso mecânico pode realizar o "
+        "reparo rápido no local para que você possa seguir viagem — ⚠️ a URA "
+        "OFERECE trocar o guincho por um mecânico. Quem quer só sair do lugar "
+        "costuma preferir; quem já sabe que o carro não anda, não.",
+
+        "É necessário que um responsável maior de 18 anos esteja no local "
+        "indicado com a chave e documento do veículo — sem isso o guincho vai "
+        "embora e a utilização da apólice já foi consumida.",
+
+        "Em caso de remoção do veículo, por favor, retire seus pertences e "
+        "confira o check-list antes de assinar — 🔴 depois da assinatura não "
+        "há a quem reclamar de avaria.",
+     ],
+     "🔴 Termina em PROTOCOLO, com dois endereços: origem e destino. O segurado "
+     "recebe o número do chamado e um link por SMS para acompanhar. ⚠️ O "
+     "destino pode ser informado só como estado e cidade — e nesse caso a "
+     "oficina é escolhida pela seguradora."),
+
+    ("bateria", [
+        "Se o veículo estiver na garantia de fábrica, para que não seja "
+        "perdida, será feita apenas a recarga da bateria — 🔴 é RECUSA de "
+        "troca, e tem de ser dita ANTES: quem espera bateria nova e recebe "
+        "recarga acha que o serviço foi malfeito.",
+
+        "Aguarde em local seguro próximo ao veículo — o profissional vai até "
+        "onde o carro está, e ninguém precisa empurrar nada.",
+
+        "É necessário que um responsável maior de 18 anos esteja no local "
+        "indicado com a chave e documento do veículo — sem isso o prestador "
+        "vai embora e a utilização da apólice já foi consumida.",
+     ],
+     "🔴 Termina em PROTOCOLO, com previsão em minutos (60 na sessão medida). "
+     "⚠️ O desfecho pode ser RECARGA e não troca — ver a regra da garantia."),
+
+    ("pneu", [
+        "Neste caso, o guincho levará o veículo até a borracharia mais "
+        "próxima — 🔴 é o que acontece quando não há estepe, chave de roda ou "
+        "macaco no carro: a troca de pneu VIRA REBOQUE, e o veículo sai do "
+        "lugar. Quem não sabe disso é pego de surpresa.",
+
+        "É necessário que um responsável maior de 18 anos esteja no local "
+        "indicado com a chave e documento do veículo — sem isso o prestador "
+        "vai embora e a utilização da apólice já foi consumida.",
+
+        "Em caso de remoção do veículo, por favor, retire seus pertences e "
+        "confira o check-list antes de assinar — vale também aqui, porque a "
+        "troca de pneu pode terminar em remoção.",
+     ],
+     "🔴 Termina em PROTOCOLO. ⚠️ Dois desfechos possíveis: troca NO LOCAL, se "
+     "o estepe e as ferramentas estiverem no carro, ou REBOQUE até a "
+     "borracharia, se não estiverem. A pergunta que decide isso é feita pela "
+     "URA, não por nós."),
+):
+    ALLIANZ_AUTO_WHATSAPP_V1["subservices"][_sv_al]["regras_para_o_cliente"] = _regras_al
+    ALLIANZ_AUTO_WHATSAPP_V1["subservices"][_sv_al]["expectativa_do_desfecho"] = _expect_al
 
 # --- Porto (fluxo REAL 25/03/2026: listas/botões — responder o RÓTULO; números
 # são REJEITADOS: "Não entendi sua resposta. Selecione o botão abaixo") ----------
@@ -4950,7 +5124,9 @@ _ALFA_ALLIANZ_FAMILIA = [
               "do caso for outro, o adaptativo assume."},
     {"step": "endereco_confirma_alfa", "anchor": r"o endere[çc]o [ée]:[\s\S]{0,140}confirma",
      "reply": "1",
-     "notes": "📊 2 telas / 2 ses. ⚠️ `[\\s\\S]{0,140}` porque `.` não casa `\\n` e o "
+     # ⚠️ 📊 3, nao 2: recontado na populacao certa — os dois corredores
+     #    que carregam o passo (alfa + allianz), nao um so (C16).
+     "notes": "📊 3 telas / 3 ses. nos dois corredores da familia. ⚠️ `[\\s\\S]{0,140}` porque `.` não casa `\\n` e o "
               "endereço fica entre as duas frases. ⚠️ A ALLIANZ tem uma 3ª variante "
               "('*3 -* Alterar número') — o passo tolera sem responder '3'."},
     {"step": "servico_complementar", "anchor": r"precisa de algum servi[çc]o complementar",
@@ -4971,23 +5147,51 @@ _ALFA_ALLIANZ_FAMILIA = [
     # ---- desfecho e avisos -------------------------------------------------
     {"step": "desfecho_protocolo_alfa", "anchor": r"protocolo:\s*\d|receber[áa] um link por sms",
      "reply": "", "noop": True,
-     "notes": "📊 3 telas / 3 sessões. `_ANCORA_DE_PROTOCOLO` já captura os três "
-              "(50274607, 51314713, 52675121); o passo é só para o motor não responder."},
-    # 🔴 UM DESFECHO_NEGATIVO NÃO PODE DIVIDIR PASSO COM "aguarde em local seguro":
-    #    um encerra o caso, o outro manda ficar calado. Por isso ele é separado.
-    {"step": "central_sem_atendimento", "anchor": r"no momento eu n[ãa]o consigo te ajudar",
-     "reply": "", "noop": True,
-     "notes": "📊 1 tela / 3 sessões, todas de guincho. Já é `handoff_trigger` declarado; "
-              "o passo existe porque handoff e passo são mecanismos separados e a tela "
-              "continuava órfã. 📊 `zonas_do_acervo` registra o mesmo, de outra medição: "
-              "'NÃO é fronteira: é ABANDONO PARA TELEFONE — um DESFECHO_NEGATIVO'."},
+     # ⚠️ 🔴 O NÚMERO É DO PASSO, E O PASSO VIVE EM DOIS CORREDORES (C16).
+     #    A note dizia "3 telas / 3 sessões" — verdade na alfa, e só nela. O
+     #    passo é da FAMÍLIA, então a allianz o carrega também, e lá são 7.
+     #    📊 Recontado em 23/08/2026: alfa 3 · allianz 7 = 10 telas distintas.
+     "notes": "📊 10 telas / 10 sessões nos DOIS corredores da família "
+              "(alfa 3 · allianz 7). `_ANCORA_DE_PROTOCOLO` já captura os "
+              "três da alfa (50274607, 51314713, 52675121); o passo é só para "
+              "o motor não responder."},
+    # ══════════════════════════════════════════════════════════════════════
+    # 🔴 O `noop` QUE FAZIA O HANDOFF DA ALFA NUNCA DISPARAR — REMOVIDO
+    # ══════════════════════════════════════════════════════════════════════
+    #
+    # Aqui havia o passo `central_sem_atendimento`, `noop`, para a tela
+    # "Poxa! No momento eu não consigo te ajudar. Por favor, entre em contato
+    # com a nossa central de atendimento nos telefones: ...".
+    #
+    # 🔴 A alfa declara `n[ãa]o consigo te ajudar` como `handoff_trigger` — e o
+    #    gatilho NUNCA podia disparar. O motor casa o passo ANTES do handoff
+    #    (`insurer_dispatch_service.py`: `match_ura_step` na linha 1922,
+    #    `detect_handoff_trigger` só na 2099) e um `noop` **retorna na hora**.
+    #    Resultado medido: a URA abandonava o segurado para um telefone e o
+    #    corredor ficava calado, sem chamar ninguém.
+    #
+    # ⚠️ A note dizia, ela própria, que a tela é *"um DESFECHO_NEGATIVO"* — e o
+    #    código a tratava como aviso informativo. Documento a dizer uma coisa e
+    #    código a fazer outra (§9.3).
+    #
+    # 🔴 O passo nasceu porque, sem ele, a tela ficava ÓRFÃ na régua. Isso
+    #    deixou de ser verdade quando o C8 fez do HANDOFF uma classe do replay:
+    #    agora ela sai do denominador POR SER handoff, que é o que ela é.
+    #    A razão de existir do passo acabou; o passo vai junto.
+    #
+    # ⚠️ E ele estava na lista da FAMÍLIA, então a allianz também o carregava —
+    #    📊 a tela não existe em nenhuma das 377 telas do corpus da allianz.
+    #    O texto é da alfa, o telefone é da alfa, o gatilho é da alfa.
     {"step": "avisos_informativos_familia",
      "anchor": (r"faremos o poss[íi]vel para que o profissional chegue|"
                 r"respons[áa]vel maior de 18 anos esteja no local|"
                 r"sua assist[êe]ncia foi confirmada|"
                 r"siga o passo a passo a seguir de acordo com seu aparelho|"
                 r"obrigado por entrar em contato!"),
-     "reply": "", "noop": True, "notes": "📊 5 telas / 4 sessões."},
+     # ⚠️ 📊 6, não 5: recontado em 23/08/2026 na população certa — os dois
+     #    corredores que carregam o passo (alfa + allianz), não um só (C16).
+     "reply": "", "noop": True,
+     "notes": "📊 6 telas / 9 sessões nos dois corredores da família."},
 ]
 # 🔴 NA FAMÍLIA, não na alfa: paga as duas seguradoras de uma vez.
 _ALLIANZ_FAMILY_AUTO_STEPS.extend(dict(p) for p in _ALFA_ALLIANZ_FAMILIA)
@@ -5064,7 +5268,55 @@ _ALLIANZ_RESID_TRONCO = [
      "reply": "", "noop": True, "notes": "📊 2 telas / 7 sessões."},
 ]
 
+# ══════════════════════════════════════════════════════════════════════════
+# 🔴 A TELA QUE APAGA UMA SOLICITAÇÃO INTEIRA — e o "1" é o botão que apaga
+# ══════════════════════════════════════════════════════════════════════════
+#
+# 📊 Sessão cea36de4 (18/06/2026, `allianz/auto/bateria`), telas 20 → 22:
+#
+#     URA: *RESUMO* ... Podemos confirmar o atendimento?
+#          *1 -* Sim
+#          *2 -* Não, desejo reiniciar a solicitação
+#          *0 -* Sair
+#     URA: Tem certeza? Você precisará refazer sua solicitação do início.
+#          *1 -* Sim  *2 -* Não
+#     URA: Sua assistência foi confirmada! :)
+#
+# 🔴 Quem apertou "2" no RESUMO foi a pessoa, por engano — e a assistência só
+#    foi confirmada porque ela respondeu **"2 - Não"** aqui. A tela ficava
+#    ÓRFÃ para o corredor: o cérebro adaptativo veria "Tem certeza? 1-Sim
+#    2-Não" e, sem passo, a chance de responder "1" é metade. "1" joga fora
+#    CPF, placa, telefone, endereço, referência e serviço — tudo o que a
+#    conversa levou vinte telas para juntar.
+#
+# ⚠️ Isto NÃO é o galho de cancelar (que é handoff, ver `_CANCELAR_E_HUMANO`):
+#    ali a pessoa quer desfazer um atendimento ABERTO, e a decisão é dela.
+#    Aqui não há nada aberto ainda, e a resposta conservadora é uma só —
+#    **não jogar fora o que já foi coletado**. É reversível: o RESUMO volta.
+#
+# 📊 O alcance é maior que a rota onde foi vista: a tela do RESUMO que oferece
+#    "desejo reiniciar a solicitação" aparece em **24 telas de 13 rotas** —
+#    alfa/auto, allianz/auto e allianz/residencial. Por isso o passo é ÚNICO e
+#    entra nos três corredores, sem uma segunda cópia para divergir depois.
+_PASSO_NAO_REINICIAR = {
+    "step": "reiniciar_solicitacao_confirma",
+    "anchor": (r"tem certeza\?[\s\S]{0,30}voc[êe] precisar[áa] refazer sua "
+               r"solicita[çc][ãa]o do in[íi]cio"),
+    "reply": "2",
+    "constante_justificada": (
+        "🔴 `1 - Sim` REFAZ do inicio: apaga CPF, placa, telefone, endereco e "
+        "servico ja coletados. `2 - Nao` devolve ao RESUMO, e o RESUMO e onde "
+        "o corredor ja sabe responder. Nao ha decisao do cliente a tomar aqui: "
+        "ele nunca pediu para reiniciar -- a tela so aparece por engano de "
+        "tecla no RESUMO. 📊 E a sessao real cea36de4 respondeu 2, e o "
+        "atendimento foi confirmado na tela seguinte."),
+    "notes": "📊 1 tela / 1 sessão (cea36de4). O RESUMO que leva a ela aparece "
+             "em 24 telas de 13 rotas — a tela é rara porque exige errar a "
+             "tecla, não porque o galho seja raro.",
+}
+
 _ALLIANZ_AMBOS = [
+    dict(_PASSO_NAO_REINICIAR),
     # 🔴 A tela do ACOMPANHAR/ALTERAR — 📊 auto 3 ses · residencial 10 ses.
     #    Não é acionamento novo: é pós-serviço. A resposta vem do caso, porque
     #    "2 - Abrir novo" e "1 - Ver detalhes" são trabalhos diferentes.
@@ -5087,6 +5339,13 @@ ALLIANZ_RESIDENCIAL_WHATSAPP_V1["ura_steps"] = (
 )
 ALLIANZ_AUTO_WHATSAPP_V1["ura_steps"] = (
     list(ALLIANZ_AUTO_WHATSAPP_V1["ura_steps"]) + [dict(p) for p in _ALLIANZ_AMBOS]
+)
+# ⚠️ E a ALFA recebe o MESMO passo — 📊 o RESUMO que oferece "desejo reiniciar
+#    a solicitação" está em 3 sessões dela (guincho 2 · pneu 1). Uma segunda
+#    cópia do dicionário é como nasce o passo corrigido de um lado e vencido do
+#    outro (§5): aqui é `dict(_PASSO_NAO_REINICIAR)`, uma definição só.
+ALFA_AUTO_WHATSAPP_V1["ura_steps"] = (
+    list(ALFA_AUTO_WHATSAPP_V1["ura_steps"]) + [dict(_PASSO_NAO_REINICIAR)]
 )
 
 

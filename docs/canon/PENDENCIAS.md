@@ -7549,3 +7549,129 @@ limita o item por construção — vale registrar antes que alguém tente "resol
 declarando apelido que ninguém escreveu.
 **O que custa esquecer:** alguém vê 102, procura o que quebrou, e conserta uma
 coisa que está certa.
+
+### P-084-40 `allianz/auto/chaveiro` não tem corpus — e a tecla 7 nunca foi apertada · 🧑
+
+📊 23/08/2026, ONDA B. A rota é `SEM_CORPUS`, e a conferência mostra que é
+**coleta legítima, não bug de nomenclatura**. Duas linhas de controle:
+
+```
+as OUTRAS teclas do MESMO menu decodificam certo
+   1 → bateria   47 telas      3/4 → guincho  149 telas      6 → pneu  85 telas
+`chaveiro` EXISTE como rótulo noutro corredor
+   allianz/residencial/chaveiro ....... 50 telas
+```
+
+🔴 Se fosse erro de nome, as outras teclas do mesmo menu também errariam, e o
+rótulo não apareceria em lugar nenhum. **A tecla 7 foi apresentada 25 vezes e
+pressionada ZERO.** Ninguém pediu chaveiro de carro à Allianz pelo WhatsApp no
+período do acervo.
+
+**O que destrava:** 🧑 uma coleta dirigida — abrir uma sessão real de chaveiro
+de auto na Allianz. ⚠️ E ela precisa de uma **linha de CONTROLE na mesma
+rodada**: pressionar a tecla `1` (bateria), cujo desfecho é conhecido
+(protocolo 52459590 na sessão cea36de4). Sem o controle, uma coleta que falha
+não distingue "a tecla 7 não abre" de "o WhatsApp não respondeu hoje".
+**O que custa esquecer:** a rota fica em branco e alguém a conta como defeito
+do corredor, indo escrever passos para uma URA que ninguém percorreu.
+
+### P-084-41 Não há vocabulário de segurado para as rotas de AUTO — os 4 pontos de apelido são recusados · 🧑
+
+📊 23/08/2026. As três rotas de `allianz/auto` fecham em **102/106**, e os 4
+que faltam são o mesmo item nas três: `apelidos do jeito que o cliente fala`.
+A recusa é medida, termo a termo, no Espelho **depois** do filtro de eco:
+
+```
+guincho   `reboque` 2 textos distintos  →  os DOIS são portal colado (C15)
+          `remocao de veiculo` 1        →  o mesmo menu de portal
+          `socorro` 22                  →  colide com o subserviço socorro_mecanico
+          `fundiu` 3                    →  as três são "ela se CONFUNDIU"
+pneu      `troca de pneu` 2             →  1 é portal, 1 é cliente ("prrcisa de…")
+          `estourou` 5 distintos        →  transmissão, vidro, balão, piso. Nenhum é pneu
+bateria   `pane eletrica` 1 (cliente)   →  🔴 já é apelido de `socorro_mecanico`
+          `sem bateria`/`perdeu a bateria`/`carro nao pega` → 1 texto cada
+```
+
+🔴 O item pede **três** apelidos vivos. Existe **um** texto de cliente por
+candidato, e vários dos candidatos são echo ou colisão. Declarar três para
+fechar a conta seria comprar ponto com fato que não existe.
+
+⚠️ E há um achado de produto no meio: **`pane eletrica` e `nao pega` apontam
+para `socorro_mecanico` na tabela global**, mas na Allianz essas palavras são
+literalmente o rótulo da tecla de BATERIA ("Profissional para *pane elétrica,
+recarga de bateria, motor não funciona*"). A tabela é uma só para as dez
+seguradoras; mudar o destino mexeria no roteamento de hdi e yelum, que têm
+`socorro_mecanico` como subserviço próprio. **Não foi mexido.**
+
+**O que destrava:** 🧑 mensagens de segurado sobre pane de carro — e a mesma
+limitação estrutural do [P-084-39] vale aqui: o Espelho é o chat da CORRETORA,
+e o vocabulário do segurado chega de segunda mão.
+**O que custa esquecer:** alguém "resolve" o 102 declarando apelido que ninguém
+escreveu, e o item passa a medir strings no código outra vez.
+
+### P-084-42 O corpus é indexado por CANAL, e canal não é ramo · 🤖
+
+📊 23/08/2026. `allianz-auto.jsonl` tem 377 telas, e entre elas:
+
+```
+encanador ......... 12 telas (sessão b60d9359)
+eletricista ....... 24 telas (sessão d2edf0dd)
+taxi ............... 6 telas
+socorro_mecanico ... 7 telas
+None .............. 47 telas
+```
+
+🔴 São serviços **residenciais** num arquivo chamado `auto`. Não é erro de
+coleta: o segurado escreveu para o número da assistência 24h e escolheu
+"2 - Residência" no primeiro menu. O arquivo é o **CANAL**, e a URA pergunta o
+ramo depois.
+
+⚠️ Não cria rota fantasma — o replay filtra por serviço e nenhuma rota
+`allianz/auto/encanador` existe no inventário. O que muda é a POPULAÇÃO das
+recontagens do C16: essas 36 telas entram no corpus do corredor de auto.
+
+**O que destrava:** 🤖 decidir se `carregar_corpus` deve segregar por ramo
+declarado na sessão, ou se o nome do arquivo passa a dizer CANAL.
+**O que custa esquecer:** uma medição futura conta tela residencial como
+evidência de auto e ninguém percebe, porque o nome do arquivo mente.
+
+### P-084-43 `desambiguacao_veiculo_ou_residencial` declara 23 telas e o corpus não tem NENHUMA · 🤖
+
+📊 23/08/2026, achado ao consertar o C16. Depois de recontar na população certa
+(hdi/residencial + yelum/residencial, os dois corredores que carregam o passo),
+o resultado é **zero**:
+
+```
+declarado 23 telas  ·  real 0  ·  corredores [(hdi, residencial), (yelum, residencial)]
+```
+
+🔴 As outras notes sub-declaradas do C16 erram para menos (7 contra 8, 5 contra
+7). Esta erra para **tudo**: a âncora não casa uma única tela em nenhum dos dois
+corredores que a carregam. Ou a redação da URA mudou, ou o número foi medido no
+acervo com outra frase.
+
+**O que destrava:** 🤖 ONDA D (yelum) e a onda da hdi — recontar a âncora contra
+o corpus e reescrevê-la, ou remover o passo se a tela não existir mais.
+**O que custa esquecer:** um passo que nunca casa é peso morto que parece
+proteção — e a note de 23 faz parecer que é o passo mais usado do corredor.
+
+### P-084-44 Seis notes ainda sub-declaradas, em quatro corredores · 🤖
+
+📊 23/08/2026, medido depois do C16. As de `allianz`/`alfa` foram corrigidas
+nesta onda; estas ficam para as ondas dos donos delas:
+
+```
+porto/residencial  menu_raiz ..................... declara 13 · corpus 15
+porto/residencial  resumo_confira .................. declara  5 · corpus  8
+hdi+yelum          notificacao_do_prestador ........ declara  7 · corpus  8
+hdi+yelum          encerrada_por_inatividade ....... declara  2 · corpus  3
+hdi+yelum          chegada_prevista ................ declara  1 · corpus  2
+hdi+yelum          senha_e_orientacoes ............. declara  5 · corpus  7
+```
+
+⚠️ Cada uma vale **1 ponto** por rota do corredor: 5 rotas na porto/residencial
+e 20 nas quatro de hdi/yelum. São 25 pontos que dependem só de escrever o
+número certo.
+**O que destrava:** 🤖 ONDA D (yelum), ONDA E (porto) e a onda da hdi.
+**O que custa esquecer:** o item volta a parecer inganhável e alguém propõe
+afrouxá-lo — que foi como ele chegou à v3.

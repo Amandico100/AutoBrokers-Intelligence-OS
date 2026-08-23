@@ -508,10 +508,34 @@ certo(_m_c16 is not None and int(_m_c16.group(2)) >= 1,
       "🔴 o passo compartilhado continua no exame das notes",
       f"com_numero=0 -> o item daria 0 de 2 e ninguem poderia evitar "
       f"| {_it_c16.evidencia}")
-# 🔴 CONTROLE: e o exame ainda REPROVA -- a rota nao ganha os 2 de graca.
-certo(_it_c16.pontos < 2,
-      "🔴 CONTROLE: e ele AINDA acusa -- notes sub-declaradas seguem vermelhas",
-      f"{_it_c16.pontos}/2: {_it_c16.evidencia}")
+# ⚠️ 🔴 O CONTROLE ANTERIOR VENCEU NO MESMO DIA EM QUE NASCEU (§9.3).
+#
+# Ele dizia `_it_c16.pontos < 2` -- *"a rota nao ganha os 2 de graca"*. Era
+# verdade enquanto as notes de `allianz/auto` estavam sub-declaradas; virou
+# mentira uma hora depois, quando elas foram recontadas na populacao certa e a
+# rota chegou a 2/2. **Um controle que depende de um defeito continuar aberto
+# nao e controle: e refem.**
+#
+# 🔴 O controle certo nao pergunta se ALGUEM esta vermelho -- pergunta se o
+#    item CONSEGUE ficar vermelho. Entao ele quebra a note de proposito, chama
+#    a REGUA (nao uma copia da regra), confere o vermelho e restaura.
+_alvo_c16 = next(p for p in _RB.M.get_playbook(_rota_c16.ref)["ura_steps"]
+                 if p.get("step") == "desfecho_protocolo_alfa")
+_nota_c16 = _alvo_c16["notes"]
+_alvo_c16["notes"] = "📊 1 tela / 1 sessão."          # sub-declarada de proposito
+_quebrado_c16 = [_i for _i in _RB.eixo_b(_rota_c16, _RPc8.replay(_rota_c16))
+                 if "notes" in _i.nome][0]
+_alvo_c16["notes"] = _nota_c16                        # e devolvida antes de julgar
+_restaurado_c16 = [_i for _i in _RB.eixo_b(_rota_c16, _RPc8.replay(_rota_c16))
+                   if "notes" in _i.nome][0]
+
+certo(_quebrado_c16.pontos < _it_c16.pontos,
+      "🔴 CONTROLE: uma note SUB-DECLARADA derruba o item -- ele consegue "
+      "ficar vermelho",
+      f"com a note quebrada: {_quebrado_c16.pontos}/2 ({_quebrado_c16.evidencia})")
+certo(_restaurado_c16.pontos == _it_c16.pontos,
+      "🔴 CONTROLE: e a note foi RESTAURADA -- o guarda nao deixa lixo para tras",
+      f"{_restaurado_c16.pontos}/2 vs {_it_c16.pontos}/2")
 
 print()
 print("=" * 74)

@@ -103,14 +103,37 @@ ref = _item("allianz", "residencial", "maquina_de_lavar")
 certo(ref.pontos == 2, "🔴 CONTROLE: a rota de referência segue em 2/2 — o "
       "conserto não afrouxou nada", ref.evidencia)
 
-# 🔴 E ALGUMA rota tem de estar VERMELHA. Um guarda em que todos passam não
-#    separa nada. 📊 As notes sub-declaradas de `porto/residencial` e de
-#    `alfa/auto` são reais: o passo vive em dois corredores e o número foi
-#    medido em um.
-piores = _item("porto", "residencial", "chaveiro")
-certo(piores.pontos < 2,
-      "🔴 CONTROLE: e o item CONSEGUE ficar vermelho — nota sub-declarada de "
-      "passo compartilhado é acusada", piores.evidencia)
+# 🔴 E O ITEM TEM DE CONSEGUIR FICAR VERMELHO. Um guarda em que todos passam
+#    não separa nada.
+#
+# ⚠️ A primeira versão desta asserção apontava para `porto/residencial`, que
+#    estava vermelha naquele minuto. **Um controle que depende de um defeito
+#    continuar aberto não é controle: é refém** — e ele venceria no dia em que
+#    a porto fosse consertada. A pergunta certa não é *"alguém está
+#    vermelho?"*, é *"ele CONSEGUE acusar?"*.
+#
+# Então a note é quebrada de propósito, a RÉGUA é chamada (não uma cópia da
+# regra, §9.4), o vermelho é conferido e a note volta.
+rota_ref = [r for r in M.rotas()
+            if (r.seguradora, r.ramo, r.servico) == ("allianz", "residencial",
+                                                     "maquina_de_lavar")][0]
+antes = _item("allianz", "residencial", "maquina_de_lavar")
+alvo = next(p for p in M.get_playbook(rota_ref.ref)["ura_steps"]
+            if p.get("notes") and re.search(r"(\d+)\s*(?:msgs?|telas?)", str(p["notes"]))
+            and p.get("anchor"))
+guardada = alvo["notes"]
+alvo["notes"] = "📊 0 telas / 0 sessões."      # declara MENOS do que o corpus tem
+quebrada = _item("allianz", "residencial", "maquina_de_lavar")
+alvo["notes"] = guardada
+devolvida = _item("allianz", "residencial", "maquina_de_lavar")
+
+certo(quebrada.pontos < antes.pontos,
+      "🔴 CONTROLE: uma note SUB-DECLARADA derruba o item — ele consegue "
+      f"acusar (passo `{alvo.get('step')}`)",
+      f"{antes.pontos}/2 -> {quebrada.pontos}/2")
+certo(devolvida.pontos == antes.pontos,
+      "🔴 CONTROLE: e a note foi RESTAURADA — o guarda não deixa lixo",
+      f"{devolvida.pontos}/2 vs {antes.pontos}/2")
 
 print()
 print("=" * 74)
