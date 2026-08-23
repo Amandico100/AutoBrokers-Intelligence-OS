@@ -5774,12 +5774,12 @@ _ZURICH_TRONCO = [
      "notes": "📊 1 tela / 1 sessão. 🔴 SEM default: 'Sim' vira guincho, 'Não' "
               "vira borracheiro — e é por isso que a rota de GUINCHO também a vê."},
     {"step": "tem_estepe", "anchor": r"possui estepe, macaco e chave de rodas",
-     "reply": "{estepe_opcao}", "requires": ["estepe_opcao"], "fallback_adaptive": True,
+     "reply": "{estepe_situacao}", "requires": ["estepe_situacao"], "fallback_adaptive": True,
      "only_subservices": ["pneu", "guincho"],
      "notes": "📊 1 tela / 1 sessão. 🔴 SEM default: sem estepe não há troca, "
               "há reboque."},
     {"step": "lugar_seguro_zurich", "anchor": r"voc[êe] est[áa] em um lugar seguro",
-     "reply": "{local_seguro_opcao}", "requires": ["local_seguro_opcao"],
+     "reply": "{local_seguro}", "requires": ["local_seguro"],
      "fallback_adaptive": True,
      "notes": "📊 1/1. 🔴 SEM default — responder 'seguro' por preguiça rebaixa, no "
               "escuro, a prioridade de quem está parado num lugar perigoso."},
@@ -8824,9 +8824,36 @@ def missing_slots_for_subservice(playbook: Any, subservice: str, slots: Dict[str
     #
     # Consertar o gate, e não os três passos, fecha a classe inteira: qualquer
     # `requires` novo passa a ser cobrado ANTES, por construção.
+    #
+    # ══════════════════════════════════════════════════════════════════════
+    # 🔴 SPEC-084.2 C1 · `sem_chute` É O TERCEIRO MEMBRO DESTA FAMÍLIA
+    # ══════════════════════════════════════════════════════════════════════
+    #
+    # `fallback_adaptive` e `noop` já ficavam de fora porque a falta ali é
+    # PREVISTA e tratada mais adiante. `sem_chute` é exatamente a mesma coisa,
+    # dita de outro jeito: *"esta pergunta não tem default honesto; quando a
+    # tela aparecer eu vou para `needs_human` com `reason='sem_chute:<slots>'`
+    # em vez de inventar"*. O passo já cuida da própria ausência.
+    #
+    # 🔴 Cobrá-lo AQUI cobra o filho de um galho que quase nunca é tomado.
+    #    📊 Medido: `transporte_destino` e `taxi_passageiros` pendem de
+    #    `meio_de_transporte`, cujo `meio_transporte_opcao` é derivado com
+    #    padrão **"Não"**. Com a cobrança antecipada, `hdi/auto/guincho` e
+    #    `yelum/auto/guincho` **não acionavam nunca** — o produto exigia saber
+    #    "para quantos passageiros no táxi?" de quem pediu um guincho.
+    #
+    # ⚠️ E isto NÃO afrouxa nada, porque quem precisa do slot de verdade o
+    #    declara onde se declara obrigação: 📊 `taxi_passageiros` continua em
+    #    `required_slots` de `porto/auto/taxi` — a rota que É sobre táxi — e
+    #    portanto continua cobrado lá. É o controle desta linha.
+    #
+    # 📊 Cinco slots são exigidos SÓ por passo `sem_chute`: `bateria_tipo_opcao`,
+    #    `situacao_risco_opcao`, `taxi_passageiros_opcao`, `transporte_destino`,
+    #    `via_ou_rodovia_opcao`. Nenhum deles é pergunta de abertura; todos são
+    #    submenu que só aparece depois de uma escolha anterior.
     alvo = canonical_subservice(subservice)
     for passo in (playbook or {}).get("ura_steps") or []:
-        if passo.get("fallback_adaptive") or passo.get("noop"):
+        if passo.get("fallback_adaptive") or passo.get("noop") or passo.get("sem_chute"):
             continue
         only = passo.get("only_subservices")
         if only and alvo not in [str(x).lower() for x in only]:
@@ -10014,16 +10041,38 @@ _REGRAS_ONDA_F = {
 #    sobre o que guarda, e quem paga é o cérebro, chamado para adivinhar se o
 #    segurado tem estepe — com a resposta já coletada, sob outro nome.
 #
-# 🔴 O conserto aqui é dar ORIGEM, não renomear: renomear muda o que o motor
-#    exige e 📊 travaria o guincho da zurich por dois slots que ninguém coleta.
-#    A coleta é a origem certa — quem sabe se há estepe é quem está no carro,
-#    e a corretora pergunta antes de acionar. ⚠️ A renomeação fica em
-#    PENDENCIAS, como mudança separada e medida.
+# 🔴 ✅ E A RENOMEAÇÃO FOI FEITA — SPEC-084.2 C1, 23/08/2026.
+#
+#    O parágrafo abaixo dizia, na ONDA F: *"o conserto aqui é dar ORIGEM, não
+#    renomear: renomear muda o que o motor exige e travaria o guincho da zurich
+#    por dois slots que ninguém coleta"*. Era verdade — e deixou de ser. O C1
+#    pôs `local_seguro` e `estepe_situacao` no contrato da ferramenta, então
+#    agora ALGUÉM coleta os dois, e o passo pode pedir o nome verdadeiro.
+#
+# 📊 O que a demora custava, medido: `zurich/auto/guincho` exigia
+#    `local_seguro` **e** `local_seguro_opcao`; `zurich/auto/pneu` exigia
+#    `estepe_situacao` **e** `estepe_opcao`. O mesmo fato, dois nomes, duas
+#    perguntas ao segurado — e o acionamento só sairia com as duas respondidas.
+#
+# ⚠️ Manter a nota vencida ensinaria a ignorar nota (CLAUDE.md §9.3). Ela fica
+#    aqui reescrita, com a data em que a condição mudou, e não apagada.
 for _pb_key, _sv_key, _slots_key in (
         ("zurich-auto-whatsapp", "pneu",
-         ["estepe_opcao", "pneus_danificados_opcao"]),
+         ["pneus_danificados_opcao"]),
         ("zurich-auto-whatsapp", "guincho",
-         ["local_seguro_opcao", "pane_opcao", "cambio_opcao",
+         # 🔴 SPEC-084.2 C1 · `local_seguro_opcao` SAIU DAQUI, e `estepe_opcao`
+         #    também. Eles eram o MESMO FATO com um segundo nome: 📊 medido,
+         #    `zurich/auto/guincho` exigia `local_seguro` **e**
+         #    `local_seguro_opcao`, e `zurich/auto/pneu` exigia
+         #    `estepe_situacao` **e** `estepe_opcao`. A atendente teria de
+         #    perguntar duas vezes a mesma coisa para o acionamento sair.
+         #
+         # ⚠️ É a P-084-61, e ela estava travada por um motivo que deixou de
+         #    existir: renomear exigiria um slot que ninguém coletava. Agora o
+         #    contrato carrega `local_seguro` e `estepe_situacao` (C1), então o
+         #    passo passa a pedir o nome que o produto de fato coleta.
+         #    É o §12.1: quando o nome mente, conserta-se o NOME.
+         ["pane_opcao", "cambio_opcao",
           "alavanca_travada_opcao"]),
         ("porto-residencial-whatsapp", "chaveiro",
          ["chaveiro_alvo_opcao", "fechadura_tipo_opcao"]),

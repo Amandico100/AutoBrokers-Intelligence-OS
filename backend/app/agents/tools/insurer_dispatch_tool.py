@@ -210,6 +210,166 @@ class InsurerDispatchInput(BaseModel):
     dados_confirmados: Optional[bool] = Field(default=None, description=(
         "[auto] true SOMENTE depois de você MOSTRAR ao cliente na conversa a placa, o veículo, o local, o destino "
         "e o telefone, e ele CONFIRMAR explicitamente. Sem essa confirmação o acionamento não sai."))
+
+    # ══════════════════════════════════════════════════════════════════════
+    # 🔴 C1 · O QUE O PORTÃO EXIGE E O CONTRATO NÃO DECLARAVA
+    # ══════════════════════════════════════════════════════════════════════
+    #
+    # 📊 SPEC-084.2, medido contra o motor real: as **19 rotas AAA** da
+    #    SPEC-084.1 — as que respondem 100% das telas da URA, com 100% de
+    #    determinismo — davam `missing_data` pelo caminho REAL da ferramenta.
+    #    **Nenhuma acionava.**
+    #
+    #    ```
+    #    com TUDO que a ferramenta consegue carregar   →  missing_data    🔴
+    #    com os slots que ela NÃO carrega, em memória  →  ready_to_send   ✅
+    #    ```
+    #
+    # ⚠️ O corredor estava CERTO. O bloqueio estava ANTES dele: a SPEC-084.1
+    #    acrescentou slots a `required_slots` e não estendeu este schema. Um
+    #    slot que o portão exige e o contrato não anuncia **não tem como
+    #    chegar** — o atendente não tem onde escrever a resposta.
+    #
+    # 🔴 E a prova de que a pergunta é legítima já estava escrita:
+    #    📊 **19 dos 22 slots já tinham redação em `_COMO_PERGUNTAR`.** O
+    #    produto sabia perguntar e não sabia guardar.
+    #
+    # ⚠️ NÃO confie na saída de emergência: `nodes.py` chama `tool._arun(**args)`
+    #    cru, sem Pydantic, então um campo não declarado *funcionaria* se o
+    #    modelo adivinhasse o nome. Apostar um guincho real em adivinhação não
+    #    é engenharia.
+    #
+    # 🔴 O guarda que impede a recorrência é
+    #    `test_o_contrato_alcanca_o_portao` — ele compara as duas listas. Sem
+    #    ele, a próxima SPEC que acrescentar um slot repete isto em silêncio.
+
+    # --- Auto: comuns a TODO subserviço ---
+    local_seguro: Optional[str] = Field(default=None, description=(
+        "[auto] O veículo/pessoa está num lugar SEGURO para esperar? "
+        "🔴 PERGUNTE, não presuma: esta resposta decide a PRIORIDADE do "
+        "atendimento. Dizer 'sim' no escuro rebaixa quem está parado em "
+        "acostamento, curva ou lugar perigoso. Ex.: 'sim, estou num posto' | "
+        "'não, estou na faixa da esquerda'"))
+
+    # --- Auto: pneu ---
+    estepe_situacao: Optional[str] = Field(default=None, description=(
+        "[auto pneu] O estepe está cheio e em condições de uso? Sem estepe "
+        "utilizável a seguradora manda REBOQUE, não borracheiro — a resposta "
+        "muda o serviço que sai."))
+    ferramentas_no_veiculo: Optional[str] = Field(default=None, description=(
+        "[auto pneu] Macaco e chave de roda estão no veículo?"))
+    equipamentos_troca_opcao: Optional[str] = Field(default=None, description=(
+        "[auto pneu] Tem macaco, chave de roda e estepe? (a URA pergunta os "
+        "três juntos numa tela só)"))
+
+    # --- Residencial: qual seguro ---
+    qual_seguro_opcao: Optional[str] = Field(default=None, description=(
+        "[residencial] De qual seguro o cliente fala — o da RESIDÊNCIA. "
+        "A URA abre por esta pergunta antes de qualquer serviço."))
+    tipo_imovel: Optional[str] = Field(default=None, description=(
+        "[residencial] Casa, apartamento ou condomínio"))
+
+    # --- Residencial: encanador / vazamento ---
+    vazamento_local: Optional[str] = Field(default=None, description=(
+        "[residencial encanador] Onde é o vazamento (ex.: 'embaixo da pia da "
+        "cozinha', 'no cano do banheiro')"))
+    agua_escorrendo: Optional[str] = Field(default=None, description=(
+        "[residencial encanador] A água ainda está escorrendo agora?"))
+    risco_confirmado_registro_fechado: Optional[str] = Field(default=None, description=(
+        "[residencial encanador] O registro de água já foi fechado? "
+        "🔴 Pergunte de verdade: com o registro aberto o dano cresce enquanto "
+        "o prestador não chega."))
+    encanador_tipo_opcao: Optional[str] = Field(default=None, description=(
+        "[residencial encanador] O que está vazando, com as palavras do "
+        "cliente (torneira, vaso, cano, caixa d'água...)"))
+    encanador_instalacao_opcao: Optional[str] = Field(default=None, description=(
+        "[residencial encanador] É REPARO de algo que quebrou, ou INSTALAÇÃO "
+        "nova? 🔴 Instalação nova NÃO é coberta — não prometa antes de saber."))
+
+    # --- Residencial: chaveiro ---
+    chaveiro_necessidade_opcao: Optional[str] = Field(default=None, description=(
+        "[residencial chaveiro] É abrir a porta, fazer a cópia, ou as duas "
+        "coisas?"))
+    chave_tipo_opcao: Optional[str] = Field(default=None, description=(
+        "[residencial chaveiro] Tipo da chave: simples, tetra, as duas, ou "
+        "eletrônica"))
+
+    # --- Residencial: eletrodomésticos ---
+    idade_aparelho_opcao: Optional[str] = Field(default=None, description=(
+        "[residencial eletrodoméstico] Idade do aparelho. 🔴 A resposta decide "
+        "COBERTURA: acima de 10 anos a seguradora recusa. Pergunte ANTES de "
+        "dizer ao cliente que o conserto sai."))
+
+    # --- Residencial: ar-condicionado ---
+    ar_condicionado_tipo: Optional[str] = Field(default=None, description=(
+        "[residencial ar-condicionado] De janela ou split"))
+    ar_condicionado_btus: Optional[str] = Field(default=None, description=(
+        "[residencial ar-condicionado] Potência em BTUs (9000, 12000...)"))
+
+    # --- Residencial: limpeza de caixa d'água ---
+    caixa_litros_opcao: Optional[str] = Field(default=None, description=(
+        "[residencial limpeza de caixa d'água] Quantos litros tem a caixa"))
+    caixas_dagua_quantidade_opcao: Optional[str] = Field(default=None, description=(
+        "[residencial limpeza de caixa d'água] Quantas caixas há no imóvel"))
+
+    # --- Residencial: consulta veterinária ---
+    email_segurado: Optional[str] = Field(default=None, description=(
+        "[residencial pet] E-mail do segurado — a clínica manda o "
+        "encaminhamento por ele; sem e-mail o cliente não recebe a guia."))
+
+
+    # ── E os que o guarda achou FORA das 19 rotas AAA ──────────────────────
+    #
+    # 🔴 O `test_o_contrato_alcanca_o_portao` foi escrito para impedir a
+    #    recorrência — e acusou na estreia o que esta mesma edição tinha
+    #    deixado passar. 📊 Consertar as 19 do gate deixava **16 slots órfãos**
+    #    em rotas fora delas. Fechar só o que o gate mede é comprar o gate.
+    #
+    # ⚠️ `servico_texto` NÃO entra, e a distinção é medida: ele aparece como
+    #    cobrado quando se pergunta ao portão com o caso vazio, e some quando
+    #    se pergunta pelo caminho real — `new_dispatch_session` o injeta.
+    #    Declará-lo faria a atendente perguntar ao segurado uma coisa que o
+    #    motor já sabe.
+    data_agendamento: Optional[str] = Field(default=None, description=(
+        "[auto técnico/bateria nova] Dia e hora combinados para a visita "
+        "agendada (ex.: '28/08 à tarde')"))
+    pane_opcao: Optional[str] = Field(default=None, description=(
+        "[auto] O que aconteceu com o carro: não liga | perdeu força | "
+        "superaqueceu | pane elétrica | outro"))
+    cambio_opcao: Optional[str] = Field(default=None, description=(
+        "[auto] Câmbio manual ou automático — muda o equipamento do guincho"))
+    alavanca_travada_opcao: Optional[str] = Field(default=None, description=(
+        "[auto câmbio automático] A alavanca está travada? Um carro automático "
+        "com alavanca travada não pode ser rebocado da mesma forma."))
+    pneus_danificados_opcao: Optional[str] = Field(default=None, description=(
+        "[auto pneu] Quantos pneus estão danificados. 🔴 Mais de um pneu "
+        "geralmente vira REBOQUE — um estepe não resolve dois furos."))
+    taxi_passageiros: Optional[str] = Field(default=None, description=(
+        "[auto táxi] Quantas pessoas vão no táxi"))
+    chaveiro_alvo_opcao: Optional[str] = Field(default=None, description=(
+        "[residencial chaveiro] O que está trancado — porta principal, "
+        "portão, quarto, cofre"))
+    fechadura_tipo_opcao: Optional[str] = Field(default=None, description=(
+        "[residencial chaveiro] Tipo da fechadura — simples, tetra, digital"))
+    chaveiro_porta_opcao: Optional[str] = Field(default=None, description=(
+        "[residencial chaveiro] Qual porta é o problema — a da rua, a de um "
+        "cômodo, o portão. 🔴 Não presuma: a seguradora cobre a porta de "
+        "acesso ao imóvel, e cômodo interno pode não estar coberto."))
+    eletrodomestico_opcao: Optional[str] = Field(default=None, description=(
+        "[residencial eletrodoméstico] Qual é o aparelho — geladeira, freezer, "
+        "fogão, micro-ondas, máquina de lavar, secadora, lava-louças. A tecla "
+        "que a URA recebe depende disto."))
+    geladeira_medicacao_opcao: Optional[str] = Field(default=None, description=(
+        "[residencial geladeira] Há MEDICAMENTO guardado na geladeira? "
+        "🔴 PERGUNTE: a resposta muda a urgência do atendimento, e ninguém "
+        "responde isso por outra pessoa."))
+    pet_nome: Optional[str] = Field(default=None, description=(
+        "[residencial pet] Nome do animal"))
+    pet_raca: Optional[str] = Field(default=None, description=(
+        "[residencial pet] Raça do animal"))
+    pet_idade: Optional[str] = Field(default=None, description=(
+        "[residencial pet] Idade do animal"))
+
     session_id: Optional[str] = Field(default=None, description="(injetado pelo runtime — NÃO preencher)")
 
 

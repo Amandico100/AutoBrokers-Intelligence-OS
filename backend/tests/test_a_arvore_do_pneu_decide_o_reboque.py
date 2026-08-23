@@ -121,9 +121,26 @@ print("=" * 74)
 
 for tela, rotulo in ((Z_MAIS_DE_UM, "mais de 1 pneu danificado"),
                      (Z_ESTEPE, "possui estepe, macaco e chave de rodas")):
+    # 🔴 ATUALIZADO em 23/08/2026 — SPEC-084.2 C1, CLAUDE.md §9.3.
+    #
+    #    Esta linha dizia `estepe_opcao="1"`, e era o nome que o passo da zurich
+    #    exigia. 📊 Medido na ONDA F: o produto coletava `estepe_situacao` e a
+    #    zurich pedia `estepe_opcao` — o mesmo fato com dois nomes, e o cérebro
+    #    era chamado para adivinhar se havia estepe com a resposta já coletada
+    #    sob outro nome (§12.1).
+    #
+    # 🔴 A renomeação estava travada por um motivo que deixou de existir: o
+    #    contrato da ferramenta não declarava `estepe_situacao`, então ninguém
+    #    coletava. O C1 declarou. O passo passou a pedir o nome verdadeiro, e
+    #    esta fixture segue o passo.
+    #
+    # ⚠️ E a LIÇÃO desta seção não mudou nem um pouco: `zurich/auto/guincho`
+    #    tem de percorrer a árvore do pneu, porque a URA leva o guincho por
+    #    aquelas telas. O que mudou foi o nome do campo — manter o nome vencido
+    #    faria o teste medir um vocabulário que o produto não fala mais.
     s = IDS.start_dispatch(sessao("zurich-auto-whatsapp@v1", "guincho",
                                   pneus_danificados_opcao="2",
-                                  estepe_opcao="1"))
+                                  estepe_situacao="1"))
     s, r = responder(s, tela)
     certo(r is not None,
           f"🔴 zurich/auto/guincho responde: {rotulo}", f"respondeu {r!r}")
