@@ -70,7 +70,29 @@ print("=" * 74)
 
 orig = io.open(P, "rb").read()
 h0 = hashlib.sha256(orig).hexdigest()
-alvo = sorted(base.items(), key=lambda kv: -len(kv[1]["corpus"]))[0]
+# ⚠️ 🔴 O ALVO TEM DE SER UMA TELA DE **UM PASSO SO** -- 23/08/2026.
+#
+#    `just` so vira True quando TODOS os passos daquela tela tem
+#    `noop_justificado`. A versao anterior pegava a tela de maior corpus, e ela
+#    casa DOIS passos (`abertura` e `aguarde_fila`): injetar a justificativa em
+#    um deles nao mudava o veredito daquela tela. O controle so passava por
+#    efeito colateral -- havia OUTRA tela que casava `abertura` sozinha, e era
+#    ela que baixava o contador.
+#
+# 🔴 Quando essa outra tela deixou de casar `abertura` (a alternativa que a
+#    engolia saiu, na ONDA F), o controle perdeu a alavanca e ficou vermelho --
+#    corretamente. Um controle que depende de um efeito colateral nao prova o
+#    que diz provar.
+#
+# Agora ele escolhe uma tela de UM passo so, que e o caso em que a injecao
+# TEM de mudar o veredito. E se nao houver nenhuma, ele diz isso em vez de
+# passar calado.
+_de_um_passo = [kv for kv in base.items() if len(kv[1]["passos"]) == 1
+                and not kv[1]["just"]]
+certo(bool(_de_um_passo),
+      "🔴 CONTROLE: ha tela de UM passo so para servir de alavanca",
+      f"{len(base)} telas, nenhuma com um passo so e sem justificativa")
+alvo = sorted(_de_um_passo, key=lambda kv: -len(kv[1]["corpus"]))[0]
 passo = sorted(alvo[1]["passos"])[0]
 token = '{"step": "%s",' % passo
 certo(token in orig.decode("utf-8"),

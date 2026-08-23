@@ -7928,3 +7928,146 @@ desentupimento, quem paga a quebra de alvenaria — **não está no acervo**. Po
 isso a `expectativa_do_desfecho` das duas diz "NÃO MEDIDO" em vez de copiar a do
 encanador: são serviços diferentes, com regras de cobertura diferentes.
 **O que destrava:** 🧑 uma coleta de cada uma que chegue ao protocolo.
+
+### P-084-57 🔴 P1 — o FREIO da porto residencial não armava em UMA tela sequer · ✅
+
+📊 23/08/2026, ONDA F. Nas 210 telas de `porto-residencial`,
+`detect_finalize_anchor` casava **ZERO**. Os `finalize_anchors` herdados eram os
+do corredor de AUTO — *"como você quer prosseguir"*, *"posso confirmar"* — e
+nenhuma dessas frases existe no residencial.
+
+🔴 **E a tela de confirmação existe, e o corredor a respondia:**
+
+```
+"Gostaria de alterar alguma informação?
+ Não, está tudo correto | Localização | Quem estará no local
+ Sair e não agendar | Voltar"          ⟶ o passo respondia "Não, está tudo correto"
+```
+
+Isso **CONFIRMA a solicitação**. Sem o freio, o corredor abria o chamado sem
+passar pela aprovação humana e sem o cancelamento do modo de teste — e o
+`finalize_abort_reply` deste playbook já era, literalmente, `"Sair e não
+agendar"`, uma opção DESSA tela. A intenção estava escrita; a âncora faltava.
+
+📊 CONTROLE da mesma rodada: em `porto-auto` as âncoras herdadas armam 14 telas,
+então o mecanismo funcionava. Depois do conserto: **5 telas armam** no
+residencial.
+
+⚠️ E a auditoria correu nos 14 corredores: os outros dois com freio cego são
+`mapfre/auto` (o corpus é 100% deflexão de sinistro, não há confirmação) e
+`tokio/auto` (é `OUTCOME_ENCAMINHA`, não se confirma nada). **Só a porto
+residencial era buraco.**
+
+**O que fica:** 🤖 rodar essa auditoria de novo sempre que um corredor novo
+nascer. Um `finalize_anchors` herdado de outro ramo é o padrão do defeito.
+
+### P-084-58 🔴 `DESEMPATE` estava DECLARADO e NUNCA LIDO — 4 rotas da bradesco somiam · ✅
+
+📊 23/08/2026, ONDA G. `grep -n DESEMPATE scripts/padroes_de_servico.py`
+devolvia **só a própria declaração**. A constante foi escrita, documentada
+(*"a tela que separa é a seguinte, e ela existe: ver DESEMPATE abaixo"*) e
+nunca consultada por `servico_da_sessao`.
+
+🔴 O efeito: na bradesco, a tecla `1` de *"qual o problema com o seu carro"* é
+PANE, e PANE não distingue bateria de guincho — por isso ela mapeia para `None`,
+de propósito. Sem ler o desempate, a sessão inteira ficava sem serviço, e **as
+QUATRO rotas de `bradesco/auto` saíam SEM_CORPUS com o acervo cheio**:
+
+```
+a10d095d  24 telas  guincho inteiro, ate "sua assistencia ja sera acionada"
+0d5284f3  33 telas  guincho AGENDADO
+bc2cfead  45 telas  guincho AGENDADO
+2c05415b  15 telas  bateria
+```
+
+📊 Com o desempate ligado: corpus de **127 → 159 telas**, e nasceram
+`bradesco/auto/guincho` (79/106) e `bradesco/auto/bateria` (69/106).
+
+⚠️ **É exatamente a diferença que a ONDA G existe para separar**: `SEM_CORPUS`
+por coleta legítima (ninguém pediu) × `SEM_CORPUS` por BUG (pediram, e o produto
+não soube ler). Fundir as duas manda para coleta uma rota cujo acervo está
+cheio — e foi o que aconteceu com a bradesco por meses.
+
+**O que fica:** 🤖 `chaveiro` e `pneu` da bradesco continuam SEM_CORPUS, e agora
+isso é afirmação MEDIDA: as teclas 3 e 4 do mesmo menu decodificam e ninguém as
+pressionou.
+
+### P-084-59 O bloco da atendente passou de 7.595 para 6.165 caracteres — e ensina 10 slots a mais · ✅
+
+📊 As dez teclas que viraram COLETA na ONDA F (estepe, alavanca travada, tipo de
+câmbio, porta principal, geladeira com medicamento, e-mail do segurado…)
+levaram o bloco de ~6.900 para **7.595**, acima do teto de 7.000.
+
+🔴 **A saída não foi subir o teto** — o comentário do próprio arquivo já dizia
+por quê: o prompt tem orçamento, e instrução importante compete com repetição.
+A repetição estava medida: *"a placa do veículo; onde o veículo está agora; se
+precisa agora ou prefere agendar"* aparecia nas OITO linhas de auto.
+
+O bloco ganhou um SEGUNDO nível de compressão, por RAMO, com **uma exceção
+nomeada**: hoista o que 8 das 9 rotas do ramo pedem, e escreve na linha da rota
+*"— e aqui NÃO se pergunta X"*. Hoistar calado faria a atendente pedir à dona do
+cachorro o número de uma residência que a URA nunca pergunta.
+
+📊 Resultado: **6.165 caracteres**, 430 a menos que antes das dez teclas novas.
+
+**O que fica:** ⚠️ toda tecla que entra em `required_slots` precisa de redação em
+`_COMO_PERGUNTAR`. O guarda existe e pegou as seis primeiras — mas ele só acusa
+depois que a tecla entrou.
+
+### P-084-60 `hdi/residencial/eletricista`: três órfãs que não são da rota · 🤖
+
+📊 A sessão `13379965` é EXPLORATÓRIA: o operador abriu o menu de Eletricista,
+voltou, abriu o de Encanador, voltou, abriu o de Linha Branca, e saiu **sem
+abrir nada**. A cascata classificou a sessão inteira como `eletricista`, e as
+telas dos outros dois ofícios contam como órfãs DESTA rota.
+
+🔴 O `only_subservices` de `detalhe_do_vazamento` e de `menu_item_linha_branca`
+está CERTO — uma rota de eletricista não deve responder tela de encanador.
+**Enquanto a sessão estiver classificada como `eletricista`, esta rota não pode
+ganhar os 20 pontos de "zero órfãs funcionais"** — nem escrevendo passo nenhum.
+
+**O que destrava:** 🤖 uma regra de classificação para a sessão que visita vários
+menus e **não abre nada**: ela é não-classificada (`servico=None`), como a
+`af3b817e` da yelum já é. É decisão de corpus, não de corredor — e por isso não
+foi executada aqui.
+
+### P-084-61 `zurich`: os passos exigem `*_opcao` e o produto coleta outro nome · 🤖
+
+📊 `origens_do_slot(zurich, ...)`, medido:
+
+```
+estepe_opcao        <- o que o passo EXIGE      estepe_situacao   <- o que o gemeo usa
+local_seguro_opcao  <- o que o passo EXIGE      local_seguro      <- o que o produto ja tinha
+```
+
+O corredor gêmeo da família hdi/yelum faz certo: `"reply": "{estepe_situacao}"`.
+A zurich escreveu `{estepe_opcao}`. É a §12.1 do CLAUDE.md — o nome mente sobre
+o que guarda.
+
+⚠️ Nesta onda as seis teclas ganharam ORIGEM (coleta), o que tira o passo do
+silêncio. **A renomeação NÃO foi feita**, e é de propósito: 📊 medido, renomear
+muda o que o motor exige e trava o guincho da zurich por dois slots que ninguém
+coleta hoje.
+
+**O que destrava:** 🤖 uma mudança separada e medida — renomear o `requires` para
+o slot coletado E acrescentá-lo ao `required_slots` do subserviço, na mesma
+edição.
+
+### P-084-62 O que sobrou, rota a rota — e é quase tudo COLETA · 🧑
+
+📊 Estado final medido (23/08/2026, 43 rotas com corpus, 19 em AAA, média
+ponderada **88,1%**). O que falta se concentra em cinco famílias:
+
+```
+apelidos do jeito que o cliente fala .. 20 rotas  🧑 vocabulario de segurado no Espelho
+a ROTA foi percorrida ate o fim ........ 9 rotas  🧑 uma sessao que chegue ao protocolo
+o cliente recebe protocolo+dia+periodo . 9 rotas  idem
+>=2 sessoes distintas ................. 11 rotas  🧑 +1 sessao da rota
+a mais recente tem <180 dias ........... 8 rotas  🧑 coleta nova (a URA muda)
+```
+
+🔴 **Nenhuma delas é dívida de corredor.** As 43 rotas com corpus respondem
+100% das telas que pedem algo, exceto `hdi/residencial/eletricista` (ver
+[P-084-60]). O que trava é o ACERVO, e cada linha do
+[`ROTEIRO-DE-COLETA.md`](reports/ROTEIRO-DE-COLETA.md) diz o que pedir e com que
+CONTROLE.

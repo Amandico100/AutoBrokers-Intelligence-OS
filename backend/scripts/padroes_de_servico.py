@@ -382,6 +382,38 @@ def ligar_resolvedor(fn) -> None:
     M_CANONICAL = fn
 
 
+def _desempate_posterior(seguradora: str,
+                         pares: List[Tuple[str, str]],
+                         i_menu: int,
+                         texto_menu: str,
+                         playbook: Optional[Dict[str, Any]]) -> Optional[str]:
+    """A tela POSTERIOR que separa o que a tecla do cardápio não distinguiu.
+
+    🔴 Lê `DESEMPATE`, que até 23/08/2026 estava declarado e não era lido por
+    ninguém. Ver o comentário no ponto de chamada.
+
+    ⚠️ A busca é para FRENTE a partir do menu que empatou (`i_menu`): a tela de
+    desempate vem DEPOIS, e olhar para trás pegaria a conversa anterior.
+    """
+    for des in DESEMPATE:
+        if des.get("seguradora") != seguradora:
+            continue
+        if not re.search(des.get("depois_de") or r"$^", texto_menu,
+                         re.IGNORECASE | re.DOTALL):
+            continue
+        rx_des = re.compile(des.get("tela") or r"$^", re.IGNORECASE | re.DOTALL)
+        for k in range(i_menu + 1, len(pares)):
+            if pares[k][0] != "in" or not rx_des.search(pares[k][1]):
+                continue
+            for direcao_r, resposta in pares[k + 1:]:
+                if direcao_r != "out":
+                    continue
+                alvo = (des.get("teclas") or {}).get(_norm_rotulo(resposta))
+                return _canonizar(alvo, playbook) if alvo else None
+            return None
+    return None
+
+
 def servico_da_sessao(seguradora: str,
                       pares: List[Tuple[str, str]],
                       playbook: Optional[Dict[str, Any]] = None) -> Tuple[Optional[str], str]:
@@ -456,6 +488,39 @@ def servico_da_sessao(seguradora: str,
                             break
                 if alvo:
                     return _canonizar(alvo, playbook), "nivel-1b-resposta"
+                # ══════════════════════════════════════════════════════════
+                # 🔴 NÍVEL 1b-bis · A TELA POSTERIOR, QUANDO A TECLA NÃO
+                #    DISTINGUE — e `DESEMPATE` existia sem ninguém ler.
+                # ══════════════════════════════════════════════════════════
+                #
+                # 📊 Medido em 23/08/2026: `grep -n DESEMPATE` devolvia só a
+                #    própria declaração. A constante foi escrita, documentada
+                #    ("a tela que separa é a seguinte, e ela existe: ver
+                #    DESEMPATE abaixo") e **nunca consultada**.
+                #
+                # 🔴 O efeito: na bradesco, a tecla `1` do menu "qual o
+                #    problema com o seu carro" é PANE, e PANE não distingue
+                #    bateria de guincho — por isso ela mapeia para `None`, de
+                #    propósito. Sem ler o desempate, a sessão inteira ficava
+                #    sem serviço, e **as QUATRO rotas de `bradesco/auto`
+                #    saíam SEM_CORPUS** com o acervo cheio: 📊 as sessões
+                #    a10d095d e 0d5284f3 percorrem um guincho inteiro, até
+                #    "Logo mais, a sua assistência já será acionada".
+                #
+                # ⚠️ E é exatamente a diferença que a ONDA G tem de separar:
+                #    `SEM_CORPUS` por **coleta legítima** (ninguém pediu) x
+                #    `SEM_CORPUS` por **BUG de reconhecimento** (pediram, e o
+                #    produto não soube ler). Fundir as duas manda para coleta
+                #    uma rota cujo acervo está cheio.
+                #
+                # ⚠️ Só dispara quando a tecla EXISTE no mapa e vale `None` —
+                #    isto é, quando a própria tabela declarou "esta tecla não
+                #    decide". Não é uma segunda chance para tecla desconhecida.
+                if r in (menu.get("teclas") or {}):
+                    _fino = _desempate_posterior(seguradora, pares, i, texto,
+                                                 playbook)
+                    if _fino:
+                        return _fino, "nivel-1b-desempate"
                 break   # o PRIMEIRO `out` é a resposta
 
     # ── NÍVEL 2 · o texto da corretora — só `out`, nunca `in` ────────────────
