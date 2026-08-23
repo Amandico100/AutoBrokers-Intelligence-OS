@@ -91,6 +91,15 @@ PB = CP._PLAYBOOKS["allianz-residencial-whatsapp@v1"]
 MUTACOES = [
     # (arquivo, texto_de, texto_para, rotulo_da_assercao_que_deve_cair)
 
+    # FURO 8 (C8) - A REGUA PUNIA O HANDOFF CORRETO.
+    # 📊 22/08/2026: 28 telas em 6 rotas disparavam
+    #    `detect_handoff_trigger` e eram contadas como ORFA FUNCIONAL --
+    #    *"o defeito"*. Quem apagasse os gatilhos GANHAVA ponto.
+    ("scripts/replay.py",
+     "elif M.detect_handoff_trigger(pb, texto):",
+     "elif False:  # DESLIGADO PELA MUTACAO",
+     "🔴 o replay sabe que HANDOFF nao e orfa"),
+
     # FURO 7 (C7) - A REGRA QUE SO EXISTIA NO DOCUMENTO.
     # 📊 22/08/2026: `grep -c constante_justificada scripts/rubrica.py` -> 0.
     #    A regua nunca leu o campo. Uma rota com 12 constantes decidindo pelo
@@ -420,6 +429,43 @@ certo(_limpa is not None and _limpa.pontos == _limpa.maximo,
       "🔴 CONTROLE: devolvida a justificativa, a MESMA rota recebe os 6 -- "
       "o item nao reprova todo mundo, e a restauracao funcionou",
       f"{(_limpa.pontos if _limpa else '?')}/{(_limpa.maximo if _limpa else '?')}")
+
+
+# =============================================================================
+# 🔴 C8 - O REPLAY SABE QUE HANDOFF NAO E ORFA
+# =============================================================================
+#
+# 📊 28 telas em 6 rotas disparavam gatilho de handoff e contavam como
+#    ORFA FUNCIONAL, que a rubrica chama de *"o defeito"*. 🔴 O incentivo
+#    era invertido: apagar os gatilhos GANHAVA ponto, e o corredor passaria a
+#    conduzir calado fluxos que exigem uma pessoa.
+#
+# ⚠️ As provas de fundo estao em `test_o_handoff_nao_e_um_buraco.py`. Esta
+#    aqui existe porque a mutacao precisa de uma assercao NESTE arquivo -- e o
+#    guarda que a mutacao derruba tem de ser o guarda que a regua conta.
+print()
+print("=" * 74)
+print("[C8] o replay sabe que HANDOFF nao e orfa")
+print("=" * 74)
+
+import replay as _RPc8
+_com_handoff = 0
+_rota_c8 = None
+for _r in _RB.M.rotas():
+    if not _RB.M.get_playbook(_r.ref):
+        continue
+    _rp = _RPc8.replay(_r)
+    if _rp.handoffs:
+        _com_handoff += _rp.handoffs
+        _rota_c8 = _rota_c8 or _r
+
+certo(_com_handoff >= 10,
+      "🔴 o replay sabe que HANDOFF nao e orfa",
+      f"{_com_handoff} telas classificadas HANDOFF (esperado >=10)")
+certo(_rota_c8 is not None and _RPc8.replay(_rota_c8).pedem_algo ==
+      _RPc8.replay(_rota_c8).respondidas +
+      len(_RPc8.replay(_rota_c8).orfas_funcionais),
+      "🔴 CONTROLE: e o handoff nao entrou no denominador nem no numerador")
 
 print()
 print("=" * 74)

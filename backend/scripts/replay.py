@@ -7,6 +7,7 @@ RESPONDIDA      casou um passo que devolve resposta          ✅
 NOOP            casou um passo `noop`                        ✅
 ORFA_INOCUA     não casou, e `_tela_pede_alguma_coisa` = False   ⚪ tolerável
 ORFA_FUNCIONAL  não casou, e `_tela_pede_alguma_coisa` = True    🔴 é o defeito
+HANDOFF         não casou, mas dispara `detect_handoff_trigger`  ⊘ fora do denominador
 ```
 
 🔴 **O eixo B vale 35 dos 100 pontos porque esta é a única medida que reproduziu.**
@@ -37,6 +38,7 @@ RESPONDIDA = "RESPONDIDA"
 NOOP = "NOOP"
 ORFA_INOCUA = "ORFA_INOCUA"
 ORFA_FUNCIONAL = "ORFA_FUNCIONAL"
+HANDOFF = "HANDOFF"
 
 
 class Tela(NamedTuple):
@@ -65,6 +67,11 @@ class Replay(NamedTuple):
     @property
     def orfas_funcionais(self) -> List[Tela]:
         return [t for t in self.telas if t.classe == ORFA_FUNCIONAL]
+
+    @property
+    def handoffs(self) -> int:
+        """Telas que o corredor manda para humano DE PROPÓSITO (C8)."""
+        return sum(1 for t in self.telas if t.classe == HANDOFF)
 
     @property
     def orfas_inocuas(self) -> int:
@@ -140,6 +147,36 @@ def replay(rota, *, sessoes_no_acervo: Optional[int] = None) -> Replay:
         if passo is not None:
             classe = NOOP if passo.get("noop") else RESPONDIDA
             nome = passo.get("step")
+        # ==================================================================
+        # 🔴 C8 — HANDOFF É UM DESFECHO, E A RÉGUA O CONTAVA COMO BURACO
+        # ==================================================================
+        #
+        # O réplay perguntava só `match_ura_step`. Uma tela que o corredor
+        # manda para humano **de propósito** não casa passo nenhum — e caía em
+        # `ORFA_FUNCIONAL`, que é *"o defeito"*.
+        #
+        # 📊 Medido em 22/08/2026: **28 telas em 6 rotas** já disparavam
+        #    `detect_handoff_trigger` e eram contadas como falha.
+        #
+        # 🔴 O efeito é o mesmo perverso do P-084-30: **a régua punia o
+        #    handoff correto.** Um executor que otimizasse por ela apagaria os
+        #    gatilhos e ganharia ponto — e o corredor passaria a conduzir, em
+        #    silêncio, fluxos que exigem uma pessoa (cancelar serviço, alterar
+        #    agendamento, sinistro).
+        #
+        # ⚠️ A ORDEM É A DO MOTOR, e não é escolha de estilo: em
+        #    `insurer_dispatch_service`, `detect_handoff_trigger` é consultado
+        #    DEPOIS do laço de passos. Se um passo casa, o corredor responde e
+        #    o gatilho nunca é lido. Inverter aqui mediria outro corredor.
+        #
+        # ⚠️ E `HANDOFF` **sai do denominador**, não entra no numerador. Parar
+        #    não é responder deterministicamente; contá-lo como acerto inflaria
+        #    o determinismo de quem só sabe desistir. O item mede *"das telas
+        #    que este corredor TEM de responder, quantas ele responde"* — e uma
+        #    tela que ele NÃO deve responder não é dessa população.
+        elif M.detect_handoff_trigger(pb, texto):
+            classe = HANDOFF
+            nome = None
         else:
             pede = M.tela_pede_alguma_coisa(pb, texto)
             classe = ORFA_FUNCIONAL if pede else ORFA_INOCUA
@@ -162,6 +199,7 @@ def imprimir_detalhado(r: Replay, limite: int = 12) -> str:
          f"  RESPONDIDA .............. {r.respondidas}",
          f"  NOOP .................... {r.noops}",
          f"  ORFA_INOCUA ............. {r.orfas_inocuas}",
+         f"  HANDOFF ................. {r.handoffs}   (fora do denominador)",
          f"  ORFA_FUNCIONAL .......... {len(r.orfas_funcionais)}   <-- o defeito"]
     d = r.determinismo
     L.append(f"  determinismo ............ "
