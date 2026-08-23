@@ -839,6 +839,10 @@ _SLOTS_DA_FICHA = (
     "veiculo_placa", "local_atual", "local_destino",
     "endereco_numero", "problema_descricao", "periodo_preferido",
     "risco_confirmado_sem_fumaca", "aparelho_marca_modelo", "aparelho_idade",
+    # 🔴 Os três do FORMULÁRIO NATIVO — SPEC-084.2 C2. Sem eles a resposta do
+    #    cliente vive um turno só e a atendente repergunta, que é exatamente o
+    #    defeito que a ficha existe para não ter.
+    "veiculo_em_garagem", "veiculo_nivel_rua", "local_situacao",
 )
 
 

@@ -400,6 +400,29 @@ class InsurerDispatchInput(BaseModel):
     pet_idade: Optional[str] = Field(default=None, description=(
         "[residencial pet] Idade do animal"))
 
+
+    # --- Auto guincho: o que o FORMULÁRIO NATIVO da família HDI/Yelum exige ---
+    #
+    # 🔴 Mesmo defeito do C1, uma camada adiante: 📊 `montar_resposta_de_flow`
+    #    exige três campos que `required_slots` não pedia E que este contrato
+    #    não declarava. Slot não declarado é slot inalcançável — 📊 medido,
+    #    `model_validate` DESCARTA o extra, e o modelo só vê o que o schema
+    #    anuncia.
+    veiculo_em_garagem: Optional[str] = Field(default=None, description=(
+        "[auto guincho HDI/Yelum] O carro está numa garagem/estacionamento, "
+        "ou parado na rua? 🔴 PERGUNTE: responder 'não' sem saber faz a "
+        "seguradora PULAR a pergunta que escolhe o tipo de guincho."))
+    veiculo_nivel_rua: Optional[str] = Field(default=None, description=(
+        "[auto guincho HDI/Yelum] Só quando está em garagem: subsolo | acima "
+        "do nível da rua | nível da rua com restrição | nível da rua com "
+        "acesso livre. 🔴 Esta resposta escolhe o EQUIPAMENTO (plataforma, "
+        "asa-delta, munck). Não deduza de 'rampa' — ela cabe em duas opções."))
+    local_situacao: Optional[str] = Field(default=None, description=(
+        "[auto guincho HDI/Yelum] Como é o lugar: 'local seguro' | 'escuro ou "
+        "mal iluminado' | 'pouca circulação de pessoas'. 🔴 Decide a "
+        "PRIORIDADE do atendimento — dizer 'seguro' sem perguntar rebaixa quem "
+        "está parado num lugar perigoso."))
+
     session_id: Optional[str] = Field(default=None, description="(injetado pelo runtime — NÃO preencher)")
 
 

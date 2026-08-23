@@ -77,8 +77,19 @@ for nome, rp in sorted(com_flow.items()):
     certo(all(t.classe != RP.ORFA_INOCUA for t in telas_flow),
           f"\U0001F534 {nome}: nenhuma tela de formulário é ORFA_INOCUA",
           str([t.classe for t in telas_flow]))
-    certo(all(t.classe == RP.ORFA_FUNCIONAL for t in telas_flow),
-          f"   {nome}: hoje elas são ORFA_FUNCIONAL — o corredor não as responde",
+    # 🔴 ATUALIZADO em 23/08/2026 — SPEC-084.2 C2, CLAUDE.md §9.3.
+    #
+    #    Esta linha dizia *"hoje elas são ORFA_FUNCIONAL — o corredor não as
+    #    responde"*. Era verdade quando o C6 nasceu, e era o DEFEITO que ele
+    #    existe para tornar visível. O C2 pôs os três slots do formulário em
+    #    `required_slots`, e agora o corredor as responde.
+    #
+    # 📊 O par C6→C2, medido: o C6 derrubou hdi/yelum de 102 para 82/86 e o
+    #    AAA de 19 para 17; o C2 devolveu 102/102 e o AAA para 19. **A volta é
+    #    a prova**: o mesmo número, antes pago por uma tela escondida, agora é
+    #    ganho por uma tela respondida.
+    certo(all(t.classe == RP.RESPONDIDA for t in telas_flow),
+          f"   {nome}: hoje elas são RESPONDIDA — o corredor as responde",
           str([(t.classe, t.passo) for t in telas_flow][:2]))
 
 print()
@@ -87,13 +98,31 @@ print("[3] E A EVIDÊNCIA DIZ QUAIS PERGUNTAS FALTAM AO SEGURADO")
 print("=" * 74)
 print("     'faltam três perguntas' vale mais que 'tem uma tela estranha aqui'")
 
+# 🔴 ATUALIZADO junto com a linha acima. A evidência dizia quais campos
+#    FALTAVAM — `flow_falta:rb_EmGaragem…`. Agora que o corredor responde, ela
+#    diz QUAL formulário foi respondido. As duas formas importam, e o guarda
+#    exige a que corresponde ao estado real.
 nomes = {str(t.passo) for rp in com_flow.values() for t in rp.telas
-         if str(t.passo or "").startswith("flow_falta")}
-faltantes = {c for n in nomes for c in n.split(":", 1)[1].split(",")}
+         if str(t.passo or "").startswith("flow")}
+certo(nomes and all(n.startswith("flow:") for n in nomes),
+      "a evidência nomeia o FORMULÁRIO respondido, com o id dele",
+      str(sorted(nomes)))
+
+# 🔴 CONTROLE: e a outra forma da evidência CONSEGUE aparecer. Sem esta
+#    metade, o ramo `flow_falta:` poderia ter sido apagado e ninguém veria.
+_pb_ctrl = M.get_playbook("hdi-auto-whatsapp@v1") or {}
+_fl_ctrl = None
+for _t in next(iter(com_flow.values())).telas:
+    if str(_t.passo or "").startswith("flow"):
+        _fl_ctrl = M.detect_native_flow(_pb_ctrl, _t.texto)
+        break
+_vazio = M.montar_resposta_de_flow(_fl_ctrl, {}) if _fl_ctrl else {}
 for campo in ("rb_EmGaragemOuEstacionamento", "rb_NivelDaRua",
               "rb_InformacoesLocal"):
-    certo(campo in faltantes, f"a evidência nomeia `{campo}`",
-          str(sorted(faltantes)))
+    certo(campo in (_vazio.get("missing") or []),
+          f"🔴 CONTROLE: sem slot nenhum, o motor ainda ACUSA `{campo}` "
+          "— a classificação de órfã não virou letra morta",
+          str(_vazio.get("missing")))
 
 print()
 print("=" * 74)

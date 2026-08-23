@@ -911,6 +911,26 @@ def _derivar_teclas_do_caso(slots: dict) -> None:
                 "posto de gasolina", "dentro do posto", "shopping")):
             slots["situacao_risco_opcao"] = "Nenhuma das anteriores"
 
+    # ---- A MESMA PERGUNTA, NA TELA QUE VIROU FORMULÁRIO -------------------
+    #
+    # 📊 Desde meados de junho/2026 a família HDI/Yelum faz esta pergunta
+    #    DENTRO do WhatsApp Flow (`rb_InformacoesLocal`), não mais por texto.
+    #    Medido: as duas telas nunca aparecem na mesma sessão — 6 telas de
+    #    formulário no corpus, 0 sobreposição com o passo `situacao_risco`.
+    #
+    # 🔴 Derivar aqui, e não duplicar o `if` acima, é o que impede as duas
+    #    respostas de divergirem no dia em que um radical novo for
+    #    acrescentado. Duas tabelas para o mesmo fato é o defeito que este
+    #    arquivo já pagou.
+    #
+    # ⚠️ SEM `else`, pela mesma razão do bloco acima: quando o relato não diz,
+    #    `local_situacao` fica VAZIO e o formulário PEDE. `rb_InformacoesLocal`
+    #    muda a PRIORIDADE do atendimento — responder "Local Seguro" por
+    #    preguiça rebaixa, no escuro, quem está parado num lugar perigoso.
+    if (not str(slots.get("local_situacao") or "").strip()
+            and str(slots.get("situacao_risco_opcao") or "").strip()):
+        slots["local_situacao"] = slots["situacao_risco_opcao"]
+
     # ---- QUAL BATERIA (porto, azul) -----------------------------------
     # 📊 "Recarga de bateria / Bateria nova / Troca de bateria / Na garantia"
     #    — QUATRO trabalhos diferentes, e o corredor dizia "Recarga" sempre.
@@ -1563,8 +1583,37 @@ def tudo_que_sera_pedido(seguradora: str, ramo: str = "auto",
     itens: List[Dict[str, Any]] = []
 
     def _somar(slot: str, origem: str, extra: Optional[Dict[str, Any]] = None) -> None:
+        """Acrescenta o slot — e ENRIQUECE o que já entrou, em vez de ignorar.
+
+        🔴 SPEC-084.2 C2. A primeira redação só fazia `if nome in vistos:
+        return`. Como `required_slots` é varrido ANTES dos formulários, no dia
+        em que um campo do formulário entrou na lista de coleta ele passou a
+        chegar como `origem="subservico"` e **perdeu a pergunta e as opções
+        exatas da seguradora**.
+
+        📊 Medido: `veiculo_nivel_rua` saía com
+        `pergunta="Em relação ao nível da rua, onde o veículo está?"` e as
+        quatro opções literais; depois de entrar em `required_slots`, saía com
+        `pergunta=None`. A atendente perdia justamente o texto que a URA usa.
+
+        ⚠️ A ordem de varredura não muda: `required_slots` continua sendo a
+        origem primária, e é ela que decide se o slot é obrigatório. O que a
+        origem posterior faz é **preencher o que a anterior não sabia** —
+        `pergunta`, `opcoes`, `campo_do_formulario`, `condicional`. Nenhum
+        campo já preenchido é sobrescrito.
+        """
         nome = str(slot or "").strip()
-        if not nome or nome in vistos:
+        if not nome:
+            return
+        if nome in vistos:
+            if not extra:
+                return
+            for item in itens:
+                if item.get("slot") == nome:
+                    for chave, valor in extra.items():
+                        if not item.get(chave):
+                            item[chave] = valor
+                    break
             return
         vistos.add(nome)
         itens.append({"slot": nome, "rotulo": _rotulo(nome), "origem": origem, **(extra or {})})

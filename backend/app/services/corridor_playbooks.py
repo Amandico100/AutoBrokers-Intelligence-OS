@@ -2752,6 +2752,22 @@ _FLOW_CONDICOES_VEICULO_V2: Dict[str, Any] = {
                         "seguro": "6", "local seguro": "6",
                         "escuro": "2", "mal iluminado": "2", "sem iluminacao": "2",
                         "pouca circulacao": "3", "deserto": "3", "isolado": "3",
+                        # 🔴 O VOCABULÁRIO DA URA DE TEXTO, QUE O PRODUTO JÁ FALA.
+                        #
+                        # 📊 `_derivar_teclas_do_caso` já produz
+                        #    `situacao_risco_opcao` com TRÊS valores, e eles são
+                        #    ESTA MESMA pergunta na tela de texto que o
+                        #    formulário substituiu. Medido: as duas nunca
+                        #    aparecem na mesma sessão — 6 telas de formulário no
+                        #    corpus, 0 sobreposição com o passo `situacao_risco`.
+                        #
+                        # ⚠️ Sem estes três apelidos a derivação existe e NÃO
+                        #    CHEGA: 📊 "Via com pouca iluminação" resolvia
+                        #    `None` e virava `valor_nao_reconhecido` — pior que
+                        #    ausência, porque o dado ESTAVA no caso.
+                        "via com pouca iluminacao": "2",
+                        "via com pouco movimento": "3",
+                        "nenhuma das anteriores": "6",
                     },
                 },
             ],
@@ -9458,6 +9474,22 @@ _COMO_PERGUNTAR = {
     #    corretor tinha de perguntar e o bloco nunca ensinou como. Buraco
     #    pré-existente, achado pelo próprio guarda em 22/08/2026.
     "local_seguro": "se ele está num lugar seguro para esperar",
+    # 🔴 OS TRÊS DO FORMULÁRIO NATIVO DA FAMÍLIA HDI/YELUM — SPEC-084.2 C2.
+    #
+    # 📊 A tela do formulário aparece 6 vezes no corpus (hdi/guincho 3,
+    #    yelum 3), a mais recente em 19/08/2026 — quatro dias antes deste
+    #    conserto. E `montar_resposta_de_flow` devolve `ok=False` para um caso
+    #    que cumpre TODO o `required_slots` de hoje.
+    #
+    # ⚠️ A redação é a do CLIENTE, não a da seguradora: ninguém responde
+    #    "nível da rua".
+    "veiculo_em_garagem": "se o carro está numa garagem ou estacionamento, "
+                          "ou parado na rua",
+    "veiculo_nivel_rua": "se o carro está no subsolo, acima do nível da rua "
+                         "ou no nível dela — e se há espaço para o guincho "
+                         "manobrar",
+    "local_situacao": "como é o lugar onde ele está — seguro, escuro, ou com "
+                      "pouca gente passando",
     "estepe_situacao": "se o estepe está cheio e em condições de uso",
     "ferramentas_no_veiculo": "se macaco e chave de roda estão no carro",
     "equipamentos_troca_opcao": "se tem macaco, chave de roda e estepe",
@@ -10267,3 +10299,54 @@ for _sv_bd, _regras_bd, _exp_bd in (
     if _sub_bd is not None:
         _sub_bd["regras_para_o_cliente"] = _regras_bd
         _sub_bd["expectativa_do_desfecho"] = _exp_bd
+
+
+# ══════════════════════════════════════════════════════════════════════════
+# 🔴 O FORMULÁRIO NATIVO EXIGE TRÊS FATOS QUE NENHUMA LISTA PEDIA — C2
+# ══════════════════════════════════════════════════════════════════════════
+#
+# 📊 Medido em 23/08/2026 pelo MOTOR, não por leitura:
+#
+#     montar_resposta_de_flow(flow, sessao_de_um_caso_COMPLETO)
+#       → ok=False  missing=[rb_EmGaragemOuEstacionamento, rb_NivelDaRua,
+#                            rb_InformacoesLocal]
+#     CONTROLE, mesma sessão + os três slots
+#       → ok=True   params={…5 campos…}
+#     CONTROLE NEGATIVO, tirando UM por vez
+#       → cada slot derruba EXATAMENTE um campo
+#
+# 🔴 E o desfecho era o pior possível: a sessão nascia `ready_to_send` — o
+#    produto PROMETIA acionar —, falava ~25 telas com a URA e morria na
+#    penúltima com `reason="formulario_incompleto:…"`, com o segurado
+#    esperando na rua e o relógio correndo.
+#
+# 📊 POR QUE SÓ `guincho`: a tela aparece 6 vezes no corpus e as SEIS são de
+#    reboque — nenhuma em bateria, pneu ou chaveiro. A própria frase que abre
+#    o formulário diz "para que a REMOÇÃO do veículo ocorra".
+#
+# ⚠️ E há um teto real, que escolheu o escopo em lugar da preferência: 📊 o
+#    bloco `conhecimento_de_assistencia` tem teto de 7.000 caracteres. Com os
+#    três em `guincho` ele cabe; com os três nas cinco rotas de auto da
+#    família, estoura.
+#
+# ⚠️ ATRIBUIÇÃO, nunca `.append()`: `_auto_playbook` faz cópia RASA dos
+#    subserviços, então a lista é objeto compartilhado — um `append` aqui
+#    escreveria no `required_slots` de seguradora que não tem este formulário.
+#
+# 🔴 E os OUTROS DOIS campos do formulário não entram, de propósito: 📊
+#    `ckb_SituacoesVeiculo` tem default `["nenhuma_opcoes"]` e `rb_Ocupantes`
+#    tem default `"1"` — que são literalmente as respostas que os passos de
+#    texto `cambio_rodas`, `rebaixado`, `eletrico_hibrido` e `ocupantes` já
+#    davam antes de o formulário existir. Default herdado de resposta medida
+#    não é chute.
+_SLOTS_DO_FORMULARIO_NATIVO_HDI_YELUM = [
+    "veiculo_em_garagem",   # 🔴 "Não" errado APAGA a pergunta do equipamento
+    "veiculo_nivel_rua",    # 🔴 escolhe plataforma x asa-delta x munck
+    "local_situacao",       # 🔴 muda a PRIORIDADE do atendimento
+]
+for _pb_flow in (HDI_AUTO_WHATSAPP_V1, YELUM_AUTO_WHATSAPP_V1):
+    _sub_flow = (_pb_flow.get("subservices") or {}).get("guincho")
+    if _sub_flow is not None:
+        _req_flow = list(_sub_flow.get("required_slots") or [])
+        _sub_flow["required_slots"] = _req_flow + [
+            x for x in _SLOTS_DO_FORMULARIO_NATIVO_HDI_YELUM if x not in _req_flow]

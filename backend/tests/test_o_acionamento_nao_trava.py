@@ -558,14 +558,43 @@ def teste_o_corredor_declara_tudo_antes_de_comecar():
 
     # A fonte que faltava: os campos do formulário nativo. 📊 Nenhum deles está
     # em `required_slots` — e é neles que os 4 acionamentos recentes pararam.
-    do_formulario = [i for i in plano["obrigatorios"] if i["origem"] == "formulario_nativo"]
+    # 🔴 ATUALIZADO em 23/08/2026 — SPEC-084.2 C2, CLAUDE.md §9.3.
+    #
+    #    Este filtro era `i["origem"] == "formulario_nativo"`. Depois do C2 os
+    #    três campos do formulário entram por `required_slots` — que é o
+    #    conserto — e a origem PRIMÁRIA deles passou a ser `subservico`.
+    #    Filtrar pela origem antiga devolvia lista VAZIA, e as asserções
+    #    passavam a medir o nada.
+    #
+    # 🔴 O que identifica um campo de formulário não é a origem: é ele TER um
+    #    `campo_do_formulario`. Esse é o fato que não muda quando o slot passa
+    #    a ser coletado antes.
+    do_formulario = [i for i in plano["obrigatorios"] if i.get("campo_do_formulario")]
     nomes = {i["slot"] for i in do_formulario}
     checar({"veiculo_em_garagem", "veiculo_nivel_rua", "local_situacao"} <= nomes,
            "pede também o que o FORMULÁRIO exige", str(sorted(nomes)))
-    for campo in ("veiculo_nivel_rua", "local_situacao"):
-        checar(campo not in (PB.get_playbook(HDI_AUTO)["subservices"]["guincho"]["required_slots"]),
-               f"  e {campo} NÃO estava em required_slots",
-               "descobrir isso na última tela é perder o acionamento")
+    # 🔴 ATUALIZADO em 23/08/2026 — SPEC-084.2 C2, CLAUDE.md §9.3.
+    #
+    #    Estas duas linhas afirmavam que `veiculo_nivel_rua` e `local_situacao`
+    #    NÃO estavam em `required_slots`. Era verdade — **e era o defeito**. O
+    #    C2 os pôs lá, e manter a afirmação vencida só ensinaria a ignorar
+    #    teste.
+    #
+    # 🔴 A LIÇÃO É A MESMA, DO OUTRO LADO: o que o FORMULÁRIO exige tem de
+    #    estar onde o produto MANDA COLETAR. Agora o guarda compara as duas
+    #    listas, em vez de afirmar que elas divergem.
+    _req_guincho = PB.get_playbook(HDI_AUTO)["subservices"]["guincho"]["required_slots"]
+    _fora = [i["slot"] for i in do_formulario if i["slot"] not in _req_guincho]
+    checar(not _fora,
+           "  tudo que o FORMULÁRIO exige está em `required_slots`",
+           f"fora da lista: {_fora} — descobrir isso na última tela é perder "
+           "o acionamento")
+    # 🔴 CONTROLE: a comparação CONSEGUE apontar alguém. Sem esta linha, um
+    #    `do_formulario` vazio faria a de cima passar para sempre.
+    checar(len(do_formulario) >= 3,
+           "  CONTROLE: o formulário exige pelo menos três campos — a "
+           "comparação acima não é sobre uma lista vazia",
+           f"{len(do_formulario)} campos")
 
     nivel = next(i for i in do_formulario if i["slot"] == "veiculo_nivel_rua")
     checar(nivel["pergunta"] == "Em relação ao nível da rua, onde o veículo está?",
