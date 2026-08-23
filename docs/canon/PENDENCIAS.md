@@ -7435,3 +7435,35 @@ sem worktree.
 aceitar o método sem worktree quando os agentes não escrevem.
 **O que custa esquecer:** alguém tenta 8 worktrees, espera 20 min e recebe 3
 árvores quebradas.
+
+### P-084-37 🔴 `_fonte_do_bloco` recorta uma janela que depende do código do VIZINHO · 🤖
+
+📊 22/08/2026, ONDA A. `rubrica._fonte_do_bloco(servico)` recorta do **último
+parágrafo em branco ANTES** do bloco do subserviço até o primeiro `\n        },`.
+
+Consequência medida, e ela é absurda quando dita em voz alta:
+
+```
+escrevi `regras_para_o_cliente` no bloco do ELETRICISTA
+   (com linhas em branco entre as frases, como em qualquer texto)
+        ↓
+a fronteira da janela do bloco VIZINHO andou
+        ↓
+🔴 `maquina_de_lavar` caiu de 106/106 para 102/106 — sem ninguém tocá-la
+```
+
+O item `transcrita no bloco do subserviço` vale 4 pontos e procura
+`sess[ãa]o\s+([0-9a-f]{8})` dentro da janela. A referência estava ganhando esses
+4 pontos porque a janela **alcançava o comentário do vizinho**.
+
+**Consertado por fora** — a citação da sessão foi para dentro do próprio bloco,
+onde não depende de ninguém. ⚠️ Mas a régua continua com a janela frágil: a
+próxima rota que ganhar um parágrafo em branco pode derrubar a nota da vizinha.
+
+**O que destrava:** `_fonte_do_bloco` recortar de `"<servico>": {` até o `},`
+que o fecha — o bloco, não o bloco mais o que vier antes. ⚠️ Isso tira dos
+blocos a possibilidade de ter comentário-cabeçalho ACIMA da chave, então as
+rotas que hoje citam sessão lá fora precisam mover a citação para dentro antes.
+**O que custa esquecer:** uma rota cai de nota por causa de um parágrafo em
+branco escrito na rota do lado, e quem medir vai procurar o defeito no lugar
+errado.

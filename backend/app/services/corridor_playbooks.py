@@ -223,8 +223,23 @@ _ANCORA_DE_AGENDAMENTO_PORTO = (
 #    faltavam nunca casaram tela do corpus dela. Guardrail que existe só num
 #    corredor não é guardrail: é coincidência.
 _RESID_HANDOFF_TRIGGERS = [
-    r"sinistro", r"n[ãa]o localizamos", r"cpf.*inv[áa]lido", r"n[ãa]o foi poss[íi]vel",
+    r"sinistro", r"n[ãa]o localizamos", r"n[ãa]o foi poss[íi]vel",
     r"sem cobertura", r"n[ãa]o (?:tem|possui) cobertura",
+
+    # 🔴 A URA NÃO ESCREVE "INVÁLIDO" — 📊 22/08/2026.
+    #    A única tela de documento recusado do acervo inteiro (rota
+    #    `eletrodomesticos`, sessão 21610390) diz:
+    #      "*CPF* ou *CNPJ* informado não é válido confira os dígitos."
+    #    🔴 `cpf.*inv[áa]lido` casava ZERO, e o corredor seguia em frente com
+    #    um documento que a seguradora recusou.
+    #
+    # ⚠️ E o `[\s\S]` não é enfeite: `detect_handoff_trigger` NÃO compila com
+    #    DOTALL, então `.` não atravessa a quebra de linha da tela real.
+    #
+    # 📊 CONTROLE: casa 1 tela — a certa. NÃO pega "Opção inválida." (que é
+    #    `noop` em `avisos_informativos`) nem "Ops! O horário informado não é
+    #    válido", porque as duas não têm "cpf" antes.
+    r"cpf[\s\S]{0,24}(?:inv[áa]lido|n[ãa]o [ée] v[áa]lido)",
 
     # ═════════════════════════════════════════════════════════════════════════
     # 🔴 CANCELAR E REMARCAR SERVIÇO AGENDADO — ONDA A
@@ -252,6 +267,36 @@ _RESID_HANDOFF_TRIGGERS = [
     #    no meio da frase.
     r"caso deseje alterar o atendimento",
     r"alterar apenas[\s\S]{0,12}data e hor[áa]rio do servi[çc]o",
+
+    # ═════════════════════════════════════════════════════════════════════════
+    # 🔴 E AS DUAS TELAS SEGUINTES DO MESMO FLUXO
+    # ═════════════════════════════════════════════════════════════════════════
+    #
+    # ⚠️ A entrada acima parou na tela do MENU. 📊 Medido na rota
+    #    allianz/residencial/eletricista (sessão 267eb82f, depois do protocolo
+    #    51192442): quem responde "1" ali recebe MAIS DUAS telas — e elas eram
+    #    as ÚNICAS órfãs funcionais daquela rota.
+    #
+    #     "Tem certeza que deseja cancelar esse serviço?
+    #      *1 -* Sim *2 -* Não *3 -* Voltar"
+    #     "Atendimento cancelado com sucesso! O que deseja fazer agora?
+    #      *1 -* Abrir novo atendimento *2 -* Sair"
+    #
+    # 🔴 A primeira é a tecla mais cara do corredor inteiro: `1` CANCELA um
+    #    chamado que existe. Órfã, ela cai no cérebro adaptativo — que vê
+    #    "1 - Sim" e um pedido de confirmação, o formato que ele responde o dia
+    #    todo. E ficar mudo também não serve: a URA insiste, a sessão morre por
+    #    inatividade, e o serviço fica num estado que ninguém sabe qual é.
+    #
+    # ⚠️ A segunda é DEPOIS do estrago, e não é informativa: ela oferece ABRIR
+    #    outro atendimento. O corredor abriria em cima de um cancelamento que
+    #    não foi decisão dele.
+    #
+    # 📊 CONTROLE, rodado nos 14 corpora versionados: os dois casam
+    #    EXATAMENTE 2 telas no total. Nenhum passo perde tela, nenhuma captura
+    #    de protocolo é roubada — a ordem do motor é passo → handoff → captura.
+    r"tem certeza que deseja cancelar esse servi[çc]o",
+    r"atendimento cancelado com sucesso",
 ]
 
 
@@ -347,10 +392,14 @@ ALLIANZ_RESIDENCIAL_WHATSAPP_V1: Dict[str, Any] = {
             #    e casavam; a quinta diz só `CNPJ` — é o galho do condomínio,
             #    onde o titular é PJ — e ficava ÓRFÃ.
             #
+            # ⚠️ E a primeira tentativa de conserto escreveu `cp[fj]`, que casa
+            #    "cpf" e "cpj" — **nenhum dos dois é "cnpj"**. A tela seguiu
+            #    órfã, e quem pegou foi a medição, não a leitura.
+            #
             # ⚠️ A resposta é `2` (reidentificar), e é por isso que o furo doía:
             #    caindo no cérebro, um `1` abriria o chamado no CNPJ do cliente
             #    ANTERIOR. O WhatsApp é da corretora e atende N clientes.
-            "anchor": (r"em nossa [úu]ltima conversa,? utilizamos o cp[fj]"
+            "anchor": (r"em nossa [úu]ltima conversa,? utilizamos o c(?:np|p)[fj]"
                        r"|que bom que voltou.{0,80}cpf"
                        r"|continuar com o cpf"),
             "reply": "2",
@@ -904,6 +953,60 @@ ALLIANZ_RESIDENCIAL_WHATSAPP_V1: Dict[str, Any] = {
     # do segurado em `missing_slots_for_subservice`.
     "subservices": {
         "eletricista": {
+            # ═════════════════════════════════════════════════════════════════
+            # 🔴 A ROTA, e o que ela tem de DIFERENTE da máquina de lavar
+            # ═════════════════════════════════════════════════════════════════
+            #
+            # 📊 A sessão acc3e885 (29/10/2025) percorreu a rota inteira e
+            #    terminou com o protocolo 50509441.
+            #
+            # 🔴 A DIFERENÇA QUE MUDA TUDO É O DESFECHO: eletricista é
+            #    EMERGENCIAL. O RESUMO real escreve "*Tipo solicitação:*
+            #    imediato *Quando:* Agora *Previsão de chegada:* 60 minutos".
+            #    Não há data nem período para escolher — é o oposto do
+            #    eletrodoméstico, que é AGENDADO numa lista de sete dias úteis.
+            #    Um passo que escolhesse data aqui não existe, e não deve.
+            #
+            # ⚠️ A sessão 267eb82f (20/01/2026) é a MESMA rota com outro fim:
+            #    protocolo 51192442, e depois o segurado entrou no fluxo de
+            #    CANCELAR. As duas telas do cancelamento são `handoff_triggers`
+            #    desde 22/08/2026 — este corredor não cancela chamado de ninguém.
+            #
+            # 🔴 E A TELA QUE NÃO EXISTE: 📊 varrido o corpus inteiro de
+            #    `allianz-residencial` — **ZERO** telas com "fumaça", "faísca"
+            #    ou "cheiro de queimado". A URA NUNCA pergunta isso. Por isso
+            #    `risco_confirmado_sem_fumaca` é slot obrigatório e não passo:
+            #    quem pergunta é a ATENDENTE, ANTES do acionamento. Não há tela
+            #    para responder às cegas aqui — há um caso que não pode nem
+            #    começar.
+            #
+            # ═════════════════════════════════════════════════════════════════
+            # 🔴 O QUE O SEGURADO PRECISA OUVIR ANTES DE "VOU ACIONAR"
+            # ═════════════════════════════════════════════════════════════════
+            # ⚠️ Cada linha ABRE com frase que **a Allianz escreve na URA desta
+            #    rota** — 📊 conferida contra o corpus versionado. A primeira é
+            #    RECUSA: dita depois, vira reclamação, e o cliente já esperou o
+            #    prestador para ouvir que não tem direito.
+            "regras_para_o_cliente": [
+                "Verifique se o problema de energia é/foi em sua vizinhança. Se "
+                "for entre em contato com a fornecedora de energia responsável — "
+                "🔴 falta de luz na RUA é da concessionária, não da assistência: "
+                "o prestador vem e não tem o que fazer.",
+
+                "Esse serviço de eletricista está disponível apenas para reparos "
+                "elétricos na residência — aparelho ou eletrodoméstico é OUTRO "
+                "serviço, com outro fluxo e agendamento.",
+
+                "Antes de continuar é importante que verifique se o disjuntor "
+                "está na posição \"ligado\" — a própria URA manda conferir antes.",
+
+                "É necessário um responsável maior de 18 anos para receber o "
+                "técnico.",
+
+                "Para sua segurança, nosso profissional questionará esta senha "
+                "antes de realizar o serviço — a senha são os 4 últimos dígitos "
+                "do telefone informado.",
+            ],
             "tipo_servico_opcao": "1",
             "profissional_opcao": "1",
             "required_slots": ["titular_cpf", "endereco_numero", "telefone_contato", "problema_descricao", "periodo_preferido", "risco_confirmado_sem_fumaca",
@@ -932,6 +1035,22 @@ ALLIANZ_RESIDENCIAL_WHATSAPP_V1: Dict[str, Any] = {
         #   · reembolso de prestador proprio: R$ 150 por evento, R$ 300 por
         #     vigencia
         "maquina_de_lavar": {
+            # 🔴 A ROTA, TRANSCRITA — e a citação mora DENTRO do bloco.
+            #
+            # 📊 A sessão b2bf40e7 (28/07/2026) percorreu a rota inteira e
+            #    terminou com protocolo e agendamento — é dela que sai a
+            #    captura `protocol` + `schedule` que o eixo B mede.
+            #
+            # ⚠️ 🔴 A CITAÇÃO ESTÁ AQUI DENTRO DE PROPÓSITO, e o motivo foi
+            #    MEDIDO em 22/08/2026. `rubrica._fonte_do_bloco` recorta do
+            #    ÚLTIMO parágrafo em branco ANTES do bloco — ou seja, a janela
+            #    desta rota dependia de linhas em branco no código do VIZINHO.
+            #    Quando o `eletricista` (o bloco de cima) ganhou
+            #    `regras_para_o_cliente` com linhas em branco entre as frases,
+            #    a fronteira andou e esta rota **caiu de 106 para 102 sem que
+            #    ninguém a tocasse**.
+            #
+            #    Citação dentro do bloco não depende do vizinho.
             # ═════════════════════════════════════════════════════════════════
             # 🔴 O QUE O SEGURADO PRECISA OUVIR ANTES DE DIZERMOS "VOU ACIONAR"
             # ═════════════════════════════════════════════════════════════════
@@ -1003,6 +1122,46 @@ ALLIANZ_RESIDENCIAL_WHATSAPP_V1: Dict[str, Any] = {
         # 💭 A URA da Allianz não pede estes campos — quem os usa é o
         # ESPECIALISTA humano da assistência (e a corretora, para priorizar).
         "encanador": {
+            # 🔴 A ROTA, TRANSCRITA — a citação mora DENTRO do bloco (P-084-37).
+            #
+            # 📊 A sessão 9694992d (13/07/2026) percorreu o galho
+            #    residencial-CPF inteiro e terminou com o protocolo 52652744:
+            #    tipo=1 → profissional=2 → "para quando precisa do *Encanador*"
+            #    → "O que aconteceu? 1-Vazamento em dispositivo" → "Certo!
+            #    Onde?" → "E qual o material?" → descrição → RESUMO → protocolo.
+            #
+            # ⚠️ O galho de CONDOMÍNIO é outro, e também está medido: as sessões
+            #    be8e3f8d e ed379849 entram por `cnpj_condominio` e passam por
+            #    `vazamento_aparente` + `quebra_de_alvenaria` em vez das duas
+            #    folhas acima. Mesma rota, duas árvores.
+            #
+            # ═════════════════════════════════════════════════════════════════
+            # 🔴 O QUE O SEGURADO PRECISA OUVIR ANTES DE "VOU ACIONAR"
+            # ═════════════════════════════════════════════════════════════════
+            # ⚠️ Cada linha ABRE com frase que **a Allianz escreve na URA** —
+            #    📊 conferida contra o corpus versionado em 22/08/2026.
+            "regras_para_o_cliente": [
+                "Os custos de mão de obra serão cobertos integralmente. Caso "
+                "seja necessário adquirir peças, o segurado deve providenciá-las "
+                "em até em 10 dias corridos — 🔴 mão de obra SIM, peças NÃO, e o "
+                "prazo de 10 dias corre para o cliente.",
+
+                "Caso seja necessária a quebra da alvenaria para estancar o "
+                "vazamento, o fechamento será feito do rústico — 🔴 azulejo, "
+                "rejunte e pintura ficam por conta do segurado. É a regra que "
+                "mais gera reclamação DEPOIS do serviço.",
+
+                "O serviço não compreende reparo ou adaptações em ponto "
+                "hidráulico ou conexões e não possui garantia — é RECUSA, e "
+                "tem de ser dita antes.",
+
+                "É necessário que um responsável maior de 18 anos esteja no "
+                "local — sem isso o prestador vai embora e a utilização da "
+                "apólice já foi consumida.",
+
+                "⚠️ É EMERGENCIAL: o prestador vai HOJE. Quem ouviu "
+                "\"vou acionar\" e saiu de casa perde a visita.",
+            ],
             "tipo_servico_opcao": "1",
             "profissional_opcao": "2",
             "required_slots": ["titular_cpf", "endereco_numero", "telefone_contato", "problema_descricao",
@@ -1366,7 +1525,22 @@ _SUBSERVICE_ALIASES = {
     "lava roupas": "maquina_de_lavar",
     "lava e seca": "maquina_de_lavar",
     "maquina de lavar e secar": "maquina_de_lavar",
+    # 🔴 COMO O SEGURADO FALA DE HIDRÁULICA — 22/08/2026.
+    #
+    # 📊 Conferido no ESPELHO **depois do filtro do C13**, e o filtro mudou o
+    #    veredito: `tubulacao` marcava 3 e as três eram a IA descrevendo uma
+    #    foto ("a imagem mostra uma tubulação"). Ficou ZERO, e por isso NÃO
+    #    entra aqui.
+    #      "vazamento" ..... 11   "to com problema de vazamento"
+    #      "encanamento" ....  5
+    #      "hidraulica" .....  2
+    #      "torneira" .......  1   "estamos com um vazamento de torneira."
+    #
+    # ⚠️ E `cano` fica de fora de propósito, mesmo marcando: **"cano entupido"
+    #    é DESENTUPIMENTO**, não encanador. Um apelido que serve dois trabalhos
+    #    não identifica nenhum.
     "hidraulica": "encanador", "encanamento": "encanador",
+    "vazamento": "encanador", "torneira": "encanador",
     "desentupidor": "desentupimento",
 }
 
