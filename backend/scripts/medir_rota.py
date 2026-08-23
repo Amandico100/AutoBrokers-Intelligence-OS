@@ -442,6 +442,30 @@ def main(argv: Optional[List[str]] = None) -> int:
 
     # 🔴 As mutações rodam UMA vez e valem para todas as rotas cobertas pelo
     #    arquivo que as declara — não se roda o corredor 62 vezes.
+    # 🔴 A ARMADILHA DO `cwd` — E ELA JÁ ESTAVA DOCUMENTADA NESTE ARQUIVO
+    #    QUANDO EU CAÍ NELA DE NOVO, em 23/08/2026.
+    #
+    # 📊 Rodando da RAIZ do repo, `tem_banco()` não acha `backend/.env`: o
+    #    Espelho devolve `[]`, o item dos apelidos zera, e o INVENTÁRIO sai
+    #    dizendo `102/106 — falta apelidos` para duas rotas que estavam em
+    #    **106/106** cinco minutos antes. Com exit code 0, como se estivesse
+    #    tudo certo.
+    #
+    # ⚠️ Um aviso em comentário não impediu o erro — ele já existia trinta
+    #    linhas abaixo. **Uma trava impede.** Pedir o Espelho e receber
+    #    silêncio não é um número mais baixo: é um erro.
+    #    `Zero MEDIDO e zero NÃO MEDIDO não são a mesma coisa`, e só um deles
+    #    é um fato (CLAUDE.md §12.1).
+    if a.com_espelho and not M.tem_banco():
+        print(
+            "\U0001f534 `--com-espelho` pedido e o BANCO esta INALCANCAVEL.",
+            "   O Espelho devolveria [] e o item dos apelidos zeraria em",
+            "   TODAS as rotas -- uma nota mais baixa que PARECE medida.",
+            "   \u26a0\ufe0f A causa quase sempre e o `cwd`: rode de dentro de",
+            "      `backend/`, que e onde mora o `.env`.",
+            sep="\n", file=sys.stderr)
+        return 2
+
     mut = VM.verificar(TESTE_DA_REGUA)
     mut_ok = (sum(1 for r in mut if r.ok), len(mut))
 
