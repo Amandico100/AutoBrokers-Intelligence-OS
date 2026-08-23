@@ -54,6 +54,28 @@ print("=" * 74)
 
 certo(hasattr(M, "_e_eco"), "🔴 o leitor sabe distinguir eco de palavra de cliente")
 
+# ⚠️ 🔴 TODO MARCADOR TEM DE SOBREVIVER AO `_norm`, e este guarda existe
+#    porque UM NAO SOBREVIVIA.
+#
+# 📊 23/08/2026: a lista tinha `"*1 -*"`, escrito para pegar menu de URA
+#    colado no chat. `_e_eco` compara contra texto JA NORMALIZADO, e `_norm`
+#    REMOVE o asterisco:
+#
+#        "*1 -*"  ->  _norm  ->  "1 -"
+#
+#    Comparar o marcador COM asterisco contra texto SEM asterisco nao pode dar
+#    verdadeiro. O marcador nunca casou nada em 10.424 mensagens.
+#
+# 🔴 "Um guarda que nao tem como falhar nao guarda nada" (§9.3) -- e este
+#    nao tinha como ACUSAR, que e a mesma doenca pelo outro lado.
+#    Quem achou foi um subagente medindo `allianz/auto/pneu`, FORA do escopo
+#    dele: as telas que contaminavam os apelidos daquela rota eram exatamente
+#    as que este marcador devia ter pego.
+for _m in M._MARCAS_DE_ECO:
+    certo(_m in M._norm(_m),
+          f"🔴 o marcador {_m[:26]!r} SOBREVIVE ao `_norm`",
+          f"_norm({_m!r}) = {M._norm(_m)!r} -- ele nunca casaria nada")
+
 # 📊 As frases REAIS que o acervo tinha, e o que cada uma é.
 ECO = [
     ("o que vc ve nessa imagem? [contexto visual — imagem enviada pelo "
@@ -68,11 +90,26 @@ for texto, oque in ECO:
 
 # 🔴 O CONTROLE que dá direito à conclusão: frase REAL de cliente NÃO é eco.
 #    Sem esta metade, um filtro que apagasse tudo passaria igual.
+# 🔴 O padrao de MENU: duas opcoes numeradas seguidas. Prosa nao tem isso.
+for _t, _oq in (
+        ("Vamos la! Informe o tipo de servico: *1 -* Servicos Emergenciais "
+         "*2 -* Para meus eletrodomesticos", "menu de URA com cabecalho"),
+        ("1 - Profissional para pane eletrica, recarga de bateria 2 - Guincho",
+         "menu SEM cabecalho -- so o padrao numerado o pega"),
+        ("so para confirmar antes de acionar, eduardo: - apolice allianz (auto) "
+         "- servico: guincho",
+         "🔴 o PROPRIO AutoBrokers -- o resumo que o agente escreve ao "
+         "corretor volta como `role='user'`")):
+    certo(M._e_eco(M._norm(_t)), f"🔴 reconhece: {_oq}", _t[:56])
+
 CLIENTE = [
     "to com problema de vazamento",
     "estamos com um vazamento de torneira.",
     "meu carro nao esta pegando, acho que e a bateria",
     "preciso de um chaveiro, tranquei a chave dentro de casa",
+    # 🔴 CONTROLE do padrao de menu: cliente que ESCREVE numero nao e menu.
+    "furei o pneu na br-101, tem 2 pneus furados",
+    "bom dia, 1 - ja mandei o cpf",
 ]
 for texto in CLIENTE:
     certo(not M._e_eco(M._norm(texto)),

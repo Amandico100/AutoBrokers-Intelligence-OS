@@ -7467,3 +7467,85 @@ rotas que hoje citam sessão lá fora precisam mover a citação para dentro ant
 **O que custa esquecer:** uma rota cai de nota por causa de um parágrafo em
 branco escrito na rota do lado, e quem medir vai procurar o defeito no lugar
 errado.
+
+### P-084-38 🔴 O observador JOGA FORA o schema do formulário nativo no caminho `history_sync` · 🤖 + 🧑
+
+📊 Medido em 23/08/2026, investigando por que porto e azul não têm
+`native_flows` declarado.
+
+```
+📊 eventos `flow_reply` no acervo, por origem:
+   porto   27  ·  100% source=history_sync
+   azul    10  ·  100% source=history_sync
+   yelum   14  ·  7 history_sync + 7 LIVE
+   hdi     11  ·  10 history_sync + 1 LIVE
+```
+
+🔴 **Os dois que têm `native_flows` declarado são exatamente os dois que
+tiveram evento LIVE.** Não é coincidência — são dois caminhos de código:
+
+| caminho | o que grava |
+|---|---|
+| **live** (`observer_intake.py:827`) | `extra: data.get("extraData")` → passa por `_parse_native_form`, que extrai `flow_id`, `flow_name` e os campos de `paramsJSON` |
+| 🔴 **history_sync** (`observer_intake.py:311`) | `{"kind": kind, "raw_keys": sorted(m.keys())}` |
+
+⚠️ **E o payload ESTAVA na mão.** A linha faz `m = msg.get(...)` e reduz `m` a
+`sorted(m.keys())`. 📊 Para o porto isso guardou
+`["InteractiveResponseMessage", "body", "contextInfo"]` — e é dentro de
+`InteractiveResponseMessage` que vive o `paramsJSON` com o schema. O
+observador tinha a resposta e guardou o nome das gavetas.
+
+**Consequências, e são duas:**
+
+1. Os 37 eventos de porto e azul **não podem ser recuperados**: `observed_events`
+   não tem coluna de raw, então o conteúdo se perdeu na ingestão.
+2. 🔴 **O próximo `history_sync` vai perder também**, enquanto a linha 311 for a
+   que atende esse caminho.
+
+**O que destrava:**
+- 🤖 a linha 311 procurar `paramsJSON` nos níveis de `m` (o `_niveis_de` já
+  existe) e chamar `_parse_native_form`. ⚠️ **Não foi feito agora porque não há
+  como TESTAR**: sem um raw de `history_sync` guardado, a correção seria escrita
+  às cegas contra uma estrutura suposta. Escrever ingestão sem poder medir é o
+  que esta SPEC combate.
+- 🧑 OU um acionamento LIVE de porto e de azul que passe pelo formulário — aí o
+  caminho `live`, que funciona, captura o schema como capturou o da HDI.
+
+⚠️ E há uma decisão de privacidade junto: `_parse_native_form` guarda `answers`
+(as respostas do humano). No caminho live isso já acontece e os campos são
+situacionais (`rb_EmGaragemOuEstacionamento`). Num `txt_` de endereço, não
+seria. Se a linha 311 for consertada, **grave o SCHEMA e não as respostas**.
+
+**O que custa esquecer:** porto (ONDA E, 8 rotas) e azul (ONDA F, 5 rotas) têm
+app dentro do WhatsApp, e o corredor não sabe respondê-lo. 🔴 **O acionamento
+para no formulário** — e é exatamente a surpresa que a SPEC-084.1 existe para
+eliminar.
+
+### P-084-39 A rota de referência perde os 4 pontos de apelido — e eles nunca foram dela · 🧑
+
+📊 23/08/2026. `allianz/residencial/maquina_de_lavar` caiu de **106/106 para
+102/106** quando o filtro de eco do Espelho ficou completo. Os apelidos
+conferidos foram de **5 para 2**, e as três que saíram são:
+
+```
+🔴 "selecione o eletrodomestico que precisa de conserto? 1-geladeira 2-freezer…"   menu da URA
+🔴 "qual eletrodomestico precisa de conserto? 1-linha branca (microondas; fogao…"  menu da URA
+🔴 "resumo\n\nservico: conserto de eletrodomestico\nproblema: maquina de lavar…"   RESUMO da URA
+```
+
+⚠️ **As três são a seguradora falando, coladas no chat pelo corretor.** Os 4
+pontos estavam sendo pagos por tela de URA — exatamente o falso positivo que o
+item da E8 existe para impedir (`lavadora` × "Lavadora de louças").
+
+🔴 **A nota honesta é 102/106.** Não é regressão: é um ponto que nunca foi real
+deixando de ser contado.
+
+**O que destrava:** 🧑 palavras de segurado de verdade sobre máquina de lavar.
+📊 Hoje o Espelho tem duas — `maquina de lavar` (3 mensagens) e
+`maquina de lavar roupa` (1). O item pede três apelidos vivos.
+⚠️ E o Espelho é o chat da CORRETORA com o AutoBrokers: quem escreve é o
+corretor, relatando. O vocabulário do segurado chega de segunda mão, e isso
+limita o item por construção — vale registrar antes que alguém tente "resolver"
+declarando apelido que ninguém escreveu.
+**O que custa esquecer:** alguém vê 102, procura o que quebrou, e conserta uma
+coisa que está certa.

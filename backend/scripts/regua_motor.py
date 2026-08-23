@@ -22,6 +22,7 @@ from __future__ import annotations
 
 import importlib
 import os
+import re
 import sys
 import types
 from typing import Any, Dict, Iterator, List, Optional, Tuple
@@ -294,18 +295,51 @@ _ESPELHO_CACHE: Optional[List[str]] = None
 _MARCAS_DE_ECO = (
     "[contexto visual",          # 🔴 texto que a PRÓPRIA IA escreveu
     "a imagem mostra",
-    "*1 -*",                     # tela de URA colada no chat
-    "selecione uma das opcoes",
+    "selecione uma das opcoes",  # tela de URA colada no chat
     "informe o tipo de servico",
     "assistencia 24h para qual seguro",
     "escolha a opcao desejada",
     "como eu posso te ajudar?",
+    "o que voce precisa",              # menu de auto (porto, azul, allianz)
+
+    # 🔴 E A TERCEIRA FONTE, que so apareceu na ONDA B: **o proprio
+    #    AutoBrokers**. O resumo que o agente escreve ao corretor antes de
+    #    acionar volta para `messages` com `role='user'` e vira "palavra do
+    #    cliente" na contagem de apelido.
+    #    📊 "so para confirmar antes de acionar, eduardo: - apolice allianz
+    #       (auto) - servico: guincho..."
+    "so para confirmar antes de acionar",
+    "neste caso, enviaremos um prestador",   # texto da URA colado
 )
+
+# ⚠️ 🔴 O MARCADOR QUE NÃO TINHA COMO DISPARAR — 23/08/2026.
+#
+# A lista acima tinha `"*1 -*"`, escrito para pegar menu de URA colado no chat.
+# 📊 Ele NUNCA casou nada, e o motivo é o `_norm` desta mesma régua:
+#
+#     "*1 -*"  →  _norm  →  "1 -"      # o asterisco é REMOVIDO
+#
+# Comparar o marcador COM asterisco contra um texto SEM asterisco não pode dar
+# verdadeiro. **Um guarda que não tem como falhar não guarda nada** (§9.3), e
+# este não tinha como ACUSAR — que é a mesma doença pelo outro lado.
+#
+# 🔴 Quem achou foi um subagente que media `allianz/auto/pneu`, fora do escopo
+#    dele: as telas que contaminavam a conferência de apelido daquela rota
+#    (`reboque`, `borracheiro`, `troca de pneu`) eram exatamente as que este
+#    marcador deveria ter pego.
+#
+# ⚠️ E o conserto NÃO é trocar por `"1 -"` solto: qualquer lista numerada de
+#    cliente ("1 - preciso de guincho") viraria eco. O que identifica MENU é
+#    haver DUAS opções numeradas seguidas — prosa não tem isso.
+_MENU_COLADO = re.compile(r"(?:^|\s)1\s*-\s*\S[\s\S]{0,180}?(?:^|\s)2\s*-\s*\S",
+                          re.M)
 
 
 def _e_eco(texto: str) -> bool:
     """A mensagem é eco — a IA ou a URA, não o cliente."""
-    return any(m in texto for m in _MARCAS_DE_ECO)
+    if any(m in texto for m in _MARCAS_DE_ECO):
+        return True
+    return bool(_MENU_COLADO.search(texto))
 
 
 def vocabulario_do_espelho(*, recarregar: bool = False) -> List[str]:

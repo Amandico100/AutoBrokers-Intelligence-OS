@@ -178,24 +178,80 @@ def _fonte_do_bloco(servico: str) -> Optional[str]:
     """O trecho de `corridor_playbooks.py` onde o subserviço é declarado.
 
     ⚠️ 📊 Os 4 corredores residenciais são dicts literais — há onde escrever a
-    transcrição. Os 10 de auto vêm de `_auto_playbook`, e o subserviço é uma
-    atribuição de uma linha: **não existe "o bloco do subserviço"**. ~40 rotas
-    perderiam 4 pontos por onde o código mora, não por qualidade → `SEM_FABRICA`.
+    transcrição. Os 10 de auto são one-liners dentro de `_AUTO_SUBSERVICES`.
+
+    🔴 C14 — A JANELA ESTAVA VAZANDO, e vazava de dois jeitos ao mesmo tempo.
+
+    A versão anterior recortava do **último parágrafo em branco ANTES** do
+    bloco até o primeiro `\n        },` (oito espaços fixos). Medido em
+    23/08/2026:
+
+    ```
+    _fonte_do_bloco("bateria")  ->  14.704 chars
+    _fonte_do_bloco("guincho")  ->  14.704 chars   <- A MESMA JANELA
+    _fonte_do_bloco("eletricista") -> 42.322 chars
+    ```
+
+    Os one-liners de auto têm 4 espaços de recuo: o `\n        },` nunca casa,
+    e a janela corre até o próximo fechamento de 8 espaços, muito abaixo. Uma
+    citação escrita em qualquer ponto desses 14,7 KB creditava **as quatro
+    rotas de auto de uma vez**.
+
+    🔴 E o começo era pior que o fim: depender do último parágrafo em branco
+    faz a janela desta rota depender do CÓDIGO DA ROTA VIZINHA. 📊 Foi assim
+    que `maquina_de_lavar` caiu de 106 para 102 quando o `eletricista` — o
+    bloco de cima — ganhou linhas em branco entre as frases das regras.
+
+    ⚠️ **O docstring anterior prometia `SEM_FABRICA` para as ~40 rotas de auto
+    e o código não fazia isso** — a regex casa o one-liner. Era §9.3 na forma
+    pura: documento a dizer uma coisa, código a fazer outra. Agora o bloco de
+    auto é uma janela pequena e honesta: quem quiser os 4 pontos escreve a
+    citação DENTRO dele, e ela vale só para ele.
     """
     with open(FONTE_DO_CORREDOR, encoding="utf-8") as fh:
         fonte = fh.read()
-    padrao = re.compile(r'^\s*"' + re.escape(servico) + r'"\s*:\s*\{', re.M)
+    padrao = re.compile(r'^(\s*)"' + re.escape(servico) + r'"\s*:\s*\{', re.M)
     m = padrao.search(fonte)
     if not m:
         return None
-    fim = fonte.find("\n        },", m.end())
-    inicio = fonte.rfind("\n\n", 0, m.start())
-    return fonte[max(0, inicio):fim if fim > 0 else m.end() + 3000]
+    recuo = m.group(1)
+    # 🔴 O fim é o fechamento NO MESMO RECUO — é o que delimita ESTE dict.
+    #    E o one-liner fecha na própria linha: `"bateria": {"required_slots": …},`
+    fim_da_linha = fonte.find("\n", m.start())
+    linha = fonte[m.start():fim_da_linha if fim_da_linha > 0 else len(fonte)]
+    if linha.rstrip().endswith("},") and linha.count("{") == linha.count("}"):
+        # ⚠️ One-liner: a janela é a linha, mais os COMENTÁRIOS colados acima —
+        #    é onde a citação cabe sem inventar estrutura. Colados: a primeira
+        #    linha que não for comentário fecha a janela para cima.
+        ini = m.start()
+        while True:
+            anterior = fonte.rfind("\n", 0, ini - 1)
+            trecho = fonte[anterior + 1:ini]
+            if not trecho.strip().startswith("#"):
+                break
+            ini = anterior + 1
+            if ini <= 0:
+                break
+        return fonte[ini:fim_da_linha if fim_da_linha > 0 else len(fonte)]
 
+    fecha = fonte.find("\n" + recuo + "},", m.end())
+    if fecha < 0:
+        return None
+    # ⚠️ E os comentários colados ACIMA da chave entram na janela: é onde os
+    #    blocos residenciais já escrevem o cabeçalho, e tirá-los agora
+    #    derrubaria rotas por motivo estrutural. Mas só os COLADOS — uma linha
+    #    em branco fecha a janela, e é isso que impede o vazamento do vizinho.
+    ini = m.start()
+    while True:
+        anterior = fonte.rfind("\n", 0, ini - 1)
+        if anterior < 0:
+            break
+        trecho = fonte[anterior + 1:ini]
+        if not trecho.strip().startswith("#"):
+            break
+        ini = anterior + 1
+    return fonte[ini:fecha + len(recuo) + 3]
 
-# ═════════════════════════════════════════════════════════════════════════════
-# EIXO A — EVIDÊNCIA (20)
-# ═════════════════════════════════════════════════════════════════════════════
 def eixo_a(rota, r: RP.Replay) -> List[Item]:
     pb = M.get_playbook(rota.ref)
     itens: List[Item] = []
