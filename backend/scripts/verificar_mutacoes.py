@@ -83,6 +83,13 @@ def _assercao_vermelha(saida: str, rotulo: str) -> bool:
     🔴 Não basta *"o teste ficou vermelho"* — qualquer erro de sintaxe faria isso.
     O que se exige é que **aquela** asserção caia, e é isso que liga a mutação ao
     guarda que ela testa.
+
+    ⚠️ **A linha do guarda precisa COMEÇAR com `FALHA`/`FALHOU`.** Um marcador
+    antes — um 🔴, um traço — faz esta função devolver `False`, e a bateria
+    reporta *"a asserção nomeada NÃO caiu — a mutação é enfeite"*. 📊 Aconteceu
+    em 23/08/2026 com `test_o_roteiro_separa_bug_de_coleta`: a mutação
+    derrubava a asserção certa e era reportada como enfeite. O diagnóstico
+    aponta para o teste; a causa estava no `print`. Marcador vai DEPOIS.
     """
     alvo = rotulo.strip()
     for linha in saida.splitlines():

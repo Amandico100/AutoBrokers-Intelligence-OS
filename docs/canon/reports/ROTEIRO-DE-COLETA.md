@@ -1,41 +1,13 @@
 # Roteiro de coleta — as rotas que o acervo ainda não viu
 
-> Gerado em **2026-08-23T15:42:47+00:00** · 30 rotas sem corpus
+> Gerado em **2026-08-23T16:59:03+00:00** · 30 rotas sem corpus
 
 🔴 `SEM_CORPUS` é uma de duas coisas — **coleta legítima** ou **bug de reconhecimento** — e a diferença se MEDE, não se adivinha. Cada linha abaixo traz o veredito e o CONTROLE que a coleta precisa levar junto.
 
 - **15** · COLETA LEGÍTIMA
 - **11** · ⚠️ RÓTULO NÃO VISTO
-- **4** · 🔴 SUSPEITO DE BUG
+- **4** · NINGUÉM PEDIU ASSISTÊNCIA
 
-
-## mapfre × auto × bateria — 🔴 SUSPEITO DE BUG
-
-- **rótulo da URA:** `Assistência 24H`
-- **por quê:** NENHUMA rota deste corredor tem telas, e o corredor TEM corpus: o decodificador de serviço é o suspeito
-- **como pedir:** abra o WhatsApp da assistência 24h da mapfre e escolha `Assistência 24H` no menu de veículo.
-- 🔴 Sem irmã com desfecho conhecido neste corredor: a coleta precisa de DUAS tentativas, e a segunda repete a primeira.
-
-## mapfre × auto × chaveiro — 🔴 SUSPEITO DE BUG
-
-- **rótulo da URA:** `Assistência 24H`
-- **por quê:** NENHUMA rota deste corredor tem telas, e o corredor TEM corpus: o decodificador de serviço é o suspeito
-- **como pedir:** abra o WhatsApp da assistência 24h da mapfre e escolha `Assistência 24H` no menu de veículo.
-- 🔴 Sem irmã com desfecho conhecido neste corredor: a coleta precisa de DUAS tentativas, e a segunda repete a primeira.
-
-## mapfre × auto × guincho — 🔴 SUSPEITO DE BUG
-
-- **rótulo da URA:** `Assistência 24H`
-- **por quê:** NENHUMA rota deste corredor tem telas, e o corredor TEM corpus: o decodificador de serviço é o suspeito
-- **como pedir:** abra o WhatsApp da assistência 24h da mapfre e escolha `Assistência 24H` no menu de veículo.
-- 🔴 Sem irmã com desfecho conhecido neste corredor: a coleta precisa de DUAS tentativas, e a segunda repete a primeira.
-
-## mapfre × auto × pneu — 🔴 SUSPEITO DE BUG
-
-- **rótulo da URA:** `Assistência 24H`
-- **por quê:** NENHUMA rota deste corredor tem telas, e o corredor TEM corpus: o decodificador de serviço é o suspeito
-- **como pedir:** abra o WhatsApp da assistência 24h da mapfre e escolha `Assistência 24H` no menu de veículo.
-- 🔴 Sem irmã com desfecho conhecido neste corredor: a coleta precisa de DUAS tentativas, e a segunda repete a primeira.
 
 ## alfa × auto × bateria — ⚠️ RÓTULO NÃO VISTO
 
@@ -113,6 +85,34 @@
 - **por quê:** o rótulo 'socorro mecânico (reparo no local)' não aparece em nenhuma tela deste corredor; as irmãs decodificam (guincho=36) — ou a URA não oferece, ou o rótulo está errado
 - **como pedir:** abra o WhatsApp da assistência 24h da zurich e escolha `socorro mecânico (reparo no local)` no menu de veículo.
 - 🔴 CONTROLE da mesma rodada: peça **guincho** nesta seguradora — desfecho conhecido, 36 telas no acervo. Sem ele, uma coleta que falha não distingue *'a tecla não abre'* de *'o WhatsApp não respondeu hoje'*.
+
+## mapfre × auto × bateria — NINGUÉM PEDIU ASSISTÊNCIA
+
+- **rótulo da URA:** `Assistência 24H`
+- **por quê:** o corredor tem corpus e nenhuma rota tem telas, mas o decodificador está VIVO aqui — ele nomeia carro_reserva, que não é rota. As sessões do acervo são de outro assunto; não há bug, há coleta
+- **como pedir:** abra o WhatsApp da assistência 24h da mapfre e escolha `Assistência 24H` no menu de veículo.
+- 🔴 CONTROLE: nenhuma IRMÃ desta seguradora tem desfecho no acervo, mas o decodificador está vivo aqui — ele nomeia `carro_reserva`. A coleta precisa de DUAS tentativas, e a segunda repete a primeira: sem isso, uma falha não distingue *'a tecla não abre'* de *'o WhatsApp não respondeu hoje'*.
+
+## mapfre × auto × chaveiro — NINGUÉM PEDIU ASSISTÊNCIA
+
+- **rótulo da URA:** `Assistência 24H`
+- **por quê:** o corredor tem corpus e nenhuma rota tem telas, mas o decodificador está VIVO aqui — ele nomeia carro_reserva, que não é rota. As sessões do acervo são de outro assunto; não há bug, há coleta
+- **como pedir:** abra o WhatsApp da assistência 24h da mapfre e escolha `Assistência 24H` no menu de veículo.
+- 🔴 CONTROLE: nenhuma IRMÃ desta seguradora tem desfecho no acervo, mas o decodificador está vivo aqui — ele nomeia `carro_reserva`. A coleta precisa de DUAS tentativas, e a segunda repete a primeira: sem isso, uma falha não distingue *'a tecla não abre'* de *'o WhatsApp não respondeu hoje'*.
+
+## mapfre × auto × guincho — NINGUÉM PEDIU ASSISTÊNCIA
+
+- **rótulo da URA:** `Assistência 24H`
+- **por quê:** o corredor tem corpus e nenhuma rota tem telas, mas o decodificador está VIVO aqui — ele nomeia carro_reserva, que não é rota. As sessões do acervo são de outro assunto; não há bug, há coleta
+- **como pedir:** abra o WhatsApp da assistência 24h da mapfre e escolha `Assistência 24H` no menu de veículo.
+- 🔴 CONTROLE: nenhuma IRMÃ desta seguradora tem desfecho no acervo, mas o decodificador está vivo aqui — ele nomeia `carro_reserva`. A coleta precisa de DUAS tentativas, e a segunda repete a primeira: sem isso, uma falha não distingue *'a tecla não abre'* de *'o WhatsApp não respondeu hoje'*.
+
+## mapfre × auto × pneu — NINGUÉM PEDIU ASSISTÊNCIA
+
+- **rótulo da URA:** `Assistência 24H`
+- **por quê:** o corredor tem corpus e nenhuma rota tem telas, mas o decodificador está VIVO aqui — ele nomeia carro_reserva, que não é rota. As sessões do acervo são de outro assunto; não há bug, há coleta
+- **como pedir:** abra o WhatsApp da assistência 24h da mapfre e escolha `Assistência 24H` no menu de veículo.
+- 🔴 CONTROLE: nenhuma IRMÃ desta seguradora tem desfecho no acervo, mas o decodificador está vivo aqui — ele nomeia `carro_reserva`. A coleta precisa de DUAS tentativas, e a segunda repete a primeira: sem isso, uma falha não distingue *'a tecla não abre'* de *'o WhatsApp não respondeu hoje'*.
 
 ## azul × auto × chaveiro — COLETA LEGÍTIMA
 

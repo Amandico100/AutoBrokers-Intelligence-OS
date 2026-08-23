@@ -1,5 +1,5 @@
 # -*- coding: utf-8 -*-
-"""Os quatro furos da rota validada — e todos contra o TEXTO REAL do acervo.
+r"""Os quatro furos da rota validada — e todos contra o TEXTO REAL do acervo.
 
 POR QUE ESTE ARQUIVO EXISTE
 ===========================

@@ -8107,3 +8107,52 @@ Espelho. ⚠️ E há um limite estrutural que vale escrever: **o Espelho é o c
 CORRETORA com o AutoBrokers** — quem digita é o corretor, relatando. A palavra
 do segurado chega de segunda mão, e por isso este item vai ficar difícil por
 construção, não por descuido.
+
+### P-084-64 🔴 C21 — o veredito mais grave da ONDA G não tinha controle · ✅
+
+📊 23/08/2026. O roteiro de coleta acusava 🔴 **SUSPEITO DE BUG** nas quatro
+rotas de `mapfre/auto`. A regra era: *"nenhuma ROTA deste corredor tem telas e o
+corredor TEM corpus → o decodificador é o suspeito"*.
+
+🔴 **A tabela de rotas não é o corpus.** Medido: o decodificador funciona na
+mapfre — nomeia `carro_reserva` em 14 linhas, em `nivel-2-texto`. As 6 sessões
+do acervo são deflexão de sinistro (3), carro reserva (1), abandono por
+inatividade (1) e canal do CORRETOR (1). **Ninguém pediu assistência à mapfre no
+período.** Não há bug para caçar.
+
+⚠️ E o erro tinha as duas direções: mandaria alguém procurar um bug inexistente
+e — pior — quem lesse *"suspeito de bug"* arquivaria a linha como dívida técnica
+em vez de PEDIR a coleta. É exatamente a confusão que a ONDA G existe para
+desfazer.
+
+📊 Depois do C21: `30 SEM_CORPUS = 15 COLETA LEGÍTIMA + 11 RÓTULO NÃO VISTO +
+4 NINGUÉM PEDIU ASSISTÊNCIA`, e **zero** suspeitas de bug. O veredito de bug
+continua conseguindo disparar — o guarda cega o decodificador de propósito e
+confere que as mesmas quatro rotas voltam a ser acusadas.
+
+**O que fica:** 🧑 a mapfre entra na coleta com uma ressalva escrita: nenhuma
+irmã dela tem desfecho no acervo, então a coleta precisa de DUAS tentativas.
+
+### P-084-65 A varredura de mutação commitada olhava para UM arquivo · ✅
+
+📊 O guarda do C12 — que existe porque uma mutação **foi commitada** e ninguém
+viu — lia as mutações só de `test_a_regua_nao_tem_furo.py`. A 12ª mutação nasceu
+noutro arquivo de teste e sobre outro arquivo de produto
+(`scripts/roteiro_de_coleta.py`): passaria batido.
+
+Agora a varredura é de `tests/` inteiro, **por `ast`, sem importar módulo** —
+⚠️ `VM._carregar_mutacoes` afirma no docstring que lê o `MUTACOES` *"sem
+executar as asserções"* e 📊 executa (`exec_module`, com `stdout` e `SystemExit`
+engolidos). Serve para um arquivo; varrer a pasta com ele roda a suíte e pendura.
+
+🔴 **E a varredura ampliada achou um defeito na estreia — meu.** A primeira
+redação da mutação nova trocava `elif not vivas and not decodificou:` por
+`elif not vivas:`, e essa segunda linha **existe no código saudável**, logo
+abaixo. O guarda pergunta *"o `texto_para` está no commit?"* e responderia SIM
+para sempre: uma acusação permanente de mutação que nunca houve.
+
+**Regra que fica:** ⚠️ o `texto_para` de uma mutação tem de ser texto que **não
+pode existir** no produto saudável. E: o `print` de falha de um guarda precisa
+COMEÇAR com `FALHA`/`FALHOU` — um 🔴 na frente faz a bateria reportar *"a
+mutação é enfeite"*, apontando o diagnóstico para o teste quando a causa está no
+`print`.

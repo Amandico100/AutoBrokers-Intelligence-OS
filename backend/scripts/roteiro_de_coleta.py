@@ -96,13 +96,46 @@ def levantar():
                  if sv != rota.servico}
         vivas = {k: v for k, v in irmas.items() if v}
 
+        # ══════════════════════════════════════════════════════════════════
+        # C21 · 🔴 O CONTROLE QUE FALTAVA AO VEREDITO MAIS GRAVE
+        # ══════════════════════════════════════════════════════════════════
+        #
+        # `vivas` só enxerga serviços que são ROTA. Quando NENHUMA rota do
+        # corredor tem telas, isso sozinho não distingue duas coisas opostas:
+        #
+        #   o decodificador está QUEBRADO      ← foi a bradesco (P-084-58)
+        #   o decodificador está VIVO e as sessões são de OUTRO assunto
+        #
+        # 📊 Medido em 23/08/2026: `mapfre/auto` saía como 🔴 SUSPEITO DE BUG
+        #    nas quatro rotas. E o decodificador funciona lá — ele nomeia
+        #    `carro_reserva` em 14 linhas, em `nivel-2-texto`. As 6 sessões do
+        #    acervo são deflexão de sinistro (3), carro reserva (1), abandono
+        #    por inatividade (1) e canal do CORRETOR (1). **Ninguém pediu
+        #    assistência à mapfre no período.** Não há bug para caçar.
+        #
+        # 🔴 E o erro tinha as duas direções: mandaria alguém procurar um bug
+        #    que não existe, e — pior — quem lesse "suspeito de bug" arquivaria
+        #    a linha como dívida técnica em vez de PEDIR a coleta.
+        #
+        # ⚠️ A pergunta certa é do CORPUS, não da tabela de rotas: *o
+        #    decodificador nomeou ALGUM serviço aqui, rota ou não?*
+        decodificou = sorted({str(l.get("servico")) for l in corpus
+                              if l.get("servico")})
+
         if not corpus:
             veredito = "SEGURADORA INTEIRA SEM ACERVO"
             porque = "o corredor não tem uma tela sequer — é coleta de canal"
-        elif not vivas:
+        elif not vivas and not decodificou:
             veredito = "🔴 SUSPEITO DE BUG"
-            porque = ("NENHUMA rota deste corredor tem telas, e o corredor TEM "
-                      "corpus: o decodificador de serviço é o suspeito")
+            porque = ("NENHUMA rota deste corredor tem telas, o corredor TEM "
+                      "corpus e o decodificador não nomeou serviço NENHUM "
+                      "nele — nem fora das rotas: o decodificador é o suspeito")
+        elif not vivas:
+            veredito = "NINGUÉM PEDIU ASSISTÊNCIA"
+            porque = ("o corredor tem corpus e nenhuma rota tem telas, mas o "
+                      f"decodificador está VIVO aqui — ele nomeia "
+                      f"{', '.join(decodificou)}, que não é rota. As sessões "
+                      "do acervo são de outro assunto; não há bug, há coleta")
         elif ofertas:
             veredito = "COLETA LEGÍTIMA"
             porque = (f"a URA OFERECE o serviço ({len(ofertas)} tela(s) com o "
@@ -114,12 +147,19 @@ def levantar():
                       f"corredor; as irmãs decodificam "
                       f"({', '.join(f'{k}={v}' for k, v in sorted(vivas.items()))}) "
                       f"— ou a URA não oferece, ou o rótulo está errado")
-        fora.append((rota, rotulo, veredito, porque, len(ofertas), sorted(vivas.items())))
+        fora.append((rota, rotulo, veredito, porque, len(ofertas),
+                     sorted(vivas.items()), decodificou))
     return fora
 
 
-def _controle_de_coleta(rota, vivas) -> str:
+def _controle_de_coleta(rota, vivas, decodificou=()) -> str:
     """A linha de CONTROLE que a coleta precisa levar junto (§9.2)."""
+    if not vivas and decodificou:
+        return (f"🔴 CONTROLE: nenhuma IRMÃ desta seguradora tem desfecho no "
+                f"acervo, mas o decodificador está vivo aqui — ele nomeia "
+                f"`{decodificou[0]}`. A coleta precisa de DUAS tentativas, e a "
+                f"segunda repete a primeira: sem isso, uma falha não distingue "
+                f"*'a tecla não abre'* de *'o WhatsApp não respondeu hoje'*.")
     if not vivas:
         return ("🔴 Sem irmã com desfecho conhecido neste corredor: a coleta "
                 "precisa de DUAS tentativas, e a segunda repete a primeira.")
@@ -138,7 +178,7 @@ def main() -> int:
 
     if not a.markdown:
         print(f"{len(linhas)} rotas SEM_CORPUS")
-        for rota, rotulo, ver, porque, n_of, vivas in linhas:
+        for rota, rotulo, ver, porque, n_of, vivas, _dec in linhas:
             print(f"  {rota.seguradora:9}{rota.ramo:12}{rota.servico:16} {ver}")
             print(f"      {porque}")
         return 0
@@ -155,8 +195,9 @@ def main() -> int:
         print(f"- **{v}** · {k}")
     print()
     ordem = {"🔴 SUSPEITO DE BUG": 0, "⚠️ RÓTULO NÃO VISTO": 1,
-             "COLETA LEGÍTIMA": 2, "SEGURADORA INTEIRA SEM ACERVO": 3}
-    for rota, rotulo, ver, porque, n_of, vivas in sorted(
+             "NINGUÉM PEDIU ASSISTÊNCIA": 2, "COLETA LEGÍTIMA": 3,
+             "SEGURADORA INTEIRA SEM ACERVO": 4}
+    for rota, rotulo, ver, porque, n_of, vivas, decodificou in sorted(
             linhas, key=lambda x: (ordem.get(x[2], 9), x[0].seguradora, x[0].servico)):
         print(f"\n## {rota.seguradora} × {rota.ramo} × {rota.servico} — {ver}\n")
         print(f"- **rótulo da URA:** `{rotulo}`")
@@ -164,7 +205,7 @@ def main() -> int:
         print(f"- **como pedir:** abra o WhatsApp da assistência 24h da "
               f"{rota.seguradora} e escolha `{rotulo}` no menu de "
               f"{'veículo' if rota.ramo == 'auto' else 'residência'}.")
-        print(f"- {_controle_de_coleta(rota, vivas)}")
+        print(f"- {_controle_de_coleta(rota, vivas, decodificou)}")
     return 0
 
 

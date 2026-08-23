@@ -26,6 +26,8 @@ nada aqui — foi exatamente isso que enganou antes.
 
 from __future__ import annotations
 
+import ast
+import io
 import os
 import subprocess
 import sys
@@ -60,9 +62,60 @@ print("=" * 74)
 print("[1] AS MUTAÇÕES QUE EXISTEM — e o teste é vácuo sem elas")
 print("=" * 74)
 
-mut = VM._carregar_mutacoes(TESTE_DA_REGUA)
+# 🔴 TODO arquivo de teste que declara mutações no formato da bateria, não só
+#    o da régua. 📊 Em 23/08/2026 nasceu a 12ª mutação, em
+#    `test_o_roteiro_separa_bug_de_coleta`, e ela mora em OUTRO arquivo de
+#    produto (`scripts/roteiro_de_coleta.py`). Um guarda que só olha para a
+#    régua deixaria essa passar — e o motivo deste guarda existir (C12) foi
+#    exatamente uma mutação commitada que ninguém viu.
+#    ⚠️ O filtro pelo formato é de propósito: `MUTACOES` é um nome reusado por
+#    guardas que trazem o próprio executor (a régua da carta, o comparador),
+#    com tuplas de 3 e de 5 campos. Só a de 4 campos é da bateria.
+#
+# 🔴 E a varredura lê o ARQUIVO, não IMPORTA o módulo. `VM._carregar_mutacoes`
+#    diz no docstring que lê o `MUTACOES` *"sem executar as asserções"* — e
+#    📊 executa: ele chama `exec_module` e engole `stdout` e `SystemExit`.
+#    Serve para UM arquivo; varrer `tests/` com ele roda a suíte inteira e
+#    pendura. Aqui a leitura é por `ast`, que não executa nada.
+def _mutacoes_declaradas(caminho: str):
+    try:
+        arvore = ast.parse(io.open(caminho, encoding="utf-8").read())
+    except SyntaxError:
+        return []
+    for no in arvore.body:
+        alvos = (no.targets if isinstance(no, ast.Assign)
+                 else [no.target] if isinstance(no, ast.AnnAssign) else [])
+        if not any(isinstance(a, ast.Name) and a.id == "MUTACOES" for a in alvos):
+            continue
+        try:
+            valor = ast.literal_eval(no.value)
+        except (ValueError, TypeError, SyntaxError):
+            return []
+        if not isinstance(valor, (list, tuple)):
+            return []
+        return [x for x in valor
+                if isinstance(x, (list, tuple)) and len(x) == 4
+                and all(isinstance(c, str) for c in x)]
+    return []
+
+
+mut = []
+_fontes = []
+for _nome in sorted(os.listdir(os.path.join(RAIZ, "tests"))):
+    if not (_nome.startswith("test_") and _nome.endswith(".py")):
+        continue
+    _m = _mutacoes_declaradas(os.path.join(RAIZ, "tests", _nome))
+    if _m:
+        mut.extend(_m)
+        _fontes.append(f"{_nome}={len(_m)}")
+
 certo(len(mut) >= 5, "📊 o inventário de mutações está carregado",
       f"{len(mut)} mutações")
+certo(len(_fontes) >= 2,
+      "📊 e ele vem de TODOS os guardas que declaram mutação, não só da régua",
+      "; ".join(_fontes) or "nenhum")
+certo(any("test_a_regua_nao_tem_furo" in f for f in _fontes),
+      "   — o da régua continua entre eles", "; ".join(_fontes))
 
 print()
 print("=" * 74)
