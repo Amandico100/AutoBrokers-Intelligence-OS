@@ -2322,10 +2322,63 @@ _YELUM_FAMILY_STEPS = [
      "constante_justificada": (
          "📊 A tela e `Automovel` x `Residencial` DEPOIS de a URA identificar a placa do cadastro. O corredor e o de auto e o veiculo e o da apolice: o ramo nao e escolha aberta aqui, e a identidade da rota."), "anchor": r"identifiquei em seu cadastro a placa", "reply": "Automóvel",
      "notes": "após CPF, a URA acha a placa e pergunta veículo ou residencial"},
-    {"step": "informar_nome", "anchor": r"informe o seu nome ou como gostaria de ser chamad", "reply": "Atendimento",
-     "notes": "nome de quem opera o canal (a corretora)"},
+    # ⚠️ 📊 A URA da yelum tem DUAS redacoes para a mesma pergunta, e a curta
+    #    era orfa: "Poderia me informar o seu nome?" (sessao 69816f6b). A longa
+    #    aparece em 20 telas de 8 rotas; a curta, em 1. Uma alternativa resolve
+    #    -- e o `\?` fecha a frase para que ela nao roube "qual e o nome da
+    #    pessoa que esta no local", que e OUTRA pessoa e outro passo.
+    {"step": "informar_nome",
+     "anchor": (r"informe o seu nome ou como gostaria de ser chamad|"
+                r"poderia me informar o seu nome\?"),
+     "reply": "Atendimento",
+     "notes": "📊 21 telas / 20 sessões nas duas redações. Nome de quem opera o "
+              "canal (a corretora)."},
     {"step": "informar_placa", "anchor": r"qual a placa do ve[íi]culo", "reply": "{veiculo_placa}",
      "requires": ["veiculo_placa"]},
+    # 🔴 A ABERTURA DA YELUM JA PEDE A PLACA — e era ORFA.
+    #
+    # 📊 "Ola! Eu sou a assistente virtual da Assistencia 24 horas! Vi que voce
+    #    esta precisando de um atendimento para o seu automovel... **Para dar
+    #    inicio ao seu atendimento digite a placa do veiculo**." Nao e saudacao
+    #    informativa: e a PRIMEIRA PERGUNTA, e ficar calado nela e ficar calado
+    #    na porta de entrada. 📊 4 telas / 4 sessoes (yelum 2 · hdi 2).
+    {"step": "abertura_pede_placa",
+     "anchor": r"para dar in[íi]cio ao seu atendimento digite a placa",
+     "reply": "{veiculo_placa}", "requires": ["veiculo_placa"],
+     "notes": "📊 4 telas / 4 sessões (yelum bateria e socorro · hdi 2). 🔴 É a "
+              "primeira pergunta do atendimento, não uma saudação."},
+    # 🔴 O CNPJ QUE A SEGURADORA NAO TEM — e o corredor tem a placa.
+    #
+    # 📊 "Nao encontrei este CNPJ em nosso sistema. Vamos tentar com a placa do
+    #    veiculo?" -- 3 telas / 3 sessoes. A URA oferece o segundo caminho de
+    #    identificacao, e o corredor ja carrega a placa desde o inicio. Ficar
+    #    calado aqui perde o atendimento de toda apolice de PJ cujo CNPJ a
+    #    seguradora indexa de outro jeito.
+    {"step": "cnpj_nao_encontrado",
+     "anchor": r"n[ãa]o encontrei este cnpj em nosso sistema",
+     "reply": "{veiculo_placa}", "requires": ["veiculo_placa"],
+     "notes": "📊 3 telas / 3 sessões. Segunda via de identificação: placa."},
+    # ⚠️ O endereco partido: a yelum tem uma tela SO para o bairro.
+    {"step": "bairro_do_local",
+     "anchor": r"informe \*?somente o bairro\*?",
+     "reply": "{local_bairro}", "fallback_adaptive": True,
+     "notes": "📊 1 tela / 1 sessão. `local_bairro` é injetado pelo motor a "
+              "partir de `local_atual`."},
+    # 🔴 A PESQUISA PENDENTE NAO PODE ADIAR UM ACIONAMENTO.
+    #
+    # 📊 "identifiquei que a pesquisa do ultimo atendimento nao foi respondida.
+    #    Voce gostaria de seguir para um novo atendimento ou responder?
+    #    Botao 1: Responder pesquisa · Botao 2: Novo atendimento ·
+    #    Botao 3: Acompanhar andamento" -- 1 tela / 1 sessao.
+    {"step": "pesquisa_pendente_ou_novo",
+     "anchor": r"pesquisa do [úu]ltimo atendimento n[ãa]o foi respondida",
+     "reply": "Novo atendimento",
+     "constante_justificada": (
+         "🔴 Quem esta com o carro parado na rua nao vai responder pesquisa de "
+         "satisfacao do atendimento anterior. O corredor foi aberto para ABRIR "
+         "um acionamento, e essa e a unica das tres opcoes que faz isso -- as "
+         "outras duas adiam ou consultam."),
+     "notes": "📊 1 tela / 1 sessão (yelum guincho)."},
     {"step": "perfil",
      "constante_justificada": (
          "🔴 `Sou segurado(a)` x `Sou corretor(a)` x `Outro`. Quem esta operando a URA E a corretora, em nome do segurado. `Sou corretor(a)` e o unico VERDADEIRO -- dizer `Sou segurado(a)` seria a afirmacao falsa."), "anchor": r"em qual dessas op[çc][õo]es voc[êe] se enquadra", "reply": "Sou corretor(a)",
@@ -4824,6 +4877,118 @@ for _sv_hdi, _regras_hdi, _exp_hdi in (
     HDI_AUTO_WHATSAPP_V1["subservices"][_sv_hdi]["regras_para_o_cliente"] = _regras_hdi
     HDI_AUTO_WHATSAPP_V1["subservices"][_sv_hdi]["expectativa_do_desfecho"] = _exp_hdi
 
+# ══════════════════════════════════════════════════════════════════════════
+# AS ROTAS DA YELUM, TRANSCRITAS — mesma URA da HDI, corpus próprio
+# ══════════════════════════════════════════════════════════════════════════
+#
+# ROTA yelum/auto/guincho
+# 📊 sessão 350492ce, assistência 9692522, entre 5 sessões da rota.
+#    CPF/CNPJ → 🔴 "Não encontrei este CNPJ" → PLACA → "Automóvel ou
+#    residencial?" → nome → eco do veículo (CARGO 1519 E TURBO — é CAMINHÃO) →
+#    perfil → pessoa no local → cor → "Pode me dizer o que aconteceu?" →
+#    **galho do caminhão**: descarregado? · tipo · carroceria · eixos ·
+#    para-choque · acessórios · altura · comprimento → endereço → risco →
+#    ocupantes → destino → agora → assistência 9692522.
+#    🔴 O galho do CAMINHÃO inteiro é `handoff_trigger`: equipamento de reboque
+#    de caminhão não se escolhe no automático, e as duas sessões de caminhão do
+#    acervo terminaram, elas mesmas, num especialista.
+#    ⚠️ Outras sessões da rota mostram o resto: `a1c18e1c` agenda (Assistência
+#    9913657, *Agendamento:* 07:30) e `8a0d25a4` abre com a pesquisa do
+#    atendimento anterior pendente.
+#
+# ROTA yelum/auto/pneu
+# 📊 sessão 8ce9f29d, assistência 9295129, 2 sessões na rota.
+#    ... → "Pode me dizer o que aconteceu?" = Pneu Furado → quantos pneus →
+#    estepe → chave de roda e macaco → "Lembrando: não conseguimos enviar
+#    troca de pneus para Rodovias e Marginais" → endereço → risco → ocupantes
+#    → agora → *Serviço:* Troca de Pneus, assistência 9295129 → orientações.
+#    ⚠️ A yelum abre com *Dicas rápidas* que trazem a regra do RELÓGIO:
+#    **12 minutos sem resposta e a conversa é encerrada**.
+#
+# ROTA yelum/auto/socorro_mecanico
+# 📊 sessão 927d8cea, assistência 9755758, 5 sessões na rota.
+#    CPF → 🔴 "Encontramos *mais de uma apólice*" (handoff: a escolha da
+#    apólice não é do corredor) → nome → eco do veículo → perfil → pessoa no
+#    local → cor → rodovia → "Pode me dizer o que aconteceu?" = Pane ou
+#    Defeito → "recarga da sua bateria" → endereço → agora → assistência
+#    9755758 → orientações.
+#
+# ROTA yelum/auto/bateria
+# 📊 sessão 69816f6b, 22 telas, **SEM protocolo** — e é o que ela tem a dizer.
+#    A URA abriu com "Poderia me informar o seu nome?" (redação curta, que era
+#    órfã), o fluxo andou até o endereço e a conversa foi encerrada por
+#    **tempo máximo de espera excedido**. Nunca chegou ao "agora ou agendar",
+#    então esta rota não tem uma única tela de FREIO no acervo.
+#    ⚠️ Por isso ela não pode ganhar `o freio casa >=1 tela REAL`, `a ROTA foi
+#    percorrida ate o fim` nem `protocolo + dia + periodo`: é COLETA, e está em
+#    PENDENCIAS.
+#
+# ROTA yelum/auto/chaveiro
+# 🔵 SEM_CORPUS. A URA lista chaveiro na própria saudação ("consigo te ajudar
+#    com os serviços de guincho, socorro mecânico ou chaveiro") e ninguém o
+#    pediu no período do acervo.
+
+for _sv_yl, _regras_yl, _exp_yl in (
+    ("guincho", [
+        "Você tem cobertura para meio de transporte emergencial para retornar "
+        "à sua residência ou continuar a viagem. Lembrando que não é permitido "
+        "o segurado seguir viagem dentro do guincho — 🔴 é um serviço A MAIS, "
+        "que a maioria não sabe que tem. O corredor não o abre sozinho.",
+
+        "Não se preocupe se ainda não souber para onde levar o veículo pois "
+        "indicaremos oficinas referenciadas — ⚠️ não saber o destino NÃO trava "
+        "o acionamento; a seguradora sugere. O que trava é ficar sem destino "
+        "nenhum depois de aberto.",
+
+        "Por favor, aguarde a chegada do prestador com chaves e documentos em "
+        "mãos. Quando concluir o serviço, o prestador pedirá para você assinar "
+        "o checklist. Confira as informações e assine-o.",
+
+        "Não se esqueça de retirar os pertences pessoais do interior do "
+        "veículo.",
+     ],
+     "🔴 Termina no número da ASSISTÊNCIA e num link de acompanhamento. ⚠️ Pode "
+     "terminar AGENDADO — 📊 a sessão a1c18e1c saiu com *Agendamento:* às 07:30 "
+     "no resumo. E se o veículo for CAMINHÃO o corredor NÃO conclui: o galho de "
+     "carroceria, eixos e altura é handoff, e quem termina é uma pessoa."),
+
+    ("pneu", [
+        "Por questões de segurança não conseguimos enviar o serviço de troca "
+        "de pneus para Rodovias e Marginais — 🔴 é EXCLUSÃO, não recomendação: "
+        "em rodovia ou marginal o serviço vira GUINCHO.",
+
+        "Depois de 12 minutos sem resposta, a conversa será encerrada "
+        "automaticamente — 🔴 é o RELÓGIO da URA, e ele corre enquanto se "
+        "procura um dado que ninguém coletou.",
+
+        "Por favor, aguarde a chegada do prestador com chaves e documentos em "
+        "mãos. Quando concluir o serviço, o prestador pedirá para você assinar "
+        "o checklist. Confira as informações e assine-o.",
+     ],
+     "🔴 Termina em *Serviço:* Troca de Pneus com o número da assistência. ⚠️ "
+     "Com estepe e ferramentas em condições, a troca é NO LOCAL; sem isso, vira "
+     "guincho até a borracharia. E em rodovia/marginal só há guincho."),
+
+    ("bateria", [
+        "Enviaremos um prestador para realizar a recarga da sua bateria, "
+        "permitindo assim, que o veículo siga viagem. Mas não se esqueça de "
+        "buscar uma assistência especializada para avaliação e reparos "
+        "definitivos — ⚠️ é RECARGA, não bateria nova.",
+
+        "Caso seja necessário a compra de uma nova bateria, o segurado será "
+        "responsável pela negociação diretamente com o prestador de serviços — "
+        "🔴 é regra de DINHEIRO, e tem de ser dita ANTES: a bateria nova sai do "
+        "bolso do segurado, negociada com o prestador, não com a seguradora.",
+     ],
+     "⚠️ NÃO MEDIDO ATÉ O FIM. 📊 A única sessão desta rota (69816f6b) foi "
+     "encerrada por tempo máximo de espera excedido, antes do 'agora ou "
+     "agendar'. O que se sabe do desfecho vem do galho de socorro_mecânico, que "
+     "é onde a recarga da yelum é aberta na prática. 🔴 Não se escreve aqui um "
+     "protocolo que nunca foi visto."),
+):
+    YELUM_AUTO_WHATSAPP_V1["subservices"][_sv_yl]["regras_para_o_cliente"] = _regras_yl
+    YELUM_AUTO_WHATSAPP_V1["subservices"][_sv_yl]["expectativa_do_desfecho"] = _exp_yl
+
 # 🔴 A tecla do "Agora que você já sabe desta informação" — por subserviço,
 #    porque é o SUBSERVIÇO que ela reapresenta. Botão 1: Recarga de bateria ·
 #    Botão 2: Guincho.
@@ -4854,6 +5019,30 @@ for _pb_yh in (YELUM_AUTO_WHATSAPP_V1, HDI_AUTO_WHATSAPP_V1):
         r"tipo do caminh[ãa]o", r"tipo da carroceria", r"quantos eixos o caminh[ãa]o",
         r"tipo do para-?choque", r"altura\*? do caminh[ãa]o",
         r"comprimento\*? do caminh[ãa]o",
+        # ⚠️ 🔴 AS DUAS QUE FALTAVAM DO MESMO GALHO — 23/08/2026, ONDA D.
+        #    📊 Sessao 9d2655e2: "O veiculo esta descarregado?" e "Possui
+        #    acessorios? Possui intercooler / defletor de ar / interclima" vem
+        #    NO MEIO das seis acima, entre `tipo do caminhao` e `altura`. Elas
+        #    eram ORFAS FUNCIONAIS enquanto as vizinhas ja eram handoff.
+        #
+        # 🔴 A decisao ja estava tomada, e ela e a certa: **reboque de caminhao
+        #    nao se decide no automatico**. Carga a bordo e acessorio de teto
+        #    mudam o equipamento que tem de ir, e errar manda um guincho que
+        #    nao consegue levar o veiculo. Faltava so aplicar a mesma regra as
+        #    duas telas que escaparam.
+        #
+        # ⚠️ E as duas sessoes de caminhao do acervo terminaram, elas mesmas,
+        #    em "sera necessario falar com um de nossos especialistas".
+        r"o ve[íi]culo est[áa] descarregado", r"possui acess[óo]rios",
+        # 🔴 E A APOLICE ERRADA E PIOR QUE O SERVICO ERRADO.
+        #    📊 "Encontramos *mais de uma apolice* vinculada aos dados
+        #    informados. Por favor, escolha *qual apolice deseja seguir,*
+        #    respondendo com o *numero da opcao:*" — e as OPCOES vem em bolhas
+        #    SEPARADAS depois ("*Automovel* 1 - PLACA" / "*Residencial* 2 -
+        #    ..."). Responder a primeira bolha e responder antes de ver o menu.
+        #    Abrir assistencia na apolice errada nao tem desfazer, e quem
+        #    resolve isso em segundos e a corretora.
+        r"mais de uma ap[óo]lice",
     ]
 
 

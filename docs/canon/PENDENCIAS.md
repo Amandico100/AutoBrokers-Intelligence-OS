@@ -7762,3 +7762,52 @@ perdido.
 📊 Confirmado na ONDA C com a população certa do C16: `declarado 23 · real 0`
 nos dois corredores que carregam o passo. Continua aberto para a onda da HDI e
 da yelum.
+
+### P-084-50 `yelum/auto/bateria`: a única sessão foi encerrada pelo RELÓGIO da URA · 🧑
+
+📊 23/08/2026, ONDA D. A rota fecha em **73/106**, e 27 dos 33 que faltam
+dependem do mesmo fato: a sessão `69816f6b` **nunca chegou ao "agora ou
+agendar"**. Foi encerrada por *"o tempo máximo de espera para este atendimento
+foi excedido"*.
+
+```
+a ROTA foi percorrida ate o fim ......  12
+o freio casa >=1 tela REAL ...........   8   não há UMA tela de freio no acervo
+o cliente recebe protocolo+dia+periodo   5
+>=2 sessoes distintas ................   2
+```
+
+🔴 E a própria URA da yelum diz o prazo, nas *Dicas rápidas* da abertura:
+**"Depois de 12 minutos sem resposta, a conversa será encerrada
+automaticamente"**. Doze minutos é o orçamento inteiro do acionamento — e a
+regra agora está escrita em `regras_para_o_cliente` do pneu, onde foi medida.
+
+⚠️ Na prática a recarga de bateria da yelum é aberta pelo galho de
+`socorro_mecanico` ("Pane ou Defeito" → "Problemas elétricos"), que fecha em
+**88/88**. É a mesma dúvida do [P-084-46] na HDI: `bateria` e
+`socorro_mecanico` podem ser a mesma rota com dois nomes.
+
+**O que destrava:** 🧑 uma coleta de recarga de bateria na yelum que chegue ao
+número da assistência · 🤖 ou a decisão de fundir as duas rotas.
+**O que custa esquecer:** 27 pontos que parecem dívida de corredor e são o
+relógio de uma URA que desligou.
+
+### P-084-51 O galho do CAMINHÃO é handoff — e é uma decisão, não uma lacuna · ✅
+
+📊 Oito telas de `yelum/auto/guincho` perguntam sobre o veículo pesado:
+descarregado · tipo do caminhão · carroceria · eixos · para-choque ·
+acessórios · altura · comprimento. Seis já eram `handoff_trigger`; **duas
+estavam órfãs** e entraram nesta onda.
+
+🔴 A decisão é deliberada e continua: **reboque de caminhão não se decide no
+automático.** Carga a bordo e acessório de teto mudam o equipamento que precisa
+ir, e errar manda um guincho que não consegue levar o veículo.
+
+⚠️ E as duas sessões de caminhão do acervo terminaram, elas mesmas, em *"será
+necessário falar com um de nossos especialistas"* — a própria URA não conclui.
+
+**O que destrava:** 🧑 uma decisão comercial sobre atender frota pesada
+ponta a ponta, que exigiria coletar altura, comprimento e carroceria no
+cadastro do veículo — não no meio da conversa com a URA.
+**O que custa esquecer:** alguém lê "handoff" como buraco e escreve passos que
+escolhem equipamento de reboque por palpite.
