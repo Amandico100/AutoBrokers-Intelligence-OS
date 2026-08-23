@@ -91,6 +91,14 @@ PB = CP._PLAYBOOKS["allianz-residencial-whatsapp@v1"]
 MUTACOES = [
     # (arquivo, texto_de, texto_para, rotulo_da_assercao_que_deve_cair)
 
+    # FURO 19 (C19) - o protocolo com PREFIXO morria na mascara.
+    # A mutacao tira a tentativa que absorve o pedaco ja presente no texto.
+    # 📊 O protocolo da porto volta a virar `1-{NUMERO}` e a captura morre.
+    ("scripts/higiene_do_corpus.py",
+     "            if sobra and valor.startswith(sobra.group(0)):",
+     "            if False:  # DESLIGADO PELA MUTACAO",
+     "🔴 o protocolo com prefixo sobrevive a mascara"),
+
     # FURO 18 (C18) - o arquivo com MAIS TELAS vencia o com CONTROLE.
     # A mutacao devolve a ordem antiga: telas primeiro, controle so no
     # desempate. 📊 `hdi/auto/chaveiro` volta a escolher um arquivo sem
@@ -619,6 +627,59 @@ certo(_ctl.pontos == _ctl.maximo,
 certo(_cob.pontos == _cob.maximo,
       "🔴 CONTROLE: e a cobertura continua provada — o criterio de telas nao "
       "foi rebaixado", f"{_cob.pontos}/{_cob.maximo}: {_cob.evidencia}")
+
+
+
+# =============================================================================
+# 🔴 C19 - O PROTOCOLO COM PREFIXO MORRIA NA MASCARA
+# =============================================================================
+#
+# 📊 O protocolo da PORTO tem prefixo -- `1-408029004672` -- e a regra de
+#    digitos do mascarador so mordia o rabo dele:
+#
+#      cru        "Aqui esta seu protocolo de atendimento 1-408029004672"
+#      mascarado  "Aqui esta seu protocolo de atendimento 1-{NUMERO}"
+#
+#    A reinjecao trocava o marcador pelo valor INTEIRO e produzia `1-1-4080...`,
+#    que o motor recusava -- com razao. O protocolo morria, e com ele os 12
+#    pontos de "a ROTA foi percorrida ate o fim" e os 5 de "protocolo + dia +
+#    periodo", nas CINCO rotas de porto/auto e nas de porto/residencial.
+#
+# ⚠️ A allianz e a hdi passavam porque o protocolo delas e so digitos: o
+#    marcador cobre o valor inteiro. O defeito so existia em quem usa prefixo,
+#    e sumia do radar exatamente por isso.
+print()
+print("=" * 74)
+print("[C19] o protocolo com PREFIXO sobrevive a mascara")
+print("=" * 74)
+
+import higiene_do_corpus as _H  # noqa: E402
+
+_CRU_PORTO = "Aqui está seu protocolo de atendimento 👇 1-408029004672"
+_pb_porto = _RB.M.get_playbook("porto-auto-whatsapp@v1")
+_limpo = _H.higienizar(_pb_porto, _CRU_PORTO, set())[0]
+certo(_RB.M.extract_capture_anchors(_pb_porto, _limpo).get("protocol")
+      == "1-408029004672",
+      "🔴 o protocolo com prefixo sobrevive a mascara",
+      f"sobrou: {_limpo!r}")
+
+# 🔴 CONTROLE 1: e o mascarador NAO virou peneira -- telefone e CPF continuam
+#    apagados na MESMA passagem.
+_SUJO = ("Aqui está seu protocolo 👇 1-408029004672. Meu telefone e "
+         "(47) 99627-4743 e o CPF 529.982.247-25")
+_lsujo = _H.higienizar(_pb_porto, _SUJO, set())[0]
+certo(not _H.auditar_pii(_lsujo) and "99627" not in _lsujo
+      and "529.982" not in _lsujo,
+      "🔴 CONTROLE: telefone e CPF continuam apagados na mesma tela",
+      f"sobrou: {_lsujo!r}")
+
+# 🔴 CONTROLE 2: e o corpus VERSIONADO ja carrega o protocolo -- senao o
+#    conserto estaria no codigo e nao no que a regua le.
+_tel_porto = [l["text"] for l in _RPc8.carregar_corpus("porto", "auto")]
+certo(any(_re.search(r"protocolo de atendimento[^\d]{0,6}\d-\d{6,}", t)
+          for t in _tel_porto),
+      "🔴 CONTROLE: o corpus de porto/auto tem o protocolo em claro",
+      f"{len(_tel_porto)} telas")
 
 print()
 print("=" * 74)

@@ -203,12 +203,46 @@ def _preservar_capturas(playbook: Dict[str, Any], cru: str,
     # 🔴 A correção não escolhe o marcador por posição nem por nome: ela **tenta
     #    cada um e pergunta ao MOTOR** qual devolve a senha. É a mesma disciplina
     #    da §1.3 — quem decide é `extract_capture_anchors`, não uma heurística.
+    # ══════════════════════════════════════════════════════════════════════
+    # ⚠️ 🔴 E O MASCARADOR NEM SEMPRE COME O VALOR INTEIRO — 23/08/2026
+    # ══════════════════════════════════════════════════════════════════════
+    #
+    # 📊 O protocolo da PORTO tem PREFIXO, e a regra de dígitos só mordeu o
+    #    rabo dele:
+    #
+    # ```
+    #   cru       "Aqui está seu protocolo de atendimento 👇 1-408029004672"
+    #   motor     {'protocol': '1-408029004672'}          <- captura o inteiro
+    #   mascarado "Aqui está seu protocolo de atendimento 👇 1-{NUMERO}"
+    #                                                        ^^  sobrou
+    # ```
+    #
+    # 🔴 Trocar `{NUMERO}` pelo valor INTEIRO produzia `1-1-408029004672`, e o
+    #    motor devolvia outra coisa — então o verificador recusava, com razão,
+    #    e o protocolo morria. **Nas cinco rotas de `porto/auto` com corpus,
+    #    NENHUMA conseguia provar que chegou ao fim**, e o motivo não era o
+    #    corredor: era o `1-` que sobrou na frente do marcador.
+    #
+    # ⚠️ E a allianz e a hdi passavam, porque o protocolo delas é só dígitos e
+    #    o marcador cobre o valor inteiro. O defeito só aparece em quem usa
+    #    prefixo — e some do radar exatamente por isso.
+    #
+    # 🔴 O conserto NÃO afrouxa nada: ele absorve, no máximo, um pedaço que já
+    #    estava no texto E que é PREFIXO do valor capturado. Continua sendo o
+    #    MOTOR quem aceita ou recusa a tentativa, uma por uma.
     houve = False
     for chave, valor in perdidos.items():
         for m in _RX_MARCADOR_DE_SEGREDO.finditer(mascarado):
-            tentativa = mascarado[:m.start()] + valor + mascarado[m.end():]
-            if M.extract_capture_anchors(playbook, tentativa).get(chave) == valor:
-                mascarado, houve = tentativa, True
+            inicios = [m.start()]
+            sobra = re.search(r"[\w./-]{1,16}$", mascarado[:m.start()])
+            if sobra and valor.startswith(sobra.group(0)):
+                inicios.append(sobra.start())
+            for ini in inicios:
+                tentativa = mascarado[:ini] + valor + mascarado[m.end():]
+                if M.extract_capture_anchors(playbook, tentativa).get(chave) == valor:
+                    mascarado, houve = tentativa, True
+                    break
+            if houve:
                 break
     return mascarado, houve
 
