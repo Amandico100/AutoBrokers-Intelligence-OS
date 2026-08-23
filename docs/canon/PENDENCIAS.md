@@ -7349,3 +7349,89 @@ AGENDAMENTO, esta constante vira slot."* A decisão 2 fez exatamente isso para
 **O que destrava:** ONDA F (azul), aplicando `{quando_agora_opcao}`, que já
 existe e já é derivado. **O que custa esquecer:** um corredor decide o "quando"
 pelo cliente enquanto os outros quatro perguntam.
+
+### P-084-33 🔴 Medir uma rota ESCREVE no corredor — e quase mandou uma âncora morta para produção · 🤖
+
+📊 22/08/2026. `medir_rota.py` chama `verificar_mutacoes` em **toda** medição, e
+cada mutação grava em `corridor_playbooks.py` e restaura. Sozinha é segura.
+Quatro subagentes medindo em paralelo, não:
+
+```
+- "anchor": r"(?:informe|confirme) o n[úu]mero da residência"
++ "anchor": r"informe o n[úu]mero da residência"
+```
+
+⚠️ `confirme` é a redação que a URA **usa** — 📊 *"Agora, me confirme o número
+da residência"*, 180x em 72 sessões. **O produto ficou com a âncora morta**, e
+só foi pego por um `git status` de rotina.
+
+📊 E um subagente viu o sintoma sem saber a causa: *"esta listagem mostra 5
+telas órfãs, mas a chamada anterior mostrou 3"*.
+
+**Consertado** pela trava exclusiva de arquivo (C11), com o guarda que roda duas
+medições de verdade em paralelo e exige o corredor idêntico byte a byte.
+
+**O que fica pendente:** ⚠️ o desenho ainda é *"medir muta o produto"*. A trava
+torna seguro, não torna certo. Uma medição que precisa escrever no arquivo que
+mede é frágil por construção — CI, cron e sessão paralela vão esbarrar nela.
+**O que destrava:** o eixo E medir a mutação numa CÓPIA da árvore, não in-place.
+**O que custa esquecer:** a próxima vez pode não ter `git status` por perto.
+
+### P-084-34 A régua tinha três pontos cegos da mesma família, e todos punham o certo em desvantagem · 🤖
+
+📊 Achados ao abrir a ONDA A. `replay()` só perguntava `match_ura_step` — então
+**tudo que o corredor trata por outro meio contava como buraco**:
+
+| conserto | o que contava como defeito | efeito |
+|---|---|---|
+| **C8** | tela que dispara `detect_handoff_trigger` | apagar gatilho GANHAVA ponto |
+| **C9** | tela que `extract_capture_anchors` lê (o RESUMO com protocolo) | a tela que PROVA o fim da rota era "o defeito" |
+| **P-084-30** | tela fora do alcance da rota, por `only_subservices` | escopar certo DERRUBAVA a nota |
+
+🔴 Os três invertiam o incentivo na mesma direção: **o executor que otimizasse
+pela régua desfaria o conserto.** C8 e C9 estão feitos e julgados; o terceiro
+(P-084-30) continua aberto.
+
+**O que destrava o que falta:** `replay()` filtrar por ALCANCE — tela cujo passo
+tem `only_subservices` que não inclui a rota não é órfã dela.
+**O que custa esquecer:** a régua ensina o contrário do que a SPEC manda.
+
+### P-084-35 O item das `notes` era impossível: 0/2 em 73 de 73, e foram quatro voltas até a pergunta ficar certa · 🤖
+
+📊 Nenhuma rota ganhava um ponto em `notes com contagem que RECONTA`. Um item
+que ninguém pode ganhar não mede nada — só tampa toda rota em 100/102.
+
+⚠️ **Cada uma das quatro correções foi de MEDIÇÃO minha, não das notes:**
+
+1. **população** — o número da note vem do acervo; a régua recontava no corpus
+   versionado, filtrado pela rota (`menu_tipo_servico`: declara 64, rota vê 4)
+2. **frase** — `r"(\d+)\s*ocorr"` solto pegava número de outra frase
+3. **passo compartilhado** — `avisos_informativos_familia` vive em dois
+   corredores; "5 telas" é verdade num e o outro tem 23
+4. 🔴 **unidade** — a note escreve `N telas / M sessões` e eu contava
+   OCORRÊNCIAS. Doze notes **certas** acusadas de mentir. Com telas distintas:
+   20 das 21 recontam
+
+**E a 21ª era defeito de verdade:** `servico_aberto_ver_ou_abrir` declarava 4
+telas e há 6. Corrigida.
+
+⚠️ **Ainda nenhuma rota tira 2/2** — sempre sobra alguma note desalinhada.
+**O que destrava:** varrer as notes numeradas dos 14 corredores e corrigir os
+números na unidade certa. **O que custa esquecer:** um item que paga no máximo
+1 de 2 vira teto invisível de novo.
+
+### P-084-36 Criar worktree neste repo no Windows leva >1min e falha pela metade · 🤖
+
+📊 22/08/2026: `git worktree add` levou mais de 2 minutos e um dos worktrees
+nasceu **sem os arquivos** (`backend/app/services/corridor_playbooks.py`
+ausente, com a branch criada).
+
+⚠️ O método da SPEC-084.1 pede *"subagente por rota, worktree próprio, merge
+serial"*. A serialização foi mantida — os subagentes **analisam** e devolvem as
+edições, e a integração é serial com `conferir_respostas` após cada uma — mas
+sem worktree.
+
+**O que destrava:** medir por que o `add` é lento aqui (antivírus? tamanho?), ou
+aceitar o método sem worktree quando os agentes não escrevem.
+**O que custa esquecer:** alguém tenta 8 worktrees, espera 20 min e recebe 3
+árvores quebradas.

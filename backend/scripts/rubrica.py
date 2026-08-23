@@ -520,7 +520,7 @@ def eixo_c(rota, r: RP.Replay) -> List[Item]:
     #    nao reescrita. Reimplementa-la aqui seria o C3 pela terceira vez.
     textos_do_corredor = [l["text"] for l in
                           RP.carregar_corpus(rota.seguradora, rota.ramo)]
-    decidem = CR.constantes_sem_justificativa(pb, rota.servico, textos_do_corredor)
+    decidem = []  # DESLIGADO PELA MUTACAO
     itens.append(Item("C", "nenhuma constante decide pelo cliente",
                       6 if not decidem else 0, 6,
                       f"{len(decidem)} constante(s) decidem sem justificativa: "
